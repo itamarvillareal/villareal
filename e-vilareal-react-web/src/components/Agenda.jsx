@@ -25,26 +25,36 @@ function ColunaDia({ dataLabel, eventos, vazias = 8 }) {
         {eventos.map((ev) => (
           <div
             key={ev.id}
-            className={`flex gap-2 py-1 px-2 text-sm border-b border-gray-100 ${
+            className={`grid grid-cols-[72px,1fr,120px] items-stretch gap-2 py-1 px-2 text-sm border-b border-gray-100 ${
               ev.destaque ? 'bg-amber-100' : ''
             }`}
           >
-            {ev.hora && (
-              <span className="shrink-0 font-medium text-gray-600 w-10">
-                {ev.hora}
+            {/* Lado esquerdo: horário (pode ficar em branco) */}
+            <div className="border border-gray-200 rounded px-2 py-1 flex items-start justify-center text-gray-600 font-medium min-h-[34px]">
+              {ev.hora ? <span>{ev.hora}</span> : <span className="text-transparent">__</span>}
+            </div>
+
+            {/* Centro: descrição do compromisso */}
+            <div className="border border-gray-200 rounded px-2 py-1 min-h-[34px] flex items-start">
+              <span className="text-gray-800 truncate w-full" title={ev.descricao}>
+                {ev.descricao}
               </span>
-            )}
-            <span className="text-gray-800 truncate" title={ev.descricao}>
-              {ev.descricao}
-            </span>
+            </div>
+
+            {/* Lado direito: status do compromisso */}
+            <div className="border border-gray-200 rounded px-2 py-1 min-h-[34px] flex items-start justify-center text-gray-700 text-xs font-medium">
+              {ev.status ?? (ev.destaque ? 'Destaque' : '')}
+            </div>
           </div>
         ))}
         {Array.from({ length: vazias }).map((_, i) => (
           <div
             key={`vazio-${i}`}
-            className="py-1 px-2 text-sm border-b border-gray-100 min-h-[28px] text-gray-400"
+            className="grid grid-cols-[72px,1fr,120px] items-stretch gap-2 py-1 px-2 text-sm border-b border-gray-100 min-h-[34px]"
           >
-            {'\u00A0'}
+            <div className="border border-gray-200 rounded px-2 py-1 min-h-[34px] text-transparent">__</div>
+            <div className="border border-gray-200 rounded px-2 py-1 min-h-[34px]" />
+            <div className="border border-gray-200 rounded px-2 py-1 min-h-[34px]" />
           </div>
         ))}
       </div>
