@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { ChevronDown } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 const COLUNAS = [
   { id: 'cliente', label: 'Cliente', minW: '180px' },
@@ -48,19 +49,40 @@ const relatorioMock = [
 ];
 
 export function Relatorio() {
+  const navigate = useNavigate();
   const [ordenarPor, setOrdenarPor] = useState(null);
   const [ordemAsc, setOrdemAsc] = useState(true);
-  const [dados] = useState(relatorioMock);
+  const [dados] = useState(() =>
+    relatorioMock.map((row, idx) => ({
+      ...row,
+      // fallback para manter navegação funcional mesmo sem codCliente explícito no mock
+      codCliente: row.codCliente ?? String(idx + 1).padStart(8, '0'),
+    }))
+  );
+  const [filtrosPorColuna, setFiltrosPorColuna] = useState(() =>
+    COLUNAS.reduce((acc, col) => ({ ...acc, [col.id]: '' }), {})
+  );
+
+  const dadosFiltrados = useMemo(() => {
+    return dados.filter((row) =>
+      COLUNAS.every((col) => {
+        const filtro = String(filtrosPorColuna[col.id] ?? '').trim().toLowerCase();
+        if (!filtro) return true;
+        const valor = String(row[col.id] ?? '').toLowerCase();
+        return valor.includes(filtro);
+      })
+    );
+  }, [dados, filtrosPorColuna]);
 
   const dadosOrdenados = useMemo(() => {
-    if (!ordenarPor) return dados;
-    return [...dados].sort((a, b) => {
+    if (!ordenarPor) return dadosFiltrados;
+    return [...dadosFiltrados].sort((a, b) => {
       const va = a[ordenarPor] ?? '';
       const vb = b[ordenarPor] ?? '';
       const cmp = String(va).localeCompare(String(vb), undefined, { numeric: true });
       return ordemAsc ? cmp : -cmp;
     });
-  }, [dados, ordenarPor, ordemAsc]);
+  }, [dadosFiltrados, ordenarPor, ordemAsc]);
 
   const toggleOrdenacao = (id) => {
     if (ordenarPor === id) setOrdemAsc((a) => !a);
@@ -95,24 +117,63 @@ export function Relatorio() {
                     </th>
                   ))}
                 </tr>
+                <tr className="bg-slate-100">
+                  {COLUNAS.map((col) => (
+                    <th
+                      key={`${col.id}-filtro`}
+                      className="px-1.5 py-1 border-b border-r border-slate-300 last:border-r-0"
+                      style={{ minWidth: col.minW }}
+                    >
+                      <input
+                        type="text"
+                        value={filtrosPorColuna[col.id] ?? ''}
+                        onChange={(e) =>
+                          setFiltrosPorColuna((prev) => ({
+                            ...prev,
+                            [col.id]: e.target.value,
+                          }))
+                        }
+                        placeholder="Filtrar..."
+                        className="w-full px-2 py-1 border border-slate-300 rounded text-xs text-slate-700 bg-white"
+                      />
+                    </th>
+                  ))}
+                </tr>
               </thead>
               <tbody>
-                {dadosOrdenados.map((row, idx) => (
-                  <tr
-                    key={idx}
-                    className={`border-b border-slate-200 hover:bg-slate-50 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}
-                  >
-                    {COLUNAS.map((col) => (
-                      <td
-                        key={col.id}
-                        className="px-2 py-1.5 border-r border-slate-200 last:border-r-0 text-slate-800"
-                        style={{ minWidth: col.minW }}
-                      >
-                        {row[col.id] ?? ''}
-                      </td>
-                    ))}
+                {dadosOrdenados.length === 0 ? (
+                  <tr>
+                    <td colSpan={COLUNAS.length} className="px-3 py-6 text-center text-slate-500">
+                      Nenhum resultado para os filtros aplicados.
+                    </td>
                   </tr>
-                ))}
+                ) : (
+                  dadosOrdenados.map((row, idx) => (
+                    <tr
+                      key={idx}
+                      className={`border-b border-slate-200 hover:bg-slate-50 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'} cursor-pointer`}
+                      title="Duplo clique: abrir processo"
+                      onDoubleClick={() =>
+                        navigate('/processos', {
+                          state: {
+                            codCliente: String(row.codCliente ?? ''),
+                            proc: String(row.proc ?? ''),
+                          },
+                        })
+                      }
+                    >
+                      {COLUNAS.map((col) => (
+                        <td
+                          key={col.id}
+                          className="px-2 py-1.5 border-r border-slate-200 last:border-r-0 text-slate-800"
+                          style={{ minWidth: col.minW }}
+                        >
+                          {row[col.id] ?? ''}
+                        </td>
+                      ))}
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { X, ChevronUp, ChevronDown } from 'lucide-react';
 
 function Field({ label, children, className = '' }) {
@@ -13,6 +14,7 @@ function Field({ label, children, className = '' }) {
 const inputClass = 'w-full px-2 py-1.5 border border-slate-300 rounded text-sm bg-white';
 
 export function Imoveis() {
+  const navigate = useNavigate();
   const [imovelId, setImovelId] = useState(43);
   const [imovelOcupado, setImovelOcupado] = useState(true);
   const [codigo, setCodigo] = useState('938');
@@ -74,6 +76,15 @@ export function Imoveis() {
   const [contratoIntermediacaoArquivado, setContratoIntermediacaoArquivado] = useState('nao');
   const [contratoIntermediacaoAssinadoProprietario, setContratoIntermediacaoAssinadoProprietario] = useState('nao');
 
+  function abrirProcessoDoImovel() {
+    navigate('/processos', {
+      state: {
+        codCliente: String(codigo ?? ''),
+        proc: String(proc ?? ''),
+      },
+    });
+  }
+
   return (
     <div className="min-h-full bg-slate-200">
       <div className="max-w-[1400px] mx-auto px-3 py-3">
@@ -117,7 +128,13 @@ export function Imoveis() {
                   </label>
                 </div>
               </div>
-              <button type="button" className="px-4 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50">Abrir Proc.</button>
+              <button
+                type="button"
+                onClick={abrirProcessoDoImovel}
+                className="px-4 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
+              >
+                Abrir Proc.
+              </button>
               <Field label="Código:" className="w-24">
                 <input type="text" value={codigo} onChange={(e) => setCodigo(e.target.value)} className={inputClass} />
               </Field>

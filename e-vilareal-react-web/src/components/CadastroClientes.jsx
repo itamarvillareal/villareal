@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Search, FolderOpen, Calendar, Receipt, FileText, Settings, User, ChevronLeft, ChevronRight } from 'lucide-react';
 import { clienteMock, processosClienteMock } from '../data/mockData';
@@ -54,6 +54,22 @@ function padCliente8(val) {
   return String(n).padStart(8, '0');
 }
 
+function apenasDigitos(val) {
+  return String(val ?? '').replace(/\D/g, '');
+}
+
+function normalizarTextoBusca(s) {
+  return String(s ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+}
+
+function normalizarNumeroBusca(s) {
+  return String(s ?? '').replace(/\D/g, '');
+}
+
 function gerarMockClienteEProcessos(codigo) {
   const n = Number(normalizarCodigoCliente(codigo));
   if (!Number.isFinite(n) || n < 1 || n > 1000) return null;
@@ -66,13 +82,17 @@ function gerarMockClienteEProcessos(codigo) {
     for (let p = 1; p <= 10; p++) {
       const mockProc = getMockProcesso10x10(n, p);
       if (!mockProc) continue;
+      const baseTipoAcao = processosClienteMock[p - 1]?.descricao;
       procRows.push({
         id: `${n}-${p}`,
         procNumero: p,
         processoVelho: mockProc.numeroProcessoVelho || '-',
         processoNovo: mockProc.numeroProcessoNovo,
+        autor: mockProc.autor,
+        reu: mockProc.reu,
         parteOposta: mockProc.reu,
-        descricao: `AÇÃO (MOCK) PROC ${String(p).padStart(2, '0')}`,
+        tipoAcao: baseTipoAcao ?? 'AÇÃO (MOCK)',
+        descricao: baseTipoAcao ?? `AÇÃO (MOCK) PROC ${String(p).padStart(2, '0')}`,
       });
     }
     const cnpjCpf =
@@ -95,14 +115,18 @@ function gerarMockClienteEProcessos(codigo) {
     const foro = String(1000 + ((n * 13 + p * 7) % 900)).slice(-4);
     const numeroProcessoNovo = `${String(seq).slice(0, 7)}-${dv}.2025.8.09.${foro}`;
     const parteOposta = `RÉU MOCK C${String(n).padStart(3, '0')}/P${String(p).padStart(2, '0')}`;
-    const descricao = `AÇÃO MOCK CLIENTE ${String(n).padStart(3, '0')} — PROC ${String(p).padStart(2, '0')}`;
+    const autor = `AUTOR MOCK C${String(n).padStart(3, '0')}/P${String(p).padStart(2, '0')}`;
+    const baseTipoAcao = processosClienteMock[p - 1]?.descricao;
     procRows.push({
       id: `${n}-${p}`,
       procNumero: p,
       processoVelho: '-',
       processoNovo: numeroProcessoNovo,
+      autor,
+      reu: parteOposta,
       parteOposta,
-      descricao,
+      tipoAcao: baseTipoAcao ?? 'AÇÃO (MOCK)',
+      descricao: baseTipoAcao ?? `AÇÃO MOCK CLIENTE ${String(n).padStart(3, '0')} — PROC ${String(p).padStart(2, '0')}`,
     });
   }
 
@@ -131,7 +155,10 @@ export function CadastroClientes() {
   const [clienteInativo, setClienteInativo] = useState(clienteMock.clienteInativo);
   const [observacao, setObservacao] = useState(clienteMock.observacao);
   const [pesquisaProcesso, setPesquisaProcesso] = useState('');
-  const [processos, setProcessos] = useState(processosClienteMock.slice(0, 10));
+  const [processos, setProcessos] = useState(() => {
+    const mock = gerarMockClienteEProcessos(clienteMock.codigo);
+    return mock?.processos ?? processosClienteMock.slice(0, 10);
+  });
 
   useEffect(() => {
     if (codClienteFromState) {
@@ -149,7 +176,7 @@ export function CadastroClientes() {
     if (procFromState) setPesquisaProcesso(procFromState);
   }, [codClienteFromState, procFromState]);
 
-  function handleCodigoChange(value) {
+  function aplicarCodigoCliente(value) {
     const padded = padCliente8(value);
     setCodigo(padded);
     const mock = gerarMockClienteEProcessos(padded);
@@ -162,9 +189,60 @@ export function CadastroClientes() {
     }
   }
 
+  function handleCodigoInputChange(value) {
+    const digits = apenasDigitos(value);
+    // Durante digitação, permite vazio para não “travar” o backspace em mobile.
+    if (!digits) {
+      setCodigo('');
+      return;
+    }
+    setCodigo(digits);
+    aplicarCodigoCliente(digits);
+  }
+
+  function handleCodigoInputBlur(value) {
+    const digits = apenasDigitos(value);
+    aplicarCodigoCliente(digits || '1');
+  }
+
   function abrirProcessos(procNumero) {
     navigate('/processos', { state: { codCliente: padCliente8(codigo), proc: String(procNumero ?? '') } });
   }
+
+  const processosFiltrados = useMemo(() => {
+    const termoRaw = String(pesquisaProcesso ?? '');
+    const termo = normalizarTextoBusca(termoRaw);
+    const termoNumero = normalizarNumeroBusca(termoRaw);
+    if (!termo) return processos;
+
+    // Se o usuário digitou algo curto e numérico, tratamos como busca pelo “Proc.” (1–10).
+    const buscaProcCurta = termoNumero.length > 0 && termoNumero.length <= 2;
+
+    return (processos || []).filter((proc) => {
+      const procNumeroStr = String(proc.procNumero ?? '');
+      const numeroNovo = normalizarNumeroBusca(proc.processoNovo ?? '');
+
+      const numeroMatch = (() => {
+        if (!termoNumero) return false;
+        if (buscaProcCurta) return procNumeroStr.includes(termoNumero);
+        return numeroNovo.includes(termoNumero);
+      })();
+
+      const autorStr = normalizarTextoBusca(proc.autor ?? '');
+      const reuStr = normalizarTextoBusca(proc.reu ?? proc.parteOposta ?? '');
+      const tipoAcaoStr = normalizarTextoBusca(proc.tipoAcao ?? proc.descricao ?? '');
+
+      return (
+        numeroMatch ||
+        autorStr.includes(termo) ||
+        reuStr.includes(termo) ||
+        tipoAcaoStr.includes(termo) ||
+        // fallback: procura genérica em campos de texto já visíveis
+        normalizarTextoBusca(proc.parteOposta ?? '').includes(termo) ||
+        normalizarTextoBusca(proc.descricao ?? '').includes(termo)
+      );
+    });
+  }, [processos, pesquisaProcesso]);
 
   return (
     <div className="min-h-full bg-slate-200 flex flex-col">
@@ -190,7 +268,7 @@ export function CadastroClientes() {
                   onClick={() => {
                     const n = Number(normalizarCodigoCliente(codigo));
                     const next = Math.max(1, n - 1);
-                    handleCodigoChange(String(next));
+                    aplicarCodigoCliente(String(next));
                   }}
                   title="Anterior"
                 >
@@ -199,7 +277,8 @@ export function CadastroClientes() {
                 <input
                   type="text"
                   value={codigo}
-                  onChange={(e) => handleCodigoChange(e.target.value)}
+                  onChange={(e) => handleCodigoInputChange(e.target.value)}
+                  onBlur={(e) => handleCodigoInputBlur(e.target.value)}
                   className="flex-1 px-2 py-1.5 text-sm font-mono text-center border-0 bg-white"
                 />
                 <button
@@ -208,7 +287,7 @@ export function CadastroClientes() {
                   onClick={() => {
                     const n = Number(normalizarCodigoCliente(codigo));
                     const next = n + 1;
-                    handleCodigoChange(String(next));
+                    aplicarCodigoCliente(String(next));
                   }}
                   title="Próximo"
                 >
@@ -272,7 +351,7 @@ export function CadastroClientes() {
                   </tr>
                 </thead>
                 <tbody>
-                  {processos.map((proc, idx) => (
+                  {processosFiltrados.map((proc, idx) => (
                     <tr
                       key={proc.id}
                       className={`${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'} cursor-pointer hover:bg-blue-50`}

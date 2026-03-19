@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { getLancamentosContaCorrente, mergeContaCorrenteComLinhaOrigem } from '../data/financeiroData';
 import { getMockProcesso10x10 } from '../data/processosMock';
+import { getCadastroPessoasMock } from '../data/cadastroPessoasMock';
 import {
   X,
   FolderOpen,
@@ -138,6 +139,18 @@ function padCliente(val) {
   return String(n).padStart(8, '0');
 }
 
+function apenasDigitos(val) {
+  return String(val ?? '').replace(/\D/g, '');
+}
+
+function formatarListaComConjuncaoE(itens) {
+  const lista = (itens || []).map((x) => String(x ?? '').trim()).filter(Boolean);
+  if (lista.length === 0) return '';
+  if (lista.length === 1) return lista[0];
+  if (lista.length === 2) return `${lista[0]} e ${lista[1]}`;
+  return `${lista.slice(0, -1).join(', ')} e ${lista[lista.length - 1]}`;
+}
+
 function gerarMockProcesso(codigoCliente, processo) {
   const c = Number(normalizarCliente(codigoCliente));
   const p = Number(normalizarProcesso(processo));
@@ -244,6 +257,12 @@ export function Processos() {
   const [parteCliente, setParteCliente] = useState('MARIANA PERES DE SOUZA ALVES');
   const [edicaoDesabilitada, setEdicaoDesabilitada] = useState(true);
   const [parteOposta, setParteOposta] = useState('CONDOMINIO PORTAL DOS YPES 3 - CASAS FLAMBOYNAT');
+  const [pessoasCadastro, setPessoasCadastro] = useState([]);
+  const [parteClienteIds, setParteClienteIds] = useState([]);
+  const [parteOpostaIds, setParteOpostaIds] = useState([]);
+  const [modalVinculoPartes, setModalVinculoPartes] = useState(null); // cliente | oposta | null
+  const [buscaPessoaVinculo, setBuscaPessoaVinculo] = useState('');
+  const [selecionadasModalIds, setSelecionadasModalIds] = useState([]);
   const [numeroProcessoVelho, setNumeroProcessoVelho] = useState('');
   const [numeroProcessoNovo, setNumeroProcessoNovo] = useState('5602801-26.2025.8.09.0137');
   const [consultaAutomatica, setConsultaAutomatica] = useState(false);
@@ -258,9 +277,7 @@ export function Processos() {
   const [competencia, setCompetencia] = useState('2º JUIZADO ESPECIAL CÍVEL');
   const [observacao, setObservacao] = useState('Bloqueio de valores na conta.\nhttps://us05web.zoom.us/j/5523109318?pwd=K2ZMQlh6TmNobFJUUKRUMIFBZHRZQT09.\nPode contestar 15 dias após a audiência');
   const [periodicidadeConsulta, setPeriodicidadeConsulta] = useState('');
-  const [parteRequerente, setParteRequerente] = useState(true);
-  const [parteRevel, setParteRevel] = useState(false);
-  const [parteRequerido, setParteRequerido] = useState(false);
+  const [papelParte, setPapelParte] = useState('requerente');
   const [faseSelecionada, setFaseSelecionada] = useState('Em Andamento');
   const [statusAtivo, setStatusAtivo] = useState(true);
   const [faseCampo, setFaseCampo] = useState('');
@@ -282,6 +299,10 @@ export function Processos() {
   const [sortContaCorrente, setSortContaCorrente] = useState({ col: 'data', dir: 'desc' });
   const [buscaContaCorrente, setBuscaContaCorrente] = useState({ campo: 'todos', termo: '' });
 
+  useEffect(() => {
+    setPessoasCadastro(getCadastroPessoasMock(true));
+  }, []);
+
   // Mantém Processo sempre >= 1
   useEffect(() => {
     setProcesso((p) => Math.max(1, Number(p) || 1));
@@ -297,12 +318,12 @@ export function Processos() {
     setCliente(mock.cliente);
     setParteCliente(mock.parteCliente);
     setParteOposta(mock.parteOposta);
+    setParteClienteIds([]);
+    setParteOpostaIds([]);
     setNumeroProcessoVelho(mock.numeroProcessoVelho);
     setNumeroProcessoNovo(mock.numeroProcessoNovo);
     setStatusAtivo(mock.statusAtivo);
-    setParteRequerente(mock.parteRequerente);
-    setParteRevel(mock.parteRevel);
-    setParteRequerido(mock.parteRequerido);
+    setPapelParte(mock.parteRequerido ? 'requerido' : 'requerente');
     setCompetencia(mock.competencia);
     setFaseSelecionada(mock.faseSelecionada);
     setConsultaAutomatica(mock.consultaAutomatica);
@@ -370,6 +391,63 @@ export function Processos() {
     return String(s ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
   }
 
+  const pessoasPorId = useMemo(() => {
+    const m = new Map();
+    for (const p of pessoasCadastro || []) {
+      m.set(Number(p.id), p);
+    }
+    return m;
+  }, [pessoasCadastro]);
+
+  const textoParteCliente = useMemo(() => {
+    if (!parteClienteIds.length) return parteCliente;
+    const nomes = parteClienteIds
+      .map((id) => pessoasPorId.get(Number(id)))
+      .filter(Boolean)
+      .map((p) => p.nome);
+    return formatarListaComConjuncaoE(nomes);
+  }, [parteClienteIds, pessoasPorId, parteCliente]);
+
+  const textoParteOposta = useMemo(() => {
+    if (!parteOpostaIds.length) return parteOposta;
+    const nomes = parteOpostaIds
+      .map((id) => pessoasPorId.get(Number(id)))
+      .filter(Boolean)
+      .map((p) => p.nome);
+    return formatarListaComConjuncaoE(nomes);
+  }, [parteOpostaIds, pessoasPorId, parteOposta]);
+
+  const pessoasFiltradasVinculo = useMemo(() => {
+    const t = normalizarTextoBusca(buscaPessoaVinculo);
+    if (!t) return pessoasCadastro;
+    return (pessoasCadastro || []).filter((p) => {
+      const id = String(p.id ?? '');
+      const nome = normalizarTextoBusca(p.nome);
+      const cpf = String(p.cpf ?? '');
+      return id.includes(t) || nome.includes(t) || cpf.includes(t);
+    });
+  }, [pessoasCadastro, buscaPessoaVinculo]);
+
+  function abrirModalVinculoPartes(tipo) {
+    setModalVinculoPartes(tipo);
+    setBuscaPessoaVinculo('');
+    setSelecionadasModalIds(tipo === 'cliente' ? [...parteClienteIds] : [...parteOpostaIds]);
+  }
+
+  function alternarSelecaoPessoaModal(id) {
+    setSelecionadasModalIds((prev) => {
+      const n = Number(id);
+      if (prev.includes(n)) return prev.filter((x) => x !== n);
+      return [...prev, n];
+    });
+  }
+
+  function salvarVinculoPartes() {
+    if (modalVinculoPartes === 'cliente') setParteClienteIds([...selecionadasModalIds]);
+    if (modalVinculoPartes === 'oposta') setParteOpostaIds([...selecionadasModalIds]);
+    setModalVinculoPartes(null);
+  }
+
   function parseValorBusca(termo) {
     const s = String(termo ?? '').trim();
     if (!s) return null;
@@ -425,6 +503,21 @@ export function Processos() {
   );
   const ufAtual = UFS.find((u) => u.sigla === estado);
 
+  const faseSelecionadaNormalizada = normalizarTextoBusca(faseSelecionada);
+  // Regra: se estiver em "Ag. Documentos", o formulário da tela deve ficar amarelo.
+  // Mantemos uma detecção tolerante (ex.: "Ag. Documetos") removendo pontuação e comparando substrings.
+  const faseSelecionadaCompacta = faseSelecionadaNormalizada.replace(/[^a-z0-9]/g, '');
+  const isAgDocumentos = faseSelecionadaCompacta.startsWith('ag') && faseSelecionadaCompacta.includes('docu') && (faseSelecionadaCompacta.includes('ment') || faseSelecionadaCompacta.includes('met'));
+  const isAgPeticionar =
+    faseSelecionadaCompacta.startsWith('ag') &&
+    faseSelecionadaCompacta.includes('petic') &&
+    (faseSelecionadaCompacta.includes('ar') || faseSelecionadaCompacta.includes('ionar') || faseSelecionadaCompacta.includes('icion'));
+  const isAgVerificacao =
+    faseSelecionadaCompacta.startsWith('ag') &&
+    (faseSelecionadaCompacta.includes('verif') || faseSelecionadaCompacta.includes('verificacao'));
+  const isProtocoloMovimentacao =
+    faseSelecionadaCompacta.includes('protoc') && faseSelecionadaCompacta.includes('moviment');
+
   const inputClass = "w-full px-2 py-1.5 border border-slate-300 rounded text-sm bg-white";
   const inputDisabledClass = "w-full px-2 py-1.5 border border-slate-300 rounded text-sm bg-slate-50";
 
@@ -444,7 +537,19 @@ export function Processos() {
           </button>
         </header>
 
-        <div className="bg-white rounded border border-slate-300 shadow-sm overflow-hidden">
+        <div
+          className={`rounded border shadow-sm overflow-hidden ${
+            isProtocoloMovimentacao
+              ? 'bg-black border-slate-700 text-slate-100'
+              : isAgPeticionar
+                ? 'bg-red-200 border-red-400'
+                : isAgDocumentos
+                  ? 'bg-yellow-200 border-yellow-400'
+                  : isAgVerificacao
+                    ? 'bg-purple-200 border-purple-400'
+                    : 'bg-white border-slate-300'
+          }`}
+        >
           <div className="p-4 space-y-4">
             {/* Seção superior: 3 colunas - Identificação | Partes/Local | Papel/Fase/Status */}
             <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -463,7 +568,15 @@ export function Processos() {
                       <input
                         type="text"
                         value={codigoCliente}
-                        onChange={(e) => setCodigoCliente(padCliente(e.target.value))}
+                        onChange={(e) => {
+                          const digits = apenasDigitos(e.target.value);
+                          // Permite apagar completamente durante digitação (mobile/backspace).
+                          setCodigoCliente(digits);
+                        }}
+                        onBlur={(e) => {
+                          const digits = apenasDigitos(e.target.value);
+                          setCodigoCliente(padCliente(digits || '1'));
+                        }}
                         className="w-20 px-1 py-1 text-sm text-center border-0"
                       />
                       <button
@@ -504,10 +617,42 @@ export function Processos() {
               {/* Coluna central: Parte Cliente, Parte Oposta, Consulta, Estado, Cidade */}
               <div className="space-y-2">
                 <Field label="Parte Cliente">
-                  <input type="text" value={parteCliente} onChange={(e) => setParteCliente(e.target.value)} disabled={edicaoDesabilitada} className={edicaoDesabilitada ? inputDisabledClass : inputClass} />
+                  <div className="flex gap-1">
+                    <input
+                      type="text"
+                      value={textoParteCliente}
+                      readOnly
+                      className={inputDisabledClass}
+                      title={textoParteCliente}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => abrirModalVinculoPartes('cliente')}
+                      disabled={edicaoDesabilitada}
+                      className="px-2 py-1.5 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      Pessoas
+                    </button>
+                  </div>
                 </Field>
                 <Field label="Parte Oposta">
-                  <input type="text" value={parteOposta} onChange={(e) => setParteOposta(e.target.value)} disabled={edicaoDesabilitada} className={edicaoDesabilitada ? inputDisabledClass : inputClass} />
+                  <div className="flex gap-1">
+                    <input
+                      type="text"
+                      value={textoParteOposta}
+                      readOnly
+                      className={inputDisabledClass}
+                      title={textoParteOposta}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => abrirModalVinculoPartes('oposta')}
+                      disabled={edicaoDesabilitada}
+                      className="px-2 py-1.5 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      Pessoas
+                    </button>
+                  </div>
                 </Field>
                 <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
                   <input type="checkbox" checked={consultaAutomatica} onChange={(e) => setConsultaAutomatica(e.target.checked)} className="rounded border-slate-300" />
@@ -528,24 +673,18 @@ export function Processos() {
                 </Field>
               </div>
 
-              {/* Coluna direita: Requerente/Revel/Requerido, Status, Fase (caixa) */}
+              {/* Coluna direita: Papel, Status, Fase (caixa) */}
               <div className="space-y-3">
                 <div>
-                  <p className="text-sm font-medium text-slate-700 mb-1">Papel</p>
-                  <div className="flex flex-wrap gap-3">
-                    <label className="flex items-center gap-1.5 text-sm cursor-pointer">
-                      <input type="radio" name="papel" checked={parteRequerente} onChange={() => { setParteRequerente(true); setParteRevel(false); setParteRequerido(false); }} className="text-slate-600" />
-                      Requerente
-                    </label>
-                    <label className="flex items-center gap-1.5 text-sm cursor-pointer">
-                      <input type="radio" name="papel" checked={parteRevel} onChange={() => { setParteRequerente(false); setParteRevel(true); setParteRequerido(false); }} className="text-slate-600" />
-                      Revel
-                    </label>
-                    <label className="flex items-center gap-1.5 text-sm cursor-pointer">
-                      <input type="radio" name="papel" checked={parteRequerido} onChange={() => { setParteRequerente(false); setParteRevel(false); setParteRequerido(true); }} className="text-slate-600" />
-                      Requerido
-                    </label>
-                  </div>
+                  <p className="text-sm font-medium text-slate-700 mb-1">Cliente é Requerente ou Requerido?</p>
+                  <select
+                    value={papelParte}
+                    onChange={(e) => setPapelParte(e.target.value)}
+                    className={inputClass}
+                  >
+                    <option value="requerente">Requerente</option>
+                    <option value="requerido">Requerido</option>
+                  </select>
                 </div>
                 <div>
                   <p className="text-sm font-medium text-slate-700 mb-1">Status</p>
@@ -806,6 +945,109 @@ export function Processos() {
           </div>
         </div>
       </div>
+
+      {modalVinculoPartes && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="modal-vinculo-partes-titulo"
+          onClick={() => setModalVinculoPartes(null)}
+        >
+          <div
+            className="bg-white rounded-lg shadow-xl border border-slate-200 w-full max-w-4xl max-h-[90vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200">
+              <h2 id="modal-vinculo-partes-titulo" className="text-base font-semibold text-slate-800">
+                {modalVinculoPartes === 'cliente' ? 'Vincular pessoas - Parte Cliente' : 'Vincular pessoas - Parte Oposta'}
+              </h2>
+              <button
+                type="button"
+                className="p-2 rounded text-slate-500 hover:bg-slate-100"
+                aria-label="Fechar"
+                onClick={() => setModalVinculoPartes(null)}
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 flex-1 min-h-0 flex flex-col gap-3">
+              <div className="flex items-center gap-2">
+                <Search className="w-4 h-4 text-slate-500" />
+                <input
+                  type="text"
+                  value={buscaPessoaVinculo}
+                  onChange={(e) => setBuscaPessoaVinculo(e.target.value)}
+                  placeholder="Buscar por código, nome ou CPF/CNPJ"
+                  className="flex-1 px-3 py-2 border border-slate-300 rounded text-sm bg-white"
+                />
+              </div>
+              <div className="border border-slate-300 rounded overflow-auto flex-1 min-h-[280px]">
+                <table className="w-full text-sm border-collapse">
+                  <thead className="bg-slate-100 sticky top-0">
+                    <tr>
+                      <th className="border-b border-slate-300 px-3 py-2 text-left w-16">Sel.</th>
+                      <th className="border-b border-slate-300 px-3 py-2 text-left w-24">Código</th>
+                      <th className="border-b border-slate-300 px-3 py-2 text-left">Nome</th>
+                      <th className="border-b border-slate-300 px-3 py-2 text-left w-44">CPF/CNPJ</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pessoasFiltradasVinculo.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} className="px-3 py-4 text-center text-slate-500">
+                          Nenhuma pessoa encontrada para o filtro informado.
+                        </td>
+                      </tr>
+                    ) : (
+                      pessoasFiltradasVinculo.map((p, idx) => {
+                        const id = Number(p.id);
+                        const checked = selecionadasModalIds.includes(id);
+                        return (
+                          <tr
+                            key={id}
+                            className={`${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'} cursor-pointer hover:bg-blue-50`}
+                            onClick={() => alternarSelecaoPessoaModal(id)}
+                          >
+                            <td className="border-t border-slate-200 px-3 py-2">
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => alternarSelecaoPessoaModal(id)}
+                                onClick={(e) => e.stopPropagation()}
+                                className="rounded border-slate-300"
+                              />
+                            </td>
+                            <td className="border-t border-slate-200 px-3 py-2 text-slate-700">{id}</td>
+                            <td className="border-t border-slate-200 px-3 py-2 text-slate-800">{p.nome}</td>
+                            <td className="border-t border-slate-200 px-3 py-2 text-slate-700">{p.cpf || '—'}</td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div className="px-4 py-3 border-t border-slate-200 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setModalVinculoPartes(null)}
+                className="px-4 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={salvarVinculoPartes}
+                className="px-4 py-2 rounded border border-blue-600 bg-blue-600 text-white text-sm hover:bg-blue-700"
+              >
+                Salvar vínculos
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Janela Conta Corrente: lançamentos da Conta Contábil Conta Escritório (Financeiro) do cliente em tela */}
       {modalContaCorrente && (() => {

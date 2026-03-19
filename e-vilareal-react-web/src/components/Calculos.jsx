@@ -4,6 +4,8 @@ import { X, ChevronUp, ChevronDown, BarChart2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { getMockProcesso10x10 } from '../data/processosMock';
 import { obterIndicesMensaisINPC, obterIndicesMensaisIPCA } from '../services/monetaryIndicesService.js';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 const TABS = ['Títulos', 'Custas Judiciais', 'Parcelamento', 'Pagamento', 'Honorários', 'Decrição dos Valores'];
 
@@ -407,6 +409,119 @@ export function Calculos() {
   // Resumo da página atual vs resumo geral (todas páginas).
   const resumoPagina = calcularResumo(titulosPaginaCompletos);
   const resumoGeral = calcularResumo(titulos);
+
+  function gerarNomeArquivoPdf() {
+    const hoje = new Date();
+    const yyyy = String(hoje.getFullYear());
+    const mm = String(hoje.getMonth() + 1).padStart(2, '0');
+    const dd = String(hoje.getDate()).padStart(2, '0');
+    return `Calculo_Processo_${codigoClienteNorm}_${yyyy}${mm}${dd}.pdf`;
+  }
+
+  function gerarPdfCalculo() {
+    if (!aceitarPagamento) {
+      window.alert('Para salvar em PDF, é necessário aceitar o pagamento.');
+      return;
+    }
+
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const margemX = 12;
+    const dataGeracao = new Date().toLocaleString('pt-BR');
+    const cabecalho = rodadaAtual?.cabecalho || {};
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(14);
+    doc.text('Relatório de Cálculo', margemX, 14);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    doc.text(`Cliente (código): ${codigoClienteNorm}`, margemX, 20);
+    doc.text(`Processo: ${procNorm}`, margemX, 25);
+    doc.text(`Parte Cliente: ${cabecalho?.autor || '—'}`, margemX, 30);
+    doc.text(`Parte Oposta: ${cabecalho?.reu || '—'}`, margemX, 35);
+    doc.text(`Data do cálculo: ${dataCalculo}`, margemX, 40);
+
+    doc.setFont('helvetica', 'bold');
+    doc.text('Parâmetros do cálculo', margemX, 48);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Juros: ${juros}   |   Multa: ${multa}`, margemX, 53);
+    doc.text(`Honorários: ${honorariosTipo} (${honorariosValor})   |   Índice: ${indice}`, margemX, 58);
+
+    const linhasTitulos = (rodadaAtual?.titulos || [])
+      .map((t, idx) => ({
+        n: String(idx + 1).padStart(3, '0'),
+        dataVencimento: t?.dataVencimento || '',
+        valorInicial: t?.valorInicial || '',
+        atualizacaoMonetaria: t?.atualizacaoMonetaria || '',
+        diasAtraso: t?.diasAtraso || '',
+        juros: t?.juros || '',
+        multa: t?.multa || '',
+        honorarios: t?.honorarios || '',
+        total: t?.total || '',
+      }))
+      .filter((t) =>
+        [t.dataVencimento, t.valorInicial, t.atualizacaoMonetaria, t.diasAtraso, t.juros, t.multa, t.honorarios, t.total]
+          .some((v) => String(v).trim() !== '')
+      );
+
+    autoTable(doc, {
+      startY: 63,
+      head: [[
+        'Nº',
+        'Vencimento',
+        'Valor Inicial',
+        'Atualização',
+        'Dias',
+        'Juros',
+        'Multa',
+        'Honorários',
+        'Total',
+      ]],
+      body: linhasTitulos.map((l) => [
+        l.n,
+        l.dataVencimento,
+        l.valorInicial,
+        l.atualizacaoMonetaria,
+        l.diasAtraso,
+        l.juros,
+        l.multa,
+        l.honorarios,
+        l.total,
+      ]),
+      styles: { fontSize: 8, cellPadding: 1.5, overflow: 'linebreak' },
+      headStyles: { fillColor: [30, 41, 59], textColor: 255 },
+      columnStyles: {
+        0: { halign: 'center', cellWidth: 10 },
+        1: { halign: 'center', cellWidth: 20 },
+      },
+      margin: { left: margemX, right: margemX },
+      didDrawPage: () => {
+        const totalPaginasDoc = doc.getNumberOfPages();
+        const largura = doc.internal.pageSize.getWidth();
+        const altura = doc.internal.pageSize.getHeight();
+        doc.setFontSize(8);
+        doc.text(`Gerado em: ${dataGeracao}`, margemX, altura - 5);
+        doc.text(`Página ${doc.getCurrentPageInfo().pageNumber}/${totalPaginasDoc}`, largura - 28, altura - 5);
+      },
+    });
+
+    const yResumo = (doc.lastAutoTable?.finalY || 63) + 6;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.text('Resumo financeiro', margemX, yResumo);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.text(`Quantidade de títulos: ${resumoGeral.qtd}`, margemX, yResumo + 5);
+    doc.text(`Valor inicial total: ${resumoGeral.valorInicial}`, margemX, yResumo + 10);
+    doc.text(`Atualização monetária: ${resumoGeral.atualizacao}`, margemX, yResumo + 15);
+    doc.text(`Dias de atraso (soma): ${resumoGeral.diasAtraso}`, margemX, yResumo + 20);
+    doc.text(`Juros: ${resumoGeral.juros}`, margemX, yResumo + 25);
+    doc.text(`Multa: ${resumoGeral.multa}`, margemX, yResumo + 30);
+    doc.text(`Honorários: ${resumoGeral.honorarios}`, margemX, yResumo + 35);
+    doc.text(`Total geral: ${resumoGeral.total}`, margemX, yResumo + 40);
+
+    doc.save(gerarNomeArquivoPdf());
+  }
 
   function linhaVaziaTitulo() {
     return {
@@ -1302,7 +1417,13 @@ export function Calculos() {
             >
               Processo
             </button>
-            <button type="button" className="w-full px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50 text-left">Salvar Formulário em PDI</button>
+            <button
+              type="button"
+              onClick={gerarPdfCalculo}
+              className="w-full px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50 text-left"
+            >
+              Salvar Formulário em PDI
+            </button>
             <button type="button" className="w-full px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50">Gerar no Word</button>
             <button type="button" className="w-full px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50">Email Automático</button>
             <button type="button" className="w-full px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50">Soluções Rápidas</button>

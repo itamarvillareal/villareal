@@ -236,7 +236,33 @@ export function CadastroPessoas() {
     setPessoasComDocumento(listarPessoasComDocumento());
   }, []);
 
-  const pessoaAtual = lista[indiceAtual];
+  const filtrarLista = () => {
+    if (!valorBusca.trim() && !valorBuscaCpf.trim()) return lista;
+    const v = valorBusca.trim().toLowerCase();
+    const vCpf = valorBuscaCpf.trim().replace(/\D/g, '');
+    return lista.filter((p) => {
+      if (v && criterioBusca === 'nome' && !(p.nome || '').toLowerCase().includes(v)) return false;
+      if (v && criterioBusca === 'codigo' && String(p.id) !== v) return false;
+      if (vCpf && !(p.cpf || '').replace(/\D/g, '').includes(vCpf)) return false;
+      return true;
+    });
+  };
+
+  const listaFiltrada = filtrarLista();
+  const listaExibida = listaFiltrada;
+  const pessoaAtual = listaExibida[indiceAtual];
+
+  useEffect(() => {
+    if (modo !== 'listar') return;
+    // Ao alterar critério/termo, vamos para o primeiro resultado para o usuário ver match imediato.
+    if (valorBusca.trim() || valorBuscaCpf.trim()) setIndiceAtual(0);
+  }, [modo, criterioBusca, valorBusca, valorBuscaCpf]);
+
+  useEffect(() => {
+    if (modo !== 'listar') return;
+    // Garante índice dentro dos limites quando a lista é filtrada.
+    setIndiceAtual((i) => Math.min(i, Math.max(0, listaExibida.length - 1)));
+  }, [modo, listaExibida.length]);
 
   function localizarPorNumeroPessoa() {
     const n = String(numeroPessoa ?? '').trim();
@@ -483,20 +509,7 @@ export function CadastroPessoas() {
     }
   };
 
-  const filtrarLista = () => {
-    if (!valorBusca.trim() && !valorBuscaCpf.trim()) return lista;
-    const v = valorBusca.trim().toLowerCase();
-    const vCpf = valorBuscaCpf.trim().replace(/\D/g, '');
-    return lista.filter((p) => {
-      if (v && criterioBusca === 'nome' && !(p.nome || '').toLowerCase().includes(v)) return false;
-      if (v && criterioBusca === 'codigo' && String(p.id) !== v) return false;
-      if (vCpf && !(p.cpf || '').replace(/\D/g, '').includes(vCpf)) return false;
-      return true;
-    });
-  };
-
-  const listaFiltrada = filtrarLista();
-  const proximoNome = pessoaAtual?.id ?? (total > 0 ? lista[0]?.id : '—');
+  const proximoNome = pessoaAtual?.id ?? (listaExibida.length > 0 ? listaExibida[0]?.id : '—');
 
   const totalPessoasCadastradas = total;
   const proximoCodigoPessoa =
@@ -1169,8 +1182,8 @@ export function CadastroPessoas() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setIndiceAtual((i) => Math.min(lista.length - 1, i + 1))}
-                      disabled={indiceAtual >= lista.length - 1 || lista.length === 0}
+                      onClick={() => setIndiceAtual((i) => Math.min(listaExibida.length - 1, i + 1))}
+                      disabled={indiceAtual >= listaExibida.length - 1 || listaExibida.length === 0}
                       className="p-2 text-slate-600 hover:bg-slate-100 disabled:opacity-40"
                       aria-label="Próximo"
                     >
@@ -1255,14 +1268,14 @@ export function CadastroPessoas() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-200">
-                        {lista.length === 0 ? (
+                        {listaExibida.length === 0 ? (
                           <tr>
                             <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
                               Nenhuma pessoa cadastrada.
                             </td>
                           </tr>
                         ) : (
-                          lista.map((p) => (
+                          listaExibida.map((p) => (
                             <tr key={p.id} className="hover:bg-slate-50/50">
                               <td className="px-4 py-3 text-slate-600">{p.id}</td>
                               <td className="px-4 py-3 font-medium text-slate-800">{p.nome}</td>
@@ -1364,7 +1377,7 @@ export function CadastroPessoas() {
                 <button
                   type="button"
                   className="px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-700 text-sm font-medium hover:bg-slate-50"
-                  onClick={() => setIndiceAtual((i) => Math.min(lista.length - 1, i + 1))}
+                  onClick={() => setIndiceAtual((i) => Math.min(listaExibida.length - 1, i + 1))}
                 >
                   Pular
                 </button>
