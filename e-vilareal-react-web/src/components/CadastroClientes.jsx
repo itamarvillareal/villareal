@@ -137,6 +137,42 @@ function gerarMockClienteEProcessos(codigo) {
   };
 }
 
+function somenteDigitos(v) {
+  return String(v ?? '').replace(/\D/g, '');
+}
+
+function joinComVirgula(partes) {
+  return (partes || []).map((x) => String(x ?? '').trim()).filter(Boolean).join(', ');
+}
+
+function montarQualificacaoTexto({ nomeRazao, cnpjCpf, pessoaData }) {
+  const nome = String(pessoaData?.nome ?? nomeRazao ?? '').trim() || 'QUALIFICAÇÃO NÃO INFORMADA';
+  const docDigits = somenteDigitos(pessoaData?.cpf ?? cnpjCpf);
+  const email = String(pessoaData?.email ?? '').trim();
+
+  const isPJ = docDigits.length === 14;
+  if (isPJ) {
+    const cnpjFmt = formatDocBR(docDigits);
+    const corpo = [
+      `${nome}, pessoa jurídica de direito privado`,
+      cnpjFmt !== '—' ? `inscrita no CNPJ sob o nº ${cnpjFmt}` : '',
+      'com sede em endereço a ser complementado',
+      'neste ato representada na forma de seus atos constitutivos',
+    ];
+    return `${joinComVirgula(corpo)}.`;
+  }
+
+  const cpfFmt = docDigits.length === 11 ? formatDocBR(docDigits) : '';
+  const blocos = [
+    `${nome}`,
+    'brasileiro(a)',
+    cpfFmt ? `inscrito(a) no CPF sob o nº ${cpfFmt}` : '',
+    'residente e domiciliado(a) em endereço a ser complementado',
+    email ? `endereço eletrônico ${email}` : 'não utiliza endereço eletrônico',
+  ];
+  return `${joinComVirgula(blocos)}.`;
+}
+
 export function CadastroClientes() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -153,6 +189,7 @@ export function CadastroClientes() {
   const [clienteInativo, setClienteInativo] = useState(clienteMock.clienteInativo);
   const [observacao, setObservacao] = useState(clienteMock.observacao);
   const [pesquisaProcesso, setPesquisaProcesso] = useState('');
+  const [modalQualificacaoAberto, setModalQualificacaoAberto] = useState(false);
   const [processos, setProcessos] = useState(() => {
     const mock = gerarMockClienteEProcessos(clienteMock.codigo);
     return mock?.processos ?? processosClienteMock.slice(0, 10);
@@ -242,6 +279,17 @@ export function CadastroClientes() {
     });
   }, [processos, pesquisaProcesso]);
 
+  const pessoaSelecionada = useMemo(() => {
+    const id = Number(String(pessoa ?? '').replace(/\D/g, ''));
+    if (!Number.isFinite(id) || id <= 0) return null;
+    return getPessoaPorId(id);
+  }, [pessoa]);
+
+  const textoQualificacao = useMemo(
+    () => montarQualificacaoTexto({ nomeRazao, cnpjCpf, pessoaData: pessoaSelecionada }),
+    [nomeRazao, cnpjCpf, pessoaSelecionada]
+  );
+
   return (
     <div className="min-h-full bg-slate-200 flex flex-col">
       <header className="flex items-center justify-between px-3 py-2 bg-white border-b border-slate-300 shrink-0">
@@ -310,7 +358,13 @@ export function CadastroClientes() {
             </div>
             <div className="flex gap-2 items-end">
               <button type="button" className="px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50">Cadastro de Pessoas</button>
-              <button type="button" className="px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50">Qualificação</button>
+              <button
+                type="button"
+                onClick={() => setModalQualificacaoAberto(true)}
+                className="px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
+              >
+                Qualificação
+              </button>
               <button type="button" className="p-2 rounded border border-slate-300 bg-white hover:bg-slate-50" title="Documentos"><FolderOpen className="w-4 h-4 text-slate-600" /></button>
             </div>
             <label className="flex items-center gap-2 text-sm cursor-pointer">
@@ -387,6 +441,39 @@ export function CadastroClientes() {
 
         {/* Seção “Controle” removida para eliminar o painel lateral solicitado. */}
       </div>
+
+      {modalQualificacaoAberto && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="modal-qualificacao-titulo"
+          onClick={() => setModalQualificacaoAberto(false)}
+        >
+          <div
+            className="bg-white rounded-lg shadow-xl border border-slate-300 w-full max-w-4xl max-h-[85vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+              <h2 id="modal-qualificacao-titulo" className="text-base font-semibold text-slate-800">Texto</h2>
+              <button
+                type="button"
+                onClick={() => setModalQualificacaoAberto(false)}
+                className="px-3 py-1.5 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
+              >
+                Fechar
+              </button>
+            </div>
+            <div className="p-4 flex-1 min-h-0">
+              <textarea
+                value={textoQualificacao}
+                readOnly
+                className="w-full h-full min-h-[300px] px-3 py-2 border border-slate-300 rounded text-sm bg-white resize-none"
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
