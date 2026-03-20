@@ -2,8 +2,18 @@ import { useState, useMemo } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
+/** Gera número CNJ mock determinístico (prioriza dados reais: numeroProcesso / numeroProcessoNovo). */
+function gerarNumeroProcessoCnjMock(row, idx) {
+  const proc = Number(String(row.proc ?? '').replace(/\D/g, '')) || 1;
+  const seq = 5600000 + idx * 137 + proc * 11;
+  const dv = String(10 + ((idx + proc) % 90)).padStart(2, '0');
+  const foro = String(1000 + ((idx * 13 + proc * 7) % 900)).slice(-4);
+  return `${String(seq).slice(0, 7)}-${dv}.2025.8.09.${foro}`;
+}
+
 const COLUNAS = [
   { id: 'cliente', label: 'Cliente', minW: '180px' },
+  { id: 'numeroProcesso', label: 'N.º Processo', minW: '200px' },
   { id: 'inRequerente', label: 'In Requerente/Recurso', minW: '140px' },
   { id: 'ultimoAndamento', label: 'Último Andamento', minW: '200px' },
   { id: 'dataConsulta', label: 'Data da Consulta', minW: '100px' },
@@ -57,6 +67,8 @@ export function Relatorio() {
       ...row,
       // fallback para manter navegação funcional mesmo sem codCliente explícito no mock
       codCliente: row.codCliente ?? String(idx + 1).padStart(8, '0'),
+      // CNJ: prioriza campo novo (API / mock explícito), senão gera determinístico
+      numeroProcesso: row.numeroProcesso ?? row.numeroProcessoNovo ?? gerarNumeroProcessoCnjMock(row, idx),
     }))
   );
   const [filtrosPorColuna, setFiltrosPorColuna] = useState(() =>

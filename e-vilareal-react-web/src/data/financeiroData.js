@@ -615,7 +615,7 @@ function getTransacoesConsolidadas(extratosPorBanco, contaContabilNome) {
 }
 
 /** Normaliza código do cliente ou processo para comparação. Retorna '' se vazio ou não numérico. */
-function normalizarCodigoCliente(val) {
+export function normalizarCodigoClienteFinanceiro(val) {
   const s = String(val ?? '').trim();
   if (!s) return '';
   const n = Number(s);
@@ -624,12 +624,35 @@ function normalizarCodigoCliente(val) {
 }
 
 /** Normaliza número de processo (1–100). Retorna '' se vazio ou não numérico. */
-function normalizarProc(val) {
+export function normalizarProcFinanceiro(val) {
   const s = String(val ?? '').trim();
   if (!s) return '';
   const n = Number(s);
   if (Number.isNaN(n) || n < 1) return '';
   return String(n);
+}
+
+function normalizarCodigoCliente(val) {
+  return normalizarCodigoClienteFinanceiro(val);
+}
+
+function normalizarProc(val) {
+  return normalizarProcFinanceiro(val);
+}
+
+/**
+ * Filtra lançamentos já na Conta Escritório (ou lista equivalente) por cliente e processo — mesmo critério da Conta Corrente / conciliação.
+ */
+export function filtrarTransacoesPorClienteProc(lista, codigoCliente, processo) {
+  if (!Array.isArray(lista)) return [];
+  const codigoNorm = normalizarCodigoClienteFinanceiro(codigoCliente);
+  const procNorm = normalizarProcFinanceiro(processo);
+  if (!codigoNorm) return [];
+  let filtrado = lista.filter((t) => normalizarCodigoClienteFinanceiro(t.codCliente) === codigoNorm);
+  if (procNorm) {
+    filtrado = filtrado.filter((t) => normalizarProcFinanceiro(t.proc) === procNorm);
+  }
+  return filtrado;
 }
 
 function lancamentoParaContaCorrenteModal(t) {

@@ -316,6 +316,89 @@ export function getRegistroProcesso(codCliente, proc) {
   return normalizarRegistroProcesso(current[key]);
 }
 
+/**
+ * Extrai candidatos a número CNJ do texto (formato com máscara ou 20 dígitos seguidos).
+ */
+function extrairCandidatosNumeroProcessoDoTexto(texto) {
+  const s = String(texto ?? '');
+  const vistos = new Set();
+  const lista = [];
+
+  const reCnj = /\b\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}\b/g;
+  let m;
+  while ((m = reCnj.exec(s)) !== null) {
+    const d = apenasDigitos(m[0]);
+    if (d.length >= 15 && !vistos.has(d)) {
+      vistos.add(d);
+      lista.push(d);
+    }
+  }
+
+  const re20 = /\b\d{20}\b/g;
+  while ((m = re20.exec(s)) !== null) {
+    const d = m[0];
+    if (!vistos.has(d)) {
+      vistos.add(d);
+      lista.push(d);
+    }
+  }
+
+  return lista;
+}
+
+/**
+ * Se o texto do compromisso contiver número(s) de processo e **apenas um** processo
+ * distinto da base (mock 10×10 + localStorage) for identificado, retorna `{ codCliente, proc }`.
+ * Caso contrário (nenhum match, ou mais de um processo distinto) retorna `null`.
+ */
+export function buscarProcessoUnicoNaBasePorTextoAgenda(texto) {
+  const candidatos = extrairCandidatosNumeroProcessoDoTexto(texto);
+  if (candidatos.length === 0) return null;
+
+  const mapaDigitosParaProcesso = new Map();
+
+  function registrarNumero(codCliente, proc, numeroStr) {
+    const d = apenasDigitos(String(numeroStr ?? ''));
+    if (d.length < 15) return;
+    if (!mapaDigitosParaProcesso.has(d)) {
+      mapaDigitosParaProcesso.set(d, {
+        codCliente: normalizarCodCliente(codCliente),
+        proc: Number(normalizarProc(proc)),
+      });
+    }
+  }
+
+  for (let c = 1; c <= 10; c++) {
+    for (let p = 1; p <= 10; p++) {
+      const mock = getMockProcesso10x10(c, p);
+      if (!mock) continue;
+      const reg = getRegistroProcesso(mock.codigoCliente, mock.processo);
+      const numero = String(reg?.numeroProcessoNovo || mock.numeroProcessoNovo || '').trim();
+      registrarNumero(mock.codigoCliente, mock.processo, numero);
+    }
+  }
+
+  const store = loadStore();
+  for (const regRaw of Object.values(store)) {
+    const reg = normalizarRegistroProcesso(regRaw);
+    if (!reg) continue;
+    const numero = String(reg.numeroProcessoNovo ?? '').trim();
+    registrarNumero(reg.codCliente, reg.proc, numero);
+  }
+
+  const processosDistintos = new Map();
+  for (const cand of candidatos) {
+    const match = mapaDigitosParaProcesso.get(cand);
+    if (match) {
+      const chave = `${match.codCliente}:${match.proc}`;
+      processosDistintos.set(chave, match);
+    }
+  }
+
+  if (processosDistintos.size !== 1) return null;
+  return [...processosDistintos.values()][0];
+}
+
 export function getHistoricoDoProcesso(codCliente, proc) {
   const reg = getRegistroProcesso(codCliente, proc);
   return reg?.historico || [];

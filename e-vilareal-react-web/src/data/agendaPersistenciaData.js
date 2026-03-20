@@ -148,6 +148,7 @@ export function agendarAudienciaParaTodosUsuarios({
   let atualizados = 0;
 
   const usuarios = getUsuariosAtivos();
+  const criadoIso = new Date().toISOString();
   const novos = usuarios.map((u) => {
     const usuarioId = u?.id ? String(u.id) : '';
     return {
@@ -157,6 +158,7 @@ export function agendarAudienciaParaTodosUsuarios({
       descricao,
       statusCurto: '',
       status: 'Agendado',
+      criadoEm: criadoIso,
     };
   });
 
@@ -164,7 +166,7 @@ export function agendarAudienciaParaTodosUsuarios({
   for (const ev of novos) {
     const prev = byId.get(ev.id);
     if (prev) {
-      byId.set(ev.id, { ...prev, ...ev });
+      byId.set(ev.id, { ...prev, ...ev, criadoEm: prev.criadoEm || ev.criadoEm });
       atualizados += 1;
     } else {
       byId.set(ev.id, ev);
@@ -172,17 +174,53 @@ export function agendarAudienciaParaTodosUsuarios({
     }
   }
 
-  const ordenado = Array.from(byId.values()).sort((a, b) => {
-    const ha = String(a.hora ?? '');
-    const hb = String(b.hora ?? '');
-    if (!ha && hb) return 1;
-    if (ha && !hb) return -1;
-    return ha.localeCompare(hb);
-  });
-
-  store[data] = ordenado;
+  store[data] = ordenarListaEventosAgenda(Array.from(byId.values()));
   saveStore(store);
   return { ok: true, inseridos, atualizados };
+}
+
+/** Coluna Status da Agenda: apenas vazio ou "OK". Qualquer outro valor vira em branco. */
+export function normalizarStatusCurtoAgenda(valor) {
+  const t = String(valor ?? '').trim();
+  if (!t) return '';
+  if (t.toUpperCase() === 'OK') return 'OK';
+  return '';
+}
+
+/** Ordem de criação estável para empate (sem hora ou mesma hora). */
+function chaveOrdemCriacao(ev) {
+  const c = ev?.criadoEm;
+  if (c != null && String(c).trim() !== '') return String(c);
+  const id = ev?.id;
+  if (id != null && id !== '') {
+    const n = Number(id);
+    if (Number.isFinite(n)) return String(n).padStart(16, '0');
+    return String(id);
+  }
+  return '';
+}
+
+/**
+ * Ordem de exibição: primeiro status OK; depois demais. Em cada grupo: por hora;
+ * sem hora: por ordem de criação (criadoEm ou id).
+ */
+export function ordenarListaEventosAgenda(lista) {
+  if (!Array.isArray(lista)) return [];
+  return [...lista].sort((a, b) => {
+    const okA = normalizarStatusCurtoAgenda(a?.statusCurto) === 'OK' ? 0 : 1;
+    const okB = normalizarStatusCurtoAgenda(b?.statusCurto) === 'OK' ? 0 : 1;
+    if (okA !== okB) return okA - okB;
+
+    const ha = String(a?.hora ?? '').trim();
+    const hb = String(b?.hora ?? '').trim();
+    if (ha && !hb) return -1;
+    if (!ha && hb) return 1;
+    if (ha && hb) {
+      const cmp = ha.localeCompare(hb);
+      if (cmp !== 0) return cmp;
+    }
+    return chaveOrdemCriacao(a).localeCompare(chaveOrdemCriacao(b), undefined, { numeric: true });
+  });
 }
 
 export function getEventosAgendaPersistidosPorData(dataBr) {
@@ -205,7 +243,7 @@ export function salvarStatusCurtoEventoPersistido({ dataBr, evento, statusCurto 
 
   const eventoId = evento?.id != null ? String(evento.id) : '';
   const usuarioId = evento?.usuarioId != null ? String(evento.usuarioId) : '';
-  const novoStatus = String(statusCurto ?? '').trim();
+  const novoStatus = normalizarStatusCurtoAgenda(statusCurto);
 
   if (!eventoId) return { ok: false, reason: 'evento-id-invalido' };
 
@@ -223,20 +261,55 @@ export function salvarStatusCurtoEventoPersistido({ dataBr, evento, statusCurto 
       id: eventoId,
       usuarioId,
       statusCurto: novoStatus,
+      criadoEm: (evento || {}).criadoEm || new Date().toISOString(),
     };
     lista.push(novoEvento);
   }
 
-  // Mantém ordenação por hora (igual ao seed original)
-  const ordenado = lista.sort((a, b) => {
-    const ha = String(a?.hora ?? '');
-    const hb = String(b?.hora ?? '');
-    if (!ha && hb) return 1;
-    if (ha && !hb) return -1;
-    return ha.localeCompare(hb);
+  store[data] = ordenarListaEventosAgenda(lista);
+  saveStore(store);
+  return { ok: true };
+}
+
+/**
+ * Atualiza hora, descrição e/ou status (statusCurto) de um compromisso na agenda persistida.
+ * Para eventos que existem só no mock (sem registro no storage), cria entrada mesclada ao mock.
+ */
+export function salvarCamposEventoAgendaPersistido({ dataBr, evento, patch }) {
+  const parsedData = parseDataBrCompleta(dataBr);
+  if (!parsedData) return { ok: false, reason: 'data-invalida' };
+  const data = dataStr(parsedData);
+  if (!patch || typeof patch !== 'object') return { ok: false, reason: 'patch-invalido' };
+
+  const store = loadStore();
+  const lista = Array.isArray(store[data]) ? store[data] : [];
+
+  const eventoId = evento?.id != null ? String(evento.id) : '';
+  const usuarioIdEv = evento?.usuarioId != null ? String(evento.usuarioId) : '';
+  if (!eventoId) return { ok: false, reason: 'evento-id-invalido' };
+
+  const idx = lista.findIndex((ev) => {
+    const idA = ev?.id != null ? String(ev.id) : '';
+    const uidA = ev?.usuarioId != null ? String(ev.usuarioId) : '';
+    return idA === eventoId && uidA === usuarioIdEv;
   });
 
-  store[data] = ordenado;
+  const base = idx >= 0 ? { ...lista[idx] } : { ...(evento || {}), id: eventoId, usuarioId: usuarioIdEv };
+
+  if (patch.hora !== undefined) base.hora = normalizarHora(patch.hora);
+  if (patch.descricao !== undefined) base.descricao = String(patch.descricao ?? '');
+  if (patch.statusCurto !== undefined) base.statusCurto = normalizarStatusCurtoAgenda(patch.statusCurto);
+  if (patch.status !== undefined) base.status = String(patch.status ?? '').trim();
+  if (patch.destaque !== undefined) base.destaque = !!patch.destaque;
+
+  if (idx >= 0) {
+    lista[idx] = base;
+  } else {
+    if (!base.criadoEm) base.criadoEm = new Date().toISOString();
+    lista.push(base);
+  }
+
+  store[data] = ordenarListaEventosAgenda(lista);
   saveStore(store);
   return { ok: true };
 }
@@ -295,11 +368,12 @@ export function agendarEmLoteParaUsuarios({
         processoId: String(processoId ?? ''),
         clienteId: String(clienteId ?? ''),
         numeroProcessoNovo: String(numeroProcessoNovo ?? ''),
+        criadoEm: new Date().toISOString(),
       };
 
       const prev = byId.get(id);
       if (prev) {
-        byId.set(id, { ...prev, ...evento });
+        byId.set(id, { ...prev, ...evento, criadoEm: prev.criadoEm || evento.criadoEm });
         atualizados += 1;
       } else {
         byId.set(id, evento);
@@ -307,13 +381,7 @@ export function agendarEmLoteParaUsuarios({
       }
     }
 
-    store[data] = Array.from(byId.values()).sort((a, b) => {
-      const ha = String(a?.hora ?? '');
-      const hb = String(b?.hora ?? '');
-      if (!ha && hb) return 1;
-      if (ha && !hb) return -1;
-      return ha.localeCompare(hb);
-    });
+    store[data] = ordenarListaEventosAgenda(Array.from(byId.values()));
   }
 
   saveStore(store);
@@ -339,6 +407,13 @@ function loadUsuariosAtivos() {
 function saveUsuariosAtivos(usuarios) {
   try {
     window.localStorage.setItem(STORAGE_USUARIOS_KEY, JSON.stringify(usuarios));
+    if (typeof window !== 'undefined') {
+      try {
+        window.dispatchEvent(new CustomEvent('vilareal:usuarios-agenda-atualizados'));
+      } catch {
+        // ignora
+      }
+    }
   } catch {
     // ignora
   }

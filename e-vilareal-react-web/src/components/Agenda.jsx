@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
-import { ChevronLeft, ChevronRight, X } from 'lucide-react';
-import { useLocation } from 'react-router-dom';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   agendaUsuarios,
   agendaDataEsquerda,
@@ -13,8 +13,11 @@ import {
   getEventosAgendaPersistidosPorData,
   getUsuariosAtivos,
   setUsuariosAtivos,
-  salvarStatusCurtoEventoPersistido,
+  salvarCamposEventoAgendaPersistido,
+  normalizarStatusCurtoAgenda,
+  ordenarListaEventosAgenda,
 } from '../data/agendaPersistenciaData';
+import { buscarProcessoUnicoNaBasePorTextoAgenda } from '../data/processosHistoricoData';
 
 /** Retorna string DD/MM/YYYY para dia/mês/ano */
 function dataStr(dia, mes, ano) {
@@ -37,8 +40,49 @@ function parseDataBrCompleta(str) {
   return { dd, mm, yyyy };
 }
 
-function StatusCurtoCell({ evento, onSalvar, maxLen = 12 }) {
-  const original = String(evento?.statusCurto ?? '');
+/** Remove acentos e minúsculas para busca insensível a maiúsculas/acentos. */
+function normalizarParaBuscaPalavraChave(str) {
+  return String(str ?? '')
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase();
+}
+
+/**
+ * "instrução" / "instrucao" → vermelho; "conciliação" / "conciliacao" → amarelo.
+ * Se ambos aparecerem, instrução tem prioridade.
+ */
+function temaPorTextoCompromisso(texto) {
+  const n = normalizarParaBuscaPalavraChave(texto);
+  if (n.includes('instrucao')) return 'instrucao';
+  if (n.includes('conciliacao')) return 'conciliacao';
+  return null;
+}
+
+/** Classes para o bloco de descrição no modal (duplo clique). */
+function classesTemaDescricaoModal(texto) {
+  const t = temaPorTextoCompromisso(texto);
+  if (t === 'instrucao') {
+    return 'text-sm whitespace-pre-wrap rounded px-2 py-2 bg-red-600 text-white border border-red-700';
+  }
+  if (t === 'conciliacao') {
+    return 'text-sm whitespace-pre-wrap rounded px-2 py-2 bg-yellow-300 text-black border border-yellow-600';
+  }
+  return 'text-sm text-slate-800 whitespace-pre-wrap';
+}
+
+/** Campo de texto clicável para editar (hora ou descrição). */
+function EditableTextCell({
+  texto,
+  onSalvar,
+  multiline = false,
+  align = 'left',
+  maxLen = 2000,
+  temaPorPalavraChave = false,
+  /** Duplo clique (2º clique): abre detalhe / processo — não entra em edição. */
+  onDuploClique = null,
+}) {
+  const original = String(texto ?? '');
   const [editando, setEditando] = useState(false);
   const [valor, setValor] = useState(original);
   const inputRef = useRef(null);
@@ -55,11 +99,11 @@ function StatusCurtoCell({ evento, onSalvar, maxLen = 12 }) {
     if (!el) return;
     try {
       el.focus();
-      el.select();
+      if (!multiline) el.select?.();
     } catch {
       // ignore
     }
-  }, [editando]);
+  }, [editando, multiline]);
 
   function salvarSeMudou() {
     const novo = String(valor ?? '').slice(0, maxLen);
@@ -71,49 +115,107 @@ function StatusCurtoCell({ evento, onSalvar, maxLen = 12 }) {
     setEditando(false);
   }
 
+  const alignClass = align === 'right' ? 'text-right' : 'text-left';
+  const inputAlign = align === 'right' ? 'text-right' : 'text-left';
+
+  const textoParaTema = temaPorPalavraChave ? String(editando ? valor : original) : '';
+  const tema = temaPorPalavraChave ? temaPorTextoCompromisso(textoParaTema) : null;
+  const classesTemaInput =
+    tema === 'instrucao'
+      ? 'bg-red-600 text-white border-red-700 focus:ring-red-400 placeholder:text-red-200'
+      : tema === 'conciliacao'
+        ? 'bg-yellow-300 text-black border-yellow-600 focus:ring-yellow-600 placeholder:text-yellow-900/60'
+        : 'bg-white text-gray-900 border-slate-300 focus:ring-blue-500';
+  const classesTemaLeitura =
+    tema === 'instrucao'
+      ? 'bg-red-600 text-white border border-red-700 rounded px-1.5 py-1'
+      : tema === 'conciliacao'
+        ? 'bg-yellow-300 text-black border border-yellow-600 rounded px-1.5 py-1'
+        : 'text-gray-800';
+
   return (
     <div
-      className="w-[85px] flex items-center justify-end pr-1"
+      className="min-w-0 w-full"
       onClick={(e) => {
         e.stopPropagation();
       }}
     >
       {editando ? (
-        <input
-          ref={inputRef}
-          type="text"
-          value={valor}
-          onChange={(e) => setValor(e.target.value)}
-          onDoubleClick={(e) => e.stopPropagation()}
-          onBlur={() => {
-            if (cancelouRef.current) {
-              cancelouRef.current = false;
-              setEditando(false);
-              return;
-            }
-            salvarSeMudou();
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault();
+        multiline ? (
+          <textarea
+            ref={inputRef}
+            value={valor}
+            onChange={(e) => setValor(e.target.value.slice(0, maxLen))}
+            onDoubleClick={(e) => e.stopPropagation()}
+            onBlur={() => {
+              if (cancelouRef.current) {
+                cancelouRef.current = false;
+                setEditando(false);
+                return;
+              }
               salvarSeMudou();
-            }
-            if (e.key === 'Escape') {
-              e.preventDefault();
-              cancelouRef.current = true;
-              setValor(original);
-              setEditando(false);
-            }
-          }}
-          className="w-full px-1 py-0.5 text-[0.62rem] text-right border border-slate-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
-          placeholder=""
-          maxLength={maxLen}
-        />
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                cancelouRef.current = true;
+                setValor(original);
+                setEditando(false);
+              }
+              if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                salvarSeMudou();
+              }
+            }}
+            rows={3}
+            className={`w-full px-1.5 py-1 text-sm border rounded focus:outline-none focus:ring-1 resize-y min-h-[3rem] ${inputAlign} ${classesTemaInput}`}
+          />
+        ) : (
+          <input
+            ref={inputRef}
+            type="text"
+            value={valor}
+            onChange={(e) => setValor(e.target.value.slice(0, maxLen))}
+            onDoubleClick={(e) => e.stopPropagation()}
+            onBlur={() => {
+              if (cancelouRef.current) {
+                cancelouRef.current = false;
+                setEditando(false);
+                return;
+              }
+              salvarSeMudou();
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                salvarSeMudou();
+              }
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                cancelouRef.current = true;
+                setValor(original);
+                setEditando(false);
+              }
+            }}
+            className={`w-full px-1.5 py-1 text-sm border rounded focus:outline-none focus:ring-1 ${inputAlign} ${classesTemaInput}`}
+            placeholder=""
+            maxLength={maxLen}
+          />
+        )
       ) : (
         <div
-          className="text-gray-700 text-[0.54rem] font-medium truncate block w-full cursor-text select-none text-right"
-          style={{ minHeight: '14px' }}
-          onClick={() => setEditando(true)}
+          className={`${classesTemaLeitura} ${multiline ? 'text-sm whitespace-pre-wrap break-words' : 'text-sm truncate'} block w-full cursor-text select-none ${alignClass} ${multiline ? 'min-h-[1.25rem]' : ''}`}
+          style={multiline ? undefined : { minHeight: '18px' }}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (onDuploClique && e.detail === 2) {
+              e.preventDefault();
+              setEditando(false);
+              onDuploClique();
+              return;
+            }
+            setEditando(true);
+          }}
           onDoubleClick={(e) => e.stopPropagation()}
           title={original}
         >
@@ -124,53 +226,96 @@ function StatusCurtoCell({ evento, onSalvar, maxLen = 12 }) {
   );
 }
 
-function ColunaDia({ dataLabel, eventos, vazias = 8, onDuploCliqueEvento, dataBrStr, onSalvarStatusCurto }) {
+/** Status: apenas em branco ou "OK" (persistência normaliza outros valores). */
+function StatusCurtoCell({ evento, onSalvar }) {
+  const valor = normalizarStatusCurtoAgenda(evento?.statusCurto);
+  return (
+    <div className="w-[92px] flex items-center justify-end pr-1" onClick={(e) => e.stopPropagation()}>
+      <select
+        value={valor}
+        onChange={(e) => onSalvar?.(e.target.value === 'OK' ? 'OK' : '')}
+        onDoubleClick={(e) => e.stopPropagation()}
+        title="Status: em branco ou OK"
+        className="w-full min-w-0 max-w-[6rem] px-1 py-1 text-sm text-right border border-slate-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+        aria-label="Status do compromisso"
+      >
+        <option value=""> </option>
+        <option value="OK">OK</option>
+      </select>
+    </div>
+  );
+}
+
+function ColunaDia({ dataLabel, eventos, vazias = 8, onDuploCliqueEvento, dataBrStr, onSalvarCampos }) {
   return (
     <div className="flex-1 min-w-0 flex flex-col border border-gray-300 rounded bg-white overflow-hidden">
-      <div className="px-2 py-1.5 bg-gray-100 border-b border-gray-300 text-sm font-medium text-gray-800">
+      <div className="px-2 py-2 bg-gray-100 border-b border-gray-300 text-base font-medium text-gray-800">
         {dataLabel}
       </div>
-      <div className="flex-1 overflow-auto p-1">
+      <div className="flex-1 overflow-auto p-1.5">
         <table className="w-full table-fixed border-collapse">
+          <thead>
+            <tr className="bg-gray-50 border-b border-gray-200">
+              <th className="w-[96px] px-2 py-1.5 text-left text-xs font-semibold text-gray-600">Hora</th>
+              <th className="px-2 py-1.5 text-left text-xs font-semibold text-gray-600">Descrição</th>
+              <th className="w-[92px] px-1 py-1.5 text-right text-xs font-semibold text-gray-600">Status</th>
+            </tr>
+          </thead>
           <tbody>
             {eventos.map((ev) => (
               <tr
                 key={ev.id}
-                className={`border-b border-gray-100 min-h-[34px] overflow-hidden ${
+                className={`border-b border-gray-100 min-h-[42px] overflow-hidden ${
                   ev.destaque ? 'bg-amber-100' : ''
                 }`}
                 onDoubleClick={() => onDuploCliqueEvento?.(ev)}
               >
-                <td className="w-[90px] px-2 py-1 align-middle text-[0.60rem]">
-                  <span className="block truncate w-full text-gray-600 font-medium whitespace-nowrap">
-                    {ev.hora ? ev.hora : ''}
-                  </span>
+                <td className="w-[96px] px-2 py-1.5 align-top text-sm">
+                  <EditableTextCell
+                    texto={ev.hora ?? ''}
+                    align="left"
+                    maxLen={12}
+                    onDuploClique={() => onDuploCliqueEvento?.(ev)}
+                    onSalvar={(novo) => {
+                      if (!dataBrStr) return;
+                      onSalvarCampos?.(ev, { hora: novo });
+                    }}
+                  />
                 </td>
-                <td className="px-2 py-1 align-middle text-[0.60rem]">
-                  <span className="text-gray-800 truncate block w-full" title={ev.descricao}>
-                    {ev.descricao}
-                  </span>
+                <td className="px-2 py-1.5 align-top text-sm min-w-0">
+                  <EditableTextCell
+                    texto={ev.descricao ?? ''}
+                    multiline
+                    align="left"
+                    maxLen={2000}
+                    temaPorPalavraChave
+                    onDuploClique={() => onDuploCliqueEvento?.(ev)}
+                    onSalvar={(novo) => {
+                      if (!dataBrStr) return;
+                      onSalvarCampos?.(ev, { descricao: novo });
+                    }}
+                  />
                 </td>
-                <td className="w-[85px] px-0 py-1 align-middle text-right">
+                <td className="w-[92px] px-0 py-1.5 align-top text-right">
                   <StatusCurtoCell
                     evento={ev}
                     onSalvar={(novo) => {
                       if (!dataBrStr) return;
-                      onSalvarStatusCurto?.(ev, novo);
+                      onSalvarCampos?.(ev, { statusCurto: novo });
                     }}
                   />
                 </td>
               </tr>
             ))}
             {Array.from({ length: vazias }).map((_, i) => (
-              <tr key={`vazio-${i}`} className="border-b border-gray-100 min-h-[34px] overflow-hidden">
-                <td className="w-[90px] px-2 py-1 align-middle text-[0.60rem]">
+              <tr key={`vazio-${i}`} className="border-b border-gray-100 min-h-[42px] overflow-hidden">
+                <td className="w-[96px] px-2 py-1.5 align-middle text-sm">
                   <span className="block truncate w-full text-transparent">__</span>
                 </td>
-                <td className="px-2 py-1 align-middle text-[0.60rem]">
+                <td className="px-2 py-1.5 align-middle text-sm">
                   <span className="block w-full text-transparent">__</span>
                 </td>
-                <td className="w-[85px] px-0 py-1 align-middle text-right">
+                <td className="w-[92px] px-0 py-1.5 align-middle text-right">
                   <span className="block w-full text-transparent">__</span>
                 </td>
               </tr>
@@ -315,7 +460,10 @@ function PainelCalendario({
       </div>
 
       <div>
-        <div className="text-sm font-medium text-gray-700 mb-1">Usuário:</div>
+        <div className="text-sm font-medium text-gray-700 mb-0.5">Usuário</div>
+        <p className="text-[11px] text-gray-500 mb-1.5 leading-snug">
+          Agenda por pessoa — mesmos cadastros ativos da tela <strong className="font-medium text-gray-600">Usuários</strong>.
+        </p>
         <div className="space-y-1">
           {usuariosSistema.map((u) => (
             <label key={u.id} className="flex items-center gap-2 text-sm cursor-pointer">
@@ -341,8 +489,9 @@ function PainelCalendario({
           type="button"
           onClick={() => onAbrirUsuariosSistema?.()}
           className="px-3 py-1.5 text-sm border border-gray-300 rounded bg-white hover:bg-gray-200"
+          title="Cadastro de pessoas da agenda (mesma lista da tela Usuários)"
         >
-          Opções
+          Usuários
         </button>
       </div>
     </aside>
@@ -351,6 +500,7 @@ function PainelCalendario({
 
 export function Agenda() {
   const location = useLocation();
+  const navigate = useNavigate();
   const [usuarioEsquerda, setUsuarioEsquerda] = useState('itamar');
   const [usuarioDireita, setUsuarioDireita] = useState('itamar');
   const [mesEsquerda, setMesEsquerda] = useState(3);
@@ -360,10 +510,22 @@ export function Agenda() {
   const [anoDireita, setAnoDireita] = useState(2026);
   const [diaDireita, setDiaDireita] = useState(11);
   const [eventoModal, setEventoModal] = useState(null);
-  const [, setAgendaStatusNonce] = useState(0);
+  const [agendaStatusNonce, setAgendaStatusNonce] = useState(0);
   const [usuariosAtivos, setUsuariosAtivosState] = useState(() => getUsuariosAtivos());
-  const [modalUsuariosSistemaAberto, setModalUsuariosSistemaAberto] = useState(false);
-  const [slotsCustom, setSlotsCustom] = useState(['', '']);
+
+  /** Lista de pessoas = mesma da tela Usuários (localStorage); sincroniza ao salvar ou ao voltar à Agenda. */
+  useEffect(() => {
+    const sync = () => setUsuariosAtivosState(getUsuariosAtivos());
+    sync();
+    window.addEventListener('vilareal:usuarios-agenda-atualizados', sync);
+    return () => window.removeEventListener('vilareal:usuarios-agenda-atualizados', sync);
+  }, []);
+
+  useEffect(() => {
+    if (location.pathname === '/agenda') {
+      setUsuariosAtivosState(getUsuariosAtivos());
+    }
+  }, [location.pathname]);
 
   useEffect(() => {
     // Caso o usuário exclua o usuário atualmente selecionado, mantém seleção válida.
@@ -379,28 +541,15 @@ export function Agenda() {
     setUsuariosAtivos(next);
   }
 
-  function normalizarNomeParaId(nome) {
-    return String(nome || '')
-      .trim()
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '');
-  }
-
-  function incluirUsuario(usuario) {
-    if (!usuario?.id) return;
-    const ids = new Set((usuariosAtivos || []).map((u) => u.id));
-    if (ids.has(usuario.id)) return;
-    persistirUsuariosAtivos([...(usuariosAtivos || []), usuario]);
-  }
-
-  function excluirUsuario(usuarioId) {
-    if (!usuarioId) return;
-    const basePrimeiro = Array.isArray(agendaUsuarios) && agendaUsuarios[0] ? agendaUsuarios[0] : null;
-    if (basePrimeiro && usuarioId === basePrimeiro.id) return;
-    persistirUsuariosAtivos((usuariosAtivos || []).filter((u) => u.id !== usuarioId));
+  /** Duplo clique no compromisso: se houver um único nº de processo reconhecido na base, abre Processos. */
+  function aoDuploCliqueCompromisso(ev) {
+    const texto = `${ev.descricao ?? ''}\n${ev.hora ?? ''}`;
+    const found = buscarProcessoUnicoNaBasePorTextoAgenda(texto);
+    if (found) {
+      navigate('/processos', { state: { codCliente: found.codCliente, proc: String(found.proc) } });
+      return;
+    }
+    setEventoModal(ev);
   }
 
   useEffect(() => {
@@ -447,15 +596,19 @@ export function Agenda() {
       });
 
       const merged = new Map();
-      for (const ev of base) merged.set(String(ev.id), { ...ev, statusCurto: ev.statusCurto ?? '' });
+      for (const ev of base) merged.set(String(ev.id), { ...ev, statusCurto: normalizarStatusCurtoAgenda(ev.statusCurto) });
       for (const ev of persisted) {
         const key = String(ev.id);
         const prev = merged.get(key) || {};
-        merged.set(key, { ...prev, ...ev, statusCurto: ev.statusCurto ?? prev.statusCurto ?? '' });
+        merged.set(key, {
+          ...prev,
+          ...ev,
+          statusCurto: normalizarStatusCurtoAgenda(ev.statusCurto ?? prev.statusCurto ?? ''),
+        });
       }
-      return Array.from(merged.values());
+      return ordenarListaEventosAgenda(Array.from(merged.values()));
     },
-    [dataEsquerdaStr, eventosPersistidosEsquerda, usuarioEsquerda]
+    [dataEsquerdaStr, eventosPersistidosEsquerda, usuarioEsquerda, agendaStatusNonce]
   );
   const eventosDireita = useMemo(
     () => {
@@ -467,163 +620,24 @@ export function Agenda() {
       });
 
       const merged = new Map();
-      for (const ev of base) merged.set(String(ev.id), { ...ev, statusCurto: ev.statusCurto ?? '' });
+      for (const ev of base) merged.set(String(ev.id), { ...ev, statusCurto: normalizarStatusCurtoAgenda(ev.statusCurto) });
       for (const ev of persisted) {
         const key = String(ev.id);
         const prev = merged.get(key) || {};
-        merged.set(key, { ...prev, ...ev, statusCurto: ev.statusCurto ?? prev.statusCurto ?? '' });
+        merged.set(key, {
+          ...prev,
+          ...ev,
+          statusCurto: normalizarStatusCurtoAgenda(ev.statusCurto ?? prev.statusCurto ?? ''),
+        });
       }
-      return Array.from(merged.values());
+      return ordenarListaEventosAgenda(Array.from(merged.values()));
     },
-    [dataDireitaStr, eventosPersistidosDireita, usuarioDireita]
+    [dataDireitaStr, eventosPersistidosDireita, usuarioDireita, agendaStatusNonce]
   );
 
 
   return (
     <div className="flex flex-1 min-h-0 p-4 gap-4 overflow-hidden">
-      {/*
-        Modal "Usuários do Sistema"
-        - Objetivo: configurar quais usuários do agenda estão ativos (para o agendamento "para todos").
-        - Layout: semelhante ao print (inputs + botões Incluir/Excluir e botão OK).
-      */}
-      {modalUsuariosSistemaAberto && (
-        <div
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30 p-4"
-          role="dialog"
-          aria-modal="true"
-          onClick={() => setModalUsuariosSistemaAberto(false)}
-        >
-          <div
-            className="w-full max-w-2xl bg-white rounded-lg shadow-xl border border-slate-200 overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 bg-slate-50">
-              <h2 className="text-base font-semibold text-slate-800">Usuários do Sistema</h2>
-              <button
-                type="button"
-                className="p-2 rounded text-slate-600 hover:bg-slate-100"
-                onClick={() => setModalUsuariosSistemaAberto(false)}
-                aria-label="Fechar"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-4">
-              {(() => {
-                const idsAtivos = new Set((usuariosAtivos || []).map((u) => u.id));
-                const primeira = agendaUsuarios?.[0];
-                const resto = Array.isArray(agendaUsuarios) ? agendaUsuarios.slice(1) : [];
-
-                return (
-                  <div className="space-y-3">
-                    {primeira ? (
-                      <div className="grid grid-cols-1 gap-2">
-                        <input
-                          type="text"
-                          value={primeira.nome}
-                          readOnly
-                          className="w-full px-3 py-2 border border-slate-300 rounded text-sm bg-slate-50"
-                        />
-                      </div>
-                    ) : null}
-
-                    {resto.map((u) => {
-                      const ativo = idsAtivos.has(u.id);
-                      return (
-                        <div key={u.id} className="grid grid-cols-[1fr_120px_120px] gap-3 items-center">
-                          <input
-                            type="text"
-                            value={u.nome}
-                            readOnly
-                            className="px-3 py-2 border border-slate-300 rounded text-sm bg-white"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => incluirUsuario(u)}
-                            disabled={ativo}
-                            className="px-3 py-2 rounded border border-slate-300 bg-white text-sm hover:bg-slate-50 disabled:opacity-50"
-                          >
-                            Incluir
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => excluirUsuario(u.id)}
-                            disabled={!ativo}
-                            className="px-3 py-2 rounded border border-slate-300 bg-white text-sm hover:bg-slate-50 disabled:opacity-50"
-                          >
-                            Excluir
-                          </button>
-                        </div>
-                      );
-                    })}
-
-                    {slotsCustom.map((val, idx) => {
-                      const idSlot = normalizarNomeParaId(val);
-                      const ativo = idSlot && idsAtivos.has(idSlot);
-                      return (
-                        <div key={`custom-${idx}`} className="grid grid-cols-[1fr_120px_120px] gap-3 items-center">
-                          <input
-                            type="text"
-                            value={val}
-                            onChange={(e) => {
-                              const next = [...slotsCustom];
-                              next[idx] = e.target.value;
-                              setSlotsCustom(next);
-                            }}
-                            className="px-3 py-2 border border-slate-300 rounded text-sm"
-                            placeholder="(vazio)"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (!val.trim()) return;
-                              if (!idSlot) return;
-                              if (ativo) return;
-                              incluirUsuario({ id: idSlot, nome: String(val || '').trim() });
-                              const next = [...slotsCustom];
-                              next[idx] = '';
-                              setSlotsCustom(next);
-                            }}
-                            disabled={!val.trim() || !!ativo}
-                            className="px-3 py-2 rounded border border-slate-300 bg-white text-sm hover:bg-slate-50 disabled:opacity-50"
-                          >
-                            Incluir
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (ativo) excluirUsuario(idSlot);
-                              const next = [...slotsCustom];
-                              next[idx] = '';
-                              setSlotsCustom(next);
-                            }}
-                            disabled={!val.trim() && !ativo}
-                            className="px-3 py-2 rounded border border-slate-300 bg-white text-sm hover:bg-slate-50 disabled:opacity-50"
-                          >
-                            Excluir
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })()}
-            </div>
-
-            <div className="px-4 py-3 border-t border-slate-200 flex justify-center bg-slate-50">
-              <button
-                type="button"
-                onClick={() => setModalUsuariosSistemaAberto(false)}
-                className="px-12 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
-              >
-                OK
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Painel esquerdo: Calendário + Usuário + Botões */}
       <PainelCalendario
         mesAtual={mesEsquerda}
@@ -636,7 +650,7 @@ export function Agenda() {
         setUsuarioSelecionado={setUsuarioEsquerda}
         nomeGrupo="esquerda"
         usuariosSistema={usuariosAtivos}
-        onAbrirUsuariosSistema={() => setModalUsuariosSistemaAberto(true)}
+        onAbrirUsuariosSistema={() => navigate('/usuarios')}
       />
 
       {/* Área central: duas colunas de compromissos (simétricas) */}
@@ -649,14 +663,13 @@ export function Agenda() {
             dataLabel={`${dataEsquerdaStr} — Compromissos do dia`}
             eventos={eventosEsquerda}
             vazias={12}
-            onDuploCliqueEvento={(ev) => setEventoModal(ev)}
+            onDuploCliqueEvento={aoDuploCliqueCompromisso}
             dataBrStr={dataEsquerdaStr}
-            usuarioSelecionado={usuarioEsquerda}
-            onSalvarStatusCurto={(ev, novo) => {
-              salvarStatusCurtoEventoPersistido({
+            onSalvarCampos={(ev, patch) => {
+              salvarCamposEventoAgendaPersistido({
                 dataBr: dataEsquerdaStr,
                 evento: ev,
-                statusCurto: novo,
+                patch,
               });
               setAgendaStatusNonce((n) => n + 1);
             }}
@@ -665,14 +678,13 @@ export function Agenda() {
             dataLabel={`${dataDireitaStr} — Próximo dia`}
             eventos={eventosDireita}
             vazias={12}
-            onDuploCliqueEvento={(ev) => setEventoModal(ev)}
+            onDuploCliqueEvento={aoDuploCliqueCompromisso}
             dataBrStr={dataDireitaStr}
-            usuarioSelecionado={usuarioDireita}
-            onSalvarStatusCurto={(ev, novo) => {
-              salvarStatusCurtoEventoPersistido({
+            onSalvarCampos={(ev, patch) => {
+              salvarCamposEventoAgendaPersistido({
                 dataBr: dataDireitaStr,
                 evento: ev,
-                statusCurto: novo,
+                patch,
               });
               setAgendaStatusNonce((n) => n + 1);
             }}
@@ -692,7 +704,7 @@ export function Agenda() {
         setUsuarioSelecionado={setUsuarioDireita}
         nomeGrupo="direita"
         usuariosSistema={usuariosAtivos}
-        onAbrirUsuariosSistema={() => setModalUsuariosSistemaAberto(true)}
+        onAbrirUsuariosSistema={() => navigate('/usuarios')}
       />
 
       {eventoModal && (
@@ -727,9 +739,7 @@ export function Agenda() {
                   </div>
                 ) : null}
                 {eventoModal.descricao ? (
-                  <div className="text-sm text-slate-800 whitespace-pre-wrap">
-                    {eventoModal.descricao}
-                  </div>
+                  <div className={classesTemaDescricaoModal(eventoModal.descricao)}>{eventoModal.descricao}</div>
                 ) : null}
                 {eventoModal.status ? (
                   <div className="text-sm text-slate-700">

@@ -13,6 +13,7 @@ import {
   loadPersistedExtratosFinanceiro,
   savePersistedExtratosFinanceiro,
   getContasContabeisDerivadasExtratos,
+  filtrarTransacoesPorClienteProc,
 } from '../data/financeiroData';
 import { parseOfxToExtrato, mergeExtratoBancario, contarLancamentosNovos } from '../utils/ofx';
 import { OFX_ITAU_REAL_EXEMPLO, OFX_CORA_REAL_EXEMPLO } from '../data/ofxItauCoraReal';
@@ -156,6 +157,8 @@ export function Financeiro() {
   const [substituirExtratoOfxCompleto, setSubstituirExtratoOfxCompleto] = useState(false);
   const [modalParearCompensacao, setModalParearCompensacao] = useState(null);
   const saveTimerRef = useRef(null);
+  /** Vindo de Cálculos → aba Honorários: filtra consolidado (Conta Escritório) por cliente/proc para conciliação. */
+  const [filtroConciliacaoHonorarios, setFiltroConciliacaoHonorarios] = useState(null);
 
   const transacoesConsolidadas = getTransacoesConsolidadas(extratosPorBanco, contaContabilSelecionada);
   const saldoConsolidado = transacoesConsolidadas.reduce((s, t) => s + t.valor, 0);
@@ -181,6 +184,22 @@ export function Financeiro() {
     const txs = getTransacoesConsolidadas(extratosPorBanco, contaContabilSelecionada);
     return ordenarTransacoesConsolidado(txs, sortConsolidado.col, sortConsolidado.dir);
   }, [extratosPorBanco, contaContabilSelecionada, sortConsolidado.col, sortConsolidado.dir]);
+
+  const listaConsolidadaParaExibicao = useMemo(() => {
+    if (!filtroConciliacaoHonorarios || contaContabilSelecionada !== 'Conta Escritório') {
+      return listaConsolidadaOrdenada;
+    }
+    return filtrarTransacoesPorClienteProc(
+      listaConsolidadaOrdenada,
+      filtroConciliacaoHonorarios.codCliente,
+      filtroConciliacaoHonorarios.proc
+    );
+  }, [listaConsolidadaOrdenada, filtroConciliacaoHonorarios, contaContabilSelecionada]);
+
+  const saldoConsolidadoFiltrado = useMemo(
+    () => listaConsolidadaParaExibicao.reduce((s, t) => s + t.valor, 0),
+    [listaConsolidadaParaExibicao]
+  );
 
   /** Contas ordenadas pelo uso real nos extratos (quantidade e soma dos valores por letra). */
   const contasDerivadasDosExtratos = useMemo(
@@ -407,6 +426,28 @@ export function Financeiro() {
     navigate(location.pathname, { replace: true, state: {} });
   }, [location.state, location.pathname, navigate]);
 
+  /** Vindo de Cálculos → aba Honorários: conciliação com mesmo cliente/proc na Conta Escritório. */
+  useEffect(() => {
+    const alvo = location.state?.financeiroConciliacaoHonorarios;
+    if (!alvo?.codCliente) return;
+    setContaContabilSelecionada('Conta Escritório');
+    setFiltroConciliacaoHonorarios({
+      codCliente: String(alvo.codCliente ?? '').trim(),
+      proc: String(alvo.proc ?? '').trim(),
+      rotulo: String(alvo.rotulo ?? '').trim(),
+      valorCentavos:
+        alvo.valorCentavos != null && Number.isFinite(Number(alvo.valorCentavos))
+          ? Math.round(Number(alvo.valorCentavos))
+          : null,
+    });
+    navigate(location.pathname, { replace: true, state: {} });
+  }, [location.state, location.pathname, navigate]);
+
+  const saldoHeaderConsolidado =
+    filtroConciliacaoHonorarios && contaContabilSelecionada === 'Conta Escritório'
+      ? saldoConsolidadoFiltrado
+      : saldoConsolidado;
+
   return (
     <div className="min-h-full bg-slate-100 flex flex-col">
       <header className="px-4 py-3 bg-white border-b border-slate-200 shrink-0">
@@ -472,6 +513,38 @@ export function Financeiro() {
           </div>
         </div>
       </header>
+      {filtroConciliacaoHonorarios && (
+        <div className="px-4 py-2 bg-indigo-50 border-b border-indigo-200 text-sm text-indigo-950 flex flex-wrap items-center justify-between gap-2 shrink-0">
+          <p>
+            <strong>Conciliação (Honorários — Cálculos):</strong> cliente{' '}
+            <span className="tabular-nums font-semibold">{filtroConciliacaoHonorarios.codCliente}</span>, proc.{' '}
+            <span className="tabular-nums font-semibold">{filtroConciliacaoHonorarios.proc || '—'}</span>
+            {filtroConciliacaoHonorarios.rotulo ? (
+              <>
+                {' '}
+                — <span className="text-indigo-800">{filtroConciliacaoHonorarios.rotulo}</span>
+              </>
+            ) : null}
+            . Lista filtrada na <strong>Conta Escritório</strong> (mesmos critérios da Conta Corrente em Processos).
+            {filtroConciliacaoHonorarios.valorCentavos != null && (
+              <span className="ml-1">
+                Destaque em linhas com valor ={' '}
+                <strong className="tabular-nums">
+                  {formatValor(filtroConciliacaoHonorarios.valorCentavos / 100)}
+                </strong>
+                .
+              </span>
+            )}
+          </p>
+          <button
+            type="button"
+            onClick={() => setFiltroConciliacaoHonorarios(null)}
+            className="px-2 py-1 rounded border border-indigo-300 bg-white text-indigo-900 text-xs font-medium hover:bg-indigo-100 shrink-0"
+          >
+            Remover filtro
+          </button>
+        </div>
+      )}
 
       <div className="flex-1 p-6 space-y-8 overflow-auto">
         {/* Extratos bancários (OFX) */}
@@ -839,7 +912,7 @@ export function Financeiro() {
                     <th className="text-left py-2 px-3 font-medium text-slate-600 border-r border-slate-200 w-24 cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloConsolidado('data')} title="Duplo clique: ordenar crescente ↔ decrescente">Data</th>
                     <th className="text-left py-2 px-3 font-medium text-slate-600 border-r border-slate-200 min-w-[140px] cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloConsolidado('descricao')} title="Duplo clique: ordenar A→Z / Z→A">Descrição</th>
                     <th className="text-right py-2 px-3 font-medium text-slate-600 border-r border-slate-200 w-28 cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloConsolidado('valor')} title="Duplo clique: ordenar crescente ↔ decrescente">
-                      Valor <span className="text-slate-400 font-normal">({formatValor(saldoConsolidado)})</span>
+                      Valor <span className="text-slate-400 font-normal">({formatValor(saldoHeaderConsolidado)})</span>
                     </th>
                     <th className="text-left py-2 px-3 font-medium text-slate-600 border-r border-slate-200 min-w-[200px] cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloConsolidado('descricaoDetalhada')} title="Duplo clique: ordenar A→Z / Z→A">Descrição / Contraparte</th>
                     <th className="text-center py-2 px-3 font-medium text-slate-600 border-r border-slate-200 w-20 cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloConsolidado('codCliente')} title="Duplo clique: ordenar">Cod. Cliente</th>
@@ -857,22 +930,25 @@ export function Financeiro() {
                 </thead>
                 <tbody>
                   {(() => {
-                    const total = listaConsolidadaOrdenada.length;
+                    const total = listaConsolidadaParaExibicao.length;
                     const maxLinhas =
                       limiteLancamentosConsolidado === 0 ? total : limiteLancamentosConsolidado;
-                    const listaVisivel = listaConsolidadaOrdenada.slice(0, maxLinhas);
+                    const listaVisivel = listaConsolidadaParaExibicao.slice(0, maxLinhas);
                     return listaVisivel.map((t, idx) => {
                     const rowKey = `${t.nomeBanco}-${t.numero}-${t.data}`;
                     const isFoco = linhaConsolidadoFoco === rowKey;
                     const isAlvo = linhaConsolidadoAlvo === rowKey;
                     const prev = listaVisivel[idx - 1];
                     const mesmoGrupo = prev && prev.numeroBanco === t.numeroBanco && prev.letra === t.letra;
+                    const vc = filtroConciliacaoHonorarios?.valorCentavos;
+                    const destaqueValorConciliacao =
+                      vc != null && Number.isFinite(Number(t.valor)) && Math.round(Number(t.valor) * 100) === vc;
                     return (
                       <tr
                         key={rowKey}
                         ref={isAlvo ? linhaConsolidadoRef : undefined}
                         onClick={() => setLinhaConsolidadoFoco(rowKey)}
-                        className={`border-b border-green-100/80 ${mesmoGrupo ? 'bg-sky-100/50' : 'bg-green-50/50'} hover:bg-green-100/50 ${isFoco ? 'ring-1 ring-green-500 ring-inset' : ''}`}
+                        className={`border-b border-green-100/80 ${mesmoGrupo ? 'bg-sky-100/50' : 'bg-green-50/50'} hover:bg-green-100/50 ${isFoco ? 'ring-1 ring-green-500 ring-inset' : ''} ${destaqueValorConciliacao ? 'ring-2 ring-amber-400 ring-inset bg-amber-50/90' : ''}`}
                       >
                         <td
                           className="py-1.5 px-3 text-slate-600 border-r border-green-100 cursor-pointer hover:bg-green-200/50"
@@ -933,7 +1009,7 @@ export function Financeiro() {
               </table>
             </div>
             {(() => {
-              const total = listaConsolidadaOrdenada.length;
+              const total = listaConsolidadaParaExibicao.length;
               const vis =
                 limiteLancamentosConsolidado === 0
                   ? total

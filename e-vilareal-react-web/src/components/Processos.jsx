@@ -833,13 +833,23 @@ export function Processos() {
     (faseSelecionadaCompacta.includes('verif') || faseSelecionadaCompacta.includes('verificacao'));
   const isProtocoloMovimentacao =
     faseSelecionadaCompacta.includes('protoc') && faseSelecionadaCompacta.includes('moviment');
+  const isAguardandoProvidencia =
+    faseSelecionadaCompacta.includes('aguard') && faseSelecionadaCompacta.includes('provid');
+  const isProcAdministrativo =
+    faseSelecionadaCompacta.includes('procadministrativo') ||
+    (faseSelecionadaCompacta.includes('proced') && faseSelecionadaCompacta.includes('adm'));
 
   const inputClass = "w-full px-2 py-1.5 border border-slate-300 rounded text-sm bg-white";
-  const inputDisabledClass = "w-full px-2 py-1.5 border border-slate-300 rounded text-sm bg-slate-50";
+  /** Fundo neutro + select-text: em readOnly o usuário ainda seleciona/copia o conteúdo. */
+  const inputDisabledClass = "w-full px-2 py-1.5 border border-slate-300 rounded text-sm bg-slate-50 select-text";
+  /** Edição desabilitada: campos não editáveis, mas texto ainda selecionável/copiável (readOnly, não disabled). */
+  const camposBloqueados = edicaoDesabilitada;
+  const clsCampo = camposBloqueados ? inputDisabledClass : inputClass;
 
   // Agendamento automático na Agenda sempre que o usuário preencher uma data válida
-  // no formulário de Audiência.
+  // no formulário de Audiência (somente com edição habilitada).
   useEffect(() => {
+    if (edicaoDesabilitada) return;
     if (!audienciaData) return;
     if (!/^\d{2}\/\d{2}\/\d{4}$/.test(audienciaData)) return;
     agendarAudienciaParaTodosUsuarios({
@@ -848,7 +858,7 @@ export function Processos() {
       audienciaTipo,
       numeroProcessoNovo,
     });
-  }, [audienciaData, audienciaHora, audienciaTipo, numeroProcessoNovo]);
+  }, [audienciaData, audienciaHora, audienciaTipo, numeroProcessoNovo, edicaoDesabilitada]);
 
   function formatarDataAudienciaInput(valor) {
     // Máscara simples para manter no formato dd/mm/aaaa.
@@ -946,6 +956,10 @@ export function Processos() {
           className={`rounded border shadow-sm overflow-hidden ${
             isProtocoloMovimentacao
               ? 'bg-black border-slate-700 text-slate-100 dark-mode-protocolo'
+              : isAguardandoProvidencia
+                ? 'bg-sky-700 border-sky-800 text-white processos-fase-aguardando-providencia'
+              : isProcAdministrativo
+                ? 'bg-teal-200 border-cyan-300'
               : isAgPeticionar
                 ? 'bg-red-200 border-red-400'
                 : isAgDocumentos
@@ -965,13 +979,15 @@ export function Processos() {
                     <div className="flex border border-slate-300 rounded overflow-hidden bg-white">
                       <button
                         type="button"
-                        className="p-1 border-r border-slate-300 hover:bg-slate-100"
+                        disabled={camposBloqueados}
+                        className="p-1 border-r border-slate-300 hover:bg-slate-100 disabled:opacity-50 disabled:pointer-events-none"
                         onClick={() => setCodigoCliente((v) => padCliente(Math.max(1, Number(normalizarCliente(v)) - 1)))}
                       >
                         <ChevronUp className="w-3 h-3" />
                       </button>
                       <input
                         type="text"
+                        readOnly={camposBloqueados}
                         value={codigoCliente}
                         onChange={(e) => {
                           const digits = apenasDigitos(e.target.value);
@@ -982,11 +998,12 @@ export function Processos() {
                           const digits = apenasDigitos(e.target.value);
                           setCodigoCliente(padCliente(digits || '1'));
                         }}
-                        className="w-20 px-1 py-1 text-sm text-center border-0"
+                        className={`w-20 px-1 py-1 text-sm text-center border-0 ${camposBloqueados ? 'bg-slate-50' : ''}`}
                       />
                       <button
                         type="button"
-                        className="p-1 border-l border-slate-300 hover:bg-slate-100"
+                        disabled={camposBloqueados}
+                        className="p-1 border-l border-slate-300 hover:bg-slate-100 disabled:opacity-50 disabled:pointer-events-none"
                         onClick={() => setCodigoCliente((v) => padCliente(Number(normalizarCliente(v)) + 1))}
                       >
                         <ChevronDown className="w-3 h-3" />
@@ -995,26 +1012,73 @@ export function Processos() {
                   </Field>
                   <Field label="Processo">
                     <div className="flex border border-slate-300 rounded overflow-hidden w-20">
-                      <button type="button" className="p-1 hover:bg-slate-100" onClick={() => setProcesso((p) => Math.max(1, (Number(p) || 1) - 1))}><ChevronUp className="w-3 h-3" /></button>
-                      <input type="number" min={1} step={1} value={processo} onChange={(e) => setProcesso(Math.max(1, Number(e.target.value) || 1))} className="w-10 px-0 py-1 text-sm text-center border-0" />
-                      <button type="button" className="p-1 hover:bg-slate-100" onClick={() => setProcesso((p) => p + 1)}><ChevronDown className="w-3 h-3" /></button>
+                      <button
+                        type="button"
+                        disabled={camposBloqueados}
+                        className="p-1 hover:bg-slate-100 disabled:opacity-50 disabled:pointer-events-none"
+                        onClick={() => setProcesso((p) => Math.max(1, (Number(p) || 1) - 1))}
+                      >
+                        <ChevronUp className="w-3 h-3" />
+                      </button>
+                      <input
+                        type="number"
+                        min={1}
+                        step={1}
+                        readOnly={camposBloqueados}
+                        value={processo}
+                        onChange={(e) => setProcesso(Math.max(1, Number(e.target.value) || 1))}
+                        className={`w-10 px-0 py-1 text-sm text-center border-0 ${camposBloqueados ? 'bg-slate-50' : ''}`}
+                      />
+                      <button
+                        type="button"
+                        disabled={camposBloqueados}
+                        className="p-1 hover:bg-slate-100 disabled:opacity-50 disabled:pointer-events-none"
+                        onClick={() => setProcesso((p) => p + 1)}
+                      >
+                        <ChevronDown className="w-3 h-3" />
+                      </button>
                     </div>
                   </Field>
                 </div>
                 <Field label="Cliente">
-                  <input type="text" value={cliente} onChange={(e) => setCliente(e.target.value)} disabled={edicaoDesabilitada} className={edicaoDesabilitada ? inputDisabledClass : inputClass} />
+                  <input
+                    type="text"
+                    value={cliente}
+                    readOnly={camposBloqueados}
+                    onChange={(e) => setCliente(e.target.value)}
+                    className={clsCampo}
+                  />
                 </Field>
                 <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
                   <input type="checkbox" checked={edicaoDesabilitada} onChange={(e) => setEdicaoDesabilitada(e.target.checked)} className="rounded border-slate-300" />
                   Edição Desabilitada
                 </label>
                 <Field label="Nº Processo Velho">
-                  <input type="text" value={numeroProcessoVelho} onChange={(e) => setNumeroProcessoVelho(e.target.value)} className={inputClass} />
+                  <input
+                    type="text"
+                    value={numeroProcessoVelho}
+                    readOnly={camposBloqueados}
+                    onChange={(e) => setNumeroProcessoVelho(e.target.value)}
+                    className={clsCampo}
+                  />
                 </Field>
                 <Field label="Nº Processo Novo">
                   <div className="flex gap-1">
-                    <input type="text" value={numeroProcessoNovo} onChange={(e) => setNumeroProcessoNovo(e.target.value)} className={`flex-1 ${inputClass}`} />
-                    <button type="button" className="p-1.5 rounded border border-slate-300 hover:bg-slate-100" title="Documentos"><FolderOpen className="w-4 h-4 text-slate-600" /></button>
+                    <input
+                      type="text"
+                      value={numeroProcessoNovo}
+                      readOnly={camposBloqueados}
+                      onChange={(e) => setNumeroProcessoNovo(e.target.value)}
+                      className={`flex-1 ${clsCampo}`}
+                    />
+                    <button
+                      type="button"
+                      disabled={camposBloqueados}
+                      className="p-1.5 rounded border border-slate-300 hover:bg-slate-100 disabled:opacity-50 disabled:pointer-events-none"
+                      title="Documentos"
+                    >
+                      <FolderOpen className="w-4 h-4 text-slate-600" />
+                    </button>
                   </div>
                 </Field>
               </div>
@@ -1033,7 +1097,7 @@ export function Processos() {
                     <button
                       type="button"
                       onClick={() => abrirModalVinculoPartes('cliente')}
-                      disabled={edicaoDesabilitada}
+                      disabled={camposBloqueados}
                       className="px-2 py-1.5 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50 disabled:opacity-50"
                     >
                       Pessoas
@@ -1052,29 +1116,63 @@ export function Processos() {
                     <button
                       type="button"
                       onClick={() => abrirModalVinculoPartes('oposta')}
-                      disabled={edicaoDesabilitada}
+                      disabled={camposBloqueados}
                       className="px-2 py-1.5 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50 disabled:opacity-50"
                     >
                       Pessoas
                     </button>
                   </div>
                 </Field>
-                <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
-                  <input type="checkbox" checked={consultaAutomatica} onChange={(e) => setConsultaAutomatica(e.target.checked)} className="rounded border-slate-300" />
+                <label className={`flex items-center gap-2 text-sm text-slate-600 ${camposBloqueados ? 'cursor-default' : 'cursor-pointer'}`}>
+                  <input
+                    type="checkbox"
+                    checked={consultaAutomatica}
+                    disabled={camposBloqueados}
+                    onChange={(e) => setConsultaAutomatica(e.target.checked)}
+                    className="rounded border-slate-300"
+                  />
                   Consulta Automática
                 </label>
                 <Field label="Estado">
                   <div className="flex gap-1">
-                    <select value={estado} onChange={(e) => { setEstado(e.target.value); setCidade((CIDADES_POR_UF[e.target.value] || [])[0] || ''); }} className={`flex-1 ${inputClass}`}>
-                      {UFS.map((u) => (<option key={u.sigla} value={u.sigla}>{u.sigla}</option>))}
-                    </select>
-                    <input type="text" value={ufAtual?.nome ?? ''} readOnly className="w-24 px-2 py-1.5 border border-slate-300 rounded text-sm bg-slate-50" />
+                    {camposBloqueados ? (
+                      <>
+                        <input type="text" readOnly value={estado} className={`flex-1 ${clsCampo}`} title={estado} />
+                        <input type="text" readOnly value={ufAtual?.nome ?? ''} className="w-24 px-2 py-1.5 border border-slate-300 rounded text-sm bg-slate-50" />
+                      </>
+                    ) : (
+                      <>
+                        <select
+                          value={estado}
+                          onChange={(e) => {
+                            setEstado(e.target.value);
+                            setCidade((CIDADES_POR_UF[e.target.value] || [])[0] || '');
+                          }}
+                          className={`flex-1 ${inputClass}`}
+                        >
+                          {UFS.map((u) => (
+                            <option key={u.sigla} value={u.sigla}>
+                              {u.sigla}
+                            </option>
+                          ))}
+                        </select>
+                        <input type="text" value={ufAtual?.nome ?? ''} readOnly className="w-24 px-2 py-1.5 border border-slate-300 rounded text-sm bg-slate-50" />
+                      </>
+                    )}
                   </div>
                 </Field>
                 <Field label="Cidade">
-                  <select value={cidade} onChange={(e) => setCidade(e.target.value)} className={inputClass}>
-                    {cidades.map((c) => (<option key={c} value={c}>{c}</option>))}
-                  </select>
+                  {camposBloqueados ? (
+                    <input type="text" readOnly value={cidade} className={clsCampo} title={cidade} />
+                  ) : (
+                    <select value={cidade} onChange={(e) => setCidade(e.target.value)} className={inputClass}>
+                      {cidades.map((c) => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </Field>
               </div>
 
@@ -1082,24 +1180,43 @@ export function Processos() {
               <div className="space-y-3">
                 <div>
                   <p className="text-sm font-medium text-slate-700 mb-1">Cliente é Requerente ou Requerido?</p>
-                  <select
-                    value={papelParte}
-                    onChange={(e) => setPapelParte(e.target.value)}
-                    className={inputClass}
-                  >
-                    <option value="requerente">Requerente</option>
-                    <option value="requerido">Requerido</option>
-                  </select>
+                  {camposBloqueados ? (
+                    <input
+                      type="text"
+                      readOnly
+                      value={papelParte === 'requerente' ? 'Requerente' : 'Requerido'}
+                      className={clsCampo}
+                    />
+                  ) : (
+                    <select value={papelParte} onChange={(e) => setPapelParte(e.target.value)} className={inputClass}>
+                      <option value="requerente">Requerente</option>
+                      <option value="requerido">Requerido</option>
+                    </select>
+                  )}
                 </div>
                 <div>
                   <p className="text-sm font-medium text-slate-700 mb-1">Status</p>
                   <div className="flex gap-4">
-                    <label className="flex items-center gap-1.5 text-sm cursor-pointer">
-                      <input type="radio" name="status" checked={statusAtivo} onChange={() => setStatusAtivo(true)} className="text-slate-600" />
+                    <label className={`flex items-center gap-1.5 text-sm ${camposBloqueados ? 'cursor-default' : 'cursor-pointer'}`}>
+                      <input
+                        type="radio"
+                        name="status"
+                        checked={statusAtivo}
+                        disabled={camposBloqueados}
+                        onChange={() => setStatusAtivo(true)}
+                        className="text-slate-600"
+                      />
                       Ativo
                     </label>
-                    <label className="flex items-center gap-1.5 text-sm cursor-pointer">
-                      <input type="radio" name="status" checked={!statusAtivo} onChange={() => setStatusAtivo(false)} className="text-slate-600" />
+                    <label className={`flex items-center gap-1.5 text-sm ${camposBloqueados ? 'cursor-default' : 'cursor-pointer'}`}>
+                      <input
+                        type="radio"
+                        name="status"
+                        checked={!statusAtivo}
+                        disabled={camposBloqueados}
+                        onChange={() => setStatusAtivo(false)}
+                        className="text-slate-600"
+                      />
                       Inativo
                     </label>
                   </div>
@@ -1108,11 +1225,15 @@ export function Processos() {
                   <p className="text-sm font-medium text-slate-700 mb-1.5">Fase</p>
                   <div className="space-y-0.5">
                     {FASES.map((f) => (
-                      <label key={f} className="flex items-center gap-2 text-sm cursor-pointer">
+                      <label
+                        key={f}
+                        className={`flex items-center gap-2 text-sm ${camposBloqueados ? 'cursor-default opacity-90' : 'cursor-pointer'}`}
+                      >
                         <input
                           type="radio"
                           name="fase"
                           checked={faseSelecionada === f}
+                          disabled={camposBloqueados}
                           onChange={() => {
                             setFaseSelecionada(f);
                             const pf = String(prazoFatal ?? '').trim();
@@ -1147,53 +1268,131 @@ export function Processos() {
             <section className="border-t border-slate-200 pt-4">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-3">
                 <Field label="Data do Protocolo" className="w-36">
-                  <input type="text" value={dataProtocolo} onChange={(e) => setDataProtocolo(e.target.value)} placeholder="dd/mm/aaaa" className={inputClass} />
+                  <input
+                    type="text"
+                    value={dataProtocolo}
+                    readOnly={camposBloqueados}
+                    onChange={(e) => setDataProtocolo(e.target.value)}
+                    placeholder="dd/mm/aaaa"
+                    className={clsCampo}
+                  />
                 </Field>
                 <Field label="Pasta do Arquivo">
-                  <input type="text" value={pastaArquivo} onChange={(e) => setPastaArquivo(e.target.value)} className={inputClass} />
+                  <input
+                    type="text"
+                    value={pastaArquivo}
+                    readOnly={camposBloqueados}
+                    onChange={(e) => setPastaArquivo(e.target.value)}
+                    className={clsCampo}
+                  />
                 </Field>
                 <Field label="Responsável">
-                  <input type="text" value={responsavel} onChange={(e) => setResponsavel(e.target.value)} className={inputClass} />
+                  <input
+                    type="text"
+                    value={responsavel}
+                    readOnly={camposBloqueados}
+                    onChange={(e) => setResponsavel(e.target.value)}
+                    className={clsCampo}
+                  />
                 </Field>
                 <Field label="Valor da Causa">
-                  <input type="text" value={valorCausa} onChange={(e) => setValorCausa(e.target.value)} className={inputClass} />
+                  <input
+                    type="text"
+                    value={valorCausa}
+                    readOnly={camposBloqueados}
+                    onChange={(e) => setValorCausa(e.target.value)}
+                    className={clsCampo}
+                  />
                 </Field>
                 <Field label="Natureza da Ação" className="col-span-2 md:col-span-4">
-                  <input type="text" value={naturezaAcao} onChange={(e) => setNaturezaAcao(e.target.value)} className={inputClass} />
+                  <input
+                    type="text"
+                    value={naturezaAcao}
+                    readOnly={camposBloqueados}
+                    onChange={(e) => setNaturezaAcao(e.target.value)}
+                    className={clsCampo}
+                  />
                 </Field>
                 <Field label="Procedimento">
-                  <input type="text" value={procedimento} onChange={(e) => setProcedimento(e.target.value)} className={inputClass} />
+                  <input
+                    type="text"
+                    value={procedimento}
+                    readOnly={camposBloqueados}
+                    onChange={(e) => setProcedimento(e.target.value)}
+                    className={clsCampo}
+                  />
                 </Field>
                 <Field label="Competência" className="col-span-2 md:col-span-2">
                   <div className="flex gap-1">
-                    <select value={competencia} onChange={(e) => setCompetencia(e.target.value)} className={`flex-1 ${inputClass}`}>
-                      {COMPETENCIAS.map((c) => (<option key={c} value={c}>{c}</option>))}
-                    </select>
-                    <button type="button" className="p-1.5 rounded border border-slate-300 hover:bg-slate-100 shrink-0"><Search className="w-4 h-4 text-slate-600" /></button>
+                    {camposBloqueados ? (
+                      <input type="text" readOnly value={competencia} className={`flex-1 ${clsCampo}`} title={competencia} />
+                    ) : (
+                      <select value={competencia} onChange={(e) => setCompetencia(e.target.value)} className={`flex-1 ${inputClass}`}>
+                        {COMPETENCIAS.map((c) => (
+                          <option key={c} value={c}>
+                            {c}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                    <button
+                      type="button"
+                      disabled={camposBloqueados}
+                      className="p-1.5 rounded border border-slate-300 hover:bg-slate-100 shrink-0 disabled:opacity-50 disabled:pointer-events-none"
+                    >
+                      <Search className="w-4 h-4 text-slate-600" />
+                    </button>
                   </div>
                 </Field>
                 <Field label="Fase">
-                  <input type="text" value={faseCampo} onChange={(e) => setFaseCampo(e.target.value)} className={inputClass} />
+                  <input
+                    type="text"
+                    value={faseCampo}
+                    readOnly={camposBloqueados}
+                    onChange={(e) => setFaseCampo(e.target.value)}
+                    className={clsCampo}
+                  />
                 </Field>
                 <Field label="Observação" className="col-span-2 md:col-span-4">
-                  <textarea value={observacao} onChange={(e) => setObservacao(e.target.value)} rows={3} className={`${inputClass} resize-y`} />
+                  <textarea
+                    value={observacao}
+                    readOnly={camposBloqueados}
+                    onChange={(e) => setObservacao(e.target.value)}
+                    rows={3}
+                    className={`${clsCampo} resize-y`}
+                  />
                 </Field>
                 <div className="col-span-2 md:col-span-4 flex flex-wrap items-end gap-3">
-                  <button type="button" className="px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50">Link p/ pasta</button>
+                  <button
+                    type="button"
+                    disabled={camposBloqueados}
+                    className="px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50 disabled:opacity-50 disabled:pointer-events-none"
+                  >
+                    Link p/ pasta
+                  </button>
                   <Field label="Periodicidade Consulta" className="w-36">
-                    <select value={periodicidadeConsulta} onChange={(e) => setPeriodicidadeConsulta(e.target.value)} className={inputClass}>
-                      <option value="">—</option>
-                      <option value="Diária">Diária</option>
-                      <option value="Semanal">Semanal</option>
-                      <option value="Quinzenal">Quinzenal</option>
-                      <option value="Mensal">Mensal</option>
-                      <option value="Bimestral">Bimestral</option>
-                      <option value="Trimensal">Trimensal</option>
-                      <option value="Semestral">Semestral</option>
-                      <option value="Anual">Anual</option>
-                    </select>
+                    {camposBloqueados ? (
+                      <input type="text" readOnly value={periodicidadeConsulta || '—'} className={clsCampo} title={periodicidadeConsulta} />
+                    ) : (
+                      <select value={periodicidadeConsulta} onChange={(e) => setPeriodicidadeConsulta(e.target.value)} className={inputClass}>
+                        <option value="">—</option>
+                        <option value="Diária">Diária</option>
+                        <option value="Semanal">Semanal</option>
+                        <option value="Quinzenal">Quinzenal</option>
+                        <option value="Mensal">Mensal</option>
+                        <option value="Bimestral">Bimestral</option>
+                        <option value="Trimensal">Trimensal</option>
+                        <option value="Semestral">Semestral</option>
+                        <option value="Anual">Anual</option>
+                      </select>
+                    )}
                   </Field>
-                  <button type="button" onClick={abrirModalTramitacao} className="px-4 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50">
+                  <button
+                    type="button"
+                    disabled={camposBloqueados}
+                    onClick={abrirModalTramitacao}
+                    className="px-4 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50 disabled:opacity-50 disabled:pointer-events-none"
+                  >
                     Tramitação
                   </button>
                   <span className="text-xs text-slate-600">
@@ -1211,8 +1410,10 @@ export function Processos() {
                   <input
                     type="text"
                     value={audienciaData}
+                    readOnly={camposBloqueados}
                     onChange={(e) => setAudienciaData(formatarDataAudienciaInput(e.target.value))}
                     onDoubleClick={() => {
+                      if (camposBloqueados) return;
                       const norm = normalizarDataBr(audienciaData);
                       if (!norm) return;
                       const ok = /^(\d{2})\/(\d{2})\/(\d{4})$/.test(norm);
@@ -1228,7 +1429,7 @@ export function Processos() {
                       if (norm) setAudienciaData(norm);
                     }}
                     placeholder="dd/mm/aaaa"
-                    className={inputClass}
+                    className={clsCampo}
                   />
                 </Field>
                 <Field label="Hora" className="w-24">
@@ -1236,26 +1437,47 @@ export function Processos() {
                     type="text"
                     value={audienciaHora}
                     ref={audienciaHoraInputRef}
+                    readOnly={camposBloqueados}
                     onChange={handleAudienciaHoraChange}
                     onBlur={() => {
                       const norm = normalizarHoraAudiencia(audienciaHora);
                       if (norm) setAudienciaHora(norm);
                     }}
                     placeholder="hh:mm"
-                    className={inputClass}
+                    className={clsCampo}
                   />
                 </Field>
                 <Field label="Tipo" className="w-32">
-                  <input type="text" value={audienciaTipo} onChange={(e) => setAudienciaTipo(e.target.value)} className={inputClass} />
+                  <input
+                    type="text"
+                    value={audienciaTipo}
+                    readOnly={camposBloqueados}
+                    onChange={(e) => setAudienciaTipo(e.target.value)}
+                    className={clsCampo}
+                  />
                 </Field>
                 <div className="flex items-center gap-3">
                   <span className="text-sm text-slate-700">Aviso de Audiência</span>
-                  <label className="flex items-center gap-1.5 text-sm cursor-pointer">
-                    <input type="radio" name="aviso" checked={avisoAudiencia === 'avisado'} onChange={() => setAvisoAudiencia('avisado')} className="text-slate-600" />
+                  <label className={`flex items-center gap-1.5 text-sm ${camposBloqueados ? 'cursor-default' : 'cursor-pointer'}`}>
+                    <input
+                      type="radio"
+                      name="aviso"
+                      checked={avisoAudiencia === 'avisado'}
+                      disabled={camposBloqueados}
+                      onChange={() => setAvisoAudiencia('avisado')}
+                      className="text-slate-600"
+                    />
                     Avisado
                   </label>
-                  <label className="flex items-center gap-1.5 text-sm cursor-pointer">
-                    <input type="radio" name="aviso" checked={avisoAudiencia === 'nao_avisado'} onChange={() => setAvisoAudiencia('nao_avisado')} className="text-slate-600" />
+                  <label className={`flex items-center gap-1.5 text-sm ${camposBloqueados ? 'cursor-default' : 'cursor-pointer'}`}>
+                    <input
+                      type="radio"
+                      name="aviso"
+                      checked={avisoAudiencia === 'nao_avisado'}
+                      disabled={camposBloqueados}
+                      onChange={() => setAvisoAudiencia('nao_avisado')}
+                      className="text-slate-600"
+                    />
                     Não Avisado
                   </label>
                 </div>
@@ -1263,11 +1485,12 @@ export function Processos() {
                   <input
                     type="text"
                     value={prazoFatal}
+                    readOnly={camposBloqueados}
                     onChange={(e) => setPrazoFatal(e.target.value)}
                     onBlur={(e) => persistirPrazoFatalAposEdicao(e.target.value)}
                     placeholder="dd/mm/aaaa"
                     title="Data vinculada ao processo (gravada automaticamente)"
-                    className={inputClass}
+                    className={clsCampo}
                   />
                 </Field>
               </div>
@@ -1275,39 +1498,63 @@ export function Processos() {
 
             {/* Ações e Unidade: Pagamentos, Agenda Em lote, Abrir Imóvel, Unidade, Cálculos */}
             <section className="flex flex-wrap items-end gap-4 border-t border-slate-200 pt-4">
-              <button type="button" className="px-4 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50">Pagamentos</button>
-              <button type="button" onClick={abrirAgendaEmLote} className="inline-flex items-center gap-2 px-4 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50">
+              <button
+                type="button"
+                disabled={camposBloqueados}
+                className="px-4 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50 disabled:opacity-50 disabled:pointer-events-none"
+              >
+                Pagamentos
+              </button>
+              <button
+                type="button"
+                disabled={camposBloqueados}
+                onClick={abrirAgendaEmLote}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50 disabled:opacity-50 disabled:pointer-events-none"
+              >
                 <Calendar className="w-4 h-4" /> Agenda Em lote
               </button>
               <Field label="Imóvel" className="w-24">
                 <input
                   type="number"
                   value={imovelId}
+                  readOnly={camposBloqueados}
                   onChange={(e) => {
                     setImovelId(e.target.value);
                     setImovelManual(true);
                   }}
-                  className={inputClass}
+                  className={clsCampo}
                   placeholder="(vazio)"
                 />
               </Field>
-              <button type="button" onClick={handleAbrirImovel} className="inline-flex items-center gap-1.5 px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50">
+              <button
+                type="button"
+                disabled={camposBloqueados}
+                onClick={handleAbrirImovel}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50 disabled:opacity-50 disabled:pointer-events-none"
+              >
                 <MapPin className="w-4 h-4" /> Abrir Imóvel
               </button>
               <Field label="Unidade" className="w-40">
                 <input
                   type="text"
                   value={unidade}
+                  readOnly={camposBloqueados}
                   onChange={(e) => {
                     setUnidade(e.target.value);
                     setUnidadeManual(true);
                   }}
-                  className={inputClass}
+                  className={clsCampo}
                   placeholder="(vazio)"
                 />
               </Field>
               <Field label="Unidade" className="flex-1 min-w-[200px]">
-                <input type="text" value={unidadeEndereco} onChange={(e) => setUnidadeEndereco(e.target.value)} className={inputClass} />
+                <input
+                  type="text"
+                  value={unidadeEndereco}
+                  readOnly={camposBloqueados}
+                  onChange={(e) => setUnidadeEndereco(e.target.value)}
+                  className={clsCampo}
+                />
               </Field>
               <button
                 type="button"
@@ -1341,9 +1588,10 @@ export function Processos() {
                       <input
                         type="text"
                         value={proximaInformacao}
+                        readOnly={camposBloqueados}
                         onChange={(e) => setProximaInformacao(e.target.value)}
                         placeholder="Digite a próxima informação a ser inserida..."
-                        className={inputClass}
+                        className={clsCampo}
                       />
                     </div>
                     <div className="w-36">
@@ -1351,15 +1599,17 @@ export function Processos() {
                       <input
                         type="text"
                         value={dataProximaInformacao}
+                        readOnly={camposBloqueados}
                         onChange={(e) => setDataProximaInformacao(e.target.value)}
                         placeholder="dd/mm/aaaa"
-                        className={inputClass}
+                        className={clsCampo}
                       />
                     </div>
                     <button
                       type="button"
+                      disabled={camposBloqueados}
                       onClick={manterInformacaoNoHistorico}
-                      className="px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50 whitespace-nowrap"
+                      className="px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50 whitespace-nowrap disabled:opacity-50 disabled:pointer-events-none"
                     >
                       Manter Inf.
                     </button>

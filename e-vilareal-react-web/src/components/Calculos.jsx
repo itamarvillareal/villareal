@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { X, ChevronUp, ChevronDown, BarChart2 } from 'lucide-react';
+import { X, ChevronUp, ChevronDown, BarChart2, ExternalLink } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { getLancamentosContaCorrente } from '../data/financeiroData';
 import { getMockProcesso10x10 } from '../data/processosMock';
 import { obterIndicesMensaisINPC, obterIndicesMensaisIPCA } from '../services/monetaryIndicesService.js';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { baixarBlobDocx, gerarDocumentoListaDebitosWord } from '../utils/gerarDocumentoListaDebitosWord';
 
-const TABS = ['Títulos', 'Custas Judiciais', 'Parcelamento', 'Pagamento', 'Honorários', 'Decrição dos Valores'];
+const TABS = ['Títulos', 'Custas Judiciais', 'Parcelamento', 'Pagamento', 'Honorários', 'Descrição dos Valores'];
 
 const INDICES = ['INPC', 'IGPM', 'SELIC', 'POUPANÇA', 'IPCA', 'IPCA-E', 'TR', 'CDI', 'NENHUM'];
 
@@ -80,6 +82,7 @@ function gerarTitulosMock(codigoCliente, proc, dimensao) {
         multa: '',
         honorarios: '',
         total: '',
+        descricaoValor: '',
       });
       continue;
     }
@@ -96,6 +99,7 @@ function gerarTitulosMock(codigoCliente, proc, dimensao) {
       multa: '',
       honorarios: '',
       total: '',
+      descricaoValor: '',
     });
   }
   return rows;
@@ -107,11 +111,123 @@ function linhaVaziaParcela() {
     valorParcela: '',
     honorariosParcela: '',
     observacao: '',
+    dataPagamento: '',
   };
 }
 
 function gerarParcelasMock() {
   return Array.from({ length: PARCELAS_POR_PAGINA }, () => linhaVaziaParcela());
+}
+
+/** Normaliza quantidade informada pelo usuário (0–9999); vazio vira "00"; até 99 com dois dígitos. */
+function formatarQuantidadeParcelasExibicao(s) {
+  const d = String(s ?? '').replace(/\D/g, '');
+  if (d === '') return '00';
+  const n = Math.min(9999, Math.max(0, Number(d)));
+  return n <= 99 ? String(n).padStart(2, '0') : String(n);
+}
+
+/** Converte texto percentual (pt-BR) em número. */
+function parsePercentualBR(str) {
+  const t = String(str ?? '')
+    .trim()
+    .replace(/%/g, '')
+    .trim();
+  if (!t) return NaN;
+  const normalized = t.replace(/\./g, '').replace(',', '.');
+  const n = Number(normalized);
+  return Number.isFinite(n) ? n : NaN;
+}
+
+/** Formata taxa com duas casas decimais (vírgula), padrão brasileiro. */
+function formatarTaxaJurosParcelamento2Casas(s) {
+  const n = parsePercentualBR(s);
+  const v = Number.isFinite(n) ? n : 0;
+  return v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+/** Quantidade de parcelas a partir do texto (ex.: "12", "00" → 0). */
+function parseQuantidadeParcelasNumero(s) {
+  const d = String(s ?? '').replace(/\D/g, '');
+  if (!d) return 0;
+  return Math.min(9999, Math.max(0, Number(d)));
+}
+
+/**
+ * Valor de cada parcela (prestação fixa) — taxa composta ao mês (Tabela Price).
+ * PV = débito atualizado (total dos títulos); taxaPercentAoMes = % a.m.; n = nº de parcelas.
+ */
+function calcularParcelaPrecoMensalPrice(pv, taxaPercentAoMes, nParcelas) {
+  const n = Math.max(0, Math.floor(Number(nParcelas) || 0));
+  if (n <= 0 || pv <= 0) return null;
+  const i = Number(taxaPercentAoMes) / 100;
+  if (!Number.isFinite(i) || i < 0) return null;
+  let pmt;
+  if (i === 0 || i < 1e-14) {
+    pmt = pv / n;
+  } else {
+    pmt = (pv * i * (1 + i) ** n) / ((1 + i) ** n - 1);
+  }
+  return Math.trunc(pmt * 100) / 100;
+}
+
+/** dd/mm/yyyy → Date local ou null (mesma regra do parseDateBR da tela). */
+function parseDateBRModulo(str) {
+  const s = String(str ?? '').trim();
+  if (!s || s.length < 10) return null;
+  const [dd, mm, yyyy] = s.split('/');
+  const d = new Date(Number(yyyy), Number(mm) - 1, Number(dd));
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function formatDateBRFromDate(d) {
+  if (!d || Number.isNaN(d.getTime())) return '';
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yyyy = String(d.getFullYear());
+  return `${dd}/${mm}/${yyyy}`;
+}
+
+/**
+ * Normaliza texto digitado para dd/mm/aaaa; vazio ou inválido → ''.
+ * Evita depender de &lt;input type="date"&gt;, que em muitos navegadores mostra "dd/mm/aaaa" quando vazio.
+ */
+function normalizarTextoDataBRparaSalvar(s) {
+  const t = String(s ?? '').trim();
+  if (!t) return '';
+  const d0 = parseDateBRModulo(t);
+  if (d0 && !Number.isNaN(d0.getTime())) return formatDateBRFromDate(d0);
+  const parts = t.split(/[/\-]/).map((p) => p.trim());
+  if (parts.length !== 3) return '';
+  const dd = String(Math.min(31, Math.max(1, Number(parts[0]) || 0))).padStart(2, '0');
+  const mm = String(Math.min(12, Math.max(1, Number(parts[1]) || 0))).padStart(2, '0');
+  let yyyy = String(parts[2] ?? '').replace(/\D/g, '');
+  if (yyyy.length === 2) yyyy = `20${yyyy}`;
+  if (yyyy.length !== 4) return '';
+  const d = new Date(Number(yyyy), Number(mm) - 1, Number(dd));
+  return Number.isNaN(d.getTime()) ? '' : formatDateBRFromDate(d);
+}
+
+/** Soma meses mantendo o dia quando possível (ex.: 31/01 + 1 mês → último dia de fevereiro). */
+function addMonthsDate(d, months) {
+  const m = Math.round(Number(months) || 0);
+  const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const day = x.getDate();
+  x.setMonth(x.getMonth() + m);
+  if (x.getDate() !== day) {
+    x.setDate(0);
+  }
+  return x;
+}
+
+/**
+ * Datas de vencimento/pagamento mensais a partir da data do cálculo:
+ * 1ª parcela = 1 mês após a data base, 2ª = 2 meses, …
+ */
+function gerarDataParcelaMensalBR(dataCalculoStr, indiceZeroBased) {
+  const base = parseDateBRModulo(dataCalculoStr) ?? new Date();
+  const d = addMonthsDate(base, indiceZeroBased + 1);
+  return formatDateBRFromDate(d);
 }
 
 function SpinnerField({ value, onChange, min = 0, className = 'w-20' }) {
@@ -313,11 +429,15 @@ export function Calculos() {
         ...prev,
         [rodadaKey]: {
           pagina: 1,
+          paginaParcelamento: 1,
           titulos: gerarTitulosMock(codigoClienteNorm, procNorm, dimensaoNorm),
           parcelas: gerarParcelasMock(),
+          quantidadeParcelasInformada: '00',
+          taxaJurosParcelamento: '0,00',
           limpezaAtiva: false,
           snapshotAntesLimpeza: null,
           cabecalho: gerarCabecalhoMock(codigoClienteNorm, procNorm),
+          honorariosDataRecebimento: {},
         },
       };
     });
@@ -325,21 +445,25 @@ export function Calculos() {
 
   const rodadaAtual = rodadasState[rodadaKey] || {
     pagina: 1,
+    paginaParcelamento: 1,
     titulos: gerarTitulosMock(codigoClienteNorm, procNorm, dimensaoNorm),
     parcelas: gerarParcelasMock(),
+    quantidadeParcelasInformada: '00',
+    taxaJurosParcelamento: '0,00',
     limpezaAtiva: false,
     snapshotAntesLimpeza: null,
     cabecalho: gerarCabecalhoMock(codigoClienteNorm, procNorm),
+    honorariosDataRecebimento: {},
   };
 
-  // Ao trocar cliente/proc/dimensão, troca a página para a página daquela rodada
+  // Ao trocar cliente/proc/dimensão, restaura as páginas salvas daquela rodada (cada dimensão = rodada própria).
   useEffect(() => {
     setPagina(rodadaAtual.pagina || 1);
-    setPaginaParcelamento(1);
+    setPaginaParcelamento(rodadaAtual.paginaParcelamento || 1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rodadaKey]);
 
-  // Mantém a página sincronizada no estado da rodada atual
+  // Mantém a página (Títulos) sincronizada no estado da rodada atual
   useEffect(() => {
     setRodadasState((prev) => {
       const cur = prev[rodadaKey];
@@ -350,8 +474,21 @@ export function Calculos() {
     });
   }, [pagina, rodadaKey]);
 
+  // Mantém a página (Parcelamento) sincronizada no estado da rodada atual — ligada à mesma chave que títulos/dimensão.
+  useEffect(() => {
+    setRodadasState((prev) => {
+      const cur = prev[rodadaKey];
+      if (!cur) return prev;
+      const nextPagParc = Math.max(1, Number(paginaParcelamento) || 1);
+      if ((cur.paginaParcelamento ?? 1) === nextPagParc) return prev;
+      return { ...prev, [rodadaKey]: { ...cur, paginaParcelamento: nextPagParc } };
+    });
+  }, [paginaParcelamento, rodadaKey]);
+
   const titulos = rodadaAtual.titulos;
   const parcelas = Array.isArray(rodadaAtual.parcelas) ? rodadaAtual.parcelas : gerarParcelasMock();
+  const quantidadeParcelasInformada = rodadaAtual.quantidadeParcelasInformada ?? '00';
+  const taxaJurosParcelamento = rodadaAtual.taxaJurosParcelamento ?? '0,00';
   const limpezaAtiva = rodadaAtual.limpezaAtiva;
 
   const totalPaginas = Math.max(1, Math.ceil(titulos.length / TITULOS_POR_PAGINA));
@@ -376,6 +513,7 @@ export function Calculos() {
           multa: '',
           honorarios: '',
           total: '',
+          descricaoValor: '',
         })),
       ]
       : titulosPagina;
@@ -541,6 +679,92 @@ export function Calculos() {
     doc.text(`Total geral: ${resumoGeral.total}`, margemX, yResumo + 40);
 
     doc.save(gerarNomeArquivoPdf());
+  }
+
+  function nomeIndiceParaDocumentoWord(nome) {
+    const u = String(nome ?? '').toUpperCase();
+    if (u === 'POUPANÇA' || u === 'POUPANCA') return 'Poupança';
+    if (u === 'NENHUM') return 'Nenhum';
+    return String(nome ?? '');
+  }
+
+  function formatTaxaPercentualDocx(val) {
+    const s = String(val ?? '').trim();
+    if (!s) return '—';
+    return /%/.test(s) ? s : `${s}%`;
+  }
+
+  async function gerarWordListaDebitos() {
+    if (!aceitarPagamento) {
+      window.alert("Marque a opção 'Aceitar Pagamento' antes de gerar o documento.");
+      return;
+    }
+
+    const cab = rodadaAtual?.cabecalho || {};
+    const linhasTitulos = (rodadaAtual?.titulos || []).filter((t) =>
+      [t.dataVencimento, t.valorInicial, t.atualizacaoMonetaria, t.diasAtraso, t.juros, t.multa, t.honorarios, t.total].some(
+        (v) => String(v ?? '').trim() !== ''
+      )
+    );
+
+    if (linhasTitulos.length === 0) {
+      window.alert(
+        'Não há títulos calculados para exportar. Preencha a grade de títulos, aguarde o cálculo e aceite o pagamento antes de gerar o Word.'
+      );
+      return;
+    }
+
+    const indiceDoc = nomeIndiceParaDocumentoWord(indice);
+    const dataBaseStr = String(dataCalculo ?? '').trim() || '—';
+
+    const linhasWord = linhasTitulos.map((t) => {
+      const esp = t.datasEspeciais && typeof t.datasEspeciais === 'object' ? t.datasEspeciais : {};
+      const dataIniJuros = String(esp.dataInicialJuros || t.dataVencimento || '').trim() || '—';
+      const taxaJ =
+        esp.taxaJurosEspecial != null && String(esp.taxaJurosEspecial).trim() !== '' ? esp.taxaJurosEspecial : juros;
+      const taxaM = esp.multaEspecial != null && String(esp.multaEspecial).trim() !== '' ? esp.multaEspecial : multa;
+      const devedorNome = String(cab.reu || '').trim() || '—';
+      return {
+        devedor: devedorNome.toUpperCase(),
+        valor: String(t.valorInicial || '').trim() || '—',
+        dataInicialJuros: dataIniJuros,
+        taxaJuros: formatTaxaPercentualDocx(taxaJ),
+        valorJuros: String(t.juros || '').trim() || '—',
+        taxaMulta: formatTaxaPercentualDocx(taxaM),
+        multa: String(t.multa || '').trim() || '—',
+        atualizacaoMonetaria: String(t.atualizacaoMonetaria || '').trim() || '—',
+        dataAtualMonet: dataBaseStr,
+        encargosContratuais: String(t.honorarios || '').trim() || '—',
+        total: String(t.total || '').trim() || '—',
+      };
+    });
+
+    try {
+      const blob = await gerarDocumentoListaDebitosWord({
+        tituloPrincipal: `Lista de Débitos - Cálculo atualizado até ${dataBaseStr}`,
+        linhaCliente: `Cliente (código): ${codigoClienteNorm}`,
+        linhaProcesso: `Processo: ${procNorm}`,
+        linhaMeta: `Data-base do cálculo: ${dataBaseStr}   |   Índice monetário: ${indiceDoc}`,
+        colunaAtualizacaoTitulo: `Atualização Monetária\n(${indiceDoc})`,
+        linhas: linhasWord,
+        totais: {
+          principal: resumoGeral.valorInicial,
+          juros: resumoGeral.juros,
+          multa: resumoGeral.multa,
+          encargos: resumoGeral.honorarios,
+          geral: resumoGeral.total,
+        },
+      });
+      const safeData =
+        dataBaseStr !== '—'
+          ? dataBaseStr.replace(/\//g, '-').replace(/\s+/g, '_')
+          : new Date().toISOString().slice(0, 10);
+      const nomeArquivo = `Lista_de_Debitos_Cliente_${codigoClienteNorm}_Proc_${procNorm}_${safeData}.docx`;
+      baixarBlobDocx(blob, nomeArquivo);
+    } catch (err) {
+      console.error(err);
+      window.alert('Não foi possível gerar o documento Word. Tente novamente.');
+    }
   }
 
   function linhaVaziaTitulo() {
@@ -971,23 +1195,6 @@ export function Calculos() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aceitarPagamento, modoAlteracao, indice, dataCalculo, rodadaKey, indicesRefreshToken]);
 
-  function brDateToInputValue(br) {
-    const s = String(br ?? '').trim();
-    if (!s || s.length < 10) return '';
-    const [dd, mm, yyyy] = s.split('/');
-    if (!dd || !mm || !yyyy) return '';
-    return `${yyyy}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
-  }
-
-  function inputValueToBrDate(v) {
-    const s = String(v ?? '').trim();
-    if (!s) return '';
-    // yyyy-mm-dd -> dd/mm/yyyy
-    const [yyyy, mm, dd] = s.split('-');
-    if (!yyyy || !mm || !dd) return '';
-    return `${dd}/${mm}/${yyyy}`;
-  }
-
   function abrirModalDatasEspeciais(indexGlobal) {
     const linha = (rodadaAtual.titulos || [])[indexGlobal];
     const esp = linha && linha.datasEspeciais && typeof linha.datasEspeciais === 'object' ? linha.datasEspeciais : {};
@@ -1058,10 +1265,62 @@ export function Calculos() {
       parcela.valorParcela,
       parcela.honorariosParcela,
       parcela.observacao,
+      parcela.dataPagamento,
     ].some((v) => String(v ?? '').trim() !== '');
   }
 
+  function atualizarQuantidadeParcelasInformada(valorBruto) {
+    const digits = String(valorBruto ?? '').replace(/\D/g, '').slice(0, 4);
+    setRodadasState((prev) => {
+      const cur = prev[rodadaKey];
+      if (!cur) return prev;
+      return {
+        ...prev,
+        [rodadaKey]: { ...cur, quantidadeParcelasInformada: digits },
+      };
+    });
+  }
+
+  function onBlurQuantidadeParcelasInformada() {
+    setRodadasState((prev) => {
+      const cur = prev[rodadaKey];
+      if (!cur) return prev;
+      const fmt = formatarQuantidadeParcelasExibicao(cur.quantidadeParcelasInformada ?? '');
+      return {
+        ...prev,
+        [rodadaKey]: { ...cur, quantidadeParcelasInformada: fmt },
+      };
+    });
+  }
+
+  function atualizarTaxaJurosParcelamento(valorBruto) {
+    const t = String(valorBruto ?? '')
+      .replace(/%/g, '')
+      .replace(/[^\d.,]/g, '');
+    setRodadasState((prev) => {
+      const cur = prev[rodadaKey];
+      if (!cur) return prev;
+      return {
+        ...prev,
+        [rodadaKey]: { ...cur, taxaJurosParcelamento: t },
+      };
+    });
+  }
+
+  function onBlurTaxaJurosParcelamento() {
+    setRodadasState((prev) => {
+      const cur = prev[rodadaKey];
+      if (!cur) return prev;
+      const fmt = formatarTaxaJurosParcelamento2Casas(cur.taxaJurosParcelamento ?? '');
+      return {
+        ...prev,
+        [rodadaKey]: { ...cur, taxaJurosParcelamento: fmt },
+      };
+    });
+  }
+
   function atualizarParcelaNaRodada(indexGlobal, patch) {
+    if (aceitarPagamento && !modoAlteracao) return;
     setRodadasState((prev) => {
       const cur = prev[rodadaKey];
       if (!cur) return prev;
@@ -1081,23 +1340,169 @@ export function Calculos() {
     });
   }
 
+  function chaveHonorarioTitulo(i) {
+    return `titulo:${i}`;
+  }
+  function chaveHonorarioParcela(i) {
+    return `parcela:${i}`;
+  }
+
+  function atualizarHonorarioDataRecebimento(chave, dataBr) {
+    if (aceitarPagamento && !modoAlteracao) return;
+    setRodadasState((prev) => {
+      const cur = prev[rodadaKey];
+      if (!cur) return prev;
+      const map = { ...(cur.honorariosDataRecebimento || {}), [chave]: dataBr };
+      return { ...prev, [rodadaKey]: { ...cur, honorariosDataRecebimento: map } };
+    });
+  }
+
   const resumoParcelamento = useMemo(() => {
-    const validas = parcelas.filter((p) => parcelaTemValor(p));
-    const valorFinalParcelas = validas.reduce((acc, p) => acc + parseBRL(p.valorParcela), 0);
-    const valorHonorarios = validas.reduce((acc, p) => acc + parseBRL(p.honorariosParcela), 0);
+    /** Soma apenas as N primeiras parcelas (N = quantidade informada), após correção na grade. */
+    const nParc = parseQuantidadeParcelasNumero(quantidadeParcelasInformada);
+    let valorFinalParcelas = 0;
+    let valorHonorarios = 0;
+    for (let i = 0; i < nParc && i < parcelas.length; i++) {
+      valorFinalParcelas += parseBRL(parcelas[i]?.valorParcela);
+      valorHonorarios += parseBRL(parcelas[i]?.honorariosParcela);
+    }
+    valorFinalParcelas = trunc2(valorFinalParcelas);
+    valorHonorarios = trunc2(valorHonorarios);
     const valorTotalPagar = trunc2(valorFinalParcelas + valorHonorarios);
     return {
-      quantidade: validas.length,
-      valorFinalParcelas: formatBRL(trunc2(valorFinalParcelas)),
+      parcelasComValor: nParc,
+      valorFinalParcelas: formatBRL(valorFinalParcelas),
       valorTotalPagar: formatBRL(valorTotalPagar),
-      valorFinalHonorarios: formatBRL(trunc2(valorHonorarios)),
-      valorHonorariosParcela: validas.length > 0 ? formatBRL(trunc2(valorHonorarios / validas.length)) : formatBRL(0),
+      valorFinalHonorarios: formatBRL(valorHonorarios),
+      valorHonorariosParcela:
+        nParc > 0 ? formatBRL(trunc2(valorHonorarios / nParc)) : formatBRL(0),
       valorCustasParcela: formatBRL(0),
       valorFinalCustas: formatBRL(0),
-      valorFinalAtualizado: formatBRL(trunc2(valorFinalParcelas)),
+      /** Débito atualizado da aba Títulos (soma da coluna Total — mesmo valor do rodapé “total geral”). */
+      valorFinalAtualizado: resumoGeral.total,
       valorFinalAtualizadoCustas: formatBRL(0),
     };
-  }, [parcelas]);
+  }, [parcelas, quantidadeParcelasInformada, resumoGeral.total]);
+
+  const honorariosRecebimentoMap = rodadaAtual.honorariosDataRecebimento || {};
+
+  /** Mesma base da Conta Corrente em Processos: Conta Escritório filtrada por cliente/proc (conciliação). */
+  const financeiroContaEscritorioRodada = useMemo(
+    () => getLancamentosContaCorrente(codigoClienteNorm, procNorm),
+    [codigoClienteNorm, procNorm]
+  );
+
+  const nParcelasAtivas = parseQuantidadeParcelasNumero(quantidadeParcelasInformada);
+
+  const linhasHonorariosTitulo = useMemo(() => {
+    const out = [];
+    titulos.forEach((t, i) => {
+      const v = parseBRL(t.honorarios);
+      if (v > 0) out.push({ indice: i, titulo: t, valor: v });
+    });
+    return out;
+  }, [titulos]);
+
+  const linhasHonorariosParcela = useMemo(() => {
+    const out = [];
+    if (nParcelasAtivas <= 0) return out;
+    for (let i = 0; i < nParcelasAtivas; i++) {
+      const p = parcelas[i];
+      if (!p) continue;
+      const v = parseBRL(p.honorariosParcela);
+      if (v > 0) out.push({ indice: i, parcela: p, valor: v });
+    }
+    return out;
+  }, [parcelas, nParcelasAtivas]);
+
+  const somaHonorariosComRecebimento = useMemo(() => {
+    let s = 0;
+    for (const { indice } of linhasHonorariosTitulo) {
+      const d = honorariosRecebimentoMap[chaveHonorarioTitulo(indice)];
+      if (String(d ?? '').trim()) s += parseBRL(titulos[indice]?.honorarios);
+    }
+    for (const { indice } of linhasHonorariosParcela) {
+      const d = honorariosRecebimentoMap[chaveHonorarioParcela(indice)];
+      if (String(d ?? '').trim()) s += parseBRL(parcelas[indice]?.honorariosParcela);
+    }
+    return trunc2(s);
+  }, [linhasHonorariosTitulo, linhasHonorariosParcela, honorariosRecebimentoMap, titulos, parcelas]);
+
+  // Preenche valor da parcela e honorários por parcela: totais da aba Títulos + quantidade + taxa mensal (Price).
+  // Com "Aceitar Pagamento" marcado, não recalcula automaticamente (parcelas imutáveis até "Modo de Alteração").
+  useEffect(() => {
+    if (aceitarPagamento) return;
+
+    const tm = setTimeout(() => {
+      const nParc = parseQuantidadeParcelasNumero(quantidadeParcelasInformada);
+      const pvTotal = parseBRL(resumoGeral.total);
+      const pvHonorarios = parseBRL(resumoGeral.honorarios);
+      let taxaM = parsePercentualBR(taxaJurosParcelamento);
+      if (!Number.isFinite(taxaM)) taxaM = 0;
+
+      setRodadasState((prev) => {
+        const cur = prev[rodadaKey];
+        if (!cur) return prev;
+        const listaBase = Array.isArray(cur.parcelas) ? [...cur.parcelas] : gerarParcelasMock();
+
+        if (nParc <= 0) {
+          const next = listaBase.map((l) => ({
+            ...l,
+            valorParcela: '',
+            honorariosParcela: '',
+            dataVencimento: '',
+            dataPagamento: '',
+          }));
+          return { ...prev, [rodadaKey]: { ...cur, parcelas: next } };
+        }
+
+        const pmtValor =
+          pvTotal > 0 ? calcularParcelaPrecoMensalPrice(pvTotal, taxaM, nParc) : null;
+        const pmtHonor =
+          pvHonorarios > 0 ? calcularParcelaPrecoMensalPrice(pvHonorarios, taxaM, nParc) : null;
+
+        const valorFmt = pmtValor != null ? formatBRL(trunc2(pmtValor)) : '';
+        const honorFmt = pmtHonor != null ? formatBRL(trunc2(pmtHonor)) : '';
+
+        while (listaBase.length < nParc) listaBase.push(linhaVaziaParcela());
+        for (let i = 0; i < listaBase.length; i++) {
+          if (i < nParc) {
+            const dataParc = gerarDataParcelaMensalBR(dataCalculo, i);
+            listaBase[i] = {
+              ...listaBase[i],
+              valorParcela: valorFmt,
+              honorariosParcela: honorFmt,
+              dataVencimento: dataParc,
+              dataPagamento: dataParc,
+            };
+          } else {
+            listaBase[i] = {
+              ...listaBase[i],
+              valorParcela: '',
+              honorariosParcela: '',
+              dataVencimento: '',
+              dataPagamento: '',
+            };
+          }
+        }
+        const ultimo = listaBase.length - 1;
+        if (parcelaTemValor(listaBase[ultimo])) {
+          listaBase.push(linhaVaziaParcela());
+        }
+        return { ...prev, [rodadaKey]: { ...cur, parcelas: listaBase } };
+      });
+    }, 320);
+
+    return () => clearTimeout(tm);
+  }, [
+    rodadaKey,
+    quantidadeParcelasInformada,
+    taxaJurosParcelamento,
+    resumoGeral.total,
+    resumoGeral.honorarios,
+    dataCalculo,
+    aceitarPagamento,
+  ]);
 
   return (
     <div className="min-h-full bg-slate-200 flex flex-col">
@@ -1167,13 +1572,19 @@ export function Calculos() {
                         <td className="border border-slate-200 px-2 py-1">
                           {podeEditarLinha ? (
                             <input
-                              type="date"
-                              value={brDateToInputValue(row.dataVencimento)}
-                              onBlur={(e) => {
+                              type="text"
+                              inputMode="numeric"
+                              placeholder=""
+                              autoComplete="off"
+                              value={row.dataVencimento || ''}
+                              onChange={(e) =>
+                                atualizarTituloNaRodada(globalIdx, { dataVencimento: e.target.value })
+                              }
+                              onBlur={(e) =>
                                 atualizarTituloNaRodada(globalIdx, {
-                                  dataVencimento: inputValueToBrDate(e.target.value),
-                                });
-                              }}
+                                  dataVencimento: normalizarTextoDataBRparaSalvar(e.target.value),
+                                })
+                              }
                               className="w-full px-1 py-0.5 border border-slate-300 rounded text-sm"
                             />
                           ) : (
@@ -1324,6 +1735,15 @@ export function Calculos() {
           )}
           {tabAtiva === 'Parcelamento' && (
             <div className="border border-slate-300 rounded bg-white p-3">
+              <p className="text-xs text-slate-700 mb-2 rounded border border-slate-200 bg-slate-50 px-2 py-1.5 leading-snug">
+                O <strong>parcelamento</strong> acompanha os <strong>cálculos da aba Títulos</strong> para a{' '}
+                <strong>dimensão {dimensaoNorm}</strong> (cliente {codigoClienteNorm}, proc. {procNorm}). Ao mudar a{' '}
+                <strong>dimensão</strong>, os títulos e o parcelamento exibidos passam a ser os dessa dimensão — cada combinação
+                cliente/processo/dimensão mantém parcelamento e totais próprios.{' '}
+                Com <strong>quantidade de parcelas</strong> e <strong>taxa de juros de parcelamento</strong> (% ao mês) informados,
+                o valor de cada parcela e o <strong>honorário por parcela</strong> são calculados automaticamente (prestação fixa — Tabela Price)
+                sobre o total dos títulos e sobre a soma dos honorários da aba Títulos, com a mesma taxa.
+              </p>
               <div className="flex items-center justify-between mb-2">
                 <p className="text-sm text-slate-600">
                   Página {String(paginaParcelamento).padStart(2, '0')} — Parcelas {inicioParcelas + 1} a {Math.min(fimParcelas, parcelas.length)}
@@ -1369,9 +1789,19 @@ export function Calculos() {
                             <td className="border border-slate-200 px-2 py-1">
                               {podeEditar ? (
                                 <input
-                                  type="date"
-                                  value={brDateToInputValue(row.dataVencimento)}
-                                  onBlur={(e) => atualizarParcelaNaRodada(globalIdx, { dataVencimento: inputValueToBrDate(e.target.value) })}
+                                  type="text"
+                                  inputMode="numeric"
+                                  placeholder=""
+                                  autoComplete="off"
+                                  value={row.dataVencimento || ''}
+                                  onChange={(e) =>
+                                    atualizarParcelaNaRodada(globalIdx, { dataVencimento: e.target.value })
+                                  }
+                                  onBlur={(e) =>
+                                    atualizarParcelaNaRodada(globalIdx, {
+                                      dataVencimento: normalizarTextoDataBRparaSalvar(e.target.value),
+                                    })
+                                  }
                                   className="w-full px-1 py-0.5 border border-slate-300 rounded text-sm"
                                 />
                               ) : row.dataVencimento}
@@ -1436,7 +1866,20 @@ export function Calculos() {
                   <div className="border border-slate-300 bg-white p-2">
                     <p className="text-sm font-semibold text-slate-700 mb-2">Parcelamentos</p>
                     <div className="space-y-1.5 text-sm">
-                      <p className="flex justify-between gap-2"><span>Quantidade de Parcelas:</span><b>{String(resumoParcelamento.quantidade).padStart(2, '0')}</b></p>
+                      <div className="flex justify-between items-center gap-2">
+                        <span>Quantidade de Parcelas:</span>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          autoComplete="off"
+                          disabled={aceitarPagamento && !modoAlteracao}
+                          value={quantidadeParcelasInformada}
+                          onChange={(e) => atualizarQuantidadeParcelasInformada(e.target.value)}
+                          onBlur={onBlurQuantidadeParcelasInformada}
+                          title="Informe a quantidade de parcelas"
+                          className="w-[4.5rem] px-2 py-1 border border-slate-300 rounded text-sm bg-white text-slate-800 text-right tabular-nums shrink-0 disabled:bg-slate-100 disabled:text-slate-500"
+                        />
+                      </div>
                       <p className="flex justify-between gap-2"><span>Valor Final das Parcelas:</span><b>{resumoParcelamento.valorFinalParcelas}</b></p>
                       <p className="flex justify-between gap-2"><span>Valor Total Pago (após parcelamento):</span><b>{resumoParcelamento.valorTotalPagar}</b></p>
                       <p className="flex justify-between gap-2"><span>Valor Final dos Honorários:</span><b>{resumoParcelamento.valorFinalHonorarios}</b></p>
@@ -1448,16 +1891,495 @@ export function Calculos() {
                   <div className="border border-slate-300 bg-white p-2">
                     <p className="text-sm font-semibold text-slate-700 mb-2">Informações</p>
                     <div className="space-y-1.5 text-sm">
-                      <p className="flex justify-between gap-2"><span>Valor Final Atualizado das</span><b>{resumoParcelamento.valorFinalAtualizado}</b></p>
+                      <p className="flex justify-between gap-2"><span>Valor final Atualizado:</span><b>{resumoParcelamento.valorFinalAtualizado}</b></p>
                       <p className="flex justify-between gap-2"><span>Valor Final Atualizado das Custas:</span><b>{resumoParcelamento.valorFinalAtualizadoCustas}</b></p>
                       <p className="flex justify-between gap-2"><span>Valor Total a ser Pago:</span><b>{resumoParcelamento.valorTotalPagar}</b></p>
+                      <div className="flex justify-between items-center gap-2 pt-1 border-t border-slate-200">
+                        <span className="leading-tight">Taxa de Juros de Parcelamento:</span>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            autoComplete="off"
+                            disabled={aceitarPagamento && !modoAlteracao}
+                            value={taxaJurosParcelamento}
+                            onChange={(e) => atualizarTaxaJurosParcelamento(e.target.value)}
+                            onBlur={onBlurTaxaJurosParcelamento}
+                            title="Taxa em porcentagem (duas casas decimais)"
+                            placeholder="0,00"
+                            className="w-[5.25rem] px-2 py-1 border border-slate-300 rounded text-sm bg-white text-slate-800 text-right tabular-nums disabled:bg-slate-100 disabled:text-slate-500"
+                          />
+                          <span className="text-slate-600 font-medium">%</span>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
           )}
-          {tabAtiva !== 'Títulos' && tabAtiva !== 'Parcelamento' && (
+          {tabAtiva === 'Pagamento' && (
+            <div className="border border-slate-300 rounded bg-white p-3">
+              <p className="text-xs text-slate-700 mb-2 rounded border border-slate-200 bg-slate-50 px-2 py-1.5 leading-snug">
+                A aba <strong>Pagamento</strong> mostra as mesmas parcelas da aba <strong>Parcelamento</strong> para a{' '}
+                <strong>dimensão {dimensaoNorm}</strong> (cliente {codigoClienteNorm}, proc. {procNorm}), sem os painéis de resumo
+                lateral. Os valores acompanham o parcelamento; use a coluna <strong>Data de Pagamento</strong> para registrar quando
+                cada parcela foi quitada.
+              </p>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm text-slate-600">
+                  Página {String(paginaParcelamento).padStart(2, '0')} — Parcelas {inicioParcelas + 1} a{' '}
+                  {Math.min(fimParcelas, parcelas.length)}
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPaginaParcelamento((p) => Math.max(1, p - 1))}
+                    className="px-2 py-1 text-xs rounded border border-slate-300 bg-white hover:bg-slate-50"
+                  >
+                    Anterior
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPaginaParcelamento((p) => Math.min(totalPaginasParcelas, p + 1))}
+                    className="px-2 py-1 text-xs rounded border border-slate-300 bg-white hover:bg-slate-50"
+                  >
+                    Próxima
+                  </button>
+                </div>
+              </div>
+              <div className="overflow-x-auto border border-slate-300">
+                <table className="w-full text-sm border-collapse table-fixed">
+                  <thead>
+                    <tr className="bg-slate-100">
+                      <th className="border border-slate-300 px-2 py-1 text-left font-semibold text-slate-700 w-24">Parcela</th>
+                      <th className="border border-slate-300 px-2 py-1 text-left font-semibold text-slate-700 w-36">Data Venc.</th>
+                      <th className="border border-slate-300 px-2 py-1 text-left font-semibold text-slate-700 w-40">Valor</th>
+                      <th className="border border-slate-300 px-2 py-1 text-left font-semibold text-slate-700 w-40">Honor. Parc.</th>
+                      <th className="border border-slate-300 px-2 py-1 text-left font-semibold text-slate-700">Obs.</th>
+                      <th className="border border-slate-300 px-2 py-1 text-left font-semibold text-slate-700 w-36">Data de Pagamento</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {parcelasPaginaCompletas.map((row, idx) => {
+                      const globalIdx = inicioParcelas + idx;
+                      const podeEditar = !aceitarPagamento || modoAlteracao;
+                      return (
+                        <tr key={`pagamento-parcela-${globalIdx}`} className={globalIdx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
+                          <td className="border border-slate-200 px-2 py-1 text-slate-700">
+                            Parcela {String(globalIdx + 1).padStart(2, '0')}:
+                          </td>
+                          <td className="border border-slate-200 px-2 py-1">
+                            {podeEditar ? (
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                placeholder=""
+                                autoComplete="off"
+                                value={row.dataVencimento || ''}
+                                onChange={(e) =>
+                                  atualizarParcelaNaRodada(globalIdx, { dataVencimento: e.target.value })
+                                }
+                                onBlur={(e) =>
+                                  atualizarParcelaNaRodada(globalIdx, {
+                                    dataVencimento: normalizarTextoDataBRparaSalvar(e.target.value),
+                                  })
+                                }
+                                className="w-full px-1 py-0.5 border border-slate-300 rounded text-sm"
+                              />
+                            ) : (
+                              row.dataVencimento
+                            )}
+                          </td>
+                          <td className="border border-slate-200 px-2 py-1">
+                            {podeEditar ? (
+                              <input
+                                type="text"
+                                value={row.valorParcela}
+                                onChange={(e) => atualizarParcelaNaRodada(globalIdx, { valorParcela: e.target.value })}
+                                onBlur={(e) => {
+                                  const raw = String(e.target.value ?? '').trim();
+                                  atualizarParcelaNaRodada(globalIdx, { valorParcela: raw === '' ? '' : formatBRL(parseBRL(raw)) });
+                                }}
+                                className="w-full px-1 py-0.5 border border-slate-300 rounded text-sm"
+                              />
+                            ) : (
+                              row.valorParcela
+                            )}
+                          </td>
+                          <td className="border border-slate-200 px-2 py-1">
+                            {podeEditar ? (
+                              <input
+                                type="text"
+                                value={row.honorariosParcela}
+                                onChange={(e) => atualizarParcelaNaRodada(globalIdx, { honorariosParcela: e.target.value })}
+                                onBlur={(e) => {
+                                  const raw = String(e.target.value ?? '').trim();
+                                  atualizarParcelaNaRodada(globalIdx, {
+                                    honorariosParcela: raw === '' ? '' : formatBRL(parseBRL(raw)),
+                                  });
+                                }}
+                                className="w-full px-1 py-0.5 border border-slate-300 rounded text-sm"
+                              />
+                            ) : (
+                              row.honorariosParcela
+                            )}
+                          </td>
+                          <td className="border border-slate-200 px-2 py-1">
+                            {podeEditar ? (
+                              <input
+                                type="text"
+                                value={row.observacao}
+                                onChange={(e) => atualizarParcelaNaRodada(globalIdx, { observacao: e.target.value })}
+                                className="w-full px-1 py-0.5 border border-slate-300 rounded text-sm"
+                              />
+                            ) : (
+                              row.observacao
+                            )}
+                          </td>
+                          <td className="border border-slate-200 px-2 py-1">
+                            {podeEditar ? (
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                placeholder=""
+                                autoComplete="off"
+                                value={row.dataPagamento ?? ''}
+                                onChange={(e) =>
+                                  atualizarParcelaNaRodada(globalIdx, { dataPagamento: e.target.value })
+                                }
+                                onBlur={(e) =>
+                                  atualizarParcelaNaRodada(globalIdx, {
+                                    dataPagamento: normalizarTextoDataBRparaSalvar(e.target.value),
+                                  })
+                                }
+                                className="w-full px-1 py-0.5 border border-slate-300 rounded text-sm"
+                              />
+                            ) : (
+                              row.dataPagamento ?? ''
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-slate-100 font-medium">
+                      <td className="border border-slate-300 px-2 py-1" colSpan={2}>
+                        Total da página
+                      </td>
+                      <td className="border border-slate-300 px-2 py-1">
+                        {formatBRL(trunc2(parcelasPagina.reduce((acc, p) => acc + parseBRL(p.valorParcela), 0)))}
+                      </td>
+                      <td className="border border-slate-300 px-2 py-1">
+                        {formatBRL(trunc2(parcelasPagina.reduce((acc, p) => acc + parseBRL(p.honorariosParcela), 0)))}
+                      </td>
+                      <td className="border border-slate-300 px-2 py-1" />
+                      <td className="border border-slate-300 px-2 py-1" />
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+          )}
+          {tabAtiva === 'Honorários' && (
+            <div className="border border-slate-300 rounded bg-white p-3 space-y-4">
+              <p className="text-xs text-slate-700 rounded border border-slate-200 bg-slate-50 px-2 py-1.5 leading-snug">
+                Os valores de <strong>honorários</strong> vêm da aba <strong>Títulos</strong> (coluna Honorários) e do{' '}
+                <strong>parcelamento</strong> (honorários por parcela). Informe a <strong>data de recebimento</strong> para
+                conferir com o extrato. A conciliação usa os <strong>mesmos cliente, processo e Conta Escritório</strong> do
+                módulo <strong>Financeiro</strong> (critério idêntico à Conta Corrente em Processos).
+              </p>
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded border border-emerald-200 bg-emerald-50/80 px-3 py-2 text-sm">
+                <div>
+                  <p className="font-semibold text-emerald-900">Financeiro — Conta Escritório (este cliente/proc.)</p>
+                  <p className="text-emerald-800 tabular-nums">
+                    Soma dos lançamentos: <strong>{formatBRL(trunc2(financeiroContaEscritorioRodada.soma))}</strong> —{' '}
+                    {financeiroContaEscritorioRodada.lancamentos.length} lançamento(s).
+                  </p>
+                  <p className="text-xs text-emerald-800 mt-0.5">
+                    Honorários com data de recebimento informada (soma):{' '}
+                    <strong>{formatBRL(somaHonorariosComRecebimento)}</strong> — compare com créditos no extrato.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    navigate('/financeiro', {
+                      state: {
+                        financeiroConciliacaoHonorarios: {
+                          codCliente: codigoClienteNorm,
+                          proc: String(procNorm),
+                          dimensao: dimensaoNorm,
+                          rotulo: `Cálculos — dim. ${dimensaoNorm} — geral`,
+                          valorCentavos: null,
+                        },
+                      },
+                    })
+                  }
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-700 text-white text-sm font-medium hover:bg-emerald-800 shrink-0"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  Abrir Financeiro (filtrar)
+                </button>
+              </div>
+
+              <div>
+                <h3 className="text-sm font-semibold text-slate-800 mb-2">Honorários por título (aba Títulos)</h3>
+                {linhasHonorariosTitulo.length === 0 ? (
+                  <p className="text-sm text-slate-500">Nenhum honorário calculado por título nesta dimensão.</p>
+                ) : (
+                  <div className="overflow-x-auto border border-slate-300 rounded">
+                    <table className="w-full text-sm border-collapse">
+                      <thead>
+                        <tr className="bg-slate-100">
+                          <th className="border border-slate-300 px-2 py-1 text-left">Linha</th>
+                          <th className="border border-slate-300 px-2 py-1 text-left">Data venc.</th>
+                          <th className="border border-slate-300 px-2 py-1 text-left">Valor honorários</th>
+                          <th className="border border-slate-300 px-2 py-1 text-left">Data recebimento</th>
+                          <th className="border border-slate-300 px-2 py-1 text-left">Conciliação</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {linhasHonorariosTitulo.map(({ indice, titulo }) => {
+                          const chave = chaveHonorarioTitulo(indice);
+                          const podeEditar = !aceitarPagamento || modoAlteracao;
+                          const valorNum = parseBRL(titulo.honorarios);
+                          return (
+                            <tr key={chave} className={indice % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
+                              <td className="border border-slate-200 px-2 py-1 tabular-nums">#{indice + 1}</td>
+                              <td className="border border-slate-200 px-2 py-1">{titulo.dataVencimento || '—'}</td>
+                              <td className="border border-slate-200 px-2 py-1 tabular-nums">{titulo.honorarios}</td>
+                              <td className="border border-slate-200 px-2 py-1 w-44">
+                                {podeEditar ? (
+                                  <input
+                                    type="text"
+                                    inputMode="numeric"
+                                    placeholder=""
+                                    autoComplete="off"
+                                    value={honorariosRecebimentoMap[chave] ?? ''}
+                                    onChange={(e) => atualizarHonorarioDataRecebimento(chave, e.target.value)}
+                                    onBlur={(e) =>
+                                      atualizarHonorarioDataRecebimento(
+                                        chave,
+                                        normalizarTextoDataBRparaSalvar(e.target.value)
+                                      )
+                                    }
+                                    className="w-full px-1 py-0.5 border border-slate-300 rounded text-sm"
+                                  />
+                                ) : (
+                                  honorariosRecebimentoMap[chave] ?? ''
+                                )}
+                              </td>
+                              <td className="border border-slate-200 px-2 py-1">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    navigate('/financeiro', {
+                                      state: {
+                                        financeiroConciliacaoHonorarios: {
+                                          codCliente: codigoClienteNorm,
+                                          proc: String(procNorm),
+                                          dimensao: dimensaoNorm,
+                                          rotulo: `Honor. título linha ${indice + 1}`,
+                                          valorCentavos: Math.round(valorNum * 100),
+                                        },
+                                      },
+                                    })
+                                  }
+                                  className="text-xs text-blue-700 underline hover:text-blue-900"
+                                >
+                                  Ver no Financeiro
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <h3 className="text-sm font-semibold text-slate-800 mb-2">Honorários por parcela (parcelamento)</h3>
+                {linhasHonorariosParcela.length === 0 ? (
+                  <p className="text-sm text-slate-500">
+                    Nenhuma parcela com honorário ou quantidade de parcelas zerada — ajuste na aba Parcelamento.
+                  </p>
+                ) : (
+                  <div className="overflow-x-auto border border-slate-300 rounded">
+                    <table className="w-full text-sm border-collapse">
+                      <thead>
+                        <tr className="bg-slate-100">
+                          <th className="border border-slate-300 px-2 py-1 text-left">Parcela</th>
+                          <th className="border border-slate-300 px-2 py-1 text-left">Data venc.</th>
+                          <th className="border border-slate-300 px-2 py-1 text-left">Honor. parcela</th>
+                          <th className="border border-slate-300 px-2 py-1 text-left">Data recebimento</th>
+                          <th className="border border-slate-300 px-2 py-1 text-left">Conciliação</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {linhasHonorariosParcela.map(({ indice, parcela }) => {
+                          const chave = chaveHonorarioParcela(indice);
+                          const podeEditar = !aceitarPagamento || modoAlteracao;
+                          const valorNum = parseBRL(parcela.honorariosParcela);
+                          return (
+                            <tr key={chave} className={indice % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
+                              <td className="border border-slate-200 px-2 py-1 tabular-nums">
+                                {String(indice + 1).padStart(2, '0')}
+                              </td>
+                              <td className="border border-slate-200 px-2 py-1">{parcela.dataVencimento || '—'}</td>
+                              <td className="border border-slate-200 px-2 py-1 tabular-nums">{parcela.honorariosParcela}</td>
+                              <td className="border border-slate-200 px-2 py-1 w-44">
+                                {podeEditar ? (
+                                  <input
+                                    type="text"
+                                    inputMode="numeric"
+                                    placeholder=""
+                                    autoComplete="off"
+                                    value={honorariosRecebimentoMap[chave] ?? ''}
+                                    onChange={(e) => atualizarHonorarioDataRecebimento(chave, e.target.value)}
+                                    onBlur={(e) =>
+                                      atualizarHonorarioDataRecebimento(
+                                        chave,
+                                        normalizarTextoDataBRparaSalvar(e.target.value)
+                                      )
+                                    }
+                                    className="w-full px-1 py-0.5 border border-slate-300 rounded text-sm"
+                                  />
+                                ) : (
+                                  honorariosRecebimentoMap[chave] ?? ''
+                                )}
+                              </td>
+                              <td className="border border-slate-200 px-2 py-1">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    navigate('/financeiro', {
+                                      state: {
+                                        financeiroConciliacaoHonorarios: {
+                                          codCliente: codigoClienteNorm,
+                                          proc: String(procNorm),
+                                          dimensao: dimensaoNorm,
+                                          rotulo: `Honor. parcela ${String(indice + 1).padStart(2, '0')}`,
+                                          valorCentavos: Math.round(valorNum * 100),
+                                        },
+                                      },
+                                    })
+                                  }
+                                  className="text-xs text-blue-700 underline hover:text-blue-900"
+                                >
+                                  Ver no Financeiro
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+          {tabAtiva === 'Descrição dos Valores' && (
+            <div className="border border-slate-300 rounded bg-white p-3">
+              <p className="text-xs text-slate-700 mb-3 rounded border border-slate-200 bg-slate-50 px-2 py-1.5 leading-snug">
+                Para cada <strong>título</strong> cadastrado na aba <strong>Títulos</strong> (dimensão {dimensaoNorm}, cliente{' '}
+                {codigoClienteNorm}, proc. {procNorm}), use o campo abaixo para descrever em texto a que se refere aquele
+                valor (objeto, origem, contrato, observações).
+              </p>
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                <p className="text-sm text-slate-600">
+                  Página {String(pagina).padStart(2, '0')} — Linhas {inicio + 1} a {Math.min(fim, titulos.length)} (de{' '}
+                  {titulos.length})
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPagina((p) => Math.max(1, p - 1))}
+                    className="px-2 py-1 text-xs rounded border border-slate-300 bg-white hover:bg-slate-50"
+                  >
+                    Anterior
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPagina((p) => Math.min(totalPaginas, p + 1))}
+                    className="px-2 py-1 text-xs rounded border border-slate-300 bg-white hover:bg-slate-50"
+                  >
+                    Próxima
+                  </button>
+                </div>
+              </div>
+              <div className="overflow-x-auto border border-slate-300 rounded">
+                <table className="w-full text-sm border-collapse">
+                  <thead>
+                    <tr className="bg-slate-100">
+                      <th className="border border-slate-300 px-2 py-1.5 text-left font-semibold text-slate-700 w-14">#</th>
+                      <th className="border border-slate-300 px-2 py-1.5 text-left font-semibold text-slate-700 min-w-[100px]">
+                        Data venc.
+                      </th>
+                      <th className="border border-slate-300 px-2 py-1.5 text-left font-semibold text-slate-700 min-w-[120px]">
+                        Valor inicial
+                      </th>
+                      <th className="border border-slate-300 px-2 py-1.5 text-left font-semibold text-slate-700 min-w-[280px]">
+                        Descrição do valor
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {titulosPaginaCompletos.map((row, idx) => {
+                      const globalIdx = inicio + idx;
+                      const linhaExiste = globalIdx < (rodadaAtual.titulos || []).length;
+                      const podeEditar = linhaExiste && (!aceitarPagamento || modoAlteracao);
+                      return (
+                        <tr key={`desc-valor-${globalIdx}`} className={globalIdx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
+                          <td className="border border-slate-200 px-2 py-1 text-slate-600 tabular-nums">
+                            {String(globalIdx + 1).padStart(3, '0')}
+                          </td>
+                          <td className="border border-slate-200 px-2 py-1 text-slate-700">
+                            {linhaExiste ? row.dataVencimento || '—' : '—'}
+                          </td>
+                          <td className="border border-slate-200 px-2 py-1 text-slate-700">
+                            {linhaExiste ? row.valorInicial || '—' : '—'}
+                          </td>
+                          <td className="border border-slate-200 px-2 py-1 align-top">
+                            {linhaExiste ? (
+                              podeEditar ? (
+                                <textarea
+                                  value={row.descricaoValor ?? ''}
+                                  onChange={(e) =>
+                                    atualizarTituloNaRodada(globalIdx, { descricaoValor: e.target.value })
+                                  }
+                                  rows={2}
+                                  placeholder="Descreva a que se refere este título…"
+                                  className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm min-h-[2.75rem] resize-y"
+                                />
+                              ) : (
+                                <span className="text-slate-800 whitespace-pre-wrap block py-1">
+                                  {(row.descricaoValor ?? '').trim() !== ''
+                                    ? row.descricaoValor
+                                    : '—'}
+                                </span>
+                              )
+                            ) : (
+                              <span className="text-slate-400">—</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+          {tabAtiva !== 'Títulos' &&
+            tabAtiva !== 'Parcelamento' &&
+            tabAtiva !== 'Pagamento' &&
+            tabAtiva !== 'Honorários' &&
+            tabAtiva !== 'Descrição dos Valores' && (
             <div className="p-4 bg-white rounded border border-slate-300">
               <p className="text-sm text-slate-500">Conteúdo da aba &quot;{tabAtiva}&quot;.</p>
             </div>
@@ -1512,96 +2434,91 @@ export function Calculos() {
               </button>
             </div>
           </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-700 mb-0.5">Página</label>
-            <SpinnerField
-              value={tabAtiva === 'Parcelamento' ? paginaParcelamento : pagina}
-              onChange={tabAtiva === 'Parcelamento' ? setPaginaParcelamento : setPagina}
-              min={1}
-              className="w-24"
-            />
-            <p className="mt-1 text-[11px] text-slate-500">
-              de {String(tabAtiva === 'Parcelamento' ? totalPaginasParcelas : totalPaginas).padStart(2, '0')}
-            </p>
-          </div>
           {tabAtiva === 'Títulos' && (
-            <button
-              type="button"
-              onClick={() => {
-                if (limpezaAtiva) reverterLimpeza();
-                else setConfirmarLimpeza(true);
-              }}
-              className="w-full px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
-            >
-              {limpezaAtiva ? 'Reverter limpeza' : 'Limpa Página Toda'}
-            </button>
+            <>
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-0.5">Página</label>
+                <SpinnerField value={pagina} onChange={setPagina} min={1} className="w-24" />
+                <p className="mt-1 text-[11px] text-slate-500">de {String(totalPaginas).padStart(2, '0')}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (limpezaAtiva) reverterLimpeza();
+                  else setConfirmarLimpeza(true);
+                }}
+                className="w-full px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
+              >
+                {limpezaAtiva ? 'Reverter limpeza' : 'Limpa Página Toda'}
+              </button>
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-0.5">Dimensão:</label>
+                <SpinnerField value={dimensao} onChange={setDimensao} className="w-24" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-0.5">Data do Cálculo:</label>
+                <input type="text" value={dataCalculo} onChange={(e) => setDataCalculo(e.target.value)} className={inputClass} />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-0.5">Juros:</label>
+                <input type="text" value={juros} onChange={(e) => setJuros(e.target.value)} className={inputClass} />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-0.5">Multa:</label>
+                <input type="text" value={multa} onChange={(e) => setMulta(e.target.value)} className={inputClass} />
+              </div>
+              <div className="border border-slate-300 rounded p-2 bg-white">
+                <p className="text-xs font-medium text-slate-700 mb-1.5">Honorários</p>
+                <div className="flex gap-3 mb-1">
+                  <label className="flex items-center gap-1 text-xs cursor-pointer">
+                    <input type="radio" name="honorarios" checked={honorariosTipo === 'fixos'} onChange={() => setHonorariosTipo('fixos')} className="text-slate-600" />
+                    Fixos
+                  </label>
+                  <label className="flex items-center gap-1 text-xs cursor-pointer">
+                    <input type="radio" name="honorarios" checked={honorariosTipo === 'variaveis'} onChange={() => setHonorariosTipo('variaveis')} className="text-slate-600" />
+                    Variáveis
+                  </label>
+                </div>
+                {honorariosTipo === 'variaveis' && (
+                  <p className="text-xs text-slate-500 mb-1">
+                    ≤ 30 dias = 0% &nbsp;|&nbsp; 31–60 dias = 10% &nbsp;|&nbsp; &gt; 60 dias = 20%
+                  </p>
+                )}
+                <input
+                  type="text"
+                  value={honorariosValor}
+                  onChange={(e) => setHonorariosValor(e.target.value)}
+                  placeholder={honorariosTipo === 'fixos' ? 'Ex: 10 %' : '—'}
+                  disabled={honorariosTipo !== 'fixos'}
+                  className={`${inputClass} ${honorariosTipo !== 'fixos' ? 'bg-slate-50 text-slate-400' : ''}`}
+                />
+              </div>
+              <div className="border border-slate-300 rounded p-2 bg-white">
+                <p className="text-xs font-medium text-slate-700 mb-1.5">Índice</p>
+                <div className="space-y-0.5">
+                  {INDICES.map((nome) => (
+                    <label
+                      key={nome}
+                      className="flex items-center gap-1.5 text-xs cursor-pointer select-none"
+                      onClick={() => setIndice(nome)}
+                    >
+                      <input
+                        id={`indice-${nome}`}
+                        type="radio"
+                        name="indice"
+                        value={nome}
+                        checked={indice === nome}
+                        onChange={(e) => setIndice(e.target.value)}
+                        className="text-slate-600"
+                      />
+                      {nome}
+                      {nome === 'INPC' && <BarChart2 className="w-3.5 h-3.5 text-slate-500" />}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </>
           )}
-          <div>
-            <label className="block text-xs font-medium text-slate-700 mb-0.5">Dimensão:</label>
-            <SpinnerField value={dimensao} onChange={setDimensao} className="w-24" />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-700 mb-0.5">Data do Cálculo:</label>
-            <input type="text" value={dataCalculo} onChange={(e) => setDataCalculo(e.target.value)} className={inputClass} />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-700 mb-0.5">Juros:</label>
-            <input type="text" value={juros} onChange={(e) => setJuros(e.target.value)} className={inputClass} />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-700 mb-0.5">Multa:</label>
-            <input type="text" value={multa} onChange={(e) => setMulta(e.target.value)} className={inputClass} />
-          </div>
-          <div className="border border-slate-300 rounded p-2 bg-white">
-            <p className="text-xs font-medium text-slate-700 mb-1.5">Honorários</p>
-            <div className="flex gap-3 mb-1">
-              <label className="flex items-center gap-1 text-xs cursor-pointer">
-                <input type="radio" name="honorarios" checked={honorariosTipo === 'fixos'} onChange={() => setHonorariosTipo('fixos')} className="text-slate-600" />
-                Fixos
-              </label>
-              <label className="flex items-center gap-1 text-xs cursor-pointer">
-                <input type="radio" name="honorarios" checked={honorariosTipo === 'variaveis'} onChange={() => setHonorariosTipo('variaveis')} className="text-slate-600" />
-                Variáveis
-              </label>
-            </div>
-            {honorariosTipo === 'variaveis' && (
-              <p className="text-xs text-slate-500 mb-1">
-                ≤ 30 dias = 0% &nbsp;|&nbsp; 31–60 dias = 10% &nbsp;|&nbsp; &gt; 60 dias = 20%
-              </p>
-            )}
-            <input
-              type="text"
-              value={honorariosValor}
-              onChange={(e) => setHonorariosValor(e.target.value)}
-              placeholder={honorariosTipo === 'fixos' ? 'Ex: 10 %' : '—'}
-              disabled={honorariosTipo !== 'fixos'}
-              className={`${inputClass} ${honorariosTipo !== 'fixos' ? 'bg-slate-50 text-slate-400' : ''}`}
-            />
-          </div>
-          <div className="border border-slate-300 rounded p-2 bg-white">
-            <p className="text-xs font-medium text-slate-700 mb-1.5">Índice</p>
-            <div className="space-y-0.5">
-              {INDICES.map((nome) => (
-                <label
-                  key={nome}
-                  className="flex items-center gap-1.5 text-xs cursor-pointer select-none"
-                  onClick={() => setIndice(nome)}
-                >
-                  <input
-                    id={`indice-${nome}`}
-                    type="radio"
-                    name="indice"
-                    value={nome}
-                    checked={indice === nome}
-                    onChange={(e) => setIndice(e.target.value)}
-                    className="text-slate-600"
-                  />
-                  {nome}
-                  {nome === 'INPC' && <BarChart2 className="w-3.5 h-3.5 text-slate-500" />}
-                </label>
-              ))}
-            </div>
-          </div>
           <div className="space-y-1.5 pt-2 border-t border-slate-300">
             <button type="button" className="w-full px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50">Cancelar</button>
             <button type="button" className="w-full px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50">Configurações</button>
@@ -1636,7 +2553,15 @@ export function Calculos() {
             >
               Salvar Formulário em PDI
             </button>
-            <button type="button" className="w-full px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50">Gerar no Word</button>
+            <button
+              type="button"
+              onClick={() => {
+                void gerarWordListaDebitos();
+              }}
+              className="w-full px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
+            >
+              Gerar no Word
+            </button>
             <button type="button" className="w-full px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50">Email Automático</button>
             <button type="button" className="w-full px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50">Soluções Rápidas</button>
           </div>
@@ -1662,36 +2587,72 @@ export function Calculos() {
                 <div className="space-y-1">
                   <label className="block text-xs font-medium text-slate-700">Data Inicial Atual</label>
                   <input
-                    type="date"
-                    value={brDateToInputValue(formDatasEspeciais.dataInicialAtual)}
-                    onChange={(e) => setFormDatasEspeciais((prev) => ({ ...prev, dataInicialAtual: inputValueToBrDate(e.target.value) }))}
+                    type="text"
+                    inputMode="numeric"
+                    placeholder=""
+                    autoComplete="off"
+                    value={formDatasEspeciais.dataInicialAtual || ''}
+                    onChange={(e) => setFormDatasEspeciais((prev) => ({ ...prev, dataInicialAtual: e.target.value }))}
+                    onBlur={(e) =>
+                      setFormDatasEspeciais((prev) => ({
+                        ...prev,
+                        dataInicialAtual: normalizarTextoDataBRparaSalvar(e.target.value),
+                      }))
+                    }
                     className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm"
                   />
                 </div>
                 <div className="space-y-1">
                   <label className="block text-xs font-medium text-slate-700">Data Inicial Juros</label>
                   <input
-                    type="date"
-                    value={brDateToInputValue(formDatasEspeciais.dataInicialJuros)}
-                    onChange={(e) => setFormDatasEspeciais((prev) => ({ ...prev, dataInicialJuros: inputValueToBrDate(e.target.value) }))}
+                    type="text"
+                    inputMode="numeric"
+                    placeholder=""
+                    autoComplete="off"
+                    value={formDatasEspeciais.dataInicialJuros || ''}
+                    onChange={(e) => setFormDatasEspeciais((prev) => ({ ...prev, dataInicialJuros: e.target.value }))}
+                    onBlur={(e) =>
+                      setFormDatasEspeciais((prev) => ({
+                        ...prev,
+                        dataInicialJuros: normalizarTextoDataBRparaSalvar(e.target.value),
+                      }))
+                    }
                     className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm"
                   />
                 </div>
                 <div className="space-y-1">
                   <label className="block text-xs font-medium text-slate-700">Data Final Atual</label>
                   <input
-                    type="date"
-                    value={brDateToInputValue(formDatasEspeciais.dataFinalAtual)}
-                    onChange={(e) => setFormDatasEspeciais((prev) => ({ ...prev, dataFinalAtual: inputValueToBrDate(e.target.value) }))}
+                    type="text"
+                    inputMode="numeric"
+                    placeholder=""
+                    autoComplete="off"
+                    value={formDatasEspeciais.dataFinalAtual || ''}
+                    onChange={(e) => setFormDatasEspeciais((prev) => ({ ...prev, dataFinalAtual: e.target.value }))}
+                    onBlur={(e) =>
+                      setFormDatasEspeciais((prev) => ({
+                        ...prev,
+                        dataFinalAtual: normalizarTextoDataBRparaSalvar(e.target.value),
+                      }))
+                    }
                     className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm"
                   />
                 </div>
                 <div className="space-y-1">
                   <label className="block text-xs font-medium text-slate-700">Data Final Juros</label>
                   <input
-                    type="date"
-                    value={brDateToInputValue(formDatasEspeciais.dataFinalJuros)}
-                    onChange={(e) => setFormDatasEspeciais((prev) => ({ ...prev, dataFinalJuros: inputValueToBrDate(e.target.value) }))}
+                    type="text"
+                    inputMode="numeric"
+                    placeholder=""
+                    autoComplete="off"
+                    value={formDatasEspeciais.dataFinalJuros || ''}
+                    onChange={(e) => setFormDatasEspeciais((prev) => ({ ...prev, dataFinalJuros: e.target.value }))}
+                    onBlur={(e) =>
+                      setFormDatasEspeciais((prev) => ({
+                        ...prev,
+                        dataFinalJuros: normalizarTextoDataBRparaSalvar(e.target.value),
+                      }))
+                    }
                     className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm"
                   />
                 </div>

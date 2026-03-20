@@ -1,8 +1,46 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, HelpCircle, X } from 'lucide-react';
 import { Column } from './Column';
 import { columns, getBoardData, tasksByColumn } from '../data/mockData';
+import { getUsuariosAtivos } from '../data/agendaPersistenciaData';
+
+/**
+ * IDs antigos da tela Pendências (mock) → mesmo cadastro de Usuários (ex.: kari ↔ karla no storage).
+ */
+const PENDENCIAS_STORAGE_ID_FALLBACK = {
+  kari: 'karla',
+  isabelia: 'isabella',
+  ana: 'thalita',
+};
+
+function getColumnsPendencias() {
+  try {
+    const u = getUsuariosAtivos();
+    if (Array.isArray(u) && u.length > 0) {
+      return u.map((x) => ({ id: String(x.id), name: String(x.nome) }));
+    }
+  } catch {
+    /* ignore */
+  }
+  return columns.map((c) => ({ ...c }));
+}
+
+function obterListaNoStorage(parsed, colId) {
+  if (!parsed || typeof parsed !== 'object') return null;
+  if (Array.isArray(parsed[colId])) return parsed[colId];
+  const fb = PENDENCIAS_STORAGE_ID_FALLBACK[colId];
+  if (fb && Array.isArray(parsed[fb])) return parsed[fb];
+  return null;
+}
+
+function seedTasksTitlesForColumn(colId) {
+  const direct = tasksByColumn[colId];
+  if (Array.isArray(direct) && direct.length) return direct;
+  const fb = PENDENCIAS_STORAGE_ID_FALLBACK[colId];
+  if (fb && tasksByColumn[fb]) return tasksByColumn[fb];
+  return [];
+}
 
 const PENDENCIAS_STORAGE_KEY_V1 = 'pendencias_por_usuario_v1';
 const PENDENCIAS_STORAGE_KEY_V2 = 'pendencias_por_usuario_v2';
@@ -47,33 +85,36 @@ function normalizarPendenciaItem(item, seedNowIso) {
   };
 }
 
+function normalizarListaPendencias(lista, seedNow) {
+  const arr = Array.isArray(lista) ? lista : [];
+  const normalizados = arr.map((it) => normalizarPendenciaItem(it, seedNow));
+  while (
+    normalizados.length > 1 &&
+    String(normalizados[normalizados.length - 1]?.texto ?? '').trim() === '' &&
+    String(normalizados[normalizados.length - 2]?.texto ?? '').trim() === ''
+  ) {
+    normalizados.pop();
+  }
+  const ultimo = normalizados[normalizados.length - 1];
+  if (!ultimo || String(ultimo.texto ?? '').trim() !== '') {
+    normalizados.push(pendenciaVazia());
+  }
+  return normalizados;
+}
+
 function getPendenciasIniciais() {
   const seedNow = nowIso();
-  function normalizarLista(lista) {
-    const arr = Array.isArray(lista) ? lista : [];
-    const normalizados = arr.map((it) => normalizarPendenciaItem(it, seedNow));
-    // remove vazios duplicados no final e garante 1 caixa vazia.
-    while (
-      normalizados.length > 1 &&
-      String(normalizados[normalizados.length - 1]?.texto ?? '').trim() === '' &&
-      String(normalizados[normalizados.length - 2]?.texto ?? '').trim() === ''
-    ) {
-      normalizados.pop();
-    }
-    const ultimo = normalizados[normalizados.length - 1];
-    if (!ultimo || String(ultimo.texto ?? '').trim() !== '') {
-      normalizados.push(pendenciaVazia());
-    }
-    return normalizados;
-  }
+  const cols = getColumnsPendencias();
+
   try {
     const rawV2 = window.localStorage.getItem(PENDENCIAS_STORAGE_KEY_V2);
     if (rawV2) {
       const parsedV2 = JSON.parse(rawV2);
       if (parsedV2 && typeof parsedV2 === 'object' && !Array.isArray(parsedV2)) {
         const normalized = {};
-        for (const col of columns) {
-          normalized[col.id] = normalizarLista(parsedV2[col.id]);
+        for (const col of cols) {
+          const rawLista = obterListaNoStorage(parsedV2, col.id);
+          normalized[col.id] = normalizarListaPendencias(rawLista || [], seedNow);
         }
         return normalized;
       }
@@ -84,9 +125,9 @@ function getPendenciasIniciais() {
       const parsedV1 = JSON.parse(rawV1);
       if (parsedV1 && typeof parsedV1 === 'object' && !Array.isArray(parsedV1)) {
         const migrated = {};
-        for (const col of columns) {
-          const lista = Array.isArray(parsedV1[col.id]) ? parsedV1[col.id] : [];
-          migrated[col.id] = normalizarLista(lista);
+        for (const col of cols) {
+          const rawLista = obterListaNoStorage(parsedV1, col.id);
+          migrated[col.id] = normalizarListaPendencias(rawLista || [], seedNow);
         }
         return migrated;
       }
@@ -96,11 +137,11 @@ function getPendenciasIniciais() {
   }
 
   const base = {};
-  for (const col of columns) {
-    const origem = tasksByColumn[col.id] || [];
+  for (const col of cols) {
+    const origem = seedTasksTitlesForColumn(col.id);
     const textos = origem.map((t) => String(t.title || '')).filter((t) => t.trim() !== '');
     base[col.id] = [...textos].map((texto) => normalizarPendenciaItem(texto, seedNow));
-    base[col.id].push(pendenciaVazia()); // sempre deixa uma caixa em branco ao final
+    base[col.id].push(pendenciaVazia());
   }
   return base;
 }
@@ -108,6 +149,30 @@ function getPendenciasIniciais() {
 export function Board() {
   const location = useLocation();
   const navigate = useNavigate();
+  const [usuariosColunas, setUsuariosColunas] = useState(() => getUsuariosAtivos());
+
+  useEffect(() => {
+    const sync = () => setUsuariosColunas(getUsuariosAtivos());
+    sync();
+    window.addEventListener('vilareal:usuarios-agenda-atualizados', sync);
+    return () => window.removeEventListener('vilareal:usuarios-agenda-atualizados', sync);
+  }, []);
+
+  useEffect(() => {
+    if (location.pathname === '/pendencias') {
+      setUsuariosColunas(getUsuariosAtivos());
+    }
+  }, [location.pathname]);
+
+  const columnsPendencias = useMemo(() => {
+    if (Array.isArray(usuariosColunas) && usuariosColunas.length > 0) {
+      return usuariosColunas.map((x) => ({ id: String(x.id), name: String(x.nome) }));
+    }
+    return columns.map((c) => ({ ...c }));
+  }, [usuariosColunas]);
+
+  const colIdsKeyPendencias = useMemo(() => columnsPendencias.map((c) => c.id).join('|'), [columnsPendencias]);
+
   const [selectedTaskId, setSelectedTaskId] = useState('k1');
   const [pendenciasInicial] = useState(() => getPendenciasIniciais());
   const [pendenciasPorUsuario, setPendenciasPorUsuario] = useState(() => pendenciasInicial);
@@ -123,6 +188,61 @@ export function Board() {
     () => location.pathname === '/pendencias',
     [location.pathname]
   );
+
+  /** Novas pessoas em Usuários: cria listas de pendências alinhadas ao storage / seed. */
+  useEffect(() => {
+    if (!emPendencias) return;
+    const cols = getColumnsPendencias();
+    const seedNow = nowIso();
+    setPendenciasPorUsuario((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const col of cols) {
+        if (next[col.id] !== undefined && Array.isArray(next[col.id])) continue;
+        changed = true;
+        try {
+          const rawV2 = window.localStorage.getItem(PENDENCIAS_STORAGE_KEY_V2);
+          const parsedV2 = rawV2 ? JSON.parse(rawV2) : {};
+          const fromStore = obterListaNoStorage(parsedV2, col.id);
+          if (fromStore) {
+            next[col.id] = normalizarListaPendencias(fromStore, seedNow);
+          } else {
+            const origem = seedTasksTitlesForColumn(col.id);
+            const textos = origem.map((t) => String(t.title || '')).filter((t) => t.trim() !== '');
+            next[col.id] = [...textos].map((texto) => normalizarPendenciaItem(texto, seedNow));
+            next[col.id].push(pendenciaVazia());
+          }
+        } catch {
+          next[col.id] = [pendenciaVazia()];
+        }
+      }
+      return changed ? next : prev;
+    });
+    setPendenciasDraftPorUsuario((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const col of cols) {
+        if (next[col.id] !== undefined && Array.isArray(next[col.id])) continue;
+        changed = true;
+        try {
+          const rawV2 = window.localStorage.getItem(PENDENCIAS_STORAGE_KEY_V2);
+          const parsedV2 = rawV2 ? JSON.parse(rawV2) : {};
+          const fromStore = obterListaNoStorage(parsedV2, col.id);
+          if (fromStore) {
+            next[col.id] = normalizarListaPendencias(fromStore, seedNow);
+          } else {
+            const origem = seedTasksTitlesForColumn(col.id);
+            const textos = origem.map((t) => String(t.title || '')).filter((t) => t.trim() !== '');
+            next[col.id] = [...textos].map((texto) => normalizarPendenciaItem(texto, seedNow));
+            next[col.id].push(pendenciaVazia());
+          }
+        } catch {
+          next[col.id] = [pendenciaVazia()];
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [emPendencias, colIdsKeyPendencias]);
 
   function persistirPendencias(next) {
     try {
@@ -387,7 +507,7 @@ export function Board() {
     return (
       <div className="flex-1 overflow-auto p-4">
         <div className="flex gap-4 overflow-x-auto pb-2 min-h-0">
-          {columns.map((col) => {
+          {columnsPendencias.map((col) => {
             const pendencias = pendenciasDraftPorUsuario[col.id] || [pendenciaVazia()];
             return (
               <div

@@ -41,3 +41,37 @@ body {
 .dark-mode-protocolo input[type='checkbox'] {
   accent-color: #2563EB;
 }
+
+/* Processos: fase "Aguardando Providência" — texto branco sobre fundo azul (labels herdavam text-slate-*) */
+.processos-fase-aguardando-providencia label,
+.processos-fase-aguardando-providencia p,
+.processos-fase-aguardando-providencia h2,
+.processos-fase-aguardando-providencia h3 {
+  color: #ffffff !important;
+}
+
+.processos-fase-aguardando-providencia .text-slate-500,
+.processos-fase-aguardando-providencia .text-slate-600,
+.processos-fase-aguardando-providencia .text-slate-700,
+.processos-fase-aguardando-providencia .text-slate-800 {
+  color: #ffffff !important;
+}
+
+/* Áreas com fundo claro dentro do cartão: manter texto escuro para leitura */
+.processos-fase-aguardando-providencia .bg-white,
+.processos-fase-aguardando-providencia .bg-white *,
+.processos-fase-aguardando-providencia .bg-slate-50,
+.processos-fase-aguardando-providencia .bg-slate-50 *,
+.processos-fase-aguardando-providencia .bg-slate-100,
+.processos-fase-aguardando-providencia .bg-slate-100 * {
+  color: #334155 !important;
+}
+
+.processos-fase-aguardando-providencia .bg-white input,
+.processos-fase-aguardando-providencia .bg-white textarea,
+.processos-fase-aguardando-providencia .bg-white select,
+.processos-fase-aguardando-providencia .bg-slate-50 input,
+.processos-fase-aguardando-providencia .bg-slate-50 textarea,
+.processos-fase-aguardando-providencia .bg-slate-50 select {
+  color: #0f172a !important;
+}
