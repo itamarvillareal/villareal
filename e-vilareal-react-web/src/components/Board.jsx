@@ -1,17 +1,95 @@
 import { useMemo, useState } from 'react';
-import { useLocation } from 'react-router-dom';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { ChevronLeft, ChevronRight, HelpCircle, X } from 'lucide-react';
 import { Column } from './Column';
 import { columns, getBoardData, tasksByColumn } from '../data/mockData';
 
-const PENDENCIAS_STORAGE_KEY = 'pendencias_por_usuario_v1';
+const PENDENCIAS_STORAGE_KEY_V1 = 'pendencias_por_usuario_v1';
+const PENDENCIAS_STORAGE_KEY_V2 = 'pendencias_por_usuario_v2';
+const PROCESSOS_STORAGE_KEY = 'vilareal:processos-historico:v1';
+
+function makePendenciaId() {
+  return `p-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function nowIso() {
+  return new Date().toISOString();
+}
+
+function pendenciaVazia() {
+  return { id: makePendenciaId(), texto: '', criadoEm: null, finalizadoEm: null };
+}
+
+function normalizarPendenciaItem(item, seedNowIso) {
+  if (typeof item === 'string') {
+    const texto = String(item ?? '');
+    return {
+      id: makePendenciaId(),
+      texto,
+      criadoEm: texto.trim() ? seedNowIso : null,
+      finalizadoEm: null,
+    };
+  }
+
+  if (!item || typeof item !== 'object') {
+    return { id: makePendenciaId(), texto: '', criadoEm: null, finalizadoEm: null };
+  }
+
+  const texto = String(item.texto ?? item.valor ?? item.title ?? '');
+  const criadoEm = item.criadoEm ?? item.dataHoraCriada ?? null;
+  const finalizadoEm = item.finalizadoEm ?? item.dataHoraFinalizada ?? null;
+
+  return {
+    id: item.id ? String(item.id) : makePendenciaId(),
+    texto,
+    criadoEm: criadoEm || (texto.trim() ? seedNowIso : null),
+    finalizadoEm: finalizadoEm || null,
+  };
+}
 
 function getPendenciasIniciais() {
+  const seedNow = nowIso();
+  function normalizarLista(lista) {
+    const arr = Array.isArray(lista) ? lista : [];
+    const normalizados = arr.map((it) => normalizarPendenciaItem(it, seedNow));
+    // remove vazios duplicados no final e garante 1 caixa vazia.
+    while (
+      normalizados.length > 1 &&
+      String(normalizados[normalizados.length - 1]?.texto ?? '').trim() === '' &&
+      String(normalizados[normalizados.length - 2]?.texto ?? '').trim() === ''
+    ) {
+      normalizados.pop();
+    }
+    const ultimo = normalizados[normalizados.length - 1];
+    if (!ultimo || String(ultimo.texto ?? '').trim() !== '') {
+      normalizados.push(pendenciaVazia());
+    }
+    return normalizados;
+  }
   try {
-    const raw = window.localStorage.getItem(PENDENCIAS_STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === 'object') return parsed;
+    const rawV2 = window.localStorage.getItem(PENDENCIAS_STORAGE_KEY_V2);
+    if (rawV2) {
+      const parsedV2 = JSON.parse(rawV2);
+      if (parsedV2 && typeof parsedV2 === 'object' && !Array.isArray(parsedV2)) {
+        const normalized = {};
+        for (const col of columns) {
+          normalized[col.id] = normalizarLista(parsedV2[col.id]);
+        }
+        return normalized;
+      }
+    }
+
+    const rawV1 = window.localStorage.getItem(PENDENCIAS_STORAGE_KEY_V1);
+    if (rawV1) {
+      const parsedV1 = JSON.parse(rawV1);
+      if (parsedV1 && typeof parsedV1 === 'object' && !Array.isArray(parsedV1)) {
+        const migrated = {};
+        for (const col of columns) {
+          const lista = Array.isArray(parsedV1[col.id]) ? parsedV1[col.id] : [];
+          migrated[col.id] = normalizarLista(lista);
+        }
+        return migrated;
+      }
     }
   } catch {
     // segue fallback
@@ -21,15 +99,25 @@ function getPendenciasIniciais() {
   for (const col of columns) {
     const origem = tasksByColumn[col.id] || [];
     const textos = origem.map((t) => String(t.title || '')).filter((t) => t.trim() !== '');
-    base[col.id] = [...textos, '']; // sempre deixa uma caixa em branco ao final
+    base[col.id] = [...textos].map((texto) => normalizarPendenciaItem(texto, seedNow));
+    base[col.id].push(pendenciaVazia()); // sempre deixa uma caixa em branco ao final
   }
   return base;
 }
 
 export function Board() {
   const location = useLocation();
+  const navigate = useNavigate();
   const [selectedTaskId, setSelectedTaskId] = useState('k1');
-  const [pendenciasPorUsuario, setPendenciasPorUsuario] = useState(() => getPendenciasIniciais());
+  const [pendenciasInicial] = useState(() => getPendenciasIniciais());
+  const [pendenciasPorUsuario, setPendenciasPorUsuario] = useState(() => pendenciasInicial);
+  const [pendenciasDraftPorUsuario, setPendenciasDraftPorUsuario] = useState(() =>
+    JSON.parse(JSON.stringify(pendenciasInicial))
+  );
+  const [modalPendencias, setModalPendencias] = useState(null);
+  const [modalAcoesPendencia, setModalAcoesPendencia] = useState(null);
+  const [modalConsultaPendencia, setModalConsultaPendencia] = useState(null);
+  const [erroLocalizarPendencia, setErroLocalizarPendencia] = useState('');
   const boardData = getBoardData();
   const emPendencias = useMemo(
     () => location.pathname === '/pendencias',
@@ -38,35 +126,261 @@ export function Board() {
 
   function persistirPendencias(next) {
     try {
-      window.localStorage.setItem(PENDENCIAS_STORAGE_KEY, JSON.stringify(next));
+      window.localStorage.setItem(PENDENCIAS_STORAGE_KEY_V2, JSON.stringify(next));
     } catch {
       // storage pode estar indisponível
     }
   }
 
-  function atualizarPendencia(usuarioId, idx, valor) {
-    setPendenciasPorUsuario((prev) => {
-      const listaAtual = Array.isArray(prev[usuarioId]) ? [...prev[usuarioId]] : [''];
-      listaAtual[idx] = valor;
+  function atualizarPendenciaDraft(usuarioId, idx, valor) {
+    setPendenciasDraftPorUsuario((prev) => {
+      const base = Array.isArray(prev[usuarioId]) ? prev[usuarioId] : [pendenciaVazia()];
+      const listaAtual = base.map((x) => ({ ...(x || {}) }));
+
+      if (!listaAtual[idx]) {
+        while (listaAtual.length <= idx) listaAtual.push(pendenciaVazia());
+      }
+
+      listaAtual[idx] = { ...(listaAtual[idx] || pendenciaVazia()), texto: valor };
 
       // Se preencheu a última caixa, cria outra em branco (lista infinita).
       if (idx === listaAtual.length - 1 && String(valor).trim() !== '') {
-        listaAtual.push('');
+        listaAtual.push(pendenciaVazia());
       }
 
       // Mantém apenas uma caixa vazia no final.
       while (
         listaAtual.length > 1 &&
-        String(listaAtual[listaAtual.length - 1]).trim() === '' &&
-        String(listaAtual[listaAtual.length - 2]).trim() === ''
+        String(listaAtual[listaAtual.length - 1]?.texto ?? '').trim() === '' &&
+        String(listaAtual[listaAtual.length - 2]?.texto ?? '').trim() === ''
       ) {
         listaAtual.pop();
       }
 
-      const next = { ...prev, [usuarioId]: listaAtual };
-      persistirPendencias(next);
-      return next;
+      return { ...prev, [usuarioId]: listaAtual };
     });
+  }
+
+  function abrirModalConfirmacao(usuarioId, idx, acaoDepois = null) {
+    if (modalPendencias) return;
+
+    const listaPersistida = Array.isArray(pendenciasPorUsuario?.[usuarioId])
+      ? pendenciasPorUsuario[usuarioId]
+      : [pendenciaVazia()];
+    const listaDraft = Array.isArray(pendenciasDraftPorUsuario?.[usuarioId])
+      ? pendenciasDraftPorUsuario[usuarioId]
+      : [pendenciaVazia()];
+
+    const valorAnterior = listaPersistida[idx]?.texto ?? '';
+    const valorNovo = listaDraft[idx]?.texto ?? '';
+
+    if (String(valorAnterior) === String(valorNovo)) return;
+
+    setModalPendencias({
+      usuarioId,
+      idx,
+      valorAnterior: String(valorAnterior ?? ''),
+      valorNovo: String(valorNovo ?? ''),
+      listaAnterior: listaPersistida.map((x) => ({ ...(x || pendenciaVazia()) })),
+      acaoDepois,
+    });
+  }
+
+  function reverterAlteracaoModal() {
+    if (!modalPendencias) return;
+    const { usuarioId, listaAnterior } = modalPendencias;
+    setPendenciasDraftPorUsuario((prev) => ({ ...prev, [usuarioId]: [...listaAnterior] }));
+    setModalPendencias(null);
+  }
+
+  function confirmarAlteracaoModal() {
+    if (!modalPendencias) return;
+    const { usuarioId, idx, listaAnterior, acaoDepois } = modalPendencias;
+
+    const next = {
+      ...(pendenciasPorUsuario || {}),
+      ...(pendenciasDraftPorUsuario || {}),
+    };
+
+    const listaDraft = Array.isArray(pendenciasDraftPorUsuario?.[usuarioId])
+      ? pendenciasDraftPorUsuario[usuarioId]
+      : [];
+    const novaLista = listaDraft.map((x) => ({ ...(x || pendenciaVazia()) }));
+
+    if (!novaLista[idx]) novaLista[idx] = pendenciaVazia();
+
+    // Set data/hora de criação somente quando preenchido pela primeira vez.
+    const textoFinal = String(novaLista[idx]?.texto ?? '');
+    const itemAnterior = listaAnterior?.[idx] || null;
+    const criadoJaExiste = !!(itemAnterior && itemAnterior.criadoEm);
+    if (!novaLista[idx].criadoEm && textoFinal.trim() && !criadoJaExiste) {
+      novaLista[idx].criadoEm = nowIso();
+    }
+    // Se o anterior não tinha criadoEm mas já existia registro (migração), ainda assim
+    // devemos registrar a criação quando houver texto.
+    if (!novaLista[idx].criadoEm && textoFinal.trim()) {
+      novaLista[idx].criadoEm = nowIso();
+    }
+
+    next[usuarioId] = novaLista;
+
+    setPendenciasPorUsuario(next);
+    persistirPendencias(next);
+    setModalPendencias(null);
+
+    if (!acaoDepois) return;
+
+    // Atualiza estado/dados conforme a ação escolhida.
+    if (acaoDepois.tipo === 'finalizar') {
+      const listaAtualizada = next[usuarioId].map((x) => ({ ...(x || pendenciaVazia()) }));
+      const item = listaAtualizada[idx] || pendenciaVazia();
+      item.finalizadoEm = item.finalizadoEm || nowIso();
+      listaAtualizada[idx] = item;
+      const nextFinal = { ...(next || {}) , [usuarioId]: listaAtualizada };
+      setPendenciasPorUsuario(nextFinal);
+      setPendenciasDraftPorUsuario((prev) => ({ ...(prev || {}), [usuarioId]: listaAtualizada }));
+      persistirPendencias(nextFinal);
+      return;
+    }
+
+    if (acaoDepois.tipo === 'localizar') {
+      const texto = String(next[usuarioId]?.[idx]?.texto ?? '');
+      const ref = extrairReferenciaProcesso(texto);
+      if (!ref) {
+        setErroLocalizarPendencia('Não encontrei referência de processo no texto da pendência.');
+        return;
+      }
+      navigate('/processos', { state: { codCliente: String(ref.codCliente ?? ''), proc: String(ref.proc ?? '') } });
+      return;
+    }
+
+    if (acaoDepois.tipo === 'consultar') {
+      const item = next[usuarioId]?.[idx] || null;
+      setModalConsultaPendencia(item ? { usuarioId, idx, ...item } : null);
+      return;
+    }
+  }
+
+  function abrirModalAcoesPendencia(usuarioId, idx) {
+    setModalAcoesPendencia({
+      usuarioId,
+      idx,
+      acaoSelecionada: 'finalizar', // default (como no anexo)
+    });
+  }
+
+  function fecharModalAcoesPendencia() {
+    setModalAcoesPendencia(null);
+  }
+
+  function apenasDigitos(v) {
+    return String(v ?? '').replace(/\D/g, '');
+  }
+
+  function buscarProcessoNoStorePorNumero(numeroProcesso) {
+    const target = apenasDigitos(numeroProcesso);
+    if (!target) return null;
+
+    let store = {};
+    try {
+      const raw = window.localStorage.getItem(PROCESSOS_STORAGE_KEY);
+      if (raw) store = JSON.parse(raw) || {};
+    } catch {
+      // ignora
+    }
+
+    for (const [key, regRaw] of Object.entries(store)) {
+      const reg = regRaw || {};
+      const novo = apenasDigitos(reg.numeroProcessoNovo);
+      const velho = apenasDigitos(reg.numeroProcessoVelho);
+      if (novo && target && novo === target) {
+        const [codCliente, proc] = key.split(':');
+        return { codCliente: reg.codCliente || codCliente || '', proc: reg.proc ?? proc ?? '' };
+      }
+      if (velho && target && velho === target) {
+        const [codCliente, proc] = key.split(':');
+        return { codCliente: reg.codCliente || codCliente || '', proc: reg.proc ?? proc ?? '' };
+      }
+    }
+    return null;
+  }
+
+  function extrairReferenciaProcesso(textoPendencia) {
+    const s = String(textoPendencia ?? '');
+
+    // 1) Número do processo (padrão CNJ mock: 0000000-00.0000.8.09.0137).
+    const mNumeroProcesso = s.match(/\b\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}\b/);
+    if (mNumeroProcesso && mNumeroProcesso[0]) {
+      const found = buscarProcessoNoStorePorNumero(mNumeroProcesso[0]);
+      if (found?.codCliente && found?.proc) return found;
+    }
+
+    // 2) Código do Cliente + Processo (ex.: "codCliente 3 proc 2", "Cod. Cliente: 3 / Proc: 2").
+    const mCod =
+      s.match(/\bcod(?:\\.?\s*)?cliente\b\s*[-:]?\s*(\d{1,10})/i) ||
+      s.match(/\bcodigo(?:\s*do)?\s*cliente\b\s*[-:]?\s*(\d{1,10})/i) ||
+      s.match(/\bcliente\b\s*[-:]?\s*(\d{1,10})/i);
+    const mProc =
+      s.match(/\bproc(?:esso)?\b\s*[-:]?\s*(\d{1,10})/i) ||
+      s.match(/\bprocesso\b\s*[-:]?\s*(\d{1,10})/i) ||
+      s.match(/\bproc\b\s*(\d{1,10})/i);
+
+    const codCliente = mCod?.[1];
+    const proc = mProc?.[1];
+    if (codCliente && proc) return { codCliente, proc };
+
+    return null;
+  }
+
+  function executarAcaoPendencia(acaoTipo) {
+    if (!modalAcoesPendencia) return;
+    const { usuarioId, idx } = modalAcoesPendencia;
+
+    const listaPersistida = Array.isArray(pendenciasPorUsuario?.[usuarioId]) ? pendenciasPorUsuario[usuarioId] : [];
+    const listaDraft = Array.isArray(pendenciasDraftPorUsuario?.[usuarioId]) ? pendenciasDraftPorUsuario[usuarioId] : [];
+
+    const textoAnterior = listaPersistida[idx]?.texto ?? '';
+    const textoNovo = listaDraft[idx]?.texto ?? '';
+
+    if (String(textoAnterior) !== String(textoNovo)) {
+      // Texto mudou: aplica confirmação da "grafia" antes de executar a ação.
+      setModalAcoesPendencia(null);
+      abrirModalConfirmacao(usuarioId, idx, { tipo: acaoTipo });
+      return;
+    }
+
+    // Texto já idêntico no persistido e no draft: executa agora.
+    if (acaoTipo === 'finalizar') {
+      const next = { ...(pendenciasPorUsuario || {}) };
+      const novaLista = (next[usuarioId] || []).map((x) => ({ ...(x || pendenciaVazia()) }));
+      if (!novaLista[idx]) novaLista[idx] = pendenciaVazia();
+      novaLista[idx].finalizadoEm = novaLista[idx].finalizadoEm || nowIso();
+      next[usuarioId] = novaLista;
+      setPendenciasPorUsuario(next);
+      setPendenciasDraftPorUsuario((prev) => ({ ...(prev || {}), [usuarioId]: novaLista }));
+      persistirPendencias(next);
+      fecharModalAcoesPendencia();
+      return;
+    }
+
+    if (acaoTipo === 'localizar') {
+      const texto = String(pendenciasPorUsuario?.[usuarioId]?.[idx]?.texto ?? pendenciasDraftPorUsuario?.[usuarioId]?.[idx]?.texto ?? '');
+      const ref = extrairReferenciaProcesso(texto);
+      if (!ref) {
+        setErroLocalizarPendencia('Não encontrei referência de processo no texto da pendência.');
+        return;
+      }
+      navigate('/processos', { state: { codCliente: String(ref.codCliente ?? ''), proc: String(ref.proc ?? '') } });
+      fecharModalAcoesPendencia();
+      return;
+    }
+
+    if (acaoTipo === 'consultar') {
+      const item = pendenciasPorUsuario?.[usuarioId]?.[idx] || null;
+      setModalConsultaPendencia(item ? { usuarioId, idx, ...item } : null);
+      fecharModalAcoesPendencia();
+      return;
+    }
   }
 
   if (emPendencias) {
@@ -74,7 +388,7 @@ export function Board() {
       <div className="flex-1 overflow-auto p-4">
         <div className="flex gap-4 overflow-x-auto pb-2 min-h-0">
           {columns.map((col) => {
-            const pendencias = pendenciasPorUsuario[col.id] || [''];
+            const pendencias = pendenciasDraftPorUsuario[col.id] || [pendenciaVazia()];
             return (
               <div
                 key={col.id}
@@ -92,11 +406,16 @@ export function Board() {
                   </div>
                 </div>
                 <div className="flex flex-col gap-2 p-2 flex-1 min-h-0 overflow-y-auto">
-                  {pendencias.map((texto, idx) => (
+                  {pendencias.map((item, idx) => (
                     <textarea
-                      key={`${col.id}-${idx}`}
-                      value={texto}
-                      onChange={(e) => atualizarPendencia(col.id, idx, e.target.value)}
+                      key={`${col.id}-${item?.id ?? idx}`}
+                      value={item?.texto ?? ''}
+                      onChange={(e) => atualizarPendenciaDraft(col.id, idx, e.target.value)}
+                      onBlur={() => {
+                        if (modalAcoesPendencia || modalConsultaPendencia || erroLocalizarPendencia) return; // evita conflito com modais
+                        abrirModalConfirmacao(col.id, idx);
+                      }}
+                      onDoubleClick={() => abrirModalAcoesPendencia(col.id, idx)}
                       placeholder="Nova tarefa..."
                       rows={3}
                       className="min-h-[72px] rounded-md border-2 p-3 text-sm bg-white border-gray-200 hover:border-gray-300 text-gray-700 resize-none focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-400"
@@ -107,6 +426,164 @@ export function Board() {
             );
           })}
         </div>
+
+        {modalPendencias && (
+          <div
+            className="fixed inset-0 z-[80] flex items-center justify-center bg-black/30 p-4"
+            role="dialog"
+            aria-modal="true"
+          >
+            <div
+              className="w-full max-w-2xl bg-white rounded-lg shadow-xl border border-slate-200 overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-200 bg-white">
+                <div className="text-sm font-medium text-slate-800">Pergunta</div>
+                <button
+                  type="button"
+                  className="p-1.5 rounded text-slate-500 hover:bg-slate-100"
+                  aria-label="Fechar"
+                  onClick={reverterAlteracaoModal}
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="px-6 py-6">
+                <div className="flex items-start gap-4">
+                  <div className="flex-shrink-0">
+                    <div className="w-14 h-14 rounded-full bg-blue-600 flex items-center justify-center">
+                      <HelpCircle className="w-8 h-8 text-white" />
+                    </div>
+                  </div>
+                  <div className="flex-1">
+                    <div className="text-lg font-medium text-slate-900">
+                      Deseja alterar a grafia desta pendência???
+                    </div>
+                    <div className="mt-3 text-sm text-slate-900 leading-relaxed">
+                      LEMBRE-SE! ESTE NÃO É O PROCEDIMENTO PARA 'FINALIZAR' A PENDÊNCIA:
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="px-6 py-4 border-t border-slate-200 flex justify-end gap-4 bg-white">
+                <button
+                  type="button"
+                  className="px-10 py-2 rounded border border-slate-300 bg-blue-600 text-white hover:bg-blue-700"
+                  onClick={confirmarAlteracaoModal}
+                >
+                  Sim
+                </button>
+                <button
+                  type="button"
+                  className="px-10 py-2 rounded border border-slate-300 bg-white text-slate-800 hover:bg-slate-100"
+                  onClick={reverterAlteracaoModal}
+                >
+                  Não
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {modalAcoesPendencia && (
+          <div
+            className="fixed inset-0 z-[90] flex items-start justify-center bg-black/20 p-4 pt-24"
+            role="dialog"
+            aria-modal="true"
+          >
+            <div
+              className="w-full max-w-md bg-white rounded-lg shadow-xl border border-slate-200 overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 bg-white">
+                <h2 className="text-lg font-medium text-slate-900">Ações</h2>
+                <button type="button" className="p-1.5 rounded text-slate-500 hover:bg-slate-50" onClick={fecharModalAcoesPendencia} aria-label="Fechar">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="px-6 py-5">
+                <div className="space-y-3">
+                  {[
+                    { tipo: 'finalizar', label: 'Finalizar Pendência' },
+                    { tipo: 'localizar', label: 'Localizar Processo' },
+                    { tipo: 'consultar', label: 'Consultar dados da Pendência' },
+                  ].map((opt) => (
+                    <label key={opt.tipo} className="flex items-center gap-3 cursor-pointer text-base text-slate-900">
+                      <input
+                        type="radio"
+                        name="acoes-pendencia"
+                        checked={modalAcoesPendencia.acaoSelecionada === opt.tipo}
+                        onChange={() => setModalAcoesPendencia((prev) => ({ ...(prev || {}), acaoSelecionada: opt.tipo }))}
+                      />
+                      {opt.label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="px-6 pb-5 flex justify-center border-t border-slate-200 pt-4 bg-white">
+                <button
+                  type="button"
+                  className="w-40 px-4 py-2 rounded border border-slate-300 bg-white text-slate-800 hover:bg-slate-50"
+                  onClick={() => executarAcaoPendencia(modalAcoesPendencia.acaoSelecionada)}
+                >
+                  OK
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {modalConsultaPendencia && (
+          <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/30 p-4" role="dialog" aria-modal="true" onClick={() => setModalConsultaPendencia(null)}>
+            <div className="w-full max-w-lg bg-white rounded-lg shadow-xl border border-slate-200 overflow-hidden" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 bg-white">
+                <h2 className="text-base font-semibold text-slate-800">Dados da Pendência</h2>
+                <button type="button" className="p-1.5 rounded text-slate-500 hover:bg-slate-50" onClick={() => setModalConsultaPendencia(null)} aria-label="Fechar">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="px-6 py-5 space-y-3">
+                <div className="text-sm text-slate-700">
+                  <span className="font-medium">Texto:</span> {modalConsultaPendencia.texto || ''}
+                </div>
+                <div className="text-sm text-slate-700">
+                  <span className="font-medium">Criada em:</span> {modalConsultaPendencia.criadoEm ? new Date(modalConsultaPendencia.criadoEm).toLocaleString('pt-BR') : '—'}
+                </div>
+                <div className="text-sm text-slate-700">
+                  <span className="font-medium">Finalizada em:</span> {modalConsultaPendencia.finalizadoEm ? new Date(modalConsultaPendencia.finalizadoEm).toLocaleString('pt-BR') : '—'}
+                </div>
+              </div>
+              <div className="px-6 py-4 border-t border-slate-200 flex justify-center bg-white">
+                <button type="button" className="px-10 py-2 rounded border border-slate-300 bg-white text-slate-800 hover:bg-slate-50" onClick={() => setModalConsultaPendencia(null)}>
+                  OK
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {erroLocalizarPendencia && (
+          <div className="fixed inset-0 z-[96] flex items-center justify-center bg-black/30 p-4" role="dialog" aria-modal="true" onClick={() => setErroLocalizarPendencia('')}>
+            <div className="w-full max-w-md bg-white rounded-lg shadow-xl border border-slate-200 overflow-hidden" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 bg-white">
+                <h2 className="text-base font-semibold text-slate-800">Erro</h2>
+                <button type="button" className="p-1.5 rounded text-slate-500 hover:bg-slate-50" onClick={() => setErroLocalizarPendencia('')} aria-label="Fechar">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="px-6 py-5 text-slate-800">{erroLocalizarPendencia}</div>
+              <div className="px-6 pb-5 flex justify-center border-t border-slate-200 pt-3 bg-white">
+                <button type="button" className="w-40 px-4 py-2 rounded border border-slate-300 bg-white text-slate-800 hover:bg-slate-50" onClick={() => setErroLocalizarPendencia('')}>
+                  OK
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }

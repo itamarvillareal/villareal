@@ -12,8 +12,6 @@ export const navItems = [
   { id: 'financeiro', label: 'Financeiro', icon: 'CircleDollarSign' },
   { id: 'relatorio', label: 'Relatório Processos', icon: 'FileSpreadsheet' },
   { id: 'pendencias', label: 'Pendências', icon: 'AlertTriangle' },
-  { id: 'diligencias', label: 'Diligências', icon: 'Briefcase' },
-  { id: 'dativos', label: 'Dativos', icon: 'Scale' },
   { id: 'diagnosticos', label: 'Diagnósticos', icon: 'Activity' },
   { id: 'usuarios', label: 'Usuários', icon: 'UserCog' },
 ];
@@ -82,9 +80,9 @@ export const controleButtons = [
 
 /** Dados mockados para Agenda */
 export const agendaUsuarios = [
-  { id: 'itamar', nome: 'Dr. Itamar' },
-  { id: 'kari', nome: 'KARI A' },
-  { id: 'isabelia', nome: 'ISABELIA' },
+  { id: 'itamar', nome: 'ITAMAR' },
+  { id: 'kari', nome: 'KARLA' },
+  { id: 'isabelia', nome: 'ISABELLA' },
   { id: 'ana', nome: 'ANA LUISA' },
 ];
 

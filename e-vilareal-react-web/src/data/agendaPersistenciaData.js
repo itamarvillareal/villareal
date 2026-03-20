@@ -1,6 +1,7 @@
-import { agendaUsuarios } from './mockData';
+import { agendaUsuarios as agendaUsuariosBase } from './mockData';
 
 const STORAGE_KEY = 'vilareal:agenda-eventos:v1';
+const STORAGE_USUARIOS_KEY = 'vilareal:agenda-usuarios:v1';
 
 function apenasDigitos(v) {
   return String(v ?? '').replace(/\D/g, '');
@@ -96,7 +97,7 @@ export function agendarAudienciaParaTodosUsuarios({
   let inseridos = 0;
   let atualizados = 0;
 
-  const usuarios = Array.isArray(agendaUsuarios) ? agendaUsuarios : [];
+  const usuarios = getUsuariosAtivos();
   const novos = usuarios.map((u) => {
     const usuarioId = u?.id ? String(u.id) : '';
     return {
@@ -141,5 +142,59 @@ export function getEventosAgendaPersistidosPorData(dataBr) {
   const lista = store[data];
   if (!Array.isArray(lista)) return [];
   return lista;
+}
+
+function loadUsuariosAtivos() {
+  try {
+    const raw = window.localStorage.getItem(STORAGE_USUARIOS_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return null;
+    // valida shape mínima
+    const filtrados = parsed
+      .map((u) => ({ id: u?.id != null ? String(u.id) : '', nome: u?.nome != null ? String(u.nome) : '' }))
+      .filter((u) => u.id && u.nome);
+    return filtrados;
+  } catch {
+    return null;
+  }
+}
+
+function saveUsuariosAtivos(usuarios) {
+  try {
+    window.localStorage.setItem(STORAGE_USUARIOS_KEY, JSON.stringify(usuarios));
+  } catch {
+    // ignora
+  }
+}
+
+export function getUsuariosAtivos() {
+  const fromStore = loadUsuariosAtivos();
+  const base = Array.isArray(agendaUsuariosBase) ? agendaUsuariosBase : [];
+  const lista = fromStore && fromStore.length > 0 ? fromStore : base;
+  const basePrimeiro = base[0];
+  if (basePrimeiro && Array.isArray(lista) && !lista.some((u) => String(u?.id || '') === String(basePrimeiro.id))) {
+    return [basePrimeiro, ...lista];
+  }
+  return lista;
+}
+
+export function setUsuariosAtivos(usuarios) {
+  if (!Array.isArray(usuarios)) return;
+  const filtrados = usuarios
+    .map((u) => ({ id: u?.id != null ? String(u.id) : '', nome: u?.nome != null ? String(u.nome) : '' }))
+    .filter((u) => u.id && u.nome);
+  if (filtrados.length === 0) return;
+
+  const base = Array.isArray(agendaUsuariosBase) ? agendaUsuariosBase : [];
+  const basePrimeiro = base[0];
+  const jaTemBasePrimeiro =
+    basePrimeiro && filtrados.some((u) => String(u.id) === String(basePrimeiro.id));
+  if (basePrimeiro && !jaTemBasePrimeiro) {
+    saveUsuariosAtivos([basePrimeiro, ...filtrados]);
+    return;
+  }
+
+  saveUsuariosAtivos(filtrados);
 }
 

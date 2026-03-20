@@ -69,6 +69,8 @@ export function Diagnosticos() {
   const [dataPrazoFatal, setDataPrazoFatal] = useState(DEMO_DATA_PRAZO_FATAL_BR);
   const [modalResultadoPrazoFatalAberto, setModalResultadoPrazoFatalAberto] = useState(false);
   const [resultadoPrazoFatal, setResultadoPrazoFatal] = useState([]);
+  const [modalConsultasARealizarAberto, setModalConsultasARealizarAberto] = useState(false);
+  const [modalPublicacoesAberto, setModalPublicacoesAberto] = useState(false);
   const [modalBuscaPessoaAberto, setModalBuscaPessoaAberto] = useState(false);
   const [codigoPessoaBusca, setCodigoPessoaBusca] = useState('');
   const [modalResultadoBuscaPessoaAberto, setModalResultadoBuscaPessoaAberto] = useState(false);
@@ -100,6 +102,24 @@ export function Diagnosticos() {
     const itens = listarHistoricoPorData(data);
     setResultadoConsulta(itens);
     setModalConsultasRealizadasAberto(false);
+    setModalResultadoAberto(true);
+  }
+
+  function consultarPorDataConsultasARealizar() {
+    const data = String(dataConsulta ?? '').trim();
+    if (!data) return;
+    const itens = listarHistoricoPorData(data);
+    setResultadoConsulta(itens);
+    setModalConsultasARealizarAberto(false);
+    setModalResultadoAberto(true);
+  }
+
+  function consultarPorDataPublicacoes() {
+    const data = String(dataConsulta ?? '').trim();
+    if (!data) return;
+    const itens = listarHistoricoPorData(data);
+    setResultadoConsulta(itens);
+    setModalPublicacoesAberto(false);
     setModalResultadoAberto(true);
   }
 
@@ -176,6 +196,8 @@ export function Diagnosticos() {
     setModalResultadoAguardandoProtocoloAberto(false);
     setModalResultadoAguardandoProvidenciaAberto(false);
     setModalResultadoProcAdministrativoAberto(false);
+    setModalConsultasARealizarAberto(false);
+    setModalPublicacoesAberto(false);
     navigate('/processos', {
       replace: false,
       state: { codCliente: String(item.codCliente), proc: String(item.proc) },
@@ -208,8 +230,14 @@ export function Diagnosticos() {
                   if (label === 'Consultas Realizadas') {
                     setModalConsultasRealizadasAberto(true);
                   }
+                  if (label === 'Consultas à Realizar') {
+                    setModalConsultasARealizarAberto(true);
+                  }
                   if (label === 'Prazo Fatal') {
                     setModalPrazoFatalAberto(true);
+                  }
+                  if (label === 'Publicações') {
+                    setModalPublicacoesAberto(true);
                   }
                   if (label === 'Busca pessoa') {
                     setCodigoPessoaBusca(String(DEMO_PESSOA_ID_EXEMPLO));
@@ -455,6 +483,114 @@ export function Diagnosticos() {
                 <button
                   type="button"
                   onClick={() => setModalPrazoFatalAberto(false)}
+                  className="min-w-[160px] px-6 py-2.5 rounded border border-slate-300 bg-white text-sm leading-none text-slate-700 hover:bg-slate-50"
+                >
+                  Fechar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {modalConsultasARealizarAberto && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/25 p-4">
+          <div className="w-full max-w-2xl bg-white border border-slate-200 shadow-xl rounded-lg overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 bg-slate-50">
+              <h3 className="text-lg leading-none font-semibold text-slate-800">Consultas à Realizar</h3>
+              <button
+                type="button"
+                onClick={() => setModalConsultasARealizarAberto(false)}
+                className="p-1 text-slate-700 hover:bg-slate-200"
+                aria-label="Fechar modal"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="px-6 py-6">
+              <div className="grid grid-cols-1 md:grid-cols-[1fr_280px] items-start gap-6">
+                <p className="text-base md:text-xl leading-snug font-medium text-slate-800">
+                  Informe o dia que deseja consultar:
+                </p>
+                <div className="rounded border border-slate-200 bg-white p-4">
+                  <input
+                    type="date"
+                    value={toInputDate(dataConsulta)}
+                    onChange={(e) => setDataConsulta(toBrDate(e.target.value))}
+                    className="w-full h-10 px-3 text-sm border border-slate-300 rounded bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
+                  />
+                  <p className="mt-2 text-sm leading-none text-slate-700 min-h-[1.25rem]">
+                    {diaSemanaPtBr(dataConsulta) || ' '}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-6 flex flex-col md:flex-row items-center justify-center gap-3">
+                <button
+                  type="button"
+                  onClick={consultarPorDataConsultasARealizar}
+                  className="min-w-[200px] px-6 py-2.5 rounded border border-blue-700 bg-blue-600 text-sm leading-none text-white shadow-[2px_2px_0_0_rgba(0,0,0,0.25)] hover:bg-blue-700"
+                >
+                  Consultar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setModalConsultasARealizarAberto(false)}
+                  className="min-w-[160px] px-6 py-2.5 rounded border border-slate-300 bg-white text-sm leading-none text-slate-700 hover:bg-slate-50"
+                >
+                  Fechar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {modalPublicacoesAberto && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/25 p-4">
+          <div className="w-full max-w-2xl bg-white border border-slate-200 shadow-xl rounded-lg overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 bg-slate-50">
+              <h3 className="text-lg leading-none font-semibold text-slate-800">Publicações</h3>
+              <button
+                type="button"
+                onClick={() => setModalPublicacoesAberto(false)}
+                className="p-1 text-slate-700 hover:bg-slate-200"
+                aria-label="Fechar modal"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="px-6 py-6">
+              <div className="grid grid-cols-1 md:grid-cols-[1fr_280px] items-start gap-6">
+                <p className="text-base md:text-xl leading-snug font-medium text-slate-800">
+                  Informe o dia que deseja consultar:
+                </p>
+                <div className="rounded border border-slate-200 bg-white p-4">
+                  <input
+                    type="date"
+                    value={toInputDate(dataConsulta)}
+                    onChange={(e) => setDataConsulta(toBrDate(e.target.value))}
+                    className="w-full h-10 px-3 text-sm border border-slate-300 rounded bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
+                  />
+                  <p className="mt-2 text-sm leading-none text-slate-700 min-h-[1.25rem]">
+                    {diaSemanaPtBr(dataConsulta) || ' '}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-6 flex flex-col md:flex-row items-center justify-center gap-3">
+                <button
+                  type="button"
+                  onClick={consultarPorDataPublicacoes}
+                  className="min-w-[200px] px-6 py-2.5 rounded border border-blue-700 bg-blue-600 text-sm leading-none text-white shadow-[2px_2px_0_0_rgba(0,0,0,0.25)] hover:bg-blue-700"
+                >
+                  Consultar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setModalPublicacoesAberto(false)}
                   className="min-w-[160px] px-6 py-2.5 rounded border border-slate-300 bg-white text-sm leading-none text-slate-700 hover:bg-slate-50"
                 >
                   Fechar

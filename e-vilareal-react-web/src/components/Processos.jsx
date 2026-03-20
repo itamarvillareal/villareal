@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { getLancamentosContaCorrente, mergeContaCorrenteComLinhaOrigem } from '../data/financeiroData';
 import { getMockProcesso10x10 } from '../data/processosMock';
@@ -283,6 +283,7 @@ export function Processos() {
   const [audienciaData, setAudienciaData] = useState('');
   const [audienciaHora, setAudienciaHora] = useState('');
   const [audienciaTipo, setAudienciaTipo] = useState('');
+  const audienciaHoraInputRef = useRef(null);
   const [avisoAudiencia, setAvisoAudiencia] = useState('nao_avisado');
   const [prazoFatal, setPrazoFatal] = useState('');
   const [unidade, setUnidade] = useState('');
@@ -664,46 +665,66 @@ export function Processos() {
   }
 
   function formatarHoraAudienciaInput(valor) {
-    // Máscara simples para manter no formato HH:MM
-    // Exemplos:
-    // - "9"    -> "09"
-    // - "930"  -> "09:30"
-    // - "0930" -> "09:30"
+    // Máscara parcial do horário para permitir digitação sem “embaralhar” dígitos.
+    // Regras:
+    // - 1 dígito  -> "H"
+    // - 2 dígitos -> "HH"
+    // - 3 dígitos -> "HH:M"
+    // - 4 dígitos -> "HH:MM"
     const digits = String(valor ?? '').replace(/\D/g, '').slice(0, 4);
     if (!digits) return '';
-    if (digits.length === 1) return `0${digits}`;
+    if (digits.length === 1) return digits;
     if (digits.length === 2) return digits;
-    if (digits.length === 3) {
-      const hh = `0${digits[0]}`;
-      const mm = digits.slice(1, 3);
-      return `${hh}:${mm}`;
-    }
-    const hh = digits.slice(0, 2);
-    const mm = digits.slice(2, 4);
-    return `${hh}:${mm}`;
+    if (digits.length === 3) return `${digits.slice(0, 2)}:${digits.slice(2, 3)}`;
+    return `${digits.slice(0, 2)}:${digits.slice(2, 4)}`;
   }
 
   function normalizarHoraAudiencia(valor) {
     const digits = String(valor ?? '').replace(/\D/g, '');
     if (!digits) return '';
-    let hhStr = '';
-    let mmStr = '';
+    // Normaliza para HH:MM mesmo com entrada incompleta (ex.: "9" -> "09:00", "930" -> "09:30")
+    let hhDigits = '';
+    let mmDigits = '';
     if (digits.length <= 2) {
-      hhStr = String(digits.padStart(2, '0')).slice(0, 2);
-      mmStr = '00';
+      hhDigits = digits.padStart(2, '0').slice(0, 2);
+      mmDigits = '00';
     } else if (digits.length === 3) {
-      hhStr = `0${digits[0]}`;
-      mmStr = digits.slice(1, 3);
+      hhDigits = digits.slice(0, 2);
+      mmDigits = `${digits.slice(2, 3)}0`;
     } else {
-      hhStr = digits.slice(0, 2);
-      mmStr = digits.slice(2, 4);
+      hhDigits = digits.slice(0, 2);
+      mmDigits = digits.slice(2, 4);
     }
-    const hh = Number(hhStr);
-    const mm = Number(mmStr);
+
+    const hh = Number(hhDigits);
+    const mm = Number(mmDigits);
     if (!Number.isFinite(hh) || !Number.isFinite(mm)) return '';
     if (hh < 0 || hh > 23) return '';
     if (mm < 0 || mm > 59) return '';
     return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+  }
+
+  function handleAudienciaHoraChange(e) {
+    const inputEl = e.target;
+    const raw = inputEl?.value ?? '';
+    const selectionStart = typeof inputEl?.selectionStart === 'number' ? inputEl.selectionStart : raw.length;
+
+    // Conta quantos dígitos estavam antes do cursor para reposicionar após o “format”.
+    const digitsAntesCursor = raw.slice(0, selectionStart).replace(/\D/g, '').slice(0, 4).length;
+    const formatted = formatarHoraAudienciaInput(raw);
+    setAudienciaHora(formatted);
+
+    requestAnimationFrame(() => {
+      const el = audienciaHoraInputRef.current;
+      if (!el) return;
+      const pos = digitsAntesCursor <= 2 ? digitsAntesCursor : digitsAntesCursor + 1; // +1 pula o ':'
+      const clamped = Math.max(0, Math.min(pos, String(formatted ?? '').length));
+      try {
+        el.setSelectionRange(clamped, clamped);
+      } catch {
+        // ignora
+      }
+    });
   }
 
   return (
@@ -1002,7 +1023,8 @@ export function Processos() {
                   <input
                     type="text"
                     value={audienciaHora}
-                    onChange={(e) => setAudienciaHora(formatarHoraAudienciaInput(e.target.value))}
+                    ref={audienciaHoraInputRef}
+                    onChange={handleAudienciaHoraChange}
                     onBlur={() => {
                       const norm = normalizarHoraAudiencia(audienciaHora);
                       if (norm) setAudienciaHora(norm);

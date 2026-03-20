@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Outlet } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Outlet, Navigate } from 'react-router-dom';
 import { Sidebar } from './components/Sidebar';
 import { Board } from './components/Board';
 import { CadastroPessoas } from './components/cadastro-pessoas/CadastroPessoas';
@@ -81,6 +81,8 @@ function App() {
           <Route path="/calculos" element={<Calculos />} />
           <Route path="/diagnosticos" element={<Diagnosticos />} />
           <Route path="/financeiro" element={<Financeiro />} />
+          <Route path="/diligencias" element={<Navigate to="/pendencias" replace />} />
+          <Route path="/dativos" element={<Navigate to="/pendencias" replace />} />
           <Route path="/:section" element={<Board />} />
         </Route>
       </Routes>

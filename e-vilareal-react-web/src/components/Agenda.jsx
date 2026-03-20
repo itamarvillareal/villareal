@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import {
   agendaUsuarios,
@@ -9,7 +9,11 @@ import {
   agendaEventosQuarta,
   agendaCalendarioMarco2026,
 } from '../data/mockData';
-import { getEventosAgendaPersistidosPorData } from '../data/agendaPersistenciaData';
+import {
+  getEventosAgendaPersistidosPorData,
+  getUsuariosAtivos,
+  setUsuariosAtivos,
+} from '../data/agendaPersistenciaData';
 
 /** Retorna string DD/MM/YYYY para dia/mês/ano */
 function dataStr(dia, mes, ano) {
@@ -99,6 +103,8 @@ function PainelCalendario({
   usuarioSelecionado,
   setUsuarioSelecionado,
   nomeGrupo = 'painel',
+  usuariosSistema,
+  onAbrirUsuariosSistema,
 }) {
   const hoje = agendaCalendarioMarco2026.hoje ?? 10;
   const primeiroDiaSemana = 0;
@@ -222,7 +228,7 @@ function PainelCalendario({
       <div>
         <div className="text-sm font-medium text-gray-700 mb-1">Usuário:</div>
         <div className="space-y-1">
-          {agendaUsuarios.map((u) => (
+          {usuariosSistema.map((u) => (
             <label key={u.id} className="flex items-center gap-2 text-sm cursor-pointer">
               <input
                 type="radio"
@@ -242,7 +248,11 @@ function PainelCalendario({
         <button type="button" className="px-3 py-1.5 text-sm border border-gray-300 rounded bg-white hover:bg-gray-200">
           Pesquisar
         </button>
-        <button type="button" className="px-3 py-1.5 text-sm border border-gray-300 rounded bg-white hover:bg-gray-200">
+        <button
+          type="button"
+          onClick={() => onAbrirUsuariosSistema?.()}
+          className="px-3 py-1.5 text-sm border border-gray-300 rounded bg-white hover:bg-gray-200"
+        >
           Opções
         </button>
       </div>
@@ -261,6 +271,56 @@ export function Agenda() {
   const [anoDireita, setAnoDireita] = useState(2026);
   const [diaDireita, setDiaDireita] = useState(11);
   const [eventoModal, setEventoModal] = useState(null);
+  const [usuariosAtivos, setUsuariosAtivosState] = useState(() => getUsuariosAtivos());
+  const [modalUsuariosSistemaAberto, setModalUsuariosSistemaAberto] = useState(false);
+  const [slotsCustom, setSlotsCustom] = useState(['', '']);
+
+  useEffect(() => {
+    // Caso o usuário exclua o usuário atualmente selecionado, mantém seleção válida.
+    const ids = new Set((usuariosAtivos || []).map((u) => u.id));
+    const primeiraUsuarioId = Array.isArray(usuariosAtivos) && usuariosAtivos.length > 0 ? usuariosAtivos[0].id : 'itamar';
+
+    if (!ids.has(usuarioEsquerda)) setUsuarioEsquerda(primeiraUsuarioId);
+    if (!ids.has(usuarioDireita)) setUsuarioDireita(primeiraUsuarioId);
+  }, [usuariosAtivos, usuarioEsquerda, usuarioDireita]);
+
+  function persistirUsuariosAtivos(next) {
+    setUsuariosAtivosState(next);
+    setUsuariosAtivos(next);
+  }
+
+  function normalizarNomeParaId(nome) {
+    return String(nome || '')
+      .trim()
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+  }
+
+  function incluirUsuario(usuario) {
+    if (!usuario?.id) return;
+    const ids = new Set((usuariosAtivos || []).map((u) => u.id));
+    if (ids.has(usuario.id)) return;
+    persistirUsuariosAtivos([...(usuariosAtivos || []), usuario]);
+  }
+
+  function excluirUsuario(usuarioId) {
+    if (!usuarioId) return;
+    const basePrimeiro = Array.isArray(agendaUsuarios) && agendaUsuarios[0] ? agendaUsuarios[0] : null;
+    if (basePrimeiro && usuarioId === basePrimeiro.id) return;
+    persistirUsuariosAtivos((usuariosAtivos || []).filter((u) => u.id !== usuarioId));
+  }
+
+  useEffect(() => {
+    // Mantém o 1o usuário base ativo (no print ele aparece sem botões).
+    const basePrimeiro = Array.isArray(agendaUsuarios) && agendaUsuarios[0] ? agendaUsuarios[0] : null;
+    if (!basePrimeiro) return;
+    const ids = new Set((usuariosAtivos || []).map((u) => u.id));
+    if (ids.has(basePrimeiro.id)) return;
+    persistirUsuariosAtivos([...(usuariosAtivos || []), basePrimeiro]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Se vier uma data via navegação (Processos -> duplo clique em Data), posiciona o painel nela.
   useEffect(() => {
@@ -309,6 +369,149 @@ export function Agenda() {
 
   return (
     <div className="flex flex-1 min-h-0 p-4 gap-4 overflow-hidden">
+      {/*
+        Modal "Usuários do Sistema"
+        - Objetivo: configurar quais usuários do agenda estão ativos (para o agendamento "para todos").
+        - Layout: semelhante ao print (inputs + botões Incluir/Excluir e botão OK).
+      */}
+      {modalUsuariosSistemaAberto && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30 p-4"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setModalUsuariosSistemaAberto(false)}
+        >
+          <div
+            className="w-full max-w-2xl bg-white rounded-lg shadow-xl border border-slate-200 overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 bg-slate-50">
+              <h2 className="text-base font-semibold text-slate-800">Usuários do Sistema</h2>
+              <button
+                type="button"
+                className="p-2 rounded text-slate-600 hover:bg-slate-100"
+                onClick={() => setModalUsuariosSistemaAberto(false)}
+                aria-label="Fechar"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-4">
+              {(() => {
+                const idsAtivos = new Set((usuariosAtivos || []).map((u) => u.id));
+                const primeira = agendaUsuarios?.[0];
+                const resto = Array.isArray(agendaUsuarios) ? agendaUsuarios.slice(1) : [];
+
+                return (
+                  <div className="space-y-3">
+                    {primeira ? (
+                      <div className="grid grid-cols-1 gap-2">
+                        <input
+                          type="text"
+                          value={primeira.nome}
+                          readOnly
+                          className="w-full px-3 py-2 border border-slate-300 rounded text-sm bg-slate-50"
+                        />
+                      </div>
+                    ) : null}
+
+                    {resto.map((u) => {
+                      const ativo = idsAtivos.has(u.id);
+                      return (
+                        <div key={u.id} className="grid grid-cols-[1fr_120px_120px] gap-3 items-center">
+                          <input
+                            type="text"
+                            value={u.nome}
+                            readOnly
+                            className="px-3 py-2 border border-slate-300 rounded text-sm bg-white"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => incluirUsuario(u)}
+                            disabled={ativo}
+                            className="px-3 py-2 rounded border border-slate-300 bg-white text-sm hover:bg-slate-50 disabled:opacity-50"
+                          >
+                            Incluir
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => excluirUsuario(u.id)}
+                            disabled={!ativo}
+                            className="px-3 py-2 rounded border border-slate-300 bg-white text-sm hover:bg-slate-50 disabled:opacity-50"
+                          >
+                            Excluir
+                          </button>
+                        </div>
+                      );
+                    })}
+
+                    {slotsCustom.map((val, idx) => {
+                      const idSlot = normalizarNomeParaId(val);
+                      const ativo = idSlot && idsAtivos.has(idSlot);
+                      return (
+                        <div key={`custom-${idx}`} className="grid grid-cols-[1fr_120px_120px] gap-3 items-center">
+                          <input
+                            type="text"
+                            value={val}
+                            onChange={(e) => {
+                              const next = [...slotsCustom];
+                              next[idx] = e.target.value;
+                              setSlotsCustom(next);
+                            }}
+                            className="px-3 py-2 border border-slate-300 rounded text-sm"
+                            placeholder="(vazio)"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!val.trim()) return;
+                              if (!idSlot) return;
+                              if (ativo) return;
+                              incluirUsuario({ id: idSlot, nome: String(val || '').trim() });
+                              const next = [...slotsCustom];
+                              next[idx] = '';
+                              setSlotsCustom(next);
+                            }}
+                            disabled={!val.trim() || !!ativo}
+                            className="px-3 py-2 rounded border border-slate-300 bg-white text-sm hover:bg-slate-50 disabled:opacity-50"
+                          >
+                            Incluir
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (ativo) excluirUsuario(idSlot);
+                              const next = [...slotsCustom];
+                              next[idx] = '';
+                              setSlotsCustom(next);
+                            }}
+                            disabled={!val.trim() && !ativo}
+                            className="px-3 py-2 rounded border border-slate-300 bg-white text-sm hover:bg-slate-50 disabled:opacity-50"
+                          >
+                            Excluir
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </div>
+
+            <div className="px-4 py-3 border-t border-slate-200 flex justify-center bg-slate-50">
+              <button
+                type="button"
+                onClick={() => setModalUsuariosSistemaAberto(false)}
+                className="px-12 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Painel esquerdo: Calendário + Usuário + Botões */}
       <PainelCalendario
         mesAtual={mesEsquerda}
@@ -320,6 +523,8 @@ export function Agenda() {
         usuarioSelecionado={usuarioEsquerda}
         setUsuarioSelecionado={setUsuarioEsquerda}
         nomeGrupo="esquerda"
+        usuariosSistema={usuariosAtivos}
+        onAbrirUsuariosSistema={() => setModalUsuariosSistemaAberto(true)}
       />
 
       {/* Área central: duas colunas de compromissos (simétricas) */}
@@ -354,6 +559,8 @@ export function Agenda() {
         usuarioSelecionado={usuarioDireita}
         setUsuarioSelecionado={setUsuarioDireita}
         nomeGrupo="direita"
+        usuariosSistema={usuariosAtivos}
+        onAbrirUsuariosSistema={() => setModalUsuariosSistemaAberto(true)}
       />
 
       {eventoModal && (

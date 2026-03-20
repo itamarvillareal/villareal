@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { X, ChevronUp, ChevronDown } from 'lucide-react';
+import { getImovelMock } from '../data/imoveisMockData';
 
 function Field({ label, children, className = '' }) {
   return (
@@ -75,6 +76,68 @@ export function Imoveis() {
   const [contratoArquivado, setContratoArquivado] = useState('nao');
   const [contratoIntermediacaoArquivado, setContratoIntermediacaoArquivado] = useState('nao');
   const [contratoIntermediacaoAssinadoProprietario, setContratoIntermediacaoAssinadoProprietario] = useState('nao');
+
+  useEffect(() => {
+    const mock = getImovelMock(imovelId);
+    if (!mock) return;
+
+    setImovelOcupado(!!mock.imovelOcupado);
+    setCodigo(String(mock.codigo ?? ''));
+    setProc(Number(mock.proc ?? 1));
+    setObservacoesInquilino(String(mock.observacoesInquilino ?? ''));
+    setEndereco(String(mock.endereco ?? ''));
+    setCondominio(String(mock.condominio ?? ''));
+    setUnidade(String(mock.unidade ?? ''));
+    setGaragens(String(mock.garagens ?? ''));
+    setGarantia(String(mock.garantia ?? ''));
+    setValorGarantia(String(mock.valorGarantia ?? ''));
+    setValorLocacao(String(mock.valorLocacao ?? ''));
+    setDiaPagAluguel(String(mock.diaPagAluguel ?? ''));
+    setDataPag1TxCond(String(mock.dataPag1TxCond ?? ''));
+    setInscricaoImobiliaria(String(mock.inscricaoImobiliaria ?? ''));
+    setExisteDebIptu(String(mock.existeDebIptu ?? ''));
+    setDataConsIptu(String(mock.dataConsIptu ?? ''));
+
+    setAguaNumero(String(mock.aguaNumero ?? ''));
+    setDataConsAgua(String(mock.dataConsAgua ?? ''));
+    setExisteDebAgua(String(mock.existeDebAgua ?? ''));
+    setDiaVencAgua(String(mock.diaVencAgua ?? ''));
+
+    setEnergiaNumero(String(mock.energiaNumero ?? ''));
+    setDataConsEnergia(String(mock.dataConsEnergia ?? ''));
+    setExisteDebEnergia(String(mock.existeDebEnergia ?? ''));
+    setDiaVencEnergia(String(mock.diaVencEnergia ?? ''));
+
+    setGasNumero(String(mock.gasNumero ?? ''));
+    setDataConsGas(String(mock.dataConsGas ?? ''));
+    setExisteDebGas(String(mock.existeDebGas ?? ''));
+    setDiaVencGas(String(mock.diaVencGas ?? ''));
+
+    setDataInicioContrato(String(mock.dataInicioContrato ?? ''));
+    setDataFimContrato(String(mock.dataFimContrato ?? ''));
+    setDataConsDebitoCond(String(mock.dataConsDebitoCond ?? ''));
+    setExisteDebitoCond(String(mock.existeDebitoCond ?? ''));
+    setDiaRepasse(String(mock.diaRepasse ?? ''));
+
+    setBanco(String(mock.banco ?? ''));
+    setAgencia(String(mock.agencia ?? ''));
+    setNumeroBanco(String(mock.numeroBanco ?? ''));
+    setConta(String(mock.conta ?? ''));
+    setCpfBanco(String(mock.cpfBanco ?? ''));
+    setTitular(String(mock.titular ?? ''));
+    setChavePix(String(mock.chavePix ?? ''));
+
+    setProprietarioCod1(String(mock.proprietarioCod1 ?? ''));
+    setProprietarioCod2(String(mock.proprietarioCod2 ?? ''));
+    setProprietario(String(mock.proprietario ?? ''));
+    setProprietarioCpf(String(mock.proprietarioCpf ?? ''));
+    setProprietarioContato(String(mock.proprietarioContato ?? ''));
+    setLinkVistoria(String(mock.linkVistoria ?? ''));
+
+    setInquilino(String(mock.inquilino ?? ''));
+    setInquilinoCpf(String(mock.inquilinoCpf ?? ''));
+    setInquilinoContato(String(mock.inquilinoContato ?? ''));
+  }, [imovelId]);
 
   function abrirProcessoDoImovel() {
     navigate('/processos', {
