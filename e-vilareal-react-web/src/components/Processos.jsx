@@ -58,6 +58,7 @@ const COMPETENCIAS = [
 ];
 
 const HISTORICO_POR_PAGINA = 10;
+const TRAMITACAO_OPCOES = ['Projudi', 'PJe', 'TJ Go - Autos Físicos'];
 const PERIODICIDADES_AGENDA_LOTE = [
   'Agendamento único',
   'Diariamente',
@@ -303,6 +304,9 @@ export function Processos() {
   const [imovelId, setImovelId] = useState(''); // vínculo com a aba Imóveis (mock)
   const [imovelManual, setImovelManual] = useState(false);
   const [unidadeManual, setUnidadeManual] = useState(false);
+  const [tramitacao, setTramitacao] = useState('');
+  const [modalTramitacaoAberto, setModalTramitacaoAberto] = useState(false);
+  const [tramitacaoDraft, setTramitacaoDraft] = useState('');
   const [tabAtiva, setTabAtiva] = useState('historico');
   const [historico, setHistorico] = useState(() => gerarHistoricoMock('1', 1));
   const [proximaInformacao, setProximaInformacao] = useState('');
@@ -352,6 +356,8 @@ export function Processos() {
         : mock.faseSelecionada;
     setFaseSelecionada(fasePersistida);
     setConsultaAutomatica(mock.consultaAutomatica);
+    setPeriodicidadeConsulta(registroPersistido?.periodicidadeConsulta ?? '');
+    setTramitacao(registroPersistido?.tramitacao ?? '');
     setDataProtocolo(mock.dataProtocolo);
     setNaturezaAcao(mock.naturezaAcao);
     setValorCausa(mock.valorCausa);
@@ -376,6 +382,8 @@ export function Processos() {
           parteClienteIds: registroPersistido?.parteClienteIds ?? [],
           parteOpostaIds: registroPersistido?.parteOpostaIds ?? [],
           faseSelecionada: mock.faseSelecionada,
+          periodicidadeConsulta: registroPersistido?.periodicidadeConsulta ?? '',
+          tramitacao: registroPersistido?.tramitacao ?? '',
         });
       }
     } else {
@@ -393,6 +401,8 @@ export function Processos() {
         parteClienteIds: registroPersistido?.parteClienteIds ?? [],
         parteOpostaIds: registroPersistido?.parteOpostaIds ?? [],
         faseSelecionada: fasePersistida,
+        periodicidadeConsulta: registroPersistido?.periodicidadeConsulta ?? '',
+        tramitacao: registroPersistido?.tramitacao ?? '',
       });
     }
     setPaginaHistorico(1);
@@ -464,6 +474,26 @@ export function Processos() {
     if (modalContaCorrente) setBuscaContaCorrente({ campo: 'todos', termo: '' });
   }, [modalContaCorrente, codigoCliente, processo]);
 
+  useEffect(() => {
+    const pf = String(prazoFatal ?? '').trim();
+    const prazoNorm = pf ? (normalizarDataBr(pf) || pf) : '';
+    salvarHistoricoDoProcesso({
+      codCliente: codigoCliente,
+      proc: processo,
+      cliente,
+      parteCliente: textoParteCliente || parteCliente,
+      parteOposta: textoParteOposta || parteOposta,
+      numeroProcessoNovo,
+      historico,
+      prazoFatal: prazoNorm,
+      parteClienteIds,
+      parteOpostaIds,
+      faseSelecionada,
+      periodicidadeConsulta,
+      tramitacao,
+    });
+  }, [periodicidadeConsulta, tramitacao]); // eslint-disable-line react-hooks/exhaustive-deps
+
   function montarTituloAgendaDoProcesso() {
     const cli = String(cliente ?? '').trim();
     const op = String(textoParteOposta || parteOposta || '').trim();
@@ -519,6 +549,34 @@ export function Processos() {
     );
     // fecha após pequeno feedback visual.
     setTimeout(() => setModalAgendaLoteAberto(false), 700);
+  }
+
+  function abrirModalTramitacao() {
+    setTramitacaoDraft(tramitacao || '');
+    setModalTramitacaoAberto(true);
+  }
+
+  function confirmarTramitacao() {
+    const valor = String(tramitacaoDraft ?? '').trim();
+    setTramitacao(valor);
+    const pf = String(prazoFatal ?? '').trim();
+    const prazoNorm = pf ? (normalizarDataBr(pf) || pf) : '';
+    salvarHistoricoDoProcesso({
+      codCliente: codigoCliente,
+      proc: processo,
+      cliente,
+      parteCliente: textoParteCliente || parteCliente,
+      parteOposta: textoParteOposta || parteOposta,
+      numeroProcessoNovo,
+      historico,
+      prazoFatal: prazoNorm,
+      parteClienteIds,
+      parteOpostaIds,
+      faseSelecionada,
+      periodicidadeConsulta,
+      tramitacao: valor,
+    });
+    setModalTramitacaoAberto(false);
   }
 
   function dataParaOrdenarContaCorrente(data) {
@@ -643,6 +701,8 @@ export function Processos() {
       parteClienteIds: nextClienteIds,
       parteOpostaIds: nextOpostaIds,
       faseSelecionada,
+      periodicidadeConsulta,
+      tramitacao,
     });
   }
 
@@ -729,6 +789,8 @@ export function Processos() {
       parteClienteIds,
       parteOpostaIds,
       faseSelecionada,
+      periodicidadeConsulta,
+      tramitacao,
     });
   }
 
@@ -744,6 +806,8 @@ export function Processos() {
       parteClienteIds,
       parteOpostaIds,
       faseSelecionada,
+      periodicidadeConsulta,
+      tramitacao,
     });
   }
 
@@ -1065,6 +1129,8 @@ export function Processos() {
                               parteClienteIds,
                               parteOpostaIds,
                               faseSelecionada: f,
+                              periodicidadeConsulta,
+                              tramitacao,
                             });
                           }}
                           className="text-slate-600"
@@ -1117,11 +1183,22 @@ export function Processos() {
                   <Field label="Periodicidade Consulta" className="w-36">
                     <select value={periodicidadeConsulta} onChange={(e) => setPeriodicidadeConsulta(e.target.value)} className={inputClass}>
                       <option value="">—</option>
+                      <option value="Diária">Diária</option>
+                      <option value="Semanal">Semanal</option>
+                      <option value="Quinzenal">Quinzenal</option>
+                      <option value="Mensal">Mensal</option>
+                      <option value="Bimestral">Bimestral</option>
+                      <option value="Trimensal">Trimensal</option>
+                      <option value="Semestral">Semestral</option>
+                      <option value="Anual">Anual</option>
                     </select>
                   </Field>
-                  <button type="button" className="px-4 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50">
+                  <button type="button" onClick={abrirModalTramitacao} className="px-4 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50">
                     Tramitação
                   </button>
+                  <span className="text-xs text-slate-600">
+                    Tramitação: {tramitacao || '—'}
+                  </span>
                 </div>
               </div>
             </section>
@@ -1376,6 +1453,65 @@ export function Processos() {
           </div>
         </div>
       </div>
+
+      {modalTramitacaoAberto && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="modal-tramitacao-titulo"
+          onClick={() => setModalTramitacaoAberto(false)}
+        >
+          <div
+            className="bg-white rounded-lg shadow-xl border border-slate-200 w-full max-w-md"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200">
+              <h2 id="modal-tramitacao-titulo" className="text-base font-semibold text-slate-800">
+                Tramitação dos Autos
+              </h2>
+              <button
+                type="button"
+                onClick={() => setModalTramitacaoAberto(false)}
+                className="p-2 rounded text-slate-500 hover:bg-slate-100"
+                aria-label="Fechar"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 space-y-2">
+              {TRAMITACAO_OPCOES.map((op) => (
+                <label key={op} className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input
+                    type="radio"
+                    name="tramitacao-autos"
+                    checked={tramitacaoDraft === op}
+                    onChange={() => setTramitacaoDraft(op)}
+                    className="text-slate-600"
+                  />
+                  {op}
+                </label>
+              ))}
+            </div>
+            <div className="px-4 py-3 border-t border-slate-200 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setModalTramitacaoAberto(false)}
+                className="px-4 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
+              >
+                Fechar
+              </button>
+              <button
+                type="button"
+                onClick={confirmarTramitacao}
+                className="px-4 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {modalAgendaLoteAberto && (
         <div

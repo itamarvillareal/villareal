@@ -66,6 +66,153 @@ export function normalizarDataBr(s) {
   return `${dd}/${mm}/${yyyy}`;
 }
 
+function parseDataBrCompleta(s) {
+  const t = normalizarDataBr(s);
+  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(t);
+  if (!m) return null;
+  const dd = Number(m[1]);
+  const mm = Number(m[2]);
+  const yyyy = Number(m[3]);
+  if (!Number.isFinite(dd) || !Number.isFinite(mm) || !Number.isFinite(yyyy)) return null;
+  if (mm < 1 || mm > 12) return null;
+  const maxDia = new Date(yyyy, mm, 0).getDate();
+  if (dd < 1 || dd > maxDia) return null;
+  return { dd, mm, yyyy };
+}
+
+function dataBr({ dd, mm, yyyy }) {
+  return `${String(dd).padStart(2, '0')}/${String(mm).padStart(2, '0')}/${yyyy}`;
+}
+
+function dataToDate(parsed) {
+  return new Date(parsed.yyyy, parsed.mm - 1, parsed.dd);
+}
+
+function dateToDataBr(d) {
+  return dataBr({ dd: d.getDate(), mm: d.getMonth() + 1, yyyy: d.getFullYear() });
+}
+
+function normalizarPeriodicidadeConsulta(v) {
+  const p = String(v ?? '').trim().toLowerCase();
+  if (!p) return '';
+  if (p.includes('diar')) return 'Diária';
+  if (p.includes('seman')) return 'Semanal';
+  if (p.includes('quinz')) return 'Quinzenal';
+  if (p.includes('bimes')) return 'Bimestral';
+  if (p.includes('trimes') || p.includes('trimens')) return 'Trimensal';
+  if (p.includes('semes')) return 'Semestral';
+  if (p.includes('anual') || p.includes('ano')) return 'Anual';
+  if (p.includes('mens')) return 'Mensal';
+  return '';
+}
+
+function calcularPascoa(ano) {
+  // Algoritmo de Meeus/Jones/Butcher (calendário gregoriano)
+  const a = ano % 19;
+  const b = Math.floor(ano / 100);
+  const c = ano % 100;
+  const d = Math.floor(b / 4);
+  const e = b % 4;
+  const f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4);
+  const k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const mes = Math.floor((h + l - 7 * m + 114) / 31);
+  const dia = ((h + l - 7 * m + 114) % 31) + 1;
+  return new Date(ano, mes - 1, dia);
+}
+
+function isFeriadoNacional(dateObj) {
+  const d = new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate());
+  const yyyy = d.getFullYear();
+  const mm = d.getMonth() + 1;
+  const dd = d.getDate();
+
+  const fixos = new Set([
+    `01/01/${yyyy}`, // Confraternização
+    `21/04/${yyyy}`, // Tiradentes
+    `01/05/${yyyy}`, // Dia do Trabalho
+    `07/09/${yyyy}`, // Independência
+    `12/10/${yyyy}`, // Nossa Senhora Aparecida
+    `02/11/${yyyy}`, // Finados
+    `15/11/${yyyy}`, // Proclamação da República
+    `20/11/${yyyy}`, // Consciência Negra (nacional)
+    `25/12/${yyyy}`, // Natal
+  ]);
+  const key = `${String(dd).padStart(2, '0')}/${String(mm).padStart(2, '0')}/${yyyy}`;
+  if (fixos.has(key)) return true;
+
+  const pascoa = calcularPascoa(yyyy);
+  const sextaSanta = new Date(pascoa);
+  sextaSanta.setDate(sextaSanta.getDate() - 2);
+  const carnavalSeg = new Date(pascoa);
+  carnavalSeg.setDate(carnavalSeg.getDate() - 48);
+  const carnavalTer = new Date(pascoa);
+  carnavalTer.setDate(carnavalTer.getDate() - 47);
+  const corpusChristi = new Date(pascoa);
+  corpusChristi.setDate(corpusChristi.getDate() + 60);
+
+  const moveis = [
+    dateToDataBr(sextaSanta),
+    dateToDataBr(carnavalSeg),
+    dateToDataBr(carnavalTer),
+    dateToDataBr(corpusChristi),
+  ];
+  return moveis.includes(key);
+}
+
+function anteciparParaDiaUtil(dateObj) {
+  const d = new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate());
+  while (true) {
+    const dow = d.getDay();
+    const fimDeSemana = dow === 0 || dow === 6;
+    if (!fimDeSemana && !isFeriadoNacional(d)) return d;
+    d.setDate(d.getDate() - 1); // antecipar para dia útil anterior
+  }
+}
+
+function adicionarMesesComDia(baseDate, meses) {
+  const d = new Date(baseDate.getFullYear(), baseDate.getMonth(), 1);
+  d.setMonth(d.getMonth() + meses);
+  const maxDia = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  d.setDate(Math.min(baseDate.getDate(), maxDia));
+  return d;
+}
+
+function calcularProximaConsultaBr({ dataHistoricoBr, periodicidadeConsulta }) {
+  const periodicidade = normalizarPeriodicidadeConsulta(periodicidadeConsulta);
+  const parsed = parseDataBrCompleta(dataHistoricoBr);
+  if (!periodicidade || !parsed) return '';
+
+  const base = dataToDate(parsed);
+  let proxima = null;
+  if (periodicidade === 'Diária') proxima = new Date(base.getFullYear(), base.getMonth(), base.getDate() + 1);
+  if (periodicidade === 'Semanal') proxima = new Date(base.getFullYear(), base.getMonth(), base.getDate() + 7);
+  if (periodicidade === 'Quinzenal') proxima = new Date(base.getFullYear(), base.getMonth(), base.getDate() + 15);
+  if (periodicidade === 'Mensal') proxima = adicionarMesesComDia(base, 1);
+  if (periodicidade === 'Bimestral') proxima = adicionarMesesComDia(base, 2);
+  if (periodicidade === 'Trimensal') proxima = adicionarMesesComDia(base, 3);
+  if (periodicidade === 'Semestral') proxima = adicionarMesesComDia(base, 6);
+  if (periodicidade === 'Anual') proxima = adicionarMesesComDia(base, 12);
+  if (!proxima) return '';
+  return dateToDataBr(anteciparParaDiaUtil(proxima));
+}
+
+function ultimaDataHistoricoBr(historico) {
+  const lista = Array.isArray(historico) ? historico : [];
+  let best = null;
+  for (const h of lista) {
+    const p = parseDataBrCompleta(h?.data);
+    if (!p) continue;
+    const d = dataToDate(p);
+    if (!best || d.getTime() > best.getTime()) best = d;
+  }
+  return best ? dateToDataBr(best) : '';
+}
+
 function loadStore() {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
@@ -119,6 +266,9 @@ function normalizarRegistroProcesso(reg) {
     parteOposta: String(reg.parteOposta ?? ''),
     numeroProcessoNovo: String(reg.numeroProcessoNovo ?? ''),
     prazoFatal,
+    periodicidadeConsulta: normalizarPeriodicidadeConsulta(reg.periodicidadeConsulta),
+    proximaConsultaData: normalizarDataBr(reg.proximaConsultaData),
+    tramitacao: String(reg.tramitacao ?? '').trim(),
     faseSelecionada: String(reg.faseSelecionada ?? '').trim(),
     parteClienteIds: normalizarIdsPartes(reg.parteClienteIds),
     parteOpostaIds: normalizarIdsPartes(reg.parteOpostaIds),
@@ -140,7 +290,19 @@ function upsertRegistroProcesso(payload) {
     parteClienteIds: payload.parteClienteIds !== undefined ? payload.parteClienteIds : prev.parteClienteIds,
     parteOpostaIds: payload.parteOpostaIds !== undefined ? payload.parteOpostaIds : prev.parteOpostaIds,
     faseSelecionada: payload.faseSelecionada !== undefined ? payload.faseSelecionada : prev.faseSelecionada,
+    tramitacao: payload.tramitacao !== undefined ? payload.tramitacao : prev.tramitacao,
   };
+  const periodicidadeNorm = normalizarPeriodicidadeConsulta(
+    payload.periodicidadeConsulta !== undefined ? payload.periodicidadeConsulta : mergedRaw.periodicidadeConsulta
+  );
+  const dataBaseConsulta = ultimaDataHistoricoBr(mergedRaw.historico);
+  const proximaConsultaDataCalculada = calcularProximaConsultaBr({
+    dataHistoricoBr: dataBaseConsulta,
+    periodicidadeConsulta: periodicidadeNorm,
+  });
+  mergedRaw.periodicidadeConsulta = periodicidadeNorm;
+  mergedRaw.proximaConsultaData = proximaConsultaDataCalculada;
+
   const merged = normalizarRegistroProcesso(mergedRaw);
   if (!merged) return null;
   current[key] = merged;
@@ -189,6 +351,9 @@ export function salvarPrazoFatalDoProcesso(codCliente, proc, prazoFatalBr, dados
     parteClienteIds: [],
     parteOpostaIds: [],
     faseSelecionada: '',
+    periodicidadeConsulta: '',
+    proximaConsultaData: '',
+    tramitacao: '',
     historico: [],
   };
   const pf = String(prazoFatalBr ?? '').trim();
@@ -204,6 +369,9 @@ export function salvarPrazoFatalDoProcesso(codCliente, proc, prazoFatalBr, dados
     numeroProcessoNovo: dadosExtras.numeroProcessoNovo != null ? dadosExtras.numeroProcessoNovo : prev.numeroProcessoNovo,
     historico: prev.historico || [],
     prazoFatal: prazoNorm,
+    periodicidadeConsulta: dadosExtras.periodicidadeConsulta != null ? dadosExtras.periodicidadeConsulta : prev.periodicidadeConsulta,
+    proximaConsultaData: prev.proximaConsultaData || '',
+    tramitacao: dadosExtras.tramitacao != null ? dadosExtras.tramitacao : prev.tramitacao,
   });
 }
 
@@ -229,6 +397,37 @@ export function listarHistoricoPorData(dataBr) {
     });
   });
   out.sort((a, b) => (Number(b.numero) || 0) - (Number(a.numero) || 0));
+  return out;
+}
+
+export function listarConsultasARealizarPorData(dataBr) {
+  const target = normalizarDataBr(String(dataBr ?? '').trim());
+  if (!target) return [];
+  const out = [];
+  const current = loadStore();
+  Object.values(current).forEach((rawReg) => {
+    const reg = normalizarRegistroProcesso(rawReg);
+    if (!reg) return;
+    if (normalizarDataBr(reg.proximaConsultaData) !== target) return;
+    out.push({
+      codCliente: reg.codCliente,
+      proc: reg.proc,
+      cliente: reg.cliente,
+      parteCliente: reg.parteCliente,
+      parteOposta: reg.parteOposta,
+      numeroProcessoNovo: reg.numeroProcessoNovo,
+      info: `Periodicidade ${reg.periodicidadeConsulta || '—'} (próxima consulta em ${reg.proximaConsultaData || '—'})`,
+      data: reg.proximaConsultaData || '',
+      usuario: '',
+      numero: '',
+    });
+  });
+  out.sort((a, b) => {
+    const ca = Number(String(a.codCliente || '').replace(/\D/g, '')) || 0;
+    const cb = Number(String(b.codCliente || '').replace(/\D/g, '')) || 0;
+    if (ca !== cb) return ca - cb;
+    return (Number(a.proc) || 0) - (Number(b.proc) || 0);
+  });
   return out;
 }
 

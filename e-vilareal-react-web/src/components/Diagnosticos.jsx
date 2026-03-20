@@ -6,6 +6,7 @@ import {
   DEMO_DATA_CONSULTA_BR,
   DEMO_DATA_PRAZO_FATAL_BR,
   DEMO_PESSOA_ID_EXEMPLO,
+  listarConsultasARealizarPorData,
   listarHistoricoPorData,
   listarProcessosFaseAguardandoDocumentos,
   listarProcessosFaseAguardandoPeticionar,
@@ -65,6 +66,7 @@ export function Diagnosticos() {
   const [dataConsulta, setDataConsulta] = useState(DEMO_DATA_CONSULTA_BR);
   const [modalResultadoAberto, setModalResultadoAberto] = useState(false);
   const [resultadoConsulta, setResultadoConsulta] = useState([]);
+  const [rotuloResultadoConsulta, setRotuloResultadoConsulta] = useState('Processos Consultados');
   const [modalPrazoFatalAberto, setModalPrazoFatalAberto] = useState(false);
   const [dataPrazoFatal, setDataPrazoFatal] = useState(DEMO_DATA_PRAZO_FATAL_BR);
   const [modalResultadoPrazoFatalAberto, setModalResultadoPrazoFatalAberto] = useState(false);
@@ -101,6 +103,7 @@ export function Diagnosticos() {
     if (!data) return;
     const itens = listarHistoricoPorData(data);
     setResultadoConsulta(itens);
+    setRotuloResultadoConsulta('Processos Consultados');
     setModalConsultasRealizadasAberto(false);
     setModalResultadoAberto(true);
   }
@@ -108,8 +111,9 @@ export function Diagnosticos() {
   function consultarPorDataConsultasARealizar() {
     const data = String(dataConsulta ?? '').trim();
     if (!data) return;
-    const itens = listarHistoricoPorData(data);
+    const itens = listarConsultasARealizarPorData(data);
     setResultadoConsulta(itens);
+    setRotuloResultadoConsulta('Consultas a Realizar');
     setModalConsultasARealizarAberto(false);
     setModalResultadoAberto(true);
   }
@@ -119,6 +123,7 @@ export function Diagnosticos() {
     if (!data) return;
     const itens = listarHistoricoPorData(data);
     setResultadoConsulta(itens);
+    setRotuloResultadoConsulta('Publicações');
     setModalPublicacoesAberto(false);
     setModalResultadoAberto(true);
   }
@@ -606,7 +611,7 @@ export function Diagnosticos() {
           <div className="w-full max-w-6xl bg-slate-100 border border-slate-400 shadow-xl">
             <div className="flex items-center justify-between px-4 py-2 border-b border-slate-300 bg-white">
               <p className="text-base text-black">
-                Informação sobre Processos Consultados em {dataConsulta}:
+                Informação sobre {rotuloResultadoConsulta} em {dataConsulta}:
               </p>
               <button
                 type="button"
@@ -619,7 +624,7 @@ export function Diagnosticos() {
             </div>
             <div className="px-4 py-3">
               <p className="text-sm text-black mb-3">
-                Você tem {resultadoConsulta.length} Processos Consultados em {dataConsulta}. Veja: (duplo clique na linha abre o processo)
+                Você tem {resultadoConsulta.length} item(ns) em {rotuloResultadoConsulta} na data {dataConsulta}. Veja: (duplo clique na linha abre o processo)
               </p>
               <div className="border border-slate-300 bg-white h-[430px] overflow-auto p-2 text-[13px] leading-relaxed font-mono">
                 {resultadoConsulta.length === 0 ? (

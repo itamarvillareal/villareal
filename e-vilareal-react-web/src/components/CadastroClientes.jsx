@@ -189,13 +189,13 @@ export function CadastroClientes() {
 
   function handleCodigoInputChange(value) {
     const digits = apenasDigitos(value);
-    // Durante digitação, permite vazio para não “travar” o backspace em mobile.
+    // Durante digitação, permite vazio para não “travar” o backspace e
+    // não reaplica padding/normalização antes do usuário terminar.
     if (!digits) {
       setCodigo('');
       return;
     }
     setCodigo(digits);
-    aplicarCodigoCliente(digits);
   }
 
   function handleCodigoInputBlur(value) {
