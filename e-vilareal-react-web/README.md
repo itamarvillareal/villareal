@@ -35,3 +35,14 @@ npm run preview   # preview da build
 
 - `src/components/` – Sidebar, Board, Column, TaskCard
 - `src/data/mockData.js` – dados mockados (menu, colunas, tarefas)
+
+## Diagnósticos e processos (localStorage)
+
+Na primeira carga, o app chama `ensureHistoricoDemonstracaoDiagnostico()` (`src/data/processosHistoricoData.js`), que grava no **localStorage** (`vilareal:processos-historico:v1`) registros alinhados ao mock `getMockProcesso10x10` (clientes **1–10**, processos **1–10**):
+
+- **Datas sugeridas** na tela: **19/03/2026** (consultas e prazo fatal) e **20/03/2026** (histórico extra).
+- **Cliente 00000001**, processos **1–6**: uma fase diferente em cada um (Documentos, Peticionar, Verificação, Protocolo/Movimentação, Providência, Proc. Adm.).
+- **Busca pessoa**: código **2** (vínculo demo no proc. 1 do cliente 1).
+- **Reaplicar dados demo**: botão na tela Diagnósticos ou `reaplicarDemonstracaoDiagnostico()` no console.
+
+Chaves já existentes **não são sobrescritas** no seed automático; use o botão de reset para forçar o pacote completo.

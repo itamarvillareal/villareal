@@ -4,7 +4,7 @@ import { scorePossiblePersonName } from './nameCandidateScoringService.js';
 import { parseQualificacaoPessoa } from './personQualificationParserService.js';
 import { parseEnderecoPessoa } from './personAddressParserService.js';
 
-const CPF_REGEX = /(\d{3}[\.\s]?\d{3}[\.\s]?\d{3}[-\s\.]?\d{2}|\d{11})\b/g;
+const CPF_REGEX = /(\d{3}[.\s]?\d{3}[.\s]?\d{3}[-\s.]?\d{2}|\d{11})\b/g;
 const DATA_REGEX = /\b(\d{1,2})\s*[/\-.]\s*(\d{1,2})\s*[/\-.]\s*(\d{2,4})\b/g;
 
 const ROTULOS_CPF = [

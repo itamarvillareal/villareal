@@ -5,8 +5,8 @@ import { extrairDadosDeTextoLivre } from './personTextAutofillService.js';
 
 describe('validateCPF', () => {
   it('aceita CPF válido', () => {
-    expect(validateCPF('027.130.301-26').valido).toBe(true);
-    expect(validateCPF('02713030126').valido).toBe(true);
+    expect(validateCPF('390.533.447-05').valido).toBe(true);
+    expect(validateCPF('39053344705').valido).toBe(true);
   });
   it('rejeita CPF inválido', () => {
     expect(validateCPF('111.111.111-11').valido).toBe(false);
@@ -22,7 +22,7 @@ describe('parseBrazilianDate', () => {
 describe('extrairDadosDeTextoLivre — casos obrigatórios', () => {
   it('caso 1: texto estruturado', () => {
     const t =
-      'Nome completo: Elizeu Souza de Oliveira\nCPF: 027.130.301-26\nRG: 3834914 DGPC GO\nData de nascimento: 04/10/2002';
+      'Nome completo: Elizeu Souza de Oliveira\nCPF: 390.533.447-05\nRG: 3834914 DGPC GO\nData de nascimento: 04/10/2002';
     const r = extrairDadosDeTextoLivre(t);
     expect(r.nomeCompleto).toMatch(/Elizeu Souza de Oliveira/i);
     expect(r.cpf).toBeTruthy();
@@ -33,11 +33,11 @@ describe('extrairDadosDeTextoLivre — casos obrigatórios', () => {
 
   it('caso 2: texto jurídico corrido', () => {
     const t =
-      'ELIZEU SOUZA DE OLIVEIRA ("ELIZEU"), brasileiro, casado, empresário, portador da cédula de identidade n. 3843914 DGPC/GO, inscrito no CPF sob o n. 921.130.101-78, residente e domiciliado na Avenida Maranhão, Quadra 64B, Lote 30, Apto. 1702, Edifício Residencial Montpellier, Bairro Jundiaí, Anápolis/GO, CEP 75.114-150, endereço eletrônico: elizeu0419@gmail.com;';
+      'ELIZEU SOUZA DE OLIVEIRA ("ELIZEU"), brasileiro, casado, empresário, portador da cédula de identidade n. 3843914 DGPC/GO, inscrito no CPF sob o n. 921.130.101-79, residente e domiciliado na Avenida Maranhão, Quadra 64B, Lote 30, Apto. 1702, Edifício Residencial Montpellier, Bairro Jundiaí, Anápolis/GO, CEP 75.114-150, endereço eletrônico: elizeu0419@gmail.com;';
     const r = extrairDadosDeTextoLivre(t);
     expect(r.nomeCompleto).toMatch(/ELIZEU SOUZA DE OLIVEIRA/i);
     expect(r.rg).toMatch(/3843914.*DGPC/i);
-    expect(validateCPF('921.130.101-78').valido).toBe(false);
+    expect(validateCPF('921.130.101-79').valido).toBe(false);
     expect(r.cpf).toBeNull();
     expect(r.nacionalidade).toBe('Brasileiro');
     expect(r.estadoCivil).toBe('casado');
@@ -59,7 +59,7 @@ describe('extrairDadosDeTextoLivre — casos obrigatórios', () => {
   });
 
   it('caso 3: parcial', () => {
-    const t = 'Elizeu Souza de Oliveira, CPF 02713030126';
+    const t = 'Elizeu Souza de Oliveira, CPF 39053344705';
     const r = extrairDadosDeTextoLivre(t);
     expect(r.nomeCompleto).toMatch(/Elizeu/i);
     expect(r.cpf).toBeTruthy();

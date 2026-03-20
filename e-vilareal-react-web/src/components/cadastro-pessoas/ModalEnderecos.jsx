@@ -31,7 +31,9 @@ export function ModalEnderecos({ open, onClose, nomePessoa, codigoPessoa, endere
         setEstado(data.uf || '');
         setCidade(data.localidade || '');
       }
-    } catch (_) {}
+    } catch {
+      /* rede / CEP indisponível */
+    }
     setBuscandoCep(false);
   };
 

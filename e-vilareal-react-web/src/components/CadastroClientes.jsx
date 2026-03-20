@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Search, FolderOpen, Calendar, Receipt, FileText, Settings, User, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, FolderOpen, ChevronLeft, ChevronRight } from 'lucide-react';
 import { clienteMock, processosClienteMock } from '../data/mockData';
 import { getMockProcesso10x10 } from '../data/processosMock';
 import { getIdPessoaPorCodCliente } from '../data/clientesCadastradosMock';
@@ -36,8 +36,6 @@ function dadosClientePorCodigo(n) {
     cnpjCpf: '—',
   };
 }
-
-const iconMap = { Agenda: Calendar, Recibos: Receipt, Relatório: FileText, Configurações: Settings, Conta: User };
 
 const inputClass = 'w-full px-2 py-1.5 border border-slate-300 rounded text-sm bg-white';
 
@@ -146,7 +144,7 @@ export function CadastroClientes() {
   const codClienteFromState = stateFromFinanceiro?.codCliente ?? '';
   const procFromState = stateFromFinanceiro?.proc ?? '';
 
-  const [proximoCliente, setProximoCliente] = useState(clienteMock.proximoCliente);
+  const [proximoCliente, _setProximoCliente] = useState(clienteMock.proximoCliente);
   const [codigo, setCodigo] = useState(padCliente8(clienteMock.codigo));
   const [pessoa, setPessoa] = useState(clienteMock.pessoa);
   const [nomeRazao, setNomeRazao] = useState(clienteMock.nomeRazao);

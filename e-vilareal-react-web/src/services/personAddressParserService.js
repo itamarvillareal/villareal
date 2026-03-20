@@ -31,14 +31,16 @@ function extrairCep(texto) {
 function extrairCidadeUf(texto) {
   const t = String(texto || '');
   // Ex.: Anápolis/GO, Goiânia - GO, São Paulo/SP
-  const re = /([A-ZÀ-Ú][A-Za-zÀ-ú'\s]{2,60}?)\s*(?:\/|-)\s*([A-Z]{2})\b/;
-  const m = t.match(re);
-  if (!m) return null;
-  const cidade = limparTrecho(m[1]);
-  // evita confundir "DGPC/GO" (órgão emissor do RG) com cidade/UF
-  if (ORGAOS_EMISSORES.test(cidade.replace(/\s+/g, ''))) return null;
-  if (/^[A-Z]{2,8}$/.test(cidade) && cidade.length <= 6) return null;
-  return { cidade, estado: m[2] };
+  const re = /([A-ZÀ-Ú][A-Za-zÀ-ú'\s]{2,60}?)\s*(?:\/|-)\s*([A-Z]{2})\b/g;
+  let m;
+  while ((m = re.exec(t)) !== null) {
+    const cidade = limparTrecho(m[1]);
+    // evita confundir "DGPC/GO" (órgão emissor do RG) com cidade/UF; segue para a próxima ocorrência
+    if (ORGAOS_EMISSORES.test(cidade.replace(/\s+/g, ''))) continue;
+    if (/^[A-Z]{2,8}$/.test(cidade) && cidade.length <= 6) continue;
+    return { cidade, estado: m[2] };
+  }
+  return null;
 }
 
 function extrairBairro(texto) {
@@ -56,11 +58,31 @@ function extrairLogradouro(texto) {
   const lower = t.toLowerCase();
   const idxBairro = lower.search(/\bbairro\b/);
   const idxCep = lower.search(/\bcep\b/);
-  const idxCidadeUf = lower.search(/\/\s*[a-z]{2}\b/);
+  // Último padrão "/ UF" (ex.: Anápolis/GO), não o primeiro (ex.: DGPC/GO no RG)
+  let idxCidadeUf = -1;
+  const reSlashUf = /\/\s*[a-z]{2}\b/g;
+  let um;
+  while ((um = reSlashUf.exec(lower)) !== null) {
+    idxCidadeUf = um.index;
+  }
   const limit = [idxBairro, idxCep, idxCidadeUf].filter((x) => x >= 0).sort((a, b) => a - b)[0];
 
   // Pega o trecho anterior ao bairro/cep/cidadeUF para formar a rua “completa”
   const janela = limit != null ? t.slice(0, limit) : t;
+
+  // Preferir trecho a partir de Avenida/Rua (evita pegar só “Lote …” quando há logradouro completo antes)
+  const mAvRua = janela.match(
+    /\b(Avenida|Av\.)\s+[^,;\n]+(?:,\s*[^,;\n]+)*/i,
+  );
+  if (mAvRua) {
+    const v = limparTrecho(mAvRua[0]);
+    if (v.length >= 8) return v.replace(/\s*,\s*/g, ', ');
+  }
+  const mRua = janela.match(/\b(Rua|R\.)\s+[^,;\n]+(?:,\s*[^,;\n]+)*/i);
+  if (mRua) {
+    const v = limparTrecho(mRua[0]);
+    if (v.length >= 8) return v.replace(/\s*,\s*/g, ', ');
+  }
 
   // Tenta capturar a partir do ÚLTIMO token de logradouro conhecido (mais perto do CEP/bairro).
   LOGRADOURO_RE.lastIndex = 0;

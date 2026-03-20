@@ -27,7 +27,7 @@ function formatarDataHora(isoOuTimestamp) {
 }
 
 /** Normaliza itens antigos (só tipo/valor) para o formato com histórico */
-function normalizarContato(item, index) {
+function normalizarContato(item) {
   if (item.dataLancamento != null && item.usuario != null) return item;
   const now = new Date().toISOString();
   return {

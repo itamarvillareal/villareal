@@ -11,6 +11,7 @@ import {
   salvarPrazoFatalDoProcesso,
   seedHistoricoDoProcesso,
 } from '../data/processosHistoricoData';
+import { agendarAudienciaParaTodosUsuarios } from '../data/agendaPersistenciaData';
 import {
   X,
   FolderOpen,
@@ -56,24 +57,6 @@ const COMPETENCIAS = [
 ];
 
 const HISTORICO_POR_PAGINA = 10;
-
-const historicoMock = [
-  { id: 1, inf: '15', info: 'REVOGARAM A PROCURAÇÃO DO ITAMAR, NÃO PRECISA CONTESTAR MAIS', data: '20/10/2025', usuario: 'KARLA', numero: '0015' },
-  { id: 2, inf: '14', info: 'CITE-SE E INTIME-SE A PARTE REQUERIDA PARA COMPARECER À AUDIÊNCIA DE CONCILIAÇÃO VIRTUAL, A', data: '18/10/2025', usuario: 'KARLA', numero: '0014' },
-  { id: 3, inf: '13', info: 'CITAÇÃO EFETIVADA PARA CONDOMINIO CASAS FLAMBOYANT (TELEFONE) 18/09/2025', data: '15/10/2025', usuario: 'KARLA', numero: '0013' },
-  { id: 4, inf: '12', info: 'JUNTADA DE DOCUMENTOS COMPLEMENTARES À INICIAL', data: '12/10/2025', usuario: 'KARLA', numero: '0012' },
-  { id: 5, inf: '11', info: 'DESPACHO: CITAR A PARTE REQUERIDA NO PRAZO DE 15 DIAS', data: '10/10/2025', usuario: 'KARLA', numero: '0011' },
-  { id: 6, inf: '10', info: 'PROTOCOLO DE PETIÇÃO INICIAL - AÇÃO DE INDENIZAÇÃO', data: '08/10/2025', usuario: 'KARLA', numero: '0010' },
-  { id: 7, inf: '09', info: 'DISTRIBUIÇÃO POR SORTEIO - 2º JUIZADO ESPECIAL CÍVEL', data: '05/10/2025', usuario: 'KARLA', numero: '0009' },
-  { id: 8, inf: '08', info: 'RECEBIDOS OS AUTOS EM CARTÓRIO', data: '02/10/2025', usuario: 'KARLA', numero: '0008' },
-  { id: 9, inf: '07', info: 'INTIMAÇÃO PARA MANIFESTAÇÃO NO PRAZO DE 15 DIAS', data: '28/09/2025', usuario: 'KARLA', numero: '0007' },
-  { id: 10, inf: '06', info: 'CITAÇÃO EFETIVADA - REVELIA CONFIGURADA', data: '25/09/2025', usuario: 'KARLA', numero: '0006' },
-  { id: 11, inf: '05', info: 'CONTESTAÇÃO APRESENTADA PELA PARTE REQUERIDA', data: '20/09/2025', usuario: 'KARLA', numero: '0005' },
-  { id: 12, inf: '04', info: 'AUDIÊNCIA DE CONCILIAÇÃO DESIGNADA PARA 15/11/2025', data: '15/09/2025', usuario: 'KARLA', numero: '0004' },
-  { id: 13, inf: '03', info: 'REVOGARAM A PROCURAÇÃO DO ITAMAR, NÃO PRECISA CONTESTAR MAIS', data: '10/09/2025', usuario: 'KARLA', numero: '0003' },
-  { id: 14, inf: '02', info: 'CITE-SE E INTIME-SE A PARTE REQUERIDA PARA COMPARECER À AUDIÊNCIA', data: '05/09/2025', usuario: 'KARLA', numero: '0002' },
-  { id: 15, inf: '01', info: 'CITAÇÃO EFETIVADA PARA CONDOMINIO CASAS FLAMBOYANT (TELEFONE)', data: '02/09/2025', usuario: 'KARLA', numero: '0001' },
-];
 
 function gerarHistoricoMock(codigoCliente, processo) {
   const c = Number(normalizarCliente(codigoCliente));
@@ -269,7 +252,7 @@ export function Processos() {
   useEffect(() => {
     const s = location.state && typeof location.state === 'object' ? location.state : null;
     setLinhaOrigemContaCorrente(s?.contaCorrenteLinha ?? null);
-  }, [location.key, location.pathname]);
+  }, [location.key, location.pathname, location.state]);
   const [parteCliente, setParteCliente] = useState('MARIANA PERES DE SOUZA ALVES');
   const [edicaoDesabilitada, setEdicaoDesabilitada] = useState(true);
   const [parteOposta, setParteOposta] = useState('CONDOMINIO PORTAL DOS YPES 3 - CASAS FLAMBOYNAT');
@@ -297,7 +280,6 @@ export function Processos() {
   const [faseSelecionada, setFaseSelecionada] = useState('Em Andamento');
   const [statusAtivo, setStatusAtivo] = useState(true);
   const [faseCampo, setFaseCampo] = useState('');
-  const [tramitacao, setTramitacao] = useState('');
   const [audienciaData, setAudienciaData] = useState('');
   const [audienciaHora, setAudienciaHora] = useState('');
   const [audienciaTipo, setAudienciaTipo] = useState('');
@@ -359,6 +341,21 @@ export function Processos() {
     setPrazoFatal(registroPersistido?.prazoFatal ?? '');
     if (historicoPersistido.length > 0) {
       setHistorico(historicoPersistido);
+      if (!String(registroPersistido?.faseSelecionada ?? '').trim()) {
+        salvarHistoricoDoProcesso({
+          codCliente: mock.codigoCliente,
+          proc: mock.processo,
+          cliente: mock.cliente,
+          parteCliente: mock.parteCliente,
+          parteOposta: mock.parteOposta,
+          numeroProcessoNovo: mock.numeroProcessoNovo,
+          historico: historicoPersistido,
+          prazoFatal: registroPersistido?.prazoFatal ?? '',
+          parteClienteIds: registroPersistido?.parteClienteIds ?? [],
+          parteOpostaIds: registroPersistido?.parteOpostaIds ?? [],
+          faseSelecionada: mock.faseSelecionada,
+        });
+      }
     } else {
       const historicoInicial = gerarHistoricoMock(mock.codigoCliente, mock.processo);
       setHistorico(historicoInicial);
@@ -374,20 +371,6 @@ export function Processos() {
         parteClienteIds: registroPersistido?.parteClienteIds ?? [],
         parteOpostaIds: registroPersistido?.parteOpostaIds ?? [],
         faseSelecionada: fasePersistida,
-      });
-    } else if (!String(registroPersistido?.faseSelecionada ?? '').trim()) {
-      salvarHistoricoDoProcesso({
-        codCliente: mock.codigoCliente,
-        proc: mock.processo,
-        cliente: mock.cliente,
-        parteCliente: mock.parteCliente,
-        parteOposta: mock.parteOposta,
-        numeroProcessoNovo: mock.numeroProcessoNovo,
-        historico: historicoPersistido,
-        prazoFatal: registroPersistido?.prazoFatal ?? '',
-        parteClienteIds: registroPersistido?.parteClienteIds ?? [],
-        parteOpostaIds: registroPersistido?.parteOpostaIds ?? [],
-        faseSelecionada: mock.faseSelecionada,
       });
     }
     setPaginaHistorico(1);
@@ -653,6 +636,75 @@ export function Processos() {
 
   const inputClass = "w-full px-2 py-1.5 border border-slate-300 rounded text-sm bg-white";
   const inputDisabledClass = "w-full px-2 py-1.5 border border-slate-300 rounded text-sm bg-slate-50";
+
+  // Agendamento automático na Agenda sempre que o usuário preencher uma data válida
+  // no formulário de Audiência.
+  useEffect(() => {
+    if (!audienciaData) return;
+    if (!/^\d{2}\/\d{2}\/\d{4}$/.test(audienciaData)) return;
+    agendarAudienciaParaTodosUsuarios({
+      audienciaData,
+      audienciaHora,
+      audienciaTipo,
+      numeroProcessoNovo,
+    });
+  }, [audienciaData, audienciaHora, audienciaTipo, numeroProcessoNovo]);
+
+  function formatarDataAudienciaInput(valor) {
+    // Máscara simples para manter no formato dd/mm/aaaa.
+    // Aceita digitação/colar com ou sem barras e reformatará ao longo do input.
+    const digits = String(valor ?? '').replace(/\D/g, '').slice(0, 8);
+    if (!digits) return '';
+    const dd = digits.slice(0, 2);
+    const mm = digits.slice(2, 4);
+    const yyyy = digits.slice(4, 8);
+    if (digits.length <= 2) return dd;
+    if (digits.length <= 4) return `${dd}/${mm}`;
+    return `${dd}/${mm}/${yyyy}`;
+  }
+
+  function formatarHoraAudienciaInput(valor) {
+    // Máscara simples para manter no formato HH:MM
+    // Exemplos:
+    // - "9"    -> "09"
+    // - "930"  -> "09:30"
+    // - "0930" -> "09:30"
+    const digits = String(valor ?? '').replace(/\D/g, '').slice(0, 4);
+    if (!digits) return '';
+    if (digits.length === 1) return `0${digits}`;
+    if (digits.length === 2) return digits;
+    if (digits.length === 3) {
+      const hh = `0${digits[0]}`;
+      const mm = digits.slice(1, 3);
+      return `${hh}:${mm}`;
+    }
+    const hh = digits.slice(0, 2);
+    const mm = digits.slice(2, 4);
+    return `${hh}:${mm}`;
+  }
+
+  function normalizarHoraAudiencia(valor) {
+    const digits = String(valor ?? '').replace(/\D/g, '');
+    if (!digits) return '';
+    let hhStr = '';
+    let mmStr = '';
+    if (digits.length <= 2) {
+      hhStr = String(digits.padStart(2, '0')).slice(0, 2);
+      mmStr = '00';
+    } else if (digits.length === 3) {
+      hhStr = `0${digits[0]}`;
+      mmStr = digits.slice(1, 3);
+    } else {
+      hhStr = digits.slice(0, 2);
+      mmStr = digits.slice(2, 4);
+    }
+    const hh = Number(hhStr);
+    const mm = Number(mmStr);
+    if (!Number.isFinite(hh) || !Number.isFinite(mm)) return '';
+    if (hh < 0 || hh > 23) return '';
+    if (mm < 0 || mm > 59) return '';
+    return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+  }
 
   return (
     <div className="min-h-full bg-slate-200">
@@ -923,10 +975,41 @@ export function Processos() {
               <p className="text-sm font-medium text-slate-700 mb-2">Audiência</p>
               <div className="flex flex-wrap items-end gap-4">
                 <Field label="Data" className="w-28">
-                  <input type="text" value={audienciaData} onChange={(e) => setAudienciaData(e.target.value)} placeholder="dd/mm/aaaa" className={inputClass} />
+                  <input
+                    type="text"
+                    value={audienciaData}
+                    onChange={(e) => setAudienciaData(formatarDataAudienciaInput(e.target.value))}
+                    onDoubleClick={() => {
+                      const norm = normalizarDataBr(audienciaData);
+                      if (!norm) return;
+                      const ok = /^(\d{2})\/(\d{2})\/(\d{4})$/.test(norm);
+                      if (!ok) return;
+                      navigate('/agenda', {
+                        replace: false,
+                        state: { agendaData: norm },
+                      });
+                    }}
+                    onBlur={() => {
+                      // Se ficou completo, normaliza para padrão dd/mm/aaaa.
+                      const norm = normalizarDataBr(audienciaData);
+                      if (norm) setAudienciaData(norm);
+                    }}
+                    placeholder="dd/mm/aaaa"
+                    className={inputClass}
+                  />
                 </Field>
                 <Field label="Hora" className="w-24">
-                  <input type="text" value={audienciaHora} onChange={(e) => setAudienciaHora(e.target.value)} className={inputClass} />
+                  <input
+                    type="text"
+                    value={audienciaHora}
+                    onChange={(e) => setAudienciaHora(formatarHoraAudienciaInput(e.target.value))}
+                    onBlur={() => {
+                      const norm = normalizarHoraAudiencia(audienciaHora);
+                      if (norm) setAudienciaHora(norm);
+                    }}
+                    placeholder="hh:mm"
+                    className={inputClass}
+                  />
                 </Field>
                 <Field label="Tipo" className="w-32">
                   <input type="text" value={audienciaTipo} onChange={(e) => setAudienciaTipo(e.target.value)} className={inputClass} />

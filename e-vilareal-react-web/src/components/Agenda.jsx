@@ -1,12 +1,15 @@
 import { useState, useMemo, useEffect } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
 import {
   agendaUsuarios,
   agendaDataEsquerda,
+  agendaDataDireita,
   agendaEventosTerça,
   agendaEventosQuarta,
   agendaCalendarioMarco2026,
 } from '../data/mockData';
+import { getEventosAgendaPersistidosPorData } from '../data/agendaPersistenciaData';
 
 /** Retorna string DD/MM/YYYY para dia/mês/ano */
 function dataStr(dia, mes, ano) {
@@ -14,6 +17,20 @@ function dataStr(dia, mes, ano) {
 }
 
 const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+
+function parseDataBrCompleta(str) {
+  const s = String(str ?? '').trim();
+  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(s);
+  if (!m) return null;
+  const dd = Number(m[1]);
+  const mm = Number(m[2]);
+  const yyyy = Number(m[3]);
+  if (!Number.isFinite(dd) || !Number.isFinite(mm) || !Number.isFinite(yyyy)) return null;
+  if (mm < 1 || mm > 12) return null;
+  const maxDia = new Date(yyyy, mm, 0).getDate();
+  if (dd < 1 || dd > maxDia) return null;
+  return { dd, mm, yyyy };
+}
 
 function ColunaDia({ dataLabel, eventos, vazias = 8, onDuploCliqueEvento }) {
   return (
@@ -234,6 +251,7 @@ function PainelCalendario({
 }
 
 export function Agenda() {
+  const location = useLocation();
   const [usuarioEsquerda, setUsuarioEsquerda] = useState('itamar');
   const [usuarioDireita, setUsuarioDireita] = useState('itamar');
   const [mesEsquerda, setMesEsquerda] = useState(3);
@@ -244,16 +262,50 @@ export function Agenda() {
   const [diaDireita, setDiaDireita] = useState(11);
   const [eventoModal, setEventoModal] = useState(null);
 
-  const eventosPorData = useMemo(() => ({
-    [agendaDataEsquerda]: agendaEventosTerça,
-    '11/03/2026': agendaEventosQuarta,
-  }), []);
+  // Se vier uma data via navegação (Processos -> duplo clique em Data), posiciona o painel nela.
+  useEffect(() => {
+    const raw = location.state && typeof location.state === 'object' ? location.state.agendaData : null;
+    if (!raw) return;
+    const parsed = parseDataBrCompleta(raw);
+    if (!parsed) return;
+
+    setDiaEsquerda(parsed.dd);
+    setMesEsquerda(parsed.mm);
+    setAnoEsquerda(parsed.yyyy);
+
+    const dt = new Date(parsed.yyyy, parsed.mm - 1, parsed.dd);
+    dt.setDate(dt.getDate() + 1);
+    setDiaDireita(dt.getDate());
+    setMesDireita(dt.getMonth() + 1);
+    setAnoDireita(dt.getFullYear());
+  }, [location.key, location.state]);
 
   const dataEsquerdaStr = dataStr(diaEsquerda, mesEsquerda, anoEsquerda);
   const dataDireitaStr = dataStr(diaDireita, mesDireita, anoDireita);
 
-  const eventosEsquerda = eventosPorData[dataEsquerdaStr] ?? [];
-  const eventosDireita = eventosPorData[dataDireitaStr] ?? [];
+  const eventosPersistidosEsquerda = useMemo(
+    () => getEventosAgendaPersistidosPorData(dataEsquerdaStr),
+    [dataEsquerdaStr]
+  );
+  const eventosPersistidosDireita = useMemo(
+    () => getEventosAgendaPersistidosPorData(dataDireitaStr),
+    [dataDireitaStr]
+  );
+
+  const eventosEsquerda = useMemo(
+    () => [
+      ...(dataEsquerdaStr === agendaDataEsquerda ? agendaEventosTerça : []),
+      ...eventosPersistidosEsquerda,
+    ],
+    [dataEsquerdaStr, eventosPersistidosEsquerda]
+  );
+  const eventosDireita = useMemo(
+    () => [
+      ...(dataDireitaStr === agendaDataDireita ? agendaEventosQuarta : []),
+      ...eventosPersistidosDireita,
+    ],
+    [dataDireitaStr, eventosPersistidosDireita]
+  );
 
   return (
     <div className="flex flex-1 min-h-0 p-4 gap-4 overflow-hidden">

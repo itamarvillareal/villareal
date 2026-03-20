@@ -3,6 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { X } from 'lucide-react';
 import { getPessoaPorId } from '../data/cadastroPessoasMock';
 import {
+  DEMO_DATA_CONSULTA_BR,
+  DEMO_DATA_PRAZO_FATAL_BR,
+  DEMO_PESSOA_ID_EXEMPLO,
   listarHistoricoPorData,
   listarProcessosFaseAguardandoDocumentos,
   listarProcessosFaseAguardandoPeticionar,
@@ -12,6 +15,7 @@ import {
   listarProcessosFaseProcedimentoAdministrativo,
   listarProcessosPorIdPessoa,
   listarProcessosPorPrazoFatal,
+  reaplicarDemonstracaoDiagnostico,
 } from '../data/processosHistoricoData';
 
 const BOTOES_ESQUERDA = [
@@ -58,11 +62,11 @@ export function Diagnosticos() {
   const navigate = useNavigate();
   const [focado, setFocado] = useState('Consultas Realizadas');
   const [modalConsultasRealizadasAberto, setModalConsultasRealizadasAberto] = useState(false);
-  const [dataConsulta, setDataConsulta] = useState('19/03/2026');
+  const [dataConsulta, setDataConsulta] = useState(DEMO_DATA_CONSULTA_BR);
   const [modalResultadoAberto, setModalResultadoAberto] = useState(false);
   const [resultadoConsulta, setResultadoConsulta] = useState([]);
   const [modalPrazoFatalAberto, setModalPrazoFatalAberto] = useState(false);
-  const [dataPrazoFatal, setDataPrazoFatal] = useState('19/03/2026');
+  const [dataPrazoFatal, setDataPrazoFatal] = useState(DEMO_DATA_PRAZO_FATAL_BR);
   const [modalResultadoPrazoFatalAberto, setModalResultadoPrazoFatalAberto] = useState(false);
   const [resultadoPrazoFatal, setResultadoPrazoFatal] = useState([]);
   const [modalBuscaPessoaAberto, setModalBuscaPessoaAberto] = useState(false);
@@ -87,6 +91,8 @@ export function Diagnosticos() {
   const [modalResultadoProcAdministrativoAberto, setModalResultadoProcAdministrativoAberto] =
     useState(false);
   const [resultadoProcAdministrativo, setResultadoProcAdministrativo] = useState([]);
+
+  const pessoaDemoBusca = getPessoaPorId(DEMO_PESSOA_ID_EXEMPLO);
 
   function consultarPorData() {
     const data = String(dataConsulta ?? '').trim();
@@ -206,7 +212,7 @@ export function Diagnosticos() {
                     setModalPrazoFatalAberto(true);
                   }
                   if (label === 'Busca pessoa') {
-                    setCodigoPessoaBusca('');
+                    setCodigoPessoaBusca(String(DEMO_PESSOA_ID_EXEMPLO));
                     setModalBuscaPessoaAberto(true);
                   }
                 }}
@@ -258,6 +264,30 @@ export function Diagnosticos() {
             ))}
           </div>
         </div>
+        <div className="px-6 pb-4 space-y-3 border-t border-slate-100 pt-3">
+          <p className="text-xs text-slate-600 text-center leading-relaxed">
+            <strong>Dados de teste (localStorage):</strong> consultas e prazo fatal em <strong>{DEMO_DATA_CONSULTA_BR}</strong>
+            ; também há lançamentos em <strong>20/03/2026</strong>. Cliente <strong>00000001</strong> proc. <strong>1–6</strong>{' '}
+            cobre cada fase do painel à direita. Busca pessoa: código <strong>{DEMO_PESSOA_ID_EXEMPLO}</strong> (vínculo demo na parte
+            cliente do proc. 1).
+          </p>
+          <div className="flex flex-wrap justify-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                const r = reaplicarDemonstracaoDiagnostico();
+                window.alert(
+                  r.ok
+                    ? `Dados demo reaplicados. Inseridos: ${r.inseridos}, atualizados: ${r.atualizados}.`
+                    : 'Não foi possível reaplicar (sem window/localStorage).'
+                );
+              }}
+              className="px-3 py-1.5 rounded border border-amber-400 bg-amber-50 text-amber-900 text-xs font-medium hover:bg-amber-100"
+            >
+              Reaplicar dados demo (reset)
+            </button>
+          </div>
+        </div>
         <div className="px-6 pb-6 flex justify-center">
           <button
             type="button"
@@ -271,51 +301,49 @@ export function Diagnosticos() {
 
       {modalConsultasRealizadasAberto && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/25 p-4">
-          <div className="w-full max-w-xl bg-slate-100 border border-slate-400 shadow-xl">
-            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-300 bg-white">
-              <h3 className="text-[2rem] leading-none font-normal text-black">Consultas Realizadas</h3>
+          <div className="w-full max-w-2xl bg-white border border-slate-200 shadow-xl rounded-lg overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 bg-slate-50">
+              <h3 className="text-lg leading-none font-semibold text-slate-800">Consultas Realizadas</h3>
               <button
                 type="button"
                 onClick={() => setModalConsultasRealizadasAberto(false)}
                 className="p-1 text-slate-700 hover:bg-slate-200"
                 aria-label="Fechar modal"
               >
-                <X className="w-8 h-8" />
+                <X className="w-6 h-6" />
               </button>
             </div>
 
-            <div className="px-10 py-8">
-              <div className="grid grid-cols-[1fr_240px] items-start gap-6">
-                <p className="text-[2.8rem] leading-tight text-black">
-                  Informe o dia que
-                  <br />
-                  desia consultar:
+            <div className="px-6 py-6">
+              <div className="grid grid-cols-1 md:grid-cols-[1fr_280px] items-start gap-6">
+                <p className="text-base md:text-xl leading-snug font-medium text-slate-800">
+                  Informe o dia que deseja consultar:
                 </p>
-                <div>
+                <div className="rounded border border-slate-200 bg-white p-4">
                   <input
                     type="date"
                     value={toInputDate(dataConsulta)}
                     onChange={(e) => setDataConsulta(toBrDate(e.target.value))}
-                    className="w-full h-16 px-4 text-[2.7rem] leading-none border border-slate-500 bg-white"
+                    className="w-full h-10 px-3 text-sm border border-slate-300 rounded bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
                   />
-                  <p className="mt-2 text-[2.4rem] leading-none text-black">
-                    {diaSemanaPtBr(dataConsulta)}
+                  <p className="mt-2 text-sm leading-none text-slate-700 min-h-[1.25rem]">
+                    {diaSemanaPtBr(dataConsulta) || ' '}
                   </p>
                 </div>
               </div>
 
-              <div className="mt-14 flex flex-col items-center gap-6">
+              <div className="mt-6 flex flex-col md:flex-row items-center justify-center gap-3">
                 <button
                   type="button"
                   onClick={consultarPorData}
-                  className="min-w-[280px] px-10 py-3 border border-slate-500 bg-white text-[2.8rem] leading-none text-black shadow-[2px_2px_0_0_rgba(0,0,0,0.35)] hover:bg-slate-50"
+                  className="min-w-[200px] px-6 py-2.5 rounded border border-blue-700 bg-blue-600 text-sm leading-none text-white shadow-[2px_2px_0_0_rgba(0,0,0,0.25)] hover:bg-blue-700"
                 >
                   Consultar
                 </button>
                 <button
                   type="button"
                   onClick={() => setModalConsultasRealizadasAberto(false)}
-                  className="min-w-[180px] px-10 py-3 border border-slate-500 bg-white text-[2.8rem] leading-none text-black shadow-[2px_2px_0_0_rgba(0,0,0,0.35)] hover:bg-slate-50"
+                  className="min-w-[160px] px-6 py-2.5 rounded border border-slate-300 bg-white text-sm leading-none text-slate-700 hover:bg-slate-50"
                 >
                   Fechar
                 </button>
@@ -354,12 +382,13 @@ export function Diagnosticos() {
                   value={codigoPessoaBusca}
                   onChange={(e) => setCodigoPessoaBusca(e.target.value.replace(/\D/g, ''))}
                   className="mt-1 w-full px-3 py-2 border border-slate-300 rounded text-sm"
-                  placeholder="Ex.: 42"
+                  placeholder={`Ex.: ${DEMO_PESSOA_ID_EXEMPLO} (demo)`}
                   autoFocus
                 />
               </label>
               <p className="text-xs text-slate-500">
-                Serão listados os processos em que essa pessoa está vinculada como Parte Cliente ou Parte Oposta.
+                Serão listados os processos em que essa pessoa está vinculada como Parte Cliente ou Parte Oposta.                 Demo: pessoa <strong>{DEMO_PESSOA_ID_EXEMPLO}</strong>
+                {pessoaDemoBusca ? ` — ${pessoaDemoBusca.nome}` : ''} no proc. 1 do cliente 00000001.
               </p>
             </div>
             <div className="px-4 py-3 border-t border-slate-200 flex justify-end gap-2">

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   ChevronUp,
   ChevronDown,
@@ -288,7 +288,7 @@ export function CadastroPessoas() {
     setCriterioBusca('nome');
   }
 
-  const carregarLista = async () => {
+  const carregarLista = useCallback(async () => {
     setLoading(true);
     setError(null);
     if (FORCA_MOCK_CADASTRO) {
@@ -312,11 +312,11 @@ export function CadastroPessoas() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [apenasAtivos]);
 
   useEffect(() => {
     carregarLista();
-  }, [apenasAtivos]);
+  }, [carregarLista]);
 
   const total = lista.length;
 

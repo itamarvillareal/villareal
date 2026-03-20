@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { X, ChevronUp, ChevronDown, BarChart2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -180,20 +180,6 @@ function SpinnerFieldManual({
   );
 }
 
-const titulosMock = [
-  { dataVencimento: '30/04/2024', valorInicial: 'R$ 25.742,47', atualizacaoMonetaria: 'R$ 1.876,68', diasAtraso: '685', juros: 'R$ 6.352,40', multa: 'R$ 0,00', honorarios: 'R$ 0,00', total: 'R$ 33.971,55' },
-  ...Array.from({ length: 19 }, (_, i) => ({
-    dataVencimento: '',
-    valorInicial: '',
-    atualizacaoMonetaria: '',
-    diasAtraso: '',
-    juros: '',
-    multa: '',
-    honorarios: '',
-    total: '',
-  })),
-];
-
 export function Calculos() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -367,7 +353,6 @@ export function Calculos() {
   const titulos = rodadaAtual.titulos;
   const parcelas = Array.isArray(rodadaAtual.parcelas) ? rodadaAtual.parcelas : gerarParcelasMock();
   const limpezaAtiva = rodadaAtual.limpezaAtiva;
-  const snapshotAntesLimpeza = rodadaAtual.snapshotAntesLimpeza;
 
   const totalPaginas = Math.max(1, Math.ceil(titulos.length / TITULOS_POR_PAGINA));
   useEffect(() => {

@@ -12,6 +12,7 @@ import { Calculos } from './components/Calculos';
 import { Diagnosticos } from './components/Diagnosticos';
 import { Financeiro } from './components/Financeiro';
 import { atualizarIndicesMensaisAposDia10 } from './services/monetaryIndicesService.js';
+import { ensureHistoricoDemonstracaoDiagnostico } from './data/processosHistoricoData.js';
 
 function Layout() {
   return (
@@ -26,6 +27,11 @@ function Layout() {
 
 function App() {
   useEffect(() => {
+    try {
+      ensureHistoricoDemonstracaoDiagnostico();
+    } catch {
+      /* não bloqueia o app */
+    }
     let cancelled = false;
     (async () => {
       try {

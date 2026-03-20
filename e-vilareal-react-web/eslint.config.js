@@ -36,6 +36,8 @@ export default defineConfig([
     },
     rules: {
       'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
+      // Sincronizar estado com location.state / mocks em useEffect é padrão neste app; a regra acusa falsos positivos.
+      'react-hooks/set-state-in-effect': 'off',
     },
   },
 ])

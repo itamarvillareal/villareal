@@ -28,7 +28,6 @@ export function parseBrazilianDocument(textoBruto, metaArquivo = {}) {
   let { nomeCompleto, cpf, dataNascimento } = basico;
   let rg = null;
 
-  const upper = normalizado.upper;
   const linhas = normalizado.linhas;
   for (let i = 0; i < linhas.length; i += 1) {
     const up = linhas[i].toUpperCase();

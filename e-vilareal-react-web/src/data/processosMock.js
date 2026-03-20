@@ -1,5 +1,6 @@
 // Mock explícito para clientes 1–10 e processos 1–10.
-// Usado para testes previsíveis e consistentes entre telas (Processos/Cálculos).
+// Usado para testes previsíveis e consistentes entre telas (Processos/Cálculos/Diagnósticos).
+// O seed em processosHistoricoData.js (ensureHistoricoDemonstracaoDiagnostico) usa estes dados para o localStorage.
 
 const pad3 = (n) => String(n).padStart(3, '0');
 const pad2 = (n) => String(n).padStart(2, '0');

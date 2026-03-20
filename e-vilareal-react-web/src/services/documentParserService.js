@@ -1,5 +1,5 @@
-const CPF_REGEX = /\b(\d{3}[\.\s]?\d{3}[\.\s]?\d{3}[-\s]?\d{2})\b/g;
-const DATA_REGEX = /\b(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})\b/g;
+const CPF_REGEX = /\b(\d{3}[.\s]?\d{3}[.\s]?\d{3}[-\s]?\d{2})\b/g;
+const DATA_REGEX = /\b(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})\b/g;
 
 function normalizarCpf(cpf) {
   if (!cpf) return null;
@@ -254,7 +254,6 @@ export function extrairDadosDocumentoPessoal(texto) {
 
   if (!nome || !cpf || !dataNascimento) {
     // Ajuda na calibração: log leve no console para ajustar heurísticas com documentos reais.
-    // eslint-disable-next-line no-console
     console.debug('OCR bruto (parcial) para ajuste:', (texto || '').slice(0, 800));
   }
   return {
