@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import {
@@ -13,6 +13,7 @@ import {
   getEventosAgendaPersistidosPorData,
   getUsuariosAtivos,
   setUsuariosAtivos,
+  salvarStatusCurtoEventoPersistido,
 } from '../data/agendaPersistenciaData';
 
 /** Retorna string DD/MM/YYYY para dia/mês/ano */
@@ -36,7 +37,94 @@ function parseDataBrCompleta(str) {
   return { dd, mm, yyyy };
 }
 
-function ColunaDia({ dataLabel, eventos, vazias = 8, onDuploCliqueEvento }) {
+function StatusCurtoCell({ evento, onSalvar, maxLen = 12 }) {
+  const original = String(evento?.statusCurto ?? '');
+  const [editando, setEditando] = useState(false);
+  const [valor, setValor] = useState(original);
+  const inputRef = useRef(null);
+  const cancelouRef = useRef(false);
+
+  useEffect(() => {
+    if (!editando) setValor(original);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [original]);
+
+  useEffect(() => {
+    if (!editando) return;
+    const el = inputRef.current;
+    if (!el) return;
+    try {
+      el.focus();
+      el.select();
+    } catch {
+      // ignore
+    }
+  }, [editando]);
+
+  function salvarSeMudou() {
+    const novo = String(valor ?? '').slice(0, maxLen);
+    if (novo === original) {
+      setEditando(false);
+      return;
+    }
+    onSalvar?.(novo);
+    setEditando(false);
+  }
+
+  return (
+    <div
+      className="w-[85px] flex items-center justify-end pr-1"
+      onClick={(e) => {
+        e.stopPropagation();
+      }}
+    >
+      {editando ? (
+        <input
+          ref={inputRef}
+          type="text"
+          value={valor}
+          onChange={(e) => setValor(e.target.value)}
+          onDoubleClick={(e) => e.stopPropagation()}
+          onBlur={() => {
+            if (cancelouRef.current) {
+              cancelouRef.current = false;
+              setEditando(false);
+              return;
+            }
+            salvarSeMudou();
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              salvarSeMudou();
+            }
+            if (e.key === 'Escape') {
+              e.preventDefault();
+              cancelouRef.current = true;
+              setValor(original);
+              setEditando(false);
+            }
+          }}
+          className="w-full px-1 py-0.5 text-[0.62rem] text-right border border-slate-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+          placeholder=""
+          maxLength={maxLen}
+        />
+      ) : (
+        <div
+          className="text-gray-700 text-[0.54rem] font-medium truncate block w-full cursor-text select-none text-right"
+          style={{ minHeight: '14px' }}
+          onClick={() => setEditando(true)}
+          onDoubleClick={(e) => e.stopPropagation()}
+          title={original}
+        >
+          {original || '\u00A0'}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ColunaDia({ dataLabel, eventos, vazias = 8, onDuploCliqueEvento, dataBrStr, onSalvarStatusCurto }) {
   return (
     <div className="flex-1 min-w-0 flex flex-col border border-gray-300 rounded bg-white overflow-hidden">
       <div className="px-2 py-1.5 bg-gray-100 border-b border-gray-300 text-sm font-medium text-gray-800">
@@ -63,13 +151,14 @@ function ColunaDia({ dataLabel, eventos, vazias = 8, onDuploCliqueEvento }) {
                     {ev.descricao}
                   </span>
                 </td>
-                <td className="w-[140px] px-2 py-1 align-middle text-right">
-                  <span
-                    className="text-gray-700 text-[0.54rem] font-medium truncate block w-full"
-                    title={ev.status ?? (ev.destaque ? 'Destaque' : '')}
-                  >
-                    {ev.status ?? (ev.destaque ? 'Destaque' : '')}
-                  </span>
+                <td className="w-[85px] px-0 py-1 align-middle text-right">
+                  <StatusCurtoCell
+                    evento={ev}
+                    onSalvar={(novo) => {
+                      if (!dataBrStr) return;
+                      onSalvarStatusCurto?.(ev, novo);
+                    }}
+                  />
                 </td>
               </tr>
             ))}
@@ -81,7 +170,7 @@ function ColunaDia({ dataLabel, eventos, vazias = 8, onDuploCliqueEvento }) {
                 <td className="px-2 py-1 align-middle text-[0.60rem]">
                   <span className="block w-full text-transparent">__</span>
                 </td>
-                <td className="w-[140px] px-2 py-1 align-middle text-right">
+                <td className="w-[85px] px-0 py-1 align-middle text-right">
                   <span className="block w-full text-transparent">__</span>
                 </td>
               </tr>
@@ -271,6 +360,7 @@ export function Agenda() {
   const [anoDireita, setAnoDireita] = useState(2026);
   const [diaDireita, setDiaDireita] = useState(11);
   const [eventoModal, setEventoModal] = useState(null);
+  const [, setAgendaStatusNonce] = useState(0);
   const [usuariosAtivos, setUsuariosAtivosState] = useState(() => getUsuariosAtivos());
   const [modalUsuariosSistemaAberto, setModalUsuariosSistemaAberto] = useState(false);
   const [slotsCustom, setSlotsCustom] = useState(['', '']);
@@ -343,29 +433,51 @@ export function Agenda() {
   const dataEsquerdaStr = dataStr(diaEsquerda, mesEsquerda, anoEsquerda);
   const dataDireitaStr = dataStr(diaDireita, mesDireita, anoDireita);
 
-  const eventosPersistidosEsquerda = useMemo(
-    () => getEventosAgendaPersistidosPorData(dataEsquerdaStr),
-    [dataEsquerdaStr]
-  );
-  const eventosPersistidosDireita = useMemo(
-    () => getEventosAgendaPersistidosPorData(dataDireitaStr),
-    [dataDireitaStr]
-  );
+  // Recalcula ao mudar `agendaStatusNonce` (salvando statusCurto no localStorage).
+  const eventosPersistidosEsquerda = getEventosAgendaPersistidosPorData(dataEsquerdaStr);
+  const eventosPersistidosDireita = getEventosAgendaPersistidosPorData(dataDireitaStr);
 
   const eventosEsquerda = useMemo(
-    () => [
-      ...(dataEsquerdaStr === agendaDataEsquerda ? agendaEventosTerça : []),
-      ...eventosPersistidosEsquerda,
-    ],
-    [dataEsquerdaStr, eventosPersistidosEsquerda]
+    () => {
+      const base = dataEsquerdaStr === agendaDataEsquerda ? agendaEventosTerça : [];
+      const persisted = (Array.isArray(eventosPersistidosEsquerda) ? eventosPersistidosEsquerda : []).filter((ev) => {
+        if (!ev) return false;
+        if (ev.usuarioId == null || String(ev.usuarioId) === '') return true;
+        return String(ev.usuarioId) === String(usuarioEsquerda);
+      });
+
+      const merged = new Map();
+      for (const ev of base) merged.set(String(ev.id), { ...ev, statusCurto: ev.statusCurto ?? '' });
+      for (const ev of persisted) {
+        const key = String(ev.id);
+        const prev = merged.get(key) || {};
+        merged.set(key, { ...prev, ...ev, statusCurto: ev.statusCurto ?? prev.statusCurto ?? '' });
+      }
+      return Array.from(merged.values());
+    },
+    [dataEsquerdaStr, eventosPersistidosEsquerda, usuarioEsquerda]
   );
   const eventosDireita = useMemo(
-    () => [
-      ...(dataDireitaStr === agendaDataDireita ? agendaEventosQuarta : []),
-      ...eventosPersistidosDireita,
-    ],
-    [dataDireitaStr, eventosPersistidosDireita]
+    () => {
+      const base = dataDireitaStr === agendaDataDireita ? agendaEventosQuarta : [];
+      const persisted = (Array.isArray(eventosPersistidosDireita) ? eventosPersistidosDireita : []).filter((ev) => {
+        if (!ev) return false;
+        if (ev.usuarioId == null || String(ev.usuarioId) === '') return true;
+        return String(ev.usuarioId) === String(usuarioDireita);
+      });
+
+      const merged = new Map();
+      for (const ev of base) merged.set(String(ev.id), { ...ev, statusCurto: ev.statusCurto ?? '' });
+      for (const ev of persisted) {
+        const key = String(ev.id);
+        const prev = merged.get(key) || {};
+        merged.set(key, { ...prev, ...ev, statusCurto: ev.statusCurto ?? prev.statusCurto ?? '' });
+      }
+      return Array.from(merged.values());
+    },
+    [dataDireitaStr, eventosPersistidosDireita, usuarioDireita]
   );
+
 
   return (
     <div className="flex flex-1 min-h-0 p-4 gap-4 overflow-hidden">
@@ -538,12 +650,32 @@ export function Agenda() {
             eventos={eventosEsquerda}
             vazias={12}
             onDuploCliqueEvento={(ev) => setEventoModal(ev)}
+            dataBrStr={dataEsquerdaStr}
+            usuarioSelecionado={usuarioEsquerda}
+            onSalvarStatusCurto={(ev, novo) => {
+              salvarStatusCurtoEventoPersistido({
+                dataBr: dataEsquerdaStr,
+                evento: ev,
+                statusCurto: novo,
+              });
+              setAgendaStatusNonce((n) => n + 1);
+            }}
           />
           <ColunaDia
             dataLabel={`${dataDireitaStr} — Próximo dia`}
             eventos={eventosDireita}
             vazias={12}
             onDuploCliqueEvento={(ev) => setEventoModal(ev)}
+            dataBrStr={dataDireitaStr}
+            usuarioSelecionado={usuarioDireita}
+            onSalvarStatusCurto={(ev, novo) => {
+              salvarStatusCurtoEventoPersistido({
+                dataBr: dataDireitaStr,
+                evento: ev,
+                statusCurto: novo,
+              });
+              setAgendaStatusNonce((n) => n + 1);
+            }}
           />
         </div>
       </div>

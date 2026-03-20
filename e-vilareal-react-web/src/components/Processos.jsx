@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { getLancamentosContaCorrente, mergeContaCorrenteComLinhaOrigem } from '../data/financeiroData';
 import { getMockProcesso10x10 } from '../data/processosMock';
 import { getCadastroPessoasMock } from '../data/cadastroPessoasMock';
+import { getImovelMock, getImoveisMockTotal } from '../data/imoveisMockData';
 import {
   getHistoricoDoProcesso,
   getRegistroProcesso,
@@ -11,7 +12,7 @@ import {
   salvarPrazoFatalDoProcesso,
   seedHistoricoDoProcesso,
 } from '../data/processosHistoricoData';
-import { agendarAudienciaParaTodosUsuarios } from '../data/agendaPersistenciaData';
+import { agendarAudienciaParaTodosUsuarios, agendarEmLoteParaUsuarios } from '../data/agendaPersistenciaData';
 import {
   X,
   FolderOpen,
@@ -57,6 +58,17 @@ const COMPETENCIAS = [
 ];
 
 const HISTORICO_POR_PAGINA = 10;
+const PERIODICIDADES_AGENDA_LOTE = [
+  'Agendamento único',
+  'Diariamente',
+  'Semanalmente',
+  'Quinzenalmente',
+  'Mensalmente',
+  'Bimestralmente',
+  'Trimestralmente',
+  'Semestralmente',
+  'Todo dia X do mês',
+];
 
 function gerarHistoricoMock(codigoCliente, processo) {
   const c = Number(normalizarCliente(codigoCliente));
@@ -288,6 +300,9 @@ export function Processos() {
   const [prazoFatal, setPrazoFatal] = useState('');
   const [unidade, setUnidade] = useState('');
   const [unidadeEndereco, setUnidadeEndereco] = useState('Unidade QD.06 LT.06');
+  const [imovelId, setImovelId] = useState(''); // vínculo com a aba Imóveis (mock)
+  const [imovelManual, setImovelManual] = useState(false);
+  const [unidadeManual, setUnidadeManual] = useState(false);
   const [tabAtiva, setTabAtiva] = useState('historico');
   const [historico, setHistorico] = useState(() => gerarHistoricoMock('1', 1));
   const [proximaInformacao, setProximaInformacao] = useState('');
@@ -295,6 +310,12 @@ export function Processos() {
   const [paginaHistorico, setPaginaHistorico] = useState(1);
   const [informacaoModal, setInformacaoModal] = useState(null);
   const [modalContaCorrente, setModalContaCorrente] = useState(false);
+  const [modalAgendaLoteAberto, setModalAgendaLoteAberto] = useState(false);
+  const [agendaLoteTexto, setAgendaLoteTexto] = useState('');
+  const [agendaLoteData, setAgendaLoteData] = useState('');
+  const [agendaLoteHora, setAgendaLoteHora] = useState('');
+  const [agendaLotePeriodicidade, setAgendaLotePeriodicidade] = useState('Agendamento único');
+  const [agendaLoteInfo, setAgendaLoteInfo] = useState('');
   const [sortContaCorrente, setSortContaCorrente] = useState({ col: 'data', dir: 'desc' });
   const [buscaContaCorrente, setBuscaContaCorrente] = useState({ campo: 'todos', termo: '' });
 
@@ -379,12 +400,126 @@ export function Processos() {
   }, [codigoCliente, processo]);
 
   useEffect(() => {
+    // Sempre que o processo muda, volta a permitir preenchimento automático do vínculo com imóvel.
+    setImovelManual(false);
+    setUnidadeManual(false);
+    setImovelId('');
+    setUnidade('');
+  }, [codigoCliente, processo]);
+
+  const vinculoImovelMock = useMemo(() => {
+    const codNum = Number(String(codigoCliente ?? '').replace(/\D/g, ''));
+    const procNum = Number(processo ?? 0);
+    if (!Number.isFinite(codNum) || !Number.isFinite(procNum) || codNum <= 0 || procNum <= 0) return null;
+
+    const total = Number(getImoveisMockTotal?.() ?? 45);
+    for (let id = 1; id <= total; id++) {
+      const mock = getImovelMock(id);
+      if (!mock) continue;
+      const codMock = Number(String(mock.codigo ?? '').replace(/\D/g, ''));
+      const procMock = Number(mock.proc ?? 0);
+      if (codMock === codNum && procMock === procNum) {
+        return { imovelId: id, unidade: String(mock.unidade ?? '') };
+      }
+    }
+    return null;
+  }, [codigoCliente, processo]);
+
+  useEffect(() => {
+    if (vinculoImovelMock) {
+      if (!imovelManual && !String(imovelId ?? '').trim()) setImovelId(String(vinculoImovelMock.imovelId));
+      if (!unidadeManual && !String(unidade ?? '').trim()) setUnidade(String(vinculoImovelMock.unidade ?? ''));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vinculoImovelMock]);
+
+  function handleAbrirImovel() {
+    const idNum = Number(String(imovelId ?? '').replace(/\D/g, ''));
+    const unidadeTrim = String(unidade ?? '').trim();
+
+    if (!Number.isFinite(idNum) || idNum <= 0 || !unidadeTrim) {
+      alert('Informe o código do imóvel e a unidade');
+      return;
+    }
+
+    const mock = getImovelMock(idNum);
+    if (!mock) {
+      alert('Imóvel não encontrado para o código informado');
+      return;
+    }
+
+    navigate('/imoveis', {
+      state: {
+        imovelId: idNum,
+        unidade: unidadeTrim,
+      },
+    });
+  }
+
+  useEffect(() => {
     if (modalContaCorrente) setSortContaCorrente({ col: 'data', dir: 'desc' });
   }, [modalContaCorrente, codigoCliente, processo]);
 
   useEffect(() => {
     if (modalContaCorrente) setBuscaContaCorrente({ campo: 'todos', termo: '' });
   }, [modalContaCorrente, codigoCliente, processo]);
+
+  function montarTituloAgendaDoProcesso() {
+    const cli = String(cliente ?? '').trim();
+    const op = String(textoParteOposta || parteOposta || '').trim();
+    const num = String(numeroProcessoNovo ?? '').trim();
+    const left = cli || 'Cliente';
+    const right = op || 'Parte Oposta';
+    const procTxt = num ? ` (${num})` : '';
+    return `${left} x ${right}${procTxt}`.trim();
+  }
+
+  function abrirAgendaEmLote() {
+    const hoje = hojeBr();
+    setAgendaLoteTexto(montarTituloAgendaDoProcesso());
+    setAgendaLoteData(normalizarDataBr(audienciaData) || hoje);
+    setAgendaLoteHora(normalizarHoraAudiencia(audienciaHora) || '');
+    setAgendaLotePeriodicidade('Agendamento único');
+    setAgendaLoteInfo('');
+    setModalAgendaLoteAberto(true);
+  }
+
+  function salvarAgendaEmLote() {
+    const dataNorm = normalizarDataBr(agendaLoteData);
+    if (!dataNorm) {
+      setAgendaLoteInfo('Informe uma data válida no formato dd/mm/aaaa.');
+      return;
+    }
+
+    const horaNorm = normalizarHoraAudiencia(agendaLoteHora);
+    const usuariosAlvo = [
+      { id: 'itamar', nome: 'Dr. Itamar' },
+      { id: 'kari', nome: 'Karla' },
+      { id: 'ana', nome: 'Ana Luisa' },
+    ];
+
+    const resultado = agendarEmLoteParaUsuarios({
+      textoCompromisso: agendaLoteTexto,
+      dataBaseBr: dataNorm,
+      hora: horaNorm,
+      periodicidade: agendaLotePeriodicidade,
+      usuarios: usuariosAlvo,
+      processoId: String(processo ?? ''),
+      clienteId: String(codigoCliente ?? ''),
+      numeroProcessoNovo: String(numeroProcessoNovo ?? ''),
+    });
+
+    if (!resultado?.ok) {
+      setAgendaLoteInfo('Não foi possível salvar o agendamento em lote.');
+      return;
+    }
+
+    setAgendaLoteInfo(
+      `Agendamento criado: ${resultado.inseridos} item(ns), ${resultado.ocorrencias} ocorrência(s), ${resultado.usuarios} usuário(s).`
+    );
+    // fecha após pequeno feedback visual.
+    setTimeout(() => setModalAgendaLoteAberto(false), 700);
+  }
 
   function dataParaOrdenarContaCorrente(data) {
     const s = String(data ?? '').trim();
@@ -746,7 +881,7 @@ export function Processos() {
         <div
           className={`rounded border shadow-sm overflow-hidden ${
             isProtocoloMovimentacao
-              ? 'bg-black border-slate-700 text-slate-100'
+              ? 'bg-black border-slate-700 text-slate-100 dark-mode-protocolo'
               : isAgPeticionar
                 ? 'bg-red-200 border-red-400'
                 : isAgDocumentos
@@ -1064,12 +1199,35 @@ export function Processos() {
             {/* Ações e Unidade: Pagamentos, Agenda Em lote, Abrir Imóvel, Unidade, Cálculos */}
             <section className="flex flex-wrap items-end gap-4 border-t border-slate-200 pt-4">
               <button type="button" className="px-4 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50">Pagamentos</button>
-              <button type="button" className="inline-flex items-center gap-2 px-4 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50">
+              <button type="button" onClick={abrirAgendaEmLote} className="inline-flex items-center gap-2 px-4 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50">
                 <Calendar className="w-4 h-4" /> Agenda Em lote
               </button>
-              <button type="button" className="inline-flex items-center gap-1.5 px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"><MapPin className="w-4 h-4" /> Abrir Imóvel</button>
+              <Field label="Imóvel" className="w-24">
+                <input
+                  type="number"
+                  value={imovelId}
+                  onChange={(e) => {
+                    setImovelId(e.target.value);
+                    setImovelManual(true);
+                  }}
+                  className={inputClass}
+                  placeholder="(vazio)"
+                />
+              </Field>
+              <button type="button" onClick={handleAbrirImovel} className="inline-flex items-center gap-1.5 px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50">
+                <MapPin className="w-4 h-4" /> Abrir Imóvel
+              </button>
               <Field label="Unidade" className="w-40">
-                <input type="text" value={unidade} onChange={(e) => setUnidade(e.target.value)} className={inputClass} />
+                <input
+                  type="text"
+                  value={unidade}
+                  onChange={(e) => {
+                    setUnidade(e.target.value);
+                    setUnidadeManual(true);
+                  }}
+                  className={inputClass}
+                  placeholder="(vazio)"
+                />
               </Field>
               <Field label="Unidade" className="flex-1 min-w-[200px]">
                 <input type="text" value={unidadeEndereco} onChange={(e) => setUnidadeEndereco(e.target.value)} className={inputClass} />
@@ -1218,6 +1376,109 @@ export function Processos() {
           </div>
         </div>
       </div>
+
+      {modalAgendaLoteAberto && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="modal-agenda-lote-titulo"
+          onClick={() => setModalAgendaLoteAberto(false)}
+        >
+          <div
+            className="bg-white rounded-lg shadow-xl border border-slate-200 w-full max-w-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200">
+              <h2 id="modal-agenda-lote-titulo" className="text-base font-semibold text-slate-800">
+                Agendamento em lote
+              </h2>
+              <button
+                type="button"
+                className="p-2 rounded text-slate-500 hover:bg-slate-100"
+                aria-label="Fechar"
+                onClick={() => setModalAgendaLoteAberto(false)}
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 space-y-4">
+              <div className="text-sm text-slate-600">
+                Este compromisso será lançado para <strong>Dr. Itamar</strong>, <strong>Karla</strong> e <strong>Ana Luisa</strong>.
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Texto do compromisso</label>
+                <textarea
+                  value={agendaLoteTexto}
+                  onChange={(e) => setAgendaLoteTexto(e.target.value)}
+                  rows={2}
+                  className="w-full px-3 py-2 border border-slate-300 rounded text-sm bg-white"
+                />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Data</label>
+                  <input
+                    type="text"
+                    value={agendaLoteData}
+                    onChange={(e) => setAgendaLoteData(e.target.value)}
+                    onBlur={() => setAgendaLoteData(normalizarDataBr(agendaLoteData) || agendaLoteData)}
+                    placeholder="dd/mm/aaaa"
+                    className="w-full px-3 py-2 border border-slate-300 rounded text-sm bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Hora</label>
+                  <input
+                    type="text"
+                    value={agendaLoteHora}
+                    onChange={(e) => setAgendaLoteHora(formatarHoraAudienciaInput(e.target.value))}
+                    onBlur={() => setAgendaLoteHora(normalizarHoraAudiencia(agendaLoteHora) || '')}
+                    placeholder="hh:mm"
+                    className="w-full px-3 py-2 border border-slate-300 rounded text-sm bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Periodicidade</label>
+                  <select
+                    value={agendaLotePeriodicidade}
+                    onChange={(e) => setAgendaLotePeriodicidade(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded text-sm bg-white"
+                  >
+                    {PERIODICIDADES_AGENDA_LOTE.map((p) => (
+                      <option key={p} value={p}>{p}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="text-xs text-slate-500">
+                Primeira ocorrência: <strong>{normalizarDataBr(agendaLoteData) || '—'}</strong> | Periodicidade: <strong>{agendaLotePeriodicidade}</strong>
+              </div>
+              {agendaLoteInfo ? (
+                <div className="text-sm text-blue-700 bg-blue-50 border border-blue-200 rounded px-3 py-2">
+                  {agendaLoteInfo}
+                </div>
+              ) : null}
+            </div>
+            <div className="px-4 py-3 border-t border-slate-200 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setModalAgendaLoteAberto(false)}
+                className="px-4 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={salvarAgendaEmLote}
+                className="px-4 py-2 rounded border border-blue-600 bg-blue-600 text-white text-sm hover:bg-blue-700"
+              >
+                Salvar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {modalVinculoPartes && (
         <div

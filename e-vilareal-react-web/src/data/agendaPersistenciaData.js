@@ -75,6 +75,56 @@ function normalizarDescricao({ audienciaTipo, numeroProcessoNovo }) {
   return t || num || 'Audiência';
 }
 
+function parsePeriodicidade(periodicidadeRaw) {
+  const p = String(periodicidadeRaw ?? '').trim().toLowerCase();
+  if (!p || p === 'agendamento único' || p === 'agendamento unico' || p === 'unico' || p === 'único') {
+    return { tipo: 'unico' };
+  }
+  if (p === 'diariamente' || p === 'diario' || p === 'diária' || p === 'diaria') return { tipo: 'dias', passo: 1 };
+  if (p === 'semanalmente' || p === 'semanal') return { tipo: 'dias', passo: 7 };
+  if (p === 'quinzenalmente' || p === 'quinzenal') return { tipo: 'dias', passo: 15 };
+  if (p === 'mensalmente' || p === 'mensal') return { tipo: 'meses', passo: 1 };
+  if (p === 'bimestralmente' || p === 'bimestral') return { tipo: 'meses', passo: 2 };
+  if (p === 'trimestralmente' || p === 'trimestral') return { tipo: 'meses', passo: 3 };
+  if (p === 'semestralmente' || p === 'semestral') return { tipo: 'meses', passo: 6 };
+  if (p.includes('todo dia')) return { tipo: 'meses', passo: 1, fixarDiaMes: true };
+  return { tipo: 'unico' };
+}
+
+function addDias(parsed, dias) {
+  const dt = new Date(parsed.yyyy, parsed.mm - 1, parsed.dd);
+  dt.setDate(dt.getDate() + dias);
+  return { dd: dt.getDate(), mm: dt.getMonth() + 1, yyyy: dt.getFullYear() };
+}
+
+function addMesesPreservandoDia(parsed, meses, fixarDia = false) {
+  const baseDia = parsed.dd;
+  const dt = new Date(parsed.yyyy, parsed.mm - 1, 1);
+  dt.setMonth(dt.getMonth() + meses);
+  const maxDia = new Date(dt.getFullYear(), dt.getMonth() + 1, 0).getDate();
+  const dia = fixarDia ? Math.min(baseDia, maxDia) : Math.min(parsed.dd, maxDia);
+  return { dd: dia, mm: dt.getMonth() + 1, yyyy: dt.getFullYear() };
+}
+
+function gerarOcorrencias({ dataBaseBr, periodicidade }) {
+  const parsed = parseDataBrCompleta(dataBaseBr);
+  if (!parsed) return [];
+  const regra = parsePeriodicidade(periodicidade);
+  if (regra.tipo === 'unico') return [dataStr(parsed)];
+
+  const out = [];
+  const limite = regra.tipo === 'dias' ? 60 : 24; // horizonte suficiente para uso prático
+  for (let i = 0; i < limite; i++) {
+    let dataParsed = parsed;
+    if (i > 0) {
+      if (regra.tipo === 'dias') dataParsed = addDias(parsed, regra.passo * i);
+      if (regra.tipo === 'meses') dataParsed = addMesesPreservandoDia(parsed, regra.passo * i, !!regra.fixarDiaMes);
+    }
+    out.push(dataStr(dataParsed));
+  }
+  return out;
+}
+
 /**
  * Salva na agenda (localStorage) um evento para todos os usuários,
  * quando o usuário preencher a Data da Audiência em Processos.
@@ -105,6 +155,7 @@ export function agendarAudienciaParaTodosUsuarios({
       usuarioId,
       hora,
       descricao,
+      statusCurto: '',
       status: 'Agendado',
     };
   });
@@ -142,6 +193,131 @@ export function getEventosAgendaPersistidosPorData(dataBr) {
   const lista = store[data];
   if (!Array.isArray(lista)) return [];
   return lista;
+}
+
+export function salvarStatusCurtoEventoPersistido({ dataBr, evento, statusCurto }) {
+  const parsedData = parseDataBrCompleta(dataBr);
+  if (!parsedData) return { ok: false, reason: 'data-invalida' };
+  const data = dataStr(parsedData);
+
+  const store = loadStore();
+  const lista = Array.isArray(store[data]) ? store[data] : [];
+
+  const eventoId = evento?.id != null ? String(evento.id) : '';
+  const usuarioId = evento?.usuarioId != null ? String(evento.usuarioId) : '';
+  const novoStatus = String(statusCurto ?? '').trim();
+
+  if (!eventoId) return { ok: false, reason: 'evento-id-invalido' };
+
+  const idx = lista.findIndex((ev) => {
+    const idA = ev?.id != null ? String(ev.id) : '';
+    const uidA = ev?.usuarioId != null ? String(ev.usuarioId) : '';
+    return idA === eventoId && uidA === usuarioId;
+  });
+
+  if (idx >= 0) {
+    lista[idx] = { ...lista[idx], statusCurto: novoStatus };
+  } else {
+    const novoEvento = {
+      ...(evento || {}),
+      id: eventoId,
+      usuarioId,
+      statusCurto: novoStatus,
+    };
+    lista.push(novoEvento);
+  }
+
+  // Mantém ordenação por hora (igual ao seed original)
+  const ordenado = lista.sort((a, b) => {
+    const ha = String(a?.hora ?? '');
+    const hb = String(b?.hora ?? '');
+    if (!ha && hb) return 1;
+    if (ha && !hb) return -1;
+    return ha.localeCompare(hb);
+  });
+
+  store[data] = ordenado;
+  saveStore(store);
+  return { ok: true };
+}
+
+/**
+ * Agenda em lote para múltiplos usuários com suporte a recorrência.
+ * Os registros são materializados no storage em cada data de ocorrência.
+ */
+export function agendarEmLoteParaUsuarios({
+  textoCompromisso,
+  dataBaseBr,
+  hora,
+  periodicidade,
+  usuarios = [],
+  processoId = '',
+  clienteId = '',
+  numeroProcessoNovo = '',
+}) {
+  const descricao = String(textoCompromisso ?? '').trim();
+  if (!descricao) return { ok: false, reason: 'descricao-vazia' };
+  const parsedBase = parseDataBrCompleta(dataBaseBr);
+  if (!parsedBase) return { ok: false, reason: 'data-invalida' };
+
+  const horaNorm = normalizarHora(hora);
+  const ocorrencias = gerarOcorrencias({ dataBaseBr: dataBaseBr, periodicidade });
+  if (ocorrencias.length === 0) return { ok: false, reason: 'sem-ocorrencias' };
+
+  const usuariosValidos = (Array.isArray(usuarios) ? usuarios : [])
+    .map((u) => ({ id: String(u?.id ?? '').trim(), nome: String(u?.nome ?? '').trim() }))
+    .filter((u) => u.id && u.nome);
+  if (usuariosValidos.length === 0) return { ok: false, reason: 'usuarios-vazios' };
+
+  const store = loadStore();
+  let inseridos = 0;
+  let atualizados = 0;
+
+  for (const data of ocorrencias) {
+    const lista = Array.isArray(store[data]) ? store[data] : [];
+    const byId = new Map(lista.map((ev) => [String(ev?.id ?? ''), ev]));
+
+    for (const u of usuariosValidos) {
+      const id = `lote-${data}-${horaNorm || ''}-${u.id}-${numeroProcessoNovo || ''}-${descricao}`.replace(/\s+/g, ' ').trim();
+      const evento = {
+        id,
+        usuarioId: u.id,
+        usuarioNome: u.nome,
+        hora: horaNorm,
+        descricao,
+        titulo: descricao,
+        statusCurto: '',
+        status: 'Agendado',
+        origem: 'agenda-em-lote',
+        periodicidade: String(periodicidade ?? 'Agendamento único'),
+        recorrente: String(periodicidade ?? '').trim().toLowerCase() !== 'agendamento único',
+        dataBase: dataStr(parsedBase),
+        processoId: String(processoId ?? ''),
+        clienteId: String(clienteId ?? ''),
+        numeroProcessoNovo: String(numeroProcessoNovo ?? ''),
+      };
+
+      const prev = byId.get(id);
+      if (prev) {
+        byId.set(id, { ...prev, ...evento });
+        atualizados += 1;
+      } else {
+        byId.set(id, evento);
+        inseridos += 1;
+      }
+    }
+
+    store[data] = Array.from(byId.values()).sort((a, b) => {
+      const ha = String(a?.hora ?? '');
+      const hb = String(b?.hora ?? '');
+      if (!ha && hb) return 1;
+      if (ha && !hb) return -1;
+      return ha.localeCompare(hb);
+    });
+  }
+
+  saveStore(store);
+  return { ok: true, inseridos, atualizados, ocorrencias: ocorrencias.length, usuarios: usuariosValidos.length };
 }
 
 function loadUsuariosAtivos() {

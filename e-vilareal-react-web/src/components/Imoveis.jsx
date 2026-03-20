@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { X, ChevronUp, ChevronDown } from 'lucide-react';
 import { getImovelMock } from '../data/imoveisMockData';
 
@@ -15,6 +15,7 @@ function Field({ label, children, className = '' }) {
 const inputClass = 'w-full px-2 py-1.5 border border-slate-300 rounded text-sm bg-white';
 
 export function Imoveis() {
+  const location = useLocation();
   const navigate = useNavigate();
   const [imovelId, setImovelId] = useState(43);
   const [imovelOcupado, setImovelOcupado] = useState(true);
@@ -77,6 +78,8 @@ export function Imoveis() {
   const [contratoIntermediacaoArquivado, setContratoIntermediacaoArquivado] = useState('nao');
   const [contratoIntermediacaoAssinadoProprietario, setContratoIntermediacaoAssinadoProprietario] = useState('nao');
 
+  const unidadeAlvo = location.state && typeof location.state === 'object' ? location.state.unidade : null;
+
   useEffect(() => {
     const mock = getImovelMock(imovelId);
     if (!mock) return;
@@ -88,6 +91,7 @@ export function Imoveis() {
     setEndereco(String(mock.endereco ?? ''));
     setCondominio(String(mock.condominio ?? ''));
     setUnidade(String(mock.unidade ?? ''));
+    if (unidadeAlvo != null) setUnidade(String(unidadeAlvo));
     setGaragens(String(mock.garagens ?? ''));
     setGarantia(String(mock.garantia ?? ''));
     setValorGarantia(String(mock.valorGarantia ?? ''));
@@ -137,7 +141,14 @@ export function Imoveis() {
     setInquilino(String(mock.inquilino ?? ''));
     setInquilinoCpf(String(mock.inquilinoCpf ?? ''));
     setInquilinoContato(String(mock.inquilinoContato ?? ''));
-  }, [imovelId]);
+  }, [imovelId, unidadeAlvo]);
+
+  useEffect(() => {
+    const state = location.state && typeof location.state === 'object' ? location.state : null;
+    const nextImovelId = state?.imovelId != null ? Number(state.imovelId) : null;
+    if (!Number.isFinite(nextImovelId) || nextImovelId <= 0) return;
+    setImovelId(nextImovelId);
+  }, [location.key, location.state]);
 
   function abrirProcessoDoImovel() {
     navigate('/processos', {

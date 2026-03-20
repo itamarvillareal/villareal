@@ -15,3 +15,29 @@ body {
 #root {
   min-height: 100vh;
 }
+
+/* Modo dark contextual apenas para Processos na fase "Ag. Protocolo / Movimentação" */
+.dark-mode-protocolo label,
+.dark-mode-protocolo p,
+.dark-mode-protocolo span,
+.dark-mode-protocolo div {
+  color: #E5E7EB;
+}
+
+.dark-mode-protocolo input,
+.dark-mode-protocolo textarea,
+.dark-mode-protocolo select {
+  background-color: #1F2937 !important;
+  color: #FFFFFF !important;
+  border-color: #374151 !important;
+}
+
+.dark-mode-protocolo input::placeholder,
+.dark-mode-protocolo textarea::placeholder {
+  color: #9CA3AF !important;
+}
+
+.dark-mode-protocolo input[type='radio'],
+.dark-mode-protocolo input[type='checkbox'] {
+  accent-color: #2563EB;
+}
