@@ -4,6 +4,14 @@ import { getLancamentosContaCorrente, mergeContaCorrenteComLinhaOrigem } from '.
 import { getMockProcesso10x10 } from '../data/processosMock';
 import { getCadastroPessoasMock } from '../data/cadastroPessoasMock';
 import {
+  getHistoricoDoProcesso,
+  getRegistroProcesso,
+  normalizarDataBr,
+  salvarHistoricoDoProcesso,
+  salvarPrazoFatalDoProcesso,
+  seedHistoricoDoProcesso,
+} from '../data/processosHistoricoData';
+import {
   X,
   FolderOpen,
   Calendar,
@@ -149,6 +157,14 @@ function formatarListaComConjuncaoE(itens) {
   if (lista.length === 1) return lista[0];
   if (lista.length === 2) return `${lista[0]} e ${lista[1]}`;
   return `${lista.slice(0, -1).join(', ')} e ${lista[lista.length - 1]}`;
+}
+
+function hojeBr() {
+  const d = new Date();
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yyyy = String(d.getFullYear());
+  return `${dd}/${mm}/${yyyy}`;
 }
 
 function gerarMockProcesso(codigoCliente, processo) {
@@ -318,14 +334,19 @@ export function Processos() {
     setCliente(mock.cliente);
     setParteCliente(mock.parteCliente);
     setParteOposta(mock.parteOposta);
-    setParteClienteIds([]);
-    setParteOpostaIds([]);
+    const registroPersistido = getRegistroProcesso(mock.codigoCliente, mock.processo);
+    setParteClienteIds(registroPersistido?.parteClienteIds ?? []);
+    setParteOpostaIds(registroPersistido?.parteOpostaIds ?? []);
     setNumeroProcessoVelho(mock.numeroProcessoVelho);
     setNumeroProcessoNovo(mock.numeroProcessoNovo);
     setStatusAtivo(mock.statusAtivo);
     setPapelParte(mock.parteRequerido ? 'requerido' : 'requerente');
     setCompetencia(mock.competencia);
-    setFaseSelecionada(mock.faseSelecionada);
+    const fasePersistida =
+      registroPersistido?.faseSelecionada != null && String(registroPersistido.faseSelecionada).trim() !== ''
+        ? registroPersistido.faseSelecionada
+        : mock.faseSelecionada;
+    setFaseSelecionada(fasePersistida);
     setConsultaAutomatica(mock.consultaAutomatica);
     setDataProtocolo(mock.dataProtocolo);
     setNaturezaAcao(mock.naturezaAcao);
@@ -334,7 +355,41 @@ export function Processos() {
     setEstado(mock.estado);
     setCidade(mock.cidade);
 
-    setHistorico(gerarHistoricoMock(mock.codigoCliente, mock.processo));
+    const historicoPersistido = getHistoricoDoProcesso(mock.codigoCliente, mock.processo);
+    setPrazoFatal(registroPersistido?.prazoFatal ?? '');
+    if (historicoPersistido.length > 0) {
+      setHistorico(historicoPersistido);
+    } else {
+      const historicoInicial = gerarHistoricoMock(mock.codigoCliente, mock.processo);
+      setHistorico(historicoInicial);
+      seedHistoricoDoProcesso({
+        codCliente: mock.codigoCliente,
+        proc: mock.processo,
+        cliente: mock.cliente,
+        parteCliente: mock.parteCliente,
+        parteOposta: mock.parteOposta,
+        numeroProcessoNovo: mock.numeroProcessoNovo,
+        historico: historicoInicial,
+        prazoFatal: registroPersistido?.prazoFatal ?? '',
+        parteClienteIds: registroPersistido?.parteClienteIds ?? [],
+        parteOpostaIds: registroPersistido?.parteOpostaIds ?? [],
+        faseSelecionada: fasePersistida,
+      });
+    } else if (!String(registroPersistido?.faseSelecionada ?? '').trim()) {
+      salvarHistoricoDoProcesso({
+        codCliente: mock.codigoCliente,
+        proc: mock.processo,
+        cliente: mock.cliente,
+        parteCliente: mock.parteCliente,
+        parteOposta: mock.parteOposta,
+        numeroProcessoNovo: mock.numeroProcessoNovo,
+        historico: historicoPersistido,
+        prazoFatal: registroPersistido?.prazoFatal ?? '',
+        parteClienteIds: registroPersistido?.parteClienteIds ?? [],
+        parteOpostaIds: registroPersistido?.parteOpostaIds ?? [],
+        faseSelecionada: mock.faseSelecionada,
+      });
+    }
     setPaginaHistorico(1);
     setInformacaoModal(null);
   }, [codigoCliente, processo]);
@@ -443,9 +498,33 @@ export function Processos() {
   }
 
   function salvarVinculoPartes() {
-    if (modalVinculoPartes === 'cliente') setParteClienteIds([...selecionadasModalIds]);
-    if (modalVinculoPartes === 'oposta') setParteOpostaIds([...selecionadasModalIds]);
+    const nextClienteIds = modalVinculoPartes === 'cliente' ? [...selecionadasModalIds] : [...parteClienteIds];
+    const nextOpostaIds = modalVinculoPartes === 'oposta' ? [...selecionadasModalIds] : [...parteOpostaIds];
+    if (modalVinculoPartes === 'cliente') setParteClienteIds(nextClienteIds);
+    if (modalVinculoPartes === 'oposta') setParteOpostaIds(nextOpostaIds);
     setModalVinculoPartes(null);
+
+    const pcNome = formatarListaComConjuncaoE(
+      nextClienteIds.map((id) => pessoasPorId.get(Number(id))?.nome).filter(Boolean)
+    );
+    const poNome = formatarListaComConjuncaoE(
+      nextOpostaIds.map((id) => pessoasPorId.get(Number(id))?.nome).filter(Boolean)
+    );
+    const pf = String(prazoFatal ?? '').trim();
+    const prazoNorm = pf ? (normalizarDataBr(pf) || pf) : '';
+    salvarHistoricoDoProcesso({
+      codCliente: codigoCliente,
+      proc: processo,
+      cliente,
+      parteCliente: pcNome || parteCliente,
+      parteOposta: poNome || parteOposta,
+      numeroProcessoNovo,
+      historico,
+      prazoFatal: prazoNorm,
+      parteClienteIds: nextClienteIds,
+      parteOpostaIds: nextOpostaIds,
+      faseSelecionada,
+    });
   }
 
   function parseValorBusca(termo) {
@@ -492,6 +571,60 @@ export function Processos() {
         normalizarTextoBusca(hay.numero).includes(t) ||
         normalizarTextoBusca(String(hay.valor)).includes(t)
       );
+    });
+  }
+
+  function manterInformacaoNoHistorico() {
+    const info = String(proximaInformacao ?? '').trim();
+    if (!info) return;
+    const data = String(dataProximaInformacao ?? '').trim() || hojeBr();
+    const maiorNumero = historico.reduce((acc, h) => {
+      const n = Number(h?.numero);
+      return Number.isFinite(n) ? Math.max(acc, n) : acc;
+    }, 0);
+    const novoNumero = maiorNumero + 1;
+    const novoItem = {
+      id: Date.now(),
+      inf: String(novoNumero).padStart(2, '0'),
+      info,
+      data,
+      usuario: 'USUÁRIO',
+      numero: String(novoNumero).padStart(4, '0'),
+    };
+    const historicoAtualizado = [novoItem, ...historico];
+    setHistorico(historicoAtualizado);
+    setPaginaHistorico(1);
+    setProximaInformacao('');
+    setDataProximaInformacao('');
+    const pf = String(prazoFatal ?? '').trim();
+    const prazoNorm = pf ? (normalizarDataBr(pf) || pf) : '';
+    salvarHistoricoDoProcesso({
+      codCliente: codigoCliente,
+      proc: processo,
+      cliente,
+      parteCliente: textoParteCliente || parteCliente,
+      parteOposta: textoParteOposta || parteOposta,
+      numeroProcessoNovo,
+      historico: historicoAtualizado,
+      prazoFatal: prazoNorm,
+      parteClienteIds,
+      parteOpostaIds,
+      faseSelecionada,
+    });
+  }
+
+  function persistirPrazoFatalAposEdicao(valorBruto) {
+    const t = String(valorBruto ?? '').trim();
+    const prazoNorm = t ? (normalizarDataBr(t) || t) : '';
+    setPrazoFatal(prazoNorm);
+    salvarPrazoFatalDoProcesso(codigoCliente, processo, prazoNorm, {
+      cliente,
+      parteCliente: textoParteCliente || parteCliente,
+      parteOposta: textoParteOposta || parteOposta,
+      numeroProcessoNovo,
+      parteClienteIds,
+      parteOpostaIds,
+      faseSelecionada,
     });
   }
 
@@ -704,7 +837,30 @@ export function Processos() {
                   <div className="space-y-0.5">
                     {FASES.map((f) => (
                       <label key={f} className="flex items-center gap-2 text-sm cursor-pointer">
-                        <input type="radio" name="fase" checked={faseSelecionada === f} onChange={() => setFaseSelecionada(f)} className="text-slate-600" />
+                        <input
+                          type="radio"
+                          name="fase"
+                          checked={faseSelecionada === f}
+                          onChange={() => {
+                            setFaseSelecionada(f);
+                            const pf = String(prazoFatal ?? '').trim();
+                            const prazoNorm = pf ? (normalizarDataBr(pf) || pf) : '';
+                            salvarHistoricoDoProcesso({
+                              codCliente: codigoCliente,
+                              proc: processo,
+                              cliente,
+                              parteCliente: textoParteCliente || parteCliente,
+                              parteOposta: textoParteOposta || parteOposta,
+                              numeroProcessoNovo,
+                              historico,
+                              prazoFatal: prazoNorm,
+                              parteClienteIds,
+                              parteOpostaIds,
+                              faseSelecionada: f,
+                            });
+                          }}
+                          className="text-slate-600"
+                        />
                         {f}
                       </label>
                     ))}
@@ -786,8 +942,16 @@ export function Processos() {
                     Não Avisado
                   </label>
                 </div>
-                <Field label="Prazo Fatal" className="w-28">
-                  <input type="text" value={prazoFatal} onChange={(e) => setPrazoFatal(e.target.value)} className={inputClass} />
+                <Field label="Prazo Fatal" className="w-36">
+                  <input
+                    type="text"
+                    value={prazoFatal}
+                    onChange={(e) => setPrazoFatal(e.target.value)}
+                    onBlur={(e) => persistirPrazoFatalAposEdicao(e.target.value)}
+                    placeholder="dd/mm/aaaa"
+                    title="Data vinculada ao processo (gravada automaticamente)"
+                    className={inputClass}
+                  />
                 </Field>
               </div>
             </section>
@@ -852,7 +1016,11 @@ export function Processos() {
                         className={inputClass}
                       />
                     </div>
-                    <button type="button" className="px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50 whitespace-nowrap">
+                    <button
+                      type="button"
+                      onClick={manterInformacaoNoHistorico}
+                      className="px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50 whitespace-nowrap"
+                    >
                       Manter Inf.
                     </button>
                   </div>

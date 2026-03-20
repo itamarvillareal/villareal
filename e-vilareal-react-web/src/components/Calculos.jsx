@@ -13,6 +13,7 @@ const INDICES = ['INPC', 'IGPM', 'SELIC', 'POUPANÇA', 'IPCA', 'IPCA-E', 'TR', '
 
 const inputClass = 'w-full px-2 py-1.5 border border-slate-300 rounded text-sm bg-white';
 const TITULOS_POR_PAGINA = 20;
+const PARCELAS_POR_PAGINA = 20;
 
 function normalizarCliente(val) {
   const s = String(val ?? '').trim();
@@ -98,6 +99,19 @@ function gerarTitulosMock(codigoCliente, proc, dimensao) {
     });
   }
   return rows;
+}
+
+function linhaVaziaParcela() {
+  return {
+    dataVencimento: '',
+    valorParcela: '',
+    honorariosParcela: '',
+    observacao: '',
+  };
+}
+
+function gerarParcelasMock() {
+  return Array.from({ length: PARCELAS_POR_PAGINA }, () => linhaVaziaParcela());
 }
 
 function SpinnerField({ value, onChange, min = 0, className = 'w-20' }) {
@@ -189,6 +203,7 @@ export function Calculos() {
 
   const [tabAtiva, setTabAtiva] = useState('Títulos');
   const [pagina, setPagina] = useState(1);
+  const [paginaParcelamento, setPaginaParcelamento] = useState(1);
   const [proc, setProc] = useState(35);
   const [codigoCliente, setCodigoCliente] = useState('00000001');
   const [codClienteManual, setCodClienteManual] = useState('00000001');
@@ -313,6 +328,7 @@ export function Calculos() {
         [rodadaKey]: {
           pagina: 1,
           titulos: gerarTitulosMock(codigoClienteNorm, procNorm, dimensaoNorm),
+          parcelas: gerarParcelasMock(),
           limpezaAtiva: false,
           snapshotAntesLimpeza: null,
           cabecalho: gerarCabecalhoMock(codigoClienteNorm, procNorm),
@@ -324,6 +340,7 @@ export function Calculos() {
   const rodadaAtual = rodadasState[rodadaKey] || {
     pagina: 1,
     titulos: gerarTitulosMock(codigoClienteNorm, procNorm, dimensaoNorm),
+    parcelas: gerarParcelasMock(),
     limpezaAtiva: false,
     snapshotAntesLimpeza: null,
     cabecalho: gerarCabecalhoMock(codigoClienteNorm, procNorm),
@@ -332,6 +349,7 @@ export function Calculos() {
   // Ao trocar cliente/proc/dimensão, troca a página para a página daquela rodada
   useEffect(() => {
     setPagina(rodadaAtual.pagina || 1);
+    setPaginaParcelamento(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rodadaKey]);
 
@@ -347,6 +365,7 @@ export function Calculos() {
   }, [pagina, rodadaKey]);
 
   const titulos = rodadaAtual.titulos;
+  const parcelas = Array.isArray(rodadaAtual.parcelas) ? rodadaAtual.parcelas : gerarParcelasMock();
   const limpezaAtiva = rodadaAtual.limpezaAtiva;
   const snapshotAntesLimpeza = rodadaAtual.snapshotAntesLimpeza;
 
@@ -375,6 +394,22 @@ export function Calculos() {
         })),
       ]
       : titulosPagina;
+
+  const totalPaginasParcelas = Math.max(1, Math.ceil(parcelas.length / PARCELAS_POR_PAGINA));
+  useEffect(() => {
+    setPaginaParcelamento((p) => Math.min(Math.max(1, Number(p) || 1), totalPaginasParcelas));
+  }, [totalPaginasParcelas]);
+
+  const inicioParcelas = (paginaParcelamento - 1) * PARCELAS_POR_PAGINA;
+  const fimParcelas = inicioParcelas + PARCELAS_POR_PAGINA;
+  const parcelasPagina = parcelas.slice(inicioParcelas, fimParcelas);
+  const parcelasPaginaCompletas =
+    parcelasPagina.length < PARCELAS_POR_PAGINA
+      ? [
+        ...parcelasPagina,
+        ...Array.from({ length: PARCELAS_POR_PAGINA - parcelasPagina.length }, () => linhaVaziaParcela()),
+      ]
+      : parcelasPagina;
 
   function calcularResumo(lista) {
     const valid = (lista || []).filter((r) => String(r?.valorInicial ?? '').trim() !== '');
@@ -1031,6 +1066,54 @@ export function Calculos() {
     });
   }
 
+  function parcelaTemValor(parcela) {
+    if (!parcela || typeof parcela !== 'object') return false;
+    return [
+      parcela.dataVencimento,
+      parcela.valorParcela,
+      parcela.honorariosParcela,
+      parcela.observacao,
+    ].some((v) => String(v ?? '').trim() !== '');
+  }
+
+  function atualizarParcelaNaRodada(indexGlobal, patch) {
+    setRodadasState((prev) => {
+      const cur = prev[rodadaKey];
+      if (!cur) return prev;
+      const listaAtual = Array.isArray(cur.parcelas) ? [...cur.parcelas] : gerarParcelasMock();
+      while (indexGlobal >= listaAtual.length) listaAtual.push(linhaVaziaParcela());
+      listaAtual[indexGlobal] = { ...listaAtual[indexGlobal], ...patch };
+
+      const ultimoIndice = listaAtual.length - 1;
+      if (parcelaTemValor(listaAtual[ultimoIndice])) {
+        listaAtual.push(linhaVaziaParcela());
+      }
+
+      return {
+        ...prev,
+        [rodadaKey]: { ...cur, parcelas: listaAtual },
+      };
+    });
+  }
+
+  const resumoParcelamento = useMemo(() => {
+    const validas = parcelas.filter((p) => parcelaTemValor(p));
+    const valorFinalParcelas = validas.reduce((acc, p) => acc + parseBRL(p.valorParcela), 0);
+    const valorHonorarios = validas.reduce((acc, p) => acc + parseBRL(p.honorariosParcela), 0);
+    const valorTotalPagar = trunc2(valorFinalParcelas + valorHonorarios);
+    return {
+      quantidade: validas.length,
+      valorFinalParcelas: formatBRL(trunc2(valorFinalParcelas)),
+      valorTotalPagar: formatBRL(valorTotalPagar),
+      valorFinalHonorarios: formatBRL(trunc2(valorHonorarios)),
+      valorHonorariosParcela: validas.length > 0 ? formatBRL(trunc2(valorHonorarios / validas.length)) : formatBRL(0),
+      valorCustasParcela: formatBRL(0),
+      valorFinalCustas: formatBRL(0),
+      valorFinalAtualizado: formatBRL(trunc2(valorFinalParcelas)),
+      valorFinalAtualizadoCustas: formatBRL(0),
+    };
+  }, [parcelas]);
+
   return (
     <div className="min-h-full bg-slate-200 flex flex-col">
       <header className="flex items-center justify-between px-3 py-2 bg-white border-b border-slate-300 shrink-0">
@@ -1254,7 +1337,142 @@ export function Calculos() {
               </div>
             </>
           )}
-          {tabAtiva !== 'Títulos' && (
+          {tabAtiva === 'Parcelamento' && (
+            <div className="border border-slate-300 rounded bg-white p-3">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm text-slate-600">
+                  Página {String(paginaParcelamento).padStart(2, '0')} — Parcelas {inicioParcelas + 1} a {Math.min(fimParcelas, parcelas.length)}
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPaginaParcelamento((p) => Math.max(1, p - 1))}
+                    className="px-2 py-1 text-xs rounded border border-slate-300 bg-white hover:bg-slate-50"
+                  >
+                    Anterior
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPaginaParcelamento((p) => Math.min(totalPaginasParcelas, p + 1))}
+                    className="px-2 py-1 text-xs rounded border border-slate-300 bg-white hover:bg-slate-50"
+                  >
+                    Próxima
+                  </button>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-3">
+                <div className="overflow-x-auto border border-slate-300">
+                  <table className="w-full text-sm border-collapse table-fixed">
+                    <thead>
+                      <tr className="bg-slate-100">
+                        <th className="border border-slate-300 px-2 py-1 text-left font-semibold text-slate-700 w-24">Parcela</th>
+                        <th className="border border-slate-300 px-2 py-1 text-left font-semibold text-slate-700 w-36">Data Venc.</th>
+                        <th className="border border-slate-300 px-2 py-1 text-left font-semibold text-slate-700 w-40">Valor</th>
+                        <th className="border border-slate-300 px-2 py-1 text-left font-semibold text-slate-700 w-40">Honor. Parc.</th>
+                        <th className="border border-slate-300 px-2 py-1 text-left font-semibold text-slate-700">Obs.</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {parcelasPaginaCompletas.map((row, idx) => {
+                        const globalIdx = inicioParcelas + idx;
+                        const podeEditar = !aceitarPagamento || modoAlteracao;
+                        return (
+                          <tr key={`parcela-${globalIdx}`} className={globalIdx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
+                            <td className="border border-slate-200 px-2 py-1 text-slate-700">
+                              Parcela {String(globalIdx + 1).padStart(2, '0')}:
+                            </td>
+                            <td className="border border-slate-200 px-2 py-1">
+                              {podeEditar ? (
+                                <input
+                                  type="date"
+                                  value={brDateToInputValue(row.dataVencimento)}
+                                  onBlur={(e) => atualizarParcelaNaRodada(globalIdx, { dataVencimento: inputValueToBrDate(e.target.value) })}
+                                  className="w-full px-1 py-0.5 border border-slate-300 rounded text-sm"
+                                />
+                              ) : row.dataVencimento}
+                            </td>
+                            <td className="border border-slate-200 px-2 py-1">
+                              {podeEditar ? (
+                                <input
+                                  type="text"
+                                  value={row.valorParcela}
+                                  onChange={(e) => atualizarParcelaNaRodada(globalIdx, { valorParcela: e.target.value })}
+                                  onBlur={(e) => {
+                                    const raw = String(e.target.value ?? '').trim();
+                                    atualizarParcelaNaRodada(globalIdx, { valorParcela: raw === '' ? '' : formatBRL(parseBRL(raw)) });
+                                  }}
+                                  className="w-full px-1 py-0.5 border border-slate-300 rounded text-sm"
+                                />
+                              ) : row.valorParcela}
+                            </td>
+                            <td className="border border-slate-200 px-2 py-1">
+                              {podeEditar ? (
+                                <input
+                                  type="text"
+                                  value={row.honorariosParcela}
+                                  onChange={(e) => atualizarParcelaNaRodada(globalIdx, { honorariosParcela: e.target.value })}
+                                  onBlur={(e) => {
+                                    const raw = String(e.target.value ?? '').trim();
+                                    atualizarParcelaNaRodada(globalIdx, { honorariosParcela: raw === '' ? '' : formatBRL(parseBRL(raw)) });
+                                  }}
+                                  className="w-full px-1 py-0.5 border border-slate-300 rounded text-sm"
+                                />
+                              ) : row.honorariosParcela}
+                            </td>
+                            <td className="border border-slate-200 px-2 py-1">
+                              {podeEditar ? (
+                                <input
+                                  type="text"
+                                  value={row.observacao}
+                                  onChange={(e) => atualizarParcelaNaRodada(globalIdx, { observacao: e.target.value })}
+                                  className="w-full px-1 py-0.5 border border-slate-300 rounded text-sm"
+                                />
+                              ) : row.observacao}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr className="bg-slate-100 font-medium">
+                        <td className="border border-slate-300 px-2 py-1" colSpan={2}>Total da página</td>
+                        <td className="border border-slate-300 px-2 py-1">
+                          {formatBRL(trunc2(parcelasPagina.reduce((acc, p) => acc + parseBRL(p.valorParcela), 0)))}
+                        </td>
+                        <td className="border border-slate-300 px-2 py-1">
+                          {formatBRL(trunc2(parcelasPagina.reduce((acc, p) => acc + parseBRL(p.honorariosParcela), 0)))}
+                        </td>
+                        <td className="border border-slate-300 px-2 py-1" />
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+                <div className="border border-slate-300 p-3 bg-slate-50 space-y-3">
+                  <div className="border border-slate-300 bg-white p-2">
+                    <p className="text-sm font-semibold text-slate-700 mb-2">Parcelamentos</p>
+                    <div className="space-y-1.5 text-sm">
+                      <p className="flex justify-between gap-2"><span>Quantidade de Parcelas:</span><b>{String(resumoParcelamento.quantidade).padStart(2, '0')}</b></p>
+                      <p className="flex justify-between gap-2"><span>Valor Final das Parcelas:</span><b>{resumoParcelamento.valorFinalParcelas}</b></p>
+                      <p className="flex justify-between gap-2"><span>Valor Total Pago (após parcelamento):</span><b>{resumoParcelamento.valorTotalPagar}</b></p>
+                      <p className="flex justify-between gap-2"><span>Valor Final dos Honorários:</span><b>{resumoParcelamento.valorFinalHonorarios}</b></p>
+                      <p className="flex justify-between gap-2"><span>Valor dos Honorários (Parcela):</span><b>{resumoParcelamento.valorHonorariosParcela}</b></p>
+                      <p className="flex justify-between gap-2"><span>Valor das Custas (Parcela):</span><b>{resumoParcelamento.valorCustasParcela}</b></p>
+                      <p className="flex justify-between gap-2"><span>Valor Final das Custas após:</span><b>{resumoParcelamento.valorFinalCustas}</b></p>
+                    </div>
+                  </div>
+                  <div className="border border-slate-300 bg-white p-2">
+                    <p className="text-sm font-semibold text-slate-700 mb-2">Informações</p>
+                    <div className="space-y-1.5 text-sm">
+                      <p className="flex justify-between gap-2"><span>Valor Final Atualizado das</span><b>{resumoParcelamento.valorFinalAtualizado}</b></p>
+                      <p className="flex justify-between gap-2"><span>Valor Final Atualizado das Custas:</span><b>{resumoParcelamento.valorFinalAtualizadoCustas}</b></p>
+                      <p className="flex justify-between gap-2"><span>Valor Total a ser Pago:</span><b>{resumoParcelamento.valorTotalPagar}</b></p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+          {tabAtiva !== 'Títulos' && tabAtiva !== 'Parcelamento' && (
             <div className="p-4 bg-white rounded border border-slate-300">
               <p className="text-sm text-slate-500">Conteúdo da aba &quot;{tabAtiva}&quot;.</p>
             </div>
@@ -1311,19 +1529,28 @@ export function Calculos() {
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-700 mb-0.5">Página</label>
-            <SpinnerField value={pagina} onChange={setPagina} min={1} className="w-24" />
-            <p className="mt-1 text-[11px] text-slate-500">de {String(totalPaginas).padStart(2, '0')}</p>
+            <SpinnerField
+              value={tabAtiva === 'Parcelamento' ? paginaParcelamento : pagina}
+              onChange={tabAtiva === 'Parcelamento' ? setPaginaParcelamento : setPagina}
+              min={1}
+              className="w-24"
+            />
+            <p className="mt-1 text-[11px] text-slate-500">
+              de {String(tabAtiva === 'Parcelamento' ? totalPaginasParcelas : totalPaginas).padStart(2, '0')}
+            </p>
           </div>
-          <button
-            type="button"
-            onClick={() => {
-              if (limpezaAtiva) reverterLimpeza();
-              else setConfirmarLimpeza(true);
-            }}
-            className="w-full px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
-          >
-            {limpezaAtiva ? 'Reverter limpeza' : 'Limpa Página Toda'}
-          </button>
+          {tabAtiva === 'Títulos' && (
+            <button
+              type="button"
+              onClick={() => {
+                if (limpezaAtiva) reverterLimpeza();
+                else setConfirmarLimpeza(true);
+              }}
+              className="w-full px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
+            >
+              {limpezaAtiva ? 'Reverter limpeza' : 'Limpa Página Toda'}
+            </button>
+          )}
           <div>
             <label className="block text-xs font-medium text-slate-700 mb-0.5">Dimensão:</label>
             <SpinnerField value={dimensao} onChange={setDimensao} className="w-24" />
