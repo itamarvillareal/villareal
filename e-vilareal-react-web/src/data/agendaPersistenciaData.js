@@ -1,7 +1,85 @@
 import { agendaUsuarios as agendaUsuariosBase, getMockEventosAgendaPorData } from './mockData';
+import { getPessoaPorId } from './cadastroPessoasMock.js';
 
 const STORAGE_KEY = 'vilareal:agenda-eventos:v1';
 const STORAGE_USUARIOS_KEY = 'vilareal:agenda-usuarios:v1';
+/** Inclui vínculo a Pessoas, apelido, login e hash de senha. */
+const STORAGE_USUARIOS_KEY_V2 = 'vilareal:agenda-usuarios:v2';
+
+function enriquecerNomeComCadastroPessoa(u) {
+  if (!u) return u;
+  const num = u.numeroPessoa != null ? Number(u.numeroPessoa) : null;
+  if (num == null || !Number.isFinite(num)) return { ...u };
+  const p = getPessoaPorId(num);
+  if (!p?.nome) return { ...u };
+  return { ...u, nome: p.nome };
+}
+
+/**
+ * @param {object} u
+ * @returns {{ id: string, nome: string, numeroPessoa: number|null, apelido: string, login: string, senhaHash: string } | null}
+ */
+function normalizarUsuarioPersistido(u) {
+  const id = u?.id != null ? String(u.id) : '';
+  const nome = u?.nome != null ? String(u.nome) : '';
+  if (!id || !nome) return null;
+  let numeroPessoa = null;
+  if (u.numeroPessoa != null && u.numeroPessoa !== '') {
+    const n = Number(u.numeroPessoa);
+    if (Number.isFinite(n)) numeroPessoa = n;
+  }
+  return {
+    id,
+    nome,
+    numeroPessoa,
+    apelido: u.apelido != null ? String(u.apelido).trim() : '',
+    login: u.login != null ? String(u.login).trim().toLowerCase() : '',
+    senhaHash: u.senhaHash != null ? String(u.senhaHash) : '',
+  };
+}
+
+function validarUsuariosLista(usuarios) {
+  const logins = new Map();
+  const pessoas = new Map();
+  for (const u of usuarios) {
+    const login = String(u.login || '').trim().toLowerCase();
+    if (login) {
+      if (logins.has(login) && String(logins.get(login)) !== String(u.id)) {
+        return { ok: false, error: `Login "${login}" já está em uso por outro usuário.` };
+      }
+      logins.set(login, u.id);
+    }
+    const np = u.numeroPessoa;
+    if (np != null && Number.isFinite(Number(np))) {
+      const n = Number(np);
+      if (pessoas.has(n) && String(pessoas.get(n)) !== String(u.id)) {
+        return { ok: false, error: `O nº de pessoa ${n} já está vinculado a outro usuário do sistema.` };
+      }
+      pessoas.set(n, u.id);
+    }
+  }
+  return { ok: true };
+}
+
+function saveUsuariosAtivosInterno(usuarios) {
+  try {
+    window.localStorage.setItem(STORAGE_USUARIOS_KEY_V2, JSON.stringify(usuarios));
+    try {
+      window.localStorage.removeItem(STORAGE_USUARIOS_KEY);
+    } catch {
+      /* ignore */
+    }
+    if (typeof window !== 'undefined') {
+      try {
+        window.dispatchEvent(new CustomEvent('vilareal:usuarios-agenda-atualizados'));
+      } catch {
+        // ignora
+      }
+    }
+  } catch {
+    // ignora
+  }
+}
 
 function apenasDigitos(v) {
   return String(v ?? '').replace(/\D/g, '');
@@ -475,33 +553,58 @@ export function agendarEmLoteParaUsuarios({
 
 function loadUsuariosAtivos() {
   try {
+    const raw2 = window.localStorage.getItem(STORAGE_USUARIOS_KEY_V2);
+    if (raw2) {
+      const parsed = JSON.parse(raw2);
+      if (Array.isArray(parsed)) {
+        return parsed.map(normalizarUsuarioPersistido).filter(Boolean);
+      }
+    }
     const raw = window.localStorage.getItem(STORAGE_USUARIOS_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return null;
-    // valida shape mínima
-    const filtrados = parsed
-      .map((u) => ({ id: u?.id != null ? String(u.id) : '', nome: u?.nome != null ? String(u.nome) : '' }))
-      .filter((u) => u.id && u.nome);
-    return filtrados;
+    const migrated = parsed
+      .map((u) =>
+        normalizarUsuarioPersistido({
+          id: u.id,
+          nome: u.nome,
+          numeroPessoa: null,
+          apelido: '',
+          login: '',
+          senhaHash: '',
+        })
+      )
+      .filter(Boolean);
+    saveUsuariosAtivosInterno(migrated);
+    return migrated;
   } catch {
     return null;
   }
 }
 
-function saveUsuariosAtivos(usuarios) {
-  try {
-    window.localStorage.setItem(STORAGE_USUARIOS_KEY, JSON.stringify(usuarios));
-    if (typeof window !== 'undefined') {
-      try {
-        window.dispatchEvent(new CustomEvent('vilareal:usuarios-agenda-atualizados'));
-      } catch {
-        // ignora
-      }
-    }
-  } catch {
-    // ignora
-  }
+function usuarioComCamposPadrao(u) {
+  const n = normalizarUsuarioPersistido({
+    id: u.id,
+    nome: u.nome,
+    numeroPessoa: u.numeroPessoa,
+    apelido: u.apelido,
+    login: u.login,
+    senhaHash: u.senhaHash,
+  });
+  return n;
+}
+
+/** Registro mínimo a partir da lista base (Agenda / mock). */
+export function criarUsuarioRegistroMinimo(ag) {
+  return normalizarUsuarioPersistido({
+    id: ag.id,
+    nome: ag.nome,
+    numeroPessoa: null,
+    apelido: '',
+    login: '',
+    senhaHash: '',
+  });
 }
 
 export function getUsuariosAtivos() {
@@ -509,28 +612,39 @@ export function getUsuariosAtivos() {
   const base = Array.isArray(agendaUsuariosBase) ? agendaUsuariosBase : [];
   const lista = fromStore && fromStore.length > 0 ? fromStore : base;
   const basePrimeiro = base[0];
+  let merged = lista;
   if (basePrimeiro && Array.isArray(lista) && !lista.some((u) => String(u?.id || '') === String(basePrimeiro.id))) {
-    return [basePrimeiro, ...lista];
+    merged = [basePrimeiro, ...lista];
   }
-  return lista;
+  return merged
+    .map((u) => enriquecerNomeComCadastroPessoa(usuarioComCamposPadrao(u)))
+    .filter(Boolean);
 }
 
+/**
+ * @returns {{ ok: boolean, error?: string }}
+ */
 export function setUsuariosAtivos(usuarios) {
-  if (!Array.isArray(usuarios)) return;
-  const filtrados = usuarios
-    .map((u) => ({ id: u?.id != null ? String(u.id) : '', nome: u?.nome != null ? String(u.nome) : '' }))
-    .filter((u) => u.id && u.nome);
-  if (filtrados.length === 0) return;
+  if (!Array.isArray(usuarios)) return { ok: false, error: 'Lista inválida.' };
+  const filtrados = usuarios.map(normalizarUsuarioPersistido).filter(Boolean);
+  if (filtrados.length === 0) return { ok: false, error: 'Nenhum usuário válido.' };
+  let valid = validarUsuariosLista(filtrados);
+  if (!valid.ok) return valid;
 
   const base = Array.isArray(agendaUsuariosBase) ? agendaUsuariosBase : [];
   const basePrimeiro = base[0];
   const jaTemBasePrimeiro =
     basePrimeiro && filtrados.some((u) => String(u.id) === String(basePrimeiro.id));
   if (basePrimeiro && !jaTemBasePrimeiro) {
-    saveUsuariosAtivos([basePrimeiro, ...filtrados]);
-    return;
+    const min = criarUsuarioRegistroMinimo(basePrimeiro);
+    const comBase = [min, ...filtrados].filter(Boolean);
+    valid = validarUsuariosLista(comBase);
+    if (!valid.ok) return valid;
+    saveUsuariosAtivosInterno(comBase);
+    return { ok: true };
   }
 
-  saveUsuariosAtivos(filtrados);
+  saveUsuariosAtivosInterno(filtrados);
+  return { ok: true };
 }
 

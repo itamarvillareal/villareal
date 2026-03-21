@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight, HelpCircle, X } from 'lucide-react';
 import { Column } from './Column';
 import { columns, getBoardData, tasksByColumn } from '../data/mockData';
 import { getUsuariosAtivos } from '../data/agendaPersistenciaData';
+import { getNomeExibicaoUsuario } from '../data/usuarioDisplayHelpers.js';
 
 /**
  * IDs antigos da tela Pendências (mock) → mesmo cadastro de Usuários (ex.: kari ↔ karla no storage).
@@ -166,7 +167,7 @@ export function Board() {
 
   const columnsPendencias = useMemo(() => {
     if (Array.isArray(usuariosColunas) && usuariosColunas.length > 0) {
-      return usuariosColunas.map((x) => ({ id: String(x.id), name: String(x.nome) }));
+      return usuariosColunas.map((x) => ({ id: String(x.id), name: String(getNomeExibicaoUsuario(x)) }));
     }
     return columns.map((c) => ({ ...c }));
   }, [usuariosColunas]);

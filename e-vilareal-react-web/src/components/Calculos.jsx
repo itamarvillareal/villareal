@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { X, ChevronUp, ChevronDown, BarChart2, ExternalLink } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -10,10 +10,12 @@ import { obterIndicesMensaisINPC, obterIndicesMensaisIPCA } from '../services/mo
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { baixarBlobDocx, gerarDocumentoListaDebitosWord } from '../utils/gerarDocumentoListaDebitosWord';
+import { INDICES_CALCULO, PERIODICIDADE_OPCOES, MODELOS_LISTA_DEBITOS } from '../data/calculosIndices.js';
+import { loadConfigCalculoCliente, mergeConfigPainelCalculo } from '../data/clienteConfigCalculoStorage.js';
 
 const TABS = ['Títulos', 'Custas Judiciais', 'Parcelamento', 'Pagamento', 'Honorários', 'Descrição dos Valores'];
 
-const INDICES = ['INPC', 'IGPM', 'SELIC', 'POUPANÇA', 'IPCA', 'IPCA-E', 'TR', 'CDI', 'NENHUM'];
+const INDICES = INDICES_CALCULO;
 
 const inputClass = 'w-full px-2 py-1.5 border border-slate-300 rounded text-sm bg-white';
 const TITULOS_POR_PAGINA = 20;
@@ -318,7 +320,10 @@ export function Calculos() {
   const [multa, setMulta] = useState('0 %');
   const [honorariosTipo, setHonorariosTipo] = useState('fixos');
   const [honorariosValor, setHonorariosValor] = useState('0');
+  const [honorariosVariaveisTexto, setHonorariosVariaveisTexto] = useState('');
   const [indice, setIndice] = useState('INPC');
+  const [periodicidade, setPeriodicidade] = useState('mensal');
+  const [modeloListaDebitos, setModeloListaDebitos] = useState('01');
   const [aceitarPagamento, setAceitarPagamento] = useState(false);
   const [modoAlteracao, setModoAlteracao] = useState(false);
   const [indicesMensaisINPC, setIndicesMensaisINPC] = useState(null);
@@ -329,6 +334,8 @@ export function Calculos() {
     ...RODADAS_VINCULACAO_TESTE_50,
   }));
   const saveRodadasTimerRef = useRef(null);
+  const rodadasStateRef = useRef(rodadasState);
+  rodadasStateRef.current = rodadasState;
   const [confirmarLimpeza, setConfirmarLimpeza] = useState(false);
 
   function confirmarAlternarAceitarPagamento(next) {
@@ -399,6 +406,67 @@ export function Calculos() {
   const procNorm = normalizarProc(proc);
   const rodadaKey = `${codigoClienteNorm}:${procNorm}:${dimensaoNorm}`;
 
+  const panelConfigKey = useMemo(
+    () => JSON.stringify(rodadasState[rodadaKey]?.panelConfig ?? null),
+    [rodadaKey, rodadasState[rodadaKey]?.panelConfig]
+  );
+
+  const updatePainelCampo = useCallback(
+    (partial) => {
+      if (partial.juros !== undefined) setJuros(partial.juros);
+      if (partial.multa !== undefined) setMulta(partial.multa);
+      if (partial.honorariosTipo !== undefined) {
+        setHonorariosTipo(partial.honorariosTipo === 'variaveis' ? 'variaveis' : 'fixos');
+      }
+      if (partial.honorariosValor !== undefined) setHonorariosValor(partial.honorariosValor);
+      if (partial.honorariosVariaveisTexto !== undefined) setHonorariosVariaveisTexto(partial.honorariosVariaveisTexto);
+      if (partial.indice !== undefined) setIndice(partial.indice);
+      if (partial.periodicidade !== undefined) setPeriodicidade(partial.periodicidade);
+      if (partial.modeloListaDebitos !== undefined) setModeloListaDebitos(partial.modeloListaDebitos);
+      setRodadasState((prev) => {
+        const cur = prev[rodadaKey];
+        if (!cur) return prev;
+        const def = loadConfigCalculoCliente(codigoClienteNorm);
+        const mergedBase = mergeConfigPainelCalculo(def, cur.panelConfig);
+        const nextPanel = { ...mergedBase, ...partial };
+        return { ...prev, [rodadaKey]: { ...cur, panelConfig: nextPanel } };
+      });
+    },
+    [rodadaKey, codigoClienteNorm]
+  );
+
+  useEffect(() => {
+    const def = loadConfigCalculoCliente(codigoClienteNorm);
+    const r = rodadasState[rodadaKey];
+    const merged = mergeConfigPainelCalculo(def, r?.panelConfig);
+    setJuros(merged.juros);
+    setMulta(merged.multa);
+    setHonorariosTipo(merged.honorariosTipo === 'variaveis' ? 'variaveis' : 'fixos');
+    setHonorariosValor(merged.honorariosValor ?? '0');
+    setHonorariosVariaveisTexto(merged.honorariosVariaveisTexto ?? '');
+    setIndice(merged.indice);
+    setPeriodicidade(merged.periodicidade ?? 'mensal');
+    setModeloListaDebitos(merged.modeloListaDebitos ?? '01');
+  }, [rodadaKey, codigoClienteNorm, panelConfigKey]);
+
+  useEffect(() => {
+    const h = () => {
+      const def = loadConfigCalculoCliente(codigoClienteNorm);
+      const r = rodadasStateRef.current[rodadaKey];
+      const merged = mergeConfigPainelCalculo(def, r?.panelConfig);
+      setJuros(merged.juros);
+      setMulta(merged.multa);
+      setHonorariosTipo(merged.honorariosTipo === 'variaveis' ? 'variaveis' : 'fixos');
+      setHonorariosValor(merged.honorariosValor ?? '0');
+      setHonorariosVariaveisTexto(merged.honorariosVariaveisTexto ?? '');
+      setIndice(merged.indice);
+      setPeriodicidade(merged.periodicidade ?? 'mensal');
+      setModeloListaDebitos(merged.modeloListaDebitos ?? '01');
+    };
+    window.addEventListener('vilareal:cliente-config-calculo-atualizado', h);
+    return () => window.removeEventListener('vilareal:cliente-config-calculo-atualizado', h);
+  }, [rodadaKey, codigoClienteNorm]);
+
   function aplicarClienteProcManual() {
     const cod = padCliente8(codClienteManual);
     const p = normalizarProc(procManual);
@@ -456,6 +524,7 @@ export function Calculos() {
           cabecalho: gerarCabecalhoMock(codigoClienteNorm, procNorm),
           honorariosDataRecebimento: {},
           parcelamentoAceito: false,
+          panelConfig: undefined,
         },
       };
     });
@@ -473,6 +542,7 @@ export function Calculos() {
     cabecalho: gerarCabecalhoMock(codigoClienteNorm, procNorm),
     honorariosDataRecebimento: {},
     parcelamentoAceito: false,
+    panelConfig: undefined,
   };
 
   // Ao mudar de rodada, restaura "Aceitar pagamento" salvo nessa combinação cliente/proc/dim.
@@ -2510,33 +2580,64 @@ export function Calculos() {
               </div>
               <div>
                 <label className="block text-xs font-medium text-slate-700 mb-0.5">Juros:</label>
-                <input type="text" value={juros} onChange={(e) => setJuros(e.target.value)} className={inputClass} />
+                <input
+                  type="text"
+                  value={juros}
+                  onChange={(e) => updatePainelCampo({ juros: e.target.value })}
+                  className={inputClass}
+                />
               </div>
               <div>
                 <label className="block text-xs font-medium text-slate-700 mb-0.5">Multa:</label>
-                <input type="text" value={multa} onChange={(e) => setMulta(e.target.value)} className={inputClass} />
+                <input
+                  type="text"
+                  value={multa}
+                  onChange={(e) => updatePainelCampo({ multa: e.target.value })}
+                  className={inputClass}
+                />
               </div>
               <div className="border border-slate-300 rounded p-2 bg-white">
                 <p className="text-xs font-medium text-slate-700 mb-1.5">Honorários</p>
                 <div className="flex gap-3 mb-1">
                   <label className="flex items-center gap-1 text-xs cursor-pointer">
-                    <input type="radio" name="honorarios" checked={honorariosTipo === 'fixos'} onChange={() => setHonorariosTipo('fixos')} className="text-slate-600" />
+                    <input
+                      type="radio"
+                      name="honorarios"
+                      checked={honorariosTipo === 'fixos'}
+                      onChange={() => updatePainelCampo({ honorariosTipo: 'fixos' })}
+                      className="text-slate-600"
+                    />
                     Fixos
                   </label>
                   <label className="flex items-center gap-1 text-xs cursor-pointer">
-                    <input type="radio" name="honorarios" checked={honorariosTipo === 'variaveis'} onChange={() => setHonorariosTipo('variaveis')} className="text-slate-600" />
+                    <input
+                      type="radio"
+                      name="honorarios"
+                      checked={honorariosTipo === 'variaveis'}
+                      onChange={() => updatePainelCampo({ honorariosTipo: 'variaveis' })}
+                      className="text-slate-600"
+                    />
                     Variáveis
                   </label>
                 </div>
                 {honorariosTipo === 'variaveis' && (
-                  <p className="text-xs text-slate-500 mb-1">
-                    ≤ 30 dias = 0% &nbsp;|&nbsp; 31–60 dias = 10% &nbsp;|&nbsp; &gt; 60 dias = 20%
-                  </p>
+                  <>
+                    <p className="text-xs text-slate-500 mb-1">
+                      Padrão sugerido: ≤ 30 dias = 0% &nbsp;|&nbsp; 31–60 dias = 10% &nbsp;|&nbsp; &gt; 60 dias = 20%
+                    </p>
+                    <textarea
+                      value={honorariosVariaveisTexto}
+                      onChange={(e) => updatePainelCampo({ honorariosVariaveisTexto: e.target.value })}
+                      rows={3}
+                      placeholder="Regras personalizadas (texto livre; padrão do cliente em Cadastro de Clientes)"
+                      className="w-full text-sm border border-slate-300 rounded px-2 py-1 mb-1 font-mono"
+                    />
+                  </>
                 )}
                 <input
                   type="text"
                   value={honorariosValor}
-                  onChange={(e) => setHonorariosValor(e.target.value)}
+                  onChange={(e) => updatePainelCampo({ honorariosValor: e.target.value })}
                   placeholder={honorariosTipo === 'fixos' ? 'Ex: 10 %' : '—'}
                   disabled={honorariosTipo !== 'fixos'}
                   className={`${inputClass} ${honorariosTipo !== 'fixos' ? 'bg-slate-50 text-slate-400' : ''}`}
@@ -2549,7 +2650,7 @@ export function Calculos() {
                     <label
                       key={nome}
                       className="flex items-center gap-1.5 text-xs cursor-pointer select-none"
-                      onClick={() => setIndice(nome)}
+                      onClick={() => updatePainelCampo({ indice: nome })}
                     >
                       <input
                         id={`indice-${nome}`}
@@ -2557,7 +2658,7 @@ export function Calculos() {
                         name="indice"
                         value={nome}
                         checked={indice === nome}
-                        onChange={(e) => setIndice(e.target.value)}
+                        onChange={(e) => updatePainelCampo({ indice: e.target.value })}
                         className="text-slate-600"
                       />
                       {nome}
@@ -2565,6 +2666,34 @@ export function Calculos() {
                     </label>
                   ))}
                 </div>
+              </div>
+              <div className="border border-slate-300 rounded p-2 bg-white">
+                <p className="text-xs font-medium text-slate-700 mb-1">Periodicidade (sugestão)</p>
+                <select
+                  value={periodicidade}
+                  onChange={(e) => updatePainelCampo({ periodicidade: e.target.value })}
+                  className={inputClass}
+                >
+                  {PERIODICIDADE_OPCOES.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="border border-slate-300 rounded p-2 bg-white">
+                <p className="text-xs font-medium text-slate-700 mb-1">Modelo lista de débitos</p>
+                <select
+                  value={modeloListaDebitos}
+                  onChange={(e) => updatePainelCampo({ modeloListaDebitos: e.target.value })}
+                  className={inputClass}
+                >
+                  {MODELOS_LISTA_DEBITOS.map((m) => (
+                    <option key={m} value={m}>
+                      Modelo {m}
+                    </option>
+                  ))}
+                </select>
               </div>
             </>
           )}

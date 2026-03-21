@@ -124,10 +124,17 @@ export function parseRodadaKeyParaDisplay(rodadaKey) {
   };
 }
 
+function cabecalhoAutorReu(rodada) {
+  const cab = rodada?.cabecalho && typeof rodada.cabecalho === 'object' ? rodada.cabecalho : {};
+  const autor = String(cab.autor ?? '').trim();
+  const reu = String(cab.reu ?? '').trim();
+  return { autor: autor || '—', reu: reu || '—' };
+}
+
 /**
  * Para cada lançamento não classificado do extrato, procura parcelas (data + valor) em **todas** as rodadas
  * com parcelamento aceito. O usuário aprova depois no Financeiro.
- * @returns {Array<{ nomeBanco, numero, data, valor, matches: Array<{ rodadaKey, parcelaIndice, parcelaData, valorCentavos }> }>}
+ * @returns {Array<{ nomeBanco, numero, data, valor, descricao, matches: Array<{ rodadaKey, parcelaIndice, parcelaData, valorCentavos, autor, reu }> }>}
  */
 export function procurarSugestoesVinculoAutomatico(extratosPorBanco, rodadas) {
   const sugestoes = [];
@@ -143,6 +150,7 @@ export function procurarSugestoesVinculoAutomatico(extratosPorBanco, rodadas) {
       for (const [rodadaKey, rodada] of Object.entries(rodadas || {})) {
         if (!rodadaParcelamentoAceita(rodada)) continue;
         const parcelas = extrairParcelasEsperadasDaRodada(rodada);
+        const { autor, reu } = cabecalhoAutorReu(rodada);
         for (const p of parcelas) {
           if (p.data === data && p.valorCentavos === vc) {
             matches.push({
@@ -150,16 +158,21 @@ export function procurarSugestoesVinculoAutomatico(extratosPorBanco, rodadas) {
               parcelaIndice: p.indice,
               parcelaData: p.data,
               valorCentavos: p.valorCentavos,
+              autor,
+              reu,
             });
           }
         }
       }
       if (matches.length > 0) {
+        const descLinha = String(tx.descricao ?? '').trim();
+        const descDet = String(tx.descricaoDetalhada ?? '').trim();
         sugestoes.push({
           nomeBanco: tx.nomeBanco,
           numero: tx.numero,
           data: tx.data,
           valor: tx.valor,
+          descricao: descLinha || descDet,
           matches,
         });
       }

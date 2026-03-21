@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   getExtratosIniciais,
@@ -21,11 +21,19 @@ import {
 } from '../data/financeiroData';
 import { loadRodadasCalculos } from '../data/calculosRodadasStorage';
 import {
+  loadConsultasVinculoLog,
+  appendConsultaVinculoLogEntry,
+  persistConsultasVinculoLog,
+  clearConsultasVinculoLog,
+  isUsuarioMaster,
+} from '../data/consultasVinculoHistoricoStorage.js';
+import {
   procurarSugestoesVinculoAutomatico,
   parseRodadaKeyParaDisplay,
 } from '../data/buscaParcelamentoFinanceiro';
 import { parseOfxToExtrato, mergeExtratoBancario, contarLancamentosNovos } from '../utils/ofx';
 import { OFX_ITAU_REAL_EXEMPLO, OFX_CORA_REAL_EXEMPLO } from '../data/ofxItauCoraReal';
+import { CheckSquare, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const REF_CONSTANTE = 675;
 
@@ -52,6 +60,34 @@ function formatValor(v) {
   if (v === 0) return '0,00';
   const s = Math.abs(v).toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
   return v < 0 ? `-${s}` : s;
+}
+
+/** Exibe data/hora da consulta de vínculo (log). */
+function formatarDataHoraConsulta(iso) {
+  if (!iso) return '—';
+  try {
+    return new Date(iso).toLocaleString('pt-BR', {
+      dateStyle: 'short',
+      timeStyle: 'medium',
+    });
+  } catch {
+    return String(iso);
+  }
+}
+
+/** Dia civil da consulta (agrupamento ao longo dos dias). */
+function formatarDiaLog(iso) {
+  if (!iso) return '—';
+  try {
+    return new Date(iso).toLocaleDateString('pt-BR', {
+      weekday: 'long',
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric',
+    });
+  } catch {
+    return '—';
+  }
 }
 
 /** Converte data DD/MM/YYYY (com ou sem zeros) para YYYY-MM-DD — ordenação correta. */
@@ -179,6 +215,11 @@ export function Financeiro() {
     const merged = persisted ? { ...getExtratosIniciais(), ...persisted } : getExtratosIniciais();
     return parearCompensacaoInterbancaria(merged);
   });
+  /** Sempre o extrato mais recente ao disparar uma nova busca (evita snapshot “preso” em closure antiga). */
+  const extratosPorBancoRef = useRef(extratosPorBanco);
+  useEffect(() => {
+    extratosPorBancoRef.current = extratosPorBanco;
+  }, [extratosPorBanco]);
 
   const [instituicaoSelecionada, setInstituicaoSelecionada] = useState('CEF');
   const [contaContabilSelecionada, setContaContabilSelecionada] = useState('Conta Escritório');
@@ -200,10 +241,21 @@ export function Financeiro() {
   const [filtroConciliacaoHonorarios, setFiltroConciliacaoHonorarios] = useState(null);
   /** Modal: busca automática extrato não classificado × parcelas de cálculos aceitos; usuário só aprova. */
   const [modalBuscaParcelas, setModalBuscaParcelas] = useState(false);
-  const [sugestoesVinculoAutomatico, setSugestoesVinculoAutomatico] = useState([]);
-  /** Por linha `${banco}-${nº}-${data}`: índice em `matches` quando há mais de um cálculo possível */
-  const [matchIndexPorSugestao, setMatchIndexPorSugestao] = useState({});
-  const [aprovarSugestao, setAprovarSugestao] = useState({});
+  /** Cada item: número sequencial da consulta, log ISO, snapshot de sugestões e aprovações. */
+  const [consultasVinculoHistorico, setConsultasVinculoHistorico] = useState([]);
+  const [indiceConsultaVinculo, setIndiceConsultaVinculo] = useState(0);
+  const indiceConsultaVinculoRef = useRef(0);
+  /** Evita duplicar a 1ª consulta ao abrir o modal (React Strict Mode em dev). */
+  const primeiraConsultaModalRef = useRef(false);
+
+  useEffect(() => {
+    indiceConsultaVinculoRef.current = indiceConsultaVinculo;
+  }, [indiceConsultaVinculo]);
+
+  const consultaVinculoAtual = consultasVinculoHistorico[indiceConsultaVinculo] ?? null;
+  const sugestoesVinculoAutomatico = consultaVinculoAtual?.sugestoes ?? [];
+  const matchIndexPorSugestao = consultaVinculoAtual?.matchIndexPorSugestao ?? {};
+  const aprovarSugestao = consultaVinculoAtual?.aprovarSugestao ?? {};
 
   const transacoesConsolidadas = getTransacoesConsolidadas(extratosPorBanco, contaContabilSelecionada);
   const saldoConsolidado = transacoesConsolidadas.reduce((s, t) => s + t.valor, 0);
@@ -295,19 +347,92 @@ export function Financeiro() {
     setModalBuscaParcelas(true);
   }
 
-  function atualizarSugestoesBuscaAutomatica() {
+  const runNovaConsultaVinculo = useCallback(() => {
     const rodadas = loadRodadasCalculos() || {};
-    const sugestoes = procurarSugestoesVinculoAutomatico(extratosPorBanco, rodadas);
-    setSugestoesVinculoAutomatico(sugestoes);
+    const sugestoes = procurarSugestoesVinculoAutomatico(extratosPorBancoRef.current, rodadas);
     const idx = {};
     const ap = {};
     for (const s of sugestoes) {
       const k = `${s.nomeBanco}-${s.numero}-${s.data}`;
       idx[k] = 0;
-      ap[k] = s.matches.length === 1;
+      ap[k] = false;
     }
-    setMatchIndexPorSugestao(idx);
-    setAprovarSugestao(ap);
+    appendConsultaVinculoLogEntry({
+      sugestoes,
+      matchIndexPorSugestao: idx,
+      aprovarSugestao: ap,
+      totalSugestoes: sugestoes.length,
+    });
+    const { entries } = loadConsultasVinculoLog();
+    setConsultasVinculoHistorico(entries);
+    setIndiceConsultaVinculo(Math.max(0, entries.length - 1));
+  }, []);
+
+  const patchConsultaVinculoAtual = useCallback((updater) => {
+    setConsultasVinculoHistorico((prev) => {
+      const i = indiceConsultaVinculoRef.current;
+      if (i < 0 || i >= prev.length) return prev;
+      const cur = prev[i];
+      const next = typeof updater === 'function' ? updater(cur) : { ...cur, ...updater };
+      const copy = [...prev];
+      copy[i] = next;
+      persistConsultasVinculoLog(copy);
+      return copy;
+    });
+  }, []);
+
+  function excluirHistoricoConsultasVinculoMaster() {
+    if (!isUsuarioMaster()) return;
+    if (
+      !window.confirm(
+        'Excluir permanentemente todo o relatório de consultas de vínculo guardado neste navegador? Esta ação não pode ser desfeita.'
+      )
+    ) {
+      return;
+    }
+    clearConsultasVinculoLog();
+    setConsultasVinculoHistorico([]);
+    setIndiceConsultaVinculo(0);
+    primeiraConsultaModalRef.current = false;
+    runNovaConsultaVinculo();
+  }
+
+  function fecharModalBuscaVinculo() {
+    setModalBuscaParcelas(false);
+    setConsultasVinculoHistorico([]);
+    setIndiceConsultaVinculo(0);
+    primeiraConsultaModalRef.current = false;
+  }
+
+  /** Abre o modal: carrega log persistente (eterno); se vazio, cria a 1ª consulta. */
+  useEffect(() => {
+    if (!modalBuscaParcelas) {
+      primeiraConsultaModalRef.current = false;
+      return;
+    }
+    const { entries } = loadConsultasVinculoLog();
+    setConsultasVinculoHistorico(entries);
+    if (entries.length > 0) {
+      setIndiceConsultaVinculo(entries.length - 1);
+      primeiraConsultaModalRef.current = true;
+      return;
+    }
+    if (primeiraConsultaModalRef.current) return;
+    primeiraConsultaModalRef.current = true;
+    runNovaConsultaVinculo();
+  }, [modalBuscaParcelas, runNovaConsultaVinculo]);
+
+  /** Mantém índice válido se o histórico mudar. */
+  useEffect(() => {
+    if (consultasVinculoHistorico.length === 0) {
+      setIndiceConsultaVinculo(0);
+      return;
+    }
+    setIndiceConsultaVinculo((i) => Math.min(Math.max(0, i), consultasVinculoHistorico.length - 1));
+  }, [consultasVinculoHistorico.length]);
+
+  function atualizarSugestoesBuscaAutomatica() {
+    runNovaConsultaVinculo();
   }
 
   function confirmarVinculosParcelasSelecionados() {
@@ -356,10 +481,7 @@ export function Financeiro() {
       }
       return next;
     });
-    setModalBuscaParcelas(false);
-    setSugestoesVinculoAutomatico([]);
-    setMatchIndexPorSugestao({});
-    setAprovarSugestao({});
+    fecharModalBuscaVinculo();
     if (linhas.length === 1) {
       setFiltroConciliacaoHonorarios({
         codCliente: linhas[0].codCliente,
@@ -588,23 +710,6 @@ export function Financeiro() {
     setModalBuscaParcelas(true);
     navigate(location.pathname, { replace: true, state: {} });
   }, [location.state, location.pathname, navigate]);
-
-  /** Ao abrir o modal ou mudar extratos: recalcula sugestões (lançamentos não classificados × parcelas aceitas). */
-  useEffect(() => {
-    if (!modalBuscaParcelas) return;
-    const rodadas = loadRodadasCalculos() || {};
-    const sugestoes = procurarSugestoesVinculoAutomatico(extratosPorBanco, rodadas);
-    setSugestoesVinculoAutomatico(sugestoes);
-    const idx = {};
-    const ap = {};
-    for (const s of sugestoes) {
-      const k = `${s.nomeBanco}-${s.numero}-${s.data}`;
-      idx[k] = 0;
-      ap[k] = s.matches.length === 1;
-    }
-    setMatchIndexPorSugestao(idx);
-    setAprovarSugestao(ap);
-  }, [modalBuscaParcelas, extratosPorBanco]);
 
   const saldoHeaderConsolidado =
     filtroConciliacaoHonorarios && contaContabilSelecionada === 'Conta Escritório'
@@ -1411,12 +1516,7 @@ export function Financeiro() {
               </h2>
               <button
                 type="button"
-                onClick={() => {
-                  setModalBuscaParcelas(false);
-                  setSugestoesVinculoAutomatico([]);
-                  setMatchIndexPorSugestao({});
-                  setAprovarSugestao({});
-                }}
+                onClick={fecharModalBuscaVinculo}
                 className="px-2 py-1 text-slate-500 hover:bg-slate-100 rounded text-lg leading-none"
                 aria-label="Fechar"
               >
@@ -1439,6 +1539,16 @@ export function Financeiro() {
                 >
                   Atualizar busca
                 </button>
+                {isUsuarioMaster() && (
+                  <button
+                    type="button"
+                    onClick={excluirHistoricoConsultasVinculoMaster}
+                    className="px-3 py-2 rounded-lg border border-red-300 bg-white text-red-800 text-sm font-medium hover:bg-red-50"
+                    title="Remove todo o relatório guardado neste navegador (apenas usuário master)"
+                  >
+                    Excluir relatório de consultas
+                  </button>
+                )}
                 <span className="text-xs text-slate-500">
                   Rodadas aceitas no Cálculos:{' '}
                   <strong>
@@ -1446,6 +1556,53 @@ export function Financeiro() {
                   </strong>
                 </span>
               </div>
+
+              {consultasVinculoHistorico.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2 rounded-lg border border-indigo-100 bg-indigo-50/50 px-3 py-2">
+                  <span className="text-xs font-semibold text-indigo-900">Consultas</span>
+                  <button
+                    type="button"
+                    disabled={indiceConsultaVinculo <= 0}
+                    onClick={() => setIndiceConsultaVinculo((i) => Math.max(0, i - 1))}
+                    className="p-1 rounded border border-indigo-200 bg-white text-indigo-800 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-indigo-100"
+                    title="Consulta anterior"
+                    aria-label="Consulta anterior"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <span className="text-sm text-slate-800 tabular-nums min-w-[8rem] text-center">
+                    <strong>#{consultaVinculoAtual?.numero ?? '—'}</strong>
+                    <span className="text-slate-500 font-normal"> / {consultasVinculoHistorico.length}</span>
+                  </span>
+                  <button
+                    type="button"
+                    disabled={indiceConsultaVinculo >= consultasVinculoHistorico.length - 1}
+                    onClick={() =>
+                      setIndiceConsultaVinculo((i) =>
+                        Math.min(consultasVinculoHistorico.length - 1, i + 1)
+                      )
+                    }
+                    className="p-1 rounded border border-indigo-200 bg-white text-indigo-800 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-indigo-100"
+                    title="Próxima consulta"
+                    aria-label="Próxima consulta"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                  <span className="text-xs text-slate-600 border-l border-indigo-200 pl-3 ml-1">
+                    <span className="font-medium text-slate-700">Dia:</span>{' '}
+                    {formatarDiaLog(consultaVinculoAtual?.producedAtISO)}
+                    <span className="text-slate-500"> · </span>
+                    <span className="font-medium text-slate-700">Produzida em:</span>{' '}
+                    {formatarDataHoraConsulta(consultaVinculoAtual?.producedAtISO)}
+                    <span className="text-slate-500"> · </span>
+                    <span className="font-medium text-slate-700">Nesta busca:</span>{' '}
+                    <strong className="text-indigo-900 tabular-nums">
+                      {consultaVinculoAtual?.totalSugestoes ?? sugestoesVinculoAutomatico.length}
+                    </strong>{' '}
+                    sugestão(ões) (dados congelados nesta rodada)
+                  </span>
+                </div>
+              )}
 
               {(() => {
                 const nAceitas = Object.values(loadRodadasCalculos() || {}).filter((r) => r?.parcelamentoAceito).length;
@@ -1480,19 +1637,41 @@ export function Financeiro() {
                               <strong>{s.nomeBanco}</strong> — Id. {s.numero} — {s.data} —{' '}
                               <span className="tabular-nums">{formatValor(s.valor)}</span>
                             </p>
-                            <p className="text-xs text-slate-500">Lançamento não classificado no extrato</p>
+                            <p className="text-xs text-slate-600 break-words" title={s.descricao || undefined}>
+                              <span className="font-medium text-slate-700">Descrição no extrato:</span>{' '}
+                              {s.descricao ? (
+                                <span>{s.descricao}</span>
+                              ) : (
+                                <span className="text-slate-400 italic">(sem descrição)</span>
+                              )}
+                            </p>
                           </div>
-                          <label className="flex items-center gap-2 text-sm cursor-pointer shrink-0">
-                            <input
-                              type="checkbox"
-                              checked={Boolean(aprovarSugestao[rowKey])}
-                              onChange={(e) =>
-                                setAprovarSugestao((prev) => ({ ...prev, [rowKey]: e.target.checked }))
-                              }
-                              className="rounded border-slate-300"
-                            />
+                          <button
+                            type="button"
+                            onClick={() =>
+                              patchConsultaVinculoAtual((c) => ({
+                                ...c,
+                                aprovarSugestao: {
+                                  ...c.aprovarSugestao,
+                                  [rowKey]: !c.aprovarSugestao?.[rowKey],
+                                },
+                              }))
+                            }
+                            aria-pressed={Boolean(aprovarSugestao[rowKey])}
+                            title={
+                              aprovarSugestao[rowKey]
+                                ? 'Clique para desfazer a aprovação deste vínculo'
+                                : 'Clique para aprovar o vínculo sugerido'
+                            }
+                            className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium shrink-0 transition-colors ${
+                              aprovarSugestao[rowKey]
+                                ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                                : 'bg-slate-400 text-white hover:bg-slate-500'
+                            }`}
+                          >
+                            <CheckSquare className="w-4 h-4 shrink-0" aria-hidden />
                             Aprovar vínculo
-                          </label>
+                          </button>
                         </div>
                         {s.matches.length > 1 ? (
                           <div className="pl-1 space-y-1.5 text-slate-700">
@@ -1510,7 +1689,10 @@ export function Financeiro() {
                                     name={`match-${rowKey}`}
                                     checked={(matchIndexPorSugestao[rowKey] ?? 0) === mi}
                                     onChange={() =>
-                                      setMatchIndexPorSugestao((prev) => ({ ...prev, [rowKey]: mi }))
+                                      patchConsultaVinculoAtual((c) => ({
+                                        ...c,
+                                        matchIndexPorSugestao: { ...c.matchIndexPorSugestao, [rowKey]: mi },
+                                      }))
                                     }
                                   />
                                   <span>
@@ -1518,6 +1700,11 @@ export function Financeiro() {
                                     <strong>{disp.proc}</strong>, dim. {disp.dimensao} — parcela{' '}
                                     <strong>{String(m.parcelaIndice).padStart(2, '0')}</strong>
                                     <span className="text-slate-500 text-xs ml-1">({m.rodadaKey})</span>
+                                    <span className="block mt-1 text-slate-600">
+                                      Autor: <strong className="font-normal">{m.autor ?? '—'}</strong>
+                                      {' · '}
+                                      Réu: <strong className="font-normal">{m.reu ?? '—'}</strong>
+                                    </span>
                                   </span>
                                 </label>
                               );
@@ -1534,6 +1721,11 @@ export function Financeiro() {
                                   Sugestão: cliente <strong className="tabular-nums">{disp.codCliente}</strong>, proc.{' '}
                                   <strong>{disp.proc}</strong>, dim. {disp.dimensao}, parcela{' '}
                                   <strong>{String(m.parcelaIndice).padStart(2, '0')}</strong>
+                                  <span className="block mt-1.5 text-slate-600">
+                                    Autor: <strong className="font-normal text-slate-800">{m.autor ?? '—'}</strong>
+                                    {' · '}
+                                    Réu: <strong className="font-normal text-slate-800">{m.reu ?? '—'}</strong>
+                                  </span>
                                 </>
                               );
                             })()}
@@ -1548,12 +1740,7 @@ export function Financeiro() {
             <div className="px-4 py-3 border-t border-slate-200 flex flex-wrap justify-between gap-2 shrink-0 bg-slate-50">
               <button
                 type="button"
-                onClick={() => {
-                  setModalBuscaParcelas(false);
-                  setSugestoesVinculoAutomatico([]);
-                  setMatchIndexPorSugestao({});
-                  setAprovarSugestao({});
-                }}
+                onClick={fecharModalBuscaVinculo}
                 className="px-4 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-100"
               >
                 Fechar

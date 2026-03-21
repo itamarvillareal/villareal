@@ -18,8 +18,10 @@ import {
   listarTodosCompromissosAgendaMes,
   normalizarStatusCurtoAgenda,
   ordenarListaEventosAgenda,
+  criarUsuarioRegistroMinimo,
 } from '../data/agendaPersistenciaData';
 import { buscarProcessoUnicoNaBasePorTextoAgenda } from '../data/processosHistoricoData';
+import { getNomeExibicaoUsuario } from '../data/usuarioDisplayHelpers.js';
 
 /** Retorna string DD/MM/YYYY para dia/mês/ano */
 function dataStr(dia, mes, ano) {
@@ -562,7 +564,7 @@ function PainelCalendario({
                 onChange={() => setUsuarioSelecionado(u.id)}
                 className="text-blue-600"
               />
-              {u.nome}
+              {getNomeExibicaoUsuario(u)}
             </label>
           ))}
         </div>
@@ -625,8 +627,13 @@ export function Agenda() {
   }, [usuariosAtivos, usuarioEsquerda, usuarioDireita]);
 
   function persistirUsuariosAtivos(next) {
-    setUsuariosAtivosState(next);
-    setUsuariosAtivos(next);
+    const r = setUsuariosAtivos(next);
+    if (!r.ok) {
+      window.alert(r.error || 'Não foi possível salvar a lista de usuários.');
+      return false;
+    }
+    setUsuariosAtivosState(getUsuariosAtivos());
+    return true;
   }
 
   /** Duplo clique no compromisso: se houver um único nº de processo reconhecido na base, abre Processos. */
@@ -646,7 +653,7 @@ export function Agenda() {
     if (!basePrimeiro) return;
     const ids = new Set((usuariosAtivos || []).map((u) => u.id));
     if (ids.has(basePrimeiro.id)) return;
-    persistirUsuariosAtivos([...(usuariosAtivos || []), basePrimeiro]);
+    persistirUsuariosAtivos([...(usuariosAtivos || []), criarUsuarioRegistroMinimo(basePrimeiro)]);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Se vier uma data via navegação (Processos -> duplo clique em Data), posiciona o painel nela.
@@ -735,7 +742,7 @@ export function Agenda() {
 
   const nomeUsuarioAgenda = useMemo(() => {
     const u = (usuariosAtivos || []).find((x) => String(x.id) === String(usuarioEsquerda));
-    return u?.nome ?? usuarioEsquerda ?? '—';
+    return u ? getNomeExibicaoUsuario(u) : usuarioEsquerda ?? '—';
   }, [usuariosAtivos, usuarioEsquerda]);
 
   const tituloMesRelatorio = `${MESES[mesEsquerda - 1] ?? ''} de ${anoEsquerda}`;

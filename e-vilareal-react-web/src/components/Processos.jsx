@@ -253,12 +253,20 @@ export function Processos() {
   const [processo, setProcesso] = useState(4);
   /** Lançamento do duplo clique no extrato consolidado (Financeiro → Processos). */
   const [linhaOrigemContaCorrente, setLinhaOrigemContaCorrente] = useState(null);
+  /** Abre Conta Corrente em modo Proc. 0 quando o Financeiro envia proc 0 (mensalista). Declarado cedo para o efeito abaixo. */
+  const [contaCorrenteModo, setContaCorrenteModo] = useState('processo');
+  const [modalContaCorrente, setModalContaCorrente] = useState(false);
 
   useEffect(() => {
     if (codClienteFromState) setCodigoCliente(codClienteFromState);
     if (procFromState !== '') {
-      const num = parseInt(procFromState, 10);
-      setProcesso(Number.isNaN(num) ? 1 : Math.max(1, num));
+      const num = parseInt(String(procFromState), 10);
+      if (!Number.isNaN(num) && num === 0) {
+        setContaCorrenteModo('proc0');
+        setModalContaCorrente(true);
+      } else {
+        setProcesso(Number.isNaN(num) ? 1 : Math.max(1, num));
+      }
     }
   }, [codClienteFromState, procFromState]);
 
@@ -313,7 +321,6 @@ export function Processos() {
   const [dataProximaInformacao, setDataProximaInformacao] = useState('');
   const [paginaHistorico, setPaginaHistorico] = useState(1);
   const [informacaoModal, setInformacaoModal] = useState(null);
-  const [modalContaCorrente, setModalContaCorrente] = useState(false);
   const [modalAgendaLoteAberto, setModalAgendaLoteAberto] = useState(false);
   const [agendaLoteTexto, setAgendaLoteTexto] = useState('');
   const [agendaLoteData, setAgendaLoteData] = useState('');
@@ -468,11 +475,11 @@ export function Processos() {
 
   useEffect(() => {
     if (modalContaCorrente) setSortContaCorrente({ col: 'data', dir: 'desc' });
-  }, [modalContaCorrente, codigoCliente, processo]);
+  }, [modalContaCorrente, codigoCliente, processo, contaCorrenteModo]);
 
   useEffect(() => {
     if (modalContaCorrente) setBuscaContaCorrente({ campo: 'todos', termo: '' });
-  }, [modalContaCorrente, codigoCliente, processo]);
+  }, [modalContaCorrente, codigoCliente, processo, contaCorrenteModo]);
 
   useEffect(() => {
     const pf = String(prazoFatal ?? '').trim();
@@ -1708,9 +1715,24 @@ export function Processos() {
               <button
                 type="button"
                 className="px-4 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
-                onClick={() => setModalContaCorrente(true)}
+                onClick={() => {
+                  setContaCorrenteModo('processo');
+                  setModalContaCorrente(true);
+                }}
+                title="Lançamentos da Conta Escritório para este cliente e processo em tela"
               >
                 Conta Corrente
+              </button>
+              <button
+                type="button"
+                className="px-4 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
+                onClick={() => {
+                  setContaCorrenteModo('proc0');
+                  setModalContaCorrente(true);
+                }}
+                title="Pagamentos do cliente com Proc. 0 (mensalistas / não vinculados a um processo específico)"
+              >
+                Conta Corrente (Proc. 0)
               </button>
             </footer>
           </div>
@@ -1984,13 +2006,14 @@ export function Processos() {
 
       {/* Janela Conta Corrente: lançamentos da Conta Contábil Conta Escritório (Financeiro) do cliente em tela */}
       {modalContaCorrente && (() => {
-        const base = getLancamentosContaCorrente(codigoCliente, processo);
+        const processoContaCorrenteEfetivo = contaCorrenteModo === 'proc0' ? 0 : processo;
+        const base = getLancamentosContaCorrente(codigoCliente, processoContaCorrenteEfetivo);
         const { lancamentos, soma } = mergeContaCorrenteComLinhaOrigem(
           base.lancamentos,
           base.soma,
           linhaOrigemContaCorrente,
           codigoCliente,
-          processo
+          processoContaCorrenteEfetivo
         );
         const somaFormatada = formatValorContaCorrente(soma);
         const listaBase = lancamentos.map((l, idx) => ({ ...l, numero: l.numero ?? (idx + 1) }));
@@ -2009,7 +2032,8 @@ export function Processos() {
           >
             <div className="flex items-center justify-between px-4 py-2 border-b border-slate-200 shrink-0">
               <h2 id="modal-conta-corrente-titulo" className="text-base font-semibold text-slate-800">
-                Conta Corrente (Conta Escritório – Cliente {codigoCliente}{processo ? `, Processo ${processo}` : ''})
+                Conta Corrente (Conta Escritório – Cliente {codigoCliente}
+                {contaCorrenteModo === 'proc0' ? ', Processo 0 (mensalista / geral)' : processo ? `, Processo ${processo}` : ''})
               </h2>
               <button
                 type="button"
@@ -2078,7 +2102,8 @@ export function Processos() {
                       {listaOrdenada.length === 0 ? (
                         <tr>
                           <td colSpan={6} className="border border-slate-200 px-2 py-4 text-center text-slate-500">
-                            Nenhum lançamento da Conta Escritório para o cliente {codigoCliente}{processo ? ` e processo ${processo}` : ''}.
+                            Nenhum lançamento da Conta Escritório para o cliente {codigoCliente}
+                            {contaCorrenteModo === 'proc0' ? ' e processo 0' : processo ? ` e processo ${processo}` : ''}.
                           </td>
                         </tr>
                       ) : (

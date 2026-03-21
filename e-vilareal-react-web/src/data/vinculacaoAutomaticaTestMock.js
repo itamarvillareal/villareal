@@ -18,11 +18,12 @@ function fmtBRL(n) {
   return `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-/** 50 datas consecutivas a partir de 01/06/2025 e valores únicos em centavos. */
+/** 50 datas consecutivas a partir da data-base abaixo e valores únicos em centavos. */
 export function gerarParesParcelaExtrato50() {
   const parcelas = [];
   const extrato = [];
-  const base = new Date(2025, 5, 1);
+  /** Altere para renovar o período de teste (parcelas + extratos são recalculados no build). */
+  const base = new Date(2026, 2, 1);
   let saldo = 0;
 
   for (let i = 0; i < 50; i++) {

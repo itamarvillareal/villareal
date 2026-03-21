@@ -675,7 +675,8 @@ export function normalizarProcFinanceiro(val) {
   const s = String(val ?? '').trim();
   if (!s) return '';
   const n = Number(s);
-  if (Number.isNaN(n) || n < 1) return '';
+  if (Number.isNaN(n) || n < 0) return '';
+  if (n === 0) return '0';
   return String(n);
 }
 

@@ -1,5 +1,5 @@
-import { useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Outlet, Navigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { BrowserRouter, Routes, Route, Outlet, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { Sidebar } from './components/Sidebar';
 import { Board } from './components/Board';
 import { CadastroPessoas } from './components/cadastro-pessoas/CadastroPessoas';
@@ -15,8 +15,51 @@ import { Usuarios } from './components/Usuarios';
 import { Configuracoes } from './components/Configuracoes';
 import { atualizarIndicesMensaisAposDia10 } from './services/monetaryIndicesService.js';
 import { ensureHistoricoDemonstracaoDiagnostico } from './data/processosHistoricoData.js';
+import {
+  getPerfilAtivoParaPermissoes,
+  getUsuarioSessaoAtualId,
+  usuarioPodeAcessarModulo,
+  pathParaModuloId,
+  getPrimeiraRotaPermitida,
+  operadorPodeAlternarPerfil,
+  getOperadorEstacaoId,
+  setUsuarioSessaoAtualId,
+} from './data/usuarioPermissoesStorage.js';
 
 function Layout() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [accessTick, setAccessTick] = useState(0);
+
+  useEffect(() => {
+    const h = () => setAccessTick((t) => t + 1);
+    window.addEventListener('vilareal:usuario-sessao-atualizada', h);
+    window.addEventListener('vilareal:permissoes-usuarios-atualizadas', h);
+    window.addEventListener('vilareal:operador-estacao-atualizado', h);
+    return () => {
+      window.removeEventListener('vilareal:usuario-sessao-atualizada', h);
+      window.removeEventListener('vilareal:permissoes-usuarios-atualizadas', h);
+      window.removeEventListener('vilareal:operador-estacao-atualizado', h);
+    };
+  }, []);
+
+  /** Estação não-master: mantém a sessão alinhada ao usuário desta estação (sem personificação). */
+  useEffect(() => {
+    if (operadorPodeAlternarPerfil()) return;
+    const op = getOperadorEstacaoId();
+    if (getUsuarioSessaoAtualId() !== op) {
+      setUsuarioSessaoAtualId(op);
+    }
+  }, [accessTick]);
+
+  useEffect(() => {
+    const mod = pathParaModuloId(location.pathname);
+    const uid = getPerfilAtivoParaPermissoes();
+    if (!usuarioPodeAcessarModulo(uid, mod)) {
+      navigate(getPrimeiraRotaPermitida(uid), { replace: true });
+    }
+  }, [location.pathname, navigate, accessTick]);
+
   return (
     <div className="flex min-h-screen bg-gray-100">
       <Sidebar />

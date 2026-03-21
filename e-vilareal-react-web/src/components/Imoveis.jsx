@@ -82,7 +82,67 @@ export function Imoveis() {
 
   useEffect(() => {
     const mock = getImovelMock(imovelId);
-    if (!mock) return;
+    if (!mock) {
+      // Sem cadastro para este nº de imóvel: formulário em branco (não manter dados do imóvel anterior).
+      setImovelOcupado(false);
+      setCodigo('');
+      setProc('');
+      setObservacoesInquilino('');
+      setEndereco('');
+      setCondominio('');
+      setUnidade('');
+      setGaragens('');
+      setGarantia('');
+      setValorGarantia('');
+      setValorLocacao('');
+      setDiaPagAluguel('');
+      setDataPag1TxCond('');
+      setInscricaoImobiliaria('');
+      setExisteDebIptu('');
+      setDataConsIptu('');
+      setAguaNumero('');
+      setDataConsAgua('');
+      setExisteDebAgua('');
+      setDiaVencAgua('');
+      setEnergiaNumero('');
+      setDataConsEnergia('');
+      setExisteDebEnergia('');
+      setDiaVencEnergia('');
+      setGasNumero('');
+      setDataConsGas('');
+      setExisteDebGas('');
+      setDiaVencGas('');
+      setDataInicioContrato('');
+      setDataFimContrato('');
+      setDataConsDebitoCond('');
+      setExisteDebitoCond('');
+      setDiaRepasse('');
+      setBanco('');
+      setAgencia('');
+      setNumeroBanco('');
+      setConta('');
+      setCpfBanco('');
+      setTitular('');
+      setChavePix('');
+      setProprietarioCod1('');
+      setProprietarioCod2('');
+      setProprietario('');
+      setProprietarioCpf('');
+      setProprietarioContato('');
+      setLinkVistoria('');
+      setInquilino('');
+      setInquilinoCpf('');
+      setInquilinoContato('');
+      setInfoIptuTexto('');
+      setContratoAssinadoInquilino('nao');
+      setContratoAssinadoProprietario('nao');
+      setContratoAssinadoGarantidor('nao');
+      setContratoAssinadoTestemunhas('nao');
+      setContratoArquivado('nao');
+      setContratoIntermediacaoArquivado('nao');
+      setContratoIntermediacaoAssinadoProprietario('nao');
+      return;
+    }
 
     setImovelOcupado(!!mock.imovelOcupado);
     setCodigo(String(mock.codigo ?? ''));

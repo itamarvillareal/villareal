@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Search, FolderOpen, ChevronLeft, ChevronRight, Settings } from 'lucide-react';
+import { Search, FolderOpen, ChevronLeft, ChevronRight, Settings, SlidersHorizontal } from 'lucide-react';
+import { ModalConfiguracoesCalculoCliente } from './ModalConfiguracoesCalculoCliente.jsx';
 import { clienteMock, processosClienteMock } from '../data/mockData';
 import { getMockProcesso10x10 } from '../data/processosMock';
 import { getIdPessoaPorCodCliente } from '../data/clientesCadastradosMock';
@@ -190,6 +191,7 @@ export function CadastroClientes() {
   const [observacao, setObservacao] = useState(clienteMock.observacao);
   const [pesquisaProcesso, setPesquisaProcesso] = useState('');
   const [modalQualificacaoAberto, setModalQualificacaoAberto] = useState(false);
+  const [modalConfigCalculoAberto, setModalConfigCalculoAberto] = useState(false);
   const [processos, setProcessos] = useState(() => {
     const mock = gerarMockClienteEProcessos(clienteMock.codigo);
     return mock?.processos ?? processosClienteMock.slice(0, 10);
@@ -368,12 +370,21 @@ export function CadastroClientes() {
               <button type="button" className="p-2 rounded border border-slate-300 bg-white hover:bg-slate-50" title="Documentos"><FolderOpen className="w-4 h-4 text-slate-600" /></button>
               <button
                 type="button"
+                onClick={() => setModalConfigCalculoAberto(true)}
+                className="inline-flex items-center gap-2 px-3 py-2 rounded border border-indigo-200 bg-indigo-50 text-indigo-900 text-sm hover:bg-indigo-100"
+                title="Padrões de juros, multa, honorários, índice e periodicidade para os cálculos deste cliente"
+              >
+                <SlidersHorizontal className="w-4 h-4 shrink-0" aria-hidden />
+                Configurações de cálculo
+              </button>
+              <button
+                type="button"
                 onClick={() => navigate('/configuracoes')}
                 className="inline-flex items-center gap-2 px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
-                title="Abrir configurações do sistema"
+                title="Preferências gerais do aplicativo"
               >
                 <Settings className="w-4 h-4 text-slate-600 shrink-0" aria-hidden />
-                Configurações
+                Config. aplicativo
               </button>
             </div>
             <label className="flex items-center gap-2 text-sm cursor-pointer">
@@ -450,6 +461,13 @@ export function CadastroClientes() {
 
         {/* Seção “Controle” removida para eliminar o painel lateral solicitado. */}
       </div>
+
+      <ModalConfiguracoesCalculoCliente
+        open={modalConfigCalculoAberto}
+        codigoCliente={codigo}
+        nomeCliente={nomeRazao}
+        onClose={() => setModalConfigCalculoAberto(false)}
+      />
 
       {modalQualificacaoAberto && (
         <div
