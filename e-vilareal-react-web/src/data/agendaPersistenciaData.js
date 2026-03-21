@@ -1,4 +1,4 @@
-import { agendaUsuarios as agendaUsuariosBase } from './mockData';
+import { agendaUsuarios as agendaUsuariosBase, getMockEventosAgendaPorData } from './mockData';
 
 const STORAGE_KEY = 'vilareal:agenda-eventos:v1';
 const STORAGE_USUARIOS_KEY = 'vilareal:agenda-usuarios:v1';
@@ -233,6 +233,49 @@ export function getEventosAgendaPersistidosPorData(dataBr) {
   return lista;
 }
 
+/**
+ * Lista todos os dias do mês que têm compromissos (mock + persistido), para um usuário da agenda.
+ * Mesma regra de merge da tela Agenda (por data).
+ */
+export function listarTodosCompromissosAgendaMes({ ano, mes, usuarioId }) {
+  const y = Number(ano);
+  const m = Number(mes);
+  if (!Number.isFinite(y) || !Number.isFinite(m) || m < 1 || m > 12) {
+    return { ano: y, mes: m, usuarioId: String(usuarioId ?? ''), diasComEventos: [] };
+  }
+  const uid = usuarioId != null ? String(usuarioId) : '';
+  const maxDia = new Date(y, m, 0).getDate();
+  const diasComEventos = [];
+
+  for (let d = 1; d <= maxDia; d++) {
+    const dataBr = `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}/${y}`;
+    const base = getMockEventosAgendaPorData(dataBr);
+    const persisted = getEventosAgendaPersistidosPorData(dataBr).filter((ev) => {
+      if (!ev) return false;
+      if (ev.usuarioId == null || String(ev.usuarioId) === '') return true;
+      return String(ev.usuarioId) === uid;
+    });
+
+    const merged = new Map();
+    for (const ev of base) {
+      merged.set(String(ev.id), { ...ev, statusCurto: normalizarStatusCurtoAgenda(ev.statusCurto) });
+    }
+    for (const ev of persisted) {
+      const key = String(ev.id);
+      const prev = merged.get(key) || {};
+      merged.set(key, {
+        ...prev,
+        ...ev,
+        statusCurto: normalizarStatusCurtoAgenda(ev.statusCurto ?? prev.statusCurto ?? ''),
+      });
+    }
+    const lista = ordenarListaEventosAgenda(Array.from(merged.values()));
+    if (lista.length > 0) diasComEventos.push({ dataBr, eventos: lista });
+  }
+
+  return { ano: y, mes: m, usuarioId: uid, diasComEventos };
+}
+
 export function salvarStatusCurtoEventoPersistido({ dataBr, evento, statusCurto }) {
   const parsedData = parseDataBrCompleta(dataBr);
   if (!parsedData) return { ok: false, reason: 'data-invalida' };
@@ -312,6 +355,48 @@ export function salvarCamposEventoAgendaPersistido({ dataBr, evento, patch }) {
   store[data] = ordenarListaEventosAgenda(lista);
   saveStore(store);
   return { ok: true };
+}
+
+/**
+ * Cria um compromisso novo na data (linha vazia da grade), vinculado ao usuário da agenda.
+ */
+export function criarNovoCompromissoAgendaPersistido({ dataBr, usuarioId, patch }) {
+  const parsedData = parseDataBrCompleta(dataBr);
+  if (!parsedData) return { ok: false, reason: 'data-invalida' };
+  const data = dataStr(parsedData);
+  if (!patch || typeof patch !== 'object') return { ok: false, reason: 'patch-invalido' };
+
+  const horaRaw = patch.hora !== undefined ? normalizarHora(patch.hora) : '';
+  const descricao = patch.descricao !== undefined ? String(patch.descricao ?? '') : '';
+  const statusCurto =
+    patch.statusCurto !== undefined ? normalizarStatusCurtoAgenda(patch.statusCurto) : '';
+
+  const temHora = String(horaRaw ?? '').trim() !== '';
+  const temDesc = String(descricao ?? '').trim() !== '';
+  const temStatus = statusCurto === 'OK';
+  if (!temHora && !temDesc && !temStatus) {
+    return { ok: false, reason: 'vazio' };
+  }
+
+  const uid = usuarioId != null ? String(usuarioId) : '';
+  const id = `manual-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+  const criadoIso = new Date().toISOString();
+  const ev = {
+    id,
+    usuarioId: uid,
+    hora: horaRaw,
+    descricao,
+    statusCurto,
+    status: patch.status !== undefined ? String(patch.status ?? '').trim() : '',
+    criadoEm: criadoIso,
+  };
+
+  const store = loadStore();
+  const lista = Array.isArray(store[data]) ? store[data] : [];
+  lista.push(ev);
+  store[data] = ordenarListaEventosAgenda(lista);
+  saveStore(store);
+  return { ok: true, id, evento: ev };
 }
 
 /**

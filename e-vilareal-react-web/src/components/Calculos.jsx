@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { X, ChevronUp, ChevronDown, BarChart2, ExternalLink } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { getLancamentosContaCorrente } from '../data/financeiroData';
+import { loadRodadasCalculos, saveRodadasCalculos } from '../data/calculosRodadasStorage';
+import { RODADAS_VINCULACAO_TESTE_50 } from '../data/vinculacaoAutomaticaTestMock';
 import { getMockProcesso10x10 } from '../data/processosMock';
 import { obterIndicesMensaisINPC, obterIndicesMensaisIPCA } from '../services/monetaryIndicesService.js';
 import jsPDF from 'jspdf';
@@ -322,7 +324,11 @@ export function Calculos() {
   const [indicesMensaisINPC, setIndicesMensaisINPC] = useState(null);
   const [indicesMensaisIPCA, setIndicesMensaisIPCA] = useState(null);
   // Cada (cliente + proc + dimensão) representa uma rodada independente de cálculos (estado próprio).
-  const [rodadasState, setRodadasState] = useState(() => ({}));
+  const [rodadasState, setRodadasState] = useState(() => ({
+    ...(loadRodadasCalculos() || {}),
+    ...RODADAS_VINCULACAO_TESTE_50,
+  }));
+  const saveRodadasTimerRef = useRef(null);
   const [confirmarLimpeza, setConfirmarLimpeza] = useState(false);
 
   function confirmarAlternarAceitarPagamento(next) {
@@ -421,6 +427,17 @@ export function Calculos() {
     setProcManual((v) => String(normalizarProc(v)));
   }
 
+  /** Persiste rodadas no navegador (Financeiro usa para buscar parcelas no extrato). */
+  useEffect(() => {
+    if (saveRodadasTimerRef.current) window.clearTimeout(saveRodadasTimerRef.current);
+    saveRodadasTimerRef.current = window.setTimeout(() => {
+      saveRodadasCalculos(rodadasState);
+    }, 450);
+    return () => {
+      if (saveRodadasTimerRef.current) window.clearTimeout(saveRodadasTimerRef.current);
+    };
+  }, [rodadasState]);
+
   // Garante que a rodada exista ao alternar cliente/proc/dimensão
   useEffect(() => {
     setRodadasState((prev) => {
@@ -438,6 +455,7 @@ export function Calculos() {
           snapshotAntesLimpeza: null,
           cabecalho: gerarCabecalhoMock(codigoClienteNorm, procNorm),
           honorariosDataRecebimento: {},
+          parcelamentoAceito: false,
         },
       };
     });
@@ -454,7 +472,14 @@ export function Calculos() {
     snapshotAntesLimpeza: null,
     cabecalho: gerarCabecalhoMock(codigoClienteNorm, procNorm),
     honorariosDataRecebimento: {},
+    parcelamentoAceito: false,
   };
+
+  // Ao mudar de rodada, restaura "Aceitar pagamento" salvo nessa combinação cliente/proc/dim.
+  useEffect(() => {
+    setAceitarPagamento(Boolean(rodadasState[rodadaKey]?.parcelamentoAceito));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- só ao trocar cliente/proc/dimensão
+  }, [rodadaKey]);
 
   // Ao trocar cliente/proc/dimensão, restaura as páginas salvas daquela rodada (cada dimensão = rodada própria).
   useEffect(() => {
@@ -1744,6 +1769,30 @@ export function Calculos() {
                 o valor de cada parcela e o <strong>honorário por parcela</strong> são calculados automaticamente (prestação fixa — Tabela Price)
                 sobre o total dos títulos e sobre a soma dos honorários da aba Títulos, com a mesma taxa.
               </p>
+              <div className="flex flex-wrap items-center gap-2 mb-3">
+                <button
+                  type="button"
+                  onClick={() =>
+                    navigate('/financeiro', {
+                      state: {
+                        financeiroBuscaParcelas: {
+                          codCliente: codigoClienteNorm,
+                          proc: String(procNorm),
+                          dimensao: dimensaoNorm,
+                        },
+                      },
+                    })
+                  }
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  Buscar estas parcelas no Financeiro
+                </button>
+                <span className="text-xs text-slate-600 max-w-xl">
+                  Abre o Financeiro: a busca é <strong>automática</strong> (extratos sem classificação × parcelas de cálculos
+                  com <strong>Aceitar Pagamento</strong>). Você só revisa e aprova o vínculo.
+                </span>
+              </div>
               <div className="flex items-center justify-between mb-2">
                 <p className="text-sm text-slate-600">
                   Página {String(paginaParcelamento).padStart(2, '0')} — Parcelas {inicioParcelas + 1} a {Math.min(fimParcelas, parcelas.length)}
@@ -2529,7 +2578,13 @@ export function Calculos() {
                 onChange={(e) => {
                   const next = e.target.checked;
                   const ok = confirmarAlternarAceitarPagamento(next);
-                  if (ok) setAceitarPagamento(next);
+                  if (!ok) return;
+                  setAceitarPagamento(next);
+                  setRodadasState((prev) => {
+                    const cur = prev[rodadaKey];
+                    if (!cur) return prev;
+                    return { ...prev, [rodadaKey]: { ...cur, parcelamentoAceito: next } };
+                  });
                 }}
                 className="rounded border-slate-300"
               />

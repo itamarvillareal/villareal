@@ -14,6 +14,7 @@ export const navItems = [
   { id: 'pendencias', label: 'Pendências', icon: 'AlertTriangle' },
   { id: 'diagnosticos', label: 'Diagnósticos', icon: 'Activity' },
   { id: 'usuarios', label: 'Usuários', icon: 'UserCog' },
+  { id: 'configuracoes', label: 'Configurações', icon: 'Settings' },
 ];
 
 export const columns = [
@@ -94,8 +95,20 @@ export const agendaEventosTerça = [
   { id: 2, hora: '09:45', descricao: 'CONCILIAÇÃO (SSMA SEGURANÇA SAÚDE E MEIO AMBIENTE LTDA', destaque: true },
   { id: 3, hora: '13:30', descricao: 'CONCILIAÇÃO (PRISCILLA SILVA SIQUEIRA x MINISTÉRIO PÚBLIC', destaque: true },
   { id: 4, hora: '13:30', descricao: 'SESSÃO DE JULGAMENTO (MARÍLIA GABRIELA DE OLIVEIRA DINIZ', destaque: false },
-  { id: 5, hora: '', descricao: 'CONSULTAR ITAMAR JUNIOR X KELLY SILVA (5517275-96.2025.8.09', destaque: false },
-  { id: 6, hora: '', descricao: 'consultar ITAMAR JUNIOR x KELLY SILVA (5517275-96.2025.8.09.0', destaque: false },
+  {
+    id: 5,
+    hora: '14:00',
+    descricao:
+      'Teste duplo clique → abre Processos: CNJ 5600077-15.2025.8.09.1011 (base mock cliente 1 / proc. 4)',
+    destaque: false,
+  },
+  {
+    id: 6,
+    hora: '',
+    descricao:
+      'Consultar ITAMAR JUNIOR x KELLY SILVA — use a linha acima para testar número de processo na base',
+    destaque: false,
+  },
   { id: 7, hora: '', descricao: 'falar com a louyse sobre os boletos do condominio em aberto', destaque: false },
   { id: 8, hora: '', descricao: 'REPASSAR ALUGUEL THAMIRES - BAIRRO DE LOURDES', destaque: false },
   { id: 9, hora: '', descricao: 'Vence conta de energia F-18', destaque: false },
@@ -109,6 +122,14 @@ export const agendaEventosQuarta = [
   { id: 14, hora: '', descricao: 'Conferir pagamentos ALUGUEIS no CORA', destaque: false },
   { id: 15, hora: '', descricao: 'consultar SAUDE LTDA x (14185.035617/2024-15) + proc 11', destaque: false },
 ];
+
+/** Eventos mock do dia (para relatório mensal e mesma regra de merge da tela). */
+export function getMockEventosAgendaPorData(dataBr) {
+  const s = String(dataBr ?? '').trim();
+  if (s === agendaDataEsquerda) return [...agendaEventosTerça];
+  if (s === agendaDataDireita) return [...agendaEventosQuarta];
+  return [];
+}
 
 /** Calendário março 2026 - primeiro dia é domingo */
 export const agendaCalendarioMarco2026 = {

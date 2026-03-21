@@ -113,6 +113,8 @@ export function parseOfxToExtrato(ofxText, options = {}) {
       proc: nomeBanco === 'CORA' ? mockProc : '',
       dimensao: '',
       parcela: '',
+      ref: '',
+      eq: '',
     };
   });
 

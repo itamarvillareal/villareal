@@ -13,6 +13,10 @@ import { BTG_JA_EXTRATO_MOCK_XLS } from './btgJaExtratoMock.js';
 import { BTG_RACHEL_EXTRATO_MOCK_XLS } from './btgRachelExtratoMock.js';
 import { BTG_BANKING_EXTRATO_MOCK_XLS } from './btgBankingExtratoMock.js';
 import { BB_EXTRATO_MOCK_XLS } from './bbExtratoMock.js';
+import { getExtratosVinculacaoTestePorBanco } from './vinculacaoAutomaticaTestMock.js';
+
+/** Lançamentos de teste de vinculação automática (50 no total, repartidos em 5 bancos). */
+const VINC_TESTE_EXTRATOS = getExtratosVinculacaoTestePorBanco();
 
 function cloneItauExtratoXlsMock() {
   return JSON.parse(JSON.stringify(ITAU_EXTRATO_MOCK_XLS));
@@ -69,6 +73,10 @@ function lancCef(letra, numero, data, descricao, valor, saldo, saldoDesc, descri
     proc: '',
     dimensao: '',
     parcela: '',
+    /** Referência (espelha coluna Ref. no consolidado; padrão 675 na UI se vazio). */
+    ref: '',
+    /** Espelha Dimensão no extrato do banco (mesmo texto que dimensao). */
+    eq: '',
   };
 }
 
@@ -128,13 +136,13 @@ const BANCO_TO_NUMERO = {
   'BTG Banking': 24, 'BTG (2)': 25, 'CORA': 26, 'BTG JA': 27, 'BTG RACHEL': 28, 'Sicoob VRV': 29,
 };
 
-/** CEF, Itaú, …, BTG Banking, BTG RACHEL, etc.; demais vazios. */
+/** CEF, Itaú, …, BTG Banking, BTG RACHEL, etc.; Nubank/CORA/CEF/Itaú/PicPay incluem fatias do mock de vinculação (10 lanç. cada). */
 const MOCK_EXTRATOS_POR_BANCO = {
   ...Object.fromEntries(Object.keys(BANCO_TO_NUMERO).map((k) => [k, []])),
-  CEF: cloneCefExtratoPdfMock(),
-  Itaú: cloneItauExtratoXlsMock(),
+  CEF: [...cloneCefExtratoPdfMock(), ...VINC_TESTE_EXTRATOS.CEF],
+  Itaú: [...cloneItauExtratoXlsMock(), ...VINC_TESTE_EXTRATOS['Itaú']],
   'Itaú Empresas': cloneItauEmpresasExtratoXlsMock(),
-  CORA: cloneCoraExtratoXlsMock(),
+  CORA: [...cloneCoraExtratoXlsMock(), ...VINC_TESTE_EXTRATOS.CORA],
   BB: cloneBbExtratoXlsMock(),
   Sicoob: cloneSicoobExtratoXlsMock(),
   'Sicoob VRV': cloneSicoobVrvExtratoXlsMock(),
@@ -142,6 +150,8 @@ const MOCK_EXTRATOS_POR_BANCO = {
   'BTG Banking': cloneBtgBankingExtratoXlsMock(),
   'BTG JA': cloneBtgJaExtratoXlsMock(),
   'BTG RACHEL': cloneBtgRachelExtratoXlsMock(),
+  Nubank: [...VINC_TESTE_EXTRATOS.Nubank],
+  PicPay: [...VINC_TESTE_EXTRATOS.PicPay],
 };
 
 export const STORAGE_FINANCEIRO_EXTRATOS_KEY = 'vilareal.financeiro.extratos.v19';
@@ -207,9 +217,16 @@ function removerChavesExtratoLegadoFinanceiro() {
 function aplicarMocksInstituicoesVazias(data) {
   if (!data || typeof data !== 'object') return data;
   const d = { ...data };
-  if (!Array.isArray(d.CEF) || d.CEF.length === 0) d.CEF = cloneCefExtratoPdfMock();
-  if (!Array.isArray(d['Itaú']) || d['Itaú'].length === 0) d['Itaú'] = cloneItauExtratoXlsMock();
-  if (!Array.isArray(d.CORA) || d.CORA.length === 0) d.CORA = cloneCoraExtratoXlsMock();
+  const vinc = getExtratosVinculacaoTestePorBanco();
+  if (!Array.isArray(d.CEF) || d.CEF.length === 0) {
+    d.CEF = [...cloneCefExtratoPdfMock(), ...vinc.CEF];
+  }
+  if (!Array.isArray(d['Itaú']) || d['Itaú'].length === 0) {
+    d['Itaú'] = [...cloneItauExtratoXlsMock(), ...vinc['Itaú']];
+  }
+  if (!Array.isArray(d.CORA) || d.CORA.length === 0) {
+    d.CORA = [...cloneCoraExtratoXlsMock(), ...vinc.CORA];
+  }
   if (!Array.isArray(d.BB) || d.BB.length === 0) d.BB = cloneBbExtratoXlsMock();
   if (!Array.isArray(d.Sicoob) || d.Sicoob.length === 0) d.Sicoob = cloneSicoobExtratoXlsMock();
   if (!Array.isArray(d['Itaú Empresas']) || d['Itaú Empresas'].length === 0) {
@@ -228,6 +245,12 @@ function aplicarMocksInstituicoesVazias(data) {
   if (!Array.isArray(d['BTG RACHEL']) || d['BTG RACHEL'].length === 0) {
     d['BTG RACHEL'] = cloneBtgRachelExtratoXlsMock();
   }
+  if (!Array.isArray(d.Nubank) || d.Nubank.length === 0) {
+    d.Nubank = [...vinc.Nubank];
+  }
+  if (!Array.isArray(d.PicPay) || d.PicPay.length === 0) {
+    d.PicPay = [...vinc.PicPay];
+  }
   return d;
 }
 
@@ -240,7 +263,9 @@ export function loadPersistedExtratosFinanceiro() {
     const raw19 = window.localStorage.getItem(STORAGE_FINANCEIRO_EXTRATOS_KEY);
     if (raw19) {
       const p = safeJsonParseFinanceiro(raw19);
-      if (p?.data && typeof p.data === 'object' && p.v === 19) return p.data;
+      if (p?.data && typeof p.data === 'object' && p.v === 19) {
+        return mergePersistedComLancamentosVinculacaoTeste(p.data);
+      }
     }
     const tryMigrate = (raw, version) => {
       const parsed = safeJsonParseFinanceiro(raw);
@@ -392,6 +417,26 @@ function getExtratosIniciais() {
   return parearCompensacaoInterbancaria(cloneExtratos(MOCK_EXTRATOS_POR_BANCO));
 }
 
+/**
+ * Reinsere nos extratos persistidos os lançamentos de teste de vinculação automática (nº 88000–88049)
+ * quando faltarem. O Financeiro faz `{ ...getExtratosIniciais(), ...persisted }`, então o storage v19
+ * substitui por banco e removia esses lançamentos — a busca automática deixava de achar pares data/valor.
+ */
+export function mergePersistedComLancamentosVinculacaoTeste(persisted) {
+  if (!persisted || typeof persisted !== 'object') return persisted;
+  const out = { ...persisted };
+  for (const [nomeBanco, listVinc] of Object.entries(VINC_TESTE_EXTRATOS)) {
+    if (!Array.isArray(listVinc) || listVinc.length === 0) continue;
+    const arr = Array.isArray(out[nomeBanco]) ? out[nomeBanco] : [];
+    const keys = new Set(arr.map((t) => `${String(t.numero)}|${String(t.data)}`));
+    const extras = listVinc.filter((t) => !keys.has(`${String(t.numero)}|${String(t.data)}`));
+    if (extras.length) {
+      out[nomeBanco] = [...arr, ...extras.map((t) => JSON.parse(JSON.stringify(t)))];
+    }
+  }
+  return out;
+}
+
 /** Valor monetário exato em centavos (sem tolerância em reais). */
 function centavos(v) {
   const n = Number(v);
@@ -516,10 +561,12 @@ export function parearCompensacaoInterbancaria(extratosPorBanco) {
       x.t.letra = 'E';
       x.t.codCliente = '';
       x.t.proc = pid;
-      const det = (x.t.descricaoDetalhada || '').trim();
+      const det = (x.t.descricaoDetalhada || x.t.categoria || '').trim();
       const tag = '[Par compensação]';
       if (!det.includes(tag)) {
-        x.t.descricaoDetalhada = det ? `${det} ${tag}` : tag;
+        const novo = det ? `${det} ${tag}` : tag;
+        x.t.descricaoDetalhada = novo;
+        x.t.categoria = novo;
       }
     }
   }
@@ -655,13 +702,31 @@ export function filtrarTransacoesPorClienteProc(lista, codigoCliente, processo) 
   return filtrado;
 }
 
+/**
+ * Mesmo texto em "Categoria / Obs." (extrato do banco) e "Descrição / Contraparte" (conta contábil).
+ * Unifica categoria e descricaoDetalhada do lançamento (fonte única lógica).
+ */
+export function textoCategoriaObservacao(t) {
+  const c = String(t?.categoria ?? '').trim();
+  const d = String(t?.descricaoDetalhada ?? '').trim();
+  return c || d;
+}
+
+/** Mesmo texto em "Dimensão" (extrato) e "Eq." (consolidado). */
+export function textoDimensaoEq(t) {
+  const a = String(t?.dimensao ?? '').trim();
+  const b = String(t?.eq ?? '').trim();
+  return a || b;
+}
+
 function lancamentoParaContaCorrenteModal(t) {
+  const obs = textoCategoriaObservacao(t);
   return {
     data: t.data,
     descricao: t.descricao,
     dataOuId: t.proc,
     valor: t.valor,
-    nome: (t.descricaoDetalhada || '').slice(0, 24) || '—',
+    nome: obs.slice(0, 24) || '—',
     nomeBanco: t.nomeBanco,
     numero: t.numero,
   };

@@ -13,6 +13,7 @@ import {
   Scale,
   Activity,
   UserCog,
+  Settings,
 } from 'lucide-react';
 import { navItems } from '../data/mockData';
 
@@ -30,6 +31,7 @@ const iconMap = {
   Scale,
   Activity,
   UserCog,
+  Settings,
 };
 
 export function Sidebar() {

@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   agendaUsuarios,
@@ -14,6 +14,8 @@ import {
   getUsuariosAtivos,
   setUsuariosAtivos,
   salvarCamposEventoAgendaPersistido,
+  criarNovoCompromissoAgendaPersistido,
+  listarTodosCompromissosAgendaMes,
   normalizarStatusCurtoAgenda,
   ordenarListaEventosAgenda,
 } from '../data/agendaPersistenciaData';
@@ -40,6 +42,15 @@ function parseDataBrCompleta(str) {
   return { dd, mm, yyyy };
 }
 
+/** Ex.: "10/03/2026 (ter)" */
+function rotuloDataComDiaSemana(dataBr) {
+  const p = parseDataBrCompleta(dataBr);
+  if (!p) return String(dataBr ?? '');
+  const dt = new Date(p.yyyy, p.mm - 1, p.dd);
+  const dias = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
+  return `${dataBr} (${dias[dt.getDay()] ?? '—'})`;
+}
+
 /** Remove acentos e minúsculas para busca insensível a maiúsculas/acentos. */
 function normalizarParaBuscaPalavraChave(str) {
   return String(str ?? '')
@@ -49,13 +60,14 @@ function normalizarParaBuscaPalavraChave(str) {
 }
 
 /**
- * "instrução" / "instrucao" → vermelho; "conciliação" / "conciliacao" → amarelo.
- * Se ambos aparecerem, instrução tem prioridade.
+ * "instrução" / "instrucao" → vermelho;
+ * "conciliação" / "sessão de julgamento" (e variantes sem acento) → amarelo.
+ * Se instrução e amarelo aparecerem, instrução tem prioridade.
  */
 function temaPorTextoCompromisso(texto) {
   const n = normalizarParaBuscaPalavraChave(texto);
   if (n.includes('instrucao')) return 'instrucao';
-  if (n.includes('conciliacao')) return 'conciliacao';
+  if (n.includes('conciliacao') || n.includes('sessao de julgamento')) return 'conciliacao';
   return null;
 }
 
@@ -246,13 +258,51 @@ function StatusCurtoCell({ evento, onSalvar }) {
   );
 }
 
-function ColunaDia({ dataLabel, eventos, vazias = 8, onDuploCliqueEvento, dataBrStr, onSalvarCampos }) {
+function ColunaDia({
+  dataLabel,
+  eventos,
+  onDuploCliqueEvento,
+  dataBrStr,
+  onSalvarCampos,
+  usuarioAgendaId,
+  onPersistenciaAlterada,
+}) {
+  /** Última linha (novo compromisso): id criado até liberar após salvar hora/descrição. */
+  const pendingNovaLinhaIdRef = useRef(null);
+  const [novaLinhaBump, setNovaLinhaBump] = useState(0);
+
+  useEffect(() => {
+    pendingNovaLinhaIdRef.current = null;
+    setNovaLinhaBump((n) => n + 1);
+  }, [dataBrStr, usuarioAgendaId]);
+
+  function salvarLinhaVazia(patch) {
+    if (!dataBrStr) return;
+    const uid = String(usuarioAgendaId ?? '');
+    const pendingId = pendingNovaLinhaIdRef.current;
+    if (pendingId) {
+      onSalvarCampos?.({ id: pendingId, usuarioId: uid }, patch);
+      const atualizaHoraOuDesc = patch.hora !== undefined || patch.descricao !== undefined;
+      if (atualizaHoraOuDesc) {
+        pendingNovaLinhaIdRef.current = null;
+        setNovaLinhaBump((n) => n + 1);
+      }
+      return;
+    }
+    const r = criarNovoCompromissoAgendaPersistido({ dataBr: dataBrStr, usuarioId: uid, patch });
+    if (r.ok && r.id) {
+      pendingNovaLinhaIdRef.current = r.id;
+      setNovaLinhaBump((n) => n + 1);
+      onPersistenciaAlterada?.();
+    }
+  }
+
   return (
-    <div className="flex-1 min-w-0 flex flex-col border border-gray-300 rounded bg-white overflow-hidden">
-      <div className="px-2 py-2 bg-gray-100 border-b border-gray-300 text-base font-medium text-gray-800">
+    <div className="flex-1 min-w-0 min-h-0 flex flex-col border border-gray-300 rounded bg-white overflow-hidden">
+      <div className="px-2 py-2 shrink-0 bg-gray-100 border-b border-gray-300 text-base font-medium text-gray-800">
         {dataLabel}
       </div>
-      <div className="flex-1 overflow-auto p-1.5">
+      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-1.5">
         <table className="w-full table-fixed border-collapse">
           <thead>
             <tr className="bg-gray-50 border-b border-gray-200">
@@ -307,19 +357,35 @@ function ColunaDia({ dataLabel, eventos, vazias = 8, onDuploCliqueEvento, dataBr
                 </td>
               </tr>
             ))}
-            {Array.from({ length: vazias }).map((_, i) => (
-              <tr key={`vazio-${i}`} className="border-b border-gray-100 min-h-[42px] overflow-hidden">
-                <td className="w-[96px] px-2 py-1.5 align-middle text-sm">
-                  <span className="block truncate w-full text-transparent">__</span>
-                </td>
-                <td className="px-2 py-1.5 align-middle text-sm">
-                  <span className="block w-full text-transparent">__</span>
-                </td>
-                <td className="w-[92px] px-0 py-1.5 align-middle text-right">
-                  <span className="block w-full text-transparent">__</span>
-                </td>
-              </tr>
-            ))}
+            <tr
+              key={`linha-nova-${novaLinhaBump}`}
+              className="border-b border-gray-100 min-h-[42px] overflow-hidden bg-slate-50/50"
+            >
+              <td className="w-[96px] px-2 py-1.5 align-top text-sm">
+                <EditableTextCell
+                  texto=""
+                  align="left"
+                  maxLen={12}
+                  onSalvar={(novo) => salvarLinhaVazia({ hora: novo })}
+                />
+              </td>
+              <td className="px-2 py-1.5 align-top text-sm min-w-0">
+                <EditableTextCell
+                  texto=""
+                  multiline
+                  align="left"
+                  maxLen={2000}
+                  temaPorPalavraChave
+                  onSalvar={(novo) => salvarLinhaVazia({ descricao: novo })}
+                />
+              </td>
+              <td className="w-[92px] px-0 py-1.5 align-top text-right">
+                <StatusCurtoCell
+                  evento={{ statusCurto: '' }}
+                  onSalvar={(novo) => salvarLinhaVazia({ statusCurto: novo })}
+                />
+              </td>
+            </tr>
           </tbody>
         </table>
       </div>
@@ -340,9 +406,11 @@ function PainelCalendario({
   usuariosSistema,
   onAbrirUsuariosSistema,
 }) {
-  const hoje = agendaCalendarioMarco2026.hoje ?? 10;
-  const primeiroDiaSemana = 0;
-  const dias = Array.from({ length: 31 }, (_, i) => i + 1);
+  const n = new Date();
+  const hojeReal = { dd: n.getDate(), mm: n.getMonth() + 1, yyyy: n.getFullYear() };
+  const maxDiaNoMes = new Date(anoAtual, mesAtual, 0).getDate();
+  const dias = Array.from({ length: maxDiaNoMes }, (_, i) => i + 1);
+  const primeiroDiaSemana = new Date(anoAtual, mesAtual - 1, 1).getDay();
   const nomeMesAtual = MESES[mesAtual - 1] ?? '';
   const dataSelecionadaStr = dataStr(diaSelecionado, mesAtual, anoAtual);
 
@@ -351,6 +419,11 @@ function PainelCalendario({
   useEffect(() => {
     setTextoDataCompleta(dataSelecionadaStr);
   }, [dataSelecionadaStr]);
+
+  useEffect(() => {
+    const max = new Date(anoAtual, mesAtual, 0).getDate();
+    if (diaSelecionado > max) setDiaSelecionado(max);
+  }, [mesAtual, anoAtual, diaSelecionado, setDiaSelecionado]);
 
   function parseDataCompleta(str) {
     const s = String(str ?? '').trim();
@@ -382,6 +455,13 @@ function PainelCalendario({
     setAnoAtual(parsed.yyyy);
     setMesAtual(parsed.mm);
     setDiaSelecionado(parsed.dd);
+  }
+
+  function irParaDataDeHoje() {
+    const agora = new Date();
+    setAnoAtual(agora.getFullYear());
+    setMesAtual(agora.getMonth() + 1);
+    setDiaSelecionado(agora.getDate());
   }
 
   return (
@@ -429,7 +509,7 @@ function PainelCalendario({
               className={`py-1 rounded text-xs ${
                 d === diaSelecionado
                   ? 'bg-blue-600 text-white font-medium'
-                  : d === hoje
+                  : mesAtual === hojeReal.mm && anoAtual === hojeReal.yyyy && d === hojeReal.dd
                     ? 'bg-blue-400 text-white'
                     : 'hover:bg-gray-200 text-gray-800'
               }`}
@@ -438,8 +518,15 @@ function PainelCalendario({
             </button>
           ))}
         </div>
-        <p className="text-xs text-gray-500 mt-2">
-          Hoje: {dataStr(hoje, mesAtual, anoAtual)}
+        <p
+          className="text-xs text-gray-500 mt-2 cursor-pointer select-none hover:text-gray-700 hover:underline"
+          title="Duplo clique para ir à data de hoje no calendário"
+          onDoubleClick={(e) => {
+            e.preventDefault();
+            irParaDataDeHoje();
+          }}
+        >
+          Hoje: {dataStr(hojeReal.dd, hojeReal.mm, hojeReal.yyyy)}
         </p>
       </div>
 
@@ -510,6 +597,7 @@ export function Agenda() {
   const [anoDireita, setAnoDireita] = useState(2026);
   const [diaDireita, setDiaDireita] = useState(11);
   const [eventoModal, setEventoModal] = useState(null);
+  const [modalAgendaMensal, setModalAgendaMensal] = useState(false);
   const [agendaStatusNonce, setAgendaStatusNonce] = useState(0);
   const [usuariosAtivos, setUsuariosAtivosState] = useState(() => getUsuariosAtivos());
 
@@ -635,6 +723,26 @@ export function Agenda() {
     [dataDireitaStr, eventosPersistidosDireita, usuarioDireita, agendaStatusNonce]
   );
 
+  const relatorioAgendaMensal = useMemo(
+    () =>
+      listarTodosCompromissosAgendaMes({
+        ano: anoEsquerda,
+        mes: mesEsquerda,
+        usuarioId: usuarioEsquerda,
+      }),
+    [anoEsquerda, mesEsquerda, usuarioEsquerda, agendaStatusNonce]
+  );
+
+  const nomeUsuarioAgenda = useMemo(() => {
+    const u = (usuariosAtivos || []).find((x) => String(x.id) === String(usuarioEsquerda));
+    return u?.nome ?? usuarioEsquerda ?? '—';
+  }, [usuariosAtivos, usuarioEsquerda]);
+
+  const tituloMesRelatorio = `${MESES[mesEsquerda - 1] ?? ''} de ${anoEsquerda}`;
+  const totalCompromissosMensal = useMemo(
+    () => relatorioAgendaMensal.diasComEventos.reduce((acc, d) => acc + d.eventos.length, 0),
+    [relatorioAgendaMensal]
+  );
 
   return (
     <div className="flex flex-1 min-h-0 p-4 gap-4 overflow-hidden">
@@ -655,16 +763,26 @@ export function Agenda() {
 
       {/* Área central: duas colunas de compromissos (simétricas) */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-white border border-gray-200 rounded-lg shadow-sm">
-        <h1 className="text-xl font-semibold text-gray-800 text-center py-2 border-b border-gray-200">
-          Agenda
-        </h1>
+        <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-b border-gray-200">
+          <h1 className="text-xl font-semibold text-gray-800">Agenda</h1>
+          <button
+            type="button"
+            onClick={() => setModalAgendaMensal(true)}
+            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-sm font-medium shadow-sm hover:bg-slate-50"
+            title="Relatório de todos os compromissos do mês (usuário do calendário esquerdo)"
+          >
+            <CalendarDays className="w-4 h-4 text-slate-600" aria-hidden />
+            Agenda mensal
+          </button>
+        </div>
         <div className="flex flex-1 min-h-0 overflow-hidden">
           <ColunaDia
             dataLabel={`${dataEsquerdaStr} — Compromissos do dia`}
             eventos={eventosEsquerda}
-            vazias={12}
             onDuploCliqueEvento={aoDuploCliqueCompromisso}
             dataBrStr={dataEsquerdaStr}
+            usuarioAgendaId={usuarioEsquerda}
+            onPersistenciaAlterada={() => setAgendaStatusNonce((n) => n + 1)}
             onSalvarCampos={(ev, patch) => {
               salvarCamposEventoAgendaPersistido({
                 dataBr: dataEsquerdaStr,
@@ -677,9 +795,10 @@ export function Agenda() {
           <ColunaDia
             dataLabel={`${dataDireitaStr} — Próximo dia`}
             eventos={eventosDireita}
-            vazias={12}
             onDuploCliqueEvento={aoDuploCliqueCompromisso}
             dataBrStr={dataDireitaStr}
+            usuarioAgendaId={usuarioDireita}
+            onPersistenciaAlterada={() => setAgendaStatusNonce((n) => n + 1)}
             onSalvarCampos={(ev, patch) => {
               salvarCamposEventoAgendaPersistido({
                 dataBr: dataDireitaStr,
@@ -706,6 +825,99 @@ export function Agenda() {
         usuariosSistema={usuariosAtivos}
         onAbrirUsuariosSistema={() => navigate('/usuarios')}
       />
+
+      {modalAgendaMensal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="agenda-mensal-titulo"
+          onClick={() => setModalAgendaMensal(false)}
+        >
+          <div
+            className="bg-white rounded-lg shadow-xl border border-slate-200 w-full max-w-4xl max-h-[90vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-slate-200 shrink-0">
+              <div>
+                <h2 id="agenda-mensal-titulo" className="text-base font-semibold text-slate-800">
+                  Agenda completa — {tituloMesRelatorio}
+                </h2>
+                <p className="text-sm text-slate-600 mt-0.5">
+                  Usuário: <span className="font-medium text-slate-800">{nomeUsuarioAgenda}</span>
+                  {' · '}
+                  {relatorioAgendaMensal.diasComEventos.length} dia(s) com compromisso
+                  {' · '}
+                  {totalCompromissosMensal} compromisso(s)
+                </p>
+              </div>
+              <button
+                type="button"
+                className="p-2 rounded text-slate-500 hover:bg-slate-100"
+                aria-label="Fechar"
+                onClick={() => setModalAgendaMensal(false)}
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="px-4 py-3 overflow-y-auto flex-1 min-h-0">
+              {relatorioAgendaMensal.diasComEventos.length === 0 ? (
+                <p className="text-sm text-slate-600 py-6 text-center">
+                  Nenhum compromisso neste mês para este usuário.
+                </p>
+              ) : (
+                <div className="space-y-6">
+                  {relatorioAgendaMensal.diasComEventos.map(({ dataBr, eventos }) => (
+                    <section key={dataBr} className="border border-slate-200 rounded-lg overflow-hidden">
+                      <div className="px-3 py-2 bg-slate-100 border-b border-slate-200 text-sm font-semibold text-slate-800">
+                        {rotuloDataComDiaSemana(dataBr)}
+                        <span className="font-normal text-slate-600 ml-2">
+                          ({eventos.length} {eventos.length === 1 ? 'compromisso' : 'compromissos'})
+                        </span>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm border-collapse min-w-[520px]">
+                          <thead>
+                            <tr className="bg-slate-50 border-b border-slate-200">
+                              <th className="text-left px-3 py-2 font-medium text-slate-700 w-[88px]">Hora</th>
+                              <th className="text-left px-3 py-2 font-medium text-slate-700">Descrição</th>
+                              <th className="text-right px-3 py-2 font-medium text-slate-700 w-[72px]">Status</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {eventos.map((ev) => (
+                              <tr key={`${dataBr}-${ev.id}`} className="border-b border-slate-100 last:border-0">
+                                <td className="px-3 py-2 align-top text-slate-800 whitespace-nowrap">
+                                  {ev.hora ? ev.hora : '—'}
+                                </td>
+                                <td className="px-3 py-2 align-top text-slate-800 whitespace-pre-wrap break-words">
+                                  {ev.descricao ? ev.descricao : '—'}
+                                </td>
+                                <td className="px-3 py-2 align-top text-right text-slate-800">
+                                  {normalizarStatusCurtoAgenda(ev.statusCurto) === 'OK' ? 'OK' : '—'}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </section>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="px-4 py-3 border-t border-slate-200 flex justify-end shrink-0">
+              <button
+                type="button"
+                className="px-4 py-2 rounded-lg bg-slate-800 text-white text-sm font-medium hover:bg-slate-900"
+                onClick={() => setModalAgendaMensal(false)}
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {eventoModal && (
         <div

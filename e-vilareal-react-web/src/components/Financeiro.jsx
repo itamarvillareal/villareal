@@ -14,11 +14,26 @@ import {
   savePersistedExtratosFinanceiro,
   getContasContabeisDerivadasExtratos,
   filtrarTransacoesPorClienteProc,
+  textoCategoriaObservacao,
+  textoDimensaoEq,
+  normalizarCodigoClienteFinanceiro,
+  normalizarProcFinanceiro,
 } from '../data/financeiroData';
+import { loadRodadasCalculos } from '../data/calculosRodadasStorage';
+import {
+  procurarSugestoesVinculoAutomatico,
+  parseRodadaKeyParaDisplay,
+} from '../data/buscaParcelamentoFinanceiro';
 import { parseOfxToExtrato, mergeExtratoBancario, contarLancamentosNovos } from '../utils/ofx';
 import { OFX_ITAU_REAL_EXEMPLO, OFX_CORA_REAL_EXEMPLO } from '../data/ofxItauCoraReal';
 
 const REF_CONSTANTE = 675;
+
+/** Valor exibido/salvo em Ref. (padrão 675 quando vazio no objeto). */
+function textoRefLancamento(t) {
+  const r = String(t?.ref ?? '').trim();
+  return r || String(REF_CONSTANTE);
+}
 
 const OPCOES_LIMITE_LANCAMENTOS_EXTRATO = [
   { v: 25, label: '25' },
@@ -67,6 +82,18 @@ function ordenarTransacoesBanco(lista, col, dir) {
     if (col === 'valor' || col === 'saldo') {
       return (Number(va) || 0) - (Number(vb) || 0);
     }
+    if (col === 'categoria') {
+      va = textoCategoriaObservacao(a);
+      vb = textoCategoriaObservacao(b);
+    }
+    if (col === 'dimensao') {
+      va = textoDimensaoEq(a);
+      vb = textoDimensaoEq(b);
+    }
+    if (col === 'ref') {
+      va = String(a.ref ?? '').trim() || String(REF_CONSTANTE);
+      vb = String(b.ref ?? '').trim() || String(REF_CONSTANTE);
+    }
     const sa = String(va ?? '');
     const sb = String(vb ?? '');
     return sa.localeCompare(sb, 'pt-BR');
@@ -95,6 +122,18 @@ function ordenarTransacoesConsolidado(lista, col, dir) {
     }
     if (col === 'valor') return (Number(va) || 0) - (Number(vb) || 0);
     if (col === 'numeroBanco') return (Number(va) || 0) - (Number(vb) || 0);
+    if (col === 'descricaoDetalhada') {
+      va = textoCategoriaObservacao(a);
+      vb = textoCategoriaObservacao(b);
+    }
+    if (col === 'eq') {
+      va = textoDimensaoEq(a);
+      vb = textoDimensaoEq(b);
+    }
+    if (col === 'ref') {
+      va = String(a.ref ?? '').trim() || String(REF_CONSTANTE);
+      vb = String(b.ref ?? '').trim() || String(REF_CONSTANTE);
+    }
     const sa = String(va ?? '');
     const sb = String(vb ?? '');
     return sa.localeCompare(sb, 'pt-BR');
@@ -159,6 +198,12 @@ export function Financeiro() {
   const saveTimerRef = useRef(null);
   /** Vindo de Cálculos → aba Honorários: filtra consolidado (Conta Escritório) por cliente/proc para conciliação. */
   const [filtroConciliacaoHonorarios, setFiltroConciliacaoHonorarios] = useState(null);
+  /** Modal: busca automática extrato não classificado × parcelas de cálculos aceitos; usuário só aprova. */
+  const [modalBuscaParcelas, setModalBuscaParcelas] = useState(false);
+  const [sugestoesVinculoAutomatico, setSugestoesVinculoAutomatico] = useState([]);
+  /** Por linha `${banco}-${nº}-${data}`: índice em `matches` quando há mais de um cálculo possível */
+  const [matchIndexPorSugestao, setMatchIndexPorSugestao] = useState({});
+  const [aprovarSugestao, setAprovarSugestao] = useState({});
 
   const transacoesConsolidadas = getTransacoesConsolidadas(extratosPorBanco, contaContabilSelecionada);
   const saldoConsolidado = transacoesConsolidadas.reduce((s, t) => s + t.valor, 0);
@@ -234,8 +279,101 @@ export function Financeiro() {
       if (!list) return prev;
       const idx = list.findIndex((t) => t.numero === numero && t.data === data);
       if (idx === -1) return prev;
-      list[idx] = { ...list[idx], [field]: value };
+      const v = String(value ?? '');
+      if (field === 'categoria' || field === 'descricaoDetalhada') {
+        list[idx] = { ...list[idx], categoria: v, descricaoDetalhada: v };
+      } else if (field === 'dimensao' || field === 'eq') {
+        list[idx] = { ...list[idx], dimensao: v, eq: v };
+      } else {
+        list[idx] = { ...list[idx], [field]: value };
+      }
       return next;
+    });
+  }
+
+  function abrirModalBuscaParcelas() {
+    setModalBuscaParcelas(true);
+  }
+
+  function atualizarSugestoesBuscaAutomatica() {
+    const rodadas = loadRodadasCalculos() || {};
+    const sugestoes = procurarSugestoesVinculoAutomatico(extratosPorBanco, rodadas);
+    setSugestoesVinculoAutomatico(sugestoes);
+    const idx = {};
+    const ap = {};
+    for (const s of sugestoes) {
+      const k = `${s.nomeBanco}-${s.numero}-${s.data}`;
+      idx[k] = 0;
+      ap[k] = s.matches.length === 1;
+    }
+    setMatchIndexPorSugestao(idx);
+    setAprovarSugestao(ap);
+  }
+
+  function confirmarVinculosParcelasSelecionados() {
+    const linhas = [];
+    for (const s of sugestoesVinculoAutomatico) {
+      const k = `${s.nomeBanco}-${s.numero}-${s.data}`;
+      if (!aprovarSugestao[k]) continue;
+      const mi = matchIndexPorSugestao[k] ?? 0;
+      const m = s.matches[mi];
+      if (!m) continue;
+      const parsed = parseRodadaKeyParaDisplay(m.rodadaKey);
+      const cod = normalizarCodigoClienteFinanceiro(parsed.codCliente);
+      const proc = normalizarProcFinanceiro(parsed.proc);
+      if (!cod || !proc) continue;
+      linhas.push({
+        nomeBanco: s.nomeBanco,
+        numero: s.numero,
+        data: s.data,
+        codCliente: cod,
+        proc,
+        parcelaIndice: m.parcelaIndice,
+      });
+    }
+    if (linhas.length === 0) {
+      setOfxStatus({
+        kind: 'error',
+        message: 'Marque ao menos uma linha aprovada com o cálculo correto (se houver mais de uma opção).',
+      });
+      return;
+    }
+    const msg = `Confirmar vínculo de ${linhas.length} lançamento(s) aos clientes/processos indicados nas sugestões?`;
+    if (!window.confirm(msg)) return;
+    setExtratosPorBanco((prev) => {
+      const next = cloneExtratos(prev);
+      for (const ln of linhas) {
+        const list = next[ln.nomeBanco];
+        if (!list) continue;
+        const i = list.findIndex((t) => t.numero === ln.numero && t.data === ln.data);
+        if (i === -1) continue;
+        list[i] = {
+          ...list[i],
+          codCliente: ln.codCliente,
+          proc: ln.proc,
+          parcela: String(ln.parcelaIndice).padStart(2, '0'),
+        };
+      }
+      return next;
+    });
+    setModalBuscaParcelas(false);
+    setSugestoesVinculoAutomatico([]);
+    setMatchIndexPorSugestao({});
+    setAprovarSugestao({});
+    if (linhas.length === 1) {
+      setFiltroConciliacaoHonorarios({
+        codCliente: linhas[0].codCliente,
+        proc: linhas[0].proc,
+        rotulo: 'Após vínculo automático (Cálculos)',
+        valorCentavos: null,
+      });
+      setContaContabilSelecionada('Conta Escritório');
+    } else {
+      setFiltroConciliacaoHonorarios(null);
+    }
+    setOfxStatus({
+      kind: 'success',
+      message: `${linhas.length} lançamento(s) vinculado(s). Revise o extrato e o consolidado.`,
     });
   }
 
@@ -289,7 +427,7 @@ export function Financeiro() {
               nomeBanco: t.nomeBanco,
               codCliente: String(t.codCliente ?? codCliente ?? ''),
               proc: String(t.proc ?? proc ?? ''),
-              descricaoDetalhada: t.descricaoDetalhada || '',
+              descricaoDetalhada: textoCategoriaObservacao(t),
               letra: t.letra,
             }
           : undefined,
@@ -443,6 +581,31 @@ export function Financeiro() {
     navigate(location.pathname, { replace: true, state: {} });
   }, [location.state, location.pathname, navigate]);
 
+  /** Vindo de Cálculos → aba Parcelamento: abre modal de busca automática (sem precisar informar cliente/proc). */
+  useEffect(() => {
+    const alvo = location.state?.financeiroBuscaParcelas;
+    if (!alvo || typeof alvo !== 'object') return;
+    setModalBuscaParcelas(true);
+    navigate(location.pathname, { replace: true, state: {} });
+  }, [location.state, location.pathname, navigate]);
+
+  /** Ao abrir o modal ou mudar extratos: recalcula sugestões (lançamentos não classificados × parcelas aceitas). */
+  useEffect(() => {
+    if (!modalBuscaParcelas) return;
+    const rodadas = loadRodadasCalculos() || {};
+    const sugestoes = procurarSugestoesVinculoAutomatico(extratosPorBanco, rodadas);
+    setSugestoesVinculoAutomatico(sugestoes);
+    const idx = {};
+    const ap = {};
+    for (const s of sugestoes) {
+      const k = `${s.nomeBanco}-${s.numero}-${s.data}`;
+      idx[k] = 0;
+      ap[k] = s.matches.length === 1;
+    }
+    setMatchIndexPorSugestao(idx);
+    setAprovarSugestao(ap);
+  }, [modalBuscaParcelas, extratosPorBanco]);
+
   const saldoHeaderConsolidado =
     filtroConciliacaoHonorarios && contaContabilSelecionada === 'Conta Escritório'
       ? saldoConsolidadoFiltrado
@@ -496,6 +659,14 @@ export function Financeiro() {
               title="1) Identifica pares entre extratos; 2) Aplica Elo 0001… na Conta Compensação"
             >
               Parear compensações
+            </button>
+            <button
+              type="button"
+              onClick={() => abrirModalBuscaParcelas()}
+              className="px-3 py-2 rounded-lg border border-indigo-300 bg-indigo-50 text-indigo-900 text-sm font-medium hover:bg-indigo-100"
+              title="Compara extratos não classificados com parcelas de cálculos aceitos; você só aprova o vínculo"
+            >
+              Buscar parcelas (Cálculos)
             </button>
             {ofxStatus.kind !== 'idle' && (
               <span
@@ -747,10 +918,11 @@ export function Financeiro() {
                     <th className="text-left py-2 px-3 font-medium text-slate-600 border-r border-slate-200 min-w-[180px] cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloExtratoBanco('descricao')} title="Duplo clique: ordenar A→Z / Z→A">Descrição</th>
                     <th className="text-right py-2 px-3 font-medium text-slate-600 border-r border-slate-200 w-28 cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloExtratoBanco('valor')} title="Duplo clique: ordenar crescente ↔ decrescente">Valor</th>
                     <th className="text-right py-2 px-3 font-medium text-slate-600 border-r border-slate-200 min-w-[140px] cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloExtratoBanco('saldo')} title="Duplo clique: ordenar crescente ↔ decrescente">Saldo</th>
-                    <th className="text-left py-2 px-3 font-medium text-slate-600 border-r border-slate-200 min-w-[120px] cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloExtratoBanco('categoria')} title="Duplo clique: ordenar A→Z / Z→A">Categoria / Obs.</th>
+                    <th className="text-left py-2 px-3 font-medium text-slate-600 border-r border-slate-200 min-w-[120px] cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloExtratoBanco('categoria')} title="Mesmo texto que Descrição / Contraparte no consolidado. Duplo clique: ordenar A→Z / Z→A">Categoria / Obs.</th>
                     <th className="text-center py-2 px-3 font-medium text-slate-600 border-r border-slate-200 w-20 cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloExtratoBanco('codCliente')} title="Duplo clique: ordenar">Cod. Cliente</th>
                     <th className="text-center py-2 px-3 font-medium text-slate-600 border-r border-slate-200 w-16 cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloExtratoBanco('proc')} title="Duplo clique: ordenar">Proc.</th>
-                    <th className="text-center py-2 px-3 font-medium text-slate-600 border-r border-slate-200 w-20 cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloExtratoBanco('dimensao')} title="Duplo clique: ordenar">Dimensão</th>
+                    <th className="text-center py-2 px-3 font-medium text-slate-600 border-r border-slate-200 w-16 cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloExtratoBanco('ref')} title="Mesmo valor que Ref. no consolidado. Duplo clique: ordenar">Ref.</th>
+                    <th className="text-center py-2 px-3 font-medium text-slate-600 border-r border-slate-200 w-20 cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloExtratoBanco('dimensao')} title="Mesmo texto que Eq. no consolidado. Duplo clique: ordenar">Dimensão</th>
                     <th className="text-center py-2 px-3 font-medium text-slate-600 w-20 cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloExtratoBanco('parcela')} title="Duplo clique: ordenar">Parcela</th>
                   </tr>
                 </thead>
@@ -790,7 +962,16 @@ export function Financeiro() {
                       <td className={`py-1.5 px-3 text-right border-r border-slate-100 ${t.saldo < 0 ? 'text-red-600' : 'text-slate-800'}`}>
                         {formatValor(t.saldo)} {t.saldoDesc}
                       </td>
-                      <td className="py-1.5 px-3 text-slate-600 border-r border-slate-100 text-xs">{t.categoria}</td>
+                      <td className="py-1.5 px-2 text-slate-600 border-r border-slate-100 text-xs min-w-[12rem]" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="text"
+                          value={textoCategoriaObservacao(t)}
+                          onChange={(e) => updateCampoLancamento(instituicaoSelecionada, t.numero, t.data, 'categoria', e.target.value)}
+                          className="w-full min-w-[10rem] px-1.5 py-0.5 text-xs bg-white border border-slate-200 rounded"
+                          title="Espelha Descrição / Contraparte na conta contábil correspondente"
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      </td>
                       <td
                         className="py-1.5 px-3 text-center text-slate-500 border-r border-slate-100"
                         onDoubleClick={(e) => { e.stopPropagation(); handleDuploCliqueCodCliente(t.codCliente, t.proc); }}
@@ -819,8 +1000,36 @@ export function Financeiro() {
                           onDoubleClick={(e) => { e.stopPropagation(); handleDuploCliqueProc(t.codCliente, t.proc, t); }}
                         />
                       </td>
-                      <td className="py-1.5 px-3 text-center text-slate-500 border-r border-slate-100">{t.dimensao}</td>
-                      <td className="py-1.5 px-3 text-center text-slate-500">{t.parcela}</td>
+                      <td className="py-1.5 px-2 text-center border-r border-slate-100" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="text"
+                          value={textoRefLancamento(t)}
+                          onChange={(e) => updateCampoLancamento(instituicaoSelecionada, t.numero, t.data, 'ref', e.target.value)}
+                          className="w-14 px-1 py-0.5 text-sm text-center bg-slate-50 border border-slate-200 rounded"
+                          title="Espelha Ref. no extrato consolidado"
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      </td>
+                      <td className="py-1.5 px-2 text-center border-r border-slate-100" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="text"
+                          value={textoDimensaoEq(t)}
+                          onChange={(e) => updateCampoLancamento(instituicaoSelecionada, t.numero, t.data, 'dimensao', e.target.value)}
+                          className="w-16 px-1 py-0.5 text-sm text-center bg-slate-50 border border-slate-200 rounded"
+                          title="Espelha Eq. na conta contábil correspondente"
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      </td>
+                      <td className="py-1.5 px-2 text-center" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="text"
+                          value={t.parcela ?? ''}
+                          onChange={(e) => updateCampoLancamento(instituicaoSelecionada, t.numero, t.data, 'parcela', e.target.value)}
+                          className="w-16 px-1 py-0.5 text-sm text-center bg-slate-50 border border-slate-200 rounded"
+                          title="Espelha Parcela no consolidado"
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      </td>
                     </tr>
                   );
                   });
@@ -914,7 +1123,7 @@ export function Financeiro() {
                     <th className="text-right py-2 px-3 font-medium text-slate-600 border-r border-slate-200 w-28 cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloConsolidado('valor')} title="Duplo clique: ordenar crescente ↔ decrescente">
                       Valor <span className="text-slate-400 font-normal">({formatValor(saldoHeaderConsolidado)})</span>
                     </th>
-                    <th className="text-left py-2 px-3 font-medium text-slate-600 border-r border-slate-200 min-w-[200px] cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloConsolidado('descricaoDetalhada')} title="Duplo clique: ordenar A→Z / Z→A">Descrição / Contraparte</th>
+                    <th className="text-left py-2 px-3 font-medium text-slate-600 border-r border-slate-200 min-w-[200px] cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloConsolidado('descricaoDetalhada')} title="Mesmo texto que Categoria / Obs. no extrato do banco. Duplo clique: ordenar A→Z / Z→A">Descrição / Contraparte</th>
                     <th className="text-center py-2 px-3 font-medium text-slate-600 border-r border-slate-200 w-20 cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloConsolidado('codCliente')} title="Duplo clique: ordenar">Cod. Cliente</th>
                     <th
                       className="text-center py-2 px-3 font-medium text-slate-600 border-r border-slate-200 w-16 cursor-pointer hover:bg-slate-100 select-none"
@@ -923,8 +1132,8 @@ export function Financeiro() {
                     >
                       {isContaCompensacao ? 'Elo' : 'Proc.'}
                     </th>
-                    <th className="text-center py-2 px-3 font-medium text-slate-600 border-r border-slate-200 w-16">Ref.</th>
-                    <th className="text-center py-2 px-3 font-medium text-slate-600 border-r border-slate-200 w-16 cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloConsolidado('eq')} title="Duplo clique: ordenar">Eq.</th>
+                    <th className="text-center py-2 px-3 font-medium text-slate-600 border-r border-slate-200 w-16 cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloConsolidado('ref')} title="Mesmo valor que Ref. no extrato do banco. Duplo clique: ordenar">Ref.</th>
+                    <th className="text-center py-2 px-3 font-medium text-slate-600 border-r border-slate-200 w-16 cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloConsolidado('eq')} title="Mesmo texto que Dimensão no extrato. Duplo clique: ordenar">Eq.</th>
                     <th className="text-center py-2 px-3 font-medium text-slate-600 w-20 cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloConsolidado('parcela')} title="Duplo clique: ordenar">Parcela</th>
                   </tr>
                 </thead>
@@ -963,44 +1172,92 @@ export function Financeiro() {
                         <td className={`py-1.5 px-3 text-right border-r border-green-100 font-medium ${t.valor < 0 ? 'text-red-600' : 'text-slate-900'}`}>
                           {formatValor(t.valor)}
                         </td>
-                        <td className="py-1.5 px-3 text-slate-600 border-r border-green-100 text-xs">{t.descricaoDetalhada ?? ''}</td>
+                        <td className="py-1.5 px-2 text-slate-600 border-r border-green-100 text-xs min-w-[12rem]" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="text"
+                            value={textoCategoriaObservacao(t)}
+                            onChange={(e) => updateCampoLancamento(t.nomeBanco, t.numero, t.data, 'descricaoDetalhada', e.target.value)}
+                            className="w-full min-w-[10rem] px-1.5 py-0.5 text-xs bg-white border border-green-200 rounded"
+                            title="Espelha Categoria / Obs. no extrato do banco"
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        </td>
                         <td
-                          className={`py-1.5 px-3 text-center border-r border-green-100 ${
-                            isContaCompensacao && t.letra === 'E'
-                              ? 'text-slate-400'
-                              : 'text-slate-500 cursor-pointer hover:bg-green-200/50'
+                          className={`py-1.5 px-2 text-center border-r border-green-100 ${
+                            isContaCompensacao && t.letra === 'E' ? 'text-slate-400' : ''
                           }`}
-                          onDoubleClick={(e) => {
-                            e.stopPropagation();
-                            if (isContaCompensacao && t.letra === 'E') return;
-                            handleDuploCliqueCodCliente(t.codCliente, t.proc);
-                          }}
-                          title={
-                            isContaCompensacao && t.letra === 'E'
-                              ? 'Conta Compensação: Cod. não utilizado'
-                              : 'Duplo clique para abrir o cadastro do cliente e processo'
-                          }
+                          onClick={(e) => e.stopPropagation()}
                         >
-                          {isContaCompensacao && t.letra === 'E' ? '' : (t.codCliente ?? '')}
+                          <input
+                            type="text"
+                            value={t.codCliente ?? ''}
+                            disabled={isContaCompensacao && t.letra === 'E'}
+                            onChange={(e) => updateCampoLancamento(t.nomeBanco, t.numero, t.data, 'codCliente', e.target.value)}
+                            className={`w-16 px-1 py-0.5 text-sm text-center border border-green-200 rounded ${
+                              isContaCompensacao && t.letra === 'E' ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-white'
+                            }`}
+                            title={
+                              isContaCompensacao && t.letra === 'E'
+                                ? 'Conta Compensação: Cod. não utilizado (igual ao extrato)'
+                                : 'Espelha Cod. Cliente no extrato do banco'
+                            }
+                            onClick={(e) => e.stopPropagation()}
+                            onDoubleClick={(e) => {
+                              e.stopPropagation();
+                              if (isContaCompensacao && t.letra === 'E') return;
+                              handleDuploCliqueCodCliente(t.codCliente, t.proc);
+                            }}
+                          />
                         </td>
-                        <td
-                          className="py-1.5 px-3 text-center text-slate-500 border-r border-green-100 cursor-pointer hover:bg-green-200/50"
-                          onDoubleClick={(e) => {
-                            e.stopPropagation();
-                            if (isContaCompensacao && t.letra === 'E') return;
-                            handleDuploCliqueProc(t.codCliente, t.proc, t);
-                          }}
-                          title={
-                            isContaCompensacao && t.letra === 'E'
-                              ? 'Elo = identificador do par de compensação (não é processo judicial)'
-                              : 'Duplo clique para abrir Processos (cliente e processo)'
-                          }
-                        >
-                          {t.proc ?? ''}
+                        <td className="py-1.5 px-2 text-center border-r border-green-100" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="text"
+                            value={t.proc ?? ''}
+                            onChange={(e) => updateCampoLancamento(t.nomeBanco, t.numero, t.data, 'proc', e.target.value)}
+                            className="w-14 px-1 py-0.5 text-sm text-center bg-white border border-green-200 rounded"
+                            title={
+                              isContaCompensacao && t.letra === 'E'
+                                ? 'Elo — espelha Proc. no extrato'
+                                : 'Espelha Proc. no extrato do banco'
+                            }
+                            onClick={(e) => e.stopPropagation()}
+                            onDoubleClick={(e) => {
+                              e.stopPropagation();
+                              if (isContaCompensacao && t.letra === 'E') return;
+                              handleDuploCliqueProc(t.codCliente, t.proc, t);
+                            }}
+                          />
                         </td>
-                        <td className="py-1.5 px-3 text-center text-slate-500 border-r border-green-100">{REF_CONSTANTE}</td>
-                        <td className="py-1.5 px-3 text-center text-slate-500 border-r border-green-100">{t.eq ?? ''}</td>
-                        <td className="py-1.5 px-3 text-center text-slate-500">{t.parcela ?? ''}</td>
+                        <td className="py-1.5 px-2 text-center border-r border-green-100" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="text"
+                            value={textoRefLancamento(t)}
+                            onChange={(e) => updateCampoLancamento(t.nomeBanco, t.numero, t.data, 'ref', e.target.value)}
+                            className="w-14 px-1 py-0.5 text-sm text-center bg-white border border-green-200 rounded"
+                            title="Espelha Ref. no extrato do banco"
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        </td>
+                        <td className="py-1.5 px-2 text-center border-r border-green-100" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="text"
+                            value={textoDimensaoEq(t)}
+                            onChange={(e) => updateCampoLancamento(t.nomeBanco, t.numero, t.data, 'eq', e.target.value)}
+                            className="w-14 px-1 py-0.5 text-sm text-center bg-white border border-green-200 rounded"
+                            title="Espelha Dimensão no extrato do banco"
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        </td>
+                        <td className="py-1.5 px-2 text-center" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="text"
+                            value={t.parcela ?? ''}
+                            onChange={(e) => updateCampoLancamento(t.nomeBanco, t.numero, t.data, 'parcela', e.target.value)}
+                            className="w-16 px-1 py-0.5 text-sm text-center bg-white border border-green-200 rounded"
+                            title="Espelha Parcela no extrato do banco"
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        </td>
                       </tr>
                     );
                   });
@@ -1131,6 +1388,183 @@ export function Financeiro() {
                 className="px-4 py-2 rounded bg-amber-600 text-white text-sm font-semibold hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Aplicar {modalParearCompensacao.pares.length} compensação(ões)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {modalBuscaParcelas && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="modal-busca-parcelas-titulo"
+        >
+          <div
+            className="bg-white rounded-lg shadow-xl border border-indigo-200 w-full max-w-4xl max-h-[92vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-4 py-3 border-b border-indigo-200 flex items-center justify-between shrink-0">
+              <h2 id="modal-busca-parcelas-titulo" className="text-base font-bold text-slate-800">
+                Sugestões de vínculo (Cálculos + extrato)
+              </h2>
+              <button
+                type="button"
+                onClick={() => {
+                  setModalBuscaParcelas(false);
+                  setSugestoesVinculoAutomatico([]);
+                  setMatchIndexPorSugestao({});
+                  setAprovarSugestao({});
+                }}
+                className="px-2 py-1 text-slate-500 hover:bg-slate-100 rounded text-lg leading-none"
+                aria-label="Fechar"
+              >
+                ×
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto flex-1 text-sm space-y-4">
+              <p className="text-slate-600 text-xs leading-relaxed">
+                O sistema compara <strong>todos</strong> os lançamentos <strong>ainda não classificados</strong> (sem cliente e sem
+                processo) com as parcelas de <strong>cálculos em que você marcou &quot;Aceitar Pagamento&quot;</strong> no
+                módulo Cálculos. O critério é <strong>mesma data</strong> (vencimento da parcela) e{' '}
+                <strong>mesmo valor absoluto</strong>. Revise cada linha, ajuste se houver mais de um cálculo possível e
+                confirme — o vínculo só é gravado com sua aprovação.
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={atualizarSugestoesBuscaAutomatica}
+                  className="px-3 py-2 rounded-lg border border-indigo-300 bg-white text-indigo-900 text-sm font-medium hover:bg-indigo-50"
+                >
+                  Atualizar busca
+                </button>
+                <span className="text-xs text-slate-500">
+                  Rodadas aceitas no Cálculos:{' '}
+                  <strong>
+                    {Object.values(loadRodadasCalculos() || {}).filter((r) => r?.parcelamentoAceito).length}
+                  </strong>
+                </span>
+              </div>
+
+              {(() => {
+                const nAceitas = Object.values(loadRodadasCalculos() || {}).filter((r) => r?.parcelamentoAceito).length;
+                if (nAceitas === 0) {
+                  return (
+                    <p className="text-amber-900 bg-amber-50 border border-amber-200 rounded px-3 py-2 text-sm">
+                      Nenhuma rodada com <strong>Aceitar Pagamento</strong> marcado no Cálculos. Abra Cálculos, preencha o
+                      parcelamento, marque a opção e aguarde a gravação automática.
+                    </p>
+                  );
+                }
+                return null;
+              })()}
+
+              {sugestoesVinculoAutomatico.length === 0 ? (
+                <p className="text-slate-600 bg-slate-50 border border-slate-200 rounded px-3 py-3 text-sm">
+                  Nenhuma correspondência automática: não há lançamento sem classificação com mesmo par data/valor que
+                  alguma parcela de um cálculo aceito, ou os extratos já estão todos vinculados.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {sugestoesVinculoAutomatico.map((s) => {
+                    const rowKey = `${s.nomeBanco}-${s.numero}-${s.data}`;
+                    return (
+                      <div
+                        key={rowKey}
+                        className="border border-slate-200 rounded-lg p-3 bg-slate-50/80 space-y-2"
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div>
+                            <p className="font-semibold text-slate-800">
+                              <strong>{s.nomeBanco}</strong> — Id. {s.numero} — {s.data} —{' '}
+                              <span className="tabular-nums">{formatValor(s.valor)}</span>
+                            </p>
+                            <p className="text-xs text-slate-500">Lançamento não classificado no extrato</p>
+                          </div>
+                          <label className="flex items-center gap-2 text-sm cursor-pointer shrink-0">
+                            <input
+                              type="checkbox"
+                              checked={Boolean(aprovarSugestao[rowKey])}
+                              onChange={(e) =>
+                                setAprovarSugestao((prev) => ({ ...prev, [rowKey]: e.target.checked }))
+                              }
+                              className="rounded border-slate-300"
+                            />
+                            Aprovar vínculo
+                          </label>
+                        </div>
+                        {s.matches.length > 1 ? (
+                          <div className="pl-1 space-y-1.5 text-slate-700">
+                            <p className="text-xs font-medium text-slate-600">Vários cálculos batem — escolha o correto:</p>
+                            {s.matches.map((m, mi) => {
+                              const disp = parseRodadaKeyParaDisplay(m.rodadaKey);
+                              return (
+                                <label
+                                  key={`${m.rodadaKey}-${mi}`}
+                                  className="flex items-start gap-2 cursor-pointer text-sm"
+                                >
+                                  <input
+                                    type="radio"
+                                    className="mt-0.5"
+                                    name={`match-${rowKey}`}
+                                    checked={(matchIndexPorSugestao[rowKey] ?? 0) === mi}
+                                    onChange={() =>
+                                      setMatchIndexPorSugestao((prev) => ({ ...prev, [rowKey]: mi }))
+                                    }
+                                  />
+                                  <span>
+                                    Cliente <strong className="tabular-nums">{disp.codCliente}</strong>, proc.{' '}
+                                    <strong>{disp.proc}</strong>, dim. {disp.dimensao} — parcela{' '}
+                                    <strong>{String(m.parcelaIndice).padStart(2, '0')}</strong>
+                                    <span className="text-slate-500 text-xs ml-1">({m.rodadaKey})</span>
+                                  </span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-slate-700 pl-1">
+                            {(() => {
+                              const m = s.matches[0];
+                              if (!m) return null;
+                              const disp = parseRodadaKeyParaDisplay(m.rodadaKey);
+                              return (
+                                <>
+                                  Sugestão: cliente <strong className="tabular-nums">{disp.codCliente}</strong>, proc.{' '}
+                                  <strong>{disp.proc}</strong>, dim. {disp.dimensao}, parcela{' '}
+                                  <strong>{String(m.parcelaIndice).padStart(2, '0')}</strong>
+                                </>
+                              );
+                            })()}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            <div className="px-4 py-3 border-t border-slate-200 flex flex-wrap justify-between gap-2 shrink-0 bg-slate-50">
+              <button
+                type="button"
+                onClick={() => {
+                  setModalBuscaParcelas(false);
+                  setSugestoesVinculoAutomatico([]);
+                  setMatchIndexPorSugestao({});
+                  setAprovarSugestao({});
+                }}
+                className="px-4 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-100"
+              >
+                Fechar
+              </button>
+              <button
+                type="button"
+                disabled={sugestoesVinculoAutomatico.length === 0}
+                onClick={confirmarVinculosParcelasSelecionados}
+                className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Confirmar vínculos aprovados…
               </button>
             </div>
           </div>

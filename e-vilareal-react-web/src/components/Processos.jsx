@@ -551,6 +551,20 @@ export function Processos() {
     setTimeout(() => setModalAgendaLoteAberto(false), 700);
   }
 
+  /** Disponível mesmo com edição desabilitada: abre http(s) ou mostra o caminho. */
+  function abrirLinkPastaArquivo() {
+    const s = String(pastaArquivo || '').trim();
+    if (!s) {
+      window.alert('Informe o link ou caminho em "Pasta do Arquivo".');
+      return;
+    }
+    if (/^https?:\/\//i.test(s)) {
+      window.open(s, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    window.alert('Copie ou abra manualmente:\n\n' + s);
+  }
+
   function abrirModalTramitacao() {
     setTramitacaoDraft(tramitacao || '');
     setModalTramitacaoAberto(true);
@@ -1365,8 +1379,8 @@ export function Processos() {
                 <div className="col-span-2 md:col-span-4 flex flex-wrap items-end gap-3">
                   <button
                     type="button"
-                    disabled={camposBloqueados}
-                    className="px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50 disabled:opacity-50 disabled:pointer-events-none"
+                    onClick={abrirLinkPastaArquivo}
+                    className="px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
                   >
                     Link p/ pasta
                   </button>
@@ -1389,9 +1403,8 @@ export function Processos() {
                   </Field>
                   <button
                     type="button"
-                    disabled={camposBloqueados}
                     onClick={abrirModalTramitacao}
-                    className="px-4 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50 disabled:opacity-50 disabled:pointer-events-none"
+                    className="px-4 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
                   >
                     Tramitação
                   </button>

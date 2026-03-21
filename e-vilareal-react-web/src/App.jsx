@@ -12,6 +12,7 @@ import { Calculos } from './components/Calculos';
 import { Diagnosticos } from './components/Diagnosticos';
 import { Financeiro } from './components/Financeiro';
 import { Usuarios } from './components/Usuarios';
+import { Configuracoes } from './components/Configuracoes';
 import { atualizarIndicesMensaisAposDia10 } from './services/monetaryIndicesService.js';
 import { ensureHistoricoDemonstracaoDiagnostico } from './data/processosHistoricoData.js';
 
@@ -83,6 +84,7 @@ function App() {
           <Route path="/diagnosticos" element={<Diagnosticos />} />
           <Route path="/financeiro" element={<Financeiro />} />
           <Route path="/usuarios" element={<Usuarios />} />
+          <Route path="/configuracoes" element={<Configuracoes />} />
           <Route path="/diligencias" element={<Navigate to="/pendencias" replace />} />
           <Route path="/dativos" element={<Navigate to="/pendencias" replace />} />
           <Route path="/:section" element={<Board />} />
