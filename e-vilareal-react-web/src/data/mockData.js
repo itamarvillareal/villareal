@@ -58,6 +58,7 @@ export const clienteMock = {
   observacao: '',
 };
 
+/** Índice = nº do processo (1–10) no cliente; descrições alinhadas ao mock 10×10 (getMockProcesso10x10). */
 export const processosClienteMock = [
   { id: 1, processoVelho: '-', processoNovo: '5561596-17.2025.8.09.0137', parteOposta: 'FLAVIA GOMES SANTOS', descricao: 'AÇÃO DE INDENIZAÇÃO POR DANOS' },
   { id: 2, processoVelho: '-', processoNovo: '5602801-26.2025.8.09.0137', parteOposta: 'JAILIS PEREIRA DOURADO', descricao: 'AÇÃO DECLARATÓRIA DE NULIDADE' },

@@ -15,7 +15,6 @@ import {
   Activity,
   UserCog,
   Settings,
-  LayoutDashboard,
 } from 'lucide-react';
 import { navItems } from '../data/mockData';
 import { getUsuariosAtivos } from '../data/agendaPersistenciaData';
@@ -80,22 +79,6 @@ export function Sidebar() {
         <p className="text-xs text-gray-500">Projeto Jurídico</p>
       </div>
       <nav className="flex-1 p-2 overflow-y-auto">
-        {pode('inicio') ? (
-          <NavLink
-            to="/"
-            end
-            className={({ isActive }) =>
-              `flex items-center gap-3 px-3 py-2.5 rounded-md text-gray-700 text-sm font-medium transition-colors mb-0.5 ${
-                isActive
-                  ? 'bg-blue-100 text-blue-800 border-l-2 border-blue-500'
-                  : 'hover:bg-gray-100'
-              }`
-            }
-          >
-            <LayoutDashboard className="w-5 h-5 shrink-0" />
-            <span>Início</span>
-          </NavLink>
-        ) : null}
         {navFiltrado.map((item) => {
           const Icon = iconMap[item.icon];
           return (

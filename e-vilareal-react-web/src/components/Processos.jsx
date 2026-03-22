@@ -1,7 +1,17 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { getLancamentosContaCorrente, mergeContaCorrenteComLinhaOrigem } from '../data/financeiroData';
-import { getMockProcesso10x10 } from '../data/processosMock';
+import {
+  UFS,
+  CIDADES_POR_UF,
+  FASES,
+  COMPETENCIAS,
+  TRAMITACAO_OPCOES,
+  gerarMockProcesso,
+  normalizarCliente,
+  normalizarProcesso,
+  padCliente,
+} from '../data/processosDadosRelatorio';
 import { getCadastroPessoasMock } from '../data/cadastroPessoasMock';
 import { getImovelMock, getImoveisMockTotal } from '../data/imoveisMockData';
 import {
@@ -24,41 +34,7 @@ import {
   Search,
 } from 'lucide-react';
 
-const UFS = [
-  { sigla: 'GO', nome: 'GOIÁS' },
-  { sigla: 'SP', nome: 'SÃO PAULO' },
-  { sigla: 'MG', nome: 'MINAS GERAIS' },
-  { sigla: 'RJ', nome: 'RIO DE JANEIRO' },
-  { sigla: 'PI', nome: 'PIAUÍ' },
-];
-
-const CIDADES_POR_UF = {
-  GO: ['RIO VERDE', 'GOIÂNIA', 'ANÁPOLIS', 'APARECIDA DE GOIÂNIA'],
-  SP: ['SÃO PAULO', 'CAMPINAS', 'RIBEIRÃO PRETO'],
-  MG: ['BELO HORIZONTE', 'UBERLÂNDIA'],
-  RJ: ['RIO DE JANEIRO', 'NITERÓI'],
-  PI: ['TERESINA', 'PARNÁIBA'],
-};
-
-const FASES = [
-  'Ag. Documentos',
-  'Ag. Peticionar',
-  'Ag. Verificação',
-  'Protocolo / Movimentação',
-  'Aguardando Providência',
-  'Procedimento Adm.',
-  'Em Andamento',
-];
-
-const COMPETENCIAS = [
-  '1º JUIZADO ESPECIAL CÍVEL',
-  '2º JUIZADO ESPECIAL CÍVEL',
-  '3º JUIZADO ESPECIAL CÍVEL',
-  'VARA CÍVEL',
-];
-
 const HISTORICO_POR_PAGINA = 10;
-const TRAMITACAO_OPCOES = ['Projudi', 'PJe', 'TJ Go - Autos Físicos'];
 const PERIODICIDADES_AGENDA_LOTE = [
   'Agendamento único',
   'Diariamente',
@@ -122,27 +98,6 @@ function gerarHistoricoMock(codigoCliente, processo) {
   return rows;
 }
 
-function normalizarCliente(val) {
-  const s = String(val ?? '').trim();
-  if (!s) return '1';
-  const n = Number(s);
-  if (Number.isNaN(n) || n < 1) return '1';
-  return String(n);
-}
-
-function normalizarProcesso(val) {
-  const s = String(val ?? '').trim();
-  if (!s) return 1;
-  const n = Number(s);
-  if (Number.isNaN(n) || n < 1) return 1;
-  return Math.floor(n);
-}
-
-function padCliente(val) {
-  const n = Number(normalizarCliente(val));
-  return String(n).padStart(8, '0');
-}
-
 function apenasDigitos(val) {
   return String(val ?? '').replace(/\D/g, '');
 }
@@ -161,70 +116,6 @@ function hojeBr() {
   const mm = String(d.getMonth() + 1).padStart(2, '0');
   const yyyy = String(d.getFullYear());
   return `${dd}/${mm}/${yyyy}`;
-}
-
-function gerarMockProcesso(codigoCliente, processo) {
-  const c = Number(normalizarCliente(codigoCliente));
-  const p = Number(normalizarProcesso(processo));
-  const mock10 = getMockProcesso10x10(c, p);
-  if (mock10) {
-    const uf = UFS[(c - 1) % UFS.length]?.sigla ?? 'GO';
-    const cidade = (CIDADES_POR_UF[uf] || ['RIO VERDE'])[p % (CIDADES_POR_UF[uf]?.length || 1)] || 'RIO VERDE';
-    const fase = FASES[(c + p) % FASES.length] ?? 'Em Andamento';
-    const competencia = COMPETENCIAS[(p - 1) % COMPETENCIAS.length] ?? '2º JUIZADO ESPECIAL CÍVEL';
-    return {
-      codigoCliente: mock10.codigoCliente,
-      processo: mock10.processo,
-      cliente: mock10.autor,
-      parteCliente: mock10.parteCliente,
-      parteOposta: mock10.parteOposta,
-      estado: uf,
-      cidade,
-      faseSelecionada: fase,
-      competencia,
-      numeroProcessoVelho: mock10.numeroProcessoVelho,
-      numeroProcessoNovo: mock10.numeroProcessoNovo,
-      statusAtivo: (c + p) % 3 !== 0,
-      parteRequerente: (c + p) % 3 === 0,
-      parteRevel: (c + p) % 3 === 1,
-      parteRequerido: (c + p) % 3 === 2,
-      dataProtocolo: `${String(((p - 1) % 28) + 1).padStart(2, '0')}/${String(((c - 1) % 12) + 1).padStart(2, '0')}/2025`,
-      naturezaAcao: `AÇÃO (MOCK) — Cliente ${c} / Proc ${p}`,
-      valorCausa: `${(1000 + c * 37 + p * 41).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-      consultaAutomatica: (c + p) % 2 === 0,
-      observacao: `Dados mock do Processo.\nCliente: ${c}\nProcesso: ${p}`,
-    };
-  }
-  const uf = UFS[(c - 1) % UFS.length]?.sigla ?? 'GO';
-  const cidade = (CIDADES_POR_UF[uf] || ['RIO VERDE'])[p % (CIDADES_POR_UF[uf]?.length || 1)] || 'RIO VERDE';
-  const fase = FASES[(c + p) % FASES.length] ?? 'Em Andamento';
-  const competencia = COMPETENCIAS[(p - 1) % COMPETENCIAS.length] ?? '2º JUIZADO ESPECIAL CÍVEL';
-  const cliente = `CLIENTE ${String(c).padStart(3, '0')} (MOCK)`;
-  const parteCliente = `PARTE CLIENTE ${String(c).padStart(3, '0')} — PROC ${String(p).padStart(2, '0')}`;
-  const parteOposta = `PARTE OPOSTA ${String((c * 7 + p) % 999).padStart(3, '0')} — PROC ${String(p).padStart(2, '0')}`;
-  const numeroProcessoNovo = `${String(5000000 + c * 13 + p).slice(0, 7)}-${String(10 + (p % 90)).padStart(2, '0')}.2025.8.09.${String(1000 + (c % 900)).slice(-4)}`;
-  return {
-    codigoCliente: padCliente(c),
-    processo: p,
-    cliente,
-    parteCliente,
-    parteOposta,
-    estado: uf,
-    cidade,
-    faseSelecionada: fase,
-    competencia,
-    numeroProcessoVelho: '',
-    numeroProcessoNovo,
-    statusAtivo: (c + p) % 3 !== 0,
-    parteRequerente: (c + p) % 3 === 0,
-    parteRevel: (c + p) % 3 === 1,
-    parteRequerido: (c + p) % 3 === 2,
-    dataProtocolo: `${String(((p - 1) % 28) + 1).padStart(2, '0')}/${String(((c - 1) % 12) + 1).padStart(2, '0')}/2025`,
-    naturezaAcao: `AÇÃO (MOCK) — Cliente ${c} / Proc ${p}`,
-    valorCausa: `${(1000 + c * 37 + p * 41).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-    consultaAutomatica: (c + p) % 2 === 0,
-    observacao: `Dados mock do Processo.\nCliente: ${c}\nProcesso: ${p}`,
-  };
 }
 
 function formatValorContaCorrente(v) {

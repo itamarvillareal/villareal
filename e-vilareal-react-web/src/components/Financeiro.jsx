@@ -33,7 +33,8 @@ import {
 } from '../data/buscaParcelamentoFinanceiro';
 import { parseOfxToExtrato, mergeExtratoBancario, contarLancamentosNovos } from '../utils/ofx';
 import { OFX_ITAU_REAL_EXEMPLO, OFX_CORA_REAL_EXEMPLO } from '../data/ofxItauCoraReal';
-import { CheckSquare, ChevronLeft, ChevronRight } from 'lucide-react';
+import { CheckSquare, ChevronLeft, ChevronRight, Link2 } from 'lucide-react';
+import { ModalVinculoClienteProcFinanceiro } from './ModalVinculoClienteProcFinanceiro.jsx';
 
 const REF_CONSTANTE = 675;
 
@@ -247,6 +248,8 @@ export function Financeiro() {
   const indiceConsultaVinculoRef = useRef(0);
   /** Evita duplicar a 1ª consulta ao abrir o modal (React Strict Mode em dev). */
   const primeiraConsultaModalRef = useRef(false);
+  /** Modal: buscar cliente/proc por nome, réu etc. e gravar no lançamento sem sair do Financeiro. */
+  const [modalVinculoLancamento, setModalVinculoLancamento] = useState(null);
 
   useEffect(() => {
     indiceConsultaVinculoRef.current = indiceConsultaVinculo;
@@ -350,6 +353,20 @@ export function Financeiro() {
   const runNovaConsultaVinculo = useCallback(() => {
     const rodadas = loadRodadasCalculos() || {};
     const sugestoes = procurarSugestoesVinculoAutomatico(extratosPorBancoRef.current, rodadas);
+    const { entries: entriesAntes } = loadConsultasVinculoLog();
+    const ultimo = entriesAntes.length > 0 ? entriesAntes[entriesAntes.length - 1] : null;
+    const snapKey = JSON.stringify(sugestoes);
+    const ultimoKey = ultimo ? JSON.stringify(ultimo.sugestoes ?? []) : null;
+    if (ultimoKey === snapKey && entriesAntes.length > 0) {
+      setConsultasVinculoHistorico(entriesAntes);
+      setIndiceConsultaVinculo(entriesAntes.length - 1);
+      setOfxStatus({
+        kind: 'info',
+        message:
+          'Busca automática: resultado idêntico à consulta anterior — nenhuma nova entrada no histórico.',
+      });
+      return;
+    }
     const idx = {};
     const ap = {};
     for (const s of sugestoes) {
@@ -422,13 +439,15 @@ export function Financeiro() {
     runNovaConsultaVinculo();
   }, [modalBuscaParcelas, runNovaConsultaVinculo]);
 
-  /** Mantém índice válido se o histórico mudar. */
+  /**
+   * Só corrige índice fora do intervalo (i ≥ len ou i &lt; 0).
+   * Não zera índice quando len === 0 (evita disputa com o efeito que abre o modal e define a última consulta).
+   * Não usar Math.min(i, len-1): isso forçava índice 0 e fazia #1 e #2 parecerem o mesmo snapshot.
+   */
   useEffect(() => {
-    if (consultasVinculoHistorico.length === 0) {
-      setIndiceConsultaVinculo(0);
-      return;
-    }
-    setIndiceConsultaVinculo((i) => Math.min(Math.max(0, i), consultasVinculoHistorico.length - 1));
+    const len = consultasVinculoHistorico.length;
+    if (len === 0) return;
+    setIndiceConsultaVinculo((i) => (i >= len ? len - 1 : i < 0 ? 0 : i));
   }, [consultasVinculoHistorico.length]);
 
   function atualizarSugestoesBuscaAutomatica() {
@@ -526,6 +545,21 @@ export function Financeiro() {
       col,
       dir: prev.col === col ? (prev.dir === 'asc' ? 'desc' : 'asc') : 'asc',
     }));
+  }
+
+  function aplicarVinculoClienteProcNosCampos({ codCliente, proc }) {
+    if (!modalVinculoLancamento) return;
+    const { nomeBanco, numero, data } = modalVinculoLancamento;
+    const cod = normalizarCodigoClienteFinanceiro(codCliente);
+    const p = normalizarProcFinanceiro(proc);
+    if (!cod) return;
+    updateCampoLancamento(nomeBanco, numero, data, 'codCliente', cod);
+    updateCampoLancamento(nomeBanco, numero, data, 'proc', p || '');
+    setModalVinculoLancamento(null);
+    setOfxStatus({
+      kind: 'success',
+      message: `Vínculo gravado: cliente ${cod}, proc. ${p || '—'} neste lançamento.`,
+    });
   }
 
   /** Duplo clique na coluna Cod. Cliente: abre o cadastro de clientes com esse código e processo. */
@@ -780,7 +814,9 @@ export function Financeiro() {
                     ? 'text-red-700'
                     : ofxStatus.kind === 'success'
                       ? 'text-green-700'
-                      : 'text-slate-600'
+                      : ofxStatus.kind === 'info'
+                        ? 'text-indigo-700'
+                        : 'text-slate-600'
                 }`}
               >
                 {ofxStatus.message}
@@ -861,7 +897,9 @@ export function Financeiro() {
                     ? 'text-red-700'
                     : ofxStatus.kind === 'success'
                       ? 'text-green-700'
-                      : 'text-slate-600'
+                      : ofxStatus.kind === 'info'
+                        ? 'text-indigo-700'
+                        : 'text-slate-600'
                 }`}
               >
                 {ofxStatus.message}
@@ -1029,6 +1067,9 @@ export function Financeiro() {
                     <th className="text-center py-2 px-3 font-medium text-slate-600 border-r border-slate-200 w-16 cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloExtratoBanco('ref')} title="Mesmo valor que Ref. no consolidado. Duplo clique: ordenar">Ref.</th>
                     <th className="text-center py-2 px-3 font-medium text-slate-600 border-r border-slate-200 w-20 cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloExtratoBanco('dimensao')} title="Mesmo texto que Eq. no consolidado. Duplo clique: ordenar">Dimensão</th>
                     <th className="text-center py-2 px-3 font-medium text-slate-600 w-20 cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloExtratoBanco('parcela')} title="Duplo clique: ordenar">Parcela</th>
+                    <th className="text-center py-2 px-2 font-medium text-slate-600 w-12" title="Buscar cliente e processo por nome/réu e vincular sem sair da tela">
+                      Vinc.
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1135,6 +1176,25 @@ export function Financeiro() {
                           onClick={(e) => e.stopPropagation()}
                         />
                       </td>
+                      <td className="py-1.5 px-1 text-center border-l border-slate-100" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setModalVinculoLancamento({
+                              nomeBanco: instituicaoSelecionada,
+                              numero: t.numero,
+                              data: t.data,
+                              resumo: `${instituicaoSelecionada} · ${t.data} · ${formatValor(t.valor)} — ${String(t.descricao ?? '').slice(0, 72)}`,
+                            });
+                          }}
+                          className="p-1.5 rounded border border-indigo-200 bg-indigo-50 text-indigo-800 hover:bg-indigo-100"
+                          title="Buscar cliente, autor ou réu e vincular cod. + proc. (sem abrir o cadastro)"
+                          aria-label="Vincular cliente e processo"
+                        >
+                          <Link2 className="w-4 h-4" />
+                        </button>
+                      </td>
                     </tr>
                   );
                   });
@@ -1240,6 +1300,11 @@ export function Financeiro() {
                     <th className="text-center py-2 px-3 font-medium text-slate-600 border-r border-slate-200 w-16 cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloConsolidado('ref')} title="Mesmo valor que Ref. no extrato do banco. Duplo clique: ordenar">Ref.</th>
                     <th className="text-center py-2 px-3 font-medium text-slate-600 border-r border-slate-200 w-16 cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloConsolidado('eq')} title="Mesmo texto que Dimensão no extrato. Duplo clique: ordenar">Eq.</th>
                     <th className="text-center py-2 px-3 font-medium text-slate-600 w-20 cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloConsolidado('parcela')} title="Duplo clique: ordenar">Parcela</th>
+                    {!isContaCompensacao ? (
+                      <th className="text-center py-2 px-2 font-medium text-slate-600 w-12" title="Buscar cliente e processo por nome/réu e vincular sem sair da tela">
+                        Vinc.
+                      </th>
+                    ) : null}
                   </tr>
                 </thead>
                 <tbody>
@@ -1363,6 +1428,27 @@ export function Financeiro() {
                             onClick={(e) => e.stopPropagation()}
                           />
                         </td>
+                        {!isContaCompensacao ? (
+                          <td className="py-1.5 px-1 text-center border-l border-green-100" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setModalVinculoLancamento({
+                                  nomeBanco: t.nomeBanco,
+                                  numero: t.numero,
+                                  data: t.data,
+                                  resumo: `${t.nomeBanco} · ${t.data} · ${formatValor(t.valor)} — ${String(t.descricao ?? '').slice(0, 72)}`,
+                                });
+                              }}
+                              className="p-1.5 rounded border border-indigo-200 bg-indigo-50 text-indigo-800 hover:bg-indigo-100"
+                              title="Buscar cliente, autor ou réu e vincular cod. + proc. (sem abrir o cadastro)"
+                              aria-label="Vincular cliente e processo"
+                            >
+                              <Link2 className="w-4 h-4" />
+                            </button>
+                          </td>
+                        ) : null}
                       </tr>
                     );
                   });
@@ -1570,9 +1656,11 @@ export function Financeiro() {
                   >
                     <ChevronLeft className="w-4 h-4" />
                   </button>
-                  <span className="text-sm text-slate-800 tabular-nums min-w-[8rem] text-center">
-                    <strong>#{consultaVinculoAtual?.numero ?? '—'}</strong>
-                    <span className="text-slate-500 font-normal"> / {consultasVinculoHistorico.length}</span>
+                  <span className="text-sm text-slate-800 tabular-nums min-w-[10rem] text-center">
+                    <span className="text-slate-500 font-normal text-xs block">
+                      Posição no histórico: {indiceConsultaVinculo + 1} de {consultasVinculoHistorico.length}
+                    </span>
+                    <strong className="text-base">Consulta nº {consultaVinculoAtual?.numero ?? '—'}</strong>
                   </span>
                   <button
                     type="button"
@@ -1757,6 +1845,13 @@ export function Financeiro() {
           </div>
         </div>
       )}
+
+      <ModalVinculoClienteProcFinanceiro
+        aberto={Boolean(modalVinculoLancamento)}
+        onFechar={() => setModalVinculoLancamento(null)}
+        resumoLancamento={modalVinculoLancamento?.resumo ?? ''}
+        onAplicar={aplicarVinculoClienteProcNosCampos}
+      />
     </div>
   );
 }

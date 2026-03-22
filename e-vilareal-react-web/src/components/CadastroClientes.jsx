@@ -57,7 +57,8 @@ function apenasDigitos(val) {
   return String(val ?? '').replace(/\D/g, '');
 }
 
-function normalizarTextoBusca(s) {
+/** Exportado para busca de cliente/proc no Financeiro sem sair da tela. */
+export function normalizarTextoBusca(s) {
   return String(s ?? '')
     .toLowerCase()
     .normalize('NFD')
@@ -65,11 +66,13 @@ function normalizarTextoBusca(s) {
     .trim();
 }
 
-function normalizarNumeroBusca(s) {
+/** Exportado para busca de cliente/proc no Financeiro sem sair da tela. */
+export function normalizarNumeroBusca(s) {
   return String(s ?? '').replace(/\D/g, '');
 }
 
-function gerarMockClienteEProcessos(codigo) {
+/** Exportado para o mesmo mock de processos do cadastro (busca no Financeiro). */
+export function gerarMockClienteEProcessos(codigo) {
   const n = Number(normalizarCodigoCliente(codigo));
   if (!Number.isFinite(n) || n < 1 || n > 1000) return null;
   const codigoCliente = padCliente8(n);

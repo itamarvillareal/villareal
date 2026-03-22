@@ -1,6 +1,29 @@
-import { useState, useMemo } from 'react';
-import { ChevronDown } from 'lucide-react';
+import { useState, useMemo, useEffect, useRef } from 'react';
+import { ChevronDown, Columns3 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { RelatorioUltimoAndamentoHeader } from './RelatorioUltimoAndamentoHeader.jsx';
+import { RelatorioPresetsPanel } from './RelatorioPresetsPanel.jsx';
+import {
+  CAMPOS_DATA_COLUNA_DINAMICA,
+  CAMPOS_OPCOES_ULTIMO_ANDAMENTO,
+  carregarCampoUltimoAndamentoSalvo,
+  salvarCampoUltimoAndamento,
+  enriquecerCamposRelatorioProcessos,
+} from '../data/relatorioProcessosColunaDinamica.js';
+import { normalizarFiltroProcessoAtivo } from '../data/relatorioPresets.js';
+import {
+  getRelatorioProcessosMockLinhasBase,
+  RELATORIO_PROCESSOS_MOCK_COUNT,
+} from '../data/relatorioProcessosDados.js';
+
+const STORAGE_COLUNAS_RELATORIO = 'vilareal.relatorioProcessos.colunasVisiveis.v1';
+const STORAGE_LARGURA_UNIFORME = 'vilareal.relatorioProcessos.larguraUniforme.v1';
+const STORAGE_FILTRO_PROCESSO_ATIVO = 'vilareal.relatorioProcessos.filtroProcessoAtivo.v1';
+const STORAGE_MODO_ALTERACAO = 'vilareal.relatorioProcessos.modoAlteracao.v1';
+const STORAGE_DADOS_RELATORIO = 'vilareal.relatorioProcessos.dadosLinhas.v1';
+
+/** Colunas que identificam o processo — não editáveis no modo de alteração. */
+const COLUNAS_RELATORIO_SO_LEITURA = new Set(['codCliente', 'proc']);
 
 /** Gera número CNJ mock determinístico (prioriza dados reais: numeroProcesso / numeroProcessoNovo). */
 function gerarNumeroProcessoCnjMock(row, idx) {
@@ -11,7 +34,31 @@ function gerarNumeroProcessoCnjMock(row, idx) {
   return `${String(seq).slice(0, 7)}-${dv}.2025.8.09.${foro}`;
 }
 
+/** Colunas cujo valor é data dd/mm/aaaa — ordenação cronológica, não lexicográfica. */
+const COLUNAS_DATA_BR = new Set([
+  'dataConsulta',
+  'proximaConsulta',
+  'prazoFatal',
+  'dataAudiencia',
+  ...CAMPOS_DATA_COLUNA_DINAMICA,
+]);
+
+/** dd/mm/aaaa → timestamp (UTC local); vazio ou inválido → 0 (vai ao início na ordem crescente). */
+function timestampDataBr(val) {
+  const t = String(val ?? '').trim();
+  const m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!m) return 0;
+  const dd = Number(m[1]);
+  const mm = Number(m[2]);
+  const yyyy = Number(m[3]);
+  if (!Number.isFinite(dd) || !Number.isFinite(mm) || !Number.isFinite(yyyy)) return 0;
+  const d = new Date(yyyy, mm - 1, dd);
+  const x = d.getTime();
+  return Number.isNaN(x) ? 0 : x;
+}
+
 const COLUNAS = [
+  { id: 'codCliente', label: 'Cod. Cliente', minW: '96px' },
   { id: 'cliente', label: 'Cliente', minW: '180px' },
   { id: 'numeroProcesso', label: 'N.º Processo', minW: '200px' },
   { id: 'inRequerente', label: 'In Requerente/Recurso', minW: '140px' },
@@ -34,67 +81,241 @@ const COLUNAS = [
   { id: 'consultas', label: 'Consultas', minW: '80px' },
 ];
 
-const relatorioMock = [
-  { cliente: 'DAYANE FURTADO DE OLIVEIRA PRES', inRequerente: '', ultimoAndamento: 'PROCESSO RETORNOU AO PRIMEIRO GRAU', dataConsulta: '21/11/2023', proximaConsulta: '22/12/2023', observacaoProcesso: 'Constituído em KARLA', consultor: 'Karla Almeida', proc: '1', lmv: '27', fase: 'Em Andamento', observacaoFase: 'não precisa resumir, Kkkk', descricaoAcao: 'AÇÃO DE COBRANÇA', prazoFatal: '', competencia: '1ª VARAS CÍVEIS', dataAudiencia: '', horaAudiencia: '', cepReu: '77725000', inv: '27', consultas: '56' },
-  { cliente: 'SEZVE TELECOM EIRELI ME', inRequerente: 'REQUERIDO', ultimoAndamento: 'AGUARDANDO ASSINATURA DO ACORDO', dataConsulta: '07/02/2024', proximaConsulta: '08/03/2024', observacaoProcesso: 'Proc. 572 e Proc. 784', consultor: 'ITAMAR', proc: '527', lmv: '', fase: 'Aguardando Peticionamento', observacaoFase: 'entrou em contato via WHATSAPP', descricaoAcao: 'AÇÃO DE COBRANÇA', prazoFatal: '15/04/2024', competencia: '1ª JUIZADO ESPECIAL CÍVEL', dataAudiencia: '', horaAudiencia: '', cepReu: '', inv: '', consultas: '38' },
-  { cliente: 'ASPAROL - ASSOCIAÇÃO DOS MORADORES DO FAROL DO L', inRequerente: '', ultimoAndamento: 'TEM RELATÓRIO DE ATENDIMENTOS NA PASTA', dataConsulta: '29/03/2023', proximaConsulta: '28/04/2023', observacaoProcesso: '+ Proc. 522 e Proc. 588', consultor: 'DAAE', proc: '568', lmv: '21', fase: 'Em Andamento', observacaoFase: '', descricaoAcao: 'BUSCA E APREENSÃO', prazoFatal: '', competencia: '1ª VARA DA FAZENDA PÚBLICA ESTADUAL', dataAudiencia: '10/05/2023', horaAudiencia: '14:00', cepReu: '', inv: '18', consultas: '22' },
-  { cliente: 'CONDOMINIO PORTAL DOS YPES 3', inRequerente: 'REQUERIDO', ultimoAndamento: 'CITAÇÃO EFETIVADA', dataConsulta: '02/10/2025', proximaConsulta: '02/11/2025', observacaoProcesso: 'ITAMAR NÃO ESTAVA HABILITADO, NÃO CONST', consultor: 'Karla Almeida', proc: '42', lmv: '', fase: 'Em Andamento', observacaoFase: '', descricaoAcao: 'PEDIDO DE DANO MORAL POR CONSTRIÇÃO', prazoFatal: '', competencia: '2º JUIZADO ESPECIAL CÍVEL', dataAudiencia: '', horaAudiencia: '', cepReu: '', inv: '', consultas: '12' },
-  { cliente: 'FLAVIA GOMES SANTOS', inRequerente: '', ultimoAndamento: 'CONTESTAÇÃO APRESENTADA', dataConsulta: '15/09/2025', proximaConsulta: '15/10/2025', observacaoProcesso: '', consultor: 'ITAMAR', proc: '125', lmv: '', fase: 'Aguardando Peticionamento', observacaoFase: '', descricaoAcao: 'AÇÃO DE INDENIZAÇÃO', prazoFatal: '20/11/2025', competencia: '1ª JUIZADO ESPECIAL CÍVEL', dataAudiencia: '', horaAudiencia: '', cepReu: '74000000', inv: '', consultas: '8' },
-  { cliente: 'JAILIS PEREIRA DOURADO', inRequerente: 'REQUERIDO', ultimoAndamento: 'AUDIÊNCIA DESIGNADA', dataConsulta: '01/08/2025', proximaConsulta: '01/09/2025', observacaoProcesso: 'Proc. 784', consultor: 'Karla Almeida', proc: '89', lmv: '15', fase: 'Em Andamento', observacaoFase: '', descricaoAcao: 'AÇÃO DECLARATÓRIA DE NULIDADE', prazoFatal: '', competencia: '3º JUIZADO ESPECIAL CÍVEL', dataAudiencia: '15/12/2025', horaAudiencia: '09:00', cepReu: '', inv: '12', consultas: '45' },
-  { cliente: 'MARIA SILVA COSTA', inRequerente: '', ultimoAndamento: 'SENTENÇA PUBLICADA', dataConsulta: '12/06/2025', proximaConsulta: '12/07/2025', observacaoProcesso: '', consultor: 'ITAMAR', proc: '334', lmv: '', fase: 'Em Andamento', observacaoFase: '', descricaoAcao: 'AÇÃO DE COBRANÇA', prazoFatal: '', competencia: '1ª VARAS CÍVEIS', dataAudiencia: '', horaAudiencia: '', cepReu: '', inv: '', consultas: '31' },
-  { cliente: 'JOSÉ OLIVEIRA LIMA', inRequerente: 'REQUERIDO', ultimoAndamento: 'RECURSO INTERPOSTO', dataConsulta: '20/04/2025', proximaConsulta: '20/05/2025', observacaoProcesso: 'Proc. 522', consultor: 'DAAE', proc: '67', lmv: '8', fase: 'Aguardando Peticionamento', observacaoFase: '', descricaoAcao: 'AÇÃO DE DESPEJO', prazoFatal: '10/06/2025', competencia: '2º JUIZADO ESPECIAL CÍVEL', dataAudiencia: '', horaAudiencia: '', cepReu: '72800000', inv: '8', consultas: '19' },
-  { cliente: 'ANA PAULA FERREIRA', inRequerente: '', ultimoAndamento: 'CONCILIAÇÃO REALIZADA', dataConsulta: '05/03/2025', proximaConsulta: '05/04/2025', observacaoProcesso: '', consultor: 'Karla Almeida', proc: '201', lmv: '', fase: 'Em Andamento', observacaoFase: 'acordo firmado', descricaoAcao: 'AÇÃO DE INDENIZAÇÃO', prazoFatal: '', competencia: '1ª JUIZADO ESPECIAL CÍVEL', dataAudiencia: '', horaAudiencia: '', cepReu: '', inv: '', consultas: '27' },
-  { cliente: 'CARLOS EDUARDO SOUZA', inRequerente: '', ultimoAndamento: 'PETIÇÃO INICIAL PROTOCOLADA', dataConsulta: '18/01/2025', proximaConsulta: '18/02/2025', observacaoProcesso: '', consultor: 'ITAMAR', proc: '445', lmv: '', fase: 'Em Andamento', observacaoFase: '', descricaoAcao: 'AÇÃO DE USUCAPIÃO', prazoFatal: '28/02/2025', competencia: '1ª VARAS CÍVEIS', dataAudiencia: '', horaAudiencia: '', cepReu: '', inv: '', consultas: '5' },
-  { cliente: 'FERNANDA LOPES SANTOS', inRequerente: 'REQUERIDO', ultimoAndamento: 'INTIMAÇÃO PARA MANIFESTAÇÃO', dataConsulta: '10/11/2024', proximaConsulta: '10/12/2024', observacaoProcesso: 'Proc. 588', consultor: 'Karla Almeida', proc: '78', lmv: '12', fase: 'Aguardando Peticionamento', observacaoFase: '', descricaoAcao: 'AÇÃO DE DIVÓRCIO', prazoFatal: '', competencia: '1ª VARA DE FAMÍLIA', dataAudiencia: '20/01/2025', horaAudiencia: '10:30', cepReu: '', inv: '12', consultas: '41' },
-  { cliente: 'ROBERTO ALVES PEREIRA', inRequerente: '', ultimoAndamento: 'DISTRIBUIÇÃO POR SORTEIO', dataConsulta: '22/09/2024', proximaConsulta: '22/10/2024', observacaoProcesso: '', consultor: 'ITAMAR', proc: '156', lmv: '', fase: 'Em Andamento', observacaoFase: '', descricaoAcao: 'RECLAMATÓRIA TRABALHISTA', prazoFatal: '', competencia: 'VARA DO TRABALHO', dataAudiencia: '', horaAudiencia: '', cepReu: '75000000', inv: '', consultas: '33' },
-  { cliente: 'PATRICIA MENDES COSTA', inRequerente: '', ultimoAndamento: 'CITAÇÃO REALIZADA', dataConsulta: '05/08/2024', proximaConsulta: '05/09/2024', observacaoProcesso: '', consultor: 'DAAE', proc: '289', lmv: '', fase: 'Em Andamento', observacaoFase: '', descricaoAcao: 'AÇÃO DE ALIMENTOS', prazoFatal: '15/09/2024', competencia: '1ª VARA DE FAMÍLIA', dataAudiencia: '', horaAudiencia: '', cepReu: '', inv: '', consultas: '14' },
-  { cliente: 'VRV LTDA', inRequerente: 'REQUERIDO', ultimoAndamento: 'CONTESTAÇÃO JUNTADA', dataConsulta: '30/06/2024', proximaConsulta: '30/07/2024', observacaoProcesso: 'RENOVAR ALUGUEL', consultor: 'Karla Almeida', proc: '92', lmv: '5', fase: 'Em Andamento', observacaoFase: '', descricaoAcao: 'AÇÃO DE COBRANÇA', prazoFatal: '', competencia: '1ª JUIZADO ESPECIAL CÍVEL', dataAudiencia: '05/08/2024', horaAudiencia: '14:00', cepReu: '', inv: '5', consultas: '48' },
-  { cliente: 'MEGA ELITE VIGILANCIA E SEGURANCA', inRequerente: '', ultimoAndamento: 'AGUARDANDO CONCILIAÇÃO', dataConsulta: '12/05/2024', proximaConsulta: '12/06/2024', observacaoProcesso: '', consultor: 'ITAMAR', proc: '112', lmv: '', fase: 'Em Andamento', observacaoFase: '', descricaoAcao: 'AÇÃO DE COBRANÇA', prazoFatal: '', competencia: '2º JUIZADO ESPECIAL CÍVEL', dataAudiencia: '15/06/2024', horaAudiencia: '09:00', cepReu: '', inv: '', consultas: '24' },
-  { cliente: 'SSMA SEGURANÇA SAÚDE E MEIO AMBIENTE LTDA', inRequerente: '', ultimoAndamento: 'ACORDO HOMOLOGADO', dataConsulta: '28/04/2024', proximaConsulta: '28/05/2024', observacaoProcesso: '', consultor: 'Karla Almeida', proc: '67', lmv: '', fase: 'Em Andamento', observacaoFase: '', descricaoAcao: 'AÇÃO DE COBRANÇA', prazoFatal: '', competencia: '1ª JUIZADO ESPECIAL CÍVEL', dataAudiencia: '', horaAudiencia: '', cepReu: '', inv: '', consultas: '36' },
-  { cliente: 'PRISCILLA SILVA SIQUEIRA', inRequerente: 'REQUERIDO', ultimoAndamento: 'MANIFESTAÇÃO DO MP', dataConsulta: '15/03/2024', proximaConsulta: '15/04/2024', observacaoProcesso: '', consultor: 'DAAE', proc: '34', lmv: '9', fase: 'Aguardando Peticionamento', observacaoFase: '', descricaoAcao: 'RECLAMATÓRIA TRABALHISTA', prazoFatal: '25/04/2024', competencia: 'VARA DO TRABALHO', dataAudiencia: '', horaAudiencia: '', cepReu: '74010000', inv: '9', consultas: '11' },
-  { cliente: 'MARÍLIA GABRIELA DE OLIVEIRA DINIZ', inRequerente: '', ultimoAndamento: 'SESSÃO DE JULGAMENTO DESIGNADA', dataConsulta: '01/02/2024', proximaConsulta: '01/03/2024', observacaoProcesso: '', consultor: 'ITAMAR', proc: '178', lmv: '', fase: 'Em Andamento', observacaoFase: '', descricaoAcao: 'AÇÃO DE COBRANÇA', prazoFatal: '', competencia: '1ª VARAS CÍVEIS', dataAudiencia: '10/03/2024', horaAudiencia: '13:30', cepReu: '', inv: '', consultas: '29' },
-  { cliente: 'SE77E TELECOM EIRELI ME', inRequerente: '', ultimoAndamento: 'RECURSO CONHECIDO', dataConsulta: '20/01/2024', proximaConsulta: '20/02/2024', observacaoProcesso: '', consultor: 'Karla Almeida', proc: '223', lmv: '14', fase: 'Em Andamento', observacaoFase: '', descricaoAcao: 'AÇÃO DE COBRANÇA', prazoFatal: '', competencia: '1ª JUIZADO ESPECIAL CÍVEL', dataAudiencia: '', horaAudiencia: '', cepReu: '', inv: '14', consultas: '52' },
-  { cliente: 'YNAYRA M', inRequerente: 'REQUERIDO', ultimoAndamento: 'DESPACHO DO JUIZ', dataConsulta: '05/12/2023', proximaConsulta: '05/01/2024', observacaoProcesso: '', consultor: 'DAAE', proc: '89', lmv: '', fase: 'Aguardando Peticionamento', observacaoFase: '', descricaoAcao: 'AÇÃO DE COBRANÇA', prazoFatal: '15/01/2024', competencia: '2º JUIZADO ESPECIAL CÍVEL', dataAudiencia: '', horaAudiencia: '', cepReu: '', inv: '', consultas: '17' },
-  { cliente: 'MARCELO SOARES DE ALMEIDA', inRequerente: '', ultimoAndamento: 'PAUTA DE JULGAMENTO', dataConsulta: '18/11/2023', proximaConsulta: '18/12/2023', observacaoProcesso: '1 da pauta', consultor: 'ITAMAR', proc: '45', lmv: '', fase: 'Em Andamento', observacaoFase: '', descricaoAcao: 'AÇÃO DE COBRANÇA', prazoFatal: '', competencia: '1ª VARAS CÍVEIS', dataAudiencia: '20/12/2023', horaAudiencia: '09:00', cepReu: '', inv: '', consultas: '43' },
-];
+function carregarColunasVisiveisSalvas() {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(STORAGE_COLUNAS_RELATORIO);
+    if (!raw) return null;
+    const p = JSON.parse(raw);
+    return p && typeof p === 'object' ? p : null;
+  } catch {
+    return null;
+  }
+}
+
+function carregarLarguraUniformeSalva() {
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.localStorage.getItem(STORAGE_LARGURA_UNIFORME) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function carregarFiltroProcessoAtivoSalvo() {
+  if (typeof window === 'undefined') return 'todos';
+  try {
+    const raw = window.localStorage.getItem(STORAGE_FILTRO_PROCESSO_ATIVO);
+    return normalizarFiltroProcessoAtivo(raw);
+  } catch {
+    return 'todos';
+  }
+}
+
+function linhaPassaFiltroAtivo(row, filtro) {
+  const f = normalizarFiltroProcessoAtivo(filtro);
+  if (f === 'todos') return true;
+  const ativo = row.processoCadastroAtivo === true;
+  if (f === 'ativos') return ativo;
+  return !ativo;
+}
+
+function montarLinhasRelatorioBase() {
+  return getRelatorioProcessosMockLinhasBase().map((row, idx) => {
+    const enriched = enriquecerCamposRelatorioProcessos(
+      {
+        ...row,
+        codCliente: row.codCliente ?? String(idx + 1).padStart(8, '0'),
+        numeroProcesso: row.numeroProcesso ?? row.numeroProcessoNovo ?? gerarNumeroProcessoCnjMock(row, idx),
+      },
+      idx
+    );
+    return { ...enriched, __relatorioIdx: idx };
+  });
+}
+
+function carregarDadosRelatorioInicial() {
+  const n = RELATORIO_PROCESSOS_MOCK_COUNT;
+  if (typeof window === 'undefined') return montarLinhasRelatorioBase();
+  try {
+    const raw = window.localStorage.getItem(STORAGE_DADOS_RELATORIO);
+    if (!raw) return montarLinhasRelatorioBase();
+    const p = JSON.parse(raw);
+    if (!Array.isArray(p) || p.length !== n) return montarLinhasRelatorioBase();
+    const base = montarLinhasRelatorioBase();
+    return p.map((salvo, i) => ({
+      ...base[i],
+      ...salvo,
+      __relatorioIdx: i,
+      codCliente: base[i].codCliente,
+      proc: base[i].proc,
+    }));
+  } catch {
+    return montarLinhasRelatorioBase();
+  }
+}
+
+function carregarModoAlteracaoSalvo() {
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.localStorage.getItem(STORAGE_MODO_ALTERACAO) === '1';
+  } catch {
+    return false;
+  }
+}
 
 export function Relatorio() {
   const navigate = useNavigate();
   const [ordenarPor, setOrdenarPor] = useState(null);
   const [ordemAsc, setOrdemAsc] = useState(true);
-  const [dados] = useState(() =>
-    relatorioMock.map((row, idx) => ({
-      ...row,
-      // fallback para manter navegação funcional mesmo sem codCliente explícito no mock
-      codCliente: row.codCliente ?? String(idx + 1).padStart(8, '0'),
-      // CNJ: prioriza campo novo (API / mock explícito), senão gera determinístico
-      numeroProcesso: row.numeroProcesso ?? row.numeroProcessoNovo ?? gerarNumeroProcessoCnjMock(row, idx),
-    }))
-  );
+  const [painelColunasAberto, setPainelColunasAberto] = useState(false);
+  const painelColunasRef = useRef(null);
+  const [colunasVisiveis, setColunasVisiveis] = useState(() => {
+    const salvo = carregarColunasVisiveisSalvas();
+    const base = Object.fromEntries(COLUNAS.map((c) => [c.id, true]));
+    if (!salvo) return base;
+    return { ...base, ...Object.fromEntries(COLUNAS.map((c) => [c.id, salvo[c.id] !== false])) };
+  });
+  const [larguraUniforme, setLarguraUniforme] = useState(() => carregarLarguraUniformeSalva());
+  const [campoUltimoAndamento, setCampoUltimoAndamento] = useState(() => carregarCampoUltimoAndamentoSalvo());
+  const [filtroProcessoAtivo, setFiltroProcessoAtivo] = useState(() => carregarFiltroProcessoAtivoSalvo());
+
+  useEffect(() => {
+    salvarCampoUltimoAndamento(campoUltimoAndamento);
+  }, [campoUltimoAndamento]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(STORAGE_COLUNAS_RELATORIO, JSON.stringify(colunasVisiveis));
+    } catch {
+      /* ignore */
+    }
+  }, [colunasVisiveis]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(STORAGE_LARGURA_UNIFORME, larguraUniforme ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
+  }, [larguraUniforme]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(STORAGE_FILTRO_PROCESSO_ATIVO, normalizarFiltroProcessoAtivo(filtroProcessoAtivo));
+    } catch {
+      /* ignore */
+    }
+  }, [filtroProcessoAtivo]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(STORAGE_MODO_ALTERACAO, modoAlteracao ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
+  }, [modoAlteracao]);
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (!painelColunasAberto) return;
+      const el = painelColunasRef.current;
+      if (el && !el.contains(e.target)) setPainelColunasAberto(false);
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [painelColunasAberto]);
+
+  const colunasAtivas = useMemo(() => {
+    const list = COLUNAS.filter((c) => colunasVisiveis[c.id] !== false);
+    return list.length > 0 ? list : COLUNAS;
+  }, [colunasVisiveis]);
+
+  const colIdsRelatorio = useMemo(() => COLUNAS.map((c) => c.id), []);
+
+  const marcarTodasColunas = () => {
+    setColunasVisiveis(Object.fromEntries(COLUNAS.map((c) => [c.id, true])));
+  };
+
+  const desmarcarTodasColunas = () => {
+    const primeiro = COLUNAS[0]?.id;
+    if (!primeiro) return;
+    const next = Object.fromEntries(COLUNAS.map((c) => [c.id, c.id === primeiro]));
+    setColunasVisiveis(next);
+  };
+
+  const alternarColuna = (id) => {
+    setColunasVisiveis((prev) => {
+      const visivel = prev[id] !== false;
+      if (visivel) {
+        const outrasVisiveis = COLUNAS.filter((c) => c.id !== id && prev[c.id] !== false);
+        if (outrasVisiveis.length === 0) return prev;
+        return { ...prev, [id]: false };
+      }
+      return { ...prev, [id]: true };
+    });
+  };
+
+  const [dados, setDados] = useState(() => carregarDadosRelatorioInicial());
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(STORAGE_DADOS_RELATORIO, JSON.stringify(dados));
+    } catch {
+      /* ignore */
+    }
+  }, [dados]);
+
+  const atualizarCelulaRelatorio = (relIdx, chaveCampo, valor) => {
+    setDados((prev) => {
+      const next = [...prev];
+      const i = next.findIndex((r) => r.__relatorioIdx === relIdx);
+      if (i < 0) return prev;
+      next[i] = { ...next[i], [chaveCampo]: valor };
+      return next;
+    });
+  };
   const [filtrosPorColuna, setFiltrosPorColuna] = useState(() =>
     COLUNAS.reduce((acc, col) => ({ ...acc, [col.id]: '' }), {})
   );
 
   const dadosFiltrados = useMemo(() => {
-    return dados.filter((row) =>
-      COLUNAS.every((col) => {
+    return dados.filter((row) => {
+      if (!linhaPassaFiltroAtivo(row, filtroProcessoAtivo)) return false;
+      return COLUNAS.every((col) => {
         const filtro = String(filtrosPorColuna[col.id] ?? '').trim().toLowerCase();
         if (!filtro) return true;
-        const valor = String(row[col.id] ?? '').toLowerCase();
+        const chave =
+          col.id === 'ultimoAndamento' ? campoUltimoAndamento : col.id;
+        const valor = String(row[chave] ?? '').toLowerCase();
         return valor.includes(filtro);
-      })
-    );
-  }, [dados, filtrosPorColuna]);
+      });
+    });
+  }, [dados, filtrosPorColuna, campoUltimoAndamento, filtroProcessoAtivo]);
 
   const dadosOrdenados = useMemo(() => {
     if (!ordenarPor) return dadosFiltrados;
     return [...dadosFiltrados].sort((a, b) => {
-      const va = a[ordenarPor] ?? '';
-      const vb = b[ordenarPor] ?? '';
+      const chaveOrdenacao = ordenarPor === 'ultimoAndamento' ? campoUltimoAndamento : ordenarPor;
+
+      if (ordenarPor === 'ultimoAndamento' && COLUNAS_DATA_BR.has(chaveOrdenacao)) {
+        const ta = timestampDataBr(a[chaveOrdenacao]);
+        const tb = timestampDataBr(b[chaveOrdenacao]);
+        const cmp = ta === tb ? 0 : ta < tb ? -1 : 1;
+        return ordemAsc ? cmp : -cmp;
+      }
+      if (COLUNAS_DATA_BR.has(ordenarPor) && ordenarPor !== 'ultimoAndamento') {
+        const ta = timestampDataBr(a[ordenarPor]);
+        const tb = timestampDataBr(b[ordenarPor]);
+        const cmp = ta === tb ? 0 : ta < tb ? -1 : 1;
+        return ordemAsc ? cmp : -cmp;
+      }
+      const va = a[chaveOrdenacao] ?? '';
+      const vb = b[chaveOrdenacao] ?? '';
       const cmp = String(va).localeCompare(String(vb), undefined, { numeric: true });
       return ordemAsc ? cmp : -cmp;
     });
-  }, [dadosFiltrados, ordenarPor, ordemAsc]);
+  }, [dadosFiltrados, ordenarPor, ordemAsc, campoUltimoAndamento]);
 
   const toggleOrdenacao = (id) => {
     if (ordenarPor === id) setOrdemAsc((a) => !a);
@@ -107,34 +328,130 @@ export function Relatorio() {
   return (
     <div className="min-h-full bg-slate-200 flex flex-col">
       <div className="flex-1 min-h-0 p-3 flex flex-col">
-        <header className="mb-2">
+        <header className="mb-2 flex flex-wrap items-start justify-between gap-2">
           <h1 className="text-xl font-bold text-slate-800">Relatório</h1>
+          <div className="flex flex-wrap items-center gap-2">
+          <RelatorioPresetsPanel
+            colIds={colIdsRelatorio}
+            colunasVisiveis={colunasVisiveis}
+            setColunasVisiveis={setColunasVisiveis}
+            larguraUniforme={larguraUniforme}
+            setLarguraUniforme={setLarguraUniforme}
+            campoUltimoAndamento={campoUltimoAndamento}
+            setCampoUltimoAndamento={setCampoUltimoAndamento}
+            filtroProcessoAtivo={filtroProcessoAtivo}
+            setFiltroProcessoAtivo={setFiltroProcessoAtivo}
+            modoAlteracao={modoAlteracao}
+            setModoAlteracao={setModoAlteracao}
+          />
+          <div className="relative" ref={painelColunasRef}>
+            <button
+              type="button"
+              onClick={() => setPainelColunasAberto((v) => !v)}
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-teal-600 bg-white text-teal-800 text-sm font-medium hover:bg-teal-50 shadow-sm"
+              title="Escolher quais colunas exibir e largura"
+            >
+              <Columns3 className="w-4 h-4 shrink-0" aria-hidden />
+              Colunas
+            </button>
+            {painelColunasAberto ? (
+              <div className="absolute right-0 top-full mt-1 z-20 w-[min(100vw-2rem,22rem)] rounded-lg border border-slate-200 bg-white shadow-lg p-3 text-sm">
+                <p className="text-xs text-slate-600 mb-2">
+                  Marque as colunas que deseja ver na tabela. Use <strong>Marcar todas</strong> para exibir todas.
+                </p>
+                <div className="flex flex-wrap gap-2 mb-2">
+                  <button
+                    type="button"
+                    onClick={marcarTodasColunas}
+                    className="px-2 py-1 rounded border border-slate-300 bg-slate-50 text-xs hover:bg-slate-100"
+                  >
+                    Marcar todas
+                  </button>
+                  <button
+                    type="button"
+                    onClick={desmarcarTodasColunas}
+                    className="px-2 py-1 rounded border border-slate-300 bg-slate-50 text-xs hover:bg-slate-100"
+                    title="Mantém só a primeira coluna (Cod. Cliente)"
+                  >
+                    Só primeira coluna
+                  </button>
+                </div>
+                <label className="flex items-center gap-2 mb-2 cursor-pointer border-b border-slate-100 pb-2">
+                  <input
+                    type="checkbox"
+                    checked={larguraUniforme}
+                    onChange={(e) => setLarguraUniforme(e.target.checked)}
+                    className="rounded border-slate-300"
+                  />
+                  <span className="text-slate-800">Mesma largura em todas as colunas visíveis</span>
+                </label>
+                <div className="max-h-52 overflow-y-auto space-y-1.5 pr-1">
+                  {COLUNAS.map((col) => (
+                    <label
+                      key={col.id}
+                      className="flex items-center gap-2 cursor-pointer text-slate-700 hover:text-slate-900"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={colunasVisiveis[col.id] !== false}
+                        onChange={() => alternarColuna(col.id)}
+                        className="rounded border-slate-300"
+                      />
+                      <span className="truncate">{col.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
+          </div>
         </header>
         <div className="flex-1 min-h-0 bg-white rounded border border-slate-300 shadow-sm overflow-hidden flex flex-col">
           <div className="overflow-auto flex-1">
-            <table className="w-full text-sm border-collapse" style={{ minWidth: 'max-content' }}>
+            <table
+              className={`w-full text-sm border-collapse ${larguraUniforme ? 'table-fixed' : ''}`}
+              style={{ minWidth: larguraUniforme ? '100%' : 'max-content' }}
+            >
               <thead className="sticky top-0 z-10">
                 <tr className="bg-teal-700 text-white">
-                  {COLUNAS.map((col) => (
-                    <th
-                      key={col.id}
-                      className="text-left px-2 py-2 font-semibold whitespace-nowrap border-b border-r border-teal-600 last:border-r-0 cursor-pointer hover:bg-teal-600 select-none"
-                      style={{ minWidth: col.minW }}
-                      onClick={() => toggleOrdenacao(col.id)}
-                    >
-                      <span className="inline-flex items-center gap-1">
-                        {col.label}
-                        <ChevronDown className={`w-4 h-4 opacity-80 transition-transform ${ordenarPor === col.id && !ordemAsc ? 'rotate-180' : ''}`} />
-                      </span>
-                    </th>
-                  ))}
+                  {colunasAtivas.map((col) =>
+                    col.id === 'ultimoAndamento' ? (
+                      <RelatorioUltimoAndamentoHeader
+                        key={col.id}
+                        minWStyle={{ minWidth: col.minW }}
+                        larguraUniforme={larguraUniforme}
+                        colunasAtivasLength={colunasAtivas.length}
+                        options={CAMPOS_OPCOES_ULTIMO_ANDAMENTO}
+                        selectedFieldKey={campoUltimoAndamento}
+                        onSelectField={setCampoUltimoAndamento}
+                        onSort={() => toggleOrdenacao('ultimoAndamento')}
+                        ordenarAtivo={ordenarPor === 'ultimoAndamento'}
+                        ordemAsc={ordemAsc}
+                        modoAlteracao={modoAlteracao}
+                      />
+                    ) : (
+                      <th
+                        key={col.id}
+                        className={`text-left px-2 py-2 font-semibold whitespace-nowrap border-b border-r border-teal-600 last:border-r-0 cursor-pointer hover:bg-teal-600 select-none ${
+                          modoAlteracao ? 'text-red-200' : 'text-white'
+                        }`}
+                        style={larguraUniforme ? { width: `${100 / colunasAtivas.length}%`, minWidth: 0 } : { minWidth: col.minW }}
+                        onClick={() => toggleOrdenacao(col.id)}
+                      >
+                        <span className="inline-flex items-center gap-1">
+                          {col.label}
+                          <ChevronDown className={`w-4 h-4 opacity-80 transition-transform ${ordenarPor === col.id && !ordemAsc ? 'rotate-180' : ''}`} />
+                        </span>
+                      </th>
+                    )
+                  )}
                 </tr>
                 <tr className="bg-slate-100">
-                  {COLUNAS.map((col) => (
+                  {colunasAtivas.map((col) => (
                     <th
                       key={`${col.id}-filtro`}
                       className="px-1.5 py-1 border-b border-r border-slate-300 last:border-r-0"
-                      style={{ minWidth: col.minW }}
+                      style={larguraUniforme ? { width: `${100 / colunasAtivas.length}%`, minWidth: 0 } : { minWidth: col.minW }}
                     >
                       <input
                         type="text"
@@ -146,7 +463,11 @@ export function Relatorio() {
                           }))
                         }
                         placeholder="Filtrar..."
-                        className="w-full px-2 py-1 border border-slate-300 rounded text-xs text-slate-700 bg-white"
+                        className={`w-full px-2 py-1 border rounded text-xs bg-white ${
+                          modoAlteracao
+                            ? 'border-red-200 text-red-700 placeholder:text-red-300'
+                            : 'border-slate-300 text-slate-700'
+                        }`}
                       />
                     </th>
                   ))}
@@ -155,34 +476,86 @@ export function Relatorio() {
               <tbody>
                 {dadosOrdenados.length === 0 ? (
                   <tr>
-                    <td colSpan={COLUNAS.length} className="px-3 py-6 text-center text-slate-500">
+                    <td colSpan={colunasAtivas.length} className="px-3 py-6 text-center text-slate-500">
                       Nenhum resultado para os filtros aplicados.
                     </td>
                   </tr>
                 ) : (
                   dadosOrdenados.map((row, idx) => (
                     <tr
-                      key={idx}
-                      className={`border-b border-slate-200 hover:bg-slate-50 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'} cursor-pointer`}
-                      title="Duplo clique: abrir processo"
-                      onDoubleClick={() =>
+                      key={row.__relatorioIdx ?? idx}
+                      className={`border-b border-slate-200 hover:bg-slate-50 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'} ${
+                        modoAlteracao ? 'cursor-default' : 'cursor-pointer'
+                      }`}
+                      title={
+                        modoAlteracao
+                          ? 'Modo alteração: edite as células (texto em vermelho). Cod. Cliente e Proc. são fixos.'
+                          : 'Duplo clique: abrir processo'
+                      }
+                      onDoubleClick={() => {
+                        if (modoAlteracao) return;
                         navigate('/processos', {
                           state: {
                             codCliente: String(row.codCliente ?? ''),
                             proc: String(row.proc ?? ''),
                           },
-                        })
-                      }
+                        });
+                      }}
                     >
-                      {COLUNAS.map((col) => (
-                        <td
-                          key={col.id}
-                          className="px-2 py-1.5 border-r border-slate-200 last:border-r-0 text-slate-800"
-                          style={{ minWidth: col.minW }}
-                        >
-                          {row[col.id] ?? ''}
-                        </td>
-                      ))}
+                      {colunasAtivas.map((col) => {
+                        const chaveValor = col.id === 'ultimoAndamento' ? campoUltimoAndamento : col.id;
+                        const textoCelula = row[chaveValor] ?? '';
+                        const valorStr = String(textoCelula);
+                        const soLeitura = COLUNAS_RELATORIO_SO_LEITURA.has(col.id) || !modoAlteracao;
+
+                        if (!modoAlteracao) {
+                          return (
+                            <td
+                              key={col.id}
+                              className={`px-2 py-1.5 border-r border-slate-200 last:border-r-0 text-slate-800 ${
+                                col.id === 'codCliente' ? 'tabular-nums' : ''
+                              } ${larguraUniforme ? 'truncate max-w-0' : ''}`}
+                              style={larguraUniforme ? { width: `${100 / colunasAtivas.length}%`, minWidth: 0 } : { minWidth: col.minW }}
+                              title={larguraUniforme ? valorStr : undefined}
+                            >
+                              {valorStr}
+                            </td>
+                          );
+                        }
+
+                        if (soLeitura) {
+                          return (
+                            <td
+                              key={col.id}
+                              className={`px-2 py-1.5 border-r border-slate-200 last:border-r-0 text-red-600 font-semibold tabular-nums ${
+                                col.id === 'codCliente' ? '' : ''
+                              } ${larguraUniforme ? 'truncate max-w-0' : ''}`}
+                              style={larguraUniforme ? { width: `${100 / colunasAtivas.length}%`, minWidth: 0 } : { minWidth: col.minW }}
+                              title={larguraUniforme ? valorStr : undefined}
+                            >
+                              {valorStr}
+                            </td>
+                          );
+                        }
+
+                        return (
+                          <td
+                            key={col.id}
+                            className={`p-0 border-r border-slate-200 last:border-r-0 align-stretch ${larguraUniforme ? 'max-w-0' : ''}`}
+                            style={larguraUniforme ? { width: `${100 / colunasAtivas.length}%`, minWidth: 0 } : { minWidth: col.minW }}
+                          >
+                            <input
+                              type="text"
+                              value={valorStr}
+                              onChange={(e) =>
+                                atualizarCelulaRelatorio(row.__relatorioIdx, chaveValor, e.target.value)
+                              }
+                              className="w-full min-w-0 bg-transparent px-2 py-1.5 text-sm text-red-600 outline-none border-0 focus:ring-2 focus:ring-inset focus:ring-red-200"
+                              aria-label={`${col.label} — linha ${(row.__relatorioIdx ?? idx) + 1}`}
+                            />
+                          </td>
+                        );
+                      })}
                     </tr>
                   ))
                 )}

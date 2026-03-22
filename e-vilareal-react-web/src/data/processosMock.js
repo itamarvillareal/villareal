@@ -6,7 +6,8 @@ const pad3 = (n) => String(n).padStart(3, '0');
 const pad2 = (n) => String(n).padStart(2, '0');
 const pad8 = (n) => String(n).padStart(8, '0');
 
-const NOMES_CLIENTE = [
+/** Nomes “autor” no mock 10×10 (aba Processos). O nome na aba Clientes vem do cadastro de pessoas. */
+export const NOMES_CLIENTE_MOCK_10 = [
   'ALFA COMÉRCIO LTDA',
   'BETA SERVIÇOS EIRELI',
   'GAMMA INDÚSTRIA S/A',
@@ -18,6 +19,8 @@ const NOMES_CLIENTE = [
   'IOTA IMÓVEIS LTDA',
   'KAPPA ALIMENTOS LTDA',
 ];
+
+const NOMES_CLIENTE = NOMES_CLIENTE_MOCK_10;
 
 function autorNome(clienteNum) {
   return `${NOMES_CLIENTE[(clienteNum - 1) % NOMES_CLIENTE.length]} (CLIENTE ${pad3(clienteNum)})`;
