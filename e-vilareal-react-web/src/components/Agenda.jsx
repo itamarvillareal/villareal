@@ -21,6 +21,7 @@ import {
   criarUsuarioRegistroMinimo,
 } from '../data/agendaPersistenciaData';
 import { buscarProcessoUnicoNaBasePorTextoAgenda } from '../data/processosHistoricoData';
+import { resolverAliasHojeEmTexto } from '../services/hjDateAliasService.js';
 import { getNomeExibicaoUsuario } from '../data/usuarioDisplayHelpers.js';
 
 /** Retorna string DD/MM/YYYY para dia/mês/ano */
@@ -429,7 +430,9 @@ function PainelCalendario({
 
   function parseDataCompleta(str) {
     const s = String(str ?? '').trim();
-    const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(s);
+    const resolved = resolverAliasHojeEmTexto(str, 'br');
+    const toParse = resolved ?? s;
+    const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(toParse);
     if (!m) return null;
     const dd = Number(m[1]);
     const mm = Number(m[2]);
@@ -538,12 +541,15 @@ function PainelCalendario({
           type="text"
           inputMode="numeric"
           value={textoDataCompleta}
-          onChange={(e) => setTextoDataCompleta(e.target.value)}
+          onChange={(e) => {
+            const v = e.target.value;
+            setTextoDataCompleta(resolverAliasHojeEmTexto(v, 'br') ?? v);
+          }}
           onBlur={aplicarTextoData}
           onKeyDown={(e) => {
             if (e.key === 'Enter') aplicarTextoData();
           }}
-          placeholder="dd/mm/aaaa"
+          placeholder="dd/mm/aaaa ou hj"
           className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
         />
       </div>

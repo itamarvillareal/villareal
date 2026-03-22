@@ -1,11 +1,10 @@
 /**
- * Linhas base do Relatório Processos: mesmos vínculos (cod. cliente + proc) da grade 10×10
- * de {@link ../processosMock.js} e {@link ./processosDadosRelatorio.js}, com nome de **Cliente**
- * igual ao da aba Clientes (cadastro de pessoas via clientesCadastradosMock).
+ * Linhas base do Relatório Processos: todos os códigos em {@link CLIENTE_PARA_PESSOA} × processos 1…10,
+ * mesma fonte que a grade do Cadastro de Clientes / Processos ({@link getDadosProcessoClienteUnificado}).
  */
-import { getMockProcesso10x10 } from './processosMock.js';
+import { getDadosProcessoClienteUnificado } from './processoClienteProcUnificado.js';
 import { gerarMockProcesso } from './processosDadosRelatorio.js';
-import { getIdPessoaPorCodCliente } from './clientesCadastradosMock.js';
+import { CLIENTE_PARA_PESSOA, getIdPessoaPorCodCliente } from './clientesCadastradosMock.js';
 import { getPessoaPorId } from './cadastroPessoasMock.js';
 import { processosClienteMock } from './mockData.js';
 
@@ -35,32 +34,45 @@ function dataBrDeslocada(c, p, diasExtra) {
   return `${dd}/${mm}/${yyyy}`;
 }
 
-/**
- * Pares (cliente, proc) dentro do mock 10×10 — 21 linhas para manter densidade semelhante ao mock antigo.
- * 10× proc 1 + 10× proc 2 + (1,3).
- */
+/** Quantidade de processos por cliente no relatório (= lista mock de 10 descrições no cadastro). */
+const PROCESSOS_POR_CLIENTE_RELATORIO = 10;
+
+function listarCodigosClientesMockOrdenados() {
+  return Object.keys(CLIENTE_PARA_PESSOA)
+    .map((k) => Number(k))
+    .filter((n) => Number.isFinite(n) && n >= 1)
+    .sort((a, b) => a - b);
+}
+
 function paresRelatorioProcessos() {
-  const pairs = [];
-  for (let c = 1; c <= 10; c++) pairs.push([c, 1]);
-  for (let c = 1; c <= 10; c++) pairs.push([c, 2]);
-  pairs.push([1, 3]);
-  return pairs;
+  const out = [];
+  const cods = listarCodigosClientesMockOrdenados();
+  for (const c of cods) {
+    for (let p = 1; p <= PROCESSOS_POR_CLIENTE_RELATORIO; p++) {
+      out.push([c, p]);
+    }
+  }
+  return out;
 }
 
 export const RELATORIO_PROCESSOS_MOCK_COUNT = paresRelatorioProcessos().length;
 
 /**
- * Uma linha “crua” antes de {@link enriquecerCamposRelatorioProcessos} (cliente = aba Clientes; demais campos alinhados ao Processo).
+ * Uma linha “crua” antes de {@link enriquecerCamposRelatorioProcessos} (cliente = aba Clientes; demais alinhados ao processo unificado).
  */
 export function getRelatorioProcessosMockLinhasBase() {
   const pairs = paresRelatorioProcessos();
   return pairs.map(([c, p], idx) => {
-    const mock10 = getMockProcesso10x10(c, p);
+    const u = getDadosProcessoClienteUnificado(c, p);
     const m = gerarMockProcesso(c, p);
-    if (!mock10) return null;
+    if (!u) return null;
 
     const descricao =
-      processosClienteMock[p - 1]?.descricao?.trim() || String(m.naturezaAcao ?? '').trim() || 'AÇÃO (MOCK)';
+      processosClienteMock[p - 1]?.descricao?.trim() ||
+      String(m.naturezaAcao ?? u.naturezaAcao ?? '').trim() ||
+      'AÇÃO (MOCK)';
+
+    const parteSlice = String(u.parteCliente ?? '').slice(0, 40);
 
     const consultor = CONSULTORES[(c + p + idx) % CONSULTORES.length];
     const temPrazo = (c + p + idx) % 4 === 0;
@@ -70,12 +82,12 @@ export function getRelatorioProcessosMockLinhasBase() {
       cliente: getNomeClienteCadastroPorCodigo(c),
       codCliente: pad8(c),
       proc: String(p),
-      numeroProcesso: mock10.numeroProcessoNovo,
+      numeroProcesso: u.processoNovo,
       inRequerente: (c + p + idx) % 4 === 1 ? 'REQUERIDO' : '',
-      ultimoAndamento: `ANDAMENTO — ${String(m.naturezaAcao ?? 'MOCK').slice(0, 80)}`,
+      ultimoAndamento: `ANDAMENTO — ${String(m.naturezaAcao ?? u.naturezaAcao ?? 'MOCK').slice(0, 80)}`,
       dataConsulta: dataBrDeslocada(c, p, 0),
       proximaConsulta: dataBrDeslocada(c, p, 28),
-      observacaoProcesso: `Proc. cadastro ${pad8(c)} / ${p} · ${mock10.parteCliente.slice(0, 40)}…`,
+      observacaoProcesso: `Proc. cadastro ${pad8(c)} / ${p}${parteSlice ? ` · ${parteSlice}…` : ''}`,
       consultor,
       lmv: String((c * 3 + p * 5) % 40 || 1),
       fase: m.faseSelecionada || 'Em Andamento',

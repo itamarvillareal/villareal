@@ -12,6 +12,7 @@ import autoTable from 'jspdf-autotable';
 import { baixarBlobDocx, gerarDocumentoListaDebitosWord } from '../utils/gerarDocumentoListaDebitosWord';
 import { INDICES_CALCULO, PERIODICIDADE_OPCOES, MODELOS_LISTA_DEBITOS } from '../data/calculosIndices.js';
 import { loadConfigCalculoCliente, mergeConfigPainelCalculo } from '../data/clienteConfigCalculoStorage.js';
+import { resolverAliasHojeEmTexto } from '../services/hjDateAliasService.js';
 
 const TABS = ['Títulos', 'Custas Judiciais', 'Parcelamento', 'Pagamento', 'Honorários', 'Descrição dos Valores'];
 
@@ -177,7 +178,9 @@ function calcularParcelaPrecoMensalPrice(pv, taxaPercentAoMes, nParcelas) {
 
 /** dd/mm/yyyy → Date local ou null (mesma regra do parseDateBR da tela). */
 function parseDateBRModulo(str) {
-  const s = String(str ?? '').trim();
+  let s = String(str ?? '').trim();
+  const alias = resolverAliasHojeEmTexto(s, 'br');
+  if (alias) s = alias;
   if (!s || s.length < 10) return null;
   const [dd, mm, yyyy] = s.split('/');
   const d = new Date(Number(yyyy), Number(mm) - 1, Number(dd));
@@ -197,7 +200,9 @@ function formatDateBRFromDate(d) {
  * Evita depender de &lt;input type="date"&gt;, que em muitos navegadores mostra "dd/mm/aaaa" quando vazio.
  */
 function normalizarTextoDataBRparaSalvar(s) {
-  const t = String(s ?? '').trim();
+  let t = String(s ?? '').trim();
+  const alias = resolverAliasHojeEmTexto(t, 'br');
+  if (alias) t = alias;
   if (!t) return '';
   const d0 = parseDateBRModulo(t);
   if (d0 && !Number.isNaN(d0.getTime())) return formatDateBRFromDate(d0);
@@ -964,7 +969,9 @@ export function Calculos() {
   }
 
   function parseDateBR(str) {
-    const s = String(str ?? '').trim();
+    let s = String(str ?? '').trim();
+    const alias = resolverAliasHojeEmTexto(s, 'br');
+    if (alias) s = alias;
     if (!s || s.length < 10) return null;
     const [dd, mm, yyyy] = s.split('/');
     const d = new Date(Number(yyyy), Number(mm) - 1, Number(dd));
@@ -1672,9 +1679,11 @@ export function Calculos() {
                               placeholder=""
                               autoComplete="off"
                               value={row.dataVencimento || ''}
-                              onChange={(e) =>
-                                atualizarTituloNaRodada(globalIdx, { dataVencimento: e.target.value })
-                              }
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                const r = resolverAliasHojeEmTexto(v, 'br');
+                                atualizarTituloNaRodada(globalIdx, { dataVencimento: r ?? v });
+                              }}
                               onBlur={(e) =>
                                 atualizarTituloNaRodada(globalIdx, {
                                   dataVencimento: normalizarTextoDataBRparaSalvar(e.target.value),
@@ -1913,9 +1922,11 @@ export function Calculos() {
                                   placeholder=""
                                   autoComplete="off"
                                   value={row.dataVencimento || ''}
-                                  onChange={(e) =>
-                                    atualizarParcelaNaRodada(globalIdx, { dataVencimento: e.target.value })
-                                  }
+                                  onChange={(e) => {
+                                    const v = e.target.value;
+                                    const r = resolverAliasHojeEmTexto(v, 'br');
+                                    atualizarParcelaNaRodada(globalIdx, { dataVencimento: r ?? v });
+                                  }}
                                   onBlur={(e) =>
                                     atualizarParcelaNaRodada(globalIdx, {
                                       dataVencimento: normalizarTextoDataBRparaSalvar(e.target.value),
@@ -2096,9 +2107,11 @@ export function Calculos() {
                                 placeholder=""
                                 autoComplete="off"
                                 value={row.dataVencimento || ''}
-                                onChange={(e) =>
-                                  atualizarParcelaNaRodada(globalIdx, { dataVencimento: e.target.value })
-                                }
+                                onChange={(e) => {
+                                  const v = e.target.value;
+                                  const r = resolverAliasHojeEmTexto(v, 'br');
+                                  atualizarParcelaNaRodada(globalIdx, { dataVencimento: r ?? v });
+                                }}
                                 onBlur={(e) =>
                                   atualizarParcelaNaRodada(globalIdx, {
                                     dataVencimento: normalizarTextoDataBRparaSalvar(e.target.value),
@@ -2164,9 +2177,11 @@ export function Calculos() {
                                 placeholder=""
                                 autoComplete="off"
                                 value={row.dataPagamento ?? ''}
-                                onChange={(e) =>
-                                  atualizarParcelaNaRodada(globalIdx, { dataPagamento: e.target.value })
-                                }
+                                onChange={(e) => {
+                                  const v = e.target.value;
+                                  const r = resolverAliasHojeEmTexto(v, 'br');
+                                  atualizarParcelaNaRodada(globalIdx, { dataPagamento: r ?? v });
+                                }}
                                 onBlur={(e) =>
                                   atualizarParcelaNaRodada(globalIdx, {
                                     dataPagamento: normalizarTextoDataBRparaSalvar(e.target.value),
@@ -2576,7 +2591,16 @@ export function Calculos() {
               </div>
               <div>
                 <label className="block text-xs font-medium text-slate-700 mb-0.5">Data do Cálculo:</label>
-                <input type="text" value={dataCalculo} onChange={(e) => setDataCalculo(e.target.value)} className={inputClass} />
+                <input
+                  type="text"
+                  value={dataCalculo}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setDataCalculo(resolverAliasHojeEmTexto(v, 'br') ?? v);
+                  }}
+                  placeholder="dd/mm/aaaa ou hj"
+                  className={inputClass}
+                />
               </div>
               <div>
                 <label className="block text-xs font-medium text-slate-700 mb-0.5">Juros:</label>
@@ -2776,7 +2800,11 @@ export function Calculos() {
                     placeholder=""
                     autoComplete="off"
                     value={formDatasEspeciais.dataInicialAtual || ''}
-                    onChange={(e) => setFormDatasEspeciais((prev) => ({ ...prev, dataInicialAtual: e.target.value }))}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      const r = resolverAliasHojeEmTexto(v, 'br');
+                      setFormDatasEspeciais((prev) => ({ ...prev, dataInicialAtual: r ?? v }));
+                    }}
                     onBlur={(e) =>
                       setFormDatasEspeciais((prev) => ({
                         ...prev,
@@ -2794,7 +2822,11 @@ export function Calculos() {
                     placeholder=""
                     autoComplete="off"
                     value={formDatasEspeciais.dataInicialJuros || ''}
-                    onChange={(e) => setFormDatasEspeciais((prev) => ({ ...prev, dataInicialJuros: e.target.value }))}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      const r = resolverAliasHojeEmTexto(v, 'br');
+                      setFormDatasEspeciais((prev) => ({ ...prev, dataInicialJuros: r ?? v }));
+                    }}
                     onBlur={(e) =>
                       setFormDatasEspeciais((prev) => ({
                         ...prev,
@@ -2812,7 +2844,11 @@ export function Calculos() {
                     placeholder=""
                     autoComplete="off"
                     value={formDatasEspeciais.dataFinalAtual || ''}
-                    onChange={(e) => setFormDatasEspeciais((prev) => ({ ...prev, dataFinalAtual: e.target.value }))}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      const r = resolverAliasHojeEmTexto(v, 'br');
+                      setFormDatasEspeciais((prev) => ({ ...prev, dataFinalAtual: r ?? v }));
+                    }}
                     onBlur={(e) =>
                       setFormDatasEspeciais((prev) => ({
                         ...prev,
@@ -2830,7 +2866,11 @@ export function Calculos() {
                     placeholder=""
                     autoComplete="off"
                     value={formDatasEspeciais.dataFinalJuros || ''}
-                    onChange={(e) => setFormDatasEspeciais((prev) => ({ ...prev, dataFinalJuros: e.target.value }))}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      const r = resolverAliasHojeEmTexto(v, 'br');
+                      setFormDatasEspeciais((prev) => ({ ...prev, dataFinalJuros: r ?? v }));
+                    }}
                     onBlur={(e) =>
                       setFormDatasEspeciais((prev) => ({
                         ...prev,

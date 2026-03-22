@@ -1,7 +1,7 @@
 /**
  * Presets nomeados do Relatório Processos (colunas visíveis, largura uniforme, campo da coluna dinâmica).
  */
-import { CAMPO_PADRAO_ULTIMO_ANDAMENTO, normalizarCampoColunaDinamica } from './relatorioProcessosColunaDinamica.js';
+import { normalizarCampoColunaDinamica } from './relatorioProcessosColunaDinamica.js';
 
 const STORAGE_PRESETS = 'vilareal.relatorioProcessos.presets.v1';
 const MAX_PRESETS = 50;
@@ -12,7 +12,7 @@ const MAX_PRESETS = 50;
  * @typedef {{
  *   colunasVisiveis: Record<string, boolean>,
  *   larguraUniforme: boolean,
- *   campoUltimoAndamento: string,
+ *   campoPorColuna: Record<string, string>,
  *   filtroProcessoAtivo: FiltroProcessoAtivoRelatorio,
  *   modoAlteracao: boolean,
  * }} RelatorioPresetConfig
@@ -42,17 +42,25 @@ export function mesclarColunasVisiveisPreset(colIds, salvo) {
  * Snapshot apenas com ids conhecidos da grade (evita lixo no JSON).
  */
 export function criarSnapshotConfiguracaoRelatorio(
-  { colunasVisiveis, larguraUniforme, campoUltimoAndamento, filtroProcessoAtivo, modoAlteracao },
+  { colunasVisiveis, larguraUniforme, campoPorColuna, filtroProcessoAtivo, modoAlteracao },
   colIds
 ) {
   const v = {};
   for (const id of colIds) {
     v[id] = colunasVisiveis[id] !== false;
   }
+  const campos = {};
+  for (const id of colIds) {
+    if (campoPorColuna && campoPorColuna[id] != null) {
+      campos[id] = normalizarCampoColunaDinamica(campoPorColuna[id]);
+    } else {
+      campos[id] = id;
+    }
+  }
   return {
     colunasVisiveis: v,
     larguraUniforme: !!larguraUniforme,
-    campoUltimoAndamento: normalizarCampoColunaDinamica(campoUltimoAndamento),
+    campoPorColuna: campos,
     filtroProcessoAtivo: normalizarFiltroProcessoAtivo(filtroProcessoAtivo),
     modoAlteracao: !!modoAlteracao,
   };
@@ -63,7 +71,7 @@ export function configRelatorioPadrao(colIds) {
   return {
     colunasVisiveis: Object.fromEntries(colIds.map((id) => [id, true])),
     larguraUniforme: false,
-    campoUltimoAndamento: CAMPO_PADRAO_ULTIMO_ANDAMENTO,
+    campoPorColuna: Object.fromEntries(colIds.map((id) => [id, id])),
     filtroProcessoAtivo: 'todos',
     modoAlteracao: false,
   };
@@ -131,10 +139,18 @@ export function excluirPresetRelatorio(id) {
 export function aplicarPresetRelatorio(preset, colIds) {
   if (!preset?.config) return null;
   const c = preset.config;
+  const baseCampo = Object.fromEntries(colIds.map((id) => [id, id]));
+  if (c.campoPorColuna && typeof c.campoPorColuna === 'object') {
+    for (const id of colIds) {
+      if (c.campoPorColuna[id] != null) baseCampo[id] = normalizarCampoColunaDinamica(c.campoPorColuna[id]);
+    }
+  } else if (c.campoUltimoAndamento != null) {
+    baseCampo.ultimoAndamento = normalizarCampoColunaDinamica(c.campoUltimoAndamento);
+  }
   return {
     colunasVisiveis: mesclarColunasVisiveisPreset(colIds, c.colunasVisiveis),
     larguraUniforme: !!c.larguraUniforme,
-    campoUltimoAndamento: normalizarCampoColunaDinamica(c.campoUltimoAndamento),
+    campoPorColuna: baseCampo,
     filtroProcessoAtivo: normalizarFiltroProcessoAtivo(c.filtroProcessoAtivo),
     modoAlteracao: !!c.modoAlteracao,
   };

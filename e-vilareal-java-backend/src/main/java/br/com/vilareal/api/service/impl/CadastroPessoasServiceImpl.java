@@ -1,5 +1,6 @@
 package br.com.vilareal.api.service.impl;
 
+import br.com.vilareal.api.dto.CadastroPessoaResponsavelResumo;
 import br.com.vilareal.api.dto.CadastroPessoasRequest;
 import br.com.vilareal.api.dto.CadastroPessoasResponse;
 import br.com.vilareal.api.entity.CadastroPessoa;
@@ -28,9 +29,10 @@ public class CadastroPessoasServiceImpl implements CadastroPessoasService {
     public CadastroPessoasResponse criar(CadastroPessoasRequest request) {
         validarEmailUnico(request.getEmail(), null);
         validarCpfUnico(request.getCpf(), null);
-        CadastroPessoa entity = toEntity(request);
+        validarResponsavel(null, request.getResponsavelId());
+        CadastroPessoa entity = toEntity(request, null);
         entity = repository.save(entity);
-        return toResponse(entity);
+        return toResponse(recarregarComResponsavel(entity.getId()));
     }
 
     @Override
@@ -39,9 +41,14 @@ public class CadastroPessoasServiceImpl implements CadastroPessoasService {
         CadastroPessoa entity = buscarEntidadePorId(id);
         validarEmailUnico(request.getEmail(), id);
         validarCpfUnico(request.getCpf(), id);
+        validarResponsavel(id, request.getResponsavelId());
         atualizarEntidade(entity, request);
         entity = repository.save(entity);
-        return toResponse(entity);
+        return toResponse(recarregarComResponsavel(entity.getId()));
+    }
+
+    private CadastroPessoa recarregarComResponsavel(Long id) {
+        return repository.findById(id).orElseThrow(() -> new CadastroPessoaNaoEncontradaException(id));
     }
 
     @Override
@@ -94,18 +101,42 @@ public class CadastroPessoasServiceImpl implements CadastroPessoasService {
         if (emUso) throw new RegraNegocioException("Já existe cadastro com o CPF informado.");
     }
 
+    /**
+     * Garante existência, não auto-referência e ausência de ciclo na cadeia de responsáveis.
+     */
+    private void validarResponsavel(Long idEditado, Long responsavelId) {
+        if (responsavelId == null) return;
+        if (idEditado != null && responsavelId.equals(idEditado)) {
+            throw new RegraNegocioException("A pessoa não pode ser responsável por si mesma.");
+        }
+        repository.findById(responsavelId)
+                .orElseThrow(() -> new RegraNegocioException("Responsável não encontrado."));
+
+        Long cur = responsavelId;
+        int depth = 0;
+        while (cur != null && depth++ < 64) {
+            if (idEditado != null && cur.equals(idEditado)) {
+                throw new RegraNegocioException("Vínculo de responsável inválido: referência circular na cadeia.");
+            }
+            CadastroPessoa p = repository.findById(cur)
+                    .orElseThrow(() -> new RegraNegocioException("Responsável não encontrado."));
+            cur = p.getResponsavel() != null ? p.getResponsavel().getId() : null;
+        }
+    }
+
     private static String normalizarCpf(String cpf) {
         return cpf == null ? null : cpf.replaceAll("\\D", "");
     }
 
-    private CadastroPessoa toEntity(CadastroPessoasRequest request) {
-        CadastroPessoa e = new CadastroPessoa();
+    private CadastroPessoa toEntity(CadastroPessoasRequest request, CadastroPessoa existente) {
+        CadastroPessoa e = existente != null ? existente : new CadastroPessoa();
         e.setNome(request.getNome());
         e.setEmail(request.getEmail());
         e.setCpf(normalizarCpf(request.getCpf()));
         e.setTelefone(request.getTelefone());
         e.setDataNascimento(request.getDataNascimento());
         e.setAtivo(request.getAtivo() != null ? request.getAtivo() : true);
+        aplicarResponsavelNaEntidade(e, request.getResponsavelId());
         return e;
     }
 
@@ -116,6 +147,17 @@ public class CadastroPessoasServiceImpl implements CadastroPessoasService {
         entity.setTelefone(request.getTelefone());
         entity.setDataNascimento(request.getDataNascimento());
         if (request.getAtivo() != null) entity.setAtivo(request.getAtivo());
+        aplicarResponsavelNaEntidade(entity, request.getResponsavelId());
+    }
+
+    private void aplicarResponsavelNaEntidade(CadastroPessoa entity, Long responsavelId) {
+        if (responsavelId == null) {
+            entity.setResponsavel(null);
+            return;
+        }
+        CadastroPessoa ref = repository.findById(responsavelId)
+                .orElseThrow(() -> new RegraNegocioException("Responsável não encontrado."));
+        entity.setResponsavel(ref);
     }
 
     private CadastroPessoasResponse toResponse(CadastroPessoa e) {
@@ -129,6 +171,31 @@ public class CadastroPessoasServiceImpl implements CadastroPessoasService {
         r.setAtivo(e.getAtivo());
         r.setDataCriacao(e.getDataCriacao());
         r.setDataAtualizacao(e.getDataAtualizacao());
+        if (e.getResponsavel() != null) {
+            r.setResponsavelId(e.getResponsavel().getId());
+            r.setResponsavel(toResumo(e.getResponsavel()));
+        } else {
+            r.setResponsavelId(null);
+            r.setResponsavel(null);
+        }
         return r;
+    }
+
+    private static CadastroPessoaResponsavelResumo toResumo(CadastroPessoa p) {
+        CadastroPessoaResponsavelResumo s = new CadastroPessoaResponsavelResumo();
+        s.setId(p.getId());
+        s.setNome(p.getNome());
+        s.setCpf(p.getCpf());
+        s.setTipoPessoa(inferirTipoPessoa(p.getCpf()));
+        return s;
+    }
+
+    /** Heurística até existir coluna dedicada no cadastro. */
+    private static String inferirTipoPessoa(String cpf) {
+        if (cpf == null) return null;
+        String d = cpf.replaceAll("\\D", "");
+        if (d.length() <= 11) return "FISICA";
+        if (d.length() <= 14) return "JURIDICA";
+        return null;
     }
 }

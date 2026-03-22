@@ -1,24 +1,75 @@
 /**
  * Dados alinhados à tela Processos (mock + localStorage) para enriquecer linhas do Relatório Processos.
  */
-import { getMockProcesso10x10 } from './processosMock.js';
-import { getRegistroProcesso, getHistoricoDoProcesso } from './processosHistoricoData.js';
+import { getDadosProcessoClienteUnificado } from './processoClienteProcUnificado.js';
+import { getRegistroProcesso } from './processosHistoricoData.js';
 import { getImovelMock, getImoveisMockTotal } from './imoveisMockData.js';
+import { getIdPessoaPorCodCliente } from './clientesCadastradosMock.js';
+import { getPessoaPorId } from './cadastroPessoasMock.js';
 
+/** Todos os estados brasileiros (UF) + Distrito Federal — ordem alfabética por sigla. */
 export const UFS = [
+  { sigla: 'AC', nome: 'ACRE' },
+  { sigla: 'AL', nome: 'ALAGOAS' },
+  { sigla: 'AP', nome: 'AMAPÁ' },
+  { sigla: 'AM', nome: 'AMAZONAS' },
+  { sigla: 'BA', nome: 'BAHIA' },
+  { sigla: 'CE', nome: 'CEARÁ' },
+  { sigla: 'DF', nome: 'DISTRITO FEDERAL' },
+  { sigla: 'ES', nome: 'ESPÍRITO SANTO' },
   { sigla: 'GO', nome: 'GOIÁS' },
-  { sigla: 'SP', nome: 'SÃO PAULO' },
+  { sigla: 'MA', nome: 'MARANHÃO' },
+  { sigla: 'MT', nome: 'MATO GROSSO' },
+  { sigla: 'MS', nome: 'MATO GROSSO DO SUL' },
   { sigla: 'MG', nome: 'MINAS GERAIS' },
-  { sigla: 'RJ', nome: 'RIO DE JANEIRO' },
+  { sigla: 'PA', nome: 'PARÁ' },
+  { sigla: 'PB', nome: 'PARAÍBA' },
+  { sigla: 'PR', nome: 'PARANÁ' },
+  { sigla: 'PE', nome: 'PERNAMBUCO' },
   { sigla: 'PI', nome: 'PIAUÍ' },
+  { sigla: 'RJ', nome: 'RIO DE JANEIRO' },
+  { sigla: 'RN', nome: 'RIO GRANDE DO NORTE' },
+  { sigla: 'RS', nome: 'RIO GRANDE DO SUL' },
+  { sigla: 'RO', nome: 'RONDÔNIA' },
+  { sigla: 'RR', nome: 'RORAIMA' },
+  { sigla: 'SC', nome: 'SANTA CATARINA' },
+  { sigla: 'SP', nome: 'SÃO PAULO' },
+  { sigla: 'SE', nome: 'SERGIPE' },
+  { sigla: 'TO', nome: 'TOCANTINS' },
 ];
 
+/**
+ * Cidades sugeridas por UF (primeira = capital ou cidade principal do mock).
+ * Mantém listas estendidas onde o app já usava mais de uma cidade.
+ */
 export const CIDADES_POR_UF = {
+  AC: ['RIO BRANCO'],
+  AL: ['MACEIÓ'],
+  AP: ['MACAPÁ'],
+  AM: ['MANAUS'],
+  BA: ['SALVADOR'],
+  CE: ['FORTALEZA'],
+  DF: ['BRASÍLIA'],
+  ES: ['VITÓRIA'],
   GO: ['RIO VERDE', 'GOIÂNIA', 'ANÁPOLIS', 'APARECIDA DE GOIÂNIA'],
-  SP: ['SÃO PAULO', 'CAMPINAS', 'RIBEIRÃO PRETO'],
+  MA: ['SÃO LUÍS'],
+  MT: ['CUIABÁ'],
+  MS: ['CAMPO GRANDE'],
   MG: ['BELO HORIZONTE', 'UBERLÂNDIA'],
-  RJ: ['RIO DE JANEIRO', 'NITERÓI'],
+  PA: ['BELÉM'],
+  PB: ['JOÃO PESSOA'],
+  PR: ['CURITIBA'],
+  PE: ['RECIFE'],
   PI: ['TERESINA', 'PARNÁIBA'],
+  RJ: ['RIO DE JANEIRO', 'NITERÓI'],
+  RN: ['NATAL'],
+  RS: ['PORTO ALEGRE'],
+  RO: ['PORTO VELHO'],
+  RR: ['BOA VISTA'],
+  SC: ['FLORIANÓPOLIS'],
+  SP: ['SÃO PAULO', 'CAMPINAS', 'RIBEIRÃO PRETO'],
+  SE: ['ARACAJU'],
+  TO: ['PALMAS'],
 };
 
 export const FASES = [
@@ -64,66 +115,76 @@ export function padCliente(val) {
 }
 
 /**
- * Mesma lógica usada na tela Processos — fonte única para mock por cliente/processo.
+ * Nome no Cadastro de Pessoas para o código de cliente (vínculo mock PDF), ou null.
+ * Alinhado ao campo "Cliente" na tela Processos (nome da pessoa vinculada ao código).
+ */
+export function getNomePessoaCadastroPorCodigoCliente(codNum) {
+  const n = Number(normalizarCliente(codNum));
+  if (!Number.isFinite(n) || n < 1) return null;
+  const id = getIdPessoaPorCodCliente(padCliente(n));
+  if (id == null) return null;
+  const pes = getPessoaPorId(id);
+  const nome = pes?.nome?.trim();
+  return nome || null;
+}
+
+/**
+ * Mesma lógica usada na tela Processos — fonte única para mock por cliente/processo
+ * (números, partes e natureza alinhados a getDadosProcessoClienteUnificado / Cadastro de Clientes).
  */
 export function gerarMockProcesso(codigoCliente, processo) {
   const c = Number(normalizarCliente(codigoCliente));
   const p = Number(normalizarProcesso(processo));
-  const mock10 = getMockProcesso10x10(c, p);
-  if (mock10) {
-    const uf = UFS[(c - 1) % UFS.length]?.sigla ?? 'GO';
-    const cidade = (CIDADES_POR_UF[uf] || ['RIO VERDE'])[p % (CIDADES_POR_UF[uf]?.length || 1)] || 'RIO VERDE';
-    const fase = FASES[(c + p) % FASES.length] ?? 'Em Andamento';
-    const competencia = COMPETENCIAS[(p - 1) % COMPETENCIAS.length] ?? '2º JUIZADO ESPECIAL CÍVEL';
+  const nomeClienteCadastro = getNomePessoaCadastroPorCodigoCliente(c);
+  const u = getDadosProcessoClienteUnificado(c, p);
+  const uf = UFS[(c - 1) % UFS.length]?.sigla ?? 'GO';
+  const cidade = (CIDADES_POR_UF[uf] || ['RIO VERDE'])[p % (CIDADES_POR_UF[uf]?.length || 1)] || 'RIO VERDE';
+  const fase = FASES[(c + p) % FASES.length] ?? 'Em Andamento';
+  const competencia = COMPETENCIAS[(p - 1) % COMPETENCIAS.length] ?? '2º JUIZADO ESPECIAL CÍVEL';
+
+  if (!u) {
     return {
-      codigoCliente: mock10.codigoCliente,
-      processo: mock10.processo,
-      cliente: mock10.autor,
-      parteCliente: mock10.parteCliente,
-      parteOposta: mock10.parteOposta,
+      codigoCliente: padCliente(c),
+      processo: p,
+      cliente: nomeClienteCadastro ?? `CLIENTE ${String(c).padStart(3, '0')} (MOCK)`,
+      parteCliente: '',
+      parteOposta: '',
       estado: uf,
       cidade,
       faseSelecionada: fase,
       competencia,
-      numeroProcessoVelho: mock10.numeroProcessoVelho,
-      numeroProcessoNovo: mock10.numeroProcessoNovo,
+      numeroProcessoVelho: '',
+      numeroProcessoNovo: '',
       statusAtivo: (c + p) % 3 !== 0,
       parteRequerente: (c + p) % 3 === 0,
       parteRevel: (c + p) % 3 === 1,
       parteRequerido: (c + p) % 3 === 2,
       dataProtocolo: `${String(((p - 1) % 28) + 1).padStart(2, '0')}/${String(((c - 1) % 12) + 1).padStart(2, '0')}/2025`,
-      naturezaAcao: `AÇÃO (MOCK) — Cliente ${c} / Proc ${p}`,
+      naturezaAcao: '—',
       valorCausa: `${(1000 + c * 37 + p * 41).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
       consultaAutomatica: (c + p) % 2 === 0,
       observacao: `Dados mock do Processo.\nCliente: ${c}\nProcesso: ${p}`,
     };
   }
-  const uf = UFS[(c - 1) % UFS.length]?.sigla ?? 'GO';
-  const cidade = (CIDADES_POR_UF[uf] || ['RIO VERDE'])[p % (CIDADES_POR_UF[uf]?.length || 1)] || 'RIO VERDE';
-  const fase = FASES[(c + p) % FASES.length] ?? 'Em Andamento';
-  const competencia = COMPETENCIAS[(p - 1) % COMPETENCIAS.length] ?? '2º JUIZADO ESPECIAL CÍVEL';
-  const cliente = `CLIENTE ${String(c).padStart(3, '0')} (MOCK)`;
-  const parteCliente = `PARTE CLIENTE ${String(c).padStart(3, '0')} — PROC ${String(p).padStart(2, '0')}`;
-  const parteOposta = `PARTE OPOSTA ${String((c * 7 + p) % 999).padStart(3, '0')} — PROC ${String(p).padStart(2, '0')}`;
-  const numeroProcessoNovo = `${String(5000000 + c * 13 + p).slice(0, 7)}-${String(10 + (p % 90)).padStart(2, '0')}.2025.8.09.${String(1000 + (c % 900)).slice(-4)}`;
+
   return {
     codigoCliente: padCliente(c),
     processo: p,
-    cliente,
-    parteCliente,
-    parteOposta,
+    cliente: nomeClienteCadastro ?? u.autor,
+    parteCliente: u.parteCliente,
+    parteOposta: u.parteOposta,
     estado: uf,
     cidade,
     faseSelecionada: fase,
     competencia,
-    numeroProcessoVelho: '',
-    numeroProcessoNovo,
+    numeroProcessoVelho: u.processoVelho,
+    numeroProcessoNovo: u.processoNovo,
     statusAtivo: (c + p) % 3 !== 0,
     parteRequerente: (c + p) % 3 === 0,
     parteRevel: (c + p) % 3 === 1,
     parteRequerido: (c + p) % 3 === 2,
     dataProtocolo: `${String(((p - 1) % 28) + 1).padStart(2, '0')}/${String(((c - 1) % 12) + 1).padStart(2, '0')}/2025`,
-    naturezaAcao: `AÇÃO (MOCK) — Cliente ${c} / Proc ${p}`,
+    naturezaAcao: u.naturezaAcao,
     valorCausa: `${(1000 + c * 37 + p * 41).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
     consultaAutomatica: (c + p) % 2 === 0,
     observacao: `Dados mock do Processo.\nCliente: ${c}\nProcesso: ${p}`,
@@ -143,33 +204,46 @@ function parseDataBrParaTs(s) {
   return Number.isNaN(x) ? 0 : x;
 }
 
-/** Último item do histórico pela maior data dd/mm/aaaa. */
+/** Último item do histórico: maior data dd/mm/aaaa; em empate, maior `id` (alinha à ordem “Inf.” da tela Processos). */
 function ultimoHistoricoPorData(historico) {
   const lista = Array.isArray(historico) ? historico : [];
   let best = null;
   let bestTs = -1;
+  let bestId = -1;
   for (const h of lista) {
     const ts = parseDataBrParaTs(h?.data);
-    if (ts >= bestTs) {
+    const id = Number(h?.id);
+    const idNum = Number.isFinite(id) ? id : 0;
+    if (ts > bestTs || (ts === bestTs && idNum > bestId)) {
       bestTs = ts;
+      bestId = idNum;
       best = h;
     }
   }
   return best;
 }
 
-function resolverVinculoImovel(codNum, procNum) {
+let _mapaImovelClienteProc = null;
+
+function mapaImovelPorClienteProc() {
+  if (_mapaImovelClienteProc) return _mapaImovelClienteProc;
+  const map = new Map();
   const total = Number(getImoveisMockTotal?.() ?? 45);
   for (let id = 1; id <= total; id++) {
     const mock = getImovelMock(id);
     if (!mock) continue;
     const codMock = Number(String(mock.codigo ?? '').replace(/\D/g, ''));
     const procMock = Number(mock.proc ?? 0);
-    if (codMock === codNum && procMock === procNum) {
-      return { imovelId: id, mock };
+    if (Number.isFinite(codMock) && codMock >= 1 && Number.isFinite(procMock) && procMock >= 1) {
+      map.set(`${codMock}|${procMock}`, { imovelId: id, mock });
     }
   }
-  return null;
+  _mapaImovelClienteProc = map;
+  return map;
+}
+
+function resolverVinculoImovel(codNum, procNum) {
+  return mapaImovelPorClienteProc().get(`${codNum}|${procNum}`) ?? null;
 }
 
 /**
@@ -179,7 +253,7 @@ function resolverVinculoImovel(codNum, procNum) {
 export function getCamposExtrasRelatorioPorProcesso(codClienteRaw, procRaw) {
   const mock = gerarMockProcesso(codClienteRaw, procRaw);
   const reg = getRegistroProcesso(mock.codigoCliente, mock.processo);
-  const hist = getHistoricoDoProcesso(mock.codigoCliente, mock.processo);
+  const hist = Array.isArray(reg?.historico) ? reg.historico : [];
   const ult = ultimoHistoricoPorData(hist);
 
   const faseCadastro =
@@ -232,6 +306,7 @@ export function getCamposExtrasRelatorioPorProcesso(codClienteRaw, procRaw) {
     proximaConsultaCalculada: reg?.proximaConsultaData ?? '',
     ultimoHistoricoInfo: ult?.info ? String(ult.info) : '',
     ultimoHistoricoData: ult?.data ? String(ult.data) : '',
+    ultimoHistoricoUsuario: ult?.usuario ? String(ult.usuario).trim() : '',
     tipoAudienciaProcesso: TIPOS_AUDIENCIA[(cNum + pNum) % TIPOS_AUDIENCIA.length],
     audienciaDataProcesso: `${String(((cNum + pNum * 3) % 28) + 1).padStart(2, '0')}/${String(((cNum + pNum) % 12) + 1).padStart(2, '0')}/2026`,
     audienciaHoraProcesso: `${String(8 + ((cNum + pNum) % 10)).padStart(2, '0')}:00`,

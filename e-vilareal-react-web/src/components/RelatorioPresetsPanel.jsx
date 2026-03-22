@@ -10,7 +10,7 @@ import {
 } from '../data/relatorioPresets.js';
 
 /**
- * Botão + painel para guardar e aplicar configurações do relatório (colunas, largura, título da coluna dinâmica).
+ * Botão + painel para guardar e aplicar configurações do relatório (colunas, largura, título por coluna).
  */
 export function RelatorioPresetsPanel({
   colIds,
@@ -18,8 +18,8 @@ export function RelatorioPresetsPanel({
   setColunasVisiveis,
   larguraUniforme,
   setLarguraUniforme,
-  campoUltimoAndamento,
-  setCampoUltimoAndamento,
+  campoPorColuna,
+  setCampoPorColuna,
   filtroProcessoAtivo,
   setFiltroProcessoAtivo,
   modoAlteracao,
@@ -50,7 +50,7 @@ export function RelatorioPresetsPanel({
   const snapshot = () => ({
     colunasVisiveis,
     larguraUniforme,
-    campoUltimoAndamento,
+    campoPorColuna,
     filtroProcessoAtivo: normalizarFiltroProcessoAtivo(filtroProcessoAtivo),
     modoAlteracao: !!modoAlteracao,
   });
@@ -72,7 +72,7 @@ export function RelatorioPresetsPanel({
     if (!app) return;
     setColunasVisiveis(app.colunasVisiveis);
     setLarguraUniforme(app.larguraUniforme);
-    setCampoUltimoAndamento(app.campoUltimoAndamento);
+    setCampoPorColuna(app.campoPorColuna);
     setFiltroProcessoAtivo(app.filtroProcessoAtivo);
     setFeedback(`“${preset.nome}” aplicada.`);
   };
@@ -88,7 +88,7 @@ export function RelatorioPresetsPanel({
     const d = configRelatorioPadrao(colIds);
     setColunasVisiveis(d.colunasVisiveis);
     setLarguraUniforme(d.larguraUniforme);
-    setCampoUltimoAndamento(d.campoUltimoAndamento);
+    setCampoPorColuna(d.campoPorColuna);
     setFiltroProcessoAtivo(d.filtroProcessoAtivo);
     setModoAlteracao(d.modoAlteracao);
     setFeedback('Configuração padrão restaurada.');
@@ -120,7 +120,7 @@ export function RelatorioPresetsPanel({
         <div className="absolute right-0 top-full mt-1 z-30 w-[min(100vw-2rem,24rem)] rounded-lg border border-slate-200 bg-white shadow-lg p-3 text-sm">
           <p className="text-xs text-slate-600 mb-2">
             Guarde <strong>colunas visíveis</strong>, <strong>largura uniforme</strong>,{' '}
-            <strong>conteúdo da coluna dinâmica</strong>, <strong>filtro ativo/inativo</strong> e{' '}
+            <strong>título/conteúdo de cada coluna</strong>, <strong>filtro ativo/inativo</strong> e{' '}
             <strong>modo de alteração</strong>. Aplique quando precisar, sem refazer tudo manualmente.
           </p>
 
@@ -203,7 +203,7 @@ export function RelatorioPresetsPanel({
               type="button"
               onClick={handlePadrao}
               className="px-2 py-1 rounded border border-slate-300 bg-slate-50 text-xs text-slate-700 hover:bg-slate-100"
-              title="Todas as colunas visíveis, sem largura uniforme, coluna dinâmica em Último Andamento"
+              title="Todas as colunas visíveis, sem largura uniforme, cada coluna com o campo padrão do título"
             >
               Restaurar padrão
             </button>

@@ -33,6 +33,9 @@ public class CadastroPessoasRequest {
 
     private Boolean ativo = true;
 
+    @Schema(description = "ID de outra pessoa cadastrada como responsável/representante (opcional)")
+    private Long responsavelId;
+
     public String getNome() { return nome; }
     public void setNome(String nome) { this.nome = nome; }
     public String getEmail() { return email; }
@@ -45,4 +48,6 @@ public class CadastroPessoasRequest {
     public void setDataNascimento(LocalDate dataNascimento) { this.dataNascimento = dataNascimento; }
     public Boolean getAtivo() { return ativo; }
     public void setAtivo(Boolean ativo) { this.ativo = ativo; }
+    public Long getResponsavelId() { return responsavelId; }
+    public void setResponsavelId(Long responsavelId) { this.responsavelId = responsavelId; }
 }

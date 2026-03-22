@@ -18,6 +18,7 @@ import {
   listarProcessosPorPrazoFatal,
   reaplicarDemonstracaoDiagnostico,
 } from '../data/processosHistoricoData';
+import { resolverAliasHojeEmTexto } from '../services/hjDateAliasService.js';
 
 const BOTOES_ESQUERDA = [
   'Consultas Realizadas',
@@ -37,20 +38,6 @@ const BOTOES_DIREITA = [
   'Proc. Administrativo',
   'Baixar Protocolos',
 ];
-
-function toInputDate(brDate) {
-  const s = String(brDate ?? '').trim();
-  const [dd, mm, yyyy] = s.split('/');
-  if (!dd || !mm || !yyyy) return '';
-  return `${yyyy}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
-}
-
-function toBrDate(inputDate) {
-  const s = String(inputDate ?? '').trim();
-  const [yyyy, mm, dd] = s.split('-');
-  if (!dd || !mm || !yyyy) return '';
-  return `${dd}/${mm}/${yyyy}`;
-}
 
 function diaSemanaPtBr(brDate) {
   const [dd, mm, yyyy] = String(brDate ?? '').split('/');
@@ -354,9 +341,13 @@ export function Diagnosticos() {
                 </p>
                 <div className="rounded border border-slate-200 bg-white p-4">
                   <input
-                    type="date"
-                    value={toInputDate(dataConsulta)}
-                    onChange={(e) => setDataConsulta(toBrDate(e.target.value))}
+                    type="text"
+                    placeholder="dd/mm/aaaa ou hj"
+                    value={dataConsulta}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setDataConsulta(resolverAliasHojeEmTexto(v, 'br') ?? v);
+                    }}
                     className="w-full h-10 px-3 text-sm border border-slate-300 rounded bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
                   />
                   <p className="mt-2 text-sm leading-none text-slate-700 min-h-[1.25rem]">
@@ -466,9 +457,13 @@ export function Diagnosticos() {
                 </p>
                 <div className="rounded border border-slate-200 bg-white p-4">
                   <input
-                    type="date"
-                    value={toInputDate(dataPrazoFatal)}
-                    onChange={(e) => setDataPrazoFatal(toBrDate(e.target.value))}
+                    type="text"
+                    placeholder="dd/mm/aaaa ou hj"
+                    value={dataPrazoFatal}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setDataPrazoFatal(resolverAliasHojeEmTexto(v, 'br') ?? v);
+                    }}
                     className="w-full h-10 px-3 text-sm border border-slate-300 rounded bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
                   />
                   <p className="mt-2 text-sm leading-none text-slate-700 min-h-[1.25rem]">
@@ -520,9 +515,13 @@ export function Diagnosticos() {
                 </p>
                 <div className="rounded border border-slate-200 bg-white p-4">
                   <input
-                    type="date"
-                    value={toInputDate(dataConsulta)}
-                    onChange={(e) => setDataConsulta(toBrDate(e.target.value))}
+                    type="text"
+                    placeholder="dd/mm/aaaa ou hj"
+                    value={dataConsulta}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setDataConsulta(resolverAliasHojeEmTexto(v, 'br') ?? v);
+                    }}
                     className="w-full h-10 px-3 text-sm border border-slate-300 rounded bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
                   />
                   <p className="mt-2 text-sm leading-none text-slate-700 min-h-[1.25rem]">
@@ -574,9 +573,13 @@ export function Diagnosticos() {
                 </p>
                 <div className="rounded border border-slate-200 bg-white p-4">
                   <input
-                    type="date"
-                    value={toInputDate(dataConsulta)}
-                    onChange={(e) => setDataConsulta(toBrDate(e.target.value))}
+                    type="text"
+                    placeholder="dd/mm/aaaa ou hj"
+                    value={dataConsulta}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setDataConsulta(resolverAliasHojeEmTexto(v, 'br') ?? v);
+                    }}
                     className="w-full h-10 px-3 text-sm border border-slate-300 rounded bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
                   />
                   <p className="mt-2 text-sm leading-none text-slate-700 min-h-[1.25rem]">

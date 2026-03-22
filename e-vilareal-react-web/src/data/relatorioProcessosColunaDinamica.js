@@ -5,11 +5,19 @@ import { getCamposExtrasRelatorioPorProcesso, padCliente } from './processosDado
 
 export const STORAGE_CAMPO_COLUNA_ULTIMO_ANDAMENTO = 'vilareal.relatorioProcessos.campoColunaUltimoAndamento.v1';
 
+/** Mapa slot da coluna → chave do campo exibido (persistido). */
+export const STORAGE_CAMPO_POR_COLUNA = 'vilareal.relatorioProcessos.campoPorColuna.v1';
+
 /**
  * Opções de título/conteúdo: dados do relatório + todos os campos alinhados à tela Processos (cadastro, imóvel, histórico).
  * @type {Array<{ label: string, fieldKey: string }>}
  */
 export const CAMPOS_OPCOES_ULTIMO_ANDAMENTO = [
+  // — Identificação / grade principal —
+  { label: 'Cod. Cliente', fieldKey: 'codCliente' },
+  { label: 'Cliente', fieldKey: 'cliente' },
+  { label: 'N.º Processo', fieldKey: 'numeroProcesso' },
+  { label: 'Proc.', fieldKey: 'proc' },
   // — Relatório (dataset da grade) —
   { label: 'Último Andamento', fieldKey: 'ultimoAndamento' },
   { label: 'Observação de Fase', fieldKey: 'observacaoFase' },
@@ -55,6 +63,7 @@ export const CAMPOS_OPCOES_ULTIMO_ANDAMENTO = [
   { label: 'Próxima consulta (calculada)', fieldKey: 'proximaConsultaCalculada' },
   { label: 'Último movimento (histórico)', fieldKey: 'ultimoHistoricoInfo' },
   { label: 'Data último movimento', fieldKey: 'ultimoHistoricoData' },
+  { label: 'Usuário último histórico', fieldKey: 'ultimoHistoricoUsuario' },
   { label: 'Tipo de audiência (processo)', fieldKey: 'tipoAudienciaProcesso' },
   { label: 'Data audiência (processo)', fieldKey: 'audienciaDataProcesso' },
   { label: 'Hora audiência (processo)', fieldKey: 'audienciaHoraProcesso' },
@@ -121,6 +130,57 @@ export function salvarCampoUltimoAndamento(fieldKey) {
   }
 }
 
+/**
+ * @param {string[]} colIds - ids dos slots de coluna (ex.: COLUNAS.map(c => c.id))
+ * @returns {Record<string, string>}
+ */
+export function carregarCampoPorColunaSalvo(colIds) {
+  const padrao = () => Object.fromEntries(colIds.map((id) => [id, id]));
+  if (typeof window === 'undefined') return padrao();
+  try {
+    const raw = window.localStorage.getItem(STORAGE_CAMPO_POR_COLUNA);
+    if (raw) {
+      const p = JSON.parse(raw);
+      if (p && typeof p === 'object') {
+        const out = padrao();
+        for (const id of colIds) {
+          if (p[id] != null) out[id] = normalizarCampoColunaDinamica(p[id]);
+        }
+        return out;
+      }
+    }
+    const legado = window.localStorage.getItem(STORAGE_CAMPO_COLUNA_ULTIMO_ANDAMENTO);
+    if (legado) {
+      const out = padrao();
+      out.ultimoAndamento = normalizarCampoColunaDinamica(legado);
+      return out;
+    }
+  } catch {
+    /* ignore */
+  }
+  return padrao();
+}
+
+/**
+ * @param {Record<string, string>} map
+ * @param {string[]} colIds
+ */
+export function salvarCampoPorColuna(map, colIds) {
+  if (typeof window === 'undefined') return;
+  try {
+    const slim = {};
+    for (const id of colIds) {
+      if (map[id] != null) slim[id] = normalizarCampoColunaDinamica(map[id]);
+    }
+    window.localStorage.setItem(STORAGE_CAMPO_POR_COLUNA, JSON.stringify(slim));
+    if (slim.ultimoAndamento) {
+      window.localStorage.setItem(STORAGE_CAMPO_COLUNA_ULTIMO_ANDAMENTO, slim.ultimoAndamento);
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
 /** Garante uma chave válida para a coluna dinâmica (presets / importação). */
 export function normalizarCampoColunaDinamica(fieldKey) {
   const migrated = MIGRACAO_CAMPOS[fieldKey] ?? fieldKey;
@@ -135,8 +195,12 @@ export function enriquecerCamposRelatorioProcessos(row, idx) {
   const cod = row.codCliente != null && String(row.codCliente).trim() !== '' ? row.codCliente : String(idx + 1).padStart(8, '0');
   const proc = row.proc != null && String(row.proc).trim() !== '' ? row.proc : '1';
   const extras = getCamposExtrasRelatorioPorProcesso(padCliente(cod), proc);
-  return {
-    ...row,
-    ...extras,
-  };
+  const merged = { ...row, ...extras };
+  const infoUlt = String(extras.ultimoHistoricoInfo ?? '').trim();
+  const dataUlt = String(extras.ultimoHistoricoData ?? '').trim();
+  const usuarioUlt = String(extras.ultimoHistoricoUsuario ?? '').trim();
+  if (infoUlt) merged.ultimoAndamento = infoUlt;
+  if (dataUlt) merged.dataConsulta = dataUlt;
+  if (usuarioUlt) merged.consultor = usuarioUlt;
+  return merged;
 }

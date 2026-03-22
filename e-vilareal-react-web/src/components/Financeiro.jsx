@@ -4,14 +4,27 @@ import {
   getExtratosIniciais,
   getTransacoesConsolidadas,
   cloneExtratos,
-  LETRA_TO_CONTA,
-  BANCO_TO_NUMERO,
+  buildNumeroBancoMap,
   parearCompensacaoInterbancaria,
-  parearCompensacaoAposImportacaoOfx,
   somasPorParCompensacao,
   detectarParesCompensacao,
   loadPersistedExtratosFinanceiro,
   savePersistedExtratosFinanceiro,
+  loadPersistedExtratosInativosFinanceiro,
+  savePersistedExtratosInativosFinanceiro,
+  loadPersistedContasExtrasFinanceiro,
+  savePersistedContasExtrasFinanceiro,
+  validarNovoNomeContaBancaria,
+  proximoNumeroContaBanco,
+  buildLetraToContaMerge,
+  buildContaToLetraMerge,
+  buildOrdemLetrasContabeisCompleta,
+  loadPersistedContasContabeisExtrasFinanceiro,
+  savePersistedContasContabeisExtrasFinanceiro,
+  loadPersistedContasContabeisInativasFinanceiro,
+  savePersistedContasContabeisInativasFinanceiro,
+  validarNovoNomeContaContabil,
+  proximaLetraContaContabilExtra,
   getContasContabeisDerivadasExtratos,
   filtrarTransacoesPorClienteProc,
   textoCategoriaObservacao,
@@ -33,7 +46,7 @@ import {
 } from '../data/buscaParcelamentoFinanceiro';
 import { parseOfxToExtrato, mergeExtratoBancario, contarLancamentosNovos } from '../utils/ofx';
 import { OFX_ITAU_REAL_EXEMPLO, OFX_CORA_REAL_EXEMPLO } from '../data/ofxItauCoraReal';
-import { CheckSquare, ChevronLeft, ChevronRight, Link2 } from 'lucide-react';
+import { CheckSquare, ChevronLeft, ChevronRight, Link2, Settings } from 'lucide-react';
 import { ModalVinculoClienteProcFinanceiro } from './ModalVinculoClienteProcFinanceiro.jsx';
 
 const REF_CONSTANTE = 675;
@@ -52,7 +65,22 @@ const OPCOES_LIMITE_LANCAMENTOS_EXTRATO = [
   { v: 500, label: '500' },
   { v: 0, label: 'Todos' },
 ];
-const LETRAS_VALIDAS = Object.keys(LETRA_TO_CONTA);
+function primeiraContaContabilVisivel(inativasList) {
+  const inativas = new Set(inativasList);
+  const extras = loadPersistedContasContabeisExtrasFinanceiro();
+  const map = buildLetraToContaMerge(extras);
+  for (const l of buildOrdemLetrasContabeisCompleta(extras)) {
+    const n = map[l];
+    if (n && !inativas.has(n)) return n;
+  }
+  return 'Conta Escritório';
+}
+
+/** Conta Escritório quando ativa; senão primeira conta não inativa na ordem do plano. */
+function contaEscritorioOuPrimeiraAtiva(inativasSet, ordemNomes) {
+  if (!inativasSet.has('Conta Escritório')) return 'Conta Escritório';
+  return ordemNomes.find((n) => !inativasSet.has(n)) ?? 'Conta Escritório';
+}
 function getTransacoesBanco(extratosPorBanco, nomeBanco) {
   return extratosPorBanco[nomeBanco] ?? [];
 }
@@ -102,6 +130,112 @@ function dataParaOrdenar(data) {
   if (a.length === 2) a = `20${a}`;
   if (a.length !== 4) return '';
   return `${a}-${m}-${d}`;
+}
+
+/** { dd, mm, yyyy } ou null se inválida. */
+function parseDataBrParts(dataStr) {
+  const s = String(dataStr ?? '').trim();
+  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/.exec(s);
+  if (!m) return null;
+  const dd = Number(m[1]);
+  const mm = Number(m[2]);
+  let yyyy = Number(m[3].length === 2 ? `20${m[3]}` : m[3]);
+  if (!Number.isFinite(dd) || !Number.isFinite(mm) || !Number.isFinite(yyyy)) return null;
+  if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return null;
+  return { dd, mm, yyyy };
+}
+
+function coletarAnosDosExtratos(extratosPorBanco) {
+  const s = new Set();
+  const y0 = new Date().getFullYear();
+  s.add(y0);
+  for (const list of Object.values(extratosPorBanco)) {
+    if (!Array.isArray(list)) continue;
+    for (const t of list) {
+      const p = parseDataBrParts(t?.data);
+      if (p) s.add(p.yyyy);
+    }
+  }
+  return Array.from(s).sort((a, b) => b - a);
+}
+
+function valorOrdemDataBrParts(p) {
+  return p.yyyy * 10000 + p.mm * 100 + p.dd;
+}
+
+/**
+ * @param {string} tipo — todos | mes | bimestre | trimestre | semestre | ano | personalizado
+ * @param {object|null} sel
+ */
+function dataLancamentoNoPeriodo(dataStr, tipo, sel) {
+  if (tipo === 'todos' || !sel) return true;
+  const parts = parseDataBrParts(dataStr);
+  if (!parts) return false;
+  if (tipo === 'ano') return parts.yyyy === sel.ano;
+  if (tipo === 'mes') return parts.yyyy === sel.ano && parts.mm === sel.mes;
+  if (tipo === 'trimestre') {
+    const q = sel.trimestre;
+    const m0 = (q - 1) * 3 + 1;
+    return parts.yyyy === sel.ano && parts.mm >= m0 && parts.mm <= m0 + 2;
+  }
+  if (tipo === 'bimestre') {
+    const b = sel.bimestre;
+    const m0 = (b - 1) * 2 + 1;
+    return parts.yyyy === sel.ano && parts.mm >= m0 && parts.mm <= m0 + 1;
+  }
+  if (tipo === 'semestre') {
+    const s = sel.semestre;
+    const m0 = s === 1 ? 1 : 7;
+    return parts.yyyy === sel.ano && parts.mm >= m0 && parts.mm <= m0 + 5;
+  }
+  if (tipo === 'personalizado') {
+    const d1 = parseDataBrParts(sel.dataInicio);
+    const d2 = parseDataBrParts(sel.dataFim);
+    if (!d1 || !d2) return false;
+    let o1 = valorOrdemDataBrParts(d1);
+    let o2 = valorOrdemDataBrParts(d2);
+    if (o1 > o2) {
+      const t = o1;
+      o1 = o2;
+      o2 = t;
+    }
+    const v = valorOrdemDataBrParts(parts);
+    return v >= o1 && v <= o2;
+  }
+  return true;
+}
+
+function filtrarTransacoesPorPeriodo(lista, campoData, tipo, sel) {
+  if (tipo === 'todos' || !Array.isArray(lista)) return lista;
+  return lista.filter((t) => dataLancamentoNoPeriodo(t[campoData], tipo, sel));
+}
+
+const MESES_PT = [
+  'Janeiro',
+  'Fevereiro',
+  'Março',
+  'Abril',
+  'Maio',
+  'Junho',
+  'Julho',
+  'Agosto',
+  'Setembro',
+  'Outubro',
+  'Novembro',
+  'Dezembro',
+];
+
+function pad2MesDia(n) {
+  return String(n).padStart(2, '0');
+}
+
+/** Primeiro e último dia do mês (dd/mm/aaaa). */
+function limitesMesBr(ano, mes) {
+  const last = new Date(ano, mes, 0).getDate();
+  return {
+    ini: `01/${pad2MesDia(mes)}/${ano}`,
+    fim: `${pad2MesDia(last)}/${pad2MesDia(mes)}/${ano}`,
+  };
 }
 
 /** Ordena lista de transações do extrato bancário por coluna e direção. */
@@ -208,13 +342,66 @@ const INSTITUICOES_LINHA_2 = [
   'PicPay Rachel',
 ];
 
+const TODAS_INSTITUICOES_PREDEF = [...INSTITUICOES_LINHA_1, ...INSTITUICOES_LINHA_2];
+
+function primeiraInstituicaoAtiva(inativos, ordemCompleta) {
+  const s = new Set(inativos);
+  const ordem = ordemCompleta?.length ? ordemCompleta : TODAS_INSTITUICOES_PREDEF;
+  if (!s.has('CEF') && ordem.includes('CEF')) return 'CEF';
+  return ordem.find((n) => !s.has(n)) ?? ordem[0] ?? 'CEF';
+}
+
+const STORAGE_LAYOUT_FINANCEIRO_KEY = 'vilareal:financeiro:layout-relatorios:v1';
+const STORAGE_EXIBICAO_FINANCEIRO_V2 = 'vilareal:financeiro:exibicao-relatorios:v2';
+
+function loadLayoutRelatoriosFinanceiro() {
+  if (typeof window === 'undefined') return 'empilhado';
+  try {
+    const v = window.localStorage.getItem(STORAGE_LAYOUT_FINANCEIRO_KEY);
+    if (v === 'lado_a_lado' || v === 'empilhado') return v;
+  } catch {
+    /* ignore */
+  }
+  return 'empilhado';
+}
+
+/** Disposição (empilhado / lado a lado), quais painéis mostrar e ordem extrato ↔ consolidado. */
+function loadExibicaoFinanceiro() {
+  if (typeof window === 'undefined') {
+    return { disposicao: 'empilhado', paineis: 'ambos', ordem: 'extrato_primeiro' };
+  }
+  try {
+    const raw = window.localStorage.getItem(STORAGE_EXIBICAO_FINANCEIRO_V2);
+    if (raw) {
+      const o = JSON.parse(raw);
+      return {
+        disposicao: o.disposicao === 'lado_a_lado' ? 'lado_a_lado' : 'empilhado',
+        paineis: ['ambos', 'so_extrato', 'so_consolidado'].includes(o.paineis) ? o.paineis : 'ambos',
+        ordem: o.ordem === 'consolidado_primeiro' ? 'consolidado_primeiro' : 'extrato_primeiro',
+      };
+    }
+  } catch {
+    /* ignore */
+  }
+  return {
+    disposicao: loadLayoutRelatoriosFinanceiro(),
+    paineis: 'ambos',
+    ordem: 'extrato_primeiro',
+  };
+}
+
 export function Financeiro() {
   const navigate = useNavigate();
   const location = useLocation();
   const [extratosPorBanco, setExtratosPorBanco] = useState(() => {
     const persisted = loadPersistedExtratosFinanceiro();
-    const merged = persisted ? { ...getExtratosIniciais(), ...persisted } : getExtratosIniciais();
-    return parearCompensacaoInterbancaria(merged);
+    const extrasContas = loadPersistedContasExtrasFinanceiro();
+    let merged = persisted ? { ...getExtratosIniciais(), ...persisted } : getExtratosIniciais();
+    for (const { nome } of extrasContas) {
+      if (!Array.isArray(merged[nome])) merged[nome] = [];
+    }
+    /* Não parear automaticamente ao carregar: lançamentos OFX permanecem em N até reclassificação ou "Parear compensações". */
+    return merged;
   });
   /** Sempre o extrato mais recente ao disparar uma nova busca (evita snapshot “preso” em closure antiga). */
   const extratosPorBancoRef = useRef(extratosPorBanco);
@@ -222,15 +409,51 @@ export function Financeiro() {
     extratosPorBancoRef.current = extratosPorBanco;
   }, [extratosPorBanco]);
 
-  const [instituicaoSelecionada, setInstituicaoSelecionada] = useState('CEF');
-  const [contaContabilSelecionada, setContaContabilSelecionada] = useState('Conta Escritório');
+  const [extratosInativos, setExtratosInativos] = useState(() => loadPersistedExtratosInativosFinanceiro());
+  const [contasExtras, setContasExtras] = useState(() => loadPersistedContasExtrasFinanceiro());
+  const [nomeNovaContaBancaria, setNomeNovaContaBancaria] = useState('');
+  const [msgNovaContaBancaria, setMsgNovaContaBancaria] = useState(null);
+  const [instituicaoSelecionada, setInstituicaoSelecionada] = useState(() =>
+    primeiraInstituicaoAtiva(loadPersistedExtratosInativosFinanceiro(), [
+      ...INSTITUICOES_LINHA_1,
+      ...INSTITUICOES_LINHA_2,
+      ...loadPersistedContasExtrasFinanceiro().map((c) => c.nome),
+    ])
+  );
+  const [mostrarExtratosInativos, setMostrarExtratosInativos] = useState(false);
+  const [contasContabeisExtras, setContasContabeisExtras] = useState(() =>
+    loadPersistedContasContabeisExtrasFinanceiro()
+  );
+  const [contasContabeisInativas, setContasContabeisInativas] = useState(() =>
+    loadPersistedContasContabeisInativasFinanceiro()
+  );
+  const [nomeNovaContaContabil, setNomeNovaContaContabil] = useState('');
+  const [msgNovaContaContabil, setMsgNovaContaContabil] = useState(null);
+  const [mostrarContasContabeisInativas, setMostrarContasContabeisInativas] = useState(false);
+  const [contaContabilSelecionada, setContaContabilSelecionada] = useState(() =>
+    primeiraContaContabilVisivel(loadPersistedContasContabeisInativasFinanceiro())
+  );
   const [linhaConsolidadoFoco, setLinhaConsolidadoFoco] = useState(null);
   const [linhaConsolidadoAlvo, setLinhaConsolidadoAlvo] = useState(null);
   const [linhaBancoAlvo, setLinhaBancoAlvo] = useState(null);
   const [sortExtratoBanco, setSortExtratoBanco] = useState({ col: null, dir: 'asc' });
   const [limiteLancamentosExtratoBanco, setLimiteLancamentosExtratoBanco] = useState(100);
   const [limiteLancamentosConsolidado, setLimiteLancamentosConsolidado] = useState(100);
+  const [periodoVisao, setPeriodoVisao] = useState(() => 'todos');
+  const [periodoAno, setPeriodoAno] = useState(() => new Date().getFullYear());
+  const [periodoMes, setPeriodoMes] = useState(() => new Date().getMonth() + 1);
+  const [periodoTrimestre, setPeriodoTrimestre] = useState(
+    () => Math.floor(new Date().getMonth() / 3) + 1
+  );
+  const [periodoBimestre, setPeriodoBimestre] = useState(() => Math.floor(new Date().getMonth() / 2) + 1);
+  const [periodoSemestre, setPeriodoSemestre] = useState(() => (new Date().getMonth() < 6 ? 1 : 2));
+  const [periodoPersonalInicio, setPeriodoPersonalInicio] = useState('');
+  const [periodoPersonalFim, setPeriodoPersonalFim] = useState('');
   const [sortConsolidado, setSortConsolidado] = useState({ col: null, dir: 'asc' });
+  /** Só Conta Compensação: filtra o consolidado pelo campo Elo (espelho de proc. no extrato). */
+  const [filtroEloConsolidado, setFiltroEloConsolidado] = useState('');
+  /** Só Conta Compensação: independente do filtro por Elo — só lançamentos cujo Elo tem soma global ≠ 0. */
+  const [filtroConciliacaoEloConsolidado, setFiltroConciliacaoEloConsolidado] = useState('todos');
   const linhaConsolidadoRef = useRef(null);
   const linhaBancoRef = useRef(null);
   const fileInputOfxRef = useRef(null);
@@ -238,6 +461,10 @@ export function Financeiro() {
   const [substituirExtratoOfxCompleto, setSubstituirExtratoOfxCompleto] = useState(false);
   const [modalParearCompensacao, setModalParearCompensacao] = useState(null);
   const saveTimerRef = useRef(null);
+  const inativosSaveTimerRef = useRef(null);
+  const contasExtrasSaveTimerRef = useRef(null);
+  const contasContabeisExtrasSaveTimerRef = useRef(null);
+  const contasContabeisInativasSaveTimerRef = useRef(null);
   /** Vindo de Cálculos → aba Honorários: filtra consolidado (Conta Escritório) por cliente/proc para conciliação. */
   const [filtroConciliacaoHonorarios, setFiltroConciliacaoHonorarios] = useState(null);
   /** Modal: busca automática extrato não classificado × parcelas de cálculos aceitos; usuário só aprova. */
@@ -250,6 +477,86 @@ export function Financeiro() {
   const primeiraConsultaModalRef = useRef(false);
   /** Modal: buscar cliente/proc por nome, réu etc. e gravar no lançamento sem sair do Financeiro. */
   const [modalVinculoLancamento, setModalVinculoLancamento] = useState(null);
+  const [modalConfigFinanceiro, setModalConfigFinanceiro] = useState(false);
+  const [disposicaoRelatorios, setDisposicaoRelatorios] = useState(
+    () => loadExibicaoFinanceiro().disposicao
+  );
+  const [paineisRelatorios, setPaineisRelatorios] = useState(() => loadExibicaoFinanceiro().paineis);
+  const [ordemRelatorios, setOrdemRelatorios] = useState(() => loadExibicaoFinanceiro().ordem);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        STORAGE_EXIBICAO_FINANCEIRO_V2,
+        JSON.stringify({
+          disposicao: disposicaoRelatorios,
+          paineis: paineisRelatorios,
+          ordem: ordemRelatorios,
+        })
+      );
+      window.localStorage.setItem(STORAGE_LAYOUT_FINANCEIRO_KEY, disposicaoRelatorios);
+    } catch {
+      /* ignore */
+    }
+  }, [disposicaoRelatorios, paineisRelatorios, ordemRelatorios]);
+
+  const extratosInativosSet = useMemo(() => new Set(extratosInativos), [extratosInativos]);
+
+  const mostrarPainelExtrato = paineisRelatorios !== 'so_consolidado' && Boolean(instituicaoSelecionada);
+  const mostrarPainelConsolidado = paineisRelatorios !== 'so_extrato' && Boolean(contaContabilSelecionada);
+  const doisPaineisVisiveis = mostrarPainelExtrato && mostrarPainelConsolidado;
+
+  const relatoriosLadoALado = useMemo(
+    () =>
+      Boolean(
+        doisPaineisVisiveis && disposicaoRelatorios === 'lado_a_lado'
+      ),
+    [doisPaineisVisiveis, disposicaoRelatorios]
+  );
+
+  const classOrdemExtrato =
+    doisPaineisVisiveis && ordemRelatorios === 'consolidado_primeiro' ? 'order-2' : doisPaineisVisiveis ? 'order-1' : '';
+  const classOrdemConsolidado =
+    doisPaineisVisiveis && ordemRelatorios === 'consolidado_primeiro' ? 'order-1' : doisPaineisVisiveis ? 'order-2' : '';
+
+  const classeWrapperRelatorios =
+    relatoriosLadoALado
+      ? 'flex flex-col xl:flex-row gap-4 xl:items-stretch min-h-0 xl:min-h-[280px]'
+      : doisPaineisVisiveis && disposicaoRelatorios === 'empilhado'
+        ? 'flex flex-col gap-4'
+        : 'contents';
+
+  const todasInstituicoesNomes = useMemo(
+    () => [...INSTITUICOES_LINHA_1, ...INSTITUICOES_LINHA_2, ...contasExtras.map((c) => c.nome)],
+    [contasExtras]
+  );
+
+  const numeroBancoMap = useMemo(() => buildNumeroBancoMap(contasExtras), [contasExtras]);
+
+  const letraToContaMerged = useMemo(() => buildLetraToContaMerge(contasContabeisExtras), [contasContabeisExtras]);
+  const contaToLetraMerged = useMemo(() => buildContaToLetraMerge(contasContabeisExtras), [contasContabeisExtras]);
+  const ordemLetrasCompleta = useMemo(
+    () => buildOrdemLetrasContabeisCompleta(contasContabeisExtras),
+    [contasContabeisExtras]
+  );
+  const contasContabeisInativasSet = useMemo(() => new Set(contasContabeisInativas), [contasContabeisInativas]);
+
+  const letrasOrdenadasParaSelect = useMemo(() => {
+    const keys = Object.keys(letraToContaMerged);
+    return keys.sort((a, b) => {
+      const ia = ordemLetrasCompleta.indexOf(a);
+      const ib = ordemLetrasCompleta.indexOf(b);
+      const xa = ia === -1 ? 999 : ia;
+      const xb = ib === -1 ? 999 : ib;
+      if (xa !== xb) return xa - xb;
+      return a.localeCompare(b);
+    });
+  }, [letraToContaMerged, ordemLetrasCompleta]);
+
+  const ordemNomesContabeis = useMemo(
+    () => ordemLetrasCompleta.map((l) => letraToContaMerged[l]).filter(Boolean),
+    [ordemLetrasCompleta, letraToContaMerged]
+  );
 
   useEffect(() => {
     indiceConsultaVinculoRef.current = indiceConsultaVinculo;
@@ -260,10 +567,20 @@ export function Financeiro() {
   const matchIndexPorSugestao = consultaVinculoAtual?.matchIndexPorSugestao ?? {};
   const aprovarSugestao = consultaVinculoAtual?.aprovarSugestao ?? {};
 
-  const transacoesConsolidadas = getTransacoesConsolidadas(extratosPorBanco, contaContabilSelecionada);
-  const saldoConsolidado = transacoesConsolidadas.reduce((s, t) => s + t.valor, 0);
+  const transacoesConsolidadas = useMemo(
+    () =>
+      getTransacoesConsolidadas(
+        extratosPorBanco,
+        contaContabilSelecionada,
+        numeroBancoMap,
+        contaToLetraMerged
+      ),
+    [extratosPorBanco, contaContabilSelecionada, numeroBancoMap, contaToLetraMerged]
+  );
   const isContaCompensacao = contaContabilSelecionada === 'Conta Compensação';
-  const somasParComp = isContaCompensacao ? somasPorParCompensacao(extratosPorBanco) : {};
+  const somasParComp = isContaCompensacao
+    ? somasPorParCompensacao(extratosPorBanco, numeroBancoMap, contaToLetraMerged)
+    : {};
   const paresCompensacaoDesbalanceados = isContaCompensacao
     ? Object.entries(somasParComp).filter(([proc, somaCent]) => /^\d+$/.test(String(proc)) && somaCent !== 0)
     : [];
@@ -280,10 +597,10 @@ export function Financeiro() {
     );
   }, [extratosPorBanco, instituicaoSelecionada, sortExtratoBanco.col, sortExtratoBanco.dir]);
 
-  const listaConsolidadaOrdenada = useMemo(() => {
-    const txs = getTransacoesConsolidadas(extratosPorBanco, contaContabilSelecionada);
-    return ordenarTransacoesConsolidado(txs, sortConsolidado.col, sortConsolidado.dir);
-  }, [extratosPorBanco, contaContabilSelecionada, sortConsolidado.col, sortConsolidado.dir]);
+  const listaConsolidadaOrdenada = useMemo(
+    () => ordenarTransacoesConsolidado(transacoesConsolidadas, sortConsolidado.col, sortConsolidado.dir),
+    [transacoesConsolidadas, sortConsolidado.col, sortConsolidado.dir]
+  );
 
   const listaConsolidadaParaExibicao = useMemo(() => {
     if (!filtroConciliacaoHonorarios || contaContabilSelecionada !== 'Conta Escritório') {
@@ -296,19 +613,120 @@ export function Financeiro() {
     );
   }, [listaConsolidadaOrdenada, filtroConciliacaoHonorarios, contaContabilSelecionada]);
 
-  const saldoConsolidadoFiltrado = useMemo(
-    () => listaConsolidadaParaExibicao.reduce((s, t) => s + t.valor, 0),
-    [listaConsolidadaParaExibicao]
+  const anosDisponiveisFinanceiro = useMemo(
+    () => coletarAnosDosExtratos(extratosPorBanco),
+    [extratosPorBanco]
+  );
+
+  const anosParaSelectPeriodo = useMemo(() => {
+    const s = new Set(anosDisponiveisFinanceiro);
+    s.add(periodoAno);
+    return Array.from(s).sort((a, b) => b - a);
+  }, [anosDisponiveisFinanceiro, periodoAno]);
+
+  const selecaoPeriodoAtual = useMemo(() => {
+    if (periodoVisao === 'todos') return null;
+    if (periodoVisao === 'ano') return { ano: periodoAno };
+    if (periodoVisao === 'mes') return { ano: periodoAno, mes: periodoMes };
+    if (periodoVisao === 'trimestre') return { ano: periodoAno, trimestre: periodoTrimestre };
+    if (periodoVisao === 'bimestre') return { ano: periodoAno, bimestre: periodoBimestre };
+    if (periodoVisao === 'semestre') return { ano: periodoAno, semestre: periodoSemestre };
+    if (periodoVisao === 'personalizado') {
+      return { dataInicio: periodoPersonalInicio, dataFim: periodoPersonalFim };
+    }
+    return null;
+  }, [
+    periodoVisao,
+    periodoAno,
+    periodoMes,
+    periodoTrimestre,
+    periodoBimestre,
+    periodoSemestre,
+    periodoPersonalInicio,
+    periodoPersonalFim,
+  ]);
+
+  const listaExtratoBancoVisivel = useMemo(
+    () =>
+      filtrarTransacoesPorPeriodo(listaExtratoBancoOrdenada, 'data', periodoVisao, selecaoPeriodoAtual),
+    [listaExtratoBancoOrdenada, periodoVisao, selecaoPeriodoAtual]
+  );
+
+  const listaConsolidadaAposPeriodo = useMemo(
+    () =>
+      filtrarTransacoesPorPeriodo(listaConsolidadaParaExibicao, 'data', periodoVisao, selecaoPeriodoAtual),
+    [listaConsolidadaParaExibicao, periodoVisao, selecaoPeriodoAtual]
+  );
+
+  const elosDisponiveisConsolidado = useMemo(() => {
+    if (!isContaCompensacao) return [];
+    const set = new Set();
+    for (const t of listaConsolidadaAposPeriodo) {
+      const p = String(t.proc ?? '').trim();
+      if (p) set.add(p);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  }, [isContaCompensacao, listaConsolidadaAposPeriodo]);
+
+  useEffect(() => {
+    if (!isContaCompensacao) {
+      setFiltroEloConsolidado('');
+      setFiltroConciliacaoEloConsolidado('todos');
+    }
+  }, [isContaCompensacao]);
+
+  useEffect(() => {
+    if (!isContaCompensacao || !filtroEloConsolidado) return;
+    if (!elosDisponiveisConsolidado.includes(filtroEloConsolidado)) {
+      setFiltroEloConsolidado('');
+    }
+  }, [isContaCompensacao, filtroEloConsolidado, elosDisponiveisConsolidado]);
+
+  const listaConsolidadaAposPeriodoEElo = useMemo(() => {
+    if (!isContaCompensacao || !filtroEloConsolidado) return listaConsolidadaAposPeriodo;
+    return listaConsolidadaAposPeriodo.filter(
+      (t) => String(t.proc ?? '').trim() === filtroEloConsolidado
+    );
+  }, [listaConsolidadaAposPeriodo, isContaCompensacao, filtroEloConsolidado]);
+
+  const listaConsolidadaVisivel = useMemo(() => {
+    let list = listaConsolidadaAposPeriodoEElo;
+    if (isContaCompensacao && filtroConciliacaoEloConsolidado === 'nao_conciliados') {
+      list = list.filter((t) => {
+        const k = String(t.proc ?? '').trim() || '—';
+        return (somasParComp[k] ?? 0) !== 0;
+      });
+    } else if (isContaCompensacao && filtroConciliacaoEloConsolidado === 'conciliados') {
+      list = list.filter((t) => {
+        const k = String(t.proc ?? '').trim() || '—';
+        return (somasParComp[k] ?? 0) === 0;
+      });
+    }
+    return list;
+  }, [
+    listaConsolidadaAposPeriodoEElo,
+    isContaCompensacao,
+    filtroConciliacaoEloConsolidado,
+    somasParComp,
+  ]);
+
+  const saldoHeaderConsolidado = useMemo(
+    () => listaConsolidadaVisivel.reduce((s, t) => s + t.valor, 0),
+    [listaConsolidadaVisivel]
   );
 
   /** Contas ordenadas pelo uso real nos extratos (quantidade e soma dos valores por letra). */
   const contasDerivadasDosExtratos = useMemo(
-    () => getContasContabeisDerivadasExtratos(extratosPorBanco),
-    [extratosPorBanco]
+    () => getContasContabeisDerivadasExtratos(extratosPorBanco, letraToContaMerged, ordemLetrasCompleta),
+    [extratosPorBanco, letraToContaMerged, ordemLetrasCompleta]
   );
-  const meioContas = Math.ceil(contasDerivadasDosExtratos.length / 2) || 1;
-  const contasLinha1 = contasDerivadasDosExtratos.slice(0, meioContas);
-  const contasLinha2 = contasDerivadasDosExtratos.slice(meioContas);
+  const contasContabeisChipsAtivas = useMemo(
+    () => contasDerivadasDosExtratos.filter((c) => !contasContabeisInativasSet.has(c.nome)),
+    [contasDerivadasDosExtratos, contasContabeisInativasSet]
+  );
+  const meioContas = Math.ceil(contasContabeisChipsAtivas.length / 2) || 1;
+  const contasLinha1 = contasContabeisChipsAtivas.slice(0, meioContas);
+  const contasLinha2 = contasContabeisChipsAtivas.slice(meioContas);
 
   /** Altera a letra (conta contábil) do lançamento; o lançamento sai da conta original e passa para a nova. */
   function updateLetraLancamento(nomeBanco, numero, data, novaLetra) {
@@ -318,10 +736,11 @@ export function Financeiro() {
       if (!list) return prev;
       const idx = list.findIndex((t) => t.numero === numero && t.data === data);
       if (idx === -1) return prev;
+      const L = String(novaLetra ?? '').trim().toUpperCase();
       list[idx] = {
         ...list[idx],
-        letra: novaLetra,
-        ...(novaLetra === 'E' ? { codCliente: '', proc: '' } : {}),
+        letra: L,
+        ...(L === 'E' ? { codCliente: '', proc: '' } : {}),
       };
       return next;
     });
@@ -508,7 +927,7 @@ export function Financeiro() {
         rotulo: 'Após vínculo automático (Cálculos)',
         valorCentavos: null,
       });
-      setContaContabilSelecionada('Conta Escritório');
+      setContaContabilSelecionada(contaEscritorioOuPrimeiraAtiva(contasContabeisInativasSet, ordemNomesContabeis));
     } else {
       setFiltroConciliacaoHonorarios(null);
     }
@@ -520,8 +939,10 @@ export function Financeiro() {
 
   /** Duplo clique na linha do extrato bancário: abre a conta contábil da letra e posiciona nessa linha no consolidado. */
   function handleDuploCliqueLinhaBanco(transacao) {
-    const conta = LETRA_TO_CONTA[transacao.letra];
+    const L = String(transacao.letra ?? '').trim().toUpperCase();
+    const conta = letraToContaMerged[L];
     if (!conta) return;
+    if (contasContabeisInativasSet.has(conta)) setMostrarContasContabeisInativas(true);
     const rowKey = `${instituicaoSelecionada}-${transacao.numero}-${transacao.data}`;
     setContaContabilSelecionada(conta);
     setLinhaConsolidadoAlvo(rowKey);
@@ -593,8 +1014,10 @@ export function Financeiro() {
 
   /** Duplo clique no Nº do consolidado: abre o extrato do banco e posiciona na linha desse lançamento. */
   function handleDuploCliqueNºConsolidado(transacao) {
-    setInstituicaoSelecionada(transacao.nomeBanco);
-    setLinhaBancoAlvo({ nomeBanco: transacao.nomeBanco, numero: transacao.numero, data: transacao.data });
+    const nb = transacao.nomeBanco;
+    setInstituicaoSelecionada(nb);
+    if (extratosInativosSet.has(nb)) setMostrarExtratosInativos(true);
+    setLinhaBancoAlvo({ nomeBanco: nb, numero: transacao.numero, data: transacao.data });
   }
 
   function readFileAsText(file) {
@@ -612,12 +1035,93 @@ export function Financeiro() {
     const finalLista =
       modo === 'substituir' ? listaNova : mergeExtratoBancario(atual, listaNova);
     const comNovoExtrato = { ...prev, [nomeBanco]: finalLista };
-    /* Após OFX: varrer todos os bancos por novos pares (N + órfãos Proc. ?n × demais extratos). */
-    return parearCompensacaoAposImportacaoOfx(comNovoExtrato);
+    /* Novos lançamentos vêm do OFX com letra N; não aplicar pareamento automático (N→E) — use "Parear compensações". */
+    return comNovoExtrato;
+  }
+
+  function inativarExtratoSelecionado() {
+    const nome = instituicaoSelecionada;
+    if (!nome || extratosInativosSet.has(nome)) return;
+    const next = new Set(extratosInativosSet);
+    next.add(nome);
+    setExtratosInativos([...next].sort());
+    const ordem = [...INSTITUICOES_LINHA_1, ...INSTITUICOES_LINHA_2, ...contasExtras.map((c) => c.nome)];
+    const primeiroAtivo = ordem.find((n) => !next.has(n));
+    if (primeiroAtivo) setInstituicaoSelecionada(primeiroAtivo);
+  }
+
+  function reativarExtratoSelecionado() {
+    const nome = instituicaoSelecionada;
+    if (!nome || !extratosInativosSet.has(nome)) return;
+    setExtratosInativos((prev) => prev.filter((x) => x !== nome));
+  }
+
+  function adicionarNovaContaContabil() {
+    const v = validarNovoNomeContaContabil(nomeNovaContaContabil, contasContabeisExtras);
+    if (!v.ok) {
+      setMsgNovaContaContabil({ kind: 'error', text: v.message });
+      return;
+    }
+    const letra = proximaLetraContaContabilExtra(contasContabeisExtras);
+    if (!letra) {
+      setMsgNovaContaContabil({
+        kind: 'error',
+        text: 'Limite de contas contábeis adicionais atingido (pool de letras esgotado).',
+      });
+      return;
+    }
+    const nome = v.nome;
+    setContasContabeisExtras((prev) =>
+      [...prev, { letra, nome }].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
+    );
+    setContaContabilSelecionada(nome);
+    setNomeNovaContaContabil('');
+    setMsgNovaContaContabil({
+      kind: 'success',
+      text: `Conta contábil "${nome}" criada — letra ${letra} nos extratos e no consolidado.`,
+    });
+  }
+
+  function inativarContaContabilSelecionada() {
+    const nome = contaContabilSelecionada;
+    if (!nome || contasContabeisInativasSet.has(nome)) return;
+    const nextArr = [...contasContabeisInativas, nome].sort();
+    const nextSet = new Set(nextArr);
+    setContasContabeisInativas(nextArr);
+    const primeiro = ordemNomesContabeis.find((n) => !nextSet.has(n));
+    if (primeiro) setContaContabilSelecionada(primeiro);
+  }
+
+  function reativarContaContabilSelecionada() {
+    const nome = contaContabilSelecionada;
+    if (!nome || !contasContabeisInativasSet.has(nome)) return;
+    setContasContabeisInativas((prev) => prev.filter((x) => x !== nome));
+  }
+
+  function adicionarNovaContaBancaria() {
+    const v = validarNovoNomeContaBancaria(nomeNovaContaBancaria, contasExtras);
+    if (!v.ok) {
+      setMsgNovaContaBancaria({ kind: 'error', text: v.message });
+      return;
+    }
+    const nome = v.nome;
+    const numero = proximoNumeroContaBanco(contasExtras);
+    setContasExtras((prev) => [...prev, { nome, numero }].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')));
+    setExtratosPorBanco((prev) => ({ ...prev, [nome]: Array.isArray(prev[nome]) ? prev[nome] : [] }));
+    setInstituicaoSelecionada(nome);
+    setNomeNovaContaBancaria('');
+    setMsgNovaContaBancaria({ kind: 'success', text: `Conta "${nome}" criada — identificação Nº ${numero} no consolidado.` });
   }
 
   async function importarOfxArquivo(file) {
     try {
+      if (extratosInativosSet.has(instituicaoSelecionada)) {
+        setOfxStatus({
+          kind: 'error',
+          message: `Extrato ${instituicaoSelecionada} está inativo (conta encerrada). Reative para importar OFX.`,
+        });
+        return;
+      }
       setOfxStatus({ kind: 'loading', message: `Importando OFX para ${instituicaoSelecionada}...` });
       const text = await readFileAsText(file);
       const extrato = parseOfxToExtrato(text, { nomeBanco: instituicaoSelecionada });
@@ -638,7 +1142,7 @@ export function Financeiro() {
           : `OFX: extrato de ${instituicaoSelecionada} substituído (${extrato.length} lanç.).`;
       setOfxStatus({
         kind: 'success',
-        message: `${base} Compensação: busca automática em todos os extratos concluída.`,
+        message: `${base} Lançamentos novos na letra N (Conta Não Identificados) até você reclassificar ou usar Parear compensações.`,
       });
     } catch (e) {
       setOfxStatus({ kind: 'error', message: `Falha ao importar OFX: ${e?.message || String(e)}` });
@@ -646,6 +1150,13 @@ export function Financeiro() {
   }
 
   function carregarOfxExemploItau() {
+    if (extratosInativosSet.has('Itaú')) {
+      setOfxStatus({
+        kind: 'error',
+        message: 'Extrato Itaú está inativo. Reative para importar OFX.',
+      });
+      return;
+    }
     const extrato = parseOfxToExtrato(OFX_ITAU_REAL_EXEMPLO, { nomeBanco: 'Itaú' });
     if (!extrato.length) {
       setOfxStatus({ kind: 'error', message: 'OFX exemplo Itaú inválido.' });
@@ -659,11 +1170,18 @@ export function Financeiro() {
     });
     setOfxStatus({
       kind: 'success',
-      message: `Itaú: +${novos} lanç. novos (OFX real). Demais bancos preservados. Compensação buscada em todos os extratos.`,
+      message: `Itaú: +${novos} lanç. novos (OFX real). Demais bancos preservados. Novos em N até reclassificar.`,
     });
   }
 
   function carregarOfxExemploCora() {
+    if (extratosInativosSet.has('CORA')) {
+      setOfxStatus({
+        kind: 'error',
+        message: 'Extrato CORA está inativo. Reative para importar OFX.',
+      });
+      return;
+    }
     const extrato = parseOfxToExtrato(OFX_CORA_REAL_EXEMPLO, { nomeBanco: 'CORA' });
     if (!extrato.length) {
       setOfxStatus({ kind: 'error', message: 'OFX exemplo Cora inválido.' });
@@ -677,7 +1195,7 @@ export function Financeiro() {
     });
     setOfxStatus({
       kind: 'success',
-      message: `CORA: +${novos} lanç. novos (OFX real). Demais bancos preservados. Compensação buscada em todos os extratos.`,
+      message: `CORA: +${novos} lanç. novos (OFX real). Demais bancos preservados. Novos em N até reclassificar.`,
     });
   }
 
@@ -691,6 +1209,52 @@ export function Financeiro() {
       if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
     };
   }, [extratosPorBanco]);
+
+  useEffect(() => {
+    if (inativosSaveTimerRef.current) window.clearTimeout(inativosSaveTimerRef.current);
+    inativosSaveTimerRef.current = window.setTimeout(() => {
+      savePersistedExtratosInativosFinanceiro(extratosInativos);
+    }, 250);
+    return () => {
+      if (inativosSaveTimerRef.current) window.clearTimeout(inativosSaveTimerRef.current);
+    };
+  }, [extratosInativos]);
+
+  useEffect(() => {
+    if (contasExtrasSaveTimerRef.current) window.clearTimeout(contasExtrasSaveTimerRef.current);
+    contasExtrasSaveTimerRef.current = window.setTimeout(() => {
+      savePersistedContasExtrasFinanceiro(contasExtras);
+    }, 250);
+    return () => {
+      if (contasExtrasSaveTimerRef.current) window.clearTimeout(contasExtrasSaveTimerRef.current);
+    };
+  }, [contasExtras]);
+
+  useEffect(() => {
+    if (contasContabeisExtrasSaveTimerRef.current) window.clearTimeout(contasContabeisExtrasSaveTimerRef.current);
+    contasContabeisExtrasSaveTimerRef.current = window.setTimeout(() => {
+      savePersistedContasContabeisExtrasFinanceiro(contasContabeisExtras);
+    }, 250);
+    return () => {
+      if (contasContabeisExtrasSaveTimerRef.current) {
+        window.clearTimeout(contasContabeisExtrasSaveTimerRef.current);
+      }
+    };
+  }, [contasContabeisExtras]);
+
+  useEffect(() => {
+    if (contasContabeisInativasSaveTimerRef.current) {
+      window.clearTimeout(contasContabeisInativasSaveTimerRef.current);
+    }
+    contasContabeisInativasSaveTimerRef.current = window.setTimeout(() => {
+      savePersistedContasContabeisInativasFinanceiro(contasContabeisInativas);
+    }, 250);
+    return () => {
+      if (contasContabeisInativasSaveTimerRef.current) {
+        window.clearTimeout(contasContabeisInativasSaveTimerRef.current);
+      }
+    };
+  }, [contasContabeisInativas]);
 
   useEffect(() => {
     if (linhaConsolidadoAlvo && linhaConsolidadoRef.current) {
@@ -712,19 +1276,27 @@ export function Financeiro() {
     const numero = String(alvo.numero);
     const data = alvo.data;
     setInstituicaoSelecionada(nomeBanco);
-    setContaContabilSelecionada('Conta Escritório');
+    if (extratosInativos.includes(nomeBanco)) setMostrarExtratosInativos(true);
+    setContaContabilSelecionada(contaEscritorioOuPrimeiraAtiva(contasContabeisInativasSet, ordemNomesContabeis));
     const rowKey = `${nomeBanco}-${numero}-${data}`;
     setLinhaConsolidadoAlvo(rowKey);
     setLinhaConsolidadoFoco(rowKey);
     setLinhaBancoAlvo({ nomeBanco, numero, data });
     navigate(location.pathname, { replace: true, state: {} });
-  }, [location.state, location.pathname, navigate]);
+  }, [
+    location.state,
+    location.pathname,
+    navigate,
+    extratosInativos,
+    contasContabeisInativasSet,
+    ordemNomesContabeis,
+  ]);
 
   /** Vindo de Cálculos → aba Honorários: conciliação com mesmo cliente/proc na Conta Escritório. */
   useEffect(() => {
     const alvo = location.state?.financeiroConciliacaoHonorarios;
     if (!alvo?.codCliente) return;
-    setContaContabilSelecionada('Conta Escritório');
+    setContaContabilSelecionada(contaEscritorioOuPrimeiraAtiva(contasContabeisInativasSet, ordemNomesContabeis));
     setFiltroConciliacaoHonorarios({
       codCliente: String(alvo.codCliente ?? '').trim(),
       proc: String(alvo.proc ?? '').trim(),
@@ -735,7 +1307,7 @@ export function Financeiro() {
           : null,
     });
     navigate(location.pathname, { replace: true, state: {} });
-  }, [location.state, location.pathname, navigate]);
+  }, [location.state, location.pathname, navigate, contasContabeisInativasSet, ordemNomesContabeis]);
 
   /** Vindo de Cálculos → aba Parcelamento: abre modal de busca automática (sem precisar informar cliente/proc). */
   useEffect(() => {
@@ -745,22 +1317,260 @@ export function Financeiro() {
     navigate(location.pathname, { replace: true, state: {} });
   }, [location.state, location.pathname, navigate]);
 
-  const saldoHeaderConsolidado =
-    filtroConciliacaoHonorarios && contaContabilSelecionada === 'Conta Escritório'
-      ? saldoConsolidadoFiltrado
-      : saldoConsolidado;
+  const ofxBloqueadoExtratoInativo = extratosInativosSet.has(instituicaoSelecionada);
+
+  function onChangeTipoPeriodo(novo) {
+    setPeriodoVisao(novo);
+    if (novo === 'personalizado') {
+      const { ini, fim } = limitesMesBr(periodoAno, periodoMes);
+      setPeriodoPersonalInicio((p) => (String(p ?? '').trim() ? p : ini));
+      setPeriodoPersonalFim((p) => (String(p ?? '').trim() ? p : fim));
+    }
+  }
+
+  function renderBarraFiltroPeriodo(suffix) {
+    const mostrarAno =
+      periodoVisao === 'mes' ||
+      periodoVisao === 'bimestre' ||
+      periodoVisao === 'trimestre' ||
+      periodoVisao === 'semestre' ||
+      periodoVisao === 'ano';
+    return (
+      <div
+        className={`flex flex-wrap items-end gap-x-2 gap-y-1.5 rounded-md border border-slate-200 bg-slate-50/95 px-2 py-1.5 ${
+          suffix === 'extrato' ? 'max-w-full' : ''
+        }`}
+        title={
+          suffix === 'extrato'
+            ? 'No extrato bancário, a coluna Saldo reflete o extrato completo; só a lista é filtrada por data.'
+            : undefined
+        }
+      >
+        <div className="flex flex-col gap-0.5 min-w-0">
+          <label htmlFor={`periodo-tipo-${suffix}`} className="text-[10px] font-medium text-slate-600 whitespace-nowrap">
+            Filtrar por
+          </label>
+          <select
+            id={`periodo-tipo-${suffix}`}
+            value={periodoVisao}
+            onChange={(e) => onChangeTipoPeriodo(e.target.value)}
+            className="text-xs border border-slate-300 rounded-md px-1.5 py-1 bg-white text-slate-800 min-w-[8.5rem] max-w-full shadow-sm"
+          >
+            <option value="todos">Todos</option>
+            <option value="mes">Mês / ano</option>
+            <option value="bimestre">Bimestre</option>
+            <option value="trimestre">Trimestre</option>
+            <option value="semestre">Semestre</option>
+            <option value="ano">Ano</option>
+            <option value="personalizado">Período personalizado</option>
+          </select>
+        </div>
+        {periodoVisao === 'mes' && (
+          <div className="flex flex-col gap-0.5">
+            <label htmlFor={`periodo-mes-${suffix}`} className="text-[10px] text-slate-600">
+              Mês
+            </label>
+            <select
+              id={`periodo-mes-${suffix}`}
+              value={periodoMes}
+              onChange={(e) => setPeriodoMes(Number(e.target.value))}
+              className="text-xs border border-slate-300 rounded-md px-1.5 py-1 bg-white text-slate-800 min-w-[6.5rem] shadow-sm"
+            >
+              {MESES_PT.map((nome, i) => (
+                <option key={nome} value={i + 1}>
+                  {nome}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+        {periodoVisao === 'bimestre' && (
+          <div className="flex flex-col gap-0.5">
+            <label htmlFor={`periodo-bi-${suffix}`} className="text-[10px] text-slate-600">
+              Bimestre
+            </label>
+            <select
+              id={`periodo-bi-${suffix}`}
+              value={periodoBimestre}
+              onChange={(e) => setPeriodoBimestre(Number(e.target.value))}
+              className="text-xs border border-slate-300 rounded-md px-1.5 py-1 bg-white text-slate-800 min-w-[7rem] shadow-sm"
+            >
+              <option value={1}>1º — jan, fev</option>
+              <option value={2}>2º — mar, abr</option>
+              <option value={3}>3º — mai, jun</option>
+              <option value={4}>4º — jul, ago</option>
+              <option value={5}>5º — set, out</option>
+              <option value={6}>6º — nov, dez</option>
+            </select>
+          </div>
+        )}
+        {periodoVisao === 'trimestre' && (
+          <div className="flex flex-col gap-0.5">
+            <label htmlFor={`periodo-trim-${suffix}`} className="text-[10px] text-slate-600">
+              Trim.
+            </label>
+            <select
+              id={`periodo-trim-${suffix}`}
+              value={periodoTrimestre}
+              onChange={(e) => setPeriodoTrimestre(Number(e.target.value))}
+              className="text-xs border border-slate-300 rounded-md px-1.5 py-1 bg-white text-slate-800 min-w-[6.5rem] shadow-sm"
+            >
+              <option value={1}>1º</option>
+              <option value={2}>2º</option>
+              <option value={3}>3º</option>
+              <option value={4}>4º</option>
+            </select>
+          </div>
+        )}
+        {periodoVisao === 'semestre' && (
+          <div className="flex flex-col gap-0.5">
+            <label htmlFor={`periodo-sem-${suffix}`} className="text-[10px] text-slate-600">
+              Sem.
+            </label>
+            <select
+              id={`periodo-sem-${suffix}`}
+              value={periodoSemestre}
+              onChange={(e) => setPeriodoSemestre(Number(e.target.value))}
+              className="text-xs border border-slate-300 rounded-md px-1.5 py-1 bg-white text-slate-800 min-w-[6rem] shadow-sm"
+            >
+              <option value={1}>1º — jan a jun</option>
+              <option value={2}>2º — jul a dez</option>
+            </select>
+          </div>
+        )}
+        {mostrarAno && (
+          <div className="flex flex-col gap-0.5">
+            <label htmlFor={`periodo-ano-${suffix}`} className="text-[10px] text-slate-600">
+              Ano
+            </label>
+            <select
+              id={`periodo-ano-${suffix}`}
+              value={periodoAno}
+              onChange={(e) => setPeriodoAno(Number(e.target.value))}
+              className="text-xs border border-slate-300 rounded-md px-1.5 py-1 bg-white text-slate-800 min-w-[4.25rem] shadow-sm"
+            >
+              {anosParaSelectPeriodo.map((y) => (
+                <option key={y} value={y}>
+                  {y}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+        {periodoVisao === 'personalizado' && (
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="flex flex-col gap-0.5">
+              <label htmlFor={`periodo-de-${suffix}`} className="text-[10px] text-slate-600">
+                De
+              </label>
+              <input
+                id={`periodo-de-${suffix}`}
+                type="text"
+                inputMode="numeric"
+                placeholder="dd/mm/aaaa"
+                value={periodoPersonalInicio}
+                onChange={(e) => setPeriodoPersonalInicio(e.target.value)}
+                className="text-xs border border-slate-300 rounded-md px-1.5 py-1 bg-white text-slate-800 w-[6.75rem] shadow-sm"
+              />
+            </div>
+            <div className="flex flex-col gap-0.5">
+              <label htmlFor={`periodo-ate-${suffix}`} className="text-[10px] text-slate-600">
+                Até
+              </label>
+              <input
+                id={`periodo-ate-${suffix}`}
+                type="text"
+                inputMode="numeric"
+                placeholder="dd/mm/aaaa"
+                value={periodoPersonalFim}
+                onChange={(e) => setPeriodoPersonalFim(e.target.value)}
+                className="text-xs border border-slate-300 rounded-md px-1.5 py-1 bg-white text-slate-800 w-[6.75rem] shadow-sm"
+              />
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-full bg-slate-100 flex flex-col">
       <header className="px-4 py-3 bg-white border-b border-slate-200 shrink-0">
         <div className="flex items-center justify-between gap-3">
-          <h1 className="text-xl font-bold text-slate-800">Financeiro</h1>
+          <div className="flex items-center gap-2 min-w-0 flex-wrap">
+            <h1 className="text-xl font-bold text-slate-800">Financeiro</h1>
+            <button
+              type="button"
+              onClick={() => setModalConfigFinanceiro(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-sm font-medium hover:bg-slate-50 shrink-0"
+              title="Adicionar conta bancária ou conta contábil"
+            >
+              <Settings className="w-4 h-4 text-slate-600" aria-hidden />
+              Configurações
+            </button>
+            <label htmlFor="layout-relatorios-financeiro" className="sr-only">
+              Disposição do extrato do banco e do consolidado
+            </label>
+            <select
+              id="layout-relatorios-financeiro"
+              value={disposicaoRelatorios}
+              onChange={(e) => setDisposicaoRelatorios(e.target.value)}
+              className="text-sm border border-slate-300 rounded-lg px-2 py-1.5 bg-white text-slate-800 max-w-[min(100%,15rem)] shadow-sm shrink-0"
+              title="Empilhados ou lado a lado (quando os dois painéis estão visíveis)"
+            >
+              <option value="empilhado">Extrato + consolidado: empilhados</option>
+              <option value="lado_a_lado">Extrato + consolidado: lado a lado</option>
+            </select>
+            <label htmlFor="paineis-relatorios-financeiro" className="sr-only">
+              Quais painéis exibir
+            </label>
+            <select
+              id="paineis-relatorios-financeiro"
+              value={paineisRelatorios}
+              onChange={(e) => setPaineisRelatorios(e.target.value)}
+              className="text-sm border border-slate-300 rounded-lg px-2 py-1.5 bg-white text-slate-800 max-w-[min(100%,16rem)] shadow-sm shrink-0"
+              title="Extrato do banco, consolidado das contas contábeis ou ambos"
+            >
+              <option value="ambos">Mostrar extrato e consolidado</option>
+              <option value="so_extrato">Só extrato (banco)</option>
+              <option value="so_consolidado">Só contas contábeis (consolidado)</option>
+            </select>
+            <label htmlFor="ordem-relatorios-financeiro" className="sr-only">
+              Ordem do extrato e do consolidado
+            </label>
+            <select
+              id="ordem-relatorios-financeiro"
+              value={ordemRelatorios}
+              onChange={(e) => setOrdemRelatorios(e.target.value)}
+              disabled={paineisRelatorios !== 'ambos'}
+              className={`text-sm border border-slate-300 rounded-lg px-2 py-1.5 bg-white text-slate-800 max-w-[min(100%,17rem)] shadow-sm shrink-0 ${
+                paineisRelatorios !== 'ambos' ? 'opacity-50 cursor-not-allowed' : ''
+              }`}
+              title={
+                paineisRelatorios !== 'ambos'
+                  ? 'Disponível quando extrato e consolidado estão visíveis'
+                  : 'Na pilha: qual bloco vem primeiro. Lado a lado: qual coluna fica à esquerda (extrato primeiro = extrato à esquerda)'
+              }
+            >
+              <option value="extrato_primeiro">Ordem: extrato primeiro (à esquerda no lado a lado)</option>
+              <option value="consolidado_primeiro">Ordem: consolidado primeiro (à esquerda no lado a lado)</option>
+            </select>
+          </div>
           <div className="flex items-center gap-3 flex-wrap justify-end">
             <button
               type="button"
+              disabled={ofxBloqueadoExtratoInativo}
               onClick={() => fileInputOfxRef.current?.click()}
-              className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 shadow-sm"
-              title={`Importar OFX em ${instituicaoSelecionada} (mescla por padrão)`}
+              className={`px-4 py-2 rounded-lg text-sm font-semibold shadow-sm ${
+                ofxBloqueadoExtratoInativo
+                  ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
+                  : 'bg-indigo-600 text-white hover:bg-indigo-700'
+              }`}
+              title={
+                ofxBloqueadoExtratoInativo
+                  ? 'Extrato inativo — reative para importar OFX'
+                  : `Importar OFX em ${instituicaoSelecionada} (mescla por padrão)`
+              }
             >
               Importar OFX ({instituicaoSelecionada})
             </button>
@@ -774,16 +1584,26 @@ export function Financeiro() {
             </label>
             <button
               type="button"
+              disabled={extratosInativosSet.has('Itaú')}
               onClick={carregarOfxExemploItau}
-              className="px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-800 text-sm font-medium hover:bg-slate-50"
+              className={`px-3 py-2 rounded-lg border border-slate-300 text-sm font-medium ${
+                extratosInativosSet.has('Itaú')
+                  ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                  : 'bg-white text-slate-800 hover:bg-slate-50'
+              }`}
               title="Mescla OFX real (estrutura Itaú, anonimizado) — não apaga mock"
             >
               + OFX real Itaú
             </button>
             <button
               type="button"
+              disabled={extratosInativosSet.has('CORA')}
               onClick={carregarOfxExemploCora}
-              className="px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-800 text-sm font-medium hover:bg-slate-50"
+              className={`px-3 py-2 rounded-lg border border-slate-300 text-sm font-medium ${
+                extratosInativosSet.has('CORA')
+                  ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                  : 'bg-white text-slate-800 hover:bg-slate-50'
+              }`}
               title="Mescla OFX real (estrutura Cora, anonimizado) — não apaga mock"
             >
               + OFX real Cora
@@ -865,17 +1685,74 @@ export function Financeiro() {
           <p className="text-xs text-slate-500 mb-3">
             Por padrão, cada importação <strong>acrescenta</strong> lançamentos (sem apagar mock nem OFX já
             importados). Duplicatas (mesmo FITID + data + valor) são ignoradas. Os dados são salvos no navegador.
-            Após <strong>cada</strong> OFX, o sistema busca automaticamente <strong>novos pares de compensação</strong> em{' '}
-            <strong>todos</strong> os extratos (mesmo dia, valor oposto exato, bancos diferentes). Use{' '}
+            Cada lançamento <strong>novo</strong> importado entra na letra <strong>N</strong> (Conta Não Identificados) e
+            permanece nela até você reclassificar no extrato ou usar <strong>Parear compensações</strong> para
+            identificar pares entre bancos (mesmo dia, valor oposto exato). Use{' '}
             <strong>Substituir todo o extrato deste banco</strong> só se quiser trocar o extrato inteiro da instituição
-            selecionada.
+            selecionada. Extratos <strong>inativos</strong> indicam conta encerrada: o histórico permanece salvo, mas o
+            extrato some da lista principal e não recebe novas importações OFX até você reativar. Use o botão{' '}
+            <strong>Configurações</strong> no topo para criar instituições além das padrão: cada uma recebe um{' '}
+            <strong>Nº sequencial</strong> no consolidado (após o maior número já cadastrado) e passa a integrar OFX,
+            compensações e contas contábeis como as demais.
           </p>
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 px-3 py-2.5 mb-3 text-xs text-slate-800 space-y-1.5">
+            <p>
+              <strong className="text-emerald-900">Letra A — Conta Escritório:</strong> todo lançamento que você
+              classificar com <strong>A</strong> no extrato entra na conta contábil <strong>Conta Escritório</strong> e
+              pode compor a <strong>Conta Corrente</strong> do processo em <strong>Processos</strong>. Para isso,
+              preencha <strong>Cod. Cliente</strong> e <strong>Proc.</strong> de forma coerente com o cadastro.
+            </p>
+            <p>
+              <strong className="text-amber-900">Letra E — Conta Compensação:</strong> usada para{' '}
+              <strong>anular</strong> pares (mesmo <strong>Elo</strong>, número natural — ex. 0001, 0002…): a{' '}
+              <strong>soma dos valores</strong> de cada Elo deve ser <strong>zero</strong>, registrando só a{' '}
+              <strong>mudança de numerário</strong> entre bancos, sem efeito líquido nas outras contas contábeis. Use{' '}
+              <strong>Parear compensações</strong> no topo para identificar e aplicar Elos.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-3 mb-3">
+            <label className="flex items-center gap-2 text-xs text-slate-600 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={mostrarExtratosInativos}
+                onChange={(e) => setMostrarExtratosInativos(e.target.checked)}
+                disabled={extratosInativos.length === 0}
+              />
+              Mostrar extratos inativos (arquivados)
+            </label>
+            {extratosInativosSet.has(instituicaoSelecionada) ? (
+              <button
+                type="button"
+                onClick={reativarExtratoSelecionado}
+                className="px-3 py-1.5 rounded-lg border border-green-600 bg-green-50 text-green-900 text-xs font-medium hover:bg-green-100"
+              >
+                Reativar extrato selecionado
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={inativarExtratoSelecionado}
+                className="px-3 py-1.5 rounded-lg border border-slate-400 bg-white text-slate-800 text-xs font-medium hover:bg-slate-50"
+              >
+                Inativar extrato selecionado
+              </button>
+            )}
+          </div>
           <div className="flex items-center gap-3 mb-2 flex-wrap">
             <button
               type="button"
+              disabled={ofxBloqueadoExtratoInativo}
               onClick={() => fileInputOfxRef.current?.click()}
-              className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 shadow-sm"
-              title={`Importar OFX e atualizar o extrato de ${instituicaoSelecionada}`}
+              className={`px-4 py-2 rounded-lg text-sm font-semibold shadow-sm ${
+                ofxBloqueadoExtratoInativo
+                  ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
+                  : 'bg-indigo-600 text-white hover:bg-indigo-700'
+              }`}
+              title={
+                ofxBloqueadoExtratoInativo
+                  ? 'Extrato inativo — reative para importar OFX'
+                  : `Importar OFX e atualizar o extrato de ${instituicaoSelecionada}`
+              }
             >
               Importar OFX ({instituicaoSelecionada})
             </button>
@@ -907,7 +1784,7 @@ export function Financeiro() {
             )}
           </div>
           <div className="flex flex-wrap gap-2">
-            {INSTITUICOES_LINHA_1.map((nome) => (
+            {INSTITUICOES_LINHA_1.filter((nome) => !extratosInativosSet.has(nome)).map((nome) => (
               <button
                 key={nome}
                 type="button"
@@ -923,7 +1800,7 @@ export function Financeiro() {
             ))}
           </div>
           <div className="flex flex-wrap gap-2 mt-2">
-            {INSTITUICOES_LINHA_2.map((nome) => (
+            {INSTITUICOES_LINHA_2.filter((nome) => !extratosInativosSet.has(nome)).map((nome) => (
               <button
                 key={nome}
                 type="button"
@@ -938,120 +1815,269 @@ export function Financeiro() {
               </button>
             ))}
           </div>
+          {contasExtras.some((c) => !extratosInativosSet.has(c.nome)) && (
+            <>
+              <p className="text-xs text-slate-500 mt-3 mb-1">
+                Contas adicionadas — Nº no consolidado; mesmo fluxo de OFX e contas contábeis.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {contasExtras
+                  .filter((c) => !extratosInativosSet.has(c.nome))
+                  .map((c) => (
+                    <button
+                      key={c.nome}
+                      type="button"
+                      onClick={() => setInstituicaoSelecionada(c.nome)}
+                      title={`Identificação Nº ${c.numero} no consolidado`}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                        instituicaoSelecionada === c.nome
+                          ? 'bg-slate-200 text-amber-900 border-b-2 border-green-600'
+                          : 'bg-indigo-700 text-white hover:bg-indigo-800'
+                      }`}
+                    >
+                      {c.nome}{' '}
+                      <span className="tabular-nums opacity-90 font-normal">(Nº {c.numero})</span>
+                    </button>
+                  ))}
+              </div>
+            </>
+          )}
+          {mostrarExtratosInativos && extratosInativos.length > 0 && (
+            <>
+              <p className="text-xs text-slate-500 mt-3 mb-1">
+                Extratos inativos — histórico preservado; não atualizam por OFX.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {todasInstituicoesNomes.filter((nome) => extratosInativosSet.has(nome)).map((nome) => (
+                  <button
+                    key={`inativo-${nome}`}
+                    type="button"
+                    onClick={() => setInstituicaoSelecionada(nome)}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      instituicaoSelecionada === nome
+                        ? 'bg-slate-400 text-slate-900 border-b-2 border-slate-600'
+                        : 'bg-slate-200 text-slate-600 hover:bg-slate-300'
+                    }`}
+                  >
+                    {nome}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
         </section>
 
         {/* Contas contábeis */}
         <section>
           <h2 className="text-sm font-semibold text-slate-700 mb-1">Contas contábeis</h2>
-          <p className="text-xs text-slate-500 mb-3">
+          <p className="text-xs text-slate-500 mb-2">
             Lista derivada dos extratos: ordem por lançamentos (mais usadas primeiro). Entre parênteses:
-            quantidade e soma dos valores na conta, em todos os bancos.
+            quantidade e soma dos valores na conta, em todos os bancos. Você pode <strong>inativar</strong> contas que
+            não usa no dia a dia (dados preservados) e <strong>criar contas novas</strong> (letra automática G–Z
+            disponível) em <strong>Configurações</strong> no topo. Contas inativas continuam no seletor de letra do
+            extrato para lançamentos antigos.
           </p>
-          <div className="flex flex-wrap gap-2">
-            {contasLinha1.map(({ nome, letra, count, saldo }) => (
+          <div className="rounded-lg border border-slate-200 bg-white shadow-sm px-3 py-2.5 mb-3 text-xs text-slate-700 space-y-2">
+            <p className="font-semibold text-slate-800">Papel de cada conta central</p>
+            <ul className="list-disc pl-4 space-y-1.5 text-slate-600">
+              <li>
+                <strong className="text-slate-800">Conta Escritório (letra A)</strong> — Reúne <strong>todos</strong> os
+                lançamentos de extrato com letra <strong>A</strong>. São eles que o sistema considera para a{' '}
+                <strong>Conta Corrente</strong> em <strong>Processos</strong>, desde que tenham{' '}
+                <strong>Cod. Cliente</strong> e <strong>Proc.</strong> vinculados ao processo em tela.
+              </li>
+              <li>
+                <strong className="text-slate-800">Conta Compensação (letra E)</strong> — Agrupa pares que se{' '}
+                <strong>anulam</strong>: cada <strong>Elo</strong> (número natural, ex. 0001) identifica um conjunto
+                cuja <strong>soma de valores é zero</strong>. Serve para registrar <strong>só troca de numerário</strong>{' '}
+                entre contas bancárias, sem inflar outras contas contábeis com movimentos que não representam receita ou
+                despesa do escritório.
+              </li>
+            </ul>
+          </div>
+          <div className="flex flex-wrap items-center gap-3 mb-3">
+            <label className="flex items-center gap-2 text-xs text-slate-600 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={mostrarContasContabeisInativas}
+                onChange={(e) => setMostrarContasContabeisInativas(e.target.checked)}
+                disabled={contasContabeisInativas.length === 0}
+              />
+              Mostrar contas contábeis inativas
+            </label>
+            {contasContabeisInativasSet.has(contaContabilSelecionada) ? (
               <button
-                key={nome}
                 type="button"
-                onClick={() => setContaContabilSelecionada(nome)}
-                title={
-                  count > 0
-                    ? `Letra ${letra}: ${count} lançamento(s) · Σ valores ${formatValor(saldo)}`
-                    : `Letra ${letra}: sem lançamentos nos extratos atuais`
-                }
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  contaContabilSelecionada === nome
-                    ? 'bg-green-400 text-slate-900 font-semibold'
-                    : count > 0
-                      ? 'bg-green-200 text-slate-800 hover:bg-green-300'
-                      : 'bg-slate-200 text-slate-500 hover:bg-slate-300'
-                }`}
+                onClick={reativarContaContabilSelecionada}
+                className="px-3 py-1.5 rounded-lg border border-green-600 bg-green-50 text-green-900 text-xs font-medium hover:bg-green-100"
               >
-                <span className="hidden sm:inline">{nome}</span>
-                <span className="sm:hidden" title={nome}>
-                  {letra}
-                </span>
-                {count > 0 && (
-                  <span className="text-xs opacity-90 ml-1 font-normal">
-                    ({count} · {formatValor(saldo)})
-                  </span>
-                )}
+                Reativar conta selecionada
               </button>
-            ))}
+            ) : (
+              <button
+                type="button"
+                onClick={inativarContaContabilSelecionada}
+                className="px-3 py-1.5 rounded-lg border border-slate-400 bg-white text-slate-800 text-xs font-medium hover:bg-slate-50"
+              >
+                Inativar conta selecionada
+              </button>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {contasLinha1.map(({ nome, letra, count, saldo }) => {
+              const isExtra = contasContabeisExtras.some((c) => c.nome === nome);
+              return (
+                <button
+                  key={nome}
+                  type="button"
+                  onClick={() => setContaContabilSelecionada(nome)}
+                  title={
+                    count > 0
+                      ? `Letra ${letra}: ${count} lançamento(s) · Σ valores ${formatValor(saldo)}`
+                      : `Letra ${letra}: sem lançamentos nos extratos atuais`
+                  }
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    contaContabilSelecionada === nome
+                      ? isExtra
+                        ? 'bg-indigo-400 text-slate-900 font-semibold ring-2 ring-indigo-600'
+                        : 'bg-green-400 text-slate-900 font-semibold'
+                      : count > 0
+                        ? isExtra
+                          ? 'bg-indigo-200 text-slate-800 hover:bg-indigo-300'
+                          : 'bg-green-200 text-slate-800 hover:bg-green-300'
+                        : isExtra
+                          ? 'bg-indigo-100 text-slate-600 hover:bg-indigo-200'
+                          : 'bg-slate-200 text-slate-500 hover:bg-slate-300'
+                  }`}
+                >
+                  <span className="hidden sm:inline">{nome}</span>
+                  <span className="sm:hidden" title={nome}>
+                    {letra}
+                  </span>
+                  {count > 0 && (
+                    <span className="text-xs opacity-90 ml-1 font-normal">
+                      ({count} · {formatValor(saldo)})
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
           <div className="flex flex-wrap gap-2 mt-2">
-            {contasLinha2.map(({ nome, letra, count, saldo }) => (
-              <button
-                key={nome}
-                type="button"
-                onClick={() => setContaContabilSelecionada(nome)}
-                title={
-                  count > 0
-                    ? `Letra ${letra}: ${count} lançamento(s) · Σ valores ${formatValor(saldo)}`
-                    : `Letra ${letra}: sem lançamentos nos extratos atuais`
-                }
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  contaContabilSelecionada === nome
-                    ? 'bg-green-400 text-slate-900 font-semibold'
-                    : count > 0
-                      ? 'bg-green-200 text-slate-800 hover:bg-green-300'
-                      : 'bg-slate-200 text-slate-500 hover:bg-slate-300'
-                }`}
-              >
-                <span className="hidden sm:inline">{nome}</span>
-                <span className="sm:hidden" title={nome}>
-                  {letra}
-                </span>
-                {count > 0 && (
-                  <span className="text-xs opacity-90 ml-1 font-normal">
-                    ({count} · {formatValor(saldo)})
+            {contasLinha2.map(({ nome, letra, count, saldo }) => {
+              const isExtra = contasContabeisExtras.some((c) => c.nome === nome);
+              return (
+                <button
+                  key={nome}
+                  type="button"
+                  onClick={() => setContaContabilSelecionada(nome)}
+                  title={
+                    count > 0
+                      ? `Letra ${letra}: ${count} lançamento(s) · Σ valores ${formatValor(saldo)}`
+                      : `Letra ${letra}: sem lançamentos nos extratos atuais`
+                  }
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    contaContabilSelecionada === nome
+                      ? isExtra
+                        ? 'bg-indigo-400 text-slate-900 font-semibold ring-2 ring-indigo-600'
+                        : 'bg-green-400 text-slate-900 font-semibold'
+                      : count > 0
+                        ? isExtra
+                          ? 'bg-indigo-200 text-slate-800 hover:bg-indigo-300'
+                          : 'bg-green-200 text-slate-800 hover:bg-green-300'
+                        : isExtra
+                          ? 'bg-indigo-100 text-slate-600 hover:bg-indigo-200'
+                          : 'bg-slate-200 text-slate-500 hover:bg-slate-300'
+                  }`}
+                >
+                  <span className="hidden sm:inline">{nome}</span>
+                  <span className="sm:hidden" title={nome}>
+                    {letra}
                   </span>
-                )}
-              </button>
-            ))}
+                  {count > 0 && (
+                    <span className="text-xs opacity-90 ml-1 font-normal">
+                      ({count} · {formatValor(saldo)})
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
+          {mostrarContasContabeisInativas && contasContabeisInativas.length > 0 && (
+            <>
+              <p className="text-xs text-slate-500 mt-3 mb-1">
+                Contas inativas — consolidado e chips principais ocultam; lançamentos e letras preservados.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {contasDerivadasDosExtratos
+                  .filter((c) => contasContabeisInativasSet.has(c.nome))
+                  .map(({ nome, letra, count, saldo }) => (
+                    <button
+                      key={`inativa-cc-${nome}`}
+                      type="button"
+                      onClick={() => setContaContabilSelecionada(nome)}
+                      title={`Letra ${letra}${count > 0 ? ` · ${count} lanç. · ${formatValor(saldo)}` : ''}`}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                        contaContabilSelecionada === nome
+                          ? 'bg-slate-400 text-slate-900 border-b-2 border-slate-600'
+                          : 'bg-slate-200 text-slate-600 hover:bg-slate-300'
+                      }`}
+                    >
+                      <span className="hidden sm:inline">{nome}</span>
+                      <span className="sm:hidden">{letra}</span>
+                      {count > 0 && (
+                        <span className="text-xs opacity-90 ml-1 font-normal">
+                          ({count} · {formatValor(saldo)})
+                        </span>
+                      )}
+                    </button>
+                  ))}
+              </div>
+            </>
+          )}
         </section>
 
-        {/* Extrato do banco selecionado */}
-        {instituicaoSelecionada && (
-          <section className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
-            <div className="px-4 py-3 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
-              <div className="flex flex-wrap items-center gap-3 min-w-0">
-                <h2 className="text-base font-bold text-slate-800 uppercase shrink-0">
-                  Conta Corrente {instituicaoSelecionada}
-                </h2>
-                <div className="flex items-center gap-2">
-                  <label htmlFor="limite-lanc-extrato" className="text-xs text-slate-600 whitespace-nowrap">
-                    Lançamentos na tela:
-                  </label>
-                  <select
-                    id="limite-lanc-extrato"
-                    value={limiteLancamentosExtratoBanco}
-                    onChange={(e) => setLimiteLancamentosExtratoBanco(Number(e.target.value))}
-                    className="text-sm border border-slate-300 rounded-md px-2 py-1.5 bg-white text-slate-800 min-w-[5.5rem] shadow-sm"
-                    title="Quantidade máxima de linhas exibidas (ordem atual da tabela)"
-                  >
-                    {OPCOES_LIMITE_LANCAMENTOS_EXTRATO.map((o) => (
-                      <option key={o.v} value={o.v}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
+        {/* Extrato do banco + consolidado (disposição alternável) */}
+        {(mostrarPainelExtrato || mostrarPainelConsolidado) && (
+          <div className={classeWrapperRelatorios}>
+        {mostrarPainelExtrato && (
+          <section
+            className={`bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden flex flex-col min-h-0 ${classOrdemExtrato} ${
+              relatoriosLadoALado ? 'xl:flex-1 xl:min-w-0 xl:max-h-[min(92vh,960px)]' : ''
+            }`}
+          >
+            <div className="px-4 py-3 border-b border-slate-200 shrink-0">
+              <div className="flex flex-wrap items-end gap-x-3 gap-y-3 w-full">
+                <div className="flex flex-wrap items-end gap-3 min-w-0 shrink-0">
+                  <h2 className="text-base font-bold text-slate-800 uppercase shrink-0 leading-none pb-1">
+                    Conta Corrente {instituicaoSelecionada}
+                  </h2>
+                  <div className="flex items-center gap-2">
+                    <label htmlFor="limite-lanc-extrato" className="text-xs text-slate-600 whitespace-nowrap">
+                      Lançamentos na tela:
+                    </label>
+                    <select
+                      id="limite-lanc-extrato"
+                      value={limiteLancamentosExtratoBanco}
+                      onChange={(e) => setLimiteLancamentosExtratoBanco(Number(e.target.value))}
+                      className="text-sm border border-slate-300 rounded-md px-2 py-1.5 bg-white text-slate-800 min-w-[5.5rem] shadow-sm"
+                      title="Quantidade máxima de linhas exibidas (ordem atual da tabela)"
+                    >
+                      {OPCOES_LIMITE_LANCAMENTOS_EXTRATO.map((o) => (
+                        <option key={o.v} value={o.v}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
-              </div>
-              <div className="flex items-center gap-3 shrink-0">
-                <span className="text-sm text-slate-600">
-                  <span className="font-medium text-red-600">-675,38</span>
-                  {' · '}
-                  <span className="font-medium text-slate-800">76.234,60 Fundos Investimentos</span>
-                </span>
-                <div className="flex items-center gap-1">
-                  <button type="button" className="p-1 rounded hover:bg-slate-100 text-slate-500" aria-label="Anterior">‹</button>
-                  <span className="text-sm text-slate-600 min-w-[3rem] text-center">4994</span>
-                  <button type="button" className="p-1 rounded hover:bg-slate-100 text-slate-500" aria-label="Próximo">›</button>
+                <div className="w-full min-[900px]:w-auto min-[900px]:flex-1 min-[900px]:min-w-[12rem] flex justify-center min-w-0">
+                  {renderBarraFiltroPeriodo('extrato')}
                 </div>
               </div>
             </div>
-            <div className="overflow-x-auto">
+            <div className={relatoriosLadoALado ? 'flex flex-col flex-1 min-h-0' : ''}>
+            <div className={relatoriosLadoALado ? 'flex-1 min-h-0 overflow-auto' : 'overflow-x-auto'}>
               <table className="w-full text-sm border-collapse">
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-200">
@@ -1074,11 +2100,13 @@ export function Financeiro() {
                 </thead>
                 <tbody>
                   {(() => {
-                    const total = listaExtratoBancoOrdenada.length;
+                    const total = listaExtratoBancoVisivel.length;
                     const maxLinhas =
                       limiteLancamentosExtratoBanco === 0 ? total : limiteLancamentosExtratoBanco;
-                    return listaExtratoBancoOrdenada.slice(0, maxLinhas).map((t) => {
+                    return listaExtratoBancoVisivel.slice(0, maxLinhas).map((t) => {
                     const isLinhaBancoAlvo = linhaBancoAlvo?.nomeBanco === instituicaoSelecionada && linhaBancoAlvo?.numero === t.numero && linhaBancoAlvo?.data === t.data;
+                    const letraLinha = String(t.letra ?? '').trim().toUpperCase();
+                    const letraSemOpcao = letraLinha && !letrasOrdenadasParaSelect.includes(letraLinha);
                     return (
                     <tr
                       key={`${t.letra}-${t.numero}-${t.data}`}
@@ -1089,14 +2117,26 @@ export function Financeiro() {
                     >
                       <td className="py-1.5 px-3 border-r border-slate-100 w-20" onClick={(e) => e.stopPropagation()}>
                         <select
-                          value={t.letra}
+                          value={letraLinha}
                           onChange={(e) => updateLetraLancamento(instituicaoSelecionada, t.numero, t.data, e.target.value)}
-                          className="w-full min-w-[4rem] py-0.5 px-1 text-slate-700 text-sm bg-slate-50 border border-slate-200 rounded cursor-pointer text-center"
+                          className="w-full min-w-[6rem] py-0.5 px-1 text-slate-700 text-sm bg-slate-50 border border-slate-200 rounded cursor-pointer text-left"
                           onClick={(e) => e.stopPropagation()}
                         >
-                          {LETRAS_VALIDAS.map((l) => (
-                            <option key={l} value={l}>{l}</option>
-                          ))}
+                          {letraSemOpcao && (
+                            <option value={letraLinha}>
+                              {letraLinha} (remapear)
+                            </option>
+                          )}
+                          {letrasOrdenadasParaSelect.map((l) => {
+                            const nomeConta = letraToContaMerged[l];
+                            const inativa = nomeConta && contasContabeisInativasSet.has(nomeConta);
+                            return (
+                              <option key={l} value={l}>
+                                {l}
+                                {inativa ? ' (inativa)' : ''} — {nomeConta ?? l}
+                              </option>
+                            );
+                          })}
                         </select>
                       </td>
                       <td className="py-1.5 px-3 text-slate-500 border-r border-slate-100">{t.numero}</td>
@@ -1203,57 +2243,125 @@ export function Financeiro() {
               </table>
             </div>
             {(() => {
-              const total = listaExtratoBancoOrdenada.length;
+              const total = listaExtratoBancoVisivel.length;
               const vis =
                 limiteLancamentosExtratoBanco === 0
                   ? total
                   : Math.min(limiteLancamentosExtratoBanco, total);
+              if (total <= vis && !(periodoVisao !== 'todos' && total === 0)) return null;
+              if (periodoVisao !== 'todos' && total === 0) {
+                return (
+                  <div className="px-4 py-3 text-xs text-slate-600 bg-amber-50/80 border-t border-amber-100">
+                    Nenhum lançamento neste período para <strong>{instituicaoSelecionada}</strong>. Ajuste o filtro ou
+                    escolha <strong>Todos</strong>.
+                  </div>
+                );
+              }
               if (total <= vis) return null;
               return (
                 <div className="px-4 py-2 text-xs text-slate-600 bg-slate-50 border-t border-slate-200">
-                  Exibindo <strong>{vis}</strong> de <strong>{total}</strong> lançamentos. Aumente o limite ou escolha{' '}
-                  <strong>Todos</strong> para ver o extrato completo.
+                  Exibindo <strong>{vis}</strong> de <strong>{total}</strong> lançamentos (após filtro de período).
+                  Aumente o limite ou escolha <strong>Todos</strong> para ver mais linhas.
                 </div>
               );
             })()}
+            </div>
           </section>
         )}
 
-        {/* Extrato consolidado da conta contábil selecionada */}
-        {contaContabilSelecionada && (
-          <section className="rounded-lg border border-green-200 shadow-sm overflow-hidden bg-green-50/30">
-            <div className="px-4 py-3 border-b border-green-200 bg-white/80 space-y-2">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <h2 className="text-base font-bold text-slate-800 min-w-0">
-                  Extrato consolidado – {contaContabilSelecionada}
-                </h2>
-                <div className="flex items-center gap-2 shrink-0">
-                  <label htmlFor="limite-lanc-consolidado" className="text-xs text-slate-600 whitespace-nowrap">
-                    Lançamentos na tela:
-                  </label>
-                  <select
-                    id="limite-lanc-consolidado"
-                    value={limiteLancamentosConsolidado}
-                    onChange={(e) => setLimiteLancamentosConsolidado(Number(e.target.value))}
-                    className="text-sm border border-green-300 rounded-md px-2 py-1.5 bg-white text-slate-800 min-w-[5.5rem] shadow-sm"
-                    title="Quantidade máxima de linhas no consolidado (ordem atual da tabela)"
-                  >
-                    {OPCOES_LIMITE_LANCAMENTOS_EXTRATO.map((o) => (
-                      <option key={o.v} value={o.v}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
+        {mostrarPainelConsolidado && (
+          <section
+            className={`rounded-lg border border-green-200 shadow-sm overflow-hidden bg-green-50/30 flex flex-col min-h-0 ${classOrdemConsolidado} ${
+              relatoriosLadoALado ? 'xl:flex-1 xl:min-w-0 xl:max-h-[min(92vh,960px)]' : ''
+            }`}
+          >
+            <div className="px-4 py-3 border-b border-green-200 bg-white/80 space-y-3 shrink-0">
+              <div className="flex flex-wrap items-end gap-x-3 gap-y-3 w-full">
+                <div className="flex flex-wrap items-end gap-3 min-w-0 shrink-0">
+                  <h2 className="text-base font-bold text-slate-800 min-w-0 max-w-[14rem] sm:max-w-none leading-none pb-1">
+                    Extrato consolidado – {contaContabilSelecionada}
+                  </h2>
+                  <div className="flex items-center gap-2">
+                    <label htmlFor="limite-lanc-consolidado" className="text-xs text-slate-600 whitespace-nowrap">
+                      Lançamentos na tela:
+                    </label>
+                    <select
+                      id="limite-lanc-consolidado"
+                      value={limiteLancamentosConsolidado}
+                      onChange={(e) => setLimiteLancamentosConsolidado(Number(e.target.value))}
+                      className="text-sm border border-green-300 rounded-md px-2 py-1.5 bg-white text-slate-800 min-w-[5.5rem] shadow-sm"
+                      title="Quantidade máxima de linhas no consolidado (ordem atual da tabela)"
+                    >
+                      {OPCOES_LIMITE_LANCAMENTOS_EXTRATO.map((o) => (
+                        <option key={o.v} value={o.v}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
+                <div className="w-full min-[900px]:w-auto min-[900px]:flex-1 min-[900px]:min-w-[12rem] flex justify-center min-w-0">
+                  {renderBarraFiltroPeriodo('consolidado')}
+                </div>
+                {isContaCompensacao && (
+                  <div className="flex flex-wrap items-end gap-x-3 gap-y-2 shrink-0 w-full min-[900px]:w-auto justify-center min-[900px]:justify-end">
+                    <div className="flex items-center gap-2">
+                      <label htmlFor="filtro-elo-consolidado" className="text-xs text-slate-600 whitespace-nowrap">
+                        Elo:
+                      </label>
+                      <select
+                        id="filtro-elo-consolidado"
+                        value={filtroEloConsolidado}
+                        onChange={(e) => setFiltroEloConsolidado(e.target.value)}
+                        className="text-sm border border-green-300 rounded-md px-2 py-1.5 bg-white text-slate-800 min-w-[7rem] max-w-[12rem] shadow-sm"
+                        title="Mostrar só lançamentos deste Elo (período atual)"
+                      >
+                        <option value="">Todos</option>
+                        {elosDisponiveisConsolidado.map((elo) => (
+                          <option key={elo} value={elo}>
+                            {elo}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <label htmlFor="filtro-conc-elo-consolidado" className="text-xs text-slate-600 whitespace-nowrap">
+                        Conciliação:
+                      </label>
+                      <select
+                        id="filtro-conc-elo-consolidado"
+                        value={filtroConciliacaoEloConsolidado}
+                        onChange={(e) => setFiltroConciliacaoEloConsolidado(e.target.value)}
+                        className="text-sm border border-green-300 rounded-md px-2 py-1.5 bg-white text-slate-800 min-w-[10rem] max-w-[20rem] shadow-sm"
+                        title="Independente do filtro Elo: conciliado = soma global do Elo = 0; não conciliado = soma ≠ 0"
+                      >
+                        <option value="todos">Todos</option>
+                        <option value="nao_conciliados">Só não conciliados (soma Elo ≠ 0)</option>
+                        <option value="conciliados">Só conciliados (soma Elo = 0)</option>
+                      </select>
+                    </div>
+                  </div>
+                )}
               </div>
+              {contaContabilSelecionada === 'Conta Escritório' && (
+                <div className="text-xs text-slate-700 rounded-md bg-emerald-50/90 border border-emerald-200 px-3 py-2">
+                  <strong>Conta Escritório:</strong> consolidado dos lançamentos com <strong>letra A</strong> nos
+                  extratos. A <strong>Conta Corrente</strong> em <strong>Processos</strong> lista aqui apenas as linhas
+                  cujo <strong>Cod. Cliente</strong> e <strong>Proc.</strong> coincidem com o processo aberto — por
+                  isso o vínculo cliente/processo é essencial nos lançamentos de escritório.
+                </div>
+              )}
               {isContaCompensacao && (
                 <div className="text-xs text-slate-600 space-y-1 rounded-md bg-amber-50/80 border border-amber-200 px-3 py-2">
                   <p>
-                    <strong>Conta Compensação:</strong> débito e crédito entre bancos com o <strong>mesmo valor absoluto</strong>{' '}
-                    (sem tolerância: centavos idênticos). O campo <strong>Cod. Cliente</strong> fica vazio; só o{' '}
-                    <strong>Elo</strong> identifica o <strong>par</strong> (mesmo número nas duas pernas, soma = 0). OFX entra
-                    como <strong>N</strong> — use <strong>Parear compensações</strong> para identificar e aplicar Elo{' '}
-                    <strong>0001</strong>, <strong>0002</strong>… após importar os extratos.
+                    <strong>Conta Compensação:</strong> cada <strong>Elo</strong> é um <strong>número natural</strong>{' '}
+                    (exibido como 0001, 0002…); a <strong>soma dos valores</strong> de todas as linhas com o{' '}
+                    <strong>mesmo Elo</strong> deve ser <strong>zero</strong> — assim se anulam lançamentos que só
+                    representam <strong>mudança de numerário</strong> entre bancos, sem aparecer como efeito líquido nas
+                    outras contas. Identificação de pares: <strong>mesmo dia</strong>, valor oposto{' '}
+                    <strong>exato</strong> (centavos), bancos diferentes. <strong>Cod. Cliente</strong> fica vazio; o{' '}
+                    <strong>Elo</strong> identifica o par. OFX entra como <strong>N</strong> — use{' '}
+                    <strong>Parear compensações</strong> no topo para aplicar os Elos.
                   </p>
                   {paresCompensacaoDesbalanceados.length > 0 && (
                     <p className="text-amber-900 font-medium">
@@ -1277,7 +2385,8 @@ export function Financeiro() {
                 </div>
               )}
             </div>
-            <div className="overflow-x-auto">
+            <div className={relatoriosLadoALado ? 'flex flex-col flex-1 min-h-0' : ''}>
+            <div className={relatoriosLadoALado ? 'flex-1 min-h-0 overflow-auto' : 'overflow-x-auto'}>
               <table className="w-full text-sm border-collapse">
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-200">
@@ -1309,10 +2418,10 @@ export function Financeiro() {
                 </thead>
                 <tbody>
                   {(() => {
-                    const total = listaConsolidadaParaExibicao.length;
+                    const total = listaConsolidadaVisivel.length;
                     const maxLinhas =
                       limiteLancamentosConsolidado === 0 ? total : limiteLancamentosConsolidado;
-                    const listaVisivel = listaConsolidadaParaExibicao.slice(0, maxLinhas);
+                    const listaVisivel = listaConsolidadaVisivel.slice(0, maxLinhas);
                     return listaVisivel.map((t, idx) => {
                     const rowKey = `${t.nomeBanco}-${t.numero}-${t.data}`;
                     const isFoco = linhaConsolidadoFoco === rowKey;
@@ -1322,38 +2431,54 @@ export function Financeiro() {
                     const vc = filtroConciliacaoHonorarios?.valorCentavos;
                     const destaqueValorConciliacao =
                       vc != null && Number.isFinite(Number(t.valor)) && Math.round(Number(t.valor) * 100) === vc;
+                    const eloKeyConsolidado = String(t.proc ?? '').trim() || '—';
+                    const eloDesbalanceado =
+                      isContaCompensacao && (somasParComp[eloKeyConsolidado] ?? 0) !== 0;
+                    const rowBgConsolidado = eloDesbalanceado
+                      ? 'bg-red-100/90 hover:bg-red-200/70'
+                      : mesmoGrupo
+                        ? 'bg-sky-100/50 hover:bg-green-100/50'
+                        : 'bg-green-50/50 hover:bg-green-100/50';
+                    const brElo = eloDesbalanceado ? 'border-red-100/80' : 'border-green-100';
                     return (
                       <tr
                         key={rowKey}
                         ref={isAlvo ? linhaConsolidadoRef : undefined}
                         onClick={() => setLinhaConsolidadoFoco(rowKey)}
-                        className={`border-b border-green-100/80 ${mesmoGrupo ? 'bg-sky-100/50' : 'bg-green-50/50'} hover:bg-green-100/50 ${isFoco ? 'ring-1 ring-green-500 ring-inset' : ''} ${destaqueValorConciliacao ? 'ring-2 ring-amber-400 ring-inset bg-amber-50/90' : ''}`}
+                        title={
+                          eloDesbalanceado
+                            ? 'Elo com soma dos valores ≠ zero (regra Conta Compensação)'
+                            : undefined
+                        }
+                        className={`border-b ${eloDesbalanceado ? 'border-red-200/80' : 'border-green-100/80'} ${rowBgConsolidado} ${isFoco ? `ring-1 ring-inset ${eloDesbalanceado ? 'ring-red-500' : 'ring-green-500'}` : ''} ${destaqueValorConciliacao && !eloDesbalanceado ? 'ring-2 ring-amber-400 ring-inset bg-amber-50/90' : ''}`}
                       >
                         <td
-                          className="py-1.5 px-3 text-slate-600 border-r border-green-100 cursor-pointer hover:bg-green-200/50"
+                          className={`py-1.5 px-3 text-slate-600 border-r cursor-pointer ${brElo} ${eloDesbalanceado ? 'hover:bg-red-200/50' : 'hover:bg-green-200/50'}`}
                           onDoubleClick={(e) => { e.stopPropagation(); handleDuploCliqueNºConsolidado(t); }}
                           title="Duplo clique para abrir o extrato do banco nesta linha"
                         >
                           {t.numeroBanco}
                         </td>
-                        <td className="py-1.5 px-3 text-slate-600 border-r border-green-100">{t.numero}</td>
-                        <td className="py-1.5 px-3 text-slate-700 border-r border-green-100">{t.data}</td>
-                        <td className="py-1.5 px-3 text-slate-700 border-r border-green-100">{t.descricao}</td>
-                        <td className={`py-1.5 px-3 text-right border-r border-green-100 font-medium ${t.valor < 0 ? 'text-red-600' : 'text-slate-900'}`}>
+                        <td className={`py-1.5 px-3 text-slate-600 border-r ${brElo}`}>{t.numero}</td>
+                        <td className={`py-1.5 px-3 text-slate-700 border-r ${brElo}`}>{t.data}</td>
+                        <td className={`py-1.5 px-3 text-slate-700 border-r ${brElo}`}>{t.descricao}</td>
+                        <td className={`py-1.5 px-3 text-right border-r ${brElo} font-medium ${t.valor < 0 ? 'text-red-600' : 'text-slate-900'}`}>
                           {formatValor(t.valor)}
                         </td>
-                        <td className="py-1.5 px-2 text-slate-600 border-r border-green-100 text-xs min-w-[12rem]" onClick={(e) => e.stopPropagation()}>
+                        <td className={`py-1.5 px-2 text-slate-600 border-r ${brElo} text-xs min-w-[12rem]`} onClick={(e) => e.stopPropagation()}>
                           <input
                             type="text"
                             value={textoCategoriaObservacao(t)}
                             onChange={(e) => updateCampoLancamento(t.nomeBanco, t.numero, t.data, 'descricaoDetalhada', e.target.value)}
-                            className="w-full min-w-[10rem] px-1.5 py-0.5 text-xs bg-white border border-green-200 rounded"
+                            className={`w-full min-w-[10rem] px-1.5 py-0.5 text-xs bg-white border rounded ${
+                              eloDesbalanceado ? 'border-red-200' : 'border-green-200'
+                            }`}
                             title="Espelha Categoria / Obs. no extrato do banco"
                             onClick={(e) => e.stopPropagation()}
                           />
                         </td>
                         <td
-                          className={`py-1.5 px-2 text-center border-r border-green-100 ${
+                          className={`py-1.5 px-2 text-center border-r ${brElo} ${
                             isContaCompensacao && t.letra === 'E' ? 'text-slate-400' : ''
                           }`}
                           onClick={(e) => e.stopPropagation()}
@@ -1363,7 +2488,9 @@ export function Financeiro() {
                             value={t.codCliente ?? ''}
                             disabled={isContaCompensacao && t.letra === 'E'}
                             onChange={(e) => updateCampoLancamento(t.nomeBanco, t.numero, t.data, 'codCliente', e.target.value)}
-                            className={`w-16 px-1 py-0.5 text-sm text-center border border-green-200 rounded ${
+                            className={`w-16 px-1 py-0.5 text-sm text-center border rounded ${
+                              eloDesbalanceado ? 'border-red-200' : 'border-green-200'
+                            } ${
                               isContaCompensacao && t.letra === 'E' ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-white'
                             }`}
                             title={
@@ -1379,12 +2506,14 @@ export function Financeiro() {
                             }}
                           />
                         </td>
-                        <td className="py-1.5 px-2 text-center border-r border-green-100" onClick={(e) => e.stopPropagation()}>
+                        <td className={`py-1.5 px-2 text-center border-r ${brElo}`} onClick={(e) => e.stopPropagation()}>
                           <input
                             type="text"
                             value={t.proc ?? ''}
                             onChange={(e) => updateCampoLancamento(t.nomeBanco, t.numero, t.data, 'proc', e.target.value)}
-                            className="w-14 px-1 py-0.5 text-sm text-center bg-white border border-green-200 rounded"
+                            className={`w-14 px-1 py-0.5 text-sm text-center bg-white border rounded ${
+                              eloDesbalanceado ? 'border-red-200' : 'border-green-200'
+                            }`}
                             title={
                               isContaCompensacao && t.letra === 'E'
                                 ? 'Elo — espelha Proc. no extrato'
@@ -1398,22 +2527,26 @@ export function Financeiro() {
                             }}
                           />
                         </td>
-                        <td className="py-1.5 px-2 text-center border-r border-green-100" onClick={(e) => e.stopPropagation()}>
+                        <td className={`py-1.5 px-2 text-center border-r ${brElo}`} onClick={(e) => e.stopPropagation()}>
                           <input
                             type="text"
                             value={textoRefLancamento(t)}
                             onChange={(e) => updateCampoLancamento(t.nomeBanco, t.numero, t.data, 'ref', e.target.value)}
-                            className="w-14 px-1 py-0.5 text-sm text-center bg-white border border-green-200 rounded"
+                            className={`w-14 px-1 py-0.5 text-sm text-center bg-white border rounded ${
+                              eloDesbalanceado ? 'border-red-200' : 'border-green-200'
+                            }`}
                             title="Espelha Ref. no extrato do banco"
                             onClick={(e) => e.stopPropagation()}
                           />
                         </td>
-                        <td className="py-1.5 px-2 text-center border-r border-green-100" onClick={(e) => e.stopPropagation()}>
+                        <td className={`py-1.5 px-2 text-center border-r ${brElo}`} onClick={(e) => e.stopPropagation()}>
                           <input
                             type="text"
                             value={textoDimensaoEq(t)}
                             onChange={(e) => updateCampoLancamento(t.nomeBanco, t.numero, t.data, 'eq', e.target.value)}
-                            className="w-14 px-1 py-0.5 text-sm text-center bg-white border border-green-200 rounded"
+                            className={`w-14 px-1 py-0.5 text-sm text-center bg-white border rounded ${
+                              eloDesbalanceado ? 'border-red-200' : 'border-green-200'
+                            }`}
                             title="Espelha Dimensão no extrato do banco"
                             onClick={(e) => e.stopPropagation()}
                           />
@@ -1423,7 +2556,9 @@ export function Financeiro() {
                             type="text"
                             value={t.parcela ?? ''}
                             onChange={(e) => updateCampoLancamento(t.nomeBanco, t.numero, t.data, 'parcela', e.target.value)}
-                            className="w-16 px-1 py-0.5 text-sm text-center bg-white border border-green-200 rounded"
+                            className={`w-16 px-1 py-0.5 text-sm text-center bg-white border rounded ${
+                              eloDesbalanceado ? 'border-red-200' : 'border-green-200'
+                            }`}
                             title="Espelha Parcela no extrato do banco"
                             onClick={(e) => e.stopPropagation()}
                           />
@@ -1457,29 +2592,83 @@ export function Financeiro() {
               </table>
             </div>
             {(() => {
-              const total = listaConsolidadaParaExibicao.length;
+              const total = listaConsolidadaVisivel.length;
               const vis =
                 limiteLancamentosConsolidado === 0
                   ? total
                   : Math.min(limiteLancamentosConsolidado, total);
               if (total === 0) {
+                if (
+                  isContaCompensacao &&
+                  filtroConciliacaoEloConsolidado === 'nao_conciliados' &&
+                  listaConsolidadaAposPeriodoEElo.length > 0
+                ) {
+                  return (
+                    <p className="py-6 text-center text-slate-500 text-sm">
+                      Nenhum lançamento <strong>não conciliado</strong> (soma do Elo ≠ 0) entre os filtros atuais. No
+                      período e Elo selecionados, todos os Elos conferem. Ajuste o período, o filtro <strong>Elo</strong>{' '}
+                      ou volte a <strong>Todos</strong> em Conciliação.
+                    </p>
+                  );
+                }
+                if (
+                  isContaCompensacao &&
+                  filtroConciliacaoEloConsolidado === 'conciliados' &&
+                  listaConsolidadaAposPeriodoEElo.length > 0
+                ) {
+                  return (
+                    <p className="py-6 text-center text-slate-500 text-sm">
+                      Nenhum lançamento <strong>conciliado</strong> (soma do Elo = 0) entre os filtros atuais. Ajuste o
+                      período, o filtro <strong>Elo</strong> ou volte a <strong>Todos</strong> em Conciliação.
+                    </p>
+                  );
+                }
+                if (
+                  isContaCompensacao &&
+                  filtroEloConsolidado &&
+                  listaConsolidadaAposPeriodo.length > 0 &&
+                  listaConsolidadaAposPeriodoEElo.length === 0
+                ) {
+                  return (
+                    <p className="py-6 text-center text-slate-500 text-sm">
+                      Nenhum lançamento com o Elo <strong>{filtroEloConsolidado}</strong> neste período. Escolha outro Elo
+                      ou <strong>Todos</strong>.
+                    </p>
+                  );
+                }
                 return (
                   <p className="py-6 text-center text-slate-500 text-sm">
-                    Nenhum lançamento com letra desta conta nos extratos bancários.
+                    {periodoVisao !== 'todos'
+                      ? 'Nenhum lançamento desta conta contábil no período selecionado. Ajuste o filtro ou escolha Todos.'
+                      : 'Nenhum lançamento com letra desta conta nos extratos bancários.'}
                   </p>
                 );
               }
               if (total > vis) {
+                let sufixoFiltro = 'período';
+                if (isContaCompensacao) {
+                  const eloOn = Boolean(filtroEloConsolidado);
+                  const concNao = filtroConciliacaoEloConsolidado === 'nao_conciliados';
+                  const concSim = filtroConciliacaoEloConsolidado === 'conciliados';
+                  if (eloOn && concNao) sufixoFiltro = 'período, Elo e conciliação (soma ≠ 0)';
+                  else if (eloOn && concSim) sufixoFiltro = 'período, Elo e conciliação (soma = 0)';
+                  else if (eloOn) sufixoFiltro = 'período e Elo';
+                  else if (concNao) sufixoFiltro = 'período e conciliação (soma Elo ≠ 0)';
+                  else if (concSim) sufixoFiltro = 'período e conciliação (soma Elo = 0)';
+                }
                 return (
                   <div className="px-4 py-2 text-xs text-slate-600 bg-green-50/80 border-t border-green-200">
-                    Exibindo <strong>{vis}</strong> de <strong>{total}</strong> lançamentos no consolidado. Aumente o
-                    limite ou escolha <strong>Todos</strong>.
+                    Exibindo <strong>{vis}</strong> de <strong>{total}</strong> lançamentos no consolidado (após filtro de{' '}
+                    {sufixoFiltro}). Aumente o limite ou escolha <strong>Todos</strong>.
                   </div>
                 );
               }
               return null;
             })()}
+            </div>
           </section>
+        )}
+          </div>
         )}
       </div>
 
@@ -1510,8 +2699,9 @@ export function Financeiro() {
             <div className="p-4 overflow-y-auto flex-1 text-sm space-y-3">
               <p className="text-slate-600">
                 <strong>Passo 1 — Identificação:</strong> pares com mesma data, valor oposto exato (centavos) e bancos
-                diferentes. <strong>Passo 2 — Aplicar:</strong> classifica como Conta Compensação (E) e grava o{' '}
-                <strong>Elo</strong> (0001, 0002…).
+                diferentes. <strong>Passo 2 — Aplicar:</strong> classifica como <strong>Conta Compensação (letra E)</strong>{' '}
+                e grava o <strong>Elo</strong> (número natural: 0001, 0002…): cada Elo deve ter <strong>soma zero</strong>,
+                registrando só a troca de numerário entre contas.
               </p>
               {modalParearCompensacao.pares.length === 0 ? (
                 <p className="py-6 text-center text-amber-800 bg-amber-50 rounded border border-amber-200">
@@ -1579,6 +2769,134 @@ export function Financeiro() {
                 className="px-4 py-2 rounded bg-amber-600 text-white text-sm font-semibold hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Aplicar {modalParearCompensacao.pares.length} compensação(ões)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {modalConfigFinanceiro && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="modal-config-financeiro-titulo"
+          onClick={() => setModalConfigFinanceiro(false)}
+        >
+          <div
+            className="bg-white rounded-lg shadow-xl border border-slate-200 w-full max-w-lg max-h-[90vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between shrink-0">
+              <h2 id="modal-config-financeiro-titulo" className="text-base font-bold text-slate-800">
+                Configurações do Financeiro
+              </h2>
+              <button
+                type="button"
+                onClick={() => setModalConfigFinanceiro(false)}
+                className="px-2 py-1 text-slate-500 hover:bg-slate-100 rounded text-lg leading-none"
+                aria-label="Fechar"
+              >
+                ×
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto flex-1 text-sm space-y-6">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-800 mb-1">Nova conta (instituição bancária)</h3>
+                <p className="text-xs text-slate-500 mb-3">
+                  Cada conta recebe um Nº sequencial no consolidado e integra OFX, compensações e contas contábeis.
+                </p>
+                <div className="flex flex-wrap items-end gap-2">
+                  <div className="flex flex-col gap-0.5 flex-1 min-w-[12rem]">
+                    <label htmlFor="modal-nova-conta-bancaria" className="text-xs text-slate-600">
+                      Nome da instituição
+                    </label>
+                    <input
+                      id="modal-nova-conta-bancaria"
+                      type="text"
+                      value={nomeNovaContaBancaria}
+                      onChange={(e) => {
+                        setNomeNovaContaBancaria(e.target.value);
+                        if (msgNovaContaBancaria) setMsgNovaContaBancaria(null);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          adicionarNovaContaBancaria();
+                        }
+                      }}
+                      placeholder="Ex.: Banco Inter PJ"
+                      className="px-3 py-2 rounded-lg border border-slate-300 text-sm text-slate-800 w-full max-w-md"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={adicionarNovaContaBancaria}
+                    className="px-3 py-2 rounded-lg bg-slate-700 text-white text-sm font-medium hover:bg-slate-800 shrink-0"
+                  >
+                    Adicionar conta
+                  </button>
+                </div>
+                {msgNovaContaBancaria && (
+                  <p
+                    className={`text-xs mt-2 ${msgNovaContaBancaria.kind === 'error' ? 'text-red-700' : 'text-green-700'}`}
+                  >
+                    {msgNovaContaBancaria.text}
+                  </p>
+                )}
+              </div>
+              <div className="border-t border-slate-200 pt-4">
+                <h3 className="text-sm font-semibold text-slate-800 mb-1">Nova conta contábil</h3>
+                <p className="text-xs text-slate-500 mb-3">
+                  Letra automática entre G e Z quando disponível; aparece nos extratos e no consolidado.
+                </p>
+                <div className="flex flex-wrap items-end gap-2">
+                  <div className="flex flex-col gap-0.5 flex-1 min-w-[12rem]">
+                    <label htmlFor="modal-nova-conta-contabil" className="text-xs text-slate-600">
+                      Nome da conta contábil
+                    </label>
+                    <input
+                      id="modal-nova-conta-contabil"
+                      type="text"
+                      value={nomeNovaContaContabil}
+                      onChange={(e) => {
+                        setNomeNovaContaContabil(e.target.value);
+                        if (msgNovaContaContabil) setMsgNovaContaContabil(null);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          adicionarNovaContaContabil();
+                        }
+                      }}
+                      placeholder="Ex.: Conta Projeto X"
+                      className="px-3 py-2 rounded-lg border border-slate-300 text-sm text-slate-800 w-full max-w-md"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={adicionarNovaContaContabil}
+                    className="px-3 py-2 rounded-lg bg-emerald-800 text-white text-sm font-medium hover:bg-emerald-900 shrink-0"
+                  >
+                    Adicionar conta contábil
+                  </button>
+                </div>
+                {msgNovaContaContabil && (
+                  <p
+                    className={`text-xs mt-2 ${msgNovaContaContabil.kind === 'error' ? 'text-red-700' : 'text-green-700'}`}
+                  >
+                    {msgNovaContaContabil.text}
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className="px-4 py-3 border-t border-slate-200 flex justify-end shrink-0 bg-slate-50">
+              <button
+                type="button"
+                onClick={() => setModalConfigFinanceiro(false)}
+                className="px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-100"
+              >
+                Fechar
               </button>
             </div>
           </div>

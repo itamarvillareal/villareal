@@ -1,4 +1,5 @@
 import { getMockProcesso10x10 } from './processosMock.js';
+import { hojeDdMmYyyy } from '../services/hjDateAliasService.js';
 
 const STORAGE_KEY = 'vilareal:processos-historico:v1';
 
@@ -58,6 +59,7 @@ function normalizarTextoPessoa(s) {
 export function normalizarDataBr(s) {
   const t = String(s ?? '').trim();
   if (!t) return '';
+  if (/^hj$/i.test(t)) return hojeDdMmYyyy();
   const m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (!m) return t;
   const dd = String(Number(m[1])).padStart(2, '0');
@@ -213,19 +215,32 @@ function ultimaDataHistoricoBr(historico) {
   return best ? dateToDataBr(best) : '';
 }
 
+/** Cache em memória do objeto da store (evita JSON.parse a cada getRegistroProcesso — crítico no Relatório com milhares de linhas). */
+let _storeCache = null;
+
 function loadStore() {
+  if (_storeCache !== null) return _storeCache;
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return {};
+    if (!raw) {
+      _storeCache = {};
+      return _storeCache;
+    }
     const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
-    return parsed;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      _storeCache = {};
+      return _storeCache;
+    }
+    _storeCache = parsed;
+    return _storeCache;
   } catch {
-    return {};
+    _storeCache = {};
+    return _storeCache;
   }
 }
 
 function saveStore(store) {
+  _storeCache = store;
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
   } catch {
@@ -258,6 +273,15 @@ function normalizarRegistroProcesso(reg) {
   const prazoRaw = String(reg.prazoFatal ?? '').trim();
   const prazoFatal = prazoRaw ? (normalizarDataBr(prazoRaw) || prazoRaw) : '';
 
+  const consultaAutomatica =
+    !('consultaAutomatica' in reg) || reg.consultaAutomatica === null
+      ? null
+      : reg.consultaAutomatica === true || reg.consultaAutomatica === 'true';
+  const statusAtivo =
+    !('statusAtivo' in reg) || reg.statusAtivo === null
+      ? null
+      : reg.statusAtivo !== false && reg.statusAtivo !== 'false';
+
   return {
     codCliente,
     proc,
@@ -265,11 +289,35 @@ function normalizarRegistroProcesso(reg) {
     parteCliente: String(reg.parteCliente ?? ''),
     parteOposta: String(reg.parteOposta ?? ''),
     numeroProcessoNovo: String(reg.numeroProcessoNovo ?? ''),
+    numeroProcessoVelho: String(reg.numeroProcessoVelho ?? ''),
     prazoFatal,
     periodicidadeConsulta: normalizarPeriodicidadeConsulta(reg.periodicidadeConsulta),
     proximaConsultaData: normalizarDataBr(reg.proximaConsultaData),
     tramitacao: String(reg.tramitacao ?? '').trim(),
+    naturezaAcao: String(reg.naturezaAcao ?? '').trim(),
     faseSelecionada: String(reg.faseSelecionada ?? '').trim(),
+    consultaAutomatica,
+    statusAtivo,
+    estado: String(reg.estado ?? ''),
+    cidade: String(reg.cidade ?? ''),
+    dataProtocolo: String(reg.dataProtocolo ?? ''),
+    pastaArquivo: String(reg.pastaArquivo ?? ''),
+    valorCausa: String(reg.valorCausa ?? ''),
+    procedimento: String(reg.procedimento ?? ''),
+    responsavel: String(reg.responsavel ?? ''),
+    competencia: String(reg.competencia ?? ''),
+    observacao: String(reg.observacao ?? ''),
+    papelParte: String(reg.papelParte ?? '').trim(),
+    faseCampo: String(reg.faseCampo ?? ''),
+    audienciaData: String(reg.audienciaData ?? ''),
+    audienciaHora: String(reg.audienciaHora ?? ''),
+    audienciaTipo: String(reg.audienciaTipo ?? ''),
+    avisoAudiencia: String(reg.avisoAudiencia ?? ''),
+    imovelId: String(reg.imovelId ?? ''),
+    unidade: String(reg.unidade ?? ''),
+    unidadeEndereco: String(reg.unidadeEndereco ?? ''),
+    proximaInformacao: String(reg.proximaInformacao ?? ''),
+    dataProximaInformacao: String(reg.dataProximaInformacao ?? ''),
     parteClienteIds: normalizarIdsPartes(reg.parteClienteIds),
     parteOpostaIds: normalizarIdsPartes(reg.parteOpostaIds),
     historico,
@@ -291,6 +339,34 @@ function upsertRegistroProcesso(payload) {
     parteOpostaIds: payload.parteOpostaIds !== undefined ? payload.parteOpostaIds : prev.parteOpostaIds,
     faseSelecionada: payload.faseSelecionada !== undefined ? payload.faseSelecionada : prev.faseSelecionada,
     tramitacao: payload.tramitacao !== undefined ? payload.tramitacao : prev.tramitacao,
+    naturezaAcao: payload.naturezaAcao !== undefined ? payload.naturezaAcao : prev.naturezaAcao,
+    numeroProcessoVelho: payload.numeroProcessoVelho !== undefined ? payload.numeroProcessoVelho : prev.numeroProcessoVelho,
+    cliente: payload.cliente !== undefined ? payload.cliente : prev.cliente,
+    parteCliente: payload.parteCliente !== undefined ? payload.parteCliente : prev.parteCliente,
+    parteOposta: payload.parteOposta !== undefined ? payload.parteOposta : prev.parteOposta,
+    numeroProcessoNovo: payload.numeroProcessoNovo !== undefined ? payload.numeroProcessoNovo : prev.numeroProcessoNovo,
+    consultaAutomatica: payload.consultaAutomatica !== undefined ? payload.consultaAutomatica : prev.consultaAutomatica,
+    statusAtivo: payload.statusAtivo !== undefined ? payload.statusAtivo : prev.statusAtivo,
+    estado: payload.estado !== undefined ? payload.estado : prev.estado,
+    cidade: payload.cidade !== undefined ? payload.cidade : prev.cidade,
+    dataProtocolo: payload.dataProtocolo !== undefined ? payload.dataProtocolo : prev.dataProtocolo,
+    pastaArquivo: payload.pastaArquivo !== undefined ? payload.pastaArquivo : prev.pastaArquivo,
+    valorCausa: payload.valorCausa !== undefined ? payload.valorCausa : prev.valorCausa,
+    procedimento: payload.procedimento !== undefined ? payload.procedimento : prev.procedimento,
+    responsavel: payload.responsavel !== undefined ? payload.responsavel : prev.responsavel,
+    competencia: payload.competencia !== undefined ? payload.competencia : prev.competencia,
+    observacao: payload.observacao !== undefined ? payload.observacao : prev.observacao,
+    papelParte: payload.papelParte !== undefined ? payload.papelParte : prev.papelParte,
+    faseCampo: payload.faseCampo !== undefined ? payload.faseCampo : prev.faseCampo,
+    audienciaData: payload.audienciaData !== undefined ? payload.audienciaData : prev.audienciaData,
+    audienciaHora: payload.audienciaHora !== undefined ? payload.audienciaHora : prev.audienciaHora,
+    audienciaTipo: payload.audienciaTipo !== undefined ? payload.audienciaTipo : prev.audienciaTipo,
+    avisoAudiencia: payload.avisoAudiencia !== undefined ? payload.avisoAudiencia : prev.avisoAudiencia,
+    imovelId: payload.imovelId !== undefined ? payload.imovelId : prev.imovelId,
+    unidade: payload.unidade !== undefined ? payload.unidade : prev.unidade,
+    unidadeEndereco: payload.unidadeEndereco !== undefined ? payload.unidadeEndereco : prev.unidadeEndereco,
+    proximaInformacao: payload.proximaInformacao !== undefined ? payload.proximaInformacao : prev.proximaInformacao,
+    dataProximaInformacao: payload.dataProximaInformacao !== undefined ? payload.dataProximaInformacao : prev.dataProximaInformacao,
   };
   const periodicidadeNorm = normalizarPeriodicidadeConsulta(
     payload.periodicidadeConsulta !== undefined ? payload.periodicidadeConsulta : mergedRaw.periodicidadeConsulta
@@ -314,6 +390,175 @@ export function getRegistroProcesso(codCliente, proc) {
   const current = loadStore();
   const key = makeKey(codCliente, proc);
   return normalizarRegistroProcesso(current[key]);
+}
+
+/**
+ * Mesma informação que "Natureza da Ação" (Processos) e "Descrição da Ação" (Cadastro de Clientes).
+ * Prioriza `naturezaAcao` persistida em `vilareal:processos-historico:v1`; senão usa o texto de fallback (ex.: mock/lista do cadastro).
+ */
+export function obterDescricaoAcaoUnificada(codCliente, procNumero, fallbackDescricao = '') {
+  const nz = String(getRegistroProcesso(codCliente, procNumero)?.naturezaAcao ?? '').trim();
+  if (nz) return nz;
+  return String(fallbackDescricao ?? '').trim();
+}
+
+/**
+ * Mesmo dado que «Nº Processo Velho» (Processos) e «N.º Processo Velho» na grade do cadastro (`processoVelho`).
+ */
+export function obterNumeroProcessoVelhoUnificado(codCliente, procNumero, fallbackProcessoVelho = '') {
+  const v = String(getRegistroProcesso(codCliente, procNumero)?.numeroProcessoVelho ?? '').trim();
+  if (v !== '') return v;
+  return String(fallbackProcessoVelho ?? '').trim();
+}
+
+/**
+ * Mesmo dado que «Nº Processo Novo» (Processos) e «N.º Processo Novo» na grade (`processoNovo`).
+ */
+export function obterNumeroProcessoNovoUnificado(codCliente, procNumero, fallbackProcessoNovo = '') {
+  const v = String(getRegistroProcesso(codCliente, procNumero)?.numeroProcessoNovo ?? '').trim();
+  if (v !== '') return v;
+  return String(fallbackProcessoNovo ?? '').trim();
+}
+
+/**
+ * Mesmo texto que «Parte Oposta» na tela Processos (`parteOposta` no histórico) e na grade do cadastro.
+ */
+export function obterParteOpostaUnificada(codCliente, procNumero, fallbackParteOposta = '') {
+  const po = String(getRegistroProcesso(codCliente, procNumero)?.parteOposta ?? '').trim();
+  if (po) return po;
+  return String(fallbackParteOposta ?? '').trim();
+}
+
+/**
+ * Grava o texto da parte oposta a partir da grade do cadastro; zera `parteOpostaIds` para o formulário
+ * Processos exibir exatamente esse texto (até o usuário vincular de novo em «Pessoas»).
+ */
+export function salvarParteOpostaDaGradeCadastro(codCliente, proc, parteOpostaTexto) {
+  const prev = getRegistroProcesso(codCliente, proc);
+  const t = String(parteOpostaTexto ?? '');
+  if (prev) {
+    return salvarHistoricoDoProcesso({ ...prev, parteOposta: t, parteOpostaIds: [] });
+  }
+  return salvarHistoricoDoProcesso({
+    codCliente: normalizarCodCliente(codCliente),
+    proc: normalizarProc(proc),
+    cliente: '',
+    parteCliente: '',
+    parteOposta: t,
+    parteOpostaIds: [],
+    numeroProcessoNovo: '',
+    numeroProcessoVelho: '',
+    historico: [],
+    prazoFatal: '',
+    parteClienteIds: [],
+    faseSelecionada: '',
+    periodicidadeConsulta: '',
+    tramitacao: '',
+    naturezaAcao: '',
+  });
+}
+
+/** Grava só `numeroProcessoNovo` (CNJ / número novo), preservando o restante do registro. */
+export function salvarNumeroProcessoNovoDaGradeCadastro(codCliente, proc, numeroProcessoNovo) {
+  const prev = getRegistroProcesso(codCliente, proc);
+  const val = String(numeroProcessoNovo ?? '');
+  if (prev) {
+    return salvarHistoricoDoProcesso({ ...prev, numeroProcessoNovo: val });
+  }
+  return salvarHistoricoDoProcesso({
+    codCliente: normalizarCodCliente(codCliente),
+    proc: normalizarProc(proc),
+    cliente: '',
+    parteCliente: '',
+    parteOposta: '',
+    numeroProcessoNovo: val,
+    numeroProcessoVelho: '',
+    historico: [],
+    prazoFatal: '',
+    parteClienteIds: [],
+    parteOpostaIds: [],
+    faseSelecionada: '',
+    periodicidadeConsulta: '',
+    tramitacao: '',
+    naturezaAcao: '',
+  });
+}
+
+/** Grava só `naturezaAcao`, preservando o restante do registro do processo (merge com histórico existente). */
+export function salvarNaturezaAcaoDoProcesso(codCliente, proc, naturezaAcao) {
+  const prev = getRegistroProcesso(codCliente, proc);
+  const nz = String(naturezaAcao ?? '').trim();
+  if (prev) {
+    return salvarHistoricoDoProcesso({ ...prev, naturezaAcao: nz });
+  }
+  return salvarHistoricoDoProcesso({
+    codCliente: normalizarCodCliente(codCliente),
+    proc: normalizarProc(proc),
+    cliente: '',
+    parteCliente: '',
+    parteOposta: '',
+    numeroProcessoNovo: '',
+    historico: [],
+    prazoFatal: '',
+    parteClienteIds: [],
+    parteOpostaIds: [],
+    faseSelecionada: '',
+    periodicidadeConsulta: '',
+    tramitacao: '',
+    naturezaAcao: nz,
+  });
+}
+
+/** Grava só `numeroProcessoVelho`, preservando o restante do registro do processo. */
+export function salvarNumeroProcessoVelhoDoProcesso(codCliente, proc, numeroProcessoVelho) {
+  const prev = getRegistroProcesso(codCliente, proc);
+  const val = String(numeroProcessoVelho ?? '');
+  if (prev) {
+    return salvarHistoricoDoProcesso({ ...prev, numeroProcessoVelho: val });
+  }
+  return salvarHistoricoDoProcesso({
+    codCliente: normalizarCodCliente(codCliente),
+    proc: normalizarProc(proc),
+    cliente: '',
+    parteCliente: '',
+    parteOposta: '',
+    numeroProcessoNovo: '',
+    numeroProcessoVelho: val,
+    historico: [],
+    prazoFatal: '',
+    parteClienteIds: [],
+    parteOpostaIds: [],
+    faseSelecionada: '',
+    periodicidadeConsulta: '',
+    tramitacao: '',
+    naturezaAcao: '',
+  });
+}
+
+/**
+ * Alinha campos da grade ao histórico do processo (`vilareal:processos-historico:v1`):
+ * descrição da ação, nº processo velho/novo e parte oposta (texto).
+ */
+export function alinharListaProcessosDescricaoComHistorico(codClientePadded8, listaProcessos) {
+  if (!Array.isArray(listaProcessos)) return listaProcessos;
+  const cod = normalizarCodCliente(codClientePadded8);
+  let changed = false;
+  const out = listaProcessos.map((p) => {
+    const n = Number(p?.procNumero);
+    if (!Number.isFinite(n) || n < 1) return p;
+    const descUnif = obterDescricaoAcaoUnificada(cod, n, p.descricao ?? '');
+    const velhoUnif = obterNumeroProcessoVelhoUnificado(cod, n, p.processoVelho ?? '');
+    const novoUnif = obterNumeroProcessoNovoUnificado(cod, n, p.processoNovo ?? '');
+    const opostaUnif = obterParteOpostaUnificada(cod, n, p.parteOposta ?? '');
+    const sameDesc = (p.descricao ?? '') === descUnif;
+    const sameVelho = (p.processoVelho ?? '') === velhoUnif;
+    const sameNovo = (p.processoNovo ?? '') === novoUnif;
+    const sameOposta = (p.parteOposta ?? '') === opostaUnif;
+    if (sameDesc && sameVelho && sameNovo && sameOposta) return p;
+    changed = true;
+    return { ...p, descricao: descUnif, processoVelho: velhoUnif, processoNovo: novoUnif, parteOposta: opostaUnif };
+  });
+  return changed ? out : listaProcessos;
 }
 
 /**
@@ -430,6 +675,7 @@ export function salvarPrazoFatalDoProcesso(codCliente, proc, prazoFatalBr, dados
     parteCliente: '',
     parteOposta: '',
     numeroProcessoNovo: '',
+    numeroProcessoVelho: '',
     prazoFatal: '',
     parteClienteIds: [],
     parteOpostaIds: [],
@@ -437,6 +683,29 @@ export function salvarPrazoFatalDoProcesso(codCliente, proc, prazoFatalBr, dados
     periodicidadeConsulta: '',
     proximaConsultaData: '',
     tramitacao: '',
+    naturezaAcao: '',
+    consultaAutomatica: null,
+    statusAtivo: null,
+    estado: '',
+    cidade: '',
+    dataProtocolo: '',
+    pastaArquivo: '',
+    valorCausa: '',
+    procedimento: '',
+    responsavel: '',
+    competencia: '',
+    observacao: '',
+    papelParte: '',
+    faseCampo: '',
+    audienciaData: '',
+    audienciaHora: '',
+    audienciaTipo: '',
+    avisoAudiencia: '',
+    imovelId: '',
+    unidade: '',
+    unidadeEndereco: '',
+    proximaInformacao: '',
+    dataProximaInformacao: '',
     historico: [],
   };
   const pf = String(prazoFatalBr ?? '').trim();
@@ -455,6 +724,7 @@ export function salvarPrazoFatalDoProcesso(codCliente, proc, prazoFatalBr, dados
     periodicidadeConsulta: dadosExtras.periodicidadeConsulta != null ? dadosExtras.periodicidadeConsulta : prev.periodicidadeConsulta,
     proximaConsultaData: prev.proximaConsultaData || '',
     tramitacao: dadosExtras.tramitacao != null ? dadosExtras.tramitacao : prev.tramitacao,
+    naturezaAcao: dadosExtras.naturezaAcao != null ? dadosExtras.naturezaAcao : prev.naturezaAcao,
   });
 }
 

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { X, ChevronUp, ChevronDown } from 'lucide-react';
 import { getImovelMock } from '../data/imoveisMockData';
+import { resolverAliasHojeEmTexto } from '../services/hjDateAliasService.js';
 
 function Field({ label, children, className = '' }) {
   return (
@@ -314,7 +315,16 @@ export function Imoveis() {
                 <button type="button" className="px-4 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50">Catálogo</button>
                 <button type="button" className="px-4 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50">Doc. Interessados</button>
                 <Field label="Data pag. 1ª Tx. Cond.:" className="w-40">
-                  <input type="text" value={dataPag1TxCond} onChange={(e) => setDataPag1TxCond(e.target.value)} placeholder="dd/mm/aaaa" className={inputClass} />
+                  <input
+                    type="text"
+                    value={dataPag1TxCond}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setDataPag1TxCond(resolverAliasHojeEmTexto(v, 'br') ?? v);
+                    }}
+                    placeholder="dd/mm/aaaa ou hj"
+                    className={inputClass}
+                  />
                 </Field>
               </div>
               <Field label="Inscrição Imobiliária:">
@@ -640,7 +650,16 @@ export function Imoveis() {
                   <input type="text" value={existeDebIptu} onChange={(e) => setExisteDebIptu(e.target.value)} className={inputClass} />
                 </Field>
                 <Field label="Data Consulta débito IPTU">
-                  <input type="text" value={dataConsIptu} onChange={(e) => setDataConsIptu(e.target.value)} className={inputClass} placeholder="dd/mm/aaaa" />
+                  <input
+                    type="text"
+                    value={dataConsIptu}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setDataConsIptu(resolverAliasHojeEmTexto(v, 'br') ?? v);
+                    }}
+                    className={inputClass}
+                    placeholder="dd/mm/aaaa ou hj"
+                  />
                 </Field>
               </div>
             </div>

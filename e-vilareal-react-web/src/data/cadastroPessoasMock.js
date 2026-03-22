@@ -41312,9 +41312,37 @@ export const CADASTRO_PESSOAS_MOCK = [
   }
 ];
 
+function inferirTipoPessoaMock(cpf) {
+  const d = String(cpf ?? '').replace(/\D/g, '');
+  if (d.length >= 12 && d.length <= 14) return 'JURIDICA';
+  if (d.length >= 11) return 'FISICA';
+  return null;
+}
+
+/** Enriquece com vínculo de responsável (demo: PJ id 1 → PF id 2). */
 export function getCadastroPessoasMock(apenasAtivos) {
-  const list = apenasAtivos ? CADASTRO_PESSOAS_MOCK.filter((p) => p.ativo) : [...CADASTRO_PESSOAS_MOCK];
-  return list;
+  const base = apenasAtivos ? CADASTRO_PESSOAS_MOCK.filter((p) => p.ativo) : [...CADASTRO_PESSOAS_MOCK];
+  return base.map((p) => {
+    if (p.id === 1) {
+      const resp = CADASTRO_PESSOAS_MOCK.find((x) => x.id === 2);
+      if (!resp) return { ...p, responsavelId: null, responsavel: null };
+      return {
+        ...p,
+        responsavelId: 2,
+        responsavel: {
+          id: resp.id,
+          nome: resp.nome,
+          cpf: resp.cpf,
+          tipoPessoa: inferirTipoPessoaMock(resp.cpf),
+        },
+      };
+    }
+    return {
+      ...p,
+      responsavelId: p.responsavelId ?? null,
+      responsavel: p.responsavel ?? null,
+    };
+  });
 }
 
 let __pessoaPorId;

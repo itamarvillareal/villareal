@@ -1,11 +1,29 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Search, FolderOpen, ChevronLeft, ChevronRight, Settings, SlidersHorizontal } from 'lucide-react';
+import { Search, FolderOpen, ChevronLeft, ChevronRight, Settings, SlidersHorizontal, PlusCircle, X } from 'lucide-react';
 import { ModalConfiguracoesCalculoCliente } from './ModalConfiguracoesCalculoCliente.jsx';
 import { clienteMock, processosClienteMock } from '../data/mockData';
-import { getMockProcesso10x10 } from '../data/processosMock';
-import { getIdPessoaPorCodCliente } from '../data/clientesCadastradosMock';
-import { getPessoaPorId } from '../data/cadastroPessoasMock';
+import { getDadosProcessoClienteUnificado } from '../data/processoClienteProcUnificado.js';
+import { getIdPessoaPorCodCliente, CLIENTE_PARA_PESSOA } from '../data/clientesCadastradosMock';
+import { getPessoaPorId, getCadastroPessoasMock } from '../data/cadastroPessoasMock';
+import {
+  loadCadastroClienteDados,
+  saveCadastroClienteDados,
+  mergeProcessosLista,
+  loadUltimoCodigoCliente,
+  obterProximoCodigoClienteSugerido,
+} from '../data/cadastroClientesStorage.js';
+import {
+  obterDescricaoAcaoUnificada,
+  obterNumeroProcessoVelhoUnificado,
+  obterNumeroProcessoNovoUnificado,
+  obterParteOpostaUnificada,
+  salvarNaturezaAcaoDoProcesso,
+  salvarNumeroProcessoVelhoDoProcesso,
+  salvarNumeroProcessoNovoDaGradeCadastro,
+  salvarParteOpostaDaGradeCadastro,
+  alinharListaProcessosDescricaoComHistorico,
+} from '../data/processosHistoricoData.js';
 
 function formatDocBR(digits) {
   const d = String(digits || '').replace(/\D/g, '');
@@ -39,6 +57,9 @@ function dadosClientePorCodigo(n) {
 }
 
 const inputClass = 'w-full px-2 py-1.5 border border-slate-300 rounded text-sm bg-white';
+
+/** Quantidade de processos por página na grade do cadastro de clientes. */
+const PROCESSOS_POR_PAGINA = 10;
 
 function normalizarCodigoCliente(val) {
   const s = String(val ?? '').trim();
@@ -79,24 +100,23 @@ export function gerarMockClienteEProcessos(codigo) {
   const base = dadosClientePorCodigo(n);
   const procRows = [];
 
-  // Clientes 1–10: usa o mock especializado (getMockProcesso10x10)
+  for (let p = 1; p <= 10; p++) {
+    const u = getDadosProcessoClienteUnificado(n, p);
+    if (!u) continue;
+    procRows.push({
+      id: `${n}-${p}`,
+      procNumero: p,
+      processoVelho: u.processoVelho,
+      processoNovo: u.processoNovo,
+      autor: u.autor,
+      reu: u.reu,
+      parteOposta: u.parteOposta,
+      tipoAcao: u.tipoAcao,
+      descricao: u.descricao,
+    });
+  }
+
   if (n >= 1 && n <= 10) {
-    for (let p = 1; p <= 10; p++) {
-      const mockProc = getMockProcesso10x10(n, p);
-      if (!mockProc) continue;
-      const baseTipoAcao = processosClienteMock[p - 1]?.descricao;
-      procRows.push({
-        id: `${n}-${p}`,
-        procNumero: p,
-        processoVelho: mockProc.numeroProcessoVelho || '-',
-        processoNovo: mockProc.numeroProcessoNovo,
-        autor: mockProc.autor,
-        reu: mockProc.reu,
-        parteOposta: mockProc.reu,
-        tipoAcao: baseTipoAcao ?? 'AÇÃO (MOCK)',
-        descricao: baseTipoAcao ?? `AÇÃO (MOCK) PROC ${String(p).padStart(2, '0')}`,
-      });
-    }
     const cnpjCpf =
       base.cnpjCpf !== '—'
         ? base.cnpjCpf
@@ -108,28 +128,6 @@ export function gerarMockClienteEProcessos(codigo) {
       cnpjCpf,
       processos: procRows,
     };
-  }
-
-  // Clientes 11–1000: gera mock genérico com processos 1–10
-  for (let p = 1; p <= 10; p++) {
-    const seq = 5600000 + n * 37 + p * 11;
-    const dv = String(10 + ((n + p) % 90)).padStart(2, '0');
-    const foro = String(1000 + ((n * 13 + p * 7) % 900)).slice(-4);
-    const numeroProcessoNovo = `${String(seq).slice(0, 7)}-${dv}.2025.8.09.${foro}`;
-    const parteOposta = `RÉU MOCK C${String(n).padStart(3, '0')}/P${String(p).padStart(2, '0')}`;
-    const autor = `AUTOR MOCK C${String(n).padStart(3, '0')}/P${String(p).padStart(2, '0')}`;
-    const baseTipoAcao = processosClienteMock[p - 1]?.descricao;
-    procRows.push({
-      id: `${n}-${p}`,
-      procNumero: p,
-      processoVelho: '-',
-      processoNovo: numeroProcessoNovo,
-      autor,
-      reu: parteOposta,
-      parteOposta,
-      tipoAcao: baseTipoAcao ?? 'AÇÃO (MOCK)',
-      descricao: baseTipoAcao ?? `AÇÃO MOCK CLIENTE ${String(n).padStart(3, '0')} — PROC ${String(p).padStart(2, '0')}`,
-    });
   }
 
   return {
@@ -177,6 +175,40 @@ function montarQualificacaoTexto({ nomeRazao, cnpjCpf, pessoaData }) {
   return `${joinComVirgula(blocos)}.`;
 }
 
+function getInitialEstadoCliente(codPreferido) {
+  const cod = padCliente8(codPreferido ?? loadUltimoCodigoCliente() ?? clienteMock.codigo);
+  const mock = gerarMockClienteEProcessos(cod);
+  const persisted = loadCadastroClienteDados(cod);
+  if (!mock) {
+    return {
+      codigo: cod,
+      pessoa: persisted?.pessoa ?? clienteMock.pessoa,
+      nomeRazao: persisted?.nomeRazao ?? clienteMock.nomeRazao,
+      cnpjCpf: persisted?.cnpjCpf ?? clienteMock.cnpjCpf,
+      observacao: persisted?.observacao !== undefined ? persisted.observacao : clienteMock.observacao,
+      clienteInativo: persisted?.clienteInativo ?? clienteMock.clienteInativo,
+      edicaoDesabilitada: persisted?.edicaoDesabilitada ?? clienteMock.edicaoDesabilitada,
+      processos: alinharListaProcessosDescricaoComHistorico(
+        cod,
+        mergeProcessosLista(processosClienteMock.slice(0, 10), persisted?.processos)
+      ),
+    };
+  }
+  return {
+    codigo: mock.codigoCliente,
+    pessoa: persisted?.pessoa ?? mock.pessoa ?? '',
+    nomeRazao: persisted?.nomeRazao ?? mock.nomeRazao,
+    cnpjCpf: persisted?.cnpjCpf ?? mock.cnpjCpf,
+    observacao: persisted?.observacao !== undefined ? persisted.observacao : clienteMock.observacao,
+    clienteInativo: persisted?.clienteInativo ?? clienteMock.clienteInativo,
+    edicaoDesabilitada: persisted?.edicaoDesabilitada ?? clienteMock.edicaoDesabilitada,
+    processos: alinharListaProcessosDescricaoComHistorico(
+      mock.codigoCliente,
+      mergeProcessosLista(mock.processos, persisted?.processos)
+    ),
+  };
+}
+
 export function CadastroClientes() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -184,50 +216,196 @@ export function CadastroClientes() {
   const codClienteFromState = stateFromFinanceiro?.codCliente ?? '';
   const procFromState = stateFromFinanceiro?.proc ?? '';
 
-  const [proximoCliente, _setProximoCliente] = useState(clienteMock.proximoCliente);
-  const [codigo, setCodigo] = useState(padCliente8(clienteMock.codigo));
-  const [pessoa, setPessoa] = useState(clienteMock.pessoa);
-  const [nomeRazao, setNomeRazao] = useState(clienteMock.nomeRazao);
-  const [cnpjCpf, setCnpjCpf] = useState(clienteMock.cnpjCpf);
-  const [edicaoDesabilitada, setEdicaoDesabilitada] = useState(clienteMock.edicaoDesabilitada);
-  const [clienteInativo, setClienteInativo] = useState(clienteMock.clienteInativo);
-  const [observacao, setObservacao] = useState(clienteMock.observacao);
+  const ini = getInitialEstadoCliente(codClienteFromState || undefined);
+  const [codigo, setCodigo] = useState(ini.codigo);
+  const [pessoa, setPessoa] = useState(ini.pessoa);
+  const [nomeRazao, setNomeRazao] = useState(ini.nomeRazao);
+  const [cnpjCpf, setCnpjCpf] = useState(ini.cnpjCpf);
+  const [edicaoDesabilitada, setEdicaoDesabilitada] = useState(ini.edicaoDesabilitada);
+  const [clienteInativo, setClienteInativo] = useState(ini.clienteInativo);
+  const [observacao, setObservacao] = useState(ini.observacao);
   const [pesquisaProcesso, setPesquisaProcesso] = useState('');
+  const [buscaClienteNome, setBuscaClienteNome] = useState('');
+  const [paginaProcessos, setPaginaProcessos] = useState(1);
   const [modalQualificacaoAberto, setModalQualificacaoAberto] = useState(false);
   const [modalConfigCalculoAberto, setModalConfigCalculoAberto] = useState(false);
-  const [processos, setProcessos] = useState(() => {
-    const mock = gerarMockClienteEProcessos(clienteMock.codigo);
-    return mock?.processos ?? processosClienteMock.slice(0, 10);
-  });
+  const [modalEscolherPessoa, setModalEscolherPessoa] = useState(false);
+  const [buscaPessoaModal, setBuscaPessoaModal] = useState('');
+  const [processos, setProcessos] = useState(ini.processos);
+  /** Atualiza ao trocar de cliente para refletir persistência e mapa de códigos. */
+  const proximoCliente = useMemo(() => obterProximoCodigoClienteSugerido(), [codigo]);
+  const montagemInicialRef = useRef(true);
+  /** Evita sobrescrever nome/CPF ao carregar cliente por código (persistido/mock). */
+  const pularSincPorCargaClienteRef = useRef(false);
+  const primeiraSincPessoaRef = useRef(true);
+
+  const persistSnapshotRef = useRef(null);
+  persistSnapshotRef.current = {
+    codigo,
+    pessoa,
+    nomeRazao,
+    cnpjCpf,
+    observacao,
+    clienteInativo,
+    edicaoDesabilitada,
+    processos,
+  };
+
+  const aplicarDadosCliente = useCallback((paddedRaw) => {
+    pularSincPorCargaClienteRef.current = true;
+    const padded = padCliente8(paddedRaw);
+    const mock = gerarMockClienteEProcessos(padded);
+    const persisted = loadCadastroClienteDados(padded);
+    if (mock) {
+      setCodigo(mock.codigoCliente);
+      setPessoa(persisted?.pessoa ?? mock.pessoa ?? '');
+      setNomeRazao(persisted?.nomeRazao ?? mock.nomeRazao);
+      setCnpjCpf(persisted?.cnpjCpf ?? mock.cnpjCpf);
+      setObservacao(persisted?.observacao !== undefined ? persisted.observacao : clienteMock.observacao);
+      setClienteInativo(persisted?.clienteInativo ?? clienteMock.clienteInativo);
+      setEdicaoDesabilitada(persisted?.edicaoDesabilitada ?? clienteMock.edicaoDesabilitada);
+      setProcessos(
+        alinharListaProcessosDescricaoComHistorico(
+          mock.codigoCliente,
+          mergeProcessosLista(mock.processos, persisted?.processos)
+        )
+      );
+    } else {
+      setCodigo(padded);
+      if (persisted) {
+        setPessoa(persisted.pessoa ?? '');
+        setNomeRazao(persisted.nomeRazao ?? '');
+        setCnpjCpf(persisted.cnpjCpf ?? '');
+        setObservacao(persisted.observacao ?? '');
+        setClienteInativo(persisted.clienteInativo ?? false);
+        setEdicaoDesabilitada(persisted.edicaoDesabilitada ?? false);
+        setProcessos(
+          alinharListaProcessosDescricaoComHistorico(
+            padded,
+            Array.isArray(persisted.processos) ? persisted.processos : []
+          )
+        );
+      }
+    }
+  }, []);
 
   useEffect(() => {
     if (codClienteFromState) {
-      const mock = gerarMockClienteEProcessos(codClienteFromState);
-      if (mock) {
-        setCodigo(mock.codigoCliente);
-        setPessoa(mock.pessoa ?? '');
-        setNomeRazao(mock.nomeRazao);
-        setCnpjCpf(mock.cnpjCpf);
-        setProcessos(mock.processos);
-      } else {
-        setCodigo(codClienteFromState);
-      }
+      aplicarDadosCliente(codClienteFromState);
     }
     if (procFromState) setPesquisaProcesso(procFromState);
-  }, [codClienteFromState, procFromState]);
+  }, [codClienteFromState, procFromState, aplicarDadosCliente]);
+
+  /** Volta da tela Processos (ou outro fluxo): alinha «Descrição da Ação» ao mesmo `naturezaAcao` do histórico. */
+  useEffect(() => {
+    if (location.pathname !== '/pessoas') return;
+    setProcessos((prev) => alinharListaProcessosDescricaoComHistorico(padCliente8(codigo), prev));
+  }, [location.pathname, location.key, codigo]);
+
+  useEffect(() => {
+    if (primeiraSincPessoaRef.current) {
+      primeiraSincPessoaRef.current = false;
+      return;
+    }
+    if (pularSincPorCargaClienteRef.current) {
+      pularSincPorCargaClienteRef.current = false;
+      return;
+    }
+    const t = window.setTimeout(() => {
+      const id = Number(String(pessoa ?? '').replace(/\D/g, ''));
+      if (!Number.isFinite(id) || id < 1) return;
+      const pes = getPessoaPorId(id);
+      if (pes) {
+        setNomeRazao(pes.nome);
+        setCnpjCpf(formatDocBR(pes.cpf));
+      } else {
+        setNomeRazao(`Pessoa nº ${id} (não encontrada no cadastro)`);
+        setCnpjCpf('—');
+      }
+    }, 350);
+    return () => window.clearTimeout(t);
+  }, [pessoa]);
+
+  useEffect(() => {
+    if (montagemInicialRef.current) {
+      montagemInicialRef.current = false;
+      return;
+    }
+    const t = setTimeout(() => {
+      const s = persistSnapshotRef.current;
+      if (!s) return;
+      saveCadastroClienteDados(s.codigo, {
+        pessoa: s.pessoa,
+        nomeRazao: s.nomeRazao,
+        cnpjCpf: s.cnpjCpf,
+        observacao: s.observacao,
+        clienteInativo: s.clienteInativo,
+        edicaoDesabilitada: s.edicaoDesabilitada,
+        processos: s.processos,
+      });
+    }, 250);
+    return () => clearTimeout(t);
+  }, [codigo, pessoa, nomeRazao, cnpjCpf, observacao, clienteInativo, edicaoDesabilitada, processos]);
+
+  useEffect(() => {
+    return () => {
+      const s = persistSnapshotRef.current;
+      if (!s) return;
+      saveCadastroClienteDados(s.codigo, {
+        pessoa: s.pessoa,
+        nomeRazao: s.nomeRazao,
+        cnpjCpf: s.cnpjCpf,
+        observacao: s.observacao,
+        clienteInativo: s.clienteInativo,
+        edicaoDesabilitada: true,
+        processos: s.processos,
+      });
+    };
+  }, []);
 
   function aplicarCodigoCliente(value) {
     const padded = padCliente8(value);
-    setCodigo(padded);
-    const mock = gerarMockClienteEProcessos(padded);
-    if (mock) {
-      setCodigo(mock.codigoCliente);
-      setPessoa(mock.pessoa ?? '');
-      setNomeRazao(mock.nomeRazao);
-      setCnpjCpf(mock.cnpjCpf);
-      setProcessos(mock.processos);
-    }
+    aplicarDadosCliente(padded);
   }
+
+  const atualizarCampoProcesso = useCallback(
+    (procId, campo, valor) => {
+      if (edicaoDesabilitada) return;
+      setProcessos((prev) => {
+        const next = prev.map((p) => (p.id === procId ? { ...p, [campo]: valor } : p));
+        if (campo === 'descricao') {
+          const row = next.find((p) => p.id === procId);
+          const n = Number(row?.procNumero);
+          if (Number.isFinite(n) && n >= 1) {
+            salvarNaturezaAcaoDoProcesso(padCliente8(codigo), n, valor);
+          }
+        }
+        if (campo === 'processoVelho') {
+          const row = next.find((p) => p.id === procId);
+          const n = Number(row?.procNumero);
+          if (Number.isFinite(n) && n >= 1) {
+            salvarNumeroProcessoVelhoDoProcesso(padCliente8(codigo), n, valor);
+          }
+        }
+        if (campo === 'parteOposta') {
+          const row = next.find((p) => p.id === procId);
+          const n = Number(row?.procNumero);
+          if (Number.isFinite(n) && n >= 1) {
+            salvarParteOpostaDaGradeCadastro(padCliente8(codigo), n, valor);
+          }
+        }
+        if (campo === 'processoNovo') {
+          const row = next.find((p) => p.id === procId);
+          const n = Number(row?.procNumero);
+          if (Number.isFinite(n) && n >= 1) {
+            salvarNumeroProcessoNovoDaGradeCadastro(padCliente8(codigo), n, valor);
+          }
+        }
+        return next;
+      });
+    },
+    [edicaoDesabilitada, codigo]
+  );
 
   function handleCodigoInputChange(value) {
     const digits = apenasDigitos(value);
@@ -247,6 +425,46 @@ export function CadastroClientes() {
 
   function abrirProcessos(procNumero) {
     navigate('/processos', { state: { codCliente: padCliente8(codigo), proc: String(procNumero ?? '') } });
+  }
+
+  /** Próximo índice de processo (1…n) para este cliente na lista local. */
+  function proximoNumeroProcesso(lista) {
+    const nums = (lista || []).map((p) => Number(p.procNumero)).filter((n) => Number.isFinite(n) && n >= 1);
+    const max = nums.length ? Math.max(...nums) : 0;
+    return max + 1;
+  }
+
+  function handleIncluirNovoProcesso() {
+    if (edicaoDesabilitada) {
+      window.alert(
+        'Desmarque "Edição Desabilitada" para incluir um novo processo, ou use o fluxo administrativo adequado.'
+      );
+      return;
+    }
+    const codN = Number(normalizarCodigoCliente(codigo));
+    if (!Number.isFinite(codN) || codN < 1) {
+      window.alert('Informe um código de cliente válido antes de incluir um processo.');
+      return;
+    }
+    const next = proximoNumeroProcesso(processos);
+    const id = `${codN}-${next}`;
+    const novo = {
+      id,
+      procNumero: next,
+      processoVelho: '-',
+      processoNovo: '',
+      autor: '',
+      reu: '',
+      parteOposta: '—',
+      tipoAcao: 'NOVO PROCESSO',
+      descricao: 'Incluído no cadastro — preencha na tela Processos.',
+    };
+    const merged = [...processos, novo];
+    setProcessos(merged);
+    setPesquisaProcesso('');
+    const paginas = Math.max(1, Math.ceil(merged.length / PROCESSOS_POR_PAGINA));
+    setPaginaProcessos(paginas);
+    navigate('/processos', { state: { codCliente: padCliente8(codigo), proc: String(next) } });
   }
 
   const processosFiltrados = useMemo(() => {
@@ -284,6 +502,24 @@ export function CadastroClientes() {
     });
   }, [processos, pesquisaProcesso]);
 
+  const totalPaginasProcessos = useMemo(() => {
+    const n = processosFiltrados.length;
+    return Math.max(1, Math.ceil(n / PROCESSOS_POR_PAGINA));
+  }, [processosFiltrados.length]);
+
+  const processosPagina = useMemo(() => {
+    const inicio = (paginaProcessos - 1) * PROCESSOS_POR_PAGINA;
+    return processosFiltrados.slice(inicio, inicio + PROCESSOS_POR_PAGINA);
+  }, [processosFiltrados, paginaProcessos]);
+
+  useEffect(() => {
+    setPaginaProcessos(1);
+  }, [pesquisaProcesso, codigo]);
+
+  useEffect(() => {
+    setPaginaProcessos((p) => Math.min(p, totalPaginasProcessos));
+  }, [totalPaginasProcessos]);
+
   const pessoaSelecionada = useMemo(() => {
     const id = Number(String(pessoa ?? '').replace(/\D/g, ''));
     if (!Number.isFinite(id) || id <= 0) return null;
@@ -295,6 +531,86 @@ export function CadastroClientes() {
     [nomeRazao, cnpjCpf, pessoaSelecionada]
   );
 
+  const todasPessoasCadastro = useMemo(() => getCadastroPessoasMock(true), []);
+
+  const pessoasFiltradasModal = useMemo(() => {
+    const raw = String(buscaPessoaModal ?? '').trim();
+    if (!raw) return { tipo: 'vazio', lista: [], limitado: false };
+    const soNum = /^[\d.\s/-]+$/.test(raw);
+    const t = normalizarTextoBusca(raw);
+    const tNum = normalizarNumeroBusca(raw);
+    if (!soNum && t.length < 2) return { tipo: 'curto', lista: [], limitado: false };
+    if (soNum && tNum.length < 1) return { tipo: 'curto', lista: [], limitado: false };
+
+    const out = [];
+    const limite = 400;
+    for (const p of todasPessoasCadastro) {
+      if (out.length >= limite) break;
+      const idStr = String(p.id);
+      const nome = normalizarTextoBusca(p.nome ?? '');
+      const cpfD = normalizarNumeroBusca(p.cpf ?? '');
+      let ok = false;
+      if (soNum) {
+        ok = idStr.startsWith(tNum) || cpfD.includes(tNum);
+      } else {
+        ok = nome.includes(t) || idStr.includes(tNum) || cpfD.includes(tNum);
+      }
+      if (ok) out.push(p);
+    }
+    return { tipo: 'ok', lista: out, limitado: out.length >= limite };
+  }, [todasPessoasCadastro, buscaPessoaModal]);
+
+  function aplicarPessoaSelecionada(p) {
+    pularSincPorCargaClienteRef.current = true;
+    setPessoa(String(p.id));
+    setNomeRazao(p.nome);
+    setCnpjCpf(formatDocBR(p.cpf));
+    setModalEscolherPessoa(false);
+    setBuscaPessoaModal('');
+  }
+
+  useEffect(() => {
+    if (!modalEscolherPessoa) return;
+    const h = (e) => {
+      if (e.key === 'Escape') setModalEscolherPessoa(false);
+    };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, [modalEscolherPessoa]);
+
+  const indiceClientesPorNome = useMemo(() => {
+    const out = [];
+    for (const [codStr, idPessoa] of Object.entries(CLIENTE_PARA_PESSOA)) {
+      const pes = getPessoaPorId(idPessoa);
+      const nome =
+        pes?.nome?.trim() || `Pessoa nº ${idPessoa} (sem nome no cadastro)`;
+      out.push({
+        codigoPadded: padCliente8(codStr),
+        codigoNum: Number(codStr),
+        nome,
+      });
+    }
+    out.sort((a, b) => a.codigoNum - b.codigoNum);
+    return out;
+  }, []);
+
+  const clientesFiltradosPorNome = useMemo(() => {
+    const t = normalizarTextoBusca(buscaClienteNome);
+    if (t.length < 2) return [];
+    const limite = 80;
+    const hits = [];
+    for (const row of indiceClientesPorNome) {
+      if (hits.length >= limite) break;
+      if (normalizarTextoBusca(row.nome).includes(t)) hits.push(row);
+    }
+    return hits;
+  }, [indiceClientesPorNome, buscaClienteNome]);
+
+  function selecionarClienteDaBuscaNome(row) {
+    aplicarCodigoCliente(row.codigoPadded);
+    setBuscaClienteNome('');
+  }
+
   return (
     <div className="min-h-full bg-slate-200 flex flex-col">
       <header className="flex items-center justify-between px-3 py-2 bg-white border-b border-slate-300 shrink-0">
@@ -303,10 +619,97 @@ export function CadastroClientes() {
 
       <div className="flex-1 min-h-0 flex overflow-hidden">
         <div className="flex-1 min-w-0 overflow-auto p-4 space-y-4">
-          <section className="flex flex-wrap items-end gap-4">
+          <section>
+            <p className="text-sm font-medium text-slate-700 mb-2">Buscar cliente por nome</p>
+            <div className="flex flex-wrap items-center gap-2 mb-2">
+              <label className="text-sm text-slate-700 whitespace-nowrap" htmlFor="busca-cliente-nome">
+                Pesquisar:
+              </label>
+              <input
+                id="busca-cliente-nome"
+                type="text"
+                value={buscaClienteNome}
+                onChange={(e) => setBuscaClienteNome(e.target.value)}
+                className={`${inputClass} w-full min-w-[200px] max-w-md`}
+                placeholder="Nome ou parte do nome do cliente…"
+                autoComplete="off"
+              />
+            </div>
+            {String(buscaClienteNome ?? '').trim() && normalizarTextoBusca(buscaClienteNome).length < 2 && (
+              <p className="text-xs text-slate-500 mb-2">
+                Digite pelo menos 2 letras para buscar pelo nome (razão social ou nome da pessoa vinculada).
+              </p>
+            )}
+            {normalizarTextoBusca(buscaClienteNome).length >= 2 && clientesFiltradosPorNome.length === 0 && (
+              <p className="text-sm text-slate-600 mb-2">Nenhum cliente encontrado com esse nome.</p>
+            )}
+            {clientesFiltradosPorNome.length > 0 && (
+              <div className="border border-slate-300 rounded bg-white overflow-x-auto max-h-56 overflow-y-auto">
+                <table className="w-full text-sm border-collapse min-w-[480px]">
+                  <thead>
+                    <tr className="bg-slate-100 sticky top-0">
+                      <th className="border-b border-slate-200 px-2 py-1.5 text-left font-semibold text-slate-700 w-28">
+                        Código
+                      </th>
+                      <th className="border-b border-slate-200 px-2 py-1.5 text-left font-semibold text-slate-700">
+                        Nome / Razão social
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {clientesFiltradosPorNome.map((row, idx) => (
+                      <tr
+                        key={row.codigoPadded}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => selecionarClienteDaBuscaNome(row)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            selecionarClienteDaBuscaNome(row);
+                          }
+                        }}
+                        className={`cursor-pointer hover:bg-blue-50 ${
+                          idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'
+                        }`}
+                      >
+                        <td className="border-b border-slate-100 px-2 py-1.5 text-slate-800 font-mono tabular-nums whitespace-nowrap">
+                          {row.codigoPadded}
+                        </td>
+                        <td className="border-b border-slate-100 px-2 py-1.5 text-slate-800">{row.nome}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {clientesFiltradosPorNome.length >= 80 && (
+                  <p className="text-xs text-slate-500 px-2 py-1.5 border-t border-slate-100">
+                    Mostrando até 80 resultados — refine a busca se necessário.
+                  </p>
+                )}
+              </div>
+            )}
+          </section>
+
+          <section className="flex flex-wrap items-end gap-4 border-t border-slate-200 pt-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-0.5">Próximo cliente:</label>
-              <p className="text-sm text-slate-800 px-1 py-1.5 bg-transparent">
+              <p
+                role="button"
+                tabIndex={0}
+                title="Duplo clique para carregar o formulário com este número de cliente"
+                className="text-sm text-slate-800 px-1 py-1.5 bg-transparent cursor-pointer select-none rounded hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 font-mono tabular-nums"
+                onDoubleClick={() => {
+                  aplicarCodigoCliente(obterProximoCodigoClienteSugerido());
+                  setPaginaProcessos(1);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    aplicarCodigoCliente(obterProximoCodigoClienteSugerido());
+                    setPaginaProcessos(1);
+                  }
+                }}
+              >
                 {proximoCliente}
               </p>
             </div>
@@ -350,7 +753,32 @@ export function CadastroClientes() {
               <label className="block text-sm font-medium text-slate-700 mb-0.5">Pessoa:</label>
               <div className="flex gap-1">
                 <input type="text" value={pessoa} onChange={(e) => setPessoa(e.target.value)} disabled={edicaoDesabilitada} className={`${inputClass} w-24 bg-slate-50`} />
-                <button type="button" className="p-2 rounded border border-slate-300 bg-white hover:bg-slate-50" title="Pesquisar"><Search className="w-4 h-4 text-slate-600" /></button>
+                <button
+                  type="button"
+                  disabled={edicaoDesabilitada}
+                  className={`p-2 rounded border ${
+                    edicaoDesabilitada
+                      ? 'border-slate-200 bg-slate-100 cursor-not-allowed opacity-60'
+                      : 'border-slate-300 bg-white hover:bg-slate-50'
+                  }`}
+                  title={
+                    edicaoDesabilitada
+                      ? 'Habilite a edição para escolher outra pessoa'
+                      : 'Buscar pessoa no cadastro'
+                  }
+                  onClick={() => {
+                    if (edicaoDesabilitada) {
+                      window.alert(
+                        'Desmarque "Edição Desabilitada" para escolher a pessoa do cliente pelo cadastro.'
+                      );
+                      return;
+                    }
+                    setBuscaPessoaModal('');
+                    setModalEscolherPessoa(true);
+                  }}
+                >
+                  <Search className="w-4 h-4 text-slate-600" />
+                </button>
               </div>
             </div>
             <div className="flex-1 min-w-[200px]">
@@ -362,7 +790,31 @@ export function CadastroClientes() {
               <input type="text" value={cnpjCpf} onChange={(e) => setCnpjCpf(e.target.value)} disabled={edicaoDesabilitada} className={`${inputClass} ${edicaoDesabilitada ? 'bg-slate-50' : ''}`} />
             </div>
             <div className="flex gap-2 items-end">
-              <button type="button" className="px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50">Cadastro de Pessoas</button>
+              <button
+                type="button"
+                onClick={() => {
+                  const raw = String(pessoa ?? '').trim();
+                  let idPessoa = null;
+                  if (raw) {
+                    const n = Number.parseInt(raw.replace(/\D/g, ''), 10);
+                    if (Number.isFinite(n) && n >= 1) idPessoa = n;
+                  }
+                  if (idPessoa == null) {
+                    const fromCod = getIdPessoaPorCodCliente(padCliente8(codigo));
+                    if (fromCod != null) idPessoa = fromCod;
+                  }
+                  if (idPessoa == null) {
+                    window.alert(
+                      'Não foi possível identificar a pessoa deste cliente. Informe o número no campo Pessoa ou o vínculo cliente → pessoa no cadastro.'
+                    );
+                    return;
+                  }
+                  navigate('/clientes', { state: { pessoaId: String(idPessoa) } });
+                }}
+                className="px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
+              >
+                Cadastro de Pessoas
+              </button>
               <button
                 type="button"
                 onClick={() => setModalQualificacaoAberto(true)}
@@ -370,7 +822,14 @@ export function CadastroClientes() {
               >
                 Qualificação
               </button>
-              <button type="button" className="p-2 rounded border border-slate-300 bg-white hover:bg-slate-50" title="Documentos"><FolderOpen className="w-4 h-4 text-slate-600" /></button>
+              <button
+                type="button"
+                className="inline-flex items-center gap-2 px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
+                title="Documentos do cliente"
+              >
+                <FolderOpen className="w-4 h-4 shrink-0 text-slate-600" aria-hidden />
+                Documentos
+              </button>
               <button
                 type="button"
                 onClick={() => setModalConfigCalculoAberto(true)}
@@ -412,6 +871,24 @@ export function CadastroClientes() {
               <input type="text" value={pesquisaProcesso} onChange={(e) => setPesquisaProcesso(e.target.value)} className={`${inputClass} w-64`} placeholder="Buscar processo..." />
               <button type="button" className="p-2 rounded border border-slate-300 bg-white hover:bg-slate-50"><Search className="w-4 h-4 text-slate-600" /></button>
               <button type="button" className="px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50">Pesquisa</button>
+              <button
+                type="button"
+                onClick={handleIncluirNovoProcesso}
+                disabled={edicaoDesabilitada}
+                className={`inline-flex items-center gap-2 px-3 py-2 rounded border text-sm font-medium ${
+                  edicaoDesabilitada
+                    ? 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed'
+                    : 'border-emerald-600 bg-emerald-50 text-emerald-900 hover:bg-emerald-100'
+                }`}
+                title={
+                  edicaoDesabilitada
+                    ? 'Habilite a edição para incluir um novo processo'
+                    : 'Inclui na lista e abre a tela Processos para este número de processo'
+                }
+              >
+                <PlusCircle className="w-4 h-4 shrink-0" aria-hidden />
+                Incluir processo
+              </button>
             </div>
             <div className="overflow-x-auto border border-slate-300 rounded bg-white">
               <table className="w-full text-sm border-collapse">
@@ -426,24 +903,85 @@ export function CadastroClientes() {
                   </tr>
                 </thead>
                 <tbody>
-                  {processosFiltrados.map((proc, idx) => (
+                  {processosPagina.map((proc, idx) => (
                     <tr
                       key={proc.id}
                       className={`${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'} cursor-pointer hover:bg-blue-50`}
-                      title="Duplo clique: abrir este processo"
-                      onDoubleClick={() => abrirProcessos(proc.procNumero ?? (idx + 1))}
+                      title="Duplo clique: abrir este processo (fora dos campos editáveis)"
+                      onDoubleClick={(e) => {
+                        if (e.target.closest('input, textarea, button')) return;
+                        abrirProcessos(proc.procNumero ?? idx + 1 + (paginaProcessos - 1) * PROCESSOS_POR_PAGINA);
+                      }}
                     >
-                      <td className="border border-slate-200 px-2 py-1 text-slate-700 whitespace-nowrap tabular-nums">Proc. {String(proc.procNumero ?? (idx + 1)).padStart(2, '0')}:</td>
-                      <td className="border border-slate-200 px-2 py-1">{proc.processoVelho}</td>
-                      <td className="border border-slate-200 px-2 py-1">{proc.processoNovo}</td>
-                      <td className="border border-slate-200 px-2 py-1">{proc.parteOposta}</td>
-                      <td className="border border-slate-200 px-2 py-1">{proc.descricao}</td>
+                      <td className="border border-slate-200 px-2 py-1 text-slate-700 whitespace-nowrap tabular-nums">
+                        Proc.{' '}
+                        {String(proc.procNumero ?? idx + 1 + (paginaProcessos - 1) * PROCESSOS_POR_PAGINA).padStart(2, '0')}:
+                      </td>
+                      <td className="border border-slate-200 px-1 py-0.5" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="text"
+                          value={obterNumeroProcessoVelhoUnificado(
+                            padCliente8(codigo),
+                            proc.procNumero ?? idx + 1 + (paginaProcessos - 1) * PROCESSOS_POR_PAGINA,
+                            proc.processoVelho ?? ''
+                          )}
+                          onChange={(e) => atualizarCampoProcesso(proc.id, 'processoVelho', e.target.value)}
+                          disabled={edicaoDesabilitada}
+                          title="Mesmo dado que «Nº Processo Velho» na tela Processos (localStorage)."
+                          className={`w-full min-w-[4rem] px-1 py-0.5 text-sm border border-slate-200 rounded bg-white ${edicaoDesabilitada ? 'bg-slate-50 text-slate-600 cursor-not-allowed' : ''}`}
+                        />
+                      </td>
+                      <td className="border border-slate-200 px-1 py-0.5" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="text"
+                          value={obterNumeroProcessoNovoUnificado(
+                            padCliente8(codigo),
+                            proc.procNumero ?? idx + 1 + (paginaProcessos - 1) * PROCESSOS_POR_PAGINA,
+                            proc.processoNovo ?? ''
+                          )}
+                          onChange={(e) => atualizarCampoProcesso(proc.id, 'processoNovo', e.target.value)}
+                          disabled={edicaoDesabilitada}
+                          title="Mesmo dado que «Nº Processo Novo» na tela Processos (localStorage)."
+                          className={`w-full min-w-[8rem] px-1 py-0.5 text-sm border border-slate-200 rounded bg-white ${edicaoDesabilitada ? 'bg-slate-50 text-slate-600 cursor-not-allowed' : ''}`}
+                        />
+                      </td>
+                      <td className="border border-slate-200 px-1 py-0.5" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="text"
+                          value={obterParteOpostaUnificada(
+                            padCliente8(codigo),
+                            proc.procNumero ?? idx + 1 + (paginaProcessos - 1) * PROCESSOS_POR_PAGINA,
+                            proc.parteOposta ?? ''
+                          )}
+                          onChange={(e) => atualizarCampoProcesso(proc.id, 'parteOposta', e.target.value)}
+                          disabled={edicaoDesabilitada}
+                          title="Mesmo dado que «Parte Oposta» na tela Processos (localStorage)."
+                          className={`w-full min-w-[8rem] px-1 py-0.5 text-sm border border-slate-200 rounded bg-white ${edicaoDesabilitada ? 'bg-slate-50 text-slate-600 cursor-not-allowed' : ''}`}
+                        />
+                      </td>
+                      <td className="border border-slate-200 px-1 py-0.5" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="text"
+                          value={obterDescricaoAcaoUnificada(
+                            padCliente8(codigo),
+                            proc.procNumero ?? idx + 1 + (paginaProcessos - 1) * PROCESSOS_POR_PAGINA,
+                            proc.descricao ?? ''
+                          )}
+                          onChange={(e) => atualizarCampoProcesso(proc.id, 'descricao', e.target.value)}
+                          disabled={edicaoDesabilitada}
+                          title="Mesmo dado que «Natureza da Ação» na tela Processos (localStorage)."
+                          className={`w-full min-w-[8rem] px-1 py-0.5 text-sm border border-slate-200 rounded bg-white ${edicaoDesabilitada ? 'bg-slate-50 text-slate-600 cursor-not-allowed' : ''}`}
+                        />
+                      </td>
                       <td className="border border-slate-200 px-2 py-1">
                         <button
                           type="button"
                           className="p-1 rounded hover:bg-slate-100"
                           title="Abrir processo"
-                          onClick={(e) => { e.stopPropagation(); abrirProcessos(proc.procNumero ?? (idx + 1)); }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            abrirProcessos(proc.procNumero ?? idx + 1 + (paginaProcessos - 1) * PROCESSOS_POR_PAGINA);
+                          }}
                         >
                           <FolderOpen className="w-4 h-4 text-slate-600" />
                         </button>
@@ -452,6 +990,39 @@ export function CadastroClientes() {
                   ))}
                 </tbody>
               </table>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-3 mt-3 px-0.5">
+              <p className="text-sm text-slate-600">
+                Página <span className="font-semibold text-slate-800">{paginaProcessos}</span> de{' '}
+                <span className="font-semibold text-slate-800">{totalPaginasProcessos}</span>
+                {processosFiltrados.length > 0 ? (
+                  <span className="text-slate-500"> — {processosFiltrados.length} processo(s)</span>
+                ) : (
+                  <span className="text-slate-500"> — nenhum processo</span>
+                )}
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={paginaProcessos <= 1}
+                  onClick={() => setPaginaProcessos((p) => Math.max(1, p - 1))}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50 disabled:opacity-45 disabled:cursor-not-allowed disabled:hover:bg-white"
+                  title="Página anterior"
+                >
+                  <ChevronLeft className="w-4 h-4 shrink-0" aria-hidden />
+                  Anterior
+                </button>
+                <button
+                  type="button"
+                  disabled={paginaProcessos >= totalPaginasProcessos}
+                  onClick={() => setPaginaProcessos((p) => Math.min(totalPaginasProcessos, p + 1))}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50 disabled:opacity-45 disabled:cursor-not-allowed disabled:hover:bg-white"
+                  title="Próxima página"
+                >
+                  Próximo
+                  <ChevronRight className="w-4 h-4 shrink-0" aria-hidden />
+                </button>
+              </div>
             </div>
           </section>
 
@@ -471,6 +1042,122 @@ export function CadastroClientes() {
         nomeCliente={nomeRazao}
         onClose={() => setModalConfigCalculoAberto(false)}
       />
+
+      {modalEscolherPessoa && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="modal-escolher-pessoa-titulo"
+          onClick={() => {
+            setModalEscolherPessoa(false);
+            setBuscaPessoaModal('');
+          }}
+        >
+          <div
+            className="bg-white rounded-lg shadow-xl border border-slate-300 w-full max-w-3xl max-h-[88vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between gap-3 shrink-0">
+              <h2 id="modal-escolher-pessoa-titulo" className="text-base font-semibold text-slate-800">
+                Escolher pessoa (cliente)
+              </h2>
+              <button
+                type="button"
+                onClick={() => {
+                  setModalEscolherPessoa(false);
+                  setBuscaPessoaModal('');
+                }}
+                className="p-2 rounded border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                title="Fechar"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-4 space-y-3 shrink-0 border-b border-slate-100">
+              <label className="block text-sm font-medium text-slate-700">Pesquisar</label>
+              <input
+                type="text"
+                autoFocus
+                value={buscaPessoaModal}
+                onChange={(e) => setBuscaPessoaModal(e.target.value)}
+                placeholder="Nome, código ou CPF/CNPJ…"
+                className={inputClass}
+              />
+              <p className="text-xs text-slate-500">
+                Digite pelo menos 2 letras no nome, ou use apenas números para código ou documento. Clique numa linha
+                para definir esta pessoa como cliente.
+              </p>
+            </div>
+            <div className="flex-1 min-h-0 overflow-auto px-4 pb-4">
+              {pessoasFiltradasModal.tipo === 'vazio' && (
+                <p className="text-sm text-slate-500 py-6 text-center">Digite para filtrar o cadastro de pessoas.</p>
+              )}
+              {pessoasFiltradasModal.tipo === 'curto' && (
+                <p className="text-sm text-amber-800 py-6 text-center">
+                  Digite pelo menos 2 letras no nome, ou busque por números (código da pessoa ou CPF/CNPJ).
+                </p>
+              )}
+              {pessoasFiltradasModal.tipo === 'ok' && pessoasFiltradasModal.lista.length === 0 && (
+                <p className="text-sm text-slate-600 py-6 text-center">Nenhuma pessoa encontrada.</p>
+              )}
+              {pessoasFiltradasModal.tipo === 'ok' && pessoasFiltradasModal.lista.length > 0 && (
+                <>
+                  {pessoasFiltradasModal.limitado && (
+                    <p className="text-xs text-slate-500 py-2">
+                      Mostrando até 400 resultados — refine a busca se necessário.
+                    </p>
+                  )}
+                  <div className="border border-slate-200 rounded overflow-hidden">
+                    <table className="w-full text-sm border-collapse">
+                      <thead>
+                        <tr className="bg-slate-100">
+                          <th className="border-b border-slate-200 px-2 py-2 text-left font-semibold text-slate-700 w-24">
+                            Cód.
+                          </th>
+                          <th className="border-b border-slate-200 px-2 py-2 text-left font-semibold text-slate-700">
+                            Nome / Razão social
+                          </th>
+                          <th className="border-b border-slate-200 px-2 py-2 text-left font-semibold text-slate-700 w-44">
+                            CPF / CNPJ
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {pessoasFiltradasModal.lista.map((row, idx) => (
+                          <tr
+                            key={row.id}
+                            role="button"
+                            tabIndex={0}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                aplicarPessoaSelecionada(row);
+                              }
+                            }}
+                            onClick={() => aplicarPessoaSelecionada(row)}
+                            className={`cursor-pointer hover:bg-blue-50 ${
+                              idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'
+                            }`}
+                          >
+                            <td className="border-b border-slate-100 px-2 py-1.5 text-slate-800 tabular-nums">
+                              {row.id}
+                            </td>
+                            <td className="border-b border-slate-100 px-2 py-1.5 text-slate-800">{row.nome}</td>
+                            <td className="border-b border-slate-100 px-2 py-1.5 text-slate-700 whitespace-nowrap">
+                              {formatDocBR(row.cpf)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {modalQualificacaoAberto && (
         <div

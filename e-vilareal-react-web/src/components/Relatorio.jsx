@@ -1,26 +1,26 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
-import { ChevronDown, Columns3 } from 'lucide-react';
+import { Columns3 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { RelatorioUltimoAndamentoHeader } from './RelatorioUltimoAndamentoHeader.jsx';
 import { RelatorioPresetsPanel } from './RelatorioPresetsPanel.jsx';
 import {
   CAMPOS_DATA_COLUNA_DINAMICA,
   CAMPOS_OPCOES_ULTIMO_ANDAMENTO,
-  carregarCampoUltimoAndamentoSalvo,
-  salvarCampoUltimoAndamento,
+  carregarCampoPorColunaSalvo,
+  salvarCampoPorColuna,
   enriquecerCamposRelatorioProcessos,
 } from '../data/relatorioProcessosColunaDinamica.js';
 import { normalizarFiltroProcessoAtivo } from '../data/relatorioPresets.js';
-import {
-  getRelatorioProcessosMockLinhasBase,
-  RELATORIO_PROCESSOS_MOCK_COUNT,
-} from '../data/relatorioProcessosDados.js';
+import { getRelatorioProcessosMockLinhasBase } from '../data/relatorioProcessosDados.js';
 
 const STORAGE_COLUNAS_RELATORIO = 'vilareal.relatorioProcessos.colunasVisiveis.v1';
 const STORAGE_LARGURA_UNIFORME = 'vilareal.relatorioProcessos.larguraUniforme.v1';
 const STORAGE_FILTRO_PROCESSO_ATIVO = 'vilareal.relatorioProcessos.filtroProcessoAtivo.v1';
 const STORAGE_MODO_ALTERACAO = 'vilareal.relatorioProcessos.modoAlteracao.v1';
 const STORAGE_DADOS_RELATORIO = 'vilareal.relatorioProcessos.dadosLinhas.v1';
+
+/** Acima disso não hidrata nem grava linhas editáveis no localStorage (evita quota e lentidão com o relatório completo). */
+const RELATORIO_MAX_LINHAS_PERSISTIDAS = 400;
 
 /** Colunas que identificam o processo — não editáveis no modo de alteração. */
 const COLUNAS_RELATORIO_SO_LEITURA = new Set(['codCliente', 'proc']);
@@ -81,6 +81,8 @@ const COLUNAS = [
   { id: 'consultas', label: 'Consultas', minW: '80px' },
 ];
 
+const COLUNA_IDS_RELATORIO = COLUNAS.map((c) => c.id);
+
 function carregarColunasVisiveisSalvas() {
   if (typeof window === 'undefined') return null;
   try {
@@ -135,14 +137,15 @@ function montarLinhasRelatorioBase() {
 }
 
 function carregarDadosRelatorioInicial() {
-  const n = RELATORIO_PROCESSOS_MOCK_COUNT;
-  if (typeof window === 'undefined') return montarLinhasRelatorioBase();
+  const base = montarLinhasRelatorioBase();
+  const n = base.length;
+  if (typeof window === 'undefined') return base;
+  if (n > RELATORIO_MAX_LINHAS_PERSISTIDAS) return base;
   try {
     const raw = window.localStorage.getItem(STORAGE_DADOS_RELATORIO);
-    if (!raw) return montarLinhasRelatorioBase();
+    if (!raw) return base;
     const p = JSON.parse(raw);
     if (!Array.isArray(p) || p.length !== n) return montarLinhasRelatorioBase();
-    const base = montarLinhasRelatorioBase();
     return p.map((salvo, i) => ({
       ...base[i],
       ...salvo,
@@ -177,12 +180,13 @@ export function Relatorio() {
     return { ...base, ...Object.fromEntries(COLUNAS.map((c) => [c.id, salvo[c.id] !== false])) };
   });
   const [larguraUniforme, setLarguraUniforme] = useState(() => carregarLarguraUniformeSalva());
-  const [campoUltimoAndamento, setCampoUltimoAndamento] = useState(() => carregarCampoUltimoAndamentoSalvo());
+  const [campoPorColuna, setCampoPorColuna] = useState(() => carregarCampoPorColunaSalvo(COLUNA_IDS_RELATORIO));
   const [filtroProcessoAtivo, setFiltroProcessoAtivo] = useState(() => carregarFiltroProcessoAtivoSalvo());
+  const [modoAlteracao, setModoAlteracao] = useState(() => carregarModoAlteracaoSalvo());
 
   useEffect(() => {
-    salvarCampoUltimoAndamento(campoUltimoAndamento);
-  }, [campoUltimoAndamento]);
+    salvarCampoPorColuna(campoPorColuna, COLUNA_IDS_RELATORIO);
+  }, [campoPorColuna]);
 
   useEffect(() => {
     try {
@@ -259,6 +263,7 @@ export function Relatorio() {
   const [dados, setDados] = useState(() => carregarDadosRelatorioInicial());
 
   useEffect(() => {
+    if (dados.length > RELATORIO_MAX_LINHAS_PERSISTIDAS) return;
     try {
       window.localStorage.setItem(STORAGE_DADOS_RELATORIO, JSON.stringify(dados));
     } catch {
@@ -285,28 +290,21 @@ export function Relatorio() {
       return COLUNAS.every((col) => {
         const filtro = String(filtrosPorColuna[col.id] ?? '').trim().toLowerCase();
         if (!filtro) return true;
-        const chave =
-          col.id === 'ultimoAndamento' ? campoUltimoAndamento : col.id;
+        const chave = campoPorColuna[col.id] ?? col.id;
         const valor = String(row[chave] ?? '').toLowerCase();
         return valor.includes(filtro);
       });
     });
-  }, [dados, filtrosPorColuna, campoUltimoAndamento, filtroProcessoAtivo]);
+  }, [dados, filtrosPorColuna, campoPorColuna, filtroProcessoAtivo]);
 
   const dadosOrdenados = useMemo(() => {
     if (!ordenarPor) return dadosFiltrados;
     return [...dadosFiltrados].sort((a, b) => {
-      const chaveOrdenacao = ordenarPor === 'ultimoAndamento' ? campoUltimoAndamento : ordenarPor;
+      const chaveOrdenacao = campoPorColuna[ordenarPor] ?? ordenarPor;
 
-      if (ordenarPor === 'ultimoAndamento' && COLUNAS_DATA_BR.has(chaveOrdenacao)) {
+      if (COLUNAS_DATA_BR.has(chaveOrdenacao)) {
         const ta = timestampDataBr(a[chaveOrdenacao]);
         const tb = timestampDataBr(b[chaveOrdenacao]);
-        const cmp = ta === tb ? 0 : ta < tb ? -1 : 1;
-        return ordemAsc ? cmp : -cmp;
-      }
-      if (COLUNAS_DATA_BR.has(ordenarPor) && ordenarPor !== 'ultimoAndamento') {
-        const ta = timestampDataBr(a[ordenarPor]);
-        const tb = timestampDataBr(b[ordenarPor]);
         const cmp = ta === tb ? 0 : ta < tb ? -1 : 1;
         return ordemAsc ? cmp : -cmp;
       }
@@ -315,7 +313,7 @@ export function Relatorio() {
       const cmp = String(va).localeCompare(String(vb), undefined, { numeric: true });
       return ordemAsc ? cmp : -cmp;
     });
-  }, [dadosFiltrados, ordenarPor, ordemAsc, campoUltimoAndamento]);
+  }, [dadosFiltrados, ordenarPor, ordemAsc, campoPorColuna]);
 
   const toggleOrdenacao = (id) => {
     if (ordenarPor === id) setOrdemAsc((a) => !a);
@@ -337,8 +335,8 @@ export function Relatorio() {
             setColunasVisiveis={setColunasVisiveis}
             larguraUniforme={larguraUniforme}
             setLarguraUniforme={setLarguraUniforme}
-            campoUltimoAndamento={campoUltimoAndamento}
-            setCampoUltimoAndamento={setCampoUltimoAndamento}
+            campoPorColuna={campoPorColuna}
+            setCampoPorColuna={setCampoPorColuna}
             filtroProcessoAtivo={filtroProcessoAtivo}
             setFiltroProcessoAtivo={setFiltroProcessoAtivo}
             modoAlteracao={modoAlteracao}
@@ -414,37 +412,24 @@ export function Relatorio() {
             >
               <thead className="sticky top-0 z-10">
                 <tr className="bg-teal-700 text-white">
-                  {colunasAtivas.map((col) =>
-                    col.id === 'ultimoAndamento' ? (
-                      <RelatorioUltimoAndamentoHeader
-                        key={col.id}
-                        minWStyle={{ minWidth: col.minW }}
-                        larguraUniforme={larguraUniforme}
-                        colunasAtivasLength={colunasAtivas.length}
-                        options={CAMPOS_OPCOES_ULTIMO_ANDAMENTO}
-                        selectedFieldKey={campoUltimoAndamento}
-                        onSelectField={setCampoUltimoAndamento}
-                        onSort={() => toggleOrdenacao('ultimoAndamento')}
-                        ordenarAtivo={ordenarPor === 'ultimoAndamento'}
-                        ordemAsc={ordemAsc}
-                        modoAlteracao={modoAlteracao}
-                      />
-                    ) : (
-                      <th
-                        key={col.id}
-                        className={`text-left px-2 py-2 font-semibold whitespace-nowrap border-b border-r border-teal-600 last:border-r-0 cursor-pointer hover:bg-teal-600 select-none ${
-                          modoAlteracao ? 'text-red-200' : 'text-white'
-                        }`}
-                        style={larguraUniforme ? { width: `${100 / colunasAtivas.length}%`, minWidth: 0 } : { minWidth: col.minW }}
-                        onClick={() => toggleOrdenacao(col.id)}
-                      >
-                        <span className="inline-flex items-center gap-1">
-                          {col.label}
-                          <ChevronDown className={`w-4 h-4 opacity-80 transition-transform ${ordenarPor === col.id && !ordemAsc ? 'rotate-180' : ''}`} />
-                        </span>
-                      </th>
-                    )
-                  )}
+                  {colunasAtivas.map((col) => (
+                    <RelatorioUltimoAndamentoHeader
+                      key={col.id}
+                      menuInstanceId={col.id}
+                      minWStyle={{ minWidth: col.minW }}
+                      larguraUniforme={larguraUniforme}
+                      colunasAtivasLength={colunasAtivas.length}
+                      options={CAMPOS_OPCOES_ULTIMO_ANDAMENTO}
+                      selectedFieldKey={campoPorColuna[col.id] ?? col.id}
+                      onSelectField={(fieldKey) =>
+                        setCampoPorColuna((prev) => ({ ...prev, [col.id]: fieldKey }))
+                      }
+                      onSort={() => toggleOrdenacao(col.id)}
+                      ordenarAtivo={ordenarPor === col.id}
+                      ordemAsc={ordemAsc}
+                      modoAlteracao={modoAlteracao}
+                    />
+                  ))}
                 </tr>
                 <tr className="bg-slate-100">
                   {colunasAtivas.map((col) => (
@@ -503,10 +488,12 @@ export function Relatorio() {
                       }}
                     >
                       {colunasAtivas.map((col) => {
-                        const chaveValor = col.id === 'ultimoAndamento' ? campoUltimoAndamento : col.id;
+                        const chaveValor = campoPorColuna[col.id] ?? col.id;
                         const textoCelula = row[chaveValor] ?? '';
                         const valorStr = String(textoCelula);
                         const soLeitura = COLUNAS_RELATORIO_SO_LEITURA.has(col.id) || !modoAlteracao;
+                        const labelAcessivel =
+                          CAMPOS_OPCOES_ULTIMO_ANDAMENTO.find((o) => o.fieldKey === chaveValor)?.label ?? col.label;
 
                         if (!modoAlteracao) {
                           return (
@@ -551,7 +538,7 @@ export function Relatorio() {
                                 atualizarCelulaRelatorio(row.__relatorioIdx, chaveValor, e.target.value)
                               }
                               className="w-full min-w-0 bg-transparent px-2 py-1.5 text-sm text-red-600 outline-none border-0 focus:ring-2 focus:ring-inset focus:ring-red-200"
-                              aria-label={`${col.label} — linha ${(row.__relatorioIdx ?? idx) + 1}`}
+                              aria-label={`${labelAcessivel} — linha ${(row.__relatorioIdx ?? idx) + 1}`}
                             />
                           </td>
                         );

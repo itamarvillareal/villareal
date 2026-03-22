@@ -1,6 +1,15 @@
 /**
- * Dados e funções compartilhados do Financeiro (extratos, Conta Escritório).
+ * Dados e funções compartilhados do Financeiro (extratos, contas contábeis, Conta Corrente em Processos).
  * Usado por Financeiro e por Processos (janela Conta Corrente).
+ *
+ * Contas contábeis centrais (letra no extrato → consolidado):
+ * - **Letra A → Conta Escritório** — Todo lançamento de extrato classificado com **A** compõe a conta contábil
+ *   **Conta Escritório**. Esses lançamentos são os que o sistema usa para montar a **Conta Corrente** do processo
+ *   em **Processos**; aí devem constar **código do cliente** e **número do processo** (vínculo necessário ao fluxo operacional).
+ * - **Letra E → Conta Compensação** — Serve para **anular** lançamentos em par: a **soma dos valores** de todas as
+ *   linhas com o **mesmo Elo** (identificador numérico natural, ex. 0001, 0002…) deve ser **zero**.
+ *   Movimentos que são apenas **mudança de numerário** entre contas bancárias ficam assim concentrados na Compensação,
+ *   sem poluir as demais contas contábeis com efeitos líquidos duplicados.
  */
 
 import { ITAU_EXTRATO_MOCK_XLS } from './itauExtratoMock.js';
@@ -408,6 +417,253 @@ export function savePersistedExtratosFinanceiro(data) {
   }
 }
 
+/** Nomes de instituição cujo extrato foi marcado como inativo (conta encerrada — não atualiza por OFX). */
+export const STORAGE_FINANCEIRO_EXTRATOS_INATIVOS_KEY = 'vilareal.financeiro.extratos.inativos.v1';
+
+/**
+ * @returns {string[]} nomes de bancos inativos (ordenados)
+ */
+export function loadPersistedExtratosInativosFinanceiro() {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(STORAGE_FINANCEIRO_EXTRATOS_INATIVOS_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return [];
+    return arr.filter((x) => typeof x === 'string').sort();
+  } catch {
+    return [];
+  }
+}
+
+export function savePersistedExtratosInativosFinanceiro(nomes) {
+  if (typeof window === 'undefined') return;
+  try {
+    const arr = Array.isArray(nomes) ? [...nomes].filter((x) => typeof x === 'string').sort() : [];
+    window.localStorage.setItem(STORAGE_FINANCEIRO_EXTRATOS_INATIVOS_KEY, JSON.stringify(arr));
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Contas bancárias criadas pelo usuário: nome exibido + número sequencial (Nº no consolidado). */
+export const STORAGE_FINANCEIRO_CONTAS_EXTRAS_KEY = 'vilareal.financeiro.contasExtras.v1';
+
+/**
+ * @returns {Array<{ nome: string, numero: number }>}
+ */
+export function loadPersistedContasExtrasFinanceiro() {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(STORAGE_FINANCEIRO_CONTAS_EXTRAS_KEY);
+    if (!raw) return [];
+    const p = JSON.parse(raw);
+    if (p?.v === 1 && Array.isArray(p.contas)) {
+      return p.contas.filter(
+        (c) => c && typeof c.nome === 'string' && c.nome.trim() && Number.isFinite(c.numero) && c.numero >= 1
+      );
+    }
+  } catch {
+    /* ignore */
+  }
+  return [];
+}
+
+export function savePersistedContasExtrasFinanceiro(contas) {
+  if (typeof window === 'undefined') return;
+  try {
+    const arr = Array.isArray(contas)
+      ? contas.filter(
+          (c) => c && typeof c.nome === 'string' && c.nome.trim() && Number.isFinite(c.numero) && c.numero >= 1
+        )
+      : [];
+    window.localStorage.setItem(STORAGE_FINANCEIRO_CONTAS_EXTRAS_KEY, JSON.stringify({ v: 1, contas: arr }));
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Maior número já usado entre o mapa base e as contas extras (para próximo sequencial). */
+export function maxNumeroBancoCadastrado(contasExtras) {
+  const baseMax = Math.max(...Object.values(BANCO_TO_NUMERO));
+  const em = Array.isArray(contasExtras) ? contasExtras : [];
+  const exMax = em.reduce((m, c) => (c && Number.isFinite(c.numero) ? Math.max(m, c.numero) : m), 0);
+  return Math.max(baseMax, exMax);
+}
+
+export function proximoNumeroContaBanco(contasExtras) {
+  return maxNumeroBancoCadastrado(contasExtras) + 1;
+}
+
+/** Mapa nome → número para o consolidado (base + contas adicionadas pelo usuário). */
+export function buildNumeroBancoMap(contasExtrasList) {
+  const map = { ...BANCO_TO_NUMERO };
+  for (const c of contasExtrasList || []) {
+    if (c && typeof c.nome === 'string' && c.nome.trim() && Number.isFinite(c.numero)) {
+      map[c.nome.trim()] = c.numero;
+    }
+  }
+  return map;
+}
+
+export function getBancoNumeroMapMerged() {
+  return buildNumeroBancoMap(loadPersistedContasExtrasFinanceiro());
+}
+
+/**
+ * @returns {{ ok: true, nome: string } | { ok: false, message: string }}
+ */
+export function validarNovoNomeContaBancaria(nomeRaw, contasExtras) {
+  const nome = String(nomeRaw ?? '').trim();
+  if (!nome) return { ok: false, message: 'Informe um nome para a conta.' };
+  if (nome.length > 80) return { ok: false, message: 'Nome muito longo (máx. 80 caracteres).' };
+  if (Object.prototype.hasOwnProperty.call(BANCO_TO_NUMERO, nome)) {
+    return { ok: false, message: 'Já existe uma instituição padrão com esse nome.' };
+  }
+  const outras = Array.isArray(contasExtras) ? contasExtras : [];
+  if (outras.some((c) => c.nome === nome)) {
+    return { ok: false, message: 'Já existe uma conta adicionada com esse nome.' };
+  }
+  return { ok: true, nome };
+}
+
+/** Letras reservadas para novas contas contábeis (não colidem com A–J, N, P, R do plano base). */
+const LETRAS_POOL_CONTA_CONTABIL_EXTRA = ['G', 'H', 'K', 'L', 'O', 'Q', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'];
+
+export const STORAGE_FINANCEIRO_CONTAS_CONTABEIS_EXTRAS_KEY = 'vilareal.financeiro.contasContabeis.extras.v1';
+export const STORAGE_FINANCEIRO_CONTAS_CONTABEIS_INATIVAS_KEY = 'vilareal.financeiro.contasContabeis.inativas.v1';
+
+/**
+ * @returns {Array<{ letra: string, nome: string }>}
+ */
+export function loadPersistedContasContabeisExtrasFinanceiro() {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(STORAGE_FINANCEIRO_CONTAS_CONTABEIS_EXTRAS_KEY);
+    if (!raw) return [];
+    const p = JSON.parse(raw);
+    if (p?.v === 1 && Array.isArray(p.contas)) {
+      return p.contas.filter(
+        (c) =>
+          c &&
+          typeof c.letra === 'string' &&
+          c.letra.trim() &&
+          typeof c.nome === 'string' &&
+          c.nome.trim()
+      );
+    }
+  } catch {
+    /* ignore */
+  }
+  return [];
+}
+
+export function savePersistedContasContabeisExtrasFinanceiro(contas) {
+  if (typeof window === 'undefined') return;
+  try {
+    const arr = Array.isArray(contas)
+      ? contas.filter(
+          (c) =>
+            c &&
+            typeof c.letra === 'string' &&
+            c.letra.trim() &&
+            typeof c.nome === 'string' &&
+            c.nome.trim()
+        )
+      : [];
+    window.localStorage.setItem(STORAGE_FINANCEIRO_CONTAS_CONTABEIS_EXTRAS_KEY, JSON.stringify({ v: 1, contas: arr }));
+  } catch {
+    /* ignore */
+  }
+}
+
+/** @returns {string[]} nomes de contas contábeis inativas (padrão ou adicionadas). */
+export function loadPersistedContasContabeisInativasFinanceiro() {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(STORAGE_FINANCEIRO_CONTAS_CONTABEIS_INATIVAS_KEY);
+    if (!raw) return [];
+    const p = JSON.parse(raw);
+    if (p?.v === 1 && Array.isArray(p.nomes)) {
+      return p.nomes.filter((x) => typeof x === 'string').sort();
+    }
+  } catch {
+    /* ignore */
+  }
+  return [];
+}
+
+export function savePersistedContasContabeisInativasFinanceiro(nomes) {
+  if (typeof window === 'undefined') return;
+  try {
+    const arr = Array.isArray(nomes) ? [...nomes].filter((x) => typeof x === 'string').sort() : [];
+    window.localStorage.setItem(
+      STORAGE_FINANCEIRO_CONTAS_CONTABEIS_INATIVAS_KEY,
+      JSON.stringify({ v: 1, nomes: arr })
+    );
+  } catch {
+    /* ignore */
+  }
+}
+
+export function buildLetraToContaMerge(contasContabeisExtras) {
+  const m = { ...LETRA_TO_CONTA };
+  for (const c of contasContabeisExtras || []) {
+    if (c?.letra && c?.nome?.trim()) {
+      m[String(c.letra).trim().toUpperCase()] = c.nome.trim();
+    }
+  }
+  return m;
+}
+
+export function buildContaToLetraMerge(contasContabeisExtras) {
+  const m = { ...CONTA_TO_LETRA };
+  for (const c of contasContabeisExtras || []) {
+    if (c?.letra && c?.nome?.trim()) {
+      m[c.nome.trim()] = String(c.letra).trim().toUpperCase();
+    }
+  }
+  return m;
+}
+
+/** Ordem das letras do plano padrão (exportada para a UI). */
+export const ORDEM_LETRA_CONTA_BASE = ['A', 'B', 'C', 'D', 'N', 'E', 'F', 'M', 'R', 'P', 'I', 'J'];
+
+export function buildOrdemLetrasContabeisCompleta(contasContabeisExtras) {
+  const extras = Array.isArray(contasContabeisExtras) ? contasContabeisExtras : [];
+  const letrasExtras = extras.map((c) => String(c.letra ?? '').trim().toUpperCase()).filter(Boolean);
+  return [...ORDEM_LETRA_CONTA_BASE, ...letrasExtras];
+}
+
+export function proximaLetraContaContabilExtra(contasContabeisExtras) {
+  const usadas = new Set(Object.keys(LETRA_TO_CONTA));
+  for (const c of contasContabeisExtras || []) {
+    const L = String(c?.letra ?? '').trim().toUpperCase();
+    if (L) usadas.add(L);
+  }
+  for (const L of LETRAS_POOL_CONTA_CONTABIL_EXTRA) {
+    if (!usadas.has(L)) return L;
+  }
+  return null;
+}
+
+/**
+ * @returns {{ ok: true, nome: string } | { ok: false, message: string }}
+ */
+export function validarNovoNomeContaContabil(nomeRaw, contasContabeisExtras) {
+  const nome = String(nomeRaw ?? '').trim();
+  if (!nome) return { ok: false, message: 'Informe um nome para a conta contábil.' };
+  if (nome.length > 80) return { ok: false, message: 'Nome muito longo (máx. 80 caracteres).' };
+  const valoresBase = new Set(Object.values(LETRA_TO_CONTA));
+  if (valoresBase.has(nome)) {
+    return { ok: false, message: 'Já existe uma conta padrão com esse nome.' };
+  }
+  if ((contasContabeisExtras || []).some((c) => c.nome === nome)) {
+    return { ok: false, message: 'Já existe uma conta adicionada com esse nome.' };
+  }
+  return { ok: true, nome };
+}
+
 function cloneExtratos(extratos) {
   return JSON.parse(JSON.stringify(extratos));
 }
@@ -592,8 +848,13 @@ export function parearCompensacaoAposImportacaoOfx(extratosPorBanco) {
 }
 
 /** Soma por Proc. em centavos (0 = par exato). */
-export function somasPorParCompensacao(extratosPorBanco) {
-  const txs = getTransacoesConsolidadas(extratosPorBanco, 'Conta Compensação');
+export function somasPorParCompensacao(extratosPorBanco, numeroPorBancoMap, contaToLetraMap) {
+  const txs = getTransacoesConsolidadas(
+    extratosPorBanco,
+    'Conta Compensação',
+    numeroPorBancoMap,
+    contaToLetraMap
+  );
   const grupos = {};
   for (const t of txs) {
     const pr = String(t.proc ?? '').trim() || '—';
@@ -604,18 +865,19 @@ export function somasPorParCompensacao(extratosPorBanco) {
   return grupos;
 }
 
-/** Ordem estável das letras → contas (mesma ordem lógica do plano no app). */
-const ORDEM_LETRA_CONTA = ['A', 'B', 'C', 'D', 'N', 'E', 'F', 'M', 'R', 'P', 'I', 'J'];
-
 /**
  * Contas contábeis derivadas dos extratos: agrega por letra (conta) todos os bancos.
  * Ordena primeiro as contas com lançamentos (mais movimentadas primeiro), depois as sem uso.
+ * @param {Record<string,string>} [letraToContaMap] — plano padrão + contas extras (mesclado)
+ * @param {string[]} [ordemLetras] — ordem das letras para desempate
  * @returns {Array<{ letra: string, nome: string, count: number, saldo: number }>}
  */
-export function getContasContabeisDerivadasExtratos(extratosPorBanco) {
+export function getContasContabeisDerivadasExtratos(extratosPorBanco, letraToContaMap, ordemLetras) {
+  const map = letraToContaMap ?? LETRA_TO_CONTA;
+  const ordem = ordemLetras ?? ORDEM_LETRA_CONTA_BASE;
   const stats = {};
-  for (const letra of ORDEM_LETRA_CONTA) {
-    if (LETRA_TO_CONTA[letra]) stats[letra] = { count: 0, saldo: 0 };
+  for (const letra of Object.keys(map)) {
+    stats[letra] = { count: 0, saldo: 0 };
   }
   for (const list of Object.values(extratosPorBanco || {})) {
     if (!Array.isArray(list)) continue;
@@ -627,9 +889,9 @@ export function getContasContabeisDerivadasExtratos(extratosPorBanco) {
       if (Number.isFinite(v)) stats[L].saldo += v;
     }
   }
-  const items = ORDEM_LETRA_CONTA.filter((l) => LETRA_TO_CONTA[l]).map((letra) => ({
+  const items = Object.keys(map).map((letra) => ({
     letra,
-    nome: LETRA_TO_CONTA[letra],
+    nome: map[letra],
     count: stats[letra].count,
     saldo: stats[letra].saldo,
   }));
@@ -638,22 +900,33 @@ export function getContasContabeisDerivadasExtratos(extratosPorBanco) {
     const ub = b.count > 0 ? 1 : 0;
     if (ua !== ub) return ub - ua;
     if (a.count !== b.count) return b.count - a.count;
-    return ORDEM_LETRA_CONTA.indexOf(a.letra) - ORDEM_LETRA_CONTA.indexOf(b.letra);
+    const ia = ordem.indexOf(a.letra);
+    const ib = ordem.indexOf(b.letra);
+    const xa = ia === -1 ? 999 : ia;
+    const xb = ib === -1 ? 999 : ib;
+    if (xa !== xb) return xa - xb;
+    return String(a.nome).localeCompare(String(b.nome), 'pt-BR');
   });
   return items;
 }
 
-function getTransacoesConsolidadas(extratosPorBanco, contaContabilNome) {
-  const letra = CONTA_TO_LETRA[contaContabilNome];
+/**
+ * Consolida lançamentos cuja letra no extrato corresponde à conta contábil (ex.: A → Conta Escritório, E → Compensação).
+ */
+export function getTransacoesConsolidadas(extratosPorBanco, contaContabilNome, numeroPorBancoMap, contaToLetraMap) {
+  const map = numeroPorBancoMap ?? getBancoNumeroMapMerged();
+  const ctl = contaToLetraMap ?? CONTA_TO_LETRA;
+  const letra = ctl[contaContabilNome];
   if (!letra) return [];
+  const letraU = String(letra).trim().toUpperCase();
   const lista = [];
   for (const [nomeBanco, transacoes] of Object.entries(extratosPorBanco)) {
     for (const t of transacoes) {
-      if (t.letra === letra) {
+      if (String(t.letra ?? '').trim().toUpperCase() === letraU) {
         lista.push({
           ...t,
           nomeBanco,
-          numeroBanco: BANCO_TO_NUMERO[nomeBanco] ?? '-',
+          numeroBanco: map[nomeBanco] ?? '-',
         });
       }
     }
@@ -734,8 +1007,8 @@ function lancamentoParaContaCorrenteModal(t) {
 }
 
 /**
- * Lançamentos da Conta Contábil "Conta Escritório" filtrados pelo código do cliente e processo em tela.
- * Usado na janela Conta Corrente em Processos.
+ * Lançamentos com **letra A** (Conta Escritório nos extratos), filtrados por código do cliente e processo em tela.
+ * Usado na janela **Conta Corrente** em Processos — apenas vínculos com Cod. Cliente + Proc. coerentes.
  * @param {string|number} codigoCliente - Código do cliente exibido em Processos
  * @param {string|number} [processo] - Número do processo exibido em Processos (opcional; se informado, filtra por Proc.)
  * @returns {{ lancamentos: Array<{data, descricao, dataOuId, valor, nome}>, soma: number }}
@@ -753,7 +1026,8 @@ export function getLancamentosContaCorrente(codigoCliente, processo) {
   const codigoNorm = normalizarCodigoCliente(codigoCliente);
   const procNorm = normalizarProc(processo);
   const extratos = getExtratosParaContaCorrente();
-  const contaEscritorio = getTransacoesConsolidadas(extratos, 'Conta Escritório');
+  const map = getBancoNumeroMapMerged();
+  const contaEscritorio = getTransacoesConsolidadas(extratos, 'Conta Escritório', map);
 
   let filtrado = codigoNorm
     ? contaEscritorio.filter((t) => normalizarCodigoCliente(t.codCliente) === codigoNorm)
@@ -816,5 +1090,4 @@ export {
   BANCO_TO_NUMERO,
   cloneExtratos,
   getExtratosIniciais,
-  getTransacoesConsolidadas,
 };

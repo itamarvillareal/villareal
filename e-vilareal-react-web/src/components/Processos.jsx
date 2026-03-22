@@ -13,7 +13,9 @@ import {
   padCliente,
 } from '../data/processosDadosRelatorio';
 import { getCadastroPessoasMock } from '../data/cadastroPessoasMock';
+import { getIdPessoaPorCodCliente } from '../data/clientesCadastradosMock';
 import { getImovelMock, getImoveisMockTotal } from '../data/imoveisMockData';
+import { loadCadastroClienteDados } from '../data/cadastroClientesStorage.js';
 import {
   getHistoricoDoProcesso,
   getRegistroProcesso,
@@ -22,6 +24,7 @@ import {
   salvarPrazoFatalDoProcesso,
   seedHistoricoDoProcesso,
 } from '../data/processosHistoricoData';
+import { resolverAliasHojeEmTexto } from '../services/hjDateAliasService.js';
 import { agendarAudienciaParaTodosUsuarios, agendarEmLoteParaUsuarios } from '../data/agendaPersistenciaData';
 import {
   X,
@@ -46,6 +49,35 @@ const PERIODICIDADES_AGENDA_LOTE = [
   'Semestralmente',
   'Todo dia X do mês',
 ];
+
+/** Vínculo mock cliente×processo → imóvel (mesma regra do useMemo `vinculoImovelMock`). */
+function buscarVinculoImovelMock(codigoCliente, processo) {
+  const codNum = Number(String(codigoCliente ?? '').replace(/\D/g, ''));
+  const procNum = Number(processo ?? 0);
+  if (!Number.isFinite(codNum) || !Number.isFinite(procNum) || codNum <= 0 || procNum <= 0) return null;
+  const total = Number(getImoveisMockTotal?.() ?? 45);
+  for (let id = 1; id <= total; id++) {
+    const m = getImovelMock(id);
+    if (!m) continue;
+    const codMock = Number(String(m.codigo ?? '').replace(/\D/g, ''));
+    const procMock = Number(m.proc ?? 0);
+    if (codMock === codNum && procMock === procNum) {
+      return { imovelId: id, unidade: String(m.unidade ?? '') };
+    }
+  }
+  return null;
+}
+
+function pickCampoStrSalvo(reg, key, mockVal) {
+  if (!reg || !(key in reg)) return mockVal;
+  return String(reg[key] ?? '');
+}
+
+function pickCampoBoolSalvo(reg, key, mockVal) {
+  if (!reg || !(key in reg) || reg[key] === null) return mockVal;
+  if (reg[key] === false || reg[key] === 'false') return false;
+  return reg[key] === true || reg[key] === 'true';
+}
 
 function gerarHistoricoMock(codigoCliente, processo) {
   const c = Number(normalizarCliente(codigoCliente));
@@ -123,9 +155,9 @@ function formatValorContaCorrente(v) {
   return v < 0 ? `-${s}` : s;
 }
 
-function Field({ label, children, className = '' }) {
+function Field({ label, children, className = '', title }) {
   return (
-    <div className={className}>
+    <div className={className} title={title}>
       <label className="block text-sm font-medium text-slate-700 mb-0.5">{label}</label>
       {children}
     </div>
@@ -225,6 +257,16 @@ export function Processos() {
     setPessoasCadastro(getCadastroPessoasMock(true));
   }, []);
 
+  useEffect(() => {
+    return () => {
+      try {
+        window.localStorage.setItem('vilareal:processos:edicao-desabilitada-ao-sair:v1', 'true');
+      } catch (_) {
+        /* ignore */
+      }
+    };
+  }, []);
+
   // Mantém Processo sempre >= 1
   useEffect(() => {
     setProcesso((p) => Math.max(1, Number(p) || 1));
@@ -237,70 +279,135 @@ export function Processos() {
 
     const mock = gerarMockProcesso(codigoCliente, procNorm);
     // Não sobrescreve o código vindo de outras telas; mantém exatamente o código em tela.
-    setCliente(mock.cliente);
-    setParteCliente(mock.parteCliente);
-    setParteOposta(mock.parteOposta);
     const registroPersistido = getRegistroProcesso(mock.codigoCliente, mock.processo);
+    const r = registroPersistido;
+    const papelDefault = mock.parteRequerido ? 'requerido' : 'requerente';
+    const papelSalvo = pickCampoStrSalvo(r, 'papelParte', '');
+    const papelFinal = papelSalvo === 'requerente' || papelSalvo === 'requerido' ? papelSalvo : papelDefault;
+
+    setCliente(pickCampoStrSalvo(r, 'cliente', mock.cliente));
+    setParteCliente(pickCampoStrSalvo(r, 'parteCliente', mock.parteCliente));
     setParteClienteIds(registroPersistido?.parteClienteIds ?? []);
     setParteOpostaIds(registroPersistido?.parteOpostaIds ?? []);
-    setNumeroProcessoVelho(mock.numeroProcessoVelho);
-    setNumeroProcessoNovo(mock.numeroProcessoNovo);
-    setStatusAtivo(mock.statusAtivo);
-    setPapelParte(mock.parteRequerido ? 'requerido' : 'requerente');
-    setCompetencia(mock.competencia);
+    setStatusAtivo(pickCampoBoolSalvo(r, 'statusAtivo', mock.statusAtivo));
+    setPapelParte(papelFinal);
+    setCompetencia(pickCampoStrSalvo(r, 'competencia', mock.competencia));
     const fasePersistida =
       registroPersistido?.faseSelecionada != null && String(registroPersistido.faseSelecionada).trim() !== ''
         ? registroPersistido.faseSelecionada
         : mock.faseSelecionada;
+    const naturezaDoHistorico = String(registroPersistido?.naturezaAcao ?? '').trim();
+    const velhoDoHistorico = String(registroPersistido?.numeroProcessoVelho ?? '').trim();
+    const novoDoHistorico = String(registroPersistido?.numeroProcessoNovo ?? '').trim();
+    const parteOpostaDoHistorico = String(registroPersistido?.parteOposta ?? '').trim();
+    let naturezaDoCadastro = '';
+    let velhoDoCadastro = '';
+    let novoDoCadastro = '';
+    let parteOpostaDoCadastro = '';
+    try {
+      const cad = loadCadastroClienteDados(mock.codigoCliente);
+      const rows = cad?.processos;
+      if (Array.isArray(rows)) {
+        const row = rows.find((p) => Number(p?.procNumero) === Number(mock.processo));
+        naturezaDoCadastro = String(row?.descricao ?? '').trim();
+        velhoDoCadastro = String(row?.processoVelho ?? '').trim();
+        novoDoCadastro = String(row?.processoNovo ?? '').trim();
+        parteOpostaDoCadastro = String(row?.parteOposta ?? '').trim();
+      }
+    } catch {
+      /* ignore */
+    }
+    const numeroNovoPersistido = novoDoHistorico || novoDoCadastro || mock.numeroProcessoNovo;
+    const numeroVelhoPersistido = velhoDoHistorico || velhoDoCadastro || mock.numeroProcessoVelho;
+    const naturezaPersistida = naturezaDoHistorico || naturezaDoCadastro || mock.naturezaAcao;
+    const parteOpostaPersistida = parteOpostaDoHistorico || parteOpostaDoCadastro || mock.parteOposta;
+    setNumeroProcessoNovo(numeroNovoPersistido);
+    setNumeroProcessoVelho(numeroVelhoPersistido);
+    setParteOposta(parteOpostaPersistida);
     setFaseSelecionada(fasePersistida);
-    setConsultaAutomatica(mock.consultaAutomatica);
+    setConsultaAutomatica(pickCampoBoolSalvo(r, 'consultaAutomatica', mock.consultaAutomatica));
     setPeriodicidadeConsulta(registroPersistido?.periodicidadeConsulta ?? '');
     setTramitacao(registroPersistido?.tramitacao ?? '');
-    setDataProtocolo(mock.dataProtocolo);
-    setNaturezaAcao(mock.naturezaAcao);
-    setValorCausa(mock.valorCausa);
-    setObservacao(mock.observacao);
-    setEstado(mock.estado);
-    setCidade(mock.cidade);
+    setDataProtocolo(pickCampoStrSalvo(r, 'dataProtocolo', mock.dataProtocolo));
+    setNaturezaAcao(naturezaPersistida);
+    setValorCausa(pickCampoStrSalvo(r, 'valorCausa', mock.valorCausa));
+    setObservacao(pickCampoStrSalvo(r, 'observacao', mock.observacao));
+    setEstado(pickCampoStrSalvo(r, 'estado', mock.estado));
+    setCidade(pickCampoStrSalvo(r, 'cidade', mock.cidade));
+    setPastaArquivo(pickCampoStrSalvo(r, 'pastaArquivo', ''));
+    setResponsavel(pickCampoStrSalvo(r, 'responsavel', ''));
+    setProcedimento(pickCampoStrSalvo(r, 'procedimento', ''));
+    setFaseCampo(pickCampoStrSalvo(r, 'faseCampo', ''));
+    setAudienciaData(pickCampoStrSalvo(r, 'audienciaData', ''));
+    setAudienciaHora(pickCampoStrSalvo(r, 'audienciaHora', ''));
+    setAudienciaTipo(pickCampoStrSalvo(r, 'audienciaTipo', ''));
+    setAvisoAudiencia(pickCampoStrSalvo(r, 'avisoAudiencia', 'nao_avisado') || 'nao_avisado');
+    setProximaInformacao(pickCampoStrSalvo(r, 'proximaInformacao', ''));
+    setDataProximaInformacao(pickCampoStrSalvo(r, 'dataProximaInformacao', ''));
+    setUnidadeEndereco(pickCampoStrSalvo(r, 'unidadeEndereco', 'Unidade QD.06 LT.06'));
+
+    const vinc = buscarVinculoImovelMock(mock.codigoCliente, mock.processo);
+    const imovelSalvo = pickCampoStrSalvo(r, 'imovelId', '');
+    const unidadeSalva = pickCampoStrSalvo(r, 'unidade', '');
+    setImovelId(imovelSalvo.trim() !== '' ? imovelSalvo : vinc ? String(vinc.imovelId) : '');
+    setUnidade(unidadeSalva.trim() !== '' ? unidadeSalva : vinc ? vinc.unidade : '');
 
     const historicoPersistido = getHistoricoDoProcesso(mock.codigoCliente, mock.processo);
     setPrazoFatal(registroPersistido?.prazoFatal ?? '');
+    const payloadFormBase = {
+      codCliente: mock.codigoCliente,
+      proc: mock.processo,
+      cliente: pickCampoStrSalvo(r, 'cliente', mock.cliente),
+      parteCliente: pickCampoStrSalvo(r, 'parteCliente', mock.parteCliente),
+      parteOposta: parteOpostaPersistida,
+      numeroProcessoVelho: numeroVelhoPersistido,
+      numeroProcessoNovo: numeroNovoPersistido,
+      consultaAutomatica: pickCampoBoolSalvo(r, 'consultaAutomatica', mock.consultaAutomatica),
+      statusAtivo: pickCampoBoolSalvo(r, 'statusAtivo', mock.statusAtivo),
+      papelParte: papelFinal,
+      estado: pickCampoStrSalvo(r, 'estado', mock.estado),
+      cidade: pickCampoStrSalvo(r, 'cidade', mock.cidade),
+      dataProtocolo: pickCampoStrSalvo(r, 'dataProtocolo', mock.dataProtocolo),
+      pastaArquivo: pickCampoStrSalvo(r, 'pastaArquivo', ''),
+      valorCausa: pickCampoStrSalvo(r, 'valorCausa', mock.valorCausa),
+      procedimento: pickCampoStrSalvo(r, 'procedimento', ''),
+      responsavel: pickCampoStrSalvo(r, 'responsavel', ''),
+      competencia: pickCampoStrSalvo(r, 'competencia', mock.competencia),
+      observacao: pickCampoStrSalvo(r, 'observacao', mock.observacao),
+      faseCampo: pickCampoStrSalvo(r, 'faseCampo', ''),
+      audienciaData: pickCampoStrSalvo(r, 'audienciaData', ''),
+      audienciaHora: pickCampoStrSalvo(r, 'audienciaHora', ''),
+      audienciaTipo: pickCampoStrSalvo(r, 'audienciaTipo', ''),
+      avisoAudiencia: pickCampoStrSalvo(r, 'avisoAudiencia', 'nao_avisado') || 'nao_avisado',
+      imovelId: imovelSalvo.trim() !== '' ? imovelSalvo : vinc ? String(vinc.imovelId) : '',
+      unidade: unidadeSalva.trim() !== '' ? unidadeSalva : vinc ? vinc.unidade : '',
+      unidadeEndereco: pickCampoStrSalvo(r, 'unidadeEndereco', 'Unidade QD.06 LT.06'),
+      proximaInformacao: pickCampoStrSalvo(r, 'proximaInformacao', ''),
+      dataProximaInformacao: pickCampoStrSalvo(r, 'dataProximaInformacao', ''),
+      prazoFatal: registroPersistido?.prazoFatal ?? '',
+      parteClienteIds: registroPersistido?.parteClienteIds ?? [],
+      parteOpostaIds: registroPersistido?.parteOpostaIds ?? [],
+      faseSelecionada: fasePersistida,
+      periodicidadeConsulta: registroPersistido?.periodicidadeConsulta ?? '',
+      tramitacao: registroPersistido?.tramitacao ?? '',
+      naturezaAcao: naturezaPersistida,
+    };
     if (historicoPersistido.length > 0) {
       setHistorico(historicoPersistido);
       if (!String(registroPersistido?.faseSelecionada ?? '').trim()) {
         salvarHistoricoDoProcesso({
-          codCliente: mock.codigoCliente,
-          proc: mock.processo,
-          cliente: mock.cliente,
-          parteCliente: mock.parteCliente,
-          parteOposta: mock.parteOposta,
-          numeroProcessoNovo: mock.numeroProcessoNovo,
+          ...payloadFormBase,
           historico: historicoPersistido,
-          prazoFatal: registroPersistido?.prazoFatal ?? '',
-          parteClienteIds: registroPersistido?.parteClienteIds ?? [],
-          parteOpostaIds: registroPersistido?.parteOpostaIds ?? [],
           faseSelecionada: mock.faseSelecionada,
-          periodicidadeConsulta: registroPersistido?.periodicidadeConsulta ?? '',
-          tramitacao: registroPersistido?.tramitacao ?? '',
         });
       }
     } else {
       const historicoInicial = gerarHistoricoMock(mock.codigoCliente, mock.processo);
       setHistorico(historicoInicial);
       seedHistoricoDoProcesso({
-        codCliente: mock.codigoCliente,
-        proc: mock.processo,
-        cliente: mock.cliente,
-        parteCliente: mock.parteCliente,
-        parteOposta: mock.parteOposta,
-        numeroProcessoNovo: mock.numeroProcessoNovo,
+        ...payloadFormBase,
         historico: historicoInicial,
-        prazoFatal: registroPersistido?.prazoFatal ?? '',
-        parteClienteIds: registroPersistido?.parteClienteIds ?? [],
-        parteOpostaIds: registroPersistido?.parteOpostaIds ?? [],
         faseSelecionada: fasePersistida,
-        periodicidadeConsulta: registroPersistido?.periodicidadeConsulta ?? '',
-        tramitacao: registroPersistido?.tramitacao ?? '',
       });
     }
     setPaginaHistorico(1);
@@ -308,11 +415,10 @@ export function Processos() {
   }, [codigoCliente, processo]);
 
   useEffect(() => {
-    // Sempre que o processo muda, volta a permitir preenchimento automático do vínculo com imóvel.
+    // Ao mudar cliente/processo, permite de novo o preenchimento automático do vínculo com imóvel
+    // (valores vêm do registro persistido ou do mock no efeito de carga).
     setImovelManual(false);
     setUnidadeManual(false);
-    setImovelId('');
-    setUnidade('');
   }, [codigoCliente, processo]);
 
   const vinculoImovelMock = useMemo(() => {
@@ -371,26 +477,6 @@ export function Processos() {
   useEffect(() => {
     if (modalContaCorrente) setBuscaContaCorrente({ campo: 'todos', termo: '' });
   }, [modalContaCorrente, codigoCliente, processo, contaCorrenteModo]);
-
-  useEffect(() => {
-    const pf = String(prazoFatal ?? '').trim();
-    const prazoNorm = pf ? (normalizarDataBr(pf) || pf) : '';
-    salvarHistoricoDoProcesso({
-      codCliente: codigoCliente,
-      proc: processo,
-      cliente,
-      parteCliente: textoParteCliente || parteCliente,
-      parteOposta: textoParteOposta || parteOposta,
-      numeroProcessoNovo,
-      historico,
-      prazoFatal: prazoNorm,
-      parteClienteIds,
-      parteOpostaIds,
-      faseSelecionada,
-      periodicidadeConsulta,
-      tramitacao,
-    });
-  }, [periodicidadeConsulta, tramitacao]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function montarTituloAgendaDoProcesso() {
     const cli = String(cliente ?? '').trim();
@@ -471,23 +557,7 @@ export function Processos() {
   function confirmarTramitacao() {
     const valor = String(tramitacaoDraft ?? '').trim();
     setTramitacao(valor);
-    const pf = String(prazoFatal ?? '').trim();
-    const prazoNorm = pf ? (normalizarDataBr(pf) || pf) : '';
-    salvarHistoricoDoProcesso({
-      codCliente: codigoCliente,
-      proc: processo,
-      cliente,
-      parteCliente: textoParteCliente || parteCliente,
-      parteOposta: textoParteOposta || parteOposta,
-      numeroProcessoNovo,
-      historico,
-      prazoFatal: prazoNorm,
-      parteClienteIds,
-      parteOpostaIds,
-      faseSelecionada,
-      periodicidadeConsulta,
-      tramitacao: valor,
-    });
+    salvarHistoricoDoProcesso(montarPayloadRegistroProcesso({ tramitacao: valor }));
     setModalTramitacaoAberto(false);
   }
 
@@ -561,6 +631,119 @@ export function Processos() {
     return formatarListaComConjuncaoE(nomes);
   }, [parteOpostaIds, pessoasPorId, parteOposta]);
 
+  /** Snapshot completo do formulário para `localStorage` (processo × cliente). */
+  function montarPayloadRegistroProcesso(overrides = {}) {
+    const pf = String(prazoFatal ?? '').trim();
+    const prazoNorm = pf ? (normalizarDataBr(pf) || pf) : '';
+    return {
+      codCliente: codigoCliente,
+      proc: processo,
+      cliente,
+      parteCliente: textoParteCliente || parteCliente,
+      parteOposta: textoParteOposta || parteOposta,
+      numeroProcessoNovo,
+      numeroProcessoVelho,
+      historico,
+      prazoFatal: prazoNorm,
+      parteClienteIds,
+      parteOpostaIds,
+      faseSelecionada,
+      periodicidadeConsulta,
+      tramitacao,
+      naturezaAcao,
+      consultaAutomatica,
+      estado,
+      cidade,
+      dataProtocolo,
+      pastaArquivo,
+      valorCausa,
+      procedimento,
+      responsavel,
+      competencia,
+      observacao,
+      papelParte,
+      statusAtivo,
+      faseCampo,
+      audienciaData,
+      audienciaHora,
+      audienciaTipo,
+      avisoAudiencia,
+      imovelId: String(imovelId ?? ''),
+      unidade: String(unidade ?? ''),
+      unidadeEndereco: String(unidadeEndereco ?? ''),
+      proximaInformacao,
+      dataProximaInformacao,
+      ...overrides,
+    };
+  }
+
+  const edicaoDesabilitadaAnteriorRef = useRef(edicaoDesabilitada);
+
+  useEffect(() => {
+    if (edicaoDesabilitada) return;
+    salvarHistoricoDoProcesso(montarPayloadRegistroProcesso());
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- snapshot completo; listar deps duplicaria montarPayload
+  }, [
+    edicaoDesabilitada,
+    codigoCliente,
+    processo,
+    cliente,
+    parteCliente,
+    parteOposta,
+    textoParteCliente,
+    textoParteOposta,
+    numeroProcessoNovo,
+    numeroProcessoVelho,
+    historico,
+    prazoFatal,
+    parteClienteIds,
+    parteOpostaIds,
+    faseSelecionada,
+    periodicidadeConsulta,
+    tramitacao,
+    naturezaAcao,
+    consultaAutomatica,
+    estado,
+    cidade,
+    dataProtocolo,
+    pastaArquivo,
+    valorCausa,
+    procedimento,
+    responsavel,
+    competencia,
+    observacao,
+    papelParte,
+    statusAtivo,
+    faseCampo,
+    audienciaData,
+    audienciaHora,
+    audienciaTipo,
+    avisoAudiencia,
+    imovelId,
+    unidade,
+    unidadeEndereco,
+    proximaInformacao,
+    dataProximaInformacao,
+  ]);
+
+  useEffect(() => {
+    if (edicaoDesabilitadaAnteriorRef.current === false && edicaoDesabilitada === true) {
+      salvarHistoricoDoProcesso(montarPayloadRegistroProcesso());
+    }
+    edicaoDesabilitadaAnteriorRef.current = edicaoDesabilitada;
+  }, [edicaoDesabilitada]);
+
+  /** Nº da pessoa no Cadastro de Pessoas (vínculo código cliente → pessoa); senão, IDs vinculados em Parte Cliente. */
+  const textoNumeroPessoaCliente = useMemo(() => {
+    const idCadastro = getIdPessoaPorCodCliente(codigoCliente);
+    if (idCadastro != null) return String(idCadastro);
+    const ids = Array.isArray(parteClienteIds)
+      ? parteClienteIds.filter((x) => x != null && Number(x) > 0)
+      : [];
+    if (ids.length) return ids.map(String).join(', ');
+    return '—';
+  }, [codigoCliente, parteClienteIds]);
+
   const pessoasFiltradasVinculo = useMemo(() => {
     const t = normalizarTextoBusca(buscaPessoaVinculo);
     if (!t) return pessoasCadastro;
@@ -599,23 +782,14 @@ export function Processos() {
     const poNome = formatarListaComConjuncaoE(
       nextOpostaIds.map((id) => pessoasPorId.get(Number(id))?.nome).filter(Boolean)
     );
-    const pf = String(prazoFatal ?? '').trim();
-    const prazoNorm = pf ? (normalizarDataBr(pf) || pf) : '';
-    salvarHistoricoDoProcesso({
-      codCliente: codigoCliente,
-      proc: processo,
-      cliente,
-      parteCliente: pcNome || parteCliente,
-      parteOposta: poNome || parteOposta,
-      numeroProcessoNovo,
-      historico,
-      prazoFatal: prazoNorm,
-      parteClienteIds: nextClienteIds,
-      parteOpostaIds: nextOpostaIds,
-      faseSelecionada,
-      periodicidadeConsulta,
-      tramitacao,
-    });
+    salvarHistoricoDoProcesso(
+      montarPayloadRegistroProcesso({
+        parteCliente: pcNome || parteCliente,
+        parteOposta: poNome || parteOposta,
+        parteClienteIds: nextClienteIds,
+        parteOpostaIds: nextOpostaIds,
+      })
+    );
   }
 
   function parseValorBusca(termo) {
@@ -687,40 +861,14 @@ export function Processos() {
     setPaginaHistorico(1);
     setProximaInformacao('');
     setDataProximaInformacao('');
-    const pf = String(prazoFatal ?? '').trim();
-    const prazoNorm = pf ? (normalizarDataBr(pf) || pf) : '';
-    salvarHistoricoDoProcesso({
-      codCliente: codigoCliente,
-      proc: processo,
-      cliente,
-      parteCliente: textoParteCliente || parteCliente,
-      parteOposta: textoParteOposta || parteOposta,
-      numeroProcessoNovo,
-      historico: historicoAtualizado,
-      prazoFatal: prazoNorm,
-      parteClienteIds,
-      parteOpostaIds,
-      faseSelecionada,
-      periodicidadeConsulta,
-      tramitacao,
-    });
+    salvarHistoricoDoProcesso(montarPayloadRegistroProcesso({ historico: historicoAtualizado }));
   }
 
   function persistirPrazoFatalAposEdicao(valorBruto) {
     const t = String(valorBruto ?? '').trim();
     const prazoNorm = t ? (normalizarDataBr(t) || t) : '';
     setPrazoFatal(prazoNorm);
-    salvarPrazoFatalDoProcesso(codigoCliente, processo, prazoNorm, {
-      cliente,
-      parteCliente: textoParteCliente || parteCliente,
-      parteOposta: textoParteOposta || parteOposta,
-      numeroProcessoNovo,
-      parteClienteIds,
-      parteOpostaIds,
-      faseSelecionada,
-      periodicidadeConsulta,
-      tramitacao,
-    });
+    salvarPrazoFatalDoProcesso(codigoCliente, processo, prazoNorm, montarPayloadRegistroProcesso({ prazoFatal: prazoNorm }));
   }
 
   const cidades = CIDADES_POR_UF[estado] || [];
@@ -773,6 +921,8 @@ export function Processos() {
   }, [audienciaData, audienciaHora, audienciaTipo, numeroProcessoNovo, edicaoDesabilitada]);
 
   function formatarDataAudienciaInput(valor) {
+    const alias = resolverAliasHojeEmTexto(valor, 'br');
+    if (alias) return alias;
     // Máscara simples para manter no formato dd/mm/aaaa.
     // Aceita digitação/colar com ou sem barras e reformatará ao longo do input.
     const digits = String(valor ?? '').replace(/\D/g, '').slice(0, 8);
@@ -873,7 +1023,7 @@ export function Processos() {
               : isProcAdministrativo
                 ? 'bg-teal-200 border-cyan-300'
               : isAgPeticionar
-                ? 'bg-red-200 border-red-400'
+                ? 'bg-red-400/85 border-red-700 text-slate-900'
                 : isAgDocumentos
                   ? 'bg-yellow-200 border-yellow-400'
                   : isAgVerificacao
@@ -886,20 +1036,21 @@ export function Processos() {
             <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {/* Coluna esquerda: Código + Processo na mesma linha, Cliente, Edição, Nº velho/novo */}
               <div className="space-y-2">
-                <div className="flex items-end gap-3">
-                  <Field label="Código do Cliente">
+                <div className="flex flex-wrap items-end gap-3">
+                  <Field
+                    label="Código do Cliente"
+                    title="Único campo editável com «Edição desabilitada» marcada: permite trocar de cliente e recarregar o formulário."
+                  >
                     <div className="flex border border-slate-300 rounded overflow-hidden bg-white">
                       <button
                         type="button"
-                        disabled={camposBloqueados}
-                        className="p-1 border-r border-slate-300 hover:bg-slate-100 disabled:opacity-50 disabled:pointer-events-none"
+                        className="p-1 border-r border-slate-300 hover:bg-slate-100"
                         onClick={() => setCodigoCliente((v) => padCliente(Math.max(1, Number(normalizarCliente(v)) - 1)))}
                       >
                         <ChevronUp className="w-3 h-3" />
                       </button>
                       <input
                         type="text"
-                        readOnly={camposBloqueados}
                         value={codigoCliente}
                         onChange={(e) => {
                           const digits = apenasDigitos(e.target.value);
@@ -910,45 +1061,58 @@ export function Processos() {
                           const digits = apenasDigitos(e.target.value);
                           setCodigoCliente(padCliente(digits || '1'));
                         }}
-                        className={`w-20 px-1 py-1 text-sm text-center border-0 ${camposBloqueados ? 'bg-slate-50' : ''}`}
+                        className="w-20 px-1 py-1 text-sm text-center border-0 bg-white"
                       />
                       <button
                         type="button"
-                        disabled={camposBloqueados}
-                        className="p-1 border-l border-slate-300 hover:bg-slate-100 disabled:opacity-50 disabled:pointer-events-none"
+                        className="p-1 border-l border-slate-300 hover:bg-slate-100"
                         onClick={() => setCodigoCliente((v) => padCliente(Number(normalizarCliente(v)) + 1))}
                       >
                         <ChevronDown className="w-3 h-3" />
                       </button>
                     </div>
                   </Field>
-                  <Field label="Processo">
+                  <Field
+                    label="Processo"
+                    title="Único campo editável com «Edição desabilitada» marcada: permite trocar de processo e recarregar o formulário."
+                  >
                     <div className="flex border border-slate-300 rounded overflow-hidden w-20">
                       <button
                         type="button"
-                        disabled={camposBloqueados}
-                        className="p-1 hover:bg-slate-100 disabled:opacity-50 disabled:pointer-events-none"
+                        className="p-1 border-r border-slate-300 hover:bg-slate-100"
                         onClick={() => setProcesso((p) => Math.max(1, (Number(p) || 1) - 1))}
                       >
                         <ChevronUp className="w-3 h-3" />
                       </button>
                       <input
-                        type="number"
-                        min={1}
-                        step={1}
-                        readOnly={camposBloqueados}
-                        value={processo}
-                        onChange={(e) => setProcesso(Math.max(1, Number(e.target.value) || 1))}
-                        className={`w-10 px-0 py-1 text-sm text-center border-0 ${camposBloqueados ? 'bg-slate-50' : ''}`}
+                        type="text"
+                        inputMode="numeric"
+                        value={String(processo)}
+                        onChange={(e) => {
+                          const raw = String(e.target.value ?? '').replace(/\D/g, '');
+                          if (raw === '') {
+                            setProcesso(1);
+                            return;
+                          }
+                          setProcesso(Math.max(1, Number(raw) || 1));
+                        }}
+                        className="w-10 px-0 py-1 text-sm text-center border-0 bg-white"
                       />
                       <button
                         type="button"
-                        disabled={camposBloqueados}
-                        className="p-1 hover:bg-slate-100 disabled:opacity-50 disabled:pointer-events-none"
+                        className="p-1 hover:bg-slate-100"
                         onClick={() => setProcesso((p) => p + 1)}
                       >
                         <ChevronDown className="w-3 h-3" />
                       </button>
+                    </div>
+                  </Field>
+                  <Field label="Nº pessoa (cliente)">
+                    <div
+                      className="min-w-[4.75rem] px-2 py-1.5 text-sm font-mono tabular-nums text-center border border-slate-300 rounded bg-slate-50 text-slate-800"
+                      title="Identificação no Cadastro de Pessoas vinculada a este código de cliente; se não houver mapeamento, exibe o(s) ID(s) da Parte Cliente."
+                    >
+                      {textoNumeroPessoaCliente}
                     </div>
                   </Field>
                 </div>
@@ -1046,32 +1210,26 @@ export function Processos() {
                   Consulta Automática
                 </label>
                 <Field label="Estado">
-                  <div className="flex gap-1">
-                    {camposBloqueados ? (
-                      <>
-                        <input type="text" readOnly value={estado} className={`flex-1 ${clsCampo}`} title={estado} />
-                        <input type="text" readOnly value={ufAtual?.nome ?? ''} className="w-24 px-2 py-1.5 border border-slate-300 rounded text-sm bg-slate-50" />
-                      </>
-                    ) : (
-                      <>
-                        <select
-                          value={estado}
-                          onChange={(e) => {
-                            setEstado(e.target.value);
-                            setCidade((CIDADES_POR_UF[e.target.value] || [])[0] || '');
-                          }}
-                          className={`flex-1 ${inputClass}`}
-                        >
-                          {UFS.map((u) => (
-                            <option key={u.sigla} value={u.sigla}>
-                              {u.sigla}
-                            </option>
-                          ))}
-                        </select>
-                        <input type="text" value={ufAtual?.nome ?? ''} readOnly className="w-24 px-2 py-1.5 border border-slate-300 rounded text-sm bg-slate-50" />
-                      </>
-                    )}
-                  </div>
+                  <select
+                    value={estado}
+                    onChange={(e) => {
+                      const uf = e.target.value;
+                      setEstado(uf);
+                      setCidade((CIDADES_POR_UF[uf] || [])[0] || '');
+                    }}
+                    disabled={camposBloqueados}
+                    className={`w-full min-w-0 ${clsCampo}`}
+                    title={ufAtual ? `${ufAtual.sigla} — ${ufAtual.nome}` : estado}
+                  >
+                    {!UFS.some((u) => u.sigla === estado) && estado ? (
+                      <option value={estado}>{estado}</option>
+                    ) : null}
+                    {UFS.map((u) => (
+                      <option key={u.sigla} value={u.sigla}>
+                        {u.sigla} — {u.nome}
+                      </option>
+                    ))}
+                  </select>
                 </Field>
                 <Field label="Cidade">
                   {camposBloqueados ? (
@@ -1148,23 +1306,7 @@ export function Processos() {
                           disabled={camposBloqueados}
                           onChange={() => {
                             setFaseSelecionada(f);
-                            const pf = String(prazoFatal ?? '').trim();
-                            const prazoNorm = pf ? (normalizarDataBr(pf) || pf) : '';
-                            salvarHistoricoDoProcesso({
-                              codCliente: codigoCliente,
-                              proc: processo,
-                              cliente,
-                              parteCliente: textoParteCliente || parteCliente,
-                              parteOposta: textoParteOposta || parteOposta,
-                              numeroProcessoNovo,
-                              historico,
-                              prazoFatal: prazoNorm,
-                              parteClienteIds,
-                              parteOpostaIds,
-                              faseSelecionada: f,
-                              periodicidadeConsulta,
-                              tramitacao,
-                            });
+                            salvarHistoricoDoProcesso(montarPayloadRegistroProcesso({ faseSelecionada: f }));
                           }}
                           className="text-slate-600"
                         />
@@ -1184,8 +1326,11 @@ export function Processos() {
                     type="text"
                     value={dataProtocolo}
                     readOnly={camposBloqueados}
-                    onChange={(e) => setDataProtocolo(e.target.value)}
-                    placeholder="dd/mm/aaaa"
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setDataProtocolo(resolverAliasHojeEmTexto(v, 'br') ?? v);
+                    }}
+                    placeholder="dd/mm/aaaa ou hj"
                     className={clsCampo}
                   />
                 </Field>
@@ -1339,7 +1484,7 @@ export function Processos() {
                       const norm = normalizarDataBr(audienciaData);
                       if (norm) setAudienciaData(norm);
                     }}
-                    placeholder="dd/mm/aaaa"
+                    placeholder="dd/mm/aaaa ou hj"
                     className={clsCampo}
                   />
                 </Field>
@@ -1397,9 +1542,12 @@ export function Processos() {
                     type="text"
                     value={prazoFatal}
                     readOnly={camposBloqueados}
-                    onChange={(e) => setPrazoFatal(e.target.value)}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setPrazoFatal(resolverAliasHojeEmTexto(v, 'br') ?? v);
+                    }}
                     onBlur={(e) => persistirPrazoFatalAposEdicao(e.target.value)}
-                    placeholder="dd/mm/aaaa"
+                    placeholder="dd/mm/aaaa ou hj"
                     title="Data vinculada ao processo (gravada automaticamente)"
                     className={clsCampo}
                   />
@@ -1511,8 +1659,11 @@ export function Processos() {
                         type="text"
                         value={dataProximaInformacao}
                         readOnly={camposBloqueados}
-                        onChange={(e) => setDataProximaInformacao(e.target.value)}
-                        placeholder="dd/mm/aaaa"
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setDataProximaInformacao(resolverAliasHojeEmTexto(v, 'br') ?? v);
+                        }}
+                        placeholder="dd/mm/aaaa ou hj"
                         className={clsCampo}
                       />
                     </div>
@@ -1610,7 +1761,7 @@ export function Processos() {
                   setContaCorrenteModo('processo');
                   setModalContaCorrente(true);
                 }}
-                title="Lançamentos da Conta Escritório para este cliente e processo em tela"
+                title="Lançamentos com letra A (Conta Escritório) no Financeiro, filtrados por Cod. Cliente e Proc. deste processo"
               >
                 Conta Corrente
               </button>
@@ -1733,9 +1884,12 @@ export function Processos() {
                   <input
                     type="text"
                     value={agendaLoteData}
-                    onChange={(e) => setAgendaLoteData(e.target.value)}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setAgendaLoteData(resolverAliasHojeEmTexto(v, 'br') ?? v);
+                    }}
                     onBlur={() => setAgendaLoteData(normalizarDataBr(agendaLoteData) || agendaLoteData)}
-                    placeholder="dd/mm/aaaa"
+                    placeholder="dd/mm/aaaa ou hj"
                     className="w-full px-3 py-2 border border-slate-300 rounded text-sm bg-white"
                   />
                 </div>
@@ -1935,6 +2089,11 @@ export function Processos() {
                 <X className="w-5 h-5" />
               </button>
             </div>
+            <p className="text-xs text-slate-600 px-4 py-2 border-b border-slate-200 bg-emerald-50/50 shrink-0">
+              Origem: lançamentos do Financeiro classificados com <strong>letra A</strong> (conta contábil{' '}
+              <strong>Conta Escritório</strong>) e vinculados a este <strong>cliente</strong> e <strong>processo</strong>{' '}
+              (Cod. Cliente + Proc. no extrato).
+            </p>
             <div className="flex-1 min-h-0 flex flex-col p-4">
               <div className="flex gap-4 flex-1 min-h-0">
                 <div className="flex-1 min-w-0 overflow-auto border border-slate-300 rounded bg-white">

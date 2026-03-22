@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   ChevronUp,
   ChevronDown,
@@ -13,6 +14,7 @@ import {
   FileCheck2,
   ClipboardPaste,
   Loader2,
+  Link2,
 } from 'lucide-react';
 import {
   listarClientes,
@@ -32,6 +34,11 @@ import { ModalEnderecos } from './ModalEnderecos';
 import { ModalContatos } from './ModalContatos';
 import { extrairDadosDeTextoLivre } from '../../services/personTextAutofillService.js';
 import { validateCPF } from '../../services/cpfValidatorService.js';
+import { listarCodigosClientePorIdPessoa } from '../../data/clientesCadastradosMock.js';
+import { listarProcessosPorIdPessoa } from '../../data/processosHistoricoData.js';
+import { resolverAliasHojeEmTexto } from '../../services/hjDateAliasService.js';
+import { rotuloPessoaComDocumento, esbocoQualificacaoComResponsavel } from '../../services/qualificacaoContratualHelper.js';
+import { SeletorResponsavelPessoa } from './SeletorResponsavelPessoa.jsx';
 
 const FORCA_MOCK_CADASTRO =
   import.meta.env.VITE_USE_MOCK_CADASTRO_PESSOAS === 'true';
@@ -58,6 +65,36 @@ const ESTADOS_CIVIS = [
   { value: 'uniao_estavel', label: 'União estável' },
 ];
 
+/** Padrão quando não há nacionalidade gravada — o usuário confirma ao sair do campo (blur). */
+const NACIONALIDADE_PADRAO_BR = 'Brasileira';
+
+/** Alinha ao Cadastro de Clientes / Processos ao navegar com state. */
+function padCliente8Nav(val) {
+  const s = String(val ?? '').trim();
+  if (!s) return '';
+  const n = Number(s);
+  if (!Number.isFinite(n) || n < 1) return s.padStart(8, '0');
+  return String(Math.floor(n)).padStart(8, '0');
+}
+
+function normalizarDigitosCpfCnpj(s) {
+  return String(s ?? '').replace(/\D/g, '');
+}
+
+/** Primeira pessoa na lista com o mesmo documento; ignora excluirId (edição da própria ficha). */
+function buscarPessoaComMesmoDocumento(lista, digitos, excluirId) {
+  if (!digitos) return null;
+  for (const p of lista || []) {
+    if (excluirId != null && Number(p.id) === Number(excluirId)) continue;
+    const d = normalizarDigitosCpfCnpj(p.cpf);
+    if (d && d === digitos) return p;
+  }
+  return null;
+}
+
+/** Ao sair da tela Cadastro de Pessoas, reabrir com edição travada (checkbox marcado). */
+const SESSION_PESSOAS_EDICAO_AO_SAIR = 'vilareal:cadastro-pessoas:edicao-ao-sair:v1';
+
 const emptyPessoa = {
   codigo: '',
   nome: '',
@@ -73,9 +110,15 @@ const emptyPessoa = {
   contato: '',
   ativo: true,
   edicaoDesabilitada: false,
+  /** @type {number|null} */
+  responsavelId: null,
+  /** @type {{ id: number, nome: string, cpf?: string, tipoPessoa?: string }|null} */
+  responsavel: null,
 };
 
 export function CadastroPessoas() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [lista, setLista] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -89,6 +132,11 @@ export function CadastroPessoas() {
   const [contatos, setContatos] = useState([]);
   const [modalEnderecos, setModalEnderecos] = useState(false);
   const [modalContatos, setModalContatos] = useState(false);
+  const [modalVinculosSistema, setModalVinculosSistema] = useState(false);
+  /** CPF/CNPJ já cadastrado: oferece abrir a ficha existente. */
+  const [modalCpfDuplicado, setModalCpfDuplicado] = useState(null);
+  /** Enquanto true, o campo Nacionalidade fica em vermelho até o usuário entrar e sair (blur), validando a sugestão. */
+  const [nacionalidadeSugestaoNaoValidada, setNacionalidadeSugestaoNaoValidada] = useState(false);
   const [criterioBusca, setCriterioBusca] = useState('nome');
   const [valorBusca, setValorBusca] = useState('');
   const [valorBuscaCpf, setValorBuscaCpf] = useState('');
@@ -100,6 +148,8 @@ export function CadastroPessoas() {
   const [docProcessando, setDocProcessando] = useState(false);
   const [docErroDetalhe, setDocErroDetalhe] = useState('');
   const inputDocRef = useRef(null);
+  /** Evita reabrir o modal de contatos logo ao fechar, quando o foco volta ao campo Contato. */
+  const ignorarProximoFocusContatoRef = useRef(false);
   const [textoColagemPessoa, setTextoColagemPessoa] = useState('');
   const [extracaoAvisos, setExtracaoAvisos] = useState([]);
   const [extracaoResumo, setExtracaoResumo] = useState('');
@@ -116,6 +166,27 @@ export function CadastroPessoas() {
     profissao: false,
     estadoCivil: false,
   });
+
+  useEffect(() => {
+    return () => {
+      try {
+        window.sessionStorage.setItem(SESSION_PESSOAS_EDICAO_AO_SAIR, '1');
+      } catch (_) {
+        /* ignore */
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    try {
+      if (window.sessionStorage.getItem(SESSION_PESSOAS_EDICAO_AO_SAIR) === '1') {
+        window.sessionStorage.removeItem(SESSION_PESSOAS_EDICAO_AO_SAIR);
+        setForm((f) => ({ ...f, edicaoDesabilitada: true }));
+      }
+    } catch (_) {
+      /* ignore */
+    }
+  }, []);
 
   function limparTextoColagem() {
     setTextoColagemPessoa('');
@@ -252,6 +323,28 @@ export function CadastroPessoas() {
   const listaExibida = listaFiltrada;
   const pessoaAtual = listaExibida[indiceAtual];
 
+  const idPessoaParaVinculos = useMemo(() => {
+    if (modo === 'criar') return null;
+    if (modo === 'editar' && editId != null) return Number(editId);
+    if (modo === 'listar' && pessoaAtual?.id != null) return Number(pessoaAtual.id);
+    return null;
+  }, [modo, editId, pessoaAtual]);
+
+  const nomeParaVinculos = useMemo(() => {
+    if (modo === 'editar' || modo === 'criar') return String(form.nome || '').trim();
+    return String(pessoaAtual?.nome || form.nome || '').trim();
+  }, [modo, form.nome, pessoaAtual]);
+
+  const vinculosClienteProc = useMemo(() => {
+    if (idPessoaParaVinculos == null || !Number.isFinite(idPessoaParaVinculos)) {
+      return { codigosCliente: [], processos: [] };
+    }
+    return {
+      codigosCliente: listarCodigosClientePorIdPessoa(idPessoaParaVinculos),
+      processos: listarProcessosPorIdPessoa(idPessoaParaVinculos, nomeParaVinculos),
+    };
+  }, [idPessoaParaVinculos, nomeParaVinculos]);
+
   useEffect(() => {
     if (modo !== 'listar') return;
     // Ao alterar critério/termo, vamos para o primeiro resultado para o usuário ver match imediato.
@@ -318,6 +411,33 @@ export function CadastroPessoas() {
     carregarLista();
   }, [carregarLista]);
 
+  /** Vindo de Clientes (Cadastro de Clientes): abre a pessoa vinculada ao cliente. */
+  useEffect(() => {
+    if (loading) return;
+    const s = location.state;
+    if (!s || typeof s !== 'object') return;
+    const raw = s.pessoaId ?? s.idPessoa;
+    if (raw == null || raw === '') return;
+    const id = Number.parseInt(String(raw).replace(/\D/g, ''), 10);
+    if (!Number.isFinite(id) || id < 1) return;
+    if (!lista.length) return;
+
+    const idx = lista.findIndex((p) => Number(p.id) === id);
+    if (idx === -1) {
+      setError(`Pessoa nº ${id} não encontrada na lista.`);
+      navigate('/clientes', { replace: true, state: {} });
+      return;
+    }
+    setModo('listar');
+    setIndiceAtual(idx);
+    setNumeroPessoa(String(id));
+    setValorBusca('');
+    setValorBuscaCpf('');
+    setCriterioBusca('nome');
+    setError(null);
+    navigate('/clientes', { replace: true, state: {} });
+  }, [loading, lista, location.state, navigate]);
+
   const total = lista.length;
 
   useEffect(() => {
@@ -325,11 +445,14 @@ export function CadastroPessoas() {
     if (!pessoaAtual) {
       setForm(emptyPessoa);
       setEditId(null);
+      setNacionalidadeSugestaoNaoValidada(false);
       return;
     }
     setNumeroPessoa(String(pessoaAtual.id ?? ''));
+    const nacSalva = String(pessoaAtual.nacionalidade ?? '').trim();
     setForm({
         ...emptyPessoa,
+        edicaoDesabilitada: true,
         codigo: String(pessoaAtual.id ?? ''),
         nome: pessoaAtual.nome ?? '',
         genero: '',
@@ -338,12 +461,20 @@ export function CadastroPessoas() {
         orgaoExpedidor: '',
         profissao: '',
         dataNascimento: formatDate(pessoaAtual.dataNascimento) ?? '',
-        nacionalidade: '',
+        nacionalidade: nacSalva || NACIONALIDADE_PADRAO_BR,
         estadoCivil: '',
         email: pessoaAtual.email ?? '',
         contato: pessoaAtual.telefone ?? '',
         ativo: pessoaAtual.ativo !== false,
+        responsavelId:
+          pessoaAtual.responsavelId != null
+            ? Number(pessoaAtual.responsavelId)
+            : pessoaAtual.responsavel?.id != null
+              ? Number(pessoaAtual.responsavel.id)
+              : null,
+        responsavel: pessoaAtual.responsavel ?? null,
       });
+    setNacionalidadeSugestaoNaoValidada(!nacSalva);
       setEditId(pessoaAtual.id);
       setEnderecos([]);
       setContatos([]);
@@ -355,7 +486,8 @@ export function CadastroPessoas() {
   }
 
   const abrirNovo = () => {
-    setForm(emptyPessoa);
+    setForm({ ...emptyPessoa, nacionalidade: NACIONALIDADE_PADRAO_BR, responsavelId: null, responsavel: null });
+    setNacionalidadeSugestaoNaoValidada(true);
     setEditId(null);
     setEnderecos([]);
     setContatos([]);
@@ -378,6 +510,7 @@ export function CadastroPessoas() {
 
   const abrirEditar = (item) => {
     setEditId(item.id);
+    const nacSalva = String(item.nacionalidade ?? '').trim();
     setForm({
       ...emptyPessoa,
       codigo: String(item.id ?? ''),
@@ -386,8 +519,17 @@ export function CadastroPessoas() {
       email: item.email ?? '',
       contato: item.telefone ?? '',
       dataNascimento: formatDate(item.dataNascimento) ?? '',
+      nacionalidade: nacSalva || NACIONALIDADE_PADRAO_BR,
       ativo: item.ativo !== false,
+      responsavelId:
+        item.responsavelId != null
+          ? Number(item.responsavelId)
+          : item.responsavel?.id != null
+            ? Number(item.responsavel.id)
+            : null,
+      responsavel: item.responsavel ?? null,
     });
+    setNacionalidadeSugestaoNaoValidada(!nacSalva);
     setEnderecos([]);
     setContatos([]);
     setModo('editar');
@@ -410,6 +552,7 @@ export function CadastroPessoas() {
   const cancelarForm = () => {
     setModo('listar');
     setForm(emptyPessoa);
+    setNacionalidadeSugestaoNaoValidada(false);
     setEditId(null);
     setError(null);
     if (lista.length) setIndiceAtual(0);
@@ -435,15 +578,39 @@ export function CadastroPessoas() {
     }
   };
 
-  const salvar = async () => {
-    if (listaEhMock) {
-      setError('Lista mock (PDF): gravação só com a API ativa. Defina VITE_USE_MOCK_CADASTRO_PESSOAS=false e backend.');
+  const fecharModalContatos = useCallback(() => {
+    ignorarProximoFocusContatoRef.current = true;
+    setModalContatos(false);
+  }, []);
+
+  const abrirModalContatosDesdeContato = useCallback(() => {
+    if (form.edicaoDesabilitada) return;
+    if (ignorarProximoFocusContatoRef.current) {
+      ignorarProximoFocusContatoRef.current = false;
       return;
     }
+    setModalContatos(true);
+  }, [form.edicaoDesabilitada]);
+
+  const salvar = async () => {
     if (!form.nome?.trim() || !form.email?.trim() || !form.cpf?.trim()) {
       setError('Preencha nome, e-mail e CPF.');
       return;
     }
+    const docDigitos = normalizarDigitosCpfCnpj(form.cpf);
+    const excluirDupCheck = modo === 'editar' ? editId : null;
+    const duplicataNaLista = buscarPessoaComMesmoDocumento(lista, docDigitos, excluirDupCheck);
+    if (duplicataNaLista) {
+      setError(null);
+      setModalCpfDuplicado(duplicataNaLista);
+      return;
+    }
+
+    if (listaEhMock) {
+      setError('Lista mock (PDF): gravação só com a API ativa. Defina VITE_USE_MOCK_CADASTRO_PESSOAS=false e backend.');
+      return;
+    }
+
     const previewDoc = docPreview;
     const modoSalvar = modo;
     const editIdSalvar = editId;
@@ -457,6 +624,10 @@ export function CadastroPessoas() {
         telefone: form.contato?.trim() || null,
         dataNascimento: form.dataNascimento || null,
         ativo: form.ativo,
+        responsavelId:
+          form.responsavelId != null && form.responsavelId !== ''
+            ? Number(form.responsavelId)
+            : null,
       };
       let idParaDocumento = null;
       if (modoSalvar === 'criar') {
@@ -487,11 +658,44 @@ export function CadastroPessoas() {
       await carregarLista();
       cancelarForm();
     } catch (err) {
+      const msg = String(err.message || '');
+      const pareceDuplicataCpf =
+        /cpf/i.test(msg) && (/já existe|ja existe|duplic/i.test(msg) || /cadastro com o CPF/i.test(msg));
+      if (pareceDuplicataCpf) {
+        try {
+          const fresh = await listarClientes(apenasAtivos);
+          const arr = Array.isArray(fresh) ? fresh : [];
+          const dup = buscarPessoaComMesmoDocumento(
+            arr,
+            docDigitos,
+            modoSalvar === 'editar' ? editIdSalvar : null
+          );
+          if (dup) {
+            setLista(arr);
+            setListaEhMock(false);
+            setModalCpfDuplicado(dup);
+            return;
+          }
+        } catch {
+          /* segue para mensagem genérica */
+        }
+      }
       setError(err.message || 'Erro ao salvar.');
     } finally {
       setSalvando(false);
     }
   };
+
+  function confirmarAbrirCadastroPessoaExistente() {
+    if (!modalCpfDuplicado) return;
+    const item = modalCpfDuplicado;
+    setModalCpfDuplicado(null);
+    abrirEditar(item);
+  }
+
+  function cancelarModalCpfDuplicado() {
+    setModalCpfDuplicado(null);
+  }
 
   const excluir = async (id, nome) => {
     if (listaEhMock) {
@@ -512,8 +716,8 @@ export function CadastroPessoas() {
   const proximoNome = pessoaAtual?.id ?? (listaExibida.length > 0 ? listaExibida[0]?.id : '—');
 
   const totalPessoasCadastradas = total;
-  const proximoCodigoPessoa =
-    total > 0 ? Math.max(...lista.map((p) => p.id ?? 0), 0) + 1 : 1;
+  /** Próximo código = total na lista + 1 (alinha ao contador de cadastrados, não ao maior id — pode haver lacunas). */
+  const proximoCodigoPessoa = total > 0 ? total + 1 : 1;
 
   const contagemContatos = {
     telefone: (contatos || []).filter((c) => c.tipo === 'telefone').length,
@@ -521,6 +725,10 @@ export function CadastroPessoas() {
     website: (contatos || []).filter((c) => c.tipo === 'website').length,
   };
   const totalContatos = contagemContatos.telefone + contagemContatos.email + contagemContatos.website;
+
+  /** Em listagem: só mostra o formulário completo se "Edição desabilitada" estiver desmarcada. */
+  const mostrarFormularioEdicao =
+    modo === 'criar' || modo === 'editar' || (modo === 'listar' && !form.edicaoDesabilitada);
 
   return (
     <div className="min-h-full bg-gradient-to-br from-slate-50 to-slate-100">
@@ -644,6 +852,20 @@ export function CadastroPessoas() {
               </button>
               <button
                 type="button"
+                onClick={() => setModalVinculosSistema(true)}
+                disabled={loading || idPessoaParaVinculos == null}
+                title={
+                  idPessoaParaVinculos == null
+                    ? 'Selecione uma pessoa na lista ou abra uma edição para ver vínculos'
+                    : 'Listar códigos de cliente e processos em que esta pessoa aparece no sistema'
+                }
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-700 text-sm font-medium hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Link2 className="w-4 h-4" />
+                Vínculos no sistema
+              </button>
+              <button
+                type="button"
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-700 text-sm font-medium hover:bg-slate-50"
               >
                 <FileText className="w-4 h-4" />
@@ -662,7 +884,7 @@ export function CadastroPessoas() {
         {/* Painel principal */}
         <section className="bg-white rounded-xl shadow-sm border border-slate-200/80 overflow-hidden">
           <div className="p-6">
-            {(modo === 'criar' || modo === 'editar') ? (
+            {mostrarFormularioEdicao ? (
               <>
                 <div className="flex items-center justify-between mb-6">
                   <h2 className="text-lg font-semibold text-slate-800">
@@ -995,7 +1217,12 @@ export function CadastroPessoas() {
                       <input
                         type="text"
                         value={form.orgaoExpedidor}
-                        onChange={(e) => setForm((f) => ({ ...f, orgaoExpedidor: e.target.value }))}
+                        onChange={(e) =>
+                          setForm((f) => ({
+                            ...f,
+                            orgaoExpedidor: e.target.value.toLocaleUpperCase('pt-BR'),
+                          }))
+                        }
                         disabled={form.edicaoDesabilitada}
                         placeholder="Ex: SSP-SP"
                         className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-slate-100"
@@ -1007,6 +1234,7 @@ export function CadastroPessoas() {
                         type="text"
                         value={form.contato}
                         onChange={(e) => setForm((f) => ({ ...f, contato: e.target.value }))}
+                        onFocus={abrirModalContatosDesdeContato}
                         disabled={form.edicaoDesabilitada}
                         placeholder="Telefone"
                         className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-slate-100"
@@ -1039,11 +1267,15 @@ export function CadastroPessoas() {
                     <div>
                       <label className="block text-sm font-medium text-slate-700 mb-1">Data de nascimento</label>
                       <input
-                        type="date"
+                        type="text"
+                        inputMode="text"
+                        placeholder="aaaa-mm-dd ou hj"
                         value={form.dataNascimento}
                         onChange={(e) => {
                           setCamposPreenchidosPorTexto((c) => ({ ...c, dataNascimento: false }));
-                          setForm((f) => ({ ...f, dataNascimento: e.target.value }));
+                          const v = e.target.value;
+                          const r = resolverAliasHojeEmTexto(v, 'iso');
+                          setForm((f) => ({ ...f, dataNascimento: r ?? v }));
                         }}
                         disabled={form.edicaoDesabilitada}
                         className={inputClassComAutofill('dataNascimento')}
@@ -1058,9 +1290,19 @@ export function CadastroPessoas() {
                           setCamposPreenchidosPorTexto((c) => ({ ...c, nacionalidade: false }));
                           setForm((f) => ({ ...f, nacionalidade: e.target.value }));
                         }}
+                        onBlur={() => setNacionalidadeSugestaoNaoValidada(false)}
                         disabled={form.edicaoDesabilitada}
                         placeholder="Ex: Brasileira"
-                        className={inputClassComAutofill('nacionalidade')}
+                        title={
+                          nacionalidadeSugestaoNaoValidada && !form.edicaoDesabilitada
+                            ? 'Sugestão padrão (brasileira). Entre e saia do campo para confirmar ou altere se for outra nacionalidade.'
+                            : undefined
+                        }
+                        className={`${inputClassComAutofill('nacionalidade')}${
+                          nacionalidadeSugestaoNaoValidada && !form.edicaoDesabilitada
+                            ? ' !text-red-600 !border-red-400 !ring-2 !ring-red-200'
+                            : ''
+                        }`}
                       />
                     </div>
                     <div>
@@ -1148,6 +1390,27 @@ export function CadastroPessoas() {
                     </div>
                   </div>
                 </div>
+
+                {!form.edicaoDesabilitada && (
+                  <div className="mt-6 space-y-3">
+                    <SeletorResponsavelPessoa
+                      pessoas={lista}
+                      valueId={form.responsavelId}
+                      onChange={(id, snap) =>
+                        setForm((f) => ({ ...f, responsavelId: id, responsavel: snap }))
+                      }
+                      excluirId={editId}
+                      disabled={form.edicaoDesabilitada}
+                    />
+                    {form.responsavel && String(form.nome ?? '').trim() ? (
+                      <p className="text-xs text-slate-600 border border-dashed border-slate-200 rounded-lg p-3 bg-slate-50/90 leading-relaxed">
+                        <span className="font-medium text-slate-700">Esboço para documentos: </span>
+                        {esbocoQualificacaoComResponsavel({ nome: form.nome }, form.responsavel)}
+                      </p>
+                    ) : null}
+                  </div>
+                )}
+
                 <div className="flex gap-3 mt-6 pt-6 border-t border-slate-200">
                   <button
                     type="button"
@@ -1225,6 +1488,18 @@ export function CadastroPessoas() {
                     <CampoReadOnly label="Nacionalidade" value={form.nacionalidade} />
                     <CampoReadOnly label="Estado civil" value={form.estadoCivil} />
                     <CampoReadOnly label="E-mail" value={form.email} />
+                    {(form.responsavelId != null || form.responsavel) && (
+                      <CampoReadOnly
+                        label="Responsável / representante"
+                        value={
+                          form.responsavel
+                            ? rotuloPessoaComDocumento(form.responsavel)
+                            : form.responsavelId != null
+                              ? `Código ${form.responsavelId}`
+                              : '—'
+                        }
+                      />
+                    )}
                     <div className="flex gap-2">
                       <button
                         type="button"
@@ -1397,10 +1672,168 @@ export function CadastroPessoas() {
       />
       <ModalContatos
         open={modalContatos}
-        onClose={() => setModalContatos(false)}
+        onClose={fecharModalContatos}
         contatos={contatos}
         onChange={setContatos}
       />
+
+      {modalCpfDuplicado && (
+        <div
+          className="fixed inset-0 z-[85] flex items-center justify-center p-4 bg-black/40"
+          role="presentation"
+          onClick={cancelarModalCpfDuplicado}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="modal-cpf-dup-titulo"
+            className="bg-white rounded-xl shadow-xl border border-amber-200 max-w-md w-full p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 id="modal-cpf-dup-titulo" className="text-lg font-semibold text-slate-800">
+              CPF já cadastrado
+            </h2>
+            <p className="text-sm text-slate-600 mt-3">
+              Já existe uma pessoa com este CPF no cadastro:{' '}
+              <span className="font-medium text-slate-800">
+                {modalCpfDuplicado.nome || '—'} (código {modalCpfDuplicado.id})
+              </span>
+              . Deseja abrir o cadastro dessa pessoa?
+            </p>
+            <div className="flex flex-wrap justify-end gap-2 mt-6">
+              <button
+                type="button"
+                onClick={cancelarModalCpfDuplicado}
+                className="px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-700 text-sm font-medium hover:bg-slate-50"
+              >
+                Não, continuar aqui
+              </button>
+              <button
+                type="button"
+                onClick={confirmarAbrirCadastroPessoaExistente}
+                className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700"
+              >
+                Sim, abrir cadastro
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {modalVinculosSistema && idPessoaParaVinculos != null && (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/40"
+          role="presentation"
+          onClick={() => setModalVinculosSistema(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="modal-vinculos-titulo"
+            className="bg-white rounded-xl shadow-xl border border-slate-200 max-w-3xl w-full max-h-[85vh] overflow-hidden flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-5 py-4 border-b border-slate-200 flex items-start justify-between gap-3">
+              <div>
+                <h2 id="modal-vinculos-titulo" className="text-lg font-semibold text-slate-800">
+                  Vínculos no sistema
+                </h2>
+                <p className="text-sm text-slate-600 mt-1">
+                  Pessoa nº <span className="font-semibold text-slate-800">{idPessoaParaVinculos}</span>
+                  {nomeParaVinculos ? (
+                    <>
+                      {' '}
+                      — <span className="font-medium">{nomeParaVinculos}</span>
+                    </>
+                  ) : null}
+                </p>
+                <p className="text-xs text-slate-500 mt-2">
+                  Clientes e processos vêm do cadastro de demonstração (PDF Clientes e histórico em Processos).
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalVinculosSistema(false)}
+                className="px-3 py-1.5 rounded-lg text-sm text-slate-600 hover:bg-slate-100"
+              >
+                Fechar
+              </button>
+            </div>
+            <div className="px-5 py-4 overflow-y-auto flex-1 space-y-6">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-800 mb-2">Códigos de cliente</h3>
+                {vinculosClienteProc.codigosCliente.length === 0 ? (
+                  <p className="text-sm text-slate-500">Nenhum código de cliente vinculado a esta pessoa no cadastro.</p>
+                ) : (
+                  <ul className="flex flex-wrap gap-2">
+                    {vinculosClienteProc.codigosCliente.map((cod) => (
+                      <li key={cod}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setModalVinculosSistema(false);
+                            navigate('/pessoas', { state: { codCliente: padCliente8Nav(cod), proc: '' } });
+                          }}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-blue-200 bg-blue-50 text-blue-800 text-sm font-medium hover:bg-blue-100"
+                        >
+                          {padCliente8Nav(cod)}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-slate-800 mb-2">Processos (parte cliente / oposta)</h3>
+                {vinculosClienteProc.processos.length === 0 ? (
+                  <p className="text-sm text-slate-500">
+                    Nenhum processo encontrado com esta pessoa nas partes vinculadas ou nos nomes.
+                  </p>
+                ) : (
+                  <div className="border border-slate-200 rounded-lg overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead className="bg-slate-100 text-slate-700">
+                        <tr>
+                          <th className="text-left px-3 py-2 font-medium">Cod. cliente</th>
+                          <th className="text-left px-3 py-2 font-medium">Proc.</th>
+                          <th className="text-left px-3 py-2 font-medium">Papéis</th>
+                          <th className="text-right px-3 py-2 font-medium">Abrir</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {vinculosClienteProc.processos.map((row, idx) => (
+                          <tr key={`${row.codCliente}-${row.proc}-${idx}`} className="hover:bg-slate-50/80">
+                            <td className="px-3 py-2 text-slate-700">{row.codCliente}</td>
+                            <td className="px-3 py-2 text-slate-700">{row.proc}</td>
+                            <td className="px-3 py-2 text-slate-600">{row.papeis}</td>
+                            <td className="px-3 py-2 text-right">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setModalVinculosSistema(false);
+                                  navigate('/processos', {
+                                    state: {
+                                      codCliente: padCliente8Nav(row.codCliente),
+                                      proc: String(row.proc ?? ''),
+                                    },
+                                  });
+                                }}
+                                className="text-blue-600 hover:underline text-sm font-medium"
+                              >
+                                Processos
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

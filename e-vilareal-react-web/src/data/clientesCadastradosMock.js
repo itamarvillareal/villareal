@@ -1011,3 +1011,19 @@ export function getIdPessoaPorCodCliente(codCliente) {
   const id = CLIENTE_PARA_PESSOA[n];
   return id != null ? id : null;
 }
+
+/**
+ * Todos os códigos de cliente (Cadastro de Clientes) em que a pessoa está vinculada no mock PDF.
+ * @param {number|string} idPessoa
+ * @returns {string[]} códigos numéricos como string, ordenados
+ */
+export function listarCodigosClientePorIdPessoa(idPessoa) {
+  const idNum = Number(idPessoa);
+  if (!Number.isFinite(idNum) || idNum < 1) return [];
+  const out = [];
+  for (const [codStr, pid] of Object.entries(CLIENTE_PARA_PESSOA)) {
+    if (Number(pid) === idNum) out.push(codStr);
+  }
+  out.sort((a, b) => Number(a) - Number(b));
+  return out;
+}

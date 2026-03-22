@@ -13,7 +13,8 @@ import java.util.Objects;
 @Table(name = "cadastro_pessoas", indexes = {
     @Index(name = "idx_cadastro_pessoas_email", columnList = "email"),
     @Index(name = "idx_cadastro_pessoas_cpf", columnList = "cpf"),
-    @Index(name = "idx_cadastro_pessoas_ativo", columnList = "ativo")
+    @Index(name = "idx_cadastro_pessoas_ativo", columnList = "ativo"),
+    @Index(name = "idx_cadastro_pessoas_responsavel_id", columnList = "responsavel_id")
 })
 public class CadastroPessoa {
 
@@ -45,6 +46,13 @@ public class CadastroPessoa {
     @Column(name = "data_atualizacao")
     private LocalDateTime dataAtualizacao;
 
+    /**
+     * Outra pessoa cadastrada como responsável / representante (PJ: sócio; PF: tutor, curador, etc.).
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "responsavel_id", foreignKey = @ForeignKey(name = "fk_cadastro_pessoas_responsavel"))
+    private CadastroPessoa responsavel;
+
     @PrePersist
     protected void onCreate() {
         dataCriacao = LocalDateTime.now();
@@ -74,6 +82,8 @@ public class CadastroPessoa {
     public void setDataCriacao(LocalDateTime dataCriacao) { this.dataCriacao = dataCriacao; }
     public LocalDateTime getDataAtualizacao() { return dataAtualizacao; }
     public void setDataAtualizacao(LocalDateTime dataAtualizacao) { this.dataAtualizacao = dataAtualizacao; }
+    public CadastroPessoa getResponsavel() { return responsavel; }
+    public void setResponsavel(CadastroPessoa responsavel) { this.responsavel = responsavel; }
 
     @Override
     public boolean equals(Object o) {

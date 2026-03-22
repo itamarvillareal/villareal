@@ -15,6 +15,9 @@ public class CadastroPessoasResponse {
     private LocalDateTime dataCriacao;
     private LocalDateTime dataAtualizacao;
 
+    private Long responsavelId;
+    private CadastroPessoaResponsavelResumo responsavel;
+
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
     public String getNome() { return nome; }
@@ -33,4 +36,8 @@ public class CadastroPessoasResponse {
     public void setDataCriacao(LocalDateTime dataCriacao) { this.dataCriacao = dataCriacao; }
     public LocalDateTime getDataAtualizacao() { return dataAtualizacao; }
     public void setDataAtualizacao(LocalDateTime dataAtualizacao) { this.dataAtualizacao = dataAtualizacao; }
+    public Long getResponsavelId() { return responsavelId; }
+    public void setResponsavelId(Long responsavelId) { this.responsavelId = responsavelId; }
+    public CadastroPessoaResponsavelResumo getResponsavel() { return responsavel; }
+    public void setResponsavel(CadastroPessoaResponsavelResumo responsavel) { this.responsavel = responsavel; }
 }

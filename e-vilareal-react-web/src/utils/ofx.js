@@ -51,7 +51,12 @@ export function mergeExtratoBancario(existente, novo) {
   }
   for (const t of novo || []) {
     const k = chaveDedupeLancamento(t);
-    if (!map.has(k)) map.set(k, { ...t });
+    if (!map.has(k)) {
+      const row = { ...t };
+      const L = String(row.letra ?? '').trim().toUpperCase();
+      if (!L) row.letra = 'N';
+      map.set(k, row);
+    }
   }
   const arr = Array.from(map.values());
   arr.sort((a, b) => {
@@ -100,7 +105,8 @@ export function parseOfxToExtrato(ofxText, options = {}) {
     const mockCod = String((idx % 1000) + 1);
     const mockProc = String((idx % 10) + 1);
     return {
-      letra: 'N', // padrão: Não Identificados (editável na tela)
+      /** Conta contábil "Conta Não Identificados" — permanece até reclassificar no extrato ou via Parear compensações. */
+      letra: 'N',
       numero: id,
       data: dtPosted,
       descricao: descricao,

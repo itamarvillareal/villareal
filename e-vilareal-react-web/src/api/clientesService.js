@@ -48,7 +48,7 @@ export async function buscarCliente(id) {
 
 /**
  * Cria um novo cliente.
- * @param {Object} dados - { nome, email, cpf, telefone?, dataNascimento?, ativo? }
+ * @param {Object} dados - { nome, email, cpf, telefone?, dataNascimento?, ativo?, responsavelId? }
  * @returns {Promise<Object>}
  */
 export async function criarCliente(dados) {
@@ -59,7 +59,7 @@ export async function criarCliente(dados) {
 /**
  * Atualiza cliente existente.
  * @param {number} id
- * @param {Object} dados - { nome, email, cpf, telefone?, dataNascimento?, ativo? }
+ * @param {Object} dados - { nome, email, cpf, telefone?, dataNascimento?, ativo?, responsavelId? }
  * @returns {Promise<Object>}
  */
 export async function atualizarCliente(id, dados) {

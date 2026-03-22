@@ -15,6 +15,7 @@ import { Usuarios } from './components/Usuarios';
 import { Configuracoes } from './components/Configuracoes';
 import { atualizarIndicesMensaisAposDia10 } from './services/monetaryIndicesService.js';
 import { ensureHistoricoDemonstracaoDiagnostico } from './data/processosHistoricoData.js';
+import { ensureDemoIntegradoCompleto } from './data/demoIntegradoSeed.js';
 import {
   getPerfilAtivoParaPermissoes,
   getUsuarioSessaoAtualId,
@@ -74,6 +75,11 @@ function App() {
   useEffect(() => {
     try {
       ensureHistoricoDemonstracaoDiagnostico();
+    } catch {
+      /* não bloqueia o app */
+    }
+    try {
+      ensureDemoIntegradoCompleto();
     } catch {
       /* não bloqueia o app */
     }

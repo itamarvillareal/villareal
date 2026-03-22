@@ -17,12 +17,20 @@ export function RelatorioUltimoAndamentoHeader({
   ordenarAtivo,
   ordemAsc,
   modoAlteracao = false,
+  /** Id único por coluna (evita colisão de portais / clique fora). */
+  menuInstanceId = 'ultimo-andamento',
 }) {
   const [menuAberto, setMenuAberto] = useState(false);
   const wrapRef = useRef(null);
+  const menuPortalRef = useRef(null);
   const [menuRect, setMenuRect] = useState({ top: 0, left: 0, width: 260 });
 
-  const tituloAtual = options.find((o) => o.fieldKey === selectedFieldKey)?.label ?? 'Último Andamento';
+  const menuRootId = `relatorio-col-titulo-menu-${menuInstanceId}`;
+
+  const tituloAtual =
+    options.find((o) => o.fieldKey === selectedFieldKey)?.label ?? selectedFieldKey ?? 'Coluna';
+
+  const clsModoEdicao = modoAlteracao ? 'text-red-200' : 'text-white';
 
   const atualizarPosicaoMenu = () => {
     const el = wrapRef.current;
@@ -41,46 +49,90 @@ export function RelatorioUltimoAndamentoHeader({
   }, [menuAberto]);
 
   useEffect(() => {
-    function handleMouseDown(e) {
-      if (!menuAberto) return;
-      const wrap = wrapRef.current;
-      const portal = document.getElementById('relatorio-ultimo-andamento-menu-root');
-      if (wrap && wrap.contains(e.target)) return;
-      if (portal && portal.contains(e.target)) return;
-      setMenuAberto(false);
-    }
-    document.addEventListener('mousedown', handleMouseDown);
-    return () => document.removeEventListener('mousedown', handleMouseDown);
-  }, [menuAberto]);
-
-  useEffect(() => {
     if (!menuAberto) return;
-    function onScroll() {
+
+    /**
+     * Clique na barra de rolagem nativa (WebKit/macOS): `target` costuma ser <html> ou outro nó
+     * que não passa em `contains`. `composedPath` / `elementsFromPoint` + margem à direita cobrem o caso.
+     */
+    function eventoDentroDoMenuDropdown(e) {
+      const portal = menuPortalRef.current;
+      if (!portal) return false;
+      const t = e.target;
+      if (t instanceof Node && portal.contains(t)) return true;
+      try {
+        const path = typeof e.composedPath === 'function' ? e.composedPath() : [];
+        if (path.includes(portal)) return true;
+      } catch {
+        /* ignore */
+      }
+      const r = portal.getBoundingClientRect();
+      const { clientX: x, clientY: y } = e;
+      const margemDir = 28;
+      const margem = 4;
+      if (
+        x >= r.left - margem &&
+        x <= r.right + margemDir &&
+        y >= r.top - margem &&
+        y <= r.bottom + margem
+      ) {
+        return true;
+      }
+      try {
+        const stack = document.elementsFromPoint(x, y);
+        if (stack.some((el) => el === portal || (el instanceof Node && portal.contains(el)))) return true;
+      } catch {
+        /* ignore */
+      }
+      return false;
+    }
+
+    function fecharSeCliqueFora(e) {
+      if (e.button != null && e.button !== 0) return;
+      const wrap = wrapRef.current;
+      const tgt = e.target;
+      if (wrap && tgt instanceof Node && wrap.contains(tgt)) return;
+      if (eventoDentroDoMenuDropdown(e)) return;
       setMenuAberto(false);
     }
-    window.addEventListener('scroll', onScroll, true);
-    return () => window.removeEventListener('scroll', onScroll, true);
+
+    document.addEventListener('mousedown', fecharSeCliqueFora, false);
+    return () => document.removeEventListener('mousedown', fecharSeCliqueFora, false);
   }, [menuAberto]);
 
   const thStyle = larguraUniforme
     ? { width: `${100 / colunasAtivasLength}%`, minWidth: 0 }
     : minWStyle;
 
+  const maxMenuHeightPx =
+    typeof window !== 'undefined'
+      ? Math.max(120, Math.min(224, window.innerHeight - menuRect.top - 8))
+      : 224;
+
   const menuPortal =
     menuAberto &&
     typeof document !== 'undefined' &&
     createPortal(
       <div
-        id="relatorio-ultimo-andamento-menu-root"
-        className="rounded-md border border-slate-200 bg-white text-slate-800 shadow-xl max-h-56 overflow-y-auto py-1 text-xs font-normal"
+        ref={menuPortalRef}
+        id={menuRootId}
+        className="rounded-md border border-slate-200 bg-white text-slate-800 shadow-xl py-1 text-xs font-normal [touch-action:pan-y]"
         style={{
           position: 'fixed',
           top: menuRect.top,
           left: menuRect.left,
           width: menuRect.width,
+          maxHeight: maxMenuHeightPx,
+          overflowY: 'auto',
+          scrollbarGutter: 'stable',
+          overscrollBehavior: 'contain',
+          WebkitOverflowScrolling: 'touch',
           zIndex: 9999,
         }}
         role="listbox"
+        onWheel={(e) => {
+          e.stopPropagation();
+        }}
       >
         {options.map((opt) => {
           const ativo = opt.fieldKey === selectedFieldKey;
