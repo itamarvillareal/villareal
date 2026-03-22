@@ -1,3 +1,5 @@
+import { criarRodadaMockCalculos } from './calculosRodadasMockGeracao.js';
+
 /**
  * Dados de teste: 50 parcelas (Cálculos) + 50 lançamentos distribuídos em 5 bancos
  * (Nubank, CORA, CEF, Itaú, PicPay — 10 cada), mesma data e valor que cada parcela,
@@ -97,40 +99,22 @@ export function splitExtratoVinculacaoTestePorBanco(extratoCompleto, bancos = BA
   return out;
 }
 
-const titulosMinimosTeste = Array.from({ length: 24 }, () => ({
-  dataVencimento: '',
-  valorInicial: '',
-  atualizacaoMonetaria: '',
-  diasAtraso: '',
-  juros: '',
-  multa: '',
-  honorarios: '',
-  total: '',
-  descricaoValor: '',
-}));
-
 const { parcelas: PARCELAS_TESTE_50, extrato: EXTRATO_COMPLETO_50 } = gerarParesParcelaExtrato50();
 
 const EXTRATOS_VINCULACAO_TESTE_POR_BANCO = splitExtratoVinculacaoTestePorBanco(EXTRATO_COMPLETO_50);
 
 /** Rodada única para Cálculos (persistida junto com outras rodadas). */
 export function buildRodadaCalculosVinculacaoTeste50() {
-  return {
-    pagina: 1,
-    paginaParcelamento: 1,
-    titulos: titulosMinimosTeste,
+  return criarRodadaMockCalculos('999', 88, 0, {
     parcelas: PARCELAS_TESTE_50,
     quantidadeParcelasInformada: '50',
     taxaJurosParcelamento: '0,00',
-    limpezaAtiva: false,
-    snapshotAntesLimpeza: null,
+    parcelamentoAceito: true,
     cabecalho: {
       autor: 'CLIENTE TESTE 999 — PROC 88 (mock vinculação)',
       reu: 'RÉU MOCK — TESTE AUTOMÁTICO',
     },
-    honorariosDataRecebimento: {},
-    parcelamentoAceito: true,
-  };
+  });
 }
 
 /** Merge para estado inicial de rodadas (chave fixa). */

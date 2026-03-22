@@ -5,7 +5,13 @@ import { useNavigate } from 'react-router-dom';
 import { getLancamentosContaCorrente } from '../data/financeiroData';
 import { loadRodadasCalculos, saveRodadasCalculos } from '../data/calculosRodadasStorage';
 import { RODADAS_VINCULACAO_TESTE_50 } from '../data/vinculacaoAutomaticaTestMock';
-import { getMockProcesso10x10 } from '../data/processosMock';
+import {
+  PARCELAS_POR_PAGINA_MOCK as PARCELAS_POR_PAGINA,
+  gerarCabecalhoMock,
+  gerarParcelasMock,
+  gerarTitulosMock,
+  linhaVaziaParcela,
+} from '../data/calculosRodadasMockGeracao.js';
 import { obterIndicesMensaisINPC, obterIndicesMensaisIPCA } from '../services/monetaryIndicesService.js';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -20,7 +26,6 @@ const INDICES = INDICES_CALCULO;
 
 const inputClass = 'w-full px-2 py-1.5 border border-slate-300 rounded text-sm bg-white';
 const TITULOS_POR_PAGINA = 20;
-const PARCELAS_POR_PAGINA = 20;
 
 function normalizarCliente(val) {
   const s = String(val ?? '').trim();
@@ -41,87 +46,6 @@ function normalizarProc(val) {
   const n = Number(s);
   if (Number.isNaN(n) || n < 1) return 1;
   return Math.floor(n);
-}
-
-function seededRand(seed0) {
-  let seed = seed0 >>> 0;
-  return () => {
-    seed = (seed * 1664525 + 1013904223) >>> 0;
-    return seed / 0xffffffff;
-  };
-}
-
-function gerarCabecalhoMock(codigoCliente, proc) {
-  const c = Number(normalizarCliente(codigoCliente));
-  const p = Number(normalizarProc(proc));
-  const mock10 = getMockProcesso10x10(c, p);
-  if (mock10) return { autor: mock10.parteCliente, reu: mock10.parteOposta };
-  // Mantém compatível com o mock de Processos:
-  // - Autor = Parte Cliente do processo
-  // - Réu = Parte Oposta do processo
-  const autor = `PARTE CLIENTE ${String(c).padStart(3, '0')} — PROC ${String(p).padStart(2, '0')}`;
-  // mesma ideia do Processos: réu muda com o Proc do cliente
-  const reu = `PARTE OPOSTA ${String((c * 7 + p) % 999).padStart(3, '0')} — PROC ${String(p).padStart(2, '0')}`;
-  return { autor, reu };
-}
-
-function gerarTitulosMock(codigoCliente, proc, dimensao) {
-  const c = Number(normalizarCliente(codigoCliente));
-  const p = Number(normalizarProc(proc));
-  const d = Math.max(0, Math.floor(Number(dimensao) || 0));
-
-  const rand = seededRand((c * 2654435761 + p * 97531 + d * 104729) >>> 0);
-  const total = 60; // garante várias páginas
-  const baseAno = 2024 + ((p + d) % 2);
-  const rows = [];
-  for (let i = 0; i < total; i++) {
-    // deixa algumas linhas vazias para parecer planilha real, mas muda entre dims/proc
-    const preencher = i < 24 || rand() > 0.35;
-    if (!preencher) {
-      rows.push({
-        dataVencimento: '',
-        valorInicial: '',
-        atualizacaoMonetaria: '',
-        diasAtraso: '',
-        juros: '',
-        multa: '',
-        honorarios: '',
-        total: '',
-        descricaoValor: '',
-      });
-      continue;
-    }
-    const dia = String(((i + p + 1) % 28) + 1).padStart(2, '0');
-    const mes = String(((i + d) % 12) + 1).padStart(2, '0');
-    const ano = String(baseAno);
-    const principal = Math.round((800 + c * 17 + p * 31 + d * 53 + i * (60 + d * 4) + rand() * 500) * 100) / 100;
-    rows.push({
-      dataVencimento: `${dia}/${mes}/${ano}`,
-      valorInicial: `R$ ${principal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-      atualizacaoMonetaria: '',
-      diasAtraso: '',
-      juros: '',
-      multa: '',
-      honorarios: '',
-      total: '',
-      descricaoValor: '',
-    });
-  }
-  return rows;
-}
-
-function linhaVaziaParcela() {
-  return {
-    dataVencimento: '',
-    valorParcela: '',
-    honorariosParcela: '',
-    observacao: '',
-    dataPagamento: '',
-  };
-}
-
-function gerarParcelasMock() {
-  return Array.from({ length: PARCELAS_POR_PAGINA }, () => linhaVaziaParcela());
 }
 
 /** Normaliza quantidade informada pelo usuário (0–9999); vazio vira "00"; até 99 com dois dígitos. */
@@ -311,6 +235,7 @@ export function Calculos() {
   const stateFromProcessos = location.state && typeof location.state === 'object' ? location.state : null;
   const codClienteFromState = stateFromProcessos?.codCliente ?? '';
   const procFromState = stateFromProcessos?.proc ?? '';
+  const dimensaoFromState = stateFromProcessos?.dimensao;
 
   const [tabAtiva, setTabAtiva] = useState('Títulos');
   const [pagina, setPagina] = useState(1);
@@ -373,7 +298,11 @@ export function Calculos() {
       const n = Number(procFromState);
       if (!Number.isNaN(n)) setProc(Math.max(1, Math.floor(n)));
     }
-  }, [codClienteFromState, procFromState]);
+    if (dimensaoFromState !== undefined && dimensaoFromState !== null && String(dimensaoFromState).trim() !== '') {
+      const d = Number(dimensaoFromState);
+      if (!Number.isNaN(d) && d >= 0) setDimensao(Math.floor(d));
+    }
+  }, [codClienteFromState, procFromState, dimensaoFromState]);
 
   // Mantém campos manuais sincronizados com o estado efetivo
   useEffect(() => {
@@ -1488,7 +1417,7 @@ export function Calculos() {
 
   const honorariosRecebimentoMap = rodadaAtual.honorariosDataRecebimento || {};
 
-  /** Mesma base da Conta Corrente em Processos: Conta Escritório filtrada por cliente/proc (conciliação). */
+  /** Mesma base da Conta Corrente em Processos: extratos filtrados por cliente/proc (conciliação). */
   const financeiroContaEscritorioRodada = useMemo(
     () => getLancamentosContaCorrente(codigoClienteNorm, procNorm),
     [codigoClienteNorm, procNorm]

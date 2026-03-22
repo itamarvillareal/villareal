@@ -7,7 +7,6 @@ import { defineConfig, globalIgnores } from 'eslint/config'
 export default defineConfig([
   globalIgnores([
     'dist',
-    'src/data/itauExtratoMock.js',
     'src/data/coraExtratoMock.js',
     'src/data/sicoobExtratoMock.js',
     'src/data/itauEmpresasExtratoMock.js',

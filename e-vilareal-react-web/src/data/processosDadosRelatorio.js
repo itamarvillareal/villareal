@@ -3,6 +3,7 @@
  */
 import { getDadosProcessoClienteUnificado } from './processoClienteProcUnificado.js';
 import { getRegistroProcesso } from './processosHistoricoData.js';
+import { loadCadastroClienteDados } from './cadastroClientesStorage.js';
 import { getImovelMock, getImoveisMockTotal } from './imoveisMockData.js';
 import { getIdPessoaPorCodCliente } from './clientesCadastradosMock.js';
 import { getPessoaPorId } from './cadastroPessoasMock.js';
@@ -195,32 +196,13 @@ function simNao(v) {
   return v ? 'Sim' : 'Não';
 }
 
-function parseDataBrParaTs(s) {
-  const t = String(s ?? '').trim();
-  const m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (!m) return 0;
-  const d = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
-  const x = d.getTime();
-  return Number.isNaN(x) ? 0 : x;
-}
-
-/** Último item do histórico: maior data dd/mm/aaaa; em empate, maior `id` (alinha à ordem “Inf.” da tela Processos). */
-function ultimoHistoricoPorData(historico) {
+/**
+ * Mesmo registro da primeira linha da tabela «Histórico do Processos» (página 1): `historico[0]`.
+ * Novas entradas são gravadas no início do array; o mock gera o maior «Inf.» nessa posição.
+ */
+function primeiroHistoricoComoNaTelaProcessos(historico) {
   const lista = Array.isArray(historico) ? historico : [];
-  let best = null;
-  let bestTs = -1;
-  let bestId = -1;
-  for (const h of lista) {
-    const ts = parseDataBrParaTs(h?.data);
-    const id = Number(h?.id);
-    const idNum = Number.isFinite(id) ? id : 0;
-    if (ts > bestTs || (ts === bestTs && idNum > bestId)) {
-      bestTs = ts;
-      bestId = idNum;
-      best = h;
-    }
-  }
-  return best;
+  return lista.length ? lista[0] : null;
 }
 
 let _mapaImovelClienteProc = null;
@@ -247,14 +229,26 @@ function resolverVinculoImovel(codNum, procNum) {
 }
 
 /**
+ * Mesmo rótulo do select «Cliente é Requerente ou Requerido?» em Processos (`papelParte` em `vilareal:processos-historico:v1`).
+ * Sem persistência, usa o mesmo fallback da tela ao carregar: `mock.parteRequerido` → Requerido, senão Requerente.
+ */
+export function rotuloRequerenteRequeridoUnificado(reg, mock) {
+  const papel = String(reg?.papelParte ?? '').trim().toLowerCase();
+  if (papel === 'requerente') return 'Requerente';
+  if (papel === 'requerido') return 'Requerido';
+  return mock.parteRequerido ? 'Requerido' : 'Requerente';
+}
+
+/**
  * Campos extras por codCliente + proc (alinhados à tela Processos + persistência).
+ * `ultimoHistorico*` usa o mesmo item que a primeira linha do histórico em Processos (`reg.historico[0]`).
  * Usado na coluna dinâmica do Relatório Processos.
  */
 export function getCamposExtrasRelatorioPorProcesso(codClienteRaw, procRaw) {
   const mock = gerarMockProcesso(codClienteRaw, procRaw);
   const reg = getRegistroProcesso(mock.codigoCliente, mock.processo);
   const hist = Array.isArray(reg?.historico) ? reg.historico : [];
-  const ult = ultimoHistoricoPorData(hist);
+  const ult = primeiroHistoricoComoNaTelaProcessos(hist);
 
   const faseCadastro =
     reg?.faseSelecionada != null && String(reg.faseSelecionada).trim() !== ''
@@ -264,8 +258,21 @@ export function getCamposExtrasRelatorioPorProcesso(codClienteRaw, procRaw) {
   const parteCliente =
     reg?.parteCliente != null && String(reg.parteCliente).trim() !== '' ? String(reg.parteCliente) : mock.parteCliente;
 
-  const parteOposta =
-    reg?.parteOposta != null && String(reg.parteOposta).trim() !== '' ? String(reg.parteOposta) : mock.parteOposta;
+  /** Mesma prioridade que Processos ao carregar: persistido → grade cadastro cliente → mock. */
+  let parteOposta = String(reg?.parteOposta ?? '').trim();
+  if (!parteOposta) {
+    try {
+      const cad = loadCadastroClienteDados(mock.codigoCliente);
+      const rows = cad?.processos;
+      if (Array.isArray(rows)) {
+        const row = rows.find((p) => Number(p?.procNumero) === Number(mock.processo));
+        parteOposta = String(row?.parteOposta ?? '').trim();
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  if (!parteOposta) parteOposta = mock.parteOposta;
 
   const tramitacao =
     reg?.tramitacao != null && String(reg.tramitacao).trim() !== ''
@@ -276,6 +283,12 @@ export function getCamposExtrasRelatorioPorProcesso(codClienteRaw, procRaw) {
   const pNum = Number(normalizarProcesso(procRaw));
   const vinculo = resolverVinculoImovel(cNum, pNum);
   const imovel = vinculo?.mock;
+
+  /** Mesmo texto que «Natureza da Ação» no formulário Processos (histórico + mock). */
+  const naturezaAcaoUnificada =
+    String(reg?.naturezaAcao ?? '').trim() || String(mock.naturezaAcao ?? '').trim();
+
+  const inRequerenteRotulo = rotuloRequerenteRequeridoUnificado(reg, mock);
 
   return {
     codigoClienteProcesso: mock.codigoCliente,
@@ -296,7 +309,11 @@ export function getCamposExtrasRelatorioPorProcesso(codClienteRaw, procRaw) {
     parteRevelTexto: simNao(mock.parteRevel),
     parteRequeridoTexto: simNao(mock.parteRequerido),
     dataProtocolo: mock.dataProtocolo,
-    naturezaAcaoProcesso: mock.naturezaAcao,
+    naturezaAcaoProcesso: naturezaAcaoUnificada,
+    /** Coluna «Descrição da Ação» do relatório = mesma fonte que naturezaAcaoProcesso / tela Processos. */
+    descricaoAcao: naturezaAcaoUnificada,
+    /** Coluna «Requerente/Requerido» = `papelParte` persistido (mesmo campo que Processos). */
+    inRequerente: inRequerenteRotulo,
     valorCausaProcesso: mock.valorCausa,
     consultaAutomaticaTexto: simNao(mock.consultaAutomatica),
     observacaoCadastroProcesso: mock.observacao,

@@ -15,6 +15,7 @@ import {
   Activity,
   UserCog,
   Settings,
+  Table2,
 } from 'lucide-react';
 import { navItems } from '../data/mockData';
 import { getUsuariosAtivos } from '../data/agendaPersistenciaData';
@@ -44,6 +45,7 @@ const iconMap = {
   Activity,
   UserCog,
   Settings,
+  Table2,
 };
 
 export function Sidebar() {

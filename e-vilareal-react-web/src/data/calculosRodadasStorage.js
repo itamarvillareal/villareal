@@ -30,6 +30,7 @@ export function saveRodadasCalculos(rodadas) {
   if (typeof window === 'undefined') return;
   try {
     window.localStorage.setItem(STORAGE_CALCULOS_RODADAS_KEY, JSON.stringify(rodadas));
+    window.dispatchEvent(new CustomEvent('vilareal:calculos-rodadas-atualizadas'));
   } catch {
     /* ignore quota */
   }

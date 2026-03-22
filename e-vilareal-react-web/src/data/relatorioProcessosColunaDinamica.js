@@ -2,6 +2,7 @@
  * Coluna dinâmica do Relatório Processos (mesma coluna física; título e conteúdo escolhidos pelo usuário).
  */
 import { getCamposExtrasRelatorioPorProcesso, padCliente } from './processosDadosRelatorio.js';
+import { getNomeClienteCadastroPorCodigo } from './relatorioProcessosDados.js';
 
 export const STORAGE_CAMPO_COLUNA_ULTIMO_ANDAMENTO = 'vilareal.relatorioProcessos.campoColunaUltimoAndamento.v1';
 
@@ -31,7 +32,7 @@ export const CAMPOS_OPCOES_ULTIMO_ANDAMENTO = [
   { label: 'Data da Audiência', fieldKey: 'dataAudiencia' },
   { label: 'Hora da Audiência', fieldKey: 'horaAudiencia' },
   { label: 'Consultor', fieldKey: 'consultor' },
-  { label: 'In Requerente/Recurso', fieldKey: 'inRequerente' },
+  { label: 'Requerente/Requerido', fieldKey: 'inRequerente' },
   { label: 'CEP [primeiro réu]', fieldKey: 'cepReu' },
   { label: 'Lmv', fieldKey: 'lmv' },
   { label: 'Inv', fieldKey: 'inv' },
@@ -50,7 +51,6 @@ export const CAMPOS_OPCOES_ULTIMO_ANDAMENTO = [
   { label: 'Nº Processo (novo / CNJ)', fieldKey: 'numeroProcessoNovo' },
   { label: 'Status (ativo/inativo)', fieldKey: 'statusAtivoTexto' },
   { label: 'Parte Requerente', fieldKey: 'parteRequerenteTexto' },
-  { label: 'Parte Réu (polo)', fieldKey: 'parteRevelTexto' },
   { label: 'Parte Requerido', fieldKey: 'parteRequeridoTexto' },
   { label: 'Data protocolo', fieldKey: 'dataProtocolo' },
   { label: 'Natureza da ação', fieldKey: 'naturezaAcaoProcesso' },
@@ -105,7 +105,8 @@ const CAMPOS_KEYS = new Set(CAMPOS_OPCOES_ULTIMO_ANDAMENTO.map((o) => o.fieldKey
 
 /** Migração: chaves antigas renomeadas → equivalente atual. */
 const MIGRACAO_CAMPOS = {
-  // nenhuma por enquanto
+  /** «Parte Réu (polo)» (Sim/Não) substituída por «Parte Oposta» (texto do cadastro Processos). */
+  parteRevelTexto: 'parteOposta',
 };
 
 export function carregarCampoUltimoAndamentoSalvo() {
@@ -202,5 +203,9 @@ export function enriquecerCamposRelatorioProcessos(row, idx) {
   if (infoUlt) merged.ultimoAndamento = infoUlt;
   if (dataUlt) merged.dataConsulta = dataUlt;
   if (usuarioUlt) merged.consultor = usuarioUlt;
+
+  const codNum = Number(String(cod).replace(/\D/g, ''));
+  merged.cliente = getNomeClienteCadastroPorCodigo(Number.isFinite(codNum) && codNum >= 1 ? codNum : 1);
+
   return merged;
 }

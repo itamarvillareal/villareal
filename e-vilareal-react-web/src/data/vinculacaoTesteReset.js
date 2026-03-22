@@ -44,6 +44,10 @@ export function resetVinculacaoTesteCompleto() {
     for (const nome of BANCOS_VINCULACAO_TESTE) {
       const arr = Array.isArray(out[nome]) ? out[nome] : [];
       const kept = arr.filter((t) => !isLancamentoVinculacaoTeste(t));
+      if (nome === 'Itaú') {
+        out[nome] = kept;
+        continue;
+      }
       const fresh = vincFresh[nome] || [];
       out[nome] = [...kept, ...JSON.parse(JSON.stringify(fresh))];
     }

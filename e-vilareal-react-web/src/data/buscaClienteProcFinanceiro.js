@@ -1,6 +1,6 @@
 /**
  * Busca cod. cliente + proc. a partir de nome do cliente, CPF/CNPJ, autor, réu ou nº de processo —
- * mesma lógica conceitual do filtro de processos no Cadastro de Clientes, para uso no Financeiro.
+ * alinhado ao Cadastro de Clientes / Processos, incluindo `vilareal:processos-historico:v1` (nº CNJ gravado).
  */
 
 import {
@@ -9,8 +9,21 @@ import {
   normalizarNumeroBusca,
 } from '../components/CadastroClientes.jsx';
 import { normalizarCodigoClienteFinanceiro } from './financeiroData';
+import {
+  obterDescricaoAcaoUnificada,
+  obterNumeroProcessoNovoUnificado,
+  obterNumeroProcessoVelhoUnificado,
+  obterParteOpostaUnificada,
+} from './processosHistoricoData.js';
 
 const MAX_COD_CLIENTE = 1000;
+
+/** Compara sequências só de dígitos (CNJ normalizado); evita `''.includes('')` como match falso. */
+function digitosCorrespondem(hayDigits, needleDigits) {
+  if (!needleDigits) return false;
+  if (!hayDigits) return false;
+  return hayDigits.includes(needleDigits) || needleDigits.includes(hayDigits);
+}
 
 /**
  * @param {string} termoRaw
@@ -31,22 +44,34 @@ export function buscarParesClienteProcPorTexto(termoRaw, opts = {}) {
     const mock = gerarMockClienteEProcessos(String(cod));
     if (!mock) continue;
 
+    const codJur = String(mock.codigoCliente ?? '').trim();
     const nomeClienteNorm = normalizarTextoBusca(mock.nomeRazao ?? '');
     const docClienteNorm = normalizarNumeroBusca(mock.cnpjCpf ?? '');
 
     for (const proc of mock.processos || []) {
       const procNumeroStr = String(proc.procNumero ?? '');
-      const numeroNovo = normalizarNumeroBusca(proc.processoNovo ?? '');
+      const pNum = Number(proc.procNumero);
+      if (!Number.isFinite(pNum) || pNum < 1) continue;
+
+      const processoNovoDisp = obterNumeroProcessoNovoUnificado(codJur, pNum, proc.processoNovo ?? '');
+      const processoVelhoDisp = obterNumeroProcessoVelhoUnificado(codJur, pNum, proc.processoVelho ?? '');
+      const parteOpostaDisp = obterParteOpostaUnificada(codJur, pNum, proc.parteOposta ?? '');
+      const descricaoDisp = obterDescricaoAcaoUnificada(codJur, pNum, proc.descricao ?? proc.tipoAcao ?? '');
+
+      const numeroNovo = normalizarNumeroBusca(processoNovoDisp);
+      const numeroVelho = normalizarNumeroBusca(processoVelhoDisp);
 
       const numeroMatch = (() => {
         if (!termoNumero) return false;
         if (buscaProcCurta) return procNumeroStr.includes(termoNumero);
-        return numeroNovo.includes(termoNumero);
+        return digitosCorrespondem(numeroNovo, termoNumero) || digitosCorrespondem(numeroVelho, termoNumero);
       })();
 
       const autorStr = normalizarTextoBusca(proc.autor ?? '');
-      const reuStr = normalizarTextoBusca(proc.reu ?? proc.parteOposta ?? '');
-      const tipoAcaoStr = normalizarTextoBusca(proc.tipoAcao ?? proc.descricao ?? '');
+      const reuStr = normalizarTextoBusca(proc.reu ?? parteOpostaDisp ?? '');
+      const tipoAcaoStr = normalizarTextoBusca(proc.tipoAcao ?? descricaoDisp ?? '');
+      const descStr = normalizarTextoBusca(descricaoDisp ?? '');
+      const parteOpostaNorm = normalizarTextoBusca(parteOpostaDisp ?? '');
 
       const stripped = String(mock.codigoCliente ?? '').replace(/^0+/, '');
       const codClienteNum = Number(stripped) || cod;
@@ -63,20 +88,20 @@ export function buscarParesClienteProcPorTexto(termoRaw, opts = {}) {
           (autorStr.includes(termo) ||
             reuStr.includes(termo) ||
             tipoAcaoStr.includes(termo) ||
-            normalizarTextoBusca(proc.parteOposta ?? '').includes(termo) ||
-            normalizarTextoBusca(proc.descricao ?? '').includes(termo)));
+            descStr.includes(termo) ||
+            parteOpostaNorm.includes(termo)));
 
       if (!(clienteMatch || procMatch)) continue;
 
       out.push({
         codCliente: codFin,
-        proc: String(proc.procNumero ?? ''),
+        proc: procNumeroStr,
         nomeCliente: mock.nomeRazao ?? '',
         cnpjCpf: mock.cnpjCpf ?? '',
-        processoNovo: proc.processoNovo ?? '',
+        processoNovo: processoNovoDisp,
         autor: proc.autor ?? '',
-        reu: proc.reu ?? proc.parteOposta ?? '',
-        tipoAcao: proc.tipoAcao ?? proc.descricao ?? '',
+        reu: proc.reu ?? parteOpostaDisp ?? '',
+        tipoAcao: descricaoDisp || proc.tipoAcao || proc.descricao || '',
       });
 
       if (out.length >= maxResults) return out;

@@ -8,6 +8,7 @@ import { Agenda } from './components/Agenda';
 import { Processos } from './components/Processos';
 import { Imoveis } from './components/Imoveis';
 import { Relatorio } from './components/Relatorio';
+import { RelatorioCalculos } from './components/RelatorioCalculos';
 import { Calculos } from './components/Calculos';
 import { Diagnosticos } from './components/Diagnosticos';
 import { Financeiro } from './components/Financeiro';
@@ -129,6 +130,7 @@ function App() {
           <Route path="/processos" element={<Processos />} />
           <Route path="/imoveis" element={<Imoveis />} />
           <Route path="/relatorio" element={<Relatorio />} />
+          <Route path="/relatorio-calculos" element={<RelatorioCalculos />} />
           <Route path="/calculos" element={<Calculos />} />
           <Route path="/diagnosticos" element={<Diagnosticos />} />
           <Route path="/financeiro" element={<Financeiro />} />

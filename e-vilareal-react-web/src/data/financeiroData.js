@@ -3,16 +3,15 @@
  * Usado por Financeiro e por Processos (janela Conta Corrente).
  *
  * Contas contábeis centrais (letra no extrato → consolidado):
- * - **Letra A → Conta Escritório** — Todo lançamento de extrato classificado com **A** compõe a conta contábil
- *   **Conta Escritório**. Esses lançamentos são os que o sistema usa para montar a **Conta Corrente** do processo
- *   em **Processos**; aí devem constar **código do cliente** e **número do processo** (vínculo necessário ao fluxo operacional).
+ * - **Letra A → Conta Escritório** — Lançamentos com **A** compõem a conta contábil **Conta Escritório** no consolidado.
+ * - **Conta Corrente (Processos)** — Lista **todos** os lançamentos dos extratos com **Cod. Cliente** e **Proc.** iguais
+ *   aos do processo em tela (qualquer letra contábil), para refletir o vínculo feito no Financeiro.
  * - **Letra E → Conta Compensação** — Serve para **anular** lançamentos em par: a **soma dos valores** de todas as
  *   linhas com o **mesmo Elo** (identificador numérico natural, ex. 0001, 0002…) deve ser **zero**.
  *   Movimentos que são apenas **mudança de numerário** entre contas bancárias ficam assim concentrados na Compensação,
  *   sem poluir as demais contas contábeis com efeitos líquidos duplicados.
  */
 
-import { ITAU_EXTRATO_MOCK_XLS } from './itauExtratoMock.js';
 import { CORA_EXTRATO_MOCK_XLS } from './coraExtratoMock.js';
 import { SICOOB_EXTRATO_MOCK_XLS } from './sicoobExtratoMock.js';
 import { ITAU_EMPRESAS_EXTRATO_MOCK_XLS } from './itauEmpresasExtratoMock.js';
@@ -26,10 +25,6 @@ import { getExtratosVinculacaoTestePorBanco } from './vinculacaoAutomaticaTestMo
 
 /** Lançamentos de teste de vinculação automática (50 no total, repartidos em 5 bancos). */
 const VINC_TESTE_EXTRATOS = getExtratosVinculacaoTestePorBanco();
-
-function cloneItauExtratoXlsMock() {
-  return JSON.parse(JSON.stringify(ITAU_EXTRATO_MOCK_XLS));
-}
 
 function cloneCoraExtratoXlsMock() {
   return JSON.parse(JSON.stringify(CORA_EXTRATO_MOCK_XLS));
@@ -145,11 +140,11 @@ const BANCO_TO_NUMERO = {
   'BTG Banking': 24, 'BTG (2)': 25, 'CORA': 26, 'BTG JA': 27, 'BTG RACHEL': 28, 'Sicoob VRV': 29,
 };
 
-/** CEF, Itaú, …, BTG Banking, BTG RACHEL, etc.; Nubank/CORA/CEF/Itaú/PicPay incluem fatias do mock de vinculação (10 lanç. cada). */
+/** CEF, CORA, …, BTG Banking, BTG RACHEL, etc.; Nubank/CORA/CEF/PicPay incluem fatias do mock de vinculação (10 lanç. cada). Itaú PF sem mock (apenas OFX/importação). */
 const MOCK_EXTRATOS_POR_BANCO = {
   ...Object.fromEntries(Object.keys(BANCO_TO_NUMERO).map((k) => [k, []])),
   CEF: [...cloneCefExtratoPdfMock(), ...VINC_TESTE_EXTRATOS.CEF],
-  Itaú: [...cloneItauExtratoXlsMock(), ...VINC_TESTE_EXTRATOS['Itaú']],
+  Itaú: [],
   'Itaú Empresas': cloneItauEmpresasExtratoXlsMock(),
   CORA: [...cloneCoraExtratoXlsMock(), ...VINC_TESTE_EXTRATOS.CORA],
   BB: cloneBbExtratoXlsMock(),
@@ -163,7 +158,9 @@ const MOCK_EXTRATOS_POR_BANCO = {
   PicPay: [...VINC_TESTE_EXTRATOS.PicPay],
 };
 
-export const STORAGE_FINANCEIRO_EXTRATOS_KEY = 'vilareal.financeiro.extratos.v19';
+export const STORAGE_FINANCEIRO_EXTRATOS_KEY = 'vilareal.financeiro.extratos.v20';
+/** Chave anterior; migrada para v20 com extrato Itaú PF zerado (remove mocks/XLS antigos persistidos). */
+const STORAGE_FINANCEIRO_EXTRATOS_V19 = 'vilareal.financeiro.extratos.v19';
 const STORAGE_FINANCEIRO_EXTRATOS_V18 = 'vilareal.financeiro.extratos.v18';
 const STORAGE_FINANCEIRO_EXTRATOS_V17 = 'vilareal.financeiro.extratos.v17';
 const STORAGE_FINANCEIRO_EXTRATOS_V16 = 'vilareal.financeiro.extratos.v16';
@@ -203,6 +200,7 @@ function extratosTodosArraysVazios(obj) {
 
 function removerChavesExtratoLegadoFinanceiro() {
   try {
+    window.localStorage.removeItem(STORAGE_FINANCEIRO_EXTRATOS_V19);
     window.localStorage.removeItem(STORAGE_FINANCEIRO_EXTRATOS_V18);
     window.localStorage.removeItem(STORAGE_FINANCEIRO_EXTRATOS_V17);
     window.localStorage.removeItem(STORAGE_FINANCEIRO_EXTRATOS_V16);
@@ -231,7 +229,7 @@ function aplicarMocksInstituicoesVazias(data) {
     d.CEF = [...cloneCefExtratoPdfMock(), ...vinc.CEF];
   }
   if (!Array.isArray(d['Itaú']) || d['Itaú'].length === 0) {
-    d['Itaú'] = [...cloneItauExtratoXlsMock(), ...vinc['Itaú']];
+    d['Itaú'] = [];
   }
   if (!Array.isArray(d.CORA) || d.CORA.length === 0) {
     d.CORA = [...cloneCoraExtratoXlsMock(), ...vinc.CORA];
@@ -264,16 +262,32 @@ function aplicarMocksInstituicoesVazias(data) {
 }
 
 /**
- * Persistência v19. Inclui BB (mock XLS); migração a partir de v18.
+ * Persistência v20. Migração a partir de v19 (zera extrato Itaú PF persistido) e anteriores.
  */
 export function loadPersistedExtratosFinanceiro() {
   if (typeof window === 'undefined') return null;
   try {
-    const raw19 = window.localStorage.getItem(STORAGE_FINANCEIRO_EXTRATOS_KEY);
-    if (raw19) {
-      const p = safeJsonParseFinanceiro(raw19);
-      if (p?.data && typeof p.data === 'object' && p.v === 19) {
+    const raw20 = window.localStorage.getItem(STORAGE_FINANCEIRO_EXTRATOS_KEY);
+    if (raw20) {
+      const p = safeJsonParseFinanceiro(raw20);
+      if (p?.data && typeof p.data === 'object' && p.v === 20) {
         return mergePersistedComLancamentosVinculacaoTeste(p.data);
+      }
+    }
+    const rawV19Legado = window.localStorage.getItem(STORAGE_FINANCEIRO_EXTRATOS_V19);
+    if (rawV19Legado) {
+      const p = safeJsonParseFinanceiro(rawV19Legado);
+      if (p?.data && typeof p.data === 'object' && p.v === 19) {
+        const cleared = { ...p.data, 'Itaú': [] };
+        const out = mergePersistedComLancamentosVinculacaoTeste(cleared);
+        out['Itaú'] = [];
+        window.localStorage.setItem(
+          STORAGE_FINANCEIRO_EXTRATOS_KEY,
+          JSON.stringify({ v: 20, data: out })
+        );
+        window.localStorage.removeItem(STORAGE_FINANCEIRO_EXTRATOS_V19);
+        removerChavesExtratoLegadoFinanceiro();
+        return out;
       }
     }
     const tryMigrate = (raw, version) => {
@@ -282,15 +296,15 @@ export function loadPersistedExtratosFinanceiro() {
       const merged = { ...getExtratosIniciais(), ...parsed.data };
       return aplicarMocksInstituicoesVazias(merged);
     };
-    const saveV19 = (out) => {
-      window.localStorage.setItem(STORAGE_FINANCEIRO_EXTRATOS_KEY, JSON.stringify({ v: 19, data: out }));
+    const saveV20 = (out) => {
+      window.localStorage.setItem(STORAGE_FINANCEIRO_EXTRATOS_KEY, JSON.stringify({ v: 20, data: out }));
       removerChavesExtratoLegadoFinanceiro();
     };
     const raw18ls = window.localStorage.getItem(STORAGE_FINANCEIRO_EXTRATOS_V18);
     if (raw18ls) {
       const out = tryMigrate(raw18ls, 18);
       if (out) {
-        saveV19(out);
+        saveV20(out);
         return out;
       }
     }
@@ -298,7 +312,7 @@ export function loadPersistedExtratosFinanceiro() {
     if (raw17) {
       const out = tryMigrate(raw17, 17);
       if (out) {
-        saveV19(out);
+        saveV20(out);
         return out;
       }
     }
@@ -306,7 +320,7 @@ export function loadPersistedExtratosFinanceiro() {
     if (raw16) {
       const out = tryMigrate(raw16, 16);
       if (out) {
-        saveV19(out);
+        saveV20(out);
         return out;
       }
     }
@@ -314,7 +328,7 @@ export function loadPersistedExtratosFinanceiro() {
     if (raw15) {
       const out = tryMigrate(raw15, 15);
       if (out) {
-        saveV19(out);
+        saveV20(out);
         return out;
       }
     }
@@ -322,7 +336,7 @@ export function loadPersistedExtratosFinanceiro() {
     if (raw14) {
       const out = tryMigrate(raw14, 14);
       if (out) {
-        saveV19(out);
+        saveV20(out);
         return out;
       }
     }
@@ -330,7 +344,7 @@ export function loadPersistedExtratosFinanceiro() {
     if (raw13) {
       const out = tryMigrate(raw13, 13);
       if (out) {
-        saveV19(out);
+        saveV20(out);
         return out;
       }
     }
@@ -338,7 +352,7 @@ export function loadPersistedExtratosFinanceiro() {
     if (raw12) {
       const out = tryMigrate(raw12, 12);
       if (out) {
-        saveV19(out);
+        saveV20(out);
         return out;
       }
     }
@@ -346,7 +360,7 @@ export function loadPersistedExtratosFinanceiro() {
     if (raw11) {
       const out = tryMigrate(raw11, 11);
       if (out) {
-        saveV19(out);
+        saveV20(out);
         return out;
       }
     }
@@ -354,7 +368,7 @@ export function loadPersistedExtratosFinanceiro() {
     if (raw10) {
       const out = tryMigrate(raw10, 10);
       if (out) {
-        saveV19(out);
+        saveV20(out);
         return out;
       }
     }
@@ -362,7 +376,7 @@ export function loadPersistedExtratosFinanceiro() {
     if (raw9) {
       const out = tryMigrate(raw9, 9);
       if (out) {
-        saveV19(out);
+        saveV20(out);
         return out;
       }
     }
@@ -370,7 +384,7 @@ export function loadPersistedExtratosFinanceiro() {
     if (raw8) {
       const out = tryMigrate(raw8, 8);
       if (out) {
-        saveV19(out);
+        saveV20(out);
         return out;
       }
     }
@@ -384,7 +398,7 @@ export function loadPersistedExtratosFinanceiro() {
       const merged = { ...base, ...parsed.data };
       const limpo = extratosTodosArraysVazios(merged);
       limpo.CEF = cloneCefExtratoPdfMock();
-      limpo['Itaú'] = cloneItauExtratoXlsMock();
+      limpo['Itaú'] = [];
       limpo['Itaú Empresas'] = cloneItauEmpresasExtratoXlsMock();
       limpo.CORA = cloneCoraExtratoXlsMock();
       limpo.BB = cloneBbExtratoXlsMock();
@@ -396,7 +410,7 @@ export function loadPersistedExtratosFinanceiro() {
       limpo['BTG RACHEL'] = cloneBtgRachelExtratoXlsMock();
       window.localStorage.setItem(
         STORAGE_FINANCEIRO_EXTRATOS_KEY,
-        JSON.stringify({ v: 19, data: limpo })
+        JSON.stringify({ v: 20, data: limpo })
       );
       removerChavesExtratoLegadoFinanceiro();
       return limpo;
@@ -410,7 +424,7 @@ export function loadPersistedExtratosFinanceiro() {
 export function savePersistedExtratosFinanceiro(data) {
   if (typeof window === 'undefined') return;
   try {
-    window.localStorage.setItem(STORAGE_FINANCEIRO_EXTRATOS_KEY, JSON.stringify({ v: 19, data }));
+    window.localStorage.setItem(STORAGE_FINANCEIRO_EXTRATOS_KEY, JSON.stringify({ v: 20, data }));
     removerChavesExtratoLegadoFinanceiro();
   } catch {
     /* ignore */
@@ -668,20 +682,22 @@ function cloneExtratos(extratos) {
   return JSON.parse(JSON.stringify(extratos));
 }
 
-/** Base: CEF + Itaú com mocks; demais vazios; depois pareamento interbancário. */
+/** Base: mocks por banco (Itaú PF vazio); depois pareamento interbancário. */
 function getExtratosIniciais() {
   return parearCompensacaoInterbancaria(cloneExtratos(MOCK_EXTRATOS_POR_BANCO));
 }
 
 /**
  * Reinsere nos extratos persistidos os lançamentos de teste de vinculação automática (nº 88000–88049)
- * quando faltarem. O Financeiro faz `{ ...getExtratosIniciais(), ...persisted }`, então o storage v19
- * substitui por banco e removia esses lançamentos — a busca automática deixava de achar pares data/valor.
+ * quando faltarem (exceto Itaú PF — extrato real só via OFX/importação).
+ * O Financeiro faz `{ ...getExtratosIniciais(), ...persisted }`, então o storage substitui por banco
+ * e removia esses lançamentos — a busca automática deixava de achar pares data/valor.
  */
 export function mergePersistedComLancamentosVinculacaoTeste(persisted) {
   if (!persisted || typeof persisted !== 'object') return persisted;
   const out = { ...persisted };
   for (const [nomeBanco, listVinc] of Object.entries(VINC_TESTE_EXTRATOS)) {
+    if (nomeBanco === 'Itaú') continue;
     if (!Array.isArray(listVinc) || listVinc.length === 0) continue;
     const arr = Array.isArray(out[nomeBanco]) ? out[nomeBanco] : [];
     const keys = new Set(arr.map((t) => `${String(t.numero)}|${String(t.data)}`));
@@ -1007,8 +1023,8 @@ function lancamentoParaContaCorrenteModal(t) {
 }
 
 /**
- * Lançamentos com **letra A** (Conta Escritório nos extratos), filtrados por código do cliente e processo em tela.
- * Usado na janela **Conta Corrente** em Processos — apenas vínculos com Cod. Cliente + Proc. coerentes.
+ * Lançamentos dos extratos (persistidos + mock) com **Cod. Cliente** e **Proc.** alinhados ao processo em tela,
+ * **independente da letra** contábil (A, N, etc.) — reflete o vínculo aplicado no Financeiro.
  * @param {string|number} codigoCliente - Código do cliente exibido em Processos
  * @param {string|number} [processo] - Número do processo exibido em Processos (opcional; se informado, filtra por Proc.)
  * @returns {{ lancamentos: Array<{data, descricao, dataOuId, valor, nome}>, soma: number }}
@@ -1027,15 +1043,29 @@ export function getLancamentosContaCorrente(codigoCliente, processo) {
   const procNorm = normalizarProc(processo);
   const extratos = getExtratosParaContaCorrente();
   const map = getBancoNumeroMapMerged();
-  const contaEscritorio = getTransacoesConsolidadas(extratos, 'Conta Escritório', map);
 
-  let filtrado = codigoNorm
-    ? contaEscritorio.filter((t) => normalizarCodigoCliente(t.codCliente) === codigoNorm)
-    : [];
-  if (procNorm) {
-    filtrado = filtrado.filter((t) => normalizarProc(t.proc) === procNorm);
+  if (!codigoNorm) return { lancamentos: [], soma: 0 };
+
+  const filtrado = [];
+  const seen = new Set();
+  for (const [nomeBanco, transacoes] of Object.entries(extratos)) {
+    if (!Array.isArray(transacoes)) continue;
+    for (const t of transacoes) {
+      if (normalizarCodigoCliente(t.codCliente) !== codigoNorm) continue;
+      if (procNorm !== '') {
+        if (normalizarProc(t.proc) !== procNorm) continue;
+      }
+      const key = `${nomeBanco}|${String(t.numero ?? '')}|${String(t.data ?? '')}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      filtrado.push({
+        ...t,
+        nomeBanco,
+        numeroBanco: map[nomeBanco] ?? '-',
+      });
+    }
   }
-  // Ordenação estável: data + número (quando existir)
+
   filtrado.sort((a, b) => {
     const byData = String(a.data ?? '').localeCompare(String(b.data ?? ''));
     if (byData !== 0) return byData;
@@ -1052,8 +1082,6 @@ export function getLancamentosContaCorrente(codigoCliente, processo) {
  */
 export function mergeContaCorrenteComLinhaOrigem(lancamentos, soma, linhaOrigem, codigoCliente, processo) {
   if (!linhaOrigem) return { lancamentos, soma };
-  const letra = String(linhaOrigem.letra || 'A').toUpperCase();
-  if (letra !== 'A') return { lancamentos, soma };
   const codNorm = normalizarCodigoCliente(codigoCliente);
   const procNorm = normalizarProc(processo);
   if (!codNorm || !procNorm) return { lancamentos, soma };

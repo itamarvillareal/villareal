@@ -6,6 +6,7 @@ export const navItems = [
   { id: 'clientes', label: 'Pessoas', icon: 'Users' },
   { id: 'pessoas', label: 'Clientes', icon: 'UserCircle' },
   { id: 'processos', label: 'Processos', icon: 'Folder' },
+  { id: 'relatorio-calculos', label: 'Relatório Cálculos', icon: 'Table2' },
   { id: 'calculos', label: 'Cálculos', icon: 'Calculator' },
   { id: 'imoveis', label: 'Imóveis', icon: 'Building2' },
   { id: 'agenda', label: 'Agenda', icon: 'Calendar' },

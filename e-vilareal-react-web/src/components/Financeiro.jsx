@@ -1591,7 +1591,7 @@ export function Financeiro() {
                   ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
                   : 'bg-white text-slate-800 hover:bg-slate-50'
               }`}
-              title="Mescla OFX real (estrutura Itaú, anonimizado) — não apaga mock"
+              title="Mescla OFX de exemplo (estrutura Itaú, anonimizado) ao extrato atual"
             >
               + OFX real Itaú
             </button>

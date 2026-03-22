@@ -25,7 +25,13 @@ import {
   seedHistoricoDoProcesso,
 } from '../data/processosHistoricoData';
 import { resolverAliasHojeEmTexto } from '../services/hjDateAliasService.js';
-import { agendarAudienciaParaTodosUsuarios, agendarEmLoteParaUsuarios } from '../data/agendaPersistenciaData';
+import {
+  agendarAudienciaParaTodosUsuarios,
+  agendarEmLoteParaUsuarios,
+  getUsuariosAtivos,
+} from '../data/agendaPersistenciaData';
+import { getPerfilAtivoParaPermissoes } from '../data/usuarioPermissoesStorage.js';
+import { getNomeExibicaoUsuario } from '../data/usuarioDisplayHelpers.js';
 import {
   X,
   FolderOpen,
@@ -148,6 +154,18 @@ function hojeBr() {
   const mm = String(d.getMonth() + 1).padStart(2, '0');
   const yyyy = String(d.getFullYear());
   return `${dd}/${mm}/${yyyy}`;
+}
+
+/** Mesmo critério do seletor «Perfil ativo» no menu (apelido ou nome do cadastro Agenda). */
+function nomeUsuarioAtivoParaHistorico() {
+  const perfilId = getPerfilAtivoParaPermissoes();
+  const lista = getUsuariosAtivos();
+  const u = (lista || []).find((x) => String(x.id) === String(perfilId));
+  const nome = getNomeExibicaoUsuario(u);
+  if (nome && nome !== '—') return nome;
+  const id = String(perfilId || '').trim();
+  if (id) return id.charAt(0).toUpperCase() + id.slice(1).toLowerCase();
+  return 'Usuário';
 }
 
 function formatValorContaCorrente(v) {
@@ -841,8 +859,23 @@ export function Processos() {
 
   function manterInformacaoNoHistorico() {
     const info = String(proximaInformacao ?? '').trim();
+    const dataCampo = String(dataProximaInformacao ?? '').trim();
+
+    /** Com os dois campos vazios: regrava usuário e data na linha mais recente (topo da tabela), sem alterar o texto. */
+    if (!info && !dataCampo) {
+      if (historico.length === 0) return;
+      const hoje = hojeBr();
+      const usuario = nomeUsuarioAtivoParaHistorico();
+      const [primeiro, ...resto] = historico;
+      const atualizado = { ...primeiro, usuario, data: hoje };
+      const historicoAtualizado = [atualizado, ...resto];
+      setHistorico(historicoAtualizado);
+      salvarHistoricoDoProcesso(montarPayloadRegistroProcesso({ historico: historicoAtualizado }));
+      return;
+    }
+
     if (!info) return;
-    const data = String(dataProximaInformacao ?? '').trim() || hojeBr();
+    const data = dataCampo || hojeBr();
     const maiorNumero = historico.reduce((acc, h) => {
       const n = Number(h?.numero);
       return Number.isFinite(n) ? Math.max(acc, n) : acc;
@@ -853,7 +886,7 @@ export function Processos() {
       inf: String(novoNumero).padStart(2, '0'),
       info,
       data,
-      usuario: 'USUÁRIO',
+      usuario: nomeUsuarioAtivoParaHistorico(),
       numero: String(novoNumero).padStart(4, '0'),
     };
     const historicoAtualizado = [novoItem, ...historico];
@@ -1647,10 +1680,10 @@ export function Processos() {
                       <input
                         type="text"
                         value={proximaInformacao}
-                        readOnly={camposBloqueados}
                         onChange={(e) => setProximaInformacao(e.target.value)}
                         placeholder="Digite a próxima informação a ser inserida..."
-                        className={clsCampo}
+                        className={inputClass}
+                        title="Editável mesmo com «Edição Desabilitada» — para incluir andamento no histórico"
                       />
                     </div>
                     <div className="w-36">
@@ -1658,20 +1691,20 @@ export function Processos() {
                       <input
                         type="text"
                         value={dataProximaInformacao}
-                        readOnly={camposBloqueados}
                         onChange={(e) => {
                           const v = e.target.value;
                           setDataProximaInformacao(resolverAliasHojeEmTexto(v, 'br') ?? v);
                         }}
                         placeholder="dd/mm/aaaa ou hj"
-                        className={clsCampo}
+                        className={inputClass}
+                        title="Editável mesmo com «Edição Desabilitada»"
                       />
                     </div>
                     <button
                       type="button"
-                      disabled={camposBloqueados}
                       onClick={manterInformacaoNoHistorico}
-                      className="px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50 whitespace-nowrap disabled:opacity-50 disabled:pointer-events-none"
+                      className="px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50 whitespace-nowrap"
+                      title="Grava a informação no histórico (disponível mesmo com edição do formulário desabilitada)"
                     >
                       Manter Inf.
                     </button>
@@ -1761,7 +1794,7 @@ export function Processos() {
                   setContaCorrenteModo('processo');
                   setModalContaCorrente(true);
                 }}
-                title="Lançamentos com letra A (Conta Escritório) no Financeiro, filtrados por Cod. Cliente e Proc. deste processo"
+                title="Lançamentos do Financeiro com Cod. Cliente e Proc. iguais a este processo (qualquer classificação contábil no extrato)"
               >
                 Conta Corrente
               </button>
@@ -2049,7 +2082,7 @@ export function Processos() {
         </div>
       )}
 
-      {/* Janela Conta Corrente: lançamentos da Conta Contábil Conta Escritório (Financeiro) do cliente em tela */}
+      {/* Janela Conta Corrente: lançamentos dos extratos vinculados a cliente + proc. (Financeiro) */}
       {modalContaCorrente && (() => {
         const processoContaCorrenteEfetivo = contaCorrenteModo === 'proc0' ? 0 : processo;
         const base = getLancamentosContaCorrente(codigoCliente, processoContaCorrenteEfetivo);
@@ -2077,8 +2110,8 @@ export function Processos() {
           >
             <div className="flex items-center justify-between px-4 py-2 border-b border-slate-200 shrink-0">
               <h2 id="modal-conta-corrente-titulo" className="text-base font-semibold text-slate-800">
-                Conta Corrente (Conta Escritório – Cliente {codigoCliente}
-                {contaCorrenteModo === 'proc0' ? ', Processo 0 (mensalista / geral)' : processo ? `, Processo ${processo}` : ''})
+                Conta Corrente – Cliente {codigoCliente}
+                {contaCorrenteModo === 'proc0' ? ', Processo 0 (mensalista / geral)' : processo ? `, Processo ${processo}` : ''}
               </h2>
               <button
                 type="button"
@@ -2090,9 +2123,9 @@ export function Processos() {
               </button>
             </div>
             <p className="text-xs text-slate-600 px-4 py-2 border-b border-slate-200 bg-emerald-50/50 shrink-0">
-              Origem: lançamentos do Financeiro classificados com <strong>letra A</strong> (conta contábil{' '}
-              <strong>Conta Escritório</strong>) e vinculados a este <strong>cliente</strong> e <strong>processo</strong>{' '}
-              (Cod. Cliente + Proc. no extrato).
+              Origem: lançamentos dos <strong>extratos bancários</strong> no Financeiro com os mesmos{' '}
+              <strong>Cod. Cliente</strong> e <strong>Proc.</strong> deste processo (inclui qualquer letra contábil, ex.: A, N),
+              como após vincular pelo número do processo ou editar o extrato.
             </p>
             <div className="flex-1 min-h-0 flex flex-col p-4">
               <div className="flex gap-4 flex-1 min-h-0">
@@ -2152,7 +2185,7 @@ export function Processos() {
                       {listaOrdenada.length === 0 ? (
                         <tr>
                           <td colSpan={6} className="border border-slate-200 px-2 py-4 text-center text-slate-500">
-                            Nenhum lançamento da Conta Escritório para o cliente {codigoCliente}
+                            Nenhum lançamento do Financeiro vinculado ao cliente {codigoCliente}
                             {contaCorrenteModo === 'proc0' ? ' e processo 0' : processo ? ` e processo ${processo}` : ''}.
                           </td>
                         </tr>

@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
-import { Columns3 } from 'lucide-react';
+import { Columns3, FilterX } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { RelatorioUltimoAndamentoHeader } from './RelatorioUltimoAndamentoHeader.jsx';
 import { RelatorioPresetsPanel } from './RelatorioPresetsPanel.jsx';
@@ -18,6 +18,7 @@ const STORAGE_LARGURA_UNIFORME = 'vilareal.relatorioProcessos.larguraUniforme.v1
 const STORAGE_FILTRO_PROCESSO_ATIVO = 'vilareal.relatorioProcessos.filtroProcessoAtivo.v1';
 const STORAGE_MODO_ALTERACAO = 'vilareal.relatorioProcessos.modoAlteracao.v1';
 const STORAGE_DADOS_RELATORIO = 'vilareal.relatorioProcessos.dadosLinhas.v1';
+const STORAGE_FILTROS_COLUNAS_RELATORIO = 'vilareal.relatorioProcessos.filtrosPorColuna.v1';
 
 /** Acima disso não hidrata nem grava linhas editáveis no localStorage (evita quota e lentidão com o relatório completo). */
 const RELATORIO_MAX_LINHAS_PERSISTIDAS = 400;
@@ -61,7 +62,7 @@ const COLUNAS = [
   { id: 'codCliente', label: 'Cod. Cliente', minW: '96px' },
   { id: 'cliente', label: 'Cliente', minW: '180px' },
   { id: 'numeroProcesso', label: 'N.º Processo', minW: '200px' },
-  { id: 'inRequerente', label: 'In Requerente/Recurso', minW: '140px' },
+  { id: 'inRequerente', label: 'Requerente/Requerido', minW: '140px' },
   { id: 'ultimoAndamento', label: 'Último Andamento', minW: '200px' },
   { id: 'dataConsulta', label: 'Data da Consulta', minW: '100px' },
   { id: 'proximaConsulta', label: 'Próxima Consulta', minW: '110px' },
@@ -82,6 +83,27 @@ const COLUNAS = [
 ];
 
 const COLUNA_IDS_RELATORIO = COLUNAS.map((c) => c.id);
+
+function estadoFiltrosColunasVazio() {
+  return COLUNAS.reduce((acc, col) => ({ ...acc, [col.id]: '' }), {});
+}
+
+function carregarFiltrosPorColunaSalvos() {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(STORAGE_FILTROS_COLUNAS_RELATORIO);
+    if (!raw) return null;
+    const p = JSON.parse(raw);
+    if (!p || typeof p !== 'object' || Array.isArray(p)) return null;
+    const base = estadoFiltrosColunasVazio();
+    for (const col of COLUNAS) {
+      if (p[col.id] != null && typeof p[col.id] === 'string') base[col.id] = p[col.id];
+    }
+    return base;
+  } catch {
+    return null;
+  }
+}
 
 function carregarColunasVisiveisSalvas() {
   if (typeof window === 'undefined') return null;
@@ -152,6 +174,10 @@ function carregarDadosRelatorioInicial() {
       __relatorioIdx: i,
       codCliente: base[i].codCliente,
       proc: base[i].proc,
+      /** Nome sempre do cadastro de pessoas vinculado ao código de cliente (não sobrescrever com valor salvo antigo). */
+      cliente: base[i].cliente,
+      /** Mesmo `papelParte` / Processos (enriquecido na base). */
+      inRequerente: base[i].inRequerente,
     }));
   } catch {
     return montarLinhasRelatorioBase();
@@ -280,9 +306,23 @@ export function Relatorio() {
       return next;
     });
   };
-  const [filtrosPorColuna, setFiltrosPorColuna] = useState(() =>
-    COLUNAS.reduce((acc, col) => ({ ...acc, [col.id]: '' }), {})
+  const [filtrosPorColuna, setFiltrosPorColuna] = useState(
+    () => carregarFiltrosPorColunaSalvos() ?? estadoFiltrosColunasVazio()
   );
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(STORAGE_FILTROS_COLUNAS_RELATORIO, JSON.stringify(filtrosPorColuna));
+    } catch {
+      /* ignore */
+    }
+  }, [filtrosPorColuna]);
+
+  const limparFiltrosRelatorio = () => {
+    setFiltrosPorColuna(estadoFiltrosColunasVazio());
+    setOrdenarPor(null);
+    setOrdemAsc(true);
+  };
 
   const dadosFiltrados = useMemo(() => {
     return dados.filter((row) => {
@@ -329,31 +369,40 @@ export function Relatorio() {
         <header className="mb-2 flex flex-wrap items-start justify-between gap-2">
           <h1 className="text-xl font-bold text-slate-800">Relatório</h1>
           <div className="flex flex-wrap items-center gap-2">
-          <RelatorioPresetsPanel
-            colIds={colIdsRelatorio}
-            colunasVisiveis={colunasVisiveis}
-            setColunasVisiveis={setColunasVisiveis}
-            larguraUniforme={larguraUniforme}
-            setLarguraUniforme={setLarguraUniforme}
-            campoPorColuna={campoPorColuna}
-            setCampoPorColuna={setCampoPorColuna}
-            filtroProcessoAtivo={filtroProcessoAtivo}
-            setFiltroProcessoAtivo={setFiltroProcessoAtivo}
-            modoAlteracao={modoAlteracao}
-            setModoAlteracao={setModoAlteracao}
-          />
-          <div className="relative" ref={painelColunasRef}>
             <button
               type="button"
-              onClick={() => setPainelColunasAberto((v) => !v)}
-              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-teal-600 bg-white text-teal-800 text-sm font-medium hover:bg-teal-50 shadow-sm"
-              title="Escolher quais colunas exibir e largura"
+              onClick={limparFiltrosRelatorio}
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-400 bg-white text-slate-700 text-sm font-medium hover:bg-slate-50 shadow-sm"
+              title="Zera os textos «Filtrar…» em todas as colunas e remove a ordenação escolhida"
             >
-              <Columns3 className="w-4 h-4 shrink-0" aria-hidden />
-              Colunas
+              <FilterX className="w-4 h-4 shrink-0" aria-hidden />
+              Limpar filtros
             </button>
-            {painelColunasAberto ? (
-              <div className="absolute right-0 top-full mt-1 z-20 w-[min(100vw-2rem,22rem)] rounded-lg border border-slate-200 bg-white shadow-lg p-3 text-sm">
+            <RelatorioPresetsPanel
+              colIds={colIdsRelatorio}
+              colunasVisiveis={colunasVisiveis}
+              setColunasVisiveis={setColunasVisiveis}
+              larguraUniforme={larguraUniforme}
+              setLarguraUniforme={setLarguraUniforme}
+              campoPorColuna={campoPorColuna}
+              setCampoPorColuna={setCampoPorColuna}
+              filtroProcessoAtivo={filtroProcessoAtivo}
+              setFiltroProcessoAtivo={setFiltroProcessoAtivo}
+              modoAlteracao={modoAlteracao}
+              setModoAlteracao={setModoAlteracao}
+            />
+            <div className="relative" ref={painelColunasRef}>
+              <button
+                type="button"
+                onClick={() => setPainelColunasAberto((v) => !v)}
+                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-teal-600 bg-white text-teal-800 text-sm font-medium hover:bg-teal-50 shadow-sm"
+                title="Escolher quais colunas exibir e largura"
+              >
+                <Columns3 className="w-4 h-4 shrink-0" aria-hidden />
+                Colunas
+              </button>
+              {painelColunasAberto ? (
+                <div className="absolute right-0 top-full mt-1 z-20 w-[min(100vw-2rem,22rem)] rounded-lg border border-slate-200 bg-white shadow-lg p-3 text-sm">
                 <p className="text-xs text-slate-600 mb-2">
                   Marque as colunas que deseja ver na tabela. Use <strong>Marcar todas</strong> para exibir todas.
                 </p>
@@ -399,9 +448,9 @@ export function Relatorio() {
                     </label>
                   ))}
                 </div>
-              </div>
-            ) : null}
-          </div>
+                </div>
+              ) : null}
+            </div>
           </div>
         </header>
         <div className="flex-1 min-h-0 bg-white rounded border border-slate-300 shadow-sm overflow-hidden flex flex-col">
