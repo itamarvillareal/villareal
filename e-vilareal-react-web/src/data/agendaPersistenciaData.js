@@ -103,6 +103,101 @@ function dataStr({ dd, mm, yyyy }) {
   return `${String(dd).padStart(2, '0')}/${String(mm).padStart(2, '0')}/${yyyy}`;
 }
 
+function parsedToDate(parsed) {
+  return new Date(parsed.yyyy, parsed.mm - 1, parsed.dd);
+}
+
+function dateToParsed(dateObj) {
+  return {
+    dd: dateObj.getDate(),
+    mm: dateObj.getMonth() + 1,
+    yyyy: dateObj.getFullYear(),
+  };
+}
+
+function calcularPascoa(ano) {
+  const a = ano % 19;
+  const b = Math.floor(ano / 100);
+  const c = ano % 100;
+  const d = Math.floor(b / 4);
+  const e = b % 4;
+  const f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4);
+  const k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const mes = Math.floor((h + l - 7 * m + 114) / 31);
+  const dia = ((h + l - 7 * m + 114) % 31) + 1;
+  return new Date(ano, mes - 1, dia);
+}
+
+function getFeriadosNacionais(ano) {
+  const fixos = new Set([
+    `01/01/${ano}`,
+    `21/04/${ano}`,
+    `01/05/${ano}`,
+    `07/09/${ano}`,
+    `12/10/${ano}`,
+    `02/11/${ano}`,
+    `15/11/${ano}`,
+    `25/12/${ano}`,
+  ]);
+  const pascoa = calcularPascoa(ano);
+  const sextaSanta = new Date(pascoa.getFullYear(), pascoa.getMonth(), pascoa.getDate() - 2);
+  const carnavalSeg = new Date(pascoa.getFullYear(), pascoa.getMonth(), pascoa.getDate() - 48);
+  const carnavalTer = new Date(pascoa.getFullYear(), pascoa.getMonth(), pascoa.getDate() - 47);
+  const corpusChristi = new Date(pascoa.getFullYear(), pascoa.getMonth(), pascoa.getDate() + 60);
+  const moveis = [sextaSanta, carnavalSeg, carnavalTer, corpusChristi].map((d) => dataStr(dateToParsed(d)));
+  return { fixos, moveis: new Set(moveis) };
+}
+
+function normalizarEntradaData(dataInput) {
+  if (dataInput instanceof Date) {
+    return new Date(dataInput.getFullYear(), dataInput.getMonth(), dataInput.getDate());
+  }
+  if (typeof dataInput === 'string') {
+    const parsed = parseDataBrCompleta(dataInput);
+    if (!parsed) return null;
+    return parsedToDate(parsed);
+  }
+  if (dataInput && typeof dataInput === 'object') {
+    const parsed = {
+      dd: Number(dataInput.dd),
+      mm: Number(dataInput.mm),
+      yyyy: Number(dataInput.yyyy),
+    };
+    if (!Number.isFinite(parsed.dd) || !Number.isFinite(parsed.mm) || !Number.isFinite(parsed.yyyy)) return null;
+    if (parsed.mm < 1 || parsed.mm > 12) return null;
+    const maxDia = new Date(parsed.yyyy, parsed.mm, 0).getDate();
+    if (parsed.dd < 1 || parsed.dd > maxDia) return null;
+    return parsedToDate(parsed);
+  }
+  return null;
+}
+
+export function isDiaUtil(dataInput) {
+  const dateObj = normalizarEntradaData(dataInput);
+  if (!dateObj) return false;
+  const dow = dateObj.getDay();
+  if (dow === 0 || dow === 6) return false;
+  const ano = dateObj.getFullYear();
+  const { fixos, moveis } = getFeriadosNacionais(ano);
+  const key = dataStr(dateToParsed(dateObj));
+  return !fixos.has(key) && !moveis.has(key);
+}
+
+export function ajustarParaProximoDiaUtil(dataInput) {
+  const dateObj = normalizarEntradaData(dataInput);
+  if (!dateObj) return null;
+  const out = new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate());
+  while (!isDiaUtil(out)) {
+    out.setDate(out.getDate() + 1);
+  }
+  return out;
+}
+
 function normalizarHora(valor) {
   const digits = apenasDigitos(valor);
   if (!digits) return '';
@@ -202,7 +297,7 @@ function normalizarDescricao({ audienciaTipo, numeroProcessoNovo }) {
   return t || num || 'Audiência';
 }
 
-function parsePeriodicidade(periodicidadeRaw) {
+function parsePeriodicidade(periodicidadeRaw, diaDoMesRaw) {
   const p = String(periodicidadeRaw ?? '').trim().toLowerCase();
   if (!p || p === 'agendamento único' || p === 'agendamento unico' || p === 'unico' || p === 'único') {
     return { tipo: 'unico' };
@@ -214,7 +309,14 @@ function parsePeriodicidade(periodicidadeRaw) {
   if (p === 'bimestralmente' || p === 'bimestral') return { tipo: 'meses', passo: 2 };
   if (p === 'trimestralmente' || p === 'trimestral') return { tipo: 'meses', passo: 3 };
   if (p === 'semestralmente' || p === 'semestral') return { tipo: 'meses', passo: 6 };
-  if (p.includes('todo dia')) return { tipo: 'meses', passo: 1, fixarDiaMes: true };
+  if (p.includes('todo dia')) {
+    const diaDoMesNum = Number(diaDoMesRaw);
+    const diaDoMes =
+      Number.isFinite(diaDoMesNum) && Number.isInteger(diaDoMesNum) && diaDoMesNum >= 1 && diaDoMesNum <= 31
+        ? diaDoMesNum
+        : null;
+    return { tipo: 'meses', passo: 1, fixarDiaMes: true, diaDoMes };
+  }
   return { tipo: 'unico' };
 }
 
@@ -224,8 +326,8 @@ function addDias(parsed, dias) {
   return { dd: dt.getDate(), mm: dt.getMonth() + 1, yyyy: dt.getFullYear() };
 }
 
-function addMesesPreservandoDia(parsed, meses, fixarDia = false) {
-  const baseDia = parsed.dd;
+function addMesesPreservandoDia(parsed, meses, fixarDia = false, diaDoMes = null) {
+  const baseDia = Number.isFinite(Number(diaDoMes)) ? Number(diaDoMes) : parsed.dd;
   const dt = new Date(parsed.yyyy, parsed.mm - 1, 1);
   dt.setMonth(dt.getMonth() + meses);
   const maxDia = new Date(dt.getFullYear(), dt.getMonth() + 1, 0).getDate();
@@ -233,11 +335,16 @@ function addMesesPreservandoDia(parsed, meses, fixarDia = false) {
   return { dd: dia, mm: dt.getMonth() + 1, yyyy: dt.getFullYear() };
 }
 
-function gerarOcorrencias({ dataBaseBr, periodicidade }) {
+function gerarOcorrencias({ dataBaseBr, periodicidade, diaDoMes = null, ajustarParaDiaUtil = true }) {
   const parsed = parseDataBrCompleta(dataBaseBr);
   if (!parsed) return [];
-  const regra = parsePeriodicidade(periodicidade);
-  if (regra.tipo === 'unico') return [dataStr(parsed)];
+  const regra = parsePeriodicidade(periodicidade, diaDoMes);
+  const dataBaseOriginal = parsedToDate(parsed);
+  const dataBaseAjustada = ajustarParaDiaUtil ? ajustarParaProximoDiaUtil(dataBaseOriginal) : dataBaseOriginal;
+  if (!dataBaseAjustada) return [];
+  if (regra.tipo === 'unico') return [dataStr(dateToParsed(dataBaseAjustada))];
+
+  if (regra.fixarDiaMes && !regra.diaDoMes) return [];
 
   const out = [];
   const limite = regra.tipo === 'dias' ? 60 : 24; // horizonte suficiente para uso prático
@@ -245,11 +352,35 @@ function gerarOcorrencias({ dataBaseBr, periodicidade }) {
     let dataParsed = parsed;
     if (i > 0) {
       if (regra.tipo === 'dias') dataParsed = addDias(parsed, regra.passo * i);
-      if (regra.tipo === 'meses') dataParsed = addMesesPreservandoDia(parsed, regra.passo * i, !!regra.fixarDiaMes);
+      if (regra.tipo === 'meses') {
+        dataParsed = addMesesPreservandoDia(
+          parsed,
+          regra.passo * i,
+          !!regra.fixarDiaMes,
+          regra.diaDoMes
+        );
+      }
     }
-    out.push(dataStr(dataParsed));
+    const dataAjustada = ajustarParaDiaUtil ? ajustarParaProximoDiaUtil(parsedToDate(dataParsed)) : parsedToDate(dataParsed);
+    if (!dataAjustada) continue;
+    out.push(dataStr(dateToParsed(dataAjustada)));
   }
   return out;
+}
+
+export function calcularPrimeiraOcorrenciaAgendaLote({
+  dataBaseBr,
+  periodicidade,
+  diaDoMes = null,
+  ajustarParaDiaUtil = true,
+}) {
+  const ocorrencias = gerarOcorrencias({
+    dataBaseBr,
+    periodicidade,
+    diaDoMes,
+    ajustarParaDiaUtil,
+  });
+  return ocorrencias[0] || '';
 }
 
 /**
@@ -535,6 +666,8 @@ export function agendarEmLoteParaUsuarios({
   dataBaseBr,
   hora,
   periodicidade,
+  diaDoMes = null,
+  ajustarParaDiaUtil = true,
   usuarios = [],
   processoId = '',
   clienteId = '',
@@ -546,7 +679,16 @@ export function agendarEmLoteParaUsuarios({
   if (!parsedBase) return { ok: false, reason: 'data-invalida' };
 
   const horaNorm = normalizarHora(hora);
-  const ocorrencias = gerarOcorrencias({ dataBaseBr: dataBaseBr, periodicidade });
+  const regraPeriodicidade = parsePeriodicidade(periodicidade, diaDoMes);
+  if (regraPeriodicidade.fixarDiaMes && !regraPeriodicidade.diaDoMes) {
+    return { ok: false, reason: 'dia-do-mes-invalido' };
+  }
+  const ocorrencias = gerarOcorrencias({
+    dataBaseBr: dataBaseBr,
+    periodicidade,
+    diaDoMes: regraPeriodicidade.diaDoMes,
+    ajustarParaDiaUtil,
+  });
   if (ocorrencias.length === 0) return { ok: false, reason: 'sem-ocorrencias' };
 
   const usuariosValidos = (Array.isArray(usuarios) ? usuarios : [])
@@ -576,6 +718,14 @@ export function agendarEmLoteParaUsuarios({
         origem: 'agenda-em-lote',
         periodicidade: String(periodicidade ?? 'Agendamento único'),
         recorrente: String(periodicidade ?? '').trim().toLowerCase() !== 'agendamento único',
+        ajustarParaDiaUtil: !!ajustarParaDiaUtil,
+        recorrenciaRegra: regraPeriodicidade.fixarDiaMes
+          ? {
+              periodicidade: 'todo_dia_x_do_mes',
+              diaDoMes: regraPeriodicidade.diaDoMes,
+              ajustarParaDiaUtil: !!ajustarParaDiaUtil,
+            }
+          : null,
         dataBase: dataStr(parsedBase),
         processoId: String(processoId ?? ''),
         clienteId: String(clienteId ?? ''),

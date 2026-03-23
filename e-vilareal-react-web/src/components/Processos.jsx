@@ -28,6 +28,7 @@ import { resolverAliasHojeEmTexto } from '../services/hjDateAliasService.js';
 import {
   agendarAudienciaParaTodosUsuarios,
   agendarEmLoteParaUsuarios,
+  calcularPrimeiraOcorrenciaAgendaLote,
   getUsuariosAtivos,
 } from '../data/agendaPersistenciaData';
 import { getPerfilAtivoParaPermissoes } from '../data/usuarioPermissoesStorage.js';
@@ -270,6 +271,7 @@ export function Processos() {
   const [agendaLoteData, setAgendaLoteData] = useState('');
   const [agendaLoteHora, setAgendaLoteHora] = useState('');
   const [agendaLotePeriodicidade, setAgendaLotePeriodicidade] = useState('Agendamento único');
+  const [agendaLoteDiaDoMes, setAgendaLoteDiaDoMes] = useState('');
   const [agendaLoteInfo, setAgendaLoteInfo] = useState('');
   const [sortContaCorrente, setSortContaCorrente] = useState({ col: 'data', dir: 'desc' });
   const [buscaContaCorrente, setBuscaContaCorrente] = useState({ campo: 'todos', termo: '' });
@@ -571,10 +573,13 @@ export function Processos() {
 
   function abrirAgendaEmLote() {
     const hoje = hojeBr();
+    const dataInicial = normalizarDataBr(audienciaData) || hoje;
+    const diaInicial = Number(String(dataInicial).slice(0, 2));
     setAgendaLoteTexto(montarTituloAgendaDoProcesso());
-    setAgendaLoteData(normalizarDataBr(audienciaData) || hoje);
+    setAgendaLoteData(dataInicial);
     setAgendaLoteHora(normalizarHoraAudiencia(audienciaHora) || '');
     setAgendaLotePeriodicidade('Agendamento único');
+    setAgendaLoteDiaDoMes(Number.isFinite(diaInicial) ? String(diaInicial) : '');
     setAgendaLoteInfo('');
     setModalAgendaLoteAberto(true);
   }
@@ -587,6 +592,15 @@ export function Processos() {
     }
 
     const horaNorm = normalizarHoraAudiencia(agendaLoteHora);
+    const periodicidadeTodoDiaMes = agendaLotePeriodicidade === 'Todo dia X do mês';
+    const diaDoMesNum = Number(agendaLoteDiaDoMes);
+    if (
+      periodicidadeTodoDiaMes &&
+      (!Number.isInteger(diaDoMesNum) || !Number.isFinite(diaDoMesNum) || diaDoMesNum < 1 || diaDoMesNum > 31)
+    ) {
+      setAgendaLoteInfo('Informe um dia do mês válido entre 1 e 31.');
+      return;
+    }
     const usuariosAlvo = [
       { id: 'itamar', nome: 'Dr. Itamar' },
       { id: 'kari', nome: 'Karla' },
@@ -598,6 +612,8 @@ export function Processos() {
       dataBaseBr: dataNorm,
       hora: horaNorm,
       periodicidade: agendaLotePeriodicidade,
+      diaDoMes: periodicidadeTodoDiaMes ? diaDoMesNum : null,
+      ajustarParaDiaUtil: true,
       usuarios: usuariosAlvo,
       processoId: String(processo ?? ''),
       clienteId: String(codigoCliente ?? ''),
@@ -615,6 +631,25 @@ export function Processos() {
     // fecha após pequeno feedback visual.
     setTimeout(() => setModalAgendaLoteAberto(false), 700);
   }
+
+  const primeiraOcorrenciaAjustadaAgendaLote = useMemo(() => {
+    const dataNorm = normalizarDataBr(agendaLoteData);
+    if (!dataNorm) return '';
+    const periodicidadeTodoDiaMes = agendaLotePeriodicidade === 'Todo dia X do mês';
+    const diaDoMesNum = Number(agendaLoteDiaDoMes);
+    if (
+      periodicidadeTodoDiaMes &&
+      (!Number.isInteger(diaDoMesNum) || !Number.isFinite(diaDoMesNum) || diaDoMesNum < 1 || diaDoMesNum > 31)
+    ) {
+      return '';
+    }
+    return calcularPrimeiraOcorrenciaAgendaLote({
+      dataBaseBr: dataNorm,
+      periodicidade: agendaLotePeriodicidade,
+      diaDoMes: periodicidadeTodoDiaMes ? diaDoMesNum : null,
+      ajustarParaDiaUtil: true,
+    });
+  }, [agendaLoteData, agendaLotePeriodicidade, agendaLoteDiaDoMes]);
 
   /** Disponível mesmo com edição desabilitada: abre http(s) ou mostra o caminho. */
   function abrirLinkPastaArquivo() {
@@ -2007,7 +2042,17 @@ export function Processos() {
                   <label className="block text-sm font-medium text-slate-700 mb-1">Periodicidade</label>
                   <select
                     value={agendaLotePeriodicidade}
-                    onChange={(e) => setAgendaLotePeriodicidade(e.target.value)}
+                    onChange={(e) => {
+                      const novaPeriodicidade = e.target.value;
+                      setAgendaLotePeriodicidade(novaPeriodicidade);
+                      if (novaPeriodicidade === 'Todo dia X do mês' && !String(agendaLoteDiaDoMes || '').trim()) {
+                        const base = normalizarDataBr(agendaLoteData);
+                        const diaBase = Number(String(base || '').slice(0, 2));
+                        if (Number.isFinite(diaBase) && diaBase >= 1 && diaBase <= 31) {
+                          setAgendaLoteDiaDoMes(String(diaBase));
+                        }
+                      }
+                    }}
                     className="w-full px-3 py-2 border border-slate-300 rounded text-sm bg-white"
                   >
                     {PERIODICIDADES_AGENDA_LOTE.map((p) => (
@@ -2016,8 +2061,34 @@ export function Processos() {
                   </select>
                 </div>
               </div>
+              {agendaLotePeriodicidade === 'Todo dia X do mês' ? (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Dia do mês</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={31}
+                      value={agendaLoteDiaDoMes}
+                      onChange={(e) => setAgendaLoteDiaDoMes(String(e.target.value ?? ''))}
+                      onBlur={() => {
+                        const n = Number(agendaLoteDiaDoMes);
+                        if (!Number.isFinite(n)) return;
+                        const limitado = Math.max(1, Math.min(31, Math.trunc(n)));
+                        setAgendaLoteDiaDoMes(String(limitado));
+                      }}
+                      placeholder="1 a 31"
+                      className="w-full px-3 py-2 border border-slate-300 rounded text-sm bg-white"
+                    />
+                  </div>
+                </div>
+              ) : null}
               <div className="text-xs text-slate-500">
-                Primeira ocorrência: <strong>{normalizarDataBr(agendaLoteData) || '—'}</strong> | Periodicidade: <strong>{agendaLotePeriodicidade}</strong>
+                Primeira ocorrência: <strong>{primeiraOcorrenciaAjustadaAgendaLote || '—'}</strong> | Periodicidade:{' '}
+                <strong>{agendaLotePeriodicidade}</strong>
+                {agendaLotePeriodicidade === 'Todo dia X do mês' && primeiraOcorrenciaAjustadaAgendaLote
+                  ? ' (ajustado automaticamente para próximo dia útil quando necessário)'
+                  : ''}
               </div>
               {agendaLoteInfo ? (
                 <div className="text-sm text-blue-700 bg-blue-50 border border-blue-200 rounded px-3 py-2">
