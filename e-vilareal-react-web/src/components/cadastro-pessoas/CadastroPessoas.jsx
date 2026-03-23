@@ -1,15 +1,11 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
-  ChevronUp,
-  ChevronDown,
   FileText,
   MapPin,
   Phone,
   Plus,
-  Pencil,
   Search,
-  Trash2,
   FileUp,
   FileCheck2,
   ClipboardPaste,
@@ -18,11 +14,16 @@ import {
 } from 'lucide-react';
 import {
   listarClientes,
+  buscarCliente,
   criarCliente,
   atualizarCliente,
-  excluirCliente,
 } from '../../api/clientesService';
 import { getCadastroPessoasMock } from '../../data/cadastroPessoasMock.js';
+import {
+  mergeListaMarcadoMonitoramentoMock,
+  mergeMarcadoMonitoramentoMock,
+  setMockMarcadoMonitoramento,
+} from '../../data/cadastroPessoasMockMonitoramento.js';
 import { analisarDocumentoPessoa } from '../../services/personAutoFillService.js';
 import {
   listarPessoasComDocumento,
@@ -40,17 +41,12 @@ import { resolverAliasHojeEmTexto } from '../../services/hjDateAliasService.js';
 import { rotuloPessoaComDocumento, esbocoQualificacaoComResponsavel } from '../../services/qualificacaoContratualHelper.js';
 import { SeletorResponsavelPessoa } from './SeletorResponsavelPessoa.jsx';
 import { getContextoAuditoriaUsuario, registrarAuditoria } from '../../services/auditoriaCliente.js';
+import { padCliente8Nav } from './cadastroPessoasNavUtils.js';
 
 let __ultimoAcessoListaPessoas = 0;
 
 const FORCA_MOCK_CADASTRO =
   import.meta.env.VITE_USE_MOCK_CADASTRO_PESSOAS === 'true';
-
-const CRITERIOS_BUSCA = [
-  { value: 'nome', label: 'Nome' },
-  { value: 'codigo', label: 'Código' },
-  { value: 'cpf', label: 'CPF/CNPJ' },
-];
 
 const GENEROS = [
   { value: '', label: 'Selecione' },
@@ -71,17 +67,17 @@ const ESTADOS_CIVIS = [
 /** Padrão quando não há nacionalidade gravada — o usuário confirma ao sair do campo (blur). */
 const NACIONALIDADE_PADRAO_BR = 'Brasileira';
 
-/** Alinha ao Cadastro de Clientes / Processos ao navegar com state. */
-function padCliente8Nav(val) {
-  const s = String(val ?? '').trim();
-  if (!s) return '';
-  const n = Number(s);
-  if (!Number.isFinite(n) || n < 1) return s.padStart(8, '0');
-  return String(Math.floor(n)).padStart(8, '0');
-}
-
 function normalizarDigitosCpfCnpj(s) {
   return String(s ?? '').replace(/\D/g, '');
+}
+
+/** Converte data de nascimento da API (string ISO ou LocalDate serializado) para yyyy-mm-dd no PUT. */
+function dataNascimentoParaPayloadApi(val) {
+  if (val == null || val === '') return null;
+  if (typeof val === 'string') {
+    return val.includes('T') ? val.split('T')[0] : val;
+  }
+  return null;
 }
 
 /** Primeira pessoa na lista com o mesmo documento; ignora excluirId (edição da própria ficha). */
@@ -112,6 +108,8 @@ const emptyPessoa = {
   email: '',
   contato: '',
   ativo: true,
+  /** Marca pessoa para a aba Processos → Monitoramento (DataJud). */
+  marcadoMonitoramento: false,
   edicaoDesabilitada: false,
   /** @type {number|null} */
   responsavelId: null,
@@ -122,8 +120,13 @@ const emptyPessoa = {
 export function CadastroPessoas() {
   const location = useLocation();
   const navigate = useNavigate();
+  const pathPessoasNorm = (location.pathname || '').replace(/\/+$/, '') || '/';
+  const isRotaNovaPessoa = pathPessoasNorm === '/clientes/nova';
+  const isRotaListaTodasPessoas = pathPessoasNorm === '/clientes/lista';
   const [lista, setLista] = useState([]);
-  const [loading, setLoading] = useState(true);
+  /** Carregamento da ficha em /clientes/editar/:id quando a lista ainda não foi trazida (evita carregar o relatório completo). */
+  const [carregandoFicha, setCarregandoFicha] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [apenasAtivos, setApenasAtivos] = useState(false);
   const [indiceAtual, setIndiceAtual] = useState(0);
@@ -140,9 +143,6 @@ export function CadastroPessoas() {
   const [modalCpfDuplicado, setModalCpfDuplicado] = useState(null);
   /** Enquanto true, o campo Nacionalidade fica em vermelho até o usuário entrar e sair (blur), validando a sugestão. */
   const [nacionalidadeSugestaoNaoValidada, setNacionalidadeSugestaoNaoValidada] = useState(false);
-  const [criterioBusca, setCriterioBusca] = useState('nome');
-  const [valorBusca, setValorBusca] = useState('');
-  const [valorBuscaCpf, setValorBuscaCpf] = useState('');
   const [numeroPessoa, setNumeroPessoa] = useState('');
   const [listaEhMock, setListaEhMock] = useState(FORCA_MOCK_CADASTRO);
   const [pessoasComDocumento, setPessoasComDocumento] = useState([]);
@@ -312,20 +312,7 @@ export function CadastroPessoas() {
     setPessoasComDocumento(listarPessoasComDocumento());
   }, []);
 
-  const filtrarLista = () => {
-    if (!valorBusca.trim() && !valorBuscaCpf.trim()) return lista;
-    const v = valorBusca.trim().toLowerCase();
-    const vCpf = valorBuscaCpf.trim().replace(/\D/g, '');
-    return lista.filter((p) => {
-      if (v && criterioBusca === 'nome' && !(p.nome || '').toLowerCase().includes(v)) return false;
-      if (v && criterioBusca === 'codigo' && String(p.id) !== v) return false;
-      if (vCpf && !(p.cpf || '').replace(/\D/g, '').includes(vCpf)) return false;
-      return true;
-    });
-  };
-
-  const listaFiltrada = filtrarLista();
-  const listaExibida = listaFiltrada;
+  const listaExibida = lista;
   const pessoaAtual = listaExibida[indiceAtual];
 
   const idPessoaParaVinculos = useMemo(() => {
@@ -352,17 +339,11 @@ export function CadastroPessoas() {
 
   useEffect(() => {
     if (modo !== 'listar') return;
-    // Ao alterar critério/termo, vamos para o primeiro resultado para o usuário ver match imediato.
-    if (valorBusca.trim() || valorBuscaCpf.trim()) setIndiceAtual(0);
-  }, [modo, criterioBusca, valorBusca, valorBuscaCpf]);
-
-  useEffect(() => {
-    if (modo !== 'listar') return;
     // Garante índice dentro dos limites quando a lista é filtrada.
     setIndiceAtual((i) => Math.min(i, Math.max(0, listaExibida.length - 1)));
   }, [modo, listaExibida.length]);
 
-  function localizarPorNumeroPessoa() {
+  async function localizarPorNumeroPessoa() {
     const n = String(numeroPessoa ?? '').trim();
     if (!n) {
       setError('Digite o número da pessoa.');
@@ -373,62 +354,73 @@ export function CadastroPessoas() {
       setError('Número da pessoa inválido.');
       return;
     }
-    const idx = lista.findIndex((p) => Number(p.id) === id);
-    if (idx === -1) {
-      setError(`Nenhuma pessoa encontrada com o número ${id}.`);
-      return;
-    }
-    setError(null);
-    setModo('listar');
-    setIndiceAtual(idx);
-    setValorBusca('');
-    setValorBuscaCpf('');
-    setCriterioBusca('nome');
-  }
-
-  const carregarLista = useCallback(async () => {
-    setLoading(true);
     setError(null);
     if (FORCA_MOCK_CADASTRO) {
-      setLista(getCadastroPessoasMock(apenasAtivos));
-      setListaEhMock(true);
-      setLoading(false);
+      const mock = getCadastroPessoasMock(false);
+      const found = mock.some((p) => Number(p.id) === id);
+      if (!found) {
+        setError(`Nenhuma pessoa encontrada com o número ${id}.`);
+        return;
+      }
+      navigate(`/clientes/editar/${id}`);
       return;
     }
     try {
-      const res = await listarClientes(apenasAtivos);
-      setLista(Array.isArray(res) ? res : []);
-      setListaEhMock(false);
+      const c = await buscarCliente(id);
+      if (!c) {
+        setError(`Nenhuma pessoa encontrada com o número ${id}.`);
+        return;
+      }
+      navigate(`/clientes/editar/${id}`);
     } catch (err) {
-      setLista(getCadastroPessoasMock(apenasAtivos));
-      setListaEhMock(true);
-      setError(
-        err.message
-          ? `${err.message} — exibindo lista mock (cadastro PDF).`
-          : 'API indisponível — exibindo lista mock (cadastro PDF).'
-      );
-    } finally {
-      setLoading(false);
+      setError(err.message || 'Erro ao localizar.');
     }
-  }, [apenasAtivos]);
+  }
+
+  /** Lista leve só para o seletor de responsável (nova/edição), sem abrir o relatório completo. */
+  useEffect(() => {
+    if (modo !== 'criar' && modo !== 'editar') return;
+    if (lista.length > 0) return;
+    let cancelled = false;
+    (async () => {
+      if (FORCA_MOCK_CADASTRO) {
+        if (!cancelled) {
+          setLista(mergeListaMarcadoMonitoramentoMock(getCadastroPessoasMock(false)));
+          setListaEhMock(true);
+        }
+        return;
+      }
+      try {
+        const res = await listarClientes(false);
+        if (!cancelled) {
+          setLista(Array.isArray(res) ? res : []);
+          setListaEhMock(false);
+        }
+      } catch {
+        if (!cancelled) {
+          setLista(mergeListaMarcadoMonitoramentoMock(getCadastroPessoasMock(false)));
+          setListaEhMock(true);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [modo, lista.length]);
 
   useEffect(() => {
-    carregarLista();
-  }, [carregarLista]);
-
-  useEffect(() => {
-    if (loading) return;
+    if (!isRotaListaTodasPessoas || modo !== 'listar') return;
     const now = Date.now();
     if (now - __ultimoAcessoListaPessoas < 1500) return;
     __ultimoAcessoListaPessoas = now;
     const { usuarioNome } = getContextoAuditoriaUsuario();
     registrarAuditoria({
       modulo: 'Pessoas',
-      tela: '/clientes',
+      tela: pathPessoasNorm,
       tipoAcao: 'ACESSO_LISTA',
       descricao: `Usuário ${usuarioNome} acessou a lista de cadastros (Pessoas).`,
     });
-  }, [loading]);
+  }, [isRotaListaTodasPessoas, modo, pathPessoasNorm]);
 
   useEffect(() => {
     if (modo !== 'listar') {
@@ -444,7 +436,7 @@ export function CadastroPessoas() {
     const nome = String(pessoaAtual.nome ?? '').trim() || `cadastro ${id}`;
     registrarAuditoria({
       modulo: 'Pessoas',
-      tela: '/clientes',
+      tela: pathPessoasNorm,
       tipoAcao: 'ACESSO_CADASTRO',
       descricao: `Usuário ${usuarioNome} abriu o cadastro de ${nome} (id ${id}).`,
       registroAfetadoId: String(id),
@@ -452,34 +444,16 @@ export function CadastroPessoas() {
     });
   }, [loading, modo, pessoaAtual?.id, pessoaAtual?.nome]);
 
-  /** Vindo de Clientes (Cadastro de Clientes): abre a pessoa vinculada ao cliente. */
+  /** Links antigos com state (pessoaId): passa para a rota de edição. */
   useEffect(() => {
-    if (loading) return;
     const s = location.state;
     if (!s || typeof s !== 'object') return;
     const raw = s.pessoaId ?? s.idPessoa;
     if (raw == null || raw === '') return;
     const id = Number.parseInt(String(raw).replace(/\D/g, ''), 10);
     if (!Number.isFinite(id) || id < 1) return;
-    if (!lista.length) return;
-
-    const idx = lista.findIndex((p) => Number(p.id) === id);
-    if (idx === -1) {
-      setError(`Pessoa nº ${id} não encontrada na lista.`);
-      navigate('/clientes', { replace: true, state: {} });
-      return;
-    }
-    setModo('listar');
-    setIndiceAtual(idx);
-    setNumeroPessoa(String(id));
-    setValorBusca('');
-    setValorBuscaCpf('');
-    setCriterioBusca('nome');
-    setError(null);
-    navigate('/clientes', { replace: true, state: {} });
-  }, [loading, lista, location.state, navigate]);
-
-  const total = lista.length;
+    navigate(`/clientes/editar/${id}`, { replace: true, state: {} });
+  }, [location.state, navigate]);
 
   useEffect(() => {
     if (modo !== 'listar') return;
@@ -507,6 +481,7 @@ export function CadastroPessoas() {
         email: pessoaAtual.email ?? '',
         contato: pessoaAtual.telefone ?? '',
         ativo: pessoaAtual.ativo !== false,
+        marcadoMonitoramento: pessoaAtual.marcadoMonitoramento === true,
         responsavelId:
           pessoaAtual.responsavelId != null
             ? Number(pessoaAtual.responsavelId)
@@ -526,7 +501,7 @@ export function CadastroPessoas() {
     return typeof v === 'string' ? v.split('T')[0] : v;
   }
 
-  const abrirNovo = () => {
+  function aplicarFormNovaPessoa() {
     setForm({ ...emptyPessoa, nacionalidade: NACIONALIDADE_PADRAO_BR, responsavelId: null, responsavel: null });
     setNacionalidadeSugestaoNaoValidada(true);
     setEditId(null);
@@ -537,7 +512,7 @@ export function CadastroPessoas() {
       const { usuarioNome } = getContextoAuditoriaUsuario();
       registrarAuditoria({
         modulo: 'Pessoas',
-        tela: '/clientes',
+        tela: '/clientes/nova',
         tipoAcao: 'ACESSO_TELA',
         descricao: `Usuário ${usuarioNome} abriu o formulário de nova pessoa (inclusão).`,
       });
@@ -556,9 +531,16 @@ export function CadastroPessoas() {
       profissao: false,
       estadoCivil: false,
     });
+  }
+
+  const abrirNovo = () => {
+    if (modo === 'editar') {
+      cancelarForm();
+    }
+    navigate('/clientes/nova');
   };
 
-  const abrirEditar = (item) => {
+  function aplicarEdicaoPessoa(item) {
     setEditId(item.id);
     const nacSalva = String(item.nacionalidade ?? '').trim();
     setForm({
@@ -571,6 +553,7 @@ export function CadastroPessoas() {
       dataNascimento: formatDate(item.dataNascimento) ?? '',
       nacionalidade: nacSalva || NACIONALIDADE_PADRAO_BR,
       ativo: item.ativo !== false,
+      marcadoMonitoramento: item.marcadoMonitoramento === true,
       responsavelId:
         item.responsavelId != null
           ? Number(item.responsavelId)
@@ -588,7 +571,7 @@ export function CadastroPessoas() {
       const nome = String(item.nome ?? '').trim() || `id ${item.id}`;
       registrarAuditoria({
         modulo: 'Pessoas',
-        tela: '/clientes',
+        tela: pathPessoasNorm,
         tipoAcao: 'ACESSO_CADASTRO',
         descricao: `Usuário ${usuarioNome} abriu o cadastro de ${nome} para edição (id ${item.id}).`,
         registroAfetadoId: String(item.id),
@@ -609,6 +592,10 @@ export function CadastroPessoas() {
       profissao: false,
       estadoCivil: false,
     });
+  }
+
+  const abrirEditar = (item) => {
+    navigate(`/clientes/editar/${item.id}`);
   };
 
   const cancelarForm = () => {
@@ -622,7 +609,93 @@ export function CadastroPessoas() {
     setExtracaoAvisos([]);
     setExtracaoResumo('');
     setExtracaoDebug(null);
+    if (pathPessoasNorm === '/clientes/nova' || /^\/clientes\/editar\/\d+$/.test(pathPessoasNorm)) {
+      navigate('/clientes/lista', { replace: true });
+    }
   };
+
+  useEffect(() => {
+    const p = (location.pathname || '').replace(/\/+$/, '') || '/';
+    if (p === '/clientes/nova') {
+      if (modo === 'listar') {
+        aplicarFormNovaPessoa();
+      }
+    } else if (p === '/clientes/lista') {
+      if (modo === 'criar' || modo === 'editar') {
+        cancelarForm();
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- sincroniza rota com modo (evita loop com deps de setters)
+  }, [location.pathname, modo]);
+
+  useEffect(() => {
+    if (isRotaListaTodasPessoas && modo === 'listar') {
+      setForm((f) => ({ ...f, edicaoDesabilitada: true }));
+    }
+  }, [isRotaListaTodasPessoas, modo]);
+
+  useEffect(() => {
+    const m = /^\/clientes\/editar\/(\d+)$/.exec(pathPessoasNorm);
+    if (!m) return;
+    const id = Number(m[1]);
+    if (!Number.isFinite(id) || id < 1) return;
+    if (modo === 'editar' && Number(editId) === id) return;
+
+    const itemLista = lista.find((p) => Number(p.id) === id);
+    if (itemLista) {
+      aplicarEdicaoPessoa(itemLista);
+      return;
+    }
+
+    if (FORCA_MOCK_CADASTRO) {
+      const mock = getCadastroPessoasMock(false);
+      const found = mock.find((p) => Number(p.id) === id);
+      if (!found) {
+        setError(`Pessoa nº ${id} não encontrada.`);
+        navigate('/clientes/lista', { replace: true });
+        return;
+      }
+      aplicarEdicaoPessoa(mergeMarcadoMonitoramentoMock(found));
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        setCarregandoFicha(true);
+        const c = await buscarCliente(id);
+        if (cancelled) return;
+        if (!c) {
+          setError(`Pessoa nº ${id} não encontrada.`);
+          navigate('/clientes/lista', { replace: true });
+          return;
+        }
+        aplicarEdicaoPessoa({
+          id: c.id,
+          nome: c.nome,
+          nacionalidade: c.nacionalidade,
+          cpf: c.cpf,
+          email: c.email,
+          telefone: c.telefone,
+          dataNascimento: c.dataNascimento,
+          ativo: c.ativo,
+          marcadoMonitoramento: c.marcadoMonitoramento,
+          responsavelId: c.responsavelId,
+          responsavel: c.responsavel,
+        });
+      } catch (err) {
+        if (!cancelled) {
+          setError(err.message || 'Erro ao abrir cadastro.');
+        }
+      } finally {
+        if (!cancelled) setCarregandoFicha(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fluxo da rota de edição
+  }, [lista, pathPessoasNorm, modo, editId, navigate]);
 
   const inputClassComAutofill = (campo, opts = {}) => {
     const base = opts.flex
@@ -661,7 +734,16 @@ export function CadastroPessoas() {
     }
     const docDigitos = normalizarDigitosCpfCnpj(form.cpf);
     const excluirDupCheck = modo === 'editar' ? editId : null;
-    const duplicataNaLista = buscarPessoaComMesmoDocumento(lista, docDigitos, excluirDupCheck);
+    let listaParaDup = lista;
+    if (listaParaDup.length === 0) {
+      try {
+        const fresh = await listarClientes(apenasAtivos);
+        listaParaDup = Array.isArray(fresh) ? fresh : [];
+      } catch {
+        listaParaDup = [];
+      }
+    }
+    const duplicataNaLista = buscarPessoaComMesmoDocumento(listaParaDup, docDigitos, excluirDupCheck);
     if (duplicataNaLista) {
       setError(null);
       setModalCpfDuplicado(duplicataNaLista);
@@ -686,6 +768,7 @@ export function CadastroPessoas() {
         telefone: form.contato?.trim() || null,
         dataNascimento: form.dataNascimento || null,
         ativo: form.ativo,
+        marcadoMonitoramento: form.marcadoMonitoramento === true,
         responsavelId:
           form.responsavelId != null && form.responsavelId !== ''
             ? Number(form.responsavelId)
@@ -717,7 +800,6 @@ export function CadastroPessoas() {
         }
       }
       setDocPreview(null);
-      await carregarLista();
       cancelarForm();
     } catch (err) {
       const msg = String(err.message || '');
@@ -759,27 +841,49 @@ export function CadastroPessoas() {
     setModalCpfDuplicado(null);
   }
 
-  const excluir = async (id, nome) => {
+  const alternarMonitoramentoPessoaAtual = async () => {
+    const id = Number(modo === 'editar' && editId != null ? editId : pessoaAtual?.id);
+    if (!Number.isFinite(id) || id < 1) return;
+    const proximoStatus = !Boolean(form.marcadoMonitoramento);
     if (listaEhMock) {
-      setError('Lista mock (PDF): exclusão só com a API ativa.');
+      setError(null);
+      setMockMarcadoMonitoramento(id, proximoStatus);
+      setForm((f) => ({ ...f, marcadoMonitoramento: proximoStatus }));
+      setLista((prev) =>
+        prev.map((p) => (Number(p.id) === id ? { ...p, marcadoMonitoramento: proximoStatus } : p))
+      );
       return;
     }
-    if (!window.confirm(`Excluir "${nome}"?`)) return;
+    setSalvando(true);
     setError(null);
     try {
-      await excluirCliente(id);
-      await carregarLista();
-      if (modo === 'editar' && editId === id) cancelarForm();
+      const atual = await buscarCliente(id);
+      if (!atual) {
+        setError('Não foi possível carregar os dados da pessoa no servidor.');
+        return;
+      }
+      const payload = {
+        nome: String(atual.nome ?? '').trim(),
+        email: String(atual.email ?? '').trim(),
+        cpf: String(atual.cpf ?? '').replace(/\D/g, ''),
+        telefone: atual.telefone?.trim() || null,
+        dataNascimento: dataNascimentoParaPayloadApi(atual.dataNascimento),
+        ativo: atual.ativo !== false,
+        marcadoMonitoramento: proximoStatus,
+        responsavelId:
+          atual.responsavelId != null && atual.responsavelId !== ''
+            ? Number(atual.responsavelId)
+            : null,
+      };
+      const updated = await atualizarCliente(id, payload);
+      const marcado = Boolean(updated?.marcadoMonitoramento ?? proximoStatus);
+      setForm((f) => ({ ...f, marcadoMonitoramento: marcado }));
     } catch (err) {
-      setError(err.message || 'Erro ao excluir.');
+      setError(err.message || 'Erro ao atualizar monitoramento.');
+    } finally {
+      setSalvando(false);
     }
   };
-
-  const proximoNome = pessoaAtual?.id ?? (listaExibida.length > 0 ? listaExibida[0]?.id : '—');
-
-  const totalPessoasCadastradas = total;
-  /** Próximo código = total na lista + 1 (alinha ao contador de cadastrados, não ao maior id — pode haver lacunas). */
-  const proximoCodigoPessoa = total > 0 ? total + 1 : 1;
 
   const contagemContatos = {
     telefone: (contatos || []).filter((c) => c.tipo === 'telefone').length,
@@ -788,9 +892,11 @@ export function CadastroPessoas() {
   };
   const totalContatos = contagemContatos.telefone + contagemContatos.email + contagemContatos.website;
 
-  /** Em listagem: só mostra o formulário completo se "Edição desabilitada" estiver desmarcada. */
+  /** Em listagem: só mostra o formulário completo se "Edição desabilitada" estiver desmarcada (exceto em /clientes/lista, onde edição é só na rota /clientes/editar/:id). */
   const mostrarFormularioEdicao =
-    modo === 'criar' || modo === 'editar' || (modo === 'listar' && !form.edicaoDesabilitada);
+    modo === 'criar' ||
+    modo === 'editar' ||
+    (modo === 'listar' && !form.edicaoDesabilitada && !isRotaListaTodasPessoas);
 
   return (
     <div className="min-h-full bg-gradient-to-br from-slate-50 to-slate-100">
@@ -807,140 +913,83 @@ export function CadastroPessoas() {
                 </p>
               )}
             </div>
-            <div className="flex flex-wrap gap-4 text-sm">
-              <div className="px-4 py-2.5 rounded-xl bg-white border border-slate-200 shadow-sm">
-                <span className="text-slate-500 block">Pessoas cadastradas</span>
-                <span className="text-xl font-semibold text-slate-800">
-                  {loading ? '—' : totalPessoasCadastradas}
-                </span>
-                {apenasAtivos && totalPessoasCadastradas > 0 && (
-                  <span className="text-xs text-slate-500">(ativas)</span>
-                )}
+            {isRotaListaTodasPessoas && modo === 'listar' && (
+              <div className="px-4 py-2.5 rounded-xl bg-white border border-slate-200 shadow-sm text-sm text-slate-600 max-w-md">
+                Totais e tabela com <strong className="text-slate-800">todas as pessoas</strong> ficam no menu{' '}
+                <span className="font-medium text-blue-700">Relatório de pessoas</span>.
               </div>
-              <div className="px-4 py-2.5 rounded-xl bg-white border border-slate-200 shadow-sm">
-                <span className="text-slate-500 block">Próxima pessoa (código)</span>
-                <span className="text-xl font-semibold text-blue-600">
-                  {loading ? '—' : proximoCodigoPessoa}
-                </span>
-              </div>
-            </div>
+            )}
           </div>
         </header>
 
-        {/* Barra de busca e ações */}
-        <section className="bg-white rounded-xl shadow-sm border border-slate-200/80 p-4 mb-6">
-          <div className="flex flex-wrap items-end gap-4">
-            <div className="flex flex-wrap items-end gap-2 border-r border-slate-200 pr-4 mr-1">
-              <div>
-                <label htmlFor="numero-pessoa-busca" className="block text-sm font-medium text-slate-700 mb-1">
-                  Número da pessoa
-                </label>
-                <div className="flex items-center gap-2">
-                  <input
-                    id="numero-pessoa-busca"
-                    type="number"
-                    min={1}
-                    inputMode="numeric"
-                    value={numeroPessoa}
-                    onChange={(e) => setNumeroPessoa(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        localizarPorNumeroPessoa();
-                      }
-                    }}
-                    placeholder="Ex.: 2374"
-                    className="w-28 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                  <button
-                    type="button"
-                    onClick={localizarPorNumeroPessoa}
-                    disabled={loading || lista.length === 0}
-                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 text-white text-sm font-medium hover:bg-slate-900 disabled:opacity-50 focus:ring-2 focus:ring-slate-500 focus:ring-offset-1"
-                  >
-                    <Search className="w-4 h-4" />
-                    Localizar
-                  </button>
+        {isRotaListaTodasPessoas && modo === 'listar' && (
+          <section className="bg-white rounded-xl shadow-sm border border-slate-200/80 p-4 mb-6">
+            <div className="flex flex-wrap items-end gap-4">
+              <div className="flex flex-wrap items-end gap-2 border-r border-slate-200 pr-4 mr-1">
+                <div>
+                  <label htmlFor="numero-pessoa-busca" className="block text-sm font-medium text-slate-700 mb-1">
+                    Número da pessoa
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      id="numero-pessoa-busca"
+                      type="number"
+                      min={1}
+                      inputMode="numeric"
+                      value={numeroPessoa}
+                      onChange={(e) => setNumeroPessoa(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          localizarPorNumeroPessoa();
+                        }
+                      }}
+                      placeholder="Ex.: 2374"
+                      className="w-28 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={localizarPorNumeroPessoa}
+                      disabled={carregandoFicha}
+                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 text-white text-sm font-medium hover:bg-slate-900 disabled:opacity-50 focus:ring-2 focus:ring-slate-500 focus:ring-offset-1"
+                    >
+                      <Search className="w-4 h-4" />
+                      Localizar
+                    </button>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1">Abre a ficha pelo código (sem carregar o relatório completo).</p>
                 </div>
-                <p className="text-xs text-slate-500 mt-1">Digite o código e pressione Enter ou Localizar</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 ml-auto">
+                <button
+                  type="button"
+                  onClick={() => navigate('/clientes/relatorio')}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-800 text-sm font-medium hover:bg-slate-50"
+                >
+                  <FileText className="w-4 h-4" />
+                  Relatório de pessoas
+                </button>
+                <button
+                  type="button"
+                  onClick={abrirNovo}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                >
+                  <Plus className="w-4 h-4" />
+                  Nova pessoa
+                </button>
               </div>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <label className="text-sm font-medium text-slate-700">Localizar por</label>
-              <select
-                value={criterioBusca}
-                onChange={(e) => setCriterioBusca(e.target.value)}
-                className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                {CRITERIOS_BUSCA.map((c) => (
-                  <option key={c.value} value={c.value}>{c.label}</option>
-                ))}
-              </select>
-              <input
-                type="text"
-                value={valorBusca}
-                onChange={(e) => setValorBusca(e.target.value)}
-                placeholder={criterioBusca === 'cpf' ? 'CPF' : criterioBusca === 'codigo' ? 'Código' : 'Nome'}
-                className="w-48 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <label className="text-sm font-medium text-slate-700">Localizar por CPF/CNPJ</label>
-              <input
-                type="text"
-                value={valorBuscaCpf}
-                onChange={(e) => setValorBuscaCpf(e.target.value)}
-                placeholder="000.000.000-00"
-                className="w-40 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              />
-            </div>
-            <div className="flex-1 flex justify-end gap-2">
-              <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={apenasAtivos}
-                  onChange={(e) => setApenasAtivos(e.target.checked)}
-                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                />
-                Apenas ativos
-              </label>
-              <button
-                type="button"
-                onClick={abrirNovo}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-              >
-                <Plus className="w-4 h-4" />
-                Nova pessoa
-              </button>
-              <button
-                type="button"
-                onClick={() => setModalVinculosSistema(true)}
-                disabled={loading || idPessoaParaVinculos == null}
-                title={
-                  idPessoaParaVinculos == null
-                    ? 'Selecione uma pessoa na lista ou abra uma edição para ver vínculos'
-                    : 'Listar códigos de cliente e processos em que esta pessoa aparece no sistema'
-                }
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-700 text-sm font-medium hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Link2 className="w-4 h-4" />
-                Vínculos no sistema
-              </button>
-              <button
-                type="button"
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-700 text-sm font-medium hover:bg-slate-50"
-              >
-                <FileText className="w-4 h-4" />
-                Gerar Documentos
-              </button>
-            </div>
-          </div>
-        </section>
+          </section>
+        )}
 
         {error && (
           <div className="mb-4 p-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm">
             {error}
           </div>
+        )}
+
+        {carregandoFicha && /^\/clientes\/editar\/\d+$/.test(pathPessoasNorm) && (
+          <p className="mb-4 text-sm text-slate-600">Carregando ficha…</p>
         )}
 
         {/* Painel principal */}
@@ -1327,7 +1376,7 @@ export function CadastroPessoas() {
                             const nome = String(form.nome ?? '').trim() || 'cadastro sem nome';
                             registrarAuditoria({
                               modulo: 'Pessoas',
-                              tela: '/clientes',
+                              tela: pathPessoasNorm,
                               tipoAcao: 'DOCUMENTO',
                               descricao: `Usuário ${usuarioNome} gerou qualificação contratual de ${nome}.`,
                               registroAfetadoId: editId != null ? String(editId) : null,
@@ -1448,6 +1497,36 @@ export function CadastroPessoas() {
                         </button>
                       </div>
                     </div>
+                    <div className="flex items-start gap-2 pt-1">
+                      <input
+                        type="checkbox"
+                        id="marcadoMonitoramento"
+                        checked={!!form.marcadoMonitoramento}
+                        onChange={(e) => {
+                          const checked = e.target.checked;
+                          setForm((f) => ({ ...f, marcadoMonitoramento: checked }));
+                          if (listaEhMock && modo === 'editar' && editId != null) {
+                            setMockMarcadoMonitoramento(editId, checked);
+                            setLista((prev) =>
+                              prev.map((p) =>
+                                Number(p.id) === Number(editId)
+                                  ? { ...p, marcadoMonitoramento: checked }
+                                  : p
+                              )
+                            );
+                          }
+                        }}
+                        disabled={form.edicaoDesabilitada}
+                        className="mt-1 rounded border-slate-300 text-blue-600"
+                      />
+                      <label
+                        htmlFor="marcadoMonitoramento"
+                        className="text-sm text-slate-700 cursor-pointer leading-snug"
+                      >
+                        Incluir em <strong>Monitoramento de Pessoas</strong> (DataJud/CNJ). Configure
+                        frequência e chaves em Processos → Monitoramento.
+                      </label>
+                    </div>
                     <div>
                       <label className="block text-sm font-medium text-slate-700 mb-1">Contatos</label>
                       <div className="flex items-center gap-2 flex-wrap">
@@ -1489,7 +1568,7 @@ export function CadastroPessoas() {
                   </div>
                 )}
 
-                <div className="flex gap-3 mt-6 pt-6 border-t border-slate-200">
+                <div className="flex flex-wrap gap-3 mt-6 pt-6 border-t border-slate-200">
                   <button
                     type="button"
                     onClick={() => salvar()}
@@ -1498,6 +1577,31 @@ export function CadastroPessoas() {
                   >
                     {salvando ? 'Salvando...' : 'Salvar'}
                   </button>
+                  {modo === 'editar' && editId != null && (
+                    <button
+                      type="button"
+                      onClick={alternarMonitoramentoPessoaAtual}
+                      disabled={salvando || form.edicaoDesabilitada}
+                      className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-lg font-medium text-sm border ${
+                        form.marcadoMonitoramento
+                          ? 'border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                          : 'border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100'
+                      } disabled:opacity-50`}
+                    >
+                      {form.marcadoMonitoramento ? 'Parar monitoramento' : 'Iniciar monitoramento'}
+                    </button>
+                  )}
+                  {modo === 'editar' && editId != null && (
+                    <button
+                      type="button"
+                      onClick={() => setModalVinculosSistema(true)}
+                      disabled={salvando}
+                      className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg border border-slate-300 bg-white text-slate-700 font-medium text-sm hover:bg-slate-50"
+                    >
+                      <Link2 className="w-4 h-4" />
+                      Vínculos no sistema
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={cancelarForm}
@@ -1510,206 +1614,23 @@ export function CadastroPessoas() {
               </>
             ) : (
               <>
-                <div className="flex items-center gap-4 mb-6 flex-wrap">
-                  <div className="flex border border-slate-300 rounded-lg overflow-hidden bg-white">
-                    <button
-                      type="button"
-                      onClick={() => setIndiceAtual((i) => Math.max(0, i - 1))}
-                      disabled={indiceAtual <= 0}
-                      className="p-2 text-slate-600 hover:bg-slate-100 disabled:opacity-40"
-                      aria-label="Anterior"
-                    >
-                      <ChevronUp className="w-5 h-5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setIndiceAtual((i) => Math.min(listaExibida.length - 1, i + 1))}
-                      disabled={indiceAtual >= listaExibida.length - 1 || listaExibida.length === 0}
-                      className="p-2 text-slate-600 hover:bg-slate-100 disabled:opacity-40"
-                      aria-label="Próximo"
-                    >
-                      <ChevronDown className="w-5 h-5" />
-                    </button>
-                  </div>
-                  <span className="text-sm text-slate-600">
-                    Próximo nome: <strong>{total > 0 ? proximoNome : '—'}</strong>
-                  </span>
-                  <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={form.edicaoDesabilitada}
-                      onChange={(e) => setForm((f) => ({ ...f, edicaoDesabilitada: e.target.checked }))}
-                      className="rounded border-slate-300 text-blue-600"
-                    />
-                    Edição desabilitada
-                  </label>
-                </div>
-
-                <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-5 mb-6">
-                  <p className="font-semibold text-slate-800">{form.nome || '—'}</p>
-                  <p className="text-slate-600 text-sm mt-0.5">{form.cpf || '—'}</p>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                  <div className="space-y-4">
-                    <CampoReadOnly label="Código" value={form.codigo} />
-                    <CampoReadOnly label="Nome" value={form.nome} />
-                    <CampoReadOnly label="Gênero" value={form.genero || '—'} />
-                    <CampoReadOnly label="CPF" value={form.cpf} />
-                    <CampoReadOnly label="RG" value={form.rg} />
-                    <CampoReadOnly label="Órgão expedidor" value={form.orgaoExpedidor} />
-                    <CampoReadOnly label="Contato" value={form.contato} />
-                  </div>
-                  <div className="space-y-4">
-                    <CampoReadOnly label="Profissão" value={form.profissao} />
-                    <CampoReadOnly label="Data de nascimento" value={form.dataNascimento} />
-                    <CampoReadOnly label="Nacionalidade" value={form.nacionalidade} />
-                    <CampoReadOnly label="Estado civil" value={form.estadoCivil} />
-                    <CampoReadOnly label="E-mail" value={form.email} />
-                    {(form.responsavelId != null || form.responsavel) && (
-                      <CampoReadOnly
-                        label="Responsável / representante"
-                        value={
-                          form.responsavel
-                            ? rotuloPessoaComDocumento(form.responsavel)
-                            : form.responsavelId != null
-                              ? `Código ${form.responsavelId}`
-                              : '—'
-                        }
-                      />
-                    )}
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setModalEnderecos(true)}
-                        className="inline-flex items-center gap-1.5 px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white text-slate-700 hover:bg-slate-50"
-                      >
-                        <MapPin className="w-4 h-4" />
-                        Endereços
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setModalContatos(true)}
-                        className="inline-flex items-center gap-1.5 px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white text-slate-700 hover:bg-slate-50"
-                      >
-                        <Phone className="w-4 h-4" />
-                        Contatos
-                        {totalContatos > 0 && (
-                          <span className="text-slate-500 font-normal">
-                            ({contagemContatos.telefone} tel., {contagemContatos.email} e-mail, {contagemContatos.website} site)
-                          </span>
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                {loading ? (
-                  <p className="text-slate-500 text-sm">Carregando...</p>
-                ) : (
-                  <div className="border border-slate-200 rounded-xl overflow-hidden">
-                    <table className="w-full text-sm">
-                      <thead className="bg-slate-100 text-slate-700 font-medium">
-                        <tr>
-                          <th className="text-left px-4 py-3">ID</th>
-                          <th className="text-left px-4 py-3">Nome</th>
-                          <th className="text-left px-4 py-3">E-mail</th>
-                          <th className="text-left px-4 py-3">CPF</th>
-                          <th className="text-center px-4 py-3">Doc.</th>
-                          <th className="text-left px-4 py-3">Ativo</th>
-                          <th className="text-right px-4 py-3">Ações</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-200">
-                        {listaExibida.length === 0 ? (
-                          <tr>
-                            <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
-                              Nenhuma pessoa cadastrada.
-                            </td>
-                          </tr>
-                        ) : (
-                          listaExibida.map((p) => (
-                            <tr key={p.id} className="hover:bg-slate-50/50">
-                              <td className="px-4 py-3 text-slate-600">{p.id}</td>
-                              <td className="px-4 py-3 font-medium text-slate-800">{p.nome}</td>
-                              <td className="px-4 py-3 text-slate-600">{p.email}</td>
-                              <td className="px-4 py-3 text-slate-600">{p.cpf}</td>
-                              <td className="px-4 py-3 text-center">
-                                {pessoasComDocumento.includes(String(p.id)) ? (
-                                  <button
-                                    type="button"
-                                    className="inline-flex items-center justify-center p-1.5 rounded-full bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-                                    title="Documento pessoal disponível"
-                                    onClick={() => {
-                                      try {
-                                        const doc = obterDocumentoPessoa(p.id);
-                                        if (!doc) {
-                                          setDocStatus({
-                                            kind: 'error',
-                                            message:
-                                              'Registro de documento não encontrado. Ele pode ter sido removido do armazenamento local.',
-                                          });
-                                          return;
-                                        }
-                                        const url = criarUrlParaDocumento(doc);
-                                        if (!url) {
-                                          setDocStatus({
-                                            kind: 'error',
-                                            message:
-                                              'Não foi possível abrir o documento armazenado localmente.',
-                                          });
-                                          return;
-                                        }
-                                        window.open(url, '_blank', 'noopener,noreferrer');
-                                      } catch (err) {
-                                        setDocStatus({
-                                          kind: 'error',
-                                          message:
-                                            err?.message ||
-                                            'Falha ao abrir o documento armazenado localmente.',
-                                        });
-                                      }
-                                    }}
-                                  >
-                                    <FileText className="w-4 h-4" />
-                                  </button>
-                                ) : (
-                                  <span className="inline-flex items-center justify-center text-xs text-slate-400">
-                                    —
-                                  </span>
-                                )}
-                              </td>
-                              <td className="px-4 py-3">{p.ativo ? 'Sim' : 'Não'}</td>
-                              <td className="px-4 py-3 text-right">
-                                <button
-                                  type="button"
-                                  onClick={() => abrirEditar(p)}
-                                  className="p-2 rounded-lg text-blue-600 hover:bg-blue-50 inline-flex items-center justify-center"
-                                  title="Editar"
-                                >
-                                  <Pencil className="w-4 h-4" />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => excluir(p.id, p.nome)}
-                                  className="p-2 rounded-lg text-red-600 hover:bg-red-50 inline-flex items-center justify-center ml-1"
-                                  title="Excluir"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              </td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+                <h2 className="text-lg font-semibold text-slate-800 mb-2">Início</h2>
+                <p className="text-slate-600 text-sm mb-4">
+                  Para ver a tabela com todas as pessoas, use o menu <strong>Relatório de pessoas</strong>. Você pode
+                  localizar uma ficha pelo número acima ou criar uma nova pessoa.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => navigate('/clientes/relatorio')}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-800 text-sm font-medium hover:bg-slate-50"
+                >
+                  <FileText className="w-4 h-4" />
+                  Abrir relatório de pessoas
+                </button>
               </>
             )}
           </div>
 
-          {/* Rodapé de ações */}
           <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex flex-wrap gap-3">
             <button
               type="button"
@@ -1718,24 +1639,6 @@ export function CadastroPessoas() {
             >
               Fechar
             </button>
-            {modo === 'listar' && (
-              <>
-                <button
-                  type="button"
-                  className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700"
-                  onClick={() => pessoaAtual && abrirEditar(pessoaAtual)}
-                >
-                  Usar esse
-                </button>
-                <button
-                  type="button"
-                  className="px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-700 text-sm font-medium hover:bg-slate-50"
-                  onClick={() => setIndiceAtual((i) => Math.min(listaExibida.length - 1, i + 1))}
-                >
-                  Pular
-                </button>
-              </>
-            )}
           </div>
         </section>
       </div>

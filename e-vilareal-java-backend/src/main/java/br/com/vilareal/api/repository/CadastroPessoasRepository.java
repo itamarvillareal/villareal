@@ -24,6 +24,8 @@ public interface CadastroPessoasRepository extends JpaRepository<CadastroPessoa,
 
     Optional<CadastroPessoa> findByEmail(String email);
     Optional<CadastroPessoa> findByCpf(String cpf);
+
+    List<CadastroPessoa> findByMarcadoMonitoramentoTrue();
     boolean existsByEmail(String email);
     boolean existsByCpf(String cpf);
     boolean existsByEmailAndIdNot(String email, Long id);

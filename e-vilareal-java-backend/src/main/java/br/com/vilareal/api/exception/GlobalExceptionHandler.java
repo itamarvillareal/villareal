@@ -1,5 +1,6 @@
 package br.com.vilareal.api.exception;
 
+import br.com.vilareal.api.monitoring.exception.MonitoringNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -18,6 +19,20 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(CadastroPessoaNaoEncontradaException.class)
     public ResponseEntity<ErroResponse> cadastroPessoaNaoEncontrado(
             CadastroPessoaNaoEncontradaException ex,
+            HttpServletRequest request) {
+        ErroResponse body = new ErroResponse(
+                Instant.now(),
+                HttpStatus.NOT_FOUND.value(),
+                "Not Found",
+                ex.getMessage(),
+                request.getRequestURI()
+        );
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(body);
+    }
+
+    @ExceptionHandler(MonitoringNotFoundException.class)
+    public ResponseEntity<ErroResponse> monitoringNaoEncontrado(
+            MonitoringNotFoundException ex,
             HttpServletRequest request) {
         ErroResponse body = new ErroResponse(
                 Instant.now(),

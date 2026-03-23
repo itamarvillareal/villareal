@@ -13,7 +13,16 @@ export const navItems = [
       { id: 'relatorio-imoveis', label: 'Relatório Imóveis', icon: 'FileSpreadsheet' },
     ],
   },
-  { id: 'clientes', label: 'Pessoas', icon: 'Users' },
+  {
+    id: 'pessoas-grupo',
+    label: 'Pessoas',
+    icon: 'Users',
+    children: [
+      { id: 'clientes/lista', label: 'Todas as pessoas', icon: 'List' },
+      { id: 'clientes/relatorio', label: 'Relatório de pessoas', icon: 'FileSpreadsheet' },
+      { id: 'clientes/nova', label: 'Nova pessoa', icon: 'UserPlus' },
+    ],
+  },
   { id: 'pessoas', label: 'Clientes', icon: 'UserCircle' },
   {
     id: 'processos-grupo',
@@ -21,6 +30,8 @@ export const navItems = [
     icon: 'Folder',
     children: [
       { id: 'processos', label: 'Processos', icon: 'Folder' },
+      { id: 'processos/publicacoes', label: 'Publicações', icon: 'Newspaper' },
+      { id: 'processos/monitoramento', label: 'Monitoramento de Pessoas', icon: 'Radar' },
       { id: 'relatorio', label: 'Relatório de Processos', icon: 'FileSpreadsheet' },
     ],
   },

@@ -3,9 +3,12 @@ import { BrowserRouter, Routes, Route, Outlet, Navigate, useLocation, useNavigat
 import { Sidebar } from './components/Sidebar';
 import { Board } from './components/Board';
 import { CadastroPessoas } from './components/cadastro-pessoas/CadastroPessoas';
+import { RelatorioPessoas } from './components/cadastro-pessoas/RelatorioPessoas.jsx';
 import { CadastroClientes } from './components/CadastroClientes';
 import { Agenda } from './components/Agenda';
 import { Processos } from './components/Processos';
+import { PublicacoesProcessos } from './components/PublicacoesProcessos.jsx';
+import { MonitoringPeoplePage } from './components/monitoring/MonitoringPeoplePage.jsx';
 import { Imoveis } from './components/Imoveis';
 import { ImoveisAdministracaoFinanceiro } from './components/ImoveisAdministracaoFinanceiro.jsx';
 import { RelatorioImoveis } from './components/RelatorioImoveis.jsx';
@@ -34,6 +37,11 @@ import {
   USUARIO_MASTER_ID,
 } from './data/usuarioPermissoesStorage.js';
 import { getContextoAuditoriaUsuario, registrarAuditoria } from './services/auditoriaCliente.js';
+
+function RedirectClientesParaLista() {
+  const location = useLocation();
+  return <Navigate to="/clientes/lista" replace state={location.state} />;
+}
 
 let __ultimoLogNavegacao = { path: '', t: 0 };
 
@@ -160,11 +168,17 @@ function App() {
       <Routes>
         <Route element={<Layout />}>
           <Route path="/" element={<Board />} />
-          <Route path="/clientes" element={<CadastroPessoas />} />
+          <Route path="/clientes" element={<RedirectClientesParaLista />} />
+          <Route path="/clientes/lista" element={<CadastroPessoas />} />
+          <Route path="/clientes/relatorio" element={<RelatorioPessoas />} />
+          <Route path="/clientes/editar/:id" element={<CadastroPessoas />} />
+          <Route path="/clientes/nova" element={<CadastroPessoas />} />
           <Route path="/pessoas" element={<CadastroClientes />} />
           <Route path="/agenda" element={<Agenda />} />
           <Route path="/atividade" element={<Atividade />} />
           <Route path="/processos" element={<Processos />} />
+          <Route path="/processos/publicacoes" element={<PublicacoesProcessos />} />
+          <Route path="/processos/monitoramento" element={<MonitoringPeoplePage />} />
           <Route path="/imoveis" element={<Imoveis />} />
           <Route path="/imoveis/financeiro" element={<ImoveisAdministracaoFinanceiro />} />
           <Route path="/imoveis/relatorio-financeiro" element={<RelatorioFinanceiroImoveis />} />

@@ -33,6 +33,9 @@ public class CadastroPessoasRequest {
 
     private Boolean ativo = true;
 
+    @Schema(description = "Marcar para monitoramento CNJ (outro módulo ou integração pode preencher)")
+    private Boolean marcadoMonitoramento;
+
     @Schema(description = "ID de outra pessoa cadastrada como responsável/representante (opcional)")
     private Long responsavelId;
 
@@ -50,4 +53,6 @@ public class CadastroPessoasRequest {
     public void setAtivo(Boolean ativo) { this.ativo = ativo; }
     public Long getResponsavelId() { return responsavelId; }
     public void setResponsavelId(Long responsavelId) { this.responsavelId = responsavelId; }
+    public Boolean getMarcadoMonitoramento() { return marcadoMonitoramento; }
+    public void setMarcadoMonitoramento(Boolean marcadoMonitoramento) { this.marcadoMonitoramento = marcadoMonitoramento; }
 }

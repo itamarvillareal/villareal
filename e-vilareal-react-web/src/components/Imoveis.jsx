@@ -565,7 +565,7 @@ export function Imoveis() {
                     <button
                       type="button"
                       onClick={() =>
-                        navigate('/clientes', {
+                        navigate('/clientes/lista', {
                           state: {
                             origemImoveis: true,
                             papelPropriedade: 'proprietario',
@@ -606,7 +606,7 @@ export function Imoveis() {
                     <button
                       type="button"
                       onClick={() =>
-                        navigate('/clientes', {
+                        navigate('/clientes/lista', {
                           state: {
                             origemImoveis: true,
                             papelPropriedade: 'inquilino',

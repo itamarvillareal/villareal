@@ -31,6 +31,38 @@ function IconPessoas({ className }) {
   );
 }
 
+/** Lista (submenu Todas as pessoas). */
+function IconListaPessoas({ className }) {
+  return (
+    <svg className={`block shrink-0 ${className ?? ''}`} viewBox="0 0 24 24" fill="none" style={shadow} aria-hidden>
+      <path d="M8 7h12M8 12h12M8 17h9" stroke="#2563eb" strokeWidth="1.5" strokeLinecap="round" />
+      <circle cx="5" cy="7" r="1.35" fill="#38bdf8" />
+      <circle cx="5" cy="12" r="1.35" fill="#38bdf8" />
+      <circle cx="5" cy="17" r="1.35" fill="#38bdf8" />
+    </svg>
+  );
+}
+
+/** Nova pessoa (ícone user +). */
+function IconNovaPessoa({ className }) {
+  const uid = useId().replace(/:/g, '');
+  const g = `nova-p-${uid}`;
+  return (
+    <svg className={`block shrink-0 ${className ?? ''}`} viewBox="0 0 24 24" fill="none" style={shadow} aria-hidden>
+      <defs>
+        <linearGradient id={g} x1="3" y1="4" x2="13" y2="16" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#4ade80" />
+          <stop offset="1" stopColor="#15803d" />
+        </linearGradient>
+      </defs>
+      <circle cx="9.5" cy="8.5" r="4" fill={`url(#${g})`} stroke="#14532d" strokeWidth="0.35" />
+      <path d="M4.5 19.5c.8-3.2 3.5-5 5-5s4.2 1.8 5 5" stroke="#14532d" strokeWidth="1.35" strokeLinecap="round" />
+      <circle cx="18" cy="7" r="4.5" fill="#2563eb" stroke="#1e3a8a" strokeWidth="0.35" />
+      <path d="M18 5v4M16 7h4" stroke="#e0f2fe" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function IconClientes({ className }) {
   const uid = useId().replace(/:/g, '');
   const gF = `cli-f-${uid}`;
@@ -74,6 +106,31 @@ function IconFolderProcessos({ className }) {
         strokeWidth="0.55"
         strokeLinejoin="round"
       />
+    </svg>
+  );
+}
+
+/** Diário / publicações oficiais (submenu Processos). */
+function IconPublicacoes({ className }) {
+  const uid = useId().replace(/:/g, '');
+  const g = `pub-${uid}`;
+  return (
+    <svg className={`block shrink-0 ${className ?? ''}`} viewBox="0 0 24 24" fill="none" style={shadow} aria-hidden>
+      <defs>
+        <linearGradient id={g} x1="5" y1="3" x2="19" y2="21" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#7dd3fc" />
+          <stop offset="1" stopColor="#0369a1" />
+        </linearGradient>
+      </defs>
+      <path
+        d="M7 3.5h10.5a2 2 0 012 2v13a2.5 2.5 0 01-2.5 2.5H7A2.5 2.5 0 014.5 18V6a2.5 2.5 0 012.5-2.5z"
+        fill={`url(#${g})`}
+        stroke="#0c4a6e"
+        strokeWidth="0.5"
+        strokeLinejoin="round"
+      />
+      <path d="M8 8.5h8M8 11.5h8M8 14.5h5.5" stroke="#e0f2fe" strokeWidth="1.15" strokeLinecap="round" />
+      <path d="M16 16.5l1.2 1.2 2.3-2.3" stroke="#fef08a" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -347,6 +404,25 @@ function IconUsuarios({ className }) {
   );
 }
 
+function IconMonitoramento({ className }) {
+  const uid = useId().replace(/:/g, '');
+  const g = `mon-${uid}`;
+  return (
+    <svg className={`block shrink-0 ${className ?? ''}`} viewBox="0 0 24 24" fill="none" style={shadow} aria-hidden>
+      <defs>
+        <linearGradient id={g} x1="4" y1="4" x2="20" y2="20" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#22d3ee" />
+          <stop offset="1" stopColor="#6366f1" />
+        </linearGradient>
+      </defs>
+      <circle cx="12" cy="12" r="9" stroke={`url(#${g})`} strokeWidth="1.2" fill="none" opacity="0.35" />
+      <circle cx="12" cy="12" r="5.5" stroke={`url(#${g})`} strokeWidth="1" fill="none" opacity="0.55" />
+      <circle cx="12" cy="12" r="2.2" fill={`url(#${g})`} stroke="#312e81" strokeWidth="0.35" />
+      <path d="M12 3v2M12 19v2M3 12h2M19 12h2" stroke="#6366f1" strokeWidth="0.9" strokeLinecap="round" opacity="0.7" />
+    </svg>
+  );
+}
+
 function IconConfiguracoes({ className }) {
   const uid = useId().replace(/:/g, '');
   const g1 = `cfg1-${uid}`;
@@ -373,9 +449,15 @@ function IconConfiguracoes({ className }) {
 
 const MENU_ICONS = {
   clientes: IconPessoas,
+  'pessoas-grupo': IconPessoas,
+  'clientes/lista': IconListaPessoas,
+  'clientes/relatorio': IconRelatorioProcessos,
+  'clientes/nova': IconNovaPessoa,
   pessoas: IconClientes,
   'processos-grupo': IconFolderProcessos,
   processos: IconFolderProcessos,
+  'processos/publicacoes': IconPublicacoes,
+  'processos/monitoramento': IconMonitoramento,
   relatorio: IconRelatorioProcessos,
   'calcular-grupo': IconCalculator,
   calculos: IconCalculator,

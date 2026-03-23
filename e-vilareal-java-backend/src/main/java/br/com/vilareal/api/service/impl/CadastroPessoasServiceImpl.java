@@ -7,9 +7,12 @@ import br.com.vilareal.api.entity.CadastroPessoa;
 import br.com.vilareal.api.exception.CadastroPessoaNaoEncontradaException;
 import br.com.vilareal.api.exception.RegraNegocioException;
 import br.com.vilareal.api.context.UsuarioContext;
+import br.com.vilareal.api.monitoring.service.MonitoringPeopleService;
 import br.com.vilareal.api.repository.CadastroPessoasRepository;
 import br.com.vilareal.api.service.AuditoriaAtividadeService;
 import br.com.vilareal.api.service.CadastroPessoasService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,13 +23,18 @@ import java.util.stream.Collectors;
 @Service
 public class CadastroPessoasServiceImpl implements CadastroPessoasService {
 
+    private static final Logger log = LoggerFactory.getLogger(CadastroPessoasServiceImpl.class);
+
     private final CadastroPessoasRepository repository;
     private final AuditoriaAtividadeService auditoriaAtividadeService;
+    private final MonitoringPeopleService monitoringPeopleService;
 
     public CadastroPessoasServiceImpl(CadastroPessoasRepository repository,
-                                    AuditoriaAtividadeService auditoriaAtividadeService) {
+                                    AuditoriaAtividadeService auditoriaAtividadeService,
+                                    MonitoringPeopleService monitoringPeopleService) {
         this.repository = repository;
         this.auditoriaAtividadeService = auditoriaAtividadeService;
+        this.monitoringPeopleService = monitoringPeopleService;
     }
 
     @Override
@@ -37,6 +45,13 @@ public class CadastroPessoasServiceImpl implements CadastroPessoasService {
         validarResponsavel(null, request.getResponsavelId());
         CadastroPessoa entity = toEntity(request, null);
         entity = repository.save(entity);
+        try {
+            monitoringPeopleService.syncMonitoringAfterCadastroSave(
+                    entity.getId(), Boolean.TRUE.equals(entity.getMarcadoMonitoramento()));
+        } catch (Exception ex) {
+            log.warn("Cadastro salvo, mas falha ao sincronizar monitoramento (personId={}): {}",
+                    entity.getId(), ex.getMessage());
+        }
         CadastroPessoasResponse response = toResponse(recarregarComResponsavel(entity.getId()));
         auditarPessoas("CRIACAO", response.getNome(), response.getId(),
                 "cadastrou a pessoa %s (id %s).");
@@ -52,6 +67,13 @@ public class CadastroPessoasServiceImpl implements CadastroPessoasService {
         validarResponsavel(id, request.getResponsavelId());
         atualizarEntidade(entity, request);
         entity = repository.save(entity);
+        try {
+            monitoringPeopleService.syncMonitoringAfterCadastroSave(
+                    entity.getId(), Boolean.TRUE.equals(entity.getMarcadoMonitoramento()));
+        } catch (Exception ex) {
+            log.warn("Cadastro salvo, mas falha ao sincronizar monitoramento (personId={}): {}",
+                    entity.getId(), ex.getMessage());
+        }
         CadastroPessoasResponse response = toResponse(recarregarComResponsavel(entity.getId()));
         auditarPessoas("EDICAO", response.getNome(), response.getId(),
                 "alterou o cadastro de %s (id %s).");
@@ -168,6 +190,9 @@ public class CadastroPessoasServiceImpl implements CadastroPessoasService {
         e.setTelefone(request.getTelefone());
         e.setDataNascimento(request.getDataNascimento());
         e.setAtivo(request.getAtivo() != null ? request.getAtivo() : true);
+        if (request.getMarcadoMonitoramento() != null) {
+            e.setMarcadoMonitoramento(request.getMarcadoMonitoramento());
+        }
         aplicarResponsavelNaEntidade(e, request.getResponsavelId());
         return e;
     }
@@ -179,6 +204,9 @@ public class CadastroPessoasServiceImpl implements CadastroPessoasService {
         entity.setTelefone(request.getTelefone());
         entity.setDataNascimento(request.getDataNascimento());
         if (request.getAtivo() != null) entity.setAtivo(request.getAtivo());
+        if (request.getMarcadoMonitoramento() != null) {
+            entity.setMarcadoMonitoramento(request.getMarcadoMonitoramento());
+        }
         aplicarResponsavelNaEntidade(entity, request.getResponsavelId());
     }
 
@@ -201,6 +229,7 @@ public class CadastroPessoasServiceImpl implements CadastroPessoasService {
         r.setTelefone(e.getTelefone());
         r.setDataNascimento(e.getDataNascimento());
         r.setAtivo(e.getAtivo());
+        r.setMarcadoMonitoramento(Boolean.TRUE.equals(e.getMarcadoMonitoramento()));
         r.setDataCriacao(e.getDataCriacao());
         r.setDataAtualizacao(e.getDataAtualizacao());
         if (e.getResponsavel() != null) {

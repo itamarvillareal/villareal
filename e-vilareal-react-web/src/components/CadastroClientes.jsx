@@ -889,7 +889,7 @@ export function CadastroClientes() {
                       registroAfetadoId: String(idPessoa),
                     });
                   }
-                  navigate('/clientes', { state: { pessoaId: String(idPessoa) } });
+                  navigate(`/clientes/editar/${idPessoa}`);
                 }}
                 className="px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
               >

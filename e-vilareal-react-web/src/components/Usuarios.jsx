@@ -242,7 +242,7 @@ export function Usuarios() {
         </div>
         <div className="flex flex-wrap gap-2 self-start">
           <Link
-            to="/clientes"
+            to="/clientes/lista"
             className="inline-flex items-center gap-2 rounded-md border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm text-indigo-900 hover:bg-indigo-100"
           >
             Cadastro de Pessoas

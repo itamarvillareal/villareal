@@ -12,6 +12,7 @@ public class CadastroPessoasResponse {
     private String telefone;
     private LocalDate dataNascimento;
     private Boolean ativo;
+    private Boolean marcadoMonitoramento;
     private LocalDateTime dataCriacao;
     private LocalDateTime dataAtualizacao;
 
@@ -32,6 +33,8 @@ public class CadastroPessoasResponse {
     public void setDataNascimento(LocalDate dataNascimento) { this.dataNascimento = dataNascimento; }
     public Boolean getAtivo() { return ativo; }
     public void setAtivo(Boolean ativo) { this.ativo = ativo; }
+    public Boolean getMarcadoMonitoramento() { return marcadoMonitoramento; }
+    public void setMarcadoMonitoramento(Boolean marcadoMonitoramento) { this.marcadoMonitoramento = marcadoMonitoramento; }
     public LocalDateTime getDataCriacao() { return dataCriacao; }
     public void setDataCriacao(LocalDateTime dataCriacao) { this.dataCriacao = dataCriacao; }
     public LocalDateTime getDataAtualizacao() { return dataAtualizacao; }

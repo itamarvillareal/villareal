@@ -137,7 +137,19 @@ export function getPermissoesUsuario(userId) {
   const map = loadPermissoesMapa();
   const stored = map[userId];
   if (!stored || typeof stored !== 'object') return { ...defaults };
-  return { ...defaults, ...stored };
+  const merged = { ...defaults, ...stored };
+  if (
+    Object.prototype.hasOwnProperty.call(stored, 'clientes') &&
+    stored.clientes === false &&
+    !Object.prototype.hasOwnProperty.call(stored, 'clientes/lista') &&
+    !Object.prototype.hasOwnProperty.call(stored, 'clientes/nova') &&
+    !Object.prototype.hasOwnProperty.call(stored, 'clientes/relatorio')
+  ) {
+    merged['clientes/lista'] = false;
+    merged['clientes/nova'] = false;
+    merged['clientes/relatorio'] = false;
+  }
+  return merged;
 }
 
 export function usuarioPodeAcessarModulo(userId, moduloId) {
@@ -156,7 +168,17 @@ export function usuarioPodeAcessarModulo(userId, moduloId) {
 export function pathParaModuloId(pathname) {
   const path = String(pathname || '').replace(/\/+$/, '') || '/';
   if (path === '/' || path === '') return 'inicio';
-  const seg = path.replace(/^\//, '').split('/')[0];
+  const noLead = path.replace(/^\//, '');
+  if (noLead === 'clientes') return 'clientes/lista';
+  if (noLead.startsWith('clientes/editar/')) return 'clientes/lista';
+  if (noLead === 'clientes/relatorio') return 'clientes/relatorio';
+  if (IDS_MODULO.has(noLead)) return noLead;
+  const parts = noLead.split('/');
+  for (let i = parts.length; i >= 1; i--) {
+    const cand = parts.slice(0, i).join('/');
+    if (IDS_MODULO.has(cand)) return cand;
+  }
+  const seg = parts[0];
   if (IDS_MODULO.has(seg)) return seg;
   return 'inicio';
 }

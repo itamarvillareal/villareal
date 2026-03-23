@@ -41,7 +41,9 @@ import {
   ChevronUp,
   ChevronDown,
   Search,
+  Newspaper,
 } from 'lucide-react';
+import { ModalRelatorioPublicacoesProcesso } from './ModalRelatorioPublicacoesProcesso.jsx';
 
 const HISTORICO_POR_PAGINA = 10;
 const PERIODICIDADES_AGENDA_LOTE = [
@@ -197,6 +199,7 @@ export function Processos() {
   /** Abre Conta Corrente em modo Proc. 0 quando o Financeiro envia proc 0 (mensalista). Declarado cedo para o efeito abaixo. */
   const [contaCorrenteModo, setContaCorrenteModo] = useState('processo');
   const [modalContaCorrente, setModalContaCorrente] = useState(false);
+  const [modalRelatorioPublicacoes, setModalRelatorioPublicacoes] = useState(false);
 
   useEffect(() => {
     if (codClienteFromState) setCodigoCliente(codClienteFromState);
@@ -1094,12 +1097,23 @@ export function Processos() {
     <div className="min-h-full bg-slate-200">
       <div className="max-w-[1400px] mx-auto px-3 py-3">
         {/* Cabeçalho: Processos + X */}
-        <header className="flex items-center justify-between mb-3">
-          <h1 className="text-xl font-bold text-slate-800">Processos</h1>
+        <header className="flex items-center justify-between mb-3 gap-2">
+          <div className="flex items-center gap-2 flex-wrap min-w-0">
+            <h1 className="text-xl font-bold text-slate-800">Processos</h1>
+            <button
+              type="button"
+              onClick={() => setModalRelatorioPublicacoes(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-400 bg-white text-slate-800 text-sm font-medium hover:bg-slate-50 shrink-0"
+              title="Relatório das publicações importadas vinculadas a este processo"
+            >
+              <Newspaper className="w-4 h-4" aria-hidden />
+              Publicações
+            </button>
+          </div>
           <button
             type="button"
             onClick={() => window.history.back()}
-            className="p-2 rounded border border-slate-400 bg-white text-slate-600 hover:bg-slate-100"
+            className="p-2 rounded border border-slate-400 bg-white text-slate-600 hover:bg-slate-100 shrink-0"
             aria-label="Fechar"
           >
             <X className="w-5 h-5" />
@@ -2343,6 +2357,15 @@ export function Processos() {
           </div>
         </div>
       )}
+
+      <ModalRelatorioPublicacoesProcesso
+        open={modalRelatorioPublicacoes}
+        onClose={() => setModalRelatorioPublicacoes(false)}
+        codigoCliente={codigoCliente}
+        processo={processo}
+        numeroProcessoNovo={numeroProcessoNovo}
+        nomeCliente={cliente}
+      />
     </div>
   );
 }

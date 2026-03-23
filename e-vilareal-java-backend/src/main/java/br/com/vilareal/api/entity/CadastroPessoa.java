@@ -40,6 +40,9 @@ public class CadastroPessoa {
     @Column(nullable = false)
     private Boolean ativo = true;
 
+    @Column(name = "marcado_monitoramento", nullable = false)
+    private Boolean marcadoMonitoramento = false;
+
     @Column(name = "data_criacao", updatable = false)
     private LocalDateTime dataCriacao;
 
@@ -78,6 +81,8 @@ public class CadastroPessoa {
     public void setDataNascimento(LocalDate dataNascimento) { this.dataNascimento = dataNascimento; }
     public Boolean getAtivo() { return ativo; }
     public void setAtivo(Boolean ativo) { this.ativo = ativo; }
+    public Boolean getMarcadoMonitoramento() { return marcadoMonitoramento; }
+    public void setMarcadoMonitoramento(Boolean marcadoMonitoramento) { this.marcadoMonitoramento = marcadoMonitoramento; }
     public LocalDateTime getDataCriacao() { return dataCriacao; }
     public void setDataCriacao(LocalDateTime dataCriacao) { this.dataCriacao = dataCriacao; }
     public LocalDateTime getDataAtualizacao() { return dataAtualizacao; }

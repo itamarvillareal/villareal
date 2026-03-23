@@ -69,6 +69,9 @@ export function Sidebar() {
     ) {
       setGruposAbertos((prev) => new Set(prev).add('admin-imoveis-grupo'));
     }
+    if (p === '/clientes' || p.startsWith('/clientes/')) {
+      setGruposAbertos((prev) => new Set(prev).add('pessoas-grupo'));
+    }
   }, [location.pathname]);
 
   const toggleGrupo = (grupoId) => {
@@ -106,6 +109,12 @@ export function Sidebar() {
             const aberto = gruposAbertos.has(item.id);
             const algumFilhoAtivo = subs.some((ch) => {
               const path = location.pathname.replace(/\/+$/, '') || '/';
+              if (ch.id === 'clientes/lista') {
+                return path === '/clientes/lista' || path.startsWith('/clientes/editar/');
+              }
+              if (ch.id === 'clientes/relatorio') {
+                return path === '/clientes/relatorio';
+              }
               return path === `/${ch.id}` || path.startsWith(`/${ch.id}/`);
             });
             return (
@@ -134,14 +143,21 @@ export function Sidebar() {
                         <NavLink
                           key={ch.id}
                           to={`/${ch.id}`}
-                          end
-                          className={({ isActive }) =>
-                            `flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs font-medium transition-all duration-200 ${
-                              isActive
+                          end={ch.id !== 'clientes/lista'}
+                          className={({ isActive }) => {
+                            const path = location.pathname.replace(/\/+$/, '') || '/';
+                            let ativo = isActive;
+                            if (ch.id === 'clientes/lista') {
+                              ativo = path === '/clientes/lista' || path.startsWith('/clientes/editar/');
+                            } else if (ch.id === 'clientes/relatorio') {
+                              ativo = path === '/clientes/relatorio';
+                            }
+                            return `flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs font-medium transition-all duration-200 ${
+                              ativo
                                 ? 'bg-blue-100 dark:bg-cyan-500/15 text-blue-800 dark:text-cyan-100 border-l-2 border-blue-500 dark:border-cyan-400'
                                 : 'text-gray-600 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/[0.04] border-l-2 border-transparent'
-                            }`
-                          }
+                            }`;
+                          }}
                         >
                           <SidebarMenuIcon id={ch.id} className="w-4 h-4" />
                           <span>{ch.label}</span>

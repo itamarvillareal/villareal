@@ -144,7 +144,7 @@ export function ModalDadosUsuario({ open, usuario, listaTodos, onClose, onSalvar
             <div className="flex items-center justify-between gap-2">
               <label className="text-xs font-medium text-slate-700">Nº da pessoa (Cadastro de Pessoas)</label>
               <Link
-                to="/clientes"
+                to="/clientes/lista"
                 className="inline-flex items-center gap-1 text-xs text-indigo-600 hover:underline"
               >
                 Abrir Pessoas <ExternalLink className="h-3 w-3" />
