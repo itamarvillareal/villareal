@@ -8,26 +8,52 @@ import { resolverAliasHojeEmTexto } from '../services/hjDateAliasService.js';
 function Field({ label, children, className = '' }) {
   return (
     <div className={className}>
-      <label className="block text-xs font-medium text-slate-600 mb-0.5">{label}</label>
+      <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1.5 tracking-tight">{label}</label>
       {children}
     </div>
   );
 }
 
-/** Coluna tipo legado (Água / Energia / …): título em caixa alta e campos empilhados. */
-function BlocoUtilidade({ titulo, children }) {
+const utilAccentTop = {
+  agua: 'border-t-sky-500/70 dark:border-t-sky-400/55',
+  energia: 'border-t-violet-500/70 dark:border-t-violet-400/50',
+  gas: 'border-t-emerald-500/70 dark:border-t-emerald-400/50',
+  contrato: 'border-t-amber-500/70 dark:border-t-amber-400/45',
+  cond: 'border-t-orange-400/80 dark:border-t-orange-300/45',
+};
+
+/** Coluna (Água / Energia / …): card com faixa superior de cor e hierarquia clara. */
+function BlocoUtilidade({ titulo, accent = 'agua', children }) {
+  const top = utilAccentTop[accent] || utilAccentTop.agua;
   return (
-    <div className="rounded-lg border border-slate-300 bg-slate-50/90 p-3 shadow-sm flex flex-col gap-2 min-h-0">
-      <p className="text-[11px] font-bold text-slate-600 uppercase tracking-wide border-b border-slate-200 pb-1.5 shrink-0">
+    <div
+      className={`rounded-xl border border-slate-200/90 dark:border-white/[0.08] bg-slate-50/95 dark:bg-[#161f2e] p-4 shadow-sm dark:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)] flex flex-col gap-3 min-h-0 border-t-[3px] ${top}`}
+    >
+      <p className="text-[11px] font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider border-b border-slate-200/90 dark:border-white/[0.07] pb-2.5 shrink-0">
         {titulo}
       </p>
-      <div className="space-y-2 flex-1 min-w-0">{children}</div>
+      <div className="space-y-3 flex-1 min-w-0">{children}</div>
     </div>
   );
 }
 
-const inputClass = 'w-full px-2 py-1.5 border border-slate-300 rounded text-sm bg-white';
-const sectionHeading = 'text-sm font-semibold text-slate-800 border-b border-slate-200 pb-2 mb-3';
+const inputClass =
+  'w-full px-3 py-2.5 text-sm rounded-xl border border-slate-300/90 dark:border-white/[0.1] bg-white dark:bg-[#141c2c] text-slate-900 dark:text-slate-100 shadow-sm placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/25 dark:focus:ring-cyan-400/20 focus:border-cyan-500/55 dark:focus:border-cyan-400/35 transition-[box-shadow,border-color] duration-200';
+
+const sectionHeading =
+  'text-base font-semibold text-slate-800 dark:text-slate-100 tracking-tight pb-3 mb-0 border-b border-slate-200/90 dark:border-white/[0.08]';
+
+const btnPrimary =
+  'inline-flex items-center justify-center px-4 py-2.5 rounded-xl text-sm font-semibold text-white bg-gradient-to-b from-cyan-600 to-teal-700 dark:from-cyan-600 dark:to-teal-800 border border-cyan-500/40 shadow-md shadow-cyan-950/25 hover:brightness-110 active:scale-[0.99] transition-all duration-200 disabled:opacity-50 disabled:pointer-events-none';
+
+const btnSecondary =
+  'inline-flex items-center justify-center px-4 py-2.5 rounded-xl text-sm font-medium border border-slate-300/90 dark:border-white/[0.12] bg-white dark:bg-white/[0.04] text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.08] active:scale-[0.99] transition-all duration-200';
+
+const btnTealOutline =
+  'inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-semibold border border-teal-500/50 dark:border-teal-400/40 bg-teal-50/90 dark:bg-teal-500/10 text-teal-900 dark:text-teal-100 hover:bg-teal-100/90 dark:hover:bg-teal-500/18 disabled:opacity-45 disabled:cursor-not-allowed transition-all duration-200 shadow-sm dark:shadow-teal-950/20';
+
+const btnIconGhost =
+  'p-2.5 rounded-xl border border-slate-300/90 dark:border-white/[0.1] bg-white dark:bg-white/[0.04] text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/[0.08] transition-colors shrink-0';
 
 export function Imoveis() {
   const location = useLocation();
@@ -238,37 +264,37 @@ export function Imoveis() {
     String(codigo ?? '').trim() !== '' && String(proc ?? '').trim() !== '';
 
   return (
-    <div className="min-h-full bg-slate-200">
-      <div className="max-w-[1600px] mx-auto px-3 py-3 pb-8">
-        <header className="flex items-start justify-between gap-3 mb-3">
-          <div>
-            <h1 className="text-xl font-bold text-slate-800">Imóveis em Administração</h1>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Cadastro do imóvel, locação, utilidades, conta para repasse e partes. O <strong>nº Imóvel</strong> é o mesmo
-              usado na tela <strong>Processos</strong> (vínculo ao processo por código de cliente e proc.). Com{' '}
-              <strong>Código</strong> e <strong>Proc.</strong> preenchidos, use <strong>Conta Corrente</strong> para ver
-              lançamentos do Financeiro, consolidação mensal e alertas de aluguel/repasse.
+    <div className="min-h-full bg-slate-200 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d]">
+      <div className="max-w-[1600px] mx-auto px-4 sm:px-5 py-5 sm:py-7 pb-10">
+        <header className="flex items-start justify-between gap-4 mb-6 lg:mb-8">
+          <div className="min-w-0 space-y-1">
+            <p className="text-[11px] font-semibold uppercase tracking-widest text-cyan-700 dark:text-cyan-400/90">
+              Administração de imóveis
+            </p>
+            <h1 className="text-2xl sm:text-[1.65rem] font-bold text-slate-800 dark:text-slate-50 tracking-tight">
+              Imóveis em Administração
+            </h1>
+            <p className="text-sm text-slate-600 dark:text-slate-400 max-w-3xl leading-relaxed mt-2">
+              Cadastro do imóvel, locação, utilidades, conta para repasse e partes. O <strong className="text-slate-800 dark:text-slate-200 font-semibold">nº Imóvel</strong> é o mesmo
+              usado na tela <strong className="text-slate-800 dark:text-slate-200 font-semibold">Processos</strong> (vínculo por código de cliente e proc.). Com{' '}
+              <strong className="text-slate-800 dark:text-slate-200 font-semibold">Código</strong> e <strong className="text-slate-800 dark:text-slate-200 font-semibold">Proc.</strong> preenchidos, use{' '}
+              <strong className="text-slate-800 dark:text-slate-200 font-semibold">Conta Corrente</strong> para ver lançamentos do Financeiro, consolidação mensal e alertas de aluguel/repasse.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => window.history.back()}
-            className="p-2 rounded-lg border border-slate-400 bg-white text-slate-600 hover:bg-slate-100 shrink-0"
-            aria-label="Fechar"
-          >
+          <button type="button" onClick={() => window.history.back()} className={btnIconGhost} aria-label="Fechar">
             <X className="w-5 h-5" />
           </button>
         </header>
 
-        <div className="bg-white rounded-lg border border-slate-300 shadow-sm overflow-hidden">
-          {/* Faixa superior: identificação (como formulário legado) */}
-          <div className="px-4 py-3 border-b border-slate-200 bg-slate-100/90">
-            <div className="flex flex-wrap items-end gap-x-5 gap-y-3">
-              <Field label="Imóvel" className="w-[5.5rem] shrink-0">
-                <div className="flex border border-slate-300 rounded-md overflow-hidden bg-white shadow-sm">
+        <div className="imoveis-admin-sheet bg-white rounded-2xl border border-slate-200/90 dark:border-white/[0.07] shadow-sm overflow-hidden ring-1 ring-slate-900/[0.03] dark:ring-white/[0.04]">
+          {/* Faixa superior: identificação */}
+          <div className="imoveis-admin-toolbar px-5 py-4 sm:px-6 border-b border-slate-200 dark:border-white/[0.06] bg-slate-50/95 dark:bg-black/20">
+            <div className="flex flex-wrap items-end gap-x-6 gap-y-4">
+              <Field label="Imóvel" className="w-[5.75rem] shrink-0">
+                <div className="flex border border-slate-300/90 dark:border-white/[0.12] rounded-xl overflow-hidden bg-white dark:bg-[#141c2c] shadow-sm">
                   <button
                     type="button"
-                    className="px-1.5 py-2 border-r border-slate-300 hover:bg-slate-50"
+                    className="px-2 py-2.5 border-r border-slate-200 dark:border-white/[0.08] hover:bg-slate-50 dark:hover:bg-white/[0.05] text-slate-600 dark:text-slate-400 transition-colors"
                     onClick={() => setImovelId((i) => Math.max(1, i - 1))}
                     aria-label="Imóvel anterior"
                   >
@@ -278,11 +304,11 @@ export function Imoveis() {
                     type="number"
                     value={imovelId}
                     onChange={(e) => setImovelId(Number(e.target.value) || 0)}
-                    className="w-12 px-1 py-2 text-sm text-center border-0 tabular-nums"
+                    className="w-12 px-1 py-2 text-sm text-center border-0 bg-transparent tabular-nums text-slate-900 dark:text-slate-100"
                   />
                   <button
                     type="button"
-                    className="px-1.5 py-2 border-l border-slate-300 hover:bg-slate-50"
+                    className="px-2 py-2.5 border-l border-slate-200 dark:border-white/[0.08] hover:bg-slate-50 dark:hover:bg-white/[0.05] text-slate-600 dark:text-slate-400 transition-colors"
                     onClick={() => setImovelId((i) => i + 1)}
                     aria-label="Próximo imóvel"
                   >
@@ -291,25 +317,21 @@ export function Imoveis() {
                 </div>
               </Field>
 
-              <fieldset className="border border-slate-300 rounded-md px-3 py-2 bg-white shrink-0">
-                <legend className="text-xs font-semibold text-slate-700 px-1">Imóvel Ocupado</legend>
-                <div className="flex gap-4">
-                  <label className="flex items-center gap-1.5 text-sm cursor-pointer">
-                    <input type="radio" name="ocupado" checked={imovelOcupado} onChange={() => setImovelOcupado(true)} className="text-teal-700" />
+              <fieldset className="border border-slate-300/90 dark:border-white/[0.1] rounded-xl px-4 py-2.5 bg-white dark:bg-[#141c2c]/80 shrink-0 shadow-sm">
+                <legend className="text-xs font-semibold text-slate-700 dark:text-slate-300 px-1.5">Imóvel ocupado</legend>
+                <div className="flex gap-5 pt-0.5">
+                  <label className="flex items-center gap-2 text-sm cursor-pointer text-slate-700 dark:text-slate-200">
+                    <input type="radio" name="ocupado" checked={imovelOcupado} onChange={() => setImovelOcupado(true)} className="text-cyan-600" />
                     Sim
                   </label>
-                  <label className="flex items-center gap-1.5 text-sm cursor-pointer">
-                    <input type="radio" name="ocupado" checked={!imovelOcupado} onChange={() => setImovelOcupado(false)} className="text-teal-700" />
+                  <label className="flex items-center gap-2 text-sm cursor-pointer text-slate-700 dark:text-slate-200">
+                    <input type="radio" name="ocupado" checked={!imovelOcupado} onChange={() => setImovelOcupado(false)} className="text-cyan-600" />
                     Não
                   </label>
                 </div>
               </fieldset>
 
-              <button
-                type="button"
-                onClick={abrirProcessoDoImovel}
-                className="px-4 py-2 rounded-md border border-slate-400 bg-white text-slate-800 text-sm font-medium hover:bg-slate-50 shadow-sm"
-              >
+              <button type="button" onClick={abrirProcessoDoImovel} className={btnPrimary}>
                 Abrir Proc.
               </button>
 
@@ -328,7 +350,7 @@ export function Imoveis() {
                     ? 'Movimentações do Financeiro com o mesmo Cod. cliente e Proc. (conta corrente do processo)'
                     : 'Informe Código e Proc. para vincular ao Cliente e Processo'
                 }
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md border border-teal-600 bg-teal-50 text-teal-900 text-sm font-medium hover:bg-teal-100 disabled:opacity-45 disabled:cursor-not-allowed shadow-sm"
+                className={btnTealOutline}
               >
                 <Landmark className="w-4 h-4 shrink-0" aria-hidden />
                 Conta Corrente
@@ -343,15 +365,15 @@ export function Imoveis() {
             </div>
           </div>
 
-          <div className="p-4 md:p-5 space-y-6">
-            {/* Endereço (2/3) + Observações inquilino (1/3) */}
-            <section className="grid grid-cols-1 xl:grid-cols-12 gap-5">
-              <div className="xl:col-span-8 space-y-4">
+          <div className="p-5 sm:p-6 md:p-8 space-y-8 md:space-y-10">
+            {/* Endereço + observações */}
+            <section className="grid grid-cols-1 xl:grid-cols-12 gap-6 lg:gap-8">
+              <div className="xl:col-span-8 imoveis-admin-section rounded-2xl border border-slate-200/90 dark:border-white/[0.08] bg-white/60 dark:bg-white/[0.02] p-5 sm:p-6 space-y-5 shadow-sm">
                 <h2 className={sectionHeading}>Endereço e unidade</h2>
                 <Field label="Endereço">
-                  <textarea value={endereco} onChange={(e) => setEndereco(e.target.value)} rows={3} className={`${inputClass} resize-y`} />
+                  <textarea value={endereco} onChange={(e) => setEndereco(e.target.value)} rows={4} className={`${inputClass} resize-y min-h-[5.5rem] leading-relaxed`} />
                 </Field>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-4 sm:gap-5">
                   <Field label="Condomínio" className="sm:col-span-2 lg:col-span-6">
                     <input type="text" value={condominio} onChange={(e) => setCondominio(e.target.value)} className={inputClass} />
                   </Field>
@@ -363,21 +385,26 @@ export function Imoveis() {
                   </Field>
                 </div>
               </div>
-              <fieldset className="xl:col-span-4 rounded-lg border border-slate-300 bg-slate-50/80 p-4 flex flex-col min-h-[11rem]">
-                <legend className="text-sm font-semibold text-slate-800 px-1">Observações sobre Inquilino</legend>
+              <fieldset className="imoveis-admin-obs xl:col-span-4 rounded-2xl border border-amber-200/60 dark:border-amber-500/20 bg-amber-50/40 dark:bg-amber-950/20 p-5 sm:p-6 flex flex-col min-h-[12rem] shadow-md">
+                <legend className="text-sm font-semibold text-slate-800 dark:text-amber-100/95 px-1.5">
+                  Observações sobre o inquilino
+                </legend>
+                <p className="text-[11px] text-slate-600 dark:text-amber-200/70 mb-3 leading-snug">
+                  Notas internas sobre a locação; leitura confortável em qualquer tema.
+                </p>
                 <textarea
                   value={observacoesInquilino}
                   onChange={(e) => setObservacoesInquilino(e.target.value)}
                   rows={6}
-                  className={`${inputClass} resize-y flex-1 min-h-[8rem] bg-white mt-1`}
+                  className={`${inputClass} resize-y flex-1 min-h-[9rem] mt-0 bg-white/90 dark:bg-[#0d1018]/70 leading-relaxed`}
                 />
               </fieldset>
             </section>
 
-            {/* Garantia, locação, 1ª taxa cond., IPTU */}
-            <section className="rounded-lg border border-slate-300 bg-slate-50/50 p-4 space-y-4">
+            {/* Garantia, locação, IPTU */}
+            <section className="imoveis-admin-section rounded-2xl border border-slate-200/90 dark:border-white/[0.08] bg-slate-50/80 dark:bg-white/[0.025] p-5 sm:p-6 md:p-7 space-y-5 sm:space-y-6 shadow-sm">
               <h2 className={sectionHeading}>Garantia, locação e IPTU</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
                 <Field label="Garantia">
                   <input type="text" value={garantia} onChange={(e) => setGarantia(e.target.value)} className={inputClass} />
                 </Field>
@@ -392,16 +419,10 @@ export function Imoveis() {
                 </Field>
               </div>
               <div className="flex flex-wrap items-end gap-3 pt-1">
-                <button
-                  type="button"
-                  className="px-4 py-2 rounded-md border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-100"
-                >
+                <button type="button" className={btnSecondary}>
                   Catálogo
                 </button>
-                <button
-                  type="button"
-                  className="px-4 py-2 rounded-md border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-100"
-                >
+                <button type="button" className={btnSecondary}>
                   Doc. Interessados
                 </button>
                 <Field label="Data pag. 1ª Tx. Cond." className="w-full sm:w-44">
@@ -417,7 +438,7 @@ export function Imoveis() {
                   />
                 </Field>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-end pt-3 border-t border-slate-200">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5 items-end pt-5 border-t border-slate-200/90 dark:border-white/[0.08]">
                 <Field label="Inscrição Imobiliária" className="sm:col-span-2">
                   <input type="text" value={inscricaoImobiliaria} onChange={(e) => setInscricaoImobiliaria(e.target.value)} className={inputClass} />
                 </Field>
@@ -428,11 +449,7 @@ export function Imoveis() {
                   <input type="text" value={dataConsIptu} onChange={(e) => setDataConsIptu(e.target.value)} className={inputClass} />
                 </Field>
                 <div className="sm:col-span-2 lg:col-span-1 flex pb-0.5">
-                  <button
-                    type="button"
-                    onClick={() => setShowModalIptu(true)}
-                    className="w-full sm:w-auto px-5 py-2 rounded-md border border-slate-400 bg-white text-slate-800 text-sm font-medium hover:bg-slate-100"
-                  >
+                  <button type="button" onClick={() => setShowModalIptu(true)} className={`${btnPrimary} w-full sm:w-auto`}>
                     IPTU
                   </button>
                 </div>
@@ -440,10 +457,10 @@ export function Imoveis() {
             </section>
 
             {/* Cinco colunas: água, energia, gás, contrato, condomínio/repasse */}
-            <section>
-              <h2 className={sectionHeading}>Água, energia, gás, contrato e condomínio</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3">
-                <BlocoUtilidade titulo="Água">
+            <section className="space-y-5">
+              <h2 className={`${sectionHeading} mb-1`}>Água, energia, gás, contrato e condomínio</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4 lg:gap-5">
+                <BlocoUtilidade titulo="Água" accent="agua">
                   <Field label="Número">
                     <input type="text" value={aguaNumero} onChange={(e) => setAguaNumero(e.target.value)} className={inputClass} />
                   </Field>
@@ -457,7 +474,7 @@ export function Imoveis() {
                     <input type="text" value={diaVencAgua} onChange={(e) => setDiaVencAgua(e.target.value)} className={inputClass} />
                   </Field>
                 </BlocoUtilidade>
-                <BlocoUtilidade titulo="Energia">
+                <BlocoUtilidade titulo="Energia" accent="energia">
                   <Field label="Número">
                     <input type="text" value={energiaNumero} onChange={(e) => setEnergiaNumero(e.target.value)} className={inputClass} />
                   </Field>
@@ -471,7 +488,7 @@ export function Imoveis() {
                     <input type="text" value={diaVencEnergia} onChange={(e) => setDiaVencEnergia(e.target.value)} className={inputClass} />
                   </Field>
                 </BlocoUtilidade>
-                <BlocoUtilidade titulo="Gás">
+                <BlocoUtilidade titulo="Gás" accent="gas">
                   <Field label="Número">
                     <input type="text" value={gasNumero} onChange={(e) => setGasNumero(e.target.value)} className={inputClass} />
                   </Field>
@@ -485,12 +502,8 @@ export function Imoveis() {
                     <input type="text" value={diaVencGas} onChange={(e) => setDiaVencGas(e.target.value)} className={inputClass} />
                   </Field>
                 </BlocoUtilidade>
-                <BlocoUtilidade titulo="Contrato">
-                  <button
-                    type="button"
-                    onClick={() => setShowModalContrato(true)}
-                    className="w-full px-3 py-2 rounded-md border border-slate-400 bg-white text-slate-800 text-sm font-medium hover:bg-slate-100"
-                  >
+                <BlocoUtilidade titulo="Contrato" accent="contrato">
+                  <button type="button" onClick={() => setShowModalContrato(true)} className={`${btnPrimary} w-full`}>
                     Contrato
                   </button>
                   <Field label="Data início">
@@ -500,7 +513,7 @@ export function Imoveis() {
                     <input type="text" value={dataFimContrato} onChange={(e) => setDataFimContrato(e.target.value)} className={inputClass} />
                   </Field>
                 </BlocoUtilidade>
-                <BlocoUtilidade titulo="Condomínio / repasse">
+                <BlocoUtilidade titulo="Condomínio / repasse" accent="cond">
                   <Field label="Data cons. débito cond.">
                     <input type="text" value={dataConsDebitoCond} onChange={(e) => setDataConsDebitoCond(e.target.value)} className={inputClass} />
                   </Field>
@@ -514,10 +527,12 @@ export function Imoveis() {
               </div>
             </section>
 
-            <fieldset className="rounded-lg border border-slate-300 bg-slate-50/40 p-4">
-              <legend className="text-sm font-semibold text-slate-800 px-2">Dados bancários</legend>
-              <p className="text-[11px] text-slate-500 mb-3 -mt-1">Conta para repasse (banco, agência, conta, titular, PIX).</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <fieldset className="imoveis-admin-section rounded-2xl border border-slate-200/90 dark:border-white/[0.08] bg-slate-50/60 dark:bg-white/[0.02] p-5 sm:p-6 shadow-sm">
+              <legend className="text-sm font-semibold text-slate-800 dark:text-slate-100 px-2">Dados bancários</legend>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mb-4 mt-1 leading-relaxed">
+                Conta para repasse (banco, agência, conta, titular, PIX).
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
                 <Field label="Banco">
                   <input type="text" value={banco} onChange={(e) => setBanco(e.target.value)} className={inputClass} />
                 </Field>
@@ -542,10 +557,10 @@ export function Imoveis() {
               </div>
             </fieldset>
 
-            <section className="space-y-4">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
-                <fieldset className="rounded-lg border border-slate-300 p-4 space-y-3 bg-white">
-                  <legend className="text-sm font-semibold text-slate-800 px-2">Proprietário</legend>
+            <section className="space-y-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 items-start">
+                <fieldset className="rounded-2xl border border-slate-200/90 dark:border-white/[0.08] p-5 sm:p-6 space-y-4 bg-white/80 dark:bg-[#151d2c]/90 shadow-sm">
+                  <legend className="text-sm font-semibold text-slate-800 dark:text-slate-100 px-2">Proprietário</legend>
                   <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
@@ -559,7 +574,7 @@ export function Imoveis() {
                           },
                         })
                       }
-                      className="inline-flex items-center gap-1.5 text-sm font-medium text-teal-700 hover:text-teal-900 underline underline-offset-2 decoration-teal-600/70 hover:decoration-teal-800"
+                      className="inline-flex items-center gap-1.5 text-sm font-semibold text-cyan-700 dark:text-cyan-400 hover:text-cyan-900 dark:hover:text-cyan-300 underline underline-offset-4 decoration-cyan-500/50 hover:decoration-cyan-600 transition-colors"
                     >
                       <UserPlus className="w-4 h-4 shrink-0" aria-hidden />
                       Vincular pessoa
@@ -585,8 +600,8 @@ export function Imoveis() {
                   </Field>
                 </fieldset>
 
-                <fieldset className="rounded-lg border border-slate-300 p-4 space-y-3 bg-white min-w-0">
-                  <legend className="text-sm font-semibold text-slate-800 px-2">Inquilino</legend>
+                <fieldset className="rounded-2xl border border-slate-200/90 dark:border-white/[0.08] p-5 sm:p-6 space-y-4 bg-white/80 dark:bg-[#151d2c]/90 min-w-0 shadow-sm">
+                  <legend className="text-sm font-semibold text-slate-800 dark:text-slate-100 px-2">Inquilino</legend>
                   <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
@@ -600,7 +615,7 @@ export function Imoveis() {
                           },
                         })
                       }
-                      className="inline-flex items-center gap-1.5 text-sm font-medium text-teal-700 hover:text-teal-900 underline underline-offset-2 decoration-teal-600/70 hover:decoration-teal-800"
+                      className="inline-flex items-center gap-1.5 text-sm font-semibold text-cyan-700 dark:text-cyan-400 hover:text-cyan-900 dark:hover:text-cyan-300 underline underline-offset-4 decoration-cyan-500/50 hover:decoration-cyan-600 transition-colors"
                     >
                       <UserPlus className="w-4 h-4 shrink-0" aria-hidden />
                       Vincular pessoa
@@ -626,17 +641,13 @@ export function Imoveis() {
                   </Field>
                 </fieldset>
               </div>
-              <Field label="Link Vistoria" className="max-w-full">
+              <Field label="Link Vistoria" className="max-w-full pt-2">
                 <input type="text" value={linkVistoria} onChange={(e) => setLinkVistoria(e.target.value)} className={inputClass} />
               </Field>
             </section>
 
-            <footer className="flex justify-center pt-2 border-t border-slate-200">
-              <button
-                type="button"
-                onClick={() => window.history.back()}
-                className="px-10 py-2.5 rounded-md border border-slate-400 bg-slate-100 text-slate-800 text-sm font-medium hover:bg-slate-200"
-              >
+            <footer className="flex justify-center pt-6 border-t border-slate-200/90 dark:border-white/[0.08]">
+              <button type="button" onClick={() => window.history.back()} className={`${btnSecondary} px-12 py-3 font-semibold`}>
                 Fechar
               </button>
             </footer>
@@ -654,14 +665,14 @@ export function Imoveis() {
           aria-labelledby="modal-contrato-titulo"
         >
           <div
-            className="bg-slate-100 rounded-lg shadow-xl border border-slate-300 max-w-2xl w-full max-h-[90vh] flex flex-col"
+            className="bg-slate-100 dark:bg-[#161e2e] rounded-2xl shadow-2xl border border-slate-300/90 dark:border-white/[0.1] max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-300 bg-white rounded-t-lg">
-              <h2 id="modal-contrato-titulo" className="text-sm font-semibold text-slate-800">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-white/[0.08] bg-white dark:bg-[#1a2436] rounded-t-2xl">
+              <h2 id="modal-contrato-titulo" className="text-base font-semibold text-slate-800 dark:text-slate-100">
                 Informações sobre o Contrato
               </h2>
-              <button type="button" onClick={() => setShowModalContrato(false)} className="p-2 rounded text-slate-500 hover:bg-slate-100" aria-label="Fechar">
+              <button type="button" onClick={() => setShowModalContrato(false)} className={btnIconGhost} aria-label="Fechar">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -764,8 +775,8 @@ export function Imoveis() {
                 </div>
               </div>
             </div>
-            <div className="px-4 py-3 border-t border-slate-300 bg-white rounded-b-lg flex justify-center">
-              <button type="button" onClick={() => setShowModalContrato(false)} className="px-6 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50">
+            <div className="px-5 py-4 border-t border-slate-200 dark:border-white/[0.08] bg-white dark:bg-[#151d2c] rounded-b-2xl flex justify-center">
+              <button type="button" onClick={() => setShowModalContrato(false)} className={btnSecondary}>
                 Fechar
               </button>
             </div>
@@ -783,17 +794,17 @@ export function Imoveis() {
           aria-labelledby="modal-iptu-titulo"
         >
           <div
-            className="bg-slate-100 rounded-lg shadow-xl border border-slate-300 max-w-lg w-full max-h-[90vh] flex flex-col"
+            className="bg-slate-100 dark:bg-[#161e2e] rounded-2xl shadow-2xl border border-slate-300/90 dark:border-white/[0.1] max-w-lg w-full max-h-[90vh] flex flex-col overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-300 bg-white rounded-t-lg">
-              <h2 id="modal-iptu-titulo" className="text-sm font-semibold text-slate-800">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-white/[0.08] bg-white dark:bg-[#1a2436] rounded-t-2xl">
+              <h2 id="modal-iptu-titulo" className="text-base font-semibold text-slate-800 dark:text-slate-100">
                 Informações sobre o IPTU
               </h2>
               <button
                 type="button"
                 onClick={() => setShowModalIptu(false)}
-                className="p-2 rounded text-slate-500 hover:bg-slate-100"
+                className={btnIconGhost}
                 aria-label="Fechar"
               >
                 <X className="w-5 h-5" />
@@ -827,12 +838,8 @@ export function Imoveis() {
                 </Field>
               </div>
             </div>
-            <div className="px-4 py-3 border-t border-slate-300 bg-white rounded-b-lg flex justify-center">
-              <button
-                type="button"
-                onClick={() => setShowModalIptu(false)}
-                className="px-6 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
-              >
+            <div className="px-5 py-4 border-t border-slate-200 dark:border-white/[0.08] bg-white dark:bg-[#151d2c] rounded-b-2xl flex justify-center">
+              <button type="button" onClick={() => setShowModalIptu(false)} className={btnSecondary}>
                 Fechar
               </button>
             </div>

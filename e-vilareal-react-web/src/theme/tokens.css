@@ -18,16 +18,18 @@
 }
 
 .dark {
-  --vl-bg-page: #121212;
-  --vl-bg-elevated: #1e1e1e;
-  --vl-bg-card: #1e1e1e;
-  --vl-bg-muted: #252525;
-  --vl-text: #ffffff;
-  --vl-text-secondary: #b0b0b0;
-  --vl-text-muted: #94a3b8;
-  --vl-border: #2a2a2a;
-  --vl-border-strong: #3f3f3f;
-  --vl-input-bg: #2a2a2a;
-  --vl-input-border: #3f3f3f;
-  --vl-accent-soft: rgba(59, 130, 246, 0.2);
+  /* Azul-petróleo / grafite — menos “preto chapado”, mais conforto noturno */
+  --vl-bg-page: #0c1017;
+  --vl-bg-elevated: #121a26;
+  --vl-bg-card: #151d2c;
+  --vl-bg-muted: #0f1622;
+  --vl-text: #e8edf4;
+  --vl-text-secondary: #9fb0c8;
+  --vl-text-muted: #7c8ca3;
+  --vl-border: rgba(255, 255, 255, 0.08);
+  --vl-border-strong: rgba(255, 255, 255, 0.12);
+  --vl-input-bg: #141c2c;
+  --vl-input-border: rgba(255, 255, 255, 0.1);
+  --vl-accent-soft: rgba(34, 211, 238, 0.12);
+  --vl-shadow-card: 0 20px 50px -12px rgba(0, 0, 0, 0.55);
 }

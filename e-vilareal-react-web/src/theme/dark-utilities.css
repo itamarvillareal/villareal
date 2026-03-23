@@ -18,27 +18,27 @@ body,
   color-scheme: dark;
 }
 
-/* ——— Fundos ——— */
+/* ——— Fundos (tons azul-grafite, menos chapados) ——— */
 .dark .bg-white {
-  background-color: #1e1e1e !important;
+  background-color: #151d2c !important;
 }
 .dark .bg-gray-50 {
-  background-color: #181818 !important;
+  background-color: #131b28 !important;
 }
 .dark .bg-gray-100 {
-  background-color: #121212 !important;
+  background-color: #0f141c !important;
 }
 .dark .bg-gray-200 {
-  background-color: #1e1e1e !important;
+  background-color: #121a26 !important;
 }
 .dark .bg-slate-50 {
-  background-color: #181818 !important;
+  background-color: #131b28 !important;
 }
 .dark .bg-slate-100 {
-  background-color: #1e1e1e !important;
+  background-color: #161e2e !important;
 }
 .dark .bg-slate-200 {
-  background-color: #252525 !important;
+  background-color: #121a26 !important;
 }
 .dark .bg-zinc-50 {
   background-color: #181818 !important;
@@ -54,7 +54,7 @@ body,
 }
 .dark .text-slate-800,
 .dark .text-gray-800 {
-  color: #ffffff !important;
+  color: #e8edf4 !important;
 }
 .dark .text-slate-700,
 .dark .text-gray-700 {
@@ -74,19 +74,19 @@ body,
 
 /* ——— Bordas ——— */
 .dark .border-slate-100 {
-  border-color: #2a2a2a !important;
+  border-color: rgba(255, 255, 255, 0.06) !important;
 }
 .dark .border-slate-200 {
-  border-color: #2a2a2a !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
 }
 .dark .border-slate-300 {
-  border-color: #2a2a2a !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
 }
 .dark .border-gray-200 {
-  border-color: #2a2a2a !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
 }
 .dark .border-gray-300 {
-  border-color: #2a2a2a !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
 }
 
 /* ——— Destaques azuis / índigo (menus ativos, chips) ——— */
@@ -176,14 +176,14 @@ body,
 .dark input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='range']),
 .dark textarea,
 .dark select {
-  background-color: #2a2a2a !important;
-  color: #ffffff !important;
-  border-color: #3f3f3f !important;
+  background-color: #141c2c !important;
+  color: #e8edf4 !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
 }
 
 .dark input::placeholder,
 .dark textarea::placeholder {
-  color: #888888 !important;
+  color: #64748b !important;
 }
 
 .dark select option {

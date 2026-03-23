@@ -1,0 +1,81 @@
+/**
+ * Modo noturno premium: fundos mais suaves, sidebar e profundidade.
+ * Complementa dark-utilities.css (mapeamento Tailwind) com gradientes e foco.
+ */
+
+.dark .bg-gray-100 {
+  background: linear-gradient(165deg, #0a0e14 0%, #0f141c 45%, #0c121a 100%) !important;
+}
+
+.dark .bg-gray-200 {
+  background-color: #121a26 !important;
+}
+
+.dark aside.vl-sidebar {
+  background: linear-gradient(180deg, #111923 0%, #0d1219 55%, #0a0f16 100%) !important;
+  border-right-color: rgba(255, 255, 255, 0.06) !important;
+  box-shadow:
+    4px 0 32px rgba(0, 0, 0, 0.35),
+    inset -1px 0 0 rgba(255, 255, 255, 0.03);
+}
+
+.dark .vl-sidebar-header {
+  background: rgba(0, 0, 0, 0.2) !important;
+  border-bottom-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+.dark .vl-sidebar-footer {
+  background: rgba(0, 0, 0, 0.18) !important;
+  border-top-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+/* Foco elegante em campos (modo escuro) */
+.dark input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='range']):focus,
+.dark textarea:focus,
+.dark select:focus {
+  border-color: rgba(34, 211, 238, 0.45) !important;
+  box-shadow:
+    0 0 0 2px rgba(34, 211, 238, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04) !important;
+  outline: none !important;
+}
+
+/* Cartões principais — sombra mais suave que preto puro */
+.dark .shadow-sm {
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.35),
+    0 8px 24px -8px rgba(0, 0, 0, 0.45) !important;
+}
+
+/* Tela Imóveis — folha principal */
+.dark .imoveis-admin-sheet {
+  background: linear-gradient(165deg, rgba(22, 30, 44, 0.97) 0%, rgba(17, 24, 36, 0.98) 100%) !important;
+  border-color: rgba(255, 255, 255, 0.07) !important;
+  box-shadow:
+    var(--vl-shadow-card, 0 24px 80px -16px rgba(0, 0, 0, 0.55)),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.dark .imoveis-admin-toolbar {
+  background: rgba(0, 0, 0, 0.2) !important;
+  border-bottom-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+.dark .imoveis-admin-section {
+  background: rgba(255, 255, 255, 0.02) !important;
+  border-color: rgba(255, 255, 255, 0.07) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.dark .imoveis-admin-obs {
+  background: linear-gradient(145deg, rgba(30, 24, 12, 0.55) 0%, rgba(22, 18, 14, 0.75) 100%) !important;
+  border-color: rgba(251, 191, 36, 0.18) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 12px 40px -12px rgba(0, 0, 0, 0.4);
+}
+
+.dark .imoveis-admin-obs textarea {
+  background: rgba(10, 12, 18, 0.55) !important;
+  border-color: rgba(251, 191, 36, 0.12) !important;
+}

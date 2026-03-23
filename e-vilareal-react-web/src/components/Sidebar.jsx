@@ -76,11 +76,11 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="w-56 min-h-screen bg-gray-200 border-r border-gray-300 flex flex-col shrink-0 shadow-sm">
-      <div className="p-3 border-b border-gray-300 bg-gray-100">
+    <aside className="vl-sidebar w-56 min-h-screen bg-gray-200 border-r border-gray-300 flex flex-col shrink-0 shadow-sm">
+      <div className="vl-sidebar-header p-3 border-b border-gray-300 bg-gray-100">
         <Link
           to="/"
-          className="block rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-100"
+          className="block rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-100 dark:focus-visible:ring-offset-[#0f141c]"
           title="Ir para o painel"
         >
           <img
@@ -93,7 +93,7 @@ export function Sidebar() {
           />
         </Link>
       </div>
-      <nav className="flex-1 p-2 overflow-y-auto">
+      <nav className="flex-1 p-2.5 overflow-y-auto space-y-0.5">
         {navFiltrado.map((item) => {
           if (Array.isArray(item.children) && item.children.length > 0) {
             const subs = item.children.filter((ch) => pode(ch.id));
@@ -108,8 +108,10 @@ export function Sidebar() {
                 <button
                   type="button"
                   onClick={() => toggleGrupo(item.id)}
-                  className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-md text-gray-700 text-sm font-medium transition-colors text-left ${
-                    algumFilhoAtivo ? 'bg-blue-50 text-blue-900 border-l-2 border-blue-400' : 'hover:bg-gray-100'
+                  className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-gray-700 dark:text-slate-200 text-sm font-medium transition-all duration-200 text-left ${
+                    algumFilhoAtivo
+                      ? 'bg-blue-50 dark:bg-cyan-500/10 text-blue-900 dark:text-cyan-100 border-l-2 border-blue-400 dark:border-cyan-400/70 shadow-sm dark:shadow-none'
+                      : 'hover:bg-gray-100 dark:hover:bg-white/[0.05] border-l-2 border-transparent'
                   }`}
                   aria-expanded={aberto}
                 >
@@ -122,17 +124,17 @@ export function Sidebar() {
                   )}
                 </button>
                 {aberto && (
-                  <div className="mt-0.5 ml-2 pl-2 border-l border-gray-300 space-y-0.5">
+                  <div className="mt-1 ml-2 pl-2 border-l border-gray-300 dark:border-white/10 space-y-0.5">
                     {subs.map((ch) => (
                         <NavLink
                           key={ch.id}
                           to={`/${ch.id}`}
                           end
                           className={({ isActive }) =>
-                            `flex items-center gap-2 px-2 py-2 rounded-md text-xs font-medium transition-colors ${
+                            `flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs font-medium transition-all duration-200 ${
                               isActive
-                                ? 'bg-blue-100 text-blue-800 border-l-2 border-blue-500'
-                                : 'text-gray-600 hover:bg-gray-100'
+                                ? 'bg-blue-100 dark:bg-cyan-500/15 text-blue-800 dark:text-cyan-100 border-l-2 border-blue-500 dark:border-cyan-400'
+                                : 'text-gray-600 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/[0.04] border-l-2 border-transparent'
                             }`
                           }
                         >
@@ -150,10 +152,10 @@ export function Sidebar() {
               key={item.id}
               to={`/${item.id}`}
               className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 rounded-md text-gray-700 text-sm font-medium transition-colors mb-0.5 ${
+                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-700 dark:text-slate-200 text-sm font-medium transition-all duration-200 mb-0.5 ${
                   isActive
-                    ? 'bg-blue-100 text-blue-800 border-l-2 border-blue-500'
-                    : 'hover:bg-gray-100'
+                    ? 'bg-blue-100 dark:bg-cyan-500/12 text-blue-800 dark:text-cyan-100 border-l-2 border-blue-500 dark:border-cyan-400'
+                    : 'hover:bg-gray-100 dark:hover:bg-white/[0.05] border-l-2 border-transparent'
                 }`
               }
             >
@@ -163,7 +165,7 @@ export function Sidebar() {
           );
         })}
       </nav>
-      <div className="p-2 border-t border-gray-300 bg-gray-100/80">
+      <div className="vl-sidebar-footer p-2.5 border-t border-gray-300 bg-gray-100/80">
         {podeAlternar ? (
           <>
             <label className="block text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1">
