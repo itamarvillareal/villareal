@@ -2,7 +2,12 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { UserCog, Calendar, Shield, UserRoundCog } from 'lucide-react';
 import { agendaUsuarios } from '../data/mockData';
-import { getUsuariosAtivos, setUsuariosAtivos, criarUsuarioRegistroMinimo } from '../data/agendaPersistenciaData';
+import {
+  getUsuariosAtivos,
+  setUsuariosAtivos,
+  criarUsuarioRegistroMinimo,
+  clonarAgendaEntreUsuarios,
+} from '../data/agendaPersistenciaData';
 import { ModalPermissoesUsuario } from './ModalPermissoesUsuario.jsx';
 import { ModalDadosUsuario } from './ModalDadosUsuario.jsx';
 import { getNomeExibicaoUsuario } from '../data/usuarioDisplayHelpers.js';
@@ -25,6 +30,8 @@ export function Usuarios() {
   const [slotsCustom, setSlotsCustom] = useState(['', '']);
   const [permModalUsuario, setPermModalUsuario] = useState(null);
   const [dadosModalUsuario, setDadosModalUsuario] = useState(null);
+  /** { ag: { id, nome }, origemCloneId, clearSlotIndex } */
+  const [modalIncluir, setModalIncluir] = useState(null);
 
   function persistirUsuariosAtivos(next) {
     const r = setUsuariosAtivos(next);
@@ -36,11 +43,51 @@ export function Usuarios() {
     return true;
   }
 
-  function incluirUsuario(usuario) {
-    if (!usuario?.id) return;
-    const ids = new Set((usuariosAtivos || []).map((u) => u.id));
-    if (ids.has(usuario.id)) return;
-    persistirUsuariosAtivos([...(usuariosAtivos || []), criarUsuarioRegistroMinimo(usuario)]);
+  function abrirModalIncluir(ag, opts = {}) {
+    if (!ag?.id) return;
+    const ids = new Set((usuariosAtivos || []).map((u) => String(u.id)));
+    if (ids.has(String(ag.id))) return;
+    setModalIncluir({
+      ag: { id: String(ag.id), nome: String(ag.nome ?? '').trim() || String(ag.id) },
+      origemCloneId: '',
+      clearSlotIndex: opts.clearSlotIndex != null ? opts.clearSlotIndex : null,
+    });
+  }
+
+  function confirmarInclusaoModal() {
+    if (!modalIncluir?.ag?.id) return;
+    const { ag, origemCloneId, clearSlotIndex } = modalIncluir;
+    const novo = criarUsuarioRegistroMinimo(ag);
+    const next = [...(usuariosAtivos || []), novo];
+    if (!persistirUsuariosAtivos(next)) return;
+
+    const origem = String(origemCloneId || '').trim();
+    if (origem) {
+      const r = clonarAgendaEntreUsuarios({ origemUsuarioId: origem, destinoUsuarioId: ag.id });
+      if (r.ok) {
+        const nomeAlvo = getNomeExibicaoUsuario(novo) || ag.nome;
+        if (r.clonados > 0) {
+          window.alert(
+            `Usuário incluído. Foram copiados ${r.clonados} compromisso(s) da agenda de origem para ${nomeAlvo}.`
+          );
+        } else {
+          window.alert(
+            `Usuário ${nomeAlvo} incluído. Não havia compromissos persistidos na agenda do usuário de origem para copiar.`
+          );
+        }
+      } else {
+        window.alert('Usuário incluído, mas não foi possível copiar a agenda (verifique origem e destino).');
+      }
+    }
+
+    if (clearSlotIndex != null) {
+      setSlotsCustom((prev) => {
+        const n = [...prev];
+        if (n[clearSlotIndex] !== undefined) n[clearSlotIndex] = '';
+        return n;
+      });
+    }
+    setModalIncluir(null);
   }
 
   function excluirUsuario(usuarioId) {
@@ -154,7 +201,7 @@ export function Usuarios() {
             <>
               <button
                 type="button"
-                onClick={() => incluirUsuario(criarUsuarioRegistroMinimo(ag))}
+                onClick={() => abrirModalIncluir(ag)}
                 disabled={ativo}
                 className="rounded border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-50"
               >
@@ -259,10 +306,7 @@ export function Usuarios() {
                           if (!val.trim()) return;
                           if (!idSlot) return;
                           if (ativo) return;
-                          incluirUsuario(criarUsuarioRegistroMinimo({ id: idSlot, nome: String(val || '').trim() }));
-                          const next = [...slotsCustom];
-                          next[idx] = '';
-                          setSlotsCustom(next);
+                          abrirModalIncluir({ id: idSlot, nome: String(val || '').trim() }, { clearSlotIndex: idx });
                         }}
                         disabled={!val.trim() || !!ativo}
                         className="rounded border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-50"
@@ -316,6 +360,81 @@ export function Usuarios() {
         onClose={() => setDadosModalUsuario(null)}
         onSalvar={salvarDadosUsuario}
       />
+
+      {modalIncluir ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="modal-incluir-titulo"
+          onClick={() => setModalIncluir(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-lg border border-slate-200 bg-white shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="border-b border-slate-200 px-4 py-3">
+              <h2 id="modal-incluir-titulo" className="text-base font-semibold text-slate-800">
+                Incluir usuário no sistema
+              </h2>
+              <p className="mt-1 text-sm text-slate-600">
+                <span className="font-medium text-slate-800">{modalIncluir.ag.nome}</span>
+                <span className="text-slate-500 font-mono text-xs"> · id: {modalIncluir.ag.id}</span>
+              </p>
+            </div>
+            <div className="px-4 py-4 space-y-4">
+              <div>
+                <label htmlFor="clone-agenda-origem" className="block text-xs font-medium text-slate-700 mb-1.5">
+                  Copiar agenda de outro usuário (opcional)
+                </label>
+                <p className="text-xs text-slate-500 mb-2">
+                  Replica na agenda desta pessoa os compromissos já guardados no navegador do usuário escolhido —
+                  útil para alinhar audiências e marcos do escritório com quem está entrando.
+                </p>
+                <select
+                  id="clone-agenda-origem"
+                  value={modalIncluir.origemCloneId}
+                  onChange={(e) =>
+                    setModalIncluir((m) => (m ? { ...m, origemCloneId: e.target.value } : m))
+                  }
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800"
+                >
+                  <option value="">— Não copiar agenda —</option>
+                  {(usuariosAtivos || [])
+                    .filter((u) => String(u.id) !== String(modalIncluir.ag.id))
+                    .map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {getNomeExibicaoUsuario(u)} ({u.id})
+                      </option>
+                    ))}
+                </select>
+                {(usuariosAtivos || []).filter((u) => String(u.id) !== String(modalIncluir.ag.id)).length === 0 ? (
+                  <p className="mt-2 text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded px-2 py-1.5">
+                    Não há outro usuário ativo para servir de origem. Inclua primeiro ou copie a agenda depois pela
+                    tela Agenda.
+                  </p>
+                ) : null}
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-slate-200 px-4 py-3 bg-slate-50 rounded-b-lg">
+              <button
+                type="button"
+                onClick={() => setModalIncluir(null)}
+                className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmarInclusaoModal}
+                className="rounded-lg border border-indigo-600 bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+              >
+                Confirmar inclusão
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

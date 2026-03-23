@@ -6,7 +6,9 @@ import br.com.vilareal.api.dto.CadastroPessoasResponse;
 import br.com.vilareal.api.entity.CadastroPessoa;
 import br.com.vilareal.api.exception.CadastroPessoaNaoEncontradaException;
 import br.com.vilareal.api.exception.RegraNegocioException;
+import br.com.vilareal.api.context.UsuarioContext;
 import br.com.vilareal.api.repository.CadastroPessoasRepository;
+import br.com.vilareal.api.service.AuditoriaAtividadeService;
 import br.com.vilareal.api.service.CadastroPessoasService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,9 +21,12 @@ import java.util.stream.Collectors;
 public class CadastroPessoasServiceImpl implements CadastroPessoasService {
 
     private final CadastroPessoasRepository repository;
+    private final AuditoriaAtividadeService auditoriaAtividadeService;
 
-    public CadastroPessoasServiceImpl(CadastroPessoasRepository repository) {
+    public CadastroPessoasServiceImpl(CadastroPessoasRepository repository,
+                                    AuditoriaAtividadeService auditoriaAtividadeService) {
         this.repository = repository;
+        this.auditoriaAtividadeService = auditoriaAtividadeService;
     }
 
     @Override
@@ -32,7 +37,10 @@ public class CadastroPessoasServiceImpl implements CadastroPessoasService {
         validarResponsavel(null, request.getResponsavelId());
         CadastroPessoa entity = toEntity(request, null);
         entity = repository.save(entity);
-        return toResponse(recarregarComResponsavel(entity.getId()));
+        CadastroPessoasResponse response = toResponse(recarregarComResponsavel(entity.getId()));
+        auditarPessoas("CRIACAO", response.getNome(), response.getId(),
+                "cadastrou a pessoa %s (id %s).");
+        return response;
     }
 
     @Override
@@ -44,7 +52,10 @@ public class CadastroPessoasServiceImpl implements CadastroPessoasService {
         validarResponsavel(id, request.getResponsavelId());
         atualizarEntidade(entity, request);
         entity = repository.save(entity);
-        return toResponse(recarregarComResponsavel(entity.getId()));
+        CadastroPessoasResponse response = toResponse(recarregarComResponsavel(entity.getId()));
+        auditarPessoas("EDICAO", response.getNome(), response.getId(),
+                "alterou o cadastro de %s (id %s).");
+        return response;
     }
 
     private CadastroPessoa recarregarComResponsavel(Long id) {
@@ -73,7 +84,28 @@ public class CadastroPessoasServiceImpl implements CadastroPessoasService {
     @Transactional
     public void excluir(Long id) {
         CadastroPessoa entity = buscarEntidadePorId(id);
+        String nome = entity.getNome();
+        Long idVal = entity.getId();
         repository.delete(entity);
+        auditarPessoas("EXCLUSAO", nome, idVal, "excluiu o cadastro de %s (id %s).");
+    }
+
+    private void auditarPessoas(String tipoAcao, String nomePessoa, Long idPessoa, String templateMensagem) {
+        String nu = nomeUsuarioAuditoria();
+        String desc = String.format("Usuário %s " + templateMensagem, nu, nomePessoa, idPessoa);
+        auditoriaAtividadeService.registrarInterno(
+                tipoAcao,
+                "Pessoas",
+                "Cadastro de Pessoas",
+                desc,
+                idPessoa != null ? String.valueOf(idPessoa) : null,
+                nomePessoa,
+                null);
+    }
+
+    private static String nomeUsuarioAuditoria() {
+        String n = UsuarioContext.getUsuarioNome();
+        return n != null && !n.isBlank() ? n.trim() : "Não identificado";
     }
 
     @Override

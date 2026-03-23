@@ -1,0 +1,4 @@
+/**
+ * Tema escuro — overrides visuais quando `html` tem a classe `dark`.
+ */
+@import './dark-utilities.css';

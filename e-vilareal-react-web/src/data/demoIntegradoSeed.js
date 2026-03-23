@@ -18,9 +18,10 @@ import {
   mergePersistedComLancamentosVinculacaoTeste,
   savePersistedExtratosFinanceiro,
 } from './financeiroData.js';
+import { removerLancamentosAdministracaoImoveisDeCef, mergeCefComAdministracaoImoveisDemo } from './administracaoImoveisExtratoSeed.js';
 
 /** Incremente para reaplicar lançamentos/agenda demo em quem já rodou o pacote. */
-export const DEMO_INTEGRADO_VERSION = 1;
+export const DEMO_INTEGRADO_VERSION = 2;
 
 const DEMO_INTEGRADO_VERSION_KEY = 'vilareal:demo-integrado:version';
 
@@ -121,7 +122,8 @@ function seedFinanceiroDemoIntegrado() {
     ? mergePersistedComLancamentosVinculacaoTeste(JSON.parse(JSON.stringify(baseRaw)))
     : JSON.parse(JSON.stringify(getExtratosIniciais()));
   const out = { ...base };
-  const cefAntes = removerLancamentosDemoIntegradoDeCef(Array.isArray(out.CEF) ? out.CEF : []);
+  let cefAntes = removerLancamentosDemoIntegradoDeCef(Array.isArray(out.CEF) ? out.CEF : []);
+  cefAntes = removerLancamentosAdministracaoImoveisDeCef(cefAntes);
 
   const novos = [
     lancCefDemo({
@@ -150,7 +152,8 @@ function seedFinanceiroDemoIntegrado() {
     }),
   ];
 
-  out.CEF = recomputeSaldoCef(ordenarCef([...cefAntes, ...novos]));
+  const cefComDemoFinanceiro = recomputeSaldoCef(ordenarCef([...cefAntes, ...novos]));
+  out.CEF = mergeCefComAdministracaoImoveisDemo(cefComDemoFinanceiro);
   savePersistedExtratosFinanceiro(out);
 }
 

@@ -1,0 +1,262 @@
+/**
+ * Overrides globais quando `html.dark` está ativo: mapeia utilitários Tailwind
+ * neutros (slate/gray/white) para o tema escuro sem alterar cada componente.
+ * Botões coloridos (blue-600, indigo-600, etc.) mantêm contraste.
+ */
+
+/* Transição suave entre temas */
+html,
+body,
+#root {
+  transition:
+    background-color 250ms ease,
+    color 250ms ease,
+    border-color 250ms ease;
+}
+
+.dark {
+  color-scheme: dark;
+}
+
+/* ——— Fundos ——— */
+.dark .bg-white {
+  background-color: #1e1e1e !important;
+}
+.dark .bg-gray-50 {
+  background-color: #181818 !important;
+}
+.dark .bg-gray-100 {
+  background-color: #121212 !important;
+}
+.dark .bg-gray-200 {
+  background-color: #1e1e1e !important;
+}
+.dark .bg-slate-50 {
+  background-color: #181818 !important;
+}
+.dark .bg-slate-100 {
+  background-color: #1e1e1e !important;
+}
+.dark .bg-slate-200 {
+  background-color: #252525 !important;
+}
+.dark .bg-zinc-50 {
+  background-color: #181818 !important;
+}
+.dark .bg-gray-100\/80 {
+  background-color: rgba(18, 18, 18, 0.8) !important;
+}
+
+/* ——— Texto ——— */
+.dark .text-slate-900,
+.dark .text-gray-900 {
+  color: #ffffff !important;
+}
+.dark .text-slate-800,
+.dark .text-gray-800 {
+  color: #ffffff !important;
+}
+.dark .text-slate-700,
+.dark .text-gray-700 {
+  color: #e5e5e5 !important;
+}
+.dark .text-slate-600,
+.dark .text-gray-600 {
+  color: #b0b0b0 !important;
+}
+.dark .text-slate-500,
+.dark .text-gray-500 {
+  color: #949494 !important;
+}
+.dark .text-slate-400 {
+  color: #a1a1aa !important;
+}
+
+/* ——— Bordas ——— */
+.dark .border-slate-100 {
+  border-color: #2a2a2a !important;
+}
+.dark .border-slate-200 {
+  border-color: #2a2a2a !important;
+}
+.dark .border-slate-300 {
+  border-color: #2a2a2a !important;
+}
+.dark .border-gray-200 {
+  border-color: #2a2a2a !important;
+}
+.dark .border-gray-300 {
+  border-color: #2a2a2a !important;
+}
+
+/* ——— Destaques azuis / índigo (menus ativos, chips) ——— */
+.dark .bg-blue-50 {
+  background-color: rgba(37, 99, 235, 0.12) !important;
+}
+.dark .bg-blue-100 {
+  background-color: rgba(37, 99, 235, 0.2) !important;
+}
+.dark .text-blue-800 {
+  color: #93c5fd !important;
+}
+.dark .text-blue-900 {
+  color: #bfdbfe !important;
+}
+.dark .text-blue-700 {
+  color: #7dd3fc !important;
+}
+.dark .border-blue-400 {
+  border-color: #3b82f6 !important;
+}
+.dark .border-blue-500 {
+  border-color: #60a5fa !important;
+}
+
+.dark .bg-indigo-50 {
+  background-color: rgba(99, 102, 241, 0.12) !important;
+}
+.dark .bg-indigo-100 {
+  background-color: rgba(99, 102, 241, 0.18) !important;
+}
+.dark .text-indigo-900 {
+  color: #c7d2fe !important;
+}
+.dark .text-indigo-800 {
+  color: #a5b4fc !important;
+}
+.dark .border-indigo-200 {
+  border-color: #4f46e580 !important;
+}
+.dark .border-indigo-300 {
+  border-color: #6366f170 !important;
+}
+
+/* ——— Estados de alerta / sucesso / aviso ——— */
+.dark .bg-red-50 {
+  background-color: rgba(127, 29, 29, 0.25) !important;
+}
+.dark .border-red-200 {
+  border-color: #7f1d1d !important;
+}
+.dark .text-red-800 {
+  color: #fecaca !important;
+}
+.dark .text-red-700 {
+  color: #fca5a5 !important;
+}
+
+.dark .bg-amber-50 {
+  background-color: rgba(120, 53, 15, 0.35) !important;
+}
+.dark .bg-amber-100 {
+  background-color: rgba(120, 53, 15, 0.45) !important;
+}
+.dark .border-amber-400 {
+  border-color: #b45309 !important;
+}
+.dark .text-amber-950 {
+  color: #fde68a !important;
+}
+
+.dark .bg-emerald-50 {
+  background-color: rgba(6, 78, 59, 0.35) !important;
+}
+.dark .text-emerald-900 {
+  color: #a7f3d0 !important;
+}
+
+.dark .bg-teal-50 {
+  background-color: rgba(19, 78, 74, 0.35) !important;
+}
+.dark .border-teal-200 {
+  border-color: #0f766e !important;
+}
+
+/* ——— Inputs e selects (formulários genéricos) ——— */
+.dark input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='range']),
+.dark textarea,
+.dark select {
+  background-color: #2a2a2a !important;
+  color: #ffffff !important;
+  border-color: #3f3f3f !important;
+}
+
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: #888888 !important;
+}
+
+.dark select option {
+  background-color: #1e1e1e;
+  color: #ffffff;
+}
+
+/* Checkboxes / radios — manter legível */
+.dark input[type='checkbox'],
+.dark input[type='radio'] {
+  accent-color: #2563eb;
+}
+
+/* ——— Ring offset (foco, sidebar) ——— */
+.dark .ring-offset-gray-100,
+.dark .focus-visible\:ring-offset-gray-100:focus-visible {
+  --tw-ring-offset-color: #121212 !important;
+}
+
+/* ——— Hover neutro ——— */
+.dark .hover\:bg-gray-100:hover {
+  background-color: rgba(255, 255, 255, 0.06) !important;
+}
+.dark .hover\:bg-gray-50:hover {
+  background-color: rgba(255, 255, 255, 0.04) !important;
+}
+.dark .hover\:bg-slate-50:hover {
+  background-color: rgba(255, 255, 255, 0.05) !important;
+}
+.dark .hover\:bg-gray-200:hover {
+  background-color: #2a2a2a !important;
+}
+
+/* ——— Tabelas ——— */
+.dark thead.bg-slate-100,
+.dark tr.bg-slate-100 {
+  background-color: #252525 !important;
+}
+.dark .divide-slate-200 > :not([hidden]) ~ :not([hidden]) {
+  border-color: #2a2a2a !important;
+}
+.dark .divide-gray-200 > :not([hidden]) ~ :not([hidden]) {
+  border-color: #2a2a2a !important;
+}
+
+/* ——— Code inline ——— */
+.dark code.bg-slate-100,
+.dark .bg-slate-100\/80 {
+  background-color: #2a2a2a !important;
+  color: #e5e5e5 !important;
+}
+
+/* ——— Sombras em cards ——— */
+.dark .shadow-sm {
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.45) !important;
+}
+
+/* ——— Modal overlay ——— */
+.dark .bg-black\/40 {
+  background-color: rgb(0 0 0 / 0.65) !important;
+}
+
+/* ——— Processos: cartão com fase em azul ———
+   Mantém texto claro sobre faixa azul; áreas internas claras continuam legíveis. */
+.dark .processos-fase-aguardando-providencia .bg-white,
+.dark .processos-fase-aguardando-providencia .bg-slate-50,
+.dark .processos-fase-aguardando-providencia .bg-slate-100,
+.dark .processos-fase-aguardando-providencia .bg-slate-100 * {
+  color: #334155 !important;
+}
+
+.dark .processos-fase-aguardando-providencia .bg-white input,
+.dark .processos-fase-aguardando-providencia .bg-slate-50 input,
+.dark .processos-fase-aguardando-providencia .bg-slate-100 input {
+  color: #0f172a !important;
+}

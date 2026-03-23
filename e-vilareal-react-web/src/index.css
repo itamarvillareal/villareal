@@ -1,19 +1,34 @@
 @import "tailwindcss";
 
+/* Variante `dark:` baseada na classe no elemento raiz (não em prefers-color-scheme) */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@import "./theme/index.css";
+
 :root {
   font-family: system-ui, 'Segoe UI', Roboto, sans-serif;
   line-height: 1.5;
-  color: #1a1a1a;
-  background-color: #f0f0f0;
+  color: var(--vl-text, #1a1a1a);
+  background-color: var(--vl-bg-page, #f0f0f0);
 }
 
 body {
   margin: 0;
   min-height: 100vh;
+  background-color: var(--vl-bg-page, #f0f0f0);
+  color: var(--vl-text, #1a1a1a);
 }
 
 #root {
   min-height: 100vh;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html,
+  body,
+  #root {
+    transition: none !important;
+  }
 }
 
 /* Modo dark contextual apenas para Processos na fase "Ag. Protocolo / Movimentação" */
@@ -21,28 +36,28 @@ body {
 .dark-mode-protocolo p,
 .dark-mode-protocolo span,
 .dark-mode-protocolo div {
-  color: #E5E7EB;
+  color: #e5e7eb;
 }
 
 .dark-mode-protocolo input,
 .dark-mode-protocolo textarea,
 .dark-mode-protocolo select {
-  background-color: #1F2937 !important;
-  color: #FFFFFF !important;
+  background-color: #1f2937 !important;
+  color: #ffffff !important;
   border-color: #374151 !important;
 }
 
 .dark-mode-protocolo input::placeholder,
 .dark-mode-protocolo textarea::placeholder {
-  color: #9CA3AF !important;
+  color: #9ca3af !important;
 }
 
 .dark-mode-protocolo input[type='radio'],
 .dark-mode-protocolo input[type='checkbox'] {
-  accent-color: #2563EB;
+  accent-color: #2563eb;
 }
 
-/* Processos: fase "Aguardando Providência" — texto branco sobre fundo azul (labels herdavam text-slate-*) */
+/* Processos: fase "Aguardando Providência" — texto branco sobre fundo azul */
 .processos-fase-aguardando-providencia label,
 .processos-fase-aguardando-providencia p,
 .processos-fase-aguardando-providencia h2,

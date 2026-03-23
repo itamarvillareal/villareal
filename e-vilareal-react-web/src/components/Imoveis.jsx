@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { X, ChevronUp, ChevronDown } from 'lucide-react';
+import { X, ChevronUp, ChevronDown, UserPlus, Landmark } from 'lucide-react';
 import { getImovelMock } from '../data/imoveisMockData';
+import { padCliente } from '../data/processosDadosRelatorio.js';
 import { resolverAliasHojeEmTexto } from '../services/hjDateAliasService.js';
 
 function Field({ label, children, className = '' }) {
@@ -72,12 +73,12 @@ export function Imoveis() {
   const [cpfBanco, setCpfBanco] = useState('');
   const [titular, setTitular] = useState('');
   const [chavePix, setChavePix] = useState('');
-  const [proprietarioCod1, setProprietarioCod1] = useState('868');
-  const [proprietarioCod2, setProprietarioCod2] = useState('6921');
+  const [proprietarioNumeroPessoa, setProprietarioNumeroPessoa] = useState('');
   const [proprietario, setProprietario] = useState('ITAMAR ALEXANDRE FELIX VILLA REAL JUNIOR');
   const [proprietarioCpf, setProprietarioCpf] = useState('007.332.351-90');
   const [proprietarioContato, setProprietarioContato] = useState('62-8234-5000 // 62 3018-6998');
   const [linkVistoria, setLinkVistoria] = useState('https://www.drop');
+  const [inquilinoNumeroPessoa, setInquilinoNumeroPessoa] = useState('');
   const [inquilino, setInquilino] = useState('ROSANGELA APARECIDA DA SILVA');
   const [inquilinoCpf, setInquilinoCpf] = useState('765.529.341-49');
   const [inquilinoContato, setInquilinoContato] = useState('62 99247-4815');
@@ -138,8 +139,6 @@ export function Imoveis() {
       setCpfBanco('');
       setTitular('');
       setChavePix('');
-      setProprietarioCod1('');
-      setProprietarioCod2('');
       setProprietario('');
       setProprietarioCpf('');
       setProprietarioContato('');
@@ -205,13 +204,13 @@ export function Imoveis() {
     setTitular(String(mock.titular ?? ''));
     setChavePix(String(mock.chavePix ?? ''));
 
-    setProprietarioCod1(String(mock.proprietarioCod1 ?? ''));
-    setProprietarioCod2(String(mock.proprietarioCod2 ?? ''));
+    setProprietarioNumeroPessoa(String(mock.proprietarioNumeroPessoa ?? ''));
     setProprietario(String(mock.proprietario ?? ''));
     setProprietarioCpf(String(mock.proprietarioCpf ?? ''));
     setProprietarioContato(String(mock.proprietarioContato ?? ''));
     setLinkVistoria(String(mock.linkVistoria ?? ''));
 
+    setInquilinoNumeroPessoa(String(mock.inquilinoNumeroPessoa ?? ''));
     setInquilino(String(mock.inquilino ?? ''));
     setInquilinoCpf(String(mock.inquilinoCpf ?? ''));
     setInquilinoContato(String(mock.inquilinoContato ?? ''));
@@ -227,11 +226,16 @@ export function Imoveis() {
   function abrirProcessoDoImovel() {
     navigate('/processos', {
       state: {
-        codCliente: String(codigo ?? ''),
+        codCliente: padCliente(codigo ?? ''),
         proc: String(proc ?? ''),
+        /** Mesmo nº deste cadastro — Processos usa getImovelMock(imovelId) como fonte única. */
+        imovelId: String(imovelId),
       },
     });
   }
+
+  const vinculoClienteProcOk =
+    String(codigo ?? '').trim() !== '' && String(proc ?? '').trim() !== '';
 
   return (
     <div className="min-h-full bg-slate-200">
@@ -239,7 +243,12 @@ export function Imoveis() {
         <header className="flex items-start justify-between gap-3 mb-3">
           <div>
             <h1 className="text-xl font-bold text-slate-800">Imóveis em Administração</h1>
-            <p className="text-xs text-slate-500 mt-0.5">Cadastro do imóvel, locação, utilidades, conta para repasse e partes.</p>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Cadastro do imóvel, locação, utilidades, conta para repasse e partes. O <strong>nº Imóvel</strong> é o mesmo
+              usado na tela <strong>Processos</strong> (vínculo ao processo por código de cliente e proc.). Com{' '}
+              <strong>Código</strong> e <strong>Proc.</strong> preenchidos, use <strong>Conta Corrente</strong> para ver
+              lançamentos do Financeiro, consolidação mensal e alertas de aluguel/repasse.
+            </p>
           </div>
           <button
             type="button"
@@ -302,6 +311,27 @@ export function Imoveis() {
                 className="px-4 py-2 rounded-md border border-slate-400 bg-white text-slate-800 text-sm font-medium hover:bg-slate-50 shadow-sm"
               >
                 Abrir Proc.
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  navigate({
+                    pathname: '/imoveis/financeiro',
+                    hash: '#extrato-imoveis',
+                    state: { imovelId },
+                  })
+                }
+                disabled={!vinculoClienteProcOk}
+                title={
+                  vinculoClienteProcOk
+                    ? 'Movimentações do Financeiro com o mesmo Cod. cliente e Proc. (conta corrente do processo)'
+                    : 'Informe Código e Proc. para vincular ao Cliente e Processo'
+                }
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md border border-teal-600 bg-teal-50 text-teal-900 text-sm font-medium hover:bg-teal-100 disabled:opacity-45 disabled:cursor-not-allowed shadow-sm"
+              >
+                <Landmark className="w-4 h-4 shrink-0" aria-hidden />
+                Conta Corrente
               </button>
 
               <Field label="Código" className="w-[5.5rem] shrink-0">
@@ -512,43 +542,93 @@ export function Imoveis() {
               </div>
             </fieldset>
 
-            <section className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-              <fieldset className="rounded-lg border border-slate-300 p-4 space-y-3 bg-white">
-                <legend className="text-sm font-semibold text-slate-800 px-2">Proprietário</legend>
-                <div className="flex flex-wrap gap-2">
-                  <Field label="Cód." className="w-[4.5rem]">
-                    <input type="text" value={proprietarioCod1} onChange={(e) => setProprietarioCod1(e.target.value)} className={inputClass} />
+            <section className="space-y-4">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
+                <fieldset className="rounded-lg border border-slate-300 p-4 space-y-3 bg-white">
+                  <legend className="text-sm font-semibold text-slate-800 px-2">Proprietário</legend>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        navigate('/clientes', {
+                          state: {
+                            origemImoveis: true,
+                            papelPropriedade: 'proprietario',
+                            imovelId,
+                            codigoImovel: String(codigo ?? ''),
+                          },
+                        })
+                      }
+                      className="inline-flex items-center gap-1.5 text-sm font-medium text-teal-700 hover:text-teal-900 underline underline-offset-2 decoration-teal-600/70 hover:decoration-teal-800"
+                    >
+                      <UserPlus className="w-4 h-4 shrink-0" aria-hidden />
+                      Vincular pessoa
+                    </button>
+                  </div>
+                  <Field label="Número da pessoa">
+                    <input
+                      type="text"
+                      value={proprietarioNumeroPessoa}
+                      onChange={(e) => setProprietarioNumeroPessoa(e.target.value)}
+                      className={inputClass}
+                      autoComplete="off"
+                    />
                   </Field>
-                  <Field label="Cód." className="w-[4.5rem]">
-                    <input type="text" value={proprietarioCod2} onChange={(e) => setProprietarioCod2(e.target.value)} className={inputClass} />
+                  <Field label="Nome">
+                    <input type="text" value={proprietario} onChange={(e) => setProprietario(e.target.value)} className={inputClass} />
                   </Field>
-                </div>
-                <Field label="Nome">
-                  <input type="text" value={proprietario} onChange={(e) => setProprietario(e.target.value)} className={inputClass} />
-                </Field>
-                <Field label="CPF">
-                  <input type="text" value={proprietarioCpf} onChange={(e) => setProprietarioCpf(e.target.value)} className={inputClass} />
-                </Field>
-                <Field label="Contato">
-                  <input type="text" value={proprietarioContato} onChange={(e) => setProprietarioContato(e.target.value)} className={inputClass} />
-                </Field>
-              </fieldset>
+                  <Field label="CPF">
+                    <input type="text" value={proprietarioCpf} onChange={(e) => setProprietarioCpf(e.target.value)} className={inputClass} />
+                  </Field>
+                  <Field label="Contato">
+                    <input type="text" value={proprietarioContato} onChange={(e) => setProprietarioContato(e.target.value)} className={inputClass} />
+                  </Field>
+                </fieldset>
 
-              <fieldset className="rounded-lg border border-slate-300 p-4 space-y-3 bg-white">
-                <legend className="text-sm font-semibold text-slate-800 px-2">Inquilino</legend>
-                <Field label="Link Vistoria">
-                  <input type="text" value={linkVistoria} onChange={(e) => setLinkVistoria(e.target.value)} className={inputClass} />
-                </Field>
-                <Field label="Nome">
-                  <input type="text" value={inquilino} onChange={(e) => setInquilino(e.target.value)} className={inputClass} />
-                </Field>
-                <Field label="CPF">
-                  <input type="text" value={inquilinoCpf} onChange={(e) => setInquilinoCpf(e.target.value)} className={inputClass} />
-                </Field>
-                <Field label="Contato">
-                  <input type="text" value={inquilinoContato} onChange={(e) => setInquilinoContato(e.target.value)} className={inputClass} />
-                </Field>
-              </fieldset>
+                <fieldset className="rounded-lg border border-slate-300 p-4 space-y-3 bg-white min-w-0">
+                  <legend className="text-sm font-semibold text-slate-800 px-2">Inquilino</legend>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        navigate('/clientes', {
+                          state: {
+                            origemImoveis: true,
+                            papelPropriedade: 'inquilino',
+                            imovelId,
+                            codigoImovel: String(codigo ?? ''),
+                          },
+                        })
+                      }
+                      className="inline-flex items-center gap-1.5 text-sm font-medium text-teal-700 hover:text-teal-900 underline underline-offset-2 decoration-teal-600/70 hover:decoration-teal-800"
+                    >
+                      <UserPlus className="w-4 h-4 shrink-0" aria-hidden />
+                      Vincular pessoa
+                    </button>
+                  </div>
+                  <Field label="Número da pessoa">
+                    <input
+                      type="text"
+                      value={inquilinoNumeroPessoa}
+                      onChange={(e) => setInquilinoNumeroPessoa(e.target.value)}
+                      className={inputClass}
+                      autoComplete="off"
+                    />
+                  </Field>
+                  <Field label="Nome">
+                    <input type="text" value={inquilino} onChange={(e) => setInquilino(e.target.value)} className={inputClass} />
+                  </Field>
+                  <Field label="CPF">
+                    <input type="text" value={inquilinoCpf} onChange={(e) => setInquilinoCpf(e.target.value)} className={inputClass} />
+                  </Field>
+                  <Field label="Contato">
+                    <input type="text" value={inquilinoContato} onChange={(e) => setInquilinoContato(e.target.value)} className={inputClass} />
+                  </Field>
+                </fieldset>
+              </div>
+              <Field label="Link Vistoria" className="max-w-full">
+                <input type="text" value={linkVistoria} onChange={(e) => setLinkVistoria(e.target.value)} className={inputClass} />
+              </Field>
             </section>
 
             <footer className="flex justify-center pt-2 border-t border-slate-200">

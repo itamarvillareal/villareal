@@ -3,9 +3,26 @@
  */
 
 export const navItems = [
+  {
+    id: 'admin-imoveis-grupo',
+    label: 'Administração de Imóveis',
+    icon: 'Landmark',
+    children: [
+      { id: 'imoveis', label: 'Imóveis', icon: 'Building2' },
+      { id: 'relatorio-imoveis', label: 'Relatório Imóveis', icon: 'FileSpreadsheet' },
+    ],
+  },
   { id: 'clientes', label: 'Pessoas', icon: 'Users' },
   { id: 'pessoas', label: 'Clientes', icon: 'UserCircle' },
-  { id: 'processos', label: 'Processos', icon: 'Folder' },
+  {
+    id: 'processos-grupo',
+    label: 'Processos',
+    icon: 'Folder',
+    children: [
+      { id: 'processos', label: 'Processos', icon: 'Folder' },
+      { id: 'relatorio', label: 'Relatório de Processos', icon: 'FileSpreadsheet' },
+    ],
+  },
   {
     id: 'calcular-grupo',
     label: 'Calcular',
@@ -15,10 +32,9 @@ export const navItems = [
       { id: 'relatorio-calculos', label: 'Relatório de Cálculos', icon: 'Table2' },
     ],
   },
-  { id: 'imoveis', label: 'Imóveis', icon: 'Building2' },
   { id: 'agenda', label: 'Agenda', icon: 'Calendar' },
+  { id: 'atividade', label: 'Atividade', icon: 'ClipboardList' },
   { id: 'financeiro', label: 'Financeiro', icon: 'CircleDollarSign' },
-  { id: 'relatorio', label: 'Relatório de Processos', icon: 'FileSpreadsheet' },
   { id: 'pendencias', label: 'Pendências', icon: 'AlertTriangle' },
   { id: 'diagnosticos', label: 'Diagnósticos', icon: 'Activity' },
   { id: 'usuarios', label: 'Usuários', icon: 'UserCog' },

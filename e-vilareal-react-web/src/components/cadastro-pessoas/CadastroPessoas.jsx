@@ -39,6 +39,9 @@ import { listarProcessosPorIdPessoa } from '../../data/processosHistoricoData.js
 import { resolverAliasHojeEmTexto } from '../../services/hjDateAliasService.js';
 import { rotuloPessoaComDocumento, esbocoQualificacaoComResponsavel } from '../../services/qualificacaoContratualHelper.js';
 import { SeletorResponsavelPessoa } from './SeletorResponsavelPessoa.jsx';
+import { getContextoAuditoriaUsuario, registrarAuditoria } from '../../services/auditoriaCliente.js';
+
+let __ultimoAcessoListaPessoas = 0;
 
 const FORCA_MOCK_CADASTRO =
   import.meta.env.VITE_USE_MOCK_CADASTRO_PESSOAS === 'true';
@@ -157,6 +160,8 @@ export function CadastroPessoas() {
   const [extracaoEndereco, setExtracaoEndereco] = useState(null);
   const [modoDebugExtracao, setModoDebugExtracao] = useState(false);
   const [extracaoProcessando, setExtracaoProcessando] = useState(false);
+  /** Evita repetir log de auditoria ao mesmo cadastro na lista. */
+  const ultimoCadastroLogadoRef = useRef(null);
   const [camposPreenchidosPorTexto, setCamposPreenchidosPorTexto] = useState({
     nome: false,
     cpf: false,
@@ -411,6 +416,42 @@ export function CadastroPessoas() {
     carregarLista();
   }, [carregarLista]);
 
+  useEffect(() => {
+    if (loading) return;
+    const now = Date.now();
+    if (now - __ultimoAcessoListaPessoas < 1500) return;
+    __ultimoAcessoListaPessoas = now;
+    const { usuarioNome } = getContextoAuditoriaUsuario();
+    registrarAuditoria({
+      modulo: 'Pessoas',
+      tela: '/clientes',
+      tipoAcao: 'ACESSO_LISTA',
+      descricao: `Usuário ${usuarioNome} acessou a lista de cadastros (Pessoas).`,
+    });
+  }, [loading]);
+
+  useEffect(() => {
+    if (modo !== 'listar') {
+      ultimoCadastroLogadoRef.current = null;
+      return;
+    }
+    if (loading || !pessoaAtual?.id) return;
+    const id = Number(pessoaAtual.id);
+    if (!Number.isFinite(id)) return;
+    if (ultimoCadastroLogadoRef.current === id) return;
+    ultimoCadastroLogadoRef.current = id;
+    const { usuarioNome } = getContextoAuditoriaUsuario();
+    const nome = String(pessoaAtual.nome ?? '').trim() || `cadastro ${id}`;
+    registrarAuditoria({
+      modulo: 'Pessoas',
+      tela: '/clientes',
+      tipoAcao: 'ACESSO_CADASTRO',
+      descricao: `Usuário ${usuarioNome} abriu o cadastro de ${nome} (id ${id}).`,
+      registroAfetadoId: String(id),
+      registroAfetadoNome: nome,
+    });
+  }, [loading, modo, pessoaAtual?.id, pessoaAtual?.nome]);
+
   /** Vindo de Clientes (Cadastro de Clientes): abre a pessoa vinculada ao cliente. */
   useEffect(() => {
     if (loading) return;
@@ -492,6 +533,15 @@ export function CadastroPessoas() {
     setEnderecos([]);
     setContatos([]);
     setModo('criar');
+    {
+      const { usuarioNome } = getContextoAuditoriaUsuario();
+      registrarAuditoria({
+        modulo: 'Pessoas',
+        tela: '/clientes',
+        tipoAcao: 'ACESSO_TELA',
+        descricao: `Usuário ${usuarioNome} abriu o formulário de nova pessoa (inclusão).`,
+      });
+    }
     setError(null);
     setTextoColagemPessoa('');
     setExtracaoAvisos([]);
@@ -533,6 +583,18 @@ export function CadastroPessoas() {
     setEnderecos([]);
     setContatos([]);
     setModo('editar');
+    {
+      const { usuarioNome } = getContextoAuditoriaUsuario();
+      const nome = String(item.nome ?? '').trim() || `id ${item.id}`;
+      registrarAuditoria({
+        modulo: 'Pessoas',
+        tela: '/clientes',
+        tipoAcao: 'ACESSO_CADASTRO',
+        descricao: `Usuário ${usuarioNome} abriu o cadastro de ${nome} para edição (id ${item.id}).`,
+        registroAfetadoId: String(item.id),
+        registroAfetadoNome: nome,
+      });
+    }
     setError(null);
     setTextoColagemPessoa('');
     setExtracaoAvisos([]);
@@ -1259,6 +1321,22 @@ export function CadastroPessoas() {
                         <button
                           type="button"
                           className="px-3 py-2 text-sm border border-slate-300 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 whitespace-nowrap"
+                          onClick={() => {
+                            const texto = esbocoQualificacaoComResponsavel({ nome: form.nome }, form.responsavel);
+                            const { usuarioNome } = getContextoAuditoriaUsuario();
+                            const nome = String(form.nome ?? '').trim() || 'cadastro sem nome';
+                            registrarAuditoria({
+                              modulo: 'Pessoas',
+                              tela: '/clientes',
+                              tipoAcao: 'DOCUMENTO',
+                              descricao: `Usuário ${usuarioNome} gerou qualificação contratual de ${nome}.`,
+                              registroAfetadoId: editId != null ? String(editId) : null,
+                              registroAfetadoNome: nome,
+                            });
+                            if (navigator.clipboard?.writeText) {
+                              navigator.clipboard.writeText(texto).catch(() => {});
+                            }
+                          }}
                         >
                           Qualificação
                         </button>

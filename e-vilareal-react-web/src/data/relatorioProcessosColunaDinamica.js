@@ -89,7 +89,7 @@ export const CAMPOS_OPCOES_ULTIMO_ANDAMENTO = [
 const CAMPOS_OPCOES_POR_FIELD_KEY = new Map(CAMPOS_OPCOES_ULTIMO_ANDAMENTO.map((o) => [o.fieldKey, o]));
 
 /**
- * Ordem fixa das **30** colunas do Relatório de Processos (painel «Colunas» + grade).
+ * Ordem fixa das colunas do Relatório de Processos (painel «Colunas» + grade).
  * Outros campos continuam acessíveis pelo menu de título de cada coluna.
  */
 export const FIELD_KEYS_COLUNAS_RELATORIO_PROCESSOS = [
@@ -111,22 +111,18 @@ export const FIELD_KEYS_COLUNAS_RELATORIO_PROCESSOS = [
   'horaAudiencia',
   'observacaoFase',
   'cepReu',
-  'lmv',
-  'inv',
   'consultas',
   'parteCliente',
   'parteOposta',
   'naturezaAcaoProcesso',
   'statusAtivoTexto',
-  'numeroProcessoNovo',
   'valorCausaProcesso',
   'unidade',
   'enderecoImovel',
-  'ultimoHistoricoInfo',
 ];
 
 /**
- * Slots da grade e do botão «Colunas»: exatamente 30 itens.
+ * Slots da grade e do botão «Colunas»: mesma quantidade que {@link FIELD_KEYS_COLUNAS_RELATORIO_PROCESSOS}.
  * `id` do slot = `fieldKey` exibido por padrão em {@link carregarCampoPorColunaSalvo}.
  */
 export const COLUNAS_RELATORIO_PROCESSOS = FIELD_KEYS_COLUNAS_RELATORIO_PROCESSOS.map((fieldKey) => {

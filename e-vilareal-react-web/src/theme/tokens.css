@@ -1,0 +1,33 @@
+/**
+ * Tokens semânticos (tema claro em :root; escuro em .dark).
+ * Referência para futuras personalizações — overrides em dark-utilities.css.
+ */
+:root {
+  --vl-bg-page: #f3f4f6;
+  --vl-bg-elevated: #e5e7eb;
+  --vl-bg-card: #ffffff;
+  --vl-bg-muted: #f8fafc;
+  --vl-text: #0f172a;
+  --vl-text-secondary: #64748b;
+  --vl-text-muted: #94a3b8;
+  --vl-border: #e2e8f0;
+  --vl-border-strong: #cbd5e1;
+  --vl-input-bg: #ffffff;
+  --vl-input-border: #cbd5e1;
+  --vl-accent-soft: rgba(37, 99, 235, 0.15);
+}
+
+.dark {
+  --vl-bg-page: #121212;
+  --vl-bg-elevated: #1e1e1e;
+  --vl-bg-card: #1e1e1e;
+  --vl-bg-muted: #252525;
+  --vl-text: #ffffff;
+  --vl-text-secondary: #b0b0b0;
+  --vl-text-muted: #94a3b8;
+  --vl-border: #2a2a2a;
+  --vl-border-strong: #3f3f3f;
+  --vl-input-bg: #2a2a2a;
+  --vl-input-border: #3f3f3f;
+  --vl-accent-soft: rgba(59, 130, 246, 0.2);
+}

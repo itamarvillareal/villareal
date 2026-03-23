@@ -1,4 +1,5 @@
 import { API_BASE_URL } from './config';
+import { buildAuditoriaHeaders } from '../services/auditoriaCliente.js';
 
 const BASE = `${API_BASE_URL}/api/cadastro-pessoas`;
 
@@ -7,6 +8,7 @@ function getOptions(method, body = null) {
     method,
     headers: {
       'Content-Type': 'application/json',
+      ...buildAuditoriaHeaders(),
     },
   };
   if (body) opts.body = JSON.stringify(body);

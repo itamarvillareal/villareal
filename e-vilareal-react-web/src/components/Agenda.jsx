@@ -612,9 +612,14 @@ export function Agenda() {
   /** Lista de pessoas = mesma da tela Usuários (localStorage); sincroniza ao salvar ou ao voltar à Agenda. */
   useEffect(() => {
     const sync = () => setUsuariosAtivosState(getUsuariosAtivos());
+    const bumpAgenda = () => setAgendaStatusNonce((n) => n + 1);
     sync();
     window.addEventListener('vilareal:usuarios-agenda-atualizados', sync);
-    return () => window.removeEventListener('vilareal:usuarios-agenda-atualizados', sync);
+    window.addEventListener('vilareal:agenda-persistencia-atualizada', bumpAgenda);
+    return () => {
+      window.removeEventListener('vilareal:usuarios-agenda-atualizados', sync);
+      window.removeEventListener('vilareal:agenda-persistencia-atualizada', bumpAgenda);
+    };
   }, []);
 
   useEffect(() => {

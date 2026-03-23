@@ -1,25 +1,8 @@
 import { useEffect, useState } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
-import {
-  Users,
-  UserCircle,
-  Folder,
-  Calculator,
-  Building2,
-  Calendar,
-  CircleDollarSign,
-  FileSpreadsheet,
-  AlertTriangle,
-  Briefcase,
-  Scale,
-  Activity,
-  UserCog,
-  Settings,
-  Table2,
-  ChevronDown,
-  ChevronRight,
-} from 'lucide-react';
+import { NavLink, useLocation, Link } from 'react-router-dom';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import { navItems } from '../data/mockData';
+import { SidebarMenuIcon } from './navigation/SidebarMenuIcons.jsx';
 import { getUsuariosAtivos } from '../data/agendaPersistenciaData';
 import {
   getUsuarioSessaoAtualId,
@@ -31,24 +14,7 @@ import {
   USUARIO_MASTER_ID,
 } from '../data/usuarioPermissoesStorage.js';
 import { getNomeExibicaoUsuario } from '../data/usuarioDisplayHelpers.js';
-
-const iconMap = {
-  Users,
-  UserCircle,
-  Folder,
-  Calculator,
-  Building2,
-  Calendar,
-  CircleDollarSign,
-  FileSpreadsheet,
-  AlertTriangle,
-  Briefcase,
-  Scale,
-  Activity,
-  UserCog,
-  Settings,
-  Table2,
-};
+import { registrarAuditoria } from '../services/auditoriaCliente.js';
 
 function itemMenuPermitido(item, podeFn) {
   if (Array.isArray(item.children) && item.children.length > 0) {
@@ -83,12 +49,20 @@ export function Sidebar() {
   const nomeOperador = getNomeExibicaoUsuario(usuariosLista?.find((u) => u.id === operadorId)) ?? operadorId;
 
   const pode = (modId) => usuarioPodeAcessarModulo(perfilId, modId);
-  const navFiltrado = navItems.filter((item) => itemMenuPermitido(item, pode));
+  const navFiltrado = navItems
+    .filter((item) => itemMenuPermitido(item, pode))
+    .filter((item) => item.id !== 'atividade' || operadorId === USUARIO_MASTER_ID);
 
   useEffect(() => {
     const p = location.pathname.replace(/\/+$/, '') || '/';
+    if (p === '/processos' || p.startsWith('/processos/') || p === '/relatorio' || p.startsWith('/relatorio/')) {
+      setGruposAbertos((prev) => new Set(prev).add('processos-grupo'));
+    }
     if (p === '/calculos' || p.startsWith('/calculos/') || p === '/relatorio-calculos' || p.startsWith('/relatorio-calculos/')) {
       setGruposAbertos((prev) => new Set(prev).add('calcular-grupo'));
+    }
+    if (p === '/imoveis' || p.startsWith('/imoveis/') || p === '/relatorio-imoveis' || p.startsWith('/relatorio-imoveis/')) {
+      setGruposAbertos((prev) => new Set(prev).add('admin-imoveis-grupo'));
     }
   }, [location.pathname]);
 
@@ -102,17 +76,28 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="w-48 min-h-screen bg-gray-200 border-r border-gray-300 flex flex-col shrink-0 shadow-sm">
-      <div className="p-4 border-b border-gray-300 bg-gray-100">
-        <h2 className="font-semibold text-gray-800 text-sm">villa real advocacia</h2>
-        <p className="text-xs text-gray-500">Projeto Jurídico</p>
+    <aside className="w-56 min-h-screen bg-gray-200 border-r border-gray-300 flex flex-col shrink-0 shadow-sm">
+      <div className="p-3 border-b border-gray-300 bg-gray-100">
+        <Link
+          to="/"
+          className="block rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-100"
+          title="Ir para o painel"
+        >
+          <img
+            src="/logo-villareal.png"
+            alt="Villa Real e advogados associados"
+            className="w-full max-h-[5.5rem] object-contain object-center mx-auto"
+            width={200}
+            height={88}
+            decoding="async"
+          />
+        </Link>
       </div>
       <nav className="flex-1 p-2 overflow-y-auto">
         {navFiltrado.map((item) => {
           if (Array.isArray(item.children) && item.children.length > 0) {
             const subs = item.children.filter((ch) => pode(ch.id));
             if (subs.length === 0) return null;
-            const Icon = iconMap[item.icon];
             const aberto = gruposAbertos.has(item.id);
             const algumFilhoAtivo = subs.some((ch) => {
               const path = location.pathname.replace(/\/+$/, '') || '/';
@@ -128,7 +113,7 @@ export function Sidebar() {
                   }`}
                   aria-expanded={aberto}
                 >
-                  {Icon && <Icon className="w-5 h-5 shrink-0" />}
+                  <SidebarMenuIcon id={item.id} className="w-5 h-5" />
                   <span className="flex-1 min-w-0">{item.label}</span>
                   {aberto ? (
                     <ChevronDown className="w-4 h-4 shrink-0 text-gray-500" aria-hidden />
@@ -138,9 +123,7 @@ export function Sidebar() {
                 </button>
                 {aberto && (
                   <div className="mt-0.5 ml-2 pl-2 border-l border-gray-300 space-y-0.5">
-                    {subs.map((ch) => {
-                      const SubIcon = ch.icon ? iconMap[ch.icon] : null;
-                      return (
+                    {subs.map((ch) => (
                         <NavLink
                           key={ch.id}
                           to={`/${ch.id}`}
@@ -153,17 +136,15 @@ export function Sidebar() {
                             }`
                           }
                         >
-                          {SubIcon && <SubIcon className="w-4 h-4 shrink-0 opacity-80" />}
+                          <SidebarMenuIcon id={ch.id} className="w-4 h-4" />
                           <span>{ch.label}</span>
                         </NavLink>
-                      );
-                    })}
+                      ))}
                   </div>
                 )}
               </div>
             );
           }
-          const Icon = iconMap[item.icon];
           return (
             <NavLink
               key={item.id}
@@ -176,7 +157,7 @@ export function Sidebar() {
                 }`
               }
             >
-              {Icon && <Icon className="w-5 h-5 shrink-0" />}
+              <SidebarMenuIcon id={item.id} className="w-5 h-5" />
               <span>{item.label}</span>
             </NavLink>
           );
@@ -190,7 +171,23 @@ export function Sidebar() {
             </label>
             <select
               value={getUsuarioSessaoAtualId()}
-              onChange={(e) => setUsuarioSessaoAtualId(e.target.value)}
+              onChange={(e) => {
+                const novo = e.target.value;
+                const anterior = getUsuarioSessaoAtualId();
+                if (novo === anterior) return;
+                const ul = getUsuariosAtivos();
+                const na = getNomeExibicaoUsuario(ul.find((u) => u.id === anterior)) ?? anterior;
+                const nn = getNomeExibicaoUsuario(ul.find((u) => u.id === novo)) ?? novo;
+                const nomeOp = nomeOperador;
+                registrarAuditoria({
+                  modulo: 'Sessão',
+                  tela: '/',
+                  tipoAcao: 'TROCA_PERFIL',
+                  descricao: `Usuário ${nomeOp} alterou o perfil ativo (teste) de ${na} para ${nn}.`,
+                  observacoesTecnicas: `operadorEstacao=${operadorId}`,
+                });
+                setUsuarioSessaoAtualId(novo);
+              }}
               className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-800"
               title="Somente o usuário master (Itamar) pode alternar perfis para testar o sistema."
             >

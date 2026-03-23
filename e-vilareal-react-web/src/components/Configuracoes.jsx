@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Settings } from 'lucide-react';
+import { Settings, Moon } from 'lucide-react';
+import { useTheme } from '../theme/ThemeProvider.jsx';
 import { isUsuarioMaster, setUsuarioMaster } from '../data/consultasVinculoHistoricoStorage.js';
 import { resetVinculacaoTesteCompleto } from '../data/vinculacaoTesteReset.js';
 import { reaplicarDemoIntegradoCompleto } from '../data/demoIntegradoSeed.js';
@@ -15,6 +16,7 @@ import {
  * Tela de configurações do sistema.
  */
 export function Configuracoes() {
+  const { dark, setDark } = useTheme();
   const [usuarioMaster, setUsuarioMasterState] = useState(() => isUsuarioMaster());
   const [operadorEstacao, setOperadorEstacaoState] = useState(() => getOperadorEstacaoId());
 
@@ -48,7 +50,37 @@ export function Configuracoes() {
         </div>
       </header>
       <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm max-w-2xl space-y-6">
-        <div>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2">
+          <div className="flex items-start gap-3 min-w-0">
+            <div className="p-2 rounded-lg bg-slate-100 border border-slate-200 shrink-0">
+              <Moon className="w-5 h-5 text-slate-700" aria-hidden />
+            </div>
+            <div>
+              <h2 className="text-sm font-semibold text-slate-800">Modo Noturno</h2>
+              <p className="text-sm text-slate-600 mt-1">
+                Ativa o tema escuro em todo o sistema. A preferência fica guardada neste navegador.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={dark}
+            aria-label={dark ? 'Desativar modo noturno' : 'Ativar modo noturno'}
+            onClick={() => setDark(!dark)}
+            className={`relative inline-flex h-8 w-14 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
+              dark ? 'bg-blue-600' : 'bg-slate-300'
+            }`}
+          >
+            <span
+              className={`pointer-events-none inline-block h-7 w-7 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                dark ? 'translate-x-6' : 'translate-x-0.5'
+              }`}
+            />
+          </button>
+        </div>
+
+        <div className="border-t border-slate-200 pt-6">
           <h2 className="text-sm font-semibold text-slate-800">Esta estação (quem usa este computador)</h2>
           <p className="text-sm text-slate-600 mt-2">
             O usuário <strong>{USUARIO_MASTER_ID}</strong> (Itamar) é o <strong>master</strong>: só ele pode usar o

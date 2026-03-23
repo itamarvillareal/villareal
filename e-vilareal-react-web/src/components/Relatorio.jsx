@@ -58,7 +58,7 @@ function timestampDataBr(val) {
   return Number.isNaN(x) ? 0 : x;
 }
 
-/** 30 colunas fixas ({@link COLUNAS_RELATORIO_PROCESSOS}); o menu de cada cabeçalho ainda lista todos os campos. */
+/** Colunas fixas ({@link COLUNAS_RELATORIO_PROCESSOS}); o menu de cada cabeçalho ainda lista todos os campos. */
 const COLUNAS = COLUNAS_RELATORIO_PROCESSOS;
 
 const COLUNA_IDS_RELATORIO = COLUNAS.map((c) => c.id);

@@ -135,9 +135,58 @@ function loadStore() {
 function saveStore(store) {
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+    try {
+      window.dispatchEvent(new CustomEvent('vilareal:agenda-persistencia-atualizada'));
+    } catch {
+      /* ignore */
+    }
   } catch {
     // ignora
   }
+}
+
+/**
+ * Copia todos os compromissos persistidos vinculados a `origemUsuarioId` para `destinoUsuarioId`
+ * (novas entradas com novos ids), em todas as datas do armazenamento.
+ * @returns {{ ok: boolean, clonados?: number, reason?: string }}
+ */
+export function clonarAgendaEntreUsuarios({ origemUsuarioId, destinoUsuarioId }) {
+  const origem = String(origemUsuarioId ?? '').trim();
+  const destino = String(destinoUsuarioId ?? '').trim();
+  if (!origem || !destino) return { ok: false, reason: 'ids-vazios' };
+  if (origem === destino) return { ok: false, reason: 'origem-igual-destino' };
+
+  const store = loadStore();
+  const datas = Object.keys(store);
+  if (datas.length === 0) return { ok: true, clonados: 0 };
+
+  let clonados = 0;
+  const baseStamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  for (const data of datas) {
+    const lista = Array.isArray(store[data]) ? [...store[data]] : [];
+    const candidatos = lista.filter((ev) => ev && String(ev.usuarioId ?? '').trim() === origem);
+    if (candidatos.length === 0) continue;
+
+    for (let i = 0; i < candidatos.length; i++) {
+      const ev = candidatos[i];
+      const novoId = `clone-${destino}-${baseStamp}-${clonados}-${i}`;
+      const clone = {
+        ...ev,
+        id: novoId,
+        usuarioId: destino,
+        criadoEm: new Date().toISOString(),
+      };
+      lista.push(clone);
+      clonados += 1;
+    }
+    store[data] = ordenarListaEventosAgenda(lista);
+  }
+
+  if (clonados > 0) {
+    saveStore(store);
+  }
+  return { ok: true, clonados };
 }
 
 function keyEvento({ data, hora, descricao, usuarioId, numeroProcessoNovo }) {

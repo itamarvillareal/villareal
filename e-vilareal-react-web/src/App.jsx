@@ -7,6 +7,8 @@ import { CadastroClientes } from './components/CadastroClientes';
 import { Agenda } from './components/Agenda';
 import { Processos } from './components/Processos';
 import { Imoveis } from './components/Imoveis';
+import { ImoveisAdministracaoFinanceiro } from './components/ImoveisAdministracaoFinanceiro.jsx';
+import { RelatorioImoveis } from './components/RelatorioImoveis.jsx';
 import { Relatorio } from './components/Relatorio';
 import { RelatorioCalculos } from './components/RelatorioCalculos';
 import { Calculos } from './components/Calculos';
@@ -14,6 +16,7 @@ import { Diagnosticos } from './components/Diagnosticos';
 import { Financeiro } from './components/Financeiro';
 import { Usuarios } from './components/Usuarios';
 import { Configuracoes } from './components/Configuracoes';
+import { Atividade } from './components/Atividade.jsx';
 import { atualizarIndicesMensaisAposDia10 } from './services/monetaryIndicesService.js';
 import { ensureHistoricoDemonstracaoDiagnostico } from './data/processosHistoricoData.js';
 import { ensureDemoIntegradoCompleto } from './data/demoIntegradoSeed.js';
@@ -23,10 +26,15 @@ import {
   usuarioPodeAcessarModulo,
   pathParaModuloId,
   getPrimeiraRotaPermitida,
+  getRotuloModuloPorPathname,
   operadorPodeAlternarPerfil,
   getOperadorEstacaoId,
   setUsuarioSessaoAtualId,
+  USUARIO_MASTER_ID,
 } from './data/usuarioPermissoesStorage.js';
+import { getContextoAuditoriaUsuario, registrarAuditoria } from './services/auditoriaCliente.js';
+
+let __ultimoLogNavegacao = { path: '', t: 0 };
 
 function Layout() {
   const location = useLocation();
@@ -55,11 +63,33 @@ function Layout() {
   }, [accessTick]);
 
   useEffect(() => {
-    const mod = pathParaModuloId(location.pathname);
+    const path = (location.pathname || '').replace(/\/+$/, '') || '/';
+    const t = window.setTimeout(() => {
+      const now = Date.now();
+      if (__ultimoLogNavegacao.path === path && now - __ultimoLogNavegacao.t < 900) return;
+      __ultimoLogNavegacao = { path, t: now };
+      const mod = getRotuloModuloPorPathname(path);
+      const { usuarioNome } = getContextoAuditoriaUsuario();
+      registrarAuditoria({
+        modulo: mod,
+        tela: path,
+        tipoAcao: 'ACESSO_MODULO',
+        descricao: `Usuário ${usuarioNome} acessou o módulo ${mod}.`,
+      });
+    }, 400);
+    return () => clearTimeout(t);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    const pathNorm = (location.pathname || '/').replace(/\/+$/, '') || '/';
     const uid = getPerfilAtivoParaPermissoes();
+    if (pathNorm === '/atividade' && getOperadorEstacaoId() !== USUARIO_MASTER_ID) {
+      navigate(getPrimeiraRotaPermitida(uid), { replace: true });
+      return;
+    }
+    const mod = pathParaModuloId(location.pathname);
     if (!usuarioPodeAcessarModulo(uid, mod)) {
       const dest = getPrimeiraRotaPermitida(uid);
-      const pathNorm = (location.pathname || '/').replace(/\/+$/, '') || '/';
       const destNorm = (dest || '/').replace(/\/+$/, '') || '/';
       if (pathNorm !== destNorm) {
         navigate(dest, { replace: true });
@@ -132,8 +162,11 @@ function App() {
           <Route path="/clientes" element={<CadastroPessoas />} />
           <Route path="/pessoas" element={<CadastroClientes />} />
           <Route path="/agenda" element={<Agenda />} />
+          <Route path="/atividade" element={<Atividade />} />
           <Route path="/processos" element={<Processos />} />
           <Route path="/imoveis" element={<Imoveis />} />
+          <Route path="/imoveis/financeiro" element={<ImoveisAdministracaoFinanceiro />} />
+          <Route path="/relatorio-imoveis" element={<RelatorioImoveis />} />
           <Route path="/relatorio" element={<Relatorio />} />
           <Route path="/relatorio-calculos" element={<RelatorioCalculos />} />
           <Route path="/calculos" element={<Calculos />} />

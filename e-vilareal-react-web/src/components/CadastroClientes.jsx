@@ -24,6 +24,10 @@ import {
   salvarParteOpostaDaGradeCadastro,
   alinharListaProcessosDescricaoComHistorico,
 } from '../data/processosHistoricoData.js';
+import { getContextoAuditoriaUsuario, registrarAuditoria } from '../services/auditoriaCliente.js';
+
+let __ultimoListaClientesLog = 0;
+let __ultimoClienteConsultaLog = '';
 
 function formatDocBR(digits) {
   const d = String(digits || '').replace(/\D/g, '');
@@ -251,6 +255,40 @@ export function CadastroClientes() {
     processos,
   };
 
+  useEffect(() => {
+    const now = Date.now();
+    if (now - __ultimoListaClientesLog < 1500) return;
+    __ultimoListaClientesLog = now;
+    const { usuarioNome } = getContextoAuditoriaUsuario();
+    registrarAuditoria({
+      modulo: 'Clientes',
+      tela: '/pessoas',
+      tipoAcao: 'ACESSO_LISTA',
+      descricao: `Usuário ${usuarioNome} acessou a tela de cadastro de clientes.`,
+    });
+  }, []);
+
+  useEffect(() => {
+    const c = padCliente8(codigo);
+    const t = window.setTimeout(() => {
+      const nome = String(persistSnapshotRef.current?.nomeRazao ?? '').trim();
+      if (!nome) return;
+      const key = `${c}|${nome}`;
+      if (key === __ultimoClienteConsultaLog) return;
+      __ultimoClienteConsultaLog = key;
+      const { usuarioNome } = getContextoAuditoriaUsuario();
+      registrarAuditoria({
+        modulo: 'Clientes',
+        tela: '/pessoas',
+        tipoAcao: 'ACESSO_CADASTRO',
+        descricao: `Usuário ${usuarioNome} consultou o cadastro do cliente ${nome} (código ${c}).`,
+        registroAfetadoId: c,
+        registroAfetadoNome: nome,
+      });
+    }, 1000);
+    return () => clearTimeout(t);
+  }, [codigo, nomeRazao]);
+
   const aplicarDadosCliente = useCallback((paddedRaw) => {
     pularSincPorCargaClienteRef.current = true;
     const padded = padCliente8(paddedRaw);
@@ -427,6 +465,17 @@ export function CadastroClientes() {
     navigate('/processos', { state: { codCliente: padCliente8(codigo), proc: String(procNumero ?? '') } });
   }
 
+  /** Abre Processos com modal Conta Corrente em modo Proc. 0 (mensalista / geral do cliente). */
+  function abrirContaCorrenteProcZero() {
+    const cod = padCliente8(codigo);
+    const n = Number(normalizarCodigoCliente(codigo));
+    if (!Number.isFinite(n) || n < 1) {
+      window.alert('Informe um código de cliente válido.');
+      return;
+    }
+    navigate('/processos', { state: { codCliente: cod, proc: 0 } });
+  }
+
   /** Próximo índice de processo (1…n) para este cliente na lista local. */
   function proximoNumeroProcesso(lista) {
     const nums = (lista || []).map((p) => Number(p.procNumero)).filter((n) => Number.isFinite(n) && n >= 1);
@@ -464,6 +513,18 @@ export function CadastroClientes() {
     setPesquisaProcesso('');
     const paginas = Math.max(1, Math.ceil(merged.length / PROCESSOS_POR_PAGINA));
     setPaginaProcessos(paginas);
+    {
+      const { usuarioNome } = getContextoAuditoriaUsuario();
+      const cod = padCliente8(codigo);
+      registrarAuditoria({
+        modulo: 'Clientes',
+        tela: '/pessoas',
+        tipoAcao: 'CRIACAO',
+        descricao: `Usuário ${usuarioNome} incluiu o processo nº ${next} no cadastro do cliente ${cod}.`,
+        registroAfetadoId: cod,
+        registroAfetadoNome: nomeRazao,
+      });
+    }
     navigate('/processos', { state: { codCliente: padCliente8(codigo), proc: String(next) } });
   }
 
@@ -567,6 +628,15 @@ export function CadastroClientes() {
     setCnpjCpf(formatDocBR(p.cpf));
     setModalEscolherPessoa(false);
     setBuscaPessoaModal('');
+    const { usuarioNome } = getContextoAuditoriaUsuario();
+    registrarAuditoria({
+      modulo: 'Clientes',
+      tela: '/pessoas',
+      tipoAcao: 'VINCULACAO',
+      descricao: `Usuário ${usuarioNome} vinculou a pessoa ${p.nome} (id ${p.id}) ao cliente em edição (código ${padCliente8(codigo)}).`,
+      registroAfetadoId: String(p.id),
+      registroAfetadoNome: p.nome,
+    });
   }
 
   useEffect(() => {
@@ -809,6 +879,16 @@ export function CadastroClientes() {
                     );
                     return;
                   }
+                  {
+                    const { usuarioNome } = getContextoAuditoriaUsuario();
+                    registrarAuditoria({
+                      modulo: 'Clientes',
+                      tela: '/pessoas',
+                      tipoAcao: 'ACESSO_TELA',
+                      descricao: `Usuário ${usuarioNome} navegou do cliente para o cadastro da pessoa id ${idPessoa}.`,
+                      registroAfetadoId: String(idPessoa),
+                    });
+                  }
                   navigate('/clientes', { state: { pessoaId: String(idPessoa) } });
                 }}
                 className="px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
@@ -817,7 +897,27 @@ export function CadastroClientes() {
               </button>
               <button
                 type="button"
-                onClick={() => setModalQualificacaoAberto(true)}
+                onClick={abrirContaCorrenteProcZero}
+                className="px-3 py-2 rounded border border-sky-300 bg-white text-slate-800 text-sm hover:bg-sky-50"
+                title="Lançamentos do Financeiro com este Cod. Cliente e Proc. 0 (mensalistas / não vinculados a um processo específico). Abre a tela Processos com a janela da conta corrente."
+              >
+                Conta Corrente (Proc. 0)
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const { usuarioNome } = getContextoAuditoriaUsuario();
+                  const cod = padCliente8(codigo);
+                  registrarAuditoria({
+                    modulo: 'Clientes',
+                    tela: '/pessoas',
+                    tipoAcao: 'DOCUMENTO',
+                    descricao: `Usuário ${usuarioNome} abriu a qualificação do cliente ${nomeRazao} (código ${cod}).`,
+                    registroAfetadoId: cod,
+                    registroAfetadoNome: nomeRazao,
+                  });
+                  setModalQualificacaoAberto(true);
+                }}
                 className="px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
               >
                 Qualificação
@@ -854,7 +954,27 @@ export function CadastroClientes() {
               Edição Desabilitada
             </label>
             <label className="flex items-center gap-2 text-sm cursor-pointer">
-              <input type="checkbox" checked={clienteInativo} onChange={(e) => setClienteInativo(e.target.checked)} className="rounded border-slate-300" />
+              <input
+                type="checkbox"
+                checked={clienteInativo}
+                onChange={(e) => {
+                  const v = e.target.checked;
+                  setClienteInativo(v);
+                  const { usuarioNome } = getContextoAuditoriaUsuario();
+                  const cod = padCliente8(codigo);
+                  registrarAuditoria({
+                    modulo: 'Clientes',
+                    tela: '/pessoas',
+                    tipoAcao: 'EDICAO',
+                    descricao: v
+                      ? `Usuário ${usuarioNome} marcou o cliente ${nomeRazao} (código ${cod}) como inativo.`
+                      : `Usuário ${usuarioNome} reativou o cliente ${nomeRazao} (código ${cod}).`,
+                    registroAfetadoId: cod,
+                    registroAfetadoNome: nomeRazao,
+                  });
+                }}
+                className="rounded border-slate-300"
+              />
               Cliente Inativo
             </label>
           </section>

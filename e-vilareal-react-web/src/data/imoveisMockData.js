@@ -91,8 +91,9 @@ export function getImovelMock(imovelId) {
   const energiaNumero = String(10000000000 + id * 12345).slice(0, 11);
   const gasNumero = `1091705 - ${pad2(10 + (id % 50))}`.replace(/\s+/, ' ');
 
-  const proprietarioCod1 = pad3(100 + (id % 900));
-  const proprietarioCod2 = pad3(1000 + (id * 13) % 9000);
+  /** Número da pessoa no cadastro (exibido no imóvel; alinhado ao sufixo do nome mock). */
+  const proprietarioNumeroPessoa = String(100 + id);
+  const inquilinoNumeroPessoa = String(200 + id);
 
   const proprietario = `PROPRIETÁRIO ${pad3(100 + id)} — VILA REAL`;
   const inquilino = `INQUILINO ${pad3(200 + id)} — VILA REAL`;
@@ -155,8 +156,8 @@ export function getImovelMock(imovelId) {
     cpfBanco,
     titular,
     chavePix,
-    proprietarioCod1,
-    proprietarioCod2,
+    proprietarioNumeroPessoa,
+    inquilinoNumeroPessoa,
     proprietario,
     proprietarioCpf,
     proprietarioContato,

@@ -248,11 +248,11 @@ export function Processos() {
   const audienciaHoraInputRef = useRef(null);
   const [avisoAudiencia, setAvisoAudiencia] = useState('nao_avisado');
   const [prazoFatal, setPrazoFatal] = useState('');
-  const [unidade, setUnidade] = useState('');
   const [unidadeEndereco, setUnidadeEndereco] = useState('Unidade QD.06 LT.06');
   const [imovelId, setImovelId] = useState(''); // vínculo com a aba Imóveis (mock)
   const [imovelManual, setImovelManual] = useState(false);
-  const [unidadeManual, setUnidadeManual] = useState(false);
+  /** Evita sobrescrever o texto da unidade quando o vínculo mock mudar, após edição manual. */
+  const [unidadeEnderecoManual, setUnidadeEnderecoManual] = useState(false);
   const [tramitacao, setTramitacao] = useState('');
   const [modalTramitacaoAberto, setModalTramitacaoAberto] = useState(false);
   const [tramitacaoDraft, setTramitacaoDraft] = useState('');
@@ -362,13 +362,56 @@ export function Processos() {
     setAvisoAudiencia(pickCampoStrSalvo(r, 'avisoAudiencia', 'nao_avisado') || 'nao_avisado');
     setProximaInformacao(pickCampoStrSalvo(r, 'proximaInformacao', ''));
     setDataProximaInformacao(pickCampoStrSalvo(r, 'dataProximaInformacao', ''));
-    setUnidadeEndereco(pickCampoStrSalvo(r, 'unidadeEndereco', 'Unidade QD.06 LT.06'));
-
     const vinc = buscarVinculoImovelMock(mock.codigoCliente, mock.processo);
     const imovelSalvo = pickCampoStrSalvo(r, 'imovelId', '');
-    const unidadeSalva = pickCampoStrSalvo(r, 'unidade', '');
-    setImovelId(imovelSalvo.trim() !== '' ? imovelSalvo : vinc ? String(vinc.imovelId) : '');
-    setUnidade(unidadeSalva.trim() !== '' ? unidadeSalva : vinc ? vinc.unidade : '');
+
+    const nav = typeof location.state === 'object' && location.state ? location.state : null;
+    const navImovelNum =
+      nav?.imovelId != null && String(nav.imovelId).trim() !== ''
+        ? Number(String(nav.imovelId).replace(/\D/g, ''))
+        : NaN;
+    const codNavPad =
+      nav?.codCliente != null && String(nav.codCliente).trim() !== '' ? padCliente(nav.codCliente) : '';
+    const procNavStr =
+      nav?.proc !== undefined && nav?.proc !== null && String(nav.proc).trim() !== ''
+        ? String(normalizarProcesso(nav.proc))
+        : '';
+    const procMockStr = String(normalizarProcesso(mock.processo));
+    const navAlinha =
+      codNavPad !== '' &&
+      procNavStr !== '' &&
+      codNavPad === mock.codigoCliente &&
+      procNavStr === procMockStr;
+    const imovelPorNavegacao =
+      navAlinha && Number.isFinite(navImovelNum) && navImovelNum > 0 ? navImovelNum : null;
+
+    let nextImovelIdStr = '';
+    if (imovelPorNavegacao != null) {
+      nextImovelIdStr = String(imovelPorNavegacao);
+    } else if (imovelSalvo.trim() !== '') {
+      nextImovelIdStr = imovelSalvo.trim();
+    } else if (vinc) {
+      nextImovelIdStr = String(vinc.imovelId);
+    }
+    setImovelId(nextImovelIdStr);
+
+    const idImovelNum = Number(String(nextImovelIdStr).replace(/\D/g, ''));
+    const mockDoImovel =
+      Number.isFinite(idImovelNum) && idImovelNum > 0 ? getImovelMock(idImovelNum) : null;
+
+    const ueSalvo = pickCampoStrSalvo(r, 'unidadeEndereco', '');
+    const uSalvo = pickCampoStrSalvo(r, 'unidade', '');
+    const mergedUnidade =
+      String(ueSalvo ?? '').trim() !== ''
+        ? String(ueSalvo).trim()
+        : String(uSalvo ?? '').trim() !== ''
+          ? String(uSalvo).trim()
+          : mockDoImovel && String(mockDoImovel.unidade ?? '').trim() !== ''
+            ? String(mockDoImovel.unidade).trim()
+            : vinc && String(vinc.unidade ?? '').trim() !== ''
+              ? String(vinc.unidade).trim()
+              : 'Unidade QD.06 LT.06';
+    setUnidadeEndereco(mergedUnidade);
 
     const historicoPersistido = getHistoricoDoProcesso(mock.codigoCliente, mock.processo);
     setPrazoFatal(registroPersistido?.prazoFatal ?? '');
@@ -397,9 +440,9 @@ export function Processos() {
       audienciaHora: pickCampoStrSalvo(r, 'audienciaHora', ''),
       audienciaTipo: pickCampoStrSalvo(r, 'audienciaTipo', ''),
       avisoAudiencia: pickCampoStrSalvo(r, 'avisoAudiencia', 'nao_avisado') || 'nao_avisado',
-      imovelId: imovelSalvo.trim() !== '' ? imovelSalvo : vinc ? String(vinc.imovelId) : '',
-      unidade: unidadeSalva.trim() !== '' ? unidadeSalva : vinc ? vinc.unidade : '',
-      unidadeEndereco: pickCampoStrSalvo(r, 'unidadeEndereco', 'Unidade QD.06 LT.06'),
+      imovelId: nextImovelIdStr,
+      unidade: mergedUnidade,
+      unidadeEndereco: mergedUnidade,
       proximaInformacao: pickCampoStrSalvo(r, 'proximaInformacao', ''),
       dataProximaInformacao: pickCampoStrSalvo(r, 'dataProximaInformacao', ''),
       prazoFatal: registroPersistido?.prazoFatal ?? '',
@@ -430,13 +473,13 @@ export function Processos() {
     }
     setPaginaHistorico(1);
     setInformacaoModal(null);
-  }, [codigoCliente, processo]);
+  }, [codigoCliente, processo, location.key, location.state]);
 
   useEffect(() => {
     // Ao mudar cliente/processo, permite de novo o preenchimento automático do vínculo com imóvel
     // (valores vêm do registro persistido ou do mock no efeito de carga).
     setImovelManual(false);
-    setUnidadeManual(false);
+    setUnidadeEnderecoManual(false);
   }, [codigoCliente, processo]);
 
   const vinculoImovelMock = useMemo(() => {
@@ -460,23 +503,42 @@ export function Processos() {
   useEffect(() => {
     if (vinculoImovelMock) {
       if (!imovelManual && !String(imovelId ?? '').trim()) setImovelId(String(vinculoImovelMock.imovelId));
-      if (!unidadeManual && !String(unidade ?? '').trim()) setUnidade(String(vinculoImovelMock.unidade ?? ''));
+      if (!unidadeEnderecoManual && !String(unidadeEndereco ?? '').trim()) {
+        setUnidadeEndereco(String(vinculoImovelMock.unidade ?? ''));
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vinculoImovelMock]);
 
+  function handleImovelIdBlur(e) {
+    const idNum = Number(String(e.target.value ?? '').replace(/\D/g, ''));
+    if (!Number.isFinite(idNum) || idNum <= 0) return;
+    const m = getImovelMock(idNum);
+    if (!m || unidadeEnderecoManual) return;
+    setUnidadeEndereco(String(m.unidade ?? ''));
+  }
+
   function handleAbrirImovel() {
     const idNum = Number(String(imovelId ?? '').replace(/\D/g, ''));
-    const unidadeTrim = String(unidade ?? '').trim();
 
-    if (!Number.isFinite(idNum) || idNum <= 0 || !unidadeTrim) {
-      alert('Informe o código do imóvel e a unidade');
+    if (!Number.isFinite(idNum) || idNum <= 0) {
+      alert('Informe o nº do imóvel (mesmo cadastro do menu Imóveis)');
       return;
     }
 
     const mock = getImovelMock(idNum);
     if (!mock) {
       alert('Imóvel não encontrado para o código informado');
+      return;
+    }
+
+    let unidadeTrim = String(unidadeEndereco ?? '').trim();
+    if (!unidadeTrim) {
+      unidadeTrim = String(mock.unidade ?? '').trim();
+      if (unidadeTrim) setUnidadeEndereco(unidadeTrim);
+    }
+    if (!unidadeTrim) {
+      alert('Não há unidade cadastrada para este imóvel.');
       return;
     }
 
@@ -687,7 +749,7 @@ export function Processos() {
       audienciaTipo,
       avisoAudiencia,
       imovelId: String(imovelId ?? ''),
-      unidade: String(unidade ?? ''),
+      unidade: String(unidadeEndereco ?? ''),
       unidadeEndereco: String(unidadeEndereco ?? ''),
       proximaInformacao,
       dataProximaInformacao,
@@ -738,7 +800,6 @@ export function Processos() {
     audienciaTipo,
     avisoAudiencia,
     imovelId,
-    unidade,
     unidadeEndereco,
     proximaInformacao,
     dataProximaInformacao,
@@ -1588,8 +1649,12 @@ export function Processos() {
               </div>
             </section>
 
-            {/* Ações e Unidade: Pagamentos, Agenda Em lote, Abrir Imóvel, Unidade, Cálculos */}
+            {/* Ações: Pagamentos, Agenda Em lote, Abrir Imóvel, Unidade (único campo), Cálculos */}
             <section className="flex flex-wrap items-end gap-4 border-t border-slate-200 pt-4">
+              <p className="w-full text-[11px] text-slate-500 leading-snug -mb-1">
+                O <strong>nº Imóvel</strong> e a <strong>Unidade</strong> são os mesmos dados do cadastro <strong>Imóveis</strong> no menu
+                lateral. Ao sair do campo Imóvel, a unidade é preenchida automaticamente pelo cadastro quando estiver vazia.
+              </p>
               <button
                 type="button"
                 disabled={camposBloqueados}
@@ -1605,7 +1670,11 @@ export function Processos() {
               >
                 <Calendar className="w-4 h-4" /> Agenda Em lote
               </button>
-              <Field label="Imóvel" className="w-24">
+              <Field
+                label="Imóvel"
+                className="w-24"
+                title="Número do imóvel na tela Imóveis — mesma base de dados (cadastro central)."
+              >
                 <input
                   type="number"
                   value={imovelId}
@@ -1614,6 +1683,7 @@ export function Processos() {
                     setImovelId(e.target.value);
                     setImovelManual(true);
                   }}
+                  onBlur={handleImovelIdBlur}
                   className={clsCampo}
                   placeholder="(vazio)"
                 />
@@ -1626,26 +1696,21 @@ export function Processos() {
               >
                 <MapPin className="w-4 h-4" /> Abrir Imóvel
               </button>
-              <Field label="Unidade" className="w-40">
-                <input
-                  type="text"
-                  value={unidade}
-                  readOnly={camposBloqueados}
-                  onChange={(e) => {
-                    setUnidade(e.target.value);
-                    setUnidadeManual(true);
-                  }}
-                  className={clsCampo}
-                  placeholder="(vazio)"
-                />
-              </Field>
-              <Field label="Unidade" className="flex-1 min-w-[200px]">
+              <Field
+                label="Unidade"
+                className="flex-1 min-w-[200px]"
+                title="Descrição da unidade no cadastro de Imóveis (preenchida automaticamente pelo nº do imóvel, se vazia)."
+              >
                 <input
                   type="text"
                   value={unidadeEndereco}
                   readOnly={camposBloqueados}
-                  onChange={(e) => setUnidadeEndereco(e.target.value)}
+                  onChange={(e) => {
+                    setUnidadeEndereco(e.target.value);
+                    setUnidadeEnderecoManual(true);
+                  }}
                   className={clsCampo}
+                  placeholder="(vazio)"
                 />
               </Field>
               <button
@@ -1797,17 +1862,6 @@ export function Processos() {
                 title="Lançamentos do Financeiro com Cod. Cliente e Proc. iguais a este processo (qualquer classificação contábil no extrato)"
               >
                 Conta Corrente
-              </button>
-              <button
-                type="button"
-                className="px-4 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
-                onClick={() => {
-                  setContaCorrenteModo('proc0');
-                  setModalContaCorrente(true);
-                }}
-                title="Pagamentos do cliente com Proc. 0 (mensalistas / não vinculados a um processo específico)"
-              >
-                Conta Corrente (Proc. 0)
               </button>
             </footer>
           </div>

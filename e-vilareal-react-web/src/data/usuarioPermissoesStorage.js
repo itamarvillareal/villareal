@@ -161,6 +161,13 @@ export function pathParaModuloId(pathname) {
   return 'inicio';
 }
 
+/** Rótulo do menu / módulo para exibir em relatórios de auditoria. */
+export function getRotuloModuloPorPathname(pathname) {
+  const id = pathParaModuloId(pathname);
+  const m = MODULOS_PERMISSAO.find((x) => x.id === id);
+  return m?.label ?? id;
+}
+
 export function getUsuarioSessaoAtualId() {
   if (typeof window === 'undefined') return 'itamar';
   try {

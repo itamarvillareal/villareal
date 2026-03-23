@@ -1160,13 +1160,17 @@ function getExtratosParaContaCorrente() {
   return { ...base, ...persisted };
 }
 
-export function getLancamentosContaCorrente(codigoCliente, processo) {
+/**
+ * Transações completas dos extratos (mesmo critério da Conta Corrente em Processos), com nome do banco.
+ * Usado pela Administração de Imóveis para classificar aluguel / repasse / despesas sem duplicar lançamentos.
+ */
+export function getTransacoesContaCorrenteCompleto(codigoCliente, processo) {
   const codigoNorm = normalizarCodigoCliente(codigoCliente);
   const procNorm = normalizarProc(processo);
   const extratos = getExtratosParaContaCorrente();
   const map = getBancoNumeroMapMerged();
 
-  if (!codigoNorm) return { lancamentos: [], soma: 0 };
+  if (!codigoNorm) return [];
 
   const filtrado = [];
   const seen = new Set();
@@ -1193,7 +1197,12 @@ export function getLancamentosContaCorrente(codigoCliente, processo) {
     if (byData !== 0) return byData;
     return Number(a.numero) - Number(b.numero);
   });
-  const soma = filtrado.reduce((s, t) => s + t.valor, 0);
+  return filtrado;
+}
+
+export function getLancamentosContaCorrente(codigoCliente, processo) {
+  const filtrado = getTransacoesContaCorrenteCompleto(codigoCliente, processo);
+  const soma = filtrado.reduce((s, t) => s + (Number(t.valor) || 0), 0);
   const lancamentos = filtrado.map(lancamentoParaContaCorrenteModal);
   return { lancamentos, soma };
 }
