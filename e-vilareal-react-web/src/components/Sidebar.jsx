@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import {
   Users,
   UserCircle,
@@ -16,6 +16,8 @@ import {
   UserCog,
   Settings,
   Table2,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react';
 import { navItems } from '../data/mockData';
 import { getUsuariosAtivos } from '../data/agendaPersistenciaData';
@@ -48,8 +50,17 @@ const iconMap = {
   Table2,
 };
 
+function itemMenuPermitido(item, podeFn) {
+  if (Array.isArray(item.children) && item.children.length > 0) {
+    return item.children.some((ch) => podeFn(ch.id));
+  }
+  return podeFn(item.id);
+}
+
 export function Sidebar() {
   const [, setMenuTick] = useState(0);
+  const location = useLocation();
+  const [gruposAbertos, setGruposAbertos] = useState(() => new Set());
 
   useEffect(() => {
     const h = () => setMenuTick((t) => t + 1);
@@ -72,7 +83,23 @@ export function Sidebar() {
   const nomeOperador = getNomeExibicaoUsuario(usuariosLista?.find((u) => u.id === operadorId)) ?? operadorId;
 
   const pode = (modId) => usuarioPodeAcessarModulo(perfilId, modId);
-  const navFiltrado = navItems.filter((item) => pode(item.id));
+  const navFiltrado = navItems.filter((item) => itemMenuPermitido(item, pode));
+
+  useEffect(() => {
+    const p = location.pathname.replace(/\/+$/, '') || '/';
+    if (p === '/calculos' || p.startsWith('/calculos/') || p === '/relatorio-calculos' || p.startsWith('/relatorio-calculos/')) {
+      setGruposAbertos((prev) => new Set(prev).add('calcular-grupo'));
+    }
+  }, [location.pathname]);
+
+  const toggleGrupo = (grupoId) => {
+    setGruposAbertos((prev) => {
+      const n = new Set(prev);
+      if (n.has(grupoId)) n.delete(grupoId);
+      else n.add(grupoId);
+      return n;
+    });
+  };
 
   return (
     <aside className="w-48 min-h-screen bg-gray-200 border-r border-gray-300 flex flex-col shrink-0 shadow-sm">
@@ -82,6 +109,60 @@ export function Sidebar() {
       </div>
       <nav className="flex-1 p-2 overflow-y-auto">
         {navFiltrado.map((item) => {
+          if (Array.isArray(item.children) && item.children.length > 0) {
+            const subs = item.children.filter((ch) => pode(ch.id));
+            if (subs.length === 0) return null;
+            const Icon = iconMap[item.icon];
+            const aberto = gruposAbertos.has(item.id);
+            const algumFilhoAtivo = subs.some((ch) => {
+              const path = location.pathname.replace(/\/+$/, '') || '/';
+              return path === `/${ch.id}` || path.startsWith(`/${ch.id}/`);
+            });
+            return (
+              <div key={item.id} className="mb-0.5">
+                <button
+                  type="button"
+                  onClick={() => toggleGrupo(item.id)}
+                  className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-md text-gray-700 text-sm font-medium transition-colors text-left ${
+                    algumFilhoAtivo ? 'bg-blue-50 text-blue-900 border-l-2 border-blue-400' : 'hover:bg-gray-100'
+                  }`}
+                  aria-expanded={aberto}
+                >
+                  {Icon && <Icon className="w-5 h-5 shrink-0" />}
+                  <span className="flex-1 min-w-0">{item.label}</span>
+                  {aberto ? (
+                    <ChevronDown className="w-4 h-4 shrink-0 text-gray-500" aria-hidden />
+                  ) : (
+                    <ChevronRight className="w-4 h-4 shrink-0 text-gray-500" aria-hidden />
+                  )}
+                </button>
+                {aberto && (
+                  <div className="mt-0.5 ml-2 pl-2 border-l border-gray-300 space-y-0.5">
+                    {subs.map((ch) => {
+                      const SubIcon = ch.icon ? iconMap[ch.icon] : null;
+                      return (
+                        <NavLink
+                          key={ch.id}
+                          to={`/${ch.id}`}
+                          end
+                          className={({ isActive }) =>
+                            `flex items-center gap-2 px-2 py-2 rounded-md text-xs font-medium transition-colors ${
+                              isActive
+                                ? 'bg-blue-100 text-blue-800 border-l-2 border-blue-500'
+                                : 'text-gray-600 hover:bg-gray-100'
+                            }`
+                          }
+                        >
+                          {SubIcon && <SubIcon className="w-4 h-4 shrink-0 opacity-80" />}
+                          <span>{ch.label}</span>
+                        </NavLink>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          }
           const Icon = iconMap[item.icon];
           return (
             <NavLink

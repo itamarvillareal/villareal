@@ -6,6 +6,8 @@ import {
   cloneExtratos,
   buildNumeroBancoMap,
   parearCompensacaoInterbancaria,
+  aplicarUmParCompensacaoInterbancaria,
+  reverterUmParCompensacaoInterbancaria,
   somasPorParCompensacao,
   detectarParesCompensacao,
   loadPersistedExtratosFinanceiro,
@@ -46,7 +48,7 @@ import {
 } from '../data/buscaParcelamentoFinanceiro';
 import { parseOfxToExtrato, mergeExtratoBancario, contarLancamentosNovos } from '../utils/ofx';
 import { OFX_ITAU_REAL_EXEMPLO, OFX_CORA_REAL_EXEMPLO } from '../data/ofxItauCoraReal';
-import { CheckSquare, ChevronLeft, ChevronRight, Link2, Settings } from 'lucide-react';
+import { CheckSquare, ChevronLeft, ChevronRight, Link2, Settings, Unlink } from 'lucide-react';
 import { ModalVinculoClienteProcFinanceiro } from './ModalVinculoClienteProcFinanceiro.jsx';
 
 const REF_CONSTANTE = 675;
@@ -314,6 +316,11 @@ function ordenarTransacoesConsolidado(lista, col, dir) {
     return asc ? r : -r;
   });
   return sorted;
+}
+
+/** Chave estável da linha no modal «Parear compensações» (inclui estado eloAplicado no objeto). */
+function chaveModalParCompensacao(p) {
+  return `${p.credito.banco}|${p.credito.numero}|${p.debito.banco}|${p.debito.numero}|${p.data}`;
 }
 
 const INSTITUICOES_LINHA_1 = [
@@ -1814,34 +1821,25 @@ export function Financeiro() {
                 {nome}
               </button>
             ))}
+            {contasExtras
+              .filter((c) => !extratosInativosSet.has(c.nome))
+              .map((c) => (
+                <button
+                  key={c.nome}
+                  type="button"
+                  onClick={() => setInstituicaoSelecionada(c.nome)}
+                  title={`Nº ${c.numero} no consolidado — mesmo fluxo de OFX e contas contábeis`}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    instituicaoSelecionada === c.nome
+                      ? 'bg-slate-200 text-amber-900 border-b-2 border-green-600'
+                      : 'bg-red-600 text-white hover:bg-red-700'
+                  }`}
+                >
+                  {c.nome}{' '}
+                  <span className="tabular-nums opacity-90 font-normal">(Nº {c.numero})</span>
+                </button>
+              ))}
           </div>
-          {contasExtras.some((c) => !extratosInativosSet.has(c.nome)) && (
-            <>
-              <p className="text-xs text-slate-500 mt-3 mb-1">
-                Contas adicionadas — Nº no consolidado; mesmo fluxo de OFX e contas contábeis.
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {contasExtras
-                  .filter((c) => !extratosInativosSet.has(c.nome))
-                  .map((c) => (
-                    <button
-                      key={c.nome}
-                      type="button"
-                      onClick={() => setInstituicaoSelecionada(c.nome)}
-                      title={`Identificação Nº ${c.numero} no consolidado`}
-                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                        instituicaoSelecionada === c.nome
-                          ? 'bg-slate-200 text-amber-900 border-b-2 border-green-600'
-                          : 'bg-indigo-700 text-white hover:bg-indigo-800'
-                      }`}
-                    >
-                      {c.nome}{' '}
-                      <span className="tabular-nums opacity-90 font-normal">(Nº {c.numero})</span>
-                    </button>
-                  ))}
-              </div>
-            </>
-          )}
           {mostrarExtratosInativos && extratosInativos.length > 0 && (
             <>
               <p className="text-xs text-slate-500 mt-3 mb-1">
@@ -2672,7 +2670,7 @@ export function Financeiro() {
         )}
       </div>
 
-      {modalParearCompensacao && (
+      {modalParearCompensacao != null && Array.isArray(modalParearCompensacao.pares) && (
         <div
           className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4"
           role="dialog"
@@ -2701,7 +2699,9 @@ export function Financeiro() {
                 <strong>Passo 1 — Identificação:</strong> pares com mesma data, valor oposto exato (centavos) e bancos
                 diferentes. <strong>Passo 2 — Aplicar:</strong> classifica como <strong>Conta Compensação (letra E)</strong>{' '}
                 e grava o <strong>Elo</strong> (número natural: 0001, 0002…): cada Elo deve ter <strong>soma zero</strong>,
-                registrando só a troca de numerário entre contas.
+                registrando só a troca de numerário entre contas. Em cada linha use <strong>Vincular</strong> para aplicar
+                só aquele par; o botão passa a <strong>Desvincular</strong> (cinza) para desfazer. O Elo gravado é sempre o{' '}
+                <strong>próximo livre</strong> (pode diferir do número sugerido na coluna Elo se você já aplicou outros antes).
               </p>
               {modalParearCompensacao.pares.length === 0 ? (
                 <p className="py-6 text-center text-amber-800 bg-amber-50 rounded border border-amber-200">
@@ -2714,6 +2714,9 @@ export function Financeiro() {
                   <table className="w-full text-sm border-collapse">
                     <thead>
                       <tr className="bg-amber-50 border-b border-slate-200">
+                        <th className="text-left py-2 px-2 font-semibold text-slate-700 w-[1%] whitespace-nowrap">
+                          Ação
+                        </th>
                         <th className="text-left py-2 px-2 font-semibold text-slate-700">Elo</th>
                         <th className="text-left py-2 px-2 font-semibold text-slate-700">Data</th>
                         <th className="text-left py-2 px-2 font-semibold text-slate-700">Crédito</th>
@@ -2724,8 +2727,94 @@ export function Financeiro() {
                     </thead>
                     <tbody>
                       {modalParearCompensacao.pares.map((p) => (
-                        <tr key={p.elo} className="border-b border-slate-100 hover:bg-slate-50">
-                          <td className="py-2 px-2 font-mono font-semibold text-amber-900">{p.elo}</td>
+                        <tr
+                          key={chaveModalParCompensacao(p)}
+                          className="border-b border-slate-100 hover:bg-slate-50"
+                        >
+                          <td className="py-2 px-2 align-middle">
+                            {p.eloAplicado ? (
+                              <button
+                                type="button"
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded border border-slate-400 bg-slate-100 text-slate-700 text-xs font-medium hover:bg-slate-200 whitespace-nowrap"
+                                title="Desfazer: volta letra N e remove o Elo deste par"
+                                onClick={() => {
+                                  const k = chaveModalParCompensacao(p);
+                                  const eloRev = p.eloAplicado;
+                                  setExtratosPorBanco((prev) => {
+                                    const r = reverterUmParCompensacaoInterbancaria(prev, p, eloRev);
+                                    if (!r.ok) {
+                                      queueMicrotask(() =>
+                                        setOfxStatus({ kind: 'error', message: r.message })
+                                      );
+                                      return prev;
+                                    }
+                                    queueMicrotask(() => {
+                                      setOfxStatus({
+                                        kind: 'success',
+                                        message: `Vínculo removido (Elo ${eloRev} — ${p.credito.banco} ↔ ${p.debito.banco}).`,
+                                      });
+                                      setModalParearCompensacao((mprev) => {
+                                        if (!mprev?.pares) return mprev;
+                                        return {
+                                          pares: mprev.pares.map((row) =>
+                                            chaveModalParCompensacao(row) === k
+                                              ? { ...row, eloAplicado: undefined }
+                                              : row
+                                          ),
+                                        };
+                                      });
+                                    });
+                                    return r.extratos;
+                                  });
+                                }}
+                              >
+                                <Unlink className="w-3.5 h-3.5 shrink-0" aria-hidden />
+                                Desvincular
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded border border-amber-600 bg-amber-50 text-amber-900 text-xs font-medium hover:bg-amber-100 whitespace-nowrap"
+                                title="Aplicar só este par (letra E, próximo Elo livre — pode diferir do número sugerido na coluna se você já aplicou outros)"
+                                onClick={() => {
+                                  const k = chaveModalParCompensacao(p);
+                                  setExtratosPorBanco((prev) => {
+                                    const r = aplicarUmParCompensacaoInterbancaria(prev, p);
+                                    if (!r.ok) {
+                                      queueMicrotask(() =>
+                                        setOfxStatus({ kind: 'error', message: r.message })
+                                      );
+                                      return prev;
+                                    }
+                                    const eloNovo = r.elo;
+                                    queueMicrotask(() => {
+                                      setOfxStatus({
+                                        kind: 'success',
+                                        message: `Compensação aplicada: Elo ${eloNovo} (${p.credito.banco} ↔ ${p.debito.banco}).`,
+                                      });
+                                      setModalParearCompensacao((mprev) => {
+                                        if (!mprev?.pares) return mprev;
+                                        return {
+                                          pares: mprev.pares.map((row) =>
+                                            chaveModalParCompensacao(row) === k
+                                              ? { ...row, eloAplicado: eloNovo }
+                                              : row
+                                          ),
+                                        };
+                                      });
+                                    });
+                                    return r.extratos;
+                                  });
+                                }}
+                              >
+                                <Link2 className="w-3.5 h-3.5 shrink-0" aria-hidden />
+                                Vincular
+                              </button>
+                            )}
+                          </td>
+                          <td className="py-2 px-2 font-mono font-semibold text-amber-900">
+                            {p.eloAplicado ?? p.elo}
+                          </td>
                           <td className="py-2 px-2 text-slate-700">{p.data}</td>
                           <td className="py-2 px-2 text-slate-700">
                             {p.credito.banco}
@@ -2756,9 +2845,9 @@ export function Financeiro() {
               </button>
               <button
                 type="button"
-                disabled={modalParearCompensacao.pares.length === 0}
+                disabled={modalParearCompensacao.pares.filter((row) => !row.eloAplicado).length === 0}
                 onClick={() => {
-                  const n = modalParearCompensacao.pares.length;
+                  const n = modalParearCompensacao.pares.filter((row) => !row.eloAplicado).length;
                   setExtratosPorBanco((prev) => parearCompensacaoInterbancaria(cloneExtratos(prev)));
                   setModalParearCompensacao(null);
                   setOfxStatus({
@@ -2768,7 +2857,7 @@ export function Financeiro() {
                 }}
                 className="px-4 py-2 rounded bg-amber-600 text-white text-sm font-semibold hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Aplicar {modalParearCompensacao.pares.length} compensação(ões)
+                Aplicar {modalParearCompensacao.pares.filter((row) => !row.eloAplicado).length} compensação(ões)
               </button>
             </div>
           </div>

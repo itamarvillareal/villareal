@@ -1,11 +1,12 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
-import { Columns3, FilterX } from 'lucide-react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { Columns3, FileSpreadsheet, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { RelatorioUltimoAndamentoHeader } from './RelatorioUltimoAndamentoHeader.jsx';
 import { RelatorioPresetsPanel } from './RelatorioPresetsPanel.jsx';
 import {
   CAMPOS_DATA_COLUNA_DINAMICA,
   CAMPOS_OPCOES_ULTIMO_ANDAMENTO,
+  COLUNAS_RELATORIO_PROCESSOS,
   carregarCampoPorColunaSalvo,
   salvarCampoPorColuna,
   enriquecerCamposRelatorioProcessos,
@@ -18,7 +19,6 @@ const STORAGE_LARGURA_UNIFORME = 'vilareal.relatorioProcessos.larguraUniforme.v1
 const STORAGE_FILTRO_PROCESSO_ATIVO = 'vilareal.relatorioProcessos.filtroProcessoAtivo.v1';
 const STORAGE_MODO_ALTERACAO = 'vilareal.relatorioProcessos.modoAlteracao.v1';
 const STORAGE_DADOS_RELATORIO = 'vilareal.relatorioProcessos.dadosLinhas.v1';
-const STORAGE_FILTROS_COLUNAS_RELATORIO = 'vilareal.relatorioProcessos.filtrosPorColuna.v1';
 
 /** Acima disso não hidrata nem grava linhas editáveis no localStorage (evita quota e lentidão com o relatório completo). */
 const RELATORIO_MAX_LINHAS_PERSISTIDAS = 400;
@@ -58,52 +58,10 @@ function timestampDataBr(val) {
   return Number.isNaN(x) ? 0 : x;
 }
 
-const COLUNAS = [
-  { id: 'codCliente', label: 'Cod. Cliente', minW: '96px' },
-  { id: 'cliente', label: 'Cliente', minW: '180px' },
-  { id: 'numeroProcesso', label: 'N.º Processo', minW: '200px' },
-  { id: 'inRequerente', label: 'Requerente/Requerido', minW: '140px' },
-  { id: 'ultimoAndamento', label: 'Último Andamento', minW: '200px' },
-  { id: 'dataConsulta', label: 'Data da Consulta', minW: '100px' },
-  { id: 'proximaConsulta', label: 'Próxima Consulta', minW: '110px' },
-  { id: 'observacaoProcesso', label: 'Observação do Processo', minW: '180px' },
-  { id: 'consultor', label: 'Consultor', minW: '100px' },
-  { id: 'proc', label: 'Proc.', minW: '56px' },
-  { id: 'lmv', label: 'Lmv', minW: '56px' },
-  { id: 'fase', label: 'Fase', minW: '140px' },
-  { id: 'observacaoFase', label: 'Observação de Fase', minW: '140px' },
-  { id: 'descricaoAcao', label: 'Descrição da Ação', minW: '140px' },
-  { id: 'prazoFatal', label: 'Prazo Fatal', minW: '90px' },
-  { id: 'competencia', label: 'Competência', minW: '180px' },
-  { id: 'dataAudiencia', label: 'Data da Audiência', minW: '110px' },
-  { id: 'horaAudiencia', label: 'Hora da Audiência', minW: '100px' },
-  { id: 'cepReu', label: 'CEP [primeiro réu]', minW: '100px' },
-  { id: 'inv', label: 'Inv', minW: '56px' },
-  { id: 'consultas', label: 'Consultas', minW: '80px' },
-];
+/** 30 colunas fixas ({@link COLUNAS_RELATORIO_PROCESSOS}); o menu de cada cabeçalho ainda lista todos os campos. */
+const COLUNAS = COLUNAS_RELATORIO_PROCESSOS;
 
 const COLUNA_IDS_RELATORIO = COLUNAS.map((c) => c.id);
-
-function estadoFiltrosColunasVazio() {
-  return COLUNAS.reduce((acc, col) => ({ ...acc, [col.id]: '' }), {});
-}
-
-function carregarFiltrosPorColunaSalvos() {
-  if (typeof window === 'undefined') return null;
-  try {
-    const raw = window.localStorage.getItem(STORAGE_FILTROS_COLUNAS_RELATORIO);
-    if (!raw) return null;
-    const p = JSON.parse(raw);
-    if (!p || typeof p !== 'object' || Array.isArray(p)) return null;
-    const base = estadoFiltrosColunasVazio();
-    for (const col of COLUNAS) {
-      if (p[col.id] != null && typeof p[col.id] === 'string') base[col.id] = p[col.id];
-    }
-    return base;
-  } catch {
-    return null;
-  }
-}
 
 function carregarColunasVisiveisSalvas() {
   if (typeof window === 'undefined') return null;
@@ -174,10 +132,6 @@ function carregarDadosRelatorioInicial() {
       __relatorioIdx: i,
       codCliente: base[i].codCliente,
       proc: base[i].proc,
-      /** Nome sempre do cadastro de pessoas vinculado ao código de cliente (não sobrescrever com valor salvo antigo). */
-      cliente: base[i].cliente,
-      /** Mesmo `papelParte` / Processos (enriquecido na base). */
-      inRequerente: base[i].inRequerente,
     }));
   } catch {
     return montarLinhasRelatorioBase();
@@ -286,16 +240,37 @@ export function Relatorio() {
     });
   };
 
-  const [dados, setDados] = useState(() => carregarDadosRelatorioInicial());
+  const [dados, setDados] = useState(() => []);
+  /** Só após o usuário clicar em «Emitir relatório» — evita montar milhares de linhas ao abrir a página. */
+  const [relatorioEmitido, setRelatorioEmitido] = useState(false);
+  const [emitindoRelatorio, setEmitindoRelatorio] = useState(false);
+  const emitindoRelatorioRef = useRef(false);
+
+  const emitirOuAtualizarRelatorio = useCallback(() => {
+    if (emitindoRelatorioRef.current) return;
+    emitindoRelatorioRef.current = true;
+    setEmitindoRelatorio(true);
+    window.setTimeout(() => {
+      try {
+        const next = carregarDadosRelatorioInicial();
+        setDados(next);
+        setRelatorioEmitido(true);
+      } finally {
+        emitindoRelatorioRef.current = false;
+        setEmitindoRelatorio(false);
+      }
+    }, 0);
+  }, []);
 
   useEffect(() => {
+    if (!relatorioEmitido) return;
     if (dados.length > RELATORIO_MAX_LINHAS_PERSISTIDAS) return;
     try {
       window.localStorage.setItem(STORAGE_DADOS_RELATORIO, JSON.stringify(dados));
     } catch {
       /* ignore */
     }
-  }, [dados]);
+  }, [dados, relatorioEmitido]);
 
   const atualizarCelulaRelatorio = (relIdx, chaveCampo, valor) => {
     setDados((prev) => {
@@ -306,23 +281,9 @@ export function Relatorio() {
       return next;
     });
   };
-  const [filtrosPorColuna, setFiltrosPorColuna] = useState(
-    () => carregarFiltrosPorColunaSalvos() ?? estadoFiltrosColunasVazio()
+  const [filtrosPorColuna, setFiltrosPorColuna] = useState(() =>
+    COLUNAS.reduce((acc, col) => ({ ...acc, [col.id]: '' }), {})
   );
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(STORAGE_FILTROS_COLUNAS_RELATORIO, JSON.stringify(filtrosPorColuna));
-    } catch {
-      /* ignore */
-    }
-  }, [filtrosPorColuna]);
-
-  const limparFiltrosRelatorio = () => {
-    setFiltrosPorColuna(estadoFiltrosColunasVazio());
-    setOrdenarPor(null);
-    setOrdemAsc(true);
-  };
 
   const dadosFiltrados = useMemo(() => {
     return dados.filter((row) => {
@@ -367,42 +328,58 @@ export function Relatorio() {
     <div className="min-h-full bg-slate-200 flex flex-col">
       <div className="flex-1 min-h-0 p-3 flex flex-col">
         <header className="mb-2 flex flex-wrap items-start justify-between gap-2">
-          <h1 className="text-xl font-bold text-slate-800">Relatório</h1>
+          <div className="min-w-0">
+            <h1 className="text-xl font-bold text-slate-800">Relatório de Processos</h1>
+            {!relatorioEmitido ? (
+              <p className="text-xs text-slate-600 mt-1 max-w-xl">
+                Para não travar o navegador, as linhas só são montadas depois que você emitir o relatório.
+              </p>
+            ) : null}
+          </div>
           <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={emitirOuAtualizarRelatorio}
+            disabled={emitindoRelatorio}
+            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-teal-700 bg-teal-700 text-white text-sm font-medium hover:bg-teal-800 disabled:opacity-60 disabled:pointer-events-none shadow-sm"
+            title={
+              relatorioEmitido
+                ? 'Recarrega os dados do relatório (mescla alterações salvas no navegador quando couber)'
+                : 'Monta a tabela com todos os processos (pode levar alguns segundos)'
+            }
+          >
+            {emitindoRelatorio ? (
+              <Loader2 className="w-4 h-4 shrink-0 animate-spin" aria-hidden />
+            ) : (
+              <FileSpreadsheet className="w-4 h-4 shrink-0" aria-hidden />
+            )}
+            {relatorioEmitido ? 'Atualizar relatório' : 'Emitir relatório'}
+          </button>
+          <RelatorioPresetsPanel
+            colIds={colIdsRelatorio}
+            colunasVisiveis={colunasVisiveis}
+            setColunasVisiveis={setColunasVisiveis}
+            larguraUniforme={larguraUniforme}
+            setLarguraUniforme={setLarguraUniforme}
+            campoPorColuna={campoPorColuna}
+            setCampoPorColuna={setCampoPorColuna}
+            filtroProcessoAtivo={filtroProcessoAtivo}
+            setFiltroProcessoAtivo={setFiltroProcessoAtivo}
+            modoAlteracao={modoAlteracao}
+            setModoAlteracao={setModoAlteracao}
+          />
+          <div className="relative" ref={painelColunasRef}>
             <button
               type="button"
-              onClick={limparFiltrosRelatorio}
-              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-400 bg-white text-slate-700 text-sm font-medium hover:bg-slate-50 shadow-sm"
-              title="Zera os textos «Filtrar…» em todas as colunas e remove a ordenação escolhida"
+              onClick={() => setPainelColunasAberto((v) => !v)}
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-teal-600 bg-white text-teal-800 text-sm font-medium hover:bg-teal-50 shadow-sm"
+              title="Escolher quais colunas exibir e largura"
             >
-              <FilterX className="w-4 h-4 shrink-0" aria-hidden />
-              Limpar filtros
+              <Columns3 className="w-4 h-4 shrink-0" aria-hidden />
+              Colunas
             </button>
-            <RelatorioPresetsPanel
-              colIds={colIdsRelatorio}
-              colunasVisiveis={colunasVisiveis}
-              setColunasVisiveis={setColunasVisiveis}
-              larguraUniforme={larguraUniforme}
-              setLarguraUniforme={setLarguraUniforme}
-              campoPorColuna={campoPorColuna}
-              setCampoPorColuna={setCampoPorColuna}
-              filtroProcessoAtivo={filtroProcessoAtivo}
-              setFiltroProcessoAtivo={setFiltroProcessoAtivo}
-              modoAlteracao={modoAlteracao}
-              setModoAlteracao={setModoAlteracao}
-            />
-            <div className="relative" ref={painelColunasRef}>
-              <button
-                type="button"
-                onClick={() => setPainelColunasAberto((v) => !v)}
-                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-teal-600 bg-white text-teal-800 text-sm font-medium hover:bg-teal-50 shadow-sm"
-                title="Escolher quais colunas exibir e largura"
-              >
-                <Columns3 className="w-4 h-4 shrink-0" aria-hidden />
-                Colunas
-              </button>
-              {painelColunasAberto ? (
-                <div className="absolute right-0 top-full mt-1 z-20 w-[min(100vw-2rem,22rem)] rounded-lg border border-slate-200 bg-white shadow-lg p-3 text-sm">
+            {painelColunasAberto ? (
+              <div className="absolute right-0 top-full mt-1 z-20 w-[min(100vw-2rem,22rem)] rounded-lg border border-slate-200 bg-white shadow-lg p-3 text-sm">
                 <p className="text-xs text-slate-600 mb-2">
                   Marque as colunas que deseja ver na tabela. Use <strong>Marcar todas</strong> para exibir todas.
                 </p>
@@ -448,13 +425,44 @@ export function Relatorio() {
                     </label>
                   ))}
                 </div>
-                </div>
-              ) : null}
-            </div>
+              </div>
+            ) : null}
+          </div>
           </div>
         </header>
         <div className="flex-1 min-h-0 bg-white rounded border border-slate-300 shadow-sm overflow-hidden flex flex-col">
-          <div className="overflow-auto flex-1">
+          {emitindoRelatorio && !relatorioEmitido ? (
+            <div className="flex-1 flex flex-col items-center justify-center gap-3 p-10 text-slate-600">
+              <Loader2 className="w-10 h-10 text-teal-700 animate-spin" aria-hidden />
+              <p className="text-sm font-medium text-slate-800">Gerando relatório…</p>
+              <p className="text-xs text-slate-500 text-center max-w-sm">Aguarde enquanto as linhas são montadas.</p>
+            </div>
+          ) : !relatorioEmitido ? (
+            <div className="flex-1 flex flex-col items-center justify-center gap-4 p-10 text-center">
+              <FileSpreadsheet className="w-14 h-14 text-slate-300" aria-hidden />
+              <div className="max-w-md space-y-2">
+                <p className="text-slate-800 font-medium">Relatório de Processos ainda não foi emitido</p>
+                <p className="text-sm text-slate-600">
+                  Use o botão <strong className="text-slate-800">Emitir relatório</strong> acima para carregar a grade. Isso evita que a página congele ao entrar no menu.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={emitirOuAtualizarRelatorio}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg border border-teal-700 bg-teal-700 text-white text-sm font-medium hover:bg-teal-800 shadow-sm"
+              >
+                <FileSpreadsheet className="w-4 h-4 shrink-0" aria-hidden />
+                Emitir relatório
+              </button>
+            </div>
+          ) : (
+          <div className="overflow-auto flex-1 relative">
+            {emitindoRelatorio ? (
+              <div className="absolute inset-0 z-20 bg-white/70 flex items-center justify-center gap-2 text-sm font-medium text-slate-700">
+                <Loader2 className="w-5 h-5 animate-spin text-teal-700" aria-hidden />
+                Atualizando…
+              </div>
+            ) : null}
             <table
               className={`w-full text-sm border-collapse ${larguraUniforme ? 'table-fixed' : ''}`}
               style={{ minWidth: larguraUniforme ? '100%' : 'max-content' }}
@@ -598,6 +606,7 @@ export function Relatorio() {
               </tbody>
             </table>
           </div>
+          )}
         </div>
       </div>
     </div>

@@ -7,13 +7,26 @@ import { resolverAliasHojeEmTexto } from '../services/hjDateAliasService.js';
 function Field({ label, children, className = '' }) {
   return (
     <div className={className}>
-      <label className="block text-sm font-medium text-slate-700 mb-0.5">{label}</label>
+      <label className="block text-xs font-medium text-slate-600 mb-0.5">{label}</label>
       {children}
     </div>
   );
 }
 
+/** Coluna tipo legado (Água / Energia / …): título em caixa alta e campos empilhados. */
+function BlocoUtilidade({ titulo, children }) {
+  return (
+    <div className="rounded-lg border border-slate-300 bg-slate-50/90 p-3 shadow-sm flex flex-col gap-2 min-h-0">
+      <p className="text-[11px] font-bold text-slate-600 uppercase tracking-wide border-b border-slate-200 pb-1.5 shrink-0">
+        {titulo}
+      </p>
+      <div className="space-y-2 flex-1 min-w-0">{children}</div>
+    </div>
+  );
+}
+
 const inputClass = 'w-full px-2 py-1.5 border border-slate-300 rounded text-sm bg-white';
+const sectionHeading = 'text-sm font-semibold text-slate-800 border-b border-slate-200 pb-2 mb-3';
 
 export function Imoveis() {
   const location = useLocation();
@@ -222,99 +235,146 @@ export function Imoveis() {
 
   return (
     <div className="min-h-full bg-slate-200">
-      <div className="max-w-[1400px] mx-auto px-3 py-3">
-        <header className="flex items-center justify-between mb-3">
-          <h1 className="text-xl font-bold text-slate-800">Imóveis em Administração</h1>
+      <div className="max-w-[1600px] mx-auto px-3 py-3 pb-8">
+        <header className="flex items-start justify-between gap-3 mb-3">
+          <div>
+            <h1 className="text-xl font-bold text-slate-800">Imóveis em Administração</h1>
+            <p className="text-xs text-slate-500 mt-0.5">Cadastro do imóvel, locação, utilidades, conta para repasse e partes.</p>
+          </div>
           <button
             type="button"
             onClick={() => window.history.back()}
-            className="p-2 rounded border border-slate-400 bg-white text-slate-600 hover:bg-slate-100"
+            className="p-2 rounded-lg border border-slate-400 bg-white text-slate-600 hover:bg-slate-100 shrink-0"
             aria-label="Fechar"
           >
             <X className="w-5 h-5" />
           </button>
         </header>
 
-        <div className="bg-white rounded border border-slate-300 shadow-sm overflow-hidden">
-          <div className="p-4 space-y-4">
-            {/* Identificação e status */}
-            <section className="flex flex-wrap items-end gap-4">
-              <Field label="Imóvel" className="w-24">
-                <div className="flex border border-slate-300 rounded overflow-hidden">
-                  <button type="button" className="p-1 border-r border-slate-300 hover:bg-slate-100" onClick={() => setImovelId((i) => Math.max(1, i - 1))}>
-                    <ChevronUp className="w-3 h-3" />
+        <div className="bg-white rounded-lg border border-slate-300 shadow-sm overflow-hidden">
+          {/* Faixa superior: identificação (como formulário legado) */}
+          <div className="px-4 py-3 border-b border-slate-200 bg-slate-100/90">
+            <div className="flex flex-wrap items-end gap-x-5 gap-y-3">
+              <Field label="Imóvel" className="w-[5.5rem] shrink-0">
+                <div className="flex border border-slate-300 rounded-md overflow-hidden bg-white shadow-sm">
+                  <button
+                    type="button"
+                    className="px-1.5 py-2 border-r border-slate-300 hover:bg-slate-50"
+                    onClick={() => setImovelId((i) => Math.max(1, i - 1))}
+                    aria-label="Imóvel anterior"
+                  >
+                    <ChevronUp className="w-3.5 h-3.5" />
                   </button>
-                  <input type="number" value={imovelId} onChange={(e) => setImovelId(Number(e.target.value) || 0)} className="w-14 px-1 py-1.5 text-sm text-center border-0" />
-                  <button type="button" className="p-1 border-l border-slate-300 hover:bg-slate-100" onClick={() => setImovelId((i) => i + 1)}>
-                    <ChevronDown className="w-3 h-3" />
+                  <input
+                    type="number"
+                    value={imovelId}
+                    onChange={(e) => setImovelId(Number(e.target.value) || 0)}
+                    className="w-12 px-1 py-2 text-sm text-center border-0 tabular-nums"
+                  />
+                  <button
+                    type="button"
+                    className="px-1.5 py-2 border-l border-slate-300 hover:bg-slate-50"
+                    onClick={() => setImovelId((i) => i + 1)}
+                    aria-label="Próximo imóvel"
+                  >
+                    <ChevronDown className="w-3.5 h-3.5" />
                   </button>
                 </div>
               </Field>
-              <div className="border border-slate-300 rounded p-2 bg-slate-50/50">
-                <p className="text-sm font-medium text-slate-700 mb-1.5">Imóvel Ocupado</p>
+
+              <fieldset className="border border-slate-300 rounded-md px-3 py-2 bg-white shrink-0">
+                <legend className="text-xs font-semibold text-slate-700 px-1">Imóvel Ocupado</legend>
                 <div className="flex gap-4">
                   <label className="flex items-center gap-1.5 text-sm cursor-pointer">
-                    <input type="radio" name="ocupado" checked={imovelOcupado} onChange={() => setImovelOcupado(true)} className="text-slate-600" />
+                    <input type="radio" name="ocupado" checked={imovelOcupado} onChange={() => setImovelOcupado(true)} className="text-teal-700" />
                     Sim
                   </label>
                   <label className="flex items-center gap-1.5 text-sm cursor-pointer">
-                    <input type="radio" name="ocupado" checked={!imovelOcupado} onChange={() => setImovelOcupado(false)} className="text-slate-600" />
+                    <input type="radio" name="ocupado" checked={!imovelOcupado} onChange={() => setImovelOcupado(false)} className="text-teal-700" />
                     Não
                   </label>
                 </div>
-              </div>
+              </fieldset>
+
               <button
                 type="button"
                 onClick={abrirProcessoDoImovel}
-                className="px-4 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
+                className="px-4 py-2 rounded-md border border-slate-400 bg-white text-slate-800 text-sm font-medium hover:bg-slate-50 shadow-sm"
               >
                 Abrir Proc.
               </button>
-              <Field label="Código:" className="w-24">
+
+              <Field label="Código" className="w-[5.5rem] shrink-0">
                 <input type="text" value={codigo} onChange={(e) => setCodigo(e.target.value)} className={inputClass} />
               </Field>
-              <Field label="Proc.:" className="w-24">
+              <Field label="Proc." className="w-[5.5rem] shrink-0">
                 <input type="text" value={proc} onChange={(e) => setProc(e.target.value)} className={inputClass} />
               </Field>
-              <Field label="Observações sobre Inquilino" className="flex-1 min-w-[200px]">
-                <textarea value={observacoesInquilino} onChange={(e) => setObservacoesInquilino(e.target.value)} rows={2} className={`${inputClass} resize-y`} />
-              </Field>
+            </div>
+          </div>
+
+          <div className="p-4 md:p-5 space-y-6">
+            {/* Endereço (2/3) + Observações inquilino (1/3) */}
+            <section className="grid grid-cols-1 xl:grid-cols-12 gap-5">
+              <div className="xl:col-span-8 space-y-4">
+                <h2 className={sectionHeading}>Endereço e unidade</h2>
+                <Field label="Endereço">
+                  <textarea value={endereco} onChange={(e) => setEndereco(e.target.value)} rows={3} className={`${inputClass} resize-y`} />
+                </Field>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-4">
+                  <Field label="Condomínio" className="sm:col-span-2 lg:col-span-6">
+                    <input type="text" value={condominio} onChange={(e) => setCondominio(e.target.value)} className={inputClass} />
+                  </Field>
+                  <Field label="Unidade" className="lg:col-span-4">
+                    <input type="text" value={unidade} onChange={(e) => setUnidade(e.target.value)} className={inputClass} />
+                  </Field>
+                  <Field label="Garagens" className="lg:col-span-2">
+                    <input type="text" value={garagens} onChange={(e) => setGaragens(e.target.value)} className={inputClass} />
+                  </Field>
+                </div>
+              </div>
+              <fieldset className="xl:col-span-4 rounded-lg border border-slate-300 bg-slate-50/80 p-4 flex flex-col min-h-[11rem]">
+                <legend className="text-sm font-semibold text-slate-800 px-1">Observações sobre Inquilino</legend>
+                <textarea
+                  value={observacoesInquilino}
+                  onChange={(e) => setObservacoesInquilino(e.target.value)}
+                  rows={6}
+                  className={`${inputClass} resize-y flex-1 min-h-[8rem] bg-white mt-1`}
+                />
+              </fieldset>
             </section>
 
-            {/* Endereço */}
-            <section className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t border-slate-200 pt-4">
-              <Field label="Endereço:" className="md:col-span-2">
-                <textarea value={endereco} onChange={(e) => setEndereco(e.target.value)} rows={2} className={`${inputClass} resize-y`} />
-              </Field>
-              <Field label="Condomínio:">
-                <input type="text" value={condominio} onChange={(e) => setCondominio(e.target.value)} className={inputClass} />
-              </Field>
-              <Field label="Unidade:">
-                <input type="text" value={unidade} onChange={(e) => setUnidade(e.target.value)} className={inputClass} />
-              </Field>
-              <Field label="Garagens:" className="w-24">
-                <input type="text" value={garagens} onChange={(e) => setGaragens(e.target.value)} className={inputClass} />
-              </Field>
-            </section>
-
-            {/* Garantia e locação */}
-            <section className="grid grid-cols-2 md:grid-cols-4 gap-4 border-t border-slate-200 pt-4">
-              <Field label="Garantia:">
-                <input type="text" value={garantia} onChange={(e) => setGarantia(e.target.value)} className={inputClass} />
-              </Field>
-              <Field label="Valor da Garantia:">
-                <input type="text" value={valorGarantia} onChange={(e) => setValorGarantia(e.target.value)} className={inputClass} />
-              </Field>
-              <Field label="Valor da Locação:">
-                <input type="text" value={valorLocacao} onChange={(e) => setValorLocacao(e.target.value)} className={inputClass} />
-              </Field>
-              <Field label="Dia Pag. Aluguel:">
-                <input type="text" value={diaPagAluguel} onChange={(e) => setDiaPagAluguel(e.target.value)} className={inputClass} />
-              </Field>
-              <div className="col-span-2 md:col-span-4 flex flex-wrap gap-2">
-                <button type="button" className="px-4 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50">Catálogo</button>
-                <button type="button" className="px-4 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50">Doc. Interessados</button>
-                <Field label="Data pag. 1ª Tx. Cond.:" className="w-40">
+            {/* Garantia, locação, 1ª taxa cond., IPTU */}
+            <section className="rounded-lg border border-slate-300 bg-slate-50/50 p-4 space-y-4">
+              <h2 className={sectionHeading}>Garantia, locação e IPTU</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <Field label="Garantia">
+                  <input type="text" value={garantia} onChange={(e) => setGarantia(e.target.value)} className={inputClass} />
+                </Field>
+                <Field label="Valor da Garantia">
+                  <input type="text" value={valorGarantia} onChange={(e) => setValorGarantia(e.target.value)} className={inputClass} />
+                </Field>
+                <Field label="Valor da Locação">
+                  <input type="text" value={valorLocacao} onChange={(e) => setValorLocacao(e.target.value)} className={inputClass} />
+                </Field>
+                <Field label="Dia Pag. Aluguel">
+                  <input type="text" value={diaPagAluguel} onChange={(e) => setDiaPagAluguel(e.target.value)} className={inputClass} />
+                </Field>
+              </div>
+              <div className="flex flex-wrap items-end gap-3 pt-1">
+                <button
+                  type="button"
+                  className="px-4 py-2 rounded-md border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-100"
+                >
+                  Catálogo
+                </button>
+                <button
+                  type="button"
+                  className="px-4 py-2 rounded-md border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-100"
+                >
+                  Doc. Interessados
+                </button>
+                <Field label="Data pag. 1ª Tx. Cond." className="w-full sm:w-44">
                   <input
                     type="text"
                     value={dataPag1TxCond}
@@ -327,152 +387,176 @@ export function Imoveis() {
                   />
                 </Field>
               </div>
-              <Field label="Inscrição Imobiliária:">
-                <input type="text" value={inscricaoImobiliaria} onChange={(e) => setInscricaoImobiliaria(e.target.value)} className={inputClass} />
-              </Field>
-              <Field label="Existe Deb. IPTU:">
-                <input type="text" value={existeDebIptu} onChange={(e) => setExisteDebIptu(e.target.value)} className={inputClass} />
-              </Field>
-              <Field label="Data Cons.:">
-                <input type="text" value={dataConsIptu} onChange={(e) => setDataConsIptu(e.target.value)} className={inputClass} />
-              </Field>
-              <div className="flex items-end">
-                <button type="button" onClick={() => setShowModalIptu(true)} className="px-4 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50">IPTU</button>
-              </div>
-            </section>
-
-            {/* Água, Energia, Gás e Contrato */}
-            <section className="grid grid-cols-1 md:grid-cols-3 gap-4 border-t border-slate-200 pt-4">
-              <div className="border border-slate-200 rounded p-3 bg-slate-50/30 space-y-2">
-                <p className="text-sm font-medium text-slate-700">Água</p>
-                <input type="text" value={aguaNumero} onChange={(e) => setAguaNumero(e.target.value)} className={inputClass} />
-                <Field label="Data cons. Água:">
-                  <input type="text" value={dataConsAgua} onChange={(e) => setDataConsAgua(e.target.value)} className={inputClass} />
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-end pt-3 border-t border-slate-200">
+                <Field label="Inscrição Imobiliária" className="sm:col-span-2">
+                  <input type="text" value={inscricaoImobiliaria} onChange={(e) => setInscricaoImobiliaria(e.target.value)} className={inputClass} />
                 </Field>
-                <Field label="Existe Déb. Água:">
-                  <input type="text" value={existeDebAgua} onChange={(e) => setExisteDebAgua(e.target.value)} className={inputClass} />
+                <Field label="Existe Deb. IPTU">
+                  <input type="text" value={existeDebIptu} onChange={(e) => setExisteDebIptu(e.target.value)} className={inputClass} />
                 </Field>
-                <Field label="Dia Venc. Água:">
-                  <input type="text" value={diaVencAgua} onChange={(e) => setDiaVencAgua(e.target.value)} className={inputClass} />
+                <Field label="Data Cons.">
+                  <input type="text" value={dataConsIptu} onChange={(e) => setDataConsIptu(e.target.value)} className={inputClass} />
                 </Field>
-              </div>
-              <div className="border border-slate-200 rounded p-3 bg-slate-50/30 space-y-2">
-                <p className="text-sm font-medium text-slate-700">Energia</p>
-                <input type="text" value={energiaNumero} onChange={(e) => setEnergiaNumero(e.target.value)} className={inputClass} />
-                <Field label="Data cons. Energia:">
-                  <input type="text" value={dataConsEnergia} onChange={(e) => setDataConsEnergia(e.target.value)} className={inputClass} />
-                </Field>
-                <Field label="Existe Déb. Energia:">
-                  <input type="text" value={existeDebEnergia} onChange={(e) => setExisteDebEnergia(e.target.value)} className={inputClass} />
-                </Field>
-                <Field label="Dia Venc. Energia:">
-                  <input type="text" value={diaVencEnergia} onChange={(e) => setDiaVencEnergia(e.target.value)} className={inputClass} />
-                </Field>
-              </div>
-              <div className="border border-slate-200 rounded p-3 bg-slate-50/30 space-y-2">
-                <p className="text-sm font-medium text-slate-700">Gás</p>
-                <input type="text" value={gasNumero} onChange={(e) => setGasNumero(e.target.value)} className={inputClass} />
-                <Field label="Data cons. Gás:">
-                  <input type="text" value={dataConsGas} onChange={(e) => setDataConsGas(e.target.value)} className={inputClass} />
-                </Field>
-                <Field label="Existe Déb. Gás:">
-                  <input type="text" value={existeDebGas} onChange={(e) => setExisteDebGas(e.target.value)} className={inputClass} />
-                </Field>
-                <Field label="Dia Venc. Gás:">
-                  <input type="text" value={diaVencGas} onChange={(e) => setDiaVencGas(e.target.value)} className={inputClass} />
-                </Field>
-              </div>
-            </section>
-
-            <section className="grid grid-cols-2 md:grid-cols-5 gap-4 border-t border-slate-200 pt-4">
-              <div className="col-span-2 md:col-span-2 border border-slate-200 rounded p-3 bg-slate-50/30 space-y-2">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium text-slate-700">CONTRATO</p>
-                  <button type="button" onClick={() => setShowModalContrato(true)} className="px-3 py-1.5 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50">Contrato</button>
+                <div className="sm:col-span-2 lg:col-span-1 flex pb-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setShowModalIptu(true)}
+                    className="w-full sm:w-auto px-5 py-2 rounded-md border border-slate-400 bg-white text-slate-800 text-sm font-medium hover:bg-slate-100"
+                  >
+                    IPTU
+                  </button>
                 </div>
-                <Field label="Data Início Contrato:">
-                  <input type="text" value={dataInicioContrato} onChange={(e) => setDataInicioContrato(e.target.value)} className={inputClass} />
-                </Field>
-                <Field label="Data Fim Contrato:">
-                  <input type="text" value={dataFimContrato} onChange={(e) => setDataFimContrato(e.target.value)} className={inputClass} />
-                </Field>
               </div>
-              <Field label="Data Cons. Débito Cond.:">
-                <input type="text" value={dataConsDebitoCond} onChange={(e) => setDataConsDebitoCond(e.target.value)} className={inputClass} />
-              </Field>
-              <Field label="Existe Débito Cond.:">
-                <input type="text" value={existeDebitoCond} onChange={(e) => setExisteDebitoCond(e.target.value)} className={inputClass} />
-              </Field>
-              <Field label="Dia Repasse:">
-                <input type="text" value={diaRepasse} onChange={(e) => setDiaRepasse(e.target.value)} className={inputClass} />
-              </Field>
             </section>
 
-            {/* Dados Bancários */}
-            <section className="border-t border-slate-200 pt-4">
-              <h3 className="text-sm font-semibold text-slate-800 mb-3">Dados Bancários</h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <Field label="Banco:">
+            {/* Cinco colunas: água, energia, gás, contrato, condomínio/repasse */}
+            <section>
+              <h2 className={sectionHeading}>Água, energia, gás, contrato e condomínio</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3">
+                <BlocoUtilidade titulo="Água">
+                  <Field label="Número">
+                    <input type="text" value={aguaNumero} onChange={(e) => setAguaNumero(e.target.value)} className={inputClass} />
+                  </Field>
+                  <Field label="Data cons.">
+                    <input type="text" value={dataConsAgua} onChange={(e) => setDataConsAgua(e.target.value)} className={inputClass} />
+                  </Field>
+                  <Field label="Existe débito">
+                    <input type="text" value={existeDebAgua} onChange={(e) => setExisteDebAgua(e.target.value)} className={inputClass} />
+                  </Field>
+                  <Field label="Dia venc.">
+                    <input type="text" value={diaVencAgua} onChange={(e) => setDiaVencAgua(e.target.value)} className={inputClass} />
+                  </Field>
+                </BlocoUtilidade>
+                <BlocoUtilidade titulo="Energia">
+                  <Field label="Número">
+                    <input type="text" value={energiaNumero} onChange={(e) => setEnergiaNumero(e.target.value)} className={inputClass} />
+                  </Field>
+                  <Field label="Data cons.">
+                    <input type="text" value={dataConsEnergia} onChange={(e) => setDataConsEnergia(e.target.value)} className={inputClass} />
+                  </Field>
+                  <Field label="Existe débito">
+                    <input type="text" value={existeDebEnergia} onChange={(e) => setExisteDebEnergia(e.target.value)} className={inputClass} />
+                  </Field>
+                  <Field label="Dia venc.">
+                    <input type="text" value={diaVencEnergia} onChange={(e) => setDiaVencEnergia(e.target.value)} className={inputClass} />
+                  </Field>
+                </BlocoUtilidade>
+                <BlocoUtilidade titulo="Gás">
+                  <Field label="Número">
+                    <input type="text" value={gasNumero} onChange={(e) => setGasNumero(e.target.value)} className={inputClass} />
+                  </Field>
+                  <Field label="Data cons.">
+                    <input type="text" value={dataConsGas} onChange={(e) => setDataConsGas(e.target.value)} className={inputClass} />
+                  </Field>
+                  <Field label="Existe débito">
+                    <input type="text" value={existeDebGas} onChange={(e) => setExisteDebGas(e.target.value)} className={inputClass} />
+                  </Field>
+                  <Field label="Dia venc.">
+                    <input type="text" value={diaVencGas} onChange={(e) => setDiaVencGas(e.target.value)} className={inputClass} />
+                  </Field>
+                </BlocoUtilidade>
+                <BlocoUtilidade titulo="Contrato">
+                  <button
+                    type="button"
+                    onClick={() => setShowModalContrato(true)}
+                    className="w-full px-3 py-2 rounded-md border border-slate-400 bg-white text-slate-800 text-sm font-medium hover:bg-slate-100"
+                  >
+                    Contrato
+                  </button>
+                  <Field label="Data início">
+                    <input type="text" value={dataInicioContrato} onChange={(e) => setDataInicioContrato(e.target.value)} className={inputClass} />
+                  </Field>
+                  <Field label="Data fim">
+                    <input type="text" value={dataFimContrato} onChange={(e) => setDataFimContrato(e.target.value)} className={inputClass} />
+                  </Field>
+                </BlocoUtilidade>
+                <BlocoUtilidade titulo="Condomínio / repasse">
+                  <Field label="Data cons. débito cond.">
+                    <input type="text" value={dataConsDebitoCond} onChange={(e) => setDataConsDebitoCond(e.target.value)} className={inputClass} />
+                  </Field>
+                  <Field label="Existe débito cond.">
+                    <input type="text" value={existeDebitoCond} onChange={(e) => setExisteDebitoCond(e.target.value)} className={inputClass} />
+                  </Field>
+                  <Field label="Dia repasse">
+                    <input type="text" value={diaRepasse} onChange={(e) => setDiaRepasse(e.target.value)} className={inputClass} />
+                  </Field>
+                </BlocoUtilidade>
+              </div>
+            </section>
+
+            <fieldset className="rounded-lg border border-slate-300 bg-slate-50/40 p-4">
+              <legend className="text-sm font-semibold text-slate-800 px-2">Dados bancários</legend>
+              <p className="text-[11px] text-slate-500 mb-3 -mt-1">Conta para repasse (banco, agência, conta, titular, PIX).</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <Field label="Banco">
                   <input type="text" value={banco} onChange={(e) => setBanco(e.target.value)} className={inputClass} />
                 </Field>
-                <Field label="Agência:">
-                  <input type="text" value={agencia} onChange={(e) => setAgencia(e.target.value)} className={inputClass} />
-                </Field>
-                <Field label="Nº Banco:">
+                <Field label="Nº Banco">
                   <input type="text" value={numeroBanco} onChange={(e) => setNumeroBanco(e.target.value)} className={inputClass} />
                 </Field>
-                <Field label="Conta:">
+                <Field label="Agência">
+                  <input type="text" value={agencia} onChange={(e) => setAgencia(e.target.value)} className={inputClass} />
+                </Field>
+                <Field label="Conta">
                   <input type="text" value={conta} onChange={(e) => setConta(e.target.value)} className={inputClass} />
                 </Field>
-                <Field label="CPF:">
+                <Field label="CPF">
                   <input type="text" value={cpfBanco} onChange={(e) => setCpfBanco(e.target.value)} className={inputClass} />
                 </Field>
-                <Field label="Titular:">
-                  <input type="text" value={titular} onChange={(e) => setTitular(e.target.value)} className={inputClass} />
-                </Field>
-                <Field label="Chave Pix:" className="md:col-span-2">
+                <Field label="Chave Pix" className="lg:col-span-2">
                   <input type="text" value={chavePix} onChange={(e) => setChavePix(e.target.value)} className={inputClass} />
                 </Field>
+                <Field label="Titular" className="sm:col-span-2 lg:col-span-4">
+                  <input type="text" value={titular} onChange={(e) => setTitular(e.target.value)} className={inputClass} />
+                </Field>
               </div>
-            </section>
+            </fieldset>
 
-            {/* Proprietário e Inquilino */}
-            <section className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t border-slate-200 pt-4">
-              <div className="space-y-3">
-                <div className="flex gap-2">
-                  <input type="text" value={proprietarioCod1} onChange={(e) => setProprietarioCod1(e.target.value)} className={`w-20 ${inputClass}`} />
-                  <input type="text" value={proprietarioCod2} onChange={(e) => setProprietarioCod2(e.target.value)} className={`w-20 ${inputClass}`} />
+            <section className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+              <fieldset className="rounded-lg border border-slate-300 p-4 space-y-3 bg-white">
+                <legend className="text-sm font-semibold text-slate-800 px-2">Proprietário</legend>
+                <div className="flex flex-wrap gap-2">
+                  <Field label="Cód." className="w-[4.5rem]">
+                    <input type="text" value={proprietarioCod1} onChange={(e) => setProprietarioCod1(e.target.value)} className={inputClass} />
+                  </Field>
+                  <Field label="Cód." className="w-[4.5rem]">
+                    <input type="text" value={proprietarioCod2} onChange={(e) => setProprietarioCod2(e.target.value)} className={inputClass} />
+                  </Field>
                 </div>
-                <h3 className="text-sm font-semibold text-slate-800">Proprietário</h3>
-                <Field label="Proprietário:">
+                <Field label="Nome">
                   <input type="text" value={proprietario} onChange={(e) => setProprietario(e.target.value)} className={inputClass} />
                 </Field>
-                <Field label="CPF:">
+                <Field label="CPF">
                   <input type="text" value={proprietarioCpf} onChange={(e) => setProprietarioCpf(e.target.value)} className={inputClass} />
                 </Field>
-                <Field label="Contato:">
+                <Field label="Contato">
                   <input type="text" value={proprietarioContato} onChange={(e) => setProprietarioContato(e.target.value)} className={inputClass} />
                 </Field>
-              </div>
-              <div className="space-y-3">
-                <h3 className="text-sm font-semibold text-slate-800">Inquilino</h3>
-                <Field label="Link Vistoria:">
+              </fieldset>
+
+              <fieldset className="rounded-lg border border-slate-300 p-4 space-y-3 bg-white">
+                <legend className="text-sm font-semibold text-slate-800 px-2">Inquilino</legend>
+                <Field label="Link Vistoria">
                   <input type="text" value={linkVistoria} onChange={(e) => setLinkVistoria(e.target.value)} className={inputClass} />
                 </Field>
-                <Field label="Inquilino:">
+                <Field label="Nome">
                   <input type="text" value={inquilino} onChange={(e) => setInquilino(e.target.value)} className={inputClass} />
                 </Field>
-                <Field label="CPF:">
+                <Field label="CPF">
                   <input type="text" value={inquilinoCpf} onChange={(e) => setInquilinoCpf(e.target.value)} className={inputClass} />
                 </Field>
-                <Field label="Contato:">
+                <Field label="Contato">
                   <input type="text" value={inquilinoContato} onChange={(e) => setInquilinoContato(e.target.value)} className={inputClass} />
                 </Field>
-              </div>
+              </fieldset>
             </section>
 
-            <footer className="flex justify-center pt-4 border-t border-slate-200">
-              <button type="button" className="px-6 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50">
+            <footer className="flex justify-center pt-2 border-t border-slate-200">
+              <button
+                type="button"
+                onClick={() => window.history.back()}
+                className="px-10 py-2.5 rounded-md border border-slate-400 bg-slate-100 text-slate-800 text-sm font-medium hover:bg-slate-200"
+              >
                 Fechar
               </button>
             </footer>

@@ -13,10 +13,25 @@ export const STORAGE_OPERADOR_ESTACAO = 'vilareal.usuario.operadorEstacao.v1';
 /** Id do usuário master — único que pode escolher outros perfis no menu (teste do sistema). */
 export const USUARIO_MASTER_ID = 'itamar';
 
+/** Expande entradas com `children` (ex.: Calcular) em um módulo por sub-rota, para permissões e pathParaModuloId. */
+function modulosFromNavItems(items) {
+  const out = [];
+  for (const item of items) {
+    if (Array.isArray(item.children) && item.children.length > 0) {
+      for (const ch of item.children) {
+        out.push({ id: ch.id, label: `${item.label} — ${ch.label}` });
+      }
+    } else {
+      out.push({ id: item.id, label: item.label });
+    }
+  }
+  return out;
+}
+
 /** Módulos controláveis: Início (quadro) + itens do menu lateral. */
 export const MODULOS_PERMISSAO = [
   { id: 'inicio', label: 'Início (Quadro)' },
-  ...navItems.map((item) => ({ id: item.id, label: item.label })),
+  ...modulosFromNavItems(navItems),
 ];
 
 const IDS_MODULO = new Set(MODULOS_PERMISSAO.map((m) => m.id));

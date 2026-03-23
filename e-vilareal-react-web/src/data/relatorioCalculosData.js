@@ -8,7 +8,7 @@ import { getNomeClienteCadastroPorCodigo } from './relatorioProcessosDados.js';
 import { getLancamentosContaCorrente } from './financeiroData.js';
 import { getRegistroProcesso } from './processosHistoricoData.js';
 
-function parseBRL(str) {
+export function parseBRL(str) {
   if (str == null) return 0;
   const s = String(str).trim();
   if (!s) return 0;
@@ -17,7 +17,7 @@ function parseBRL(str) {
   return Number.isNaN(n) ? 0 : n;
 }
 
-function formatBRL(n) {
+export function formatBRL(n) {
   const v = Number(n) || 0;
   return `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
@@ -156,7 +156,7 @@ export function getLinhasRelatorioCalculosConsolidado() {
 
     const { codCliente, proc, dimensao } = parsed;
     const procNum = Math.floor(Number(proc)) || 1;
-    const procExibicao = String(procNum).padStart(2, '0');
+    const procExibicao = String(procNum);
     const codNum = Number(String(codCliente).replace(/\D/g, ''));
     const cab = rodada.cabecalho && typeof rodada.cabecalho === 'object' ? rodada.cabecalho : {};
     const honorMap =
@@ -177,7 +177,7 @@ export function getLinhasRelatorioCalculosConsolidado() {
     const unidade = String(reg?.unidade ?? '').trim();
     const cliente = getNomeClienteCadastroPorCodigo(Number.isFinite(codNum) && codNum >= 1 ? codNum : 1);
     const reu = String(cab.reu ?? '').trim();
-    const calculoAceito = rodada.parcelamentoAceito ? 'Sim' : 'Não';
+    const calculoAceito = rodada.parcelamentoAceito ? 'SIM' : '';
     const qtdDimensoes = String(dimPorClienteProc.get(`${codCliente}|${proc}`) ?? 1);
     const lancs = lancamentosCached(codCliente, procNum);
 
@@ -210,7 +210,7 @@ export function getLinhasRelatorioCalculosConsolidado() {
         valor,
         valorHonorarios: hon,
         obs,
-        parcela: String(i + 1).padStart(2, '0'),
+        parcela: String(i + 1),
         calculoAceito,
         cliente,
         dataVencHonorarios: dataVenc,
@@ -239,4 +239,29 @@ export function getLinhasRelatorioCalculosConsolidado() {
   });
 
   return rows;
+}
+
+/** Código cliente como na planilha (inteiro sem zeros à esquerda). */
+export function formatCodigoRelatorioCalculos(cod) {
+  const n = Number(String(cod ?? '').replace(/\D/g, ''));
+  if (!Number.isFinite(n) || n < 1) return String(cod ?? '').trim();
+  return String(n);
+}
+
+/**
+ * Exibe valor monetário no padrão da planilha: `R$ 52.858,58`.
+ * Se já vier com R$, apenas normaliza espaços; senão tenta interpretar número pt-BR.
+ */
+export function formatMoedaRelatorioCalculos(s) {
+  const raw = String(s ?? '').trim();
+  if (!raw) return '';
+  if (/^\s*R\$/i.test(raw)) {
+    return raw
+      .replace(/^\s*R\$\s*/i, 'R$ ')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+  }
+  const n = parseBRL(raw);
+  if (!Number.isFinite(n)) return raw;
+  return formatBRL(n);
 }

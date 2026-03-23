@@ -58,7 +58,12 @@ function Layout() {
     const mod = pathParaModuloId(location.pathname);
     const uid = getPerfilAtivoParaPermissoes();
     if (!usuarioPodeAcessarModulo(uid, mod)) {
-      navigate(getPrimeiraRotaPermitida(uid), { replace: true });
+      const dest = getPrimeiraRotaPermitida(uid);
+      const pathNorm = (location.pathname || '/').replace(/\/+$/, '') || '/';
+      const destNorm = (dest || '/').replace(/\/+$/, '') || '/';
+      if (pathNorm !== destNorm) {
+        navigate(dest, { replace: true });
+      }
     }
   }, [location.pathname, navigate, accessTick]);
 

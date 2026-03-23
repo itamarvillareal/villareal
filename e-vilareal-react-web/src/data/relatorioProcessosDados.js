@@ -4,9 +4,9 @@
  */
 import { getDadosProcessoClienteUnificado } from './processoClienteProcUnificado.js';
 import { gerarMockProcesso } from './processosDadosRelatorio.js';
-import { obterDescricaoAcaoUnificada } from './processosHistoricoData.js';
 import { CLIENTE_PARA_PESSOA, getIdPessoaPorCodCliente } from './clientesCadastradosMock.js';
 import { getPessoaPorId } from './cadastroPessoasMock.js';
+import { processosClienteMock } from './mockData.js';
 
 const CONSULTORES = ['Karla Almeida', 'ITAMAR', 'DAAE', 'Ana Luisa'];
 
@@ -57,7 +57,7 @@ function paresRelatorioProcessos() {
 
 export const RELATORIO_PROCESSOS_MOCK_COUNT = paresRelatorioProcessos().length;
 
-/** Pares [código cliente, proc. 1…10] do mock do Relatório Processos — também usado no Relatório Cálculos. */
+/** Pares [código cliente, proc. 1…10] do mock — usado pelo Relatório Cálculos e geração de rodadas mock. */
 export function getParesClienteProcMockRelatorio() {
   return paresRelatorioProcessos();
 }
@@ -72,8 +72,10 @@ export function getRelatorioProcessosMockLinhasBase() {
     const m = gerarMockProcesso(c, p);
     if (!u) return null;
 
-    const fallbackNatureza = String(m.naturezaAcao ?? u.naturezaAcao ?? '').trim();
-    const descricao = obterDescricaoAcaoUnificada(pad8(c), p, fallbackNatureza) || 'AÇÃO (MOCK)';
+    const descricao =
+      processosClienteMock[p - 1]?.descricao?.trim() ||
+      String(m.naturezaAcao ?? u.naturezaAcao ?? '').trim() ||
+      'AÇÃO (MOCK)';
 
     const parteSlice = String(u.parteCliente ?? '').slice(0, 40);
 
@@ -86,7 +88,7 @@ export function getRelatorioProcessosMockLinhasBase() {
       codCliente: pad8(c),
       proc: String(p),
       numeroProcesso: u.processoNovo,
-      inRequerente: '',
+      inRequerente: (c + p + idx) % 4 === 1 ? 'REQUERIDO' : '',
       ultimoAndamento: `ANDAMENTO — ${String(m.naturezaAcao ?? u.naturezaAcao ?? 'MOCK').slice(0, 80)}`,
       dataConsulta: dataBrDeslocada(c, p, 0),
       proximaConsulta: dataBrDeslocada(c, p, 28),

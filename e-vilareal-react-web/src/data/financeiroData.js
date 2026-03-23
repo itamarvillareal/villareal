@@ -743,18 +743,20 @@ function eloFormatado(n) {
   return String(Math.max(1, n)).padStart(4, '0');
 }
 
+function lancamentoElegivelParearCompensacao(t) {
+  const c = centavos(t.valor);
+  if (!t?.data || c === null || c === 0) return false;
+  const procS = String(t.proc ?? '').trim();
+  const orfaoCompensacao = t.letra === 'E' && procS.startsWith('?');
+  return t.letra === 'N' || (t.letra === 'E' && !procS) || orfaoCompensacao;
+}
+
 /** Pool de lançamentos elegíveis a compensação (mesma regra para detectar e aplicar). */
 function montarPoolCompensacao(next) {
   const flat = [];
   for (const [nomeBanco, list] of Object.entries(next)) {
     list.forEach((t, idx) => {
-      const c = centavos(t.valor);
-      if (!t.data || c === null || c === 0) return;
-      const procS = String(t.proc ?? '').trim();
-      const orfaoCompensacao = t.letra === 'E' && procS.startsWith('?');
-      const podeParear =
-        t.letra === 'N' || (t.letra === 'E' && !procS) || orfaoCompensacao;
-      if (!podeParear) return;
+      if (!lancamentoElegivelParearCompensacao(t)) return;
       flat.push({ nomeBanco, idx, t, k: `${nomeBanco}|${t.numero}|${t.data}` });
     });
   }
@@ -809,6 +811,141 @@ export function detectarParesCompensacao(extratosPorBanco) {
   return pares;
 }
 
+function aplicarTagParCompensacaoEmLancamento(t) {
+  const det = (t.descricaoDetalhada || t.categoria || '').trim();
+  const tag = '[Par compensação]';
+  if (!det.includes(tag)) {
+    const novo = det ? `${det} ${tag}` : tag;
+    t.descricaoDetalhada = novo;
+    t.categoria = novo;
+  }
+}
+
+/** Remove a marcação de par (início do texto ou após espaço). */
+function removerTagParCompensacaoDeCampo(s) {
+  return String(s ?? '')
+    .replace(/(?:^|\s)\[Par compensação\]/g, '')
+    .trim();
+}
+
+function removerTagParCompensacaoEmLancamento(t) {
+  t.descricaoDetalhada = removerTagParCompensacaoDeCampo(t.descricaoDetalhada);
+  t.categoria = removerTagParCompensacaoDeCampo(t.categoria);
+}
+
+/** E em compensação sem proc. numérico vira ?1, ?2… */
+function renormalizarOrfaosCompensacao(next) {
+  let orphanSeq = 0;
+  for (const list of Object.values(next)) {
+    for (const t of list) {
+      if (t.letra !== 'E') continue;
+      const p = String(t.proc || '').trim();
+      if (/^\d+$/.test(p)) continue;
+      t.codCliente = '';
+      t.proc = `?${++orphanSeq}`;
+    }
+  }
+}
+
+function localizarLancamentoExtrato(next, banco, numero, data, valor) {
+  const list = next[banco];
+  if (!Array.isArray(list)) return null;
+  const nc = centavos(valor);
+  if (nc === null) return null;
+  const i = list.findIndex((t) => {
+    if (String(t.numero ?? '') !== String(numero ?? '')) return false;
+    if (String(t.data ?? '').trim() !== String(data ?? '').trim()) return false;
+    return centavos(t.valor) === nc;
+  });
+  return i >= 0 ? { list, idx: i, t: list[i] } : null;
+}
+
+/**
+ * Aplica um único par (como em {@link detectarParesCompensacao}): letra E + próximo Elo disponível.
+ * @param {object} par — `{ credito, debito }` com `banco`, `numero`, `data`, `valor` (como no retorno da detecção)
+ * @returns {{ ok: true, elo: string, extratos: object } | { ok: false, message: string, extratos: object }}
+ */
+export function aplicarUmParCompensacaoInterbancaria(extratosPorBanco, par) {
+  const next = cloneExtratos(extratosPorBanco);
+  if (!par?.credito || !par?.debito) {
+    return { ok: false, message: 'Par inválido.', extratos: next };
+  }
+  const { credito, debito } = par;
+  if (credito.banco === debito.banco) {
+    return { ok: false, message: 'O par precisa ser entre bancos diferentes.', extratos: next };
+  }
+  const a = localizarLancamentoExtrato(next, credito.banco, credito.numero, credito.data, credito.valor);
+  const b = localizarLancamentoExtrato(next, debito.banco, debito.numero, debito.data, debito.valor);
+  if (!a || !b) {
+    return {
+      ok: false,
+      message: 'Não foi possível localizar um dos lançamentos (extrato pode ter mudado). Atualize a lista.',
+      extratos: next,
+    };
+  }
+  if (a.t === b.t) {
+    return { ok: false, message: 'Lançamento duplicado no mesmo extrato.', extratos: next };
+  }
+  if (!lancamentoElegivelParearCompensacao(a.t) || !lancamentoElegivelParearCompensacao(b.t)) {
+    return {
+      ok: false,
+      message: 'Um dos lançamentos já foi classificado ou não está mais elegível a compensação.',
+      extratos: next,
+    };
+  }
+  if (String(a.t.data).trim() !== String(b.t.data).trim() || !valoresCompensamExatos(a.t.valor, b.t.valor)) {
+    return { ok: false, message: 'Data ou valores do par não batem mais.', extratos: next };
+  }
+  const pid = eloFormatado(maiorIdParCompensacao(next) + 1);
+  for (const hit of [a, b]) {
+    hit.t.letra = 'E';
+    hit.t.codCliente = '';
+    hit.t.proc = pid;
+    aplicarTagParCompensacaoEmLancamento(hit.t);
+  }
+  renormalizarOrfaosCompensacao(next);
+  return { ok: true, elo: pid, extratos: next };
+}
+
+/**
+ * Desfaz {@link aplicarUmParCompensacaoInterbancaria}: volta letra N, zera Elo e remove tag de par.
+ * @param {string} eloAplicado — valor gravado em `proc` nos dois lançamentos (ex.: "0001")
+ */
+export function reverterUmParCompensacaoInterbancaria(extratosPorBanco, par, eloAplicado) {
+  const next = cloneExtratos(extratosPorBanco);
+  const elos = String(eloAplicado ?? '').trim();
+  if (!par?.credito || !par?.debito || !elos) {
+    return { ok: false, message: 'Dados inválidos para desfazer o vínculo.', extratos: next };
+  }
+  const { credito, debito } = par;
+  const a = localizarLancamentoExtrato(next, credito.banco, credito.numero, credito.data, credito.valor);
+  const b = localizarLancamentoExtrato(next, debito.banco, debito.numero, debito.data, debito.valor);
+  if (!a || !b || a.t === b.t) {
+    return {
+      ok: false,
+      message: 'Não foi possível localizar os lançamentos (extrato pode ter mudado).',
+      extratos: next,
+    };
+  }
+  const pa = String(a.t.proc ?? '').trim();
+  const pb = String(b.t.proc ?? '').trim();
+  if (a.t.letra !== 'E' || b.t.letra !== 'E' || pa !== elos || pb !== elos) {
+    return {
+      ok: false,
+      message: 'Este par não está vinculado com o Elo esperado ou já foi alterado.',
+      extratos: next,
+    };
+  }
+  for (const hit of [a, b]) {
+    hit.t.letra = 'N';
+    hit.t.proc = '';
+    hit.t.codCliente = '';
+    removerTagParCompensacaoEmLancamento(hit.t);
+  }
+  renormalizarOrfaosCompensacao(next);
+  return { ok: true, extratos: next };
+}
+
 /**
  * Emparelha transferências entre bancos: mesmo dia, valores opostos exatos (centavos), bancos diferentes.
  * Conta Compensação (E): Elo em 4 dígitos (0001, 0002…).
@@ -833,25 +970,10 @@ export function parearCompensacaoInterbancaria(extratosPorBanco) {
       x.t.letra = 'E';
       x.t.codCliente = '';
       x.t.proc = pid;
-      const det = (x.t.descricaoDetalhada || x.t.categoria || '').trim();
-      const tag = '[Par compensação]';
-      if (!det.includes(tag)) {
-        const novo = det ? `${det} ${tag}` : tag;
-        x.t.descricaoDetalhada = novo;
-        x.t.categoria = novo;
-      }
+      aplicarTagParCompensacaoEmLancamento(x.t);
     }
   }
-  let orphanSeq = 0;
-  for (const list of Object.values(next)) {
-    for (const t of list) {
-      if (t.letra !== 'E') continue;
-      const p = String(t.proc || '').trim();
-      if (/^\d+$/.test(p)) continue;
-      t.codCliente = '';
-      t.proc = `?${++orphanSeq}`;
-    }
-  }
+  renormalizarOrfaosCompensacao(next);
   return next;
 }
 

@@ -2,7 +2,6 @@
  * Coluna dinâmica do Relatório Processos (mesma coluna física; título e conteúdo escolhidos pelo usuário).
  */
 import { getCamposExtrasRelatorioPorProcesso, padCliente } from './processosDadosRelatorio.js';
-import { getNomeClienteCadastroPorCodigo } from './relatorioProcessosDados.js';
 
 export const STORAGE_CAMPO_COLUNA_ULTIMO_ANDAMENTO = 'vilareal.relatorioProcessos.campoColunaUltimoAndamento.v1';
 
@@ -32,7 +31,7 @@ export const CAMPOS_OPCOES_ULTIMO_ANDAMENTO = [
   { label: 'Data da Audiência', fieldKey: 'dataAudiencia' },
   { label: 'Hora da Audiência', fieldKey: 'horaAudiencia' },
   { label: 'Consultor', fieldKey: 'consultor' },
-  { label: 'Requerente/Requerido', fieldKey: 'inRequerente' },
+  { label: 'In Requerente/Recurso', fieldKey: 'inRequerente' },
   { label: 'CEP [primeiro réu]', fieldKey: 'cepReu' },
   { label: 'Lmv', fieldKey: 'lmv' },
   { label: 'Inv', fieldKey: 'inv' },
@@ -51,6 +50,7 @@ export const CAMPOS_OPCOES_ULTIMO_ANDAMENTO = [
   { label: 'Nº Processo (novo / CNJ)', fieldKey: 'numeroProcessoNovo' },
   { label: 'Status (ativo/inativo)', fieldKey: 'statusAtivoTexto' },
   { label: 'Parte Requerente', fieldKey: 'parteRequerenteTexto' },
+  { label: 'Parte Réu (polo)', fieldKey: 'parteRevelTexto' },
   { label: 'Parte Requerido', fieldKey: 'parteRequeridoTexto' },
   { label: 'Data protocolo', fieldKey: 'dataProtocolo' },
   { label: 'Natureza da ação', fieldKey: 'naturezaAcaoProcesso' },
@@ -86,6 +86,59 @@ export const CAMPOS_OPCOES_ULTIMO_ANDAMENTO = [
   { label: 'Tipo de Audiência (legado)', fieldKey: 'tipoAudiencia' },
 ];
 
+const CAMPOS_OPCOES_POR_FIELD_KEY = new Map(CAMPOS_OPCOES_ULTIMO_ANDAMENTO.map((o) => [o.fieldKey, o]));
+
+/**
+ * Ordem fixa das **30** colunas do Relatório de Processos (painel «Colunas» + grade).
+ * Outros campos continuam acessíveis pelo menu de título de cada coluna.
+ */
+export const FIELD_KEYS_COLUNAS_RELATORIO_PROCESSOS = [
+  'codCliente',
+  'cliente',
+  'numeroProcesso',
+  'proc',
+  'ultimoAndamento',
+  'dataConsulta',
+  'proximaConsulta',
+  'prazoFatal',
+  'observacaoProcesso',
+  'consultor',
+  'inRequerente',
+  'fase',
+  'competencia',
+  'descricaoAcao',
+  'dataAudiencia',
+  'horaAudiencia',
+  'observacaoFase',
+  'cepReu',
+  'lmv',
+  'inv',
+  'consultas',
+  'parteCliente',
+  'parteOposta',
+  'naturezaAcaoProcesso',
+  'statusAtivoTexto',
+  'numeroProcessoNovo',
+  'valorCausaProcesso',
+  'unidade',
+  'enderecoImovel',
+  'ultimoHistoricoInfo',
+];
+
+/**
+ * Slots da grade e do botão «Colunas»: exatamente 30 itens.
+ * `id` do slot = `fieldKey` exibido por padrão em {@link carregarCampoPorColunaSalvo}.
+ */
+export const COLUNAS_RELATORIO_PROCESSOS = FIELD_KEYS_COLUNAS_RELATORIO_PROCESSOS.map((fieldKey) => {
+  const o = CAMPOS_OPCOES_POR_FIELD_KEY.get(fieldKey);
+  const label = o?.label ?? fieldKey;
+  return {
+    id: fieldKey,
+    label,
+    minW: label.length > 28 ? 'min(200px, 44vw)' : label.length > 18 ? '140px' : '104px',
+  };
+});
+
 export const CAMPO_PADRAO_ULTIMO_ANDAMENTO = 'ultimoAndamento';
 
 /** Campos desta coluna dinâmica que são datas dd/mm/aaaa (para ordenação cronológica). */
@@ -105,8 +158,7 @@ const CAMPOS_KEYS = new Set(CAMPOS_OPCOES_ULTIMO_ANDAMENTO.map((o) => o.fieldKey
 
 /** Migração: chaves antigas renomeadas → equivalente atual. */
 const MIGRACAO_CAMPOS = {
-  /** «Parte Réu (polo)» (Sim/Não) substituída por «Parte Oposta» (texto do cadastro Processos). */
-  parteRevelTexto: 'parteOposta',
+  // nenhuma por enquanto
 };
 
 export function carregarCampoUltimoAndamentoSalvo() {
@@ -203,9 +255,5 @@ export function enriquecerCamposRelatorioProcessos(row, idx) {
   if (infoUlt) merged.ultimoAndamento = infoUlt;
   if (dataUlt) merged.dataConsulta = dataUlt;
   if (usuarioUlt) merged.consultor = usuarioUlt;
-
-  const codNum = Number(String(cod).replace(/\D/g, ''));
-  merged.cliente = getNomeClienteCadastroPorCodigo(Number.isFinite(codNum) && codNum >= 1 ? codNum : 1);
-
   return merged;
 }
