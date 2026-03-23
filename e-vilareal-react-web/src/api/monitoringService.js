@@ -18,7 +18,14 @@ function opts(method, body = null) {
 async function handle(res) {
   if (res.status === 204 || res.status === 202) return null;
   const text = await res.text();
-  const data = text ? JSON.parse(text) : null;
+  let data = null;
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = { message: text };
+    }
+  }
   if (!res.ok) {
     const msg = data?.message || data?.error || `Erro ${res.status}`;
     throw new Error(msg);

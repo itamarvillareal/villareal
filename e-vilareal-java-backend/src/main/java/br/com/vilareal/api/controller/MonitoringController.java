@@ -7,15 +7,20 @@ import br.com.vilareal.api.monitoring.service.MonitoringPeopleService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @RestController
 @RequestMapping("/api/monitoring")
 @Tag(name = "Monitoramento de Pessoas", description = "DataJud / CNJ — pessoas monitoradas, runs, hits e revisão")
 public class MonitoringController {
+
+    private static final Logger log = LoggerFactory.getLogger(MonitoringController.class);
 
     private final MonitoringPeopleService monitoringPeopleService;
 
@@ -26,13 +31,23 @@ public class MonitoringController {
     @GetMapping("/people")
     @Operation(summary = "Listar pessoas em monitoramento ativo")
     public List<MonitoringPersonSummaryDto> listPeople() {
-        return monitoringPeopleService.listSummaries();
+        try {
+            return monitoringPeopleService.listSummaries();
+        } catch (Exception ex) {
+            log.error("Falha em GET /api/monitoring/people: {}", ex.getMessage(), ex);
+            return new ArrayList<>();
+        }
     }
 
     @GetMapping("/people/candidates")
     @Operation(summary = "Cadastros marcados para monitoramento sem registro em monitored_people")
     public List<MonitoringPersonSummaryDto> listCandidates() {
-        return monitoringPeopleService.listMarkedCandidatesWithoutRow();
+        try {
+            return monitoringPeopleService.listMarkedCandidatesWithoutRow();
+        } catch (Exception ex) {
+            log.error("Falha em GET /api/monitoring/people/candidates: {}", ex.getMessage(), ex);
+            return new ArrayList<>();
+        }
     }
 
     @PostMapping("/people")

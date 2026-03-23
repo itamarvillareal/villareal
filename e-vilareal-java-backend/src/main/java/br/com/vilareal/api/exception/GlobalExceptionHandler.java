@@ -2,6 +2,8 @@ package br.com.vilareal.api.exception;
 
 import br.com.vilareal.api.monitoring.exception.MonitoringNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
@@ -82,6 +84,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErroResponse> generico(Exception ex, HttpServletRequest request) {
+        log.error("Erro não tratado em {}: {}", request.getRequestURI(), ex.getMessage(), ex);
         ErroResponse body = new ErroResponse(
                 Instant.now(),
                 HttpStatus.INTERNAL_SERVER_ERROR.value(),

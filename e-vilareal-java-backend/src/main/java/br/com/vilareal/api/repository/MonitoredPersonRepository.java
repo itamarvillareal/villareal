@@ -11,6 +11,9 @@ import java.util.Optional;
 
 public interface MonitoredPersonRepository extends JpaRepository<MonitoredPerson, Long> {
 
+    @Query("SELECT DISTINCT m FROM MonitoredPerson m JOIN FETCH m.person")
+    List<MonitoredPerson> findAllWithPerson();
+
     @Query("SELECT m FROM MonitoredPerson m JOIN FETCH m.person WHERE m.id = :id")
     Optional<MonitoredPerson> findByIdWithPerson(@Param("id") Long id);
 

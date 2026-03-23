@@ -9,6 +9,8 @@ import br.com.vilareal.api.monitoring.domain.MonitoringFrequencyType;
 import br.com.vilareal.api.monitoring.dto.*;
 import br.com.vilareal.api.monitoring.exception.MonitoringNotFoundException;
 import br.com.vilareal.api.repository.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,6 +21,8 @@ import java.util.stream.Collectors;
 
 @Service
 public class MonitoringPeopleService {
+
+    private static final Logger log = LoggerFactory.getLogger(MonitoringPeopleService.class);
 
     private final MonitoredPersonRepository monitoredPersonRepository;
     private final MonitoredPersonSearchKeyRepository searchKeyRepository;
@@ -53,11 +57,21 @@ public class MonitoringPeopleService {
 
     @Transactional(readOnly = true)
     public List<MonitoringPersonSummaryDto> listSummaries() {
-        List<MonitoringPersonSummaryDto> out = new ArrayList<>();
-        for (MonitoredPerson m : monitoredPersonRepository.findAll()) {
-            out.add(toSummary(m));
+        try {
+            List<MonitoredPerson> list = monitoredPersonRepository.findAllWithPerson();
+            List<MonitoringPersonSummaryDto> out = new ArrayList<>();
+            for (MonitoredPerson m : list) {
+                try {
+                    out.add(toSummary(m));
+                } catch (Exception ex) {
+                    log.warn("Ignorando registro inválido em monitored_people (id={}): {}", m.getId(), ex.getMessage());
+                }
+            }
+            return out;
+        } catch (Exception ex) {
+            log.error("listSummaries falhou: {}", ex.getMessage(), ex);
+            return new ArrayList<>();
         }
-        return out;
     }
 
     /**
@@ -84,20 +98,26 @@ public class MonitoringPeopleService {
 
     @Transactional(readOnly = true)
     public List<MonitoringPersonSummaryDto> listMarkedCandidatesWithoutRow() {
-        List<CadastroPessoa> marcados = cadastroPessoasRepository.findByMarcadoMonitoramentoTrue();
-        List<MonitoringPersonSummaryDto> out = new ArrayList<>();
-        for (CadastroPessoa p : marcados) {
-            if (monitoredPersonRepository.findByPerson_Id(p.getId()).isEmpty()) {
-                MonitoringPersonSummaryDto d = new MonitoringPersonSummaryDto();
-                d.setPersonId(p.getId());
-                d.setNome(p.getNome());
-                d.setDocumentoPrincipal(p.getCpf());
-                d.setEnabled(false);
-                d.setLastStatus("CANDIDATO_SEM_REGISTRO_MONITORAMENTO");
-                out.add(d);
+        try {
+            List<CadastroPessoa> marcados = cadastroPessoasRepository.findByMarcadoMonitoramentoTrue();
+            List<MonitoringPersonSummaryDto> out = new ArrayList<>();
+            for (CadastroPessoa p : marcados) {
+                if (monitoredPersonRepository.findByPerson_Id(p.getId()).isEmpty()) {
+                    MonitoringPersonSummaryDto d = new MonitoringPersonSummaryDto();
+                    d.setPersonId(p.getId());
+                    d.setNome(p.getNome());
+                    d.setDocumentoPrincipal(p.getCpf());
+                    d.setEnabled(false);
+                    d.setFrequencyType(MonitoringFrequencyType.HOURS_6.name());
+                    d.setLastStatus("CANDIDATO_SEM_REGISTRO_MONITORAMENTO");
+                    out.add(d);
+                }
             }
+            return out;
+        } catch (Exception ex) {
+            log.error("listMarkedCandidatesWithoutRow falhou: {}", ex.getMessage(), ex);
+            return new ArrayList<>();
         }
-        return out;
     }
 
     @Transactional(readOnly = true)

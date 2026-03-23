@@ -12,8 +12,12 @@ import {
   ShieldAlert,
 } from 'lucide-react';
 import * as monitoringApi from '../../api/monitoringService.js';
+import { buscarCliente, atualizarCliente } from '../../api/clientesService.js';
 import { getCadastroPessoasMock } from '../../data/cadastroPessoasMock.js';
-import { listarMonitoramentoLocalMock } from '../../data/cadastroPessoasMockMonitoramento.js';
+import {
+  listarMonitoramentoLocalMock,
+  setMockMarcadoMonitoramento,
+} from '../../data/cadastroPessoasMockMonitoramento.js';
 
 const FORCA_MOCK_CADASTRO = import.meta.env.VITE_USE_MOCK_CADASTRO_PESSOAS === 'true';
 
@@ -48,6 +52,7 @@ export function MonitoringPeoplePage() {
   const [tab, setTab] = useState('lista');
   const [novaChave, setNovaChave] = useState({ keyType: 'numero_processo', keyValue: '', notes: '' });
   const [runBusy, setRunBusy] = useState(null);
+  const [removendoPersonId, setRemovendoPersonId] = useState(null);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -78,13 +83,14 @@ export function MonitoringPeoplePage() {
       setCandidates(candidatesNext);
       setSettings(s);
       if (errP || errC) {
-        const partes = [];
-        if (errP) partes.push(`Monitorados: ${errP}`);
-        if (errC) partes.push(`Candidatos: ${errC}`);
-        if (rowsNext.length > 0 || candidatesNext.length > 0) {
-          partes.push('exibindo fallback local do cadastro (mock)');
+        if (rowsNext.length === 0 && candidatesNext.length === 0) {
+          const partes = [];
+          if (errP) partes.push(`Monitorados: ${errP}`);
+          if (errC) partes.push(`Candidatos: ${errC}`);
+          setErr(partes.join(' · '));
+        } else {
+          setErr('');
         }
-        setErr(partes.join(' · '));
       }
     } catch (e) {
       setErr(e?.message || 'Falha ao carregar monitoramento. Verifique se o backend está no ar e a migration V4 foi aplicada.');
@@ -120,6 +126,49 @@ export function MonitoringPeoplePage() {
       await loadAll();
     } catch (e) {
       setErr(e?.message || 'Erro ao registrar');
+    }
+  };
+
+  const removerMonitoramento = async (r) => {
+    const personId = r.personId != null ? Number(r.personId) : null;
+    if (!personId || personId < 1) return;
+    if (!window.confirm(`Remover o monitoramento de "${r.nome || 'esta pessoa'}"?`)) return;
+    setRemovendoPersonId(personId);
+    setErr('');
+    try {
+      const isMockLocal = r.lastStatus === 'MOCK_LOCAL' || r.id == null;
+      if (isMockLocal) {
+        setMockMarcadoMonitoramento(personId, false);
+        await loadAll();
+        return;
+      }
+      const c = await buscarCliente(personId);
+      if (!c) {
+        setErr('Cadastro da pessoa não encontrado.');
+        return;
+      }
+      const dns =
+        c.dataNascimento == null || c.dataNascimento === ''
+          ? null
+          : typeof c.dataNascimento === 'string' && c.dataNascimento.includes('T')
+            ? c.dataNascimento.split('T')[0]
+            : c.dataNascimento;
+      await atualizarCliente(personId, {
+        nome: String(c.nome ?? '').trim(),
+        email: String(c.email ?? '').trim(),
+        cpf: String(c.cpf ?? '').replace(/\D/g, ''),
+        telefone: c.telefone?.trim() || null,
+        dataNascimento: dns,
+        ativo: c.ativo !== false,
+        marcadoMonitoramento: false,
+        responsavelId:
+          c.responsavelId != null && c.responsavelId !== '' ? Number(c.responsavelId) : null,
+      });
+      await loadAll();
+    } catch (e) {
+      setErr(e?.message || 'Erro ao remover monitoramento.');
+    } finally {
+      setRemovendoPersonId(null);
     }
   };
 
@@ -304,7 +353,7 @@ export function MonitoringPeoplePage() {
               <table className="w-full text-xs min-w-[1000px]">
                 <thead className="bg-slate-50 dark:bg-black/30">
                   <tr className="text-left">
-                    <th className="p-2">Nome</th>
+                    <th className="p-2 min-w-[220px]">Nome</th>
                     <th className="p-2">Documento</th>
                     <th className="p-2">Ativo</th>
                     <th className="p-2">Frequência</th>
@@ -325,7 +374,19 @@ export function MonitoringPeoplePage() {
                   ) : (
                     rows.map((r) => (
                       <tr key={r.id || r.personId} className="border-t border-slate-100 dark:border-white/[0.06]">
-                        <td className="p-2 font-medium">{r.nome}</td>
+                        <td className="p-2">
+                          <div className="flex items-start justify-between gap-2">
+                            <span className="font-medium leading-snug">{r.nome}</span>
+                            <button
+                              type="button"
+                              onClick={() => removerMonitoramento(r)}
+                              disabled={removendoPersonId != null}
+                              className="shrink-0 text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 text-[10px] font-semibold whitespace-nowrap disabled:opacity-50"
+                            >
+                              {removendoPersonId === r.personId ? 'Removendo…' : 'Remover'}
+                            </button>
+                          </div>
+                        </td>
                         <td className="p-2 font-mono text-[11px]">{r.documentoPrincipal}</td>
                         <td className="p-2">{r.enabled ? 'Sim' : 'Não'}</td>
                         <td className="p-2">
