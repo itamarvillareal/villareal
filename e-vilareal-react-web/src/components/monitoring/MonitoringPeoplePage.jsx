@@ -57,6 +57,14 @@ export function MonitoringPeoplePage() {
   const loadAll = useCallback(async () => {
     setLoading(true);
     setErr('');
+    if (FORCA_MOCK_CADASTRO) {
+      const local = listarMonitoramentoLocalMock(getCadastroPessoasMock(false));
+      setRows(local);
+      setCandidates(local);
+      setSettings(null);
+      setLoading(false);
+      return;
+    }
     try {
       const [p, c, s] = await Promise.all([
         monitoringApi.listarMonitorados().catch((e) => {
@@ -106,7 +114,10 @@ export function MonitoringPeoplePage() {
   }, [loadAll]);
 
   const openDetail = async (id) => {
-    if (!id) return;
+    if (!id) {
+      setErr('');
+      return;
+    }
     setErr('');
     try {
       const d = await monitoringApi.detalheMonitorado(id);
@@ -122,6 +133,11 @@ export function MonitoringPeoplePage() {
   const registrarCandidato = async (personId) => {
     setErr('');
     try {
+      if (FORCA_MOCK_CADASTRO) {
+        setMockMarcadoMonitoramento(personId, true);
+        await loadAll();
+        return;
+      }
       await monitoringApi.registrarMonitoramento({ personId, enabled: true });
       await loadAll();
     } catch (e) {
