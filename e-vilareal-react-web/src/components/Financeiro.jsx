@@ -11,7 +11,6 @@ import {
   somasPorParCompensacao,
   detectarParesCompensacao,
   loadPersistedExtratosFinanceiro,
-  savePersistedExtratosFinanceiro,
   loadPersistedExtratosInativosFinanceiro,
   savePersistedExtratosInativosFinanceiro,
   loadPersistedContasExtrasFinanceiro,
@@ -49,8 +48,21 @@ import {
 } from '../data/buscaParcelamentoFinanceiro';
 import { parseOfxToExtrato, mergeExtratoBancario, contarLancamentosNovos } from '../utils/ofx';
 import { OFX_ITAU_REAL_EXEMPLO, OFX_CORA_REAL_EXEMPLO } from '../data/ofxItauCoraReal';
-import { CheckSquare, ChevronLeft, ChevronRight, Link2, Settings, Unlink } from 'lucide-react';
+import { CheckSquare, ChevronLeft, ChevronRight, Link2, Settings, Trash2, Unlink } from 'lucide-react';
 import { ModalVinculoClienteProcFinanceiro } from './ModalVinculoClienteProcFinanceiro.jsx';
+import { buscarClientePorCodigo, buscarProcessoPorChaveNatural } from '../repositories/processosRepository.js';
+import { featureFlags } from '../config/featureFlags.js';
+import {
+  carregarExtratosFinanceiroApiFirst,
+  removerLancamentoFinanceiroApi,
+  persistirFallbackExtratos,
+  salvarOuAtualizarLancamentoFinanceiroApi,
+} from '../repositories/financeiroRepository.js';
+import {
+  executarMigracaoAssistidaPhase5Financeiro,
+  getStatusMigracaoAssistidaPhase5Financeiro,
+  previsualizarMigracaoAssistidaPhase5Financeiro,
+} from '../services/financeiroMigrationPhase5.js';
 
 /** Ref. exibida: só N ou R (vazio/legado → N). */
 function textoRefLancamento(t) {
@@ -483,11 +495,46 @@ export function Financeiro() {
   /** Modal: buscar cliente/proc por nome, réu etc. e gravar no lançamento sem sair do Financeiro. */
   const [modalVinculoLancamento, setModalVinculoLancamento] = useState(null);
   const [modalConfigFinanceiro, setModalConfigFinanceiro] = useState(false);
+  const [apiFinanceiroLoading, setApiFinanceiroLoading] = useState(false);
+  const [apiFinanceiroErro, setApiFinanceiroErro] = useState('');
+  const [importLegadoPreview, setImportLegadoPreview] = useState(null);
+  const [importLegadoLoadingPreview, setImportLegadoLoadingPreview] = useState(false);
+  const [importLegadoExecutando, setImportLegadoExecutando] = useState(false);
+  const [importLegadoResumo, setImportLegadoResumo] = useState(null);
+  const [importLegadoStatus, setImportLegadoStatus] = useState(() => getStatusMigracaoAssistidaPhase5Financeiro());
   const [disposicaoRelatorios, setDisposicaoRelatorios] = useState(
     () => loadExibicaoFinanceiro().disposicao
   );
   const [paineisRelatorios, setPaineisRelatorios] = useState(() => loadExibicaoFinanceiro().paineis);
   const [ordemRelatorios, setOrdemRelatorios] = useState(() => loadExibicaoFinanceiro().ordem);
+
+  const recarregarExtratosFinanceiroApi = useCallback(async () => {
+    if (!featureFlags.useApiFinanceiro) return;
+    setApiFinanceiroLoading(true);
+    setApiFinanceiroErro('');
+    try {
+      const dados = await carregarExtratosFinanceiroApiFirst();
+      if (!dados || typeof dados !== 'object') return;
+      const base = getExtratosIniciais();
+      setExtratosPorBanco({ ...base, ...dados });
+    } catch (e) {
+      setApiFinanceiroErro(e?.message || 'Falha ao carregar financeiro da API.');
+    } finally {
+      setApiFinanceiroLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    let ativo = true;
+    if (!featureFlags.useApiFinanceiro) return;
+    void (async () => {
+      if (!ativo) return;
+      await recarregarExtratosFinanceiroApi();
+    })();
+    return () => {
+      ativo = false;
+    };
+  }, [recarregarExtratosFinanceiroApi]);
 
   useEffect(() => {
     try {
@@ -763,6 +810,9 @@ export function Financeiro() {
       };
       return next;
     });
+    if (featureFlags.useApiFinanceiro) {
+      void sincronizarLancamentoApi(nomeBanco, numero, data);
+    }
   }
 
   function updateCampoLancamento(nomeBanco, numero, data, field, value) {
@@ -789,6 +839,138 @@ export function Financeiro() {
       }
       return next;
     });
+    if (featureFlags.useApiFinanceiro) {
+      void sincronizarLancamentoApi(nomeBanco, numero, data);
+    }
+  }
+
+  async function sincronizarLancamentoApi(nomeBanco, numero, data) {
+    try {
+      const list = extratosPorBancoRef.current?.[nomeBanco];
+      if (!Array.isArray(list)) return;
+      const idx = list.findIndex((t) => t.numero === numero && t.data === data);
+      if (idx < 0) return;
+      const atual = list[idx];
+      const saved = await salvarOuAtualizarLancamentoFinanceiroApi({
+        ...atual,
+        nomeBanco,
+      });
+      if (!saved?.id) return;
+      setExtratosPorBanco((prev) => {
+        const next = cloneExtratos(prev);
+        const arr = next[nomeBanco];
+        if (!Array.isArray(arr)) return prev;
+        const i = arr.findIndex((t) => t.numero === numero && t.data === data);
+        if (i < 0) return prev;
+        arr[i] = {
+          ...arr[i],
+          apiId: saved.id,
+          _financeiroMeta: {
+            ...(arr[i]?._financeiroMeta || {}),
+            clienteId: saved.clienteId ?? arr[i]?._financeiroMeta?.clienteId ?? null,
+            processoId: saved.processoId ?? arr[i]?._financeiroMeta?.processoId ?? null,
+            contaContabilId: saved.contaContabilId ?? arr[i]?._financeiroMeta?.contaContabilId ?? null,
+            classificacaoFinanceiraId: saved.classificacaoFinanceiraId ?? arr[i]?._financeiroMeta?.classificacaoFinanceiraId ?? null,
+            eloFinanceiroId: saved.eloFinanceiroId ?? arr[i]?._financeiroMeta?.eloFinanceiroId ?? null,
+          },
+        };
+        return next;
+      });
+    } catch (e) {
+      setApiFinanceiroErro(e?.message || 'Falha ao sincronizar lançamento com API.');
+    }
+  }
+
+  async function excluirLancamentoUi(t) {
+    const msg = `Excluir lançamento ${t.numero} de ${t.data}?`;
+    if (!window.confirm(msg)) return;
+    const removerLocal = () => {
+      setExtratosPorBanco((prev) => {
+        const next = cloneExtratos(prev);
+        const list = next[t.nomeBanco];
+        if (!Array.isArray(list)) return prev;
+        next[t.nomeBanco] = list.filter((x) => !(x.numero === t.numero && x.data === t.data));
+        return next;
+      });
+    };
+    if (!featureFlags.useApiFinanceiro) {
+      removerLocal();
+      setOfxStatus({ kind: 'success', message: 'Lançamento removido no fallback local.' });
+      return;
+    }
+    try {
+      if (!Number(t.apiId)) {
+        setOfxStatus({ kind: 'error', message: 'Lançamento sem id de API. Edite/sincronize antes de excluir.' });
+        return;
+      }
+      await removerLancamentoFinanceiroApi(t.apiId);
+      removerLocal();
+      setOfxStatus({ kind: 'success', message: 'Lançamento excluído na API com sucesso.' });
+    } catch (e) {
+      setOfxStatus({ kind: 'error', message: e?.message || 'Falha ao excluir lançamento na API.' });
+    }
+  }
+
+  async function abrirPreviaImportacaoLegadoFinanceiro() {
+    setImportLegadoLoadingPreview(true);
+    setImportLegadoResumo(null);
+    try {
+      const previa = await previsualizarMigracaoAssistidaPhase5Financeiro();
+      setImportLegadoPreview(previa);
+      setImportLegadoStatus(getStatusMigracaoAssistidaPhase5Financeiro());
+    } catch (e) {
+      setOfxStatus({ kind: 'error', message: e?.message || 'Falha ao gerar prévia da migração assistida.' });
+    } finally {
+      setImportLegadoLoadingPreview(false);
+    }
+  }
+
+  async function executarImportacaoLegadoFinanceiroViaUi() {
+    if (importLegadoExecutando) return;
+    const statusAtual = getStatusMigracaoAssistidaPhase5Financeiro();
+    setImportLegadoStatus(statusAtual);
+    if (!statusAtual.habilitadaPorFlag || !statusAtual.apiFinanceiroAtiva) {
+      setOfxStatus({
+        kind: 'error',
+        message:
+          'Ative VITE_ENABLE_LOCALSTORAGE_IMPORT_PHASE5_FINANCEIRO=true e VITE_USE_API_FINANCEIRO=true para importar.',
+      });
+      return;
+    }
+    if (statusAtual.jaExecutada) {
+      setOfxStatus({
+        kind: 'info',
+        message: 'Importação já executada anteriormente (marker ativo). Reimportação manual não liberada nesta etapa.',
+      });
+      return;
+    }
+    const confirmou = window.confirm(
+      'Esta ação tentará gravar lançamentos legados na API financeira com deduplicação. Alguns registros podem ser ignorados e alguns podem ficar sem vínculo resolvido. Deseja continuar?'
+    );
+    if (!confirmou) return;
+    setImportLegadoExecutando(true);
+    setOfxStatus({ kind: 'info', message: 'Importação assistida do legado financeiro em andamento...' });
+    try {
+      const resultado = await executarMigracaoAssistidaPhase5Financeiro();
+      if (!resultado) {
+        setOfxStatus({
+          kind: 'info',
+          message: 'Importação não executada (flag, marker ou dados indisponíveis).',
+        });
+        return;
+      }
+      setImportLegadoResumo(resultado);
+      setImportLegadoStatus(getStatusMigracaoAssistidaPhase5Financeiro());
+      await recarregarExtratosFinanceiroApi();
+      setOfxStatus({
+        kind: 'success',
+        message: `Importação concluída: ${resultado.importados} importados, ${resultado.ignorados} ignorados, ${resultado.semVinculo} sem vínculo.`,
+      });
+    } catch (e) {
+      setOfxStatus({ kind: 'error', message: e?.message || 'Falha na importação assistida do legado financeiro.' });
+    } finally {
+      setImportLegadoExecutando(false);
+    }
   }
 
   function abrirModalBuscaParcelas() {
@@ -994,7 +1176,7 @@ export function Financeiro() {
     }));
   }
 
-  function aplicarVinculoClienteProcNosCampos({ codCliente, proc }) {
+  async function aplicarVinculoClienteProcNosCampos({ codCliente, proc }) {
     if (!modalVinculoLancamento) return;
     const { nomeBanco, numero, data } = modalVinculoLancamento;
     const cod = normalizarCodigoClienteFinanceiro(codCliente);
@@ -1007,6 +1189,31 @@ export function Financeiro() {
       kind: 'success',
       message: `Vínculo gravado: cliente ${cod}, proc. ${p || '—'} neste lançamento.`,
     });
+    if (featureFlags.useApiFinanceiro) {
+      try {
+        const cliente = await buscarClientePorCodigo(cod);
+        const processo = p ? await buscarProcessoPorChaveNatural(cod, p) : null;
+        setExtratosPorBanco((prev) => {
+          const next = cloneExtratos(prev);
+          const arr = next[nomeBanco];
+          if (!Array.isArray(arr)) return prev;
+          const i = arr.findIndex((t) => t.numero === numero && t.data === data);
+          if (i < 0) return prev;
+          arr[i] = {
+            ...arr[i],
+            _financeiroMeta: {
+              ...(arr[i]?._financeiroMeta || {}),
+              clienteId: cliente?.id ?? null,
+              processoId: processo?.id ?? null,
+            },
+          };
+          return next;
+        });
+        await sincronizarLancamentoApi(nomeBanco, numero, data);
+      } catch (e) {
+        setApiFinanceiroErro(e?.message || 'Falha ao resolver cliente/processo para vínculo financeiro.');
+      }
+    }
   }
 
   /** Duplo clique na coluna Cod. Cliente: abre o cadastro de clientes com esse código e processo. */
@@ -1229,7 +1436,7 @@ export function Financeiro() {
   useEffect(() => {
     if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
     saveTimerRef.current = window.setTimeout(() => {
-      savePersistedExtratosFinanceiro(extratosPorBanco);
+      persistirFallbackExtratos(extratosPorBanco);
     }, 250);
     return () => {
       if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
@@ -1653,6 +1860,21 @@ export function Financeiro() {
             >
               Buscar parcelas (Cálculos)
             </button>
+            {featureFlags.useApiFinanceiro ? (
+              <button
+                type="button"
+                onClick={() => void abrirPreviaImportacaoLegadoFinanceiro()}
+                disabled={importLegadoLoadingPreview || importLegadoExecutando}
+                className={`px-3 py-2 rounded-lg border text-sm font-medium ${
+                  importLegadoLoadingPreview || importLegadoExecutando
+                    ? 'border-slate-300 bg-slate-100 text-slate-500 cursor-not-allowed'
+                    : 'border-emerald-300 bg-emerald-50 text-emerald-900 hover:bg-emerald-100'
+                }`}
+                title="Prévia e importação assistida do legado localStorage para API"
+              >
+                {importLegadoLoadingPreview ? 'Carregando prévia...' : 'Importar legado financeiro'}
+              </button>
+            ) : null}
             {ofxStatus.kind !== 'idle' && (
               <span
                 className={`text-xs ${
@@ -1668,8 +1890,67 @@ export function Financeiro() {
                 {ofxStatus.message}
               </span>
             )}
+            {featureFlags.useApiFinanceiro && apiFinanceiroLoading ? (
+              <span className="text-xs text-indigo-700">Carregando dados financeiros da API...</span>
+            ) : null}
+            {featureFlags.useApiFinanceiro && apiFinanceiroErro ? (
+              <span className="text-xs text-red-700">{apiFinanceiroErro}</span>
+            ) : null}
           </div>
         </div>
+        {featureFlags.useApiFinanceiro && importLegadoPreview ? (
+          <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50/70 px-3 py-2 text-xs text-slate-800 space-y-2">
+            <p className="font-semibold text-emerald-900">Prévia: migração assistida do legado financeiro</p>
+            <div className="flex flex-wrap gap-x-4 gap-y-1">
+              <span>Total legado encontrado: <strong>{importLegadoPreview.totalLegado ?? 0}</strong></span>
+              <span>Potencialmente importável (estimado): <strong>{importLegadoPreview.importavelEstimado ?? 0}</strong></span>
+              <span>Potenciais duplicados (estimado): <strong>{importLegadoPreview.duplicadoEstimado ?? 0}</strong></span>
+              <span>Sem vínculo resolvido (estimado): <strong>{importLegadoPreview.semVinculoEstimado ?? 0}</strong></span>
+            </div>
+            <p>
+              Fontes localStorage consideradas: {(importLegadoPreview.storageKeysLidas || []).join(', ') || 'n/d'}.
+            </p>
+            <p>
+              Marker: <strong>{importLegadoPreview.markerKey}</strong> — status:{' '}
+              <strong>{importLegadoStatus.jaExecutada ? 'já executada' : 'ainda não executada'}</strong>.
+            </p>
+            {importLegadoPreview.observacao ? (
+              <p className="text-slate-700">{importLegadoPreview.observacao}</p>
+            ) : null}
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void executarImportacaoLegadoFinanceiroViaUi()}
+                disabled={
+                  importLegadoExecutando ||
+                  importLegadoStatus.jaExecutada ||
+                  !importLegadoStatus.habilitadaPorFlag ||
+                  !importLegadoStatus.apiFinanceiroAtiva
+                }
+                className={`px-3 py-1.5 rounded-md text-xs font-semibold ${
+                  importLegadoExecutando ||
+                  importLegadoStatus.jaExecutada ||
+                  !importLegadoStatus.habilitadaPorFlag ||
+                  !importLegadoStatus.apiFinanceiroAtiva
+                    ? 'bg-slate-200 text-slate-500 cursor-not-allowed'
+                    : 'bg-emerald-700 text-white hover:bg-emerald-800'
+                }`}
+              >
+                {importLegadoExecutando ? 'Importando...' : 'Confirmar e importar legado'}
+              </button>
+              {importLegadoStatus.jaExecutada ? (
+                <span className="text-amber-800">Reimportação manual ainda não liberada nesta etapa.</span>
+              ) : null}
+            </div>
+            {importLegadoResumo ? (
+              <p className="text-emerald-900">
+                Resumo final: importados <strong>{importLegadoResumo.importados}</strong>, ignorados{' '}
+                <strong>{importLegadoResumo.ignorados}</strong>, sem vínculo <strong>{importLegadoResumo.semVinculo}</strong>, total
+                lido <strong>{importLegadoResumo.totalLidos}</strong>.
+              </p>
+            ) : null}
+          </div>
+        ) : null}
       </header>
       {filtroConciliacaoHonorarios && (
         <div className="px-4 py-2 bg-indigo-50 border-b border-indigo-200 text-sm text-indigo-950 flex flex-wrap items-center justify-between gap-2 shrink-0">
@@ -2662,23 +2943,37 @@ export function Financeiro() {
                             className={`py-1.5 px-1 text-center border-l ${borderLateralVinc}`}
                             onClick={(e) => e.stopPropagation()}
                           >
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setModalVinculoLancamento({
-                                  nomeBanco: t.nomeBanco,
-                                  numero: t.numero,
-                                  data: t.data,
-                                  resumo: `${t.nomeBanco} · ${t.data} · ${formatValor(t.valor)} — ${String(t.descricao ?? '').slice(0, 72)}`,
-                                });
-                              }}
-                              className="p-1.5 rounded border border-indigo-200 bg-indigo-50 text-indigo-800 hover:bg-indigo-100"
-                              title="Buscar cliente, autor ou réu e vincular cod. + proc. (sem abrir o cadastro)"
-                              aria-label="Vincular cliente e processo"
-                            >
-                              <Link2 className="w-4 h-4" />
-                            </button>
+                            <div className="flex items-center justify-center gap-1">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setModalVinculoLancamento({
+                                    nomeBanco: t.nomeBanco,
+                                    numero: t.numero,
+                                    data: t.data,
+                                    resumo: `${t.nomeBanco} · ${t.data} · ${formatValor(t.valor)} — ${String(t.descricao ?? '').slice(0, 72)}`,
+                                  });
+                                }}
+                                className="p-1.5 rounded border border-indigo-200 bg-indigo-50 text-indigo-800 hover:bg-indigo-100"
+                                title="Buscar cliente, autor ou réu e vincular cod. + proc. (sem abrir o cadastro)"
+                                aria-label="Vincular cliente e processo"
+                              >
+                                <Link2 className="w-4 h-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void excluirLancamentoUi(t);
+                                }}
+                                className="p-1.5 rounded border border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
+                                title={featureFlags.useApiFinanceiro ? 'Excluir lançamento na API' : 'Excluir lançamento local'}
+                                aria-label="Excluir lançamento"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
                           </td>
                         ) : null}
                       </tr>

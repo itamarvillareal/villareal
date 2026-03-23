@@ -3,6 +3,7 @@ package br.com.vilareal.api.repository;
 import br.com.vilareal.api.entity.CadastroPessoa;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -26,6 +27,11 @@ public interface CadastroPessoasRepository extends JpaRepository<CadastroPessoa,
     Optional<CadastroPessoa> findByCpf(String cpf);
 
     List<CadastroPessoa> findByMarcadoMonitoramentoTrue();
+
+    /** Próximo id que será usado em um novo registro (MAX(id) + 1, ou 1 se vazio). */
+    @Query("SELECT COALESCE(MAX(c.id), 0) + 1 FROM CadastroPessoa c")
+    long calcularProximoId();
+
     boolean existsByEmail(String email);
     boolean existsByCpf(String cpf);
     boolean existsByEmailAndIdNot(String email, Long id);

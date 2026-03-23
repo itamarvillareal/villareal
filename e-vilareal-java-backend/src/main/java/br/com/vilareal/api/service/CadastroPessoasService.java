@@ -15,4 +15,7 @@ public interface CadastroPessoasService {
     List<CadastroPessoasResponse> listarAtivos();
     void excluir(Long id);
     boolean existePorId(Long id);
+
+    /** Próximo id numérico (pré-visualização para tela de inclusão). */
+    long proximoIdDisponivel();
 }

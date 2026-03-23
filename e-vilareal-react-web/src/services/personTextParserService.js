@@ -28,11 +28,15 @@ const ROTULOS_RG = [
   /portador\s+da\s+c[ée]dula\s+de\s+identidade\s+n\.?\s*/i,
 ];
 
+/**
+ * Remove quebras de linha / parágrafos do texto colado para a extração (nomes e CPF
+ * partidos em linhas voltam a ficar contíguos).
+ */
 function normalizarTextoLivre(bruto) {
   const original = String(bruto || '');
-  let t = original.replace(/\r\n/g, '\n').replace(/\u00A0/g, ' ');
+  let t = original.replace(/\u00A0/g, ' ');
+  t = t.replace(/\r\n|\r|\n|\u2028|\u2029/g, ' ');
   t = t.replace(/[ \t]+/g, ' ');
-  t = t.replace(/\n{3,}/g, '\n\n');
   return { original, normalizado: t.trim() };
 }
 
@@ -294,6 +298,7 @@ export function parsePersonFreeText(textoBruto, opts = {}) {
         endereco: [],
       },
       avisos: ['Texto vazio. Cole ou digite os dados e clique em Extrair.'],
+      textoNormalizado: '',
       debug: opts.debug ? { original, normalizado: '' } : undefined,
     };
   }
@@ -369,6 +374,7 @@ export function parsePersonFreeText(textoBruto, opts = {}) {
     estadoCivil: qualif.estadoCivil,
     profissao: qualif.profissao,
     endereco: end.endereco,
+    textoNormalizado: normalizado,
     candidatos: {
       nomeCompleto: nomes,
       cpf: cpfs,

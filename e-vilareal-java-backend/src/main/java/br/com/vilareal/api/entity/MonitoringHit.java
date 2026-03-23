@@ -138,4 +138,6 @@ public class MonitoringHit {
     public void setLinkedProcessId(Long linkedProcessId) { this.linkedProcessId = linkedProcessId; }
     public Long getLinkedClientId() { return linkedClientId; }
     public void setLinkedClientId(Long linkedClientId) { this.linkedClientId = linkedClientId; }
+    public Instant getCreatedAt() { return createdAt; }
+    public Instant getUpdatedAt() { return updatedAt; }
 }

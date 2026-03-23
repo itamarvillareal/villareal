@@ -38,6 +38,20 @@ export async function listarClientes(apenasAtivos = false) {
 }
 
 /**
+ * Próximo id que será usado em um novo cadastro (pré-visualização na tela).
+ * @returns {Promise<number>}
+ */
+export async function obterProximoIdCadastroPessoas() {
+  const res = await fetch(`${BASE}/proximo-id`, getOptions('GET'));
+  const data = await handleResponse(res);
+  const n = data?.proximoId ?? data?.proximo_id;
+  if (n == null || !Number.isFinite(Number(n))) {
+    throw new Error('Resposta inválida do servidor (próximo id).');
+  }
+  return Number(n);
+}
+
+/**
  * Busca cliente por ID.
  * @param {number} id
  * @returns {Promise<Object|null>}

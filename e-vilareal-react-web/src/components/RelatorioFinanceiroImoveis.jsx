@@ -1,11 +1,16 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Landmark, Building2, Info } from 'lucide-react';
 import {
   buildRelatorioFinanceiroImoveisMes,
+  classificarLancamentoAdministracaoImovel,
+  mesReferenciaDataBr,
   TAG_ADM_ALUGUEL,
   TAG_ADM_REPASSE,
 } from '../data/imoveisAdministracaoFinanceiro.js';
+import { getImovelMock } from '../data/imoveisMockData.js';
+import { featureFlags } from '../config/featureFlags.js';
+import { listarLancamentosProcessoApiFirst } from '../repositories/financeiroRepository.js';
 
 function pad2(n) {
   return String(n).padStart(2, '0');
@@ -53,12 +58,68 @@ export function RelatorioFinanceiroImoveis() {
   const [ano, setAno] = useState(hoje.getFullYear());
   const [mes, setMes] = useState(hoje.getMonth() + 1);
   const [soOcupados, setSoOcupados] = useState(true);
+  const [apiOverrides, setApiOverrides] = useState({});
+  const [apiLoading, setApiLoading] = useState(false);
+  const [apiErro, setApiErro] = useState('');
 
   const chaveMes = useMemo(() => chaveMesDeAnoMes(ano, mes), [ano, mes]);
+  const linhasBase = useMemo(() => buildRelatorioFinanceiroImoveisMes(chaveMes, { soOcupados }), [chaveMes, soOcupados]);
   const linhas = useMemo(
-    () => buildRelatorioFinanceiroImoveisMes(chaveMes, { soOcupados }),
-    [chaveMes, soOcupados]
+    () => linhasBase.map((l) => (apiOverrides[l.imovelId] ? { ...l, ...apiOverrides[l.imovelId] } : l)),
+    [linhasBase, apiOverrides]
   );
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!featureFlags.useApiFinanceiro) {
+      setApiOverrides({});
+      setApiErro('');
+      setApiLoading(false);
+      return;
+    }
+    void (async () => {
+      try {
+        setApiLoading(true);
+        setApiErro('');
+        const next = {};
+        for (const linha of linhasBase) {
+          const imovel = getImovelMock(linha.imovelId);
+          if (!imovel?.codigo || !imovel?.proc) continue;
+          const lancs = await listarLancamentosProcessoApiFirst({
+            codigoCliente: String(imovel.codigo).padStart(8, '0'),
+            numeroInterno: Number(imovel.proc),
+          });
+          const doMes = (lancs || []).filter((t) => mesReferenciaDataBr(t.data)?.chave === chaveMes);
+          const marcados = doMes.map((t) => ({
+            ...t,
+            classificacao: classificarLancamentoAdministracaoImovel(t, imovel.codigo, imovel.proc),
+          }));
+          const aluguel = marcados.find((t) => t.classificacao?.papel === 'aluguel' && Number(t.valor) > 0);
+          const repasse = marcados.find((t) => t.classificacao?.papel === 'repasse' && Number(t.valor) < 0);
+          next[linha.imovelId] = {
+            totalAluguel: marcados
+              .filter((t) => t.classificacao?.papel === 'aluguel' && Number(t.valor) > 0)
+              .reduce((s, t) => s + Number(t.valor || 0), 0),
+            totalRepasse: Math.abs(
+              marcados
+                .filter((t) => t.classificacao?.papel === 'repasse' && Number(t.valor) < 0)
+                .reduce((s, t) => s + Number(t.valor || 0), 0)
+            ),
+            dataPrimeiroAluguel: aluguel?.data ?? null,
+            dataPrimeiroRepasse: repasse?.data ?? null,
+          };
+        }
+        if (!cancelled) setApiOverrides(next);
+      } catch (e) {
+        if (!cancelled) setApiErro(e?.message || 'Falha ao carregar visão API-first do relatório.');
+      } finally {
+        if (!cancelled) setApiLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [chaveMes, linhasBase]);
 
   const anos = useMemo(() => {
     const y0 = new Date().getFullYear();
@@ -150,6 +211,12 @@ export function RelatorioFinanceiroImoveis() {
               <code className="text-[10px] bg-white dark:bg-black/30 px-1 rounded">{TAG_ADM_REPASSE}</code> na descrição/categoria, ou deixe o sistema inferir por texto quando o processo for de administração de imóvel.
             </p>
           </div>
+          {featureFlags.useApiFinanceiro ? (
+            <div className="text-xs text-slate-600 dark:text-slate-400">
+              {apiLoading ? 'Atualizando relatório com dados reais da API...' : 'Relatório em modo API-first parcial (totais e datas por processo).'}
+              {apiErro ? <span className="ml-2 text-red-600 dark:text-red-300">{apiErro}</span> : null}
+            </div>
+          ) : null}
         </div>
 
         <div className="rounded-2xl border border-slate-200/90 dark:border-white/[0.08] bg-white dark:bg-[#141c2c] shadow-sm overflow-hidden">

@@ -17,8 +17,13 @@ import {
   buscarCliente,
   criarCliente,
   atualizarCliente,
+  obterProximoIdCadastroPessoas,
 } from '../../api/clientesService';
-import { getCadastroPessoasMock } from '../../data/cadastroPessoasMock.js';
+import {
+  appendNovoCadastroMockLocal,
+  getCadastroPessoasMockComNovosLocais,
+  updateNovoCadastroMockLocal,
+} from '../../data/cadastroPessoasMockNovosLocal.js';
 import {
   mergeListaMarcadoMonitoramentoMock,
   mergeMarcadoMonitoramentoMock,
@@ -42,6 +47,10 @@ import { rotuloPessoaComDocumento, esbocoQualificacaoComResponsavel } from '../.
 import { SeletorResponsavelPessoa } from './SeletorResponsavelPessoa.jsx';
 import { getContextoAuditoriaUsuario, registrarAuditoria } from '../../services/auditoriaCliente.js';
 import { padCliente8Nav } from './cadastroPessoasNavUtils.js';
+import {
+  carregarPessoaComplementar,
+  salvarPessoaComplementar,
+} from '../../repositories/pessoasComplementaresRepository.js';
 
 let __ultimoAcessoListaPessoas = 0;
 
@@ -94,6 +103,29 @@ function buscarPessoaComMesmoDocumento(lista, digitos, excluirId) {
 /** Ao sair da tela Cadastro de Pessoas, reabrir com edição travada (checkbox marcado). */
 const SESSION_PESSOAS_EDICAO_AO_SAIR = 'vilareal:cadastro-pessoas:edicao-ao-sair:v1';
 
+/** Próximo código exibido na inclusão: mock = max(ids)+1; API = GET /proximo-id ou fallback no mock. */
+function proximoCodigoPorListaMock() {
+  const merged = getCadastroPessoasMockComNovosLocais(false);
+  let max = 0;
+  for (const p of merged) {
+    const id = Number(p.id);
+    if (Number.isFinite(id) && id > max) max = id;
+  }
+  return String(max + 1);
+}
+
+async function resolverProximoCodigoNovaPessoa() {
+  if (FORCA_MOCK_CADASTRO) {
+    return proximoCodigoPorListaMock();
+  }
+  try {
+    const id = await obterProximoIdCadastroPessoas();
+    return String(id);
+  } catch {
+    return proximoCodigoPorListaMock();
+  }
+}
+
 const emptyPessoa = {
   codigo: '',
   nome: '',
@@ -128,6 +160,7 @@ export function CadastroPessoas() {
   const [carregandoFicha, setCarregandoFicha] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [mensagemSucesso, setMensagemSucesso] = useState('');
   const [apenasAtivos, setApenasAtivos] = useState(false);
   const [indiceAtual, setIndiceAtual] = useState(0);
   const [modo, setModo] = useState('listar'); // listar | criar | editar
@@ -150,6 +183,7 @@ export function CadastroPessoas() {
   const [docStatus, setDocStatus] = useState({ kind: 'idle', message: '' });
   const [docProcessando, setDocProcessando] = useState(false);
   const [docErroDetalhe, setDocErroDetalhe] = useState('');
+  const [erroComplementar, setErroComplementar] = useState('');
   const inputDocRef = useRef(null);
   /** Evita reabrir o modal de contatos logo ao fechar, quando o foco volta ao campo Contato. */
   const ignorarProximoFocusContatoRef = useRef(false);
@@ -226,6 +260,7 @@ export function CadastroPessoas() {
           setExtracaoEndereco(null);
           return;
         }
+        setTextoColagemPessoa(r.textoNormalizado ?? '');
         if (!r.sucesso) {
           setExtracaoResumo(
             'Nenhum dado identificado neste texto. Ajuste o trecho ou preencha manualmente.'
@@ -356,8 +391,8 @@ export function CadastroPessoas() {
     }
     setError(null);
     if (FORCA_MOCK_CADASTRO) {
-      const mock = getCadastroPessoasMock(false);
-      const found = mock.some((p) => Number(p.id) === id);
+      const merged = getCadastroPessoasMockComNovosLocais(false);
+      const found = merged.some((p) => Number(p.id) === id);
       if (!found) {
         setError(`Nenhuma pessoa encontrada com o número ${id}.`);
         return;
@@ -385,7 +420,7 @@ export function CadastroPessoas() {
     (async () => {
       if (FORCA_MOCK_CADASTRO) {
         if (!cancelled) {
-          setLista(mergeListaMarcadoMonitoramentoMock(getCadastroPessoasMock(false)));
+          setLista(mergeListaMarcadoMonitoramentoMock(getCadastroPessoasMockComNovosLocais(false)));
           setListaEhMock(true);
         }
         return;
@@ -398,7 +433,7 @@ export function CadastroPessoas() {
         }
       } catch {
         if (!cancelled) {
-          setLista(mergeListaMarcadoMonitoramentoMock(getCadastroPessoasMock(false)));
+          setLista(mergeListaMarcadoMonitoramentoMock(getCadastroPessoasMockComNovosLocais(false)));
           setListaEhMock(true);
         }
       }
@@ -501,8 +536,20 @@ export function CadastroPessoas() {
     return typeof v === 'string' ? v.split('T')[0] : v;
   }
 
-  function aplicarFormNovaPessoa() {
-    setForm({ ...emptyPessoa, nacionalidade: NACIONALIDADE_PADRAO_BR, responsavelId: null, responsavel: null });
+  async function aplicarFormNovaPessoa() {
+    let codigoProximo = '';
+    try {
+      codigoProximo = await resolverProximoCodigoNovaPessoa();
+    } catch {
+      codigoProximo = proximoCodigoPorListaMock();
+    }
+    setForm({
+      ...emptyPessoa,
+      codigo: codigoProximo,
+      nacionalidade: NACIONALIDADE_PADRAO_BR,
+      responsavelId: null,
+      responsavel: null,
+    });
     setNacionalidadeSugestaoNaoValidada(true);
     setEditId(null);
     setEnderecos([]);
@@ -547,11 +594,16 @@ export function CadastroPessoas() {
       ...emptyPessoa,
       codigo: String(item.id ?? ''),
       nome: item.nome ?? '',
+      genero: item.genero ?? '',
       cpf: item.cpf ?? '',
+      rg: item.rg ?? '',
+      orgaoExpedidor: item.orgaoExpedidor ?? '',
+      profissao: item.profissao ?? '',
       email: item.email ?? '',
       contato: item.telefone ?? '',
       dataNascimento: formatDate(item.dataNascimento) ?? '',
       nacionalidade: nacSalva || NACIONALIDADE_PADRAO_BR,
+      estadoCivil: item.estadoCivil ?? '',
       ativo: item.ativo !== false,
       marcadoMonitoramento: item.marcadoMonitoramento === true,
       responsavelId:
@@ -618,7 +670,7 @@ export function CadastroPessoas() {
     const p = (location.pathname || '').replace(/\/+$/, '') || '/';
     if (p === '/clientes/nova') {
       if (modo === 'listar') {
-        aplicarFormNovaPessoa();
+        void aplicarFormNovaPessoa();
       }
     } else if (p === '/clientes/lista') {
       if (modo === 'criar' || modo === 'editar') {
@@ -648,8 +700,8 @@ export function CadastroPessoas() {
     }
 
     if (FORCA_MOCK_CADASTRO) {
-      const mock = getCadastroPessoasMock(false);
-      const found = mock.find((p) => Number(p.id) === id);
+      const merged = getCadastroPessoasMockComNovosLocais(false);
+      const found = merged.find((p) => Number(p.id) === id);
       if (!found) {
         setError(`Pessoa nº ${id} não encontrada.`);
         navigate('/clientes/lista', { replace: true });
@@ -697,6 +749,31 @@ export function CadastroPessoas() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- fluxo da rota de edição
   }, [lista, pathPessoasNorm, modo, editId, navigate]);
 
+  useEffect(() => {
+    if (modo !== 'editar' || !editId) return;
+    let cancelado = false;
+    (async () => {
+      try {
+        const comp = await carregarPessoaComplementar(editId);
+        if (!comp || cancelado) return;
+        setForm((f) => ({
+          ...f,
+          rg: comp.rg ?? f.rg,
+          orgaoExpedidor: comp.orgaoExpedidor ?? f.orgaoExpedidor,
+          profissao: comp.profissao ?? f.profissao,
+          nacionalidade: comp.nacionalidade ?? f.nacionalidade,
+          estadoCivil: comp.estadoCivil ?? f.estadoCivil,
+          genero: comp.genero ?? f.genero,
+        }));
+      } catch (e) {
+        if (!cancelado) setErroComplementar(e?.message || 'Erro ao carregar dados complementares.');
+      }
+    })();
+    return () => {
+      cancelado = true;
+    };
+  }, [modo, editId]);
+
   const inputClassComAutofill = (campo, opts = {}) => {
     const base = opts.flex
       ? 'flex-1 min-w-0 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-slate-100'
@@ -705,6 +782,11 @@ export function CadastroPessoas() {
       ? `${base} ring-2 ring-amber-400 border-amber-500/70 bg-amber-50/60`
       : base;
   };
+
+  /** Colagem/extração: basta entrar e sair do campo para considerar o valor revisado (não exige alterar o texto). */
+  const marcarAutofillRevisado = useCallback((campo) => {
+    setCamposPreenchidosPorTexto((c) => ({ ...c, [campo]: false }));
+  }, []);
 
   const handleClickUploadDocumento = () => {
     if (docProcessando) return;
@@ -728,19 +810,21 @@ export function CadastroPessoas() {
   }, [form.edicaoDesabilitada]);
 
   const salvar = async () => {
-    if (!form.nome?.trim() || !form.email?.trim() || !form.cpf?.trim()) {
-      setError('Preencha nome, e-mail e CPF.');
+    if (!form.nome?.trim() || !form.cpf?.trim()) {
+      setError('Preencha nome e CPF.');
       return;
     }
     const docDigitos = normalizarDigitosCpfCnpj(form.cpf);
     const excluirDupCheck = modo === 'editar' ? editId : null;
     let listaParaDup = lista;
-    if (listaParaDup.length === 0) {
+    if (FORCA_MOCK_CADASTRO) {
+      listaParaDup = mergeListaMarcadoMonitoramentoMock(getCadastroPessoasMockComNovosLocais(apenasAtivos));
+    } else if (listaParaDup.length === 0) {
       try {
         const fresh = await listarClientes(apenasAtivos);
         listaParaDup = Array.isArray(fresh) ? fresh : [];
       } catch {
-        listaParaDup = [];
+        listaParaDup = mergeListaMarcadoMonitoramentoMock(getCadastroPessoasMockComNovosLocais(apenasAtivos));
       }
     }
     const duplicataNaLista = buscarPessoaComMesmoDocumento(listaParaDup, docDigitos, excluirDupCheck);
@@ -750,8 +834,77 @@ export function CadastroPessoas() {
       return;
     }
 
-    if (listaEhMock) {
-      setError('Lista mock (PDF): gravação só com a API ativa. Defina VITE_USE_MOCK_CADASTRO_PESSOAS=false e backend.');
+    if (listaEhMock && FORCA_MOCK_CADASTRO) {
+      const previewDoc = docPreview;
+      const modoSalvar = modo;
+      const editIdSalvar = editId;
+      setSalvando(true);
+      setError(null);
+      setMensagemSucesso('');
+      try {
+        const payloadCadastro = {
+          nome: form.nome.trim(),
+          email: form.email?.trim() ? form.email.trim() : null,
+          cpf: form.cpf.trim().replace(/\D/g, ''),
+          telefone: form.contato?.trim() || null,
+          dataNascimento: form.dataNascimento || null,
+          ativo: form.ativo,
+          marcadoMonitoramento: form.marcadoMonitoramento === true,
+          responsavelId:
+            form.responsavelId != null && form.responsavelId !== ''
+              ? Number(form.responsavelId)
+              : null,
+          responsavel: form.responsavel ?? null,
+          rg: form.rg ?? '',
+          orgaoExpedidor: form.orgaoExpedidor ?? '',
+          profissao: form.profissao ?? '',
+          nacionalidade: form.nacionalidade ?? '',
+          estadoCivil: form.estadoCivil ?? '',
+          genero: form.genero ?? '',
+        };
+        let idParaDocumento = null;
+        if (modoSalvar === 'criar') {
+          const novoId = Number(form.codigo);
+          if (!Number.isFinite(novoId) || novoId < 1) {
+            setError('Código inválido.');
+            return;
+          }
+          appendNovoCadastroMockLocal({ id: novoId, ...payloadCadastro });
+          idParaDocumento = novoId;
+        } else {
+          const atualizado = updateNovoCadastroMockLocal(editIdSalvar, payloadCadastro);
+          if (!atualizado) {
+            setError(
+              'No modo demonstração só é possível alterar cadastros criados neste navegador (os dados fixos do PDF não são gravados).'
+            );
+            return;
+          }
+          idParaDocumento = Number(editIdSalvar);
+        }
+        setLista(mergeListaMarcadoMonitoramentoMock(getCadastroPessoasMockComNovosLocais(false)));
+        setListaEhMock(true);
+        if (previewDoc?.file && idParaDocumento && Number.isFinite(idParaDocumento)) {
+          try {
+            await salvarDocumentoPessoa(idParaDocumento, previewDoc.file, {
+              dadosExtraidos: previewDoc.dados,
+            });
+            setPessoasComDocumento(listarPessoasComDocumento());
+          } catch {
+            setDocStatus({
+              kind: 'error',
+              message:
+                'Cadastro salvo localmente, mas houve falha ao armazenar o documento no navegador.',
+            });
+          }
+        }
+        setDocPreview(null);
+        setMensagemSucesso(
+          'Cadastro salvo neste navegador (modo demonstração). Para gravar no servidor, use o backend e defina VITE_USE_MOCK_CADASTRO_PESSOAS=false.'
+        );
+        cancelarForm();
+      } finally {
+        setSalvando(false);
+      }
       return;
     }
 
@@ -760,10 +913,11 @@ export function CadastroPessoas() {
     const editIdSalvar = editId;
     setSalvando(true);
     setError(null);
+    setMensagemSucesso('');
     try {
       const payload = {
         nome: form.nome.trim(),
-        email: form.email.trim(),
+        email: form.email?.trim() ? form.email.trim() : null,
         cpf: form.cpf.trim().replace(/\D/g, ''),
         telefone: form.contato?.trim() || null,
         dataNascimento: form.dataNascimento || null,
@@ -784,6 +938,16 @@ export function CadastroPessoas() {
       } else {
         await atualizarCliente(editIdSalvar, payload);
         idParaDocumento = Number(editIdSalvar);
+      }
+      if (idParaDocumento && Number.isFinite(Number(idParaDocumento))) {
+        await salvarPessoaComplementar(idParaDocumento, {
+          rg: form.rg,
+          orgaoExpedidor: form.orgaoExpedidor,
+          profissao: form.profissao,
+          nacionalidade: form.nacionalidade,
+          estadoCivil: form.estadoCivil,
+          genero: form.genero,
+        });
       }
       if (previewDoc?.file && idParaDocumento && Number.isFinite(idParaDocumento)) {
         try {
@@ -908,10 +1072,17 @@ export function CadastroPessoas() {
               <p className="text-slate-600 mt-1">Gerencie dados pessoais, endereços e contatos</p>
               {listaEhMock && !loading && (
                 <p className="text-amber-700 text-sm mt-2 font-medium">
-                  Dados de demonstração (exportação do PDF Cadastro de pessoas). Para API real:{' '}
+                  Dados de demonstração (exportação do PDF Cadastro de pessoas). Novos cadastros podem ser salvos
+                  neste navegador. Para API real:{' '}
                   <code className="bg-amber-50 px-1 rounded">VITE_USE_MOCK_CADASTRO_PESSOAS=false</code>
                 </p>
               )}
+              {mensagemSucesso ? (
+                <p className="text-emerald-700 text-sm mt-2 font-medium">{mensagemSucesso}</p>
+              ) : null}
+              {erroComplementar ? (
+                <p className="text-red-700 text-sm mt-2">{erroComplementar}</p>
+              ) : null}
             </div>
             {isRotaListaTodasPessoas && modo === 'listar' && (
               <div className="px-4 py-2.5 rounded-xl bg-white border border-slate-200 shadow-sm text-sm text-slate-600 max-w-md">
@@ -1259,6 +1430,7 @@ export function CadastroPessoas() {
                           setCamposPreenchidosPorTexto((c) => ({ ...c, nome: false }));
                           setForm((f) => ({ ...f, nome: e.target.value }));
                         }}
+                        onBlur={() => marcarAutofillRevisado('nome')}
                         disabled={form.edicaoDesabilitada}
                         placeholder="Nome completo"
                         className={inputClassComAutofill('nome')}
@@ -1287,6 +1459,7 @@ export function CadastroPessoas() {
                             setCamposPreenchidosPorTexto((c) => ({ ...c, cpf: false }));
                             setForm((f) => ({ ...f, cpf: e.target.value }));
                           }}
+                          onBlur={() => marcarAutofillRevisado('cpf')}
                           disabled={form.edicaoDesabilitada}
                           placeholder="000.000.000-00"
                           className={`flex-1 ${inputClassComAutofill('cpf')}`}
@@ -1319,6 +1492,7 @@ export function CadastroPessoas() {
                           setCamposPreenchidosPorTexto((c) => ({ ...c, rg: false }));
                           setForm((f) => ({ ...f, rg: e.target.value }));
                         }}
+                        onBlur={() => marcarAutofillRevisado('rg')}
                         disabled={form.edicaoDesabilitada}
                         className={inputClassComAutofill('rg')}
                       />
@@ -1363,6 +1537,7 @@ export function CadastroPessoas() {
                             setCamposPreenchidosPorTexto((c) => ({ ...c, profissao: false }));
                             setForm((f) => ({ ...f, profissao: e.target.value }));
                           }}
+                          onBlur={() => marcarAutofillRevisado('profissao')}
                           disabled={form.edicaoDesabilitada}
                           placeholder="Profissão"
                           className={inputClassComAutofill('profissao', { flex: true })}
@@ -1404,6 +1579,7 @@ export function CadastroPessoas() {
                           const r = resolverAliasHojeEmTexto(v, 'iso');
                           setForm((f) => ({ ...f, dataNascimento: r ?? v }));
                         }}
+                        onBlur={() => marcarAutofillRevisado('dataNascimento')}
                         disabled={form.edicaoDesabilitada}
                         className={inputClassComAutofill('dataNascimento')}
                       />
@@ -1417,7 +1593,10 @@ export function CadastroPessoas() {
                           setCamposPreenchidosPorTexto((c) => ({ ...c, nacionalidade: false }));
                           setForm((f) => ({ ...f, nacionalidade: e.target.value }));
                         }}
-                        onBlur={() => setNacionalidadeSugestaoNaoValidada(false)}
+                        onBlur={() => {
+                          setNacionalidadeSugestaoNaoValidada(false);
+                          marcarAutofillRevisado('nacionalidade');
+                        }}
                         disabled={form.edicaoDesabilitada}
                         placeholder="Ex: Brasileira"
                         title={
@@ -1440,6 +1619,7 @@ export function CadastroPessoas() {
                           setCamposPreenchidosPorTexto((c) => ({ ...c, estadoCivil: false }));
                           setForm((f) => ({ ...f, estadoCivil: e.target.value }));
                         }}
+                        onBlur={() => marcarAutofillRevisado('estadoCivil')}
                         disabled={form.edicaoDesabilitada}
                         className={inputClassComAutofill('estadoCivil')}
                       >
@@ -1449,7 +1629,7 @@ export function CadastroPessoas() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">E-mail *</label>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">E-mail</label>
                       <div className="flex gap-2">
                         <input
                           type="email"

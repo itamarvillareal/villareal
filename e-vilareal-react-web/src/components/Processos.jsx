@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { getLancamentosContaCorrente, mergeContaCorrenteComLinhaOrigem } from '../data/financeiroData';
+import { carregarResumoContaCorrenteProcesso } from '../repositories/financeiroRepository.js';
 import {
   UFS,
   CIDADES_POR_UF,
@@ -43,8 +44,27 @@ import {
   ChevronDown,
   Search,
   Newspaper,
+  ListTodo,
 } from 'lucide-react';
 import { ModalRelatorioPublicacoesProcesso } from './ModalRelatorioPublicacoesProcesso.jsx';
+import { ModalCriarTarefaContextual } from './ModalCriarTarefaContextual.jsx';
+import { buildContextFromProcesso, buildContextFromProcessoComPrazoFatal } from '../data/tarefasContextualPayload.js';
+import { featureFlags } from '../config/featureFlags.js';
+import {
+  buscarClientePorCodigo,
+  buscarProcessoPorChaveNatural,
+  buscarProcessoPorId,
+  resolverProcessoId,
+  mapApiProcessoToUiShape,
+  salvarCabecalhoProcesso,
+  listarPartesProcesso,
+  sincronizarPartesIncremental,
+  listarAndamentosProcesso,
+  sincronizarAndamentosIncremental,
+  mapApiAndamentoToHistoricoItem,
+  upsertPrazoFatalProcesso,
+  alterarAtivoProcesso,
+} from '../repositories/processosRepository.js';
 
 const HISTORICO_POR_PAGINA = 10;
 const PERIODICIDADES_AGENDA_LOTE = [
@@ -143,6 +163,13 @@ function apenasDigitos(val) {
   return String(val ?? '').replace(/\D/g, '');
 }
 
+function parseValorMonetarioBr(valor) {
+  const cleaned = String(valor ?? '').trim().replace(/\./g, '').replace(',', '.').replace(/[^\d.-]/g, '');
+  if (!cleaned) return null;
+  const n = Number(cleaned);
+  return Number.isFinite(n) ? n : null;
+}
+
 function formatarListaComConjuncaoE(itens) {
   const lista = (itens || []).map((x) => String(x ?? '').trim()).filter(Boolean);
   if (lista.length === 0) return '';
@@ -200,7 +227,10 @@ export function Processos() {
   /** Abre Conta Corrente em modo Proc. 0 quando o Financeiro envia proc 0 (mensalista). Declarado cedo para o efeito abaixo. */
   const [contaCorrenteModo, setContaCorrenteModo] = useState('processo');
   const [modalContaCorrente, setModalContaCorrente] = useState(false);
+  const [resumoContaCorrenteApi, setResumoContaCorrenteApi] = useState(null);
+  const [resumoContaCorrenteApiErro, setResumoContaCorrenteApiErro] = useState('');
   const [modalRelatorioPublicacoes, setModalRelatorioPublicacoes] = useState(false);
+  const [modalTarefaContextual, setModalTarefaContextual] = useState(null);
 
   useEffect(() => {
     if (codClienteFromState) setCodigoCliente(codClienteFromState);
@@ -275,6 +305,34 @@ export function Processos() {
   const [agendaLoteInfo, setAgendaLoteInfo] = useState('');
   const [sortContaCorrente, setSortContaCorrente] = useState({ col: 'data', dir: 'desc' });
   const [buscaContaCorrente, setBuscaContaCorrente] = useState({ campo: 'todos', termo: '' });
+  const [processoApiId, setProcessoApiId] = useState(null);
+  /** `clienteId` retornado pelo GET do processo na API (preferência sobre resolução por código). */
+  const [clienteProcessoApiId, setClienteProcessoApiId] = useState(null);
+  const [apiLoading, setApiLoading] = useState(false);
+  const [apiSaving, setApiSaving] = useState(false);
+  const [apiError, setApiError] = useState('');
+
+  useEffect(() => {
+    if (!featureFlags.useApiFinanceiro || !Number(processoApiId)) {
+      setResumoContaCorrenteApi(null);
+      setResumoContaCorrenteApiErro('');
+      return;
+    }
+    let ativo = true;
+    void carregarResumoContaCorrenteProcesso(processoApiId)
+      .then((r) => {
+        if (!ativo) return;
+        setResumoContaCorrenteApi(r || null);
+        setResumoContaCorrenteApiErro('');
+      })
+      .catch((e) => {
+        if (!ativo) return;
+        setResumoContaCorrenteApiErro(e?.message || 'Falha ao carregar resumo financeiro do processo.');
+      });
+    return () => {
+      ativo = false;
+    };
+  }, [processoApiId]);
 
   useEffect(() => {
     setPessoasCadastro(getCadastroPessoasMock(true));
@@ -481,6 +539,12 @@ export function Processos() {
   }, [codigoCliente, processo, location.key, location.state]);
 
   useEffect(() => {
+    if (!featureFlags.useApiProcessos) return;
+    void carregarProcessoApiAtual();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [codigoCliente, processo]);
+
+  useEffect(() => {
     // Ao mudar cliente/processo, permite de novo o preenchimento automático do vínculo com imóvel
     // (valores vêm do registro persistido ou do mock no efeito de carga).
     setImovelManual(false);
@@ -665,6 +729,43 @@ export function Processos() {
     window.alert('Copie ou abra manualmente:\n\n' + s);
   }
 
+  function abrirModalTarefaDoProcesso() {
+    if (!featureFlags.useApiTarefas) return;
+    const ctx = buildContextFromProcesso({
+      processoApiId,
+      clienteIdNativo: clienteProcessoApiId,
+      codigoCliente,
+      processoNumero: processo,
+      clienteNome: cliente,
+      numeroProcessoNovo,
+    });
+    if (featureFlags.useApiProcessos && !processoApiId) {
+      ctx.aviso =
+        'O processo ainda não possui id na API — a tarefa pode ser criada sem vínculo até o cadastro ser sincronizado.';
+    }
+    setModalTarefaContextual(ctx);
+  }
+
+  function abrirModalTarefaComPrazoFatal() {
+    if (!featureFlags.useApiTarefas) return;
+    const ctx = buildContextFromProcessoComPrazoFatal(
+      {
+        processoApiId,
+        clienteIdNativo: clienteProcessoApiId,
+        codigoCliente,
+        processoNumero: processo,
+        clienteNome: cliente,
+        numeroProcessoNovo,
+      },
+      prazoFatal
+    );
+    if (featureFlags.useApiProcessos && !processoApiId) {
+      ctx.aviso =
+        'O processo ainda não possui id na API — a tarefa pode ser criada sem vínculo até o cadastro ser sincronizado.';
+    }
+    setModalTarefaContextual(ctx);
+  }
+
   function abrirModalTramitacao() {
     setTramitacaoDraft(tramitacao || '');
     setModalTramitacaoAberto(true);
@@ -673,7 +774,11 @@ export function Processos() {
   function confirmarTramitacao() {
     const valor = String(tramitacaoDraft ?? '').trim();
     setTramitacao(valor);
-    salvarHistoricoDoProcesso(montarPayloadRegistroProcesso({ tramitacao: valor }));
+    if (featureFlags.useApiProcessos) {
+      void sincronizarApiProcessoAtual({ tramitacao: valor });
+    } else {
+      salvarHistoricoDoProcesso(montarPayloadRegistroProcesso({ tramitacao: valor }));
+    }
     setModalTramitacaoAberto(false);
   }
 
@@ -793,10 +898,158 @@ export function Processos() {
     };
   }
 
+  async function carregarProcessoApiAtual() {
+    if (!featureFlags.useApiProcessos) return;
+    setApiLoading(true);
+    setApiError('');
+    try {
+      const resolvedId = await resolverProcessoId({
+        processoId: processoApiId,
+        codigoCliente,
+        numeroInterno: processo,
+      });
+      const procApi = resolvedId ? await buscarProcessoPorId(resolvedId) : await buscarProcessoPorChaveNatural(codigoCliente, processo);
+      if (!procApi) {
+        setProcessoApiId(null);
+        setClienteProcessoApiId(null);
+        return;
+      }
+      setProcessoApiId(procApi.id);
+      const mapped = mapApiProcessoToUiShape(procApi);
+      setClienteProcessoApiId(
+        mapped.clienteId != null && Number.isFinite(Number(mapped.clienteId)) && Number(mapped.clienteId) > 0
+          ? Number(mapped.clienteId)
+          : procApi.clienteId != null
+            ? Number(procApi.clienteId)
+            : null
+      );
+      setNumeroProcessoNovo(mapped.numeroProcessoNovo || numeroProcessoNovo);
+      setNumeroProcessoVelho(mapped.numeroProcessoVelho || numeroProcessoVelho);
+      setNaturezaAcao(mapped.naturezaAcao || naturezaAcao);
+      setCompetencia(mapped.competencia || competencia);
+      setFaseSelecionada(mapped.faseSelecionada || faseSelecionada);
+      setStatusAtivo(mapped.statusAtivo);
+      setPrazoFatal(mapped.prazoFatal || prazoFatal);
+      setObservacao(mapped.observacao || observacao);
+      setDataProtocolo(mapped.dataProtocolo || dataProtocolo);
+      setEstado(mapped.estado || estado);
+      setCidade(mapped.cidade || cidade);
+      setConsultaAutomatica(mapped.consultaAutomatica);
+      setTramitacao(mapped.tramitacao || tramitacao);
+      setResponsavel(mapped.responsavel || responsavel);
+
+      const partes = await listarPartesProcesso(procApi.id);
+      const idsCliente = [];
+      const idsOposta = [];
+      const nomesCliente = [];
+      const nomesOposta = [];
+      for (const p of partes || []) {
+        const polo = String(p.polo || '').toUpperCase();
+        const alvoCliente = polo.includes('AUTOR') || polo.includes('REQUERENTE') || polo.includes('CLIENTE');
+        const alvoOposta = !alvoCliente;
+        const nome = p.nomeExibicao || p.nomeLivre || '';
+        if (alvoCliente) {
+          if (p.pessoaId) idsCliente.push(Number(p.pessoaId));
+          if (nome) nomesCliente.push(nome);
+        }
+        if (alvoOposta) {
+          if (p.pessoaId) idsOposta.push(Number(p.pessoaId));
+          if (nome) nomesOposta.push(nome);
+        }
+      }
+      if (idsCliente.length) setParteClienteIds(idsCliente);
+      if (idsOposta.length) setParteOpostaIds(idsOposta);
+      if (nomesCliente.length) setParteCliente(formatarListaComConjuncaoE(nomesCliente));
+      if (nomesOposta.length) setParteOposta(formatarListaComConjuncaoE(nomesOposta));
+
+      const andamentos = await listarAndamentosProcesso(procApi.id);
+      if (Array.isArray(andamentos) && andamentos.length > 0) {
+        const hist = andamentos.map((a, idx) => mapApiAndamentoToHistoricoItem(a, idx, andamentos.length));
+        setHistorico(hist);
+      }
+    } catch (e) {
+      setApiError(e?.message || 'Falha ao carregar processo da API.');
+    } finally {
+      setApiLoading(false);
+    }
+  }
+
+  async function sincronizarApiProcessoAtual(
+    overrides = {},
+    options = { syncPartes: false, syncAndamentos: false, syncPrazoFatal: true }
+  ) {
+    if (!featureFlags.useApiProcessos || edicaoDesabilitada) return;
+    setApiSaving(true);
+    setApiError('');
+    try {
+      const snapshot = montarPayloadRegistroProcesso(overrides);
+      const clienteApi = await buscarClientePorCodigo(snapshot.codCliente);
+      if (!clienteApi?.id) throw new Error('Cliente não encontrado na API para este código.');
+      const saved = await salvarCabecalhoProcesso({
+        ...snapshot,
+        processoId: processoApiId,
+        clienteId: clienteApi.id,
+        numeroInterno: Number(snapshot.proc),
+        valorCausaNumero: parseValorMonetarioBr(snapshot.valorCausa),
+      });
+      const pid = saved?.id || processoApiId;
+      setProcessoApiId(pid);
+      if (saved?.id && snapshot.statusAtivo !== undefined) {
+        await alterarAtivoProcesso(saved.id, snapshot.statusAtivo !== false);
+      }
+      if (pid && options.syncPartes) {
+        await sincronizarPartesIncremental(pid, [
+          ...((snapshot.parteClienteIds || []).map((id, ordem) => ({
+            pessoaId: Number(id),
+            nomeLivre: null,
+            polo: 'AUTOR',
+            qualificacao: 'Parte cliente',
+            ordem,
+          }))),
+          ...((snapshot.parteOpostaIds || []).map((id, ordem) => ({
+            pessoaId: Number(id),
+            nomeLivre: null,
+            polo: 'REU',
+            qualificacao: 'Parte oposta',
+            ordem,
+          }))),
+          ...(snapshot.parteClienteIds?.length ? [] : [{
+            pessoaId: null,
+            nomeLivre: snapshot.parteCliente || null,
+            polo: 'AUTOR',
+            qualificacao: 'Parte cliente',
+            ordem: 0,
+          }]),
+          ...(snapshot.parteOpostaIds?.length ? [] : [{
+            pessoaId: null,
+            nomeLivre: snapshot.parteOposta || null,
+            polo: 'REU',
+            qualificacao: 'Parte oposta',
+            ordem: 0,
+          }]),
+        ]);
+      }
+      if (pid && options.syncAndamentos) {
+        await sincronizarAndamentosIncremental(pid, snapshot.historico || []);
+      }
+      if (pid && options.syncPrazoFatal) {
+        await upsertPrazoFatalProcesso(pid, snapshot.prazoFatal);
+      }
+    } catch (e) {
+      setApiError(e?.message || 'Falha ao sincronizar processo na API.');
+    } finally {
+      setApiSaving(false);
+    }
+  }
+
   const edicaoDesabilitadaAnteriorRef = useRef(edicaoDesabilitada);
 
   useEffect(() => {
     if (edicaoDesabilitada) return;
+    if (featureFlags.useApiProcessos) {
+      void sincronizarApiProcessoAtual();
+      return;
+    }
     salvarHistoricoDoProcesso(montarPayloadRegistroProcesso());
     // eslint-disable-next-line react-hooks/exhaustive-deps -- snapshot completo; listar deps duplicaria montarPayload
   }, [
@@ -843,7 +1096,11 @@ export function Processos() {
 
   useEffect(() => {
     if (edicaoDesabilitadaAnteriorRef.current === false && edicaoDesabilitada === true) {
-      salvarHistoricoDoProcesso(montarPayloadRegistroProcesso());
+      if (featureFlags.useApiProcessos) {
+        void sincronizarApiProcessoAtual();
+      } else {
+        salvarHistoricoDoProcesso(montarPayloadRegistroProcesso());
+      }
     }
     edicaoDesabilitadaAnteriorRef.current = edicaoDesabilitada;
   }, [edicaoDesabilitada]);
@@ -897,14 +1154,23 @@ export function Processos() {
     const poNome = formatarListaComConjuncaoE(
       nextOpostaIds.map((id) => pessoasPorId.get(Number(id))?.nome).filter(Boolean)
     );
-    salvarHistoricoDoProcesso(
-      montarPayloadRegistroProcesso({
+    if (featureFlags.useApiProcessos) {
+      void sincronizarApiProcessoAtual({
         parteCliente: pcNome || parteCliente,
         parteOposta: poNome || parteOposta,
         parteClienteIds: nextClienteIds,
         parteOpostaIds: nextOpostaIds,
-      })
-    );
+      }, { syncPartes: true, syncAndamentos: false, syncPrazoFatal: false });
+    } else {
+      salvarHistoricoDoProcesso(
+        montarPayloadRegistroProcesso({
+          parteCliente: pcNome || parteCliente,
+          parteOposta: poNome || parteOposta,
+          parteClienteIds: nextClienteIds,
+          parteOpostaIds: nextOpostaIds,
+        })
+      );
+    }
   }
 
   function parseValorBusca(termo) {
@@ -967,7 +1233,14 @@ export function Processos() {
       const atualizado = { ...primeiro, usuario, data: hoje };
       const historicoAtualizado = [atualizado, ...resto];
       setHistorico(historicoAtualizado);
-      salvarHistoricoDoProcesso(montarPayloadRegistroProcesso({ historico: historicoAtualizado }));
+      if (featureFlags.useApiProcessos) {
+        void sincronizarApiProcessoAtual(
+          { historico: historicoAtualizado },
+          { syncPartes: false, syncAndamentos: true, syncPrazoFatal: false }
+        );
+      } else {
+        salvarHistoricoDoProcesso(montarPayloadRegistroProcesso({ historico: historicoAtualizado }));
+      }
       return;
     }
 
@@ -991,14 +1264,28 @@ export function Processos() {
     setPaginaHistorico(1);
     setProximaInformacao('');
     setDataProximaInformacao('');
-    salvarHistoricoDoProcesso(montarPayloadRegistroProcesso({ historico: historicoAtualizado }));
+    if (featureFlags.useApiProcessos) {
+      void sincronizarApiProcessoAtual(
+        { historico: historicoAtualizado },
+        { syncPartes: false, syncAndamentos: true, syncPrazoFatal: false }
+      );
+    } else {
+      salvarHistoricoDoProcesso(montarPayloadRegistroProcesso({ historico: historicoAtualizado }));
+    }
   }
 
   function persistirPrazoFatalAposEdicao(valorBruto) {
     const t = String(valorBruto ?? '').trim();
     const prazoNorm = t ? (normalizarDataBr(t) || t) : '';
     setPrazoFatal(prazoNorm);
-    salvarPrazoFatalDoProcesso(codigoCliente, processo, prazoNorm, montarPayloadRegistroProcesso({ prazoFatal: prazoNorm }));
+    if (featureFlags.useApiProcessos) {
+      void sincronizarApiProcessoAtual(
+        { prazoFatal: prazoNorm },
+        { syncPartes: false, syncAndamentos: false, syncPrazoFatal: true }
+      );
+    } else {
+      salvarPrazoFatalDoProcesso(codigoCliente, processo, prazoNorm, montarPayloadRegistroProcesso({ prazoFatal: prazoNorm }));
+    }
   }
 
   const cidades = CIDADES_POR_UF[estado] || [];
@@ -1144,6 +1431,17 @@ export function Processos() {
               <Newspaper className="w-4 h-4" aria-hidden />
               Publicações
             </button>
+            {featureFlags.useApiTarefas ? (
+              <button
+                type="button"
+                onClick={abrirModalTarefaDoProcesso}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-500/60 bg-emerald-50 text-emerald-900 text-sm font-medium hover:bg-emerald-100 shrink-0"
+                title="Criar tarefa operacional vinculada a este processo (API)"
+              >
+                <ListTodo className="w-4 h-4" aria-hidden />
+                Criar tarefa
+              </button>
+            ) : null}
           </div>
           <button
             type="button"
@@ -1154,6 +1452,21 @@ export function Processos() {
             <X className="w-5 h-5" />
           </button>
         </header>
+        {featureFlags.useApiProcessos && apiLoading ? (
+          <div className="mb-3 rounded border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800">
+            Carregando processo pela API...
+          </div>
+        ) : null}
+        {featureFlags.useApiProcessos && apiSaving ? (
+          <div className="mb-3 rounded border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm text-indigo-800">
+            Salvando alterações no backend...
+          </div>
+        ) : null}
+        {featureFlags.useApiProcessos && apiError ? (
+          <div className="mb-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {apiError}
+          </div>
+        ) : null}
 
         <div
           className={`rounded border shadow-sm overflow-hidden ${
@@ -1678,21 +1991,33 @@ export function Processos() {
                     Não Avisado
                   </label>
                 </div>
-                <Field label="Prazo Fatal" className="w-36">
-                  <input
-                    type="text"
-                    value={prazoFatal}
-                    readOnly={camposBloqueados}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setPrazoFatal(resolverAliasHojeEmTexto(v, 'br') ?? v);
-                    }}
-                    onBlur={(e) => persistirPrazoFatalAposEdicao(e.target.value)}
-                    placeholder="dd/mm/aaaa ou hj"
-                    title="Data vinculada ao processo (gravada automaticamente)"
-                    className={clsCampo}
-                  />
-                </Field>
+                <div className="w-36 space-y-1">
+                  <Field label="Prazo Fatal" className="w-full">
+                    <input
+                      type="text"
+                      value={prazoFatal}
+                      readOnly={camposBloqueados}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setPrazoFatal(resolverAliasHojeEmTexto(v, 'br') ?? v);
+                      }}
+                      onBlur={(e) => persistirPrazoFatalAposEdicao(e.target.value)}
+                      placeholder="dd/mm/aaaa ou hj"
+                      title="Data vinculada ao processo (gravada automaticamente)"
+                      className={clsCampo}
+                    />
+                  </Field>
+                  {featureFlags.useApiTarefas && String(prazoFatal ?? '').trim() ? (
+                    <button
+                      type="button"
+                      onClick={abrirModalTarefaComPrazoFatal}
+                      className="text-[11px] text-emerald-800 hover:underline text-left w-full"
+                      title="Abre criação de tarefa com data limite sugerida a partir do prazo fatal"
+                    >
+                      Criar tarefa com esta data
+                    </button>
+                  ) : null}
+                </div>
               </div>
             </section>
 
@@ -2230,7 +2555,10 @@ export function Processos() {
           codigoCliente,
           processoContaCorrenteEfetivo
         );
-        const somaFormatada = formatValorContaCorrente(soma);
+        const somaApi = featureFlags.useApiFinanceiro && Number(processoApiId)
+          ? Number(resumoContaCorrenteApi?.saldo ?? soma)
+          : soma;
+        const somaFormatada = formatValorContaCorrente(somaApi);
         const listaBase = lancamentos.map((l, idx) => ({ ...l, numero: l.numero ?? (idx + 1) }));
         const listaFiltrada = filtrarLancamentosContaCorrente(listaBase, buscaContaCorrente.campo, buscaContaCorrente.termo);
         const listaOrdenada = ordenarLancamentosContaCorrente(listaFiltrada, sortContaCorrente.col, sortContaCorrente.dir);
@@ -2370,6 +2698,14 @@ export function Processos() {
                       className="w-32 px-2 py-1.5 border border-slate-300 rounded text-sm bg-slate-50 text-right font-medium"
                     />
                   </div>
+                  {featureFlags.useApiFinanceiro && Number(processoApiId) ? (
+                    <p className="text-[11px] text-slate-600">
+                      Resumo API: {Number(resumoContaCorrenteApi?.totalLancamentos ?? 0)} lançamento(s)
+                    </p>
+                  ) : null}
+                  {featureFlags.useApiFinanceiro && resumoContaCorrenteApiErro ? (
+                    <p className="text-[11px] text-red-600">{resumoContaCorrenteApiErro}</p>
+                  ) : null}
                 </div>
               </div>
               <div className="flex justify-center pt-4">
@@ -2432,10 +2768,17 @@ export function Processos() {
       <ModalRelatorioPublicacoesProcesso
         open={modalRelatorioPublicacoes}
         onClose={() => setModalRelatorioPublicacoes(false)}
+        processoId={featureFlags.useApiPublicacoes ? processoApiId : null}
         codigoCliente={codigoCliente}
         processo={processo}
         numeroProcessoNovo={numeroProcessoNovo}
         nomeCliente={cliente}
+      />
+
+      <ModalCriarTarefaContextual
+        open={modalTarefaContextual != null}
+        onClose={() => setModalTarefaContextual(null)}
+        context={modalTarefaContextual}
       />
     </div>
   );

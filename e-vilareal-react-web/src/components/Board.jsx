@@ -1,10 +1,25 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, HelpCircle, X } from 'lucide-react';
 import { Column } from './Column';
 import { columns, getBoardData, tasksByColumn } from '../data/mockData';
 import { getUsuariosAtivos } from '../data/agendaPersistenciaData';
 import { getNomeExibicaoUsuario } from '../data/usuarioDisplayHelpers.js';
+import { featureFlags } from '../config/featureFlags.js';
+import {
+  agruparTarefasPorColunas,
+  buildAtualizarTarefaBody,
+  buildCriarTarefaBody,
+  colunasBoardComSemResponsavel,
+  itemFromApi,
+  pendenciaVaziaApi,
+} from '../data/tarefasBoardAdapter.js';
+import {
+  atualizarTarefaOperacional,
+  criarTarefaOperacional,
+  listarTarefasOperacionais,
+  patchStatusTarefaOperacional,
+} from '../repositories/tarefasOperacionaisRepository.js';
 
 /**
  * IDs antigos da tela Pendências (mock) → mesmo cadastro de Usuários (ex.: kari ↔ karla no storage).
@@ -174,8 +189,25 @@ export function Board() {
 
   const colIdsKeyPendencias = useMemo(() => columnsPendencias.map((c) => c.id).join('|'), [columnsPendencias]);
 
+  const emPendencias = useMemo(
+    () => location.pathname === '/pendencias',
+    [location.pathname]
+  );
+
+  const columnsParaPendencias = useMemo(() => {
+    if (!emPendencias || !featureFlags.useApiTarefas) return columnsPendencias;
+    return colunasBoardComSemResponsavel(columnsPendencias, true);
+  }, [emPendencias, columnsPendencias]);
+
+  const colIdsKeyParaPendencias = useMemo(
+    () => columnsParaPendencias.map((c) => c.id).join('|'),
+    [columnsParaPendencias]
+  );
+
   const [selectedTaskId, setSelectedTaskId] = useState('k1');
-  const [pendenciasInicial] = useState(() => getPendenciasIniciais());
+  const [pendenciasInicial] = useState(() =>
+    typeof window !== 'undefined' && featureFlags.useApiTarefas ? {} : getPendenciasIniciais()
+  );
   const [pendenciasPorUsuario, setPendenciasPorUsuario] = useState(() => pendenciasInicial);
   const [pendenciasDraftPorUsuario, setPendenciasDraftPorUsuario] = useState(() =>
     JSON.parse(JSON.stringify(pendenciasInicial))
@@ -184,15 +216,88 @@ export function Board() {
   const [modalAcoesPendencia, setModalAcoesPendencia] = useState(null);
   const [modalConsultaPendencia, setModalConsultaPendencia] = useState(null);
   const [erroLocalizarPendencia, setErroLocalizarPendencia] = useState('');
+  const [refreshTickTarefasApi, setRefreshTickTarefasApi] = useState(0);
+  const [apiLoadingTarefas, setApiLoadingTarefas] = useState(false);
+  const [apiErrorTarefas, setApiErrorTarefas] = useState('');
+  const [apiSuccessTarefas, setApiSuccessTarefas] = useState('');
+  const [apiMutationBusy, setApiMutationBusy] = useState(false);
+  const [filtroApiResponsavel, setFiltroApiResponsavel] = useState('');
+  const [filtroApiStatus, setFiltroApiStatus] = useState('');
+  const [filtroApiPrioridade, setFiltroApiPrioridade] = useState('');
   const boardData = getBoardData();
-  const emPendencias = useMemo(
-    () => location.pathname === '/pendencias',
-    [location.pathname]
-  );
+  const usarApiPendencias = emPendencias && featureFlags.useApiTarefas;
+
+  const refreshTarefasApi = useCallback(() => {
+    setRefreshTickTarefasApi((t) => t + 1);
+  }, []);
+
+  /** Criação contextual de tarefas (Processos/Publicações) — mesmo refresh explícito do board. */
+  useEffect(() => {
+    if (!featureFlags.useApiTarefas) return;
+    const h = () => setRefreshTickTarefasApi((t) => t + 1);
+    window.addEventListener('vilareal:tarefas-criada', h);
+    return () => window.removeEventListener('vilareal:tarefas-criada', h);
+  }, []);
+
+  function montarQueryListagemTarefas() {
+    const q = {};
+    if (filtroApiStatus) q.status = filtroApiStatus;
+    if (filtroApiPrioridade) q.prioridade = filtroApiPrioridade;
+    if (filtroApiResponsavel && filtroApiResponsavel !== '__sem__') {
+      q.responsavelId = Number(filtroApiResponsavel);
+    }
+    return q;
+  }
+
+  function pendenciaVaziaAtual() {
+    return usarApiPendencias ? pendenciaVaziaApi() : pendenciaVazia();
+  }
+
+  /** Carrega tarefas da API (Fase 8) — query no repository + agrupamento com coluna “Sem responsável”. */
+  useEffect(() => {
+    if (!emPendencias || !featureFlags.useApiTarefas) return;
+    let ativo = true;
+    setApiLoadingTarefas(true);
+    setApiErrorTarefas('');
+    void listarTarefasOperacionais(montarQueryListagemTarefas())
+      .then((list) => {
+        if (!ativo) return;
+        let arr = Array.isArray(list) ? list : [];
+        if (filtroApiResponsavel === '__sem__') {
+          arr = arr.filter((t) => t.responsavelUsuarioId == null);
+        }
+        const grouped = agruparTarefasPorColunas(arr, columnsParaPendencias);
+        setPendenciasPorUsuario(grouped);
+        setPendenciasDraftPorUsuario(JSON.parse(JSON.stringify(grouped)));
+      })
+      .catch((e) => {
+        if (ativo) setApiErrorTarefas(e?.message || 'Falha ao carregar tarefas.');
+      })
+      .finally(() => {
+        if (ativo) setApiLoadingTarefas(false);
+      });
+    return () => {
+      ativo = false;
+    };
+  }, [
+    emPendencias,
+    colIdsKeyParaPendencias,
+    refreshTickTarefasApi,
+    columnsParaPendencias,
+    filtroApiResponsavel,
+    filtroApiStatus,
+    filtroApiPrioridade,
+  ]);
+
+  useEffect(() => {
+    if (!apiSuccessTarefas) return;
+    const t = setTimeout(() => setApiSuccessTarefas(''), 4500);
+    return () => clearTimeout(t);
+  }, [apiSuccessTarefas]);
 
   /** Novas pessoas em Usuários: cria listas de pendências alinhadas ao storage / seed. */
   useEffect(() => {
-    if (!emPendencias) return;
+    if (!emPendencias || featureFlags.useApiTarefas) return;
     const cols = getColumnsPendencias();
     const seedNow = nowIso();
     setPendenciasPorUsuario((prev) => {
@@ -246,6 +351,7 @@ export function Board() {
   }, [emPendencias, colIdsKeyPendencias]);
 
   function persistirPendencias(next) {
+    if (featureFlags.useApiTarefas) return;
     try {
       window.localStorage.setItem(PENDENCIAS_STORAGE_KEY_V2, JSON.stringify(next));
     } catch {
@@ -254,19 +360,20 @@ export function Board() {
   }
 
   function atualizarPendenciaDraft(usuarioId, idx, valor) {
+    const vazio = pendenciaVaziaAtual();
     setPendenciasDraftPorUsuario((prev) => {
-      const base = Array.isArray(prev[usuarioId]) ? prev[usuarioId] : [pendenciaVazia()];
+      const base = Array.isArray(prev[usuarioId]) ? prev[usuarioId] : [vazio];
       const listaAtual = base.map((x) => ({ ...(x || {}) }));
 
       if (!listaAtual[idx]) {
-        while (listaAtual.length <= idx) listaAtual.push(pendenciaVazia());
+        while (listaAtual.length <= idx) listaAtual.push(pendenciaVaziaAtual());
       }
 
-      listaAtual[idx] = { ...(listaAtual[idx] || pendenciaVazia()), texto: valor };
+      listaAtual[idx] = { ...(listaAtual[idx] || pendenciaVaziaAtual()), texto: valor };
 
       // Se preencheu a última caixa, cria outra em branco (lista infinita).
       if (idx === listaAtual.length - 1 && String(valor).trim() !== '') {
-        listaAtual.push(pendenciaVazia());
+        listaAtual.push(pendenciaVaziaAtual());
       }
 
       // Mantém apenas uma caixa vazia no final.
@@ -287,10 +394,10 @@ export function Board() {
 
     const listaPersistida = Array.isArray(pendenciasPorUsuario?.[usuarioId])
       ? pendenciasPorUsuario[usuarioId]
-      : [pendenciaVazia()];
+      : [pendenciaVaziaAtual()];
     const listaDraft = Array.isArray(pendenciasDraftPorUsuario?.[usuarioId])
       ? pendenciasDraftPorUsuario[usuarioId]
-      : [pendenciaVazia()];
+      : [pendenciaVaziaAtual()];
 
     const valorAnterior = listaPersistida[idx]?.texto ?? '';
     const valorNovo = listaDraft[idx]?.texto ?? '';
@@ -302,7 +409,7 @@ export function Board() {
       idx,
       valorAnterior: String(valorAnterior ?? ''),
       valorNovo: String(valorNovo ?? ''),
-      listaAnterior: listaPersistida.map((x) => ({ ...(x || pendenciaVazia()) })),
+      listaAnterior: listaPersistida.map((x) => ({ ...(x || pendenciaVaziaAtual()) })),
       acaoDepois,
     });
   }
@@ -314,71 +421,131 @@ export function Board() {
     setModalPendencias(null);
   }
 
-  function confirmarAlteracaoModal() {
+  async function confirmarAlteracaoModal() {
     if (!modalPendencias) return;
     const { usuarioId, idx, listaAnterior, acaoDepois } = modalPendencias;
 
-    const next = {
-      ...(pendenciasPorUsuario || {}),
-      ...(pendenciasDraftPorUsuario || {}),
-    };
+    if (!usarApiPendencias) {
+      const next = {
+        ...(pendenciasPorUsuario || {}),
+        ...(pendenciasDraftPorUsuario || {}),
+      };
+
+      const listaDraft = Array.isArray(pendenciasDraftPorUsuario?.[usuarioId])
+        ? pendenciasDraftPorUsuario[usuarioId]
+        : [];
+      const novaLista = listaDraft.map((x) => ({ ...(x || pendenciaVazia()) }));
+
+      if (!novaLista[idx]) novaLista[idx] = pendenciaVazia();
+
+      const textoFinal = String(novaLista[idx]?.texto ?? '');
+      const itemAnterior = listaAnterior?.[idx] || null;
+      const criadoJaExiste = !!(itemAnterior && itemAnterior.criadoEm);
+      if (!novaLista[idx].criadoEm && textoFinal.trim() && !criadoJaExiste) {
+        novaLista[idx].criadoEm = nowIso();
+      }
+      if (!novaLista[idx].criadoEm && textoFinal.trim()) {
+        novaLista[idx].criadoEm = nowIso();
+      }
+
+      next[usuarioId] = novaLista;
+
+      setPendenciasPorUsuario(next);
+      persistirPendencias(next);
+      setModalPendencias(null);
+
+      if (!acaoDepois) return;
+
+      if (acaoDepois.tipo === 'finalizar') {
+        const listaAtualizada = next[usuarioId].map((x) => ({ ...(x || pendenciaVazia()) }));
+        const item = listaAtualizada[idx] || pendenciaVazia();
+        item.finalizadoEm = item.finalizadoEm || nowIso();
+        listaAtualizada[idx] = item;
+        const nextFinal = { ...(next || {}), [usuarioId]: listaAtualizada };
+        setPendenciasPorUsuario(nextFinal);
+        setPendenciasDraftPorUsuario((prev) => ({ ...(prev || {}), [usuarioId]: listaAtualizada }));
+        persistirPendencias(nextFinal);
+        return;
+      }
+
+      if (acaoDepois.tipo === 'localizar') {
+        const texto = String(next[usuarioId]?.[idx]?.texto ?? '');
+        const ref = extrairReferenciaProcesso(texto);
+        if (!ref) {
+          setErroLocalizarPendencia('Não encontrei referência de processo no texto da pendência.');
+          return;
+        }
+        navigate('/processos', { state: { codCliente: String(ref.codCliente ?? ''), proc: String(ref.proc ?? '') } });
+        return;
+      }
+
+      if (acaoDepois.tipo === 'consultar') {
+        const item = next[usuarioId]?.[idx] || null;
+        setModalConsultaPendencia(item ? { usuarioId, idx, ...item } : null);
+      }
+      return;
+    }
 
     const listaDraft = Array.isArray(pendenciasDraftPorUsuario?.[usuarioId])
       ? pendenciasDraftPorUsuario[usuarioId]
       : [];
-    const novaLista = listaDraft.map((x) => ({ ...(x || pendenciaVazia()) }));
-
-    if (!novaLista[idx]) novaLista[idx] = pendenciaVazia();
-
-    // Set data/hora de criação somente quando preenchido pela primeira vez.
+    const novaLista = listaDraft.map((x) => ({ ...(x || pendenciaVaziaApi()) }));
+    if (!novaLista[idx]) novaLista[idx] = pendenciaVaziaApi();
     const textoFinal = String(novaLista[idx]?.texto ?? '');
-    const itemAnterior = listaAnterior?.[idx] || null;
-    const criadoJaExiste = !!(itemAnterior && itemAnterior.criadoEm);
-    if (!novaLista[idx].criadoEm && textoFinal.trim() && !criadoJaExiste) {
-      novaLista[idx].criadoEm = nowIso();
-    }
-    // Se o anterior não tinha criadoEm mas já existia registro (migração), ainda assim
-    // devemos registrar a criação quando houver texto.
-    if (!novaLista[idx].criadoEm && textoFinal.trim()) {
-      novaLista[idx].criadoEm = nowIso();
-    }
+    const itemAtual = novaLista[idx] || pendenciaVaziaApi();
 
-    next[usuarioId] = novaLista;
-
-    setPendenciasPorUsuario(next);
-    persistirPendencias(next);
-    setModalPendencias(null);
-
-    if (!acaoDepois) return;
-
-    // Atualiza estado/dados conforme a ação escolhida.
-    if (acaoDepois.tipo === 'finalizar') {
-      const listaAtualizada = next[usuarioId].map((x) => ({ ...(x || pendenciaVazia()) }));
-      const item = listaAtualizada[idx] || pendenciaVazia();
-      item.finalizadoEm = item.finalizadoEm || nowIso();
-      listaAtualizada[idx] = item;
-      const nextFinal = { ...(next || {}) , [usuarioId]: listaAtualizada };
-      setPendenciasPorUsuario(nextFinal);
-      setPendenciasDraftPorUsuario((prev) => ({ ...(prev || {}), [usuarioId]: listaAtualizada }));
-      persistirPendencias(nextFinal);
+    if (!textoFinal.trim() && !itemAtual.apiId) {
+      setApiErrorTarefas('Informe um texto para criar a tarefa.');
+      reverterAlteracaoModal();
       return;
     }
 
-    if (acaoDepois.tipo === 'localizar') {
-      const texto = String(next[usuarioId]?.[idx]?.texto ?? '');
-      const ref = extrairReferenciaProcesso(texto);
-      if (!ref) {
-        setErroLocalizarPendencia('Não encontrei referência de processo no texto da pendência.');
+    setApiMutationBusy(true);
+    setApiErrorTarefas('');
+    setApiSuccessTarefas('');
+    try {
+      let resp;
+      if (itemAtual.apiId) {
+        resp = await atualizarTarefaOperacional(
+          itemAtual.apiId,
+          buildAtualizarTarefaBody(usuarioId, textoFinal, itemAtual)
+        );
+      } else {
+        resp = await criarTarefaOperacional(buildCriarTarefaBody(usuarioId, textoFinal));
+      }
+      let merged = itemFromApi(resp);
+
+      if (acaoDepois?.tipo === 'finalizar') {
+        const r2 = await patchStatusTarefaOperacional(merged.apiId, { status: 'CONCLUIDA' });
+        merged = itemFromApi(r2);
+      }
+
+      setModalPendencias(null);
+      setApiSuccessTarefas(
+        acaoDepois?.tipo === 'finalizar' ? 'Tarefa concluída com sucesso.' : 'Tarefa salva com sucesso.'
+      );
+
+      if (acaoDepois?.tipo === 'localizar') {
+        const texto = String(merged.texto ?? '');
+        const ref = extrairReferenciaProcesso(texto);
+        if (!ref) {
+          setErroLocalizarPendencia('Não encontrei referência de processo no texto da pendência.');
+          refreshTarefasApi();
+          return;
+        }
+        navigate('/processos', { state: { codCliente: String(ref.codCliente ?? ''), proc: String(ref.proc ?? '') } });
+        refreshTarefasApi();
         return;
       }
-      navigate('/processos', { state: { codCliente: String(ref.codCliente ?? ''), proc: String(ref.proc ?? '') } });
-      return;
-    }
 
-    if (acaoDepois.tipo === 'consultar') {
-      const item = next[usuarioId]?.[idx] || null;
-      setModalConsultaPendencia(item ? { usuarioId, idx, ...item } : null);
-      return;
+      if (acaoDepois?.tipo === 'consultar') {
+        setModalConsultaPendencia({ usuarioId, idx, ...merged });
+      }
+      refreshTarefasApi();
+    } catch (e) {
+      setApiErrorTarefas(e?.message || 'Falha ao salvar a tarefa.');
+    } finally {
+      setApiMutationBusy(false);
     }
   }
 
@@ -453,7 +620,7 @@ export function Board() {
     return null;
   }
 
-  function executarAcaoPendencia(acaoTipo) {
+  async function executarAcaoPendencia(acaoTipo) {
     if (!modalAcoesPendencia) return;
     const { usuarioId, idx } = modalAcoesPendencia;
 
@@ -464,14 +631,44 @@ export function Board() {
     const textoNovo = listaDraft[idx]?.texto ?? '';
 
     if (String(textoAnterior) !== String(textoNovo)) {
-      // Texto mudou: aplica confirmação da "grafia" antes de executar a ação.
       setModalAcoesPendencia(null);
       abrirModalConfirmacao(usuarioId, idx, { tipo: acaoTipo });
       return;
     }
 
-    // Texto já idêntico no persistido e no draft: executa agora.
     if (acaoTipo === 'finalizar') {
+      if (usarApiPendencias) {
+        const item = listaPersistida[idx] || listaDraft[idx];
+        const texto = String(item?.texto ?? '');
+        setApiMutationBusy(true);
+        setApiErrorTarefas('');
+        setApiSuccessTarefas('');
+        try {
+          let apiId = item?.apiId;
+          if (!apiId) {
+            if (!texto.trim()) {
+              setApiErrorTarefas('Preencha o texto da tarefa antes de finalizar.');
+              return;
+            }
+            const criado = await criarTarefaOperacional(buildCriarTarefaBody(usuarioId, texto));
+            apiId = criado?.id;
+          }
+          if (!apiId) {
+            setApiErrorTarefas('Não foi possível identificar a tarefa.');
+            return;
+          }
+          await patchStatusTarefaOperacional(apiId, { status: 'CONCLUIDA' });
+          setApiSuccessTarefas('Tarefa concluída com sucesso.');
+          fecharModalAcoesPendencia();
+          refreshTarefasApi();
+        } catch (e) {
+          setApiErrorTarefas(e?.message || 'Falha ao finalizar a tarefa.');
+        } finally {
+          setApiMutationBusy(false);
+        }
+        return;
+      }
+
       const next = { ...(pendenciasPorUsuario || {}) };
       const novaLista = (next[usuarioId] || []).map((x) => ({ ...(x || pendenciaVazia()) }));
       if (!novaLista[idx]) novaLista[idx] = pendenciaVazia();
@@ -507,8 +704,94 @@ export function Board() {
   if (emPendencias) {
     return (
       <div className="flex-1 overflow-auto p-4">
+        {featureFlags.useApiTarefas && (
+          <div className="flex flex-wrap items-end gap-3 mb-3 text-sm">
+            <label className="flex flex-col gap-0.5 min-w-[10rem]">
+              <span className="text-slate-600">Responsável</span>
+              <select
+                className="rounded border border-slate-300 bg-white px-2 py-1.5 text-slate-800 max-w-[14rem]"
+                value={filtroApiResponsavel}
+                onChange={(e) => setFiltroApiResponsavel(e.target.value)}
+              >
+                <option value="">Todos</option>
+                <option value="__sem__">Sem responsável</option>
+                {columnsPendencias.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-0.5 min-w-[9rem]">
+              <span className="text-slate-600">Status</span>
+              <select
+                className="rounded border border-slate-300 bg-white px-2 py-1.5 text-slate-800"
+                value={filtroApiStatus}
+                onChange={(e) => setFiltroApiStatus(e.target.value)}
+              >
+                <option value="">Todos</option>
+                <option value="PENDENTE">Pendente</option>
+                <option value="EM_ANDAMENTO">Em andamento</option>
+                <option value="CONCLUIDA">Concluída</option>
+                <option value="CANCELADA">Cancelada</option>
+              </select>
+            </label>
+            <label className="flex flex-col gap-0.5 min-w-[9rem]">
+              <span className="text-slate-600">Prioridade</span>
+              <select
+                className="rounded border border-slate-300 bg-white px-2 py-1.5 text-slate-800"
+                value={filtroApiPrioridade}
+                onChange={(e) => setFiltroApiPrioridade(e.target.value)}
+              >
+                <option value="">Todas</option>
+                <option value="BAIXA">Baixa</option>
+                <option value="NORMAL">Normal</option>
+                <option value="ALTA">Alta</option>
+                <option value="URGENTE">Urgente</option>
+              </select>
+            </label>
+          </div>
+        )}
+        {featureFlags.useApiTarefas && (
+          <div className="space-y-2 mb-3">
+            {apiLoadingTarefas && (
+              <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900">
+                Carregando tarefas…
+              </div>
+            )}
+            {apiMutationBusy && (
+              <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                Salvando…
+              </div>
+            )}
+            {apiErrorTarefas && (
+              <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900 flex justify-between gap-2 items-start">
+                <span>{apiErrorTarefas}</span>
+                <button
+                  type="button"
+                  className="shrink-0 text-red-800 underline hover:no-underline"
+                  onClick={() => setApiErrorTarefas('')}
+                >
+                  Fechar
+                </button>
+              </div>
+            )}
+            {apiSuccessTarefas && (
+              <div className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-900 flex justify-between gap-2 items-start">
+                <span>{apiSuccessTarefas}</span>
+                <button
+                  type="button"
+                  className="shrink-0 text-green-800 underline hover:no-underline"
+                  onClick={() => setApiSuccessTarefas('')}
+                >
+                  Fechar
+                </button>
+              </div>
+            )}
+          </div>
+        )}
         <div className="flex gap-4 overflow-x-auto pb-2 min-h-0">
-          {columnsPendencias.map((col) => {
+          {columnsParaPendencias.map((col) => {
             const pendencias = pendenciasDraftPorUsuario[col.id] || [pendenciaVazia()];
             return (
               <div
@@ -591,8 +874,9 @@ export function Board() {
               <div className="px-6 py-4 border-t border-slate-200 flex justify-end gap-4 bg-white">
                 <button
                   type="button"
-                  className="px-10 py-2 rounded border border-slate-300 bg-blue-600 text-white hover:bg-blue-700"
-                  onClick={confirmarAlteracaoModal}
+                  className="px-10 py-2 rounded border border-slate-300 bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60"
+                  disabled={apiMutationBusy}
+                  onClick={() => void confirmarAlteracaoModal()}
                 >
                   Sim
                 </button>
@@ -648,8 +932,9 @@ export function Board() {
               <div className="px-6 pb-5 flex justify-center border-t border-slate-200 pt-4 bg-white">
                 <button
                   type="button"
-                  className="w-40 px-4 py-2 rounded border border-slate-300 bg-white text-slate-800 hover:bg-slate-50"
-                  onClick={() => executarAcaoPendencia(modalAcoesPendencia.acaoSelecionada)}
+                  className="w-40 px-4 py-2 rounded border border-slate-300 bg-white text-slate-800 hover:bg-slate-50 disabled:opacity-60"
+                  disabled={apiMutationBusy}
+                  onClick={() => void executarAcaoPendencia(modalAcoesPendencia.acaoSelecionada)}
                 >
                   OK
                 </button>
@@ -668,14 +953,39 @@ export function Board() {
                 </button>
               </div>
               <div className="px-6 py-5 space-y-3">
+                {modalConsultaPendencia.apiId != null && (
+                  <div className="text-sm text-slate-700">
+                    <span className="font-medium">ID (API):</span> {String(modalConsultaPendencia.apiId)}
+                  </div>
+                )}
                 <div className="text-sm text-slate-700">
                   <span className="font-medium">Texto:</span> {modalConsultaPendencia.texto || ''}
                 </div>
+                {modalConsultaPendencia.status != null && modalConsultaPendencia.status !== '' && (
+                  <div className="text-sm text-slate-700">
+                    <span className="font-medium">Status:</span> {String(modalConsultaPendencia.status)}
+                  </div>
+                )}
+                {modalConsultaPendencia.prioridade != null && modalConsultaPendencia.prioridade !== '' && (
+                  <div className="text-sm text-slate-700">
+                    <span className="font-medium">Prioridade:</span> {String(modalConsultaPendencia.prioridade)}
+                  </div>
+                )}
+                {modalConsultaPendencia.dataLimite != null && modalConsultaPendencia.dataLimite !== '' && (
+                  <div className="text-sm text-slate-700">
+                    <span className="font-medium">Data limite:</span>{' '}
+                    {typeof modalConsultaPendencia.dataLimite === 'string'
+                      ? modalConsultaPendencia.dataLimite
+                      : String(modalConsultaPendencia.dataLimite)}
+                  </div>
+                )}
                 <div className="text-sm text-slate-700">
-                  <span className="font-medium">Criada em:</span> {modalConsultaPendencia.criadoEm ? new Date(modalConsultaPendencia.criadoEm).toLocaleString('pt-BR') : '—'}
+                  <span className="font-medium">Criada em:</span>{' '}
+                  {modalConsultaPendencia.criadoEm ? new Date(modalConsultaPendencia.criadoEm).toLocaleString('pt-BR') : '—'}
                 </div>
                 <div className="text-sm text-slate-700">
-                  <span className="font-medium">Finalizada em:</span> {modalConsultaPendencia.finalizadoEm ? new Date(modalConsultaPendencia.finalizadoEm).toLocaleString('pt-BR') : '—'}
+                  <span className="font-medium">Finalizada em:</span>{' '}
+                  {modalConsultaPendencia.finalizadoEm ? new Date(modalConsultaPendencia.finalizadoEm).toLocaleString('pt-BR') : '—'}
                 </div>
               </div>
               <div className="px-6 py-4 border-t border-slate-200 flex justify-center bg-white">

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -15,18 +15,34 @@ import {
   X,
   FlaskConical,
   CalendarDays,
+  ListTodo,
 } from 'lucide-react';
 import { extrairTextoPdfDeArquivo } from '../data/publicacoesPdfExtract.js';
 import { executarPipelineImportacaoPublicacoes } from '../data/publicacoesPipeline.js';
 import { hashArquivoSHA256 } from '../data/publicacoesHashArquivo.js';
+import { normalizarCnjParaChave } from '../data/publicacoesPdfParser.js';
 import {
   montarIndiceCnjClienteProc,
   aplicarVinculoManual,
   reaplicarVinculoCadastro,
 } from '../data/publicacoesVinculoProcessos.js';
-import { loadPublicacoesImportadas, appendPublicacoesConfirmadas, updatePublicacaoImportada } from '../data/publicacoesStorage.js';
+import { appendPublicacoesConfirmadas, updatePublicacaoImportada } from '../data/publicacoesStorage.js';
 import { getMockPreviewPublicacoes } from '../data/publicacoesPreviewMock.js';
 import { agruparPublicacoesPorDia } from '../data/publicacoesDiaria.js';
+import { featureFlags } from '../config/featureFlags.js';
+import {
+  alterarStatusPublicacao,
+  importarPublicacoesDaPrevia,
+  listarPublicacoesModulo,
+  vincularPublicacaoProcessoPorChaveNatural,
+} from '../repositories/publicacoesRepository.js';
+import {
+  executarMigracaoAssistidaPhase6Publicacoes,
+  getStatusMigracaoAssistidaPhase6Publicacoes,
+  previsualizarMigracaoAssistidaPhase6Publicacoes,
+} from '../services/publicacoesMigrationPhase6.js';
+import { ModalCriarTarefaContextual } from './ModalCriarTarefaContextual.jsx';
+import { buildContextFromPublicacaoRow } from '../data/tarefasContextualPayload.js';
 
 function Badge({ children, tone = 'slate' }) {
   const cls = {
@@ -78,17 +94,84 @@ export function PublicacoesProcessos() {
   const [logImportacao, setLogImportacao] = useState(null);
   const [filtroVinculo, setFiltroVinculo] = useState('todos');
   const [busca, setBusca] = useState('');
+  const [filtroDataInicio, setFiltroDataInicio] = useState('');
+  const [filtroDataFim, setFiltroDataFim] = useState('');
+  const [filtroStatusTratamento, setFiltroStatusTratamento] = useState('');
+  const [filtroProcessoId, setFiltroProcessoId] = useState('');
+  const [filtroClienteId, setFiltroClienteId] = useState('');
+  const [filtroOrigemImportacao, setFiltroOrigemImportacao] = useState('');
   const [consultarDatajud, setConsultarDatajud] = useState(true);
   const [gravadosTick, setGravadosTick] = useState(0);
+  const [itensGravados, setItensGravados] = useState([]);
+  const [carregandoGravados, setCarregandoGravados] = useState(false);
+  const [erroGravados, setErroGravados] = useState('');
+  const [importLegadoPreview, setImportLegadoPreview] = useState(null);
+  const [importLegadoLoadingPreview, setImportLegadoLoadingPreview] = useState(false);
+  const [importLegadoExecutando, setImportLegadoExecutando] = useState(false);
+  const [importLegadoResumo, setImportLegadoResumo] = useState(null);
+  const [importLegadoStatus, setImportLegadoStatus] = useState(() => getStatusMigracaoAssistidaPhase6Publicacoes());
   const [vinculoModal, setVinculoModal] = useState(null);
   const [vincForm, setVincForm] = useState({ codCliente: '', procInterno: '', cliente: '' });
   const [vinculoFormErro, setVinculoFormErro] = useState('');
   /** Critério do consolidado diário: dia da publicação oficial ou da disponibilização no diário. */
   const [consolidadoCriterio, setConsolidadoCriterio] = useState('publicacao');
+  const [modalTarefaContextual, setModalTarefaContextual] = useState(null);
 
   const indiceCnj = useMemo(() => montarIndiceCnjClienteProc(), []);
 
-  const itensGravados = useMemo(() => loadPublicacoesImportadas(), [logImportacao, gravadosTick]);
+  function abrirModalTarefaPublicacao(r) {
+    if (!featureFlags.useApiTarefas) return;
+    const ctx = buildContextFromPublicacaoRow(r);
+    if (!featureFlags.useApiPublicacoes) {
+      ctx.aviso =
+        'Publicações via API desativadas — a tarefa será criada só com texto pré-preenchido (sem vínculos de publicação/processo na API).';
+      ctx.publicacaoId = null;
+      ctx.processoId = null;
+      ctx.clienteId = null;
+      ctx.apenasTextoContextual = true;
+    }
+    setModalTarefaContextual(ctx);
+  }
+
+  useEffect(() => {
+    let ativo = true;
+    setCarregandoGravados(true);
+    setErroGravados('');
+    void listarPublicacoesModulo({
+      dataInicio: filtroDataInicio || undefined,
+      dataFim: filtroDataFim || undefined,
+      statusTratamento: filtroStatusTratamento || undefined,
+      processoId: filtroProcessoId || undefined,
+      clienteId: filtroClienteId || undefined,
+      texto: busca || undefined,
+      origemImportacao: filtroOrigemImportacao || undefined,
+      filtroVinculo,
+    })
+      .then((rows) => {
+        if (!ativo) return;
+        setItensGravados(Array.isArray(rows) ? rows : []);
+      })
+      .catch((e) => {
+        if (!ativo) return;
+        setErroGravados(e?.message || 'Falha ao carregar publicações.');
+      })
+      .finally(() => {
+        if (ativo) setCarregandoGravados(false);
+      });
+    return () => {
+      ativo = false;
+    };
+  }, [
+    filtroDataInicio,
+    filtroDataFim,
+    filtroStatusTratamento,
+    filtroProcessoId,
+    filtroClienteId,
+    filtroOrigemImportacao,
+    busca,
+    filtroVinculo,
+    gravadosTick,
+  ]);
 
   const processarArquivo = useCallback(
     async (file) => {
@@ -138,13 +221,18 @@ export function PublicacoesProcessos() {
     });
   };
 
-  const confirmarImportacao = () => {
+  const confirmarImportacao = async () => {
     if (!preview?.itens?.length) return;
     const escolhidos = preview.itens.filter((_, i) => selecionados.has(i));
-    const r = appendPublicacoesConfirmadas(escolhidos, arquivoNome, {
-      hashArquivo: preview.hashArquivo ?? '',
-      importacaoConfirmadaEm: new Date().toISOString(),
-    });
+    const r = featureFlags.useApiPublicacoes
+      ? await importarPublicacoesDaPrevia(escolhidos, arquivoNome, {
+          hashArquivo: preview.hashArquivo ?? '',
+          importacaoConfirmadaEm: new Date().toISOString(),
+        })
+      : appendPublicacoesConfirmadas(escolhidos, arquivoNome, {
+          hashArquivo: preview.hashArquivo ?? '',
+          importacaoConfirmadaEm: new Date().toISOString(),
+        });
     setLogImportacao({
       ...r,
       totalSelecionados: escolhidos.length,
@@ -153,6 +241,7 @@ export function PublicacoesProcessos() {
     setPreview(null);
     setArquivoNome('');
     setSelecionados(new Set());
+    setGravadosTick((t) => t + 1);
   };
 
   const confirmarVinculoModal = () => {
@@ -175,6 +264,26 @@ export function PublicacoesProcessos() {
     if (vinculoModal?.kind === 'saved') {
       const row = itensGravados.find((x) => x.id === vinculoModal.id);
       if (!row) return;
+      if (featureFlags.useApiPublicacoes) {
+        void (async () => {
+          const vinculado = await vincularPublicacaoProcessoPorChaveNatural(
+            row._apiId ?? row.id,
+            codCliente,
+            procInterno,
+            'Vínculo manual via tela de publicações.'
+          );
+          if (!vinculado) {
+            setVinculoFormErro('Não foi possível resolver processo por código/proc interno.');
+            return;
+          }
+          setGravadosTick((t) => t + 1);
+          setVinculoModal(null);
+          setVinculoFormErro('');
+        })().catch((e) => {
+          setVinculoFormErro(e?.message || 'Falha ao vincular publicação na API.');
+        });
+        return;
+      }
       const next = aplicarVinculoManual(rowGravadoParaVinculo(row), { codCliente, procInterno, cliente });
       if (next.erroVinculo) {
         setVinculoFormErro(next.erroVinculo);
@@ -204,6 +313,29 @@ export function PublicacoesProcessos() {
   };
 
   const reaplicarVinculoGravado = (row) => {
+    if (featureFlags.useApiPublicacoes) {
+      const key = normalizarCnjParaChave(row.processoCnjNormalizado || row.numero_processo_cnj || '');
+      const hit = indiceCnj.get(key);
+      if (!hit) {
+        setErro('Não há correspondência automática no cadastro para este CNJ.');
+        return;
+      }
+      void vincularPublicacaoProcessoPorChaveNatural(
+        row._apiId ?? row.id,
+        hit.codCliente,
+        hit.proc,
+        'Vínculo automático reaplicado pelo índice CNJ.'
+      )
+        .then((v) => {
+          if (!v) {
+            setErro('Não foi possível vincular automaticamente na API.');
+            return;
+          }
+          setGravadosTick((t) => t + 1);
+        })
+        .catch((e) => setErro(e?.message || 'Falha ao reaplicar vínculo automático.'));
+      return;
+    }
     const next = reaplicarVinculoCadastro(rowGravadoParaVinculo(row), indiceCnj);
     updatePublicacaoImportada(row.id, {
       codCliente: next.codCliente,
@@ -216,32 +348,24 @@ export function PublicacoesProcessos() {
     setGravadosTick((t) => t + 1);
   };
 
-  const filtrados = useMemo(() => {
-    let rows = itensGravados;
-    if (filtroVinculo === 'nao_vinculados') {
-      rows = rows.filter((r) => r.statusVinculo === 'nao_vinculado' || r.statusVinculo === 'sem_cnj');
-    }
-    const q = busca.trim().toLowerCase();
-    if (q) {
-      rows = rows.filter((r) => {
-        const blob = [
-          r.numero_processo_cnj,
-          r.codCliente,
-          r.procInterno,
-          r.cliente,
-          r.tipoPublicacao,
-          r.teorIntegral,
-          r.statusValidacaoCnj,
-          r.scoreConfianca,
-          r.diario,
-        ]
-          .join(' ')
-          .toLowerCase();
-        return blob.includes(q);
+  const alterarStatusGravado = (row, status) => {
+    void alterarStatusPublicacao(row._apiId ?? row.id, status, 'Atualização operacional na tela de publicações.')
+      .then(() => {
+        setLogImportacao({
+          gravados: 0,
+          ignoradosDuplicata: 0,
+          totalSelecionados: 0,
+          quando: new Date().toISOString(),
+          mensagem: `Status atualizado para ${status}.`,
+        });
+        setGravadosTick((t) => t + 1);
+      })
+      .catch((e) => {
+        setErro(e?.message || 'Falha ao atualizar status da publicação.');
       });
-    }
-    return rows;
-  }, [itensGravados, filtroVinculo, busca]);
+  };
+
+  const filtrados = useMemo(() => itensGravados, [itensGravados]);
 
   const consolidadoGravados = useMemo(
     () => agruparPublicacoesPorDia(filtrados, consolidadoCriterio),
@@ -252,6 +376,68 @@ export function PublicacoesProcessos() {
     () => (preview?.itens?.length ? agruparPublicacoesPorDia(preview.itens, consolidadoCriterio) : []),
     [preview, consolidadoCriterio]
   );
+
+  const abrirPreviaImportacaoLegado = () => {
+    setImportLegadoLoadingPreview(true);
+    setErro('');
+    try {
+      const p = previsualizarMigracaoAssistidaPhase6Publicacoes();
+      setImportLegadoPreview(p);
+      setImportLegadoStatus(getStatusMigracaoAssistidaPhase6Publicacoes());
+    } catch (e) {
+      setErro(e?.message || 'Falha ao montar prévia da importação legada.');
+    } finally {
+      setImportLegadoLoadingPreview(false);
+    }
+  };
+
+  const executarImportacaoLegadoViaUi = async () => {
+    const statusAtual = getStatusMigracaoAssistidaPhase6Publicacoes();
+    setImportLegadoStatus(statusAtual);
+    if (!statusAtual.habilitadaPorFlag || !statusAtual.apiPublicacoesAtiva) {
+      setErro('Ative VITE_ENABLE_LOCALSTORAGE_IMPORT_PHASE6_PUBLICACOES=true e VITE_USE_API_PUBLICACOES=true.');
+      return;
+    }
+    if (statusAtual.jaExecutada) {
+      setErro('Importação já marcada como executada. Reimportação segura ficará para a próxima etapa.');
+      return;
+    }
+
+    const ok = window.confirm(
+      'Confirma importar o legado de publicações para a API?\n\n' +
+        '- A operação tentará gravar registros na API.\n' +
+        '- A deduplicação no servidor ocorre por hash_conteudo.\n' +
+        '- Parte dos registros pode ser ignorada (duplicados/erros).\n' +
+        '- Parte dos registros pode ficar sem vínculo de processo resolvido.\n' +
+        '- O marker evita reimportação cega após a execução.'
+    );
+    if (!ok) return;
+
+    setImportLegadoExecutando(true);
+    setErro('');
+    try {
+      const r = await executarMigracaoAssistidaPhase6Publicacoes();
+      setImportLegadoResumo({
+        ...r,
+        quando: new Date().toISOString(),
+      });
+      setLogImportacao({
+        gravados: Number(r?.gravados || 0),
+        ignoradosDuplicata: Number(r?.ignorados || 0),
+        totalSelecionados: Number(r?.total || 0),
+        semVinculo: Number(r?.semVinculo || 0),
+        quando: new Date().toISOString(),
+        mensagem: r?.ignorado ? r.motivo : 'Importação assistida do legado de publicações concluída.',
+      });
+      setImportLegadoStatus(getStatusMigracaoAssistidaPhase6Publicacoes());
+      setImportLegadoPreview(previsualizarMigracaoAssistidaPhase6Publicacoes());
+      setGravadosTick((t) => t + 1);
+    } catch (e) {
+      setErro(e?.message || 'Falha ao executar importação assistida do legado.');
+    } finally {
+      setImportLegadoExecutando(false);
+    }
+  };
 
   return (
     <div className="min-h-full bg-slate-100 dark:bg-[#0c0f14] text-slate-900 dark:text-slate-100">
@@ -276,6 +462,70 @@ export function PublicacoesProcessos() {
             <Upload className="w-4 h-4" />
             Importar PDF de publicações (Jusbrasil / e-mail)
           </h2>
+          <div className="rounded-xl border border-indigo-200 dark:border-indigo-500/30 bg-indigo-50/70 dark:bg-indigo-950/20 p-3 space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={abrirPreviaImportacaoLegado}
+                disabled={importLegadoLoadingPreview || importLegadoExecutando}
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-indigo-300 dark:border-indigo-500/40 bg-white dark:bg-[#0d1018] text-indigo-900 dark:text-indigo-200 text-xs font-semibold hover:bg-indigo-50 dark:hover:bg-indigo-950/30 disabled:opacity-50"
+              >
+                {importLegadoLoadingPreview ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                Importar legado de publicações
+              </button>
+              <span className="text-[11px] text-slate-700 dark:text-slate-300">
+                Flag: <strong>{importLegadoStatus.habilitadaPorFlag ? 'ativa' : 'inativa'}</strong> · API:{' '}
+                <strong>{importLegadoStatus.apiPublicacoesAtiva ? 'ativa' : 'inativa'}</strong> · Marker:{' '}
+                <strong>{importLegadoStatus.jaExecutada ? 'já executada' : 'não executada'}</strong>
+              </span>
+            </div>
+            {importLegadoPreview ? (
+              <div className="rounded-lg border border-indigo-200/80 dark:border-indigo-500/25 bg-white/80 dark:bg-black/20 p-3 text-xs text-slate-700 dark:text-slate-300 space-y-2">
+                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                  <p>Total legado: <strong>{importLegadoPreview.totalLegado}</strong></p>
+                  <p>Importável (estimativa): <strong>{importLegadoPreview.importavelEstimado}</strong></p>
+                  <p>Duplicados locais (estimativa): <strong>{importLegadoPreview.duplicatasLocaisEstimadas}</strong></p>
+                  <p>Sem vínculo (estimativa): <strong>{importLegadoPreview.semVinculoEstimado}</strong></p>
+                  <p>Com hash: <strong>{importLegadoPreview.comHashConteudo}</strong></p>
+                  <p>Sem hash: <strong>{importLegadoPreview.semHashConteudo}</strong></p>
+                </div>
+                <p>Chaves lidas: {(importLegadoPreview.storageKeysLidas || []).join(', ') || '—'}</p>
+                <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                  Estimativa: total/importável/duplicado/sem vínculo são prévios locais. Resultado final só é conhecido após executar na API.
+                </p>
+                <p className="text-[11px] text-slate-600 dark:text-slate-400">{importLegadoPreview.observacao}</p>
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={executarImportacaoLegadoViaUi}
+                    disabled={
+                      importLegadoExecutando ||
+                      !importLegadoStatus.habilitadaPorFlag ||
+                      !importLegadoStatus.apiPublicacoesAtiva ||
+                      importLegadoStatus.jaExecutada
+                    }
+                    className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 disabled:opacity-50"
+                  >
+                    {importLegadoExecutando ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                    {importLegadoExecutando ? 'Importando legado...' : 'Confirmar e importar legado'}
+                  </button>
+                </div>
+                {importLegadoResumo ? (
+                  <div className="rounded border border-emerald-200 dark:border-emerald-500/30 bg-emerald-50/80 dark:bg-emerald-950/20 px-3 py-2 text-emerald-900 dark:text-emerald-100">
+                    {importLegadoResumo.ignorado ? (
+                      <p>{importLegadoResumo.motivo}</p>
+                    ) : (
+                      <p>
+                        Resultado: <strong>{importLegadoResumo.gravados}</strong> importado(s), <strong>{importLegadoResumo.ignorados}</strong>{' '}
+                        ignorado(s), <strong>{importLegadoResumo.semVinculo}</strong> sem vínculo resolvido, de <strong>{importLegadoResumo.total}</strong>{' '}
+                        lido(s).
+                      </p>
+                    )}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
           <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed max-w-3xl">
             O sistema extrai <strong>texto selecionável</strong> do PDF (sem OCR), segmenta blocos, identifica o número
             CNJ, <strong>Data de disponibilização</strong> e <strong>Data de publicação</strong> (inclusive com ano em 2
@@ -612,6 +862,8 @@ export function PublicacoesProcessos() {
             {logImportacao.ignoradosDuplicata > 0
               ? ` ${logImportacao.ignoradosDuplicata} duplicata(s) ignorada(s) no armazenamento.`
               : ''}
+            {Number(logImportacao.semVinculo || 0) > 0 ? ` ${logImportacao.semVinculo} registro(s) sem vínculo resolvido.` : ''}
+            {logImportacao.mensagem ? ` ${logImportacao.mensagem}` : ''}
           </div>
         ) : null}
 
@@ -645,7 +897,77 @@ export function PublicacoesProcessos() {
                 />
               </span>
             </label>
+            <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-slate-400">
+              Status trat.
+              <select
+                value={filtroStatusTratamento}
+                onChange={(e) => setFiltroStatusTratamento(e.target.value)}
+                className="rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-[#0d1018] px-3 py-2 text-sm min-w-[10rem]"
+              >
+                <option value="">Todos</option>
+                <option value="PENDENTE">Pendente</option>
+                <option value="VINCULADA">Vinculada</option>
+                <option value="TRATADA">Tratada</option>
+                <option value="IGNORADA">Ignorada</option>
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-slate-400">
+              Origem
+              <select
+                value={filtroOrigemImportacao}
+                onChange={(e) => setFiltroOrigemImportacao(e.target.value)}
+                className="rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-[#0d1018] px-3 py-2 text-sm min-w-[9rem]"
+              >
+                <option value="">Todas</option>
+                <option value="MANUAL">Manual</option>
+                <option value="PDF">PDF</option>
+                <option value="DATAJUD">DataJud</option>
+                <option value="MONITORAMENTO">Monitoramento</option>
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-slate-400">
+              De
+              <input
+                type="date"
+                value={filtroDataInicio}
+                onChange={(e) => setFiltroDataInicio(e.target.value)}
+                className="rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-[#0d1018] px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-slate-400">
+              Até
+              <input
+                type="date"
+                value={filtroDataFim}
+                onChange={(e) => setFiltroDataFim(e.target.value)}
+                className="rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-[#0d1018] px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-slate-400">
+              Processo ID
+              <input
+                type="number"
+                value={filtroProcessoId}
+                onChange={(e) => setFiltroProcessoId(e.target.value)}
+                className="rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-[#0d1018] px-3 py-2 text-sm w-[9rem]"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-slate-400">
+              Cliente ID
+              <input
+                type="number"
+                value={filtroClienteId}
+                onChange={(e) => setFiltroClienteId(e.target.value)}
+                className="rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-[#0d1018] px-3 py-2 text-sm w-[9rem]"
+              />
+            </label>
           </div>
+          {carregandoGravados ? (
+            <p className="text-xs text-indigo-700 dark:text-indigo-300">Carregando publicações...</p>
+          ) : null}
+          {erroGravados ? (
+            <p className="text-xs text-red-700 dark:text-red-300">{erroGravados}</p>
+          ) : null}
 
           {filtrados.length > 0 ? (
             <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50/80 dark:bg-black/25 p-4 space-y-3">
@@ -830,6 +1152,31 @@ export function PublicacoesProcessos() {
                               <RotateCcw className="w-3 h-3" />
                               Auto
                             </button>
+                            {featureFlags.useApiTarefas ? (
+                              <button
+                                type="button"
+                                onClick={() => abrirModalTarefaPublicacao(r)}
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded border border-sky-200 dark:border-sky-500/40 text-[10px] font-medium text-sky-800 dark:text-sky-200 hover:bg-sky-50 dark:hover:bg-sky-950/30"
+                                title="Criar tarefa operacional com vínculos quando a API estiver ativa"
+                              >
+                                <ListTodo className="w-3 h-3" />
+                                Criar tarefa
+                              </button>
+                            ) : null}
+                            <button
+                              type="button"
+                              onClick={() => alterarStatusGravado(r, 'TRATADA')}
+                              className="inline-flex items-center gap-1 px-2 py-1 rounded border border-emerald-200 dark:border-emerald-500/40 text-[10px] font-medium text-emerald-800 dark:text-emerald-200 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                            >
+                              Tratar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => alterarStatusGravado(r, 'IGNORADA')}
+                              className="inline-flex items-center gap-1 px-2 py-1 rounded border border-amber-200 dark:border-amber-500/40 text-[10px] font-medium text-amber-800 dark:text-amber-200 hover:bg-amber-50 dark:hover:bg-amber-950/30"
+                            >
+                              Ignorar
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -930,6 +1277,12 @@ export function PublicacoesProcessos() {
             </div>
           </div>
         ) : null}
+
+        <ModalCriarTarefaContextual
+          open={modalTarefaContextual != null}
+          onClose={() => setModalTarefaContextual(null)}
+          context={modalTarefaContextual}
+        />
       </div>
     </div>
   );

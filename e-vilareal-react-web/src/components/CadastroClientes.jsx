@@ -5,7 +5,11 @@ import { ModalConfiguracoesCalculoCliente } from './ModalConfiguracoesCalculoCli
 import { clienteMock, processosClienteMock } from '../data/mockData';
 import { getDadosProcessoClienteUnificado } from '../data/processoClienteProcUnificado.js';
 import { getIdPessoaPorCodCliente, CLIENTE_PARA_PESSOA } from '../data/clientesCadastradosMock';
-import { getPessoaPorId, getCadastroPessoasMock } from '../data/cadastroPessoasMock';
+import { buscarCliente } from '../api/clientesService.js';
+import {
+  getCadastroPessoasMockComNovosLocais,
+  getPessoaPorIdIncluindoNovosLocais,
+} from '../data/cadastroPessoasMockNovosLocal.js';
 import {
   loadCadastroClienteDados,
   saveCadastroClienteDados,
@@ -25,6 +29,16 @@ import {
   alinharListaProcessosDescricaoComHistorico,
 } from '../data/processosHistoricoData.js';
 import { getContextoAuditoriaUsuario, registrarAuditoria } from '../services/auditoriaCliente.js';
+import { featureFlags } from '../config/featureFlags.js';
+import {
+  listarClientesCadastro,
+  salvarClienteCadastro,
+} from '../repositories/clientesRepository.js';
+import {
+  buscarClientePorCodigo,
+  buscarProcessoPorChaveNatural,
+  salvarCabecalhoProcesso,
+} from '../repositories/processosRepository.js';
 
 let __ultimoListaClientesLog = 0;
 let __ultimoClienteConsultaLog = '';
@@ -38,7 +52,7 @@ function formatDocBR(digits) {
 
 function dadosClientePorCodigo(n) {
   const idPessoa = getIdPessoaPorCodCliente(n);
-  const pes = idPessoa != null ? getPessoaPorId(idPessoa) : null;
+  const pes = idPessoa != null ? getPessoaPorIdIncluindoNovosLocais(idPessoa) : null;
   if (pes) {
     return {
       pessoa: String(idPessoa),
@@ -147,6 +161,13 @@ function somenteDigitos(v) {
   return String(v ?? '').replace(/\D/g, '');
 }
 
+function parseValorMonetarioBr(valor) {
+  const cleaned = String(valor ?? '').trim().replace(/\./g, '').replace(',', '.').replace(/[^\d.-]/g, '');
+  if (!cleaned) return null;
+  const n = Number(cleaned);
+  return Number.isFinite(n) ? n : null;
+}
+
 function joinComVirgula(partes) {
   return (partes || []).map((x) => String(x ?? '').trim()).filter(Boolean).join(', ');
 }
@@ -236,6 +257,8 @@ export function CadastroClientes() {
   const [modalEscolherPessoa, setModalEscolherPessoa] = useState(false);
   const [buscaPessoaModal, setBuscaPessoaModal] = useState('');
   const [processos, setProcessos] = useState(ini.processos);
+  const [clientesApiIndex, setClientesApiIndex] = useState([]);
+  const [erroApiCliente, setErroApiCliente] = useState('');
   /** Atualiza ao trocar de cliente para refletir persistência e mapa de códigos. */
   const proximoCliente = useMemo(() => obterProximoCodigoClienteSugerido(), [codigo]);
   const montagemInicialRef = useRef(true);
@@ -254,6 +277,22 @@ export function CadastroClientes() {
     edicaoDesabilitada,
     processos,
   };
+
+  useEffect(() => {
+    if (!featureFlags.useApiClientes) return;
+    let cancelado = false;
+    (async () => {
+      try {
+        const data = await listarClientesCadastro();
+        if (!cancelado) setClientesApiIndex(data);
+      } catch (e) {
+        if (!cancelado) setErroApiCliente(e?.message || 'Erro ao carregar clientes da API.');
+      }
+    })();
+    return () => {
+      cancelado = true;
+    };
+  }, []);
 
   useEffect(() => {
     const now = Date.now();
@@ -294,6 +333,19 @@ export function CadastroClientes() {
     const padded = padCliente8(paddedRaw);
     const mock = gerarMockClienteEProcessos(padded);
     const persisted = loadCadastroClienteDados(padded);
+    const api = featureFlags.useApiClientes
+      ? (clientesApiIndex || []).find((c) => c.codigo === padded)
+      : null;
+    if (api) {
+      setCodigo(api.codigo);
+      setPessoa(api.pessoa ?? '');
+      setNomeRazao(api.nomeRazao ?? '');
+      setCnpjCpf(api.cnpjCpf ?? '');
+      setObservacao(api.observacao ?? '');
+      setClienteInativo(api.clienteInativo ?? false);
+      setEdicaoDesabilitada(false);
+      return;
+    }
     if (mock) {
       setCodigo(mock.codigoCliente);
       setPessoa(persisted?.pessoa ?? mock.pessoa ?? '');
@@ -325,7 +377,7 @@ export function CadastroClientes() {
         );
       }
     }
-  }, []);
+  }, [clientesApiIndex]);
 
   useEffect(() => {
     if (codClienteFromState) {
@@ -349,19 +401,41 @@ export function CadastroClientes() {
       pularSincPorCargaClienteRef.current = false;
       return;
     }
+    const id = Number(String(pessoa ?? '').replace(/\D/g, ''));
+    if (!Number.isFinite(id) || id < 1) return;
+    let cancelado = false;
     const t = window.setTimeout(() => {
-      const id = Number(String(pessoa ?? '').replace(/\D/g, ''));
-      if (!Number.isFinite(id) || id < 1) return;
-      const pes = getPessoaPorId(id);
-      if (pes) {
-        setNomeRazao(pes.nome);
-        setCnpjCpf(formatDocBR(pes.cpf));
-      } else {
-        setNomeRazao(`Pessoa nº ${id} (não encontrada no cadastro)`);
-        setCnpjCpf('—');
-      }
+      void (async () => {
+        if (cancelado) return;
+        const pesLocal = getPessoaPorIdIncluindoNovosLocais(id);
+        if (pesLocal) {
+          if (!cancelado) {
+            setNomeRazao(pesLocal.nome);
+            setCnpjCpf(formatDocBR(pesLocal.cpf));
+          }
+          return;
+        }
+        try {
+          const api = await buscarCliente(id);
+          if (cancelado) return;
+          if (api) {
+            setNomeRazao(String(api.nome ?? '').trim() || `Pessoa nº ${id}`);
+            setCnpjCpf(formatDocBR(api.cpf));
+            return;
+          }
+        } catch {
+          /* API indisponível ou 404 */
+        }
+        if (!cancelado) {
+          setNomeRazao(`Pessoa nº ${id} (não encontrada no cadastro)`);
+          setCnpjCpf('—');
+        }
+      })();
     }, 350);
-    return () => window.clearTimeout(t);
+    return () => {
+      cancelado = true;
+      window.clearTimeout(t);
+    };
   }, [pessoa]);
 
   useEffect(() => {
@@ -372,6 +446,17 @@ export function CadastroClientes() {
     const t = setTimeout(() => {
       const s = persistSnapshotRef.current;
       if (!s) return;
+      if (featureFlags.useApiClientes) {
+        void salvarClienteCadastro({
+          codigo: s.codigo,
+          pessoa: s.pessoa,
+          nomeRazao: s.nomeRazao,
+          cnpjCpf: s.cnpjCpf,
+          observacao: s.observacao,
+          clienteInativo: s.clienteInativo,
+        }).catch(() => {});
+        return;
+      }
       saveCadastroClienteDados(s.codigo, {
         pessoa: s.pessoa,
         nomeRazao: s.nomeRazao,
@@ -389,6 +474,7 @@ export function CadastroClientes() {
     return () => {
       const s = persistSnapshotRef.current;
       if (!s) return;
+      if (featureFlags.useApiClientes) return;
       saveCadastroClienteDados(s.codigo, {
         pessoa: s.pessoa,
         nomeRazao: s.nomeRazao,
@@ -411,29 +497,62 @@ export function CadastroClientes() {
       if (edicaoDesabilitada) return;
       setProcessos((prev) => {
         const next = prev.map((p) => (p.id === procId ? { ...p, [campo]: valor } : p));
+        const row = next.find((p) => p.id === procId);
+        if (featureFlags.useApiProcessos && row) {
+          void (async () => {
+            try {
+              const clienteApi = await buscarClientePorCodigo(padCliente8(codigo));
+              if (!clienteApi?.id) return;
+              const procNum = Number(row.procNumero);
+              const existente = await buscarProcessoPorChaveNatural(padCliente8(codigo), procNum);
+              await salvarCabecalhoProcesso({
+                clienteId: clienteApi.id,
+                codigoCliente: padCliente8(codigo),
+                numeroInterno: procNum,
+                numeroProcessoNovo: campo === 'processoNovo' ? valor : row.processoNovo,
+                numeroProcessoVelho: campo === 'processoVelho' ? valor : row.processoVelho,
+                naturezaAcao: campo === 'descricao' ? valor : row.descricao,
+                competencia: null,
+                faseSelecionada: null,
+                status: null,
+                tramitacao: null,
+                dataProtocolo: null,
+                prazoFatal: null,
+                proximaConsultaData: null,
+                observacao,
+                valorCausaNumero: parseValorMonetarioBr(null),
+                estado: null,
+                cidade: null,
+                consultaAutomatica: false,
+                statusAtivo: true,
+                responsavel: null,
+                usuarioResponsavelId: null,
+                processoId: existente?.id ?? null,
+              });
+            } catch {
+              // fallback local continua funcionando
+            }
+          })();
+        }
         if (campo === 'descricao') {
-          const row = next.find((p) => p.id === procId);
           const n = Number(row?.procNumero);
           if (Number.isFinite(n) && n >= 1) {
             salvarNaturezaAcaoDoProcesso(padCliente8(codigo), n, valor);
           }
         }
         if (campo === 'processoVelho') {
-          const row = next.find((p) => p.id === procId);
           const n = Number(row?.procNumero);
           if (Number.isFinite(n) && n >= 1) {
             salvarNumeroProcessoVelhoDoProcesso(padCliente8(codigo), n, valor);
           }
         }
         if (campo === 'parteOposta') {
-          const row = next.find((p) => p.id === procId);
           const n = Number(row?.procNumero);
           if (Number.isFinite(n) && n >= 1) {
             salvarParteOpostaDaGradeCadastro(padCliente8(codigo), n, valor);
           }
         }
         if (campo === 'processoNovo') {
-          const row = next.find((p) => p.id === procId);
           const n = Number(row?.procNumero);
           if (Number.isFinite(n) && n >= 1) {
             salvarNumeroProcessoNovoDaGradeCadastro(padCliente8(codigo), n, valor);
@@ -584,7 +703,7 @@ export function CadastroClientes() {
   const pessoaSelecionada = useMemo(() => {
     const id = Number(String(pessoa ?? '').replace(/\D/g, ''));
     if (!Number.isFinite(id) || id <= 0) return null;
-    return getPessoaPorId(id);
+    return getPessoaPorIdIncluindoNovosLocais(id);
   }, [pessoa]);
 
   const textoQualificacao = useMemo(
@@ -592,7 +711,7 @@ export function CadastroClientes() {
     [nomeRazao, cnpjCpf, pessoaSelecionada]
   );
 
-  const todasPessoasCadastro = useMemo(() => getCadastroPessoasMock(true), []);
+  const todasPessoasCadastro = useMemo(() => getCadastroPessoasMockComNovosLocais(true), []);
 
   const pessoasFiltradasModal = useMemo(() => {
     const raw = String(buscaPessoaModal ?? '').trim();
@@ -651,7 +770,7 @@ export function CadastroClientes() {
   const indiceClientesPorNome = useMemo(() => {
     const out = [];
     for (const [codStr, idPessoa] of Object.entries(CLIENTE_PARA_PESSOA)) {
-      const pes = getPessoaPorId(idPessoa);
+      const pes = getPessoaPorIdIncluindoNovosLocais(idPessoa);
       const nome =
         pes?.nome?.trim() || `Pessoa nº ${idPessoa} (sem nome no cadastro)`;
       out.push({
@@ -683,6 +802,11 @@ export function CadastroClientes() {
 
   return (
     <div className="min-h-full bg-slate-200 flex flex-col">
+      {erroApiCliente ? (
+        <div className="mx-4 mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          {erroApiCliente}
+        </div>
+      ) : null}
       <header className="flex items-center justify-between px-3 py-2 bg-white border-b border-slate-300 shrink-0">
         <h1 className="text-lg font-bold text-slate-800">Cadastro de Clientes</h1>
       </header>

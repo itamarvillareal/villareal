@@ -13,6 +13,7 @@ import {
 } from '../data/relatorioProcessosColunaDinamica.js';
 import { normalizarFiltroProcessoAtivo } from '../data/relatorioPresets.js';
 import { getRelatorioProcessosMockLinhasBase } from '../data/relatorioProcessosDados.js';
+import { preaquecerCamposRelatorioApiFirst } from '../data/processosDadosRelatorio.js';
 
 const STORAGE_COLUNAS_RELATORIO = 'vilareal.relatorioProcessos.colunasVisiveis.v1';
 const STORAGE_LARGURA_UNIFORME = 'vilareal.relatorioProcessos.larguraUniforme.v1';
@@ -251,14 +252,22 @@ export function Relatorio() {
     emitindoRelatorioRef.current = true;
     setEmitindoRelatorio(true);
     window.setTimeout(() => {
-      try {
+      void (async () => {
+        try {
+          const basePairs = getRelatorioProcessosMockLinhasBase().map((r) => [r.codCliente, r.proc]);
+          await preaquecerCamposRelatorioApiFirst(basePairs);
+        } catch {
+          // fallback local/mock já cobre esse cenário
+        }
+        try {
         const next = carregarDadosRelatorioInicial();
         setDados(next);
         setRelatorioEmitido(true);
-      } finally {
-        emitindoRelatorioRef.current = false;
-        setEmitindoRelatorio(false);
-      }
+        } finally {
+          emitindoRelatorioRef.current = false;
+          setEmitindoRelatorio(false);
+        }
+      })();
     }, 0);
   }, []);
 

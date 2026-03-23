@@ -11,6 +11,12 @@ import {
 import { ModalPermissoesUsuario } from './ModalPermissoesUsuario.jsx';
 import { ModalDadosUsuario } from './ModalDadosUsuario.jsx';
 import { getNomeExibicaoUsuario } from '../data/usuarioDisplayHelpers.js';
+import {
+  listarUsuarios,
+  salvarUsuario,
+  alternarUsuarioAtivo,
+} from '../repositories/usuariosRepository.js';
+import { featureFlags } from '../config/featureFlags.js';
 
 function normalizarNomeParaId(nome) {
   return String(nome || '')
@@ -27,6 +33,8 @@ function normalizarNomeParaId(nome) {
  */
 export function Usuarios() {
   const [usuariosAtivos, setUsuariosAtivosState] = useState(() => getUsuariosAtivos());
+  const [loading, setLoading] = useState(false);
+  const [erroCarregamento, setErroCarregamento] = useState('');
   const [slotsCustom, setSlotsCustom] = useState(['', '']);
   const [permModalUsuario, setPermModalUsuario] = useState(null);
   const [dadosModalUsuario, setDadosModalUsuario] = useState(null);
@@ -43,6 +51,20 @@ export function Usuarios() {
     return true;
   }
 
+  async function recarregarUsuariosApi() {
+    if (!featureFlags.useApiUsuarios) return;
+    setLoading(true);
+    setErroCarregamento('');
+    try {
+      const data = await listarUsuarios();
+      setUsuariosAtivosState((data || []).filter((u) => u.ativo !== false));
+    } catch (e) {
+      setErroCarregamento(e?.message || 'Erro ao carregar usuários da API.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
   function abrirModalIncluir(ag, opts = {}) {
     if (!ag?.id) return;
     const ids = new Set((usuariosAtivos || []).map((u) => String(u.id)));
@@ -54,15 +76,31 @@ export function Usuarios() {
     });
   }
 
-  function confirmarInclusaoModal() {
+  async function confirmarInclusaoModal() {
     if (!modalIncluir?.ag?.id) return;
     const { ag, origemCloneId, clearSlotIndex } = modalIncluir;
     const novo = criarUsuarioRegistroMinimo(ag);
-    const next = [...(usuariosAtivos || []), novo];
-    if (!persistirUsuariosAtivos(next)) return;
+    if (featureFlags.useApiUsuarios) {
+      try {
+        await salvarUsuario({
+          ...novo,
+          nome: ag.nome,
+          login: normalizarNomeParaId(ag.nome) || `usuario_${Date.now()}`,
+          senhaHash: 'sem-hash-definido',
+          ativo: true,
+        });
+        await recarregarUsuariosApi();
+      } catch (e) {
+        window.alert(e?.message || 'Não foi possível incluir o usuário na API.');
+        return;
+      }
+    } else {
+      const next = [...(usuariosAtivos || []), novo];
+      if (!persistirUsuariosAtivos(next)) return;
+    }
 
     const origem = String(origemCloneId || '').trim();
-    if (origem) {
+    if (origem && !featureFlags.useApiUsuarios) {
       const r = clonarAgendaEntreUsuarios({ origemUsuarioId: origem, destinoUsuarioId: ag.id });
       if (r.ok) {
         const nomeAlvo = getNomeExibicaoUsuario(novo) || ag.nome;
@@ -98,6 +136,10 @@ export function Usuarios() {
   }
 
   useEffect(() => {
+    if (featureFlags.useApiUsuarios) {
+      void recarregarUsuariosApi();
+      return;
+    }
     const basePrimeiro = Array.isArray(agendaUsuarios) && agendaUsuarios[0] ? agendaUsuarios[0] : null;
     if (!basePrimeiro) return;
     const ids = new Set((usuariosAtivos || []).map((u) => u.id));
@@ -107,8 +149,14 @@ export function Usuarios() {
   }, []);
 
   const idsAtivos = new Set((usuariosAtivos || []).map((u) => u.id));
-  const primeira = agendaUsuarios?.[0];
-  const resto = Array.isArray(agendaUsuarios) ? agendaUsuarios.slice(1) : [];
+  const primeira = featureFlags.useApiUsuarios
+    ? (usuariosAtivos?.[0] ? { id: usuariosAtivos[0].id, nome: usuariosAtivos[0].nome } : null)
+    : agendaUsuarios?.[0];
+  const resto = featureFlags.useApiUsuarios
+    ? (usuariosAtivos || []).slice(1).map((u) => ({ id: u.id, nome: u.nome }))
+    : Array.isArray(agendaUsuarios)
+      ? agendaUsuarios.slice(1)
+      : [];
 
   const mapaPorId = new Map((usuariosAtivos || []).map((u) => [u.id, u]));
 
@@ -117,6 +165,11 @@ export function Usuarios() {
   }
 
   async function salvarDadosUsuario(atualizado) {
+    if (featureFlags.useApiUsuarios) {
+      await salvarUsuario(atualizado);
+      await recarregarUsuariosApi();
+      return;
+    }
     const atual = getUsuariosAtivos();
     const next = atual.some((x) => String(x.id) === String(atualizado.id))
       ? atual.map((x) => (String(x.id) === String(atualizado.id) ? atualizado : x))
@@ -209,7 +262,18 @@ export function Usuarios() {
               </button>
               <button
                 type="button"
-                onClick={() => excluirUsuario(u.id)}
+                onClick={async () => {
+                  if (featureFlags.useApiUsuarios) {
+                    try {
+                      await alternarUsuarioAtivo(u.id, false);
+                      await recarregarUsuariosApi();
+                    } catch (e) {
+                      window.alert(e?.message || 'Erro ao inativar usuário.');
+                    }
+                    return;
+                  }
+                  excluirUsuario(u.id);
+                }}
                 disabled={!ativo}
                 className="rounded border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-50"
               >
@@ -258,6 +322,12 @@ export function Usuarios() {
       </div>
 
       <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
+        {loading ? (
+          <div className="px-4 py-3 text-sm text-slate-600 border-b border-slate-200">Carregando usuários...</div>
+        ) : null}
+        {erroCarregamento ? (
+          <div className="px-4 py-3 text-sm text-red-700 bg-red-50 border-b border-red-200">{erroCarregamento}</div>
+        ) : null}
         <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
           <h2 className="text-base font-semibold text-slate-800">Usuários do sistema</h2>
           <p className="mt-1 text-xs text-slate-600">
@@ -426,7 +496,7 @@ export function Usuarios() {
               </button>
               <button
                 type="button"
-                onClick={confirmarInclusaoModal}
+                onClick={() => void confirmarInclusaoModal()}
                 className="rounded-lg border border-indigo-600 bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
               >
                 Confirmar inclusão

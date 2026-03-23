@@ -48,6 +48,8 @@ export function extrairDadosDeTextoLivre(textoBruto, options = {}) {
     candidatos: parsed.candidatos,
     avisos: parsed.avisos,
     textoOriginal: String(textoBruto || ''),
+    /** Mesmo texto enviado ao parser (parágrafos → espaço). Refletir no textarea após extrair. */
+    textoNormalizado: parsed.textoNormalizado ?? '',
     debug: parsed.debug,
     preenchidos,
   };

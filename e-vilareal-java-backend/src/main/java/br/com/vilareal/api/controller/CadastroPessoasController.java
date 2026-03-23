@@ -14,6 +14,7 @@ import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import java.net.URI;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/cadastro-pessoas")
@@ -27,7 +28,7 @@ public class CadastroPessoasController {
     }
 
     @PostMapping
-    @Operation(summary = "Criar", description = "Cadastra uma nova pessoa. E-mail e CPF devem ser únicos.")
+    @Operation(summary = "Criar", description = "Cadastra uma nova pessoa. CPF obrigatório e único; e-mail opcional e único quando informado.")
     @ApiResponses({
             @ApiResponse(responseCode = "201", description = "Cadastro criado com sucesso"),
             @ApiResponse(responseCode = "400", description = "Dados inválidos ou e-mail/CPF já existente")
@@ -54,6 +55,12 @@ public class CadastroPessoasController {
             @Valid @RequestBody CadastroPessoasRequest request) {
         CadastroPessoasResponse response = service.atualizar(id, request);
         return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/proximo-id")
+    @Operation(summary = "Próximo ID", description = "Próximo valor de id para novo cadastro (MAX(id)+1 ou 1). Somente pré-visualização na tela.")
+    public ResponseEntity<Map<String, Long>> proximoId() {
+        return ResponseEntity.ok(Map.of("proximoId", service.proximoIdDisponivel()));
     }
 
     @GetMapping("/{id}")

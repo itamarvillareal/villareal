@@ -17,6 +17,7 @@ import java.util.stream.Collectors;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     @ExceptionHandler(CadastroPessoaNaoEncontradaException.class)
     public ResponseEntity<ErroResponse> cadastroPessoaNaoEncontrado(
@@ -58,6 +59,20 @@ public class GlobalExceptionHandler {
                 request.getRequestURI()
         );
         return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(body);
+    }
+
+    @ExceptionHandler(RecursoNaoEncontradoException.class)
+    public ResponseEntity<ErroResponse> recursoNaoEncontrado(
+            RecursoNaoEncontradoException ex,
+            HttpServletRequest request) {
+        ErroResponse body = new ErroResponse(
+                Instant.now(),
+                HttpStatus.NOT_FOUND.value(),
+                "Not Found",
+                ex.getMessage(),
+                request.getRequestURI()
+        );
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(body);
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

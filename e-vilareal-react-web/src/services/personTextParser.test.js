@@ -72,4 +72,12 @@ describe('extrairDadosDeTextoLivre — casos obrigatórios', () => {
     expect(r.sucesso).toBe(false);
     expect(r.avisos.some((a) => /vazio/i.test(a))).toBe(true);
   });
+
+  it('multilinha: remove parágrafos antes da extração (nome e CPF em linhas diferentes)', () => {
+    const t = 'ELIZEU SOUZA DE\nOLIVEIRA, CPF 390.533.447-05';
+    const r = extrairDadosDeTextoLivre(t);
+    expect(r.nomeCompleto).toMatch(/ELIZEU SOUZA DE OLIVEIRA/i);
+    expect(r.cpf).toBeTruthy();
+    expect(r.textoNormalizado).toMatch(/ELIZEU SOUZA DE OLIVEIRA, CPF 390\.533\.447-05/);
+  });
 });

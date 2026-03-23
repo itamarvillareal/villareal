@@ -136,12 +136,19 @@ public class CadastroPessoasServiceImpl implements CadastroPessoasService {
         return repository.existsById(id);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public long proximoIdDisponivel() {
+        return repository.calcularProximoId();
+    }
+
     private CadastroPessoa buscarEntidadePorId(Long id) {
         return repository.findById(id)
                 .orElseThrow(() -> new CadastroPessoaNaoEncontradaException(id));
     }
 
     private void validarEmailUnico(String email, Long idExcluir) {
+        if (email == null || email.isBlank()) return;
         boolean emUso = idExcluir == null
                 ? repository.existsByEmail(email)
                 : repository.existsByEmailAndIdNot(email, idExcluir);
@@ -182,10 +189,15 @@ public class CadastroPessoasServiceImpl implements CadastroPessoasService {
         return cpf == null ? null : cpf.replaceAll("\\D", "");
     }
 
+    private static String normalizarEmailOpcional(String email) {
+        if (email == null || email.isBlank()) return null;
+        return email.trim();
+    }
+
     private CadastroPessoa toEntity(CadastroPessoasRequest request, CadastroPessoa existente) {
         CadastroPessoa e = existente != null ? existente : new CadastroPessoa();
         e.setNome(request.getNome());
-        e.setEmail(request.getEmail());
+        e.setEmail(normalizarEmailOpcional(request.getEmail()));
         e.setCpf(normalizarCpf(request.getCpf()));
         e.setTelefone(request.getTelefone());
         e.setDataNascimento(request.getDataNascimento());
@@ -199,7 +211,7 @@ public class CadastroPessoasServiceImpl implements CadastroPessoasService {
 
     private void atualizarEntidade(CadastroPessoa entity, CadastroPessoasRequest request) {
         entity.setNome(request.getNome());
-        entity.setEmail(request.getEmail());
+        entity.setEmail(normalizarEmailOpcional(request.getEmail()));
         entity.setCpf(normalizarCpf(request.getCpf()));
         entity.setTelefone(request.getTelefone());
         entity.setDataNascimento(request.getDataNascimento());

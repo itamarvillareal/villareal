@@ -1,9 +1,15 @@
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { X, ChevronUp, ChevronDown, UserPlus, Landmark } from 'lucide-react';
-import { getImovelMock } from '../data/imoveisMockData';
 import { padCliente } from '../data/processosDadosRelatorio.js';
 import { resolverAliasHojeEmTexto } from '../services/hjDateAliasService.js';
+import { carregarImovelCadastro, salvarImovelCadastro } from '../repositories/imoveisRepository.js';
+import { featureFlags } from '../config/featureFlags.js';
+import {
+  executarMigracaoAssistidaPhase7Imoveis,
+  getStatusMigracaoAssistidaPhase7Imoveis,
+  previsualizarMigracaoAssistidaPhase7Imoveis,
+} from '../services/imoveisMigrationPhase7.js';
 
 function Field({ label, children, className = '' }) {
   return (
@@ -118,12 +124,23 @@ export function Imoveis() {
   const [contratoArquivado, setContratoArquivado] = useState('nao');
   const [contratoIntermediacaoArquivado, setContratoIntermediacaoArquivado] = useState('nao');
   const [contratoIntermediacaoAssinadoProprietario, setContratoIntermediacaoAssinadoProprietario] = useState('nao');
+  const [apiLoading, setApiLoading] = useState(false);
+  const [apiError, setApiError] = useState('');
+  const [apiSaving, setApiSaving] = useState(false);
+  const [apiSuccess, setApiSuccess] = useState('');
+  const [_apiImovelId, setApiImovelId] = useState(null);
+  const [_apiContratoId, setApiContratoId] = useState(null);
+  const [_apiClienteId, setApiClienteId] = useState(null);
+  const [_apiProcessoId, setApiProcessoId] = useState(null);
+  const [migracaoPreview, setMigracaoPreview] = useState(null);
+  const [migracaoLoading, setMigracaoLoading] = useState(false);
+  const [migracaoResultado, setMigracaoResultado] = useState(null);
+  const [migracaoErro, setMigracaoErro] = useState('');
 
   const unidadeAlvo = location.state && typeof location.state === 'object' ? location.state.unidade : null;
 
-  useEffect(() => {
-    const mock = getImovelMock(imovelId);
-    if (!mock) {
+  function popularFormulario(data) {
+    if (!data) {
       // Sem cadastro para este nº de imóvel: formulário em branco (não manter dados do imóvel anterior).
       setImovelOcupado(false);
       setCodigo('');
@@ -180,66 +197,98 @@ export function Imoveis() {
       setContratoArquivado('nao');
       setContratoIntermediacaoArquivado('nao');
       setContratoIntermediacaoAssinadoProprietario('nao');
+      setApiImovelId(null);
+      setApiContratoId(null);
+      setApiClienteId(null);
+      setApiProcessoId(null);
       return;
     }
 
-    setImovelOcupado(!!mock.imovelOcupado);
-    setCodigo(String(mock.codigo ?? ''));
-    setProc(Number(mock.proc ?? 1));
-    setObservacoesInquilino(String(mock.observacoesInquilino ?? ''));
-    setEndereco(String(mock.endereco ?? ''));
-    setCondominio(String(mock.condominio ?? ''));
-    setUnidade(String(mock.unidade ?? ''));
+    setImovelOcupado(!!data.imovelOcupado);
+    setCodigo(String(data.codigo ?? ''));
+    setProc(Number(data.proc ?? 1));
+    setObservacoesInquilino(String(data.observacoesInquilino ?? ''));
+    setEndereco(String(data.endereco ?? ''));
+    setCondominio(String(data.condominio ?? ''));
+    setUnidade(String(data.unidade ?? ''));
     if (unidadeAlvo != null) setUnidade(String(unidadeAlvo));
-    setGaragens(String(mock.garagens ?? ''));
-    setGarantia(String(mock.garantia ?? ''));
-    setValorGarantia(String(mock.valorGarantia ?? ''));
-    setValorLocacao(String(mock.valorLocacao ?? ''));
-    setDiaPagAluguel(String(mock.diaPagAluguel ?? ''));
-    setDataPag1TxCond(String(mock.dataPag1TxCond ?? ''));
-    setInscricaoImobiliaria(String(mock.inscricaoImobiliaria ?? ''));
-    setExisteDebIptu(String(mock.existeDebIptu ?? ''));
-    setDataConsIptu(String(mock.dataConsIptu ?? ''));
+    setGaragens(String(data.garagens ?? ''));
+    setGarantia(String(data.garantia ?? ''));
+    setValorGarantia(String(data.valorGarantia ?? ''));
+    setValorLocacao(String(data.valorLocacao ?? ''));
+    setDiaPagAluguel(String(data.diaPagAluguel ?? ''));
+    setDataPag1TxCond(String(data.dataPag1TxCond ?? ''));
+    setInscricaoImobiliaria(String(data.inscricaoImobiliaria ?? ''));
+    setExisteDebIptu(String(data.existeDebIptu ?? ''));
+    setDataConsIptu(String(data.dataConsIptu ?? ''));
+    setAguaNumero(String(data.aguaNumero ?? ''));
+    setDataConsAgua(String(data.dataConsAgua ?? ''));
+    setExisteDebAgua(String(data.existeDebAgua ?? ''));
+    setDiaVencAgua(String(data.diaVencAgua ?? ''));
+    setEnergiaNumero(String(data.energiaNumero ?? ''));
+    setDataConsEnergia(String(data.dataConsEnergia ?? ''));
+    setExisteDebEnergia(String(data.existeDebEnergia ?? ''));
+    setDiaVencEnergia(String(data.diaVencEnergia ?? ''));
+    setGasNumero(String(data.gasNumero ?? ''));
+    setDataConsGas(String(data.dataConsGas ?? ''));
+    setExisteDebGas(String(data.existeDebGas ?? ''));
+    setDiaVencGas(String(data.diaVencGas ?? ''));
+    setDataInicioContrato(String(data.dataInicioContrato ?? ''));
+    setDataFimContrato(String(data.dataFimContrato ?? ''));
+    setDataConsDebitoCond(String(data.dataConsDebitoCond ?? ''));
+    setExisteDebitoCond(String(data.existeDebitoCond ?? ''));
+    setDiaRepasse(String(data.diaRepasse ?? ''));
+    setBanco(String(data.banco ?? ''));
+    setAgencia(String(data.agencia ?? ''));
+    setNumeroBanco(String(data.numeroBanco ?? ''));
+    setConta(String(data.conta ?? ''));
+    setCpfBanco(String(data.cpfBanco ?? ''));
+    setTitular(String(data.titular ?? ''));
+    setChavePix(String(data.chavePix ?? ''));
+    setProprietarioNumeroPessoa(String(data.proprietarioNumeroPessoa ?? ''));
+    setProprietario(String(data.proprietario ?? ''));
+    setProprietarioCpf(String(data.proprietarioCpf ?? ''));
+    setProprietarioContato(String(data.proprietarioContato ?? ''));
+    setLinkVistoria(String(data.linkVistoria ?? ''));
+    setInquilinoNumeroPessoa(String(data.inquilinoNumeroPessoa ?? ''));
+    setInquilino(String(data.inquilino ?? ''));
+    setInquilinoCpf(String(data.inquilinoCpf ?? ''));
+    setInquilinoContato(String(data.inquilinoContato ?? ''));
+    setInfoIptuTexto(String(data.infoIptuTexto ?? ''));
+    setContratoAssinadoInquilino(String(data.contratoAssinadoInquilino ?? 'nao'));
+    setContratoAssinadoProprietario(String(data.contratoAssinadoProprietario ?? 'nao'));
+    setContratoAssinadoGarantidor(String(data.contratoAssinadoGarantidor ?? 'nao'));
+    setContratoAssinadoTestemunhas(String(data.contratoAssinadoTestemunhas ?? 'nao'));
+    setContratoArquivado(String(data.contratoArquivado ?? 'nao'));
+    setContratoIntermediacaoArquivado(String(data.contratoIntermediacaoArquivado ?? 'nao'));
+    setContratoIntermediacaoAssinadoProprietario(String(data.contratoIntermediacaoAssinadoProprietario ?? 'nao'));
+    setApiImovelId(data._apiImovelId ?? null);
+    setApiContratoId(data._apiContratoId ?? null);
+    setApiClienteId(data._apiClienteId ?? null);
+    setApiProcessoId(data._apiProcessoId ?? null);
+  }
 
-    setAguaNumero(String(mock.aguaNumero ?? ''));
-    setDataConsAgua(String(mock.dataConsAgua ?? ''));
-    setExisteDebAgua(String(mock.existeDebAgua ?? ''));
-    setDiaVencAgua(String(mock.diaVencAgua ?? ''));
-
-    setEnergiaNumero(String(mock.energiaNumero ?? ''));
-    setDataConsEnergia(String(mock.dataConsEnergia ?? ''));
-    setExisteDebEnergia(String(mock.existeDebEnergia ?? ''));
-    setDiaVencEnergia(String(mock.diaVencEnergia ?? ''));
-
-    setGasNumero(String(mock.gasNumero ?? ''));
-    setDataConsGas(String(mock.dataConsGas ?? ''));
-    setExisteDebGas(String(mock.existeDebGas ?? ''));
-    setDiaVencGas(String(mock.diaVencGas ?? ''));
-
-    setDataInicioContrato(String(mock.dataInicioContrato ?? ''));
-    setDataFimContrato(String(mock.dataFimContrato ?? ''));
-    setDataConsDebitoCond(String(mock.dataConsDebitoCond ?? ''));
-    setExisteDebitoCond(String(mock.existeDebitoCond ?? ''));
-    setDiaRepasse(String(mock.diaRepasse ?? ''));
-
-    setBanco(String(mock.banco ?? ''));
-    setAgencia(String(mock.agencia ?? ''));
-    setNumeroBanco(String(mock.numeroBanco ?? ''));
-    setConta(String(mock.conta ?? ''));
-    setCpfBanco(String(mock.cpfBanco ?? ''));
-    setTitular(String(mock.titular ?? ''));
-    setChavePix(String(mock.chavePix ?? ''));
-
-    setProprietarioNumeroPessoa(String(mock.proprietarioNumeroPessoa ?? ''));
-    setProprietario(String(mock.proprietario ?? ''));
-    setProprietarioCpf(String(mock.proprietarioCpf ?? ''));
-    setProprietarioContato(String(mock.proprietarioContato ?? ''));
-    setLinkVistoria(String(mock.linkVistoria ?? ''));
-
-    setInquilinoNumeroPessoa(String(mock.inquilinoNumeroPessoa ?? ''));
-    setInquilino(String(mock.inquilino ?? ''));
-    setInquilinoCpf(String(mock.inquilinoCpf ?? ''));
-    setInquilinoContato(String(mock.inquilinoContato ?? ''));
+  useEffect(() => {
+    let ativo = true;
+    setApiError('');
+    setApiSuccess('');
+    setApiLoading(true);
+    void carregarImovelCadastro({ imovelId })
+      .then((r) => {
+        if (!ativo) return;
+        popularFormulario(r.item);
+      })
+      .catch((e) => {
+        if (!ativo) return;
+        popularFormulario(null);
+        setApiError(e?.message || 'Falha ao carregar imóvel.');
+      })
+      .finally(() => {
+        if (ativo) setApiLoading(false);
+      });
+    return () => {
+      ativo = false;
+    };
   }, [imovelId, unidadeAlvo]);
 
   useEffect(() => {
@@ -262,6 +311,89 @@ export function Imoveis() {
 
   const vinculoClienteProcOk =
     String(codigo ?? '').trim() !== '' && String(proc ?? '').trim() !== '';
+
+  async function salvarCadastroAtual() {
+    setApiError('');
+    setApiSuccess('');
+    setApiSaving(true);
+    try {
+      const r = await salvarImovelCadastro({
+        imovelId,
+        imovelOcupado,
+        codigo,
+        proc,
+        observacoesInquilino,
+        endereco,
+        condominio,
+        unidade,
+        garagens,
+        garantia,
+        valorGarantia,
+        valorLocacao,
+        diaPagAluguel,
+        dataPag1TxCond,
+        inscricaoImobiliaria,
+        existeDebIptu,
+        dataConsIptu,
+        aguaNumero,
+        dataConsAgua,
+        existeDebAgua,
+        diaVencAgua,
+        energiaNumero,
+        dataConsEnergia,
+        existeDebEnergia,
+        diaVencEnergia,
+        gasNumero,
+        dataConsGas,
+        existeDebGas,
+        diaVencGas,
+        dataInicioContrato,
+        dataFimContrato,
+        dataConsDebitoCond,
+        existeDebitoCond,
+        diaRepasse,
+        banco,
+        agencia,
+        numeroBanco,
+        conta,
+        cpfBanco,
+        titular,
+        chavePix,
+        proprietarioNumeroPessoa,
+        proprietario,
+        proprietarioCpf,
+        proprietarioContato,
+        linkVistoria,
+        inquilinoNumeroPessoa,
+        inquilino,
+        inquilinoCpf,
+        inquilinoContato,
+        infoIptuTexto,
+        contratoAssinadoInquilino,
+        contratoAssinadoProprietario,
+        contratoAssinadoGarantidor,
+        contratoAssinadoTestemunhas,
+        contratoArquivado,
+        contratoIntermediacaoArquivado,
+        contratoIntermediacaoAssinadoProprietario,
+        _apiImovelId,
+        _apiContratoId,
+      });
+      if (r?.item) {
+        popularFormulario(r.item);
+        setImovelId(Number(r.item.imovelId || imovelId));
+      }
+      if (featureFlags.useApiImoveis) {
+        setApiSuccess('Cadastro do imóvel salvo na API.');
+      } else {
+        setApiSuccess('Fluxo em fallback legado/mock (sem persistência real).');
+      }
+    } catch (e) {
+      setApiError(e?.message || 'Falha ao salvar cadastro do imóvel.');
+    } finally {
+      setApiSaving(false);
+    }
+  }
 
   return (
     <div className="min-h-full bg-slate-200 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d]">
@@ -287,6 +419,13 @@ export function Imoveis() {
         </header>
 
         <div className="imoveis-admin-sheet bg-white rounded-2xl border border-slate-200/90 dark:border-white/[0.07] shadow-sm overflow-hidden ring-1 ring-slate-900/[0.03] dark:ring-white/[0.04]">
+          {(apiLoading || apiError || apiSuccess) && (
+            <div className="px-5 py-3 border-b border-slate-200 dark:border-white/[0.08] bg-slate-50/80 dark:bg-white/[0.03] text-sm">
+              {apiLoading ? <p className="text-indigo-700 dark:text-indigo-300">Carregando cadastro do imóvel...</p> : null}
+              {apiError ? <p className="text-red-700 dark:text-red-300">{apiError}</p> : null}
+              {apiSuccess ? <p className="text-emerald-700 dark:text-emerald-300">{apiSuccess}</p> : null}
+            </div>
+          )}
           {/* Faixa superior: identificação */}
           <div className="imoveis-admin-toolbar px-5 py-4 sm:px-6 border-b border-slate-200 dark:border-white/[0.06] bg-slate-50/95 dark:bg-black/20">
             <div className="flex flex-wrap items-end gap-x-6 gap-y-4">
@@ -363,7 +502,108 @@ export function Imoveis() {
                 <input type="text" value={proc} onChange={(e) => setProc(e.target.value)} className={inputClass} />
               </Field>
             </div>
+            {featureFlags.useApiImoveis && _apiImovelId ? (
+              <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-3 pt-3 border-t border-slate-200/90 dark:border-white/[0.08] w-full leading-relaxed">
+                Referência principal (API): imóvel{' '}
+                <span className="font-mono tabular-nums text-slate-800 dark:text-slate-200">{_apiImovelId}</span>
+                {_apiContratoId != null ? (
+                  <>
+                    {' '}
+                    · contrato <span className="font-mono tabular-nums text-slate-800 dark:text-slate-200">{_apiContratoId}</span>
+                  </>
+                ) : null}
+                {_apiClienteId != null ? (
+                  <>
+                    {' '}
+                    · cliente <span className="font-mono tabular-nums text-slate-800 dark:text-slate-200">{_apiClienteId}</span>
+                  </>
+                ) : null}
+                {_apiProcessoId != null ? (
+                  <>
+                    {' '}
+                    · processo <span className="font-mono tabular-nums text-slate-800 dark:text-slate-200">{_apiProcessoId}</span>
+                  </>
+                ) : null}
+                . Cod. e Proc. seguem como vínculo com Processos e Financeiro (legado operacional).
+              </p>
+            ) : null}
           </div>
+
+          {featureFlags.useApiImoveis && featureFlags.enableImoveisMockMigrationPhase7 ? (
+            <div className="px-5 sm:px-6 py-3 border-b border-amber-200/80 dark:border-amber-500/25 bg-amber-50/60 dark:bg-amber-950/30 text-sm space-y-2">
+              <p className="text-xs font-semibold text-amber-950 dark:text-amber-100/95">
+                Migração assistida (mock → API)
+              </p>
+              <p className="text-[11px] text-slate-600 dark:text-amber-200/80 leading-relaxed">
+                Importa imóvel + contrato a partir de <code className="text-[10px]">getImovelMock(1…N)</code> quando
+                cliente e processo existem na API. Não repete par (cliente, processo) já cadastrado. Não importa repasses
+                nem despesas (inexistentes no mock).{' '}
+                <span className="font-medium text-amber-900 dark:text-amber-50/90">
+                  Requer confirmação explícita para executar.
+                </span>
+              </p>
+              <div className="flex flex-wrap gap-2 items-center">
+                <button
+                  type="button"
+                  disabled={migracaoLoading}
+                  onClick={() => {
+                    setMigracaoErro('');
+                    setMigracaoResultado(null);
+                    setMigracaoLoading(true);
+                    void previsualizarMigracaoAssistidaPhase7Imoveis()
+                      .then((r) => setMigracaoPreview(r))
+                      .catch((e) => setMigracaoErro(e?.message || 'Falha na prévia.'))
+                      .finally(() => setMigracaoLoading(false));
+                  }}
+                  className={`${btnSecondary} text-xs py-2 px-3`}
+                >
+                  Pré-visualizar
+                </button>
+                <button
+                  type="button"
+                  disabled={migracaoLoading || !migracaoPreview?.ok || (migracaoPreview?.resumo?.elegivel ?? 0) === 0}
+                  onClick={() => {
+                    const n = migracaoPreview?.resumo?.elegivel ?? 0;
+                    if (
+                      !window.confirm(
+                        `Confirmar importação de até ${n} imóvel(s) + contrato(s) na API? Esta ação não pode ser desfeita automaticamente.`,
+                      )
+                    ) {
+                      return;
+                    }
+                    setMigracaoErro('');
+                    setMigracaoResultado(null);
+                    setMigracaoLoading(true);
+                    void executarMigracaoAssistidaPhase7Imoveis()
+                      .then((r) => setMigracaoResultado(r))
+                      .catch((e) => setMigracaoErro(e?.message || 'Falha na importação.'))
+                      .finally(() => setMigracaoLoading(false));
+                  }}
+                  className={`${btnPrimary} text-xs py-2 px-3 bg-amber-700 hover:brightness-110 border-amber-600/50`}
+                >
+                  Executar importação
+                </button>
+                {migracaoLoading ? <span className="text-xs text-indigo-700 dark:text-indigo-300">Processando…</span> : null}
+              </div>
+              {migracaoErro ? <p className="text-xs text-red-700 dark:text-red-300">{migracaoErro}</p> : null}
+              {migracaoPreview && !migracaoPreview.ok ? (
+                <p className="text-xs text-slate-600 dark:text-slate-400">{migracaoPreview.observacao}</p>
+              ) : null}
+              {migracaoPreview?.ok && migracaoPreview.resumo ? (
+                <p className="text-xs text-slate-700 dark:text-slate-300 tabular-nums">
+                  Resumo prévia: elegíveis {migracaoPreview.resumo.elegivel} · já existentes{' '}
+                  {migracaoPreview.resumo.jaExiste} · sem cliente {migracaoPreview.resumo.semCliente} · sem processo{' '}
+                  {migracaoPreview.resumo.semProcesso} (total mock {migracaoPreview.totalMock}).
+                </p>
+              ) : null}
+              {migracaoResultado ? (
+                <p className="text-xs text-emerald-800 dark:text-emerald-300 tabular-nums">
+                  Última execução: criados {migracaoResultado.criados} · pulados {migracaoResultado.pulados} · erros{' '}
+                  {migracaoResultado.erros}. Marcador: {getStatusMigracaoAssistidaPhase7Imoveis().markerKey}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
 
           <div className="p-5 sm:p-6 md:p-8 space-y-8 md:space-y-10">
             {/* Endereço + observações */}
@@ -647,9 +887,14 @@ export function Imoveis() {
             </section>
 
             <footer className="flex justify-center pt-6 border-t border-slate-200/90 dark:border-white/[0.08]">
-              <button type="button" onClick={() => window.history.back()} className={`${btnSecondary} px-12 py-3 font-semibold`}>
-                Fechar
-              </button>
+              <div className="flex flex-wrap gap-3">
+                <button type="button" onClick={salvarCadastroAtual} disabled={apiSaving} className={`${btnPrimary} px-10 py-3 font-semibold`}>
+                  {apiSaving ? 'Salvando...' : 'Salvar'}
+                </button>
+                <button type="button" onClick={() => window.history.back()} className={`${btnSecondary} px-12 py-3 font-semibold`}>
+                  Fechar
+                </button>
+              </div>
             </footer>
           </div>
         </div>

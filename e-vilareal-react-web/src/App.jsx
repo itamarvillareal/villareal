@@ -24,6 +24,9 @@ import { Atividade } from './components/Atividade.jsx';
 import { atualizarIndicesMensaisAposDia10 } from './services/monetaryIndicesService.js';
 import { ensureHistoricoDemonstracaoDiagnostico } from './data/processosHistoricoData.js';
 import { ensureDemoIntegradoCompleto } from './data/demoIntegradoSeed.js';
+import { executarMigracaoAssistidaPhase23 } from './services/localStorageMigrationPhase23.js';
+import { executarMigracaoAssistidaPhase4Processos } from './services/localStorageMigrationPhase4Processos.js';
+import { executarMigracaoAssistidaPhase5Financeiro } from './services/financeiroMigrationPhase5.js';
 import {
   getPerfilAtivoParaPermissoes,
   getUsuarioSessaoAtualId,
@@ -112,6 +115,15 @@ function Layout() {
       <main className="flex-1 flex flex-col min-w-0">
         <Outlet />
       </main>
+      {import.meta.env.MODE === 'homolog' ? (
+        <div
+          className="fixed bottom-0 left-0 right-0 z-[200] border-t border-amber-400/80 bg-amber-50 px-3 py-1.5 text-center text-[11px] text-amber-950 shadow-[0_-2px_8px_rgba(0,0,0,0.06)] dark:border-amber-500/50 dark:bg-amber-950/90 dark:text-amber-100"
+          role="status"
+        >
+          Modo <strong>homologação</strong> — variáveis em <code className="rounded bg-amber-100/90 px-1 dark:bg-black/30">.env.homolog</code> ·
+          roteiro: <code className="rounded bg-amber-100/90 px-1 dark:bg-black/30">docs/homologation-quick-start.md</code>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -130,6 +142,23 @@ function App() {
     }
     let cancelled = false;
     (async () => {
+      try {
+        await executarMigracaoAssistidaPhase23();
+      } catch {
+        /* migração assistida não deve bloquear app */
+      }
+      try {
+        await executarMigracaoAssistidaPhase4Processos();
+      } catch {
+        /* migração assistida não deve bloquear app */
+      }
+      try {
+        if (import.meta.env.VITE_ENABLE_LOCALSTORAGE_IMPORT_PHASE5_FINANCEIRO_BOOTSTRAP === 'true') {
+          await executarMigracaoAssistidaPhase5Financeiro();
+        }
+      } catch {
+        /* migração assistida não deve bloquear app */
+      }
       try {
         if (cancelled) return;
         const run = () => atualizarIndicesMensaisAposDia10();

@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FileText, Link2, Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import { listarClientes, excluirCliente } from '../../api/clientesService';
-import { getCadastroPessoasMock } from '../../data/cadastroPessoasMock.js';
+import { getCadastroPessoasMockComNovosLocais } from '../../data/cadastroPessoasMockNovosLocal.js';
 import { mergeListaMarcadoMonitoramentoMock } from '../../data/cadastroPessoasMockMonitoramento.js';
 import {
   listarPessoasComDocumento,
@@ -43,7 +43,7 @@ export function RelatorioPessoas() {
     setLoading(true);
     setError(null);
     if (FORCA_MOCK_CADASTRO) {
-      setLista(mergeListaMarcadoMonitoramentoMock(getCadastroPessoasMock(apenasAtivos)));
+      setLista(mergeListaMarcadoMonitoramentoMock(getCadastroPessoasMockComNovosLocais(apenasAtivos)));
       setListaEhMock(true);
       setLoading(false);
       return;
@@ -53,7 +53,7 @@ export function RelatorioPessoas() {
       setLista(Array.isArray(res) ? res : []);
       setListaEhMock(false);
     } catch (err) {
-      setLista(mergeListaMarcadoMonitoramentoMock(getCadastroPessoasMock(apenasAtivos)));
+      setLista(mergeListaMarcadoMonitoramentoMock(getCadastroPessoasMockComNovosLocais(apenasAtivos)));
       setListaEhMock(true);
       setError(
         err.message

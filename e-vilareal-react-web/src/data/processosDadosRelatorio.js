@@ -6,6 +6,8 @@ import { getRegistroProcesso } from './processosHistoricoData.js';
 import { getImovelMock, getImoveisMockTotal } from './imoveisMockData.js';
 import { getIdPessoaPorCodCliente } from './clientesCadastradosMock.js';
 import { getPessoaPorId } from './cadastroPessoasMock.js';
+import { featureFlags } from '../config/featureFlags.js';
+import { listarAndamentosProcesso, listarPartesProcesso, obterCamposProcessoApiFirst, resolverProcessoId } from '../repositories/processosRepository.js';
 
 /** Todos os estados brasileiros (UF) + Distrito Federal — ordem alfabética por sigla. */
 export const UFS = [
@@ -92,6 +94,16 @@ export const COMPETENCIAS = [
 export const TRAMITACAO_OPCOES = ['Projudi', 'PJe', 'TJ Go - Autos Físicos'];
 
 const TIPOS_AUDIENCIA = ['Inicial', 'Instrução', 'Conciliação', 'Una', 'Rito sumaríssimo'];
+
+function formatarListaComConjuncaoE(itens) {
+  const lista = (Array.isArray(itens) ? itens : [])
+    .map((x) => String(x ?? '').trim())
+    .filter(Boolean);
+  if (lista.length === 0) return '';
+  if (lista.length === 1) return lista[0];
+  if (lista.length === 2) return `${lista[0]} e ${lista[1]}`;
+  return `${lista.slice(0, -1).join(', ')} e ${lista[lista.length - 1]}`;
+}
 
 export function normalizarCliente(val) {
   const s = String(val ?? '').trim();
@@ -224,6 +236,7 @@ function ultimoHistoricoPorData(historico) {
 }
 
 let _mapaImovelClienteProc = null;
+const _cacheCamposApi = new Map();
 
 function mapaImovelPorClienteProc() {
   if (_mapaImovelClienteProc) return _mapaImovelClienteProc;
@@ -244,6 +257,67 @@ function mapaImovelPorClienteProc() {
 
 function resolverVinculoImovel(codNum, procNum) {
   return mapaImovelPorClienteProc().get(`${codNum}|${procNum}`) ?? null;
+}
+
+function keyClienteProc(codNum, procNum) {
+  return `${Number(normalizarCliente(codNum))}|${Number(normalizarProcesso(procNum))}`;
+}
+
+function extrairUltimoAndamento(lista = []) {
+  if (!Array.isArray(lista) || lista.length === 0) return { info: '', data: '' };
+  const primeiro = lista[0];
+  const info = String(primeiro?.titulo || '').trim();
+  const dataIso = String(primeiro?.movimentoEm || '').slice(0, 10);
+  const data = dataIso ? `${dataIso.slice(8, 10)}/${dataIso.slice(5, 7)}/${dataIso.slice(0, 4)}` : '';
+  return { info, data };
+}
+
+export async function preaquecerCamposRelatorioApiFirst(paresClienteProc = []) {
+  if (!featureFlags.useApiProcessos) return;
+  const pares = Array.isArray(paresClienteProc) ? paresClienteProc : [];
+  for (const [codRaw, procRaw] of pares) {
+    const cod = padCliente(codRaw);
+    const proc = Number(normalizarProcesso(procRaw));
+    const key = keyClienteProc(cod, proc);
+    if (_cacheCamposApi.has(key)) continue;
+    try {
+      const processoId = await resolverProcessoId({ codigoCliente: cod, numeroInterno: proc });
+      if (!processoId) continue;
+      const [cabecalho, partes, andamentos] = await Promise.all([
+        obterCamposProcessoApiFirst({ processoId, codigoCliente: cod, numeroInterno: proc }),
+        listarPartesProcesso(processoId),
+        listarAndamentosProcesso(processoId),
+      ]);
+      const nomesCliente = [];
+      const nomesOposta = [];
+      for (const p of partes || []) {
+        const polo = String(p.polo || '').toUpperCase();
+        const nome = p.nomeExibicao || p.nomeLivre || '';
+        if (!nome) continue;
+        if (polo.includes('AUTOR') || polo.includes('REQUERENTE') || polo.includes('CLIENTE')) nomesCliente.push(nome);
+        else nomesOposta.push(nome);
+      }
+      const ultimo = extrairUltimoAndamento(andamentos || []);
+      _cacheCamposApi.set(key, {
+        processoId,
+        numeroProcessoNovo: cabecalho?.numeroProcessoNovo || '',
+        numeroProcessoVelho: cabecalho?.numeroProcessoVelho || '',
+        naturezaAcaoProcesso: cabecalho?.naturezaAcao || '',
+        competenciaCadastroProcesso: cabecalho?.competencia || '',
+        faseCadastroProcesso: cabecalho?.faseSelecionada || '',
+        statusAtivoTexto: cabecalho?.statusAtivo === false ? 'Inativo' : 'Ativo',
+        processoCadastroAtivo: cabecalho?.statusAtivo !== false,
+        prazoFatalCadastroProcesso: cabecalho?.prazoFatal || '',
+        observacaoCadastroProcesso: cabecalho?.observacao || '',
+        parteCliente: formatarListaComConjuncaoE(nomesCliente),
+        parteOposta: formatarListaComConjuncaoE(nomesOposta),
+        ultimoHistoricoInfo: ultimo.info,
+        ultimoHistoricoData: ultimo.data,
+      });
+    } catch {
+      // fallback local/mock permanece soberano
+    }
+  }
 }
 
 /**
@@ -277,7 +351,7 @@ export function getCamposExtrasRelatorioPorProcesso(codClienteRaw, procRaw) {
   const vinculo = resolverVinculoImovel(cNum, pNum);
   const imovel = vinculo?.mock;
 
-  return {
+  const base = {
     codigoClienteProcesso: mock.codigoCliente,
     numeroProcessoInterno: String(mock.processo),
     clienteCadastroProcesso: mock.cliente,
@@ -329,4 +403,6 @@ export function getCamposExtrasRelatorioPorProcesso(codClienteRaw, procRaw) {
       : `QD.${String((pNum % 6) + 1).padStart(2, '0')} LT.${String((cNum % 12) + 1).padStart(2, '0')}`,
     tipoAudiencia: TIPOS_AUDIENCIA[(cNum + pNum) % TIPOS_AUDIENCIA.length],
   };
+  const cacheApi = _cacheCamposApi.get(keyClienteProc(codClienteRaw, procRaw));
+  return cacheApi ? { ...base, ...cacheApi } : base;
 }

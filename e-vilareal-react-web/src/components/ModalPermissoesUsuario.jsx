@@ -2,21 +2,40 @@ import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import {
   MODULOS_PERMISSAO,
-  getPermissoesUsuario,
-  savePermissoesUsuario,
 } from '../data/usuarioPermissoesStorage.js';
+import {
+  carregarPermissoesUsuario,
+  salvarPermissoesUsuarioApi,
+} from '../repositories/perfisPermissoesRepository.js';
 
 /**
  * @param {{ open: boolean, usuario: { id: string, nome: string } | null, onClose: () => void }} props
  */
 export function ModalPermissoesUsuario({ open, usuario, onClose }) {
+  const [carregando, setCarregando] = useState(false);
+  const [erro, setErro] = useState('');
   const [checks, setChecks] = useState(() =>
     Object.fromEntries(MODULOS_PERMISSAO.map((m) => [m.id, true]))
   );
 
   useEffect(() => {
     if (!open || !usuario?.id) return;
-    setChecks(getPermissoesUsuario(usuario.id));
+    let cancelado = false;
+    setCarregando(true);
+    setErro('');
+    (async () => {
+      try {
+        const data = await carregarPermissoesUsuario(usuario.id);
+        if (!cancelado) setChecks(data);
+      } catch (e) {
+        if (!cancelado) setErro(e?.message || 'Erro ao carregar permissões.');
+      } finally {
+        if (!cancelado) setCarregando(false);
+      }
+    })();
+    return () => {
+      cancelado = true;
+    };
   }, [open, usuario?.id]);
 
   if (!open || !usuario) return null;
@@ -25,14 +44,18 @@ export function ModalPermissoesUsuario({ open, usuario, onClose }) {
     setChecks((prev) => ({ ...prev, [id]: !prev[id] }));
   }
 
-  function salvar() {
+  async function salvar() {
     const algum = MODULOS_PERMISSAO.some((m) => checks[m.id]);
     if (!algum) {
       window.alert('Marque pelo menos um módulo de acesso.');
       return;
     }
-    savePermissoesUsuario(usuario.id, checks);
-    onClose();
+    try {
+      await salvarPermissoesUsuarioApi(usuario.id, checks);
+      onClose();
+    } catch (e) {
+      setErro(e?.message || 'Erro ao salvar permissões.');
+    }
   }
 
   return (
@@ -61,6 +84,8 @@ export function ModalPermissoesUsuario({ open, usuario, onClose }) {
           ativo determina o menu e as telas liberadas.
         </p>
         <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
+          {carregando ? <p className="text-xs text-slate-500">Carregando permissões...</p> : null}
+          {erro ? <p className="text-xs text-red-700">{erro}</p> : null}
           {MODULOS_PERMISSAO.map((m) => (
             <label
               key={m.id}
@@ -86,7 +111,7 @@ export function ModalPermissoesUsuario({ open, usuario, onClose }) {
           </button>
           <button
             type="button"
-            onClick={salvar}
+            onClick={() => void salvar()}
             className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
           >
             Salvar

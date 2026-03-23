@@ -15,8 +15,7 @@ public class CadastroPessoasRequest {
     @Size(max = 255)
     private String nome;
 
-    @Schema(description = "E-mail único", example = "joao@email.com", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotBlank(message = "E-mail é obrigatório")
+    @Schema(description = "E-mail opcional (único quando informado)", example = "joao@email.com")
     @Email(message = "E-mail inválido")
     @Size(max = 255)
     private String email;
@@ -42,7 +41,15 @@ public class CadastroPessoasRequest {
     public String getNome() { return nome; }
     public void setNome(String nome) { this.nome = nome; }
     public String getEmail() { return email; }
-    public void setEmail(String email) { this.email = email; }
+
+    /** Normaliza vazio em null para validação e persistência. */
+    public void setEmail(String email) {
+        if (email == null || email.isBlank()) {
+            this.email = null;
+        } else {
+            this.email = email.trim();
+        }
+    }
     public String getCpf() { return cpf; }
     public void setCpf(String cpf) { this.cpf = cpf; }
     public String getTelefone() { return telefone; }

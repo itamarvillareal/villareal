@@ -23,6 +23,13 @@ import {
 import { buscarProcessoUnicoNaBasePorTextoAgenda } from '../data/processosHistoricoData';
 import { resolverAliasHojeEmTexto } from '../services/hjDateAliasService.js';
 import { getNomeExibicaoUsuario } from '../data/usuarioDisplayHelpers.js';
+import { featureFlags } from '../config/featureFlags.js';
+import { listarUsuarios } from '../repositories/usuariosRepository.js';
+import {
+  listarEventosPorDataUsuario,
+  salvarCamposEvento,
+  criarEvento,
+} from '../repositories/agendaRepository.js';
 
 /** Retorna string DD/MM/YYYY para dia/mês/ano */
 function dataStr(dia, mes, ano) {
@@ -608,9 +615,30 @@ export function Agenda() {
   const [modalAgendaMensal, setModalAgendaMensal] = useState(false);
   const [agendaStatusNonce, setAgendaStatusNonce] = useState(0);
   const [usuariosAtivos, setUsuariosAtivosState] = useState(() => getUsuariosAtivos());
+  const [eventosApiEsquerda, setEventosApiEsquerda] = useState([]);
+  const [eventosApiDireita, setEventosApiDireita] = useState([]);
 
   /** Lista de pessoas = mesma da tela Usuários (localStorage); sincroniza ao salvar ou ao voltar à Agenda. */
   useEffect(() => {
+    if (featureFlags.useApiUsuarios) {
+      let cancelado = false;
+      (async () => {
+        try {
+          const lista = await listarUsuarios();
+          if (!cancelado) {
+            const ativos = (lista || []).filter((u) => u.ativo !== false);
+            setUsuariosAtivosState(ativos);
+            if (ativos[0]?.id && !usuarioEsquerda) setUsuarioEsquerda(String(ativos[0].id));
+            if (ativos[0]?.id && !usuarioDireita) setUsuarioDireita(String(ativos[0].id));
+          }
+        } catch {
+          /* fallback local */
+        }
+      })();
+      return () => {
+        cancelado = true;
+      };
+    }
     const sync = () => setUsuariosAtivosState(getUsuariosAtivos());
     const bumpAgenda = () => setAgendaStatusNonce((n) => n + 1);
     sync();
@@ -692,10 +720,35 @@ export function Agenda() {
   const eventosPersistidosEsquerda = getEventosAgendaPersistidosPorData(dataEsquerdaStr);
   const eventosPersistidosDireita = getEventosAgendaPersistidosPorData(dataDireitaStr);
 
+  useEffect(() => {
+    if (!featureFlags.useApiAgenda) return;
+    let cancelado = false;
+    (async () => {
+      const data = await listarEventosPorDataUsuario(dataEsquerdaStr, usuarioEsquerda);
+      if (!cancelado) setEventosApiEsquerda(data);
+    })();
+    return () => {
+      cancelado = true;
+    };
+  }, [dataEsquerdaStr, usuarioEsquerda, agendaStatusNonce]);
+
+  useEffect(() => {
+    if (!featureFlags.useApiAgenda) return;
+    let cancelado = false;
+    (async () => {
+      const data = await listarEventosPorDataUsuario(dataDireitaStr, usuarioDireita);
+      if (!cancelado) setEventosApiDireita(data);
+    })();
+    return () => {
+      cancelado = true;
+    };
+  }, [dataDireitaStr, usuarioDireita, agendaStatusNonce]);
+
   const eventosEsquerda = useMemo(
     () => {
       const base = dataEsquerdaStr === agendaDataEsquerda ? agendaEventosTerça : [];
-      const persisted = (Array.isArray(eventosPersistidosEsquerda) ? eventosPersistidosEsquerda : []).filter((ev) => {
+      const persistedBase = featureFlags.useApiAgenda ? eventosApiEsquerda : eventosPersistidosEsquerda;
+      const persisted = (Array.isArray(persistedBase) ? persistedBase : []).filter((ev) => {
         if (!ev) return false;
         if (ev.usuarioId == null || String(ev.usuarioId) === '') return true;
         return String(ev.usuarioId) === String(usuarioEsquerda);
@@ -714,12 +767,13 @@ export function Agenda() {
       }
       return ordenarListaEventosAgenda(Array.from(merged.values()));
     },
-    [dataEsquerdaStr, eventosPersistidosEsquerda, usuarioEsquerda, agendaStatusNonce]
+    [dataEsquerdaStr, eventosPersistidosEsquerda, eventosApiEsquerda, usuarioEsquerda, agendaStatusNonce]
   );
   const eventosDireita = useMemo(
     () => {
       const base = dataDireitaStr === agendaDataDireita ? agendaEventosQuarta : [];
-      const persisted = (Array.isArray(eventosPersistidosDireita) ? eventosPersistidosDireita : []).filter((ev) => {
+      const persistedBase = featureFlags.useApiAgenda ? eventosApiDireita : eventosPersistidosDireita;
+      const persisted = (Array.isArray(persistedBase) ? persistedBase : []).filter((ev) => {
         if (!ev) return false;
         if (ev.usuarioId == null || String(ev.usuarioId) === '') return true;
         return String(ev.usuarioId) === String(usuarioDireita);
@@ -738,7 +792,7 @@ export function Agenda() {
       }
       return ordenarListaEventosAgenda(Array.from(merged.values()));
     },
-    [dataDireitaStr, eventosPersistidosDireita, usuarioDireita, agendaStatusNonce]
+    [dataDireitaStr, eventosPersistidosDireita, eventosApiDireita, usuarioDireita, agendaStatusNonce]
   );
 
   const relatorioAgendaMensal = useMemo(
@@ -800,14 +854,17 @@ export function Agenda() {
             onDuploCliqueEvento={aoDuploCliqueCompromisso}
             dataBrStr={dataEsquerdaStr}
             usuarioAgendaId={usuarioEsquerda}
-            onPersistenciaAlterada={() => setAgendaStatusNonce((n) => n + 1)}
-            onSalvarCampos={(ev, patch) => {
-              salvarCamposEventoAgendaPersistido({
-                dataBr: dataEsquerdaStr,
-                evento: ev,
-                patch,
-              });
+            onPersistenciaAlterada={async () => {
+              if (featureFlags.useApiAgenda) {
+                await criarEvento(dataEsquerdaStr, usuarioEsquerda, {});
+              }
               setAgendaStatusNonce((n) => n + 1);
+            }}
+            onSalvarCampos={(ev, patch) => {
+              void (async () => {
+                await salvarCamposEvento(dataEsquerdaStr, { ...ev, usuarioId: usuarioEsquerda }, patch);
+                setAgendaStatusNonce((n) => n + 1);
+              })();
             }}
           />
           <ColunaDia
@@ -816,14 +873,17 @@ export function Agenda() {
             onDuploCliqueEvento={aoDuploCliqueCompromisso}
             dataBrStr={dataDireitaStr}
             usuarioAgendaId={usuarioDireita}
-            onPersistenciaAlterada={() => setAgendaStatusNonce((n) => n + 1)}
-            onSalvarCampos={(ev, patch) => {
-              salvarCamposEventoAgendaPersistido({
-                dataBr: dataDireitaStr,
-                evento: ev,
-                patch,
-              });
+            onPersistenciaAlterada={async () => {
+              if (featureFlags.useApiAgenda) {
+                await criarEvento(dataDireitaStr, usuarioDireita, {});
+              }
               setAgendaStatusNonce((n) => n + 1);
+            }}
+            onSalvarCampos={(ev, patch) => {
+              void (async () => {
+                await salvarCamposEvento(dataDireitaStr, { ...ev, usuarioId: usuarioDireita }, patch);
+                setAgendaStatusNonce((n) => n + 1);
+              })();
             }}
           />
         </div>
