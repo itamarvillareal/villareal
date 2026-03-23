@@ -61,7 +61,12 @@ export function Sidebar() {
     if (p === '/calculos' || p.startsWith('/calculos/') || p === '/relatorio-calculos' || p.startsWith('/relatorio-calculos/')) {
       setGruposAbertos((prev) => new Set(prev).add('calcular-grupo'));
     }
-    if (p === '/imoveis' || p.startsWith('/imoveis/') || p === '/relatorio-imoveis' || p.startsWith('/relatorio-imoveis/')) {
+    if (
+      p === '/imoveis' ||
+      p.startsWith('/imoveis/') ||
+      p === '/relatorio-imoveis' ||
+      p.startsWith('/relatorio-imoveis/')
+    ) {
       setGruposAbertos((prev) => new Set(prev).add('admin-imoveis-grupo'));
     }
   }, [location.pathname]);

@@ -519,33 +519,31 @@ export function Processos() {
   }
 
   function handleAbrirImovel() {
-    const idNum = Number(String(imovelId ?? '').replace(/\D/g, ''));
+    let idNum = Number(String(imovelId ?? '').replace(/\D/g, ''));
+    if (!Number.isFinite(idNum) || idNum <= 0) {
+      const v = vinculoImovelMock?.imovelId;
+      if (v != null && Number.isFinite(Number(v)) && Number(v) > 0) {
+        idNum = Number(v);
+      }
+    }
 
     if (!Number.isFinite(idNum) || idNum <= 0) {
-      alert('Informe o nº do imóvel (mesmo cadastro do menu Imóveis)');
+      window.alert('Informe o nº do imóvel (cadastro Administração de Imóveis → Imóveis) ou vincule cliente/proc. a um imóvel no mock.');
       return;
     }
 
     const mock = getImovelMock(idNum);
-    if (!mock) {
-      alert('Imóvel não encontrado para o código informado');
-      return;
-    }
-
     let unidadeTrim = String(unidadeEndereco ?? '').trim();
-    if (!unidadeTrim) {
+    if (!unidadeTrim && mock) {
       unidadeTrim = String(mock.unidade ?? '').trim();
       if (unidadeTrim) setUnidadeEndereco(unidadeTrim);
     }
-    if (!unidadeTrim) {
-      alert('Não há unidade cadastrada para este imóvel.');
-      return;
-    }
 
+    /** Abre sempre a rota Imóveis com o id; a tela carrega o mock ou formulário vazio. */
     navigate('/imoveis', {
       state: {
         imovelId: idNum,
-        unidade: unidadeTrim,
+        ...(unidadeTrim ? { unidade: unidadeTrim } : {}),
       },
     });
   }
@@ -1690,9 +1688,9 @@ export function Processos() {
               </Field>
               <button
                 type="button"
-                disabled={camposBloqueados}
                 onClick={handleAbrirImovel}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50 disabled:opacity-50 disabled:pointer-events-none"
+                title="Abre o cadastro Imóveis com este nº (ou vínculo mock). Sempre disponível, inclusive com «Edição desabilitada»."
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
               >
                 <MapPin className="w-4 h-4" /> Abrir Imóvel
               </button>

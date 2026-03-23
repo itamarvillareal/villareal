@@ -382,6 +382,7 @@ const MENU_ICONS = {
   'relatorio-calculos': IconRelatorioCalculos,
   'admin-imoveis-grupo': IconLandmarkImoveis,
   imoveis: IconBuilding,
+  'imoveis/relatorio-financeiro': IconFinanceiro,
   'relatorio-imoveis': IconSpreadsheet,
   agenda: IconAgenda,
   atividade: IconAtividade,

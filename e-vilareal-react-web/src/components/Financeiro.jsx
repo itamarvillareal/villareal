@@ -33,6 +33,7 @@ import {
   textoDimensaoEq,
   normalizarCodigoClienteFinanceiro,
   normalizarProcFinanceiro,
+  normalizarRefFinanceiro,
 } from '../data/financeiroData';
 import { loadRodadasCalculos } from '../data/calculosRodadasStorage';
 import {
@@ -51,12 +52,9 @@ import { OFX_ITAU_REAL_EXEMPLO, OFX_CORA_REAL_EXEMPLO } from '../data/ofxItauCor
 import { CheckSquare, ChevronLeft, ChevronRight, Link2, Settings, Unlink } from 'lucide-react';
 import { ModalVinculoClienteProcFinanceiro } from './ModalVinculoClienteProcFinanceiro.jsx';
 
-const REF_CONSTANTE = 675;
-
-/** Valor exibido/salvo em Ref. (padrão 675 quando vazio no objeto). */
+/** Ref. exibida: só N ou R (vazio/legado → N). */
 function textoRefLancamento(t) {
-  const r = String(t?.ref ?? '').trim();
-  return r || String(REF_CONSTANTE);
+  return normalizarRefFinanceiro(t?.ref);
 }
 
 const OPCOES_LIMITE_LANCAMENTOS_EXTRATO = [
@@ -264,8 +262,8 @@ function ordenarTransacoesBanco(lista, col, dir) {
       vb = textoDimensaoEq(b);
     }
     if (col === 'ref') {
-      va = String(a.ref ?? '').trim() || String(REF_CONSTANTE);
-      vb = String(b.ref ?? '').trim() || String(REF_CONSTANTE);
+      va = normalizarRefFinanceiro(a.ref);
+      vb = normalizarRefFinanceiro(b.ref);
     }
     const sa = String(va ?? '');
     const sb = String(vb ?? '');
@@ -304,8 +302,8 @@ function ordenarTransacoesConsolidado(lista, col, dir) {
       vb = textoDimensaoEq(b);
     }
     if (col === 'ref') {
-      va = String(a.ref ?? '').trim() || String(REF_CONSTANTE);
-      vb = String(b.ref ?? '').trim() || String(REF_CONSTANTE);
+      va = normalizarRefFinanceiro(a.ref);
+      vb = normalizarRefFinanceiro(b.ref);
     }
     const sa = String(va ?? '');
     const sb = String(vb ?? '');
@@ -585,6 +583,7 @@ export function Financeiro() {
     [extratosPorBanco, contaContabilSelecionada, numeroBancoMap, contaToLetraMerged]
   );
   const isContaCompensacao = contaContabilSelecionada === 'Conta Compensação';
+  const isContaEscritorio = contaContabilSelecionada === 'Conta Escritório';
   const somasParComp = isContaCompensacao
     ? somasPorParCompensacao(extratosPorBanco, numeroBancoMap, contaToLetraMerged)
     : {};
@@ -717,6 +716,19 @@ export function Financeiro() {
     somasParComp,
   ]);
 
+  /** Conta Escritório: quantas linhas (no período/filtro atual) compartilham cada Eq. entre lançamentos Ref. R. */
+  const contagemEqRepasseEscritorio = useMemo(() => {
+    const m = new Map();
+    if (!isContaEscritorio) return m;
+    for (const t of listaConsolidadaVisivel) {
+      if (normalizarRefFinanceiro(t.ref) !== 'R') continue;
+      const eq = String(textoDimensaoEq(t) ?? '').trim();
+      if (!eq) continue;
+      m.set(eq, (m.get(eq) || 0) + 1);
+    }
+    return m;
+  }, [isContaEscritorio, listaConsolidadaVisivel]);
+
   const saldoHeaderConsolidado = useMemo(
     () => listaConsolidadaVisivel.reduce((s, t) => s + t.valor, 0),
     [listaConsolidadaVisivel]
@@ -763,6 +775,13 @@ export function Financeiro() {
       const v = String(value ?? '');
       if (field === 'categoria' || field === 'descricaoDetalhada') {
         list[idx] = { ...list[idx], categoria: v, descricaoDetalhada: v };
+      } else if (field === 'ref') {
+        const refN = normalizarRefFinanceiro(v);
+        if (refN === 'N') {
+          list[idx] = { ...list[idx], ref: 'N', dimensao: '', eq: '' };
+        } else {
+          list[idx] = { ...list[idx], ref: 'R' };
+        }
       } else if (field === 'dimensao' || field === 'eq') {
         list[idx] = { ...list[idx], dimensao: v, eq: v };
       } else {
@@ -2185,14 +2204,18 @@ export function Financeiro() {
                         />
                       </td>
                       <td className="py-1.5 px-2 text-center border-r border-slate-100" onClick={(e) => e.stopPropagation()}>
-                        <input
-                          type="text"
+                        <select
                           value={textoRefLancamento(t)}
-                          onChange={(e) => updateCampoLancamento(instituicaoSelecionada, t.numero, t.data, 'ref', e.target.value)}
-                          className="w-14 px-1 py-0.5 text-sm text-center bg-slate-50 border border-slate-200 rounded"
-                          title="Espelha Ref. no extrato consolidado"
+                          onChange={(e) =>
+                            updateCampoLancamento(instituicaoSelecionada, t.numero, t.data, 'ref', e.target.value)
+                          }
+                          className="w-14 px-0 py-0.5 text-sm text-center bg-slate-50 border border-slate-200 rounded"
+                          title="N = único; R = repasse (espelha no consolidado — use Eq. igual em ≥2 linhas)"
                           onClick={(e) => e.stopPropagation()}
-                        />
+                        >
+                          <option value="N">N</option>
+                          <option value="R">R</option>
+                        </select>
                       </td>
                       <td className="py-1.5 px-2 text-center border-r border-slate-100" onClick={(e) => e.stopPropagation()}>
                         <input
@@ -2342,11 +2365,20 @@ export function Financeiro() {
                 )}
               </div>
               {contaContabilSelecionada === 'Conta Escritório' && (
-                <div className="text-xs text-slate-700 rounded-md bg-emerald-50/90 border border-emerald-200 px-3 py-2">
-                  <strong>Conta Escritório:</strong> consolidado dos lançamentos com <strong>letra A</strong> nos
-                  extratos. A <strong>Conta Corrente</strong> em <strong>Processos</strong> lista aqui apenas as linhas
-                  cujo <strong>Cod. Cliente</strong> e <strong>Proc.</strong> coincidem com o processo aberto — por
-                  isso o vínculo cliente/processo é essencial nos lançamentos de escritório.
+                <div className="text-xs text-slate-700 rounded-md bg-emerald-50/90 border border-emerald-200 px-3 py-2 space-y-1">
+                  <p>
+                    <strong>Conta Escritório:</strong> consolidado dos lançamentos com <strong>letra A</strong> nos
+                    extratos. A <strong>Conta Corrente</strong> em <strong>Processos</strong> lista aqui apenas as linhas
+                    cujo <strong>Cod. Cliente</strong> e <strong>Proc.</strong> coincidem com o processo aberto — por
+                    isso o vínculo cliente/processo é essencial nos lançamentos de escritório.
+                  </p>
+                  <p>
+                    <strong>Ref.</strong> só <strong>N</strong> ou <strong>R</strong>: <strong>N</strong> = lançamento
+                    único (sem repasse; Eq. pode ficar vazio). <strong>R</strong> = há repasse vinculado — use o{' '}
+                    <strong>mesmo Eq.</strong> em <strong>pelo menos duas linhas</strong> para localizar o par (ex. crédito
+                    e repasse). Linhas <strong>R</strong> sem par de Eq. aparecem em <strong>vermelho</strong>;{' '}
+                    <strong>N</strong> em <strong>verde</strong>.
+                  </p>
                 </div>
               )}
               {isContaCompensacao && (
@@ -2404,7 +2436,13 @@ export function Financeiro() {
                     >
                       {isContaCompensacao ? 'Elo' : 'Proc.'}
                     </th>
-                    <th className="text-center py-2 px-3 font-medium text-slate-600 border-r border-slate-200 w-16 cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloConsolidado('ref')} title="Mesmo valor que Ref. no extrato do banco. Duplo clique: ordenar">Ref.</th>
+                    <th
+                      className="text-center py-2 px-3 font-medium text-slate-600 border-r border-slate-200 w-16 cursor-pointer hover:bg-slate-100 select-none"
+                      onDoubleClick={() => handleDuploCliqueTituloConsolidado('ref')}
+                      title="N = lançamento único (sem repasse). R = repasse — use o mesmo Eq. em pelo menos duas linhas. Mesmo valor no extrato do banco. Duplo clique: ordenar."
+                    >
+                      Ref.
+                    </th>
                     <th className="text-center py-2 px-3 font-medium text-slate-600 border-r border-slate-200 w-16 cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloConsolidado('eq')} title="Mesmo texto que Dimensão no extrato. Duplo clique: ordenar">Eq.</th>
                     <th className="text-center py-2 px-3 font-medium text-slate-600 w-20 cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloConsolidado('parcela')} title="Duplo clique: ordenar">Parcela</th>
                     {!isContaCompensacao ? (
@@ -2432,12 +2470,66 @@ export function Financeiro() {
                     const eloKeyConsolidado = String(t.proc ?? '').trim() || '—';
                     const eloDesbalanceado =
                       isContaCompensacao && (somasParComp[eloKeyConsolidado] ?? 0) !== 0;
-                    const rowBgConsolidado = eloDesbalanceado
-                      ? 'bg-red-100/90 hover:bg-red-200/70'
-                      : mesmoGrupo
+                    const refRow = normalizarRefFinanceiro(t.ref);
+                    const eqKeyRow = String(textoDimensaoEq(t) ?? '').trim();
+                    const repasseRIncompleto =
+                      isContaEscritorio &&
+                      refRow === 'R' &&
+                      (!eqKeyRow || (contagemEqRepasseEscritorio.get(eqKeyRow) ?? 0) < 2);
+                    const repasseN = isContaEscritorio && refRow === 'N';
+                    const linhaAlerta = eloDesbalanceado || repasseRIncompleto;
+                    let rowBgConsolidado;
+                    let brElo;
+                    let borderBottomTr;
+                    if (eloDesbalanceado) {
+                      rowBgConsolidado = 'bg-red-100/90 hover:bg-red-200/70';
+                      brElo = 'border-red-100/80';
+                      borderBottomTr = 'border-red-200/80';
+                    } else if (repasseRIncompleto) {
+                      rowBgConsolidado = 'bg-red-100/90 hover:bg-red-200/70';
+                      brElo = 'border-red-100/80';
+                      borderBottomTr = 'border-red-200/80';
+                    } else if (repasseN) {
+                      rowBgConsolidado = 'bg-green-50/80 hover:bg-green-100/60';
+                      brElo = 'border-green-100';
+                      borderBottomTr = 'border-green-100/80';
+                    } else if (isContaEscritorio) {
+                      rowBgConsolidado = mesmoGrupo
+                        ? 'bg-sky-100/50 hover:bg-sky-100/70'
+                        : 'bg-slate-50/70 hover:bg-slate-100/50';
+                      brElo = 'border-slate-100';
+                      borderBottomTr = 'border-slate-100/80';
+                    } else {
+                      rowBgConsolidado = mesmoGrupo
                         ? 'bg-sky-100/50 hover:bg-green-100/50'
                         : 'bg-green-50/50 hover:bg-green-100/50';
-                    const brElo = eloDesbalanceado ? 'border-red-100/80' : 'border-green-100';
+                      brElo = 'border-green-100';
+                      borderBottomTr = 'border-green-100/80';
+                    }
+                    const ringFoco = linhaAlerta
+                      ? 'ring-red-500'
+                      : repasseN
+                        ? 'ring-green-500'
+                        : isContaEscritorio
+                          ? 'ring-slate-400'
+                          : 'ring-green-500';
+                    const inpB = linhaAlerta
+                      ? 'border-red-200'
+                      : isContaEscritorio && refRow === 'R'
+                        ? 'border-slate-200'
+                        : 'border-green-200';
+                    const tdHover = linhaAlerta
+                      ? 'hover:bg-red-200/50'
+                      : repasseN
+                        ? 'hover:bg-green-200/50'
+                        : isContaEscritorio
+                          ? 'hover:bg-slate-200/50'
+                          : 'hover:bg-green-200/50';
+                    const borderLateralVinc = linhaAlerta
+                      ? 'border-red-100'
+                      : isContaEscritorio
+                        ? 'border-slate-100'
+                        : 'border-green-100';
                     return (
                       <tr
                         key={rowKey}
@@ -2446,12 +2538,14 @@ export function Financeiro() {
                         title={
                           eloDesbalanceado
                             ? 'Elo com soma dos valores ≠ zero (regra Conta Compensação)'
-                            : undefined
+                            : repasseRIncompleto
+                              ? 'Ref. R: use o mesmo Eq. em pelo menos duas linhas (ex.: crédito e repasse ao cliente).'
+                              : undefined
                         }
-                        className={`border-b ${eloDesbalanceado ? 'border-red-200/80' : 'border-green-100/80'} ${rowBgConsolidado} ${isFoco ? `ring-1 ring-inset ${eloDesbalanceado ? 'ring-red-500' : 'ring-green-500'}` : ''} ${destaqueValorConciliacao && !eloDesbalanceado ? 'ring-2 ring-amber-400 ring-inset bg-amber-50/90' : ''}`}
+                        className={`border-b ${borderBottomTr} ${rowBgConsolidado} ${isFoco ? `ring-1 ring-inset ${ringFoco}` : ''} ${destaqueValorConciliacao && !linhaAlerta ? 'ring-2 ring-amber-400 ring-inset bg-amber-50/90' : ''}`}
                       >
                         <td
-                          className={`py-1.5 px-3 text-slate-600 border-r cursor-pointer ${brElo} ${eloDesbalanceado ? 'hover:bg-red-200/50' : 'hover:bg-green-200/50'}`}
+                          className={`py-1.5 px-3 text-slate-600 border-r cursor-pointer ${brElo} ${tdHover}`}
                           onDoubleClick={(e) => { e.stopPropagation(); handleDuploCliqueNºConsolidado(t); }}
                           title="Duplo clique para abrir o extrato do banco nesta linha"
                         >
@@ -2469,7 +2563,7 @@ export function Financeiro() {
                             value={textoCategoriaObservacao(t)}
                             onChange={(e) => updateCampoLancamento(t.nomeBanco, t.numero, t.data, 'descricaoDetalhada', e.target.value)}
                             className={`w-full min-w-[10rem] px-1.5 py-0.5 text-xs bg-white border rounded ${
-                              eloDesbalanceado ? 'border-red-200' : 'border-green-200'
+                              inpB
                             }`}
                             title="Espelha Categoria / Obs. no extrato do banco"
                             onClick={(e) => e.stopPropagation()}
@@ -2487,7 +2581,7 @@ export function Financeiro() {
                             disabled={isContaCompensacao && t.letra === 'E'}
                             onChange={(e) => updateCampoLancamento(t.nomeBanco, t.numero, t.data, 'codCliente', e.target.value)}
                             className={`w-16 px-1 py-0.5 text-sm text-center border rounded ${
-                              eloDesbalanceado ? 'border-red-200' : 'border-green-200'
+                              inpB
                             } ${
                               isContaCompensacao && t.letra === 'E' ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-white'
                             }`}
@@ -2510,7 +2604,7 @@ export function Financeiro() {
                             value={t.proc ?? ''}
                             onChange={(e) => updateCampoLancamento(t.nomeBanco, t.numero, t.data, 'proc', e.target.value)}
                             className={`w-14 px-1 py-0.5 text-sm text-center bg-white border rounded ${
-                              eloDesbalanceado ? 'border-red-200' : 'border-green-200'
+                              inpB
                             }`}
                             title={
                               isContaCompensacao && t.letra === 'E'
@@ -2526,16 +2620,18 @@ export function Financeiro() {
                           />
                         </td>
                         <td className={`py-1.5 px-2 text-center border-r ${brElo}`} onClick={(e) => e.stopPropagation()}>
-                          <input
-                            type="text"
+                          <select
                             value={textoRefLancamento(t)}
                             onChange={(e) => updateCampoLancamento(t.nomeBanco, t.numero, t.data, 'ref', e.target.value)}
-                            className={`w-14 px-1 py-0.5 text-sm text-center bg-white border rounded ${
-                              eloDesbalanceado ? 'border-red-200' : 'border-green-200'
+                            className={`w-14 px-0 py-0.5 text-sm text-center bg-white border rounded ${
+                              inpB
                             }`}
-                            title="Espelha Ref. no extrato do banco"
+                            title="N = único; R = repasse (mesmo Eq. em ≥2 linhas)"
                             onClick={(e) => e.stopPropagation()}
-                          />
+                          >
+                            <option value="N">N</option>
+                            <option value="R">R</option>
+                          </select>
                         </td>
                         <td className={`py-1.5 px-2 text-center border-r ${brElo}`} onClick={(e) => e.stopPropagation()}>
                           <input
@@ -2543,7 +2639,7 @@ export function Financeiro() {
                             value={textoDimensaoEq(t)}
                             onChange={(e) => updateCampoLancamento(t.nomeBanco, t.numero, t.data, 'eq', e.target.value)}
                             className={`w-14 px-1 py-0.5 text-sm text-center bg-white border rounded ${
-                              eloDesbalanceado ? 'border-red-200' : 'border-green-200'
+                              inpB
                             }`}
                             title="Espelha Dimensão no extrato do banco"
                             onClick={(e) => e.stopPropagation()}
@@ -2555,14 +2651,17 @@ export function Financeiro() {
                             value={t.parcela ?? ''}
                             onChange={(e) => updateCampoLancamento(t.nomeBanco, t.numero, t.data, 'parcela', e.target.value)}
                             className={`w-16 px-1 py-0.5 text-sm text-center bg-white border rounded ${
-                              eloDesbalanceado ? 'border-red-200' : 'border-green-200'
+                              inpB
                             }`}
                             title="Espelha Parcela no extrato do banco"
                             onClick={(e) => e.stopPropagation()}
                           />
                         </td>
                         {!isContaCompensacao ? (
-                          <td className="py-1.5 px-1 text-center border-l border-green-100" onClick={(e) => e.stopPropagation()}>
+                          <td
+                            className={`py-1.5 px-1 text-center border-l ${borderLateralVinc}`}
+                            onClick={(e) => e.stopPropagation()}
+                          >
                             <button
                               type="button"
                               onClick={(e) => {

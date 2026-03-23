@@ -221,3 +221,142 @@ export function rotuloPapelAdministracao(papel) {
       return 'Outros (extrato)';
   }
 }
+
+function parseDiaCadastroImovel(v) {
+  const n = parseInt(String(v ?? '').replace(/\D/g, ''), 10);
+  if (!Number.isFinite(n) || n < 1 || n > 31) return null;
+  return n;
+}
+
+function lancamentosDoMesOrdenados(transacoes, chaveMes) {
+  return transacoes
+    .filter((t) => {
+      const mr = mesReferenciaDataBr(t.data);
+      return mr && mr.chave === chaveMes;
+    })
+    .sort((a, b) => {
+      const ma = mesReferenciaDataBr(a.data);
+      const mb = mesReferenciaDataBr(b.data);
+      return String(ma.sortKey).localeCompare(String(mb.sortKey));
+    });
+}
+
+function primeiroLancamentoComPapel(list, papel, credito) {
+  for (const t of list) {
+    if (t.classificacao?.papel !== papel) continue;
+    const v = Number(t.valor) || 0;
+    if (credito && v > 0) return t;
+    if (!credito && v < 0) return t;
+  }
+  return null;
+}
+
+/** Compara o dia civil do lançamento com o dia limite cadastrado no imóvel (pagamento até / repasse até). */
+function classificarPrazoVersusCadastro(dataBrLanc, diaLimite) {
+  if (!dataBrLanc) return 'ausente';
+  if (diaLimite == null) return 'sem_prazo_cadastrado';
+  const mr = mesReferenciaDataBr(dataBrLanc);
+  if (!mr) return 'ausente';
+  if (mr.dia <= diaLimite) return 'ok';
+  return 'atraso';
+}
+
+/**
+ * Monta linhas do relatório consolidado (todos os imóveis × um mês de referência).
+ * Dados: mesmos lançamentos do Financeiro com Cod. cliente + Proc. do imóvel; classificação aluguel/repasse
+ * (tags `[ADM_IMOVEL:ALUGUEL]` / `[ADM_IMOVEL:REPASSE]` ou heurísticas em `classificarLancamentoAdministracaoImovel`).
+ *
+ * @param {string} chaveMesYYYYMM ex. `2026-03`
+ * @param {{ soOcupados?: boolean }} opts
+ */
+export function buildRelatorioFinanceiroImoveisMes(chaveMesYYYYMM, opts = {}) {
+  const { soOcupados = true } = opts;
+  const total = getImoveisMockTotal();
+  const linhas = [];
+  for (let id = 1; id <= total; id++) {
+    const m = getImovelMock(id);
+    if (!m) continue;
+    if (soOcupados && !m.imovelOcupado) continue;
+    linhas.push({ imovelId: id, ...montarLinhaRelatorioFinanceiroImovelMes(m, chaveMesYYYYMM) });
+  }
+  return linhas.sort((a, b) => a.imovelId - b.imovelId);
+}
+
+function montarLinhaRelatorioFinanceiroImovelMes(imovelMock, chaveMes) {
+  const cod = imovelMock.codigo;
+  const proc = imovelMock.proc;
+  const { transacoes, porMes } = montarPainelAdministracaoImovel(cod, proc);
+  const row = porMes.get(chaveMes);
+  const listaMes = lancamentosDoMesOrdenados(transacoes, chaveMes);
+  const aluguel = primeiroLancamentoComPapel(listaMes, PAPEL_ALUGUEL, true);
+  const repasse = primeiroLancamentoComPapel(listaMes, PAPEL_REPASSE, false);
+  const diaPagCad = parseDiaCadastroImovel(imovelMock.diaPagAluguel);
+  const diaRepCad = parseDiaCadastroImovel(imovelMock.diaRepasse);
+  const valorRef = Number(String(imovelMock.valorLocacao ?? '').replace(',', '.')) || 0;
+  const ocupado = Boolean(imovelMock.imovelOcupado);
+
+  const totalAluguel = row?.totalRecebido ?? 0;
+  const totalRepasse = row?.totalRepasse ?? 0;
+
+  let statusAluguel = '—';
+  let legendaAluguel = '';
+  if (!ocupado) {
+    statusAluguel = 'n_a';
+    legendaAluguel = 'Imóvel desocupado';
+  } else if (valorRef <= 0) {
+    statusAluguel = 'sem_ref';
+    legendaAluguel = 'Sem valor de locação no cadastro';
+  } else if (!aluguel || totalAluguel <= 0) {
+    statusAluguel = 'pendente';
+    legendaAluguel = diaPagCad
+      ? `Referência: receber até o dia ${String(diaPagCad).padStart(2, '0')}`
+      : 'Nenhum crédito classificado como aluguel no Financeiro neste mês';
+  } else if (diaPagCad == null) {
+    statusAluguel = 'ok_sem_prazo';
+    legendaAluguel = 'Recebido; cadastro sem dia de pagamento de aluguel';
+  } else {
+    statusAluguel = classificarPrazoVersusCadastro(aluguel.data, diaPagCad);
+    legendaAluguel = `Prazo no cadastro: dia ${String(diaPagCad).padStart(2, '0')}`;
+  }
+
+  let statusRepasse = '—';
+  let legendaRepasse = '';
+  if (!ocupado) {
+    statusRepasse = 'n_a';
+    legendaRepasse = 'Imóvel desocupado';
+  } else if (valorRef <= 0) {
+    statusRepasse = 'sem_ref';
+    legendaRepasse = 'Sem valor de locação no cadastro';
+  } else if (!aluguel || totalAluguel <= 0) {
+    statusRepasse = 'aguarda_aluguel';
+    legendaRepasse = 'Repasse só é avaliado após identificar aluguel no mês';
+  } else if (!repasse || totalRepasse <= 0) {
+    statusRepasse = 'pendente';
+    legendaRepasse = diaRepCad
+      ? `Referência: repasse até o dia ${String(diaRepCad).padStart(2, '0')}`
+      : 'Nenhum débito classificado como repasse no Financeiro neste mês';
+  } else if (diaRepCad == null) {
+    statusRepasse = 'ok_sem_prazo';
+    legendaRepasse = 'Repasse identificado; cadastro sem dia de repasse';
+  } else {
+    statusRepasse = classificarPrazoVersusCadastro(repasse.data, diaRepCad);
+    legendaRepasse = `Prazo no cadastro: dia ${String(diaRepCad).padStart(2, '0')}`;
+  }
+
+  return {
+    unidade: String(imovelMock.unidade ?? ''),
+    codigo: cod,
+    proc: proc,
+    valorReferenciaLocacao: valorRef,
+    totalAluguel,
+    totalRepasse,
+    dataPrimeiroAluguel: aluguel?.data ?? null,
+    dataPrimeiroRepasse: repasse?.data ?? null,
+    diaPagCad,
+    diaRepCad,
+    statusAluguel,
+    statusRepasse,
+    legendaAluguel,
+    legendaRepasse,
+  };
+}

@@ -9,6 +9,7 @@ import { Processos } from './components/Processos';
 import { Imoveis } from './components/Imoveis';
 import { ImoveisAdministracaoFinanceiro } from './components/ImoveisAdministracaoFinanceiro.jsx';
 import { RelatorioImoveis } from './components/RelatorioImoveis.jsx';
+import { RelatorioFinanceiroImoveis } from './components/RelatorioFinanceiroImoveis.jsx';
 import { Relatorio } from './components/Relatorio';
 import { RelatorioCalculos } from './components/RelatorioCalculos';
 import { Calculos } from './components/Calculos';
@@ -166,6 +167,7 @@ function App() {
           <Route path="/processos" element={<Processos />} />
           <Route path="/imoveis" element={<Imoveis />} />
           <Route path="/imoveis/financeiro" element={<ImoveisAdministracaoFinanceiro />} />
+          <Route path="/imoveis/relatorio-financeiro" element={<RelatorioFinanceiroImoveis />} />
           <Route path="/relatorio-imoveis" element={<RelatorioImoveis />} />
           <Route path="/relatorio" element={<Relatorio />} />
           <Route path="/relatorio-calculos" element={<RelatorioCalculos />} />

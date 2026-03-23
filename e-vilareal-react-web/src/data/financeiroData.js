@@ -62,7 +62,20 @@ function cloneBbExtratoXlsMock() {
   return JSON.parse(JSON.stringify(BB_EXTRATO_MOCK_XLS));
 }
 
-function lancCef(letra, numero, data, descricao, valor, saldo, saldoDesc, descricaoDetalhada) {
+function lancCef(
+  letra,
+  numero,
+  data,
+  descricao,
+  valor,
+  saldo,
+  saldoDesc,
+  descricaoDetalhada,
+  refOpt = 'N',
+  eqOpt = ''
+) {
+  const ref = normalizarRefFinanceiro(refOpt);
+  const eq = String(eqOpt ?? '').trim();
   return {
     letra,
     numero: String(numero),
@@ -75,12 +88,12 @@ function lancCef(letra, numero, data, descricao, valor, saldo, saldoDesc, descri
     categoria: '',
     codCliente: '',
     proc: '',
-    dimensao: '',
+    dimensao: ref === 'N' ? '' : eq,
     parcela: '',
-    /** Referência (espelha coluna Ref. no consolidado; padrão 675 na UI se vazio). */
-    ref: '',
+    /** Referência: N (único) ou R (repasse — use Eq. igual em pelo menos duas linhas). */
+    ref,
     /** Espelha Dimensão no extrato do banco (mesmo texto que dimensao). */
-    eq: '',
+    eq: ref === 'N' ? '' : eq,
   };
 }
 
@@ -102,11 +115,11 @@ const CEF_EXTRATO_MOCK_PDF = [
   lancCef('E', '7141', '25/02/2026', 'CRED PIX', 3078, 5138.8, '', '16165'),
   lancCef('A', '7142', '25/02/2026', 'CR LEV JUD', 3202.43, 8341.23, '', ''),
   lancCef('E', '7143', '25/02/2026', 'ENVIO PIX', -8341.23, 0, '', '16166'),
-  lancCef('A', '7144', '26/02/2026', 'CRED TED', 704.66, 704.66, '', ''),
+  lancCef('A', '7144', '26/02/2026', 'CRED TED', 704.66, 704.66, '', '', 'R', 'ORFAO-SOLO'),
   lancCef('E', '7145', '26/02/2026', 'ENVIO PIX', -704.66, 0, '', '16216'),
-  lancCef('A', '7146', '02/03/2026', 'CR LEV JUD', 294.32, 294.32, '', ''),
+  lancCef('A', '7146', '02/03/2026', 'CR LEV JUD', 294.32, 294.32, '', '', 'R', 'REP-DEMO-01'),
   lancCef('E', '7147', '02/03/2026', 'ENVIO PIX', -294.32, 0, '', '16154'),
-  lancCef('A', '7148', '09/03/2026', 'DP DIN LOT', 1400, 1400, '', ''),
+  lancCef('A', '7148', '09/03/2026', 'DP DIN LOT', 1400, 1400, '', '', 'R', 'REP-DEMO-01'),
   lancCef('E', '7149', '10/03/2026', 'ENVIO PIX', -1400, 0, '', ''),
 ];
 
@@ -188,6 +201,38 @@ function safeJsonParseFinanceiro(s) {
   } catch {
     return null;
   }
+}
+
+/**
+ * Ref. no Financeiro (extrato e consolidado): apenas **N** ou **R**.
+ * N = lançamento único (sem repasse vinculado). R = repasse — exige par(es) com o mesmo **Eq.**.
+ * Valores legados (vazio, "675", etc.) tratam-se como **N**.
+ */
+export function normalizarRefFinanceiro(raw) {
+  const s = String(raw ?? '').trim().toUpperCase();
+  if (s === 'R') return 'R';
+  return 'N';
+}
+
+/** Migra extratos persistidos: Ref. só N/R; legado vazio/675 → N; com N limpa Eq./Dimensão. */
+function migrarRefLegadoExtratos(data) {
+  if (!data || typeof data !== 'object') return data;
+  const out = {};
+  for (const [banco, list] of Object.entries(data)) {
+    if (!Array.isArray(list)) {
+      out[banco] = list;
+      continue;
+    }
+    out[banco] = list.map((t) => {
+      if (!t || typeof t !== 'object') return t;
+      const ref = normalizarRefFinanceiro(t.ref);
+      if (ref === 'N') {
+        return { ...t, ref: 'N', eq: '', dimensao: '' };
+      }
+      return { ...t, ref: 'R' };
+    });
+  }
+  return out;
 }
 
 function extratosTodosArraysVazios(obj) {
@@ -294,7 +339,7 @@ export function loadPersistedExtratosFinanceiro() {
       const parsed = safeJsonParseFinanceiro(raw);
       if (!parsed?.data || typeof parsed.data !== 'object' || parsed.v !== version) return null;
       const merged = { ...getExtratosIniciais(), ...parsed.data };
-      return aplicarMocksInstituicoesVazias(merged);
+      return migrarRefLegadoExtratos(aplicarMocksInstituicoesVazias(merged));
     };
     const saveV20 = (out) => {
       window.localStorage.setItem(STORAGE_FINANCEIRO_EXTRATOS_KEY, JSON.stringify({ v: 20, data: out }));
@@ -408,12 +453,13 @@ export function loadPersistedExtratosFinanceiro() {
       limpo['BTG Banking'] = cloneBtgBankingExtratoXlsMock();
       limpo['BTG JA'] = cloneBtgJaExtratoXlsMock();
       limpo['BTG RACHEL'] = cloneBtgRachelExtratoXlsMock();
+      const limpoMigrado = migrarRefLegadoExtratos(limpo);
       window.localStorage.setItem(
         STORAGE_FINANCEIRO_EXTRATOS_KEY,
-        JSON.stringify({ v: 20, data: limpo })
+        JSON.stringify({ v: 20, data: limpoMigrado })
       );
       removerChavesExtratoLegadoFinanceiro();
-      return limpo;
+      return limpoMigrado;
     }
   } catch {
     /* ignore */
@@ -424,7 +470,8 @@ export function loadPersistedExtratosFinanceiro() {
 export function savePersistedExtratosFinanceiro(data) {
   if (typeof window === 'undefined') return;
   try {
-    window.localStorage.setItem(STORAGE_FINANCEIRO_EXTRATOS_KEY, JSON.stringify({ v: 20, data }));
+    const payload = migrarRefLegadoExtratos(data);
+    window.localStorage.setItem(STORAGE_FINANCEIRO_EXTRATOS_KEY, JSON.stringify({ v: 20, data: payload }));
     removerChavesExtratoLegadoFinanceiro();
   } catch {
     /* ignore */
@@ -706,7 +753,7 @@ export function mergePersistedComLancamentosVinculacaoTeste(persisted) {
       out[nomeBanco] = [...arr, ...extras.map((t) => JSON.parse(JSON.stringify(t)))];
     }
   }
-  return out;
+  return migrarRefLegadoExtratos(out);
 }
 
 /** Valor monetário exato em centavos (sem tolerância em reais). */
