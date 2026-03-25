@@ -47,6 +47,15 @@ describe('extrairDadosDeTextoLivre — casos obrigatórios', () => {
     expect(r.endereco.cidade).toMatch(/Anápolis/i);
     expect(r.endereco.cep).toBe('75114150');
     expect(r.endereco.rua).toMatch(/Avenida Maranhão/i);
+    expect(r.email).toBe('elizeu0419@gmail.com');
+    expect(r.preenchidos.email).toBe(true);
+  });
+
+  it('só e-mail no texto: preenche e conta como sucesso', () => {
+    const r = extrairDadosDeTextoLivre('Contato: teste.user@exemplo.com.br');
+    expect(r.email).toBe('teste.user@exemplo.com.br');
+    expect(r.sucesso).toBe(true);
+    expect(r.preenchidos.email).toBe(true);
   });
 
   it('qualificação por rótulos', () => {

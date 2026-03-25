@@ -14,6 +14,7 @@ export function extrairDadosDeTextoLivre(textoBruto, options = {}) {
     estadoCivil: parsed.candidatos.estadoCivil[0]?.score ?? 0,
     profissao: parsed.candidatos.profissao[0]?.score ?? 0,
     endereco: parsed.candidatos.endereco[0]?.score ?? 0,
+    email: parsed.candidatos.email[0]?.score ?? 0,
   };
   const preenchidos = {
     nome: !!parsed.nomeCompleto,
@@ -24,6 +25,7 @@ export function extrairDadosDeTextoLivre(textoBruto, options = {}) {
     estadoCivil: !!parsed.estadoCivil,
     profissao: !!parsed.profissao,
     endereco: !!parsed.endereco,
+    email: !!parsed.email,
   };
   const sucesso =
     preenchidos.nome ||
@@ -33,7 +35,8 @@ export function extrairDadosDeTextoLivre(textoBruto, options = {}) {
     preenchidos.nacionalidade ||
     preenchidos.estadoCivil ||
     preenchidos.profissao ||
-    preenchidos.endereco;
+    preenchidos.endereco ||
+    preenchidos.email;
   return {
     sucesso,
     nomeCompleto: parsed.nomeCompleto,
@@ -44,6 +47,7 @@ export function extrairDadosDeTextoLivre(textoBruto, options = {}) {
     estadoCivil: parsed.estadoCivil,
     profissao: parsed.profissao,
     endereco: parsed.endereco,
+    email: parsed.email,
     confiancaPorCampo,
     candidatos: parsed.candidatos,
     avisos: parsed.avisos,

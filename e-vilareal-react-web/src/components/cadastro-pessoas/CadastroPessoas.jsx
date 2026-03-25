@@ -204,6 +204,7 @@ export function CadastroPessoas() {
     nacionalidade: false,
     profissao: false,
     estadoCivil: false,
+    email: false,
   });
 
   useEffect(() => {
@@ -256,6 +257,7 @@ export function CadastroPessoas() {
             nacionalidade: false,
             profissao: false,
             estadoCivil: false,
+            email: false,
           });
           setExtracaoEndereco(null);
           return;
@@ -286,6 +288,7 @@ export function CadastroPessoas() {
           nacionalidade: !!r.nacionalidade,
           profissao: !!r.profissao,
           estadoCivil: !!r.estadoCivil,
+          email: !!r.email,
         };
         setCamposPreenchidosPorTexto(marcados);
         setForm((f) => ({
@@ -297,32 +300,9 @@ export function CadastroPessoas() {
           ...(r.nacionalidade ? { nacionalidade: r.nacionalidade } : {}),
           ...(r.profissao ? { profissao: r.profissao } : {}),
           ...(r.estadoCivil ? { estadoCivil: r.estadoCivil } : {}),
+          ...(r.email ? { email: r.email } : {}),
         }));
 
-        if (r.endereco && (r.endereco.rua || r.endereco.cep || r.endereco.cidade)) {
-          const sugerido = {
-            numero: (Array.isArray(enderecos) ? enderecos.length : 0) + 1,
-            rua: String(r.endereco.rua || '').trim(),
-            bairro: String(r.endereco.bairro || '').trim(),
-            estado: String(r.endereco.estado || '').trim(),
-            cidade: String(r.endereco.cidade || '').trim(),
-            cep: String(r.endereco.cep || '').replace(/\D/g, '').slice(0, 8),
-            autoPreenchido: true,
-          };
-          const chaveSug = `${sugerido.rua}|${sugerido.bairro}|${sugerido.cidade}|${sugerido.estado}|${sugerido.cep}`
-            .toUpperCase()
-            .replace(/\s+/g, ' ')
-            .trim();
-          const listaAtual = Array.isArray(enderecos) ? enderecos : [];
-          const jaExiste = listaAtual.some((e) => {
-            const chave = `${e.rua || ''}|${e.bairro || ''}|${e.cidade || ''}|${e.estado || ''}|${e.cep || ''}`
-              .toUpperCase()
-              .replace(/\s+/g, ' ')
-              .trim();
-            return chave && chave === chaveSug;
-          });
-          if (!jaExiste && (sugerido.rua || sugerido.cep)) setEnderecos([...listaAtual, sugerido]);
-        }
         const ok = [];
         if (r.nomeCompleto) ok.push('nome');
         if (cpfSeguro) ok.push('CPF');
@@ -331,11 +311,18 @@ export function CadastroPessoas() {
         if (r.nacionalidade) ok.push('nacionalidade');
         if (r.profissao) ok.push('profissão');
         if (r.estadoCivil) ok.push('estado civil');
-        if (r.endereco && (r.endereco.rua || r.endereco.cep || r.endereco.cidade)) ok.push('endereço');
+        if (r.email) ok.push('e-mail');
+        const temSugestaoEndereco =
+          r.endereco && (r.endereco.rua || r.endereco.cep || r.endereco.cidade);
+        const partesResumo = [];
+        if (ok.length) partesResumo.push(`Campos preenchidos automaticamente: ${ok.join(', ')}.`);
+        if (temSugestaoEndereco) {
+          partesResumo.push(
+            'Sugestão de endereço: abra o botão Endereços, confira os campos e clique em Incluir para adicionar à lista.'
+          );
+        }
         setExtracaoResumo(
-          ok.length
-            ? `Campos preenchidos automaticamente: ${ok.join(', ')}. Revise antes de salvar.`
-            : ''
+          partesResumo.length ? `${partesResumo.join(' ')} Revise antes de salvar.` : ''
         );
       } finally {
         setExtracaoProcessando(false);
@@ -577,6 +564,7 @@ export function CadastroPessoas() {
       nacionalidade: false,
       profissao: false,
       estadoCivil: false,
+      email: false,
     });
   }
 
@@ -643,6 +631,7 @@ export function CadastroPessoas() {
       nacionalidade: false,
       profissao: false,
       estadoCivil: false,
+      email: false,
     });
   }
 
@@ -1634,42 +1623,18 @@ export function CadastroPessoas() {
                         <input
                           type="email"
                           value={form.email}
-                          onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+                          onChange={(e) => {
+                            setCamposPreenchidosPorTexto((c) => ({ ...c, email: false }));
+                            setForm((f) => ({ ...f, email: e.target.value }));
+                          }}
+                          onBlur={() => marcarAutofillRevisado('email')}
                           disabled={form.edicaoDesabilitada}
                           placeholder="email@exemplo.com"
-                          className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-slate-100"
+                          className={inputClassComAutofill('email', { flex: true })}
                         />
                         <button
                           type="button"
-                          onClick={() => {
-                            if (extracaoEndereco && (extracaoEndereco.rua || extracaoEndereco.cep)) {
-                              const sugerido = {
-                                numero: (Array.isArray(enderecos) ? enderecos.length : 0) + 1,
-                                rua: String(extracaoEndereco.rua || '').trim(),
-                                bairro: String(extracaoEndereco.bairro || '').trim(),
-                                estado: String(extracaoEndereco.estado || '').trim(),
-                                cidade: String(extracaoEndereco.cidade || '').trim(),
-                                cep: String(extracaoEndereco.cep || '').replace(/\D/g, '').slice(0, 8),
-                                autoPreenchido: true,
-                              };
-                              const chaveSug = `${sugerido.rua}|${sugerido.bairro}|${sugerido.cidade}|${sugerido.estado}|${sugerido.cep}`
-                                .toUpperCase()
-                                .replace(/\s+/g, ' ')
-                                .trim();
-                              const listaAtual = Array.isArray(enderecos) ? enderecos : [];
-                              const jaExiste = listaAtual.some((e) => {
-                                const chave = `${e.rua || ''}|${e.bairro || ''}|${e.cidade || ''}|${e.estado || ''}|${e.cep || ''}`
-                                  .toUpperCase()
-                                  .replace(/\s+/g, ' ')
-                                  .trim();
-                                return chave && chave === chaveSug;
-                              });
-                              if (!jaExiste && (sugerido.rua || sugerido.cep)) {
-                                setEnderecos([...listaAtual, sugerido]);
-                              }
-                            }
-                            setModalEnderecos(true);
-                          }}
+                          onClick={() => setModalEnderecos(true)}
                           className="inline-flex items-center gap-1.5 px-3 py-2 text-sm border border-slate-300 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200"
                         >
                           <MapPin className="w-4 h-4" />
@@ -1830,6 +1795,7 @@ export function CadastroPessoas() {
         codigoPessoa={form.codigo}
         enderecos={enderecos}
         onChange={setEnderecos}
+        sugestaoEndereco={extracaoEndereco}
       />
       <ModalContatos
         open={modalContatos}

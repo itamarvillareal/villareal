@@ -72,6 +72,9 @@ export function Sidebar() {
     if (p === '/clientes' || p.startsWith('/clientes/')) {
       setGruposAbertos((prev) => new Set(prev).add('pessoas-grupo'));
     }
+    if (p === '/topicos' || p.startsWith('/topicos/')) {
+      setGruposAbertos((prev) => new Set(prev).add('topicos-grupo'));
+    }
   }, [location.pathname]);
 
   const toggleGrupo = (grupoId) => {

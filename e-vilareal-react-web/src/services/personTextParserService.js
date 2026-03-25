@@ -28,6 +28,16 @@ const ROTULOS_RG = [
   /portador\s+da\s+c[ée]dula\s+de\s+identidade\s+n\.?\s*/i,
 ];
 
+/** Janela imediatamente antes do endereço de e-mail (texto jurídico costuma usar estes rótulos). */
+const ROTULOS_EMAIL = [
+  /endere[çc]o\s+eletr[ôo]nico\s*:?\s*$/i,
+  /e[\s-]*mail\s*:?\s*$/i,
+  /correio\s+eletr[ôo]nico\s*:?\s*$/i,
+];
+
+const EMAIL_REGEX =
+  /[a-zA-Z0-9](?:[a-zA-Z0-9._%+-]*[a-zA-Z0-9])?@[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?(?:\.[a-zA-Z]{2,})+/g;
+
 /**
  * Remove quebras de linha / parágrafos do texto colado para a extração (nomes e CPF
  * partidos em linhas voltam a ficar contíguos).
@@ -269,6 +279,32 @@ function primeiroCpfValidoIndex(texto) {
   return null;
 }
 
+function coletarCandidatosEmail(texto) {
+  const candidatos = [];
+  let m;
+  EMAIL_REGEX.lastIndex = 0;
+  while ((m = EMAIL_REGEX.exec(texto))) {
+    const raw = m[0];
+    const idx = m.index;
+    const antes = texto.slice(Math.max(0, idx - 120), idx);
+    let score = 0.55;
+    for (const re of ROTULOS_EMAIL) {
+      if (re.test(antes)) {
+        score += 0.35;
+        break;
+      }
+    }
+    candidatos.push({
+      valor: raw.toLowerCase(),
+      score: Math.min(0.98, score),
+      origem: 'regex',
+      valido: true,
+      motivos: [],
+    });
+  }
+  return dedupMelhor(candidatos, (c) => c.valor);
+}
+
 /**
  * Pipeline principal: texto livre → candidatos e melhores valores.
  * @param {string} textoBruto
@@ -287,6 +323,7 @@ export function parsePersonFreeText(textoBruto, opts = {}) {
       estadoCivil: null,
       profissao: null,
       endereco: null,
+      email: null,
       candidatos: {
         nomeCompleto: [],
         cpf: [],
@@ -296,6 +333,7 @@ export function parsePersonFreeText(textoBruto, opts = {}) {
         estadoCivil: [],
         profissao: [],
         endereco: [],
+        email: [],
       },
       avisos: ['Texto vazio. Cole ou digite os dados e clique em Extrair.'],
       textoNormalizado: '',
@@ -334,6 +372,10 @@ export function parsePersonFreeText(textoBruto, opts = {}) {
   const end = parseEnderecoPessoa(normalizado);
   avisos.push(...end.avisos);
 
+  const emails = coletarCandidatosEmail(normalizado);
+  const melhorEmail = emails[0] || null;
+  if (emails.length > 1) avisos.push('Vários e-mails no texto; foi usado o de maior confiança contextual.');
+
   const camposNaoEncontrados = [];
   if (!melhorNome) camposNaoEncontrados.push('nome completo');
   if (!melhorCpf) camposNaoEncontrados.push('CPF');
@@ -343,6 +385,7 @@ export function parsePersonFreeText(textoBruto, opts = {}) {
   if (!qualif.estadoCivil) camposNaoEncontrados.push('estado civil');
   if (!qualif.profissao) camposNaoEncontrados.push('profissão');
   if (!end.endereco) camposNaoEncontrados.push('endereço');
+  if (!melhorEmail) camposNaoEncontrados.push('e-mail');
   if (camposNaoEncontrados.length) {
     avisos.push(`Não identificado(s): ${camposNaoEncontrados.join(', ')}.`);
   }
@@ -361,6 +404,7 @@ export function parsePersonFreeText(textoBruto, opts = {}) {
             estadoCivil: qualif.candidatos.estadoCivil,
             profissao: qualif.candidatos.profissao,
             endereco: end.candidatos,
+            email: emails,
           },
         }
       : undefined;
@@ -374,6 +418,7 @@ export function parsePersonFreeText(textoBruto, opts = {}) {
     estadoCivil: qualif.estadoCivil,
     profissao: qualif.profissao,
     endereco: end.endereco,
+    email: melhorEmail?.valor ?? null,
     textoNormalizado: normalizado,
     candidatos: {
       nomeCompleto: nomes,
@@ -384,6 +429,7 @@ export function parsePersonFreeText(textoBruto, opts = {}) {
       estadoCivil: qualif.candidatos.estadoCivil,
       profissao: qualif.candidatos.profissao,
       endereco: end.candidatos,
+      email: emails,
     },
     avisos,
     debug,

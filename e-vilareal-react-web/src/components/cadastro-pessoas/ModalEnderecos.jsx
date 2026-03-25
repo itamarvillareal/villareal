@@ -1,7 +1,15 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { X, Search } from 'lucide-react';
 
-export function ModalEnderecos({ open, onClose, nomePessoa, codigoPessoa, enderecos, onChange }) {
+export function ModalEnderecos({
+  open,
+  onClose,
+  nomePessoa,
+  codigoPessoa,
+  enderecos,
+  onChange,
+  sugestaoEndereco = null,
+}) {
   const [numero, setNumero] = useState(1);
   const [rua, setRua] = useState('');
   const [bairro, setBairro] = useState('');
@@ -9,6 +17,33 @@ export function ModalEnderecos({ open, onClose, nomePessoa, codigoPessoa, endere
   const [cidade, setCidade] = useState('');
   const [cep, setCep] = useState('');
   const [buscandoCep, setBuscandoCep] = useState(false);
+  const sessaoAbertaRef = useRef(false);
+
+  useEffect(() => {
+    if (!open) {
+      sessaoAbertaRef.current = false;
+      return;
+    }
+    if (sessaoAbertaRef.current) return;
+    sessaoAbertaRef.current = true;
+
+    const lista = Array.isArray(enderecos) ? enderecos : [];
+    setNumero(lista.length + 1);
+
+    const s = sugestaoEndereco;
+    const temSugestao =
+      s &&
+      (String(s.rua || '').trim() ||
+        String(s.cep || '').replace(/\D/g, '') ||
+        String(s.cidade || '').trim());
+    if (temSugestao) {
+      setRua(String(s.rua || '').trim());
+      setBairro(String(s.bairro || '').trim());
+      setEstado(String(s.estado || '').trim());
+      setCidade(String(s.cidade || '').trim());
+      setCep(String(s.cep || '').replace(/\D/g, '').slice(0, 8));
+    }
+  }, [open, sugestaoEndereco, enderecos]);
 
   if (!open) return null;
 

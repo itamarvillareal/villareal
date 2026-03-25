@@ -48,6 +48,15 @@ export const navItems = [
   { id: 'atividade', label: 'Atividade', icon: 'ClipboardList' },
   { id: 'financeiro', label: 'Financeiro', icon: 'CircleDollarSign' },
   { id: 'pendencias', label: 'Pendências', icon: 'AlertTriangle' },
+  {
+    id: 'topicos-grupo',
+    label: 'Tópicos',
+    icon: 'Layers',
+    children: [
+      { id: 'topicos', label: 'Tópicos', icon: 'Layers' },
+      { id: 'topicos/gerente', label: 'Gerente de Tópicos', icon: 'LayoutDashboard' },
+    ],
+  },
   { id: 'diagnosticos', label: 'Diagnósticos', icon: 'Activity' },
   { id: 'usuarios', label: 'Usuários', icon: 'UserCog' },
   { id: 'configuracoes', label: 'Configurações', icon: 'Settings' },

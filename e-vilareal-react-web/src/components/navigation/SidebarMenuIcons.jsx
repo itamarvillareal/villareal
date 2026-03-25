@@ -423,6 +423,47 @@ function IconMonitoramento({ className }) {
   );
 }
 
+function IconTopicos({ className }) {
+  const uid = useId().replace(/:/g, '');
+  const g = `top-${uid}`;
+  return (
+    <svg className={`block shrink-0 ${className ?? ''}`} viewBox="0 0 24 24" fill="none" style={shadow} aria-hidden>
+      <defs>
+        <linearGradient id={g} x1="4" y1="6" x2="22" y2="18" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#34d399" />
+          <stop offset="1" stopColor="#2563eb" />
+        </linearGradient>
+      </defs>
+      {[6, 11, 16].map((y, i) => (
+        <g key={y}>
+          <circle cx="6" cy={y} r="1.6" fill={`url(#${g})`} opacity={1 - i * 0.12} />
+          <rect x="9.5" y={y - 1.25} width="12" height="2.5" rx="1" fill={`url(#${g})`} opacity={0.88 - i * 0.1} />
+        </g>
+      ))}
+    </svg>
+  );
+}
+
+/** Painel / gestão de tópicos (submenu). */
+function IconGerenteTopicos({ className }) {
+  const uid = useId().replace(/:/g, '');
+  const g = `gtop-${uid}`;
+  return (
+    <svg className={`block shrink-0 ${className ?? ''}`} viewBox="0 0 24 24" fill="none" style={shadow} aria-hidden>
+      <defs>
+        <linearGradient id={g} x1="3" y1="4" x2="21" y2="20" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#6366f1" />
+          <stop offset="1" stopColor="#0ea5e9" />
+        </linearGradient>
+      </defs>
+      <rect x="3.5" y="4" width="17" height="14" rx="2" stroke={`url(#${g})`} strokeWidth="1.2" fill="none" opacity="0.85" />
+      <path d="M7 9h10M7 12h6" stroke={`url(#${g})`} strokeWidth="1.1" strokeLinecap="round" />
+      <circle cx="17" cy="12" r="2.2" fill={`url(#${g})`} opacity="0.95" />
+      <path d="M16.2 12.6l0.6 0.6 1.4-1.4" stroke="#fff" strokeWidth="0.55" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function IconConfiguracoes({ className }) {
   const uid = useId().replace(/:/g, '');
   const g1 = `cfg1-${uid}`;
@@ -470,6 +511,9 @@ const MENU_ICONS = {
   atividade: IconAtividade,
   financeiro: IconFinanceiro,
   pendencias: IconPendencias,
+  'topicos-grupo': IconTopicos,
+  topicos: IconTopicos,
+  'topicos/gerente': IconGerenteTopicos,
   diagnosticos: IconDiagnosticos,
   usuarios: IconUsuarios,
   configuracoes: IconConfiguracoes,

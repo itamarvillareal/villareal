@@ -20,6 +20,8 @@ import { Diagnosticos } from './components/Diagnosticos';
 import { Financeiro } from './components/Financeiro';
 import { Usuarios } from './components/Usuarios';
 import { Configuracoes } from './components/Configuracoes';
+import { Topicos } from './components/Topicos.jsx';
+import { GerenteTopicos } from './components/GerenteTopicos.jsx';
 import { Atividade } from './components/Atividade.jsx';
 import { atualizarIndicesMensaisAposDia10 } from './services/monetaryIndicesService.js';
 import { ensureHistoricoDemonstracaoDiagnostico } from './data/processosHistoricoData.js';
@@ -215,6 +217,8 @@ function App() {
           <Route path="/relatorio" element={<Relatorio />} />
           <Route path="/relatorio-calculos" element={<RelatorioCalculos />} />
           <Route path="/calculos" element={<Calculos />} />
+          <Route path="/topicos" element={<Topicos />} />
+          <Route path="/topicos/gerente" element={<GerenteTopicos />} />
           <Route path="/diagnosticos" element={<Diagnosticos />} />
           <Route path="/financeiro" element={<Financeiro />} />
           <Route path="/usuarios" element={<Usuarios />} />
