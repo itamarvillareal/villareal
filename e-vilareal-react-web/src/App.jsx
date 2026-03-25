@@ -23,6 +23,7 @@ import { Configuracoes } from './components/Configuracoes';
 import { Topicos } from './components/Topicos.jsx';
 import { GerenteTopicos } from './components/GerenteTopicos.jsx';
 import { Atividade } from './components/Atividade.jsx';
+import { AnaLuisa } from './components/AnaLuisa.jsx';
 import { atualizarIndicesMensaisAposDia10 } from './services/monetaryIndicesService.js';
 import { ensureHistoricoDemonstracaoDiagnostico } from './data/processosHistoricoData.js';
 import { ensureDemoIntegradoCompleto } from './data/demoIntegradoSeed.js';
@@ -206,6 +207,7 @@ function App() {
           <Route path="/clientes/nova" element={<CadastroPessoas />} />
           <Route path="/pessoas" element={<CadastroClientes />} />
           <Route path="/agenda" element={<Agenda />} />
+          <Route path="/ana-luisa" element={<AnaLuisa />} />
           <Route path="/atividade" element={<Atividade />} />
           <Route path="/processos" element={<Processos />} />
           <Route path="/processos/publicacoes" element={<PublicacoesProcessos />} />

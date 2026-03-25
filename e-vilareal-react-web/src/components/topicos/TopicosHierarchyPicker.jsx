@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { ArrowLeft, ChevronDown, ChevronUp, FolderOpen, ListChecks } from 'lucide-react';
 import { TOPICOS_RAIZ, resolverNoPorCaminho } from '../../data/topicosHierarchy.js';
+import { gerarEBaixarDocxLocacao } from '../../utils/gerarDocumentoTopicosLocacaoWord.js';
 
 /** Rótulos do caminho para breadcrumb (um rótulo por id em `pathStack`). */
 function rotulosDoCaminho(pathStack) {
@@ -29,6 +30,7 @@ export function TopicosHierarchyPicker({ onCarregar }) {
   }, [pathStack]);
 
   const modoItens = Boolean(noAtual?.items?.length);
+  const selecaoUnicaFolha = Boolean(noAtual?.selecaoUnica);
   const filhosLista = useMemo(() => {
     if (pathStack.length === 0) return TOPICOS_RAIZ.children ?? [];
     const n = resolverNoPorCaminho(TOPICOS_RAIZ, pathStack);
@@ -61,6 +63,10 @@ export function TopicosHierarchyPicker({ onCarregar }) {
     });
   }, []);
 
+  const definirSelecaoUnica = useCallback((id) => {
+    setSelecionados(new Set([id]));
+  }, []);
+
   const aoCarregar = useCallback(() => {
     if (!noAtual?.items?.length) return;
     const marcados = noAtual.items.filter((it) => selecionados.has(it.id));
@@ -70,6 +76,17 @@ export function TopicosHierarchyPicker({ onCarregar }) {
     };
     setUltimaCarga(payload);
     onCarregar?.(payload);
+
+    const ehCaminhoLocacao =
+      pathStack.length >= 2 &&
+      pathStack[0] === 'contratos' &&
+      pathStack[pathStack.length - 1] === 'contratos-loc';
+    if (ehCaminhoLocacao && marcados.length > 0) {
+      void gerarEBaixarDocxLocacao(payload).catch((err) => {
+        console.error(err);
+        window.alert('Não foi possível gerar o documento Word. Tente novamente.');
+      });
+    }
   }, [noAtual, pathStack, selecionados, onCarregar]);
 
   const rotulos = rotulosDoCaminho(pathStack);
@@ -81,7 +98,9 @@ export function TopicosHierarchyPicker({ onCarregar }) {
           <div>
             <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Tópicos</h2>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              Navegue pelas camadas; na última, marque os tópicos e use Carregar.
+              Navegue pelas camadas; na última, marque os tópicos e use Carregar. Em{' '}
+              <span className="font-medium text-slate-600 dark:text-slate-300">Contratos → Locação</span>, Carregar
+              também baixa um <span className="font-medium">.docx</span> novo para abrir no Word.
             </p>
           </div>
           <button
@@ -147,14 +166,26 @@ export function TopicosHierarchyPicker({ onCarregar }) {
               <ul className="py-1 divide-y divide-slate-100 dark:divide-slate-700/80">
                 {noAtual.items.map((it) => (
                   <li key={it.id}>
-                    <label className="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-white/80 dark:hover:bg-slate-800/80">
-                      <input
-                        type="checkbox"
-                        checked={selecionados.has(it.id)}
-                        onChange={() => toggleItem(it.id)}
-                        className="rounded border-slate-300 dark:border-slate-500 text-blue-600 focus:ring-blue-500"
-                      />
-                      <span className="text-sm text-slate-800 dark:text-slate-100">{it.label}</span>
+                    <label className="flex items-center justify-between gap-4 px-3 py-2.5 cursor-pointer hover:bg-white/80 dark:hover:bg-slate-800/80">
+                      <span className="text-sm text-slate-800 dark:text-slate-100 min-w-0 flex-1 pr-2">{it.label}</span>
+                      <span className="shrink-0 flex items-center justify-end w-9" title="Selecionar">
+                        {selecaoUnicaFolha ? (
+                          <input
+                            type="radio"
+                            name={`topicos-folha-${noAtual.id}`}
+                            checked={selecionados.has(it.id)}
+                            onChange={() => definirSelecaoUnica(it.id)}
+                            className="h-4 w-4 border-slate-300 dark:border-slate-500 text-blue-600 focus:ring-blue-500"
+                          />
+                        ) : (
+                          <input
+                            type="checkbox"
+                            checked={selecionados.has(it.id)}
+                            onChange={() => toggleItem(it.id)}
+                            className="rounded border-slate-300 dark:border-slate-500 text-blue-600 focus:ring-blue-500"
+                          />
+                        )}
+                      </span>
                     </label>
                   </li>
                 ))}

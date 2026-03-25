@@ -508,6 +508,7 @@ const MENU_ICONS = {
   'imoveis/relatorio-financeiro': IconFinanceiro,
   'relatorio-imoveis': IconSpreadsheet,
   agenda: IconAgenda,
+  'ana-luisa': IconClientes,
   atividade: IconAtividade,
   financeiro: IconFinanceiro,
   pendencias: IconPendencias,

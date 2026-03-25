@@ -236,6 +236,7 @@ export function Calculos() {
   const codClienteFromState = stateFromProcessos?.codCliente ?? '';
   const procFromState = stateFromProcessos?.proc ?? '';
   const dimensaoFromState = stateFromProcessos?.dimensao;
+  const abaCalculosFromState = stateFromProcessos?.abaCalculos ?? '';
 
   const [tabAtiva, setTabAtiva] = useState('Títulos');
   const [pagina, setPagina] = useState(1);
@@ -302,7 +303,10 @@ export function Calculos() {
       const d = Number(dimensaoFromState);
       if (!Number.isNaN(d) && d >= 0) setDimensao(Math.floor(d));
     }
-  }, [codClienteFromState, procFromState, dimensaoFromState]);
+    if (abaCalculosFromState && TABS.includes(abaCalculosFromState)) {
+      setTabAtiva(abaCalculosFromState);
+    }
+  }, [codClienteFromState, procFromState, dimensaoFromState, abaCalculosFromState]);
 
   // Mantém campos manuais sincronizados com o estado efetivo
   useEffect(() => {

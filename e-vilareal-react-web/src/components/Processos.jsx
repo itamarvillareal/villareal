@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { getLancamentosContaCorrente, mergeContaCorrenteComLinhaOrigem } from '../data/financeiroData';
 import { carregarResumoContaCorrenteProcesso } from '../repositories/financeiroRepository.js';
@@ -45,6 +45,8 @@ import {
   Search,
   Newspaper,
   ListTodo,
+  Hand,
+  PenLine,
 } from 'lucide-react';
 import { ModalRelatorioPublicacoesProcesso } from './ModalRelatorioPublicacoesProcesso.jsx';
 import { ModalCriarTarefaContextual } from './ModalCriarTarefaContextual.jsx';
@@ -67,6 +69,32 @@ import {
 } from '../repositories/processosRepository.js';
 
 const HISTORICO_POR_PAGINA = 10;
+
+/** Tipos de ação de redação vinculados ao processo atual (modal «mão escrevendo»). */
+const ACOES_REDACAO_PROCESSO = [
+  { id: 'montar', label: 'Montar' },
+  { id: 'geral', label: 'Geral' },
+  { id: 'peticao_inicial', label: 'Petição inicial' },
+  { id: 'procuracao', label: 'Procuração' },
+  { id: 'informar_endereco', label: 'Informar endereço' },
+  { id: 'alvara', label: 'Alvará' },
+  { id: 'informar_numero_conta_judicial', label: 'Informar número de conta judicial' },
+  { id: 'desistencia_requerida', label: 'Desistência requerida' },
+  { id: 'juntada_procuracao', label: 'Juntada de procuração' },
+  { id: 'substabelecimento', label: 'Substabelecimento' },
+  { id: 'contestacao', label: 'Contestação' },
+  { id: 'impugnacao', label: 'Impugnação' },
+  { id: 'emenda_inicial', label: 'Emenda à inicial' },
+  { id: 'execucao', label: 'Execução' },
+];
+
+function storageKeyAcaoRedacaoProcesso(codigoCliente, processo) {
+  const c = String(codigoCliente ?? '').trim();
+  const p = Number(processo);
+  const pSafe = Number.isFinite(p) ? p : 0;
+  return `e-vilareal-acao-redacao:${c}:${pSafe}`;
+}
+
 const PERIODICIDADES_AGENDA_LOTE = [
   'Agendamento único',
   'Diariamente',
@@ -212,6 +240,16 @@ function Field({ label, children, className = '', title }) {
   );
 }
 
+/** Mão com caneta — evoca “mão escrevendo” (✍️); Lucide não tem um único glifo para isso. */
+function IconMaoEscrevendo({ className }) {
+  return (
+    <span className={`relative inline-flex h-4 w-4 shrink-0 items-end justify-center overflow-visible ${className ?? ''}`} aria-hidden>
+      <Hand className="h-[15px] w-[15px]" strokeWidth={1.5} />
+      <PenLine className="absolute -right-0.5 bottom-0 h-[11px] w-[11px] rotate-[-28deg]" strokeWidth={2} />
+    </span>
+  );
+}
+
 export function Processos() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -291,6 +329,12 @@ export function Processos() {
   const [modalTramitacaoAberto, setModalTramitacaoAberto] = useState(false);
   const [tramitacaoDraft, setTramitacaoDraft] = useState('');
   const [tabAtiva, setTabAtiva] = useState('historico');
+  const abasProcessoRef = useRef(null);
+  const [modalAcoesRedacaoAberto, setModalAcoesRedacaoAberto] = useState(false);
+  const [indiceAcaoRedacaoFocada, setIndiceAcaoRedacaoFocada] = useState(0);
+  /** Ação de redação guardada para o par cliente×processo (também em sessionStorage). */
+  const [acaoRedacaoVinculada, setAcaoRedacaoVinculada] = useState(null);
+  const indiceAcaoRedacaoFocadaRef = useRef(0);
   const [historico, setHistorico] = useState(() => gerarHistoricoMock('1', 1));
   const [proximaInformacao, setProximaInformacao] = useState('');
   const [dataProximaInformacao, setDataProximaInformacao] = useState('');
@@ -333,6 +377,124 @@ export function Processos() {
       ativo = false;
     };
   }, [processoApiId]);
+
+  const confirmarAcaoRedacaoPorIndice = useCallback(
+    (idx) => {
+      const op = ACOES_REDACAO_PROCESSO[idx];
+      if (!op) return;
+      const payload = {
+        id: op.id,
+        label: op.label,
+        codigoCliente: String(codigoCliente ?? '').trim(),
+        processo: Number(processo),
+        processoApiId:
+          processoApiId != null && Number.isFinite(Number(processoApiId)) ? Number(processoApiId) : null,
+        savedAt: new Date().toISOString(),
+      };
+      try {
+        sessionStorage.setItem(storageKeyAcaoRedacaoProcesso(codigoCliente, processo), JSON.stringify(payload));
+      } catch {
+        /* ignore */
+      }
+      setAcaoRedacaoVinculada(payload);
+      setModalAcoesRedacaoAberto(false);
+      if (op.id === 'montar') {
+        navigate('/topicos/gerente', {
+          state: {
+            fromProcessosAcaoMontar: true,
+            codigoCliente: payload.codigoCliente,
+            processo: payload.processo,
+            processoApiId: payload.processoApiId,
+          },
+        });
+      }
+    },
+    [codigoCliente, processo, processoApiId, navigate]
+  );
+
+  const dispensarBannerAcaoRedacao = useCallback(() => {
+    try {
+      sessionStorage.removeItem(storageKeyAcaoRedacaoProcesso(codigoCliente, processo));
+    } catch {
+      /* ignore */
+    }
+    setAcaoRedacaoVinculada(null);
+  }, [codigoCliente, processo]);
+
+  useEffect(() => {
+    try {
+      const k = storageKeyAcaoRedacaoProcesso(codigoCliente, processo);
+      const raw = sessionStorage.getItem(k);
+      if (!raw) {
+        setAcaoRedacaoVinculada(null);
+        return;
+      }
+      const o = JSON.parse(raw);
+      if (
+        o &&
+        String(o.codigoCliente) === String(codigoCliente ?? '').trim() &&
+        Number(o.processo) === Number(processo)
+      ) {
+        setAcaoRedacaoVinculada(o);
+      } else {
+        setAcaoRedacaoVinculada(null);
+      }
+    } catch {
+      setAcaoRedacaoVinculada(null);
+    }
+  }, [codigoCliente, processo]);
+
+  useEffect(() => {
+    indiceAcaoRedacaoFocadaRef.current = indiceAcaoRedacaoFocada;
+  }, [indiceAcaoRedacaoFocada]);
+
+  useEffect(() => {
+    if (!modalAcoesRedacaoAberto) return undefined;
+    const n = ACOES_REDACAO_PROCESSO.length;
+    const onKey = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setModalAcoesRedacaoAberto(false);
+        return;
+      }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setIndiceAcaoRedacaoFocada((i) => (i + 1) % n);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setIndiceAcaoRedacaoFocada((i) => (i - 1 + n) % n);
+        return;
+      }
+      if (e.key === 'Home') {
+        e.preventDefault();
+        setIndiceAcaoRedacaoFocada(0);
+        return;
+      }
+      if (e.key === 'End') {
+        e.preventDefault();
+        setIndiceAcaoRedacaoFocada(n - 1);
+        return;
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        confirmarAcaoRedacaoPorIndice(indiceAcaoRedacaoFocadaRef.current);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [modalAcoesRedacaoAberto, confirmarAcaoRedacaoPorIndice]);
+
+  useEffect(() => {
+    if (!modalAcoesRedacaoAberto) return undefined;
+    const id = window.requestAnimationFrame(() => {
+      const el = document.getElementById(`acao-redacao-op-${indiceAcaoRedacaoFocada}`);
+      el?.focus({ preventScroll: true });
+      el?.scrollIntoView({ block: 'nearest' });
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [modalAcoesRedacaoAberto, indiceAcaoRedacaoFocada]);
 
   useEffect(() => {
     setPessoasCadastro(getCadastroPessoasMock(true));
@@ -1431,6 +1593,19 @@ export function Processos() {
               <Newspaper className="w-4 h-4" aria-hidden />
               Publicações
             </button>
+            <button
+              type="button"
+              onClick={() => {
+                setIndiceAcaoRedacaoFocada(0);
+                indiceAcaoRedacaoFocadaRef.current = 0;
+                setModalAcoesRedacaoAberto(true);
+              }}
+              className="inline-flex items-center justify-center p-2 rounded-lg border border-slate-400 bg-white text-slate-800 hover:bg-slate-50 shrink-0"
+              title="Escolher tipo de ação de redação para este processo"
+              aria-label="Abrir ações de redação vinculadas ao processo"
+            >
+              <IconMaoEscrevendo />
+            </button>
             {featureFlags.useApiTarefas ? (
               <button
                 type="button"
@@ -1465,6 +1640,31 @@ export function Processos() {
         {featureFlags.useApiProcessos && apiError ? (
           <div className="mb-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
             {apiError}
+          </div>
+        ) : null}
+        {acaoRedacaoVinculada &&
+        String(acaoRedacaoVinculada.codigoCliente) === String(codigoCliente ?? '').trim() &&
+        Number(acaoRedacaoVinculada.processo) === Number(processo) ? (
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm">
+            <div className="min-w-0 flex-1">
+              <span className="font-semibold text-slate-700">Ação de redação vinculada a este processo:</span>{' '}
+              <span className="text-slate-900">{acaoRedacaoVinculada.label}</span>
+              <span className="text-slate-500">
+                {' '}
+                · Cliente {acaoRedacaoVinculada.codigoCliente} · Proc. {acaoRedacaoVinculada.processo}
+                {acaoRedacaoVinculada.processoApiId
+                  ? ` · API #${acaoRedacaoVinculada.processoApiId}`
+                  : ''}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={dispensarBannerAcaoRedacao}
+              className="p-1.5 rounded text-slate-500 hover:bg-slate-100 shrink-0"
+              aria-label="Dispensar aviso da ação de redação"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
         ) : null}
 
@@ -2029,8 +2229,16 @@ export function Processos() {
               </p>
               <button
                 type="button"
-                disabled={camposBloqueados}
-                className="px-4 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50 disabled:opacity-50 disabled:pointer-events-none"
+                onClick={() =>
+                  navigate('/calculos', {
+                    state: {
+                      codCliente: String(codigoCliente ?? ''),
+                      proc: String(processo ?? ''),
+                      abaCalculos: 'Pagamento',
+                    },
+                  })
+                }
+                className="px-4 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
               >
                 Pagamentos
               </button>
@@ -2097,7 +2305,7 @@ export function Processos() {
             </section>
 
             {/* Abas: Histórico do Processo | Observações | Execução */}
-            <section className="border-t border-slate-200 pt-4">
+            <section ref={abasProcessoRef} className="border-t border-slate-200 pt-4">
               <div className="flex items-center gap-0 mb-0">
                 <button type="button" onClick={() => setTabAtiva('historico')} className={`px-4 py-2 text-sm font-medium border border-slate-300 border-b-0 rounded-t ${tabAtiva === 'historico' ? 'bg-white text-slate-800 -mb-px' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
                   Histórico do Processo
@@ -2293,6 +2501,81 @@ export function Processos() {
                 className="px-4 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
               >
                 OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {modalAcoesRedacaoAberto && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="modal-acoes-redacao-titulo"
+          onClick={() => setModalAcoesRedacaoAberto(false)}
+        >
+          <div
+            className="bg-white rounded-lg shadow-xl border border-slate-200 w-full max-w-md flex flex-col max-h-[min(90vh,28rem)]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 shrink-0">
+              <h2 id="modal-acoes-redacao-titulo" className="text-base font-semibold text-slate-800 pr-2">
+                Tipo de ação
+              </h2>
+              <button
+                type="button"
+                onClick={() => setModalAcoesRedacaoAberto(false)}
+                className="p-2 rounded text-slate-500 hover:bg-slate-100 shrink-0"
+                aria-label="Fechar"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <p className="px-4 pt-3 pb-2 text-sm text-slate-600 border-b border-slate-100 shrink-0">
+              Processo selecionado: <strong className="text-slate-800">Cliente {String(codigoCliente ?? '').trim()}</strong>
+              {' · '}
+              <strong className="text-slate-800">Proc. {Number(processo)}</strong>
+              {processoApiId != null && Number.isFinite(Number(processoApiId)) ? (
+                <span className="text-slate-500"> (API #{processoApiId})</span>
+              ) : null}
+            </p>
+            <p className="px-4 py-2 text-xs text-slate-500 shrink-0">
+              Use as setas para percorrer a lista (cíclica), Enter para confirmar, Esc para fechar.
+            </p>
+            <div className="px-2 pb-3 flex-1 min-h-0 overflow-y-auto" aria-label="Opções de tipo de ação">
+              <ul className="flex flex-col gap-1 list-none p-0 m-0">
+                {ACOES_REDACAO_PROCESSO.map((op, i) => {
+                  const ativa = i === indiceAcaoRedacaoFocada;
+                  return (
+                    <li key={op.id}>
+                      <button
+                        type="button"
+                        id={`acao-redacao-op-${i}`}
+                        role="option"
+                        aria-selected={ativa}
+                        onClick={() => confirmarAcaoRedacaoPorIndice(i)}
+                        onMouseEnter={() => setIndiceAcaoRedacaoFocada(i)}
+                        className={`w-full text-left px-4 py-3 rounded-lg border text-sm font-medium transition-colors ${
+                          ativa
+                            ? 'border-blue-500 bg-blue-50 text-blue-950 ring-2 ring-blue-400 ring-offset-1'
+                            : 'border-slate-200 bg-white text-slate-800 hover:bg-slate-50 hover:border-slate-300'
+                        }`}
+                      >
+                        {op.label}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+            <div className="px-4 py-3 border-t border-slate-200 flex justify-end shrink-0">
+              <button
+                type="button"
+                onClick={() => setModalAcoesRedacaoAberto(false)}
+                className="px-4 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
+              >
+                Cancelar
               </button>
             </div>
           </div>

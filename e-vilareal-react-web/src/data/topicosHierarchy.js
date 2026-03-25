@@ -29,11 +29,42 @@ export const TOPICOS_RAIZ = {
             { id: 'contratos-cv-12', label: 'DISPOSIÇÕES FINAIS' },
           ],
         },
-        { id: 'contratos-trab', label: 'DE TRABALHO', items: [{ id: 'ct-1', label: 'Item exemplo trabalho 1' }] },
-        { id: 'contratos-gar', label: 'GARANTIDORA', items: [{ id: 'cg-1', label: 'Item exemplo garantia 1' }] },
-        { id: 'contratos-hon', label: 'HONORÁRIOS ADVOCATÍCIOS', items: [{ id: 'ch-1', label: 'Item exemplo honorários 1' }] },
-        { id: 'contratos-imob', label: 'INTERMEDIAÇÃO IMOBILIÁRIA', items: [{ id: 'ci-1', label: 'Item exemplo imobiliária 1' }] },
-        { id: 'contratos-loc', label: 'LOCAÇÃO', items: [{ id: 'cl-1', label: 'Item exemplo locação 1' }] },
+        {
+          id: 'contratos-trab',
+          label: 'DE TRABALHO',
+          items: [{ id: 'contratos-trab-servicos-medicos', label: 'Serviços médicos' }],
+        },
+        {
+          id: 'contratos-gar',
+          label: 'GARANTIDORA',
+          items: [{ id: 'contratos-gar-geral', label: 'Geral' }],
+        },
+        {
+          id: 'contratos-hon',
+          label: 'HONORÁRIOS ADVOCATÍCIOS',
+          items: [
+            { id: 'contratos-hon-condominios', label: 'Condomínios' },
+            { id: 'contratos-hon-geral', label: 'Geral' },
+          ],
+        },
+        {
+          id: 'contratos-imob',
+          label: 'INTERMEDIAÇÃO IMOBILIÁRIA',
+          selecaoUnica: true,
+          items: [{ id: 'contratos-imob-geral', label: 'Geral' }],
+        },
+        {
+          id: 'contratos-loc',
+          label: 'LOCAÇÃO',
+          /** Uma única opção ativa por vez (rádio na UI do seletor). */
+          selecaoUnica: true,
+          items: [
+            { id: 'contratos-loc-caucao', label: 'Com caução' },
+            { id: 'contratos-loc-distrato', label: 'Distrato' },
+            { id: 'contratos-loc-multa-fixa', label: 'Geral — multa fixa' },
+            { id: 'contratos-loc-multa-prop', label: 'Geral — multa proporcional' },
+          ],
+        },
         { id: 'contratos-mus', label: 'SERVIÇOS MUSICAIS', items: [{ id: 'cm-1', label: 'Item exemplo musical 1' }] },
       ],
     },
