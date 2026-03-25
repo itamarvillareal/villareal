@@ -45,7 +45,6 @@ export const navItems = [
     ],
   },
   { id: 'agenda', label: 'Agenda', icon: 'Calendar' },
-  { id: 'ana-luisa', label: 'ANA LUISA', icon: 'User' },
   { id: 'atividade', label: 'Atividade', icon: 'ClipboardList' },
   { id: 'financeiro', label: 'Financeiro', icon: 'CircleDollarSign' },
   { id: 'pendencias', label: 'Pendências', icon: 'AlertTriangle' },
