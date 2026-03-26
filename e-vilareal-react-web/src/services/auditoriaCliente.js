@@ -1,4 +1,5 @@
 import { API_BASE_URL } from '../api/config.js';
+import { getAccessToken } from '../api/authTokenStorage.js';
 import { getPerfilAtivoParaPermissoes } from '../data/usuarioPermissoesStorage.js';
 import { getUsuariosAtivos } from '../data/agendaPersistenciaData.js';
 import { getNomeExibicaoUsuario } from '../data/usuarioDisplayHelpers.js';
@@ -83,6 +84,8 @@ export function registrarAuditoria({
     'Content-Type': 'application/json',
     ...buildAuditoriaHeaders(),
   };
+  const token = getAccessToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
 
   fetch(URL_AUDITORIA, {
     method: 'POST',

@@ -2,6 +2,7 @@ import { request } from '../api/httpClient.js';
 import { featureFlags } from '../config/featureFlags.js';
 import {
   appendPublicacoesConfirmadas,
+  limparTodasPublicacoesImportadas,
   loadPublicacoesImportadas,
   updatePublicacaoImportada,
 } from '../data/publicacoesStorage.js';
@@ -15,6 +16,44 @@ import { buscarProcessoPorChaveNatural, resolverProcessoId } from './processosRe
  * - Legado: `publicacoesStorage` / `publicacoesPorProcesso` quando a flag está off ou como fallback explícito.
  * - Transição: mesclagem API + itens locais sem par `hash_conteudo` correspondente (relatório por processo).
  */
+
+const PHASE6_PUBLICACOES_DONE_KEY = 'vilareal:migration:phase6-publicacoes:done:v1';
+
+/**
+ * Limpa armazenamento local, o marcador da migração fase 6 e, com API ativa, tenta DELETE em cada publicação retornada pelo GET.
+ */
+export async function limparTodasPublicacoes() {
+  limparTodasPublicacoesImportadas();
+  if (typeof window !== 'undefined') {
+    try {
+      window.localStorage.removeItem(PHASE6_PUBLICACOES_DONE_KEY);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  let apiRemovidos = 0;
+  if (featureFlags.useApiPublicacoes) {
+    try {
+      const data = await request('/api/publicacoes', { query: {} });
+      const rows = Array.isArray(data) ? data : [];
+      for (const r of rows) {
+        const id = r?.id;
+        if (id == null || !Number.isFinite(Number(id))) continue;
+        try {
+          await request(`/api/publicacoes/${Number(id)}`, { method: 'DELETE' });
+          apiRemovidos += 1;
+        } catch {
+          /* ignora item (endpoint ausente, 404, etc.) */
+        }
+      }
+    } catch {
+      /* lista indisponível */
+    }
+  }
+
+  return { apiRemovidos, localLimpo: true };
+}
 
 function padCodCliente(cod) {
   const n = String(cod ?? '').replace(/\D/g, '');

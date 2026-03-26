@@ -2,6 +2,7 @@ package br.com.vilareal.agenda.api;
 
 import br.com.vilareal.agenda.api.dto.AgendaEventoResponse;
 import br.com.vilareal.agenda.api.dto.AgendaEventoWriteRequest;
+import br.com.vilareal.agenda.api.dto.AgendaMensalResponse;
 import br.com.vilareal.agenda.application.AgendaApplicationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -33,6 +34,15 @@ public class AgendaController {
             @RequestParam("dataInicio") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataInicio,
             @RequestParam("dataFim") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataFim) {
         return agendaService.listarPorUsuarioEPeriodo(usuarioId, dataInicio, dataFim);
+    }
+
+    @GetMapping("/mensal")
+    @Operation(description = "Resumo do mês por usuário (modal Agenda mensal no React).")
+    public AgendaMensalResponse mensal(
+            @RequestParam("usuarioId") Long usuarioId,
+            @RequestParam int ano,
+            @RequestParam int mes) {
+        return agendaService.resumoMensal(usuarioId, ano, mes);
     }
 
     @PostMapping

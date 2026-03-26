@@ -74,6 +74,18 @@ export function savePublicacoesImportadas(itens) {
   }
 }
 
+/** Remove todas as publicações persistidas localmente (v2 e legado v1). */
+export function limparTodasPublicacoesImportadas() {
+  if (typeof window === 'undefined') return { ok: true };
+  try {
+    savePublicacoesImportadas([]);
+    window.localStorage.removeItem('vilareal.processos.publicacoes.v1');
+    return { ok: true };
+  } catch {
+    return { ok: false };
+  }
+}
+
 function novoId() {
   return `pub-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }

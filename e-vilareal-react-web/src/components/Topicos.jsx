@@ -1,12 +1,15 @@
 import { Layers } from 'lucide-react';
 import { TopicosSubmenu } from './topicos/TopicosSubmenu.jsx';
 import { TopicosHierarchyPicker } from './topicos/TopicosHierarchyPicker.jsx';
+import { useTopicosRaiz } from '../hooks/useTopicosRaiz.js';
 
 /**
  * Tela de tópicos — navegação em camadas e seleção na folha (checkboxes + rolagem).
- * Dados: `src/data/topicosHierarchy.js` (estrutura recursiva).
+ * Dados: mock em `src/data/topicosHierarchy.js` ou API com `VITE_USE_API_TOPICOS=true`.
  */
 export function Topicos() {
+  const { raiz, carregando, erro, usandoApi } = useTopicosRaiz();
+
   return (
     <div className="flex-1 flex flex-col min-h-0 p-4 md:p-6 bg-gray-100 dark:bg-slate-900/40">
       <TopicosSubmenu />
@@ -21,7 +24,18 @@ export function Topicos() {
           </p>
         </div>
       </header>
-      <TopicosHierarchyPicker />
+      {usandoApi && carregando ? (
+        <p className="text-sm text-slate-500 dark:text-slate-400">Carregando tópicos…</p>
+      ) : raiz ? (
+        <>
+          <TopicosHierarchyPicker raiz={raiz} />
+          {usandoApi && erro ? (
+            <p className="text-xs text-amber-700 dark:text-amber-300 mt-3 max-w-3xl">
+              Não foi possível carregar do servidor; exibindo hierarquia local.
+            </p>
+          ) : null}
+        </>
+      ) : null}
     </div>
   );
 }

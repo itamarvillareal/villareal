@@ -1,7 +1,10 @@
 package br.com.vilareal.agenda.application;
 
+import br.com.vilareal.agenda.api.dto.AgendaEventoLinhaDto;
 import br.com.vilareal.agenda.api.dto.AgendaEventoResponse;
 import br.com.vilareal.agenda.api.dto.AgendaEventoWriteRequest;
+import br.com.vilareal.agenda.api.dto.AgendaMensalResponse;
+import br.com.vilareal.agenda.api.dto.DiaAgendaMensalDto;
 import br.com.vilareal.agenda.infrastructure.persistence.entity.AgendaEventoEntity;
 import br.com.vilareal.agenda.infrastructure.persistence.repository.AgendaEventoRepository;
 import br.com.vilareal.common.exception.BusinessRuleException;
@@ -13,8 +16,11 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.stream.Collectors;
 
 @Service
@@ -22,6 +28,12 @@ public class AgendaApplicationService {
 
     private static final Comparator<AgendaEventoResponse> ORDEM_REACT =
             Comparator.comparingInt((AgendaEventoResponse e) -> isOk(e.getStatusCurto()) ? 0 : 1)
+                    .thenComparingInt(e -> horaTrim(e.getHoraEvento()).isEmpty() ? 1 : 0)
+                    .thenComparing(e -> horaTrim(e.getHoraEvento()), String::compareTo)
+                    .thenComparing(e -> e.getId() != null ? e.getId() : 0L);
+
+    private static final Comparator<AgendaEventoEntity> ORDEM_ENTIDADE =
+            Comparator.comparingInt((AgendaEventoEntity e) -> isOk(e.getStatusCurto()) ? 0 : 1)
                     .thenComparingInt(e -> horaTrim(e.getHoraEvento()).isEmpty() ? 1 : 0)
                     .thenComparing(e -> horaTrim(e.getHoraEvento()), String::compareTo)
                     .thenComparing(e -> e.getId() != null ? e.getId() : 0L);
@@ -45,6 +57,36 @@ public class AgendaApplicationService {
         }
         List<AgendaEventoEntity> rows = agendaEventoRepository.findByUsuarioAndPeriodo(usuarioId, dataInicio, dataFim);
         return rows.stream().map(this::toResponse).sorted(ORDEM_REACT).collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public AgendaMensalResponse resumoMensal(Long usuarioId, int ano, int mes) {
+        validarUsuarioExiste(usuarioId);
+        if (mes < 1 || mes > 12) {
+            throw new BusinessRuleException("Mês inválido.");
+        }
+        LocalDate inicio = LocalDate.of(ano, mes, 1);
+        LocalDate fim = inicio.withDayOfMonth(inicio.lengthOfMonth());
+        List<AgendaEventoEntity> rows = agendaEventoRepository.findByUsuarioAndPeriodo(usuarioId, inicio, fim);
+        Map<LocalDate, List<AgendaEventoEntity>> porDia = rows.stream()
+                .collect(Collectors.groupingBy(AgendaEventoEntity::getDataEvento, TreeMap::new, Collectors.toList()));
+        List<DiaAgendaMensalDto> dias = new ArrayList<>();
+        for (Map.Entry<LocalDate, List<AgendaEventoEntity>> e : porDia.entrySet()) {
+            List<AgendaEventoEntity> lista = e.getValue();
+            if (lista.isEmpty()) {
+                continue;
+            }
+            DiaAgendaMensalDto d = new DiaAgendaMensalDto();
+            d.setDataBr(formatarDataBr(e.getKey()));
+            d.setEventos(lista.stream().sorted(ORDEM_ENTIDADE).map(this::toLinha).collect(Collectors.toList()));
+            dias.add(d);
+        }
+        AgendaMensalResponse r = new AgendaMensalResponse();
+        r.setAno(ano);
+        r.setMes(mes);
+        r.setUsuarioId(usuarioId);
+        r.setDiasComEventos(dias);
+        return r;
     }
 
     @Transactional
@@ -131,5 +173,18 @@ public class AgendaApplicationService {
         r.setStatusCurto(e.getStatusCurto() != null ? e.getStatusCurto() : "");
         r.setOrigem(e.getOrigem());
         return r;
+    }
+
+    private AgendaEventoLinhaDto toLinha(AgendaEventoEntity e) {
+        AgendaEventoLinhaDto x = new AgendaEventoLinhaDto();
+        x.setId(String.valueOf(e.getId()));
+        x.setHora(e.getHoraEvento() != null ? e.getHoraEvento() : "");
+        x.setDescricao(e.getDescricao() != null ? e.getDescricao() : "");
+        x.setStatusCurto(e.getStatusCurto() != null ? e.getStatusCurto() : "");
+        return x;
+    }
+
+    private static String formatarDataBr(LocalDate d) {
+        return String.format("%02d/%02d/%d", d.getDayOfMonth(), d.getMonthValue(), d.getYear());
     }
 }

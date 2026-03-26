@@ -1,20 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { ArrowLeft, ChevronDown, ChevronUp, FolderOpen, ListChecks } from 'lucide-react';
-import { TOPICOS_RAIZ, resolverNoPorCaminho } from '../../data/topicosHierarchy.js';
+import { TOPICOS_RAIZ, resolverNoPorCaminho, rotulosDoCaminho } from '../../data/topicosHierarchy.js';
 import { gerarEBaixarDocxLocacao } from '../../utils/gerarDocumentoTopicosLocacaoWord.js';
-
-/** Rótulos do caminho para breadcrumb (um rótulo por id em `pathStack`). */
-function rotulosDoCaminho(pathStack) {
-  const out = [];
-  let node = TOPICOS_RAIZ;
-  for (const id of pathStack) {
-    const next = node.children?.find((c) => c.id === id);
-    if (!next) break;
-    out.push(next.label);
-    node = next;
-  }
-  return out;
-}
 
 /**
  * Seletor hierárquico de tópicos: camadas clicáveis + folha com checkboxes e rolagem.
@@ -71,7 +58,7 @@ export function TopicosHierarchyPicker({ onCarregar }) {
     if (!noAtual?.items?.length) return;
     const marcados = noAtual.items.filter((it) => selecionados.has(it.id));
     const payload = {
-      pathLabels: rotulosDoCaminho(pathStack),
+      pathLabels: rotulosDoCaminho(raiz, pathStack),
       items: marcados,
     };
     setUltimaCarga(payload);
@@ -87,9 +74,9 @@ export function TopicosHierarchyPicker({ onCarregar }) {
         window.alert('Não foi possível gerar o documento Word. Tente novamente.');
       });
     }
-  }, [noAtual, pathStack, selecionados, onCarregar]);
+  }, [noAtual, pathStack, selecionados, onCarregar, raiz]);
 
-  const rotulos = rotulosDoCaminho(pathStack);
+  const rotulos = rotulosDoCaminho(raiz, pathStack);
 
   return (
     <div className="rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 shadow-sm overflow-hidden max-w-3xl">

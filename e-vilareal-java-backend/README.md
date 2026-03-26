@@ -9,7 +9,8 @@ br.com.vilareal
 ├── common/exception     — tratamento global de erros
 ├── config               — Security, JWT props, CORS
 ├── security             — JwtService, filtro, UserDetailsService
-├── pessoa/              — cadastro-pessoas, complementares, endereços, contatos
+├── pessoa/              — cadastro-pessoas, complementares, endereços, contatos, GET /api/clientes
+├── processo/            — processos judiciais (paridade Processos.jsx)
 ├── usuario/             — CRUD usuário, perfis
 └── auth/                — login, /me
 ```
@@ -51,7 +52,8 @@ Scripts em `src/main/resources/db/migration/`:
 
 - **V1__init.sql** — schema (`pessoa`, complementar, endereço, contato, `usuarios`, `perfil`, `usuario_perfil`).  
 - **V2__bootstrap_admin.sql** — usuário inicial para desenvolvimento.  
-- **V3__seed_10_pessoas_mock_completo.sql** — 10 pessoas (ids `2`–`11`) com dados do mock do React (`cadastroPessoasMock.js`), incluindo complementares, endereços e contatos.
+- **V3__seed_10_pessoas_mock_completo.sql** — 10 pessoas (ids `2`–`11`) com dados do mock do React (`cadastroPessoasMock.js`), incluindo complementares, endereços e contatos.  
+- **V4__processo.sql** — `processo`, `processo_parte`, `processo_andamento`, `processo_prazo` (integração com `VITE_USE_API_PROCESSOS=true`).
 
 ### Usuário seed (dev)
 
@@ -113,6 +115,34 @@ Authorization: Bearer <token>
 **Endereço:** `numero`, `rua`, `bairro`, `estado`, `cidade`, `cep`, `autoPreenchido`.
 
 **Contato:** `tipo` (`email`|`telefone`|`website`), `valor`, `dataLancamento`, `dataAlteracao`, `usuario`.
+
+### Clientes — alias Processos (`GET /api/clientes`)
+
+Lista todas as pessoas com `id`, `nome` e **`codigoCliente`** (id formatado em 8 dígitos), usada por `processosRepository.buscarClientePorCodigo`.
+
+### Processos (`processosRepository.js` / `Processos.jsx`)
+
+| Método | Caminho | Descrição |
+|--------|---------|-----------|
+| GET | `/api/processos?codigoCliente=` | Lista processos do cliente (código 8 dígitos) |
+| GET | `/api/processos/{id}` | Detalhe (inclui `codigoCliente`, `clienteId`) |
+| POST | `/api/processos` | Criar |
+| PUT | `/api/processos/{id}` | Atualizar cabeçalho |
+| PATCH | `/api/processos/{id}/ativo?value=true\|false` | Ativar/inativar |
+| GET/POST | `/api/processos/{id}/partes` | Partes; POST cria (Location com id) |
+| PUT/DELETE | `/api/processos/{id}/partes/{parteId}` | Atualizar / excluir parte |
+| GET/POST | `/api/processos/{id}/andamentos` | Andamentos (histórico); ordem: mais recente primeiro |
+| PUT/DELETE | `/api/processos/{id}/andamentos/{andamentoId}` | Atualizar / excluir |
+| GET/POST | `/api/processos/{id}/prazos` | Prazos |
+| PUT | `/api/processos/{id}/prazos/{prazoId}` | Atualizar prazo |
+
+**Corpo do processo (resumo):** `clienteId`, `numeroInterno`, `numeroCnj`, `numeroProcessoAntigo`, `naturezaAcao`, `descricaoAcao`, `competencia`, `fase`, `status`, `tramitacao`, datas (`dataProtocolo`, `prazoFatal`, `proximaConsulta`), `observacao`, `valorCausa`, `uf`, `cidade`, `consultaAutomatica`, `ativo`, `consultor`, `usuarioResponsavelId`.
+
+**Parte:** `pessoaId`, `nomeLivre`, `polo`, `qualificacao`, `ordem`. Resposta inclui `nomeExibicao` (nome da pessoa ou texto livre).
+
+**Andamento:** `movimentoEm` (ISO-8601), `titulo`, `detalhe`, `origem`, `origemAutomatica`, `usuarioId`.
+
+**Prazo:** `andamentoId`, `descricao`, `dataInicio`, `dataFim`, `prazoFatal`, `status`, `observacao`.
 
 ### Usuário (`usuariosRepository.js`)
 

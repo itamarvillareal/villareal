@@ -110,3 +110,16 @@ export function resolverNoPorCaminho(root, stackIds) {
   }
   return node;
 }
+
+/** Rótulos do caminho para breadcrumb (um rótulo por id em `pathStack`). */
+export function rotulosDoCaminho(raiz, pathStack) {
+  const out = [];
+  let node = raiz;
+  for (const id of pathStack) {
+    const next = node.children?.find((c) => c.id === id);
+    if (!next) break;
+    out.push(next.label);
+    node = next;
+  }
+  return out;
+}

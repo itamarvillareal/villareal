@@ -15,10 +15,10 @@ import {
   setUsuariosAtivos,
   salvarCamposEventoAgendaPersistido,
   criarNovoCompromissoAgendaPersistido,
-  listarTodosCompromissosAgendaMes,
   normalizarStatusCurtoAgenda,
   ordenarListaEventosAgenda,
   criarUsuarioRegistroMinimo,
+  listarTodosCompromissosAgendaMes,
 } from '../data/agendaPersistenciaData';
 import { buscarProcessoUnicoNaBasePorTextoAgenda } from '../data/processosHistoricoData';
 import { resolverAliasHojeEmTexto } from '../services/hjDateAliasService.js';
@@ -617,6 +617,15 @@ export function Agenda() {
   const [usuariosAtivos, setUsuariosAtivosState] = useState(() => getUsuariosAtivos());
   const [eventosApiEsquerda, setEventosApiEsquerda] = useState([]);
   const [eventosApiDireita, setEventosApiDireita] = useState([]);
+  const [relatorioAgendaMensal, setRelatorioAgendaMensal] = useState(() =>
+    featureFlags.useApiAgenda
+      ? { ano: 0, mes: 0, usuarioId: '', diasComEventos: [] }
+      : listarTodosCompromissosAgendaMes({
+          ano: anoEsquerda,
+          mes: mesEsquerda,
+          usuarioId: usuarioEsquerda,
+        })
+  );
 
   /** Lista de pessoas = mesma da tela Usuários (localStorage); sincroniza ao salvar ou ao voltar à Agenda. */
   useEffect(() => {
@@ -795,15 +804,39 @@ export function Agenda() {
     [dataDireitaStr, eventosPersistidosDireita, eventosApiDireita, usuarioDireita, agendaStatusNonce]
   );
 
-  const relatorioAgendaMensal = useMemo(
-    () =>
-      listarTodosCompromissosAgendaMes({
-        ano: anoEsquerda,
-        mes: mesEsquerda,
-        usuarioId: usuarioEsquerda,
-      }),
-    [anoEsquerda, mesEsquerda, usuarioEsquerda, agendaStatusNonce]
-  );
+  useEffect(() => {
+    if (!featureFlags.useApiAgenda) {
+      setRelatorioAgendaMensal(
+        listarTodosCompromissosAgendaMes({
+          ano: anoEsquerda,
+          mes: mesEsquerda,
+          usuarioId: usuarioEsquerda,
+        })
+      );
+      return;
+    }
+    let cancelado = false;
+    (async () => {
+      try {
+        const r = await listarAgendaMensal(anoEsquerda, mesEsquerda, usuarioEsquerda);
+        if (!cancelado && r) {
+          setRelatorioAgendaMensal(r);
+        }
+      } catch {
+        if (!cancelado) {
+          setRelatorioAgendaMensal({
+            ano: anoEsquerda,
+            mes: mesEsquerda,
+            usuarioId: usuarioEsquerda,
+            diasComEventos: [],
+          });
+        }
+      }
+    })();
+    return () => {
+      cancelado = true;
+    };
+  }, [anoEsquerda, mesEsquerda, usuarioEsquerda, agendaStatusNonce]);
 
   const nomeUsuarioAgenda = useMemo(() => {
     const u = (usuariosAtivos || []).find((x) => String(x.id) === String(usuarioEsquerda));
@@ -812,7 +845,7 @@ export function Agenda() {
 
   const tituloMesRelatorio = `${MESES[mesEsquerda - 1] ?? ''} de ${anoEsquerda}`;
   const totalCompromissosMensal = useMemo(
-    () => relatorioAgendaMensal.diasComEventos.reduce((acc, d) => acc + d.eventos.length, 0),
+    () => (relatorioAgendaMensal.diasComEventos || []).reduce((acc, d) => acc + d.eventos.length, 0),
     [relatorioAgendaMensal]
   );
 
@@ -924,7 +957,7 @@ export function Agenda() {
                 <p className="text-sm text-slate-600 mt-0.5">
                   Usuário: <span className="font-medium text-slate-800">{nomeUsuarioAgenda}</span>
                   {' · '}
-                  {relatorioAgendaMensal.diasComEventos.length} dia(s) com compromisso
+                  {(relatorioAgendaMensal.diasComEventos || []).length} dia(s) com compromisso
                   {' · '}
                   {totalCompromissosMensal} compromisso(s)
                 </p>
@@ -939,13 +972,13 @@ export function Agenda() {
               </button>
             </div>
             <div className="px-4 py-3 overflow-y-auto flex-1 min-h-0">
-              {relatorioAgendaMensal.diasComEventos.length === 0 ? (
+              {(relatorioAgendaMensal.diasComEventos || []).length === 0 ? (
                 <p className="text-sm text-slate-600 py-6 text-center">
                   Nenhum compromisso neste mês para este usuário.
                 </p>
               ) : (
                 <div className="space-y-6">
-                  {relatorioAgendaMensal.diasComEventos.map(({ dataBr, eventos }) => (
+                  {(relatorioAgendaMensal.diasComEventos || []).map(({ dataBr, eventos }) => (
                     <section key={dataBr} className="border border-slate-200 rounded-lg overflow-hidden">
                       <div className="px-3 py-2 bg-slate-100 border-b border-slate-200 text-sm font-semibold text-slate-800">
                         {rotuloDataComDiaSemana(dataBr)}

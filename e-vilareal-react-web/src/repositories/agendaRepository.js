@@ -4,6 +4,7 @@ import {
   getEventosAgendaPersistidosPorData,
   salvarCamposEventoAgendaPersistido,
   criarNovoCompromissoAgendaPersistido,
+  listarTodosCompromissosAgendaMes,
 } from '../data/agendaPersistenciaData.js';
 
 function parseBrDate(dateBr) {
@@ -72,4 +73,23 @@ export async function criarEvento(dataBr, usuarioId, patch) {
     patch
   );
   return { ok: true };
+}
+
+/** Modal «Agenda mensal»: mesma forma que `listarTodosCompromissosAgendaMes` no modo local. */
+export async function listarAgendaMensal(ano, mes, usuarioId) {
+  if (!featureFlags.useApiAgenda) {
+    return listarTodosCompromissosAgendaMes({ ano, mes, usuarioId });
+  }
+  const idNum = Number(usuarioId);
+  if (!Number.isFinite(idNum) || idNum < 1) {
+    return {
+      ano: Number(ano),
+      mes: Number(mes),
+      usuarioId: String(usuarioId ?? ''),
+      diasComEventos: [],
+    };
+  }
+  return request('/api/agenda/eventos/mensal', {
+    query: { usuarioId: idNum, ano: Number(ano), mes: Number(mes) },
+  });
 }
