@@ -2,9 +2,13 @@
  * Remove do navegador persistências ligadas a demonstração / mock / legado local.
  * Não remove tema (`vilareal.theme.dark`).
  *
- * Uso no console (dev): `import('/src/utils/clearLocalMockData.js').then((m) => m.clearLocalMockData())`
+ * Uso no console (dev):
+ * `import('/src/utils/clearLocalMockData.js').then((m) => m.clearLocalMockData({ nuclear: true, clearAuth: true }))`
  *
- * @param {{ clearAuth?: boolean }} [opts] — `clearAuth=true` remove JWT e sessão API (obrigatório novo login).
+ * @param {{ clearAuth?: boolean, nuclear?: boolean }} [opts]
+ *   — `clearAuth=true` remove JWT e sessão API (obrigatório novo login).
+ *   — `nuclear=true` remove todas as chaves `vilareal*` e `pendencias_*` do localStorage/sessionStorage (exceto tema).
+ * Sempre remove rascunhos de redação em processos: `sessionStorage` com prefixo `e-vilareal-acao-redacao:`.
  * @returns {{ removedLocalStorage: string[], removedSessionStorage: string[] }}
  */
 import { clearAccessToken } from '../api/authTokenStorage.js';
@@ -78,6 +82,20 @@ function removeByPrefix(store, prefix, removed) {
   }
 }
 
+function removeAllVilarealLikeKeys(store, removed, themeKey) {
+  if (typeof window === 'undefined') return;
+  const keys = [];
+  for (let i = 0; i < store.length; i += 1) {
+    const k = store.key(i);
+    if (!k || k === themeKey) continue;
+    if (k.startsWith('vilareal') || k.startsWith('pendencias_')) keys.push(k);
+  }
+  for (const k of keys) {
+    store.removeItem(k);
+    removed.push(k);
+  }
+}
+
 function removeLegacyFinanceiroExtratos(removed) {
   if (typeof window === 'undefined') return;
   const re = /^vilareal\.financeiro\.extratos\.v\d+$/;
@@ -93,10 +111,11 @@ function removeLegacyFinanceiroExtratos(removed) {
 }
 
 /**
- * @param {{ clearAuth?: boolean }} [opts]
+ * @param {{ clearAuth?: boolean, nuclear?: boolean }} [opts]
  */
 export function clearLocalMockData(opts = {}) {
   const clearAuth = Boolean(opts.clearAuth);
+  const nuclear = Boolean(opts.nuclear);
   const removedLocalStorage = [];
   const removedSessionStorage = [];
 
@@ -104,15 +123,27 @@ export function clearLocalMockData(opts = {}) {
     return { removedLocalStorage, removedSessionStorage };
   }
 
+  if (nuclear) {
+    removeAllVilarealLikeKeys(window.localStorage, removedLocalStorage, THEME_KEY);
+    removeAllVilarealLikeKeys(window.sessionStorage, removedSessionStorage, THEME_KEY);
+  }
+
   for (const k of LOCAL_STORAGE_KEYS) {
-    if (window.localStorage.getItem(k) != null) {
+    if (!nuclear && window.localStorage.getItem(k) != null) {
       window.localStorage.removeItem(k);
       removedLocalStorage.push(k);
     }
   }
 
-  removeByPrefix(window.localStorage, 'vilareal.datajud.cache.', removedLocalStorage);
-  removeLegacyFinanceiroExtratos(removedLocalStorage);
+  if (!nuclear) {
+    removeByPrefix(window.localStorage, 'vilareal.datajud.cache.', removedLocalStorage);
+    removeLegacyFinanceiroExtratos(removedLocalStorage);
+
+    removeByPrefix(window.localStorage, 'vilareal:cadastro-pessoas:', removedLocalStorage);
+    removeByPrefix(window.sessionStorage, 'vilareal:cadastro-pessoas:', removedSessionStorage);
+  }
+
+  removeByPrefix(window.sessionStorage, 'e-vilareal-acao-redacao:', removedSessionStorage);
 
   if (clearAuth) {
     clearAccessToken();
@@ -128,4 +159,9 @@ export function clearLocalMockData(opts = {}) {
   }
 
   return { removedLocalStorage, removedSessionStorage };
+}
+
+/** Varredura máxima no navegador (dados app + JWT + sessão API). */
+export function runFullBrowserDataSweep() {
+  return clearLocalMockData({ nuclear: true, clearAuth: true });
 }
