@@ -1,14 +1,13 @@
-import { getMockProcesso10x10 } from './processosMock.js';
 import { hojeDdMmYyyy } from '../services/hjDateAliasService.js';
 
 const STORAGE_KEY = 'vilareal:processos-historico:v1';
 
 /**
  * Incremente para limpar uma vez no navegador persistências antigas de demonstração
- * (histórico de processos, seed demo, cadastro de clientes local).
+ * (histórico de processos, seed demo, cadastro de clientes local, contas contábeis extras no Financeiro).
  */
 const LS_DEMO_PURGE_SCHEMA_KEY = 'vilareal:demo-persistence:schema';
-const LS_DEMO_PURGE_SCHEMA = 2;
+const LS_DEMO_PURGE_SCHEMA = 3;
 
 function maybePurgeDemoPersistenceOnce() {
   if (typeof window === 'undefined') return;
@@ -20,6 +19,9 @@ function maybePurgeDemoPersistenceOnce() {
     window.localStorage.removeItem('vilareal:demo-integrado:version');
     window.localStorage.removeItem('vilareal:cadastro-clientes-dados:v1');
     window.localStorage.removeItem('vilareal:cadastro-clientes-ultimo-cod:v1');
+    window.localStorage.removeItem('vilareal.financeiro.contasExtras.v1');
+    window.localStorage.removeItem('vilareal.financeiro.contasContabeis.extras.v1');
+    window.localStorage.removeItem('vilareal.financeiro.contasContabeis.inativas.v1');
     window.localStorage.setItem(LS_DEMO_PURGE_SCHEMA_KEY, String(LS_DEMO_PURGE_SCHEMA));
   } catch {
     /* ignore */
@@ -30,14 +32,9 @@ function maybePurgeDemoPersistenceOnce() {
 export const DEMO_SEED_VERSION = 3;
 const DEMO_SEED_VERSION_KEY = 'vilareal:processos-historico:demo-seed-version';
 
-/**
- * Datas usadas nos registros demo — alinhe os campos iniciais da tela Diagnósticos a estes valores para testar sem ajustar nada.
- */
+/** Constantes legadas (telas não usam mais seed automático). */
 export const DEMO_DATA_CONSULTA_BR = '19/03/2026';
 export const DEMO_DATA_PRAZO_FATAL_BR = '19/03/2026';
-export const DEMO_DATA_CONSULTA_ALT_BR = '20/03/2026';
-
-/** ID no cadastro de pessoas mock usado em vínculo demo (Parte Cliente). */
 export const DEMO_PESSOA_ID_EXEMPLO = 1;
 
 function apenasDigitos(v) {
@@ -421,6 +418,18 @@ export function getRegistroProcesso(codCliente, proc) {
   return normalizarRegistroProcesso(current[key]);
 }
 
+/** Processos persistidos em `vilareal:processos-historico:v1` (sem cadastro sintético). */
+export function listarRegistrosProcessosHistoricoNormalizados() {
+  if (typeof window === 'undefined') return [];
+  const current = loadStore();
+  const out = [];
+  for (const raw of Object.values(current)) {
+    const reg = normalizarRegistroProcesso(raw);
+    if (reg) out.push(reg);
+  }
+  return out;
+}
+
 /**
  * Mesma informação que "Natureza da Ação" (Processos) e "Descrição da Ação" (Cadastro de Clientes).
  * Prioriza `naturezaAcao` persistida em `vilareal:processos-historico:v1`; senão usa o texto de fallback (ex.: mock/lista do cadastro).
@@ -622,7 +631,7 @@ function extrairCandidatosNumeroProcessoDoTexto(texto) {
 
 /**
  * Se o texto do compromisso contiver número(s) de processo e **apenas um** processo
- * distinto da base (mock 10×10 + localStorage) for identificado, retorna `{ codCliente, proc }`.
+ * distinto da base (localStorage) for identificado, retorna `{ codCliente, proc }`.
  * Caso contrário (nenhum match, ou mais de um processo distinto) retorna `null`.
  */
 export function buscarProcessoUnicoNaBasePorTextoAgenda(texto) {
@@ -639,16 +648,6 @@ export function buscarProcessoUnicoNaBasePorTextoAgenda(texto) {
         codCliente: normalizarCodCliente(codCliente),
         proc: Number(normalizarProc(proc)),
       });
-    }
-  }
-
-  for (let c = 1; c <= 10; c++) {
-    for (let p = 1; p <= 10; p++) {
-      const mock = getMockProcesso10x10(c, p);
-      if (!mock) continue;
-      const reg = getRegistroProcesso(mock.codigoCliente, mock.processo);
-      const numero = String(reg?.numeroProcessoNovo || mock.numeroProcessoNovo || '').trim();
-      registrarNumero(mock.codigoCliente, mock.processo, numero);
     }
   }
 
@@ -1120,148 +1119,15 @@ export function listarProcessosPorPrazoFatal(dataBr) {
   return out;
 }
 
-const FASES_DEMO_DIAGNOSTICO = [
-  'Ag. Documentos',
-  'Ag. Peticionar',
-  'Ag. Verificação',
-  'Protocolo / Movimentação',
-  'Aguardando Providência',
-  'Procedimento Adm.',
-];
-
-function montarHistoricoDemo(procNum) {
-  const base = [
-    {
-      id: 920000 + procNum,
-      inf: '10',
-      info: `Consulta / andamento registrado (demo Diagnósticos — proc. ${procNum})`,
-      data: DEMO_DATA_CONSULTA_BR,
-      usuario: 'DEMO',
-      numero: String(200 + procNum).padStart(4, '0'),
-    },
-  ];
-  if (procNum === 1) {
-    base.push({
-      id: 920011,
-      inf: '09',
-      info: 'Segunda movimentação no mesmo dia (teste Consultas Realizadas)',
-      data: DEMO_DATA_CONSULTA_BR,
-      usuario: 'KARLA',
-      numero: '0199',
-    });
-  }
-  if (procNum <= 3) {
-    base.push({
-      id: 920030 + procNum,
-      inf: '08',
-      info: 'Lançamento em data alternativa (use 20/03/2026 no modal para comparar)',
-      data: DEMO_DATA_CONSULTA_ALT_BR,
-      usuario: 'DEMO',
-      numero: '0188',
-    });
-  }
-  return base;
-}
-
 /**
- * Garante registros no localStorage para testar Diagnósticos (fases, histórico por data, prazo fatal, busca por pessoa).
- * - Sem `force`: só cria chaves que ainda não existem (não sobrescreve uso real).
- * - Com `force`: sobrescreve as chaves do pacote demo (clientes 1–3, processos indicados).
+ * Mantido por compatibilidade; não grava mais dados de demonstração no navegador.
  */
-export function ensureHistoricoDemonstracaoDiagnostico(options = {}) {
+export function ensureHistoricoDemonstracaoDiagnostico() {
   if (typeof window === 'undefined') return { ok: false, reason: 'no-window' };
-  let force = options.force === true;
-
-  // Se a versão do seed no localStorage é antiga, re-criamos/atualizamos as chaves demo
-  // (inclusive vínculo `parteClienteIds`) para o cenário ficar consistente.
-  let prev = 0;
-  try {
-    prev = Number(window.localStorage.getItem(DEMO_SEED_VERSION_KEY) || '0');
-  } catch {
-    /* ignora */
-  }
-
-  if (!force && prev >= DEMO_SEED_VERSION) return { ok: true, skipped: true };
-  if (!force && prev < DEMO_SEED_VERSION) force = true;
-
-  const snapshot = loadStore();
-  let inseridos = 0;
-  let atualizados = 0;
-
-  const aplicar = (spec) => {
-    const mock = getMockProcesso10x10(spec.codCliente, spec.proc);
-    if (!mock) return;
-    const key = makeKey(spec.codCliente, spec.proc);
-    const exists = Object.prototype.hasOwnProperty.call(snapshot, key);
-    if (!force && exists) return;
-
-    upsertRegistroProcesso({
-      codCliente: mock.codigoCliente,
-      proc: mock.processo,
-      cliente: mock.autor,
-      parteCliente: spec.parteCliente ?? mock.parteCliente,
-      parteOposta: spec.parteOposta ?? mock.parteOposta,
-      numeroProcessoNovo: mock.numeroProcessoNovo,
-      historico: spec.historico,
-      prazoFatal: spec.prazoFatal ?? '',
-      faseSelecionada: spec.faseSelecionada,
-      parteClienteIds: spec.parteClienteIds ?? [],
-      parteOpostaIds: spec.parteOpostaIds ?? [],
-    });
-    if (exists) atualizados += 1;
-    else inseridos += 1;
-  };
-
-  for (let p = 1; p <= 6; p += 1) {
-    aplicar({
-      codCliente: 1,
-      proc: p,
-      faseSelecionada: FASES_DEMO_DIAGNOSTICO[p - 1],
-      prazoFatal: p <= 4 ? DEMO_DATA_PRAZO_FATAL_BR : '',
-      historico: montarHistoricoDemo(p),
-      parteClienteIds: p === 1 ? [DEMO_PESSOA_ID_EXEMPLO] : [],
-    });
-  }
-
-  aplicar({
-    codCliente: 2,
-    proc: 1,
-    faseSelecionada: 'Ag. Documentos',
-    prazoFatal: DEMO_DATA_PRAZO_FATAL_BR,
-    historico: montarHistoricoDemo(1),
-    parteClienteIds: [],
-  });
-
-  aplicar({
-    codCliente: 3,
-    proc: 2,
-    faseSelecionada: 'Em Andamento',
-    prazoFatal: '',
-    historico: [
-      {
-        id: 920500,
-        inf: '05',
-        info: 'Processo em andamento — histórico na data demo',
-        data: DEMO_DATA_CONSULTA_BR,
-        usuario: 'DEMO',
-        numero: '0500',
-      },
-    ],
-    // Para garantir que a “Busca pessoa” mostre também como Parte Oposta
-    // (ex.: pessoa 1 vinculada como parte oposta em algum processo demo).
-    parteOpostaIds: [DEMO_PESSOA_ID_EXEMPLO],
-  });
-
-  try {
-    window.localStorage.setItem(DEMO_SEED_VERSION_KEY, String(DEMO_SEED_VERSION));
-  } catch {
-    /* ignora */
-  }
-
-  return { ok: true, inseridos, atualizados, force };
+  return { ok: true, skipped: true, inseridos: 0, atualizados: 0 };
 }
 
-/** Remove a marca de versão e reaplica todo o pacote demo (reset de cenário de teste). */
+/** Remove a marca de versão do seed antigo (não reinsere dados de demonstração). */
 export function reaplicarDemonstracaoDiagnostico() {
   if (typeof window === 'undefined') return { ok: false, reason: 'no-window' };
   try {
@@ -1269,5 +1135,5 @@ export function reaplicarDemonstracaoDiagnostico() {
   } catch {
     /* ignora */
   }
-  return ensureHistoricoDemonstracaoDiagnostico({ force: true });
+  return ensureHistoricoDemonstracaoDiagnostico();
 }

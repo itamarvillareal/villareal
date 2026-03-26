@@ -3,7 +3,7 @@ import { Search, X, Link2 } from 'lucide-react';
 import { buscarParesClienteProcPorTexto } from '../data/buscaClienteProcFinanceiro';
 
 /**
- * Modal para pesquisar cliente + processo por nome, réu, autor ou nº (cadastro mock)
+ * Modal para pesquisar cliente + processo por nome, réu, autor ou nº (histórico local)
  * e aplicar cod. cliente / proc. no lançamento do Financeiro sem sair da tela.
  */
 export function ModalVinculoClienteProcFinanceiro({ aberto, onFechar, resumoLancamento, onAplicar }) {

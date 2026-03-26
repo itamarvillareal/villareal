@@ -1,11 +1,6 @@
 /**
- * Hooks de pacote integrado — sem inserção de dados de demonstração (agenda/extratos).
+ * Versão do pacote integrado no navegador — sem seed de demonstração.
  */
-
-import {
-  ensureHistoricoDemonstracaoDiagnostico,
-  reaplicarDemonstracaoDiagnostico,
-} from './processosHistoricoData.js';
 
 export const DEMO_INTEGRADO_VERSION = 2;
 
@@ -36,12 +31,6 @@ export function ensureDemoIntegradoCompleto(options = {}) {
   }
 
   try {
-    ensureHistoricoDemonstracaoDiagnostico({ force: false });
-  } catch {
-    /* não bloqueia */
-  }
-
-  try {
     seedAgendaDemoIntegrado();
   } catch {
     /* não bloqueia */
@@ -69,7 +58,6 @@ export function reaplicarDemoIntegradoCompleto() {
   } catch {
     /* ignora */
   }
-  const rProc = reaplicarDemonstracaoDiagnostico();
   const rInt = ensureDemoIntegradoCompleto({ force: true });
-  return { ok: true, processos: rProc, integrado: rInt };
+  return { ok: true, integrado: rInt };
 }

@@ -3,9 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { X } from 'lucide-react';
 import { getPessoaPorId } from '../data/cadastroPessoasMock';
 import {
-  DEMO_DATA_CONSULTA_BR,
-  DEMO_DATA_PRAZO_FATAL_BR,
-  DEMO_PESSOA_ID_EXEMPLO,
   listarConsultasARealizarPorData,
   listarHistoricoPorData,
   listarProcessosFaseAguardandoDocumentos,
@@ -16,7 +13,6 @@ import {
   listarProcessosFaseProcedimentoAdministrativo,
   listarProcessosPorIdPessoa,
   listarProcessosPorPrazoFatal,
-  reaplicarDemonstracaoDiagnostico,
 } from '../data/processosHistoricoData';
 import { resolverAliasHojeEmTexto } from '../services/hjDateAliasService.js';
 
@@ -55,7 +51,7 @@ export function Diagnosticos() {
   const [resultadoConsulta, setResultadoConsulta] = useState([]);
   const [rotuloResultadoConsulta, setRotuloResultadoConsulta] = useState('Processos Consultados');
   const [modalPrazoFatalAberto, setModalPrazoFatalAberto] = useState(false);
-  const [dataPrazoFatal, setDataPrazoFatal] = useState(DEMO_DATA_PRAZO_FATAL_BR);
+  const [dataPrazoFatal, setDataPrazoFatal] = useState('');
   const [modalResultadoPrazoFatalAberto, setModalResultadoPrazoFatalAberto] = useState(false);
   const [resultadoPrazoFatal, setResultadoPrazoFatal] = useState([]);
   const [modalConsultasARealizarAberto, setModalConsultasARealizarAberto] = useState(false);
@@ -82,8 +78,6 @@ export function Diagnosticos() {
   const [modalResultadoProcAdministrativoAberto, setModalResultadoProcAdministrativoAberto] =
     useState(false);
   const [resultadoProcAdministrativo, setResultadoProcAdministrativo] = useState([]);
-
-  const pessoaDemoBusca = getPessoaPorId(DEMO_PESSOA_ID_EXEMPLO);
 
   function consultarPorData() {
     const data = String(dataConsulta ?? '').trim();
@@ -232,7 +226,6 @@ export function Diagnosticos() {
                     setModalPublicacoesAberto(true);
                   }
                   if (label === 'Busca pessoa') {
-                    setCodigoPessoaBusca(String(DEMO_PESSOA_ID_EXEMPLO));
                     setModalBuscaPessoaAberto(true);
                   }
                 }}
@@ -286,27 +279,9 @@ export function Diagnosticos() {
         </div>
         <div className="px-6 pb-4 space-y-3 border-t border-slate-100 pt-3">
           <p className="text-xs text-slate-600 text-center leading-relaxed">
-            <strong>Dados de teste (localStorage):</strong> consultas e prazo fatal em <strong>{DEMO_DATA_CONSULTA_BR}</strong>
-            ; também há lançamentos em <strong>20/03/2026</strong>. Cliente <strong>00000001</strong> proc. <strong>1–6</strong>{' '}
-            cobre cada fase do painel à direita. Busca pessoa: código <strong>{DEMO_PESSOA_ID_EXEMPLO}</strong> (vínculo demo na parte
-            cliente do proc. 1).
+            Os relatórios usam apenas os dados já gravados neste navegador (histórico de processos, prazos e vínculos de
+            pessoas). Não há pacote de demonstração automático.
           </p>
-          <div className="flex flex-wrap justify-center gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                const r = reaplicarDemonstracaoDiagnostico();
-                window.alert(
-                  r.ok
-                    ? `Dados demo reaplicados. Inseridos: ${r.inseridos}, atualizados: ${r.atualizados}.`
-                    : 'Não foi possível reaplicar (sem window/localStorage).'
-                );
-              }}
-              className="px-3 py-1.5 rounded border border-amber-400 bg-amber-50 text-amber-900 text-xs font-medium hover:bg-amber-100"
-            >
-              Reaplicar dados demo (reset)
-            </button>
-          </div>
         </div>
         <div className="px-6 pb-6 flex justify-center">
           <button
@@ -406,13 +381,13 @@ export function Diagnosticos() {
                   value={codigoPessoaBusca}
                   onChange={(e) => setCodigoPessoaBusca(e.target.value.replace(/\D/g, ''))}
                   className="mt-1 w-full px-3 py-2 border border-slate-300 rounded text-sm"
-                  placeholder={`Ex.: ${DEMO_PESSOA_ID_EXEMPLO} (demo)`}
+                  placeholder="Ex.: número do cadastro de pessoas"
                   autoFocus
                 />
               </label>
               <p className="text-xs text-slate-500">
-                Serão listados os processos em que essa pessoa está vinculada como Parte Cliente ou Parte Oposta.                 Demo: pessoa <strong>{DEMO_PESSOA_ID_EXEMPLO}</strong>
-                {pessoaDemoBusca ? ` — ${pessoaDemoBusca.nome}` : ''} no proc. 1 do cliente 00000001.
+                Serão listados os processos em que essa pessoa está vinculada como Parte Cliente ou Parte Oposta no
+                histórico local.
               </p>
             </div>
             <div className="px-4 py-3 border-t border-slate-200 flex justify-end gap-2">

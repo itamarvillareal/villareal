@@ -63,10 +63,10 @@ export const navItems = [
 ];
 
 export const columns = [
-  { id: 'itamar', name: 'Dr. Itamar' },
-  { id: 'karla', name: 'Karla' },
-  { id: 'isabella', name: 'ISABELLA' },
-  { id: 'thalita', name: 'Thalita' },
+  { id: 'itamar', name: 'Coluna 1' },
+  { id: 'karla', name: 'Coluna 2' },
+  { id: 'isabella', name: 'Coluna 3' },
+  { id: 'thalita', name: 'Coluna 4' },
 ];
 
 export const tasksByColumn = {
@@ -118,10 +118,10 @@ export const controleButtons = [
  * Evita divergência (ex.: kari vs karla) que quebrava o vínculo ao renomear o id do usuário.
  */
 export const agendaUsuarios = [
-  { id: 'itamar', nome: 'ITAMAR' },
-  { id: 'karla', nome: 'KARLA' },
-  { id: 'isabella', nome: 'ISABELLA' },
-  { id: 'thalita', nome: 'THALITA' },
+  { id: 'itamar', nome: 'Usuário 1' },
+  { id: 'karla', nome: 'Usuário 2' },
+  { id: 'isabella', nome: 'Usuário 3' },
+  { id: 'thalita', nome: 'Usuário 4' },
 ];
 
 export const agendaDataEsquerda = '10/03/2026'; // Terça-feira

@@ -53,7 +53,9 @@ Scripts em `src/main/resources/db/migration/`:
 - **V1__init.sql** — schema (`pessoa`, complementar, endereço, contato, `usuarios`, `perfil`, `usuario_perfil`).  
 - **V2__bootstrap_admin.sql** — usuário inicial para desenvolvimento.  
 - **V3__seed_10_pessoas_mock_completo.sql** — placeholder (não insere pessoas mock).  
-- **V14__limpar_dados_operacionais_demo.sql** — zera dados operacionais no banco (lançamentos financeiros, cálculos, tarefas, agenda, auditoria, processos, usuários/pessoas exceto o admin id `1`), mantém perfis e plano de contas (`financeiro_conta_contabil`) e restaura a hierarquia padrão de tópicos. Aplica-se automaticamente na próxima subida após o Flyway incluir esta versão.
+- **V14__limpar_dados_operacionais_demo.sql** — zera dados operacionais no banco (lançamentos financeiros, cálculos, tarefas, agenda, auditoria, processos, usuários/pessoas exceto o admin id `1`), mantém perfis e o plano de contas existente (`financeiro_conta_contabil`) e restaura a hierarquia padrão de tópicos.  
+- **V15__limpar_financeiro_completo.sql** — remove lançamentos e **todas** as contas contábeis, reinsere o plano padrão (paridade com V11).  
+- **V16__redefinir_plano_contas_financeiro_padrao.sql** — mesmo efeito financeiro da V15 (zera lançamentos, remove contas extras e restaura o conjunto padrão de contas contábeis). Útil para reaplicar o reset sem alterar a V14 já aplicada.
 
 No **React**, para apagar persistências de demonstração no navegador (sem remover o tema escuro), use no console de desenvolvimento:  
 `import('/src/utils/clearLocalMockData.js').then((m) => m.clearLocalMockData({ clearAuth: true }))` — `clearAuth` remove também o JWT da aba.

@@ -13,7 +13,6 @@ import {
   Link2,
   RotateCcw,
   X,
-  FlaskConical,
   CalendarDays,
   ListTodo,
   Trash2,
@@ -28,7 +27,6 @@ import {
   reaplicarVinculoCadastro,
 } from '../data/publicacoesVinculoProcessos.js';
 import { appendPublicacoesConfirmadas, updatePublicacaoImportada } from '../data/publicacoesStorage.js';
-import { getMockPreviewPublicacoes } from '../data/publicacoesPreviewMock.js';
 import { agruparPublicacoesPorDia } from '../data/publicacoesDiaria.js';
 import { featureFlags } from '../config/featureFlags.js';
 import {
@@ -603,22 +601,6 @@ export function PublicacoesProcessos() {
             {carregando ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
             {carregando ? 'Lendo PDF…' : 'Escolher PDF'}
           </label>
-          <button
-            type="button"
-            disabled={carregando}
-            onClick={() => {
-              setErro('');
-              setLogImportacao(null);
-              const m = getMockPreviewPublicacoes();
-              setArquivoNome(m.nomeArquivo);
-              setPreview(m);
-              setSelecionados(new Set(m.itens.map((_, i) => i)));
-            }}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-violet-300 dark:border-violet-500/40 bg-violet-50 dark:bg-violet-950/30 text-sm font-medium text-violet-900 dark:text-violet-100 hover:bg-violet-100/80 dark:hover:bg-violet-950/50 disabled:opacity-50"
-          >
-            <FlaskConical className="w-4 h-4" />
-            Carregar mock (dados de teste)
-          </button>
           {erro ? (
             <p className="text-sm text-red-700 dark:text-red-300 flex items-center gap-2">
               <AlertTriangle className="w-4 h-4 shrink-0" />

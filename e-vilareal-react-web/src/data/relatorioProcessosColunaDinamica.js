@@ -67,9 +67,9 @@ export const CAMPOS_OPCOES_ULTIMO_ANDAMENTO = [
   { label: 'Tipo de audiência (processo)', fieldKey: 'tipoAudienciaProcesso' },
   { label: 'Data audiência (processo)', fieldKey: 'audienciaDataProcesso' },
   { label: 'Hora audiência (processo)', fieldKey: 'audienciaHoraProcesso' },
-  { label: 'Pasta / arquivo (mock)', fieldKey: 'pastaArquivoProcesso' },
-  { label: 'Procedimento (mock)', fieldKey: 'procedimentoProcesso' },
-  { label: 'Responsável (mock)', fieldKey: 'responsavelProcesso' },
+  { label: 'Pasta / arquivo (cadastro)', fieldKey: 'pastaArquivoProcesso' },
+  { label: 'Procedimento (cadastro)', fieldKey: 'procedimentoProcesso' },
+  { label: 'Responsável (cadastro)', fieldKey: 'responsavelProcesso' },
   // — Imóvel vinculado —
   { label: 'Cód. imóvel vinculado', fieldKey: 'imovelIdVinculado' },
   { label: 'Unidade (imóvel)', fieldKey: 'unidadeImovel' },

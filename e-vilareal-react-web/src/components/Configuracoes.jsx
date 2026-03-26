@@ -2,8 +2,6 @@ import { useState, useEffect } from 'react';
 import { Settings, Moon } from 'lucide-react';
 import { useTheme } from '../theme/ThemeProvider.jsx';
 import { isUsuarioMaster, setUsuarioMaster } from '../data/consultasVinculoHistoricoStorage.js';
-import { resetVinculacaoTesteCompleto } from '../data/vinculacaoTesteReset.js';
-import { reaplicarDemoIntegradoCompleto } from '../data/demoIntegradoSeed.js';
 import { getUsuariosAtivos } from '../data/agendaPersistenciaData.js';
 import {
   getOperadorEstacaoId,
@@ -128,63 +126,6 @@ export function Configuracoes() {
             Desmarque em computadores compartilhados onde não deve ser possível apagar o histórico. Se nunca alterar
             esta opção, o comportamento padrão é master ativado (escritório com um único usuário).
           </p>
-        </div>
-
-        <div className="border-t border-slate-200 pt-6">
-          <h2 className="text-sm font-semibold text-slate-800">Desenvolvimento — pacote demo integrado</h2>
-          <p className="text-sm text-slate-600 mt-2">
-            Reaplica o seed de <strong>Processos/Diagnósticos</strong> (clientes 1–3, processos demo) e alinha{' '}
-            <strong>Agenda</strong> (audiências nos dias demo 19/03 e 20/03/2026) e <strong>Financeiro</strong> (CEF com
-            lançamentos <code className="text-xs bg-slate-100 px-1 rounded">demo-int-*</code> vinculados a clientes e
-            processos do mock 10×10). Útil para testar navegação entre módulos com os mesmos códigos e CNJs.
-          </p>
-          <button
-            type="button"
-            onClick={() => {
-              if (
-                !window.confirm(
-                  'Reaplicar o pacote demo integrado? Isso sobrescreve os registros demo de processos no navegador e atualiza agenda/extratos CEF de demonstração. Recarregue a página (F5) em seguida.'
-                )
-              ) {
-                return;
-              }
-              const r = reaplicarDemoIntegradoCompleto();
-              if (r?.ok) {
-                window.alert('Pacote demo integrado aplicado. Recarregue a página (F5) para atualizar todas as telas.');
-              }
-            }}
-            className="mt-3 px-4 py-2 rounded-lg border border-indigo-300 bg-indigo-50 text-indigo-950 text-sm font-medium hover:bg-indigo-100"
-          >
-            Reaplicar pacote demo integrado (Processos + Agenda + Financeiro)
-          </button>
-        </div>
-
-        <div className="border-t border-slate-200 pt-6">
-          <h2 className="text-sm font-semibold text-slate-800">Desenvolvimento — mock de vinculação automática</h2>
-          <p className="text-sm text-slate-600 mt-2">
-            Restaura os 50 lançamentos de teste (nº 88000–88049) nos extratos <strong>sem cliente/processo</strong>,
-            reaplica a rodada de Cálculos de teste (cliente 999 / proc. 88) e zera o relatório de consultas de vínculo
-            guardado neste navegador. Use para testar a busca automática de novo após vínculos ou edições.
-          </p>
-          <button
-            type="button"
-            onClick={() => {
-              if (
-                !window.confirm(
-                  'Resetar dados de teste de vinculação? Recarregue a página (F5) em seguida para atualizar Cálculos e Financeiro.'
-                )
-              ) {
-                return;
-              }
-              const r = resetVinculacaoTesteCompleto();
-              if (r.ok) {
-                window.alert('Reset concluído. Recarregue a página (F5).');
-              }
-            }}
-            className="mt-3 px-4 py-2 rounded-lg border border-amber-400 bg-amber-50 text-amber-950 text-sm font-medium hover:bg-amber-100"
-          >
-            Resetar mock de vinculação (teste)
-          </button>
         </div>
       </section>
     </div>

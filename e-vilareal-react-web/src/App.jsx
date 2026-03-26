@@ -28,8 +28,6 @@ import { GerenteTopicos } from './components/GerenteTopicos.jsx';
 import { Atividade } from './components/Atividade.jsx';
 import { AnaLuisa } from './components/AnaLuisa.jsx';
 import { atualizarIndicesMensaisAposDia10 } from './services/monetaryIndicesService.js';
-import { ensureHistoricoDemonstracaoDiagnostico } from './data/processosHistoricoData.js';
-import { ensureDemoIntegradoCompleto } from './data/demoIntegradoSeed.js';
 import { executarMigracaoAssistidaPhase23 } from './services/localStorageMigrationPhase23.js';
 import { executarMigracaoAssistidaPhase4Processos } from './services/localStorageMigrationPhase4Processos.js';
 import { executarMigracaoAssistidaPhase5Financeiro } from './services/financeiroMigrationPhase5.js';
@@ -154,16 +152,6 @@ function App() {
   }, []);
 
   useEffect(() => {
-    try {
-      ensureHistoricoDemonstracaoDiagnostico();
-    } catch {
-      /* não bloqueia o app */
-    }
-    try {
-      ensureDemoIntegradoCompleto();
-    } catch {
-      /* não bloqueia o app */
-    }
     let cancelled = false;
     (async () => {
       try {
