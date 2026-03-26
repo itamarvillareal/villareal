@@ -6,10 +6,11 @@ import { listarEventosPorDataUsuario, salvarCamposEvento } from '../repositories
 const IMPORT_DONE_KEY = 'vilareal:migration:phase2-3:done:v1';
 
 export const LOCALSTORAGE_KEYS_PHASE23 = [
-  'vilareal:agenda-usuarios:v2',
+  'vilareal:agenda-usuarios:v3',
   'vilareal.usuarios.permissoes.v1',
   'vilareal:cadastro-clientes-dados:v1',
   'vilareal:agenda-eventos:v1',
+  'vilareal:agenda-eventos:v2',
 ];
 
 function loadJson(key) {
@@ -22,7 +23,7 @@ function loadJson(key) {
 }
 
 async function migrarUsuarios() {
-  const local = loadJson('vilareal:agenda-usuarios:v2');
+  const local = loadJson('vilareal:agenda-usuarios:v3');
   if (!Array.isArray(local) || local.length === 0) return 0;
   const atuais = await listarUsuarios();
   const ids = new Set((atuais || []).map((u) => String(u.id)));

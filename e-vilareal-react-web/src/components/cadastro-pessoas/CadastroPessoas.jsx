@@ -51,6 +51,15 @@ import {
   carregarPessoaComplementar,
   salvarPessoaComplementar,
 } from '../../repositories/pessoasComplementaresRepository.js';
+import {
+  carregarEnderecosPessoa,
+  carregarContatosPessoa,
+  salvarEnderecosPessoa,
+  salvarContatosPessoa,
+  enderecosApiParaUi,
+  contatosApiParaUi,
+} from '../../repositories/pessoasEnderecosContatosRepository.js';
+import { featureFlags } from '../../config/featureFlags.js';
 
 let __ultimoAcessoListaPessoas = 0;
 
@@ -479,6 +488,8 @@ export function CadastroPessoas() {
 
   useEffect(() => {
     if (modo !== 'listar') return;
+    /** Evita esvaziar o formulário no 1º paint quando a URL já é edição (o efeito da rota /clientes/editar/:id preenche em seguida). */
+    if (/^\/clientes\/editar\/\d+$/.test(pathPessoasNorm)) return;
     if (!pessoaAtual) {
       setForm(emptyPessoa);
       setEditId(null);
@@ -516,7 +527,7 @@ export function CadastroPessoas() {
       setEditId(pessoaAtual.id);
       setEnderecos([]);
       setContatos([]);
-  }, [modo, indiceAtual, pessoaAtual]);
+  }, [modo, indiceAtual, pessoaAtual, pathPessoasNorm]);
 
   function formatDate(v) {
     if (!v) return '';
@@ -743,19 +754,37 @@ export function CadastroPessoas() {
     let cancelado = false;
     (async () => {
       try {
-        const comp = await carregarPessoaComplementar(editId);
-        if (!comp || cancelado) return;
-        setForm((f) => ({
-          ...f,
-          rg: comp.rg ?? f.rg,
-          orgaoExpedidor: comp.orgaoExpedidor ?? f.orgaoExpedidor,
-          profissao: comp.profissao ?? f.profissao,
-          nacionalidade: comp.nacionalidade ?? f.nacionalidade,
-          estadoCivil: comp.estadoCivil ?? f.estadoCivil,
-          genero: comp.genero ?? f.genero,
-        }));
+        setErroComplementar('');
+        const id = editId;
+        const compPromise = carregarPessoaComplementar(id);
+        const extrasPromise =
+          !FORCA_MOCK_CADASTRO && featureFlags.useApiPessoasComplementares
+            ? Promise.all([carregarEnderecosPessoa(id), carregarContatosPessoa(id)])
+            : Promise.resolve([null, null]);
+        const [comp, ec] = await Promise.all([compPromise, extrasPromise]);
+        if (cancelado) return;
+        if (comp) {
+          setForm((f) => ({
+            ...f,
+            rg: comp.rg ?? f.rg,
+            orgaoExpedidor: comp.orgaoExpedidor ?? f.orgaoExpedidor,
+            profissao: comp.profissao ?? f.profissao,
+            nacionalidade: comp.nacionalidade ?? f.nacionalidade,
+            estadoCivil: comp.estadoCivil ?? f.estadoCivil,
+            genero: comp.genero ?? f.genero,
+          }));
+        }
+        if (!FORCA_MOCK_CADASTRO && featureFlags.useApiPessoasComplementares && ec) {
+          const [ends, conts] = ec;
+          if (ends != null) setEnderecos(enderecosApiParaUi(ends));
+          if (conts != null) setContatos(contatosApiParaUi(conts));
+        }
       } catch (e) {
-        if (!cancelado) setErroComplementar(e?.message || 'Erro ao carregar dados complementares.');
+        if (!cancelado) {
+          setErroComplementar(
+            e?.message || 'Erro ao carregar dados complementares, endereços ou contatos.'
+          );
+        }
       }
     })();
     return () => {
@@ -937,6 +966,11 @@ export function CadastroPessoas() {
           estadoCivil: form.estadoCivil,
           genero: form.genero,
         });
+        if (!FORCA_MOCK_CADASTRO && featureFlags.useApiPessoasComplementares) {
+          const { usuarioNome } = getContextoAuditoriaUsuario();
+          await salvarEnderecosPessoa(idParaDocumento, enderecos);
+          await salvarContatosPessoa(idParaDocumento, contatos, usuarioNome);
+        }
       }
       if (previewDoc?.file && idParaDocumento && Number.isFinite(idParaDocumento)) {
         try {
@@ -985,9 +1019,16 @@ export function CadastroPessoas() {
 
   function confirmarAbrirCadastroPessoaExistente() {
     if (!modalCpfDuplicado) return;
-    const item = modalCpfDuplicado;
+    const item = { ...modalCpfDuplicado };
     setModalCpfDuplicado(null);
-    abrirEditar(item);
+    setLista((prev) => {
+      const id = Number(item.id);
+      if (!Number.isFinite(id)) return prev;
+      if (prev.some((p) => Number(p.id) === id)) return prev;
+      return [...prev, item];
+    });
+    aplicarEdicaoPessoa(item);
+    navigate(`/clientes/editar/${item.id}`, { replace: true });
   }
 
   function cancelarModalCpfDuplicado() {

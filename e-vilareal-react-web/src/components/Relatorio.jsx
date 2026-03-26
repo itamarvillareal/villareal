@@ -14,6 +14,7 @@ import {
 import { normalizarFiltroProcessoAtivo } from '../data/relatorioPresets.js';
 import { getRelatorioProcessosMockLinhasBase } from '../data/relatorioProcessosDados.js';
 import { preaquecerCamposRelatorioApiFirst } from '../data/processosDadosRelatorio.js';
+import { EVENT_RELATORIO_PERSISTENCIA_EXTERNA } from '../services/crossTabLocalStorageSync.js';
 
 const STORAGE_COLUNAS_RELATORIO = 'vilareal.relatorioProcessos.colunasVisiveis.v1';
 const STORAGE_LARGURA_UNIFORME = 'vilareal.relatorioProcessos.larguraUniforme.v1';
@@ -280,6 +281,13 @@ export function Relatorio() {
       /* ignore */
     }
   }, [dados, relatorioEmitido]);
+
+  useEffect(() => {
+    if (!relatorioEmitido) return undefined;
+    const h = () => setDados(carregarDadosRelatorioInicial());
+    window.addEventListener(EVENT_RELATORIO_PERSISTENCIA_EXTERNA, h);
+    return () => window.removeEventListener(EVENT_RELATORIO_PERSISTENCIA_EXTERNA, h);
+  }, [relatorioEmitido]);
 
   const atualizarCelulaRelatorio = (relIdx, chaveCampo, valor) => {
     setDados((prev) => {

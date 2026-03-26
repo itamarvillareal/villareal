@@ -16,13 +16,20 @@ function mapApiUsuarioToView(u) {
 }
 
 function mapViewUsuarioToApi(u) {
-  return {
+  const senha = u.senha != null && String(u.senha).trim() !== '' ? String(u.senha).trim() : '';
+  const base = {
     pessoaId: u.numeroPessoa != null && String(u.numeroPessoa) !== '' ? Number(u.numeroPessoa) : null,
     nome: String(u.nome ?? '').trim() || String(u.id ?? '').trim(),
     apelido: String(u.apelido ?? '').trim() || null,
     login: String(u.login ?? '').trim().toLowerCase(),
-    senhaHash: String(u.senhaHash ?? '').trim() || 'sem-hash-definido',
     ativo: u.ativo !== false,
+  };
+  if (senha.length >= 4) {
+    return { ...base, senha };
+  }
+  return {
+    ...base,
+    senhaHash: String(u.senhaHash ?? '').trim() || 'sem-hash-definido',
   };
 }
 

@@ -125,48 +125,27 @@ export const controleButtons = [
   { id: 'conta', label: 'Conta', icon: 'User' },
 ];
 
-/** Dados mockados para Agenda */
+/**
+ * Colunas da Agenda / Usuários (modo local) — mesmos ids que `columns` do quadro Pendências.
+ * Evita divergência (ex.: kari vs karla) que quebrava o vínculo ao renomear o id do usuário.
+ */
 export const agendaUsuarios = [
   { id: 'itamar', nome: 'ITAMAR' },
-  { id: 'kari', nome: 'KARLA' },
-  { id: 'isabelia', nome: 'ISABELLA' },
-  { id: 'ana', nome: 'ANA LUISA' },
+  { id: 'karla', nome: 'KARLA' },
+  { id: 'isabella', nome: 'ISABELLA' },
+  { id: 'thalita', nome: 'THALITA' },
 ];
 
 export const agendaDataEsquerda = '10/03/2026'; // Terça-feira
-export const agendaDataDireita = '11/03/2026';  // Quarta-feira
+export const agendaDataDireita = '11/03/2026'; // Quarta-feira
 
+/** Eventos de exemplo mínimos (merge com persistência local em vilareal:agenda-eventos:v2). */
 export const agendaEventosTerça = [
-  { id: 1, hora: '09:00', descricao: 'CONCILIAÇÃO (MEGA ELITE VIGILANCIA E SEGURANÇA ESPECIALI', destaque: true },
-  { id: 2, hora: '09:45', descricao: 'CONCILIAÇÃO (SSMA SEGURANÇA SAÚDE E MEIO AMBIENTE LTDA', destaque: true },
-  { id: 3, hora: '13:30', descricao: 'CONCILIAÇÃO (PRISCILLA SILVA SIQUEIRA x MINISTÉRIO PÚBLIC', destaque: true },
-  { id: 4, hora: '13:30', descricao: 'SESSÃO DE JULGAMENTO (MARÍLIA GABRIELA DE OLIVEIRA DINIZ', destaque: false },
-  {
-    id: 5,
-    hora: '14:00',
-    descricao:
-      'Teste duplo clique → abre Processos: CNJ 5600077-15.2025.8.09.1011 (base mock cliente 1 / proc. 4)',
-    destaque: false,
-  },
-  {
-    id: 6,
-    hora: '',
-    descricao:
-      'Consultar ITAMAR JUNIOR x KELLY SILVA — use a linha acima para testar número de processo na base',
-    destaque: false,
-  },
-  { id: 7, hora: '', descricao: 'falar com a louyse sobre os boletos do condominio em aberto', destaque: false },
-  { id: 8, hora: '', descricao: 'REPASSAR ALUGUEL THAMIRES - BAIRRO DE LOURDES', destaque: false },
-  { id: 9, hora: '', descricao: 'Vence conta de energia F-18', destaque: false },
-  { id: 10, hora: '', descricao: 'ver se pagou ultima e manifestar ASFAROL LAGO x DIVINA CUSTOD', destaque: false },
-  { id: 11, hora: '', descricao: 'VRV LTDA x ISABELLA FAGUNDES (RENOVAR ALUGUEL)', destaque: false },
+  { id: 1, hora: '09:00', descricao: 'Compromisso de exemplo (mock — terça)', destaque: true },
 ];
 
 export const agendaEventosQuarta = [
-  { id: 12, hora: '09:00', descricao: 'SESSÃO DE JULGAMENTO (SE77E TELECOM EIRELI ME x YNAYRA M', destaque: false },
-  { id: 13, hora: '09:30', descricao: '1 da pauta SESSÃO DE JULGAMENTO (MARCELO SOARES DE ALMEII', destaque: false },
-  { id: 14, hora: '', descricao: 'Conferir pagamentos ALUGUEIS no CORA', destaque: false },
-  { id: 15, hora: '', descricao: 'consultar SAUDE LTDA x (14185.035617/2024-15) + proc 11', destaque: false },
+  { id: 2, hora: '10:00', descricao: 'Compromisso de exemplo (mock — quarta)', destaque: false },
 ];
 
 /** Eventos mock do dia (para relatório mensal e mesma regra de merge da tela). */

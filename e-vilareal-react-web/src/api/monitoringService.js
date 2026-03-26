@@ -1,36 +1,21 @@
 import { API_BASE_URL } from './config';
-import { buildAuditoriaHeaders } from '../services/auditoriaCliente.js';
+import { buildDefaultApiHeaders } from './apiAuthHeaders.js';
+import { parseApiJsonResponse } from './parseApiResponse.js';
 
 const BASE = `${API_BASE_URL}/api/monitoring`;
 
 function opts(method, body = null) {
   const o = {
     method,
-    headers: {
-      'Content-Type': 'application/json',
-      ...buildAuditoriaHeaders(),
-    },
+    headers: buildDefaultApiHeaders(),
   };
   if (body != null) o.body = JSON.stringify(body);
   return o;
 }
 
 async function handle(res) {
-  if (res.status === 204 || res.status === 202) return null;
-  const text = await res.text();
-  let data = null;
-  if (text) {
-    try {
-      data = JSON.parse(text);
-    } catch {
-      data = { message: text };
-    }
-  }
-  if (!res.ok) {
-    const msg = data?.message || data?.error || `Erro ${res.status}`;
-    throw new Error(msg);
-  }
-  return data;
+  if (res.status === 202) return null;
+  return parseApiJsonResponse(res);
 }
 
 export async function listarMonitorados() {

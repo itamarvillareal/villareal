@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Outlet, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { AuthProvider, useAuth } from './context/AuthContext.jsx';
+import { Login } from './components/Login.jsx';
+import { featureFlags } from './config/featureFlags.js';
 import { Sidebar } from './components/Sidebar';
 import { Board } from './components/Board';
 import { CadastroPessoas } from './components/cadastro-pessoas/CadastroPessoas';
@@ -40,13 +43,26 @@ import {
   operadorPodeAlternarPerfil,
   getOperadorEstacaoId,
   setUsuarioSessaoAtualId,
-  USUARIO_MASTER_ID,
+  isUsuarioMasterEstacao,
 } from './data/usuarioPermissoesStorage.js';
 import { getContextoAuditoriaUsuario, registrarAuditoria } from './services/auditoriaCliente.js';
+import { installCrossTabLocalStorageSync } from './services/crossTabLocalStorageSync.js';
 
 function RedirectClientesParaLista() {
   const location = useLocation();
   return <Navigate to="/clientes/lista" replace state={location.state} />;
+}
+
+function ProtectedRoute() {
+  const { isAuthenticated } = useAuth();
+  const location = useLocation();
+  if (!featureFlags.requiresApiAuth) {
+    return <Outlet />;
+  }
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  }
+  return <Outlet />;
 }
 
 let __ultimoLogNavegacao = { path: '', t: 0 };
@@ -98,7 +114,7 @@ function Layout() {
   useEffect(() => {
     const pathNorm = (location.pathname || '/').replace(/\/+$/, '') || '/';
     const uid = getPerfilAtivoParaPermissoes();
-    if (pathNorm === '/atividade' && getOperadorEstacaoId() !== USUARIO_MASTER_ID) {
+    if (pathNorm === '/atividade' && !isUsuarioMasterEstacao()) {
       navigate(getPrimeiraRotaPermitida(uid), { replace: true });
       return;
     }
@@ -132,6 +148,11 @@ function Layout() {
 }
 
 function App() {
+  useEffect(() => {
+    const removeCrossTab = installCrossTabLocalStorageSync();
+    return () => removeCrossTab();
+  }, []);
+
   useEffect(() => {
     try {
       ensureHistoricoDemonstracaoDiagnostico();
@@ -197,39 +218,44 @@ function App() {
 
   return (
     <BrowserRouter>
-      <Routes>
-        <Route element={<Layout />}>
-          <Route path="/" element={<Board />} />
-          <Route path="/clientes" element={<RedirectClientesParaLista />} />
-          <Route path="/clientes/lista" element={<CadastroPessoas />} />
-          <Route path="/clientes/relatorio" element={<RelatorioPessoas />} />
-          <Route path="/clientes/editar/:id" element={<CadastroPessoas />} />
-          <Route path="/clientes/nova" element={<CadastroPessoas />} />
-          <Route path="/pessoas" element={<CadastroClientes />} />
-          <Route path="/agenda" element={<Agenda />} />
-          <Route path="/ana-luisa" element={<AnaLuisa />} />
-          <Route path="/atividade" element={<Atividade />} />
-          <Route path="/processos" element={<Processos />} />
-          <Route path="/processos/publicacoes" element={<PublicacoesProcessos />} />
-          <Route path="/processos/monitoramento" element={<MonitoringPeoplePage />} />
-          <Route path="/imoveis" element={<Imoveis />} />
-          <Route path="/imoveis/financeiro" element={<ImoveisAdministracaoFinanceiro />} />
-          <Route path="/imoveis/relatorio-financeiro" element={<RelatorioFinanceiroImoveis />} />
-          <Route path="/relatorio-imoveis" element={<RelatorioImoveis />} />
-          <Route path="/relatorio" element={<Relatorio />} />
-          <Route path="/relatorio-calculos" element={<RelatorioCalculos />} />
-          <Route path="/calculos" element={<Calculos />} />
-          <Route path="/topicos" element={<Topicos />} />
-          <Route path="/topicos/gerente" element={<GerenteTopicos />} />
-          <Route path="/diagnosticos" element={<Diagnosticos />} />
-          <Route path="/financeiro" element={<Financeiro />} />
-          <Route path="/usuarios" element={<Usuarios />} />
-          <Route path="/configuracoes" element={<Configuracoes />} />
-          <Route path="/diligencias" element={<Navigate to="/pendencias" replace />} />
-          <Route path="/dativos" element={<Navigate to="/pendencias" replace />} />
-          <Route path="/:section" element={<Board />} />
-        </Route>
-      </Routes>
+      <AuthProvider>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route element={<ProtectedRoute />}>
+            <Route element={<Layout />}>
+              <Route path="/" element={<Board />} />
+              <Route path="/clientes" element={<RedirectClientesParaLista />} />
+              <Route path="/clientes/lista" element={<CadastroPessoas />} />
+              <Route path="/clientes/relatorio" element={<RelatorioPessoas />} />
+              <Route path="/clientes/editar/:id" element={<CadastroPessoas />} />
+              <Route path="/clientes/nova" element={<CadastroPessoas />} />
+              <Route path="/pessoas" element={<CadastroClientes />} />
+              <Route path="/agenda" element={<Agenda />} />
+              <Route path="/ana-luisa" element={<AnaLuisa />} />
+              <Route path="/atividade" element={<Atividade />} />
+              <Route path="/processos" element={<Processos />} />
+              <Route path="/processos/publicacoes" element={<PublicacoesProcessos />} />
+              <Route path="/processos/monitoramento" element={<MonitoringPeoplePage />} />
+              <Route path="/imoveis" element={<Imoveis />} />
+              <Route path="/imoveis/financeiro" element={<ImoveisAdministracaoFinanceiro />} />
+              <Route path="/imoveis/relatorio-financeiro" element={<RelatorioFinanceiroImoveis />} />
+              <Route path="/relatorio-imoveis" element={<RelatorioImoveis />} />
+              <Route path="/relatorio" element={<Relatorio />} />
+              <Route path="/relatorio-calculos" element={<RelatorioCalculos />} />
+              <Route path="/calculos" element={<Calculos />} />
+              <Route path="/topicos" element={<Topicos />} />
+              <Route path="/topicos/gerente" element={<GerenteTopicos />} />
+              <Route path="/diagnosticos" element={<Diagnosticos />} />
+              <Route path="/financeiro" element={<Financeiro />} />
+              <Route path="/usuarios" element={<Usuarios />} />
+              <Route path="/configuracoes" element={<Configuracoes />} />
+              <Route path="/diligencias" element={<Navigate to="/pendencias" replace />} />
+              <Route path="/dativos" element={<Navigate to="/pendencias" replace />} />
+              <Route path="/:section" element={<Board />} />
+            </Route>
+          </Route>
+        </Routes>
+      </AuthProvider>
     </BrowserRouter>
   );
 }

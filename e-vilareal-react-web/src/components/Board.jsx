@@ -212,6 +212,19 @@ export function Board() {
   const [pendenciasDraftPorUsuario, setPendenciasDraftPorUsuario] = useState(() =>
     JSON.parse(JSON.stringify(pendenciasInicial))
   );
+
+  /** Pendências em localStorage: outra aba grava → recarrega listas (modo legado). */
+  useEffect(() => {
+    if (featureFlags.useApiTarefas) return undefined;
+    const h = () => {
+      const next = getPendenciasIniciais();
+      setPendenciasPorUsuario(next);
+      setPendenciasDraftPorUsuario(JSON.parse(JSON.stringify(next)));
+    };
+    window.addEventListener('vilareal:pendencias-por-usuario-atualizadas', h);
+    return () => window.removeEventListener('vilareal:pendencias-por-usuario-atualizadas', h);
+  }, []);
+
   const [modalPendencias, setModalPendencias] = useState(null);
   const [modalAcoesPendencia, setModalAcoesPendencia] = useState(null);
   const [modalConsultaPendencia, setModalConsultaPendencia] = useState(null);

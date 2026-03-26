@@ -267,6 +267,17 @@ export function Calculos() {
   const saveRodadasTimerRef = useRef(null);
   const rodadasStateRef = useRef(rodadasState);
   rodadasStateRef.current = rodadasState;
+
+  useEffect(() => {
+    const h = () =>
+      setRodadasState({
+        ...(loadRodadasCalculos() || {}),
+        ...RODADAS_VINCULACAO_TESTE_50,
+      });
+    window.addEventListener('vilareal:calculos-rodadas-atualizadas', h);
+    return () => window.removeEventListener('vilareal:calculos-rodadas-atualizadas', h);
+  }, []);
+
   const [confirmarLimpeza, setConfirmarLimpeza] = useState(false);
 
   function confirmarAlternarAceitarPagamento(next) {
@@ -404,6 +415,12 @@ export function Calculos() {
     window.addEventListener('vilareal:cliente-config-calculo-atualizado', h);
     return () => window.removeEventListener('vilareal:cliente-config-calculo-atualizado', h);
   }, [rodadaKey, codigoClienteNorm]);
+
+  useEffect(() => {
+    const h = () => setRodadasState({ ...(loadRodadasCalculos() || {}) });
+    window.addEventListener('vilareal:calculos-rodadas-atualizadas', h);
+    return () => window.removeEventListener('vilareal:calculos-rodadas-atualizadas', h);
+  }, []);
 
   function aplicarClienteProcManual() {
     const cod = padCliente8(codClienteManual);

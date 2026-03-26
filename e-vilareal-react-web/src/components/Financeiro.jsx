@@ -35,6 +35,7 @@ import {
   normalizarRefFinanceiro,
 } from '../data/financeiroData';
 import { loadRodadasCalculos } from '../data/calculosRodadasStorage';
+import { EVENT_FINANCEIRO_PERSISTENCIA_EXTERNA } from '../services/crossTabLocalStorageSync.js';
 import {
   loadConsultasVinculoLog,
   appendConsultaVinculoLogEntry,
@@ -444,6 +445,25 @@ export function Financeiro() {
   const [contasContabeisInativas, setContasContabeisInativas] = useState(() =>
     loadPersistedContasContabeisInativasFinanceiro()
   );
+
+  useEffect(() => {
+    const h = () => {
+      const persisted = loadPersistedExtratosFinanceiro();
+      const extrasContas = loadPersistedContasExtrasFinanceiro();
+      let merged = persisted ? { ...getExtratosIniciais(), ...persisted } : getExtratosIniciais();
+      for (const { nome } of extrasContas) {
+        if (!Array.isArray(merged[nome])) merged[nome] = [];
+      }
+      setExtratosPorBanco(merged);
+      setExtratosInativos(loadPersistedExtratosInativosFinanceiro());
+      setContasExtras(extrasContas);
+      setContasContabeisExtras(loadPersistedContasContabeisExtrasFinanceiro());
+      setContasContabeisInativas(loadPersistedContasContabeisInativasFinanceiro());
+    };
+    window.addEventListener(EVENT_FINANCEIRO_PERSISTENCIA_EXTERNA, h);
+    return () => window.removeEventListener(EVENT_FINANCEIRO_PERSISTENCIA_EXTERNA, h);
+  }, []);
+
   const [nomeNovaContaContabil, setNomeNovaContaContabil] = useState('');
   const [msgNovaContaContabil, setMsgNovaContaContabil] = useState(null);
   const [mostrarContasContabeisInativas, setMostrarContasContabeisInativas] = useState(false);

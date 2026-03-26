@@ -1,29 +1,20 @@
 import { API_BASE_URL } from './config';
-import { buildAuditoriaHeaders } from '../services/auditoriaCliente.js';
+import { buildDefaultApiHeaders } from './apiAuthHeaders.js';
+import { parseApiJsonResponse } from './parseApiResponse.js';
 
 const BASE = `${API_BASE_URL}/api/cadastro-pessoas`;
 
 function getOptions(method, body = null) {
   const opts = {
     method,
-    headers: {
-      'Content-Type': 'application/json',
-      ...buildAuditoriaHeaders(),
-    },
+    headers: buildDefaultApiHeaders(),
   };
   if (body) opts.body = JSON.stringify(body);
   return opts;
 }
 
 async function handleResponse(res) {
-  if (res.status === 204) return null;
-  const text = await res.text();
-  const data = text ? JSON.parse(text) : null;
-  if (!res.ok) {
-    const msg = data?.message || data?.error || `Erro ${res.status}`;
-    throw new Error(msg);
-  }
-  return data;
+  return parseApiJsonResponse(res);
 }
 
 /**
@@ -35,6 +26,30 @@ export async function listarClientes(apenasAtivos = false) {
   const url = apenasAtivos ? `${BASE}?apenasAtivos=true` : BASE;
   const res = await fetch(url, getOptions('GET'));
   return handleResponse(res);
+}
+
+/**
+ * Busca no cadastro por nome (contém, case-insensitive) **ou** por CPF/CNPJ (dígitos, contém).
+ * Envia só um filtro por requisição (o backend combina filtros com AND).
+ * @param {string} termo
+ * @param {{ apenasAtivos?: boolean, limite?: number }} [opts]
+ */
+export async function pesquisarCadastroPessoasPorNomeOuCpf(termo, { apenasAtivos = false, limite } = {}) {
+  const t = String(termo ?? '').trim();
+  if (!t) return [];
+  const hasLetters = /[a-zA-ZÀ-ÿ\u00C0-\u024F]/.test(t);
+  const digits = t.replace(/\D/g, '');
+  const qs = new URLSearchParams();
+  if (apenasAtivos) qs.set('apenasAtivos', 'true');
+  if (!hasLetters && digits.length >= 3) {
+    qs.set('cpf', digits);
+  } else {
+    qs.set('nome', t);
+  }
+  const res = await fetch(`${BASE}?${qs.toString()}`, getOptions('GET'));
+  const data = await handleResponse(res);
+  const arr = Array.isArray(data) ? data : [];
+  return typeof limite === 'number' && limite > 0 ? arr.slice(0, limite) : arr;
 }
 
 /**

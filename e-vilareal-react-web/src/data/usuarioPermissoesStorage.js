@@ -4,14 +4,87 @@
 
 import { navItems } from './mockData.js';
 import { getUsuariosAtivos } from './agendaPersistenciaData.js';
+import { featureFlags } from '../config/featureFlags.js';
 
 export const STORAGE_PERMISSOES_USUARIOS = 'vilareal.usuarios.permissoes.v1';
 export const STORAGE_USUARIO_SESSAO_ATIVA = 'vilareal.usuario.sessaoAtiva.v1';
 /** Quem usa de fato esta estação (navegador). Só o master (Itamar) pode alternar o perfil ativo para testar outros. */
 export const STORAGE_OPERADOR_ESTACAO = 'vilareal.usuario.operadorEstacao.v1';
+/** Usuário retornado pelo login JWT (sessionStorage — mesma aba que o token). */
+export const STORAGE_API_USUARIO_SESSAO = 'vilareal.auth.usuarioLogado.v1';
 
 /** Id do usuário master — único que pode escolher outros perfis no menu (teste do sistema). */
 export const USUARIO_MASTER_ID = 'itamar';
+
+/**
+ * Quem pode alternar perfil no menu: mock (Itamar) ou API com JWT (usuário id 1 = admin seed).
+ */
+export function idEhUsuarioMasterEstacao(operadorId) {
+  const id = String(operadorId ?? '').trim();
+  if (!id) return false;
+  if (featureFlags.requiresApiAuth) {
+    return id === '1' || id === USUARIO_MASTER_ID;
+  }
+  return id === USUARIO_MASTER_ID;
+}
+
+export function isUsuarioMasterEstacao() {
+  return idEhUsuarioMasterEstacao(getOperadorEstacaoId());
+}
+
+/**
+ * @returns {{ id: string, nome: string, login: string } | null}
+ */
+export function getApiUsuarioSessao() {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = sessionStorage.getItem(STORAGE_API_USUARIO_SESSAO);
+    if (!raw) return null;
+    const o = JSON.parse(raw);
+    if (!o || typeof o.id !== 'string' || !o.id) return null;
+    return {
+      id: o.id,
+      nome: typeof o.nome === 'string' ? o.nome : '',
+      login: typeof o.login === 'string' ? o.login : '',
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * @param {{ id: number|string, nome?: string, login?: string } | null | undefined} usuario
+ */
+export function setApiUsuarioSessao(usuario) {
+  if (typeof window === 'undefined' || usuario == null || usuario.id == null) return;
+  const id = String(usuario.id).trim();
+  if (!id) return;
+  try {
+    sessionStorage.setItem(
+      STORAGE_API_USUARIO_SESSAO,
+      JSON.stringify({
+        id,
+        nome: String(usuario.nome ?? ''),
+        login: String(usuario.login ?? ''),
+      }),
+    );
+    dispatchOperadorEstacao();
+    dispatchSessao();
+  } catch {
+    /* ignore */
+  }
+}
+
+export function clearApiUsuarioSessao() {
+  if (typeof window === 'undefined') return;
+  try {
+    sessionStorage.removeItem(STORAGE_API_USUARIO_SESSAO);
+    dispatchOperadorEstacao();
+    dispatchSessao();
+  } catch {
+    /* ignore */
+  }
+}
 
 /** Expande entradas com `children` (ex.: Calcular) em um módulo por sub-rota, para permissões e pathParaModuloId. */
 function modulosFromNavItems(items) {
@@ -60,6 +133,10 @@ function dispatchOperadorEstacao() {
  */
 export function getOperadorEstacaoId() {
   if (typeof window === 'undefined') return USUARIO_MASTER_ID;
+  if (featureFlags.requiresApiAuth) {
+    const api = getApiUsuarioSessao();
+    if (api?.id) return api.id;
+  }
   try {
     const raw = window.localStorage.getItem(STORAGE_OPERADOR_ESTACAO);
     if (raw) {
@@ -87,9 +164,9 @@ export function setOperadorEstacaoId(userId) {
   }
 }
 
-/** Itamar é o único que pode usar o seletor de perfil para testar como os outros. */
+/** Master (Itamar no mock ou admin id 1 na API com JWT) pode usar o seletor de perfil para testar como os outros. */
 export function operadorPodeAlternarPerfil() {
-  return getOperadorEstacaoId() === USUARIO_MASTER_ID;
+  return isUsuarioMasterEstacao();
 }
 
 export function loadPermissoesMapa() {
@@ -192,6 +269,12 @@ export function getRotuloModuloPorPathname(pathname) {
 
 export function getUsuarioSessaoAtualId() {
   if (typeof window === 'undefined') return 'itamar';
+  if (featureFlags.requiresApiAuth) {
+    const api = getApiUsuarioSessao();
+    if (api?.id && !idEhUsuarioMasterEstacao(api.id)) {
+      return api.id;
+    }
+  }
   try {
     const raw = window.localStorage.getItem(STORAGE_USUARIO_SESSAO_ATIVA);
     if (raw) {

@@ -355,6 +355,13 @@ export function Processos() {
   const [apiLoading, setApiLoading] = useState(false);
   const [apiSaving, setApiSaving] = useState(false);
   const [apiError, setApiError] = useState('');
+  const [historicoExternoTick, setHistoricoExternoTick] = useState(0);
+
+  useEffect(() => {
+    const h = () => setHistoricoExternoTick((t) => t + 1);
+    window.addEventListener('vilareal:processos-historico-atualizado', h);
+    return () => window.removeEventListener('vilareal:processos-historico-atualizado', h);
+  }, []);
 
   useEffect(() => {
     if (!featureFlags.useApiFinanceiro || !Number(processoApiId)) {
@@ -698,7 +705,7 @@ export function Processos() {
     }
     setPaginaHistorico(1);
     setInformacaoModal(null);
-  }, [codigoCliente, processo, location.key, location.state]);
+  }, [codigoCliente, processo, location.key, location.state, historicoExternoTick]);
 
   useEffect(() => {
     if (!featureFlags.useApiProcessos) return;
@@ -829,8 +836,9 @@ export function Processos() {
     }
     const usuariosAlvo = [
       { id: 'itamar', nome: 'Dr. Itamar' },
-      { id: 'kari', nome: 'Karla' },
-      { id: 'ana', nome: 'Ana Luisa' },
+      { id: 'karla', nome: 'Karla' },
+      { id: 'isabella', nome: 'Isabella' },
+      { id: 'thalita', nome: 'Thalita' },
     ];
 
     const resultado = agendarEmLoteParaUsuarios({

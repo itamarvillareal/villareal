@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { NavLink, useLocation, Link } from 'react-router-dom';
+import { NavLink, useLocation, Link, useNavigate } from 'react-router-dom';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { navItems } from '../data/mockData';
 import { SidebarMenuIcon } from './navigation/SidebarMenuIcons.jsx';
@@ -11,10 +11,13 @@ import {
   getPerfilAtivoParaPermissoes,
   operadorPodeAlternarPerfil,
   getOperadorEstacaoId,
-  USUARIO_MASTER_ID,
+  isUsuarioMasterEstacao,
+  getApiUsuarioSessao,
 } from '../data/usuarioPermissoesStorage.js';
 import { getNomeExibicaoUsuario } from '../data/usuarioDisplayHelpers.js';
 import { registrarAuditoria } from '../services/auditoriaCliente.js';
+import { useAuth } from '../context/AuthContext.jsx';
+import { featureFlags } from '../config/featureFlags.js';
 
 function itemMenuPermitido(item, podeFn) {
   if (Array.isArray(item.children) && item.children.length > 0) {
@@ -26,6 +29,8 @@ function itemMenuPermitido(item, podeFn) {
 export function Sidebar() {
   const [, setMenuTick] = useState(0);
   const location = useLocation();
+  const navigate = useNavigate();
+  const { isAuthenticated, logout } = useAuth();
   const [gruposAbertos, setGruposAbertos] = useState(() => new Set());
 
   useEffect(() => {
@@ -46,12 +51,13 @@ export function Sidebar() {
   const usuariosLista = getUsuariosAtivos();
   const podeAlternar = operadorPodeAlternarPerfil();
   const operadorId = getOperadorEstacaoId();
+  const apiSessao = getApiUsuarioSessao();
   const nomeOperador = getNomeExibicaoUsuario(usuariosLista?.find((u) => u.id === operadorId)) ?? operadorId;
 
   const pode = (modId) => usuarioPodeAcessarModulo(perfilId, modId);
   const navFiltrado = navItems
     .filter((item) => itemMenuPermitido(item, pode))
-    .filter((item) => item.id !== 'atividade' || operadorId === USUARIO_MASTER_ID);
+    .filter((item) => item.id !== 'atividade' || isUsuarioMasterEstacao());
 
   useEffect(() => {
     const p = location.pathname.replace(/\/+$/, '') || '/';
@@ -224,8 +230,9 @@ export function Sidebar() {
           ))}
             </select>
             <p className="mt-1.5 text-[10px] leading-snug text-gray-500">
-              Você está nesta estação como <strong className="text-gray-700">master</strong> ({USUARIO_MASTER_ID}
-              ). Escolha outro perfil para simular permissões e telas.
+              Você está nesta estação como <strong className="text-gray-700">master</strong> (
+              {apiSessao?.login || apiSessao?.nome || operadorId}). Escolha outro perfil para simular permissões e
+              telas.
             </p>
           </>
         ) : (
@@ -242,6 +249,18 @@ export function Sidebar() {
             </p>
           </>
         )}
+        {featureFlags.requiresApiAuth && isAuthenticated ? (
+          <button
+            type="button"
+            className="mt-2 w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
+            onClick={() => {
+              logout();
+              navigate('/login', { replace: true });
+            }}
+          >
+            Sair (sessão API)
+          </button>
+        ) : null}
       </div>
     </aside>
   );

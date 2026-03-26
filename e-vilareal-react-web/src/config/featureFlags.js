@@ -1,6 +1,8 @@
 /**
  * Variáveis `VITE_*` — homologação F1–F5: `npm run dev:homolog` + `.env.homolog` (ver docs/homologation-quick-start.md).
  */
+const mockCadastroPessoas = import.meta.env.VITE_USE_MOCK_CADASTRO_PESSOAS === 'true';
+
 export const featureFlags = {
   useApiUsuarios: import.meta.env.VITE_USE_API_USUARIOS === 'true',
   useApiClientes: import.meta.env.VITE_USE_API_CLIENTES === 'true',
@@ -21,6 +23,17 @@ export const featureFlags = {
     import.meta.env.VITE_ENABLE_LOCALSTORAGE_IMPORT_PHASE6_PUBLICACOES === 'true',
   /** Tarefas operacionais (Fase 8) — integração progressiva com API. */
   useApiTarefas: import.meta.env.VITE_USE_API_TAREFAS === 'true',
+  /**
+   * Exige tela de login JWT antes do app quando há integração real com `/api` no backend.
+   * Desative com `VITE_SKIP_API_AUTH=true` (ex.: só mock local).
+   */
+  requiresApiAuth:
+    import.meta.env.VITE_SKIP_API_AUTH === 'true'
+      ? false
+      : import.meta.env.VITE_BACKEND_JWT === 'true' ||
+        import.meta.env.VITE_USE_API_USUARIOS === 'true' ||
+        import.meta.env.VITE_USE_API_PESSOAS_COMPLEMENTARES === 'true' ||
+        mockCadastroPessoas === false,
 };
 
 export function isApiEnabled(flagName) {

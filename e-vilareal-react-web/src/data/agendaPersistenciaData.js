@@ -1,10 +1,26 @@
 import { agendaUsuarios as agendaUsuariosBase, getMockEventosAgendaPorData } from './mockData';
 import { getPessoaPorId } from './cadastroPessoasMock.js';
+import { featureFlags } from '../config/featureFlags.js';
+import { lerSnapshotUsuariosApi } from '../services/syncApiUsuariosSnapshot.js';
 
-const STORAGE_KEY = 'vilareal:agenda-eventos:v1';
+const STORAGE_KEY_EVENTOS_LEGACY = 'vilareal:agenda-eventos:v1';
+const STORAGE_KEY = 'vilareal:agenda-eventos:v2';
 const STORAGE_USUARIOS_KEY = 'vilareal:agenda-usuarios:v1';
-/** Inclui vínculo a Pessoas, apelido, login e hash de senha. */
 const STORAGE_USUARIOS_KEY_V2 = 'vilareal:agenda-usuarios:v2';
+/** Nova base: seed alinhado à agenda mock + slotAgendaId; substitui v1/v2 na primeira carga. */
+const STORAGE_USUARIOS_KEY_V3 = 'vilareal:agenda-usuarios:v3';
+
+/** kari/isabelia/ana → ids unificados com Board / agendaUsuarios. */
+const LEGACY_USUARIO_ID_AGENDA_MOCK = {
+  kari: 'karla',
+  isabelia: 'isabella',
+  ana: 'thalita',
+};
+
+const FLAG_EVENTOS_USUARIO_ID_REMAPEADO = 'vilareal:agenda-eventos:ids-remap-legado:v1';
+const FLAG_MIGRA_PERMS_PENDENCIAS_LEGADO = 'vilareal:legacy-ids-mock-agenda:v2';
+
+let __migracaoPermPendenciasAgendada = false;
 
 function enriquecerNomeComCadastroPessoa(u) {
   if (!u) return u;
@@ -17,18 +33,22 @@ function enriquecerNomeComCadastroPessoa(u) {
 
 /**
  * @param {object} u
- * @returns {{ id: string, nome: string, numeroPessoa: number|null, apelido: string, login: string, senhaHash: string } | null}
+ * @returns {{ id: string, nome: string, numeroPessoa: number|null, apelido: string, login: string, senhaHash: string, slotAgendaId?: string } | null}
  */
 function normalizarUsuarioPersistido(u) {
-  const id = u?.id != null ? String(u.id) : '';
-  const nome = u?.nome != null ? String(u.nome) : '';
+  const id = u?.id != null ? String(u.id).trim() : '';
+  const nome = (u?.nome != null ? String(u.nome) : '').trim();
   if (!id || !nome) return null;
   let numeroPessoa = null;
   if (u.numeroPessoa != null && u.numeroPessoa !== '') {
     const n = Number(u.numeroPessoa);
     if (Number.isFinite(n)) numeroPessoa = n;
   }
-  return {
+  let slotAgendaId = '';
+  if (u?.slotAgendaId != null && String(u.slotAgendaId).trim() !== '') {
+    slotAgendaId = String(u.slotAgendaId).trim();
+  }
+  const out = {
     id,
     nome,
     numeroPessoa,
@@ -36,11 +56,14 @@ function normalizarUsuarioPersistido(u) {
     login: u.login != null ? String(u.login).trim().toLowerCase() : '',
     senhaHash: u.senhaHash != null ? String(u.senhaHash) : '',
   };
+  if (slotAgendaId) out.slotAgendaId = slotAgendaId;
+  return out;
 }
 
 function validarUsuariosLista(usuarios) {
   const logins = new Map();
   const pessoas = new Map();
+  const slots = new Map();
   for (const u of usuarios) {
     const login = String(u.login || '').trim().toLowerCase();
     if (login) {
@@ -57,13 +80,26 @@ function validarUsuariosLista(usuarios) {
       }
       pessoas.set(n, u.id);
     }
+    const slot = u.slotAgendaId != null ? String(u.slotAgendaId).trim() : '';
+    if (slot) {
+      if (slots.has(slot) && String(slots.get(slot)) !== String(u.id)) {
+        return { ok: false, error: `Mais de um usuário na mesma coluna da agenda (${slot}).` };
+      }
+      slots.set(slot, u.id);
+    }
   }
   return { ok: true };
 }
 
+/** @returns {boolean} */
 function saveUsuariosAtivosInterno(usuarios) {
   try {
-    window.localStorage.setItem(STORAGE_USUARIOS_KEY_V2, JSON.stringify(usuarios));
+    window.localStorage.setItem(STORAGE_USUARIOS_KEY_V3, JSON.stringify(usuarios));
+    try {
+      window.localStorage.removeItem(STORAGE_USUARIOS_KEY_V2);
+    } catch {
+      /* ignore */
+    }
     try {
       window.localStorage.removeItem(STORAGE_USUARIOS_KEY);
     } catch {
@@ -76,8 +112,9 @@ function saveUsuariosAtivosInterno(usuarios) {
         // ignora
       }
     }
+    return true;
   } catch {
-    // ignora
+    return false;
   }
 }
 
@@ -215,7 +252,85 @@ function normalizarHora(valor) {
   return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
 }
 
+function remapUsuarioIdEventoAgendaMock(uid) {
+  const s = String(uid ?? '').trim();
+  return LEGACY_USUARIO_ID_AGENDA_MOCK[s] ?? s;
+}
+
+function aplicarRemapUsuarioIdsNoObjetoStore(store) {
+  const out = {};
+  for (const [data, lista] of Object.entries(store)) {
+    if (!Array.isArray(lista)) continue;
+    out[data] = lista.map((ev) =>
+      ev && typeof ev === 'object'
+        ? { ...ev, usuarioId: remapUsuarioIdEventoAgendaMock(ev.usuarioId) }
+        : ev
+    );
+  }
+  return out;
+}
+
+/** Copia v1 → v2 (se v2 ainda não existir) e remove v1. */
+function ensureAgendaEventosMigradosParaV2() {
+  if (typeof window === 'undefined') return;
+  try {
+    if (window.localStorage.getItem(STORAGE_KEY)) return;
+    const rawLeg = window.localStorage.getItem(STORAGE_KEY_EVENTOS_LEGACY);
+    if (!rawLeg) return;
+    const parsed = JSON.parse(rawLeg);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return;
+    const remapped = aplicarRemapUsuarioIdsNoObjetoStore(parsed);
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(remapped));
+    window.localStorage.removeItem(STORAGE_KEY_EVENTOS_LEGACY);
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Uma vez: ajusta usuarioId dentro do store v2 (dados já em v2 com ids antigos). */
+function ensureUsuarioIdsRemapadosNoStoreV2() {
+  if (typeof window === 'undefined') return;
+  if (window.localStorage.getItem(FLAG_EVENTOS_USUARIO_ID_REMAPEADO) === '1') return;
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) {
+      window.localStorage.setItem(FLAG_EVENTOS_USUARIO_ID_REMAPEADO, '1');
+      return;
+    }
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      window.localStorage.setItem(FLAG_EVENTOS_USUARIO_ID_REMAPEADO, '1');
+      return;
+    }
+    const next = aplicarRemapUsuarioIdsNoObjetoStore(parsed);
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    window.localStorage.setItem(FLAG_EVENTOS_USUARIO_ID_REMAPEADO, '1');
+  } catch {
+    /* ignore */
+  }
+}
+
+function agendarMigracaoPermissoesPendenciasIdsLegados() {
+  if (typeof window === 'undefined') return;
+  if (window.localStorage.getItem(FLAG_MIGRA_PERMS_PENDENCIAS_LEGADO) === '1') return;
+  if (__migracaoPermPendenciasAgendada) return;
+  __migracaoPermPendenciasAgendada = true;
+  queueMicrotask(() => {
+    import('../services/migrarUsuarioIdLocal.js')
+      .then(({ migrarUsuarioIdLocal }) => {
+        if (window.localStorage.getItem(FLAG_MIGRA_PERMS_PENDENCIAS_LEGADO) === '1') return;
+        for (const [antigo, novo] of Object.entries(LEGACY_USUARIO_ID_AGENDA_MOCK)) {
+          migrarUsuarioIdLocal(antigo, novo);
+        }
+        window.localStorage.setItem(FLAG_MIGRA_PERMS_PENDENCIAS_LEGADO, '1');
+      })
+      .catch(() => {});
+  });
+}
+
 function loadStore() {
+  ensureAgendaEventosMigradosParaV2();
+  ensureUsuarioIdsRemapadosNoStoreV2();
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return {};
@@ -282,6 +397,31 @@ export function clonarAgendaEntreUsuarios({ origemUsuarioId, destinoUsuarioId })
     saveStore(store);
   }
   return { ok: true, clonados };
+}
+
+/**
+ * Atualiza `usuarioId` nos compromissos já persistidos (mesmo evento, novo id de usuário).
+ * @returns {{ ok: true, alterados: number }}
+ */
+export function substituirUsuarioIdNaAgendaPersistida(antigoUsuarioId, novoUsuarioId) {
+  const antigo = String(antigoUsuarioId ?? '').trim();
+  const novo = String(novoUsuarioId ?? '').trim();
+  if (!antigo || !novo || antigo === novo) return { ok: true, alterados: 0 };
+  const store = loadStore();
+  let alterados = 0;
+  for (const data of Object.keys(store)) {
+    const lista = Array.isArray(store[data]) ? store[data] : [];
+    let mudou = false;
+    const next = lista.map((ev) => {
+      if (!ev || String(ev.usuarioId ?? '').trim() !== antigo) return ev;
+      alterados += 1;
+      mudou = true;
+      return { ...ev, usuarioId: novo };
+    });
+    if (mudou) store[data] = ordenarListaEventosAgenda(next);
+  }
+  if (alterados > 0) saveStore(store);
+  return { ok: true, alterados };
 }
 
 function keyEvento({ data, hora, descricao, usuarioId, numeroProcessoNovo }) {
@@ -750,33 +890,45 @@ export function agendarEmLoteParaUsuarios({
   return { ok: true, inseridos, atualizados, ocorrencias: ocorrencias.length, usuarios: usuariosValidos.length };
 }
 
+function semearUsuariosAgendaAlinhadoMock() {
+  const base = Array.isArray(agendaUsuariosBase) ? agendaUsuariosBase : [];
+  return base
+    .map((ag) =>
+      normalizarUsuarioPersistido({
+        id: String(ag.id),
+        nome: String(ag.nome ?? '').trim() || String(ag.id),
+        numeroPessoa: null,
+        apelido: '',
+        login: '',
+        senhaHash: '',
+        slotAgendaId: String(ag.id),
+      })
+    )
+    .filter(Boolean);
+}
+
 function loadUsuariosAtivos() {
   try {
-    const raw2 = window.localStorage.getItem(STORAGE_USUARIOS_KEY_V2);
-    if (raw2) {
-      const parsed = JSON.parse(raw2);
-      if (Array.isArray(parsed)) {
+    const raw3 = window.localStorage.getItem(STORAGE_USUARIOS_KEY_V3);
+    if (raw3) {
+      const parsed = JSON.parse(raw3);
+      if (Array.isArray(parsed) && parsed.length > 0) {
         return parsed.map(normalizarUsuarioPersistido).filter(Boolean);
       }
     }
-    const raw = window.localStorage.getItem(STORAGE_USUARIOS_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return null;
-    const migrated = parsed
-      .map((u) =>
-        normalizarUsuarioPersistido({
-          id: u.id,
-          nome: u.nome,
-          numeroPessoa: null,
-          apelido: '',
-          login: '',
-          senhaHash: '',
-        })
-      )
-      .filter(Boolean);
-    saveUsuariosAtivosInterno(migrated);
-    return migrated;
+    try {
+      window.localStorage.removeItem(STORAGE_USUARIOS_KEY_V2);
+    } catch {
+      /* ignore */
+    }
+    try {
+      window.localStorage.removeItem(STORAGE_USUARIOS_KEY);
+    } catch {
+      /* ignore */
+    }
+    const seed = semearUsuariosAgendaAlinhadoMock();
+    if (seed.length) saveUsuariosAtivosInterno(seed);
+    return seed.length ? seed : null;
   } catch {
     return null;
   }
@@ -790,8 +942,44 @@ function usuarioComCamposPadrao(u) {
     apelido: u.apelido,
     login: u.login,
     senhaHash: u.senhaHash,
+    slotAgendaId: u.slotAgendaId,
   });
   return n;
+}
+
+/** Id só dígitos (ex.: API) — não recebe inferência de coluna da agenda mock. */
+function idUsuarioSoDigitos(id) {
+  return /^\d+$/.test(String(id ?? '').trim());
+}
+
+/**
+ * Liga usuário com id alterado (ex.: KARKAR) à coluna fixa da agenda (ex.: karla) quando há um único órfão e slot livre.
+ */
+function aplicarInferenciaSlotAgenda(usuarios) {
+  const base = Array.isArray(agendaUsuariosBase) ? agendaUsuariosBase : [];
+  if (!usuarios?.length || !base.length) return usuarios;
+  const baseIds = new Set(base.map((a) => String(a.id)));
+  const used = new Set();
+  for (const u of usuarios) {
+    const s = u.slotAgendaId != null ? String(u.slotAgendaId).trim() : '';
+    if (s) used.add(s);
+    if (baseIds.has(String(u.id))) used.add(String(u.id));
+  }
+  const candidatos = usuarios.filter((u) => {
+    const idStr = String(u.id ?? '').trim();
+    if (!idStr) return false;
+    if (u.slotAgendaId != null && String(u.slotAgendaId).trim() !== '') return false;
+    if (baseIds.has(idStr)) return false;
+    if (idUsuarioSoDigitos(idStr)) return false;
+    return true;
+  });
+  if (candidatos.length !== 1) return usuarios;
+  const livre = base.find((ag) => !used.has(String(ag.id)));
+  if (!livre) return usuarios;
+  const alvoId = String(candidatos[0].id);
+  return usuarios.map((u) =>
+    String(u.id) === alvoId ? { ...u, slotAgendaId: String(livre.id) } : u
+  );
 }
 
 /** Registro mínimo a partir da lista base (Agenda / mock). */
@@ -803,10 +991,21 @@ export function criarUsuarioRegistroMinimo(ag) {
     apelido: '',
     login: '',
     senhaHash: '',
+    slotAgendaId: String(ag.id),
   });
 }
 
 export function getUsuariosAtivos() {
+  if (featureFlags.useApiUsuarios) {
+    const snap = lerSnapshotUsuariosApi();
+    if (Array.isArray(snap) && snap.length > 0) {
+      const out = snap
+        .map((u) => enriquecerNomeComCadastroPessoa(usuarioComCamposPadrao(u)))
+        .filter(Boolean);
+      agendarMigracaoPermissoesPendenciasIdsLegados();
+      return out;
+    }
+  }
   const fromStore = loadUsuariosAtivos();
   const base = Array.isArray(agendaUsuariosBase) ? agendaUsuariosBase : [];
   const lista = fromStore && fromStore.length > 0 ? fromStore : base;
@@ -815,9 +1014,14 @@ export function getUsuariosAtivos() {
   if (basePrimeiro && Array.isArray(lista) && !lista.some((u) => String(u?.id || '') === String(basePrimeiro.id))) {
     merged = [basePrimeiro, ...lista];
   }
-  return merged
+  let out = merged
     .map((u) => enriquecerNomeComCadastroPessoa(usuarioComCamposPadrao(u)))
     .filter(Boolean);
+  if (!featureFlags.useApiUsuarios) {
+    out = aplicarInferenciaSlotAgenda(out);
+  }
+  agendarMigracaoPermissoesPendenciasIdsLegados();
+  return out;
 }
 
 /**
@@ -839,11 +1043,15 @@ export function setUsuariosAtivos(usuarios) {
     const comBase = [min, ...filtrados].filter(Boolean);
     valid = validarUsuariosLista(comBase);
     if (!valid.ok) return valid;
-    saveUsuariosAtivosInterno(comBase);
+    if (!saveUsuariosAtivosInterno(comBase)) {
+      return { ok: false, error: 'Não foi possível gravar os usuários (armazenamento do navegador).' };
+    }
     return { ok: true };
   }
 
-  saveUsuariosAtivosInterno(filtrados);
+  if (!saveUsuariosAtivosInterno(filtrados)) {
+    return { ok: false, error: 'Não foi possível gravar os usuários (armazenamento do navegador).' };
+  }
   return { ok: true };
 }
 

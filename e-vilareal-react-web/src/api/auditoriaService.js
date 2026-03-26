@@ -1,14 +1,11 @@
 import { API_BASE_URL } from './config.js';
-import { buildAuditoriaHeaders } from '../services/auditoriaCliente.js';
+import { buildDefaultApiHeaders } from './apiAuthHeaders.js';
+import { parseApiJsonResponse } from './parseApiResponse.js';
 
 const BASE = `${API_BASE_URL}/api/auditoria/atividades`;
 
 function mergeHeaders(extra = {}) {
-  return {
-    'Content-Type': 'application/json',
-    ...buildAuditoriaHeaders(),
-    ...extra,
-  };
+  return buildDefaultApiHeaders(extra);
 }
 
 /**
@@ -41,20 +38,5 @@ export async function listarAtividadesAuditoria(params = {}) {
     method: 'GET',
     headers: mergeHeaders(),
   });
-  const text = await res.text();
-  let data = null;
-  try {
-    data = text ? JSON.parse(text) : null;
-  } catch {
-    data = null;
-  }
-  if (!res.ok) {
-    const msg =
-      data?.message ||
-      data?.error ||
-      (typeof data?.status === 'number' && data?.path ? `${data.status} — ${data.path}` : null) ||
-      `Erro ${res.status}`;
-    throw new Error(String(msg));
-  }
-  return data;
+  return parseApiJsonResponse(res);
 }

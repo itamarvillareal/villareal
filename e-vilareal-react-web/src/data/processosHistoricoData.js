@@ -248,6 +248,11 @@ function saveStore(store) {
   }
 }
 
+/** Outras abas não compartilham o cache em memória; invalidar ao receber `storage` (cross-tab). */
+export function invalidateProcessosHistoricoStoreCache() {
+  _storeCache = null;
+}
+
 function normalizarHistoricoItem(item) {
   if (!item || typeof item !== 'object') return null;
   const info = String(item.info ?? '').trim();

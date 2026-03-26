@@ -386,6 +386,16 @@ export function CadastroClientes() {
     if (procFromState) setPesquisaProcesso(procFromState);
   }, [codClienteFromState, procFromState, aplicarDadosCliente]);
 
+  useEffect(() => {
+    const h = () => aplicarDadosCliente(codigo);
+    window.addEventListener('vilareal:cadastro-clientes-externo-atualizado', h);
+    window.addEventListener('vilareal:processos-historico-atualizado', h);
+    return () => {
+      window.removeEventListener('vilareal:cadastro-clientes-externo-atualizado', h);
+      window.removeEventListener('vilareal:processos-historico-atualizado', h);
+    };
+  }, [codigo, aplicarDadosCliente]);
+
   /** Volta da tela Processos (ou outro fluxo): alinha «Descrição da Ação» ao mesmo `naturezaAcao` do histórico. */
   useEffect(() => {
     if (location.pathname !== '/pessoas') return;
