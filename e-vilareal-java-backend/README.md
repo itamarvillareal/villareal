@@ -52,8 +52,11 @@ Scripts em `src/main/resources/db/migration/`:
 
 - **V1__init.sql** — schema (`pessoa`, complementar, endereço, contato, `usuarios`, `perfil`, `usuario_perfil`).  
 - **V2__bootstrap_admin.sql** — usuário inicial para desenvolvimento.  
-- **V3__seed_10_pessoas_mock_completo.sql** — 10 pessoas (ids `2`–`11`) com dados do mock do React (`cadastroPessoasMock.js`), incluindo complementares, endereços e contatos.  
-- **V4__processo.sql** — `processo`, `processo_parte`, `processo_andamento`, `processo_prazo` (integração com `VITE_USE_API_PROCESSOS=true`).
+- **V3__seed_10_pessoas_mock_completo.sql** — placeholder (não insere pessoas mock).  
+- **V14__limpar_dados_operacionais_demo.sql** — zera dados operacionais no banco (lançamentos financeiros, cálculos, tarefas, agenda, auditoria, processos, usuários/pessoas exceto o admin id `1`), mantém perfis e plano de contas (`financeiro_conta_contabil`) e restaura a hierarquia padrão de tópicos. Aplica-se automaticamente na próxima subida após o Flyway incluir esta versão.
+
+No **React**, para apagar persistências de demonstração no navegador (sem remover o tema escuro), use no console de desenvolvimento:  
+`import('/src/utils/clearLocalMockData.js').then((m) => m.clearLocalMockData({ clearAuth: true }))` — `clearAuth` remove também o JWT da aba.
 
 ### Usuário seed (dev)
 

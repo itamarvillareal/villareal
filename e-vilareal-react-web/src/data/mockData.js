@@ -1,5 +1,5 @@
 /**
- * Dados mockados para o projeto jurídico VILA real
+ * Navegação e defaults de UI compartilhados (Pendências, Agenda, Cadastro de Clientes).
  */
 
 export const navItems = [
@@ -80,9 +80,9 @@ export const tasksByColumn = {
     { id: 'k3', title: '', isEmpty: true },
   ],
   isabella: [
-    { id: 'i1', title: 'Atualizar proprietarios farol do lago (Dalmo)', isEmpty: false },
-    { id: 'i2', title: "IPTU'S", isEmpty: false },
-    { id: 'i3', title: 'Conferir acordos ASFAROL', isEmpty: false },
+    { id: 'i1', title: '', isEmpty: true },
+    { id: 'i2', title: '', isEmpty: true },
+    { id: 'i3', title: '', isEmpty: true },
   ],
   thalita: [
     { id: 't1', title: '', isEmpty: true },
@@ -91,31 +91,19 @@ export const tasksByColumn = {
   ],
 };
 
-/** Dados mockados: PDF clientes_cadastrados (cod. cliente 1 → pessoa 64) */
+/** Valores padrão neutros para novo cliente (sem PDF / demonstração). */
 export const clienteMock = {
   proximoCliente: '00000001000',
   codigo: '00000001',
-  pessoa: '64',
-  nomeRazao: 'ALEXANDRA GONTIJO DE SOUZA',
-  cnpjCpf: '001.298.131-17',
-  edicaoDesabilitada: true,
+  pessoa: '',
+  nomeRazao: '',
+  cnpjCpf: '',
+  edicaoDesabilitada: false,
   clienteInativo: false,
   observacao: '',
 };
 
-/** Índice = nº do processo (1–10) no cliente; descrições alinhadas ao mock 10×10 (getMockProcesso10x10). */
-export const processosClienteMock = [
-  { id: 1, processoVelho: '-', processoNovo: '5561596-17.2025.8.09.0137', parteOposta: 'FLAVIA GOMES SANTOS', descricao: 'AÇÃO DE INDENIZAÇÃO POR DANOS' },
-  { id: 2, processoVelho: '-', processoNovo: '5602801-26.2025.8.09.0137', parteOposta: 'JAILIS PEREIRA DOURADO', descricao: 'AÇÃO DECLARATÓRIA DE NULIDADE' },
-  { id: 3, processoVelho: '-', processoNovo: '5612345-12.2025.8.09.0137', parteOposta: 'CONDOMINIO PORTAL DOS YPES 3 - CASAS FLA', descricao: 'PEDIDO DE DANO MORAL POR CONS' },
-  { id: 4, processoVelho: '-', processoNovo: '5623456-33.2025.8.09.0137', parteOposta: 'MARIA SILVA COSTA', descricao: 'AÇÃO DE COBRANÇA' },
-  { id: 5, processoVelho: '-', processoNovo: '5634567-45.2025.8.09.0137', parteOposta: 'JOSÉ OLIVEIRA LIMA', descricao: 'AÇÃO DE DESPEJO' },
-  { id: 6, processoVelho: '-', processoNovo: '5645678-56.2025.8.09.0137', parteOposta: 'ANA PAULA FERREIRA', descricao: 'AÇÃO DE INDENIZAÇÃO' },
-  { id: 7, processoVelho: '-', processoNovo: '5656789-67.2025.8.09.0137', parteOposta: 'CARLOS EDUARDO SOUZA', descricao: 'AÇÃO DE USUCAPIÃO' },
-  { id: 8, processoVelho: '-', processoNovo: '5667890-78.2025.8.09.0137', parteOposta: 'FERNANDA LOPES SANTOS', descricao: 'AÇÃO DE DIVÓRCIO' },
-  { id: 9, processoVelho: '-', processoNovo: '5678901-89.2025.8.09.0137', parteOposta: 'ROBERTO ALVES PEREIRA', descricao: 'AÇÃO TRABALHISTA' },
-  { id: 10, processoVelho: '-', processoNovo: '5689012-90.2025.8.09.0137', parteOposta: 'PATRICIA MENDES COSTA', descricao: 'AÇÃO DE ALIMENTOS' },
-];
+export const processosClienteMock = [];
 
 export const controleButtons = [
   { id: 'agenda', label: 'Agenda', icon: 'BookOpen' },
@@ -139,14 +127,9 @@ export const agendaUsuarios = [
 export const agendaDataEsquerda = '10/03/2026'; // Terça-feira
 export const agendaDataDireita = '11/03/2026'; // Quarta-feira
 
-/** Eventos de exemplo mínimos (merge com persistência local em vilareal:agenda-eventos:v2). */
-export const agendaEventosTerça = [
-  { id: 1, hora: '09:00', descricao: 'Compromisso de exemplo (mock — terça)', destaque: true },
-];
+export const agendaEventosTerça = [];
 
-export const agendaEventosQuarta = [
-  { id: 2, hora: '10:00', descricao: 'Compromisso de exemplo (mock — quarta)', destaque: false },
-];
+export const agendaEventosQuarta = [];
 
 /** Eventos mock do dia (para relatório mensal e mesma regra de merge da tela). */
 export function getMockEventosAgendaPorData(dataBr) {

@@ -134,20 +134,6 @@ export function gerarMockClienteEProcessos(codigo) {
     });
   }
 
-  if (n >= 1 && n <= 10) {
-    const cnpjCpf =
-      base.cnpjCpf !== '—'
-        ? base.cnpjCpf
-        : `00.${String(n).padStart(3, '0')}.000/0001-00`;
-    return {
-      codigoCliente,
-      pessoa: base.pessoa,
-      nomeRazao: base.nomeRazao,
-      cnpjCpf,
-      processos: procRows,
-    };
-  }
-
   return {
     codigoCliente,
     pessoa: base.pessoa,

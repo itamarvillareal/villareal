@@ -75,7 +75,7 @@ export function getRelatorioProcessosMockLinhasBase() {
     const descricao =
       processosClienteMock[p - 1]?.descricao?.trim() ||
       String(m.naturezaAcao ?? u.naturezaAcao ?? '').trim() ||
-      'AÇÃO (MOCK)';
+      '—';
 
     const parteSlice = String(u.parteCliente ?? '').slice(0, 40);
 
@@ -89,14 +89,14 @@ export function getRelatorioProcessosMockLinhasBase() {
       proc: String(p),
       numeroProcesso: u.processoNovo,
       inRequerente: (c + p + idx) % 4 === 1 ? 'REQUERIDO' : '',
-      ultimoAndamento: `ANDAMENTO — ${String(m.naturezaAcao ?? u.naturezaAcao ?? 'MOCK').slice(0, 80)}`,
+      ultimoAndamento: `ANDAMENTO — ${String(m.naturezaAcao ?? u.naturezaAcao ?? '—').slice(0, 80)}`,
       dataConsulta: dataBrDeslocada(c, p, 0),
       proximaConsulta: dataBrDeslocada(c, p, 28),
       observacaoProcesso: `Proc. cadastro ${pad8(c)} / ${p}${parteSlice ? ` · ${parteSlice}…` : ''}`,
       consultor,
       lmv: String((c * 3 + p * 5) % 40 || 1),
       fase: m.faseSelecionada || 'Em Andamento',
-      observacaoFase: idx % 7 === 3 ? 'Obs. fase (mock alinhado)' : '',
+      observacaoFase: '',
       descricaoAcao: descricao,
       prazoFatal: temPrazo ? dataBrDeslocada(c, p, 60) : '',
       competencia: m.competencia,

@@ -3,6 +3,29 @@ import { hojeDdMmYyyy } from '../services/hjDateAliasService.js';
 
 const STORAGE_KEY = 'vilareal:processos-historico:v1';
 
+/**
+ * Incremente para limpar uma vez no navegador persistências antigas de demonstração
+ * (histórico de processos, seed demo, cadastro de clientes local).
+ */
+const LS_DEMO_PURGE_SCHEMA_KEY = 'vilareal:demo-persistence:schema';
+const LS_DEMO_PURGE_SCHEMA = 2;
+
+function maybePurgeDemoPersistenceOnce() {
+  if (typeof window === 'undefined') return;
+  try {
+    const cur = Number(window.localStorage.getItem(LS_DEMO_PURGE_SCHEMA_KEY) || '0');
+    if (cur >= LS_DEMO_PURGE_SCHEMA) return;
+    window.localStorage.removeItem(STORAGE_KEY);
+    window.localStorage.removeItem(DEMO_SEED_VERSION_KEY);
+    window.localStorage.removeItem('vilareal:demo-integrado:version');
+    window.localStorage.removeItem('vilareal:cadastro-clientes-dados:v1');
+    window.localStorage.removeItem('vilareal:cadastro-clientes-ultimo-cod:v1');
+    window.localStorage.setItem(LS_DEMO_PURGE_SCHEMA_KEY, String(LS_DEMO_PURGE_SCHEMA));
+  } catch {
+    /* ignore */
+  }
+}
+
 /** Versão do pacote de dados demo (incremente para reaplicar chaves novas em quem já rodou seed). */
 export const DEMO_SEED_VERSION = 3;
 const DEMO_SEED_VERSION_KEY = 'vilareal:processos-historico:demo-seed-version';
@@ -220,6 +243,7 @@ let _storeCache = null;
 
 function loadStore() {
   if (_storeCache !== null) return _storeCache;
+  maybePurgeDemoPersistenceOnce();
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) {

@@ -1566,7 +1566,7 @@ export function Calculos() {
       </header>
 
       <div className="px-3 py-2 bg-slate-500 text-white flex items-center justify-between">
-        <span className="font-medium">{rodadaAtual.cabecalho?.autor ?? 'CLIENTE (MOCK)'} x {rodadaAtual.cabecalho?.reu ?? 'PARTE OPOSTA (MOCK)'}</span>
+        <span className="font-medium">{rodadaAtual.cabecalho?.autor ?? '—'} x {rodadaAtual.cabecalho?.reu ?? '—'}</span>
         <span className="text-sm font-mono">{String(codigoClienteNorm)}</span>
       </div>
 

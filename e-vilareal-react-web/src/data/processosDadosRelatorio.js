@@ -149,57 +149,42 @@ export function gerarMockProcesso(codigoCliente, processo) {
   const p = Number(normalizarProcesso(processo));
   const nomeClienteCadastro = getNomePessoaCadastroPorCodigoCliente(c);
   const u = getDadosProcessoClienteUnificado(c, p);
-  const uf = UFS[(c - 1) % UFS.length]?.sigla ?? 'GO';
-  const cidade = (CIDADES_POR_UF[uf] || ['RIO VERDE'])[p % (CIDADES_POR_UF[uf]?.length || 1)] || 'RIO VERDE';
-  const fase = FASES[(c + p) % FASES.length] ?? 'Em Andamento';
-  const competencia = COMPETENCIAS[(p - 1) % COMPETENCIAS.length] ?? '2º JUIZADO ESPECIAL CÍVEL';
+
+  const vazio = {
+    codigoCliente: padCliente(c),
+    processo: p,
+    cliente: nomeClienteCadastro ?? '',
+    parteCliente: '',
+    parteOposta: '',
+    estado: '',
+    cidade: '',
+    faseSelecionada: '',
+    competencia: '',
+    numeroProcessoVelho: '',
+    numeroProcessoNovo: '',
+    statusAtivo: true,
+    parteRequerente: false,
+    parteRevel: false,
+    parteRequerido: false,
+    dataProtocolo: '',
+    naturezaAcao: '',
+    valorCausa: '',
+    consultaAutomatica: false,
+    observacao: '',
+  };
 
   if (!u) {
-    return {
-      codigoCliente: padCliente(c),
-      processo: p,
-      cliente: nomeClienteCadastro ?? `CLIENTE ${String(c).padStart(3, '0')} (MOCK)`,
-      parteCliente: '',
-      parteOposta: '',
-      estado: uf,
-      cidade,
-      faseSelecionada: fase,
-      competencia,
-      numeroProcessoVelho: '',
-      numeroProcessoNovo: '',
-      statusAtivo: (c + p) % 3 !== 0,
-      parteRequerente: (c + p) % 3 === 0,
-      parteRevel: (c + p) % 3 === 1,
-      parteRequerido: (c + p) % 3 === 2,
-      dataProtocolo: `${String(((p - 1) % 28) + 1).padStart(2, '0')}/${String(((c - 1) % 12) + 1).padStart(2, '0')}/2025`,
-      naturezaAcao: '—',
-      valorCausa: `${(1000 + c * 37 + p * 41).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-      consultaAutomatica: (c + p) % 2 === 0,
-      observacao: `Dados mock do Processo.\nCliente: ${c}\nProcesso: ${p}`,
-    };
+    return vazio;
   }
 
   return {
-    codigoCliente: padCliente(c),
-    processo: p,
+    ...vazio,
     cliente: nomeClienteCadastro ?? u.autor,
     parteCliente: u.parteCliente,
     parteOposta: u.parteOposta,
-    estado: uf,
-    cidade,
-    faseSelecionada: fase,
-    competencia,
     numeroProcessoVelho: u.processoVelho,
     numeroProcessoNovo: u.processoNovo,
-    statusAtivo: (c + p) % 3 !== 0,
-    parteRequerente: (c + p) % 3 === 0,
-    parteRevel: (c + p) % 3 === 1,
-    parteRequerido: (c + p) % 3 === 2,
-    dataProtocolo: `${String(((p - 1) % 28) + 1).padStart(2, '0')}/${String(((c - 1) % 12) + 1).padStart(2, '0')}/2025`,
     naturezaAcao: u.naturezaAcao,
-    valorCausa: `${(1000 + c * 37 + p * 41).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-    consultaAutomatica: (c + p) % 2 === 0,
-    observacao: `Dados mock do Processo.\nCliente: ${c}\nProcesso: ${p}`,
   };
 }
 

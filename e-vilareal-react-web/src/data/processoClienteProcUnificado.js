@@ -9,10 +9,6 @@ function pad2(n) {
   return String(n).padStart(2, '0');
 }
 
-function pad3(n) {
-  return String(n).padStart(3, '0');
-}
-
 function descricaoBasePorProcIndex(p) {
   const idx = ((Math.floor(Number(p)) - 1) % 10 + 10) % 10;
   return processosClienteMock[idx]?.descricao;
@@ -56,23 +52,6 @@ export function getDadosProcessoClienteUnificado(codigoClienteNum, procNum) {
     };
   }
 
-  const seq = 5600000 + n * 37 + p * 11;
-  const dv = String(10 + ((n + p) % 90)).padStart(2, '0');
-  const foro = String(1000 + ((n * 13 + p * 7) % 900)).slice(-4);
-  const numeroProcessoNovo = `${String(seq).slice(0, 7)}-${dv}.2025.8.09.${foro}`;
-  const parteOposta = `RÉU MOCK C${pad3(n)}/P${pad2(p)}`;
-  const autor = `AUTOR MOCK C${pad3(n)}/P${pad2(p)}`;
-  const descricao = baseTipo ?? `AÇÃO MOCK CLIENTE ${pad3(n)} — PROC ${pad2(p)}`;
-
-  return {
-    processoVelho: '-',
-    processoNovo: numeroProcessoNovo,
-    autor,
-    reu: parteOposta,
-    parteOposta,
-    parteCliente: `PARTE CLIENTE ${pad3(n)} — PROC ${pad2(p)}`,
-    tipoAcao: baseTipo ?? 'AÇÃO (MOCK)',
-    descricao,
-    naturezaAcao: descricao,
-  };
+  /* Sem seed estático (PDF/10×10): não inventar processos — use API, histórico ou cadastro persistido. */
+  return null;
 }

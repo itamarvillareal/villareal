@@ -136,55 +136,8 @@ function pickCampoBoolSalvo(reg, key, mockVal) {
   return reg[key] === true || reg[key] === 'true';
 }
 
-function gerarHistoricoMock(codigoCliente, processo) {
-  const c = Number(normalizarCliente(codigoCliente));
-  const p = Number(normalizarProcesso(processo));
-  const usuarios = ['KARLA', 'MARIA', 'JOÃO', 'PAULO', 'ANA'];
-  const tipos = [
-    'DESPACHO',
-    'JUNTADA',
-    'INTIMAÇÃO',
-    'AUDIÊNCIA',
-    'CITAÇÃO',
-    'PETIÇÃO',
-    'DECISÃO',
-    'CERTIDÃO',
-    'DISTRIBUIÇÃO',
-    'PROTOCOLO',
-  ];
-
-  // “Seed” determinístico para variar por cliente/processo
-  let seed = (c * 1103515245 + p * 12345) >>> 0;
-  const rand = () => {
-    seed = (seed * 1664525 + 1013904223) >>> 0;
-    return seed / 0xffffffff;
-  };
-
-  const total = 18 + ((c + p) % 8); // 18–25 itens
-  const baseDia = 1 + ((c + p) % 20);
-  const baseMes = 1 + ((c * 3 + p) % 12);
-  const baseAno = 2025;
-
-  const rows = [];
-  for (let i = 0; i < total; i++) {
-    const idx = total - i; // “Inf.” decrescendo
-    const dia = String(((baseDia + i) % 28) + 1).padStart(2, '0');
-    const mes = String(((baseMes + Math.floor(i / 6)) % 12) + 1).padStart(2, '0');
-    const ano = String(baseAno);
-    const usuario = usuarios[Math.floor(rand() * usuarios.length)];
-    const tipo = tipos[Math.floor(rand() * tipos.length)];
-    const num = String(idx).padStart(4, '0');
-    const detalhe = `Cliente ${String(c).padStart(3, '0')} / Proc ${String(p).padStart(2, '0')}`;
-    rows.push({
-      id: Number(`${c}${p}${idx}`),
-      inf: String(idx).padStart(2, '0'),
-      info: `${tipo}: atualização mock (${detalhe})`,
-      data: `${dia}/${mes}/${ano}`,
-      usuario,
-      numero: num,
-    });
-  }
-  return rows;
+function gerarHistoricoMock() {
+  return [];
 }
 
 function apenasDigitos(val) {
@@ -335,7 +288,7 @@ export function Processos() {
   /** Ação de redação guardada para o par cliente×processo (também em sessionStorage). */
   const [acaoRedacaoVinculada, setAcaoRedacaoVinculada] = useState(null);
   const indiceAcaoRedacaoFocadaRef = useRef(0);
-  const [historico, setHistorico] = useState(() => gerarHistoricoMock('1', 1));
+  const [historico, setHistorico] = useState(() => []);
   const [proximaInformacao, setProximaInformacao] = useState('');
   const [dataProximaInformacao, setDataProximaInformacao] = useState('');
   const [paginaHistorico, setPaginaHistorico] = useState(1);
@@ -642,7 +595,7 @@ export function Processos() {
             ? String(mockDoImovel.unidade).trim()
             : vinc && String(vinc.unidade ?? '').trim() !== ''
               ? String(vinc.unidade).trim()
-              : 'Unidade QD.06 LT.06';
+              : '';
     setUnidadeEndereco(mergedUnidade);
 
     const historicoPersistido = getHistoricoDoProcesso(mock.codigoCliente, mock.processo);
@@ -695,7 +648,7 @@ export function Processos() {
         });
       }
     } else {
-      const historicoInicial = gerarHistoricoMock(mock.codigoCliente, mock.processo);
+      const historicoInicial = gerarHistoricoMock();
       setHistorico(historicoInicial);
       seedHistoricoDoProcesso({
         ...payloadFormBase,

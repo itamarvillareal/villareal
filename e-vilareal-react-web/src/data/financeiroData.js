@@ -21,10 +21,8 @@ import { BTG_JA_EXTRATO_MOCK_XLS } from './btgJaExtratoMock.js';
 import { BTG_RACHEL_EXTRATO_MOCK_XLS } from './btgRachelExtratoMock.js';
 import { BTG_BANKING_EXTRATO_MOCK_XLS } from './btgBankingExtratoMock.js';
 import { BB_EXTRATO_MOCK_XLS } from './bbExtratoMock.js';
-import { getExtratosVinculacaoTestePorBanco } from './vinculacaoAutomaticaTestMock.js';
 
-/** Lançamentos de teste de vinculação automática (50 no total, repartidos em 5 bancos). */
-const VINC_TESTE_EXTRATOS = getExtratosVinculacaoTestePorBanco();
+const VINC_TESTE_EXTRATOS = {};
 
 function cloneCoraExtratoXlsMock() {
   return JSON.parse(JSON.stringify(CORA_EXTRATO_MOCK_XLS));
@@ -62,66 +60,7 @@ function cloneBbExtratoXlsMock() {
   return JSON.parse(JSON.stringify(BB_EXTRATO_MOCK_XLS));
 }
 
-function lancCef(
-  letra,
-  numero,
-  data,
-  descricao,
-  valor,
-  saldo,
-  saldoDesc,
-  descricaoDetalhada,
-  refOpt = 'N',
-  eqOpt = ''
-) {
-  const ref = normalizarRefFinanceiro(refOpt);
-  const eq = String(eqOpt ?? '').trim();
-  return {
-    letra,
-    numero: String(numero),
-    data,
-    descricao,
-    valor,
-    saldo,
-    saldoDesc: saldoDesc || '',
-    descricaoDetalhada: descricaoDetalhada || '',
-    categoria: '',
-    codCliente: '',
-    proc: '',
-    dimensao: ref === 'N' ? '' : eq,
-    parcela: '',
-    /** Referência: N (único) ou R (repasse — use Eq. igual em pelo menos duas linhas). */
-    ref,
-    /** Espelha Dimensão no extrato do banco (mesmo texto que dimensao). */
-    eq: ref === 'N' ? '' : eq,
-  };
-}
-
-/** Extrato CEF conforme PDF (Conta Corrente Caixa — referência do usuário). */
-const CEF_EXTRATO_MOCK_PDF = [
-  lancCef('A', '7128', '06/01/2026', 'DP DIN LOT', 1400, 1400, '', 'ITAMAR ALEXANDRE FELIX VILLA REAL JUNIOR x FRANCISCA ARAÚJO GOMES - 01/2026'),
-  lancCef('E', '7129', '06/01/2026', 'ENVIO PIX', -1400, 0, '', '15904'),
-  lancCef('E', '7130', '26/01/2026', 'CRED PIX', 3078, 3078, '', '15887'),
-  lancCef('E', '7131', '26/01/2026', 'ENVIO PIX', -13000, -9922, '', '15955'),
-  lancCef('E', '7132', '26/01/2026', 'CRED PIX', 9922, 0, '', '15956'),
-  lancCef('E', '7133', '26/01/2026', 'CRED PIX', 3100, 3100, '', '16083'),
-  lancCef('I', '7134', '26/01/2026', 'PREST HAB', -3066, 34, '', ''),
-  lancCef('E', '7135', '26/01/2026', 'ENVIO PIX', -34, 0, '', '16082'),
-  lancCef('E', '7136', '06/02/2026', 'DEV TR TED', 0.19, 0.19, '', ''),
-  lancCef('A', '7137', '09/02/2026', 'DP DIN LOT', 1400, 1400.19, '', 'ITAMAR ALEXANDRE FELIX VILLA REAL JUNIOR x FRANCISCA ARAÚJO GOMES - 02/2026'),
-  lancCef('E', '7138', '09/02/2026', 'ENVIO PIX', -1400.19, 0, '', '16081'),
-  lancCef('A', '7139', '23/02/2026', 'CR LEV JUD', 5126.25, 5126.25, '', ''),
-  lancCef('I', '7140', '25/02/2026', 'PREST HAB', -3065.45, 2060.8, '', ''),
-  lancCef('E', '7141', '25/02/2026', 'CRED PIX', 3078, 5138.8, '', '16165'),
-  lancCef('A', '7142', '25/02/2026', 'CR LEV JUD', 3202.43, 8341.23, '', ''),
-  lancCef('E', '7143', '25/02/2026', 'ENVIO PIX', -8341.23, 0, '', '16166'),
-  lancCef('A', '7144', '26/02/2026', 'CRED TED', 704.66, 704.66, '', '', 'R', 'ORFAO-SOLO'),
-  lancCef('E', '7145', '26/02/2026', 'ENVIO PIX', -704.66, 0, '', '16216'),
-  lancCef('A', '7146', '02/03/2026', 'CR LEV JUD', 294.32, 294.32, '', '', 'R', 'REP-DEMO-01'),
-  lancCef('E', '7147', '02/03/2026', 'ENVIO PIX', -294.32, 0, '', '16154'),
-  lancCef('A', '7148', '09/03/2026', 'DP DIN LOT', 1400, 1400, '', '', 'R', 'REP-DEMO-01'),
-  lancCef('E', '7149', '10/03/2026', 'ENVIO PIX', -1400, 0, '', ''),
-];
+const CEF_EXTRATO_MOCK_PDF = [];
 
 function cloneCefExtratoPdfMock() {
   return JSON.parse(JSON.stringify(CEF_EXTRATO_MOCK_PDF));
@@ -153,23 +92,8 @@ const BANCO_TO_NUMERO = {
   'BTG Banking': 24, 'BTG (2)': 25, 'CORA': 26, 'BTG JA': 27, 'BTG RACHEL': 28, 'Sicoob VRV': 29,
 };
 
-/** CEF, CORA, …, BTG Banking, BTG RACHEL, etc.; Nubank/CORA/CEF/PicPay incluem fatias do mock de vinculação (10 lanç. cada). Itaú PF sem mock (apenas OFX/importação). */
-const MOCK_EXTRATOS_POR_BANCO = {
-  ...Object.fromEntries(Object.keys(BANCO_TO_NUMERO).map((k) => [k, []])),
-  CEF: [...cloneCefExtratoPdfMock(), ...VINC_TESTE_EXTRATOS.CEF],
-  Itaú: [],
-  'Itaú Empresas': cloneItauEmpresasExtratoXlsMock(),
-  CORA: [...cloneCoraExtratoXlsMock(), ...VINC_TESTE_EXTRATOS.CORA],
-  BB: cloneBbExtratoXlsMock(),
-  Sicoob: cloneSicoobExtratoXlsMock(),
-  'Sicoob VRV': cloneSicoobVrvExtratoXlsMock(),
-  BTG: cloneBtgExtratoXlsMock(),
-  'BTG Banking': cloneBtgBankingExtratoXlsMock(),
-  'BTG JA': cloneBtgJaExtratoXlsMock(),
-  'BTG RACHEL': cloneBtgRachelExtratoXlsMock(),
-  Nubank: [...VINC_TESTE_EXTRATOS.Nubank],
-  PicPay: [...VINC_TESTE_EXTRATOS.PicPay],
-};
+/** Extratos iniciais vazios (sem dados de demonstração). */
+const MOCK_EXTRATOS_POR_BANCO = Object.fromEntries(Object.keys(BANCO_TO_NUMERO).map((k) => [k, []]));
 
 export const STORAGE_FINANCEIRO_EXTRATOS_KEY = 'vilareal.financeiro.extratos.v20';
 /** Chave anterior; migrada para v20 com extrato Itaú PF zerado (remove mocks/XLS antigos persistidos). */
