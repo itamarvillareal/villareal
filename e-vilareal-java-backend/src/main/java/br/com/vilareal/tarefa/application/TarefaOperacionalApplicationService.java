@@ -2,6 +2,7 @@ package br.com.vilareal.tarefa.application;
 
 import br.com.vilareal.common.exception.BusinessRuleException;
 import br.com.vilareal.common.exception.ResourceNotFoundException;
+import br.com.vilareal.common.text.Utf8MojibakeUtil;
 import br.com.vilareal.tarefa.api.dto.TarefaOperacionalResponse;
 import br.com.vilareal.tarefa.api.dto.TarefaOperacionalWriteRequest;
 import br.com.vilareal.tarefa.api.dto.TarefaStatusPatchRequest;
@@ -181,8 +182,8 @@ public class TarefaOperacionalApplicationService {
     private TarefaOperacionalResponse toResponse(TarefaOperacionalEntity e) {
         TarefaOperacionalResponse r = new TarefaOperacionalResponse();
         r.setId(e.getId());
-        r.setTitulo(e.getTitulo());
-        r.setDescricao(e.getDescricao());
+        r.setTitulo(Utf8MojibakeUtil.corrigir(e.getTitulo()));
+        r.setDescricao(Utf8MojibakeUtil.corrigir(e.getDescricao()));
         if (e.getResponsavel() != null) {
             r.setResponsavelUsuarioId(e.getResponsavel().getId());
         }
@@ -193,7 +194,7 @@ public class TarefaOperacionalApplicationService {
         r.setProcessoId(e.getProcessoId());
         r.setPublicacaoId(e.getPublicacaoId());
         r.setProcessoPrazoId(e.getProcessoPrazoId());
-        r.setOrigem(e.getOrigem());
+        r.setOrigem(Utf8MojibakeUtil.corrigir(e.getOrigem()));
         r.setCreatedAt(e.getCreatedAt());
         r.setDataConclusao(e.getDataConclusao());
         return r;

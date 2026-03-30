@@ -22,19 +22,264 @@ function toBrFromIsoDate(dateIso) {
   return `${m[3]}/${m[2]}/${m[1]}`;
 }
 
+function latin1Somente(str) {
+  for (let i = 0; i < str.length; i++) {
+    if (str.charCodeAt(i) > 0xff) return false;
+  }
+  return true;
+}
+
+function temCjkProvavel(s) {
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c >= 0x4e00 && c <= 0x9fff) return true;
+    if (c >= 0x3040 && c <= 0x30ff) return true;
+    if (c >= 0xac00 && c <= 0xd7af) return true;
+  }
+  return false;
+}
+
+function temParSurrogatoUtf16(s) {
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c >= 0xd800 && c <= 0xdbff) return true;
+  }
+  return false;
+}
+
+function temBlocoBoxDrawingOuSubstituicao(s) {
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c >= 0x2500 && c <= 0x257f) return true;
+    if (c === 0xfffd) return true;
+  }
+  return false;
+}
+
+function temSequenciaMojibakeLatinEstendido(s) {
+  if (s.length < 2) return false;
+  if (s.includes('Ã') || s.includes('Â') || s.includes('â€')) return true;
+  for (let i = 0; i < s.length - 1; i++) {
+    const a = s.charCodeAt(i);
+    const b = s.charCodeAt(i + 1);
+    if (a === 0xc3 && b > 0x20) return true;
+    if (a === 0xc2 && (b === 0xa9 || b === 0xae || b === 0xb0 || b === 0xaa || b === 0xa2)) return true;
+  }
+  return false;
+}
+
+function deveTentarReverterDuplaCamada(s) {
+  if (latin1Somente(s)) return false;
+  if (temCjkProvavel(s)) return false;
+  if (temParSurrogatoUtf16(s)) return false;
+  return temBlocoBoxDrawingOuSubstituicao(s) || temSequenciaMojibakeLatinEstendido(s);
+}
+
+function decodificarLatin1ComoUtf8Leniente(s) {
+  if (!latin1Somente(s)) return s;
+  const bytes = new Uint8Array(s.length);
+  for (let j = 0; j < s.length; j++) bytes[j] = s.charCodeAt(j) & 0xff;
+  return new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+}
+
+function corrigirLatin1Utf8EmCadeia(s) {
+  let cur = s;
+  for (let pass = 0; pass < 6; pass++) {
+    if (!latin1Somente(cur)) return cur;
+    const bytes = new Uint8Array(cur.length);
+    for (let j = 0; j < cur.length; j++) bytes[j] = cur.charCodeAt(j) & 0xff;
+    let next;
+    try {
+      next = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    } catch {
+      return cur;
+    }
+    if (next === cur) return cur;
+    cur = next;
+  }
+  return cur;
+}
+
+function pontuacaoLegivelPortugues(s) {
+  let sc = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if ((c >= 0x61 && c <= 0x7a) || (c >= 0x41 && c <= 0x5a) || (c >= 0x30 && c <= 0x39)) sc += 4;
+    else if (c === 0x20 || c === 0x2e || c === 0x2c || c === 0x2d || c === 0x2f || c === 0x28 || c === 0x29)
+      sc += 1;
+    else if (c >= 0xc0 && c <= 0x24f) sc += 3;
+    else if (c === 0xba || c === 0xaa) sc += 3;
+    if (c >= 0x2500 && c <= 0x257f) sc -= 40;
+    if (c === 0xfffd) sc -= 20;
+  }
+  return sc;
+}
+
+function reverterDuplaComTabelaLatin(b2, decodeLatin) {
+  const latin = decodeLatin(b2);
+  if (!latin1Somente(latin)) return null;
+  let fixed = corrigirLatin1Utf8EmCadeia(latin);
+  if (fixed === latin) {
+    const leniente = decodificarLatin1ComoUtf8Leniente(latin);
+    if (leniente !== latin) fixed = corrigirLatin1Utf8EmCadeia(leniente);
+  }
+  if (fixed === latin) return null;
+  return fixed;
+}
+
+function escolherMelhorCandidatoDupla(original, a, b) {
+  let best = null;
+  let bestScore = -2147483648;
+  for (const cand of [a, b]) {
+    if (cand == null || cand === original) continue;
+    const sc = pontuacaoLegivelPortugues(cand);
+    if (sc > bestScore) {
+      bestScore = sc;
+      best = cand;
+    }
+  }
+  return best;
+}
+
+/** U+251C + Latin estendido: ciclo na reversão byte; substituição direta (importação / tripla camada). */
+function substituirClustersBlocoDesenhoU251c(s) {
+  if (s == null || s.length === 0) return s;
+  if (!s.includes('\u251c')) return s;
+  let t = s;
+  t = t.replaceAll('\u251c\u00e2\u00d4\u00c7\u00ed\u251c\u00e2\u00e3\u00c6', '\u00c7\u00c3');
+  t = t.replaceAll('\u251c\u00e2\u00d4\u00c7\u2019', '\u00c9');
+  t = t.replaceAll('\u251c\u00e2\u00d4\u00c7\u0027', '\u00c9');
+  t = t.replaceAll('\u251c\u00e2\u00d4\u00c7\u2591', '\u00c9');
+  t = t.replaceAll('\u251c\u00e2\u00e3\u00c6', '\u00c3');
+  t = t.replaceAll('\u251c\u00e9\u252c\u00ac', '\u00aa');
+  t = t.replaceAll('\u251c\u00e9\u00ac\u00aa', '\u00aa');
+  return t;
+}
+
+function tentarUmaPassagemDuplaCodificacaoUtf8(s) {
+  try {
+    const b2 = new TextEncoder().encode(s);
+    const iso = reverterDuplaComTabelaLatin(b2, (buf) => {
+      let latin = '';
+      for (let i = 0; i < buf.length; i++) latin += String.fromCharCode(buf[i]);
+      return latin;
+    });
+    let cp = null;
+    try {
+      cp = reverterDuplaComTabelaLatin(b2, (buf) => new TextDecoder('windows-1252').decode(buf));
+    } catch {
+      /* charset opcional */
+    }
+    return escolherMelhorCandidatoDupla(s, iso, cp);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * UTF-8 lido como Latin-1 (ex.: "INQUÃ‰RITO" → "INQUÉRITO") e múltiplas camadas (├®┬¬ → ª).
+ * Alinhado a {@code Utf8MojibakeUtil} no backend.
+ */
+function corrigirMojibakeUtf8(s) {
+  if (s == null || typeof s !== 'string' || s.length === 0) return s;
+  let cur = s;
+  if (deveTentarReverterDuplaCamada(cur)) {
+    for (let k = 0; k < 10; k++) {
+      const apos = tentarUmaPassagemDuplaCodificacaoUtf8(cur);
+      if (apos == null) break;
+      cur = apos;
+    }
+  }
+  let out = corrigirLatin1Utf8EmCadeia(cur);
+  out = substituirClustersBlocoDesenhoU251c(out);
+  return corrigirLatin1Utf8EmCadeia(out);
+}
+
 function toIsoDateTimeFromBrDate(dateBr) {
   const isoDate = toIsoFromBrDate(dateBr);
   if (!isoDate) return null;
   return `${isoDate}T12:00:00`;
 }
 
-export async function buscarProcessoPorChaveNatural(codigoCliente, numeroInterno) {
-  if (!featureFlags.useApiProcessos) return null;
+export async function listarProcessosPorCodigoCliente(codigoCliente) {
+  if (!featureFlags.useApiProcessos) return [];
   const lista = await request('/api/processos', {
     query: { codigoCliente: padCliente8(codigoCliente) },
   });
+  return Array.isArray(lista) ? lista : [];
+}
+
+export async function buscarProcessoPorChaveNatural(codigoCliente, numeroInterno) {
+  if (!featureFlags.useApiProcessos) return null;
+  const lista = await listarProcessosPorCodigoCliente(codigoCliente);
   const procNum = Number(numeroInterno);
-  return (lista || []).find((p) => Number(p.numeroInterno) === procNum) || null;
+  return lista.find((p) => Number(p.numeroInterno) === procNum) || null;
+}
+
+/**
+ * Alinha a grade «Processo» do cadastro de clientes com GET /api/processos (mesmo CNJ / nº novo que em Processos).
+ * Faz match por {@code numeroInterno} da API ↔ {@code procNumero} da linha.
+ */
+export function mergeCadastroClientesProcessosComApi(codigoClientePadded8, listaProcessos, apiListaRaw) {
+  const apiRows = Array.isArray(apiListaRaw) ? apiListaRaw : [];
+  if (apiRows.length === 0) {
+    return Array.isArray(listaProcessos) ? listaProcessos : [];
+  }
+  const padded = padCliente8(codigoClientePadded8);
+  const codN =
+    (() => {
+      const d = String(padded).replace(/\D/g, '');
+      const n = Number(d || '1');
+      return Number.isFinite(n) && n > 0 ? Math.floor(n) : 1;
+    })();
+
+  const byNum = new Map();
+  for (const raw of apiRows) {
+    const ui = mapApiProcessoToUiShape(raw);
+    const n = Number(ui.numeroInterno);
+    if (!Number.isFinite(n) || n < 1) continue;
+    byNum.set(n, ui);
+  }
+
+  const base = Array.isArray(listaProcessos) ? [...listaProcessos] : [];
+  const seen = new Set();
+
+  const out = base.map((row) => {
+    const n = Number(row?.procNumero);
+    if (Number.isFinite(n) && n >= 1) seen.add(n);
+    const api = byNum.get(n);
+    if (!api) return row;
+
+    const novoApi = String(api.numeroProcessoNovo ?? '').trim();
+    const velhoApi = String(api.numeroProcessoVelho ?? '').trim();
+    const descApi = String(api.naturezaAcao ?? '').trim();
+
+    return {
+      ...row,
+      processoNovo: novoApi || String(row.processoNovo ?? '').trim() || row.processoNovo,
+      processoVelho: velhoApi || String(row.processoVelho ?? '').trim() || row.processoVelho,
+      descricao: descApi || String(row.descricao ?? '').trim() || row.descricao,
+    };
+  });
+
+  for (const [n, api] of byNum) {
+    if (seen.has(n)) continue;
+    seen.add(n);
+    out.push({
+      id: `${codN}-${n}`,
+      procNumero: n,
+      processoVelho: String(api.numeroProcessoVelho ?? '').trim() || '-',
+      processoNovo: String(api.numeroProcessoNovo ?? '').trim(),
+      autor: '',
+      reu: '',
+      parteOposta: '—',
+      tipoAcao: '',
+      descricao: String(api.naturezaAcao ?? '').trim(),
+    });
+  }
+
+  out.sort((a, b) => (Number(a.procNumero) || 0) - (Number(b.procNumero) || 0));
+  return out;
 }
 
 export async function buscarProcessoPorId(processoId) {
@@ -52,9 +297,15 @@ export async function resolverProcessoId({ processoId, codigoCliente, numeroInte
 
 export async function buscarClientePorCodigo(codigoCliente) {
   if (!featureFlags.useApiProcessos) return null;
-  const clientes = await request('/api/clientes');
   const cod = padCliente8(codigoCliente);
-  return (clientes || []).find((c) => String(c.codigoCliente) === cod) || null;
+  const clientes = await request('/api/clientes');
+  const found = (clientes || []).find((c) => String(c.codigoCliente) === cod);
+  if (found) return found;
+  try {
+    return await request('/api/clientes/resolucao', { query: { codigoCliente: cod } });
+  } catch {
+    return null;
+  }
 }
 
 export async function salvarCabecalhoProcesso(payload) {
@@ -121,6 +372,7 @@ export async function sincronizarPartesIncremental(processoId, partes) {
     polo: p.polo,
     qualificacao: p.qualificacao ?? null,
     ordem: p.ordem ?? 0,
+    advogadoPessoaIds: Array.isArray(p.advogadoPessoaIds) ? p.advogadoPessoaIds.map(Number).filter(Number.isFinite) : [],
   }));
   const desejadasAss = new Set(desejadas.map(assinaturaParte));
 
@@ -267,26 +519,30 @@ export async function obterCamposProcessoApiFirst({ processoId, codigoCliente, n
 }
 
 export function mapApiProcessoToUiShape(p) {
+  const pessoaRef =
+    p.pessoaId != null ? Number(p.pessoaId) : p.clienteId != null ? Number(p.clienteId) : null;
   return {
     processoId: p.id,
-    /** Id do cliente na API (ProcessoResponse) — útil para vínculos (ex.: tarefas). */
-    clienteId: p.clienteId != null ? Number(p.clienteId) : null,
+    /** Id em `pessoa` (col. B) — par com «Pessoa» em Clientes; `pessoaId` ou `clienteId` na API. */
+    clienteId: pessoaRef,
+    pessoaId: pessoaRef,
     codigoCliente: p.codigoCliente,
     numeroInterno: p.numeroInterno,
-    numeroProcessoNovo: p.numeroCnj || '',
-    numeroProcessoVelho: p.numeroProcessoAntigo || '',
-    naturezaAcao: p.naturezaAcao || '',
-    competencia: p.competencia || '',
-    faseSelecionada: p.fase || '',
+    numeroProcessoNovo: String(p.numeroCnj ?? p.numero_cnj ?? '').trim(),
+    numeroProcessoVelho: String(p.numeroProcessoAntigo ?? p.numero_processo_antigo ?? '').trim(),
+    naturezaAcao: corrigirMojibakeUtf8(p.naturezaAcao || ''),
+    competencia: corrigirMojibakeUtf8(p.competencia || ''),
+    faseSelecionada: corrigirMojibakeUtf8(p.fase || ''),
     statusAtivo: p.ativo !== false,
     prazoFatal: toBrFromIsoDate(p.prazoFatal),
     proximaConsultaData: toBrFromIsoDate(p.proximaConsulta),
-    observacao: p.observacao || '',
-    cidade: p.cidade || '',
+    // Importação Excel grava col. O em `descricaoAcao`; a UI usa o estado `observacao`.
+    observacao: corrigirMojibakeUtf8(p.observacao || p.descricaoAcao || ''),
+    cidade: corrigirMojibakeUtf8(p.cidade || ''),
     estado: p.uf || '',
     consultaAutomatica: p.consultaAutomatica === true,
-    tramitacao: p.tramitacao || '',
+    tramitacao: corrigirMojibakeUtf8(p.tramitacao || ''),
     dataProtocolo: toBrFromIsoDate(p.dataProtocolo),
-    responsavel: p.consultor || '',
+    responsavel: corrigirMojibakeUtf8(p.consultor || ''),
   };
 }

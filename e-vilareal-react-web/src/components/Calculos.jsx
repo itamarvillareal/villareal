@@ -19,6 +19,7 @@ import { baixarBlobDocx, gerarDocumentoListaDebitosWord } from '../utils/gerarDo
 import { INDICES_CALCULO, PERIODICIDADE_OPCOES, MODELOS_LISTA_DEBITOS } from '../data/calculosIndices.js';
 import { loadConfigCalculoCliente, mergeConfigPainelCalculo } from '../data/clienteConfigCalculoStorage.js';
 import { resolverAliasHojeEmTexto } from '../services/hjDateAliasService.js';
+import { buildRouterStateChaveClienteProcesso, extrairIntentNavegacaoProcessos } from '../domain/camposProcessoCliente.js';
 
 const TABS = ['Títulos', 'Custas Judiciais', 'Parcelamento', 'Pagamento', 'Honorários', 'Descrição dos Valores'];
 
@@ -233,8 +234,12 @@ export function Calculos() {
   const location = useLocation();
   const navigate = useNavigate();
   const stateFromProcessos = location.state && typeof location.state === 'object' ? location.state : null;
-  const codClienteFromState = stateFromProcessos?.codCliente ?? '';
-  const procFromState = stateFromProcessos?.proc ?? '';
+  const navCalculos = extrairIntentNavegacaoProcessos(stateFromProcessos);
+  const codClienteFromState = navCalculos?.hasCod ? String(navCalculos.codRaw ?? '').trim() : '';
+  const procFromState =
+    navCalculos?.hasProcKey && navCalculos.procRaw !== undefined && navCalculos.procRaw !== null
+      ? String(navCalculos.procRaw)
+      : '';
   const dimensaoFromState = stateFromProcessos?.dimensao;
   const abaCalculosFromState = stateFromProcessos?.abaCalculos ?? '';
 
@@ -430,7 +435,7 @@ export function Calculos() {
     setProc(p);
     setPagina(1);
     // remove o state antigo (evita “voltar” para o valor vindo de Processos)
-    navigate('/calculos', { replace: true, state: { codCliente: cod, proc: String(p) } });
+    navigate('/calculos', { replace: true, state: buildRouterStateChaveClienteProcesso(cod, p) });
   }
 
   function aplicarClienteProcComValores(codValue, procValue) {
@@ -442,7 +447,7 @@ export function Calculos() {
     setPagina(1);
     setCodClienteManual(cod);
     setProcManual(String(p));
-    navigate('/calculos', { replace: true, state: { codCliente: cod, proc: String(p) } });
+    navigate('/calculos', { replace: true, state: buildRouterStateChaveClienteProcesso(cod, p) });
   }
 
   function normalizarCampoManual() {
@@ -1566,7 +1571,9 @@ export function Calculos() {
       </header>
 
       <div className="px-3 py-2 bg-slate-500 text-white flex items-center justify-between">
-        <span className="font-medium">{rodadaAtual.cabecalho?.autor ?? '—'} x {rodadaAtual.cabecalho?.reu ?? '—'}</span>
+        <span className="font-medium">
+          {rodadaAtual.cabecalho?.autor ?? '—'} — {rodadaAtual.cabecalho?.reu ?? '—'}
+        </span>
         <span className="text-sm font-mono">{String(codigoClienteNorm)}</span>
       </div>
 
@@ -1805,9 +1812,8 @@ export function Calculos() {
                     navigate('/financeiro', {
                       state: {
                         financeiroBuscaParcelas: {
-                          codCliente: codigoClienteNorm,
-                          proc: String(procNorm),
                           dimensao: dimensaoNorm,
+                          ...buildRouterStateChaveClienteProcesso(codigoClienteNorm, procNorm),
                         },
                       },
                     })
@@ -2192,11 +2198,10 @@ export function Calculos() {
                     navigate('/financeiro', {
                       state: {
                         financeiroConciliacaoHonorarios: {
-                          codCliente: codigoClienteNorm,
-                          proc: String(procNorm),
                           dimensao: dimensaoNorm,
                           rotulo: `Cálculos — dim. ${dimensaoNorm} — geral`,
                           valorCentavos: null,
+                          ...buildRouterStateChaveClienteProcesso(codigoClienteNorm, procNorm),
                         },
                       },
                     })
@@ -2262,11 +2267,10 @@ export function Calculos() {
                                     navigate('/financeiro', {
                                       state: {
                                         financeiroConciliacaoHonorarios: {
-                                          codCliente: codigoClienteNorm,
-                                          proc: String(procNorm),
                                           dimensao: dimensaoNorm,
                                           rotulo: `Honor. título linha ${indice + 1}`,
                                           valorCentavos: Math.round(valorNum * 100),
+                                          ...buildRouterStateChaveClienteProcesso(codigoClienteNorm, procNorm),
                                         },
                                       },
                                     })
@@ -2343,11 +2347,10 @@ export function Calculos() {
                                     navigate('/financeiro', {
                                       state: {
                                         financeiroConciliacaoHonorarios: {
-                                          codCliente: codigoClienteNorm,
-                                          proc: String(procNorm),
                                           dimensao: dimensaoNorm,
                                           rotulo: `Honor. parcela ${String(indice + 1).padStart(2, '0')}`,
                                           valorCentavos: Math.round(valorNum * 100),
+                                          ...buildRouterStateChaveClienteProcesso(codigoClienteNorm, procNorm),
                                         },
                                       },
                                     })
@@ -2699,7 +2702,9 @@ export function Calculos() {
             </label>
             <button
               type="button"
-              onClick={() => navigate('/processos', { state: { codCliente: String(codigoCliente ?? ''), proc: String(proc ?? '') } })}
+              onClick={() =>
+                navigate('/processos', { state: buildRouterStateChaveClienteProcesso(codigoCliente ?? '', proc ?? '') })
+              }
               className="w-full px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
             >
               Processo

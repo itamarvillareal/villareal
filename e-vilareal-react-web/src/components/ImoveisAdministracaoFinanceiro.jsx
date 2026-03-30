@@ -23,6 +23,7 @@ import {
   salvarRepasseLocacao,
 } from '../repositories/imoveisRepository.js';
 import { featureFlags } from '../config/featureFlags.js';
+import { buildRouterStateChaveClienteProcesso } from '../domain/camposProcessoCliente.js';
 
 function formatBRL(n) {
   const v = Number(n);
@@ -313,7 +314,7 @@ export function ImoveisAdministracaoFinanceiro() {
               type="button"
               onClick={() =>
                 navigate('/processos', {
-                  state: { codCliente: padCliente(codigoStr || '1'), proc: procStr || '1' },
+                  state: buildRouterStateChaveClienteProcesso(padCliente(codigoStr || '1'), procStr || '1'),
                 })
               }
               disabled={!vinculoOk}
@@ -328,9 +329,8 @@ export function ImoveisAdministracaoFinanceiro() {
                 navigate('/financeiro', {
                   state: {
                     financeiroConciliacaoHonorarios: {
-                      codCliente: padCliente(codigoStr || '1'),
-                      proc: procStr || '1',
                       rotulo: `Imóvel ${imovelId}`,
+                      ...buildRouterStateChaveClienteProcesso(padCliente(codigoStr || '1'), procStr || '1'),
                     },
                   },
                 })

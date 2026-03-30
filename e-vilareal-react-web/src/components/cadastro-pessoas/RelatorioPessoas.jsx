@@ -12,6 +12,7 @@ import {
 import { listarCodigosClientePorIdPessoa } from '../../data/clientesCadastradosMock.js';
 import { listarProcessosPorIdPessoa } from '../../data/processosHistoricoData.js';
 import { padCliente8Nav } from './cadastroPessoasNavUtils.js';
+import { buildRouterStateChaveClienteProcesso } from '../../domain/camposProcessoCliente.js';
 
 const FORCA_MOCK_CADASTRO =
   import.meta.env.VITE_USE_MOCK_CADASTRO_PESSOAS === 'true';
@@ -388,7 +389,7 @@ export function RelatorioPessoas() {
                           type="button"
                           onClick={() => {
                             setModalVinculosSistema(false);
-                            navigate('/pessoas', { state: { codCliente: padCliente8Nav(cod), proc: '' } });
+                            navigate('/pessoas', { state: buildRouterStateChaveClienteProcesso(padCliente8Nav(cod), '') });
                           }}
                           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-blue-200 bg-blue-50 text-blue-800 text-sm font-medium hover:bg-blue-100"
                         >
@@ -428,10 +429,10 @@ export function RelatorioPessoas() {
                                 onClick={() => {
                                   setModalVinculosSistema(false);
                                   navigate('/processos', {
-                                    state: {
-                                      codCliente: padCliente8Nav(row.codCliente),
-                                      proc: String(row.proc ?? ''),
-                                    },
+                                    state: buildRouterStateChaveClienteProcesso(
+                                      padCliente8Nav(row.codCliente),
+                                      row.proc ?? ''
+                                    ),
                                   });
                                 }}
                                 className="text-blue-600 hover:underline text-sm font-medium"

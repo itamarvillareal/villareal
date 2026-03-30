@@ -2,7 +2,7 @@
  * Persistência local dos dados editáveis do Cadastro de Clientes (por código de cliente).
  */
 
-import { CLIENTE_PARA_PESSOA } from './clientesCadastradosMock.js';
+import { CLIENTE_PARA_PESSOA, getIdPessoaPorCodCliente } from './clientesCadastradosMock.js';
 
 export const STORAGE_CADASTRO_CLIENTES_DADOS = 'vilareal:cadastro-clientes-dados:v1';
 
@@ -58,6 +58,107 @@ export function obterMaiorCodigoClienteConhecido() {
 /** Próximo código sugerido (maior conhecido + 1), 8 dígitos. */
 export function obterProximoCodigoClienteSugerido() {
   return padCliente8Cadastro(obterMaiorCodigoClienteConhecido() + 1);
+}
+
+/**
+ * Códigos de cliente conhecidos (API + persistência local + mapa mock), ordenados numericamente.
+ * @param {Array<{ codigo?: string, pessoa?: string }>|null|undefined} clientesApiFront
+ */
+export function coletarCodigosClienteConhecidos(clientesApiFront) {
+  const s = new Set();
+  if (Array.isArray(clientesApiFront)) {
+    for (const c of clientesApiFront) {
+      if (c?.codigo != null && String(c.codigo).trim() !== '') {
+        s.add(padCliente8Cadastro(c.codigo));
+      }
+    }
+  }
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = window.localStorage.getItem(STORAGE_CADASTRO_CLIENTES_DADOS);
+      const parsed = raw ? JSON.parse(raw) : {};
+      if (parsed && typeof parsed === 'object') {
+        for (const k of Object.keys(parsed)) {
+          s.add(padCliente8Cadastro(k));
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  for (const k of Object.keys(CLIENTE_PARA_PESSOA)) {
+    s.add(padCliente8Cadastro(k));
+  }
+  return [...s].sort((a, b) => {
+    const na = Number(String(a).replace(/\D/g, '')) || 0;
+    const nb = Number(String(b).replace(/\D/g, '')) || 0;
+    return na - nb;
+  });
+}
+
+/**
+ * Há vínculo no campo Pessoa (id numérico ≥ 1). Com linha na API, só o valor da API conta.
+ */
+export function clienteTemPessoaAtribuida(codPadded8, clientesApiFront) {
+  const cod = padCliente8Cadastro(codPadded8);
+  const apiRow = Array.isArray(clientesApiFront) ? clientesApiFront.find((c) => c.codigo === cod) : null;
+  if (apiRow != null) {
+    const raw = String(apiRow.pessoa ?? '').trim();
+    if (!raw) return false;
+    const n = Number(raw.replace(/\D/g, ''));
+    return Number.isFinite(n) && n >= 1;
+  }
+  const persisted = loadCadastroClienteDados(cod);
+  if (persisted) {
+    const raw = String(persisted.pessoa ?? '').trim();
+    if (!raw) return false;
+    const n = Number(raw.replace(/\D/g, ''));
+    return Number.isFinite(n) && n >= 1;
+  }
+  const nCod = Number(cod.replace(/\D/g, ''));
+  const mockId = getIdPessoaPorCodCliente(nCod);
+  return mockId != null && Number(mockId) >= 1;
+}
+
+/**
+ * Menor código de cliente conhecido ainda sem Pessoa; se todos tiverem, o próximo número livre após o maior código conhecido.
+ * O cliente em edição usa o valor atual do campo Pessoa (mesmo antes de salvar na API).
+ *
+ * @param {Array<{ codigo?: string, pessoa?: string }>|null|undefined} clientesApiFront — ex.: `clientesApiIndex` quando `useApiClientes`; senão `[]`.
+ * @param {string|undefined} codigoEmEdicaoPadded — código aberto no formulário (8 dígitos).
+ * @param {string|undefined} pessoaCampoAtual — valor do input Pessoa desse formulário.
+ */
+export function obterProximoCodigoClienteSemPessoaAtribuida(
+  clientesApiFront,
+  codigoEmEdicaoPadded,
+  pessoaCampoAtual
+) {
+  const codes = coletarCodigosClienteConhecidos(clientesApiFront);
+  const codEd =
+    codigoEmEdicaoPadded != null && String(codigoEmEdicaoPadded).trim() !== ''
+      ? padCliente8Cadastro(codigoEmEdicaoPadded)
+      : null;
+
+  function temAtribuicao(c) {
+    const codC = padCliente8Cadastro(c);
+    if (codEd && codC === codEd) {
+      const raw = String(pessoaCampoAtual ?? '').trim();
+      if (raw) {
+        const n = Number(raw.replace(/\D/g, ''));
+        if (Number.isFinite(n) && n >= 1) return true;
+      }
+    }
+    return clienteTemPessoaAtribuida(codC, clientesApiFront);
+  }
+
+  for (const c of codes) {
+    if (!temAtribuicao(c)) return c;
+  }
+  if (codes.length === 0) {
+    return obterProximoCodigoClienteSugerido();
+  }
+  const maxNum = Math.max(...codes.map((cc) => Number(String(cc).replace(/\D/g, '')) || 0));
+  return padCliente8Cadastro(maxNum + 1);
 }
 
 /**

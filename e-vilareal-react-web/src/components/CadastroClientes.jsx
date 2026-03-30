@@ -1,11 +1,11 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Search, FolderOpen, ChevronLeft, ChevronRight, Settings, SlidersHorizontal, PlusCircle, X } from 'lucide-react';
+import { Search, FolderOpen, ChevronLeft, ChevronRight, SlidersHorizontal, PlusCircle, X } from 'lucide-react';
 import { ModalConfiguracoesCalculoCliente } from './ModalConfiguracoesCalculoCliente.jsx';
 import { clienteMock, processosClienteMock } from '../data/mockData';
 import { getDadosProcessoClienteUnificado } from '../data/processoClienteProcUnificado.js';
 import { getIdPessoaPorCodCliente, CLIENTE_PARA_PESSOA } from '../data/clientesCadastradosMock';
-import { buscarCliente } from '../api/clientesService.js';
+import { buscarCliente, pesquisarCadastroPessoasPorNomeOuCpf } from '../api/clientesService.js';
 import {
   getCadastroPessoasMockComNovosLocais,
   getPessoaPorIdIncluindoNovosLocais,
@@ -15,7 +15,7 @@ import {
   saveCadastroClienteDados,
   mergeProcessosLista,
   loadUltimoCodigoCliente,
-  obterProximoCodigoClienteSugerido,
+  obterProximoCodigoClienteSemPessoaAtribuida,
 } from '../data/cadastroClientesStorage.js';
 import {
   obterDescricaoAcaoUnificada,
@@ -27,21 +27,31 @@ import {
   salvarNumeroProcessoNovoDaGradeCadastro,
   salvarParteOpostaDaGradeCadastro,
   alinharListaProcessosDescricaoComHistorico,
+  enriquecerListaProcessosComHistoricoLocal,
 } from '../data/processosHistoricoData.js';
 import { getContextoAuditoriaUsuario, registrarAuditoria } from '../services/auditoriaCliente.js';
 import { featureFlags } from '../config/featureFlags.js';
 import {
+  buildRouterStateChaveClienteProcesso,
+  extrairIntentNavegacaoProcessos,
+} from '../domain/camposProcessoCliente.js';
+import {
   listarClientesCadastro,
+  resolverClienteCadastroPorCodigo,
   salvarClienteCadastro,
 } from '../repositories/clientesRepository.js';
 import {
   buscarClientePorCodigo,
   buscarProcessoPorChaveNatural,
+  listarProcessosPorCodigoCliente,
+  mergeCadastroClientesProcessosComApi,
   salvarCabecalhoProcesso,
 } from '../repositories/processosRepository.js';
 
 let __ultimoListaClientesLog = 0;
 let __ultimoClienteConsultaLog = '';
+
+const MOCK_CADASTRO_PESSOAS = import.meta.env.VITE_USE_MOCK_CADASTRO_PESSOAS === 'true';
 
 function formatDocBR(digits) {
   const d = String(digits || '').replace(/\D/g, '');
@@ -220,12 +230,17 @@ function getInitialEstadoCliente(codPreferido) {
   };
 }
 
+/** Estado `codigo` = **codigoCliente** (mesmo dado que a tela Processos em `codigoCliente`). Grade: `procNumero` = **numeroInterno**. */
 export function CadastroClientes() {
   const location = useLocation();
   const navigate = useNavigate();
   const stateFromFinanceiro = location.state && typeof location.state === 'object' ? location.state : null;
-  const codClienteFromState = stateFromFinanceiro?.codCliente ?? '';
-  const procFromState = stateFromFinanceiro?.proc ?? '';
+  const navClientes = extrairIntentNavegacaoProcessos(stateFromFinanceiro);
+  const codClienteFromState = navClientes?.hasCod ? String(navClientes.codRaw ?? '').trim() : '';
+  const procFromState =
+    navClientes?.hasProcKey && navClientes.procRaw !== undefined && navClientes.procRaw !== null
+      ? String(navClientes.procRaw)
+      : '';
 
   const ini = getInitialEstadoCliente(codClienteFromState || undefined);
   const [codigo, setCodigo] = useState(ini.codigo);
@@ -242,15 +257,55 @@ export function CadastroClientes() {
   const [modalConfigCalculoAberto, setModalConfigCalculoAberto] = useState(false);
   const [modalEscolherPessoa, setModalEscolherPessoa] = useState(false);
   const [buscaPessoaModal, setBuscaPessoaModal] = useState('');
+  const [pessoasModalApiLista, setPessoasModalApiLista] = useState([]);
+  const [pessoasModalApiLoading, setPessoasModalApiLoading] = useState(false);
+  const [pessoasModalApiErro, setPessoasModalApiErro] = useState('');
   const [processos, setProcessos] = useState(ini.processos);
   const [clientesApiIndex, setClientesApiIndex] = useState([]);
+  /** Quando `useApiClientes`, fica `true` após o primeiro GET /api/clientes terminar (mesmo com lista vazia). */
+  const [clientesApiCarregados, setClientesApiCarregados] = useState(() => !featureFlags.useApiClientes);
   const [erroApiCliente, setErroApiCliente] = useState('');
-  /** Atualiza ao trocar de cliente para refletir persistência e mapa de códigos. */
-  const proximoCliente = useMemo(() => obterProximoCodigoClienteSugerido(), [codigo]);
+  /** Incrementado a cada entrada na rota Clientes — força releitura de API/localStorage no «Próximo cliente». */
+  const [proximoClienteRefreshTick, setProximoClienteRefreshTick] = useState(0);
+  /** Atualiza ao trocar de cliente, dados da API e cada acesso ao formulário Clientes. */
+  const proximoCliente = useMemo(
+    () =>
+      obterProximoCodigoClienteSemPessoaAtribuida(
+        featureFlags.useApiClientes ? clientesApiIndex : [],
+        padCliente8(codigo),
+        pessoa
+      ),
+    [clientesApiIndex, codigo, pessoa, proximoClienteRefreshTick]
+  );
   const montagemInicialRef = useRef(true);
   /** Evita sobrescrever nome/CPF ao carregar cliente por código (persistido/mock). */
   const pularSincPorCargaClienteRef = useRef(false);
   const primeiraSincPessoaRef = useRef(true);
+  /** Ignora respostas antigas de GET /api/clientes/resolucao se o usuário mudar de código rápido. */
+  const resolucaoCodigoReqIdRef = useRef(0);
+  /** Evita aplicar GET /api/processos antigo ao trocar de cliente rápido. */
+  const processosApiReqIdRef = useRef(0);
+  const codigoRef = useRef(codigo);
+  codigoRef.current = codigo;
+
+  const refreshProcessosGrade = useCallback((padded, baseLista) => {
+    const enriched = enriquecerListaProcessosComHistoricoLocal(padded, baseLista);
+    if (!featureFlags.useApiProcessos) {
+      setProcessos(enriched);
+      return;
+    }
+    const myId = ++processosApiReqIdRef.current;
+    setProcessos(enriched);
+    void listarProcessosPorCodigoCliente(padded)
+      .then((apiList) => {
+        if (processosApiReqIdRef.current !== myId) return;
+        setProcessos(mergeCadastroClientesProcessosComApi(padded, enriched, apiList));
+      })
+      .catch(() => {
+        if (processosApiReqIdRef.current !== myId) return;
+        setProcessos(enriched);
+      });
+  }, []);
 
   const persistSnapshotRef = useRef(null);
   persistSnapshotRef.current = {
@@ -265,20 +320,32 @@ export function CadastroClientes() {
   };
 
   useEffect(() => {
-    if (!featureFlags.useApiClientes) return;
+    if (location.pathname !== '/pessoas') return undefined;
     let cancelado = false;
-    (async () => {
-      try {
-        const data = await listarClientesCadastro();
-        if (!cancelado) setClientesApiIndex(data);
-      } catch (e) {
-        if (!cancelado) setErroApiCliente(e?.message || 'Erro ao carregar clientes da API.');
+    void (async () => {
+      if (featureFlags.useApiClientes) {
+        setClientesApiCarregados(false);
+        try {
+          const data = await listarClientesCadastro();
+          if (!cancelado) {
+            setClientesApiIndex(Array.isArray(data) ? data : []);
+            setErroApiCliente('');
+          }
+        } catch (e) {
+          if (!cancelado) {
+            setClientesApiIndex([]);
+            setErroApiCliente(e?.message || 'Erro ao carregar clientes da API.');
+          }
+        } finally {
+          if (!cancelado) setClientesApiCarregados(true);
+        }
       }
+      if (!cancelado) setProximoClienteRefreshTick((t) => t + 1);
     })();
     return () => {
       cancelado = true;
     };
-  }, []);
+  }, [location.pathname, location.key]);
 
   useEffect(() => {
     const now = Date.now();
@@ -330,8 +397,72 @@ export function CadastroClientes() {
       setObservacao(api.observacao ?? '');
       setClienteInativo(api.clienteInativo ?? false);
       setEdicaoDesabilitada(false);
+      const baseLista = mock
+        ? mergeProcessosLista(mock.processos, persisted?.processos)
+        : Array.isArray(persisted?.processos)
+          ? [...persisted.processos]
+          : [];
+      setProcessos(enriquecerListaProcessosComHistoricoLocal(padded, baseLista));
       return;
     }
+
+    if (featureFlags.useApiClientes) {
+      const myId = ++resolucaoCodigoReqIdRef.current;
+      setCodigo(padded);
+      setPessoa('');
+      setNomeRazao('');
+      setCnpjCpf('');
+      setObservacao('');
+      setClienteInativo(false);
+      setEdicaoDesabilitada(false);
+
+      void resolverClienteCadastroPorCodigo(padded).then((resolved) => {
+        if (resolucaoCodigoReqIdRef.current !== myId) return;
+        if (resolved) {
+          setCodigo(resolved.codigo);
+          setPessoa(resolved.pessoa ?? '');
+          setNomeRazao(resolved.nomeRazao ?? '');
+          setCnpjCpf(resolved.cnpjCpf ?? '');
+          setObservacao(resolved.observacao ?? '');
+          setClienteInativo(resolved.clienteInativo ?? false);
+          const baseLista = mock
+            ? mergeProcessosLista(mock.processos, persisted?.processos)
+            : Array.isArray(persisted?.processos)
+              ? [...persisted.processos]
+              : [];
+          refreshProcessosGrade(padded, baseLista);
+          return;
+        }
+        if (mock) {
+          setCodigo(mock.codigoCliente);
+          setPessoa(mock.pessoa ?? '');
+          setNomeRazao(persisted?.nomeRazao ?? mock.nomeRazao);
+          setCnpjCpf(persisted?.cnpjCpf ?? mock.cnpjCpf);
+          setObservacao(persisted?.observacao !== undefined ? persisted.observacao : clienteMock.observacao);
+          setClienteInativo(persisted?.clienteInativo ?? clienteMock.clienteInativo);
+          setEdicaoDesabilitada(persisted?.edicaoDesabilitada ?? clienteMock.edicaoDesabilitada);
+          refreshProcessosGrade(
+            mock.codigoCliente,
+            mergeProcessosLista(mock.processos, persisted?.processos)
+          );
+        } else {
+          setCodigo(padded);
+          if (persisted) {
+            setPessoa('');
+            setNomeRazao(persisted.nomeRazao ?? '');
+            setCnpjCpf(persisted.cnpjCpf ?? '');
+            setObservacao(persisted.observacao ?? '');
+            setClienteInativo(persisted.clienteInativo ?? false);
+            setEdicaoDesabilitada(persisted.edicaoDesabilitada ?? false);
+            refreshProcessosGrade(padded, Array.isArray(persisted.processos) ? persisted.processos : []);
+          } else {
+            refreshProcessosGrade(padded, []);
+          }
+        }
+      });
+      return;
+    }
+
     if (mock) {
       setCodigo(mock.codigoCliente);
       setPessoa(persisted?.pessoa ?? mock.pessoa ?? '');
@@ -340,11 +471,9 @@ export function CadastroClientes() {
       setObservacao(persisted?.observacao !== undefined ? persisted.observacao : clienteMock.observacao);
       setClienteInativo(persisted?.clienteInativo ?? clienteMock.clienteInativo);
       setEdicaoDesabilitada(persisted?.edicaoDesabilitada ?? clienteMock.edicaoDesabilitada);
-      setProcessos(
-        alinharListaProcessosDescricaoComHistorico(
-          mock.codigoCliente,
-          mergeProcessosLista(mock.processos, persisted?.processos)
-        )
+      refreshProcessosGrade(
+        mock.codigoCliente,
+        mergeProcessosLista(mock.processos, persisted?.processos)
       );
     } else {
       setCodigo(padded);
@@ -355,15 +484,22 @@ export function CadastroClientes() {
         setObservacao(persisted.observacao ?? '');
         setClienteInativo(persisted.clienteInativo ?? false);
         setEdicaoDesabilitada(persisted.edicaoDesabilitada ?? false);
-        setProcessos(
-          alinharListaProcessosDescricaoComHistorico(
-            padded,
-            Array.isArray(persisted.processos) ? persisted.processos : []
-          )
-        );
+        refreshProcessosGrade(padded, Array.isArray(persisted.processos) ? persisted.processos : []);
+      } else {
+        refreshProcessosGrade(padded, []);
       }
     }
-  }, [clientesApiIndex]);
+  }, [clientesApiIndex, refreshProcessosGrade]);
+
+  /**
+   * Com API: após o GET /api/clientes terminar (lista pode estar vazia), reaplica o código atual (`codigoRef`)
+   * para acionar /resolucao quando o cliente não está no índice. Omitir `codigo` nas deps evita /resolucao a cada tecla.
+   */
+  useEffect(() => {
+    if (!featureFlags.useApiClientes) return;
+    if (!clientesApiCarregados) return;
+    aplicarDadosCliente(padCliente8(codigoRef.current));
+  }, [clientesApiCarregados, clientesApiIndex, aplicarDadosCliente]);
 
   useEffect(() => {
     if (codClienteFromState) {
@@ -382,10 +518,25 @@ export function CadastroClientes() {
     };
   }, [codigo, aplicarDadosCliente]);
 
-  /** Volta da tela Processos (ou outro fluxo): alinha «Descrição da Ação» ao mesmo `naturezaAcao` do histórico. */
+  /** Volta da tela Processos (ou outro fluxo): alinha à grade ao histórico local e inclui Proc. novos gravados em Processos. */
   useEffect(() => {
     if (location.pathname !== '/pessoas') return;
-    setProcessos((prev) => alinharListaProcessosDescricaoComHistorico(padCliente8(codigo), prev));
+    const padded = padCliente8(codigo);
+    setProcessos((prev) => enriquecerListaProcessosComHistoricoLocal(padded, prev));
+    if (!featureFlags.useApiProcessos) return;
+    const myId = ++processosApiReqIdRef.current;
+    void listarProcessosPorCodigoCliente(padded)
+      .then((apiList) => {
+        if (processosApiReqIdRef.current !== myId) return;
+        setProcessos((prev) =>
+          mergeCadastroClientesProcessosComApi(
+            padded,
+            enriquecerListaProcessosComHistoricoLocal(padded, prev),
+            apiList
+          )
+        );
+      })
+      .catch(() => {});
   }, [location.pathname, location.key, codigo]);
 
   useEffect(() => {
@@ -577,7 +728,7 @@ export function CadastroClientes() {
   }
 
   function abrirProcessos(procNumero) {
-    navigate('/processos', { state: { codCliente: padCliente8(codigo), proc: String(procNumero ?? '') } });
+    navigate('/processos', { state: buildRouterStateChaveClienteProcesso(padCliente8(codigo), procNumero ?? '') });
   }
 
   /** Abre Processos com modal Conta Corrente em modo Proc. 0 (mensalista / geral do cliente). */
@@ -588,7 +739,7 @@ export function CadastroClientes() {
       window.alert('Informe um código de cliente válido.');
       return;
     }
-    navigate('/processos', { state: { codCliente: cod, proc: 0 } });
+    navigate('/processos', { state: buildRouterStateChaveClienteProcesso(cod, 0) });
   }
 
   /** Próximo índice de processo (1…n) para este cliente na lista local. */
@@ -640,7 +791,7 @@ export function CadastroClientes() {
         registroAfetadoNome: nomeRazao,
       });
     }
-    navigate('/processos', { state: { codCliente: padCliente8(codigo), proc: String(next) } });
+    navigate('/processos', { state: buildRouterStateChaveClienteProcesso(padCliente8(codigo), next) });
   }
 
   const processosFiltrados = useMemo(() => {
@@ -707,34 +858,111 @@ export function CadastroClientes() {
     [nomeRazao, cnpjCpf, pessoaSelecionada]
   );
 
-  const todasPessoasCadastro = useMemo(() => getCadastroPessoasMockComNovosLocais(true), []);
+  /** Inclui inativas: vínculo cliente↔pessoa deve achar qualquer cadastro existente. */
+  const pessoasParaBuscaModalMock = useMemo(() => getCadastroPessoasMockComNovosLocais(false), []);
 
   const pessoasFiltradasModal = useMemo(() => {
     const raw = String(buscaPessoaModal ?? '').trim();
-    if (!raw) return { tipo: 'vazio', lista: [], limitado: false };
+    if (!raw) return { tipo: 'vazio', lista: [], limitado: false, loading: false };
     const soNum = /^[\d.\s/-]+$/.test(raw);
     const t = normalizarTextoBusca(raw);
     const tNum = normalizarNumeroBusca(raw);
-    if (!soNum && t.length < 2) return { tipo: 'curto', lista: [], limitado: false };
-    if (soNum && tNum.length < 1) return { tipo: 'curto', lista: [], limitado: false };
+    if (!soNum && t.length < 2) return { tipo: 'curto', lista: [], limitado: false, loading: false };
+    if (soNum && tNum.length < 1) return { tipo: 'curto', lista: [], limitado: false, loading: false };
+
+    if (!MOCK_CADASTRO_PESSOAS) {
+      return {
+        tipo: 'ok',
+        lista: pessoasModalApiLista,
+        limitado: false,
+        loading: pessoasModalApiLoading,
+      };
+    }
 
     const out = [];
     const limite = 400;
-    for (const p of todasPessoasCadastro) {
+    const termoNumId = soNum && tNum ? Math.floor(Number(tNum)) : NaN;
+    for (const p of pessoasParaBuscaModalMock) {
       if (out.length >= limite) break;
       const idStr = String(p.id);
+      const idN = Number(p.id);
       const nome = normalizarTextoBusca(p.nome ?? '');
       const cpfD = normalizarNumeroBusca(p.cpf ?? '');
       let ok = false;
       if (soNum) {
-        ok = idStr.startsWith(tNum) || cpfD.includes(tNum);
+        ok =
+          (Number.isFinite(termoNumId) && termoNumId >= 1 && idN === termoNumId) ||
+          idStr.startsWith(tNum) ||
+          cpfD.includes(tNum);
       } else {
         ok = nome.includes(t) || idStr.includes(tNum) || cpfD.includes(tNum);
       }
       if (ok) out.push(p);
     }
-    return { tipo: 'ok', lista: out, limitado: out.length >= limite };
-  }, [todasPessoasCadastro, buscaPessoaModal]);
+    return { tipo: 'ok', lista: out, limitado: out.length >= limite, loading: false };
+  }, [pessoasParaBuscaModalMock, buscaPessoaModal, pessoasModalApiLista, pessoasModalApiLoading]);
+
+  useEffect(() => {
+    if (MOCK_CADASTRO_PESSOAS || !modalEscolherPessoa) {
+      if (!modalEscolherPessoa) {
+        setPessoasModalApiLista([]);
+        setPessoasModalApiLoading(false);
+        setPessoasModalApiErro('');
+      }
+      return undefined;
+    }
+    const raw = String(buscaPessoaModal ?? '').trim();
+    const soNum = /^[\d.\s/-]+$/.test(raw);
+    const t = normalizarTextoBusca(raw);
+    const tNum = normalizarNumeroBusca(raw);
+    if (!raw) {
+      setPessoasModalApiLista([]);
+      setPessoasModalApiLoading(false);
+      setPessoasModalApiErro('');
+      return undefined;
+    }
+    if (!soNum && t.length < 2) {
+      setPessoasModalApiLista([]);
+      setPessoasModalApiLoading(false);
+      setPessoasModalApiErro('');
+      return undefined;
+    }
+    if (soNum && tNum.length < 1) {
+      setPessoasModalApiLista([]);
+      setPessoasModalApiLoading(false);
+      setPessoasModalApiErro('');
+      return undefined;
+    }
+
+    let cancelled = false;
+    setPessoasModalApiLoading(true);
+    setPessoasModalApiErro('');
+    const h = window.setTimeout(async () => {
+      try {
+        const arr = await pesquisarCadastroPessoasPorNomeOuCpf(raw, { apenasAtivos: false, limite: 400 });
+        if (cancelled) return;
+        const lista = (arr || []).map((p) => ({
+          id: Number(p.id),
+          nome: String(p.nome ?? ''),
+          cpf: String(p.cpf ?? '').replace(/\D/g, '').slice(0, 14),
+        }));
+        setPessoasModalApiLista(lista);
+      } catch (e) {
+        if (!cancelled) {
+          setPessoasModalApiLista([]);
+          setPessoasModalApiErro(
+            String(e?.message || '').trim() || 'Não foi possível consultar o cadastro de pessoas (verifique login e API).'
+          );
+        }
+      } finally {
+        if (!cancelled) setPessoasModalApiLoading(false);
+      }
+    }, 320);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(h);
+    };
+  }, [modalEscolherPessoa, buscaPessoaModal]);
 
   function aplicarPessoaSelecionada(p) {
     pularSincPorCargaClienteRef.current = true;
@@ -765,6 +993,23 @@ export function CadastroClientes() {
 
   const indiceClientesPorNome = useMemo(() => {
     const out = [];
+    if (featureFlags.useApiClientes && Array.isArray(clientesApiIndex) && clientesApiIndex.length > 0) {
+      for (const c of clientesApiIndex) {
+        const codP = String(c.codigo ?? '').trim();
+        if (!codP) continue;
+        const codigoNum = Number(codP.replace(/\D/g, '')) || 0;
+        const nome =
+          String(c.nomeRazao ?? '').trim() ||
+          (c.pessoa ? `Pessoa nº ${String(c.pessoa).replace(/\D/g, '')}` : `Cliente ${codP}`);
+        out.push({
+          codigoPadded: codP.length === 8 ? codP : padCliente8(codP),
+          codigoNum,
+          nome,
+        });
+      }
+      out.sort((a, b) => a.codigoNum - b.codigoNum);
+      return out;
+    }
     for (const [codStr, idPessoa] of Object.entries(CLIENTE_PARA_PESSOA)) {
       const pes = getPessoaPorIdIncluindoNovosLocais(idPessoa);
       const nome =
@@ -777,7 +1022,7 @@ export function CadastroClientes() {
     }
     out.sort((a, b) => a.codigoNum - b.codigoNum);
     return out;
-  }, []);
+  }, [clientesApiIndex]);
 
   const clientesFiltradosPorNome = useMemo(() => {
     const t = normalizarTextoBusca(buscaClienteNome);
@@ -886,16 +1131,28 @@ export function CadastroClientes() {
               <p
                 role="button"
                 tabIndex={0}
-                title="Duplo clique para carregar o formulário com este número de cliente"
+                title="Primeiro cliente sem Pessoa vinculada (API + cadastro local). Duplo clique ou Enter para abrir. Se abrir e não preencher Pessoa, continua sendo este código."
                 className="text-sm text-slate-800 px-1 py-1.5 bg-transparent cursor-pointer select-none rounded hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 font-mono tabular-nums"
                 onDoubleClick={() => {
-                  aplicarCodigoCliente(obterProximoCodigoClienteSugerido());
+                  aplicarCodigoCliente(
+                    obterProximoCodigoClienteSemPessoaAtribuida(
+                      featureFlags.useApiClientes ? clientesApiIndex : [],
+                      padCliente8(codigo),
+                      pessoa
+                    )
+                  );
                   setPaginaProcessos(1);
                 }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
-                    aplicarCodigoCliente(obterProximoCodigoClienteSugerido());
+                    aplicarCodigoCliente(
+                      obterProximoCodigoClienteSemPessoaAtribuida(
+                        featureFlags.useApiClientes ? clientesApiIndex : [],
+                        padCliente8(codigo),
+                        pessoa
+                      )
+                    );
                     setPaginaProcessos(1);
                   }
                 }}
@@ -904,7 +1161,7 @@ export function CadastroClientes() {
               </p>
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-0.5">Código:</label>
+              <label className="block text-sm font-medium text-slate-700 mb-0.5">Código do Cliente:</label>
               <div className="flex border border-slate-300 rounded overflow-hidden bg-white w-56">
                 <button
                   type="button"
@@ -1047,7 +1304,7 @@ export function CadastroClientes() {
                 className="inline-flex items-center gap-2 px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
                 title="Documentos do cliente"
               >
-                <FolderOpen className="w-4 h-4 shrink-0 text-slate-600" aria-hidden />
+                <FolderOpen className="w-4 h-4 shrink-0 text-yellow-500" aria-hidden />
                 Documentos
               </button>
               <button
@@ -1058,15 +1315,6 @@ export function CadastroClientes() {
               >
                 <SlidersHorizontal className="w-4 h-4 shrink-0" aria-hidden />
                 Configurações de cálculo
-              </button>
-              <button
-                type="button"
-                onClick={() => navigate('/configuracoes')}
-                className="inline-flex items-center gap-2 px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
-                title="Preferências gerais do aplicativo"
-              >
-                <Settings className="w-4 h-4 text-slate-600 shrink-0" aria-hidden />
-                Config. aplicativo
               </button>
             </div>
             <label className="flex items-center gap-2 text-sm cursor-pointer">
@@ -1321,13 +1569,17 @@ export function CadastroClientes() {
                 autoFocus
                 value={buscaPessoaModal}
                 onChange={(e) => setBuscaPessoaModal(e.target.value)}
-                placeholder="Nome, código ou CPF/CNPJ…"
+                placeholder="Nº da pessoa, nome ou CPF/CNPJ…"
                 className={inputClass}
               />
               <p className="text-xs text-slate-500">
-                Digite pelo menos 2 letras no nome, ou use apenas números para código ou documento. Clique numa linha
-                para definir esta pessoa como cliente.
+                Permite o nº da pessoa no Cadastro de Pessoas, o nome (mínimo 2 letras) ou CPF/CNPJ em dígitos (11 ou 14
+                caracteres tratam como documento). A busca inclui pessoas ativas e inativas. Clique numa linha para
+                definir esta pessoa como cliente.
               </p>
+              {pessoasModalApiErro ? (
+                <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded px-2 py-2">{pessoasModalApiErro}</p>
+              ) : null}
             </div>
             <div className="flex-1 min-h-0 overflow-auto px-4 pb-4">
               {pessoasFiltradasModal.tipo === 'vazio' && (
@@ -1335,14 +1587,22 @@ export function CadastroClientes() {
               )}
               {pessoasFiltradasModal.tipo === 'curto' && (
                 <p className="text-sm text-amber-800 py-6 text-center">
-                  Digite pelo menos 2 letras no nome, ou busque por números (código da pessoa ou CPF/CNPJ).
+                  Digite pelo menos 2 letras no nome, ou use números para o nº da pessoa no cadastro ou para CPF/CNPJ.
                 </p>
               )}
-              {pessoasFiltradasModal.tipo === 'ok' && pessoasFiltradasModal.lista.length === 0 && (
-                <p className="text-sm text-slate-600 py-6 text-center">Nenhuma pessoa encontrada.</p>
+              {pessoasFiltradasModal.tipo === 'ok' && pessoasFiltradasModal.loading && pessoasFiltradasModal.lista.length === 0 && (
+                <p className="text-sm text-slate-500 py-6 text-center">Buscando no cadastro…</p>
               )}
+              {pessoasFiltradasModal.tipo === 'ok' &&
+                !pessoasFiltradasModal.loading &&
+                pessoasFiltradasModal.lista.length === 0 && (
+                  <p className="text-sm text-slate-600 py-6 text-center">Nenhuma pessoa encontrada.</p>
+                )}
               {pessoasFiltradasModal.tipo === 'ok' && pessoasFiltradasModal.lista.length > 0 && (
                 <>
+                  {pessoasFiltradasModal.loading && (
+                    <p className="text-xs text-slate-500 py-2">Atualizando resultados…</p>
+                  )}
                   {pessoasFiltradasModal.limitado && (
                     <p className="text-xs text-slate-500 py-2">
                       Mostrando até 400 resultados — refine a busca se necessário.

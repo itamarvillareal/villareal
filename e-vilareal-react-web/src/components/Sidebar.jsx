@@ -130,7 +130,19 @@ export function Sidebar() {
               <div key={item.id} className="mb-0.5">
                 <button
                   type="button"
-                  onClick={() => toggleGrupo(item.id)}
+                  onClick={() => {
+                    if (item.id === 'processos-grupo') {
+                      setGruposAbertos((prev) => new Set(prev).add(item.id));
+                      navigate('/processos');
+                      return;
+                    }
+                    if (item.id === 'calcular-grupo') {
+                      setGruposAbertos((prev) => new Set(prev).add(item.id));
+                      if (subs[0]) navigate(`/${subs[0].id}`);
+                      return;
+                    }
+                    toggleGrupo(item.id);
+                  }}
                   className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-gray-700 dark:text-slate-200 text-sm font-medium transition-all duration-200 text-left ${
                     algumFilhoAtivo
                       ? 'bg-blue-50 dark:bg-cyan-500/10 text-blue-900 dark:text-cyan-100 border-l-2 border-blue-400 dark:border-cyan-400/70 shadow-sm dark:shadow-none'

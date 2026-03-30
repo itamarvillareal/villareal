@@ -340,8 +340,9 @@ class ApiIntegrationTest extends AbstractIntegrationTest {
 
         assertThat(clientes.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(clientes.getBody()).isNotEmpty();
-        Long pessoaId = ((Number) clientes.getBody().get(0).get("id")).longValue();
-        String cod8 = String.format("%08d", pessoaId);
+        Map<String, Object> primeiroCliente = clientes.getBody().get(0);
+        Long pessoaId = ((Number) primeiroCliente.get("id")).longValue();
+        String cod8 = (String) primeiroCliente.get("codigoCliente");
 
         var processoBody = Map.of(
                 "clienteId", pessoaId,

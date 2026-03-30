@@ -6,6 +6,7 @@ import {
   formatCodigoRelatorioCalculos,
   formatMoedaRelatorioCalculos,
 } from '../data/relatorioCalculosData.js';
+import { buildRouterStateChaveClienteProcesso } from '../domain/camposProcessoCliente.js';
 
 /**
  * Grade alinhada à planilha de referência: 11 colunas, cabeçalho cinza, linhas zebradas.
@@ -293,9 +294,11 @@ export function RelatorioCalculos() {
                           navigate('/calculos', {
                             replace: false,
                             state: {
-                              codCliente: row.navigateCodCliente ?? row.codCliente,
-                              proc: row.navigateProc ?? row.proc,
                               dimensao: row.navigateDimensao ?? row.dimensao,
+                              ...buildRouterStateChaveClienteProcesso(
+                                row.navigateCodCliente ?? row.codCliente,
+                                row.navigateProc ?? row.proc
+                              ),
                             },
                           })
                         }

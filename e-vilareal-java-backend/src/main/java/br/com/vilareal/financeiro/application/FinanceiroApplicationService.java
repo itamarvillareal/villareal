@@ -2,6 +2,7 @@ package br.com.vilareal.financeiro.application;
 
 import br.com.vilareal.common.exception.BusinessRuleException;
 import br.com.vilareal.common.exception.ResourceNotFoundException;
+import br.com.vilareal.common.text.Utf8MojibakeUtil;
 import br.com.vilareal.financeiro.api.dto.*;
 import br.com.vilareal.financeiro.infrastructure.persistence.LancamentoFinanceiroSpecifications;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.ContaContabilEntity;
@@ -225,8 +226,8 @@ public class FinanceiroApplicationService {
     private ContaContabilResponse toContaResponse(ContaContabilEntity e) {
         ContaContabilResponse r = new ContaContabilResponse();
         r.setId(e.getId());
-        r.setCodigo(e.getCodigo());
-        r.setNome(e.getNome());
+        r.setCodigo(Utf8MojibakeUtil.corrigir(e.getCodigo()));
+        r.setNome(Utf8MojibakeUtil.corrigir(e.getNome()));
         return r;
     }
 
@@ -234,22 +235,22 @@ public class FinanceiroApplicationService {
         LancamentoFinanceiroResponse r = new LancamentoFinanceiroResponse();
         r.setId(e.getId());
         r.setContaContabilId(e.getContaContabil().getId());
-        r.setContaContabilNome(e.getContaContabil().getNome());
+        r.setContaContabilNome(Utf8MojibakeUtil.corrigir(e.getContaContabil().getNome()));
         r.setClienteId(e.getCliente() != null ? e.getCliente().getId() : null);
         r.setProcessoId(e.getProcesso() != null ? e.getProcesso().getId() : null);
-        r.setBancoNome(e.getBancoNome());
+        r.setBancoNome(Utf8MojibakeUtil.corrigir(e.getBancoNome()));
         r.setNumeroBanco(e.getNumeroBanco());
-        r.setNumeroLancamento(e.getNumeroLancamento());
+        r.setNumeroLancamento(Utf8MojibakeUtil.corrigir(e.getNumeroLancamento()));
         r.setDataLancamento(e.getDataLancamento());
-        r.setDescricao(e.getDescricao());
-        r.setDescricaoDetalhada(e.getDescricaoDetalhada());
+        r.setDescricao(Utf8MojibakeUtil.corrigir(e.getDescricao()));
+        r.setDescricaoDetalhada(Utf8MojibakeUtil.corrigir(e.getDescricaoDetalhada()));
         r.setValor(e.getValor());
         r.setNatureza(e.getNatureza());
-        r.setRefTipo(e.getRefTipo());
-        r.setEqReferencia(e.getEqReferencia());
-        r.setParcelaRef(e.getParcelaRef());
-        r.setOrigem(e.getOrigem());
-        r.setStatus(e.getStatus());
+        r.setRefTipo(Utf8MojibakeUtil.corrigir(e.getRefTipo()));
+        r.setEqReferencia(Utf8MojibakeUtil.corrigir(e.getEqReferencia()));
+        r.setParcelaRef(Utf8MojibakeUtil.corrigir(e.getParcelaRef()));
+        r.setOrigem(Utf8MojibakeUtil.corrigir(e.getOrigem()));
+        r.setStatus(Utf8MojibakeUtil.corrigir(e.getStatus()));
         r.setClassificacaoFinanceiraId(e.getClassificacaoFinanceiraId());
         r.setEloFinanceiroId(e.getEloFinanceiroId());
         return r;

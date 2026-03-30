@@ -12,9 +12,13 @@ import {
   enriquecerCamposRelatorioProcessos,
 } from '../data/relatorioProcessosColunaDinamica.js';
 import { normalizarFiltroProcessoAtivo } from '../data/relatorioPresets.js';
-import { getRelatorioProcessosMockLinhasBase } from '../data/relatorioProcessosDados.js';
+import {
+  getRelatorioProcessosMockLinhasBase,
+  obterLinhasBaseRelatorioProcessos,
+} from '../data/relatorioProcessosDados.js';
 import { preaquecerCamposRelatorioApiFirst } from '../data/processosDadosRelatorio.js';
 import { EVENT_RELATORIO_PERSISTENCIA_EXTERNA } from '../services/crossTabLocalStorageSync.js';
+import { buildRouterStateChaveClienteProcesso } from '../domain/camposProcessoCliente.js';
 
 const STORAGE_COLUNAS_RELATORIO = 'vilareal.relatorioProcessos.colunasVisiveis.v1';
 const STORAGE_LARGURA_UNIFORME = 'vilareal.relatorioProcessos.larguraUniforme.v1';
@@ -87,12 +91,12 @@ function carregarLarguraUniformeSalva() {
 }
 
 function carregarFiltroProcessoAtivoSalvo() {
-  if (typeof window === 'undefined') return 'todos';
+  if (typeof window === 'undefined') return 'ativos';
   try {
     const raw = window.localStorage.getItem(STORAGE_FILTRO_PROCESSO_ATIVO);
     return normalizarFiltroProcessoAtivo(raw);
   } catch {
-    return 'todos';
+    return 'ativos';
   }
 }
 
@@ -104,8 +108,9 @@ function linhaPassaFiltroAtivo(row, filtro) {
   return !ativo;
 }
 
-function montarLinhasRelatorioBase() {
-  return getRelatorioProcessosMockLinhasBase().map((row, idx) => {
+function montarLinhasRelatorioBaseDeCruas(linhasCruas) {
+  const rows = Array.isArray(linhasCruas) ? linhasCruas : [];
+  return rows.map((row, idx) => {
     const enriched = enriquecerCamposRelatorioProcessos(
       {
         ...row,
@@ -118,8 +123,17 @@ function montarLinhasRelatorioBase() {
   });
 }
 
-function carregarDadosRelatorioInicial() {
-  const base = montarLinhasRelatorioBase();
+function montarLinhasRelatorioBase() {
+  return montarLinhasRelatorioBaseDeCruas(getRelatorioProcessosMockLinhasBase());
+}
+
+/**
+ * @param {boolean} preferirCamposDaBase - Se true (após «Atualizar relatório»), valores vindos da base
+ *   sobrescrevem o snapshot em localStorage — senão dados novos da API nunca aparecem.
+ * @param {Array|null|undefined} baseLinhas - Linhas já enriquecidas; se omitido, usa {@link montarLinhasRelatorioBase}.
+ */
+function mesclarLinhasRelatorioComPersistido(preferirCamposDaBase, baseLinhas) {
+  const base = Array.isArray(baseLinhas) ? baseLinhas : montarLinhasRelatorioBase();
   const n = base.length;
   if (typeof window === 'undefined') return base;
   if (n > RELATORIO_MAX_LINHAS_PERSISTIDAS) return base;
@@ -127,17 +141,33 @@ function carregarDadosRelatorioInicial() {
     const raw = window.localStorage.getItem(STORAGE_DADOS_RELATORIO);
     if (!raw) return base;
     const p = JSON.parse(raw);
-    if (!Array.isArray(p) || p.length !== n) return montarLinhasRelatorioBase();
-    return p.map((salvo, i) => ({
-      ...base[i],
-      ...salvo,
-      __relatorioIdx: i,
-      codCliente: base[i].codCliente,
-      proc: base[i].proc,
-    }));
+    if (!Array.isArray(p) || p.length !== n) return base;
+    return p.map((salvo, i) => {
+      const b = base[i];
+      if (preferirCamposDaBase) {
+        return {
+          ...salvo,
+          ...b,
+          __relatorioIdx: i,
+          codCliente: b.codCliente,
+          proc: b.proc,
+        };
+      }
+      return {
+        ...b,
+        ...salvo,
+        __relatorioIdx: i,
+        codCliente: b.codCliente,
+        proc: b.proc,
+      };
+    });
   } catch {
-    return montarLinhasRelatorioBase();
+    return base;
   }
+}
+
+function carregarDadosRelatorioInicial() {
+  return mesclarLinhasRelatorioComPersistido(false);
 }
 
 function carregarModoAlteracaoSalvo() {
@@ -252,25 +282,31 @@ export function Relatorio() {
     if (emitindoRelatorioRef.current) return;
     emitindoRelatorioRef.current = true;
     setEmitindoRelatorio(true);
-    window.setTimeout(() => {
-      void (async () => {
-        try {
-          const basePairs = getRelatorioProcessosMockLinhasBase().map((r) => [r.codCliente, r.proc]);
-          await preaquecerCamposRelatorioApiFirst(basePairs);
-        } catch {
-          // fallback local/mock já cobre esse cenário
-        }
-        try {
-        const next = carregarDadosRelatorioInicial();
+    void (async () => {
+      let baseRaw = [];
+      try {
+        baseRaw = await obterLinhasBaseRelatorioProcessos();
+      } catch (e) {
+        console.error(e);
+        baseRaw = getRelatorioProcessosMockLinhasBase();
+      }
+      try {
+        const basePairs = baseRaw.map((r) => [r.codCliente, r.proc]);
+        await preaquecerCamposRelatorioApiFirst(basePairs);
+      } catch {
+        /* mock/local cobre */
+      }
+      try {
+        const baseEnriched = montarLinhasRelatorioBaseDeCruas(baseRaw);
+        const next = mesclarLinhasRelatorioComPersistido(relatorioEmitido, baseEnriched);
         setDados(next);
         setRelatorioEmitido(true);
-        } finally {
-          emitindoRelatorioRef.current = false;
-          setEmitindoRelatorio(false);
-        }
-      })();
-    }, 0);
-  }, []);
+      } finally {
+        emitindoRelatorioRef.current = false;
+        setEmitindoRelatorio(false);
+      }
+    })();
+  }, [relatorioEmitido]);
 
   useEffect(() => {
     if (!relatorioEmitido) return;
@@ -342,16 +378,35 @@ export function Relatorio() {
   };
 
   return (
-    <div className="min-h-full bg-slate-200 flex flex-col">
-      <div className="flex-1 min-h-0 p-3 flex flex-col">
+    <div className="flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden bg-slate-200 overscroll-y-contain">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-3">
         <header className="mb-2 flex flex-wrap items-start justify-between gap-2">
           <div className="min-w-0">
             <h1 className="text-xl font-bold text-slate-800">Relatório de Processos</h1>
             {!relatorioEmitido ? (
-              <p className="text-xs text-slate-600 mt-1 max-w-xl">
+              <p className="mt-1 max-w-xl text-xs text-slate-600">
                 Para não travar o navegador, as linhas só são montadas depois que você emitir o relatório.
               </p>
-            ) : null}
+            ) : (
+              <p className="mt-1 text-sm text-slate-600">
+                {dados.length === 0 ? (
+                  'Nenhum processo carregado.'
+                ) : dadosFiltrados.length === dados.length ? (
+                  <>
+                    <span className="font-semibold text-slate-800 tabular-nums">{dadosFiltrados.length}</span>
+                    {dadosFiltrados.length === 1 ? ' processo' : ' processos'}
+                  </>
+                ) : (
+                  <>
+                    Exibindo{' '}
+                    <span className="font-semibold text-slate-800 tabular-nums">{dadosFiltrados.length}</span>
+                    {' de '}
+                    <span className="tabular-nums">{dados.length}</span>
+                    {' processos'}
+                  </>
+                )}
+              </p>
+            )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
           <button
@@ -361,7 +416,7 @@ export function Relatorio() {
             className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-teal-700 bg-teal-700 text-white text-sm font-medium hover:bg-teal-800 disabled:opacity-60 disabled:pointer-events-none shadow-sm"
             title={
               relatorioEmitido
-                ? 'Recarrega os dados do relatório (mescla alterações salvas no navegador quando couber)'
+                ? 'Recarrega processos (API/mock); células editadas no relatório só permanecem em campos que não vêm da base atualizada'
                 : 'Monta a tabela com todos os processos (pode levar alguns segundos)'
             }
           >
@@ -447,7 +502,7 @@ export function Relatorio() {
           </div>
           </div>
         </header>
-        <div className="flex-1 min-h-0 bg-white rounded border border-slate-300 shadow-sm overflow-hidden flex flex-col">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded border border-slate-300 bg-white shadow-sm">
           {emitindoRelatorio && !relatorioEmitido ? (
             <div className="flex-1 flex flex-col items-center justify-center gap-3 p-10 text-slate-600">
               <Loader2 className="w-10 h-10 text-teal-700 animate-spin" aria-hidden />
@@ -473,7 +528,7 @@ export function Relatorio() {
               </button>
             </div>
           ) : (
-          <div className="overflow-auto flex-1 relative">
+          <div className="relative min-h-0 flex-1 overflow-auto [scrollbar-gutter:stable]">
             {emitindoRelatorio ? (
               <div className="absolute inset-0 z-20 bg-white/70 flex items-center justify-center gap-2 text-sm font-medium text-slate-700">
                 <Loader2 className="w-5 h-5 animate-spin text-teal-700" aria-hidden />
@@ -554,10 +609,7 @@ export function Relatorio() {
                       onDoubleClick={() => {
                         if (modoAlteracao) return;
                         navigate('/processos', {
-                          state: {
-                            codCliente: String(row.codCliente ?? ''),
-                            proc: String(row.proc ?? ''),
-                          },
+                          state: buildRouterStateChaveClienteProcesso(row.codCliente ?? '', row.proc ?? ''),
                         });
                       }}
                     >

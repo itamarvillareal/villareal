@@ -1,5 +1,5 @@
 /**
- * Variáveis `VITE_*` — homologação F1–F5: `npm run dev:homolog` + `.env.homolog` (ver docs/homologation-quick-start.md).
+ * Variáveis `VITE_*` — `.env.development` ou `npm run dev:homolog` + `.env.homolog`.
  */
 const mockCadastroPessoas = import.meta.env.VITE_USE_MOCK_CADASTRO_PESSOAS === 'true';
 
@@ -12,16 +12,7 @@ export const featureFlags = {
   useApiProcessos: import.meta.env.VITE_USE_API_PROCESSOS === 'true',
   useApiFinanceiro: import.meta.env.VITE_USE_API_FINANCEIRO === 'true',
   useApiPublicacoes: import.meta.env.VITE_USE_API_PUBLICACOES === 'true',
-  /** Imóveis / contratos / repasses (Fase 7) — integração progressiva com API. */
   useApiImoveis: import.meta.env.VITE_USE_API_IMOVEIS === 'true',
-  /** Migração assistida mock `imoveisMockData` → API (prévia + execução explícita; ver docs). */
-  enableImoveisMockMigrationPhase7: import.meta.env.VITE_ENABLE_IMOVEIS_MOCK_MIGRATION_PHASE7 === 'true',
-  enableLocalStorageImportPhase5Financeiro:
-    import.meta.env.VITE_ENABLE_LOCALSTORAGE_IMPORT_PHASE5_FINANCEIRO === 'true',
-  /** Migração assistida vilareal.processos.publicacoes.v2 → API (UI/execução em evolução). */
-  enableLocalStorageImportPhase6Publicacoes:
-    import.meta.env.VITE_ENABLE_LOCALSTORAGE_IMPORT_PHASE6_PUBLICACOES === 'true',
-  /** Tarefas operacionais (Fase 8) — integração progressiva com API. */
   useApiTarefas: import.meta.env.VITE_USE_API_TAREFAS === 'true',
   /** Hierarquia da tela Tópicos — `GET /api/topicos/hierarchy`. */
   useApiTopicos: import.meta.env.VITE_USE_API_TOPICOS === 'true',

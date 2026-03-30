@@ -14,6 +14,9 @@ public class PessoaComplementarPayload {
     private String estadoCivil;
     private String genero;
 
+    @Schema(description = "Mesmo dado lógico que processo.descricaoAcao; label distinto no UI (Clientes vs Processos).")
+    private String descricaoAcao;
+
     public String getRg() {
         return rg;
     }
@@ -66,6 +69,15 @@ public class PessoaComplementarPayload {
     @JsonSetter(nulls = Nulls.SKIP)
     public void setGenero(String genero) {
         this.genero = blankToNull(genero);
+    }
+
+    public String getDescricaoAcao() {
+        return descricaoAcao;
+    }
+
+    @JsonSetter(nulls = Nulls.SKIP)
+    public void setDescricaoAcao(String descricaoAcao) {
+        this.descricaoAcao = blankToNull(descricaoAcao);
     }
 
     private static String blankToNull(String s) {

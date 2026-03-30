@@ -1,5 +1,8 @@
 package br.com.vilareal.processo.api.dto;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public class ProcessoParteResponse {
 
     private Long id;
@@ -9,6 +12,9 @@ public class ProcessoParteResponse {
     private String qualificacao;
     private Integer ordem;
     private String nomeExibicao;
+
+    /** Ids em {@code pessoa} dos advogados desta parte (ordem preservada). */
+    private List<Long> advogadoPessoaIds = new ArrayList<>();
 
     public Long getId() {
         return id;
@@ -64,5 +70,13 @@ public class ProcessoParteResponse {
 
     public void setNomeExibicao(String nomeExibicao) {
         this.nomeExibicao = nomeExibicao;
+    }
+
+    public List<Long> getAdvogadoPessoaIds() {
+        return advogadoPessoaIds;
+    }
+
+    public void setAdvogadoPessoaIds(List<Long> advogadoPessoaIds) {
+        this.advogadoPessoaIds = advogadoPessoaIds != null ? advogadoPessoaIds : new ArrayList<>();
     }
 }

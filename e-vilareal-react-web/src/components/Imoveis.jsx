@@ -5,11 +5,7 @@ import { padCliente } from '../data/processosDadosRelatorio.js';
 import { resolverAliasHojeEmTexto } from '../services/hjDateAliasService.js';
 import { carregarImovelCadastro, salvarImovelCadastro } from '../repositories/imoveisRepository.js';
 import { featureFlags } from '../config/featureFlags.js';
-import {
-  executarMigracaoAssistidaPhase7Imoveis,
-  getStatusMigracaoAssistidaPhase7Imoveis,
-  previsualizarMigracaoAssistidaPhase7Imoveis,
-} from '../services/imoveisMigrationPhase7.js';
+import { buildRouterStateChaveClienteProcesso } from '../domain/camposProcessoCliente.js';
 
 function Field({ label, children, className = '' }) {
   return (
@@ -132,11 +128,6 @@ export function Imoveis() {
   const [_apiContratoId, setApiContratoId] = useState(null);
   const [_apiClienteId, setApiClienteId] = useState(null);
   const [_apiProcessoId, setApiProcessoId] = useState(null);
-  const [migracaoPreview, setMigracaoPreview] = useState(null);
-  const [migracaoLoading, setMigracaoLoading] = useState(false);
-  const [migracaoResultado, setMigracaoResultado] = useState(null);
-  const [migracaoErro, setMigracaoErro] = useState('');
-
   const unidadeAlvo = location.state && typeof location.state === 'object' ? location.state.unidade : null;
 
   function popularFormulario(data) {
@@ -300,12 +291,10 @@ export function Imoveis() {
 
   function abrirProcessoDoImovel() {
     navigate('/processos', {
-      state: {
-        codCliente: padCliente(codigo ?? ''),
-        proc: String(proc ?? ''),
+      state: buildRouterStateChaveClienteProcesso(padCliente(codigo ?? ''), proc ?? '', {
         /** Mesmo nº deste cadastro — Processos usa getImovelMock(imovelId) como fonte única. */
         imovelId: String(imovelId),
-      },
+      }),
     });
   }
 
@@ -528,82 +517,6 @@ export function Imoveis() {
               </p>
             ) : null}
           </div>
-
-          {featureFlags.useApiImoveis && featureFlags.enableImoveisMockMigrationPhase7 ? (
-            <div className="px-5 sm:px-6 py-3 border-b border-amber-200/80 dark:border-amber-500/25 bg-amber-50/60 dark:bg-amber-950/30 text-sm space-y-2">
-              <p className="text-xs font-semibold text-amber-950 dark:text-amber-100/95">
-                Migração assistida (mock → API)
-              </p>
-              <p className="text-[11px] text-slate-600 dark:text-amber-200/80 leading-relaxed">
-                Importa imóvel + contrato a partir de <code className="text-[10px]">getImovelMock(1…N)</code> quando
-                cliente e processo existem na API. Não repete par (cliente, processo) já cadastrado. Não importa repasses
-                nem despesas (inexistentes no mock).{' '}
-                <span className="font-medium text-amber-900 dark:text-amber-50/90">
-                  Requer confirmação explícita para executar.
-                </span>
-              </p>
-              <div className="flex flex-wrap gap-2 items-center">
-                <button
-                  type="button"
-                  disabled={migracaoLoading}
-                  onClick={() => {
-                    setMigracaoErro('');
-                    setMigracaoResultado(null);
-                    setMigracaoLoading(true);
-                    void previsualizarMigracaoAssistidaPhase7Imoveis()
-                      .then((r) => setMigracaoPreview(r))
-                      .catch((e) => setMigracaoErro(e?.message || 'Falha na prévia.'))
-                      .finally(() => setMigracaoLoading(false));
-                  }}
-                  className={`${btnSecondary} text-xs py-2 px-3`}
-                >
-                  Pré-visualizar
-                </button>
-                <button
-                  type="button"
-                  disabled={migracaoLoading || !migracaoPreview?.ok || (migracaoPreview?.resumo?.elegivel ?? 0) === 0}
-                  onClick={() => {
-                    const n = migracaoPreview?.resumo?.elegivel ?? 0;
-                    if (
-                      !window.confirm(
-                        `Confirmar importação de até ${n} imóvel(s) + contrato(s) na API? Esta ação não pode ser desfeita automaticamente.`,
-                      )
-                    ) {
-                      return;
-                    }
-                    setMigracaoErro('');
-                    setMigracaoResultado(null);
-                    setMigracaoLoading(true);
-                    void executarMigracaoAssistidaPhase7Imoveis()
-                      .then((r) => setMigracaoResultado(r))
-                      .catch((e) => setMigracaoErro(e?.message || 'Falha na importação.'))
-                      .finally(() => setMigracaoLoading(false));
-                  }}
-                  className={`${btnPrimary} text-xs py-2 px-3 bg-amber-700 hover:brightness-110 border-amber-600/50`}
-                >
-                  Executar importação
-                </button>
-                {migracaoLoading ? <span className="text-xs text-indigo-700 dark:text-indigo-300">Processando…</span> : null}
-              </div>
-              {migracaoErro ? <p className="text-xs text-red-700 dark:text-red-300">{migracaoErro}</p> : null}
-              {migracaoPreview && !migracaoPreview.ok ? (
-                <p className="text-xs text-slate-600 dark:text-slate-400">{migracaoPreview.observacao}</p>
-              ) : null}
-              {migracaoPreview?.ok && migracaoPreview.resumo ? (
-                <p className="text-xs text-slate-700 dark:text-slate-300 tabular-nums">
-                  Resumo prévia: elegíveis {migracaoPreview.resumo.elegivel} · já existentes{' '}
-                  {migracaoPreview.resumo.jaExiste} · sem cliente {migracaoPreview.resumo.semCliente} · sem processo{' '}
-                  {migracaoPreview.resumo.semProcesso} (total mock {migracaoPreview.totalMock}).
-                </p>
-              ) : null}
-              {migracaoResultado ? (
-                <p className="text-xs text-emerald-800 dark:text-emerald-300 tabular-nums">
-                  Última execução: criados {migracaoResultado.criados} · pulados {migracaoResultado.pulados} · erros{' '}
-                  {migracaoResultado.erros}. Marcador: {getStatusMigracaoAssistidaPhase7Imoveis().markerKey}
-                </p>
-              ) : null}
-            </div>
-          ) : null}
 
           <div className="p-5 sm:p-6 md:p-8 space-y-8 md:space-y-10">
             {/* Endereço + observações */}

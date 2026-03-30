@@ -7,6 +7,9 @@ import { gerarMockProcesso } from './processosDadosRelatorio.js';
 import { CLIENTE_PARA_PESSOA, getIdPessoaPorCodCliente } from './clientesCadastradosMock.js';
 import { getPessoaPorId } from './cadastroPessoasMock.js';
 import { processosClienteMock } from './mockData.js';
+import { featureFlags } from '../config/featureFlags.js';
+import { listarClientesCadastro } from '../repositories/clientesRepository.js';
+import { listarProcessosPorCodigoCliente, mapApiProcessoToUiShape } from '../repositories/processosRepository.js';
 
 const CONSULTORES = ['Karla Almeida', 'ITAMAR', 'DAAE', 'Ana Luisa'];
 
@@ -107,4 +110,76 @@ export function getRelatorioProcessosMockLinhasBase() {
       consultas: String(12 + ((idx * 13 + c * 3) % 50)),
     };
   }).filter(Boolean);
+}
+
+/**
+ * Linhas cruas do relatório (mesmo formato que {@link getRelatorioProcessosMockLinhasBase}).
+ * Com API (processos + clientes): lista clientes e processos reais; caso contrário usa só o mock.
+ */
+export async function obterLinhasBaseRelatorioProcessos() {
+  if (!featureFlags.useApiProcessos || !featureFlags.useApiClientes) {
+    return getRelatorioProcessosMockLinhasBase();
+  }
+
+  const clientes = await listarClientesCadastro();
+  if (!Array.isArray(clientes) || clientes.length === 0) {
+    return [];
+  }
+
+  const sorted = [...clientes].sort((a, b) => String(a.codigo ?? '').localeCompare(String(b.codigo ?? '')));
+  const out = [];
+  let idx = 0;
+
+  for (const cli of sorted) {
+    const digits = String(cli.codigo ?? '').replace(/\D/g, '');
+    const codPad = digits.padStart(8, '0').slice(-8);
+    if (!codPad || /^0{8}$/.test(codPad)) continue;
+
+    const nomeCliente = String(cli.nomeRazao ?? '').trim() || `CLIENTE ${digits.replace(/^0+/, '') || '?'}`;
+    const rawList = await listarProcessosPorCodigoCliente(codPad);
+    const procs = Array.isArray(rawList) ? rawList : [];
+    const sortedProcs = [...procs].sort((a, b) => Number(a.numeroInterno) - Number(b.numeroInterno));
+
+    for (const raw of sortedProcs) {
+      const u = mapApiProcessoToUiShape(raw);
+      const p = Number(u.numeroInterno);
+      if (!Number.isFinite(p) || p < 1) continue;
+
+      const cHash = Number(digits.replace(/^0+/, '') || '0') || idx;
+      const consultor = CONSULTORES[(cHash + p + idx) % CONSULTORES.length];
+      const temPrazo = (cHash + p + idx) % 4 === 0;
+      const temAud = (cHash + p * 2) % 5 === 0;
+      const descricao = String(u.naturezaAcao ?? '').trim() || '—';
+      const parteSlice = '';
+
+      out.push({
+        cliente: nomeCliente,
+        codCliente: codPad,
+        proc: String(p),
+        numeroProcesso: String(u.numeroProcessoNovo ?? '').trim(),
+        inRequerente: (cHash + p + idx) % 4 === 1 ? 'REQUERIDO' : '',
+        ultimoAndamento: `ANDAMENTO — ${descricao.slice(0, 80)}`,
+        dataConsulta: dataBrDeslocada(cHash, p, 0),
+        proximaConsulta: String(u.proximaConsultaData ?? '').trim() || dataBrDeslocada(cHash, p, 28),
+        observacaoProcesso:
+          String(u.observacao ?? '').trim() ||
+          `Proc. cadastro ${codPad} / ${p}${parteSlice ? ` · ${parteSlice}…` : ''}`,
+        consultor: String(u.responsavel ?? '').trim() || consultor,
+        lmv: String((cHash * 3 + p * 5) % 40 || 1),
+        fase: String(u.faseSelecionada ?? '').trim() || 'Em Andamento',
+        observacaoFase: '',
+        descricaoAcao: descricao,
+        prazoFatal: String(u.prazoFatal ?? '').trim() || (temPrazo ? dataBrDeslocada(cHash, p, 60) : ''),
+        competencia: String(u.competencia ?? '').trim(),
+        dataAudiencia: temAud ? dataBrDeslocada(cHash, p, 14) : '',
+        horaAudiencia: temAud ? `${String(8 + ((cHash + p) % 10)).padStart(2, '0')}:00` : '',
+        cepReu: String(74000000 + ((cHash * 17 + p) % 9999)),
+        inv: String((cHash + p) % 35 || 1),
+        consultas: String(12 + ((idx * 13 + cHash * 3) % 50)),
+      });
+      idx += 1;
+    }
+  }
+
+  return out;
 }

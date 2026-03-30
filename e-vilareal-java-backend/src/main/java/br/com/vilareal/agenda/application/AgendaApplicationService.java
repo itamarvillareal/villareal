@@ -9,6 +9,7 @@ import br.com.vilareal.agenda.infrastructure.persistence.entity.AgendaEventoEnti
 import br.com.vilareal.agenda.infrastructure.persistence.repository.AgendaEventoRepository;
 import br.com.vilareal.common.exception.BusinessRuleException;
 import br.com.vilareal.common.exception.ResourceNotFoundException;
+import br.com.vilareal.common.text.Utf8MojibakeUtil;
 import br.com.vilareal.usuario.infrastructure.persistence.entity.UsuarioEntity;
 import br.com.vilareal.usuario.infrastructure.persistence.repository.UsuarioRepository;
 import org.springframework.stereotype.Service;
@@ -165,22 +166,22 @@ public class AgendaApplicationService {
         r.setId(e.getId());
         if (e.getUsuario() != null) {
             r.setUsuarioId(e.getUsuario().getId());
-            r.setUsuarioNome(e.getUsuario().getNome());
+            r.setUsuarioNome(Utf8MojibakeUtil.corrigir(e.getUsuario().getNome()));
         }
         r.setDataEvento(e.getDataEvento());
-        r.setHoraEvento(e.getHoraEvento());
-        r.setDescricao(e.getDescricao());
-        r.setStatusCurto(e.getStatusCurto() != null ? e.getStatusCurto() : "");
-        r.setOrigem(e.getOrigem());
+        r.setHoraEvento(Utf8MojibakeUtil.corrigir(e.getHoraEvento()));
+        r.setDescricao(Utf8MojibakeUtil.corrigir(e.getDescricao()));
+        r.setStatusCurto(Utf8MojibakeUtil.corrigir(e.getStatusCurto() != null ? e.getStatusCurto() : ""));
+        r.setOrigem(Utf8MojibakeUtil.corrigir(e.getOrigem()));
         return r;
     }
 
     private AgendaEventoLinhaDto toLinha(AgendaEventoEntity e) {
         AgendaEventoLinhaDto x = new AgendaEventoLinhaDto();
         x.setId(String.valueOf(e.getId()));
-        x.setHora(e.getHoraEvento() != null ? e.getHoraEvento() : "");
-        x.setDescricao(e.getDescricao() != null ? e.getDescricao() : "");
-        x.setStatusCurto(e.getStatusCurto() != null ? e.getStatusCurto() : "");
+        x.setHora(Utf8MojibakeUtil.corrigir(e.getHoraEvento() != null ? e.getHoraEvento() : ""));
+        x.setDescricao(Utf8MojibakeUtil.corrigir(e.getDescricao() != null ? e.getDescricao() : ""));
+        x.setStatusCurto(Utf8MojibakeUtil.corrigir(e.getStatusCurto() != null ? e.getStatusCurto() : ""));
         return x;
     }
 

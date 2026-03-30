@@ -47,6 +47,7 @@ import {
   procurarSugestoesVinculoAutomatico,
   parseRodadaKeyParaDisplay,
 } from '../data/buscaParcelamentoFinanceiro';
+import { buildRouterStateChaveClienteProcesso } from '../domain/camposProcessoCliente.js';
 import { parseOfxToExtrato, mergeExtratoBancario, contarLancamentosNovos } from '../utils/ofx';
 import { OFX_ITAU_REAL_EXEMPLO, OFX_CORA_REAL_EXEMPLO } from '../data/ofxItauCoraReal';
 import { CheckSquare, ChevronLeft, ChevronRight, Link2, Settings, Trash2, Unlink } from 'lucide-react';
@@ -59,12 +60,6 @@ import {
   persistirFallbackExtratos,
   salvarOuAtualizarLancamentoFinanceiroApi,
 } from '../repositories/financeiroRepository.js';
-import {
-  executarMigracaoAssistidaPhase5Financeiro,
-  getStatusMigracaoAssistidaPhase5Financeiro,
-  previsualizarMigracaoAssistidaPhase5Financeiro,
-} from '../services/financeiroMigrationPhase5.js';
-
 /** Ref. exibida: só N ou R (vazio/legado → N). */
 function textoRefLancamento(t) {
   return normalizarRefFinanceiro(t?.ref);
@@ -517,11 +512,6 @@ export function Financeiro() {
   const [modalConfigFinanceiro, setModalConfigFinanceiro] = useState(false);
   const [apiFinanceiroLoading, setApiFinanceiroLoading] = useState(false);
   const [apiFinanceiroErro, setApiFinanceiroErro] = useState('');
-  const [importLegadoPreview, setImportLegadoPreview] = useState(null);
-  const [importLegadoLoadingPreview, setImportLegadoLoadingPreview] = useState(false);
-  const [importLegadoExecutando, setImportLegadoExecutando] = useState(false);
-  const [importLegadoResumo, setImportLegadoResumo] = useState(null);
-  const [importLegadoStatus, setImportLegadoStatus] = useState(() => getStatusMigracaoAssistidaPhase5Financeiro());
   const [disposicaoRelatorios, setDisposicaoRelatorios] = useState(
     () => loadExibicaoFinanceiro().disposicao
   );
@@ -931,68 +921,6 @@ export function Financeiro() {
     }
   }
 
-  async function abrirPreviaImportacaoLegadoFinanceiro() {
-    setImportLegadoLoadingPreview(true);
-    setImportLegadoResumo(null);
-    try {
-      const previa = await previsualizarMigracaoAssistidaPhase5Financeiro();
-      setImportLegadoPreview(previa);
-      setImportLegadoStatus(getStatusMigracaoAssistidaPhase5Financeiro());
-    } catch (e) {
-      setOfxStatus({ kind: 'error', message: e?.message || 'Falha ao gerar prévia da migração assistida.' });
-    } finally {
-      setImportLegadoLoadingPreview(false);
-    }
-  }
-
-  async function executarImportacaoLegadoFinanceiroViaUi() {
-    if (importLegadoExecutando) return;
-    const statusAtual = getStatusMigracaoAssistidaPhase5Financeiro();
-    setImportLegadoStatus(statusAtual);
-    if (!statusAtual.habilitadaPorFlag || !statusAtual.apiFinanceiroAtiva) {
-      setOfxStatus({
-        kind: 'error',
-        message:
-          'Ative VITE_ENABLE_LOCALSTORAGE_IMPORT_PHASE5_FINANCEIRO=true e VITE_USE_API_FINANCEIRO=true para importar.',
-      });
-      return;
-    }
-    if (statusAtual.jaExecutada) {
-      setOfxStatus({
-        kind: 'info',
-        message: 'Importação já executada anteriormente (marker ativo). Reimportação manual não liberada nesta etapa.',
-      });
-      return;
-    }
-    const confirmou = window.confirm(
-      'Esta ação tentará gravar lançamentos legados na API financeira com deduplicação. Alguns registros podem ser ignorados e alguns podem ficar sem vínculo resolvido. Deseja continuar?'
-    );
-    if (!confirmou) return;
-    setImportLegadoExecutando(true);
-    setOfxStatus({ kind: 'info', message: 'Importação assistida do legado financeiro em andamento...' });
-    try {
-      const resultado = await executarMigracaoAssistidaPhase5Financeiro();
-      if (!resultado) {
-        setOfxStatus({
-          kind: 'info',
-          message: 'Importação não executada (flag, marker ou dados indisponíveis).',
-        });
-        return;
-      }
-      setImportLegadoResumo(resultado);
-      setImportLegadoStatus(getStatusMigracaoAssistidaPhase5Financeiro());
-      await recarregarExtratosFinanceiroApi();
-      setOfxStatus({
-        kind: 'success',
-        message: `Importação concluída: ${resultado.importados} importados, ${resultado.ignorados} ignorados, ${resultado.semVinculo} sem vínculo.`,
-      });
-    } catch (e) {
-      setOfxStatus({ kind: 'error', message: e?.message || 'Falha na importação assistida do legado financeiro.' });
-    } finally {
-      setImportLegadoExecutando(false);
-    }
-  }
-
   function abrirModalBuscaParcelas() {
     setModalBuscaParcelas(true);
   }
@@ -1238,16 +1166,14 @@ export function Financeiro() {
 
   /** Duplo clique na coluna Cod. Cliente: abre o cadastro de clientes com esse código e processo. */
   function handleDuploCliqueCodCliente(codCliente, proc) {
-    navigate('/pessoas', { state: { codCliente: String(codCliente ?? ''), proc: String(proc ?? '') } });
+    navigate('/pessoas', { state: buildRouterStateChaveClienteProcesso(codCliente ?? '', proc ?? '') });
   }
 
   /** Duplo clique na coluna Proc.: abre Processos e leva o lançamento da linha para a Conta Corrente. */
   function handleDuploCliqueProc(codCliente, proc, transacao) {
     const t = transacao && typeof transacao === 'object' ? transacao : null;
     navigate('/processos', {
-      state: {
-        codCliente: String(codCliente ?? ''),
-        proc: String(proc ?? ''),
+      state: buildRouterStateChaveClienteProcesso(codCliente ?? '', proc ?? '', {
         contaCorrenteLinha: t
           ? {
               data: t.data,
@@ -1261,7 +1187,7 @@ export function Financeiro() {
               letra: t.letra,
             }
           : undefined,
-      },
+      }),
     });
   }
 
@@ -1548,11 +1474,13 @@ export function Financeiro() {
   /** Vindo de Cálculos → aba Honorários: conciliação com mesmo cliente/proc na Conta Escritório. */
   useEffect(() => {
     const alvo = location.state?.financeiroConciliacaoHonorarios;
-    if (!alvo?.codCliente) return;
+    const codAlvo = alvo?.codigoCliente ?? alvo?.codCliente;
+    if (!codAlvo || String(codAlvo).trim() === '') return;
+    const procAlvo = alvo?.numeroInterno ?? alvo?.proc;
     setContaContabilSelecionada(contaEscritorioOuPrimeiraAtiva(contasContabeisInativasSet, ordemNomesContabeis));
     setFiltroConciliacaoHonorarios({
-      codCliente: String(alvo.codCliente ?? '').trim(),
-      proc: String(alvo.proc ?? '').trim(),
+      codCliente: String(codAlvo ?? '').trim(),
+      proc: procAlvo != null && String(procAlvo).trim() !== '' ? String(procAlvo).trim() : '',
       rotulo: String(alvo.rotulo ?? '').trim(),
       valorCentavos:
         alvo.valorCentavos != null && Number.isFinite(Number(alvo.valorCentavos))
@@ -1880,21 +1808,6 @@ export function Financeiro() {
             >
               Buscar parcelas (Cálculos)
             </button>
-            {featureFlags.useApiFinanceiro ? (
-              <button
-                type="button"
-                onClick={() => void abrirPreviaImportacaoLegadoFinanceiro()}
-                disabled={importLegadoLoadingPreview || importLegadoExecutando}
-                className={`px-3 py-2 rounded-lg border text-sm font-medium ${
-                  importLegadoLoadingPreview || importLegadoExecutando
-                    ? 'border-slate-300 bg-slate-100 text-slate-500 cursor-not-allowed'
-                    : 'border-emerald-300 bg-emerald-50 text-emerald-900 hover:bg-emerald-100'
-                }`}
-                title="Prévia e importação assistida do legado localStorage para API"
-              >
-                {importLegadoLoadingPreview ? 'Carregando prévia...' : 'Importar legado financeiro'}
-              </button>
-            ) : null}
             {ofxStatus.kind !== 'idle' && (
               <span
                 className={`text-xs ${
@@ -1918,59 +1831,6 @@ export function Financeiro() {
             ) : null}
           </div>
         </div>
-        {featureFlags.useApiFinanceiro && importLegadoPreview ? (
-          <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50/70 px-3 py-2 text-xs text-slate-800 space-y-2">
-            <p className="font-semibold text-emerald-900">Prévia: migração assistida do legado financeiro</p>
-            <div className="flex flex-wrap gap-x-4 gap-y-1">
-              <span>Total legado encontrado: <strong>{importLegadoPreview.totalLegado ?? 0}</strong></span>
-              <span>Potencialmente importável (estimado): <strong>{importLegadoPreview.importavelEstimado ?? 0}</strong></span>
-              <span>Potenciais duplicados (estimado): <strong>{importLegadoPreview.duplicadoEstimado ?? 0}</strong></span>
-              <span>Sem vínculo resolvido (estimado): <strong>{importLegadoPreview.semVinculoEstimado ?? 0}</strong></span>
-            </div>
-            <p>
-              Fontes localStorage consideradas: {(importLegadoPreview.storageKeysLidas || []).join(', ') || 'n/d'}.
-            </p>
-            <p>
-              Marker: <strong>{importLegadoPreview.markerKey}</strong> — status:{' '}
-              <strong>{importLegadoStatus.jaExecutada ? 'já executada' : 'ainda não executada'}</strong>.
-            </p>
-            {importLegadoPreview.observacao ? (
-              <p className="text-slate-700">{importLegadoPreview.observacao}</p>
-            ) : null}
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => void executarImportacaoLegadoFinanceiroViaUi()}
-                disabled={
-                  importLegadoExecutando ||
-                  importLegadoStatus.jaExecutada ||
-                  !importLegadoStatus.habilitadaPorFlag ||
-                  !importLegadoStatus.apiFinanceiroAtiva
-                }
-                className={`px-3 py-1.5 rounded-md text-xs font-semibold ${
-                  importLegadoExecutando ||
-                  importLegadoStatus.jaExecutada ||
-                  !importLegadoStatus.habilitadaPorFlag ||
-                  !importLegadoStatus.apiFinanceiroAtiva
-                    ? 'bg-slate-200 text-slate-500 cursor-not-allowed'
-                    : 'bg-emerald-700 text-white hover:bg-emerald-800'
-                }`}
-              >
-                {importLegadoExecutando ? 'Importando...' : 'Confirmar e importar legado'}
-              </button>
-              {importLegadoStatus.jaExecutada ? (
-                <span className="text-amber-800">Reimportação manual ainda não liberada nesta etapa.</span>
-              ) : null}
-            </div>
-            {importLegadoResumo ? (
-              <p className="text-emerald-900">
-                Resumo final: importados <strong>{importLegadoResumo.importados}</strong>, ignorados{' '}
-                <strong>{importLegadoResumo.ignorados}</strong>, sem vínculo <strong>{importLegadoResumo.semVinculo}</strong>, total
-                lido <strong>{importLegadoResumo.totalLidos}</strong>.
-              </p>
-            ) : null}
-          </div>
-        ) : null}
       </header>
       {filtroConciliacaoHonorarios && (
         <div className="px-4 py-2 bg-indigo-50 border-b border-indigo-200 text-sm text-indigo-950 flex flex-wrap items-center justify-between gap-2 shrink-0">

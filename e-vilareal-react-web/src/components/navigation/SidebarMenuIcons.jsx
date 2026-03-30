@@ -1,9 +1,12 @@
 /**
  * Ícones coloridos do menu lateral — SVG escalável, estilo flat com leve profundidade.
  * IDs de gradiente únicos por instância (useId) para evitar colisão no DOM.
+ *
+ * O item «Cálculos» (id calculos) usa o mesmo ícone Lucide que o botão Cálculos em Processos.
  */
 
 import { useId } from 'react';
+import { Calculator as LucideCalculator } from 'lucide-react';
 
 const shadow = { filter: 'drop-shadow(0 1px 1px rgb(0 0 0 / 0.1))' };
 
@@ -153,6 +156,17 @@ function IconRelatorioProcessos({ className }) {
       <rect x="12" y="10" width="2.5" height="8" rx="0.4" fill="#fbbf24" />
       <rect x="15" y="13" width="2.5" height="5" rx="0.4" fill="#fb923c" />
     </svg>
+  );
+}
+
+/** Mesmo pictograma do botão «Cálculos» na tela Processos (`lucide-react` Calculator). */
+function IconCalculationsLucide({ className }) {
+  return (
+    <LucideCalculator
+      className={`block shrink-0 ${className ?? ''}`}
+      strokeWidth={1.75}
+      aria-hidden
+    />
   );
 }
 
@@ -501,7 +515,7 @@ const MENU_ICONS = {
   'processos/monitoramento': IconMonitoramento,
   relatorio: IconRelatorioProcessos,
   'calcular-grupo': IconCalculator,
-  calculos: IconCalculator,
+  calculos: IconCalculationsLucide,
   'relatorio-calculos': IconRelatorioCalculos,
   'admin-imoveis-grupo': IconLandmarkImoveis,
   imoveis: IconBuilding,

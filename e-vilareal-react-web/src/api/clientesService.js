@@ -41,8 +41,17 @@ export async function pesquisarCadastroPessoasPorNomeOuCpf(termo, { apenasAtivos
   const digits = t.replace(/\D/g, '');
   const qs = new URLSearchParams();
   if (apenasAtivos) qs.set('apenasAtivos', 'true');
-  if (!hasLetters && digits.length >= 3) {
-    qs.set('cpf', digits);
+  if (!hasLetters && digits.length > 0) {
+    /** CPF (11) / CNPJ (14): contém nos dígitos do documento. Demais comprimentos só numéricos: id da pessoa (param. codigo no backend). */
+    if (digits.length === 11 || digits.length === 14) {
+      qs.set('cpf', digits);
+    } else if (digits.length <= 10) {
+      const cod = Math.floor(Number(digits));
+      if (Number.isFinite(cod) && cod >= 1) qs.set('codigo', String(cod));
+      else qs.set('nome', t);
+    } else {
+      qs.set('cpf', digits);
+    }
   } else {
     qs.set('nome', t);
   }

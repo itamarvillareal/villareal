@@ -1,6 +1,7 @@
 package br.com.vilareal.topicos.application;
 
 import br.com.vilareal.common.exception.ResourceNotFoundException;
+import br.com.vilareal.common.text.Utf8MojibakeUtil;
 import br.com.vilareal.topicos.api.dto.TopicoNoDto;
 import br.com.vilareal.topicos.infrastructure.persistence.entity.TopicoHierarquiaEntity;
 import br.com.vilareal.topicos.infrastructure.persistence.repository.TopicoHierarquiaRepository;
@@ -30,7 +31,8 @@ public class TopicosApplicationService {
             throw new ResourceNotFoundException("Hierarquia de tópicos vazia.");
         }
         try {
-            return objectMapper.readValue(row.getRaizJson(), TopicoNoDto.class);
+            String json = Utf8MojibakeUtil.corrigir(row.getRaizJson());
+            return objectMapper.readValue(json, TopicoNoDto.class);
         } catch (Exception e) {
             throw new IllegalStateException("JSON da hierarquia de tópicos inválido.", e);
         }

@@ -1,5 +1,7 @@
 package br.com.vilareal.processo.api.dto;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
@@ -12,6 +14,7 @@ public class ProcessoResponse {
     private String numeroCnj;
     private String numeroProcessoAntigo;
     private String naturezaAcao;
+    private String descricaoAcao;
     private String competencia;
     private String fase;
     private String status;
@@ -42,6 +45,12 @@ public class ProcessoResponse {
 
     public void setClienteId(Long clienteId) {
         this.clienteId = clienteId;
+    }
+
+    /** Id em {@code pessoa} (coluna B); espelha {@code clienteId} para alinhar com GET /api/clientes ({@code id}/{@code pessoaId}). */
+    @Schema(description = "Id da pessoa (FK processo.pessoa_id); igual a clienteId")
+    public Long getPessoaId() {
+        return clienteId;
     }
 
     public String getCodigoCliente() {
@@ -82,6 +91,14 @@ public class ProcessoResponse {
 
     public void setNaturezaAcao(String naturezaAcao) {
         this.naturezaAcao = naturezaAcao;
+    }
+
+    public String getDescricaoAcao() {
+        return descricaoAcao;
+    }
+
+    public void setDescricaoAcao(String descricaoAcao) {
+        this.descricaoAcao = descricaoAcao;
     }
 
     public String getCompetencia() {

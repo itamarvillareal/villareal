@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { X } from 'lucide-react';
-import { getPessoaPorId } from '../data/cadastroPessoasMock';
+import { buscarCliente, pesquisarCadastroPessoasPorNomeOuCpf } from '../api/clientesService.js';
+import { getCadastroPessoasMockComNovosLocais } from '../data/cadastroPessoasMockNovosLocal.js';
 import {
+  DEMO_DATA_CONSULTA_BR,
   listarConsultasARealizarPorData,
   listarHistoricoPorData,
   listarProcessosFaseAguardandoDocumentos,
@@ -15,6 +17,101 @@ import {
   listarProcessosPorPrazoFatal,
 } from '../data/processosHistoricoData';
 import { resolverAliasHojeEmTexto } from '../services/hjDateAliasService.js';
+import { listarImoveisResumoPorPessoaDiagnostico } from '../services/listarImoveisPorPessoaDiagnostico.js';
+import { listarCodigosClientePorIdPessoa } from '../data/clientesCadastradosMock.js';
+import { padCliente8Nav } from './cadastro-pessoas/cadastroPessoasNavUtils.js';
+import { featureFlags } from '../config/featureFlags.js';
+import { buildRouterStateChaveClienteProcesso } from '../domain/camposProcessoCliente.js';
+
+const MOCK_CADASTRO_PESSOAS = import.meta.env.VITE_USE_MOCK_CADASTRO_PESSOAS === 'true';
+
+/** Delay antes de chamar a API enquanto o usuário digita (ms). */
+const DEBOUNCE_BUSCA_PESSOA_API_MS = 320;
+
+function normalizarBuscaDiag(s) {
+  return String(s ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+}
+
+function soDigitosDiag(s) {
+  return String(s ?? '').replace(/\D/g, '');
+}
+
+/** Mock/local: código numérico, nome, CPF/CNPJ, RG. */
+function buscarPessoasMockPorTermo(termo) {
+  const raw = String(termo ?? '').trim();
+  if (!raw) return [];
+  const lista = getCadastroPessoasMockComNovosLocais(false);
+  const t = normalizarBuscaDiag(raw);
+  const tDig = soDigitosDiag(raw);
+  const pareceSoCodigo = /^\d+$/.test(raw.replace(/\s+/g, ''));
+  const codStr = pareceSoCodigo ? raw.replace(/\D/g, '') : '';
+  const out = [];
+  const seen = new Set();
+  for (const p of lista) {
+    const id = Number(p.id);
+    if (!Number.isFinite(id) || id < 1) continue;
+    let ok = false;
+    if (pareceSoCodigo && codStr === String(id)) ok = true;
+    else if (t.length >= 2 && normalizarBuscaDiag(p.nome).includes(t)) ok = true;
+    else if (tDig.length >= 3 && soDigitosDiag(p.cpf).includes(tDig)) ok = true;
+    else if (p.rg != null && String(p.rg).trim() !== '') {
+      const rgDig = soDigitosDiag(p.rg);
+      if (tDig.length >= 2 && rgDig.includes(tDig)) ok = true;
+      else if (t.length >= 2 && normalizarBuscaDiag(String(p.rg)).includes(t)) ok = true;
+    }
+    if (ok && !seen.has(id)) {
+      seen.add(id);
+      out.push({
+        id,
+        nome: String(p.nome ?? ''),
+        cpf: String(p.cpf ?? ''),
+        rg: p.rg != null ? String(p.rg) : '',
+      });
+    }
+  }
+  return out;
+}
+
+function mapPessoaApiParaDiag(p) {
+  return {
+    id: Number(p.id),
+    nome: String(p.nome ?? ''),
+    cpf: String(p.cpf ?? ''),
+    rg: '',
+  };
+}
+
+/** API: id numérico (GET + lista ?codigo=), nome, CPF/CNPJ. RG não está no filtro do backend — use mock para RG. */
+async function buscarPessoasApiPorTermo(termo) {
+  const raw = String(termo ?? '').trim();
+  if (!raw) return [];
+  const compacto = raw.replace(/\s+/g, '');
+  const pareceSoNumericoPuro = /^\d+$/.test(compacto);
+  const idNum = Math.floor(Number(compacto));
+  if (pareceSoNumericoPuro && Number.isFinite(idNum) && idNum >= 1) {
+    try {
+      const p = await buscarCliente(idNum);
+      if (p?.id != null) return [mapPessoaApiParaDiag(p)];
+    } catch {
+      /* 404 ou erro: tenta lista abaixo */
+    }
+  }
+  const arr = await pesquisarCadastroPessoasPorNomeOuCpf(raw, { apenasAtivos: false, limite: 150 });
+  return (arr || []).map((p) => mapPessoaApiParaDiag(p));
+}
+
+function termoBuscaPessoaAtingeMinimoParaBuscar(raw) {
+  const r = String(raw ?? '').trim();
+  if (!r) return false;
+  const t = normalizarBuscaDiag(r);
+  const tDig = soDigitosDiag(r);
+  const pareceSoCodigo = /^\d+$/.test(r.replace(/\s+/g, ''));
+  return pareceSoCodigo || t.length >= 2 || tDig.length >= 3;
+}
 
 const BOTOES_ESQUERDA = [
   'Consultas Realizadas',
@@ -57,10 +154,18 @@ export function Diagnosticos() {
   const [modalConsultasARealizarAberto, setModalConsultasARealizarAberto] = useState(false);
   const [modalPublicacoesAberto, setModalPublicacoesAberto] = useState(false);
   const [modalBuscaPessoaAberto, setModalBuscaPessoaAberto] = useState(false);
-  const [codigoPessoaBusca, setCodigoPessoaBusca] = useState('');
+  const [termoBuscaPessoa, setTermoBuscaPessoa] = useState('');
+  const [candidatosBuscaPessoa, setCandidatosBuscaPessoa] = useState([]);
+  const [buscaPessoaCarregando, setBuscaPessoaCarregando] = useState(false);
+  const [buscaPessoaErro, setBuscaPessoaErro] = useState('');
+  const buscaPessoaReqSeq = useRef(0);
   const [modalResultadoBuscaPessoaAberto, setModalResultadoBuscaPessoaAberto] = useState(false);
   const [resultadoBuscaPessoa, setResultadoBuscaPessoa] = useState([]);
   const [rotuloPessoaBusca, setRotuloPessoaBusca] = useState('');
+  /** Pessoa escolhida na busca (para atalhos ao cadastro / clientes mesmo sem processos locais). */
+  const [idPessoaBuscaDiag, setIdPessoaBuscaDiag] = useState(null);
+  /** Imóveis vinculados à pessoa (API de imóveis, quando ativa). */
+  const [imoveisRelatorioBusca, setImoveisRelatorioBusca] = useState({ status: 'idle', itens: [] });
   const [modalResultadoAguardandoDocsAberto, setModalResultadoAguardandoDocsAberto] = useState(false);
   const [resultadoAguardandoDocs, setResultadoAguardandoDocs] = useState([]);
   const [modalResultadoAguardandoPeticionarAberto, setModalResultadoAguardandoPeticionarAberto] =
@@ -118,21 +223,92 @@ export function Diagnosticos() {
     setModalResultadoPrazoFatalAberto(true);
   }
 
-  function consultarProcessosDaPessoa() {
-    const id = String(codigoPessoaBusca ?? '').trim().replace(/\D/g, '');
-    if (!id) {
-      window.alert('Informe o número da pessoa no cadastro.');
-      return;
-    }
-    const pessoa = getPessoaPorId(Number(id));
-    const itens = listarProcessosPorIdPessoa(id, pessoa?.nome);
-    setRotuloPessoaBusca(
-      pessoa ? `${pessoa.nome} (cód. ${pessoa.id})` : `Código ${id} — não encontrado no cadastro local`
-    );
+  function abrirResultadoProcessosParaPessoa(pessoa) {
+    const id = Number(pessoa.id);
+    const nome = String(pessoa.nome ?? '').trim();
+    const itens = listarProcessosPorIdPessoa(String(id), nome || undefined);
+    const doc = pessoa.cpf ? ` — ${pessoa.cpf}` : '';
+    const rg = pessoa.rg ? ` — RG ${pessoa.rg}` : '';
+    setRotuloPessoaBusca(`${nome || '—'} (cód. ${id})${doc}${rg}`);
     setResultadoBuscaPessoa(itens);
+    setIdPessoaBuscaDiag(Number.isFinite(id) && id >= 1 ? id : null);
+    setImoveisRelatorioBusca({ status: 'idle', itens: [] });
     setModalBuscaPessoaAberto(false);
+    setCandidatosBuscaPessoa([]);
+    setTermoBuscaPessoa('');
     setModalResultadoBuscaPessoaAberto(true);
   }
+
+  useEffect(() => {
+    if (!modalResultadoBuscaPessoaAberto || idPessoaBuscaDiag == null) {
+      setImoveisRelatorioBusca({ status: 'idle', itens: [] });
+      return;
+    }
+    let cancel = false;
+    setImoveisRelatorioBusca({ status: 'loading', itens: [] });
+    void listarImoveisResumoPorPessoaDiagnostico(idPessoaBuscaDiag)
+      .then((itens) => {
+        if (cancel) return;
+        setImoveisRelatorioBusca({ status: 'ok', itens: Array.isArray(itens) ? itens : [] });
+      })
+      .catch(() => {
+        if (cancel) return;
+        setImoveisRelatorioBusca({ status: 'erro', itens: [] });
+      });
+    return () => {
+      cancel = true;
+    };
+  }, [modalResultadoBuscaPessoaAberto, idPessoaBuscaDiag]);
+
+  useEffect(() => {
+    if (!modalBuscaPessoaAberto) return;
+    const seq = ++buscaPessoaReqSeq.current;
+    const raw = String(termoBuscaPessoa ?? '').trim();
+
+    function aplicarLista(lista) {
+      if (seq !== buscaPessoaReqSeq.current) return;
+      setCandidatosBuscaPessoa(lista);
+      setBuscaPessoaCarregando(false);
+      setBuscaPessoaErro('');
+    }
+
+    if (!raw) {
+      aplicarLista([]);
+      return;
+    }
+    if (!termoBuscaPessoaAtingeMinimoParaBuscar(raw)) {
+      aplicarLista([]);
+      return;
+    }
+
+    if (MOCK_CADASTRO_PESSOAS) {
+      aplicarLista(buscarPessoasMockPorTermo(raw));
+      return;
+    }
+
+    setBuscaPessoaCarregando(true);
+    setBuscaPessoaErro('');
+
+    const timer = setTimeout(() => {
+      if (seq !== buscaPessoaReqSeq.current) return;
+      void (async () => {
+        try {
+          const lista = await buscarPessoasApiPorTermo(raw);
+          if (seq !== buscaPessoaReqSeq.current) return;
+          setCandidatosBuscaPessoa(lista);
+          setBuscaPessoaErro('');
+        } catch (e) {
+          if (seq !== buscaPessoaReqSeq.current) return;
+          setCandidatosBuscaPessoa([]);
+          setBuscaPessoaErro(e?.message || 'Falha ao buscar pessoas.');
+        } finally {
+          if (seq === buscaPessoaReqSeq.current) setBuscaPessoaCarregando(false);
+        }
+      })();
+    }, DEBOUNCE_BUSCA_PESSOA_API_MS);
+
+    return () => clearTimeout(timer);
+  }, [termoBuscaPessoa, modalBuscaPessoaAberto]);
 
   /** Fecha modais de resultado e abre a tela Processos no cliente/processo indicados. */
   function abrirListaAguardandoDocumentos() {
@@ -176,6 +352,8 @@ export function Diagnosticos() {
     setModalResultadoAberto(false);
     setModalResultadoPrazoFatalAberto(false);
     setModalResultadoBuscaPessoaAberto(false);
+    setIdPessoaBuscaDiag(null);
+    setImoveisRelatorioBusca({ status: 'idle', itens: [] });
     setModalResultadoAguardandoDocsAberto(false);
     setModalResultadoAguardandoPeticionarAberto(false);
     setModalResultadoAguardandoVerificacaoAberto(false);
@@ -186,7 +364,7 @@ export function Diagnosticos() {
     setModalPublicacoesAberto(false);
     navigate('/processos', {
       replace: false,
-      state: { codCliente: String(item.codCliente), proc: String(item.proc) },
+      state: buildRouterStateChaveClienteProcesso(item.codCliente, item.proc),
     });
   }
 
@@ -226,6 +404,10 @@ export function Diagnosticos() {
                     setModalPublicacoesAberto(true);
                   }
                   if (label === 'Busca pessoa') {
+                    setCandidatosBuscaPessoa([]);
+                    setBuscaPessoaErro('');
+                    setBuscaPessoaCarregando(false);
+                    setTermoBuscaPessoa('');
                     setModalBuscaPessoaAberto(true);
                   }
                 }}
@@ -355,7 +537,7 @@ export function Diagnosticos() {
       {modalBuscaPessoaAberto && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/25 p-4">
           <div
-            className="w-full max-w-md bg-white border border-slate-300 rounded-lg shadow-xl"
+            className="w-full max-w-xl bg-white border border-slate-300 rounded-lg shadow-xl"
             role="dialog"
             aria-labelledby="busca-pessoa-titulo"
           >
@@ -365,7 +547,12 @@ export function Diagnosticos() {
               </h3>
               <button
                 type="button"
-                onClick={() => setModalBuscaPessoaAberto(false)}
+                onClick={() => {
+                  setModalBuscaPessoaAberto(false);
+                  setCandidatosBuscaPessoa([]);
+                  setBuscaPessoaErro('');
+                  setBuscaPessoaCarregando(false);
+                }}
                 className="p-2 rounded text-slate-500 hover:bg-slate-100"
                 aria-label="Fechar"
               >
@@ -373,37 +560,90 @@ export function Diagnosticos() {
               </button>
             </div>
             <div className="p-4 space-y-3">
+              <p className="text-xs text-slate-600">
+                Busca única no cadastro (API ou mock). O relatório reúne, para a pessoa escolhida: processos no histórico
+                local (como parte e/ou advogado), imóveis na API de locação (quando ativa) e atalhos ao cadastro e
+                clientes.
+              </p>
+
               <label className="block text-sm font-medium text-slate-700">
-                Número da pessoa (cadastro de pessoas)
+                Código, nome, CPF/CNPJ ou RG
                 <input
                   type="text"
-                  inputMode="numeric"
-                  value={codigoPessoaBusca}
-                  onChange={(e) => setCodigoPessoaBusca(e.target.value.replace(/\D/g, ''))}
+                  value={termoBuscaPessoa}
+                  onChange={(e) => setTermoBuscaPessoa(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key !== 'Enter') return;
+                    const first = candidatosBuscaPessoa[0];
+                    if (first) abrirResultadoProcessosParaPessoa(first);
+                  }}
                   className="mt-1 w-full px-3 py-2 border border-slate-300 rounded text-sm"
-                  placeholder="Ex.: número do cadastro de pessoas"
+                  placeholder="Ex.: 42, Maria Silva, 123.456.789-00, MG-12.345.678"
                   autoFocus
+                  autoComplete="off"
                 />
               </label>
+
               <p className="text-xs text-slate-500">
-                Serão listados os processos em que essa pessoa está vinculada como Parte Cliente ou Parte Oposta no
-                histórico local.
+                A lista atualiza enquanto você digita. Código: só números. Nome ou RG: pelo menos 2 letras. CPF/CNPJ:
+                pelo menos 3 dígitos. Com a API Java, RG não entra no filtro do servidor; use mock local para buscar por
+                RG. Enter abre o primeiro resultado da lista.
               </p>
+
+              <div className="text-sm text-slate-600 min-h-[1.25rem]" aria-live="polite">
+                {!String(termoBuscaPessoa ?? '').trim() ? (
+                  <span className="text-slate-500">Comece a digitar para ver sugestões.</span>
+                ) : !termoBuscaPessoaAtingeMinimoParaBuscar(termoBuscaPessoa) ? (
+                  <span className="text-slate-500">
+                    Digite pelo menos 2 letras (nome ou RG), 3 dígitos (CPF/CNPJ) ou só números para o código.
+                  </span>
+                ) : buscaPessoaErro ? (
+                  <span className="text-red-700">{buscaPessoaErro}</span>
+                ) : buscaPessoaCarregando ? (
+                  <span>
+                    Buscando…
+                    {candidatosBuscaPessoa.length > 0 ? ' (lista abaixo pode ser da digitação anterior.)' : ''}
+                  </span>
+                ) : candidatosBuscaPessoa.length === 0 ? (
+                  <span className="text-slate-500">Nenhuma pessoa encontrada.</span>
+                ) : (
+                  <span>
+                    {candidatosBuscaPessoa.length} resultado(s). Clique em uma linha para abrir o relatório completo.
+                  </span>
+                )}
+              </div>
+
+              {termoBuscaPessoaAtingeMinimoParaBuscar(termoBuscaPessoa) && candidatosBuscaPessoa.length > 0 ? (
+                <ul className="max-h-[min(50vh,320px)] overflow-y-auto border border-slate-200 rounded divide-y divide-slate-100">
+                  {candidatosBuscaPessoa.map((p) => (
+                    <li key={p.id}>
+                      <button
+                        type="button"
+                        className="w-full text-left px-3 py-2.5 text-sm hover:bg-slate-50 text-slate-800"
+                        onClick={() => abrirResultadoProcessosParaPessoa(p)}
+                      >
+                        <span className="font-medium">{p.nome || '—'}</span>
+                        <span className="text-slate-500"> — cód. {p.id}</span>
+                        {p.cpf ? <span className="text-slate-600"> — {p.cpf}</span> : null}
+                        {p.rg ? <span className="text-slate-600"> — RG {p.rg}</span> : null}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
             </div>
             <div className="px-4 py-3 border-t border-slate-200 flex justify-end gap-2">
               <button
                 type="button"
-                onClick={() => setModalBuscaPessoaAberto(false)}
+                onClick={() => {
+                  setModalBuscaPessoaAberto(false);
+                  setCandidatosBuscaPessoa([]);
+                  setBuscaPessoaErro('');
+                  setBuscaPessoaCarregando(false);
+                }}
                 className="px-4 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
               >
                 Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={consultarProcessosDaPessoa}
-                className="px-4 py-2 rounded bg-blue-600 text-white text-sm font-medium hover:bg-blue-700"
-              >
-                OK
               </button>
             </div>
           </div>
@@ -637,48 +877,167 @@ export function Diagnosticos() {
 
       {modalResultadoBuscaPessoaAberto && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/35 p-4">
-          <div className="w-full max-w-6xl bg-slate-100 border border-slate-400 shadow-xl">
-            <div className="flex items-center justify-between px-4 py-2 border-b border-slate-300 bg-white">
-              <p className="text-base text-black">
-                Processos em que participa: {rotuloPessoaBusca}
-              </p>
+          <div className="w-full max-w-6xl bg-slate-100 border border-slate-400 shadow-xl max-h-[min(92vh,900px)] flex flex-col">
+            <div className="flex items-center justify-between px-4 py-2 border-b border-slate-300 bg-white shrink-0">
+              <p className="text-base text-black pr-2">Relatório da pessoa: {rotuloPessoaBusca}</p>
               <button
                 type="button"
-                onClick={() => setModalResultadoBuscaPessoaAberto(false)}
-                className="p-1 text-slate-700 hover:bg-slate-200"
+                onClick={() => {
+                  setModalResultadoBuscaPessoaAberto(false);
+                  setIdPessoaBuscaDiag(null);
+                  setImoveisRelatorioBusca({ status: 'idle', itens: [] });
+                }}
+                className="p-1 text-slate-700 hover:bg-slate-200 shrink-0"
                 aria-label="Fechar relatório"
               >
                 <X className="w-6 h-6" />
               </button>
             </div>
-            <div className="px-4 py-3">
-              <p className="text-sm text-black mb-3">
-                {resultadoBuscaPessoa.length} processo(s) encontrado(s). Dê duplo clique em uma linha para abrir em Processos.
-              </p>
-              <div className="border border-slate-300 bg-white h-[430px] overflow-auto p-2 text-[13px] leading-relaxed font-mono">
-                {resultadoBuscaPessoa.length === 0 ? (
-                  <p>Nenhum processo encontrado para esta pessoa (verifique o vínculo em Processos → Pessoas).</p>
-                ) : (
-                  resultadoBuscaPessoa.map((item, idx) => (
-                    <p
-                      key={`${item.codCliente}-${item.proc}-${idx}`}
-                      className="whitespace-pre-wrap break-words cursor-pointer hover:bg-slate-100 rounded px-1 -mx-1 select-none"
-                      onDoubleClick={() => abrirProcessoPorItem(item)}
-                      title="Duplo clique: abrir em Processos"
+            <div className="px-4 py-3 overflow-y-auto flex-1 min-h-0 space-y-4">
+              {idPessoaBuscaDiag != null ? (
+                <div className="rounded border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-800">
+                  <p className="font-medium text-slate-700 mb-2">Atalhos</p>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className="px-3 py-1.5 rounded border border-blue-600 bg-blue-50 text-blue-900 text-xs font-medium hover:bg-blue-100"
+                      onClick={() => {
+                        setModalResultadoBuscaPessoaAberto(false);
+                        setIdPessoaBuscaDiag(null);
+                        setImoveisRelatorioBusca({ status: 'idle', itens: [] });
+                        navigate(`/clientes/editar/${idPessoaBuscaDiag}`);
+                      }}
                     >
-                      {String(idx + 1).padStart(3, '0')} - (Cod. {item.codCliente}, Proc. {String(item.proc).padStart(2, '0')})
-                      {' — '}
-                      [{item.papeis}] {item.parteCliente || item.cliente || 'CLIENTE'} x {item.parteOposta || 'PARTE OPOSTA'} (
-                      {item.numeroProcessoNovo || 'sem nº'})
+                      Cadastro de Pessoas (edição)
+                    </button>
+                    {listarCodigosClientePorIdPessoa(idPessoaBuscaDiag).map((cod) => (
+                      <button
+                        key={cod}
+                        type="button"
+                        className="px-3 py-1.5 rounded border border-slate-400 bg-white text-slate-800 text-xs font-medium hover:bg-slate-50"
+                        onClick={() => {
+                          setModalResultadoBuscaPessoaAberto(false);
+                          setIdPessoaBuscaDiag(null);
+                          setImoveisRelatorioBusca({ status: 'idle', itens: [] });
+                          navigate('/pessoas', {
+                            state: buildRouterStateChaveClienteProcesso(padCliente8Nav(cod), ''),
+                          });
+                        }}
+                      >
+                        Clientes — cód. {padCliente8Nav(cod)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="rounded border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-800">
+                <p className="font-medium text-slate-700 mb-1">Resumo no histórico local de processos</p>
+                <p className="text-slate-600">
+                  {resultadoBuscaPessoa.length === 0
+                    ? 'Nenhum processo encontrado para esta pessoa no histórico deste navegador.'
+                    : (() => {
+                        const comAdv = resultadoBuscaPessoa.filter((x) =>
+                          String(x.papeis || '').includes('Advogado')
+                        ).length;
+                        const comParte = resultadoBuscaPessoa.filter(
+                          (x) =>
+                            String(x.papeis || '').includes('Parte Cliente') ||
+                            String(x.papeis || '').includes('Parte Oposta')
+                        ).length;
+                        return (
+                          <>
+                            {resultadoBuscaPessoa.length} processo(s) listado(s) abaixo. Destes,{' '}
+                            <span className="font-medium text-slate-800">{comParte}</span> com papel de parte (cliente
+                            ou oposta) e <span className="font-medium text-slate-800">{comAdv}</span> em que figura como
+                            advogado(a) (a coluna [papéis] detalha cada um).
+                          </>
+                        );
+                      })()}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-sm font-medium text-slate-800 mb-2">Processos (histórico local)</p>
+                <p className="text-xs text-slate-600 mb-2">
+                  Duplo clique na linha abre em Processos. A coluna [papéis] indica se é parte e/ou advogado(a).
+                </p>
+                <div className="border border-slate-300 bg-white max-h-[240px] overflow-auto p-2 text-[13px] leading-relaxed font-mono">
+                  {resultadoBuscaPessoa.length === 0 ? (
+                    <p className="text-slate-600">
+                      Nenhum processo no histórico local. Vincule a pessoa nas partes ou como advogado em Processos para
+                      aparecer aqui.
                     </p>
-                  ))
+                  ) : (
+                    resultadoBuscaPessoa.map((item, idx) => (
+                      <p
+                        key={`${item.codCliente}-${item.proc}-${idx}`}
+                        className="whitespace-pre-wrap break-words cursor-pointer hover:bg-slate-100 rounded px-1 -mx-1 select-none"
+                        onDoubleClick={() => abrirProcessoPorItem(item)}
+                        title="Duplo clique: abrir em Processos"
+                      >
+                        {String(idx + 1).padStart(3, '0')} - (Cod. {item.codCliente}, Proc. {String(item.proc).padStart(2, '0')})
+                        {' — '}
+                        [{item.papeis}] {item.parteCliente || item.cliente || 'CLIENTE'} x {item.parteOposta || 'PARTE OPOSTA'}{' '}
+                        ({item.numeroProcessoNovo || 'sem nº'})
+                      </p>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <p className="text-sm font-medium text-slate-800 mb-2">Imóveis</p>
+                {!featureFlags.useApiImoveis ? (
+                  <p className="text-xs text-slate-600">
+                    Lista de imóveis por pessoa requer a API de imóveis ativa (`VITE_USE_API_IMOVEIS`). Com o cadastro
+                    legado, abra Imóveis manualmente e confira proprietário/inquilino.
+                  </p>
+                ) : imoveisRelatorioBusca.status === 'loading' ? (
+                  <p className="text-sm text-slate-600">Carregando imóveis…</p>
+                ) : imoveisRelatorioBusca.status === 'erro' ? (
+                  <p className="text-sm text-red-700">Não foi possível consultar imóveis na API.</p>
+                ) : imoveisRelatorioBusca.itens.length === 0 ? (
+                  <p className="text-xs text-slate-600">
+                    Nenhum imóvel encontrado na API em que esta pessoa seja proprietário(a) ou inquilino(a) em contrato de
+                    locação.
+                  </p>
+                ) : (
+                  <ul className="space-y-2 border border-slate-300 bg-white rounded p-2 text-sm">
+                    {imoveisRelatorioBusca.itens.map((im, i) => (
+                      <li key={`${im.imovelId}-${im.papel}-${i}`} className="flex flex-wrap items-center gap-2 border-b border-slate-100 pb-2 last:border-0">
+                        <span className="text-slate-800">
+                          Imóvel nº {im.imovelId} — <span className="font-medium">{im.papel}</span>
+                          {im.unidade ? ` — ${im.unidade}` : ''}
+                          {im.condominio ? ` (${im.condominio})` : ''}
+                        </span>
+                        <span className="text-slate-500 text-xs truncate max-w-full">{im.endereco}</span>
+                        <button
+                          type="button"
+                          className="px-2 py-1 rounded border border-teal-600 text-teal-900 text-xs font-medium hover:bg-teal-50"
+                          onClick={() => {
+                            setModalResultadoBuscaPessoaAberto(false);
+                            setIdPessoaBuscaDiag(null);
+                            setImoveisRelatorioBusca({ status: 'idle', itens: [] });
+                            navigate('/imoveis', { state: { imovelId: im.imovelId } });
+                          }}
+                        >
+                          Abrir Imóveis
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
                 )}
               </div>
             </div>
-            <div className="px-4 py-3 border-t border-slate-300 flex justify-center bg-slate-100">
+            <div className="px-4 py-3 border-t border-slate-300 flex justify-center bg-slate-100 shrink-0">
               <button
                 type="button"
-                onClick={() => setModalResultadoBuscaPessoaAberto(false)}
+                onClick={() => {
+                  setModalResultadoBuscaPessoaAberto(false);
+                  setIdPessoaBuscaDiag(null);
+                  setImoveisRelatorioBusca({ status: 'idle', itens: [] });
+                }}
                 className="min-w-[120px] px-8 py-1.5 border border-slate-500 bg-white text-base text-black shadow-[2px_2px_0_0_rgba(0,0,0,0.25)] hover:bg-slate-50"
               >
                 OK

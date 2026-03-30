@@ -2,6 +2,7 @@ package br.com.vilareal.usuario.application;
 
 import br.com.vilareal.common.exception.BusinessRuleException;
 import br.com.vilareal.common.exception.ResourceNotFoundException;
+import br.com.vilareal.common.text.Utf8MojibakeUtil;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
 import br.com.vilareal.usuario.api.dto.UsuarioResponse;
@@ -184,8 +185,8 @@ public class UsuarioApplicationService {
         UsuarioResponse r = new UsuarioResponse();
         r.setId(u.getId());
         r.setPessoaId(u.getPessoa() != null ? u.getPessoa().getId() : null);
-        r.setNome(u.getNome());
-        r.setApelido(u.getApelido());
+        r.setNome(Utf8MojibakeUtil.corrigir(u.getNome()));
+        r.setApelido(Utf8MojibakeUtil.corrigir(u.getApelido()));
         r.setLogin(u.getLogin());
         r.setAtivo(u.getAtivo());
         if (u.getPerfis() != null) {

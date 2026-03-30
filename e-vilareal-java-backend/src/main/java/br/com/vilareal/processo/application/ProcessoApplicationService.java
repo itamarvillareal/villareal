@@ -2,8 +2,13 @@ package br.com.vilareal.processo.application;
 
 import br.com.vilareal.common.exception.BusinessRuleException;
 import br.com.vilareal.common.exception.ResourceNotFoundException;
+import br.com.vilareal.common.text.Utf8MojibakeUtil;
+import br.com.vilareal.importacao.PlanilhaPasta1MapeamentoUtil;
+import br.com.vilareal.importacao.infrastructure.persistence.entity.PlanilhaPasta1ClienteEntity;
+import br.com.vilareal.importacao.infrastructure.persistence.repository.PlanilhaPasta1ClienteRepository;
 import br.com.vilareal.pessoa.api.dto.ClienteListItemResponse;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
+import br.com.vilareal.pessoa.infrastructure.persistence.repository.ClienteRepository;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
 import br.com.vilareal.processo.api.dto.*;
 import br.com.vilareal.processo.infrastructure.persistence.entity.*;
@@ -15,8 +20,15 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -24,40 +36,165 @@ public class ProcessoApplicationService {
 
     private final ProcessoRepository processoRepository;
     private final ProcessoParteRepository parteRepository;
+    private final ProcessoParteAdvogadoRepository parteAdvogadoRepository;
     private final ProcessoAndamentoRepository andamentoRepository;
     private final ProcessoPrazoRepository prazoRepository;
     private final PessoaRepository pessoaRepository;
     private final UsuarioRepository usuarioRepository;
+    private final PlanilhaPasta1ClienteRepository planilhaPasta1ClienteRepository;
+    private final ClienteCodigoPessoaResolver clienteCodigoPessoaResolver;
+    private final ClienteRepository clienteRepository;
 
     public ProcessoApplicationService(
             ProcessoRepository processoRepository,
             ProcessoParteRepository parteRepository,
+            ProcessoParteAdvogadoRepository parteAdvogadoRepository,
             ProcessoAndamentoRepository andamentoRepository,
             ProcessoPrazoRepository prazoRepository,
             PessoaRepository pessoaRepository,
-            UsuarioRepository usuarioRepository) {
+            UsuarioRepository usuarioRepository,
+            PlanilhaPasta1ClienteRepository planilhaPasta1ClienteRepository,
+            ClienteCodigoPessoaResolver clienteCodigoPessoaResolver,
+            ClienteRepository clienteRepository) {
         this.processoRepository = processoRepository;
         this.parteRepository = parteRepository;
+        this.parteAdvogadoRepository = parteAdvogadoRepository;
         this.andamentoRepository = andamentoRepository;
         this.prazoRepository = prazoRepository;
         this.pessoaRepository = pessoaRepository;
         this.usuarioRepository = usuarioRepository;
+        this.planilhaPasta1ClienteRepository = planilhaPasta1ClienteRepository;
+        this.clienteCodigoPessoaResolver = clienteCodigoPessoaResolver;
+        this.clienteRepository = clienteRepository;
     }
 
+    /**
+     * Lista códigos de cliente para a UI.
+     *
+     * <p>Se existir ao menos um registro em {@code planilha_pasta1_cliente} (import Pasta1), a lista
+     * contém <strong>só</strong> esses vínculos: código na coluna A (normalizado em 8 dígitos) → pessoa
+     * da coluna B. Não se assume mais “cliente N = pessoa N”.
+     *
+     * <p>Sem dados na planilha, lista a tabela {@code cliente} (Flyway V34): uma linha por registro de
+     * cliente, em geral canônico {@code codigoCliente = formatar(pessoa.id)} e aliases vindos de import.
+     */
     @Transactional(readOnly = true)
     public List<ClienteListItemResponse> listarClientesResumo() {
-        return pessoaRepository.findAll().stream()
-                .sorted(Comparator.comparing(PessoaEntity::getId))
-                .map(p -> new ClienteListItemResponse(
-                        p.getId(), CodigoClienteUtil.formatar(p.getId()), p.getNome()))
+        Map<String, ClienteListItemResponse> porCodigo = new LinkedHashMap<>();
+        List<PlanilhaPasta1ClienteEntity> mapeamentosPlanilha = planilhaPasta1ClienteRepository.findAll();
+        if (!mapeamentosPlanilha.isEmpty()) {
+            Map<String, List<PlanilhaPasta1ClienteEntity>> porCod8 = new HashMap<>();
+            for (PlanilhaPasta1ClienteEntity m : mapeamentosPlanilha) {
+                String cod8 = PlanilhaPasta1MapeamentoUtil.codigoClienteExibicaoParaChavePlanilha(m.getChaveCliente());
+                if (cod8 == null) {
+                    continue;
+                }
+                porCod8.computeIfAbsent(cod8, k -> new ArrayList<>()).add(m);
+            }
+            List<String> chavesOrdenadas = new ArrayList<>(porCod8.keySet());
+            chavesOrdenadas.sort(String::compareTo);
+            for (String cod8 : chavesOrdenadas) {
+                long numeroCliente;
+                try {
+                    numeroCliente = CodigoClienteUtil.parsePessoaId(cod8);
+                } catch (BusinessRuleException e) {
+                    continue;
+                }
+                PlanilhaPasta1MapeamentoUtil.escolherEntreCandidatos(porCod8.get(cod8), numeroCliente)
+                        .flatMap(m -> pessoaRepository.findById(m.getPessoaId()))
+                        .ifPresent(
+                                p -> porCodigo.put(
+                                        cod8,
+                                        new ClienteListItemResponse(
+                                                p.getId(),
+                                                cod8,
+                                                Utf8MojibakeUtil.corrigir(p.getNome()),
+                                                somenteDigitosDocumento(p.getCpf()))));
+            }
+        } else {
+            for (var c : clienteRepository.findAllFetchPessoaOrderByCodigo()) {
+                PessoaEntity p = c.getPessoa();
+                String nome =
+                        StringUtils.hasText(c.getNomeReferencia())
+                                ? c.getNomeReferencia()
+                                : p.getNome();
+                String doc =
+                        StringUtils.hasText(c.getDocumentoReferencia())
+                                ? somenteDigitosDocumento(c.getDocumentoReferencia())
+                                : somenteDigitosDocumento(p.getCpf());
+                porCodigo.put(
+                        c.getCodigoCliente(),
+                        new ClienteListItemResponse(
+                                p.getId(),
+                                c.getCodigoCliente(),
+                                Utf8MojibakeUtil.corrigir(nome),
+                                doc));
+            }
+        }
+        return porCodigo.values().stream()
+                .sorted(Comparator.comparing(ClienteListItemResponse::getCodigoCliente))
                 .collect(Collectors.toList());
+    }
+
+    private static String somenteDigitosDocumento(String cpf) {
+        if (cpf == null) {
+            return null;
+        }
+        String d = cpf.replaceAll("\\D", "");
+        return d.isEmpty() ? null : d;
+    }
+
+    /**
+     * Resolve um código de cliente (8 dígitos) para cabeçalho da tela / cadastro. Com planilha Pasta1
+     * importada, só existe resposta se houver linha na tabela — nunca assume pessoa = número do código.
+     */
+    @Transactional(readOnly = true)
+    public Optional<ClienteListItemResponse> resolverClientePorCodigo(String codigoCliente) {
+        if (!StringUtils.hasText(codigoCliente)) {
+            return Optional.empty();
+        }
+        String trimmed = codigoCliente.trim();
+        final String cod8;
+        try {
+            cod8 = CodigoClienteUtil.formatar(CodigoClienteUtil.parsePessoaId(trimmed));
+        } catch (BusinessRuleException e) {
+            return Optional.empty();
+        }
+        Optional<Long> pessoaOpt;
+        if (clienteCodigoPessoaResolver.haMapeamentosPlanilhaPasta1()) {
+            pessoaOpt = clienteCodigoPessoaResolver.resolverPessoaIdSomentePlanilha(trimmed);
+        } else {
+            try {
+                pessoaOpt = Optional.of(clienteCodigoPessoaResolver.resolverPessoaId(trimmed));
+            } catch (BusinessRuleException e) {
+                pessoaOpt = Optional.empty();
+            }
+        }
+        return pessoaOpt.flatMap(
+                pid -> pessoaRepository
+                        .findById(pid)
+                        .map(
+                                p -> new ClienteListItemResponse(
+                                        p.getId(),
+                                        cod8,
+                                        Utf8MojibakeUtil.corrigir(p.getNome()),
+                                        somenteDigitosDocumento(p.getCpf()))));
     }
 
     @Transactional(readOnly = true)
     public List<ProcessoResponse> listarPorCodigoCliente(String codigoCliente) {
-        long pessoaId = CodigoClienteUtil.parsePessoaId(codigoCliente);
-        if (!pessoaRepository.existsById(pessoaId)) {
-            return List.of();
+        long pessoaId;
+        if (clienteCodigoPessoaResolver.haMapeamentosPlanilhaPasta1()) {
+            Optional<Long> opt = clienteCodigoPessoaResolver.resolverPessoaIdSomentePlanilha(codigoCliente);
+            if (opt.isEmpty() || !pessoaRepository.existsById(opt.get())) {
+                return List.of();
+            }
+            pessoaId = opt.get();
+        } else {
+            pessoaId = clienteCodigoPessoaResolver.resolverPessoaId(codigoCliente);
+            if (!pessoaRepository.existsById(pessoaId)) {
+                return List.of();
+            }
         }
         return processoRepository.findByPessoa_IdOrderByNumeroInternoAsc(pessoaId).stream()
                 .map(this::toResponse)
@@ -130,7 +267,8 @@ public class ProcessoApplicationService {
         p.setProcesso(proc);
         aplicarParte(p, req);
         p = parteRepository.save(p);
-        return toParteResponse(parteRepository.findById(p.getId()).orElseThrow());
+        substituirAdvogadosDaParte(p, req.getAdvogadoPessoaIds() != null ? req.getAdvogadoPessoaIds() : List.of());
+        return toParteResponse(requireParte(processoId, p.getId()));
     }
 
     @Transactional
@@ -138,6 +276,9 @@ public class ProcessoApplicationService {
         ProcessoParteEntity p = requireParte(processoId, parteId);
         aplicarParte(p, req);
         parteRepository.save(p);
+        if (req.getAdvogadoPessoaIds() != null) {
+            substituirAdvogadosDaParte(p, req.getAdvogadoPessoaIds());
+        }
         return toParteResponse(requireParte(processoId, parteId));
     }
 
@@ -295,6 +436,35 @@ public class ProcessoApplicationService {
         p.setOrdem(req.getOrdem() != null ? req.getOrdem() : 0);
     }
 
+    /**
+     * Substitui advogados da parte. Cada advogado é uma {@code pessoa}; a mesma pessoa-parte pode ter vários.
+     * Ignora id igual ao da própria parte (não auto-representação).
+     */
+    private void substituirAdvogadosDaParte(ProcessoParteEntity parte, List<Long> advogadoPessoaIds) {
+        parteAdvogadoRepository.deleteByProcessoParte_Id(parte.getId());
+        if (advogadoPessoaIds == null || advogadoPessoaIds.isEmpty()) {
+            return;
+        }
+        Set<Long> vistos = new LinkedHashSet<>();
+        int ordem = 0;
+        for (Long aid : advogadoPessoaIds) {
+            if (aid == null || !vistos.add(aid)) {
+                continue;
+            }
+            if (parte.getPessoa() != null && aid.equals(parte.getPessoa().getId())) {
+                continue;
+            }
+            PessoaEntity adv = pessoaRepository
+                    .findById(aid)
+                    .orElseThrow(() -> new ResourceNotFoundException("Advogado (pessoa) não encontrado: " + aid));
+            ProcessoParteAdvogadoEntity row = new ProcessoParteAdvogadoEntity();
+            row.setProcessoParte(parte);
+            row.setAdvogadoPessoa(adv);
+            row.setOrdem(ordem++);
+            parteAdvogadoRepository.save(row);
+        }
+    }
+
     private void aplicarAndamento(ProcessoAndamentoEntity a, ProcessoAndamentoWriteRequest req) {
         a.setMovimentoEm(req.getMovimentoEm() != null ? req.getMovimentoEm() : Instant.now());
         a.setTitulo(req.getTitulo().trim());
@@ -334,23 +504,24 @@ public class ProcessoApplicationService {
         r.setClienteId(pessoaId);
         r.setCodigoCliente(CodigoClienteUtil.formatar(pessoaId));
         r.setNumeroInterno(e.getNumeroInterno());
-        r.setNumeroCnj(e.getNumeroCnj());
-        r.setNumeroProcessoAntigo(e.getNumeroProcessoAntigo());
-        r.setNaturezaAcao(e.getNaturezaAcao());
-        r.setCompetencia(e.getCompetencia());
-        r.setFase(e.getFase());
-        r.setStatus(e.getStatus());
-        r.setTramitacao(e.getTramitacao());
+        r.setNumeroCnj(Utf8MojibakeUtil.corrigir(e.getNumeroCnj()));
+        r.setNumeroProcessoAntigo(Utf8MojibakeUtil.corrigir(e.getNumeroProcessoAntigo()));
+        r.setNaturezaAcao(Utf8MojibakeUtil.corrigir(e.getNaturezaAcao()));
+        r.setDescricaoAcao(Utf8MojibakeUtil.corrigir(e.getDescricaoAcao()));
+        r.setCompetencia(Utf8MojibakeUtil.corrigir(e.getCompetencia()));
+        r.setFase(Utf8MojibakeUtil.corrigir(e.getFase()));
+        r.setStatus(Utf8MojibakeUtil.corrigir(e.getStatus()));
+        r.setTramitacao(Utf8MojibakeUtil.corrigir(e.getTramitacao()));
         r.setDataProtocolo(e.getDataProtocolo());
         r.setPrazoFatal(e.getPrazoFatal());
         r.setProximaConsulta(e.getProximaConsulta());
-        r.setObservacao(e.getObservacao());
+        r.setObservacao(Utf8MojibakeUtil.corrigir(e.getObservacao()));
         r.setValorCausa(e.getValorCausa());
         r.setUf(e.getUf());
-        r.setCidade(e.getCidade());
+        r.setCidade(Utf8MojibakeUtil.corrigir(e.getCidade()));
         r.setConsultaAutomatica(e.getConsultaAutomatica());
         r.setAtivo(e.getAtivo());
-        r.setConsultor(e.getConsultor());
+        r.setConsultor(Utf8MojibakeUtil.corrigir(e.getConsultor()));
         if (e.getUsuarioResponsavel() != null) {
             r.setUsuarioResponsavelId(e.getUsuarioResponsavel().getId());
         } else {
@@ -364,15 +535,19 @@ public class ProcessoApplicationService {
         r.setId(p.getId());
         if (p.getPessoa() != null) {
             r.setPessoaId(p.getPessoa().getId());
-            r.setNomeExibicao(p.getPessoa().getNome());
+            r.setNomeExibicao(Utf8MojibakeUtil.corrigir(p.getPessoa().getNome()));
         } else {
             r.setPessoaId(null);
-            r.setNomeExibicao(trimToNull(p.getNomeLivre()));
+            r.setNomeExibicao(Utf8MojibakeUtil.corrigir(trimToNull(p.getNomeLivre())));
         }
-        r.setNomeLivre(p.getNomeLivre());
-        r.setPolo(p.getPolo());
-        r.setQualificacao(p.getQualificacao());
+        r.setNomeLivre(Utf8MojibakeUtil.corrigir(p.getNomeLivre()));
+        r.setPolo(Utf8MojibakeUtil.corrigir(p.getPolo()));
+        r.setQualificacao(Utf8MojibakeUtil.corrigir(p.getQualificacao()));
         r.setOrdem(p.getOrdem());
+        List<Long> advIds = parteAdvogadoRepository.findByProcessoParte_IdOrderByOrdemAscIdAsc(p.getId()).stream()
+                .map(x -> x.getAdvogadoPessoa().getId())
+                .collect(Collectors.toList());
+        r.setAdvogadoPessoaIds(new ArrayList<>(advIds));
         return r;
     }
 
@@ -380,9 +555,9 @@ public class ProcessoApplicationService {
         ProcessoAndamentoResponse r = new ProcessoAndamentoResponse();
         r.setId(a.getId());
         r.setMovimentoEm(a.getMovimentoEm());
-        r.setTitulo(a.getTitulo());
-        r.setDetalhe(a.getDetalhe());
-        r.setOrigem(a.getOrigem());
+        r.setTitulo(Utf8MojibakeUtil.corrigir(a.getTitulo()));
+        r.setDetalhe(Utf8MojibakeUtil.corrigir(a.getDetalhe()));
+        r.setOrigem(Utf8MojibakeUtil.corrigir(a.getOrigem()));
         r.setOrigemAutomatica(a.getOrigemAutomatica());
         if (a.getUsuario() != null) {
             r.setUsuarioId(a.getUsuario().getId());
@@ -400,12 +575,12 @@ public class ProcessoApplicationService {
         } else {
             r.setAndamentoId(null);
         }
-        r.setDescricao(z.getDescricao());
+        r.setDescricao(Utf8MojibakeUtil.corrigir(z.getDescricao()));
         r.setDataInicio(z.getDataInicio());
         r.setDataFim(z.getDataFim());
         r.setPrazoFatal(z.getPrazoFatal());
-        r.setStatus(z.getStatus());
-        r.setObservacao(z.getObservacao());
+        r.setStatus(Utf8MojibakeUtil.corrigir(z.getStatus()));
+        r.setObservacao(Utf8MojibakeUtil.corrigir(z.getObservacao()));
         return r;
     }
 

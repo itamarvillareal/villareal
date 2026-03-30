@@ -28,9 +28,6 @@ import { GerenteTopicos } from './components/GerenteTopicos.jsx';
 import { Atividade } from './components/Atividade.jsx';
 import { AnaLuisa } from './components/AnaLuisa.jsx';
 import { atualizarIndicesMensaisAposDia10 } from './services/monetaryIndicesService.js';
-import { executarMigracaoAssistidaPhase23 } from './services/localStorageMigrationPhase23.js';
-import { executarMigracaoAssistidaPhase4Processos } from './services/localStorageMigrationPhase4Processos.js';
-import { executarMigracaoAssistidaPhase5Financeiro } from './services/financeiroMigrationPhase5.js';
 import {
   getPerfilAtivoParaPermissoes,
   getUsuarioSessaoAtualId,
@@ -154,23 +151,6 @@ function App() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      try {
-        await executarMigracaoAssistidaPhase23();
-      } catch {
-        /* migração assistida não deve bloquear app */
-      }
-      try {
-        await executarMigracaoAssistidaPhase4Processos();
-      } catch {
-        /* migração assistida não deve bloquear app */
-      }
-      try {
-        if (import.meta.env.VITE_ENABLE_LOCALSTORAGE_IMPORT_PHASE5_FINANCEIRO_BOOTSTRAP === 'true') {
-          await executarMigracaoAssistidaPhase5Financeiro();
-        }
-      } catch {
-        /* migração assistida não deve bloquear app */
-      }
       try {
         if (cancelled) return;
         const run = () => atualizarIndicesMensaisAposDia10();

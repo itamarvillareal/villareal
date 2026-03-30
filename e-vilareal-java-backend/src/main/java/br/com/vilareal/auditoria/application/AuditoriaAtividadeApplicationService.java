@@ -1,5 +1,6 @@
 package br.com.vilareal.auditoria.application;
 
+import br.com.vilareal.common.text.Utf8MojibakeUtil;
 import br.com.vilareal.auditoria.api.dto.AuditoriaAtividadeResponse;
 import br.com.vilareal.auditoria.api.dto.AuditoriaAtividadeWriteRequest;
 import br.com.vilareal.auditoria.infrastructure.persistence.AuditoriaAtividadeSpecifications;
@@ -109,16 +110,16 @@ public class AuditoriaAtividadeApplicationService {
                 .ocorridoEm(when.toString())
                 .dataBr(z.format(FMT_DATA_BR))
                 .horaBr(z.format(FMT_HORA_BR))
-                .usuarioId(e.getUsuarioRef())
-                .usuarioNome(e.getUsuarioNome())
-                .modulo(e.getModulo())
-                .tela(e.getTela())
-                .tipoAcao(e.getTipoAcao())
-                .descricao(e.getDescricao())
-                .registroAfetadoId(e.getRegistroAfetadoId())
-                .registroAfetadoNome(e.getRegistroAfetadoNome())
-                .ipOrigem(e.getIpOrigem())
-                .observacoesTecnicas(e.getObservacoesTecnicas())
+                .usuarioId(Utf8MojibakeUtil.corrigir(e.getUsuarioRef()))
+                .usuarioNome(Utf8MojibakeUtil.corrigir(e.getUsuarioNome()))
+                .modulo(Utf8MojibakeUtil.corrigir(e.getModulo()))
+                .tela(Utf8MojibakeUtil.corrigir(e.getTela()))
+                .tipoAcao(Utf8MojibakeUtil.corrigir(e.getTipoAcao()))
+                .descricao(Utf8MojibakeUtil.corrigir(e.getDescricao()))
+                .registroAfetadoId(Utf8MojibakeUtil.corrigir(e.getRegistroAfetadoId()))
+                .registroAfetadoNome(Utf8MojibakeUtil.corrigir(e.getRegistroAfetadoNome()))
+                .ipOrigem(Utf8MojibakeUtil.corrigir(e.getIpOrigem()))
+                .observacoesTecnicas(Utf8MojibakeUtil.corrigir(e.getObservacoesTecnicas()))
                 .build();
     }
 }

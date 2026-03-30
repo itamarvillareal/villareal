@@ -24,6 +24,7 @@ import { buscarProcessoUnicoNaBasePorTextoAgenda } from '../data/processosHistor
 import { resolverAliasHojeEmTexto } from '../services/hjDateAliasService.js';
 import { getNomeExibicaoUsuario } from '../data/usuarioDisplayHelpers.js';
 import { featureFlags } from '../config/featureFlags.js';
+import { buildRouterStateChaveClienteProcesso } from '../domain/camposProcessoCliente.js';
 import { listarUsuarios } from '../repositories/usuariosRepository.js';
 import {
   listarEventosPorDataUsuario,
@@ -268,6 +269,9 @@ function StatusCurtoCell({ evento, onSalvar }) {
   );
 }
 
+/** Mínimo de linhas no corpo do formulário (eventos + linha nova + linhas vazias de preenchimento). */
+const MIN_LINHAS_FORMULARIO_AGENDA = 10;
+
 function ColunaDia({
   dataLabel,
   eventos,
@@ -306,6 +310,8 @@ function ColunaDia({
       onPersistenciaAlterada?.();
     }
   }
+
+  const linhasPreenchimento = Math.max(0, MIN_LINHAS_FORMULARIO_AGENDA - eventos.length - 1);
 
   return (
     <div className="flex-1 min-w-0 min-h-0 flex flex-col border border-gray-300 rounded bg-white overflow-hidden">
@@ -365,6 +371,17 @@ function ColunaDia({
                     }}
                   />
                 </td>
+              </tr>
+            ))}
+            {Array.from({ length: linhasPreenchimento }, (_, i) => (
+              <tr
+                key={`agenda-linha-vazia-${dataBrStr}-${usuarioAgendaId}-${i}`}
+                className="border-b border-gray-100 min-h-[42px] overflow-hidden"
+                aria-hidden
+              >
+                <td className="w-[96px] px-2 py-1.5 align-top text-sm text-gray-300 select-none">&nbsp;</td>
+                <td className="px-2 py-1.5 align-top text-sm min-w-0 text-gray-300 select-none">&nbsp;</td>
+                <td className="w-[92px] px-0 py-1.5 align-top text-right">&nbsp;</td>
               </tr>
             ))}
             <tr
@@ -689,7 +706,7 @@ export function Agenda() {
     const texto = `${ev.descricao ?? ''}\n${ev.hora ?? ''}`;
     const found = buscarProcessoUnicoNaBasePorTextoAgenda(texto);
     if (found) {
-      navigate('/processos', { state: { codCliente: found.codCliente, proc: String(found.proc) } });
+      navigate('/processos', { state: buildRouterStateChaveClienteProcesso(found.codCliente, found.proc) });
       return;
     }
     setEventoModal(ev);

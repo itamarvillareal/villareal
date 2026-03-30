@@ -1,5 +1,6 @@
 package br.com.vilareal.auth.application;
 
+import br.com.vilareal.common.text.Utf8MojibakeUtil;
 import br.com.vilareal.auth.api.dto.LoginRequest;
 import br.com.vilareal.auth.api.dto.LoginResponse;
 import br.com.vilareal.auth.api.dto.UsuarioLogadoDto;
@@ -60,7 +61,7 @@ public class AuthApplicationService {
     private static UsuarioLogadoDto toLogado(UsuarioEntity u) {
         UsuarioLogadoDto d = new UsuarioLogadoDto();
         d.setId(u.getId());
-        d.setNome(u.getNome());
+        d.setNome(Utf8MojibakeUtil.corrigir(u.getNome()));
         d.setLogin(u.getLogin());
         if (u.getPerfis() != null) {
             d.setPerfilIds(u.getPerfis().stream().map(PerfilEntity::getId).sorted().toList());

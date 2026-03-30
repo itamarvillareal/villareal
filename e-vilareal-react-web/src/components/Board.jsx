@@ -20,6 +20,7 @@ import {
   listarTarefasOperacionais,
   patchStatusTarefaOperacional,
 } from '../repositories/tarefasOperacionaisRepository.js';
+import { buildRouterStateChaveClienteProcesso } from '../domain/camposProcessoCliente.js';
 
 /**
  * IDs antigos da tela Pendências (mock) → mesmo cadastro de Usuários (ex.: kari ↔ karla no storage).
@@ -488,7 +489,7 @@ export function Board() {
           setErroLocalizarPendencia('Não encontrei referência de processo no texto da pendência.');
           return;
         }
-        navigate('/processos', { state: { codCliente: String(ref.codCliente ?? ''), proc: String(ref.proc ?? '') } });
+        navigate('/processos', { state: buildRouterStateChaveClienteProcesso(ref.codCliente ?? '', ref.proc ?? '') });
         return;
       }
 
@@ -546,7 +547,7 @@ export function Board() {
           refreshTarefasApi();
           return;
         }
-        navigate('/processos', { state: { codCliente: String(ref.codCliente ?? ''), proc: String(ref.proc ?? '') } });
+        navigate('/processos', { state: buildRouterStateChaveClienteProcesso(ref.codCliente ?? '', ref.proc ?? '') });
         refreshTarefasApi();
         return;
       }
@@ -701,7 +702,7 @@ export function Board() {
         setErroLocalizarPendencia('Não encontrei referência de processo no texto da pendência.');
         return;
       }
-      navigate('/processos', { state: { codCliente: String(ref.codCliente ?? ''), proc: String(ref.proc ?? '') } });
+      navigate('/processos', { state: buildRouterStateChaveClienteProcesso(ref.codCliente ?? '', ref.proc ?? '') });
       fecharModalAcoesPendencia();
       return;
     }

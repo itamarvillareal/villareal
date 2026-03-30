@@ -8,4 +8,6 @@ import java.util.List;
 public interface ProcessoParteRepository extends JpaRepository<ProcessoParteEntity, Long> {
 
     List<ProcessoParteEntity> findByProcesso_IdOrderByOrdemAscIdAsc(Long processoId);
+
+    long deleteByProcesso_IdAndPolo(Long processoId, String polo);
 }

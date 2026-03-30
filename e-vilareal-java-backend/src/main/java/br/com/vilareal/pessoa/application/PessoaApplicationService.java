@@ -2,6 +2,7 @@ package br.com.vilareal.pessoa.application;
 
 import br.com.vilareal.common.exception.BusinessRuleException;
 import br.com.vilareal.common.exception.ResourceNotFoundException;
+import br.com.vilareal.common.text.Utf8MojibakeUtil;
 import br.com.vilareal.pessoa.api.dto.*;
 import br.com.vilareal.pessoa.infrastructure.persistence.PessoaSpecifications;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.*;
@@ -26,18 +27,21 @@ public class PessoaApplicationService {
     private final PessoaEnderecoRepository enderecoRepository;
     private final PessoaContatoRepository contatoRepository;
     private final UsuarioRepository usuarioRepository;
+    private final ClienteRepository clienteRepository;
 
     public PessoaApplicationService(
             PessoaRepository pessoaRepository,
             PessoaComplementarRepository complementarRepository,
             PessoaEnderecoRepository enderecoRepository,
             PessoaContatoRepository contatoRepository,
-            UsuarioRepository usuarioRepository) {
+            UsuarioRepository usuarioRepository,
+            ClienteRepository clienteRepository) {
         this.pessoaRepository = pessoaRepository;
         this.complementarRepository = complementarRepository;
         this.enderecoRepository = enderecoRepository;
         this.contatoRepository = contatoRepository;
         this.usuarioRepository = usuarioRepository;
+        this.clienteRepository = clienteRepository;
     }
 
     @Transactional(readOnly = true)
@@ -93,6 +97,7 @@ public class PessoaApplicationService {
         PessoaEntity p = new PessoaEntity();
         aplicarNucleo(p, req, cpf);
         p = pessoaRepository.save(p);
+        garantirClienteParaPessoa(p);
         return toResponseCompleto(pessoaRepository.findDetailById(p.getId()).orElse(p));
     }
 
@@ -107,6 +112,7 @@ public class PessoaApplicationService {
 
         aplicarNucleo(p, req, cpf);
         p = pessoaRepository.save(p);
+        garantirClienteParaPessoa(p);
         return toResponseCompleto(pessoaRepository.findDetailById(p.getId()).orElse(p));
     }
 
@@ -151,6 +157,7 @@ public class PessoaApplicationService {
         e.setNacionalidade(payload.getNacionalidade());
         e.setEstadoCivil(payload.getEstadoCivil());
         e.setGenero(payload.getGenero());
+        e.setDescricaoAcao(payload.getDescricaoAcao());
         complementarRepository.save(e);
         return toComplementarPayload(e);
     }
@@ -270,10 +277,10 @@ public class PessoaApplicationService {
     private PessoaCadastroResponse toResponseBasico(PessoaEntity p) {
         PessoaCadastroResponse r = new PessoaCadastroResponse();
         r.setId(p.getId());
-        r.setNome(p.getNome());
-        r.setEmail(p.getEmail());
+        r.setNome(Utf8MojibakeUtil.corrigir(p.getNome()));
+        r.setEmail(Utf8MojibakeUtil.corrigir(p.getEmail()));
         r.setCpf(p.getCpf());
-        r.setTelefone(p.getTelefone());
+        r.setTelefone(Utf8MojibakeUtil.corrigir(p.getTelefone()));
         r.setDataNascimento(p.getDataNascimento());
         r.setAtivo(p.getAtivo());
         r.setMarcadoMonitoramento(p.getMarcadoMonitoramento());
@@ -291,19 +298,20 @@ public class PessoaApplicationService {
         if (p.getResponsavel() != null) {
             r.setResponsavel(new PessoaResponsavelResumo(
                     p.getResponsavel().getId(),
-                    p.getResponsavel().getNome()));
+                    Utf8MojibakeUtil.corrigir(p.getResponsavel().getNome())));
         }
         return r;
     }
 
     private PessoaComplementarPayload toComplementarPayload(PessoaComplementarEntity e) {
         PessoaComplementarPayload p = new PessoaComplementarPayload();
-        p.setRg(e.getRg());
-        p.setOrgaoExpedidor(e.getOrgaoExpedidor());
-        p.setProfissao(e.getProfissao());
-        p.setNacionalidade(e.getNacionalidade());
-        p.setEstadoCivil(e.getEstadoCivil());
-        p.setGenero(e.getGenero());
+        p.setRg(Utf8MojibakeUtil.corrigir(e.getRg()));
+        p.setOrgaoExpedidor(Utf8MojibakeUtil.corrigir(e.getOrgaoExpedidor()));
+        p.setProfissao(Utf8MojibakeUtil.corrigir(e.getProfissao()));
+        p.setNacionalidade(Utf8MojibakeUtil.corrigir(e.getNacionalidade()));
+        p.setEstadoCivil(Utf8MojibakeUtil.corrigir(e.getEstadoCivil()));
+        p.setGenero(Utf8MojibakeUtil.corrigir(e.getGenero()));
+        p.setDescricaoAcao(Utf8MojibakeUtil.corrigir(e.getDescricaoAcao()));
         return p;
     }
 
@@ -311,11 +319,11 @@ public class PessoaApplicationService {
         PessoaEnderecoItemResponse r = new PessoaEnderecoItemResponse();
         r.setId(e.getId());
         r.setNumero(e.getNumeroOrdem());
-        r.setRua(e.getRua());
-        r.setBairro(e.getBairro());
-        r.setEstado(e.getEstado());
-        r.setCidade(e.getCidade());
-        r.setCep(e.getCep());
+        r.setRua(Utf8MojibakeUtil.corrigir(e.getRua()));
+        r.setBairro(Utf8MojibakeUtil.corrigir(e.getBairro()));
+        r.setEstado(Utf8MojibakeUtil.corrigir(e.getEstado()));
+        r.setCidade(Utf8MojibakeUtil.corrigir(e.getCidade()));
+        r.setCep(Utf8MojibakeUtil.corrigir(e.getCep()));
         r.setAutoPreenchido(e.getAutoPreenchido());
         return r;
     }
@@ -323,11 +331,42 @@ public class PessoaApplicationService {
     private PessoaContatoItemResponse toContatoResponse(PessoaContatoEntity c) {
         PessoaContatoItemResponse r = new PessoaContatoItemResponse();
         r.setId(c.getId());
-        r.setTipo(c.getTipo());
-        r.setValor(c.getValor());
+        r.setTipo(Utf8MojibakeUtil.corrigir(c.getTipo()));
+        r.setValor(Utf8MojibakeUtil.corrigir(c.getValor()));
         r.setDataLancamento(c.getDataLancamento());
         r.setDataAlteracao(c.getDataAlteracao());
-        r.setUsuario(c.getUsuarioLancamento());
+        r.setUsuario(Utf8MojibakeUtil.corrigir(c.getUsuarioLancamento()));
         return r;
+    }
+
+    /** Garante linha em {@code cliente} após criar pessoa (Flyway V34 + novos cadastros). */
+    private void garantirClienteParaPessoa(PessoaEntity p) {
+        if (clienteRepository.existsByPessoa_Id(p.getId())) {
+            return;
+        }
+        long pid = p.getId();
+        // CHAR(8): ids > 99_999_999 não cabem em LPAD de 8 dígitos — mesmo padrão da migração V34/V36 (prefixo 9).
+        String canonico =
+                pid <= 99_999_999L
+                        ? String.format("%08d", pid)
+                        : "9" + String.format("%07d", pid % 10_000_000L);
+        if (!clienteRepository.existsByCodigoCliente(canonico)) {
+            ClienteEntity c = new ClienteEntity();
+            c.setPessoa(p);
+            c.setCodigoCliente(canonico);
+            c.setInativo(false);
+            clienteRepository.save(c);
+            return;
+        }
+        String fallback = "9" + String.format("%07d", p.getId() % 10_000_000L);
+        if (clienteRepository.existsByCodigoCliente(fallback)) {
+            throw new BusinessRuleException(
+                    "Não foi possível gerar código de cliente único para a pessoa " + p.getId() + ".");
+        }
+        ClienteEntity c = new ClienteEntity();
+        c.setPessoa(p);
+        c.setCodigoCliente(fallback);
+        c.setInativo(false);
+        clienteRepository.save(c);
     }
 }

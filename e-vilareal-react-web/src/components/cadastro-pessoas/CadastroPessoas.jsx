@@ -47,6 +47,7 @@ import { rotuloPessoaComDocumento, esbocoQualificacaoComResponsavel } from '../.
 import { SeletorResponsavelPessoa } from './SeletorResponsavelPessoa.jsx';
 import { getContextoAuditoriaUsuario, registrarAuditoria } from '../../services/auditoriaCliente.js';
 import { padCliente8Nav } from './cadastroPessoasNavUtils.js';
+import { buildRouterStateChaveClienteProcesso } from '../../domain/camposProcessoCliente.js';
 import {
   carregarPessoaComplementar,
   salvarPessoaComplementar,
@@ -1940,7 +1941,7 @@ export function CadastroPessoas() {
                           type="button"
                           onClick={() => {
                             setModalVinculosSistema(false);
-                            navigate('/pessoas', { state: { codCliente: padCliente8Nav(cod), proc: '' } });
+                            navigate('/pessoas', { state: buildRouterStateChaveClienteProcesso(padCliente8Nav(cod), '') });
                           }}
                           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-blue-200 bg-blue-50 text-blue-800 text-sm font-medium hover:bg-blue-100"
                         >
@@ -1980,10 +1981,10 @@ export function CadastroPessoas() {
                                 onClick={() => {
                                   setModalVinculosSistema(false);
                                   navigate('/processos', {
-                                    state: {
-                                      codCliente: padCliente8Nav(row.codCliente),
-                                      proc: String(row.proc ?? ''),
-                                    },
+                                    state: buildRouterStateChaveClienteProcesso(
+                                      padCliente8Nav(row.codCliente),
+                                      row.proc ?? ''
+                                    ),
                                   });
                                 }}
                                 className="text-blue-600 hover:underline text-sm font-medium"

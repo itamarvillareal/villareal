@@ -19,11 +19,11 @@ const MAX_PRESETS = 50;
  * @typedef {{ id: string, nome: string, criadoEm: string, atualizadoEm?: string, config: RelatorioPresetConfig }} RelatorioPreset
  */
 
-/** Exibir processos: todos, só ativos ou só inativos (cadastro Processos). */
+/** Exibir processos: todos, só ativos ou só inativos (cadastro Processos). Padrão: só ativos. */
 export function normalizarFiltroProcessoAtivo(val) {
   const v = String(val ?? '').trim();
   if (v === 'ativos' || v === 'inativos' || v === 'todos') return v;
-  return 'todos';
+  return 'ativos';
 }
 
 export function mesclarColunasVisiveisPreset(colIds, salvo) {
@@ -72,7 +72,7 @@ export function configRelatorioPadrao(colIds) {
     colunasVisiveis: Object.fromEntries(colIds.map((id) => [id, true])),
     larguraUniforme: false,
     campoPorColuna: Object.fromEntries(colIds.map((id) => [id, id])),
-    filtroProcessoAtivo: 'todos',
+    filtroProcessoAtivo: 'ativos',
     modoAlteracao: false,
   };
 }

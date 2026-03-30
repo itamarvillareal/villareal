@@ -9,7 +9,9 @@ import br.com.vilareal.calculo.infrastructure.persistence.repository.CalculoClie
 import br.com.vilareal.calculo.infrastructure.persistence.repository.CalculoRodadaRepository;
 import br.com.vilareal.calculo.model.RodadaCalculoChave;
 import br.com.vilareal.common.exception.BusinessRuleException;
+import br.com.vilareal.common.text.Utf8MojibakeUtil;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
+import br.com.vilareal.processo.application.ClienteCodigoPessoaResolver;
 import br.com.vilareal.processo.application.CodigoClienteUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -28,16 +30,19 @@ public class CalculoApplicationService {
     private final CalculoClienteConfigRepository clienteConfigRepository;
     private final PessoaRepository pessoaRepository;
     private final ObjectMapper objectMapper;
+    private final ClienteCodigoPessoaResolver clienteCodigoPessoaResolver;
 
     public CalculoApplicationService(
             CalculoRodadaRepository rodadaRepository,
             CalculoClienteConfigRepository clienteConfigRepository,
             PessoaRepository pessoaRepository,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            ClienteCodigoPessoaResolver clienteCodigoPessoaResolver) {
         this.rodadaRepository = rodadaRepository;
         this.clienteConfigRepository = clienteConfigRepository;
         this.pessoaRepository = pessoaRepository;
         this.objectMapper = objectMapper;
+        this.clienteCodigoPessoaResolver = clienteCodigoPessoaResolver;
     }
 
     @Transactional(readOnly = true)
@@ -47,7 +52,7 @@ public class CalculoApplicationService {
             map.put(
                     new RodadaCalculoChave(row.getCodigoCliente(), row.getNumeroProcesso(), row.getDimensao())
                             .toMapKey(),
-                    row.getPayloadJson());
+                    corrigirPayloadJson(row.getPayloadJson()));
         }
         return new CalculoRodadasResponse(map);
     }
@@ -96,7 +101,15 @@ public class CalculoApplicationService {
     @Transactional
     public CalculoClienteConfigResponse salvarConfigCliente(String codigoCliente, JsonNode patch) {
         String cod8 = formatarCodigoCliente(codigoCliente);
-        long pessoaId = CodigoClienteUtil.parsePessoaId(cod8);
+        long pessoaId;
+        if (clienteCodigoPessoaResolver.haMapeamentosPlanilhaPasta1()) {
+            pessoaId = clienteCodigoPessoaResolver
+                    .resolverPessoaIdSomentePlanilha(cod8)
+                    .orElseThrow(
+                            () -> new BusinessRuleException("Código de cliente não mapeado na planilha: " + cod8));
+        } else {
+            pessoaId = clienteCodigoPessoaResolver.resolverPessoaId(cod8);
+        }
         if (!pessoaRepository.existsById(pessoaId)) {
             throw new BusinessRuleException("Cliente não encontrado: " + cod8);
         }
@@ -104,7 +117,9 @@ public class CalculoApplicationService {
             throw new BusinessRuleException("Configuração deve ser um objeto JSON");
         }
         ObjectNode merged = defaultsConfigCliente();
-        clienteConfigRepository.findById(cod8).ifPresent(e -> shallowMerge(merged, e.getPayloadJson()));
+        clienteConfigRepository
+                .findById(cod8)
+                .ifPresent(e -> shallowMerge(merged, corrigirPayloadJson(e.getPayloadJson())));
         if (patch != null) {
             shallowMerge(merged, patch);
         }
@@ -147,6 +162,20 @@ public class CalculoApplicationService {
         while (it.hasNext()) {
             Map.Entry<String, JsonNode> e = it.next();
             target.set(e.getKey(), e.getValue());
+        }
+    }
+
+    /** Corrige mojibake UTF-8 em texto serializado (rótulos dentro do JSON). */
+    private JsonNode corrigirPayloadJson(JsonNode node) {
+        if (node == null) {
+            return null;
+        }
+        try {
+            String raw = objectMapper.writeValueAsString(node);
+            String fixed = Utf8MojibakeUtil.corrigir(raw);
+            return objectMapper.readTree(fixed);
+        } catch (Exception e) {
+            throw new IllegalStateException("JSON de cálculo ilegível após correção de encoding.", e);
         }
     }
 }

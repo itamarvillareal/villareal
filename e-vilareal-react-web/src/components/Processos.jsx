@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { getLancamentosContaCorrente, mergeContaCorrenteComLinhaOrigem } from '../data/financeiroData';
 import { carregarResumoContaCorrenteProcesso } from '../repositories/financeiroRepository.js';
@@ -13,8 +13,10 @@ import {
   normalizarProcesso,
   padCliente,
 } from '../data/processosDadosRelatorio';
-import { getCadastroPessoasMock } from '../data/cadastroPessoasMock';
-import { getIdPessoaPorCodCliente } from '../data/clientesCadastradosMock';
+import {
+  obterPessoaParaVinculoUsuario,
+  pesquisarPessoasParaVinculoUsuario,
+} from '../services/pessoaVinculoUsuarioService.js';
 import { getImovelMock, getImoveisMockTotal } from '../data/imoveisMockData';
 import { loadCadastroClienteDados } from '../data/cadastroClientesStorage.js';
 import {
@@ -34,11 +36,11 @@ import {
 } from '../data/agendaPersistenciaData';
 import { getPerfilAtivoParaPermissoes } from '../data/usuarioPermissoesStorage.js';
 import { getNomeExibicaoUsuario } from '../data/usuarioDisplayHelpers.js';
+import { SidebarMenuIcon } from './navigation/SidebarMenuIcons.jsx';
 import {
   X,
   FolderOpen,
   Calendar,
-  MapPin,
   Calculator,
   ChevronUp,
   ChevronDown,
@@ -52,11 +54,10 @@ import { ModalRelatorioPublicacoesProcesso } from './ModalRelatorioPublicacoesPr
 import { ModalCriarTarefaContextual } from './ModalCriarTarefaContextual.jsx';
 import { buildContextFromProcesso, buildContextFromProcessoComPrazoFatal } from '../data/tarefasContextualPayload.js';
 import { featureFlags } from '../config/featureFlags.js';
+import { obterClienteCadastroPorCodigo } from '../repositories/clientesRepository.js';
 import {
   buscarClientePorCodigo,
   buscarProcessoPorChaveNatural,
-  buscarProcessoPorId,
-  resolverProcessoId,
   mapApiProcessoToUiShape,
   salvarCabecalhoProcesso,
   listarPartesProcesso,
@@ -67,8 +68,27 @@ import {
   upsertPrazoFatalProcesso,
   alterarAtivoProcesso,
 } from '../repositories/processosRepository.js';
+import {
+  buildRouterStateChaveClienteProcesso,
+  extrairIntentNavegacaoProcessos,
+  gravarUltimaSelecaoProcessosArmazenamento,
+  lerUltimaSelecaoProcessosArmazenamento,
+} from '../domain/camposProcessoCliente.js';
 
 const HISTORICO_POR_PAGINA = 10;
+
+/**
+ * Nome / Razão Social do módulo Clientes (localStorage), alinhado a CadastroClientes.
+ * Não usa partes do processo. Fallback: mock unificado por código/processo.
+ */
+function resolverNomeRazaoClienteMockPath(codigoCliente, processoNum) {
+  const cad = loadCadastroClienteDados(codigoCliente);
+  const nr = String(cad?.nomeRazao ?? '').trim();
+  if (nr) return nr;
+  const procNorm = normalizarProcesso(processoNum);
+  const mock = gerarMockProcesso(codigoCliente, procNorm);
+  return String(mock?.cliente ?? '').trim() || '—';
+}
 
 /** Tipos de ação de redação vinculados ao processo atual (modal «mão escrevendo»). */
 const ACOES_REDACAO_PROCESSO = [
@@ -203,16 +223,41 @@ function IconMaoEscrevendo({ className }) {
   );
 }
 
+/** Linha de parte no processo: pessoa + N advogados (cada advogado é pessoa). */
+function clonarLinhasParteProcesso(linhas) {
+  return (linhas || [])
+    .map((l) => ({
+      pessoaId: Number(l.pessoaId),
+      advogadoPessoaIds: Array.isArray(l.advogadoPessoaIds)
+        ? l.advogadoPessoaIds.map(Number).filter((x) => Number.isFinite(x) && x > 0)
+        : [],
+    }))
+    .filter((l) => Number.isFinite(l.pessoaId) && l.pessoaId > 0);
+}
+
+function entradasParteDesdeRegistro(idsLegado, entradasSalvas) {
+  const ent = clonarLinhasParteProcesso(entradasSalvas);
+  if (ent.length) return ent;
+  return (idsLegado || [])
+    .map((id) => ({ pessoaId: Number(id), advogadoPessoaIds: [] }))
+    .filter((l) => l.pessoaId > 0);
+}
+
 export function Processos() {
   const location = useLocation();
   const navigate = useNavigate();
-  const stateFromFinanceiro = location.state && typeof location.state === 'object' ? location.state : null;
-  const codClienteFromState = stateFromFinanceiro?.codCliente ?? '';
-  const procFromState = stateFromFinanceiro?.proc ?? '';
 
-  const [codigoCliente, setCodigoCliente] = useState('00000001');
-  const [cliente, setCliente] = useState('CONDOMINIO sasaf');
-  const [processo, setProcesso] = useState(4);
+  const [codigoCliente, setCodigoCliente] = useState(
+    () => (typeof window !== 'undefined' ? lerUltimaSelecaoProcessosArmazenamento()?.codigoCliente : null) ?? '00000001'
+  );
+  const [cliente, setCliente] = useState('');
+  /** Re-dispara resolução do nome após salvar no cadastro de clientes (mesmo dado que «Nome / Razão Social»). */
+  const [clienteNomeRefreshTick, setClienteNomeRefreshTick] = useState(0);
+  const [processo, setProcesso] = useState(() => {
+    if (typeof window === 'undefined') return 4;
+    const s = lerUltimaSelecaoProcessosArmazenamento();
+    return s?.numeroInterno ?? 4;
+  });
   /** Lançamento do duplo clique no extrato consolidado (Financeiro → Processos). */
   const [linhaOrigemContaCorrente, setLinhaOrigemContaCorrente] = useState(null);
   /** Abre Conta Corrente em modo Proc. 0 quando o Financeiro envia proc 0 (mensalista). Declarado cedo para o efeito abaixo. */
@@ -223,18 +268,29 @@ export function Processos() {
   const [modalRelatorioPublicacoes, setModalRelatorioPublicacoes] = useState(false);
   const [modalTarefaContextual, setModalTarefaContextual] = useState(null);
 
-  useEffect(() => {
-    if (codClienteFromState) setCodigoCliente(codClienteFromState);
-    if (procFromState !== '') {
-      const num = parseInt(String(procFromState), 10);
-      if (!Number.isNaN(num) && num === 0) {
-        setContaCorrenteModo('proc0');
-        setModalContaCorrente(true);
-      } else {
-        setProcesso(Number.isNaN(num) ? 1 : Math.max(1, num));
+  useLayoutEffect(() => {
+    const intent = extrairIntentNavegacaoProcessos(location.state);
+    const saved = lerUltimaSelecaoProcessosArmazenamento();
+    if (intent) {
+      if (intent.hasCod) setCodigoCliente(padCliente(intent.codRaw));
+      if (intent.hasProcKey && String(intent.procRaw ?? '').trim() !== '') {
+        const num = parseInt(String(intent.procRaw), 10);
+        if (!Number.isNaN(num) && num === 0) {
+          setContaCorrenteModo('proc0');
+          setModalContaCorrente(true);
+        } else {
+          setProcesso(Number.isNaN(num) ? 1 : Math.max(1, num));
+        }
       }
+    } else if (saved) {
+      setCodigoCliente(saved.codigoCliente);
+      setProcesso(saved.numeroInterno);
     }
-  }, [codClienteFromState, procFromState]);
+  }, [location.key, location.state]);
+
+  useEffect(() => {
+    gravarUltimaSelecaoProcessosArmazenamento(codigoCliente, processo);
+  }, [codigoCliente, processo]);
 
   useEffect(() => {
     const s = location.state && typeof location.state === 'object' ? location.state : null;
@@ -243,12 +299,31 @@ export function Processos() {
   const [parteCliente, setParteCliente] = useState('MARIANA PERES DE SOUZA ALVES');
   const [edicaoDesabilitada, setEdicaoDesabilitada] = useState(true);
   const [parteOposta, setParteOposta] = useState('CONDOMINIO PORTAL DOS YPES 3 - CASAS FLAMBOYNAT');
-  const [pessoasCadastro, setPessoasCadastro] = useState([]);
-  const [parteClienteIds, setParteClienteIds] = useState([]);
-  const [parteOpostaIds, setParteOpostaIds] = useState([]);
-  const [modalVinculoPartes, setModalVinculoPartes] = useState(null); // cliente | oposta | null
+  /** Resultados da busca no modal «Detalhes» (não carrega o cadastro inteiro). */
+  const [pessoasBuscaVinculoResultados, setPessoasBuscaVinculoResultados] = useState([]);
+  const [buscaVinculoPessoasEmAndamento, setBuscaVinculoPessoasEmAndamento] = useState(false);
+  /** id → dados para exibir partes/advogados e salvar nomes (preenchido por busca + resolução por id). */
+  const [pessoasVinculoCache, setPessoasVinculoCache] = useState({});
+  const buscaVinculoSeqRef = useRef(0);
+  const pessoasVinculoCacheRef = useRef({});
+  const [parteClienteEntradas, setParteClienteEntradas] = useState([]);
+  const [parteOpostaEntradas, setParteOpostaEntradas] = useState([]);
+  const parteClienteIds = useMemo(
+    () => parteClienteEntradas.map((e) => e.pessoaId),
+    [parteClienteEntradas]
+  );
+  const parteOpostaIds = useMemo(
+    () => parteOpostaEntradas.map((e) => e.pessoaId),
+    [parteOpostaEntradas]
+  );
+  const [modalVinculoPartes, setModalVinculoPartes] = useState(null); // 'detalhes' | null
   const [buscaPessoaVinculo, setBuscaPessoaVinculo] = useState('');
-  const [selecionadasModalIds, setSelecionadasModalIds] = useState([]);
+  /** Linhas editadas na aba atual do modal (pessoa + advogados). */
+  const [linhasModalPartes, setLinhasModalPartes] = useState([]);
+  /** Aba ativa no modal «Detalhes» (vínculo de pessoas). */
+  const [detalhesAbaPartes, setDetalhesAbaPartes] = useState('cliente');
+  const draftParteClienteLinhasRef = useRef([]);
+  const draftParteOpostaLinhasRef = useRef([]);
   const [numeroProcessoVelho, setNumeroProcessoVelho] = useState('');
   const [numeroProcessoNovo, setNumeroProcessoNovo] = useState('5602801-26.2025.8.09.0137');
   const [consultaAutomatica, setConsultaAutomatica] = useState(false);
@@ -305,7 +380,6 @@ export function Processos() {
   const [processoApiId, setProcessoApiId] = useState(null);
   /** `clienteId` retornado pelo GET do processo na API (preferência sobre resolução por código). */
   const [clienteProcessoApiId, setClienteProcessoApiId] = useState(null);
-  const [apiLoading, setApiLoading] = useState(false);
   const [apiSaving, setApiSaving] = useState(false);
   const [apiError, setApiError] = useState('');
   const [historicoExternoTick, setHistoricoExternoTick] = useState(0);
@@ -457,10 +531,6 @@ export function Processos() {
   }, [modalAcoesRedacaoAberto, indiceAcaoRedacaoFocada]);
 
   useEffect(() => {
-    setPessoasCadastro(getCadastroPessoasMock(true));
-  }, []);
-
-  useEffect(() => {
     return () => {
       try {
         window.localStorage.setItem('vilareal:processos:edicao-desabilitada-ao-sair:v1', 'true');
@@ -475,6 +545,59 @@ export function Processos() {
     setProcesso((p) => Math.max(1, Number(p) || 1));
   }, []);
 
+  useEffect(() => {
+    const h = () => setClienteNomeRefreshTick((t) => t + 1);
+    window.addEventListener('vilareal:cadastro-clientes-externo-atualizado', h);
+    return () => window.removeEventListener('vilareal:cadastro-clientes-externo-atualizado', h);
+  }, []);
+
+  /**
+   * Campo «Cliente» = mesmo texto que «Nome / Razão Social» em Clientes (`nomeRazao` / API `nomeReferencia`).
+   * Prioridade: API cadastro de clientes → API processos (lista/resolução) → localStorage + mock.
+   */
+  useEffect(() => {
+    let cancelled = false;
+    const cod = padCliente(String(codigoCliente ?? '').trim() || '00000001');
+    const procNorm = normalizarProcesso(processo);
+
+    const fallbackLocal = () => resolverNomeRazaoClienteMockPath(codigoCliente, procNorm);
+
+    if (!featureFlags.useApiClientes && !featureFlags.useApiProcessos) {
+      setCliente(fallbackLocal());
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    (async () => {
+      try {
+        if (featureFlags.useApiClientes) {
+          const c = await obterClienteCadastroPorCodigo(cod);
+          if (cancelled) return;
+          const nomeRz = String(c?.nomeRazao ?? '').trim();
+          if (nomeRz) {
+            setCliente(nomeRz);
+            return;
+          }
+        }
+        if (featureFlags.useApiProcessos) {
+          const row = await buscarClientePorCodigo(cod);
+          if (cancelled) return;
+          const nome = String(row?.nomeReferencia ?? row?.nome ?? '').trim();
+          setCliente(nome || fallbackLocal() || '—');
+          return;
+        }
+        if (!cancelled) setCliente(fallbackLocal());
+      } catch {
+        if (!cancelled) setCliente(fallbackLocal() || '—');
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [codigoCliente, processo, clienteNomeRefreshTick]);
+
   // Atualiza campos com dados mock ao mudar cliente ou processo
   useEffect(() => {
     const procNorm = normalizarProcesso(processo);
@@ -484,17 +607,11 @@ export function Processos() {
     // Não sobrescreve o código vindo de outras telas; mantém exatamente o código em tela.
     const registroPersistido = getRegistroProcesso(mock.codigoCliente, mock.processo);
     const r = registroPersistido;
+
     const papelDefault = mock.parteRequerido ? 'requerido' : 'requerente';
     const papelSalvo = pickCampoStrSalvo(r, 'papelParte', '');
     const papelFinal = papelSalvo === 'requerente' || papelSalvo === 'requerido' ? papelSalvo : papelDefault;
 
-    setCliente(pickCampoStrSalvo(r, 'cliente', mock.cliente));
-    setParteCliente(pickCampoStrSalvo(r, 'parteCliente', mock.parteCliente));
-    setParteClienteIds(registroPersistido?.parteClienteIds ?? []);
-    setParteOpostaIds(registroPersistido?.parteOpostaIds ?? []);
-    setStatusAtivo(pickCampoBoolSalvo(r, 'statusAtivo', mock.statusAtivo));
-    setPapelParte(papelFinal);
-    setCompetencia(pickCampoStrSalvo(r, 'competencia', mock.competencia));
     const fasePersistida =
       registroPersistido?.faseSelecionada != null && String(registroPersistido.faseSelecionada).trim() !== ''
         ? registroPersistido.faseSelecionada
@@ -524,21 +641,37 @@ export function Processos() {
     const numeroVelhoPersistido = velhoDoHistorico || velhoDoCadastro || mock.numeroProcessoVelho;
     const naturezaPersistida = naturezaDoHistorico || naturezaDoCadastro || mock.naturezaAcao;
     const parteOpostaPersistida = parteOpostaDoHistorico || parteOpostaDoCadastro || mock.parteOposta;
-    setNumeroProcessoNovo(numeroNovoPersistido);
-    setNumeroProcessoVelho(numeroVelhoPersistido);
-    setParteOposta(parteOpostaPersistida);
-    setFaseSelecionada(fasePersistida);
-    setConsultaAutomatica(pickCampoBoolSalvo(r, 'consultaAutomatica', mock.consultaAutomatica));
-    setPeriodicidadeConsulta(registroPersistido?.periodicidadeConsulta ?? '');
-    setTramitacao(registroPersistido?.tramitacao ?? '');
-    setDataProtocolo(pickCampoStrSalvo(r, 'dataProtocolo', mock.dataProtocolo));
-    setNaturezaAcao(naturezaPersistida);
-    setValorCausa(pickCampoStrSalvo(r, 'valorCausa', mock.valorCausa));
-    setObservacao(pickCampoStrSalvo(r, 'observacao', mock.observacao));
-    setEstado(pickCampoStrSalvo(r, 'estado', mock.estado));
-    setCidade(pickCampoStrSalvo(r, 'cidade', mock.cidade));
+
+    if (!featureFlags.useApiProcessos) {
+      setParteCliente(pickCampoStrSalvo(r, 'parteCliente', mock.parteCliente));
+      setParteClienteEntradas(
+        entradasParteDesdeRegistro(registroPersistido?.parteClienteIds, registroPersistido?.parteClienteEntradas)
+      );
+      setParteOpostaEntradas(
+        entradasParteDesdeRegistro(registroPersistido?.parteOpostaIds, registroPersistido?.parteOpostaEntradas)
+      );
+      setStatusAtivo(pickCampoBoolSalvo(r, 'statusAtivo', mock.statusAtivo));
+      setPapelParte(papelFinal);
+      setCompetencia(pickCampoStrSalvo(r, 'competencia', mock.competencia));
+      setNumeroProcessoNovo(numeroNovoPersistido);
+      setNumeroProcessoVelho(numeroVelhoPersistido);
+      setParteOposta(parteOpostaPersistida);
+      setFaseSelecionada(fasePersistida);
+      setConsultaAutomatica(pickCampoBoolSalvo(r, 'consultaAutomatica', mock.consultaAutomatica));
+      setPeriodicidadeConsulta(registroPersistido?.periodicidadeConsulta ?? '');
+      setTramitacao(registroPersistido?.tramitacao ?? '');
+      setDataProtocolo(pickCampoStrSalvo(r, 'dataProtocolo', mock.dataProtocolo));
+      setNaturezaAcao(naturezaPersistida);
+      setValorCausa(pickCampoStrSalvo(r, 'valorCausa', mock.valorCausa));
+      setObservacao(pickCampoStrSalvo(r, 'observacao', mock.observacao));
+      setEstado(pickCampoStrSalvo(r, 'estado', mock.estado));
+      setCidade(pickCampoStrSalvo(r, 'cidade', mock.cidade));
+      setResponsavel(pickCampoStrSalvo(r, 'responsavel', ''));
+    } else {
+      // Com API: cabeçalho, partes e histórico vêm de GET /api/processos e sub-rotas (importação/planilha).
+      setPeriodicidadeConsulta(registroPersistido?.periodicidadeConsulta ?? '');
+    }
     setPastaArquivo(pickCampoStrSalvo(r, 'pastaArquivo', ''));
-    setResponsavel(pickCampoStrSalvo(r, 'responsavel', ''));
     setProcedimento(pickCampoStrSalvo(r, 'procedimento', ''));
     setFaseCampo(pickCampoStrSalvo(r, 'faseCampo', ''));
     setAudienciaData(pickCampoStrSalvo(r, 'audienciaData', ''));
@@ -555,11 +688,13 @@ export function Processos() {
       nav?.imovelId != null && String(nav.imovelId).trim() !== ''
         ? Number(String(nav.imovelId).replace(/\D/g, ''))
         : NaN;
+    const codNavRaw = nav?.codigoCliente ?? nav?.codCliente;
     const codNavPad =
-      nav?.codCliente != null && String(nav.codCliente).trim() !== '' ? padCliente(nav.codCliente) : '';
+      codNavRaw != null && String(codNavRaw).trim() !== '' ? padCliente(codNavRaw) : '';
+    const procNavRaw = nav?.numeroInterno ?? nav?.proc ?? nav?.processo;
     const procNavStr =
-      nav?.proc !== undefined && nav?.proc !== null && String(nav.proc).trim() !== ''
-        ? String(normalizarProcesso(nav.proc))
+      procNavRaw !== undefined && procNavRaw !== null && String(procNavRaw).trim() !== ''
+        ? String(normalizarProcesso(procNavRaw))
         : '';
     const procMockStr = String(normalizarProcesso(mock.processo));
     const navAlinha =
@@ -598,63 +733,79 @@ export function Processos() {
               : '';
     setUnidadeEndereco(mergedUnidade);
 
-    const historicoPersistido = getHistoricoDoProcesso(mock.codigoCliente, mock.processo);
-    setPrazoFatal(registroPersistido?.prazoFatal ?? '');
-    const payloadFormBase = {
-      codCliente: mock.codigoCliente,
-      proc: mock.processo,
-      cliente: pickCampoStrSalvo(r, 'cliente', mock.cliente),
-      parteCliente: pickCampoStrSalvo(r, 'parteCliente', mock.parteCliente),
-      parteOposta: parteOpostaPersistida,
-      numeroProcessoVelho: numeroVelhoPersistido,
-      numeroProcessoNovo: numeroNovoPersistido,
-      consultaAutomatica: pickCampoBoolSalvo(r, 'consultaAutomatica', mock.consultaAutomatica),
-      statusAtivo: pickCampoBoolSalvo(r, 'statusAtivo', mock.statusAtivo),
-      papelParte: papelFinal,
-      estado: pickCampoStrSalvo(r, 'estado', mock.estado),
-      cidade: pickCampoStrSalvo(r, 'cidade', mock.cidade),
-      dataProtocolo: pickCampoStrSalvo(r, 'dataProtocolo', mock.dataProtocolo),
-      pastaArquivo: pickCampoStrSalvo(r, 'pastaArquivo', ''),
-      valorCausa: pickCampoStrSalvo(r, 'valorCausa', mock.valorCausa),
-      procedimento: pickCampoStrSalvo(r, 'procedimento', ''),
-      responsavel: pickCampoStrSalvo(r, 'responsavel', ''),
-      competencia: pickCampoStrSalvo(r, 'competencia', mock.competencia),
-      observacao: pickCampoStrSalvo(r, 'observacao', mock.observacao),
-      faseCampo: pickCampoStrSalvo(r, 'faseCampo', ''),
-      audienciaData: pickCampoStrSalvo(r, 'audienciaData', ''),
-      audienciaHora: pickCampoStrSalvo(r, 'audienciaHora', ''),
-      audienciaTipo: pickCampoStrSalvo(r, 'audienciaTipo', ''),
-      avisoAudiencia: pickCampoStrSalvo(r, 'avisoAudiencia', 'nao_avisado') || 'nao_avisado',
-      imovelId: nextImovelIdStr,
-      unidade: mergedUnidade,
-      unidadeEndereco: mergedUnidade,
-      proximaInformacao: pickCampoStrSalvo(r, 'proximaInformacao', ''),
-      dataProximaInformacao: pickCampoStrSalvo(r, 'dataProximaInformacao', ''),
-      prazoFatal: registroPersistido?.prazoFatal ?? '',
-      parteClienteIds: registroPersistido?.parteClienteIds ?? [],
-      parteOpostaIds: registroPersistido?.parteOpostaIds ?? [],
-      faseSelecionada: fasePersistida,
-      periodicidadeConsulta: registroPersistido?.periodicidadeConsulta ?? '',
-      tramitacao: registroPersistido?.tramitacao ?? '',
-      naturezaAcao: naturezaPersistida,
-    };
-    if (historicoPersistido.length > 0) {
-      setHistorico(historicoPersistido);
-      if (!String(registroPersistido?.faseSelecionada ?? '').trim()) {
-        salvarHistoricoDoProcesso({
+    if (!featureFlags.useApiProcessos) {
+      const historicoPersistido = getHistoricoDoProcesso(mock.codigoCliente, mock.processo);
+      setPrazoFatal(registroPersistido?.prazoFatal ?? '');
+      const payloadFormBase = {
+        codCliente: mock.codigoCliente,
+        proc: mock.processo,
+        cliente: resolverNomeRazaoClienteMockPath(codigoCliente, procNorm),
+        parteCliente: pickCampoStrSalvo(r, 'parteCliente', mock.parteCliente),
+        parteOposta: parteOpostaPersistida,
+        numeroProcessoVelho: numeroVelhoPersistido,
+        numeroProcessoNovo: numeroNovoPersistido,
+        consultaAutomatica: pickCampoBoolSalvo(r, 'consultaAutomatica', mock.consultaAutomatica),
+        statusAtivo: pickCampoBoolSalvo(r, 'statusAtivo', mock.statusAtivo),
+        papelParte: papelFinal,
+        estado: pickCampoStrSalvo(r, 'estado', mock.estado),
+        cidade: pickCampoStrSalvo(r, 'cidade', mock.cidade),
+        dataProtocolo: pickCampoStrSalvo(r, 'dataProtocolo', mock.dataProtocolo),
+        pastaArquivo: pickCampoStrSalvo(r, 'pastaArquivo', ''),
+        valorCausa: pickCampoStrSalvo(r, 'valorCausa', mock.valorCausa),
+        procedimento: pickCampoStrSalvo(r, 'procedimento', ''),
+        responsavel: pickCampoStrSalvo(r, 'responsavel', ''),
+        competencia: pickCampoStrSalvo(r, 'competencia', mock.competencia),
+        observacao: pickCampoStrSalvo(r, 'observacao', mock.observacao),
+        faseCampo: pickCampoStrSalvo(r, 'faseCampo', ''),
+        audienciaData: pickCampoStrSalvo(r, 'audienciaData', ''),
+        audienciaHora: pickCampoStrSalvo(r, 'audienciaHora', ''),
+        audienciaTipo: pickCampoStrSalvo(r, 'audienciaTipo', ''),
+        avisoAudiencia: pickCampoStrSalvo(r, 'avisoAudiencia', 'nao_avisado') || 'nao_avisado',
+        imovelId: nextImovelIdStr,
+        unidade: mergedUnidade,
+        unidadeEndereco: mergedUnidade,
+        proximaInformacao: pickCampoStrSalvo(r, 'proximaInformacao', ''),
+        dataProximaInformacao: pickCampoStrSalvo(r, 'dataProximaInformacao', ''),
+        prazoFatal: registroPersistido?.prazoFatal ?? '',
+        parteClienteEntradas: entradasParteDesdeRegistro(
+          registroPersistido?.parteClienteIds,
+          registroPersistido?.parteClienteEntradas
+        ),
+        parteOpostaEntradas: entradasParteDesdeRegistro(
+          registroPersistido?.parteOpostaIds,
+          registroPersistido?.parteOpostaEntradas
+        ),
+        parteClienteIds: entradasParteDesdeRegistro(
+          registroPersistido?.parteClienteIds,
+          registroPersistido?.parteClienteEntradas
+        ).map((e) => e.pessoaId),
+        parteOpostaIds: entradasParteDesdeRegistro(
+          registroPersistido?.parteOpostaIds,
+          registroPersistido?.parteOpostaEntradas
+        ).map((e) => e.pessoaId),
+        faseSelecionada: fasePersistida,
+        periodicidadeConsulta: registroPersistido?.periodicidadeConsulta ?? '',
+        tramitacao: registroPersistido?.tramitacao ?? '',
+        naturezaAcao: naturezaPersistida,
+      };
+      if (historicoPersistido.length > 0) {
+        setHistorico(historicoPersistido);
+        if (!String(registroPersistido?.faseSelecionada ?? '').trim()) {
+          salvarHistoricoDoProcesso({
+            ...payloadFormBase,
+            historico: historicoPersistido,
+            faseSelecionada: mock.faseSelecionada,
+          });
+        }
+      } else {
+        const historicoInicial = gerarHistoricoMock();
+        setHistorico(historicoInicial);
+        seedHistoricoDoProcesso({
           ...payloadFormBase,
-          historico: historicoPersistido,
-          faseSelecionada: mock.faseSelecionada,
+          historico: historicoInicial,
+          faseSelecionada: fasePersistida,
         });
       }
-    } else {
-      const historicoInicial = gerarHistoricoMock();
-      setHistorico(historicoInicial);
-      seedHistoricoDoProcesso({
-        ...payloadFormBase,
-        historico: historicoInicial,
-        faseSelecionada: fasePersistida,
-      });
     }
     setPaginaHistorico(1);
     setInformacaoModal(null);
@@ -949,31 +1100,160 @@ export function Processos() {
     return String(s ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
   }
 
+  const mergeVinculoPessoasNoCache = useCallback((lista) => {
+    if (!lista?.length) return;
+    setPessoasVinculoCache((prev) => {
+      const next = { ...prev };
+      for (const p of lista) {
+        const id = Number(p.id);
+        if (!Number.isFinite(id) || id < 1) continue;
+        const nome = String(p.nome ?? '').trim();
+        const cpf = p.cpf != null ? String(p.cpf) : '';
+        const old = next[id];
+        next[id] = {
+          id,
+          nome: nome || old?.nome || '',
+          cpf: cpf || old?.cpf || '',
+        };
+      }
+      return next;
+    });
+  }, []);
+
+  const idsNecessariosVinculo = useMemo(() => {
+    const s = new Set();
+    const addLinhas = (arr) => {
+      for (const e of arr || []) {
+        const pid = Number(e.pessoaId);
+        if (Number.isFinite(pid) && pid > 0) s.add(pid);
+        for (const a of e.advogadoPessoaIds || []) {
+          const aid = Number(a);
+          if (Number.isFinite(aid) && aid > 0) s.add(aid);
+        }
+      }
+    };
+    addLinhas(parteClienteEntradas);
+    addLinhas(parteOpostaEntradas);
+    if (modalVinculoPartes) addLinhas(linhasModalPartes);
+    return [...s];
+  }, [parteClienteEntradas, parteOpostaEntradas, modalVinculoPartes, linhasModalPartes]);
+
+  const idsVinculoResolveKey = useMemo(
+    () => [...idsNecessariosVinculo].sort((a, b) => a - b).join(','),
+    [idsNecessariosVinculo]
+  );
+
+  pessoasVinculoCacheRef.current = pessoasVinculoCache;
+
+  useEffect(() => {
+    if (modalVinculoPartes) return undefined;
+    setPessoasBuscaVinculoResultados([]);
+    setBuscaVinculoPessoasEmAndamento(false);
+    return undefined;
+  }, [modalVinculoPartes]);
+
+  useEffect(() => {
+    if (!idsVinculoResolveKey) return undefined;
+    const faltando = idsNecessariosVinculo.filter((id) => pessoasVinculoCacheRef.current[id] === undefined);
+    if (!faltando.length) return undefined;
+    let cancelled = false;
+    void (async () => {
+      const resolved = await Promise.all(
+        faltando.map(async (id) => {
+          const p = await obterPessoaParaVinculoUsuario(id);
+          return p
+            ? { id: Number(p.id), nome: String(p.nome ?? '').trim(), cpf: String(p.cpf ?? '') }
+            : { id, nome: '', cpf: '' };
+        })
+      );
+      if (cancelled) return;
+      mergeVinculoPessoasNoCache(resolved);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [idsVinculoResolveKey, idsNecessariosVinculo, mergeVinculoPessoasNoCache]);
+
+  useEffect(() => {
+    if (!modalVinculoPartes) return undefined;
+    const raw = String(buscaPessoaVinculo ?? '').trim();
+    const digitos = raw.replace(/\D/g, '');
+    const temLetras = /[a-zA-ZÀ-ÿ\u00C0-\u024F]/.test(raw);
+    if (!raw) {
+      setPessoasBuscaVinculoResultados([]);
+      setBuscaVinculoPessoasEmAndamento(false);
+      return undefined;
+    }
+    if (temLetras && raw.length < 2) {
+      setPessoasBuscaVinculoResultados([]);
+      setBuscaVinculoPessoasEmAndamento(false);
+      return undefined;
+    }
+    if (!temLetras && digitos.length < 3) {
+      setPessoasBuscaVinculoResultados([]);
+      setBuscaVinculoPessoasEmAndamento(false);
+      return undefined;
+    }
+    setBuscaVinculoPessoasEmAndamento(true);
+    const seq = ++buscaVinculoSeqRef.current;
+    const t = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const lista = await pesquisarPessoasParaVinculoUsuario(raw, 200);
+          if (seq !== buscaVinculoSeqRef.current) return;
+          mergeVinculoPessoasNoCache(lista);
+          setPessoasBuscaVinculoResultados(Array.isArray(lista) ? lista : []);
+        } catch {
+          if (seq !== buscaVinculoSeqRef.current) return;
+          setPessoasBuscaVinculoResultados([]);
+        } finally {
+          if (seq === buscaVinculoSeqRef.current) setBuscaVinculoPessoasEmAndamento(false);
+        }
+      })();
+    }, 350);
+    return () => window.clearTimeout(t);
+  }, [buscaPessoaVinculo, modalVinculoPartes, mergeVinculoPessoasNoCache]);
+
   const pessoasPorId = useMemo(() => {
     const m = new Map();
-    for (const p of pessoasCadastro || []) {
-      m.set(Number(p.id), p);
+    for (const p of Object.values(pessoasVinculoCache || {})) {
+      if (p && Number.isFinite(Number(p.id))) m.set(Number(p.id), p);
     }
     return m;
-  }, [pessoasCadastro]);
+  }, [pessoasVinculoCache]);
 
+  /** Nomes completos na ordem das abas «Detalhes», separados por vírgula (read-only no frame). */
   const textoParteCliente = useMemo(() => {
-    if (!parteClienteIds.length) return parteCliente;
-    const nomes = parteClienteIds
-      .map((id) => pessoasPorId.get(Number(id)))
-      .filter(Boolean)
-      .map((p) => p.nome);
-    return formatarListaComConjuncaoE(nomes);
-  }, [parteClienteIds, pessoasPorId, parteCliente]);
+    const linhas = parteClienteEntradas || [];
+    if (!linhas.length) return parteCliente;
+    const nomes = linhas
+      .map((e) => {
+        const pid = Number(e.pessoaId);
+        const p = pessoasPorId.get(pid);
+        const n = p?.nome != null ? String(p.nome).trim() : '';
+        if (n) return n;
+        if (Number.isFinite(pid) && pid > 0) return `Pessoa nº ${pid}`;
+        return null;
+      })
+      .filter(Boolean);
+    return nomes.length ? nomes.join(', ') : parteCliente;
+  }, [parteClienteEntradas, pessoasPorId, parteCliente]);
 
   const textoParteOposta = useMemo(() => {
-    if (!parteOpostaIds.length) return parteOposta;
-    const nomes = parteOpostaIds
-      .map((id) => pessoasPorId.get(Number(id)))
-      .filter(Boolean)
-      .map((p) => p.nome);
-    return formatarListaComConjuncaoE(nomes);
-  }, [parteOpostaIds, pessoasPorId, parteOposta]);
+    const linhas = parteOpostaEntradas || [];
+    if (!linhas.length) return parteOposta;
+    const nomes = linhas
+      .map((e) => {
+        const pid = Number(e.pessoaId);
+        const p = pessoasPorId.get(pid);
+        const n = p?.nome != null ? String(p.nome).trim() : '';
+        if (n) return n;
+        if (Number.isFinite(pid) && pid > 0) return `Pessoa nº ${pid}`;
+        return null;
+      })
+      .filter(Boolean);
+    return nomes.length ? nomes.join(', ') : parteOposta;
+  }, [parteOpostaEntradas, pessoasPorId, parteOposta]);
 
   /** Snapshot completo do formulário para `localStorage` (processo × cliente). */
   function montarPayloadRegistroProcesso(overrides = {}) {
@@ -989,6 +1269,8 @@ export function Processos() {
       numeroProcessoVelho,
       historico,
       prazoFatal: prazoNorm,
+      parteClienteEntradas: clonarLinhasParteProcesso(parteClienteEntradas),
+      parteOpostaEntradas: clonarLinhasParteProcesso(parteOpostaEntradas),
       parteClienteIds,
       parteOpostaIds,
       faseSelecionada,
@@ -1021,20 +1303,83 @@ export function Processos() {
     };
   }
 
+  /** Aplica resposta de GET /partes: entradas, rótulos e cache de nomes (mantém UI alinhada ao servidor). */
+  function aplicarListaPartesApiNaUi(partes) {
+    const entradasCliente = [];
+    const entradasOposta = [];
+    const nomesCliente = [];
+    const nomesOposta = [];
+    const cacheNomesPartes = [];
+    for (const p of partes || []) {
+      const poloNorm = String(p.polo ?? '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toUpperCase();
+      const alvoCliente =
+        poloNorm.includes('AUTOR') ||
+        poloNorm.includes('REQUERENTE') ||
+        poloNorm.includes('CLIENTE');
+      const alvoOposta = !alvoCliente;
+      const nomeApi = String(p.nomeExibicao || p.nomeLivre || '').trim();
+      const adv = Array.isArray(p.advogadoPessoaIds)
+        ? p.advogadoPessoaIds.map(Number).filter((x) => Number.isFinite(x) && x > 0)
+        : [];
+      const pessoaNum = Number(p.pessoaId);
+      const temPessoa = Number.isFinite(pessoaNum) && pessoaNum > 0;
+      // Rótulo para cache e campos read-only: sem nome na API o useMemo textoParte* só olha pessoasVinculoCache — ficava vazio com IDs válidos.
+      const rotulo = nomeApi || (temPessoa ? `Pessoa nº ${pessoaNum}` : '');
+      if (temPessoa && rotulo) {
+        cacheNomesPartes.push({ id: pessoaNum, nome: rotulo, cpf: '' });
+      }
+      if (alvoCliente && temPessoa) {
+        entradasCliente.push({ pessoaId: pessoaNum, advogadoPessoaIds: adv });
+        if (rotulo) nomesCliente.push(rotulo);
+      }
+      if (alvoOposta && temPessoa) {
+        entradasOposta.push({ pessoaId: pessoaNum, advogadoPessoaIds: adv });
+        if (rotulo) nomesOposta.push(rotulo);
+      }
+    }
+    if (cacheNomesPartes.length) {
+      setPessoasVinculoCache((prev) => {
+        const next = { ...prev };
+        for (const row of cacheNomesPartes) {
+          const id = Number(row.id);
+          if (!Number.isFinite(id) || id < 1) continue;
+          const incoming = String(row.nome || '').trim();
+          const anterior = next[id];
+          next[id] = {
+            id,
+            nome: incoming || anterior?.nome || '',
+            cpf: String(row.cpf ?? anterior?.cpf ?? ''),
+          };
+        }
+        return next;
+      });
+    }
+    setParteClienteEntradas(clonarLinhasParteProcesso(entradasCliente));
+    setParteOpostaEntradas(clonarLinhasParteProcesso(entradasOposta));
+    setParteCliente(nomesCliente.length ? formatarListaComConjuncaoE(nomesCliente) : '');
+    setParteOposta(nomesOposta.length ? formatarListaComConjuncaoE(nomesOposta) : '');
+  }
+
   async function carregarProcessoApiAtual() {
     if (!featureFlags.useApiProcessos) return;
-    setApiLoading(true);
     setApiError('');
     try {
-      const resolvedId = await resolverProcessoId({
-        processoId: processoApiId,
-        codigoCliente,
-        numeroInterno: processo,
-      });
-      const procApi = resolvedId ? await buscarProcessoPorId(resolvedId) : await buscarProcessoPorChaveNatural(codigoCliente, processo);
+      setParteClienteEntradas([]);
+      setParteOpostaEntradas([]);
+      setParteCliente('');
+      setParteOposta('');
+      // Sempre pela chave natural (cliente + proc.): processoApiId pode ser do cliente anterior ao trocar o código.
+      const procApi = await buscarProcessoPorChaveNatural(codigoCliente, processo);
       if (!procApi) {
         setProcessoApiId(null);
         setClienteProcessoApiId(null);
+        setParteClienteEntradas([]);
+        setParteOpostaEntradas([]);
+        setParteCliente('');
+        setParteOposta('');
         return;
       }
       setProcessoApiId(procApi.id);
@@ -1046,62 +1391,55 @@ export function Processos() {
             ? Number(procApi.clienteId)
             : null
       );
-      setNumeroProcessoNovo(mapped.numeroProcessoNovo || numeroProcessoNovo);
-      setNumeroProcessoVelho(mapped.numeroProcessoVelho || numeroProcessoVelho);
-      setNaturezaAcao(mapped.naturezaAcao || naturezaAcao);
-      setCompetencia(mapped.competencia || competencia);
-      setFaseSelecionada(mapped.faseSelecionada || faseSelecionada);
+      // Valores exatamente como na API (sem || estado anterior): evita manter mock/localStorage quando a API devolve vazio.
+      setNumeroProcessoNovo(mapped.numeroProcessoNovo ?? '');
+      setNumeroProcessoVelho(mapped.numeroProcessoVelho ?? '');
+      setNaturezaAcao(mapped.naturezaAcao ?? '');
+      setCompetencia(mapped.competencia ?? '');
+      setFaseSelecionada(mapped.faseSelecionada ?? '');
       setStatusAtivo(mapped.statusAtivo);
-      setPrazoFatal(mapped.prazoFatal || prazoFatal);
-      setObservacao(mapped.observacao || observacao);
-      setDataProtocolo(mapped.dataProtocolo || dataProtocolo);
-      setEstado(mapped.estado || estado);
-      setCidade(mapped.cidade || cidade);
+      setPrazoFatal(mapped.prazoFatal ?? '');
+      setObservacao(mapped.observacao ?? '');
+      setDataProtocolo(mapped.dataProtocolo ?? '');
+      setEstado(mapped.estado ?? '');
+      setCidade(mapped.cidade ?? '');
       setConsultaAutomatica(mapped.consultaAutomatica);
-      setTramitacao(mapped.tramitacao || tramitacao);
-      setResponsavel(mapped.responsavel || responsavel);
+      setTramitacao(mapped.tramitacao ?? '');
+      setResponsavel(mapped.responsavel ?? '');
 
       const partes = await listarPartesProcesso(procApi.id);
-      const idsCliente = [];
-      const idsOposta = [];
-      const nomesCliente = [];
-      const nomesOposta = [];
-      for (const p of partes || []) {
-        const polo = String(p.polo || '').toUpperCase();
-        const alvoCliente = polo.includes('AUTOR') || polo.includes('REQUERENTE') || polo.includes('CLIENTE');
-        const alvoOposta = !alvoCliente;
-        const nome = p.nomeExibicao || p.nomeLivre || '';
-        if (alvoCliente) {
-          if (p.pessoaId) idsCliente.push(Number(p.pessoaId));
-          if (nome) nomesCliente.push(nome);
-        }
-        if (alvoOposta) {
-          if (p.pessoaId) idsOposta.push(Number(p.pessoaId));
-          if (nome) nomesOposta.push(nome);
-        }
-      }
-      if (idsCliente.length) setParteClienteIds(idsCliente);
-      if (idsOposta.length) setParteOpostaIds(idsOposta);
-      if (nomesCliente.length) setParteCliente(formatarListaComConjuncaoE(nomesCliente));
-      if (nomesOposta.length) setParteOposta(formatarListaComConjuncaoE(nomesOposta));
+      aplicarListaPartesApiNaUi(partes);
 
       const andamentos = await listarAndamentosProcesso(procApi.id);
       if (Array.isArray(andamentos) && andamentos.length > 0) {
         const hist = andamentos.map((a, idx) => mapApiAndamentoToHistoricoItem(a, idx, andamentos.length));
         setHistorico(hist);
+      } else {
+        setHistorico([]);
       }
     } catch (e) {
       setApiError(e?.message || 'Falha ao carregar processo da API.');
-    } finally {
-      setApiLoading(false);
     }
   }
 
   async function sincronizarApiProcessoAtual(
     overrides = {},
-    options = { syncPartes: false, syncAndamentos: false, syncPrazoFatal: true }
+    options = {}
   ) {
-    if (!featureFlags.useApiProcessos || edicaoDesabilitada) return;
+    const opts = {
+      syncPartes: false,
+      syncAndamentos: false,
+      syncPrazoFatal: true,
+      /** Após gravar, busca de novo GET /partes para atualizar nomes na UI (cache + rótulos). */
+      refetchPartesAfterSync: undefined,
+      /** Ex.: salvamento do modal «Detalhes» (partes/advogados) com «Edição Desabilitada» ligada. */
+      permitirComEdicaoDesabilitada: false,
+      ...options,
+    };
+    const deveRefetchPartes =
+      opts.refetchPartesAfterSync === true ||
+      (opts.refetchPartesAfterSync !== false && opts.syncPartes);
+    if (!featureFlags.useApiProcessos || (edicaoDesabilitada && !opts.permitirComEdicaoDesabilitada)) return;
     setApiSaving(true);
     setApiError('');
     try {
@@ -1120,43 +1458,65 @@ export function Processos() {
       if (saved?.id && snapshot.statusAtivo !== undefined) {
         await alterarAtivoProcesso(saved.id, snapshot.statusAtivo !== false);
       }
-      if (pid && options.syncPartes) {
+      if (pid && opts.syncPartes) {
+        const linhasCli =
+          snapshot.parteClienteEntradas?.length > 0
+            ? clonarLinhasParteProcesso(snapshot.parteClienteEntradas)
+            : (snapshot.parteClienteIds || []).map((id) => ({
+                pessoaId: Number(id),
+                advogadoPessoaIds: [],
+              }));
+        const linhasOp =
+          snapshot.parteOpostaEntradas?.length > 0
+            ? clonarLinhasParteProcesso(snapshot.parteOpostaEntradas)
+            : (snapshot.parteOpostaIds || []).map((id) => ({
+                pessoaId: Number(id),
+                advogadoPessoaIds: [],
+              }));
         await sincronizarPartesIncremental(pid, [
-          ...((snapshot.parteClienteIds || []).map((id, ordem) => ({
-            pessoaId: Number(id),
+          ...linhasCli.map((row, ordem) => ({
+            pessoaId: Number(row.pessoaId),
             nomeLivre: null,
             polo: 'AUTOR',
             qualificacao: 'Parte cliente',
             ordem,
-          }))),
-          ...((snapshot.parteOpostaIds || []).map((id, ordem) => ({
-            pessoaId: Number(id),
+            advogadoPessoaIds: row.advogadoPessoaIds || [],
+          })),
+          ...linhasOp.map((row, ordem) => ({
+            pessoaId: Number(row.pessoaId),
             nomeLivre: null,
             polo: 'REU',
             qualificacao: 'Parte oposta',
             ordem,
-          }))),
-          ...(snapshot.parteClienteIds?.length ? [] : [{
+            advogadoPessoaIds: row.advogadoPessoaIds || [],
+          })),
+          ...(linhasCli.length ? [] : [{
             pessoaId: null,
             nomeLivre: snapshot.parteCliente || null,
             polo: 'AUTOR',
             qualificacao: 'Parte cliente',
             ordem: 0,
+            advogadoPessoaIds: [],
           }]),
-          ...(snapshot.parteOpostaIds?.length ? [] : [{
+          ...(linhasOp.length ? [] : [{
             pessoaId: null,
             nomeLivre: snapshot.parteOposta || null,
             polo: 'REU',
             qualificacao: 'Parte oposta',
             ordem: 0,
+            advogadoPessoaIds: [],
           }]),
         ]);
       }
-      if (pid && options.syncAndamentos) {
+      if (pid && opts.syncAndamentos) {
         await sincronizarAndamentosIncremental(pid, snapshot.historico || []);
       }
-      if (pid && options.syncPrazoFatal) {
+      if (pid && opts.syncPrazoFatal) {
         await upsertPrazoFatalProcesso(pid, snapshot.prazoFatal);
+      }
+      if (pid && deveRefetchPartes) {
+        const partesAtualizadas = await listarPartesProcesso(pid);
+        aplicarListaPartesApiNaUi(partesAtualizadas);
       }
     } catch (e) {
       setApiError(e?.message || 'Falha ao sincronizar processo na API.');
@@ -1188,8 +1548,8 @@ export function Processos() {
     numeroProcessoVelho,
     historico,
     prazoFatal,
-    parteClienteIds,
-    parteOpostaIds,
+    parteClienteEntradas,
+    parteOpostaEntradas,
     faseSelecionada,
     periodicidadeConsulta,
     tramitacao,
@@ -1220,7 +1580,7 @@ export function Processos() {
   useEffect(() => {
     if (edicaoDesabilitadaAnteriorRef.current === false && edicaoDesabilitada === true) {
       if (featureFlags.useApiProcessos) {
-        void sincronizarApiProcessoAtual();
+        void sincronizarApiProcessoAtual(undefined, { refetchPartesAfterSync: true });
       } else {
         salvarHistoricoDoProcesso(montarPayloadRegistroProcesso());
       }
@@ -1228,69 +1588,117 @@ export function Processos() {
     edicaoDesabilitadaAnteriorRef.current = edicaoDesabilitada;
   }, [edicaoDesabilitada]);
 
-  /** Nº da pessoa no Cadastro de Pessoas (vínculo código cliente → pessoa); senão, IDs vinculados em Parte Cliente. */
-  const textoNumeroPessoaCliente = useMemo(() => {
-    const idCadastro = getIdPessoaPorCodCliente(codigoCliente);
-    if (idCadastro != null) return String(idCadastro);
-    const ids = Array.isArray(parteClienteIds)
-      ? parteClienteIds.filter((x) => x != null && Number(x) > 0)
-      : [];
-    if (ids.length) return ids.map(String).join(', ');
-    return '—';
-  }, [codigoCliente, parteClienteIds]);
-
-  const pessoasFiltradasVinculo = useMemo(() => {
-    const t = normalizarTextoBusca(buscaPessoaVinculo);
-    if (!t) return pessoasCadastro;
-    return (pessoasCadastro || []).filter((p) => {
-      const id = String(p.id ?? '');
-      const nome = normalizarTextoBusca(p.nome);
-      const cpf = String(p.cpf ?? '');
-      return id.includes(t) || nome.includes(t) || cpf.includes(t);
-    });
-  }, [pessoasCadastro, buscaPessoaVinculo]);
-
-  function abrirModalVinculoPartes(tipo) {
-    setModalVinculoPartes(tipo);
+  function abrirModalDetalhesPartes() {
+    draftParteClienteLinhasRef.current = clonarLinhasParteProcesso(parteClienteEntradas);
+    draftParteOpostaLinhasRef.current = clonarLinhasParteProcesso(parteOpostaEntradas);
+    setDetalhesAbaPartes('cliente');
+    setLinhasModalPartes(clonarLinhasParteProcesso(parteClienteEntradas));
     setBuscaPessoaVinculo('');
-    setSelecionadasModalIds(tipo === 'cliente' ? [...parteClienteIds] : [...parteOpostaIds]);
+    setPessoasBuscaVinculoResultados([]);
+    setBuscaVinculoPessoasEmAndamento(false);
+    buscaVinculoSeqRef.current += 1;
+    setModalVinculoPartes('detalhes');
   }
 
-  function alternarSelecaoPessoaModal(id) {
-    setSelecionadasModalIds((prev) => {
-      const n = Number(id);
-      if (prev.includes(n)) return prev.filter((x) => x !== n);
-      return [...prev, n];
+  function mudarAbaDetalhesPartes(nova) {
+    if (nova === detalhesAbaPartes) return;
+    if (detalhesAbaPartes === 'cliente') {
+      draftParteClienteLinhasRef.current = clonarLinhasParteProcesso(linhasModalPartes);
+    } else {
+      draftParteOpostaLinhasRef.current = clonarLinhasParteProcesso(linhasModalPartes);
+    }
+    setDetalhesAbaPartes(nova);
+    setLinhasModalPartes(
+      clonarLinhasParteProcesso(
+        nova === 'cliente' ? draftParteClienteLinhasRef.current : draftParteOpostaLinhasRef.current
+      )
+    );
+  }
+
+  function alternarPessoaNaParteModal(pessoaId) {
+    const pid = Number(pessoaId);
+    if (!Number.isFinite(pid) || pid < 1) return;
+    const adicionando = !linhasModalPartes.some((l) => l.pessoaId === pid);
+    setLinhasModalPartes((prev) => {
+      const i = prev.findIndex((l) => l.pessoaId === pid);
+      if (i >= 0) return prev.filter((_, j) => j !== i);
+      return [...prev, { pessoaId: pid, advogadoPessoaIds: [] }];
     });
+    if (adicionando) setBuscaPessoaVinculo('');
+  }
+
+  function adicionarAdvogadoLinhaModal(pessoaParteId, advogadoPessoaId) {
+    const parte = Number(pessoaParteId);
+    const adv = Number(advogadoPessoaId);
+    if (!Number.isFinite(parte) || parte < 1 || !Number.isFinite(adv) || adv < 1 || adv === parte) return;
+    setLinhasModalPartes((prev) => {
+      const semAdvComoParte = prev.filter((l) => l.pessoaId !== adv);
+      return semAdvComoParte.map((l) => {
+        if (l.pessoaId !== parte) return l;
+        if (l.advogadoPessoaIds.includes(adv)) return l;
+        return { ...l, advogadoPessoaIds: [...l.advogadoPessoaIds, adv] };
+      });
+    });
+  }
+
+  function removerAdvogadoLinhaModal(pessoaParteId, advogadoPessoaId) {
+    const parte = Number(pessoaParteId);
+    const adv = Number(advogadoPessoaId);
+    setLinhasModalPartes((prev) =>
+      prev.map((l) =>
+        l.pessoaId === parte
+          ? { ...l, advogadoPessoaIds: l.advogadoPessoaIds.filter((x) => x !== adv) }
+          : l
+      )
+    );
   }
 
   function salvarVinculoPartes() {
-    const nextClienteIds = modalVinculoPartes === 'cliente' ? [...selecionadasModalIds] : [...parteClienteIds];
-    const nextOpostaIds = modalVinculoPartes === 'oposta' ? [...selecionadasModalIds] : [...parteOpostaIds];
-    if (modalVinculoPartes === 'cliente') setParteClienteIds(nextClienteIds);
-    if (modalVinculoPartes === 'oposta') setParteOpostaIds(nextOpostaIds);
+    if (detalhesAbaPartes === 'cliente') {
+      draftParteClienteLinhasRef.current = clonarLinhasParteProcesso(linhasModalPartes);
+    } else {
+      draftParteOpostaLinhasRef.current = clonarLinhasParteProcesso(linhasModalPartes);
+    }
+    const nextCliente = clonarLinhasParteProcesso(draftParteClienteLinhasRef.current);
+    const nextOposta = clonarLinhasParteProcesso(draftParteOpostaLinhasRef.current);
+    setParteClienteEntradas(nextCliente);
+    setParteOpostaEntradas(nextOposta);
     setModalVinculoPartes(null);
 
     const pcNome = formatarListaComConjuncaoE(
-      nextClienteIds.map((id) => pessoasPorId.get(Number(id))?.nome).filter(Boolean)
+      nextCliente.map((row) => pessoasPorId.get(Number(row.pessoaId))?.nome).filter(Boolean)
     );
     const poNome = formatarListaComConjuncaoE(
-      nextOpostaIds.map((id) => pessoasPorId.get(Number(id))?.nome).filter(Boolean)
+      nextOposta.map((row) => pessoasPorId.get(Number(row.pessoaId))?.nome).filter(Boolean)
     );
+    const idsCli = nextCliente.map((r) => r.pessoaId);
+    const idsOp = nextOposta.map((r) => r.pessoaId);
     if (featureFlags.useApiProcessos) {
-      void sincronizarApiProcessoAtual({
-        parteCliente: pcNome || parteCliente,
-        parteOposta: poNome || parteOposta,
-        parteClienteIds: nextClienteIds,
-        parteOpostaIds: nextOpostaIds,
-      }, { syncPartes: true, syncAndamentos: false, syncPrazoFatal: false });
+      void sincronizarApiProcessoAtual(
+        {
+          parteCliente: pcNome || parteCliente,
+          parteOposta: poNome || parteOposta,
+          parteClienteEntradas: nextCliente,
+          parteOpostaEntradas: nextOposta,
+          parteClienteIds: idsCli,
+          parteOpostaIds: idsOp,
+        },
+        {
+          syncPartes: true,
+          syncAndamentos: false,
+          syncPrazoFatal: false,
+          permitirComEdicaoDesabilitada: true,
+        }
+      );
     } else {
       salvarHistoricoDoProcesso(
         montarPayloadRegistroProcesso({
           parteCliente: pcNome || parteCliente,
           parteOposta: poNome || parteOposta,
-          parteClienteIds: nextClienteIds,
-          parteOpostaIds: nextOpostaIds,
+          parteClienteEntradas: nextCliente,
+          parteOpostaEntradas: nextOposta,
+          parteClienteIds: idsCli,
+          parteOpostaIds: idsOp,
         })
       );
     }
@@ -1538,6 +1946,30 @@ export function Processos() {
     });
   }
 
+  /**
+   * Fechar ao clicar no fundo só se pressão e soltura começaram no overlay.
+   * Evita fechar ao selecionar texto dentro do modal e soltar o cursor fora do painel.
+   */
+  const modalOverlayPressStartedRef = useRef(false);
+  const onModalOverlayMouseDown = useCallback((e) => {
+    if (e.target === e.currentTarget) modalOverlayPressStartedRef.current = true;
+  }, []);
+  const onModalPanelMouseDown = useCallback(() => {
+    modalOverlayPressStartedRef.current = false;
+  }, []);
+  const criarModalOverlayClickFechar = useCallback(
+    (closeFn) => (e) => {
+      if (e.target !== e.currentTarget) return;
+      if (!modalOverlayPressStartedRef.current) {
+        modalOverlayPressStartedRef.current = false;
+        return;
+      }
+      modalOverlayPressStartedRef.current = false;
+      closeFn();
+    },
+    []
+  );
+
   return (
     <div className="min-h-full bg-slate-200">
       <div className="max-w-[1400px] mx-auto px-3 py-3">
@@ -1588,11 +2020,6 @@ export function Processos() {
             <X className="w-5 h-5" />
           </button>
         </header>
-        {featureFlags.useApiProcessos && apiLoading ? (
-          <div className="mb-3 rounded border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800">
-            Carregando processo pela API...
-          </div>
-        ) : null}
         {featureFlags.useApiProcessos && apiSaving ? (
           <div className="mb-3 rounded border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm text-indigo-800">
             Salvando alterações no backend...
@@ -1722,23 +2149,12 @@ export function Processos() {
                       </button>
                     </div>
                   </Field>
-                  <Field label="Nº pessoa (cliente)">
-                    <div
-                      className="min-w-[4.75rem] px-2 py-1.5 text-sm font-mono tabular-nums text-center border border-slate-300 rounded bg-slate-50 text-slate-800"
-                      title="Identificação no Cadastro de Pessoas vinculada a este código de cliente; se não houver mapeamento, exibe o(s) ID(s) da Parte Cliente."
-                    >
-                      {textoNumeroPessoaCliente}
-                    </div>
-                  </Field>
                 </div>
-                <Field label="Cliente">
-                  <input
-                    type="text"
-                    value={cliente}
-                    readOnly={camposBloqueados}
-                    onChange={(e) => setCliente(e.target.value)}
-                    className={clsCampo}
-                  />
+                <Field
+                  label="Cliente"
+                  title="Nome / Razão Social do cadastro de Clientes para este código. Somente leitura aqui; altere em Clientes."
+                >
+                  <input type="text" value={cliente} readOnly className={`${inputDisabledClass} cursor-default`} />
                 </Field>
                 <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
                   <input type="checkbox" checked={edicaoDesabilitada} onChange={(e) => setEdicaoDesabilitada(e.target.checked)} className="rounded border-slate-300" />
@@ -1776,44 +2192,34 @@ export function Processos() {
 
               {/* Coluna central: Parte Cliente, Parte Oposta, Consulta, Estado, Cidade */}
               <div className="space-y-2">
-                <Field label="Parte Cliente">
-                  <div className="flex gap-1">
+                <div className="rounded-lg border border-slate-300 bg-slate-50/70 p-3 shadow-sm space-y-2">
+                  <Field label="Parte Cliente">
                     <input
                       type="text"
                       value={textoParteCliente}
                       readOnly
-                      className={inputDisabledClass}
+                      className={`w-full min-w-0 ${inputDisabledClass}`}
                       title={textoParteCliente}
                     />
-                    <button
-                      type="button"
-                      onClick={() => abrirModalVinculoPartes('cliente')}
-                      disabled={camposBloqueados}
-                      className="px-2 py-1.5 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50 disabled:opacity-50"
-                    >
-                      Pessoas
-                    </button>
-                  </div>
-                </Field>
-                <Field label="Parte Oposta">
-                  <div className="flex gap-1">
+                  </Field>
+                  <Field label="Parte Oposta">
                     <input
                       type="text"
                       value={textoParteOposta}
                       readOnly
-                      className={inputDisabledClass}
+                      className={`w-full min-w-0 ${inputDisabledClass}`}
                       title={textoParteOposta}
                     />
-                    <button
-                      type="button"
-                      onClick={() => abrirModalVinculoPartes('oposta')}
-                      disabled={camposBloqueados}
-                      className="px-2 py-1.5 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50 disabled:opacity-50"
-                    >
-                      Pessoas
-                    </button>
-                  </div>
-                </Field>
+                  </Field>
+                  <button
+                    type="button"
+                    onClick={abrirModalDetalhesPartes}
+                    className="w-full px-3 py-2 rounded-md border border-slate-300 bg-white text-slate-800 text-sm font-medium hover:bg-slate-100"
+                    title="Partes e advogados — disponível mesmo com «Edição Desabilitada» marcada."
+                  >
+                    Detalhes
+                  </button>
+                </div>
                 <label className={`flex items-center gap-2 text-sm text-slate-600 ${camposBloqueados ? 'cursor-default' : 'cursor-pointer'}`}>
                   <input
                     type="checkbox"
@@ -2192,11 +2598,9 @@ export function Processos() {
                 type="button"
                 onClick={() =>
                   navigate('/calculos', {
-                    state: {
-                      codCliente: String(codigoCliente ?? ''),
-                      proc: String(processo ?? ''),
+                    state: buildRouterStateChaveClienteProcesso(codigoCliente, processo, {
                       abaCalculos: 'Pagamento',
-                    },
+                    }),
                   })
                 }
                 className="px-4 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
@@ -2235,7 +2639,7 @@ export function Processos() {
                 title="Abre o cadastro Imóveis com este nº (ou vínculo mock). Sempre disponível, inclusive com «Edição desabilitada»."
                 className="inline-flex items-center gap-1.5 px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
               >
-                <MapPin className="w-4 h-4" /> Abrir Imóvel
+                <SidebarMenuIcon id="admin-imoveis-grupo" className="w-4 h-4" /> Abrir Imóvel
               </button>
               <Field
                 label="Unidade"
@@ -2257,7 +2661,7 @@ export function Processos() {
               <button
                 type="button"
                 onClick={() => {
-                  navigate('/calculos', { state: { codCliente: String(codigoCliente ?? ''), proc: String(processo ?? '') } });
+                  navigate('/calculos', { state: buildRouterStateChaveClienteProcesso(codigoCliente, processo) });
                 }}
                 className="inline-flex items-center gap-1.5 px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
               >
@@ -2415,10 +2819,12 @@ export function Processos() {
           role="dialog"
           aria-modal="true"
           aria-labelledby="modal-tramitacao-titulo"
-          onClick={() => setModalTramitacaoAberto(false)}
+          onMouseDown={onModalOverlayMouseDown}
+          onClick={criarModalOverlayClickFechar(() => setModalTramitacaoAberto(false))}
         >
           <div
             className="bg-white rounded-lg shadow-xl border border-slate-200 w-full max-w-md"
+            onMouseDown={onModalPanelMouseDown}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200">
@@ -2474,10 +2880,12 @@ export function Processos() {
           role="dialog"
           aria-modal="true"
           aria-labelledby="modal-acoes-redacao-titulo"
-          onClick={() => setModalAcoesRedacaoAberto(false)}
+          onMouseDown={onModalOverlayMouseDown}
+          onClick={criarModalOverlayClickFechar(() => setModalAcoesRedacaoAberto(false))}
         >
           <div
             className="bg-white rounded-lg shadow-xl border border-slate-200 w-full max-w-md flex flex-col max-h-[min(90vh,28rem)]"
+            onMouseDown={onModalPanelMouseDown}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 shrink-0">
@@ -2549,10 +2957,12 @@ export function Processos() {
           role="dialog"
           aria-modal="true"
           aria-labelledby="modal-agenda-lote-titulo"
-          onClick={() => setModalAgendaLoteAberto(false)}
+          onMouseDown={onModalOverlayMouseDown}
+          onClick={criarModalOverlayClickFechar(() => setModalAgendaLoteAberto(false))}
         >
           <div
             className="bg-white rounded-lg shadow-xl border border-slate-200 w-full max-w-2xl"
+            onMouseDown={onModalPanelMouseDown}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200">
@@ -2691,16 +3101,21 @@ export function Processos() {
           role="dialog"
           aria-modal="true"
           aria-labelledby="modal-vinculo-partes-titulo"
-          onClick={() => setModalVinculoPartes(null)}
+          onMouseDown={onModalOverlayMouseDown}
+          onClick={criarModalOverlayClickFechar(() => setModalVinculoPartes(null))}
         >
           <div
             className="bg-white rounded-lg shadow-xl border border-slate-200 w-full max-w-4xl max-h-[90vh] flex flex-col"
+            onMouseDown={onModalPanelMouseDown}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200">
-              <h2 id="modal-vinculo-partes-titulo" className="text-base font-semibold text-slate-800">
-                {modalVinculoPartes === 'cliente' ? 'Vincular pessoas - Parte Cliente' : 'Vincular pessoas - Parte Oposta'}
-              </h2>
+              <div>
+                <h2 id="modal-vinculo-partes-titulo" className="text-base font-semibold text-slate-800">
+                  Partes do processo
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5">Formulário com duas abas: primeiro Parte Cliente, depois Parte Oposta.</p>
+              </div>
               <button
                 type="button"
                 className="p-2 rounded text-slate-500 hover:bg-slate-100"
@@ -2710,80 +3125,235 @@ export function Processos() {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="p-4 flex-1 min-h-0 flex flex-col gap-3">
-              <div className="flex items-center gap-2">
-                <Search className="w-4 h-4 text-slate-500" />
-                <input
-                  type="text"
-                  value={buscaPessoaVinculo}
-                  onChange={(e) => setBuscaPessoaVinculo(e.target.value)}
-                  placeholder="Buscar por código, nome ou CPF/CNPJ"
-                  className="flex-1 px-3 py-2 border border-slate-300 rounded text-sm bg-white"
-                />
+            <form
+              className="flex flex-col flex-1 min-h-0"
+              onSubmit={(e) => {
+                e.preventDefault();
+                salvarVinculoPartes();
+              }}
+            >
+              <div className="px-4 pt-3 flex border-b border-slate-200 gap-0" role="tablist" aria-label="Abas do formulário de partes">
+                <button
+                  id="tab-detalhes-parte-cliente"
+                  type="button"
+                  role="tab"
+                  aria-selected={detalhesAbaPartes === 'cliente'}
+                  aria-controls="painel-form-partes"
+                  tabIndex={detalhesAbaPartes === 'cliente' ? 0 : -1}
+                  onClick={() => mudarAbaDetalhesPartes('cliente')}
+                  className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                    detalhesAbaPartes === 'cliente'
+                      ? 'border-blue-600 text-blue-700 bg-white'
+                      : 'border-transparent text-slate-600 hover:text-slate-900 hover:border-slate-300'
+                  }`}
+                >
+                  Parte Cliente
+                </button>
+                <button
+                  id="tab-detalhes-parte-oposta"
+                  type="button"
+                  role="tab"
+                  aria-selected={detalhesAbaPartes === 'oposta'}
+                  aria-controls="painel-form-partes"
+                  tabIndex={detalhesAbaPartes === 'oposta' ? 0 : -1}
+                  onClick={() => mudarAbaDetalhesPartes('oposta')}
+                  className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                    detalhesAbaPartes === 'oposta'
+                      ? 'border-blue-600 text-blue-700 bg-white'
+                      : 'border-transparent text-slate-600 hover:text-slate-900 hover:border-slate-300'
+                  }`}
+                >
+                  Parte Oposta
+                </button>
               </div>
-              <div className="border border-slate-300 rounded overflow-auto flex-1 min-h-[280px]">
-                <table className="w-full text-sm border-collapse">
-                  <thead className="bg-slate-100 sticky top-0">
-                    <tr>
-                      <th className="border-b border-slate-300 px-3 py-2 text-left w-16">Sel.</th>
-                      <th className="border-b border-slate-300 px-3 py-2 text-left w-24">Código</th>
-                      <th className="border-b border-slate-300 px-3 py-2 text-left">Nome</th>
-                      <th className="border-b border-slate-300 px-3 py-2 text-left w-44">CPF/CNPJ</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {pessoasFiltradasVinculo.length === 0 ? (
-                      <tr>
-                        <td colSpan={4} className="px-3 py-4 text-center text-slate-500">
-                          Nenhuma pessoa encontrada para o filtro informado.
-                        </td>
-                      </tr>
+              <div className="p-4 flex-1 min-h-0 flex flex-col gap-3 overflow-hidden">
+                <div
+                  id="painel-form-partes"
+                  role="tabpanel"
+                  aria-labelledby={
+                    detalhesAbaPartes === 'cliente' ? 'tab-detalhes-parte-cliente' : 'tab-detalhes-parte-oposta'
+                  }
+                  className="rounded-lg border border-slate-200 bg-slate-50/40 p-3 flex flex-col gap-3 flex-1 min-h-0"
+                >
+                  <p className="text-sm font-medium text-slate-700">
+                    {detalhesAbaPartes === 'cliente' ? 'Parte Cliente' : 'Parte Oposta'}
+                  </p>
+                  <p className="text-xs text-slate-500 -mt-2">
+                    Inclua quantas pessoas precisar (marque na lista abaixo). Para cada uma, cadastre um ou mais
+                    advogados — também são pessoas do cadastro. Desmarque ou use Remover para excluir da parte.
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Search className="w-4 h-4 text-slate-500 shrink-0" />
+                    <input
+                      type="text"
+                      value={buscaPessoaVinculo}
+                      onChange={(e) => setBuscaPessoaVinculo(e.target.value)}
+                      placeholder="Nome (mín. 2 letras) ou documento (mín. 3 dígitos)"
+                      className="flex-1 min-w-0 px-3 py-2 border border-slate-300 rounded text-sm bg-white"
+                    />
+                  </div>
+                  <div className="border border-slate-300 rounded overflow-auto max-h-[220px] min-h-[120px] bg-white">
+                    <table className="w-full text-sm border-collapse">
+                      <thead className="bg-slate-100 sticky top-0">
+                        <tr>
+                          <th className="border-b border-slate-300 px-3 py-2 text-left w-16">Incluir</th>
+                          <th className="border-b border-slate-300 px-3 py-2 text-left w-24">Código</th>
+                          <th className="border-b border-slate-300 px-3 py-2 text-left">Nome</th>
+                          <th className="border-b border-slate-300 px-3 py-2 text-left w-44">CPF/CNPJ</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(() => {
+                          const buscaBruto = String(buscaPessoaVinculo ?? '').trim();
+                          const buscaDig = buscaBruto.replace(/\D/g, '');
+                          const buscaLetras = /[a-zA-ZÀ-ÿ\u00C0-\u024F]/.test(buscaBruto);
+                          const buscaValida =
+                            buscaBruto.length > 0 &&
+                            (buscaLetras ? buscaBruto.length >= 2 : buscaDig.length >= 3);
+                          if (buscaVinculoPessoasEmAndamento && buscaValida) {
+                            return (
+                              <tr>
+                                <td colSpan={4} className="px-3 py-4 text-center text-slate-500">
+                                  Buscando…
+                                </td>
+                              </tr>
+                            );
+                          }
+                          if (!buscaValida) {
+                            return (
+                              <tr>
+                                <td colSpan={4} className="px-3 py-4 text-center text-slate-500">
+                                  Digite para buscar no cadastro: pelo menos 2 letras no nome ou 3 dígitos do
+                                  CPF/CNPJ. Os resultados aparecem aqui; não é carregada a lista inteira.
+                                </td>
+                              </tr>
+                            );
+                          }
+                          if (pessoasBuscaVinculoResultados.length === 0) {
+                            return (
+                              <tr>
+                                <td colSpan={4} className="px-3 py-4 text-center text-slate-500">
+                                  Nenhuma pessoa encontrada para este termo.
+                                </td>
+                              </tr>
+                            );
+                          }
+                          return pessoasBuscaVinculoResultados.map((p, idx) => {
+                            const id = Number(p.id);
+                            const checked = linhasModalPartes.some((l) => l.pessoaId === id);
+                            return (
+                              <tr
+                                key={id}
+                                className={`${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'} cursor-pointer hover:bg-blue-50`}
+                                onClick={() => alternarPessoaNaParteModal(id)}
+                              >
+                                <td className="border-t border-slate-200 px-3 py-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => alternarPessoaNaParteModal(id)}
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="rounded border-slate-300"
+                                  />
+                                </td>
+                                <td className="border-t border-slate-200 px-3 py-2 text-slate-700">{id}</td>
+                                <td className="border-t border-slate-200 px-3 py-2 text-slate-800">{p.nome}</td>
+                                <td className="border-t border-slate-200 px-3 py-2 text-slate-700">{p.cpf || '—'}</td>
+                              </tr>
+                            );
+                          });
+                        })()}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="border border-slate-200 rounded-md bg-white p-2 max-h-[200px] overflow-y-auto">
+                    <p className="text-xs font-semibold text-slate-600 mb-2">Nesta parte ({linhasModalPartes.length})</p>
+                    {linhasModalPartes.length === 0 ? (
+                      <p className="text-xs text-slate-400">Nenhuma pessoa selecionada.</p>
                     ) : (
-                      pessoasFiltradasVinculo.map((p, idx) => {
-                        const id = Number(p.id);
-                        const checked = selecionadasModalIds.includes(id);
-                        return (
-                          <tr
-                            key={id}
-                            className={`${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'} cursor-pointer hover:bg-blue-50`}
-                            onClick={() => alternarSelecaoPessoaModal(id)}
-                          >
-                            <td className="border-t border-slate-200 px-3 py-2">
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={() => alternarSelecaoPessoaModal(id)}
-                                onClick={(e) => e.stopPropagation()}
-                                className="rounded border-slate-300"
-                              />
-                            </td>
-                            <td className="border-t border-slate-200 px-3 py-2 text-slate-700">{id}</td>
-                            <td className="border-t border-slate-200 px-3 py-2 text-slate-800">{p.nome}</td>
-                            <td className="border-t border-slate-200 px-3 py-2 text-slate-700">{p.cpf || '—'}</td>
-                          </tr>
-                        );
-                      })
+                      <ul className="space-y-2">
+                        {linhasModalPartes.map((linha) => {
+                          const nomeP = pessoasPorId.get(linha.pessoaId)?.nome || `Pessoa #${linha.pessoaId}`;
+                          return (
+                            <li
+                              key={linha.pessoaId}
+                              className="text-xs border border-slate-100 rounded p-2 bg-slate-50/80"
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <span className="font-medium text-slate-800">{nomeP}</span>
+                                <button
+                                  type="button"
+                                  className="shrink-0 text-red-600 hover:underline"
+                                  onClick={() => alternarPessoaNaParteModal(linha.pessoaId)}
+                                >
+                                  Remover
+                                </button>
+                              </div>
+                              <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                                <span className="text-slate-500">Advogados:</span>
+                                {linha.advogadoPessoaIds.length === 0 ? (
+                                  <span className="text-slate-400">nenhum</span>
+                                ) : (
+                                  linha.advogadoPessoaIds.map((aid) => (
+                                    <span
+                                      key={aid}
+                                      className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-blue-50 text-blue-900 border border-blue-100"
+                                    >
+                                      {pessoasPorId.get(aid)?.nome || `#${aid}`}
+                                      <button
+                                        type="button"
+                                        className="text-blue-700 hover:text-red-600 px-0.5"
+                                        aria-label="Remover advogado"
+                                        onClick={() => removerAdvogadoLinhaModal(linha.pessoaId, aid)}
+                                      >
+                                        ×
+                                      </button>
+                                    </span>
+                                  ))
+                                )}
+                                <select
+                                  className="ml-1 max-w-[10rem] text-xs border border-slate-300 rounded px-1 py-0.5 bg-white"
+                                  defaultValue=""
+                                  onChange={(e) => {
+                                    const v = Number(e.target.value);
+                                    if (v) adicionarAdvogadoLinhaModal(linha.pessoaId, v);
+                                    e.target.value = '';
+                                  }}
+                                >
+                                  <option value="">+ advogado (use a busca acima)…</option>
+                                  {pessoasBuscaVinculoResultados
+                                    .filter((x) => Number(x.id) !== linha.pessoaId)
+                                    .map((x) => (
+                                      <option key={x.id} value={x.id}>
+                                        {x.nome}
+                                      </option>
+                                    ))}
+                                </select>
+                              </div>
+                            </li>
+                          );
+                        })}
+                      </ul>
                     )}
-                  </tbody>
-                </table>
+                  </div>
+                </div>
               </div>
-            </div>
-            <div className="px-4 py-3 border-t border-slate-200 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setModalVinculoPartes(null)}
-                className="px-4 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={salvarVinculoPartes}
-                className="px-4 py-2 rounded border border-blue-600 bg-blue-600 text-white text-sm hover:bg-blue-700"
-              >
-                Salvar vínculos
-              </button>
-            </div>
+              <div className="px-4 py-3 border-t border-slate-200 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setModalVinculoPartes(null)}
+                  className="px-4 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded border border-blue-600 bg-blue-600 text-white text-sm hover:bg-blue-700"
+                >
+                  Salvar
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
@@ -2971,13 +3541,15 @@ export function Processos() {
       {informacaoModal && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-          onClick={() => setInformacaoModal(null)}
+          onMouseDown={onModalOverlayMouseDown}
+          onClick={criarModalOverlayClickFechar(() => setInformacaoModal(null))}
           role="dialog"
           aria-modal="true"
           aria-labelledby="modal-informacao-titulo"
         >
           <div
             className="bg-white rounded-lg shadow-xl border border-slate-200 max-w-2xl w-full max-h-[80vh] flex flex-col"
+            onMouseDown={onModalPanelMouseDown}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200">

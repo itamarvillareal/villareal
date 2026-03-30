@@ -1,5 +1,11 @@
 import { hojeDdMmYyyy } from '../services/hjDateAliasService.js';
 
+/**
+ * Histórico local por processo — chaves JSON legadas (equivalentes canônicas):
+ * - `codCliente` = **codigoCliente** (8 dígitos), mesmo que «Código do Cliente» em Clientes ou Processos.
+ * - `proc` = **numeroInterno** (inteiro ≥ 1), mesmo que «Proc.» na grade de Clientes ou «Processo» em Processos.
+ * Ver `src/domain/camposProcessoCliente.js` para o mapa completo de aliases.
+ */
 const STORAGE_KEY = 'vilareal:processos-historico:v1';
 
 /**
@@ -65,6 +71,35 @@ function normalizarIdsPartes(val) {
     if (Number.isFinite(n) && n > 0) s.add(Math.floor(n));
   }
   return Array.from(s).sort((a, b) => a - b);
+}
+
+/** Linhas parte + advogados persistidas no registro (mesma forma que o formulário Processos). */
+function normalizarEntradasParteSalvas(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((l) => ({
+      pessoaId: Number(l.pessoaId),
+      advogadoPessoaIds: Array.isArray(l.advogadoPessoaIds)
+        ? [...new Set(l.advogadoPessoaIds.map(Number).filter((x) => Number.isFinite(x) && x > 0))].sort((a, b) => a - b)
+        : [],
+    }))
+    .filter((l) => Number.isFinite(l.pessoaId) && l.pessoaId > 0);
+}
+
+/** IDs de parte na ordem das entradas; se vazio, usa legado ordenado. */
+function idsParteFromEntradasOuLegado(entradas, idsLegado) {
+  if (entradas.length) {
+    const seen = new Set();
+    const out = [];
+    for (const e of entradas) {
+      const id = Number(e.pessoaId);
+      if (!Number.isFinite(id) || id < 1 || seen.has(id)) continue;
+      seen.add(id);
+      out.push(id);
+    }
+    return out;
+  }
+  return normalizarIdsPartes(idsLegado);
 }
 
 function normalizarTextoPessoa(s) {
@@ -308,6 +343,19 @@ function normalizarRegistroProcesso(reg) {
       ? null
       : reg.statusAtivo !== false && reg.statusAtivo !== 'false';
 
+  const entCliRaw = normalizarEntradasParteSalvas(reg.parteClienteEntradas);
+  const entOpRaw = normalizarEntradasParteSalvas(reg.parteOpostaEntradas);
+  const idsCliLegado = normalizarIdsPartes(reg.parteClienteIds);
+  const idsOpLegado = normalizarIdsPartes(reg.parteOpostaIds);
+  const parteClienteEntradas = entCliRaw.length
+    ? entCliRaw
+    : idsCliLegado.map((id) => ({ pessoaId: id, advogadoPessoaIds: [] }));
+  const parteOpostaEntradas = entOpRaw.length
+    ? entOpRaw
+    : idsOpLegado.map((id) => ({ pessoaId: id, advogadoPessoaIds: [] }));
+  const parteClienteIds = idsParteFromEntradasOuLegado(parteClienteEntradas, reg.parteClienteIds);
+  const parteOpostaIds = idsParteFromEntradasOuLegado(parteOpostaEntradas, reg.parteOpostaIds);
+
   return {
     codCliente,
     proc,
@@ -344,8 +392,10 @@ function normalizarRegistroProcesso(reg) {
     unidadeEndereco: String(reg.unidadeEndereco ?? ''),
     proximaInformacao: String(reg.proximaInformacao ?? ''),
     dataProximaInformacao: String(reg.dataProximaInformacao ?? ''),
-    parteClienteIds: normalizarIdsPartes(reg.parteClienteIds),
-    parteOpostaIds: normalizarIdsPartes(reg.parteOpostaIds),
+    parteClienteIds,
+    parteOpostaIds,
+    parteClienteEntradas,
+    parteOpostaEntradas,
     historico,
   };
 }
@@ -393,6 +443,10 @@ function upsertRegistroProcesso(payload) {
     unidadeEndereco: payload.unidadeEndereco !== undefined ? payload.unidadeEndereco : prev.unidadeEndereco,
     proximaInformacao: payload.proximaInformacao !== undefined ? payload.proximaInformacao : prev.proximaInformacao,
     dataProximaInformacao: payload.dataProximaInformacao !== undefined ? payload.dataProximaInformacao : prev.dataProximaInformacao,
+    parteClienteEntradas:
+      payload.parteClienteEntradas !== undefined ? payload.parteClienteEntradas : prev.parteClienteEntradas,
+    parteOpostaEntradas:
+      payload.parteOpostaEntradas !== undefined ? payload.parteOpostaEntradas : prev.parteOpostaEntradas,
   };
   const periodicidadeNorm = normalizarPeriodicidadeConsulta(
     payload.periodicidadeConsulta !== undefined ? payload.periodicidadeConsulta : mergedRaw.periodicidadeConsulta
@@ -597,6 +651,63 @@ export function alinharListaProcessosDescricaoComHistorico(codClientePadded8, li
     return { ...p, descricao: descUnif, processoVelho: velhoUnif, processoNovo: novoUnif, parteOposta: opostaUnif };
   });
   return changed ? out : listaProcessos;
+}
+
+/**
+ * Números internos de processo (Proc. 1, 2…) que já têm registro no histórico local para o cliente.
+ */
+export function listarProcInternosComHistoricoLocal(codClienteRaw) {
+  if (typeof window === 'undefined') return [];
+  const cod = normalizarCodCliente(codClienteRaw);
+  const current = loadStore();
+  const procs = new Set();
+  for (const rawReg of Object.values(current)) {
+    const reg = normalizarRegistroProcesso(rawReg);
+    if (!reg) continue;
+    if (normalizarCodCliente(reg.codCliente) !== cod) continue;
+    const n = Number(normalizarProc(reg.proc));
+    if (Number.isFinite(n) && n >= 1) procs.add(n);
+  }
+  return Array.from(procs).sort((a, b) => a - b);
+}
+
+/**
+ * Garante linhas na grade do Cadastro de Clientes para todo processo existente no histórico local
+ * (tela Processos grava em `vilareal:processos-historico:v1` mesmo com cliente vindo da API).
+ */
+export function enriquecerListaProcessosComHistoricoLocal(codClientePadded8, listaProcessos) {
+  const base = Array.isArray(listaProcessos) ? listaProcessos : [];
+  const codPadded = normalizarCodCliente(codClientePadded8);
+  const codN = Number(apenasDigitos(codPadded)) || 1;
+  const procsHistorico = listarProcInternosComHistoricoLocal(codPadded);
+  const seen = new Set();
+  for (const p of base) {
+    const pn = Number(p?.procNumero);
+    if (Number.isFinite(pn) && pn >= 1) seen.add(pn);
+  }
+  const extraRows = [];
+  for (const proc of procsHistorico) {
+    if (seen.has(proc)) continue;
+    seen.add(proc);
+    extraRows.push({
+      id: `${codN}-${proc}`,
+      procNumero: proc,
+      processoVelho: '',
+      processoNovo: '',
+      autor: '',
+      reu: '',
+      parteOposta: '',
+      tipoAcao: '',
+      descricao: '',
+    });
+  }
+  if (extraRows.length === 0) {
+    return alinharListaProcessosDescricaoComHistorico(codPadded, base);
+  }
+  const merged = [...base, ...extraRows].sort(
+    (a, b) => (Number(a.procNumero) || 0) - (Number(b.procNumero) || 0)
+  );
+  return alinharListaProcessosDescricaoComHistorico(codPadded, merged);
 }
 
 /**
@@ -812,9 +923,58 @@ export function listarConsultasARealizarPorData(dataBr) {
   return out;
 }
 
+/** IDs de advogados vinculados às partes (`parte*Entradas` no registro normalizado). */
+function coletarIdsAdvogadosDoRegistro(reg) {
+  const ids = new Set();
+  for (const key of ['parteClienteEntradas', 'parteOpostaEntradas']) {
+    const arr = reg[key];
+    if (!Array.isArray(arr)) continue;
+    for (const row of arr) {
+      if (!row || typeof row !== 'object') continue;
+      for (const a of row.advogadoPessoaIds || []) {
+        const n = Number(a);
+        if (Number.isFinite(n) && n >= 1) ids.add(n);
+      }
+    }
+  }
+  return ids;
+}
+
+/**
+ * Agrega advogados (cadastro pessoa) que aparecem em `advogadoPessoaIds` nas partes do histórico local.
+ * @returns {Array<{ idPessoa: number, processos: Array<{ codCliente: string, proc: string, numeroProcessoNovo: string, parteCliente: string, parteOposta: string }> }>}
+ */
+export function listarAdvogadosAgregadosNoHistoricoLocal() {
+  const current = loadStore();
+  /** @type {Map<number, Array<{ codCliente: string, proc: string, numeroProcessoNovo: string, parteCliente: string, parteOposta: string }>>} */
+  const mapa = new Map();
+  for (const rawReg of Object.values(current)) {
+    const reg = normalizarRegistroProcesso(rawReg);
+    if (!reg) continue;
+    const snap = {
+      codCliente: reg.codCliente,
+      proc: reg.proc,
+      numeroProcessoNovo: reg.numeroProcessoNovo || '',
+      parteCliente: reg.parteCliente || '',
+      parteOposta: reg.parteOposta || '',
+    };
+    for (const aid of coletarIdsAdvogadosDoRegistro(reg)) {
+      if (!mapa.has(aid)) mapa.set(aid, []);
+      mapa.get(aid).push(snap);
+    }
+  }
+  return Array.from(mapa.entries())
+    .map(([idPessoa, processos]) => ({
+      idPessoa,
+      processos,
+    }))
+    .sort((a, b) => a.idPessoa - b.idPessoa);
+}
+
 /**
  * Lista processos em que a pessoa (cadastro) participa — por ID nas partes vinculadas
- * e/ou pelo nome quando informado (fallback para texto em Parte Cliente / Oposta).
+ * e/ou pelo nome quando informado (fallback para texto em Parte Cliente / Oposta),
+ * e como advogado(a) quando `parte*Entradas` com `advogadoPessoaIds` estiver persistido.
  */
 export function listarProcessosPorIdPessoa(idPessoa, nomeCadastro) {
   const idStr = String(idPessoa ?? '').trim().replace(/\D/g, '');
@@ -833,10 +993,21 @@ export function listarProcessosPorIdPessoa(idPessoa, nomeCadastro) {
     const matchIdOposta = temId && reg.parteOpostaIds.includes(idNum);
     const matchNomeCliente = temNome && normalizarTextoPessoa(reg.parteCliente).includes(nomeN);
     const matchNomeOposta = temNome && normalizarTextoPessoa(reg.parteOposta).includes(nomeN);
-    if (!matchIdCliente && !matchIdOposta && !matchNomeCliente && !matchNomeOposta) return;
+    const advIds = coletarIdsAdvogadosDoRegistro(reg);
+    const matchAdvogado = temId && advIds.has(idNum);
+    if (
+      !matchIdCliente &&
+      !matchIdOposta &&
+      !matchNomeCliente &&
+      !matchNomeOposta &&
+      !matchAdvogado
+    ) {
+      return;
+    }
     const papeis = [];
     if (matchIdCliente || matchNomeCliente) papeis.push('Parte Cliente');
     if (matchIdOposta || matchNomeOposta) papeis.push('Parte Oposta');
+    if (matchAdvogado) papeis.push('Advogado(a)');
     out.push({
       codCliente: reg.codCliente,
       proc: reg.proc,

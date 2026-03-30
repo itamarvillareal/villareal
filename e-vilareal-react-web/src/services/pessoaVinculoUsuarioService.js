@@ -6,11 +6,14 @@ import {
 
 function classificarTermoBuscaNomeOuCpf(termo) {
   const t = String(termo ?? '').trim();
-  if (!t) return { modo: 'vazio', nome: '', cpfDigits: '' };
+  if (!t) return { modo: 'vazio' };
   const hasLetters = /[a-zA-ZÀ-ÿ\u00C0-\u024F]/.test(t);
   const digits = t.replace(/\D/g, '');
-  if (!hasLetters && digits.length >= 3) return { modo: 'cpf', nome: '', cpfDigits: digits };
-  return { modo: 'nome', nome: t, cpfDigits: '' };
+  if (!hasLetters && digits.length > 0) {
+    if (digits.length === 11 || digits.length === 14) return { modo: 'cpf', cpfDigits: digits };
+    return { modo: 'codigo_ou_doc', digits };
+  }
+  return { modo: 'nome', nome: t };
 }
 
 /**
@@ -20,19 +23,27 @@ function classificarTermoBuscaNomeOuCpf(termo) {
  * @returns {Promise<Array<{ id: number, nome: string, cpf: string }>>}
  */
 export async function pesquisarPessoasParaVinculoUsuario(termo, limite = 40) {
-  const { modo, nome, cpfDigits } = classificarTermoBuscaNomeOuCpf(termo);
-  if (modo === 'vazio') return [];
+  const parsed = classificarTermoBuscaNomeOuCpf(termo);
+  if (parsed.modo === 'vazio') return [];
 
   if (import.meta.env.VITE_USE_MOCK_CADASTRO_PESSOAS === 'true') {
     const lista = getCadastroPessoasMockComNovosLocais(false);
-    const nomeLower = nome.toLowerCase();
+    const nomeLower = String(parsed.nome ?? '').toLowerCase();
     const out = [];
     for (const p of lista) {
       const pid = Number(p.id);
       if (!Number.isFinite(pid)) continue;
+      const idStr = String(pid);
+      const cpfD = String(p.cpf ?? '').replace(/\D/g, '');
       let ok = false;
-      if (modo === 'cpf') {
-        ok = String(p.cpf ?? '').replace(/\D/g, '').includes(cpfDigits);
+      if (parsed.modo === 'cpf') {
+        ok = cpfD.includes(parsed.cpfDigits);
+      } else if (parsed.modo === 'codigo_ou_doc') {
+        const d = parsed.digits;
+        ok =
+          idStr === d ||
+          idStr.startsWith(d) ||
+          (d.length >= 3 && cpfD.includes(d));
       } else {
         ok = String(p.nome ?? '').toLowerCase().includes(nomeLower);
       }
@@ -40,7 +51,7 @@ export async function pesquisarPessoasParaVinculoUsuario(termo, limite = 40) {
         out.push({
           id: pid,
           nome: String(p.nome ?? ''),
-          cpf: String(p.cpf ?? '').replace(/\D/g, ''),
+          cpf: cpfD,
         });
       }
       if (out.length >= limite) break;

@@ -3,6 +3,9 @@ package br.com.vilareal.processo.api.dto;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public class ProcessoParteWriteRequest {
 
     private Long pessoaId;
@@ -15,6 +18,9 @@ public class ProcessoParteWriteRequest {
 
     @NotNull
     private Integer ordem = 0;
+
+    /** Substitui a lista de advogados (pessoas) desta parte; vazio remove todos. Null = não alterar advogados na atualização. */
+    private List<Long> advogadoPessoaIds;
 
     public Long getPessoaId() {
         return pessoaId;
@@ -54,5 +60,13 @@ public class ProcessoParteWriteRequest {
 
     public void setOrdem(Integer ordem) {
         this.ordem = ordem;
+    }
+
+    public List<Long> getAdvogadoPessoaIds() {
+        return advogadoPessoaIds;
+    }
+
+    public void setAdvogadoPessoaIds(List<Long> advogadoPessoaIds) {
+        this.advogadoPessoaIds = advogadoPessoaIds;
     }
 }

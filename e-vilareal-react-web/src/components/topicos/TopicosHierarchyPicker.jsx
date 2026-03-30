@@ -1,28 +1,29 @@
 import { useCallback, useMemo, useState } from 'react';
 import { ArrowLeft, ChevronDown, ChevronUp, FolderOpen, ListChecks } from 'lucide-react';
-import { TOPICOS_RAIZ, resolverNoPorCaminho, rotulosDoCaminho } from '../../data/topicosHierarchy.js';
+import { resolverNoPorCaminho, rotulosDoCaminho } from '../../data/topicosHierarchy.js';
 import { gerarEBaixarDocxLocacao } from '../../utils/gerarDocumentoTopicosLocacaoWord.js';
 
 /**
  * Seletor hierárquico de tópicos: camadas clicáveis + folha com checkboxes e rolagem.
  */
-export function TopicosHierarchyPicker({ onCarregar }) {
+export function TopicosHierarchyPicker({ raiz, onCarregar }) {
   const [pathStack, setPathStack] = useState([]);
   const [selecionados, setSelecionados] = useState(() => new Set());
   const [ultimaCarga, setUltimaCarga] = useState(null);
 
   const noAtual = useMemo(() => {
-    if (pathStack.length === 0) return null;
-    return resolverNoPorCaminho(TOPICOS_RAIZ, pathStack);
-  }, [pathStack]);
+    if (!raiz || pathStack.length === 0) return null;
+    return resolverNoPorCaminho(raiz, pathStack);
+  }, [pathStack, raiz]);
 
   const modoItens = Boolean(noAtual?.items?.length);
   const selecaoUnicaFolha = Boolean(noAtual?.selecaoUnica);
   const filhosLista = useMemo(() => {
-    if (pathStack.length === 0) return TOPICOS_RAIZ.children ?? [];
-    const n = resolverNoPorCaminho(TOPICOS_RAIZ, pathStack);
+    if (!raiz) return [];
+    if (pathStack.length === 0) return raiz.children ?? [];
+    const n = resolverNoPorCaminho(raiz, pathStack);
     return n?.children ?? [];
-  }, [pathStack]);
+  }, [pathStack, raiz]);
 
   const irParaIndice = useCallback((idx) => {
     if (idx < 0) setPathStack([]);

@@ -36,4 +36,7 @@ public class PessoaComplementarEntity {
 
     @Column(length = 8)
     private String genero;
+
+    @Column(name = "descricao_acao", columnDefinition = "TEXT")
+    private String descricaoAcao;
 }
