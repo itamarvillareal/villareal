@@ -4,3 +4,6 @@ build/
 .env
 .DS_Store
 *.log
+
+# Cursor (regras e estado locais; não versionar)
+.cursor/
