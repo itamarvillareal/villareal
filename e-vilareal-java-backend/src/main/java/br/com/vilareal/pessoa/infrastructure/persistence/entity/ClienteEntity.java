@@ -16,7 +16,8 @@ public class ClienteEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "codigo_cliente", nullable = false, length = 8)
+    /** Alinhado a {@code CHAR(8)} na migração V34 (Hibernate mapeia {@code length} como VARCHAR e falha em validate). */
+    @Column(name = "codigo_cliente", nullable = false, columnDefinition = "CHAR(8)")
     private String codigoCliente;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
