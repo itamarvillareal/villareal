@@ -22,7 +22,7 @@ class ApiIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void loginAdminAndListPessoas() {
-        var loginBody = Map.of("login", "admin", "senha", "password");
+        var loginBody = Map.of("login", "itamar", "senha", "123456");
         ResponseEntity<Map<String, Object>> login = rest.exchange(
                 "/api/auth/login",
                 HttpMethod.POST,
@@ -586,7 +586,7 @@ class ApiIntegrationTest extends AbstractIntegrationTest {
     }
 
     private String login() {
-        var loginBody = Map.of("login", "admin", "senha", "password");
+        var loginBody = Map.of("login", "itamar", "senha", "123456");
         ResponseEntity<Map<String, Object>> login = rest.exchange(
                 "/api/auth/login",
                 HttpMethod.POST,

@@ -1,4 +1,4 @@
--- Zera dados operacionais e de demonstração. Preserva: perfis (V1), administrador bootstrap (V2: pessoa id=1, usuario id=1),
+-- Zera dados operacionais e de demonstração. Preserva: perfis (V1), usuário bootstrap (V2: pessoa id=1, usuario id=1),
 -- vínculo usuario_perfil do admin e o plano de contas (financeiro_conta_contabil). Reinsere a hierarquia padrão de tópicos (par V7).
 
 DELETE FROM financeiro_lancamento;

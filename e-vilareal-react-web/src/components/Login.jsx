@@ -50,7 +50,8 @@ export function Login() {
           <h1 className="text-xl font-semibold">Acesso — API Villareal</h1>
         </div>
         <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
-          Entre com o usuário do backend (ex.: admin, após seed Flyway). O token é guardado nesta aba
+          Entre com o usuário do backend (após Flyway: login <code className="text-xs">itamar</code>, senha{' '}
+          <code className="text-xs">123456</code>). O token é guardado nesta aba
           (sessionStorage) e enviado nas requisições <code className="text-xs">/api/…</code>.
         </p>
         <form onSubmit={handleSubmit} className="space-y-4">
