@@ -6,4 +6,6 @@ services:
       MYSQL_DATABASE: vilareal
     ports:
       - "3306:3306"
+    volumes:
+      - ./docker/mysql/init:/docker-entrypoint-initdb.d:ro
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
