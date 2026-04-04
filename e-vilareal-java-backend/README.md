@@ -48,34 +48,30 @@ br.com.vilareal
 
 ## Migrations
 
-Scripts em `src/main/resources/db/migration/`:
+Scripts em `src/main/resources/db/migration/` (apenas **parametrização** em SQL: `perfil` e `financeiro_conta_contabil`). Não há seed de pessoa/usuário em produção.
 
-- **V1__init.sql** — schema (`pessoa`, complementar, endereço, contato, `usuarios`, `perfil`, `usuario_perfil`).  
-- **V2__bootstrap_admin.sql** — pessoa e usuário id `1` (login `itamar`, senha `123456` em BCrypt), perfil ADMIN.  
-- **V3__seed_10_pessoas_mock_completo.sql** — placeholder (não insere pessoas mock).  
-- **V14__limpar_dados_operacionais_demo.sql** — zera dados operacionais no banco (lançamentos financeiros, cálculos, tarefas, agenda, auditoria, processos, usuários/pessoas exceto o admin id `1`), mantém perfis e o plano de contas existente (`financeiro_conta_contabil`) e restaura a hierarquia padrão de tópicos.  
-- **V15__limpar_financeiro_completo.sql** — remove lançamentos e **todas** as contas contábeis, reinsere o plano padrão (paridade com V11).  
-- **V16__redefinir_plano_contas_financeiro_padrao.sql** — mesmo efeito financeiro da V15 (zera lançamentos, remove contas extras e restaura o conjunto padrão de contas contábeis). Útil para reaplicar o reset sem alterar a V14 já aplicada.  
-- **V17__usuario_bootstrap_itamar.sql** — no-op (histórico: antes ajustava credenciais; hoje tudo vem da V2 + V18).  
-- **V18__usuarios_senha_padrao_123456.sql** — define a senha **123456** (BCrypt) em **todos** os registros de `usuarios` (garante paridade em bases antigas e utilizadores criados depois do bootstrap).  
-- **V19__alinear_login_bootstrap_itamar.sql** — no utilizador id `1`, força login `itamar`, nome, hash **123456** e alinha pessoa id `1` (corrige bases que mantiveram `login = admin` após `repair` sem reexecutar a V2).
+| Versão | Conteúdo |
+|--------|----------|
+| V1 | Núcleo cadastro + inserts em `perfil` (ADMIN / USUARIO) |
+| V2–V4 | `agenda_evento`, processos, `auditoria_atividade` |
+| V5 | `topico_hierarquia` (tabela vazia; linha id=1 mínima é criada na subida da API) |
+| V6 | `tarefa_operacional` |
+| V7 | `financeiro_conta_contabil` (inserts padrão) + `financeiro_lancamento` |
+| V8 | Cálculos |
+| V9–V10 | `planilha_pasta1_cliente`, `cliente` (somente DDL) |
+| V11 | Java — correção mojibake UTF-8 |
+| V12 | Carga de `pessoa` / complementar / endereço (dados reais) + utilizadores administrativos; login **itamar** / **123456** (entre outros) |
+
+**Testes** (`src/test/resources/db/test-migration/`): **V100** é no-op (`SELECT 1`) para manter o número de versão no histórico Flyway; o utilizador **itamar** para testes vem do **V12** quando este está no classpath.
 
 No **React**, para apagar persistências de demonstração no navegador (sem remover o tema escuro), use no console de desenvolvimento:  
 `import('/src/utils/clearLocalMockData.js').then((m) => m.clearLocalMockData({ clearAuth: true }))` — `clearAuth` remove também o JWT da aba.
 
-### Usuário seed (dev)
+### Primeiro utilizador (ambiente local)
 
-Após Flyway (incluindo **V18**), **todos** os utilizadores na tabela `usuarios` ficam com a mesma senha em texto plano **123456** (hash BCrypt). O bootstrap inicial (id `1`):
+Após Flyway **sem** V12, crie a primeira pessoa e utilizador pela API (cadastro + `POST /api/usuarios`) ou insira manualmente no MySQL. Com **V12** aplicada, já existem pessoas e utilizadores (incluindo **itamar** / **123456**). Nos testes de integração, o login **itamar** assume dados do **V12**; **V100** não insere mais linhas.
 
-| Campo  | Valor        |
-|--------|--------------|
-| Login  | `itamar`     |
-| Senha  | `123456`     |
-| Pessoa | id `1` (Itamar, CPF `52998224725`) |
-
-**Checksum Flyway:** se a base já tinha aplicado versões antigas de `V2` ou `V17` e o Flyway acusar divergência, use `repair` na ferramenta que utiliza (ex.: alinhar checksums ao estado atual dos ficheiros).
-
-**Produção:** remova ou adapte seeds (não commitar credenciais reais).
+**Checksum Flyway:** se o histórico da base não bater com os ficheiros atuais, use `repair` na ferramenta que utiliza.
 
 ## Autenticação JWT
 

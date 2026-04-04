@@ -1,6 +1,8 @@
 package br.com.vilareal.tarefa.infrastructure.persistence.repository;
 
 import br.com.vilareal.tarefa.infrastructure.persistence.entity.TarefaOperacionalEntity;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.jpa.repository.EntityGraph;
@@ -14,4 +16,8 @@ public interface TarefaOperacionalRepository extends JpaRepository<TarefaOperaci
     @EntityGraph(attributePaths = "responsavel")
     @Override
     List<TarefaOperacionalEntity> findAll(Specification<TarefaOperacionalEntity> spec, Sort sort);
+
+    @EntityGraph(attributePaths = "responsavel")
+    @Override
+    Page<TarefaOperacionalEntity> findAll(Specification<TarefaOperacionalEntity> spec, Pageable pageable);
 }

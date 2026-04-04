@@ -9,8 +9,11 @@ import br.com.vilareal.usuario.api.dto.UsuarioResponse;
 import br.com.vilareal.usuario.api.dto.UsuarioWriteRequest;
 import br.com.vilareal.usuario.infrastructure.persistence.entity.PerfilEntity;
 import br.com.vilareal.usuario.infrastructure.persistence.entity.UsuarioEntity;
+import br.com.vilareal.usuario.infrastructure.persistence.UsuarioSpecifications;
 import br.com.vilareal.usuario.infrastructure.persistence.repository.PerfilRepository;
 import br.com.vilareal.usuario.infrastructure.persistence.repository.UsuarioRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -43,6 +46,25 @@ public class UsuarioApplicationService {
     @Transactional(readOnly = true)
     public List<UsuarioResponse> listar() {
         return usuarioRepository.findAllForListing().stream().map(this::toResponse).collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public Page<UsuarioResponse> listarPaginado(
+            boolean apenasAtivos,
+            String nome,
+            String login,
+            Long codigoUsuario,
+            Long pessoaId,
+            String nomePessoa,
+            Pageable pageable) {
+        var spec = UsuarioSpecifications.comFiltros(
+                apenasAtivos ? true : null,
+                nome,
+                login,
+                codigoUsuario,
+                pessoaId,
+                nomePessoa);
+        return usuarioRepository.findAll(spec, pageable).map(this::toResponse);
     }
 
     @Transactional(readOnly = true)

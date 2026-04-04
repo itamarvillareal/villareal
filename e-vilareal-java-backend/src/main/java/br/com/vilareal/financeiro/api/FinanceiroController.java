@@ -5,6 +5,10 @@ import br.com.vilareal.financeiro.application.FinanceiroApplicationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -62,6 +66,19 @@ public class FinanceiroController {
             @RequestParam(value = "dataInicio", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataInicio,
             @RequestParam(value = "dataFim", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataFim) {
         return financeiroService.listarLancamentos(clienteId, processoId, contaContabilId, dataInicio, dataFim);
+    }
+
+    @GetMapping("/lancamentos/paginada")
+    @Operation(description = "Mesmos filtros de GET /lancamentos, com paginação.")
+    public Page<LancamentoFinanceiroResponse> listarLancamentosPaginada(
+            @RequestParam(value = "clienteId", required = false) Long clienteId,
+            @RequestParam(value = "processoId", required = false) Long processoId,
+            @RequestParam(value = "contaContabilId", required = false) Long contaContabilId,
+            @RequestParam(value = "dataInicio", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataInicio,
+            @RequestParam(value = "dataFim", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataFim,
+            @PageableDefault(size = 20, sort = "dataLancamento", direction = Sort.Direction.ASC) Pageable pageable) {
+        return financeiroService.listarLancamentosPaginado(
+                clienteId, processoId, contaContabilId, dataInicio, dataFim, pageable);
     }
 
     @GetMapping("/lancamentos/{id}")

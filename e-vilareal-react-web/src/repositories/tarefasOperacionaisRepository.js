@@ -1,5 +1,6 @@
 import { request } from '../api/httpClient.js';
 import { featureFlags } from '../config/featureFlags.js';
+import { clampCadastroPessoasPageSize } from '../api/clientesService.js';
 
 /**
  * Camada API-first para tarefas operacionais (Fase 8).
@@ -33,6 +34,24 @@ export async function listarTarefasOperacionais(opcoes = {}) {
   if (opcoes.dataLimiteDe) query.dataLimiteDe = opcoes.dataLimiteDe;
   if (opcoes.dataLimiteAte) query.dataLimiteAte = opcoes.dataLimiteAte;
   return request('/api/tarefas', { query });
+}
+
+export async function listarTarefasOperacionaisPaginadas(opcoes = {}) {
+  if (!featureFlags.useApiTarefas) return null;
+  const query = {};
+  if (opcoes.page != null) query.page = Math.max(0, Number(opcoes.page) || 0);
+  if (opcoes.size != null) query.size = clampCadastroPessoasPageSize(opcoes.size);
+  if (opcoes.sort) query.sort = opcoes.sort;
+  if (opcoes.responsavelId != null && opcoes.responsavelId !== '') {
+    query.responsavelId = Number(opcoes.responsavelId);
+  }
+  if (opcoes.status) query.status = opcoes.status;
+  if (opcoes.prioridade) query.prioridade = opcoes.prioridade;
+  if (opcoes.clienteId != null && opcoes.clienteId !== '') query.clienteId = Number(opcoes.clienteId);
+  if (opcoes.processoId != null && opcoes.processoId !== '') query.processoId = Number(opcoes.processoId);
+  if (opcoes.dataLimiteDe) query.dataLimiteDe = opcoes.dataLimiteDe;
+  if (opcoes.dataLimiteAte) query.dataLimiteAte = opcoes.dataLimiteAte;
+  return request('/api/tarefas/paginada', { query });
 }
 
 export async function buscarTarefaOperacional(id) {

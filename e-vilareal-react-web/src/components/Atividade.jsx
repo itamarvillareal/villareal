@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, Download, FileText, Loader2, Search } from 'lucide-react';
+import { Download, FileText, Loader2, Search } from 'lucide-react';
 import { listarAtividadesAuditoria } from '../api/auditoriaService.js';
+import { TablePaginationBar } from './ui/TablePaginationBar.jsx';
 import { MODULOS_PERMISSAO } from '../data/usuarioPermissoesStorage.js';
 import { TIPOS_ACAO_AUDITORIA } from '../services/auditoriaCliente.js';
 import { getUsuariosAtivos } from '../data/agendaPersistenciaData.js';
@@ -15,6 +16,19 @@ function escCsv(c) {
   const s = String(c ?? '');
   if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
   return s;
+}
+
+const LS_PAGE_SIZE_AUDITORIA = 'vilareal:pageSize:atividade';
+
+function readPageSizeAuditoria() {
+  try {
+    const raw = localStorage.getItem(LS_PAGE_SIZE_AUDITORIA);
+    if (raw == null) return 20;
+    const n = Number(raw);
+    return [10, 20, 25, 50, 100].includes(n) ? n : 20;
+  } catch {
+    return 20;
+  }
 }
 
 async function coletarExportacao(filtros, maxLinhas = 2000) {
@@ -46,7 +60,7 @@ export function Atividade() {
   const [buscaAplicada, setBuscaAplicada] = useState('');
 
   const [page, setPage] = useState(0);
-  const [size] = useState(20);
+  const [size, setSize] = useState(readPageSizeAuditoria);
   /** Força nova busca ao aplicar filtro mesmo permanecendo na página 0. */
   const [reloadKey, setReloadKey] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -88,8 +102,21 @@ export function Atividade() {
     carregar();
   }, [carregar, reloadKey]);
 
-  const totalPages = data?.totalPages ?? 0;
+  const totalPages = Math.max(0, data?.totalPages ?? 0);
+  const totalElements = data?.totalElements ?? 0;
   const content = data?.content ?? [];
+
+  const persistPageSizeAuditoria = (n) => {
+    const v = [10, 20, 25, 50, 100].includes(n) ? n : 20;
+    try {
+      localStorage.setItem(LS_PAGE_SIZE_AUDITORIA, String(v));
+    } catch {
+      /* ignore */
+    }
+    setSize(v);
+    setPage(0);
+    setReloadKey((k) => k + 1);
+  };
 
   function handleBuscar(e) {
     e?.preventDefault?.();
@@ -355,29 +382,16 @@ export function Atividade() {
             </table>
           </div>
 
-          {totalPages > 1 && (
-            <div className="flex items-center justify-center gap-3 px-3 py-2 border-t border-slate-200 bg-slate-50">
-              <button
-                type="button"
-                disabled={page <= 0 || loading}
-                onClick={() => setPage((p) => Math.max(0, p - 1))}
-                className="p-2 rounded border border-slate-300 bg-white disabled:opacity-40"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-              <span className="text-xs text-slate-600">
-                Página {page + 1} de {totalPages}
-              </span>
-              <button
-                type="button"
-                disabled={page >= totalPages - 1 || loading}
-                onClick={() => setPage((p) => p + 1)}
-                className="p-2 rounded border border-slate-300 bg-white disabled:opacity-40"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
-          )}
+          <TablePaginationBar
+            page={page}
+            totalPages={totalPages}
+            totalElements={totalElements}
+            pageSize={size}
+            onPageChange={setPage}
+            onPageSizeChange={persistPageSizeAuditoria}
+            loading={loading}
+            idPrefix="auditoria-atividades"
+          />
         </div>
       </div>
 

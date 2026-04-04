@@ -17,7 +17,8 @@ public final class PessoaSpecifications {
             Boolean apenasAtivos,
             String nomeContem,
             String cpfDigitos,
-            Long codigoId) {
+            Long codigoId,
+            String cpfAdicionalDigitos) {
 
         return (root, query, cb) -> {
             List<Predicate> p = new ArrayList<>();
@@ -31,6 +32,12 @@ public final class PessoaSpecifications {
                 String digits = cpfDigitos.replaceAll("\\D", "");
                 if (!digits.isEmpty()) {
                     p.add(cb.like(root.get("cpf"), "%" + digits + "%"));
+                }
+            }
+            if (StringUtils.hasText(cpfAdicionalDigitos)) {
+                String d2 = cpfAdicionalDigitos.replaceAll("\\D", "");
+                if (!d2.isEmpty()) {
+                    p.add(cb.like(root.get("cpf"), "%" + d2 + "%"));
                 }
             }
             if (codigoId != null) {

@@ -1,8 +1,9 @@
 import { request } from '../api/httpClient.js';
 import { featureFlags } from '../config/featureFlags.js';
+import { clampCadastroPessoasPageSize } from '../api/clientesService.js';
 import { getUsuariosAtivos, setUsuariosAtivos } from '../data/agendaPersistenciaData.js';
 
-function mapApiUsuarioToView(u) {
+export function mapApiUsuarioToView(u) {
   return {
     id: String(u.id),
     nome: String(u.nome ?? ''),
@@ -37,6 +38,49 @@ export async function listarUsuarios() {
   if (!featureFlags.useApiUsuarios) return getUsuariosAtivos();
   const data = await request('/api/usuarios');
   return Array.isArray(data) ? data.map(mapApiUsuarioToView) : [];
+}
+
+export async function listarUsuariosPaginados(p = {}) {
+  if (!featureFlags.useApiUsuarios) {
+    return {
+      content: [],
+      totalElements: 0,
+      totalPages: 0,
+      size: p.size ?? 20,
+      number: 0,
+    };
+  }
+  const {
+    page = 0,
+    size = 20,
+    sort = 'id,asc',
+    apenasAtivos = false,
+    nome,
+    login,
+    codigo,
+    pessoaId,
+    nomePessoa,
+  } = p;
+  const qs = new URLSearchParams();
+  qs.set('page', String(Math.max(0, page)));
+  qs.set('size', String(clampCadastroPessoasPageSize(size)));
+  if (sort) qs.set('sort', sort);
+  if (apenasAtivos) qs.set('apenasAtivos', 'true');
+  if (nome != null && String(nome).trim()) qs.set('nome', String(nome).trim());
+  if (login != null && String(login).trim()) qs.set('login', String(login).trim().toLowerCase());
+  if (codigo != null && Number.isFinite(Number(codigo)) && Number(codigo) >= 1) {
+    qs.set('codigo', String(Math.floor(Number(codigo))));
+  }
+  if (pessoaId != null && Number.isFinite(Number(pessoaId)) && Number(pessoaId) >= 1) {
+    qs.set('pessoaId', String(Math.floor(Number(pessoaId))));
+  }
+  if (nomePessoa != null && String(nomePessoa).trim()) qs.set('nomePessoa', String(nomePessoa).trim());
+  const raw = await request(`/api/usuarios/paginada?${qs.toString()}`);
+  const content = Array.isArray(raw?.content) ? raw.content.map(mapApiUsuarioToView) : [];
+  return {
+    ...raw,
+    content,
+  };
 }
 
 export async function salvarUsuario(usuario) {

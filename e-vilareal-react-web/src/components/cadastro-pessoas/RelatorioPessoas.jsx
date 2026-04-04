@@ -1,7 +1,12 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FileText, Link2, Pencil, Plus, Search, Trash2 } from 'lucide-react';
-import { listarClientes, excluirCliente } from '../../api/clientesService';
+import {
+  listarClientesPaginados,
+  excluirCliente,
+  clampCadastroPessoasPageSize,
+} from '../../api/clientesService';
+import { TablePaginationBar } from '../ui/TablePaginationBar.jsx';
 import { getCadastroPessoasMockComNovosLocais } from '../../data/cadastroPessoasMockNovosLocal.js';
 import { mergeListaMarcadoMonitoramentoMock } from '../../data/cadastroPessoasMockMonitoramento.js';
 import {
@@ -23,72 +28,194 @@ const CRITERIOS_BUSCA = [
   { value: 'cpf', label: 'CPF/CNPJ' },
 ];
 
-/**
- * Relatório com todas as pessoas (tabela completa). Carrega a lista apenas nesta rota.
- */
+const LS_PAGE_SIZE = 'vilareal:pageSize:relatorio-pessoas';
+
+function readInitialPageSize() {
+  try {
+    const raw = localStorage.getItem(LS_PAGE_SIZE);
+    if (raw == null) return 25;
+    return clampCadastroPessoasPageSize(Number(raw));
+  } catch {
+    return 25;
+  }
+}
+
+function buildFiltrosApi({ criterioBusca, valorBusca, valorBuscaCpf }) {
+  const v = String(valorBusca ?? '').trim();
+  const cpfExtra = String(valorBuscaCpf ?? '').replace(/\D/g, '') || undefined;
+  let nome;
+  let cpf;
+  let codigo;
+  if (criterioBusca === 'nome' && v) nome = v;
+  if (criterioBusca === 'codigo' && v) {
+    const n = parseInt(v, 10);
+    if (Number.isFinite(n) && n >= 1) codigo = n;
+  }
+  if (criterioBusca === 'cpf' && v) {
+    const d = v.replace(/\D/g, '');
+    if (d) cpf = d;
+  }
+  return { nome, cpf, codigo, cpfAdicional: cpfExtra };
+}
+
+function filtrarListaLocal(lista, criterioBusca, valorBusca, valorBuscaCpf) {
+  if (!valorBusca.trim() && !valorBuscaCpf.trim()) return lista;
+  const v = valorBusca.trim().toLowerCase();
+  const vCpf = valorBuscaCpf.trim().replace(/\D/g, '');
+  return lista.filter((p) => {
+    if (v && criterioBusca === 'nome' && !(p.nome || '').toLowerCase().includes(v)) return false;
+    if (v && criterioBusca === 'codigo' && String(p.id) !== v) return false;
+    if (v && criterioBusca === 'cpf' && !(p.cpf || '').replace(/\D/g, '').includes(v.replace(/\D/g, '')))
+      return false;
+    if (vCpf && !(p.cpf || '').replace(/\D/g, '').includes(vCpf)) return false;
+    return true;
+  });
+}
+
 export function RelatorioPessoas() {
   const navigate = useNavigate();
-  const [lista, setLista] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [listaMockCompleta, setListaMockCompleta] = useState([]);
+  const [pageData, setPageData] = useState(null);
+  const [loading, setLoading] = useState(() => !FORCA_MOCK_CADASTRO);
   const [error, setError] = useState(null);
   const [listaEhMock, setListaEhMock] = useState(FORCA_MOCK_CADASTRO);
   const [apenasAtivos, setApenasAtivos] = useState(false);
-  const [indiceAtual, setIndiceAtual] = useState(0);
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(readInitialPageSize);
   const [criterioBusca, setCriterioBusca] = useState('nome');
   const [valorBusca, setValorBusca] = useState('');
   const [valorBuscaCpf, setValorBuscaCpf] = useState('');
+  const [debouncedFiltros, setDebouncedFiltros] = useState({
+    criterioBusca: 'nome',
+    valorBusca: '',
+    valorBuscaCpf: '',
+    apenasAtivos: false,
+  });
+  const debounceRef = useRef(null);
+  const [selectedPessoa, setSelectedPessoa] = useState(null);
   const [modalVinculosSistema, setModalVinculosSistema] = useState(false);
   const [pessoasComDocumento, setPessoasComDocumento] = useState(() => listarPessoasComDocumento());
 
-  const carregarLista = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    if (FORCA_MOCK_CADASTRO) {
-      setLista(mergeListaMarcadoMonitoramentoMock(getCadastroPessoasMockComNovosLocais(apenasAtivos)));
-      setListaEhMock(true);
-      setLoading(false);
-      return;
-    }
-    try {
-      const res = await listarClientes(apenasAtivos);
-      setLista(Array.isArray(res) ? res : []);
-      setListaEhMock(false);
-    } catch (err) {
-      setLista(mergeListaMarcadoMonitoramentoMock(getCadastroPessoasMockComNovosLocais(apenasAtivos)));
-      setListaEhMock(true);
-      setError(
-        err.message
-          ? `${err.message} — exibindo lista mock (cadastro PDF).`
-          : 'API indisponível — exibindo lista mock (cadastro PDF).'
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [apenasAtivos]);
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setDebouncedFiltros({
+        criterioBusca,
+        valorBusca,
+        valorBuscaCpf,
+        apenasAtivos,
+      });
+    }, 400);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [criterioBusca, valorBusca, valorBuscaCpf, apenasAtivos]);
 
   useEffect(() => {
-    carregarLista();
-  }, [carregarLista]);
+    setPage(0);
+    setSelectedPessoa(null);
+  }, [debouncedFiltros]);
+
+  const carregarApi = useCallback(async () => {
+    const { nome, cpf, codigo, cpfAdicional } = buildFiltrosApi(debouncedFiltros);
+    const res = await listarClientesPaginados({
+      page,
+      size: pageSize,
+      apenasAtivos: debouncedFiltros.apenasAtivos,
+      nome,
+      cpf,
+      codigo,
+      cpfAdicional,
+    });
+    setPageData(res);
+    setListaEhMock(false);
+  }, [page, pageSize, debouncedFiltros]);
+
+  useEffect(() => {
+    if (!FORCA_MOCK_CADASTRO) return;
+    setListaMockCompleta(
+      mergeListaMarcadoMonitoramentoMock(getCadastroPessoasMockComNovosLocais(debouncedFiltros.apenasAtivos))
+    );
+    setListaEhMock(true);
+    setError(null);
+    setLoading(false);
+  }, [debouncedFiltros.apenasAtivos]);
+
+  useEffect(() => {
+    if (FORCA_MOCK_CADASTRO) return;
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        await carregarApi();
+      } catch (err) {
+        if (cancelled) return;
+        setListaMockCompleta(
+          mergeListaMarcadoMonitoramentoMock(getCadastroPessoasMockComNovosLocais(debouncedFiltros.apenasAtivos))
+        );
+        setListaEhMock(true);
+        setPageData(null);
+        setError(
+          err.message
+            ? `${err.message} — exibindo lista mock (cadastro PDF).`
+            : 'API indisponível — exibindo lista mock (cadastro PDF).'
+        );
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [carregarApi, debouncedFiltros.apenasAtivos]);
+
+  const listaFiltradaMock = useMemo(
+    () =>
+      filtrarListaLocal(
+        listaMockCompleta,
+        debouncedFiltros.criterioBusca,
+        debouncedFiltros.valorBusca,
+        debouncedFiltros.valorBuscaCpf
+      ),
+    [listaMockCompleta, debouncedFiltros]
+  );
+
+  const listaExibida = useMemo(() => {
+    if (listaEhMock) {
+      const start = page * pageSize;
+      return listaFiltradaMock.slice(start, start + pageSize);
+    }
+    return Array.isArray(pageData?.content) ? pageData.content : [];
+  }, [listaEhMock, listaFiltradaMock, page, pageSize, pageData]);
+
+  const totalElements = listaEhMock ? listaFiltradaMock.length : Number(pageData?.totalElements ?? 0);
+  const totalPages = listaEhMock
+    ? listaFiltradaMock.length === 0
+      ? 0
+      : Math.ceil(listaFiltradaMock.length / Math.max(1, pageSize))
+    : Math.max(0, Number(pageData?.totalPages ?? 0));
+
+  useEffect(() => {
+    if (totalPages <= 0) {
+      if (page !== 0) setPage(0);
+      return;
+    }
+    if (page > totalPages - 1) setPage(totalPages - 1);
+  }, [totalPages, page]);
 
   useEffect(() => {
     setPessoasComDocumento(listarPessoasComDocumento());
-  }, [lista]);
+  }, [listaExibida, listaMockCompleta]);
 
-  const filtrarLista = () => {
-    if (!valorBusca.trim() && !valorBuscaCpf.trim()) return lista;
-    const v = valorBusca.trim().toLowerCase();
-    const vCpf = valorBuscaCpf.trim().replace(/\D/g, '');
-    return lista.filter((p) => {
-      if (v && criterioBusca === 'nome' && !(p.nome || '').toLowerCase().includes(v)) return false;
-      if (v && criterioBusca === 'codigo' && String(p.id) !== v) return false;
-      if (vCpf && !(p.cpf || '').replace(/\D/g, '').includes(vCpf)) return false;
-      return true;
-    });
-  };
-
-  const listaExibida = filtrarLista();
-  const pessoaAtual = listaExibida[indiceAtual];
-  const total = lista.length;
+  const pessoaAtual = useMemo(() => {
+    if (selectedPessoa?.id != null) {
+      const onPage = listaExibida.find((p) => Number(p.id) === Number(selectedPessoa.id));
+      if (onPage) return onPage;
+      return { id: selectedPessoa.id, nome: selectedPessoa.nome };
+    }
+    return listaExibida[0];
+  }, [selectedPessoa, listaExibida]);
 
   const idPessoaParaVinculos = useMemo(() => {
     if (pessoaAtual?.id != null) return Number(pessoaAtual.id);
@@ -110,13 +237,16 @@ export function RelatorioPessoas() {
     };
   }, [idPessoaParaVinculos, nomeParaVinculos]);
 
-  useEffect(() => {
-    if (valorBusca.trim() || valorBuscaCpf.trim()) setIndiceAtual(0);
-  }, [criterioBusca, valorBusca, valorBuscaCpf]);
-
-  useEffect(() => {
-    setIndiceAtual((i) => Math.min(i, Math.max(0, listaExibida.length - 1)));
-  }, [listaExibida.length]);
+  const persistPageSize = (n) => {
+    const v = clampCadastroPessoasPageSize(n);
+    try {
+      localStorage.setItem(LS_PAGE_SIZE, String(v));
+    } catch {
+      /* ignore */
+    }
+    setPageSize(v);
+    setPage(0);
+  };
 
   const excluir = async (id, nome) => {
     if (listaEhMock) {
@@ -127,7 +257,7 @@ export function RelatorioPessoas() {
     setError(null);
     try {
       await excluirCliente(id);
-      await carregarLista();
+      await carregarApi();
     } catch (err) {
       setError(err.message || 'Erro ao excluir.');
     }
@@ -151,7 +281,7 @@ export function RelatorioPessoas() {
             <div className="flex flex-wrap gap-4 text-sm">
               <div className="px-4 py-2.5 rounded-xl bg-white border border-slate-200 shadow-sm">
                 <span className="text-slate-500 block">Registros</span>
-                <span className="text-xl font-semibold text-slate-800">{loading ? '—' : total}</span>
+                <span className="text-xl font-semibold text-slate-800">{loading ? '—' : totalElements}</span>
               </div>
             </div>
           </div>
@@ -243,7 +373,7 @@ export function RelatorioPessoas() {
             {loading ? (
               <p className="text-slate-500 text-sm py-8 text-center">Carregando relatório...</p>
             ) : (
-              <div className="border border-slate-200 rounded-xl overflow-hidden">
+              <div className="border border-slate-200 rounded-xl overflow-hidden flex flex-col">
                 <table className="w-full text-sm">
                   <thead className="bg-slate-100 text-slate-700 font-medium">
                     <tr>
@@ -265,12 +395,12 @@ export function RelatorioPessoas() {
                         </td>
                       </tr>
                     ) : (
-                      listaExibida.map((p, idx) => (
+                      listaExibida.map((p) => (
                         <tr
                           key={p.id}
-                          onClick={() => setIndiceAtual(idx)}
+                          onClick={() => setSelectedPessoa({ id: p.id, nome: p.nome })}
                           className={`cursor-pointer hover:bg-slate-50/80 ${
-                            indiceAtual === idx ? 'bg-blue-50/80' : ''
+                            Number(selectedPessoa?.id) === Number(p.id) ? 'bg-blue-50/80' : ''
                           }`}
                         >
                           <td className="px-4 py-3 text-slate-600">{p.id}</td>
@@ -334,6 +464,16 @@ export function RelatorioPessoas() {
                     )}
                   </tbody>
                 </table>
+                <TablePaginationBar
+                  page={page}
+                  totalPages={totalPages}
+                  totalElements={totalElements}
+                  pageSize={pageSize}
+                  onPageChange={setPage}
+                  onPageSizeChange={persistPageSize}
+                  loading={loading}
+                  idPrefix="relatorio-pessoas"
+                />
               </div>
             )}
           </div>

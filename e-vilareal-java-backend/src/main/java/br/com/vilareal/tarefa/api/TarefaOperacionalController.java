@@ -9,6 +9,10 @@ import br.com.vilareal.tarefa.model.TarefaStatus;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -40,6 +44,21 @@ public class TarefaOperacionalController {
             @RequestParam(value = "dataLimiteDe", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataLimiteDe,
             @RequestParam(value = "dataLimiteAte", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataLimiteAte) {
         return tarefaService.listar(responsavelId, status, prioridade, clienteId, processoId, dataLimiteDe, dataLimiteAte);
+    }
+
+    @GetMapping("/paginada")
+    @Operation(description = "Mesmos filtros de GET /api/tarefas, com paginação Spring Data.")
+    public Page<TarefaOperacionalResponse> listarPaginada(
+            @RequestParam(value = "responsavelId", required = false) Long responsavelId,
+            @RequestParam(value = "status", required = false) TarefaStatus status,
+            @RequestParam(value = "prioridade", required = false) TarefaPrioridade prioridade,
+            @RequestParam(value = "clienteId", required = false) Long clienteId,
+            @RequestParam(value = "processoId", required = false) Long processoId,
+            @RequestParam(value = "dataLimiteDe", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataLimiteDe,
+            @RequestParam(value = "dataLimiteAte", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataLimiteAte,
+            @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
+        return tarefaService.listarPaginado(
+                responsavelId, status, prioridade, clienteId, processoId, dataLimiteDe, dataLimiteAte, pageable);
     }
 
     @GetMapping("/{id}")

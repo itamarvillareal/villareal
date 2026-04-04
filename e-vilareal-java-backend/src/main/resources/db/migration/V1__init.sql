@@ -1,5 +1,3 @@
--- Greenfield schema: Pessoa, complementares, endereços, contatos, usuário, perfis (paridade React)
-
 CREATE TABLE pessoa (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     nome VARCHAR(255) NOT NULL,
@@ -29,6 +27,7 @@ CREATE TABLE pessoa_complementar (
     nacionalidade VARCHAR(120) NULL,
     estado_civil VARCHAR(40) NULL,
     genero VARCHAR(8) NULL,
+    descricao_acao TEXT NULL,
     CONSTRAINT fk_pessoa_complementar_pessoa FOREIGN KEY (pessoa_id) REFERENCES pessoa (id)
         ON DELETE CASCADE ON UPDATE CASCADE
 );

@@ -49,12 +49,14 @@ public class PessoaApplicationService {
             boolean apenasAtivos,
             String nome,
             String cpf,
-            Long codigo) {
+            Long codigo,
+            String cpfAdicional) {
         Specification<PessoaEntity> spec = PessoaSpecifications.comFiltros(
                 apenasAtivos ? true : null,
                 nome,
                 cpf,
-                codigo);
+                codigo,
+                cpfAdicional);
         return pessoaRepository.findAll(spec).stream()
                 .map(this::toResponseBasico)
                 .collect(Collectors.toList());
@@ -66,12 +68,14 @@ public class PessoaApplicationService {
             String nome,
             String cpf,
             Long codigo,
+            String cpfAdicional,
             Pageable pageable) {
         Specification<PessoaEntity> spec = PessoaSpecifications.comFiltros(
                 apenasAtivos ? true : null,
                 nome,
                 cpf,
-                codigo);
+                codigo,
+                cpfAdicional);
         return pessoaRepository.findAll(spec, pageable).map(this::toResponseBasico);
     }
 

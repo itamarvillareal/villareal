@@ -52,6 +52,7 @@ public final class MojibakeUtf8DadosRepair {
                 "genero");
         atualizarTabela(conn, "pessoa_endereco", "id", "rua", "bairro", "cidade", "estado", "cep");
         atualizarTabela(conn, "pessoa_contato", "id", "tipo", "valor", "usuario_lancamento");
+        atualizarTabela(conn, "cliente", "id", "nome_referencia", "documento_referencia", "observacao");
         atualizarTabela(
                 conn,
                 "auditoria_atividade",

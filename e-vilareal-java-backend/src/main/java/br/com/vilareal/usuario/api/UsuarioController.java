@@ -6,6 +6,10 @@ import br.com.vilareal.usuario.application.UsuarioApplicationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
@@ -27,6 +31,19 @@ public class UsuarioController {
     @GetMapping
     public List<UsuarioResponse> listar() {
         return usuarioService.listar();
+    }
+
+    @GetMapping("/paginada")
+    @Operation(summary = "Listar com paginação (filtros alinhados ao relatório de pessoas)")
+    public Page<UsuarioResponse> listarPaginada(
+            @RequestParam(required = false, defaultValue = "false") boolean apenasAtivos,
+            @RequestParam(required = false) String nome,
+            @RequestParam(required = false) String login,
+            @RequestParam(required = false) Long codigo,
+            @RequestParam(required = false) Long pessoaId,
+            @RequestParam(required = false) String nomePessoa,
+            @PageableDefault(size = 20, sort = "id", direction = Sort.Direction.ASC) Pageable pageable) {
+        return usuarioService.listarPaginado(apenasAtivos, nome, login, codigo, pessoaId, nomePessoa, pageable);
     }
 
     @GetMapping("/{id}")

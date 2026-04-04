@@ -8,6 +8,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -34,8 +35,9 @@ public class CadastroPessoasController {
             @RequestParam(required = false, defaultValue = "false") boolean apenasAtivos,
             @RequestParam(required = false) String nome,
             @RequestParam(required = false) String cpf,
-            @RequestParam(required = false) Long codigo) {
-        return pessoaService.listar(apenasAtivos, nome, cpf, codigo);
+            @RequestParam(required = false) Long codigo,
+            @RequestParam(required = false) String cpfAdicional) {
+        return pessoaService.listar(apenasAtivos, nome, cpf, codigo, cpfAdicional);
     }
 
     @GetMapping("/paginada")
@@ -45,8 +47,9 @@ public class CadastroPessoasController {
             @RequestParam(required = false) String nome,
             @RequestParam(required = false) String cpf,
             @RequestParam(required = false) Long codigo,
-            @PageableDefault(size = 20) Pageable pageable) {
-        return pessoaService.listarPaginado(apenasAtivos, nome, cpf, codigo, pageable);
+            @RequestParam(required = false) String cpfAdicional,
+            @PageableDefault(size = 20, sort = "id", direction = Sort.Direction.ASC) Pageable pageable) {
+        return pessoaService.listarPaginado(apenasAtivos, nome, cpf, codigo, cpfAdicional, pageable);
     }
 
     @GetMapping("/proximo-id")

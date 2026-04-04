@@ -28,6 +28,46 @@ export async function listarClientes(apenasAtivos = false) {
   return handleResponse(res);
 }
 
+const PAGE_SIZE_OPTIONS = [10, 20, 25, 50, 100];
+
+export function clampCadastroPessoasPageSize(size) {
+  const n = Number(size);
+  if (!Number.isFinite(n)) return 20;
+  return PAGE_SIZE_OPTIONS.includes(n) ? n : Math.min(100, Math.max(10, Math.round(n)));
+}
+
+/**
+ * Monta filtros alinhados ao relatório (nome contém, id exato, CPF/CNPJ contém nos dígitos, campo extra CPF/CNPJ em AND).
+ * @param {{ apenasAtivos?: boolean, nome?: string, cpf?: string, codigo?: number, cpfAdicional?: string, page?: number, size?: number, sort?: string }} p
+ */
+export async function listarClientesPaginados(p = {}) {
+  const {
+    apenasAtivos = false,
+    nome,
+    cpf,
+    codigo,
+    cpfAdicional,
+    page = 0,
+    size = 20,
+    sort = 'id,asc',
+  } = p;
+  const qs = new URLSearchParams();
+  qs.set('page', String(Math.max(0, page)));
+  qs.set('size', String(clampCadastroPessoasPageSize(size)));
+  if (sort) qs.set('sort', sort);
+  if (apenasAtivos) qs.set('apenasAtivos', 'true');
+  if (nome != null && String(nome).trim()) qs.set('nome', String(nome).trim());
+  if (cpf != null && String(cpf).replace(/\D/g, '')) qs.set('cpf', String(cpf).replace(/\D/g, ''));
+  if (cpfAdicional != null && String(cpfAdicional).replace(/\D/g, '')) {
+    qs.set('cpfAdicional', String(cpfAdicional).replace(/\D/g, ''));
+  }
+  if (codigo != null && Number.isFinite(Number(codigo)) && Number(codigo) >= 1) {
+    qs.set('codigo', String(Math.floor(Number(codigo))));
+  }
+  const res = await fetch(`${BASE}/paginada?${qs.toString()}`, getOptions('GET'));
+  return handleResponse(res);
+}
+
 /**
  * Busca no cadastro por nome (contém, case-insensitive) **ou** por CPF/CNPJ (dígitos, contém).
  * Envia só um filtro por requisição (o backend combina filtros com AND).

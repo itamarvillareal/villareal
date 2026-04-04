@@ -13,6 +13,8 @@ import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -89,6 +91,19 @@ public class FinanceiroApplicationService {
         return lancamentoRepository.findAll(spec, ORDEM_LANCAMENTOS).stream()
                 .map(this::toLancamentoResponse)
                 .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public Page<LancamentoFinanceiroResponse> listarLancamentosPaginado(
+            Long clienteId,
+            Long processoId,
+            Long contaContabilId,
+            java.time.LocalDate dataInicio,
+            java.time.LocalDate dataFim,
+            Pageable pageable) {
+        var spec = LancamentoFinanceiroSpecifications.comFiltros(
+                clienteId, processoId, contaContabilId, dataInicio, dataFim);
+        return lancamentoRepository.findAll(spec, pageable).map(this::toLancamentoResponse);
     }
 
     @Transactional(readOnly = true)

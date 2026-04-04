@@ -1,3 +1,4 @@
+import { clampCadastroPessoasPageSize } from '../api/clientesService.js';
 import { request } from '../api/httpClient.js';
 import { featureFlags } from '../config/featureFlags.js';
 import {
@@ -115,6 +116,23 @@ export async function listarLancamentosFinanceiro(filtros = {}) {
       dataFim: filtros.dataFim ?? undefined,
     },
   });
+}
+
+export async function listarLancamentosFinanceiroPaginados(filtros = {}) {
+  if (!featureFlags.useApiFinanceiro) {
+    return { content: [], totalElements: 0, totalPages: 0, size: filtros.size ?? 20, number: 0 };
+  }
+  const query = {
+    page: filtros.page != null ? Math.max(0, Number(filtros.page) || 0) : 0,
+    size: clampCadastroPessoasPageSize(filtros.size ?? 20),
+    sort: filtros.sort ?? 'dataLancamento,asc',
+    clienteId: filtros.clienteId ?? undefined,
+    processoId: filtros.processoId ?? undefined,
+    contaContabilId: filtros.contaContabilId ?? undefined,
+    dataInicio: filtros.dataInicio ?? undefined,
+    dataFim: filtros.dataFim ?? undefined,
+  };
+  return request('/api/financeiro/lancamentos/paginada', { query });
 }
 
 export async function carregarExtratosFinanceiroApiFirst() {

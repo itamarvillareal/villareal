@@ -4,6 +4,7 @@ import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
+import org.hibernate.annotations.BatchSize;
 
 import java.time.Instant;
 import java.util.HashSet;
@@ -38,6 +39,7 @@ public class UsuarioEntity {
     @Column(nullable = false)
     private Boolean ativo = true;
 
+    @BatchSize(size = 64)
     @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(
             name = "usuario_perfil",

@@ -1,6 +1,8 @@
 package br.com.vilareal.financeiro.infrastructure.persistence.repository;
 
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.LancamentoFinanceiroEntity;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.jpa.repository.EntityGraph;
@@ -18,6 +20,10 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
     @EntityGraph(attributePaths = {"contaContabil", "cliente", "processo"})
     @Override
     List<LancamentoFinanceiroEntity> findAll(Specification<LancamentoFinanceiroEntity> spec, Sort sort);
+
+    @EntityGraph(attributePaths = {"contaContabil", "cliente", "processo"})
+    @Override
+    Page<LancamentoFinanceiroEntity> findAll(Specification<LancamentoFinanceiroEntity> spec, Pageable pageable);
 
     long countByProcesso_Id(Long processoId);
 

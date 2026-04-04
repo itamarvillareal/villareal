@@ -13,6 +13,8 @@ import br.com.vilareal.tarefa.model.TarefaPrioridade;
 import br.com.vilareal.tarefa.model.TarefaStatus;
 import br.com.vilareal.usuario.infrastructure.persistence.entity.UsuarioEntity;
 import br.com.vilareal.usuario.infrastructure.persistence.repository.UsuarioRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -52,6 +54,21 @@ public class TarefaOperacionalApplicationService {
         return tarefaRepository.findAll(spec, ORDEM_RECENTES).stream()
                 .map(this::toResponse)
                 .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public Page<TarefaOperacionalResponse> listarPaginado(
+            Long responsavelId,
+            TarefaStatus status,
+            TarefaPrioridade prioridade,
+            Long clienteId,
+            Long processoId,
+            LocalDate dataLimiteDe,
+            LocalDate dataLimiteAte,
+            Pageable pageable) {
+        var spec = TarefaOperacionalSpecifications.comFiltros(
+                responsavelId, status, prioridade, clienteId, processoId, dataLimiteDe, dataLimiteAte);
+        return tarefaRepository.findAll(spec, pageable).map(this::toResponse);
     }
 
     @Transactional(readOnly = true)

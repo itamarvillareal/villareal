@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { UserCog, Calendar, Shield, UserRoundCog, UserPlus, Search } from 'lucide-react';
 import { agendaUsuarios } from '../data/mockData';
@@ -16,6 +16,7 @@ import {
   salvarUsuario,
   alternarUsuarioAtivo,
 } from '../repositories/usuariosRepository.js';
+import { UsuariosListaApiPaginada } from './usuarios/UsuariosListaApiPaginada.jsx';
 import { featureFlags } from '../config/featureFlags.js';
 import {
   obterPessoaParaVinculoUsuario,
@@ -65,6 +66,7 @@ export function Usuarios() {
   const extraSlotSeq = useRef(2);
   const [slotsCustom, setSlotsCustom] = useState(() => []);
   const [buscaUsuariosAtivos, setBuscaUsuariosAtivos] = useState('');
+  const [listaUsuariosApiRefreshTick, setListaUsuariosApiRefreshTick] = useState(0);
   const [permModalUsuario, setPermModalUsuario] = useState(null);
   const [dadosModalUsuario, setDadosModalUsuario] = useState(null);
   /** { ag, origemCloneId, clearSlotId?, numeroPessoa } */
@@ -93,20 +95,18 @@ export function Usuarios() {
     setSlotsCustom((prev) => [...prev, { id: `extra-${extraSlotSeq.current}`, nome: '' }]);
   }
 
-  async function recarregarUsuariosApi() {
+  const recarregarUsuariosApi = useCallback(async () => {
     if (!featureFlags.useApiUsuarios) return;
-    setLoading(true);
     setErroCarregamento('');
     try {
       const data = await listarUsuarios();
       gravarSnapshotUsuariosApi(data || []);
       setUsuariosAtivosState((data || []).filter((u) => u.ativo !== false));
+      setListaUsuariosApiRefreshTick((t) => t + 1);
     } catch (e) {
       setErroCarregamento(e?.message || 'Erro ao carregar usuários da API.');
-    } finally {
-      setLoading(false);
     }
-  }
+  }, []);
 
   function excluirUsuario(usuarioId) {
     if (!usuarioId) return;
@@ -120,7 +120,7 @@ export function Usuarios() {
   useEffect(() => {
     if (featureFlags.useApiUsuarios) {
       void recarregarUsuariosApi();
-      return;
+      return undefined;
     }
     const basePrimeiro = Array.isArray(agendaUsuarios) && agendaUsuarios[0] ? agendaUsuarios[0] : null;
     if (!basePrimeiro) return;
@@ -497,161 +497,197 @@ export function Usuarios() {
       </div>
 
       <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
-        {loading ? (
-          <div className="px-4 py-3 text-sm text-slate-600 border-b border-slate-200">Carregando usuários...</div>
-        ) : null}
-        {erroCarregamento ? (
-          <div className="px-4 py-3 text-sm text-red-700 bg-red-50 border-b border-red-200">{erroCarregamento}</div>
-        ) : null}
-        <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
-          <h2 className="text-base font-semibold text-slate-800">Usuários do sistema</h2>
-          <p className="mt-1 text-xs text-slate-600">
-            O primeiro usuário (master) permanece sempre ativo. Use <strong>Acrescentar usuário</strong> na seção de
-            usuários adicionais para incluir quantos precisar — não há limite. Nos slots fixos da agenda, use{' '}
-            <strong>Incluir</strong> e preencha <strong>Dados</strong> (pessoa, apelido, login). Usuários fora dos slots
-            aceitam nomes personalizados para gerar o id.
-          </p>
-        </div>
-
-        <div className="p-4">
-          <div className="space-y-4 max-w-4xl">
-            {primeira ? (
-              <div className="space-y-2">
-                <label className="text-xs font-medium text-slate-600">Usuário master / base (sempre ativo)</label>
-                {linhaUsuario(primeira, {
-                  ativo: true,
-                  mostrarIncluirExcluir: false,
-                  ocultarExcluir: true,
-                })}
+        {featureFlags.useApiUsuarios ? (
+          <>
+            {erroCarregamento ? (
+              <div className="px-4 py-3 text-sm text-red-700 bg-red-50 border-b border-red-200">
+                {erroCarregamento}
               </div>
             ) : null}
-
-            {resto.map((ag) => {
-              const ativo = slotAgendaTemUsuarioPersistido(ag);
-              return linhaUsuario(ag, { ativo, mostrarIncluirExcluir: true });
-            })}
-
-            <div className="space-y-2">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
-                <p className="text-xs font-medium text-slate-600 pt-0.5">
-                  Usuários adicionais (fora dos slots fixos da agenda)
-                </p>
-                <button
-                  type="button"
-                  onClick={() => adicionarLinhaUsuarioExtra()}
-                  className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-900 hover:bg-indigo-100"
-                >
-                  <UserPlus className="h-4 w-4 shrink-0" aria-hidden />
-                  Acrescentar usuário
-                </button>
+            <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+              <h2 className="text-base font-semibold text-slate-800">Usuários do sistema</h2>
+              <p className="mt-1 text-xs text-slate-600">
+                Listagem paginada (mesmo padrão do relatório de pessoas). A agenda e pendências continuam usando o espelho
+                completo de usuários ativos carregado em segundo plano.
+              </p>
+            </div>
+            <div className="p-4">
+              <UsuariosListaApiPaginada
+                refreshKey={listaUsuariosApiRefreshTick}
+                onAposMutacao={recarregarUsuariosApi}
+                onAbrirDados={setDadosModalUsuario}
+                onAbrirPermissoes={setPermModalUsuario}
+                onNovoUsuario={() =>
+                  abrirModalIncluir({ id: `novo-${Date.now()}`, nome: 'Novo usuário' })
+                }
+              />
+            </div>
+          </>
+        ) : (
+          <>
+            {loading ? (
+              <div className="px-4 py-3 text-sm text-slate-600 border-b border-slate-200">
+                Carregando usuários...
               </div>
-              {slotsCustom.length === 0 ? (
-                <p className="text-xs text-slate-500">
-                  Nenhum campo em aberto. Use <strong>Acrescentar usuário</strong> para incluir um novo cadastro.
-                </p>
-              ) : null}
-              <div className="max-h-[min(50vh,22rem)] overflow-y-auto overflow-x-hidden pr-1 space-y-4 [scrollbar-gutter:stable]">
-                {slotsCustom.map((row) => {
-                  const val = row.nome;
-                  const idSlot = normalizarNomeParaId(val);
-                  const agSlot = idSlot && val.trim() ? { id: idSlot, nome: String(val).trim() } : null;
-                  const ativo = agSlot ? slotAgendaTemUsuarioPersistido(agSlot) : false;
-                  const uSlot = agSlot ? usuarioMesclado(agSlot) : null;
-                  return (
-                    <div key={row.id} className="space-y-2">
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                        <input
-                          type="text"
-                          value={val}
-                          onChange={(e) => {
-                            const v = e.target.value;
-                            setSlotsCustom((prev) =>
-                              prev.map((r) => (r.id === row.id ? { ...r, nome: v } : r))
-                            );
-                          }}
-                          className="min-w-0 flex-1 rounded border border-slate-300 px-3 py-2 text-sm"
-                          placeholder="Nome para gerar o id do usuário (ex.: Novo estagiário)"
-                        />
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (!val.trim()) return;
-                              if (!idSlot) return;
-                              if (ativo) return;
-                              abrirModalIncluir(
-                                { id: idSlot, nome: String(val || '').trim() },
-                                { clearSlotId: row.id }
-                              );
-                            }}
-                            disabled={!val.trim() || !!ativo}
-                            className="rounded border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-50"
-                          >
-                            Incluir
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (ativo && idSlot) excluirUsuario(idSlot);
-                              setSlotsCustom((prev) => prev.filter((r) => r.id !== row.id));
-                            }}
-                            className="rounded border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50"
-                          >
-                            Excluir linha
-                          </button>
-                        </div>
-                      </div>
-                      {uSlot && ativo ? (
-                        <div className="pl-0 sm:pl-0">
-                          {linhaUsuario(agSlot, { ativo: true, mostrarIncluirExcluir: false })}
-                        </div>
-                      ) : null}
-                    </div>
-                  );
+            ) : null}
+            {erroCarregamento ? (
+              <div className="px-4 py-3 text-sm text-red-700 bg-red-50 border-b border-red-200">
+                {erroCarregamento}
+              </div>
+            ) : null}
+            <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+              <h2 className="text-base font-semibold text-slate-800">Usuários do sistema</h2>
+              <p className="mt-1 text-xs text-slate-600">
+                O primeiro usuário (master) permanece sempre ativo. Use <strong>Acrescentar usuário</strong> na seção de
+                usuários adicionais para incluir quantos precisar — não há limite. Nos slots fixos da agenda, use{' '}
+                <strong>Incluir</strong> e preencha <strong>Dados</strong> (pessoa, apelido, login). Usuários fora dos
+                slots aceitam nomes personalizados para gerar o id.
+              </p>
+            </div>
+
+            <div className="p-4">
+              <div className="space-y-4 max-w-4xl">
+                {primeira ? (
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium text-slate-600">
+                      Usuário master / base (sempre ativo)
+                    </label>
+                    {linhaUsuario(primeira, {
+                      ativo: true,
+                      mostrarIncluirExcluir: false,
+                      ocultarExcluir: true,
+                    })}
+                  </div>
+                ) : null}
+
+                {resto.map((ag) => {
+                  const ativo = slotAgendaTemUsuarioPersistido(ag);
+                  return linhaUsuario(ag, { ativo, mostrarIncluirExcluir: true });
                 })}
+
+                <div className="space-y-2">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+                    <p className="text-xs font-medium text-slate-600 pt-0.5">
+                      Usuários adicionais (fora dos slots fixos da agenda)
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => adicionarLinhaUsuarioExtra()}
+                      className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-900 hover:bg-indigo-100"
+                    >
+                      <UserPlus className="h-4 w-4 shrink-0" aria-hidden />
+                      Acrescentar usuário
+                    </button>
+                  </div>
+                  {slotsCustom.length === 0 ? (
+                    <p className="text-xs text-slate-500">
+                      Nenhum campo em aberto. Use <strong>Acrescentar usuário</strong> para incluir um novo cadastro.
+                    </p>
+                  ) : null}
+                  <div className="max-h-[min(50vh,22rem)] overflow-y-auto overflow-x-hidden pr-1 space-y-4 [scrollbar-gutter:stable]">
+                    {slotsCustom.map((row) => {
+                      const val = row.nome;
+                      const idSlot = normalizarNomeParaId(val);
+                      const agSlot = idSlot && val.trim() ? { id: idSlot, nome: String(val).trim() } : null;
+                      const ativo = agSlot ? slotAgendaTemUsuarioPersistido(agSlot) : false;
+                      const uSlot = agSlot ? usuarioMesclado(agSlot) : null;
+                      return (
+                        <div key={row.id} className="space-y-2">
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                            <input
+                              type="text"
+                              value={val}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                setSlotsCustom((prev) =>
+                                  prev.map((r) => (r.id === row.id ? { ...r, nome: v } : r))
+                                );
+                              }}
+                              className="min-w-0 flex-1 rounded border border-slate-300 px-3 py-2 text-sm"
+                              placeholder="Nome para gerar o id do usuário (ex.: Novo estagiário)"
+                            />
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (!val.trim()) return;
+                                  if (!idSlot) return;
+                                  if (ativo) return;
+                                  abrirModalIncluir(
+                                    { id: idSlot, nome: String(val || '').trim() },
+                                    { clearSlotId: row.id }
+                                  );
+                                }}
+                                disabled={!val.trim() || !!ativo}
+                                className="rounded border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-50"
+                              >
+                                Incluir
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (ativo && idSlot) excluirUsuario(idSlot);
+                                  setSlotsCustom((prev) => prev.filter((r) => r.id !== row.id));
+                                }}
+                                className="rounded border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50"
+                              >
+                                Excluir linha
+                              </button>
+                            </div>
+                          </div>
+                          {uSlot && ativo ? (
+                            <div className="pl-0 sm:pl-0">
+                              {linhaUsuario(agSlot, { ativo: true, mostrarIncluirExcluir: false })}
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
-        </div>
 
-        <div className="border-t border-slate-200 bg-slate-50 px-4 py-3">
-          <p className="text-xs font-medium text-slate-700 mb-2">Usuários ativos no momento</p>
-          <div className="relative mb-2">
-            <Search
-              className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400"
-              aria-hidden
-            />
-            <input
-              type="search"
-              value={buscaUsuariosAtivos}
-              onChange={(e) => setBuscaUsuariosAtivos(e.target.value)}
-              placeholder="Buscar por nome, apelido, id ou login…"
-              className="w-full rounded border border-slate-300 bg-white py-1.5 pl-8 pr-3 text-xs text-slate-800 placeholder:text-slate-400"
-              aria-label="Buscar entre usuários ativos"
-            />
-          </div>
-          <div className="max-h-[min(40vh,16rem)] overflow-y-auto overflow-x-hidden rounded border border-slate-200 bg-white [scrollbar-gutter:stable]">
-            {(usuariosAtivos || []).length === 0 ? (
-              <p className="px-3 py-2 text-xs text-slate-500">—</p>
-            ) : usuariosAtivosFiltrados.length === 0 ? (
-              <p className="px-3 py-2 text-xs text-slate-500">Nenhum usuário corresponde à busca.</p>
-            ) : (
-              <ul className="divide-y divide-slate-100">
-                {usuariosAtivosFiltrados.map((u) => (
-                  <li key={String(u.id)} className="px-3 py-2 text-xs text-slate-700">
-                    <span className="font-medium text-slate-800">{getNomeExibicaoUsuario(u)}</span>
-                    <span className="text-slate-500 font-mono"> · id: {u.id}</span>
-                    {u.login ? (
-                      <span className="block text-slate-500 mt-0.5">
-                        login: <span className="font-mono text-slate-600">{u.login}</span>
-                      </span>
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </div>
+            <div className="border-t border-slate-200 bg-slate-50 px-4 py-3">
+              <p className="text-xs font-medium text-slate-700 mb-2">Usuários ativos no momento</p>
+              <div className="relative mb-2">
+                <Search
+                  className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400"
+                  aria-hidden
+                />
+                <input
+                  type="search"
+                  value={buscaUsuariosAtivos}
+                  onChange={(e) => setBuscaUsuariosAtivos(e.target.value)}
+                  placeholder="Buscar por nome, apelido, id ou login…"
+                  className="w-full rounded border border-slate-300 bg-white py-1.5 pl-8 pr-3 text-xs text-slate-800 placeholder:text-slate-400"
+                  aria-label="Buscar entre usuários ativos"
+                />
+              </div>
+              <div className="max-h-[min(40vh,16rem)] overflow-y-auto overflow-x-hidden rounded border border-slate-200 bg-white [scrollbar-gutter:stable]">
+                {(usuariosAtivos || []).length === 0 ? (
+                  <p className="px-3 py-2 text-xs text-slate-500">—</p>
+                ) : usuariosAtivosFiltrados.length === 0 ? (
+                  <p className="px-3 py-2 text-xs text-slate-500">Nenhum usuário corresponde à busca.</p>
+                ) : (
+                  <ul className="divide-y divide-slate-100">
+                    {usuariosAtivosFiltrados.map((u) => (
+                      <li key={String(u.id)} className="px-3 py-2 text-xs text-slate-700">
+                        <span className="font-medium text-slate-800">{getNomeExibicaoUsuario(u)}</span>
+                        <span className="text-slate-500 font-mono"> · id: {u.id}</span>
+                        {u.login ? (
+                          <span className="block text-slate-500 mt-0.5">
+                            login: <span className="font-mono text-slate-600">{u.login}</span>
+                          </span>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       <ModalPermissoesUsuario
