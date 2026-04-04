@@ -1,7 +1,6 @@
 SET @senha_123456 = '$2a$10$m2m366PkPAQeHNB4o3uQQ.An0s/NcT097ZikNcRCJXOnFPs2caK.m';
 
 INSERT INTO usuarios (pessoa_id, nome, apelido, login, senha_hash, ativo) VALUES
-(9, 'Teste de usuário 9', NULL, 'teste9', @senha_123456, TRUE),
 (10, 'Teste de usuário 10', NULL, 'teste10', @senha_123456, TRUE),
 (11, 'Teste de usuário 11', NULL, 'teste11', @senha_123456, TRUE),
 (12, 'Teste de usuário 12', NULL, 'teste12', @senha_123456, TRUE),
@@ -105,7 +104,6 @@ INSERT INTO usuarios (pessoa_id, nome, apelido, login, senha_hash, ativo) VALUES
 SET @u0 = LAST_INSERT_ID();
 
 INSERT INTO usuario_perfil (usuario_id, perfil_id) VALUES
-(@u0 + 0, 1),
 (@u0 + 1, 2),
 (@u0 + 2, 1),
 (@u0 + 2, 2),
