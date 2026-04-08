@@ -43,7 +43,7 @@ docker compose up --build
 Serviços disponíveis:
 
 - Frontend: `http://localhost:5173`
-- Backend: `http://localhost:8080`
+- Backend: `http://localhost:8081`
 - Banco MySQL: `localhost:3307` (`root` / `root`)
 
 Para parar os containers:

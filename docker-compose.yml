@@ -29,7 +29,7 @@ services:
       SPRING_DATASOURCE_PASSWORD: root
       JWT_SECRET: dev-secret-change-me-min-32-chars-long!!
     ports:
-      - "8080:8080"
+      - "8081:8080"
     depends_on:
       db:
         condition: service_healthy
