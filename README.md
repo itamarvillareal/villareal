@@ -44,7 +44,7 @@ Serviços disponíveis:
 
 - Frontend: `http://localhost:5173`
 - Backend: `http://localhost:8080`
-- Banco MySQL: `localhost:3306` (`root` / `root`)
+- Banco MySQL: `localhost:3307` (`root` / `root`)
 
 Para parar os containers:
 
