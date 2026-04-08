@@ -5,7 +5,7 @@ COPY package*.json ./
 RUN npm ci
 
 COPY . .
-RUN npm run build
+RUN VITE_SKIP_API_AUTH=false VITE_REQUIRE_API_AUTH=true npm run build
 
 FROM nginx:1.27-alpine
 WORKDIR /usr/share/nginx/html
