@@ -32,6 +32,26 @@ Edite os arquivos em `e-vilareal-react-web/src/data/` diretamente.
 
 O backend não é necessário para a execução do frontend com mocks.
 
+## Rodar tudo com Docker
+
+Na raiz do repositório:
+
+```bash
+docker compose up --build
+```
+
+Serviços disponíveis:
+
+- Frontend: `http://localhost:5173`
+- Backend: `http://localhost:8080`
+- Banco MySQL: `localhost:3306` (`root` / `root`)
+
+Para parar os containers:
+
+```bash
+docker compose down
+```
+
 ## Observação sobre índices monetários
 
 O cálculo de atualização monetária busca índices mensais via APIs públicas (por exemplo, Banco Central do Brasil) para algumas opções. Isso não depende do backend Java.

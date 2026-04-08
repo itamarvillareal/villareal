@@ -1,0 +1,12 @@
+.git
+.gitignore
+.idea
+.vscode
+node_modules
+dist
+coverage
+docs
+README.md
+e2e
+tmp_ipca_e.zip
+tmp_ipca_e_zip
