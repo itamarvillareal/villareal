@@ -209,6 +209,17 @@ export async function listarProcessosPorCodigoCliente(codigoCliente) {
   return Array.isArray(lista) ? lista : [];
 }
 
+/** Busca global pelo nº interno do processo (ex.: tela Clientes — vários clientes podem ter o mesmo nº). */
+export async function listarProcessosPorNumeroInterno(numeroInterno) {
+  if (!featureFlags.useApiProcessos) return [];
+  const n = Math.floor(Number(numeroInterno));
+  if (!Number.isFinite(n) || n < 0) return [];
+  const lista = await request('/api/processos/por-numero-interno', {
+    query: { numeroInterno: String(n) },
+  });
+  return Array.isArray(lista) ? lista : [];
+}
+
 /**
  * Diagnósticos «Busca pessoa»: processos em que a pessoa é cliente do processo, parte ou advogado(a).
  * Mesmo shape que {@code listarProcessosPorIdPessoa} no histórico local.

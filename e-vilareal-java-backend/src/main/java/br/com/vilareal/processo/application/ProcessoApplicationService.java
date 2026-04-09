@@ -203,6 +203,32 @@ public class ProcessoApplicationService {
     }
 
     @Transactional(readOnly = true)
+    public List<ProcessoResponse> listarPorNumeroInterno(int numeroInterno) {
+        if (numeroInterno < 0) {
+            return List.of();
+        }
+        List<ProcessoEntity> lista = processoRepository.findByNumeroInternoOrderByIdAsc(numeroInterno);
+        if (lista.isEmpty()) {
+            return List.of();
+        }
+        List<Long> procIds = lista.stream().map(ProcessoEntity::getId).collect(Collectors.toList());
+        Map<Long, List<ProcessoParteEntity>> partesPorProcesso = new LinkedHashMap<>();
+        for (ProcessoParteEntity parte :
+                parteRepository.findAllByProcessoIdInWithPessoaEProcesso(procIds)) {
+            Long pid = parte.getProcesso().getId();
+            partesPorProcesso.computeIfAbsent(pid, k -> new ArrayList<>()).add(parte);
+        }
+        return lista.stream()
+                .map(e -> {
+                    ProcessoResponse r = toResponse(e);
+                    r.setParteOposta(montarTextoParteOpostaListagem(
+                            partesPorProcesso.getOrDefault(e.getId(), List.of())));
+                    return r;
+                })
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
     public List<ProcessoDiagnosticoPessoaItemResponse> listarVinculosDiagnosticoPorPessoa(Long pessoaId) {
         if (pessoaId == null || pessoaId < 1 || !pessoaRepository.existsById(pessoaId)) {
             return List.of();

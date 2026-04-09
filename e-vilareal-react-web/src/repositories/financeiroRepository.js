@@ -4,9 +4,13 @@ import { featureFlags } from '../config/featureFlags.js';
 import {
   buildContaToLetraMerge,
   buildLetraToContaMerge,
+  buildNumeroToNomeBancoMap,
   getExtratosIniciais,
   loadPersistedContasContabeisExtrasFinanceiro,
+  loadPersistedContasExtrasFinanceiro,
   loadPersistedExtratosFinanceiro,
+  normalizarCodigoClienteFinanceiro,
+  normalizarProcFinanceiro,
   savePersistedExtratosFinanceiro,
 } from '../data/financeiroData.js';
 import { resolverProcessoId } from './processosRepository.js';
@@ -34,6 +38,61 @@ function contaMaps() {
   };
 }
 
+function nomeBancoChaveExtrato(l, numeroToNome) {
+  const nome = String(l.bancoNome ?? '').trim();
+  if (nome) return nome;
+  const n = Number(l.numeroBanco);
+  if (Number.isFinite(n) && numeroToNome[n]) return numeroToNome[n];
+  return 'API';
+}
+
+function lancamentoPertenceAoBancoExtrato(l, normBanco, numeroToNome) {
+  const nome = String(l.bancoNome ?? '').trim();
+  if (nome && nome === normBanco) return true;
+  const n = Number(l.numeroBanco);
+  if (Number.isFinite(n) && numeroToNome[n] === normBanco) return true;
+  return false;
+}
+
+function codClienteExibicaoDesdeApi(l) {
+  const raw = l.codigoCliente != null ? String(l.codigoCliente).trim() : '';
+  if (raw === '') return '';
+  const digits = raw.replace(/\D/g, '');
+  const n = Number(digits);
+  return normalizarCodigoClienteFinanceiro(Number.isFinite(n) && n >= 1 ? n : '');
+}
+
+function procExibicaoDesdeApi(l) {
+  const ni = l.numeroInternoProcesso ?? l.numero_interno_processo;
+  if (ni == null || ni === '') return '';
+  return normalizarProcFinanceiro(ni) || '';
+}
+
+/**
+ * Após POST/PUT: mantém `codCliente`/`proc` como exibição (API) e não só ids em `_financeiroMeta`.
+ */
+export function mergeUiLancamentoComRespostaApi(row, saved) {
+  if (!saved || saved.id == null) return row;
+  const codApi = codClienteExibicaoDesdeApi(saved);
+  const procApi = procExibicaoDesdeApi(saved);
+  return {
+    ...row,
+    apiId: Number(saved.id),
+    codCliente: codApi !== '' ? codApi : String(row.codCliente ?? '').trim(),
+    proc: procApi !== '' ? procApi : String(row.proc ?? '').trim(),
+    numeroBanco: saved.numeroBanco ?? row.numeroBanco ?? null,
+    _financeiroMeta: {
+      ...(row._financeiroMeta || {}),
+      clienteId: saved.clienteId ?? row._financeiroMeta?.clienteId ?? null,
+      processoId: saved.processoId ?? row._financeiroMeta?.processoId ?? null,
+      contaContabilId: saved.contaContabilId ?? row._financeiroMeta?.contaContabilId ?? null,
+      classificacaoFinanceiraId:
+        saved.classificacaoFinanceiraId ?? row._financeiroMeta?.classificacaoFinanceiraId ?? null,
+      eloFinanceiroId: saved.eloFinanceiroId ?? row._financeiroMeta?.eloFinanceiroId ?? null,
+    },
+  };
+}
+
 function mapApiLancamentoToUi(l, contaToLetra) {
   const letra = contaToLetra[l.contaContabilNome] || 'N';
   const valorNum = Number(l.valor ?? 0);
@@ -50,9 +109,9 @@ function mapApiLancamentoToUi(l, contaToLetra) {
     descricaoDetalhada: String(l.descricaoDetalhada ?? ''),
     categoria: String(l.descricaoDetalhada ?? ''),
     clienteId: l.clienteId ?? null,
-    codCliente: l.clienteId ? String(l.clienteId) : '',
+    codCliente: codClienteExibicaoDesdeApi(l),
     processoId: l.processoId ?? null,
-    proc: l.processoId ? String(l.processoId) : '',
+    proc: procExibicaoDesdeApi(l),
     ref: String(l.refTipo || 'N').toUpperCase() === 'R' ? 'R' : 'N',
     dimensao: String(l.eqReferencia ?? ''),
     eq: String(l.eqReferencia ?? ''),
@@ -79,10 +138,13 @@ function mapUiLancamentoToApi(t, contaIdByNome, letraToConta) {
   if (!contaContabilId) return null;
   const valorNum = Number(t.valor ?? 0);
   const natureza = valorNum < 0 ? 'DEBITO' : 'CREDITO';
-  return {
+  const meta = t._financeiroMeta || {};
+  const cf = meta.classificacaoFinanceiraId;
+  const elo = meta.eloFinanceiroId;
+  const body = {
     contaContabilId,
-    clienteId: Number(t._financeiroMeta?.clienteId) || null,
-    processoId: Number(t._financeiroMeta?.processoId) || null,
+    clienteId: Number(meta.clienteId) || null,
+    processoId: Number(meta.processoId) || null,
     bancoNome: t.nomeBanco || null,
     numeroBanco: Number.isFinite(Number(t.numeroBanco)) ? Number(t.numeroBanco) : null,
     numeroLancamento: String(t.numero ?? ''),
@@ -98,6 +160,11 @@ function mapUiLancamentoToApi(t, contaIdByNome, letraToConta) {
     origem: String(t.origemImportacao ?? '').trim() || 'MANUAL',
     status: 'ATIVO',
   };
+  const cfN = Number(cf);
+  if (cf != null && Number.isFinite(cfN) && cfN > 0) body.classificacaoFinanceiraId = cfN;
+  const eloN = Number(elo);
+  if (elo != null && Number.isFinite(eloN) && eloN > 0) body.eloFinanceiroId = eloN;
+  return body;
 }
 
 export async function listarContasFinanceiro() {
@@ -146,9 +213,10 @@ export async function carregarExtratosFinanceiroApiFirst() {
     ...contaMaps().contaToLetra,
     ...Object.fromEntries((contas || []).map((c) => [c.nome, c.codigo])),
   };
+  const numeroToNome = buildNumeroToNomeBancoMap(loadPersistedContasExtrasFinanceiro());
   const out = {};
   for (const l of lancs || []) {
-    const banco = String(l.bancoNome || 'API');
+    const banco = nomeBancoChaveExtrato(l, numeroToNome);
     if (!Array.isArray(out[banco])) out[banco] = [];
     out[banco].push(mapApiLancamentoToUi(l, contaToLetra));
   }
@@ -190,7 +258,8 @@ export async function persistirImportacaoOfxFinanceiroApi({
   if (modo === 'substituir') {
     try {
       const todos = await listarLancamentosFinanceiro();
-      const doBanco = (todos || []).filter((l) => String(l.bancoNome || '').trim() === normBanco);
+      const numeroToNome = buildNumeroToNomeBancoMap(loadPersistedContasExtrasFinanceiro());
+      const doBanco = (todos || []).filter((l) => lancamentoPertenceAoBancoExtrato(l, normBanco, numeroToNome));
       for (const l of doBanco) {
         try {
           await removerLancamentoFinanceiroApi(l.id);
@@ -263,7 +332,7 @@ export async function listarLancamentosProcessoApiFirst({ processoId, codigoClie
   return (rows || []).map((l) => mapApiLancamentoToUi(l, contaToLetra));
 }
 
+/** Cache local dos extratos: com API ativa continua útil para 1ª pintura e se o GET falhar ou atrasar. */
 export function persistirFallbackExtratos(extratos) {
-  if (featureFlags.useApiFinanceiro) return;
   savePersistedExtratosFinanceiro(extratos);
 }

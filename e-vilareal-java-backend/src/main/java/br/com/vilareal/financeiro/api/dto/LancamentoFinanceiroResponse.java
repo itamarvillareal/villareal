@@ -16,6 +16,10 @@ public class LancamentoFinanceiroResponse {
     private String contaContabilNome;
     private Long clienteId;
     private Long processoId;
+    /** Código do cliente (8 dígitos), derivado da pessoa — para exibição no extrato (não confundir com {@link #clienteId}). */
+    private String codigoCliente;
+    /** Nº interno do processo no cadastro do cliente — para exibição no extrato (não confundir com {@link #processoId}). */
+    private Integer numeroInternoProcesso;
     private String bancoNome;
     private Integer numeroBanco;
     private String numeroLancamento;

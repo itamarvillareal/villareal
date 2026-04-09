@@ -43,6 +43,9 @@ import {
   Calculator,
   ChevronUp,
   ChevronDown,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpDown,
   Search,
   Newspaper,
   ListTodo,
@@ -1051,11 +1054,17 @@ export function Processos() {
     return sorted;
   }
 
-  function handleDuploCliqueTituloContaCorrente(col) {
-    setSortContaCorrente((prev) => ({
-      col,
-      dir: prev.col === col ? (prev.dir === 'asc' ? 'desc' : 'asc') : (col === 'data' ? 'asc' : 'asc'),
-    }));
+  /** Ordenação da tabela Conta Corrente: 1.º clique asc, 2.º desc, 3.º volta ao padrão (data mais recente primeiro). */
+  function handleClicTituloOrdenacaoContaCorrente(col) {
+    setSortContaCorrente((prev) => {
+      if (prev.col !== col) {
+        return { col, dir: 'asc' };
+      }
+      if (prev.dir === 'asc') {
+        return { col, dir: 'desc' };
+      }
+      return { col: 'data', dir: 'desc' };
+    });
   }
 
   function normalizarTextoBusca(s) {
@@ -3276,14 +3285,24 @@ export function Processos() {
                     ) : (
                       <ul className="space-y-2">
                         {linhasModalPartes.map((linha) => {
-                          const nomeP = pessoasPorId.get(linha.pessoaId)?.nome || `Pessoa #${linha.pessoaId}`;
+                          const pessoaLinha = pessoasPorId.get(linha.pessoaId);
+                          const nomeP = pessoaLinha?.nome || `Pessoa #${linha.pessoaId}`;
+                          const codigoPessoa =
+                            pessoaLinha?.id != null && Number.isFinite(Number(pessoaLinha.id))
+                              ? Number(pessoaLinha.id)
+                              : linha.pessoaId;
                           return (
                             <li
                               key={linha.pessoaId}
                               className="text-xs border border-slate-100 rounded p-2 bg-slate-50/80"
                             >
                               <div className="flex items-start justify-between gap-2">
-                                <span className="font-medium text-slate-800">{nomeP}</span>
+                                <span className="font-medium text-slate-800 min-w-0">
+                                  <span className="text-slate-500 font-normal tabular-nums mr-2 shrink-0">
+                                    Cód. {codigoPessoa}
+                                  </span>
+                                  <span className="align-middle">{nomeP}</span>
+                                </span>
                                 <button
                                   type="button"
                                   className="shrink-0 text-red-600 hover:underline"
@@ -3365,20 +3384,18 @@ export function Processos() {
       {modalContaCorrente && (() => {
         const processoContaCorrenteEfetivo = contaCorrenteModo === 'proc0' ? 0 : processo;
         const base = getLancamentosContaCorrente(codigoCliente, processoContaCorrenteEfetivo);
-        const { lancamentos, soma } = mergeContaCorrenteComLinhaOrigem(
+        const { lancamentos } = mergeContaCorrenteComLinhaOrigem(
           base.lancamentos,
           base.soma,
           linhaOrigemContaCorrente,
           codigoCliente,
           processoContaCorrenteEfetivo
         );
-        const somaApi = featureFlags.useApiFinanceiro && Number(processoApiId)
-          ? Number(resumoContaCorrenteApi?.saldo ?? soma)
-          : soma;
-        const somaFormatada = formatValorContaCorrente(somaApi);
         const listaBase = lancamentos.map((l, idx) => ({ ...l, numero: l.numero ?? (idx + 1) }));
         const listaFiltrada = filtrarLancamentosContaCorrente(listaBase, buscaContaCorrente.campo, buscaContaCorrente.termo);
+        const somaDasLinhasExibidas = listaFiltrada.reduce((s, l) => s + (Number(l.valor) || 0), 0);
         const listaOrdenada = ordenarLancamentosContaCorrente(listaFiltrada, sortContaCorrente.col, sortContaCorrente.dir);
+        const somaFormatada = formatValorContaCorrente(somaDasLinhasExibidas);
         return (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
@@ -3407,7 +3424,9 @@ export function Processos() {
             <p className="text-xs text-slate-600 px-4 py-2 border-b border-slate-200 bg-emerald-50/50 shrink-0">
               Origem: lançamentos dos <strong>extratos bancários</strong> no Financeiro com os mesmos{' '}
               <strong>Cod. Cliente</strong> e <strong>Proc.</strong> deste processo (inclui qualquer letra contábil, ex.: A, N),
-              como após vincular pelo número do processo ou editar o extrato.
+              como após vincular pelo número do processo ou editar o extrato.{' '}
+              <strong>Clique no cabeçalho</strong> de uma coluna para ordenar (ascendente → descendente → volta à ordem por data
+              mais recente). Duplo clique numa <strong>linha</strong> continua abrindo o lançamento no Financeiro.
             </p>
             <div className="flex-1 min-h-0 flex flex-col p-4">
               <div className="flex gap-4 flex-1 min-h-0">
@@ -3450,17 +3469,52 @@ export function Processos() {
                     </button>
                     <span className="text-xs text-slate-500 ml-auto">
                       {listaOrdenada.length} itens
+                      <span className="text-cyan-700 ml-1">
+                        · ordem:{' '}
+                        {sortContaCorrente.col === 'data' && sortContaCorrente.dir === 'desc'
+                          ? 'data (mais recente)'
+                          : `${sortContaCorrente.col} (${sortContaCorrente.dir === 'asc' ? 'crescente' : 'decrescente'})`}
+                      </span>
                     </span>
                   </div>
                   <table className="w-full text-sm border-collapse">
                     <thead>
                       <tr className="bg-slate-100">
-                        <th className="border border-slate-300 px-2 py-1.5 text-left font-semibold text-slate-700 w-24 cursor-pointer hover:bg-slate-200 select-none" onDoubleClick={() => handleDuploCliqueTituloContaCorrente('data')} title="Duplo clique: ordenar">Data</th>
-                        <th className="border border-slate-300 px-2 py-1.5 text-left font-semibold text-slate-700 min-w-[180px] cursor-pointer hover:bg-slate-200 select-none" onDoubleClick={() => handleDuploCliqueTituloContaCorrente('descricao')} title="Duplo clique: ordenar">Descrição</th>
-                        <th className="border border-slate-300 px-2 py-1.5 text-left font-semibold text-slate-700 w-24 cursor-pointer hover:bg-slate-200 select-none" onDoubleClick={() => handleDuploCliqueTituloContaCorrente('dataOuId')} title="Duplo clique: ordenar">Proc.</th>
-                        <th className="border border-slate-300 px-2 py-1.5 text-right font-semibold text-slate-700 w-28 cursor-pointer hover:bg-slate-200 select-none" onDoubleClick={() => handleDuploCliqueTituloContaCorrente('valor')} title="Duplo clique: ordenar">Valor</th>
-                        <th className="border border-slate-300 px-2 py-1.5 text-left font-semibold text-slate-700 min-w-[120px] cursor-pointer hover:bg-slate-200 select-none" onDoubleClick={() => handleDuploCliqueTituloContaCorrente('nome')} title="Duplo clique: ordenar">Nome</th>
-                        <th className="border border-slate-300 px-2 py-1.5 text-center font-semibold text-slate-700 w-12 cursor-pointer hover:bg-slate-200 select-none" onDoubleClick={() => handleDuploCliqueTituloContaCorrente('numero')} title="Duplo clique: ordenar">Nº</th>
+                        {[
+                          { key: 'data', label: 'Data', w: 'w-24', align: 'text-left' },
+                          { key: 'descricao', label: 'Descrição', w: 'min-w-[180px]', align: 'text-left' },
+                          { key: 'dataOuId', label: 'Proc.', w: 'w-24', align: 'text-left' },
+                          { key: 'valor', label: 'Valor', w: 'w-28', align: 'text-right' },
+                          { key: 'nome', label: 'Nome', w: 'min-w-[120px]', align: 'text-left' },
+                          { key: 'numero', label: 'Nº', w: 'w-12', align: 'text-center' },
+                        ].map((h) => {
+                          const ativo = sortContaCorrente.col === h.key;
+                          return (
+                            <th
+                              key={h.key}
+                              scope="col"
+                              className={`border border-slate-300 px-0 py-0 font-semibold text-slate-700 ${h.w} ${h.align}`}
+                            >
+                              <button
+                                type="button"
+                                className={`flex w-full min-w-0 items-center gap-1 px-2 py-1.5 hover:bg-slate-200/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50 ${h.align === 'text-right' ? 'justify-end' : h.align === 'text-center' ? 'justify-center' : 'justify-start'}`}
+                                onClick={() => handleClicTituloOrdenacaoContaCorrente(h.key)}
+                                title="Clique para ordenar (asc → desc → volta à ordem por data recente)"
+                              >
+                                <span>{h.label}</span>
+                                <span className="inline-flex shrink-0 text-cyan-600">
+                                  {!ativo ? (
+                                    <ArrowUpDown className="w-3.5 h-3.5 opacity-50" aria-hidden />
+                                  ) : sortContaCorrente.dir === 'asc' ? (
+                                    <ArrowUp className="w-3.5 h-3.5" aria-hidden />
+                                  ) : (
+                                    <ArrowDown className="w-3.5 h-3.5" aria-hidden />
+                                  )}
+                                </span>
+                              </button>
+                            </th>
+                          );
+                        })}
                       </tr>
                     </thead>
                     <tbody>

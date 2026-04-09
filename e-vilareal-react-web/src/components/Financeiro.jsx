@@ -48,7 +48,13 @@ import {
   parseRodadaKeyParaDisplay,
 } from '../data/buscaParcelamentoFinanceiro';
 import { buildRouterStateChaveClienteProcesso } from '../domain/camposProcessoCliente.js';
-import { parseOfxToExtrato, mergeExtratoBancario, contarLancamentosNovos, chaveDedupeLancamento } from '../utils/ofx';
+import {
+  parseOfxToExtrato,
+  mergeExtratoBancario,
+  mergeExtratoApiComLocal,
+  contarLancamentosNovos,
+  chaveDedupeLancamento,
+} from '../utils/ofx';
 import { OFX_ITAU_REAL_EXEMPLO, OFX_CORA_REAL_EXEMPLO } from '../data/ofxItauCoraReal';
 import { CheckSquare, ChevronLeft, ChevronRight, Link2, Settings, Trash2, Unlink } from 'lucide-react';
 import { ModalVinculoClienteProcFinanceiro } from './ModalVinculoClienteProcFinanceiro.jsx';
@@ -56,6 +62,7 @@ import { buscarClientePorCodigo, buscarProcessoPorChaveNatural } from '../reposi
 import { featureFlags } from '../config/featureFlags.js';
 import {
   carregarExtratosFinanceiroApiFirst,
+  mergeUiLancamentoComRespostaApi,
   removerLancamentoFinanceiroApi,
   persistirFallbackExtratos,
   persistirImportacaoOfxFinanceiroApi,
@@ -106,21 +113,7 @@ function aplicarSavedPairsOfxNoEstado(prev, nomeBanco, savedPairs) {
     const k = chaveDedupeLancamento(row);
     const idx = arr.findIndex((t) => chaveDedupeLancamento(t) === k);
     if (idx < 0) continue;
-    arr[idx] = {
-      ...arr[idx],
-      apiId: saved.id,
-      nomeBanco: norm,
-      numeroBanco: saved.numeroBanco ?? arr[idx].numeroBanco ?? null,
-      _financeiroMeta: {
-        ...(arr[idx]._financeiroMeta || {}),
-        clienteId: saved.clienteId ?? arr[idx]._financeiroMeta?.clienteId ?? null,
-        processoId: saved.processoId ?? arr[idx]._financeiroMeta?.processoId ?? null,
-        contaContabilId: saved.contaContabilId ?? arr[idx]._financeiroMeta?.contaContabilId ?? null,
-        classificacaoFinanceiraId:
-          saved.classificacaoFinanceiraId ?? arr[idx]._financeiroMeta?.classificacaoFinanceiraId ?? null,
-        eloFinanceiroId: saved.eloFinanceiroId ?? arr[idx]._financeiroMeta?.eloFinanceiroId ?? null,
-      },
-    };
+    arr[idx] = mergeUiLancamentoComRespostaApi({ ...arr[idx], nomeBanco: norm }, saved);
   }
   return next;
 }
@@ -276,6 +269,63 @@ function limitesMesBr(ano, mes) {
     ini: `01/${pad2MesDia(mes)}/${ano}`,
     fim: `${pad2MesDia(last)}/${pad2MesDia(mes)}/${ano}`,
   };
+}
+
+/** Interpreta valor em formato BR (ex.: 1.234,56 ou -50) para número. */
+function parseValorExtratoBr(s) {
+  const cleaned = String(s ?? '')
+    .trim()
+    .replace(/R\$\s?/i, '')
+    .replace(/\./g, '')
+    .replace(',', '.')
+    .replace(/[^\d.-]/g, '');
+  if (cleaned === '' || cleaned === '-' || cleaned === '.') return null;
+  const n = Number(cleaned);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * @param {Array} lista
+ * @param {{ kind: 'todos' | 'lt0' | 'gt0' | 'exato', exatoCentavos: number | null }} filtro
+ */
+function filtrarExtratoPorValorFiltro(lista, filtro) {
+  if (!Array.isArray(lista)) return [];
+  if (!filtro || filtro.kind === 'todos') return lista;
+  if (filtro.kind === 'lt0') return lista.filter((t) => (Number(t.valor) || 0) < 0);
+  if (filtro.kind === 'gt0') return lista.filter((t) => (Number(t.valor) || 0) > 0);
+  if (filtro.kind === 'exato' && filtro.exatoCentavos != null) {
+    const c = filtro.exatoCentavos;
+    return lista.filter((t) => Math.round((Number(t.valor) || 0) * 100) === c);
+  }
+  return lista;
+}
+
+/** Filtro por substring na descrição do extrato (case-insensitive). */
+function filtrarExtratoPorTextoDescricao(lista, textoFiltro) {
+  if (!Array.isArray(lista)) return [];
+  const q = String(textoFiltro ?? '').trim().toLowerCase();
+  if (!q) return lista;
+  return lista.filter((t) => String(t.descricao ?? '').toLowerCase().includes(q));
+}
+
+/** Chave estável de linha do extrato bancário (número + data). */
+function extratoBancoRowKey(t) {
+  return `${t.numero}::${t.data}`;
+}
+
+/**
+ * Com lista em ordem cronológica crescente (padrão, `sortCol` nulo), o limite mostra os **últimos** N = mais recentes.
+ * Com ordenação por data decrescente, os N primeiros já são os mais recentes.
+ */
+function aplicarLimiteExtratoBancoMaisRecentes(lista, maxLinhas, sortCol, sortDir) {
+  const total = lista.length;
+  if (maxLinhas === 0 || total <= maxLinhas) return lista;
+  // `col` nulo = ordem original do merge (data crescente) — antes caía no slice(0) e mostrava janeiro em vez de abril
+  if (sortCol == null || sortCol === 'data') {
+    const recentFirst = sortDir === 'desc';
+    return recentFirst ? lista.slice(0, maxLinhas) : lista.slice(total - maxLinhas);
+  }
+  return lista.slice(0, maxLinhas);
 }
 
 /** Ordena lista de transações do extrato bancário por coluna e direção. */
@@ -501,6 +551,74 @@ export function Financeiro() {
   const [linhaConsolidadoAlvo, setLinhaConsolidadoAlvo] = useState(null);
   const [linhaBancoAlvo, setLinhaBancoAlvo] = useState(null);
   const [sortExtratoBanco, setSortExtratoBanco] = useState({ col: null, dir: 'asc' });
+  /** Filtro opcional da coluna Valor no extrato do banco (clique no cabeçalho). */
+  const [filtroValorExtrato, setFiltroValorExtrato] = useState({
+    kind: 'todos',
+    exatoCentavos: null,
+  });
+  const [menuFiltroValorExtratoAberto, setMenuFiltroValorExtratoAberto] = useState(false);
+  const [filtroValorExatoRascunho, setFiltroValorExatoRascunho] = useState('');
+  const menuFiltroValorExtratoRef = useRef(null);
+  const valorExtratoHeaderTimerRef = useRef(null);
+  /** Filtro por texto no cabeçalho Descrição do extrato do banco. */
+  const [filtroDescricaoExtrato, setFiltroDescricaoExtrato] = useState('');
+  const [menuFiltroDescricaoExtratoAberto, setMenuFiltroDescricaoExtratoAberto] = useState(false);
+  const [filtroDescricaoExtratoRascunho, setFiltroDescricaoExtratoRascunho] = useState('');
+  const menuFiltroDescricaoExtratoRef = useRef(null);
+  const descricaoExtratoHeaderTimerRef = useRef(null);
+  /** Linhas do extrato marcadas para alteração em lote (`extratoBancoRowKey`). */
+  const [extratoLinhasSelecionadas, setExtratoLinhasSelecionadas] = useState(() => new Set());
+  const [letraLoteExtrato, setLetraLoteExtrato] = useState('');
+  const extratoSelectAllHeaderRef = useRef(null);
+
+  useEffect(() => {
+    setFiltroValorExtrato({ kind: 'todos', exatoCentavos: null });
+    setFiltroValorExatoRascunho('');
+    setMenuFiltroValorExtratoAberto(false);
+    setFiltroDescricaoExtrato('');
+    setFiltroDescricaoExtratoRascunho('');
+    setMenuFiltroDescricaoExtratoAberto(false);
+    setExtratoLinhasSelecionadas(new Set());
+    setLetraLoteExtrato('');
+  }, [instituicaoSelecionada]);
+
+  useEffect(() => {
+    if (!menuFiltroValorExtratoAberto) return undefined;
+    const fn = (e) => {
+      if (menuFiltroValorExtratoRef.current && !menuFiltroValorExtratoRef.current.contains(e.target)) {
+        setMenuFiltroValorExtratoAberto(false);
+      }
+    };
+    document.addEventListener('mousedown', fn);
+    return () => document.removeEventListener('mousedown', fn);
+  }, [menuFiltroValorExtratoAberto]);
+
+  useEffect(() => {
+    if (!menuFiltroDescricaoExtratoAberto) return undefined;
+    const fn = (e) => {
+      if (
+        menuFiltroDescricaoExtratoRef.current &&
+        !menuFiltroDescricaoExtratoRef.current.contains(e.target)
+      ) {
+        setMenuFiltroDescricaoExtratoAberto(false);
+      }
+    };
+    document.addEventListener('mousedown', fn);
+    return () => document.removeEventListener('mousedown', fn);
+  }, [menuFiltroDescricaoExtratoAberto]);
+
+  useEffect(
+    () => () => {
+      if (valorExtratoHeaderTimerRef.current) {
+        clearTimeout(valorExtratoHeaderTimerRef.current);
+      }
+      if (descricaoExtratoHeaderTimerRef.current) {
+        clearTimeout(descricaoExtratoHeaderTimerRef.current);
+      }
+    },
+    []
+  );
+
   const [limiteLancamentosExtratoBanco, setLimiteLancamentosExtratoBanco] = useState(100);
   const [limiteLancamentosConsolidado, setLimiteLancamentosConsolidado] = useState(100);
   const [periodoVisao, setPeriodoVisao] = useState(() => 'todos');
@@ -558,7 +676,23 @@ export function Financeiro() {
       const dados = await carregarExtratosFinanceiroApiFirst();
       if (!dados || typeof dados !== 'object') return;
       const base = getExtratosIniciais();
-      setExtratosPorBanco({ ...base, ...dados });
+      const cached = loadPersistedExtratosFinanceiro() || {};
+      const bankKeys = new Set([...Object.keys(base), ...Object.keys(cached), ...Object.keys(dados)]);
+      const merged = { ...base };
+      for (const k of bankKeys) {
+        const cacheRows = Array.isArray(cached[k]) ? cached[k] : [];
+        const baseRows = Array.isArray(base[k]) ? base[k] : [];
+        const localFallback = cacheRows.length > 0 ? cacheRows : baseRows;
+        if (Object.prototype.hasOwnProperty.call(dados, k)) {
+          const apiRows = Array.isArray(dados[k]) ? dados[k] : [];
+          merged[k] = mergeExtratoApiComLocal(apiRows, localFallback);
+        } else if (cacheRows.length > 0) {
+          merged[k] = mergeExtratoBancario([...cacheRows], []);
+        } else {
+          merged[k] = [...baseRows];
+        }
+      }
+      setExtratosPorBanco(merged);
     } catch (e) {
       setApiFinanceiroErro(e?.message || 'Falha ao carregar financeiro da API.');
     } finally {
@@ -747,6 +881,56 @@ export function Financeiro() {
     [listaExtratoBancoOrdenada, periodoVisao, selecaoPeriodoAtual]
   );
 
+  const listaExtratoAposFiltroDescricao = useMemo(
+    () => filtrarExtratoPorTextoDescricao(listaExtratoBancoVisivel, filtroDescricaoExtrato),
+    [listaExtratoBancoVisivel, filtroDescricaoExtrato]
+  );
+
+  const listaExtratoAposFiltroValor = useMemo(
+    () => filtrarExtratoPorValorFiltro(listaExtratoAposFiltroDescricao, filtroValorExtrato),
+    [listaExtratoAposFiltroDescricao, filtroValorExtrato]
+  );
+
+  const listaExtratoBancoParaTabela = useMemo(
+    () =>
+      aplicarLimiteExtratoBancoMaisRecentes(
+        listaExtratoAposFiltroValor,
+        limiteLancamentosExtratoBanco,
+        sortExtratoBanco.col,
+        sortExtratoBanco.dir
+      ),
+    [
+      listaExtratoAposFiltroValor,
+      limiteLancamentosExtratoBanco,
+      sortExtratoBanco.col,
+      sortExtratoBanco.dir,
+    ]
+  );
+
+  const extratoVisRowKeys = useMemo(
+    () => listaExtratoBancoParaTabela.map(extratoBancoRowKey),
+    [listaExtratoBancoParaTabela]
+  );
+  const extratoTodasVisiveisSelecionadas =
+    extratoVisRowKeys.length > 0 && extratoVisRowKeys.every((k) => extratoLinhasSelecionadas.has(k));
+  const extratoAlgumaVisivelSelecionada = extratoVisRowKeys.some((k) => extratoLinhasSelecionadas.has(k));
+
+  useEffect(() => {
+    const el = extratoSelectAllHeaderRef.current;
+    if (el) {
+      el.indeterminate = extratoAlgumaVisivelSelecionada && !extratoTodasVisiveisSelecionadas;
+    }
+  }, [extratoAlgumaVisivelSelecionada, extratoTodasVisiveisSelecionadas]);
+
+  useEffect(() => {
+    const valid = new Set(listaExtratoAposFiltroValor.map(extratoBancoRowKey));
+    setExtratoLinhasSelecionadas((prev) => {
+      const next = new Set([...prev].filter((k) => valid.has(k)));
+      if (next.size === prev.size && [...prev].every((k) => next.has(k))) return prev;
+      return next;
+    });
+  }, [listaExtratoAposFiltroValor]);
+
   const listaConsolidadaAposPeriodo = useMemo(
     () =>
       filtrarTransacoesPorPeriodo(listaConsolidadaParaExibicao, 'data', periodoVisao, selecaoPeriodoAtual),
@@ -838,6 +1022,7 @@ export function Financeiro() {
 
   /** Altera a letra (conta contábil) do lançamento; o lançamento sai da conta original e passa para a nova. */
   function updateLetraLancamento(nomeBanco, numero, data, novaLetra) {
+    let linhaParaApi = null;
     setExtratosPorBanco((prev) => {
       const next = cloneExtratos(prev);
       const list = next[nomeBanco];
@@ -845,58 +1030,143 @@ export function Financeiro() {
       const idx = list.findIndex((t) => t.numero === numero && t.data === data);
       if (idx === -1) return prev;
       const L = String(novaLetra ?? '').trim().toUpperCase();
-      list[idx] = {
+      const updated = {
         ...list[idx],
         letra: L,
         ...(L === 'E' ? { codCliente: '', proc: '' } : {}),
       };
+      list[idx] = updated;
+      linhaParaApi = updated;
+      return next;
+    });
+    if (featureFlags.useApiFinanceiro && linhaParaApi) {
+      void sincronizarLancamentoApi(nomeBanco, numero, data, linhaParaApi);
+    }
+  }
+
+  function updateLetraLancamentosEmLote(nomeBanco, keys, novaLetra) {
+    const L = String(novaLetra ?? '').trim().toUpperCase();
+    if (!L || !keys.length) return;
+    const keySet = new Set(keys);
+    const listAtual = extratosPorBancoRef.current?.[nomeBanco];
+    const snapshots = [];
+    if (Array.isArray(listAtual)) {
+      for (const t of listAtual) {
+        const k = extratoBancoRowKey(t);
+        if (!keySet.has(k)) continue;
+        snapshots.push({
+          numero: t.numero,
+          data: t.data,
+          snapshot: {
+            ...t,
+            letra: L,
+            ...(L === 'E' ? { codCliente: '', proc: '' } : {}),
+          },
+        });
+      }
+    }
+    setExtratosPorBanco((prev) => {
+      const next = cloneExtratos(prev);
+      const list = next[nomeBanco];
+      if (!list) return prev;
+      for (let i = 0; i < list.length; i++) {
+        const t = list[i];
+        if (!keySet.has(extratoBancoRowKey(t))) continue;
+        list[i] = {
+          ...list[i],
+          letra: L,
+          ...(L === 'E' ? { codCliente: '', proc: '' } : {}),
+        };
+      }
       return next;
     });
     if (featureFlags.useApiFinanceiro) {
-      void sincronizarLancamentoApi(nomeBanco, numero, data);
+      for (const { numero, data, snapshot } of snapshots) {
+        void sincronizarLancamentoApi(nomeBanco, numero, data, snapshot);
+      }
     }
   }
 
   function updateCampoLancamento(nomeBanco, numero, data, field, value) {
+    let linhaParaApi = null;
     setExtratosPorBanco((prev) => {
       const next = cloneExtratos(prev);
       const list = next[nomeBanco];
       if (!list) return prev;
       const idx = list.findIndex((t) => t.numero === numero && t.data === data);
       if (idx === -1) return prev;
+      const base = list[idx];
       const v = String(value ?? '');
+      let updated;
       if (field === 'categoria' || field === 'descricaoDetalhada') {
-        list[idx] = { ...list[idx], categoria: v, descricaoDetalhada: v };
+        updated = { ...base, categoria: v, descricaoDetalhada: v };
       } else if (field === 'ref') {
         const refN = normalizarRefFinanceiro(v);
         if (refN === 'N') {
-          list[idx] = { ...list[idx], ref: 'N', dimensao: '', eq: '' };
+          updated = { ...base, ref: 'N', dimensao: '', eq: '' };
         } else {
-          list[idx] = { ...list[idx], ref: 'R' };
+          updated = { ...base, ref: 'R' };
         }
       } else if (field === 'dimensao' || field === 'eq') {
-        list[idx] = { ...list[idx], dimensao: v, eq: v };
+        updated = { ...base, dimensao: v, eq: v };
       } else {
-        list[idx] = { ...list[idx], [field]: value };
+        updated = { ...base, [field]: value };
       }
+      list[idx] = updated;
+      linhaParaApi = updated;
       return next;
     });
-    if (featureFlags.useApiFinanceiro) {
-      void sincronizarLancamentoApi(nomeBanco, numero, data);
+    if (featureFlags.useApiFinanceiro && linhaParaApi) {
+      void sincronizarLancamentoApi(nomeBanco, numero, data, linhaParaApi);
     }
   }
 
-  async function sincronizarLancamentoApi(nomeBanco, numero, data) {
+  /**
+   * Grava lançamento na API. `linhaSnapshot` deve ser a linha já editada: o ref `extratosPorBancoRef`
+   * só atualiza no useEffect seguinte — sem snapshot, PUT mandava cod./proc. antigos.
+   */
+  async function sincronizarLancamentoApi(nomeBanco, numero, data, linhaSnapshot = null) {
     try {
       const list = extratosPorBancoRef.current?.[nomeBanco];
-      if (!Array.isArray(list)) return;
-      const idx = list.findIndex((t) => t.numero === numero && t.data === data);
-      if (idx < 0) return;
-      const atual = list[idx];
-      const saved = await salvarOuAtualizarLancamentoFinanceiroApi({
-        ...atual,
-        nomeBanco,
-      });
+      const atual =
+        linhaSnapshot &&
+        String(linhaSnapshot.numero) === String(numero) &&
+        linhaSnapshot.data === data
+          ? linhaSnapshot
+          : Array.isArray(list)
+            ? list.find((t) => t.numero === numero && t.data === data)
+            : null;
+      if (!atual) return;
+
+      let rowParaApi = { ...atual, nomeBanco };
+      const metaIn = atual._financeiroMeta || {};
+      let clienteId = Number(metaIn.clienteId) || null;
+      let processoId = Number(metaIn.processoId) || null;
+
+      if (featureFlags.useApiFinanceiro && featureFlags.useApiProcessos) {
+        const cod = normalizarCodigoClienteFinanceiro(atual.codCliente);
+        const procStr = normalizarProcFinanceiro(atual.proc);
+        if (cod) {
+          try {
+            if (!clienteId) {
+              const c = await buscarClientePorCodigo(cod);
+              if (c?.id != null && Number.isFinite(Number(c.id))) clienteId = Number(c.id);
+            }
+            if (procStr && !processoId && clienteId) {
+              const p = await buscarProcessoPorChaveNatural(cod, procStr);
+              if (p?.id != null && Number.isFinite(Number(p.id))) processoId = Number(p.id);
+            }
+          } catch {
+            /* resolução opcional; segue com meta já na linha */
+          }
+          rowParaApi = {
+            ...rowParaApi,
+            _financeiroMeta: { ...metaIn, clienteId, processoId },
+          };
+        }
+      }
+
+      const saved = await salvarOuAtualizarLancamentoFinanceiroApi(rowParaApi);
       if (!saved?.id) return;
       setExtratosPorBanco((prev) => {
         const next = cloneExtratos(prev);
@@ -904,18 +1174,7 @@ export function Financeiro() {
         if (!Array.isArray(arr)) return prev;
         const i = arr.findIndex((t) => t.numero === numero && t.data === data);
         if (i < 0) return prev;
-        arr[i] = {
-          ...arr[i],
-          apiId: saved.id,
-          _financeiroMeta: {
-            ...(arr[i]?._financeiroMeta || {}),
-            clienteId: saved.clienteId ?? arr[i]?._financeiroMeta?.clienteId ?? null,
-            processoId: saved.processoId ?? arr[i]?._financeiroMeta?.processoId ?? null,
-            contaContabilId: saved.contaContabilId ?? arr[i]?._financeiroMeta?.contaContabilId ?? null,
-            classificacaoFinanceiraId: saved.classificacaoFinanceiraId ?? arr[i]?._financeiroMeta?.classificacaoFinanceiraId ?? null,
-            eloFinanceiroId: saved.eloFinanceiroId ?? arr[i]?._financeiroMeta?.eloFinanceiroId ?? null,
-          },
-        };
+        arr[i] = mergeUiLancamentoComRespostaApi({ ...arr[i], nomeBanco }, saved);
         return next;
       });
     } catch (e) {
@@ -1148,6 +1407,125 @@ export function Financeiro() {
     });
   }
 
+  function handleClickCabecalhoValorExtrato() {
+    if (valorExtratoHeaderTimerRef.current) {
+      clearTimeout(valorExtratoHeaderTimerRef.current);
+      valorExtratoHeaderTimerRef.current = null;
+      return;
+    }
+    valorExtratoHeaderTimerRef.current = window.setTimeout(() => {
+      valorExtratoHeaderTimerRef.current = null;
+      setMenuFiltroValorExtratoAberto((o) => {
+        const next = !o;
+        if (next) setMenuFiltroDescricaoExtratoAberto(false);
+        return next;
+      });
+    }, 280);
+  }
+
+  function handleClickCabecalhoDescricaoExtrato() {
+    if (descricaoExtratoHeaderTimerRef.current) {
+      clearTimeout(descricaoExtratoHeaderTimerRef.current);
+      descricaoExtratoHeaderTimerRef.current = null;
+      return;
+    }
+    descricaoExtratoHeaderTimerRef.current = window.setTimeout(() => {
+      descricaoExtratoHeaderTimerRef.current = null;
+      setMenuFiltroDescricaoExtratoAberto((aberto) => {
+        const next = !aberto;
+        if (next) {
+          setFiltroDescricaoExtratoRascunho(filtroDescricaoExtrato);
+          setMenuFiltroValorExtratoAberto(false);
+        }
+        return next;
+      });
+    }, 280);
+  }
+
+  function handleDuploCliqueCabecalhoDescricaoExtrato(e) {
+    e.preventDefault();
+    if (descricaoExtratoHeaderTimerRef.current) {
+      clearTimeout(descricaoExtratoHeaderTimerRef.current);
+      descricaoExtratoHeaderTimerRef.current = null;
+    }
+    setMenuFiltroDescricaoExtratoAberto(false);
+    handleDuploCliqueTituloExtratoBanco('descricao');
+  }
+
+  function aplicarFiltroDescricaoExtrato() {
+    setFiltroDescricaoExtrato(filtroDescricaoExtratoRascunho.trim());
+    setMenuFiltroDescricaoExtratoAberto(false);
+  }
+
+  function limparFiltroDescricaoExtrato() {
+    setFiltroDescricaoExtrato('');
+    setFiltroDescricaoExtratoRascunho('');
+    setMenuFiltroDescricaoExtratoAberto(false);
+  }
+
+  function toggleExtratoLinhaSelecionada(key) {
+    setExtratoLinhasSelecionadas((prev) => {
+      const n = new Set(prev);
+      if (n.has(key)) n.delete(key);
+      else n.add(key);
+      return n;
+    });
+  }
+
+  function toggleSelecionarTodasVisiveisExtrato() {
+    setExtratoLinhasSelecionadas((prev) => {
+      const allOn =
+        extratoVisRowKeys.length > 0 && extratoVisRowKeys.every((k) => prev.has(k));
+      const n = new Set(prev);
+      if (allOn) {
+        extratoVisRowKeys.forEach((k) => n.delete(k));
+      } else {
+        extratoVisRowKeys.forEach((k) => n.add(k));
+      }
+      return n;
+    });
+  }
+
+  function selecionarTodasLinhasExtratoFiltradas() {
+    setExtratoLinhasSelecionadas(new Set(listaExtratoAposFiltroValor.map(extratoBancoRowKey)));
+  }
+
+  function limparSelecaoExtratoLinhas() {
+    setExtratoLinhasSelecionadas(new Set());
+    setLetraLoteExtrato('');
+  }
+
+  function aplicarLetraNosSelecionadosExtrato() {
+    const L = String(letraLoteExtrato ?? '').trim().toUpperCase();
+    if (!L || extratoLinhasSelecionadas.size === 0) return;
+    updateLetraLancamentosEmLote(instituicaoSelecionada, [...extratoLinhasSelecionadas], L);
+    setExtratoLinhasSelecionadas(new Set());
+    setLetraLoteExtrato('');
+  }
+
+  function handleDuploCliqueCabecalhoValorExtrato(e) {
+    e.preventDefault();
+    if (valorExtratoHeaderTimerRef.current) {
+      clearTimeout(valorExtratoHeaderTimerRef.current);
+      valorExtratoHeaderTimerRef.current = null;
+    }
+    setMenuFiltroValorExtratoAberto(false);
+    handleDuploCliqueTituloExtratoBanco('valor');
+  }
+
+  function aplicarFiltroValorExtratoPreset(kind) {
+    setFiltroValorExtrato({ kind, exatoCentavos: null });
+    setMenuFiltroValorExtratoAberto(false);
+  }
+
+  function aplicarFiltroValorExtratoExato() {
+    const n = parseValorExtratoBr(filtroValorExatoRascunho);
+    if (n == null) return;
+    const cent = Math.round(n * 100);
+    setFiltroValorExtrato({ kind: 'exato', exatoCentavos: cent });
+    setMenuFiltroValorExtratoAberto(false);
+  }
+
   /** Duplo clique no título da coluna do extrato consolidado: ordena por essa coluna (asc ↔ desc). */
   function handleDuploCliqueTituloConsolidado(col) {
     setSortConsolidado((prev) => ({
@@ -1162,36 +1540,91 @@ export function Financeiro() {
     const cod = normalizarCodigoClienteFinanceiro(codCliente);
     const p = normalizarProcFinanceiro(proc);
     if (!cod) return;
-    updateCampoLancamento(nomeBanco, numero, data, 'codCliente', cod);
-    updateCampoLancamento(nomeBanco, numero, data, 'proc', p || '');
+
     setModalVinculoLancamento(null);
+
+    let cliente = null;
+    let processo = null;
+    if (featureFlags.useApiFinanceiro && featureFlags.useApiProcessos) {
+      try {
+        cliente = await buscarClientePorCodigo(cod);
+        processo = p ? await buscarProcessoPorChaveNatural(cod, p) : null;
+      } catch (e) {
+        setApiFinanceiroErro(e?.message || 'Falha ao resolver cliente/processo para vínculo financeiro.');
+      }
+    }
+
+    const list = extratosPorBancoRef.current?.[nomeBanco];
+    const idxLinha = Array.isArray(list) ? list.findIndex((t) => t.numero === numero && t.data === data) : -1;
+    if (idxLinha < 0 || !list?.[idxLinha]) {
+      setOfxStatus({ kind: 'error', message: 'Lançamento não encontrado para vincular.' });
+      return;
+    }
+    const rowBase = list[idxLinha];
+
+    const clienteId =
+      cliente?.id != null && Number.isFinite(Number(cliente.id))
+        ? Number(cliente.id)
+        : rowBase._financeiroMeta?.clienteId ?? null;
+    const processoId =
+      processo?.id != null && Number.isFinite(Number(processo.id))
+        ? Number(processo.id)
+        : rowBase._financeiroMeta?.processoId ?? null;
+
+    const patch = {
+      codCliente: cod,
+      proc: p || '',
+      _financeiroMeta: {
+        ...(rowBase._financeiroMeta || {}),
+        clienteId,
+        processoId,
+      },
+    };
+
+    const mergedForApi = { ...rowBase, ...patch, nomeBanco };
+
+    setExtratosPorBanco((prev) => {
+      const next = cloneExtratos(prev);
+      const arr = next[nomeBanco];
+      if (!Array.isArray(arr)) return prev;
+      const i = arr.findIndex((t) => t.numero === numero && t.data === data);
+      if (i < 0) return prev;
+      arr[i] = {
+        ...arr[i],
+        ...patch,
+        _financeiroMeta: {
+          ...(arr[i]._financeiroMeta || {}),
+          ...patch._financeiroMeta,
+        },
+      };
+      return next;
+    });
+
     setOfxStatus({
       kind: 'success',
       message: `Vínculo gravado: cliente ${cod}, proc. ${p || '—'} neste lançamento.`,
     });
+
     if (featureFlags.useApiFinanceiro) {
       try {
-        const cliente = await buscarClientePorCodigo(cod);
-        const processo = p ? await buscarProcessoPorChaveNatural(cod, p) : null;
-        setExtratosPorBanco((prev) => {
-          const next = cloneExtratos(prev);
-          const arr = next[nomeBanco];
-          if (!Array.isArray(arr)) return prev;
-          const i = arr.findIndex((t) => t.numero === numero && t.data === data);
-          if (i < 0) return prev;
-          arr[i] = {
-            ...arr[i],
-            _financeiroMeta: {
-              ...(arr[i]?._financeiroMeta || {}),
-              clienteId: cliente?.id ?? null,
-              processoId: processo?.id ?? null,
-            },
-          };
-          return next;
-        });
-        await sincronizarLancamentoApi(nomeBanco, numero, data);
+        const saved = await salvarOuAtualizarLancamentoFinanceiroApi(mergedForApi);
+        if (saved?.id) {
+          setExtratosPorBanco((prev) => {
+            const next = cloneExtratos(prev);
+            const arr = next[nomeBanco];
+            if (!Array.isArray(arr)) return prev;
+            const i = arr.findIndex((t) => t.numero === numero && t.data === data);
+            if (i < 0) return prev;
+            arr[i] = mergeUiLancamentoComRespostaApi(arr[i], saved);
+            return next;
+          });
+        } else {
+          setApiFinanceiroErro(
+            'Não foi possível gravar o vínculo na API (verifique a letra contábil e os dados do lançamento).'
+          );
+        }
       } catch (e) {
-        setApiFinanceiroErro(e?.message || 'Falha ao resolver cliente/processo para vínculo financeiro.');
+        setApiFinanceiroErro(e?.message || 'Falha ao sincronizar lançamento com API.');
       }
     }
   }
@@ -1992,7 +2425,15 @@ export function Financeiro() {
           <h2 className="text-sm font-semibold text-slate-700 mb-1">Extratos bancários (OFX)</h2>
           <p className="text-xs text-slate-500 mb-3">
             Por padrão, cada importação <strong>acrescenta</strong> lançamentos (sem apagar mock nem OFX já
-            importados). Duplicatas (mesmo FITID + data + valor) são ignoradas. Os dados são salvos no navegador.
+            importados). Duplicatas (mesmo FITID + data + valor) são ignoradas.{' '}
+            {featureFlags.useApiFinanceiro ? (
+              <>
+                Com a <strong>API Financeiro</strong> ativa, cada lançamento novo do OFX é gravado no{' '}
+                <strong>banco de dados</strong> (origem OFX, conta «Conta Não Identificados» até você reclassificar).
+              </>
+            ) : (
+              <>Os dados são salvos no navegador (localStorage).</>
+            )}{' '}
             Cada lançamento <strong>novo</strong> importado entra na letra <strong>N</strong> (Conta Não Identificados) e
             permanece nela até você reclassificar no extrato ou usar <strong>Parear compensações</strong> para
             identificar pares entre bancos (mesmo dia, valor oposto exato). Use{' '}
@@ -2360,7 +2801,7 @@ export function Financeiro() {
                       value={limiteLancamentosExtratoBanco}
                       onChange={(e) => setLimiteLancamentosExtratoBanco(Number(e.target.value))}
                       className="text-sm border border-slate-300 rounded-md px-2 py-1.5 bg-white text-slate-800 min-w-[5.5rem] shadow-sm"
-                      title="Quantidade máxima de linhas exibidas (ordem atual da tabela)"
+                      title="Quantidade máxima de linhas: por padrão (data crescente) mostra os lançamentos mais recentes; com data ordenada ao contrário, os primeiros da lista"
                     >
                       {OPCOES_LIMITE_LANCAMENTOS_EXTRATO.map((o) => (
                         <option key={o.v} value={o.v}>
@@ -2376,15 +2817,266 @@ export function Financeiro() {
               </div>
             </div>
             <div className={relatoriosLadoALado ? 'flex flex-col flex-1 min-h-0' : ''}>
+            <div className="px-4 py-2 border-b border-slate-100 bg-slate-50/90 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs shrink-0">
+              <span className="text-slate-600">
+                {extratoLinhasSelecionadas.size > 0 ? (
+                  <>
+                    <strong className="text-slate-800">{extratoLinhasSelecionadas.size}</strong> linha(s) selecionada(s)
+                  </>
+                ) : (
+                  <>
+                    Use os checkboxes ou <strong className="text-slate-800">selecionar todas</strong> no cabeçalho da
+                    tabela para alterar em lote.
+                  </>
+                )}
+              </span>
+              {listaExtratoAposFiltroValor.length > listaExtratoBancoParaTabela.length ? (
+                <button
+                  type="button"
+                  onClick={selecionarTodasLinhasExtratoFiltradas}
+                  className="text-indigo-700 hover:text-indigo-900 font-medium underline decoration-indigo-300 underline-offset-2"
+                >
+                  Selecionar os {listaExtratoAposFiltroValor.length} lançamentos filtrados (inclui fora do limite)
+                </button>
+              ) : null}
+              {extratoLinhasSelecionadas.size > 0 ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <label className="flex items-center gap-1.5 text-slate-700">
+                    <span className="whitespace-nowrap">Letra em lote:</span>
+                    <select
+                      value={letraLoteExtrato}
+                      onChange={(e) => setLetraLoteExtrato(e.target.value)}
+                      className="text-sm border border-slate-300 rounded-md px-2 py-1 bg-white text-slate-800 min-w-[12rem] max-w-[20rem] shadow-sm"
+                    >
+                      <option value="">Escolher conta (letra)…</option>
+                      {letrasOrdenadasParaSelect.map((l) => {
+                        const nomeConta = letraToContaMerged[l];
+                        const inativa = nomeConta && contasContabeisInativasSet.has(nomeConta);
+                        return (
+                          <option key={l} value={l}>
+                            {l}
+                            {inativa ? ' (inativa)' : ''} — {nomeConta ?? l}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={aplicarLetraNosSelecionadosExtrato}
+                    disabled={!String(letraLoteExtrato ?? '').trim()}
+                    className="rounded-md border border-indigo-600 bg-indigo-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-indigo-700 disabled:opacity-45 disabled:pointer-events-none"
+                  >
+                    Aplicar letra
+                  </button>
+                  <button
+                    type="button"
+                    onClick={limparSelecaoExtratoLinhas}
+                    className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    Limpar seleção
+                  </button>
+                </div>
+              ) : null}
+            </div>
             <div className={relatoriosLadoALado ? 'flex-1 min-h-0 overflow-auto' : 'overflow-x-auto'}>
               <table className="w-full text-sm border-collapse">
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-200">
+                    <th
+                      className="w-10 py-2 px-2 text-center border-r border-slate-200 align-middle"
+                      title="Selecionar ou desmarcar todas as linhas visíveis na tabela"
+                    >
+                      <input
+                        ref={extratoSelectAllHeaderRef}
+                        type="checkbox"
+                        checked={extratoTodasVisiveisSelecionadas}
+                        onChange={toggleSelecionarTodasVisiveisExtrato}
+                        aria-label="Selecionar todas as linhas visíveis"
+                        className="rounded border-slate-300"
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </th>
                     <th className="text-left py-2 px-3 font-medium text-slate-600 border-r border-slate-200 w-20 cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloExtratoBanco('letra')} title="Duplo clique: ordenar A→Z / Z→A">Letra</th>
                     <th className="text-left py-2 px-3 font-medium text-slate-600 border-r border-slate-200 w-16 cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloExtratoBanco('numero')} title="Duplo clique: ordenar">Nº</th>
                     <th className="text-left py-2 px-3 font-medium text-slate-600 border-r border-slate-200 w-24 cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloExtratoBanco('data')} title="Duplo clique: data mais recente primeiro; de novo: mais antiga primeiro">Data</th>
-                    <th className="text-left py-2 px-3 font-medium text-slate-600 border-r border-slate-200 min-w-[180px] cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloExtratoBanco('descricao')} title="Duplo clique: ordenar A→Z / Z→A">Descrição</th>
-                    <th className="text-right py-2 px-3 font-medium text-slate-600 border-r border-slate-200 w-28 cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloExtratoBanco('valor')} title="Duplo clique: ordenar crescente ↔ decrescente">Valor</th>
+                    <th
+                      ref={menuFiltroDescricaoExtratoRef}
+                      className={`relative text-left py-2 px-3 font-medium border-r border-slate-200 min-w-[180px] select-none ${
+                        filtroDescricaoExtrato.trim()
+                          ? 'bg-amber-50/90 text-amber-950'
+                          : 'text-slate-600'
+                      } cursor-pointer hover:bg-slate-100`}
+                      title="Clique: filtrar por texto na descrição. Duplo clique: ordenar A→Z / Z→A"
+                    >
+                      <div
+                        className="flex items-center justify-start gap-1"
+                        onClick={handleClickCabecalhoDescricaoExtrato}
+                        onDoubleClick={handleDuploCliqueCabecalhoDescricaoExtrato}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            handleClickCabecalhoDescricaoExtrato();
+                          }
+                        }}
+                      >
+                        <span>Descrição</span>
+                        {filtroDescricaoExtrato.trim() ? (
+                          <span
+                            className="text-[10px] font-semibold uppercase tracking-tight text-amber-800"
+                            aria-hidden
+                          >
+                            filtro
+                          </span>
+                        ) : null}
+                      </div>
+                      {menuFiltroDescricaoExtratoAberto ? (
+                        <div
+                          className="absolute left-0 top-full z-[80] mt-1 w-[min(22rem,calc(100vw-2rem))] rounded-md border border-slate-200 bg-white py-2 px-2.5 text-left text-xs font-normal text-slate-800 shadow-lg"
+                          onClick={(ev) => ev.stopPropagation()}
+                          onMouseDown={(ev) => ev.stopPropagation()}
+                        >
+                          <p className="text-[11px] text-slate-500 mb-2">Filtrar por texto na descrição</p>
+                          <label className="block text-[11px] text-slate-600 mb-1" htmlFor="filtro-descricao-extrato">
+                            Contém
+                          </label>
+                          <input
+                            id="filtro-descricao-extrato"
+                            type="text"
+                            autoFocus
+                            placeholder="ex.: PIX TRANSF"
+                            value={filtroDescricaoExtratoRascunho}
+                            onChange={(e) => setFiltroDescricaoExtratoRascunho(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                aplicarFiltroDescricaoExtrato();
+                              }
+                            }}
+                            className="w-full rounded border border-slate-300 px-2 py-1.5 text-xs mb-2"
+                          />
+                          <div className="flex flex-wrap gap-1.5">
+                            <button
+                              type="button"
+                              className="rounded border border-indigo-600 bg-indigo-600 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-indigo-700"
+                              onClick={aplicarFiltroDescricaoExtrato}
+                            >
+                              Aplicar
+                            </button>
+                            <button
+                              type="button"
+                              className="rounded border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
+                              onClick={limparFiltroDescricaoExtrato}
+                            >
+                              Limpar
+                            </button>
+                          </div>
+                          {filtroDescricaoExtrato.trim() ? (
+                            <p className="mt-2 text-[10px] text-slate-500 border-t border-slate-100 pt-2">
+                              Ativo: “{filtroDescricaoExtrato}”
+                            </p>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </th>
+                    <th
+                      ref={menuFiltroValorExtratoRef}
+                      className={`relative text-right py-2 px-3 font-medium border-r border-slate-200 w-36 select-none ${
+                        filtroValorExtrato.kind !== 'todos'
+                          ? 'bg-amber-50/90 text-amber-950'
+                          : 'text-slate-600'
+                      } cursor-pointer hover:bg-slate-100`}
+                      title="Clique: filtrar por valor. Duplo clique: ordenar crescente ↔ decrescente"
+                    >
+                      <div
+                        className="flex items-center justify-end gap-1"
+                        onClick={handleClickCabecalhoValorExtrato}
+                        onDoubleClick={handleDuploCliqueCabecalhoValorExtrato}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            handleClickCabecalhoValorExtrato();
+                          }
+                        }}
+                      >
+                        <span>Valor</span>
+                        {filtroValorExtrato.kind !== 'todos' ? (
+                          <span className="text-[10px] font-semibold uppercase tracking-tight text-amber-800" aria-hidden>
+                            filtro
+                          </span>
+                        ) : null}
+                      </div>
+                      {menuFiltroValorExtratoAberto ? (
+                        <div
+                          className="absolute right-0 top-full z-[80] mt-1 w-56 rounded-md border border-slate-200 bg-white py-2 px-2.5 text-left text-xs font-normal text-slate-800 shadow-lg"
+                          onClick={(ev) => ev.stopPropagation()}
+                          onMouseDown={(ev) => ev.stopPropagation()}
+                        >
+                          <p className="text-[11px] text-slate-500 mb-2">Filtrar lançamentos</p>
+                          <div className="flex flex-col gap-1">
+                            <button
+                              type="button"
+                              className={`text-left rounded px-2 py-1.5 hover:bg-slate-100 ${
+                                filtroValorExtrato.kind === 'todos' ? 'bg-slate-100 font-medium' : ''
+                              }`}
+                              onClick={() => aplicarFiltroValorExtratoPreset('todos')}
+                            >
+                              Todos os valores
+                            </button>
+                            <button
+                              type="button"
+                              className={`text-left rounded px-2 py-1.5 hover:bg-slate-100 ${
+                                filtroValorExtrato.kind === 'lt0' ? 'bg-slate-100 font-medium' : ''
+                              }`}
+                              onClick={() => aplicarFiltroValorExtratoPreset('lt0')}
+                            >
+                              Menor que zero (débitos)
+                            </button>
+                            <button
+                              type="button"
+                              className={`text-left rounded px-2 py-1.5 hover:bg-slate-100 ${
+                                filtroValorExtrato.kind === 'gt0' ? 'bg-slate-100 font-medium' : ''
+                              }`}
+                              onClick={() => aplicarFiltroValorExtratoPreset('gt0')}
+                            >
+                              Maior que zero (créditos)
+                            </button>
+                          </div>
+                          <div className="mt-2 border-t border-slate-100 pt-2">
+                            <label className="block text-[11px] text-slate-600 mb-1" htmlFor="filtro-valor-exato-extrato">
+                              Valor exato (R$)
+                            </label>
+                            <div className="flex gap-1">
+                              <input
+                                id="filtro-valor-exato-extrato"
+                                type="text"
+                                inputMode="decimal"
+                                placeholder="ex.: 1.500,00"
+                                value={filtroValorExatoRascunho}
+                                onChange={(e) => setFiltroValorExatoRascunho(e.target.value)}
+                                className="flex-1 min-w-0 rounded border border-slate-300 px-2 py-1 text-xs"
+                              />
+                              <button
+                                type="button"
+                                className="shrink-0 rounded border border-indigo-600 bg-indigo-600 px-2 py-1 text-[11px] font-medium text-white hover:bg-indigo-700"
+                                onClick={aplicarFiltroValorExtratoExato}
+                              >
+                                Aplicar
+                              </button>
+                            </div>
+                            {filtroValorExtrato.kind === 'exato' && filtroValorExtrato.exatoCentavos != null ? (
+                              <p className="mt-1 text-[10px] text-slate-500">
+                                Ativo: {formatValor(filtroValorExtrato.exatoCentavos / 100)}
+                              </p>
+                            ) : null}
+                          </div>
+                        </div>
+                      ) : null}
+                    </th>
                     <th className="text-right py-2 px-3 font-medium text-slate-600 border-r border-slate-200 min-w-[140px] cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloExtratoBanco('saldo')} title="Duplo clique: ordenar crescente ↔ decrescente">Saldo</th>
                     <th className="text-left py-2 px-3 font-medium text-slate-600 border-r border-slate-200 min-w-[120px] cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloExtratoBanco('categoria')} title="Mesmo texto que Descrição / Contraparte no consolidado. Duplo clique: ordenar A→Z / Z→A">Categoria / Obs.</th>
                     <th className="text-center py-2 px-3 font-medium text-slate-600 border-r border-slate-200 w-20 cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloExtratoBanco('codCliente')} title="Duplo clique: ordenar">Cod. Cliente</th>
@@ -2399,13 +3091,15 @@ export function Financeiro() {
                 </thead>
                 <tbody>
                   {(() => {
-                    const total = listaExtratoBancoVisivel.length;
-                    const maxLinhas =
-                      limiteLancamentosExtratoBanco === 0 ? total : limiteLancamentosExtratoBanco;
-                    return listaExtratoBancoVisivel.slice(0, maxLinhas).map((t) => {
+                    return listaExtratoBancoParaTabela.map((t) => {
                     const isLinhaBancoAlvo = linhaBancoAlvo?.nomeBanco === instituicaoSelecionada && linhaBancoAlvo?.numero === t.numero && linhaBancoAlvo?.data === t.data;
                     const letraLinha = String(t.letra ?? '').trim().toUpperCase();
                     const letraSemOpcao = letraLinha && !letrasOrdenadasParaSelect.includes(letraLinha);
+                    const linhaTemCodEProcPreenchidos =
+                      Boolean(normalizarCodigoClienteFinanceiro(t.codCliente)) &&
+                      Boolean(normalizarProcFinanceiro(t.proc));
+                    const mostrarBotaoPesquisaContaEscritorio =
+                      letraLinha === 'A' && !linhaTemCodEProcPreenchidos;
                     return (
                     <tr
                       key={`${t.letra}-${t.numero}-${t.data}`}
@@ -2414,29 +3108,69 @@ export function Financeiro() {
                       onDoubleClick={() => handleDuploCliqueLinhaBanco(t)}
                       title="Duplo clique para abrir a conta contábil e ir à linha no consolidado"
                     >
-                      <td className="py-1.5 px-3 border-r border-slate-100 w-20" onClick={(e) => e.stopPropagation()}>
-                        <select
-                          value={letraLinha}
-                          onChange={(e) => updateLetraLancamento(instituicaoSelecionada, t.numero, t.data, e.target.value)}
-                          className="w-full min-w-[6rem] py-0.5 px-1 text-slate-700 text-sm bg-slate-50 border border-slate-200 rounded cursor-pointer text-left"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          {letraSemOpcao && (
-                            <option value={letraLinha}>
-                              {letraLinha} (remapear)
-                            </option>
-                          )}
-                          {letrasOrdenadasParaSelect.map((l) => {
-                            const nomeConta = letraToContaMerged[l];
-                            const inativa = nomeConta && contasContabeisInativasSet.has(nomeConta);
-                            return (
-                              <option key={l} value={l}>
-                                {l}
-                                {inativa ? ' (inativa)' : ''} — {nomeConta ?? l}
+                      <td
+                        className="py-1.5 px-2 border-r border-slate-100 w-10 text-center align-top"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={extratoLinhasSelecionadas.has(extratoBancoRowKey(t))}
+                          onChange={() => toggleExtratoLinhaSelecionada(extratoBancoRowKey(t))}
+                          aria-label={`Selecionar lançamento ${t.numero} de ${t.data}`}
+                          className="rounded border-slate-300 mt-1"
+                        />
+                      </td>
+                      <td className="py-1.5 px-3 border-r border-slate-100 w-20 align-top" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex flex-col gap-1 min-w-[6.75rem]">
+                          <select
+                            value={letraLinha}
+                            onChange={(e) => updateLetraLancamento(instituicaoSelecionada, t.numero, t.data, e.target.value)}
+                            className="w-full min-w-[6rem] py-0.5 px-1 text-slate-700 text-sm bg-slate-50 border border-slate-200 rounded cursor-pointer text-left"
+                            onClick={(e) => e.stopPropagation()}
+                            title={
+                              letraLinha === 'A'
+                                ? mostrarBotaoPesquisaContaEscritorio
+                                  ? 'Letra A = Conta Escritório. Use o botão abaixo para pesquisar cliente e processo.'
+                                  : 'Letra A = Conta Escritório (código e processo já preenchidos).'
+                                : undefined
+                            }
+                          >
+                            {letraSemOpcao && (
+                              <option value={letraLinha}>
+                                {letraLinha} (remapear)
                               </option>
-                            );
-                          })}
-                        </select>
+                            )}
+                            {letrasOrdenadasParaSelect.map((l) => {
+                              const nomeConta = letraToContaMerged[l];
+                              const inativa = nomeConta && contasContabeisInativasSet.has(nomeConta);
+                              return (
+                                <option key={l} value={l}>
+                                  {l}
+                                  {inativa ? ' (inativa)' : ''} — {nomeConta ?? l}
+                                </option>
+                              );
+                            })}
+                          </select>
+                          {mostrarBotaoPesquisaContaEscritorio ? (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setModalVinculoLancamento({
+                                  nomeBanco: instituicaoSelecionada,
+                                  numero: t.numero,
+                                  data: t.data,
+                                  resumo: `${instituicaoSelecionada} · ${t.data} · ${formatValor(t.valor)} — ${String(t.descricao ?? '').slice(0, 72)}`,
+                                  modoContaEscritorio: true,
+                                });
+                              }}
+                              className="w-full text-left text-[10px] leading-tight px-1.5 py-1 rounded border border-amber-200 bg-amber-50 text-amber-900 hover:bg-amber-100"
+                              title="Fluxo em 2 passos: cliente (nome ou código) → processos com partes — vincula Cod. e Proc."
+                            >
+                              Pesquisar cliente → proc.
+                            </button>
+                          ) : null}
+                        </div>
                       </td>
                       <td className="py-1.5 px-3 text-slate-500 border-r border-slate-100">{t.numero}</td>
                       <td className="py-1.5 px-3 text-slate-700 border-r border-slate-100">{t.data}</td>
@@ -2546,13 +3280,10 @@ export function Financeiro() {
               </table>
             </div>
             {(() => {
-              const total = listaExtratoBancoVisivel.length;
-              const vis =
-                limiteLancamentosExtratoBanco === 0
-                  ? total
-                  : Math.min(limiteLancamentosExtratoBanco, total);
-              if (total <= vis && !(periodoVisao !== 'todos' && total === 0)) return null;
-              if (periodoVisao !== 'todos' && total === 0) {
+              const noPeriodo = listaExtratoBancoVisivel.length;
+              const total = listaExtratoAposFiltroValor.length;
+              const vis = listaExtratoBancoParaTabela.length;
+              if (periodoVisao !== 'todos' && noPeriodo === 0) {
                 return (
                   <div className="px-4 py-3 text-xs text-slate-600 bg-amber-50/80 border-t border-amber-100">
                     Nenhum lançamento neste período para <strong>{instituicaoSelecionada}</strong>. Ajuste o filtro ou
@@ -2560,11 +3291,53 @@ export function Financeiro() {
                   </div>
                 );
               }
+              if (noPeriodo > 0 && filtroDescricaoExtrato.trim() && listaExtratoAposFiltroDescricao.length === 0) {
+                return (
+                  <div className="px-4 py-2 text-xs text-amber-900 bg-amber-50 border-t border-amber-100">
+                    Nenhum lançamento corresponde ao texto em <strong>Descrição</strong>.{' '}
+                    <button
+                      type="button"
+                      className="underline font-medium text-amber-950"
+                      onClick={limparFiltroDescricaoExtrato}
+                    >
+                      Limpar filtro
+                    </button>
+                  </div>
+                );
+              }
+              if (noPeriodo > 0 && total === 0 && filtroValorExtrato.kind !== 'todos') {
+                return (
+                  <div className="px-4 py-2 text-xs text-amber-900 bg-amber-50 border-t border-amber-100">
+                    Nenhum lançamento corresponde ao filtro de <strong>Valor</strong>.{' '}
+                    <button
+                      type="button"
+                      className="underline font-medium text-amber-950"
+                      onClick={() => setFiltroValorExtrato({ kind: 'todos', exatoCentavos: null })}
+                    >
+                      Limpar filtro
+                    </button>
+                  </div>
+                );
+              }
+              if (total <= vis && !(periodoVisao !== 'todos' && noPeriodo === 0)) return null;
               if (total <= vis) return null;
+              const ordemRecente =
+                sortExtratoBanco.col === 'data' && sortExtratoBanco.dir === 'desc'
+                  ? 'primeiros da lista (data mais recente primeiro)'
+                  : 'últimos da lista (mais recentes no tempo)';
+              const refFiltros =
+                filtroDescricaoExtrato.trim() && filtroValorExtrato.kind !== 'todos'
+                  ? 'após filtros de período, descrição e valor'
+                  : filtroDescricaoExtrato.trim()
+                    ? 'após filtros de período e descrição'
+                    : filtroValorExtrato.kind !== 'todos'
+                      ? 'após filtros de período e valor'
+                      : 'após filtro de período';
               return (
                 <div className="px-4 py-2 text-xs text-slate-600 bg-slate-50 border-t border-slate-200">
-                  Exibindo <strong>{vis}</strong> de <strong>{total}</strong> lançamentos (após filtro de período).
-                  Aumente o limite ou escolha <strong>Todos</strong> para ver mais linhas.
+                  Exibindo <strong>{vis}</strong> de <strong>{total}</strong> lançamentos ({refFiltros}) — os{' '}
+                  <strong>{ordemRecente}</strong>. Aumente o limite ou escolha <strong>Todos</strong> para ver mais
+                  linhas.
                 </div>
               );
             })()}
@@ -3653,6 +4426,7 @@ export function Financeiro() {
         onFechar={() => setModalVinculoLancamento(null)}
         resumoLancamento={modalVinculoLancamento?.resumo ?? ''}
         onAplicar={aplicarVinculoClienteProcNosCampos}
+        modoContaEscritorio={Boolean(modalVinculoLancamento?.modoContaEscritorio)}
       />
     </div>
   );

@@ -22,6 +22,7 @@ import {
   salvarParteOpostaDaGradeCadastro,
   alinharListaProcessosDescricaoComHistorico,
   enriquecerListaProcessosComHistoricoLocal,
+  listarRegistrosProcessosHistoricoNormalizados,
 } from '../data/processosHistoricoData.js';
 import { getContextoAuditoriaUsuario, registrarAuditoria } from '../services/auditoriaCliente.js';
 import { featureFlags } from '../config/featureFlags.js';
@@ -39,6 +40,7 @@ import {
   buscarClientePorCodigo,
   buscarProcessoPorChaveNatural,
   listarProcessosPorCodigoCliente,
+  listarProcessosPorNumeroInterno,
   mergeCadastroClientesProcessosComApi,
   salvarCabecalhoProcesso,
 } from '../repositories/processosRepository.js';
@@ -249,6 +251,10 @@ export function CadastroClientes() {
   const [observacao, setObservacao] = useState(ini.observacao);
   const [pesquisaProcesso, setPesquisaProcesso] = useState('');
   const [buscaClienteNome, setBuscaClienteNome] = useState('');
+  /** Resultados da busca só por dígitos: nº interno do processo (API/histórico). */
+  const [clientesBuscaPorProcHits, setClientesBuscaPorProcHits] = useState([]);
+  const [clientesBuscaPorProcLoading, setClientesBuscaPorProcLoading] = useState(false);
+  const [clientesBuscaPorProcErro, setClientesBuscaPorProcErro] = useState('');
   const [paginaProcessos, setPaginaProcessos] = useState(1);
   const [modalQualificacaoAberto, setModalQualificacaoAberto] = useState(false);
   const [modalConfigCalculoAberto, setModalConfigCalculoAberto] = useState(false);
@@ -792,17 +798,26 @@ export function CadastroClientes() {
     const termoNumero = normalizarNumeroBusca(termoRaw);
     if (!termo) return processos;
 
-    // Se o usuário digitou algo curto e numérico, tratamos como busca pelo “Proc.” (1–10).
+    // Termo numérico curto: busca parcial no “Proc.” (comportamento antigo, ex.: 1–2 dígitos).
+    // Com 3+ dígitos, antes só se buscava no nº novo (CNJ), ignorando o nº interno — ex.: “278” não achava Proc. 278.
     const buscaProcCurta = termoNumero.length > 0 && termoNumero.length <= 2;
 
     return (processos || []).filter((proc) => {
       const procNumeroStr = String(proc.procNumero ?? '');
+      const procInternoDigits = apenasDigitos(proc.procNumero);
       const numeroNovo = normalizarNumeroBusca(proc.processoNovo ?? '');
 
       const numeroMatch = (() => {
         if (!termoNumero) return false;
         if (buscaProcCurta) return procNumeroStr.includes(termoNumero);
-        return numeroNovo.includes(termoNumero);
+        const procN = Number(procInternoDigits);
+        const termN = Number(termoNumero);
+        const internoExato =
+          Number.isFinite(procN) &&
+          Number.isFinite(termN) &&
+          procN >= 0 &&
+          procN === termN;
+        return internoExato || numeroNovo.includes(termoNumero);
       })();
 
       const autorStr = normalizarTextoBusca(proc.autor ?? '');
@@ -977,6 +992,8 @@ export function CadastroClientes() {
   }, [clientesApiIndex]);
 
   const clientesFiltradosPorNome = useMemo(() => {
+    const raw = String(buscaClienteNome ?? '').trim();
+    if (raw && /^\d+$/.test(raw)) return [];
     const t = normalizarTextoBusca(buscaClienteNome);
     if (t.length < 2) return [];
     const limite = 80;
@@ -987,6 +1004,98 @@ export function CadastroClientes() {
     }
     return hits;
   }, [indiceClientesPorNome, buscaClienteNome]);
+
+  /** Busca por código de cliente com exatamente 8 dígitos (sem letras). */
+  const clientesFiltradosPorCodigo8 = useMemo(() => {
+    const raw = String(buscaClienteNome ?? '').trim();
+    if (!/^\d{8}$/.test(raw)) return [];
+    const cod8 = padCliente8(raw);
+    const hit = indiceClientesPorNome.find((r) => r.codigoPadded === cod8);
+    return hit ? [hit] : [];
+  }, [buscaClienteNome, indiceClientesPorNome]);
+
+  useEffect(() => {
+    const raw = String(buscaClienteNome ?? '').trim();
+    if (!raw || !/^\d+$/.test(raw) || /^\d{8}$/.test(raw)) {
+      setClientesBuscaPorProcHits([]);
+      setClientesBuscaPorProcLoading(false);
+      setClientesBuscaPorProcErro('');
+      return undefined;
+    }
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n < 0 || n > 2_147_483_647) {
+      setClientesBuscaPorProcHits([]);
+      setClientesBuscaPorProcLoading(false);
+      return undefined;
+    }
+    let cancelled = false;
+    setClientesBuscaPorProcLoading(true);
+    setClientesBuscaPorProcErro('');
+    const h = window.setTimeout(async () => {
+      try {
+        if (featureFlags.useApiProcessos) {
+          const arr = await listarProcessosPorNumeroInterno(n);
+          if (cancelled) return;
+          const limite = 80;
+          const hits = [];
+          for (const p of arr || []) {
+            if (hits.length >= limite) break;
+            const cod8 = padCliente8(p.codigoCliente);
+            const idxRow = clientesApiIndex.find((c) => c.codigo === cod8);
+            const nomeCli = String(idxRow?.nomeRazao ?? '').trim();
+            const cnj = String(p.numeroCnj ?? '').trim();
+            const po = String(p.parteOposta ?? '').trim();
+            const rotulo = [
+              nomeCli || `Cliente ${cod8}`,
+              `Proc. ${p.numeroInterno ?? n}`,
+              cnj ? `CNJ ${cnj}` : null,
+              po ? (po.length > 100 ? `${po.slice(0, 100)}…` : po) : null,
+            ]
+              .filter(Boolean)
+              .join(' · ');
+            hits.push({
+              codigoPadded: cod8,
+              codigoNum: Number(String(cod8).replace(/\D/g, '')) || 0,
+              nome: rotulo,
+            });
+          }
+          setClientesBuscaPorProcHits(hits);
+        } else {
+          const seen = new Set();
+          const hits = [];
+          for (const reg of listarRegistrosProcessosHistoricoNormalizados()) {
+            if (Number(reg.proc) !== n) continue;
+            const codJur = String(reg.codCliente ?? '').trim();
+            const codNum = Number(String(codJur).replace(/^0+/, '') || 0);
+            if (!Number.isFinite(codNum) || codNum < 1) continue;
+            const cod8 = padCliente8(codNum);
+            if (seen.has(cod8)) continue;
+            seen.add(cod8);
+            const nomeC = String(reg.cliente ?? '').trim() || `Cliente ${cod8}`;
+            hits.push({
+              codigoPadded: cod8,
+              codigoNum: codNum,
+              nome: `${nomeC} · proc. ${n}`,
+            });
+            if (hits.length >= 80) break;
+          }
+          hits.sort((a, b) => a.codigoNum - b.codigoNum);
+          if (!cancelled) setClientesBuscaPorProcHits(hits);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setClientesBuscaPorProcErro(String(e?.message || '').trim() || 'Falha na busca por nº do processo.');
+          setClientesBuscaPorProcHits([]);
+        }
+      } finally {
+        if (!cancelled) setClientesBuscaPorProcLoading(false);
+      }
+    }, 320);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(h);
+    };
+  }, [buscaClienteNome, clientesApiIndex]);
 
   function selecionarClienteDaBuscaNome(row) {
     aplicarCodigoCliente(row.codigoPadded);
@@ -1007,7 +1116,7 @@ export function CadastroClientes() {
       <div className="flex-1 min-h-0 flex overflow-hidden">
         <div className="flex-1 min-w-0 overflow-auto p-4 space-y-4">
           <section>
-            <p className="text-sm font-medium text-slate-700 mb-2">Buscar cliente por nome</p>
+            <p className="text-sm font-medium text-slate-700 mb-2">Buscar cliente por nome, código ou processo</p>
             <div className="flex flex-wrap items-center gap-2 mb-2">
               <label className="text-sm text-slate-700 whitespace-nowrap" htmlFor="busca-cliente-nome">
                 Pesquisar:
@@ -1018,18 +1127,153 @@ export function CadastroClientes() {
                 value={buscaClienteNome}
                 onChange={(e) => setBuscaClienteNome(e.target.value)}
                 className={`${inputClass} w-full min-w-[200px] max-w-md`}
-                placeholder="Nome ou parte do nome do cliente…"
+                placeholder="Nome, código (8 dígitos) ou nº interno do processo…"
                 autoComplete="off"
               />
             </div>
-            {String(buscaClienteNome ?? '').trim() && normalizarTextoBusca(buscaClienteNome).length < 2 && (
-              <p className="text-xs text-slate-500 mb-2">
-                Digite pelo menos 2 letras para buscar pelo nome (razão social ou nome da pessoa vinculada).
-              </p>
+            {(() => {
+              const rawBusca = String(buscaClienteNome ?? '').trim();
+              const soDigitos = rawBusca.length > 0 && /^\d+$/.test(rawBusca);
+              const codigo8 = /^\d{8}$/.test(rawBusca);
+              const procInterno = soDigitos && !codigo8;
+              return (
+                <>
+                  {rawBusca && !soDigitos && normalizarTextoBusca(buscaClienteNome).length < 2 && (
+                    <p className="text-xs text-slate-500 mb-2">
+                      Digite pelo menos 2 letras para buscar pelo nome (razão social ou nome da pessoa vinculada).
+                    </p>
+                  )}
+                  {soDigitos && codigo8 && (
+                    <p className="text-xs text-slate-500 mb-2">
+                      Busca pelo <strong>código do cliente</strong> (8 dígitos).
+                    </p>
+                  )}
+                  {procInterno && (
+                    <p className="text-xs text-slate-500 mb-2">
+                      Busca pelo <strong>nº interno do processo</strong> (ex.: 3 ou 12). Clientes que possuem esse
+                      processo aparecem abaixo; clique para abrir o cadastro.
+                    </p>
+                  )}
+                  {clientesBuscaPorProcErro ? (
+                    <p className="text-sm text-red-600 mb-2">{clientesBuscaPorProcErro}</p>
+                  ) : null}
+                  {clientesBuscaPorProcLoading && procInterno ? (
+                    <p className="text-sm text-slate-500 mb-2">Buscando processos…</p>
+                  ) : null}
+                  {soDigitos &&
+                    codigo8 &&
+                    !clientesBuscaPorProcLoading &&
+                    clientesFiltradosPorCodigo8.length === 0 &&
+                    featureFlags.useApiClientes &&
+                    clientesApiCarregados && (
+                      <p className="text-sm text-slate-600 mb-2">Nenhum cliente encontrado com esse código.</p>
+                    )}
+                  {procInterno &&
+                    !clientesBuscaPorProcLoading &&
+                    !clientesBuscaPorProcErro &&
+                    clientesBuscaPorProcHits.length === 0 && (
+                      <p className="text-sm text-slate-600 mb-2">
+                        Nenhum processo encontrado com o nº interno &quot;{rawBusca}&quot;.
+                      </p>
+                    )}
+                  {!soDigitos &&
+                    normalizarTextoBusca(buscaClienteNome).length >= 2 &&
+                    clientesFiltradosPorNome.length === 0 && (
+                      <p className="text-sm text-slate-600 mb-2">Nenhum cliente encontrado com esse nome.</p>
+                    )}
+                </>
+              );
+            })()}
+            {clientesFiltradosPorCodigo8.length > 0 && (
+              <div className="border border-slate-300 rounded bg-white overflow-x-auto max-h-56 overflow-y-auto mb-2">
+                <table className="w-full text-sm border-collapse min-w-[480px]">
+                  <thead>
+                    <tr className="bg-slate-100 sticky top-0">
+                      <th className="border-b border-slate-200 px-2 py-1.5 text-left font-semibold text-slate-700 w-28">
+                        Código
+                      </th>
+                      <th className="border-b border-slate-200 px-2 py-1.5 text-left font-semibold text-slate-700">
+                        Nome / Razão social
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {clientesFiltradosPorCodigo8.map((row, idx) => (
+                      <tr
+                        key={row.codigoPadded}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => selecionarClienteDaBuscaNome(row)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            selecionarClienteDaBuscaNome(row);
+                          }
+                        }}
+                        className={`cursor-pointer hover:bg-blue-50 ${
+                          idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'
+                        }`}
+                      >
+                        <td className="border-b border-slate-100 px-2 py-1.5 text-slate-800 font-mono tabular-nums whitespace-nowrap">
+                          {row.codigoPadded}
+                        </td>
+                        <td className="border-b border-slate-100 px-2 py-1.5 text-slate-800">{row.nome}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
-            {normalizarTextoBusca(buscaClienteNome).length >= 2 && clientesFiltradosPorNome.length === 0 && (
-              <p className="text-sm text-slate-600 mb-2">Nenhum cliente encontrado com esse nome.</p>
-            )}
+            {(() => {
+              const rawBusca = String(buscaClienteNome ?? '').trim();
+              const procInterno = rawBusca.length > 0 && /^\d+$/.test(rawBusca) && !/^\d{8}$/.test(rawBusca);
+              if (!procInterno || clientesBuscaPorProcHits.length === 0) return null;
+              return (
+                <div className="border border-slate-300 rounded bg-white overflow-x-auto max-h-56 overflow-y-auto mb-2">
+                  <table className="w-full text-sm border-collapse min-w-[480px]">
+                    <thead>
+                      <tr className="bg-slate-100 sticky top-0">
+                        <th className="border-b border-slate-200 px-2 py-1.5 text-left font-semibold text-slate-700 w-28">
+                          Código
+                        </th>
+                        <th className="border-b border-slate-200 px-2 py-1.5 text-left font-semibold text-slate-700">
+                          Cliente / processo
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {clientesBuscaPorProcHits.map((row, idx) => (
+                        <tr
+                          key={`${row.codigoPadded}-${idx}`}
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => selecionarClienteDaBuscaNome(row)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              selecionarClienteDaBuscaNome(row);
+                            }
+                          }}
+                          className={`cursor-pointer hover:bg-blue-50 ${
+                            idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'
+                          }`}
+                        >
+                          <td className="border-b border-slate-100 px-2 py-1.5 text-slate-800 font-mono tabular-nums whitespace-nowrap">
+                            {row.codigoPadded}
+                          </td>
+                          <td className="border-b border-slate-100 px-2 py-1.5 text-slate-800">{row.nome}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {clientesBuscaPorProcHits.length >= 80 && (
+                    <p className="text-xs text-slate-500 px-2 py-1.5 border-t border-slate-100">
+                      Mostrando até 80 resultados — refine o nº do processo se necessário.
+                    </p>
+                  )}
+                </div>
+              );
+            })()}
             {clientesFiltradosPorNome.length > 0 && (
               <div className="border border-slate-300 rounded bg-white overflow-x-auto max-h-56 overflow-y-auto">
                 <table className="w-full text-sm border-collapse min-w-[480px]">

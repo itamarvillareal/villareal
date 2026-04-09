@@ -494,6 +494,19 @@ export function buildNumeroBancoMap(contasExtrasList) {
   return map;
 }
 
+/** Número da instituição → nome da chave usada no extrato (primeiro nome vence se houver colisão). */
+export function buildNumeroToNomeBancoMap(contasExtrasList) {
+  const nomeToNum = buildNumeroBancoMap(contasExtrasList);
+  /** @type {Record<number, string>} */
+  const out = {};
+  for (const [nome, num] of Object.entries(nomeToNum)) {
+    const n = Number(num);
+    if (!Number.isFinite(n)) continue;
+    if (out[n] == null) out[n] = nome;
+  }
+  return out;
+}
+
 export function getBancoNumeroMapMerged() {
   return buildNumeroBancoMap(loadPersistedContasExtrasFinanceiro());
 }

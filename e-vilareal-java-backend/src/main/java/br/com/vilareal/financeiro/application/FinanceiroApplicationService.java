@@ -11,6 +11,7 @@ import br.com.vilareal.financeiro.infrastructure.persistence.repository.ContaCon
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.LancamentoFinanceiroRepository;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
+import br.com.vilareal.processo.application.CodigoClienteUtil;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
 import org.springframework.data.domain.Page;
@@ -213,7 +214,10 @@ public class FinanceiroApplicationService {
                         : null);
         e.setValor(req.getValor());
         e.setNatureza(req.getNatureza());
-        e.setRefTipo(req.getRefTipo().trim().toUpperCase());
+        String refTipoReq = req.getRefTipo() != null && StringUtils.hasText(req.getRefTipo())
+                ? req.getRefTipo().trim().toUpperCase()
+                : "";
+        e.setRefTipo("R".equals(refTipoReq) ? "R" : "N");
         e.setEqReferencia(
                 req.getEqReferencia() != null && StringUtils.hasText(req.getEqReferencia())
                         ? req.getEqReferencia().trim()
@@ -253,6 +257,12 @@ public class FinanceiroApplicationService {
         r.setContaContabilNome(Utf8MojibakeUtil.corrigir(e.getContaContabil().getNome()));
         r.setClienteId(e.getCliente() != null ? e.getCliente().getId() : null);
         r.setProcessoId(e.getProcesso() != null ? e.getProcesso().getId() : null);
+        if (e.getCliente() != null) {
+            r.setCodigoCliente(CodigoClienteUtil.formatar(e.getCliente().getId()));
+        }
+        if (e.getProcesso() != null && e.getProcesso().getNumeroInterno() != null) {
+            r.setNumeroInternoProcesso(e.getProcesso().getNumeroInterno());
+        }
         r.setBancoNome(Utf8MojibakeUtil.corrigir(e.getBancoNome()));
         r.setNumeroBanco(e.getNumeroBanco());
         r.setNumeroLancamento(Utf8MojibakeUtil.corrigir(e.getNumeroLancamento()));

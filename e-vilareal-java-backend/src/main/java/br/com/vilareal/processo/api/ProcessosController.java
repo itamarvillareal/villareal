@@ -29,6 +29,12 @@ public class ProcessosController {
         return processoApplicationService.listarPorCodigoCliente(codigoCliente);
     }
 
+    @GetMapping("/por-numero-interno")
+    @Operation(summary = "Listar processos com o mesmo nº interno (vários clientes podem ter proc. 1, 2…)")
+    public List<ProcessoResponse> listarPorNumeroInterno(@RequestParam int numeroInterno) {
+        return processoApplicationService.listarPorNumeroInterno(numeroInterno);
+    }
+
     @GetMapping("/vinculo-pessoa/{pessoaId}")
     @Operation(summary = "Diagnóstico: processos em que a pessoa figura (cliente, parte ou advogado)")
     public List<ProcessoDiagnosticoPessoaItemResponse> listarVinculosPessoa(@PathVariable Long pessoaId) {

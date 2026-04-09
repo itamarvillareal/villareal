@@ -520,6 +520,10 @@ class ApiIntegrationTest extends AbstractIntegrationTest {
         assertThat(postL.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         Long lancId = ((Number) postL.getBody().get("id")).longValue();
         assertThat(postL.getBody().get("contaContabilNome")).isEqualTo("Conta Escritório");
+        assertThat(((Number) postL.getBody().get("clienteId")).longValue()).isEqualTo(pessoaId);
+        assertThat(((Number) postL.getBody().get("processoId")).longValue()).isEqualTo(procId);
+        assertThat(postL.getBody().get("codigoCliente")).isEqualTo(String.format("%08d", pessoaId));
+        assertThat(((Number) postL.getBody().get("numeroInternoProcesso")).intValue()).isEqualTo(88);
 
         ResponseEntity<Map<String, Object>> resumo = rest.exchange(
                 "/api/financeiro/lancamentos/resumo-processo/" + procId,
