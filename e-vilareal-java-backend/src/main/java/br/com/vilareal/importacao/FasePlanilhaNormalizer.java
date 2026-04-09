@@ -35,6 +35,7 @@ public final class FasePlanilhaNormalizer {
         sin("ag documentos", "Ag. Documentos");
         sin("ag. documentos", "Ag. Documentos");
         sin("aguardando peticionar", "Ag. Peticionar");
+        sin("aguardando peticionamento", "Ag. Peticionar");
         sin("ag peticionar", "Ag. Peticionar");
         sin("aguardando verificação", "Ag. Verificação");
         sin("ag verificacao", "Ag. Verificação");

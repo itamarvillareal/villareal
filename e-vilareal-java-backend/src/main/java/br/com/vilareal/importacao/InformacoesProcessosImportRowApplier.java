@@ -58,15 +58,21 @@ public class InformacoesProcessosImportRowApplier {
         processo.setNumeroInterno(dados.numeroInterno());
         if (dados.faseOpcional().isPresent()) {
             processo.setFase(dados.faseOpcional().get());
+        } else if (dados.usarFaseEmAndamentoQuandoFaseVazia()) {
+            processo.setFase("Em Andamento");
         } else {
             processo.setFase(null);
         }
         processo.setNumeroCnj(emptyToNull(dados.numeroCnjOuNull()));
         String descricaoAcaoCorrigida = Utf8MojibakeUtil.corrigir(dados.descricaoAcaoOuNull());
         processo.setDescricaoAcao(emptyToNull(descricaoAcaoCorrigida));
+        if (dados.controleAtivoOpcional().isPresent()) {
+            processo.setAtivo(dados.controleAtivoOpcional().get());
+        } else if (criado) {
+            processo.setAtivo(true);
+        }
         if (criado) {
             processo.setConsultaAutomatica(false);
-            processo.setAtivo(true);
         }
         processo = processoRepository.save(processo);
         log.info(
@@ -77,7 +83,9 @@ public class InformacoesProcessosImportRowApplier {
                 criado ? "criado" : "atualizado",
                 processo.getId());
 
-        atualizarDescricaoAcaoComplementar(dados.clientePessoaId(), descricaoAcaoCorrigida);
+        if (dados.atualizarComplementarDescricaoAcao()) {
+            atualizarDescricaoAcaoComplementar(dados.clientePessoaId(), descricaoAcaoCorrigida);
+        }
 
         parteRepository.deleteByProcesso_IdAndPolo(processo.getId(), POLO_AUTOR);
         parteRepository.deleteByProcesso_IdAndPolo(processo.getId(), POLO_REU);

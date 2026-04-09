@@ -110,6 +110,41 @@ Authorization: Bearer <token>
 
 **JSON:** `nome`, `cpf` (dígitos), `email`, `telefone` (campo “contato” no front), `dataNascimento`, `ativo`, `marcadoMonitoramento`, `responsavelId`.
 
+### Importação em lote — planilha “Cadastro Pessoas” (.xls)
+
+Propriedades: `vilareal.import.pessoas.*` em `application.properties`. Perfil Spring **`import-pessoas`** (ficheiro `application-import-pessoas.properties`): **não abre porta HTTP** (`web-application-type=none`), para poder correr em paralelo com a API em `8080`. Com `enabled=true`, lê o ficheiro, grava `pessoa` (id explícito), `pessoa_complementar`, `pessoa_endereco` (se houver rua), `pessoa_contato` (telefones), ajusta `AUTO_INCREMENT` ao fim, gera CSV de relatório e **encerra a JVM**.
+
+**Importante:** não use **vírgulas** em `--vilareal.import.pessoas.enabled=true,--vilareal...` — o Spring trata o valor de `enabled` como `true,--vilareal.import.pessoas.path=...` e falha com “Invalid boolean value”. Caminhos com **espaços** sem aspas pioram o parse.
+
+**Forma mais simples** — script; para **repetir importações** com a mesma planilha, guarde o caminho em `scripts/import-pessoas.local.env` (ver `scripts/import-pessoas.local.env.example` e **[`scripts/IMPORT_PESSOAS.md`](scripts/IMPORT_PESSOAS.md)**).
+
+```bash
+cd /caminho/para/e-vilareal-java-backend
+./scripts/run-import-pessoas.sh "/Users/exemplo/Downloads/Cadastro Pessoas - Itamar (1).xls"
+```
+
+Com `.local.env` configurado, basta `./scripts/run-import-pessoas.sh`. Carga real (todas as linhas): `DRY_RUN=false LIMIT=0 ./scripts/run-import-pessoas.sh`.
+
+**Variáveis de ambiente** (equivalente manual; `cd` tem de ser a pasta do backend `e-vilareal-java-backend`):
+
+```bash
+cd /Users/itamarvillarealjunior/Documents/Projetos/villareal/e-vilareal-java-backend
+export VILAREAL_IMPORT_PESSOAS_ENABLED=true
+export VILAREAL_IMPORT_PESSOAS_PATH="$HOME/Downloads/Cadastro Pessoas - Itamar (1).xls"
+export VILAREAL_IMPORT_PESSOAS_DRY_RUN=true
+export VILAREAL_IMPORT_PESSOAS_LIMIT=50
+./mvnw -q spring-boot:run -Dspring-boot.run.profiles=import-pessoas,dev
+```
+
+Alternativa sem env: argumentos **separados por espaço** (não por vírgula), path entre aspas no shell:
+
+```bash
+./mvnw -q spring-boot:run -Dspring-boot.run.profiles=import-pessoas,dev \
+  -Dspring-boot.run.arguments='--vilareal.import.pessoas.enabled=true --vilareal.import.pessoas.path="/Users/exemplo/Downloads/Cadastro Pessoas - Itamar (1).xls" --vilareal.import.pessoas.dry-run=true --vilareal.import.pessoas.limit=50'
+```
+
+Carga real: `VILAREAL_IMPORT_PESSOAS_DRY_RUN=false` ou `--vilareal.import.pessoas.dry-run=false` (requer MySQL e Flyway). Políticas: sem CPF/CNPJ válido ignora; CPF duplicado na planilha mantém a primeira; e-mail duplicado na planilha ou já no BD grava `email` nulo; Adm PJ / colunas 29 e 38 em `descricao_acao`.
+
 ### Pessoa — complementares / endereços / contatos
 
 | Método | Caminho |

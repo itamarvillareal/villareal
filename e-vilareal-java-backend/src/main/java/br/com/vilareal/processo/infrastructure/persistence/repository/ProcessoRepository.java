@@ -2,11 +2,24 @@ package br.com.vilareal.processo.infrastructure.persistence.repository;
 
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 import java.util.Optional;
 
 public interface ProcessoRepository extends JpaRepository<ProcessoEntity, Long> {
+
+    @Query(
+            """
+            SELECT DISTINCT p FROM ProcessoEntity p
+            WHERE p.pessoa.id = :pid
+               OR p.id IN (SELECT pp.processo.id FROM ProcessoParteEntity pp
+                           WHERE pp.pessoa IS NOT NULL AND pp.pessoa.id = :pid)
+               OR p.id IN (SELECT adv.processoParte.processo.id FROM ProcessoParteAdvogadoEntity adv
+                           WHERE adv.advogadoPessoa.id = :pid)
+            """)
+    List<ProcessoEntity> findAllDistinctVinculadosPessoa(@Param("pid") Long pid);
 
     List<ProcessoEntity> findByPessoa_IdOrderByNumeroInternoAsc(Long pessoaId);
 

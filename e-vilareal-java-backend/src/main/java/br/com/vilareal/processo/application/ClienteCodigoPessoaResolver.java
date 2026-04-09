@@ -4,6 +4,7 @@ import br.com.vilareal.common.exception.BusinessRuleException;
 import br.com.vilareal.importacao.PlanilhaPasta1MapeamentoUtil;
 import br.com.vilareal.importacao.infrastructure.persistence.entity.PlanilhaPasta1ClienteEntity;
 import br.com.vilareal.importacao.infrastructure.persistence.repository.PlanilhaPasta1ClienteRepository;
+import br.com.vilareal.pessoa.infrastructure.persistence.repository.ClienteRepository;
 import org.springframework.stereotype.Service;
 
 import java.util.Optional;
@@ -16,18 +17,40 @@ import java.util.Optional;
 public class ClienteCodigoPessoaResolver {
 
     private final PlanilhaPasta1ClienteRepository planilhaPasta1ClienteRepository;
+    private final ClienteRepository clienteRepository;
 
-    public ClienteCodigoPessoaResolver(PlanilhaPasta1ClienteRepository planilhaPasta1ClienteRepository) {
+    public ClienteCodigoPessoaResolver(
+            PlanilhaPasta1ClienteRepository planilhaPasta1ClienteRepository,
+            ClienteRepository clienteRepository) {
         this.planilhaPasta1ClienteRepository = planilhaPasta1ClienteRepository;
+        this.clienteRepository = clienteRepository;
     }
 
     public long resolverPessoaId(String codigoCliente) {
         if (codigoCliente == null || codigoCliente.isBlank()) {
             throw new BusinessRuleException("codigoCliente é obrigatório");
         }
-        return buscarMapeamentoPlanilha(codigoCliente.trim())
+        String norm = CodigoClienteUtil.normalizarCodigoClienteOitoDigitos(codigoCliente.trim());
+        return buscarMapeamentoPlanilha(norm)
                 .map(PlanilhaPasta1ClienteEntity::getPessoaId)
-                .orElseGet(() -> CodigoClienteUtil.parsePessoaId(codigoCliente));
+                .orElseGet(() -> CodigoClienteUtil.parsePessoaId(norm));
+    }
+
+    /**
+     * Preferência por {@code findById(chave)} após upsert na importação massiva (evita {@code findAll} por linha).
+     */
+    public long resolverPessoaIdAposMapeamentoChaveExacta(String chaveOuCodigo) {
+        if (chaveOuCodigo == null || chaveOuCodigo.isBlank()) {
+            throw new BusinessRuleException("codigoCliente é obrigatório");
+        }
+        String t = CodigoClienteUtil.normalizarCodigoClienteOitoDigitos(chaveOuCodigo.trim());
+        return planilhaPasta1ClienteRepository
+                .findById(t)
+                .map(PlanilhaPasta1ClienteEntity::getPessoaId)
+                .orElseGet(
+                        () -> buscarMapeamentoPlanilha(t)
+                                .map(PlanilhaPasta1ClienteEntity::getPessoaId)
+                                .orElseGet(() -> CodigoClienteUtil.parsePessoaId(t)));
     }
 
     /** Só a tabela Pasta1 — sem fallback “código = id da pessoa”. */
@@ -35,12 +58,40 @@ public class ClienteCodigoPessoaResolver {
         if (codigoCliente == null || codigoCliente.isBlank()) {
             return Optional.empty();
         }
-        return buscarMapeamentoPlanilha(codigoCliente.trim()).map(PlanilhaPasta1ClienteEntity::getPessoaId);
+        String norm = CodigoClienteUtil.normalizarCodigoClienteOitoDigitos(codigoCliente.trim());
+        return buscarMapeamentoPlanilha(norm).map(PlanilhaPasta1ClienteEntity::getPessoaId);
     }
 
     /** {@code true} quando há import Pasta1 gravado — UI e APIs não devem assumir cliente N = pessoa N. */
     public boolean haMapeamentosPlanilhaPasta1() {
         return planilhaPasta1ClienteRepository.count() > 0;
+    }
+
+    /**
+     * Para listagens (processos, etc.): com Pasta1 importada, usa o mapeamento da planilha; se não houver
+     * linha para o código, tenta {@code cliente} (cadastro / import de clientes). Sem Pasta1, equivale a
+     * {@link #resolverPessoaId(String)} com retorno opcional.
+     */
+    public Optional<Long> resolverPessoaIdComFallbackCliente(String codigoCliente) {
+        if (codigoCliente == null || codigoCliente.isBlank()) {
+            return Optional.empty();
+        }
+        if (haMapeamentosPlanilhaPasta1()) {
+            Optional<Long> fromPlanilha = resolverPessoaIdSomentePlanilha(codigoCliente);
+            if (fromPlanilha.isPresent()) {
+                return fromPlanilha;
+            }
+            String norm = CodigoClienteUtil.normalizarCodigoClienteOitoDigitos(codigoCliente.trim());
+            if (norm == null || norm.isEmpty()) {
+                return Optional.empty();
+            }
+            return clienteRepository.findByCodigoCliente(norm).map(c -> c.getPessoa().getId());
+        }
+        try {
+            return Optional.of(resolverPessoaId(codigoCliente));
+        } catch (BusinessRuleException e) {
+            return Optional.empty();
+        }
     }
 
     public Optional<PlanilhaPasta1ClienteEntity> buscarMapeamentoPlanilha(String codigoOuChave) {

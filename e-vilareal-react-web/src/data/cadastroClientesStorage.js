@@ -2,7 +2,6 @@
  * Persistência local dos dados editáveis do Cadastro de Clientes (por código de cliente).
  */
 
-import { CLIENTE_PARA_PESSOA, getIdPessoaPorCodCliente } from './clientesCadastradosMock.js';
 
 export const STORAGE_CADASTRO_CLIENTES_DADOS = 'vilareal:cadastro-clientes-dados:v1';
 
@@ -31,13 +30,9 @@ export function padCliente8Cadastro(val) {
   return String(Math.floor(n)).padStart(8, '0');
 }
 
-/** Maior código numérico já referenciado no mapa oficial ou nas chaves persistidas. */
+/** Maior código numérico já referenciado nas chaves persistidas (e opcionalmente na lista da API). */
 export function obterMaiorCodigoClienteConhecido() {
   let max = 0;
-  for (const k of Object.keys(CLIENTE_PARA_PESSOA)) {
-    const n = Number(String(k).replace(/\D/g, ''));
-    if (Number.isFinite(n) && n > max) max = n;
-  }
   if (typeof window !== 'undefined') {
     try {
       const raw = window.localStorage.getItem(STORAGE_CADASTRO_CLIENTES_DADOS);
@@ -86,9 +81,6 @@ export function coletarCodigosClienteConhecidos(clientesApiFront) {
       /* ignore */
     }
   }
-  for (const k of Object.keys(CLIENTE_PARA_PESSOA)) {
-    s.add(padCliente8Cadastro(k));
-  }
   return [...s].sort((a, b) => {
     const na = Number(String(a).replace(/\D/g, '')) || 0;
     const nb = Number(String(b).replace(/\D/g, '')) || 0;
@@ -115,9 +107,7 @@ export function clienteTemPessoaAtribuida(codPadded8, clientesApiFront) {
     const n = Number(raw.replace(/\D/g, ''));
     return Number.isFinite(n) && n >= 1;
   }
-  const nCod = Number(cod.replace(/\D/g, ''));
-  const mockId = getIdPessoaPorCodCliente(nCod);
-  return mockId != null && Number(mockId) >= 1;
+  return false;
 }
 
 /**

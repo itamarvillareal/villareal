@@ -13,13 +13,6 @@ import {
 } from 'lucide-react';
 import * as monitoringApi from '../../api/monitoringService.js';
 import { buscarCliente, atualizarCliente } from '../../api/clientesService.js';
-import { getCadastroPessoasMock } from '../../data/cadastroPessoasMock.js';
-import {
-  listarMonitoramentoLocalMock,
-  setMockMarcadoMonitoramento,
-} from '../../data/cadastroPessoasMockMonitoramento.js';
-
-const FORCA_MOCK_CADASTRO = import.meta.env.VITE_USE_MOCK_CADASTRO_PESSOAS === 'true';
 
 const FREQ_OPTIONS = [
   { v: 'MINUTES_15', l: 'A cada 15 min' },
@@ -57,14 +50,6 @@ export function MonitoringPeoplePage() {
   const loadAll = useCallback(async () => {
     setLoading(true);
     setErr('');
-    if (FORCA_MOCK_CADASTRO) {
-      const local = listarMonitoramentoLocalMock(getCadastroPessoasMock(false));
-      setRows(local);
-      setCandidates(local);
-      setSettings(null);
-      setLoading(false);
-      return;
-    }
     try {
       const [p, c, s] = await Promise.all([
         monitoringApi.listarMonitorados().catch((e) => {
@@ -77,15 +62,8 @@ export function MonitoringPeoplePage() {
       ]);
       const errP = p && p.__err;
       const errC = c && c.__err;
-      let rowsNext = Array.isArray(p) && !errP ? p : [];
-      let candidatesNext = Array.isArray(c) && !errC ? c : [];
-
-      // Fallback: liga Cadastro (mock) com Monitoramento quando a API estiver fora/instável.
-      if ((FORCA_MOCK_CADASTRO || errP || errC) && rowsNext.length === 0 && candidatesNext.length === 0) {
-        const local = listarMonitoramentoLocalMock(getCadastroPessoasMock(false));
-        rowsNext = local;
-        candidatesNext = local;
-      }
+      const rowsNext = Array.isArray(p) && !errP ? p : [];
+      const candidatesNext = Array.isArray(c) && !errC ? c : [];
 
       setRows(rowsNext);
       setCandidates(candidatesNext);
@@ -133,11 +111,6 @@ export function MonitoringPeoplePage() {
   const registrarCandidato = async (personId) => {
     setErr('');
     try {
-      if (FORCA_MOCK_CADASTRO) {
-        setMockMarcadoMonitoramento(personId, true);
-        await loadAll();
-        return;
-      }
       await monitoringApi.registrarMonitoramento({ personId, enabled: true });
       await loadAll();
     } catch (e) {
@@ -152,12 +125,6 @@ export function MonitoringPeoplePage() {
     setRemovendoPersonId(personId);
     setErr('');
     try {
-      const isMockLocal = r.lastStatus === 'MOCK_LOCAL' || r.id == null;
-      if (isMockLocal) {
-        setMockMarcadoMonitoramento(personId, false);
-        await loadAll();
-        return;
-      }
       const c = await buscarCliente(personId);
       if (!c) {
         setErr('Cadastro da pessoa não encontrado.');

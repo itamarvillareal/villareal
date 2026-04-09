@@ -47,7 +47,7 @@ class Pasta1ClientePessoaImportServiceTest {
     void insereQuandoChaveNovaEPessoaExiste() {
         Pasta1ClientePessoaListaResponse lido = listaComLinha("1", 64L, 1);
         when(pessoaRepository.existsById(64L)).thenReturn(true);
-        when(mapeamentoRepository.findById("1")).thenReturn(Optional.empty());
+        when(mapeamentoRepository.findById("00000001")).thenReturn(Optional.empty());
         PessoaEntity pessoaRef = mock(PessoaEntity.class);
         when(pessoaRepository.getReferenceById(64L)).thenReturn(pessoaRef);
         when(clienteRepository.findByCodigoCliente("00000001")).thenReturn(Optional.empty());
@@ -60,7 +60,7 @@ class Pasta1ClientePessoaImportServiceTest {
         assertThat(out.getDetalhes().get(0).getStatus()).isEqualTo(Pasta1ClientePessoaPersistStatus.INSERIDO);
         ArgumentCaptor<PlanilhaPasta1ClienteEntity> cap = ArgumentCaptor.forClass(PlanilhaPasta1ClienteEntity.class);
         verify(mapeamentoRepository).save(cap.capture());
-        assertThat(cap.getValue().getChaveCliente()).isEqualTo("1");
+        assertThat(cap.getValue().getChaveCliente()).isEqualTo("00000001");
         assertThat(cap.getValue().getPessoaId()).isEqualTo(64L);
         verify(clienteRepository).save(any(ClienteEntity.class));
     }
@@ -70,9 +70,9 @@ class Pasta1ClientePessoaImportServiceTest {
         Pasta1ClientePessoaListaResponse lido = listaComLinha("5", 10L, 2);
         when(pessoaRepository.existsById(10L)).thenReturn(true);
         PlanilhaPasta1ClienteEntity existente = new PlanilhaPasta1ClienteEntity();
-        existente.setChaveCliente("5");
+        existente.setChaveCliente("00000005");
         existente.setPessoaId(10L);
-        when(mapeamentoRepository.findById("5")).thenReturn(Optional.of(existente));
+        when(mapeamentoRepository.findById("00000005")).thenReturn(Optional.of(existente));
 
         var out = service.aplicarLista(lido);
 
@@ -86,9 +86,9 @@ class Pasta1ClientePessoaImportServiceTest {
         Pasta1ClientePessoaListaResponse lido = listaComLinha("5", 99L, 2);
         when(pessoaRepository.existsById(99L)).thenReturn(true);
         PlanilhaPasta1ClienteEntity existente = new PlanilhaPasta1ClienteEntity();
-        existente.setChaveCliente("5");
+        existente.setChaveCliente("00000005");
         existente.setPessoaId(10L);
-        when(mapeamentoRepository.findById("5")).thenReturn(Optional.of(existente));
+        when(mapeamentoRepository.findById("00000005")).thenReturn(Optional.of(existente));
         PessoaEntity pessoaRef = mock(PessoaEntity.class);
         when(pessoaRepository.getReferenceById(99L)).thenReturn(pessoaRef);
         ClienteEntity clienteLinha = new ClienteEntity();

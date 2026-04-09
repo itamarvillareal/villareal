@@ -22,7 +22,7 @@ import { executarPipelineImportacaoPublicacoes } from '../data/publicacoesPipeli
 import { hashArquivoSHA256 } from '../data/publicacoesHashArquivo.js';
 import { normalizarCnjParaChave } from '../data/publicacoesPdfParser.js';
 import {
-  montarIndiceCnjClienteProc,
+  montarIndiceCnjClienteProcAsync,
   aplicarVinculoManual,
   reaplicarVinculoCadastro,
 } from '../data/publicacoesVinculoProcessos.js';
@@ -108,7 +108,17 @@ export function PublicacoesProcessos() {
   const [modalTarefaContextual, setModalTarefaContextual] = useState(null);
   const [limpandoPublicacoes, setLimpandoPublicacoes] = useState(false);
 
-  const indiceCnj = useMemo(() => montarIndiceCnjClienteProc(), []);
+  const [indiceCnj, setIndiceCnj] = useState(() => new Map());
+
+  useEffect(() => {
+    let ativo = true;
+    void montarIndiceCnjClienteProcAsync().then((m) => {
+      if (ativo && m instanceof Map) setIndiceCnj(m);
+    });
+    return () => {
+      ativo = false;
+    };
+  }, []);
 
   function abrirModalTarefaPublicacao(r) {
     if (!featureFlags.useApiTarefas) return;

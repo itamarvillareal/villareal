@@ -10,6 +10,7 @@ import {
   savePersistedExtratosFinanceiro,
 } from '../data/financeiroData.js';
 import { resolverProcessoId } from './processosRepository.js';
+import { chaveDedupeLancamento, listarLancamentosNovosDedupe } from '../utils/ofx.js';
 
 function parseBrDateToIso(v) {
   const s = String(v ?? '').trim();
@@ -87,14 +88,14 @@ function mapUiLancamentoToApi(t, contaIdByNome, letraToConta) {
     numeroLancamento: String(t.numero ?? ''),
     dataLancamento: parseBrDateToIso(t.data),
     dataCompetencia: parseBrDateToIso(t.data),
-    descricao: String(t.descricao || ''),
+    descricao: String(t.descricao || '').trim() || 'Lançamento extrato',
     descricaoDetalhada: String(t.descricaoDetalhada || ''),
     valor: Math.abs(valorNum),
     natureza,
     refTipo: normalizarRef(t.ref),
     eqReferencia: String(t.eq || t.dimensao || ''),
     parcelaRef: String(t.parcela || ''),
-    origem: 'MANUAL',
+    origem: String(t.origemImportacao ?? '').trim() || 'MANUAL',
     status: 'ATIVO',
   };
 }
@@ -165,6 +166,80 @@ export async function salvarOuAtualizarLancamentoFinanceiroApi(t) {
     return request(`/api/financeiro/lancamentos/${Number(t.apiId)}`, { method: 'PUT', body });
   }
   return request('/api/financeiro/lancamentos', { method: 'POST', body });
+}
+
+/**
+ * Grava na API os lançamentos de uma importação OFX (modo mesclar = só linhas novas; substituir = apaga lançamentos do banco na API e recria).
+ * Com `useApiFinanceiro` desligado, retorna ok sem fazer nada.
+ */
+export async function persistirImportacaoOfxFinanceiroApi({
+  nomeBanco,
+  numeroBanco = null,
+  modo,
+  transacoesOfx,
+  transacoesAntesNoBanco,
+}) {
+  if (!featureFlags.useApiFinanceiro) {
+    return { ok: true, criados: 0, removidos: 0, erros: [], savedPairs: [] };
+  }
+  const normBanco = String(nomeBanco || '').trim();
+  const erros = [];
+  const savedPairs = [];
+  let removidos = 0;
+
+  if (modo === 'substituir') {
+    try {
+      const todos = await listarLancamentosFinanceiro();
+      const doBanco = (todos || []).filter((l) => String(l.bancoNome || '').trim() === normBanco);
+      for (const l of doBanco) {
+        try {
+          await removerLancamentoFinanceiroApi(l.id);
+          removidos += 1;
+        } catch (e) {
+          erros.push(`Remover ${l.id}: ${e?.message || e}`);
+        }
+      }
+    } catch (e) {
+      erros.push(`Listar lançamentos: ${e?.message || e}`);
+    }
+  }
+
+  const paraCriar =
+    modo === 'substituir'
+      ? transacoesOfx || []
+      : listarLancamentosNovosDedupe(transacoesAntesNoBanco, transacoesOfx);
+
+  const nb =
+    numeroBanco != null && Number.isFinite(Number(numeroBanco)) ? Number(numeroBanco) : null;
+
+  for (const row of paraCriar) {
+    const t = {
+      ...row,
+      nomeBanco: normBanco,
+      numeroBanco: nb,
+      origemImportacao: 'OFX',
+    };
+    try {
+      const saved = await salvarOuAtualizarLancamentoFinanceiroApi(t);
+      if (saved?.id) {
+        savedPairs.push({ row, saved });
+      } else {
+        erros.push(
+          `${String(row.numero)} ${String(row.data)}: falha (verifique se existe a conta contábil «Conta Não Identificados» na API).`,
+        );
+      }
+    } catch (e) {
+      erros.push(`${String(row.numero)} ${String(row.data)}: ${e?.message || e}`);
+    }
+  }
+
+  return {
+    ok: erros.length === 0,
+    criados: savedPairs.length,
+    removidos,
+    erros,
+    savedPairs,
+  };
 }
 
 /** Exclusão API com fallback decidido na camada de UI. */

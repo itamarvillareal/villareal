@@ -1,6 +1,7 @@
 package br.com.vilareal.importacao.api;
 
 import br.com.vilareal.common.exception.BusinessRuleException;
+import br.com.vilareal.importacao.ImportClientesPlanilhaService;
 import br.com.vilareal.importacao.InformacoesProcessosImportService;
 import br.com.vilareal.importacao.Pasta1ClientePessoaImportService;
 import br.com.vilareal.importacao.Pasta1ClientePessoaReader;
@@ -35,6 +36,7 @@ public class ImportacaoController {
     private final InformacoesProcessosImportService informacoesProcessosImportService;
     private final Pasta1ClientePessoaReader pasta1ClientePessoaReader;
     private final Pasta1ClientePessoaImportService pasta1ClientePessoaImportService;
+    private final ImportClientesPlanilhaService importClientesPlanilhaService;
     private final ProcessosInativarPlanilhaService processosInativarPlanilhaService;
 
     @Value("${vilareal.import.pasta1-clientes.path:}")
@@ -44,10 +46,12 @@ public class ImportacaoController {
             InformacoesProcessosImportService informacoesProcessosImportService,
             Pasta1ClientePessoaReader pasta1ClientePessoaReader,
             Pasta1ClientePessoaImportService pasta1ClientePessoaImportService,
+            ImportClientesPlanilhaService importClientesPlanilhaService,
             ProcessosInativarPlanilhaService processosInativarPlanilhaService) {
         this.informacoesProcessosImportService = informacoesProcessosImportService;
         this.pasta1ClientePessoaReader = pasta1ClientePessoaReader;
         this.pasta1ClientePessoaImportService = pasta1ClientePessoaImportService;
+        this.importClientesPlanilhaService = importClientesPlanilhaService;
         this.processosInativarPlanilhaService = processosInativarPlanilhaService;
     }
 
@@ -190,6 +194,50 @@ public class ImportacaoController {
     public Pasta1ClientePessoaPersistResponse aplicarPasta1PorPath(
             @RequestParam(value = "path", required = false) String pathParam) {
         return pasta1ClientePessoaImportService.aplicarArquivo(resolverPathPasta1(pathParam));
+    }
+
+    @PostMapping(value = "/clientes-planilha", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(
+            summary = "Importar planilha clientes+processos (multipart)",
+            description =
+                    "Layout A–R (S ignorada): A código cliente, B id pessoa, C ativo, D–H autores, I,J,M–P réus, K proc., L fase, Q CNJ, R descrição. Campo `file` opcional; sem ficheiro usa `path` ou property ou ~/Documents/import clientes.xlsx")
+    public ImportacaoInformacoesProcessosResponse importarClientesPlanilhaMultipart(
+            @RequestParam(value = "file", required = false) MultipartFile file,
+            @RequestParam(value = "path", required = false) String pathParam) {
+        if (file != null && !file.isEmpty()) {
+            try {
+                String on = file.getOriginalFilename() != null ? file.getOriginalFilename() : "";
+                String suf =
+                        on.toLowerCase().endsWith(".xlsx")
+                                ? ".xlsx"
+                                : on.toLowerCase().endsWith(".xls") ? ".xls" : ".bin";
+                Path temp = Files.createTempFile("vilareal-import-clientes-", suf);
+                try {
+                    file.transferTo(temp);
+                    return importClientesPlanilhaService.importarDeArquivo(temp);
+                } finally {
+                    Files.deleteIfExists(temp);
+                }
+            } catch (IOException e) {
+                throw new BusinessRuleException("Falha ao gravar ficheiro temporário: " + e.getMessage());
+            }
+        }
+        if (StringUtils.hasText(pathParam)) {
+            return importClientesPlanilhaService.importarDeArquivo(Path.of(pathParam.trim()));
+        }
+        return importClientesPlanilhaService.importarDeArquivo(null);
+    }
+
+    @PostMapping("/clientes-planilha")
+    @Operation(
+            summary = "Importar planilha clientes+processos (path)",
+            description = "Query `path` opcional; senão `vilareal.import.clientes-planilha.path`; senão ~/Documents/import clientes.xlsx")
+    public ImportacaoInformacoesProcessosResponse importarClientesPlanilhaPorPath(
+            @RequestParam(value = "path", required = false) String pathParam) {
+        if (StringUtils.hasText(pathParam)) {
+            return importClientesPlanilhaService.importarDeArquivo(Path.of(pathParam.trim()));
+        }
+        return importClientesPlanilhaService.importarDeArquivo(null);
     }
 
     private Path resolverPathPasta1(String pathParam) {

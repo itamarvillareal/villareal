@@ -13,7 +13,6 @@ import {
   getEventosAgendaPersistidosPorData,
   getUsuariosAtivos,
   setUsuariosAtivos,
-  salvarCamposEventoAgendaPersistido,
   criarNovoCompromissoAgendaPersistido,
   normalizarStatusCurtoAgenda,
   ordenarListaEventosAgenda,
@@ -28,6 +27,7 @@ import { buildRouterStateChaveClienteProcesso } from '../domain/camposProcessoCl
 import { listarUsuarios } from '../repositories/usuariosRepository.js';
 import {
   listarEventosPorDataUsuario,
+  listarAgendaMensal,
   salvarCamposEvento,
   criarEvento,
 } from '../repositories/agendaRepository.js';

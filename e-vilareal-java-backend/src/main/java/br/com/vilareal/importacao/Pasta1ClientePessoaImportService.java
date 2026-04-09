@@ -9,9 +9,11 @@ import br.com.vilareal.importacao.infrastructure.persistence.entity.PlanilhaPast
 import br.com.vilareal.importacao.infrastructure.persistence.repository.PlanilhaPasta1ClienteRepository;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
+import br.com.vilareal.processo.application.CodigoClienteUtil;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.ClienteRepository;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
@@ -56,7 +58,6 @@ public class Pasta1ClientePessoaImportService {
             Pasta1ClientePessoaPersistLinhaDetalhe d = new Pasta1ClientePessoaPersistLinhaDetalhe();
             d.setLinhaExcel(item.getLinhaExcel());
             String chave = item.getClienteColunaA();
-            d.setChaveCliente(chave);
             Long pid = item.getPessoaId();
             d.setPessoaId(pid);
 
@@ -64,9 +65,12 @@ public class Pasta1ClientePessoaImportService {
                 d.setStatus(Pasta1ClientePessoaPersistStatus.IGNORADO);
                 d.setMensagem("Chave cliente vazia.");
                 ign++;
+                d.setChaveCliente(chave);
                 out.getDetalhes().add(d);
                 continue;
             }
+            chave = CodigoClienteUtil.normalizarCodigoClienteOitoDigitos(chave);
+            d.setChaveCliente(chave);
             if (chave.length() > CHAVE_MAX) {
                 d.setStatus(Pasta1ClientePessoaPersistStatus.IGNORADO);
                 d.setMensagem("Chave excede " + CHAVE_MAX + " caracteres.");
@@ -121,6 +125,37 @@ public class Pasta1ClientePessoaImportService {
         out.setLinhasAtualizadas(upd);
         out.setLinhasIgnoradas(ign);
         return out;
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW, rollbackFor = Exception.class)
+    public void upsertMapeamentoClientePasta1(String chaveClienteColA, long pessoaId) {
+        String chave =
+                CodigoClienteUtil.normalizarCodigoClienteOitoDigitos(
+                        chaveClienteColA == null ? "" : chaveClienteColA.trim());
+        if (!StringUtils.hasText(chave)) {
+            throw new IllegalArgumentException("Chave cliente (coluna A) vazia.");
+        }
+        if (chave.length() > CHAVE_MAX) {
+            throw new IllegalArgumentException("Chave excede " + CHAVE_MAX + " caracteres.");
+        }
+        if (!pessoaRepository.existsById(pessoaId)) {
+            throw new IllegalArgumentException("Pessoa não existe: id=" + pessoaId);
+        }
+        var existente = mapeamentoRepository.findById(chave);
+        if (existente.isEmpty()) {
+            PlanilhaPasta1ClienteEntity e = new PlanilhaPasta1ClienteEntity();
+            e.setChaveCliente(chave);
+            e.setPessoaId(pessoaId);
+            mapeamentoRepository.save(e);
+            sincronizarClienteDaChave(chave, pessoaId);
+            return;
+        }
+        PlanilhaPasta1ClienteEntity e = existente.get();
+        if (!e.getPessoaId().equals(pessoaId)) {
+            e.setPessoaId(pessoaId);
+            mapeamentoRepository.save(e);
+            sincronizarClienteDaChave(chave, pessoaId);
+        }
     }
 
     private void sincronizarClienteDaChave(String chave, long pessoaId) {

@@ -1,13 +1,15 @@
 import { useState, useEffect } from 'react';
 import { featureFlags } from '../config/featureFlags.js';
-import { TOPICOS_RAIZ } from '../data/topicosHierarchy.js';
 import { fetchTopicosHierarchy } from '../repositories/topicosRepository.js';
 
+/** Estrutura mínima quando não há dados da API (sem árvore estática de demonstração). */
+const TOPICOS_RAIZ_VAZIA = { id: '_raiz', label: 'Início', children: [] };
+
 /**
- * Dados da hierarquia: mock local por padrão; com `VITE_USE_API_TOPICOS=true` busca na API.
+ * Hierarquia: com `VITE_USE_API_TOPICOS=true` busca na API; senão exibe raiz vazia até ativar a API.
  */
 export function useTopicosRaiz() {
-  const [raiz, setRaiz] = useState(() => (featureFlags.useApiTopicos ? null : TOPICOS_RAIZ));
+  const [raiz, setRaiz] = useState(() => (featureFlags.useApiTopicos ? null : TOPICOS_RAIZ_VAZIA));
   const [erro, setErro] = useState(null);
   const [carregando, setCarregando] = useState(Boolean(featureFlags.useApiTopicos));
 
@@ -29,7 +31,7 @@ export function useTopicosRaiz() {
         console.error(e);
         if (!cancel) {
           setErro(e);
-          setRaiz(TOPICOS_RAIZ);
+          setRaiz(TOPICOS_RAIZ_VAZIA);
           setCarregando(false);
         }
       });

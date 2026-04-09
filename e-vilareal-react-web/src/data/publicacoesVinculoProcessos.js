@@ -1,29 +1,67 @@
 /**
- * Cruza número CNJ com o cadastro interno (mesma fonte que Relatório Processos / Processos).
+ * Cruza número CNJ com o cadastro interno (API clientes + processos).
  */
 
-import { getParesClienteProcMockRelatorio } from './relatorioProcessosDados.js';
 import { getNomeClienteCadastroPorCodigo } from './relatorioProcessosDados.js';
-import { getDadosProcessoClienteUnificado } from './processoClienteProcUnificado.js';
 import { obterNumeroProcessoNovoUnificado } from './processosHistoricoData.js';
 import { normalizarCnjParaChave } from './publicacoesPdfParser.js';
 import { calcularScoreConfianca, datajudStubFromStatusValidacao } from './publicacoesValidacaoScore.js';
+import { featureFlags } from '../config/featureFlags.js';
+import { listarClientesCadastro } from '../repositories/clientesRepository.js';
+import { listarProcessosPorCodigoCliente, mapApiProcessoToUiShape } from '../repositories/processosRepository.js';
+
+/**
+ * Índice vazio até {@link montarIndiceCnjClienteProcAsync} concluir (evita dados fictícios).
+ */
+export function montarIndiceCnjClienteProc() {
+  return new Map();
+}
 
 /**
  * Mapa CNJ normalizado → { codCliente, proc, cliente }
  */
-export function montarIndiceCnjClienteProc() {
+export async function montarIndiceCnjClienteProcAsync() {
   const map = new Map();
-  for (const [c, p] of getParesClienteProcMockRelatorio()) {
-    const u = getDadosProcessoClienteUnificado(c, p);
-    const cnj = obterNumeroProcessoNovoUnificado(c, p, u?.processoNovo ?? '');
-    const key = normalizarCnjParaChave(cnj);
-    if (!key) continue;
-    if (!map.has(key)) {
+  if (!featureFlags.useApiProcessos || !featureFlags.useApiClientes) {
+    return map;
+  }
+  let clientes;
+  try {
+    clientes = await listarClientesCadastro();
+  } catch {
+    return map;
+  }
+  if (!Array.isArray(clientes) || clientes.length === 0) return map;
+
+  const sorted = [...clientes].sort((a, b) => String(a.codigo ?? '').localeCompare(String(b.codigo ?? '')));
+
+  for (const cli of sorted) {
+    const digits = String(cli.codigo ?? '').replace(/\D/g, '');
+    const codPad = digits.padStart(8, '0').slice(-8);
+    if (!codPad || /^0{8}$/.test(codPad)) continue;
+
+    const nomeCliente =
+      String(cli.nomeRazao ?? '').trim() ||
+      getNomeClienteCadastroPorCodigo(Number(digits.replace(/^0+/, '') || '0'));
+
+    let rawList;
+    try {
+      rawList = await listarProcessosPorCodigoCliente(codPad);
+    } catch {
+      continue;
+    }
+    const procs = Array.isArray(rawList) ? rawList : [];
+    for (const raw of procs) {
+      const u = mapApiProcessoToUiShape(raw);
+      const p = Number(u.numeroInterno);
+      if (!Number.isFinite(p) || p < 1) continue;
+      const cnj = obterNumeroProcessoNovoUnificado(codPad, p, u.numeroProcessoNovo ?? '');
+      const key = normalizarCnjParaChave(cnj);
+      if (!key || map.has(key)) continue;
       map.set(key, {
-        codCliente: String(c).padStart(8, '0'),
+        codCliente: codPad,
         proc: String(p),
-        cliente: getNomeClienteCadastroPorCodigo(c),
+        cliente: nomeCliente,
       });
     }
   }
@@ -69,7 +107,6 @@ function padCodCliente(s) {
   return n.padStart(8, '0').slice(-8);
 }
 
-/** Normaliza item da prévia ou do armazenamento para o formato esperado pelo parser de vínculo. */
 function comoParseadoParaVinculo(item) {
   const cnj =
     item.processoCnjNormalizado ||
@@ -85,10 +122,6 @@ function comoParseadoParaVinculo(item) {
   };
 }
 
-/**
- * Vincula manualmente a publicação a código de cliente e proc. interno (auditoria: vinculoOrigem manual).
- * Recalcula score de confiança com base no status CNJ já conhecido.
- */
 export function aplicarVinculoManual(item, { codCliente, procInterno, cliente }) {
   const cod = padCodCliente(codCliente);
   const proc = String(procInterno ?? '').trim();
@@ -120,9 +153,6 @@ export function aplicarVinculoManual(item, { codCliente, procInterno, cliente })
   return next;
 }
 
-/**
- * Remove vínculo manual e reaplica o cruzamento automático com o cadastro interno (mesmo índice CNJ).
- */
 export function reaplicarVinculoCadastro(item, indiceMap) {
   const limpo = { ...comoParseadoParaVinculo(item) };
   delete limpo.vinculoOrigem;

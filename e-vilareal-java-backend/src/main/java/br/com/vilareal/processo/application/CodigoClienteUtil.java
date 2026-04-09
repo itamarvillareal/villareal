@@ -27,4 +27,26 @@ public final class CodigoClienteUtil {
             throw new BusinessRuleException("codigoCliente inválido");
         }
     }
+
+    /**
+     * Código de cliente com 8 dígitos quando o valor é só dígitos (ex.: {@code "1"}, {@code "0001"} → {@code "00000001"}).
+     * Caso contrário retorna o texto trimado sem alteração.
+     */
+    public static String normalizarCodigoClienteOitoDigitos(String codigoOuChave) {
+        if (codigoOuChave == null) {
+            return null;
+        }
+        String t = codigoOuChave.trim();
+        if (t.isEmpty()) {
+            return "";
+        }
+        if (!t.chars().allMatch(Character::isDigit)) {
+            return t;
+        }
+        try {
+            return formatar(parsePessoaId(t));
+        } catch (BusinessRuleException e) {
+            return t;
+        }
+    }
 }

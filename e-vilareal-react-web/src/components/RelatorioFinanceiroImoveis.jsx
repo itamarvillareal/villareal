@@ -8,7 +8,6 @@ import {
   TAG_ADM_ALUGUEL,
   TAG_ADM_REPASSE,
 } from '../data/imoveisAdministracaoFinanceiro.js';
-import { getImovelMock } from '../data/imoveisMockData.js';
 import { featureFlags } from '../config/featureFlags.js';
 import { listarLancamentosProcessoApiFirst } from '../repositories/financeiroRepository.js';
 
@@ -83,7 +82,7 @@ export function RelatorioFinanceiroImoveis() {
         setApiErro('');
         const next = {};
         for (const linha of linhasBase) {
-          const imovel = getImovelMock(linha.imovelId);
+          const imovel = linha.codigo != null && linha.proc != null ? { codigo: linha.codigo, proc: linha.proc } : null;
           if (!imovel?.codigo || !imovel?.proc) continue;
           const lancs = await listarLancamentosProcessoApiFirst({
             codigoCliente: String(imovel.codigo).padStart(8, '0'),

@@ -7,6 +7,7 @@ import br.com.vilareal.importacao.PlanilhaPasta1MapeamentoUtil;
 import br.com.vilareal.importacao.infrastructure.persistence.entity.PlanilhaPasta1ClienteEntity;
 import br.com.vilareal.importacao.infrastructure.persistence.repository.PlanilhaPasta1ClienteRepository;
 import br.com.vilareal.pessoa.api.dto.ClienteListItemResponse;
+import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.ClienteRepository;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
@@ -19,6 +20,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.text.Normalizer;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -28,6 +30,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Locale;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -160,16 +163,7 @@ public class ProcessoApplicationService {
         } catch (BusinessRuleException e) {
             return Optional.empty();
         }
-        Optional<Long> pessoaOpt;
-        if (clienteCodigoPessoaResolver.haMapeamentosPlanilhaPasta1()) {
-            pessoaOpt = clienteCodigoPessoaResolver.resolverPessoaIdSomentePlanilha(trimmed);
-        } else {
-            try {
-                pessoaOpt = Optional.of(clienteCodigoPessoaResolver.resolverPessoaId(trimmed));
-            } catch (BusinessRuleException e) {
-                pessoaOpt = Optional.empty();
-            }
-        }
+        Optional<Long> pessoaOpt = clienteCodigoPessoaResolver.resolverPessoaIdComFallbackCliente(trimmed);
         return pessoaOpt.flatMap(
                 pid -> pessoaRepository
                         .findById(pid)
@@ -183,22 +177,110 @@ public class ProcessoApplicationService {
 
     @Transactional(readOnly = true)
     public List<ProcessoResponse> listarPorCodigoCliente(String codigoCliente) {
-        long pessoaId;
-        if (clienteCodigoPessoaResolver.haMapeamentosPlanilhaPasta1()) {
-            Optional<Long> opt = clienteCodigoPessoaResolver.resolverPessoaIdSomentePlanilha(codigoCliente);
-            if (opt.isEmpty() || !pessoaRepository.existsById(opt.get())) {
-                return List.of();
-            }
-            pessoaId = opt.get();
-        } else {
-            pessoaId = clienteCodigoPessoaResolver.resolverPessoaId(codigoCliente);
-            if (!pessoaRepository.existsById(pessoaId)) {
-                return List.of();
+        Optional<Long> resolved = clienteCodigoPessoaResolver.resolverPessoaIdComFallbackCliente(codigoCliente);
+        if (resolved.isEmpty() || !pessoaRepository.existsById(resolved.get())) {
+            return List.of();
+        }
+        long pessoaId = resolved.get();
+        List<ProcessoEntity> lista = processoRepository.findByPessoa_IdOrderByNumeroInternoAsc(pessoaId);
+        List<Long> procIds = lista.stream().map(ProcessoEntity::getId).collect(Collectors.toList());
+        Map<Long, List<ProcessoParteEntity>> partesPorProcesso = new LinkedHashMap<>();
+        if (!procIds.isEmpty()) {
+            for (ProcessoParteEntity parte :
+                    parteRepository.findAllByProcessoIdInWithPessoaEProcesso(procIds)) {
+                Long pid = parte.getProcesso().getId();
+                partesPorProcesso.computeIfAbsent(pid, k -> new ArrayList<>()).add(parte);
             }
         }
-        return processoRepository.findByPessoa_IdOrderByNumeroInternoAsc(pessoaId).stream()
-                .map(this::toResponse)
+        return lista.stream()
+                .map(e -> {
+                    ProcessoResponse r = toResponse(e);
+                    r.setParteOposta(montarTextoParteOpostaListagem(
+                            partesPorProcesso.getOrDefault(e.getId(), List.of())));
+                    return r;
+                })
                 .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<ProcessoDiagnosticoPessoaItemResponse> listarVinculosDiagnosticoPorPessoa(Long pessoaId) {
+        if (pessoaId == null || pessoaId < 1 || !pessoaRepository.existsById(pessoaId)) {
+            return List.of();
+        }
+        List<ProcessoEntity> lista = new ArrayList<>(processoRepository.findAllDistinctVinculadosPessoa(pessoaId));
+        lista.sort(Comparator.comparing((ProcessoEntity e) -> e.getPessoa().getId())
+                .thenComparing(ProcessoEntity::getNumeroInterno));
+
+        List<Long> procIds = lista.stream().map(ProcessoEntity::getId).collect(Collectors.toList());
+        Map<Long, List<ProcessoParteEntity>> partesPorProcesso = new LinkedHashMap<>();
+        if (!procIds.isEmpty()) {
+            for (ProcessoParteEntity parte :
+                    parteRepository.findAllByProcessoIdInWithPessoaEProcesso(procIds)) {
+                Long pid = parte.getProcesso().getId();
+                partesPorProcesso.computeIfAbsent(pid, k -> new ArrayList<>()).add(parte);
+            }
+        }
+
+        List<ProcessoDiagnosticoPessoaItemResponse> out = new ArrayList<>();
+        for (ProcessoEntity e : lista) {
+            List<ProcessoParteEntity> partes = partesPorProcesso.getOrDefault(e.getId(), List.of());
+            Long ownerId = e.getPessoa().getId();
+            String cod8 = resolverCodigoClienteExibicaoParaPessoa(ownerId);
+            String nomeCliente = Utf8MojibakeUtil.corrigir(e.getPessoa().getNome());
+            String parteOpostaTxt = montarTextoParteOpostaListagem(partes);
+
+            LinkedHashSet<String> papeis = new LinkedHashSet<>();
+            if (ownerId.equals(pessoaId)) {
+                papeis.add("Cliente do processo");
+            }
+            for (ProcessoParteEntity parte : partes) {
+                if (parte.getPessoa() != null && parte.getPessoa().getId().equals(pessoaId)) {
+                    String poloNorm = normalizarPoloParaComparacao(parte.getPolo());
+                    if (poloNorm.contains("AUTOR")
+                            || poloNorm.contains("REQUERENTE")
+                            || poloNorm.contains("CLIENTE")) {
+                        papeis.add("Parte Cliente");
+                    } else {
+                        papeis.add("Parte Oposta");
+                    }
+                }
+                for (ProcessoParteAdvogadoEntity adv :
+                        parteAdvogadoRepository.findByProcessoParte_IdOrderByOrdemAscIdAsc(parte.getId())) {
+                    if (adv.getAdvogadoPessoa().getId().equals(pessoaId)) {
+                        papeis.add("Advogado(a)");
+                    }
+                }
+            }
+
+            String cnj = trimToNull(e.getNumeroCnj());
+            ProcessoDiagnosticoPessoaItemResponse r = new ProcessoDiagnosticoPessoaItemResponse();
+            r.setCodigoCliente(cod8);
+            r.setNumeroInterno(e.getNumeroInterno());
+            r.setCliente(nomeCliente);
+            r.setParteCliente(nomeCliente);
+            r.setParteOposta(parteOpostaTxt);
+            r.setNumeroProcessoNovo(cnj == null ? "" : Utf8MojibakeUtil.corrigir(cnj));
+            r.setPapeis(String.join(" · ", papeis));
+            out.add(r);
+        }
+        return out;
+    }
+
+    private String resolverCodigoClienteExibicaoParaPessoa(Long pessoaIdDonoProcesso) {
+        if (clienteCodigoPessoaResolver.haMapeamentosPlanilhaPasta1()) {
+            List<PlanilhaPasta1ClienteEntity> maps =
+                    planilhaPasta1ClienteRepository.findByPessoaIdOrderByChaveClienteAsc(pessoaIdDonoProcesso);
+            if (!maps.isEmpty()) {
+                String chave = maps.get(0).getChaveCliente();
+                return CodigoClienteUtil.normalizarCodigoClienteOitoDigitos(chave);
+            }
+        }
+        List<ClienteEntity> clientes =
+                clienteRepository.findByPessoa_IdOrderByCodigoClienteAsc(pessoaIdDonoProcesso);
+        if (!clientes.isEmpty()) {
+            return CodigoClienteUtil.normalizarCodigoClienteOitoDigitos(clientes.get(0).getCodigoCliente());
+        }
+        return CodigoClienteUtil.formatar(pessoaIdDonoProcesso);
     }
 
     @Transactional(readOnly = true)
@@ -590,5 +672,68 @@ public class ProcessoApplicationService {
         }
         String t = s.trim();
         return t.isEmpty() ? null : t;
+    }
+
+    /**
+     * Mesmo critério de {@code aplicarListaPartesApiNaUi} no front (polo não-autor/requerente/cliente;
+     * só entradas com {@code pessoa} vinculada para o texto agregado).
+     */
+    private static String montarTextoParteOpostaListagem(List<ProcessoParteEntity> partes) {
+        if (partes == null || partes.isEmpty()) {
+            return "";
+        }
+        List<String> nomesOposta = new ArrayList<>();
+        for (ProcessoParteEntity p : partes) {
+            String poloNorm = normalizarPoloParaComparacao(p.getPolo());
+            boolean alvoCliente = poloNorm.contains("AUTOR")
+                    || poloNorm.contains("REQUERENTE")
+                    || poloNorm.contains("CLIENTE");
+            if (alvoCliente || p.getPessoa() == null) {
+                continue;
+            }
+            PessoaEntity pes = p.getPessoa();
+            String nomeApi = "";
+            if (StringUtils.hasText(pes.getNome())) {
+                nomeApi = Utf8MojibakeUtil.corrigir(pes.getNome().trim());
+            }
+            if (!StringUtils.hasText(nomeApi) && StringUtils.hasText(p.getNomeLivre())) {
+                nomeApi = Utf8MojibakeUtil.corrigir(p.getNomeLivre().trim());
+            }
+            long pessoaNum = pes.getId();
+            String rotulo = StringUtils.hasText(nomeApi)
+                    ? nomeApi
+                    : ("Pessoa nº " + pessoaNum);
+            if (StringUtils.hasText(rotulo)) {
+                nomesOposta.add(rotulo);
+            }
+        }
+        return formatarListaComConjuncaoE(nomesOposta);
+    }
+
+    private static String normalizarPoloParaComparacao(String polo) {
+        if (!StringUtils.hasText(polo)) {
+            return "";
+        }
+        String nfd = Normalizer.normalize(polo.trim(), Normalizer.Form.NFD);
+        String semAcentos = nfd.replaceAll("\\p{M}+", "");
+        return semAcentos.toUpperCase(Locale.ROOT);
+    }
+
+    /** Igual a {@code formatarListaComConjuncaoE} no front (Processos.jsx). */
+    private static String formatarListaComConjuncaoE(List<String> itens) {
+        List<String> lista = (itens == null ? List.<String>of() : itens).stream()
+                .map(s -> s == null ? "" : s.trim())
+                .filter(StringUtils::hasText)
+                .collect(Collectors.toList());
+        if (lista.isEmpty()) {
+            return "";
+        }
+        if (lista.size() == 1) {
+            return lista.get(0);
+        }
+        if (lista.size() == 2) {
+            return lista.get(0) + " e " + lista.get(1);
+        }
+        return String.join(", ", lista.subList(0, lista.size() - 1)) + " e " + lista.get(lista.size() - 1);
     }
 }

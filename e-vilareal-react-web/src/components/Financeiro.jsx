@@ -48,7 +48,7 @@ import {
   parseRodadaKeyParaDisplay,
 } from '../data/buscaParcelamentoFinanceiro';
 import { buildRouterStateChaveClienteProcesso } from '../domain/camposProcessoCliente.js';
-import { parseOfxToExtrato, mergeExtratoBancario, contarLancamentosNovos } from '../utils/ofx';
+import { parseOfxToExtrato, mergeExtratoBancario, contarLancamentosNovos, chaveDedupeLancamento } from '../utils/ofx';
 import { OFX_ITAU_REAL_EXEMPLO, OFX_CORA_REAL_EXEMPLO } from '../data/ofxItauCoraReal';
 import { CheckSquare, ChevronLeft, ChevronRight, Link2, Settings, Trash2, Unlink } from 'lucide-react';
 import { ModalVinculoClienteProcFinanceiro } from './ModalVinculoClienteProcFinanceiro.jsx';
@@ -58,6 +58,7 @@ import {
   carregarExtratosFinanceiroApiFirst,
   removerLancamentoFinanceiroApi,
   persistirFallbackExtratos,
+  persistirImportacaoOfxFinanceiroApi,
   salvarOuAtualizarLancamentoFinanceiroApi,
 } from '../repositories/financeiroRepository.js';
 /** Ref. exibida: só N ou R (vazio/legado → N). */
@@ -91,6 +92,37 @@ function contaEscritorioOuPrimeiraAtiva(inativasSet, ordemNomes) {
 }
 function getTransacoesBanco(extratosPorBanco, nomeBanco) {
   return extratosPorBanco[nomeBanco] ?? [];
+}
+
+/** Após POST na API (importação OFX), associa `apiId` e metadados às linhas locais pela chave FITID+data+valor. */
+function aplicarSavedPairsOfxNoEstado(prev, nomeBanco, savedPairs) {
+  if (!savedPairs?.length) return prev;
+  const next = cloneExtratos(prev);
+  const arr = next[nomeBanco];
+  if (!Array.isArray(arr)) return prev;
+  const norm = String(nomeBanco || '').trim();
+  for (const { row, saved } of savedPairs) {
+    if (!saved?.id) continue;
+    const k = chaveDedupeLancamento(row);
+    const idx = arr.findIndex((t) => chaveDedupeLancamento(t) === k);
+    if (idx < 0) continue;
+    arr[idx] = {
+      ...arr[idx],
+      apiId: saved.id,
+      nomeBanco: norm,
+      numeroBanco: saved.numeroBanco ?? arr[idx].numeroBanco ?? null,
+      _financeiroMeta: {
+        ...(arr[idx]._financeiroMeta || {}),
+        clienteId: saved.clienteId ?? arr[idx]._financeiroMeta?.clienteId ?? null,
+        processoId: saved.processoId ?? arr[idx]._financeiroMeta?.processoId ?? null,
+        contaContabilId: saved.contaContabilId ?? arr[idx]._financeiroMeta?.contaContabilId ?? null,
+        classificacaoFinanceiraId:
+          saved.classificacaoFinanceiraId ?? arr[idx]._financeiroMeta?.classificacaoFinanceiraId ?? null,
+        eloFinanceiroId: saved.eloFinanceiroId ?? arr[idx]._financeiroMeta?.eloFinanceiroId ?? null,
+      },
+    };
+  }
+  return next;
 }
 
 function formatValor(v) {
@@ -1309,16 +1341,51 @@ export function Financeiro() {
         return;
       }
       const modo = substituirExtratoOfxCompleto ? 'substituir' : 'mesclar';
+      const atualAntes = extratosPorBancoRef.current[instituicaoSelecionada] ?? [];
       let novosContados = 0;
       setExtratosPorBanco((prev) => {
-        const atual = prev[instituicaoSelecionada] ?? [];
-        novosContados = modo === 'mesclar' ? contarLancamentosNovos(atual, extrato) : extrato.length;
+        const antes = prev[instituicaoSelecionada] ?? [];
+        novosContados = modo === 'mesclar' ? contarLancamentosNovos(antes, extrato) : extrato.length;
         return aplicarExtratoNoBanco(prev, instituicaoSelecionada, extrato, modo);
       });
       const base =
         modo === 'mesclar'
           ? `OFX: +${novosContados} lanç. novos em ${instituicaoSelecionada} (${extrato.length - novosContados} duplicados ignorados). Extrato anterior mantido.`
           : `OFX: extrato de ${instituicaoSelecionada} substituído (${extrato.length} lanç.).`;
+
+      if (featureFlags.useApiFinanceiro) {
+        setOfxStatus({ kind: 'loading', message: `Gravando lançamentos de ${instituicaoSelecionada} no servidor...` });
+        const numB = numeroBancoMap.get(instituicaoSelecionada);
+        const result = await persistirImportacaoOfxFinanceiroApi({
+          nomeBanco: instituicaoSelecionada,
+          numeroBanco: numB != null ? Number(numB) : null,
+          modo,
+          transacoesOfx: extrato,
+          transacoesAntesNoBanco: atualAntes,
+        });
+        setExtratosPorBanco((prev) =>
+          aplicarSavedPairsOfxNoEstado(prev, instituicaoSelecionada, result.savedPairs),
+        );
+        const apiMsg =
+          result.criados > 0
+            ? `${result.criados} lançamento(s) gravado(s) no banco (origem OFX). `
+            : modo === 'mesclar' && novosContados === 0
+              ? 'Nenhum lançamento novo (todos já existiam). '
+              : '';
+        if (result.erros.length) {
+          setOfxStatus({
+            kind: 'error',
+            message: `${base} ${apiMsg}Erros na API (${result.erros.length}): ${result.erros.slice(0, 4).join(' · ')}${result.erros.length > 4 ? '…' : ''}`,
+          });
+        } else {
+          setOfxStatus({
+            kind: 'success',
+            message: `${base} ${apiMsg}Lançamentos novos na letra N (Conta Não Identificados) até reclassificar ou usar Parear compensações.`,
+          });
+        }
+        return;
+      }
+
       setOfxStatus({
         kind: 'success',
         message: `${base} Lançamentos novos na letra N (Conta Não Identificados) até você reclassificar ou usar Parear compensações.`,
@@ -1341,12 +1408,39 @@ export function Financeiro() {
       setOfxStatus({ kind: 'error', message: 'OFX exemplo Itaú inválido.' });
       return;
     }
+    const atualAntes = extratosPorBancoRef.current['Itaú'] ?? [];
     let novos = 0;
     setInstituicaoSelecionada('Itaú');
     setExtratosPorBanco((prev) => {
       novos = contarLancamentosNovos(prev['Itaú'] ?? [], extrato);
       return aplicarExtratoNoBanco(prev, 'Itaú', extrato, 'mesclar');
     });
+    if (featureFlags.useApiFinanceiro) {
+      setOfxStatus({ kind: 'loading', message: 'Gravando OFX Itaú no servidor...' });
+      void (async () => {
+        const numB = numeroBancoMap.get('Itaú');
+        const result = await persistirImportacaoOfxFinanceiroApi({
+          nomeBanco: 'Itaú',
+          numeroBanco: numB != null ? Number(numB) : null,
+          modo: 'mesclar',
+          transacoesOfx: extrato,
+          transacoesAntesNoBanco: atualAntes,
+        });
+        setExtratosPorBanco((prev) => aplicarSavedPairsOfxNoEstado(prev, 'Itaú', result.savedPairs));
+        if (result.erros.length) {
+          setOfxStatus({
+            kind: 'error',
+            message: `Itaú: +${novos} lanç. novos (OFX). Erros API: ${result.erros.slice(0, 3).join(' · ')}`,
+          });
+        } else {
+          setOfxStatus({
+            kind: 'success',
+            message: `Itaú: +${novos} lanç. novos (OFX). ${result.criados > 0 ? `${result.criados} gravados no banco. ` : ''}Demais bancos preservados.`,
+          });
+        }
+      })();
+      return;
+    }
     setOfxStatus({
       kind: 'success',
       message: `Itaú: +${novos} lanç. novos (OFX real). Demais bancos preservados. Novos em N até reclassificar.`,
@@ -1366,12 +1460,39 @@ export function Financeiro() {
       setOfxStatus({ kind: 'error', message: 'OFX exemplo Cora inválido.' });
       return;
     }
+    const atualAntes = extratosPorBancoRef.current.CORA ?? [];
     let novos = 0;
     setInstituicaoSelecionada('CORA');
     setExtratosPorBanco((prev) => {
       novos = contarLancamentosNovos(prev.CORA ?? [], extrato);
       return aplicarExtratoNoBanco(prev, 'CORA', extrato, 'mesclar');
     });
+    if (featureFlags.useApiFinanceiro) {
+      setOfxStatus({ kind: 'loading', message: 'Gravando OFX CORA no servidor...' });
+      void (async () => {
+        const numB = numeroBancoMap.get('CORA');
+        const result = await persistirImportacaoOfxFinanceiroApi({
+          nomeBanco: 'CORA',
+          numeroBanco: numB != null ? Number(numB) : null,
+          modo: 'mesclar',
+          transacoesOfx: extrato,
+          transacoesAntesNoBanco: atualAntes,
+        });
+        setExtratosPorBanco((prev) => aplicarSavedPairsOfxNoEstado(prev, 'CORA', result.savedPairs));
+        if (result.erros.length) {
+          setOfxStatus({
+            kind: 'error',
+            message: `CORA: +${novos} lanç. novos (OFX). Erros API: ${result.erros.slice(0, 3).join(' · ')}`,
+          });
+        } else {
+          setOfxStatus({
+            kind: 'success',
+            message: `CORA: +${novos} lanç. novos (OFX). ${result.criados > 0 ? `${result.criados} gravados no banco. ` : ''}Demais bancos preservados.`,
+          });
+        }
+      })();
+      return;
+    }
     setOfxStatus({
       kind: 'success',
       message: `CORA: +${novos} lanç. novos (OFX real). Demais bancos preservados. Novos em N até reclassificar.`,

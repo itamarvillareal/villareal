@@ -19,16 +19,6 @@ import {
   atualizarCliente,
   obterProximoIdCadastroPessoas,
 } from '../../api/clientesService';
-import {
-  appendNovoCadastroMockLocal,
-  getCadastroPessoasMockComNovosLocais,
-  updateNovoCadastroMockLocal,
-} from '../../data/cadastroPessoasMockNovosLocal.js';
-import {
-  mergeListaMarcadoMonitoramentoMock,
-  mergeMarcadoMonitoramentoMock,
-  setMockMarcadoMonitoramento,
-} from '../../data/cadastroPessoasMockMonitoramento.js';
 import { analisarDocumentoPessoa } from '../../services/personAutoFillService.js';
 import {
   listarPessoasComDocumento,
@@ -40,7 +30,8 @@ import { ModalEnderecos } from './ModalEnderecos';
 import { ModalContatos } from './ModalContatos';
 import { extrairDadosDeTextoLivre } from '../../services/personTextAutofillService.js';
 import { validateCPF } from '../../services/cpfValidatorService.js';
-import { listarCodigosClientePorIdPessoa } from '../../data/clientesCadastradosMock.js';
+import { listarCodigosClientePorIdPessoa } from '../../data/clienteCodigoHelpers.js';
+import { listarClientesCadastro } from '../../repositories/clientesRepository.js';
 import { listarProcessosPorIdPessoa } from '../../data/processosHistoricoData.js';
 import { resolverAliasHojeEmTexto } from '../../services/hjDateAliasService.js';
 import { rotuloPessoaComDocumento, esbocoQualificacaoComResponsavel } from '../../services/qualificacaoContratualHelper.js';
@@ -63,9 +54,6 @@ import {
 import { featureFlags } from '../../config/featureFlags.js';
 
 let __ultimoAcessoListaPessoas = 0;
-
-const FORCA_MOCK_CADASTRO =
-  import.meta.env.VITE_USE_MOCK_CADASTRO_PESSOAS === 'true';
 
 const GENEROS = [
   { value: '', label: 'Selecione' },
@@ -113,26 +101,12 @@ function buscarPessoaComMesmoDocumento(lista, digitos, excluirId) {
 /** Ao sair da tela Cadastro de Pessoas, reabrir com edição travada (checkbox marcado). */
 const SESSION_PESSOAS_EDICAO_AO_SAIR = 'vilareal:cadastro-pessoas:edicao-ao-sair:v1';
 
-/** Próximo código exibido na inclusão: mock = max(ids)+1; API = GET /proximo-id ou fallback no mock. */
-function proximoCodigoPorListaMock() {
-  const merged = getCadastroPessoasMockComNovosLocais(false);
-  let max = 0;
-  for (const p of merged) {
-    const id = Number(p.id);
-    if (Number.isFinite(id) && id > max) max = id;
-  }
-  return String(max + 1);
-}
-
 async function resolverProximoCodigoNovaPessoa() {
-  if (FORCA_MOCK_CADASTRO) {
-    return proximoCodigoPorListaMock();
-  }
   try {
     const id = await obterProximoIdCadastroPessoas();
     return String(id);
   } catch {
-    return proximoCodigoPorListaMock();
+    return '1';
   }
 }
 
@@ -187,7 +161,7 @@ export function CadastroPessoas() {
   /** Enquanto true, o campo Nacionalidade fica em vermelho até o usuário entrar e sair (blur), validando a sugestão. */
   const [nacionalidadeSugestaoNaoValidada, setNacionalidadeSugestaoNaoValidada] = useState(false);
   const [numeroPessoa, setNumeroPessoa] = useState('');
-  const [listaEhMock, setListaEhMock] = useState(FORCA_MOCK_CADASTRO);
+  const [listaClientesCodigo, setListaClientesCodigo] = useState([]);
   const [pessoasComDocumento, setPessoasComDocumento] = useState([]);
   const [docPreview, setDocPreview] = useState(null);
   const [docStatus, setDocStatus] = useState({ kind: 'idle', message: '' });
@@ -344,6 +318,20 @@ export function CadastroPessoas() {
     setPessoasComDocumento(listarPessoasComDocumento());
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    void listarClientesCadastro()
+      .then((list) => {
+        if (!cancelled) setListaClientesCodigo(Array.isArray(list) ? list : []);
+      })
+      .catch(() => {
+        if (!cancelled) setListaClientesCodigo([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const listaExibida = lista;
   const pessoaAtual = listaExibida[indiceAtual];
 
@@ -364,10 +352,10 @@ export function CadastroPessoas() {
       return { codigosCliente: [], processos: [] };
     }
     return {
-      codigosCliente: listarCodigosClientePorIdPessoa(idPessoaParaVinculos),
+      codigosCliente: listarCodigosClientePorIdPessoa(idPessoaParaVinculos, listaClientesCodigo),
       processos: listarProcessosPorIdPessoa(idPessoaParaVinculos, nomeParaVinculos),
     };
-  }, [idPessoaParaVinculos, nomeParaVinculos]);
+  }, [idPessoaParaVinculos, nomeParaVinculos, listaClientesCodigo]);
 
   useEffect(() => {
     if (modo !== 'listar') return;
@@ -387,16 +375,6 @@ export function CadastroPessoas() {
       return;
     }
     setError(null);
-    if (FORCA_MOCK_CADASTRO) {
-      const merged = getCadastroPessoasMockComNovosLocais(false);
-      const found = merged.some((p) => Number(p.id) === id);
-      if (!found) {
-        setError(`Nenhuma pessoa encontrada com o número ${id}.`);
-        return;
-      }
-      navigate(`/clientes/editar/${id}`);
-      return;
-    }
     try {
       const c = await buscarCliente(id);
       if (!c) {
@@ -415,23 +393,14 @@ export function CadastroPessoas() {
     if (lista.length > 0) return;
     let cancelled = false;
     (async () => {
-      if (FORCA_MOCK_CADASTRO) {
-        if (!cancelled) {
-          setLista(mergeListaMarcadoMonitoramentoMock(getCadastroPessoasMockComNovosLocais(false)));
-          setListaEhMock(true);
-        }
-        return;
-      }
       try {
         const res = await listarClientes(false);
         if (!cancelled) {
           setLista(Array.isArray(res) ? res : []);
-          setListaEhMock(false);
         }
       } catch {
         if (!cancelled) {
-          setLista(mergeListaMarcadoMonitoramentoMock(getCadastroPessoasMockComNovosLocais(false)));
-          setListaEhMock(true);
+          setLista([]);
         }
       }
     })();
@@ -540,7 +509,7 @@ export function CadastroPessoas() {
     try {
       codigoProximo = await resolverProximoCodigoNovaPessoa();
     } catch {
-      codigoProximo = proximoCodigoPorListaMock();
+      codigoProximo = '1';
     }
     setForm({
       ...emptyPessoa,
@@ -700,18 +669,6 @@ export function CadastroPessoas() {
       return;
     }
 
-    if (FORCA_MOCK_CADASTRO) {
-      const merged = getCadastroPessoasMockComNovosLocais(false);
-      const found = merged.find((p) => Number(p.id) === id);
-      if (!found) {
-        setError(`Pessoa nº ${id} não encontrada.`);
-        navigate('/clientes/lista', { replace: true });
-        return;
-      }
-      aplicarEdicaoPessoa(mergeMarcadoMonitoramentoMock(found));
-      return;
-    }
-
     let cancelled = false;
     (async () => {
       try {
@@ -758,10 +715,9 @@ export function CadastroPessoas() {
         setErroComplementar('');
         const id = editId;
         const compPromise = carregarPessoaComplementar(id);
-        const extrasPromise =
-          !FORCA_MOCK_CADASTRO && featureFlags.useApiPessoasComplementares
-            ? Promise.all([carregarEnderecosPessoa(id), carregarContatosPessoa(id)])
-            : Promise.resolve([null, null]);
+        const extrasPromise = featureFlags.useApiPessoasComplementares
+          ? Promise.all([carregarEnderecosPessoa(id), carregarContatosPessoa(id)])
+          : Promise.resolve([null, null]);
         const [comp, ec] = await Promise.all([compPromise, extrasPromise]);
         if (cancelado) return;
         if (comp) {
@@ -775,7 +731,7 @@ export function CadastroPessoas() {
             genero: comp.genero ?? f.genero,
           }));
         }
-        if (!FORCA_MOCK_CADASTRO && featureFlags.useApiPessoasComplementares && ec) {
+        if (featureFlags.useApiPessoasComplementares && ec) {
           const [ends, conts] = ec;
           if (ends != null) setEnderecos(enderecosApiParaUi(ends));
           if (conts != null) setContatos(contatosApiParaUi(conts));
@@ -836,94 +792,18 @@ export function CadastroPessoas() {
     const docDigitos = normalizarDigitosCpfCnpj(form.cpf);
     const excluirDupCheck = modo === 'editar' ? editId : null;
     let listaParaDup = lista;
-    if (FORCA_MOCK_CADASTRO) {
-      listaParaDup = mergeListaMarcadoMonitoramentoMock(getCadastroPessoasMockComNovosLocais(apenasAtivos));
-    } else if (listaParaDup.length === 0) {
+    if (listaParaDup.length === 0) {
       try {
         const fresh = await listarClientes(apenasAtivos);
         listaParaDup = Array.isArray(fresh) ? fresh : [];
       } catch {
-        listaParaDup = mergeListaMarcadoMonitoramentoMock(getCadastroPessoasMockComNovosLocais(apenasAtivos));
+        listaParaDup = [];
       }
     }
     const duplicataNaLista = buscarPessoaComMesmoDocumento(listaParaDup, docDigitos, excluirDupCheck);
     if (duplicataNaLista) {
       setError(null);
       setModalCpfDuplicado(duplicataNaLista);
-      return;
-    }
-
-    if (listaEhMock && FORCA_MOCK_CADASTRO) {
-      const previewDoc = docPreview;
-      const modoSalvar = modo;
-      const editIdSalvar = editId;
-      setSalvando(true);
-      setError(null);
-      setMensagemSucesso('');
-      try {
-        const payloadCadastro = {
-          nome: form.nome.trim(),
-          email: form.email?.trim() ? form.email.trim() : null,
-          cpf: form.cpf.trim().replace(/\D/g, ''),
-          telefone: form.contato?.trim() || null,
-          dataNascimento: form.dataNascimento || null,
-          ativo: form.ativo,
-          marcadoMonitoramento: form.marcadoMonitoramento === true,
-          responsavelId:
-            form.responsavelId != null && form.responsavelId !== ''
-              ? Number(form.responsavelId)
-              : null,
-          responsavel: form.responsavel ?? null,
-          rg: form.rg ?? '',
-          orgaoExpedidor: form.orgaoExpedidor ?? '',
-          profissao: form.profissao ?? '',
-          nacionalidade: form.nacionalidade ?? '',
-          estadoCivil: form.estadoCivil ?? '',
-          genero: form.genero ?? '',
-        };
-        let idParaDocumento = null;
-        if (modoSalvar === 'criar') {
-          const novoId = Number(form.codigo);
-          if (!Number.isFinite(novoId) || novoId < 1) {
-            setError('Código inválido.');
-            return;
-          }
-          appendNovoCadastroMockLocal({ id: novoId, ...payloadCadastro });
-          idParaDocumento = novoId;
-        } else {
-          const atualizado = updateNovoCadastroMockLocal(editIdSalvar, payloadCadastro);
-          if (!atualizado) {
-            setError(
-              'No modo demonstração só é possível alterar cadastros criados neste navegador (os dados fixos do PDF não são gravados).'
-            );
-            return;
-          }
-          idParaDocumento = Number(editIdSalvar);
-        }
-        setLista(mergeListaMarcadoMonitoramentoMock(getCadastroPessoasMockComNovosLocais(false)));
-        setListaEhMock(true);
-        if (previewDoc?.file && idParaDocumento && Number.isFinite(idParaDocumento)) {
-          try {
-            await salvarDocumentoPessoa(idParaDocumento, previewDoc.file, {
-              dadosExtraidos: previewDoc.dados,
-            });
-            setPessoasComDocumento(listarPessoasComDocumento());
-          } catch {
-            setDocStatus({
-              kind: 'error',
-              message:
-                'Cadastro salvo localmente, mas houve falha ao armazenar o documento no navegador.',
-            });
-          }
-        }
-        setDocPreview(null);
-        setMensagemSucesso(
-          'Cadastro salvo neste navegador (modo demonstração). Para gravar no servidor, use o backend e defina VITE_USE_MOCK_CADASTRO_PESSOAS=false.'
-        );
-        cancelarForm();
-      } finally {
-        setSalvando(false);
-      }
       return;
     }
 
@@ -967,7 +847,7 @@ export function CadastroPessoas() {
           estadoCivil: form.estadoCivil,
           genero: form.genero,
         });
-        if (!FORCA_MOCK_CADASTRO && featureFlags.useApiPessoasComplementares) {
+        if (featureFlags.useApiPessoasComplementares) {
           const { usuarioNome } = getContextoAuditoriaUsuario();
           await salvarEnderecosPessoa(idParaDocumento, enderecos);
           await salvarContatosPessoa(idParaDocumento, contatos, usuarioNome);
@@ -1004,7 +884,6 @@ export function CadastroPessoas() {
           );
           if (dup) {
             setLista(arr);
-            setListaEhMock(false);
             setModalCpfDuplicado(dup);
             return;
           }
@@ -1040,15 +919,6 @@ export function CadastroPessoas() {
     const id = Number(modo === 'editar' && editId != null ? editId : pessoaAtual?.id);
     if (!Number.isFinite(id) || id < 1) return;
     const proximoStatus = !Boolean(form.marcadoMonitoramento);
-    if (listaEhMock) {
-      setError(null);
-      setMockMarcadoMonitoramento(id, proximoStatus);
-      setForm((f) => ({ ...f, marcadoMonitoramento: proximoStatus }));
-      setLista((prev) =>
-        prev.map((p) => (Number(p.id) === id ? { ...p, marcadoMonitoramento: proximoStatus } : p))
-      );
-      return;
-    }
     setSalvando(true);
     setError(null);
     try {
@@ -1101,13 +971,6 @@ export function CadastroPessoas() {
             <div>
               <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Cadastro de Pessoas</h1>
               <p className="text-slate-600 mt-1">Gerencie dados pessoais, endereços e contatos</p>
-              {listaEhMock && !loading && (
-                <p className="text-amber-700 text-sm mt-2 font-medium">
-                  Dados de demonstração (exportação do PDF Cadastro de pessoas). Novos cadastros podem ser salvos
-                  neste navegador. Para API real:{' '}
-                  <code className="bg-amber-50 px-1 rounded">VITE_USE_MOCK_CADASTRO_PESSOAS=false</code>
-                </p>
-              )}
               {mensagemSucesso ? (
                 <p className="text-emerald-700 text-sm mt-2 font-medium">{mensagemSucesso}</p>
               ) : null}
@@ -1692,16 +1555,6 @@ export function CadastroPessoas() {
                         onChange={(e) => {
                           const checked = e.target.checked;
                           setForm((f) => ({ ...f, marcadoMonitoramento: checked }));
-                          if (listaEhMock && modo === 'editar' && editId != null) {
-                            setMockMarcadoMonitoramento(editId, checked);
-                            setLista((prev) =>
-                              prev.map((p) =>
-                                Number(p.id) === Number(editId)
-                                  ? { ...p, marcadoMonitoramento: checked }
-                                  : p
-                              )
-                            );
-                          }
                         }}
                         disabled={form.edicaoDesabilitada}
                         className="mt-1 rounded border-slate-300 text-blue-600"
@@ -1917,7 +1770,7 @@ export function CadastroPessoas() {
                   ) : null}
                 </p>
                 <p className="text-xs text-slate-500 mt-2">
-                  Clientes e processos vêm do cadastro de demonstração (PDF Clientes e histórico em Processos).
+                  Códigos de cliente vêm da API de clientes; processos do histórico local e da API quando ativa.
                 </p>
               </div>
               <button

@@ -9,7 +9,6 @@ import {
   normalizarCodigoClienteFinanceiro,
   normalizarProcFinanceiro,
 } from './financeiroData.js';
-import { getImovelMock, getImoveisMockTotal } from './imoveisMockData.js';
 
 export const PAPEL_ALUGUEL = 'aluguel';
 export const PAPEL_REPASSE = 'repasse';
@@ -21,25 +20,13 @@ export const TAG_ADM_ALUGUEL = '[ADM_IMOVEL:ALUGUEL]';
 export const TAG_ADM_REPASSE = '[ADM_IMOVEL:REPASSE]';
 export const TAG_ADM_DESPESA = '[ADM_IMOVEL:DESPESA_REPASSAR]';
 
-export function imovelIdPorCodigoProc(codigoCliente, proc) {
-  const c = normalizarCodigoClienteFinanceiro(codigoCliente);
-  const p = normalizarProcFinanceiro(proc);
-  if (!c || !p) return null;
-  const cn = Number(c);
-  const pn = Number(p);
-  if (!Number.isFinite(cn) || !Number.isFinite(pn)) return null;
-  const total = getImoveisMockTotal();
-  for (let id = 1; id <= total; id++) {
-    const m = getImovelMock(id);
-    if (!m) continue;
-    if (Number(m.codigo) === cn && Number(m.proc) === pn) return id;
-  }
+export function imovelIdPorCodigoProc() {
   return null;
 }
 
-/** Mock: par cliente+proc coincide com algum imóvel cadastrado ⇒ processo de administração de imóvel. */
-export function processoEhAdministracaoImovel(codigoCliente, proc) {
-  return imovelIdPorCodigoProc(codigoCliente, proc) != null;
+/** Sem cadastro legado local — classificação só com dados reais da API de imóveis (quando existir). */
+export function processoEhAdministracaoImovel() {
+  return false;
 }
 
 function textoClassificacao(t) {
@@ -270,16 +257,9 @@ function classificarPrazoVersusCadastro(dataBrLanc, diaLimite) {
  * @param {{ soOcupados?: boolean }} opts
  */
 export function buildRelatorioFinanceiroImoveisMes(chaveMesYYYYMM, opts = {}) {
-  const { soOcupados = true } = opts;
-  const total = getImoveisMockTotal();
-  const linhas = [];
-  for (let id = 1; id <= total; id++) {
-    const m = getImovelMock(id);
-    if (!m) continue;
-    if (soOcupados && !m.imovelOcupado) continue;
-    linhas.push({ imovelId: id, ...montarLinhaRelatorioFinanceiroImovelMes(m, chaveMesYYYYMM) });
-  }
-  return linhas.sort((a, b) => a.imovelId - b.imovelId);
+  void chaveMesYYYYMM;
+  void opts;
+  return [];
 }
 
 function montarLinhaRelatorioFinanceiroImovelMes(imovelMock, chaveMes) {

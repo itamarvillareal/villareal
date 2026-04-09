@@ -1,5 +1,4 @@
 import { agendaUsuarios as agendaUsuariosBase, getMockEventosAgendaPorData } from './mockData';
-import { getPessoaPorId } from './cadastroPessoasMock.js';
 import { featureFlags } from '../config/featureFlags.js';
 import { lerSnapshotUsuariosApi } from '../services/syncApiUsuariosSnapshot.js';
 
@@ -24,11 +23,7 @@ let __migracaoPermPendenciasAgendada = false;
 
 function enriquecerNomeComCadastroPessoa(u) {
   if (!u) return u;
-  const num = u.numeroPessoa != null ? Number(u.numeroPessoa) : null;
-  if (num == null || !Number.isFinite(num)) return { ...u };
-  const p = getPessoaPorId(num);
-  if (!p?.nome) return { ...u };
-  return { ...u, nome: p.nome };
+  return { ...u };
 }
 
 /**

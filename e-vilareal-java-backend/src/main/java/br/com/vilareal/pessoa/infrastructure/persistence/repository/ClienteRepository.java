@@ -17,4 +17,6 @@ public interface ClienteRepository extends JpaRepository<ClienteEntity, Long> {
 
     @Query("SELECT c FROM ClienteEntity c JOIN FETCH c.pessoa ORDER BY c.codigoCliente ASC")
     List<ClienteEntity> findAllFetchPessoaOrderByCodigo();
+
+    List<ClienteEntity> findByPessoa_IdOrderByCodigoClienteAsc(Long pessoaId);
 }

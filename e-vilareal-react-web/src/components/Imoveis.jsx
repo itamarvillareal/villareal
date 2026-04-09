@@ -1,9 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { X, ChevronUp, ChevronDown, UserPlus, Landmark } from 'lucide-react';
+import { X, ChevronUp, ChevronDown, UserPlus, Landmark, Search, FileSpreadsheet } from 'lucide-react';
 import { padCliente } from '../data/processosDadosRelatorio.js';
 import { resolverAliasHojeEmTexto } from '../services/hjDateAliasService.js';
-import { carregarImovelCadastro, salvarImovelCadastro } from '../repositories/imoveisRepository.js';
+import {
+  carregarImovelCadastro,
+  carregarImovelCadastroPorNumeroPlanilha,
+  listarImoveisApi,
+  salvarImovelCadastro,
+} from '../repositories/imoveisRepository.js';
 import { featureFlags } from '../config/featureFlags.js';
 import { buildRouterStateChaveClienteProcesso } from '../domain/camposProcessoCliente.js';
 
@@ -56,6 +61,25 @@ const btnTealOutline =
 
 const btnIconGhost =
   'p-2.5 rounded-xl border border-slate-300/90 dark:border-white/[0.1] bg-white dark:bg-white/[0.04] text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/[0.08] transition-colors shrink-0';
+
+function textoSemAcentoMin(s) {
+  return String(s ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+/** Pesquisa nos campos condomínio e unidade: cada palavra deve aparecer em qualquer um dos dois (E entre tokens). */
+function imovelCondUnidadeCorresponde(imovelApi, queryBruta) {
+  const q = String(queryBruta ?? '').trim();
+  if (!q) return false;
+  const hay = `${textoSemAcentoMin(imovelApi?.condominio)} ${textoSemAcentoMin(imovelApi?.unidade)}`.trim();
+  const tokens = textoSemAcentoMin(q)
+    .split(/\s+/)
+    .filter(Boolean);
+  if (tokens.length === 0) return false;
+  return tokens.every((t) => hay.includes(t));
+}
 
 export function Imoveis() {
   const location = useLocation();
@@ -129,6 +153,25 @@ export function Imoveis() {
   const [_apiClienteId, setApiClienteId] = useState(null);
   const [_apiProcessoId, setApiProcessoId] = useState(null);
   const unidadeAlvo = location.state && typeof location.state === 'object' ? location.state.unidade : null;
+
+  const [pesquisaCondUnidade, setPesquisaCondUnidade] = useState('');
+  const [listaImoveisPesquisa, setListaImoveisPesquisa] = useState([]);
+
+  useEffect(() => {
+    if (!featureFlags.useApiImoveis) return undefined;
+    let ativo = true;
+    void listarImoveisApi().then((list) => {
+      if (ativo) setListaImoveisPesquisa(Array.isArray(list) ? list : []);
+    });
+    return () => {
+      ativo = false;
+    };
+  }, []);
+
+  const resultadosPesquisaCondUnidade = useMemo(() => {
+    if (!featureFlags.useApiImoveis || !pesquisaCondUnidade.trim()) return [];
+    return listaImoveisPesquisa.filter((im) => imovelCondUnidadeCorresponde(im, pesquisaCondUnidade));
+  }, [listaImoveisPesquisa, pesquisaCondUnidade]);
 
   function popularFormulario(data) {
     if (!data) {
@@ -264,26 +307,87 @@ export function Imoveis() {
     setApiError('');
     setApiSuccess('');
     setApiLoading(true);
-    void carregarImovelCadastro({ imovelId })
-      .then((r) => {
+
+    void (async () => {
+      try {
+        const state = location.state && typeof location.state === 'object' ? location.state : null;
+        const np = state?.numeroPlanilha != null ? Number(state.numeroPlanilha) : null;
+
+        if (featureFlags.useApiImoveis && Number.isFinite(np) && np >= 1) {
+          const porPlanilha = await carregarImovelCadastroPorNumeroPlanilha(np);
+          if (!ativo) return;
+          if (porPlanilha.item) {
+            popularFormulario(porPlanilha.item);
+            const idUi = Number(porPlanilha.item.imovelId);
+            if (Number.isFinite(idUi) && idUi > 0 && idUi !== imovelId) {
+              setImovelId(idUi);
+            }
+            return;
+          }
+        }
+
+        if (featureFlags.useApiImoveis) {
+          const porPlanilha = await carregarImovelCadastroPorNumeroPlanilha(imovelId);
+          if (!ativo) return;
+          if (porPlanilha.item) {
+            popularFormulario(porPlanilha.item);
+            const sync = Number(porPlanilha.item.imovelId);
+            if (Number.isFinite(sync) && sync > 0 && sync !== imovelId) {
+              setImovelId(sync);
+            }
+            return;
+          }
+        }
+
+        const r = await carregarImovelCadastro({ imovelId });
         if (!ativo) return;
-        popularFormulario(r.item);
-      })
-      .catch((e) => {
+        if (r.item) {
+          popularFormulario(r.item);
+          return;
+        }
+
+        if (featureFlags.useApiImoveis) {
+          const lista = await listarImoveisApi();
+          if (!ativo) return;
+          if (lista.length > 0) {
+            const first =
+              lista[0].numeroPlanilha != null ? Number(lista[0].numeroPlanilha) : Number(lista[0].id);
+            if (Number.isFinite(first) && first > 0 && first !== imovelId) {
+              setImovelId(first);
+              return;
+            }
+          }
+          popularFormulario(null);
+          setApiError(
+            lista.length === 0
+              ? 'Nenhum imóvel no banco. Rode o import do imoveis.xlsx (job Java) ou preencha e salve um novo cadastro.'
+              : 'Não foi possível carregar este imóvel pela API.',
+          );
+          return;
+        }
+
+        popularFormulario(null);
+      } catch (e) {
         if (!ativo) return;
         popularFormulario(null);
         setApiError(e?.message || 'Falha ao carregar imóvel.');
-      })
-      .finally(() => {
+      } finally {
         if (ativo) setApiLoading(false);
-      });
+      }
+    })();
+
     return () => {
       ativo = false;
     };
-  }, [imovelId, unidadeAlvo]);
+  }, [imovelId, unidadeAlvo, location.key, location.state]);
 
   useEffect(() => {
     const state = location.state && typeof location.state === 'object' ? location.state : null;
+    const npNav = state?.numeroPlanilha != null ? Number(state.numeroPlanilha) : null;
+    if (Number.isFinite(npNav) && npNav >= 1) {
+      setImovelId(npNav);
+      return;
+    }
     const nextImovelId = state?.imovelId != null ? Number(state.imovelId) : null;
     if (!Number.isFinite(nextImovelId) || nextImovelId <= 0) return;
     setImovelId(nextImovelId);
@@ -396,15 +500,40 @@ export function Imoveis() {
               Imóveis em Administração
             </h1>
             <p className="text-sm text-slate-600 dark:text-slate-400 max-w-3xl leading-relaxed mt-2">
-              Cadastro do imóvel, locação, utilidades, conta para repasse e partes. O <strong className="text-slate-800 dark:text-slate-200 font-semibold">nº Imóvel</strong> é o mesmo
-              usado na tela <strong className="text-slate-800 dark:text-slate-200 font-semibold">Processos</strong> (vínculo por código de cliente e proc.). Com{' '}
+              Cadastro do imóvel, locação, utilidades, conta para repasse e partes.
+              {featureFlags.useApiImoveis ? (
+                <>
+                  {' '}
+                  Com a API ativa, o <strong className="text-slate-800 dark:text-slate-200 font-semibold">número do imóvel</strong> no topo é o{' '}
+                  <strong className="text-slate-800 dark:text-slate-200 font-semibold">mesmo da coluna A</strong> da planilha de importação. O{' '}
+                  <strong className="text-slate-800 dark:text-slate-200 font-semibold">nº Imóvel</strong> em Processos segue o vínculo por código de cliente e proc. Com{' '}
+                </>
+              ) : (
+                <>
+                  {' '}
+                  O <strong className="text-slate-800 dark:text-slate-200 font-semibold">nº Imóvel</strong> é o mesmo usado na tela{' '}
+                  <strong className="text-slate-800 dark:text-slate-200 font-semibold">Processos</strong> (vínculo por código de cliente e proc.). Com{' '}
+                </>
+              )}
               <strong className="text-slate-800 dark:text-slate-200 font-semibold">Código</strong> e <strong className="text-slate-800 dark:text-slate-200 font-semibold">Proc.</strong> preenchidos, use{' '}
               <strong className="text-slate-800 dark:text-slate-200 font-semibold">Conta Corrente</strong> para ver lançamentos do Financeiro, consolidação mensal e alertas de aluguel/repasse.
             </p>
           </div>
-          <button type="button" onClick={() => window.history.back()} className={btnIconGhost} aria-label="Fechar">
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex flex-col gap-2 shrink-0 items-end">
+            {featureFlags.useApiImoveis ? (
+              <button
+                type="button"
+                onClick={() => navigate('/relatorio-imoveis')}
+                className={`${btnSecondary} inline-flex items-center gap-1.5 text-xs py-2 px-3`}
+              >
+                <FileSpreadsheet className="w-4 h-4 shrink-0" aria-hidden />
+                Relatório de imóveis
+              </button>
+            ) : null}
+            <button type="button" onClick={() => window.history.back()} className={btnIconGhost} aria-label="Fechar">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </header>
 
         <div className="imoveis-admin-sheet bg-white rounded-2xl border border-slate-200/90 dark:border-white/[0.07] shadow-sm overflow-hidden ring-1 ring-slate-900/[0.03] dark:ring-white/[0.04]">
@@ -418,7 +547,10 @@ export function Imoveis() {
           {/* Faixa superior: identificação */}
           <div className="imoveis-admin-toolbar px-5 py-4 sm:px-6 border-b border-slate-200 dark:border-white/[0.06] bg-slate-50/95 dark:bg-black/20">
             <div className="flex flex-wrap items-end gap-x-6 gap-y-4">
-              <Field label="Imóvel" className="w-[5.75rem] shrink-0">
+              <Field
+                label={featureFlags.useApiImoveis ? 'Nº (planilha)' : 'Imóvel'}
+                className="w-[5.75rem] shrink-0"
+              >
                 <div className="flex border border-slate-300/90 dark:border-white/[0.12] rounded-xl overflow-hidden bg-white dark:bg-[#141c2c] shadow-sm">
                   <button
                     type="button"
@@ -469,14 +601,16 @@ export function Imoveis() {
                   navigate({
                     pathname: '/imoveis/financeiro',
                     hash: '#extrato-imoveis',
-                    state: { imovelId },
+                    state: { imovelId: _apiImovelId ?? imovelId },
                   })
                 }
-                disabled={!vinculoClienteProcOk}
+                disabled={!vinculoClienteProcOk || (featureFlags.useApiImoveis && !_apiImovelId)}
                 title={
-                  vinculoClienteProcOk
-                    ? 'Movimentações do Financeiro com o mesmo Cod. cliente e Proc. (conta corrente do processo)'
-                    : 'Informe Código e Proc. para vincular ao Cliente e Processo'
+                  !vinculoClienteProcOk
+                    ? 'Informe Código e Proc. para vincular ao Cliente e Processo'
+                    : featureFlags.useApiImoveis && !_apiImovelId
+                      ? 'Salve o cadastro do imóvel na API antes de abrir o financeiro (é necessário o id interno do registro).'
+                      : 'Movimentações do Financeiro com o mesmo Cod. cliente e Proc. (conta corrente do processo)'
                 }
                 className={btnTealOutline}
               >
@@ -491,6 +625,84 @@ export function Imoveis() {
                 <input type="text" value={proc} onChange={(e) => setProc(e.target.value)} className={inputClass} />
               </Field>
             </div>
+
+            {featureFlags.useApiImoveis ? (
+              <div className="mt-4 pt-4 border-t border-slate-200/90 dark:border-white/[0.08] w-full">
+                <div className="relative max-w-2xl">
+                  <Field label="Pesquisar (condomínio e unidade)">
+                    <div className="relative">
+                      <Search
+                        className="pointer-events-none absolute left-3 top-1/2 z-[1] h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500"
+                        aria-hidden
+                      />
+                      <input
+                        type="search"
+                        value={pesquisaCondUnidade}
+                        onChange={(e) => setPesquisaCondUnidade(e.target.value)}
+                        placeholder="Ex.: Veredas 1101 ou nome do condomínio"
+                        autoComplete="off"
+                        className={`${inputClass} pl-9`}
+                        aria-autocomplete="list"
+                        aria-controls="imoveis-pesquisa-cond-unidade-listbox"
+                        aria-expanded={resultadosPesquisaCondUnidade.length > 0}
+                      />
+                    </div>
+                  </Field>
+                  {pesquisaCondUnidade.trim() ? (
+                    <ul
+                      id="imoveis-pesquisa-cond-unidade-listbox"
+                      role="listbox"
+                      className="absolute left-0 right-0 top-full z-30 mt-1 max-h-64 overflow-auto rounded-xl border border-slate-200/95 bg-white py-1 shadow-lg dark:border-white/[0.12] dark:bg-[#141c2c]"
+                    >
+                      {resultadosPesquisaCondUnidade.length === 0 ? (
+                        <li className="px-3 py-2.5 text-sm text-slate-500 dark:text-slate-400">Nenhum imóvel encontrado.</li>
+                      ) : (
+                        resultadosPesquisaCondUnidade.slice(0, 25).map((im) => (
+                          <li key={im.id} role="presentation">
+                            <button
+                              type="button"
+                              role="option"
+                              className="flex w-full flex-col items-start gap-0.5 px-3 py-2.5 text-left text-sm text-slate-800 hover:bg-slate-100 dark:text-slate-100 dark:hover:bg-white/[0.08]"
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={() => {
+                                const n = im.numeroPlanilha != null ? Number(im.numeroPlanilha) : Number(im.id);
+                                if (Number.isFinite(n) && n > 0) {
+                                  setPesquisaCondUnidade('');
+                                  setImovelId(n);
+                                }
+                              }}
+                            >
+                              <span className="font-medium text-slate-900 dark:text-slate-50">
+                                {im.condominio?.trim() ? im.condominio : '—'}
+                                {im.unidade?.trim() ? (
+                                  <span className="font-normal text-slate-600 dark:text-slate-400">
+                                    {' '}
+                                    · {im.unidade}
+                                  </span>
+                                ) : null}
+                              </span>
+                              <span className="text-xs text-slate-500 dark:text-slate-400">
+                                id {im.id}
+                                {im.numeroPlanilha != null ? '' : ' · sem nº planilha'}
+                              </span>
+                            </button>
+                          </li>
+                        ))
+                      )}
+                      {resultadosPesquisaCondUnidade.length > 25 ? (
+                        <li className="border-t border-slate-100 px-3 py-2 text-xs text-slate-500 dark:border-white/[0.08] dark:text-slate-400">
+                          Mostrando 25 de {resultadosPesquisaCondUnidade.length} — refine a pesquisa.
+                        </li>
+                      ) : null}
+                    </ul>
+                  ) : null}
+                </div>
+                <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">
+                  Busca sem acentos; várias palavras restringem o resultado (todas devem constar em condomínio ou unidade).
+                </p>
+              </div>
+            ) : null}
+
             {featureFlags.useApiImoveis && _apiImovelId ? (
               <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-3 pt-3 border-t border-slate-200/90 dark:border-white/[0.08] w-full leading-relaxed">
                 Referência principal (API): imóvel{' '}

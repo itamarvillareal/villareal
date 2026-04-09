@@ -7,20 +7,16 @@ import {
   clampCadastroPessoasPageSize,
 } from '../../api/clientesService';
 import { TablePaginationBar } from '../ui/TablePaginationBar.jsx';
-import { getCadastroPessoasMockComNovosLocais } from '../../data/cadastroPessoasMockNovosLocal.js';
-import { mergeListaMarcadoMonitoramentoMock } from '../../data/cadastroPessoasMockMonitoramento.js';
 import {
   listarPessoasComDocumento,
   obterDocumentoPessoa,
   criarUrlParaDocumento,
 } from '../../services/pessoaDocumentoService.js';
-import { listarCodigosClientePorIdPessoa } from '../../data/clientesCadastradosMock.js';
+import { listarCodigosClientePorIdPessoa } from '../../data/clienteCodigoHelpers.js';
+import { listarClientesCadastro } from '../../repositories/clientesRepository.js';
 import { listarProcessosPorIdPessoa } from '../../data/processosHistoricoData.js';
 import { padCliente8Nav } from './cadastroPessoasNavUtils.js';
 import { buildRouterStateChaveClienteProcesso } from '../../domain/camposProcessoCliente.js';
-
-const FORCA_MOCK_CADASTRO =
-  import.meta.env.VITE_USE_MOCK_CADASTRO_PESSOAS === 'true';
 
 const CRITERIOS_BUSCA = [
   { value: 'nome', label: 'Nome' },
@@ -58,27 +54,12 @@ function buildFiltrosApi({ criterioBusca, valorBusca, valorBuscaCpf }) {
   return { nome, cpf, codigo, cpfAdicional: cpfExtra };
 }
 
-function filtrarListaLocal(lista, criterioBusca, valorBusca, valorBuscaCpf) {
-  if (!valorBusca.trim() && !valorBuscaCpf.trim()) return lista;
-  const v = valorBusca.trim().toLowerCase();
-  const vCpf = valorBuscaCpf.trim().replace(/\D/g, '');
-  return lista.filter((p) => {
-    if (v && criterioBusca === 'nome' && !(p.nome || '').toLowerCase().includes(v)) return false;
-    if (v && criterioBusca === 'codigo' && String(p.id) !== v) return false;
-    if (v && criterioBusca === 'cpf' && !(p.cpf || '').replace(/\D/g, '').includes(v.replace(/\D/g, '')))
-      return false;
-    if (vCpf && !(p.cpf || '').replace(/\D/g, '').includes(vCpf)) return false;
-    return true;
-  });
-}
-
 export function RelatorioPessoas() {
   const navigate = useNavigate();
-  const [listaMockCompleta, setListaMockCompleta] = useState([]);
   const [pageData, setPageData] = useState(null);
-  const [loading, setLoading] = useState(() => !FORCA_MOCK_CADASTRO);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [listaEhMock, setListaEhMock] = useState(FORCA_MOCK_CADASTRO);
+  const [clientesCodigosLista, setClientesCodigosLista] = useState([]);
   const [apenasAtivos, setApenasAtivos] = useState(false);
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(readInitialPageSize);
@@ -95,6 +76,20 @@ export function RelatorioPessoas() {
   const [selectedPessoa, setSelectedPessoa] = useState(null);
   const [modalVinculosSistema, setModalVinculosSistema] = useState(false);
   const [pessoasComDocumento, setPessoasComDocumento] = useState(() => listarPessoasComDocumento());
+
+  useEffect(() => {
+    let c = true;
+    void listarClientesCadastro()
+      .then((list) => {
+        if (c) setClientesCodigosLista(Array.isArray(list) ? list : []);
+      })
+      .catch(() => {
+        if (c) setClientesCodigosLista([]);
+      });
+    return () => {
+      c = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -128,21 +123,9 @@ export function RelatorioPessoas() {
       cpfAdicional,
     });
     setPageData(res);
-    setListaEhMock(false);
   }, [page, pageSize, debouncedFiltros]);
 
   useEffect(() => {
-    if (!FORCA_MOCK_CADASTRO) return;
-    setListaMockCompleta(
-      mergeListaMarcadoMonitoramentoMock(getCadastroPessoasMockComNovosLocais(debouncedFiltros.apenasAtivos))
-    );
-    setListaEhMock(true);
-    setError(null);
-    setLoading(false);
-  }, [debouncedFiltros.apenasAtivos]);
-
-  useEffect(() => {
-    if (FORCA_MOCK_CADASTRO) return;
     let cancelled = false;
     (async () => {
       setLoading(true);
@@ -151,16 +134,8 @@ export function RelatorioPessoas() {
         await carregarApi();
       } catch (err) {
         if (cancelled) return;
-        setListaMockCompleta(
-          mergeListaMarcadoMonitoramentoMock(getCadastroPessoasMockComNovosLocais(debouncedFiltros.apenasAtivos))
-        );
-        setListaEhMock(true);
         setPageData(null);
-        setError(
-          err.message
-            ? `${err.message} — exibindo lista mock (cadastro PDF).`
-            : 'API indisponível — exibindo lista mock (cadastro PDF).'
-        );
+        setError(err?.message || 'API indisponível. Verifique o backend e tente novamente.');
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -168,33 +143,15 @@ export function RelatorioPessoas() {
     return () => {
       cancelled = true;
     };
-  }, [carregarApi, debouncedFiltros.apenasAtivos]);
+  }, [carregarApi]);
 
-  const listaFiltradaMock = useMemo(
-    () =>
-      filtrarListaLocal(
-        listaMockCompleta,
-        debouncedFiltros.criterioBusca,
-        debouncedFiltros.valorBusca,
-        debouncedFiltros.valorBuscaCpf
-      ),
-    [listaMockCompleta, debouncedFiltros]
+  const listaExibida = useMemo(
+    () => (Array.isArray(pageData?.content) ? pageData.content : []),
+    [pageData]
   );
 
-  const listaExibida = useMemo(() => {
-    if (listaEhMock) {
-      const start = page * pageSize;
-      return listaFiltradaMock.slice(start, start + pageSize);
-    }
-    return Array.isArray(pageData?.content) ? pageData.content : [];
-  }, [listaEhMock, listaFiltradaMock, page, pageSize, pageData]);
-
-  const totalElements = listaEhMock ? listaFiltradaMock.length : Number(pageData?.totalElements ?? 0);
-  const totalPages = listaEhMock
-    ? listaFiltradaMock.length === 0
-      ? 0
-      : Math.ceil(listaFiltradaMock.length / Math.max(1, pageSize))
-    : Math.max(0, Number(pageData?.totalPages ?? 0));
+  const totalElements = Number(pageData?.totalElements ?? 0);
+  const totalPages = Math.max(0, Number(pageData?.totalPages ?? 0));
 
   useEffect(() => {
     if (totalPages <= 0) {
@@ -206,7 +163,7 @@ export function RelatorioPessoas() {
 
   useEffect(() => {
     setPessoasComDocumento(listarPessoasComDocumento());
-  }, [listaExibida, listaMockCompleta]);
+  }, [listaExibida]);
 
   const pessoaAtual = useMemo(() => {
     if (selectedPessoa?.id != null) {
@@ -232,10 +189,10 @@ export function RelatorioPessoas() {
       return { codigosCliente: [], processos: [] };
     }
     return {
-      codigosCliente: listarCodigosClientePorIdPessoa(idPessoaParaVinculos),
+      codigosCliente: listarCodigosClientePorIdPessoa(idPessoaParaVinculos, clientesCodigosLista),
       processos: listarProcessosPorIdPessoa(idPessoaParaVinculos, nomeParaVinculos),
     };
-  }, [idPessoaParaVinculos, nomeParaVinculos]);
+  }, [idPessoaParaVinculos, nomeParaVinculos, clientesCodigosLista]);
 
   const persistPageSize = (n) => {
     const v = clampCadastroPessoasPageSize(n);
@@ -249,10 +206,6 @@ export function RelatorioPessoas() {
   };
 
   const excluir = async (id, nome) => {
-    if (listaEhMock) {
-      setError('Lista mock (PDF): exclusão só com a API ativa.');
-      return;
-    }
     if (!window.confirm(`Excluir "${nome}"?`)) return;
     setError(null);
     try {
@@ -271,12 +224,6 @@ export function RelatorioPessoas() {
             <div>
               <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Relatório de pessoas</h1>
               <p className="text-slate-600 mt-1">Todas as pessoas cadastradas — filtros e tabela</p>
-              {listaEhMock && !loading && (
-                <p className="text-amber-700 text-sm mt-2 font-medium">
-                  Dados de demonstração (exportação do PDF). Para API real:{' '}
-                  <code className="bg-amber-50 px-1 rounded">VITE_USE_MOCK_CADASTRO_PESSOAS=false</code>
-                </p>
-              )}
             </div>
             <div className="flex flex-wrap gap-4 text-sm">
               <div className="px-4 py-2.5 rounded-xl bg-white border border-slate-200 shadow-sm">
@@ -505,7 +452,7 @@ export function RelatorioPessoas() {
                   ) : null}
                 </p>
                 <p className="text-xs text-slate-500 mt-2">
-                  Clientes e processos vêm do cadastro de demonstração (PDF Clientes e histórico em Processos).
+                  Códigos de cliente vêm da API de clientes; processos do histórico local (tela Processos).
                 </p>
               </div>
               <button

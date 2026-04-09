@@ -2,14 +2,8 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Search, FolderOpen, ChevronLeft, ChevronRight, SlidersHorizontal, PlusCircle, X } from 'lucide-react';
 import { ModalConfiguracoesCalculoCliente } from './ModalConfiguracoesCalculoCliente.jsx';
-import { clienteMock, processosClienteMock } from '../data/mockData';
 import { getDadosProcessoClienteUnificado } from '../data/processoClienteProcUnificado.js';
-import { getIdPessoaPorCodCliente, CLIENTE_PARA_PESSOA } from '../data/clientesCadastradosMock';
 import { buscarCliente, pesquisarCadastroPessoasPorNomeOuCpf } from '../api/clientesService.js';
-import {
-  getCadastroPessoasMockComNovosLocais,
-  getPessoaPorIdIncluindoNovosLocais,
-} from '../data/cadastroPessoasMockNovosLocal.js';
 import {
   loadCadastroClienteDados,
   saveCadastroClienteDados,
@@ -40,6 +34,7 @@ import {
   resolverClienteCadastroPorCodigo,
   salvarClienteCadastro,
 } from '../repositories/clientesRepository.js';
+import { getIdPessoaPorCodCliente } from '../data/clienteCodigoHelpers.js';
 import {
   buscarClientePorCodigo,
   buscarProcessoPorChaveNatural,
@@ -51,7 +46,15 @@ import {
 let __ultimoListaClientesLog = 0;
 let __ultimoClienteConsultaLog = '';
 
-const MOCK_CADASTRO_PESSOAS = import.meta.env.VITE_USE_MOCK_CADASTRO_PESSOAS === 'true';
+const DEFAULT_CLIENTE_VAZIO = {
+  codigo: '00000001',
+  pessoa: '',
+  nomeRazao: '',
+  cnpjCpf: '',
+  edicaoDesabilitada: true,
+  clienteInativo: false,
+  observacao: '',
+};
 
 function formatDocBR(digits) {
   const d = String(digits || '').replace(/\D/g, '');
@@ -60,21 +63,15 @@ function formatDocBR(digits) {
   return d || '—';
 }
 
-function dadosClientePorCodigo(n) {
-  const idPessoa = getIdPessoaPorCodCliente(n);
-  const pes = idPessoa != null ? getPessoaPorIdIncluindoNovosLocais(idPessoa) : null;
-  if (pes) {
+function dadosClientePorCodigo(n, clientesApiIndex) {
+  const codPad = padCliente8(n);
+  const row = Array.isArray(clientesApiIndex) ? clientesApiIndex.find((c) => c.codigo === codPad) : null;
+  if (row) {
+    const pid = String(row.pessoa ?? '').trim();
     return {
-      pessoa: String(idPessoa),
-      nomeRazao: pes.nome,
-      cnpjCpf: formatDocBR(pes.cpf),
-    };
-  }
-  if (idPessoa != null) {
-    return {
-      pessoa: String(idPessoa),
-      nomeRazao: `Pessoa nº ${idPessoa} (fora do cadastro local)`,
-      cnpjCpf: '—',
+      pessoa: pid,
+      nomeRazao: String(row.nomeRazao ?? '').trim(),
+      cnpjCpf: formatDocBR(String(row.cnpjCpf ?? '').replace(/\D/g, '')),
     };
   }
   return {
@@ -120,12 +117,12 @@ export function normalizarNumeroBusca(s) {
   return String(s ?? '').replace(/\D/g, '');
 }
 
-/** Exportado para o mesmo mock de processos do cadastro (busca no Financeiro). */
-export function gerarMockClienteEProcessos(codigo) {
+/** Exportado para o cadastro de processos (busca no Financeiro). */
+export function gerarMockClienteEProcessos(codigo, clientesApiIndex = []) {
   const n = Number(normalizarCodigoCliente(codigo));
   if (!Number.isFinite(n) || n < 1 || n > 1000) return null;
   const codigoCliente = padCliente8(n);
-  const base = dadosClientePorCodigo(n);
+  const base = dadosClientePorCodigo(n, clientesApiIndex);
   const procRows = [];
 
   for (let p = 1; p <= 10; p++) {
@@ -196,22 +193,22 @@ function montarQualificacaoTexto({ nomeRazao, cnpjCpf, pessoaData }) {
   return `${joinComVirgula(blocos)}.`;
 }
 
-function getInitialEstadoCliente(codPreferido) {
-  const cod = padCliente8(codPreferido ?? loadUltimoCodigoCliente() ?? clienteMock.codigo);
-  const mock = gerarMockClienteEProcessos(cod);
+function getInitialEstadoCliente(codPreferido, clientesApiIndex = []) {
+  const cod = padCliente8(codPreferido ?? loadUltimoCodigoCliente() ?? DEFAULT_CLIENTE_VAZIO.codigo);
+  const mock = gerarMockClienteEProcessos(cod, clientesApiIndex);
   const persisted = loadCadastroClienteDados(cod);
   if (!mock) {
     return {
       codigo: cod,
-      pessoa: persisted?.pessoa ?? clienteMock.pessoa,
-      nomeRazao: persisted?.nomeRazao ?? clienteMock.nomeRazao,
-      cnpjCpf: persisted?.cnpjCpf ?? clienteMock.cnpjCpf,
-      observacao: persisted?.observacao !== undefined ? persisted.observacao : clienteMock.observacao,
-      clienteInativo: persisted?.clienteInativo ?? clienteMock.clienteInativo,
-      edicaoDesabilitada: persisted?.edicaoDesabilitada ?? clienteMock.edicaoDesabilitada,
+      pessoa: persisted?.pessoa ?? DEFAULT_CLIENTE_VAZIO.pessoa,
+      nomeRazao: persisted?.nomeRazao ?? DEFAULT_CLIENTE_VAZIO.nomeRazao,
+      cnpjCpf: persisted?.cnpjCpf ?? DEFAULT_CLIENTE_VAZIO.cnpjCpf,
+      observacao: persisted?.observacao !== undefined ? persisted.observacao : DEFAULT_CLIENTE_VAZIO.observacao,
+      clienteInativo: persisted?.clienteInativo ?? DEFAULT_CLIENTE_VAZIO.clienteInativo,
+      edicaoDesabilitada: true,
       processos: alinharListaProcessosDescricaoComHistorico(
         cod,
-        mergeProcessosLista(processosClienteMock.slice(0, 10), persisted?.processos)
+        mergeProcessosLista([], persisted?.processos)
       ),
     };
   }
@@ -220,9 +217,9 @@ function getInitialEstadoCliente(codPreferido) {
     pessoa: persisted?.pessoa ?? mock.pessoa ?? '',
     nomeRazao: persisted?.nomeRazao ?? mock.nomeRazao,
     cnpjCpf: persisted?.cnpjCpf ?? mock.cnpjCpf,
-    observacao: persisted?.observacao !== undefined ? persisted.observacao : clienteMock.observacao,
-    clienteInativo: persisted?.clienteInativo ?? clienteMock.clienteInativo,
-    edicaoDesabilitada: persisted?.edicaoDesabilitada ?? clienteMock.edicaoDesabilitada,
+    observacao: persisted?.observacao !== undefined ? persisted.observacao : DEFAULT_CLIENTE_VAZIO.observacao,
+    clienteInativo: persisted?.clienteInativo ?? DEFAULT_CLIENTE_VAZIO.clienteInativo,
+    edicaoDesabilitada: true,
     processos: alinharListaProcessosDescricaoComHistorico(
       mock.codigoCliente,
       mergeProcessosLista(mock.processos, persisted?.processos)
@@ -384,7 +381,7 @@ export function CadastroClientes() {
   const aplicarDadosCliente = useCallback((paddedRaw) => {
     pularSincPorCargaClienteRef.current = true;
     const padded = padCliente8(paddedRaw);
-    const mock = gerarMockClienteEProcessos(padded);
+    const mock = gerarMockClienteEProcessos(padded, clientesApiIndex);
     const persisted = loadCadastroClienteDados(padded);
     const api = featureFlags.useApiClientes
       ? (clientesApiIndex || []).find((c) => c.codigo === padded)
@@ -396,13 +393,13 @@ export function CadastroClientes() {
       setCnpjCpf(api.cnpjCpf ?? '');
       setObservacao(api.observacao ?? '');
       setClienteInativo(api.clienteInativo ?? false);
-      setEdicaoDesabilitada(false);
+      setEdicaoDesabilitada(true);
       const baseLista = mock
         ? mergeProcessosLista(mock.processos, persisted?.processos)
         : Array.isArray(persisted?.processos)
           ? [...persisted.processos]
           : [];
-      setProcessos(enriquecerListaProcessosComHistoricoLocal(padded, baseLista));
+      refreshProcessosGrade(padded, baseLista);
       return;
     }
 
@@ -414,7 +411,7 @@ export function CadastroClientes() {
       setCnpjCpf('');
       setObservacao('');
       setClienteInativo(false);
-      setEdicaoDesabilitada(false);
+      setEdicaoDesabilitada(true);
 
       void resolverClienteCadastroPorCodigo(padded).then((resolved) => {
         if (resolucaoCodigoReqIdRef.current !== myId) return;
@@ -425,6 +422,7 @@ export function CadastroClientes() {
           setCnpjCpf(resolved.cnpjCpf ?? '');
           setObservacao(resolved.observacao ?? '');
           setClienteInativo(resolved.clienteInativo ?? false);
+          setEdicaoDesabilitada(true);
           const baseLista = mock
             ? mergeProcessosLista(mock.processos, persisted?.processos)
             : Array.isArray(persisted?.processos)
@@ -438,9 +436,9 @@ export function CadastroClientes() {
           setPessoa(mock.pessoa ?? '');
           setNomeRazao(persisted?.nomeRazao ?? mock.nomeRazao);
           setCnpjCpf(persisted?.cnpjCpf ?? mock.cnpjCpf);
-          setObservacao(persisted?.observacao !== undefined ? persisted.observacao : clienteMock.observacao);
-          setClienteInativo(persisted?.clienteInativo ?? clienteMock.clienteInativo);
-          setEdicaoDesabilitada(persisted?.edicaoDesabilitada ?? clienteMock.edicaoDesabilitada);
+          setObservacao(persisted?.observacao !== undefined ? persisted.observacao : DEFAULT_CLIENTE_VAZIO.observacao);
+          setClienteInativo(persisted?.clienteInativo ?? DEFAULT_CLIENTE_VAZIO.clienteInativo);
+          setEdicaoDesabilitada(true);
           refreshProcessosGrade(
             mock.codigoCliente,
             mergeProcessosLista(mock.processos, persisted?.processos)
@@ -453,9 +451,10 @@ export function CadastroClientes() {
             setCnpjCpf(persisted.cnpjCpf ?? '');
             setObservacao(persisted.observacao ?? '');
             setClienteInativo(persisted.clienteInativo ?? false);
-            setEdicaoDesabilitada(persisted.edicaoDesabilitada ?? false);
+            setEdicaoDesabilitada(true);
             refreshProcessosGrade(padded, Array.isArray(persisted.processos) ? persisted.processos : []);
           } else {
+            setEdicaoDesabilitada(true);
             refreshProcessosGrade(padded, []);
           }
         }
@@ -468,9 +467,9 @@ export function CadastroClientes() {
       setPessoa(persisted?.pessoa ?? mock.pessoa ?? '');
       setNomeRazao(persisted?.nomeRazao ?? mock.nomeRazao);
       setCnpjCpf(persisted?.cnpjCpf ?? mock.cnpjCpf);
-      setObservacao(persisted?.observacao !== undefined ? persisted.observacao : clienteMock.observacao);
-      setClienteInativo(persisted?.clienteInativo ?? clienteMock.clienteInativo);
-      setEdicaoDesabilitada(persisted?.edicaoDesabilitada ?? clienteMock.edicaoDesabilitada);
+      setObservacao(persisted?.observacao !== undefined ? persisted.observacao : DEFAULT_CLIENTE_VAZIO.observacao);
+      setClienteInativo(persisted?.clienteInativo ?? DEFAULT_CLIENTE_VAZIO.clienteInativo);
+      setEdicaoDesabilitada(true);
       refreshProcessosGrade(
         mock.codigoCliente,
         mergeProcessosLista(mock.processos, persisted?.processos)
@@ -483,9 +482,10 @@ export function CadastroClientes() {
         setCnpjCpf(persisted.cnpjCpf ?? '');
         setObservacao(persisted.observacao ?? '');
         setClienteInativo(persisted.clienteInativo ?? false);
-        setEdicaoDesabilitada(persisted.edicaoDesabilitada ?? false);
+        setEdicaoDesabilitada(true);
         refreshProcessosGrade(padded, Array.isArray(persisted.processos) ? persisted.processos : []);
       } else {
+        setEdicaoDesabilitada(true);
         refreshProcessosGrade(padded, []);
       }
     }
@@ -554,14 +554,6 @@ export function CadastroClientes() {
     const t = window.setTimeout(() => {
       void (async () => {
         if (cancelado) return;
-        const pesLocal = getPessoaPorIdIncluindoNovosLocais(id);
-        if (pesLocal) {
-          if (!cancelado) {
-            setNomeRazao(pesLocal.nome);
-            setCnpjCpf(formatDocBR(pesLocal.cpf));
-          }
-          return;
-        }
         try {
           const api = await buscarCliente(id);
           if (cancelado) return;
@@ -850,16 +842,13 @@ export function CadastroClientes() {
   const pessoaSelecionada = useMemo(() => {
     const id = Number(String(pessoa ?? '').replace(/\D/g, ''));
     if (!Number.isFinite(id) || id <= 0) return null;
-    return getPessoaPorIdIncluindoNovosLocais(id);
-  }, [pessoa]);
+    return { id, nome: nomeRazao, cpf: cnpjCpf };
+  }, [pessoa, nomeRazao, cnpjCpf]);
 
   const textoQualificacao = useMemo(
     () => montarQualificacaoTexto({ nomeRazao, cnpjCpf, pessoaData: pessoaSelecionada }),
     [nomeRazao, cnpjCpf, pessoaSelecionada]
   );
-
-  /** Inclui inativas: vínculo cliente↔pessoa deve achar qualquer cadastro existente. */
-  const pessoasParaBuscaModalMock = useMemo(() => getCadastroPessoasMockComNovosLocais(false), []);
 
   const pessoasFiltradasModal = useMemo(() => {
     const raw = String(buscaPessoaModal ?? '').trim();
@@ -870,45 +859,19 @@ export function CadastroClientes() {
     if (!soNum && t.length < 2) return { tipo: 'curto', lista: [], limitado: false, loading: false };
     if (soNum && tNum.length < 1) return { tipo: 'curto', lista: [], limitado: false, loading: false };
 
-    if (!MOCK_CADASTRO_PESSOAS) {
-      return {
-        tipo: 'ok',
-        lista: pessoasModalApiLista,
-        limitado: false,
-        loading: pessoasModalApiLoading,
-      };
-    }
-
-    const out = [];
-    const limite = 400;
-    const termoNumId = soNum && tNum ? Math.floor(Number(tNum)) : NaN;
-    for (const p of pessoasParaBuscaModalMock) {
-      if (out.length >= limite) break;
-      const idStr = String(p.id);
-      const idN = Number(p.id);
-      const nome = normalizarTextoBusca(p.nome ?? '');
-      const cpfD = normalizarNumeroBusca(p.cpf ?? '');
-      let ok = false;
-      if (soNum) {
-        ok =
-          (Number.isFinite(termoNumId) && termoNumId >= 1 && idN === termoNumId) ||
-          idStr.startsWith(tNum) ||
-          cpfD.includes(tNum);
-      } else {
-        ok = nome.includes(t) || idStr.includes(tNum) || cpfD.includes(tNum);
-      }
-      if (ok) out.push(p);
-    }
-    return { tipo: 'ok', lista: out, limitado: out.length >= limite, loading: false };
-  }, [pessoasParaBuscaModalMock, buscaPessoaModal, pessoasModalApiLista, pessoasModalApiLoading]);
+    return {
+      tipo: 'ok',
+      lista: pessoasModalApiLista,
+      limitado: false,
+      loading: pessoasModalApiLoading,
+    };
+  }, [buscaPessoaModal, pessoasModalApiLista, pessoasModalApiLoading]);
 
   useEffect(() => {
-    if (MOCK_CADASTRO_PESSOAS || !modalEscolherPessoa) {
-      if (!modalEscolherPessoa) {
-        setPessoasModalApiLista([]);
-        setPessoasModalApiLoading(false);
-        setPessoasModalApiErro('');
-      }
+    if (!modalEscolherPessoa) {
+      setPessoasModalApiLista([]);
+      setPessoasModalApiLoading(false);
+      setPessoasModalApiErro('');
       return undefined;
     }
     const raw = String(buscaPessoaModal ?? '').trim();
@@ -1010,17 +973,6 @@ export function CadastroClientes() {
       out.sort((a, b) => a.codigoNum - b.codigoNum);
       return out;
     }
-    for (const [codStr, idPessoa] of Object.entries(CLIENTE_PARA_PESSOA)) {
-      const pes = getPessoaPorIdIncluindoNovosLocais(idPessoa);
-      const nome =
-        pes?.nome?.trim() || `Pessoa nº ${idPessoa} (sem nome no cadastro)`;
-      out.push({
-        codigoPadded: padCliente8(codStr),
-        codigoNum: Number(codStr),
-        nome,
-      });
-    }
-    out.sort((a, b) => a.codigoNum - b.codigoNum);
     return out;
   }, [clientesApiIndex]);
 
@@ -1247,7 +1199,10 @@ export function CadastroClientes() {
                     if (Number.isFinite(n) && n >= 1) idPessoa = n;
                   }
                   if (idPessoa == null) {
-                    const fromCod = getIdPessoaPorCodCliente(padCliente8(codigo));
+                    const fromCod = getIdPessoaPorCodCliente(
+                      padCliente8(codigo),
+                      featureFlags.useApiClientes ? clientesApiIndex : []
+                    );
                     if (fromCod != null) idPessoa = fromCod;
                   }
                   if (idPessoa == null) {

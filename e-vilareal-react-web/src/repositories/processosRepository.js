@@ -209,6 +209,33 @@ export async function listarProcessosPorCodigoCliente(codigoCliente) {
   return Array.isArray(lista) ? lista : [];
 }
 
+/**
+ * Diagnósticos «Busca pessoa»: processos em que a pessoa é cliente do processo, parte ou advogado(a).
+ * Mesmo shape que {@code listarProcessosPorIdPessoa} no histórico local.
+ */
+export async function listarProcessosVinculoPessoaDiagnostico(pessoaId) {
+  if (!featureFlags.useApiProcessos) return [];
+  const pid = Math.floor(Number(pessoaId));
+  if (!Number.isFinite(pid) || pid < 1) return [];
+  const arr = await request(`/api/processos/vinculo-pessoa/${pid}`);
+  if (!Array.isArray(arr)) return [];
+  return arr.map((row) => {
+    const codRaw = String(row.codigoCliente ?? '1').replace(/\D/g, '') || '1';
+    const codN = Math.max(1, Math.floor(Number(codRaw)) || 1);
+    const codCliente = String(codN).padStart(8, '0');
+    const procNum = Number(row.numeroInterno);
+    return {
+      codCliente,
+      proc: String(Number.isFinite(procNum) && procNum >= 0 ? procNum : 0),
+      cliente: String(row.cliente ?? ''),
+      parteCliente: String(row.parteCliente ?? row.cliente ?? ''),
+      parteOposta: String(row.parteOposta ?? ''),
+      numeroProcessoNovo: String(row.numeroProcessoNovo ?? ''),
+      papeis: String(row.papeis ?? ''),
+    };
+  });
+}
+
 export async function buscarProcessoPorChaveNatural(codigoCliente, numeroInterno) {
   if (!featureFlags.useApiProcessos) return null;
   const lista = await listarProcessosPorCodigoCliente(codigoCliente);
@@ -252,29 +279,34 @@ export function mergeCadastroClientesProcessosComApi(codigoClientePadded8, lista
 
     const novoApi = String(api.numeroProcessoNovo ?? '').trim();
     const velhoApi = String(api.numeroProcessoVelho ?? '').trim();
-    const descApi = String(api.naturezaAcao ?? '').trim();
+    const descApi = String(api.observacao ?? api.naturezaAcao ?? '').trim();
+    const poApi = String(api.parteOposta ?? api.parte_oposta ?? '').trim();
+    const poRow = String(row.parteOposta ?? row.reu ?? '').trim();
 
     return {
       ...row,
       processoNovo: novoApi || String(row.processoNovo ?? '').trim() || row.processoNovo,
       processoVelho: velhoApi || String(row.processoVelho ?? '').trim() || row.processoVelho,
       descricao: descApi || String(row.descricao ?? '').trim() || row.descricao,
+      parteOposta: poApi || poRow || row.parteOposta,
+      reu: poApi || poRow || row.reu,
     };
   });
 
   for (const [n, api] of byNum) {
     if (seen.has(n)) continue;
     seen.add(n);
+    const poNovo = String(api.parteOposta ?? api.parte_oposta ?? '').trim();
     out.push({
       id: `${codN}-${n}`,
       procNumero: n,
       processoVelho: String(api.numeroProcessoVelho ?? '').trim() || '-',
       processoNovo: String(api.numeroProcessoNovo ?? '').trim(),
       autor: '',
-      reu: '',
-      parteOposta: '—',
+      reu: poNovo || '—',
+      parteOposta: poNovo || '—',
       tipoAcao: '',
-      descricao: String(api.naturezaAcao ?? '').trim(),
+      descricao: String(api.observacao ?? api.naturezaAcao ?? '').trim(),
     });
   }
 
@@ -544,5 +576,7 @@ export function mapApiProcessoToUiShape(p) {
     tramitacao: corrigirMojibakeUtf8(p.tramitacao || ''),
     dataProtocolo: toBrFromIsoDate(p.dataProtocolo),
     responsavel: corrigirMojibakeUtf8(p.consultor || ''),
+    /** Só na listagem por cliente; mesma regra que partes «Réu» na tela Processos. */
+    parteOposta: corrigirMojibakeUtf8(p.parteOposta || p.parte_oposta || ''),
   };
 }

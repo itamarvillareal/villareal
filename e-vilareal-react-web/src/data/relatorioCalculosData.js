@@ -3,7 +3,6 @@
  * Uma linha por parcela (aba Parcelamento / Pagamento), alinhada aos campos da tela {@link Calculos}.
  */
 import { loadRodadasCalculos } from './calculosRodadasStorage.js';
-import { buildMapaRodadasMockRelatorioCalculos } from './calculosRodadasMockGeracao.js';
 import { getNomeClienteCadastroPorCodigo } from './relatorioProcessosDados.js';
 import { getLancamentosContaCorrente } from './financeiroData.js';
 import { getRegistroProcesso } from './processosHistoricoData.js';
@@ -126,8 +125,7 @@ export function parseRodadaCalculosKey(key) {
 
 /** @returns {LinhaRelatorioCalculos[]} */
 export function getLinhasRelatorioCalculosConsolidado() {
-  /** Mock alinhado à tela Cálculos; persistência sobrescreve por chave `cod8:proc:dim`. */
-  const rodadas = { ...buildMapaRodadasMockRelatorioCalculos(), ...(loadRodadasCalculos() || {}) };
+  const rodadas = { ...(loadRodadasCalculos() || {}) };
 
   const dimPorClienteProc = new Map();
   for (const key of Object.keys(rodadas)) {

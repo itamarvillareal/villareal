@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { X } from 'lucide-react';
 import { buscarCliente, pesquisarCadastroPessoasPorNomeOuCpf } from '../api/clientesService.js';
-import { getCadastroPessoasMockComNovosLocais } from '../data/cadastroPessoasMockNovosLocal.js';
 import {
   DEMO_DATA_CONSULTA_BR,
   listarConsultasARealizarPorData,
@@ -18,12 +17,12 @@ import {
 } from '../data/processosHistoricoData';
 import { resolverAliasHojeEmTexto } from '../services/hjDateAliasService.js';
 import { listarImoveisResumoPorPessoaDiagnostico } from '../services/listarImoveisPorPessoaDiagnostico.js';
-import { listarCodigosClientePorIdPessoa } from '../data/clientesCadastradosMock.js';
+import { listarCodigosClientePorIdPessoa } from '../data/clienteCodigoHelpers.js';
+import { listarClientesCadastro } from '../repositories/clientesRepository.js';
+import { listarProcessosVinculoPessoaDiagnostico } from '../repositories/processosRepository.js';
 import { padCliente8Nav } from './cadastro-pessoas/cadastroPessoasNavUtils.js';
 import { featureFlags } from '../config/featureFlags.js';
 import { buildRouterStateChaveClienteProcesso } from '../domain/camposProcessoCliente.js';
-
-const MOCK_CADASTRO_PESSOAS = import.meta.env.VITE_USE_MOCK_CADASTRO_PESSOAS === 'true';
 
 /** Delay antes de chamar a API enquanto o usuário digita (ms). */
 const DEBOUNCE_BUSCA_PESSOA_API_MS = 320;
@@ -40,42 +39,6 @@ function soDigitosDiag(s) {
   return String(s ?? '').replace(/\D/g, '');
 }
 
-/** Mock/local: código numérico, nome, CPF/CNPJ, RG. */
-function buscarPessoasMockPorTermo(termo) {
-  const raw = String(termo ?? '').trim();
-  if (!raw) return [];
-  const lista = getCadastroPessoasMockComNovosLocais(false);
-  const t = normalizarBuscaDiag(raw);
-  const tDig = soDigitosDiag(raw);
-  const pareceSoCodigo = /^\d+$/.test(raw.replace(/\s+/g, ''));
-  const codStr = pareceSoCodigo ? raw.replace(/\D/g, '') : '';
-  const out = [];
-  const seen = new Set();
-  for (const p of lista) {
-    const id = Number(p.id);
-    if (!Number.isFinite(id) || id < 1) continue;
-    let ok = false;
-    if (pareceSoCodigo && codStr === String(id)) ok = true;
-    else if (t.length >= 2 && normalizarBuscaDiag(p.nome).includes(t)) ok = true;
-    else if (tDig.length >= 3 && soDigitosDiag(p.cpf).includes(tDig)) ok = true;
-    else if (p.rg != null && String(p.rg).trim() !== '') {
-      const rgDig = soDigitosDiag(p.rg);
-      if (tDig.length >= 2 && rgDig.includes(tDig)) ok = true;
-      else if (t.length >= 2 && normalizarBuscaDiag(String(p.rg)).includes(t)) ok = true;
-    }
-    if (ok && !seen.has(id)) {
-      seen.add(id);
-      out.push({
-        id,
-        nome: String(p.nome ?? ''),
-        cpf: String(p.cpf ?? ''),
-        rg: p.rg != null ? String(p.rg) : '',
-      });
-    }
-  }
-  return out;
-}
-
 function mapPessoaApiParaDiag(p) {
   return {
     id: Number(p.id),
@@ -85,7 +48,7 @@ function mapPessoaApiParaDiag(p) {
   };
 }
 
-/** API: id numérico (GET + lista ?codigo=), nome, CPF/CNPJ. RG não está no filtro do backend — use mock para RG. */
+/** API: id numérico (GET + lista), nome, CPF/CNPJ. RG não vem no filtro do backend. */
 async function buscarPessoasApiPorTermo(termo) {
   const raw = String(termo ?? '').trim();
   if (!raw) return [];
@@ -111,6 +74,25 @@ function termoBuscaPessoaAtingeMinimoParaBuscar(raw) {
   const tDig = soDigitosDiag(r);
   const pareceSoCodigo = /^\d+$/.test(r.replace(/\s+/g, ''));
   return pareceSoCodigo || t.length >= 2 || tDig.length >= 3;
+}
+
+function chaveItemDiagBuscaPessoa(item) {
+  const cod = String(item.codCliente ?? '').replace(/\D/g, '');
+  const n = Math.floor(Number(cod || '1'));
+  const cod8 = String(Number.isFinite(n) && n > 0 ? n : 1).padStart(8, '0');
+  const pr = Math.floor(Number(String(item.proc ?? '').replace(/\D/g, '')) || 0);
+  return `${cod8}-${pr}`;
+}
+
+/** API primeiro; entradas só no histórico local completam sem duplicar por código+proc. */
+function mergeItensDiagnosticoBuscaPessoa(apiItens, locais) {
+  const m = new Map();
+  for (const x of apiItens) m.set(chaveItemDiagBuscaPessoa(x), x);
+  for (const x of locais) {
+    const k = chaveItemDiagBuscaPessoa(x);
+    if (!m.has(k)) m.set(k, x);
+  }
+  return [...m.values()].sort((a, b) => chaveItemDiagBuscaPessoa(a).localeCompare(chaveItemDiagBuscaPessoa(b)));
 }
 
 const BOTOES_ESQUERDA = [
@@ -161,9 +143,11 @@ export function Diagnosticos() {
   const buscaPessoaReqSeq = useRef(0);
   const [modalResultadoBuscaPessoaAberto, setModalResultadoBuscaPessoaAberto] = useState(false);
   const [resultadoBuscaPessoa, setResultadoBuscaPessoa] = useState([]);
+  const [buscaPessoaProcessosCarregando, setBuscaPessoaProcessosCarregando] = useState(false);
   const [rotuloPessoaBusca, setRotuloPessoaBusca] = useState('');
   /** Pessoa escolhida na busca (para atalhos ao cadastro / clientes mesmo sem processos locais). */
   const [idPessoaBuscaDiag, setIdPessoaBuscaDiag] = useState(null);
+  const [clientesCodigosLista, setClientesCodigosLista] = useState([]);
   /** Imóveis vinculados à pessoa (API de imóveis, quando ativa). */
   const [imoveisRelatorioBusca, setImoveisRelatorioBusca] = useState({ status: 'idle', itens: [] });
   const [modalResultadoAguardandoDocsAberto, setModalResultadoAguardandoDocsAberto] = useState(false);
@@ -223,20 +207,47 @@ export function Diagnosticos() {
     setModalResultadoPrazoFatalAberto(true);
   }
 
-  function abrirResultadoProcessosParaPessoa(pessoa) {
+  useEffect(() => {
+    let c = true;
+    void listarClientesCadastro()
+      .then((list) => {
+        if (c) setClientesCodigosLista(Array.isArray(list) ? list : []);
+      })
+      .catch(() => {
+        if (c) setClientesCodigosLista([]);
+      });
+    return () => {
+      c = false;
+    };
+  }, []);
+
+  async function abrirResultadoProcessosParaPessoa(pessoa) {
     const id = Number(pessoa.id);
     const nome = String(pessoa.nome ?? '').trim();
-    const itens = listarProcessosPorIdPessoa(String(id), nome || undefined);
     const doc = pessoa.cpf ? ` — ${pessoa.cpf}` : '';
     const rg = pessoa.rg ? ` — RG ${pessoa.rg}` : '';
     setRotuloPessoaBusca(`${nome || '—'} (cód. ${id})${doc}${rg}`);
-    setResultadoBuscaPessoa(itens);
     setIdPessoaBuscaDiag(Number.isFinite(id) && id >= 1 ? id : null);
     setImoveisRelatorioBusca({ status: 'idle', itens: [] });
     setModalBuscaPessoaAberto(false);
     setCandidatosBuscaPessoa([]);
     setTermoBuscaPessoa('');
     setModalResultadoBuscaPessoaAberto(true);
+    setBuscaPessoaProcessosCarregando(true);
+    setResultadoBuscaPessoa([]);
+
+    const locais = listarProcessosPorIdPessoa(String(id), nome || undefined);
+    let itens = locais;
+    if (featureFlags.useApiProcessos) {
+      try {
+        const apiRows = await listarProcessosVinculoPessoaDiagnostico(id);
+        itens = mergeItensDiagnosticoBuscaPessoa(apiRows, locais);
+      } catch {
+        itens = locais;
+      }
+    }
+    setResultadoBuscaPessoa(itens);
+    setBuscaPessoaProcessosCarregando(false);
   }
 
   useEffect(() => {
@@ -278,11 +289,6 @@ export function Diagnosticos() {
     }
     if (!termoBuscaPessoaAtingeMinimoParaBuscar(raw)) {
       aplicarLista([]);
-      return;
-    }
-
-    if (MOCK_CADASTRO_PESSOAS) {
-      aplicarLista(buscarPessoasMockPorTermo(raw));
       return;
     }
 
@@ -561,7 +567,7 @@ export function Diagnosticos() {
             </div>
             <div className="p-4 space-y-3">
               <p className="text-xs text-slate-600">
-                Busca única no cadastro (API ou mock). O relatório reúne, para a pessoa escolhida: processos no histórico
+                Busca única no cadastro (API). O relatório reúne, para a pessoa escolhida: processos no histórico
                 local (como parte e/ou advogado), imóveis na API de locação (quando ativa) e atalhos ao cadastro e
                 clientes.
               </p>
@@ -586,8 +592,8 @@ export function Diagnosticos() {
 
               <p className="text-xs text-slate-500">
                 A lista atualiza enquanto você digita. Código: só números. Nome ou RG: pelo menos 2 letras. CPF/CNPJ:
-                pelo menos 3 dígitos. Com a API Java, RG não entra no filtro do servidor; use mock local para buscar por
-                RG. Enter abre o primeiro resultado da lista.
+                pelo menos 3 dígitos. A API pode não filtrar por RG; prefira código, nome ou CPF. Enter abre o primeiro
+                resultado da lista.
               </p>
 
               <div className="text-sm text-slate-600 min-h-[1.25rem]" aria-live="polite">
@@ -620,7 +626,7 @@ export function Diagnosticos() {
                       <button
                         type="button"
                         className="w-full text-left px-3 py-2.5 text-sm hover:bg-slate-50 text-slate-800"
-                        onClick={() => abrirResultadoProcessosParaPessoa(p)}
+                        onClick={() => void abrirResultadoProcessosParaPessoa(p)}
                       >
                         <span className="font-medium">{p.nome || '—'}</span>
                         <span className="text-slate-500"> — cód. {p.id}</span>
@@ -886,6 +892,7 @@ export function Diagnosticos() {
                   setModalResultadoBuscaPessoaAberto(false);
                   setIdPessoaBuscaDiag(null);
                   setImoveisRelatorioBusca({ status: 'idle', itens: [] });
+                  setBuscaPessoaProcessosCarregando(false);
                 }}
                 className="p-1 text-slate-700 hover:bg-slate-200 shrink-0"
                 aria-label="Fechar relatório"
@@ -905,12 +912,13 @@ export function Diagnosticos() {
                         setModalResultadoBuscaPessoaAberto(false);
                         setIdPessoaBuscaDiag(null);
                         setImoveisRelatorioBusca({ status: 'idle', itens: [] });
+                        setBuscaPessoaProcessosCarregando(false);
                         navigate(`/clientes/editar/${idPessoaBuscaDiag}`);
                       }}
                     >
                       Cadastro de Pessoas (edição)
                     </button>
-                    {listarCodigosClientePorIdPessoa(idPessoaBuscaDiag).map((cod) => (
+                    {listarCodigosClientePorIdPessoa(idPessoaBuscaDiag, clientesCodigosLista).map((cod) => (
                       <button
                         key={cod}
                         type="button"
@@ -919,6 +927,7 @@ export function Diagnosticos() {
                           setModalResultadoBuscaPessoaAberto(false);
                           setIdPessoaBuscaDiag(null);
                           setImoveisRelatorioBusca({ status: 'idle', itens: [] });
+                          setBuscaPessoaProcessosCarregando(false);
                           navigate('/pessoas', {
                             state: buildRouterStateChaveClienteProcesso(padCliente8Nav(cod), ''),
                           });
@@ -932,11 +941,20 @@ export function Diagnosticos() {
               ) : null}
 
               <div className="rounded border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-800">
-                <p className="font-medium text-slate-700 mb-1">Resumo no histórico local de processos</p>
+                <p className="font-medium text-slate-700 mb-1">
+                  Resumo {featureFlags.useApiProcessos ? '(API + histórico local)' : 'no histórico local de processos'}
+                </p>
                 <p className="text-slate-600">
-                  {resultadoBuscaPessoa.length === 0
-                    ? 'Nenhum processo encontrado para esta pessoa no histórico deste navegador.'
-                    : (() => {
+                  {buscaPessoaProcessosCarregando ? (
+                    'Carregando vínculos de processos…'
+                  ) : resultadoBuscaPessoa.length === 0 ? (
+                    featureFlags.useApiProcessos ? (
+                      'Nenhum processo encontrado para esta pessoa na API nem no histórico local deste navegador.'
+                    ) : (
+                      'Nenhum processo encontrado para esta pessoa no histórico deste navegador.'
+                    )
+                  ) : (
+                    (() => {
                         const comAdv = resultadoBuscaPessoa.filter((x) =>
                           String(x.papeis || '').includes('Advogado')
                         ).length;
@@ -953,20 +971,26 @@ export function Diagnosticos() {
                             advogado(a) (a coluna [papéis] detalha cada um).
                           </>
                         );
-                      })()}
+                      })()
+                  )}
                 </p>
               </div>
 
               <div>
-                <p className="text-sm font-medium text-slate-800 mb-2">Processos (histórico local)</p>
+                <p className="text-sm font-medium text-slate-800 mb-2">
+                  Processos {featureFlags.useApiProcessos ? '(API e histórico local)' : '(histórico local)'}
+                </p>
                 <p className="text-xs text-slate-600 mb-2">
                   Duplo clique na linha abre em Processos. A coluna [papéis] indica se é parte e/ou advogado(a).
                 </p>
                 <div className="border border-slate-300 bg-white max-h-[240px] overflow-auto p-2 text-[13px] leading-relaxed font-mono">
-                  {resultadoBuscaPessoa.length === 0 ? (
+                  {buscaPessoaProcessosCarregando ? (
+                    <p className="text-slate-600">Carregando…</p>
+                  ) : resultadoBuscaPessoa.length === 0 ? (
                     <p className="text-slate-600">
-                      Nenhum processo no histórico local. Vincule a pessoa nas partes ou como advogado em Processos para
-                      aparecer aqui.
+                      {featureFlags.useApiProcessos
+                        ? 'Nenhum processo na API nem no histórico local em que esta pessoa figure como cliente do processo, parte ou advogado(a).'
+                        : 'Nenhum processo no histórico local. Vincule a pessoa nas partes ou como advogado em Processos para aparecer aqui.'}
                     </p>
                   ) : (
                     resultadoBuscaPessoa.map((item, idx) => (
@@ -1019,6 +1043,7 @@ export function Diagnosticos() {
                             setModalResultadoBuscaPessoaAberto(false);
                             setIdPessoaBuscaDiag(null);
                             setImoveisRelatorioBusca({ status: 'idle', itens: [] });
+                            setBuscaPessoaProcessosCarregando(false);
                             navigate('/imoveis', { state: { imovelId: im.imovelId } });
                           }}
                         >
@@ -1037,6 +1062,7 @@ export function Diagnosticos() {
                   setModalResultadoBuscaPessoaAberto(false);
                   setIdPessoaBuscaDiag(null);
                   setImoveisRelatorioBusca({ status: 'idle', itens: [] });
+                  setBuscaPessoaProcessosCarregando(false);
                 }}
                 className="min-w-[120px] px-8 py-1.5 border border-slate-500 bg-white text-base text-black shadow-[2px_2px_0_0_rgba(0,0,0,0.25)] hover:bg-slate-50"
               >
@@ -1065,7 +1091,7 @@ export function Diagnosticos() {
             </div>
             <div className="px-4 py-3">
               <p className="text-sm text-black mb-3">
-                {resultadoAguardandoDocs.length} processo(s). Duplo clique na linha para abrir em Processos. A fase é gravada ao marcar em Processos ou ao sincronizar com o mock.
+                {resultadoAguardandoDocs.length} processo(s). Duplo clique na linha para abrir em Processos. A fase é gravada ao marcar em Processos ou ao sincronizar com o histórico local.
               </p>
               <div className="border border-slate-300 bg-white h-[430px] overflow-auto p-2 text-[13px] leading-relaxed font-mono">
                 {resultadoAguardandoDocs.length === 0 ? (
@@ -1118,7 +1144,7 @@ export function Diagnosticos() {
             </div>
             <div className="px-4 py-3">
               <p className="text-sm text-black mb-3">
-                {resultadoAguardandoPeticionar.length} processo(s). Duplo clique na linha para abrir em Processos. A fase é gravada ao marcar em Processos ou ao sincronizar com o mock.
+                {resultadoAguardandoPeticionar.length} processo(s). Duplo clique na linha para abrir em Processos. A fase é gravada ao marcar em Processos ou ao sincronizar com o histórico local.
               </p>
               <div className="border border-slate-300 bg-white h-[430px] overflow-auto p-2 text-[13px] leading-relaxed font-mono">
                 {resultadoAguardandoPeticionar.length === 0 ? (
@@ -1171,7 +1197,7 @@ export function Diagnosticos() {
             </div>
             <div className="px-4 py-3">
               <p className="text-sm text-black mb-3">
-                {resultadoAguardandoVerificacao.length} processo(s). Duplo clique na linha para abrir em Processos. A fase é gravada ao marcar em Processos ou ao sincronizar com o mock.
+                {resultadoAguardandoVerificacao.length} processo(s). Duplo clique na linha para abrir em Processos. A fase é gravada ao marcar em Processos ou ao sincronizar com o histórico local.
               </p>
               <div className="border border-slate-300 bg-white h-[430px] overflow-auto p-2 text-[13px] leading-relaxed font-mono">
                 {resultadoAguardandoVerificacao.length === 0 ? (
@@ -1224,7 +1250,7 @@ export function Diagnosticos() {
             </div>
             <div className="px-4 py-3">
               <p className="text-sm text-black mb-3">
-                {resultadoAguardandoProtocolo.length} processo(s). Duplo clique na linha para abrir em Processos. A fase é gravada ao marcar em Processos ou ao sincronizar com o mock.
+                {resultadoAguardandoProtocolo.length} processo(s). Duplo clique na linha para abrir em Processos. A fase é gravada ao marcar em Processos ou ao sincronizar com o histórico local.
               </p>
               <div className="border border-slate-300 bg-white h-[430px] overflow-auto p-2 text-[13px] leading-relaxed font-mono">
                 {resultadoAguardandoProtocolo.length === 0 ? (
@@ -1280,7 +1306,7 @@ export function Diagnosticos() {
             <div className="px-4 py-3">
               <p className="text-sm text-black mb-3">
                 {resultadoAguardandoProvidencia.length} processo(s). Duplo clique na linha para abrir em Processos. A fase
-                é gravada ao marcar em Processos ou ao sincronizar com o mock.
+                é gravada ao marcar em Processos ou ao sincronizar com o histórico local.
               </p>
               <div className="border border-slate-300 bg-white h-[430px] overflow-auto p-2 text-[13px] leading-relaxed font-mono">
                 {resultadoAguardandoProvidencia.length === 0 ? (
@@ -1338,7 +1364,7 @@ export function Diagnosticos() {
             <div className="px-4 py-3">
               <p className="text-sm text-black mb-3">
                 {resultadoProcAdministrativo.length} processo(s). Duplo clique na linha para abrir em Processos. A fase é
-                gravada ao marcar em Processos ou ao sincronizar com o mock.
+                gravada ao marcar em Processos ou ao sincronizar com o histórico local.
               </p>
               <div className="border border-slate-300 bg-white h-[430px] overflow-auto p-2 text-[13px] leading-relaxed font-mono">
                 {resultadoProcAdministrativo.length === 0 ? (

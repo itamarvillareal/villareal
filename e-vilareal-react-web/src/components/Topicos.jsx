@@ -5,7 +5,7 @@ import { useTopicosRaiz } from '../hooks/useTopicosRaiz.js';
 
 /**
  * Tela de tópicos — navegação em camadas e seleção na folha (checkboxes + rolagem).
- * Dados: mock em `src/data/topicosHierarchy.js` ou API com `VITE_USE_API_TOPICOS=true`.
+ * Dados: API com `VITE_USE_API_TOPICOS=true`; sem a flag, raiz vazia até ativar a API.
  */
 export function Topicos() {
   const { raiz, carregando, erro, usandoApi } = useTopicosRaiz();

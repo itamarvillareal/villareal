@@ -31,6 +31,12 @@ public class ProcessoResponse {
     private String consultor;
     private Long usuarioResponsavelId;
 
+    /**
+     * Nomes da parte oposta (polo ≠ autor/requerente/cliente), no mesmo critério da tela Processos —
+     * ex.: "NET ANÁPOLIS LTDA e OUTRA"; só preenchido em {@code GET /api/processos?codigoCliente=}.
+     */
+    private String parteOposta;
+
     public Long getId() {
         return id;
     }
@@ -219,5 +225,13 @@ public class ProcessoResponse {
 
     public void setUsuarioResponsavelId(Long usuarioResponsavelId) {
         this.usuarioResponsavelId = usuarioResponsavelId;
+    }
+
+    public String getParteOposta() {
+        return parteOposta;
+    }
+
+    public void setParteOposta(String parteOposta) {
+        this.parteOposta = parteOposta;
     }
 }

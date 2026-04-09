@@ -1,12 +1,76 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search } from 'lucide-react';
-import { getImovelMock, getImoveisMockTotal } from '../data/imoveisMockData.js';
-import { padCliente } from '../data/processosDadosRelatorio.js';
+import { ArrowDown, ArrowUp, ArrowUpDown, RefreshCw, Search } from 'lucide-react';
+import { carregarItensRelatorioImoveisApi } from '../repositories/imoveisRepository.js';
+import { featureFlags } from '../config/featureFlags.js';
 
 function s(v) {
   if (v == null) return '';
   return String(v);
+}
+
+function codigoClientePadded(codigoRaw) {
+  const cod = String(codigoRaw ?? '').replace(/\D/g, '');
+  const n = Number(cod || '0');
+  if (!cod || !Number.isFinite(n) || n <= 0) return '';
+  return String(Math.floor(n)).padStart(8, '0');
+}
+
+/** Converte o objeto de UI do cadastro (mapApiToUi) em linha da tabela do relatório. */
+function mapCadastroUiParaLinha(item) {
+  return {
+    id: item.imovelId,
+    apiImovelId: item._apiImovelId,
+    codigoPadded: codigoClientePadded(item.codigo),
+    proc: s(item.proc),
+    endereco: s(item.endereco),
+    condominio: s(item.condominio),
+    unidade: s(item.unidade),
+    garagens: s(item.garagens),
+    ocupado: item.imovelOcupado ? 'Sim' : 'Não',
+    observacoesInquilino: s(item.observacoesInquilino),
+    garantia: s(item.garantia),
+    valorGarantia: s(item.valorGarantia),
+    valorLocacao: s(item.valorLocacao),
+    diaPagAluguel: s(item.diaPagAluguel),
+    dataPag1TxCond: s(item.dataPag1TxCond),
+    inscricaoImobiliaria: s(item.inscricaoImobiliaria),
+    existeDebIptu: s(item.existeDebIptu),
+    dataConsIptu: s(item.dataConsIptu),
+    aguaNumero: s(item.aguaNumero),
+    dataConsAgua: s(item.dataConsAgua),
+    existeDebAgua: s(item.existeDebAgua),
+    diaVencAgua: s(item.diaVencAgua),
+    energiaNumero: s(item.energiaNumero),
+    dataConsEnergia: s(item.dataConsEnergia),
+    existeDebEnergia: s(item.existeDebEnergia),
+    diaVencEnergia: s(item.diaVencEnergia),
+    gasNumero: s(item.gasNumero),
+    dataConsGas: s(item.dataConsGas),
+    existeDebGas: s(item.existeDebGas),
+    diaVencGas: s(item.diaVencGas),
+    dataInicioContrato: s(item.dataInicioContrato),
+    dataFimContrato: s(item.dataFimContrato),
+    dataConsDebitoCond: s(item.dataConsDebitoCond),
+    existeDebitoCond: s(item.existeDebitoCond),
+    diaRepasse: s(item.diaRepasse),
+    banco: s(item.banco),
+    numeroBanco: s(item.numeroBanco),
+    agencia: s(item.agencia),
+    conta: s(item.conta),
+    cpfBanco: s(item.cpfBanco),
+    chavePix: s(item.chavePix),
+    titular: s(item.titular),
+    proprietarioNumeroPessoa: s(item.proprietarioNumeroPessoa),
+    proprietario: s(item.proprietario),
+    proprietarioCpf: s(item.proprietarioCpf),
+    proprietarioContato: s(item.proprietarioContato),
+    inquilinoNumeroPessoa: s(item.inquilinoNumeroPessoa),
+    inquilino: s(item.inquilino),
+    inquilinoCpf: s(item.inquilinoCpf),
+    inquilinoContato: s(item.inquilinoContato),
+    linkVistoria: s(item.linkVistoria),
+  };
 }
 
 /**
@@ -61,85 +125,127 @@ const COLUNAS = [
   { key: 'inquilinoNumeroPessoa', label: 'Nº pessoa inq.', narrow: true },
   { key: 'inquilino', label: 'Inquilino', truncate: true },
   { key: 'inquilinoCpf', label: 'CPF inq.', narrow: true },
-  { key: 'inquilinoContato', label: 'Contato inq.', truncate: true },
+  { key: 'inquilinoContato', label: 'Contato inq.', narrow: true },
   { key: 'linkVistoria', label: 'Link vistoria', truncate: true },
 ];
-
-function linhaFromMock(id, m) {
-  return {
-    id,
-    codigoPadded: padCliente(m.codigo),
-    proc: m.proc,
-    endereco: s(m.endereco),
-    condominio: s(m.condominio),
-    unidade: s(m.unidade),
-    garagens: s(m.garagens),
-    ocupado: m.imovelOcupado ? 'Sim' : 'Não',
-    observacoesInquilino: s(m.observacoesInquilino),
-    garantia: s(m.garantia),
-    valorGarantia: s(m.valorGarantia),
-    valorLocacao: s(m.valorLocacao),
-    diaPagAluguel: s(m.diaPagAluguel),
-    dataPag1TxCond: s(m.dataPag1TxCond),
-    inscricaoImobiliaria: s(m.inscricaoImobiliaria),
-    existeDebIptu: s(m.existeDebIptu),
-    dataConsIptu: s(m.dataConsIptu),
-    aguaNumero: s(m.aguaNumero),
-    dataConsAgua: s(m.dataConsAgua),
-    existeDebAgua: s(m.existeDebAgua),
-    diaVencAgua: s(m.diaVencAgua),
-    energiaNumero: s(m.energiaNumero),
-    dataConsEnergia: s(m.dataConsEnergia),
-    existeDebEnergia: s(m.existeDebEnergia),
-    diaVencEnergia: s(m.diaVencEnergia),
-    gasNumero: s(m.gasNumero),
-    dataConsGas: s(m.dataConsGas),
-    existeDebGas: s(m.existeDebGas),
-    diaVencGas: s(m.diaVencGas),
-    dataInicioContrato: s(m.dataInicioContrato),
-    dataFimContrato: s(m.dataFimContrato),
-    dataConsDebitoCond: s(m.dataConsDebitoCond),
-    existeDebitoCond: s(m.existeDebitoCond),
-    diaRepasse: s(m.diaRepasse),
-    banco: s(m.banco),
-    numeroBanco: s(m.numeroBanco),
-    agencia: s(m.agencia),
-    conta: s(m.conta),
-    cpfBanco: s(m.cpfBanco),
-    chavePix: s(m.chavePix),
-    titular: s(m.titular),
-    proprietarioNumeroPessoa: s(m.proprietarioNumeroPessoa),
-    proprietario: s(m.proprietario),
-    proprietarioCpf: s(m.proprietarioCpf),
-    proprietarioContato: s(m.proprietarioContato),
-    inquilinoNumeroPessoa: s(m.inquilinoNumeroPessoa),
-    inquilino: s(m.inquilino),
-    inquilinoCpf: s(m.inquilinoCpf),
-    inquilinoContato: s(m.inquilinoContato),
-    linkVistoria: s(m.linkVistoria),
-  };
-}
 
 function textoBuscaLinha(r) {
   return COLUNAS.map((c) => s(r[c.key])).join(' ').toLowerCase();
 }
 
-/**
- * Listagem consolidada dos imóveis mock (mesma base do cadastro Imóveis).
- */
+/** Tipo de comparação por coluna (demais tratadas como texto). */
+const ORDENACAO_TIPO = {
+  id: 'numero',
+  proc: 'numero',
+  garagens: 'numero',
+  valorGarantia: 'numero',
+  valorLocacao: 'numero',
+  diaPagAluguel: 'numero',
+  diaVencAgua: 'numero',
+  diaVencEnergia: 'numero',
+  diaVencGas: 'numero',
+  diaRepasse: 'numero',
+  proprietarioNumeroPessoa: 'numero',
+  inquilinoNumeroPessoa: 'numero',
+  dataPag1TxCond: 'dataBr',
+  dataConsIptu: 'dataBr',
+  dataConsAgua: 'dataBr',
+  dataConsEnergia: 'dataBr',
+  dataConsGas: 'dataBr',
+  dataInicioContrato: 'dataBr',
+  dataFimContrato: 'dataBr',
+  dataConsDebitoCond: 'dataBr',
+};
+
+function parseDataBrParaMs(str) {
+  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(String(str ?? '').trim());
+  if (!m) return Number.NaN;
+  const d = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+  return Number.isNaN(d.getTime()) ? Number.NaN : d.getTime();
+}
+
+function parseNumeroMoedaOuDia(str) {
+  const t = String(str ?? '').trim();
+  if (!t) return Number.NaN;
+  const soDigitos = t.replace(/\D/g, '');
+  if (soDigitos && /^\d+$/.test(soDigitos) && t.length <= 3) {
+    const n = Number(soDigitos);
+    return Number.isFinite(n) ? n : Number.NaN;
+  }
+  const normalizado = t.replace(/\./g, '').replace(',', '.').replace(/[^\d.-]/g, '');
+  const n = Number(normalizado);
+  return Number.isFinite(n) ? n : Number.NaN;
+}
+
+function valorOrdenacaoCelula(row, colKey) {
+  const tipo = ORDENACAO_TIPO[colKey] ?? 'texto';
+  const raw = row[colKey];
+
+  if (tipo === 'numero') {
+    if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
+    if (colKey === 'id' || colKey === 'proc') {
+      const n = Number(String(raw).replace(/\D/g, ''));
+      return Number.isFinite(n) ? n : Number.NaN;
+    }
+    return parseNumeroMoedaOuDia(raw);
+  }
+  if (tipo === 'dataBr') {
+    return parseDataBrParaMs(raw);
+  }
+  return String(raw ?? '')
+    .trim()
+    .toLocaleLowerCase('pt-BR');
+}
+
+function compararLinhas(a, b, colKey, dir) {
+  const va = valorOrdenacaoCelula(a, colKey);
+  const vb = valorOrdenacaoCelula(b, colKey);
+  const tipo = ORDENACAO_TIPO[colKey] ?? 'texto';
+  const mult = dir === 'asc' ? 1 : -1;
+
+  const vazioA = va === '' || (typeof va === 'number' && Number.isNaN(va));
+  const vazioB = vb === '' || (typeof vb === 'number' && Number.isNaN(vb));
+  if (vazioA && vazioB) return (a.apiImovelId ?? 0) - (b.apiImovelId ?? 0);
+  if (vazioA) return 1;
+  if (vazioB) return -1;
+
+  if (tipo === 'texto') {
+    const c = String(va).localeCompare(String(vb), 'pt-BR', { numeric: true, sensitivity: 'base' });
+    if (c !== 0) return mult * c;
+  } else if (typeof va === 'number' && typeof vb === 'number') {
+    if (va !== vb) return mult * (va - vb);
+  }
+
+  return (a.apiImovelId ?? 0) - (b.apiImovelId ?? 0);
+}
+
 export function RelatorioImoveis() {
   const navigate = useNavigate();
   const [busca, setBusca] = useState('');
+  const [linhas, setLinhas] = useState([]);
+  const [carregando, setCarregando] = useState(false);
+  const [erro, setErro] = useState('');
+  const [ultimaCarga, setUltimaCarga] = useState(null);
+  const [ordenacao, setOrdenacao] = useState({ col: null, dir: 'asc' });
 
-  const linhas = useMemo(() => {
-    const total = getImoveisMockTotal();
-    const out = [];
-    for (let id = 1; id <= total; id++) {
-      const m = getImovelMock(id);
-      if (!m) continue;
-      out.push(linhaFromMock(id, m));
+  const executarRelatorio = useCallback(async () => {
+    setErro('');
+    setCarregando(true);
+    try {
+      const { ok, motivo, itens } = await carregarItensRelatorioImoveisApi();
+      if (!ok) {
+        setLinhas([]);
+        setErro(motivo || 'Não foi possível carregar o relatório.');
+        return;
+      }
+      setLinhas(itens.map(mapCadastroUiParaLinha));
+      setUltimaCarga(new Date());
+    } catch (e) {
+      setLinhas([]);
+      setErro(e?.message || 'Falha ao carregar o relatório.');
+    } finally {
+      setCarregando(false);
     }
-    return out;
   }, []);
 
   const filtradas = useMemo(() => {
@@ -148,19 +254,78 @@ export function RelatorioImoveis() {
     return linhas.filter((r) => textoBuscaLinha(r).includes(t));
   }, [linhas, busca]);
 
+  const linhasOrdenadas = useMemo(() => {
+    const col = ordenacao.col;
+    if (!col || filtradas.length === 0) return filtradas;
+    const dir = ordenacao.dir;
+    return [...filtradas].sort((a, b) => compararLinhas(a, b, col, dir));
+  }, [filtradas, ordenacao.col, ordenacao.dir]);
+
+  function aoClicarOrdenar(colKey) {
+    setOrdenacao((prev) => {
+      if (prev.col !== colKey) {
+        return { col: colKey, dir: 'asc' };
+      }
+      if (prev.dir === 'asc') {
+        return { col: colKey, dir: 'desc' };
+      }
+      return { col: null, dir: 'asc' };
+    });
+  }
+
   const th = 'px-3 py-2 text-left text-xs font-semibold text-slate-700 border-b border-slate-200 bg-slate-100 whitespace-nowrap';
+  const thBtn =
+    'group flex w-full min-w-0 items-center gap-1 text-left font-semibold text-slate-700 hover:text-cyan-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50 rounded px-0.5 -mx-0.5';
   const td = 'px-3 py-2 text-sm text-slate-800 border-b border-slate-100 align-top';
+
+  const btnPrimario =
+    'inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white bg-cyan-700 hover:bg-cyan-800 disabled:opacity-50 disabled:pointer-events-none shadow-sm';
 
   return (
     <div className="min-h-full bg-slate-200 p-4">
       <div className="max-w-[1600px] mx-auto space-y-4">
         <div className="bg-white rounded-lg border border-slate-300 shadow-sm p-5">
-          <h1 className="text-xl font-bold text-slate-800">Relatório Imóveis</h1>
-          <p className="text-sm text-slate-600 mt-1">
-            Visão tabular do cadastro de imóveis (colunas alinhadas à tela <strong>Imóveis</strong>). Use a barra de rolagem
-            horizontal para ver todos os campos. Clique numa linha para abrir o imóvel no cadastro.
-          </p>
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="min-w-0">
+              <h1 className="text-xl font-bold text-slate-800">Relatório Imóveis</h1>
+              <p className="text-sm text-slate-600 mt-1 max-w-3xl">
+                Lista o cadastro de cada imóvel na API (mesmos campos do formulário de administração). Use{' '}
+                <strong>Atualizar relatório</strong> para buscar os dados no servidor. Clique no{' '}
+                <strong>cabeçalho de uma coluna</strong> para ordenar (ascendente, descendente, depois volta ao padrão).
+                Rolagem horizontal para ver todas as colunas; clique numa linha para abrir o imóvel no cadastro.
+              </p>
+              {!featureFlags.useApiImoveis ? (
+                <p className="text-sm text-amber-800 mt-2">
+                  A API de imóveis está desligada (<code className="text-xs">VITE_USE_API_IMOVEIS</code>). Ative-a para
+                  carregar este relatório.
+                </p>
+              ) : null}
+              {ultimaCarga ? (
+                <p className="text-xs text-slate-500 mt-2">
+                  Última atualização: {ultimaCarga.toLocaleString('pt-BR')}
+                </p>
+              ) : null}
+            </div>
+            <button
+              type="button"
+              className={btnPrimario}
+              onClick={() => void executarRelatorio()}
+              disabled={carregando || !featureFlags.useApiImoveis}
+              title={
+                !featureFlags.useApiImoveis
+                  ? 'API de imóveis desligada'
+                  : 'Buscar todos os imóveis e montar o relatório'
+              }
+            >
+              <RefreshCw className={`w-4 h-4 shrink-0 ${carregando ? 'animate-spin' : ''}`} aria-hidden />
+              {carregando ? 'Carregando…' : 'Atualizar relatório'}
+            </button>
+          </div>
         </div>
+
+        {erro ? (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-800">{erro}</div>
+        ) : null}
 
         <div className="bg-white rounded-lg border border-slate-300 shadow-sm p-4">
           <div className="flex flex-wrap items-center gap-2 mb-3">
@@ -176,6 +341,19 @@ export function RelatorioImoveis() {
             </div>
             <span className="text-xs text-slate-500">
               {filtradas.length} de {linhas.length} registro(s)
+              {ordenacao.col ? (
+                <span className="text-cyan-700 ml-1">
+                  · ordenado por {COLUNAS.find((c) => c.key === ordenacao.col)?.label ?? ordenacao.col} (
+                  {(() => {
+                    const t = ORDENACAO_TIPO[ordenacao.col];
+                    if (t === 'texto' || t == null) {
+                      return ordenacao.dir === 'asc' ? 'A→Z' : 'Z→A';
+                    }
+                    return ordenacao.dir === 'asc' ? 'crescente' : 'decrescente';
+                  })()}
+                  )
+                </span>
+              ) : null}
             </span>
           </div>
 
@@ -183,22 +361,42 @@ export function RelatorioImoveis() {
             <table className="w-full text-left border-collapse min-w-[2400px]">
               <thead>
                 <tr>
-                  {COLUNAS.map((col) => (
-                    <th
-                      key={col.key}
-                      className={`${th} ${col.right ? 'text-right' : ''}`}
-                    >
-                      {col.label}
-                    </th>
-                  ))}
+                  {COLUNAS.map((col) => {
+                    const ativo = ordenacao.col === col.key;
+                    return (
+                      <th key={col.key} className={`${th} ${col.right ? 'text-right' : ''}`} scope="col">
+                        <button
+                          type="button"
+                          className={`${thBtn} ${col.right ? 'justify-end' : 'justify-start'}`}
+                          onClick={() => aoClicarOrdenar(col.key)}
+                          title="Ordenar por esta coluna (clique de novo para inverter; terceiro clique remove ordenação)"
+                        >
+                          <span className="truncate">{col.label}</span>
+                          <span className="inline-flex shrink-0 text-cyan-600 opacity-70 group-hover:opacity-100">
+                            {!ativo ? (
+                              <ArrowUpDown className="w-3.5 h-3.5" aria-hidden />
+                            ) : ordenacao.dir === 'asc' ? (
+                              <ArrowUp className="w-3.5 h-3.5" aria-hidden />
+                            ) : (
+                              <ArrowDown className="w-3.5 h-3.5" aria-hidden />
+                            )}
+                          </span>
+                        </button>
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody>
-                {filtradas.map((r) => (
+                {linhasOrdenadas.map((r) => (
                   <tr
-                    key={r.id}
+                    key={r.apiImovelId ?? `row-${r.id}`}
                     className="hover:bg-blue-50/60 cursor-pointer"
-                    onClick={() => navigate('/imoveis', { state: { imovelId: r.id } })}
+                    onClick={() =>
+                      navigate('/imoveis', {
+                        state: { numeroPlanilha: r.id },
+                      })
+                    }
                   >
                     {COLUNAS.map((col) => {
                       const val = r[col.key];
@@ -214,9 +412,16 @@ export function RelatorioImoveis() {
                 ))}
               </tbody>
             </table>
-            {filtradas.length === 0 && (
+            {linhas.length === 0 && !carregando ? (
+              <p className="text-sm text-slate-500 text-center py-8">
+                {featureFlags.useApiImoveis
+                  ? 'Nenhum dado carregado. Clique em «Atualizar relatório» para buscar os imóveis na API.'
+                  : 'Ative a API de imóveis para usar este relatório.'}
+              </p>
+            ) : null}
+            {linhas.length > 0 && filtradas.length === 0 ? (
               <p className="text-sm text-slate-500 text-center py-8">Nenhum registro com o filtro atual.</p>
-            )}
+            ) : null}
           </div>
         </div>
       </div>

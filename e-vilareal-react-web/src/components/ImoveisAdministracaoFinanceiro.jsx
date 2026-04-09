@@ -8,7 +8,6 @@ import {
   CircleDollarSign,
   AlertTriangle,
 } from 'lucide-react';
-import { getImoveisMockTotal } from '../data/imoveisMockData.js';
 import { padCliente } from '../data/processosDadosRelatorio.js';
 import {
   gerarAlertasAdministracaoImovel,
@@ -77,7 +76,6 @@ export function ImoveisAdministracaoFinanceiro() {
   }, [location.state, location.search]);
 
   const mock = useMemo(() => imovelUi, [imovelUi]);
-  const totalImoveis = getImoveisMockTotal();
 
   const codigoStr = mock ? String(mock.codigo ?? '').trim() : '';
   const procStr = mock ? String(mock.proc ?? '').trim() : '';
@@ -283,7 +281,11 @@ export function ImoveisAdministracaoFinanceiro() {
           <div className="flex items-start gap-3">
             <button
               type="button"
-              onClick={() => navigate('/imoveis', { state: { imovelId } })}
+              onClick={() =>
+                navigate('/imoveis', {
+                  state: mock ? { numeroPlanilha: mock.imovelId } : { imovelId },
+                })
+              }
               className="p-2 rounded-lg border border-slate-400 bg-white text-slate-600 hover:bg-slate-100 shrink-0 mt-0.5"
               aria-label="Voltar ao cadastro do imóvel"
             >
@@ -355,7 +357,7 @@ export function ImoveisAdministracaoFinanceiro() {
 
         {!mock && (
           <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-900">
-            Imóvel <strong>{imovelId}</strong> sem cadastro mock (use 1 a {totalImoveis}).{' '}
+            Imóvel <strong>{imovelId}</strong> sem cadastro na API ou vínculo inválido.{' '}
             <button type="button" className="underline font-medium" onClick={() => navigate('/imoveis')}>
               Voltar
             </button>

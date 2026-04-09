@@ -101,15 +101,9 @@ public class CalculoApplicationService {
     @Transactional
     public CalculoClienteConfigResponse salvarConfigCliente(String codigoCliente, JsonNode patch) {
         String cod8 = formatarCodigoCliente(codigoCliente);
-        long pessoaId;
-        if (clienteCodigoPessoaResolver.haMapeamentosPlanilhaPasta1()) {
-            pessoaId = clienteCodigoPessoaResolver
-                    .resolverPessoaIdSomentePlanilha(cod8)
-                    .orElseThrow(
-                            () -> new BusinessRuleException("Código de cliente não mapeado na planilha: " + cod8));
-        } else {
-            pessoaId = clienteCodigoPessoaResolver.resolverPessoaId(cod8);
-        }
+        long pessoaId = clienteCodigoPessoaResolver
+                .resolverPessoaIdComFallbackCliente(cod8)
+                .orElseThrow(() -> new BusinessRuleException("Código de cliente não encontrado: " + cod8));
         if (!pessoaRepository.existsById(pessoaId)) {
             throw new BusinessRuleException("Cliente não encontrado: " + cod8);
         }

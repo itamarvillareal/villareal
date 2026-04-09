@@ -1,4 +1,6 @@
 HELP.md
+# Config local da importação de pessoas (caminho da planilha — não commitar)
+scripts/import-pessoas.local.env
 target/
 .mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/

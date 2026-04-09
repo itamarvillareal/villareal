@@ -1,11 +1,8 @@
 /**
- * Dados alinhados à tela Processos (mock + localStorage) para enriquecer linhas do Relatório Processos.
+ * Dados alinhados à tela Processos (API + localStorage) para enriquecer linhas do Relatório Processos.
  */
 import { getDadosProcessoClienteUnificado } from './processoClienteProcUnificado.js';
 import { getRegistroProcesso } from './processosHistoricoData.js';
-import { getImovelMock, getImoveisMockTotal } from './imoveisMockData.js';
-import { getIdPessoaPorCodCliente } from './clientesCadastradosMock.js';
-import { getPessoaPorId } from './cadastroPessoasMock.js';
 import { featureFlags } from '../config/featureFlags.js';
 import { listarAndamentosProcesso, listarPartesProcesso, obterCamposProcessoApiFirst, resolverProcessoId } from '../repositories/processosRepository.js';
 
@@ -127,17 +124,10 @@ export function padCliente(val) {
 }
 
 /**
- * Nome no Cadastro de Pessoas para o código de cliente (vínculo mock PDF), ou null.
- * Alinhado ao campo "Cliente" na tela Processos (nome da pessoa vinculada ao código).
+ * Nome da pessoa vinculada ao código de cliente — preenchido pela API/tela Clientes; sem cache local estático.
  */
-export function getNomePessoaCadastroPorCodigoCliente(codNum) {
-  const n = Number(normalizarCliente(codNum));
-  if (!Number.isFinite(n) || n < 1) return null;
-  const id = getIdPessoaPorCodCliente(padCliente(n));
-  if (id == null) return null;
-  const pes = getPessoaPorId(id);
-  const nome = pes?.nome?.trim();
-  return nome || null;
+export function getNomePessoaCadastroPorCodigoCliente() {
+  return null;
 }
 
 /**
@@ -147,7 +137,7 @@ export function getNomePessoaCadastroPorCodigoCliente(codNum) {
 export function gerarMockProcesso(codigoCliente, processo) {
   const c = Number(normalizarCliente(codigoCliente));
   const p = Number(normalizarProcesso(processo));
-  const nomeClienteCadastro = getNomePessoaCadastroPorCodigoCliente(c);
+  const nomeClienteCadastro = getNomePessoaCadastroPorCodigoCliente();
   const u = getDadosProcessoClienteUnificado(c, p);
 
   const vazio = {
@@ -225,19 +215,8 @@ const _cacheCamposApi = new Map();
 
 function mapaImovelPorClienteProc() {
   if (_mapaImovelClienteProc) return _mapaImovelClienteProc;
-  const map = new Map();
-  const total = Number(getImoveisMockTotal?.() ?? 45);
-  for (let id = 1; id <= total; id++) {
-    const mock = getImovelMock(id);
-    if (!mock) continue;
-    const codMock = Number(String(mock.codigo ?? '').replace(/\D/g, ''));
-    const procMock = Number(mock.proc ?? 0);
-    if (Number.isFinite(codMock) && codMock >= 1 && Number.isFinite(procMock) && procMock >= 1) {
-      map.set(`${codMock}|${procMock}`, { imovelId: id, mock });
-    }
-  }
-  _mapaImovelClienteProc = map;
-  return map;
+  _mapaImovelClienteProc = new Map();
+  return _mapaImovelClienteProc;
 }
 
 function resolverVinculoImovel(codNum, procNum) {

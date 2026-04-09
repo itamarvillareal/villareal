@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { NavLink, useLocation, Link, useNavigate } from 'react-router-dom';
 import { ChevronDown, ChevronRight } from 'lucide-react';
-import { navItems } from '../data/mockData';
+import { navItems } from '../data/navConfig.js';
 import { SidebarMenuIcon } from './navigation/SidebarMenuIcons.jsx';
 import { getUsuariosAtivos } from '../data/agendaPersistenciaData';
 import {
@@ -124,6 +124,9 @@ export function Sidebar() {
               if (ch.id === 'clientes/relatorio') {
                 return path === '/clientes/relatorio';
               }
+              if (ch.id === 'relatorio-imoveis') {
+                return path === '/relatorio-imoveis';
+              }
               return path === `/${ch.id}` || path.startsWith(`/${ch.id}/`);
             });
             return (
@@ -137,6 +140,11 @@ export function Sidebar() {
                       return;
                     }
                     if (item.id === 'calcular-grupo') {
+                      setGruposAbertos((prev) => new Set(prev).add(item.id));
+                      if (subs[0]) navigate(`/${subs[0].id}`);
+                      return;
+                    }
+                    if (item.id === 'admin-imoveis-grupo') {
                       setGruposAbertos((prev) => new Set(prev).add(item.id));
                       if (subs[0]) navigate(`/${subs[0].id}`);
                       return;
@@ -170,8 +178,10 @@ export function Sidebar() {
                             let ativo = isActive;
                             if (ch.id === 'clientes/lista') {
                               ativo = path === '/clientes/lista' || path.startsWith('/clientes/editar/');
-                            } else if (ch.id === 'clientes/relatorio') {
+                            } else                             if (ch.id === 'clientes/relatorio') {
                               ativo = path === '/clientes/relatorio';
+                            } else if (ch.id === 'relatorio-imoveis') {
+                              ativo = path === '/relatorio-imoveis';
                             }
                             return `flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs font-medium transition-all duration-200 ${
                               ativo

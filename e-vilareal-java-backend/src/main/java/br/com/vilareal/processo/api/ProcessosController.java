@@ -29,6 +29,12 @@ public class ProcessosController {
         return processoApplicationService.listarPorCodigoCliente(codigoCliente);
     }
 
+    @GetMapping("/vinculo-pessoa/{pessoaId}")
+    @Operation(summary = "Diagnóstico: processos em que a pessoa figura (cliente, parte ou advogado)")
+    public List<ProcessoDiagnosticoPessoaItemResponse> listarVinculosPessoa(@PathVariable Long pessoaId) {
+        return processoApplicationService.listarVinculosDiagnosticoPorPessoa(pessoaId);
+    }
+
     @GetMapping("/{id}")
     public ProcessoResponse buscar(@PathVariable Long id) {
         return processoApplicationService.buscar(id);

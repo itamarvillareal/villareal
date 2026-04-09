@@ -2,7 +2,7 @@
  * Permissões de acesso por usuário (id da lista Agenda/Usuários) e perfil ativo na sessão.
  */
 
-import { navItems } from './mockData.js';
+import { navItems } from './navConfig.js';
 import { getUsuariosAtivos } from './agendaPersistenciaData.js';
 import { featureFlags } from '../config/featureFlags.js';
 

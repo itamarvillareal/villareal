@@ -191,7 +191,7 @@ public class InformacoesProcessosImportService {
             partes.add(new DadosImportacaoLinha.ParteSlot(InformacoesProcessosImportRowApplier.POLO_REU, i + 1, pid));
         }
 
-        return new DadosImportacaoLinha(
+        return DadosImportacaoLinha.legadoInformacoesProcessos(
                 linhaExcel,
                 clienteId,
                 numeroInterno,

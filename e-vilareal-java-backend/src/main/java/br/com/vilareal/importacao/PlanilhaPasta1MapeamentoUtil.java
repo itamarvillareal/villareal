@@ -26,14 +26,8 @@ public final class PlanilhaPasta1MapeamentoUtil {
         if (!t.chars().allMatch(Character::isDigit)) {
             return null;
         }
-        try {
-            String stripped = t.replaceFirst("^0+(?!$)", "");
-            String toParse = stripped.isEmpty() ? "0" : stripped;
-            long n = Long.parseLong(toParse);
-            return CodigoClienteUtil.formatar(n);
-        } catch (NumberFormatException e) {
-            return null;
-        }
+        String n = CodigoClienteUtil.normalizarCodigoClienteOitoDigitos(t);
+        return n.isEmpty() ? null : n;
     }
 
     /**

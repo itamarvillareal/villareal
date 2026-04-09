@@ -8,6 +8,10 @@ import java.util.Optional;
 
 /**
  * Linha já validada e pronta para persistência (transação isolada por linha).
+ *
+ * @param controleAtivoOpcional vazio = import legado (ativo só true na criação; updates não alteram ativo)
+ * @param usarFaseEmAndamentoQuandoFaseVazia true = planilha clientes (L vazio → "Em Andamento")
+ * @param atualizarComplementarDescricaoAcao false = import clientes.xlsx (R só em processo.descricao_acao)
  */
 public record DadosImportacaoLinha(
         int linhaExcel,
@@ -16,9 +20,34 @@ public record DadosImportacaoLinha(
         Optional<String> faseOpcional,
         String numeroCnjOuNull,
         String descricaoAcaoOuNull,
-        List<ParteSlot> partes) {
+        List<ParteSlot> partes,
+        Optional<Boolean> controleAtivoOpcional,
+        boolean usarFaseEmAndamentoQuandoFaseVazia,
+        boolean atualizarComplementarDescricaoAcao) {
 
     public record ParteSlot(String polo, int ordem, long pessoaId) {}
+
+    /** Import legado «Informacoes de processos»: fase vazia → null; grava complementar. */
+    public static DadosImportacaoLinha legadoInformacoesProcessos(
+            int linhaExcel,
+            long clientePessoaId,
+            int numeroInterno,
+            Optional<String> faseOpcional,
+            String numeroCnjOuNull,
+            String descricaoAcaoOuNull,
+            List<ParteSlot> partes) {
+        return new DadosImportacaoLinha(
+                linhaExcel,
+                clientePessoaId,
+                numeroInterno,
+                faseOpcional,
+                numeroCnjOuNull,
+                descricaoAcaoOuNull,
+                partes,
+                Optional.empty(),
+                false,
+                true);
+    }
 
     static List<ParteSlot> deduplicarPorPoloEPessoa(List<ParteSlot> raw) {
         record Key(String polo, long pid) {}

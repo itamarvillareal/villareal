@@ -39,6 +39,12 @@ export function contarLancamentosNovos(existente, novo) {
   return n;
 }
 
+/** Lista os lançamentos de `novo` cuja chave (FITID + data + valor) ainda não está em `existente`. */
+export function listarLancamentosNovosDedupe(existente, novo) {
+  const keys = new Set((existente || []).map((t) => chaveDedupeLancamento(t)));
+  return (novo || []).filter((t) => !keys.has(chaveDedupeLancamento(t)));
+}
+
 /**
  * Mescla lançamentos de um novo OFX com o extrato já existente do banco.
  * Não remove linhas antigas; ignora duplicatas (mesmo Id./FITID + data + valor em centavos).

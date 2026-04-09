@@ -28,6 +28,12 @@ class FasePlanilhaNormalizerTest {
     }
 
     @Test
+    void aguardandoPeticionamentoParaAgPeticionar() {
+        assertThat(FasePlanilhaNormalizer.normalizarOuVazio("Aguardando Peticionamento"))
+                .contains("Ag. Peticionar");
+    }
+
+    @Test
     void desconhecidaLanca() {
         assertThatThrownBy(() -> FasePlanilhaNormalizer.normalizarOuVazio("Fase inventada XYZ"))
                 .isInstanceOf(IllegalArgumentException.class);

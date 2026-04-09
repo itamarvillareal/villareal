@@ -12,15 +12,18 @@
  *   sem poluir as demais contas contábeis com efeitos líquidos duplicados.
  */
 
-import { CORA_EXTRATO_MOCK_XLS } from './coraExtratoMock.js';
-import { SICOOB_EXTRATO_MOCK_XLS } from './sicoobExtratoMock.js';
-import { ITAU_EMPRESAS_EXTRATO_MOCK_XLS } from './itauEmpresasExtratoMock.js';
-import { SICOOB_VRV_EXTRATO_MOCK_XLS } from './sicoobVrvExtratoMock.js';
-import { BTG_EXTRATO_MOCK_XLS } from './btgExtratoMock.js';
-import { BTG_JA_EXTRATO_MOCK_XLS } from './btgJaExtratoMock.js';
-import { BTG_RACHEL_EXTRATO_MOCK_XLS } from './btgRachelExtratoMock.js';
-import { BTG_BANKING_EXTRATO_MOCK_XLS } from './btgBankingExtratoMock.js';
-import { BB_EXTRATO_MOCK_XLS } from './bbExtratoMock.js';
+import { getExtratosVinculacaoTestePorBanco } from './vinculacaoAutomaticaTestMock.js';
+
+/** Extratos de exemplo removidos — importe arquivos reais na tela Financeiro. */
+const CORA_EXTRATO_MOCK_XLS = [];
+const SICOOB_EXTRATO_MOCK_XLS = [];
+const ITAU_EMPRESAS_EXTRATO_MOCK_XLS = [];
+const SICOOB_VRV_EXTRATO_MOCK_XLS = [];
+const BTG_EXTRATO_MOCK_XLS = [];
+const BTG_JA_EXTRATO_MOCK_XLS = [];
+const BTG_RACHEL_EXTRATO_MOCK_XLS = [];
+const BTG_BANKING_EXTRATO_MOCK_XLS = [];
+const BB_EXTRATO_MOCK_XLS = [];
 
 const VINC_TESTE_EXTRATOS = {};
 
@@ -195,13 +198,13 @@ function aplicarMocksInstituicoesVazias(data) {
   const d = { ...data };
   const vinc = getExtratosVinculacaoTestePorBanco();
   if (!Array.isArray(d.CEF) || d.CEF.length === 0) {
-    d.CEF = [...cloneCefExtratoPdfMock(), ...vinc.CEF];
+    d.CEF = [...cloneCefExtratoPdfMock(), ...(Array.isArray(vinc.CEF) ? vinc.CEF : [])];
   }
   if (!Array.isArray(d['Itaú']) || d['Itaú'].length === 0) {
     d['Itaú'] = [];
   }
   if (!Array.isArray(d.CORA) || d.CORA.length === 0) {
-    d.CORA = [...cloneCoraExtratoXlsMock(), ...vinc.CORA];
+    d.CORA = [...cloneCoraExtratoXlsMock(), ...(Array.isArray(vinc.CORA) ? vinc.CORA : [])];
   }
   if (!Array.isArray(d.BB) || d.BB.length === 0) d.BB = cloneBbExtratoXlsMock();
   if (!Array.isArray(d.Sicoob) || d.Sicoob.length === 0) d.Sicoob = cloneSicoobExtratoXlsMock();
@@ -222,10 +225,10 @@ function aplicarMocksInstituicoesVazias(data) {
     d['BTG RACHEL'] = cloneBtgRachelExtratoXlsMock();
   }
   if (!Array.isArray(d.Nubank) || d.Nubank.length === 0) {
-    d.Nubank = [...vinc.Nubank];
+    d.Nubank = [...(Array.isArray(vinc.Nubank) ? vinc.Nubank : [])];
   }
   if (!Array.isArray(d.PicPay) || d.PicPay.length === 0) {
-    d.PicPay = [...vinc.PicPay];
+    d.PicPay = [...(Array.isArray(vinc.PicPay) ? vinc.PicPay : [])];
   }
   return d;
 }

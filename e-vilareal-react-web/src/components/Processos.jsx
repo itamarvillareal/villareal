@@ -17,7 +17,6 @@ import {
   obterPessoaParaVinculoUsuario,
   pesquisarPessoasParaVinculoUsuario,
 } from '../services/pessoaVinculoUsuarioService.js';
-import { getImovelMock, getImoveisMockTotal } from '../data/imoveisMockData';
 import { loadCadastroClienteDados } from '../data/cadastroClientesStorage.js';
 import {
   getHistoricoDoProcesso,
@@ -128,20 +127,7 @@ const PERIODICIDADES_AGENDA_LOTE = [
 ];
 
 /** Vínculo mock cliente×processo → imóvel (mesma regra do useMemo `vinculoImovelMock`). */
-function buscarVinculoImovelMock(codigoCliente, processo) {
-  const codNum = Number(String(codigoCliente ?? '').replace(/\D/g, ''));
-  const procNum = Number(processo ?? 0);
-  if (!Number.isFinite(codNum) || !Number.isFinite(procNum) || codNum <= 0 || procNum <= 0) return null;
-  const total = Number(getImoveisMockTotal?.() ?? 45);
-  for (let id = 1; id <= total; id++) {
-    const m = getImovelMock(id);
-    if (!m) continue;
-    const codMock = Number(String(m.codigo ?? '').replace(/\D/g, ''));
-    const procMock = Number(m.proc ?? 0);
-    if (codMock === codNum && procMock === procNum) {
-      return { imovelId: id, unidade: String(m.unidade ?? '') };
-    }
-  }
+function buscarVinculoImovelMock() {
   return null;
 }
 
@@ -383,6 +369,8 @@ export function Processos() {
   const [apiSaving, setApiSaving] = useState(false);
   const [apiError, setApiError] = useState('');
   const [historicoExternoTick, setHistoricoExternoTick] = useState(0);
+  /** Evita aplicar resposta antiga se o usuário trocar de processo antes do GET terminar. */
+  const carregarProcessoApiSeqRef = useRef(0);
 
   useEffect(() => {
     const h = () => setHistoricoExternoTick((t) => t + 1);
@@ -716,8 +704,7 @@ export function Processos() {
     setImovelId(nextImovelIdStr);
 
     const idImovelNum = Number(String(nextImovelIdStr).replace(/\D/g, ''));
-    const mockDoImovel =
-      Number.isFinite(idImovelNum) && idImovelNum > 0 ? getImovelMock(idImovelNum) : null;
+    const mockDoImovel = null;
 
     const ueSalvo = pickCampoStrSalvo(r, 'unidadeEndereco', '');
     const uSalvo = pickCampoStrSalvo(r, 'unidade', '');
@@ -824,23 +811,7 @@ export function Processos() {
     setUnidadeEnderecoManual(false);
   }, [codigoCliente, processo]);
 
-  const vinculoImovelMock = useMemo(() => {
-    const codNum = Number(String(codigoCliente ?? '').replace(/\D/g, ''));
-    const procNum = Number(processo ?? 0);
-    if (!Number.isFinite(codNum) || !Number.isFinite(procNum) || codNum <= 0 || procNum <= 0) return null;
-
-    const total = Number(getImoveisMockTotal?.() ?? 45);
-    for (let id = 1; id <= total; id++) {
-      const mock = getImovelMock(id);
-      if (!mock) continue;
-      const codMock = Number(String(mock.codigo ?? '').replace(/\D/g, ''));
-      const procMock = Number(mock.proc ?? 0);
-      if (codMock === codNum && procMock === procNum) {
-        return { imovelId: id, unidade: String(mock.unidade ?? '') };
-      }
-    }
-    return null;
-  }, [codigoCliente, processo]);
+  const vinculoImovelMock = useMemo(() => null, [codigoCliente, processo]);
 
   useEffect(() => {
     if (vinculoImovelMock) {
@@ -852,12 +823,8 @@ export function Processos() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vinculoImovelMock]);
 
-  function handleImovelIdBlur(e) {
-    const idNum = Number(String(e.target.value ?? '').replace(/\D/g, ''));
-    if (!Number.isFinite(idNum) || idNum <= 0) return;
-    const m = getImovelMock(idNum);
-    if (!m || unidadeEnderecoManual) return;
-    setUnidadeEndereco(String(m.unidade ?? ''));
+  function handleImovelIdBlur() {
+    /* Unidade vem do cadastro de imóveis na API ou do que o usuário informou. */
   }
 
   function handleAbrirImovel() {
@@ -870,18 +837,13 @@ export function Processos() {
     }
 
     if (!Number.isFinite(idNum) || idNum <= 0) {
-      window.alert('Informe o nº do imóvel (cadastro Administração de Imóveis → Imóveis) ou vincule cliente/proc. a um imóvel no mock.');
+      window.alert('Informe o nº do imóvel (Administração de Imóveis → Imóveis) ou use um id gravado na API.');
       return;
     }
 
-    const mock = getImovelMock(idNum);
     let unidadeTrim = String(unidadeEndereco ?? '').trim();
-    if (!unidadeTrim && mock) {
-      unidadeTrim = String(mock.unidade ?? '').trim();
-      if (unidadeTrim) setUnidadeEndereco(unidadeTrim);
-    }
 
-    /** Abre sempre a rota Imóveis com o id; a tela carrega o mock ou formulário vazio. */
+    /** Abre Imóveis: com API, o campo costuma ser o nº da planilha (col. A); links antigos com id interno ainda funcionam (fallback no carregamento). */
     navigate('/imoveis', {
       state: {
         imovelId: idNum,
@@ -1363,8 +1325,44 @@ export function Processos() {
     setParteOposta(nomesOposta.length ? formatarListaComConjuncaoE(nomesOposta) : '');
   }
 
+  /** Processo sem linha na API: formulário como novo (sem reaproveitar cabeçalho/histórico do proc. anterior). */
+  function aplicarCabecalhoVazioProcessoNaoCadastradoApi() {
+    setNumeroProcessoNovo('');
+    setNumeroProcessoVelho('');
+    setNaturezaAcao('');
+    setCompetencia('');
+    setFaseSelecionada('');
+    setStatusAtivo(true);
+    setPrazoFatal('');
+    setObservacao('');
+    setDataProtocolo('');
+    setEstado('');
+    setCidade('');
+    setConsultaAutomatica(false);
+    setTramitacao('');
+    setResponsavel('');
+    setValorCausa('');
+    setHistorico([]);
+    setPeriodicidadeConsulta('');
+    setPastaArquivo('');
+    setProcedimento('');
+    setFaseCampo('');
+    setAudienciaData('');
+    setAudienciaHora('');
+    setAudienciaTipo('');
+    setAvisoAudiencia('nao_avisado');
+    setProximaInformacao('');
+    setDataProximaInformacao('');
+    setPapelParte('requerente');
+    setImovelId('');
+    setUnidadeEndereco('');
+    setInformacaoModal(null);
+    setPaginaHistorico(1);
+  }
+
   async function carregarProcessoApiAtual() {
     if (!featureFlags.useApiProcessos) return;
+    const seq = ++carregarProcessoApiSeqRef.current;
     setApiError('');
     try {
       setParteClienteEntradas([]);
@@ -1373,6 +1371,7 @@ export function Processos() {
       setParteOposta('');
       // Sempre pela chave natural (cliente + proc.): processoApiId pode ser do cliente anterior ao trocar o código.
       const procApi = await buscarProcessoPorChaveNatural(codigoCliente, processo);
+      if (seq !== carregarProcessoApiSeqRef.current) return;
       if (!procApi) {
         setProcessoApiId(null);
         setClienteProcessoApiId(null);
@@ -1380,6 +1379,7 @@ export function Processos() {
         setParteOpostaEntradas([]);
         setParteCliente('');
         setParteOposta('');
+        aplicarCabecalhoVazioProcessoNaoCadastradoApi();
         return;
       }
       setProcessoApiId(procApi.id);
@@ -1408,9 +1408,11 @@ export function Processos() {
       setResponsavel(mapped.responsavel ?? '');
 
       const partes = await listarPartesProcesso(procApi.id);
+      if (seq !== carregarProcessoApiSeqRef.current) return;
       aplicarListaPartesApiNaUi(partes);
 
       const andamentos = await listarAndamentosProcesso(procApi.id);
+      if (seq !== carregarProcessoApiSeqRef.current) return;
       if (Array.isArray(andamentos) && andamentos.length > 0) {
         const hist = andamentos.map((a, idx) => mapApiAndamentoToHistoricoItem(a, idx, andamentos.length));
         setHistorico(hist);
@@ -1418,6 +1420,7 @@ export function Processos() {
         setHistorico([]);
       }
     } catch (e) {
+      if (seq !== carregarProcessoApiSeqRef.current) return;
       setApiError(e?.message || 'Falha ao carregar processo da API.');
     }
   }

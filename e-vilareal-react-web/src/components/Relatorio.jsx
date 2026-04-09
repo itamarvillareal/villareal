@@ -12,10 +12,7 @@ import {
   enriquecerCamposRelatorioProcessos,
 } from '../data/relatorioProcessosColunaDinamica.js';
 import { normalizarFiltroProcessoAtivo } from '../data/relatorioPresets.js';
-import {
-  getRelatorioProcessosMockLinhasBase,
-  obterLinhasBaseRelatorioProcessos,
-} from '../data/relatorioProcessosDados.js';
+import { obterLinhasBaseRelatorioProcessos } from '../data/relatorioProcessosDados.js';
 import { preaquecerCamposRelatorioApiFirst } from '../data/processosDadosRelatorio.js';
 import { EVENT_RELATORIO_PERSISTENCIA_EXTERNA } from '../services/crossTabLocalStorageSync.js';
 import { buildRouterStateChaveClienteProcesso } from '../domain/camposProcessoCliente.js';
@@ -124,7 +121,7 @@ function montarLinhasRelatorioBaseDeCruas(linhasCruas) {
 }
 
 function montarLinhasRelatorioBase() {
-  return montarLinhasRelatorioBaseDeCruas(getRelatorioProcessosMockLinhasBase());
+  return montarLinhasRelatorioBaseDeCruas([]);
 }
 
 /**
@@ -288,7 +285,7 @@ export function Relatorio() {
         baseRaw = await obterLinhasBaseRelatorioProcessos();
       } catch (e) {
         console.error(e);
-        baseRaw = getRelatorioProcessosMockLinhasBase();
+        baseRaw = [];
       }
       try {
         const basePairs = baseRaw.map((r) => [r.codCliente, r.proc]);

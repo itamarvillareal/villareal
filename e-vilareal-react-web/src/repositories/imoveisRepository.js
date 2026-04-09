@@ -1,12 +1,11 @@
 import { request } from '../api/httpClient.js';
 import { featureFlags } from '../config/featureFlags.js';
-import { getImovelMock } from '../data/imoveisMockData.js';
 import { montarPainelAdministracaoImovel } from '../data/imoveisAdministracaoFinanceiro.js';
 
 // -----------------------------------------------------------------------------
 // Fase 7 — imóveis / locações
 // - API-first: leitura e persistência via REST quando `featureFlags.useApiImoveis`.
-// - Legado: `getImovelMock` + painel financeiro derivado de lançamentos locais (sem API).
+// - Sem API de imóveis: não há cadastro legado local — use `VITE_USE_API_IMOVEIS=true`.
 // - Transição: resolução de cliente/processo por Cod.+Proc. ao salvar imóvel na API.
 // -----------------------------------------------------------------------------
 
@@ -174,8 +173,12 @@ export function mapMockToUi(mock, imovelId) {
 function mapApiToUi(imovel, contrato) {
   const extras = parseJsonSafe(imovel?.camposExtrasJson, {});
   const dadosBanc = parseJsonSafe(contrato?.dadosBancariosRepasseJson, {});
+  const idApi = Number(imovel?.id);
+  const np = imovel?.numeroPlanilha != null ? Number(imovel.numeroPlanilha) : null;
+  /** No formulário Imóveis (API): o inteiro exibido é o da col. A da planilha; sem planilha, cai no id interno. */
+  const imovelIdUi = np != null && Number.isFinite(np) && np >= 1 ? np : idApi;
   return {
-    imovelId: Number(imovel?.id),
+    imovelId: imovelIdUi,
     imovelOcupado: String(imovel?.situacao || '').toUpperCase() !== 'DESOCUPADO',
     codigo: String(extras.codigo ?? ''),
     proc: String(extras.proc ?? ''),
@@ -185,7 +188,12 @@ function mapApiToUi(imovel, contrato) {
     unidade: String(imovel?.unidade ?? ''),
     garagens: String(imovel?.garagens ?? ''),
     garantia: String(contrato?.garantiaTipo ?? ''),
-    valorGarantia: contrato?.valorGarantia != null ? String(contrato.valorGarantia) : '',
+    valorGarantia:
+      extras.valorGarantia != null && String(extras.valorGarantia).trim() !== ''
+        ? String(extras.valorGarantia)
+        : contrato?.valorGarantia != null
+          ? String(contrato.valorGarantia)
+          : '',
     valorLocacao: contrato?.valorAluguel != null ? String(contrato.valorAluguel) : '',
     diaPagAluguel: contrato?.diaVencimentoAluguel != null ? String(contrato.diaVencimentoAluguel).padStart(2, '0') : '',
     dataPag1TxCond: String(extras.dataPag1TxCond ?? ''),
@@ -291,10 +299,16 @@ function montarPayloadImovelFromUi(ui, clienteId, processoId) {
     contratoArquivado: String(ui.contratoArquivado ?? 'nao'),
     contratoIntermediacaoArquivado: String(ui.contratoIntermediacaoArquivado ?? 'nao'),
     contratoIntermediacaoAssinadoProprietario: String(ui.contratoIntermediacaoAssinadoProprietario ?? 'nao'),
+    valorGarantia: String(ui.valorGarantia ?? ''),
   };
+  const nPlan = Number(ui.imovelId);
+  const numeroPlanilhaBody =
+    Number.isFinite(nPlan) && nPlan >= 1 ? Math.floor(nPlan) : null;
+
   return {
     clienteId,
     processoId: processoId || null,
+    numeroPlanilha: numeroPlanilhaBody,
     titulo: String(ui.unidade || ui.condominio || '').trim() || null,
     enderecoCompleto: String(ui.endereco || '').trim() || null,
     condominio: String(ui.condominio || '').trim() || null,
@@ -336,10 +350,53 @@ function montarPayloadContratoFromUi(ui, imovelId) {
   };
 }
 
+/** Lista imóveis da API (cada item tem `id` interno e opcionalmente `numeroPlanilha`, col. A). */
+export async function listarImoveisApi() {
+  if (!featureFlags.useApiImoveis) return [];
+  try {
+    const list = await request('/api/imoveis');
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Número da planilha (col. A) para o par código de cliente + proc; null se não houver imóvel ou API desligada. */
+export async function buscarNumeroImovelPorVinculo(codigoCliente, numeroInterno) {
+  if (!featureFlags.useApiImoveis) return null;
+  const proc = Number(numeroInterno);
+  if (!Number.isFinite(proc) || proc < 1) return null;
+  try {
+    const r = await request('/api/imoveis/numero-por-vinculo', {
+      query: { codigoCliente: padCliente8(codigoCliente), numeroInterno: proc },
+    });
+    return r?.numeroPlanilha != null ? String(r.numeroPlanilha) : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function carregarImovelCadastroPorNumeroPlanilha(numeroPlanilha) {
+  if (!featureFlags.useApiImoveis) {
+    return { fonte: 'legado', item: null, encontrado: false };
+  }
+  const n = Number(numeroPlanilha);
+  if (!Number.isFinite(n) || n < 1) {
+    return { fonte: 'api', item: null, encontrado: false };
+  }
+  try {
+    const apiImovel = await request(`/api/imoveis/por-numero-planilha/${n}`);
+    const contratos = await request('/api/locacoes/contratos', { query: { imovelId: apiImovel.id } });
+    const contratoAtual = selecionarContratoVigente(Array.isArray(contratos) ? contratos : []);
+    return { fonte: 'api', item: mapApiToUi(apiImovel, contratoAtual), encontrado: true };
+  } catch {
+    return { fonte: 'api', item: null, encontrado: false };
+  }
+}
+
 export async function carregarImovelCadastro({ imovelId }) {
   if (!featureFlags.useApiImoveis) {
-    const mock = getImovelMock(imovelId);
-    return { fonte: 'legado', item: mapMockToUi(mock, imovelId), encontrado: Boolean(mock) };
+    return { fonte: 'legado', item: null, encontrado: false };
   }
   try {
     const apiImovel = await request(`/api/imoveis/${Number(imovelId)}`);
@@ -351,15 +408,43 @@ export async function carregarImovelCadastro({ imovelId }) {
   }
 }
 
+/**
+ * Itens de formulário/UI (como em `mapApiToUi`) para o Relatório Imóveis.
+ * Um GET de cadastro completo por imóvel; em paralelo — cuidado com bases muito grandes.
+ */
+export async function carregarItensRelatorioImoveisApi() {
+  if (!featureFlags.useApiImoveis) {
+    return { ok: false, motivo: 'Ative VITE_USE_API_IMOVEIS e use o backend para gerar o relatório.', itens: [] };
+  }
+  const list = await listarImoveisApi();
+  if (!Array.isArray(list) || list.length === 0) {
+    return { ok: true, itens: [] };
+  }
+  try {
+    const results = await Promise.all(list.map((im) => carregarImovelCadastro({ imovelId: im.id })));
+    const itens = results.map((r) => r.item).filter(Boolean);
+    return { ok: true, itens };
+  } catch (e) {
+    return { ok: false, motivo: e?.message || 'Falha ao carregar dados para o relatório.', itens: [] };
+  }
+}
+
 export async function salvarImovelCadastro(uiPayload) {
   if (!featureFlags.useApiImoveis) {
     return { fonte: 'legado', salvo: false, motivo: 'Mock sem persistência real.' };
   }
-  const clienteId = await resolverClienteIdPorCodigo(uiPayload.codigo);
-  if (!clienteId) {
-    throw new Error('Cliente não encontrado para o código informado.');
+  const codigoTrim = String(uiPayload.codigo ?? '').trim();
+  let clienteId = null;
+  if (codigoTrim) {
+    clienteId = await resolverClienteIdPorCodigo(uiPayload.codigo);
+    if (!clienteId) {
+      throw new Error('Cliente não encontrado para o código informado.');
+    }
   }
-  const processoId = await resolverProcessoIdPorChave(uiPayload.codigo, uiPayload.proc);
+  const processoId =
+    clienteId && String(uiPayload.proc ?? '').trim()
+      ? await resolverProcessoIdPorChave(uiPayload.codigo, uiPayload.proc)
+      : null;
 
   const bodyImovel = montarPayloadImovelFromUi(uiPayload, clienteId, processoId);
   const imovelSalvo = uiPayload._apiImovelId
@@ -392,13 +477,6 @@ export async function carregarPainelAdministracaoImovel({ imovelId, codigoFallba
     if (imovel) {
       codigo = String(imovel.codigo || codigo).trim();
       proc = String(imovel.proc || proc).trim();
-    }
-  } else {
-    const mock = getImovelMock(imovelId);
-    imovel = mapMockToUi(mock, imovelId);
-    if (mock) {
-      codigo = String(mock.codigo ?? '').trim();
-      proc = String(mock.proc ?? '').trim();
     }
   }
 
