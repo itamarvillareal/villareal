@@ -24,9 +24,154 @@ function normalizeWhitespace(s) {
   return String(s ?? '').replace(/\s+/g, ' ').trim();
 }
 
+/**
+ * Lê os primeiros bytes como ASCII (0–127) para interpretar o cabeçalho OFX sem depender da codificação do corpo.
+ */
+function decodeAsciiPrefixForOfxHeader(buffer, maxLen = 4096) {
+  const u = new Uint8Array(buffer, 0, Math.min(buffer.byteLength, maxLen));
+  let s = '';
+  for (let i = 0; i < u.length; i += 1) {
+    s += u[i] <= 127 ? String.fromCharCode(u[i]) : ' ';
+  }
+  return s;
+}
+
+function normalizeCharsetHint(raw) {
+  if (!raw) return null;
+  const u = String(raw).trim().toUpperCase().replace(/\s+/g, '');
+  if (
+    u === '1252' ||
+    u === 'CP1252' ||
+    u === 'WINDOWS-1252' ||
+    u === 'WIN-1252' ||
+    u === 'MS-ANSI'
+  ) {
+    return '1252';
+  }
+  if (
+    u === '8859-1' ||
+    u === 'ISO-8859-1' ||
+    u === 'ISO8859-1' ||
+    u === 'LATIN1' ||
+    u === 'LATIN-1'
+  ) {
+    return '8859-1';
+  }
+  return u;
+}
+
+function parseOfxHeaderEncodingHints(buffer) {
+  const prefix = decodeAsciiPrefixForOfxHeader(buffer, 4096);
+  const enc = (prefix.match(/ENCODING:\s*(\S+)/i) || [])[1]?.trim() || null;
+  const csRaw = (prefix.match(/CHARSET:\s*(\S+)/i) || [])[1]?.trim() || null;
+  return {
+    encoding: enc ? enc.toUpperCase() : null,
+    charset: normalizeCharsetHint(csRaw),
+  };
+}
+
+/**
+ * @param {string | null} encoding ex.: USASCII, UTF-8
+ * @param {string | null} charset ex.: 1252, 8859-1 (normalizado)
+ */
+function decoderLabelFromOfxHints(encoding, charset) {
+  if (encoding === 'UTF-8') return 'utf-8';
+  const cs = charset || '';
+  if (cs === '1252') return 'windows-1252';
+  if (cs === '8859-1') return 'iso-8859-1';
+  return null;
+}
+
+function decodeLatinBankFallback(buffer) {
+  try {
+    return new TextDecoder('windows-1252').decode(buffer);
+  } catch {
+    return new TextDecoder('iso-8859-1').decode(buffer);
+  }
+}
+
+function readFileToArrayBuffer(file) {
+  if (file && typeof file.arrayBuffer === 'function') return file.arrayBuffer();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Não foi possível ler o arquivo.'));
+    reader.onload = () => resolve(reader.result);
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+/**
+ * Lê um ficheiro OFX com a codificação correta. Bancos brasileiros (ex.: Banco do Brasil) costumam usar
+ * Windows-1252 / ISO-8859-1 no corpo, enquanto o cabeçalho declara USASCII — `readAsText` em UTF-8 corrompe acentos.
+ */
+export async function readOfxFileAsText(file) {
+  const buf = await readFileToArrayBuffer(file);
+  const { encoding, charset } = parseOfxHeaderEncodingHints(buf);
+  const hinted = decoderLabelFromOfxHints(encoding, charset);
+  if (hinted) {
+    try {
+      return new TextDecoder(hinted).decode(buf);
+    } catch {
+      /* continua */
+    }
+  }
+  const utf8 = new TextDecoder('utf-8', { fatal: false }).decode(buf);
+  const replCount = (utf8.match(/\uFFFD/g) || []).length;
+  if (replCount > 0) {
+    return decodeLatinBankFallback(buf);
+  }
+  const prefix = decodeAsciiPrefixForOfxHeader(buf, 4096);
+  if (
+    encoding === 'USASCII' &&
+    hinted == null &&
+    /BANCO DO BRASIL|BANCODOBRASIL|BANCO\s+DO\s+BRASIL/i.test(prefix + utf8.slice(0, 12000))
+  ) {
+    return decodeLatinBankFallback(buf);
+  }
+  return utf8;
+}
+
 export function chaveDedupeLancamento(t) {
   const c = Math.round((Number(t.valor) || 0) * 100);
   return `${String(t.numero ?? '').trim()}|${String(t.data ?? '').trim()}|${c}`;
+}
+
+/** Remove marcação de par de compensação (não deve vir de arquivo OFX/PDF). */
+function stripTagParCompensacaoCampo(s) {
+  return String(s ?? '')
+    .replace(/(?:^|\s)\[Par compensação\]/g, '')
+    .trim();
+}
+
+/**
+ * Importação de extrato (OFX, PDF BTG, etc.) não deve preencher Cód. cliente, Proc. nem colunas à direita
+ * (Ref., Eq., Parcela, categoria de vínculo) nem metadados de API — só edição manual ou fluxos específicos.
+ */
+export function sanitizarLancamentoImportacaoExtrato(t) {
+  const base = t && typeof t === 'object' ? { ...t } : {};
+  delete base.apiId;
+  const prevMeta = base._financeiroMeta && typeof base._financeiroMeta === 'object' ? base._financeiroMeta : {};
+  return {
+    ...base,
+    origemImportacao: String(base.origemImportacao ?? '').trim(),
+    codCliente: '',
+    proc: '',
+    ref: '',
+    dimensao: '',
+    eq: '',
+    parcela: '',
+    categoria: '',
+    clienteId: null,
+    processoId: null,
+    descricaoDetalhada: stripTagParCompensacaoCampo(base.descricaoDetalhada),
+    _financeiroMeta: {
+      ...prevMeta,
+      clienteId: null,
+      processoId: null,
+      classificacaoFinanceiraId: null,
+      eloFinanceiroId: null,
+    },
+  };
 }
 
 /** Quantos lançamentos de `novo` ainda não existem em `existente`. */
@@ -58,7 +203,7 @@ export function mergeExtratoBancario(existente, novo) {
   for (const t of novo || []) {
     const k = chaveDedupeLancamento(t);
     if (!map.has(k)) {
-      const row = { ...t };
+      const row = sanitizarLancamentoImportacaoExtrato({ ...t });
       const L = String(row.letra ?? '').trim().toUpperCase();
       if (!L) row.letra = 'N';
       map.set(k, row);
@@ -84,8 +229,14 @@ function strTrimExtrato(v) {
   return String(v ?? '').trim();
 }
 
+/** Lançamento criado por importação de arquivo — não mesclar vínculos do cache local sobre a API. */
+function isOrigemImportacaoArquivoExtrato(row) {
+  return /^(OFX|PDF)$/i.test(String(row?.origemImportacao ?? '').trim());
+}
+
 /**
  * API como base; campos de classificação vazios na API reaproveitam o cache local (edições / sync pendente).
+ * Exceção: linhas com origem OFX/PDF na API ignoram cache para Cód. cliente, Proc. e colunas à direita.
  */
 export function mesclarLinhaExtratoApiComLocal(apiT, locT) {
   const metaApi = apiT._financeiroMeta || {};
@@ -105,26 +256,61 @@ export function mesclarLinhaExtratoApiComLocal(apiT, locT) {
         ? locT.letra
         : apiT.letra || locT.letra || 'N';
 
+  const apiImport = isOrigemImportacaoArquivoExtrato(apiT);
+  const apiSemVinculoClienteProc =
+    !strTrimExtrato(apiT.codCliente) &&
+    !strTrimExtrato(apiT.proc) &&
+    !(Number(metaApi.clienteId) > 0) &&
+    !(Number(metaApi.processoId) > 0);
+  /** Só ignora cache local para linhas OFX/PDF ainda sem vínculo na API (evita reidratar Cód./Proc. antigos). */
+  const ignorarCacheVinculosImportacao = apiImport && apiSemVinculoClienteProc;
+
+  const codCliente = ignorarCacheVinculosImportacao
+    ? strTrimExtrato(apiT.codCliente) || ''
+    : pick(apiT.codCliente, locT.codCliente) ?? '';
+  const proc = ignorarCacheVinculosImportacao
+    ? strTrimExtrato(apiT.proc) || ''
+    : pick(apiT.proc, locT.proc) ?? '';
+  const ref = ignorarCacheVinculosImportacao ? strTrimExtrato(apiT.ref) || '' : pick(apiT.ref, locT.ref);
+  const dimensao = ignorarCacheVinculosImportacao
+    ? strTrimExtrato(apiT.dimensao) || ''
+    : pick(apiT.dimensao, locT.dimensao);
+  const eq = ignorarCacheVinculosImportacao ? strTrimExtrato(apiT.eq) || '' : pick(apiT.eq, locT.eq);
+  const parcela = ignorarCacheVinculosImportacao
+    ? strTrimExtrato(apiT.parcela) || ''
+    : pick(apiT.parcela, locT.parcela);
+  const categoria = ignorarCacheVinculosImportacao
+    ? strTrimExtrato(apiT.categoria) || ''
+    : pick(apiT.categoria, locT.categoria);
+
   return {
     ...locT,
     ...apiT,
     letra,
-    codCliente: pick(apiT.codCliente, locT.codCliente) ?? '',
-    proc: pick(apiT.proc, locT.proc) ?? '',
-    categoria: pick(apiT.categoria, locT.categoria),
+    codCliente,
+    proc,
+    categoria,
     descricaoDetalhada: pick(apiT.descricaoDetalhada, locT.descricaoDetalhada),
-    ref: pick(apiT.ref, locT.ref),
-    dimensao: pick(apiT.dimensao, locT.dimensao),
-    eq: pick(apiT.eq, locT.eq),
-    parcela: pick(apiT.parcela, locT.parcela),
+    ref,
+    dimensao,
+    eq,
+    parcela,
     _financeiroMeta: {
       ...metaLoc,
       ...metaApi,
-      clienteId: metaApi.clienteId ?? metaLoc.clienteId ?? null,
-      processoId: metaApi.processoId ?? metaLoc.processoId ?? null,
       contaContabilId: metaApi.contaContabilId ?? metaLoc.contaContabilId ?? null,
-      classificacaoFinanceiraId: metaApi.classificacaoFinanceiraId ?? metaLoc.classificacaoFinanceiraId ?? null,
-      eloFinanceiroId: metaApi.eloFinanceiroId ?? metaLoc.eloFinanceiroId ?? null,
+      clienteId: ignorarCacheVinculosImportacao
+        ? metaApi.clienteId ?? null
+        : metaApi.clienteId ?? metaLoc.clienteId ?? null,
+      processoId: ignorarCacheVinculosImportacao
+        ? metaApi.processoId ?? null
+        : metaApi.processoId ?? metaLoc.processoId ?? null,
+      classificacaoFinanceiraId: ignorarCacheVinculosImportacao
+        ? metaApi.classificacaoFinanceiraId ?? null
+        : metaApi.classificacaoFinanceiraId ?? metaLoc.classificacaoFinanceiraId ?? null,
+      eloFinanceiroId: ignorarCacheVinculosImportacao
+        ? metaApi.eloFinanceiroId ?? null
+        : metaApi.eloFinanceiroId ?? metaLoc.eloFinanceiroId ?? null,
     },
   };
 }
@@ -136,13 +322,14 @@ export function mesclarLinhaExtratoApiComLocal(apiT, locT) {
  * Linhas com a mesma chave: mescla classificações locais quando a API ainda não as preencheu.
  */
 export function mergeExtratoApiComLocal(apiRows, localRows) {
+  const apiList = Array.isArray(apiRows) ? apiRows : [];
   const mapLocal = new Map();
   for (const t of localRows || []) {
     mapLocal.set(chaveDedupeLancamento(t), t);
   }
   const map = new Map();
   const apiIds = new Set();
-  for (const t of apiRows || []) {
+  for (const t of apiList) {
     const k = chaveDedupeLancamento(t);
     const apiRow = { ...t };
     const loc = mapLocal.get(k);
@@ -150,10 +337,14 @@ export function mergeExtratoApiComLocal(apiRows, localRows) {
     const id = Number(t.apiId ?? t.id);
     if (Number.isFinite(id) && id > 0) apiIds.add(id);
   }
+  const servidorSemLancamentosNesteBanco = apiList.length === 0;
   for (const t of localRows || []) {
     const k = chaveDedupeLancamento(t);
     if (map.has(k)) continue;
     const aid = Number(t.apiId);
+    if (servidorSemLancamentosNesteBanco && Number.isFinite(aid) && aid > 0) {
+      continue;
+    }
     if (Number.isFinite(aid) && aid > 0 && apiIds.has(aid)) continue;
     map.set(k, { ...t });
   }
@@ -173,9 +364,8 @@ export function mergeExtratoApiComLocal(apiRows, localRows) {
   return arr;
 }
 
-export function parseOfxToExtrato(ofxText, options = {}) {
+export function parseOfxToExtrato(ofxText, _options = {}) {
   const txt = String(ofxText ?? '');
-  const nomeBanco = String(options?.nomeBanco ?? '').toUpperCase();
 
   // Ledger balance (saldo final) se existir
   const ledgerBlockMatch = txt.match(/<LEDGERBAL>[\s\S]*?<\/LEDGERBAL>/i);
@@ -195,14 +385,12 @@ export function parseOfxToExtrato(ofxText, options = {}) {
     const dtPosted = parseOfxDate(getTagValue(b, 'DTPOSTED'));
     const fitid = getTagValue(b, 'FITID');
     const checkNum = getTagValue(b, 'CHECKNUM');
-    const id = normalizeWhitespace(checkNum || fitid || String(idx + 1));
+    const id = normalizeWhitespace(checkNum || fitid || String((idx ?? 0) + 1));
     const name = normalizeWhitespace(getTagValue(b, 'NAME'));
     const memo = normalizeWhitespace(getTagValue(b, 'MEMO'));
     const descricao = memo || name || 'LANÇAMENTO';
     const trnType = normalizeWhitespace(getTagValue(b, 'TRNTYPE'));
 
-    const mockCod = String((idx % 1000) + 1);
-    const mockProc = String((idx % 10) + 1);
     return {
       /** Conta contábil "Conta Não Identificados" — permanece até reclassificar no extrato ou via Parear compensações. */
       letra: 'N',
@@ -214,12 +402,15 @@ export function parseOfxToExtrato(ofxText, options = {}) {
       saldoDesc: '',
       descricaoDetalhada: trnType ? `${trnType}${memo ? ` — ${memo}` : ''}` : memo,
       categoria: '',
-      codCliente: nomeBanco === 'CORA' ? mockCod : '',
-      proc: nomeBanco === 'CORA' ? mockProc : '',
+      /** Código de cliente e processo só por edição manual no Financeiro — nunca a partir do OFX. */
+      codCliente: '',
+      proc: '',
       dimensao: '',
       parcela: '',
       ref: '',
       eq: '',
+      /** Permite ignorar cache local em `mesclarLinhaExtratoApiComLocal` e na resposta do POST. */
+      origemImportacao: 'OFX',
     };
   });
 
@@ -248,5 +439,5 @@ export function parseOfxToExtrato(ofxText, options = {}) {
     }
   }
 
-  return transacoes;
+  return transacoes.map(sanitizarLancamentoImportacaoExtrato);
 }

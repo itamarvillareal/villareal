@@ -1068,7 +1068,11 @@ export function Processos() {
   }
 
   function normalizarTextoBusca(s) {
-    return String(s ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+    return String(s ?? '')
+      .toLocaleLowerCase('pt-BR')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim();
   }
 
   const mergeVinculoPessoasNoCache = useCallback((lista) => {

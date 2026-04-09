@@ -10,6 +10,7 @@ import {
   reverterUmParCompensacaoInterbancaria,
   somasPorParCompensacao,
   detectarParesCompensacao,
+  detectarSugestoesRecorrenciaMensalNoBanco,
   loadPersistedExtratosFinanceiro,
   loadPersistedExtratosInativosFinanceiro,
   savePersistedExtratosInativosFinanceiro,
@@ -28,11 +29,14 @@ import {
   proximaLetraContaContabilExtra,
   getContasContabeisDerivadasExtratos,
   filtrarTransacoesPorClienteProc,
+  filtrarLancamentosPorCabecalhoCodClienteProc,
   textoCategoriaObservacao,
   textoDimensaoEq,
   normalizarCodigoClienteFinanceiro,
   normalizarProcFinanceiro,
   normalizarRefFinanceiro,
+  limparExtratoCoraEElosRelacionados,
+  savePersistedExtratosFinanceiro,
 } from '../data/financeiroData';
 import { loadRodadasCalculos } from '../data/calculosRodadasStorage';
 import { EVENT_FINANCEIRO_PERSISTENCIA_EXTERNA } from '../services/crossTabLocalStorageSync.js';
@@ -50,13 +54,26 @@ import {
 import { buildRouterStateChaveClienteProcesso } from '../domain/camposProcessoCliente.js';
 import {
   parseOfxToExtrato,
+  readOfxFileAsText,
   mergeExtratoBancario,
   mergeExtratoApiComLocal,
   contarLancamentosNovos,
   chaveDedupeLancamento,
 } from '../utils/ofx';
+import { isInstituicaoBtgExtratoPdf, parseBtgPdfExtratoText } from '../utils/btgPdfExtrato';
+import { extrairTextoPdfDeArquivo } from '../data/publicacoesPdfExtract.js';
 import { OFX_ITAU_REAL_EXEMPLO, OFX_CORA_REAL_EXEMPLO } from '../data/ofxItauCoraReal';
-import { CheckSquare, ChevronLeft, ChevronRight, Link2, Settings, Trash2, Unlink } from 'lucide-react';
+import {
+  CheckSquare,
+  ChevronLeft,
+  ChevronRight,
+  Link2,
+  Repeat,
+  Settings,
+  Trash2,
+  Undo2,
+  Unlink,
+} from 'lucide-react';
 import { ModalVinculoClienteProcFinanceiro } from './ModalVinculoClienteProcFinanceiro.jsx';
 import { buscarClientePorCodigo, buscarProcessoPorChaveNatural } from '../repositories/processosRepository.js';
 import { featureFlags } from '../config/featureFlags.js';
@@ -67,10 +84,20 @@ import {
   persistirFallbackExtratos,
   persistirImportacaoOfxFinanceiroApi,
   salvarOuAtualizarLancamentoFinanceiroApi,
+  limparExtratoCoraFinanceiroApi,
 } from '../repositories/financeiroRepository.js';
 /** Ref. exibida: só N ou R (vazio/legado → N). */
 function textoRefLancamento(t) {
   return normalizarRefFinanceiro(t?.ref);
+}
+
+/** Cópia profunda da lista de lançamentos de um banco (desfazer importação). */
+function clonarListaExtratoBancoParaDesfazer(lista) {
+  try {
+    return JSON.parse(JSON.stringify(Array.isArray(lista) ? lista : []));
+  } catch {
+    return Array.isArray(lista) ? [...lista] : [];
+  }
 }
 
 const OPCOES_LIMITE_LANCAMENTOS_EXTRATO = [
@@ -300,12 +327,31 @@ function filtrarExtratoPorValorFiltro(lista, filtro) {
   return lista;
 }
 
-/** Filtro por substring na descrição do extrato (case-insensitive). */
+/** Normaliza texto para busca: ignora maiúsculas/minúsculas e acentos (como em Processos → conta corrente). */
+function normalizarTextoFiltroDescricaoExtrato(s) {
+  return String(s ?? '')
+    .toLocaleLowerCase('pt-BR')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+}
+
+/** Filtro por substring na descrição do extrato (sem distinguir maiúsculas/minúsculas nem acentos). */
 function filtrarExtratoPorTextoDescricao(lista, textoFiltro) {
   if (!Array.isArray(lista)) return [];
-  const q = String(textoFiltro ?? '').trim().toLowerCase();
+  const q = normalizarTextoFiltroDescricaoExtrato(textoFiltro);
   if (!q) return lista;
-  return lista.filter((t) => String(t.descricao ?? '').toLowerCase().includes(q));
+  return lista.filter((t) => normalizarTextoFiltroDescricaoExtrato(t.descricao).includes(q));
+}
+
+/**
+ * @param {string[] | null} letrasPermitidas Letras maiúsculas permitidas; `null` = sem filtro.
+ */
+function filtrarExtratoPorLetras(lista, letrasPermitidas) {
+  if (!Array.isArray(lista)) return [];
+  if (!letrasPermitidas || letrasPermitidas.length === 0) return lista;
+  const set = new Set(letrasPermitidas.map((l) => String(l).trim().toUpperCase()));
+  return lista.filter((t) => set.has(String(t.letra ?? '').trim().toUpperCase()));
 }
 
 /** Chave estável de linha do extrato bancário (número + data). */
@@ -411,6 +457,10 @@ function chaveModalParCompensacao(p) {
   return `${p.credito.banco}|${p.credito.numero}|${p.debito.banco}|${p.debito.numero}|${p.data}`;
 }
 
+function chaveCandidatoRecorrenciaModal(g, c) {
+  return `${g.idGrupo}§${c.numero}|${c.data}`;
+}
+
 const INSTITUICOES_LINHA_1 = [
   'CEF',
   'CEF Poupança',
@@ -485,6 +535,9 @@ function loadExibicaoFinanceiro() {
   };
 }
 
+/** PUT a cada tecla em Cód./Proc. gerava corrida: resposta antiga repunha o valor no input. */
+const COD_PROC_FINANCEIRO_API_DEBOUNCE_MS = 450;
+
 export function Financeiro() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -503,6 +556,27 @@ export function Financeiro() {
   useEffect(() => {
     extratosPorBancoRef.current = extratosPorBanco;
   }, [extratosPorBanco]);
+
+  const codProcDebounceTimersRef = useRef(new Map());
+  useEffect(() => {
+    return () => {
+      for (const tid of codProcDebounceTimersRef.current.values()) {
+        window.clearTimeout(tid);
+      }
+      codProcDebounceTimersRef.current.clear();
+    };
+  }, []);
+
+  /**
+   * Linha mais recente por chave, gravada no updater de setExtratosPorBanco (síncrono).
+   * Sem isto, Tab logo após digitar/colar dispara onBlur antes do useEffect atualizar
+   * extratosPorBancoRef — o PUT ia com cod./proc. vazios e “apagava” o formulário.
+   */
+  const ultimaLinhaEdicaoExtratoRef = useRef(new Map());
+
+  /** Última importação em modo mesclar por banco: restaurar lista local e apagar lançamentos criados na API. */
+  const desfazerImportacaoExtratoRef = useRef({});
+  const [desfazerImportacaoTick, setDesfazerImportacaoTick] = useState(0);
 
   const [extratosInativos, setExtratosInativos] = useState(() => loadPersistedExtratosInativosFinanceiro());
   const [contasExtras, setContasExtras] = useState(() => loadPersistedContasExtrasFinanceiro());
@@ -566,6 +640,34 @@ export function Financeiro() {
   const [filtroDescricaoExtratoRascunho, setFiltroDescricaoExtratoRascunho] = useState('');
   const menuFiltroDescricaoExtratoRef = useRef(null);
   const descricaoExtratoHeaderTimerRef = useRef(null);
+  /** null = todas as letras; caso contrário só linhas cuja letra está na lista. */
+  const [filtroLetrasExtrato, setFiltroLetrasExtrato] = useState(null);
+  const [menuFiltroLetraExtratoAberto, setMenuFiltroLetraExtratoAberto] = useState(false);
+  const [filtroLetrasExtratoRascunho, setFiltroLetrasExtratoRascunho] = useState([]);
+  const menuFiltroLetraExtratoRef = useRef(null);
+  const letraExtratoHeaderTimerRef = useRef(null);
+  /** Filtros nos cabeçalhos Cod. Cliente e Proc. (extrato do banco). */
+  const [filtroCodClienteExtrato, setFiltroCodClienteExtrato] = useState('');
+  const [filtroCodClienteExtratoRascunho, setFiltroCodClienteExtratoRascunho] = useState('');
+  const [menuFiltroCodClienteExtratoAberto, setMenuFiltroCodClienteExtratoAberto] = useState(false);
+  const menuFiltroCodClienteExtratoRef = useRef(null);
+  const codClienteExtratoHeaderTimerRef = useRef(null);
+  const [filtroProcExtrato, setFiltroProcExtrato] = useState('');
+  const [filtroProcExtratoRascunho, setFiltroProcExtratoRascunho] = useState('');
+  const [menuFiltroProcExtratoAberto, setMenuFiltroProcExtratoAberto] = useState(false);
+  const menuFiltroProcExtratoRef = useRef(null);
+  const procExtratoHeaderTimerRef = useRef(null);
+  /** Cabeçalhos Cod. Cliente e Proc. / Elo no consolidado — devem existir antes dos useEffect que os referenciam (TDZ). */
+  const [filtroCodClienteConsolidado, setFiltroCodClienteConsolidado] = useState('');
+  const [filtroCodClienteConsolidadoRascunho, setFiltroCodClienteConsolidadoRascunho] = useState('');
+  const [menuFiltroCodClienteConsolidadoAberto, setMenuFiltroCodClienteConsolidadoAberto] = useState(false);
+  const menuFiltroCodClienteConsolidadoRef = useRef(null);
+  const codClienteConsolidadoHeaderTimerRef = useRef(null);
+  const [filtroProcConsolidado, setFiltroProcConsolidado] = useState('');
+  const [filtroProcConsolidadoRascunho, setFiltroProcConsolidadoRascunho] = useState('');
+  const [menuFiltroProcConsolidadoAberto, setMenuFiltroProcConsolidadoAberto] = useState(false);
+  const menuFiltroProcConsolidadoRef = useRef(null);
+  const procConsolidadoHeaderTimerRef = useRef(null);
   /** Linhas do extrato marcadas para alteração em lote (`extratoBancoRowKey`). */
   const [extratoLinhasSelecionadas, setExtratoLinhasSelecionadas] = useState(() => new Set());
   const [letraLoteExtrato, setLetraLoteExtrato] = useState('');
@@ -578,6 +680,15 @@ export function Financeiro() {
     setFiltroDescricaoExtrato('');
     setFiltroDescricaoExtratoRascunho('');
     setMenuFiltroDescricaoExtratoAberto(false);
+    setFiltroLetrasExtrato(null);
+    setMenuFiltroLetraExtratoAberto(false);
+    setFiltroLetrasExtratoRascunho([]);
+    setFiltroCodClienteExtrato('');
+    setFiltroCodClienteExtratoRascunho('');
+    setMenuFiltroCodClienteExtratoAberto(false);
+    setFiltroProcExtrato('');
+    setFiltroProcExtratoRascunho('');
+    setMenuFiltroProcExtratoAberto(false);
     setExtratoLinhasSelecionadas(new Set());
     setLetraLoteExtrato('');
   }, [instituicaoSelecionada]);
@@ -607,6 +718,70 @@ export function Financeiro() {
     return () => document.removeEventListener('mousedown', fn);
   }, [menuFiltroDescricaoExtratoAberto]);
 
+  useEffect(() => {
+    if (!menuFiltroLetraExtratoAberto) return undefined;
+    const fn = (e) => {
+      if (menuFiltroLetraExtratoRef.current && !menuFiltroLetraExtratoRef.current.contains(e.target)) {
+        setMenuFiltroLetraExtratoAberto(false);
+      }
+    };
+    document.addEventListener('mousedown', fn);
+    return () => document.removeEventListener('mousedown', fn);
+  }, [menuFiltroLetraExtratoAberto]);
+
+  useEffect(() => {
+    if (!menuFiltroCodClienteExtratoAberto) return undefined;
+    const fn = (e) => {
+      if (
+        menuFiltroCodClienteExtratoRef.current &&
+        !menuFiltroCodClienteExtratoRef.current.contains(e.target)
+      ) {
+        setMenuFiltroCodClienteExtratoAberto(false);
+      }
+    };
+    document.addEventListener('mousedown', fn);
+    return () => document.removeEventListener('mousedown', fn);
+  }, [menuFiltroCodClienteExtratoAberto]);
+
+  useEffect(() => {
+    if (!menuFiltroProcExtratoAberto) return undefined;
+    const fn = (e) => {
+      if (menuFiltroProcExtratoRef.current && !menuFiltroProcExtratoRef.current.contains(e.target)) {
+        setMenuFiltroProcExtratoAberto(false);
+      }
+    };
+    document.addEventListener('mousedown', fn);
+    return () => document.removeEventListener('mousedown', fn);
+  }, [menuFiltroProcExtratoAberto]);
+
+  useEffect(() => {
+    if (!menuFiltroCodClienteConsolidadoAberto) return undefined;
+    const fn = (e) => {
+      if (
+        menuFiltroCodClienteConsolidadoRef.current &&
+        !menuFiltroCodClienteConsolidadoRef.current.contains(e.target)
+      ) {
+        setMenuFiltroCodClienteConsolidadoAberto(false);
+      }
+    };
+    document.addEventListener('mousedown', fn);
+    return () => document.removeEventListener('mousedown', fn);
+  }, [menuFiltroCodClienteConsolidadoAberto]);
+
+  useEffect(() => {
+    if (!menuFiltroProcConsolidadoAberto) return undefined;
+    const fn = (e) => {
+      if (
+        menuFiltroProcConsolidadoRef.current &&
+        !menuFiltroProcConsolidadoRef.current.contains(e.target)
+      ) {
+        setMenuFiltroProcConsolidadoAberto(false);
+      }
+    };
+    document.addEventListener('mousedown', fn);
+    return () => document.removeEventListener('mousedown', fn);
+  }, [menuFiltroProcConsolidadoAberto]);
+
   useEffect(
     () => () => {
       if (valorExtratoHeaderTimerRef.current) {
@@ -614,6 +789,21 @@ export function Financeiro() {
       }
       if (descricaoExtratoHeaderTimerRef.current) {
         clearTimeout(descricaoExtratoHeaderTimerRef.current);
+      }
+      if (letraExtratoHeaderTimerRef.current) {
+        clearTimeout(letraExtratoHeaderTimerRef.current);
+      }
+      if (codClienteExtratoHeaderTimerRef.current) {
+        clearTimeout(codClienteExtratoHeaderTimerRef.current);
+      }
+      if (procExtratoHeaderTimerRef.current) {
+        clearTimeout(procExtratoHeaderTimerRef.current);
+      }
+      if (codClienteConsolidadoHeaderTimerRef.current) {
+        clearTimeout(codClienteConsolidadoHeaderTimerRef.current);
+      }
+      if (procConsolidadoHeaderTimerRef.current) {
+        clearTimeout(procConsolidadoHeaderTimerRef.current);
       }
     },
     []
@@ -639,9 +829,12 @@ export function Financeiro() {
   const linhaConsolidadoRef = useRef(null);
   const linhaBancoRef = useRef(null);
   const fileInputOfxRef = useRef(null);
+  const fileInputBtgPdfRef = useRef(null);
   const [ofxStatus, setOfxStatus] = useState({ kind: 'idle', message: '' });
   const [substituirExtratoOfxCompleto, setSubstituirExtratoOfxCompleto] = useState(false);
   const [modalParearCompensacao, setModalParearCompensacao] = useState(null);
+  /** null | { nomeBanco, grupos, selecionados: Set<string> } — copiar letra A + Cód./Proc. do modelo para outros meses. */
+  const [modalRecorrenciaMensal, setModalRecorrenciaMensal] = useState(null);
   const saveTimerRef = useRef(null);
   const inativosSaveTimerRef = useRef(null);
   const contasExtrasSaveTimerRef = useRef(null);
@@ -687,7 +880,9 @@ export function Financeiro() {
           const apiRows = Array.isArray(dados[k]) ? dados[k] : [];
           merged[k] = mergeExtratoApiComLocal(apiRows, localFallback);
         } else if (cacheRows.length > 0) {
-          merged[k] = mergeExtratoBancario([...cacheRows], []);
+          /* Chave ausente na API = zero lançamentos desse banco no servidor; não reidratar só do cache
+           * (senão extrato apagado no BD reaparece). Mantém só linhas ainda não persistidas (sem apiId). */
+          merged[k] = mergeExtratoApiComLocal([], cacheRows);
         } else {
           merged[k] = [...baseRows];
         }
@@ -699,6 +894,135 @@ export function Financeiro() {
       setApiFinanceiroLoading(false);
     }
   }, []);
+
+  const limparCoraParaNovaImportacao = useCallback(async () => {
+    if (
+      !window.confirm(
+        'Zerar o extrato CORA: remove lançamentos na API (se ativa), limpa a cópia local e desfaz elos de compensação ligados à Cora noutros bancos. Continuar?',
+      )
+    ) {
+      return;
+    }
+    setOfxStatus({ kind: 'loading', message: 'A limpar extrato Cora…' });
+    try {
+      let removidos = 0;
+      let desvinc = 0;
+      if (featureFlags.useApiFinanceiro) {
+        const r = await limparExtratoCoraFinanceiroApi();
+        removidos = Number(r?.lancamentosRemovidosCora) || 0;
+        desvinc = Number(r?.lancamentosDesvinculadosOutrosBancos) || 0;
+      }
+      const mergedBase = {
+        ...getExtratosIniciais(),
+        ...(loadPersistedExtratosFinanceiro() || {}),
+      };
+      const cleaned = limparExtratoCoraEElosRelacionados(mergedBase);
+      savePersistedExtratosFinanceiro(cleaned);
+      delete desfazerImportacaoExtratoRef.current.CORA;
+      setDesfazerImportacaoTick((t) => t + 1);
+      if (featureFlags.useApiFinanceiro) {
+        await recarregarExtratosFinanceiroApi();
+      } else {
+        setExtratosPorBanco((prev) =>
+          limparExtratoCoraEElosRelacionados({ ...getExtratosIniciais(), ...prev }),
+        );
+      }
+      const extra =
+        featureFlags.useApiFinanceiro && (removidos > 0 || desvinc > 0)
+          ? ` API: ${removidos} lanç. Cora removidos; ${desvinc} desvinculados noutros bancos.`
+          : '';
+      setOfxStatus({
+        kind: 'success',
+        message: `Extrato Cora limpo.${extra} Pode importar o OFX novamente.`,
+      });
+    } catch (e) {
+      setOfxStatus({
+        kind: 'error',
+        message: e?.message || 'Não foi possível limpar o extrato Cora.',
+      });
+    }
+  }, [recarregarExtratosFinanceiroApi]);
+
+  const registrarDesfazerImportacaoMesclagem = useCallback(
+    (nomeBanco, previousRows, savedPairs, modo, houveAlteracao) => {
+      const n = String(nomeBanco || '').trim();
+      if (!n) return;
+      if (modo !== 'mesclar') {
+        delete desfazerImportacaoExtratoRef.current[n];
+        setDesfazerImportacaoTick((t) => t + 1);
+        return;
+      }
+      if (!houveAlteracao) return;
+      const addedApiIds = (savedPairs || [])
+        .map((p) => Number(p?.saved?.id))
+        .filter((id) => Number.isFinite(id) && id > 0);
+      desfazerImportacaoExtratoRef.current[n] = {
+        previousRows: clonarListaExtratoBancoParaDesfazer(previousRows),
+        addedApiIds,
+      };
+      setDesfazerImportacaoTick((t) => t + 1);
+    },
+    [],
+  );
+
+  const reverterUltimaImportacaoExtrato = useCallback(async () => {
+    const nome = String(instituicaoSelecionada || '').trim();
+    const snap = nome ? desfazerImportacaoExtratoRef.current[nome] : null;
+    if (!snap) {
+      setOfxStatus({
+        kind: 'info',
+        message:
+          'Não há o que reverter neste extrato. Só fica disponível após uma importação em modo mesclar (não vale para «Substituir todo o extrato»).',
+      });
+      return;
+    }
+    if (
+      !window.confirm(
+        `Restaurar o extrato «${nome}» ao estado imediatamente anterior à última importação (OFX/PDF)?${
+          featureFlags.useApiFinanceiro
+            ? ' Os lançamentos criados na API nessa importação serão excluídos.'
+            : ''
+        }`,
+      )
+    ) {
+      return;
+    }
+    setOfxStatus({ kind: 'loading', message: 'A reverter a última importação…' });
+    try {
+      if (featureFlags.useApiFinanceiro && snap.addedApiIds?.length) {
+        for (const id of snap.addedApiIds) {
+          try {
+            await removerLancamentoFinanceiroApi(id);
+          } catch {
+            /* já removido ou falha de rede */
+          }
+        }
+      }
+      setExtratosPorBanco((prev) => {
+        const next = { ...prev, [nome]: clonarListaExtratoBancoParaDesfazer(snap.previousRows) };
+        try {
+          savePersistedExtratosFinanceiro(next);
+        } catch {
+          /* ignore */
+        }
+        return next;
+      });
+      delete desfazerImportacaoExtratoRef.current[nome];
+      setDesfazerImportacaoTick((t) => t + 1);
+      if (featureFlags.useApiFinanceiro) {
+        await recarregarExtratosFinanceiroApi();
+      }
+      setOfxStatus({
+        kind: 'success',
+        message: `Extrato «${nome}» restaurado ao estado anterior à última importação.`,
+      });
+    } catch (e) {
+      setOfxStatus({
+        kind: 'error',
+        message: e?.message || 'Não foi possível reverter a última importação.',
+      });
+    }
+  }, [instituicaoSelecionada, recarregarExtratosFinanceiroApi]);
 
   useEffect(() => {
     let ativo = true;
@@ -729,6 +1053,11 @@ export function Financeiro() {
   }, [disposicaoRelatorios, paineisRelatorios, ordemRelatorios]);
 
   const extratosInativosSet = useMemo(() => new Set(extratosInativos), [extratosInativos]);
+
+  const podeReverterUltimaImportacaoExtrato = useMemo(() => {
+    const n = String(instituicaoSelecionada || '').trim();
+    return Boolean(n && desfazerImportacaoExtratoRef.current[n]);
+  }, [instituicaoSelecionada, desfazerImportacaoTick]);
 
   const mostrarPainelExtrato = paineisRelatorios !== 'so_consolidado' && Boolean(instituicaoSelecionada);
   const mostrarPainelConsolidado = paineisRelatorios !== 'so_extrato' && Boolean(contaContabilSelecionada);
@@ -881,9 +1210,28 @@ export function Financeiro() {
     [listaExtratoBancoOrdenada, periodoVisao, selecaoPeriodoAtual]
   );
 
+  const listaExtratoAposFiltroLetra = useMemo(
+    () =>
+      filtrarExtratoPorLetras(
+        listaExtratoBancoVisivel,
+        filtroLetrasExtrato != null && filtroLetrasExtrato.length > 0 ? filtroLetrasExtrato : null
+      ),
+    [listaExtratoBancoVisivel, filtroLetrasExtrato]
+  );
+
+  const listaExtratoAposFiltroCodClienteProc = useMemo(
+    () =>
+      filtrarLancamentosPorCabecalhoCodClienteProc(
+        listaExtratoAposFiltroLetra,
+        filtroCodClienteExtrato,
+        filtroProcExtrato
+      ),
+    [listaExtratoAposFiltroLetra, filtroCodClienteExtrato, filtroProcExtrato]
+  );
+
   const listaExtratoAposFiltroDescricao = useMemo(
-    () => filtrarExtratoPorTextoDescricao(listaExtratoBancoVisivel, filtroDescricaoExtrato),
-    [listaExtratoBancoVisivel, filtroDescricaoExtrato]
+    () => filtrarExtratoPorTextoDescricao(listaExtratoAposFiltroCodClienteProc, filtroDescricaoExtrato),
+    [listaExtratoAposFiltroCodClienteProc, filtroDescricaoExtrato]
   );
 
   const listaExtratoAposFiltroValor = useMemo(
@@ -955,6 +1303,15 @@ export function Financeiro() {
   }, [isContaCompensacao]);
 
   useEffect(() => {
+    setFiltroCodClienteConsolidado('');
+    setFiltroCodClienteConsolidadoRascunho('');
+    setMenuFiltroCodClienteConsolidadoAberto(false);
+    setFiltroProcConsolidado('');
+    setFiltroProcConsolidadoRascunho('');
+    setMenuFiltroProcConsolidadoAberto(false);
+  }, [contaContabilSelecionada]);
+
+  useEffect(() => {
     if (!isContaCompensacao || !filtroEloConsolidado) return;
     if (!elosDisponiveisConsolidado.includes(filtroEloConsolidado)) {
       setFiltroEloConsolidado('');
@@ -989,22 +1346,32 @@ export function Financeiro() {
     somasParComp,
   ]);
 
+  const listaConsolidadaAposFiltroCodClienteProc = useMemo(
+    () =>
+      filtrarLancamentosPorCabecalhoCodClienteProc(
+        listaConsolidadaVisivel,
+        filtroCodClienteConsolidado,
+        filtroProcConsolidado
+      ),
+    [listaConsolidadaVisivel, filtroCodClienteConsolidado, filtroProcConsolidado]
+  );
+
   /** Conta Escritório: quantas linhas (no período/filtro atual) compartilham cada Eq. entre lançamentos Ref. R. */
   const contagemEqRepasseEscritorio = useMemo(() => {
     const m = new Map();
     if (!isContaEscritorio) return m;
-    for (const t of listaConsolidadaVisivel) {
+    for (const t of listaConsolidadaAposFiltroCodClienteProc) {
       if (normalizarRefFinanceiro(t.ref) !== 'R') continue;
       const eq = String(textoDimensaoEq(t) ?? '').trim();
       if (!eq) continue;
       m.set(eq, (m.get(eq) || 0) + 1);
     }
     return m;
-  }, [isContaEscritorio, listaConsolidadaVisivel]);
+  }, [isContaEscritorio, listaConsolidadaAposFiltroCodClienteProc]);
 
   const saldoHeaderConsolidado = useMemo(
-    () => listaConsolidadaVisivel.reduce((s, t) => s + t.valor, 0),
-    [listaConsolidadaVisivel]
+    () => listaConsolidadaAposFiltroCodClienteProc.reduce((s, t) => s + t.valor, 0),
+    [listaConsolidadaAposFiltroCodClienteProc]
   );
 
   /** Contas ordenadas pelo uso real nos extratos (quantidade e soma dos valores por letra). */
@@ -1037,6 +1404,7 @@ export function Financeiro() {
       };
       list[idx] = updated;
       linhaParaApi = updated;
+      ultimaLinhaEdicaoExtratoRef.current.set(`${nomeBanco}|${numero}|${data}`, updated);
       return next;
     });
     if (featureFlags.useApiFinanceiro && linhaParaApi) {
@@ -1114,10 +1482,22 @@ export function Financeiro() {
       }
       list[idx] = updated;
       linhaParaApi = updated;
+      ultimaLinhaEdicaoExtratoRef.current.set(`${nomeBanco}|${numero}|${data}`, updated);
       return next;
     });
     if (featureFlags.useApiFinanceiro && linhaParaApi) {
-      void sincronizarLancamentoApi(nomeBanco, numero, data, linhaParaApi);
+      if (field === 'codCliente' || field === 'proc') {
+        const key = `${nomeBanco}|${numero}|${data}`;
+        const prev = codProcDebounceTimersRef.current.get(key);
+        if (prev != null) window.clearTimeout(prev);
+        const tid = window.setTimeout(() => {
+          codProcDebounceTimersRef.current.delete(key);
+          void sincronizarLancamentoApi(nomeBanco, numero, data, null);
+        }, COD_PROC_FINANCEIRO_API_DEBOUNCE_MS);
+        codProcDebounceTimersRef.current.set(key, tid);
+      } else {
+        void sincronizarLancamentoApi(nomeBanco, numero, data, linhaParaApi);
+      }
     }
   }
 
@@ -1128,41 +1508,54 @@ export function Financeiro() {
   async function sincronizarLancamentoApi(nomeBanco, numero, data, linhaSnapshot = null) {
     try {
       const list = extratosPorBancoRef.current?.[nomeBanco];
+      const chaveRow = `${nomeBanco}|${numero}|${data}`;
       const atual =
         linhaSnapshot &&
         String(linhaSnapshot.numero) === String(numero) &&
         linhaSnapshot.data === data
           ? linhaSnapshot
-          : Array.isArray(list)
-            ? list.find((t) => t.numero === numero && t.data === data)
-            : null;
+          : (() => {
+              const snap = ultimaLinhaEdicaoExtratoRef.current.get(chaveRow);
+              if (
+                snap &&
+                String(snap.numero) === String(numero) &&
+                snap.data === data
+              ) {
+                return snap;
+              }
+              return Array.isArray(list)
+                ? list.find((t) => String(t.numero) === String(numero) && t.data === data)
+                : null;
+            })();
       if (!atual) return;
 
       let rowParaApi = { ...atual, nomeBanco };
       const metaIn = atual._financeiroMeta || {};
-      let clienteId = Number(metaIn.clienteId) || null;
-      let processoId = Number(metaIn.processoId) || null;
 
       if (featureFlags.useApiFinanceiro && featureFlags.useApiProcessos) {
         const cod = normalizarCodigoClienteFinanceiro(atual.codCliente);
         const procStr = normalizarProcFinanceiro(atual.proc);
-        if (cod) {
-          try {
-            if (!clienteId) {
-              const c = await buscarClientePorCodigo(cod);
-              if (c?.id != null && Number.isFinite(Number(c.id))) clienteId = Number(c.id);
+        try {
+          /* Sempre derivar ids do texto atual: antes só resolvia com !clienteId, então o PUT
+           * mandava o cliente antigo e a API devolvia o código antigo (ex. 1985), apagando 938 no input. */
+          let clienteIdRes = null;
+          let processoIdRes = null;
+          if (cod) {
+            const c = await buscarClientePorCodigo(cod);
+            if (c?.id != null && Number.isFinite(Number(c.id))) {
+              clienteIdRes = Number(c.id);
+              if (procStr) {
+                const p = await buscarProcessoPorChaveNatural(cod, procStr);
+                if (p?.id != null && Number.isFinite(Number(p.id))) processoIdRes = Number(p.id);
+              }
             }
-            if (procStr && !processoId && clienteId) {
-              const p = await buscarProcessoPorChaveNatural(cod, procStr);
-              if (p?.id != null && Number.isFinite(Number(p.id))) processoId = Number(p.id);
-            }
-          } catch {
-            /* resolução opcional; segue com meta já na linha */
           }
           rowParaApi = {
             ...rowParaApi,
-            _financeiroMeta: { ...metaIn, clienteId, processoId },
+            _financeiroMeta: { ...metaIn, clienteId: clienteIdRes, processoId: processoIdRes },
           };
+        } catch {
+          /* rede / API processos: mantém meta da linha sem regravar ids inferidos */
         }
       }
 
@@ -1175,11 +1568,23 @@ export function Financeiro() {
         const i = arr.findIndex((t) => t.numero === numero && t.data === data);
         if (i < 0) return prev;
         arr[i] = mergeUiLancamentoComRespostaApi({ ...arr[i], nomeBanco }, saved);
+        ultimaLinhaEdicaoExtratoRef.current.delete(`${nomeBanco}|${numero}|${data}`);
         return next;
       });
     } catch (e) {
       setApiFinanceiroErro(e?.message || 'Falha ao sincronizar lançamento com API.');
     }
+  }
+
+  function flushSincronizarCodProcDebounced(nomeBanco, numero, data) {
+    if (!featureFlags.useApiFinanceiro) return;
+    const key = `${nomeBanco}|${numero}|${data}`;
+    const prev = codProcDebounceTimersRef.current.get(key);
+    if (prev != null) {
+      window.clearTimeout(prev);
+      codProcDebounceTimersRef.current.delete(key);
+    }
+    void sincronizarLancamentoApi(nomeBanco, numero, data, null);
   }
 
   async function excluirLancamentoUi(t) {
@@ -1407,6 +1812,77 @@ export function Financeiro() {
     });
   }
 
+  function handleClickCabecalhoLetraExtrato() {
+    if (letraExtratoHeaderTimerRef.current) {
+      clearTimeout(letraExtratoHeaderTimerRef.current);
+      letraExtratoHeaderTimerRef.current = null;
+      return;
+    }
+    letraExtratoHeaderTimerRef.current = window.setTimeout(() => {
+      letraExtratoHeaderTimerRef.current = null;
+      setMenuFiltroLetraExtratoAberto((aberto) => {
+        const next = !aberto;
+        if (next) {
+          setFiltroLetrasExtratoRascunho(
+            filtroLetrasExtrato != null && filtroLetrasExtrato.length > 0
+              ? [...filtroLetrasExtrato]
+              : [...letrasOrdenadasParaSelect]
+          );
+          setMenuFiltroValorExtratoAberto(false);
+          setMenuFiltroDescricaoExtratoAberto(false);
+          setMenuFiltroCodClienteExtratoAberto(false);
+          setMenuFiltroProcExtratoAberto(false);
+        }
+        return next;
+      });
+    }, 280);
+  }
+
+  function handleDuploCliqueCabecalhoLetraExtrato(e) {
+    e.preventDefault();
+    if (letraExtratoHeaderTimerRef.current) {
+      clearTimeout(letraExtratoHeaderTimerRef.current);
+      letraExtratoHeaderTimerRef.current = null;
+    }
+    setMenuFiltroLetraExtratoAberto(false);
+    handleDuploCliqueTituloExtratoBanco('letra');
+  }
+
+  function toggleRascunhoFiltroLetraExtrato(L) {
+    const u = String(L).trim().toUpperCase();
+    setFiltroLetrasExtratoRascunho((prev) => {
+      const set = new Set(prev.map((x) => String(x).trim().toUpperCase()));
+      if (set.has(u)) set.delete(u);
+      else set.add(u);
+      return letrasOrdenadasParaSelect.filter((l) => set.has(l));
+    });
+  }
+
+  function marcarTodasRascunhoFiltroLetraExtrato() {
+    setFiltroLetrasExtratoRascunho([...letrasOrdenadasParaSelect]);
+  }
+
+  function desmarcarTodasRascunhoFiltroLetraExtrato() {
+    setFiltroLetrasExtratoRascunho([]);
+  }
+
+  function aplicarFiltroLetraExtrato() {
+    const all = letrasOrdenadasParaSelect;
+    const sel = new Set(filtroLetrasExtratoRascunho.map((x) => String(x).trim().toUpperCase()));
+    if (sel.size === 0 || (sel.size === all.length && all.every((l) => sel.has(l)))) {
+      setFiltroLetrasExtrato(null);
+    } else {
+      setFiltroLetrasExtrato(all.filter((l) => sel.has(l)));
+    }
+    setMenuFiltroLetraExtratoAberto(false);
+  }
+
+  function limparFiltroLetraExtrato() {
+    setFiltroLetrasExtrato(null);
+    setFiltroLetrasExtratoRascunho([...letrasOrdenadasParaSelect]);
+    setMenuFiltroLetraExtratoAberto(false);
+  }
+
   function handleClickCabecalhoValorExtrato() {
     if (valorExtratoHeaderTimerRef.current) {
       clearTimeout(valorExtratoHeaderTimerRef.current);
@@ -1417,7 +1893,12 @@ export function Financeiro() {
       valorExtratoHeaderTimerRef.current = null;
       setMenuFiltroValorExtratoAberto((o) => {
         const next = !o;
-        if (next) setMenuFiltroDescricaoExtratoAberto(false);
+        if (next) {
+          setMenuFiltroDescricaoExtratoAberto(false);
+          setMenuFiltroLetraExtratoAberto(false);
+          setMenuFiltroCodClienteExtratoAberto(false);
+          setMenuFiltroProcExtratoAberto(false);
+        }
         return next;
       });
     }, 280);
@@ -1436,6 +1917,9 @@ export function Financeiro() {
         if (next) {
           setFiltroDescricaoExtratoRascunho(filtroDescricaoExtrato);
           setMenuFiltroValorExtratoAberto(false);
+          setMenuFiltroLetraExtratoAberto(false);
+          setMenuFiltroCodClienteExtratoAberto(false);
+          setMenuFiltroProcExtratoAberto(false);
         }
         return next;
       });
@@ -1461,6 +1945,186 @@ export function Financeiro() {
     setFiltroDescricaoExtrato('');
     setFiltroDescricaoExtratoRascunho('');
     setMenuFiltroDescricaoExtratoAberto(false);
+  }
+
+  function limparFiltrosCodProcExtrato() {
+    setFiltroCodClienteExtrato('');
+    setFiltroCodClienteExtratoRascunho('');
+    setMenuFiltroCodClienteExtratoAberto(false);
+    setFiltroProcExtrato('');
+    setFiltroProcExtratoRascunho('');
+    setMenuFiltroProcExtratoAberto(false);
+  }
+
+  function handleClickCabecalhoCodClienteExtrato() {
+    if (codClienteExtratoHeaderTimerRef.current) {
+      clearTimeout(codClienteExtratoHeaderTimerRef.current);
+      codClienteExtratoHeaderTimerRef.current = null;
+      return;
+    }
+    codClienteExtratoHeaderTimerRef.current = window.setTimeout(() => {
+      codClienteExtratoHeaderTimerRef.current = null;
+      setMenuFiltroCodClienteExtratoAberto((aberto) => {
+        const next = !aberto;
+        if (next) {
+          setFiltroCodClienteExtratoRascunho(filtroCodClienteExtrato);
+          setMenuFiltroProcExtratoAberto(false);
+          setMenuFiltroValorExtratoAberto(false);
+          setMenuFiltroDescricaoExtratoAberto(false);
+          setMenuFiltroLetraExtratoAberto(false);
+        }
+        return next;
+      });
+    }, 280);
+  }
+
+  function handleDuploCliqueCabecalhoCodClienteExtrato(e) {
+    e.preventDefault();
+    if (codClienteExtratoHeaderTimerRef.current) {
+      clearTimeout(codClienteExtratoHeaderTimerRef.current);
+      codClienteExtratoHeaderTimerRef.current = null;
+    }
+    setMenuFiltroCodClienteExtratoAberto(false);
+    handleDuploCliqueTituloExtratoBanco('codCliente');
+  }
+
+  function aplicarFiltroCodClienteExtrato() {
+    setFiltroCodClienteExtrato(filtroCodClienteExtratoRascunho.trim());
+    setMenuFiltroCodClienteExtratoAberto(false);
+  }
+
+  function limparFiltroCodClienteExtrato() {
+    setFiltroCodClienteExtrato('');
+    setFiltroCodClienteExtratoRascunho('');
+    setMenuFiltroCodClienteExtratoAberto(false);
+  }
+
+  function handleClickCabecalhoProcExtrato() {
+    if (procExtratoHeaderTimerRef.current) {
+      clearTimeout(procExtratoHeaderTimerRef.current);
+      procExtratoHeaderTimerRef.current = null;
+      return;
+    }
+    procExtratoHeaderTimerRef.current = window.setTimeout(() => {
+      procExtratoHeaderTimerRef.current = null;
+      setMenuFiltroProcExtratoAberto((aberto) => {
+        const next = !aberto;
+        if (next) {
+          setFiltroProcExtratoRascunho(filtroProcExtrato);
+          setMenuFiltroCodClienteExtratoAberto(false);
+          setMenuFiltroValorExtratoAberto(false);
+          setMenuFiltroDescricaoExtratoAberto(false);
+          setMenuFiltroLetraExtratoAberto(false);
+        }
+        return next;
+      });
+    }, 280);
+  }
+
+  function handleDuploCliqueCabecalhoProcExtrato(e) {
+    e.preventDefault();
+    if (procExtratoHeaderTimerRef.current) {
+      clearTimeout(procExtratoHeaderTimerRef.current);
+      procExtratoHeaderTimerRef.current = null;
+    }
+    setMenuFiltroProcExtratoAberto(false);
+    handleDuploCliqueTituloExtratoBanco('proc');
+  }
+
+  function aplicarFiltroProcExtrato() {
+    setFiltroProcExtrato(filtroProcExtratoRascunho.trim());
+    setMenuFiltroProcExtratoAberto(false);
+  }
+
+  function limparFiltroProcExtrato() {
+    setFiltroProcExtrato('');
+    setFiltroProcExtratoRascunho('');
+    setMenuFiltroProcExtratoAberto(false);
+  }
+
+  function handleClickCabecalhoCodClienteConsolidado() {
+    if (codClienteConsolidadoHeaderTimerRef.current) {
+      clearTimeout(codClienteConsolidadoHeaderTimerRef.current);
+      codClienteConsolidadoHeaderTimerRef.current = null;
+      return;
+    }
+    codClienteConsolidadoHeaderTimerRef.current = window.setTimeout(() => {
+      codClienteConsolidadoHeaderTimerRef.current = null;
+      setMenuFiltroCodClienteConsolidadoAberto((aberto) => {
+        const next = !aberto;
+        if (next) {
+          setFiltroCodClienteConsolidadoRascunho(filtroCodClienteConsolidado);
+          setMenuFiltroProcConsolidadoAberto(false);
+        }
+        return next;
+      });
+    }, 280);
+  }
+
+  function handleDuploCliqueCabecalhoCodClienteConsolidado(e) {
+    e.preventDefault();
+    if (codClienteConsolidadoHeaderTimerRef.current) {
+      clearTimeout(codClienteConsolidadoHeaderTimerRef.current);
+      codClienteConsolidadoHeaderTimerRef.current = null;
+    }
+    setMenuFiltroCodClienteConsolidadoAberto(false);
+    handleDuploCliqueTituloConsolidado('codCliente');
+  }
+
+  function aplicarFiltroCodClienteConsolidado() {
+    setFiltroCodClienteConsolidado(filtroCodClienteConsolidadoRascunho.trim());
+    setMenuFiltroCodClienteConsolidadoAberto(false);
+  }
+
+  function limparFiltroCodClienteConsolidado() {
+    setFiltroCodClienteConsolidado('');
+    setFiltroCodClienteConsolidadoRascunho('');
+    setMenuFiltroCodClienteConsolidadoAberto(false);
+  }
+
+  function handleClickCabecalhoProcConsolidado() {
+    if (procConsolidadoHeaderTimerRef.current) {
+      clearTimeout(procConsolidadoHeaderTimerRef.current);
+      procConsolidadoHeaderTimerRef.current = null;
+      return;
+    }
+    procConsolidadoHeaderTimerRef.current = window.setTimeout(() => {
+      procConsolidadoHeaderTimerRef.current = null;
+      setMenuFiltroProcConsolidadoAberto((aberto) => {
+        const next = !aberto;
+        if (next) {
+          setFiltroProcConsolidadoRascunho(filtroProcConsolidado);
+          setMenuFiltroCodClienteConsolidadoAberto(false);
+        }
+        return next;
+      });
+    }, 280);
+  }
+
+  function handleDuploCliqueCabecalhoProcConsolidado(e) {
+    e.preventDefault();
+    if (procConsolidadoHeaderTimerRef.current) {
+      clearTimeout(procConsolidadoHeaderTimerRef.current);
+      procConsolidadoHeaderTimerRef.current = null;
+    }
+    setMenuFiltroProcConsolidadoAberto(false);
+    handleDuploCliqueTituloConsolidado('proc');
+  }
+
+  function aplicarFiltroProcConsolidado() {
+    setFiltroProcConsolidado(filtroProcConsolidadoRascunho.trim());
+    setMenuFiltroProcConsolidadoAberto(false);
+  }
+
+  function limparFiltroProcConsolidado() {
+    setFiltroProcConsolidado('');
+    setFiltroProcConsolidadoRascunho('');
+    setMenuFiltroProcConsolidadoAberto(false);
+  }
+
+  function limparFiltrosCodProcConsolidado() {
+    limparFiltroCodClienteConsolidado();
+    limparFiltroProcConsolidado();
   }
 
   function toggleExtratoLinhaSelecionada(key) {
@@ -1589,7 +2253,7 @@ export function Financeiro() {
       if (!Array.isArray(arr)) return prev;
       const i = arr.findIndex((t) => t.numero === numero && t.data === data);
       if (i < 0) return prev;
-      arr[i] = {
+      const novo = {
         ...arr[i],
         ...patch,
         _financeiroMeta: {
@@ -1597,6 +2261,8 @@ export function Financeiro() {
           ...patch._financeiroMeta,
         },
       };
+      arr[i] = novo;
+      ultimaLinhaEdicaoExtratoRef.current.set(`${nomeBanco}|${numero}|${data}`, novo);
       return next;
     });
 
@@ -1616,6 +2282,7 @@ export function Financeiro() {
             const i = arr.findIndex((t) => t.numero === numero && t.data === data);
             if (i < 0) return prev;
             arr[i] = mergeUiLancamentoComRespostaApi(arr[i], saved);
+            ultimaLinhaEdicaoExtratoRef.current.delete(`${nomeBanco}|${numero}|${data}`);
             return next;
           });
         } else {
@@ -1757,8 +2424,117 @@ export function Financeiro() {
     setMsgNovaContaBancaria({ kind: 'success', text: `Conta "${nome}" criada — identificação Nº ${numero} no consolidado.` });
   }
 
+  async function importarBtgPdfArquivo(file) {
+    try {
+      if (!isInstituicaoBtgExtratoPdf(instituicaoSelecionada)) return;
+      if (extratosInativosSet.has(instituicaoSelecionada)) {
+        setOfxStatus({
+          kind: 'error',
+          message: `Extrato ${instituicaoSelecionada} está inativo (conta encerrada). Reative para importar o PDF.`,
+        });
+        return;
+      }
+      const nome = String(file?.name ?? '').toLowerCase();
+      const tipo = String(file?.type ?? '');
+      if (!nome.endsWith('.pdf') && tipo !== 'application/pdf') {
+        setOfxStatus({ kind: 'error', message: 'Selecione um arquivo PDF do extrato de conta corrente BTG.' });
+        return;
+      }
+      setOfxStatus({ kind: 'loading', message: `Lendo PDF do extrato ${instituicaoSelecionada}...` });
+      const texto = await extrairTextoPdfDeArquivo(file, { ordenarItensPorPosicao: true });
+      const extrato = parseBtgPdfExtratoText(texto);
+      if (!extrato.length) {
+        setOfxStatus({
+          kind: 'error',
+          message:
+            'Não foi possível extrair lançamentos do PDF. Use o extrato de conta corrente BTG Pactual (texto selecionável), como no app ou PDF oficial.',
+        });
+        return;
+      }
+      const modo = substituirExtratoOfxCompleto ? 'substituir' : 'mesclar';
+      const atualAntes = extratosPorBancoRef.current[instituicaoSelecionada] ?? [];
+      let novosContados = 0;
+      setExtratosPorBanco((prev) => {
+        const antes = prev[instituicaoSelecionada] ?? [];
+        novosContados = modo === 'mesclar' ? contarLancamentosNovos(antes, extrato) : extrato.length;
+        return aplicarExtratoNoBanco(prev, instituicaoSelecionada, extrato, modo);
+      });
+      const base =
+        modo === 'mesclar'
+          ? `PDF BTG: +${novosContados} lanç. novos em ${instituicaoSelecionada} (${extrato.length - novosContados} duplicados ignorados). Extrato anterior mantido.`
+          : `PDF BTG: extrato de ${instituicaoSelecionada} substituído (${extrato.length} lanç.).`;
+
+      if (featureFlags.useApiFinanceiro) {
+        setOfxStatus({ kind: 'loading', message: `Gravando lançamentos de ${instituicaoSelecionada} no servidor...` });
+        const numB = numeroBancoMap[instituicaoSelecionada];
+        const result = await persistirImportacaoOfxFinanceiroApi({
+          nomeBanco: instituicaoSelecionada,
+          numeroBanco: numB != null ? Number(numB) : null,
+          modo,
+          transacoesOfx: extrato,
+          transacoesAntesNoBanco: atualAntes,
+          origemImportacao: 'PDF',
+        });
+        setExtratosPorBanco((prev) =>
+          aplicarSavedPairsOfxNoEstado(prev, instituicaoSelecionada, result.savedPairs),
+        );
+        const addedApiIdsPdf = (result.savedPairs || [])
+          .map((p) => Number(p?.saved?.id))
+          .filter((id) => Number.isFinite(id) && id > 0);
+        const houveAlteracaoPdf =
+          modo === 'mesclar' && (novosContados > 0 || addedApiIdsPdf.length > 0);
+        registrarDesfazerImportacaoMesclagem(
+          instituicaoSelecionada,
+          atualAntes,
+          result.savedPairs,
+          modo,
+          houveAlteracaoPdf,
+        );
+        const apiMsg =
+          result.criados > 0
+            ? `${result.criados} lançamento(s) gravado(s) no banco (origem PDF). `
+            : modo === 'mesclar' && novosContados === 0
+              ? 'Nenhum lançamento novo (todos já existiam). '
+              : '';
+        if (result.erros.length) {
+          setOfxStatus({
+            kind: 'error',
+            message: `${base} ${apiMsg}Erros na API (${result.erros.length}): ${result.erros.slice(0, 4).join(' · ')}${result.erros.length > 4 ? '…' : ''}`,
+          });
+        } else {
+          setOfxStatus({
+            kind: 'success',
+            message: `${base} ${apiMsg}Lançamentos novos na letra N (Conta Não Identificados) até reclassificar ou usar Parear compensações.`,
+          });
+        }
+        return;
+      }
+
+      registrarDesfazerImportacaoMesclagem(
+        instituicaoSelecionada,
+        atualAntes,
+        [],
+        modo,
+        modo === 'mesclar' && novosContados > 0,
+      );
+      setOfxStatus({
+        kind: 'success',
+        message: `${base} Lançamentos novos na letra N (Conta Não Identificados) até você reclassificar ou usar Parear compensações.`,
+      });
+    } catch (e) {
+      setOfxStatus({ kind: 'error', message: `Falha ao importar PDF: ${e?.message || String(e)}` });
+    }
+  }
+
   async function importarOfxArquivo(file) {
     try {
+      if (isInstituicaoBtgExtratoPdf(instituicaoSelecionada)) {
+        setOfxStatus({
+          kind: 'error',
+          message: `Contas BTG importam o extrato por arquivo PDF (botão «Importar PDF»), não por OFX.`,
+        });
+        return;
+      }
       if (extratosInativosSet.has(instituicaoSelecionada)) {
         setOfxStatus({
           kind: 'error',
@@ -1767,7 +2543,7 @@ export function Financeiro() {
         return;
       }
       setOfxStatus({ kind: 'loading', message: `Importando OFX para ${instituicaoSelecionada}...` });
-      const text = await readFileAsText(file);
+      const text = await readOfxFileAsText(file);
       const extrato = parseOfxToExtrato(text, { nomeBanco: instituicaoSelecionada });
       if (!extrato.length) {
         setOfxStatus({ kind: 'error', message: 'Arquivo OFX não contém lançamentos (<STMTTRN>).' });
@@ -1788,7 +2564,7 @@ export function Financeiro() {
 
       if (featureFlags.useApiFinanceiro) {
         setOfxStatus({ kind: 'loading', message: `Gravando lançamentos de ${instituicaoSelecionada} no servidor...` });
-        const numB = numeroBancoMap.get(instituicaoSelecionada);
+        const numB = numeroBancoMap[instituicaoSelecionada];
         const result = await persistirImportacaoOfxFinanceiroApi({
           nomeBanco: instituicaoSelecionada,
           numeroBanco: numB != null ? Number(numB) : null,
@@ -1798,6 +2574,18 @@ export function Financeiro() {
         });
         setExtratosPorBanco((prev) =>
           aplicarSavedPairsOfxNoEstado(prev, instituicaoSelecionada, result.savedPairs),
+        );
+        const addedApiIdsOfx = (result.savedPairs || [])
+          .map((p) => Number(p?.saved?.id))
+          .filter((id) => Number.isFinite(id) && id > 0);
+        const houveAlteracaoOfx =
+          modo === 'mesclar' && (novosContados > 0 || addedApiIdsOfx.length > 0);
+        registrarDesfazerImportacaoMesclagem(
+          instituicaoSelecionada,
+          atualAntes,
+          result.savedPairs,
+          modo,
+          houveAlteracaoOfx,
         );
         const apiMsg =
           result.criados > 0
@@ -1819,6 +2607,13 @@ export function Financeiro() {
         return;
       }
 
+      registrarDesfazerImportacaoMesclagem(
+        instituicaoSelecionada,
+        atualAntes,
+        [],
+        modo,
+        modo === 'mesclar' && novosContados > 0,
+      );
       setOfxStatus({
         kind: 'success',
         message: `${base} Lançamentos novos na letra N (Conta Não Identificados) até você reclassificar ou usar Parear compensações.`,
@@ -1851,7 +2646,7 @@ export function Financeiro() {
     if (featureFlags.useApiFinanceiro) {
       setOfxStatus({ kind: 'loading', message: 'Gravando OFX Itaú no servidor...' });
       void (async () => {
-        const numB = numeroBancoMap.get('Itaú');
+        const numB = numeroBancoMap['Itaú'];
         const result = await persistirImportacaoOfxFinanceiroApi({
           nomeBanco: 'Itaú',
           numeroBanco: numB != null ? Number(numB) : null,
@@ -1860,6 +2655,16 @@ export function Financeiro() {
           transacoesAntesNoBanco: atualAntes,
         });
         setExtratosPorBanco((prev) => aplicarSavedPairsOfxNoEstado(prev, 'Itaú', result.savedPairs));
+        const addedItau = (result.savedPairs || [])
+          .map((p) => Number(p?.saved?.id))
+          .filter((id) => Number.isFinite(id) && id > 0);
+        registrarDesfazerImportacaoMesclagem(
+          'Itaú',
+          atualAntes,
+          result.savedPairs,
+          'mesclar',
+          novos > 0 || addedItau.length > 0,
+        );
         if (result.erros.length) {
           setOfxStatus({
             kind: 'error',
@@ -1874,6 +2679,7 @@ export function Financeiro() {
       })();
       return;
     }
+    registrarDesfazerImportacaoMesclagem('Itaú', atualAntes, [], 'mesclar', novos > 0);
     setOfxStatus({
       kind: 'success',
       message: `Itaú: +${novos} lanç. novos (OFX real). Demais bancos preservados. Novos em N até reclassificar.`,
@@ -1903,7 +2709,7 @@ export function Financeiro() {
     if (featureFlags.useApiFinanceiro) {
       setOfxStatus({ kind: 'loading', message: 'Gravando OFX CORA no servidor...' });
       void (async () => {
-        const numB = numeroBancoMap.get('CORA');
+        const numB = numeroBancoMap.CORA;
         const result = await persistirImportacaoOfxFinanceiroApi({
           nomeBanco: 'CORA',
           numeroBanco: numB != null ? Number(numB) : null,
@@ -1912,6 +2718,16 @@ export function Financeiro() {
           transacoesAntesNoBanco: atualAntes,
         });
         setExtratosPorBanco((prev) => aplicarSavedPairsOfxNoEstado(prev, 'CORA', result.savedPairs));
+        const addedCora = (result.savedPairs || [])
+          .map((p) => Number(p?.saved?.id))
+          .filter((id) => Number.isFinite(id) && id > 0);
+        registrarDesfazerImportacaoMesclagem(
+          'CORA',
+          atualAntes,
+          result.savedPairs,
+          'mesclar',
+          novos > 0 || addedCora.length > 0,
+        );
         if (result.erros.length) {
           setOfxStatus({
             kind: 'error',
@@ -1926,6 +2742,7 @@ export function Financeiro() {
       })();
       return;
     }
+    registrarDesfazerImportacaoMesclagem('CORA', atualAntes, [], 'mesclar', novos > 0);
     setOfxStatus({
       kind: 'success',
       message: `CORA: +${novos} lanç. novos (OFX real). Demais bancos preservados. Novos em N até reclassificar.`,
@@ -2053,6 +2870,7 @@ export function Financeiro() {
   }, [location.state, location.pathname, navigate]);
 
   const ofxBloqueadoExtratoInativo = extratosInativosSet.has(instituicaoSelecionada);
+  const extratoBtgUsaPdfImport = isInstituicaoBtgExtratoPdf(instituicaoSelecionada);
 
   function onChangeTipoPeriodo(novo) {
     setPeriodoVisao(novo);
@@ -2295,7 +3113,11 @@ export function Financeiro() {
             <button
               type="button"
               disabled={ofxBloqueadoExtratoInativo}
-              onClick={() => fileInputOfxRef.current?.click()}
+              onClick={() =>
+                extratoBtgUsaPdfImport
+                  ? fileInputBtgPdfRef.current?.click()
+                  : fileInputOfxRef.current?.click()
+              }
               className={`px-4 py-2 rounded-lg text-sm font-semibold shadow-sm ${
                 ofxBloqueadoExtratoInativo
                   ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
@@ -2303,11 +3125,17 @@ export function Financeiro() {
               }`}
               title={
                 ofxBloqueadoExtratoInativo
-                  ? 'Extrato inativo — reative para importar OFX'
-                  : `Importar OFX em ${instituicaoSelecionada} (mescla por padrão)`
+                  ? extratoBtgUsaPdfImport
+                    ? 'Extrato inativo — reative para importar PDF'
+                    : 'Extrato inativo — reative para importar OFX'
+                  : extratoBtgUsaPdfImport
+                    ? `Importar extrato em PDF (${instituicaoSelecionada}) — modelo BTG Pactual; mescla por padrão`
+                    : `Importar OFX em ${instituicaoSelecionada} (mescla por padrão)`
               }
             >
-              Importar OFX ({instituicaoSelecionada})
+              {extratoBtgUsaPdfImport
+                ? `Importar PDF (${instituicaoSelecionada})`
+                : `Importar OFX (${instituicaoSelecionada})`}
             </button>
             <label className="flex items-center gap-2 text-xs text-slate-600 cursor-pointer select-none">
               <input
@@ -2317,6 +3145,24 @@ export function Financeiro() {
               />
               Substituir todo o extrato deste banco
             </label>
+            <button
+              type="button"
+              disabled={!podeReverterUltimaImportacaoExtrato}
+              onClick={() => void reverterUltimaImportacaoExtrato()}
+              className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm font-medium ${
+                !podeReverterUltimaImportacaoExtrato
+                  ? 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed'
+                  : 'border-slate-400 bg-white text-slate-800 hover:bg-slate-50'
+              }`}
+              title={
+                substituirExtratoOfxCompleto
+                  ? 'Se a última ação foi «Substituir todo o extrato», não há reversão automática. Com mesclar: restaura o estado antes da última importação neste banco e remove lançamentos criados na API.'
+                  : 'Restaura o extrato deste banco ao estado imediatamente anterior à última importação OFX/PDF em modo mesclar; remove na API os lançamentos criados nessa importação.'
+              }
+            >
+              <Undo2 className="w-4 h-4 shrink-0" aria-hidden />
+              Reverter última importação
+            </button>
             <button
               type="button"
               disabled={extratosInativosSet.has('Itaú')}
@@ -2345,6 +3191,19 @@ export function Financeiro() {
             </button>
             <button
               type="button"
+              disabled={extratosInativosSet.has('CORA')}
+              onClick={() => void limparCoraParaNovaImportacao()}
+              className={`px-3 py-2 rounded-lg border text-sm font-medium ${
+                extratosInativosSet.has('CORA')
+                  ? 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed'
+                  : 'border-rose-300 bg-rose-50 text-rose-900 hover:bg-rose-100'
+              }`}
+              title="Apaga lançamentos CORA na API (se ativa), limpa cache local e elos de compensação — para importar OFX de novo do zero"
+            >
+              Zerar extrato Cora
+            </button>
+            <button
+              type="button"
               onClick={() => {
                 const pares = detectarParesCompensacao(extratosPorBanco);
                 setModalParearCompensacao({ pares });
@@ -2353,6 +3212,31 @@ export function Financeiro() {
               title="1) Identifica pares entre extratos; 2) Aplica Elo 0001… na Conta Compensação"
             >
               Parear compensações
+            </button>
+            <button
+              type="button"
+              disabled={!instituicaoSelecionada}
+              onClick={() => {
+                const nome = instituicaoSelecionada;
+                if (!nome) return;
+                const grupos = detectarSugestoesRecorrenciaMensalNoBanco(extratosPorBanco[nome] ?? []);
+                const selecionados = new Set();
+                for (const g of grupos) {
+                  for (const c of g.candidatos) {
+                    selecionados.add(chaveCandidatoRecorrenciaModal(g, c));
+                  }
+                }
+                setModalRecorrenciaMensal({ nomeBanco: nome, grupos, selecionados });
+              }}
+              className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-teal-500 bg-teal-50 text-teal-900 text-sm font-medium ${
+                !instituicaoSelecionada
+                  ? 'opacity-50 cursor-not-allowed border-teal-200'
+                  : 'hover:bg-teal-100'
+              }`}
+              title="Sugestões em lote: copia letra A + Cód. cliente + Proc. de um lançamento já identificado (Conta Escritório) para outros com a mesma descrição e o mesmo valor (ex.: mensalidades em meses diferentes). Revise e desmarque antes de aplicar."
+            >
+              <Repeat className="w-3.5 h-3.5 shrink-0" aria-hidden />
+              Recorrência mensal
             </button>
             <button
               type="button"
@@ -2420,16 +3304,19 @@ export function Financeiro() {
       )}
 
       <div className="flex-1 p-6 space-y-8 overflow-auto">
-        {/* Extratos bancários (OFX) */}
+        {/* Extratos bancários (OFX / PDF BTG) */}
         <section>
-          <h2 className="text-sm font-semibold text-slate-700 mb-1">Extratos bancários (OFX)</h2>
+          <h2 className="text-sm font-semibold text-slate-700 mb-1">Extratos bancários (OFX / PDF)</h2>
           <p className="text-xs text-slate-500 mb-3">
-            Por padrão, cada importação <strong>acrescenta</strong> lançamentos (sem apagar mock nem OFX já
-            importados). Duplicatas (mesmo FITID + data + valor) são ignoradas.{' '}
+            Instituições <strong>BTG</strong> importam o extrato por <strong>PDF</strong> (modelo conta corrente BTG
+            Pactual, texto selecionável); os outros bancos usam <strong>OFX</strong>. Por padrão, cada importação{' '}
+            <strong>acrescenta</strong> lançamentos (sem apagar mock nem extrato já importados). Duplicatas (mesma chave
+            data + valor + identificador) são ignoradas.{' '}
             {featureFlags.useApiFinanceiro ? (
               <>
-                Com a <strong>API Financeiro</strong> ativa, cada lançamento novo do OFX é gravado no{' '}
-                <strong>banco de dados</strong> (origem OFX, conta «Conta Não Identificados» até você reclassificar).
+                Com a <strong>API Financeiro</strong> ativa, cada lançamento novo é gravado no{' '}
+                <strong>banco de dados</strong> (origem OFX ou PDF, conta «Conta Não Identificados» até você
+                reclassificar).
               </>
             ) : (
               <>Os dados são salvos no navegador (localStorage).</>
@@ -2438,11 +3325,16 @@ export function Financeiro() {
             permanece nela até você reclassificar no extrato ou usar <strong>Parear compensações</strong> para
             identificar pares entre bancos (mesmo dia, valor oposto exato). Use{' '}
             <strong>Substituir todo o extrato deste banco</strong> só se quiser trocar o extrato inteiro da instituição
-            selecionada. Extratos <strong>inativos</strong> indicam conta encerrada: o histórico permanece salvo, mas o
-            extrato some da lista principal e não recebe novas importações OFX até você reativar. Use o botão{' '}
+            selecionada (essa operação <strong>não</strong> pode ser desfeita por aqui). O botão{' '}
+            <strong>Reverter última importação</strong> restaura o extrato da instituição selecionada ao estado anterior
+            à última importação <strong>em modo mesclar</strong> (OFX ou PDF) e, com API ativa, remove os lançamentos
+            criados nessa importação — útil se escolheu o ficheiro errado. Use{' '}
+            <strong>Recorrência mensal</strong> para sugerir em lote a mesma letra A + Cód./Proc. de um pagamento já
+            identificado para outros com a mesma descrição e valor (ex.: mensalidades). Extratos <strong>inativos</strong> indicam conta encerrada: o histórico permanece salvo, mas o
+            extrato some da lista principal e não recebe novas importações (OFX ou PDF) até você reativar. Use o botão{' '}
             <strong>Configurações</strong> no topo para criar instituições além das padrão: cada uma recebe um{' '}
-            <strong>Nº sequencial</strong> no consolidado (após o maior número já cadastrado) e passa a integrar OFX,
-            compensações e contas contábeis como as demais.
+            <strong>Nº sequencial</strong> no consolidado (após o maior número já cadastrado) e passa a integrar
+            extrato, compensações e contas contábeis como as demais.
           </p>
           <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 px-3 py-2.5 mb-3 text-xs text-slate-800 space-y-1.5">
             <p>
@@ -2491,7 +3383,11 @@ export function Financeiro() {
             <button
               type="button"
               disabled={ofxBloqueadoExtratoInativo}
-              onClick={() => fileInputOfxRef.current?.click()}
+              onClick={() =>
+                extratoBtgUsaPdfImport
+                  ? fileInputBtgPdfRef.current?.click()
+                  : fileInputOfxRef.current?.click()
+              }
               className={`px-4 py-2 rounded-lg text-sm font-semibold shadow-sm ${
                 ofxBloqueadoExtratoInativo
                   ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
@@ -2499,11 +3395,17 @@ export function Financeiro() {
               }`}
               title={
                 ofxBloqueadoExtratoInativo
-                  ? 'Extrato inativo — reative para importar OFX'
-                  : `Importar OFX e atualizar o extrato de ${instituicaoSelecionada}`
+                  ? extratoBtgUsaPdfImport
+                    ? 'Extrato inativo — reative para importar PDF'
+                    : 'Extrato inativo — reative para importar OFX'
+                  : extratoBtgUsaPdfImport
+                    ? `Importar PDF e atualizar o extrato de ${instituicaoSelecionada} (BTG)`
+                    : `Importar OFX e atualizar o extrato de ${instituicaoSelecionada}`
               }
             >
-              Importar OFX ({instituicaoSelecionada})
+              {extratoBtgUsaPdfImport
+                ? `Importar PDF (${instituicaoSelecionada})`
+                : `Importar OFX (${instituicaoSelecionada})`}
             </button>
             <input
               ref={fileInputOfxRef}
@@ -2514,6 +3416,17 @@ export function Financeiro() {
                 const file = e.target.files?.[0];
                 e.target.value = '';
                 if (file) importarOfxArquivo(file);
+              }}
+            />
+            <input
+              ref={fileInputBtgPdfRef}
+              type="file"
+              accept=".pdf,application/pdf"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = '';
+                if (file) importarBtgPdfArquivo(file);
               }}
             />
             {ofxStatus.kind !== 'idle' && (
@@ -2897,7 +3810,117 @@ export function Financeiro() {
                         onClick={(e) => e.stopPropagation()}
                       />
                     </th>
-                    <th className="text-left py-2 px-3 font-medium text-slate-600 border-r border-slate-200 w-20 cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloExtratoBanco('letra')} title="Duplo clique: ordenar A→Z / Z→A">Letra</th>
+                    <th
+                      ref={menuFiltroLetraExtratoRef}
+                      className={`relative text-left py-2 px-2 font-medium border-r border-slate-200 w-[8.5rem] min-w-[7rem] select-none ${
+                        filtroLetrasExtrato != null && filtroLetrasExtrato.length > 0
+                          ? 'bg-amber-50/90 text-amber-950'
+                          : 'text-slate-600'
+                      } cursor-pointer hover:bg-slate-100`}
+                      title="Clique: filtrar por letras (contas). Duplo clique: ordenar A→Z / Z→A"
+                    >
+                      <div
+                        className="flex items-center justify-start gap-1"
+                        onClick={handleClickCabecalhoLetraExtrato}
+                        onDoubleClick={handleDuploCliqueCabecalhoLetraExtrato}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            handleClickCabecalhoLetraExtrato();
+                          }
+                        }}
+                      >
+                        <span>Letra</span>
+                        {filtroLetrasExtrato != null && filtroLetrasExtrato.length > 0 ? (
+                          <span
+                            className="text-[10px] font-semibold uppercase tracking-tight text-amber-800"
+                            aria-hidden
+                          >
+                            filtro
+                          </span>
+                        ) : null}
+                      </div>
+                      {menuFiltroLetraExtratoAberto ? (
+                        <div
+                          className="absolute left-0 top-full z-[80] mt-1 w-[min(20rem,calc(100vw-2rem))] max-h-[min(70vh,22rem)] overflow-y-auto rounded-md border border-slate-200 bg-white py-2 px-2.5 text-left text-xs font-normal text-slate-800 shadow-lg"
+                          onClick={(ev) => ev.stopPropagation()}
+                          onMouseDown={(ev) => ev.stopPropagation()}
+                        >
+                          <p className="text-[11px] text-slate-500 mb-2">
+                            Exibir só lançamentos das letras marcadas (contas disponíveis).
+                          </p>
+                          <div className="flex flex-wrap gap-1.5 mb-2">
+                            <button
+                              type="button"
+                              className="rounded border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-700 hover:bg-slate-50"
+                              onClick={marcarTodasRascunhoFiltroLetraExtrato}
+                            >
+                              Marcar todas
+                            </button>
+                            <button
+                              type="button"
+                              className="rounded border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-700 hover:bg-slate-50"
+                              onClick={desmarcarTodasRascunhoFiltroLetraExtrato}
+                            >
+                              Desmarcar todas
+                            </button>
+                          </div>
+                          <ul className="space-y-1 mb-2 border-t border-slate-100 pt-2 max-h-[min(50vh,14rem)] overflow-y-auto">
+                            {letrasOrdenadasParaSelect.map((l) => {
+                              const nomeConta = letraToContaMerged[l];
+                              const inativa = nomeConta && contasContabeisInativasSet.has(nomeConta);
+                              const marcada = filtroLetrasExtratoRascunho.some(
+                                (x) => String(x).trim().toUpperCase() === l
+                              );
+                              return (
+                                <li key={l}>
+                                  <label className="flex cursor-pointer items-start gap-2 rounded px-1 py-0.5 hover:bg-slate-50">
+                                    <input
+                                      type="checkbox"
+                                      checked={marcada}
+                                      onChange={() => toggleRascunhoFiltroLetraExtrato(l)}
+                                      className="mt-0.5 rounded border-slate-300"
+                                    />
+                                    <span>
+                                      <strong>{l}</strong>
+                                      {inativa ? (
+                                        <span className="text-slate-500"> (inativa)</span>
+                                      ) : null}
+                                      {nomeConta ? (
+                                        <span className="text-slate-600"> — {nomeConta}</span>
+                                      ) : null}
+                                    </span>
+                                  </label>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                          <div className="flex flex-wrap gap-1.5 border-t border-slate-100 pt-2">
+                            <button
+                              type="button"
+                              className="rounded border border-indigo-600 bg-indigo-600 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-indigo-700"
+                              onClick={aplicarFiltroLetraExtrato}
+                            >
+                              Aplicar
+                            </button>
+                            <button
+                              type="button"
+                              className="rounded border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
+                              onClick={limparFiltroLetraExtrato}
+                            >
+                              Limpar filtro
+                            </button>
+                          </div>
+                          {filtroLetrasExtrato != null && filtroLetrasExtrato.length > 0 ? (
+                            <p className="mt-2 text-[10px] text-slate-500">
+                              Ativo: {filtroLetrasExtrato.join(', ')}
+                            </p>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </th>
                     <th className="text-left py-2 px-3 font-medium text-slate-600 border-r border-slate-200 w-16 cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloExtratoBanco('numero')} title="Duplo clique: ordenar">Nº</th>
                     <th className="text-left py-2 px-3 font-medium text-slate-600 border-r border-slate-200 w-24 cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloExtratoBanco('data')} title="Duplo clique: data mais recente primeiro; de novo: mais antiga primeiro">Data</th>
                     <th
@@ -2938,7 +3961,9 @@ export function Financeiro() {
                           onClick={(ev) => ev.stopPropagation()}
                           onMouseDown={(ev) => ev.stopPropagation()}
                         >
-                          <p className="text-[11px] text-slate-500 mb-2">Filtrar por texto na descrição</p>
+                          <p className="text-[11px] text-slate-500 mb-2">
+                            Filtrar por texto na descrição (ignora maiúsculas e acentos).
+                          </p>
                           <label className="block text-[11px] text-slate-600 mb-1" htmlFor="filtro-descricao-extrato">
                             Contém
                           </label>
@@ -3079,8 +4104,170 @@ export function Financeiro() {
                     </th>
                     <th className="text-right py-2 px-3 font-medium text-slate-600 border-r border-slate-200 min-w-[140px] cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloExtratoBanco('saldo')} title="Duplo clique: ordenar crescente ↔ decrescente">Saldo</th>
                     <th className="text-left py-2 px-3 font-medium text-slate-600 border-r border-slate-200 min-w-[120px] cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloExtratoBanco('categoria')} title="Mesmo texto que Descrição / Contraparte no consolidado. Duplo clique: ordenar A→Z / Z→A">Categoria / Obs.</th>
-                    <th className="text-center py-2 px-3 font-medium text-slate-600 border-r border-slate-200 w-20 cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloExtratoBanco('codCliente')} title="Duplo clique: ordenar">Cod. Cliente</th>
-                    <th className="text-center py-2 px-3 font-medium text-slate-600 border-r border-slate-200 w-16 cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloExtratoBanco('proc')} title="Duplo clique: ordenar">Proc.</th>
+                    <th
+                      ref={menuFiltroCodClienteExtratoRef}
+                      className={`relative text-center py-2 px-3 font-medium border-r border-slate-200 w-20 select-none ${
+                        filtroCodClienteExtrato.trim()
+                          ? 'bg-amber-50/90 text-amber-950'
+                          : 'text-slate-600'
+                      } cursor-pointer hover:bg-slate-100`}
+                      title="Clique: filtrar por código de cliente (normalizado). Duplo clique: ordenar"
+                    >
+                      <div
+                        className="flex items-center justify-center gap-1"
+                        onClick={handleClickCabecalhoCodClienteExtrato}
+                        onDoubleClick={handleDuploCliqueCabecalhoCodClienteExtrato}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            handleClickCabecalhoCodClienteExtrato();
+                          }
+                        }}
+                      >
+                        <span>Cod. Cliente</span>
+                        {filtroCodClienteExtrato.trim() ? (
+                          <span
+                            className="text-[10px] font-semibold uppercase tracking-tight text-amber-800"
+                            aria-hidden
+                          >
+                            filtro
+                          </span>
+                        ) : null}
+                      </div>
+                      {menuFiltroCodClienteExtratoAberto ? (
+                        <div
+                          className="absolute left-1/2 -translate-x-1/2 top-full z-[80] mt-1 w-[min(20rem,calc(100vw-2rem))] rounded-md border border-slate-200 bg-white py-2 px-2.5 text-left text-xs font-normal text-slate-800 shadow-lg"
+                          onClick={(ev) => ev.stopPropagation()}
+                          onMouseDown={(ev) => ev.stopPropagation()}
+                        >
+                          <p className="text-[11px] text-slate-500 mb-2">
+                            Filtrar por código de cliente (comparação normalizada, como no cadastro).
+                          </p>
+                          <label className="block text-[11px] text-slate-600 mb-1" htmlFor="filtro-cod-cliente-extrato">
+                            Código
+                          </label>
+                          <input
+                            id="filtro-cod-cliente-extrato"
+                            type="text"
+                            autoFocus
+                            placeholder="ex.: 123"
+                            value={filtroCodClienteExtratoRascunho}
+                            onChange={(e) => setFiltroCodClienteExtratoRascunho(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                aplicarFiltroCodClienteExtrato();
+                              }
+                            }}
+                            className="w-full rounded border border-slate-300 px-2 py-1.5 text-xs mb-2"
+                          />
+                          <div className="flex flex-wrap gap-1.5">
+                            <button
+                              type="button"
+                              className="rounded border border-indigo-600 bg-indigo-600 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-indigo-700"
+                              onClick={aplicarFiltroCodClienteExtrato}
+                            >
+                              Aplicar
+                            </button>
+                            <button
+                              type="button"
+                              className="rounded border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
+                              onClick={limparFiltroCodClienteExtrato}
+                            >
+                              Limpar
+                            </button>
+                          </div>
+                          {filtroCodClienteExtrato.trim() ? (
+                            <p className="mt-2 text-[10px] text-slate-500 border-t border-slate-100 pt-2">
+                              Ativo: “{filtroCodClienteExtrato}”
+                            </p>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </th>
+                    <th
+                      ref={menuFiltroProcExtratoRef}
+                      className={`relative text-center py-2 px-3 font-medium border-r border-slate-200 w-16 select-none ${
+                        filtroProcExtrato.trim() ? 'bg-amber-50/90 text-amber-950' : 'text-slate-600'
+                      } cursor-pointer hover:bg-slate-100`}
+                      title="Clique: filtrar por proc. Duplo clique: ordenar"
+                    >
+                      <div
+                        className="flex items-center justify-center gap-1"
+                        onClick={handleClickCabecalhoProcExtrato}
+                        onDoubleClick={handleDuploCliqueCabecalhoProcExtrato}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            handleClickCabecalhoProcExtrato();
+                          }
+                        }}
+                      >
+                        <span>Proc.</span>
+                        {filtroProcExtrato.trim() ? (
+                          <span
+                            className="text-[10px] font-semibold uppercase tracking-tight text-amber-800"
+                            aria-hidden
+                          >
+                            filtro
+                          </span>
+                        ) : null}
+                      </div>
+                      {menuFiltroProcExtratoAberto ? (
+                        <div
+                          className="absolute left-1/2 -translate-x-1/2 top-full z-[80] mt-1 w-[min(20rem,calc(100vw-2rem))] rounded-md border border-slate-200 bg-white py-2 px-2.5 text-left text-xs font-normal text-slate-800 shadow-lg"
+                          onClick={(ev) => ev.stopPropagation()}
+                          onMouseDown={(ev) => ev.stopPropagation()}
+                        >
+                          <p className="text-[11px] text-slate-500 mb-2">
+                            Filtrar por processo / identificador (normalizado).
+                          </p>
+                          <label className="block text-[11px] text-slate-600 mb-1" htmlFor="filtro-proc-extrato">
+                            Proc.
+                          </label>
+                          <input
+                            id="filtro-proc-extrato"
+                            type="text"
+                            autoFocus
+                            placeholder="ex.: 0001"
+                            value={filtroProcExtratoRascunho}
+                            onChange={(e) => setFiltroProcExtratoRascunho(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                aplicarFiltroProcExtrato();
+                              }
+                            }}
+                            className="w-full rounded border border-slate-300 px-2 py-1.5 text-xs mb-2"
+                          />
+                          <div className="flex flex-wrap gap-1.5">
+                            <button
+                              type="button"
+                              className="rounded border border-indigo-600 bg-indigo-600 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-indigo-700"
+                              onClick={aplicarFiltroProcExtrato}
+                            >
+                              Aplicar
+                            </button>
+                            <button
+                              type="button"
+                              className="rounded border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
+                              onClick={limparFiltroProcExtrato}
+                            >
+                              Limpar
+                            </button>
+                          </div>
+                          {filtroProcExtrato.trim() ? (
+                            <p className="mt-2 text-[10px] text-slate-500 border-t border-slate-100 pt-2">
+                              Ativo: “{filtroProcExtrato}”
+                            </p>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </th>
                     <th className="text-center py-2 px-3 font-medium text-slate-600 border-r border-slate-200 w-16 cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloExtratoBanco('ref')} title="Mesmo valor que Ref. no consolidado. Duplo clique: ordenar">Ref.</th>
                     <th className="text-center py-2 px-3 font-medium text-slate-600 border-r border-slate-200 w-20 cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloExtratoBanco('dimensao')} title="Mesmo texto que Eq. no consolidado. Duplo clique: ordenar">Dimensão</th>
                     <th className="text-center py-2 px-3 font-medium text-slate-600 w-20 cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloExtratoBanco('parcela')} title="Duplo clique: ordenar">Parcela</th>
@@ -3200,6 +4387,9 @@ export function Financeiro() {
                           type="text"
                           value={t.codCliente ?? ''}
                           onChange={(e) => updateCampoLancamento(instituicaoSelecionada, t.numero, t.data, 'codCliente', e.target.value)}
+                          onBlur={() =>
+                            flushSincronizarCodProcDebounced(instituicaoSelecionada, t.numero, t.data)
+                          }
                           className="w-16 px-1 py-0.5 text-sm text-center bg-slate-50 border border-slate-200 rounded"
                           onClick={(e) => e.stopPropagation()}
                           onDoubleClick={(e) => { e.stopPropagation(); handleDuploCliqueCodCliente(t.codCliente, t.proc); }}
@@ -3214,6 +4404,9 @@ export function Financeiro() {
                           type="text"
                           value={t.proc ?? ''}
                           onChange={(e) => updateCampoLancamento(instituicaoSelecionada, t.numero, t.data, 'proc', e.target.value)}
+                          onBlur={() =>
+                            flushSincronizarCodProcDebounced(instituicaoSelecionada, t.numero, t.data)
+                          }
                           className="w-12 px-1 py-0.5 text-sm text-center bg-slate-50 border border-slate-200 rounded"
                           onClick={(e) => e.stopPropagation()}
                           onDoubleClick={(e) => { e.stopPropagation(); handleDuploCliqueProc(t.codCliente, t.proc, t); }}
@@ -3291,7 +4484,31 @@ export function Financeiro() {
                   </div>
                 );
               }
-              if (noPeriodo > 0 && filtroDescricaoExtrato.trim() && listaExtratoAposFiltroDescricao.length === 0) {
+              if (
+                noPeriodo > 0 &&
+                filtroLetrasExtrato != null &&
+                filtroLetrasExtrato.length > 0 &&
+                listaExtratoAposFiltroLetra.length === 0
+              ) {
+                return (
+                  <div className="px-4 py-2 text-xs text-amber-900 bg-amber-50 border-t border-amber-100">
+                    Nenhum lançamento corresponde às <strong>letras</strong> selecionadas.{' '}
+                    <button
+                      type="button"
+                      className="underline font-medium text-amber-950"
+                      onClick={limparFiltroLetraExtrato}
+                    >
+                      Limpar filtro
+                    </button>
+                  </div>
+                );
+              }
+              if (
+                noPeriodo > 0 &&
+                filtroDescricaoExtrato.trim() &&
+                listaExtratoAposFiltroLetra.length > 0 &&
+                listaExtratoAposFiltroDescricao.length === 0
+              ) {
                 return (
                   <div className="px-4 py-2 text-xs text-amber-900 bg-amber-50 border-t border-amber-100">
                     Nenhum lançamento corresponde ao texto em <strong>Descrição</strong>.{' '}
@@ -3305,7 +4522,12 @@ export function Financeiro() {
                   </div>
                 );
               }
-              if (noPeriodo > 0 && total === 0 && filtroValorExtrato.kind !== 'todos') {
+              if (
+                noPeriodo > 0 &&
+                listaExtratoAposFiltroDescricao.length > 0 &&
+                total === 0 &&
+                filtroValorExtrato.kind !== 'todos'
+              ) {
                 return (
                   <div className="px-4 py-2 text-xs text-amber-900 bg-amber-50 border-t border-amber-100">
                     Nenhum lançamento corresponde ao filtro de <strong>Valor</strong>.{' '}
@@ -3325,14 +4547,19 @@ export function Financeiro() {
                 sortExtratoBanco.col === 'data' && sortExtratoBanco.dir === 'desc'
                   ? 'primeiros da lista (data mais recente primeiro)'
                   : 'últimos da lista (mais recentes no tempo)';
+              const temFiltroLetra = filtroLetrasExtrato != null && filtroLetrasExtrato.length > 0;
+              const temFiltroDesc = Boolean(filtroDescricaoExtrato.trim());
+              const temFiltroValor = filtroValorExtrato.kind !== 'todos';
+              const refBits = [];
+              if (temFiltroLetra) refBits.push('letra');
+              if (temFiltroDesc) refBits.push('descrição');
+              if (temFiltroValor) refBits.push('valor');
               const refFiltros =
-                filtroDescricaoExtrato.trim() && filtroValorExtrato.kind !== 'todos'
-                  ? 'após filtros de período, descrição e valor'
-                  : filtroDescricaoExtrato.trim()
-                    ? 'após filtros de período e descrição'
-                    : filtroValorExtrato.kind !== 'todos'
-                      ? 'após filtros de período e valor'
-                      : 'após filtro de período';
+                refBits.length === 0
+                  ? 'após filtro de período'
+                  : refBits.length === 1
+                    ? `após filtros de período e ${refBits[0]}`
+                    : `após filtros de período, ${refBits.slice(0, -1).join(', ')} e ${refBits[refBits.length - 1]}`;
               return (
                 <div className="px-4 py-2 text-xs text-slate-600 bg-slate-50 border-t border-slate-200">
                   Exibindo <strong>{vis}</strong> de <strong>{total}</strong> lançamentos ({refFiltros}) — os{' '}
@@ -3635,6 +4862,10 @@ export function Financeiro() {
                             value={t.codCliente ?? ''}
                             disabled={isContaCompensacao && t.letra === 'E'}
                             onChange={(e) => updateCampoLancamento(t.nomeBanco, t.numero, t.data, 'codCliente', e.target.value)}
+                            onBlur={() => {
+                              if (isContaCompensacao && t.letra === 'E') return;
+                              flushSincronizarCodProcDebounced(t.nomeBanco, t.numero, t.data);
+                            }}
                             className={`w-16 px-1 py-0.5 text-sm text-center border rounded ${
                               inpB
                             } ${
@@ -3658,6 +4889,10 @@ export function Financeiro() {
                             type="text"
                             value={t.proc ?? ''}
                             onChange={(e) => updateCampoLancamento(t.nomeBanco, t.numero, t.data, 'proc', e.target.value)}
+                            onBlur={() => {
+                              if (isContaCompensacao && t.letra === 'E') return;
+                              flushSincronizarCodProcDebounced(t.nomeBanco, t.numero, t.data);
+                            }}
                             className={`w-14 px-1 py-0.5 text-sm text-center bg-white border rounded ${
                               inpB
                             }`}
@@ -4027,6 +5262,226 @@ export function Financeiro() {
               >
                 Aplicar {modalParearCompensacao.pares.filter((row) => !row.eloAplicado).length} compensação(ões)
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {modalRecorrenciaMensal != null && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="modal-recorrencia-mensal-titulo"
+        >
+          <div
+            className="bg-white rounded-lg shadow-xl border border-teal-200 w-full max-w-5xl max-h-[90vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-4 py-3 border-b border-teal-200 flex items-center justify-between shrink-0">
+              <h2 id="modal-recorrencia-mensal-titulo" className="text-base font-bold text-slate-800">
+                Recorrência mensal — {modalRecorrenciaMensal.nomeBanco}
+              </h2>
+              <button
+                type="button"
+                onClick={() => setModalRecorrenciaMensal(null)}
+                className="px-2 py-1 text-slate-500 hover:bg-slate-100 rounded text-lg leading-none"
+                aria-label="Fechar"
+              >
+                ×
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto flex-1 text-sm space-y-4">
+              <p className="text-slate-600">
+                <strong>Referência:</strong> lançamentos já na letra <strong>A</strong> (Conta Escritório) com{' '}
+                <strong>Cód. cliente</strong> preenchido. <strong>Sugestão:</strong> outros lançamentos no mesmo banco
+                com a <strong>mesma descrição</strong> (texto normalizado) e o <strong>mesmo valor</strong> (centavos),
+                em <strong>datas diferentes</strong>, recebem a mesma letra, Cód. e Proc. do lançamento mais antigo
+                desse grupo. <strong>Desmarque</strong> linhas que não devem ser atualizadas antes de aplicar.
+              </p>
+              {modalRecorrenciaMensal.grupos.length === 0 ? (
+                <p className="py-6 text-center text-teal-900 bg-teal-50 rounded border border-teal-200">
+                  Nenhuma sugestão neste extrato. É preciso pelo menos um lançamento na letra <strong>A</strong> com{' '}
+                  <strong>Cód. cliente</strong> e outros com a mesma descrição e valor ainda não classificados da
+                  mesma forma.
+                </p>
+              ) : (
+                modalRecorrenciaMensal.grupos.map((g) => (
+                  <div key={g.idGrupo} className="border border-slate-200 rounded-lg overflow-hidden">
+                    <div className="bg-teal-50 px-3 py-2 border-b border-slate-200 text-xs text-slate-800 space-y-1">
+                      <div>
+                        <span className="font-semibold text-teal-900">Modelo (mais antigo):</span>{' '}
+                        <span className="tabular-nums">{g.dataReferencia}</span> ·{' '}
+                        <span className="font-medium">{formatValor(g.valor)}</span> · letra{' '}
+                        <strong>{g.letraReferencia}</strong> · Cód. <strong className="tabular-nums">{g.codCliente}</strong>
+                        {g.proc ? (
+                          <>
+                            {' '}
+                            · Proc. <strong className="tabular-nums">{g.proc}</strong>
+                          </>
+                        ) : null}
+                      </div>
+                      <div className="text-slate-600 line-clamp-2" title={g.descricaoExemplo}>
+                        {g.descricaoExemplo}
+                      </div>
+                    </div>
+                    <table className="w-full text-sm border-collapse">
+                      <thead>
+                        <tr className="bg-slate-50 border-b border-slate-200">
+                          <th className="w-10 py-2 px-2 text-center font-semibold text-slate-700">✓</th>
+                          <th className="text-left py-2 px-2 font-semibold text-slate-700">Data</th>
+                          <th className="text-right py-2 px-2 font-semibold text-slate-700">Valor</th>
+                          <th className="text-left py-2 px-2 font-semibold text-slate-700">Letra atual</th>
+                          <th className="text-left py-2 px-2 font-semibold text-slate-700">Cód. / Proc. atual</th>
+                          <th className="text-left py-2 px-2 font-semibold text-slate-700">Descrição</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {g.candidatos.map((c) => {
+                          const k = chaveCandidatoRecorrenciaModal(g, c);
+                          const marcado = modalRecorrenciaMensal.selecionados.has(k);
+                          return (
+                            <tr key={k} className="border-b border-slate-100 hover:bg-slate-50">
+                              <td className="py-2 px-2 text-center align-top">
+                                <input
+                                  type="checkbox"
+                                  checked={marcado}
+                                  onChange={() => {
+                                    setModalRecorrenciaMensal((prev) => {
+                                      if (!prev) return prev;
+                                      const next = new Set(prev.selecionados);
+                                      if (next.has(k)) next.delete(k);
+                                      else next.add(k);
+                                      return { ...prev, selecionados: next };
+                                    });
+                                  }}
+                                  aria-label={`Incluir lançamento de ${c.data}`}
+                                />
+                              </td>
+                              <td className="py-2 px-2 align-top tabular-nums whitespace-nowrap">{c.data}</td>
+                              <td className="py-2 px-2 text-right align-top tabular-nums">{formatValor(c.valor)}</td>
+                              <td className="py-2 px-2 align-top">{c.letraAtual}</td>
+                              <td className="py-2 px-2 align-top tabular-nums text-xs">
+                                {c.codAtual} / {c.procAtual}
+                              </td>
+                              <td className="py-2 px-2 align-top text-slate-700 text-xs line-clamp-2" title={c.descricao}>
+                                {c.descricao}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ))
+              )}
+            </div>
+            <div className="px-4 py-3 border-t border-slate-200 flex flex-wrap justify-between items-center gap-2 shrink-0 bg-slate-50">
+              <span className="text-xs text-slate-600">
+                {modalRecorrenciaMensal.grupos.length > 0
+                  ? `${modalRecorrenciaMensal.grupos.reduce((n, gr) => n + gr.candidatos.length, 0)} sugestão(ões) · ${
+                      [...modalRecorrenciaMensal.selecionados].length
+                    } selecionada(s)`
+                  : null}
+              </span>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setModalRecorrenciaMensal(null)}
+                  className="px-4 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-100"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  disabled={
+                    modalRecorrenciaMensal.grupos.length === 0 ||
+                    modalRecorrenciaMensal.selecionados.size === 0
+                  }
+                  onClick={async () => {
+                    const { nomeBanco, grupos, selecionados } = modalRecorrenciaMensal;
+                    const toApply = [];
+                    for (const g of grupos) {
+                      for (const c of g.candidatos) {
+                        if (selecionados.has(chaveCandidatoRecorrenciaModal(g, c))) {
+                          toApply.push({ g, c });
+                        }
+                      }
+                    }
+                    if (toApply.length === 0) return;
+                    const baseExtratos = extratosPorBanco;
+                    const snaps = [];
+                    for (const { g, c } of toApply) {
+                      const row0 = baseExtratos[nomeBanco]?.find((t) => t.numero === c.numero && t.data === c.data);
+                      if (!row0) continue;
+                      snaps.push({
+                        ...row0,
+                        nomeBanco,
+                        letra: g.letraReferencia,
+                        codCliente: g.codCliente,
+                        proc: g.proc || '',
+                        _financeiroMeta: {
+                          ...(row0._financeiroMeta || {}),
+                          clienteId: g.clienteId ?? row0._financeiroMeta?.clienteId ?? null,
+                          processoId: g.processoId ?? row0._financeiroMeta?.processoId ?? null,
+                        },
+                      });
+                    }
+                    if (snaps.length === 0) return;
+                    setExtratosPorBanco((prev) => {
+                      const next = cloneExtratos(prev);
+                      const list = next[nomeBanco];
+                      if (!Array.isArray(list)) return prev;
+                      for (const rc of snaps) {
+                        const i = list.findIndex((t) => t.numero === rc.numero && t.data === rc.data);
+                        if (i >= 0) {
+                          list[i] = {
+                            ...list[i],
+                            letra: rc.letra,
+                            codCliente: rc.codCliente,
+                            proc: rc.proc,
+                            _financeiroMeta: {
+                              ...(list[i]._financeiroMeta || {}),
+                              ...rc._financeiroMeta,
+                            },
+                          };
+                        }
+                      }
+                      return next;
+                    });
+                    setModalRecorrenciaMensal(null);
+                    const letraAplicada = snaps[0]?.letra ?? 'A';
+                    if (featureFlags.useApiFinanceiro) {
+                      setOfxStatus({
+                        kind: 'loading',
+                        message: `A gravar ${snaps.length} lançamento(s) na API…`,
+                      });
+                      try {
+                        for (const rc of snaps) {
+                          await sincronizarLancamentoApi(nomeBanco, rc.numero, rc.data, rc);
+                        }
+                        setOfxStatus({
+                          kind: 'success',
+                          message: `${snaps.length} lançamento(s) classificados (letra ${letraAplicada}, mesmo Cód./Proc. do modelo).`,
+                        });
+                      } catch (e) {
+                        setOfxStatus({
+                          kind: 'error',
+                          message: e?.message || 'Falha ao sincronizar recorrência com a API.',
+                        });
+                      }
+                    } else {
+                      setOfxStatus({
+                        kind: 'success',
+                        message: `${snaps.length} lançamento(s) atualizados localmente (letra ${letraAplicada}).`,
+                      });
+                    }
+                  }}
+                  className="px-4 py-2 rounded bg-teal-600 text-white text-sm font-semibold hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Aplicar seleção
+                </button>
+              </div>
             </div>
           </div>
         </div>

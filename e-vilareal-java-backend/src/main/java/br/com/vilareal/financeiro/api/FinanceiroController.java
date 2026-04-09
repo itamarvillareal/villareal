@@ -108,4 +108,10 @@ public class FinanceiroController {
         financeiroService.removerLancamento(id);
         return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
     }
+
+    @PostMapping("/lancamentos/limpar-extrato-cora")
+    @Operation(description = "Remove lançamentos do banco CORA e desfaz elo_financeiro_id nos demais bancos que compartilhavam o mesmo elo (conta → N).")
+    public LimparExtratoCoraResult limparExtratoCoraEElosRelacionados() {
+        return financeiroService.limparExtratoCoraEElosRelacionados();
+    }
 }

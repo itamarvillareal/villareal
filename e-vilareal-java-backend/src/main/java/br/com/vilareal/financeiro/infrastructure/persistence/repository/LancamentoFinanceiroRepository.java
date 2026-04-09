@@ -12,10 +12,25 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.math.BigDecimal;
+import java.util.Collection;
 import java.util.List;
 
 public interface LancamentoFinanceiroRepository extends JpaRepository<LancamentoFinanceiroEntity, Long>,
         JpaSpecificationExecutor<LancamentoFinanceiroEntity> {
+
+    @Query("""
+            SELECT DISTINCT l.eloFinanceiroId FROM LancamentoFinanceiroEntity l
+            WHERE UPPER(TRIM(COALESCE(l.bancoNome, ''))) = :bn AND l.eloFinanceiroId IS NOT NULL
+            """)
+    List<Long> findDistinctEloFinanceiroIdsByBancoNormalizado(@Param("bn") String bancoNormalizado);
+
+    List<LancamentoFinanceiroEntity> findByEloFinanceiroIdIn(Collection<Long> eloIds);
+
+    @Query("""
+            FROM LancamentoFinanceiroEntity l
+            WHERE UPPER(TRIM(COALESCE(l.bancoNome, ''))) = :bn
+            """)
+    List<LancamentoFinanceiroEntity> findAllByBancoNormalizado(@Param("bn") String bancoNormalizado);
 
     @EntityGraph(attributePaths = {"contaContabil", "cliente", "processo"})
     @Override

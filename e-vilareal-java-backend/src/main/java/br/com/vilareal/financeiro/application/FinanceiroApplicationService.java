@@ -22,6 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 @Service
@@ -134,6 +135,44 @@ public class FinanceiroApplicationService {
             throw new ResourceNotFoundException("Lançamento não encontrado: " + id);
         }
         lancamentoRepository.deleteById(id);
+    }
+
+    /**
+     * Apaga todos os lançamentos do extrato Cora e remove o vínculo de compensação ({@code elo_financeiro_id})
+     * em qualquer outro banco que compartilhava o mesmo elo com algum lançamento Cora.
+     */
+    @Transactional
+    public LimparExtratoCoraResult limparExtratoCoraEElosRelacionados() {
+        ContaContabilEntity contaN = contaContabilRepository.findFirstByCodigoIgnoreCase("N")
+                .orElseThrow(() -> new ResourceNotFoundException("Conta contábil com código «N» não encontrada."));
+        final String bancoNorm = "CORA";
+        List<Long> eloIds = lancamentoRepository.findDistinctEloFinanceiroIdsByBancoNormalizado(bancoNorm).stream()
+                .filter(Objects::nonNull)
+                .distinct()
+                .collect(Collectors.toList());
+        int desvinculados = 0;
+        if (!eloIds.isEmpty()) {
+            List<LancamentoFinanceiroEntity> comElos = lancamentoRepository.findByEloFinanceiroIdIn(eloIds);
+            for (LancamentoFinanceiroEntity l : comElos) {
+                l.setEloFinanceiroId(null);
+                l.setContaContabil(contaN);
+                l.setCliente(null);
+                l.setProcesso(null);
+                l.setEqReferencia(null);
+            }
+            lancamentoRepository.saveAll(comElos);
+            desvinculados = (int) comElos.stream()
+                    .filter(l -> l.getBancoNome() == null
+                            || !bancoNorm.equalsIgnoreCase(l.getBancoNome().trim()))
+                    .count();
+        }
+        List<LancamentoFinanceiroEntity> cora = lancamentoRepository.findAllByBancoNormalizado(bancoNorm);
+        int removidos = cora.size();
+        lancamentoRepository.deleteAllInBatch(cora);
+        LimparExtratoCoraResult r = new LimparExtratoCoraResult();
+        r.setLancamentosRemovidosCora(removidos);
+        r.setLancamentosDesvinculadosOutrosBancos(desvinculados);
+        return r;
     }
 
     @Transactional(readOnly = true)

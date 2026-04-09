@@ -483,7 +483,10 @@ export function proximoNumeroContaBanco(contasExtras) {
   return maxNumeroBancoCadastrado(contasExtras) + 1;
 }
 
-/** Mapa nome → número para o consolidado (base + contas adicionadas pelo usuário). */
+/**
+ * Mapa nome → número para o consolidado (base + contas adicionadas pelo usuário).
+ * Retorna um objeto simples (`Record`), não uma instância de `Map` — use `map[nome]`, não `map.get(nome)`.
+ */
 export function buildNumeroBancoMap(contasExtrasList) {
   const map = { ...BANCO_TO_NUMERO };
   for (const c of contasExtrasList || []) {
@@ -714,7 +717,8 @@ function valoresCompensamExatos(v1, v2) {
 
 function maiorIdParCompensacao(extratosPorBanco) {
   let m = 0;
-  for (const list of Object.values(extratosPorBanco)) {
+  for (const list of Object.values(extratosPorBanco || {})) {
+    if (!Array.isArray(list)) continue;
     for (const t of list) {
       if (t.letra !== 'E') continue;
       const ps = String(t.proc ?? '').trim();
@@ -741,7 +745,8 @@ function lancamentoElegivelParearCompensacao(t) {
 /** Pool de lançamentos elegíveis a compensação (mesma regra para detectar e aplicar). */
 function montarPoolCompensacao(next) {
   const flat = [];
-  for (const [nomeBanco, list] of Object.entries(next)) {
+  for (const [nomeBanco, list] of Object.entries(next || {})) {
+    if (!Array.isArray(list)) continue;
     list.forEach((t, idx) => {
       if (!lancamentoElegivelParearCompensacao(t)) return;
       flat.push({ nomeBanco, idx, t, k: `${nomeBanco}|${t.numero}|${t.data}` });
@@ -798,6 +803,119 @@ export function detectarParesCompensacao(extratosPorBanco) {
   return pares;
 }
 
+function normalizarTextoRecorrenciaMensal(s) {
+  return String(s ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
+function dataBrParaSortIso(dataStr) {
+  const s = String(dataStr ?? '').trim();
+  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/.exec(s);
+  if (!m) return s || '9999-99-99';
+  const d = m[1].padStart(2, '0');
+  const mo = m[2].padStart(2, '0');
+  let y = m[3];
+  if (y.length === 2) y = `20${y}`;
+  return `${y}-${mo}-${d}`;
+}
+
+/**
+ * Sugestões para repetir classificação em lançamentos do **mesmo banco**: usa um lançamento de referência
+ * (letra A + Cód. cliente preenchido, ex.: Conta Escritório já identificado) e encontra outros com a mesma
+ * descrição normalizada e o mesmo valor (ex.: mensalidades em meses diferentes).
+ *
+ * @param {unknown[]} lista extrato de um único banco
+ * @param {{ letraReferencia?: string }} [opts] por defeito **A** (Conta Escritório)
+ * @returns {Array<{ idGrupo: string; letraReferencia: string; codCliente: string; proc: string; clienteId: number | null; processoId: number | null; descricaoExemplo: string; dataReferencia: string; valor: number; candidatos: Array<{ idx: number; numero: string; data: string; descricao: string; valor: number; letraAtual: string; codAtual: string; procAtual: string }> }>}
+ */
+export function detectarSugestoesRecorrenciaMensalNoBanco(lista, opts = {}) {
+  const letraRef = String(opts.letraReferencia ?? 'A').trim().toUpperCase() || 'A';
+  const arr = Array.isArray(lista) ? lista : [];
+  const templates = new Map();
+
+  for (const t of arr) {
+    const L = String(t?.letra ?? '').trim().toUpperCase();
+    if (L !== letraRef) continue;
+    const cod = normalizarCodigoClienteFinanceiro(t?.codCliente);
+    if (!cod) continue;
+    const c = centavos(t?.valor);
+    if (c == null || c === 0) continue;
+    const descNorm = normalizarTextoRecorrenciaMensal(t?.descricao);
+    if (!descNorm) continue;
+    const k = `${descNorm}|${c}`;
+    const proc = normalizarProcFinanceiro(t?.proc) || '';
+    const mid = t?._financeiroMeta || {};
+    const clienteIdN = Number(mid.clienteId);
+    const processoIdN = Number(mid.processoId);
+    const clienteId = Number.isFinite(clienteIdN) && clienteIdN > 0 ? clienteIdN : null;
+    const processoId = Number.isFinite(processoIdN) && processoIdN > 0 ? processoIdN : null;
+    const cur = templates.get(k);
+    const iso = dataBrParaSortIso(t?.data);
+    if (!cur || iso < dataBrParaSortIso(cur.ancData)) {
+      templates.set(k, {
+        descNorm,
+        c,
+        letraRef,
+        cod,
+        proc,
+        clienteId,
+        processoId,
+        ancNum: String(t.numero ?? ''),
+        ancData: String(t.data ?? ''),
+        ancDesc: String(t.descricao ?? ''),
+        ancValor: Number(t.valor),
+      });
+    }
+  }
+
+  const grupos = [];
+  for (const tmpl of templates.values()) {
+    const ancKey = `${tmpl.ancNum}|${tmpl.ancData}|${tmpl.c}`;
+    const candidatos = [];
+    for (let idx = 0; idx < arr.length; idx++) {
+      const u = arr[idx];
+      const c = centavos(u?.valor);
+      if (c !== tmpl.c) continue;
+      const d = normalizarTextoRecorrenciaMensal(u?.descricao);
+      if (d !== tmpl.descNorm) continue;
+      const uk = `${String(u.numero ?? '')}|${String(u.data ?? '')}|${c}`;
+      if (uk === ancKey) continue;
+      const uLet = String(u?.letra ?? '').trim().toUpperCase();
+      const uCod = normalizarCodigoClienteFinanceiro(u?.codCliente);
+      const uProc = normalizarProcFinanceiro(u?.proc) || '';
+      const tmplProc = tmpl.proc || '';
+      if (uLet === letraRef && uCod === tmpl.cod && uProc === tmplProc) continue;
+      candidatos.push({
+        idx,
+        numero: String(u.numero ?? ''),
+        data: String(u.data ?? ''),
+        descricao: String(u.descricao ?? ''),
+        valor: Number(u.valor),
+        letraAtual: uLet || '—',
+        codAtual: uCod || '—',
+        procAtual: uProc || '—',
+      });
+    }
+    if (candidatos.length === 0) continue;
+    grupos.push({
+      idGrupo: `${tmpl.descNorm}|${tmpl.c}`,
+      letraReferencia: tmpl.letraRef,
+      codCliente: tmpl.cod,
+      proc: tmpl.proc,
+      clienteId: tmpl.clienteId,
+      processoId: tmpl.processoId,
+      descricaoExemplo: tmpl.ancDesc,
+      dataReferencia: tmpl.ancData,
+      valor: tmpl.ancValor,
+      candidatos,
+    });
+  }
+  grupos.sort((a, b) => a.descricaoExemplo.localeCompare(b.descricaoExemplo, 'pt-BR'));
+  return grupos;
+}
+
 function aplicarTagParCompensacaoEmLancamento(t) {
   const det = (t.descricaoDetalhada || t.categoria || '').trim();
   const tag = '[Par compensação]';
@@ -823,7 +941,8 @@ function removerTagParCompensacaoEmLancamento(t) {
 /** E em compensação sem proc. numérico vira ?1, ?2… */
 function renormalizarOrfaosCompensacao(next) {
   let orphanSeq = 0;
-  for (const list of Object.values(next)) {
+  for (const list of Object.values(next || {})) {
+    if (!Array.isArray(list)) continue;
     for (const t of list) {
       if (t.letra !== 'E') continue;
       const p = String(t.proc || '').trim();
@@ -931,6 +1050,65 @@ export function reverterUmParCompensacaoInterbancaria(extratosPorBanco, par, elo
   }
   renormalizarOrfaosCompensacao(next);
   return { ok: true, extratos: next };
+}
+
+const NOME_BANCO_CORA = 'CORA';
+
+/**
+ * Remove o extrato Cora e desfaz nos outros bancos os vínculos de compensação (letra E, proc, tag,
+ * {@code eloFinanceiroId} em {@code _financeiroMeta}) que coincidiam com lançamentos Cora.
+ * Não grava no storage — chame {@link savePersistedExtratosFinanceiro} se usar modo só local.
+ *
+ * @param {Record<string, unknown[]>} extratosPorBanco
+ * @returns {Record<string, unknown[]>}
+ */
+export function limparExtratoCoraEElosRelacionados(extratosPorBanco) {
+  const next = cloneExtratos(extratosPorBanco || {});
+  const coraKey = Object.keys(next).find((k) => String(k).toUpperCase() === NOME_BANCO_CORA);
+  const listaCora = coraKey ? next[coraKey] : [];
+  const eloIds = new Set();
+  const eloProcs = new Set();
+  if (Array.isArray(listaCora)) {
+    for (const t of listaCora) {
+      const eid = Number(t?._financeiroMeta?.eloFinanceiroId);
+      if (Number.isFinite(eid) && eid > 0) {
+        eloIds.add(eid);
+      }
+      const p = String(t?.proc ?? '').trim();
+      if (/^\d{4}$/.test(p)) {
+        eloProcs.add(p);
+      }
+    }
+  }
+  for (const [nome, list] of Object.entries(next)) {
+    if (String(nome).toUpperCase() === NOME_BANCO_CORA) {
+      continue;
+    }
+    if (!Array.isArray(list)) {
+      continue;
+    }
+    for (const t of list) {
+      const eid = Number(t?._financeiroMeta?.eloFinanceiroId);
+      const hitElo = Number.isFinite(eid) && eid > 0 && eloIds.has(eid);
+      const p = String(t?.proc ?? '').trim();
+      const hitProc = /^\d{4}$/.test(p) && eloProcs.has(p);
+      if (!hitElo && !hitProc) {
+        continue;
+      }
+      t.letra = 'N';
+      t.proc = '';
+      t.codCliente = '';
+      t.eq = '';
+      t.dimensao = '';
+      t._financeiroMeta = { ...(t._financeiroMeta || {}), eloFinanceiroId: null };
+      removerTagParCompensacaoEmLancamento(t);
+    }
+  }
+  if (coraKey) {
+    next[coraKey] = [];
+  }
+  renormalizarOrfaosCompensacao(next);
+  return next;
 }
 
 /**
@@ -1045,7 +1223,8 @@ export function getTransacoesConsolidadas(extratosPorBanco, contaContabilNome, n
   if (!letra) return [];
   const letraU = String(letra).trim().toUpperCase();
   const lista = [];
-  for (const [nomeBanco, transacoes] of Object.entries(extratosPorBanco)) {
+  for (const [nomeBanco, transacoes] of Object.entries(extratosPorBanco || {})) {
+    if (!Array.isArray(transacoes)) continue;
     for (const t of transacoes) {
       if (String(t.letra ?? '').trim().toUpperCase() === letraU) {
         lista.push({
@@ -1099,6 +1278,23 @@ export function filtrarTransacoesPorClienteProc(lista, codigoCliente, processo) 
     filtrado = filtrado.filter((t) => normalizarProcFinanceiro(t.proc) === procNorm);
   }
   return filtrado;
+}
+
+/**
+ * Filtro pelos cabeçalhos Cod. Cliente e Proc. (extrato bancário e consolidado).
+ * Critério vazio não restringe; com ambos preenchidos, a linha deve satisfazer os dois.
+ * Comparação pela normalização numérica (ex.: {@code 7} e {@code 00000007} coincidem).
+ */
+export function filtrarLancamentosPorCabecalhoCodClienteProc(lista, filtroCodCliente, filtroProc) {
+  if (!Array.isArray(lista)) return [];
+  const codF = normalizarCodigoClienteFinanceiro(filtroCodCliente);
+  const procF = normalizarProcFinanceiro(filtroProc);
+  if (!codF && !procF) return lista;
+  return lista.filter((t) => {
+    if (codF && normalizarCodigoClienteFinanceiro(t.codCliente) !== codF) return false;
+    if (procF && normalizarProcFinanceiro(t.proc) !== procF) return false;
+    return true;
+  });
 }
 
 /**

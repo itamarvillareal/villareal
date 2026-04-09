@@ -14,7 +14,11 @@ import {
   savePersistedExtratosFinanceiro,
 } from '../data/financeiroData.js';
 import { resolverProcessoId } from './processosRepository.js';
-import { chaveDedupeLancamento, listarLancamentosNovosDedupe } from '../utils/ofx.js';
+import {
+  chaveDedupeLancamento,
+  listarLancamentosNovosDedupe,
+  sanitizarLancamentoImportacaoExtrato,
+} from '../utils/ofx.js';
 
 function parseBrDateToIso(v) {
   const s = String(v ?? '').trim();
@@ -69,26 +73,56 @@ function procExibicaoDesdeApi(l) {
 }
 
 /**
+ * True se o DTO da API já tem vínculo (edição / modal «Vincular»). Import OFX/PDF só zera colunas quando isto é falso.
+ */
+function apiDtoTemVinculoClienteOuProcesso(dto) {
+  if (!dto) return false;
+  const cid = Number(dto.clienteId);
+  const pid = Number(dto.processoId);
+  if (Number.isFinite(cid) && cid > 0) return true;
+  if (Number.isFinite(pid) && pid > 0) return true;
+  if (codClienteExibicaoDesdeApi(dto) !== '') return true;
+  if (procExibicaoDesdeApi(dto) !== '') return true;
+  return false;
+}
+
+/**
  * Após POST/PUT: mantém `codCliente`/`proc` como exibição (API) e não só ids em `_financeiroMeta`.
+ * Origem OFX/PDF sem vínculo na API: não reaplica colunas só do ficheiro; com vínculo gravado, exibe o que a API devolveu.
  */
 export function mergeUiLancamentoComRespostaApi(row, saved) {
   if (!saved || saved.id == null) return row;
+  const fromArquivo = /^(OFX|PDF)$/i.test(String(saved?.origem ?? row.origemImportacao ?? '').trim());
+  const mascaraSoArquivoSemVinculo = fromArquivo && !apiDtoTemVinculoClienteOuProcesso(saved);
   const codApi = codClienteExibicaoDesdeApi(saved);
   const procApi = procExibicaoDesdeApi(saved);
   return {
     ...row,
     apiId: Number(saved.id),
-    codCliente: codApi !== '' ? codApi : String(row.codCliente ?? '').trim(),
-    proc: procApi !== '' ? procApi : String(row.proc ?? '').trim(),
+    origemImportacao: String(saved.origem ?? row.origemImportacao ?? '').trim(),
+    codCliente: mascaraSoArquivoSemVinculo
+      ? ''
+      : codApi !== ''
+        ? codApi
+        : String(row.codCliente ?? '').trim(),
+    proc: mascaraSoArquivoSemVinculo ? '' : procApi !== '' ? procApi : String(row.proc ?? '').trim(),
+    ref: mascaraSoArquivoSemVinculo ? '' : row.ref,
+    dimensao: mascaraSoArquivoSemVinculo ? '' : row.dimensao,
+    eq: mascaraSoArquivoSemVinculo ? '' : row.eq,
+    parcela: mascaraSoArquivoSemVinculo ? '' : row.parcela,
+    categoria: mascaraSoArquivoSemVinculo ? '' : row.categoria,
     numeroBanco: saved.numeroBanco ?? row.numeroBanco ?? null,
     _financeiroMeta: {
       ...(row._financeiroMeta || {}),
-      clienteId: saved.clienteId ?? row._financeiroMeta?.clienteId ?? null,
-      processoId: saved.processoId ?? row._financeiroMeta?.processoId ?? null,
+      clienteId: mascaraSoArquivoSemVinculo ? null : saved.clienteId ?? row._financeiroMeta?.clienteId ?? null,
+      processoId: mascaraSoArquivoSemVinculo ? null : saved.processoId ?? row._financeiroMeta?.processoId ?? null,
       contaContabilId: saved.contaContabilId ?? row._financeiroMeta?.contaContabilId ?? null,
-      classificacaoFinanceiraId:
-        saved.classificacaoFinanceiraId ?? row._financeiroMeta?.classificacaoFinanceiraId ?? null,
-      eloFinanceiroId: saved.eloFinanceiroId ?? row._financeiroMeta?.eloFinanceiroId ?? null,
+      classificacaoFinanceiraId: mascaraSoArquivoSemVinculo
+        ? null
+        : saved.classificacaoFinanceiraId ?? row._financeiroMeta?.classificacaoFinanceiraId ?? null,
+      eloFinanceiroId: mascaraSoArquivoSemVinculo
+        ? null
+        : saved.eloFinanceiroId ?? row._financeiroMeta?.eloFinanceiroId ?? null,
     },
   };
 }
@@ -97,7 +131,9 @@ function mapApiLancamentoToUi(l, contaToLetra) {
   const letra = contaToLetra[l.contaContabilNome] || 'N';
   const valorNum = Number(l.valor ?? 0);
   const sinal = String(l.natureza ?? '').toUpperCase() === 'DEBITO' ? -1 : 1;
-  return {
+  const origemImportacao = String(l.origem ?? '').trim();
+  const fromArquivo = /^(OFX|PDF)$/i.test(origemImportacao);
+  const base = {
     apiId: l.id,
     letra,
     numero: String(l.numeroLancamento ?? ''),
@@ -118,12 +154,33 @@ function mapApiLancamentoToUi(l, contaToLetra) {
     parcela: String(l.parcelaRef ?? ''),
     nomeBanco: String(l.bancoNome ?? ''),
     numeroBanco: l.numeroBanco ?? null,
+    origemImportacao,
     _financeiroMeta: {
       clienteId: l.clienteId ?? null,
       processoId: l.processoId ?? null,
       contaContabilId: l.contaContabilId ?? null,
       classificacaoFinanceiraId: l.classificacaoFinanceiraId ?? null,
       eloFinanceiroId: l.eloFinanceiroId ?? null,
+    },
+  };
+  if (!fromArquivo || apiDtoTemVinculoClienteOuProcesso(l)) return base;
+  return {
+    ...base,
+    codCliente: '',
+    proc: '',
+    ref: '',
+    dimensao: '',
+    eq: '',
+    parcela: '',
+    categoria: '',
+    clienteId: null,
+    processoId: null,
+    _financeiroMeta: {
+      ...base._financeiroMeta,
+      clienteId: null,
+      processoId: null,
+      eloFinanceiroId: null,
+      classificacaoFinanceiraId: null,
     },
   };
 }
@@ -215,6 +272,9 @@ export async function carregarExtratosFinanceiroApiFirst() {
   };
   const numeroToNome = buildNumeroToNomeBancoMap(loadPersistedContasExtrasFinanceiro());
   const out = {};
+  for (const b of Object.keys(getExtratosIniciais())) {
+    out[b] = [];
+  }
   for (const l of lancs || []) {
     const banco = nomeBancoChaveExtrato(l, numeroToNome);
     if (!Array.isArray(out[banco])) out[banco] = [];
@@ -246,6 +306,7 @@ export async function persistirImportacaoOfxFinanceiroApi({
   modo,
   transacoesOfx,
   transacoesAntesNoBanco,
+  origemImportacao = 'OFX',
 }) {
   if (!featureFlags.useApiFinanceiro) {
     return { ok: true, criados: 0, removidos: 0, erros: [], savedPairs: [] };
@@ -282,12 +343,12 @@ export async function persistirImportacaoOfxFinanceiroApi({
     numeroBanco != null && Number.isFinite(Number(numeroBanco)) ? Number(numeroBanco) : null;
 
   for (const row of paraCriar) {
-    const t = {
+    const t = sanitizarLancamentoImportacaoExtrato({
       ...row,
       nomeBanco: normBanco,
       numeroBanco: nb,
-      origemImportacao: 'OFX',
-    };
+      origemImportacao: String(origemImportacao || 'OFX').trim() || 'OFX',
+    });
     try {
       const saved = await salvarOuAtualizarLancamentoFinanceiroApi(t);
       if (saved?.id) {
@@ -315,6 +376,17 @@ export async function persistirImportacaoOfxFinanceiroApi({
 export async function removerLancamentoFinanceiroApi(apiId) {
   if (!featureFlags.useApiFinanceiro || !Number(apiId)) return;
   await request(`/api/financeiro/lancamentos/${Number(apiId)}`, { method: 'DELETE' });
+}
+
+/**
+ * Apaga na API todos os lançamentos do extrato CORA e desfaz elos de compensação nos outros bancos.
+ * Com `useApiFinanceiro` desligado, não chama o servidor (use limpeza local em `financeiroData`).
+ */
+export async function limparExtratoCoraFinanceiroApi() {
+  if (!featureFlags.useApiFinanceiro) {
+    return { lancamentosRemovidosCora: 0, lancamentosDesvinculadosOutrosBancos: 0 };
+  }
+  return request('/api/financeiro/lancamentos/limpar-extrato-cora', { method: 'POST' });
 }
 
 export async function carregarResumoContaCorrenteProcesso(processoId) {
