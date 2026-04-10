@@ -1,6 +1,7 @@
 package br.com.vilareal.importacao.api;
 
 import br.com.vilareal.common.exception.BusinessRuleException;
+import br.com.vilareal.importacao.ComplementaresProcessosImportService;
 import br.com.vilareal.importacao.ImportClientesPlanilhaService;
 import br.com.vilareal.importacao.InformacoesProcessosImportService;
 import br.com.vilareal.importacao.Pasta1ClientePessoaImportService;
@@ -34,6 +35,7 @@ import java.nio.file.Paths;
 public class ImportacaoController {
 
     private final InformacoesProcessosImportService informacoesProcessosImportService;
+    private final ComplementaresProcessosImportService complementaresProcessosImportService;
     private final Pasta1ClientePessoaReader pasta1ClientePessoaReader;
     private final Pasta1ClientePessoaImportService pasta1ClientePessoaImportService;
     private final ImportClientesPlanilhaService importClientesPlanilhaService;
@@ -44,11 +46,13 @@ public class ImportacaoController {
 
     public ImportacaoController(
             InformacoesProcessosImportService informacoesProcessosImportService,
+            ComplementaresProcessosImportService complementaresProcessosImportService,
             Pasta1ClientePessoaReader pasta1ClientePessoaReader,
             Pasta1ClientePessoaImportService pasta1ClientePessoaImportService,
             ImportClientesPlanilhaService importClientesPlanilhaService,
             ProcessosInativarPlanilhaService processosInativarPlanilhaService) {
         this.informacoesProcessosImportService = informacoesProcessosImportService;
+        this.complementaresProcessosImportService = complementaresProcessosImportService;
         this.pasta1ClientePessoaReader = pasta1ClientePessoaReader;
         this.pasta1ClientePessoaImportService = pasta1ClientePessoaImportService;
         this.importClientesPlanilhaService = importClientesPlanilhaService;
@@ -87,6 +91,52 @@ public class ImportacaoController {
             return informacoesProcessosImportService.importarDeArquivo(Path.of(pathParam.trim()));
         }
         return informacoesProcessosImportService.importarDeArquivo(null);
+    }
+
+    @PostMapping(value = "/complementares-processos", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(
+            summary = "Importar dados complementares do processo (multipart)",
+            description =
+                    "Planilha: linha 1 cabeçalho; A=código cliente, B=proc., C=obs. processo, D=cidade, E=UF, F=competência, G=data protocolo, H=procedimento, I=responsável, J=valor causa, K=obs. fase, L=prazo fatal. "
+                            + "Atualiza só o cabeçalho do processo (não apaga partes). Campo `file` opcional; sem ficheiro usa `path` ou `vilareal.import.complementares-processos.path`.")
+    public ImportacaoInformacoesProcessosResponse importarComplementaresMultipart(
+            @RequestParam(value = "file", required = false) MultipartFile file,
+            @RequestParam(value = "path", required = false) String pathParam) {
+        if (file != null && !file.isEmpty()) {
+            try {
+                String on = file.getOriginalFilename() != null ? file.getOriginalFilename() : "";
+                String suf =
+                        on.toLowerCase().endsWith(".xlsx")
+                                ? ".xlsx"
+                                : on.toLowerCase().endsWith(".xls") ? ".xls" : ".bin";
+                Path temp = Files.createTempFile("vilareal-import-complementares-", suf);
+                try {
+                    file.transferTo(temp);
+                    return complementaresProcessosImportService.importarDeArquivo(temp);
+                } finally {
+                    Files.deleteIfExists(temp);
+                }
+            } catch (IOException e) {
+                throw new BusinessRuleException("Falha ao gravar ficheiro temporário: " + e.getMessage());
+            }
+        }
+        if (StringUtils.hasText(pathParam)) {
+            return complementaresProcessosImportService.importarDeArquivo(Path.of(pathParam.trim()));
+        }
+        return complementaresProcessosImportService.importarDeArquivo(null);
+    }
+
+    @PostMapping("/complementares-processos")
+    @Operation(
+            summary = "Importar dados complementares do processo (path)",
+            description =
+                    "Query `path` opcional; senão `vilareal.import.complementares-processos.path`; senão ~/Dropbox/COMUM/Dados Complentares Processos.xlsx")
+    public ImportacaoInformacoesProcessosResponse importarComplementaresPorPath(
+            @RequestParam(value = "path", required = false) String pathParam) {
+        if (StringUtils.hasText(pathParam)) {
+            return complementaresProcessosImportService.importarDeArquivo(Path.of(pathParam.trim()));
+        }
+        return complementaresProcessosImportService.importarDeArquivo(null);
     }
 
     @PostMapping(value = "/processos-inativar", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)

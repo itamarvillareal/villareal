@@ -46,6 +46,14 @@ if [[ ! -d "$WEB_ROOT" ]]; then
   exit 1
 fi
 
+# Login API (igual ao bloco mais abaixo; precisa existir antes do preflight e do DELETE).
+KARLA_LOGIN_PADRAO='karla.pedroza'
+if [[ -n "${VILAREAL_IMPORT_AS_KARLA:-}" ]]; then
+  IMPORT_LOGIN="${VILAREAL_IMPORT_LOGIN:-itamar}"
+else
+  IMPORT_LOGIN="${VILAREAL_IMPORT_LOGIN:-$KARLA_LOGIN_PADRAO}"
+fi
+
 mysql_exec() {
   if [[ -n "${MYSQL_PWD:-}" ]]; then
     mysql -u "$MYSQL_USER" -p"$MYSQL_PWD" "$MYSQL_DB" "$@"
@@ -54,23 +62,38 @@ mysql_exec() {
   fi
 }
 
+echo "→ A testar login na API ($IMPORT_LOGIN) antes de apagar eventos…"
+cd "$WEB_ROOT"
+export VILAREAL_IMPORT_SENHA
+export IMPORT_LOGIN
+if ! node --input-type=module -e "
+const base = (process.env.VILAREAL_API_BASE || 'http://localhost:8080').replace(/\/\$/, '');
+const login = String(process.env.IMPORT_LOGIN || '').trim().toLowerCase();
+const senha = process.env.VILAREAL_IMPORT_SENHA || '';
+const r = await fetch(base + '/api/auth/login', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ login, senha }),
+});
+if (!r.ok) {
+  const t = await r.text();
+  console.error('Login falhou:', r.status, t);
+  process.exit(1);
+}
+process.exit(0);
+" 2>&1; then
+  echo "Erro: corrija VILAREAL_IMPORT_SENHA e/ou VILAREAL_IMPORT_LOGIN (deve ser o valor de usuarios.login)." >&2
+  echo "Consulta: mysql -e \"SELECT id, login FROM usuarios WHERE id = ${KARLA_USUARIO_ID} OR login LIKE '%karla%';\"" >&2
+  exit 1
+fi
+
 echo "→ A apagar eventos de agenda do utilizador id=$KARLA_USUARIO_ID ($MYSQL_DB)…"
 mysql_exec -e "START TRANSACTION; DELETE FROM agenda_evento WHERE usuario_id = ${KARLA_USUARIO_ID}; COMMIT;"
 COUNT=$(mysql_exec -Nse "SELECT COUNT(*) FROM agenda_evento WHERE usuario_id = ${KARLA_USUARIO_ID};")
 echo "→ Eventos restantes deste utilizador: $COUNT"
 
-# Sempre grava em usuario_id=KARLA_USUARIO_ID (padrão 2).
-KARLA_LOGIN_PADRAO='karla.pedroza@villarealadvocacia.adv.br'
-if [[ -n "${VILAREAL_IMPORT_AS_KARLA:-}" ]]; then
-  # JWT do operador; corpo com usuario_id da Karla (se a API permitir).
-  IMPORT_LOGIN="${VILAREAL_IMPORT_LOGIN:-itamar}"
-else
-  IMPORT_LOGIN="${VILAREAL_IMPORT_LOGIN:-$KARLA_LOGIN_PADRAO}"
-fi
-
+# Sempre grava em usuario_id=KARLA_USUARIO_ID (padrão 2). Login = usuarios.login (típico: karla.pedroza).
 echo "→ A importar: $XLSX_PATH (login API: $IMPORT_LOGIN, usuario_id: $KARLA_USUARIO_ID)"
-cd "$WEB_ROOT"
-export VILAREAL_IMPORT_SENHA
 node scripts/import-agenda-planilha.mjs "$XLSX_PATH" --layout=total --login="$IMPORT_LOGIN" --usuario-id="${KARLA_USUARIO_ID}"
 
 echo "→ Concluído. Recarregue a Agenda no browser (VITE_USE_API_AGENDA=true)."

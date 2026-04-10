@@ -5,6 +5,7 @@ import {
   FolderOpen,
   ChevronLeft,
   ChevronRight,
+  ChevronsRight,
   SlidersHorizontal,
   PlusCircle,
   X,
@@ -18,6 +19,9 @@ import {
   saveCadastroClienteDados,
   mergeProcessosLista,
   loadUltimoCodigoCliente,
+  saveUltimoCodigoCliente,
+  resolverCodigoClienteInicial,
+  coletarCodigosClienteConhecidos,
   obterProximoCodigoClienteSemPessoaAtribuida,
 } from '../data/cadastroClientesStorage.js';
 import {
@@ -206,7 +210,8 @@ function montarQualificacaoTexto({ nomeRazao, cnpjCpf, pessoaData }) {
 }
 
 function getInitialEstadoCliente(codPreferido, clientesApiIndex = []) {
-  const cod = padCliente8(codPreferido ?? loadUltimoCodigoCliente() ?? DEFAULT_CLIENTE_VAZIO.codigo);
+  const resolved = resolverCodigoClienteInicial(codPreferido, clientesApiIndex);
+  const cod = padCliente8(resolved ?? DEFAULT_CLIENTE_VAZIO.codigo);
   const mock = gerarMockClienteEProcessos(cod, clientesApiIndex);
   const persisted = loadCadastroClienteDados(cod);
   if (!mock) {
@@ -296,6 +301,8 @@ export function CadastroClientes() {
   const primeiraSincPessoaRef = useRef(true);
   /** Ignora respostas antigas de GET /api/clientes/resolucao se o usuário mudar de código rápido. */
   const resolucaoCodigoReqIdRef = useRef(0);
+  /** Com API: primeira visita sem último salvo — aplica o maior código da lista uma vez por entrada em /pessoas. */
+  const aplicouUltimoClienteApiSemPersistRef = useRef(false);
   /** Evita aplicar GET /api/processos antigo ao trocar de cliente rápido. */
   const processosApiReqIdRef = useRef(0);
   const codigoRef = useRef(codigo);
@@ -516,6 +523,41 @@ export function CadastroClientes() {
     if (!clientesApiCarregados) return;
     aplicarDadosCliente(padCliente8(codigoRef.current));
   }, [clientesApiCarregados, clientesApiIndex, aplicarDadosCliente]);
+
+  useEffect(() => {
+    const path = (location.pathname || '').replace(/\/+$/, '');
+    if (path !== '/pessoas') return;
+    aplicouUltimoClienteApiSemPersistRef.current = false;
+  }, [location.pathname, location.key]);
+
+  useEffect(() => {
+    if (!featureFlags.useApiClientes) return;
+    if (!clientesApiCarregados) return;
+    if (codClienteFromState) return;
+    if (loadUltimoCodigoCliente()) return;
+    if (aplicouUltimoClienteApiSemPersistRef.current) return;
+    const codes = coletarCodigosClienteConhecidos(clientesApiIndex);
+    if (codes.length === 0) return;
+    aplicouUltimoClienteApiSemPersistRef.current = true;
+    const ultimo = codes[codes.length - 1];
+    if (padCliente8(codigoRef.current) !== padCliente8(ultimo)) {
+      aplicarDadosCliente(ultimo);
+    }
+  }, [
+    clientesApiCarregados,
+    clientesApiIndex,
+    aplicarDadosCliente,
+    codClienteFromState,
+  ]);
+
+  useEffect(() => {
+    if (!featureFlags.useApiClientes) return;
+    if (!clientesApiCarregados) return;
+    const id = window.setTimeout(() => {
+      saveUltimoCodigoCliente(padCliente8(codigo));
+    }, 150);
+    return () => window.clearTimeout(id);
+  }, [codigo, clientesApiCarregados]);
 
   useEffect(() => {
     if (codClienteFromState) {
@@ -1116,7 +1158,7 @@ export function CadastroClientes() {
     'bg-gradient-to-r from-slate-800 via-indigo-900 to-violet-900 text-white [&_th]:border-b [&_th]:border-white/10';
 
   return (
-    <div className="min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/35 to-emerald-50/45 flex flex-col">
+    <div className="min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/35 to-emerald-50/45 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d] flex flex-col">
       <div className="max-w-[1400px] mx-auto w-full flex flex-col flex-1 min-h-0 px-3 py-3">
         {erroApiCliente ? (
           <div className="mb-3 rounded-xl border border-red-200/90 bg-red-50/95 px-4 py-3 text-sm text-red-800 shadow-sm backdrop-blur-sm">
@@ -1129,7 +1171,7 @@ export function CadastroClientes() {
               <Users className="w-5 h-5" aria-hidden />
             </span>
             <div className="min-w-0">
-              <h1 className="text-xl font-bold bg-gradient-to-r from-slate-900 via-indigo-900 to-emerald-900 bg-clip-text text-transparent">
+              <h1 className="text-xl font-bold bg-gradient-to-r from-slate-900 via-indigo-900 to-emerald-900 dark:from-slate-100 dark:via-indigo-200 dark:to-emerald-200 bg-clip-text text-transparent">
                 Cadastro de Clientes
               </h1>
               <p className="text-xs text-slate-500 truncate">Pessoas, vínculos e processos em um só lugar</p>
@@ -1784,6 +1826,16 @@ export function CadastroClientes() {
                 >
                   Próximo
                   <ChevronRight className="w-4 h-4 shrink-0" aria-hidden />
+                </button>
+                <button
+                  type="button"
+                  disabled={paginaProcessos >= totalPaginasProcessos}
+                  onClick={() => setPaginaProcessos(totalPaginasProcessos)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-indigo-200 bg-white text-indigo-900 text-sm font-medium hover:bg-indigo-50 shadow-sm disabled:opacity-45 disabled:cursor-not-allowed disabled:hover:bg-white"
+                  title="Ir para a última página"
+                >
+                  Última
+                  <ChevronsRight className="w-4 h-4 shrink-0" aria-hidden />
                 </button>
               </div>
             </div>

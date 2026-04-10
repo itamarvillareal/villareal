@@ -1562,9 +1562,9 @@ export function Calculos() {
   ]);
 
   return (
-    <div className="min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/35 to-emerald-50/45 flex flex-col">
+    <div className="min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/35 to-emerald-50/45 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d] flex flex-col">
       <header className="flex items-center justify-between px-3 py-2.5 bg-white/95 backdrop-blur-sm border-b border-slate-200/90 shadow-sm shrink-0">
-        <h1 className="text-lg font-bold bg-gradient-to-r from-indigo-800 to-violet-800 bg-clip-text text-transparent">
+        <h1 className="text-lg font-bold bg-gradient-to-r from-indigo-800 to-violet-800 dark:from-indigo-200 dark:to-violet-200 bg-clip-text text-transparent">
           Cálculos Atualizados dos Títulos
         </h1>
         <button type="button" onClick={() => window.history.back()} className="p-2 rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 shadow-sm" aria-label="Fechar">

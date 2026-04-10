@@ -19,8 +19,10 @@
     "import:agenda-xlsx": "node scripts/import-agenda-planilha.mjs",
     "import:agenda-itamar-total": "node scripts/import-agenda-planilha.mjs \"/Users/itamarvillarealjunior/Dropbox/COMUM/agenda itamar total.xlsx\" --layout=total --login=itamar",
     "reimport:agenda-itamar-total": "bash ../e-vilareal-java-backend/scripts/reimportar_agenda_itamar_total.sh",
-    "import:agenda-karla-total": "node scripts/import-agenda-planilha.mjs \"/Users/itamarvillarealjunior/Dropbox/COMUM/agenda karla total.xlsx\" --layout=total --login=karla.pedroza@villarealadvocacia.adv.br --usuario-id=2",
-    "reimport:agenda-karla-total": "bash ../e-vilareal-java-backend/scripts/reimportar_agenda_karla_total.sh"
+    "import:agenda-karla-total": "node scripts/import-agenda-planilha.mjs \"/Users/itamarvillarealjunior/Dropbox/COMUM/agenda karla total.xlsx\" --layout=total --login=karla.pedroza --usuario-id=2",
+    "reimport:agenda-karla-total": "bash ../e-vilareal-java-backend/scripts/reimportar_agenda_karla_total.sh",
+    "import:agenda-ana-luisa-total": "node scripts/import-agenda-planilha.mjs \"/Users/itamarvillarealjunior/Dropbox/COMUM/agenda ana luisa total.xlsx\" --layout=total --login=ana.luisa --usuario-id=3",
+    "reimport:agenda-ana-luisa-total": "bash ../e-vilareal-java-backend/scripts/reimportar_agenda_ana_luisa_total.sh"
   },
   "dependencies": {
     "docx": "^9.6.1",

@@ -24,9 +24,13 @@
  * Uso:
  *   VILAREAL_IMPORT_SENHA='***' node scripts/import-agenda-planilha.mjs "ficheiro.xlsx" --layout=total --login=itamar
  *
- * Karla (planilha no Dropbox COMUM, id 2):
- *   VILAREAL_IMPORT_SENHA='***' node scripts/import-agenda-planilha.mjs "/Users/itamarvillarealjunior/Dropbox/COMUM/agenda karla total.xlsx" --layout=total --login=karla.pedroza@villarealadvocacia.adv.br --usuario-id=2
+ * Karla (planilha no Dropbox COMUM, id 2 — use o mesmo login que em usuarios.login, ex. karla.pedroza):
+ *   VILAREAL_IMPORT_SENHA='***' node scripts/import-agenda-planilha.mjs "/Users/itamarvillarealjunior/Dropbox/COMUM/agenda karla total.xlsx" --layout=total --login=karla.pedroza --usuario-id=2
  * No front: VITE_USE_API_AGENDA=true (reinicie o Vite).
+ *
+ * Ana Luísa (planilha "agenda ana luisa total.xlsx", id 3 — login = usuarios.login, ex. ana.luisa):
+ *   bash ../e-vilareal-java-backend/scripts/reimportar_agenda_ana_luisa_total.sh
+ *   ou: VILAREAL_IMPORT_SENHA='***' node scripts/import-agenda-planilha.mjs ".../agenda ana luisa total.xlsx" --layout=total --login=ana.luisa --usuario-id=3
  */
 
 import fs from 'node:fs';

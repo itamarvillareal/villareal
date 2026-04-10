@@ -2,6 +2,8 @@ package br.com.vilareal.common.exception;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -10,6 +12,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -18,6 +21,17 @@ import java.util.stream.Collectors;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<Map<String, Object>> maxUpload(MaxUploadSizeExceededException ex, HttpServletRequest req) {
+        log.warn("Upload excedeu o limite: {} — {}", req.getRequestURI(), ex.getMessage());
+        return body(
+                HttpStatus.PAYLOAD_TOO_LARGE,
+                "Ficheiro ou pedido multipart demasiado grande. Ajuste spring.servlet.multipart.max-file-size se necessário.",
+                req);
+    }
 
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<Map<String, Object>> notFound(ResourceNotFoundException ex, HttpServletRequest req) {
@@ -54,6 +68,7 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> generic(Exception ex, HttpServletRequest req) {
+        log.error("Erro não tratado {} {}", req.getRequestURI(), ex.toString(), ex);
         return body(HttpStatus.INTERNAL_SERVER_ERROR, "Erro interno.", req);
     }
 

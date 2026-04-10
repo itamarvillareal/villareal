@@ -985,7 +985,7 @@ export function Agenda() {
   );
 
   return (
-    <div className="flex flex-1 min-h-0 min-w-0 flex-col bg-gradient-to-br from-slate-100 via-indigo-50/35 to-emerald-50/45 overflow-hidden">
+    <div className="flex flex-1 min-h-0 min-w-0 flex-col bg-gradient-to-br from-slate-100 via-indigo-50/35 to-emerald-50/45 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d] overflow-hidden">
       <div className="flex flex-1 min-h-0 p-3 md:p-4 gap-3 md:gap-4 overflow-hidden w-full max-w-[1800px] mx-auto">
       {/* Painel esquerdo: Calendário + Usuário + Botões */}
       <PainelCalendario
@@ -1010,7 +1010,7 @@ export function Agenda() {
               <CalendarDays className="w-5 h-5" aria-hidden />
             </span>
             <div className="min-w-0">
-              <h1 className="text-xl font-bold bg-gradient-to-r from-slate-900 via-indigo-900 to-sky-800 bg-clip-text text-transparent">
+              <h1 className="text-xl font-bold bg-gradient-to-r from-slate-900 via-indigo-900 to-sky-800 dark:from-slate-100 dark:via-indigo-200 dark:to-sky-200 bg-clip-text text-transparent">
                 Agenda
               </h1>
               <p className="text-xs text-slate-500 truncate">Compromissos por dia — duplo clique para detalhe ou processo</p>

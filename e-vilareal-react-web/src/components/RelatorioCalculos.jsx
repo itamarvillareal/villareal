@@ -143,7 +143,7 @@ export function RelatorioCalculos() {
   };
 
   return (
-    <div className="min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/40 to-emerald-50/50 flex flex-col">
+    <div className="min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/40 to-emerald-50/50 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d] flex flex-col">
       <div className="flex-1 min-h-0 p-4 flex flex-col max-w-[1800px] mx-auto w-full">
         <header className="mb-3 flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0 flex items-start gap-3">
@@ -151,7 +151,7 @@ export function RelatorioCalculos() {
               <Calculator className="h-5 w-5" aria-hidden />
             </span>
             <div className="min-w-0">
-            <h1 className="text-xl font-bold bg-gradient-to-r from-indigo-800 to-violet-800 bg-clip-text text-transparent">
+            <h1 className="text-xl font-bold bg-gradient-to-r from-indigo-800 to-violet-800 dark:from-indigo-200 dark:to-violet-200 bg-clip-text text-transparent">
               Relatório de Cálculos
             </h1>
             <p className="text-sm text-slate-600 mt-0.5 max-w-3xl">

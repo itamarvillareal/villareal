@@ -717,7 +717,7 @@ export function Board() {
 
   if (emPendencias) {
     return (
-      <div className="flex-1 overflow-auto p-4 min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/30 to-emerald-50/40">
+      <div className="flex-1 overflow-auto p-4 min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/30 to-emerald-50/40 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d]">
         {featureFlags.useApiTarefas && (
           <div className="flex flex-wrap items-end gap-3 mb-3 text-sm">
             <label className="flex flex-col gap-0.5 min-w-[10rem]">
@@ -1034,7 +1034,7 @@ export function Board() {
   }
 
   return (
-    <div className="flex-1 overflow-auto p-4 min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/30 to-emerald-50/40">
+    <div className="flex-1 overflow-auto p-4 min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/30 to-emerald-50/40 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d]">
       <div className="flex gap-4 overflow-x-auto pb-2">
         {boardData.map((column) => (
           <Column

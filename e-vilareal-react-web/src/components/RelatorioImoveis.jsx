@@ -283,7 +283,7 @@ export function RelatorioImoveis() {
     'inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 disabled:opacity-50 disabled:pointer-events-none shadow-lg shadow-indigo-500/20';
 
   return (
-    <div className="min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/40 to-emerald-50/50 p-4">
+    <div className="min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/40 to-emerald-50/50 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d] p-4">
       <div className="max-w-[1600px] mx-auto space-y-4">
         <div className="bg-white/95 backdrop-blur-sm rounded-2xl border border-slate-200/90 shadow-xl ring-1 ring-indigo-500/10 p-5">
           <div className="flex flex-wrap items-start justify-between gap-4">
@@ -292,7 +292,7 @@ export function RelatorioImoveis() {
                 <Building2 className="h-5 w-5" aria-hidden />
               </span>
               <div className="min-w-0">
-              <h1 className="text-xl font-bold bg-gradient-to-r from-indigo-800 to-violet-800 bg-clip-text text-transparent">
+              <h1 className="text-xl font-bold bg-gradient-to-r from-indigo-800 to-violet-800 dark:from-indigo-200 dark:to-violet-200 bg-clip-text text-transparent">
                 Relatório Imóveis
               </h1>
               <p className="text-sm text-slate-600 mt-1 max-w-3xl">

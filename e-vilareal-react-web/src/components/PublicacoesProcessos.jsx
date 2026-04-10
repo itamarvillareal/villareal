@@ -409,7 +409,7 @@ export function PublicacoesProcessos() {
   };
 
   return (
-    <div className="min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/35 to-emerald-50/45 dark:bg-[#0c0f14] text-slate-900 dark:text-slate-100">
+    <div className="min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/35 to-emerald-50/45 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d] text-slate-900 dark:text-slate-100">
       <div className="max-w-[1400px] mx-auto px-4 py-6 space-y-6">
         <div className="flex flex-wrap items-center gap-4">
           <button

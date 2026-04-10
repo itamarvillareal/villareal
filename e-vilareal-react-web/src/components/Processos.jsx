@@ -1123,6 +1123,7 @@ export function Processos() {
   function confirmarTramitacao() {
     const valor = String(tramitacaoDraft ?? '').trim();
     setTramitacao(valor);
+    setProcedimento(valor);
     if (featureFlags.useApiProcessos) {
       void sincronizarApiProcessoAtual({ tramitacao: valor });
     } else {
@@ -1528,6 +1529,8 @@ export function Processos() {
       setCidade(mapped.cidade ?? '');
       setConsultaAutomatica(mapped.consultaAutomatica);
       setTramitacao(mapped.tramitacao ?? '');
+      setProcedimento(mapped.procedimento ?? mapped.tramitacao ?? '');
+      setFaseCampo(mapped.observacaoFase ?? '');
       setResponsavel(mapped.responsavel ?? '');
 
       const partes = await listarPartesProcesso(procApi.id);
@@ -2141,12 +2144,12 @@ export function Processos() {
   );
 
   return (
-    <div className="min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/35 to-emerald-50/45">
+    <div className="min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/35 to-emerald-50/45 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d]">
       <div className="max-w-[1400px] mx-auto px-3 py-3">
         {/* Cabeçalho: Processos + X */}
         <header className="flex items-center justify-between mb-3 gap-2 rounded-xl border border-slate-200/80 bg-white/90 px-3 py-2.5 shadow-sm backdrop-blur-sm">
           <div className="flex items-center gap-2 flex-wrap min-w-0">
-            <h1 className="text-xl font-bold bg-gradient-to-r from-slate-900 via-indigo-900 to-slate-800 bg-clip-text text-transparent">
+            <h1 className="text-xl font-bold bg-gradient-to-r from-slate-900 via-indigo-900 to-slate-800 dark:from-slate-100 dark:via-indigo-200 dark:to-slate-200 bg-clip-text text-transparent">
               Processos
             </h1>
             <button

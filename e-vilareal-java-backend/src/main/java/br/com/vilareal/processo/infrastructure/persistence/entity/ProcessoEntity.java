@@ -45,6 +45,9 @@ public class ProcessoEntity {
     @Column(length = 120)
     private String fase;
 
+    @Column(name = "observacao_fase", columnDefinition = "TEXT")
+    private String observacaoFase;
+
     @Column(length = 120)
     private String status;
 

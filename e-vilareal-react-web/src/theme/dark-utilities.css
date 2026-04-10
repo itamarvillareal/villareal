@@ -71,6 +71,9 @@ body,
 .dark .text-slate-400 {
   color: #a1a1aa !important;
 }
+.dark .text-gray-400 {
+  color: #a1a1aa !important;
+}
 
 /* ——— Bordas ——— */
 .dark .border-slate-100 {
@@ -259,4 +262,283 @@ body,
 .dark .processos-fase-aguardando-providencia .bg-slate-50 input,
 .dark .processos-fase-aguardando-providencia .bg-slate-100 input {
   color: #0f172a !important;
+}
+
+/* ——— bg-white com opacidade — o mapeamento só cobria .bg-white; sem isto o modo noturno força texto claro sobre fundo ainda claro ——— */
+.dark .bg-white\/40 {
+  background-color: rgba(21, 29, 44, 0.45) !important;
+}
+.dark .bg-white\/50 {
+  background-color: rgba(21, 29, 44, 0.55) !important;
+}
+.dark .bg-white\/60 {
+  background-color: rgba(21, 29, 44, 0.65) !important;
+}
+.dark .bg-white\/70 {
+  background-color: rgba(21, 29, 44, 0.75) !important;
+}
+.dark .bg-white\/75 {
+  background-color: rgba(21, 29, 44, 0.78) !important;
+}
+.dark .bg-white\/80 {
+  background-color: rgba(21, 29, 44, 0.84) !important;
+}
+.dark .bg-white\/85 {
+  background-color: rgba(21, 29, 44, 0.88) !important;
+}
+.dark .bg-white\/90 {
+  background-color: rgba(21, 29, 44, 0.92) !important;
+}
+.dark .bg-white\/95 {
+  background-color: rgba(21, 29, 44, 0.97) !important;
+}
+
+/* ——— Stops de gradiente que usam branco / cinza muito claro (Agenda, painéis, modais) ——— */
+.dark .from-white {
+  --tw-gradient-from: var(--vl-bg-card, #151d2c) var(--tw-gradient-from-position);
+}
+.dark .to-white {
+  --tw-gradient-to: var(--vl-bg-card, #151d2c) var(--tw-gradient-to-position);
+}
+.dark .via-white {
+  --tw-gradient-via: var(--vl-bg-card, #151d2c) var(--tw-gradient-via-position);
+}
+
+.dark .from-slate-50\/40 {
+  --tw-gradient-from: rgba(19, 27, 40, 0.92) var(--tw-gradient-from-position);
+}
+.dark .from-slate-50\/50 {
+  --tw-gradient-from: rgba(19, 27, 40, 0.94) var(--tw-gradient-from-position);
+}
+.dark .from-slate-50\/80 {
+  --tw-gradient-from: rgba(19, 27, 40, 0.96) var(--tw-gradient-from-position);
+}
+.dark .from-slate-50\/90 {
+  --tw-gradient-from: rgba(19, 27, 40, 0.98) var(--tw-gradient-from-position);
+}
+.dark .from-slate-100 {
+  --tw-gradient-from: #0f141c var(--tw-gradient-from-position);
+}
+.dark .via-slate-100 {
+  --tw-gradient-via: #121a26 var(--tw-gradient-via-position);
+}
+.dark .to-slate-50\/50 {
+  --tw-gradient-to: rgba(19, 27, 40, 0.9) var(--tw-gradient-to-position);
+}
+.dark .to-slate-100 {
+  --tw-gradient-to: #121a26 var(--tw-gradient-to-position);
+}
+
+.dark .via-indigo-50\/35 {
+  --tw-gradient-via: rgba(49, 46, 129, 0.22) var(--tw-gradient-via-position);
+}
+.dark .to-emerald-50\/45 {
+  --tw-gradient-to: rgba(6, 78, 59, 0.2) var(--tw-gradient-to-position);
+}
+.dark .to-indigo-50\/50 {
+  --tw-gradient-to: rgba(30, 27, 64, 0.35) var(--tw-gradient-to-position);
+}
+.dark .to-indigo-50\/80 {
+  --tw-gradient-to: rgba(49, 46, 129, 0.28) var(--tw-gradient-to-position);
+}
+.dark .from-violet-50\/90 {
+  --tw-gradient-from: rgba(46, 16, 101, 0.2) var(--tw-gradient-from-position);
+}
+.dark .via-violet-50 {
+  --tw-gradient-via: rgba(46, 16, 101, 0.15) var(--tw-gradient-via-position);
+}
+
+.dark .from-emerald-50\/60 {
+  --tw-gradient-from: rgba(6, 78, 59, 0.28) var(--tw-gradient-from-position);
+}
+.dark .to-teal-50\/40 {
+  --tw-gradient-to: rgba(15, 118, 110, 0.22) var(--tw-gradient-to-position);
+}
+
+.dark .to-transparent {
+  --tw-gradient-to: transparent var(--tw-gradient-to-position);
+}
+
+/* Hover / realce em linhas de tabela (Agenda, relatórios) */
+.dark .hover\:bg-indigo-50\/40:hover {
+  background-color: rgba(99, 102, 241, 0.14) !important;
+}
+.dark .hover\:bg-indigo-50\/30:hover {
+  background-color: rgba(99, 102, 241, 0.11) !important;
+}
+.dark .bg-amber-100\/90 {
+  background-color: rgba(120, 53, 15, 0.38) !important;
+}
+
+/* Bordas com opacidade comuns em cards */
+.dark .border-slate-200\/80 {
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+.dark .border-slate-200\/90 {
+  border-color: rgba(255, 255, 255, 0.09) !important;
+}
+.dark .ring-slate-200\/60 {
+  --tw-ring-color: rgba(255, 255, 255, 0.08);
+}
+.dark .ring-slate-100 {
+  --tw-ring-color: rgba(255, 255, 255, 0.06);
+}
+.dark .ring-indigo-500\/5 {
+  --tw-ring-color: rgba(99, 102, 241, 0.12);
+}
+.dark .ring-violet-500\/10 {
+  --tw-ring-color: rgba(139, 92, 246, 0.15);
+}
+.dark .ring-violet-100\/80 {
+  --tw-ring-color: rgba(139, 92, 246, 0.12);
+}
+.dark .ring-cyan-100\/60 {
+  --tw-ring-color: rgba(34, 211, 238, 0.12);
+}
+.dark .ring-indigo-100\/60 {
+  --tw-ring-color: rgba(129, 140, 248, 0.12);
+}
+
+.dark .border-violet-200\/60,
+.dark .border-violet-200\/70 {
+  border-color: rgba(139, 92, 246, 0.28) !important;
+}
+.dark .border-cyan-200\/70 {
+  border-color: rgba(34, 211, 238, 0.28) !important;
+}
+.dark .border-indigo-200\/70 {
+  border-color: rgba(129, 140, 248, 0.28) !important;
+}
+.dark .border-violet-100\/80 {
+  border-color: rgba(139, 92, 246, 0.2) !important;
+}
+.dark .border-cyan-100\/60 {
+  border-color: rgba(34, 211, 238, 0.22) !important;
+}
+.dark .border-indigo-100\/60 {
+  border-color: rgba(129, 140, 248, 0.22) !important;
+}
+
+.dark .border-emerald-100 {
+  border-color: rgba(16, 185, 129, 0.22) !important;
+}
+
+/* ——— Pendências / Board: stops extras de gradiente ——— */
+.dark .via-indigo-50\/30 {
+  --tw-gradient-via: rgba(49, 46, 129, 0.18) var(--tw-gradient-via-position);
+}
+.dark .via-indigo-50\/40 {
+  --tw-gradient-via: rgba(49, 46, 129, 0.26) var(--tw-gradient-via-position);
+}
+.dark .to-emerald-50\/40 {
+  --tw-gradient-to: rgba(6, 78, 59, 0.18) var(--tw-gradient-to-position);
+}
+.dark .to-emerald-50\/50 {
+  --tw-gradient-to: rgba(6, 78, 59, 0.22) var(--tw-gradient-to-position);
+}
+.dark .to-violet-50\/50 {
+  --tw-gradient-to: rgba(46, 16, 101, 0.28) var(--tw-gradient-to-position);
+}
+.dark .from-emerald-50\/40 {
+  --tw-gradient-from: rgba(6, 78, 59, 0.22) var(--tw-gradient-from-position);
+}
+
+/* Processos / Clientes: faixas violeta–rosa–céu */
+.dark .from-violet-50\/95 {
+  --tw-gradient-from: rgba(46, 16, 101, 0.32) var(--tw-gradient-from-position);
+}
+.dark .to-rose-50\/40 {
+  --tw-gradient-to: rgba(136, 19, 55, 0.2) var(--tw-gradient-to-position);
+}
+.dark .from-violet-50\/30 {
+  --tw-gradient-from: rgba(46, 16, 101, 0.14) var(--tw-gradient-from-position);
+}
+.dark .to-sky-50\/20 {
+  --tw-gradient-to: rgba(12, 74, 110, 0.14) var(--tw-gradient-to-position);
+}
+.dark .border-violet-300\/50 {
+  border-color: rgba(139, 92, 246, 0.35) !important;
+}
+
+/* Financeiro / cards */
+.dark .border-emerald-200\/80 {
+  border-color: rgba(16, 185, 129, 0.28) !important;
+}
+.dark .border-violet-200\/80 {
+  border-color: rgba(139, 92, 246, 0.28) !important;
+}
+.dark .border-emerald-200\/90 {
+  border-color: rgba(16, 185, 129, 0.32) !important;
+}
+.dark .text-emerald-950 {
+  color: #a7f3d0 !important;
+}
+.dark .ring-emerald-500\/10 {
+  --tw-ring-color: rgba(16, 185, 129, 0.2);
+}
+.dark .ring-emerald-500\/15 {
+  --tw-ring-color: rgba(16, 185, 129, 0.25);
+}
+
+/* Task cards / alertas laranja */
+.dark .bg-orange-100 {
+  background-color: rgba(154, 52, 18, 0.35) !important;
+}
+.dark .border-orange-200 {
+  border-color: rgba(251, 146, 60, 0.35) !important;
+}
+.dark .text-red-900 {
+  color: #fecaca !important;
+}
+
+.dark .hover\:border-gray-300:hover {
+  border-color: rgba(255, 255, 255, 0.14) !important;
+}
+
+/* Ring offset em fundos escuros (cartões selecionados) */
+.dark .ring-offset-1 {
+  --tw-ring-offset-color: var(--vl-bg-card, #151d2c) !important;
+}
+
+.dark .shadow-indigo-500\/5 {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 4px 20px -4px rgba(99, 102, 241, 0.08) !important;
+}
+.dark .shadow-emerald-500\/5 {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 4px 20px -4px rgba(16, 185, 129, 0.08) !important;
+}
+.dark .shadow-sky-500\/10 {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 4px 20px -4px rgba(14, 165, 233, 0.1) !important;
+}
+
+.dark .border-white\/15 {
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+.dark .border-white\/20 {
+  border-color: rgba(255, 255, 255, 0.12) !important;
+}
+.dark .border-white\/30,
+.dark .border-white\/35,
+.dark .border-white\/40 {
+  border-color: rgba(255, 255, 255, 0.14) !important;
+}
+.dark .bg-white\/10 {
+  background-color: rgba(255, 255, 255, 0.06) !important;
+}
+.dark .bg-white\/12 {
+  background-color: rgba(255, 255, 255, 0.07) !important;
+}
+.dark .bg-white\/15 {
+  background-color: rgba(255, 255, 255, 0.09) !important;
+}
+.dark .bg-white\/25 {
+  background-color: rgba(255, 255, 255, 0.12) !important;
+}
+.dark .hover\:bg-white\/15:hover {
+  background-color: rgba(255, 255, 255, 0.09) !important;
+}
+.dark .hover\:bg-white\/25:hover {
+  background-color: rgba(255, 255, 255, 0.12) !important;
+}
+.dark .hover\:bg-white\/80:hover {
+  background-color: rgba(21, 29, 44, 0.88) !important;
 }

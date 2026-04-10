@@ -499,6 +499,7 @@ public class ProcessoApplicationService {
         e.setDescricaoAcao(trimToNull(req.getDescricaoAcao()));
         e.setCompetencia(trimToNull(req.getCompetencia()));
         e.setFase(trimToNull(req.getFase()));
+        e.setObservacaoFase(trimToNull(req.getObservacaoFase()));
         e.setStatus(trimToNull(req.getStatus()));
         e.setTramitacao(trimToNull(req.getTramitacao()));
         e.setDataProtocolo(req.getDataProtocolo());
@@ -618,6 +619,7 @@ public class ProcessoApplicationService {
         r.setDescricaoAcao(Utf8MojibakeUtil.corrigir(e.getDescricaoAcao()));
         r.setCompetencia(Utf8MojibakeUtil.corrigir(e.getCompetencia()));
         r.setFase(Utf8MojibakeUtil.corrigir(e.getFase()));
+        r.setObservacaoFase(Utf8MojibakeUtil.corrigir(e.getObservacaoFase()));
         r.setStatus(Utf8MojibakeUtil.corrigir(e.getStatus()));
         r.setTramitacao(Utf8MojibakeUtil.corrigir(e.getTramitacao()));
         r.setDataProtocolo(e.getDataProtocolo());

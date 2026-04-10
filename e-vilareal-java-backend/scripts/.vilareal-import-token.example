@@ -1,0 +1,3 @@
+# Copie para .vilareal-import-token (sem esta linha de comentário).
+# Uma única linha: só o accessToken retornado por POST /api/auth/login (sem "Bearer ").
+# O ficheiro .vilareal-import-token está no .gitignore.

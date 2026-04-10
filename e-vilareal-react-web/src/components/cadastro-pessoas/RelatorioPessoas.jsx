@@ -217,7 +217,7 @@ export function RelatorioPessoas() {
   };
 
   return (
-    <div className="min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/40 to-emerald-50/50">
+    <div className="min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/40 to-emerald-50/50 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d]">
       <div className="max-w-6xl mx-auto px-4 py-6">
         <header className="mb-6">
           <div className="flex flex-wrap items-start justify-between gap-4">
@@ -226,7 +226,7 @@ export function RelatorioPessoas() {
                 <FileText className="h-5 w-5" aria-hidden />
               </span>
               <div className="min-w-0">
-              <h1 className="text-2xl font-bold bg-gradient-to-r from-indigo-800 to-violet-800 bg-clip-text text-transparent tracking-tight">
+              <h1 className="text-2xl font-bold bg-gradient-to-r from-indigo-800 to-violet-800 dark:from-indigo-200 dark:to-violet-200 bg-clip-text text-transparent tracking-tight">
                 Relatório de pessoas
               </h1>
               <p className="text-slate-600 mt-1">Todas as pessoas cadastradas — filtros e tabela</p>

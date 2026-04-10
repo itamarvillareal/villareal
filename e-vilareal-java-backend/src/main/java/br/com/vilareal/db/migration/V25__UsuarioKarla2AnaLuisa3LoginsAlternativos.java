@@ -13,22 +13,23 @@ import org.flywaydb.core.api.migration.BaseJavaMigration;
 import org.flywaydb.core.api.migration.Context;
 
 /**
- * Garante {@code id = 2} para Karla e {@code id = 3} para Ana Luísa (logins conhecidos do seed).
- * Atualiza FKs via {@code ON UPDATE CASCADE}. Se os utilizadores não existirem, não faz nada.
+ * Complementa {@link V24__UsuarioKarla2AnaLuisa3}: a V24 só reconhece Ana Luísa pelo login
+ * {@code analuisanunesdabadia@gmail.com}. Em bases onde o login foi gravado como {@code ana.luisa},
+ * a V24 não faz nada e Karla/Ana ficam com ids trocados (ex.: 2=Ana, 3=Karla).
  * <p>
- * Ana Luísa só é reconhecida pelo login {@code analuisanunesdabadia@gmail.com}; se na base estiver
- * {@code ana.luisa}, use a migração {@link V25__UsuarioKarla2AnaLuisa3LoginsAlternativos}.
+ * Esta migração aplica a mesma realinhação, aceitando ambos os logins para Ana.
+ * Idempotente: se já estiver Karla=2 e Ana=3, não altera.
  */
-public class V24__UsuarioKarla2AnaLuisa3 extends BaseJavaMigration {
+public class V25__UsuarioKarla2AnaLuisa3LoginsAlternativos extends BaseJavaMigration {
 
     private static final String[] KARLA_LOGINS = {"karla.pedroza", "karla.pedroza@villarealadvocacia.adv.br"};
-    private static final String ANA_LOGIN = "analuisanunesdabadia@gmail.com";
+    private static final String[] ANA_LOGINS = {"analuisanunesdabadia@gmail.com", "ana.luisa"};
 
     @Override
     public void migrate(Context context) throws Exception {
         Connection c = context.getConnection();
         Long kId = findUsuarioIdByLogins(c, KARLA_LOGINS);
-        Long aId = findUsuarioIdByLogin(c, ANA_LOGIN);
+        Long aId = findUsuarioIdByLogins(c, ANA_LOGINS);
         if (kId == null || aId == null) {
             return;
         }
@@ -65,8 +66,11 @@ public class V24__UsuarioKarla2AnaLuisa3 extends BaseJavaMigration {
                 c.prepareStatement("UPDATE usuarios SET id = 2 WHERE login IN ('karla.pedroza', 'karla.pedroza@villarealadvocacia.adv.br')")) {
             ps.executeUpdate();
         }
-        try (PreparedStatement ps = c.prepareStatement("UPDATE usuarios SET id = 3 WHERE login = ?")) {
-            ps.setString(1, ANA_LOGIN);
+        String anaIn = buildInClause(ANA_LOGINS.length);
+        try (PreparedStatement ps = c.prepareStatement("UPDATE usuarios SET id = 3 WHERE login IN (" + anaIn + ")")) {
+            for (int j = 0; j < ANA_LOGINS.length; j++) {
+                ps.setString(j + 1, ANA_LOGINS[j]);
+            }
             ps.executeUpdate();
         }
 
@@ -92,7 +96,7 @@ public class V24__UsuarioKarla2AnaLuisa3 extends BaseJavaMigration {
         Collections.sort(freeList);
         if (leftover.size() != freeList.size()) {
             throw new IllegalStateException(
-                    "V24: incompatível leftover=" + leftover.size() + " vs slots livres=" + freeList.size());
+                    "V25: incompatível leftover=" + leftover.size() + " vs slots livres=" + freeList.size());
         }
         for (int j = 0; j < leftover.size(); j++) {
             try (PreparedStatement ps = c.prepareStatement("UPDATE usuarios SET id = ? WHERE id = ?")) {
@@ -101,6 +105,17 @@ public class V24__UsuarioKarla2AnaLuisa3 extends BaseJavaMigration {
                 ps.executeUpdate();
             }
         }
+    }
+
+    private static String buildInClause(int n) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < n; i++) {
+            if (i > 0) {
+                sb.append(", ");
+            }
+            sb.append('?');
+        }
+        return sb.toString();
     }
 
     private static Long findUsuarioIdByLogins(Connection c, String[] logins) throws Exception {
@@ -116,15 +131,6 @@ public class V24__UsuarioKarla2AnaLuisa3 extends BaseJavaMigration {
             for (int i = 0; i < logins.length; i++) {
                 ps.setString(i + 1, logins[i]);
             }
-            try (ResultSet rs = ps.executeQuery()) {
-                return rs.next() ? rs.getLong(1) : null;
-            }
-        }
-    }
-
-    private static Long findUsuarioIdByLogin(Connection c, String login) throws Exception {
-        try (PreparedStatement ps = c.prepareStatement("SELECT id FROM usuarios WHERE login = ? ORDER BY id LIMIT 1")) {
-            ps.setString(1, login);
             try (ResultSet rs = ps.executeQuery()) {
                 return rs.next() ? rs.getLong(1) : null;
             }
