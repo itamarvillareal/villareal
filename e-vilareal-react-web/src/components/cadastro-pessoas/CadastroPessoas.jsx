@@ -20,12 +20,7 @@ import {
   obterProximoIdCadastroPessoas,
 } from '../../api/clientesService';
 import { analisarDocumentoPessoa } from '../../services/personAutoFillService.js';
-import {
-  listarPessoasComDocumento,
-  obterDocumentoPessoa,
-  salvarDocumentoPessoa,
-  criarUrlParaDocumento,
-} from '../../services/pessoaDocumentoService.js';
+import { listarPessoasComDocumento, salvarDocumentoPessoa } from '../../services/pessoaDocumentoService.js';
 import { ModalEnderecos } from './ModalEnderecos';
 import { ModalContatos } from './ModalContatos';
 import { extrairDadosDeTextoLivre } from '../../services/personTextAutofillService.js';
@@ -34,7 +29,7 @@ import { listarCodigosClientePorIdPessoa } from '../../data/clienteCodigoHelpers
 import { listarClientesCadastro } from '../../repositories/clientesRepository.js';
 import { listarProcessosPorIdPessoa } from '../../data/processosHistoricoData.js';
 import { resolverAliasHojeEmTexto } from '../../services/hjDateAliasService.js';
-import { rotuloPessoaComDocumento, esbocoQualificacaoComResponsavel } from '../../services/qualificacaoContratualHelper.js';
+import { esbocoQualificacaoComResponsavel } from '../../services/qualificacaoContratualHelper.js';
 import { SeletorResponsavelPessoa } from './SeletorResponsavelPessoa.jsx';
 import { getContextoAuditoriaUsuario, registrarAuditoria } from '../../services/auditoriaCliente.js';
 import { padCliente8Nav } from './cadastroPessoasNavUtils.js';
@@ -137,15 +132,14 @@ export function CadastroPessoas() {
   const location = useLocation();
   const navigate = useNavigate();
   const pathPessoasNorm = (location.pathname || '').replace(/\/+$/, '') || '/';
-  const isRotaNovaPessoa = pathPessoasNorm === '/clientes/nova';
   const isRotaListaTodasPessoas = pathPessoasNorm === '/clientes/lista';
   const [lista, setLista] = useState([]);
   /** Carregamento da ficha em /clientes/editar/:id quando a lista ainda não foi trazida (evita carregar o relatório completo). */
   const [carregandoFicha, setCarregandoFicha] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [loading] = useState(false);
   const [error, setError] = useState(null);
   const [mensagemSucesso, setMensagemSucesso] = useState('');
-  const [apenasAtivos, setApenasAtivos] = useState(false);
+  const [apenasAtivos] = useState(false);
   const [indiceAtual, setIndiceAtual] = useState(0);
   const [modo, setModo] = useState('listar'); // listar | criar | editar
   const [form, setForm] = useState(emptyPessoa);
@@ -162,7 +156,7 @@ export function CadastroPessoas() {
   const [nacionalidadeSugestaoNaoValidada, setNacionalidadeSugestaoNaoValidada] = useState(false);
   const [numeroPessoa, setNumeroPessoa] = useState('');
   const [listaClientesCodigo, setListaClientesCodigo] = useState([]);
-  const [pessoasComDocumento, setPessoasComDocumento] = useState([]);
+  const [, setPessoasComDocumento] = useState([]);
   const [docPreview, setDocPreview] = useState(null);
   const [docStatus, setDocStatus] = useState({ kind: 'idle', message: '' });
   const [docProcessando, setDocProcessando] = useState(false);
@@ -195,7 +189,7 @@ export function CadastroPessoas() {
     return () => {
       try {
         window.sessionStorage.setItem(SESSION_PESSOAS_EDICAO_AO_SAIR, '1');
-      } catch (_) {
+      } catch {
         /* ignore */
       }
     };
@@ -207,7 +201,7 @@ export function CadastroPessoas() {
         window.sessionStorage.removeItem(SESSION_PESSOAS_EDICAO_AO_SAIR);
         setForm((f) => ({ ...f, edicaoDesabilitada: true }));
       }
-    } catch (_) {
+    } catch {
       /* ignore */
     }
   }, []);
@@ -616,10 +610,6 @@ export function CadastroPessoas() {
     });
   }
 
-  const abrirEditar = (item) => {
-    navigate(`/clientes/editar/${item.id}`);
-  };
-
   const cancelarForm = () => {
     setModo('listar');
     setForm(emptyPessoa);
@@ -918,7 +908,7 @@ export function CadastroPessoas() {
   const alternarMonitoramentoPessoaAtual = async () => {
     const id = Number(modo === 'editar' && editId != null ? editId : pessoaAtual?.id);
     if (!Number.isFinite(id) || id < 1) return;
-    const proximoStatus = !Boolean(form.marcadoMonitoramento);
+    const proximoStatus = !form.marcadoMonitoramento;
     setSalvando(true);
     setError(null);
     try {

@@ -433,14 +433,6 @@ function keyEvento({ data, hora, usuarioId, numeroProcessoNovo, codClientePad, p
   return `aud-${data}-${hora || ''}-${cod}|${p}|${num}-${usuarioId || ''}`.replace(/\s+/g, ' ').trim();
 }
 
-function normalizarDescricao({ audienciaTipo, numeroProcessoNovo }) {
-  const t = String(audienciaTipo ?? '').trim();
-  const num = String(numeroProcessoNovo ?? '').trim();
-  if (!t && !num) return 'Audiência';
-  if (t && num) return `${t} — Proc. ${num}`;
-  return t || num || 'Audiência';
-}
-
 /** Texto do compromisso na Agenda alinhado ao formulário Processos (audiência). */
 export function descricaoAudienciaParaAgendaCampos(campos) {
   return montarDescricaoAgendaAudienciaProcesso({

@@ -42,7 +42,6 @@ export function buscarParesClienteProcPorTexto(termoRaw, opts = {}) {
 
     const procNumeroStr = String(pNum);
     const nomeClienteNorm = normalizarTextoBusca(reg.cliente ?? '');
-    const docClienteNorm = '';
 
     const processoNovoDisp = obterNumeroProcessoNovoUnificado(codJur, pNum, reg.numeroProcessoNovo ?? '');
     const processoVelhoDisp = obterNumeroProcessoVelhoUnificado(codJur, pNum, reg.numeroProcessoVelho ?? '');

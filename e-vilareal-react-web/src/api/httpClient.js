@@ -13,9 +13,10 @@ function buildUrl(path, query) {
   return qs ? `${fullPath}?${qs}` : fullPath;
 }
 
-export async function request(path, { method = 'GET', body, query, headers } = {}) {
+export async function request(path, { method = 'GET', body, query, headers, signal } = {}) {
   const response = await fetch(buildUrl(path, query), {
     method,
+    signal,
     headers: {
       ...buildDefaultApiHeaders(),
       ...(headers || {}),

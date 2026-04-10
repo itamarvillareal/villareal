@@ -131,7 +131,7 @@ function normalizarTextoDataBRparaSalvar(s) {
   if (!t) return '';
   const d0 = parseDateBRModulo(t);
   if (d0 && !Number.isNaN(d0.getTime())) return formatDateBRFromDate(d0);
-  const parts = t.split(/[/\-]/).map((p) => p.trim());
+  const parts = t.split(/[/-]/).map((p) => p.trim());
   if (parts.length !== 3) return '';
   const dd = String(Math.min(31, Math.max(1, Number(parts[0]) || 0))).padStart(2, '0');
   const mm = String(Math.min(12, Math.max(1, Number(parts[1]) || 0))).padStart(2, '0');

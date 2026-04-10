@@ -120,8 +120,8 @@ function extrairTermosEncontrados(bloco) {
 const ROTULOS_LINHA_PARA_CNJ = [
   /N[ÚU]MERO\s+[ÚU]NICO\s*[:.]?\s*([^\n]+)/i,
   /NR\.?\s*PROCESSO\s*[:.]?\s*([^\n]+)/i,
-  /Processo\s*n[º°\.]?\s*([^\n]+)/i,
-  /Autos\s*n[º°\.]?\s*([^\n]+)/i,
+  /Processo\s*n[º°.]?\s*([^\n]+)/i,
+  /Autos\s*n[º°.]?\s*([^\n]+)/i,
   /N[úu]mero\s+do\s+processo\s*[:.]?\s*([^\n]+)/i,
 ];
 
@@ -197,7 +197,6 @@ export function segmentarBlocosPublicacoes(textoNorm) {
     'gi'
   );
 
-  let idx = 0;
   let m;
   const starts = [];
   while ((m = reInicio.exec(t)) !== null) {
