@@ -1,6 +1,15 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Search, FolderOpen, ChevronLeft, ChevronRight, SlidersHorizontal, PlusCircle, X } from 'lucide-react';
+import {
+  Search,
+  FolderOpen,
+  ChevronLeft,
+  ChevronRight,
+  SlidersHorizontal,
+  PlusCircle,
+  X,
+  Users,
+} from 'lucide-react';
 import { ModalConfiguracoesCalculoCliente } from './ModalConfiguracoesCalculoCliente.jsx';
 import { getDadosProcessoClienteUnificado } from '../data/processoClienteProcUnificado.js';
 import { buscarCliente, pesquisarCadastroPessoasPorNomeOuCpf } from '../api/clientesService.js';
@@ -83,7 +92,8 @@ function dadosClientePorCodigo(n, clientesApiIndex) {
   };
 }
 
-const inputClass = 'w-full px-2 py-1.5 border border-slate-300 rounded text-sm bg-white';
+const inputClass =
+  'w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-400/40 focus:border-indigo-400 transition-shadow';
 
 /** Quantidade de processos por página na grade do cadastro de clientes. */
 const PROCESSOS_POR_PAGINA = 10;
@@ -1102,24 +1112,54 @@ export function CadastroClientes() {
     setBuscaClienteNome('');
   }
 
-  return (
-    <div className="min-h-full bg-slate-200 flex flex-col">
-      {erroApiCliente ? (
-        <div className="mx-4 mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-          {erroApiCliente}
-        </div>
-      ) : null}
-      <header className="flex items-center justify-between px-3 py-2 bg-white border-b border-slate-300 shrink-0">
-        <h1 className="text-lg font-bold text-slate-800">Cadastro de Clientes</h1>
-      </header>
+  const theadBuscaClass =
+    'bg-gradient-to-r from-slate-800 via-indigo-900 to-violet-900 text-white [&_th]:border-b [&_th]:border-white/10';
 
-      <div className="flex-1 min-h-0 flex overflow-hidden">
-        <div className="flex-1 min-w-0 overflow-auto p-4 space-y-4">
-          <section>
-            <p className="text-sm font-medium text-slate-700 mb-2">Buscar cliente por nome, código ou processo</p>
-            <div className="flex flex-wrap items-center gap-2 mb-2">
-              <label className="text-sm text-slate-700 whitespace-nowrap" htmlFor="busca-cliente-nome">
-                Pesquisar:
+  return (
+    <div className="min-h-full bg-gradient-to-b from-slate-100 via-slate-50 to-slate-200 flex flex-col">
+      <div className="max-w-[1400px] mx-auto w-full flex flex-col flex-1 min-h-0 px-3 py-3">
+        {erroApiCliente ? (
+          <div className="mb-3 rounded-xl border border-red-200/90 bg-red-50/95 px-4 py-3 text-sm text-red-800 shadow-sm backdrop-blur-sm">
+            {erroApiCliente}
+          </div>
+        ) : null}
+        <header className="flex items-center justify-between mb-3 gap-2 rounded-xl border border-slate-200/80 bg-white/90 px-3 py-2.5 shadow-sm backdrop-blur-sm shrink-0">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-md ring-1 ring-emerald-400/40">
+              <Users className="w-5 h-5" aria-hidden />
+            </span>
+            <div className="min-w-0">
+              <h1 className="text-xl font-bold bg-gradient-to-r from-slate-900 via-indigo-900 to-emerald-900 bg-clip-text text-transparent">
+                Cadastro de Clientes
+              </h1>
+              <p className="text-xs text-slate-500 truncate">Pessoas, vínculos e processos em um só lugar</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => window.history.back()}
+            className="p-2 rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-slate-50 shrink-0 shadow-sm"
+            aria-label="Fechar"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </header>
+
+        <div className="flex-1 min-w-0 overflow-auto space-y-4 pb-6">
+          <section className="rounded-2xl border border-emerald-200/70 bg-white/95 shadow-md overflow-hidden ring-1 ring-emerald-500/10">
+            <div className="border-b border-emerald-100/80 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 px-4 py-3">
+              <h2 className="text-sm font-bold uppercase tracking-wide text-white flex items-center gap-2">
+                <Search className="w-4 h-4 opacity-95" aria-hidden />
+                Buscar cliente
+              </h2>
+              <p className="text-xs text-emerald-50/95 mt-1 font-medium">
+                Por nome, código (8 dígitos) ou nº interno do processo
+              </p>
+            </div>
+            <div className="p-4">
+              <div className="flex flex-wrap items-center gap-2 mb-2">
+              <label className="text-sm font-medium text-slate-700 whitespace-nowrap" htmlFor="busca-cliente-nome">
+                Pesquisar
               </label>
               <input
                 id="busca-cliente-nome"
@@ -1130,7 +1170,7 @@ export function CadastroClientes() {
                 placeholder="Nome, código (8 dígitos) ou nº interno do processo…"
                 autoComplete="off"
               />
-            </div>
+              </div>
             {(() => {
               const rawBusca = String(buscaClienteNome ?? '').trim();
               const soDigitos = rawBusca.length > 0 && /^\d+$/.test(rawBusca);
@@ -1185,14 +1225,14 @@ export function CadastroClientes() {
               );
             })()}
             {clientesFiltradosPorCodigo8.length > 0 && (
-              <div className="border border-slate-300 rounded bg-white overflow-x-auto max-h-56 overflow-y-auto mb-2">
+              <div className="border border-slate-200/90 rounded-xl bg-white overflow-x-auto max-h-56 overflow-y-auto mb-2 shadow-inner ring-1 ring-slate-100">
                 <table className="w-full text-sm border-collapse min-w-[480px]">
                   <thead>
-                    <tr className="bg-slate-100 sticky top-0">
-                      <th className="border-b border-slate-200 px-2 py-1.5 text-left font-semibold text-slate-700 w-28">
+                    <tr className={`${theadBuscaClass} sticky top-0`}>
+                      <th className="px-3 py-2.5 text-left font-semibold w-28">
                         Código
                       </th>
-                      <th className="border-b border-slate-200 px-2 py-1.5 text-left font-semibold text-slate-700">
+                      <th className="px-3 py-2.5 text-left font-semibold">
                         Nome / Razão social
                       </th>
                     </tr>
@@ -1210,14 +1250,14 @@ export function CadastroClientes() {
                             selecionarClienteDaBuscaNome(row);
                           }
                         }}
-                        className={`cursor-pointer hover:bg-blue-50 ${
-                          idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'
+                        className={`cursor-pointer hover:bg-emerald-50/80 transition-colors ${
+                          idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'
                         }`}
                       >
-                        <td className="border-b border-slate-100 px-2 py-1.5 text-slate-800 font-mono tabular-nums whitespace-nowrap">
+                        <td className="border-b border-slate-100 px-3 py-2 text-slate-800 font-mono tabular-nums whitespace-nowrap">
                           {row.codigoPadded}
                         </td>
-                        <td className="border-b border-slate-100 px-2 py-1.5 text-slate-800">{row.nome}</td>
+                        <td className="border-b border-slate-100 px-3 py-2 text-slate-800">{row.nome}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1229,14 +1269,14 @@ export function CadastroClientes() {
               const procInterno = rawBusca.length > 0 && /^\d+$/.test(rawBusca) && !/^\d{8}$/.test(rawBusca);
               if (!procInterno || clientesBuscaPorProcHits.length === 0) return null;
               return (
-                <div className="border border-slate-300 rounded bg-white overflow-x-auto max-h-56 overflow-y-auto mb-2">
+                <div className="border border-slate-200/90 rounded-xl bg-white overflow-x-auto max-h-56 overflow-y-auto mb-2 shadow-inner ring-1 ring-slate-100">
                   <table className="w-full text-sm border-collapse min-w-[480px]">
                     <thead>
-                      <tr className="bg-slate-100 sticky top-0">
-                        <th className="border-b border-slate-200 px-2 py-1.5 text-left font-semibold text-slate-700 w-28">
+                      <tr className={`${theadBuscaClass} sticky top-0`}>
+                        <th className="px-3 py-2.5 text-left font-semibold w-28">
                           Código
                         </th>
-                        <th className="border-b border-slate-200 px-2 py-1.5 text-left font-semibold text-slate-700">
+                        <th className="px-3 py-2.5 text-left font-semibold">
                           Cliente / processo
                         </th>
                       </tr>
@@ -1254,14 +1294,14 @@ export function CadastroClientes() {
                               selecionarClienteDaBuscaNome(row);
                             }
                           }}
-                          className={`cursor-pointer hover:bg-blue-50 ${
-                            idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'
+                          className={`cursor-pointer hover:bg-emerald-50/80 transition-colors ${
+                            idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'
                           }`}
                         >
-                          <td className="border-b border-slate-100 px-2 py-1.5 text-slate-800 font-mono tabular-nums whitespace-nowrap">
+                          <td className="border-b border-slate-100 px-3 py-2 text-slate-800 font-mono tabular-nums whitespace-nowrap">
                             {row.codigoPadded}
                           </td>
-                          <td className="border-b border-slate-100 px-2 py-1.5 text-slate-800">{row.nome}</td>
+                          <td className="border-b border-slate-100 px-3 py-2 text-slate-800">{row.nome}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -1275,14 +1315,14 @@ export function CadastroClientes() {
               );
             })()}
             {clientesFiltradosPorNome.length > 0 && (
-              <div className="border border-slate-300 rounded bg-white overflow-x-auto max-h-56 overflow-y-auto">
+              <div className="border border-slate-200/90 rounded-xl bg-white overflow-x-auto max-h-56 overflow-y-auto shadow-inner ring-1 ring-slate-100">
                 <table className="w-full text-sm border-collapse min-w-[480px]">
                   <thead>
-                    <tr className="bg-slate-100 sticky top-0">
-                      <th className="border-b border-slate-200 px-2 py-1.5 text-left font-semibold text-slate-700 w-28">
+                    <tr className={`${theadBuscaClass} sticky top-0`}>
+                      <th className="px-3 py-2.5 text-left font-semibold w-28">
                         Código
                       </th>
-                      <th className="border-b border-slate-200 px-2 py-1.5 text-left font-semibold text-slate-700">
+                      <th className="px-3 py-2.5 text-left font-semibold">
                         Nome / Razão social
                       </th>
                     </tr>
@@ -1300,14 +1340,14 @@ export function CadastroClientes() {
                             selecionarClienteDaBuscaNome(row);
                           }
                         }}
-                        className={`cursor-pointer hover:bg-blue-50 ${
-                          idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'
+                        className={`cursor-pointer hover:bg-emerald-50/80 transition-colors ${
+                          idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'
                         }`}
                       >
-                        <td className="border-b border-slate-100 px-2 py-1.5 text-slate-800 font-mono tabular-nums whitespace-nowrap">
+                        <td className="border-b border-slate-100 px-3 py-2 text-slate-800 font-mono tabular-nums whitespace-nowrap">
                           {row.codigoPadded}
                         </td>
-                        <td className="border-b border-slate-100 px-2 py-1.5 text-slate-800">{row.nome}</td>
+                        <td className="border-b border-slate-100 px-3 py-2 text-slate-800">{row.nome}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1319,9 +1359,41 @@ export function CadastroClientes() {
                 )}
               </div>
             )}
+            </div>
           </section>
 
-          <section className="flex flex-wrap items-end gap-4 border-t border-slate-200 pt-4">
+          <section className="rounded-2xl border border-slate-200/90 bg-white shadow-md overflow-hidden ring-1 ring-indigo-500/5">
+            <div className="border-b border-indigo-400/30 bg-gradient-to-br from-indigo-950 via-violet-950 to-slate-900 px-4 py-3 text-white shadow-md ring-1 ring-indigo-500/25">
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-indigo-200/90 mb-0.5">Cliente selecionado</p>
+              <p className="text-lg font-semibold tracking-tight truncate" title={nomeRazao || undefined}>
+                {String(nomeRazao || '').trim() || '— Sem nome / razão social —'}
+              </p>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <span className="rounded-full bg-white/12 px-2.5 py-0.5 text-xs font-mono font-semibold text-indigo-50 ring-1 ring-white/20">
+                  Cód. {padCliente8(codigo)}
+                </span>
+                {clienteInativo ? (
+                  <span className="rounded-full bg-amber-400/25 px-2 py-0.5 text-[10px] font-bold uppercase text-amber-100 ring-1 ring-amber-300/40">
+                    Inativo
+                  </span>
+                ) : (
+                  <span className="rounded-full bg-emerald-400/20 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-100 ring-1 ring-emerald-400/35">
+                    Ativo
+                  </span>
+                )}
+                {edicaoDesabilitada ? (
+                  <span className="rounded-full bg-slate-600/50 px-2 py-0.5 text-[10px] font-semibold text-slate-200">
+                    Edição bloqueada
+                  </span>
+                ) : (
+                  <span className="rounded-full bg-sky-400/25 px-2 py-0.5 text-[10px] font-bold uppercase text-sky-100 ring-1 ring-sky-300/40">
+                    Editável
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="p-4 space-y-4 bg-gradient-to-b from-violet-50/30 via-white to-sky-50/20">
+          <div className="flex flex-wrap items-end gap-4 border-b border-slate-200/80 pb-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-0.5">Próximo cliente:</label>
               <p
@@ -1357,11 +1429,11 @@ export function CadastroClientes() {
               </p>
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-0.5">Código do Cliente:</label>
-              <div className="flex border border-slate-300 rounded overflow-hidden bg-white w-56">
+              <label className="block text-sm font-medium text-slate-700 mb-0.5">Código do Cliente</label>
+              <div className="flex border-2 border-indigo-200/80 rounded-xl overflow-hidden bg-white w-56 shadow-sm ring-1 ring-indigo-500/10">
                 <button
                   type="button"
-                  className="w-8 py-1.5 border-r border-slate-300 hover:bg-slate-100 text-slate-700 flex items-center justify-center"
+                  className="w-9 py-2 border-r border-indigo-100 hover:bg-indigo-50 text-indigo-800 flex items-center justify-center transition-colors"
                   onClick={() => {
                     const n = Number(normalizarCodigoCliente(codigo));
                     const next = Math.max(1, n - 1);
@@ -1376,11 +1448,11 @@ export function CadastroClientes() {
                   value={codigo}
                   onChange={(e) => handleCodigoInputChange(e.target.value)}
                   onBlur={(e) => handleCodigoInputBlur(e.target.value)}
-                  className="flex-1 px-2 py-1.5 text-sm font-mono text-center border-0 bg-white"
+                  className="flex-1 px-2 py-2 text-sm font-mono text-center border-0 bg-white text-indigo-950"
                 />
                 <button
                   type="button"
-                  className="w-8 py-1.5 border-l border-slate-300 hover:bg-slate-100 text-slate-700 flex items-center justify-center"
+                  className="w-9 py-2 border-l border-indigo-100 hover:bg-indigo-50 text-indigo-800 flex items-center justify-center transition-colors"
                   onClick={() => {
                     const n = Number(normalizarCodigoCliente(codigo));
                     const next = n + 1;
@@ -1399,10 +1471,10 @@ export function CadastroClientes() {
                 <button
                   type="button"
                   disabled={edicaoDesabilitada}
-                  className={`p-2 rounded border ${
+                  className={`p-2 rounded-lg border shadow-sm ${
                     edicaoDesabilitada
                       ? 'border-slate-200 bg-slate-100 cursor-not-allowed opacity-60'
-                      : 'border-slate-300 bg-white hover:bg-slate-50'
+                      : 'border-indigo-200 bg-indigo-50 text-indigo-900 hover:bg-indigo-100'
                   }`}
                   title={
                     edicaoDesabilitada
@@ -1467,14 +1539,14 @@ export function CadastroClientes() {
                   }
                   navigate(`/clientes/editar/${idPessoa}`);
                 }}
-                className="px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
+                className="px-3 py-2 rounded-lg border border-slate-200 bg-white text-slate-800 text-sm font-medium shadow-sm hover:bg-slate-50 hover:border-slate-300 transition-colors"
               >
                 Cadastro de Pessoas
               </button>
               <button
                 type="button"
                 onClick={abrirContaCorrenteProcZero}
-                className="px-3 py-2 rounded border border-sky-300 bg-white text-slate-800 text-sm hover:bg-sky-50"
+                className="px-3 py-2 rounded-lg border border-sky-300 bg-gradient-to-r from-sky-50 to-cyan-50 text-sky-950 text-sm font-medium shadow-sm hover:from-sky-100 hover:to-cyan-100"
                 title="Lançamentos do Financeiro com este Cod. Cliente e Proc. 0 (mensalistas / não vinculados a um processo específico). Abre a tela Processos com a janela da conta corrente."
               >
                 Conta Corrente (Proc. 0)
@@ -1494,30 +1566,30 @@ export function CadastroClientes() {
                   });
                   setModalQualificacaoAberto(true);
                 }}
-                className="px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
+                className="px-3 py-2 rounded-lg border border-violet-200 bg-violet-50 text-violet-950 text-sm font-medium shadow-sm hover:bg-violet-100"
               >
                 Qualificação
               </button>
               <button
                 type="button"
-                className="inline-flex items-center gap-2 px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-amber-200 bg-gradient-to-r from-amber-50 to-yellow-50 text-amber-950 text-sm font-medium shadow-sm hover:from-amber-100 hover:to-yellow-100"
                 title="Documentos do cliente"
               >
-                <FolderOpen className="w-4 h-4 shrink-0 text-yellow-500" aria-hidden />
+                <FolderOpen className="w-4 h-4 shrink-0 text-amber-600" aria-hidden />
                 Documentos
               </button>
               <button
                 type="button"
                 onClick={() => setModalConfigCalculoAberto(true)}
-                className="inline-flex items-center gap-2 px-3 py-2 rounded border border-indigo-200 bg-indigo-50 text-indigo-900 text-sm hover:bg-indigo-100"
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-indigo-300 bg-indigo-600 text-white text-sm font-semibold shadow-sm hover:bg-indigo-700"
                 title="Padrões de juros, multa, honorários, índice e periodicidade para os cálculos deste cliente"
               >
                 <SlidersHorizontal className="w-4 h-4 shrink-0" aria-hidden />
                 Configurações de cálculo
               </button>
             </div>
-            <label className="flex items-center gap-2 text-sm cursor-pointer">
-              <input type="checkbox" checked={edicaoDesabilitada} onChange={(e) => setEdicaoDesabilitada(e.target.checked)} className="rounded border-slate-300" />
+            <label className="flex items-center gap-2 text-sm cursor-pointer text-slate-700">
+              <input type="checkbox" checked={edicaoDesabilitada} onChange={(e) => setEdicaoDesabilitada(e.target.checked)} className="rounded border-slate-300 accent-indigo-600" />
               Edição Desabilitada
             </label>
             <label className="flex items-center gap-2 text-sm cursor-pointer">
@@ -1540,32 +1612,36 @@ export function CadastroClientes() {
                     registroAfetadoNome: nomeRazao,
                   });
                 }}
-                className="rounded border-slate-300"
+                className="rounded border-slate-300 accent-indigo-600"
               />
               Cliente Inativo
             </label>
-          </section>
+          </div>
 
-          <section>
-            <label className="block text-sm font-medium text-slate-700 mb-0.5">Observação:</label>
+          <div className="rounded-xl border border-slate-200/80 bg-white/70 p-3 shadow-sm ring-1 ring-slate-100/80">
+            <label className="block text-sm font-semibold text-slate-800 mb-1">Observação</label>
             <textarea value={observacao} onChange={(e) => setObservacao(e.target.value)} rows={3} className={`${inputClass} resize-y`} />
-          </section>
+          </div>
 
-          <section className="border-t border-slate-200 pt-4">
-            <p className="text-sm font-medium text-slate-700 mb-2">Processo:</p>
+          <div className="rounded-xl border border-sky-200/80 bg-gradient-to-br from-sky-50/50 via-white to-indigo-50/30 overflow-hidden shadow-sm ring-1 ring-sky-500/10">
+            <div className="border-b border-sky-200/70 bg-gradient-to-r from-sky-600 via-cyan-600 to-indigo-600 px-4 py-2.5">
+              <p className="text-sm font-bold uppercase tracking-wide text-white">Processos do cliente</p>
+              <p className="text-xs text-sky-100/95 mt-0.5">Grade alinhada à tela Processos — duplo clique na linha para abrir</p>
+            </div>
+            <div className="p-3 sm:p-4">
             <div className="flex flex-wrap items-center gap-2 mb-3">
-              <label className="text-sm text-slate-700">Pesquisar:</label>
+              <label className="text-sm font-medium text-slate-700">Pesquisar</label>
               <input type="text" value={pesquisaProcesso} onChange={(e) => setPesquisaProcesso(e.target.value)} className={`${inputClass} w-64`} placeholder="Buscar processo..." />
-              <button type="button" className="p-2 rounded border border-slate-300 bg-white hover:bg-slate-50"><Search className="w-4 h-4 text-slate-600" /></button>
-              <button type="button" className="px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50">Pesquisa</button>
+              <button type="button" className="p-2 rounded-lg border border-sky-200 bg-white hover:bg-sky-50 shadow-sm" title="Buscar"><Search className="w-4 h-4 text-sky-700" /></button>
+              <button type="button" className="px-3 py-2 rounded-lg border border-slate-200 bg-white text-slate-800 text-sm font-medium hover:bg-slate-50 shadow-sm">Pesquisa</button>
               <button
                 type="button"
                 onClick={handleIncluirNovoProcesso}
                 disabled={edicaoDesabilitada}
-                className={`inline-flex items-center gap-2 px-3 py-2 rounded border text-sm font-medium ${
+                className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-semibold shadow-sm ${
                   edicaoDesabilitada
                     ? 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed'
-                    : 'border-emerald-600 bg-emerald-50 text-emerald-900 hover:bg-emerald-100'
+                    : 'border-emerald-500 bg-gradient-to-r from-emerald-500 to-teal-600 text-white hover:from-emerald-600 hover:to-teal-700'
                 }`}
                 title={
                   edicaoDesabilitada
@@ -1577,23 +1653,23 @@ export function CadastroClientes() {
                 Incluir processo
               </button>
             </div>
-            <div className="overflow-x-auto border border-slate-300 rounded bg-white">
+            <div className="overflow-x-auto border border-slate-200/90 rounded-xl bg-white shadow-inner ring-1 ring-slate-100">
               <table className="w-full text-sm border-collapse">
                 <thead>
-                  <tr className="bg-slate-100">
-                    <th className="border border-slate-300 px-2 py-1.5 text-left font-semibold text-slate-700 w-24 whitespace-nowrap">Proc.</th>
-                    <th className="border border-slate-300 px-2 py-1.5 text-left font-semibold text-slate-700 min-w-[100px]">N.º Processo Velho:</th>
-                    <th className="border border-slate-300 px-2 py-1.5 text-left font-semibold text-slate-700 min-w-[180px]">N.º Processo Novo:</th>
-                    <th className="border border-slate-300 px-2 py-1.5 text-left font-semibold text-slate-700 min-w-[180px]">Parte Oposta:</th>
-                    <th className="border border-slate-300 px-2 py-1.5 text-left font-semibold text-slate-700 min-w-[180px]">Descrição da Ação:</th>
-                    <th className="border border-slate-300 px-2 py-1.5 w-10"></th>
+                  <tr className="bg-gradient-to-r from-indigo-800 via-slate-800 to-violet-900 text-white [&_th]:border-b [&_th]:border-white/10">
+                    <th className="px-3 py-2.5 text-left font-semibold w-24 whitespace-nowrap">Proc.</th>
+                    <th className="px-3 py-2.5 text-left font-semibold min-w-[100px]">N.º Processo Velho</th>
+                    <th className="px-3 py-2.5 text-left font-semibold min-w-[180px]">N.º Processo Novo</th>
+                    <th className="px-3 py-2.5 text-left font-semibold min-w-[180px]">Parte Oposta</th>
+                    <th className="px-3 py-2.5 text-left font-semibold min-w-[180px]">Descrição da Ação</th>
+                    <th className="px-2 py-2.5 w-10"></th>
                   </tr>
                 </thead>
                 <tbody>
                   {processosPagina.map((proc, idx) => (
                     <tr
                       key={proc.id}
-                      className={`${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'} cursor-pointer hover:bg-blue-50`}
+                      className={`${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'} cursor-pointer hover:bg-indigo-50/60 transition-colors`}
                       title="Duplo clique: abrir este processo (fora dos campos editáveis)"
                       onDoubleClick={(e) => {
                         if (e.target.closest('input, textarea, button')) return;
@@ -1693,7 +1769,7 @@ export function CadastroClientes() {
                   type="button"
                   disabled={paginaProcessos <= 1}
                   onClick={() => setPaginaProcessos((p) => Math.max(1, p - 1))}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50 disabled:opacity-45 disabled:cursor-not-allowed disabled:hover:bg-white"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-indigo-200 bg-white text-indigo-900 text-sm font-medium hover:bg-indigo-50 shadow-sm disabled:opacity-45 disabled:cursor-not-allowed disabled:hover:bg-white"
                   title="Página anterior"
                 >
                   <ChevronLeft className="w-4 h-4 shrink-0" aria-hidden />
@@ -1703,7 +1779,7 @@ export function CadastroClientes() {
                   type="button"
                   disabled={paginaProcessos >= totalPaginasProcessos}
                   onClick={() => setPaginaProcessos((p) => Math.min(totalPaginasProcessos, p + 1))}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50 disabled:opacity-45 disabled:cursor-not-allowed disabled:hover:bg-white"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-indigo-200 bg-white text-indigo-900 text-sm font-medium hover:bg-indigo-50 shadow-sm disabled:opacity-45 disabled:cursor-not-allowed disabled:hover:bg-white"
                   title="Próxima página"
                 >
                   Próximo
@@ -1711,16 +1787,21 @@ export function CadastroClientes() {
                 </button>
               </div>
             </div>
+            </div>
+          </div>
+          </div>
           </section>
 
           <div className="flex justify-center pt-2">
-            <button type="button" className="px-6 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50" onClick={() => window.history.back()}>
+            <button
+              type="button"
+              className="px-8 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-800 text-sm font-semibold shadow-sm hover:bg-slate-50 hover:border-slate-400 transition-colors"
+              onClick={() => window.history.back()}
+            >
               Fechar
             </button>
           </div>
         </div>
-
-        {/* Seção “Controle” removida para eliminar o painel lateral solicitado. */}
       </div>
 
       <ModalConfiguracoesCalculoCliente

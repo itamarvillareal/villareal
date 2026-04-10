@@ -2,6 +2,7 @@ import { agendaUsuarios as agendaUsuariosBase, getMockEventosAgendaPorData } fro
 import { featureFlags } from '../config/featureFlags.js';
 import { lerSnapshotUsuariosApi } from '../services/syncApiUsuariosSnapshot.js';
 import { montarProcessoRefAgenda } from '../domain/agendaProcessoRef.js';
+import { montarDescricaoAgendaAudienciaProcesso } from '../domain/descricaoAgendaAudiencia.js';
 import { normalizarProcesso, padCliente } from './processosDadosRelatorio.js';
 import { getNomeExibicaoUsuario } from './usuarioDisplayHelpers.js';
 
@@ -422,16 +423,14 @@ export function substituirUsuarioIdNaAgendaPersistida(antigoUsuarioId, novoUsuar
   return { ok: true, alterados };
 }
 
-function keyEvento({ data, hora, descricao, usuarioId, numeroProcessoNovo, codClientePad, procNum }) {
+function keyEvento({ data, hora, usuarioId, numeroProcessoNovo, codClientePad, procNum }) {
   const cod = String(codClientePad ?? '').trim();
   const p =
     procNum != null && Number.isFinite(Number(procNum)) && Number(procNum) >= 1
       ? String(Math.floor(Number(procNum)))
       : '';
   const num = String(numeroProcessoNovo ?? '').trim();
-  return `aud-${data}-${hora || ''}-${cod}|${p}|${num}-${usuarioId || ''}-${descricao || ''}`
-    .replace(/\s+/g, ' ')
-    .trim();
+  return `aud-${data}-${hora || ''}-${cod}|${p}|${num}-${usuarioId || ''}`.replace(/\s+/g, ' ').trim();
 }
 
 function normalizarDescricao({ audienciaTipo, numeroProcessoNovo }) {
@@ -444,7 +443,13 @@ function normalizarDescricao({ audienciaTipo, numeroProcessoNovo }) {
 
 /** Texto do compromisso na Agenda alinhado ao formulário Processos (audiência). */
 export function descricaoAudienciaParaAgendaCampos(campos) {
-  return normalizarDescricao(campos);
+  return montarDescricaoAgendaAudienciaProcesso({
+    audienciaTipo: campos?.audienciaTipo,
+    numeroProcessoNovo: campos?.numeroProcessoNovo,
+    parteCliente: campos?.parteCliente,
+    parteOposta: campos?.parteOposta,
+    competencia: campos?.competencia,
+  });
 }
 
 function parsePeriodicidade(periodicidadeRaw, diaDoMesRaw) {
@@ -563,12 +568,21 @@ export function agendarAudienciaParaTodosUsuarios({
   numeroProcessoNovo,
   codigoCliente,
   numeroInterno,
+  parteCliente,
+  parteOposta,
+  competencia,
 }) {
   const parsedData = parseDataBrCompleta(audienciaData);
   if (!parsedData) return { ok: false, reason: 'data-invalida' };
   const data = dataStr(parsedData);
   const hora = normalizarHora(audienciaHora);
-  const descricao = normalizarDescricao({ audienciaTipo, numeroProcessoNovo });
+  const descricao = montarDescricaoAgendaAudienciaProcesso({
+    audienciaTipo,
+    numeroProcessoNovo,
+    parteCliente,
+    parteOposta,
+    competencia,
+  });
   const codPad = padCliente(codigoCliente ?? '1');
   const procNorm = Math.max(1, Math.floor(Number(normalizarProcesso(numeroInterno ?? 1))));
   const processoRef = montarProcessoRefAgenda(codPad, procNorm);
@@ -587,7 +601,6 @@ export function agendarAudienciaParaTodosUsuarios({
       id: keyEvento({
         data,
         hora,
-        descricao,
         usuarioId,
         numeroProcessoNovo,
         codClientePad: codPad,
@@ -677,6 +690,44 @@ export function getEventosAgendaPersistidosPorData(dataBr) {
   const lista = store[data];
   if (!Array.isArray(lista)) return [];
   return lista;
+}
+
+/**
+ * @param {number} mes 1–12
+ * @param {number} ano ex. 2026
+ * @returns {Array<[string, object[]]>} pares [dataBr, eventos]
+ */
+export function listarEntradasAgendaPorMesAnoPersistida(mes, ano) {
+  const m = Number(mes);
+  const y = Number(ano);
+  if (!Number.isFinite(m) || m < 1 || m > 12 || !Number.isFinite(y)) return [];
+  const store = loadStore();
+  const mm = String(m).padStart(2, '0');
+  const out = [];
+  for (const dataBr of Object.keys(store)) {
+    const p = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(dataBr);
+    if (!p) continue;
+    if (p[2] !== mm || Number(p[3]) !== y) continue;
+    out.push([dataBr, Array.isArray(store[dataBr]) ? store[dataBr] : []]);
+  }
+  out.sort((a, b) => a[0].localeCompare(b[0]));
+  return out;
+}
+
+/**
+ * Todas as datas com compromissos na agenda persistida (localStorage), ordenadas.
+ * @returns {Array<[string, object[]]>} pares [dataBr, eventos]
+ */
+export function listarTodasEntradasAgendaPersistida() {
+  if (typeof window === 'undefined') return [];
+  const store = loadStore();
+  const out = [];
+  for (const dataBr of Object.keys(store)) {
+    if (!/^(\d{2})\/(\d{2})\/(\d{4})$/.test(dataBr)) continue;
+    out.push([dataBr, Array.isArray(store[dataBr]) ? store[dataBr] : []]);
+  }
+  out.sort((a, b) => a[0].localeCompare(b[0]));
+  return out;
 }
 
 /**
@@ -797,6 +848,19 @@ export function salvarCamposEventoAgendaPersistido({ dataBr, evento, patch }) {
   if (patch.statusCurto !== undefined) base.statusCurto = normalizarStatusCurtoAgenda(patch.statusCurto);
   if (patch.status !== undefined) base.status = String(patch.status ?? '').trim();
   if (patch.destaque !== undefined) base.destaque = !!patch.destaque;
+  if (patch.processoRef !== undefined) {
+    const pr = String(patch.processoRef ?? '').trim();
+    base.processoRef = pr ? pr.slice(0, 120) : '';
+  }
+  if (patch.codCliente !== undefined && String(patch.codCliente).trim() !== '') {
+    base.codCliente = padCliente(patch.codCliente);
+    base.clienteId = base.codCliente;
+  }
+  if (patch.proc !== undefined && Number.isFinite(Number(patch.proc)) && Number(patch.proc) >= 1) {
+    const pn = Math.floor(Number(patch.proc));
+    base.proc = pn;
+    base.processoId = String(pn);
+  }
 
   if (idx >= 0) {
     lista[idx] = base;

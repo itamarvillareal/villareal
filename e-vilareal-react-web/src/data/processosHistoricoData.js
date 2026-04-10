@@ -1,4 +1,16 @@
 import { hojeDdMmYyyy } from '../services/hjDateAliasService.js';
+import {
+  listarEntradasAgendaPorMesAnoPersistida,
+  listarTodasEntradasAgendaPersistida,
+  salvarCamposEventoAgendaPersistido,
+} from './agendaPersistenciaData.js';
+import { extrairChaveProcessoEventoAgenda, montarProcessoRefAgenda } from '../domain/agendaProcessoRef.js';
+import {
+  encontrarProcessosHistoricoPorTextoAgenda,
+  extrairTipoAudienciaDaDescricaoAgenda,
+  extrairChavesCandidatasCnjDoTextoAgenda,
+} from '../domain/cnjAgendaResolucao.js';
+import { padCliente } from './processosDadosRelatorio.js';
 
 /**
  * Histórico local por processo — chaves JSON legadas (equivalentes canônicas):
@@ -711,76 +723,221 @@ export function enriquecerListaProcessosComHistoricoLocal(codClientePadded8, lis
 }
 
 /**
- * Extrai candidatos a número CNJ do texto (formato com máscara ou 20 dígitos seguidos).
- */
-function extrairCandidatosNumeroProcessoDoTexto(texto) {
-  const s = String(texto ?? '');
-  const vistos = new Set();
-  const lista = [];
-
-  const reCnj = /\b\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}\b/g;
-  let m;
-  while ((m = reCnj.exec(s)) !== null) {
-    const d = apenasDigitos(m[0]);
-    if (d.length >= 15 && !vistos.has(d)) {
-      vistos.add(d);
-      lista.push(d);
-    }
-  }
-
-  const re20 = /\b\d{20}\b/g;
-  while ((m = re20.exec(s)) !== null) {
-    const d = m[0];
-    if (!vistos.has(d)) {
-      vistos.add(d);
-      lista.push(d);
-    }
-  }
-
-  return lista;
-}
-
-/**
  * Se o texto do compromisso contiver número(s) de processo e **apenas um** processo
  * distinto da base (localStorage) for identificado, retorna `{ codCliente, proc }`.
+ * Aceita CNJ completo, 20 dígitos ou resumo (ex.: 5717034.38.2025).
  * Caso contrário (nenhum match, ou mais de um processo distinto) retorna `null`.
  */
 export function buscarProcessoUnicoNaBasePorTextoAgenda(texto) {
-  const candidatos = extrairCandidatosNumeroProcessoDoTexto(texto);
-  if (candidatos.length === 0) return null;
-
-  const mapaDigitosParaProcesso = new Map();
-
-  function registrarNumero(codCliente, proc, numeroStr) {
-    const d = apenasDigitos(String(numeroStr ?? ''));
-    if (d.length < 15) return;
-    if (!mapaDigitosParaProcesso.has(d)) {
-      mapaDigitosParaProcesso.set(d, {
-        codCliente: normalizarCodCliente(codCliente),
-        proc: Number(normalizarProc(proc)),
-      });
-    }
-  }
-
   const store = loadStore();
-  for (const regRaw of Object.values(store)) {
-    const reg = normalizarRegistroProcesso(regRaw);
-    if (!reg) continue;
-    const numero = String(reg.numeroProcessoNovo ?? '').trim();
-    registrarNumero(reg.codCliente, reg.proc, numero);
+  const lista = encontrarProcessosHistoricoPorTextoAgenda(texto, store);
+  if (lista.length !== 1) return null;
+  const m = lista[0];
+  return {
+    codCliente: normalizarCodCliente(m.codCliente),
+    proc: Number(normalizarProc(m.proc)),
+  };
+}
+
+function statsSincAgendaVazio() {
+  return {
+    ok: true,
+    processosAtualizados: 0,
+    eventosAgendaEnriquecidos: 0,
+    ignoradosSemPadraoCnj: 0,
+    ignoradosSemMatchNaBase: 0,
+    ignoradosAmbiguos: 0,
+    ignoradosSemRegistro: 0,
+  };
+}
+
+/**
+ * @param {Array<[string, object[]]>} entradas pares [dataBr, eventos]
+ * @param {{
+ *   persistirPatchNaAgendaLocal?: boolean,
+ *   storeHistoricoParaMatch?: Record<string, unknown>|null,
+ *   criarRegistroSeAusente?: boolean,
+ * }} [options]
+ */
+export function sincronizarAudienciasAgendaEntradas(entradas, options = {}) {
+  const persistirPatchNaAgendaLocal = options.persistirPatchNaAgendaLocal !== false;
+  const storeHistoricoParaMatch =
+    options.storeHistoricoParaMatch != null && typeof options.storeHistoricoParaMatch === 'object'
+      ? options.storeHistoricoParaMatch
+      : null;
+  const criarRegistroSeAusente = options.criarRegistroSeAusente !== false;
+
+  const base = statsSincAgendaVazio();
+  if (typeof window === 'undefined') {
+    return { ...base, ok: false, reason: 'no-window' };
   }
 
-  const processosDistintos = new Map();
-  for (const cand of candidatos) {
-    const match = mapaDigitosParaProcesso.get(cand);
-    if (match) {
-      const chave = `${match.codCliente}:${match.proc}`;
-      processosDistintos.set(chave, match);
+  const storeParaMatch = storeHistoricoParaMatch || loadStore();
+  const chavesProcAtualizadas = new Set();
+  let eventosAgendaEnriquecidos = 0;
+
+  for (const [dataBr, eventos] of entradas) {
+    for (const ev of eventos) {
+      const desc = [String(ev?.descricao ?? '').trim(), String(ev?.titulo ?? '').trim()]
+        .filter(Boolean)
+        .join('\n')
+        .trim();
+
+      let matches = [];
+      const chaveEv = extrairChaveProcessoEventoAgenda(ev);
+      if (chaveEv) {
+        const prevV = getRegistroProcesso(chaveEv.codCliente, chaveEv.proc);
+        if (prevV) {
+          matches = [{ codCliente: prevV.codCliente, proc: Number(normalizarProc(prevV.proc)) }];
+        } else if (criarRegistroSeAusente) {
+          matches = [{ codCliente: chaveEv.codCliente, proc: chaveEv.proc }];
+        }
+      }
+
+      if (matches.length === 0) {
+        if (!desc) {
+          base.ignoradosSemPadraoCnj += 1;
+          continue;
+        }
+        if (extrairChavesCandidatasCnjDoTextoAgenda(desc).length === 0) {
+          base.ignoradosSemPadraoCnj += 1;
+          continue;
+        }
+        matches = encontrarProcessosHistoricoPorTextoAgenda(desc, storeParaMatch);
+      }
+
+      if (matches.length === 0) {
+        base.ignoradosSemMatchNaBase += 1;
+        continue;
+      }
+      if (matches.length > 1) {
+        base.ignoradosAmbiguos += 1;
+        continue;
+      }
+
+      const { codCliente: codM, proc: procM } = matches[0];
+      const prev = getRegistroProcesso(codM, procM);
+      const tipo = extrairTipoAudienciaDaDescricaoAgenda(desc);
+      const hora = String(ev?.hora ?? '').trim().slice(0, 5);
+
+      if (!prev) {
+        if (!criarRegistroSeAusente) {
+          base.ignoradosSemRegistro += 1;
+          continue;
+        }
+        const procInt = Math.floor(Number(procM)) || 1;
+        const lookupKey = `${padCliente(codM)}:${procInt}`;
+        const stub =
+          storeHistoricoParaMatch && typeof storeHistoricoParaMatch === 'object'
+            ? storeHistoricoParaMatch[lookupKey]
+            : null;
+        const nStub = stub && typeof stub === 'object' ? stub : null;
+        upsertRegistroProcesso({
+          codCliente: codM,
+          proc: procM,
+          cliente: '',
+          parteCliente: '',
+          parteOposta: '',
+          numeroProcessoNovo: String(nStub?.numeroProcessoNovo ?? '').trim(),
+          numeroProcessoVelho: String(nStub?.numeroProcessoVelho ?? '').trim(),
+          historico: [],
+          audienciaData: dataBr,
+          audienciaHora: hora,
+          audienciaTipo: tipo || 'Audiência',
+        });
+      } else {
+        upsertRegistroProcesso({
+          ...prev,
+          codCliente: prev.codCliente,
+          proc: prev.proc,
+          historico: prev.historico,
+          audienciaData: dataBr,
+          audienciaHora: hora,
+          audienciaTipo: tipo || prev.audienciaTipo,
+        });
+      }
+
+      const prevPos = getRegistroProcesso(codM, procM);
+      if (!prevPos) continue;
+
+      const kProc = `${prevPos.codCliente}:${prevPos.proc}`;
+      if (!chavesProcAtualizadas.has(kProc)) {
+        chavesProcAtualizadas.add(kProc);
+        base.processosAtualizados += 1;
+      }
+
+      if (persistirPatchNaAgendaLocal) {
+        const codPad = padCliente(prevPos.codCliente);
+        const procNum = Math.floor(Number(prevPos.proc)) || 1;
+        const procRef = montarProcessoRefAgenda(codPad, procNum) || '';
+        const r = salvarCamposEventoAgendaPersistido({
+          dataBr,
+          evento: ev,
+          patch: {
+            processoRef: procRef,
+            codCliente: codPad,
+            proc: procNum,
+          },
+        });
+        if (r.ok) eventosAgendaEnriquecidos += 1;
+      }
     }
   }
 
-  if (processosDistintos.size !== 1) return null;
-  return [...processosDistintos.values()][0];
+  base.eventosAgendaEnriquecidos = eventosAgendaEnriquecidos;
+
+  if (base.processosAtualizados > 0) {
+    try {
+      window.dispatchEvent(new CustomEvent('vilareal:processos-historico-atualizado'));
+    } catch {
+      /* ignore */
+    }
+  }
+  if (eventosAgendaEnriquecidos > 0) {
+    try {
+      window.dispatchEvent(new CustomEvent('vilareal:agenda-persistencia-atualizada'));
+    } catch {
+      /* ignore */
+    }
+  }
+
+  return base;
+}
+
+function sincronizarAudienciasListaEntradasAgendaInterno(entradas) {
+  return sincronizarAudienciasAgendaEntradas(entradas, {
+    persistirPatchNaAgendaLocal: true,
+    storeHistoricoParaMatch: null,
+    criarRegistroSeAusente: true,
+  });
+}
+
+/**
+ * Percorre **toda** a agenda persistida (localStorage), igual ao fluxo por mês.
+ */
+export function sincronizarTodaAgendaPersistidaComProcessosHistorico() {
+  const entradas = listarTodasEntradasAgendaPersistida();
+  return sincronizarAudienciasListaEntradasAgendaInterno(entradas);
+}
+
+/**
+ * Percorre a agenda persistida (localStorage) do mês/ano, identifica compromissos cujo texto
+ * contenha CNJ (completo ou resumido) e, quando houver um único processo correspondente no
+ * histórico local, grava data/hora/tipo da audiência no histórico do processo e enriquece o
+ * evento com codCliente, proc e processoRef.
+ */
+export function sincronizarAudienciasAgendaMesComProcessosHistorico(mes, ano) {
+  const base = statsSincAgendaVazio();
+  if (typeof window === 'undefined') {
+    return { ...base, ok: false, reason: 'no-window' };
+  }
+  const m = Number(mes);
+  const y = Number(ano);
+  if (!Number.isFinite(m) || m < 1 || m > 12 || !Number.isFinite(y)) {
+    return { ...base, ok: false, reason: 'mes-ano-invalido' };
+  }
+  const entradas = listarEntradasAgendaPorMesAnoPersistida(m, y);
+  return sincronizarAudienciasListaEntradasAgendaInterno(entradas);
 }
 
 export function getHistoricoDoProcesso(codCliente, proc) {
