@@ -18,11 +18,14 @@
  * Filtro opcional: --data-min=2026-05-01 (só datas >=; omitir = importa todas as linhas válidas).
  * Paralelismo: --concurrency=8 ou VILAREAL_IMPORT_CONCURRENCY (útil para ~20k linhas).
  *
- * Opcional: --usuario-id=3 (ou VILAREAL_IMPORT_USUARIO_ID) — envia esse id no corpo do POST;
+ * Opcional: --usuario-id=2 (ou VILAREAL_IMPORT_USUARIO_ID) — envia esse id no corpo do POST;
  * o JWT continua a ser do --login. O backend pode ou não restringir isto; use só em ambiente controlado.
  *
  * Uso:
  *   VILAREAL_IMPORT_SENHA='***' node scripts/import-agenda-planilha.mjs "ficheiro.xlsx" --layout=total --login=itamar
+ *
+ * Karla (planilha no Dropbox COMUM, id 2):
+ *   VILAREAL_IMPORT_SENHA='***' node scripts/import-agenda-planilha.mjs "/Users/itamarvillarealjunior/Dropbox/COMUM/agenda karla total.xlsx" --layout=total --login=karla.pedroza@villarealadvocacia.adv.br --usuario-id=2
  * No front: VITE_USE_API_AGENDA=true (reinicie o Vite).
  */
 
@@ -57,7 +60,7 @@ function parseArgs(argv) {
     else if (a.startsWith('--concurrency=')) {
       const n = Number(a.slice(14));
       if (Number.isFinite(n) && n >= 1) out.concurrency = Math.min(32, Math.floor(n));
-    }     else if (a.startsWith('--login=')) out.login = a.slice(8);
+    } else if (a.startsWith('--login=')) out.login = a.slice(8);
     else if (a.startsWith('--senha=')) out.senha = a.slice(8);
     else if (a.startsWith('--usuario-id=')) {
       const n = Number(a.slice(13));
@@ -291,15 +294,30 @@ async function main() {
     process.exit(0);
   }
 
+  if (!opts.senha) {
+    console.error(
+      'Defina a senha: --senha=... ou variável de ambiente VILAREAL_IMPORT_SENHA (ex.: export VILAREAL_IMPORT_SENHA=123456).'
+    );
+    process.exit(1);
+  }
+
   const loginUrl = `${opts.baseUrl}/api/auth/login`;
+  const loginNorm = String(opts.login).trim().toLowerCase();
   const loginRes = await fetch(loginUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ login: opts.login, senha: opts.senha }),
+    body: JSON.stringify({ login: loginNorm, senha: opts.senha }),
   });
   if (!loginRes.ok) {
     const t = await loginRes.text();
     console.error('Falha no login', loginRes.status, t);
+    if (loginRes.status === 401) {
+      console.error(
+        'Dicas: confira o login exato na BD (SELECT id, login, ativo FROM usuarios WHERE id = 2 OR login LIKE "%karla%"); ' +
+          'a senha do seed SQL costuma ser 123456 só se o hash não foi alterado. ' +
+          'Alternativa: login de outro utilizador com --usuario-id=2 (se a API aceitar).'
+      );
+    }
     process.exit(1);
   }
   const loginJson = await loginRes.json();

@@ -717,7 +717,7 @@ export function Board() {
 
   if (emPendencias) {
     return (
-      <div className="flex-1 overflow-auto p-4">
+      <div className="flex-1 overflow-auto p-4 min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/30 to-emerald-50/40">
         {featureFlags.useApiTarefas && (
           <div className="flex flex-wrap items-end gap-3 mb-3 text-sm">
             <label className="flex flex-col gap-0.5 min-w-[10rem]">
@@ -810,15 +810,15 @@ export function Board() {
             return (
               <div
                 key={col.id}
-                className="flex flex-col w-56 shrink-0 bg-gray-50 rounded-lg border border-gray-200 overflow-hidden"
+                className="flex flex-col w-56 shrink-0 bg-white/90 rounded-xl border border-slate-200/90 shadow-md ring-1 ring-indigo-500/10 overflow-hidden"
               >
-                <div className="flex items-center justify-between px-3 py-2.5 bg-gray-100 border-b border-gray-200">
-                  <span className="font-semibold text-gray-800 text-sm">{col.name}</span>
+                <div className="flex items-center justify-between px-3 py-2.5 bg-gradient-to-r from-indigo-600 to-violet-700 border-b border-white/15 text-white">
+                  <span className="font-semibold text-sm">{col.name}</span>
                   <div className="flex gap-0.5">
-                    <button type="button" className="p-1 rounded hover:bg-gray-200 text-gray-600" aria-label="Anterior">
+                    <button type="button" className="p-1 rounded hover:bg-white/15 text-white/90" aria-label="Anterior">
                       <ChevronLeft className="w-4 h-4" />
                     </button>
-                    <button type="button" className="p-1 rounded hover:bg-gray-200 text-gray-600" aria-label="Próximo">
+                    <button type="button" className="p-1 rounded hover:bg-white/15 text-white/90" aria-label="Próximo">
                       <ChevronRight className="w-4 h-4" />
                     </button>
                   </div>
@@ -1034,7 +1034,7 @@ export function Board() {
   }
 
   return (
-    <div className="flex-1 overflow-auto p-4">
+    <div className="flex-1 overflow-auto p-4 min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/30 to-emerald-50/40">
       <div className="flex gap-4 overflow-x-auto pb-2">
         {boardData.map((column) => (
           <Column

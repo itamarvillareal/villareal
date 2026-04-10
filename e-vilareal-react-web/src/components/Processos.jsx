@@ -2141,7 +2141,7 @@ export function Processos() {
   );
 
   return (
-    <div className="min-h-full bg-gradient-to-b from-slate-100 via-slate-50 to-slate-200">
+    <div className="min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/35 to-emerald-50/45">
       <div className="max-w-[1400px] mx-auto px-3 py-3">
         {/* Cabeçalho: Processos + X */}
         <header className="flex items-center justify-between mb-3 gap-2 rounded-xl border border-slate-200/80 bg-white/90 px-3 py-2.5 shadow-sm backdrop-blur-sm">

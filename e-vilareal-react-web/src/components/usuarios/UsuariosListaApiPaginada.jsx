@@ -127,69 +127,71 @@ export function UsuariosListaApiPaginada({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <label className="text-xs font-medium text-slate-600">Localizar por</label>
-          <select
-            value={criterioBusca}
-            onChange={(e) => setCriterioBusca(e.target.value)}
-            className="rounded border border-slate-300 px-2 py-1.5 text-sm bg-white"
+      <div className="rounded-2xl border border-slate-200/90 bg-white/80 backdrop-blur-sm p-4 shadow-sm ring-1 ring-indigo-500/10">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="text-xs font-medium text-slate-600">Localizar por</label>
+            <select
+              value={criterioBusca}
+              onChange={(e) => setCriterioBusca(e.target.value)}
+              className="rounded-lg border border-slate-200 px-2 py-1.5 text-sm bg-white shadow-sm focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400"
+            >
+              {CRITERIOS.map((c) => (
+                <option key={c.value} value={c.value}>
+                  {c.label}
+                </option>
+              ))}
+            </select>
+            <input
+              type="search"
+              value={valorBusca}
+              onChange={(e) => setValorBusca(e.target.value)}
+              placeholder="Digite para filtrar…"
+              className="w-52 rounded-lg border border-slate-200 px-2 py-1.5 text-sm shadow-sm focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400"
+            />
+          </div>
+          <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={apenasAtivos}
+              onChange={(e) => setApenasAtivos(e.target.checked)}
+              className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+            />
+            Apenas ativos
+          </label>
+          <button
+            type="button"
+            onClick={() => onNovoUsuario?.()}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 px-3 py-2 text-sm font-semibold text-white shadow-lg shadow-indigo-500/20 hover:from-indigo-500 hover:to-violet-500 ml-auto"
           >
-            {CRITERIOS.map((c) => (
-              <option key={c.value} value={c.value}>
-                {c.label}
-              </option>
-            ))}
-          </select>
-          <input
-            type="search"
-            value={valorBusca}
-            onChange={(e) => setValorBusca(e.target.value)}
-            placeholder="Digite para filtrar…"
-            className="w-52 rounded border border-slate-300 px-2 py-1.5 text-sm"
-          />
+            <UserPlus className="h-4 w-4 shrink-0" aria-hidden />
+            Novo usuário
+          </button>
         </div>
-        <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={apenasAtivos}
-            onChange={(e) => setApenasAtivos(e.target.checked)}
-            className="rounded border-slate-300"
-          />
-          Apenas ativos
-        </label>
-        <button
-          type="button"
-          onClick={() => onNovoUsuario?.()}
-          className="inline-flex items-center gap-1.5 rounded border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-900 hover:bg-indigo-100 ml-auto"
-        >
-          <UserPlus className="h-4 w-4 shrink-0" aria-hidden />
-          Novo usuário
-        </button>
       </div>
 
       {error ? (
-        <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>
+        <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 shadow-sm">{error}</div>
       ) : null}
 
-      <div className="border border-slate-200 rounded-lg overflow-hidden bg-white">
-        <div className="px-3 py-2 border-b border-slate-200 bg-slate-50 flex items-center gap-2 text-xs text-slate-600">
-          <Search className="h-3.5 w-3.5 shrink-0" aria-hidden />
+      <div className="border border-slate-200/90 rounded-2xl overflow-hidden bg-white shadow-md ring-1 ring-indigo-500/10">
+        <div className="px-3 py-2.5 border-b border-white/20 bg-gradient-to-r from-indigo-600 to-violet-700 flex items-center gap-2 text-xs font-medium text-white">
+          <Search className="h-3.5 w-3.5 shrink-0 opacity-90" aria-hidden />
           <span>
             {loading ? 'Carregando…' : `${totalElements} registro(s)`} — mesma paginação do relatório de pessoas
           </span>
         </div>
         <div className="overflow-x-auto">
           <table className="table-fixed w-full min-w-[44rem] text-sm">
-            <thead className="bg-slate-100 text-slate-700 font-medium text-left">
+            <thead className="bg-slate-50 text-slate-700 font-semibold text-left text-xs uppercase tracking-wide border-b border-slate-200">
               <tr>
-                <th className="px-3 py-2 w-14">Id</th>
-                <th className="px-3 py-2 w-[28%]">Nome (Pessoas)</th>
-                <th className="px-3 py-2 w-[18%]">Apelido</th>
-                <th className="px-3 py-2 w-28">Login</th>
-                <th className="px-3 py-2 w-24">Pessoa nº</th>
-                <th className="px-3 py-2 w-16">Ativo</th>
-                <th className="px-3 py-2 text-right w-[11rem]">Ações</th>
+                <th className="px-3 py-2.5 w-14">Id</th>
+                <th className="px-3 py-2.5 w-[28%]">Nome (Pessoas)</th>
+                <th className="px-3 py-2.5 w-[18%]">Apelido</th>
+                <th className="px-3 py-2.5 w-28">Login</th>
+                <th className="px-3 py-2.5 w-24">Pessoa nº</th>
+                <th className="px-3 py-2.5 w-16">Ativo</th>
+                <th className="px-3 py-2.5 text-right w-[11rem]">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -207,7 +209,7 @@ export function UsuariosListaApiPaginada({
                 </tr>
               ) : (
                 content.map((u) => (
-                  <tr key={String(u.id)} className="hover:bg-slate-50/80">
+                  <tr key={String(u.id)} className="hover:bg-indigo-50/40 transition-colors">
                     <td className="px-3 py-2 font-mono text-xs text-slate-600">{u.id}</td>
                     <td className="px-3 py-2 text-slate-900 align-top overflow-hidden">
                       <div className="truncate" title={String(u.nomePessoa ?? '').trim() || undefined}>
@@ -227,7 +229,7 @@ export function UsuariosListaApiPaginada({
                         <button
                           type="button"
                           onClick={() => onAbrirDados?.(u)}
-                          className="inline-flex items-center gap-1 rounded border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-800 hover:bg-slate-50"
+                          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-800 hover:bg-slate-50 shadow-sm"
                         >
                           <UserRoundCog className="h-3.5 w-3.5" aria-hidden />
                           Dados
@@ -240,7 +242,7 @@ export function UsuariosListaApiPaginada({
                               nome: getNomeExibicaoUsuario(u),
                             })
                           }
-                          className="inline-flex items-center gap-1 rounded border border-indigo-200 bg-indigo-50 px-2 py-1 text-xs font-medium text-indigo-900 hover:bg-indigo-100"
+                          className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50 px-2 py-1 text-xs font-medium text-indigo-900 hover:bg-indigo-100 shadow-sm"
                         >
                           <Shield className="h-3.5 w-3.5" aria-hidden />
                           Permissões
@@ -257,7 +259,7 @@ export function UsuariosListaApiPaginada({
                                 window.alert(e?.message || 'Erro ao inativar.');
                               }
                             }}
-                            className="rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"
+                            className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 hover:bg-slate-50 shadow-sm"
                           >
                             Inativar
                           </button>

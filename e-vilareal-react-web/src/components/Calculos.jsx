@@ -1562,28 +1562,30 @@ export function Calculos() {
   ]);
 
   return (
-    <div className="min-h-full bg-slate-200 flex flex-col">
-      <header className="flex items-center justify-between px-3 py-2 bg-white border-b border-slate-300 shrink-0">
-        <h1 className="text-lg font-bold text-slate-800">Cálculos Atualizados dos Títulos</h1>
-        <button type="button" onClick={() => window.history.back()} className="p-2 rounded border border-slate-400 bg-white text-slate-600 hover:bg-slate-100" aria-label="Fechar">
+    <div className="min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/35 to-emerald-50/45 flex flex-col">
+      <header className="flex items-center justify-between px-3 py-2.5 bg-white/95 backdrop-blur-sm border-b border-slate-200/90 shadow-sm shrink-0">
+        <h1 className="text-lg font-bold bg-gradient-to-r from-indigo-800 to-violet-800 bg-clip-text text-transparent">
+          Cálculos Atualizados dos Títulos
+        </h1>
+        <button type="button" onClick={() => window.history.back()} className="p-2 rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 shadow-sm" aria-label="Fechar">
           <X className="w-5 h-5" />
         </button>
       </header>
 
-      <div className="px-3 py-2 bg-slate-500 text-white flex items-center justify-between">
+      <div className="px-3 py-2 bg-gradient-to-r from-indigo-600 to-violet-700 text-white flex items-center justify-between shadow-md">
         <span className="font-medium">
           {rodadaAtual.cabecalho?.autor ?? '—'} — {rodadaAtual.cabecalho?.reu ?? '—'}
         </span>
         <span className="text-sm font-mono">{String(codigoClienteNorm)}</span>
       </div>
 
-      <div className="flex border-b border-slate-300 bg-slate-100">
+      <div className="flex border-b border-slate-200/90 bg-slate-50/90">
         {TABS.map((tab) => (
           <button
             key={tab}
             type="button"
             onClick={() => setTabAtiva(tab)}
-            className={`px-4 py-2 text-sm font-medium rounded-t ${tabAtiva === tab ? 'bg-white text-slate-800 border border-slate-300 border-b-0 -mb-px' : 'text-slate-600 hover:bg-slate-200'}`}
+            className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${tabAtiva === tab ? 'bg-white text-indigo-900 border border-slate-200/90 border-b-0 -mb-px shadow-sm ring-1 ring-indigo-500/10' : 'text-slate-600 hover:bg-indigo-50/60'}`}
           >
             {tab}
           </button>

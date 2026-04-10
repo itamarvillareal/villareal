@@ -1116,7 +1116,7 @@ export function CadastroClientes() {
     'bg-gradient-to-r from-slate-800 via-indigo-900 to-violet-900 text-white [&_th]:border-b [&_th]:border-white/10';
 
   return (
-    <div className="min-h-full bg-gradient-to-b from-slate-100 via-slate-50 to-slate-200 flex flex-col">
+    <div className="min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/35 to-emerald-50/45 flex flex-col">
       <div className="max-w-[1400px] mx-auto w-full flex flex-col flex-1 min-h-0 px-3 py-3">
         {erroApiCliente ? (
           <div className="mb-3 rounded-xl border border-red-200/90 bg-red-50/95 px-4 py-3 text-sm text-red-800 shadow-sm backdrop-blur-sm">

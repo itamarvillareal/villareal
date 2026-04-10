@@ -43,7 +43,7 @@ export function Login() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-4 py-10 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+    <div className="min-h-screen flex flex-col items-center justify-center px-4 py-10 bg-gradient-to-br from-slate-900 via-indigo-950/80 to-slate-900">
       <div
         className="absolute inset-0 opacity-[0.07] pointer-events-none"
         style={{

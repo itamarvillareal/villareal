@@ -24,7 +24,8 @@ public class UsuarioUserDetailsService implements UserDetailsService {
     @Override
     @Transactional(readOnly = true)
     public UserDetails loadUserByUsername(String login) throws UsernameNotFoundException {
-        UsuarioEntity u = usuarioRepository.findWithPerfilByLoginIgnoreCase(login.trim().toLowerCase())
+        String normalized = login.trim().toLowerCase();
+        UsuarioEntity u = usuarioRepository.findWithPerfilByLoginIgnoreCase(normalized)
                 .orElseThrow(() -> new UsernameNotFoundException("Usuário não encontrado."));
         if (!Boolean.TRUE.equals(u.getAtivo())) {
             throw new UsernameNotFoundException("Usuário inativo.");
@@ -33,8 +34,10 @@ public class UsuarioUserDetailsService implements UserDetailsService {
             throw new UsernameNotFoundException("Usuário sem perfil.");
         }
         var authorities = Set.of(new SimpleGrantedAuthority("ROLE_" + u.getPerfil().getCodigo()));
+        // Mesmo valor que AuthApplicationService passa ao token (minúsculas), evitando falha de autenticação
+        // quando o login guardado na BD difere só em maiúsculas.
         return User.builder()
-                .username(u.getLogin())
+                .username(normalized)
                 .password(u.getSenhaHash())
                 .authorities(authorities)
                 .build();

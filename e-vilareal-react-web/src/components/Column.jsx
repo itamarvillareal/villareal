@@ -3,20 +3,20 @@ import { TaskCard } from './TaskCard';
 
 export function Column({ column, selectedTaskId, onSelectTask }) {
   return (
-    <div className="flex flex-col w-56 shrink-0 bg-gray-50 rounded-lg border border-gray-200 overflow-hidden">
-      <div className="flex items-center justify-between px-3 py-2.5 bg-gray-100 border-b border-gray-200">
-        <span className="font-semibold text-gray-800 text-sm">{column.name}</span>
+    <div className="flex flex-col w-56 shrink-0 bg-white/90 rounded-xl border border-slate-200/90 shadow-md ring-1 ring-indigo-500/10 overflow-hidden">
+      <div className="flex items-center justify-between px-3 py-2.5 bg-gradient-to-r from-indigo-600 to-violet-700 border-b border-white/15 text-white">
+        <span className="font-semibold text-sm">{column.name}</span>
         <div className="flex gap-0.5">
           <button
             type="button"
-            className="p-1 rounded hover:bg-gray-200 text-gray-600"
+            className="p-1 rounded hover:bg-white/15 text-white/90"
             aria-label="Anterior"
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
           <button
             type="button"
-            className="p-1 rounded hover:bg-gray-200 text-gray-600"
+            className="p-1 rounded hover:bg-white/15 text-white/90"
             aria-label="Próximo"
           >
             <ChevronRight className="w-4 h-4" />

@@ -275,7 +275,7 @@ export function ImoveisAdministracaoFinanceiro() {
   }, [location.hash, painel]);
 
   return (
-    <div className="min-h-full bg-slate-200 p-4">
+    <div className="min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/35 to-emerald-50/45 p-4">
       <div className="max-w-[1400px] mx-auto space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex items-start gap-3">
@@ -286,15 +286,19 @@ export function ImoveisAdministracaoFinanceiro() {
                   state: mock ? { numeroPlanilha: mock.imovelId } : { imovelId },
                 })
               }
-              className="p-2 rounded-lg border border-slate-400 bg-white text-slate-600 hover:bg-slate-100 shrink-0 mt-0.5"
+              className="p-2 rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 shadow-sm shrink-0 mt-0.5"
               aria-label="Voltar ao cadastro do imóvel"
             >
               <ArrowLeft className="w-5 h-5" />
             </button>
             <div>
-              <h1 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                <Landmark className="w-6 h-6 text-teal-700 shrink-0" aria-hidden />
-                Financeiro da locação
+              <h1 className="text-xl font-bold text-slate-800 flex items-center gap-3">
+                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-violet-700 text-white shadow-lg shadow-indigo-500/25 shrink-0">
+                  <Landmark className="w-5 h-5" aria-hidden />
+                </span>
+                <span className="bg-gradient-to-r from-indigo-800 to-violet-800 bg-clip-text text-transparent">
+                  Financeiro da locação
+                </span>
               </h1>
               <p className="text-sm text-slate-600 mt-1 max-w-3xl">
                 Movimentações são as mesmas da <strong>Conta Corrente</strong> em Processos e do módulo{' '}

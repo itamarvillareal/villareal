@@ -37,17 +37,19 @@ export function Configuracoes() {
   const listaUsuarios = getUsuariosAtivos() || [];
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 p-4 md:p-6 bg-gray-100">
+    <div className="flex-1 flex flex-col min-h-0 p-4 md:p-6 min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/35 to-emerald-50/45">
       <header className="flex items-center gap-3 mb-6">
-        <div className="p-2 rounded-lg bg-white border border-slate-200 shadow-sm">
-          <Settings className="w-7 h-7 text-slate-700" aria-hidden />
+        <div className="p-2.5 rounded-xl bg-gradient-to-br from-indigo-600 to-violet-700 text-white shadow-lg shadow-indigo-500/25 ring-1 ring-white/20">
+          <Settings className="w-7 h-7" aria-hidden />
         </div>
         <div>
-          <h1 className="text-xl font-semibold text-slate-800">Configurações</h1>
+          <h1 className="text-xl font-bold bg-gradient-to-r from-indigo-800 to-violet-800 bg-clip-text text-transparent">
+            Configurações
+          </h1>
           <p className="text-sm text-slate-500">Preferências e opções do aplicativo.</p>
         </div>
       </header>
-      <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm max-w-2xl space-y-6">
+      <section className="rounded-2xl border border-slate-200/90 bg-white/95 backdrop-blur-sm p-6 shadow-xl ring-1 ring-indigo-500/10 max-w-2xl space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2">
           <div className="flex items-start gap-3 min-w-0">
             <div className="p-2 rounded-lg bg-slate-100 border border-slate-200 shrink-0">
@@ -66,8 +68,8 @@ export function Configuracoes() {
             aria-checked={dark}
             aria-label={dark ? 'Desativar modo noturno' : 'Ativar modo noturno'}
             onClick={() => setDark(!dark)}
-            className={`relative inline-flex h-8 w-14 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
-              dark ? 'bg-blue-600' : 'bg-slate-300'
+            className={`relative inline-flex h-8 w-14 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 ${
+              dark ? 'bg-indigo-600' : 'bg-slate-300'
             }`}
           >
             <span

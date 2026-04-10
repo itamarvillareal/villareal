@@ -964,7 +964,7 @@ export function CadastroPessoas() {
     (modo === 'listar' && !form.edicaoDesabilitada && !isRotaListaTodasPessoas);
 
   return (
-    <div className="min-h-full bg-gradient-to-br from-slate-50 to-slate-100">
+    <div className="min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/35 to-emerald-50/45">
       <div className="max-w-6xl mx-auto px-4 py-6">
         <header className="mb-6">
           <div className="flex flex-wrap items-start justify-between gap-4">

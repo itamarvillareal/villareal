@@ -203,10 +203,12 @@ export function Atividade() {
     'w-full px-2 py-1.5 border border-slate-300 rounded text-sm bg-white text-slate-800';
 
   return (
-    <div className="min-h-full bg-slate-200 p-4">
+    <div className="min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/35 to-emerald-50/45 p-4">
       <div className="max-w-[1200px] mx-auto space-y-4">
-        <div className="bg-white rounded-lg border border-slate-300 shadow-sm p-5">
-          <h1 className="text-xl font-bold text-slate-800">Relatório de atividades</h1>
+        <div className="bg-white/95 backdrop-blur-sm rounded-2xl border border-slate-200/90 shadow-xl ring-1 ring-indigo-500/10 p-5">
+          <h1 className="text-xl font-bold bg-gradient-to-r from-indigo-800 to-violet-800 bg-clip-text text-transparent">
+            Relatório de atividades
+          </h1>
           <p className="text-sm text-slate-600 mt-1">
             Histórico persistido no banco de dados (auditoria). Use os filtros e exporte para planilha (CSV compatível
             com Excel) ou PDF.
@@ -215,7 +217,7 @@ export function Atividade() {
 
         <form
           onSubmit={handleBuscar}
-          className="bg-white rounded-lg border border-slate-300 shadow-sm p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"
+          className="bg-white/95 backdrop-blur-sm rounded-2xl border border-slate-200/90 shadow-xl ring-1 ring-indigo-500/10 p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"
         >
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-0.5">Período inicial</label>
@@ -298,7 +300,7 @@ export function Atividade() {
           <div className="rounded-lg border border-red-200 bg-red-50 text-red-800 text-sm px-4 py-3">{erro}</div>
         )}
 
-        <div className="bg-white rounded-lg border border-slate-300 shadow-sm overflow-hidden">
+        <div className="bg-white/95 backdrop-blur-sm rounded-2xl border border-slate-200/90 shadow-xl ring-1 ring-indigo-500/10 overflow-hidden">
           <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-b border-slate-200 bg-slate-50">
             <p className="text-xs text-slate-600">
               {data != null ? (
@@ -403,7 +405,7 @@ export function Atividade() {
           onClick={() => setDetalhe(null)}
         >
           <div
-            className="bg-white rounded-lg shadow-xl border border-slate-300 w-full max-w-lg max-h-[90vh] overflow-y-auto"
+            className="bg-white rounded-2xl shadow-2xl border border-slate-200/90 ring-1 ring-indigo-500/10 w-full max-w-lg max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="px-4 py-3 border-b border-slate-200 flex justify-between items-center">

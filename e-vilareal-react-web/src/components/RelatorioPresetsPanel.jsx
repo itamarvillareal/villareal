@@ -109,7 +109,7 @@ export function RelatorioPresetsPanel({
       <button
         type="button"
         onClick={() => setAberto((v) => !v)}
-        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-amber-700 bg-white text-amber-900 text-sm font-medium hover:bg-amber-50 shadow-sm"
+        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border border-violet-200 bg-white text-violet-900 text-sm font-medium hover:bg-violet-50 shadow-sm"
         title="Colunas, edição, filtros e presets do relatório"
         aria-expanded={aberto}
       >
@@ -117,7 +117,7 @@ export function RelatorioPresetsPanel({
         Configurações salvas
       </button>
       {aberto ? (
-        <div className="absolute right-0 top-full mt-1 z-30 w-[min(100vw-2rem,24rem)] rounded-lg border border-slate-200 bg-white shadow-lg p-3 text-sm">
+        <div className="absolute right-0 top-full mt-1 z-30 w-[min(100vw-2rem,24rem)] rounded-xl border border-slate-200/90 bg-white shadow-xl ring-1 ring-indigo-500/10 p-3 text-sm">
           <p className="text-xs text-slate-600 mb-2">
             Guarde <strong>colunas visíveis</strong>, <strong>largura uniforme</strong>,{' '}
             <strong>título/conteúdo de cada coluna</strong>, <strong>filtro ativo/inativo</strong> e{' '}
@@ -152,7 +152,7 @@ export function RelatorioPresetsPanel({
                   name="filtro-processo-ativo"
                   checked={normalizarFiltroProcessoAtivo(filtroProcessoAtivo) === 'todos'}
                   onChange={() => setFiltroProcessoAtivo('todos')}
-                  className="border-slate-300 text-teal-700 focus:ring-teal-600"
+                  className="border-slate-300 text-indigo-600 focus:ring-indigo-500"
                 />
                 Ativos e inativos
               </label>
@@ -162,7 +162,7 @@ export function RelatorioPresetsPanel({
                   name="filtro-processo-ativo"
                   checked={normalizarFiltroProcessoAtivo(filtroProcessoAtivo) === 'ativos'}
                   onChange={() => setFiltroProcessoAtivo('ativos')}
-                  className="border-slate-300 text-teal-700 focus:ring-teal-600"
+                  className="border-slate-300 text-indigo-600 focus:ring-indigo-500"
                 />
                 Somente ativos
               </label>
@@ -172,7 +172,7 @@ export function RelatorioPresetsPanel({
                   name="filtro-processo-ativo"
                   checked={normalizarFiltroProcessoAtivo(filtroProcessoAtivo) === 'inativos'}
                   onChange={() => setFiltroProcessoAtivo('inativos')}
-                  className="border-slate-300 text-teal-700 focus:ring-teal-600"
+                  className="border-slate-300 text-indigo-600 focus:ring-indigo-500"
                 />
                 Somente inativos
               </label>
@@ -192,7 +192,7 @@ export function RelatorioPresetsPanel({
             <button
               type="button"
               onClick={handleSalvar}
-              className="shrink-0 px-2 py-1.5 rounded border border-amber-600 bg-amber-50 text-amber-900 text-xs font-medium hover:bg-amber-100"
+              className="shrink-0 px-2 py-1.5 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-900 text-xs font-medium hover:bg-indigo-100"
             >
               Salvar atual
             </button>
@@ -209,7 +209,7 @@ export function RelatorioPresetsPanel({
             </button>
           </div>
 
-          {feedback ? <p className="text-xs text-teal-800 mb-2">{feedback}</p> : null}
+          {feedback ? <p className="text-xs text-indigo-800 mb-2">{feedback}</p> : null}
 
           <p className="text-xs font-medium text-slate-700 mb-1.5">Suas configurações</p>
           {lista.length === 0 ? (
@@ -230,7 +230,7 @@ export function RelatorioPresetsPanel({
                   <button
                     type="button"
                     onClick={() => handleAplicar(p)}
-                    className="shrink-0 px-2 py-0.5 rounded bg-teal-600 text-white text-xs hover:bg-teal-700"
+                    className="shrink-0 px-2 py-0.5 rounded-md bg-gradient-to-r from-indigo-600 to-violet-600 text-white text-xs font-medium hover:from-indigo-500 hover:to-violet-500 shadow-sm"
                   >
                     Aplicar
                   </button>
