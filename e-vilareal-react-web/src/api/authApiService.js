@@ -3,7 +3,7 @@ import { request } from './httpClient.js';
 
 /**
  * Usuário atual (JWT). Requer token em sessionStorage.
- * @returns {Promise<{ id?: number, nome?: string, login?: string, perfilIds?: number[] }>}
+ * @returns {Promise<{ id?: number, nome?: string, login?: string, perfilId?: number }>}
  */
 export async function fetchAuthMe() {
   return request('/api/auth/me');

@@ -21,8 +21,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Objects;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -138,20 +143,36 @@ public class FinanceiroApplicationService {
     }
 
     /**
-     * Apaga todos os lançamentos do extrato Cora e remove o vínculo de compensação ({@code elo_financeiro_id})
-     * em qualquer outro banco que compartilhava o mesmo elo com algum lançamento Cora.
+     * Apaga todos os lançamentos do extrato do banco indicado e remove o vínculo de compensação
+     * ({@code elo_financeiro_id}) em qualquer outro banco que partilhava o mesmo elo com algum lançamento desse extrato.
+     *
+     * @param numeroBanco opcional — quando informado, apaga todos os lançamentos com esse {@code numero_banco}
+     *                    (Nº do consolidado na UI), além dos que batem pelo nome normalizado.
      */
     @Transactional
-    public LimparExtratoCoraResult limparExtratoCoraEElosRelacionados() {
+    public LimparExtratoResult limparExtratoBancoEElosRelacionados(String bancoRaw, Integer numeroBanco) {
+        if (!StringUtils.hasText(bancoRaw)) {
+            throw new BusinessRuleException("Nome do banco é obrigatório.");
+        }
+        final String bancoNorm = bancoRaw.trim().toUpperCase(Locale.ROOT);
         ContaContabilEntity contaN = contaContabilRepository.findFirstByCodigoIgnoreCase("N")
                 .orElseThrow(() -> new ResourceNotFoundException("Conta contábil com código «N» não encontrada."));
-        final String bancoNorm = "CORA";
-        List<Long> eloIds = lancamentoRepository.findDistinctEloFinanceiroIdsByBancoNormalizado(bancoNorm).stream()
-                .filter(Objects::nonNull)
-                .distinct()
-                .collect(Collectors.toList());
+        Set<Long> eloIdSet = new LinkedHashSet<>();
+        for (Long e : lancamentoRepository.findDistinctEloFinanceiroIdsByBancoNormalizado(bancoNorm)) {
+            if (e != null) {
+                eloIdSet.add(e);
+            }
+        }
+        if (numeroBanco != null) {
+            for (Long e : lancamentoRepository.findDistinctEloFinanceiroIdsByNumeroBanco(numeroBanco)) {
+                if (e != null) {
+                    eloIdSet.add(e);
+                }
+            }
+        }
         int desvinculados = 0;
-        if (!eloIds.isEmpty()) {
+        if (!eloIdSet.isEmpty()) {
+            List<Long> eloIds = new ArrayList<>(eloIdSet);
             List<LancamentoFinanceiroEntity> comElos = lancamentoRepository.findByEloFinanceiroIdIn(eloIds);
             for (LancamentoFinanceiroEntity l : comElos) {
                 l.setEloFinanceiroId(null);
@@ -162,17 +183,45 @@ public class FinanceiroApplicationService {
             }
             lancamentoRepository.saveAll(comElos);
             desvinculados = (int) comElos.stream()
-                    .filter(l -> l.getBancoNome() == null
-                            || !bancoNorm.equalsIgnoreCase(l.getBancoNome().trim()))
+                    .filter(l -> !pertenceAoExtratoLimpo(l, bancoNorm, numeroBanco))
                     .count();
         }
-        List<LancamentoFinanceiroEntity> cora = lancamentoRepository.findAllByBancoNormalizado(bancoNorm);
-        int removidos = cora.size();
-        lancamentoRepository.deleteAllInBatch(cora);
-        LimparExtratoCoraResult r = new LimparExtratoCoraResult();
-        r.setLancamentosRemovidosCora(removidos);
+        Map<Long, LancamentoFinanceiroEntity> porId = new LinkedHashMap<>();
+        for (LancamentoFinanceiroEntity l : lancamentoRepository.findAllByBancoNormalizado(bancoNorm)) {
+            porId.put(l.getId(), l);
+        }
+        if (numeroBanco != null) {
+            for (LancamentoFinanceiroEntity l : lancamentoRepository.findAllByNumeroBanco(numeroBanco)) {
+                porId.put(l.getId(), l);
+            }
+        }
+        List<LancamentoFinanceiroEntity> toDelete = new ArrayList<>(porId.values());
+        int removidos = toDelete.size();
+        if (!toDelete.isEmpty()) {
+            /* deleteAll em vez de deleteAllInBatch: evita edge cases de sessão Hibernate com o mesmo TX dos elos. */
+            lancamentoRepository.deleteAll(toDelete);
+        }
+        LimparExtratoResult r = new LimparExtratoResult();
+        r.setLancamentosRemovidos(removidos);
         r.setLancamentosDesvinculadosOutrosBancos(desvinculados);
         return r;
+    }
+
+    private static boolean pertenceAoExtratoLimpo(LancamentoFinanceiroEntity l, String bancoNorm, Integer numeroBanco) {
+        if (numeroBanco != null && numeroBanco.equals(l.getNumeroBanco())) {
+            return true;
+        }
+        String bn = l.getBancoNome();
+        if (bn != null && StringUtils.hasText(bn.trim())) {
+            return bancoNorm.equals(bn.trim().toUpperCase(Locale.ROOT));
+        }
+        return false;
+    }
+
+    /** Compatível com clientes que só chamavam a limpeza do extrato CORA. */
+    @Transactional
+    public LimparExtratoResult limparExtratoCoraEElosRelacionados() {
+        return limparExtratoBancoEElosRelacionados("CORA", null);
     }
 
     @Transactional(readOnly = true)
@@ -245,7 +294,11 @@ public class FinanceiroApplicationService {
         e.setNumeroBanco(req.getNumeroBanco());
         e.setNumeroLancamento(req.getNumeroLancamento().trim());
         e.setDataLancamento(req.getDataLancamento());
-        e.setDataCompetencia(req.getDataCompetencia() != null ? req.getDataCompetencia() : req.getDataLancamento());
+        if (criacao) {
+            e.setDataCompetencia(req.getDataCompetencia() != null ? req.getDataCompetencia() : req.getDataLancamento());
+        } else if (req.getDataCompetencia() != null) {
+            e.setDataCompetencia(req.getDataCompetencia());
+        }
         e.setDescricao(req.getDescricao().trim());
         e.setDescricaoDetalhada(
                 req.getDescricaoDetalhada() != null && StringUtils.hasText(req.getDescricaoDetalhada())
@@ -286,6 +339,8 @@ public class FinanceiroApplicationService {
         r.setId(e.getId());
         r.setCodigo(Utf8MojibakeUtil.corrigir(e.getCodigo()));
         r.setNome(Utf8MojibakeUtil.corrigir(e.getNome()));
+        r.setAtivo(e.getAtivo());
+        r.setOrdemExibicao(e.getOrdemExibicao());
         return r;
     }
 
@@ -306,6 +361,7 @@ public class FinanceiroApplicationService {
         r.setNumeroBanco(e.getNumeroBanco());
         r.setNumeroLancamento(Utf8MojibakeUtil.corrigir(e.getNumeroLancamento()));
         r.setDataLancamento(e.getDataLancamento());
+        r.setDataCompetencia(e.getDataCompetencia());
         r.setDescricao(Utf8MojibakeUtil.corrigir(e.getDescricao()));
         r.setDescricaoDetalhada(Utf8MojibakeUtil.corrigir(e.getDescricaoDetalhada()));
         r.setValor(e.getValor());

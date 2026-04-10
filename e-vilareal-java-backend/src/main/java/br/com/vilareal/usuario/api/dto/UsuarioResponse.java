@@ -2,18 +2,18 @@ package br.com.vilareal.usuario.api.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
-import java.util.List;
-
 @Schema(description = "Usuário (sem senha)")
 public class UsuarioResponse {
 
     private Long id;
     private Long pessoaId;
+    /** Nome civil no Cadastro de Pessoas (espelho de {@code pessoa.nome}), quando há vínculo. */
+    private String nomePessoa;
     private String nome;
     private String apelido;
     private String login;
     private Boolean ativo;
-    private List<Long> perfilIds;
+    private Long perfilId;
 
     public Long getId() {
         return id;
@@ -29,6 +29,14 @@ public class UsuarioResponse {
 
     public void setPessoaId(Long pessoaId) {
         this.pessoaId = pessoaId;
+    }
+
+    public String getNomePessoa() {
+        return nomePessoa;
+    }
+
+    public void setNomePessoa(String nomePessoa) {
+        this.nomePessoa = nomePessoa;
     }
 
     public String getNome() {
@@ -63,11 +71,11 @@ public class UsuarioResponse {
         this.ativo = ativo;
     }
 
-    public List<Long> getPerfilIds() {
-        return perfilIds;
+    public Long getPerfilId() {
+        return perfilId;
     }
 
-    public void setPerfilIds(List<Long> perfilIds) {
-        this.perfilIds = perfilIds;
+    public void setPerfilId(Long perfilId) {
+        this.perfilId = perfilId;
     }
 }

@@ -1,12 +1,21 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { getLancamentosContaCorrente, mergeContaCorrenteComLinhaOrigem } from '../data/financeiroData';
-import { carregarResumoContaCorrenteProcesso } from '../repositories/financeiroRepository.js';
+import {
+  getLancamentosContaCorrente,
+  mapLinhasFinanceiroParaContaCorrenteModal,
+  mergeContaCorrenteComLinhaOrigem,
+} from '../data/financeiroData';
+import {
+  carregarResumoContaCorrenteProcesso,
+  listarLancamentosProcessoApiFirst,
+} from '../repositories/financeiroRepository.js';
+import { EVENT_FINANCEIRO_PERSISTENCIA_EXTERNA } from '../services/crossTabLocalStorageSync.js';
 import {
   UFS,
   CIDADES_POR_UF,
   FASES,
   COMPETENCIAS,
+  TIPOS_AUDIENCIA,
   TRAMITACAO_OPCOES,
   gerarMockProcesso,
   normalizarCliente,
@@ -33,6 +42,10 @@ import {
   calcularPrimeiraOcorrenciaAgendaLote,
   getUsuariosAtivos,
 } from '../data/agendaPersistenciaData';
+import {
+  replicarAudienciaProcessoTodosColaboradoresApi,
+  replicarCompromissoLoteTodosColaboradoresApi,
+} from '../repositories/agendaRepository.js';
 import { getPerfilAtivoParaPermissoes } from '../data/usuarioPermissoesStorage.js';
 import { getNomeExibicaoUsuario } from '../data/usuarioDisplayHelpers.js';
 import { SidebarMenuIcon } from './navigation/SidebarMenuIcons.jsx';
@@ -40,7 +53,6 @@ import {
   X,
   FolderOpen,
   Calendar,
-  Calculator,
   ChevronUp,
   ChevronDown,
   ArrowUp,
@@ -51,6 +63,7 @@ import {
   ListTodo,
   Hand,
   PenLine,
+  AlertCircle,
 } from 'lucide-react';
 import { ModalRelatorioPublicacoesProcesso } from './ModalRelatorioPublicacoesProcesso.jsx';
 import { ModalCriarTarefaContextual } from './ModalCriarTarefaContextual.jsx';
@@ -60,6 +73,7 @@ import { obterClienteCadastroPorCodigo } from '../repositories/clientesRepositor
 import {
   buscarClientePorCodigo,
   buscarProcessoPorChaveNatural,
+  resolverProcessoId,
   mapApiProcessoToUiShape,
   salvarCabecalhoProcesso,
   listarPartesProcesso,
@@ -81,15 +95,11 @@ const HISTORICO_POR_PAGINA = 10;
 
 /**
  * Nome / Razão Social do módulo Clientes (localStorage), alinhado a CadastroClientes.
- * Não usa partes do processo. Fallback: mock unificado por código/processo.
+ * Sem nome no cadastro local: vazio (API ou «—» em outros fluxos preenchem quando aplicável).
  */
-function resolverNomeRazaoClienteMockPath(codigoCliente, processoNum) {
+function resolverNomeRazaoClienteMockPath(codigoCliente) {
   const cad = loadCadastroClienteDados(codigoCliente);
-  const nr = String(cad?.nomeRazao ?? '').trim();
-  if (nr) return nr;
-  const procNorm = normalizarProcesso(processoNum);
-  const mock = gerarMockProcesso(codigoCliente, procNorm);
-  return String(mock?.cliente ?? '').trim() || '—';
+  return String(cad?.nomeRazao ?? '').trim();
 }
 
 /** Tipos de ação de redação vinculados ao processo atual (modal «mão escrevendo»). */
@@ -145,10 +155,6 @@ function pickCampoBoolSalvo(reg, key, mockVal) {
   return reg[key] === true || reg[key] === 'true';
 }
 
-function gerarHistoricoMock() {
-  return [];
-}
-
 function apenasDigitos(val) {
   return String(val ?? '').replace(/\D/g, '');
 }
@@ -193,10 +199,18 @@ function formatValorContaCorrente(v) {
   return v < 0 ? `-${s}` : s;
 }
 
-function Field({ label, children, className = '', title }) {
+function Field({ label, children, className = '', title, dense = false }) {
   return (
     <div className={className} title={title}>
-      <label className="block text-sm font-medium text-slate-700 mb-0.5">{label}</label>
+      <label
+        className={
+          dense
+            ? 'block text-[11px] font-semibold text-slate-600 mb-0 leading-tight'
+            : 'block text-sm font-medium text-slate-700 mb-0.5'
+        }
+      >
+        {label}
+      </label>
       {children}
     </div>
   );
@@ -243,9 +257,9 @@ export function Processos() {
   /** Re-dispara resolução do nome após salvar no cadastro de clientes (mesmo dado que «Nome / Razão Social»). */
   const [clienteNomeRefreshTick, setClienteNomeRefreshTick] = useState(0);
   const [processo, setProcesso] = useState(() => {
-    if (typeof window === 'undefined') return 4;
+    if (typeof window === 'undefined') return 1;
     const s = lerUltimaSelecaoProcessosArmazenamento();
-    return s?.numeroInterno ?? 4;
+    return s?.numeroInterno ?? 1;
   });
   /** Lançamento do duplo clique no extrato consolidado (Financeiro → Processos). */
   const [linhaOrigemContaCorrente, setLinhaOrigemContaCorrente] = useState(null);
@@ -254,6 +268,13 @@ export function Processos() {
   const [modalContaCorrente, setModalContaCorrente] = useState(false);
   const [resumoContaCorrenteApi, setResumoContaCorrenteApi] = useState(null);
   const [resumoContaCorrenteApiErro, setResumoContaCorrenteApiErro] = useState('');
+  /** Lista do modal Conta Corrente quando a API financeira é a fonte de verdade (evita extrato local obsoleto após zerar). */
+  const [contaCorrenteListaApi, setContaCorrenteListaApi] = useState({
+    phase: 'idle',
+    data: null,
+    error: '',
+  });
+  const [contaCorrenteListaApiTick, setContaCorrenteListaApiTick] = useState(0);
   const [modalRelatorioPublicacoes, setModalRelatorioPublicacoes] = useState(false);
   const [modalTarefaContextual, setModalTarefaContextual] = useState(null);
 
@@ -285,9 +306,9 @@ export function Processos() {
     const s = location.state && typeof location.state === 'object' ? location.state : null;
     setLinhaOrigemContaCorrente(s?.contaCorrenteLinha ?? null);
   }, [location.key, location.pathname, location.state]);
-  const [parteCliente, setParteCliente] = useState('MARIANA PERES DE SOUZA ALVES');
+  const [parteCliente, setParteCliente] = useState('');
   const [edicaoDesabilitada, setEdicaoDesabilitada] = useState(true);
-  const [parteOposta, setParteOposta] = useState('CONDOMINIO PORTAL DOS YPES 3 - CASAS FLAMBOYNAT');
+  const [parteOposta, setParteOposta] = useState('');
   /** Resultados da busca no modal «Detalhes» (não carrega o cadastro inteiro). */
   const [pessoasBuscaVinculoResultados, setPessoasBuscaVinculoResultados] = useState([]);
   const [buscaVinculoPessoasEmAndamento, setBuscaVinculoPessoasEmAndamento] = useState(false);
@@ -314,21 +335,21 @@ export function Processos() {
   const draftParteClienteLinhasRef = useRef([]);
   const draftParteOpostaLinhasRef = useRef([]);
   const [numeroProcessoVelho, setNumeroProcessoVelho] = useState('');
-  const [numeroProcessoNovo, setNumeroProcessoNovo] = useState('5602801-26.2025.8.09.0137');
+  const [numeroProcessoNovo, setNumeroProcessoNovo] = useState('');
   const [consultaAutomatica, setConsultaAutomatica] = useState(false);
-  const [estado, setEstado] = useState('GO');
-  const [cidade, setCidade] = useState('RIO VERDE');
-  const [dataProtocolo, setDataProtocolo] = useState('30/07/2025');
+  const [estado, setEstado] = useState('');
+  const [cidade, setCidade] = useState('');
+  const [dataProtocolo, setDataProtocolo] = useState('');
   const [pastaArquivo, setPastaArquivo] = useState('');
-  const [naturezaAcao, setNaturezaAcao] = useState('PEDIDO DE DANO MORAL POR CONSTRIÇÃO');
-  const [valorCausa, setValorCausa] = useState('20.000,00');
+  const [naturezaAcao, setNaturezaAcao] = useState('');
+  const [valorCausa, setValorCausa] = useState('');
   const [procedimento, setProcedimento] = useState('');
   const [responsavel, setResponsavel] = useState('');
-  const [competencia, setCompetencia] = useState('2º JUIZADO ESPECIAL CÍVEL');
-  const [observacao, setObservacao] = useState('Bloqueio de valores na conta.\nhttps://us05web.zoom.us/j/5523109318?pwd=K2ZMQlh6TmNobFJUUKRUMIFBZHRZQT09.\nPode contestar 15 dias após a audiência');
+  const [competencia, setCompetencia] = useState('');
+  const [observacao, setObservacao] = useState('');
   const [periodicidadeConsulta, setPeriodicidadeConsulta] = useState('');
   const [papelParte, setPapelParte] = useState('requerente');
-  const [faseSelecionada, setFaseSelecionada] = useState('Em Andamento');
+  const [faseSelecionada, setFaseSelecionada] = useState('');
   const [statusAtivo, setStatusAtivo] = useState(true);
   const [faseCampo, setFaseCampo] = useState('');
   const [audienciaData, setAudienciaData] = useState('');
@@ -337,7 +358,7 @@ export function Processos() {
   const audienciaHoraInputRef = useRef(null);
   const [avisoAudiencia, setAvisoAudiencia] = useState('nao_avisado');
   const [prazoFatal, setPrazoFatal] = useState('');
-  const [unidadeEndereco, setUnidadeEndereco] = useState('Unidade QD.06 LT.06');
+  const [unidadeEndereco, setUnidadeEndereco] = useState('');
   const [imovelId, setImovelId] = useState(''); // vínculo com a aba Imóveis (mock)
   const [imovelManual, setImovelManual] = useState(false);
   /** Evita sobrescrever o texto da unidade quando o vínculo mock mudar, após edição manual. */
@@ -402,6 +423,67 @@ export function Processos() {
       ativo = false;
     };
   }, [processoApiId]);
+
+  useEffect(() => {
+    const h = () => setContaCorrenteListaApiTick((t) => t + 1);
+    window.addEventListener(EVENT_FINANCEIRO_PERSISTENCIA_EXTERNA, h);
+    return () => window.removeEventListener(EVENT_FINANCEIRO_PERSISTENCIA_EXTERNA, h);
+  }, []);
+
+  useEffect(() => {
+    if (!modalContaCorrente) {
+      setContaCorrenteListaApi({ phase: 'idle', data: null, error: '' });
+      return;
+    }
+    if (!featureFlags.useApiFinanceiro) {
+      setContaCorrenteListaApi({ phase: 'local', data: null, error: '' });
+      return;
+    }
+    const procEfetivo = contaCorrenteModo === 'proc0' ? 0 : Number(processo) || 0;
+    let alive = true;
+    setContaCorrenteListaApi({ phase: 'loading', data: null, error: '' });
+
+    void (async () => {
+      try {
+        const resolved = await resolverProcessoId({
+          processoId: processoApiId,
+          codigoCliente,
+          numeroInterno: procEfetivo,
+        });
+        if (!alive) return;
+        if (!resolved) {
+          setContaCorrenteListaApi({ phase: 'local', data: null, error: '' });
+          return;
+        }
+        const rows = await listarLancamentosProcessoApiFirst({
+          processoId: resolved,
+          codigoCliente,
+          numeroInterno: procEfetivo,
+        });
+        if (!alive) return;
+        const mapped = mapLinhasFinanceiroParaContaCorrenteModal(rows);
+        setContaCorrenteListaApi({ phase: 'ok', data: mapped, error: '' });
+      } catch (e) {
+        if (!alive) return;
+        setContaCorrenteListaApi({
+          phase: 'error',
+          data: null,
+          error: e?.message || 'Falha ao carregar lançamentos do financeiro (API).',
+        });
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [
+    modalContaCorrente,
+    contaCorrenteListaApiTick,
+    processoApiId,
+    codigoCliente,
+    processo,
+    contaCorrenteModo,
+  ]);
 
   const confirmarAcaoRedacaoPorIndice = useCallback(
     (idx) => {
@@ -544,14 +626,13 @@ export function Processos() {
 
   /**
    * Campo «Cliente» = mesmo texto que «Nome / Razão Social» em Clientes (`nomeRazao` / API `nomeReferencia`).
-   * Prioridade: API cadastro de clientes → API processos (lista/resolução) → localStorage + mock.
+   * Prioridade: API cadastro de clientes → API processos (lista/resolução) → cadastro local (nomeRazao).
    */
   useEffect(() => {
     let cancelled = false;
     const cod = padCliente(String(codigoCliente ?? '').trim() || '00000001');
-    const procNorm = normalizarProcesso(processo);
 
-    const fallbackLocal = () => resolverNomeRazaoClienteMockPath(codigoCliente, procNorm);
+    const fallbackLocal = () => resolverNomeRazaoClienteMockPath(codigoCliente);
 
     if (!featureFlags.useApiClientes && !featureFlags.useApiProcessos) {
       setCliente(fallbackLocal());
@@ -599,7 +680,7 @@ export function Processos() {
     const registroPersistido = getRegistroProcesso(mock.codigoCliente, mock.processo);
     const r = registroPersistido;
 
-    const papelDefault = mock.parteRequerido ? 'requerido' : 'requerente';
+    const papelDefault = 'requerente';
     const papelSalvo = pickCampoStrSalvo(r, 'papelParte', '');
     const papelFinal = papelSalvo === 'requerente' || papelSalvo === 'requerido' ? papelSalvo : papelDefault;
 
@@ -729,7 +810,7 @@ export function Processos() {
       const payloadFormBase = {
         codCliente: mock.codigoCliente,
         proc: mock.processo,
-        cliente: resolverNomeRazaoClienteMockPath(codigoCliente, procNorm),
+        cliente: resolverNomeRazaoClienteMockPath(codigoCliente),
         parteCliente: pickCampoStrSalvo(r, 'parteCliente', mock.parteCliente),
         parteOposta: parteOpostaPersistida,
         numeroProcessoVelho: numeroVelhoPersistido,
@@ -784,11 +865,11 @@ export function Processos() {
           salvarHistoricoDoProcesso({
             ...payloadFormBase,
             historico: historicoPersistido,
-            faseSelecionada: mock.faseSelecionada,
+            faseSelecionada: fasePersistida,
           });
         }
       } else {
-        const historicoInicial = gerarHistoricoMock();
+        const historicoInicial = [];
         setHistorico(historicoInicial);
         seedHistoricoDoProcesso({
           ...payloadFormBase,
@@ -886,7 +967,7 @@ export function Processos() {
     setModalAgendaLoteAberto(true);
   }
 
-  function salvarAgendaEmLote() {
+  async function salvarAgendaEmLote() {
     const dataNorm = normalizarDataBr(agendaLoteData);
     if (!dataNorm) {
       setAgendaLoteInfo('Informe uma data válida no formato dd/mm/aaaa.');
@@ -903,12 +984,42 @@ export function Processos() {
       setAgendaLoteInfo('Informe um dia do mês válido entre 1 e 31.');
       return;
     }
-    const usuariosAlvo = [
-      { id: 'itamar', nome: 'Dr. Itamar' },
-      { id: 'karla', nome: 'Karla' },
-      { id: 'isabella', nome: 'Isabella' },
-      { id: 'thalita', nome: 'Thalita' },
-    ];
+
+    if (featureFlags.useApiAgenda) {
+      try {
+        const resultado = await replicarCompromissoLoteTodosColaboradoresApi({
+          textoCompromisso: agendaLoteTexto,
+          dataBaseBr: dataNorm,
+          hora: horaNorm,
+          periodicidade: agendaLotePeriodicidade,
+          diaDoMes: periodicidadeTodoDiaMes ? diaDoMesNum : null,
+          ajustarParaDiaUtil: true,
+          codigoCliente,
+          numeroInterno: processo,
+        });
+        if (!resultado?.ok) {
+          setAgendaLoteInfo('Não foi possível salvar o agendamento na API.');
+          return;
+        }
+        setAgendaLoteInfo(
+          `Agendamento replicado na API: ${resultado.criados} compromisso(s), ${resultado.ocorrencias} dia(s), ${resultado.usuarios} colaborador(es) na lista.`
+        );
+      } catch {
+        setAgendaLoteInfo('Erro ao salvar agendamento na API.');
+        return;
+      }
+      setTimeout(() => setModalAgendaLoteAberto(false), 700);
+      return;
+    }
+
+    const usuariosAlvo = (getUsuariosAtivos() || []).map((u) => ({
+      id: u.id,
+      nome: String(getNomeExibicaoUsuario(u) || u.id || '').trim() || String(u.id),
+    }));
+    if (usuariosAlvo.length === 0) {
+      setAgendaLoteInfo('Cadastre usuários ativos em Usuários para replicar na agenda de todos.');
+      return;
+    }
 
     const resultado = agendarEmLoteParaUsuarios({
       textoCompromisso: agendaLoteTexto,
@@ -931,7 +1042,6 @@ export function Processos() {
     setAgendaLoteInfo(
       `Agendamento criado: ${resultado.inseridos} item(ns), ${resultado.ocorrencias} ocorrência(s), ${resultado.usuarios} usuário(s).`
     );
-    // fecha após pequeno feedback visual.
     setTimeout(() => setModalAgendaLoteAberto(false), 700);
   }
 
@@ -1869,20 +1979,47 @@ export function Processos() {
   /** Edição desabilitada: campos não editáveis, mas texto ainda selecionável/copiável (readOnly, não disabled). */
   const camposBloqueados = edicaoDesabilitada;
   const clsCampo = camposBloqueados ? inputDisabledClass : inputClass;
+  /** Campos mais baixos na secção «Dados processuais» (menos rolagem). */
+  const inputClassDenso = 'w-full px-1.5 py-1 border border-slate-300 rounded text-sm leading-tight bg-white';
+  const inputDisabledClassDenso =
+    'w-full px-1.5 py-1 border border-slate-300 rounded text-sm leading-tight bg-slate-50 select-text';
+  const clsCampoDenso = camposBloqueados ? inputDisabledClassDenso : inputClassDenso;
 
-  // Agendamento automático na Agenda sempre que o usuário preencher uma data válida
-  // no formulário de Audiência (somente com edição habilitada).
+  const agendarAudienciaApiDebounceRef = useRef(null);
+
+  // Agenda: replica a audiência para todos os colaboradores ao haver data válida (formulário Processos).
   useEffect(() => {
-    if (edicaoDesabilitada) return;
     if (!audienciaData) return;
     if (!/^\d{2}\/\d{2}\/\d{4}$/.test(audienciaData)) return;
-    agendarAudienciaParaTodosUsuarios({
+
+    const payload = {
       audienciaData,
       audienciaHora,
       audienciaTipo,
       numeroProcessoNovo,
-    });
-  }, [audienciaData, audienciaHora, audienciaTipo, numeroProcessoNovo, edicaoDesabilitada]);
+      codigoCliente,
+      numeroInterno: processo,
+    };
+
+    if (featureFlags.useApiAgenda) {
+      if (agendarAudienciaApiDebounceRef.current != null) {
+        window.clearTimeout(agendarAudienciaApiDebounceRef.current);
+      }
+      agendarAudienciaApiDebounceRef.current = window.setTimeout(() => {
+        agendarAudienciaApiDebounceRef.current = null;
+        void replicarAudienciaProcessoTodosColaboradoresApi(payload);
+      }, 600);
+      return () => {
+        if (agendarAudienciaApiDebounceRef.current != null) {
+          window.clearTimeout(agendarAudienciaApiDebounceRef.current);
+          agendarAudienciaApiDebounceRef.current = null;
+        }
+      };
+    }
+
+    agendarAudienciaParaTodosUsuarios(payload);
+    return undefined;
+  }, [audienciaData, audienciaHora, audienciaTipo, numeroProcessoNovo, codigoCliente, processo]);
 
   function formatarDataAudienciaInput(valor) {
     const alias = resolverAliasHojeEmTexto(valor, 'br');
@@ -1987,12 +2124,14 @@ export function Processos() {
   );
 
   return (
-    <div className="min-h-full bg-slate-200">
+    <div className="min-h-full bg-gradient-to-b from-slate-100 via-slate-50 to-slate-200">
       <div className="max-w-[1400px] mx-auto px-3 py-3">
         {/* Cabeçalho: Processos + X */}
-        <header className="flex items-center justify-between mb-3 gap-2">
+        <header className="flex items-center justify-between mb-3 gap-2 rounded-xl border border-slate-200/80 bg-white/90 px-3 py-2.5 shadow-sm backdrop-blur-sm">
           <div className="flex items-center gap-2 flex-wrap min-w-0">
-            <h1 className="text-xl font-bold text-slate-800">Processos</h1>
+            <h1 className="text-xl font-bold bg-gradient-to-r from-slate-900 via-indigo-900 to-slate-800 bg-clip-text text-transparent">
+              Processos
+            </h1>
             <button
               type="button"
               onClick={() => setModalRelatorioPublicacoes(true)}
@@ -2073,7 +2212,7 @@ export function Processos() {
         ) : null}
 
         <div
-          className={`rounded border shadow-sm overflow-hidden ${
+          className={`rounded-2xl border shadow-md overflow-hidden ${
             isProtocoloMovimentacao
               ? 'bg-black border-slate-700 text-slate-100 dark-mode-protocolo'
               : isAguardandoProvidencia
@@ -2089,11 +2228,204 @@ export function Processos() {
                     : 'bg-white border-slate-300'
           }`}
         >
-          <div className="p-4 space-y-4">
+          <div className="p-2.5 sm:p-3 space-y-2.5">
+            {/* Faixa CNJ + cliente — distinto de valor da causa e dados internos */}
+            <div className="rounded-lg border border-indigo-400/40 bg-gradient-to-br from-indigo-950 via-slate-900 to-indigo-950 px-3 py-2 shadow-md ring-1 ring-indigo-500/30 text-white">
+              <div className="flex flex-wrap items-start justify-between gap-2.5">
+                <div className="min-w-0 flex-1">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-indigo-200/90 mb-0.5">
+                    Número no tribunal (CNJ)
+                  </p>
+                  <p
+                    className="font-mono text-[15px] sm:text-lg font-semibold tracking-tight break-all leading-snug"
+                    title={(numeroProcessoNovo || '').trim() || undefined}
+                  >
+                    {(numeroProcessoNovo || '').trim() || '—'}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
+                      statusAtivo
+                        ? 'bg-emerald-400/20 text-emerald-100 ring-1 ring-emerald-400/35'
+                        : 'bg-slate-600/60 text-slate-100'
+                    }`}
+                  >
+                    {statusAtivo ? 'Ativo' : 'Inativo'}
+                  </span>
+                  <span
+                    className="rounded-full bg-white/12 px-2 py-0.5 text-[10px] font-semibold text-indigo-50 max-w-[10.5rem] sm:max-w-[14rem] truncate ring-1 ring-white/15"
+                    title={faseSelecionada || undefined}
+                  >
+                    {faseSelecionada || 'Fase'}
+                  </span>
+                </div>
+              </div>
+              <div className="mt-1.5 pt-1.5 border-t border-white/15 flex items-baseline gap-2 min-w-0">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-300/90 shrink-0">Cliente</span>
+                <span className="text-sm font-medium text-white/95 truncate" title={cliente}>
+                  {cliente || '—'}
+                </span>
+              </div>
+            </div>
+
+            {/* Urgência: prazo fatal + audiência no topo para leitura imediata */}
+            <div className="rounded-lg border-2 border-violet-300/50 bg-gradient-to-br from-violet-50/95 via-white to-rose-50/40 p-2 sm:p-2 shadow-sm">
+              <div className="flex flex-col lg:flex-row gap-2 lg:items-stretch">
+                <div className="lg:w-[min(100%,15.5rem)] shrink-0 rounded-md border-2 border-rose-400/60 bg-gradient-to-b from-rose-50 to-rose-100/80 p-2 shadow-sm ring-1 ring-rose-200/60">
+                  <div className="flex items-center gap-1.5 mb-1 text-rose-950">
+                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" aria-hidden />
+                    <span className="text-[11px] font-bold uppercase tracking-wide">Urgência</span>
+                  </div>
+                  <Field label="Prazo Fatal" dense className="w-full [&_label]:text-rose-900">
+                    <input
+                      type="text"
+                      value={prazoFatal}
+                      readOnly={camposBloqueados}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setPrazoFatal(resolverAliasHojeEmTexto(v, 'br') ?? v);
+                      }}
+                      onBlur={(e) => persistirPrazoFatalAposEdicao(e.target.value)}
+                      placeholder="dd/mm/aaaa ou hj"
+                      title="Data vinculada ao processo (gravada automaticamente)"
+                      className={`${clsCampoDenso} border-rose-200/80 focus:border-rose-400 focus:ring-rose-200`}
+                    />
+                  </Field>
+                  {featureFlags.useApiTarefas && String(prazoFatal ?? '').trim() ? (
+                    <button
+                      type="button"
+                      onClick={abrirModalTarefaComPrazoFatal}
+                      className="mt-1.5 text-[11px] font-medium text-rose-800 hover:text-rose-950 hover:underline text-left w-full leading-tight"
+                      title="Abre criação de tarefa com data limite sugerida a partir do prazo fatal"
+                    >
+                      + Criar tarefa com esta data
+                    </button>
+                  ) : null}
+                </div>
+                <div className="flex-1 min-w-0 rounded-md border border-violet-300/70 bg-violet-50/35 p-1.5 sm:p-2">
+                  <div className="flex items-center gap-1.5 mb-1 pb-1 border-b border-violet-200/70">
+                    <Calendar className="w-4 h-4 text-violet-600 shrink-0" aria-hidden />
+                    <span className="text-[11px] font-bold uppercase tracking-wide text-violet-950">Audiência</span>
+                    {avisoAudiencia === 'avisado' ? (
+                      <span className="ml-auto rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-800 ring-1 ring-emerald-400/40">
+                        Avisado
+                      </span>
+                    ) : (
+                      <span className="ml-auto rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold text-amber-900 ring-1 ring-amber-400/35">
+                        Não avisado
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap items-end gap-x-2 gap-y-1.5">
+                    <Field label="Data" className="w-[7.25rem] shrink-0 min-w-0">
+                      <input
+                        type="text"
+                        value={audienciaData}
+                        readOnly={camposBloqueados}
+                        onChange={(e) => setAudienciaData(formatarDataAudienciaInput(e.target.value))}
+                        onDoubleClick={() => {
+                          if (camposBloqueados) return;
+                          const norm = normalizarDataBr(audienciaData);
+                          if (!norm) return;
+                          const ok = /^(\d{2})\/(\d{2})\/(\d{4})$/.test(norm);
+                          if (!ok) return;
+                          navigate('/agenda', {
+                            replace: false,
+                            state: { agendaData: norm },
+                          });
+                        }}
+                        onBlur={() => {
+                          const norm = normalizarDataBr(audienciaData);
+                          if (norm) setAudienciaData(norm);
+                        }}
+                        placeholder="dd/mm/aaaa ou hj"
+                        className={clsCampo}
+                      />
+                    </Field>
+                    <Field label="Hora" className="w-[5.75rem] shrink-0 min-w-0">
+                      <input
+                        type="text"
+                        value={audienciaHora}
+                        ref={audienciaHoraInputRef}
+                        readOnly={camposBloqueados}
+                        onChange={handleAudienciaHoraChange}
+                        onBlur={() => {
+                          const norm = normalizarHoraAudiencia(audienciaHora);
+                          if (norm) setAudienciaHora(norm);
+                        }}
+                        placeholder="hh:mm"
+                        className={clsCampo}
+                      />
+                    </Field>
+                    <Field
+                      label="Tipo de Audiência"
+                      className="min-w-0 shrink-0 w-[min(100%,11rem)] max-w-[11rem]"
+                      title="Tipo de audiência"
+                    >
+                      {camposBloqueados ? (
+                        <input
+                          type="text"
+                          value={audienciaTipo || '—'}
+                          readOnly
+                          className={`w-full min-w-0 ${clsCampo}`}
+                          title={audienciaTipo || undefined}
+                        />
+                      ) : (
+                        <select
+                          value={audienciaTipo}
+                          onChange={(e) => setAudienciaTipo(e.target.value)}
+                          className={`w-full min-w-0 ${clsCampo}`}
+                        >
+                          <option value="">—</option>
+                          {TIPOS_AUDIENCIA.map((t) => (
+                            <option key={t} value={t}>
+                              {t}
+                            </option>
+                          ))}
+                          {audienciaTipo &&
+                          !TIPOS_AUDIENCIA.includes(audienciaTipo) ? (
+                            <option value={audienciaTipo}>{audienciaTipo}</option>
+                          ) : null}
+                        </select>
+                      )}
+                    </Field>
+                    <div className="w-full shrink-0 min-w-0 sm:w-auto sm:min-w-[10.5rem]">
+                      <span className="block text-xs font-semibold text-violet-900 mb-0.5">Aviso</span>
+                      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5">
+                        <label className={`flex items-center gap-1 text-xs shrink-0 ${camposBloqueados ? 'cursor-default' : 'cursor-pointer'}`}>
+                          <input
+                            type="radio"
+                            name="aviso"
+                            checked={avisoAudiencia === 'avisado'}
+                            disabled={camposBloqueados}
+                            onChange={() => setAvisoAudiencia('avisado')}
+                            className="text-violet-600"
+                          />
+                          Avisado
+                        </label>
+                        <label className={`flex items-center gap-1 text-xs shrink-0 ${camposBloqueados ? 'cursor-default' : 'cursor-pointer'}`}>
+                          <input
+                            type="radio"
+                            name="aviso"
+                            checked={avisoAudiencia === 'nao_avisado'}
+                            disabled={camposBloqueados}
+                            onChange={() => setAvisoAudiencia('nao_avisado')}
+                            className="text-violet-600"
+                          />
+                          Não avisado
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             {/* Seção superior: 3 colunas - Identificação | Partes/Local | Papel/Fase/Status */}
-            <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <section className="grid grid-cols-1 md:grid-cols-3 gap-2.5 md:gap-3">
               {/* Coluna esquerda: Código + Processo na mesma linha, Cliente, Edição, Nº velho/novo */}
-              <div className="space-y-2">
+              <div className="space-y-2 rounded-xl border border-slate-200/90 bg-white/95 p-3 shadow-sm text-slate-900">
                 <div className="flex flex-wrap items-end gap-3">
                   <Field
                     label="Código do Cliente"
@@ -2165,6 +2497,10 @@ export function Processos() {
                       </button>
                     </div>
                   </Field>
+                  <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer shrink-0">
+                    <input type="checkbox" checked={edicaoDesabilitada} onChange={(e) => setEdicaoDesabilitada(e.target.checked)} className="rounded border-slate-300" />
+                    Edição Desabilitada
+                  </label>
                 </div>
                 <Field
                   label="Cliente"
@@ -2172,10 +2508,6 @@ export function Processos() {
                 >
                   <input type="text" value={cliente} readOnly className={`${inputDisabledClass} cursor-default`} />
                 </Field>
-                <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
-                  <input type="checkbox" checked={edicaoDesabilitada} onChange={(e) => setEdicaoDesabilitada(e.target.checked)} className="rounded border-slate-300" />
-                  Edição Desabilitada
-                </label>
                 <Field label="Nº Processo Velho">
                   <input
                     type="text"
@@ -2206,9 +2538,9 @@ export function Processos() {
                 </Field>
               </div>
 
-              {/* Coluna central: Parte Cliente, Parte Oposta, Consulta, Estado, Cidade */}
-              <div className="space-y-2">
-                <div className="rounded-lg border border-slate-300 bg-slate-50/70 p-3 shadow-sm space-y-2">
+              {/* Coluna central: Parte Cliente, Parte Oposta, Consulta, Estado+Cidade (linha) */}
+              <div className="space-y-2 rounded-xl border border-slate-200/90 bg-white/95 p-3 shadow-sm text-slate-900">
+                <div className="rounded-lg border border-indigo-200/60 bg-indigo-50/40 p-2.5 shadow-sm space-y-2">
                   <Field label="Parte Cliente">
                     <input
                       type="text"
@@ -2230,10 +2562,10 @@ export function Processos() {
                   <button
                     type="button"
                     onClick={abrirModalDetalhesPartes}
-                    className="w-full px-3 py-2 rounded-md border border-slate-300 bg-white text-slate-800 text-sm font-medium hover:bg-slate-100"
+                    className="w-full px-3 py-2 rounded-lg border border-indigo-300 bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 shadow-sm"
                     title="Partes e advogados — disponível mesmo com «Edição Desabilitada» marcada."
                   >
-                    Detalhes
+                    Detalhes das partes
                   </button>
                 </div>
                 <label className={`flex items-center gap-2 text-sm text-slate-600 ${camposBloqueados ? 'cursor-default' : 'cursor-pointer'}`}>
@@ -2246,65 +2578,75 @@ export function Processos() {
                   />
                   Consulta Automática
                 </label>
-                <Field label="Estado">
-                  <select
-                    value={estado}
-                    onChange={(e) => {
-                      const uf = e.target.value;
-                      setEstado(uf);
-                      setCidade((CIDADES_POR_UF[uf] || [])[0] || '');
-                    }}
-                    disabled={camposBloqueados}
-                    className={`w-full min-w-0 ${clsCampo}`}
-                    title={ufAtual ? `${ufAtual.sigla} — ${ufAtual.nome}` : estado}
-                  >
-                    {!UFS.some((u) => u.sigla === estado) && estado ? (
-                      <option value={estado}>{estado}</option>
-                    ) : null}
-                    {UFS.map((u) => (
-                      <option key={u.sigla} value={u.sigla}>
-                        {u.sigla} — {u.nome}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="Cidade">
-                  {camposBloqueados ? (
-                    <input type="text" readOnly value={cidade} className={clsCampo} title={cidade} />
-                  ) : (
-                    <select value={cidade} onChange={(e) => setCidade(e.target.value)} className={inputClass}>
-                      {cidades.map((c) => (
-                        <option key={c} value={c}>
-                          {c}
+                <div className="grid grid-cols-2 gap-2 sm:gap-3">
+                  <Field label="Estado" className="min-w-0">
+                    <select
+                      value={estado}
+                      onChange={(e) => {
+                        const uf = e.target.value;
+                        setEstado(uf);
+                        setCidade((CIDADES_POR_UF[uf] || [])[0] || '');
+                      }}
+                      disabled={camposBloqueados}
+                      className={`w-full min-w-0 ${clsCampo}`}
+                      title={ufAtual ? `${ufAtual.sigla} — ${ufAtual.nome}` : estado}
+                    >
+                      {!UFS.some((u) => u.sigla === estado) && estado ? (
+                        <option value={estado}>{estado}</option>
+                      ) : null}
+                      {UFS.map((u) => (
+                        <option key={u.sigla} value={u.sigla}>
+                          {u.sigla} — {u.nome}
                         </option>
                       ))}
                     </select>
-                  )}
-                </Field>
+                  </Field>
+                  <Field label="Cidade" className="min-w-0">
+                    {camposBloqueados ? (
+                      <input type="text" readOnly value={cidade} className={`w-full min-w-0 ${clsCampo}`} title={cidade} />
+                    ) : (
+                      <select
+                        value={cidade}
+                        onChange={(e) => setCidade(e.target.value)}
+                        className={`w-full min-w-0 ${inputClass}`}
+                      >
+                        {cidades.map((c) => (
+                          <option key={c} value={c}>
+                            {c}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </Field>
+                </div>
               </div>
 
               {/* Coluna direita: Papel, Status, Fase (caixa) */}
-              <div className="space-y-3">
-                <div>
-                  <p className="text-sm font-medium text-slate-700 mb-1">Cliente é Requerente ou Requerido?</p>
-                  {camposBloqueados ? (
-                    <input
-                      type="text"
-                      readOnly
-                      value={papelParte === 'requerente' ? 'Requerente' : 'Requerido'}
-                      className={clsCampo}
-                    />
-                  ) : (
-                    <select value={papelParte} onChange={(e) => setPapelParte(e.target.value)} className={inputClass}>
-                      <option value="requerente">Requerente</option>
-                      <option value="requerido">Requerido</option>
-                    </select>
-                  )}
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-slate-700 mb-1">Status</p>
-                  <div className="flex gap-4">
-                    <label className={`flex items-center gap-1.5 text-sm ${camposBloqueados ? 'cursor-default' : 'cursor-pointer'}`}>
+              <div className="space-y-3 rounded-xl border border-slate-200/90 bg-white/95 p-3 shadow-sm text-slate-900">
+                <div className="flex flex-row flex-wrap items-end gap-x-4 gap-y-2 w-full min-w-0">
+                  <div className="min-w-0 w-[min(100%,13rem)] max-w-[13rem] shrink-0">
+                    <p className="text-sm font-medium text-slate-700 mb-1">Cliente é Requerente ou Requerido?</p>
+                    {camposBloqueados ? (
+                      <input
+                        type="text"
+                        readOnly
+                        value={papelParte === 'requerente' ? 'Requerente' : 'Requerido'}
+                        className={`w-full min-w-0 ${clsCampo}`}
+                      />
+                    ) : (
+                      <select
+                        value={papelParte}
+                        onChange={(e) => setPapelParte(e.target.value)}
+                        className={`w-full min-w-0 ${inputClass}`}
+                      >
+                        <option value="requerente">Requerente</option>
+                        <option value="requerido">Requerido</option>
+                      </select>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 min-w-0 shrink-0 pb-0.5">
+                    <span className="text-sm font-medium text-slate-700 shrink-0">Status</span>
+                    <label className={`flex items-center gap-1.5 text-sm shrink-0 ${camposBloqueados ? 'cursor-default' : 'cursor-pointer'}`}>
                       <input
                         type="radio"
                         name="status"
@@ -2315,7 +2657,7 @@ export function Processos() {
                       />
                       Ativo
                     </label>
-                    <label className={`flex items-center gap-1.5 text-sm ${camposBloqueados ? 'cursor-default' : 'cursor-pointer'}`}>
+                    <label className={`flex items-center gap-1.5 text-sm shrink-0 ${camposBloqueados ? 'cursor-default' : 'cursor-pointer'}`}>
                       <input
                         type="radio"
                         name="status"
@@ -2328,9 +2670,9 @@ export function Processos() {
                     </label>
                   </div>
                 </div>
-                <div className="border border-slate-300 rounded p-2 bg-slate-50/50">
-                  <p className="text-sm font-medium text-slate-700 mb-1.5">Fase</p>
-                  <div className="space-y-0.5">
+                <div className="rounded-lg border border-blue-200/80 border-l-4 border-l-blue-600 bg-gradient-to-br from-blue-50/90 to-slate-50/50 p-2 shadow-sm">
+                  <p className="text-xs font-bold uppercase tracking-wide text-blue-900 mb-1">Fase processual</p>
+                  <div className="space-y-0.5 max-h-[11rem] overflow-y-auto pr-0.5">
                     {FASES.map((f) => (
                       <label
                         key={f}
@@ -2345,7 +2687,7 @@ export function Processos() {
                             setFaseSelecionada(f);
                             salvarHistoricoDoProcesso(montarPayloadRegistroProcesso({ faseSelecionada: f }));
                           }}
-                          className="text-slate-600"
+                          className="text-blue-600"
                         />
                         {f}
                       </label>
@@ -2355,279 +2697,188 @@ export function Processos() {
               </div>
             </section>
 
-            {/* Seção central: Detalhes do caso - grid compacto */}
-            <section className="border-t border-slate-200 pt-4">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-3">
-                <Field label="Data do Protocolo" className="w-36">
-                  <input
-                    type="text"
-                    value={dataProtocolo}
-                    readOnly={camposBloqueados}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setDataProtocolo(resolverAliasHojeEmTexto(v, 'br') ?? v);
-                    }}
-                    placeholder="dd/mm/aaaa ou hj"
-                    className={clsCampo}
-                  />
-                </Field>
-                <Field label="Pasta do Arquivo">
-                  <input
-                    type="text"
-                    value={pastaArquivo}
-                    readOnly={camposBloqueados}
-                    onChange={(e) => setPastaArquivo(e.target.value)}
-                    className={clsCampo}
-                  />
-                </Field>
-                <Field label="Responsável">
-                  <input
-                    type="text"
-                    value={responsavel}
-                    readOnly={camposBloqueados}
-                    onChange={(e) => setResponsavel(e.target.value)}
-                    className={clsCampo}
-                  />
-                </Field>
-                <Field label="Valor da Causa">
-                  <input
-                    type="text"
-                    value={valorCausa}
-                    readOnly={camposBloqueados}
-                    onChange={(e) => setValorCausa(e.target.value)}
-                    className={clsCampo}
-                  />
-                </Field>
-                <Field label="Natureza da Ação" className="col-span-2 md:col-span-4">
-                  <input
-                    type="text"
-                    value={naturezaAcao}
-                    readOnly={camposBloqueados}
-                    onChange={(e) => setNaturezaAcao(e.target.value)}
-                    className={clsCampo}
-                  />
-                </Field>
-                <Field label="Procedimento">
-                  <input
-                    type="text"
-                    value={procedimento}
-                    readOnly={camposBloqueados}
-                    onChange={(e) => setProcedimento(e.target.value)}
-                    className={clsCampo}
-                  />
-                </Field>
-                <Field label="Competência" className="col-span-2 md:col-span-2">
-                  <div className="flex gap-1">
-                    {camposBloqueados ? (
-                      <input type="text" readOnly value={competencia} className={`flex-1 ${clsCampo}`} title={competencia} />
-                    ) : (
-                      <select value={competencia} onChange={(e) => setCompetencia(e.target.value)} className={`flex-1 ${inputClass}`}>
-                        {COMPETENCIAS.map((c) => (
-                          <option key={c} value={c}>
-                            {c}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-                    <button
-                      type="button"
-                      disabled={camposBloqueados}
-                      className="p-1.5 rounded border border-slate-300 hover:bg-slate-100 shrink-0 disabled:opacity-50 disabled:pointer-events-none"
-                    >
-                      <Search className="w-4 h-4 text-slate-600" />
-                    </button>
-                  </div>
-                </Field>
-                <Field label="Fase">
-                  <input
-                    type="text"
-                    value={faseCampo}
-                    readOnly={camposBloqueados}
-                    onChange={(e) => setFaseCampo(e.target.value)}
-                    className={clsCampo}
-                  />
-                </Field>
-                <Field label="Observação" className="col-span-2 md:col-span-4">
-                  <textarea
-                    value={observacao}
-                    readOnly={camposBloqueados}
-                    onChange={(e) => setObservacao(e.target.value)}
-                    rows={3}
-                    className={`${clsCampo} resize-y`}
-                  />
-                </Field>
-                <div className="col-span-2 md:col-span-4 flex flex-wrap items-end gap-3">
-                  <button
-                    type="button"
-                    onClick={abrirLinkPastaArquivo}
-                    className="px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
-                  >
-                    Link p/ pasta
-                  </button>
-                  <Field label="Periodicidade Consulta" className="w-36">
-                    {camposBloqueados ? (
-                      <input type="text" readOnly value={periodicidadeConsulta || '—'} className={clsCampo} title={periodicidadeConsulta} />
-                    ) : (
-                      <select value={periodicidadeConsulta} onChange={(e) => setPeriodicidadeConsulta(e.target.value)} className={inputClass}>
-                        <option value="">—</option>
-                        <option value="Diária">Diária</option>
-                        <option value="Semanal">Semanal</option>
-                        <option value="Quinzenal">Quinzenal</option>
-                        <option value="Mensal">Mensal</option>
-                        <option value="Bimestral">Bimestral</option>
-                        <option value="Trimensal">Trimensal</option>
-                        <option value="Semestral">Semestral</option>
-                        <option value="Anual">Anual</option>
-                      </select>
-                    )}
-                  </Field>
-                  <button
-                    type="button"
-                    onClick={abrirModalTramitacao}
-                    className="px-4 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
-                  >
-                    Tramitação
-                  </button>
-                  <span className="text-xs text-slate-600">
-                    Tramitação: {tramitacao || '—'}
-                  </span>
-                </div>
+            {/* Dados processuais — grelha 12 col em md+ para Fase na mesma linha; campos densos */}
+            <section className="border-t border-slate-200/80 pt-2">
+              <div className="flex items-center gap-1.5 mb-1">
+                <span className="h-1.5 w-1.5 rounded-full bg-sky-500 shadow-sm shrink-0" aria-hidden />
+                <h2 className="text-xs sm:text-sm font-bold text-slate-800 tracking-tight leading-none">
+                  Dados processuais e administrativos
+                </h2>
               </div>
-            </section>
-
-            {/* Seção Audiência */}
-            <section className="border border-slate-300 rounded p-3 bg-slate-50/30 border-t border-slate-200 pt-4">
-              <p className="text-sm font-medium text-slate-700 mb-2">Audiência</p>
-              <div className="flex flex-wrap items-end gap-4">
-                <Field label="Data" className="w-28">
-                  <input
-                    type="text"
-                    value={audienciaData}
-                    readOnly={camposBloqueados}
-                    onChange={(e) => setAudienciaData(formatarDataAudienciaInput(e.target.value))}
-                    onDoubleClick={() => {
-                      if (camposBloqueados) return;
-                      const norm = normalizarDataBr(audienciaData);
-                      if (!norm) return;
-                      const ok = /^(\d{2})\/(\d{2})\/(\d{4})$/.test(norm);
-                      if (!ok) return;
-                      navigate('/agenda', {
-                        replace: false,
-                        state: { agendaData: norm },
-                      });
-                    }}
-                    onBlur={() => {
-                      // Se ficou completo, normaliza para padrão dd/mm/aaaa.
-                      const norm = normalizarDataBr(audienciaData);
-                      if (norm) setAudienciaData(norm);
-                    }}
-                    placeholder="dd/mm/aaaa ou hj"
-                    className={clsCampo}
-                  />
-                </Field>
-                <Field label="Hora" className="w-24">
-                  <input
-                    type="text"
-                    value={audienciaHora}
-                    ref={audienciaHoraInputRef}
-                    readOnly={camposBloqueados}
-                    onChange={handleAudienciaHoraChange}
-                    onBlur={() => {
-                      const norm = normalizarHoraAudiencia(audienciaHora);
-                      if (norm) setAudienciaHora(norm);
-                    }}
-                    placeholder="hh:mm"
-                    className={clsCampo}
-                  />
-                </Field>
-                <Field label="Tipo" className="w-32">
-                  <input
-                    type="text"
-                    value={audienciaTipo}
-                    readOnly={camposBloqueados}
-                    onChange={(e) => setAudienciaTipo(e.target.value)}
-                    className={clsCampo}
-                  />
-                </Field>
-                <div className="flex items-center gap-3">
-                  <span className="text-sm text-slate-700">Aviso de Audiência</span>
-                  <label className={`flex items-center gap-1.5 text-sm ${camposBloqueados ? 'cursor-default' : 'cursor-pointer'}`}>
-                    <input
-                      type="radio"
-                      name="aviso"
-                      checked={avisoAudiencia === 'avisado'}
-                      disabled={camposBloqueados}
-                      onChange={() => setAvisoAudiencia('avisado')}
-                      className="text-slate-600"
-                    />
-                    Avisado
-                  </label>
-                  <label className={`flex items-center gap-1.5 text-sm ${camposBloqueados ? 'cursor-default' : 'cursor-pointer'}`}>
-                    <input
-                      type="radio"
-                      name="aviso"
-                      checked={avisoAudiencia === 'nao_avisado'}
-                      disabled={camposBloqueados}
-                      onChange={() => setAvisoAudiencia('nao_avisado')}
-                      className="text-slate-600"
-                    />
-                    Não Avisado
-                  </label>
-                </div>
-                <div className="w-36 space-y-1">
-                  <Field label="Prazo Fatal" className="w-full">
+              <div className="rounded-lg border border-slate-200/90 bg-white/90 p-2 sm:p-2.5 shadow-sm text-slate-900">
+                <div className="grid grid-cols-2 md:grid-cols-12 gap-x-2 gap-y-1.5">
+                  <Field label="Data do Protocolo" dense className="col-span-1 md:col-span-2 min-w-0">
                     <input
                       type="text"
-                      value={prazoFatal}
+                      value={dataProtocolo}
                       readOnly={camposBloqueados}
                       onChange={(e) => {
                         const v = e.target.value;
-                        setPrazoFatal(resolverAliasHojeEmTexto(v, 'br') ?? v);
+                        setDataProtocolo(resolverAliasHojeEmTexto(v, 'br') ?? v);
                       }}
-                      onBlur={(e) => persistirPrazoFatalAposEdicao(e.target.value)}
                       placeholder="dd/mm/aaaa ou hj"
-                      title="Data vinculada ao processo (gravada automaticamente)"
-                      className={clsCampo}
+                      className={clsCampoDenso}
                     />
                   </Field>
-                  {featureFlags.useApiTarefas && String(prazoFatal ?? '').trim() ? (
-                    <button
-                      type="button"
-                      onClick={abrirModalTarefaComPrazoFatal}
-                      className="text-[11px] text-emerald-800 hover:underline text-left w-full"
-                      title="Abre criação de tarefa com data limite sugerida a partir do prazo fatal"
-                    >
-                      Criar tarefa com esta data
-                    </button>
-                  ) : null}
+                  <Field label="Pasta do Arquivo" dense className="col-span-1 md:col-span-3 min-w-0">
+                    <input
+                      type="text"
+                      value={pastaArquivo}
+                      readOnly={camposBloqueados}
+                      onChange={(e) => setPastaArquivo(e.target.value)}
+                      className={clsCampoDenso}
+                    />
+                  </Field>
+                  <Field label="Responsável" dense className="col-span-1 md:col-span-3 min-w-0">
+                    <input
+                      type="text"
+                      value={responsavel}
+                      readOnly={camposBloqueados}
+                      onChange={(e) => setResponsavel(e.target.value)}
+                      className={clsCampoDenso}
+                    />
+                  </Field>
+                  <div className="col-span-2 md:col-span-4 rounded-md border-l-[3px] border-amber-500 bg-amber-50/90 pl-2 pr-1.5 py-1 ring-1 ring-amber-200/50 min-w-0">
+                    <Field label="Valor da Causa" dense className="[&_label]:text-amber-900/90">
+                      <input
+                        type="text"
+                        value={valorCausa}
+                        readOnly={camposBloqueados}
+                        onChange={(e) => setValorCausa(e.target.value)}
+                        className={`${clsCampoDenso} border-amber-200/90`}
+                      />
+                    </Field>
+                  </div>
+                  <Field label="Natureza da Ação" dense className="col-span-2 md:col-span-3 min-w-0">
+                    <input
+                      type="text"
+                      value={naturezaAcao}
+                      readOnly={camposBloqueados}
+                      onChange={(e) => setNaturezaAcao(e.target.value)}
+                      className={clsCampoDenso}
+                    />
+                  </Field>
+                  <Field label="Procedimento" dense className="col-span-2 md:col-span-3 min-w-0">
+                    <input
+                      type="text"
+                      value={procedimento}
+                      readOnly={camposBloqueados}
+                      onChange={(e) => setProcedimento(e.target.value)}
+                      className={clsCampoDenso}
+                    />
+                  </Field>
+                  <Field label="Fase" dense className="col-span-1 md:col-span-2 min-w-0">
+                    <input
+                      type="text"
+                      value={faseCampo}
+                      readOnly={camposBloqueados}
+                      onChange={(e) => setFaseCampo(e.target.value)}
+                      className={clsCampoDenso}
+                    />
+                  </Field>
+                  <Field label="Competência" dense className="col-span-2 md:col-span-4 min-w-0">
+                    <div className="flex gap-0.5">
+                      {camposBloqueados ? (
+                        <input type="text" readOnly value={competencia} className={`flex-1 min-w-0 ${clsCampoDenso}`} title={competencia} />
+                      ) : (
+                        <select
+                          value={competencia}
+                          onChange={(e) => setCompetencia(e.target.value)}
+                          className={`flex-1 min-w-0 ${inputClassDenso}`}
+                        >
+                          {COMPETENCIAS.map((c) => (
+                            <option key={c} value={c}>
+                              {c}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                      <button
+                        type="button"
+                        disabled={camposBloqueados}
+                        className="p-1 rounded border border-slate-300 hover:bg-slate-100 shrink-0 disabled:opacity-50 disabled:pointer-events-none"
+                      >
+                        <Search className="w-3.5 h-3.5 text-slate-600" />
+                      </button>
+                    </div>
+                  </Field>
+                  <Field label="Observação" dense className="col-span-2 md:col-span-12 min-w-0">
+                    <textarea
+                      value={observacao}
+                      readOnly={camposBloqueados}
+                      onChange={(e) => setObservacao(e.target.value)}
+                      rows={2}
+                      className={`${clsCampoDenso} resize-y min-h-0 py-1 leading-snug`}
+                    />
+                  </Field>
+                  <div className="col-span-2 md:col-span-12 rounded-md border border-teal-200/70 bg-gradient-to-r from-teal-50/80 to-slate-50/80 px-2 py-1.5">
+                    <h3 className="text-[10px] font-bold uppercase tracking-wide text-teal-900 pb-1 mb-1 border-b border-teal-200/50 leading-none">
+                      Periodicidade e tramitação
+                    </h3>
+                    <div className="flex flex-wrap items-end gap-x-1.5 gap-y-1">
+                      <button
+                        type="button"
+                        onClick={abrirLinkPastaArquivo}
+                        className="shrink-0 px-2.5 py-1 rounded-md border border-teal-300/80 bg-white text-teal-900 text-xs font-semibold hover:bg-teal-50 self-end"
+                        title="Abre o link da pasta do arquivo, se informado"
+                      >
+                        Link p/ pasta
+                      </button>
+                      <Field
+                        label="Periodicidade Consulta"
+                        dense
+                        className="min-w-0 shrink-0 w-[min(100%,13rem)] max-w-[13rem]"
+                      >
+                        {camposBloqueados ? (
+                          <input
+                            type="text"
+                            readOnly
+                            value={periodicidadeConsulta || '—'}
+                            className={`w-full min-w-0 ${clsCampoDenso}`}
+                            title={periodicidadeConsulta}
+                          />
+                        ) : (
+                          <select
+                            value={periodicidadeConsulta}
+                            onChange={(e) => setPeriodicidadeConsulta(e.target.value)}
+                            className={`w-full min-w-0 ${inputClassDenso}`}
+                          >
+                            <option value="">—</option>
+                            <option value="Diária">Diária</option>
+                            <option value="Semanal">Semanal</option>
+                            <option value="Quinzenal">Quinzenal</option>
+                            <option value="Mensal">Mensal</option>
+                            <option value="Bimestral">Bimestral</option>
+                            <option value="Trimensal">Trimensal</option>
+                            <option value="Semestral">Semestral</option>
+                            <option value="Anual">Anual</option>
+                          </select>
+                        )}
+                      </Field>
+                      <button
+                        type="button"
+                        onClick={abrirModalTramitacao}
+                        className="shrink-0 px-3 py-1 rounded-md border border-slate-500 bg-slate-800 text-white text-xs font-semibold hover:bg-slate-900 self-end"
+                      >
+                        Tramitação
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
             </section>
 
-            {/* Ações: Pagamentos, Agenda Em lote, Abrir Imóvel, Unidade (único campo), Cálculos */}
-            <section className="flex flex-wrap items-end gap-4 border-t border-slate-200 pt-4">
-              <p className="w-full text-[11px] text-slate-500 leading-snug -mb-1">
-                O <strong>nº Imóvel</strong> e a <strong>Unidade</strong> são os mesmos dados do cadastro <strong>Imóveis</strong> no menu
-                lateral. Ao sair do campo Imóvel, a unidade é preenchida automaticamente pelo cadastro quando estiver vazia.
+            {/* Imóvel / agenda / cálculos — barra operacional */}
+            <section className="rounded-lg border border-sky-200/80 bg-gradient-to-r from-sky-50/90 via-white to-cyan-50/50 px-2.5 py-2 mt-1.5 shadow-sm">
+              <p className="w-full text-[10px] text-sky-900/80 leading-snug mb-1.5">
+                <strong className="text-sky-950">Imóveis:</strong> o nº e a unidade vêm do cadastro no menu lateral; ao sair do campo Imóvel, a unidade preenche-se se estiver vazia.
               </p>
-              <button
-                type="button"
-                onClick={() =>
-                  navigate('/calculos', {
-                    state: buildRouterStateChaveClienteProcesso(codigoCliente, processo, {
-                      abaCalculos: 'Pagamento',
-                    }),
-                  })
-                }
-                className="px-4 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
-              >
-                Pagamentos
-              </button>
+              <div className="flex flex-wrap items-end gap-2">
               <button
                 type="button"
                 disabled={camposBloqueados}
                 onClick={abrirAgendaEmLote}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50 disabled:opacity-50 disabled:pointer-events-none"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-sky-400/70 bg-white text-sky-900 text-xs font-semibold hover:bg-sky-50 disabled:opacity-50 disabled:pointer-events-none"
               >
                 <Calendar className="w-4 h-4" /> Agenda Em lote
               </button>
@@ -2653,13 +2904,13 @@ export function Processos() {
                 type="button"
                 onClick={handleAbrirImovel}
                 title="Abre o cadastro Imóveis com este nº (ou vínculo mock). Sempre disponível, inclusive com «Edição desabilitada»."
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-sky-300 bg-white text-sky-900 text-sm font-medium hover:bg-sky-50 shadow-sm"
               >
                 <SidebarMenuIcon id="admin-imoveis-grupo" className="w-4 h-4" /> Abrir Imóvel
               </button>
               <Field
                 label="Unidade"
-                className="flex-1 min-w-[200px]"
+                className="w-full min-w-0 max-w-[13rem] shrink-0"
                 title="Descrição da unidade no cadastro de Imóveis (preenchida automaticamente pelo nº do imóvel, se vazia)."
               >
                 <input
@@ -2670,7 +2921,7 @@ export function Processos() {
                     setUnidadeEndereco(e.target.value);
                     setUnidadeEnderecoManual(true);
                   }}
-                  className={clsCampo}
+                  className={`w-full min-w-0 ${clsCampo}`}
                   placeholder="(vazio)"
                 />
               </Field>
@@ -2679,27 +2930,28 @@ export function Processos() {
                 onClick={() => {
                   navigate('/calculos', { state: buildRouterStateChaveClienteProcesso(codigoCliente, processo) });
                 }}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-indigo-300 bg-indigo-50 text-indigo-950 text-sm font-medium hover:bg-indigo-100 shadow-sm"
               >
-                <Calculator className="w-4 h-4" /> Cálculos
+                <SidebarMenuIcon id="calcular-grupo" className="w-4 h-4" /> Cálculos
               </button>
+              </div>
             </section>
 
             {/* Abas: Histórico do Processo | Observações | Execução */}
-            <section ref={abasProcessoRef} className="border-t border-slate-200 pt-4">
-              <div className="flex items-center gap-0 mb-0">
-                <button type="button" onClick={() => setTabAtiva('historico')} className={`px-4 py-2 text-sm font-medium border border-slate-300 border-b-0 rounded-t ${tabAtiva === 'historico' ? 'bg-white text-slate-800 -mb-px' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+            <section ref={abasProcessoRef} className="border-t border-slate-200/80 pt-3 mt-1">
+              <div className="flex flex-wrap items-end gap-1 mb-0">
+                <button type="button" onClick={() => setTabAtiva('historico')} className={`px-3.5 py-2 text-sm font-semibold rounded-t-lg border border-b-0 transition-colors ${tabAtiva === 'historico' ? 'bg-white text-indigo-900 border-slate-300 border-indigo-300/60 -mb-px z-[1] shadow-[0_-2px_0_0_white]' : 'bg-slate-100/90 text-slate-600 border-transparent hover:bg-slate-200/90'}`}>
                   Histórico do Processo
                 </button>
-                <button type="button" onClick={() => setTabAtiva('observacoes')} className={`px-4 py-2 text-sm font-medium border border-slate-300 border-b-0 rounded-t ${tabAtiva === 'observacoes' ? 'bg-white text-slate-800 -mb-px' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                <button type="button" onClick={() => setTabAtiva('observacoes')} className={`px-3.5 py-2 text-sm font-semibold rounded-t-lg border border-b-0 transition-colors ${tabAtiva === 'observacoes' ? 'bg-white text-indigo-900 border-slate-300 border-indigo-300/60 -mb-px z-[1] shadow-[0_-2px_0_0_white]' : 'bg-slate-100/90 text-slate-600 border-transparent hover:bg-slate-200/90'}`}>
                   Observações
                 </button>
-                <button type="button" onClick={() => setTabAtiva('execucao')} className={`px-4 py-2 text-sm font-medium border border-slate-300 border-b-0 rounded-t ${tabAtiva === 'execucao' ? 'bg-white text-slate-800 -mb-px' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                <button type="button" onClick={() => setTabAtiva('execucao')} className={`px-3.5 py-2 text-sm font-semibold rounded-t-lg border border-b-0 transition-colors ${tabAtiva === 'execucao' ? 'bg-white text-indigo-900 border-slate-300 border-indigo-300/60 -mb-px z-[1] shadow-[0_-2px_0_0_white]' : 'bg-slate-100/90 text-slate-600 border-transparent hover:bg-slate-200/90'}`}>
                   Execução
                 </button>
               </div>
               {tabAtiva === 'historico' && (
-                <div className="border border-slate-300 rounded-b overflow-hidden bg-white">
+                <div className="border border-slate-300 rounded-b-lg overflow-hidden bg-white shadow-sm -mt-px">
                   <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 flex flex-wrap items-end gap-3">
                     <div className="flex-1 min-w-[200px]">
                       <label className="block text-sm font-medium text-slate-700 mb-0.5">Próxima informação</label>
@@ -2797,12 +3049,12 @@ export function Processos() {
                 </div>
               )}
               {tabAtiva === 'observacoes' && (
-                <div className="border border-slate-300 border-t-0 rounded-b p-4 bg-white">
+                <div className="border border-slate-300 rounded-b-lg p-4 bg-white shadow-sm -mt-px">
                   <p className="text-sm text-slate-500">Conteúdo da aba Observações.</p>
                 </div>
               )}
               {tabAtiva === 'execucao' && (
-                <div className="border border-slate-300 border-t-0 rounded-b p-4 bg-white">
+                <div className="border border-slate-300 rounded-b-lg p-4 bg-white shadow-sm -mt-px">
                   <p className="text-sm text-slate-500">Conteúdo da aba Execução.</p>
                 </div>
               )}
@@ -3387,7 +3639,23 @@ export function Processos() {
       {/* Janela Conta Corrente: lançamentos dos extratos vinculados a cliente + proc. (Financeiro) */}
       {modalContaCorrente && (() => {
         const processoContaCorrenteEfetivo = contaCorrenteModo === 'proc0' ? 0 : processo;
-        const base = getLancamentosContaCorrente(codigoCliente, processoContaCorrenteEfetivo);
+        const baseLocal = getLancamentosContaCorrente(codigoCliente, processoContaCorrenteEfetivo);
+        let base;
+        if (!featureFlags.useApiFinanceiro) {
+          base = baseLocal;
+        } else if (
+          contaCorrenteListaApi.phase === 'idle' ||
+          contaCorrenteListaApi.phase === 'loading'
+        ) {
+          base = { lancamentos: [], soma: 0 };
+        } else if (contaCorrenteListaApi.phase === 'ok' && contaCorrenteListaApi.data) {
+          base = contaCorrenteListaApi.data;
+        } else {
+          base = baseLocal;
+        }
+        const carregandoListaApi =
+          featureFlags.useApiFinanceiro &&
+          (contaCorrenteListaApi.phase === 'idle' || contaCorrenteListaApi.phase === 'loading');
         const { lancamentos } = mergeContaCorrenteComLinhaOrigem(
           base.lancamentos,
           base.soma,
@@ -3429,9 +3697,21 @@ export function Processos() {
               Origem: lançamentos dos <strong>extratos bancários</strong> no Financeiro com os mesmos{' '}
               <strong>Cod. Cliente</strong> e <strong>Proc.</strong> deste processo (inclui qualquer letra contábil, ex.: A, N),
               como após vincular pelo número do processo ou editar o extrato.{' '}
+              {featureFlags.useApiFinanceiro && contaCorrenteListaApi.phase === 'ok' ? (
+                <>
+                  Com a <strong>API financeira</strong> ativa, a lista abaixo segue o servidor (inclui após zerar extrato).{' '}
+                </>
+              ) : null}
               <strong>Clique no cabeçalho</strong> de uma coluna para ordenar (ascendente → descendente → volta à ordem por data
               mais recente). Duplo clique numa <strong>linha</strong> continua abrindo o lançamento no Financeiro.
             </p>
+            {featureFlags.useApiFinanceiro &&
+            contaCorrenteListaApi.phase === 'error' &&
+            contaCorrenteListaApi.error ? (
+              <p className="text-xs text-red-700 px-4 py-2 border-b border-red-100 bg-red-50 shrink-0">
+                {contaCorrenteListaApi.error} — a tabela usa a cópia local dos extratos.
+              </p>
+            ) : null}
             <div className="flex-1 min-h-0 flex flex-col p-4">
               <div className="flex gap-4 flex-1 min-h-0">
                 <div className="flex-1 min-w-0 overflow-auto border border-slate-300 rounded bg-white">
@@ -3522,7 +3802,13 @@ export function Processos() {
                       </tr>
                     </thead>
                     <tbody>
-                      {listaOrdenada.length === 0 ? (
+                      {carregandoListaApi ? (
+                        <tr>
+                          <td colSpan={6} className="border border-slate-200 px-2 py-4 text-center text-slate-500">
+                            A carregar lançamentos da API…
+                          </td>
+                        </tr>
+                      ) : listaOrdenada.length === 0 ? (
                         <tr>
                           <td colSpan={6} className="border border-slate-200 px-2 py-4 text-center text-slate-500">
                             Nenhum lançamento do Financeiro vinculado ao cliente {codigoCliente}

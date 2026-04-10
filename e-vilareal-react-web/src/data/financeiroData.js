@@ -10,6 +10,8 @@
  *   linhas com o **mesmo Elo** (identificador numérico natural, ex. 0001, 0002…) deve ser **zero**.
  *   Movimentos que são apenas **mudança de numerário** entre contas bancárias ficam assim concentrados na Compensação,
  *   sem poluir as demais contas contábeis com efeitos líquidos duplicados.
+ * - **Letra G → Geral** — No consolidado, **reúne todos** os lançamentos de todos os extratos (todas as letras),
+ *   sem duplicar linhas nem mudar a classificação contábil original de cada movimento.
  */
 
 import { getExtratosVinculacaoTestePorBanco } from './vinculacaoAutomaticaTestMock.js';
@@ -82,9 +84,13 @@ const LETRA_TO_CONTA = {
   P: 'Conta Pessoa Jurídica',
   I: 'Conta Imóveis',
   J: 'Conta Julio',
+  G: 'Geral',
 };
 
 const CONTA_TO_LETRA = Object.fromEntries(Object.entries(LETRA_TO_CONTA).map(([k, v]) => [v, k]));
+
+/** Nome da conta contábil que agrega todas as linhas no consolidado (paridade BD + API). */
+export const NOME_CONTA_CONTABIL_GERAL = 'Geral';
 
 const BANCO_TO_NUMERO = {
   'Itaú': 1, 'Bradesco': 2, 'BB': 3, 'Sicoob': 4, 'CEF': 5, 'Itaú Poupança': 6,
@@ -532,7 +538,7 @@ export function validarNovoNomeContaBancaria(nomeRaw, contasExtras) {
 }
 
 /** Letras reservadas para novas contas contábeis (não colidem com A–J, N, P, R do plano base). */
-const LETRAS_POOL_CONTA_CONTABIL_EXTRA = ['G', 'H', 'K', 'L', 'O', 'Q', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'];
+const LETRAS_POOL_CONTA_CONTABIL_EXTRA = ['H', 'K', 'L', 'O', 'Q', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'];
 
 export const STORAGE_FINANCEIRO_CONTAS_CONTABEIS_EXTRAS_KEY = 'vilareal.financeiro.contasContabeis.extras.v1';
 export const STORAGE_FINANCEIRO_CONTAS_CONTABEIS_INATIVAS_KEY = 'vilareal.financeiro.contasContabeis.inativas.v1';
@@ -631,7 +637,7 @@ export function buildContaToLetraMerge(contasContabeisExtras) {
 }
 
 /** Ordem das letras do plano padrão (exportada para a UI). */
-export const ORDEM_LETRA_CONTA_BASE = ['A', 'B', 'C', 'D', 'N', 'E', 'F', 'M', 'R', 'P', 'I', 'J'];
+export const ORDEM_LETRA_CONTA_BASE = ['A', 'B', 'C', 'D', 'N', 'E', 'F', 'M', 'R', 'P', 'I', 'J', 'G'];
 
 export function buildOrdemLetrasContabeisCompleta(contasContabeisExtras) {
   const extras = Array.isArray(contasContabeisExtras) ? contasContabeisExtras : [];
@@ -1052,24 +1058,34 @@ export function reverterUmParCompensacaoInterbancaria(extratosPorBanco, par, elo
   return { ok: true, extratos: next };
 }
 
-const NOME_BANCO_CORA = 'CORA';
+function normNomeBancoExtrato(k) {
+  return String(k ?? '')
+    .trim()
+    .toUpperCase();
+}
 
 /**
- * Remove o extrato Cora e desfaz nos outros bancos os vínculos de compensação (letra E, proc, tag,
- * {@code eloFinanceiroId} em {@code _financeiroMeta}) que coincidiam com lançamentos Cora.
+ * Remove o extrato do banco indicado e desfaz nos outros bancos os vínculos de compensação (letra E, proc, tag,
+ * {@code eloFinanceiroId} em {@code _financeiroMeta}) que coincidiam com lançamentos desse extrato.
  * Não grava no storage — chame {@link savePersistedExtratosFinanceiro} se usar modo só local.
  *
  * @param {Record<string, unknown[]>} extratosPorBanco
+ * @param {string} nomeBanco — mesma chave que no estado (ex.: «Itaú», «CORA», «BTG»)
  * @returns {Record<string, unknown[]>}
  */
-export function limparExtratoCoraEElosRelacionados(extratosPorBanco) {
+export function limparExtratoBancoEElosRelacionados(extratosPorBanco, nomeBanco) {
   const next = cloneExtratos(extratosPorBanco || {});
-  const coraKey = Object.keys(next).find((k) => String(k).toUpperCase() === NOME_BANCO_CORA);
-  const listaCora = coraKey ? next[coraKey] : [];
+  const alvo = String(nomeBanco ?? '').trim();
+  if (!alvo) {
+    return next;
+  }
+  const alvoNorm = normNomeBancoExtrato(alvo);
+  const bancoKey = Object.keys(next).find((k) => normNomeBancoExtrato(k) === alvoNorm);
+  const listaAlvo = bancoKey ? next[bancoKey] : [];
   const eloIds = new Set();
   const eloProcs = new Set();
-  if (Array.isArray(listaCora)) {
-    for (const t of listaCora) {
+  if (Array.isArray(listaAlvo)) {
+    for (const t of listaAlvo) {
       const eid = Number(t?._financeiroMeta?.eloFinanceiroId);
       if (Number.isFinite(eid) && eid > 0) {
         eloIds.add(eid);
@@ -1081,7 +1097,7 @@ export function limparExtratoCoraEElosRelacionados(extratosPorBanco) {
     }
   }
   for (const [nome, list] of Object.entries(next)) {
-    if (String(nome).toUpperCase() === NOME_BANCO_CORA) {
+    if (normNomeBancoExtrato(nome) === alvoNorm) {
       continue;
     }
     if (!Array.isArray(list)) {
@@ -1104,11 +1120,16 @@ export function limparExtratoCoraEElosRelacionados(extratosPorBanco) {
       removerTagParCompensacaoEmLancamento(t);
     }
   }
-  if (coraKey) {
-    next[coraKey] = [];
+  if (bancoKey) {
+    next[bancoKey] = [];
   }
   renormalizarOrfaosCompensacao(next);
   return next;
+}
+
+/** @deprecated Preferir {@link limparExtratoBancoEElosRelacionados}(extratos, 'CORA'). */
+export function limparExtratoCoraEElosRelacionados(extratosPorBanco) {
+  return limparExtratoBancoEElosRelacionados(extratosPorBanco, 'CORA');
 }
 
 /**
@@ -1192,6 +1213,19 @@ export function getContasContabeisDerivadasExtratos(extratosPorBanco, letraToCon
       if (Number.isFinite(v)) stats[L].saldo += v;
     }
   }
+  if (stats.G && map.G === NOME_CONTA_CONTABIL_GERAL) {
+    let count = 0;
+    let saldo = 0;
+    for (const list of Object.values(extratosPorBanco || {})) {
+      if (!Array.isArray(list)) continue;
+      for (const t of list) {
+        count += 1;
+        const v = Number(t.valor);
+        if (Number.isFinite(v)) saldo += v;
+      }
+    }
+    stats.G = { count, saldo };
+  }
   const items = Object.keys(map).map((letra) => ({
     letra,
     nome: map[letra],
@@ -1219,6 +1253,20 @@ export function getContasContabeisDerivadasExtratos(extratosPorBanco, letraToCon
 export function getTransacoesConsolidadas(extratosPorBanco, contaContabilNome, numeroPorBancoMap, contaToLetraMap) {
   const map = numeroPorBancoMap ?? getBancoNumeroMapMerged();
   const ctl = contaToLetraMap ?? CONTA_TO_LETRA;
+  if (String(contaContabilNome ?? '').trim() === NOME_CONTA_CONTABIL_GERAL) {
+    const lista = [];
+    for (const [nomeBanco, transacoes] of Object.entries(extratosPorBanco || {})) {
+      if (!Array.isArray(transacoes)) continue;
+      for (const t of transacoes) {
+        lista.push({
+          ...t,
+          nomeBanco,
+          numeroBanco: map[nomeBanco] ?? '-',
+        });
+      }
+    }
+    return lista.sort((a, b) => String(a.data ?? '').localeCompare(String(b.data ?? '')));
+  }
   const letra = ctl[contaContabilNome];
   if (!letra) return [];
   const letraU = String(letra).trim().toUpperCase();
@@ -1325,6 +1373,22 @@ function lancamentoParaContaCorrenteModal(t) {
     nomeBanco: t.nomeBanco,
     numero: t.numero,
   };
+}
+
+/**
+ * Converte linhas no formato do extrato/consolidado (ex.: vindas da API via {@code mapApiLancamentoToUi})
+ * para o mesmo shape usado pelo modal Conta Corrente em Processos.
+ */
+export function mapLinhasFinanceiroParaContaCorrenteModal(linhas) {
+  if (!Array.isArray(linhas) || linhas.length === 0) return { lancamentos: [], soma: 0 };
+  const sorted = [...linhas].sort((a, b) => {
+    const byData = String(a.data ?? '').localeCompare(String(b.data ?? ''));
+    if (byData !== 0) return byData;
+    return Number(a.numero) - Number(b.numero);
+  });
+  const lancamentos = sorted.map(lancamentoParaContaCorrenteModal);
+  const soma = sorted.reduce((s, t) => s + (Number(t.valor) || 0), 0);
+  return { lancamentos, soma };
 }
 
 /**

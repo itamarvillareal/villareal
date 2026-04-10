@@ -16,5 +16,7 @@ public class AgendaEventoResponse {
     private String horaEvento;
     private String descricao;
     private String statusCurto;
+    /** Referência ao processo no front: `codigoCliente8|numeroInterno` (ex.: 00000001|2). */
+    private String processoRef;
     private String origem;
 }

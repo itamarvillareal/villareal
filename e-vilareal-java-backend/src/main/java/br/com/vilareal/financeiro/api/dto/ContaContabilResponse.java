@@ -10,4 +10,6 @@ public class ContaContabilResponse {
     private Long id;
     private String nome;
     private String codigo;
+    private Boolean ativo;
+    private Integer ordemExibicao;
 }

@@ -24,6 +24,8 @@ public class LancamentoFinanceiroResponse {
     private Integer numeroBanco;
     private String numeroLancamento;
     private LocalDate dataLancamento;
+    /** Competência contábil (coluna {@code data_competencia}); pode coincidir com {@link #dataLancamento}. */
+    private LocalDate dataCompetencia;
     private String descricao;
     private String descricaoDetalhada;
     private BigDecimal valor;

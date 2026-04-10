@@ -1,7 +1,6 @@
 /**
  * Dados alinhados à tela Processos (API + localStorage) para enriquecer linhas do Relatório Processos.
  */
-import { getDadosProcessoClienteUnificado } from './processoClienteProcUnificado.js';
 import { getRegistroProcesso } from './processosHistoricoData.js';
 import { featureFlags } from '../config/featureFlags.js';
 import { listarAndamentosProcesso, listarPartesProcesso, obterCamposProcessoApiFirst, resolverProcessoId } from '../repositories/processosRepository.js';
@@ -88,9 +87,15 @@ export const COMPETENCIAS = [
   'VARA CÍVEL',
 ];
 
-export const TRAMITACAO_OPCOES = ['Projudi', 'PJe', 'TJ Go - Autos Físicos'];
+/** Opções do campo Tipo de audiência (Processos). */
+export const TIPOS_AUDIENCIA = [
+  'Conciliação',
+  'Instrução',
+  'Administrativa',
+  'Sessão de Julgamento',
+];
 
-const TIPOS_AUDIENCIA = ['Inicial', 'Instrução', 'Conciliação', 'Una', 'Rito sumaríssimo'];
+export const TRAMITACAO_OPCOES = ['Projudi', 'PJe', 'TJ Go - Autos Físicos'];
 
 function formatarListaComConjuncaoE(itens) {
   const lista = (Array.isArray(itens) ? itens : [])
@@ -131,19 +136,16 @@ export function getNomePessoaCadastroPorCodigoCliente() {
 }
 
 /**
- * Mesma lógica usada na tela Processos — fonte única para mock por cliente/processo
- * (números, partes e natureza alinhados a getDadosProcessoClienteUnificado / Cadastro de Clientes).
+ * Modelo vazio por par cliente×processo — sem dados fictícios (UF/cidade/CNJ/etc. vêm só de API,
+ * persistência local ou cadastro gravado pelo usuário).
  */
 export function gerarMockProcesso(codigoCliente, processo) {
   const c = Number(normalizarCliente(codigoCliente));
   const p = Number(normalizarProcesso(processo));
-  const nomeClienteCadastro = getNomePessoaCadastroPorCodigoCliente();
-  const u = getDadosProcessoClienteUnificado(c, p);
-
-  const vazio = {
+  return {
     codigoCliente: padCliente(c),
     processo: p,
-    cliente: nomeClienteCadastro ?? '',
+    cliente: '',
     parteCliente: '',
     parteOposta: '',
     estado: '',
@@ -161,20 +163,6 @@ export function gerarMockProcesso(codigoCliente, processo) {
     valorCausa: '',
     consultaAutomatica: false,
     observacao: '',
-  };
-
-  if (!u) {
-    return vazio;
-  }
-
-  return {
-    ...vazio,
-    cliente: nomeClienteCadastro ?? u.autor,
-    parteCliente: u.parteCliente,
-    parteOposta: u.parteOposta,
-    numeroProcessoVelho: u.processoVelho,
-    numeroProcessoNovo: u.processoNovo,
-    naturezaAcao: u.naturezaAcao,
   };
 }
 
@@ -306,38 +294,67 @@ export function getCamposExtrasRelatorioPorProcesso(codClienteRaw, procRaw) {
     reg?.parteOposta != null && String(reg.parteOposta).trim() !== '' ? String(reg.parteOposta) : mock.parteOposta;
 
   const tramitacao =
-    reg?.tramitacao != null && String(reg.tramitacao).trim() !== ''
-      ? String(reg.tramitacao)
-      : TRAMITACAO_OPCOES[(Number(normalizarCliente(codClienteRaw)) + Number(normalizarProcesso(procRaw))) % TRAMITACAO_OPCOES.length];
+    reg?.tramitacao != null && String(reg.tramitacao).trim() !== '' ? String(reg.tramitacao) : '';
 
   const cNum = Number(normalizarCliente(codClienteRaw));
   const pNum = Number(normalizarProcesso(procRaw));
   const vinculo = resolverVinculoImovel(cNum, pNum);
   const imovel = vinculo?.mock;
 
+  const papel = String(reg?.papelParte ?? '').toLowerCase();
+  const temRegistro = !!reg;
+  /** Sem persistência local: coluna de status fica vazia; filtro «ativos» ainda inclui a linha (boolean true). */
+  const processoCadastroAtivo = temRegistro ? reg.statusAtivo !== false : true;
+  const statusAtivoTexto =
+    temRegistro ? (reg.statusAtivo === false ? 'Inativo' : 'Ativo') : '';
+
   const base = {
     codigoClienteProcesso: mock.codigoCliente,
     numeroProcessoInterno: String(mock.processo),
-    clienteCadastroProcesso: mock.cliente,
+    clienteCadastroProcesso:
+      reg?.cliente != null && String(reg.cliente).trim() !== '' ? String(reg.cliente) : mock.cliente,
     parteCliente,
     parteOposta,
-    estadoProcesso: mock.estado,
-    cidadeProcesso: mock.cidade,
+    estadoProcesso:
+      reg?.estado != null && String(reg.estado).trim() !== '' ? String(reg.estado) : mock.estado,
+    cidadeProcesso:
+      reg?.cidade != null && String(reg.cidade).trim() !== '' ? String(reg.cidade) : mock.cidade,
     faseCadastroProcesso: faseCadastro,
-    competenciaCadastroProcesso: mock.competencia,
-    numeroProcessoVelho: mock.numeroProcessoVelho ?? '',
-    numeroProcessoNovo: mock.numeroProcessoNovo ?? '',
-    /** Alinhado ao cadastro Processos — usado para filtrar ativos/inativos no relatório. */
-    processoCadastroAtivo: !!mock.statusAtivo,
-    statusAtivoTexto: mock.statusAtivo ? 'Ativo' : 'Inativo',
-    parteRequerenteTexto: simNao(mock.parteRequerente),
-    parteRevelTexto: simNao(mock.parteRevel),
-    parteRequeridoTexto: simNao(mock.parteRequerido),
-    dataProtocolo: mock.dataProtocolo,
-    naturezaAcaoProcesso: mock.naturezaAcao,
-    valorCausaProcesso: mock.valorCausa,
-    consultaAutomaticaTexto: simNao(mock.consultaAutomatica),
-    observacaoCadastroProcesso: mock.observacao,
+    competenciaCadastroProcesso:
+      reg?.competencia != null && String(reg.competencia).trim() !== ''
+        ? String(reg.competencia)
+        : mock.competencia,
+    numeroProcessoVelho:
+      reg?.numeroProcessoVelho != null && String(reg.numeroProcessoVelho).trim() !== ''
+        ? String(reg.numeroProcessoVelho)
+        : mock.numeroProcessoVelho ?? '',
+    numeroProcessoNovo:
+      reg?.numeroProcessoNovo != null && String(reg.numeroProcessoNovo).trim() !== ''
+        ? String(reg.numeroProcessoNovo)
+        : mock.numeroProcessoNovo ?? '',
+    processoCadastroAtivo,
+    statusAtivoTexto,
+    parteRequerenteTexto: temRegistro ? simNao(papel === 'requerente') : '',
+    parteRevelTexto: '',
+    parteRequeridoTexto: temRegistro ? simNao(papel === 'requerido') : '',
+    dataProtocolo:
+      reg?.dataProtocolo != null && String(reg.dataProtocolo).trim() !== ''
+        ? String(reg.dataProtocolo)
+        : mock.dataProtocolo,
+    naturezaAcaoProcesso:
+      reg?.naturezaAcao != null && String(reg.naturezaAcao).trim() !== ''
+        ? String(reg.naturezaAcao)
+        : mock.naturezaAcao,
+    valorCausaProcesso:
+      reg?.valorCausa != null && String(reg.valorCausa).trim() !== ''
+        ? String(reg.valorCausa)
+        : mock.valorCausa,
+    consultaAutomaticaTexto:
+      temRegistro && reg.consultaAutomatica != null ? simNao(reg.consultaAutomatica) : '',
+    observacaoCadastroProcesso:
+      reg?.observacao != null && String(reg.observacao).trim() !== ''
+        ? String(reg.observacao)
+        : mock.observacao,
     tramitacao,
     periodicidadeConsulta: reg?.periodicidadeConsulta ?? '',
     prazoFatalCadastroProcesso: reg?.prazoFatal ?? '',
@@ -345,27 +362,26 @@ export function getCamposExtrasRelatorioPorProcesso(codClienteRaw, procRaw) {
     ultimoHistoricoInfo: ult?.info ? String(ult.info) : '',
     ultimoHistoricoData: ult?.data ? String(ult.data) : '',
     ultimoHistoricoUsuario: ult?.usuario ? String(ult.usuario).trim() : '',
-    tipoAudienciaProcesso: TIPOS_AUDIENCIA[(cNum + pNum) % TIPOS_AUDIENCIA.length],
-    audienciaDataProcesso: `${String(((cNum + pNum * 3) % 28) + 1).padStart(2, '0')}/${String(((cNum + pNum) % 12) + 1).padStart(2, '0')}/2026`,
-    audienciaHoraProcesso: `${String(8 + ((cNum + pNum) % 10)).padStart(2, '0')}:00`,
-    imovelIdVinculado: imovel ? String(vinculo.imovelId) : '',
+    tipoAudienciaProcesso: String(reg?.audienciaTipo ?? '').trim(),
+    audienciaDataProcesso: String(reg?.audienciaData ?? '').trim(),
+    audienciaHoraProcesso: String(reg?.audienciaHora ?? '').trim(),
+    imovelIdVinculado: imovel ? String(vinculo.imovelId) : String(reg?.imovelId ?? '').trim(),
     unidadeImovel: imovel ? String(imovel.unidade ?? '') : '',
     enderecoImovel: imovel ? String(imovel.endereco ?? '') : '',
     condominioImovel: imovel ? String(imovel.condominio ?? '') : '',
-    pastaArquivoProcesso: `PASTA-${mock.codigoCliente}-${mock.processo}`,
-    procedimentoProcesso: `PROC-ADM-${(cNum + pNum) % 900 + 100}`,
-    responsavelProcesso: ['KARLA', 'ITAMAR', 'DAAE', 'ANA'][(cNum + pNum) % 4],
-    // Pessoas (exibição tipo cadastro — determinístico por cliente/proc)
-    tituloPessoa1Reu: pNum % 2 === 0 ? '1º Réu' : 'Corréu',
-    nPessoa1Reu: `${String(10000000000 + cNum * 137 + pNum * 41).slice(0, 11)}`,
-    nEndPessoa1Reu: `Rua Processo ${cNum}, ${100 + pNum} — CEP ${String(74000000 + (cNum + pNum) % 99999).slice(0, 8)}`,
-    tituloPessoa1Autor: 'Autor',
-    nPessoa1Autor: `${String(50000000000 + cNum * 211 + pNum * 17).slice(0, 11)}`,
-    nEndPessoa1Autor: `Av. Central, ${200 + pNum} — Apto ${((cNum + pNum) % 40) + 1}`,
+    pastaArquivoProcesso: String(reg?.pastaArquivo ?? '').trim(),
+    procedimentoProcesso: String(reg?.procedimento ?? '').trim(),
+    responsavelProcesso: String(reg?.responsavel ?? '').trim(),
+    tituloPessoa1Reu: '',
+    nPessoa1Reu: '',
+    nEndPessoa1Reu: '',
+    tituloPessoa1Autor: '',
+    nPessoa1Autor: '',
+    nEndPessoa1Autor: '',
     unidade: imovel
       ? String(imovel.unidade ?? '')
-      : `QD.${String((pNum % 6) + 1).padStart(2, '0')} LT.${String((cNum % 12) + 1).padStart(2, '0')}`,
-    tipoAudiencia: TIPOS_AUDIENCIA[(cNum + pNum) % TIPOS_AUDIENCIA.length],
+      : String(reg?.unidade ?? reg?.unidadeEndereco ?? '').trim(),
+    tipoAudiencia: String(reg?.audienciaTipo ?? '').trim(),
   };
   const cacheApi = _cacheCamposApi.get(keyClienteProc(codClienteRaw, procRaw));
   return cacheApi ? { ...base, ...cacheApi } : base;

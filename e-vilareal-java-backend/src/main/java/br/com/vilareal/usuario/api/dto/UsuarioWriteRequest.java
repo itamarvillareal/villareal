@@ -15,6 +15,7 @@ public class UsuarioWriteRequest {
     @Size(max = 255)
     private String nome;
 
+    @Schema(description = "Nome de exibição no sistema. Obrigatório ao criar usuário (POST).")
     @Size(max = 120)
     private String apelido;
 

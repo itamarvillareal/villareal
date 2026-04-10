@@ -7,12 +7,14 @@ export function mapApiUsuarioToView(u) {
   return {
     id: String(u.id),
     nome: String(u.nome ?? ''),
+    nomePessoa: String(u.nomePessoa ?? '').trim(),
     numeroPessoa: u.pessoaId ?? null,
     apelido: String(u.apelido ?? ''),
     login: String(u.login ?? ''),
     senhaHash: '',
     ativo: u.ativo !== false,
-    perfilIds: Array.isArray(u.perfilIds) ? u.perfilIds : [],
+    perfilId:
+      u.perfilId != null && Number.isFinite(Number(u.perfilId)) ? Number(u.perfilId) : null,
   };
 }
 
@@ -124,8 +126,13 @@ export async function vincularPerfisUsuario(usuarioId, perfilIds) {
   if (!featureFlags.useApiUsuarios) return;
   const idNum = Number(usuarioId);
   if (!Number.isFinite(idNum) || idNum < 1) throw new Error('ID de usuário inválido para API.');
+  const raw = Array.isArray(perfilIds) ? perfilIds : [perfilIds];
+  const ids = raw.map((x) => Number(x)).filter(Number.isFinite);
+  if (ids.length !== 1) {
+    throw new Error('Informe exatamente um perfil (um id numérico ou array com um elemento).');
+  }
   await request(`/api/usuarios/${idNum}/perfis`, {
     method: 'PUT',
-    body: Array.isArray(perfilIds) ? perfilIds.map((x) => Number(x)).filter(Number.isFinite) : [],
+    body: ids,
   });
 }

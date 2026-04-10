@@ -29,15 +29,6 @@ const RELATORIO_MAX_LINHAS_PERSISTIDAS = 400;
 /** Colunas que identificam o processo — não editáveis no modo de alteração. */
 const COLUNAS_RELATORIO_SO_LEITURA = new Set(['codCliente', 'proc']);
 
-/** Gera número CNJ mock determinístico (prioriza dados reais: numeroProcesso / numeroProcessoNovo). */
-function gerarNumeroProcessoCnjMock(row, idx) {
-  const proc = Number(String(row.proc ?? '').replace(/\D/g, '')) || 1;
-  const seq = 5600000 + idx * 137 + proc * 11;
-  const dv = String(10 + ((idx + proc) % 90)).padStart(2, '0');
-  const foro = String(1000 + ((idx * 13 + proc * 7) % 900)).slice(-4);
-  return `${String(seq).slice(0, 7)}-${dv}.2025.8.09.${foro}`;
-}
-
 /** Colunas cujo valor é data dd/mm/aaaa — ordenação cronológica, não lexicográfica. */
 const COLUNAS_DATA_BR = new Set([
   'dataConsulta',
@@ -112,7 +103,7 @@ function montarLinhasRelatorioBaseDeCruas(linhasCruas) {
       {
         ...row,
         codCliente: row.codCliente ?? String(idx + 1).padStart(8, '0'),
-        numeroProcesso: row.numeroProcesso ?? row.numeroProcessoNovo ?? gerarNumeroProcessoCnjMock(row, idx),
+        numeroProcesso: row.numeroProcesso ?? row.numeroProcessoNovo ?? '',
       },
       idx
     );

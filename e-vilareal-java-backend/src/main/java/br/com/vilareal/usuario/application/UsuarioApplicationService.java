@@ -26,6 +26,8 @@ import java.util.stream.Collectors;
 public class UsuarioApplicationService {
 
     private static final String PLACEHOLDER_SENHA = "sem-hash-definido";
+    /** Perfil USUARIO (V1__init). Novos cadastros passam a usar este perfil por defeito. */
+    private static final long PERFIL_PADRAO_NOVO_USUARIO = 2L;
 
     private final UsuarioRepository usuarioRepository;
     private final PessoaRepository pessoaRepository;
@@ -69,7 +71,7 @@ public class UsuarioApplicationService {
 
     @Transactional(readOnly = true)
     public UsuarioResponse buscar(Long id) {
-        UsuarioEntity u = usuarioRepository.findWithPerfisById(id)
+        UsuarioEntity u = usuarioRepository.findWithPerfilById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Usuário não encontrado: " + id));
         return toResponse(u);
     }
@@ -88,16 +90,23 @@ public class UsuarioApplicationService {
         if (usuarioRepository.existsByLoginIgnoreCase(login)) {
             throw new BusinessRuleException("Já existe usuário com este login.");
         }
+        String apelidoCriacao = trimToNull(req.getApelido());
+        if (!StringUtils.hasText(apelidoCriacao)) {
+            throw new BusinessRuleException("Apelido é obrigatório ao cadastrar usuário.");
+        }
 
         UsuarioEntity u = new UsuarioEntity();
         u.setPessoa(pessoa);
         u.setNome(req.getNome().trim());
-        u.setApelido(trimToNull(req.getApelido()));
+        u.setApelido(apelidoCriacao);
         u.setLogin(login);
         u.setAtivo(req.getAtivo() != null ? req.getAtivo() : true);
         u.setSenhaHash(resolverSenhaHashCriacao(req));
+        u.setPerfil(perfilRepository
+                .findById(PERFIL_PADRAO_NOVO_USUARIO)
+                .orElseThrow(() -> new ResourceNotFoundException("Perfil padrão não encontrado: " + PERFIL_PADRAO_NOVO_USUARIO)));
         u = usuarioRepository.save(u);
-        return toResponse(usuarioRepository.findWithPerfisById(u.getId()).orElse(u));
+        return toResponse(usuarioRepository.findWithPerfilById(u.getId()).orElse(u));
     }
 
     @Transactional
@@ -128,7 +137,7 @@ public class UsuarioApplicationService {
             u.setSenhaHash(novoHash);
         }
         u = usuarioRepository.save(u);
-        return toResponse(usuarioRepository.findWithPerfisById(u.getId()).orElse(u));
+        return toResponse(usuarioRepository.findWithPerfilById(u.getId()).orElse(u));
     }
 
     @Transactional
@@ -137,7 +146,7 @@ public class UsuarioApplicationService {
                 .orElseThrow(() -> new ResourceNotFoundException("Usuário não encontrado: " + id));
         u.setAtivo(ativo);
         u = usuarioRepository.save(u);
-        return toResponse(usuarioRepository.findWithPerfisById(u.getId()).orElse(u));
+        return toResponse(usuarioRepository.findWithPerfilById(u.getId()).orElse(u));
     }
 
     @Transactional
@@ -145,15 +154,19 @@ public class UsuarioApplicationService {
         UsuarioEntity u = usuarioRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Usuário não encontrado: " + id));
         List<Long> ids = perfilIds == null ? List.of() : perfilIds.stream().distinct().toList();
-        Set<PerfilEntity> set = new HashSet<>();
-        for (Long pid : ids) {
-            PerfilEntity perfil = perfilRepository.findById(pid)
-                    .orElseThrow(() -> new ResourceNotFoundException("Perfil não encontrado: " + pid));
-            set.add(perfil);
+        if (ids.isEmpty()) {
+            throw new BusinessRuleException("Informe exatamente um perfil (array JSON com um id, ex.: [2]).");
         }
-        u.setPerfis(set);
+        if (ids.size() > 1) {
+            throw new BusinessRuleException("Cada usuário pode ter apenas um perfil.");
+        }
+        Long pid = ids.getFirst();
+        PerfilEntity perfil = perfilRepository
+                .findById(pid)
+                .orElseThrow(() -> new ResourceNotFoundException("Perfil não encontrado: " + pid));
+        u.setPerfil(perfil);
         u = usuarioRepository.save(u);
-        return toResponse(usuarioRepository.findWithPerfisById(u.getId()).orElse(u));
+        return toResponse(usuarioRepository.findWithPerfilById(u.getId()).orElse(u));
     }
 
     private String resolverSenhaHashCriacao(UsuarioWriteRequest req) {
@@ -207,15 +220,13 @@ public class UsuarioApplicationService {
         UsuarioResponse r = new UsuarioResponse();
         r.setId(u.getId());
         r.setPessoaId(u.getPessoa() != null ? u.getPessoa().getId() : null);
+        r.setNomePessoa(
+                u.getPessoa() != null ? Utf8MojibakeUtil.corrigir(u.getPessoa().getNome()) : null);
         r.setNome(Utf8MojibakeUtil.corrigir(u.getNome()));
         r.setApelido(Utf8MojibakeUtil.corrigir(u.getApelido()));
         r.setLogin(u.getLogin());
         r.setAtivo(u.getAtivo());
-        if (u.getPerfis() != null) {
-            r.setPerfilIds(u.getPerfis().stream().map(PerfilEntity::getId).sorted().toList());
-        } else {
-            r.setPerfilIds(List.of());
-        }
+        r.setPerfilId(u.getPerfil() != null ? u.getPerfil().getId() : null);
         return r;
     }
 }

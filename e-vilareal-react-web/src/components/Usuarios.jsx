@@ -159,10 +159,15 @@ export function Usuarios() {
     return lista.filter((u) => {
       const ex = getNomeExibicaoUsuario(u).toLowerCase();
       const nome = String(u.nome || '').toLowerCase();
+      const nomePessoa = String(u.nomePessoa || '').toLowerCase();
       const id = String(u.id || '').toLowerCase();
       const login = String(u.login || '').toLowerCase();
       return (
-        ex.includes(termo) || nome.includes(termo) || id.includes(termo) || login.includes(termo)
+        ex.includes(termo) ||
+        nome.includes(termo) ||
+        nomePessoa.includes(termo) ||
+        id.includes(termo) ||
+        login.includes(termo)
       );
     });
   }, [usuariosAtivos, buscaUsuariosAtivos]);
@@ -198,6 +203,7 @@ export function Usuarios() {
       ag: { id: String(ag.id), nome: String(ag.nome ?? '').trim() || String(ag.id) },
       origemCloneId: '',
       numeroPessoa: preNum,
+      apelido: '',
       clearSlotId: opts.clearSlotId != null && opts.clearSlotId !== '' ? String(opts.clearSlotId) : null,
     });
   }
@@ -263,15 +269,22 @@ export function Usuarios() {
       );
       return;
     }
+    const apelidoInformado = String(modalIncluir.apelido ?? '').trim();
+    if (!apelidoInformado) {
+      window.alert('Informe o apelido (nome de exibição no sistema). É obrigatório ao cadastrar usuário.');
+      return;
+    }
     const nomeOficial = String(pessoa.nome ?? '').trim() || ag.nome;
     const novo = criarUsuarioRegistroMinimo({ id: ag.id, nome: nomeOficial });
     novo.numeroPessoa = n;
     novo.nome = nomeOficial;
+    novo.apelido = apelidoInformado;
     if (featureFlags.useApiUsuarios) {
       try {
         await salvarUsuario({
           ...novo,
           nome: nomeOficial,
+          apelido: apelidoInformado,
           login: normalizarNomeParaId(ag.nome) || `usuario_${Date.now()}`,
           senhaHash: 'sem-hash-definido',
           ativo: true,
@@ -388,25 +401,52 @@ export function Usuarios() {
     const u = usuarioMesclado(ag);
     const exibir = getNomeExibicaoUsuario(u);
     const temPessoa = u.numeroPessoa != null && Number.isFinite(Number(u.numeroPessoa));
+    const nomeCompletoCadastroPessoa = String(u.nomePessoa ?? u.nome ?? '').trim();
     return (
       <div
         key={u.id}
         className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-slate-50/50 p-3 sm:flex-row sm:items-start sm:justify-between sm:gap-3"
       >
-        <div className="min-w-0 flex-1 space-y-1">
+        <div className="min-w-0 flex-1 space-y-2">
           <div className="flex flex-wrap items-baseline gap-2">
             <span className="text-sm font-semibold text-slate-900">{exibir}</span>
             <span className="text-xs text-slate-500 font-mono">id: {u.id}</span>
           </div>
+          <div className="flex flex-col gap-1 max-w-md">
+            <label htmlFor={`apelido-inline-${u.id}`} className="text-xs font-medium text-slate-700">
+              Apelido <span className="text-slate-500 font-normal">(como aparece no sistema)</span>
+            </label>
+            <input
+              id={`apelido-inline-${u.id}`}
+              key={`apelido-key-${u.id}-${String(u.apelido ?? '')}`}
+              type="text"
+              defaultValue={String(u.apelido ?? '')}
+              disabled={featureFlags.useApiUsuarios}
+              onBlur={(e) => {
+                if (featureFlags.useApiUsuarios) return;
+                const v = e.target.value.trim();
+                if (v === String(u.apelido ?? '').trim()) return;
+                const next = (usuariosAtivos || []).map((row) =>
+                  String(row.id) === String(u.id) ? { ...row, apelido: v } : row
+                );
+                persistirUsuariosAtivos(next);
+              }}
+              className="w-full rounded border border-slate-300 px-2 py-1.5 text-sm bg-white disabled:bg-slate-100 disabled:text-slate-600"
+              placeholder="Ex.: Karla"
+            />
+            {featureFlags.useApiUsuarios ? (
+              <p className="text-[11px] text-slate-500">Com API ativa, edite o apelido em <strong>Dados</strong>.</p>
+            ) : null}
+          </div>
+          {nomeCompletoCadastroPessoa ? (
+            <p className="text-xs text-slate-600">
+              <span className="font-medium text-slate-700">Nome no Cadastro de Pessoas</span>{' '}
+              {nomeCompletoCadastroPessoa}
+            </p>
+          ) : null}
           {temPessoa ? (
             <p className="text-xs text-slate-600">
               <span className="font-medium text-slate-700">Pessoa nº</span> {u.numeroPessoa}
-              {u.nome && u.nome !== exibir ? (
-                <>
-                  {' '}
-                  · <span className="text-slate-700">{u.nome}</span>
-                </>
-              ) : null}
             </p>
           ) : (
             <p className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded px-2 py-1 inline-block">
@@ -474,8 +514,8 @@ export function Usuarios() {
             <h1 className="text-xl font-semibold text-gray-800">Usuários</h1>
             <p className="text-sm text-gray-600">
               Cada usuário deve ter uma pessoa no <strong>Cadastro de Pessoas</strong> (nº único) para evitar homônimos.
-              Use o <strong>apelido</strong> para exibição no sistema. Login e senha ficam guardados para o acesso
-              futuro. A lista ativa alimenta a <strong>Agenda</strong>, <strong>Pendências</strong> e agendamentos.
+              O <strong>apelido</strong> é o único nome de usuário mostrado no sistema (Agenda, histórico de processos,
+              menu, etc.); o nome civil fica só no cadastro da pessoa. Login e senha servem para o acesso futuro.
             </p>
           </div>
         </div>
@@ -828,6 +868,25 @@ export function Usuarios() {
                     Cadastro de Pessoas
                   </Link>
                   . Use a busca acima ou informe o número manualmente.
+                </p>
+              </div>
+              <div>
+                <label htmlFor="incluir-apelido" className="block text-xs font-medium text-slate-700 mb-1.5">
+                  Apelido <span className="text-red-600">*</span>
+                </label>
+                <input
+                  id="incluir-apelido"
+                  type="text"
+                  value={modalIncluir.apelido ?? ''}
+                  onChange={(e) =>
+                    setModalIncluir((m) => (m ? { ...m, apelido: e.target.value } : m))
+                  }
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800"
+                  placeholder="Como o nome aparece na Agenda e nas telas (ex.: Karla)"
+                  autoComplete="off"
+                />
+                <p className="mt-1.5 text-xs text-slate-500">
+                  Obrigatório. É o único nome de usuário exibido no sistema, além do login para acesso.
                 </p>
               </div>
               <div>

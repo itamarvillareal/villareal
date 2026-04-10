@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { CalendarDays, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -24,7 +24,9 @@ import { resolverAliasHojeEmTexto } from '../services/hjDateAliasService.js';
 import { getNomeExibicaoUsuario } from '../data/usuarioDisplayHelpers.js';
 import { featureFlags } from '../config/featureFlags.js';
 import { buildRouterStateChaveClienteProcesso } from '../domain/camposProcessoCliente.js';
+import { extrairChaveProcessoEventoAgenda } from '../domain/agendaProcessoRef.js';
 import { listarUsuarios } from '../repositories/usuariosRepository.js';
+import { getApiUsuarioSessao } from '../data/usuarioPermissoesStorage.js';
 import {
   listarEventosPorDataUsuario,
   listarAgendaMensal,
@@ -104,6 +106,8 @@ function EditableTextCell({
   temaPorPalavraChave = false,
   /** Duplo clique (2º clique): abre detalhe / processo — não entra em edição. */
   onDuploClique = null,
+  /** Quando true, só exibe texto (sem edição). */
+  readOnly = false,
 }) {
   const original = String(texto ?? '');
   const [editando, setEditando] = useState(false);
@@ -155,6 +159,24 @@ function EditableTextCell({
       : tema === 'conciliacao'
         ? 'bg-yellow-300 text-black border border-yellow-600 rounded px-1.5 py-1'
         : 'text-gray-800';
+
+  if (readOnly) {
+    return (
+      <div className="min-w-0 w-full" onClick={(e) => e.stopPropagation()}>
+        <div
+          className={`${classesTemaLeitura} ${multiline ? 'text-sm whitespace-pre-wrap break-words' : 'text-sm truncate'} block w-full select-none ${alignClass} ${multiline ? 'min-h-[1.25rem]' : ''}`}
+          style={multiline ? undefined : { minHeight: '18px' }}
+          onDoubleClick={(e) => {
+            e.stopPropagation();
+            onDuploClique?.();
+          }}
+          title={original}
+        >
+          {original || '\u00A0'}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -250,8 +272,15 @@ function EditableTextCell({
 }
 
 /** Status: apenas em branco ou "OK" (persistência normaliza outros valores). */
-function StatusCurtoCell({ evento, onSalvar }) {
+function StatusCurtoCell({ evento, onSalvar, readOnly = false }) {
   const valor = normalizarStatusCurtoAgenda(evento?.statusCurto);
+  if (readOnly) {
+    return (
+      <div className="w-[92px] flex items-center justify-end pr-1 text-sm text-slate-700" onClick={(e) => e.stopPropagation()}>
+        {valor === 'OK' ? 'OK' : '—'}
+      </div>
+    );
+  }
   return (
     <div className="w-[92px] flex items-center justify-end pr-1" onClick={(e) => e.stopPropagation()}>
       <select
@@ -280,6 +309,9 @@ function ColunaDia({
   onSalvarCampos,
   usuarioAgendaId,
   onPersistenciaAlterada,
+  somenteLeitura = false,
+  mostrarColunaUsuario = false,
+  resolverNomeUsuario = null,
 }) {
   /** Última linha (novo compromisso): id criado até liberar após salvar hora/descrição. */
   const pendingNovaLinhaIdRef = useRef(null);
@@ -291,6 +323,7 @@ function ColunaDia({
   }, [dataBrStr, usuarioAgendaId]);
 
   function salvarLinhaVazia(patch) {
+    if (somenteLeitura) return;
     if (!dataBrStr) return;
     const uid = String(usuarioAgendaId ?? '');
     const pendingId = pendingNovaLinhaIdRef.current;
@@ -311,7 +344,8 @@ function ColunaDia({
     }
   }
 
-  const linhasPreenchimento = Math.max(0, MIN_LINHAS_FORMULARIO_AGENDA - eventos.length - 1);
+  const linhasBase = somenteLeitura ? eventos.length : eventos.length + 1;
+  const linhasPreenchimento = Math.max(0, MIN_LINHAS_FORMULARIO_AGENDA - linhasBase);
 
   return (
     <div className="flex-1 min-w-0 min-h-0 flex flex-col border border-gray-300 rounded bg-white overflow-hidden">
@@ -323,6 +357,9 @@ function ColunaDia({
           <thead>
             <tr className="bg-gray-50 border-b border-gray-200">
               <th className="w-[96px] px-2 py-1.5 text-left text-xs font-semibold text-gray-600">Hora</th>
+              {mostrarColunaUsuario ? (
+                <th className="w-[100px] px-2 py-1.5 text-left text-xs font-semibold text-gray-600">Quem</th>
+              ) : null}
               <th className="px-2 py-1.5 text-left text-xs font-semibold text-gray-600">Descrição</th>
               <th className="w-[92px] px-1 py-1.5 text-right text-xs font-semibold text-gray-600">Status</th>
             </tr>
@@ -330,7 +367,7 @@ function ColunaDia({
           <tbody>
             {eventos.map((ev) => (
               <tr
-                key={ev.id}
+                key={ev._chaveUnicaAgenda ?? ev.id}
                 className={`border-b border-gray-100 min-h-[42px] overflow-hidden ${
                   ev.destaque ? 'bg-amber-100' : ''
                 }`}
@@ -341,6 +378,7 @@ function ColunaDia({
                     texto={ev.hora ?? ''}
                     align="left"
                     maxLen={12}
+                    readOnly={somenteLeitura}
                     onDuploClique={() => onDuploCliqueEvento?.(ev)}
                     onSalvar={(novo) => {
                       if (!dataBrStr) return;
@@ -348,6 +386,11 @@ function ColunaDia({
                     }}
                   />
                 </td>
+                {mostrarColunaUsuario ? (
+                  <td className="w-[100px] px-2 py-1.5 align-top text-xs text-gray-600 truncate" title={resolverNomeUsuario?.(ev) ?? ''}>
+                    {resolverNomeUsuario?.(ev) ?? '—'}
+                  </td>
+                ) : null}
                 <td className="px-2 py-1.5 align-top text-sm min-w-0">
                   <EditableTextCell
                     texto={ev.descricao ?? ''}
@@ -355,6 +398,7 @@ function ColunaDia({
                     align="left"
                     maxLen={2000}
                     temaPorPalavraChave
+                    readOnly={somenteLeitura}
                     onDuploClique={() => onDuploCliqueEvento?.(ev)}
                     onSalvar={(novo) => {
                       if (!dataBrStr) return;
@@ -365,6 +409,7 @@ function ColunaDia({
                 <td className="w-[92px] px-0 py-1.5 align-top text-right">
                   <StatusCurtoCell
                     evento={ev}
+                    readOnly={somenteLeitura}
                     onSalvar={(novo) => {
                       if (!dataBrStr) return;
                       onSalvarCampos?.(ev, { statusCurto: novo });
@@ -380,39 +425,45 @@ function ColunaDia({
                 aria-hidden
               >
                 <td className="w-[96px] px-2 py-1.5 align-top text-sm text-gray-300 select-none">&nbsp;</td>
+                {mostrarColunaUsuario ? (
+                  <td className="w-[100px] px-2 py-1.5 align-top text-sm text-gray-300 select-none">&nbsp;</td>
+                ) : null}
                 <td className="px-2 py-1.5 align-top text-sm min-w-0 text-gray-300 select-none">&nbsp;</td>
                 <td className="w-[92px] px-0 py-1.5 align-top text-right">&nbsp;</td>
               </tr>
             ))}
-            <tr
-              key={`linha-nova-${novaLinhaBump}`}
-              className="border-b border-gray-100 min-h-[42px] overflow-hidden bg-slate-50/50"
-            >
-              <td className="w-[96px] px-2 py-1.5 align-top text-sm">
-                <EditableTextCell
-                  texto=""
-                  align="left"
-                  maxLen={12}
-                  onSalvar={(novo) => salvarLinhaVazia({ hora: novo })}
-                />
-              </td>
-              <td className="px-2 py-1.5 align-top text-sm min-w-0">
-                <EditableTextCell
-                  texto=""
-                  multiline
-                  align="left"
-                  maxLen={2000}
-                  temaPorPalavraChave
-                  onSalvar={(novo) => salvarLinhaVazia({ descricao: novo })}
-                />
-              </td>
-              <td className="w-[92px] px-0 py-1.5 align-top text-right">
-                <StatusCurtoCell
-                  evento={{ statusCurto: '' }}
-                  onSalvar={(novo) => salvarLinhaVazia({ statusCurto: novo })}
-                />
-              </td>
-            </tr>
+            {!somenteLeitura ? (
+              <tr
+                key={`linha-nova-${novaLinhaBump}`}
+                className="border-b border-gray-100 min-h-[42px] overflow-hidden bg-slate-50/50"
+              >
+                <td className="w-[96px] px-2 py-1.5 align-top text-sm">
+                  <EditableTextCell
+                    texto=""
+                    align="left"
+                    maxLen={12}
+                    onSalvar={(novo) => salvarLinhaVazia({ hora: novo })}
+                  />
+                </td>
+                {mostrarColunaUsuario ? <td className="w-[100px] px-2 py-1.5 align-top text-sm" /> : null}
+                <td className="px-2 py-1.5 align-top text-sm min-w-0">
+                  <EditableTextCell
+                    texto=""
+                    multiline
+                    align="left"
+                    maxLen={2000}
+                    temaPorPalavraChave
+                    onSalvar={(novo) => salvarLinhaVazia({ descricao: novo })}
+                  />
+                </td>
+                <td className="w-[92px] px-0 py-1.5 align-top text-right">
+                  <StatusCurtoCell
+                    evento={{ statusCurto: '' }}
+                    onSalvar={(novo) => salvarLinhaVazia({ statusCurto: novo })}
+                  />
+                </td>
+              </tr>
+            ) : null}
           </tbody>
         </table>
       </div>
@@ -617,17 +668,41 @@ function PainelCalendario({
   );
 }
 
+function initialCalendarioAgendaDuasColunas() {
+  const esq = new Date();
+  const dir = new Date(esq);
+  dir.setDate(dir.getDate() + 1);
+  return {
+    diaE: esq.getDate(),
+    mesE: esq.getMonth() + 1,
+    anoE: esq.getFullYear(),
+    diaD: dir.getDate(),
+    mesD: dir.getMonth() + 1,
+    anoD: dir.getFullYear(),
+  };
+}
+
+const __calInicialAgenda = initialCalendarioAgendaDuasColunas();
+
+/** Com agenda na API, o id tem de ser numérico (sessão JWT); evita primeiro render vazio com legado "itamar". */
+function initialUsuarioIdAgenda() {
+  if (typeof window === 'undefined') return 'itamar';
+  if (!featureFlags.useApiAgenda) return 'itamar';
+  const api = getApiUsuarioSessao();
+  return api?.id ? String(api.id) : 'itamar';
+}
+
 export function Agenda() {
   const location = useLocation();
   const navigate = useNavigate();
-  const [usuarioEsquerda, setUsuarioEsquerda] = useState('itamar');
-  const [usuarioDireita, setUsuarioDireita] = useState('itamar');
-  const [mesEsquerda, setMesEsquerda] = useState(3);
-  const [anoEsquerda, setAnoEsquerda] = useState(2026);
-  const [diaEsquerda, setDiaEsquerda] = useState(agendaCalendarioMarco2026.diaSelecionado ?? 10);
-  const [mesDireita, setMesDireita] = useState(3);
-  const [anoDireita, setAnoDireita] = useState(2026);
-  const [diaDireita, setDiaDireita] = useState(11);
+  const [usuarioEsquerda, setUsuarioEsquerda] = useState(initialUsuarioIdAgenda);
+  const [usuarioDireita, setUsuarioDireita] = useState(initialUsuarioIdAgenda);
+  const [mesEsquerda, setMesEsquerda] = useState(__calInicialAgenda.mesE);
+  const [anoEsquerda, setAnoEsquerda] = useState(__calInicialAgenda.anoE);
+  const [diaEsquerda, setDiaEsquerda] = useState(__calInicialAgenda.diaE);
+  const [mesDireita, setMesDireita] = useState(__calInicialAgenda.mesD);
+  const [anoDireita, setAnoDireita] = useState(__calInicialAgenda.anoD);
+  const [diaDireita, setDiaDireita] = useState(__calInicialAgenda.diaD);
   const [eventoModal, setEventoModal] = useState(null);
   const [modalAgendaMensal, setModalAgendaMensal] = useState(false);
   const [agendaStatusNonce, setAgendaStatusNonce] = useState(0);
@@ -636,12 +711,21 @@ export function Agenda() {
   const [eventosApiDireita, setEventosApiDireita] = useState([]);
   const [relatorioAgendaMensal, setRelatorioAgendaMensal] = useState(() =>
     featureFlags.useApiAgenda
-      ? { ano: 0, mes: 0, usuarioId: '', diasComEventos: [] }
+      ? { ano: 0, mes: 0, usuarioId: '', todosUsuarios: false, diasComEventos: [] }
       : listarTodosCompromissosAgendaMes({
           ano: anoEsquerda,
           mes: mesEsquerda,
           usuarioId: usuarioEsquerda,
         })
+  );
+
+  const resolverNomeUsuarioAgenda = useCallback(
+    (ev) => {
+      if (ev?.usuarioNome && String(ev.usuarioNome).trim()) return String(ev.usuarioNome).trim();
+      const u = (usuariosAtivos || []).find((x) => String(x.id) === String(ev?.usuarioId));
+      return u ? getNomeExibicaoUsuario(u) : String(ev?.usuarioId ?? '').trim() || '—';
+    },
+    [usuariosAtivos]
   );
 
   /** Lista de pessoas = mesma da tela Usuários (localStorage); sincroniza ao salvar ou ao voltar à Agenda. */
@@ -683,12 +767,20 @@ export function Agenda() {
   }, [location.pathname]);
 
   useEffect(() => {
-    // Caso o usuário exclua o usuário atualmente selecionado, mantém seleção válida.
-    const ids = new Set((usuariosAtivos || []).map((u) => u.id));
-    const primeiraUsuarioId = Array.isArray(usuariosAtivos) && usuariosAtivos.length > 0 ? usuariosAtivos[0].id : 'itamar';
+    // Caso o usuário exclua o utilizador selecionado, ou ID legado "itamar" com API (precisa do id numérico).
+    const ids = new Set((usuariosAtivos || []).map((u) => String(u.id)));
+    function pickUsuarioAgendaValido() {
+      if (!Array.isArray(usuariosAtivos) || usuariosAtivos.length === 0) return 'itamar';
+      const api = getApiUsuarioSessao();
+      if (api?.id && ids.has(String(api.id))) return String(api.id);
+      const itamarU = usuariosAtivos.find((u) => String(u.login ?? '').toLowerCase() === 'itamar');
+      if (itamarU) return String(itamarU.id);
+      return String(usuariosAtivos[0].id);
+    }
+    const fallbackId = pickUsuarioAgendaValido();
 
-    if (!ids.has(usuarioEsquerda)) setUsuarioEsquerda(primeiraUsuarioId);
-    if (!ids.has(usuarioDireita)) setUsuarioDireita(primeiraUsuarioId);
+    if (!ids.has(String(usuarioEsquerda))) setUsuarioEsquerda(fallbackId);
+    if (!ids.has(String(usuarioDireita))) setUsuarioDireita(fallbackId);
   }, [usuariosAtivos, usuarioEsquerda, usuarioDireita]);
 
   function persistirUsuariosAtivos(next) {
@@ -701,8 +793,13 @@ export function Agenda() {
     return true;
   }
 
-  /** Duplo clique no compromisso: se houver um único nº de processo reconhecido na base, abre Processos. */
+  /** Duplo clique: prioriza vínculo explícito (processoRef / cliente×proc); senão tenta CNJ no texto. */
   function aoDuploCliqueCompromisso(ev) {
+    const chave = extrairChaveProcessoEventoAgenda(ev);
+    if (chave) {
+      navigate('/processos', { state: buildRouterStateChaveClienteProcesso(chave.codCliente, chave.proc) });
+      return;
+    }
     const texto = `${ev.descricao ?? ''}\n${ev.hora ?? ''}`;
     const found = buscarProcessoUnicoNaBasePorTextoAgenda(texto);
     if (found) {
@@ -788,6 +885,7 @@ export function Agenda() {
         merged.set(key, {
           ...prev,
           ...ev,
+          _chaveUnicaAgenda: key,
           statusCurto: normalizarStatusCurtoAgenda(ev.statusCurto ?? prev.statusCurto ?? ''),
         });
       }
@@ -813,6 +911,7 @@ export function Agenda() {
         merged.set(key, {
           ...prev,
           ...ev,
+          _chaveUnicaAgenda: key,
           statusCurto: normalizarStatusCurtoAgenda(ev.statusCurto ?? prev.statusCurto ?? ''),
         });
       }
@@ -845,6 +944,7 @@ export function Agenda() {
             ano: anoEsquerda,
             mes: mesEsquerda,
             usuarioId: usuarioEsquerda,
+            todosUsuarios: false,
             diasComEventos: [],
           });
         }
@@ -904,6 +1004,9 @@ export function Agenda() {
             onDuploCliqueEvento={aoDuploCliqueCompromisso}
             dataBrStr={dataEsquerdaStr}
             usuarioAgendaId={usuarioEsquerda}
+            somenteLeitura={false}
+            mostrarColunaUsuario={false}
+            resolverNomeUsuario={resolverNomeUsuarioAgenda}
             onPersistenciaAlterada={async () => {
               if (featureFlags.useApiAgenda) {
                 await criarEvento(dataEsquerdaStr, usuarioEsquerda, {});
@@ -912,7 +1015,7 @@ export function Agenda() {
             }}
             onSalvarCampos={(ev, patch) => {
               void (async () => {
-                await salvarCamposEvento(dataEsquerdaStr, { ...ev, usuarioId: usuarioEsquerda }, patch);
+                await salvarCamposEvento(dataEsquerdaStr, { ...ev, usuarioId: ev.usuarioId ?? usuarioEsquerda }, patch);
                 setAgendaStatusNonce((n) => n + 1);
               })();
             }}
@@ -923,6 +1026,9 @@ export function Agenda() {
             onDuploCliqueEvento={aoDuploCliqueCompromisso}
             dataBrStr={dataDireitaStr}
             usuarioAgendaId={usuarioDireita}
+            somenteLeitura={false}
+            mostrarColunaUsuario={false}
+            resolverNomeUsuario={resolverNomeUsuarioAgenda}
             onPersistenciaAlterada={async () => {
               if (featureFlags.useApiAgenda) {
                 await criarEvento(dataDireitaStr, usuarioDireita, {});
@@ -931,7 +1037,7 @@ export function Agenda() {
             }}
             onSalvarCampos={(ev, patch) => {
               void (async () => {
-                await salvarCamposEvento(dataDireitaStr, { ...ev, usuarioId: usuarioDireita }, patch);
+                await salvarCamposEvento(dataDireitaStr, { ...ev, usuarioId: ev.usuarioId ?? usuarioDireita }, patch);
                 setAgendaStatusNonce((n) => n + 1);
               })();
             }}
@@ -1008,6 +1114,9 @@ export function Agenda() {
                           <thead>
                             <tr className="bg-slate-50 border-b border-slate-200">
                               <th className="text-left px-3 py-2 font-medium text-slate-700 w-[88px]">Hora</th>
+                              {relatorioAgendaMensal.todosUsuarios ? (
+                                <th className="text-left px-3 py-2 font-medium text-slate-700 w-[120px]">Quem</th>
+                              ) : null}
                               <th className="text-left px-3 py-2 font-medium text-slate-700">Descrição</th>
                               <th className="text-right px-3 py-2 font-medium text-slate-700 w-[72px]">Status</th>
                             </tr>
@@ -1018,6 +1127,13 @@ export function Agenda() {
                                 <td className="px-3 py-2 align-top text-slate-800 whitespace-nowrap">
                                   {ev.hora ? ev.hora : '—'}
                                 </td>
+                                {relatorioAgendaMensal.todosUsuarios ? (
+                                  <td className="px-3 py-2 align-top text-slate-700 text-xs truncate max-w-[120px]">
+                                    {String(ev.usuarioNome ?? '').trim()
+                                      ? String(ev.usuarioNome).trim()
+                                      : resolverNomeUsuarioAgenda(ev)}
+                                  </td>
+                                ) : null}
                                 <td className="px-3 py-2 align-top text-slate-800 whitespace-pre-wrap break-words">
                                   {ev.descricao ? ev.descricao : '—'}
                                 </td>
@@ -1088,7 +1204,23 @@ export function Agenda() {
                 ) : null}
               </div>
             </div>
-            <div className="px-4 py-3 border-t border-slate-200 flex justify-end">
+            <div className="px-4 py-3 border-t border-slate-200 flex justify-end gap-2 flex-wrap">
+              {(() => {
+                const ch = extrairChaveProcessoEventoAgenda(eventoModal);
+                if (!ch) return null;
+                return (
+                  <button
+                    type="button"
+                    className="px-4 py-2 rounded-lg bg-blue-700 text-white text-sm font-medium hover:bg-blue-800"
+                    onClick={() => {
+                      setEventoModal(null);
+                      navigate('/processos', { state: buildRouterStateChaveClienteProcesso(ch.codCliente, ch.proc) });
+                    }}
+                  >
+                    Abrir processo
+                  </button>
+                );
+              })()}
               <button
                 type="button"
                 className="px-4 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"

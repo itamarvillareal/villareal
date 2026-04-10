@@ -96,9 +96,14 @@ export function mergeUiLancamentoComRespostaApi(row, saved) {
   const mascaraSoArquivoSemVinculo = fromArquivo && !apiDtoTemVinculoClienteOuProcesso(saved);
   const codApi = codClienteExibicaoDesdeApi(saved);
   const procApi = procExibicaoDesdeApi(saved);
+  const dataCompetenciaMerged =
+    saved.dataCompetencia != null
+      ? toBrDate(saved.dataCompetencia)
+      : String(row.dataCompetencia ?? '').trim() || toBrDate(saved.dataLancamento);
   return {
     ...row,
     apiId: Number(saved.id),
+    dataCompetencia: dataCompetenciaMerged,
     origemImportacao: String(saved.origem ?? row.origemImportacao ?? '').trim(),
     codCliente: mascaraSoArquivoSemVinculo
       ? ''
@@ -133,11 +138,14 @@ function mapApiLancamentoToUi(l, contaToLetra) {
   const sinal = String(l.natureza ?? '').toUpperCase() === 'DEBITO' ? -1 : 1;
   const origemImportacao = String(l.origem ?? '').trim();
   const fromArquivo = /^(OFX|PDF)$/i.test(origemImportacao);
+  const dataLancBr = toBrDate(l.dataLancamento);
+  const dataCompBr = l.dataCompetencia != null ? toBrDate(l.dataCompetencia) : dataLancBr;
   const base = {
     apiId: l.id,
     letra,
     numero: String(l.numeroLancamento ?? ''),
-    data: toBrDate(l.dataLancamento),
+    data: dataLancBr,
+    dataCompetencia: dataCompBr,
     descricao: String(l.descricao ?? ''),
     valor: valorNum * sinal,
     saldo: 0,
@@ -206,7 +214,7 @@ function mapUiLancamentoToApi(t, contaIdByNome, letraToConta) {
     numeroBanco: Number.isFinite(Number(t.numeroBanco)) ? Number(t.numeroBanco) : null,
     numeroLancamento: String(t.numero ?? ''),
     dataLancamento: parseBrDateToIso(t.data),
-    dataCompetencia: parseBrDateToIso(t.data),
+    dataCompetencia: parseBrDateToIso(t.dataCompetencia) || parseBrDateToIso(t.data),
     descricao: String(t.descricao || '').trim() || 'Lançamento extrato',
     descricaoDetalhada: String(t.descricaoDetalhada || ''),
     valor: Math.abs(valorNum),
@@ -379,14 +387,19 @@ export async function removerLancamentoFinanceiroApi(apiId) {
 }
 
 /**
- * Apaga na API todos os lançamentos do extrato CORA e desfaz elos de compensação nos outros bancos.
+ * Apaga na API todos os lançamentos do extrato do banco e desfaz elos de compensação nos outros bancos.
  * Com `useApiFinanceiro` desligado, não chama o servidor (use limpeza local em `financeiroData`).
  */
-export async function limparExtratoCoraFinanceiroApi() {
+export async function limparExtratoBancoFinanceiroApi(nomeBanco, numeroBanco) {
   if (!featureFlags.useApiFinanceiro) {
-    return { lancamentosRemovidosCora: 0, lancamentosDesvinculadosOutrosBancos: 0 };
+    return { lancamentosRemovidos: 0, lancamentosDesvinculadosOutrosBancos: 0 };
   }
-  return request('/api/financeiro/lancamentos/limpar-extrato-cora', { method: 'POST' });
+  const nb = Number(numeroBanco);
+  const body = {
+    banco: String(nomeBanco || '').trim(),
+    ...(Number.isFinite(nb) ? { numeroBanco: nb } : {}),
+  };
+  return request('/api/financeiro/lancamentos/limpar-extrato', { method: 'POST', body });
 }
 
 export async function carregarResumoContaCorrenteProcesso(processoId) {

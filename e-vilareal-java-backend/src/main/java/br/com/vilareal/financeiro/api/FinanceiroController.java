@@ -5,6 +5,7 @@ import br.com.vilareal.financeiro.application.FinanceiroApplicationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import org.springframework.http.MediaType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -109,9 +110,25 @@ public class FinanceiroController {
         return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
     }
 
+    @PostMapping(value = "/lancamentos/limpar-extrato", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(description = "Remove todos os lançamentos do extrato (por nome normalizado e/ou numeroBanco) e desfaz elo_financeiro_id nos demais bancos.")
+    public LimparExtratoResult limparExtratoBanco(@Valid @RequestBody LimparExtratoRequest request) {
+        return financeiroService.limparExtratoBancoEElosRelacionados(
+                request.getBanco(), request.getNumeroBanco());
+    }
+
+    /** Legado: clientes que ainda enviam query string (sem corpo JSON). */
+    @PostMapping(value = "/lancamentos/limpar-extrato", consumes = MediaType.APPLICATION_FORM_URLENCODED_VALUE)
+    @Operation(hidden = true)
+    public LimparExtratoResult limparExtratoBancoForm(
+            @RequestParam("banco") String banco,
+            @RequestParam(value = "numeroBanco", required = false) Integer numeroBanco) {
+        return financeiroService.limparExtratoBancoEElosRelacionados(banco, numeroBanco);
+    }
+
     @PostMapping("/lancamentos/limpar-extrato-cora")
-    @Operation(description = "Remove lançamentos do banco CORA e desfaz elo_financeiro_id nos demais bancos que compartilhavam o mesmo elo (conta → N).")
-    public LimparExtratoCoraResult limparExtratoCoraEElosRelacionados() {
+    @Operation(description = "Legado: equivalente a limpar-extrato?banco=CORA.")
+    public LimparExtratoResult limparExtratoCoraEElosRelacionados() {
         return financeiroService.limparExtratoCoraEElosRelacionados();
     }
 }

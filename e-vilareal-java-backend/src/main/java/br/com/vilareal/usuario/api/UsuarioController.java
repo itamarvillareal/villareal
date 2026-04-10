@@ -73,7 +73,7 @@ public class UsuarioController {
     }
 
     @PutMapping("/{id}/perfis")
-    @Operation(description = "Body JSON: array de IDs, ex. [1,2]")
+    @Operation(description = "Body JSON: exatamente um id, ex. [2]. Cada usuário tem um único perfil.")
     public UsuarioResponse definirPerfis(@PathVariable Long id, @RequestBody List<Long> perfilIds) {
         return usuarioService.definirPerfis(id, perfilIds);
     }

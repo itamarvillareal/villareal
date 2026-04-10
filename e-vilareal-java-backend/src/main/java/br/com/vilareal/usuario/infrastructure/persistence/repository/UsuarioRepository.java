@@ -14,11 +14,11 @@ import java.util.Optional;
 
 public interface UsuarioRepository extends JpaRepository<UsuarioEntity, Long>, JpaSpecificationExecutor<UsuarioEntity> {
 
-    @EntityGraph(attributePaths = {"perfis", "pessoa"})
+    @EntityGraph(attributePaths = {"perfil", "pessoa"})
     @Query("SELECT DISTINCT u FROM UsuarioEntity u")
     List<UsuarioEntity> findAllForListing();
 
-    @EntityGraph(attributePaths = {"pessoa"})
+    @EntityGraph(attributePaths = {"perfil", "pessoa"})
     @Override
     Page<UsuarioEntity> findAll(Specification<UsuarioEntity> spec, Pageable pageable);
 
@@ -30,9 +30,9 @@ public interface UsuarioRepository extends JpaRepository<UsuarioEntity, Long>, J
 
     boolean existsByPessoa_IdAndIdNot(Long pessoaId, Long id);
 
-    @EntityGraph(attributePaths = {"perfis", "pessoa"})
-    Optional<UsuarioEntity> findWithPerfisByLoginIgnoreCase(String login);
+    @EntityGraph(attributePaths = {"perfil", "pessoa"})
+    Optional<UsuarioEntity> findWithPerfilByLoginIgnoreCase(String login);
 
-    @EntityGraph(attributePaths = {"perfis", "pessoa"})
-    Optional<UsuarioEntity> findWithPerfisById(Long id);
+    @EntityGraph(attributePaths = {"perfil", "pessoa"})
+    Optional<UsuarioEntity> findWithPerfilById(Long id);
 }

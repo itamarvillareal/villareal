@@ -35,7 +35,7 @@ import {
   normalizarCodigoClienteFinanceiro,
   normalizarProcFinanceiro,
   normalizarRefFinanceiro,
-  limparExtratoCoraEElosRelacionados,
+  limparExtratoBancoEElosRelacionados,
   savePersistedExtratosFinanceiro,
 } from '../data/financeiroData';
 import { loadRodadasCalculos } from '../data/calculosRodadasStorage';
@@ -84,7 +84,7 @@ import {
   persistirFallbackExtratos,
   persistirImportacaoOfxFinanceiroApi,
   salvarOuAtualizarLancamentoFinanceiroApi,
-  limparExtratoCoraFinanceiroApi,
+  limparExtratoBancoFinanceiroApi,
 } from '../repositories/financeiroRepository.js';
 /** Ref. exibida: só N ou R (vazio/legado → N). */
 function textoRefLancamento(t) {
@@ -228,7 +228,8 @@ function valorOrdemDataBrParts(p) {
  * @param {object|null} sel
  */
 function dataLancamentoNoPeriodo(dataStr, tipo, sel) {
-  if (tipo === 'todos' || !sel) return true;
+  if (tipo === 'todos') return true;
+  if (!sel) return false;
   const parts = parseDataBrParts(dataStr);
   if (!parts) return false;
   if (tipo === 'ano') return parts.yyyy === sel.ano;
@@ -357,6 +358,29 @@ function filtrarExtratoPorLetras(lista, letrasPermitidas) {
 /** Chave estável de linha do extrato bancário (número + data). */
 function extratoBancoRowKey(t) {
   return `${t.numero}::${t.data}`;
+}
+
+/**
+ * Ordena o extrato por data/nº e recalcula o saldo acumulado.
+ * Não colapsa linhas com a mesma chave (nº + data + valor): duplicatas legítimas no mesmo OFX/PDF permanecem visíveis.
+ * A deduplicação face ao extrato já existente é feita em `mergeExtratoBancario` e na persistência API.
+ */
+function ordenarExtratoBancoERecalcularSaldo(lista) {
+  if (!Array.isArray(lista) || lista.length === 0) return [];
+  const arr = lista.map((t) => ({ ...t }));
+  arr.sort((a, b) => {
+    const da = dataParaOrdenar(a.data);
+    const db = dataParaOrdenar(b.data);
+    const c = da.localeCompare(db);
+    if (c !== 0) return c;
+    return String(a.numero).localeCompare(String(b.numero), undefined, { numeric: true });
+  });
+  let saldo = 0;
+  for (const row of arr) {
+    saldo += Number(row.valor) || 0;
+    row.saldo = saldo;
+  }
+  return arr;
 }
 
 /**
@@ -895,53 +919,62 @@ export function Financeiro() {
     }
   }, []);
 
-  const limparCoraParaNovaImportacao = useCallback(async () => {
+  const zerarExtratoSelecionado = useCallback(async () => {
+    const nome = String(instituicaoSelecionada || '').trim();
+    if (!nome) {
+      setOfxStatus({ kind: 'info', message: 'Selecione um banco / extrato antes de zerar.' });
+      return;
+    }
     if (
       !window.confirm(
-        'Zerar o extrato CORA: remove lançamentos na API (se ativa), limpa a cópia local e desfaz elos de compensação ligados à Cora noutros bancos. Continuar?',
+        `Zerar o extrato «${nome}»: remove todos os lançamentos na API (se ativa), limpa a cópia local e desfaz elos de compensação ligados a esse extrato noutros bancos. Continuar?`,
       )
     ) {
       return;
     }
-    setOfxStatus({ kind: 'loading', message: 'A limpar extrato Cora…' });
+    setOfxStatus({ kind: 'loading', message: `A limpar extrato ${nome}…` });
     try {
       let removidos = 0;
       let desvinc = 0;
       if (featureFlags.useApiFinanceiro) {
-        const r = await limparExtratoCoraFinanceiroApi();
-        removidos = Number(r?.lancamentosRemovidosCora) || 0;
+        const nb = buildNumeroBancoMap(contasExtras)[nome];
+        const r = await limparExtratoBancoFinanceiroApi(nome, nb);
+        removidos = Number(r?.lancamentosRemovidos) || 0;
         desvinc = Number(r?.lancamentosDesvinculadosOutrosBancos) || 0;
       }
       const mergedBase = {
         ...getExtratosIniciais(),
         ...(loadPersistedExtratosFinanceiro() || {}),
       };
-      const cleaned = limparExtratoCoraEElosRelacionados(mergedBase);
+      const cleaned = limparExtratoBancoEElosRelacionados(mergedBase, nome);
       savePersistedExtratosFinanceiro(cleaned);
-      delete desfazerImportacaoExtratoRef.current.CORA;
+      delete desfazerImportacaoExtratoRef.current[nome];
       setDesfazerImportacaoTick((t) => t + 1);
       if (featureFlags.useApiFinanceiro) {
         await recarregarExtratosFinanceiroApi();
       } else {
         setExtratosPorBanco((prev) =>
-          limparExtratoCoraEElosRelacionados({ ...getExtratosIniciais(), ...prev }),
+          limparExtratoBancoEElosRelacionados({ ...getExtratosIniciais(), ...prev }, nome),
         );
       }
       const extra =
         featureFlags.useApiFinanceiro && (removidos > 0 || desvinc > 0)
-          ? ` API: ${removidos} lanç. Cora removidos; ${desvinc} desvinculados noutros bancos.`
+          ? ` API: ${removidos} lanç. removidos neste banco; ${desvinc} desvinculados noutros bancos.`
           : '';
       setOfxStatus({
         kind: 'success',
-        message: `Extrato Cora limpo.${extra} Pode importar o OFX novamente.`,
+        message: `Extrato «${nome}» limpo.${extra} Pode importar de novo do zero.`,
       });
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent(EVENT_FINANCEIRO_PERSISTENCIA_EXTERNA));
+      }
     } catch (e) {
       setOfxStatus({
         kind: 'error',
-        message: e?.message || 'Não foi possível limpar o extrato Cora.',
+        message: e?.message || `Não foi possível limpar o extrato «${nome}».`,
       });
     }
-  }, [recarregarExtratosFinanceiroApi]);
+  }, [contasExtras, instituicaoSelecionada, recarregarExtratosFinanceiroApi]);
 
   const registrarDesfazerImportacaoMesclagem = useCallback(
     (nomeBanco, previousRows, savedPairs, modo, houveAlteracao) => {
@@ -1148,11 +1181,9 @@ export function Financeiro() {
 
   const listaExtratoBancoOrdenada = useMemo(() => {
     if (!instituicaoSelecionada) return [];
-    return ordenarTransacoesBanco(
-      getTransacoesBanco(extratosPorBanco, instituicaoSelecionada),
-      sortExtratoBanco.col,
-      sortExtratoBanco.dir
-    );
+    const bruto = getTransacoesBanco(extratosPorBanco, instituicaoSelecionada);
+    const normalizado = ordenarExtratoBancoERecalcularSaldo(bruto);
+    return ordenarTransacoesBanco(normalizado, sortExtratoBanco.col, sortExtratoBanco.dir);
   }, [extratosPorBanco, instituicaoSelecionada, sortExtratoBanco.col, sortExtratoBanco.dir]);
 
   const listaConsolidadaOrdenada = useMemo(
@@ -2461,7 +2492,7 @@ export function Financeiro() {
       });
       const base =
         modo === 'mesclar'
-          ? `PDF BTG: +${novosContados} lanç. novos em ${instituicaoSelecionada} (${extrato.length - novosContados} duplicados ignorados). Extrato anterior mantido.`
+          ? `PDF BTG: +${novosContados} lanç. novos em ${instituicaoSelecionada} (${extrato.length - novosContados} já no extrato, ignorados; repetições só no arquivo importam-se). Extrato mantido.`
           : `PDF BTG: extrato de ${instituicaoSelecionada} substituído (${extrato.length} lanç.).`;
 
       if (featureFlags.useApiFinanceiro) {
@@ -2559,7 +2590,7 @@ export function Financeiro() {
       });
       const base =
         modo === 'mesclar'
-          ? `OFX: +${novosContados} lanç. novos em ${instituicaoSelecionada} (${extrato.length - novosContados} duplicados ignorados). Extrato anterior mantido.`
+          ? `OFX: +${novosContados} lanç. novos em ${instituicaoSelecionada} (${extrato.length - novosContados} já no extrato, ignorados; repetições só no arquivo importam-se). Extrato mantido.`
           : `OFX: extrato de ${instituicaoSelecionada} substituído (${extrato.length} lanç.).`;
 
       if (featureFlags.useApiFinanceiro) {
@@ -2895,7 +2926,7 @@ export function Financeiro() {
         }`}
         title={
           suffix === 'extrato'
-            ? 'No extrato bancário, a coluna Saldo reflete o extrato completo; só a lista é filtrada por data.'
+            ? 'Saldo = soma dos valores até cada linha (histórico completo do extrato, após remover duplicatas pela chave OFX). Filtro por mês só esconde linhas; o saldo de cada linha continua coerente com o extrato inteiro.'
             : undefined
         }
       >
@@ -3191,16 +3222,16 @@ export function Financeiro() {
             </button>
             <button
               type="button"
-              disabled={extratosInativosSet.has('CORA')}
-              onClick={() => void limparCoraParaNovaImportacao()}
+              disabled={!instituicaoSelecionada || extratosInativosSet.has(instituicaoSelecionada)}
+              onClick={() => void zerarExtratoSelecionado()}
               className={`px-3 py-2 rounded-lg border text-sm font-medium ${
-                extratosInativosSet.has('CORA')
+                !instituicaoSelecionada || extratosInativosSet.has(instituicaoSelecionada)
                   ? 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed'
                   : 'border-rose-300 bg-rose-50 text-rose-900 hover:bg-rose-100'
               }`}
-              title="Apaga lançamentos CORA na API (se ativa), limpa cache local e elos de compensação — para importar OFX de novo do zero"
+              title="Apaga todos os lançamentos deste banco na API (se ativa), limpa cache local e desfaz elos de compensação com outros extratos — para importar de novo do zero"
             >
-              Zerar extrato Cora
+              Zera extrato
             </button>
             <button
               type="button"
@@ -3705,6 +3736,19 @@ export function Financeiro() {
                   <h2 className="text-base font-bold text-slate-800 uppercase shrink-0 leading-none pb-1">
                     Conta Corrente {instituicaoSelecionada}
                   </h2>
+                  <button
+                    type="button"
+                    disabled={!instituicaoSelecionada || extratosInativosSet.has(instituicaoSelecionada)}
+                    onClick={() => void zerarExtratoSelecionado()}
+                    className={`px-3 py-1.5 rounded-lg border text-xs font-semibold shrink-0 ${
+                      !instituicaoSelecionada || extratosInativosSet.has(instituicaoSelecionada)
+                        ? 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed'
+                        : 'border-rose-300 bg-rose-50 text-rose-900 hover:bg-rose-100'
+                    }`}
+                    title="Apaga todos os lançamentos deste banco na API (se ativa), limpa cache local e desfaz elos de compensação com outros extratos"
+                  >
+                    Zera extrato
+                  </button>
                   <div className="flex items-center gap-2">
                     <label htmlFor="limite-lanc-extrato" className="text-xs text-slate-600 whitespace-nowrap">
                       Lançamentos na tela:
@@ -3793,7 +3837,7 @@ export function Financeiro() {
               ) : null}
             </div>
             <div className={relatoriosLadoALado ? 'flex-1 min-h-0 overflow-auto' : 'overflow-x-auto'}>
-              <table className="w-full text-sm border-collapse">
+              <table className="table-fixed w-full min-w-[56rem] text-sm border-collapse">
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-200">
                     <th
@@ -3812,7 +3856,7 @@ export function Financeiro() {
                     </th>
                     <th
                       ref={menuFiltroLetraExtratoRef}
-                      className={`relative text-left py-2 px-2 font-medium border-r border-slate-200 w-[8.5rem] min-w-[7rem] select-none ${
+                      className={`relative text-left py-2 px-2 font-medium border-r border-slate-200 w-[8.5rem] select-none ${
                         filtroLetrasExtrato != null && filtroLetrasExtrato.length > 0
                           ? 'bg-amber-50/90 text-amber-950'
                           : 'text-slate-600'
@@ -3921,11 +3965,11 @@ export function Financeiro() {
                         </div>
                       ) : null}
                     </th>
-                    <th className="text-left py-2 px-3 font-medium text-slate-600 border-r border-slate-200 w-16 cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloExtratoBanco('numero')} title="Duplo clique: ordenar">Nº</th>
-                    <th className="text-left py-2 px-3 font-medium text-slate-600 border-r border-slate-200 w-24 cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloExtratoBanco('data')} title="Duplo clique: data mais recente primeiro; de novo: mais antiga primeiro">Data</th>
+                    <th className="text-left py-2 px-2 font-medium text-slate-600 border-r border-slate-200 w-[6.5rem] cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloExtratoBanco('numero')} title="Duplo clique: ordenar">Nº</th>
+                    <th className="text-left py-2 px-2 font-medium text-slate-600 border-r border-slate-200 w-[5.5rem] cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloExtratoBanco('data')} title="Duplo clique: data mais recente primeiro; de novo: mais antiga primeiro">Data</th>
                     <th
                       ref={menuFiltroDescricaoExtratoRef}
-                      className={`relative text-left py-2 px-3 font-medium border-r border-slate-200 min-w-[180px] select-none ${
+                      className={`relative text-left py-2 px-2 font-medium border-r border-slate-200 w-[11rem] overflow-hidden select-none ${
                         filtroDescricaoExtrato.trim()
                           ? 'bg-amber-50/90 text-amber-950'
                           : 'text-slate-600'
@@ -4008,7 +4052,7 @@ export function Financeiro() {
                     </th>
                     <th
                       ref={menuFiltroValorExtratoRef}
-                      className={`relative text-right py-2 px-3 font-medium border-r border-slate-200 w-36 select-none ${
+                      className={`relative text-right py-2 px-2 font-medium border-r border-slate-200 w-[7rem] select-none ${
                         filtroValorExtrato.kind !== 'todos'
                           ? 'bg-amber-50/90 text-amber-950'
                           : 'text-slate-600'
@@ -4102,8 +4146,8 @@ export function Financeiro() {
                         </div>
                       ) : null}
                     </th>
-                    <th className="text-right py-2 px-3 font-medium text-slate-600 border-r border-slate-200 min-w-[140px] cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloExtratoBanco('saldo')} title="Duplo clique: ordenar crescente ↔ decrescente">Saldo</th>
-                    <th className="text-left py-2 px-3 font-medium text-slate-600 border-r border-slate-200 min-w-[120px] cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloExtratoBanco('categoria')} title="Mesmo texto que Descrição / Contraparte no consolidado. Duplo clique: ordenar A→Z / Z→A">Categoria / Obs.</th>
+                    <th className="text-right py-2 px-2 font-medium text-slate-600 border-r border-slate-200 w-[8.5rem] cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloExtratoBanco('saldo')} title="Duplo clique: ordenar crescente ↔ decrescente">Saldo</th>
+                    <th className="text-left py-2 px-2 font-medium text-slate-600 border-r border-slate-200 w-[9.5rem] cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloExtratoBanco('categoria')} title="Mesmo texto que Descrição / Contraparte no consolidado. Duplo clique: ordenar A→Z / Z→A">Categoria / Obs.</th>
                     <th
                       ref={menuFiltroCodClienteExtratoRef}
                       className={`relative text-center py-2 px-3 font-medium border-r border-slate-200 w-20 select-none ${
@@ -4359,21 +4403,39 @@ export function Financeiro() {
                           ) : null}
                         </div>
                       </td>
-                      <td className="py-1.5 px-3 text-slate-500 border-r border-slate-100">{t.numero}</td>
-                      <td className="py-1.5 px-3 text-slate-700 border-r border-slate-100">{t.data}</td>
-                      <td className="py-1.5 px-3 text-slate-700 border-r border-slate-100">{t.descricao}</td>
-                      <td className={`py-1.5 px-3 text-right border-r border-slate-100 font-medium ${t.valor < 0 ? 'text-red-600' : 'text-slate-900'}`}>
+                      <td className="py-1.5 px-2 text-slate-500 border-r border-slate-100 align-top overflow-hidden">
+                        <div className="truncate text-xs tabular-nums" title={String(t.numero ?? '')}>
+                          {t.numero}
+                        </div>
+                      </td>
+                      <td className="py-1.5 px-2 text-slate-700 border-r border-slate-100 align-top whitespace-nowrap text-xs">
+                        {t.data}
+                      </td>
+                      <td className="py-1.5 px-2 text-slate-700 border-r border-slate-100 align-top overflow-hidden">
+                        <div
+                          className="truncate text-xs"
+                          title={String(t.descricao ?? '')}
+                        >
+                          {t.descricao}
+                        </div>
+                      </td>
+                      <td className={`py-1.5 px-2 text-right border-r border-slate-100 align-top whitespace-nowrap text-xs font-medium ${t.valor < 0 ? 'text-red-600' : 'text-slate-900'}`}>
                         {formatValor(t.valor)}
                       </td>
-                      <td className={`py-1.5 px-3 text-right border-r border-slate-100 ${t.saldo < 0 ? 'text-red-600' : 'text-slate-800'}`}>
-                        {formatValor(t.saldo)} {t.saldoDesc}
+                      <td className={`py-1.5 px-2 text-right border-r border-slate-100 align-top overflow-hidden text-xs ${t.saldo < 0 ? 'text-red-600' : 'text-slate-800'}`}>
+                        <div
+                          className="truncate tabular-nums"
+                          title={`${formatValor(t.saldo)} ${t.saldoDesc ?? ''}`.trim()}
+                        >
+                          {formatValor(t.saldo)} {t.saldoDesc}
+                        </div>
                       </td>
-                      <td className="py-1.5 px-2 text-slate-600 border-r border-slate-100 text-xs min-w-[12rem]" onClick={(e) => e.stopPropagation()}>
+                      <td className="py-1.5 px-2 text-slate-600 border-r border-slate-100 text-xs align-top overflow-hidden" onClick={(e) => e.stopPropagation()}>
                         <input
                           type="text"
                           value={textoCategoriaObservacao(t)}
                           onChange={(e) => updateCampoLancamento(instituicaoSelecionada, t.numero, t.data, 'categoria', e.target.value)}
-                          className="w-full min-w-[10rem] px-1.5 py-0.5 text-xs bg-white border border-slate-200 rounded"
+                          className="w-full min-w-0 max-w-full px-1.5 py-0.5 text-xs bg-white border border-slate-200 rounded"
                           title="Espelha Descrição / Contraparte na conta contábil correspondente"
                           onClick={(e) => e.stopPropagation()}
                         />
@@ -4699,34 +4761,34 @@ export function Financeiro() {
             </div>
             <div className={relatoriosLadoALado ? 'flex flex-col flex-1 min-h-0' : ''}>
             <div className={relatoriosLadoALado ? 'flex-1 min-h-0 overflow-auto' : 'overflow-x-auto'}>
-              <table className="w-full text-sm border-collapse">
+              <table className="table-fixed w-full min-w-[52rem] text-sm border-collapse">
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-200">
-                    <th className="text-left py-2 px-3 font-medium text-slate-600 border-r border-slate-200 w-14 cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloConsolidado('numeroBanco')} title="Duplo clique: ordenar crescente ↔ decrescente">Nº</th>
-                    <th className="text-left py-2 px-3 font-medium text-slate-600 border-r border-slate-200 w-16 cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloConsolidado('numero')} title="Duplo clique: ordenar">Id.</th>
-                    <th className="text-left py-2 px-3 font-medium text-slate-600 border-r border-slate-200 w-24 cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloConsolidado('data')} title="Duplo clique: ordenar crescente ↔ decrescente">Data</th>
-                    <th className="text-left py-2 px-3 font-medium text-slate-600 border-r border-slate-200 min-w-[140px] cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloConsolidado('descricao')} title="Duplo clique: ordenar A→Z / Z→A">Descrição</th>
-                    <th className="text-right py-2 px-3 font-medium text-slate-600 border-r border-slate-200 w-28 cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloConsolidado('valor')} title="Duplo clique: ordenar crescente ↔ decrescente">
+                    <th className="text-left py-2 px-2 font-medium text-slate-600 border-r border-slate-200 w-[5.5rem] cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloConsolidado('numeroBanco')} title="Duplo clique: ordenar crescente ↔ decrescente">Nº</th>
+                    <th className="text-left py-2 px-2 font-medium text-slate-600 border-r border-slate-200 w-[4.5rem] cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloConsolidado('numero')} title="Duplo clique: ordenar">Id.</th>
+                    <th className="text-left py-2 px-2 font-medium text-slate-600 border-r border-slate-200 w-[5.5rem] cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloConsolidado('data')} title="Duplo clique: ordenar crescente ↔ decrescente">Data</th>
+                    <th className="text-left py-2 px-2 font-medium text-slate-600 border-r border-slate-200 w-[10rem] cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloConsolidado('descricao')} title="Duplo clique: ordenar A→Z / Z→A">Descrição</th>
+                    <th className="text-right py-2 px-2 font-medium text-slate-600 border-r border-slate-200 w-[7rem] cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloConsolidado('valor')} title="Duplo clique: ordenar crescente ↔ decrescente">
                       Valor <span className="text-slate-400 font-normal">({formatValor(saldoHeaderConsolidado)})</span>
                     </th>
-                    <th className="text-left py-2 px-3 font-medium text-slate-600 border-r border-slate-200 min-w-[200px] cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloConsolidado('descricaoDetalhada')} title="Mesmo texto que Categoria / Obs. no extrato do banco. Duplo clique: ordenar A→Z / Z→A">Descrição / Contraparte</th>
-                    <th className="text-center py-2 px-3 font-medium text-slate-600 border-r border-slate-200 w-20 cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloConsolidado('codCliente')} title="Duplo clique: ordenar">Cod. Cliente</th>
+                    <th className="text-left py-2 px-2 font-medium text-slate-600 border-r border-slate-200 w-[9.5rem] cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloConsolidado('descricaoDetalhada')} title="Mesmo texto que Categoria / Obs. no extrato do banco. Duplo clique: ordenar A→Z / Z→A">Descrição / Contraparte</th>
+                    <th className="text-center py-2 px-2 font-medium text-slate-600 border-r border-slate-200 w-[4.5rem] cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloConsolidado('codCliente')} title="Duplo clique: ordenar">Cod. Cliente</th>
                     <th
-                      className="text-center py-2 px-3 font-medium text-slate-600 border-r border-slate-200 w-16 cursor-pointer hover:bg-slate-100 select-none"
+                      className="text-center py-2 px-2 font-medium text-slate-600 border-r border-slate-200 w-14 cursor-pointer hover:bg-slate-100 select-none"
                       onDoubleClick={() => handleDuploCliqueTituloConsolidado('proc')}
                       title={isContaCompensacao ? 'Duplo clique: ordenar por Elo' : 'Duplo clique: ordenar por Proc.'}
                     >
                       {isContaCompensacao ? 'Elo' : 'Proc.'}
                     </th>
                     <th
-                      className="text-center py-2 px-3 font-medium text-slate-600 border-r border-slate-200 w-16 cursor-pointer hover:bg-slate-100 select-none"
+                      className="text-center py-2 px-2 font-medium text-slate-600 border-r border-slate-200 w-12 cursor-pointer hover:bg-slate-100 select-none"
                       onDoubleClick={() => handleDuploCliqueTituloConsolidado('ref')}
                       title="N = lançamento único (sem repasse). R = repasse — use o mesmo Eq. em pelo menos duas linhas. Mesmo valor no extrato do banco. Duplo clique: ordenar."
                     >
                       Ref.
                     </th>
-                    <th className="text-center py-2 px-3 font-medium text-slate-600 border-r border-slate-200 w-16 cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloConsolidado('eq')} title="Mesmo texto que Dimensão no extrato. Duplo clique: ordenar">Eq.</th>
-                    <th className="text-center py-2 px-3 font-medium text-slate-600 w-20 cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloConsolidado('parcela')} title="Duplo clique: ordenar">Parcela</th>
+                    <th className="text-center py-2 px-2 font-medium text-slate-600 border-r border-slate-200 w-12 cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloConsolidado('eq')} title="Mesmo texto que Dimensão no extrato. Duplo clique: ordenar">Eq.</th>
+                    <th className="text-center py-2 px-2 font-medium text-slate-600 w-16 cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloConsolidado('parcela')} title="Duplo clique: ordenar">Parcela</th>
                     {!isContaCompensacao ? (
                       <th className="text-center py-2 px-2 font-medium text-slate-600 w-12" title="Buscar cliente e processo por nome/réu e vincular sem sair da tela">
                         Vinc.
@@ -4827,24 +4889,36 @@ export function Financeiro() {
                         className={`border-b ${borderBottomTr} ${rowBgConsolidado} ${isFoco ? `ring-1 ring-inset ${ringFoco}` : ''} ${destaqueValorConciliacao && !linhaAlerta ? 'ring-2 ring-amber-400 ring-inset bg-amber-50/90' : ''}`}
                       >
                         <td
-                          className={`py-1.5 px-3 text-slate-600 border-r cursor-pointer ${brElo} ${tdHover}`}
+                          className={`py-1.5 px-2 text-slate-600 border-r cursor-pointer overflow-hidden align-top ${brElo} ${tdHover}`}
                           onDoubleClick={(e) => { e.stopPropagation(); handleDuploCliqueNºConsolidado(t); }}
                           title="Duplo clique para abrir o extrato do banco nesta linha"
                         >
-                          {t.numeroBanco}
+                          <div className="truncate text-xs tabular-nums" title={String(t.numeroBanco ?? '')}>
+                            {t.numeroBanco}
+                          </div>
                         </td>
-                        <td className={`py-1.5 px-3 text-slate-600 border-r ${brElo}`}>{t.numero}</td>
-                        <td className={`py-1.5 px-3 text-slate-700 border-r ${brElo}`}>{t.data}</td>
-                        <td className={`py-1.5 px-3 text-slate-700 border-r ${brElo}`}>{t.descricao}</td>
-                        <td className={`py-1.5 px-3 text-right border-r ${brElo} font-medium ${t.valor < 0 ? 'text-red-600' : 'text-slate-900'}`}>
+                        <td className={`py-1.5 px-2 text-slate-600 border-r ${brElo} align-top overflow-hidden`}>
+                          <div className="truncate text-xs tabular-nums" title={String(t.numero ?? '')}>
+                            {t.numero}
+                          </div>
+                        </td>
+                        <td className={`py-1.5 px-2 text-slate-700 border-r ${brElo} align-top whitespace-nowrap text-xs`}>
+                          {t.data}
+                        </td>
+                        <td className={`py-1.5 px-2 text-slate-700 border-r ${brElo} align-top overflow-hidden`}>
+                          <div className="truncate text-xs" title={String(t.descricao ?? '')}>
+                            {t.descricao}
+                          </div>
+                        </td>
+                        <td className={`py-1.5 px-2 text-right border-r ${brElo} align-top whitespace-nowrap text-xs font-medium ${t.valor < 0 ? 'text-red-600' : 'text-slate-900'}`}>
                           {formatValor(t.valor)}
                         </td>
-                        <td className={`py-1.5 px-2 text-slate-600 border-r ${brElo} text-xs min-w-[12rem]`} onClick={(e) => e.stopPropagation()}>
+                        <td className={`py-1.5 px-2 text-slate-600 border-r ${brElo} text-xs align-top overflow-hidden`} onClick={(e) => e.stopPropagation()}>
                           <input
                             type="text"
                             value={textoCategoriaObservacao(t)}
                             onChange={(e) => updateCampoLancamento(t.nomeBanco, t.numero, t.data, 'descricaoDetalhada', e.target.value)}
-                            className={`w-full min-w-[10rem] px-1.5 py-0.5 text-xs bg-white border rounded ${
+                            className={`w-full min-w-0 max-w-full px-1.5 py-0.5 text-xs bg-white border rounded ${
                               inpB
                             }`}
                             title="Espelha Categoria / Obs. no extrato do banco"

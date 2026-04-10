@@ -26,6 +26,9 @@ public class CalculoClienteConfigEntity {
     @Column(name = "payload_json", nullable = false, columnDefinition = "json")
     private JsonNode payloadJson;
 
+    @Column(name = "created_at", insertable = false, updatable = false)
+    private Instant createdAt;
+
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Instant updatedAt;
 }

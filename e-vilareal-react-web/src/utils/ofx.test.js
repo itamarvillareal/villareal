@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   mergeExtratoApiComLocal,
+  mergeExtratoBancario,
   parseOfxToExtrato,
   readOfxFileAsText,
   sanitizarLancamentoImportacaoExtrato,
+  contarLancamentosNovos,
+  listarLancamentosNovosDedupe,
 } from './ofx.js';
 
 describe('sanitizarLancamentoImportacaoExtrato', () => {
@@ -51,6 +54,37 @@ describe('sanitizarLancamentoImportacaoExtrato', () => {
   });
 });
 
+describe('mergeExtratoBancario (mesclar OFX/PDF com extrato)', () => {
+  const linha = (numero, data, valor) => ({
+    letra: 'N',
+    numero,
+    data,
+    valor,
+    descricao: 'x',
+    saldo: 0,
+    origemImportacao: 'OFX',
+  });
+
+  it('mantém duas linhas idênticas quando ambas vêm só do arquivo novo (transações reais repetidas)', () => {
+    const existente = [linha('A', '01/01/2026', 10)];
+    const novo = [linha('B', '02/01/2026', -5), linha('B', '02/01/2026', -5)];
+    const m = mergeExtratoBancario(existente, novo);
+    expect(m.filter((t) => t.numero === 'B' && t.data === '02/01/2026')).toHaveLength(2);
+    expect(contarLancamentosNovos(existente, novo)).toBe(2);
+    expect(listarLancamentosNovosDedupe(existente, novo)).toHaveLength(2);
+  });
+
+  it('ignora linhas do arquivo novo que já existem no extrato; não usa duplicata interna do novo para pular a segunda', () => {
+    const existente = [linha('X', '03/01/2026', 100)];
+    const novo = [linha('X', '03/01/2026', 100), linha('Y', '04/01/2026', 20)];
+    const m = mergeExtratoBancario(existente, novo);
+    expect(m.filter((t) => t.numero === 'X').length).toBe(1);
+    expect(m.some((t) => t.numero === 'Y')).toBe(true);
+    expect(contarLancamentosNovos(existente, novo)).toBe(1);
+    expect(listarLancamentosNovosDedupe(existente, novo)).toHaveLength(1);
+  });
+});
+
 describe('mergeExtratoApiComLocal', () => {
   it('com lista da API vazia, não reidrata cache local com linhas que já tinham apiId (removidas no servidor)', () => {
     const local = [
@@ -60,6 +94,12 @@ describe('mergeExtratoApiComLocal', () => {
     const merged = mergeExtratoApiComLocal([], local);
     expect(merged.length).toBe(1);
     expect(merged[0].numero).toBe('b');
+  });
+
+  it('com API vazia, descarta linha local que só expõe id (legado) em vez de apiId', () => {
+    const local = [{ numero: 'x', data: '03/01/2026', valor: 5, id: 2002, letra: 'N' }];
+    const merged = mergeExtratoApiComLocal([], local);
+    expect(merged).toHaveLength(0);
   });
 
   it('linha API com origem OFX não herda Cód./Proc. do cache local na mesma chave', () => {
@@ -137,6 +177,33 @@ describe('parseOfxToExtrato (Cora / UTF-8)', () => {
     expect(rows[0].ref).toBe('');
     expect(rows[0].eq).toBe('');
     expect(rows[0].numero).toBe('5ee9d135-b3b9-423f-a8e3-fe40745322e5');
+  });
+
+  it('com CHECKNUM 0 não ignora FITID (Cora / placeholder)', () => {
+    const text = `<OFX><BANKMSGSRSV1><STMTTRNRS><STMTRS><BANKTRANLIST>
+<STMTTRN><TRNTYPE>CREDIT</TRNTYPE><DTPOSTED>20260330000000[0:GMT]</DTPOSTED><TRNAMT>10.00</TRNAMT><FITID>cora-abc-1</FITID><CHECKNUM>0</CHECKNUM><MEMO>CR LV OR E</MEMO></STMTTRN>
+</BANKTRANLIST></STMTRS></STMTTRNRS></BANKMSGSRSV1></OFX>`;
+    const rows = parseOfxToExtrato(text);
+    expect(rows[0].numero).toBe('cora-abc-1');
+    expect(rows[0].descricao).toBe('CR LV OR E');
+  });
+
+  it('sem FITID e CHECKNUM só zeros: usa índice 1,2,3 por transação no arquivo', () => {
+    const text = `<OFX><BANKMSGSRSV1><STMTTRNRS><STMTRS><BANKTRANLIST>
+<STMTTRN><TRNTYPE>CREDIT</TRNTYPE><DTPOSTED>20260330000000</DTPOSTED><TRNAMT>1</TRNAMT><CHECKNUM>0</CHECKNUM><MEMO>CR LV OR E</MEMO></STMTTRN>
+<STMTTRN><TRNTYPE>CREDIT</TRNTYPE><DTPOSTED>20260330000000</DTPOSTED><TRNAMT>2</TRNAMT><CHECKNUM>000</CHECKNUM><MEMO>CR LV OR E</MEMO></STMTTRN>
+<STMTTRN><TRNTYPE>CREDIT</TRNTYPE><DTPOSTED>20260330000000</DTPOSTED><TRNAMT>3</TRNAMT><CHECKNUM>0</CHECKNUM><MEMO>CR LV OR E</MEMO></STMTTRN>
+</BANKTRANLIST></STMTRS></STMTTRNRS></BANKMSGSRSV1></OFX>`;
+    const rows = parseOfxToExtrato(text);
+    expect(rows.map((r) => r.numero).sort()).toEqual(['1', '2', '3']);
+  });
+
+  it('CHECKNUM real sem FITID continua como número do lançamento', () => {
+    const text = `<OFX><BANKMSGSRSV1><STMTTRNRS><STMTRS><BANKTRANLIST>
+<STMTTRN><TRNTYPE>DEBIT</TRNTYPE><DTPOSTED>20260101000000</DTPOSTED><TRNAMT>-5</TRNAMT><CHECKNUM>000042</CHECKNUM><MEMO>Cheque</MEMO></STMTTRN>
+</BANKTRANLIST></STMTRS></STMTTRNRS></BANKMSGSRSV1></OFX>`;
+    const rows = parseOfxToExtrato(text);
+    expect(rows[0].numero).toBe('000042');
   });
 });
 

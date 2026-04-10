@@ -45,7 +45,7 @@ export function ModalDadosUsuario({ open, usuario, listaTodos, podeEditarIdUsuar
     setSenhaNova2('');
     setErro('');
     setPessoaPreview(null);
-  }, [open, usuario?.id, usuario?.numeroPessoa]);
+  }, [open, usuario?.id, usuario?.numeroPessoa, usuario?.apelido]);
 
   useEffect(() => {
     if (!open) return;
@@ -87,6 +87,10 @@ export function ModalDadosUsuario({ open, usuario, listaTodos, podeEditarIdUsuar
   }, [erro]);
 
   if (!open || !usuario) return null;
+
+  const isCadastroNovoApi =
+    featureFlags.useApiUsuarios &&
+    (!Number.isFinite(Number(usuario.id)) || Number(usuario.id) < 1);
 
   const idTitulo =
     featureFlags.useApiUsuarios || !podeEditarIdUsuario ? String(usuario.id ?? '') : usuarioIdCampo.trim() || '…';
@@ -183,6 +187,11 @@ export function ModalDadosUsuario({ open, usuario, listaTodos, podeEditarIdUsuar
       }
     }
 
+    if (isCadastroNovoApi && !apelido.trim()) {
+      setErro('Apelido é obrigatório ao cadastrar um novo usuário.');
+      return;
+    }
+
     setSalvando(true);
     try {
       let senhaHash = usuario.senhaHash || '';
@@ -250,13 +259,13 @@ export function ModalDadosUsuario({ open, usuario, listaTodos, podeEditarIdUsuar
 
         <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 text-sm">
           <p className="text-xs text-slate-600 leading-relaxed">
-            Cada usuário deve estar cadastrado em <strong>Pessoas</strong> com um número único. Para alterar nome,
-            documentos ou endereço da pessoa, use o{' '}
+            Cada usuário deve estar cadastrado em <strong>Pessoas</strong> com um número único. O nome civil e dados
+            cadastrais ficam só na ficha em{' '}
             <Link to="/clientes/lista" className="text-indigo-600 underline">
               Cadastro de Pessoas
             </Link>
-            . O <strong>apelido</strong> aparece no menu e nas telas em vez do nome completo. Login e senha serão
-            usados no acesso futuro ao sistema.
+            . No restante do sistema (menu, Agenda, histórico de processos, etc.) usa-se apenas o{' '}
+            <strong>apelido</strong>. Login e senha servem para o acesso futuro.
           </p>
 
           <div>
@@ -364,7 +373,11 @@ export function ModalDadosUsuario({ open, usuario, listaTodos, podeEditarIdUsuar
           </div>
 
           <div>
-            <label className="text-xs font-medium text-slate-700">Apelido (exibição no sistema)</label>
+            <label className="text-xs font-medium text-slate-700">
+              Apelido{' '}
+              {isCadastroNovoApi ? <span className="text-red-600">*</span> : null}{' '}
+              <span className="text-slate-500 font-normal">(único nome de usuário nas telas)</span>
+            </label>
             <input
               type="text"
               value={apelido}

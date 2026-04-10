@@ -8,7 +8,7 @@ import { getNomeExibicaoUsuario } from '../../data/usuarioDisplayHelpers.js';
 const LS_PAGE_SIZE = 'vilareal:pageSize:usuarios';
 
 const CRITERIOS = [
-  { value: 'nome', label: 'Nome do usuário' },
+  { value: 'nome', label: 'Apelido ou nome de cadastro (API)' },
   { value: 'login', label: 'Login' },
   { value: 'codigo', label: 'Código (id)' },
   { value: 'nomePessoa', label: 'Nome da pessoa' },
@@ -180,16 +180,16 @@ export function UsuariosListaApiPaginada({
           </span>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="table-fixed w-full min-w-[44rem] text-sm">
             <thead className="bg-slate-100 text-slate-700 font-medium text-left">
               <tr>
-                <th className="px-3 py-2">Id</th>
-                <th className="px-3 py-2">Nome</th>
-                <th className="px-3 py-2">Login</th>
-                <th className="px-3 py-2">Pessoa nº</th>
-                <th className="px-3 py-2">Perfis</th>
-                <th className="px-3 py-2">Ativo</th>
-                <th className="px-3 py-2 text-right">Ações</th>
+                <th className="px-3 py-2 w-14">Id</th>
+                <th className="px-3 py-2 w-[28%]">Nome (Pessoas)</th>
+                <th className="px-3 py-2 w-[18%]">Apelido</th>
+                <th className="px-3 py-2 w-28">Login</th>
+                <th className="px-3 py-2 w-24">Pessoa nº</th>
+                <th className="px-3 py-2 w-16">Ativo</th>
+                <th className="px-3 py-2 text-right w-[11rem]">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -209,12 +209,18 @@ export function UsuariosListaApiPaginada({
                 content.map((u) => (
                   <tr key={String(u.id)} className="hover:bg-slate-50/80">
                     <td className="px-3 py-2 font-mono text-xs text-slate-600">{u.id}</td>
-                    <td className="px-3 py-2 text-slate-900">{getNomeExibicaoUsuario(u)}</td>
+                    <td className="px-3 py-2 text-slate-900 align-top overflow-hidden">
+                      <div className="truncate" title={String(u.nomePessoa ?? '').trim() || undefined}>
+                        {String(u.nomePessoa ?? '').trim() || '—'}
+                      </div>
+                    </td>
+                    <td className="px-3 py-2 text-slate-900 align-top overflow-hidden">
+                      <div className="truncate" title={getNomeExibicaoUsuario(u) || undefined}>
+                        {getNomeExibicaoUsuario(u)}
+                      </div>
+                    </td>
                     <td className="px-3 py-2 font-mono text-xs text-slate-700">{u.login || '—'}</td>
                     <td className="px-3 py-2 font-mono text-xs">{u.numeroPessoa ?? '—'}</td>
-                    <td className="px-3 py-2 text-xs text-slate-600">
-                      {(u.perfilIds || []).length ? (u.perfilIds || []).join(', ') : '—'}
-                    </td>
                     <td className="px-3 py-2 text-xs">{u.ativo === false ? 'Não' : 'Sim'}</td>
                     <td className="px-3 py-2 text-right whitespace-nowrap">
                       <div className="inline-flex flex-wrap gap-1 justify-end">

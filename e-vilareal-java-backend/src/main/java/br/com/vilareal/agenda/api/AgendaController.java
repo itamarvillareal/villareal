@@ -4,6 +4,7 @@ import br.com.vilareal.agenda.api.dto.AgendaEventoResponse;
 import br.com.vilareal.agenda.api.dto.AgendaEventoWriteRequest;
 import br.com.vilareal.agenda.api.dto.AgendaMensalResponse;
 import br.com.vilareal.agenda.application.AgendaApplicationService;
+import br.com.vilareal.common.exception.BusinessRuleException;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -28,20 +29,34 @@ public class AgendaController {
     }
 
     @GetMapping
-    @Operation(description = "Lista compromissos do usuário no intervalo [dataInicio, dataFim] (yyyy-MM-dd). Compatível com React agendaRepository.")
+    @Operation(description = "Lista compromissos no intervalo [dataInicio, dataFim]. Com todosUsuarios=true, retorna todos os usuários (visão Geral); caso contrário, usuarioId é obrigatório.")
     public List<AgendaEventoResponse> listar(
-            @RequestParam("usuarioId") Long usuarioId,
+            @RequestParam(value = "usuarioId", required = false) Long usuarioId,
             @RequestParam("dataInicio") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataInicio,
-            @RequestParam("dataFim") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataFim) {
+            @RequestParam("dataFim") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataFim,
+            @RequestParam(value = "todosUsuarios", defaultValue = "false") boolean todosUsuarios) {
+        if (todosUsuarios) {
+            return agendaService.listarTodosUsuariosNoPeriodo(dataInicio, dataFim);
+        }
+        if (usuarioId == null) {
+            throw new BusinessRuleException("Informe usuarioId ou use todosUsuarios=true.");
+        }
         return agendaService.listarPorUsuarioEPeriodo(usuarioId, dataInicio, dataFim);
     }
 
     @GetMapping("/mensal")
-    @Operation(description = "Resumo do mês por usuário (modal Agenda mensal no React).")
+    @Operation(description = "Resumo do mês. Com todosUsuarios=true, agrega todos os usuários (Geral).")
     public AgendaMensalResponse mensal(
-            @RequestParam("usuarioId") Long usuarioId,
+            @RequestParam(value = "usuarioId", required = false) Long usuarioId,
             @RequestParam int ano,
-            @RequestParam int mes) {
+            @RequestParam int mes,
+            @RequestParam(value = "todosUsuarios", defaultValue = "false") boolean todosUsuarios) {
+        if (todosUsuarios) {
+            return agendaService.resumoMensalTodosUsuarios(ano, mes);
+        }
+        if (usuarioId == null) {
+            throw new BusinessRuleException("Informe usuarioId ou use todosUsuarios=true.");
+        }
         return agendaService.resumoMensal(usuarioId, ano, mes);
     }
 

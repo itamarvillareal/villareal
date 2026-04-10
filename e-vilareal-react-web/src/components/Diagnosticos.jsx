@@ -14,6 +14,7 @@ import {
   listarProcessosFaseProcedimentoAdministrativo,
   listarProcessosPorIdPessoa,
   listarProcessosPorPrazoFatal,
+  listarAudienciasPendentes,
 } from '../data/processosHistoricoData';
 import { resolverAliasHojeEmTexto } from '../services/hjDateAliasService.js';
 import { listarImoveisResumoPorPessoaDiagnostico } from '../services/listarImoveisPorPessoaDiagnostico.js';
@@ -98,6 +99,7 @@ function mergeItensDiagnosticoBuscaPessoa(apiItens, locais) {
 const BOTOES_ESQUERDA = [
   'Consultas Realizadas',
   'Consultas à Realizar',
+  'Audiências pendentes',
   'Prazo Fatal',
   'Consultas Atrasadas',
   'Publicações',
@@ -167,6 +169,9 @@ export function Diagnosticos() {
   const [modalResultadoProcAdministrativoAberto, setModalResultadoProcAdministrativoAberto] =
     useState(false);
   const [resultadoProcAdministrativo, setResultadoProcAdministrativo] = useState([]);
+  const [modalResultadoAudienciasPendentesAberto, setModalResultadoAudienciasPendentesAberto] =
+    useState(false);
+  const [resultadoAudienciasPendentes, setResultadoAudienciasPendentes] = useState([]);
 
   function consultarPorData() {
     const data = String(dataConsulta ?? '').trim();
@@ -353,6 +358,12 @@ export function Diagnosticos() {
     setModalResultadoProcAdministrativoAberto(true);
   }
 
+  function abrirListaAudienciasPendentes() {
+    const itens = listarAudienciasPendentes();
+    setResultadoAudienciasPendentes(itens);
+    setModalResultadoAudienciasPendentesAberto(true);
+  }
+
   function abrirProcessoPorItem(item) {
     if (!item?.codCliente || item?.proc == null || item?.proc === '') return;
     setModalResultadoAberto(false);
@@ -366,6 +377,7 @@ export function Diagnosticos() {
     setModalResultadoAguardandoProtocoloAberto(false);
     setModalResultadoAguardandoProvidenciaAberto(false);
     setModalResultadoProcAdministrativoAberto(false);
+    setModalResultadoAudienciasPendentesAberto(false);
     setModalConsultasARealizarAberto(false);
     setModalPublicacoesAberto(false);
     navigate('/processos', {
@@ -402,6 +414,9 @@ export function Diagnosticos() {
                   }
                   if (label === 'Consultas à Realizar') {
                     setModalConsultasARealizarAberto(true);
+                  }
+                  if (label === 'Audiências pendentes') {
+                    abrirListaAudienciasPendentes();
                   }
                   if (label === 'Prazo Fatal') {
                     setModalPrazoFatalAberto(true);
@@ -1394,6 +1409,72 @@ export function Diagnosticos() {
               <button
                 type="button"
                 onClick={() => setModalResultadoProcAdministrativoAberto(false)}
+                className="min-w-[120px] px-8 py-1.5 border border-slate-500 bg-white text-base text-black shadow-[2px_2px_0_0_rgba(0,0,0,0.25)] hover:bg-slate-50"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {modalResultadoAudienciasPendentesAberto && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/35 p-4">
+          <div className="w-full max-w-6xl bg-slate-100 border border-slate-400 shadow-xl">
+            <div className="flex items-center justify-between px-4 py-2 border-b border-slate-300 bg-white">
+              <p className="text-base text-black">Audiências pendentes (data hoje ou futura)</p>
+              <button
+                type="button"
+                onClick={() => setModalResultadoAudienciasPendentesAberto(false)}
+                className="p-1 text-slate-700 hover:bg-slate-200"
+                aria-label="Fechar relatório"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            <div className="px-4 py-3">
+              <p className="text-sm text-black mb-3">
+                {resultadoAudienciasPendentes.length} processo(s) com data de audiência preenchida em Processos (histórico
+                local). Duplo clique na linha abre o formulário do processo. Datas anteriores a hoje não aparecem.
+              </p>
+              <div className="border border-slate-300 bg-white h-[430px] overflow-auto p-2 text-[13px] leading-relaxed font-mono">
+                {resultadoAudienciasPendentes.length === 0 ? (
+                  <p>
+                    Nenhuma audiência pendente. Informe a data da audiência na tela Processos (campos gravados em
+                    vilareal:processos-historico:v1).
+                  </p>
+                ) : (
+                  resultadoAudienciasPendentes.map((item, idx) => {
+                    const horaTxt = item.audienciaHora ? ` às ${item.audienciaHora}` : '';
+                    const tipoTxt = item.audienciaTipo ? ` — ${item.audienciaTipo}` : '';
+                    const avisoTxt =
+                      item.avisoAudiencia && String(item.avisoAudiencia).trim() !== '' && item.avisoAudiencia !== 'nao_avisado'
+                        ? ` — aviso: ${item.avisoAudiencia}`
+                        : '';
+                    return (
+                      <p
+                        key={`${item.codCliente}-${item.proc}-${item.audienciaData}-${idx}`}
+                        className="whitespace-pre-wrap break-words cursor-pointer hover:bg-slate-100 rounded px-1 -mx-1 select-none"
+                        onDoubleClick={() => abrirProcessoPorItem(item)}
+                        title="Duplo clique: abrir em Processos"
+                      >
+                        {String(idx + 1).padStart(3, '0')} - Audiência {item.audienciaData}
+                        {horaTxt}
+                        {tipoTxt}
+                        {' — '}(Cod. {item.codCliente}, Proc. {String(item.proc).padStart(2, '0')}){' '}
+                        {item.parteCliente || item.cliente || 'CLIENTE'} x {item.parteOposta || 'PARTE OPOSTA'} (
+                        {item.numeroProcessoNovo || 'sem nº'})
+                        {avisoTxt}
+                      </p>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+            <div className="px-4 py-3 border-t border-slate-300 flex justify-center bg-slate-100">
+              <button
+                type="button"
+                onClick={() => setModalResultadoAudienciasPendentesAberto(false)}
                 className="min-w-[120px] px-8 py-1.5 border border-slate-500 bg-white text-base text-black shadow-[2px_2px_0_0_rgba(0,0,0,0.25)] hover:bg-slate-50"
               >
                 OK

@@ -1291,6 +1291,56 @@ export function listarProcessosPorPrazoFatal(dataBr) {
 }
 
 /**
+ * Processos com data de audiência informada (formulário Processos) em **hoje ou no futuro** (horário local).
+ * Datas passadas ou inválidas não entram — use a tela Processos para limpar ou alterar a data.
+ */
+export function listarAudienciasPendentes() {
+  const out = [];
+  const current = loadStore();
+  const agora = new Date();
+  const inicioHoje = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate()).getTime();
+
+  Object.values(current).forEach((rawReg) => {
+    const reg = normalizarRegistroProcesso(rawReg);
+    if (!reg) return;
+    const audRaw = String(reg.audienciaData ?? '').trim();
+    if (!audRaw) return;
+    const parsed = parseDataBrCompleta(audRaw);
+    if (!parsed) return;
+    const inicioAud = new Date(parsed.yyyy, parsed.mm - 1, parsed.dd).getTime();
+    if (inicioAud < inicioHoje) return;
+
+    out.push({
+      codCliente: reg.codCliente,
+      proc: reg.proc,
+      cliente: reg.cliente,
+      parteCliente: reg.parteCliente,
+      parteOposta: reg.parteOposta,
+      numeroProcessoNovo: reg.numeroProcessoNovo,
+      audienciaData: dataBr(parsed),
+      audienciaHora: String(reg.audienciaHora ?? '').trim(),
+      audienciaTipo: String(reg.audienciaTipo ?? '').trim(),
+      avisoAudiencia: String(reg.avisoAudiencia ?? '').trim(),
+    });
+  });
+
+  out.sort((a, b) => {
+    const pa = parseDataBrCompleta(a.audienciaData);
+    const pb = parseDataBrCompleta(b.audienciaData);
+    const ta = pa ? new Date(pa.yyyy, pa.mm - 1, pa.dd).getTime() : 0;
+    const tb = pb ? new Date(pb.yyyy, pb.mm - 1, pb.dd).getTime() : 0;
+    if (ta !== tb) return ta - tb;
+    const ha = String(a.audienciaHora ?? '');
+    const hb = String(b.audienciaHora ?? '');
+    if (ha !== hb) return ha.localeCompare(hb);
+    const ka = `${a.codCliente}-${String(a.proc).padStart(4, '0')}`;
+    const kb = `${b.codCliente}-${String(b.proc).padStart(4, '0')}`;
+    return ka.localeCompare(kb);
+  });
+  return out;
+}
+
+/**
  * Mantido por compatibilidade; não grava mais dados de demonstração no navegador.
  */
 export function ensureHistoricoDemonstracaoDiagnostico() {

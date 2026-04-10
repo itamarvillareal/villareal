@@ -105,9 +105,7 @@ class ApiIntegrationTest extends AbstractIntegrationTest {
                 new ParameterizedTypeReference<>() {});
 
         assertThat(putPerfis.getStatusCode()).isEqualTo(HttpStatus.OK);
-        @SuppressWarnings("unchecked")
-        List<Number> ids = (List<Number>) putPerfis.getBody().get("perfilIds");
-        assertThat(ids).extracting(Number::longValue).containsExactly(2L);
+        assertThat(((Number) putPerfis.getBody().get("perfilId")).longValue()).isEqualTo(2L);
     }
 
     @Test
@@ -158,6 +156,17 @@ class ApiIntegrationTest extends AbstractIntegrationTest {
 
         assertThat(lista.getBody()).hasSize(1);
         assertThat(lista.getBody().get(0).get("descricao")).isEqualTo("Audiência teste");
+
+        ResponseEntity<List<Map<String, Object>>> todosUsuarios = rest.exchange(
+                "/api/agenda/eventos?todosUsuarios=true&dataInicio=2026-03-10&dataFim=2026-03-10",
+                HttpMethod.GET,
+                new HttpEntity<>(h),
+                new ParameterizedTypeReference<>() {});
+
+        assertThat(todosUsuarios.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(todosUsuarios.getBody()).isNotNull();
+        assertThat(todosUsuarios.getBody()).hasSize(1);
+        assertThat(todosUsuarios.getBody().get(0).get("descricao")).isEqualTo("Audiência teste");
 
         var patch = Map.of(
                 "usuarioId", usuarioAgenda,
@@ -524,6 +533,7 @@ class ApiIntegrationTest extends AbstractIntegrationTest {
         assertThat(((Number) postL.getBody().get("processoId")).longValue()).isEqualTo(procId);
         assertThat(postL.getBody().get("codigoCliente")).isEqualTo(String.format("%08d", pessoaId));
         assertThat(((Number) postL.getBody().get("numeroInternoProcesso")).intValue()).isEqualTo(88);
+        assertThat(postL.getBody().get("dataCompetencia")).isEqualTo("2026-03-15");
 
         ResponseEntity<Map<String, Object>> resumo = rest.exchange(
                 "/api/financeiro/lancamentos/resumo-processo/" + procId,
@@ -571,6 +581,90 @@ class ApiIntegrationTest extends AbstractIntegrationTest {
                 new ParameterizedTypeReference<>() {});
 
         assertThat(((Number) resumo2.getBody().get("totalLancamentos")).longValue()).isZero();
+    }
+
+    @Test
+    void financeiroLimparExtratoCefJsonRemovePorNomeENumeroBanco() {
+        String token = login();
+        HttpHeaders h = new HttpHeaders();
+        h.setBearerAuth(token);
+        h.setContentType(MediaType.APPLICATION_JSON);
+
+        ResponseEntity<List<Map<String, Object>>> contas = rest.exchange(
+                "/api/financeiro/contas",
+                HttpMethod.GET,
+                new HttpEntity<>(h),
+                new ParameterizedTypeReference<>() {});
+
+        assertThat(contas.getBody()).isNotEmpty();
+        Long contaNId = contas.getBody().stream()
+                .filter(m -> "N".equals(m.get("codigo")))
+                .map(m -> ((Number) m.get("id")).longValue())
+                .findFirst()
+                .orElseThrow();
+
+        String pfx = "limpar-cef-json-";
+
+        java.util.function.BiConsumer<String, Map<String, Object>> postLanc = (suffix, extra) -> {
+            Map<String, Object> lanc = new LinkedHashMap<>();
+            lanc.put("contaContabilId", contaNId);
+            lanc.put("numeroLancamento", pfx + suffix);
+            lanc.put("dataLancamento", "2026-04-01");
+            lanc.put("dataCompetencia", "2026-04-01");
+            lanc.put("descricao", "teste limpar CEF");
+            lanc.put("descricaoDetalhada", "");
+            lanc.put("valor", 1.0);
+            lanc.put("natureza", "CREDITO");
+            lanc.put("refTipo", "N");
+            lanc.put("origem", "OFX");
+            lanc.put("status", "ATIVO");
+            lanc.putAll(extra);
+            ResponseEntity<Map<String, Object>> created = rest.exchange(
+                    "/api/financeiro/lancamentos",
+                    HttpMethod.POST,
+                    new HttpEntity<>(lanc, h),
+                    new ParameterizedTypeReference<>() {});
+            assertThat(created.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        };
+
+        postLanc.accept("a", Map.of("bancoNome", "CEF", "numeroBanco", 5));
+        postLanc.accept("b", Map.of("bancoNome", "rótulo errado", "numeroBanco", 5));
+        postLanc.accept("c", Map.of("bancoNome", "CEF"));
+        postLanc.accept("itau", Map.of("bancoNome", "Itaú", "numeroBanco", 1));
+
+        ResponseEntity<List<Map<String, Object>>> antes = rest.exchange(
+                "/api/financeiro/lancamentos",
+                HttpMethod.GET,
+                new HttpEntity<>(h),
+                new ParameterizedTypeReference<>() {});
+        long nAntes = antes.getBody().stream()
+                .filter(m -> String.valueOf(m.get("numeroLancamento")).startsWith(pfx))
+                .count();
+        assertThat(nAntes).isEqualTo(4L);
+
+        Map<String, Object> limparBody = Map.of("banco", "CEF", "numeroBanco", 5);
+        ResponseEntity<Map<String, Object>> limp = rest.exchange(
+                "/api/financeiro/lancamentos/limpar-extrato",
+                HttpMethod.POST,
+                new HttpEntity<>(limparBody, h),
+                new ParameterizedTypeReference<>() {});
+
+        assertThat(limp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(limp.getBody()).isNotNull();
+        assertThat(((Number) limp.getBody().get("lancamentosRemovidos")).intValue()).isGreaterThanOrEqualTo(3);
+
+        ResponseEntity<List<Map<String, Object>>> depois = rest.exchange(
+                "/api/financeiro/lancamentos",
+                HttpMethod.GET,
+                new HttpEntity<>(h),
+                new ParameterizedTypeReference<>() {});
+
+        assertThat(depois.getBody().stream()
+                .filter(m -> String.valueOf(m.get("numeroLancamento")).startsWith(pfx))
+                .count()).isEqualTo(1L);
+        assertThat(depois.getBody().stream()
+                .filter(m -> pfx.concat("itau").equals(String.valueOf(m.get("numeroLancamento"))))
+                .count()).isEqualTo(1L);
     }
 
     @Test

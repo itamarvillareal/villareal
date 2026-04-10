@@ -10,7 +10,7 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.stream.Collectors;
+import java.util.Set;
 
 @Service
 public class UsuarioUserDetailsService implements UserDetailsService {
@@ -24,14 +24,15 @@ public class UsuarioUserDetailsService implements UserDetailsService {
     @Override
     @Transactional(readOnly = true)
     public UserDetails loadUserByUsername(String login) throws UsernameNotFoundException {
-        UsuarioEntity u = usuarioRepository.findWithPerfisByLoginIgnoreCase(login.trim().toLowerCase())
+        UsuarioEntity u = usuarioRepository.findWithPerfilByLoginIgnoreCase(login.trim().toLowerCase())
                 .orElseThrow(() -> new UsernameNotFoundException("Usuário não encontrado."));
         if (!Boolean.TRUE.equals(u.getAtivo())) {
             throw new UsernameNotFoundException("Usuário inativo.");
         }
-        var authorities = u.getPerfis().stream()
-                .map(p -> new SimpleGrantedAuthority("ROLE_" + p.getCodigo()))
-                .collect(Collectors.toSet());
+        if (u.getPerfil() == null) {
+            throw new UsernameNotFoundException("Usuário sem perfil.");
+        }
+        var authorities = Set.of(new SimpleGrantedAuthority("ROLE_" + u.getPerfil().getCodigo()));
         return User.builder()
                 .username(u.getLogin())
                 .password(u.getSenhaHash())

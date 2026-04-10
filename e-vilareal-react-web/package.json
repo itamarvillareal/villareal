@@ -15,7 +15,8 @@
     "test:watch": "vitest",
     "preview": "vite preview",
     "generate:mock-cadastro-pessoas": "node scripts/generate-cadastro-pessoas-mock.mjs",
-    "generate:mock-clientes-cadastrados": "node scripts/generate-clientes-cadastrados-mock.mjs"
+    "generate:mock-clientes-cadastrados": "node scripts/generate-clientes-cadastrados-mock.mjs",
+    "import:agenda-xlsx": "node scripts/import-agenda-planilha.mjs"
   },
   "dependencies": {
     "docx": "^9.6.1",

@@ -5,13 +5,13 @@ import lombok.Setter;
 
 @Getter
 @Setter
-public class LimparExtratoCoraResult {
+public class LimparExtratoResult {
 
-    /** Lançamentos apagados (banco_nome normalizado = CORA). */
-    private int lancamentosRemovidosCora;
+    /** Lançamentos apagados do extrato do banco indicado (nome normalizado). */
+    private int lancamentosRemovidos;
 
     /**
-     * Lançamentos em outros bancos (exclui CORA) com o mesmo {@code elo_financeiro_id} que algum lançamento Cora;
+     * Lançamentos noutros bancos que partilhavam {@code elo_financeiro_id} com algum lançamento desse extrato;
      * elo removido, conta para «N», cliente e processo desvinculados, eq_referencia limpa.
      */
     private int lancamentosDesvinculadosOutrosBancos;

@@ -29,7 +29,11 @@ public final class UsuarioSpecifications {
             }
             if (StringUtils.hasText(nomeUsuarioContem)) {
                 String pattern = "%" + nomeUsuarioContem.trim().toLowerCase() + "%";
-                p.add(cb.like(cb.lower(root.get("nome")), pattern));
+                var porNome = cb.like(cb.lower(root.get("nome")), pattern);
+                var porApelido = cb.and(
+                        cb.isNotNull(root.get("apelido")),
+                        cb.like(cb.lower(root.get("apelido")), pattern));
+                p.add(cb.or(porNome, porApelido));
             }
             if (StringUtils.hasText(loginContem)) {
                 String pattern = "%" + loginContem.trim().toLowerCase() + "%";

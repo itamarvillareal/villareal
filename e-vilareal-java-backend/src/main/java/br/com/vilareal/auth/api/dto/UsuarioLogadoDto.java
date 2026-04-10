@@ -1,13 +1,12 @@
 package br.com.vilareal.auth.api.dto;
 
-import java.util.List;
-
 public class UsuarioLogadoDto {
 
     private Long id;
+    /** Texto para exibição no cliente: apelido ou login (não é o nome civil completo do cadastro). */
     private String nome;
     private String login;
-    private List<Long> perfilIds;
+    private Long perfilId;
 
     public Long getId() {
         return id;
@@ -33,11 +32,11 @@ public class UsuarioLogadoDto {
         this.login = login;
     }
 
-    public List<Long> getPerfilIds() {
-        return perfilIds;
+    public Long getPerfilId() {
+        return perfilId;
     }
 
-    public void setPerfilIds(List<Long> perfilIds) {
-        this.perfilIds = perfilIds;
+    public void setPerfilId(Long perfilId) {
+        this.perfilId = perfilId;
     }
 }

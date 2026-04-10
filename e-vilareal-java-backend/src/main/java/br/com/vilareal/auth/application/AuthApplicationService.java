@@ -5,7 +5,6 @@ import br.com.vilareal.auth.api.dto.LoginRequest;
 import br.com.vilareal.auth.api.dto.LoginResponse;
 import br.com.vilareal.auth.api.dto.UsuarioLogadoDto;
 import br.com.vilareal.security.JwtService;
-import br.com.vilareal.usuario.infrastructure.persistence.entity.PerfilEntity;
 import br.com.vilareal.usuario.infrastructure.persistence.entity.UsuarioEntity;
 import br.com.vilareal.usuario.infrastructure.persistence.repository.UsuarioRepository;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -15,8 +14,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.util.List;
+import org.springframework.util.StringUtils;
 
 @Service
 public class AuthApplicationService {
@@ -42,7 +40,7 @@ public class AuthApplicationService {
                         req.getSenha()));
         SecurityContextHolder.getContext().setAuthentication(auth);
         UserDetails ud = (UserDetails) auth.getPrincipal();
-        UsuarioEntity u = usuarioRepository.findWithPerfisByLoginIgnoreCase(ud.getUsername())
+        UsuarioEntity u = usuarioRepository.findWithPerfilByLoginIgnoreCase(ud.getUsername())
                 .orElseThrow();
 
         LoginResponse res = new LoginResponse();
@@ -53,7 +51,7 @@ public class AuthApplicationService {
 
     @Transactional(readOnly = true)
     public UsuarioLogadoDto me(String login) {
-        UsuarioEntity u = usuarioRepository.findWithPerfisByLoginIgnoreCase(login)
+        UsuarioEntity u = usuarioRepository.findWithPerfilByLoginIgnoreCase(login)
                 .orElseThrow();
         return toLogado(u);
     }
@@ -61,13 +59,12 @@ public class AuthApplicationService {
     private static UsuarioLogadoDto toLogado(UsuarioEntity u) {
         UsuarioLogadoDto d = new UsuarioLogadoDto();
         d.setId(u.getId());
-        d.setNome(Utf8MojibakeUtil.corrigir(u.getNome()));
+        String apelido = u.getApelido() != null ? u.getApelido().trim() : "";
+        String exibir =
+                StringUtils.hasText(apelido) ? apelido : (u.getLogin() != null ? u.getLogin() : "");
+        d.setNome(Utf8MojibakeUtil.corrigir(exibir));
         d.setLogin(u.getLogin());
-        if (u.getPerfis() != null) {
-            d.setPerfilIds(u.getPerfis().stream().map(PerfilEntity::getId).sorted().toList());
-        } else {
-            d.setPerfilIds(List.of());
-        }
+        d.setPerfilId(u.getPerfil() != null ? u.getPerfil().getId() : null);
         return d;
     }
 }

@@ -35,7 +35,7 @@ function getColumnsPendencias() {
   try {
     const u = getUsuariosAtivos();
     if (Array.isArray(u) && u.length > 0) {
-      return u.map((x) => ({ id: String(x.id), name: String(x.nome) }));
+      return u.map((x) => ({ id: String(x.id), name: String(getNomeExibicaoUsuario(x)) }));
     }
   } catch {
     /* ignore */

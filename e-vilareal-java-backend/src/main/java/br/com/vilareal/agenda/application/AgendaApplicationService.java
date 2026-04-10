@@ -60,6 +60,21 @@ public class AgendaApplicationService {
         return rows.stream().map(this::toResponse).sorted(ORDEM_REACT).collect(Collectors.toList());
     }
 
+    /**
+     * Todos os compromissos no intervalo, qualquer usuário (visão «Geral» no React — só leitura agregada).
+     */
+    @Transactional(readOnly = true)
+    public List<AgendaEventoResponse> listarTodosUsuariosNoPeriodo(LocalDate dataInicio, LocalDate dataFim) {
+        if (dataInicio == null || dataFim == null) {
+            throw new BusinessRuleException("dataInicio e dataFim são obrigatórias.");
+        }
+        if (dataFim.isBefore(dataInicio)) {
+            throw new BusinessRuleException("dataFim não pode ser anterior a dataInicio.");
+        }
+        List<AgendaEventoEntity> rows = agendaEventoRepository.findByPeriodoTodosUsuarios(dataInicio, dataFim);
+        return rows.stream().map(this::toResponse).sorted(ORDEM_REACT).collect(Collectors.toList());
+    }
+
     @Transactional(readOnly = true)
     public AgendaMensalResponse resumoMensal(Long usuarioId, int ano, int mes) {
         validarUsuarioExiste(usuarioId);
@@ -86,6 +101,37 @@ public class AgendaApplicationService {
         r.setAno(ano);
         r.setMes(mes);
         r.setUsuarioId(usuarioId);
+        r.setTodosUsuarios(false);
+        r.setDiasComEventos(dias);
+        return r;
+    }
+
+    @Transactional(readOnly = true)
+    public AgendaMensalResponse resumoMensalTodosUsuarios(int ano, int mes) {
+        if (mes < 1 || mes > 12) {
+            throw new BusinessRuleException("Mês inválido.");
+        }
+        LocalDate inicio = LocalDate.of(ano, mes, 1);
+        LocalDate fim = inicio.withDayOfMonth(inicio.lengthOfMonth());
+        List<AgendaEventoEntity> rows = agendaEventoRepository.findByPeriodoTodosUsuarios(inicio, fim);
+        Map<LocalDate, List<AgendaEventoEntity>> porDia = rows.stream()
+                .collect(Collectors.groupingBy(AgendaEventoEntity::getDataEvento, TreeMap::new, Collectors.toList()));
+        List<DiaAgendaMensalDto> dias = new ArrayList<>();
+        for (Map.Entry<LocalDate, List<AgendaEventoEntity>> e : porDia.entrySet()) {
+            List<AgendaEventoEntity> lista = e.getValue();
+            if (lista.isEmpty()) {
+                continue;
+            }
+            DiaAgendaMensalDto d = new DiaAgendaMensalDto();
+            d.setDataBr(formatarDataBr(e.getKey()));
+            d.setEventos(lista.stream().sorted(ORDEM_ENTIDADE).map(this::toLinhaComUsuario).collect(Collectors.toList()));
+            dias.add(d);
+        }
+        AgendaMensalResponse r = new AgendaMensalResponse();
+        r.setAno(ano);
+        r.setMes(mes);
+        r.setUsuarioId(null);
+        r.setTodosUsuarios(true);
         r.setDiasComEventos(dias);
         return r;
     }
@@ -161,17 +207,30 @@ public class AgendaApplicationService {
         }
     }
 
+    /** Mesma regra do login / front: apelido; se vazio, login (nunca o nome civil completo). */
+    private static String nomeExibicaoAgendaUsuario(UsuarioEntity u) {
+        if (u == null) {
+            return "";
+        }
+        String ap = u.getApelido() != null ? u.getApelido().trim() : "";
+        if (StringUtils.hasText(ap)) {
+            return Utf8MojibakeUtil.corrigir(ap);
+        }
+        return Utf8MojibakeUtil.corrigir(u.getLogin() != null ? u.getLogin() : "");
+    }
+
     private AgendaEventoResponse toResponse(AgendaEventoEntity e) {
         AgendaEventoResponse r = new AgendaEventoResponse();
         r.setId(e.getId());
         if (e.getUsuario() != null) {
             r.setUsuarioId(e.getUsuario().getId());
-            r.setUsuarioNome(Utf8MojibakeUtil.corrigir(e.getUsuario().getNome()));
+            r.setUsuarioNome(nomeExibicaoAgendaUsuario(e.getUsuario()));
         }
         r.setDataEvento(e.getDataEvento());
         r.setHoraEvento(Utf8MojibakeUtil.corrigir(e.getHoraEvento()));
         r.setDescricao(Utf8MojibakeUtil.corrigir(e.getDescricao()));
         r.setStatusCurto(Utf8MojibakeUtil.corrigir(e.getStatusCurto() != null ? e.getStatusCurto() : ""));
+        r.setProcessoRef(Utf8MojibakeUtil.corrigir(e.getProcessoRef()));
         r.setOrigem(Utf8MojibakeUtil.corrigir(e.getOrigem()));
         return r;
     }
@@ -182,6 +241,15 @@ public class AgendaApplicationService {
         x.setHora(Utf8MojibakeUtil.corrigir(e.getHoraEvento() != null ? e.getHoraEvento() : ""));
         x.setDescricao(Utf8MojibakeUtil.corrigir(e.getDescricao() != null ? e.getDescricao() : ""));
         x.setStatusCurto(Utf8MojibakeUtil.corrigir(e.getStatusCurto() != null ? e.getStatusCurto() : ""));
+        x.setProcessoRef(Utf8MojibakeUtil.corrigir(e.getProcessoRef()));
+        return x;
+    }
+
+    private AgendaEventoLinhaDto toLinhaComUsuario(AgendaEventoEntity e) {
+        AgendaEventoLinhaDto x = toLinha(e);
+        if (e.getUsuario() != null) {
+            x.setUsuarioNome(nomeExibicaoAgendaUsuario(e.getUsuario()));
+        }
         return x;
     }
 

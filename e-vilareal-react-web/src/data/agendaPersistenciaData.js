@@ -1,6 +1,9 @@
 import { agendaUsuarios as agendaUsuariosBase, getMockEventosAgendaPorData } from './mockData';
 import { featureFlags } from '../config/featureFlags.js';
 import { lerSnapshotUsuariosApi } from '../services/syncApiUsuariosSnapshot.js';
+import { montarProcessoRefAgenda } from '../domain/agendaProcessoRef.js';
+import { normalizarProcesso, padCliente } from './processosDadosRelatorio.js';
+import { getNomeExibicaoUsuario } from './usuarioDisplayHelpers.js';
 
 const STORAGE_KEY_EVENTOS_LEGACY = 'vilareal:agenda-eventos:v1';
 const STORAGE_KEY = 'vilareal:agenda-eventos:v2';
@@ -419,9 +422,16 @@ export function substituirUsuarioIdNaAgendaPersistida(antigoUsuarioId, novoUsuar
   return { ok: true, alterados };
 }
 
-function keyEvento({ data, hora, descricao, usuarioId, numeroProcessoNovo }) {
-  // id determinístico pra evitar duplicar quando o usuário ajusta campos.
-  return `aud-${data}-${hora || ''}-${numeroProcessoNovo || ''}-${usuarioId || ''}-${descricao || ''}`.replace(/\s+/g, ' ').trim();
+function keyEvento({ data, hora, descricao, usuarioId, numeroProcessoNovo, codClientePad, procNum }) {
+  const cod = String(codClientePad ?? '').trim();
+  const p =
+    procNum != null && Number.isFinite(Number(procNum)) && Number(procNum) >= 1
+      ? String(Math.floor(Number(procNum)))
+      : '';
+  const num = String(numeroProcessoNovo ?? '').trim();
+  return `aud-${data}-${hora || ''}-${cod}|${p}|${num}-${usuarioId || ''}-${descricao || ''}`
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function normalizarDescricao({ audienciaTipo, numeroProcessoNovo }) {
@@ -430,6 +440,11 @@ function normalizarDescricao({ audienciaTipo, numeroProcessoNovo }) {
   if (!t && !num) return 'Audiência';
   if (t && num) return `${t} — Proc. ${num}`;
   return t || num || 'Audiência';
+}
+
+/** Texto do compromisso na Agenda alinhado ao formulário Processos (audiência). */
+export function descricaoAudienciaParaAgendaCampos(campos) {
+  return normalizarDescricao(campos);
 }
 
 function parsePeriodicidade(periodicidadeRaw, diaDoMesRaw) {
@@ -518,6 +533,25 @@ export function calcularPrimeiraOcorrenciaAgendaLote({
   return ocorrencias[0] || '';
 }
 
+/** Datas `yyyy-mm-dd` (chaves do store) para materializar agendamento em lote — reutilizado pelo modo API. */
+export function listarDatasOcorrenciasAgendamentoLote({
+  dataBaseBr,
+  periodicidade,
+  diaDoMes = null,
+  ajustarParaDiaUtil = true,
+}) {
+  const parsedBase = parseDataBrCompleta(dataBaseBr);
+  if (!parsedBase) return [];
+  const regraPeriodicidade = parsePeriodicidade(periodicidade, diaDoMes);
+  if (regraPeriodicidade.fixarDiaMes && !regraPeriodicidade.diaDoMes) return [];
+  return gerarOcorrencias({
+    dataBaseBr,
+    periodicidade,
+    diaDoMes: regraPeriodicidade.diaDoMes,
+    ajustarParaDiaUtil,
+  });
+}
+
 /**
  * Salva na agenda (localStorage) um evento para todos os usuários,
  * quando o usuário preencher a Data da Audiência em Processos.
@@ -527,12 +561,17 @@ export function agendarAudienciaParaTodosUsuarios({
   audienciaHora,
   audienciaTipo,
   numeroProcessoNovo,
+  codigoCliente,
+  numeroInterno,
 }) {
   const parsedData = parseDataBrCompleta(audienciaData);
   if (!parsedData) return { ok: false, reason: 'data-invalida' };
   const data = dataStr(parsedData);
   const hora = normalizarHora(audienciaHora);
   const descricao = normalizarDescricao({ audienciaTipo, numeroProcessoNovo });
+  const codPad = padCliente(codigoCliente ?? '1');
+  const procNorm = Math.max(1, Math.floor(Number(normalizarProcesso(numeroInterno ?? 1))));
+  const processoRef = montarProcessoRefAgenda(codPad, procNorm);
 
   const store = loadStore();
   const lista = Array.isArray(store[data]) ? store[data] : [];
@@ -545,13 +584,27 @@ export function agendarAudienciaParaTodosUsuarios({
   const novos = usuarios.map((u) => {
     const usuarioId = u?.id ? String(u.id) : '';
     return {
-      id: keyEvento({ data, hora, descricao, usuarioId, numeroProcessoNovo }),
+      id: keyEvento({
+        data,
+        hora,
+        descricao,
+        usuarioId,
+        numeroProcessoNovo,
+        codClientePad: codPad,
+        procNum: procNorm,
+      }),
       usuarioId,
       hora,
       descricao,
       statusCurto: '',
       status: 'Agendado',
       criadoEm: criadoIso,
+      origem: 'processos-audiencia',
+      codCliente: codPad,
+      proc: procNorm,
+      clienteId: codPad,
+      processoId: String(procNorm),
+      processoRef,
     };
   });
 
@@ -634,7 +687,14 @@ export function listarTodosCompromissosAgendaMes({ ano, mes, usuarioId }) {
   const y = Number(ano);
   const m = Number(mes);
   if (!Number.isFinite(y) || !Number.isFinite(m) || m < 1 || m > 12) {
-    return { ano: y, mes: m, usuarioId: String(usuarioId ?? ''), diasComEventos: [] };
+    const uidBad = usuarioId != null ? String(usuarioId) : '';
+    return {
+      ano: y,
+      mes: m,
+      usuarioId: uidBad,
+      todosUsuarios: false,
+      diasComEventos: [],
+    };
   }
   const uid = usuarioId != null ? String(usuarioId) : '';
   const maxDia = new Date(y, m, 0).getDate();
@@ -666,7 +726,7 @@ export function listarTodosCompromissosAgendaMes({ ano, mes, usuarioId }) {
     if (lista.length > 0) diasComEventos.push({ dataBr, eventos: lista });
   }
 
-  return { ano: y, mes: m, usuarioId: uid, diasComEventos };
+  return { ano: y, mes: m, usuarioId: uid, todosUsuarios: false, diasComEventos };
 }
 
 export function salvarStatusCurtoEventoPersistido({ dataBr, evento, statusCurto }) {
@@ -818,17 +878,22 @@ export function agendarEmLoteParaUsuarios({
   if (regraPeriodicidade.fixarDiaMes && !regraPeriodicidade.diaDoMes) {
     return { ok: false, reason: 'dia-do-mes-invalido' };
   }
-  const ocorrencias = gerarOcorrencias({
-    dataBaseBr: dataBaseBr,
+  const ocorrencias = listarDatasOcorrenciasAgendamentoLote({
+    dataBaseBr,
     periodicidade,
-    diaDoMes: regraPeriodicidade.diaDoMes,
+    diaDoMes,
     ajustarParaDiaUtil,
   });
   if (ocorrencias.length === 0) return { ok: false, reason: 'sem-ocorrencias' };
 
+  const codPadLote = padCliente(clienteId || '1');
+  const procLoteNum = Number(String(processoId ?? '').replace(/\D/g, ''));
+  const procLote = Number.isFinite(procLoteNum) && procLoteNum >= 1 ? Math.floor(procLoteNum) : 0;
+  const processoRefLote = procLote >= 1 ? montarProcessoRefAgenda(codPadLote, procLote) : '';
+
   const usuariosValidos = (Array.isArray(usuarios) ? usuarios : [])
-    .map((u) => ({ id: String(u?.id ?? '').trim(), nome: String(u?.nome ?? '').trim() }))
-    .filter((u) => u.id && u.nome);
+    .map((u) => ({ id: String(u?.id ?? '').trim(), u }))
+    .filter((x) => x.id && x.u);
   if (usuariosValidos.length === 0) return { ok: false, reason: 'usuarios-vazios' };
 
   const store = loadStore();
@@ -839,12 +904,12 @@ export function agendarEmLoteParaUsuarios({
     const lista = Array.isArray(store[data]) ? store[data] : [];
     const byId = new Map(lista.map((ev) => [String(ev?.id ?? ''), ev]));
 
-    for (const u of usuariosValidos) {
-      const id = `lote-${data}-${horaNorm || ''}-${u.id}-${numeroProcessoNovo || ''}-${descricao}`.replace(/\s+/g, ' ').trim();
+    for (const { id: uid, u } of usuariosValidos) {
+      const id = `lote-${data}-${horaNorm || ''}-${uid}-${numeroProcessoNovo || ''}-${descricao}`.replace(/\s+/g, ' ').trim();
       const evento = {
         id,
-        usuarioId: u.id,
-        usuarioNome: u.nome,
+        usuarioId: uid,
+        usuarioNome: getNomeExibicaoUsuario(u),
         hora: horaNorm,
         descricao,
         titulo: descricao,
@@ -864,6 +929,9 @@ export function agendarEmLoteParaUsuarios({
         dataBase: dataStr(parsedBase),
         processoId: String(processoId ?? ''),
         clienteId: String(clienteId ?? ''),
+        codCliente: codPadLote,
+        proc: procLote >= 1 ? procLote : undefined,
+        processoRef: processoRefLote,
         numeroProcessoNovo: String(numeroProcessoNovo ?? ''),
         criadoEm: new Date().toISOString(),
       };

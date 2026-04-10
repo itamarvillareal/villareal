@@ -2,7 +2,8 @@
  * Ícones coloridos do menu lateral — SVG escalável, estilo flat com leve profundidade.
  * IDs de gradiente únicos por instância (useId) para evitar colisão no DOM.
  *
- * O item «Cálculos» (id calculos) usa o mesmo ícone Lucide que o botão Cálculos em Processos.
+ * O botão «Cálculos» em Processos usa o mesmo ícone do grupo «Calcular» (calcular-grupo).
+ * O item «Cálculos» (id calculos) usa Lucide Calculator para diferenciar no submenu.
  */
 
 import { useId } from 'react';

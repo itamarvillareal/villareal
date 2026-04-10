@@ -11,6 +11,10 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 
+/**
+ * Linha de extrato / consolidado persistida. Estrutura alinhada a {@code V7__financeiro.sql}
+ * ({@code financeiro_lancamento}): valor sempre ≥ 0 com {@link NaturezaLancamento} definindo o sinal contábil na API.
+ */
 @Entity
 @Table(name = "financeiro_lancamento")
 @Getter

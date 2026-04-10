@@ -93,7 +93,7 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="vl-sidebar w-56 min-h-screen bg-gray-200 border-r border-gray-300 flex flex-col shrink-0 shadow-sm">
+    <aside className="vl-sidebar w-56 h-full min-h-0 bg-gray-200 border-r border-gray-300 flex flex-col shrink-0 shadow-sm">
       <div className="vl-sidebar-header p-3 border-b border-gray-300 bg-gray-100">
         <Link
           to="/"

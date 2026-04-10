@@ -21,4 +21,14 @@ public interface AgendaEventoRepository extends JpaRepository<AgendaEventoEntity
             @Param("usuarioId") Long usuarioId,
             @Param("inicio") LocalDate inicio,
             @Param("fim") LocalDate fim);
+
+    @Query("""
+            SELECT e FROM AgendaEventoEntity e
+            JOIN FETCH e.usuario u
+            WHERE e.dataEvento >= :inicio
+              AND e.dataEvento <= :fim
+            """)
+    List<AgendaEventoEntity> findByPeriodoTodosUsuarios(
+            @Param("inicio") LocalDate inicio,
+            @Param("fim") LocalDate fim);
 }

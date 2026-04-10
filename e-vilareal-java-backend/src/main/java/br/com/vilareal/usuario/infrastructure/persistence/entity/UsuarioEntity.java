@@ -4,11 +4,8 @@ import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
-import org.hibernate.annotations.BatchSize;
 
 import java.time.Instant;
-import java.util.HashSet;
-import java.util.Set;
 
 @Entity
 @Table(name = "usuarios")
@@ -39,14 +36,9 @@ public class UsuarioEntity {
     @Column(nullable = false)
     private Boolean ativo = true;
 
-    @BatchSize(size = 64)
-    @ManyToMany(fetch = FetchType.LAZY)
-    @JoinTable(
-            name = "usuario_perfil",
-            joinColumns = @JoinColumn(name = "usuario_id"),
-            inverseJoinColumns = @JoinColumn(name = "perfil_id")
-    )
-    private Set<PerfilEntity> perfis = new HashSet<>();
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "perfil_id", nullable = false)
+    private PerfilEntity perfil;
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private Instant createdAt;

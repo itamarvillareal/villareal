@@ -25,6 +25,24 @@ function normalizeWhitespace(s) {
 }
 
 /**
+ * Alguns bancos (ex.: Cora) enviam CHECKNUM "0" ou só zeros como placeholder.
+ * Isso não deve substituir um FITID real — em JS `"0"` é truthy e quebrava `checkNum || fitid`.
+ */
+function checkNumSignificativo(checkNum) {
+  const c = normalizeWhitespace(checkNum);
+  if (!c) return '';
+  if (/^0+$/.test(c)) return '';
+  return c;
+}
+
+/** Identificador único por transação OFX: FITID (preferencial), depois cheque real, depois índice no arquivo. */
+function idLancamentoOfx(block, idx) {
+  const fitid = normalizeWhitespace(getTagValue(block, 'FITID'));
+  const check = checkNumSignificativo(getTagValue(block, 'CHECKNUM'));
+  return normalizeWhitespace(fitid || check || String((idx ?? 0) + 1));
+}
+
+/**
  * Lê os primeiros bytes como ASCII (0–127) para interpretar o cabeçalho OFX sem depender da codificação do corpo.
  */
 function decodeAsciiPrefixForOfxHeader(buffer, maxLen = 4096) {
@@ -174,7 +192,11 @@ export function sanitizarLancamentoImportacaoExtrato(t) {
   };
 }
 
-/** Quantos lançamentos de `novo` ainda não existem em `existente`. */
+/**
+ * Quantos lançamentos de `novo` seriam acrescentados ao mesclar com `existente`.
+ * Ignora só os que já constam no extrato/base (mesma chave: nº + data + valor em centavos).
+ * Várias linhas idênticas no próprio arquivo `novo` contam todas, exceto as que batem com `existente`.
+ */
 export function contarLancamentosNovos(existente, novo) {
   const keys = new Set((existente || []).map((t) => chaveDedupeLancamento(t)));
   let n = 0;
@@ -184,32 +206,35 @@ export function contarLancamentosNovos(existente, novo) {
   return n;
 }
 
-/** Lista os lançamentos de `novo` cuja chave (FITID + data + valor) ainda não está em `existente`. */
+/**
+ * Lista os lançamentos de `novo` cuja chave ainda não está em `existente` (extrato já gravado/carregado).
+ * Duplicatas **dentro** de `novo` mantêm-se: só a comparação com `existente` usa deduplicação.
+ */
 export function listarLancamentosNovosDedupe(existente, novo) {
   const keys = new Set((existente || []).map((t) => chaveDedupeLancamento(t)));
   return (novo || []).filter((t) => !keys.has(chaveDedupeLancamento(t)));
 }
 
 /**
- * Mescla lançamentos de um novo OFX com o extrato já existente do banco.
- * Não remove linhas antigas; ignora duplicatas (mesmo Id./FITID + data + valor em centavos).
+ * Mescla lançamentos de um novo OFX/PDF com o extrato já existente.
+ * Não remove linhas antigas.
+ * Ignora apenas linhas do arquivo novo cuja chave (FITID/nº + data + valor) **já exista no extrato anterior**;
+ * várias transações iguais **no mesmo arquivo** são todas incluídas (podem ser movimentos reais repetidos).
  * Recalcula saldo em ordem cronológica.
  */
 export function mergeExtratoBancario(existente, novo) {
-  const map = new Map();
-  for (const t of existente || []) {
-    map.set(chaveDedupeLancamento(t), { ...t });
-  }
+  const keysExistente = new Set((existente || []).map((t) => chaveDedupeLancamento(t)));
+  const base = (existente || []).map((t) => ({ ...t }));
+  const adicionados = [];
   for (const t of novo || []) {
     const k = chaveDedupeLancamento(t);
-    if (!map.has(k)) {
-      const row = sanitizarLancamentoImportacaoExtrato({ ...t });
-      const L = String(row.letra ?? '').trim().toUpperCase();
-      if (!L) row.letra = 'N';
-      map.set(k, row);
-    }
+    if (keysExistente.has(k)) continue;
+    const row = sanitizarLancamentoImportacaoExtrato({ ...t });
+    const L = String(row.letra ?? '').trim().toUpperCase();
+    if (!L) row.letra = 'N';
+    adicionados.push(row);
   }
-  const arr = Array.from(map.values());
+  const arr = [...base, ...adicionados];
   arr.sort((a, b) => {
     const da = (a.data || '').split('/').reverse().join('-');
     const db = (b.data || '').split('/').reverse().join('-');
@@ -341,7 +366,7 @@ export function mergeExtratoApiComLocal(apiRows, localRows) {
   for (const t of localRows || []) {
     const k = chaveDedupeLancamento(t);
     if (map.has(k)) continue;
-    const aid = Number(t.apiId);
+    const aid = Number(t.apiId ?? t.id);
     if (servidorSemLancamentosNesteBanco && Number.isFinite(aid) && aid > 0) {
       continue;
     }
@@ -364,7 +389,7 @@ export function mergeExtratoApiComLocal(apiRows, localRows) {
   return arr;
 }
 
-export function parseOfxToExtrato(ofxText, _options = {}) {
+export function parseOfxToExtrato(ofxText) {
   const txt = String(ofxText ?? '');
 
   // Ledger balance (saldo final) se existir
@@ -383,9 +408,7 @@ export function parseOfxToExtrato(ofxText, _options = {}) {
   const transacoes = stmts.map((b, idx) => {
     const trnAmt = parseNumberBRLike(getTagValue(b, 'TRNAMT'));
     const dtPosted = parseOfxDate(getTagValue(b, 'DTPOSTED'));
-    const fitid = getTagValue(b, 'FITID');
-    const checkNum = getTagValue(b, 'CHECKNUM');
-    const id = normalizeWhitespace(checkNum || fitid || String((idx ?? 0) + 1));
+    const id = idLancamentoOfx(b, idx);
     const name = normalizeWhitespace(getTagValue(b, 'NAME'));
     const memo = normalizeWhitespace(getTagValue(b, 'MEMO'));
     const descricao = memo || name || 'LANÇAMENTO';
