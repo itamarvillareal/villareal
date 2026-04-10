@@ -274,7 +274,7 @@ export async function executarSincronizacaoAudienciasAgendaMesEProcessos(mes, an
     const filtrados = (rows || []).filter((e) => {
       const br = dataEventoApiParaDataBr(e?.dataEvento);
       if (!/^\d{2}\/\d{2}\/\d{4}$/.test(br)) return false;
-      const [dd, mo, yy] = br.split('/');
+      const [, mo, yy] = br.split('/');
       return Number(yy) === y && mo === mm;
     });
     const mapped = filtrados.map(mapApiAgendaLinhaParaEventoComData).filter((x) => x.dataBr);

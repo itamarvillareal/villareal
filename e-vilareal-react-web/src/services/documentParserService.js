@@ -252,8 +252,8 @@ export function extrairDadosDocumentoPessoal(texto) {
   if (!cpf) cpf = extrairCpf(texto);
   if (!dataNascimento) dataNascimento = extrairDataNascimento(texto);
 
-  if (!nome || !cpf || !dataNascimento) {
-    // Ajuda na calibração: log leve no console para ajustar heurísticas com documentos reais.
+  if ((!nome || !cpf || !dataNascimento) && import.meta.env.DEV) {
+    // Só em desenvolvimento: ajuda a calibrar heurísticas com documentos reais.
     console.debug('OCR bruto (parcial) para ajuste:', (texto || '').slice(0, 800));
   }
   return {

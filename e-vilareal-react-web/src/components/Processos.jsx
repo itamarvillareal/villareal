@@ -607,7 +607,7 @@ export function Processos() {
     return () => {
       try {
         window.localStorage.setItem('vilareal:processos:edicao-desabilitada-ao-sair:v1', 'true');
-      } catch (_) {
+      } catch {
         /* ignore */
       }
     };
@@ -787,7 +787,6 @@ export function Processos() {
     }
     setImovelId(nextImovelIdStr);
 
-    const idImovelNum = Number(String(nextImovelIdStr).replace(/\D/g, ''));
     const mockDoImovel = null;
 
     const ueSalvo = pickCampoStrSalvo(r, 'unidadeEndereco', '');

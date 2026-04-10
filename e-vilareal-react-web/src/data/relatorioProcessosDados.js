@@ -7,6 +7,33 @@ import { listarProcessosPorCodigoCliente, mapApiProcessoToUiShape } from '../rep
 
 const CONSULTORES = ['Karla Almeida', 'ITAMAR', 'DAAE', 'Ana Luisa'];
 
+/** Paraleliza GET por cliente (evita N+1 sequencial no relatório). */
+const PROCESSOS_RELATORIO_FETCH_CONCURRENCY = 10;
+
+/**
+ * @param {Array<{ codigo?: string, nomeRazao?: string }>} sortedClientes já ordenados
+ * @returns {Promise<Array<{ cli: object, digits: string, codPad: string, rawList: unknown[] }>>}
+ */
+async function listarProcessosPorClientesEmLotes(sortedClientes) {
+  const entries = [];
+  for (const cli of sortedClientes) {
+    const digits = String(cli.codigo ?? '').replace(/\D/g, '');
+    const codPad = digits.padStart(8, '0').slice(-8);
+    if (!codPad || /^0{8}$/.test(codPad)) continue;
+    entries.push({ cli, digits, codPad, rawList: [] });
+  }
+  for (let i = 0; i < entries.length; i += PROCESSOS_RELATORIO_FETCH_CONCURRENCY) {
+    const chunk = entries.slice(i, i + PROCESSOS_RELATORIO_FETCH_CONCURRENCY);
+    await Promise.all(
+      chunk.map(async (e) => {
+        const raw = await listarProcessosPorCodigoCliente(e.codPad);
+        e.rawList = Array.isArray(raw) ? raw : [];
+      })
+    );
+  }
+  return entries;
+}
+
 function dataBrDeslocada(c, p, diasExtra) {
   const base = new Date(2024, 5, 10);
   base.setDate(base.getDate() + diasExtra + c * 2 + p * 3);
@@ -37,17 +64,12 @@ export async function obterParesClienteProcRelatorio() {
 
   const out = [];
   const sorted = [...clientes].sort((a, b) => String(a.codigo ?? '').localeCompare(String(b.codigo ?? '')));
+  const entries = await listarProcessosPorClientesEmLotes(sorted);
 
-  for (const cli of sorted) {
-    const digits = String(cli.codigo ?? '').replace(/\D/g, '');
+  for (const { digits, rawList } of entries) {
     const codNum = Number(digits.replace(/^0+/, '') || '0');
     if (!Number.isFinite(codNum) || codNum < 1) continue;
-    const codPad = digits.padStart(8, '0').slice(-8);
-    if (!codPad || /^0{8}$/.test(codPad)) continue;
-
-    const rawList = await listarProcessosPorCodigoCliente(codPad);
-    const procs = Array.isArray(rawList) ? rawList : [];
-    for (const raw of procs) {
+    for (const raw of rawList) {
       const u = mapApiProcessoToUiShape(raw);
       const p = Number(u.numeroInterno);
       if (!Number.isFinite(p) || p < 1) continue;
@@ -71,18 +93,13 @@ export async function obterLinhasBaseRelatorioProcessos() {
   }
 
   const sorted = [...clientes].sort((a, b) => String(a.codigo ?? '').localeCompare(String(b.codigo ?? '')));
+  const entries = await listarProcessosPorClientesEmLotes(sorted);
   const out = [];
   let idx = 0;
 
-  for (const cli of sorted) {
-    const digits = String(cli.codigo ?? '').replace(/\D/g, '');
-    const codPad = digits.padStart(8, '0').slice(-8);
-    if (!codPad || /^0{8}$/.test(codPad)) continue;
-
+  for (const { cli, digits, codPad, rawList } of entries) {
     const nomeCliente = String(cli.nomeRazao ?? '').trim() || `CLIENTE ${digits.replace(/^0+/, '') || '?'}`;
-    const rawList = await listarProcessosPorCodigoCliente(codPad);
-    const procs = Array.isArray(rawList) ? rawList : [];
-    const sortedProcs = [...procs].sort((a, b) => Number(a.numeroInterno) - Number(b.numeroInterno));
+    const sortedProcs = [...rawList].sort((a, b) => Number(a.numeroInterno) - Number(b.numeroInterno));
 
     for (const raw of sortedProcs) {
       const u = mapApiProcessoToUiShape(raw);

@@ -1,32 +1,34 @@
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Outlet, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext.jsx';
 import { Login } from './components/Login.jsx';
 import { featureFlags } from './config/featureFlags.js';
 import { Sidebar } from './components/Sidebar';
-import { Board } from './components/Board';
-import { CadastroPessoas } from './components/cadastro-pessoas/CadastroPessoas';
-import { RelatorioPessoas } from './components/cadastro-pessoas/RelatorioPessoas.jsx';
-import { CadastroClientes } from './components/CadastroClientes';
-import { Agenda } from './components/Agenda';
-import { Processos } from './components/Processos';
-import { PublicacoesProcessos } from './components/PublicacoesProcessos.jsx';
-import { MonitoringPeoplePage } from './components/monitoring/MonitoringPeoplePage.jsx';
-import { Imoveis } from './components/Imoveis';
-import { ImoveisAdministracaoFinanceiro } from './components/ImoveisAdministracaoFinanceiro.jsx';
-import { RelatorioImoveis } from './components/RelatorioImoveis.jsx';
-import { RelatorioFinanceiroImoveis } from './components/RelatorioFinanceiroImoveis.jsx';
-import { Relatorio } from './components/Relatorio';
-import { RelatorioCalculos } from './components/RelatorioCalculos';
-import { Calculos } from './components/Calculos';
-import { Diagnosticos } from './components/Diagnosticos';
-import { Financeiro } from './components/Financeiro';
-import { Usuarios } from './components/Usuarios';
-import { Configuracoes } from './components/Configuracoes';
-import { Topicos } from './components/Topicos.jsx';
-import { GerenteTopicos } from './components/GerenteTopicos.jsx';
-import { Atividade } from './components/Atividade.jsx';
-import { AnaLuisa } from './components/AnaLuisa.jsx';
+import {
+  LazyAgenda,
+  LazyAnaLuisa,
+  LazyAtividade,
+  LazyBoard,
+  LazyCadastroClientes,
+  LazyCadastroPessoas,
+  LazyCalculos,
+  LazyConfiguracoes,
+  LazyDiagnosticos,
+  LazyFinanceiro,
+  LazyGerenteTopicos,
+  LazyImoveis,
+  LazyImoveisAdministracaoFinanceiro,
+  LazyMonitoringPeoplePage,
+  LazyProcessos,
+  LazyPublicacoesProcessos,
+  LazyRelatorio,
+  LazyRelatorioCalculos,
+  LazyRelatorioFinanceiroImoveis,
+  LazyRelatorioImoveis,
+  LazyRelatorioPessoas,
+  LazyTopicos,
+  LazyUsuarios,
+} from './app/lazyScreens.jsx';
 import { atualizarIndicesMensaisAposDia10 } from './services/monetaryIndicesService.js';
 import {
   getPerfilAtivoParaPermissoes,
@@ -128,7 +130,15 @@ function Layout() {
     <div className="flex h-screen min-h-0 bg-gray-100 overflow-hidden">
       <Sidebar />
       <main className="flex-1 flex flex-col min-w-0 min-h-0 overflow-y-auto overflow-x-hidden bg-[var(--vl-bg-page)]">
-        <Outlet />
+        <Suspense
+          fallback={
+            <div className="flex flex-1 items-center justify-center p-8 text-sm text-slate-600 dark:text-slate-400">
+              Carregando módulo…
+            </div>
+          }
+        >
+          <Outlet />
+        </Suspense>
       </main>
       {import.meta.env.MODE === 'homolog' ? (
         <div
@@ -238,35 +248,35 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route element={<ProtectedRoute />}>
             <Route element={<Layout />}>
-              <Route path="/" element={<Board />} />
+              <Route path="/" element={<LazyBoard />} />
               <Route path="/clientes" element={<RedirectClientesParaLista />} />
-              <Route path="/clientes/lista" element={<CadastroPessoas />} />
-              <Route path="/clientes/relatorio" element={<RelatorioPessoas />} />
-              <Route path="/clientes/editar/:id" element={<CadastroPessoas />} />
-              <Route path="/clientes/nova" element={<CadastroPessoas />} />
-              <Route path="/pessoas" element={<CadastroClientes />} />
-              <Route path="/agenda" element={<Agenda />} />
-              <Route path="/ana-luisa" element={<AnaLuisa />} />
-              <Route path="/atividade" element={<Atividade />} />
-              <Route path="/processos" element={<Processos />} />
-              <Route path="/processos/publicacoes" element={<PublicacoesProcessos />} />
-              <Route path="/processos/monitoramento" element={<MonitoringPeoplePage />} />
-              <Route path="/imoveis" element={<Imoveis />} />
-              <Route path="/imoveis/financeiro" element={<ImoveisAdministracaoFinanceiro />} />
-              <Route path="/imoveis/relatorio-financeiro" element={<RelatorioFinanceiroImoveis />} />
-              <Route path="/relatorio-imoveis" element={<RelatorioImoveis />} />
-              <Route path="/relatorio" element={<Relatorio />} />
-              <Route path="/relatorio-calculos" element={<RelatorioCalculos />} />
-              <Route path="/calculos" element={<Calculos />} />
-              <Route path="/topicos" element={<Topicos />} />
-              <Route path="/topicos/gerente" element={<GerenteTopicos />} />
-              <Route path="/diagnosticos" element={<Diagnosticos />} />
-              <Route path="/financeiro" element={<Financeiro />} />
-              <Route path="/usuarios" element={<Usuarios />} />
-              <Route path="/configuracoes" element={<Configuracoes />} />
+              <Route path="/clientes/lista" element={<LazyCadastroPessoas />} />
+              <Route path="/clientes/relatorio" element={<LazyRelatorioPessoas />} />
+              <Route path="/clientes/editar/:id" element={<LazyCadastroPessoas />} />
+              <Route path="/clientes/nova" element={<LazyCadastroPessoas />} />
+              <Route path="/pessoas" element={<LazyCadastroClientes />} />
+              <Route path="/agenda" element={<LazyAgenda />} />
+              <Route path="/ana-luisa" element={<LazyAnaLuisa />} />
+              <Route path="/atividade" element={<LazyAtividade />} />
+              <Route path="/processos" element={<LazyProcessos />} />
+              <Route path="/processos/publicacoes" element={<LazyPublicacoesProcessos />} />
+              <Route path="/processos/monitoramento" element={<LazyMonitoringPeoplePage />} />
+              <Route path="/imoveis" element={<LazyImoveis />} />
+              <Route path="/imoveis/financeiro" element={<LazyImoveisAdministracaoFinanceiro />} />
+              <Route path="/imoveis/relatorio-financeiro" element={<LazyRelatorioFinanceiroImoveis />} />
+              <Route path="/relatorio-imoveis" element={<LazyRelatorioImoveis />} />
+              <Route path="/relatorio" element={<LazyRelatorio />} />
+              <Route path="/relatorio-calculos" element={<LazyRelatorioCalculos />} />
+              <Route path="/calculos" element={<LazyCalculos />} />
+              <Route path="/topicos" element={<LazyTopicos />} />
+              <Route path="/topicos/gerente" element={<LazyGerenteTopicos />} />
+              <Route path="/diagnosticos" element={<LazyDiagnosticos />} />
+              <Route path="/financeiro" element={<LazyFinanceiro />} />
+              <Route path="/usuarios" element={<LazyUsuarios />} />
+              <Route path="/configuracoes" element={<LazyConfiguracoes />} />
               <Route path="/diligencias" element={<Navigate to="/pendencias" replace />} />
               <Route path="/dativos" element={<Navigate to="/pendencias" replace />} />
-              <Route path="/:section" element={<Board />} />
+              <Route path="/:section" element={<LazyBoard />} />
             </Route>
           </Route>
         </Routes>

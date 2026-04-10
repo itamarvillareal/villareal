@@ -57,7 +57,6 @@ export async function carregarPermissoesUsuario(usuarioId) {
   const defaults = Object.fromEntries(MODULOS_PERMISSAO.map((m) => [m.id, true]));
   const perfil = await garantirPerfilUsuario(usuarioId);
   const permissoes = await request('/api/permissoes');
-  const byId = new Map((permissoes || []).map((p) => [Number(p.id), p]));
   const idsAtivos = new Set(Array.isArray(perfil.permissaoIds) ? perfil.permissaoIds.map(Number) : []);
   const out = { ...defaults };
   for (const modulo of MODULOS_PERMISSAO) {

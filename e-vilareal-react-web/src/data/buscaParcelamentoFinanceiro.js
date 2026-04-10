@@ -24,7 +24,7 @@ function parseQuantidadeParcelasNumero(s) {
 function normalizarDataBRLeve(s) {
   const t = String(s ?? '').trim();
   if (t.length < 8) return '';
-  const parts = t.split(/[/\-]/).map((p) => String(p).trim());
+  const parts = t.split(/[/-]/).map((p) => String(p).trim());
   if (parts.length !== 3) return '';
   const dd = String(Math.min(31, Math.max(1, Number(parts[0]) || 0))).padStart(2, '0');
   const mm = String(Math.min(12, Math.max(1, Number(parts[1]) || 0))).padStart(2, '0');

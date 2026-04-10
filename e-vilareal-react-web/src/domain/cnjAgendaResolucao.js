@@ -73,13 +73,13 @@ export function extrairChavesCandidatasCnjDoTextoAgenda(texto) {
   }
 
   // Padrão agenda / formulário: 5717034.38.2025 (com ou sem espaços ao redor de . e -)
-  const reParcial = /\b(\d{7})\s*[.\-]\s*(\d{2})\s*\.\s*(\d{4})\b/g;
+  const reParcial = /\b(\d{7})\s*[-.]\s*(\d{2})\s*\.\s*(\d{4})\b/g;
   while ((m = reParcial.exec(s)) !== null) {
     push(`${m[1]}${m[2]}${m[3]}`);
   }
 
   // Mesmo padrão colado a "nº", "Nº", "n°" (sem word boundary estrito antes do dígito)
-  const reAposNo = /(?:^|[^\d])(?:n[ºo°]|autos)\s*(\d{7})\s*[.\-]\s*(\d{2})\s*\.\s*(\d{4})\b/gi;
+  const reAposNo = /(?:^|[^\d])(?:n[ºo°]|autos)\s*(\d{7})\s*[-.]\s*(\d{2})\s*\.\s*(\d{4})\b/gi;
   while ((m = reAposNo.exec(s)) !== null) {
     push(`${m[1]}${m[2]}${m[3]}`);
   }

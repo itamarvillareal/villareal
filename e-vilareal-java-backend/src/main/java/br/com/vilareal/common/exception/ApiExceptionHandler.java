@@ -19,6 +19,12 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+/**
+ * Respostas de erro JSON padronizadas.
+ * <p>Contrato com o front: <strong>401</strong> apenas para falha de autenticação (JWT inválido/expirado,
+ * credenciais erradas) — o SPA limpa a sessão. Regras de negócio e permissão devem preferir
+ * <strong>422</strong> / <strong>403</strong>, para não deslogar o utilizador por engano.</p>
+ */
 @RestControllerAdvice
 public class ApiExceptionHandler {
 

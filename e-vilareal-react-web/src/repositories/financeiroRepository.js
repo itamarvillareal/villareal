@@ -14,11 +14,7 @@ import {
   savePersistedExtratosFinanceiro,
 } from '../data/financeiroData.js';
 import { resolverProcessoId } from './processosRepository.js';
-import {
-  chaveDedupeLancamento,
-  listarLancamentosNovosDedupe,
-  sanitizarLancamentoImportacaoExtrato,
-} from '../utils/ofx.js';
+import { listarLancamentosNovosDedupe, sanitizarLancamentoImportacaoExtrato } from '../utils/ofx.js';
 
 function parseBrDateToIso(v) {
   const s = String(v ?? '').trim();
@@ -232,15 +228,18 @@ function mapUiLancamentoToApi(t, contaIdByNome, letraToConta) {
   return body;
 }
 
-export async function listarContasFinanceiro() {
+export async function listarContasFinanceiro(opts = {}) {
+  const { signal } = opts;
   if (!featureFlags.useApiFinanceiro) return [];
-  return request('/api/financeiro/contas');
+  return request('/api/financeiro/contas', { signal });
 }
 
 /** Leitura API (fonte principal quando flag ativa). */
-export async function listarLancamentosFinanceiro(filtros = {}) {
+export async function listarLancamentosFinanceiro(filtros = {}, opts = {}) {
+  const { signal } = opts;
   if (!featureFlags.useApiFinanceiro) return [];
   return request('/api/financeiro/lancamentos', {
+    signal,
     query: {
       clienteId: filtros.clienteId ?? undefined,
       processoId: filtros.processoId ?? undefined,
@@ -251,7 +250,8 @@ export async function listarLancamentosFinanceiro(filtros = {}) {
   });
 }
 
-export async function listarLancamentosFinanceiroPaginados(filtros = {}) {
+export async function listarLancamentosFinanceiroPaginados(filtros = {}, opts = {}) {
+  const { signal } = opts;
   if (!featureFlags.useApiFinanceiro) {
     return { content: [], totalElements: 0, totalPages: 0, size: filtros.size ?? 20, number: 0 };
   }
@@ -265,15 +265,18 @@ export async function listarLancamentosFinanceiroPaginados(filtros = {}) {
     dataInicio: filtros.dataInicio ?? undefined,
     dataFim: filtros.dataFim ?? undefined,
   };
-  return request('/api/financeiro/lancamentos/paginada', { query });
+  return request('/api/financeiro/lancamentos/paginada', { query, signal });
 }
 
-export async function carregarExtratosFinanceiroApiFirst() {
+export async function carregarExtratosFinanceiroApiFirst({ signal } = {}) {
   if (!featureFlags.useApiFinanceiro) {
     const persisted = loadPersistedExtratosFinanceiro();
     return persisted ? { ...getExtratosIniciais(), ...persisted } : getExtratosIniciais();
   }
-  const [contas, lancs] = await Promise.all([listarContasFinanceiro(), listarLancamentosFinanceiro()]);
+  const [contas, lancs] = await Promise.all([
+    listarContasFinanceiro({ signal }),
+    listarLancamentosFinanceiro({}, { signal }),
+  ]);
   const contaToLetra = {
     ...contaMaps().contaToLetra,
     ...Object.fromEntries((contas || []).map((c) => [c.nome, c.codigo])),

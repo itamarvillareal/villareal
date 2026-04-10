@@ -59,6 +59,8 @@ export function UsuariosListaApiPaginada({
     apenasAtivos: false,
   });
   const debounceRef = useRef(null);
+  /** Cancela GET sobreposto (nova página/filtro) e ao desmontar. */
+  const loadAcRef = useRef(null);
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -76,27 +78,45 @@ export function UsuariosListaApiPaginada({
 
   const carregar = useCallback(async () => {
     void refreshKey;
+    loadAcRef.current?.abort();
+    const ac = new AbortController();
+    loadAcRef.current = ac;
     const q = buildQueryFromCriterio(debounced.criterioBusca, debounced.valorBusca);
     setLoading(true);
     setError('');
     try {
-      const res = await listarUsuariosPaginados({
-        page,
-        size: pageSize,
-        apenasAtivos: debounced.apenasAtivos,
-        nome: q.nome,
-        login: q.login,
-        codigo: q.codigo,
-        nomePessoa: q.nomePessoa,
-      });
+      const res = await listarUsuariosPaginados(
+        {
+          page,
+          size: pageSize,
+          apenasAtivos: debounced.apenasAtivos,
+          nome: q.nome,
+          login: q.login,
+          codigo: q.codigo,
+          nomePessoa: q.nomePessoa,
+        },
+        { signal: ac.signal },
+      );
+      if (loadAcRef.current !== ac) return;
       setPageData(res);
     } catch (e) {
+      if (e?.name === 'AbortError') return;
+      if (loadAcRef.current !== ac) return;
       setPageData(null);
       setError(e?.message || 'Erro ao carregar usuários.');
     } finally {
-      setLoading(false);
+      if (loadAcRef.current === ac) {
+        setLoading(false);
+      }
     }
   }, [page, pageSize, debounced, refreshKey]);
+
+  useEffect(
+    () => () => {
+      loadAcRef.current?.abort();
+    },
+    [],
+  );
 
   useEffect(() => {
     void carregar();

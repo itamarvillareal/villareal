@@ -42,7 +42,8 @@ export async function listarUsuarios() {
   return Array.isArray(data) ? data.map(mapApiUsuarioToView) : [];
 }
 
-export async function listarUsuariosPaginados(p = {}) {
+export async function listarUsuariosPaginados(p = {}, opts = {}) {
+  const { signal } = opts;
   if (!featureFlags.useApiUsuarios) {
     return {
       content: [],
@@ -77,7 +78,7 @@ export async function listarUsuariosPaginados(p = {}) {
     qs.set('pessoaId', String(Math.floor(Number(pessoaId))));
   }
   if (nomePessoa != null && String(nomePessoa).trim()) qs.set('nomePessoa', String(nomePessoa).trim());
-  const raw = await request(`/api/usuarios/paginada?${qs.toString()}`);
+  const raw = await request(`/api/usuarios/paginada?${qs.toString()}`, { signal });
   const content = Array.isArray(raw?.content) ? raw.content.map(mapApiUsuarioToView) : [];
   return {
     ...raw,

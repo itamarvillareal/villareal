@@ -61,7 +61,7 @@ function normalizarNomeParaId(nome) {
  */
 export function Usuarios() {
   const [usuariosAtivos, setUsuariosAtivosState] = useState(() => getUsuariosAtivos());
-  const [loading, setLoading] = useState(false);
+  const [loading] = useState(false);
   const [erroCarregamento, setErroCarregamento] = useState('');
   const extraSlotSeq = useRef(2);
   const [slotsCustom, setSlotsCustom] = useState(() => []);

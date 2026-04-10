@@ -880,6 +880,8 @@ export function Financeiro() {
   const [modalConfigFinanceiro, setModalConfigFinanceiro] = useState(false);
   const [apiFinanceiroLoading, setApiFinanceiroLoading] = useState(false);
   const [apiFinanceiroErro, setApiFinanceiroErro] = useState('');
+  /** Cancela GETs sobrepostos e evita `setState` com resposta obsoleta ao sair do Financeiro. */
+  const extratosReloadAcRef = useRef(null);
   const [disposicaoRelatorios, setDisposicaoRelatorios] = useState(
     () => loadExibicaoFinanceiro().disposicao
   );
@@ -888,10 +890,14 @@ export function Financeiro() {
 
   const recarregarExtratosFinanceiroApi = useCallback(async () => {
     if (!featureFlags.useApiFinanceiro) return;
+    extratosReloadAcRef.current?.abort();
+    const ac = new AbortController();
+    extratosReloadAcRef.current = ac;
     setApiFinanceiroLoading(true);
     setApiFinanceiroErro('');
     try {
-      const dados = await carregarExtratosFinanceiroApiFirst();
+      const dados = await carregarExtratosFinanceiroApiFirst({ signal: ac.signal });
+      if (extratosReloadAcRef.current !== ac) return;
       if (!dados || typeof dados !== 'object') return;
       const base = getExtratosIniciais();
       const cached = loadPersistedExtratosFinanceiro() || {};
@@ -914,11 +920,22 @@ export function Financeiro() {
       }
       setExtratosPorBanco(merged);
     } catch (e) {
+      if (e?.name === 'AbortError') return;
+      if (extratosReloadAcRef.current !== ac) return;
       setApiFinanceiroErro(e?.message || 'Falha ao carregar financeiro da API.');
     } finally {
-      setApiFinanceiroLoading(false);
+      if (extratosReloadAcRef.current === ac) {
+        setApiFinanceiroLoading(false);
+      }
     }
   }, []);
+
+  useEffect(
+    () => () => {
+      extratosReloadAcRef.current?.abort();
+    },
+    [],
+  );
 
   const zerarExtratoSelecionado = useCallback(async () => {
     const nome = String(instituicaoSelecionada || '').trim();
@@ -1979,15 +1996,6 @@ export function Financeiro() {
     setMenuFiltroDescricaoExtratoAberto(false);
   }
 
-  function limparFiltrosCodProcExtrato() {
-    setFiltroCodClienteExtrato('');
-    setFiltroCodClienteExtratoRascunho('');
-    setMenuFiltroCodClienteExtratoAberto(false);
-    setFiltroProcExtrato('');
-    setFiltroProcExtratoRascunho('');
-    setMenuFiltroProcExtratoAberto(false);
-  }
-
   function handleClickCabecalhoCodClienteExtrato() {
     if (codClienteExtratoHeaderTimerRef.current) {
       clearTimeout(codClienteExtratoHeaderTimerRef.current);
@@ -2152,11 +2160,6 @@ export function Financeiro() {
     setFiltroProcConsolidado('');
     setFiltroProcConsolidadoRascunho('');
     setMenuFiltroProcConsolidadoAberto(false);
-  }
-
-  function limparFiltrosCodProcConsolidado() {
-    limparFiltroCodClienteConsolidado();
-    limparFiltroProcConsolidado();
   }
 
   function toggleExtratoLinhaSelecionada(key) {
@@ -2361,16 +2364,6 @@ export function Financeiro() {
     setInstituicaoSelecionada(nb);
     if (extratosInativosSet.has(nb)) setMostrarExtratosInativos(true);
     setLinhaBancoAlvo({ nomeBanco: nb, numero: transacao.numero, data: transacao.data });
-  }
-
-  function readFileAsText(file) {
-    if (file && typeof file.text === 'function') return file.text();
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onerror = () => reject(new Error('Não foi possível ler o arquivo.'));
-      reader.onload = () => resolve(String(reader.result ?? ''));
-      reader.readAsText(file);
-    });
   }
 
   function aplicarExtratoNoBanco(prev, nomeBanco, listaNova, modo) {
@@ -4792,13 +4785,181 @@ export function Financeiro() {
                       Valor <span className="text-slate-400 font-normal">({formatValor(saldoHeaderConsolidado)})</span>
                     </th>
                     <th className="text-left py-2 px-2 font-medium text-slate-600 border-r border-slate-200 w-[9.5rem] cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloConsolidado('descricaoDetalhada')} title="Mesmo texto que Categoria / Obs. no extrato do banco. Duplo clique: ordenar A→Z / Z→A">Descrição / Contraparte</th>
-                    <th className="text-center py-2 px-2 font-medium text-slate-600 border-r border-slate-200 w-[4.5rem] cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloConsolidado('codCliente')} title="Duplo clique: ordenar">Cod. Cliente</th>
                     <th
-                      className="text-center py-2 px-2 font-medium text-slate-600 border-r border-slate-200 w-14 cursor-pointer hover:bg-slate-100 select-none"
-                      onDoubleClick={() => handleDuploCliqueTituloConsolidado('proc')}
-                      title={isContaCompensacao ? 'Duplo clique: ordenar por Elo' : 'Duplo clique: ordenar por Proc.'}
+                      ref={menuFiltroCodClienteConsolidadoRef}
+                      className={`relative text-center py-2 px-2 font-medium border-r border-slate-200 w-[4.5rem] select-none ${
+                        filtroCodClienteConsolidado.trim()
+                          ? 'bg-amber-50/90 text-amber-950'
+                          : 'text-slate-600'
+                      } cursor-pointer hover:bg-slate-100`}
+                      title="Clique: filtrar por código de cliente (normalizado). Duplo clique: ordenar"
                     >
-                      {isContaCompensacao ? 'Elo' : 'Proc.'}
+                      <div
+                        className="flex items-center justify-center gap-1"
+                        onClick={handleClickCabecalhoCodClienteConsolidado}
+                        onDoubleClick={handleDuploCliqueCabecalhoCodClienteConsolidado}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            handleClickCabecalhoCodClienteConsolidado();
+                          }
+                        }}
+                      >
+                        <span>Cod. Cliente</span>
+                        {filtroCodClienteConsolidado.trim() ? (
+                          <span
+                            className="text-[10px] font-semibold uppercase tracking-tight text-amber-800"
+                            aria-hidden
+                          >
+                            filtro
+                          </span>
+                        ) : null}
+                      </div>
+                      {menuFiltroCodClienteConsolidadoAberto ? (
+                        <div
+                          className="absolute left-1/2 -translate-x-1/2 top-full z-[80] mt-1 w-[min(20rem,calc(100vw-2rem))] rounded-md border border-slate-200 bg-white py-2 px-2.5 text-left text-xs font-normal text-slate-800 shadow-lg"
+                          onClick={(ev) => ev.stopPropagation()}
+                          onMouseDown={(ev) => ev.stopPropagation()}
+                        >
+                          <p className="text-[11px] text-slate-500 mb-2">
+                            Filtrar por código de cliente (comparação normalizada, como no cadastro).
+                          </p>
+                          <label
+                            className="block text-[11px] text-slate-600 mb-1"
+                            htmlFor="filtro-cod-cliente-consolidado"
+                          >
+                            Código
+                          </label>
+                          <input
+                            id="filtro-cod-cliente-consolidado"
+                            type="text"
+                            autoFocus
+                            placeholder="ex.: 123"
+                            value={filtroCodClienteConsolidadoRascunho}
+                            onChange={(e) => setFiltroCodClienteConsolidadoRascunho(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                aplicarFiltroCodClienteConsolidado();
+                              }
+                            }}
+                            className="w-full rounded border border-slate-300 px-2 py-1.5 text-xs mb-2"
+                          />
+                          <div className="flex flex-wrap gap-1.5">
+                            <button
+                              type="button"
+                              className="rounded border border-indigo-600 bg-indigo-600 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-indigo-700"
+                              onClick={aplicarFiltroCodClienteConsolidado}
+                            >
+                              Aplicar
+                            </button>
+                            <button
+                              type="button"
+                              className="rounded border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
+                              onClick={limparFiltroCodClienteConsolidado}
+                            >
+                              Limpar
+                            </button>
+                          </div>
+                          {filtroCodClienteConsolidado.trim() ? (
+                            <p className="mt-2 text-[10px] text-slate-500 border-t border-slate-100 pt-2">
+                              Ativo: “{filtroCodClienteConsolidado}”
+                            </p>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </th>
+                    <th
+                      ref={menuFiltroProcConsolidadoRef}
+                      className={`relative text-center py-2 px-2 font-medium border-r border-slate-200 w-14 select-none ${
+                        filtroProcConsolidado.trim() ? 'bg-amber-50/90 text-amber-950' : 'text-slate-600'
+                      } cursor-pointer hover:bg-slate-100`}
+                      title={
+                        isContaCompensacao
+                          ? 'Clique: filtrar por Elo. Duplo clique: ordenar'
+                          : 'Clique: filtrar por proc. Duplo clique: ordenar'
+                      }
+                    >
+                      <div
+                        className="flex items-center justify-center gap-1"
+                        onClick={handleClickCabecalhoProcConsolidado}
+                        onDoubleClick={handleDuploCliqueCabecalhoProcConsolidado}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            handleClickCabecalhoProcConsolidado();
+                          }
+                        }}
+                      >
+                        <span>{isContaCompensacao ? 'Elo' : 'Proc.'}</span>
+                        {filtroProcConsolidado.trim() ? (
+                          <span
+                            className="text-[10px] font-semibold uppercase tracking-tight text-amber-800"
+                            aria-hidden
+                          >
+                            filtro
+                          </span>
+                        ) : null}
+                      </div>
+                      {menuFiltroProcConsolidadoAberto ? (
+                        <div
+                          className="absolute left-1/2 -translate-x-1/2 top-full z-[80] mt-1 w-[min(20rem,calc(100vw-2rem))] rounded-md border border-slate-200 bg-white py-2 px-2.5 text-left text-xs font-normal text-slate-800 shadow-lg"
+                          onClick={(ev) => ev.stopPropagation()}
+                          onMouseDown={(ev) => ev.stopPropagation()}
+                        >
+                          <p className="text-[11px] text-slate-500 mb-2">
+                            {isContaCompensacao
+                              ? 'Filtrar pelo valor exibido na coluna Elo (normalizado).'
+                              : 'Filtrar por processo / identificador (normalizado).'}
+                          </p>
+                          <label
+                            className="block text-[11px] text-slate-600 mb-1"
+                            htmlFor="filtro-proc-consolidado"
+                          >
+                            {isContaCompensacao ? 'Elo' : 'Proc.'}
+                          </label>
+                          <input
+                            id="filtro-proc-consolidado"
+                            type="text"
+                            autoFocus
+                            placeholder="ex.: 0001"
+                            value={filtroProcConsolidadoRascunho}
+                            onChange={(e) => setFiltroProcConsolidadoRascunho(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                aplicarFiltroProcConsolidado();
+                              }
+                            }}
+                            className="w-full rounded border border-slate-300 px-2 py-1.5 text-xs mb-2"
+                          />
+                          <div className="flex flex-wrap gap-1.5">
+                            <button
+                              type="button"
+                              className="rounded border border-indigo-600 bg-indigo-600 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-indigo-700"
+                              onClick={aplicarFiltroProcConsolidado}
+                            >
+                              Aplicar
+                            </button>
+                            <button
+                              type="button"
+                              className="rounded border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
+                              onClick={limparFiltroProcConsolidado}
+                            >
+                              Limpar
+                            </button>
+                          </div>
+                          {filtroProcConsolidado.trim() ? (
+                            <p className="mt-2 text-[10px] text-slate-500 border-t border-slate-100 pt-2">
+                              Ativo: “{filtroProcConsolidado}”
+                            </p>
+                          ) : null}
+                        </div>
+                      ) : null}
                     </th>
                     <th
                       className="text-center py-2 px-2 font-medium text-slate-600 border-r border-slate-200 w-12 cursor-pointer hover:bg-slate-100 select-none"

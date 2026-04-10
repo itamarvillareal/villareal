@@ -34,9 +34,29 @@ export default defineConfig([
       },
     },
     rules: {
-      'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
+      'no-unused-vars': [
+        'error',
+        { varsIgnorePattern: '^[A-Z_]', argsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' },
+      ],
       // Sincronizar estado com location.state / mocks em useEffect é padrão neste app; a regra acusa falsos positivos.
       'react-hooks/set-state-in-effect': 'off',
+    },
+  },
+  {
+    files: ['vite.config.js', 'playwright.config.js'],
+    languageOptions: {
+      globals: globals.node,
+    },
+  },
+  {
+    files: [
+      'src/components/CadastroClientes.jsx',
+      'src/components/topicos/TopicosSubmenu.jsx',
+      'src/context/AuthContext.jsx',
+      'src/theme/ThemeProvider.jsx',
+    ],
+    rules: {
+      'react-refresh/only-export-components': 'off',
     },
   },
 ])
