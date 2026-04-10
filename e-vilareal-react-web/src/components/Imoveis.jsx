@@ -489,7 +489,7 @@ export function Imoveis() {
   }
 
   return (
-    <div className="min-h-full bg-slate-200 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d]">
+    <div className="min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/35 to-emerald-50/45 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d]">
       <div className="max-w-[1600px] mx-auto px-4 sm:px-5 py-5 sm:py-7 pb-10">
         <header className="flex items-start justify-between gap-4 mb-6 lg:mb-8">
           <div className="min-w-0 space-y-1">

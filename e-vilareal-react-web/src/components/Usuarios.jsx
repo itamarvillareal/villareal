@@ -374,7 +374,7 @@ export function Usuarios() {
             nome: getNomeExibicaoUsuario(usuario),
           })
         }
-        className="inline-flex items-center justify-center gap-1.5 rounded border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-900 hover:bg-indigo-100 whitespace-nowrap"
+        className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-900 hover:bg-indigo-100 shadow-sm whitespace-nowrap"
       >
         <Shield className="h-4 w-4 shrink-0" aria-hidden />
         Permissões
@@ -388,7 +388,7 @@ export function Usuarios() {
       <button
         type="button"
         onClick={() => setDadosModalUsuario(usuario)}
-        className="inline-flex items-center justify-center gap-1.5 rounded border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 whitespace-nowrap"
+        className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 shadow-sm whitespace-nowrap"
       >
         <UserRoundCog className="h-4 w-4 shrink-0" aria-hidden />
         Dados
@@ -405,7 +405,7 @@ export function Usuarios() {
     return (
       <div
         key={u.id}
-        className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-slate-50/50 p-3 sm:flex-row sm:items-start sm:justify-between sm:gap-3"
+        className="flex flex-col gap-3 rounded-2xl border border-slate-200/90 bg-white/90 backdrop-blur-sm p-3 sm:flex-row sm:items-start sm:justify-between sm:gap-3 shadow-sm ring-1 ring-indigo-500/10"
       >
         <div className="min-w-0 flex-1 space-y-2">
           <div className="flex flex-wrap items-baseline gap-2">
@@ -469,7 +469,7 @@ export function Usuarios() {
                 type="button"
                 onClick={() => abrirModalIncluir(ag)}
                 disabled={ativo}
-                className="rounded border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-50"
+                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50 shadow-sm disabled:opacity-50"
               >
                 Incluir
               </button>
@@ -489,7 +489,7 @@ export function Usuarios() {
                     excluirUsuario(u.id);
                   }}
                   disabled={!ativo}
-                  className="rounded border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-50"
+                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50 shadow-sm disabled:opacity-50"
                 >
                   Excluir
                 </button>
@@ -504,15 +504,18 @@ export function Usuarios() {
   }
 
   return (
-    <div className="flex flex-1 min-h-0 flex-col p-4 overflow-auto">
-      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-200 text-slate-700">
+    <div className="flex flex-1 min-h-0 flex-col min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/40 to-emerald-50/50 overflow-auto">
+      <div className="p-4 md:p-6 max-w-7xl mx-auto w-full flex flex-col gap-5 flex-1 min-h-0">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-violet-700 text-white shadow-lg shadow-indigo-500/25 ring-1 ring-white/20">
             <UserCog className="h-6 w-6" aria-hidden />
           </div>
-          <div>
-            <h1 className="text-xl font-semibold text-gray-800">Usuários</h1>
-            <p className="text-sm text-gray-600">
+          <div className="min-w-0">
+            <h1 className="text-xl font-bold bg-gradient-to-r from-indigo-800 to-violet-800 bg-clip-text text-transparent">
+              Usuários
+            </h1>
+            <p className="text-sm text-slate-600">
               Cada usuário deve ter uma pessoa no <strong>Cadastro de Pessoas</strong> (nº único) para evitar homônimos.
               O <strong>apelido</strong> é o único nome de usuário mostrado no sistema (Agenda, histórico de processos,
               menu, etc.); o nome civil fica só no cadastro da pessoa. Login e senha servem para o acesso futuro.
@@ -522,13 +525,13 @@ export function Usuarios() {
         <div className="flex flex-wrap gap-2 self-start">
           <Link
             to="/clientes/lista"
-            className="inline-flex items-center gap-2 rounded-md border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm text-indigo-900 hover:bg-indigo-100"
+            className="inline-flex items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-900 hover:bg-indigo-100 shadow-sm"
           >
             Cadastro de Pessoas
           </Link>
           <Link
             to="/agenda"
-            className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 shadow-sm"
           >
             <Calendar className="h-4 w-4" />
             Abrir Agenda
@@ -536,7 +539,7 @@ export function Usuarios() {
         </div>
       </div>
 
-      <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
+      <div className="rounded-2xl border border-slate-200/90 bg-white/95 backdrop-blur-sm shadow-xl ring-1 ring-indigo-500/10 overflow-hidden">
         {featureFlags.useApiUsuarios ? (
           <>
             {erroCarregamento ? (
@@ -544,9 +547,9 @@ export function Usuarios() {
                 {erroCarregamento}
               </div>
             ) : null}
-            <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
-              <h2 className="text-base font-semibold text-slate-800">Usuários do sistema</h2>
-              <p className="mt-1 text-xs text-slate-600">
+            <div className="border-b border-white/20 bg-gradient-to-r from-indigo-600 to-violet-700 px-4 py-3">
+              <h2 className="text-base font-semibold text-white">Usuários do sistema</h2>
+              <p className="mt-1 text-xs text-white/85">
                 Listagem paginada (mesmo padrão do relatório de pessoas). A agenda e pendências continuam usando o espelho
                 completo de usuários ativos carregado em segundo plano.
               </p>
@@ -566,7 +569,7 @@ export function Usuarios() {
         ) : (
           <>
             {loading ? (
-              <div className="px-4 py-3 text-sm text-slate-600 border-b border-slate-200">
+              <div className="px-4 py-3 text-sm text-slate-600 border-b border-slate-200/80 bg-slate-50/50">
                 Carregando usuários...
               </div>
             ) : null}
@@ -575,9 +578,9 @@ export function Usuarios() {
                 {erroCarregamento}
               </div>
             ) : null}
-            <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
-              <h2 className="text-base font-semibold text-slate-800">Usuários do sistema</h2>
-              <p className="mt-1 text-xs text-slate-600">
+            <div className="border-b border-white/20 bg-gradient-to-r from-indigo-600 to-violet-700 px-4 py-3">
+              <h2 className="text-base font-semibold text-white">Usuários do sistema</h2>
+              <p className="mt-1 text-xs text-white/85">
                 O primeiro usuário (master) permanece sempre ativo. Use <strong>Acrescentar usuário</strong> na seção de
                 usuários adicionais para incluir quantos precisar — não há limite. Nos slots fixos da agenda, use{' '}
                 <strong>Incluir</strong> e preencha <strong>Dados</strong> (pessoa, apelido, login). Usuários fora dos
@@ -613,7 +616,7 @@ export function Usuarios() {
                     <button
                       type="button"
                       onClick={() => adicionarLinhaUsuarioExtra()}
-                      className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-900 hover:bg-indigo-100"
+                      className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-900 hover:bg-indigo-100 shadow-sm"
                     >
                       <UserPlus className="h-4 w-4 shrink-0" aria-hidden />
                       Acrescentar usuário
@@ -659,7 +662,7 @@ export function Usuarios() {
                                   );
                                 }}
                                 disabled={!val.trim() || !!ativo}
-                                className="rounded border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-50"
+                                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50 shadow-sm disabled:opacity-50"
                               >
                                 Incluir
                               </button>
@@ -669,7 +672,7 @@ export function Usuarios() {
                                   if (ativo && idSlot) excluirUsuario(idSlot);
                                   setSlotsCustom((prev) => prev.filter((r) => r.id !== row.id));
                                 }}
-                                className="rounded border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50"
+                                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50 shadow-sm"
                               >
                                 Excluir linha
                               </button>
@@ -688,8 +691,8 @@ export function Usuarios() {
               </div>
             </div>
 
-            <div className="border-t border-slate-200 bg-slate-50 px-4 py-3">
-              <p className="text-xs font-medium text-slate-700 mb-2">Usuários ativos no momento</p>
+            <div className="border-t border-slate-200/80 bg-gradient-to-r from-slate-50/90 to-indigo-50/30 px-4 py-3">
+              <p className="text-xs font-semibold text-slate-800 mb-2">Usuários ativos no momento</p>
               <div className="relative mb-2">
                 <Search
                   className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400"
@@ -700,11 +703,11 @@ export function Usuarios() {
                   value={buscaUsuariosAtivos}
                   onChange={(e) => setBuscaUsuariosAtivos(e.target.value)}
                   placeholder="Buscar por nome, apelido, id ou login…"
-                  className="w-full rounded border border-slate-300 bg-white py-1.5 pl-8 pr-3 text-xs text-slate-800 placeholder:text-slate-400"
+                  className="w-full rounded-xl border border-slate-200 bg-white py-1.5 pl-8 pr-3 text-xs text-slate-800 placeholder:text-slate-400 shadow-sm focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400"
                   aria-label="Buscar entre usuários ativos"
                 />
               </div>
-              <div className="max-h-[min(40vh,16rem)] overflow-y-auto overflow-x-hidden rounded border border-slate-200 bg-white [scrollbar-gutter:stable]">
+              <div className="max-h-[min(40vh,16rem)] overflow-y-auto overflow-x-hidden rounded-xl border border-slate-200/90 bg-white shadow-inner ring-1 ring-slate-100 [scrollbar-gutter:stable]">
                 {(usuariosAtivos || []).length === 0 ? (
                   <p className="px-3 py-2 text-xs text-slate-500">—</p>
                 ) : usuariosAtivosFiltrados.length === 0 ? (
@@ -751,27 +754,27 @@ export function Usuarios() {
 
       {modalIncluir ? (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px] p-4"
           role="dialog"
           aria-modal="true"
           aria-labelledby="modal-incluir-titulo"
           onClick={() => setModalIncluir(null)}
         >
           <div
-            className="w-full max-w-md rounded-lg border border-slate-200 bg-white shadow-xl"
+            className="w-full max-w-md rounded-2xl border border-slate-200/90 bg-white shadow-2xl ring-1 ring-indigo-500/10 overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="border-b border-slate-200 px-4 py-3">
-              <h2 id="modal-incluir-titulo" className="text-base font-semibold text-slate-800">
+            <div className="border-b border-white/20 bg-gradient-to-r from-indigo-600 to-violet-700 px-4 py-3">
+              <h2 id="modal-incluir-titulo" className="text-base font-semibold text-white">
                 Incluir usuário no sistema
               </h2>
-              <p className="mt-1 text-sm text-slate-600">
-                <span className="font-medium text-slate-800">{modalIncluir.ag.nome}</span>
-                <span className="text-slate-500 font-mono text-xs"> · id: {modalIncluir.ag.id}</span>
+              <p className="mt-1 text-sm text-white/90">
+                <span className="font-medium text-white">{modalIncluir.ag.nome}</span>
+                <span className="text-white/75 font-mono text-xs"> · id: {modalIncluir.ag.id}</span>
               </p>
             </div>
             <div className="px-4 py-4 space-y-4">
-              <div className="rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-3 space-y-2">
+              <div className="rounded-xl border border-indigo-200/50 bg-gradient-to-br from-indigo-50/40 to-violet-50/30 px-3 py-3 space-y-2">
                 <label htmlFor="incluir-busca-pessoa" className="block text-xs font-medium text-slate-700">
                   Buscar no Cadastro de Pessoas
                 </label>
@@ -803,7 +806,7 @@ export function Usuarios() {
                     type="button"
                     onClick={() => void executarBuscaPessoaCadastroIncluir()}
                     disabled={modalIncluirBusca.loading}
-                    className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-indigo-500 bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60 shrink-0"
+                    className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-indigo-500/25 hover:from-indigo-500 hover:to-violet-500 disabled:opacity-60 shrink-0"
                   >
                     <Search className="h-4 w-4" aria-hidden />
                     {modalIncluirBusca.loading ? 'Buscando…' : 'Buscar'}
@@ -922,18 +925,18 @@ export function Usuarios() {
                 ) : null}
               </div>
             </div>
-            <div className="flex justify-end gap-2 border-t border-slate-200 px-4 py-3 bg-slate-50 rounded-b-lg">
+            <div className="flex justify-end gap-2 border-t border-slate-200/80 px-4 py-3 bg-slate-50/90">
               <button
                 type="button"
                 onClick={() => setModalIncluir(null)}
-                className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 shadow-sm"
               >
                 Cancelar
               </button>
               <button
                 type="button"
                 onClick={() => void confirmarInclusaoModal()}
-                className="rounded-lg border border-indigo-600 bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+                className="rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-indigo-500/20 hover:from-indigo-500 hover:to-violet-500"
               >
                 Confirmar inclusão
               </button>
@@ -941,6 +944,7 @@ export function Usuarios() {
           </div>
         </div>
       ) : null}
+      </div>
     </div>
   );
 }

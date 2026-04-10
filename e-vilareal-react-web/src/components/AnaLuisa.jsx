@@ -5,14 +5,18 @@ import { User } from 'lucide-react';
  */
 export function AnaLuisa() {
   return (
-    <div className="flex flex-1 min-h-0 flex-col p-4 overflow-auto">
-      <div className="mb-4 flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-200">
-          <User className="h-6 w-6" aria-hidden />
-        </div>
-        <div>
-          <h1 className="text-xl font-semibold text-gray-800 dark:text-slate-100">ANA LUISA</h1>
-          <p className="text-sm text-gray-600 dark:text-slate-400">Página acessível pelo menu à esquerda.</p>
+    <div className="flex flex-1 min-h-0 flex-col min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/35 to-emerald-50/45 p-4 md:p-6 overflow-auto">
+      <div className="rounded-2xl border border-slate-200/90 bg-white/95 backdrop-blur-sm shadow-xl ring-1 ring-indigo-500/10 p-5 max-w-2xl">
+        <div className="flex items-center gap-3">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-rose-500 to-pink-600 text-white shadow-lg shadow-rose-500/25 ring-1 ring-white/20">
+            <User className="h-6 w-6" aria-hidden />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold bg-gradient-to-r from-rose-700 to-pink-700 dark:from-rose-200 dark:to-pink-200 bg-clip-text text-transparent">
+              ANA LUISA
+            </h1>
+            <p className="text-sm text-slate-600 dark:text-slate-400">Página acessível pelo menu à esquerda.</p>
+          </div>
         </div>
       </div>
     </div>

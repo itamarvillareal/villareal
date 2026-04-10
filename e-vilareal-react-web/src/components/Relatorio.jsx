@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { Columns3, FileSpreadsheet, Loader2 } from 'lucide-react';
+import { Columns3, FileSpreadsheet, FileText, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { RelatorioUltimoAndamentoHeader } from './RelatorioUltimoAndamentoHeader.jsx';
 import { RelatorioPresetsPanel } from './RelatorioPresetsPanel.jsx';
@@ -366,11 +366,17 @@ export function Relatorio() {
   };
 
   return (
-    <div className="flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden bg-slate-200 overscroll-y-contain">
+    <div className="flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden bg-gradient-to-br from-slate-100 via-indigo-50/40 to-emerald-50/50 overscroll-y-contain">
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-3">
-        <header className="mb-2 flex flex-wrap items-start justify-between gap-2">
-          <div className="min-w-0">
-            <h1 className="text-xl font-bold text-slate-800">Relatório de Processos</h1>
+        <header className="mb-3 flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 flex items-start gap-3">
+            <span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-violet-700 text-white shadow-lg shadow-indigo-500/25 ring-1 ring-white/20">
+              <FileText className="h-5 w-5" aria-hidden />
+            </span>
+            <div className="min-w-0">
+            <h1 className="text-xl font-bold bg-gradient-to-r from-indigo-800 to-violet-800 bg-clip-text text-transparent">
+              Relatório de Processos
+            </h1>
             {!relatorioEmitido ? (
               <p className="mt-1 max-w-xl text-xs text-slate-600">
                 Para não travar o navegador, as linhas só são montadas depois que você emitir o relatório.
@@ -395,13 +401,14 @@ export function Relatorio() {
                 )}
               </p>
             )}
+            </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={emitirOuAtualizarRelatorio}
             disabled={emitindoRelatorio}
-            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-teal-700 bg-teal-700 text-white text-sm font-medium hover:bg-teal-800 disabled:opacity-60 disabled:pointer-events-none shadow-sm"
+            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 text-white text-sm font-semibold hover:from-indigo-500 hover:to-violet-500 disabled:opacity-60 disabled:pointer-events-none shadow-lg shadow-indigo-500/20"
             title={
               relatorioEmitido
                 ? 'Recarrega processos (API/mock); células editadas no relatório só permanecem em campos que não vêm da base atualizada'
@@ -432,14 +439,14 @@ export function Relatorio() {
             <button
               type="button"
               onClick={() => setPainelColunasAberto((v) => !v)}
-              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-teal-600 bg-white text-teal-800 text-sm font-medium hover:bg-teal-50 shadow-sm"
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border border-indigo-200 bg-white text-indigo-900 text-sm font-medium hover:bg-indigo-50 shadow-sm"
               title="Escolher quais colunas exibir e largura"
             >
               <Columns3 className="w-4 h-4 shrink-0" aria-hidden />
               Colunas
             </button>
             {painelColunasAberto ? (
-              <div className="absolute right-0 top-full mt-1 z-20 w-[min(100vw-2rem,22rem)] rounded-lg border border-slate-200 bg-white shadow-lg p-3 text-sm">
+              <div className="absolute right-0 top-full mt-1 z-20 w-[min(100vw-2rem,22rem)] rounded-xl border border-slate-200/90 bg-white shadow-xl ring-1 ring-indigo-500/10 p-3 text-sm">
                 <p className="text-xs text-slate-600 mb-2">
                   Marque as colunas que deseja ver na tabela. Use <strong>Marcar todas</strong> para exibir todas.
                 </p>
@@ -490,10 +497,10 @@ export function Relatorio() {
           </div>
           </div>
         </header>
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded border border-slate-300 bg-white shadow-sm">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-xl ring-1 ring-indigo-500/10">
           {emitindoRelatorio && !relatorioEmitido ? (
             <div className="flex-1 flex flex-col items-center justify-center gap-3 p-10 text-slate-600">
-              <Loader2 className="w-10 h-10 text-teal-700 animate-spin" aria-hidden />
+              <Loader2 className="w-10 h-10 text-indigo-600 animate-spin" aria-hidden />
               <p className="text-sm font-medium text-slate-800">Gerando relatório…</p>
               <p className="text-xs text-slate-500 text-center max-w-sm">Aguarde enquanto as linhas são montadas.</p>
             </div>
@@ -509,7 +516,7 @@ export function Relatorio() {
               <button
                 type="button"
                 onClick={emitirOuAtualizarRelatorio}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg border border-teal-700 bg-teal-700 text-white text-sm font-medium hover:bg-teal-800 shadow-sm"
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 text-white text-sm font-semibold hover:from-indigo-500 hover:to-violet-500 shadow-lg shadow-indigo-500/20"
               >
                 <FileSpreadsheet className="w-4 h-4 shrink-0" aria-hidden />
                 Emitir relatório
@@ -519,7 +526,7 @@ export function Relatorio() {
           <div className="relative min-h-0 flex-1 overflow-auto [scrollbar-gutter:stable]">
             {emitindoRelatorio ? (
               <div className="absolute inset-0 z-20 bg-white/70 flex items-center justify-center gap-2 text-sm font-medium text-slate-700">
-                <Loader2 className="w-5 h-5 animate-spin text-teal-700" aria-hidden />
+                <Loader2 className="w-5 h-5 animate-spin text-indigo-600" aria-hidden />
                 Atualizando…
               </div>
             ) : null}
@@ -528,7 +535,7 @@ export function Relatorio() {
               style={{ minWidth: larguraUniforme ? '100%' : 'max-content' }}
             >
               <thead className="sticky top-0 z-10">
-                <tr className="bg-teal-700 text-white">
+                <tr className="bg-gradient-to-r from-indigo-600 to-violet-700 text-white shadow-md">
                   {colunasAtivas.map((col) => (
                     <RelatorioUltimoAndamentoHeader
                       key={col.id}

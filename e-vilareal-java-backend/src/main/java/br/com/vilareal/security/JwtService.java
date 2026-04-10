@@ -21,11 +21,12 @@ public class JwtService {
     }
 
     public String generateToken(Long usuarioId, String login) {
+        String sub = login == null ? "" : login.trim().toLowerCase();
         Date now = new Date();
         Date exp = new Date(now.getTime() + props.getExpirationMs());
         return Jwts.builder()
-                .claims(Map.of("uid", usuarioId, "sub", login))
-                .subject(login)
+                .claims(Map.of("uid", usuarioId, "sub", sub))
+                .subject(sub)
                 .issuedAt(now)
                 .expiration(exp)
                 .signWith(signingKey())

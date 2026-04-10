@@ -482,10 +482,10 @@ export function Diagnosticos() {
                     setModalBuscaPessoaAberto(true);
                   }
                 }}
-                className={`px-4 py-2.5 rounded border text-left text-sm font-medium transition-colors ${
+                className={`px-4 py-2.5 rounded-xl border text-left text-sm font-medium transition-all ${
                   focado === label
-                    ? 'border-slate-400 border-2 bg-slate-50 text-slate-800'
-                    : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+                    ? 'border-indigo-400 border-2 bg-indigo-50/90 text-indigo-950 shadow-sm ring-2 ring-indigo-200/50'
+                    : 'border-slate-200/90 bg-white text-slate-700 hover:bg-slate-50 hover:border-indigo-200'
                 }`}
               >
                 {label}
@@ -519,10 +519,10 @@ export function Diagnosticos() {
                     abrirListaProcAdministrativo();
                   }
                 }}
-                className={`px-4 py-2.5 rounded border text-left text-sm font-medium transition-colors ${
+                className={`px-4 py-2.5 rounded-xl border text-left text-sm font-medium transition-all ${
                   focado === label
-                    ? 'border-slate-400 border-2 bg-slate-50 text-slate-800'
-                    : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+                    ? 'border-indigo-400 border-2 bg-indigo-50/90 text-indigo-950 shadow-sm ring-2 ring-indigo-200/50'
+                    : 'border-slate-200/90 bg-white text-slate-700 hover:bg-slate-50 hover:border-indigo-200'
                 }`}
               >
                 {label}
@@ -530,8 +530,8 @@ export function Diagnosticos() {
             ))}
           </div>
         </div>
-        <div className="px-6 pb-4 space-y-3 border-t border-slate-100 pt-3">
-          <div className="rounded border border-slate-200 bg-slate-50 p-3 space-y-2">
+        <div className="px-6 pb-4 space-y-3 border-t border-slate-100 pt-4 bg-slate-50/30">
+          <div className="rounded-2xl border border-indigo-200/40 bg-gradient-to-br from-indigo-50/50 to-violet-50/30 p-4 space-y-2 shadow-sm">
             <p className="text-xs font-medium text-slate-700 text-center">
               Sincronizar audiências da agenda com o formulário de processos
             </p>
@@ -551,7 +551,7 @@ export function Diagnosticos() {
                   max={12}
                   value={syncAgendaMes}
                   onChange={(e) => setSyncAgendaMes(Math.min(12, Math.max(1, Number(e.target.value) || 1)))}
-                  className="w-14 px-1 py-0.5 border border-slate-300 rounded text-sm"
+                  className="w-14 px-1 py-0.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400"
                 />
               </label>
               <label className="flex items-center gap-1 text-xs text-slate-700">
@@ -562,20 +562,20 @@ export function Diagnosticos() {
                   max={2100}
                   value={syncAgendaAno}
                   onChange={(e) => setSyncAgendaAno(Number(e.target.value) || new Date().getFullYear())}
-                  className="w-20 px-1 py-0.5 border border-slate-300 rounded text-sm"
+                  className="w-20 px-1 py-0.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400"
                 />
               </label>
               <button
                 type="button"
                 onClick={executarSincronizacaoAudienciasAgendaProcessos}
-                className="px-3 py-1 rounded border border-slate-400 bg-white text-xs font-medium text-slate-800 hover:bg-slate-100"
+                className="px-3 py-1.5 rounded-lg border border-indigo-200 bg-white text-xs font-medium text-indigo-900 hover:bg-indigo-50 shadow-sm"
               >
                 Só este mês/ano
               </button>
               <button
                 type="button"
                 onClick={executarSincronizacaoTodaAgendaProcessos}
-                className="px-3 py-1 rounded border border-slate-700 bg-slate-800 text-xs font-medium text-white hover:bg-slate-900"
+                className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-indigo-600 to-violet-600 text-xs font-semibold text-white shadow-md shadow-indigo-500/20 hover:from-indigo-500 hover:to-violet-500"
               >
                 Toda a agenda
               </button>
@@ -593,7 +593,7 @@ export function Diagnosticos() {
           <button
             type="button"
             onClick={() => window.history.back()}
-            className="px-8 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm font-medium hover:bg-slate-50"
+            className="px-8 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-700 text-sm font-medium hover:bg-slate-50 shadow-sm"
           >
             Fechar
           </button>
@@ -601,14 +601,14 @@ export function Diagnosticos() {
       </div>
 
       {modalConsultasRealizadasAberto && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/25 p-4">
-          <div className="w-full max-w-2xl bg-white border border-slate-200 shadow-xl rounded-lg overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 bg-slate-50">
-              <h3 className="text-lg leading-none font-semibold text-slate-800">Consultas Realizadas</h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px] p-4">
+          <div className="w-full max-w-2xl bg-white border border-slate-200/90 shadow-2xl rounded-2xl overflow-hidden ring-1 ring-indigo-500/10">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-white/20 bg-gradient-to-r from-indigo-600 to-violet-700 shrink-0">
+              <h3 className="text-lg leading-none font-semibold text-white">Consultas Realizadas</h3>
               <button
                 type="button"
                 onClick={() => setModalConsultasRealizadasAberto(false)}
-                className="p-1 text-slate-700 hover:bg-slate-200"
+                className="p-1 rounded-lg text-white/90 hover:bg-white/15"
                 aria-label="Fechar modal"
               >
                 <X className="w-6 h-6" />
@@ -641,14 +641,14 @@ export function Diagnosticos() {
                 <button
                   type="button"
                   onClick={consultarPorData}
-                  className="min-w-[200px] px-6 py-2.5 rounded border border-blue-700 bg-blue-600 text-sm leading-none text-white shadow-[2px_2px_0_0_rgba(0,0,0,0.25)] hover:bg-blue-700"
+                  className="min-w-[200px] px-6 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 text-sm font-semibold text-white shadow-lg shadow-indigo-500/25 hover:from-indigo-500 hover:to-violet-500"
                 >
                   Consultar
                 </button>
                 <button
                   type="button"
                   onClick={() => setModalConsultasRealizadasAberto(false)}
-                  className="min-w-[160px] px-6 py-2.5 rounded border border-slate-300 bg-white text-sm leading-none text-slate-700 hover:bg-slate-50"
+                  className="min-w-[160px] px-6 py-2.5 rounded-xl border border-slate-200 bg-white text-sm font-medium text-slate-700 hover:bg-slate-50 shadow-sm"
                 >
                   Fechar
                 </button>
@@ -659,14 +659,14 @@ export function Diagnosticos() {
       )}
 
       {modalBuscaPessoaAberto && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/25 p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px] p-4">
           <div
-            className="w-full max-w-xl bg-white border border-slate-300 rounded-lg shadow-xl"
+            className="w-full max-w-xl bg-white border border-slate-200/90 rounded-2xl shadow-2xl ring-1 ring-indigo-500/10 overflow-hidden flex flex-col"
             role="dialog"
             aria-labelledby="busca-pessoa-titulo"
           >
-            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200">
-              <h3 id="busca-pessoa-titulo" className="text-base font-semibold text-slate-800">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-white/20 bg-gradient-to-r from-indigo-600 to-violet-700 shrink-0">
+              <h3 id="busca-pessoa-titulo" className="text-base font-semibold text-white">
                 Busca pessoa
               </h3>
               <button
@@ -677,7 +677,7 @@ export function Diagnosticos() {
                   setBuscaPessoaErro('');
                   setBuscaPessoaCarregando(false);
                 }}
-                className="p-2 rounded text-slate-500 hover:bg-slate-100"
+                className="p-2 rounded-lg text-white/90 hover:bg-white/15"
                 aria-label="Fechar"
               >
                 <X className="w-5 h-5" />
@@ -775,14 +775,14 @@ export function Diagnosticos() {
       )}
 
       {modalPrazoFatalAberto && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/25 p-4">
-          <div className="w-full max-w-2xl bg-white border border-slate-200 shadow-xl rounded-lg overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 bg-slate-50">
-              <h3 className="text-lg leading-none font-semibold text-slate-800">Prazo Fatal</h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px] p-4">
+          <div className="w-full max-w-2xl bg-white border border-slate-200/90 shadow-2xl rounded-2xl overflow-hidden ring-1 ring-indigo-500/10">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-white/20 bg-gradient-to-r from-indigo-600 to-violet-700 shrink-0">
+              <h3 className="text-lg leading-none font-semibold text-white">Prazo Fatal</h3>
               <button
                 type="button"
                 onClick={() => setModalPrazoFatalAberto(false)}
-                className="p-1 text-slate-700 hover:bg-slate-200"
+                className="p-1 rounded-lg text-white/90 hover:bg-white/15"
                 aria-label="Fechar modal"
               >
                 <X className="w-6 h-6" />
@@ -815,14 +815,14 @@ export function Diagnosticos() {
                 <button
                   type="button"
                   onClick={consultarPrazoFatalPorData}
-                  className="min-w-[200px] px-6 py-2.5 rounded border border-blue-700 bg-blue-600 text-sm leading-none text-white shadow-[2px_2px_0_0_rgba(0,0,0,0.25)] hover:bg-blue-700"
+                  className="min-w-[200px] px-6 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 text-sm font-semibold text-white shadow-lg shadow-indigo-500/25 hover:from-indigo-500 hover:to-violet-500"
                 >
                   Consultar
                 </button>
                 <button
                   type="button"
                   onClick={() => setModalPrazoFatalAberto(false)}
-                  className="min-w-[160px] px-6 py-2.5 rounded border border-slate-300 bg-white text-sm leading-none text-slate-700 hover:bg-slate-50"
+                  className="min-w-[160px] px-6 py-2.5 rounded-xl border border-slate-200 bg-white text-sm font-medium text-slate-700 hover:bg-slate-50 shadow-sm"
                 >
                   Fechar
                 </button>
@@ -833,14 +833,14 @@ export function Diagnosticos() {
       )}
 
       {modalConsultasARealizarAberto && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/25 p-4">
-          <div className="w-full max-w-2xl bg-white border border-slate-200 shadow-xl rounded-lg overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 bg-slate-50">
-              <h3 className="text-lg leading-none font-semibold text-slate-800">Consultas à Realizar</h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px] p-4">
+          <div className="w-full max-w-2xl bg-white border border-slate-200/90 shadow-2xl rounded-2xl overflow-hidden ring-1 ring-indigo-500/10">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-white/20 bg-gradient-to-r from-indigo-600 to-violet-700 shrink-0">
+              <h3 className="text-lg leading-none font-semibold text-white">Consultas à Realizar</h3>
               <button
                 type="button"
                 onClick={() => setModalConsultasARealizarAberto(false)}
-                className="p-1 text-slate-700 hover:bg-slate-200"
+                className="p-1 rounded-lg text-white/90 hover:bg-white/15"
                 aria-label="Fechar modal"
               >
                 <X className="w-6 h-6" />
@@ -873,14 +873,14 @@ export function Diagnosticos() {
                 <button
                   type="button"
                   onClick={consultarPorDataConsultasARealizar}
-                  className="min-w-[200px] px-6 py-2.5 rounded border border-blue-700 bg-blue-600 text-sm leading-none text-white shadow-[2px_2px_0_0_rgba(0,0,0,0.25)] hover:bg-blue-700"
+                  className="min-w-[200px] px-6 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 text-sm font-semibold text-white shadow-lg shadow-indigo-500/25 hover:from-indigo-500 hover:to-violet-500"
                 >
                   Consultar
                 </button>
                 <button
                   type="button"
                   onClick={() => setModalConsultasARealizarAberto(false)}
-                  className="min-w-[160px] px-6 py-2.5 rounded border border-slate-300 bg-white text-sm leading-none text-slate-700 hover:bg-slate-50"
+                  className="min-w-[160px] px-6 py-2.5 rounded-xl border border-slate-200 bg-white text-sm font-medium text-slate-700 hover:bg-slate-50 shadow-sm"
                 >
                   Fechar
                 </button>
@@ -891,14 +891,14 @@ export function Diagnosticos() {
       )}
 
       {modalPublicacoesAberto && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/25 p-4">
-          <div className="w-full max-w-2xl bg-white border border-slate-200 shadow-xl rounded-lg overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 bg-slate-50">
-              <h3 className="text-lg leading-none font-semibold text-slate-800">Publicações</h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px] p-4">
+          <div className="w-full max-w-2xl bg-white border border-slate-200/90 shadow-2xl rounded-2xl overflow-hidden ring-1 ring-indigo-500/10">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-white/20 bg-gradient-to-r from-indigo-600 to-violet-700 shrink-0">
+              <h3 className="text-lg leading-none font-semibold text-white">Publicações</h3>
               <button
                 type="button"
                 onClick={() => setModalPublicacoesAberto(false)}
-                className="p-1 text-slate-700 hover:bg-slate-200"
+                className="p-1 rounded-lg text-white/90 hover:bg-white/15"
                 aria-label="Fechar modal"
               >
                 <X className="w-6 h-6" />
@@ -931,14 +931,14 @@ export function Diagnosticos() {
                 <button
                   type="button"
                   onClick={consultarPorDataPublicacoes}
-                  className="min-w-[200px] px-6 py-2.5 rounded border border-blue-700 bg-blue-600 text-sm leading-none text-white shadow-[2px_2px_0_0_rgba(0,0,0,0.25)] hover:bg-blue-700"
+                  className="min-w-[200px] px-6 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 text-sm font-semibold text-white shadow-lg shadow-indigo-500/25 hover:from-indigo-500 hover:to-violet-500"
                 >
                   Consultar
                 </button>
                 <button
                   type="button"
                   onClick={() => setModalPublicacoesAberto(false)}
-                  className="min-w-[160px] px-6 py-2.5 rounded border border-slate-300 bg-white text-sm leading-none text-slate-700 hover:bg-slate-50"
+                  className="min-w-[160px] px-6 py-2.5 rounded-xl border border-slate-200 bg-white text-sm font-medium text-slate-700 hover:bg-slate-50 shadow-sm"
                 >
                   Fechar
                 </button>
@@ -949,26 +949,26 @@ export function Diagnosticos() {
       )}
 
       {modalResultadoAberto && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/35 p-4">
-          <div className="w-full max-w-6xl bg-slate-100 border border-slate-400 shadow-xl">
-            <div className="flex items-center justify-between px-4 py-2 border-b border-slate-300 bg-white">
-              <p className="text-base text-black">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-[2px] p-4">
+          <div className="w-full max-w-6xl bg-white border border-slate-200/90 shadow-2xl rounded-2xl overflow-hidden ring-1 ring-indigo-500/10 flex flex-col">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-white/20 bg-gradient-to-r from-indigo-600 to-violet-700 text-white shrink-0">
+              <p className="text-base text-white">
                 Informação sobre {rotuloResultadoConsulta} em {dataConsulta}:
               </p>
               <button
                 type="button"
                 onClick={() => setModalResultadoAberto(false)}
-                className="p-1 text-slate-700 hover:bg-slate-200"
+                className="p-1 rounded-lg text-white/90 hover:bg-white/15"
                 aria-label="Fechar relatório"
               >
                 <X className="w-6 h-6" />
               </button>
             </div>
             <div className="px-4 py-3">
-              <p className="text-sm text-black mb-3">
+              <p className="text-sm text-slate-700 mb-3">
                 Você tem {resultadoConsulta.length} item(ns) em {rotuloResultadoConsulta} na data {dataConsulta}. Veja: (duplo clique na linha abre o processo)
               </p>
-              <div className="border border-slate-300 bg-white h-[430px] overflow-auto p-2 text-[13px] leading-relaxed font-mono">
+              <div className="border border-slate-200 rounded-xl bg-white h-[430px] overflow-auto p-2 text-[13px] leading-relaxed font-mono ring-1 ring-slate-100">
                 {resultadoConsulta.length === 0 ? (
                   <p>Nenhum histórico encontrado para a data informada.</p>
                 ) : (
@@ -986,11 +986,11 @@ export function Diagnosticos() {
                 )}
               </div>
             </div>
-            <div className="px-4 py-3 border-t border-slate-300 flex justify-center bg-slate-100">
+            <div className="px-4 py-3 border-t border-slate-200/80 flex justify-center bg-slate-50/90">
               <button
                 type="button"
                 onClick={() => setModalResultadoAberto(false)}
-                className="min-w-[120px] px-8 py-1.5 border border-slate-500 bg-white text-base text-black shadow-[2px_2px_0_0_rgba(0,0,0,0.25)] hover:bg-slate-50"
+                className="min-w-[120px] px-8 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 text-sm font-semibold text-white shadow-lg shadow-indigo-500/25 hover:from-indigo-500 hover:to-violet-500"
               >
                 OK
               </button>
@@ -1000,10 +1000,10 @@ export function Diagnosticos() {
       )}
 
       {modalResultadoBuscaPessoaAberto && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/35 p-4">
-          <div className="w-full max-w-6xl bg-slate-100 border border-slate-400 shadow-xl max-h-[min(92vh,900px)] flex flex-col">
-            <div className="flex items-center justify-between px-4 py-2 border-b border-slate-300 bg-white shrink-0">
-              <p className="text-base text-black pr-2">Relatório da pessoa: {rotuloPessoaBusca}</p>
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-[2px] p-4">
+          <div className="w-full max-w-6xl bg-white border border-slate-200/90 shadow-2xl rounded-2xl overflow-hidden ring-1 ring-indigo-500/10 max-h-[min(92vh,900px)] flex flex-col">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-white/20 bg-gradient-to-r from-indigo-600 to-violet-700 text-white shrink-0">
+              <p className="text-base text-white pr-2">Relatório da pessoa: {rotuloPessoaBusca}</p>
               <button
                 type="button"
                 onClick={() => {
@@ -1012,7 +1012,7 @@ export function Diagnosticos() {
                   setImoveisRelatorioBusca({ status: 'idle', itens: [] });
                   setBuscaPessoaProcessosCarregando(false);
                 }}
-                className="p-1 text-slate-700 hover:bg-slate-200 shrink-0"
+                className="p-1 rounded-lg text-white/90 hover:bg-white/15 shrink-0"
                 aria-label="Fechar relatório"
               >
                 <X className="w-6 h-6" />
@@ -1173,7 +1173,7 @@ export function Diagnosticos() {
                 )}
               </div>
             </div>
-            <div className="px-4 py-3 border-t border-slate-300 flex justify-center bg-slate-100 shrink-0">
+            <div className="px-4 py-3 border-t border-slate-200/80 flex justify-center bg-slate-50/90 shrink-0">
               <button
                 type="button"
                 onClick={() => {
@@ -1182,7 +1182,7 @@ export function Diagnosticos() {
                   setImoveisRelatorioBusca({ status: 'idle', itens: [] });
                   setBuscaPessoaProcessosCarregando(false);
                 }}
-                className="min-w-[120px] px-8 py-1.5 border border-slate-500 bg-white text-base text-black shadow-[2px_2px_0_0_rgba(0,0,0,0.25)] hover:bg-slate-50"
+                className="min-w-[120px] px-8 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 text-sm font-semibold text-white shadow-lg shadow-indigo-500/25 hover:from-indigo-500 hover:to-violet-500"
               >
                 OK
               </button>
@@ -1192,26 +1192,26 @@ export function Diagnosticos() {
       )}
 
       {modalResultadoAguardandoDocsAberto && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/35 p-4">
-          <div className="w-full max-w-6xl bg-slate-100 border border-slate-400 shadow-xl">
-            <div className="flex items-center justify-between px-4 py-2 border-b border-slate-300 bg-white">
-              <p className="text-base text-black">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-[2px] p-4">
+          <div className="w-full max-w-6xl bg-white border border-slate-200/90 shadow-2xl rounded-2xl overflow-hidden ring-1 ring-indigo-500/10 flex flex-col">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-white/20 bg-gradient-to-r from-indigo-600 to-violet-700 text-white shrink-0">
+              <p className="text-base text-white">
                 Processos em fase Aguardando Documentos (Ag. Documentos)
               </p>
               <button
                 type="button"
                 onClick={() => setModalResultadoAguardandoDocsAberto(false)}
-                className="p-1 text-slate-700 hover:bg-slate-200"
+                className="p-1 rounded-lg text-white/90 hover:bg-white/15"
                 aria-label="Fechar relatório"
               >
                 <X className="w-6 h-6" />
               </button>
             </div>
             <div className="px-4 py-3">
-              <p className="text-sm text-black mb-3">
+              <p className="text-sm text-slate-700 mb-3">
                 {resultadoAguardandoDocs.length} processo(s). Duplo clique na linha para abrir em Processos. A fase é gravada ao marcar em Processos ou ao sincronizar com o histórico local.
               </p>
-              <div className="border border-slate-300 bg-white h-[430px] overflow-auto p-2 text-[13px] leading-relaxed font-mono">
+              <div className="border border-slate-200 rounded-xl bg-white h-[430px] overflow-auto p-2 text-[13px] leading-relaxed font-mono ring-1 ring-slate-100">
                 {resultadoAguardandoDocs.length === 0 ? (
                   <p>Nenhum processo com essa fase no momento. Marque &quot;Ag. Documentos&quot; em Processos ou abra processos para sincronizar a fase.</p>
                 ) : (
@@ -1231,11 +1231,11 @@ export function Diagnosticos() {
                 )}
               </div>
             </div>
-            <div className="px-4 py-3 border-t border-slate-300 flex justify-center bg-slate-100">
+            <div className="px-4 py-3 border-t border-slate-200/80 flex justify-center bg-slate-50/90">
               <button
                 type="button"
                 onClick={() => setModalResultadoAguardandoDocsAberto(false)}
-                className="min-w-[120px] px-8 py-1.5 border border-slate-500 bg-white text-base text-black shadow-[2px_2px_0_0_rgba(0,0,0,0.25)] hover:bg-slate-50"
+                className="min-w-[120px] px-8 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 text-sm font-semibold text-white shadow-lg shadow-indigo-500/25 hover:from-indigo-500 hover:to-violet-500"
               >
                 OK
               </button>
@@ -1245,26 +1245,26 @@ export function Diagnosticos() {
       )}
 
       {modalResultadoAguardandoPeticionarAberto && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/35 p-4">
-          <div className="w-full max-w-6xl bg-slate-100 border border-slate-400 shadow-xl">
-            <div className="flex items-center justify-between px-4 py-2 border-b border-slate-300 bg-white">
-              <p className="text-base text-black">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-[2px] p-4">
+          <div className="w-full max-w-6xl bg-white border border-slate-200/90 shadow-2xl rounded-2xl overflow-hidden ring-1 ring-indigo-500/10 flex flex-col">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-white/20 bg-gradient-to-r from-indigo-600 to-violet-700 text-white shrink-0">
+              <p className="text-base text-white">
                 Processos em fase Aguardando Peticionar (Ag. Peticionar)
               </p>
               <button
                 type="button"
                 onClick={() => setModalResultadoAguardandoPeticionarAberto(false)}
-                className="p-1 text-slate-700 hover:bg-slate-200"
+                className="p-1 rounded-lg text-white/90 hover:bg-white/15"
                 aria-label="Fechar relatório"
               >
                 <X className="w-6 h-6" />
               </button>
             </div>
             <div className="px-4 py-3">
-              <p className="text-sm text-black mb-3">
+              <p className="text-sm text-slate-700 mb-3">
                 {resultadoAguardandoPeticionar.length} processo(s). Duplo clique na linha para abrir em Processos. A fase é gravada ao marcar em Processos ou ao sincronizar com o histórico local.
               </p>
-              <div className="border border-slate-300 bg-white h-[430px] overflow-auto p-2 text-[13px] leading-relaxed font-mono">
+              <div className="border border-slate-200 rounded-xl bg-white h-[430px] overflow-auto p-2 text-[13px] leading-relaxed font-mono ring-1 ring-slate-100">
                 {resultadoAguardandoPeticionar.length === 0 ? (
                   <p>Nenhum processo com essa fase no momento. Marque &quot;Ag. Peticionar&quot; em Processos ou abra processos para sincronizar a fase.</p>
                 ) : (
@@ -1284,11 +1284,11 @@ export function Diagnosticos() {
                 )}
               </div>
             </div>
-            <div className="px-4 py-3 border-t border-slate-300 flex justify-center bg-slate-100">
+            <div className="px-4 py-3 border-t border-slate-200/80 flex justify-center bg-slate-50/90">
               <button
                 type="button"
                 onClick={() => setModalResultadoAguardandoPeticionarAberto(false)}
-                className="min-w-[120px] px-8 py-1.5 border border-slate-500 bg-white text-base text-black shadow-[2px_2px_0_0_rgba(0,0,0,0.25)] hover:bg-slate-50"
+                className="min-w-[120px] px-8 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 text-sm font-semibold text-white shadow-lg shadow-indigo-500/25 hover:from-indigo-500 hover:to-violet-500"
               >
                 OK
               </button>
@@ -1298,26 +1298,26 @@ export function Diagnosticos() {
       )}
 
       {modalResultadoAguardandoVerificacaoAberto && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/35 p-4">
-          <div className="w-full max-w-6xl bg-slate-100 border border-slate-400 shadow-xl">
-            <div className="flex items-center justify-between px-4 py-2 border-b border-slate-300 bg-white">
-              <p className="text-base text-black">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-[2px] p-4">
+          <div className="w-full max-w-6xl bg-white border border-slate-200/90 shadow-2xl rounded-2xl overflow-hidden ring-1 ring-indigo-500/10 flex flex-col">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-white/20 bg-gradient-to-r from-indigo-600 to-violet-700 text-white shrink-0">
+              <p className="text-base text-white">
                 Processos em fase Aguardando Verificação (Ag. Verificação)
               </p>
               <button
                 type="button"
                 onClick={() => setModalResultadoAguardandoVerificacaoAberto(false)}
-                className="p-1 text-slate-700 hover:bg-slate-200"
+                className="p-1 rounded-lg text-white/90 hover:bg-white/15"
                 aria-label="Fechar relatório"
               >
                 <X className="w-6 h-6" />
               </button>
             </div>
             <div className="px-4 py-3">
-              <p className="text-sm text-black mb-3">
+              <p className="text-sm text-slate-700 mb-3">
                 {resultadoAguardandoVerificacao.length} processo(s). Duplo clique na linha para abrir em Processos. A fase é gravada ao marcar em Processos ou ao sincronizar com o histórico local.
               </p>
-              <div className="border border-slate-300 bg-white h-[430px] overflow-auto p-2 text-[13px] leading-relaxed font-mono">
+              <div className="border border-slate-200 rounded-xl bg-white h-[430px] overflow-auto p-2 text-[13px] leading-relaxed font-mono ring-1 ring-slate-100">
                 {resultadoAguardandoVerificacao.length === 0 ? (
                   <p>Nenhum processo com essa fase no momento. Marque &quot;Ag. Verificação&quot; em Processos ou abra processos para sincronizar a fase.</p>
                 ) : (
@@ -1337,11 +1337,11 @@ export function Diagnosticos() {
                 )}
               </div>
             </div>
-            <div className="px-4 py-3 border-t border-slate-300 flex justify-center bg-slate-100">
+            <div className="px-4 py-3 border-t border-slate-200/80 flex justify-center bg-slate-50/90">
               <button
                 type="button"
                 onClick={() => setModalResultadoAguardandoVerificacaoAberto(false)}
-                className="min-w-[120px] px-8 py-1.5 border border-slate-500 bg-white text-base text-black shadow-[2px_2px_0_0_rgba(0,0,0,0.25)] hover:bg-slate-50"
+                className="min-w-[120px] px-8 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 text-sm font-semibold text-white shadow-lg shadow-indigo-500/25 hover:from-indigo-500 hover:to-violet-500"
               >
                 OK
               </button>
@@ -1351,26 +1351,26 @@ export function Diagnosticos() {
       )}
 
       {modalResultadoAguardandoProtocoloAberto && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/35 p-4">
-          <div className="w-full max-w-6xl bg-slate-100 border border-slate-400 shadow-xl">
-            <div className="flex items-center justify-between px-4 py-2 border-b border-slate-300 bg-white">
-              <p className="text-base text-black">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-[2px] p-4">
+          <div className="w-full max-w-6xl bg-white border border-slate-200/90 shadow-2xl rounded-2xl overflow-hidden ring-1 ring-indigo-500/10 flex flex-col">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-white/20 bg-gradient-to-r from-indigo-600 to-violet-700 text-white shrink-0">
+              <p className="text-base text-white">
                 Processos em fase Aguardando Protocolo (Protocolo / Movimentação)
               </p>
               <button
                 type="button"
                 onClick={() => setModalResultadoAguardandoProtocoloAberto(false)}
-                className="p-1 text-slate-700 hover:bg-slate-200"
+                className="p-1 rounded-lg text-white/90 hover:bg-white/15"
                 aria-label="Fechar relatório"
               >
                 <X className="w-6 h-6" />
               </button>
             </div>
             <div className="px-4 py-3">
-              <p className="text-sm text-black mb-3">
+              <p className="text-sm text-slate-700 mb-3">
                 {resultadoAguardandoProtocolo.length} processo(s). Duplo clique na linha para abrir em Processos. A fase é gravada ao marcar em Processos ou ao sincronizar com o histórico local.
               </p>
-              <div className="border border-slate-300 bg-white h-[430px] overflow-auto p-2 text-[13px] leading-relaxed font-mono">
+              <div className="border border-slate-200 rounded-xl bg-white h-[430px] overflow-auto p-2 text-[13px] leading-relaxed font-mono ring-1 ring-slate-100">
                 {resultadoAguardandoProtocolo.length === 0 ? (
                   <p>
                     Nenhum processo com essa fase no momento. Marque &quot;Protocolo / Movimentação&quot; em Processos
@@ -1394,11 +1394,11 @@ export function Diagnosticos() {
                 )}
               </div>
             </div>
-            <div className="px-4 py-3 border-t border-slate-300 flex justify-center bg-slate-100">
+            <div className="px-4 py-3 border-t border-slate-200/80 flex justify-center bg-slate-50/90">
               <button
                 type="button"
                 onClick={() => setModalResultadoAguardandoProtocoloAberto(false)}
-                className="min-w-[120px] px-8 py-1.5 border border-slate-500 bg-white text-base text-black shadow-[2px_2px_0_0_rgba(0,0,0,0.25)] hover:bg-slate-50"
+                className="min-w-[120px] px-8 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 text-sm font-semibold text-white shadow-lg shadow-indigo-500/25 hover:from-indigo-500 hover:to-violet-500"
               >
                 OK
               </button>
@@ -1408,25 +1408,25 @@ export function Diagnosticos() {
       )}
 
       {modalResultadoAguardandoProvidenciaAberto && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/35 p-4">
-          <div className="w-full max-w-6xl bg-slate-100 border border-slate-400 shadow-xl">
-            <div className="flex items-center justify-between px-4 py-2 border-b border-slate-300 bg-white">
-              <p className="text-base text-black">Processos em fase Aguardando Providência</p>
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-[2px] p-4">
+          <div className="w-full max-w-6xl bg-white border border-slate-200/90 shadow-2xl rounded-2xl overflow-hidden ring-1 ring-indigo-500/10 flex flex-col">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-white/20 bg-gradient-to-r from-indigo-600 to-violet-700 text-white shrink-0">
+              <p className="text-base text-white">Processos em fase Aguardando Providência</p>
               <button
                 type="button"
                 onClick={() => setModalResultadoAguardandoProvidenciaAberto(false)}
-                className="p-1 text-slate-700 hover:bg-slate-200"
+                className="p-1 rounded-lg text-white/90 hover:bg-white/15"
                 aria-label="Fechar relatório"
               >
                 <X className="w-6 h-6" />
               </button>
             </div>
             <div className="px-4 py-3">
-              <p className="text-sm text-black mb-3">
+              <p className="text-sm text-slate-700 mb-3">
                 {resultadoAguardandoProvidencia.length} processo(s). Duplo clique na linha para abrir em Processos. A fase
                 é gravada ao marcar em Processos ou ao sincronizar com o histórico local.
               </p>
-              <div className="border border-slate-300 bg-white h-[430px] overflow-auto p-2 text-[13px] leading-relaxed font-mono">
+              <div className="border border-slate-200 rounded-xl bg-white h-[430px] overflow-auto p-2 text-[13px] leading-relaxed font-mono ring-1 ring-slate-100">
                 {resultadoAguardandoProvidencia.length === 0 ? (
                   <p>
                     Nenhum processo com essa fase no momento. Marque &quot;Aguardando Providência&quot; em Processos ou
@@ -1450,11 +1450,11 @@ export function Diagnosticos() {
                 )}
               </div>
             </div>
-            <div className="px-4 py-3 border-t border-slate-300 flex justify-center bg-slate-100">
+            <div className="px-4 py-3 border-t border-slate-200/80 flex justify-center bg-slate-50/90">
               <button
                 type="button"
                 onClick={() => setModalResultadoAguardandoProvidenciaAberto(false)}
-                className="min-w-[120px] px-8 py-1.5 border border-slate-500 bg-white text-base text-black shadow-[2px_2px_0_0_rgba(0,0,0,0.25)] hover:bg-slate-50"
+                className="min-w-[120px] px-8 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 text-sm font-semibold text-white shadow-lg shadow-indigo-500/25 hover:from-indigo-500 hover:to-violet-500"
               >
                 OK
               </button>
@@ -1464,27 +1464,27 @@ export function Diagnosticos() {
       )}
 
       {modalResultadoProcAdministrativoAberto && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/35 p-4">
-          <div className="w-full max-w-6xl bg-slate-100 border border-slate-400 shadow-xl">
-            <div className="flex items-center justify-between px-4 py-2 border-b border-slate-300 bg-white">
-              <p className="text-base text-black">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-[2px] p-4">
+          <div className="w-full max-w-6xl bg-white border border-slate-200/90 shadow-2xl rounded-2xl overflow-hidden ring-1 ring-indigo-500/10 flex flex-col">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-white/20 bg-gradient-to-r from-indigo-600 to-violet-700 text-white shrink-0">
+              <p className="text-base text-white">
                 Processos em fase Proc. Administrativo (Procedimento Adm.)
               </p>
               <button
                 type="button"
                 onClick={() => setModalResultadoProcAdministrativoAberto(false)}
-                className="p-1 text-slate-700 hover:bg-slate-200"
+                className="p-1 rounded-lg text-white/90 hover:bg-white/15"
                 aria-label="Fechar relatório"
               >
                 <X className="w-6 h-6" />
               </button>
             </div>
             <div className="px-4 py-3">
-              <p className="text-sm text-black mb-3">
+              <p className="text-sm text-slate-700 mb-3">
                 {resultadoProcAdministrativo.length} processo(s). Duplo clique na linha para abrir em Processos. A fase é
                 gravada ao marcar em Processos ou ao sincronizar com o histórico local.
               </p>
-              <div className="border border-slate-300 bg-white h-[430px] overflow-auto p-2 text-[13px] leading-relaxed font-mono">
+              <div className="border border-slate-200 rounded-xl bg-white h-[430px] overflow-auto p-2 text-[13px] leading-relaxed font-mono ring-1 ring-slate-100">
                 {resultadoProcAdministrativo.length === 0 ? (
                   <p>
                     Nenhum processo com essa fase no momento. Marque &quot;Procedimento Adm.&quot; em Processos ou abra
@@ -1508,11 +1508,11 @@ export function Diagnosticos() {
                 )}
               </div>
             </div>
-            <div className="px-4 py-3 border-t border-slate-300 flex justify-center bg-slate-100">
+            <div className="px-4 py-3 border-t border-slate-200/80 flex justify-center bg-slate-50/90">
               <button
                 type="button"
                 onClick={() => setModalResultadoProcAdministrativoAberto(false)}
-                className="min-w-[120px] px-8 py-1.5 border border-slate-500 bg-white text-base text-black shadow-[2px_2px_0_0_rgba(0,0,0,0.25)] hover:bg-slate-50"
+                className="min-w-[120px] px-8 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 text-sm font-semibold text-white shadow-lg shadow-indigo-500/25 hover:from-indigo-500 hover:to-violet-500"
               >
                 OK
               </button>
@@ -1522,21 +1522,21 @@ export function Diagnosticos() {
       )}
 
       {modalResultadoAudienciasPendentesAberto && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/35 p-4">
-          <div className="w-full max-w-6xl bg-slate-100 border border-slate-400 shadow-xl">
-            <div className="flex items-center justify-between px-4 py-2 border-b border-slate-300 bg-white">
-              <p className="text-base text-black">Audiências pendentes (data hoje ou futura)</p>
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-[2px] p-4">
+          <div className="w-full max-w-6xl bg-white border border-slate-200/90 shadow-2xl rounded-2xl overflow-hidden ring-1 ring-indigo-500/10 flex flex-col">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-white/20 bg-gradient-to-r from-indigo-600 to-violet-700 text-white shrink-0">
+              <p className="text-base text-white">Audiências pendentes (data hoje ou futura)</p>
               <button
                 type="button"
                 onClick={() => setModalResultadoAudienciasPendentesAberto(false)}
-                className="p-1 text-slate-700 hover:bg-slate-200"
+                className="p-1 rounded-lg text-white/90 hover:bg-white/15"
                 aria-label="Fechar relatório"
               >
                 <X className="w-6 h-6" />
               </button>
             </div>
             <div className="px-4 py-3">
-              <p className="text-sm text-black mb-3">
+              <p className="text-sm text-slate-700 mb-3">
                 {resultadoAudienciasPendentes.length} processo(s) com data de audiência gravada no histórico local (
                 <code className="text-xs bg-slate-100 px-1">vilareal:processos-historico:v1</code>
                 ). Só entram processos cuja data da audiência é{' '}
@@ -1544,7 +1544,7 @@ export function Diagnosticos() {
                 <code className="text-xs bg-slate-100 px-1">dd/mm/aaaa</code>. Com API de processos ativa, a audiência é
                 espelhada neste armazenamento ao salvar o processo com sucesso. Duplo clique na linha abre Processos.
               </p>
-              <div className="border border-slate-300 bg-white h-[430px] overflow-auto p-2 text-[13px] leading-relaxed font-mono">
+              <div className="border border-slate-200 rounded-xl bg-white h-[430px] overflow-auto p-2 text-[13px] leading-relaxed font-mono ring-1 ring-slate-100">
                 {resultadoAudienciasPendentes.length === 0 ? (
                   <p>
                     Nenhuma audiência pendente. Confira: (1) data da audiência preenchida em Processos e saída do campo
@@ -1580,11 +1580,11 @@ export function Diagnosticos() {
                 )}
               </div>
             </div>
-            <div className="px-4 py-3 border-t border-slate-300 flex justify-center bg-slate-100">
+            <div className="px-4 py-3 border-t border-slate-200/80 flex justify-center bg-slate-50/90">
               <button
                 type="button"
                 onClick={() => setModalResultadoAudienciasPendentesAberto(false)}
-                className="min-w-[120px] px-8 py-1.5 border border-slate-500 bg-white text-base text-black shadow-[2px_2px_0_0_rgba(0,0,0,0.25)] hover:bg-slate-50"
+                className="min-w-[120px] px-8 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 text-sm font-semibold text-white shadow-lg shadow-indigo-500/25 hover:from-indigo-500 hover:to-violet-500"
               >
                 OK
               </button>
@@ -1594,26 +1594,26 @@ export function Diagnosticos() {
       )}
 
       {modalResultadoPrazoFatalAberto && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/35 p-4">
-          <div className="w-full max-w-6xl bg-slate-100 border border-slate-400 shadow-xl">
-            <div className="flex items-center justify-between px-4 py-2 border-b border-slate-300 bg-white">
-              <p className="text-base text-black">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-[2px] p-4">
+          <div className="w-full max-w-6xl bg-white border border-slate-200/90 shadow-2xl rounded-2xl overflow-hidden ring-1 ring-indigo-500/10 flex flex-col">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-white/20 bg-gradient-to-r from-indigo-600 to-violet-700 text-white shrink-0">
+              <p className="text-base text-white">
                 Processos com Prazo Fatal em {dataPrazoFatal}:
               </p>
               <button
                 type="button"
                 onClick={() => setModalResultadoPrazoFatalAberto(false)}
-                className="p-1 text-slate-700 hover:bg-slate-200"
+                className="p-1 rounded-lg text-white/90 hover:bg-white/15"
                 aria-label="Fechar relatório"
               >
                 <X className="w-6 h-6" />
               </button>
             </div>
             <div className="px-4 py-3">
-              <p className="text-sm text-black mb-3">
+              <p className="text-sm text-slate-700 mb-3">
                 Você tem {resultadoPrazoFatal.length} processo(s) com prazo fatal nesta data. Veja: (duplo clique na linha abre o processo)
               </p>
-              <div className="border border-slate-300 bg-white h-[430px] overflow-auto p-2 text-[13px] leading-relaxed font-mono">
+              <div className="border border-slate-200 rounded-xl bg-white h-[430px] overflow-auto p-2 text-[13px] leading-relaxed font-mono ring-1 ring-slate-100">
                 {resultadoPrazoFatal.length === 0 ? (
                   <p>Nenhum processo com prazo fatal para a data informada.</p>
                 ) : (
@@ -1633,11 +1633,11 @@ export function Diagnosticos() {
                 )}
               </div>
             </div>
-            <div className="px-4 py-3 border-t border-slate-300 flex justify-center bg-slate-100">
+            <div className="px-4 py-3 border-t border-slate-200/80 flex justify-center bg-slate-50/90">
               <button
                 type="button"
                 onClick={() => setModalResultadoPrazoFatalAberto(false)}
-                className="min-w-[120px] px-8 py-1.5 border border-slate-500 bg-white text-base text-black shadow-[2px_2px_0_0_rgba(0,0,0,0.25)] hover:bg-slate-50"
+                className="min-w-[120px] px-8 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 text-sm font-semibold text-white shadow-lg shadow-indigo-500/25 hover:from-indigo-500 hover:to-violet-500"
               >
                 OK
               </button>

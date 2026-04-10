@@ -146,8 +146,8 @@ export function RelatorioUltimoAndamentoHeader({
                 onSelectField(opt.fieldKey);
                 setMenuAberto(false);
               }}
-              className={`w-full text-left px-3 py-2 hover:bg-teal-50 border-l-2 ${
-                ativo ? 'border-teal-600 bg-teal-50 font-medium text-teal-900' : 'border-transparent'
+              className={`w-full text-left px-3 py-2 hover:bg-indigo-50 border-l-2 ${
+                ativo ? 'border-indigo-600 bg-indigo-50 font-medium text-indigo-950' : 'border-transparent'
               }`}
             >
               {opt.label}
@@ -162,14 +162,14 @@ export function RelatorioUltimoAndamentoHeader({
     <>
       <th
         ref={wrapRef}
-        className={`text-left px-2 py-2 font-semibold border-b border-r border-teal-600 last:border-r-0 align-top bg-teal-700 select-none ${clsModoEdicao}`}
+        className={`text-left px-2 py-2 font-semibold border-b border-r border-violet-500/80 last:border-r-0 align-top bg-gradient-to-r from-indigo-600 to-violet-700 select-none ${clsModoEdicao}`}
         style={thStyle}
       >
         <div className="flex items-start gap-1 min-w-0">
           <button
             type="button"
             onClick={onSort}
-            className={`flex-1 min-w-0 flex items-center gap-1 text-left rounded px-0.5 py-0.5 hover:bg-teal-600/80 transition-colors ${clsModoEdicao}`}
+            className={`flex-1 min-w-0 flex items-center gap-1 text-left rounded px-0.5 py-0.5 hover:bg-white/15 transition-colors ${clsModoEdicao}`}
             title="Ordenar por esta coluna"
           >
             <span className="truncate font-semibold leading-tight">{tituloAtual}</span>
@@ -189,7 +189,7 @@ export function RelatorioUltimoAndamentoHeader({
             className={`shrink-0 p-1 rounded border shadow-sm ${
               modoAlteracao
                 ? 'border-red-300/80 bg-red-900/30 hover:bg-red-800/50 text-red-100'
-                : 'border-teal-500/80 bg-teal-800/40 hover:bg-teal-600 text-white'
+                : 'border-white/40 bg-white/15 hover:bg-white/25 text-white'
             }`}
             title="Escolher campo exibido nesta coluna"
             aria-expanded={menuAberto}

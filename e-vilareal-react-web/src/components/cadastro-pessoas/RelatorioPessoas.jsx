@@ -217,31 +217,38 @@ export function RelatorioPessoas() {
   };
 
   return (
-    <div className="min-h-full bg-gradient-to-br from-slate-50 to-slate-100">
+    <div className="min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/40 to-emerald-50/50">
       <div className="max-w-6xl mx-auto px-4 py-6">
         <header className="mb-6">
           <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Relatório de pessoas</h1>
+            <div className="flex items-start gap-3 min-w-0">
+              <span className="mt-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-violet-700 text-white shadow-lg shadow-indigo-500/25 ring-1 ring-white/20">
+                <FileText className="h-5 w-5" aria-hidden />
+              </span>
+              <div className="min-w-0">
+              <h1 className="text-2xl font-bold bg-gradient-to-r from-indigo-800 to-violet-800 bg-clip-text text-transparent tracking-tight">
+                Relatório de pessoas
+              </h1>
               <p className="text-slate-600 mt-1">Todas as pessoas cadastradas — filtros e tabela</p>
+              </div>
             </div>
             <div className="flex flex-wrap gap-4 text-sm">
-              <div className="px-4 py-2.5 rounded-xl bg-white border border-slate-200 shadow-sm">
-                <span className="text-slate-500 block">Registros</span>
-                <span className="text-xl font-semibold text-slate-800">{loading ? '—' : totalElements}</span>
+              <div className="px-4 py-2.5 rounded-2xl bg-white/95 backdrop-blur-sm border border-slate-200/90 shadow-md ring-1 ring-indigo-500/10">
+                <span className="text-slate-500 block text-xs">Registros</span>
+                <span className="text-xl font-semibold text-slate-800 tabular-nums">{loading ? '—' : totalElements}</span>
               </div>
             </div>
           </div>
         </header>
 
-        <section className="bg-white rounded-xl shadow-sm border border-slate-200/80 p-4 mb-6">
+        <section className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-xl border border-slate-200/90 ring-1 ring-indigo-500/10 p-4 mb-6">
           <div className="flex flex-wrap items-end gap-4">
             <div className="flex flex-wrap items-center gap-2">
               <label className="text-sm font-medium text-slate-700">Localizar por</label>
               <select
                 value={criterioBusca}
                 onChange={(e) => setCriterioBusca(e.target.value)}
-                className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-400 focus:border-indigo-500"
               >
                 {CRITERIOS_BUSCA.map((c) => (
                   <option key={c.value} value={c.value}>
@@ -254,7 +261,7 @@ export function RelatorioPessoas() {
                 value={valorBusca}
                 onChange={(e) => setValorBusca(e.target.value)}
                 placeholder={criterioBusca === 'cpf' ? 'CPF' : criterioBusca === 'codigo' ? 'Código' : 'Nome'}
-                className="w-48 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-48 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-400 focus:border-indigo-500"
               />
             </div>
             <div className="flex items-center gap-2">
@@ -264,7 +271,7 @@ export function RelatorioPessoas() {
                 value={valorBuscaCpf}
                 onChange={(e) => setValorBuscaCpf(e.target.value)}
                 placeholder="000.000.000-00"
-                className="w-40 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-40 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-400 focus:border-indigo-500"
               />
             </div>
             <div className="flex flex-wrap items-center gap-2 ml-auto">
@@ -273,14 +280,14 @@ export function RelatorioPessoas() {
                   type="checkbox"
                   checked={apenasAtivos}
                   onChange={(e) => setApenasAtivos(e.target.checked)}
-                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                  className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                 />
                 Apenas ativos
               </label>
               <button
                 type="button"
                 onClick={() => navigate('/clientes/nova')}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 text-white text-sm font-semibold hover:from-indigo-500 hover:to-violet-500 shadow-lg shadow-indigo-500/20"
               >
                 <Plus className="w-4 h-4" />
                 Nova pessoa
@@ -294,7 +301,7 @@ export function RelatorioPessoas() {
                     ? 'Selecione uma linha na tabela (clique na linha) para ver vínculos'
                     : 'Códigos de cliente e processos desta pessoa'
                 }
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-700 text-sm font-medium hover:bg-slate-50 disabled:opacity-50"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 text-sm font-medium hover:bg-slate-50 shadow-sm disabled:opacity-50"
               >
                 <Link2 className="w-4 h-4" />
                 Vínculos no sistema
@@ -307,7 +314,7 @@ export function RelatorioPessoas() {
           <div className="mb-4 p-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm">{error}</div>
         )}
 
-        <section className="bg-white rounded-xl shadow-sm border border-slate-200/80 overflow-hidden">
+        <section className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-xl border border-slate-200/90 ring-1 ring-indigo-500/10 overflow-hidden">
           <div className="p-4 border-b border-slate-200 flex flex-wrap items-center gap-3 text-sm text-slate-600">
             <Search className="w-4 h-4 shrink-0" />
             <span>

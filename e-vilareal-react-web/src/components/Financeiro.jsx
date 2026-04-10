@@ -3079,7 +3079,7 @@ export function Financeiro() {
   }
 
   return (
-    <div className="min-h-full bg-gradient-to-b from-slate-100 via-slate-50 to-slate-200 flex flex-col">
+    <div className="min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/35 to-emerald-50/45 flex flex-col">
       <div className="max-w-[2000px] mx-auto w-full flex flex-col flex-1 min-h-0 min-w-0">
       <header className="px-4 py-3 shrink-0 rounded-b-xl border border-slate-200/80 border-t-0 bg-white/90 shadow-sm backdrop-blur-sm mx-2 mt-2 mb-1">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">

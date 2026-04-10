@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FilterX, ArrowDownAZ, ArrowUpAZ, FileSpreadsheet, Loader2, ChevronDown } from 'lucide-react';
+import { FilterX, ArrowDownAZ, ArrowUpAZ, Calculator, FileSpreadsheet, Loader2, ChevronDown } from 'lucide-react';
 import {
   getLinhasRelatorioCalculosConsolidado,
   formatCodigoRelatorioCalculos,
@@ -143,11 +143,17 @@ export function RelatorioCalculos() {
   };
 
   return (
-    <div className="min-h-full bg-slate-200 flex flex-col">
-      <div className="flex-1 min-h-0 p-3 flex flex-col">
-        <header className="mb-2 flex flex-wrap items-start justify-between gap-2">
-          <div className="min-w-0">
-            <h1 className="text-xl font-bold text-slate-800">Relatório de Cálculos</h1>
+    <div className="min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/40 to-emerald-50/50 flex flex-col">
+      <div className="flex-1 min-h-0 p-4 flex flex-col max-w-[1800px] mx-auto w-full">
+        <header className="mb-3 flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 flex items-start gap-3">
+            <span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-violet-700 text-white shadow-lg shadow-indigo-500/25 ring-1 ring-white/20">
+              <Calculator className="h-5 w-5" aria-hidden />
+            </span>
+            <div className="min-w-0">
+            <h1 className="text-xl font-bold bg-gradient-to-r from-indigo-800 to-violet-800 bg-clip-text text-transparent">
+              Relatório de Cálculos
+            </h1>
             <p className="text-sm text-slate-600 mt-0.5 max-w-3xl">
               Uma linha por parcela do parcelamento (como na planilha): código, réu, unidade, datas de vencimento e pagamento,
               valores, honorários, observação, parcela, processo e indicação de cálculo aceito. Duplo clique na linha abre a
@@ -158,13 +164,14 @@ export function RelatorioCalculos() {
                 Para não travar o navegador, as linhas só são montadas depois que você emitir o relatório.
               </p>
             ) : null}
+            </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={emitirOuAtualizarRelatorio}
               disabled={emitindoRelatorio}
-              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-teal-700 bg-teal-700 text-white text-sm font-medium hover:bg-teal-800 disabled:opacity-60 disabled:pointer-events-none shadow-sm"
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 text-white text-sm font-semibold hover:from-indigo-500 hover:to-violet-500 disabled:opacity-60 disabled:pointer-events-none shadow-lg shadow-indigo-500/20"
               title={
                 relatorioEmitido
                   ? 'Recarrega o consolidado a partir das rodadas de Cálculos e do armazenamento'
@@ -181,7 +188,7 @@ export function RelatorioCalculos() {
             <button
               type="button"
               onClick={limparFiltros}
-              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-400 bg-white text-slate-700 text-sm font-medium hover:bg-slate-50 shadow-sm"
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-slate-700 text-sm font-medium hover:bg-slate-50 shadow-sm"
               title="Zera filtros e ordenação"
             >
               <FilterX className="w-4 h-4 shrink-0" aria-hidden />
@@ -190,10 +197,10 @@ export function RelatorioCalculos() {
           </div>
         </header>
 
-        <div className="flex-1 min-h-0 bg-white rounded border border-slate-400 shadow-sm overflow-hidden flex flex-col">
+        <div className="flex-1 min-h-0 bg-white rounded-2xl border border-slate-200/90 shadow-xl ring-1 ring-indigo-500/10 overflow-hidden flex flex-col">
           {emitindoRelatorio && !relatorioEmitido ? (
             <div className="flex-1 flex flex-col items-center justify-center gap-3 p-10 text-slate-600">
-              <Loader2 className="w-10 h-10 text-teal-700 animate-spin" aria-hidden />
+              <Loader2 className="w-10 h-10 text-indigo-600 animate-spin" aria-hidden />
               <p className="text-sm font-medium text-slate-800">Gerando relatório…</p>
               <p className="text-xs text-slate-500 text-center max-w-sm">Aguarde enquanto as parcelas são consolidadas.</p>
             </div>
@@ -210,7 +217,7 @@ export function RelatorioCalculos() {
               <button
                 type="button"
                 onClick={emitirOuAtualizarRelatorio}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg border border-teal-700 bg-teal-700 text-white text-sm font-medium hover:bg-teal-800 shadow-sm"
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 text-white text-sm font-semibold hover:from-indigo-500 hover:to-violet-500 shadow-lg shadow-indigo-500/20"
               >
                 <FileSpreadsheet className="w-4 h-4 shrink-0" aria-hidden />
                 Emitir relatório
@@ -220,23 +227,23 @@ export function RelatorioCalculos() {
             <div className="overflow-auto flex-1 relative">
               {emitindoRelatorio ? (
                 <div className="absolute inset-0 z-20 bg-white/70 flex items-center justify-center gap-2 text-sm font-medium text-slate-700">
-                  <Loader2 className="w-5 h-5 animate-spin text-teal-700" aria-hidden />
+                  <Loader2 className="w-5 h-5 animate-spin text-indigo-600" aria-hidden />
                   Atualizando…
                 </div>
               ) : null}
               <table className="w-full text-sm border-collapse bg-white" style={{ minWidth: 'max-content' }}>
                 <thead className="sticky top-0 z-10">
-                  <tr className="bg-zinc-500 text-white shadow-sm">
+                  <tr className="bg-gradient-to-r from-indigo-600 to-violet-700 text-white shadow-md">
                     {COLUNAS.map((col) => (
                       <th
                         key={col.id}
-                        className={`px-2 py-2 font-semibold border-b border-r border-zinc-600/90 last:border-r-0 ${alignClass(col.align)}`}
+                        className={`px-2 py-2 font-semibold border-b border-r border-white/20 last:border-r-0 ${alignClass(col.align)}`}
                         style={{ minWidth: col.minW }}
                       >
                         <button
                           type="button"
                           onClick={() => toggleOrdenacao(col.id)}
-                          className={`inline-flex items-center justify-center gap-1 w-full hover:bg-zinc-600/50 rounded px-1 py-0.5 ${alignClass(col.align)}`}
+                          className={`inline-flex items-center justify-center gap-1 w-full hover:bg-white/15 rounded px-1 py-0.5 ${alignClass(col.align)}`}
                         >
                           <span className="select-none">{col.label}</span>
                           <span className="inline-flex items-center gap-0.5 shrink-0 opacity-90">

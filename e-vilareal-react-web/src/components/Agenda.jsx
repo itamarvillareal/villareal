@@ -985,7 +985,7 @@ export function Agenda() {
   );
 
   return (
-    <div className="flex flex-1 min-h-0 min-w-0 flex-col bg-gradient-to-b from-slate-100 via-slate-50 to-slate-200 overflow-hidden">
+    <div className="flex flex-1 min-h-0 min-w-0 flex-col bg-gradient-to-br from-slate-100 via-indigo-50/35 to-emerald-50/45 overflow-hidden">
       <div className="flex flex-1 min-h-0 p-3 md:p-4 gap-3 md:gap-4 overflow-hidden w-full max-w-[1800px] mx-auto">
       {/* Painel esquerdo: Calendário + Usuário + Botões */}
       <PainelCalendario

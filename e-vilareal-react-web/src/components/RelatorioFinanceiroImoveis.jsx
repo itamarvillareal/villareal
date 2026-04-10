@@ -126,22 +126,24 @@ export function RelatorioFinanceiroImoveis() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-slate-50/90 dark:bg-[#0c0f14] text-slate-900 dark:text-slate-100">
-      <header className="border-b border-slate-200/90 dark:border-white/[0.08] bg-white/90 dark:bg-[#121822]/95 backdrop-blur-sm sticky top-0 z-10">
+    <div className="min-h-screen bg-gradient-to-br from-slate-100 via-indigo-50/35 to-emerald-50/40 dark:from-[#0c0f14] dark:via-[#0c0f14] dark:to-[#0c0f14] text-slate-900 dark:text-slate-100">
+      <header className="border-b border-slate-200/80 dark:border-white/[0.08] bg-white/95 dark:bg-[#121822]/95 backdrop-blur-sm sticky top-0 z-10 shadow-sm shadow-indigo-500/5 dark:shadow-none">
         <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-4 flex flex-wrap items-center gap-3">
           <button
             type="button"
             onClick={() => navigate('/imoveis')}
-            className="inline-flex items-center gap-1.5 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+            className="inline-flex items-center gap-1.5 text-sm text-slate-600 dark:text-slate-400 hover:text-indigo-700 dark:hover:text-white"
           >
             <ArrowLeft className="w-4 h-4" />
             Imóveis
           </button>
           <div className="h-6 w-px bg-slate-200 dark:bg-white/10 hidden sm:block" aria-hidden />
-          <div className="flex items-center gap-2 min-w-0">
-            <Landmark className="w-5 h-5 text-cyan-600 dark:text-cyan-400 shrink-0" />
+          <div className="flex items-center gap-3 min-w-0">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-violet-700 text-white shadow-lg shadow-indigo-500/25 ring-1 ring-white/20 dark:ring-white/10">
+              <Landmark className="w-5 h-5" aria-hidden />
+            </span>
             <div className="min-w-0">
-              <h1 className="text-lg font-semibold text-slate-900 dark:text-white truncate">
+              <h1 className="text-lg font-bold bg-gradient-to-r from-indigo-800 to-violet-800 dark:from-white dark:to-slate-200 bg-clip-text text-transparent truncate">
                 Relatório Financeiro Imóveis
               </h1>
               <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -154,7 +156,7 @@ export function RelatorioFinanceiroImoveis() {
       </header>
 
       <main className="max-w-[1400px] mx-auto px-4 sm:px-6 py-6 space-y-5">
-        <div className="rounded-2xl border border-slate-200/90 dark:border-white/[0.08] bg-white dark:bg-[#141c2c] p-4 sm:p-5 shadow-sm space-y-3">
+        <div className="rounded-2xl border border-slate-200/90 dark:border-white/[0.08] bg-white/95 dark:bg-[#141c2c] backdrop-blur-sm p-4 sm:p-5 shadow-xl shadow-indigo-500/5 dark:shadow-none ring-1 ring-indigo-500/10 dark:ring-white/[0.06] space-y-3">
           <div className="flex flex-wrap items-end gap-4">
             <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-slate-400">
               Mês
@@ -196,7 +198,7 @@ export function RelatorioFinanceiroImoveis() {
             <button
               type="button"
               onClick={() => navigate('/financeiro')}
-              className="ml-auto inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-cyan-200 dark:border-cyan-500/30 text-sm font-medium text-cyan-900 dark:text-cyan-100 bg-cyan-50 dark:bg-cyan-950/30 hover:bg-cyan-100/80 dark:hover:bg-cyan-950/50"
+              className="ml-auto inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-indigo-200 dark:border-indigo-500/30 text-sm font-medium text-indigo-900 dark:text-indigo-100 bg-indigo-50 dark:bg-indigo-950/30 hover:bg-indigo-100/80 dark:hover:bg-indigo-950/50"
             >
               Abrir Financeiro
             </button>
@@ -218,20 +220,20 @@ export function RelatorioFinanceiroImoveis() {
           ) : null}
         </div>
 
-        <div className="rounded-2xl border border-slate-200/90 dark:border-white/[0.08] bg-white dark:bg-[#141c2c] shadow-sm overflow-hidden">
-          <div className="px-4 py-3 border-b border-slate-200 dark:border-white/[0.08] flex flex-wrap items-center gap-2">
-            <Building2 className="w-4 h-4 text-slate-500" />
-            <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">
-              Mês de referência: <span className="text-cyan-700 dark:text-cyan-300">{labelMesPt(chaveMes)}</span>
+        <div className="rounded-2xl border border-slate-200/90 dark:border-white/[0.08] bg-white/95 dark:bg-[#141c2c] backdrop-blur-sm shadow-xl shadow-indigo-500/5 dark:shadow-none ring-1 ring-indigo-500/10 dark:ring-white/[0.06] overflow-hidden">
+          <div className="px-4 py-3 border-b border-slate-200 dark:border-white/[0.08] bg-gradient-to-r from-indigo-600 to-violet-700 dark:from-[#1e2a45] dark:to-[#2a1f45] flex flex-wrap items-center gap-2">
+            <Building2 className="w-4 h-4 text-white/90" />
+            <span className="text-sm font-semibold text-white">
+              Mês de referência: <span className="text-white/95 font-bold">{labelMesPt(chaveMes)}</span>
             </span>
-            <span className="text-xs text-slate-500 dark:text-slate-400">
+            <span className="text-xs text-white/80">
               ({linhas.length} imóvel{linhas.length === 1 ? '' : 'es'})
             </span>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm border-collapse min-w-[980px]">
               <thead>
-                <tr className="bg-slate-50 dark:bg-black/25 text-left text-xs font-semibold text-slate-600 dark:text-slate-400 border-b border-slate-200 dark:border-white/[0.08]">
+                <tr className="bg-slate-50/95 dark:bg-black/25 text-left text-xs font-semibold text-slate-700 dark:text-slate-400 border-b border-slate-200 dark:border-white/[0.08]">
                   <th className="py-3 px-3 w-12">Nº</th>
                   <th className="py-3 px-3 min-w-[140px]">Unidade</th>
                   <th className="py-3 px-3">Cod.</th>
@@ -299,7 +301,7 @@ export function RelatorioFinanceiroImoveis() {
                           <button
                             type="button"
                             onClick={() => navigate('/imoveis', { state: { imovelId: L.imovelId } })}
-                            className="text-left text-xs font-medium text-cyan-700 dark:text-cyan-400 hover:underline"
+                            className="text-left text-xs font-medium text-indigo-700 dark:text-indigo-400 hover:underline"
                           >
                             Cadastro
                           </button>

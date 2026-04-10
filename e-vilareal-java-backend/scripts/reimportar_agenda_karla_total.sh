@@ -12,7 +12,7 @@
 #   export VILAREAL_IMPORT_AS_KARLA=1
 #   ./e-vilareal-java-backend/scripts/reimportar_agenda_karla_total.sh
 #
-# Opcional: caminho da planilha como 1.º argumento. KARLA_USUARIO_ID (padrão 3) se o id diferir no ambiente.
+# Opcional: caminho da planilha como 1.º argumento. KARLA_USUARIO_ID (padrão 2; migração V24) se o id diferir no ambiente.
 
 set -euo pipefail
 
@@ -22,7 +22,7 @@ WEB_ROOT="$REPO_ROOT/e-vilareal-react-web"
 
 MYSQL_USER="${MYSQL_USER:-root}"
 MYSQL_DB="${MYSQL_DB:-vilareal}"
-KARLA_USUARIO_ID="${KARLA_USUARIO_ID:-3}"
+KARLA_USUARIO_ID="${KARLA_USUARIO_ID:-2}"
 
 XLSX_FIXO="/Users/itamarvillarealjunior/Dropbox/COMUM/agenda karla total.xlsx"
 XLSX_PATH="${1:-$XLSX_FIXO}"
@@ -59,18 +59,18 @@ mysql_exec -e "START TRANSACTION; DELETE FROM agenda_evento WHERE usuario_id = $
 COUNT=$(mysql_exec -Nse "SELECT COUNT(*) FROM agenda_evento WHERE usuario_id = ${KARLA_USUARIO_ID};")
 echo "→ Eventos restantes deste utilizador: $COUNT"
 
-EXTRA_ARGS=()
+# Sempre grava em usuario_id=KARLA_USUARIO_ID (padrão 2).
+KARLA_LOGIN_PADRAO='karla.pedroza@villarealadvocacia.adv.br'
 if [[ -n "${VILAREAL_IMPORT_AS_KARLA:-}" ]]; then
-  # JWT do operador; eventos gravados com usuario_id da Karla (se a API permitir).
+  # JWT do operador; corpo com usuario_id da Karla (se a API permitir).
   IMPORT_LOGIN="${VILAREAL_IMPORT_LOGIN:-itamar}"
-  EXTRA_ARGS+=(--usuario-id="${KARLA_USUARIO_ID}")
 else
-  IMPORT_LOGIN="${VILAREAL_IMPORT_LOGIN:-karla.pedroza}"
+  IMPORT_LOGIN="${VILAREAL_IMPORT_LOGIN:-$KARLA_LOGIN_PADRAO}"
 fi
 
-echo "→ A importar: $XLSX_PATH (login API: $IMPORT_LOGIN)"
+echo "→ A importar: $XLSX_PATH (login API: $IMPORT_LOGIN, usuario_id: $KARLA_USUARIO_ID)"
 cd "$WEB_ROOT"
 export VILAREAL_IMPORT_SENHA
-node scripts/import-agenda-planilha.mjs "$XLSX_PATH" --layout=total --login="$IMPORT_LOGIN" "${EXTRA_ARGS[@]}"
+node scripts/import-agenda-planilha.mjs "$XLSX_PATH" --layout=total --login="$IMPORT_LOGIN" --usuario-id="${KARLA_USUARIO_ID}"
 
 echo "→ Concluído. Recarregue a Agenda no browser (VITE_USE_API_AGENDA=true)."
