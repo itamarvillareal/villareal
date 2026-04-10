@@ -73,6 +73,7 @@ import {
   Trash2,
   Undo2,
   Unlink,
+  Wallet,
 } from 'lucide-react';
 import { ModalVinculoClienteProcFinanceiro } from './ModalVinculoClienteProcFinanceiro.jsx';
 import { buscarClientePorCodigo, buscarProcessoPorChaveNatural } from '../repositories/processosRepository.js';
@@ -2921,7 +2922,7 @@ export function Financeiro() {
       periodoVisao === 'ano';
     return (
       <div
-        className={`flex flex-wrap items-end gap-x-2 gap-y-1.5 rounded-md border border-slate-200 bg-slate-50/95 px-2 py-1.5 ${
+        className={`flex flex-wrap items-end gap-x-2 gap-y-1.5 rounded-xl border border-indigo-200/70 bg-gradient-to-r from-white via-indigo-50/40 to-violet-50/50 px-2.5 py-2 shadow-sm ring-1 ring-indigo-500/5 ${
           suffix === 'extrato' ? 'max-w-full' : ''
         }`}
         title={
@@ -3078,18 +3079,27 @@ export function Financeiro() {
   }
 
   return (
-    <div className="min-h-full bg-slate-100 flex flex-col">
-      <header className="px-4 py-3 bg-white border-b border-slate-200 shrink-0">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2 min-w-0 flex-wrap">
-            <h1 className="text-xl font-bold text-slate-800">Financeiro</h1>
+    <div className="min-h-full bg-gradient-to-b from-slate-100 via-slate-50 to-slate-200 flex flex-col">
+      <div className="max-w-[2000px] mx-auto w-full flex flex-col flex-1 min-h-0 min-w-0">
+      <header className="px-4 py-3 shrink-0 rounded-b-xl border border-slate-200/80 border-t-0 bg-white/90 shadow-sm backdrop-blur-sm mx-2 mt-2 mb-1">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex items-start gap-2.5 min-w-0 flex-wrap">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 via-teal-600 to-cyan-600 text-white shadow-md ring-1 ring-emerald-400/40">
+              <Wallet className="w-5 h-5" aria-hidden />
+            </span>
+            <div className="min-w-0">
+              <h1 className="text-xl font-bold bg-gradient-to-r from-slate-900 via-emerald-900 to-indigo-900 bg-clip-text text-transparent">
+                Financeiro
+              </h1>
+              <p className="text-xs text-slate-500">Extratos, consolidado e vínculos com processos</p>
+            </div>
             <button
               type="button"
               onClick={() => setModalConfigFinanceiro(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-sm font-medium hover:bg-slate-50 shrink-0"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-800 text-sm font-semibold hover:bg-slate-50 shadow-sm shrink-0"
               title="Adicionar conta bancária ou conta contábil"
             >
-              <Settings className="w-4 h-4 text-slate-600" aria-hidden />
+              <Settings className="w-4 h-4 text-indigo-600" aria-hidden />
               Configurações
             </button>
             <label htmlFor="layout-relatorios-financeiro" className="sr-only">
@@ -3099,7 +3109,7 @@ export function Financeiro() {
               id="layout-relatorios-financeiro"
               value={disposicaoRelatorios}
               onChange={(e) => setDisposicaoRelatorios(e.target.value)}
-              className="text-sm border border-slate-300 rounded-lg px-2 py-1.5 bg-white text-slate-800 max-w-[min(100%,15rem)] shadow-sm shrink-0"
+              className="text-sm border border-indigo-200 rounded-xl px-2.5 py-2 bg-white text-slate-800 max-w-[min(100%,15rem)] shadow-sm shrink-0 focus:outline-none focus:ring-2 focus:ring-indigo-400/40"
               title="Empilhados ou lado a lado (quando os dois painéis estão visíveis)"
             >
               <option value="empilhado">Extrato + consolidado: empilhados</option>
@@ -3112,7 +3122,7 @@ export function Financeiro() {
               id="paineis-relatorios-financeiro"
               value={paineisRelatorios}
               onChange={(e) => setPaineisRelatorios(e.target.value)}
-              className="text-sm border border-slate-300 rounded-lg px-2 py-1.5 bg-white text-slate-800 max-w-[min(100%,16rem)] shadow-sm shrink-0"
+              className="text-sm border border-indigo-200 rounded-xl px-2.5 py-2 bg-white text-slate-800 max-w-[min(100%,16rem)] shadow-sm shrink-0 focus:outline-none focus:ring-2 focus:ring-indigo-400/40"
               title="Extrato do banco, consolidado das contas contábeis ou ambos"
             >
               <option value="ambos">Mostrar extrato e consolidado</option>
@@ -3127,7 +3137,7 @@ export function Financeiro() {
               value={ordemRelatorios}
               onChange={(e) => setOrdemRelatorios(e.target.value)}
               disabled={paineisRelatorios !== 'ambos'}
-              className={`text-sm border border-slate-300 rounded-lg px-2 py-1.5 bg-white text-slate-800 max-w-[min(100%,17rem)] shadow-sm shrink-0 ${
+              className={`text-sm border border-indigo-200 rounded-xl px-2.5 py-2 bg-white text-slate-800 max-w-[min(100%,17rem)] shadow-sm shrink-0 focus:outline-none focus:ring-2 focus:ring-indigo-400/40 ${
                 paineisRelatorios !== 'ambos' ? 'opacity-50 cursor-not-allowed' : ''
               }`}
               title={
@@ -3140,7 +3150,7 @@ export function Financeiro() {
               <option value="consolidado_primeiro">Ordem: consolidado primeiro (à esquerda no lado a lado)</option>
             </select>
           </div>
-          <div className="flex items-center gap-3 flex-wrap justify-end">
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap justify-end lg:max-w-[55%] xl:max-w-none">
             <button
               type="button"
               disabled={ofxBloqueadoExtratoInativo}
@@ -3149,10 +3159,10 @@ export function Financeiro() {
                   ? fileInputBtgPdfRef.current?.click()
                   : fileInputOfxRef.current?.click()
               }
-              className={`px-4 py-2 rounded-lg text-sm font-semibold shadow-sm ${
+              className={`px-4 py-2 rounded-xl text-sm font-semibold shadow-md ${
                 ofxBloqueadoExtratoInativo
                   ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
-                  : 'bg-indigo-600 text-white hover:bg-indigo-700'
+                  : 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white hover:from-indigo-700 hover:to-violet-700 ring-1 ring-indigo-400/30'
               }`}
               title={
                 ofxBloqueadoExtratoInativo
@@ -3302,7 +3312,7 @@ export function Financeiro() {
         </div>
       </header>
       {filtroConciliacaoHonorarios && (
-        <div className="px-4 py-2 bg-indigo-50 border-b border-indigo-200 text-sm text-indigo-950 flex flex-wrap items-center justify-between gap-2 shrink-0">
+        <div className="mx-3 md:mx-4 mb-2 rounded-xl border border-indigo-200/90 bg-indigo-50/95 px-4 py-3 text-sm text-indigo-950 flex flex-wrap items-center justify-between gap-2 shrink-0 shadow-sm ring-1 ring-indigo-500/10">
           <p>
             <strong>Conciliação (Honorários — Cálculos):</strong> cliente{' '}
             <span className="tabular-nums font-semibold">{filtroConciliacaoHonorarios.codCliente}</span>, proc.{' '}
@@ -3334,11 +3344,15 @@ export function Financeiro() {
         </div>
       )}
 
-      <div className="flex-1 p-6 space-y-8 overflow-auto">
+      <div className="flex-1 px-3 py-5 md:px-5 md:py-6 space-y-6 overflow-auto">
         {/* Extratos bancários (OFX / PDF BTG) */}
-        <section>
-          <h2 className="text-sm font-semibold text-slate-700 mb-1">Extratos bancários (OFX / PDF)</h2>
-          <p className="text-xs text-slate-500 mb-3">
+        <section className="rounded-2xl border border-emerald-200/80 bg-white/95 shadow-md overflow-hidden ring-1 ring-emerald-500/10">
+          <div className="border-b border-emerald-100/80 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 px-4 py-3">
+            <h2 className="text-sm font-bold uppercase tracking-wide text-white">Extratos bancários</h2>
+            <p className="text-xs text-emerald-50/95 mt-0.5 font-medium">Importação OFX / PDF e instituições</p>
+          </div>
+          <div className="p-4 md:p-5 space-y-3">
+          <p className="text-xs text-slate-600 mb-1 leading-relaxed">
             Instituições <strong>BTG</strong> importam o extrato por <strong>PDF</strong> (modelo conta corrente BTG
             Pactual, texto selecionável); os outros bancos usam <strong>OFX</strong>. Por padrão, cada importação{' '}
             <strong>acrescenta</strong> lançamentos (sem apagar mock nem extrato já importados). Duplicatas (mesma chave
@@ -3419,10 +3433,10 @@ export function Financeiro() {
                   ? fileInputBtgPdfRef.current?.click()
                   : fileInputOfxRef.current?.click()
               }
-              className={`px-4 py-2 rounded-lg text-sm font-semibold shadow-sm ${
+              className={`px-4 py-2 rounded-xl text-sm font-semibold shadow-md ${
                 ofxBloqueadoExtratoInativo
                   ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
-                  : 'bg-indigo-600 text-white hover:bg-indigo-700'
+                  : 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white hover:from-indigo-700 hover:to-violet-700 ring-1 ring-indigo-400/30'
               }`}
               title={
                 ofxBloqueadoExtratoInativo
@@ -3482,10 +3496,10 @@ export function Financeiro() {
                 key={nome}
                 type="button"
                 onClick={() => setInstituicaoSelecionada(nome)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                className={`px-4 py-2 rounded-xl text-sm font-medium transition-all shadow-sm ${
                   instituicaoSelecionada === nome
-                    ? 'bg-slate-200 text-amber-900 border-b-2 border-green-600'
-                    : 'bg-red-600 text-white hover:bg-red-700'
+                    ? 'bg-white text-indigo-900 ring-2 ring-emerald-500 shadow-md border border-emerald-400/60'
+                    : 'bg-gradient-to-br from-slate-600 to-indigo-800 text-white hover:from-slate-700 hover:to-indigo-900'
                 }`}
               >
                 {nome}
@@ -3498,10 +3512,10 @@ export function Financeiro() {
                 key={nome}
                 type="button"
                 onClick={() => setInstituicaoSelecionada(nome)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                className={`px-4 py-2 rounded-xl text-sm font-medium transition-all shadow-sm ${
                   instituicaoSelecionada === nome
-                    ? 'bg-slate-200 text-amber-900 border-b-2 border-green-600'
-                    : 'bg-red-600 text-white hover:bg-red-700'
+                    ? 'bg-white text-indigo-900 ring-2 ring-emerald-500 shadow-md border border-emerald-400/60'
+                    : 'bg-gradient-to-br from-slate-600 to-indigo-800 text-white hover:from-slate-700 hover:to-indigo-900'
                 }`}
               >
                 {nome}
@@ -3515,10 +3529,10 @@ export function Financeiro() {
                   type="button"
                   onClick={() => setInstituicaoSelecionada(c.nome)}
                   title={`Nº ${c.numero} no consolidado — mesmo fluxo de OFX e contas contábeis`}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  className={`px-4 py-2 rounded-xl text-sm font-medium transition-all shadow-sm ${
                     instituicaoSelecionada === c.nome
-                      ? 'bg-slate-200 text-amber-900 border-b-2 border-green-600'
-                      : 'bg-red-600 text-white hover:bg-red-700'
+                      ? 'bg-white text-indigo-900 ring-2 ring-emerald-500 shadow-md border border-emerald-400/60'
+                      : 'bg-gradient-to-br from-violet-600 to-indigo-800 text-white hover:from-violet-700 hover:to-indigo-900'
                   }`}
                 >
                   {c.nome}{' '}
@@ -3537,9 +3551,9 @@ export function Financeiro() {
                     key={`inativo-${nome}`}
                     type="button"
                     onClick={() => setInstituicaoSelecionada(nome)}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    className={`px-4 py-2 rounded-xl text-sm font-medium transition-all shadow-sm ${
                       instituicaoSelecionada === nome
-                        ? 'bg-slate-400 text-slate-900 border-b-2 border-slate-600'
+                        ? 'bg-slate-600 text-white ring-2 ring-slate-400 shadow-md'
                         : 'bg-slate-200 text-slate-600 hover:bg-slate-300'
                     }`}
                   >
@@ -3549,12 +3563,17 @@ export function Financeiro() {
               </div>
             </>
           )}
+          </div>
         </section>
 
         {/* Contas contábeis */}
-        <section>
-          <h2 className="text-sm font-semibold text-slate-700 mb-1">Contas contábeis</h2>
-          <p className="text-xs text-slate-500 mb-2">
+        <section className="rounded-2xl border border-violet-200/80 bg-white/95 shadow-md overflow-hidden ring-1 ring-violet-500/10">
+          <div className="border-b border-violet-100/80 bg-gradient-to-r from-violet-600 via-indigo-600 to-slate-800 px-4 py-3">
+            <h2 className="text-sm font-bold uppercase tracking-wide text-white">Contas contábeis</h2>
+            <p className="text-xs text-violet-100/95 mt-0.5 font-medium">Plano derivado dos extratos e letras</p>
+          </div>
+          <div className="p-4 md:p-5 space-y-3">
+          <p className="text-xs text-slate-600 mb-1 leading-relaxed">
             Lista derivada dos extratos: ordem por lançamentos (mais usadas primeiro). Entre parênteses:
             quantidade e soma dos valores na conta, em todos os bancos. Você pode <strong>inativar</strong> contas que
             não usa no dia a dia (dados preservados) e <strong>criar contas novas</strong> (letra automática G–Z
@@ -3719,6 +3738,7 @@ export function Financeiro() {
               </div>
             </>
           )}
+          </div>
         </section>
 
         {/* Extrato do banco + consolidado (disposição alternável) */}
@@ -3726,15 +3746,15 @@ export function Financeiro() {
           <div className={classeWrapperRelatorios}>
         {mostrarPainelExtrato && (
           <section
-            className={`bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden flex flex-col min-h-0 ${classOrdemExtrato} ${
+            className={`bg-white/95 rounded-2xl border border-slate-200/90 shadow-md ring-1 ring-sky-500/10 overflow-hidden flex flex-col min-h-0 ${classOrdemExtrato} ${
               relatoriosLadoALado ? 'xl:flex-1 xl:min-w-0 xl:max-h-[min(92vh,960px)]' : ''
             }`}
           >
-            <div className="px-4 py-3 border-b border-slate-200 shrink-0">
+            <div className="px-4 py-3 border-b border-sky-200/50 shrink-0 bg-gradient-to-r from-sky-700 via-cyan-700 to-indigo-800 text-white shadow-md">
               <div className="flex flex-wrap items-end gap-x-3 gap-y-3 w-full">
                 <div className="flex flex-wrap items-end gap-3 min-w-0 shrink-0">
-                  <h2 className="text-base font-bold text-slate-800 uppercase shrink-0 leading-none pb-1">
-                    Conta Corrente {instituicaoSelecionada}
+                  <h2 className="text-base font-bold uppercase shrink-0 leading-none pb-1 tracking-tight drop-shadow-sm">
+                    Conta Corrente · {instituicaoSelecionada}
                   </h2>
                   <button
                     type="button"
@@ -3742,22 +3762,22 @@ export function Financeiro() {
                     onClick={() => void zerarExtratoSelecionado()}
                     className={`px-3 py-1.5 rounded-lg border text-xs font-semibold shrink-0 ${
                       !instituicaoSelecionada || extratosInativosSet.has(instituicaoSelecionada)
-                        ? 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed'
-                        : 'border-rose-300 bg-rose-50 text-rose-900 hover:bg-rose-100'
+                        ? 'border-white/20 bg-white/10 text-sky-200 cursor-not-allowed'
+                        : 'border-rose-200/80 bg-rose-500/90 text-white hover:bg-rose-600 shadow-sm'
                     }`}
                     title="Apaga todos os lançamentos deste banco na API (se ativa), limpa cache local e desfaz elos de compensação com outros extratos"
                   >
                     Zera extrato
                   </button>
                   <div className="flex items-center gap-2">
-                    <label htmlFor="limite-lanc-extrato" className="text-xs text-slate-600 whitespace-nowrap">
+                    <label htmlFor="limite-lanc-extrato" className="text-xs text-sky-100 whitespace-nowrap">
                       Lançamentos na tela:
                     </label>
                     <select
                       id="limite-lanc-extrato"
                       value={limiteLancamentosExtratoBanco}
                       onChange={(e) => setLimiteLancamentosExtratoBanco(Number(e.target.value))}
-                      className="text-sm border border-slate-300 rounded-md px-2 py-1.5 bg-white text-slate-800 min-w-[5.5rem] shadow-sm"
+                      className="text-sm border border-white/30 rounded-lg px-2 py-1.5 bg-white/95 text-slate-800 min-w-[5.5rem] shadow-sm"
                       title="Quantidade máxima de linhas: por padrão (data crescente) mostra os lançamentos mais recentes; com data ordenada ao contrário, os primeiros da lista"
                     >
                       {OPCOES_LIMITE_LANCAMENTOS_EXTRATO.map((o) => (
@@ -3774,7 +3794,7 @@ export function Financeiro() {
               </div>
             </div>
             <div className={relatoriosLadoALado ? 'flex flex-col flex-1 min-h-0' : ''}>
-            <div className="px-4 py-2 border-b border-slate-100 bg-slate-50/90 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs shrink-0">
+            <div className="px-4 py-2 border-b border-slate-200/80 bg-gradient-to-r from-slate-50 to-indigo-50/40 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs shrink-0">
               <span className="text-slate-600">
                 {extratoLinhasSelecionadas.size > 0 ? (
                   <>
@@ -3839,7 +3859,7 @@ export function Financeiro() {
             <div className={relatoriosLadoALado ? 'flex-1 min-h-0 overflow-auto' : 'overflow-x-auto'}>
               <table className="table-fixed w-full min-w-[56rem] text-sm border-collapse">
                 <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200">
+                  <tr className="bg-gradient-to-r from-sky-100/95 via-indigo-50 to-violet-100/90 border-b border-indigo-200/70 [&_th]:text-slate-800">
                     <th
                       className="w-10 py-2 px-2 text-center border-r border-slate-200 align-middle"
                       title="Selecionar ou desmarcar todas as linhas visíveis na tabela"
@@ -4636,25 +4656,25 @@ export function Financeiro() {
 
         {mostrarPainelConsolidado && (
           <section
-            className={`rounded-lg border border-green-200 shadow-sm overflow-hidden bg-green-50/30 flex flex-col min-h-0 ${classOrdemConsolidado} ${
+            className={`rounded-2xl border border-emerald-200/90 shadow-md ring-1 ring-emerald-500/15 overflow-hidden bg-gradient-to-b from-emerald-50/40 to-white flex flex-col min-h-0 ${classOrdemConsolidado} ${
               relatoriosLadoALado ? 'xl:flex-1 xl:min-w-0 xl:max-h-[min(92vh,960px)]' : ''
             }`}
           >
-            <div className="px-4 py-3 border-b border-green-200 bg-white/80 space-y-3 shrink-0">
+            <div className="px-4 py-3 border-b border-emerald-200/70 bg-gradient-to-r from-emerald-700 via-teal-700 to-cyan-800 text-white space-y-3 shrink-0 shadow-md">
               <div className="flex flex-wrap items-end gap-x-3 gap-y-3 w-full">
                 <div className="flex flex-wrap items-end gap-3 min-w-0 shrink-0">
-                  <h2 className="text-base font-bold text-slate-800 min-w-0 max-w-[14rem] sm:max-w-none leading-none pb-1">
-                    Extrato consolidado – {contaContabilSelecionada}
+                  <h2 className="text-base font-bold min-w-0 max-w-[14rem] sm:max-w-none leading-none pb-1 tracking-tight drop-shadow-sm">
+                    Extrato consolidado · {contaContabilSelecionada}
                   </h2>
                   <div className="flex items-center gap-2">
-                    <label htmlFor="limite-lanc-consolidado" className="text-xs text-slate-600 whitespace-nowrap">
+                    <label htmlFor="limite-lanc-consolidado" className="text-xs text-emerald-50 whitespace-nowrap">
                       Lançamentos na tela:
                     </label>
                     <select
                       id="limite-lanc-consolidado"
                       value={limiteLancamentosConsolidado}
                       onChange={(e) => setLimiteLancamentosConsolidado(Number(e.target.value))}
-                      className="text-sm border border-green-300 rounded-md px-2 py-1.5 bg-white text-slate-800 min-w-[5.5rem] shadow-sm"
+                      className="text-sm border border-white/35 rounded-lg px-2 py-1.5 bg-white/95 text-slate-800 min-w-[5.5rem] shadow-sm"
                       title="Quantidade máxima de linhas no consolidado (ordem atual da tabela)"
                     >
                       {OPCOES_LIMITE_LANCAMENTOS_EXTRATO.map((o) => (
@@ -4671,14 +4691,14 @@ export function Financeiro() {
                 {isContaCompensacao && (
                   <div className="flex flex-wrap items-end gap-x-3 gap-y-2 shrink-0 w-full min-[900px]:w-auto justify-center min-[900px]:justify-end">
                     <div className="flex items-center gap-2">
-                      <label htmlFor="filtro-elo-consolidado" className="text-xs text-slate-600 whitespace-nowrap">
+                      <label htmlFor="filtro-elo-consolidado" className="text-xs text-emerald-50 whitespace-nowrap">
                         Elo:
                       </label>
                       <select
                         id="filtro-elo-consolidado"
                         value={filtroEloConsolidado}
                         onChange={(e) => setFiltroEloConsolidado(e.target.value)}
-                        className="text-sm border border-green-300 rounded-md px-2 py-1.5 bg-white text-slate-800 min-w-[7rem] max-w-[12rem] shadow-sm"
+                        className="text-sm border border-white/35 rounded-lg px-2 py-1.5 bg-white/95 text-slate-800 min-w-[7rem] max-w-[12rem] shadow-sm"
                         title="Mostrar só lançamentos deste Elo (período atual)"
                       >
                         <option value="">Todos</option>
@@ -4690,14 +4710,14 @@ export function Financeiro() {
                       </select>
                     </div>
                     <div className="flex items-center gap-2">
-                      <label htmlFor="filtro-conc-elo-consolidado" className="text-xs text-slate-600 whitespace-nowrap">
+                      <label htmlFor="filtro-conc-elo-consolidado" className="text-xs text-emerald-50 whitespace-nowrap">
                         Conciliação:
                       </label>
                       <select
                         id="filtro-conc-elo-consolidado"
                         value={filtroConciliacaoEloConsolidado}
                         onChange={(e) => setFiltroConciliacaoEloConsolidado(e.target.value)}
-                        className="text-sm border border-green-300 rounded-md px-2 py-1.5 bg-white text-slate-800 min-w-[10rem] max-w-[20rem] shadow-sm"
+                        className="text-sm border border-white/35 rounded-lg px-2 py-1.5 bg-white/95 text-slate-800 min-w-[10rem] max-w-[20rem] shadow-sm"
                         title="Independente do filtro Elo: conciliado = soma global do Elo = 0; não conciliado = soma ≠ 0"
                       >
                         <option value="todos">Todos</option>
@@ -4709,7 +4729,7 @@ export function Financeiro() {
                 )}
               </div>
               {contaContabilSelecionada === 'Conta Escritório' && (
-                <div className="text-xs text-slate-700 rounded-md bg-emerald-50/90 border border-emerald-200 px-3 py-2 space-y-1">
+                <div className="text-xs text-emerald-950 rounded-lg bg-white/95 border border-white/40 px-3 py-2 space-y-1 shadow-sm">
                   <p>
                     <strong>Conta Escritório:</strong> consolidado dos lançamentos com <strong>letra A</strong> nos
                     extratos. A <strong>Conta Corrente</strong> em <strong>Processos</strong> lista aqui apenas as linhas
@@ -4763,7 +4783,7 @@ export function Financeiro() {
             <div className={relatoriosLadoALado ? 'flex-1 min-h-0 overflow-auto' : 'overflow-x-auto'}>
               <table className="table-fixed w-full min-w-[52rem] text-sm border-collapse">
                 <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200">
+                  <tr className="bg-gradient-to-r from-emerald-100/95 via-teal-50 to-cyan-100/80 border-b border-emerald-200/70 [&_th]:text-slate-800">
                     <th className="text-left py-2 px-2 font-medium text-slate-600 border-r border-slate-200 w-[5.5rem] cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloConsolidado('numeroBanco')} title="Duplo clique: ordenar crescente ↔ decrescente">Nº</th>
                     <th className="text-left py-2 px-2 font-medium text-slate-600 border-r border-slate-200 w-[4.5rem] cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloConsolidado('numero')} title="Duplo clique: ordenar">Id.</th>
                     <th className="text-left py-2 px-2 font-medium text-slate-600 border-r border-slate-200 w-[5.5rem] cursor-pointer hover:bg-slate-100 select-none" onDoubleClick={() => handleDuploCliqueTituloConsolidado('data')} title="Duplo clique: ordenar crescente ↔ decrescente">Data</th>
@@ -5145,6 +5165,7 @@ export function Financeiro() {
         )}
           </div>
         )}
+      </div>
       </div>
 
       {modalParearCompensacao != null && Array.isArray(modalParearCompensacao.pares) && (

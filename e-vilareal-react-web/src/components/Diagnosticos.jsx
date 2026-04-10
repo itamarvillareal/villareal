@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { X } from 'lucide-react';
+import { X, Stethoscope } from 'lucide-react';
 import { buscarCliente, pesquisarCadastroPessoasPorNomeOuCpf } from '../api/clientesService.js';
 import {
   DEMO_DATA_CONSULTA_BR,
@@ -16,6 +16,10 @@ import {
   listarProcessosPorPrazoFatal,
   listarAudienciasPendentes,
 } from '../data/processosHistoricoData';
+import {
+  executarSincronizacaoAudienciasAgendaEProcessosCompleta,
+  executarSincronizacaoAudienciasAgendaMesEProcessos,
+} from '../services/sincronizacaoAudienciasAgendaProcessosService.js';
 import { resolverAliasHojeEmTexto } from '../services/hjDateAliasService.js';
 import { listarImoveisResumoPorPessoaDiagnostico } from '../services/listarImoveisPorPessoaDiagnostico.js';
 import { listarCodigosClientePorIdPessoa } from '../data/clienteCodigoHelpers.js';
@@ -172,6 +176,9 @@ export function Diagnosticos() {
   const [modalResultadoAudienciasPendentesAberto, setModalResultadoAudienciasPendentesAberto] =
     useState(false);
   const [resultadoAudienciasPendentes, setResultadoAudienciasPendentes] = useState([]);
+  const [syncAgendaMes, setSyncAgendaMes] = useState(4);
+  const [syncAgendaAno, setSyncAgendaAno] = useState(() => new Date().getFullYear());
+  const [syncAgendaMsg, setSyncAgendaMsg] = useState('');
 
   function consultarPorData() {
     const data = String(dataConsulta ?? '').trim();
@@ -364,6 +371,44 @@ export function Diagnosticos() {
     setModalResultadoAudienciasPendentesAberto(true);
   }
 
+  function mensagemResumoSincAgenda(r, prefixo = '') {
+    if (r.reason === 'no-window') {
+      return `${prefixo}Não foi possível executar (ambiente sem janela).`;
+    }
+    if (r.reason === 'mes-ano-invalido') {
+      return `${prefixo}Mês ou ano inválidos.`;
+    }
+    const apiFalhou = r.detalhe?.agendaApi?.reason === 'api-agenda-falha';
+    const sufixoApi = apiFalhou
+      ? ' — Aviso: falha ao listar compromissos na API (rede/sessão); só a agenda local foi usada nessa parte.'
+      : '';
+    const corpo =
+      `Processos atualizados: ${r.processosAtualizados}. Eventos na agenda com vínculo (só storage local): ${r.eventosAgendaEnriquecidos}. ` +
+      `Sem padrão/vínculo/CNJ: ${r.ignoradosSemPadraoCnj}. Sem correspondência na base: ${r.ignoradosSemMatchNaBase}. ` +
+      `Ambíguos: ${r.ignoradosAmbiguos}. Sem registro após match: ${r.ignoradosSemRegistro}.`;
+    return `${prefixo}${corpo}${sufixoApi}`;
+  }
+
+  async function executarSincronizacaoAudienciasAgendaProcessos() {
+    setSyncAgendaMsg('Sincronizando (API de processos + agenda local + API de agenda)…');
+    try {
+      const r = await executarSincronizacaoAudienciasAgendaMesEProcessos(syncAgendaMes, syncAgendaAno);
+      setSyncAgendaMsg(mensagemResumoSincAgenda(r, `[Mês ${syncAgendaMes}/${syncAgendaAno}] `));
+    } catch (e) {
+      setSyncAgendaMsg(String(e?.message || 'Erro na sincronização.'));
+    }
+  }
+
+  async function executarSincronizacaoTodaAgendaProcessos() {
+    setSyncAgendaMsg('Sincronizando (API de processos + agenda local + API de agenda)…');
+    try {
+      const r = await executarSincronizacaoAudienciasAgendaEProcessosCompleta();
+      setSyncAgendaMsg(mensagemResumoSincAgenda(r, '[Toda a agenda] '));
+    } catch (e) {
+      setSyncAgendaMsg(String(e?.message || 'Erro na sincronização.'));
+    }
+  }
+
   function abrirProcessoPorItem(item) {
     if (!item?.codCliente || item?.proc == null || item?.proc === '') return;
     setModalResultadoAberto(false);
@@ -387,14 +432,19 @@ export function Diagnosticos() {
   }
 
   return (
-    <div className="min-h-full bg-slate-200 flex items-center justify-center p-6">
-      <div className="bg-white rounded-lg shadow-xl border border-slate-300 w-full max-w-2xl overflow-hidden flex flex-col">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200">
-          <h2 className="text-base font-semibold text-slate-800">Informe o relatório que deseja fazer</h2>
+    <div className="min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/40 to-emerald-50/50 flex items-center justify-center p-6">
+      <div className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl border border-slate-200/90 ring-1 ring-indigo-500/10 w-full max-w-2xl overflow-hidden flex flex-col">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-white/20 bg-gradient-to-r from-indigo-600 to-violet-700 text-white shrink-0">
+          <div className="flex items-center gap-3 min-w-0">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/15 ring-1 ring-white/20 shrink-0">
+              <Stethoscope className="w-5 h-5 text-white" aria-hidden />
+            </span>
+            <h2 className="text-base font-semibold text-white truncate">Informe o relatório que deseja fazer</h2>
+          </div>
           <button
             type="button"
             onClick={() => window.history.back()}
-            className="p-2 rounded text-slate-500 hover:bg-slate-100"
+            className="p-2 rounded-lg text-white/90 hover:bg-white/15 shrink-0"
             aria-label="Fechar"
           >
             <X className="w-5 h-5" />
@@ -481,6 +531,59 @@ export function Diagnosticos() {
           </div>
         </div>
         <div className="px-6 pb-4 space-y-3 border-t border-slate-100 pt-3">
+          <div className="rounded border border-slate-200 bg-slate-50 p-3 space-y-2">
+            <p className="text-xs font-medium text-slate-700 text-center">
+              Sincronizar audiências da agenda com o formulário de processos
+            </p>
+            <p className="text-[11px] text-slate-600 text-center leading-relaxed">
+              Ao abrir o sistema, roda em segundo plano: agenda no navegador,{' '}
+              <span className="font-medium">agenda na API</span> (todos os usuários, intervalo amplo) e casamento de CNJ
+              usando <span className="font-medium">processos na API</span> além do histórico local. Exige APIs de agenda,
+              clientes e processos ativas quando usar o backend. O vínculo no evento (<code className="text-[10px]">processoRef</code>)
+              ou CNJ único atualiza o histórico local (audiência).
+            </p>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <label className="flex items-center gap-1 text-xs text-slate-700">
+                Mês
+                <input
+                  type="number"
+                  min={1}
+                  max={12}
+                  value={syncAgendaMes}
+                  onChange={(e) => setSyncAgendaMes(Math.min(12, Math.max(1, Number(e.target.value) || 1)))}
+                  className="w-14 px-1 py-0.5 border border-slate-300 rounded text-sm"
+                />
+              </label>
+              <label className="flex items-center gap-1 text-xs text-slate-700">
+                Ano
+                <input
+                  type="number"
+                  min={2000}
+                  max={2100}
+                  value={syncAgendaAno}
+                  onChange={(e) => setSyncAgendaAno(Number(e.target.value) || new Date().getFullYear())}
+                  className="w-20 px-1 py-0.5 border border-slate-300 rounded text-sm"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={executarSincronizacaoAudienciasAgendaProcessos}
+                className="px-3 py-1 rounded border border-slate-400 bg-white text-xs font-medium text-slate-800 hover:bg-slate-100"
+              >
+                Só este mês/ano
+              </button>
+              <button
+                type="button"
+                onClick={executarSincronizacaoTodaAgendaProcessos}
+                className="px-3 py-1 rounded border border-slate-700 bg-slate-800 text-xs font-medium text-white hover:bg-slate-900"
+              >
+                Toda a agenda
+              </button>
+            </div>
+            {syncAgendaMsg ? (
+              <p className="text-[11px] text-slate-700 text-center leading-relaxed font-mono">{syncAgendaMsg}</p>
+            ) : null}
+          </div>
           <p className="text-xs text-slate-600 text-center leading-relaxed">
             Os relatórios usam apenas os dados já gravados neste navegador (histórico de processos, prazos e vínculos de
             pessoas). Não há pacote de demonstração automático.
@@ -1434,14 +1537,20 @@ export function Diagnosticos() {
             </div>
             <div className="px-4 py-3">
               <p className="text-sm text-black mb-3">
-                {resultadoAudienciasPendentes.length} processo(s) com data de audiência preenchida em Processos (histórico
-                local). Duplo clique na linha abre o formulário do processo. Datas anteriores a hoje não aparecem.
+                {resultadoAudienciasPendentes.length} processo(s) com data de audiência gravada no histórico local (
+                <code className="text-xs bg-slate-100 px-1">vilareal:processos-historico:v1</code>
+                ). Só entram processos cuja data da audiência é{' '}
+                <span className="font-semibold">hoje ou futura</span>, no formato válido{' '}
+                <code className="text-xs bg-slate-100 px-1">dd/mm/aaaa</code>. Com API de processos ativa, a audiência é
+                espelhada neste armazenamento ao salvar o processo com sucesso. Duplo clique na linha abre Processos.
               </p>
               <div className="border border-slate-300 bg-white h-[430px] overflow-auto p-2 text-[13px] leading-relaxed font-mono">
                 {resultadoAudienciasPendentes.length === 0 ? (
                   <p>
-                    Nenhuma audiência pendente. Informe a data da audiência na tela Processos (campos gravados em
-                    vilareal:processos-historico:v1).
+                    Nenhuma audiência pendente. Confira: (1) data da audiência preenchida em Processos e saída do campo
+                    para normalizar; (2) data não pode ser anterior a hoje neste relatório; (3) com API de processos, é
+                    preciso que o salvamento na API tenha concluído (o sistema grava então uma cópia local para este
+                    relatório). Use também, se aplicável, a sincronização agenda → processos na tela abaixo.
                   </p>
                 ) : (
                   resultadoAudienciasPendentes.map((item, idx) => {

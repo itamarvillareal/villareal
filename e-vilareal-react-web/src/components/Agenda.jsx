@@ -152,7 +152,7 @@ function EditableTextCell({
       ? 'bg-red-600 text-white border-red-700 focus:ring-red-400 placeholder:text-red-200'
       : tema === 'conciliacao'
         ? 'bg-yellow-300 text-black border-yellow-600 focus:ring-yellow-600 placeholder:text-yellow-900/60'
-        : 'bg-white text-gray-900 border-slate-300 focus:ring-blue-500';
+        : 'bg-white text-gray-900 border-slate-200 focus:ring-indigo-400/50 focus:border-indigo-400';
   const classesTemaLeitura =
     tema === 'instrucao'
       ? 'bg-red-600 text-white border border-red-700 rounded px-1.5 py-1'
@@ -288,7 +288,7 @@ function StatusCurtoCell({ evento, onSalvar, readOnly = false }) {
         onChange={(e) => onSalvar?.(e.target.value === 'OK' ? 'OK' : '')}
         onDoubleClick={(e) => e.stopPropagation()}
         title="Status: em branco ou OK"
-        className="w-full min-w-0 max-w-[6rem] px-1 py-1 text-sm text-right border border-slate-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+        className="w-full min-w-0 max-w-[6rem] px-2 py-1 text-sm text-right border border-slate-200 rounded-lg bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-400/40 focus:border-indigo-400"
         aria-label="Status do compromisso"
       >
         <option value=""> </option>
@@ -312,6 +312,8 @@ function ColunaDia({
   somenteLeitura = false,
   mostrarColunaUsuario = false,
   resolverNomeUsuario = null,
+  /** «esquerda» | «direita» — faixa de cor do cabeçalho da coluna */
+  variantColuna = 'esquerda',
 }) {
   /** Última linha (novo compromisso): id criado até liberar após salvar hora/descrição. */
   const pendingNovaLinhaIdRef = useRef(null);
@@ -347,29 +349,36 @@ function ColunaDia({
   const linhasBase = somenteLeitura ? eventos.length : eventos.length + 1;
   const linhasPreenchimento = Math.max(0, MIN_LINHAS_FORMULARIO_AGENDA - linhasBase);
 
+  const headerGradient =
+    variantColuna === 'direita'
+      ? 'bg-gradient-to-r from-indigo-700 via-violet-700 to-purple-800'
+      : 'bg-gradient-to-r from-sky-600 via-cyan-600 to-teal-600';
+
   return (
-    <div className="flex-1 min-w-0 min-h-0 flex flex-col border border-gray-300 rounded bg-white overflow-hidden">
-      <div className="px-2 py-2 shrink-0 bg-gray-100 border-b border-gray-300 text-base font-medium text-gray-800">
+    <div className="flex-1 min-w-0 min-h-0 flex flex-col border border-slate-200/90 rounded-2xl bg-white/95 overflow-hidden shadow-md ring-1 ring-slate-200/60">
+      <div
+        className={`px-3 py-2.5 shrink-0 text-sm font-semibold text-white shadow-sm ring-1 ring-white/10 ${headerGradient}`}
+      >
         {dataLabel}
       </div>
-      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-1.5">
+      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-2 bg-gradient-to-b from-slate-50/40 to-white">
         <table className="w-full table-fixed border-collapse">
           <thead>
-            <tr className="bg-gray-50 border-b border-gray-200">
-              <th className="w-[96px] px-2 py-1.5 text-left text-xs font-semibold text-gray-600">Hora</th>
+            <tr className="bg-gradient-to-r from-slate-800 via-indigo-900 to-violet-900 text-white [&_th]:border-b [&_th]:border-white/10">
+              <th className="w-[96px] px-2 py-2 text-left text-xs font-semibold">Hora</th>
               {mostrarColunaUsuario ? (
-                <th className="w-[100px] px-2 py-1.5 text-left text-xs font-semibold text-gray-600">Quem</th>
+                <th className="w-[100px] px-2 py-2 text-left text-xs font-semibold">Quem</th>
               ) : null}
-              <th className="px-2 py-1.5 text-left text-xs font-semibold text-gray-600">Descrição</th>
-              <th className="w-[92px] px-1 py-1.5 text-right text-xs font-semibold text-gray-600">Status</th>
+              <th className="px-2 py-2 text-left text-xs font-semibold">Descrição</th>
+              <th className="w-[92px] px-1 py-2 text-right text-xs font-semibold">Status</th>
             </tr>
           </thead>
           <tbody>
             {eventos.map((ev) => (
               <tr
                 key={ev._chaveUnicaAgenda ?? ev.id}
-                className={`border-b border-gray-100 min-h-[42px] overflow-hidden ${
-                  ev.destaque ? 'bg-amber-100' : ''
+                className={`border-b border-slate-100 min-h-[42px] overflow-hidden transition-colors hover:bg-indigo-50/40 ${
+                  ev.destaque ? 'bg-amber-100/90' : ''
                 }`}
                 onDoubleClick={() => onDuploCliqueEvento?.(ev)}
               >
@@ -421,21 +430,21 @@ function ColunaDia({
             {Array.from({ length: linhasPreenchimento }, (_, i) => (
               <tr
                 key={`agenda-linha-vazia-${dataBrStr}-${usuarioAgendaId}-${i}`}
-                className="border-b border-gray-100 min-h-[42px] overflow-hidden"
+                className="border-b border-slate-100 min-h-[42px] overflow-hidden"
                 aria-hidden
               >
-                <td className="w-[96px] px-2 py-1.5 align-top text-sm text-gray-300 select-none">&nbsp;</td>
+                <td className="w-[96px] px-2 py-1.5 align-top text-sm text-slate-200 select-none">&nbsp;</td>
                 {mostrarColunaUsuario ? (
-                  <td className="w-[100px] px-2 py-1.5 align-top text-sm text-gray-300 select-none">&nbsp;</td>
+                  <td className="w-[100px] px-2 py-1.5 align-top text-sm text-slate-200 select-none">&nbsp;</td>
                 ) : null}
-                <td className="px-2 py-1.5 align-top text-sm min-w-0 text-gray-300 select-none">&nbsp;</td>
+                <td className="px-2 py-1.5 align-top text-sm min-w-0 text-slate-200 select-none">&nbsp;</td>
                 <td className="w-[92px] px-0 py-1.5 align-top text-right">&nbsp;</td>
               </tr>
             ))}
             {!somenteLeitura ? (
               <tr
                 key={`linha-nova-${novaLinhaBump}`}
-                className="border-b border-gray-100 min-h-[42px] overflow-hidden bg-slate-50/50"
+                className="border-b border-emerald-100 min-h-[42px] overflow-hidden bg-gradient-to-r from-emerald-50/60 to-teal-50/40"
               >
                 <td className="w-[96px] px-2 py-1.5 align-top text-sm">
                   <EditableTextCell
@@ -545,8 +554,12 @@ function PainelCalendario({
   }
 
   return (
-    <aside className="w-56 shrink-0 flex flex-col gap-4 p-4 bg-gray-100 border border-gray-300 rounded-lg overflow-y-auto">
-      <div className="border border-gray-300 rounded-lg p-3 bg-white shadow-sm">
+    <aside className="w-56 shrink-0 flex flex-col gap-3 p-3 rounded-2xl border border-violet-200/70 bg-gradient-to-b from-violet-50/90 via-white to-indigo-50/50 shadow-md ring-1 ring-violet-500/10 overflow-y-auto">
+      <div className="border border-violet-200/60 rounded-xl overflow-hidden bg-white shadow-sm ring-1 ring-violet-100/80">
+        <div className="px-2 py-2 bg-gradient-to-r from-violet-600 to-indigo-600 text-center">
+          <span className="text-xs font-bold uppercase tracking-wide text-white/95">Mês</span>
+        </div>
+        <div className="p-2.5">
         <div className="flex items-center justify-between mb-2">
           <button
             type="button"
@@ -554,11 +567,11 @@ function PainelCalendario({
               if (mesAtual <= 1) { setMesAtual(12); setAnoAtual((a) => a - 1); }
               else setMesAtual((m) => m - 1);
             }}
-            className="p-1.5 rounded hover:bg-gray-200"
+            className="p-1.5 rounded-lg border border-violet-200 bg-violet-50 text-violet-800 hover:bg-violet-100 transition-colors"
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
-          <span className="text-sm font-medium capitalize">
+          <span className="text-sm font-semibold capitalize text-slate-800">
             {nomeMesAtual} {anoAtual}
           </span>
           <button
@@ -567,14 +580,14 @@ function PainelCalendario({
               if (mesAtual >= 12) { setMesAtual(1); setAnoAtual((a) => a + 1); }
               else setMesAtual((m) => m + 1);
             }}
-            className="p-1.5 rounded hover:bg-gray-200"
+            className="p-1.5 rounded-lg border border-violet-200 bg-violet-50 text-violet-800 hover:bg-violet-100 transition-colors"
           >
             <ChevronRight className="w-4 h-4" />
           </button>
         </div>
         <div className="grid grid-cols-7 gap-0.5 text-xs">
           {agendaCalendarioMarco2026.diasSemana.map((d) => (
-            <div key={d} className="text-center font-medium text-gray-600 py-0.5">
+            <div key={d} className="text-center font-semibold text-violet-700/80 py-0.5">
               {d}
             </div>
           ))}
@@ -586,12 +599,12 @@ function PainelCalendario({
               key={d}
               type="button"
               onClick={() => setDiaSelecionado(d)}
-              className={`py-1 rounded text-xs ${
+              className={`py-1 rounded-md text-xs font-medium transition-colors ${
                 d === diaSelecionado
-                  ? 'bg-blue-600 text-white font-medium'
+                  ? 'bg-gradient-to-br from-indigo-600 to-violet-700 text-white shadow-md ring-1 ring-indigo-400/50'
                   : mesAtual === hojeReal.mm && anoAtual === hojeReal.yyyy && d === hojeReal.dd
-                    ? 'bg-blue-400 text-white'
-                    : 'hover:bg-gray-200 text-gray-800'
+                    ? 'bg-sky-500 text-white shadow-sm'
+                    : 'hover:bg-violet-100 text-slate-800'
               }`}
             >
               {String(d).padStart(2, '0')}
@@ -599,7 +612,7 @@ function PainelCalendario({
           ))}
         </div>
         <p
-          className="text-xs text-gray-500 mt-2 cursor-pointer select-none hover:text-gray-700 hover:underline"
+          className="text-[11px] text-indigo-600 mt-2 cursor-pointer select-none font-medium hover:text-indigo-800 hover:underline"
           title="Duplo clique para ir à data de hoje no calendário"
           onDoubleClick={(e) => {
             e.preventDefault();
@@ -608,10 +621,14 @@ function PainelCalendario({
         >
           Hoje: {dataStr(hojeReal.dd, hojeReal.mm, hojeReal.yyyy)}
         </p>
+        </div>
       </div>
 
-      <div className="border border-gray-300 rounded-lg p-3 bg-white shadow-sm">
-        <div className="text-sm font-medium text-gray-700 mb-2">Data completa</div>
+      <div className="border border-cyan-200/70 rounded-xl overflow-hidden bg-white shadow-sm ring-1 ring-cyan-100/60">
+        <div className="px-2.5 py-1.5 bg-gradient-to-r from-cyan-600 to-teal-600">
+          <div className="text-xs font-bold uppercase tracking-wide text-white">Data completa</div>
+        </div>
+        <div className="p-2.5">
         <input
           type="text"
           inputMode="numeric"
@@ -625,25 +642,26 @@ function PainelCalendario({
             if (e.key === 'Enter') aplicarTextoData();
           }}
           placeholder="dd/mm/aaaa ou hj"
-          className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
+          className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-teal-400/40 focus:border-teal-500"
         />
+        </div>
       </div>
 
-      <div>
-        <div className="text-sm font-medium text-gray-700 mb-0.5">Usuário</div>
-        <p className="text-[11px] text-gray-500 mb-1.5 leading-snug">
-          Agenda por pessoa — mesmos cadastros ativos da tela <strong className="font-medium text-gray-600">Usuários</strong>.
+      <div className="rounded-xl border border-indigo-200/70 bg-white/90 p-2.5 shadow-sm ring-1 ring-indigo-100/60">
+        <div className="text-sm font-semibold text-indigo-950 mb-0.5">Usuário</div>
+        <p className="text-[11px] text-slate-600 mb-2 leading-snug">
+          Agenda por pessoa — mesmos cadastros ativos da tela <strong className="font-medium text-indigo-800">Usuários</strong>.
         </p>
-        <div className="space-y-1">
+        <div className="space-y-1 max-h-40 overflow-y-auto pr-0.5">
           {usuariosSistema.map((u) => (
-            <label key={u.id} className="flex items-center gap-2 text-sm cursor-pointer">
+            <label key={u.id} className="flex items-center gap-2 text-sm cursor-pointer text-slate-800 hover:text-indigo-900">
               <input
                 type="radio"
                 name={`usuario-${nomeGrupo}`}
                 value={u.id}
                 checked={usuarioSelecionado === u.id}
                 onChange={() => setUsuarioSelecionado(u.id)}
-                className="text-blue-600"
+                className="text-indigo-600 accent-indigo-600"
               />
               {getNomeExibicaoUsuario(u)}
             </label>
@@ -651,14 +669,14 @@ function PainelCalendario({
         </div>
       </div>
 
-      <div className="flex flex-col gap-1">
-        <button type="button" className="px-3 py-1.5 text-sm border border-gray-300 rounded bg-white hover:bg-gray-200">
+      <div className="flex flex-col gap-2 mt-auto pt-1">
+        <button type="button" className="px-3 py-2 text-sm font-medium rounded-lg border border-slate-200 bg-white text-slate-800 shadow-sm hover:bg-slate-50 hover:border-slate-300 transition-colors">
           Pesquisar
         </button>
         <button
           type="button"
           onClick={() => onAbrirUsuariosSistema?.()}
-          className="px-3 py-1.5 text-sm border border-gray-300 rounded bg-white hover:bg-gray-200"
+          className="px-3 py-2 text-sm font-semibold rounded-lg border border-indigo-300 bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-md hover:from-indigo-700 hover:to-violet-700 transition-colors"
           title="Cadastro de pessoas da agenda (mesma lista da tela Usuários)"
         >
           Usuários
@@ -800,7 +818,7 @@ export function Agenda() {
       navigate('/processos', { state: buildRouterStateChaveClienteProcesso(chave.codCliente, chave.proc) });
       return;
     }
-    const texto = `${ev.descricao ?? ''}\n${ev.hora ?? ''}`;
+    const texto = `${ev.descricao ?? ''}\n${ev.titulo ?? ''}\n${ev.hora ?? ''}`;
     const found = buscarProcessoUnicoNaBasePorTextoAgenda(texto);
     if (found) {
       navigate('/processos', { state: buildRouterStateChaveClienteProcesso(found.codCliente, found.proc) });
@@ -967,7 +985,8 @@ export function Agenda() {
   );
 
   return (
-    <div className="flex flex-1 min-h-0 p-4 gap-4 overflow-hidden">
+    <div className="flex flex-1 min-h-0 min-w-0 flex-col bg-gradient-to-b from-slate-100 via-slate-50 to-slate-200 overflow-hidden">
+      <div className="flex flex-1 min-h-0 p-3 md:p-4 gap-3 md:gap-4 overflow-hidden w-full max-w-[1800px] mx-auto">
       {/* Painel esquerdo: Calendário + Usuário + Botões */}
       <PainelCalendario
         mesAtual={mesEsquerda}
@@ -984,21 +1003,32 @@ export function Agenda() {
       />
 
       {/* Área central: duas colunas de compromissos (simétricas) */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-white border border-gray-200 rounded-lg shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-b border-gray-200">
-          <h1 className="text-xl font-semibold text-gray-800">Agenda</h1>
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden rounded-2xl border border-slate-200/90 bg-white/95 shadow-md ring-1 ring-indigo-500/5 backdrop-blur-sm">
+        <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 border-b border-slate-200/80 bg-white/90 shrink-0 rounded-t-2xl shadow-sm">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-sky-500 to-indigo-600 text-white shadow-md ring-1 ring-sky-400/40">
+              <CalendarDays className="w-5 h-5" aria-hidden />
+            </span>
+            <div className="min-w-0">
+              <h1 className="text-xl font-bold bg-gradient-to-r from-slate-900 via-indigo-900 to-sky-800 bg-clip-text text-transparent">
+                Agenda
+              </h1>
+              <p className="text-xs text-slate-500 truncate">Compromissos por dia — duplo clique para detalhe ou processo</p>
+            </div>
+          </div>
           <button
             type="button"
             onClick={() => setModalAgendaMensal(true)}
-            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-sm font-medium shadow-sm hover:bg-slate-50"
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-emerald-400/60 bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-sm font-semibold shadow-md hover:from-emerald-600 hover:to-teal-700 shrink-0"
             title="Relatório de todos os compromissos do mês (usuário do calendário esquerdo)"
           >
-            <CalendarDays className="w-4 h-4 text-slate-600" aria-hidden />
+            <CalendarDays className="w-4 h-4 opacity-95" aria-hidden />
             Agenda mensal
           </button>
         </div>
-        <div className="flex flex-1 min-h-0 overflow-hidden">
+        <div className="flex flex-1 min-h-0 overflow-hidden gap-2 p-2 bg-gradient-to-b from-slate-50/50 to-transparent">
           <ColunaDia
+            variantColuna="esquerda"
             dataLabel={`${dataEsquerdaStr} — Compromissos do dia`}
             eventos={eventosEsquerda}
             onDuploCliqueEvento={aoDuploCliqueCompromisso}
@@ -1021,6 +1051,7 @@ export function Agenda() {
             }}
           />
           <ColunaDia
+            variantColuna="direita"
             dataLabel={`${dataDireitaStr} — Próximo dia`}
             eventos={eventosDireita}
             onDuploCliqueEvento={aoDuploCliqueCompromisso}
@@ -1059,26 +1090,27 @@ export function Agenda() {
         usuariosSistema={usuariosAtivos}
         onAbrirUsuariosSistema={() => navigate('/usuarios')}
       />
+      </div>
 
       {modalAgendaMensal && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 backdrop-blur-[2px] p-4"
           role="dialog"
           aria-modal="true"
           aria-labelledby="agenda-mensal-titulo"
           onClick={() => setModalAgendaMensal(false)}
         >
           <div
-            className="bg-white rounded-lg shadow-xl border border-slate-200 w-full max-w-4xl max-h-[90vh] flex flex-col"
+            className="bg-white rounded-2xl shadow-2xl border border-slate-200/90 w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden ring-1 ring-indigo-500/10"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-slate-200 shrink-0">
-              <div>
-                <h2 id="agenda-mensal-titulo" className="text-base font-semibold text-slate-800">
+            <div className="flex items-center justify-between gap-3 px-4 py-3 shrink-0 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 text-white shadow-md">
+              <div className="min-w-0">
+                <h2 id="agenda-mensal-titulo" className="text-base font-bold tracking-tight">
                   Agenda completa — {tituloMesRelatorio}
                 </h2>
-                <p className="text-sm text-slate-600 mt-0.5">
-                  Usuário: <span className="font-medium text-slate-800">{nomeUsuarioAgenda}</span>
+                <p className="text-sm text-emerald-50/95 mt-0.5">
+                  Usuário: <span className="font-semibold text-white">{nomeUsuarioAgenda}</span>
                   {' · '}
                   {(relatorioAgendaMensal.diasComEventos || []).length} dia(s) com compromisso
                   {' · '}
@@ -1087,43 +1119,43 @@ export function Agenda() {
               </div>
               <button
                 type="button"
-                className="p-2 rounded text-slate-500 hover:bg-slate-100"
+                className="p-2 rounded-lg bg-white/15 text-white hover:bg-white/25 border border-white/20 shrink-0"
                 aria-label="Fechar"
                 onClick={() => setModalAgendaMensal(false)}
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="px-4 py-3 overflow-y-auto flex-1 min-h-0">
+            <div className="px-4 py-3 overflow-y-auto flex-1 min-h-0 bg-gradient-to-b from-slate-50/40 to-white">
               {(relatorioAgendaMensal.diasComEventos || []).length === 0 ? (
                 <p className="text-sm text-slate-600 py-6 text-center">
                   Nenhum compromisso neste mês para este usuário.
                 </p>
               ) : (
-                <div className="space-y-6">
+                <div className="space-y-5">
                   {(relatorioAgendaMensal.diasComEventos || []).map(({ dataBr, eventos }) => (
-                    <section key={dataBr} className="border border-slate-200 rounded-lg overflow-hidden">
-                      <div className="px-3 py-2 bg-slate-100 border-b border-slate-200 text-sm font-semibold text-slate-800">
+                    <section key={dataBr} className="border border-slate-200/90 rounded-xl overflow-hidden shadow-sm ring-1 ring-slate-100">
+                      <div className="px-3 py-2.5 bg-gradient-to-r from-indigo-800 via-slate-800 to-violet-900 text-sm font-semibold text-white">
                         {rotuloDataComDiaSemana(dataBr)}
-                        <span className="font-normal text-slate-600 ml-2">
+                        <span className="font-normal text-indigo-100 ml-2">
                           ({eventos.length} {eventos.length === 1 ? 'compromisso' : 'compromissos'})
                         </span>
                       </div>
-                      <div className="overflow-x-auto">
+                      <div className="overflow-x-auto bg-white">
                         <table className="w-full text-sm border-collapse min-w-[520px]">
                           <thead>
-                            <tr className="bg-slate-50 border-b border-slate-200">
-                              <th className="text-left px-3 py-2 font-medium text-slate-700 w-[88px]">Hora</th>
+                            <tr className="bg-gradient-to-r from-slate-100 to-indigo-50/80 border-b border-slate-200">
+                              <th className="text-left px-3 py-2 font-semibold text-slate-800 w-[88px]">Hora</th>
                               {relatorioAgendaMensal.todosUsuarios ? (
-                                <th className="text-left px-3 py-2 font-medium text-slate-700 w-[120px]">Quem</th>
+                                <th className="text-left px-3 py-2 font-semibold text-slate-800 w-[120px]">Quem</th>
                               ) : null}
-                              <th className="text-left px-3 py-2 font-medium text-slate-700">Descrição</th>
-                              <th className="text-right px-3 py-2 font-medium text-slate-700 w-[72px]">Status</th>
+                              <th className="text-left px-3 py-2 font-semibold text-slate-800">Descrição</th>
+                              <th className="text-right px-3 py-2 font-semibold text-slate-800 w-[72px]">Status</th>
                             </tr>
                           </thead>
                           <tbody>
                             {eventos.map((ev) => (
-                              <tr key={`${dataBr}-${ev.id}`} className="border-b border-slate-100 last:border-0">
+                              <tr key={`${dataBr}-${ev.id}`} className="border-b border-slate-100 last:border-0 hover:bg-indigo-50/30 transition-colors">
                                 <td className="px-3 py-2 align-top text-slate-800 whitespace-nowrap">
                                   {ev.hora ? ev.hora : '—'}
                                 </td>
@@ -1150,10 +1182,10 @@ export function Agenda() {
                 </div>
               )}
             </div>
-            <div className="px-4 py-3 border-t border-slate-200 flex justify-end shrink-0">
+            <div className="px-4 py-3 border-t border-slate-200/80 flex justify-end shrink-0 bg-white">
               <button
                 type="button"
-                className="px-4 py-2 rounded-lg bg-slate-800 text-white text-sm font-medium hover:bg-slate-900"
+                className="px-5 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 text-white text-sm font-semibold shadow-md hover:from-indigo-700 hover:to-violet-700"
                 onClick={() => setModalAgendaMensal(false)}
               >
                 Fechar
@@ -1165,29 +1197,29 @@ export function Agenda() {
 
       {eventoModal && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 backdrop-blur-[2px] p-4"
           role="dialog"
           aria-modal="true"
           onClick={() => setEventoModal(null)}
         >
           <div
-            className="bg-white rounded-lg shadow-xl border border-slate-200 w-full max-w-lg flex flex-col"
+            className="bg-white rounded-2xl shadow-2xl border border-slate-200/90 w-full max-w-lg flex flex-col overflow-hidden ring-1 ring-sky-500/10"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200">
-              <h2 className="text-sm font-semibold text-slate-800">
+            <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-sky-600 to-indigo-600 text-white shadow-md shrink-0">
+              <h2 className="text-sm font-bold">
                 Texto completo do compromisso
               </h2>
               <button
                 type="button"
-                className="p-2 rounded text-slate-500 hover:bg-slate-100"
+                className="px-2 py-1 rounded-lg bg-white/15 text-white text-xs font-semibold hover:bg-white/25 border border-white/20"
                 aria-label="Fechar"
                 onClick={() => setEventoModal(null)}
               >
                 OK
               </button>
             </div>
-            <div className="px-4 py-4 overflow-y-auto">
+            <div className="px-4 py-4 overflow-y-auto bg-gradient-to-b from-slate-50/50 to-white">
               <div className="space-y-2">
                 {eventoModal.hora ? (
                   <div className="text-sm text-slate-700">
@@ -1204,14 +1236,14 @@ export function Agenda() {
                 ) : null}
               </div>
             </div>
-            <div className="px-4 py-3 border-t border-slate-200 flex justify-end gap-2 flex-wrap">
+            <div className="px-4 py-3 border-t border-slate-200/80 flex justify-end gap-2 flex-wrap bg-white">
               {(() => {
                 const ch = extrairChaveProcessoEventoAgenda(eventoModal);
                 if (!ch) return null;
                 return (
                   <button
                     type="button"
-                    className="px-4 py-2 rounded-lg bg-blue-700 text-white text-sm font-medium hover:bg-blue-800"
+                    className="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 text-white text-sm font-semibold shadow-md hover:from-indigo-700 hover:to-violet-700"
                     onClick={() => {
                       setEventoModal(null);
                       navigate('/processos', { state: buildRouterStateChaveClienteProcesso(ch.codCliente, ch.proc) });
@@ -1223,7 +1255,7 @@ export function Agenda() {
               })()}
               <button
                 type="button"
-                className="px-4 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
+                className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-800 text-sm font-medium shadow-sm hover:bg-slate-50"
                 onClick={() => setEventoModal(null)}
               >
                 OK

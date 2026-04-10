@@ -16,7 +16,11 @@
     "preview": "vite preview",
     "generate:mock-cadastro-pessoas": "node scripts/generate-cadastro-pessoas-mock.mjs",
     "generate:mock-clientes-cadastrados": "node scripts/generate-clientes-cadastrados-mock.mjs",
-    "import:agenda-xlsx": "node scripts/import-agenda-planilha.mjs"
+    "import:agenda-xlsx": "node scripts/import-agenda-planilha.mjs",
+    "import:agenda-itamar-total": "node scripts/import-agenda-planilha.mjs \"/Users/itamarvillarealjunior/Dropbox/COMUM/agenda itamar total.xlsx\" --layout=total --login=itamar",
+    "reimport:agenda-itamar-total": "bash ../e-vilareal-java-backend/scripts/reimportar_agenda_itamar_total.sh",
+    "import:agenda-karla-total": "node scripts/import-agenda-planilha.mjs \"/Users/itamarvillarealjunior/Dropbox/COMUM/agenda karla total.xlsx\" --layout=total --login=karla.pedroza",
+    "reimport:agenda-karla-total": "bash ../e-vilareal-java-backend/scripts/reimportar_agenda_karla_total.sh"
   },
   "dependencies": {
     "docx": "^9.6.1",

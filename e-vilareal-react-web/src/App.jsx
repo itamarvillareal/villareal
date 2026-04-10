@@ -42,6 +42,7 @@ import {
 } from './data/usuarioPermissoesStorage.js';
 import { getContextoAuditoriaUsuario, registrarAuditoria } from './services/auditoriaCliente.js';
 import { installCrossTabLocalStorageSync } from './services/crossTabLocalStorageSync.js';
+import { executarSincronizacaoAudienciasAgendaEProcessosCompleta } from './services/sincronizacaoAudienciasAgendaProcessosService.js';
 
 function RedirectClientesParaLista() {
   const location = useLocation();
@@ -181,6 +182,52 @@ function App() {
     })();
     return () => {
       cancelled = true;
+    };
+  }, []);
+
+  /** Agenda persistida → histórico local de processos (audiência), em idle após abrir o app. */
+  useEffect(() => {
+    let cancelled = false;
+    const run = () => {
+      if (cancelled || typeof window === 'undefined') return;
+      void executarSincronizacaoAudienciasAgendaEProcessosCompleta().catch(() => {
+        /* silencioso */
+      });
+    };
+    if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') {
+      const id = window.requestIdleCallback(() => run(), { timeout: 4000 });
+      return () => {
+        cancelled = true;
+        try {
+          window.cancelIdleCallback(id);
+        } catch {
+          /* ignore */
+        }
+      };
+    }
+    const t = window.setTimeout(run, 600);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(t);
+    };
+  }, []);
+
+  /**
+   * Após importação/salvamento de clientes (API), o índice CNJ×processo muda — volta a sincronizar audiências.
+   * Não escuta `agenda-persistencia-atualizada` para evitar loop (a própria sync pode gravar na agenda local).
+   */
+  useEffect(() => {
+    let timer;
+    const agendar = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        void executarSincronizacaoAudienciasAgendaEProcessosCompleta().catch(() => {});
+      }, 2000);
+    };
+    window.addEventListener('vilareal:cadastro-clientes-externo-atualizado', agendar);
+    return () => {
+      window.removeEventListener('vilareal:cadastro-clientes-externo-atualizado', agendar);
+      window.clearTimeout(timer);
     };
   }, []);
 

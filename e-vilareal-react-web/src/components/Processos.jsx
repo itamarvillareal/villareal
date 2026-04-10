@@ -1644,6 +1644,8 @@ export function Processos() {
         const partesAtualizadas = await listarPartesProcesso(pid);
         aplicarListaPartesApiNaUi(partesAtualizadas);
       }
+      // O backend ainda não persiste audiência; o relatório «Audiências pendentes» (Diagnósticos) lê só o histórico local.
+      salvarHistoricoDoProcesso(snapshot);
     } catch (e) {
       setApiError(e?.message || 'Falha ao sincronizar processo na API.');
     } finally {
@@ -1999,6 +2001,9 @@ export function Processos() {
       numeroProcessoNovo,
       codigoCliente,
       numeroInterno: processo,
+      parteCliente: textoParteCliente || parteCliente,
+      parteOposta: textoParteOposta || parteOposta,
+      competencia,
     };
 
     if (featureFlags.useApiAgenda) {
@@ -2019,7 +2024,19 @@ export function Processos() {
 
     agendarAudienciaParaTodosUsuarios(payload);
     return undefined;
-  }, [audienciaData, audienciaHora, audienciaTipo, numeroProcessoNovo, codigoCliente, processo]);
+  }, [
+    audienciaData,
+    audienciaHora,
+    audienciaTipo,
+    numeroProcessoNovo,
+    codigoCliente,
+    processo,
+    textoParteCliente,
+    textoParteOposta,
+    parteCliente,
+    parteOposta,
+    competencia,
+  ]);
 
   function formatarDataAudienciaInput(valor) {
     const alias = resolverAliasHojeEmTexto(valor, 'br');

@@ -35,6 +35,21 @@ function mapApiEventoToFront(e) {
   };
 }
 
+/**
+ * Todos os compromissos no intervalo [dataInicio, dataFim] (ISO yyyy-mm-dd), todas as usuárias/os.
+ * Usado para sincronizar audiências quando a agenda está só na API.
+ */
+export async function listarEventosAgendaPeriodoTodosUsuariosApi(dataInicioIso, dataFimIso) {
+  if (!featureFlags.useApiAgenda) return [];
+  const di = String(dataInicioIso ?? '').trim();
+  const df = String(dataFimIso ?? '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(di) || !/^\d{4}-\d{2}-\d{2}$/.test(df)) return [];
+  const data = await request('/api/agenda/eventos', {
+    query: { dataInicio: di, dataFim: df, todosUsuarios: 'true' },
+  });
+  return Array.isArray(data) ? data : [];
+}
+
 export async function listarEventosPorDataUsuario(dataBr, usuarioId) {
   const dataIso = parseBrDate(dataBr);
   if (!featureFlags.useApiAgenda) {
@@ -134,6 +149,9 @@ export async function replicarAudienciaProcessoTodosColaboradoresApi({
   numeroProcessoNovo,
   codigoCliente,
   numeroInterno,
+  parteCliente,
+  parteOposta,
+  competencia,
 }) {
   if (!featureFlags.useApiAgenda) return { ok: false, reason: 'api-off' };
   const [dd, mm, yyyy] = String(audienciaData || '').split('/');
@@ -144,7 +162,13 @@ export async function replicarAudienciaProcessoTodosColaboradoresApi({
   const horaEv = String(audienciaHora ?? '')
     .trim()
     .slice(0, 5);
-  const descricao = descricaoAudienciaParaAgendaCampos({ audienciaTipo, numeroProcessoNovo });
+  const descricao = descricaoAudienciaParaAgendaCampos({
+    audienciaTipo,
+    numeroProcessoNovo,
+    parteCliente,
+    parteOposta,
+    competencia,
+  });
   const codPad = padCliente(codigoCliente ?? '1');
   const procNorm = Math.max(1, Math.floor(Number(normalizarProcesso(numeroInterno ?? 1))));
   const processoRef = montarProcessoRefAgenda(codPad, procNorm) || null;
