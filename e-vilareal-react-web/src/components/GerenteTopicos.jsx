@@ -10,7 +10,7 @@ export function GerenteTopicos() {
   const { raiz, carregando, erro, usandoApi } = useTopicosRaiz();
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 p-4 md:p-6 min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/35 to-emerald-50/45 dark:bg-slate-900/40">
+    <div className="flex-1 flex flex-col min-h-0 p-4 md:p-6 min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/35 to-emerald-50/45 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d]">
       <TopicosSubmenu />
       <header className="flex items-center gap-3 mb-6">
         <div className="p-2.5 rounded-xl bg-gradient-to-br from-indigo-600 to-violet-700 text-white shadow-lg shadow-indigo-500/25 ring-1 ring-white/20 dark:ring-white/10">

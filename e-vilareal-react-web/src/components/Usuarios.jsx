@@ -504,7 +504,7 @@ export function Usuarios() {
   }
 
   return (
-    <div className="flex flex-1 min-h-0 flex-col min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/40 to-emerald-50/50 overflow-auto">
+    <div className="flex flex-1 min-h-0 flex-col min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/40 to-emerald-50/50 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d] overflow-auto">
       <div className="p-4 md:p-6 max-w-7xl mx-auto w-full flex flex-col gap-5 flex-1 min-h-0">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3 min-w-0">
@@ -512,7 +512,7 @@ export function Usuarios() {
             <UserCog className="h-6 w-6" aria-hidden />
           </div>
           <div className="min-w-0">
-            <h1 className="text-xl font-bold bg-gradient-to-r from-indigo-800 to-violet-800 bg-clip-text text-transparent">
+            <h1 className="text-xl font-bold bg-gradient-to-r from-indigo-800 to-violet-800 dark:from-indigo-200 dark:to-violet-200 bg-clip-text text-transparent">
               Usuários
             </h1>
             <p className="text-sm text-slate-600">

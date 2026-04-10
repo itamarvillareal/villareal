@@ -203,10 +203,10 @@ export function Atividade() {
     'w-full px-2 py-1.5 border border-slate-300 rounded text-sm bg-white text-slate-800';
 
   return (
-    <div className="min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/35 to-emerald-50/45 p-4">
+    <div className="min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/35 to-emerald-50/45 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d] p-4">
       <div className="max-w-[1200px] mx-auto space-y-4">
         <div className="bg-white/95 backdrop-blur-sm rounded-2xl border border-slate-200/90 shadow-xl ring-1 ring-indigo-500/10 p-5">
-          <h1 className="text-xl font-bold bg-gradient-to-r from-indigo-800 to-violet-800 bg-clip-text text-transparent">
+          <h1 className="text-xl font-bold bg-gradient-to-r from-indigo-800 to-violet-800 dark:from-indigo-200 dark:to-violet-200 bg-clip-text text-transparent">
             Relatório de atividades
           </h1>
           <p className="text-sm text-slate-600 mt-1">

@@ -5,5 +5,11 @@ build/
 .DS_Store
 *.log
 
+# Token JWT local para scripts de importação (nunca commitar)
+e-vilareal-java-backend/scripts/.vilareal-import-token
+
 # Cursor (regras e estado locais; não versionar)
 .cursor/
+
+# Pastas temporárias de análise de planilhas
+.tmp_xlsx_parse/

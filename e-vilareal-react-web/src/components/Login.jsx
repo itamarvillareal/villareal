@@ -10,8 +10,8 @@ export function Login() {
   const location = useLocation();
   const from = location.state?.from && typeof location.state.from === 'string' ? location.state.from : '/';
 
-  const [usuario, setUsuario] = useState('');
-  const [senha, setSenha] = useState('');
+  const [usuario, setUsuario] = useState('itamar');
+  const [senha, setSenha] = useState('123456');
   const [erro, setErro] = useState('');
   const [carregando, setCarregando] = useState(false);
 
@@ -120,8 +120,10 @@ export function Login() {
           </form>
 
           <p className="mt-6 text-center text-[11px] text-slate-500 leading-relaxed">
-            Ambiente de desenvolvimento: após as migrações Flyway, use o usuário{' '}
-            <span className="text-slate-400 font-mono">itamar</span> e a senha padrão do seed.
+            Desenvolvimento: login e senha vêm preenchidos (
+            <span className="text-slate-400 font-mono">itamar</span> /{' '}
+            <span className="text-slate-400 font-mono">123456</span>
+            ). Altere nos campos se precisar de outro usuário.
           </p>
         </div>
 

@@ -363,8 +363,9 @@ export async function salvarCabecalhoProcesso(payload) {
     descricaoAcao: payload.observacao || null,
     competencia: payload.competencia || null,
     fase: payload.faseSelecionada || null,
+    observacaoFase: payload.faseCampo || null,
     status: payload.status || null,
-    tramitacao: payload.tramitacao || null,
+    tramitacao: (payload.procedimento || payload.tramitacao || '').trim() || null,
     dataProtocolo: toIsoFromBrDate(payload.dataProtocolo),
     prazoFatal: toIsoFromBrDate(payload.prazoFatal),
     proximaConsulta: toIsoFromBrDate(payload.proximaConsultaData),
@@ -576,6 +577,7 @@ export function mapApiProcessoToUiShape(p) {
     naturezaAcao: corrigirMojibakeUtf8(p.naturezaAcao || ''),
     competencia: corrigirMojibakeUtf8(p.competencia || ''),
     faseSelecionada: corrigirMojibakeUtf8(p.fase || ''),
+    observacaoFase: corrigirMojibakeUtf8(p.observacaoFase || ''),
     statusAtivo: p.ativo !== false,
     prazoFatal: toBrFromIsoDate(p.prazoFatal),
     proximaConsultaData: toBrFromIsoDate(p.proximaConsulta),
@@ -585,6 +587,8 @@ export function mapApiProcessoToUiShape(p) {
     estado: p.uf || '',
     consultaAutomatica: p.consultaAutomatica === true,
     tramitacao: corrigirMojibakeUtf8(p.tramitacao || ''),
+    /** Mesmo valor que `tramitacao` na API (campo «Procedimento» no formulário). */
+    procedimento: corrigirMojibakeUtf8(p.tramitacao || ''),
     dataProtocolo: toBrFromIsoDate(p.dataProtocolo),
     responsavel: corrigirMojibakeUtf8(p.consultor || ''),
     /** Só na listagem por cliente; mesma regra que partes «Réu» na tela Processos. */

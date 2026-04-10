@@ -23,6 +23,33 @@ export function loadUltimoCodigoCliente() {
   }
 }
 
+/** Grava só o último código aberto (útil com API, onde `saveCadastroClienteDados` pode não rodar). */
+export function saveUltimoCodigoCliente(codClienteRaw) {
+  if (typeof window === 'undefined') return;
+  const key = padCliente8Cadastro(codClienteRaw);
+  try {
+    window.localStorage.setItem(STORAGE_ULTIMO_COD_CLIENTE, JSON.stringify({ codigo: key }));
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * Código inicial: explícito > último salvo > maior código conhecido (API + local) > null.
+ * @param {string|undefined} codPreferido
+ * @param {Array<{ codigo?: string }>|null|undefined} clientesApiFront
+ * @returns {string|null} código 8 dígitos ou null para usar default do formulário
+ */
+export function resolverCodigoClienteInicial(codPreferido, clientesApiFront) {
+  const pref = codPreferido != null ? String(codPreferido).trim() : '';
+  if (pref !== '') return padCliente8Cadastro(pref);
+  const saved = loadUltimoCodigoCliente();
+  if (saved) return saved;
+  const codes = coletarCodigosClienteConhecidos(clientesApiFront);
+  if (codes.length > 0) return codes[codes.length - 1];
+  return null;
+}
+
 export function padCliente8Cadastro(val) {
   const s = String(val ?? '').replace(/\D/g, '');
   const n = s ? Number(s) : 1;
@@ -225,11 +252,7 @@ export function saveCadastroClienteDados(codClienteRaw, dados) {
       atualizadoEm: new Date().toISOString(),
     };
     window.localStorage.setItem(STORAGE_CADASTRO_CLIENTES_DADOS, JSON.stringify(bag));
-    try {
-      window.localStorage.setItem(STORAGE_ULTIMO_COD_CLIENTE, JSON.stringify({ codigo: key }));
-    } catch {
-      /* ignore */
-    }
+    saveUltimoCodigoCliente(key);
   } catch {
     /* quota */
   }

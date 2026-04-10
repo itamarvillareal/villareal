@@ -275,7 +275,7 @@ export function ImoveisAdministracaoFinanceiro() {
   }, [location.hash, painel]);
 
   return (
-    <div className="min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/35 to-emerald-50/45 p-4">
+    <div className="min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/35 to-emerald-50/45 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d] p-4">
       <div className="max-w-[1400px] mx-auto space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex items-start gap-3">
@@ -296,7 +296,7 @@ export function ImoveisAdministracaoFinanceiro() {
                 <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-violet-700 text-white shadow-lg shadow-indigo-500/25 shrink-0">
                   <Landmark className="w-5 h-5" aria-hidden />
                 </span>
-                <span className="bg-gradient-to-r from-indigo-800 to-violet-800 bg-clip-text text-transparent">
+                <span className="bg-gradient-to-r from-indigo-800 to-violet-800 dark:from-indigo-200 dark:to-violet-200 bg-clip-text text-transparent">
                   Financeiro da locação
                 </span>
               </h1>
