@@ -1,0 +1,12 @@
+{
+  "valid": [
+    { "raw": "123456/SP", "normalized": "123456/SP" },
+    { "raw": "OAB/SP 987654", "normalized": "987654/SP" },
+    { "raw": "  MG/111222 ", "normalized": "111222/MG" }
+  ],
+  "invalid": [
+    { "raw": "", "reason": "vazio" },
+    { "raw": "123/XX", "reason": "UF inválida" },
+    { "raw": "abc/SP", "reason": "sem dígitos" }
+  ]
+}

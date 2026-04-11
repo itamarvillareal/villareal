@@ -22,7 +22,9 @@
     "import:agenda-karla-total": "node scripts/import-agenda-planilha.mjs \"/Users/itamarvillarealjunior/Dropbox/COMUM/agenda karla total.xlsx\" --layout=total --login=karla.pedroza --usuario-id=2",
     "reimport:agenda-karla-total": "bash ../e-vilareal-java-backend/scripts/reimportar_agenda_karla_total.sh",
     "import:agenda-ana-luisa-total": "node scripts/import-agenda-planilha.mjs \"/Users/itamarvillarealjunior/Dropbox/COMUM/agenda ana luisa total.xlsx\" --layout=total --login=ana.luisa --usuario-id=3",
-    "reimport:agenda-ana-luisa-total": "bash ../e-vilareal-java-backend/scripts/reimportar_agenda_ana_luisa_total.sh"
+    "reimport:agenda-ana-luisa-total": "bash ../e-vilareal-java-backend/scripts/reimportar_agenda_ana_luisa_total.sh",
+    "import:debitos-calculos": "node scripts/import-debitos-calculos-planilha.mjs \"/Users/itamarvillarealjunior/Dropbox/COMUM/debitos.xlsx\"",
+    "import:debitos-calculos:devtools": "node scripts/import-debitos-calculos-planilha.mjs \"/Users/itamarvillarealjunior/Dropbox/COMUM/debitos.xlsx\" --out=\"/tmp/vilareal-rodadas-debitos-merged.json\" --devtools-snippet"
   },
   "dependencies": {
     "docx": "^9.6.1",
@@ -33,7 +35,8 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router-dom": "^7.13.1",
-    "tesseract.js": "^5.1.0"
+    "tesseract.js": "^5.1.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
@@ -49,7 +52,6 @@
     "pdf-parse": "^2.4.5",
     "tailwindcss": "^4.2.1",
     "vite": "^7.3.1",
-    "vitest": "^3.0.5",
-    "xlsx": "^0.18.5"
+    "vitest": "^3.0.5"
   }
 }

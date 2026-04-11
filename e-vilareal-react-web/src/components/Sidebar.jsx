@@ -56,6 +56,7 @@ export function Sidebar() {
 
   const pode = (modId) => usuarioPodeAcessarModulo(perfilId, modId);
   const navFiltrado = navItems
+    .filter((item) => item.id !== 'integracoes-grupo' || featureFlags.showTribunalScraperLab)
     .filter((item) => itemMenuPermitido(item, pode))
     .filter((item) => item.id !== 'atividade' || isUsuarioMasterEstacao());
 
@@ -80,6 +81,9 @@ export function Sidebar() {
     }
     if (p === '/topicos' || p.startsWith('/topicos/')) {
       setGruposAbertos((prev) => new Set(prev).add('topicos-grupo'));
+    }
+    if (p === '/integracoes/scraper-lab' || p.startsWith('/integracoes/')) {
+      setGruposAbertos((prev) => new Set(prev).add('integracoes-grupo'));
     }
   }, [location.pathname]);
 
@@ -145,6 +149,11 @@ export function Sidebar() {
                       return;
                     }
                     if (item.id === 'admin-imoveis-grupo') {
+                      setGruposAbertos((prev) => new Set(prev).add(item.id));
+                      if (subs[0]) navigate(`/${subs[0].id}`);
+                      return;
+                    }
+                    if (item.id === 'integracoes-grupo') {
                       setGruposAbertos((prev) => new Set(prev).add(item.id));
                       if (subs[0]) navigate(`/${subs[0].id}`);
                       return;

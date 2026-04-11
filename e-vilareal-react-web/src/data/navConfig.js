@@ -59,6 +59,12 @@ export const navItems = [
     ],
   },
   { id: 'diagnosticos', label: 'Diagnósticos', icon: 'Activity' },
+  {
+    id: 'integracoes-grupo',
+    label: 'Integrações (lab)',
+    icon: 'Plug',
+    children: [{ id: 'integracoes/scraper-lab', label: 'DataJud — lab de buscas', icon: 'Link' }],
+  },
   { id: 'usuarios', label: 'Usuários', icon: 'UserCog' },
   { id: 'configuracoes', label: 'Configurações', icon: 'Settings' },
 ];

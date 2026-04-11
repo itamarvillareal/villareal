@@ -531,6 +531,8 @@ const MENU_ICONS = {
   topicos: IconTopicos,
   'topicos/gerente': IconGerenteTopicos,
   diagnosticos: IconDiagnosticos,
+  'integracoes-grupo': IconMonitoramento,
+  'integracoes/scraper-lab': IconRelatorioProcessos,
   usuarios: IconUsuarios,
   configuracoes: IconConfiguracoes,
 };

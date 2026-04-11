@@ -20,6 +20,17 @@ export function parseSegmentosCnj(cnjNormalizado) {
 }
 
 /**
+ * Número único de 20 dígitos (sem pontuação), como muitos índices DataJud armazenam em `numeroProcesso`.
+ * @param {string} cnjNormalizado CNJ formatado NNNNNNN-DD.AAAA.J.TR.OOOO
+ * @returns {string|null}
+ */
+export function cnjParaNumeroUnicoVinteDigitos(cnjNormalizado) {
+  const p = parseSegmentosCnj(cnjNormalizado);
+  if (!p) return null;
+  return `${p.sequencial}${p.dv}${p.ano}${p.segmentoJ}${p.tribunalTR}${p.origem}`;
+}
+
+/**
  * Mapeamento TR (2 dígitos) → sufixo API DataJud para Justiça Estadual (J=8).
  * Referência: padrão api_publica_tj{uf} — cobertura parcial; expandir conforme necessidade.
  */
@@ -81,4 +92,31 @@ export function extrairTribunalTextualDoDiario(diarioStr) {
   const m = s.match(/\b(TRT\s*\d{1,2}|TJ[A-Z]{2,4}|TRF\s*\d|TST|STJ|STF|STM)\b/);
   if (m) return m[1].replace(/\s+/g, '');
   return null;
+}
+
+/**
+ * Tribunais de justiça estadual (J=8) com `apiIndex` mapeado para DataJud neste repositório.
+ * @returns {ReadonlyArray<{ chaveJT: string, sigla: string, nome: string, apiIndex: string }>}
+ */
+export function listaTribunaisJEDatajudMapeados() {
+  return Object.entries(TJ_TR_PARA_API)
+    .map(([chaveJT, v]) => ({ chaveJT, ...v }))
+    .sort((a, b) => a.sigla.localeCompare(b.sigla));
+}
+
+/**
+ * Padrão CNJ para índices `api_publica_trt1` … `api_publica_trt24` (justiça do trabalho).
+ * @returns {ReadonlyArray<{ sigla: string, nome: string, apiIndex: string }>}
+ */
+export function listaIndicesTrtDatajud() {
+  const out = [];
+  for (let n = 1; n <= 24; n += 1) {
+    const num = String(n).padStart(2, '0');
+    out.push({
+      sigla: `TRT${num}`,
+      nome: `Tribunal Regional do Trabalho da ${n}ª Região`,
+      apiIndex: `api_publica_trt${n}`,
+    });
+  }
+  return out;
 }

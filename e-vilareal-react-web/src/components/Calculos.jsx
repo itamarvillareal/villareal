@@ -20,6 +20,7 @@ import { INDICES_CALCULO, PERIODICIDADE_OPCOES, MODELOS_LISTA_DEBITOS } from '..
 import { loadConfigCalculoCliente, mergeConfigPainelCalculo } from '../data/clienteConfigCalculoStorage.js';
 import { resolverAliasHojeEmTexto } from '../services/hjDateAliasService.js';
 import { buildRouterStateChaveClienteProcesso, extrairIntentNavegacaoProcessos } from '../domain/camposProcessoCliente.js';
+import { mergeDebitosCalculosMultiSheet } from '../utils/mergeDebitosCalculosPlanilha.js';
 
 const TABS = ['Títulos', 'Custas Judiciais', 'Parcelamento', 'Pagamento', 'Honorários', 'Descrição dos Valores'];
 
@@ -244,6 +245,7 @@ export function Calculos() {
   const abaCalculosFromState = stateFromProcessos?.abaCalculos ?? '';
 
   const [tabAtiva, setTabAtiva] = useState('Títulos');
+  const tabAnteriorRef = useRef('Títulos');
   const [pagina, setPagina] = useState(1);
   const [paginaParcelamento, setPaginaParcelamento] = useState(1);
   const [proc, setProc] = useState(35);
@@ -270,8 +272,49 @@ export function Calculos() {
     ...RODADAS_VINCULACAO_TESTE_50,
   }));
   const saveRodadasTimerRef = useRef(null);
+  const debitosPlanilhaInputRef = useRef(null);
   const rodadasStateRef = useRef(rodadasState);
   rodadasStateRef.current = rodadasState;
+
+  const handleImportarDebitosPlanilhaClick = useCallback(() => {
+    debitosPlanilhaInputRef.current?.click();
+  }, []);
+
+  const handleDebitosPlanilhaFileChange = useCallback(async (e) => {
+    const input = e.target;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+    try {
+      const XLSX = await import('xlsx');
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: 'array', cellDates: false });
+      const matrices = wb.SheetNames.map((name) =>
+        XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: '' })
+      );
+      const { nextRodadas, stats } = mergeDebitosCalculosMultiSheet(rodadasStateRef.current, matrices);
+      setRodadasState(nextRodadas);
+      rodadasStateRef.current = nextRodadas;
+      const gravou = saveRodadasCalculos(nextRodadas);
+      const avisosTxt =
+        stats.avisos.length > 0
+          ? `\n\n${stats.avisos.slice(0, 15).join('\n')}${stats.avisos.length > 15 ? '\n…' : ''}`
+          : '';
+      const avisoGravacao = gravou
+        ? ''
+        : '\n\nAtenção: não foi possível gravar no armazenamento do navegador (ex.: quota cheia). Recarregar pode perder dados.';
+      window.alert(
+        `Importação de débitos concluída.\n` +
+          `Folhas lidas: ${stats.sheetsUsadas ?? matrices.length}\n` +
+          `Linhas na planilha (dados): ${stats.linhasLidas}\n` +
+          `Rodadas atualizadas/criadas: ${stats.aplicadas}\n` +
+          `Linhas ignoradas: ${stats.ignoradas}${avisosTxt}${avisoGravacao}`
+      );
+    } catch (err) {
+      console.error(err);
+      window.alert(`Erro ao ler a planilha: ${err?.message || String(err)}`);
+    }
+  }, []);
 
   useEffect(() => {
     const h = () =>
@@ -318,11 +361,17 @@ export function Calculos() {
     if (dimensaoFromState !== undefined && dimensaoFromState !== null && String(dimensaoFromState).trim() !== '') {
       const d = Number(dimensaoFromState);
       if (!Number.isNaN(d) && d >= 0) setDimensao(Math.floor(d));
+    } else if (
+      stateFromProcessos &&
+      (codClienteFromState !== '' || procFromState !== '') &&
+      !Object.prototype.hasOwnProperty.call(stateFromProcessos, 'dimensao')
+    ) {
+      setDimensao(0);
     }
     if (abaCalculosFromState && TABS.includes(abaCalculosFromState)) {
       setTabAtiva(abaCalculosFromState);
     }
-  }, [codClienteFromState, procFromState, dimensaoFromState, abaCalculosFromState]);
+  }, [codClienteFromState, procFromState, dimensaoFromState, abaCalculosFromState, stateFromProcessos]);
 
   // Mantém campos manuais sincronizados com o estado efetivo
   useEffect(() => {
@@ -421,12 +470,6 @@ export function Calculos() {
     return () => window.removeEventListener('vilareal:cliente-config-calculo-atualizado', h);
   }, [rodadaKey, codigoClienteNorm]);
 
-  useEffect(() => {
-    const h = () => setRodadasState({ ...(loadRodadasCalculos() || {}) });
-    window.addEventListener('vilareal:calculos-rodadas-atualizadas', h);
-    return () => window.removeEventListener('vilareal:calculos-rodadas-atualizadas', h);
-  }, []);
-
   function aplicarClienteProcManual() {
     const cod = padCliente8(codClienteManual);
     const p = normalizarProc(procManual);
@@ -465,6 +508,29 @@ export function Calculos() {
       if (saveRodadasTimerRef.current) window.clearTimeout(saveRodadasTimerRef.current);
     };
   }, [rodadasState]);
+
+  /**
+   * Os campos «Cod Cliente» / «Proc.» são manuais até clicar «Ir»; ao entrar em Títulos ou Parcelamento
+   * aplicamos automaticamente se diferirem do par já em uso — evita ver rodada vazia por chave errada.
+   */
+  useEffect(() => {
+    const anterior = tabAnteriorRef.current;
+    tabAnteriorRef.current = tabAtiva;
+    if (anterior === tabAtiva) return;
+    if (tabAtiva !== 'Parcelamento' && tabAtiva !== 'Títulos') return;
+    const cod = padCliente8(codClienteManual);
+    const p = normalizarProc(procManual);
+    const curCod = padCliente8(codigoCliente);
+    const curP = normalizarProc(proc);
+    if (cod !== curCod || p !== curP) {
+      setCodigoCliente(cod);
+      setProc(p);
+      setPagina(1);
+      setCodClienteManual(cod);
+      setProcManual(String(p));
+      navigate('/calculos', { replace: true, state: buildRouterStateChaveClienteProcesso(cod, p) });
+    }
+  }, [tabAtiva, codClienteManual, procManual, codigoCliente, proc, navigate]);
 
   // Garante que a rodada exista ao alternar cliente/proc/dimensão
   useEffect(() => {
@@ -2514,6 +2580,13 @@ export function Calculos() {
                   }}
                 />
               </div>
+              <div>
+                <label className="block text-[11px] font-medium text-slate-700 mb-0.5">Dimensão</label>
+                <SpinnerField value={dimensao} onChange={setDimensao} min={0} className="w-full" />
+                <p className="mt-1 text-[10px] text-slate-400 font-mono break-all" title="Chave interna da rodada no armazenamento">
+                  {rodadaKey}
+                </p>
+              </div>
               <button
                 type="button"
                 onClick={aplicarClienteProcManual}
@@ -2521,6 +2594,10 @@ export function Calculos() {
               >
                 Ir
               </button>
+              <p className="text-[10px] text-slate-500 leading-snug">
+                Ao abrir <strong>Títulos</strong> ou <strong>Parcelamento</strong>, cliente e proc. acima aplicam-se
+                automaticamente se forem diferentes dos da rodada (a chave em baixo atualiza).
+              </p>
             </div>
           </div>
           {tabAtiva === 'Títulos' && (
@@ -2540,10 +2617,6 @@ export function Calculos() {
               >
                 {limpezaAtiva ? 'Reverter limpeza' : 'Limpa Página Toda'}
               </button>
-              <div>
-                <label className="block text-xs font-medium text-slate-700 mb-0.5">Dimensão:</label>
-                <SpinnerField value={dimensao} onChange={setDimensao} className="w-24" />
-              </div>
               <div>
                 <label className="block text-xs font-medium text-slate-700 mb-0.5">Data do Cálculo:</label>
                 <input
@@ -2702,6 +2775,21 @@ export function Calculos() {
               <input type="checkbox" checked={modoAlteracao} onChange={(e) => setModoAlteracao(e.target.checked)} className="rounded border-slate-300" />
               Modo de Alteração
             </label>
+            <input
+              ref={debitosPlanilhaInputRef}
+              type="file"
+              accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              className="hidden"
+              aria-hidden="true"
+              onChange={handleDebitosPlanilhaFileChange}
+            />
+            <button
+              type="button"
+              onClick={handleImportarDebitosPlanilhaClick}
+              className="w-full px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50 text-left"
+            >
+              Importar débitos (Excel)
+            </button>
             <button
               type="button"
               onClick={() =>

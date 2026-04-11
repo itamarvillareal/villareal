@@ -48,3 +48,7 @@ export const LazyUsuarios = fromNamed(() => import('../components/Usuarios.jsx')
 export const LazyConfiguracoes = fromNamed(() => import('../components/Configuracoes.jsx'), 'Configuracoes');
 export const LazyTopicos = fromNamed(() => import('../components/Topicos.jsx'), 'Topicos');
 export const LazyGerenteTopicos = fromNamed(() => import('../components/GerenteTopicos.jsx'), 'GerenteTopicos');
+export const LazyIntegracoesTribunalScraperLab = fromNamed(
+  () => import('../components/integracoes/IntegracoesTribunalScraperLab.jsx'),
+  'IntegracoesTribunalScraperLab'
+);

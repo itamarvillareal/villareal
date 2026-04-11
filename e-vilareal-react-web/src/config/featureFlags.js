@@ -23,6 +23,12 @@ export const featureFlags = {
     import.meta.env.VITE_SKIP_API_AUTH === 'true'
       ? false
       : import.meta.env.VITE_REQUIRE_API_AUTH === 'true',
+  /**
+   * Menu + tela lab «Integrações → DataJud (CNJ) · TJGO» (consulta API pública CNJ via proxy).
+   * Requer chave DataJud no dev (`DATAJUD_API_KEY` ou `VITE_DATAJUD_API_KEY` + proxy `/datajud-proxy`).
+   * Nome da env mantido por compatibilidade: `VITE_SHOW_TRIBUNAL_SCRAPER_LAB`.
+   */
+  showTribunalScraperLab: import.meta.env.VITE_SHOW_TRIBUNAL_SCRAPER_LAB === 'true',
 };
 
 export function isApiEnabled(flagName) {

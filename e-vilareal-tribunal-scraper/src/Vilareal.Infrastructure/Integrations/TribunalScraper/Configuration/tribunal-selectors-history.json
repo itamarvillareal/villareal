@@ -1,0 +1,12 @@
+{
+  "entries": [
+    {
+      "tribunal": "TJSP",
+      "date": "2026-04-10",
+      "oldSelectors": { "row": "//table[@id='old']/tr" },
+      "newSelectors": { "row": "//table[@id='tblResult']/tbody/tr" },
+      "reason": "Bootstrap inicial de histórico (exemplo)",
+      "status": "fixed"
+    }
+  ]
+}

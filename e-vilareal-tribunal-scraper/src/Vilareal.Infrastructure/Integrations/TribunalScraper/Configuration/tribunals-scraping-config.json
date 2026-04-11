@@ -1,0 +1,66 @@
+{
+  "tribunals": [
+    {
+      "code": "TJSP",
+      "name": "Tribunal de Justiça de São Paulo",
+      "sphere": "estadual",
+      "family": "ESAJ",
+      "baseUrl": "https://www.tjsp.jus.br",
+      "searchEndpoint": "/mock/busca",
+      "selectors": {
+        "expectedRoot": "tblResult",
+        "row": "//table[@id='tblResult']/tbody/tr",
+        "processNumber": ".//td[contains(@class,'numero')]",
+        "classe": ".//td[contains(@class,'classe')]",
+        "status": ".//td[contains(@class,'status')]"
+      },
+      "alternativeSelectors": {
+        "processNumber": [".//td[1]", ".//span.numero"]
+      },
+      "timeoutMs": 30000,
+      "retryPolicy": "exponential",
+      "rateLimitMs": 1000,
+      "active": true,
+      "lastUpdate": "2026-04-10",
+      "notes": "MVP com HTML sintético em testes; produção exige URLs reais e revisão jurídica."
+    },
+    {
+      "code": "TRT2",
+      "name": "Tribunal Regional do Trabalho da 2ª Região",
+      "sphere": "trabalhista",
+      "family": "PJE",
+      "baseUrl": "https://pje.trt2.jus.br",
+      "searchEndpoint": "/mock/busca",
+      "selectors": {
+        "row": "//table[@id='pjeResult']/tbody/tr",
+        "processNumber": ".//td[contains(@class,'numero')]",
+        "classe": ".//td[contains(@class,'classe')]"
+      },
+      "timeoutMs": 30000,
+      "retryPolicy": "exponential",
+      "rateLimitMs": 1000,
+      "active": true,
+      "lastUpdate": "2026-04-10",
+      "notes": "Fixture JSON alternativo em testes."
+    },
+    {
+      "code": "TSE",
+      "name": "Tribunal Superior Eleitoral",
+      "sphere": "eleitoral",
+      "family": "PJE",
+      "baseUrl": "https://www.tse.jus.br",
+      "searchEndpoint": "/mock/busca",
+      "selectors": {
+        "row": "//table[@id='tseResult']/tbody/tr",
+        "processNumber": ".//td[contains(@class,'numero')]",
+        "classe": ".//td[contains(@class,'classe')]"
+      },
+      "timeoutMs": 30000,
+      "retryPolicy": "exponential",
+      "rateLimitMs": 1000,
+      "active": true,
+      "lastUpdate": "2026-04-10",
+      "notes": "MVP sintético."
+    }
+  ]
+}

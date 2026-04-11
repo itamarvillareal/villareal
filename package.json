@@ -1,0 +1,10 @@
+{
+  "name": "villareal-repo",
+  "private": true,
+  "description": "Atalhos npm na raiz — a app web vive em e-vilareal-react-web/",
+  "scripts": {
+    "import:debitos-calculos": "npm run import:debitos-calculos --prefix e-vilareal-react-web",
+    "import:debitos-calculos:devtools": "npm run import:debitos-calculos:devtools --prefix e-vilareal-react-web",
+    "dev:web": "npm run dev --prefix e-vilareal-react-web"
+  }
+}

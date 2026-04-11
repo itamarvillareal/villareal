@@ -16,6 +16,7 @@ import {
   LazyDiagnosticos,
   LazyFinanceiro,
   LazyGerenteTopicos,
+  LazyIntegracoesTribunalScraperLab,
   LazyImoveis,
   LazyImoveisAdministracaoFinanceiro,
   LazyMonitoringPeoplePage,
@@ -271,6 +272,7 @@ function App() {
               <Route path="/topicos" element={<LazyTopicos />} />
               <Route path="/topicos/gerente" element={<LazyGerenteTopicos />} />
               <Route path="/diagnosticos" element={<LazyDiagnosticos />} />
+              <Route path="/integracoes/scraper-lab" element={<LazyIntegracoesTribunalScraperLab />} />
               <Route path="/financeiro" element={<LazyFinanceiro />} />
               <Route path="/usuarios" element={<LazyUsuarios />} />
               <Route path="/configuracoes" element={<LazyConfiguracoes />} />

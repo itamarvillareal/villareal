@@ -1,0 +1,25 @@
+{
+  "families": [
+    {
+      "family": "PJE",
+      "description": "Processo Judicial Eletrônico e derivados",
+      "baseUrlPattern": "*.jus.br",
+      "commonSelectors": {},
+      "isJsonApi": true
+    },
+    {
+      "family": "ESAJ",
+      "description": "e-SAJ e portais HTML semelhantes",
+      "baseUrlPattern": "*.tjsp.jus.br",
+      "commonSelectors": {},
+      "isJsonApi": false
+    },
+    {
+      "family": "CUSTOM",
+      "description": "Portal proprietário",
+      "baseUrlPattern": "",
+      "commonSelectors": {},
+      "isJsonApi": false
+    }
+  ]
+}
