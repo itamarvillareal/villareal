@@ -17,7 +17,12 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { baixarBlobDocx, gerarDocumentoListaDebitosWord } from '../utils/gerarDocumentoListaDebitosWord';
 import { INDICES_CALCULO, PERIODICIDADE_OPCOES, MODELOS_LISTA_DEBITOS } from '../data/calculosIndices.js';
-import { loadConfigCalculoCliente, mergeConfigPainelCalculo } from '../data/clienteConfigCalculoStorage.js';
+import {
+  loadConfigCalculoCliente,
+  mergeConfigPainelCalculo,
+  refreshConfigCalculoClienteFromApi,
+} from '../data/clienteConfigCalculoStorage.js';
+import { featureFlags } from '../config/featureFlags.js';
 import { resolverAliasHojeEmTexto } from '../services/hjDateAliasService.js';
 import { buildRouterStateChaveClienteProcesso, extrairIntentNavegacaoProcessos } from '../domain/camposProcessoCliente.js';
 import { mergeDebitosCalculosMultiSheet } from '../utils/mergeDebitosCalculosPlanilha.js';
@@ -408,6 +413,11 @@ export function Calculos() {
   const codigoClienteNorm = padCliente8(codigoCliente);
   const procNorm = normalizarProc(proc);
   const rodadaKey = `${codigoClienteNorm}:${procNorm}:${dimensaoNorm}`;
+
+  useEffect(() => {
+    if (!featureFlags.useApiCalculos) return;
+    void refreshConfigCalculoClienteFromApi(codigoClienteNorm);
+  }, [codigoClienteNorm]);
 
   const panelConfigKey = useMemo(
     () => JSON.stringify(rodadasState[rodadaKey]?.panelConfig ?? null),

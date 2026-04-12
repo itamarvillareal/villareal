@@ -4,7 +4,9 @@ import {
   loadConfigCalculoCliente,
   saveConfigCalculoCliente,
   padCliente8Config,
+  refreshConfigCalculoClienteFromApi,
 } from '../data/clienteConfigCalculoStorage.js';
+import { featureFlags } from '../config/featureFlags.js';
 import { INDICES_CALCULO, PERIODICIDADE_OPCOES, MODELOS_LISTA_DEBITOS } from '../data/calculosIndices.js';
 
 /**
@@ -22,15 +24,25 @@ export function ModalConfiguracoesCalculoCliente({ open, codigoCliente, nomeClie
 
   useEffect(() => {
     if (!open || !codigoCliente) return;
-    const c = loadConfigCalculoCliente(codigoCliente);
-    setHonorariosTipo(c.honorariosTipo === 'variaveis' ? 'variaveis' : 'fixos');
-    setHonorariosValor(c.honorariosValor ?? '0');
-    setHonorariosVariaveisTexto(c.honorariosVariaveisTexto ?? '');
-    setJuros(c.juros ?? '1 %');
-    setMulta(c.multa ?? '0 %');
-    setIndice(c.indice ?? 'INPC');
-    setPeriodicidade(c.periodicidade ?? 'mensal');
-    setModeloListaDebitos(c.modeloListaDebitos ?? '01');
+    let cancelled = false;
+    (async () => {
+      if (featureFlags.useApiCalculos) {
+        await refreshConfigCalculoClienteFromApi(codigoCliente);
+      }
+      if (cancelled) return;
+      const c = loadConfigCalculoCliente(codigoCliente);
+      setHonorariosTipo(c.honorariosTipo === 'variaveis' ? 'variaveis' : 'fixos');
+      setHonorariosValor(c.honorariosValor ?? '0');
+      setHonorariosVariaveisTexto(c.honorariosVariaveisTexto ?? '');
+      setJuros(c.juros ?? '1 %');
+      setMulta(c.multa ?? '0 %');
+      setIndice(c.indice ?? 'INPC');
+      setPeriodicidade(c.periodicidade ?? 'mensal');
+      setModeloListaDebitos(c.modeloListaDebitos ?? '01');
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [open, codigoCliente]);
 
   if (!open) return null;
