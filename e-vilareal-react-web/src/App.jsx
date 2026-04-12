@@ -46,6 +46,7 @@ import {
 import { getContextoAuditoriaUsuario, registrarAuditoria } from './services/auditoriaCliente.js';
 import { installCrossTabLocalStorageSync } from './services/crossTabLocalStorageSync.js';
 import { executarSincronizacaoAudienciasAgendaEProcessosCompleta } from './services/sincronizacaoAudienciasAgendaProcessosService.js';
+import { hydrateRodadasCalculosFromApi } from './data/calculosRodadasStorage.js';
 
 function RedirectClientesParaLista() {
   const location = useLocation();
@@ -70,6 +71,12 @@ function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
   const [accessTick, setAccessTick] = useState(0);
+
+  /** Rodadas de Cálculos no MySQL (`calculo_rodada`): preenche localStorage para o Financeiro e relatorios. */
+  useEffect(() => {
+    if (!featureFlags.useApiCalculos) return;
+    void hydrateRodadasCalculosFromApi();
+  }, []);
 
   useEffect(() => {
     const h = () => setAccessTick((t) => t + 1);

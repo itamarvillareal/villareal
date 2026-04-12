@@ -1,5 +1,14 @@
 /**
  * Variáveis `VITE_*` — `.env.development` ou `npm run dev:homolog` + `.env.homolog`.
+ *
+ * Cada `useApi*` abaixo, quando `true`, direciona o módulo ao backend Java (MySQL), onde já existir API:
+ * usuarios, clientes, agenda, pessoas complementares/endereços/contatos, processos, financeiro,
+ * publicações (o front chama `/api/publicacoes` — confirme se o seu deploy expõe esse controller),
+ * imóveis/locações, tarefas, tópicos, cálculos (`calculo_*`).
+ *
+ * Ainda **sem** REST neste repositório (tabelas podem existir no Flyway, mas o front não persiste na API):
+ * perfis/permissões granulares (`/api/perfis`, `/api/permissoes` — ver `perfisPermissoesRepository.js`).
+ * Muito estado de UI (colunas de relatório, presets, extratos em massa no navegador) permanece em localStorage de propósito.
  */
 export const featureFlags = {
   useApiUsuarios: import.meta.env.VITE_USE_API_USUARIOS === 'true',
@@ -14,6 +23,8 @@ export const featureFlags = {
   useApiTarefas: import.meta.env.VITE_USE_API_TAREFAS === 'true',
   /** Hierarquia da tela Tópicos — `GET /api/topicos/hierarchy`. */
   useApiTopicos: import.meta.env.VITE_USE_API_TOPICOS === 'true',
+  /** Rodadas + config de cálculo em MySQL (`calculo_rodada`, `calculo_cliente_config`) via `/api/calculos`. */
+  useApiCalculos: import.meta.env.VITE_USE_API_CALCULOS === 'true',
   /**
    * Tela de login JWT antes do app. Por enquanto fica desligado por padrão.
    * Para voltar a exigir login/senha: `VITE_REQUIRE_API_AUTH=true` no build/env.

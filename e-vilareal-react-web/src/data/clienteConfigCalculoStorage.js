@@ -3,6 +3,9 @@
  * Usadas na tela Cálculos quando não há personalização por processo (rodada).
  */
 
+import { featureFlags } from '../config/featureFlags.js';
+import { fetchCalculoConfigCliente, putCalculoConfigCliente } from '../repositories/calculosRepository.js';
+
 export const STORAGE_CLIENTE_CONFIG_CALCULO = 'vilareal.cliente.configCalculo.v1';
 
 export function padCliente8Config(val) {
@@ -29,6 +32,52 @@ export const DEFAULT_CONFIG_CALCULO_CLIENTE = {
 function dispatchAtualizado() {
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('vilareal:cliente-config-calculo-atualizado'));
+  }
+}
+
+/** Normaliza resposta `config` da API para o mesmo formato do bag em localStorage. */
+function rowFromApiConfig(raw) {
+  const base = { ...DEFAULT_CONFIG_CALCULO_CLIENTE };
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return base;
+  const pick = (k) => {
+    const v = raw[k];
+    if (v === undefined || v === null) return;
+    base[k] = typeof v === 'string' ? v : String(v);
+  };
+  pick('honorariosTipo');
+  pick('honorariosValor');
+  pick('honorariosVariaveisTexto');
+  pick('juros');
+  pick('multa');
+  pick('indice');
+  pick('periodicidade');
+  pick('modeloListaDebitos');
+  return base;
+}
+
+function gravarRowNoBag(key, row) {
+  if (typeof window === 'undefined') return;
+  try {
+    const raw = window.localStorage.getItem(STORAGE_CLIENTE_CONFIG_CALCULO);
+    const parsed = raw ? JSON.parse(raw) : {};
+    const bag = parsed && typeof parsed === 'object' ? parsed : {};
+    bag[key] = row;
+    window.localStorage.setItem(STORAGE_CLIENTE_CONFIG_CALCULO, JSON.stringify(bag));
+    dispatchAtualizado();
+  } catch {
+    /* quota */
+  }
+}
+
+/** Atualiza o bag local a partir de `GET /api/calculos/config-cliente/{cod}`. */
+export async function refreshConfigCalculoClienteFromApi(codCliente) {
+  if (typeof window === 'undefined' || !featureFlags.useApiCalculos) return;
+  const key = padCliente8Config(codCliente);
+  try {
+    const res = await fetchCalculoConfigCliente(key);
+    gravarRowNoBag(key, rowFromApiConfig(res?.config));
+  } catch (err) {
+    console.error('[vilareal] Falha ao carregar config de cálculo na API:', err);
   }
 }
 
@@ -70,6 +119,15 @@ export function saveConfigCalculoCliente(codCliente, config) {
     };
     window.localStorage.setItem(STORAGE_CLIENTE_CONFIG_CALCULO, JSON.stringify(bag));
     dispatchAtualizado();
+    if (featureFlags.useApiCalculos) {
+      void putCalculoConfigCliente(key, config)
+        .then((res) => {
+          if (res?.config) gravarRowNoBag(key, rowFromApiConfig(res.config));
+        })
+        .catch((err) => {
+          console.error('[vilareal] Falha ao gravar config de cálculo na API:', err);
+        });
+    }
   } catch {
     /* quota */
   }
