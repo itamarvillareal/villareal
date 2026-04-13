@@ -1531,6 +1531,8 @@ export function Processos() {
       setProcedimento(mapped.procedimento ?? mapped.tramitacao ?? '');
       setFaseCampo(mapped.observacaoFase ?? '');
       setResponsavel(mapped.responsavel ?? '');
+      setUnidadeEndereco(mapped.unidade ?? '');
+      setUnidadeEnderecoManual(String(mapped.unidade ?? '').trim() !== '');
 
       const partes = await listarPartesProcesso(procApi.id);
       if (seq !== carregarProcessoApiSeqRef.current) return;
@@ -2887,10 +2889,34 @@ export function Processos() {
               </div>
             </section>
 
+            {/* Unidade do processo (persistida na API); independente do vínculo com Imóveis */}
+            <section className="rounded-lg border border-slate-200/90 bg-white px-2.5 py-2 mt-1.5 shadow-sm">
+              <p className="w-full text-[10px] text-slate-600 leading-snug mb-1.5">
+                <strong className="text-slate-800">Unidade:</strong> gravada no processo (ex.: código condominial A-0103). Se estiver vazia e você vincular um imóvel abaixo, o campo pode ser preenchido automaticamente pelo cadastro de Imóveis.
+              </p>
+              <Field
+                label="Unidade"
+                className="w-full min-w-0 max-w-[16rem]"
+                title="Unidade condominial ou identificação da fração — salva no processo."
+              >
+                <input
+                  type="text"
+                  value={unidadeEndereco}
+                  readOnly={camposBloqueados}
+                  onChange={(e) => {
+                    setUnidadeEndereco(e.target.value);
+                    setUnidadeEnderecoManual(true);
+                  }}
+                  className={`w-full min-w-0 ${clsCampo}`}
+                  placeholder="(vazio)"
+                />
+              </Field>
+            </section>
+
             {/* Imóvel / agenda / cálculos — barra operacional */}
             <section className="rounded-lg border border-sky-200/80 bg-gradient-to-r from-sky-50/90 via-white to-cyan-50/50 px-2.5 py-2 mt-1.5 shadow-sm">
               <p className="w-full text-[10px] text-sky-900/80 leading-snug mb-1.5">
-                <strong className="text-sky-950">Imóveis:</strong> o nº e a unidade vêm do cadastro no menu lateral; ao sair do campo Imóvel, a unidade preenche-se se estiver vazia.
+                <strong className="text-sky-950">Imóveis:</strong> o nº do imóvel vem do cadastro no menu lateral; ao sair do campo Imóvel, a <strong>Unidade</strong> acima preenche-se automaticamente se estiver vazia.
               </p>
               <div className="flex flex-wrap items-end gap-2">
               <button
@@ -2927,23 +2953,6 @@ export function Processos() {
               >
                 <SidebarMenuIcon id="admin-imoveis-grupo" className="w-4 h-4" /> Abrir Imóvel
               </button>
-              <Field
-                label="Unidade"
-                className="w-full min-w-0 max-w-[13rem] shrink-0"
-                title="Descrição da unidade no cadastro de Imóveis (preenchida automaticamente pelo nº do imóvel, se vazia)."
-              >
-                <input
-                  type="text"
-                  value={unidadeEndereco}
-                  readOnly={camposBloqueados}
-                  onChange={(e) => {
-                    setUnidadeEndereco(e.target.value);
-                    setUnidadeEnderecoManual(true);
-                  }}
-                  className={`w-full min-w-0 ${clsCampo}`}
-                  placeholder="(vazio)"
-                />
-              </Field>
               <button
                 type="button"
                 onClick={() => {

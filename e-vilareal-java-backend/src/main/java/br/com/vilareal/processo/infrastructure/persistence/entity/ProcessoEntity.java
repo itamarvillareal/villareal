@@ -27,6 +27,10 @@ public class ProcessoEntity {
     @Column(name = "numero_interno", nullable = false)
     private Integer numeroInterno;
 
+    /** Código da unidade (ex.: condomínio A-0103), independente do cadastro de imóvel. */
+    @Column(name = "unidade", length = 32)
+    private String unidade;
+
     @Column(name = "numero_cnj", length = 100)
     private String numeroCnj;
 

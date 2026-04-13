@@ -27,6 +27,8 @@ public class ProcessoResponse {
     private BigDecimal valorCausa;
     private String uf;
     private String cidade;
+    /** Unidade condominial (ex.: A-0103). */
+    private String unidade;
     private Boolean consultaAutomatica;
     private Boolean ativo;
     private String consultor;
@@ -202,6 +204,14 @@ public class ProcessoResponse {
 
     public void setCidade(String cidade) {
         this.cidade = cidade;
+    }
+
+    public String getUnidade() {
+        return unidade;
+    }
+
+    public void setUnidade(String unidade) {
+        this.unidade = unidade;
     }
 
     public Boolean getConsultaAutomatica() {

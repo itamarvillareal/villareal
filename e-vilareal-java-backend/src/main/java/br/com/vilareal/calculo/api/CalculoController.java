@@ -2,6 +2,7 @@ package br.com.vilareal.calculo.api;
 
 import br.com.vilareal.calculo.api.dto.CalculoClienteConfigResponse;
 import br.com.vilareal.calculo.api.dto.CalculoRodadasResponse;
+import br.com.vilareal.calculo.api.dto.CalculoRodadasResumoResponse;
 import br.com.vilareal.calculo.api.dto.CalculoRodadasWriteRequest;
 import br.com.vilareal.calculo.application.CalculoApplicationService;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -36,6 +37,47 @@ public class CalculoController {
                 .contentType(MediaType.APPLICATION_JSON)
                 .cacheControl(CacheControl.noStore())
                 .body(body);
+    }
+
+    @GetMapping(value = "/rodadas/resumo", produces = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(
+            summary = "Resumo de rodadas",
+            description = "Lista chaves `codigo8:proc:dim` e `parcelamentoAceito` apenas (sem payload completo).")
+    public ResponseEntity<CalculoRodadasResumoResponse> listarResumoRodadas() {
+        CalculoRodadasResumoResponse body = calculoApplicationService.listarResumoRodadas();
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_JSON)
+                .cacheControl(CacheControl.noStore())
+                .body(body);
+    }
+
+    @GetMapping(value = "/rodadas/{codigoCliente}/{processo}/{dimensao}", produces = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(summary = "Obter uma rodada", description = "Payload JSON da rodada; 404 se não existir.")
+    public ResponseEntity<JsonNode> obterRodada(
+            @PathVariable String codigoCliente,
+            @PathVariable int processo,
+            @PathVariable int dimensao) {
+        return calculoApplicationService
+                .obterRodada(codigoCliente, processo, dimensao)
+                .map(node -> ResponseEntity.ok()
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .cacheControl(CacheControl.noStore())
+                        .body(node))
+                .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    @PutMapping(value = "/rodadas/{codigoCliente}/{processo}/{dimensao}", produces = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(summary = "Salvar uma rodada", description = "Upsert por chave; não remove outras rodadas.")
+    public ResponseEntity<JsonNode> salvarRodada(
+            @PathVariable String codigoCliente,
+            @PathVariable int processo,
+            @PathVariable int dimensao,
+            @RequestBody JsonNode payload) {
+        JsonNode saved = calculoApplicationService.salvarRodada(codigoCliente, processo, dimensao, payload);
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_JSON)
+                .cacheControl(CacheControl.noStore())
+                .body(saved);
     }
 
     @PutMapping("/rodadas")

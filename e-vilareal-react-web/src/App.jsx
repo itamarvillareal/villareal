@@ -8,6 +8,7 @@ import {
   LazyAgenda,
   LazyAnaLuisa,
   LazyAtividade,
+  LazyAtividadesEmLote,
   LazyBoard,
   LazyCadastroClientes,
   LazyCadastroPessoas,
@@ -46,7 +47,7 @@ import {
 import { getContextoAuditoriaUsuario, registrarAuditoria } from './services/auditoriaCliente.js';
 import { installCrossTabLocalStorageSync } from './services/crossTabLocalStorageSync.js';
 import { executarSincronizacaoAudienciasAgendaEProcessosCompleta } from './services/sincronizacaoAudienciasAgendaProcessosService.js';
-import { hydrateRodadasCalculosFromApi } from './data/calculosRodadasStorage.js';
+import { hydrateRodadasCalculosResumoFromApi } from './data/calculosRodadasStorage.js';
 
 function RedirectClientesParaLista() {
   const location = useLocation();
@@ -72,10 +73,10 @@ function Layout() {
   const navigate = useNavigate();
   const [accessTick, setAccessTick] = useState(0);
 
-  /** Rodadas de Cálculos no MySQL (`calculo_rodada`): preenche localStorage para o Financeiro e relatorios. */
+  /** Metadados das rodadas (`GET /rodadas/resumo`): leve; payloads completos vêm sob demanda em Cálculos. */
   useEffect(() => {
     if (!featureFlags.useApiCalculos) return;
-    void hydrateRodadasCalculosFromApi();
+    void hydrateRodadasCalculosResumoFromApi();
   }, []);
 
   useEffect(() => {
@@ -135,7 +136,7 @@ function Layout() {
   }, [location.pathname, navigate, accessTick]);
 
   return (
-    <div className="flex h-screen min-h-0 bg-gray-100 overflow-hidden">
+    <div className="flex h-dvh min-h-0 max-h-dvh bg-gray-100 overflow-hidden">
       <Sidebar />
       <main className="flex-1 flex flex-col min-w-0 min-h-0 overflow-y-auto overflow-x-hidden bg-[var(--vl-bg-page)]">
         <Suspense
@@ -145,7 +146,9 @@ function Layout() {
             </div>
           }
         >
-          <Outlet />
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+            <Outlet />
+          </div>
         </Suspense>
       </main>
       {import.meta.env.MODE === 'homolog' ? (
@@ -266,6 +269,7 @@ function App() {
               <Route path="/agenda" element={<LazyAgenda />} />
               <Route path="/ana-luisa" element={<LazyAnaLuisa />} />
               <Route path="/atividade" element={<LazyAtividade />} />
+              <Route path="/atividades-em-lote" element={<LazyAtividadesEmLote />} />
               <Route path="/processos" element={<LazyProcessos />} />
               <Route path="/processos/publicacoes" element={<LazyPublicacoesProcessos />} />
               <Route path="/processos/monitoramento" element={<LazyMonitoringPeoplePage />} />

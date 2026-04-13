@@ -20,6 +20,10 @@ export const LazyCadastroClientes = fromNamed(() => import('../components/Cadast
 export const LazyAgenda = fromNamed(() => import('../components/Agenda.jsx'), 'Agenda');
 export const LazyAnaLuisa = fromNamed(() => import('../components/AnaLuisa.jsx'), 'AnaLuisa');
 export const LazyAtividade = fromNamed(() => import('../components/Atividade.jsx'), 'Atividade');
+export const LazyAtividadesEmLote = fromNamed(
+  () => import('../components/AtividadesEmLote.jsx'),
+  'AtividadesEmLote'
+);
 export const LazyProcessos = fromNamed(() => import('../components/Processos.jsx'), 'Processos');
 export const LazyPublicacoesProcessos = fromNamed(
   () => import('../components/PublicacoesProcessos.jsx'),

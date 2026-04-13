@@ -1,7 +1,9 @@
 package br.com.vilareal.calculo.application;
 
 import br.com.vilareal.calculo.api.dto.CalculoClienteConfigResponse;
+import br.com.vilareal.calculo.api.dto.CalculoRodadaResumoItem;
 import br.com.vilareal.calculo.api.dto.CalculoRodadasResponse;
+import br.com.vilareal.calculo.api.dto.CalculoRodadasResumoResponse;
 import br.com.vilareal.calculo.api.dto.CalculoRodadasWriteRequest;
 import br.com.vilareal.calculo.infrastructure.persistence.entity.CalculoClienteConfigEntity;
 import br.com.vilareal.calculo.infrastructure.persistence.entity.CalculoRodadaEntity;
@@ -19,9 +21,13 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 @Service
 public class CalculoApplicationService {
@@ -55,6 +61,67 @@ public class CalculoApplicationService {
                     corrigirPayloadJson(row.getPayloadJson()));
         }
         return new CalculoRodadasResponse(map);
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<JsonNode> obterRodada(String codigoCliente, int numeroProcesso, int dimensao) {
+        RodadaCalculoChave chave = RodadaCalculoChave.fromPath(codigoCliente, numeroProcesso, dimensao);
+        return rodadaRepository
+                .findByCodigoClienteAndNumeroProcessoAndDimensao(
+                        chave.codigoCliente(), chave.numeroProcesso(), chave.dimensao())
+                .map(e -> corrigirPayloadJson(e.getPayloadJson()));
+    }
+
+    /**
+     * Upsert de uma única rodada; não remove nem altera outras chaves (diferente de {@link #substituirRodadas}).
+     */
+    @Transactional
+    public JsonNode salvarRodada(String codigoCliente, int numeroProcesso, int dimensao, JsonNode payload) {
+        RodadaCalculoChave chave = RodadaCalculoChave.fromPath(codigoCliente, numeroProcesso, dimensao);
+        if (payload == null || !payload.isObject()) {
+            throw new BusinessRuleException("Rodada deve ser um objeto JSON");
+        }
+        CalculoRodadaEntity entity = rodadaRepository
+                .findByCodigoClienteAndNumeroProcessoAndDimensao(
+                        chave.codigoCliente(), chave.numeroProcesso(), chave.dimensao())
+                .orElseGet(CalculoRodadaEntity::new);
+        entity.setCodigoCliente(chave.codigoCliente());
+        entity.setNumeroProcesso(chave.numeroProcesso());
+        entity.setDimensao(chave.dimensao());
+        entity.setPayloadJson(payload);
+        CalculoRodadaEntity saved = rodadaRepository.save(entity);
+        return corrigirPayloadJson(saved.getPayloadJson());
+    }
+
+    @Transactional(readOnly = true)
+    public CalculoRodadasResumoResponse listarResumoRodadas() {
+        List<CalculoRodadaResumoItem> items = new ArrayList<>();
+        for (CalculoRodadaEntity row : rodadaRepository.findAll()) {
+            JsonNode payload = corrigirPayloadJson(row.getPayloadJson());
+            RodadaCalculoChave ch = new RodadaCalculoChave(
+                    row.getCodigoCliente(), row.getNumeroProcesso(), row.getDimensao());
+            items.add(new CalculoRodadaResumoItem(ch.toMapKey(), lerParcelamentoAceito(payload)));
+        }
+        items.sort(Comparator.comparing(CalculoRodadaResumoItem::chave));
+        return new CalculoRodadasResumoResponse(items);
+    }
+
+    private static boolean lerParcelamentoAceito(JsonNode payload) {
+        if (payload == null || !payload.has("parcelamentoAceito")) {
+            return false;
+        }
+        JsonNode n = payload.get("parcelamentoAceito");
+        if (n.isBoolean()) {
+            return n.booleanValue();
+        }
+        if (n.isTextual()) {
+            String t = n.asText().trim();
+            return "true".equalsIgnoreCase(t) || "1".equals(t) || "sim".equalsIgnoreCase(t);
+        }
+        if (n.isNumber()) {
+            return n.asInt() != 0;
+        }
+        return false;
     }
 
     @Transactional

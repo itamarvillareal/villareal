@@ -97,8 +97,8 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="vl-sidebar w-56 h-full min-h-0 bg-gray-200 border-r border-gray-300 flex flex-col shrink-0 shadow-sm">
-      <div className="vl-sidebar-header p-3 border-b border-gray-300 bg-gray-100">
+    <aside className="vl-sidebar w-52 h-full max-h-dvh min-h-0 bg-gray-200 border-r border-gray-300 flex flex-col shrink-0 shadow-sm">
+      <div className="vl-sidebar-header shrink-0 px-2 py-1.5 border-b border-gray-300 bg-gray-100">
         <Link
           to="/"
           className="block rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-100 dark:focus-visible:ring-offset-[#0f141c]"
@@ -107,14 +107,14 @@ export function Sidebar() {
           <img
             src="/logo-villareal.png"
             alt="Villa Real e advogados associados"
-            className="w-full max-h-[5.5rem] object-contain object-center mx-auto"
+            className="w-full max-h-[2.85rem] object-contain object-center mx-auto"
             width={200}
             height={88}
             decoding="async"
           />
         </Link>
       </div>
-      <nav className="flex-1 p-2.5 overflow-y-auto space-y-0.5">
+      <nav className="flex-1 min-h-0 p-1.5 overflow-y-auto overflow-x-hidden space-y-0 leading-tight [scrollbar-width:thin]">
         {navFiltrado.map((item) => {
           if (Array.isArray(item.children) && item.children.length > 0) {
             const subs = item.children.filter((ch) => pode(ch.id));
@@ -134,7 +134,7 @@ export function Sidebar() {
               return path === `/${ch.id}` || path.startsWith(`/${ch.id}/`);
             });
             return (
-              <div key={item.id} className="mb-0.5">
+              <div key={item.id} className="mb-0">
                 <button
                   type="button"
                   onClick={() => {
@@ -160,23 +160,23 @@ export function Sidebar() {
                     }
                     toggleGrupo(item.id);
                   }}
-                  className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-gray-700 dark:text-slate-200 text-sm font-medium transition-all duration-200 text-left ${
+                  className={`w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md text-gray-700 dark:text-slate-200 text-xs font-medium transition-all duration-200 text-left ${
                     algumFilhoAtivo
                       ? 'bg-blue-50 dark:bg-cyan-500/10 text-blue-900 dark:text-cyan-100 border-l-2 border-blue-400 dark:border-cyan-400/70 shadow-sm dark:shadow-none'
                       : 'hover:bg-gray-100 dark:hover:bg-white/[0.05] border-l-2 border-transparent'
                   }`}
                   aria-expanded={aberto}
                 >
-                  <SidebarMenuIcon id={item.id} className="w-5 h-5" />
-                  <span className="flex-1 min-w-0">{item.label}</span>
+                  <SidebarMenuIcon id={item.id} className="w-4 h-4 shrink-0" />
+                  <span className="flex-1 min-w-0 leading-snug">{item.label}</span>
                   {aberto ? (
-                    <ChevronDown className="w-4 h-4 shrink-0 text-gray-500" aria-hidden />
+                    <ChevronDown className="w-3.5 h-3.5 shrink-0 text-gray-500" aria-hidden />
                   ) : (
-                    <ChevronRight className="w-4 h-4 shrink-0 text-gray-500" aria-hidden />
+                    <ChevronRight className="w-3.5 h-3.5 shrink-0 text-gray-500" aria-hidden />
                   )}
                 </button>
                 {aberto && (
-                  <div className="mt-1 ml-2 pl-2 border-l border-gray-300 dark:border-white/10 space-y-0.5">
+                  <div className="mt-0.5 ml-1.5 pl-1.5 border-l border-gray-300 dark:border-white/10 space-y-0">
                     {subs.map((ch) => (
                         <NavLink
                           key={ch.id}
@@ -192,15 +192,15 @@ export function Sidebar() {
                             } else if (ch.id === 'relatorio-imoveis') {
                               ativo = path === '/relatorio-imoveis';
                             }
-                            return `flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs font-medium transition-all duration-200 ${
+                            return `flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-medium transition-all duration-200 ${
                               ativo
                                 ? 'bg-blue-100 dark:bg-cyan-500/15 text-blue-800 dark:text-cyan-100 border-l-2 border-blue-500 dark:border-cyan-400'
                                 : 'text-gray-600 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/[0.04] border-l-2 border-transparent'
                             }`;
                           }}
                         >
-                          <SidebarMenuIcon id={ch.id} className="w-4 h-4" />
-                          <span>{ch.label}</span>
+                          <SidebarMenuIcon id={ch.id} className="w-3.5 h-3.5 shrink-0" />
+                          <span className="leading-snug">{ch.label}</span>
                         </NavLink>
                       ))}
                   </div>
@@ -213,23 +213,23 @@ export function Sidebar() {
               key={item.id}
               to={`/${item.id}`}
               className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-700 dark:text-slate-200 text-sm font-medium transition-all duration-200 mb-0.5 ${
+                `flex items-center gap-2 px-2 py-1.5 rounded-md text-gray-700 dark:text-slate-200 text-xs font-medium transition-all duration-200 mb-0 ${
                   isActive
                     ? 'bg-blue-100 dark:bg-cyan-500/12 text-blue-800 dark:text-cyan-100 border-l-2 border-blue-500 dark:border-cyan-400'
                     : 'hover:bg-gray-100 dark:hover:bg-white/[0.05] border-l-2 border-transparent'
                 }`
               }
             >
-              <SidebarMenuIcon id={item.id} className="w-5 h-5" />
-              <span>{item.label}</span>
+              <SidebarMenuIcon id={item.id} className="w-4 h-4 shrink-0" />
+              <span className="leading-snug">{item.label}</span>
             </NavLink>
           );
         })}
       </nav>
-      <div className="vl-sidebar-footer p-2.5 border-t border-gray-300 bg-gray-100/80">
+      <div className="vl-sidebar-footer shrink-0 p-2 border-t border-gray-300 bg-gray-100/80">
         {podeAlternar ? (
           <>
-            <label className="block text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1">
+            <label className="block text-[9px] font-medium text-gray-500 uppercase tracking-wide mb-0.5 leading-tight">
               Perfil ativo (teste)
             </label>
             <select
@@ -251,7 +251,7 @@ export function Sidebar() {
                 });
                 setUsuarioSessaoAtualId(novo);
               }}
-              className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-800"
+              className="w-full rounded border border-gray-300 bg-white px-1.5 py-1 text-[11px] text-gray-800"
               title="Somente o usuário master (Itamar) pode alternar perfis para testar o sistema."
             >
           {(usuariosLista || []).map((u) => (
@@ -260,7 +260,7 @@ export function Sidebar() {
             </option>
           ))}
             </select>
-            <p className="mt-1.5 text-[10px] leading-snug text-gray-500">
+            <p className="mt-1 text-[9px] leading-tight text-gray-500">
               Você está nesta estação como <strong className="text-gray-700">master</strong> (
               {apiSessao?.login || apiSessao?.nome || operadorId}). Escolha outro perfil para simular permissões e
               telas.
@@ -268,13 +268,13 @@ export function Sidebar() {
           </>
         ) : (
           <>
-            <label className="block text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1">
+            <label className="block text-[9px] font-medium text-gray-500 uppercase tracking-wide mb-0.5 leading-tight">
               Seu perfil
             </label>
-            <div className="rounded border border-gray-200 bg-white px-2 py-2 text-xs text-gray-800 font-medium">
+            <div className="rounded border border-gray-200 bg-white px-1.5 py-1 text-[11px] text-gray-800 font-medium leading-tight">
               {nomeOperador}
             </div>
-            <p className="mt-1.5 text-[10px] leading-snug text-gray-500">
+            <p className="mt-1 text-[9px] leading-tight text-gray-500">
               Apenas o usuário master (Itamar) pode trocar de perfil neste menu. Ajuste em{' '}
               <strong className="text-gray-600">Configurações</strong> se esta máquina for de outra pessoa.
             </p>
@@ -283,7 +283,7 @@ export function Sidebar() {
         {featureFlags.requiresApiAuth && isAuthenticated ? (
           <button
             type="button"
-            className="mt-2 w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
+            className="mt-1.5 w-full rounded border border-gray-300 bg-white px-1.5 py-1 text-[11px] font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
             onClick={() => {
               logout();
               navigate('/login', { replace: true });

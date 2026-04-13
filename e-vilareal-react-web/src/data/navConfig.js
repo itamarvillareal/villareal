@@ -47,6 +47,7 @@ export const navItems = [
   },
   { id: 'agenda', label: 'Agenda', icon: 'Calendar' },
   { id: 'atividade', label: 'Atividade', icon: 'ClipboardList' },
+  { id: 'atividades-em-lote', label: 'Atividades em Lote', icon: 'Layers' },
   { id: 'financeiro', label: 'Financeiro', icon: 'CircleDollarSign' },
   { id: 'pendencias', label: 'Pendências', icon: 'AlertTriangle' },
   {

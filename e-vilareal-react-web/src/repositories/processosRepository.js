@@ -377,6 +377,7 @@ export async function salvarCabecalhoProcesso(payload) {
     ativo: payload.statusAtivo !== false,
     consultor: payload.responsavel || null,
     usuarioResponsavelId: payload.usuarioResponsavelId || null,
+    unidade: String(payload.unidade ?? '').trim() || null,
   };
   if (processoId) {
     return request(`/api/processos/${processoId}`, { method: 'PUT', body });
@@ -593,5 +594,6 @@ export function mapApiProcessoToUiShape(p) {
     responsavel: corrigirMojibakeUtf8(p.consultor || ''),
     /** Só na listagem por cliente; mesma regra que partes «Réu» na tela Processos. */
     parteOposta: corrigirMojibakeUtf8(p.parteOposta || p.parte_oposta || ''),
+    unidade: corrigirMojibakeUtf8(String(p.unidade ?? '').trim()),
   };
 }

@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { X, ChevronUp, ChevronDown, BarChart2, ExternalLink, RefreshCw } from 'lucide-react';
+import { X, ChevronUp, ChevronDown, BarChart2, ExternalLink, RefreshCw, Check } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { getLancamentosContaCorrente } from '../data/financeiroData';
 import {
   hydrateRodadasCalculosFromApi,
   isCalculosRodadasApiHidratacaoConcluida,
   loadRodadasCalculos,
+  mapaRodadasTemValorTituloOuParcela,
+  normalizarRodadaRecebidaApi,
   saveRodadasCalculos,
 } from '../data/calculosRodadasStorage';
+import { fetchCalculoRodada } from '../repositories/calculosRepository.js';
 import { RODADAS_VINCULACAO_TESTE_50 } from '../data/vinculacaoAutomaticaTestMock';
 import {
   PARCELAS_POR_PAGINA_MOCK as PARCELAS_POR_PAGINA,
@@ -21,7 +24,7 @@ import { obterIndicesMensaisINPC, obterIndicesMensaisIPCA } from '../services/mo
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { baixarBlobDocx, gerarDocumentoListaDebitosWord } from '../utils/gerarDocumentoListaDebitosWord';
-import { INDICES_CALCULO, PERIODICIDADE_OPCOES, MODELOS_LISTA_DEBITOS } from '../data/calculosIndices.js';
+import { INDICES_CALCULO, PERIODICIDADE_OPCOES } from '../data/calculosIndices.js';
 import {
   loadConfigCalculoCliente,
   mergeConfigPainelCalculo,
@@ -31,6 +34,13 @@ import { featureFlags } from '../config/featureFlags.js';
 import { resolverAliasHojeEmTexto } from '../services/hjDateAliasService.js';
 import { buildRouterStateChaveClienteProcesso, extrairIntentNavegacaoProcessos } from '../domain/camposProcessoCliente.js';
 import { mergeDebitosCalculosMultiSheet } from '../utils/mergeDebitosCalculosPlanilha.js';
+import {
+  buscarClientePorCodigo,
+  buscarProcessoPorChaveNatural,
+  mapApiProcessoToUiShape,
+} from '../repositories/processosRepository.js';
+import { obterClienteCadastroPorCodigo } from '../repositories/clientesRepository.js';
+import { getRegistroProcesso } from '../data/processosHistoricoData.js';
 
 const TABS = ['Títulos', 'Custas Judiciais', 'Parcelamento', 'Pagamento', 'Honorários', 'Descrição dos Valores'];
 
@@ -50,6 +60,12 @@ function normalizarCliente(val) {
 function padCliente8(val) {
   const n = Number(normalizarCliente(val));
   return String(n).padStart(8, '0');
+}
+
+/** Evita « X - Proc.» quando autor/réu vêm vazios no JSON (`??` não cobre string ''). */
+function rotuloCabecalhoCalculoParte(val) {
+  const t = String(val ?? '').trim();
+  return t || '—';
 }
 
 function normalizarProc(val) {
@@ -272,20 +288,28 @@ export function Calculos() {
   const [indice, setIndice] = useState('INPC');
   const [periodicidade, setPeriodicidade] = useState('mensal');
   const [modeloListaDebitos, setModeloListaDebitos] = useState('01');
+  const [indiceMenuAberto, setIndiceMenuAberto] = useState(false);
+  const indicePickerRef = useRef(null);
   const [aceitarPagamento, setAceitarPagamento] = useState(false);
   const [modoAlteracao, setModoAlteracao] = useState(false);
   const [indicesMensaisINPC, setIndicesMensaisINPC] = useState(null);
   const [indicesMensaisIPCA, setIndicesMensaisIPCA] = useState(null);
   // Cada (cliente + proc + dimensão) representa uma rodada independente de cálculos (estado próprio).
-  const [rodadasState, setRodadasState] = useState(() => ({
-    ...(loadRodadasCalculos() || {}),
-    ...RODADAS_VINCULACAO_TESTE_50,
-  }));
+  // Com API ativa não carregamos localStorage (quota); o GET em hydrate preenche via evento + espelho em memória.
+  const [rodadasState, setRodadasState] = useState(() =>
+    featureFlags.useApiCalculos
+      ? { ...RODADAS_VINCULACAO_TESTE_50 }
+      : {
+          ...(loadRodadasCalculos() || {}),
+          ...RODADAS_VINCULACAO_TESTE_50,
+        }
+  );
   /** Com API de cálculos, bloqueia autosave até o GET inicial em `hydrateRodadasCalculosFromApi` concluir (evita PUT que apaga o MySQL). */
   const [hidratacaoConcluida, setHidratacaoConcluida] = useState(
     () => !featureFlags.useApiCalculos || isCalculosRodadasApiHidratacaoConcluida()
   );
   const saveRodadasTimerRef = useRef(null);
+  const fetchRodadaReqIdRef = useRef(0);
   const debitosPlanilhaInputRef = useRef(null);
   const [sincronizandoRodadasApi, setSincronizandoRodadasApi] = useState(false);
   const rodadasStateRef = useRef(rodadasState);
@@ -307,7 +331,11 @@ export function Calculos() {
         ...(loadRodadasCalculos() || {}),
         ...RODADAS_VINCULACAO_TESTE_50,
       });
-      window.alert('Rodadas atualizadas a partir do MySQL (localStorage alinhado ao servidor).');
+      window.alert(
+        featureFlags.useApiCalculos
+          ? 'Rodadas atualizadas a partir do MySQL (memória da sessão alinhada ao servidor).'
+          : 'Rodadas atualizadas a partir do MySQL (localStorage alinhado ao servidor).'
+      );
     } catch (err) {
       console.error(err);
       window.alert(`Falha ao sincronizar: ${err?.message || String(err)}`);
@@ -331,14 +359,18 @@ export function Calculos() {
       const { nextRodadas, stats } = mergeDebitosCalculosMultiSheet(rodadasStateRef.current, matrices);
       setRodadasState(nextRodadas);
       rodadasStateRef.current = nextRodadas;
-      const gravou = saveRodadasCalculos(nextRodadas);
+      const keysComValor = Object.keys(nextRodadas).filter((k) =>
+        mapaRodadasTemValorTituloOuParcela({ [k]: nextRodadas[k] })
+      );
+      const gravou = saveRodadasCalculos(nextRodadas, { persistRodadaKeysComValor: keysComValor });
       const avisosTxt =
         stats.avisos.length > 0
           ? `\n\n${stats.avisos.slice(0, 15).join('\n')}${stats.avisos.length > 15 ? '\n…' : ''}`
           : '';
-      const avisoGravacao = gravou
-        ? ''
-        : '\n\nAtenção: não foi possível gravar no armazenamento do navegador (ex.: quota cheia). Recarregar pode perder dados.';
+      const avisoGravacao =
+        gravou || featureFlags.useApiCalculos
+          ? ''
+          : '\n\nAtenção: não foi possível gravar no armazenamento do navegador (ex.: quota cheia). Recarregar pode perder dados.';
       window.alert(
         `Importação de débitos concluída.\n` +
           `Folhas lidas: ${stats.sheetsUsadas ?? matrices.length}\n` +
@@ -353,11 +385,30 @@ export function Calculos() {
   }, []);
 
   useEffect(() => {
-    const h = () =>
+    const h = (e) => {
+      const fromEvent = e?.detail?.rodadas;
+      const mapaCompleto = e?.detail?.mapaCompleto === true;
+      if (featureFlags.useApiCalculos) {
+        if (mapaCompleto && fromEvent && typeof fromEvent === 'object' && !Array.isArray(fromEvent)) {
+          setRodadasState({
+            ...fromEvent,
+            ...RODADAS_VINCULACAO_TESTE_50,
+          });
+        }
+        return;
+      }
+      if (fromEvent && typeof fromEvent === 'object' && !Array.isArray(fromEvent)) {
+        setRodadasState({
+          ...fromEvent,
+          ...RODADAS_VINCULACAO_TESTE_50,
+        });
+        return;
+      }
       setRodadasState({
         ...(loadRodadasCalculos() || {}),
         ...RODADAS_VINCULACAO_TESTE_50,
       });
+    };
     window.addEventListener('vilareal:calculos-rodadas-atualizadas', h);
     return () => window.removeEventListener('vilareal:calculos-rodadas-atualizadas', h);
   }, []);
@@ -375,6 +426,20 @@ export function Calculos() {
       window.removeEventListener('vilareal:calculos-rodadas-api-hidratacao-concluida', onFim);
     };
   }, []);
+
+  useEffect(() => {
+    if (!indiceMenuAberto) return undefined;
+    const down = (e) => {
+      const el = indicePickerRef.current;
+      if (el && !el.contains(e.target)) setIndiceMenuAberto(false);
+    };
+    document.addEventListener('mousedown', down);
+    return () => document.removeEventListener('mousedown', down);
+  }, [indiceMenuAberto]);
+
+  useEffect(() => {
+    setIndiceMenuAberto(false);
+  }, [tabAtiva]);
 
   const [confirmarLimpeza, setConfirmarLimpeza] = useState(false);
 
@@ -458,6 +523,26 @@ export function Calculos() {
   const codigoClienteNorm = padCliente8(codigoCliente);
   const procNorm = normalizarProc(proc);
   const rodadaKey = `${codigoClienteNorm}:${procNorm}:${dimensaoNorm}`;
+
+  /** Persiste rodadas no navegador (Financeiro usa para buscar parcelas no extrato). PUT na API só após hidratação GET (ver `hidratacaoConcluida` + `calculosRodadasStorage`). */
+  useEffect(() => {
+    if (featureFlags.useApiCalculos && !hidratacaoConcluida) return undefined;
+    if (saveRodadasTimerRef.current) window.clearTimeout(saveRodadasTimerRef.current);
+    saveRodadasTimerRef.current = window.setTimeout(() => {
+      if (featureFlags.useApiCalculos) {
+        saveRodadasCalculos(rodadasState, { persistRodadaKey: rodadaKey });
+      } else {
+        saveRodadasCalculos(rodadasState);
+      }
+    }, 450);
+    return () => {
+      if (saveRodadasTimerRef.current) window.clearTimeout(saveRodadasTimerRef.current);
+    };
+  }, [rodadasState, hidratacaoConcluida, rodadaKey]);
+
+  useEffect(() => {
+    setIndiceMenuAberto(false);
+  }, [rodadaKey]);
 
   useEffect(() => {
     if (!featureFlags.useApiCalculos) return;
@@ -553,18 +638,6 @@ export function Calculos() {
     setProcManual((v) => String(normalizarProc(v)));
   }
 
-  /** Persiste rodadas no navegador (Financeiro usa para buscar parcelas no extrato). PUT na API só após hidratação GET (ver `hidratacaoConcluida` + `calculosRodadasStorage`). */
-  useEffect(() => {
-    if (featureFlags.useApiCalculos && !hidratacaoConcluida) return;
-    if (saveRodadasTimerRef.current) window.clearTimeout(saveRodadasTimerRef.current);
-    saveRodadasTimerRef.current = window.setTimeout(() => {
-      saveRodadasCalculos(rodadasState);
-    }, 450);
-    return () => {
-      if (saveRodadasTimerRef.current) window.clearTimeout(saveRodadasTimerRef.current);
-    };
-  }, [rodadasState, hidratacaoConcluida]);
-
   /**
    * Os campos «Cod Cliente» / «Proc.» são manuais até clicar «Ir»; ao entrar em Títulos ou Parcelamento
    * aplicamos automaticamente se diferirem do par já em uso — evita ver rodada vazia por chave errada.
@@ -588,8 +661,9 @@ export function Calculos() {
     }
   }, [tabAtiva, codClienteManual, procManual, codigoCliente, proc, navigate]);
 
-  // Garante que a rodada exista ao alternar cliente/proc/dimensão
+  // Garante que a rodada exista ao alternar cliente/proc/dimensão (sem API: mock local; com API: GET individual abaixo)
   useEffect(() => {
+    if (featureFlags.useApiCalculos) return undefined;
     setRodadasState((prev) => {
       if (prev[rodadaKey]) return prev;
       return {
@@ -610,7 +684,56 @@ export function Calculos() {
         },
       };
     });
+    return undefined;
   }, [rodadaKey, codigoClienteNorm, procNorm, dimensaoNorm]);
+
+  // Com API: carrega ou cria (404) só a chave atual — sem GET global de rodadas.
+  useEffect(() => {
+    if (!featureFlags.useApiCalculos || !hidratacaoConcluida) return undefined;
+    const myId = ++fetchRodadaReqIdRef.current;
+    const key = rodadaKey;
+    const parts = key.split(':');
+    const sc = parts[0];
+    const sp = Number(parts[1]);
+    const sd = Number(parts[2]);
+    (async () => {
+      try {
+        const raw = await fetchCalculoRodada(sc, sp, sd);
+        if (myId !== fetchRodadaReqIdRef.current) return;
+        if (raw == null) {
+          setRodadasState((prev) => {
+            if (prev[key]) return prev;
+            return {
+              ...prev,
+              [key]: {
+                pagina: 1,
+                paginaParcelamento: 1,
+                titulos: gerarTitulosMock(codigoClienteNorm, procNorm, dimensaoNorm),
+                parcelas: gerarParcelasMock(),
+                quantidadeParcelasInformada: '00',
+                taxaJurosParcelamento: '0,00',
+                limpezaAtiva: false,
+                snapshotAntesLimpeza: null,
+                cabecalho: gerarCabecalhoMock(codigoClienteNorm, procNorm),
+                honorariosDataRecebimento: {},
+                parcelamentoAceito: false,
+                panelConfig: undefined,
+              },
+            };
+          });
+          return;
+        }
+        const one = normalizarRodadaRecebidaApi(key, raw);
+        if (!one || myId !== fetchRodadaReqIdRef.current) return;
+        setRodadasState((prev) => ({ ...prev, [key]: one }));
+      } catch (e) {
+        if (myId === fetchRodadaReqIdRef.current) {
+          console.error('[vilareal] Falha ao carregar rodada de cálculo:', e);
+        }
+      }
+    })();
+    return undefined;
+  }, [rodadaKey, hidratacaoConcluida, codigoClienteNorm, procNorm, dimensaoNorm]);
 
   const rodadaAtual = rodadasState[rodadaKey] || {
     pagina: 1,
@@ -627,11 +750,81 @@ export function Calculos() {
     panelConfig: undefined,
   };
 
-  // Ao mudar de rodada, restaura "Aceitar pagamento" salvo nessa combinação cliente/proc/dim.
+  const rodadaExisteNoEstado = rodadasState[rodadaKey] != null;
+
+  // Preenche cabecalho.autor / .reu a partir de Processos + Cliente (API) ou histórico local, sem sobrescrever texto já salvo na rodada.
   useEffect(() => {
-    setAceitarPagamento(Boolean(rodadasState[rodadaKey]?.parcelamentoAceito));
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- só ao trocar cliente/proc/dimensão
-  }, [rodadaKey]);
+    if (featureFlags.useApiCalculos && !hidratacaoConcluida) return undefined;
+    if (!rodadaExisteNoEstado) return undefined;
+
+    let cancelled = false;
+    const key = rodadaKey;
+    const cod8 = codigoClienteNorm;
+    const procN = procNorm;
+
+    void (async () => {
+      let autor = '';
+      let reu = '';
+      try {
+        if (featureFlags.useApiProcessos) {
+          const raw = await buscarProcessoPorChaveNatural(cod8, procN);
+          if (cancelled) return;
+          if (raw) {
+            reu = String(mapApiProcessoToUiShape(raw).parteOposta ?? '').trim();
+          }
+          if (featureFlags.useApiClientes) {
+            const c = await obterClienteCadastroPorCodigo(cod8);
+            if (cancelled) return;
+            autor = String(c?.nomeRazao ?? '').trim();
+          }
+          if (!autor) {
+            const row = await buscarClientePorCodigo(cod8);
+            if (cancelled) return;
+            autor = String(row?.nomeReferencia ?? row?.nome ?? '').trim();
+          }
+        } else {
+          const reg = getRegistroProcesso(cod8, procN);
+          if (cancelled) return;
+          if (reg) {
+            autor = String(reg.parteCliente ?? reg.cliente ?? '').trim();
+            reu = String(reg.parteOposta ?? reg.reu ?? '').trim();
+          }
+        }
+      } catch {
+        /* rede / storage: mantém cabecalho já persistido */
+      }
+      if (cancelled) return;
+      if (!autor && !reu) return;
+
+      setRodadasState((prev) => {
+        const cur = prev[key];
+        if (!cur || typeof cur !== 'object') return prev;
+        const cab = cur.cabecalho && typeof cur.cabecalho === 'object' ? cur.cabecalho : {};
+        const keepAutor = String(cab.autor ?? '').trim();
+        const keepReu = String(cab.reu ?? '').trim();
+        const nextAutor = keepAutor || autor;
+        const nextReu = keepReu || reu;
+        if (nextAutor === keepAutor && nextReu === keepReu) return prev;
+        return {
+          ...prev,
+          [key]: { ...cur, cabecalho: { autor: nextAutor, reu: nextReu } },
+        };
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [rodadaExisteNoEstado, rodadaKey, codigoClienteNorm, procNorm, hidratacaoConcluida]);
+
+  const autorBarraCalculo = rotuloCabecalhoCalculoParte(rodadaAtual.cabecalho?.autor);
+  const reuBarraCalculo = rotuloCabecalhoCalculoParte(rodadaAtual.cabecalho?.reu);
+
+  // Sincroniza o checkbox com `parcelamentoAceito` da rodada no estado (inclui após GET individual assíncrono).
+  const parcelamentoAceitoRodadaAtual = rodadasState[rodadaKey]?.parcelamentoAceito;
+  useEffect(() => {
+    setAceitarPagamento(Boolean(parcelamentoAceitoRodadaAtual));
+  }, [rodadaKey, parcelamentoAceitoRodadaAtual]);
 
   // Ao trocar cliente/proc/dimensão, restaura as páginas salvas daquela rodada (cada dimensão = rodada própria).
   useEffect(() => {
@@ -1684,30 +1877,38 @@ export function Calculos() {
   ]);
 
   return (
-    <div className="min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/35 to-emerald-50/45 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d] flex flex-col">
-      <header className="flex items-center justify-between px-3 py-2.5 bg-white/95 backdrop-blur-sm border-b border-slate-200/90 shadow-sm shrink-0">
-        <h1 className="text-lg font-bold bg-gradient-to-r from-indigo-800 to-violet-800 dark:from-indigo-200 dark:to-violet-200 bg-clip-text text-transparent">
+    <div className="min-h-0 flex-1 flex flex-col bg-slate-50 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d]">
+      <header className="flex items-center justify-between gap-2 px-3 py-2 bg-white border-b border-slate-200 shrink-0">
+        <h1 className="text-base font-semibold text-slate-800 dark:text-slate-100 truncate">
           Cálculos Atualizados dos Títulos
         </h1>
-        <button type="button" onClick={() => window.history.back()} className="p-2 rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 shadow-sm" aria-label="Fechar">
-          <X className="w-5 h-5" />
+        <button type="button" onClick={() => window.history.back()} className="p-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 shrink-0" aria-label="Fechar">
+          <X className="w-4 h-4" />
         </button>
       </header>
 
-      <div className="px-3 py-2 bg-gradient-to-r from-indigo-600 to-violet-700 text-white flex items-center justify-between shadow-md">
-        <span className="font-medium">
-          {rodadaAtual.cabecalho?.autor ?? '—'} — {rodadaAtual.cabecalho?.reu ?? '—'}
+      <div
+        className="px-3 py-1.5 bg-slate-700 text-white flex items-center justify-between gap-3 text-sm shrink-0 cursor-pointer select-none"
+        onDoubleClick={() =>
+          navigate('/processos', { state: buildRouterStateChaveClienteProcesso(codigoClienteNorm, procNorm) })
+        }
+        title={`${autorBarraCalculo} X ${reuBarraCalculo} - Proc. ${procNorm} — duplo clique: abrir em Processos (cliente ${codigoClienteNorm}, proc. ${procNorm})`}
+      >
+        <span className="font-medium truncate min-w-0 leading-snug">
+          {autorBarraCalculo} X {reuBarraCalculo} - Proc. {procNorm}
         </span>
-        <span className="text-sm font-mono">{String(codigoClienteNorm)}</span>
+        <span className="text-[11px] font-mono tabular-nums shrink-0 text-white/90 border-l border-white/25 pl-3">
+          Cód. {String(codigoClienteNorm)}
+        </span>
       </div>
 
-      <div className="flex border-b border-slate-200/90 bg-slate-50/90">
+      <div className="flex flex-wrap border-b border-slate-200 bg-slate-100 shrink-0 gap-0.5 px-1 pt-1">
         {TABS.map((tab) => (
           <button
             key={tab}
             type="button"
             onClick={() => setTabAtiva(tab)}
-            className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${tabAtiva === tab ? 'bg-white text-indigo-900 border border-slate-200/90 border-b-0 -mb-px shadow-sm ring-1 ring-indigo-500/10' : 'text-slate-600 hover:bg-indigo-50/60'}`}
+            className={`px-2.5 py-1.5 text-xs font-medium rounded-t-md transition-colors ${tabAtiva === tab ? 'bg-white text-slate-900 border border-b-0 border-slate-200 -mb-px shadow-sm' : 'text-slate-600 hover:bg-white/70 border border-transparent'}`}
           >
             {tab}
           </button>
@@ -1715,7 +1916,7 @@ export function Calculos() {
       </div>
 
       <div className="flex-1 min-h-0 flex overflow-hidden">
-        <div className="flex-1 min-w-0 overflow-auto p-3">
+        <div className="flex-1 min-w-0 overflow-auto p-2">
           {tabAtiva === 'Títulos' && (
             <>
               {!(titulos || []).some((t) => String(t?.valorInicial ?? '').trim() !== '') &&
@@ -1736,11 +1937,13 @@ export function Calculos() {
                 Página {String(pagina).padStart(2, '0')} — Linhas {inicio + 1} a {Math.min(fim, titulos.length)} (de {titulos.length})
               </p>
               <div className="overflow-x-auto border border-slate-300 rounded bg-white">
-                <table className="w-full text-sm border-collapse">
+                <table className="w-full table-fixed text-sm border-collapse">
                   <thead>
                     <tr className="bg-slate-100">
                       <th className="border border-slate-300 px-2 py-1.5 text-left font-semibold text-slate-700 w-12">#</th>
-                      <th className="border border-slate-300 px-2 py-1.5 text-left font-semibold text-slate-700 min-w-[100px]">Data de Vencimento</th>
+                      <th className="border border-slate-300 px-1.5 py-1.5 text-left font-semibold text-slate-700 w-[7rem] min-w-0 max-w-[7rem] whitespace-normal text-[11px] leading-tight">
+                        Data de Vencimento
+                      </th>
                       <th className="border border-slate-300 px-2 py-1.5 text-left font-semibold text-slate-700 min-w-[120px]">Valor inicial do título</th>
                       <th className="border border-slate-300 px-2 py-1.5 text-left font-semibold text-slate-700 min-w-[120px]">Atualização Monetária</th>
                       <th className="border border-slate-300 px-2 py-1.5 text-left font-semibold text-slate-700 min-w-[80px]">Dias de Atraso</th>
@@ -1766,7 +1969,7 @@ export function Calculos() {
                         >
                           {String(globalIdx + 1).padStart(3, '0')}
                         </td>
-                        <td className="border border-slate-200 px-2 py-1">
+                        <td className="border border-slate-200 px-1 py-1 w-[7rem] min-w-0 max-w-[7rem] align-top">
                           {podeEditarLinha ? (
                             <input
                               type="text"
@@ -1784,10 +1987,12 @@ export function Calculos() {
                                   dataVencimento: normalizarTextoDataBRparaSalvar(e.target.value),
                                 })
                               }
-                              className="w-full px-1 py-0.5 border border-slate-300 rounded text-sm"
+                              className="w-full min-w-0 max-w-full box-border px-1 py-0.5 border border-slate-300 rounded text-sm tabular-nums"
                             />
                           ) : (
-                            row.dataVencimento
+                            <span className="block truncate text-sm tabular-nums" title={row.dataVencimento || undefined}>
+                              {row.dataVencimento}
+                            </span>
                           )}
                         </td>
                         <td className="border border-slate-200 px-2 py-1">
@@ -1993,7 +2198,7 @@ export function Calculos() {
                     <thead>
                       <tr className="bg-slate-100">
                         <th className="border border-slate-300 px-2 py-1 text-left font-semibold text-slate-700 w-24">Parcela</th>
-                        <th className="border border-slate-300 px-2 py-1 text-left font-semibold text-slate-700 w-36">Data Venc.</th>
+                        <th className="border border-slate-300 px-2 py-1 text-left font-semibold text-slate-700 w-28">Data Venc.</th>
                         <th className="border border-slate-300 px-2 py-1 text-left font-semibold text-slate-700 w-40">Valor</th>
                         <th className="border border-slate-300 px-2 py-1 text-left font-semibold text-slate-700 w-40">Honor. Parc.</th>
                         <th className="border border-slate-300 px-2 py-1 text-left font-semibold text-slate-700">Obs.</th>
@@ -2177,7 +2382,7 @@ export function Calculos() {
                   <thead>
                     <tr className="bg-slate-100">
                       <th className="border border-slate-300 px-2 py-1 text-left font-semibold text-slate-700 w-24">Parcela</th>
-                      <th className="border border-slate-300 px-2 py-1 text-left font-semibold text-slate-700 w-36">Data Venc.</th>
+                      <th className="border border-slate-300 px-2 py-1 text-left font-semibold text-slate-700 w-28">Data Venc.</th>
                       <th className="border border-slate-300 px-2 py-1 text-left font-semibold text-slate-700 w-40">Valor</th>
                       <th className="border border-slate-300 px-2 py-1 text-left font-semibold text-slate-700 w-40">Honor. Parc.</th>
                       <th className="border border-slate-300 px-2 py-1 text-left font-semibold text-slate-700">Obs.</th>
@@ -2361,7 +2566,7 @@ export function Calculos() {
                       <thead>
                         <tr className="bg-slate-100">
                           <th className="border border-slate-300 px-2 py-1 text-left">Linha</th>
-                          <th className="border border-slate-300 px-2 py-1 text-left">Data venc.</th>
+                          <th className="border border-slate-300 px-2 py-1 text-left w-28 min-w-0">Data venc.</th>
                           <th className="border border-slate-300 px-2 py-1 text-left">Valor honorários</th>
                           <th className="border border-slate-300 px-2 py-1 text-left">Data recebimento</th>
                           <th className="border border-slate-300 px-2 py-1 text-left">Conciliação</th>
@@ -2375,7 +2580,9 @@ export function Calculos() {
                           return (
                             <tr key={chave} className={indice % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
                               <td className="border border-slate-200 px-2 py-1 tabular-nums">#{indice + 1}</td>
-                              <td className="border border-slate-200 px-2 py-1">{titulo.dataVencimento || '—'}</td>
+                              <td className="border border-slate-200 px-1.5 py-1 w-28 min-w-0 tabular-nums whitespace-nowrap">
+                                {titulo.dataVencimento || '—'}
+                              </td>
                               <td className="border border-slate-200 px-2 py-1 tabular-nums">{titulo.honorarios}</td>
                               <td className="border border-slate-200 px-2 py-1 w-44">
                                 {podeEditar ? (
@@ -2439,7 +2646,7 @@ export function Calculos() {
                       <thead>
                         <tr className="bg-slate-100">
                           <th className="border border-slate-300 px-2 py-1 text-left">Parcela</th>
-                          <th className="border border-slate-300 px-2 py-1 text-left">Data venc.</th>
+                          <th className="border border-slate-300 px-2 py-1 text-left w-28 min-w-0">Data venc.</th>
                           <th className="border border-slate-300 px-2 py-1 text-left">Honor. parcela</th>
                           <th className="border border-slate-300 px-2 py-1 text-left">Data recebimento</th>
                           <th className="border border-slate-300 px-2 py-1 text-left">Conciliação</th>
@@ -2455,7 +2662,9 @@ export function Calculos() {
                               <td className="border border-slate-200 px-2 py-1 tabular-nums">
                                 {String(indice + 1).padStart(2, '0')}
                               </td>
-                              <td className="border border-slate-200 px-2 py-1">{parcela.dataVencimento || '—'}</td>
+                              <td className="border border-slate-200 px-1.5 py-1 w-28 min-w-0 tabular-nums whitespace-nowrap">
+                                {parcela.dataVencimento || '—'}
+                              </td>
                               <td className="border border-slate-200 px-2 py-1 tabular-nums">{parcela.honorariosParcela}</td>
                               <td className="border border-slate-200 px-2 py-1 w-44">
                                 {podeEditar ? (
@@ -2538,11 +2747,11 @@ export function Calculos() {
                 </div>
               </div>
               <div className="overflow-x-auto border border-slate-300 rounded">
-                <table className="w-full text-sm border-collapse">
+                <table className="w-full table-fixed text-sm border-collapse">
                   <thead>
                     <tr className="bg-slate-100">
                       <th className="border border-slate-300 px-2 py-1.5 text-left font-semibold text-slate-700 w-14">#</th>
-                      <th className="border border-slate-300 px-2 py-1.5 text-left font-semibold text-slate-700 min-w-[100px]">
+                      <th className="border border-slate-300 px-1.5 py-1.5 text-left font-semibold text-slate-700 w-[7rem] min-w-0 max-w-[7rem]">
                         Data venc.
                       </th>
                       <th className="border border-slate-300 px-2 py-1.5 text-left font-semibold text-slate-700 min-w-[120px]">
@@ -2563,13 +2772,13 @@ export function Calculos() {
                           <td className="border border-slate-200 px-2 py-1 text-slate-600 tabular-nums">
                             {String(globalIdx + 1).padStart(3, '0')}
                           </td>
-                          <td className="border border-slate-200 px-2 py-1 text-slate-700">
+                          <td className="border border-slate-200 px-1.5 py-1 text-slate-700 w-[7rem] min-w-0 max-w-[7rem] tabular-nums">
                             {linhaExiste ? row.dataVencimento || '—' : '—'}
                           </td>
                           <td className="border border-slate-200 px-2 py-1 text-slate-700">
                             {linhaExiste ? row.valorInicial || '—' : '—'}
                           </td>
-                          <td className="border border-slate-200 px-2 py-1 align-top">
+                          <td className="border border-slate-200 px-2 py-1 align-top min-w-0">
                             {linhaExiste ? (
                               podeEditar ? (
                                 <textarea
@@ -2611,9 +2820,8 @@ export function Calculos() {
           )}
         </div>
 
-        <aside className="w-56 shrink-0 border-l border-slate-300 bg-slate-100 p-3 overflow-y-auto space-y-3">
-          <div className="p-2 rounded border border-slate-300 bg-white">
-            <p className="text-xs font-semibold text-slate-700 mb-2">Acesso manual</p>
+        <aside className="w-52 shrink-0 border-l border-slate-200 bg-slate-100/90 p-2 overflow-y-auto overflow-x-hidden space-y-2 [scrollbar-width:thin]">
+          <div className="p-1.5 rounded border border-slate-200 bg-white shadow-sm">
             <div className="space-y-2">
               <div>
                 <label className="block text-[11px] font-medium text-slate-700 mb-0.5">Cod Cliente</label>
@@ -2631,7 +2839,6 @@ export function Calculos() {
                     aplicarClienteProcManual();
                   }}
                 />
-                <p className="mt-1 text-[11px] text-slate-500">Use as setas para variar o código rapidamente.</p>
               </div>
               <div>
                 <label className="block text-[11px] font-medium text-slate-700 mb-0.5">Proc.</label>
@@ -2653,21 +2860,14 @@ export function Calculos() {
               <div>
                 <label className="block text-[11px] font-medium text-slate-700 mb-0.5">Dimensão</label>
                 <SpinnerField value={dimensao} onChange={setDimensao} min={0} className="w-full" />
-                <p className="mt-1 text-[10px] text-slate-400 font-mono break-all" title="Chave interna da rodada no armazenamento">
-                  {rodadaKey}
-                </p>
               </div>
               <button
                 type="button"
                 onClick={aplicarClienteProcManual}
-                className="w-full px-3 py-2 rounded bg-blue-600 text-white text-sm font-medium hover:bg-blue-700"
+                className="w-full px-2 py-1.5 rounded bg-blue-600 text-white text-xs font-medium hover:bg-blue-700"
               >
                 Ir
               </button>
-              <p className="text-[10px] text-slate-500 leading-snug">
-                Ao abrir <strong>Títulos</strong> ou <strong>Parcelamento</strong>, cliente e proc. acima aplicam-se
-                automaticamente se forem diferentes dos da rodada (a chave em baixo atualiza).
-              </p>
             </div>
           </div>
           {tabAtiva === 'Títulos' && (
@@ -2683,7 +2883,7 @@ export function Calculos() {
                   if (limpezaAtiva) reverterLimpeza();
                   else setConfirmarLimpeza(true);
                 }}
-                className="w-full px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
+                className="w-full px-2 py-1.5 rounded border border-slate-200 bg-white text-slate-700 text-xs hover:bg-slate-50"
               >
                 {limpezaAtiva ? 'Reverter limpeza' : 'Limpa Página Toda'}
               </button>
@@ -2718,9 +2918,9 @@ export function Calculos() {
                   className={inputClass}
                 />
               </div>
-              <div className="border border-slate-300 rounded p-2 bg-white">
-                <p className="text-xs font-medium text-slate-700 mb-1.5">Honorários</p>
-                <div className="flex gap-3 mb-1">
+              <div className="border border-slate-200 rounded p-1.5 bg-white shadow-sm">
+                <p className="text-[11px] font-medium text-slate-700 mb-1">Honorários</p>
+                <div className="flex gap-2 mb-0.5">
                   <label className="flex items-center gap-1 text-xs cursor-pointer">
                     <input
                       type="radio"
@@ -2765,32 +2965,59 @@ export function Calculos() {
                   className={`${inputClass} ${honorariosTipo !== 'fixos' ? 'bg-slate-50 text-slate-400' : ''}`}
                 />
               </div>
-              <div className="border border-slate-300 rounded p-2 bg-white">
-                <p className="text-xs font-medium text-slate-700 mb-1.5">Índice</p>
-                <div className="space-y-0.5">
-                  {INDICES.map((nome) => (
-                    <label
-                      key={nome}
-                      className="flex items-center gap-1.5 text-xs cursor-pointer select-none"
-                      onClick={() => updatePainelCampo({ indice: nome })}
-                    >
-                      <input
-                        id={`indice-${nome}`}
-                        type="radio"
-                        name="indice"
-                        value={nome}
-                        checked={indice === nome}
-                        onChange={(e) => updatePainelCampo({ indice: e.target.value })}
-                        className="text-slate-600"
-                      />
-                      {nome}
-                      {nome === 'INPC' && <BarChart2 className="w-3.5 h-3.5 text-slate-500" />}
-                    </label>
-                  ))}
-                </div>
+              <div className="border border-slate-200 rounded p-1.5 bg-white shadow-sm relative" ref={indicePickerRef}>
+                <p className="text-[11px] font-medium text-slate-700 mb-1">Índice</p>
+                <button
+                  type="button"
+                  onClick={() => setIndiceMenuAberto((v) => !v)}
+                  className="w-full flex items-center justify-between gap-1.5 px-2 py-1.5 rounded border border-slate-200 bg-white text-left text-[11px] font-medium text-slate-800 hover:bg-slate-50"
+                  aria-expanded={indiceMenuAberto}
+                  aria-haspopup="listbox"
+                  aria-label={`Índice: ${indice}. Abrir lista`}
+                >
+                  <span className="flex items-center gap-1 min-w-0 truncate">
+                    {indice}
+                    {indice === 'INPC' && <BarChart2 className="w-3.5 h-3.5 text-slate-500 shrink-0" aria-hidden />}
+                  </span>
+                  {indiceMenuAberto ? (
+                    <ChevronUp className="w-3.5 h-3.5 text-slate-500 shrink-0" aria-hidden />
+                  ) : (
+                    <ChevronDown className="w-3.5 h-3.5 text-slate-500 shrink-0" aria-hidden />
+                  )}
+                </button>
+                {indiceMenuAberto ? (
+                  <ul
+                    className="absolute left-1.5 right-1.5 top-full z-30 mt-0.5 max-h-44 overflow-y-auto rounded border border-slate-200 bg-white py-0.5 shadow-lg"
+                    role="listbox"
+                    aria-label="Escolher índice"
+                  >
+                    {INDICES.map((nome) => (
+                      <li key={nome} role="presentation">
+                        <button
+                          type="button"
+                          role="option"
+                          aria-selected={indice === nome}
+                          onClick={() => {
+                            updatePainelCampo({ indice: nome });
+                            setIndiceMenuAberto(false);
+                          }}
+                          className={`w-full text-left px-2 py-1.5 text-[11px] flex items-center gap-1.5 hover:bg-slate-50 ${
+                            indice === nome ? 'bg-blue-50 text-blue-900 font-medium' : 'text-slate-800'
+                          }`}
+                        >
+                          <span className="w-3.5 h-3.5 shrink-0 flex items-center justify-center">
+                            {indice === nome ? <Check className="w-3 h-3 text-blue-600" strokeWidth={3} aria-hidden /> : null}
+                          </span>
+                          <span className="truncate">{nome}</span>
+                          {nome === 'INPC' && <BarChart2 className="w-3.5 h-3.5 text-slate-500 shrink-0 ml-auto" aria-hidden />}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
               </div>
-              <div className="border border-slate-300 rounded p-2 bg-white">
-                <p className="text-xs font-medium text-slate-700 mb-1">Periodicidade (sugestão)</p>
+              <div className="border border-slate-200 rounded p-1.5 bg-white shadow-sm">
+                <p className="text-[11px] font-medium text-slate-700 mb-0.5">Periodicidade (sugestão)</p>
                 <select
                   value={periodicidade}
                   onChange={(e) => updatePainelCampo({ periodicidade: e.target.value })}
@@ -2803,25 +3030,11 @@ export function Calculos() {
                   ))}
                 </select>
               </div>
-              <div className="border border-slate-300 rounded p-2 bg-white">
-                <p className="text-xs font-medium text-slate-700 mb-1">Modelo lista de débitos</p>
-                <select
-                  value={modeloListaDebitos}
-                  onChange={(e) => updatePainelCampo({ modeloListaDebitos: e.target.value })}
-                  className={inputClass}
-                >
-                  {MODELOS_LISTA_DEBITOS.map((m) => (
-                    <option key={m} value={m}>
-                      Modelo {m}
-                    </option>
-                  ))}
-                </select>
-              </div>
             </>
           )}
-          <div className="space-y-1.5 pt-2 border-t border-slate-300">
-            <button type="button" className="w-full px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50">Cancelar</button>
-            <button type="button" className="w-full px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50">Configurações</button>
+          <div className="space-y-1 pt-1.5 border-t border-slate-200">
+            <button type="button" className="w-full px-2 py-1.5 rounded border border-slate-200 bg-white text-slate-700 text-xs hover:bg-slate-50">Cancelar</button>
+            <button type="button" className="w-full px-2 py-1.5 rounded border border-slate-200 bg-blue-600 text-white text-xs font-medium hover:bg-blue-700">Configurações</button>
             <label className="flex items-center gap-2 text-xs cursor-pointer">
               <input
                 type="checkbox"
@@ -2856,7 +3069,7 @@ export function Calculos() {
             <button
               type="button"
               onClick={handleImportarDebitosPlanilhaClick}
-              className="w-full px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50 text-left"
+              className="w-full px-2 py-1.5 rounded border border-slate-200 bg-white text-slate-700 text-xs hover:bg-slate-50 text-left"
             >
               Importar débitos (Excel)
             </button>
@@ -2865,7 +3078,7 @@ export function Calculos() {
                 type="button"
                 disabled={sincronizandoRodadasApi}
                 onClick={() => void handleSincronizarRodadasComBanco()}
-                className="w-full px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50 text-left flex items-center gap-2 disabled:opacity-60"
+                className="w-full px-2 py-1.5 rounded border border-slate-200 bg-white text-slate-700 text-xs hover:bg-slate-50 text-left flex items-center gap-1.5 disabled:opacity-60"
               >
                 <RefreshCw className={`w-4 h-4 shrink-0 ${sincronizandoRodadasApi ? 'animate-spin' : ''}`} aria-hidden />
                 Sincronizar com banco
@@ -2873,31 +3086,21 @@ export function Calculos() {
             )}
             <button
               type="button"
-              onClick={() =>
-                navigate('/processos', { state: buildRouterStateChaveClienteProcesso(codigoCliente ?? '', proc ?? '') })
-              }
-              className="w-full px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
-            >
-              Processo
-            </button>
-            <button
-              type="button"
               onClick={gerarPdfCalculo}
-              className="w-full px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50 text-left"
+              className="w-full px-2 py-1.5 rounded border border-slate-200 bg-white text-slate-700 text-xs hover:bg-slate-50 text-left"
             >
-              Salvar Formulário em PDI
+              Salvar Formulário em PDF
             </button>
             <button
               type="button"
               onClick={() => {
                 void gerarWordListaDebitos();
               }}
-              className="w-full px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
+              className="w-full px-2 py-1.5 rounded border border-slate-200 bg-white text-slate-700 text-xs hover:bg-slate-50"
             >
               Gerar no Word
             </button>
-            <button type="button" className="w-full px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50">Email Automático</button>
-            <button type="button" className="w-full px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50">Soluções Rápidas</button>
+            <button type="button" className="w-full px-2 py-1.5 rounded border border-slate-200 bg-white text-slate-700 text-xs hover:bg-slate-50">Email Automático</button>
           </div>
         </aside>
       </div>

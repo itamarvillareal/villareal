@@ -15,6 +15,9 @@ public class ProcessoWriteRequest {
     @NotNull
     private Integer numeroInterno;
 
+    /** Unidade (ex.: A-0103); opcional. */
+    private String unidade;
+
     private String numeroCnj;
     private String numeroProcessoAntigo;
     private String naturezaAcao;
@@ -50,6 +53,14 @@ public class ProcessoWriteRequest {
 
     public void setNumeroInterno(Integer numeroInterno) {
         this.numeroInterno = numeroInterno;
+    }
+
+    public String getUnidade() {
+        return unidade;
+    }
+
+    public void setUnidade(String unidade) {
+        this.unidade = unidade;
     }
 
     public String getNumeroCnj() {

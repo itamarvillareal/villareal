@@ -38,7 +38,7 @@ import {
   limparExtratoBancoEElosRelacionados,
   savePersistedExtratosFinanceiro,
 } from '../data/financeiroData';
-import { loadRodadasCalculos } from '../data/calculosRodadasStorage';
+import { loadRodadasCalculos, countRodadasParcelamentoAceitoResumo } from '../data/calculosRodadasStorage';
 import { EVENT_FINANCEIRO_PERSISTENCIA_EXTERNA } from '../services/crossTabLocalStorageSync.js';
 import {
   loadConsultasVinculoLog,
@@ -48,6 +48,7 @@ import {
   isUsuarioMaster,
 } from '../data/consultasVinculoHistoricoStorage.js';
 import {
+  montarMapaRodadasParaVinculoAutomatico,
   procurarSugestoesVinculoAutomatico,
   parseRodadaKeyParaDisplay,
 } from '../data/buscaParcelamentoFinanceiro';
@@ -1670,8 +1671,10 @@ export function Financeiro() {
     setModalBuscaParcelas(true);
   }
 
-  const runNovaConsultaVinculo = useCallback(() => {
-    const rodadas = loadRodadasCalculos() || {};
+  const runNovaConsultaVinculo = useCallback(async () => {
+    const rodadas = featureFlags.useApiCalculos
+      ? await montarMapaRodadasParaVinculoAutomatico()
+      : loadRodadasCalculos() || {};
     const sugestoes = procurarSugestoesVinculoAutomatico(extratosPorBancoRef.current, rodadas);
     const { entries: entriesAntes } = loadConsultasVinculoLog();
     const ultimo = entriesAntes.length > 0 ? entriesAntes[entriesAntes.length - 1] : null;
@@ -5924,7 +5927,9 @@ export function Financeiro() {
                 <span className="text-xs text-slate-500">
                   Rodadas aceitas no Cálculos:{' '}
                   <strong>
-                    {Object.values(loadRodadasCalculos() || {}).filter((r) => r?.parcelamentoAceito).length}
+                    {featureFlags.useApiCalculos
+                      ? countRodadasParcelamentoAceitoResumo()
+                      : Object.values(loadRodadasCalculos() || {}).filter((r) => r?.parcelamentoAceito).length}
                   </strong>
                 </span>
               </div>
@@ -5979,7 +5984,9 @@ export function Financeiro() {
               )}
 
               {(() => {
-                const nAceitas = Object.values(loadRodadasCalculos() || {}).filter((r) => r?.parcelamentoAceito).length;
+                const nAceitas = featureFlags.useApiCalculos
+                  ? countRodadasParcelamentoAceitoResumo()
+                  : Object.values(loadRodadasCalculos() || {}).filter((r) => r?.parcelamentoAceito).length;
                 if (nAceitas === 0) {
                   return (
                     <p className="text-amber-900 bg-amber-50 border border-amber-200 rounded px-3 py-2 text-sm">
