@@ -1,3 +1,5 @@
+import { linhaTituloVaziaCalculos } from '../data/calculosTitulosParcelasSync.js';
+
 /**
  * Merge de linhas da planilha `debitos.xlsx` no mapa de rodadas de Cálculos (aba Parcelamento).
  * Colunas: A=código cliente, B=vencimento 1ª parcela, C=valor 1ª parcela, G=processo, H=dimensão.
@@ -171,6 +173,9 @@ export function mergeDebitosCalculosPlanilha(rodadasAtual, matrix) {
     };
   }
 
+  /** Próximo índice de parcela/título por chave — várias linhas da planilha para o mesmo cliente/proc/dim. */
+  const slotNext = new Map();
+
   for (let i = 1; i < matrix.length; i += 1) {
     const row = matrix[i];
     if (!Array.isArray(row)) continue;
@@ -192,6 +197,8 @@ export function mergeDebitosCalculosPlanilha(rodadasAtual, matrix) {
 
     const dim = h === '' || h == null ? 0 : Math.max(0, Math.floor(Number(h) || 0));
     const key = rodadaKeyFromAGH(codNum, procNum, dim);
+    const slot = slotNext.get(key) ?? 0;
+    slotNext.set(key, slot + 1);
 
     const iso = parseDataCelulaParaISO(b);
     const dataBR = iso ? isoParaDataBR(iso) : '';
@@ -215,20 +222,37 @@ export function mergeDebitosCalculosPlanilha(rodadasAtual, matrix) {
     }
 
     const parcelas = Array.isArray(rodada.parcelas) ? rodada.parcelas.map((p) => ({ ...p })) : gerarParcelasMock();
-    while (parcelas.length < 1) parcelas.push(linhaVaziaParcela());
-    const p0 = { ...parcelas[0] };
-    if (dataBR) p0.dataVencimento = dataBR;
-    if (valorBRL) p0.valorParcela = valorBRL;
-    parcelas[0] = p0;
+    while (parcelas.length <= slot) parcelas.push(linhaVaziaParcela());
+    const pSlot = { ...parcelas[slot] };
+    if (dataBR) pSlot.dataVencimento = dataBR;
+    if (valorBRL) pSlot.valorParcela = valorBRL;
+    parcelas[slot] = pSlot;
 
-    let qty = String(rodada.quantidadeParcelasInformada ?? '00');
-    if ((dataBR || valorBRL) && (qty === '00' || qty === '')) {
-      qty = '01';
+    /** A aba «Títulos» usa `titulos[i]` — espelha o mesmo índice que `parcelas[i]`. */
+    let titulos = Array.isArray(rodada.titulos) ? rodada.titulos.map((t) => ({ ...linhaTituloVaziaCalculos(), ...t })) : gerarTitulosMock();
+    if (titulos.length === 0) {
+      titulos = gerarTitulosMock();
     }
+    while (titulos.length <= slot) {
+      titulos.push(linhaTituloVaziaCalculos());
+    }
+    const tSlot = { ...titulos[slot] };
+    if (dataBR) tSlot.dataVencimento = dataBR;
+    if (valorBRL) tSlot.valorInicial = valorBRL;
+    titulos[slot] = tSlot;
+
+    const maxOcupado = slot + 1;
+    let qty = String(rodada.quantidadeParcelasInformada ?? '00').replace(/\D/g, '') || '0';
+    let qn = Math.min(9999, Math.max(0, Number(qty)));
+    if (dataBR || valorBRL) {
+      qn = Math.max(qn, maxOcupado);
+    }
+    qty = qn <= 99 ? String(qn).padStart(2, '0') : String(qn);
 
     base[key] = {
       ...rodada,
       parcelas,
+      titulos,
       quantidadeParcelasInformada: qty,
     };
     aplicadas += 1;

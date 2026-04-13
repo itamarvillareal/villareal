@@ -1,9 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { X, ChevronUp, ChevronDown, BarChart2, ExternalLink } from 'lucide-react';
+import { X, ChevronUp, ChevronDown, BarChart2, ExternalLink, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { getLancamentosContaCorrente } from '../data/financeiroData';
-import { loadRodadasCalculos, saveRodadasCalculos } from '../data/calculosRodadasStorage';
+import {
+  hydrateRodadasCalculosFromApi,
+  isCalculosRodadasApiHidratacaoConcluida,
+  loadRodadasCalculos,
+  saveRodadasCalculos,
+} from '../data/calculosRodadasStorage';
 import { RODADAS_VINCULACAO_TESTE_50 } from '../data/vinculacaoAutomaticaTestMock';
 import {
   PARCELAS_POR_PAGINA_MOCK as PARCELAS_POR_PAGINA,
@@ -276,13 +281,39 @@ export function Calculos() {
     ...(loadRodadasCalculos() || {}),
     ...RODADAS_VINCULACAO_TESTE_50,
   }));
+  /** Com API de cálculos, bloqueia autosave até o GET inicial em `hydrateRodadasCalculosFromApi` concluir (evita PUT que apaga o MySQL). */
+  const [hidratacaoConcluida, setHidratacaoConcluida] = useState(
+    () => !featureFlags.useApiCalculos || isCalculosRodadasApiHidratacaoConcluida()
+  );
   const saveRodadasTimerRef = useRef(null);
   const debitosPlanilhaInputRef = useRef(null);
+  const [sincronizandoRodadasApi, setSincronizandoRodadasApi] = useState(false);
   const rodadasStateRef = useRef(rodadasState);
   rodadasStateRef.current = rodadasState;
 
   const handleImportarDebitosPlanilhaClick = useCallback(() => {
     debitosPlanilhaInputRef.current?.click();
+  }, []);
+
+  const handleSincronizarRodadasComBanco = useCallback(async () => {
+    if (!featureFlags.useApiCalculos) {
+      window.alert('API de cálculos desativada (VITE_USE_API_CALCULOS).');
+      return;
+    }
+    setSincronizandoRodadasApi(true);
+    try {
+      await hydrateRodadasCalculosFromApi({ preferServer: true });
+      setRodadasState({
+        ...(loadRodadasCalculos() || {}),
+        ...RODADAS_VINCULACAO_TESTE_50,
+      });
+      window.alert('Rodadas atualizadas a partir do MySQL (localStorage alinhado ao servidor).');
+    } catch (err) {
+      console.error(err);
+      window.alert(`Falha ao sincronizar: ${err?.message || String(err)}`);
+    } finally {
+      setSincronizandoRodadasApi(false);
+    }
   }, []);
 
   const handleDebitosPlanilhaFileChange = useCallback(async (e) => {
@@ -329,6 +360,20 @@ export function Calculos() {
       });
     window.addEventListener('vilareal:calculos-rodadas-atualizadas', h);
     return () => window.removeEventListener('vilareal:calculos-rodadas-atualizadas', h);
+  }, []);
+
+  useEffect(() => {
+    if (!featureFlags.useApiCalculos) return undefined;
+    const onInicio = () => setHidratacaoConcluida(false);
+    const onFim = (e) => {
+      if (e?.detail?.ok) setHidratacaoConcluida(true);
+    };
+    window.addEventListener('vilareal:calculos-rodadas-api-hidratacao-iniciada', onInicio);
+    window.addEventListener('vilareal:calculos-rodadas-api-hidratacao-concluida', onFim);
+    return () => {
+      window.removeEventListener('vilareal:calculos-rodadas-api-hidratacao-iniciada', onInicio);
+      window.removeEventListener('vilareal:calculos-rodadas-api-hidratacao-concluida', onFim);
+    };
   }, []);
 
   const [confirmarLimpeza, setConfirmarLimpeza] = useState(false);
@@ -508,8 +553,9 @@ export function Calculos() {
     setProcManual((v) => String(normalizarProc(v)));
   }
 
-  /** Persiste rodadas no navegador (Financeiro usa para buscar parcelas no extrato). */
+  /** Persiste rodadas no navegador (Financeiro usa para buscar parcelas no extrato). PUT na API só após hidratação GET (ver `hidratacaoConcluida` + `calculosRodadasStorage`). */
   useEffect(() => {
+    if (featureFlags.useApiCalculos && !hidratacaoConcluida) return;
     if (saveRodadasTimerRef.current) window.clearTimeout(saveRodadasTimerRef.current);
     saveRodadasTimerRef.current = window.setTimeout(() => {
       saveRodadasCalculos(rodadasState);
@@ -517,7 +563,7 @@ export function Calculos() {
     return () => {
       if (saveRodadasTimerRef.current) window.clearTimeout(saveRodadasTimerRef.current);
     };
-  }, [rodadasState]);
+  }, [rodadasState, hidratacaoConcluida]);
 
   /**
    * Os campos «Cod Cliente» / «Proc.» são manuais até clicar «Ir»; ao entrar em Títulos ou Parcelamento
@@ -1672,6 +1718,20 @@ export function Calculos() {
         <div className="flex-1 min-w-0 overflow-auto p-3">
           {tabAtiva === 'Títulos' && (
             <>
+              {!(titulos || []).some((t) => String(t?.valorInicial ?? '').trim() !== '') &&
+                (parcelas || []).some((p) =>
+                  ['dataVencimento', 'valorParcela', 'honorariosParcela', 'observacao', 'dataPagamento'].some(
+                    (k) => String(p?.[k] ?? '').trim() !== ''
+                  )
+                ) && (
+                <p className="text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded px-3 py-2 mb-2">
+                  Há valores na aba <strong>Parcelamento</strong>, mas a grade de <strong>Títulos</strong> está vazia
+                  (campos <code className="text-xs">titulos[]</code> no armazenamento). Abra <strong>Parcelamento</strong>{' '}
+                  para ver as parcelas importadas, ou reimporte com a versão atual do merge (títulos espelham a 1ª
+                  parcela). Dados gravados só em <code className="text-xs">parcelas</code> não preenchem automaticamente
+                  juros/multa/total desta aba até o fluxo de cálculo recalcular.
+                </p>
+              )}
               <p className="text-sm text-slate-600 mb-2">
                 Página {String(pagina).padStart(2, '0')} — Linhas {inicio + 1} a {Math.min(fim, titulos.length)} (de {titulos.length})
               </p>
@@ -2800,6 +2860,17 @@ export function Calculos() {
             >
               Importar débitos (Excel)
             </button>
+            {featureFlags.useApiCalculos && (
+              <button
+                type="button"
+                disabled={sincronizandoRodadasApi}
+                onClick={() => void handleSincronizarRodadasComBanco()}
+                className="w-full px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50 text-left flex items-center gap-2 disabled:opacity-60"
+              >
+                <RefreshCw className={`w-4 h-4 shrink-0 ${sincronizandoRodadasApi ? 'animate-spin' : ''}`} aria-hidden />
+                Sincronizar com banco
+              </button>
+            )}
             <button
               type="button"
               onClick={() =>

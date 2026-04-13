@@ -8,6 +8,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import org.springframework.http.CacheControl;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -22,10 +24,18 @@ public class CalculoController {
         this.calculoApplicationService = calculoApplicationService;
     }
 
-    @GetMapping("/rodadas")
+    /**
+     * Sempre <strong>200</strong> com corpo JSON {@code {"rodadas":{...}}} (mapa pode estar vazio).
+     * <p>Não confundir com {@link #substituirRodadas(CalculoRodadasWriteRequest)} (PUT), que responde <strong>204</strong> sem corpo.</p>
+     */
+    @GetMapping(value = "/rodadas", produces = MediaType.APPLICATION_JSON_VALUE)
     @Operation(summary = "Mapa de rodadas", description = "Mesmo formato do localStorage `vilareal.calculos.rodadas.v1`: chave `codigo8:proc:dimensao`.")
-    public CalculoRodadasResponse listarRodadas() {
-        return calculoApplicationService.listarRodadas();
+    public ResponseEntity<CalculoRodadasResponse> listarRodadas() {
+        CalculoRodadasResponse body = calculoApplicationService.listarRodadas();
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_JSON)
+                .cacheControl(CacheControl.noStore())
+                .body(body);
     }
 
     @PutMapping("/rodadas")

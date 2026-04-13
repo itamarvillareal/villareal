@@ -24,7 +24,8 @@
     "import:agenda-ana-luisa-total": "node scripts/import-agenda-planilha.mjs \"/Users/itamarvillarealjunior/Dropbox/COMUM/agenda ana luisa total.xlsx\" --layout=total --login=ana.luisa --usuario-id=3",
     "reimport:agenda-ana-luisa-total": "bash ../e-vilareal-java-backend/scripts/reimportar_agenda_ana_luisa_total.sh",
     "import:debitos-calculos": "node scripts/import-debitos-calculos-planilha.mjs \"/Users/itamarvillarealjunior/Dropbox/COMUM/debitos.xlsx\"",
-    "import:debitos-calculos:devtools": "node scripts/import-debitos-calculos-planilha.mjs \"/Users/itamarvillarealjunior/Dropbox/COMUM/debitos.xlsx\" --out=\"/tmp/vilareal-rodadas-debitos-merged.json\" --devtools-snippet"
+    "import:debitos-calculos:devtools": "node scripts/import-debitos-calculos-planilha.mjs \"/Users/itamarvillarealjunior/Dropbox/COMUM/debitos.xlsx\" --out=\"/tmp/vilareal-rodadas-debitos-merged.json\" --devtools-snippet",
+    "emit:sql:calculo-rodada-debitos": "node scripts/emit-calculo-rodada-sql-from-debitos-xlsx.mjs \"/Users/itamarvillarealjunior/Dropbox/COMUM/debitos.xlsx\""
   },
   "dependencies": {
     "docx": "^9.6.1",
