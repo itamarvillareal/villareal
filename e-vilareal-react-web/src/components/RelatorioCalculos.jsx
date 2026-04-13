@@ -2,10 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FilterX, ArrowDownAZ, ArrowUpAZ, Calculator, FileSpreadsheet, Loader2, ChevronDown } from 'lucide-react';
 import {
+  carregarLinhasRelatorioCalculosAsync,
   getLinhasRelatorioCalculosConsolidado,
   formatCodigoRelatorioCalculos,
   formatMoedaRelatorioCalculos,
 } from '../data/relatorioCalculosData.js';
+import { featureFlags } from '../config/featureFlags.js';
 import { buildRouterStateChaveClienteProcesso } from '../domain/camposProcessoCliente.js';
 
 /**
@@ -52,24 +54,57 @@ export function RelatorioCalculos() {
   const [filtrosPorColuna, setFiltrosPorColuna] = useState(estadoFiltrosVazio);
   const [ordenarPor, setOrdenarPor] = useState(null);
   const [ordemAsc, setOrdemAsc] = useState(true);
+  const [cargaRodadasProgresso, setCargaRodadasProgresso] = useState(null);
 
-  const recarregar = useCallback(() => {
+  const recarregar = useCallback(async () => {
+    if (featureFlags.useApiCalculos) {
+      setEmitindoRelatorio(true);
+      setCargaRodadasProgresso({ done: 0, total: 0 });
+      try {
+        const linhasFinais = await carregarLinhasRelatorioCalculosAsync({
+          onProgress: ({ done, total, linhas }) => {
+            setCargaRodadasProgresso({ done, total });
+            setLinhas(linhas);
+          },
+        });
+        setLinhas(linhasFinais);
+      } catch (e) {
+        if (e?.name !== 'AbortError') console.error(e);
+      } finally {
+        setCargaRodadasProgresso(null);
+        setEmitindoRelatorio(false);
+      }
+      return;
+    }
     setLinhas(getLinhasRelatorioCalculosConsolidado());
   }, []);
 
-  const emitirOuAtualizarRelatorio = useCallback(() => {
+  const emitirOuAtualizarRelatorio = useCallback(async () => {
     if (emitindoRelatorioRef.current) return;
     emitindoRelatorioRef.current = true;
     setEmitindoRelatorio(true);
-    window.setTimeout(() => {
-      try {
+    try {
+      if (featureFlags.useApiCalculos) {
+        setCargaRodadasProgresso({ done: 0, total: 0 });
+        const linhasFinais = await carregarLinhasRelatorioCalculosAsync({
+          onProgress: ({ done, total, linhas }) => {
+            setCargaRodadasProgresso({ done, total });
+            setLinhas(linhas);
+          },
+        });
+        setLinhas(linhasFinais);
+        setCargaRodadasProgresso(null);
+      } else {
         setLinhas(getLinhasRelatorioCalculosConsolidado());
-        setRelatorioEmitido(true);
-      } finally {
-        emitindoRelatorioRef.current = false;
-        setEmitindoRelatorio(false);
       }
-    }, 0);
+      setRelatorioEmitido(true);
+    } catch (e) {
+      if (e?.name !== 'AbortError') console.error(e);
+      setCargaRodadasProgresso(null);
+    } finally {
+      emitindoRelatorioRef.current = false;
+      setEmitindoRelatorio(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -203,6 +238,11 @@ export function RelatorioCalculos() {
               <Loader2 className="w-10 h-10 text-indigo-600 animate-spin" aria-hidden />
               <p className="text-sm font-medium text-slate-800">Gerando relatório…</p>
               <p className="text-xs text-slate-500 text-center max-w-sm">Aguarde enquanto as parcelas são consolidadas.</p>
+              {featureFlags.useApiCalculos && cargaRodadasProgresso?.total > 0 ? (
+                <p className="text-xs text-indigo-700 tabular-nums font-medium">
+                  Rodadas carregadas: {cargaRodadasProgresso.done} / {cargaRodadasProgresso.total}
+                </p>
+              ) : null}
             </div>
           ) : !relatorioEmitido ? (
             <div className="flex-1 flex flex-col items-center justify-center gap-4 p-10 text-center">
@@ -226,9 +266,14 @@ export function RelatorioCalculos() {
           ) : (
             <div className="overflow-auto flex-1 relative">
               {emitindoRelatorio ? (
-                <div className="absolute inset-0 z-20 bg-white/70 flex items-center justify-center gap-2 text-sm font-medium text-slate-700">
+                <div className="absolute inset-0 z-20 bg-white/70 flex flex-col items-center justify-center gap-2 text-sm font-medium text-slate-700 px-4">
                   <Loader2 className="w-5 h-5 animate-spin text-indigo-600" aria-hidden />
-                  Atualizando…
+                  <span>Atualizando…</span>
+                  {featureFlags.useApiCalculos && cargaRodadasProgresso?.total > 0 ? (
+                    <span className="text-xs text-indigo-800 tabular-nums">
+                      {cargaRodadasProgresso.done} / {cargaRodadasProgresso.total} rodadas
+                    </span>
+                  ) : null}
                 </div>
               ) : null}
               <table className="w-full text-sm border-collapse bg-white" style={{ minWidth: 'max-content' }}>

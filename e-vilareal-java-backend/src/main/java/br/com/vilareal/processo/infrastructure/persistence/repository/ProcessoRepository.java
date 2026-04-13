@@ -12,6 +12,16 @@ public interface ProcessoRepository extends JpaRepository<ProcessoEntity, Long> 
 
     @Query(
             """
+            SELECT p FROM ProcessoEntity p
+            WHERE p.pessoa.id = :pessoaId
+              AND LOWER(TRIM(p.unidade)) = LOWER(TRIM(:unidade))
+              AND p.unidade IS NOT NULL
+              AND TRIM(p.unidade) <> ''
+            """)
+    Optional<ProcessoEntity> findByPessoa_IdAndUnidade(@Param("pessoaId") Long pessoaId, @Param("unidade") String unidade);
+
+    @Query(
+            """
             SELECT DISTINCT p FROM ProcessoEntity p
             WHERE p.pessoa.id = :pid
                OR p.id IN (SELECT pp.processo.id FROM ProcessoParteEntity pp

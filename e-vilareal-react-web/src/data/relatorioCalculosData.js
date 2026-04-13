@@ -2,7 +2,10 @@
  * Consolidação das rodadas persistidas em Cálculos (`vilareal.calculos.rodadas.v1`) para o Relatório Cálculos.
  * Uma linha por parcela (aba Parcelamento / Pagamento), alinhada aos campos da tela {@link Calculos}.
  */
-import { loadRodadasCalculos } from './calculosRodadasStorage.js';
+import { featureFlags } from '../config/featureFlags.js';
+import { fetchCalculoRodada, fetchCalculoRodadasResumo } from '../repositories/calculosRepository.js';
+import { loadRodadasCalculos, normalizarRodadaRecebidaApi } from './calculosRodadasStorage.js';
+import { RODADAS_VINCULACAO_TESTE_50 } from './vinculacaoAutomaticaTestMock.js';
 import { getNomeClienteCadastroPorCodigo } from './relatorioProcessosDados.js';
 import { getLancamentosContaCorrente } from './financeiroData.js';
 import { getRegistroProcesso } from './processosHistoricoData.js';
@@ -114,6 +117,18 @@ export function parseRodadaCalculosKey(key) {
   return { codCliente, proc, dimensao: dim };
 }
 
+/** Contagem de dimensões por par cliente+proc a partir da lista de chaves (ex.: resumo). */
+export function dimPorClienteProcFromChaves(chaves) {
+  const dimPorClienteProc = new Map();
+  for (const key of chaves || []) {
+    const p = parseRodadaCalculosKey(key);
+    if (!p) continue;
+    const k = `${p.codCliente}|${p.proc}`;
+    dimPorClienteProc.set(k, (dimPorClienteProc.get(k) || 0) + 1);
+  }
+  return dimPorClienteProc;
+}
+
 /**
  * @typedef {object} LinhaRelatorioCalculos
  * @property {string} rodadaKey
@@ -123,16 +138,25 @@ export function parseRodadaCalculosKey(key) {
  * @property {string} dimensao
  */
 
-/** @returns {LinhaRelatorioCalculos[]} */
-export function getLinhasRelatorioCalculosConsolidado() {
-  const rodadas = { ...(loadRodadasCalculos() || {}) };
+/**
+ * Monta linhas a partir de um mapa já carregado (localStorage ou resultado agregado da API).
+ * @param {Record<string, unknown>} rodadas
+ * @param {Map<string, number> | null} [dimPorClienteProcPre] — se omitido, calcula a partir das chaves do mapa.
+ */
+export function getLinhasRelatorioCalculosConsolidadoFromMap(rodadas, dimPorClienteProcPre = null) {
+  const rodadasSafe = { ...(rodadas || {}) };
 
-  const dimPorClienteProc = new Map();
-  for (const key of Object.keys(rodadas)) {
-    const p = parseRodadaCalculosKey(key);
-    if (!p) continue;
-    const k = `${p.codCliente}|${p.proc}`;
-    dimPorClienteProc.set(k, (dimPorClienteProc.get(k) || 0) + 1);
+  let dimPorClienteProc;
+  if (dimPorClienteProcPre instanceof Map) {
+    dimPorClienteProc = dimPorClienteProcPre;
+  } else {
+    dimPorClienteProc = new Map();
+    for (const key of Object.keys(rodadasSafe)) {
+      const p = parseRodadaCalculosKey(key);
+      if (!p) continue;
+      const k = `${p.codCliente}|${p.proc}`;
+      dimPorClienteProc.set(k, (dimPorClienteProc.get(k) || 0) + 1);
+    }
   }
 
   const lancCache = new Map();
@@ -147,7 +171,7 @@ export function getLinhasRelatorioCalculosConsolidado() {
   /** @type {Record<string, unknown>[]} */
   const rows = [];
 
-  for (const [key, rodada] of Object.entries(rodadas)) {
+  for (const [key, rodada] of Object.entries(rodadasSafe)) {
     if (!rodada || typeof rodada !== 'object') continue;
     const parsed = parseRodadaCalculosKey(key);
     if (!parsed) continue;
@@ -237,6 +261,70 @@ export function getLinhasRelatorioCalculosConsolidado() {
   });
 
   return rows;
+}
+
+/** @returns {LinhaRelatorioCalculos[]} — modo localStorage ou mapa completo em memória (sync). */
+export function getLinhasRelatorioCalculosConsolidado() {
+  return getLinhasRelatorioCalculosConsolidadoFromMap(loadRodadasCalculos() || {});
+}
+
+const RELATORIO_FETCH_CONCORRENCIA = 10;
+
+/**
+ * Com API: GET resumo → GET individual por chave, em lotes com pausa para não bloquear a UI.
+ * @param {{ signal?: AbortSignal, onProgress?: (p: { done: number, total: number, linhas: LinhaRelatorioCalculos[] }) => void }} [options]
+ * @returns {Promise<LinhaRelatorioCalculos[]>}
+ */
+export async function carregarLinhasRelatorioCalculosAsync(options = {}) {
+  const { signal, onProgress } = options;
+  if (!featureFlags.useApiCalculos) {
+    const linhas = getLinhasRelatorioCalculosConsolidado();
+    onProgress?.({ done: 1, total: 1, linhas });
+    return linhas;
+  }
+
+  const resumo = await fetchCalculoRodadasResumo({ signal });
+  const chaves = (Array.isArray(resumo?.rodadas) ? resumo.rodadas : [])
+    .map((r) => (r?.chave ? String(r.chave) : ''))
+    .filter(Boolean);
+  const dimPre = dimPorClienteProcFromChaves(chaves);
+
+  const rodadas = { ...RODADAS_VINCULACAO_TESTE_50 };
+  const total = chaves.length;
+  let done = 0;
+
+  const reportar = () => {
+    const linhas = getLinhasRelatorioCalculosConsolidadoFromMap(rodadas, dimPre);
+    onProgress?.({ done, total, linhas });
+  };
+
+  if (total === 0) {
+    reportar();
+    return getLinhasRelatorioCalculosConsolidadoFromMap(rodadas, dimPre);
+  }
+
+  for (let i = 0; i < chaves.length; i += RELATORIO_FETCH_CONCORRENCIA) {
+    if (signal?.aborted) {
+      throw new DOMException('Carregamento cancelado', 'AbortError');
+    }
+    const slice = chaves.slice(i, i + RELATORIO_FETCH_CONCORRENCIA);
+    await Promise.all(
+      slice.map(async (chave) => {
+        const parsed = parseRodadaCalculosKey(chave);
+        if (!parsed) return;
+        const raw = await fetchCalculoRodada(parsed.codCliente, parsed.proc, parsed.dimensao, { signal });
+        if (raw && typeof raw === 'object') {
+          const one = normalizarRodadaRecebidaApi(chave, raw);
+          if (one) rodadas[chave] = one;
+        }
+      })
+    );
+    done = Math.min(i + RELATORIO_FETCH_CONCORRENCIA, total);
+    reportar();
+    await new Promise((r) => setTimeout(r, 0));
+  }
+
+  return getLinhasRelatorioCalculosConsolidadoFromMap(rodadas, dimPre);
 }
 
 /** Código cliente como na planilha (inteiro sem zeros à esquerda). */

@@ -2,6 +2,11 @@
  * Cruza parcelas esperadas (aba Parcelamento em Cálculos) com lançamentos dos extratos bancários.
  */
 
+import { featureFlags } from '../config/featureFlags.js';
+import { fetchCalculoRodada, fetchCalculoRodadasResumo } from '../repositories/calculosRepository.js';
+import { loadRodadasCalculos, normalizarRodadaRecebidaApi } from './calculosRodadasStorage.js';
+import { parseRodadaCalculosKey } from './relatorioCalculosData.js';
+import { RODADAS_VINCULACAO_TESTE_50 } from './vinculacaoAutomaticaTestMock.js';
 import { normalizarCodigoClienteFinanceiro, normalizarProcFinanceiro } from './financeiroData';
 import { parseBRLToCentavos } from '../utils/moneyBr';
 
@@ -179,4 +184,37 @@ export function procurarSugestoesVinculoAutomatico(extratosPorBanco, rodadas) {
     }
   }
   return sugestoes;
+}
+
+const VINCULO_FETCH_CONCORRENCIA = 8;
+
+/**
+ * Mapa de rodadas para {@link procurarSugestoesVinculoAutomatico}.
+ * Sem API: {@link loadRodadasCalculos} (localStorage / espelho legado).
+ * Com API: GET `/rodadas/resumo` → só chaves com `parcelamentoAceito` → GET individual por chave (sem mapa completo).
+ */
+export async function montarMapaRodadasParaVinculoAutomatico() {
+  if (!featureFlags.useApiCalculos) {
+    return loadRodadasCalculos() || {};
+  }
+  const resumo = await fetchCalculoRodadasResumo();
+  const chavesAceitas = (Array.isArray(resumo?.rodadas) ? resumo.rodadas : [])
+    .filter((r) => r?.parcelamentoAceito && r?.chave)
+    .map((r) => String(r.chave));
+  const out = { ...RODADAS_VINCULACAO_TESTE_50 };
+  for (let i = 0; i < chavesAceitas.length; i += VINCULO_FETCH_CONCORRENCIA) {
+    const slice = chavesAceitas.slice(i, i + VINCULO_FETCH_CONCORRENCIA);
+    await Promise.all(
+      slice.map(async (chave) => {
+        const p = parseRodadaCalculosKey(chave);
+        if (!p) return;
+        const raw = await fetchCalculoRodada(p.codCliente, p.proc, p.dimensao);
+        if (!raw || typeof raw !== 'object') return;
+        const one = normalizarRodadaRecebidaApi(chave, raw);
+        if (one) out[chave] = one;
+      })
+    );
+    await new Promise((r) => setTimeout(r, 0));
+  }
+  return out;
 }

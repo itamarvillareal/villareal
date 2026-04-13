@@ -1,5 +1,7 @@
 import { API_BASE_URL } from './config.js';
 import { buildDefaultApiHeaders } from './apiAuthHeaders.js';
+import { getAccessToken } from './authTokenStorage.js';
+import { buildAuditoriaHeaders } from '../services/auditoriaCliente.js';
 import { parseApiJsonResponse } from './parseApiResponse.js';
 
 function buildUrl(path, query) {
@@ -22,6 +24,20 @@ export async function request(path, { method = 'GET', body, query, headers, sign
       ...(headers || {}),
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  return parseApiJsonResponse(response);
+}
+
+/** POST multipart (não define Content-Type — o browser envia boundary). */
+export async function postFormData(path, formData, { signal } = {}) {
+  const headers = { ...buildAuditoriaHeaders() };
+  const t = getAccessToken();
+  if (t) headers.Authorization = `Bearer ${t}`;
+  const response = await fetch(buildUrl(path), {
+    method: 'POST',
+    headers,
+    body: formData,
+    signal,
   });
   return parseApiJsonResponse(response);
 }

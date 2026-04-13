@@ -514,6 +514,7 @@ public class ProcessoApplicationService {
             e.setUf(null);
         }
         e.setCidade(trimToNull(req.getCidade()));
+        e.setUnidade(trimToNull(req.getUnidade()));
         e.setConsultaAutomatica(Boolean.TRUE.equals(req.getConsultaAutomatica()));
         if (req.getAtivo() != null) {
             e.setAtivo(req.getAtivo());
@@ -629,6 +630,7 @@ public class ProcessoApplicationService {
         r.setValorCausa(e.getValorCausa());
         r.setUf(e.getUf());
         r.setCidade(Utf8MojibakeUtil.corrigir(e.getCidade()));
+        r.setUnidade(Utf8MojibakeUtil.corrigir(trimToNull(e.getUnidade())));
         r.setConsultaAutomatica(e.getConsultaAutomatica());
         r.setAtivo(e.getAtivo());
         r.setConsultor(Utf8MojibakeUtil.corrigir(e.getConsultor()));

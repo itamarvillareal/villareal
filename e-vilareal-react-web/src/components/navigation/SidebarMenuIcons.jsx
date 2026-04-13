@@ -525,6 +525,7 @@ const MENU_ICONS = {
   agenda: IconAgenda,
   'ana-luisa': IconClientes,
   atividade: IconAtividade,
+  'atividades-em-lote': IconTopicos,
   financeiro: IconFinanceiro,
   pendencias: IconPendencias,
   'topicos-grupo': IconTopicos,
