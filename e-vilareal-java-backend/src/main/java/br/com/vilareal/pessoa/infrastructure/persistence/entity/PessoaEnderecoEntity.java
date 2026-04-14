@@ -27,6 +27,12 @@ public class PessoaEnderecoEntity {
     @Column(length = 120)
     private String bairro;
 
+    @Column(length = 120)
+    private String complemento;
+
+    @Column(name = "importacao_id", length = 36)
+    private String importacaoId;
+
     @Column(length = 2)
     private String estado;
 

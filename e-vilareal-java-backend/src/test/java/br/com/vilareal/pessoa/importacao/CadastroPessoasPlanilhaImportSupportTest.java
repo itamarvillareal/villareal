@@ -39,4 +39,21 @@ class CadastroPessoasPlanilhaImportSupportTest {
     void truncate() {
         assertThat(CadastroPessoasPlanilhaImportSupport.truncate("abcdef", 3)).isEqualTo("abc");
     }
+
+    @Test
+    void normalizeNomeCadastro_maiusculas() {
+        assertThat(CadastroPessoasPlanilhaImportSupport.normalizeNomeCadastro("  João da Silva  "))
+                .isEqualTo("JOÃO DA SILVA");
+    }
+
+    @Test
+    void resolveCpfCnpjDigitosPlanilha_brutoOuNormalizado() {
+        assertThat(CadastroPessoasPlanilhaImportSupport.resolveCpfCnpjDigitosPlanilha("123.456.789-09", ""))
+                .isEqualTo("12345678909");
+        assertThat(CadastroPessoasPlanilhaImportSupport.resolveCpfCnpjDigitosPlanilha("", "09319421000154"))
+                .isEqualTo("09319421000154");
+        assertThat(CadastroPessoasPlanilhaImportSupport.resolveCpfCnpjDigitosPlanilha("inválido", "12345678909"))
+                .isEqualTo("12345678909");
+        assertThat(CadastroPessoasPlanilhaImportSupport.resolveCpfCnpjDigitosPlanilha("", "")).isEmpty();
+    }
 }

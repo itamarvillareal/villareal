@@ -34,4 +34,7 @@ public class ProcessoParteEntity {
 
     @Column(nullable = false)
     private Integer ordem = 0;
+
+    @Column(name = "importacao_id", length = 36)
+    private String importacaoId;
 }

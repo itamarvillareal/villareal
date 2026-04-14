@@ -31,6 +31,10 @@ public class ProcessoEntity {
     @Column(name = "unidade", length = 32)
     private String unidade;
 
+    /** UUID da importação (PDF/XLS) que criou este processo; usado na reversão. */
+    @Column(name = "importacao_id", length = 36)
+    private String importacaoId;
+
     @Column(name = "numero_cnj", length = 100)
     private String numeroCnj;
 

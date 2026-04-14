@@ -18,6 +18,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 @Service
 public class CondominioInadimplenciaApplicationService {
@@ -85,11 +86,12 @@ public class CondominioInadimplenciaApplicationService {
         List<InadimplenciaImportErroDto> erros = new ArrayList<>();
         int criados = 0;
         int cobTotal = 0;
+        String importacaoId = UUID.randomUUID().toString();
 
         for (InadimplenciaUnidadeDto u : request.unidades()) {
             try {
                 InadimplenciaImportItemResultadoDto r = unidadeTransactionalService.importarUmaUnidade(
-                        pessoaId, cod8, u, autorMesmaPessoaCliente, nomeAutorParaCalculo);
+                        pessoaId, cod8, u, autorMesmaPessoaCliente, nomeAutorParaCalculo, importacaoId);
                 itens.add(r);
                 if (r.processoCriado()) {
                     criados++;
@@ -100,6 +102,6 @@ public class CondominioInadimplenciaApplicationService {
                 erros.add(new InadimplenciaImportErroDto(cod, e.getMessage() != null ? e.getMessage() : e.toString()));
             }
         }
-        return new InadimplenciaImportResponse(criados, cobTotal, itens, erros);
+        return new InadimplenciaImportResponse(importacaoId, criados, cobTotal, itens, erros);
     }
 }

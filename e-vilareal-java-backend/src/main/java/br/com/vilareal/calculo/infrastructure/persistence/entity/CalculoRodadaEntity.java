@@ -28,6 +28,9 @@ public class CalculoRodadaEntity {
     @Column(nullable = false)
     private Integer dimensao = 0;
 
+    @Column(name = "importacao_id", length = 36)
+    private String importacaoId;
+
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "payload_json", nullable = false, columnDefinition = "json")
     private JsonNode payloadJson;

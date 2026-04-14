@@ -5,7 +5,12 @@ import { listarClientesCadastro } from '../repositories/clientesRepository.js';
 import {
   extrairInadimplenciaPdf,
   importarInadimplenciaConfirmado,
+  reverterImportacao,
 } from '../repositories/condominioInadimplenciaRepository.js';
+import {
+  extrairUnidadesPessoasPlanilha,
+  importarUnidadesPessoasPlanilha,
+} from '../repositories/condominioUnidadesPessoasRepository.js';
 
 const inputClass =
   'w-full px-2 py-1.5 border border-slate-300 dark:border-slate-600 rounded text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100';
@@ -24,6 +29,211 @@ function botaoSecundario() {
   return `rounded px-3 py-1.5 text-sm font-medium border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800`;
 }
 
+/**
+ * Referência da sessão de importação, reversão por DELETE e relatório de contagens.
+ * @param {{ importacaoId?: string | null }} props
+ */
+function BlocoReversaoImportacao({ importacaoId }) {
+  const id = importacaoId && String(importacaoId).trim();
+  const [modalOpen, setModalOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [relatorio, setRelatorio] = useState(null);
+  const [revertido, setRevertido] = useState(false);
+  const [erroLocal, setErroLocal] = useState(null);
+
+  if (!id) return null;
+
+  const confirmarReversao = async () => {
+    setErroLocal(null);
+    setLoading(true);
+    try {
+      const data = await reverterImportacao(id);
+      setRelatorio(data);
+      setRevertido(true);
+      setModalOpen(false);
+    } catch (e) {
+      setErroLocal(e?.message || String(e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="mt-4 border-t border-slate-200 pt-4 dark:border-slate-700 space-y-3">
+      <p className="break-all text-xs text-slate-500 dark:text-slate-400">
+        <span className="font-medium text-slate-600 dark:text-slate-500">Importação (referência / log):</span>{' '}
+        <span className="font-mono">{id}</span>
+      </p>
+
+      {!revertido && (
+        <button
+          type="button"
+          className="rounded bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:pointer-events-none disabled:opacity-50"
+          disabled={loading}
+          onClick={() => {
+            setErroLocal(null);
+            setModalOpen(true);
+          }}
+        >
+          Reverter esta importação
+        </button>
+      )}
+
+      {revertido && (
+        <p className="text-sm font-medium text-emerald-700 dark:text-emerald-300">Importação revertida com sucesso</p>
+      )}
+
+      {erroLocal && <p className="text-sm text-red-700 dark:text-red-300">{erroLocal}</p>}
+
+      {relatorio && (
+        <div className="space-y-1 rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900/80">
+          <p className="font-medium text-slate-800 dark:text-slate-200">Relatório da reversão</p>
+          <ul className="space-y-0.5 text-slate-700 dark:text-slate-300">
+            <li>
+              Cálculos removidos: <strong>{relatorio.calculosRemovidos ?? 0}</strong>
+            </li>
+            <li>
+              Partes removidas: <strong>{relatorio.partesRemovidas ?? 0}</strong>
+            </li>
+            <li>
+              Processos removidos: <strong>{relatorio.processosRemovidos ?? 0}</strong>
+            </li>
+            <li>
+              Contatos removidos: <strong>{relatorio.contatosRemovidos ?? 0}</strong>
+            </li>
+            <li>
+              Endereços removidos: <strong>{relatorio.enderecosRemovidos ?? 0}</strong>
+            </li>
+            <li>
+              Pessoas removidas: <strong>{relatorio.pessoasRemovidas ?? 0}</strong>
+            </li>
+          </ul>
+        </div>
+      )}
+
+      {modalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="reversao-importacao-titulo"
+        >
+          <div className="w-full max-w-md space-y-4 rounded-lg border border-slate-200 bg-white p-4 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+            <p id="reversao-importacao-titulo" className="text-sm text-slate-800 dark:text-slate-100">
+              Serão apagados todos os registros gravados com este <span className="font-mono text-xs">importacaoId</span>
+              : processos, cálculos, partes, pessoas novas, contatos e endereços criados na importação de débitos e na
+              planilha (sessão unificada). Deseja continuar?
+            </p>
+            <div className="flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                className={botaoSecundario()}
+                disabled={loading}
+                onClick={() => setModalOpen(false)}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="rounded bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:pointer-events-none disabled:opacity-50"
+                disabled={loading}
+                onClick={() => void confirmarReversao()}
+              >
+                {loading ? 'A reverter…' : 'Confirmar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Reversão só dos débitos (PDF) antes da planilha — mesmo {@code importacaoId} que será reutilizado se continuar.
+ * @param {{ importacaoId?: string | null, disabled?: boolean, onSucesso: () => void }} props
+ */
+function ReverterDebitosPrePlanilha({ importacaoId, disabled, onSucesso }) {
+  const id = importacaoId && String(importacaoId).trim();
+  const [modalOpen, setModalOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [erroLocal, setErroLocal] = useState(null);
+
+  if (!id) return null;
+
+  const confirmar = async () => {
+    setErroLocal(null);
+    setLoading(true);
+    try {
+      await reverterImportacao(id);
+      setModalOpen(false);
+      onSucesso();
+    } catch (e) {
+      setErroLocal(e?.message || String(e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="rounded border border-amber-200 bg-amber-50/80 px-3 py-3 dark:border-amber-900 dark:bg-amber-950/40">
+      <p className="text-sm text-amber-950 dark:text-amber-100">
+        Se os débitos importados estiverem incorretos, pode desfazê-los <strong>antes</strong> de enviar a planilha de
+        proprietários. A reversão usa o mesmo <span className="font-mono text-xs">{id}</span> que será reutilizado ao
+        importar pessoas (se continuar nesta sessão).
+      </p>
+      {erroLocal && <p className="mt-2 text-sm text-red-700 dark:text-red-300">{erroLocal}</p>}
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button
+          type="button"
+          className="rounded border border-red-300 bg-white px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 disabled:pointer-events-none disabled:opacity-50 dark:border-red-800 dark:bg-slate-900 dark:text-red-300 dark:hover:bg-red-950/50"
+          disabled={disabled || loading}
+          onClick={() => {
+            setErroLocal(null);
+            setModalOpen(true);
+          }}
+        >
+          Reverter importação de débitos
+        </button>
+      </div>
+      {modalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="reversao-debitos-pre-xls-titulo"
+        >
+          <div className="w-full max-w-md space-y-4 rounded-lg border border-slate-200 bg-white p-4 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+            <p id="reversao-debitos-pre-xls-titulo" className="text-sm text-slate-800 dark:text-slate-100">
+              Serão apagados os <strong>processos</strong>, <strong>cálculos</strong> e <strong>partes</strong> criados
+              nesta importação de débitos (identificador acima). Nada da planilha será removido, pois ainda não foi
+              importada neste fluxo. Deseja continuar?
+            </p>
+            <div className="flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                className={botaoSecundario()}
+                disabled={loading}
+                onClick={() => setModalOpen(false)}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="rounded bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:pointer-events-none disabled:opacity-50"
+                disabled={loading}
+                onClick={() => void confirmar()}
+              >
+                {loading ? 'A reverter…' : 'Confirmar reversão'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** Soma valorCentavos das cobranças de uma unidade (API de extração). */
 function somaCentavosUnidade(u) {
   const list = u?.cobrancas;
@@ -40,7 +250,8 @@ export function AtividadesEmLote() {
     featureFlags.useApiProcessos &&
     featureFlags.useApiCalculos;
 
-  const [fluxoAberto, setFluxoAberto] = useState(false);
+  /** null = lista de cards; `pdf` = inadimplência (PDF) + planilha de proprietários no mesmo fluxo. */
+  const [fluxoTipo, setFluxoTipo] = useState(null);
   const [step, setStep] = useState(1);
   const [clientes, setClientes] = useState([]);
   const [loadingClientes, setLoadingClientes] = useState(false);
@@ -58,6 +269,16 @@ export function AtividadesEmLote() {
   const [autorMesmaPessoaCliente, setAutorMesmaPessoaCliente] = useState(true);
   const pdfInputRef = useRef(null);
 
+  const [arquivoXls, setArquivoXls] = useState(null);
+  const [fileInputKeyXls, setFileInputKeyXls] = useState(0);
+  const [extracaoXls, setExtracaoXls] = useState(null);
+  const [importResultXls, setImportResultXls] = useState(null);
+  const [loadingExtrairXls, setLoadingExtrairXls] = useState(false);
+  const [loadingImportarXls, setLoadingImportarXls] = useState(false);
+  /** Utilizador escolheu «Importar pessoas depois» no passo 4 — saltam-se os passos 5–6 da planilha. */
+  const [pessoasImportOmitida, setPessoasImportOmitida] = useState(false);
+  const xlsInputRef = useRef(null);
+
   const resetFluxoInadimplencia = useCallback(() => {
     setStep(1);
     setExtracao(null);
@@ -69,10 +290,15 @@ export function AtividadesEmLote() {
     setExpandedUnidades(new Set());
     setErro(null);
     setAutorMesmaPessoaCliente(true);
+    setArquivoXls(null);
+    setFileInputKeyXls((k) => k + 1);
+    setExtracaoXls(null);
+    setImportResultXls(null);
+    setPessoasImportOmitida(false);
   }, []);
 
   useEffect(() => {
-    if (!fluxoAberto || !apiOk) return undefined;
+    if (!fluxoTipo || !apiOk) return undefined;
     let cancelled = false;
     (async () => {
       setLoadingClientes(true);
@@ -89,7 +315,7 @@ export function AtividadesEmLote() {
     return () => {
       cancelled = true;
     };
-  }, [fluxoAberto, apiOk]);
+  }, [fluxoTipo, apiOk]);
 
   const clientesFiltrados = useMemo(() => {
     const q = buscaCliente.trim().toLowerCase();
@@ -106,6 +332,27 @@ export function AtividadesEmLote() {
       .slice(0, 100);
   }, [clientes, buscaCliente]);
 
+  /** Unidades que vieram no PDF com pelo menos uma cobrança (é para estas que existe processo após o passo 3). */
+  const codigosUnidadesComDebitoNoPdf = useMemo(() => {
+    const s = new Set();
+    for (const u of extracao?.unidades || []) {
+      const c = String(u?.codigoUnidade ?? '').trim();
+      if (c) s.add(c);
+    }
+    return s;
+  }, [extracao]);
+
+  /** Linhas da planilha cuja unidade não apareceu no PDF desta sessão — não haverá processo para vincular o RÉU. */
+  const unidadesPlanilhaSemDebitoNoPdf = useMemo(() => {
+    if (!extracaoXls?.unidades) return [];
+    const sem = [];
+    for (const u of extracaoXls.unidades) {
+      const c = String(u?.codigoUnidade ?? '').trim();
+      if (c && !codigosUnidadesComDebitoNoPdf.has(c)) sem.push(c);
+    }
+    return sem;
+  }, [extracaoXls, codigosUnidadesComDebitoNoPdf]);
+
   const onAnalisarPdf = useCallback(async () => {
     if (!clienteSel?.codigo || !arquivoPdf) return;
     setErro(null);
@@ -113,7 +360,10 @@ export function AtividadesEmLote() {
     try {
       const data = await extrairInadimplenciaPdf(padCliente8Cadastro(clienteSel.codigo), arquivoPdf);
       setExtracao(data);
-      setExpandedUnidades(new Set());
+      // Por padrão todas as unidades vêm expandidas (tabela de taxas visível).
+      setExpandedUnidades(
+        new Set((data.unidades || []).map((u) => u.codigoUnidade || '?')),
+      );
       setStep(2);
     } catch (e) {
       setErro(e?.message || String(e));
@@ -161,6 +411,59 @@ export function AtividadesEmLote() {
     });
   }, []);
 
+  const onExtrairPlanilhaNoFluxoPdf = useCallback(async () => {
+    if (!extracao?.clienteCodigo || !arquivoXls) return;
+    setErro(null);
+    setLoadingExtrairXls(true);
+    try {
+      const data = await extrairUnidadesPessoasPlanilha(padCliente8Cadastro(extracao.clienteCodigo), arquivoXls);
+      setExtracaoXls(data);
+      setPessoasImportOmitida(false);
+      setStep(5);
+    } catch (e) {
+      setErro(e?.message || String(e));
+    } finally {
+      setLoadingExtrairXls(false);
+    }
+  }, [extracao, arquivoXls]);
+
+  /** 1.º clique abre o seletor de ficheiro; com planilha já escolhida, chama a extração na API (como no PDF). */
+  const onClicarExtrairOuEscolherPlanilha = useCallback(() => {
+    if (!extracao?.clienteCodigo) return;
+    if (!arquivoXls) {
+      xlsInputRef.current?.click();
+      return;
+    }
+    void onExtrairPlanilhaNoFluxoPdf();
+  }, [extracao, arquivoXls, onExtrairPlanilhaNoFluxoPdf]);
+
+  const onImportarPlanilhaNoFluxoPdf = useCallback(async () => {
+    if (!extracaoXls?.clienteCodigo || !Array.isArray(extracaoXls.unidades) || !importResult?.importacaoId) return;
+    setErro(null);
+    setLoadingImportarXls(true);
+    try {
+      const data = await importarUnidadesPessoasPlanilha({
+        clienteCodigo: extracaoXls.clienteCodigo,
+        unidades: extracaoXls.unidades,
+        importacaoId: importResult.importacaoId,
+      });
+      setImportResultXls(data);
+    } catch (e) {
+      setErro(e?.message || String(e));
+    } finally {
+      setLoadingImportarXls(false);
+    }
+  }, [extracaoXls, importResult]);
+
+  const irParaPasso6SemPlanilha = useCallback(() => {
+    setExtracaoXls(null);
+    setArquivoXls(null);
+    setFileInputKeyXls((k) => k + 1);
+    setImportResultXls(null);
+    setPessoasImportOmitida(true);
+    setStep(6);
+  }, []);
+
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4 p-4">
       <header>
@@ -177,27 +480,28 @@ export function AtividadesEmLote() {
         </div>
       )}
 
-      {apiOk && !fluxoAberto && (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {apiOk && !fluxoTipo && (
+        <div className="max-w-2xl">
           <button
             type="button"
             onClick={() => {
               resetFluxoInadimplencia();
-              setFluxoAberto(true);
+              setFluxoTipo('pdf');
             }}
-            className="flex flex-col items-start gap-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 text-left shadow-sm hover:border-slate-300 dark:hover:border-slate-600 transition-colors"
+            className="flex w-full flex-col items-start gap-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 text-left shadow-sm hover:border-slate-300 dark:hover:border-slate-600 transition-colors"
           >
             <span className="font-medium text-slate-800 dark:text-slate-100">
               Importar inadimplência condominial (PDF)
             </span>
             <span className="text-xs text-slate-600 dark:text-slate-400">
-              Analisa o relatório, confere unidades e cobranças e grava processos + rodadas de cálculo (dimensão 0).
+              Analisa o PDF, grava processos e débitos (cálculo dim. 0), depois importa proprietários pela planilha XLS
+              no mesmo fluxo — uma única referência de importação para reverter tudo junto (ou pode adiar a planilha).
             </span>
           </button>
         </div>
       )}
 
-      {apiOk && fluxoAberto && (
+      {apiOk && fluxoTipo === 'pdf' && (
         <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-900/50 p-4 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100">
@@ -208,7 +512,7 @@ export function AtividadesEmLote() {
               className={botaoSecundario()}
               onClick={() => {
                 resetFluxoInadimplencia();
-                setFluxoAberto(false);
+                setFluxoTipo(null);
               }}
             >
               Voltar à lista
@@ -472,7 +776,8 @@ export function AtividadesEmLote() {
 
               <div className="rounded-lg border border-amber-200 bg-amber-50/90 dark:border-amber-900 dark:bg-amber-950/50 px-3 py-2 text-sm text-amber-950 dark:text-amber-100">
                 Ao confirmar, serão criados ou atualizados <strong>processos</strong> e <strong>rodadas de cálculo</strong>{' '}
-                conforme cada unidade listada — conforme a regra já definida para esta importação.
+                conforme cada unidade listada. Em seguida o assistente pedirá a <strong>planilha XLS</strong> de
+                proprietários (mesmo cliente); pode adiar essa etapa se preferir.
               </div>
 
               <dl className="grid gap-2 sm:grid-cols-2 text-sm">
@@ -585,62 +890,340 @@ export function AtividadesEmLote() {
             </div>
           )}
 
-          {step === 4 && importResult && (
+          {step === 4 && importResult && extracao && (
+            <div className="space-y-6">
+              <div className="space-y-3 rounded-lg border border-emerald-200 bg-emerald-50/60 px-3 py-3 dark:border-emerald-900 dark:bg-emerald-950/30">
+                <p className="text-sm text-slate-600 dark:text-slate-400">
+                  <span className="font-medium text-slate-800 dark:text-slate-200">Passo 3 — Débitos importados</span>
+                </p>
+                <p className="text-sm text-slate-800 dark:text-slate-100">
+                  Processos novos: <strong>{importResult.processosCriados ?? 0}</strong>
+                  {' · '}
+                  Cobranças lançadas (total): <strong>{importResult.cobrancasLancadasTotal ?? 0}</strong>
+                </p>
+                <p className="break-all text-xs text-slate-500 dark:text-slate-400">
+                  <span className="font-medium text-slate-600 dark:text-slate-500">importacaoId</span>{' '}
+                  <span className="font-mono">{importResult.importacaoId ?? '—'}</span>
+                </p>
+                {(importResult.itens || []).length > 0 && (
+                  <div>
+                    <h3 className="text-xs font-medium uppercase tracking-wide text-slate-600 dark:text-slate-400 mb-1">
+                      Por unidade
+                    </h3>
+                    <ul className="max-h-40 space-y-1 overflow-y-auto text-sm">
+                      {importResult.itens.map((it, i) => (
+                        <li
+                          key={`${it.codigoUnidade}-${i}`}
+                          className="flex flex-wrap gap-x-3 gap-y-1 text-slate-800 dark:text-slate-200"
+                        >
+                          <span className="tabular-nums font-medium">{it.codigoUnidade}</span>
+                          <span className="text-slate-500 dark:text-slate-400">
+                            proc. {it.numeroInterno ?? '—'}
+                            {it.processoCriado ? ' (novo)' : ''}
+                          </span>
+                          <span>{it.cobrancasLancadas ?? 0} cobrança(s)</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {(importResult.erros || []).length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-medium text-red-700 dark:text-red-300">Erros (débitos)</h3>
+                    <ul className="space-y-1 text-sm text-red-800 dark:text-red-200">
+                      {importResult.erros.map((e, i) => (
+                        <li key={i}>
+                          <span className="tabular-nums font-medium">{e.codigoUnidade}</span>: {e.mensagem}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+
+              <ReverterDebitosPrePlanilha
+                importacaoId={importResult.importacaoId}
+                disabled={loadingExtrairXls}
+                onSucesso={() => {
+                  setImportResult(null);
+                  setExtracaoXls(null);
+                  setArquivoXls(null);
+                  setFileInputKeyXls((k) => k + 1);
+                  setImportResultXls(null);
+                  setPessoasImportOmitida(false);
+                  setStep(3);
+                  setErro(null);
+                }}
+              />
+
+              <div className="space-y-4 border-t border-slate-200 pt-4 dark:border-slate-700">
+                <p className="text-sm text-slate-600 dark:text-slate-400">
+                  <span className="font-medium text-slate-800 dark:text-slate-200">Passo 4 — Planilha de proprietários</span>
+                  : envie o ficheiro <strong>.xls</strong> ou <strong>.xlsx</strong> do cadastro de unidades (mesmo
+                  condomínio:{' '}
+                  <span className="tabular-nums text-slate-500">{extracao.clienteCodigo}</span>
+                  {extracao.clienteNome ? ` — ${extracao.clienteNome}` : ''}). Os processos criados acima serão usados
+                  para vincular o proprietário (RÉU) por unidade.
+                </p>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                    Planilha (.xls ou .xlsx)
+                  </label>
+                  <input
+                    ref={xlsInputRef}
+                    key={fileInputKeyXls}
+                    type="file"
+                    accept=".xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    className="block w-full text-sm text-slate-600 dark:text-slate-300"
+                    onChange={(e) => setArquivoXls(e.target.files?.[0] ?? null)}
+                  />
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    O botão principal abre a pasta de ficheiros se ainda não houver planilha; depois de escolher,
+                    torna-se «Extrair planilha». Também pode usar o controlo acima.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className={botaoPrimario()}
+                    disabled={loadingExtrairXls}
+                    onClick={() => void onClicarExtrairOuEscolherPlanilha()}
+                  >
+                    {loadingExtrairXls
+                      ? 'A extrair…'
+                      : !arquivoXls
+                        ? 'Escolher planilha…'
+                        : 'Extrair planilha'}
+                  </button>
+                  <button
+                    type="button"
+                    className={botaoSecundario()}
+                    disabled={loadingExtrairXls}
+                    onClick={irParaPasso6SemPlanilha}
+                  >
+                    Importar pessoas depois
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {step === 5 && importResult && extracaoXls && (
             <div className="space-y-4">
               <p className="text-sm text-slate-600 dark:text-slate-400">
-                <span className="font-medium text-slate-700 dark:text-slate-300">Passo 4 — Resultado</span>
+                <span className="font-medium text-slate-800 dark:text-slate-200">Passo 5 — Revisão da planilha</span>
               </p>
-              <p className="text-sm text-slate-800 dark:text-slate-100">
-                Processos novos: <strong>{importResult.processosCriados ?? 0}</strong>
-                {' · '}
-                Cobranças lançadas (total): <strong>{importResult.cobrancasLancadasTotal ?? 0}</strong>
-              </p>
-
-              {(importResult.itens || []).length > 0 && (
-                <div>
-                  <h3 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                    Por unidade / processo
-                  </h3>
-                  <ul className="space-y-1 text-sm">
-                    {importResult.itens.map((it, i) => (
-                      <li
-                        key={`${it.codigoUnidade}-${i}`}
-                        className="flex flex-wrap gap-x-3 gap-y-1 text-slate-800 dark:text-slate-200"
-                      >
-                        <span className="tabular-nums font-medium">{it.codigoUnidade}</span>
-                        <span className="text-slate-500 dark:text-slate-400">
-                          proc. interno {it.numeroInterno ?? '—'}
-                          {it.processoCriado ? ' (novo)' : ''}
-                        </span>
-                        <span>
-                          {it.cobrancasLancadas ?? 0} cobrança(s) lançada(s)
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
+              {extracao && unidadesPlanilhaSemDebitoNoPdf.length > 0 && (
+                <div className="rounded border border-amber-200 bg-amber-50/90 px-3 py-2 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/50 dark:text-amber-100">
+                  <p className="font-medium text-amber-950 dark:text-amber-50">
+                    {unidadesPlanilhaSemDebitoNoPdf.length} unidade(s) da planilha{' '}
+                    <strong>não constam no PDF de inadimplência</strong> desta sessão.
+                  </p>
+                  <p className="mt-1 text-xs leading-relaxed">
+                    O passo 3 só cria processo por unidade que aparece no relatório com cobrança. Para as unidades em
+                    falta, a importação de pessoas não consegue vincular o proprietário (RÉU) até existir processo —
+                    inclua-as num PDF com débito ou crie o processo manualmente.
+                  </p>
+                  <p className="mt-2 font-mono text-xs break-all text-amber-900/90 dark:text-amber-200/90">
+                    {unidadesPlanilhaSemDebitoNoPdf.slice(0, 40).join(', ')}
+                    {unidadesPlanilhaSemDebitoNoPdf.length > 40
+                      ? ` … (+${unidadesPlanilhaSemDebitoNoPdf.length - 40})`
+                      : ''}
+                  </p>
                 </div>
               )}
-
-              {(importResult.erros || []).length > 0 && (
+              <dl className="grid gap-2 text-sm sm:grid-cols-2">
                 <div>
-                  <h3 className="text-sm font-medium text-red-700 dark:text-red-300 mb-2">Erros</h3>
-                  <ul className="space-y-1 text-sm text-red-800 dark:text-red-200">
-                    {importResult.erros.map((e, i) => (
-                      <li key={i}>
-                        <span className="tabular-nums font-medium">{e.codigoUnidade}</span>: {e.mensagem}
-                      </li>
-                    ))}
-                  </ul>
+                  <dt className="text-slate-500 dark:text-slate-400">Cliente</dt>
+                  <dd className="font-medium text-slate-800 dark:text-slate-100">
+                    {extracaoXls.clienteNome || '—'}{' '}
+                    <span className="font-normal tabular-nums text-slate-500">
+                      ({extracaoXls.clienteCodigo || '—'})
+                    </span>
+                  </dd>
                 </div>
+                <div>
+                  <dt className="text-slate-500 dark:text-slate-400">Resumo</dt>
+                  <dd className="text-slate-800 dark:text-slate-100">
+                    {extracaoXls.resumo?.linhasLidas ?? 0} linhas · {extracaoXls.resumo?.unidadesDistintas ?? 0}{' '}
+                    unidades · prop. novos (estim.):{' '}
+                    {extracaoXls.resumo?.pessoasProprietarioNovasEstimadas ?? 0}
+                  </dd>
+                </div>
+              </dl>
+              <div className="max-h-80 overflow-x-auto overflow-y-auto rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950">
+                <table className="min-w-full text-xs">
+                  <thead className="bg-slate-50 dark:bg-slate-900 text-slate-600 dark:text-slate-400">
+                    <tr>
+                      <th className="px-2 py-1.5 text-left font-medium">Unidade</th>
+                      <th className="px-2 py-1.5 text-left font-medium">Proprietário</th>
+                      <th className="px-2 py-1.5 text-left font-medium">CPF/CNPJ</th>
+                      <th className="px-2 py-1.5 text-left font-medium">Situação</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {(extracaoXls.unidades || []).map((u) => (
+                      <tr key={u.codigoUnidade} className="text-slate-800 dark:text-slate-200">
+                        <td className="px-2 py-1.5 font-mono tabular-nums">{u.codigoUnidade}</td>
+                        <td className="max-w-[180px] truncate px-2 py-1.5" title={u.proprietario?.nome}>
+                          {u.proprietario?.nome || '—'}
+                        </td>
+                        <td className="px-2 py-1.5 tabular-nums">{u.proprietario?.cpfCnpjNormalizado || '—'}</td>
+                        <td className="px-2 py-1.5">{u.situacaoProprietarioCpf || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className={botaoSecundario()}
+                  disabled={loadingImportarXls}
+                  onClick={() => {
+                    setExtracaoXls(null);
+                    setArquivoXls(null);
+                    setFileInputKeyXls((k) => k + 1);
+                    setStep(4);
+                  }}
+                >
+                  Voltar
+                </button>
+                <button
+                  type="button"
+                  className={botaoPrimario()}
+                  disabled={!(extracaoXls.unidades && extracaoXls.unidades.length)}
+                  onClick={() => setStep(6)}
+                >
+                  Continuar para confirmação
+                </button>
+              </div>
+            </div>
+          )}
+
+          {step === 6 && importResult && (
+            <div className="space-y-4">
+              {!pessoasImportOmitida && extracaoXls && !importResultXls && (
+                <>
+                  <p className="text-sm text-slate-600 dark:text-slate-400">
+                    <span className="font-medium text-slate-800 dark:text-slate-200">Passo 6 — Confirmar pessoas</span>
+                    : serão mescladas pessoas (contatos/endereços), criada ou atualizada a parte{' '}
+                    <strong>RÉU — Proprietário</strong> nos processos deste cliente por unidade. Inquilinos são
+                    cadastrados <strong>sem</strong> parte processual. Tudo fica no mesmo{' '}
+                    <span className="font-mono text-xs">importacaoId</span> dos débitos para reverter junto.
+                  </p>
+                  {extracao && unidadesPlanilhaSemDebitoNoPdf.length > 0 && (
+                    <div className="rounded border border-amber-200 bg-amber-50/90 px-3 py-2 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/50 dark:text-amber-100">
+                      <strong>{unidadesPlanilhaSemDebitoNoPdf.length}</strong> unidade(s) da planilha não estão no PDF
+                      desta sessão — a confirmação abaixo vai registar pessoas, mas <strong>falhará o vínculo RÉU</strong>{' '}
+                      nessas linhas (aparecerão como erros no relatório) até existir processo.
+                    </div>
+                  )}
+                  <div className="rounded border border-amber-200 bg-amber-50/90 px-3 py-2 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/50 dark:text-amber-100">
+                    As unidades da planilha precisam de processo já criado na importação do PDF (uma unidade no PDF = uma
+                    cobrança listada para essa unidade).
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className={botaoSecundario()}
+                      disabled={loadingImportarXls}
+                      onClick={() => setStep(5)}
+                    >
+                      Voltar
+                    </button>
+                    <button
+                      type="button"
+                      className={botaoPrimario()}
+                      disabled={
+                        loadingImportarXls ||
+                        !importResult.importacaoId ||
+                        !(extracaoXls.unidades && extracaoXls.unidades.length)
+                      }
+                      onClick={() => void onImportarPlanilhaNoFluxoPdf()}
+                    >
+                      {loadingImportarXls ? 'A importar…' : 'Confirmar importação de pessoas'}
+                    </button>
+                  </div>
+                </>
               )}
 
-              <button
-                type="button"
-                className={botaoPrimario()}
-                onClick={resetFluxoInadimplencia}
-              >
-                Nova importação
-              </button>
+              {(pessoasImportOmitida || importResultXls) && (
+                <>
+                  <p className="text-sm text-slate-600 dark:text-slate-400">
+                    <span className="font-medium text-slate-800 dark:text-slate-200">Passo 6 — Concluído</span>
+                  </p>
+
+                  <div className="space-y-2 rounded-lg border border-slate-200 bg-white px-3 py-3 dark:border-slate-700 dark:bg-slate-950">
+                    <h3 className="text-sm font-medium text-slate-800 dark:text-slate-200">Débitos (PDF)</h3>
+                    <p className="text-sm text-slate-700 dark:text-slate-300">
+                      Processos novos: <strong>{importResult.processosCriados ?? 0}</strong>
+                      {' · '}
+                      Cobranças: <strong>{importResult.cobrancasLancadasTotal ?? 0}</strong>
+                    </p>
+                  </div>
+
+                  {importResultXls ? (
+                    <div className="space-y-2 rounded-lg border border-slate-200 bg-white px-3 py-3 dark:border-slate-700 dark:bg-slate-950">
+                      <h3 className="text-sm font-medium text-slate-800 dark:text-slate-200">Pessoas (planilha)</h3>
+                      <ul className="space-y-1 text-sm text-slate-800 dark:text-slate-100">
+                        <li>
+                          Pessoas criadas: <strong>{importResultXls.pessoasCriadas ?? 0}</strong>
+                        </li>
+                        <li>
+                          Pessoas reutilizadas: <strong>{importResultXls.pessoasReutilizadas ?? 0}</strong>
+                        </li>
+                        <li>
+                          Contatos adicionados: <strong>{importResultXls.contatosAdicionados ?? 0}</strong>
+                        </li>
+                        <li>
+                          Endereços adicionados: <strong>{importResultXls.enderecosAdicionados ?? 0}</strong>
+                        </li>
+                        <li>
+                          Processos encontrados: <strong>{importResultXls.processosEncontrados ?? 0}</strong>
+                        </li>
+                        <li>
+                          Partes proprietário: <strong>{importResultXls.partesProprietarioCriadas ?? 0}</strong>
+                        </li>
+                        <li>
+                          Partes já corretas: <strong>{importResultXls.partesProprietarioJaExistentes ?? 0}</strong>
+                        </li>
+                        <li>
+                          Inquilinos mesclados: <strong>{importResultXls.inquilinosMesclados ?? 0}</strong>
+                        </li>
+                      </ul>
+                      {(importResultXls.erros || []).length > 0 && (
+                        <div className="mt-2">
+                          <h4 className="text-sm font-medium text-red-700 dark:text-red-300">Erros (planilha)</h4>
+                          <ul className="space-y-1 text-sm text-red-800 dark:text-red-200">
+                            {importResultXls.erros.map((e, i) => (
+                              <li key={i}>
+                                <span className="font-medium tabular-nums">{e.codigoUnidade ?? '(?)'}</span>:{' '}
+                                {e.mensagem}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-slate-600 dark:text-slate-400">
+                      Importação de pessoas pela planilha foi <strong>adiada</strong> nesta sessão. A reversão abaixo
+                      desfaz apenas o que foi gravado com este <span className="font-mono text-xs">importacaoId</span>{' '}
+                      (débitos e o que existir vinculado a ele).
+                    </p>
+                  )}
+
+                  <BlocoReversaoImportacao
+                    key={importResult.importacaoId ?? 'sem-id'}
+                    importacaoId={importResult.importacaoId}
+                  />
+
+                  <button type="button" className={botaoPrimario()} onClick={resetFluxoInadimplencia}>
+                    Nova importação
+                  </button>
+                </>
+              )}
             </div>
           )}
         </div>

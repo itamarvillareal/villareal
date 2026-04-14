@@ -334,6 +334,18 @@ function classificarStatusTeor(teor) {
   return 'integral';
 }
 
+/**
+ * Publicações sem texto de teor e sem CNJ identificável (ex.: ruído de OCR) não entram na prévia nem nas métricas operacionais.
+ * Mantém na prévia itens com CNJ mesmo quando o teor veio vazio (ex.: rastreio / vínculo manual).
+ */
+export function publicacaoSuprimivelSemTeorSemCnj(p) {
+  if (!p || p.statusTeor !== 'vazio') return false;
+  const raw = String(p.processoCnjNormalizado || p.numeroCnj || '').trim();
+  if (!raw) return true;
+  const key = normalizarCnjParaChave(raw);
+  return !key;
+}
+
 const PALAVRAS_TIPO = [
   ['segredo de justiça', 'segredo'],
   ['intimação', 'intimacao'],
@@ -472,4 +484,115 @@ export function deduplicarParseados(parseados) {
     saida.push(p);
   }
   return { itens: saida, duplicatasDescartadas: descartados.length };
+}
+
+function temDatasPublicacaoParseada(p) {
+  return !!(String(p?.dataPublicacao ?? '').trim() || String(p?.dataDisponibilizacao ?? '').trim());
+}
+
+function cnjChaveParseado(p) {
+  return normalizarCnjParaChave(String(p?.processoCnjNormalizado || p?.numeroCnj || '').trim());
+}
+
+function teorConsideradoVazioParaFusao(p) {
+  if (!p) return true;
+  if (p.statusTeor === 'vazio') return true;
+  return !String(p.teorIntegral ?? '').trim();
+}
+
+function recalcularMetadadosTeorParseado(p) {
+  const teor = String(p.teorIntegral ?? '').trim();
+  const statusTeor = classificarStatusTeor(teor);
+  const tipo = classificarTipoPublicacao(teor, statusTeor);
+  const resumo = gerarResumoHeuristico(teor, tipo, statusTeor);
+  const h = hashTeorNormalizado(teor);
+  return {
+    ...p,
+    statusTeor,
+    tipoPublicacao: tipo,
+    resumoAutomatico: resumo,
+    hashTeor: h,
+  };
+}
+
+function mesclarMetadadosECnj(comMetadados, soCnj) {
+  const cnj = cnjChaveParseado(soCnj);
+  const teor =
+    String(comMetadados.teorIntegral ?? '').trim() || String(soCnj.teorIntegral ?? '').trim();
+  const obs = [
+    String(comMetadados.observacoesTecnicas ?? '').trim(),
+    String(soCnj.observacoesTecnicas ?? '').trim(),
+    'Fragmentos adjacentes fundidos (datas/diário + CNJ).',
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .slice(0, 800);
+  const termos = [comMetadados.termosEncontrados, soCnj.termosEncontrados].filter(Boolean).join(' | ').slice(0, 500);
+  const cnjStr = cnj || String(comMetadados.numeroCnj || comMetadados.processoCnjNormalizado || '').trim();
+  return {
+    ...comMetadados,
+    indiceBloco: Math.min(Number(comMetadados.indiceBloco ?? 0), Number(soCnj.indiceBloco ?? 0)),
+    numeroCnj: cnjStr,
+    processoCnjNormalizado: cnjStr,
+    processoCnjBruto: String(soCnj.processoCnjBruto || comMetadados.processoCnjBruto || '').trim() || comMetadados.processoCnjBruto,
+    termosEncontrados: termos || comMetadados.termosEncontrados,
+    dataPublicacao: comMetadados.dataPublicacao || soCnj.dataPublicacao || null,
+    dataDisponibilizacao: comMetadados.dataDisponibilizacao || soCnj.dataDisponibilizacao || null,
+    diario: comMetadados.diario || soCnj.diario || null,
+    orgaoTribunal: comMetadados.orgaoTribunal || soCnj.orgaoTribunal || null,
+    tribunalPdf: comMetadados.tribunalPdf || soCnj.tribunalPdf || null,
+    teorIntegral: teor,
+    encontrouRotuloPublicacao: Boolean(comMetadados.encontrouRotuloPublicacao || soCnj.encontrouRotuloPublicacao),
+    observacoesTecnicas: obs,
+  };
+}
+
+function fundirUmaPassadaComplementares(itens) {
+  if (!Array.isArray(itens) || itens.length < 2) return itens;
+  const out = [];
+  let i = 0;
+  while (i < itens.length) {
+    const a = itens[i];
+    const b = itens[i + 1];
+    if (!b) {
+      out.push(a);
+      break;
+    }
+    const ca = cnjChaveParseado(a);
+    const cb = cnjChaveParseado(b);
+    const dA = temDatasPublicacaoParseada(a);
+    const dB = temDatasPublicacaoParseada(b);
+    const adj = Number(b.indiceBloco) === Number(a.indiceBloco) + 1;
+
+    let fundido = null;
+    if (adj && !ca && cb && dA && !dB && teorConsideradoVazioParaFusao(b)) {
+      fundido = mesclarMetadadosECnj(a, b);
+    } else if (adj && ca && !cb && !dA && dB && teorConsideradoVazioParaFusao(a)) {
+      fundido = mesclarMetadadosECnj(b, a);
+    }
+
+    if (fundido) {
+      out.push(recalcularMetadadosTeorParseado(fundido));
+      i += 2;
+    } else {
+      out.push(a);
+      i += 1;
+    }
+  }
+  return out;
+}
+
+/**
+ * Junta pares consecutivos quando a segmentação separa um bloco só com datas/diário/teor
+ * do seguinte só com CNJ e teor vazio (ou o inverso). Repete até estabilizar (cadeias curtas).
+ */
+export function fundirParesComplementaresPublicacoes(itens) {
+  if (!Array.isArray(itens) || itens.length < 2) return itens;
+  let cur = itens;
+  for (let pass = 0; pass < 16; pass++) {
+    const next = fundirUmaPassadaComplementares(cur);
+    if (next.length === cur.length) return next;
+    cur = next;
+  }
+  return cur;
 }

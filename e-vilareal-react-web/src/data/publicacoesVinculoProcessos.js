@@ -18,7 +18,8 @@ export function montarIndiceCnjClienteProc() {
 }
 
 /**
- * Mapa CNJ normalizado → { codCliente, proc, cliente }
+ * Mapa CNJ normalizado → { codCliente, proc, cliente, reu }
+ * `reu` vem de `parteOposta` do processo (mesma regra da tela Processos).
  */
 export async function montarIndiceCnjClienteProcAsync() {
   const map = new Map();
@@ -58,14 +59,75 @@ export async function montarIndiceCnjClienteProcAsync() {
       const cnj = obterNumeroProcessoNovoUnificado(codPad, p, u.numeroProcessoNovo ?? '');
       const key = normalizarCnjParaChave(cnj);
       if (!key || map.has(key)) continue;
+      const reu = String(u.parteOposta ?? '').trim();
       map.set(key, {
         codCliente: codPad,
         proc: String(p),
         cliente: nomeCliente,
+        reu,
       });
     }
   }
   return map;
+}
+
+/**
+ * Busca no mapa CNJ→cadastro tentando variantes sem zero à esquerda no 1º segmento
+ * (PDFs antigos podem trazer `0356280-…` enquanto o cadastro gravou `356280-…`).
+ */
+export function buscarHitIndiceCnjPorCnj(indiceMap, cnjRaw) {
+  if (!(indiceMap instanceof Map) || indiceMap.size === 0) return null;
+  const s0 = String(cnjRaw ?? '').trim();
+  if (!s0) return null;
+  const keyCanon = normalizarCnjParaChave(s0);
+  const upRaw = s0.toUpperCase();
+  const candidatos = [];
+  if (keyCanon) candidatos.push(keyCanon);
+  if (upRaw && upRaw !== keyCanon) candidatos.push(upRaw);
+
+  for (const base of candidatos) {
+    const m = base.match(/^(\d+)-(\d{2})\.(\d{4})\.(\d)\.(\d{2})\.(\d{4})$/);
+    if (!m) {
+      const hit = indiceMap.get(base);
+      if (hit) return { hit, chaveUsada: base };
+      continue;
+    }
+    const tail = `${m[2]}.${m[3]}.${m[4]}.${m[5]}.${m[6]}`;
+    const seen = new Set();
+    let seg = m[1];
+    for (;;) {
+      const k = `${seg}-${tail}`.toUpperCase();
+      if (!seen.has(k)) {
+        seen.add(k);
+        const hit = indiceMap.get(k);
+        if (hit) return { hit, chaveUsada: k };
+      }
+      if (!seg.startsWith('0') || seg.length <= 1) break;
+      seg = seg.slice(1);
+    }
+  }
+  return null;
+}
+
+/**
+ * Resolve cliente / proc. interno / réu pelo CNJ no cadastro, sem alterar o item.
+ * Útil quando o índice ainda não existia na importação ou quando a linha veio da API sem vínculo persistido.
+ */
+export function lookupSugestaoVinculoCadastro(item, indiceMap) {
+  const cnj =
+    item?.processoCnjNormalizado ||
+    item?.numero_processo_cnj ||
+    item?.numeroCnj ||
+    '';
+  const res = buscarHitIndiceCnjPorCnj(indiceMap, cnj);
+  if (!res) return null;
+  const { hit } = res;
+  return {
+    codCliente: hit.codCliente,
+    procInterno: hit.proc,
+    cliente: hit.cliente,
+    reu: hit.reu || '',
+  };
 }
 
 export function vincularPublicacaoAoCadastro(parseado, indiceMap) {
@@ -77,26 +139,31 @@ export function vincularPublicacaoAoCadastro(parseado, indiceMap) {
       codCliente: '',
       procInterno: '',
       cliente: '',
+      reu: '',
       vinculoOrigem: '',
     };
   }
-  const hit = indiceMap.get(cnj);
-  if (!hit) {
+  const res = buscarHitIndiceCnjPorCnj(indiceMap, cnj || parseado.numeroCnj);
+  if (!res) {
     return {
       ...parseado,
       statusVinculo: 'nao_vinculado',
       codCliente: '',
       procInterno: '',
       cliente: '',
+      reu: '',
       vinculoOrigem: '',
     };
   }
+  const hit = res.hit;
+  const reu = String(hit.reu ?? '').trim();
   return {
     ...parseado,
     statusVinculo: 'vinculado',
     codCliente: hit.codCliente,
     procInterno: hit.proc,
     cliente: hit.cliente,
+    reu,
     vinculoOrigem: 'cadastro',
   };
 }
@@ -141,6 +208,7 @@ export function aplicarVinculoManual(item, { codCliente, procInterno, cliente })
     procInterno: proc,
     cliente: nome,
     vinculoOrigem: 'manual',
+    reu: '',
   };
   delete next.erroVinculo;
   next.scoreConfianca = calcularScoreConfianca({

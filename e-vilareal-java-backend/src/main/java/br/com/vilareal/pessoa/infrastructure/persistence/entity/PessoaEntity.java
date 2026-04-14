@@ -38,6 +38,9 @@ public class PessoaEntity {
     @Column(name = "marcado_monitoramento", nullable = false)
     private Boolean marcadoMonitoramento = false;
 
+    @Column(name = "importacao_id", length = 36)
+    private String importacaoId;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "responsavel_id")
     private PessoaEntity responsavel;

@@ -9,4 +9,8 @@ public interface CalculoRodadaRepository extends JpaRepository<CalculoRodadaEnti
 
     Optional<CalculoRodadaEntity> findByCodigoClienteAndNumeroProcessoAndDimensao(
             String codigoCliente, Integer numeroProcesso, Integer dimensao);
+
+    long countByImportacaoId(String importacaoId);
+
+    long deleteByImportacaoId(String importacaoId);
 }

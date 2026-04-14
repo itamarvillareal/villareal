@@ -3,9 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import { FilterX, ArrowDownAZ, ArrowUpAZ, Calculator, FileSpreadsheet, Loader2, ChevronDown } from 'lucide-react';
 import {
   carregarLinhasRelatorioCalculosAsync,
-  getLinhasRelatorioCalculosConsolidado,
+  getLinhasRelatorioCalculosConsolidadoComFiltros,
+  formatBRL,
   formatCodigoRelatorioCalculos,
   formatMoedaRelatorioCalculos,
+  montarFiltroEmitirRelatorioCalculosFromUi,
+  parseBRL,
+  validarFiltroEmitirRelatorioCalculos,
 } from '../data/relatorioCalculosData.js';
 import { featureFlags } from '../config/featureFlags.js';
 import { buildRouterStateChaveClienteProcesso } from '../domain/camposProcessoCliente.js';
@@ -45,6 +49,13 @@ function estadoFiltrosVazio() {
   return Object.fromEntries(COLUNAS.map((c) => [c.id, '']));
 }
 
+const CRITERIOS_EMITIR_INICIAL = {
+  escopoCliente: 'todos',
+  textoCodigosCliente: '',
+  textoProcessos: '',
+  parcelamentoAceito: 'todos',
+};
+
 export function RelatorioCalculos() {
   const navigate = useNavigate();
   const [linhas, setLinhas] = useState(() => []);
@@ -55,6 +66,12 @@ export function RelatorioCalculos() {
   const [ordenarPor, setOrdenarPor] = useState(null);
   const [ordemAsc, setOrdemAsc] = useState(true);
   const [cargaRodadasProgresso, setCargaRodadasProgresso] = useState(null);
+  const [criteriosEmitir, setCriteriosEmitir] = useState(() => ({ ...CRITERIOS_EMITIR_INICIAL }));
+
+  const filtrosEmitirResolvidos = useMemo(
+    () => montarFiltroEmitirRelatorioCalculosFromUi(criteriosEmitir),
+    [criteriosEmitir]
+  );
 
   const recarregar = useCallback(async () => {
     if (featureFlags.useApiCalculos) {
@@ -62,6 +79,7 @@ export function RelatorioCalculos() {
       setCargaRodadasProgresso({ done: 0, total: 0 });
       try {
         const linhasFinais = await carregarLinhasRelatorioCalculosAsync({
+          filtrosEmitir: filtrosEmitirResolvidos,
           onProgress: ({ done, total, linhas }) => {
             setCargaRodadasProgresso({ done, total });
             setLinhas(linhas);
@@ -76,17 +94,23 @@ export function RelatorioCalculos() {
       }
       return;
     }
-    setLinhas(getLinhasRelatorioCalculosConsolidado());
-  }, []);
+    setLinhas(getLinhasRelatorioCalculosConsolidadoComFiltros(filtrosEmitirResolvidos));
+  }, [filtrosEmitirResolvidos]);
 
   const emitirOuAtualizarRelatorio = useCallback(async () => {
     if (emitindoRelatorioRef.current) return;
+    const v = validarFiltroEmitirRelatorioCalculos(filtrosEmitirResolvidos);
+    if (!v.ok) {
+      window.alert(v.erro ?? 'Ajuste os critérios do relatório.');
+      return;
+    }
     emitindoRelatorioRef.current = true;
     setEmitindoRelatorio(true);
     try {
       if (featureFlags.useApiCalculos) {
         setCargaRodadasProgresso({ done: 0, total: 0 });
         const linhasFinais = await carregarLinhasRelatorioCalculosAsync({
+          filtrosEmitir: filtrosEmitirResolvidos,
           onProgress: ({ done, total, linhas }) => {
             setCargaRodadasProgresso({ done, total });
             setLinhas(linhas);
@@ -95,7 +119,7 @@ export function RelatorioCalculos() {
         setLinhas(linhasFinais);
         setCargaRodadasProgresso(null);
       } else {
-        setLinhas(getLinhasRelatorioCalculosConsolidado());
+        setLinhas(getLinhasRelatorioCalculosConsolidadoComFiltros(filtrosEmitirResolvidos));
       }
       setRelatorioEmitido(true);
     } catch (e) {
@@ -105,7 +129,7 @@ export function RelatorioCalculos() {
       emitindoRelatorioRef.current = false;
       setEmitindoRelatorio(false);
     }
-  }, []);
+  }, [filtrosEmitirResolvidos]);
 
   useEffect(() => {
     if (!relatorioEmitido) return;
@@ -124,6 +148,10 @@ export function RelatorioCalculos() {
     setFiltrosPorColuna(estadoFiltrosVazio());
     setOrdenarPor(null);
     setOrdemAsc(true);
+  };
+
+  const redefinirCriteriosEmitir = () => {
+    setCriteriosEmitir({ ...CRITERIOS_EMITIR_INICIAL });
   };
 
   const dadosFiltrados = useMemo(() => {
@@ -163,6 +191,21 @@ export function RelatorioCalculos() {
     });
   }, [dadosFiltrados, ordenarPor, ordemAsc]);
 
+  /** Soma das linhas visíveis após filtros por coluna (independente da ordenação). */
+  const totaisFiltrados = useMemo(() => {
+    let somaValor = 0;
+    let somaHonorarios = 0;
+    for (const row of dadosFiltrados) {
+      somaValor += parseBRL(String(row.valor ?? ''));
+      somaHonorarios += parseBRL(String(row.valorHonorarios ?? ''));
+    }
+    return {
+      qtd: dadosFiltrados.length,
+      somaValor,
+      somaHonorarios,
+    };
+  }, [dadosFiltrados]);
+
   const toggleOrdenacao = (id) => {
     if (ordenarPor === id) setOrdemAsc((v) => !v);
     else {
@@ -196,7 +239,8 @@ export function RelatorioCalculos() {
             </p>
             {!relatorioEmitido ? (
               <p className="text-xs text-slate-600 mt-1.5 max-w-xl">
-                Para não travar o navegador, as linhas só são montadas depois que você emitir o relatório.
+                Para não travar o navegador, as linhas só são montadas depois que você emitir o relatório. Defina abaixo o
+                escopo (todos, um ou vários clientes, processos opcionais e filtro por «Aceitar pagamento») antes de emitir.
               </p>
             ) : null}
             </div>
@@ -231,6 +275,118 @@ export function RelatorioCalculos() {
             </button>
           </div>
         </header>
+
+        <section
+          className="mb-3 rounded-2xl border border-indigo-200/80 bg-white/90 dark:bg-slate-900/40 dark:border-indigo-900/50 p-4 shadow-sm"
+          aria-label="Critérios do relatório"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-200">Critérios antes de emitir</h2>
+            <button
+              type="button"
+              onClick={redefinirCriteriosEmitir}
+              className="text-xs font-medium text-indigo-700 hover:text-indigo-900 dark:text-indigo-300 dark:hover:text-indigo-100 underline-offset-2 hover:underline"
+            >
+              Redefinir critérios
+            </button>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <fieldset className="min-w-0 space-y-2">
+              <legend className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-1.5">Clientes</legend>
+              <label className="flex items-center gap-2 text-sm text-slate-800 dark:text-slate-200 cursor-pointer">
+                <input
+                  type="radio"
+                  name="escopoClienteRel"
+                  checked={criteriosEmitir.escopoCliente === 'todos'}
+                  onChange={() => setCriteriosEmitir((p) => ({ ...p, escopoCliente: 'todos' }))}
+                  className="text-indigo-600"
+                />
+                Todos os clientes
+              </label>
+              <label className="flex items-center gap-2 text-sm text-slate-800 dark:text-slate-200 cursor-pointer">
+                <input
+                  type="radio"
+                  name="escopoClienteRel"
+                  checked={criteriosEmitir.escopoCliente === 'um'}
+                  onChange={() => setCriteriosEmitir((p) => ({ ...p, escopoCliente: 'um' }))}
+                  className="text-indigo-600"
+                />
+                Um cliente apenas
+              </label>
+              <label className="flex items-center gap-2 text-sm text-slate-800 dark:text-slate-200 cursor-pointer">
+                <input
+                  type="radio"
+                  name="escopoClienteRel"
+                  checked={criteriosEmitir.escopoCliente === 'varios'}
+                  onChange={() => setCriteriosEmitir((p) => ({ ...p, escopoCliente: 'varios' }))}
+                  className="text-indigo-600"
+                />
+                Vários clientes
+              </label>
+            </fieldset>
+            <div className="min-w-0 md:col-span-2">
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
+                {criteriosEmitir.escopoCliente === 'um' ? 'Código do cliente' : 'Códigos de cliente (vários)'}
+              </label>
+              {criteriosEmitir.escopoCliente === 'varios' ? (
+                <textarea
+                  value={criteriosEmitir.textoCodigosCliente}
+                  onChange={(e) => setCriteriosEmitir((p) => ({ ...p, textoCodigosCliente: e.target.value }))}
+                  rows={4}
+                  disabled={criteriosEmitir.escopoCliente === 'todos'}
+                  placeholder="Um por linha ou separados por vírgula (ex.: 1, 12, 12345678)"
+                  className="w-full px-2.5 py-2 rounded-lg border border-slate-300 text-sm text-slate-900 bg-white disabled:opacity-50 dark:bg-slate-950 dark:border-slate-600 dark:text-slate-100"
+                />
+              ) : (
+                <input
+                  type="text"
+                  value={criteriosEmitir.textoCodigosCliente}
+                  onChange={(e) => setCriteriosEmitir((p) => ({ ...p, textoCodigosCliente: e.target.value }))}
+                  disabled={criteriosEmitir.escopoCliente === 'todos'}
+                  placeholder={criteriosEmitir.escopoCliente === 'um' ? 'Ex.: 12345678 ou 1' : '—'}
+                  className="w-full px-2.5 py-2 rounded-lg border border-slate-300 text-sm text-slate-900 bg-white disabled:opacity-50 dark:bg-slate-950 dark:border-slate-600 dark:text-slate-100"
+                />
+              )}
+              {criteriosEmitir.escopoCliente === 'todos' ? (
+                <p className="text-[11px] text-slate-500 mt-1">Não aplicável quando o escopo é «todos».</p>
+              ) : null}
+            </div>
+            <div className="min-w-0 space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
+                  Números de processo (opcional)
+                </label>
+                <input
+                  type="text"
+                  value={criteriosEmitir.textoProcessos}
+                  onChange={(e) => setCriteriosEmitir((p) => ({ ...p, textoProcessos: e.target.value }))}
+                  placeholder="Vazio = todos. Ex.: 1, 2, 5"
+                  className="w-full px-2.5 py-2 rounded-lg border border-slate-300 text-sm text-slate-900 bg-white dark:bg-slate-950 dark:border-slate-600 dark:text-slate-100"
+                />
+              </div>
+              <div>
+                <label htmlFor="filtroAceitarPagRel" className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
+                  Aceitar pagamento (no Cálculos)
+                </label>
+                <select
+                  id="filtroAceitarPagRel"
+                  value={criteriosEmitir.parcelamentoAceito}
+                  onChange={(e) =>
+                    setCriteriosEmitir((p) => ({ ...p, parcelamentoAceito: e.target.value }))
+                  }
+                  className="w-full px-2 py-2 rounded-lg border border-slate-300 text-sm text-slate-900 bg-white dark:bg-slate-950 dark:border-slate-600 dark:text-slate-100"
+                >
+                  <option value="todos">Todos (com e sem marcação)</option>
+                  <option value="sim">Somente com «Aceitar pagamento» marcado</option>
+                  <option value="nao">Somente sem marcação</option>
+                </select>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Mesmo sinal da coluna «Cálculo aceito» na grade (parcelamento travado no Cálculos).
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
 
         <div className="flex-1 min-h-0 bg-white rounded-2xl border border-slate-200/90 shadow-xl ring-1 ring-indigo-500/10 overflow-hidden flex flex-col">
           {emitindoRelatorio && !relatorioEmitido ? (
@@ -368,6 +524,43 @@ export function RelatorioCalculos() {
                     ))
                   )}
                 </tbody>
+                <tfoot>
+                  <tr
+                    className="bg-indigo-50/90 dark:bg-slate-800/90 border-t-2 border-indigo-400/80 dark:border-indigo-600/80 font-semibold text-slate-900 dark:text-slate-100 shadow-[0_-1px_0_0_rgba(99,102,241,0.15)]"
+                    aria-label="Totais do resultado filtrado"
+                  >
+                    <td
+                      colSpan={2}
+                      className="px-2 py-2 border-r border-slate-300 text-left"
+                      style={{ minWidth: '292px' }}
+                    >
+                      Total
+                      {totaisFiltrados.qtd > 0 ? (
+                        <span className="ml-1.5 font-normal text-slate-600 dark:text-slate-400 tabular-nums">
+                          ({totaisFiltrados.qtd} {totaisFiltrados.qtd === 1 ? 'parcela' : 'parcelas'})
+                        </span>
+                      ) : null}
+                    </td>
+                    <td
+                      colSpan={3}
+                      className="px-2 py-2 border-r border-slate-300"
+                      style={{ minWidth: '356px' }}
+                    />
+                    <td
+                      className="px-2 py-2 border-r border-slate-300 text-right tabular-nums"
+                      style={{ minWidth: COLUNAS.find((c) => c.id === 'valor')?.minW }}
+                    >
+                      {formatBRL(totaisFiltrados.somaValor)}
+                    </td>
+                    <td
+                      className="px-2 py-2 border-r border-slate-300 text-right tabular-nums"
+                      style={{ minWidth: COLUNAS.find((c) => c.id === 'valorHonorarios')?.minW }}
+                    >
+                      {formatBRL(totaisFiltrados.somaHonorarios)}
+                    </td>
+                    <td colSpan={4} className="px-2 py-2 border-r border-slate-300 last:border-r-0" />
+                  </tr>
+                </tfoot>
               </table>
             </div>
           )}

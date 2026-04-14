@@ -27,4 +27,8 @@ public interface PessoaRepository extends JpaRepository<PessoaEntity, Long>, Jpa
 
     @Query("SELECT COALESCE(MAX(p.id), 0) + 1 FROM PessoaEntity p")
     long calcularProximoId();
+
+    long countByImportacaoId(String importacaoId);
+
+    long deleteByImportacaoId(String importacaoId);
 }

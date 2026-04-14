@@ -26,6 +26,9 @@ public class PessoaContatoEntity {
     @Column(nullable = false, length = 500)
     private String valor;
 
+    @Column(name = "importacao_id", length = 36)
+    private String importacaoId;
+
     @Column(name = "data_lancamento", nullable = false)
     private Instant dataLancamento;
 

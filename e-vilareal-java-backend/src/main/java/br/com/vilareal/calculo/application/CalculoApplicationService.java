@@ -18,8 +18,11 @@ import br.com.vilareal.processo.application.CodigoClienteUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -31,6 +34,8 @@ import java.util.Optional;
 
 @Service
 public class CalculoApplicationService {
+
+    private static final Logger log = LoggerFactory.getLogger(CalculoApplicationService.class);
 
     private final CalculoRodadaRepository rodadaRepository;
     private final CalculoClienteConfigRepository clienteConfigRepository;
@@ -55,10 +60,20 @@ public class CalculoApplicationService {
     public CalculoRodadasResponse listarRodadas() {
         Map<String, JsonNode> map = new HashMap<>();
         for (CalculoRodadaEntity row : rodadaRepository.findAll()) {
+            if (!chaveRodadaCompleta(row)) {
+                log.warn(
+                        "calculo_rodada id={} omitida em GET /rodadas: codigo_cliente, numero_processo ou dimensao nulos",
+                        row.getId());
+                continue;
+            }
+            JsonNode payload = corrigirPayloadJsonRodadaTolerante(row);
+            if (payload == null) {
+                payload = objectMapper.createObjectNode();
+            }
             map.put(
                     new RodadaCalculoChave(row.getCodigoCliente(), row.getNumeroProcesso(), row.getDimensao())
                             .toMapKey(),
-                    corrigirPayloadJson(row.getPayloadJson()));
+                    payload);
         }
         return new CalculoRodadasResponse(map);
     }
@@ -69,7 +84,10 @@ public class CalculoApplicationService {
         return rodadaRepository
                 .findByCodigoClienteAndNumeroProcessoAndDimensao(
                         chave.codigoCliente(), chave.numeroProcesso(), chave.dimensao())
-                .map(e -> corrigirPayloadJson(e.getPayloadJson()));
+                .map(e -> {
+                    JsonNode p = corrigirPayloadJsonRodadaTolerante(e);
+                    return p != null ? p : objectMapper.createObjectNode();
+                });
     }
 
     /**
@@ -77,6 +95,20 @@ public class CalculoApplicationService {
      */
     @Transactional
     public JsonNode salvarRodada(String codigoCliente, int numeroProcesso, int dimensao, JsonNode payload) {
+        return salvarRodada(codigoCliente, numeroProcesso, dimensao, payload, null);
+    }
+
+    /**
+     * @param importacaoIdParaNovaRodada se não nulo, gravado apenas quando a rodada é <strong>inserida</strong> (não
+     *     em atualização de linha já existente).
+     */
+    @Transactional
+    public JsonNode salvarRodada(
+            String codigoCliente,
+            int numeroProcesso,
+            int dimensao,
+            JsonNode payload,
+            String importacaoIdParaNovaRodada) {
         RodadaCalculoChave chave = RodadaCalculoChave.fromPath(codigoCliente, numeroProcesso, dimensao);
         if (payload == null || !payload.isObject()) {
             throw new BusinessRuleException("Rodada deve ser um objeto JSON");
@@ -85,10 +117,14 @@ public class CalculoApplicationService {
                 .findByCodigoClienteAndNumeroProcessoAndDimensao(
                         chave.codigoCliente(), chave.numeroProcesso(), chave.dimensao())
                 .orElseGet(CalculoRodadaEntity::new);
+        boolean inserindo = entity.getId() == null;
         entity.setCodigoCliente(chave.codigoCliente());
         entity.setNumeroProcesso(chave.numeroProcesso());
         entity.setDimensao(chave.dimensao());
         entity.setPayloadJson(payload);
+        if (inserindo && StringUtils.hasText(importacaoIdParaNovaRodada)) {
+            entity.setImportacaoId(importacaoIdParaNovaRodada.trim());
+        }
         CalculoRodadaEntity saved = rodadaRepository.save(entity);
         return corrigirPayloadJson(saved.getPayloadJson());
     }
@@ -97,13 +133,48 @@ public class CalculoApplicationService {
     public CalculoRodadasResumoResponse listarResumoRodadas() {
         List<CalculoRodadaResumoItem> items = new ArrayList<>();
         for (CalculoRodadaEntity row : rodadaRepository.findAll()) {
-            JsonNode payload = corrigirPayloadJson(row.getPayloadJson());
+            if (!chaveRodadaCompleta(row)) {
+                log.warn(
+                        "calculo_rodada id={} omitida em GET /rodadas/resumo: codigo_cliente, numero_processo ou dimensao nulos",
+                        row.getId());
+                continue;
+            }
+            JsonNode payload = corrigirPayloadJsonRodadaTolerante(row);
             RodadaCalculoChave ch = new RodadaCalculoChave(
                     row.getCodigoCliente(), row.getNumeroProcesso(), row.getDimensao());
             items.add(new CalculoRodadaResumoItem(ch.toMapKey(), lerParcelamentoAceito(payload)));
         }
         items.sort(Comparator.comparing(CalculoRodadaResumoItem::chave));
         return new CalculoRodadasResumoResponse(items);
+    }
+
+    private static boolean chaveRodadaCompleta(CalculoRodadaEntity row) {
+        return row.getCodigoCliente() != null
+                && row.getNumeroProcesso() != null
+                && row.getDimensao() != null;
+    }
+
+    /**
+     * Evita 500 em listagens quando {@code payload_json} está corrompido ou a correção de encoding falha.
+     *
+     * @return payload corrigido; {@code null} se não houver payload ou se for ilegível (tratado como sem dados)
+     */
+    private JsonNode corrigirPayloadJsonRodadaTolerante(CalculoRodadaEntity row) {
+        if (row.getPayloadJson() == null) {
+            return null;
+        }
+        try {
+            return corrigirPayloadJson(row.getPayloadJson());
+        } catch (RuntimeException e) {
+            log.warn(
+                    "calculo_rodada id={} ({}, {}, {}): payload ilegível — {}",
+                    row.getId(),
+                    row.getCodigoCliente(),
+                    row.getNumeroProcesso(),
+                    row.getDimensao(),
+                    e.getMessage());
+            return null;
+        }
     }
 
     private static boolean lerParcelamentoAceito(JsonNode payload) {

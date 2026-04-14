@@ -39,6 +39,9 @@ public class ProcessoWriteRequest {
     private String consultor;
     private Long usuarioResponsavelId;
 
+    /** UUID da importação em lote; opcional. */
+    private String importacaoId;
+
     public Long getClienteId() {
         return clienteId;
     }
@@ -221,5 +224,13 @@ public class ProcessoWriteRequest {
 
     public void setUsuarioResponsavelId(Long usuarioResponsavelId) {
         this.usuarioResponsavelId = usuarioResponsavelId;
+    }
+
+    public String getImportacaoId() {
+        return importacaoId;
+    }
+
+    public void setImportacaoId(String importacaoId) {
+        this.importacaoId = importacaoId;
     }
 }

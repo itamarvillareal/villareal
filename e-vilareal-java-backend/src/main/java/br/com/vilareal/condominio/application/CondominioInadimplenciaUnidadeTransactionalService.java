@@ -51,7 +51,8 @@ public class CondominioInadimplenciaUnidadeTransactionalService {
             String codigoCliente8,
             InadimplenciaUnidadeDto unidade,
             boolean autorMesmaPessoaCliente,
-            String nomeAutorParaCabecalhoCalculo) {
+            String nomeAutorParaCabecalhoCalculo,
+            String importacaoId) {
         String codU = unidade.codigoUnidade() == null ? "" : unidade.codigoUnidade().trim().toUpperCase(Locale.ROOT);
         if (codU.isEmpty()) {
             throw new IllegalArgumentException("Código de unidade vazio.");
@@ -70,6 +71,9 @@ public class CondominioInadimplenciaUnidadeTransactionalService {
             req.setClienteId(pessoaId);
             req.setNumeroInterno(ni);
             req.setUnidade(codU);
+            if (importacaoId != null && !importacaoId.isBlank()) {
+                req.setImportacaoId(importacaoId);
+            }
             processoApplicationService.criar(req);
             proc = processoRepository
                     .findByPessoa_IdAndNumeroInterno(pessoaId, ni)
@@ -80,6 +84,9 @@ public class CondominioInadimplenciaUnidadeTransactionalService {
                 parteAutor.setPessoaId(pessoaId);
                 parteAutor.setPolo("AUTOR");
                 parteAutor.setOrdem(1);
+                if (importacaoId != null && !importacaoId.isBlank()) {
+                    parteAutor.setImportacaoId(importacaoId);
+                }
                 processoApplicationService.criarParte(proc.getId(), parteAutor);
             }
         }
@@ -87,7 +94,7 @@ public class CondominioInadimplenciaUnidadeTransactionalService {
         ObjectNode payload =
                 montarPayloadCalculo(cobrancas, nomeAutorParaCabecalhoCalculo != null ? nomeAutorParaCabecalhoCalculo : "");
         String cod8 = CodigoClienteUtil.normalizarCodigoClienteOitoDigitos(codigoCliente8);
-        calculoApplicationService.salvarRodada(cod8, proc.getNumeroInterno(), 0, payload);
+        calculoApplicationService.salvarRodada(cod8, proc.getNumeroInterno(), 0, payload, importacaoId);
 
         return new InadimplenciaImportItemResultadoDto(
                 codU, proc.getNumeroInterno(), proc.getId(), criado, cobrancas.size());

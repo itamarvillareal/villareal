@@ -861,6 +861,23 @@ export function Calculos() {
   const taxaJurosParcelamento = rodadaAtual.taxaJurosParcelamento ?? '0,00';
   const limpezaAtiva = rodadaAtual.limpezaAtiva;
 
+  /** Valor, vencimento e datas especiais por linha — muda na importação/edição; ignora colunas derivadas (juros, total…) para não re-disparar o recálculo sem necessidade. */
+  const titulosChaveRecalculo = useMemo(() => {
+    const arr = Array.isArray(titulos) ? titulos : [];
+    return arr
+      .map((t) => {
+        const esp = t?.datasEspeciais && typeof t.datasEspeciais === 'object' ? t.datasEspeciais : {};
+        let espJson = '';
+        try {
+          espJson = JSON.stringify(esp);
+        } catch {
+          espJson = '';
+        }
+        return `${String(t?.valorInicial ?? '').trim()}\t${String(t?.dataVencimento ?? '').trim()}\t${espJson}`;
+      })
+      .join('\f');
+  }, [titulos]);
+
   const totalPaginas = Math.max(1, Math.ceil(titulos.length / TITULOS_POR_PAGINA));
   useEffect(() => {
     setPagina((p) => Math.min(Math.max(1, Number(p) || 1), totalPaginas));
@@ -1325,7 +1342,8 @@ export function Calculos() {
   function recalcularTitulos(lista, indicesMensaisINPCMap, indicesMensaisIPCAMap) {
     const jurosPct = parsePercent(juros);
     const multaPct = parsePercent(multa);
-    const dataCalcGlobal = parseDateBR(dataCalculo);
+    // Travado: usa a data do painel; liberado: sempre a data corrente (regra de negócio).
+    const dataCalcGlobal = aceitarPagamento ? parseDateBR(dataCalculo) : parseDateBR(hojeBR());
     const honorPctFixo = parsePercent(honorariosValor);
 
     let changed = false;
@@ -1432,6 +1450,8 @@ export function Calculos() {
   // Recalcula ao abrir e a cada mudança, exceto quando "Aceitar Pagamento" estiver marcado (travado).
   useEffect(() => {
     if (aceitarPagamento) return;
+    const hoje = hojeBR();
+    setDataCalculo((prev) => (prev !== hoje ? hoje : prev));
     const idxUpperGeral = String(indice).toUpperCase();
     const precisaINPC =
       idxUpperGeral === 'INPC' ||
@@ -1459,7 +1479,19 @@ export function Calculos() {
       };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [aceitarPagamento, indice, juros, multa, honorariosTipo, honorariosValor, dataCalculo, rodadaKey, indicesMensaisINPC, indicesMensaisIPCA]);
+  }, [
+    aceitarPagamento,
+    indice,
+    juros,
+    multa,
+    honorariosTipo,
+    honorariosValor,
+    dataCalculo,
+    rodadaKey,
+    indicesMensaisINPC,
+    indicesMensaisIPCA,
+    titulosChaveRecalculo,
+  ]);
 
   // Carrega índices mensais do INPC antes de recalcular.
   useEffect(() => {
@@ -1474,7 +1506,7 @@ export function Calculos() {
       return;
     }
 
-    const dataCalcDate = parseDateBR(dataCalculo);
+    const dataCalcDate = parseDateBR(aceitarPagamento ? dataCalculo : hojeBR());
     if (!dataCalcDate) return;
 
     // Busca o intervalo monetário coberto pelas “Datas Especiais” (por linha) e pela data geral.
@@ -1509,7 +1541,7 @@ export function Calculos() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [aceitarPagamento, modoAlteracao, indice, dataCalculo, rodadaKey, indicesRefreshToken]);
+  }, [aceitarPagamento, modoAlteracao, indice, dataCalculo, rodadaKey, indicesRefreshToken, titulosChaveRecalculo]);
 
   // Carrega índices mensais do IPCA (IPCA / “IPCA-E”) antes de recalcular.
   useEffect(() => {
@@ -1528,7 +1560,7 @@ export function Calculos() {
       return;
     }
 
-    const dataCalcDate = parseDateBR(dataCalculo);
+    const dataCalcDate = parseDateBR(aceitarPagamento ? dataCalculo : hojeBR());
     if (!dataCalcDate) return;
 
     // Busca o intervalo monetário coberto pelas “Datas Especiais” (por linha) e pela data geral.
@@ -1565,7 +1597,7 @@ export function Calculos() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [aceitarPagamento, modoAlteracao, indice, dataCalculo, rodadaKey, indicesRefreshToken]);
+  }, [aceitarPagamento, modoAlteracao, indice, dataCalculo, rodadaKey, indicesRefreshToken, titulosChaveRecalculo]);
 
   function abrirModalDatasEspeciais(indexGlobal) {
     const linha = (rodadaAtual.titulos || [])[indexGlobal];
@@ -1839,7 +1871,7 @@ export function Calculos() {
         while (listaBase.length < nParc) listaBase.push(linhaVaziaParcela());
         for (let i = 0; i < listaBase.length; i++) {
           if (i < nParc) {
-            const dataParc = gerarDataParcelaMensalBR(dataCalculo, i);
+            const dataParc = gerarDataParcelaMensalBR(hojeBR(), i);
             listaBase[i] = {
               ...listaBase[i],
               valorParcela: valorFmt,
