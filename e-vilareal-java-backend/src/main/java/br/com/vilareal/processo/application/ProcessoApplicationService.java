@@ -529,6 +529,9 @@ public class ProcessoApplicationService {
         } else {
             e.setUsuarioResponsavel(null);
         }
+        if (StringUtils.hasText(req.getImportacaoId())) {
+            e.setImportacaoId(req.getImportacaoId().trim());
+        }
     }
 
     private void aplicarParte(ProcessoParteEntity p, ProcessoParteWriteRequest req) {
@@ -544,6 +547,9 @@ public class ProcessoApplicationService {
         p.setPolo(req.getPolo().trim());
         p.setQualificacao(trimToNull(req.getQualificacao()));
         p.setOrdem(req.getOrdem() != null ? req.getOrdem() : 0);
+        if (StringUtils.hasText(req.getImportacaoId())) {
+            p.setImportacaoId(req.getImportacaoId().trim());
+        }
     }
 
     /**

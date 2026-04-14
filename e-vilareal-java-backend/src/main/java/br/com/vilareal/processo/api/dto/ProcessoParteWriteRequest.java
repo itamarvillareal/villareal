@@ -22,6 +22,9 @@ public class ProcessoParteWriteRequest {
     /** Substitui a lista de advogados (pessoas) desta parte; vazio remove todos. Null = não alterar advogados na atualização. */
     private List<Long> advogadoPessoaIds;
 
+    /** UUID da importação em lote; opcional. */
+    private String importacaoId;
+
     public Long getPessoaId() {
         return pessoaId;
     }
@@ -68,5 +71,13 @@ public class ProcessoParteWriteRequest {
 
     public void setAdvogadoPessoaIds(List<Long> advogadoPessoaIds) {
         this.advogadoPessoaIds = advogadoPessoaIds;
+    }
+
+    public String getImportacaoId() {
+        return importacaoId;
+    }
+
+    public void setImportacaoId(String importacaoId) {
+        this.importacaoId = importacaoId;
     }
 }

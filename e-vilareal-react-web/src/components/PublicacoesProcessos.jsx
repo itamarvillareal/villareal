@@ -20,11 +20,12 @@ import {
 import { extrairTextoPdfDeArquivo } from '../data/publicacoesPdfExtract.js';
 import { executarPipelineImportacaoPublicacoes } from '../data/publicacoesPipeline.js';
 import { hashArquivoSHA256 } from '../data/publicacoesHashArquivo.js';
-import { normalizarCnjParaChave } from '../data/publicacoesPdfParser.js';
 import {
   montarIndiceCnjClienteProcAsync,
   aplicarVinculoManual,
   reaplicarVinculoCadastro,
+  lookupSugestaoVinculoCadastro,
+  buscarHitIndiceCnjPorCnj,
 } from '../data/publicacoesVinculoProcessos.js';
 import { appendPublicacoesConfirmadas, updatePublicacaoImportada } from '../data/publicacoesStorage.js';
 import { agruparPublicacoesPorDia } from '../data/publicacoesDiaria.js';
@@ -294,6 +295,7 @@ export function PublicacoesProcessos() {
         codCliente: next.codCliente,
         procInterno: next.procInterno,
         cliente: next.cliente,
+        reu: next.reu ?? '',
         statusVinculo: next.statusVinculo,
         scoreConfianca: next.scoreConfianca,
         vinculoOrigem: next.vinculoOrigem ?? 'manual',
@@ -315,8 +317,11 @@ export function PublicacoesProcessos() {
 
   const reaplicarVinculoGravado = (row) => {
     if (featureFlags.useApiPublicacoes) {
-      const key = normalizarCnjParaChave(row.processoCnjNormalizado || row.numero_processo_cnj || '');
-      const hit = indiceCnj.get(key);
+      const resHit = buscarHitIndiceCnjPorCnj(
+        indiceCnj,
+        row.processoCnjNormalizado || row.numero_processo_cnj || ''
+      );
+      const hit = resHit?.hit;
       if (!hit) {
         setErro('Não há correspondência automática no cadastro para este CNJ.');
         return;
@@ -342,6 +347,7 @@ export function PublicacoesProcessos() {
       codCliente: next.codCliente,
       procInterno: next.procInterno,
       cliente: next.cliente,
+      reu: next.reu ?? '',
       statusVinculo: next.statusVinculo,
       scoreConfianca: next.scoreConfianca,
       vinculoOrigem: next.vinculoOrigem ?? '',
@@ -371,11 +377,6 @@ export function PublicacoesProcessos() {
   const consolidadoGravados = useMemo(
     () => agruparPublicacoesPorDia(filtrados, consolidadoCriterio),
     [filtrados, consolidadoCriterio]
-  );
-
-  const consolidadoPreview = useMemo(
-    () => (preview?.itens?.length ? agruparPublicacoesPorDia(preview.itens, consolidadoCriterio) : []),
-    [preview, consolidadoCriterio]
   );
 
   const executarLimparTodasPublicacoes = async () => {
@@ -493,7 +494,25 @@ export function PublicacoesProcessos() {
                 <span>·</span>
                 <span>Com CNJ: {preview.metricas.comCnj}</span>
                 <span>·</span>
-                <span>Sem teor: {preview.metricas.semTeor}</span>
+                <span>Sem teor (no PDF): {preview.metricas.semTeor}</span>
+                <span>·</span>
+                <span>Sem teor na prévia: {preview.metricas.semTeorNaPrevia ?? 0}</span>
+                {Number(preview.metricas.suprimidosSemTeorSemCnj) > 0 ? (
+                  <>
+                    <span>·</span>
+                    <span title="Sem texto de publicação e sem CNJ — não entram na tabela nem na confirmação">
+                      Suprimidas (sem teor e sem CNJ): {preview.metricas.suprimidosSemTeorSemCnj}
+                    </span>
+                  </>
+                ) : null}
+                {Number(preview.metricas.fundidosComplementares) > 0 ? (
+                  <>
+                    <span>·</span>
+                    <span title="Blocos adjacentes reunidos (ex.: datas num bloco, CNJ no seguinte)">
+                      Fundidas (fragmentos): {preview.metricas.fundidosComplementares}
+                    </span>
+                  </>
+                ) : null}
                 <span>·</span>
                 <span>Indisponível/segredo: {preview.metricas.indisponivel}</span>
                 <span>·</span>
@@ -531,70 +550,6 @@ export function PublicacoesProcessos() {
                 {JSON.stringify(preview.logsItens ?? [], null, 2)}
               </pre>
             </details>
-            {preview.itens.length > 0 ? (
-              <div className="rounded-xl border border-amber-300/50 dark:border-amber-500/20 bg-white/70 dark:bg-black/25 p-4 space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h3 className="text-xs font-semibold text-amber-950 dark:text-amber-100 flex items-center gap-2">
-                    <CalendarDays className="w-4 h-4 shrink-0" />
-                    Listagem diária consolidada (esta prévia)
-                  </h3>
-                  <label className="flex items-center gap-2 text-[11px] text-slate-600 dark:text-slate-400">
-                    Agrupar por
-                    <select
-                      value={consolidadoCriterio}
-                      onChange={(e) => setConsolidadoCriterio(e.target.value)}
-                      className="rounded border border-slate-300 dark:border-white/15 bg-white dark:bg-[#0d1018] px-2 py-1 text-[11px]"
-                    >
-                      <option value="publicacao">Data de publicação</option>
-                      <option value="disponibilizacao">Data de disponibilização</option>
-                    </select>
-                  </label>
-                </div>
-                {consolidadoPreview.length === 0 ? (
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                    Nenhuma data de publicação/disponibilização identificada nos itens — o consolidado aparece quando as
-                    datas forem extraídas do PDF.
-                  </p>
-                ) : (
-                  <ul className="space-y-2 text-xs">
-                    {consolidadoPreview.map((b) => (
-                      <li
-                        key={b.chaveSort}
-                        className="border border-amber-200/80 dark:border-amber-500/20 rounded-lg p-3 bg-amber-50/40 dark:bg-black/20"
-                      >
-                        <div className="font-semibold text-slate-800 dark:text-slate-100 mb-2">
-                          {b.dia} — {b.total} publicaç{b.total === 1 ? 'ão' : 'ões'}
-                        </div>
-                        <ul className="space-y-1.5 text-slate-700 dark:text-slate-300">
-                          {b.itens.map((row, idx) => {
-                            const ix = preview?.itens ? preview.itens.indexOf(row) : -1;
-                            const nLista = ix >= 0 ? ix + 1 : idx + 1;
-                            return (
-                            <li
-                              key={idx}
-                              className="flex flex-wrap gap-x-3 gap-y-0.5 border-t border-amber-100/80 dark:border-white/[0.06] pt-1.5 first:border-0 first:pt-0"
-                            >
-                              <span
-                                className="inline-flex min-w-[1.75rem] justify-center rounded bg-slate-200/80 dark:bg-white/10 px-1 text-[10px] font-bold text-slate-700 dark:text-slate-200 tabular-nums"
-                                title="Nº na lista completa (conferência com o PDF)"
-                              >
-                                {nLista}
-                              </span>
-                              <span className="font-mono text-[11px]">{row.numeroCnj || '—'}</span>
-                              <span className="text-slate-500 dark:text-slate-400">
-                                Pub. {row.dataPublicacao || '—'} · Disp. {row.dataDisponibilizacao || '—'}
-                              </span>
-                              <span>{row.tipoPublicacao || '—'}</span>
-                            </li>
-                            );
-                          })}
-                        </ul>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            ) : null}
             <div className="overflow-x-auto border border-slate-200 dark:border-white/[0.08] rounded-lg">
               <table className="w-full text-xs min-w-[1200px]">
                 <thead className="bg-slate-100 dark:bg-black/30">
@@ -673,24 +628,57 @@ export function PublicacoesProcessos() {
                         <td className="p-2 align-top">
                           <ScoreBadge score={row.scoreConfianca} />
                         </td>
-                        <td className="p-2 align-top">
-                          {row.statusVinculo === 'vinculado' ? (
-                            <div className="flex flex-wrap items-center gap-1">
-                              <Badge tone="green">
-                                {row.codCliente} / proc {row.procInterno}
-                              </Badge>
-                              {row.vinculoOrigem === 'manual' ? (
-                                <span className="text-[9px] uppercase text-sky-700 dark:text-sky-300">manual</span>
-                              ) : null}
-                            </div>
-                          ) : (
-                            <Badge tone="amber">
-                              {row.statusVinculo === 'nao_vinculado' ? 'Processo não vinculado' : 'Sem CNJ'}
-                            </Badge>
-                          )}
-                          <div className="text-[10px] text-slate-500 mt-0.5 truncate max-w-[140px]" title={row.cliente}>
-                            {row.cliente || '—'}
-                          </div>
+                        <td className="p-2 align-top max-w-[240px]">
+                          {(() => {
+                            const sugPre = lookupSugestaoVinculoCadastro(row, indiceCnj);
+                            return row.statusVinculo === 'vinculado' ? (
+                              <>
+                                <div className="flex flex-wrap items-center gap-1">
+                                  <Badge tone="green">
+                                    {row.codCliente} / proc {row.procInterno}
+                                  </Badge>
+                                  {row.vinculoOrigem === 'manual' ? (
+                                    <span className="text-[9px] uppercase text-sky-700 dark:text-sky-300">manual</span>
+                                  ) : null}
+                                </div>
+                                <div
+                                  className="text-[10px] text-slate-600 dark:text-slate-400 mt-0.5 space-y-0.5"
+                                  title={[row.cliente, row.reu ? `Réu: ${row.reu}` : ''].filter(Boolean).join('\n')}
+                                >
+                                  {row.cliente ? <div className="truncate">{row.cliente}</div> : null}
+                                  {row.reu ? <div className="truncate text-slate-500">Réu: {row.reu}</div> : null}
+                                  {!row.cliente && !row.reu ? <div className="text-slate-500">—</div> : null}
+                                </div>
+                              </>
+                            ) : (
+                              <>
+                                <Badge tone="amber">
+                                  {row.statusVinculo === 'nao_vinculado' ? 'Processo não vinculado' : 'Sem CNJ'}
+                                </Badge>
+                                {sugPre ? (
+                                  <div className="text-[10px] text-slate-600 dark:text-slate-400 mt-0.5 space-y-0.5">
+                                    <div className="font-medium text-sky-800 dark:text-sky-200">Sugestão (cadastro)</div>
+                                    <div
+                                      className="truncate"
+                                      title={`${sugPre.cliente} · ${sugPre.codCliente} / proc ${sugPre.procInterno}`}
+                                    >
+                                      Cliente: {sugPre.cliente} · {sugPre.codCliente} / proc {sugPre.procInterno}
+                                    </div>
+                                    {sugPre.reu ? (
+                                      <div className="truncate text-slate-500" title={sugPre.reu}>
+                                        Réu: {sugPre.reu}
+                                      </div>
+                                    ) : null}
+                                    <div className="text-[9px] text-slate-400">Use o botão Auto para aplicar ao item.</div>
+                                  </div>
+                                ) : (
+                                  <div className="text-[10px] text-slate-500 mt-0.5 truncate" title={row.cliente || ''}>
+                                    {row.cliente || '—'}
+                                  </div>
+                                )}
+                              </>
+                            );
+                          })()}
                         </td>
                         <td className="p-2 align-top text-slate-700 dark:text-slate-300 max-w-md">
                           <div className="line-clamp-3">{row.resumoAutomatico || row.teorIntegral?.slice(0, 200)}</div>
@@ -703,11 +691,12 @@ export function PublicacoesProcessos() {
                             <button
                               type="button"
                               onClick={() => {
+                                const sug = lookupSugestaoVinculoCadastro(row, indiceCnj);
                                 setVinculoModal({ kind: 'preview', index: i });
                                 setVincForm({
-                                  codCliente: row.codCliente || '',
-                                  procInterno: row.procInterno || '',
-                                  cliente: row.cliente || '',
+                                  codCliente: row.codCliente || sug?.codCliente || '',
+                                  procInterno: row.procInterno || sug?.procInterno || '',
+                                  cliente: row.cliente || sug?.cliente || '',
                                 });
                                 setVinculoFormErro('');
                               }}
@@ -967,6 +956,7 @@ export function PublicacoesProcessos() {
                   </tr>
                 ) : (
                   filtrados.map((r, idxLista) => {
+                    const sugG = lookupSugestaoVinculoCadastro(r, indiceCnj);
                     const destaque =
                       r.scoreConfianca === 'baixo'
                         ? 'bg-red-50/50 dark:bg-red-950/20'
@@ -987,12 +977,43 @@ export function PublicacoesProcessos() {
                           </div>
                         </td>
                         <td className="p-2 font-mono text-[11px]">{r.numero_processo_cnj}</td>
-                        <td className="p-2">
-                          <div>{r.codCliente || '—'}</div>
-                          <div className="text-slate-500">proc {r.procInterno || '—'}</div>
-                          <div className="text-[10px] text-slate-500 truncate max-w-[160px]" title={r.cliente}>
-                            {r.cliente}
-                          </div>
+                        <td className="p-2 max-w-[200px]">
+                          {r.statusVinculo === 'vinculado' ? (
+                            <>
+                              <div>{r.codCliente || '—'}</div>
+                              <div className="text-slate-500">proc {r.procInterno || '—'}</div>
+                              <div className="text-[10px] text-slate-500 truncate" title={r.cliente}>
+                                {r.cliente || '—'}
+                              </div>
+                              {r.reu ? (
+                                <div className="text-[10px] text-slate-500 truncate mt-0.5" title={r.reu}>
+                                  Réu: {r.reu}
+                                </div>
+                              ) : null}
+                            </>
+                          ) : sugG ? (
+                            <>
+                              <div className="text-[10px] font-semibold text-sky-800 dark:text-sky-200">Sugestão (cadastro)</div>
+                              <div>{sugG.codCliente}</div>
+                              <div className="text-slate-500">proc {sugG.procInterno}</div>
+                              <div className="text-[10px] text-slate-600 dark:text-slate-400 truncate" title={sugG.cliente}>
+                                {sugG.cliente}
+                              </div>
+                              {sugG.reu ? (
+                                <div className="text-[10px] text-slate-500 truncate mt-0.5" title={sugG.reu}>
+                                  Réu: {sugG.reu}
+                                </div>
+                              ) : null}
+                            </>
+                          ) : (
+                            <>
+                              <div>{r.codCliente || '—'}</div>
+                              <div className="text-slate-500">proc {r.procInterno || '—'}</div>
+                              <div className="text-[10px] text-slate-500 truncate max-w-[160px]" title={r.cliente}>
+                                {r.cliente || '—'}
+                              </div>
+                            </>
+                          )}
                         </td>
                         <td className="p-2 whitespace-nowrap">{r.dataPublicacao || '—'}</td>
                         <td className="p-2 whitespace-nowrap text-slate-600 dark:text-slate-400">
@@ -1010,18 +1031,47 @@ export function PublicacoesProcessos() {
                         <td className="p-2">
                           <ScoreBadge score={r.scoreConfianca} />
                         </td>
-                        <td className="p-2">
+                        <td className="p-2 max-w-[240px]">
                           {r.statusVinculo === 'vinculado' ? (
-                            <div className="flex flex-wrap items-center gap-1">
-                              <Badge tone="green">Vinculado</Badge>
-                              {r.vinculoOrigem === 'manual' ? (
-                                <span className="text-[9px] uppercase text-sky-700 dark:text-sky-300">manual</span>
-                              ) : null}
-                            </div>
+                            <>
+                              <div className="flex flex-wrap items-center gap-1">
+                                <Badge tone="green">Vinculado</Badge>
+                                {r.vinculoOrigem === 'manual' ? (
+                                  <span className="text-[9px] uppercase text-sky-700 dark:text-sky-300">manual</span>
+                                ) : null}
+                              </div>
+                              <div
+                                className="text-[10px] text-slate-600 dark:text-slate-400 mt-0.5 space-y-0.5"
+                                title={[r.cliente, r.reu ? `Réu: ${r.reu}` : ''].filter(Boolean).join('\n')}
+                              >
+                                {r.cliente ? <div className="truncate">{r.cliente}</div> : null}
+                                {r.reu ? <div className="truncate text-slate-500">Réu: {r.reu}</div> : null}
+                                {!r.cliente && !r.reu ? <div className="text-slate-500">—</div> : null}
+                              </div>
+                            </>
                           ) : (
-                            <Badge tone="amber" title={r.statusVinculo === 'nao_vinculado' ? 'Processo não vinculado ao cadastro interno' : ''}>
-                              {r.statusVinculo === 'nao_vinculado' ? 'Processo não vinculado' : 'Pendente'}
-                            </Badge>
+                            <>
+                              <Badge tone="amber" title={r.statusVinculo === 'nao_vinculado' ? 'Processo não vinculado ao cadastro interno' : ''}>
+                                {r.statusVinculo === 'nao_vinculado' ? 'Processo não vinculado' : 'Pendente'}
+                              </Badge>
+                              {sugG ? (
+                                <div className="text-[10px] text-slate-600 dark:text-slate-400 mt-0.5 space-y-0.5">
+                                  <div className="font-medium text-sky-800 dark:text-sky-200">Sugestão (cadastro)</div>
+                                  <div
+                                    className="truncate"
+                                    title={`${sugG.cliente} · ${sugG.codCliente} / proc ${sugG.procInterno}`}
+                                  >
+                                    Cliente: {sugG.cliente} · {sugG.codCliente} / proc {sugG.procInterno}
+                                  </div>
+                                  {sugG.reu ? (
+                                    <div className="truncate text-slate-500" title={sugG.reu}>
+                                      Réu: {sugG.reu}
+                                    </div>
+                                  ) : null}
+                                  <div className="text-[9px] text-slate-400">Use o botão Auto para aplicar ao item.</div>
+                                </div>
+                              ) : null}
+                            </>
                           )}
                         </td>
                         <td className="p-2 text-slate-700 dark:text-slate-300">
@@ -1034,9 +1084,9 @@ export function PublicacoesProcessos() {
                               onClick={() => {
                                 setVinculoModal({ kind: 'saved', id: r.id });
                                 setVincForm({
-                                  codCliente: r.codCliente || '',
-                                  procInterno: r.procInterno || '',
-                                  cliente: r.cliente || '',
+                                  codCliente: r.codCliente || sugG?.codCliente || '',
+                                  procInterno: r.procInterno || sugG?.procInterno || '',
+                                  cliente: r.cliente || sugG?.cliente || '',
                                 });
                                 setVinculoFormErro('');
                               }}

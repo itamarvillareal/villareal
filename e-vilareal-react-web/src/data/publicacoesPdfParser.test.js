@@ -9,6 +9,8 @@ import {
   processarTextoPdfPublicacoes,
   parsearBlocoPublicacao,
   inferirOrgaoTribunalDoCnj,
+  publicacaoSuprimivelSemTeorSemCnj,
+  fundirParesComplementaresPublicacoes,
 } from './publicacoesPdfParser.js';
 
 describe('publicacoesPdfParser', () => {
@@ -131,5 +133,120 @@ Publicação: Sentença extensa com fundamentação.
     if (c1) {
       expect(c1.teorIntegral.toLowerCase()).toMatch(/intima/);
     }
+  });
+
+  it('fundirParesComplementaresPublicacoes une bloco sem CNJ+com datas com o seguinte CNJ+sem datas', () => {
+    const cnj = '5303201-84.2026.8.09.0006';
+    const a = {
+      indiceBloco: 10,
+      numeroCnj: '',
+      processoCnjNormalizado: '',
+      dataPublicacao: '14/04/2026',
+      dataDisponibilizacao: '13/04/2026',
+      diario: 'TJGO',
+      teorIntegral: 'Verifique seu nome em destaque.',
+      statusTeor: 'integral',
+      tipoPublicacao: 'intimação',
+      resumoAutomatico: 'x',
+      hashTeor: 'aaa',
+      observacoesTecnicas: '',
+      termosEncontrados: '',
+      processoCnjBruto: '',
+      encontrouRotuloPublicacao: true,
+      orgaoTribunal: null,
+      tribunalPdf: null,
+    };
+    const b = {
+      indiceBloco: 11,
+      numeroCnj: cnj,
+      processoCnjNormalizado: cnj,
+      dataPublicacao: null,
+      dataDisponibilizacao: null,
+      diario: null,
+      teorIntegral: '',
+      statusTeor: 'vazio',
+      tipoPublicacao: 'outros',
+      resumoAutomatico: 'y',
+      hashTeor: 'bbb',
+      observacoesTecnicas: '',
+      termosEncontrados: '',
+      processoCnjBruto: cnj,
+      encontrouRotuloPublicacao: false,
+      orgaoTribunal: null,
+      tribunalPdf: null,
+    };
+    const out = fundirParesComplementaresPublicacoes([a, b]);
+    expect(out).toHaveLength(1);
+    expect(out[0].processoCnjNormalizado).toMatch(/5303201-84\.2026\.8\.09\.0006/i);
+    expect(out[0].dataPublicacao).toBe('14/04/2026');
+    expect(out[0].dataDisponibilizacao).toBe('13/04/2026');
+    expect(out[0].diario).toBe('TJGO');
+    expect(out[0].teorIntegral).toMatch(/Verifique seu nome/);
+  });
+
+  it('fundirParesComplementaresPublicacoes aceita ordem CNJ primeiro, datas no bloco seguinte', () => {
+    const cnj = '5303201-84.2026.8.09.0006';
+    const a = {
+      indiceBloco: 20,
+      numeroCnj: cnj,
+      processoCnjNormalizado: cnj,
+      dataPublicacao: null,
+      dataDisponibilizacao: null,
+      diario: null,
+      teorIntegral: '',
+      statusTeor: 'vazio',
+      tipoPublicacao: 'outros',
+      resumoAutomatico: '',
+      hashTeor: '1',
+      observacoesTecnicas: '',
+      termosEncontrados: '',
+      processoCnjBruto: '',
+      encontrouRotuloPublicacao: false,
+      orgaoTribunal: null,
+      tribunalPdf: null,
+    };
+    const b = {
+      indiceBloco: 21,
+      numeroCnj: '',
+      processoCnjNormalizado: '',
+      dataPublicacao: '14/04/2026',
+      dataDisponibilizacao: '13/04/2026',
+      diario: 'TJGO',
+      teorIntegral: 'Texto do teor.',
+      statusTeor: 'integral',
+      tipoPublicacao: 'intimação',
+      resumoAutomatico: 'r',
+      hashTeor: '2',
+      observacoesTecnicas: '',
+      termosEncontrados: '',
+      processoCnjBruto: '',
+      encontrouRotuloPublicacao: true,
+      orgaoTribunal: null,
+      tribunalPdf: null,
+    };
+    const out = fundirParesComplementaresPublicacoes([a, b]);
+    expect(out).toHaveLength(1);
+    expect(out[0].processoCnjNormalizado).toMatch(/5303201-84\.2026\.8\.09\.0006/i);
+    expect(out[0].dataPublicacao).toBe('14/04/2026');
+  });
+
+  it('publicacaoSuprimivelSemTeorSemCnj suprime só vazio sem CNJ', () => {
+    expect(
+      publicacaoSuprimivelSemTeorSemCnj({
+        statusTeor: 'vazio',
+        numeroCnj: '',
+        processoCnjNormalizado: '',
+      })
+    ).toBe(true);
+    expect(
+      publicacaoSuprimivelSemTeorSemCnj({
+        statusTeor: 'vazio',
+        numeroCnj: '5036668-71.2024.8.09.0112',
+        processoCnjNormalizado: '',
+      })
+    ).toBe(false);
+    expect(publicacaoSuprimivelSemTeorSemCnj({ statusTeor: 'integral', numeroCnj: '', processoCnjNormalizado: '' })).toBe(
+      false
+    );
   });
 });

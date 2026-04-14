@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -40,18 +41,40 @@ public final class InadimplenciaPdfParser {
             "^\\s*\\d+\\s+([A-Za-zÀ-ÿ]+)[-–—](\\d{3,4})\\s*$", Pattern.CASE_INSENSITIVE);
     private static final Pattern PAT_DATA_REF =
             Pattern.compile("Data de referência:\\s*(\\d{2}/\\d{2}/\\d{4})", Pattern.CASE_INSENSITIVE);
+
+    /** Primeira linha tipo «Residencial X Inadimplência por Unidade». */
+    private static final Pattern PAT_TITULO_COM_INADIMPLENCIA = Pattern.compile(
+            "^(.+?)\\s+Inadimplência\\s+por\\s+Unidade\\s*$", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+
     /**
-     * Sufixo típico: período (mm/aaaa) + vencimento + valor (+ multa). Valores podem usar ponto ou espaço como milhar
-     * (ex.: 1.234,56 ou 1 234,56).
+     * Sufixo típico: período (mm/aaaa) + vencimento + valor (+ demais colunas monetárias). Relatórios completos trazem
+     * Multa, Juros, Atual., Hon., Vl.Atual. após o valor principal. Valores podem usar ponto ou espaço como milhar.
      */
     private static final String PAT_MILHARES_VALOR = "\\d{1,3}(?:[.\\s]\\d{3})*,\\d{2}";
 
+    private static final Pattern PAT_VALOR_BR = Pattern.compile(PAT_MILHARES_VALOR);
+
+    /** Captura período, vencimento, coluna Valor e, opcionalmente, mais montantes até o fim da linha. */
     private static final Pattern PAT_COBRANCA_SUFFIX = Pattern.compile(
             "\\s+(\\d{2}/\\d{4})\\s+(\\d{2}/\\d{2}/\\d{4})\\s+("
                     + PAT_MILHARES_VALOR
-                    + ")(?:\\s+("
+                    + ")((?:\\s+"
                     + PAT_MILHARES_VALOR
-                    + "))?\\s*$");
+                    + ")*)\\s*$");
+
+    /**
+     * Linhas de encargo calculado pela administradora (multa/juros/correção/honorários de cobrança) não entram na
+     * importação — o sistema recalcula. Comparação no texto da receita (antes do nº do doc), sem acentos e em minúsculas.
+     */
+    private static final String[] PREFIXOS_RECEITA_ENCARGO_ADMIN_IGNORAR = {
+        "multa,",
+        "juros,",
+        "atualizacao monetaria,",
+        "honorario administrativo,",
+        "honorarios administrativo,",
+        "correcao monetaria",
+        "correcao monetaria,",
+    };
 
     private InadimplenciaPdfParser() {}
 
@@ -70,11 +93,11 @@ public final class InadimplenciaPdfParser {
      * Em produção, prefira nível DEBUG ou remova após estabilizar o layout do PDF.
      */
     private static void diagnosticarTextoBruto(String textoCompleto) {
-        if (textoCompleto == null) {
+        if (textoCompleto == null || !log.isDebugEnabled()) {
             return;
         }
         int lim = Math.min(3000, textoCompleto.length());
-        log.info(
+        log.debug(
                 "=== TEXTO BRUTO PDF (primeiros {} de {} chars) ===\n{}",
                 lim,
                 textoCompleto.length(),
@@ -82,11 +105,11 @@ public final class InadimplenciaPdfParser {
         Matcher m = PAT_UNIDADE_ESTRITO_MULTILINHA.matcher(textoCompleto);
         int count = 0;
         while (m.find() && count < 10) {
-            log.info("Unidade (padrão estrito AAAA-NNNN): '{}'", m.group(1));
+            log.debug("Unidade (padrão estrito AAAA-NNNN): '{}'", m.group(1));
             count++;
         }
         if (count == 0) {
-            log.warn("Nenhuma unidade encontrada com o padrão estrito ^[A-Z]+-\\d{4}$ (multilinha).");
+            log.debug("Nenhuma unidade encontrada com o padrão estrito ^[A-Z]+-\\d{4}$ (multilinha).");
         }
     }
 
@@ -116,6 +139,13 @@ public final class InadimplenciaPdfParser {
             }
         }
         lines = juntarUnidadePartidaEmDuasLinhas(lines);
+        for (String line : lines) {
+            Matcher mt = PAT_TITULO_COM_INADIMPLENCIA.matcher(line);
+            if (mt.matches()) {
+                condominioNome = mt.group(1).trim();
+                break;
+            }
+        }
         if (condominioNome.isEmpty()) {
             for (String line : lines) {
                 if (isLinhaIgnorada(line)) {
@@ -283,7 +313,14 @@ public final class InadimplenciaPdfParser {
         String periodo = ms.group(1);
         String vencimento = ms.group(2);
         String valorStr = ms.group(3);
-        String multa = ms.group(4) != null ? ms.group(4) : "0,00";
+        String multa = "0,00";
+        String restanteMontantes = ms.group(4);
+        if (restanteMontantes != null && !restanteMontantes.isBlank()) {
+            Matcher mm = PAT_VALOR_BR.matcher(restanteMontantes);
+            if (mm.find()) {
+                multa = mm.group(0);
+            }
+        }
 
         String[] tokens = beforeP.split("\\s+");
         if (tokens.length == 0) {
@@ -308,10 +345,31 @@ public final class InadimplenciaPdfParser {
         if (receita.isEmpty()) {
             return Optional.empty();
         }
+        if (isReceitaEncargoAdministradoraNaoImportavel(receita)) {
+            return Optional.empty();
+        }
 
         long centavos = parseValorBrCentavos(valorStr);
         return Optional.of(new InadimplenciaCobrancaDto(
                 receita, doc, periodo, vencimento, valorStr, centavos, multa));
+    }
+
+    static boolean isReceitaEncargoAdministradoraNaoImportavel(String receita) {
+        if (receita == null || receita.isBlank()) {
+            return false;
+        }
+        String norm = normalizarReceitaParaPrefixo(receita);
+        for (String p : PREFIXOS_RECEITA_ENCARGO_ADMIN_IGNORAR) {
+            if (norm.startsWith(p)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static String normalizarReceitaParaPrefixo(String s) {
+        String n = Normalizer.normalize(s.trim(), Normalizer.Form.NFD).replaceAll("\\p{M}+", "");
+        return n.toLowerCase(Locale.ROOT);
     }
 
     static long parseValorBrCentavos(String br) {

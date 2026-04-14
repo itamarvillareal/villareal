@@ -10,4 +10,8 @@ public interface PessoaEnderecoRepository extends JpaRepository<PessoaEnderecoEn
     void deleteByPessoa_Id(Long pessoaId);
 
     List<PessoaEnderecoEntity> findByPessoa_IdOrderByNumeroOrdemAsc(Long pessoaId);
+
+    long countByImportacaoId(String importacaoId);
+
+    long deleteByImportacaoId(String importacaoId);
 }

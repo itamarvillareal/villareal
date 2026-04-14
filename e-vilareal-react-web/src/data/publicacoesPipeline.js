@@ -2,7 +2,12 @@
  * Orquestra Camada 1 (PDF/parser) + Camada 2 (DataJud) sem substituir teor do PDF.
  */
 
-import { processarTextoPdfPublicacoes, deduplicarParseados } from './publicacoesPdfParser.js';
+import {
+  processarTextoPdfPublicacoes,
+  deduplicarParseados,
+  fundirParesComplementaresPublicacoes,
+  publicacaoSuprimivelSemTeorSemCnj,
+} from './publicacoesPdfParser.js';
 import { vincularPublicacaoAoCadastro } from './publicacoesVinculoProcessos.js';
 import { consultarProcessoDatajud } from './datajudApiClient.js';
 import {
@@ -19,6 +24,19 @@ export async function executarPipelineImportacaoPublicacoes(textoBruto, indiceCn
   const { skipDatajud = false } = opts;
   const { limpo, blocos, parseados, metricas } = processarTextoPdfPublicacoes(textoBruto);
   const { itens: dedup, duplicatasDescartadas } = deduplicarParseados(parseados);
+  const nAntesFusao = dedup.length;
+  const dedupFundidos = fundirParesComplementaresPublicacoes(dedup);
+  const fundidosComplementares = nAntesFusao - dedupFundidos.length;
+
+  const dedupVisivel = [];
+  let suprimidosSemTeorSemCnj = 0;
+  for (const p of dedupFundidos) {
+    if (publicacaoSuprimivelSemTeorSemCnj(p)) {
+      suprimidosSemTeorSemCnj += 1;
+      continue;
+    }
+    dedupVisivel.push(p);
+  }
 
   const enriquecidos = [];
   const logsItens = [];
@@ -27,7 +45,7 @@ export async function executarPipelineImportacaoPublicacoes(textoBruto, indiceCn
   let consultasFalha = 0;
   let consultasPuladas = 0;
 
-  for (const p of dedup) {
+  for (const p of dedupVisivel) {
     const v = vincularPublicacaoAoCadastro(p, indiceCnjMap);
     let dj = null;
     let divergencias = [];
@@ -89,6 +107,9 @@ export async function executarPipelineImportacaoPublicacoes(textoBruto, indiceCn
   const relatorio = {
     ...metricas,
     duplicatasDescartadas,
+    fundidosComplementares,
+    suprimidosSemTeorSemCnj,
+    semTeorNaPrevia: enriquecidos.filter((x) => x.statusTeor === 'vazio').length,
     blocosAposDedup: enriquecidos.length,
     confirmadosDatajud: confirmadosCnj,
     naoConfirmadosDatajud: naoConfirmados,

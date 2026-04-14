@@ -37,4 +37,8 @@ public interface ProcessoRepository extends JpaRepository<ProcessoEntity, Long> 
 
     /** Todos os processos com esse nº interno (há um por cliente titular). */
     List<ProcessoEntity> findByNumeroInternoOrderByIdAsc(Integer numeroInterno);
+
+    long countByImportacaoId(String importacaoId);
+
+    long deleteByImportacaoId(String importacaoId);
 }

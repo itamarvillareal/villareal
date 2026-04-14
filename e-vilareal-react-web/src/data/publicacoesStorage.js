@@ -126,6 +126,7 @@ export function appendPublicacoesConfirmadas(itensNovos, arquivoOrigem, meta = {
       procInterno: String(raw.procInterno ?? ''),
       codCliente: String(raw.codCliente ?? ''),
       cliente: String(raw.cliente ?? ''),
+      reu: String(raw.reu ?? ''),
       termosEncontrados: String(raw.termosEncontrados ?? ''),
       diario: raw.diario ?? null,
       tribunalPdf: raw.tribunalPdf ?? null,

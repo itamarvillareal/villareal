@@ -4,11 +4,15 @@
  */
 import { featureFlags } from '../config/featureFlags.js';
 import { fetchCalculoRodada, fetchCalculoRodadasResumo } from '../repositories/calculosRepository.js';
+import {
+  listarProcessosPorCodigoCliente,
+  mapApiProcessoToUiShape,
+} from '../repositories/processosRepository.js';
 import { loadRodadasCalculos, normalizarRodadaRecebidaApi } from './calculosRodadasStorage.js';
 import { RODADAS_VINCULACAO_TESTE_50 } from './vinculacaoAutomaticaTestMock.js';
 import { getNomeClienteCadastroPorCodigo } from './relatorioProcessosDados.js';
 import { getLancamentosContaCorrente } from './financeiroData.js';
-import { getRegistroProcesso } from './processosHistoricoData.js';
+import { getRegistroProcesso, obterParteOpostaUnificada } from './processosHistoricoData.js';
 
 export function parseBRL(str) {
   if (str == null) return 0;
@@ -117,6 +121,213 @@ export function parseRodadaCalculosKey(key) {
   return { codCliente, proc, dimensao: dim };
 }
 
+/** Código cliente 8 dígitos para comparar chaves / formulário. */
+export function normalizarCodigoCliente8Relatorio(s) {
+  const n = Number(String(s ?? '').replace(/\D/g, ''));
+  if (!Number.isFinite(n) || n < 1) return '';
+  return String(n).padStart(8, '0');
+}
+
+/**
+ * @param {string} texto
+ * @returns {string[]}
+ */
+export function parseListaCodigosClientesRelatorio(texto) {
+  const parts = String(texto ?? '')
+    .split(/[\s,;]+/)
+    .map((x) => x.trim())
+    .filter(Boolean);
+  const out = [];
+  const seen = new Set();
+  for (const p of parts) {
+    const c = normalizarCodigoCliente8Relatorio(p);
+    if (c && !seen.has(c)) {
+      seen.add(c);
+      out.push(c);
+    }
+  }
+  return out;
+}
+
+/**
+ * @param {string} texto
+ * @returns {number[]}
+ */
+export function parseListaProcessosRelatorio(texto) {
+  const parts = String(texto ?? '')
+    .split(/[\s,;]+/)
+    .map((x) => x.trim())
+    .filter(Boolean);
+  const out = [];
+  const seen = new Set();
+  for (const p of parts) {
+    const n = Number(String(p).replace(/\D/g, ''));
+    if (Number.isFinite(n) && n >= 1 && !seen.has(n)) {
+      seen.add(n);
+      out.push(n);
+    }
+  }
+  return out;
+}
+
+/**
+ * @typedef {'todos'|'sim'|'nao'} RelatorioCalculosFiltroAceito
+ * @typedef {'todos'|'um'|'varios'} RelatorioCalculosEscopoCliente
+ * @typedef {object} RelatorioCalculosFiltroEmitir
+ * @property {RelatorioCalculosEscopoCliente} escopoCliente
+ * @property {string[]} codigosClienteNormalizados
+ * @property {number[]} processos
+ * @property {RelatorioCalculosFiltroAceito} parcelamentoAceito
+ */
+
+/** Filtro «sem restrição» (comportamento anterior). */
+export function filtroEmitirRelatorioCalculosPadrao() {
+  return {
+    escopoCliente: 'todos',
+    codigosClienteNormalizados: [],
+    processos: [],
+    parcelamentoAceito: 'todos',
+  };
+}
+
+/**
+ * @param {string} chave
+ * @param {boolean} parcelamentoAceitoFlag
+ * @param {RelatorioCalculosFiltroEmitir} filtros
+ */
+export function rodadaChavePassaFiltrosEmitirRelatorio(chave, parcelamentoAceitoFlag, filtros) {
+  const f = filtros || filtroEmitirRelatorioCalculosPadrao();
+  const parsed = parseRodadaCalculosKey(chave);
+  if (!parsed) return false;
+  const cod8 = normalizarCodigoCliente8Relatorio(parsed.codCliente);
+  if (f.escopoCliente === 'um' || f.escopoCliente === 'varios') {
+    const set = new Set(f.codigosClienteNormalizados || []);
+    if (!set.has(cod8)) return false;
+  }
+  const procs = f.processos || [];
+  if (procs.length > 0) {
+    const pn = Math.floor(Number(parsed.proc)) || 0;
+    if (!procs.includes(pn)) return false;
+  }
+  if (f.parcelamentoAceito === 'sim' && !parcelamentoAceitoFlag) return false;
+  if (f.parcelamentoAceito === 'nao' && parcelamentoAceitoFlag) return false;
+  return true;
+}
+
+/**
+ * @param {RelatorioCalculosFiltroEmitir} filtros
+ * @returns {{ ok: boolean, erro?: string }}
+ */
+export function validarFiltroEmitirRelatorioCalculos(filtros) {
+  const f = filtros || filtroEmitirRelatorioCalculosPadrao();
+  if (f.escopoCliente === 'um') {
+    if ((f.codigosClienteNormalizados || []).length !== 1) {
+      return {
+        ok: false,
+        erro: 'Informe um código de cliente válido (número ou 8 dígitos).',
+      };
+    }
+  }
+  if (f.escopoCliente === 'varios') {
+    if ((f.codigosClienteNormalizados || []).length === 0) {
+      return {
+        ok: false,
+        erro: 'Informe pelo menos um código de cliente (separados por vírgula ou linha).',
+      };
+    }
+  }
+  return { ok: true };
+}
+
+/** Chave estável para mapa de enriquecimento réu/unidade (API ou legado). */
+export function chaveProcessoRelatorioCalculosExtras(codCliente, procNum) {
+  const c = normalizarCodigoCliente8Relatorio(codCliente);
+  const p = Math.floor(Number(procNum)) || 1;
+  return `${c}|${p}`;
+}
+
+/** Códigos cliente 8 dígitos distintos presentes nas chaves `cod:proc:dim`. */
+export function codigosClientes8UnicosDasChavesRodadasCalculos(chaves) {
+  const s = new Set();
+  for (const ch of chaves || []) {
+    const p = parseRodadaCalculosKey(ch);
+    if (!p) continue;
+    s.add(normalizarCodigoCliente8Relatorio(p.codCliente));
+  }
+  return [...s];
+}
+
+/**
+ * Parte oposta + unidade por processo (GET processos por cliente), para o relatório sem abrir Cálculos antes.
+ * @param {string[]} codigosCliente8
+ * @param {{ signal?: AbortSignal }} [options]
+ * @returns {Promise<Map<string, { parteOposta: string, unidade: string }>>}
+ */
+export async function carregarMapaProcessoExtrasRelatorioCalculos(codigosCliente8, options = {}) {
+  const { signal } = options;
+  const map = new Map();
+  if (!featureFlags.useApiProcessos || !Array.isArray(codigosCliente8) || codigosCliente8.length === 0) {
+    return map;
+  }
+  const CONC = 8;
+  for (let i = 0; i < codigosCliente8.length; i += CONC) {
+    if (signal?.aborted) {
+      throw new DOMException('Carregamento cancelado', 'AbortError');
+    }
+    const chunk = codigosCliente8.slice(i, i + CONC);
+    await Promise.all(
+      chunk.map(async (cod8) => {
+        let rawList = [];
+        try {
+          rawList = await listarProcessosPorCodigoCliente(cod8);
+        } catch (e) {
+          console.warn('[relatorio-calculos] falha ao listar processos do cliente', cod8, e);
+          return;
+        }
+        if (!Array.isArray(rawList)) return;
+        for (const raw of rawList) {
+          const u = mapApiProcessoToUiShape(raw);
+          const n = Number(u.numeroInterno);
+          if (!Number.isFinite(n) || n < 1) continue;
+          map.set(chaveProcessoRelatorioCalculosExtras(cod8, n), {
+            parteOposta: String(u.parteOposta ?? '').trim(),
+            unidade: String(u.unidade ?? '').trim(),
+          });
+        }
+      })
+    );
+    await new Promise((r) => setTimeout(r, 0));
+  }
+  return map;
+}
+
+/**
+ * Monta filtro a partir do estado do formulário da tela.
+ * @param {{ escopoCliente: RelatorioCalculosEscopoCliente, textoCodigosCliente: string, textoProcessos: string, parcelamentoAceito: RelatorioCalculosFiltroAceito }} ui
+ * @returns {RelatorioCalculosFiltroEmitir}
+ */
+export function montarFiltroEmitirRelatorioCalculosFromUi(ui) {
+  const escopo = ui?.escopoCliente ?? 'todos';
+  const texto = String(ui?.textoCodigosCliente ?? '');
+  let codigosClienteNormalizados = [];
+  if (escopo === 'um') {
+    const first = texto
+      .trim()
+      .split(/[\s,;]+/)
+      .find((x) => String(x ?? '').trim() !== '');
+    const one = normalizarCodigoCliente8Relatorio(first ?? '');
+    codigosClienteNormalizados = one ? [one] : [];
+  } else if (escopo === 'varios') {
+    codigosClienteNormalizados = parseListaCodigosClientesRelatorio(texto);
+  }
+  return {
+    escopoCliente: escopo,
+    codigosClienteNormalizados,
+    processos: parseListaProcessosRelatorio(ui?.textoProcessos ?? ''),
+    parcelamentoAceito: ui?.parcelamentoAceito ?? 'todos',
+  };
+}
+
 /** Contagem de dimensões por par cliente+proc a partir da lista de chaves (ex.: resumo). */
 export function dimPorClienteProcFromChaves(chaves) {
   const dimPorClienteProc = new Map();
@@ -142,8 +353,14 @@ export function dimPorClienteProcFromChaves(chaves) {
  * Monta linhas a partir de um mapa já carregado (localStorage ou resultado agregado da API).
  * @param {Record<string, unknown>} rodadas
  * @param {Map<string, number> | null} [dimPorClienteProcPre] — se omitido, calcula a partir das chaves do mapa.
+ * @param {Map<string, { parteOposta?: string, unidade?: string }> | null} [processoExtrasPorChave] — chave
+ *   {@link chaveProcessoRelatorioCalculosExtras}; prioridade após `cabecalho.reu` / histórico local.
  */
-export function getLinhasRelatorioCalculosConsolidadoFromMap(rodadas, dimPorClienteProcPre = null) {
+export function getLinhasRelatorioCalculosConsolidadoFromMap(
+  rodadas,
+  dimPorClienteProcPre = null,
+  processoExtrasPorChave = null
+) {
   const rodadasSafe = { ...(rodadas || {}) };
 
   let dimPorClienteProc;
@@ -196,9 +413,16 @@ export function getLinhasRelatorioCalculosConsolidadoFromMap(rodadas, dimPorClie
     if (numLinhas === 0) continue;
 
     const reg = getRegistroProcesso(codCliente, procNum);
-    const unidade = String(reg?.unidade ?? '').trim();
+    const pk = chaveProcessoRelatorioCalculosExtras(codCliente, procNum);
+    const extra =
+      processoExtrasPorChave instanceof Map ? processoExtrasPorChave.get(pk) : undefined;
+    const unidade =
+      String(reg?.unidade ?? '').trim() || String(extra?.unidade ?? '').trim();
     const cliente = getNomeClienteCadastroPorCodigo(Number.isFinite(codNum) && codNum >= 1 ? codNum : 1);
-    const reu = String(cab.reu ?? '').trim();
+    const reu =
+      String(cab.reu ?? '').trim() ||
+      String(extra?.parteOposta ?? '').trim() ||
+      obterParteOpostaUnificada(codCliente, procNum, '');
     const calculoAceito = rodada.parcelamentoAceito ? 'SIM' : '';
     const qtdDimensoes = String(dimPorClienteProc.get(`${codCliente}|${proc}`) ?? 1);
     const lancs = lancamentosCached(codCliente, procNum);
@@ -268,39 +492,75 @@ export function getLinhasRelatorioCalculosConsolidado() {
   return getLinhasRelatorioCalculosConsolidadoFromMap(loadRodadasCalculos() || {});
 }
 
+/**
+ * @param {Record<string, unknown>} rodadas
+ * @param {RelatorioCalculosFiltroEmitir} [filtros]
+ */
+export function filtrarMapaRodadasPorFiltroEmitir(rodadas, filtros) {
+  const f = filtros || filtroEmitirRelatorioCalculosPadrao();
+  const out = {};
+  for (const [key, rodada] of Object.entries(rodadas || {})) {
+    if (!rodada || typeof rodada !== 'object') continue;
+    const aceito = Boolean(rodada.parcelamentoAceito);
+    if (!rodadaChavePassaFiltrosEmitirRelatorio(key, aceito, f)) continue;
+    out[key] = rodada;
+  }
+  return out;
+}
+
+/**
+ * @param {RelatorioCalculosFiltroEmitir} [filtros]
+ * @returns {LinhaRelatorioCalculos[]}
+ */
+export function getLinhasRelatorioCalculosConsolidadoComFiltros(filtros) {
+  const map = filtrarMapaRodadasPorFiltroEmitir(loadRodadasCalculos() || {}, filtros);
+  const dimPre = dimPorClienteProcFromChaves(Object.keys(map));
+  return getLinhasRelatorioCalculosConsolidadoFromMap(map, dimPre);
+}
+
 const RELATORIO_FETCH_CONCORRENCIA = 10;
 
 /**
  * Com API: GET resumo → GET individual por chave, em lotes com pausa para não bloquear a UI.
- * @param {{ signal?: AbortSignal, onProgress?: (p: { done: number, total: number, linhas: LinhaRelatorioCalculos[] }) => void }} [options]
+ * @param {{
+ *   signal?: AbortSignal,
+ *   onProgress?: (p: { done: number, total: number, linhas: LinhaRelatorioCalculos[] }) => void,
+ *   filtrosEmitir?: RelatorioCalculosFiltroEmitir
+ * }} [options]
  * @returns {Promise<LinhaRelatorioCalculos[]>}
  */
 export async function carregarLinhasRelatorioCalculosAsync(options = {}) {
-  const { signal, onProgress } = options;
+  const { signal, onProgress, filtrosEmitir } = options;
+  const filtros = filtrosEmitir || filtroEmitirRelatorioCalculosPadrao();
+
   if (!featureFlags.useApiCalculos) {
-    const linhas = getLinhasRelatorioCalculosConsolidado();
+    const linhas = getLinhasRelatorioCalculosConsolidadoComFiltros(filtros);
     onProgress?.({ done: 1, total: 1, linhas });
     return linhas;
   }
 
   const resumo = await fetchCalculoRodadasResumo({ signal });
-  const chaves = (Array.isArray(resumo?.rodadas) ? resumo.rodadas : [])
-    .map((r) => (r?.chave ? String(r.chave) : ''))
-    .filter(Boolean);
+  const items = (Array.isArray(resumo?.rodadas) ? resumo.rodadas : []).filter((r) => r?.chave);
+  const filtrados = items.filter((r) =>
+    rodadaChavePassaFiltrosEmitirRelatorio(String(r.chave), Boolean(r.parcelamentoAceito), filtros)
+  );
+  const chaves = filtrados.map((r) => String(r.chave));
   const dimPre = dimPorClienteProcFromChaves(chaves);
+  const codigosCli = codigosClientes8UnicosDasChavesRodadasCalculos(chaves);
+  const processoExtras = await carregarMapaProcessoExtrasRelatorioCalculos(codigosCli, { signal });
 
   const rodadas = { ...RODADAS_VINCULACAO_TESTE_50 };
   const total = chaves.length;
   let done = 0;
 
   const reportar = () => {
-    const linhas = getLinhasRelatorioCalculosConsolidadoFromMap(rodadas, dimPre);
+    const linhas = getLinhasRelatorioCalculosConsolidadoFromMap(rodadas, dimPre, processoExtras);
     onProgress?.({ done, total, linhas });
   };
 
   if (total === 0) {
     reportar();
-    return getLinhasRelatorioCalculosConsolidadoFromMap(rodadas, dimPre);
+    return getLinhasRelatorioCalculosConsolidadoFromMap(rodadas, dimPre, processoExtras);
   }
 
   for (let i = 0; i < chaves.length; i += RELATORIO_FETCH_CONCORRENCIA) {
@@ -324,7 +584,7 @@ export async function carregarLinhasRelatorioCalculosAsync(options = {}) {
     await new Promise((r) => setTimeout(r, 0));
   }
 
-  return getLinhasRelatorioCalculosConsolidadoFromMap(rodadas, dimPre);
+  return getLinhasRelatorioCalculosConsolidadoFromMap(rodadas, dimPre, processoExtras);
 }
 
 /** Código cliente como na planilha (inteiro sem zeros à esquerda). */

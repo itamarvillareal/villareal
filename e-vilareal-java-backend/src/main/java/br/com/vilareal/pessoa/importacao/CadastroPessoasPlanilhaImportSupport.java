@@ -31,6 +31,17 @@ public final class CadastroPessoasPlanilhaImportSupport {
         return Optional.empty();
     }
 
+    /**
+     * CPF 11 ou CNPJ 14 dígitos a partir do valor bruto ou do campo já normalizado (ex. payload reenviado pelo front).
+     */
+    public static String resolveCpfCnpjDigitosPlanilha(String cpfCnpjBruto, String cpfCnpjNormalizado) {
+        Optional<String> o = normalizeCpfCnpj(cpfCnpjBruto);
+        if (o.isEmpty()) {
+            o = normalizeCpfCnpj(cpfCnpjNormalizado);
+        }
+        return o.orElse("");
+    }
+
     public static String normalizeCep(String raw) {
         String d = digitsOnly(raw);
         return d.length() > 8 ? d.substring(0, 8) : d;
@@ -64,6 +75,13 @@ public final class CadastroPessoasPlanilhaImportSupport {
         if (s == null) return "";
         String t = s.trim();
         return t.length() <= max ? t : t.substring(0, max);
+    }
+
+    /**
+     * Nome no cadastro de pessoas: trim, truncagem a 255 e maiúsculas ({@link Locale#ROOT}).
+     */
+    public static String normalizeNomeCadastro(String raw) {
+        return truncate(raw, 255).toUpperCase(Locale.ROOT);
     }
 
     /** Remove ';' final e trim; não força lower no valor persistido (só para chave de duplicata). */

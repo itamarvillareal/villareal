@@ -21,3 +21,11 @@ export async function extrairInadimplenciaPdf(clienteCodigo, file) {
 export async function importarInadimplenciaConfirmado(payload) {
   return request('/api/condominio/inadimplencia/importar', { method: 'POST', body: payload });
 }
+
+/**
+ * @param {string} importacaoId — UUID devolvido em importar / importar-pessoas
+ */
+export async function reverterImportacao(importacaoId) {
+  const id = encodeURIComponent(String(importacaoId ?? '').trim());
+  return request(`/api/condominio/inadimplencia/reverter/${id}`, { method: 'DELETE' });
+}
