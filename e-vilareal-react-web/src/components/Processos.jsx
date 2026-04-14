@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from 'react';
+import { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback, lazy, Suspense } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   getLancamentosContaCorrente,
@@ -64,6 +64,7 @@ import {
   Hand,
   PenLine,
   AlertCircle,
+  Users,
 } from 'lucide-react';
 import { ModalRelatorioPublicacoesProcesso } from './ModalRelatorioPublicacoesProcesso.jsx';
 import { ModalCriarTarefaContextual } from './ModalCriarTarefaContextual.jsx';
@@ -90,6 +91,10 @@ import {
   gravarUltimaSelecaoProcessosArmazenamento,
   lerUltimaSelecaoProcessosArmazenamento,
 } from '../domain/camposProcessoCliente.js';
+
+const CadastroClientesLazy = lazy(() =>
+  import('./CadastroClientes.jsx').then((module) => ({ default: module.CadastroClientes }))
+);
 
 const HISTORICO_POR_PAGINA = 10;
 
@@ -246,9 +251,18 @@ function entradasParteDesdeRegistro(idsLegado, entradasSalvas) {
     .filter((l) => l.pessoaId > 0);
 }
 
-export function Processos() {
+/**
+ * @param {object} [props]
+ * @param {import('react-router-dom').Location['state'] | null} [props.embedIntent] — quando definido, substitui `location.state` para hidratar cliente/proc. (ex.: modal em Publicações).
+ * @param {number|string} [props.embedIntentRevision] — incrementa/altera para re-aplicar o intent sem mudar de rota.
+ * @param {() => void} [props.onFecharEmbed] — se definido, o «X» do cabeçalho chama isto em vez de `history.back()` (modo embutido).
+ */
+export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed } = {}) {
   const location = useLocation();
   const navigate = useNavigate();
+  const isEmbedded = embedIntent !== undefined && embedIntent !== null;
+  const intentStateForHydration = isEmbedded ? embedIntent : location.state;
+  const intentRevisionForHydration = isEmbedded ? String(embedIntentRevision) : location.key;
 
   const [codigoCliente, setCodigoCliente] = useState(
     () => (typeof window !== 'undefined' ? lerUltimaSelecaoProcessosArmazenamento()?.codigoCliente : null) ?? '00000001'
@@ -276,10 +290,12 @@ export function Processos() {
   });
   const [contaCorrenteListaApiTick, setContaCorrenteListaApiTick] = useState(0);
   const [modalRelatorioPublicacoes, setModalRelatorioPublicacoes] = useState(false);
+  /** Modal com cadastro de clientes (mesmo formulário de /pessoas) para o cliente e proc. atuais. */
+  const [clientesEmbed, setClientesEmbed] = useState(null);
   const [modalTarefaContextual, setModalTarefaContextual] = useState(null);
 
   useLayoutEffect(() => {
-    const intent = extrairIntentNavegacaoProcessos(location.state);
+    const intent = extrairIntentNavegacaoProcessos(intentStateForHydration);
     const saved = lerUltimaSelecaoProcessosArmazenamento();
     if (intent) {
       if (intent.hasCod) setCodigoCliente(padCliente(intent.codRaw));
@@ -292,20 +308,20 @@ export function Processos() {
           setProcesso(Number.isNaN(num) ? 1 : Math.max(1, num));
         }
       }
-    } else if (saved) {
+    } else if (saved && !isEmbedded) {
       setCodigoCliente(saved.codigoCliente);
       setProcesso(saved.numeroInterno);
     }
-  }, [location.key, location.state]);
+  }, [intentRevisionForHydration, intentStateForHydration, isEmbedded]);
 
   useEffect(() => {
     gravarUltimaSelecaoProcessosArmazenamento(codigoCliente, processo);
   }, [codigoCliente, processo]);
 
   useEffect(() => {
-    const s = location.state && typeof location.state === 'object' ? location.state : null;
+    const s = intentStateForHydration && typeof intentStateForHydration === 'object' ? intentStateForHydration : null;
     setLinhaOrigemContaCorrente(s?.contaCorrenteLinha ?? null);
-  }, [location.key, location.pathname, location.state]);
+  }, [intentRevisionForHydration, location.pathname, intentStateForHydration]);
   const [parteCliente, setParteCliente] = useState('');
   const [edicaoDesabilitada, setEdicaoDesabilitada] = useState(true);
   const [parteOposta, setParteOposta] = useState('');
@@ -755,7 +771,7 @@ export function Processos() {
     const vinc = buscarVinculoImovelMock(mock.codigoCliente, mock.processo);
     const imovelSalvo = pickCampoStrSalvo(r, 'imovelId', '');
 
-    const nav = typeof location.state === 'object' && location.state ? location.state : null;
+    const nav = typeof intentStateForHydration === 'object' && intentStateForHydration ? intentStateForHydration : null;
     const navImovelNum =
       nav?.imovelId != null && String(nav.imovelId).trim() !== ''
         ? Number(String(nav.imovelId).replace(/\D/g, ''))
@@ -879,7 +895,7 @@ export function Processos() {
     }
     setPaginaHistorico(1);
     setInformacaoModal(null);
-  }, [codigoCliente, processo, location.key, location.state, historicoExternoTick]);
+  }, [codigoCliente, processo, intentRevisionForHydration, intentStateForHydration, historicoExternoTick]);
 
   useEffect(() => {
     if (!featureFlags.useApiProcessos) return;
@@ -2145,14 +2161,30 @@ export function Processos() {
   );
 
   return (
-    <div className="min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/35 to-emerald-50/45 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d]">
-      <div className="max-w-[1400px] mx-auto px-3 py-3">
+    <div
+      className={`${isEmbedded ? 'min-h-0 w-full' : 'min-h-full'} bg-gradient-to-br from-slate-100 via-indigo-50/35 to-emerald-50/45 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d]`}
+    >
+      <div className={`max-w-[1400px] mx-auto px-3 py-3 ${isEmbedded ? 'min-w-0' : ''}`}>
         {/* Cabeçalho: Processos + X */}
         <header className="flex items-center justify-between mb-3 gap-2 rounded-xl border border-slate-200/80 bg-white/90 px-3 py-2.5 shadow-sm backdrop-blur-sm">
           <div className="flex items-center gap-2 flex-wrap min-w-0">
             <h1 className="text-xl font-bold bg-gradient-to-r from-slate-900 via-indigo-900 to-slate-800 dark:from-slate-100 dark:via-indigo-200 dark:to-slate-200 bg-clip-text text-transparent">
               Processos
             </h1>
+            <button
+              type="button"
+              onClick={() =>
+                setClientesEmbed({
+                  revision: Date.now(),
+                  routerState: buildRouterStateChaveClienteProcesso(codigoCliente, processo),
+                })
+              }
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-500/60 bg-emerald-50 text-emerald-900 text-sm font-medium hover:bg-emerald-100 shrink-0"
+              title="Abrir cadastro de clientes com este código de cliente e nº de processo (janela suspensa)"
+            >
+              <Users className="w-4 h-4" aria-hidden />
+              Clientes
+            </button>
             <button
               type="button"
               onClick={() => setModalRelatorioPublicacoes(true)}
@@ -2189,7 +2221,10 @@ export function Processos() {
           </div>
           <button
             type="button"
-            onClick={() => window.history.back()}
+            onClick={() => {
+              if (isEmbedded && typeof onFecharEmbed === 'function') onFecharEmbed();
+              else window.history.back();
+            }}
             className="p-2 rounded border border-slate-400 bg-white text-slate-600 hover:bg-slate-100 shrink-0"
             aria-label="Fechar"
           >
@@ -3971,6 +4006,53 @@ export function Processos() {
         onClose={() => setModalTarefaContextual(null)}
         context={modalTarefaContextual}
       />
+
+      {clientesEmbed ? (
+        <div
+          className="fixed inset-0 z-[75] flex items-center justify-center p-2 sm:p-4 bg-black/55"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="processos-clientes-embed-title"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setClientesEmbed(null);
+          }}
+        >
+          <div
+            className="flex flex-col w-[min(100vw-0.5rem,1280px)] h-[min(100dvh-0.5rem,920px)] max-h-[min(100dvh-0.5rem,920px)] min-h-0 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#0f141c] shadow-2xl overflow-hidden"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-[#141c2c] shrink-0">
+              <h2 id="processos-clientes-embed-title" className="text-sm font-semibold text-slate-900 dark:text-white">
+                Cadastro de clientes
+              </h2>
+              <button
+                type="button"
+                onClick={() => setClientesEmbed(null)}
+                className="p-1.5 rounded-lg text-slate-600 hover:bg-slate-200 dark:text-slate-300 dark:hover:bg-white/10"
+                aria-label="Fechar cadastro de clientes"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden overscroll-contain [-webkit-overflow-scrolling:touch]">
+              <Suspense
+                fallback={
+                  <div className="flex min-h-[12rem] items-center justify-center p-8 text-sm text-slate-600 dark:text-slate-400">
+                    Carregando cadastro de clientes…
+                  </div>
+                }
+              >
+                <CadastroClientesLazy
+                  key={clientesEmbed.revision}
+                  embedIntent={clientesEmbed.routerState}
+                  embedIntentRevision={clientesEmbed.revision}
+                  onFecharEmbed={() => setClientesEmbed(null)}
+                />
+              </Suspense>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

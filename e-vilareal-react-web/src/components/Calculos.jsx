@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from 'react';
 import { useLocation } from 'react-router-dom';
-import { X, ChevronUp, ChevronDown, BarChart2, ExternalLink, RefreshCw, Check } from 'lucide-react';
+import { X, ChevronUp, ChevronDown, BarChart2, ExternalLink, RefreshCw, Check, FolderOpen } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { getLancamentosContaCorrente } from '../data/financeiroData';
 import {
@@ -41,6 +41,10 @@ import {
 } from '../repositories/processosRepository.js';
 import { obterClienteCadastroPorCodigo } from '../repositories/clientesRepository.js';
 import { getRegistroProcesso } from '../data/processosHistoricoData.js';
+
+const ProcessosLazy = lazy(() =>
+  import('./Processos.jsx').then((module) => ({ default: module.Processos }))
+);
 
 const TABS = ['Títulos', 'Custas Judiciais', 'Parcelamento', 'Pagamento', 'Honorários', 'Descrição dos Valores'];
 
@@ -257,10 +261,19 @@ function SpinnerFieldManual({
   );
 }
 
-export function Calculos() {
+/**
+ * @param {import('react-router-dom').Location['state'] | null} [props.embedIntent] — substitui `location.state` ao hidratar cliente/proc/dimensão (ex.: modal no Relatório de Cálculos).
+ * @param {number|string} [props.embedIntentRevision] — altera para re-aplicar o intent sem mudar de rota.
+ * @param {() => void} [props.onFecharEmbed] — se definido, o «X» do cabeçalho chama isto em vez de `history.back()` (modo embutido).
+ */
+export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed } = {}) {
   const location = useLocation();
   const navigate = useNavigate();
-  const stateFromProcessos = location.state && typeof location.state === 'object' ? location.state : null;
+  const isEmbedded = embedIntent !== undefined && embedIntent !== null;
+  const intentStateForHydration = isEmbedded ? embedIntent : location.state;
+  const intentRevisionForHydration = isEmbedded ? String(embedIntentRevision) : location.key;
+  const stateFromProcessos =
+    intentStateForHydration && typeof intentStateForHydration === 'object' ? intentStateForHydration : null;
   const navCalculos = extrairIntentNavegacaoProcessos(stateFromProcessos);
   const codClienteFromState = navCalculos?.hasCod ? String(navCalculos.codRaw ?? '').trim() : '';
   const procFromState =
@@ -442,6 +455,7 @@ export function Calculos() {
   }, [tabAtiva]);
 
   const [confirmarLimpeza, setConfirmarLimpeza] = useState(false);
+  const [processoEmbed, setProcessoEmbed] = useState(null);
 
   function confirmarAlternarAceitarPagamento(next) {
     const isLock = Boolean(next);
@@ -486,7 +500,14 @@ export function Calculos() {
     if (abaCalculosFromState && TABS.includes(abaCalculosFromState)) {
       setTabAtiva(abaCalculosFromState);
     }
-  }, [codClienteFromState, procFromState, dimensaoFromState, abaCalculosFromState, stateFromProcessos]);
+  }, [
+    codClienteFromState,
+    procFromState,
+    dimensaoFromState,
+    abaCalculosFromState,
+    stateFromProcessos,
+    intentRevisionForHydration,
+  ]);
 
   // Mantém campos manuais sincronizados com o estado efetivo
   useEffect(() => {
@@ -618,7 +639,9 @@ export function Calculos() {
     setProc(p);
     setPagina(1);
     // remove o state antigo (evita “voltar” para o valor vindo de Processos)
-    navigate('/calculos', { replace: true, state: buildRouterStateChaveClienteProcesso(cod, p) });
+    if (!isEmbedded) {
+      navigate('/calculos', { replace: true, state: buildRouterStateChaveClienteProcesso(cod, p) });
+    }
   }
 
   function aplicarClienteProcComValores(codValue, procValue) {
@@ -630,7 +653,9 @@ export function Calculos() {
     setPagina(1);
     setCodClienteManual(cod);
     setProcManual(String(p));
-    navigate('/calculos', { replace: true, state: buildRouterStateChaveClienteProcesso(cod, p) });
+    if (!isEmbedded) {
+      navigate('/calculos', { replace: true, state: buildRouterStateChaveClienteProcesso(cod, p) });
+    }
   }
 
   function normalizarCampoManual() {
@@ -657,9 +682,11 @@ export function Calculos() {
       setPagina(1);
       setCodClienteManual(cod);
       setProcManual(String(p));
-      navigate('/calculos', { replace: true, state: buildRouterStateChaveClienteProcesso(cod, p) });
+      if (!isEmbedded) {
+        navigate('/calculos', { replace: true, state: buildRouterStateChaveClienteProcesso(cod, p) });
+      }
     }
-  }, [tabAtiva, codClienteManual, procManual, codigoCliente, proc, navigate]);
+  }, [tabAtiva, codClienteManual, procManual, codigoCliente, proc, navigate, isEmbedded]);
 
   // Garante que a rodada exista ao alternar cliente/proc/dimensão (sem API: mock local; com API: GET individual abaixo)
   useEffect(() => {
@@ -1909,14 +1936,40 @@ export function Calculos() {
   ]);
 
   return (
-    <div className="min-h-0 flex-1 flex flex-col bg-slate-50 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d]">
+    <div
+      className={`min-h-0 flex flex-col bg-slate-50 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d] ${isEmbedded ? 'w-full min-w-0' : 'flex-1'}`}
+    >
       <header className="flex items-center justify-between gap-2 px-3 py-2 bg-white border-b border-slate-200 shrink-0">
-        <h1 className="text-base font-semibold text-slate-800 dark:text-slate-100 truncate">
+        <h1 className="text-base font-semibold text-slate-800 dark:text-slate-100 truncate min-w-0">
           Cálculos Atualizados dos Títulos
         </h1>
-        <button type="button" onClick={() => window.history.back()} className="p-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 shrink-0" aria-label="Fechar">
-          <X className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() =>
+              setProcessoEmbed({
+                revision: Date.now(),
+                routerState: buildRouterStateChaveClienteProcesso(codigoClienteNorm, procNorm),
+              })
+            }
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-indigo-300 bg-indigo-50 text-indigo-900 text-xs font-medium hover:bg-indigo-100 dark:border-indigo-500/50 dark:bg-indigo-950/50 dark:text-indigo-100 dark:hover:bg-indigo-900/40"
+            title={`Abrir cadastro do processo (cliente ${codigoClienteNorm}, proc. ${procNorm}) numa janela suspensa`}
+          >
+            <FolderOpen className="w-4 h-4 shrink-0" aria-hidden />
+            Processo
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (isEmbedded && typeof onFecharEmbed === 'function') onFecharEmbed();
+              else window.history.back();
+            }}
+            className="p-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+            aria-label="Fechar"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
       </header>
 
       <div
@@ -3349,6 +3402,53 @@ export function Calculos() {
           </div>
         </div>
       )}
+
+      {processoEmbed ? (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center p-2 sm:p-4 bg-black/55"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="calculos-processo-embed-title"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setProcessoEmbed(null);
+          }}
+        >
+          <div
+            className="flex flex-col w-[min(100vw-0.5rem,1280px)] h-[min(100dvh-0.5rem,920px)] max-h-[min(100dvh-0.5rem,920px)] min-h-0 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#0f141c] shadow-2xl overflow-hidden"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-[#141c2c] shrink-0">
+              <h2 id="calculos-processo-embed-title" className="text-sm font-semibold text-slate-900 dark:text-white">
+                Processo (cadastro)
+              </h2>
+              <button
+                type="button"
+                onClick={() => setProcessoEmbed(null)}
+                className="p-1.5 rounded-lg text-slate-600 hover:bg-slate-200 dark:text-slate-300 dark:hover:bg-white/10"
+                aria-label="Fechar formulário de processo"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden overscroll-contain [-webkit-overflow-scrolling:touch]">
+              <Suspense
+                fallback={
+                  <div className="flex min-h-[12rem] items-center justify-center p-8 text-sm text-slate-600 dark:text-slate-400">
+                    Carregando formulário de processos…
+                  </div>
+                }
+              >
+                <ProcessosLazy
+                  key={processoEmbed.revision}
+                  embedIntent={processoEmbed.routerState}
+                  embedIntentRevision={processoEmbed.revision}
+                  onFecharEmbed={() => setProcessoEmbed(null)}
+                />
+              </Suspense>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

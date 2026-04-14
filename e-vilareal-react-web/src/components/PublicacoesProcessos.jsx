@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -39,6 +39,35 @@ import {
 } from '../repositories/publicacoesRepository.js';
 import { ModalCriarTarefaContextual } from './ModalCriarTarefaContextual.jsx';
 import { buildContextFromPublicacaoRow } from '../data/tarefasContextualPayload.js';
+import { buildRouterStateChaveClienteProcesso } from '../domain/camposProcessoCliente.js';
+
+const ProcessosLazy = lazy(() =>
+  import('./Processos.jsx').then((module) => ({ default: module.Processos }))
+);
+
+/**
+ * Monta o state do router para abrir Processos com o par cliente×proc. da linha (vinculado ou sugestão CNJ).
+ * @returns {Record<string, unknown>|null}
+ */
+function construirStateProcessosDesdeLinhaPublicacao(row, indiceCnj) {
+  const sug = lookupSugestaoVinculoCadastro(row, indiceCnj);
+  const codRaw = row?.codCliente || sug?.codCliente;
+  const procRaw =
+    row?.procInterno != null && String(row.procInterno).trim() !== '' ? row.procInterno : sug?.procInterno;
+  const cod = codRaw != null && String(codRaw).trim() !== '' ? String(codRaw).trim() : '';
+  if (!cod) {
+    window.alert(
+      'Não há código de cliente para abrir o processo. Vincule à publicação ou confira a sugestão de cadastro.'
+    );
+    return null;
+  }
+  const procNum = Number(procRaw);
+  if (!Number.isFinite(procNum) || procNum < 1) {
+    window.alert('Não há número de processo interno (proc.) sugerido ou vinculado para abrir o cadastro.');
+    return null;
+  }
+  return buildRouterStateChaveClienteProcesso(cod, procNum);
+}
 
 function Badge({ children, tone = 'slate' }) {
   const cls = {
@@ -107,6 +136,8 @@ export function PublicacoesProcessos() {
   /** Critério do consolidado diário: dia da publicação oficial ou da disponibilização no diário. */
   const [consolidadoCriterio, setConsolidadoCriterio] = useState('publicacao');
   const [modalTarefaContextual, setModalTarefaContextual] = useState(null);
+  /** Formulário completo de Processos (lazy) — duplo clique na coluna «Vínculo». */
+  const [processoEmbed, setProcessoEmbed] = useState(null);
   const [limpandoPublicacoes, setLimpandoPublicacoes] = useState(false);
 
   const [indiceCnj, setIndiceCnj] = useState(() => new Map());
@@ -120,6 +151,15 @@ export function PublicacoesProcessos() {
       ativo = false;
     };
   }, []);
+
+  const abrirFormularioProcessoDesdeVinculo = useCallback(
+    (row) => {
+      const st = construirStateProcessosDesdeLinhaPublicacao(row, indiceCnj);
+      if (!st) return;
+      setProcessoEmbed({ revision: Date.now(), routerState: st });
+    },
+    [indiceCnj]
+  );
 
   function abrirModalTarefaPublicacao(r) {
     if (!featureFlags.useApiTarefas) return;
@@ -628,7 +668,11 @@ export function PublicacoesProcessos() {
                         <td className="p-2 align-top">
                           <ScoreBadge score={row.scoreConfianca} />
                         </td>
-                        <td className="p-2 align-top max-w-[240px]">
+                        <td
+                          className="p-2 align-top max-w-[240px] cursor-pointer"
+                          title="Duplo clique: abrir o formulário de Processos (cliente e proc. vinculados ou sugeridos)"
+                          onDoubleClick={() => abrirFormularioProcessoDesdeVinculo(row)}
+                        >
                           {(() => {
                             const sugPre = lookupSugestaoVinculoCadastro(row, indiceCnj);
                             return row.statusVinculo === 'vinculado' ? (
@@ -1031,7 +1075,11 @@ export function PublicacoesProcessos() {
                         <td className="p-2">
                           <ScoreBadge score={r.scoreConfianca} />
                         </td>
-                        <td className="p-2 max-w-[240px]">
+                        <td
+                          className="p-2 max-w-[240px] cursor-pointer"
+                          title="Duplo clique: abrir o formulário de Processos (cliente e proc. vinculados ou sugeridos)"
+                          onDoubleClick={() => abrirFormularioProcessoDesdeVinculo(r)}
+                        >
                           {r.statusVinculo === 'vinculado' ? (
                             <>
                               <div className="flex flex-wrap items-center gap-1">
@@ -1235,6 +1283,53 @@ export function PublicacoesProcessos() {
           onClose={() => setModalTarefaContextual(null)}
           context={modalTarefaContextual}
         />
+
+        {processoEmbed ? (
+          <div
+            className="fixed inset-0 z-[60] flex items-center justify-center p-2 sm:p-4 bg-black/55"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="publicacoes-processo-embed-title"
+            onMouseDown={(e) => {
+              if (e.target === e.currentTarget) setProcessoEmbed(null);
+            }}
+          >
+            <div
+              className="flex flex-col w-[min(100vw-0.5rem,1280px)] h-[min(100dvh-0.5rem,920px)] max-h-[min(100dvh-0.5rem,920px)] min-h-0 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#0f141c] shadow-2xl overflow-hidden"
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-[#141c2c] shrink-0">
+                <h2 id="publicacoes-processo-embed-title" className="text-sm font-semibold text-slate-900 dark:text-white">
+                  Processo (cadastro)
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => setProcessoEmbed(null)}
+                  className="p-1.5 rounded-lg text-slate-600 hover:bg-slate-200 dark:text-slate-300 dark:hover:bg-white/10"
+                  aria-label="Fechar formulário de processo"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden overscroll-contain [-webkit-overflow-scrolling:touch]">
+                <Suspense
+                  fallback={
+                    <div className="flex min-h-[12rem] items-center justify-center p-8 text-sm text-slate-600 dark:text-slate-400">
+                      Carregando formulário de processos…
+                    </div>
+                  }
+                >
+                  <ProcessosLazy
+                    key={processoEmbed.revision}
+                    embedIntent={processoEmbed.routerState}
+                    embedIntentRevision={processoEmbed.revision}
+                    onFecharEmbed={() => setProcessoEmbed(null)}
+                  />
+                </Suspense>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );

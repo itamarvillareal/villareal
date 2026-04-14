@@ -244,12 +244,23 @@ function getInitialEstadoCliente(codPreferido, clientesApiIndex = []) {
   };
 }
 
-/** Estado `codigo` = **codigoCliente** (mesmo dado que a tela Processos em `codigoCliente`). Grade: `procNumero` = **numeroInterno**. */
-export function CadastroClientes() {
+/**
+ * Estado `codigo` = **codigoCliente** (mesmo dado que a tela Processos em `codigoCliente`). Grade: `procNumero` = **numeroInterno**.
+ *
+ * @param {import('react-router-dom').Location['state'] | null} [props.embedIntent] — substitui `location.state` para hidratar cliente/proc. (ex.: modal em Processos).
+ * @param {number|string} [props.embedIntentRevision] — altera para re-aplicar o intent sem mudar de rota.
+ * @param {() => void} [props.onFecharEmbed] — se definido, os botões «Fechar» chamam isto em vez de `history.back()` (modo embutido).
+ */
+export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecharEmbed } = {}) {
   const location = useLocation();
   const navigate = useNavigate();
-  const stateFromFinanceiro = location.state && typeof location.state === 'object' ? location.state : null;
+  const isEmbedded = embedIntent !== undefined && embedIntent !== null;
+  const intentStateForHydration = isEmbedded ? embedIntent : location.state;
+  const intentRevisionForHydration = isEmbedded ? String(embedIntentRevision) : location.key;
+  const stateFromFinanceiro =
+    intentStateForHydration && typeof intentStateForHydration === 'object' ? intentStateForHydration : null;
   const navClientes = extrairIntentNavegacaoProcessos(stateFromFinanceiro);
+  const emTelaClientes = location.pathname === '/pessoas' || isEmbedded;
   const codClienteFromState = navClientes?.hasCod ? String(navClientes.codRaw ?? '').trim() : '';
   const procFromState =
     navClientes?.hasProcKey && navClientes.procRaw !== undefined && navClientes.procRaw !== null
@@ -340,7 +351,7 @@ export function CadastroClientes() {
   };
 
   useEffect(() => {
-    if (location.pathname !== '/pessoas') return undefined;
+    if (!emTelaClientes) return undefined;
     let cancelado = false;
     void (async () => {
       if (featureFlags.useApiClientes) {
@@ -365,7 +376,7 @@ export function CadastroClientes() {
     return () => {
       cancelado = true;
     };
-  }, [location.pathname, location.key]);
+  }, [emTelaClientes, location.pathname, location.key]);
 
   useEffect(() => {
     const now = Date.now();
@@ -525,10 +536,9 @@ export function CadastroClientes() {
   }, [clientesApiCarregados, clientesApiIndex, aplicarDadosCliente]);
 
   useEffect(() => {
-    const path = (location.pathname || '').replace(/\/+$/, '');
-    if (path !== '/pessoas') return;
+    if (!emTelaClientes) return;
     aplicouUltimoClienteApiSemPersistRef.current = false;
-  }, [location.pathname, location.key]);
+  }, [emTelaClientes, location.pathname, location.key]);
 
   useEffect(() => {
     if (!featureFlags.useApiClientes) return;
@@ -564,7 +574,7 @@ export function CadastroClientes() {
       aplicarDadosCliente(codClienteFromState);
     }
     if (procFromState) setPesquisaProcesso(procFromState);
-  }, [codClienteFromState, procFromState, aplicarDadosCliente]);
+  }, [codClienteFromState, procFromState, aplicarDadosCliente, intentRevisionForHydration]);
 
   useEffect(() => {
     const h = () => aplicarDadosCliente(codigo);
@@ -578,7 +588,7 @@ export function CadastroClientes() {
 
   /** Volta da tela Processos (ou outro fluxo): alinha à grade ao histórico local e inclui Proc. novos gravados em Processos. */
   useEffect(() => {
-    if (location.pathname !== '/pessoas') return;
+    if (!emTelaClientes) return;
     const padded = padCliente8(codigo);
     setProcessos((prev) => enriquecerListaProcessosComHistoricoLocal(padded, prev));
     if (!featureFlags.useApiProcessos) return;
@@ -595,7 +605,7 @@ export function CadastroClientes() {
         );
       })
       .catch(() => {});
-  }, [location.pathname, location.key, codigo]);
+  }, [emTelaClientes, location.pathname, location.key, codigo]);
 
   useEffect(() => {
     if (primeiraSincPessoaRef.current) {
@@ -1158,8 +1168,10 @@ export function CadastroClientes() {
     'bg-gradient-to-r from-slate-800 via-indigo-900 to-violet-900 text-white [&_th]:border-b [&_th]:border-white/10';
 
   return (
-    <div className="min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/35 to-emerald-50/45 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d] flex flex-col">
-      <div className="max-w-[1400px] mx-auto w-full flex flex-col flex-1 min-h-0 px-3 py-3">
+    <div
+      className={`bg-gradient-to-br from-slate-100 via-indigo-50/35 to-emerald-50/45 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d] flex flex-col ${isEmbedded ? 'min-h-0 w-full min-w-0' : 'min-h-full'}`}
+    >
+      <div className={`max-w-[1400px] mx-auto w-full flex flex-col flex-1 min-h-0 px-3 py-3 ${isEmbedded ? 'min-w-0' : ''}`}>
         {erroApiCliente ? (
           <div className="mb-3 rounded-xl border border-red-200/90 bg-red-50/95 px-4 py-3 text-sm text-red-800 shadow-sm backdrop-blur-sm">
             {erroApiCliente}
@@ -1179,7 +1191,10 @@ export function CadastroClientes() {
           </div>
           <button
             type="button"
-            onClick={() => window.history.back()}
+            onClick={() => {
+              if (isEmbedded && typeof onFecharEmbed === 'function') onFecharEmbed();
+              else window.history.back();
+            }}
             className="p-2 rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-slate-50 shrink-0 shadow-sm"
             aria-label="Fechar"
           >
@@ -1187,7 +1202,7 @@ export function CadastroClientes() {
           </button>
         </header>
 
-        <div className="flex-1 min-w-0 overflow-auto space-y-4 pb-6">
+        <div className="flex-1 min-w-0 min-h-0 overflow-auto space-y-4 pb-6">
           <section className="rounded-2xl border border-emerald-200/70 bg-white/95 shadow-md overflow-hidden ring-1 ring-emerald-500/10">
             <div className="border-b border-emerald-100/80 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 px-4 py-3">
               <h2 className="text-sm font-bold uppercase tracking-wide text-white flex items-center gap-2">
@@ -1848,7 +1863,10 @@ export function CadastroClientes() {
             <button
               type="button"
               className="px-8 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-800 text-sm font-semibold shadow-sm hover:bg-slate-50 hover:border-slate-400 transition-colors"
-              onClick={() => window.history.back()}
+              onClick={() => {
+                if (isEmbedded && typeof onFecharEmbed === 'function') onFecharEmbed();
+                else window.history.back();
+              }}
             >
               Fechar
             </button>

@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { FilterX, ArrowDownAZ, ArrowUpAZ, Calculator, FileSpreadsheet, Loader2, ChevronDown } from 'lucide-react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { FilterX, ArrowDownAZ, ArrowUpAZ, Calculator, FileSpreadsheet, Loader2, ChevronDown, X } from 'lucide-react';
 import {
   carregarLinhasRelatorioCalculosAsync,
   getLinhasRelatorioCalculosConsolidadoComFiltros,
@@ -13,6 +12,10 @@ import {
 } from '../data/relatorioCalculosData.js';
 import { featureFlags } from '../config/featureFlags.js';
 import { buildRouterStateChaveClienteProcesso } from '../domain/camposProcessoCliente.js';
+
+const CalculosLazy = lazy(() =>
+  import('./Calculos.jsx').then((module) => ({ default: module.Calculos }))
+);
 
 /**
  * Grade alinhada à planilha de referência: 11 colunas, cabeçalho cinza, linhas zebradas.
@@ -57,7 +60,7 @@ const CRITERIOS_EMITIR_INICIAL = {
 };
 
 export function RelatorioCalculos() {
-  const navigate = useNavigate();
+  const [calculosEmbed, setCalculosEmbed] = useState(null);
   const [linhas, setLinhas] = useState(() => []);
   const [relatorioEmitido, setRelatorioEmitido] = useState(false);
   const [emitindoRelatorio, setEmitindoRelatorio] = useState(false);
@@ -220,6 +223,17 @@ export function RelatorioCalculos() {
     return 'text-left';
   };
 
+  const abrirFormularioCalculosDesdeLinha = useCallback((row) => {
+    const routerState = {
+      dimensao: row.navigateDimensao ?? row.dimensao,
+      ...buildRouterStateChaveClienteProcesso(
+        row.navigateCodCliente ?? row.codCliente,
+        row.navigateProc ?? row.proc
+      ),
+    };
+    setCalculosEmbed({ revision: Date.now(), routerState });
+  }, []);
+
   return (
     <div className="min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/40 to-emerald-50/50 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d] flex flex-col">
       <div className="flex-1 min-h-0 p-4 flex flex-col max-w-[1800px] mx-auto w-full">
@@ -234,8 +248,8 @@ export function RelatorioCalculos() {
             </h1>
             <p className="text-sm text-slate-600 mt-0.5 max-w-3xl">
               Uma linha por parcela do parcelamento (como na planilha): código, réu, unidade, datas de vencimento e pagamento,
-              valores, honorários, observação, parcela, processo e indicação de cálculo aceito. Duplo clique na linha abre a
-              rodada em Cálculos.
+              valores, honorários, observação, parcela, processo e indicação de cálculo aceito. Duplo clique na linha abre o
+              formulário de Cálculos numa janela suspensa (mesma experiência da tela Cálculos).
             </p>
             {!relatorioEmitido ? (
               <p className="text-xs text-slate-600 mt-1.5 max-w-xl">
@@ -497,19 +511,8 @@ export function RelatorioCalculos() {
                         className={`border-b border-slate-300 cursor-pointer hover:brightness-[0.98] ${
                           idx % 2 === 0 ? 'bg-white' : 'bg-slate-100'
                         }`}
-                        title="Duplo clique: abrir em Cálculos"
-                        onDoubleClick={() =>
-                          navigate('/calculos', {
-                            replace: false,
-                            state: {
-                              dimensao: row.navigateDimensao ?? row.dimensao,
-                              ...buildRouterStateChaveClienteProcesso(
-                                row.navigateCodCliente ?? row.codCliente,
-                                row.navigateProc ?? row.proc
-                              ),
-                            },
-                          })
-                        }
+                        title="Duplo clique: abrir formulário de Cálculos"
+                        onDoubleClick={() => abrirFormularioCalculosDesdeLinha(row)}
                       >
                         {COLUNAS.map((col) => (
                           <td
@@ -566,6 +569,53 @@ export function RelatorioCalculos() {
           )}
         </div>
       </div>
+
+      {calculosEmbed ? (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center p-2 sm:p-4 bg-black/55"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="relatorio-calculos-embed-title"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setCalculosEmbed(null);
+          }}
+        >
+          <div
+            className="flex flex-col w-[min(100vw-0.5rem,1280px)] h-[min(100dvh-0.5rem,920px)] max-h-[min(100dvh-0.5rem,920px)] min-h-0 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#0f141c] shadow-2xl overflow-hidden"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-[#141c2c] shrink-0">
+              <h2 id="relatorio-calculos-embed-title" className="text-sm font-semibold text-slate-900 dark:text-white">
+                Cálculos
+              </h2>
+              <button
+                type="button"
+                onClick={() => setCalculosEmbed(null)}
+                className="p-1.5 rounded-lg text-slate-600 hover:bg-slate-200 dark:text-slate-300 dark:hover:bg-white/10"
+                aria-label="Fechar formulário de cálculos"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden overscroll-contain [-webkit-overflow-scrolling:touch]">
+              <Suspense
+                fallback={
+                  <div className="flex min-h-[12rem] items-center justify-center p-8 text-sm text-slate-600 dark:text-slate-400">
+                    Carregando formulário de cálculos…
+                  </div>
+                }
+              >
+                <CalculosLazy
+                  key={calculosEmbed.revision}
+                  embedIntent={calculosEmbed.routerState}
+                  embedIntentRevision={calculosEmbed.revision}
+                  onFecharEmbed={() => setCalculosEmbed(null)}
+                />
+              </Suspense>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
