@@ -29,6 +29,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Locale;
 import java.util.Set;
@@ -399,9 +400,71 @@ public class ProcessoApplicationService {
     @Transactional(readOnly = true)
     public List<ProcessoAndamentoResponse> listarAndamentos(Long processoId) {
         requireProcesso(processoId);
-        return andamentoRepository.findByProcesso_IdOrderByMovimentoEmDescIdDesc(processoId).stream()
-                .map(this::toAndamentoResponse)
-                .collect(Collectors.toList());
+        List<ProcessoAndamentoEntity> rows =
+                andamentoRepository.findByProcesso_IdOrderByMovimentoEmDescIdDesc(processoId);
+        if (rows.isEmpty()) {
+            return List.of();
+        }
+        try {
+            Map<Long, Long> usuarioIdPorAndamentoId = new HashMap<>();
+            for (Object[] pair : andamentoRepository.findAndamentoUsuarioFkPairsByProcessoId(processoId)) {
+                if (pair == null || pair.length < 2) {
+                    continue;
+                }
+                Long andamentoId = longIdOrNull(pair[0]);
+                if (andamentoId == null) {
+                    continue;
+                }
+                Long usuarioFk = longIdOrNull(pair[1]);
+                if (usuarioFk == null) {
+                    continue;
+                }
+                usuarioIdPorAndamentoId.put(andamentoId, usuarioFk);
+            }
+            Set<Long> idsUsuarios = usuarioIdPorAndamentoId.values().stream()
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toCollection(LinkedHashSet::new));
+            Map<Long, UsuarioEntity> usuarioPorId =
+                    idsUsuarios.isEmpty()
+                            ? Map.of()
+                            : usuarioRepository.findAllById(idsUsuarios).stream()
+                                    .collect(Collectors.toMap(UsuarioEntity::getId, u -> u));
+            return rows.stream()
+                    .map(a -> {
+                        UsuarioEntity u = a.getUsuario();
+                        if (u == null) {
+                            Long uid = usuarioIdPorAndamentoId.get(a.getId());
+                            if (uid != null) {
+                                u = usuarioPorId.get(uid);
+                            }
+                        }
+                        return toAndamentoResponse(a, u);
+                    })
+                    .collect(Collectors.toList());
+        } catch (RuntimeException ignored) {
+            return rows.stream()
+                    .map(a -> toAndamentoResponse(a, a.getUsuario()))
+                    .collect(Collectors.toList());
+        }
+    }
+
+    /** Converte coluna escalar de consulta JPQL (id / FK) para Long. */
+    private static Long longIdOrNull(Object o) {
+        if (o == null) {
+            return null;
+        }
+        if (o instanceof Number n) {
+            return n.longValue();
+        }
+        String s = String.valueOf(o).trim();
+        if (!StringUtils.hasText(s)) {
+            return null;
+        }
+        try {
+            return Long.parseLong(s);
+        } catch (NumberFormatException ex) {
+            return null;
+        }
     }
 
     @Transactional
@@ -411,7 +474,7 @@ public class ProcessoApplicationService {
         a.setProcesso(proc);
         aplicarAndamento(a, req);
         a = andamentoRepository.save(a);
-        return toAndamentoResponse(andamentoRepository.findById(a.getId()).orElseThrow());
+        return toAndamentoResponse(andamentoRepository.findById(a.getId()).orElseThrow(), null);
     }
 
     @Transactional
@@ -420,7 +483,7 @@ public class ProcessoApplicationService {
         ProcessoAndamentoEntity a = requireAndamento(processoId, andamentoId);
         aplicarAndamento(a, req);
         andamentoRepository.save(a);
-        return toAndamentoResponse(requireAndamento(processoId, andamentoId));
+        return toAndamentoResponse(requireAndamento(processoId, andamentoId), null);
     }
 
     @Transactional
@@ -625,7 +688,9 @@ public class ProcessoApplicationService {
         r.setNaturezaAcao(Utf8MojibakeUtil.corrigir(e.getNaturezaAcao()));
         r.setDescricaoAcao(Utf8MojibakeUtil.corrigir(e.getDescricaoAcao()));
         r.setCompetencia(Utf8MojibakeUtil.corrigir(e.getCompetencia()));
-        r.setFase(Utf8MojibakeUtil.corrigir(e.getFase()));
+        String faseExibir =
+                StringUtils.hasText(e.getFase()) ? e.getFase().trim() : ProcessoEntity.FASE_PADRAO_EM_ANDAMENTO;
+        r.setFase(Utf8MojibakeUtil.corrigir(faseExibir));
         r.setObservacaoFase(Utf8MojibakeUtil.corrigir(e.getObservacaoFase()));
         r.setStatus(Utf8MojibakeUtil.corrigir(e.getStatus()));
         r.setTramitacao(Utf8MojibakeUtil.corrigir(e.getTramitacao()));
@@ -669,7 +734,11 @@ public class ProcessoApplicationService {
         return r;
     }
 
-    private ProcessoAndamentoResponse toAndamentoResponse(ProcessoAndamentoEntity a) {
+    /**
+     * @param usuarioResolvido se não nulo, usado para nome/login no DTO; se nulo, usa {@code a.getUsuario()}
+     *        (criação/atualização de um único andamento dentro da mesma transação).
+     */
+    private ProcessoAndamentoResponse toAndamentoResponse(ProcessoAndamentoEntity a, UsuarioEntity usuarioResolvido) {
         ProcessoAndamentoResponse r = new ProcessoAndamentoResponse();
         r.setId(a.getId());
         r.setMovimentoEm(a.getMovimentoEm());
@@ -677,10 +746,20 @@ public class ProcessoApplicationService {
         r.setDetalhe(Utf8MojibakeUtil.corrigir(a.getDetalhe()));
         r.setOrigem(Utf8MojibakeUtil.corrigir(a.getOrigem()));
         r.setOrigemAutomatica(a.getOrigemAutomatica());
-        if (a.getUsuario() != null) {
-            r.setUsuarioId(a.getUsuario().getId());
+        UsuarioEntity u = usuarioResolvido != null ? usuarioResolvido : a.getUsuario();
+        if (u != null) {
+            r.setUsuarioId(u.getId());
+            String apelido =
+                    StringUtils.hasText(u.getApelido()) ? Utf8MojibakeUtil.corrigir(u.getApelido().trim()) : "";
+            String nome = StringUtils.hasText(u.getNome()) ? Utf8MojibakeUtil.corrigir(u.getNome().trim()) : "";
+            String login = StringUtils.hasText(u.getLogin()) ? Utf8MojibakeUtil.corrigir(u.getLogin().trim()) : "";
+            String exibicao = StringUtils.hasText(apelido) ? apelido : nome;
+            r.setUsuarioNome(StringUtils.hasText(exibicao) ? exibicao : null);
+            r.setUsuarioLogin(StringUtils.hasText(login) ? login : null);
         } else {
             r.setUsuarioId(null);
+            r.setUsuarioNome(null);
+            r.setUsuarioLogin(null);
         }
         return r;
     }

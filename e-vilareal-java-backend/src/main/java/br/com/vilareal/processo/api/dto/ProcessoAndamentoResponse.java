@@ -12,6 +12,12 @@ public class ProcessoAndamentoResponse {
     private Boolean origemAutomatica;
     private Long usuarioId;
 
+    /** Texto para exibição: {@code usuarios.apelido} se preenchido, senão {@code usuarios.nome}. */
+    private String usuarioNome;
+
+    /** Login do usuário (tabela {@code usuarios.login}); útil quando nome estiver vazio. */
+    private String usuarioLogin;
+
     public Long getId() {
         return id;
     }
@@ -66,5 +72,21 @@ public class ProcessoAndamentoResponse {
 
     public void setUsuarioId(Long usuarioId) {
         this.usuarioId = usuarioId;
+    }
+
+    public String getUsuarioNome() {
+        return usuarioNome;
+    }
+
+    public void setUsuarioNome(String usuarioNome) {
+        this.usuarioNome = usuarioNome;
+    }
+
+    public String getUsuarioLogin() {
+        return usuarioLogin;
+    }
+
+    public void setUsuarioLogin(String usuarioLogin) {
+        this.usuarioLogin = usuarioLogin;
     }
 }

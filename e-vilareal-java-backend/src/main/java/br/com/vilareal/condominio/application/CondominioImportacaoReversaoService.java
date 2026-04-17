@@ -7,6 +7,7 @@ import br.com.vilareal.condominio.api.dto.InadimplenciaReversaoResponse;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaContatoRepository;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaEnderecoRepository;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
+import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoAndamentoRepository;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoParteRepository;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
 import org.springframework.stereotype.Service;
@@ -17,6 +18,7 @@ import org.springframework.util.StringUtils;
 public class CondominioImportacaoReversaoService {
 
     private final CalculoRodadaRepository calculoRodadaRepository;
+    private final ProcessoAndamentoRepository processoAndamentoRepository;
     private final ProcessoParteRepository processoParteRepository;
     private final ProcessoRepository processoRepository;
     private final PessoaContatoRepository pessoaContatoRepository;
@@ -25,12 +27,14 @@ public class CondominioImportacaoReversaoService {
 
     public CondominioImportacaoReversaoService(
             CalculoRodadaRepository calculoRodadaRepository,
+            ProcessoAndamentoRepository processoAndamentoRepository,
             ProcessoParteRepository processoParteRepository,
             ProcessoRepository processoRepository,
             PessoaContatoRepository pessoaContatoRepository,
             PessoaEnderecoRepository pessoaEnderecoRepository,
             PessoaRepository pessoaRepository) {
         this.calculoRodadaRepository = calculoRodadaRepository;
+        this.processoAndamentoRepository = processoAndamentoRepository;
         this.processoParteRepository = processoParteRepository;
         this.processoRepository = processoRepository;
         this.pessoaContatoRepository = pessoaContatoRepository;
@@ -45,7 +49,8 @@ public class CondominioImportacaoReversaoService {
         }
         String importacaoId = importacaoIdRaw.trim();
         long total =
-                calculoRodadaRepository.countByImportacaoId(importacaoId)
+                processoAndamentoRepository.countByImportacaoId(importacaoId)
+                        + calculoRodadaRepository.countByImportacaoId(importacaoId)
                         + processoParteRepository.countByImportacaoId(importacaoId)
                         + processoRepository.countByImportacaoId(importacaoId)
                         + pessoaContatoRepository.countByImportacaoId(importacaoId)
@@ -55,6 +60,7 @@ public class CondominioImportacaoReversaoService {
             throw new ResourceNotFoundException("Importação não encontrada ou já revertida");
         }
 
+        long andamentosRemovidos = processoAndamentoRepository.deleteByImportacaoId(importacaoId);
         long calculosRemovidos = calculoRodadaRepository.deleteByImportacaoId(importacaoId);
         long partesRemovidas = processoParteRepository.deleteByImportacaoId(importacaoId);
         long processosRemovidos = processoRepository.deleteByImportacaoId(importacaoId);
@@ -64,6 +70,7 @@ public class CondominioImportacaoReversaoService {
 
         return new InadimplenciaReversaoResponse(
                 importacaoId,
+                andamentosRemovidos,
                 calculosRemovidos,
                 partesRemovidas,
                 processosRemovidos,

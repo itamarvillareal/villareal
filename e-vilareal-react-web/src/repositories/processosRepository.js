@@ -510,6 +510,20 @@ export async function sincronizarAndamentosIncremental(processoId, historico) {
   return out;
 }
 
+/** Histórico importado: linha com `detalhe` tipo "Consultor: NOME" sem `usuario_id`. */
+function extrairNomeConsultorDeDetalhe(detalhe) {
+  const s = String(detalhe ?? '').trim();
+  if (!s) return '';
+  const lines = s.split(/\r?\n/);
+  for (const line of lines) {
+    const t = line.trim();
+    const m = /^\s*Consultor:\s*(.+)$/i.exec(t);
+    if (m) return m[1].trim();
+  }
+  const m2 = /Consultor:\s*([^\r\n]+)/i.exec(s);
+  return m2 ? m2[1].trim() : '';
+}
+
 export async function listarPrazosProcesso(processoId) {
   if (!featureFlags.useApiProcessos) return [];
   const pid = await resolverProcessoId({ processoId });
@@ -544,12 +558,19 @@ export async function upsertPrazoFatalProcesso(processoId, prazoFatalBr) {
 }
 
 export function mapApiAndamentoToHistoricoItem(a, idx = 0, total = 1) {
+  const movRaw = a?.movimentoEm ?? a?.movimento_em;
+  const tituloRaw = a?.titulo;
+  const idNum = Number(a?.id);
+  const nome = String(a?.usuarioNome ?? a?.usuario_nome ?? '').trim();
+  const login = String(a?.usuarioLogin ?? a?.usuario_login ?? '').trim();
+  const consultor = extrairNomeConsultorDeDetalhe(a?.detalhe);
+  const usuario = nome || login || consultor;
   return {
-    id: Number(a.id),
+    id: Number.isFinite(idNum) && idNum >= 1 ? idNum : Date.now() + idx,
     inf: String(total - idx).padStart(2, '0'),
-    info: String(a.titulo || ''),
-    data: toBrFromIsoDate(a.movimentoEm),
-    usuario: '',
+    info: String(tituloRaw ?? '').trim(),
+    data: toBrFromIsoDate(movRaw),
+    usuario,
     numero: String(total - idx).padStart(4, '0'),
   };
 }

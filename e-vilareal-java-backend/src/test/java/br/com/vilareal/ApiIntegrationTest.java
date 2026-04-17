@@ -412,11 +412,13 @@ class ApiIntegrationTest extends AbstractIntegrationTest {
 
         assertThat(partes.getBody()).hasSize(1);
 
-        var andamento = Map.of(
-                "movimentoEm", "2026-03-20T12:00:00Z",
-                "titulo", "Petição juntada",
-                "origem", "MANUAL",
-                "origemAutomatica", false);
+        long usuarioId = usuarioIdParaLoginItamar(token);
+        var andamento = new LinkedHashMap<String, Object>();
+        andamento.put("movimentoEm", "2026-03-20T12:00:00Z");
+        andamento.put("titulo", "Petição juntada");
+        andamento.put("origem", "MANUAL");
+        andamento.put("origemAutomatica", false);
+        andamento.put("usuarioId", usuarioId);
 
         ResponseEntity<Map<String, Object>> andCriado = rest.exchange(
                 "/api/processos/" + procId + "/andamentos",
@@ -425,6 +427,23 @@ class ApiIntegrationTest extends AbstractIntegrationTest {
                 new ParameterizedTypeReference<>() {});
 
         assertThat(andCriado.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+
+        ResponseEntity<List<Map<String, Object>>> andamentosListados = rest.exchange(
+                "/api/processos/" + procId + "/andamentos",
+                HttpMethod.GET,
+                new HttpEntity<>(h),
+                new ParameterizedTypeReference<>() {});
+
+        assertThat(andamentosListados.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(andamentosListados.getBody()).isNotEmpty();
+        Map<String, Object> andamentoListado = andamentosListados.getBody().stream()
+                .filter(m -> "Petição juntada".equals(String.valueOf(m.get("titulo"))))
+                .findFirst()
+                .orElseThrow();
+        assertThat(andamentoListado.get("usuarioId")).isNotNull();
+        assertThat(andamentoListado.get("usuarioNome"))
+                .as("GET /andamentos deve expor usuarioNome quando há usuario_id")
+                .isNotNull();
 
         var prazo = Map.of(
                 "descricao", "Prazo fatal do processo",

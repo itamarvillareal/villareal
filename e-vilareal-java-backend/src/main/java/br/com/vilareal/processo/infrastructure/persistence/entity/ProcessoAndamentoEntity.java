@@ -39,4 +39,8 @@ public class ProcessoAndamentoEntity {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "usuario_id")
     private UsuarioEntity usuario;
+
+    /** UUID da importação em lote; usado na reversão por `importacao_id`. */
+    @Column(name = "importacao_id", length = 36)
+    private String importacaoId;
 }

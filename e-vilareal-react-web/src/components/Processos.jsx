@@ -96,7 +96,8 @@ const CadastroClientesLazy = lazy(() =>
   import('./CadastroClientes.jsx').then((module) => ({ default: module.CadastroClientes }))
 );
 
-const HISTORICO_POR_PAGINA = 10;
+/** Linhas por página na aba Histórico — preenche melhor a área útil sem depender de linhas vazias. */
+const HISTORICO_POR_PAGINA = 24;
 
 /**
  * Nome / Razão Social do módulo Clientes (localStorage), alinhado a CadastroClientes.
@@ -411,6 +412,16 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   const [historicoExternoTick, setHistoricoExternoTick] = useState(0);
   /** Evita aplicar resposta antiga se o usuário trocar de processo antes do GET terminar. */
   const carregarProcessoApiSeqRef = useRef(0);
+
+  /** Evita página vazia quando o nº de linhas do histórico diminui (ex.: troca de processo ou carga API). */
+  useEffect(() => {
+    const totalP = Math.max(1, Math.ceil(historico.length / HISTORICO_POR_PAGINA));
+    setPaginaHistorico((p) => {
+      if (p > totalP) return totalP;
+      if (p < 1) return 1;
+      return p;
+    });
+  }, [historico.length]);
 
   useEffect(() => {
     const h = () => setHistoricoExternoTick((t) => t + 1);
@@ -1556,11 +1567,21 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
 
       const andamentos = await listarAndamentosProcesso(procApi.id);
       if (seq !== carregarProcessoApiSeqRef.current) return;
-      if (Array.isArray(andamentos) && andamentos.length > 0) {
+      if (!Array.isArray(andamentos)) {
+        setHistorico([]);
+        setPaginaHistorico(1);
+        setApiError(
+          typeof andamentos?.message === 'string' && andamentos.message
+            ? andamentos.message
+            : 'Histórico: resposta inválida da API (não é uma lista). Verifique GET /api/processos/…/andamentos na rede.'
+        );
+      } else if (andamentos.length > 0) {
         const hist = andamentos.map((a, idx) => mapApiAndamentoToHistoricoItem(a, idx, andamentos.length));
         setHistorico(hist);
+        setPaginaHistorico(1);
       } else {
         setHistorico([]);
+        setPaginaHistorico(1);
       }
     } catch (e) {
       if (seq !== carregarProcessoApiSeqRef.current) return;
@@ -3050,14 +3071,22 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                       Manter Inf.
                     </button>
                   </div>
-                  <div className="overflow-x-auto overflow-y-auto min-h-[10.5rem]" style={{ minHeight: 'calc(2.5rem * 11)' }}>
+                  <div className="overflow-x-auto overflow-y-auto min-h-[8rem] max-h-[min(72vh,56rem)]">
                     <table className="w-full text-sm border-collapse table-fixed">
                       <thead className="bg-slate-100 sticky top-0">
                         <tr>
-                          <th className="text-left px-3 py-1.5 font-semibold text-slate-700 w-14">Inf.</th>
-                          <th className="text-left px-3 py-1.5 font-semibold text-slate-700 w-[40%]">Informação</th>
-                          <th className="text-left px-3 py-1.5 font-semibold text-slate-700 w-24">Data</th>
-                          <th className="text-left px-3 py-1.5 font-semibold text-slate-700 w-20">Usuário</th>
+                          <th className="text-left pl-2 pr-6 py-1.5 font-semibold text-slate-700 w-[6.25rem] shrink-0">
+                            Inf.
+                          </th>
+                          <th className="text-left pl-2 pr-3 py-1.5 font-semibold text-slate-700 min-w-0 w-[72%]">
+                            Informação
+                          </th>
+                          <th className="text-left px-2 py-1.5 font-semibold text-slate-700 w-28 shrink-0 whitespace-nowrap">
+                            Data
+                          </th>
+                          <th className="text-left pl-2 pr-2 py-1.5 font-semibold text-slate-700 w-[11ch] max-w-[11ch] shrink-0">
+                            Usuário
+                          </th>
                         </tr>
                       </thead>
                       <tbody>
@@ -3072,16 +3101,19 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                                 onDoubleClick={() => setInformacaoModal({ info: h.info, inf: h.inf, data: h.data, usuario: h.usuario })}
                                 title="Duplo clique para ver o texto completo"
                               >
-                                <td className="px-3 py-1.5 text-slate-700">Inf.: {h.inf}</td>
-                                <td className="px-3 py-1.5 text-slate-800 overflow-hidden">
+                                <td className="pl-2 pr-6 py-1.5 text-slate-700 align-top whitespace-nowrap">
+                                  Inf.: {h.inf}
+                                </td>
+                                <td className="pl-2 pr-3 py-1.5 text-slate-800 min-w-0 align-top">
                                   <div className="truncate" title={h.info}>{h.info}</div>
                                 </td>
-                                <td className="px-3 py-1.5 text-slate-600">{h.data}</td>
-                                <td className="px-3 py-1.5 text-slate-700">{h.usuario}</td>
+                                <td className="px-2 py-1.5 text-slate-600 align-top whitespace-nowrap">{h.data}</td>
+                                <td className="pl-2 pr-2 py-1.5 text-slate-700 align-top min-w-0 max-w-[11ch]">
+                                  <div className="truncate" title={h.usuario || ''}>
+                                    {h.usuario}
+                                  </div>
+                                </td>
                               </tr>
-                            ))}
-                            {historicoPaginado.length < HISTORICO_POR_PAGINA && Array.from({ length: HISTORICO_POR_PAGINA - historicoPaginado.length }).map((_, i) => (
-                              <tr key={`empty-${i}`} className="border-t border-slate-100"><td colSpan={4} className="px-3 py-1.5">&nbsp;</td></tr>
                             ))}
                           </>
                         )}

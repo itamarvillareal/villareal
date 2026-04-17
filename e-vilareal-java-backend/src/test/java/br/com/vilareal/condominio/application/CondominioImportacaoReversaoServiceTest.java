@@ -7,6 +7,7 @@ import br.com.vilareal.condominio.api.dto.InadimplenciaReversaoResponse;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaContatoRepository;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaEnderecoRepository;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
+import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoAndamentoRepository;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoParteRepository;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -32,6 +33,9 @@ class CondominioImportacaoReversaoServiceTest {
     private CalculoRodadaRepository calculoRodadaRepository;
 
     @Mock
+    private ProcessoAndamentoRepository processoAndamentoRepository;
+
+    @Mock
     private ProcessoParteRepository processoParteRepository;
 
     @Mock
@@ -52,6 +56,7 @@ class CondominioImportacaoReversaoServiceTest {
     void setUp() {
         service = new CondominioImportacaoReversaoService(
                 calculoRodadaRepository,
+                processoAndamentoRepository,
                 processoParteRepository,
                 processoRepository,
                 pessoaContatoRepository,
@@ -64,6 +69,7 @@ class CondominioImportacaoReversaoServiceTest {
         assertThatThrownBy(() -> service.reverter("   "))
                 .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("importacaoId");
+        verify(processoAndamentoRepository, never()).deleteByImportacaoId(anyString());
         verify(calculoRodadaRepository, never()).deleteByImportacaoId(anyString());
     }
 
@@ -80,8 +86,36 @@ class CondominioImportacaoReversaoServiceTest {
     }
 
     @Test
+    void reverter_apenasAndamentos_encontraImportacaoEReverte() {
+        String id = "00000000-0000-0000-0000-000000000099";
+        when(processoAndamentoRepository.countByImportacaoId(id)).thenReturn(2L);
+        when(calculoRodadaRepository.countByImportacaoId(id)).thenReturn(0L);
+        when(processoParteRepository.countByImportacaoId(id)).thenReturn(0L);
+        when(processoRepository.countByImportacaoId(id)).thenReturn(0L);
+        when(pessoaContatoRepository.countByImportacaoId(id)).thenReturn(0L);
+        when(pessoaEnderecoRepository.countByImportacaoId(id)).thenReturn(0L);
+        when(pessoaRepository.countByImportacaoId(id)).thenReturn(0L);
+
+        when(processoAndamentoRepository.deleteByImportacaoId(id)).thenReturn(2L);
+        when(calculoRodadaRepository.deleteByImportacaoId(id)).thenReturn(0L);
+        when(processoParteRepository.deleteByImportacaoId(id)).thenReturn(0L);
+        when(processoRepository.deleteByImportacaoId(id)).thenReturn(0L);
+        when(pessoaContatoRepository.deleteByImportacaoId(id)).thenReturn(0L);
+        when(pessoaEnderecoRepository.deleteByImportacaoId(id)).thenReturn(0L);
+        when(pessoaRepository.deleteByImportacaoId(id)).thenReturn(0L);
+
+        InadimplenciaReversaoResponse res = service.reverter(id);
+
+        assertThat(res.importacaoId()).isEqualTo(id);
+        assertThat(res.andamentosRemovidos()).isEqualTo(2L);
+        assertThat(res.calculosRemovidos()).isZero();
+        verify(processoAndamentoRepository).deleteByImportacaoId(eq(id));
+    }
+
+    @Test
     void reverter_executaDeletesNaOrdemERetornaContagens() {
         String id = "00000000-0000-0000-0000-000000000002";
+        when(processoAndamentoRepository.countByImportacaoId(id)).thenReturn(0L);
         when(calculoRodadaRepository.countByImportacaoId(id)).thenReturn(1L);
         when(processoParteRepository.countByImportacaoId(id)).thenReturn(0L);
         when(processoRepository.countByImportacaoId(id)).thenReturn(0L);
@@ -89,6 +123,7 @@ class CondominioImportacaoReversaoServiceTest {
         when(pessoaEnderecoRepository.countByImportacaoId(id)).thenReturn(0L);
         when(pessoaRepository.countByImportacaoId(id)).thenReturn(0L);
 
+        when(processoAndamentoRepository.deleteByImportacaoId(id)).thenReturn(0L);
         when(calculoRodadaRepository.deleteByImportacaoId(id)).thenReturn(3L);
         when(processoParteRepository.deleteByImportacaoId(id)).thenReturn(2L);
         when(processoRepository.deleteByImportacaoId(id)).thenReturn(1L);
@@ -99,6 +134,7 @@ class CondominioImportacaoReversaoServiceTest {
         InadimplenciaReversaoResponse res = service.reverter(id);
 
         assertThat(res.importacaoId()).isEqualTo(id);
+        assertThat(res.andamentosRemovidos()).isZero();
         assertThat(res.calculosRemovidos()).isEqualTo(3L);
         assertThat(res.partesRemovidas()).isEqualTo(2L);
         assertThat(res.processosRemovidos()).isEqualTo(1L);
@@ -108,12 +144,14 @@ class CondominioImportacaoReversaoServiceTest {
 
         InOrder ord =
                 inOrder(
+                        processoAndamentoRepository,
                         calculoRodadaRepository,
                         processoParteRepository,
                         processoRepository,
                         pessoaContatoRepository,
                         pessoaEnderecoRepository,
                         pessoaRepository);
+        ord.verify(processoAndamentoRepository).deleteByImportacaoId(eq(id));
         ord.verify(calculoRodadaRepository).deleteByImportacaoId(eq(id));
         ord.verify(processoParteRepository).deleteByImportacaoId(eq(id));
         ord.verify(processoRepository).deleteByImportacaoId(eq(id));
@@ -129,6 +167,7 @@ class CondominioImportacaoReversaoServiceTest {
     @Test
     void reverter_apenasDeletePorImportacaoId_naoUsaOutrosCriterios() {
         String id = "00000000-0000-0000-0000-000000000003";
+        when(processoAndamentoRepository.countByImportacaoId(id)).thenReturn(0L);
         when(calculoRodadaRepository.countByImportacaoId(id)).thenReturn(0L);
         when(processoParteRepository.countByImportacaoId(id)).thenReturn(0L);
         when(processoRepository.countByImportacaoId(id)).thenReturn(0L);
@@ -136,6 +175,7 @@ class CondominioImportacaoReversaoServiceTest {
         when(pessoaEnderecoRepository.countByImportacaoId(id)).thenReturn(0L);
         when(pessoaRepository.countByImportacaoId(id)).thenReturn(1L);
 
+        when(processoAndamentoRepository.deleteByImportacaoId(id)).thenReturn(0L);
         when(calculoRodadaRepository.deleteByImportacaoId(id)).thenReturn(0L);
         when(processoParteRepository.deleteByImportacaoId(id)).thenReturn(0L);
         when(processoRepository.deleteByImportacaoId(id)).thenReturn(0L);
@@ -150,6 +190,7 @@ class CondominioImportacaoReversaoServiceTest {
     }
 
     private void stubCountsAllZero(String id) {
+        when(processoAndamentoRepository.countByImportacaoId(id)).thenReturn(0L);
         when(calculoRodadaRepository.countByImportacaoId(id)).thenReturn(0L);
         when(processoParteRepository.countByImportacaoId(id)).thenReturn(0L);
         when(processoRepository.countByImportacaoId(id)).thenReturn(0L);

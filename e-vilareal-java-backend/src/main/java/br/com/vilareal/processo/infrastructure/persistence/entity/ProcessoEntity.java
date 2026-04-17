@@ -101,4 +101,15 @@ public class ProcessoEntity {
 
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Instant updatedAt;
+
+    /** Valor gravado quando {@link #fase} não veio definida (API, importação ou legado). */
+    public static final String FASE_PADRAO_EM_ANDAMENTO = "Em Andamento";
+
+    @PrePersist
+    @PreUpdate
+    private void garantirFaseProcessualPadrao() {
+        if (fase == null || fase.trim().isEmpty()) {
+            fase = FASE_PADRAO_EM_ANDAMENTO;
+        }
+    }
 }
