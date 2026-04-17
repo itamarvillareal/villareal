@@ -90,6 +90,9 @@ function BlocoReversaoImportacao({ importacaoId }) {
           <p className="font-medium text-slate-800 dark:text-slate-200">Relatório da reversão</p>
           <ul className="space-y-0.5 text-slate-700 dark:text-slate-300">
             <li>
+              Andamentos removidos: <strong>{relatorio.andamentosRemovidos ?? 0}</strong>
+            </li>
+            <li>
               Cálculos removidos: <strong>{relatorio.calculosRemovidos ?? 0}</strong>
             </li>
             <li>
@@ -471,6 +474,16 @@ export function AtividadesEmLote() {
         <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
           Operações em massa com confirmação antes de gravar no servidor.
         </p>
+        <div className="mt-3 max-w-3xl rounded-lg border border-slate-200 bg-slate-50/90 px-3 py-2 text-xs text-slate-700 dark:border-slate-600 dark:bg-slate-900/60 dark:text-slate-300">
+          <span className="font-semibold text-slate-800 dark:text-slate-200">Histórico de processos (Excel, grandes volumes):</span>{' '}
+          use o script Python <code className="rounded bg-white px-1 dark:bg-slate-800">~/Downloads/migrar_historico_processos.py</code> para
+          gerar o SQL e aplicar no MySQL. O script imprime o <code className="rounded bg-white px-1 dark:bg-slate-800">importacao_id</code>{' '}
+          (UUID) da sessão. Para reverter só esses andamentos importados:{' '}
+          <code className="rounded bg-white px-1 dark:bg-slate-800">
+            {`DELETE /api/condominio/inadimplencia/reverter/{importacaoId}`}
+          </code>{' '}
+          (mesmo endpoint da reversão de importações em lote).
+        </div>
       </header>
 
       {!apiOk && (

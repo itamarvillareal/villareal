@@ -58,10 +58,8 @@ public class InformacoesProcessosImportRowApplier {
         processo.setNumeroInterno(dados.numeroInterno());
         if (dados.faseOpcional().isPresent()) {
             processo.setFase(dados.faseOpcional().get());
-        } else if (dados.usarFaseEmAndamentoQuandoFaseVazia()) {
-            processo.setFase("Em Andamento");
         } else {
-            processo.setFase(null);
+            processo.setFase(ProcessoEntity.FASE_PADRAO_EM_ANDAMENTO);
         }
         processo.setNumeroCnj(emptyToNull(dados.numeroCnjOuNull()));
         String descricaoAcaoCorrigida = Utf8MojibakeUtil.corrigir(dados.descricaoAcaoOuNull());
