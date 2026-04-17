@@ -247,6 +247,33 @@ export async function listarProcessosVinculoPessoaDiagnostico(pessoaId) {
   });
 }
 
+/**
+ * Diagnósticos «Busca por número»: processos na API cujo CNJ coincide após normalização (pontos, traços, espaços).
+ * @param {string} numeroBruto
+ */
+export async function listarProcessosPorNumeroProcessoDiagnostico(numeroBruto) {
+  if (!featureFlags.useApiProcessos) return [];
+  const q = String(numeroBruto ?? '').trim();
+  if (!q) return [];
+  const arr = await request('/api/processos/diagnostico/busca-numero', { query: { numero: q } });
+  if (!Array.isArray(arr)) return [];
+  return arr.map((row) => {
+    const codRaw = String(row.codigoCliente ?? '1').replace(/\D/g, '') || '1';
+    const codN = Math.max(1, Math.floor(Number(codRaw)) || 1);
+    const codCliente = String(codN).padStart(8, '0');
+    const procNum = Number(row.numeroInterno);
+    return {
+      codCliente,
+      proc: String(Number.isFinite(procNum) && procNum >= 0 ? procNum : 0),
+      cliente: String(row.cliente ?? ''),
+      parteCliente: String(row.parteCliente ?? row.cliente ?? ''),
+      parteOposta: String(row.parteOposta ?? ''),
+      numeroProcessoNovo: String(row.numeroProcessoNovo ?? ''),
+      papeis: String(row.papeis ?? ''),
+    };
+  });
+}
+
 export async function buscarProcessoPorChaveNatural(codigoCliente, numeroInterno) {
   if (!featureFlags.useApiProcessos) return null;
   const lista = await listarProcessosPorCodigoCliente(codigoCliente);

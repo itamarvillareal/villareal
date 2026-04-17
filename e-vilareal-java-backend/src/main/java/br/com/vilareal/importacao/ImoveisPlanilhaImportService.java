@@ -44,6 +44,8 @@ import java.util.Optional;
  *
  * <p>Colunas B (cód. cliente) e C (proc.) são opcionais: imóvel pode existir sem cliente/processos na base; se B+C
  * existirem mas o processo não for encontrado, o imóvel é gravado com {@code processo_id} nulo e cód./proc. nos extras.
+ * Em reimportação pelo mesmo {@code numero_planilha}, B ou C vazios na planilha <strong>não</strong> apagam
+ * {@code pessoa_id}/{@code processo_id} nem as chaves {@code codigo}/{@code proc} nos extras já gravados.
  */
 @Service
 public class ImoveisPlanilhaImportService {
@@ -210,8 +212,13 @@ public class ImoveisPlanilhaImportService {
         }
 
         ImovelEntity imovel = imovelRepository.findByNumeroPlanilha(numeroPlanilha).orElseGet(ImovelEntity::new);
-        imovel.setPessoa(pessoaCliente);
-        imovel.setProcesso(processo);
+        boolean existente = imovel.getId() != null;
+        if (!existente || StringUtils.hasText(codB)) {
+            imovel.setPessoa(pessoaCliente);
+        }
+        if (!existente || (procInt != null && procInt >= 1 && pessoaCliente != null)) {
+            imovel.setProcesso(processo);
+        }
         imovel.setNumeroPlanilha(numeroPlanilha);
         imovel.setResponsavelPessoa(responsavel);
 
@@ -237,8 +244,12 @@ public class ImoveisPlanilhaImportService {
                 : (StringUtils.hasText(condominio) ? condominio : null));
 
         Map<String, Object> extras = lerExtrasMap(imovel.getCamposExtrasJson());
-        extras.put("codigo", codB != null ? codB : "");
-        extras.put("proc", procInt != null ? String.valueOf(procInt) : "");
+        if (StringUtils.hasText(codB)) {
+            extras.put("codigo", codB);
+        }
+        if (procInt != null && procInt >= 1) {
+            extras.put("proc", String.valueOf(procInt));
+        }
         extras.put("infoIptuTexto", ImoveisPlanilhaImportSupport.trimToEmpty(c[7]));
         putDataBr(extras, "dataConsIptu", c[8]);
         extras.put("existeDebIptu", ImoveisPlanilhaImportSupport.normalizarSimNao(c[9]));

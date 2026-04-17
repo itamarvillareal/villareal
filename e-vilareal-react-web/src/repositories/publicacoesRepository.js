@@ -322,6 +322,7 @@ export async function importarPublicacoesDaPrevia(itens, arquivoOrigem, meta = {
   }
   let gravados = 0;
   let ignoradosDuplicata = 0;
+  let falhasApi = 0;
   for (const item of itens) {
     const body = mapPreviewItemToApiRequest(item, arquivoOrigem, meta);
     try {
@@ -330,17 +331,30 @@ export async function importarPublicacoesDaPrevia(itens, arquivoOrigem, meta = {
       if (saved?.id && body._codCliente && body._procInterno) {
         const processo = await buscarProcessoPorChaveNatural(body._codCliente, Number(body._procInterno));
         if (processo?.id) {
-          await request(`/api/publicacoes/${saved.id}/vinculo-processo`, {
-            method: 'PATCH',
-            body: { processoId: processo.id, observacao: 'Vínculo inicial da importação.' },
-          });
+          try {
+            await request(`/api/publicacoes/${saved.id}/vinculo-processo`, {
+              method: 'PATCH',
+              body: { processoId: processo.id, observacao: 'Vínculo inicial da importação.' },
+            });
+          } catch {
+            /* vínculo opcional na importação */
+          }
         }
       }
-    } catch {
-      ignoradosDuplicata += 1;
+    } catch (e) {
+      const msg = String(e?.message || '').toLowerCase();
+      if (
+        msg.includes('duplicad') ||
+        msg.includes('422') ||
+        msg.includes('unprocessable entity')
+      ) {
+        ignoradosDuplicata += 1;
+      } else {
+        falhasApi += 1;
+      }
     }
   }
-  return { gravados, ignoradosDuplicata };
+  return { gravados, ignoradosDuplicata, falhasApi };
 }
 
 // --- Ações operacionais (status / vínculo) ---

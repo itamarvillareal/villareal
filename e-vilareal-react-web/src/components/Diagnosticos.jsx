@@ -12,6 +12,7 @@ import {
   listarProcessosFaseAguardandoProtocolo,
   listarProcessosFaseAguardandoProvidencia,
   listarProcessosFaseProcedimentoAdministrativo,
+  listarProcessosHistoricoLocalPorChaveNumeroProcesso,
   listarProcessosPorIdPessoa,
   listarProcessosPorPrazoFatal,
   listarAudienciasPendentes,
@@ -24,12 +25,16 @@ import { resolverAliasHojeEmTexto } from '../services/hjDateAliasService.js';
 import { listarImoveisResumoPorPessoaDiagnostico } from '../services/listarImoveisPorPessoaDiagnostico.js';
 import { listarCodigosClientePorIdPessoa } from '../data/clienteCodigoHelpers.js';
 import { listarClientesCadastro } from '../repositories/clientesRepository.js';
-import { listarProcessosVinculoPessoaDiagnostico } from '../repositories/processosRepository.js';
+import {
+  listarProcessosPorNumeroProcessoDiagnostico,
+  listarProcessosVinculoPessoaDiagnostico,
+} from '../repositories/processosRepository.js';
 import { padCliente8Nav } from './cadastro-pessoas/cadastroPessoasNavUtils.js';
 import { featureFlags } from '../config/featureFlags.js';
 import { buildRouterStateChaveClienteProcesso } from '../domain/camposProcessoCliente.js';
 import { exportarReusClienteParaExcel } from '../services/relatorioReusClienteExcel.js';
 import { getContextoAuditoriaUsuario, registrarAuditoria } from '../services/auditoriaCliente.js';
+import { chaveNumeroProcessoBuscaDiagnostico } from '../domain/normalizarNumeroProcessoBuscaDiagnostico.js';
 
 /** Delay antes de chamar a API enquanto o usuário digita (ms). */
 const DEBOUNCE_BUSCA_PESSOA_API_MS = 320;
@@ -110,6 +115,7 @@ const BOTOES_ESQUERDA = [
   'Consultas Atrasadas',
   'Publicações',
   'Busca pessoa',
+  'Busca por número',
   'Réus por cliente (Excel)',
 ];
 
@@ -187,6 +193,12 @@ export function Diagnosticos() {
   const [reusExcelCarregando, setReusExcelCarregando] = useState(false);
   const [reusExcelProgresso, setReusExcelProgresso] = useState('');
   const [reusExcelErro, setReusExcelErro] = useState('');
+  const [modalBuscaNumeroProcessoAberto, setModalBuscaNumeroProcessoAberto] = useState(false);
+  const [termoBuscaNumeroProcesso, setTermoBuscaNumeroProcesso] = useState('');
+  const [buscaNumeroProcessoCarregando, setBuscaNumeroProcessoCarregando] = useState(false);
+  const [buscaNumeroProcessoErro, setBuscaNumeroProcessoErro] = useState('');
+  const [resultadoBuscaNumeroProcesso, setResultadoBuscaNumeroProcesso] = useState([]);
+  const [rotuloBuscaNumeroProcesso, setRotuloBuscaNumeroProcesso] = useState('');
 
   async function gerarExcelReusCliente() {
     const raw = String(codigoClienteReusExcel ?? '').replace(/\D/g, '');
@@ -214,6 +226,42 @@ export function Diagnosticos() {
       setReusExcelErro(String(e?.message || e || 'Erro ao gerar o Excel.'));
     } finally {
       setReusExcelCarregando(false);
+    }
+  }
+
+  async function executarBuscaNumeroProcesso() {
+    const raw = String(termoBuscaNumeroProcesso ?? '').trim();
+    setBuscaNumeroProcessoErro('');
+    setRotuloBuscaNumeroProcesso('');
+    if (!raw) {
+      setBuscaNumeroProcessoErro('Informe o número do processo (CNJ ou nº gravado).');
+      return;
+    }
+    const chave = chaveNumeroProcessoBuscaDiagnostico(raw);
+    if (!chave || chave.length < 7) {
+      setBuscaNumeroProcessoErro('Informe ao menos 7 dígitos (número incompleto ou sem dígitos reconhecíveis).');
+      return;
+    }
+    setBuscaNumeroProcessoCarregando(true);
+    setResultadoBuscaNumeroProcesso([]);
+    try {
+      const locais = listarProcessosHistoricoLocalPorChaveNumeroProcesso(raw);
+      let itens = locais;
+      if (featureFlags.useApiProcessos) {
+        try {
+          const apiRows = await listarProcessosPorNumeroProcessoDiagnostico(raw);
+          itens = mergeItensDiagnosticoBuscaPessoa(apiRows, locais);
+        } catch (e) {
+          itens = locais;
+          setBuscaNumeroProcessoErro(String(e?.message || 'Falha na API; exibindo só o histórico local.'));
+        }
+      }
+      setResultadoBuscaNumeroProcesso(itens);
+      setRotuloBuscaNumeroProcesso(
+        `Comparação por dígitos: ${chave.length} dígito(s) — aceita entrada com ou sem «.» e «-».`
+      );
+    } finally {
+      setBuscaNumeroProcessoCarregando(false);
     }
   }
 
@@ -453,6 +501,7 @@ export function Diagnosticos() {
     setModalResultadoBuscaPessoaAberto(false);
     setIdPessoaBuscaDiag(null);
     setImoveisRelatorioBusca({ status: 'idle', itens: [] });
+    setModalBuscaNumeroProcessoAberto(false);
     setModalResultadoAguardandoDocsAberto(false);
     setModalResultadoAguardandoPeticionarAberto(false);
     setModalResultadoAguardandoVerificacaoAberto(false);
@@ -517,6 +566,14 @@ export function Diagnosticos() {
                     setBuscaPessoaCarregando(false);
                     setTermoBuscaPessoa('');
                     setModalBuscaPessoaAberto(true);
+                  }
+                  if (label === 'Busca por número') {
+                    setTermoBuscaNumeroProcesso('');
+                    setBuscaNumeroProcessoErro('');
+                    setBuscaNumeroProcessoCarregando(false);
+                    setResultadoBuscaNumeroProcesso([]);
+                    setRotuloBuscaNumeroProcesso('');
+                    setModalBuscaNumeroProcessoAberto(true);
                   }
                   if (label === 'Réus por cliente (Excel)') {
                     setCodigoClienteReusExcel('');
@@ -697,6 +754,123 @@ export function Diagnosticos() {
                   Fechar
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {modalBuscaNumeroProcessoAberto && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px] p-4">
+          <div
+            className="w-full max-w-3xl bg-white border border-slate-200/90 rounded-2xl shadow-2xl ring-1 ring-indigo-500/10 overflow-hidden flex flex-col max-h-[min(92vh,720px)]"
+            role="dialog"
+            aria-labelledby="busca-numero-processo-titulo"
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-white/20 bg-gradient-to-r from-indigo-600 to-violet-700 shrink-0">
+              <h3 id="busca-numero-processo-titulo" className="text-base font-semibold text-white">
+                Busca por número de processo
+              </h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setModalBuscaNumeroProcessoAberto(false);
+                  setBuscaNumeroProcessoErro('');
+                  setBuscaNumeroProcessoCarregando(false);
+                  setResultadoBuscaNumeroProcesso([]);
+                  setRotuloBuscaNumeroProcesso('');
+                }}
+                className="p-2 rounded-lg text-white/90 hover:bg-white/15"
+                aria-label="Fechar"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 space-y-3 overflow-y-auto flex-1 min-h-0">
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Informe o CNJ (número único) com ou sem pontos e traços — por exemplo{' '}
+                <code className="text-[11px] bg-slate-100 px-1 rounded">5338688-60.2023.8.09.0007</code> ou{' '}
+                <code className="text-[11px] bg-slate-100 px-1 rounded">53386886020238090007</code>. A pesquisa
+                compara apenas os dígitos. Inclui o histórico local deste navegador
+                {featureFlags.useApiProcessos ? ' e, com a API de processos ativa, os registos no servidor.' : '.'}
+              </p>
+              <div className="flex flex-wrap items-end gap-2">
+                <label className="flex flex-col gap-1 text-sm font-medium text-slate-700 flex-1 min-w-[12rem]">
+                  Número do processo
+                  <input
+                    type="text"
+                    value={termoBuscaNumeroProcesso}
+                    onChange={(e) => setTermoBuscaNumeroProcesso(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') void executarBuscaNumeroProcesso();
+                    }}
+                    className="w-full px-3 py-2 border border-slate-300 rounded text-sm font-mono"
+                    placeholder="Ex.: 5338688-60.2023.8.09.0007"
+                    autoFocus
+                    autoComplete="off"
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={() => void executarBuscaNumeroProcesso()}
+                  disabled={buscaNumeroProcessoCarregando}
+                  className="px-4 py-2 rounded-lg bg-gradient-to-r from-indigo-600 to-violet-600 text-sm font-semibold text-white shadow-md disabled:opacity-50"
+                >
+                  {buscaNumeroProcessoCarregando ? 'A buscar…' : 'Buscar'}
+                </button>
+              </div>
+              {rotuloBuscaNumeroProcesso ? (
+                <p className="text-[11px] text-slate-600" aria-live="polite">
+                  {rotuloBuscaNumeroProcesso}
+                </p>
+              ) : null}
+              <div className="text-sm min-h-[1.25rem]" aria-live="polite">
+                {buscaNumeroProcessoErro ? <span className="text-red-700">{buscaNumeroProcessoErro}</span> : null}
+              </div>
+              <div>
+                <p className="text-sm font-medium text-slate-800 mb-1">Resultados</p>
+                <p className="text-xs text-slate-600 mb-2">
+                  Duplo clique na linha abre em Processos. A coluna [papéis] indica origem (API ou histórico local).
+                </p>
+                <div className="border border-slate-300 bg-white max-h-[min(45vh,320px)] overflow-auto p-2 text-[13px] leading-relaxed font-mono">
+                  {buscaNumeroProcessoCarregando ? (
+                    <p className="text-slate-600">A buscar…</p>
+                  ) : resultadoBuscaNumeroProcesso.length === 0 ? (
+                    <p className="text-slate-600">
+                      Nenhum processo encontrado. Confirme o número ou importe/grave o CNJ em Processos ou no
+                      histórico local.
+                    </p>
+                  ) : (
+                    resultadoBuscaNumeroProcesso.map((item, idx) => (
+                      <p
+                        key={`${item.codCliente}-${item.proc}-${idx}`}
+                        className="whitespace-pre-wrap break-words cursor-pointer hover:bg-slate-100 rounded px-1 -mx-1 select-none"
+                        onDoubleClick={() => abrirProcessoPorItem(item)}
+                        title="Duplo clique: abrir em Processos"
+                      >
+                        {String(idx + 1).padStart(3, '0')} - (Cod. {item.codCliente}, Proc. {String(item.proc).padStart(2, '0')})
+                        {' — '}
+                        [{item.papeis}] {item.parteCliente || item.cliente || 'CLIENTE'} x {item.parteOposta || 'PARTE OPOSTA'}{' '}
+                        ({item.numeroProcessoNovo || 'sem nº'})
+                      </p>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="px-4 py-3 border-t border-slate-200 flex justify-end gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setModalBuscaNumeroProcessoAberto(false);
+                  setBuscaNumeroProcessoErro('');
+                  setBuscaNumeroProcessoCarregando(false);
+                  setResultadoBuscaNumeroProcesso([]);
+                  setRotuloBuscaNumeroProcesso('');
+                }}
+                className="px-4 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
+              >
+                Fechar
+              </button>
             </div>
           </div>
         </div>
