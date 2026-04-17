@@ -11,6 +11,7 @@ import {
   ClipboardPaste,
   Loader2,
   Link2,
+  Download,
 } from 'lucide-react';
 import {
   listarClientes,
@@ -1023,6 +1024,15 @@ export function CadastroPessoas() {
                 >
                   <FileText className="w-4 h-4" />
                   Relatório de pessoas
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navigate('/clientes/relatorio?export=1')}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-900 text-sm font-medium hover:bg-emerald-100"
+                  title="Abre o relatório com o assistente de exportação para Excel"
+                >
+                  <Download className="w-4 h-4" />
+                  Exportar Excel
                 </button>
                 <button
                   type="button"

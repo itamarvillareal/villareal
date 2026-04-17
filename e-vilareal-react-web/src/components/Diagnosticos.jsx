@@ -28,6 +28,8 @@ import { listarProcessosVinculoPessoaDiagnostico } from '../repositories/process
 import { padCliente8Nav } from './cadastro-pessoas/cadastroPessoasNavUtils.js';
 import { featureFlags } from '../config/featureFlags.js';
 import { buildRouterStateChaveClienteProcesso } from '../domain/camposProcessoCliente.js';
+import { exportarReusClienteParaExcel } from '../services/relatorioReusClienteExcel.js';
+import { getContextoAuditoriaUsuario, registrarAuditoria } from '../services/auditoriaCliente.js';
 
 /** Delay antes de chamar a API enquanto o usuário digita (ms). */
 const DEBOUNCE_BUSCA_PESSOA_API_MS = 320;
@@ -108,6 +110,7 @@ const BOTOES_ESQUERDA = [
   'Consultas Atrasadas',
   'Publicações',
   'Busca pessoa',
+  'Réus por cliente (Excel)',
 ];
 
 const BOTOES_DIREITA = [
@@ -179,6 +182,40 @@ export function Diagnosticos() {
   const [syncAgendaMes, setSyncAgendaMes] = useState(4);
   const [syncAgendaAno, setSyncAgendaAno] = useState(() => new Date().getFullYear());
   const [syncAgendaMsg, setSyncAgendaMsg] = useState('');
+  const [modalReusClienteExcelAberto, setModalReusClienteExcelAberto] = useState(false);
+  const [codigoClienteReusExcel, setCodigoClienteReusExcel] = useState('');
+  const [reusExcelCarregando, setReusExcelCarregando] = useState(false);
+  const [reusExcelProgresso, setReusExcelProgresso] = useState('');
+  const [reusExcelErro, setReusExcelErro] = useState('');
+
+  async function gerarExcelReusCliente() {
+    const raw = String(codigoClienteReusExcel ?? '').replace(/\D/g, '');
+    const n = Math.floor(Number(raw || '0'));
+    if (!raw || !Number.isFinite(n) || n < 1) {
+      setReusExcelErro('Informe o código do cliente (apenas números).');
+      return;
+    }
+    setReusExcelErro('');
+    setReusExcelProgresso('');
+    setReusExcelCarregando(true);
+    try {
+      const res = await exportarReusClienteParaExcel(raw, (ev) => {
+        setReusExcelProgresso(`A processar… ${ev.atual} de ${ev.total}`);
+      });
+      const { usuarioNome } = getContextoAuditoriaUsuario();
+      registrarAuditoria({
+        modulo: 'Diagnósticos',
+        tela: '/diagnosticos',
+        tipoAcao: 'EXPORTACAO_EXCEL',
+        descricao: `Excel de réus por cliente: ${res.linhas} linha(s), ficheiro ${res.nomeArquivo}. Utilizador: ${usuarioNome || '—'}.`,
+      });
+      setReusExcelProgresso(`Guardado: ${res.nomeArquivo} (${res.linhas} linhas).`);
+    } catch (e) {
+      setReusExcelErro(String(e?.message || e || 'Erro ao gerar o Excel.'));
+    } finally {
+      setReusExcelCarregando(false);
+    }
+  }
 
   function consultarPorData() {
     const data = String(dataConsulta ?? '').trim();
@@ -481,6 +518,13 @@ export function Diagnosticos() {
                     setTermoBuscaPessoa('');
                     setModalBuscaPessoaAberto(true);
                   }
+                  if (label === 'Réus por cliente (Excel)') {
+                    setCodigoClienteReusExcel('');
+                    setReusExcelErro('');
+                    setReusExcelProgresso('');
+                    setReusExcelCarregando(false);
+                    setModalReusClienteExcelAberto(true);
+                  }
                 }}
                 className={`px-4 py-2.5 rounded-xl border text-left text-sm font-medium transition-all ${
                   focado === label
@@ -768,6 +812,94 @@ export function Diagnosticos() {
                 className="px-4 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
               >
                 Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {modalReusClienteExcelAberto && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px] p-4">
+          <div
+            className="w-full max-w-xl bg-white border border-slate-200/90 rounded-2xl shadow-2xl ring-1 ring-indigo-500/10 overflow-hidden flex flex-col"
+            role="dialog"
+            aria-labelledby="reus-excel-titulo"
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-white/20 bg-gradient-to-r from-indigo-600 to-violet-700 shrink-0">
+              <h3 id="reus-excel-titulo" className="text-base font-semibold text-white">
+                Réus por cliente (Excel)
+              </h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setModalReusClienteExcelAberto(false);
+                  setReusExcelErro('');
+                  setReusExcelProgresso('');
+                  setReusExcelCarregando(false);
+                }}
+                className="p-2 rounded-lg text-white/90 hover:bg-white/15"
+                aria-label="Fechar"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 space-y-3">
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Gera um ficheiro Excel com os réus ligados aos processos do cliente: nome e número da pessoa no
+                cadastro (quando for possível localizar). A pesquisa no cadastro de pessoas usa a API.
+                {featureFlags.useApiProcessos
+                  ? ' A lista de processos vem da API de processos.'
+                  : ' Com a API de processos desligada, a lista de processos vem só do histórico local neste navegador.'}
+              </p>
+              <label className="block text-sm font-medium text-slate-700">
+                Código do cliente
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={codigoClienteReusExcel}
+                  onChange={(e) => setCodigoClienteReusExcel(e.target.value)}
+                  className="mt-1 w-full px-3 py-2 border border-slate-300 rounded text-sm font-mono"
+                  placeholder="Ex.: 1 ou 00000001"
+                  autoFocus
+                  autoComplete="off"
+                  disabled={reusExcelCarregando}
+                />
+              </label>
+              <div className="text-sm min-h-[1.25rem]" aria-live="polite">
+                {reusExcelErro ? (
+                  <span className="text-red-700">{reusExcelErro}</span>
+                ) : reusExcelCarregando ? (
+                  <span className="text-slate-700">{reusExcelProgresso || 'A iniciar…'}</span>
+                ) : reusExcelProgresso ? (
+                  <span className="text-emerald-800">{reusExcelProgresso}</span>
+                ) : (
+                  <span className="text-slate-500 text-xs">
+                    O navegador descarrega o ficheiro (normalmente para a pasta de descargas).
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="px-4 py-3 border-t border-slate-200 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setModalReusClienteExcelAberto(false);
+                  setReusExcelErro('');
+                  setReusExcelProgresso('');
+                  setReusExcelCarregando(false);
+                }}
+                className="px-4 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
+                disabled={reusExcelCarregando}
+              >
+                Fechar
+              </button>
+              <button
+                type="button"
+                onClick={() => void gerarExcelReusCliente()}
+                disabled={reusExcelCarregando}
+                className="px-4 py-2 rounded-lg bg-gradient-to-r from-indigo-600 to-violet-600 text-sm font-semibold text-white shadow-md shadow-indigo-500/20 hover:from-indigo-500 hover:to-violet-500 disabled:opacity-50"
+              >
+                {reusExcelCarregando ? 'A gerar…' : 'Gerar Excel'}
               </button>
             </div>
           </div>
