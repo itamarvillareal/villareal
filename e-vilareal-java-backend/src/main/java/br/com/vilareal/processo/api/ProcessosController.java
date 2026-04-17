@@ -41,6 +41,15 @@ public class ProcessosController {
         return processoApplicationService.listarVinculosDiagnosticoPorPessoa(pessoaId);
     }
 
+    @GetMapping("/diagnostico/busca-numero")
+    @Operation(
+            summary = "Diagnóstico: busca por número de processo (CNJ)",
+            description = "Normaliza o parâmetro `numero` (remove `.`, `-`, espaços; compara pelos dígitos do CNJ gravado).")
+    public List<ProcessoDiagnosticoPessoaItemResponse> buscarDiagnosticoPorNumero(
+            @RequestParam("numero") String numero) {
+        return processoApplicationService.buscarDiagnosticoPorNumeroProcesso(numero);
+    }
+
     @GetMapping("/{id}")
     public ProcessoResponse buscar(@PathVariable Long id) {
         return processoApplicationService.buscar(id);

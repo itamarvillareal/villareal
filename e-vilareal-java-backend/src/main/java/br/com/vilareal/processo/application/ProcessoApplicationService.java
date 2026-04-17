@@ -20,6 +20,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.math.BigInteger;
 import java.text.Normalizer;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -288,6 +289,54 @@ public class ProcessoApplicationService {
             r.setParteOposta(parteOpostaTxt);
             r.setNumeroProcessoNovo(cnj == null ? "" : Utf8MojibakeUtil.corrigir(cnj));
             r.setPapeis(String.join(" · ", papeis));
+            out.add(r);
+        }
+        return out;
+    }
+
+    /**
+     * Diagnósticos: localiza processos pelo número CNJ (entrada com ou sem pontuação).
+     */
+    @Transactional(readOnly = true)
+    public List<ProcessoDiagnosticoPessoaItemResponse> buscarDiagnosticoPorNumeroProcesso(String numeroBruto) {
+        String norm = ProcessoDiagnosticoNumeroBuscaUtil.normalizarSomenteDigitos(numeroBruto);
+        if (norm.length() < 7) {
+            return List.of();
+        }
+        List<BigInteger> rawIds = processoRepository.findIdsByNumeroCnjNormalizadoDiagnostico(norm);
+        if (rawIds.isEmpty()) {
+            return List.of();
+        }
+        List<Long> ids = rawIds.stream().map(BigInteger::longValue).collect(Collectors.toList());
+        List<ProcessoEntity> lista = new ArrayList<>(processoRepository.findAllById(ids));
+        lista.sort(Comparator.comparing((ProcessoEntity e) -> e.getPessoa().getId())
+                .thenComparing(ProcessoEntity::getNumeroInterno));
+
+        List<Long> procIds = lista.stream().map(ProcessoEntity::getId).collect(Collectors.toList());
+        Map<Long, List<ProcessoParteEntity>> partesPorProcesso = new LinkedHashMap<>();
+        if (!procIds.isEmpty()) {
+            for (ProcessoParteEntity parte : parteRepository.findAllByProcessoIdInWithPessoaEProcesso(procIds)) {
+                Long pid = parte.getProcesso().getId();
+                partesPorProcesso.computeIfAbsent(pid, k -> new ArrayList<>()).add(parte);
+            }
+        }
+
+        List<ProcessoDiagnosticoPessoaItemResponse> out = new ArrayList<>();
+        for (ProcessoEntity e : lista) {
+            List<ProcessoParteEntity> partes = partesPorProcesso.getOrDefault(e.getId(), List.of());
+            Long ownerId = e.getPessoa().getId();
+            String cod8 = resolverCodigoClienteExibicaoParaPessoa(ownerId);
+            String nomeCliente = Utf8MojibakeUtil.corrigir(e.getPessoa().getNome());
+            String parteOpostaTxt = montarTextoParteOpostaListagem(partes);
+            String cnj = trimToNull(e.getNumeroCnj());
+            ProcessoDiagnosticoPessoaItemResponse r = new ProcessoDiagnosticoPessoaItemResponse();
+            r.setCodigoCliente(cod8);
+            r.setNumeroInterno(e.getNumeroInterno());
+            r.setCliente(nomeCliente);
+            r.setParteCliente(nomeCliente);
+            r.setParteOposta(parteOpostaTxt);
+            r.setNumeroProcessoNovo(cnj == null ? "" : Utf8MojibakeUtil.corrigir(cnj));
+            r.setPapeis("Busca por número (CNJ)");
             out.add(r);
         }
         return out;

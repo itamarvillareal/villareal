@@ -16,6 +16,7 @@ import {
   CalendarDays,
   ListTodo,
   Trash2,
+  FileDown,
 } from 'lucide-react';
 import { extrairTextoPdfDeArquivo } from '../data/publicacoesPdfExtract.js';
 import { executarPipelineImportacaoPublicacoes } from '../data/publicacoesPipeline.js';
@@ -29,6 +30,7 @@ import {
 } from '../data/publicacoesVinculoProcessos.js';
 import { appendPublicacoesConfirmadas, updatePublicacaoImportada } from '../data/publicacoesStorage.js';
 import { agruparPublicacoesPorDia } from '../data/publicacoesDiaria.js';
+import { downloadRelatorioPublicacoesCsv } from '../data/publicacoesRelatorioExport.js';
 import { featureFlags } from '../config/featureFlags.js';
 import {
   alterarStatusPublicacao,
@@ -797,6 +799,9 @@ export function PublicacoesProcessos() {
             {logImportacao.ignoradosDuplicata > 0
               ? ` ${logImportacao.ignoradosDuplicata} duplicata(s) ignorada(s) no armazenamento.`
               : ''}
+            {Number(logImportacao.falhasApi || 0) > 0
+              ? ` ${logImportacao.falhasApi} registro(s) com falha na API (ver rede / backend).`
+              : ''}
             {Number(logImportacao.semVinculo || 0) > 0 ? ` ${logImportacao.semVinculo} registro(s) sem vínculo resolvido.` : ''}
             {logImportacao.mensagem ? ` ${logImportacao.mensagem}` : ''}
           </div>
@@ -896,6 +901,19 @@ export function PublicacoesProcessos() {
                 className="rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-[#0d1018] px-3 py-2 text-sm w-[9rem]"
               />
             </label>
+            <div className="flex flex-col gap-1 justify-end min-w-[10rem] ml-auto">
+              <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Relatório</span>
+              <button
+                type="button"
+                onClick={() => downloadRelatorioPublicacoesCsv(filtrados)}
+                disabled={carregandoGravados || filtrados.length === 0}
+                className="inline-flex items-center justify-center gap-2 rounded-lg border border-indigo-200 dark:border-indigo-500/40 bg-indigo-50 dark:bg-indigo-950/40 px-3 py-2 text-sm font-medium text-indigo-800 dark:text-indigo-100 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 disabled:opacity-50 disabled:pointer-events-none"
+                title="Exporta as publicações visíveis após filtros (CSV UTF-8)"
+              >
+                <FileDown className="w-4 h-4 shrink-0" />
+                CSV ({filtrados.length})
+              </button>
+            </div>
           </div>
           {carregandoGravados ? (
             <p className="text-xs text-indigo-700 dark:text-indigo-300">Carregando publicações...</p>

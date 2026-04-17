@@ -11,6 +11,7 @@ import {
   extrairChavesCandidatasCnjDoTextoAgenda,
 } from '../domain/cnjAgendaResolucao.js';
 import { padCliente } from './processosDadosRelatorio.js';
+import { chaveNumeroProcessoBuscaDiagnostico } from '../domain/normalizarNumeroProcessoBuscaDiagnostico.js';
 
 /**
  * Histórico local por processo — chaves JSON legadas (equivalentes canônicas):
@@ -1180,6 +1181,38 @@ export function listarProcessosPorIdPessoa(idPessoa, nomeCadastro) {
     const kb = `${b.codCliente}-${String(b.proc).padStart(4, '0')}`;
     return ka.localeCompare(kb);
   });
+  return out;
+}
+
+/**
+ * Diagnósticos «Busca por número»: processos no histórico local cujo CNJ (novo ou velho) coincide após normalização.
+ * @param {string} numeroBruto
+ * @returns {Array<{ codCliente: string, proc: string, cliente: string, parteCliente: string, parteOposta: string, numeroProcessoNovo: string, papeis: string }>}
+ */
+export function listarProcessosHistoricoLocalPorChaveNumeroProcesso(numeroBruto) {
+  const chave = chaveNumeroProcessoBuscaDiagnostico(numeroBruto);
+  if (!chave || chave.length < 7) return [];
+  const all = listarRegistrosProcessosHistoricoNormalizados();
+  const out = [];
+  const seen = new Set();
+  for (const reg of all) {
+    const kNovo = chaveNumeroProcessoBuscaDiagnostico(reg.numeroProcessoNovo);
+    const kVelho = chaveNumeroProcessoBuscaDiagnostico(reg.numeroProcessoVelho);
+    if (kNovo !== chave && kVelho !== chave) continue;
+    const mk = `${reg.codCliente}-${reg.proc}`;
+    if (seen.has(mk)) continue;
+    seen.add(mk);
+    out.push({
+      codCliente: reg.codCliente,
+      proc: reg.proc,
+      cliente: reg.cliente,
+      parteCliente: reg.parteCliente,
+      parteOposta: reg.parteOposta,
+      numeroProcessoNovo: reg.numeroProcessoNovo,
+      papeis: 'Histórico local',
+    });
+  }
+  out.sort((a, b) => `${a.codCliente}-${String(a.proc).padStart(4, '0')}`.localeCompare(`${b.codCliente}-${String(b.proc).padStart(4, '0')}`));
   return out;
 }
 

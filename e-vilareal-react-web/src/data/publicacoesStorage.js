@@ -159,7 +159,11 @@ export function appendPublicacoesConfirmadas(itensNovos, arquivoOrigem, meta = {
     });
   }
   savePublicacoesImportadas([...adicionados, ...existentes]);
-  return { gravados: adicionados.length, ignoradosDuplicata: itensNovos.length - adicionados.length };
+  return {
+    gravados: adicionados.length,
+    ignoradosDuplicata: itensNovos.length - adicionados.length,
+    falhasApi: 0,
+  };
 }
 
 /**

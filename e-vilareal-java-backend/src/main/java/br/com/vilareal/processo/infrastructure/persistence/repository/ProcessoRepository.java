@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.math.BigInteger;
 import java.util.List;
 import java.util.Optional;
 
@@ -41,4 +42,32 @@ public interface ProcessoRepository extends JpaRepository<ProcessoEntity, Long> 
     long countByImportacaoId(String importacaoId);
 
     long deleteByImportacaoId(String importacaoId);
+
+    /**
+     * Diagnósticos: igualdade ao parâmetro {@code norm} (só dígitos) após remover pontos, traços, espaços e barras
+     * do {@code numero_cnj} — compatível com MySQL/MariaDB sem {@code REGEXP_REPLACE}.
+     * <p>O resultado nativo usa {@link BigInteger}; o serviço converte para {@code Long}.</p>
+     */
+    @Query(
+            value =
+                    """
+                    SELECT id FROM processo
+                    WHERE numero_cnj IS NOT NULL
+                      AND LENGTH(TRIM(numero_cnj)) > 0
+                      AND REPLACE(
+                          REPLACE(
+                          REPLACE(
+                          REPLACE(
+                          REPLACE(
+                          REPLACE(UPPER(TRIM(numero_cnj)), '.', ''),
+                          '-', ''),
+                          ' ', ''),
+                          '/', ''),
+                          '\u2013', ''),
+                          '\u2014', '') = :norm
+                    ORDER BY id ASC
+                    LIMIT 50
+                    """,
+            nativeQuery = true)
+    List<BigInteger> findIdsByNumeroCnjNormalizadoDiagnostico(@Param("norm") String norm);
 }
