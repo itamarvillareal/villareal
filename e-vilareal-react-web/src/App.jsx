@@ -1,5 +1,6 @@
 import { Suspense, useEffect, useState } from 'react';
-import { BrowserRouter, Routes, Route, Outlet, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Outlet, Navigate, useLocation, useNavigate, Link } from 'react-router-dom';
+import { Menu } from 'lucide-react';
 import { AuthProvider, useAuth } from './context/AuthContext.jsx';
 import { Login } from './components/Login.jsx';
 import { featureFlags } from './config/featureFlags.js';
@@ -44,6 +45,8 @@ import {
   setUsuarioSessaoAtualId,
   isUsuarioMasterEstacao,
 } from './data/usuarioPermissoesStorage.js';
+import { getUsuariosAtivos } from './data/agendaPersistenciaData';
+import { getNomeExibicaoUsuario } from './data/usuarioDisplayHelpers.js';
 import { getContextoAuditoriaUsuario, registrarAuditoria } from './services/auditoriaCliente.js';
 import { installCrossTabLocalStorageSync } from './services/crossTabLocalStorageSync.js';
 import { executarSincronizacaoAudienciasAgendaEProcessosCompleta } from './services/sincronizacaoAudienciasAgendaProcessosService.js';
@@ -72,6 +75,8 @@ function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
   const [accessTick, setAccessTick] = useState(0);
+  /** Drawer de navegação só abaixo do breakpoint lg: menu hamburger no topo (consulta rápida; bottom nav roubaría área de conteúdo). */
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   /** Metadados das rodadas (`GET /rodadas/resumo`): leve; payloads completos vêm sob demanda em Cálculos. */
   useEffect(() => {
@@ -135,10 +140,54 @@ function Layout() {
     }
   }, [location.pathname, navigate, accessTick]);
 
+  useEffect(() => {
+    setMobileNavOpen(false);
+  }, [location.pathname]);
+
+  const perfilTopo = getPerfilAtivoParaPermissoes();
+  const listaUsuariosTopo = getUsuariosAtivos();
+  const idSessaoTopo = getUsuarioSessaoAtualId();
+  const usuarioTopo = (listaUsuariosTopo || []).find((x) => String(x.id) === String(idSessaoTopo));
+  const rotuloPerfilTopo =
+    getNomeExibicaoUsuario(usuarioTopo) ||
+    (String(idSessaoTopo || '').trim() ? String(idSessaoTopo).toUpperCase() : String(perfilTopo || '—'));
+
   return (
-    <div className="flex h-dvh min-h-0 max-h-dvh bg-gray-100 overflow-hidden">
-      <Sidebar />
-      <main className="flex-1 flex flex-col min-w-0 min-h-0 overflow-y-auto overflow-x-hidden bg-[var(--vl-bg-page)]">
+    <div className="flex h-dvh min-h-0 max-h-dvh flex-col bg-gray-100 overflow-hidden lg:flex-row">
+      <header className="flex shrink-0 items-center gap-2 border-b border-[var(--vl-border)] bg-[var(--vl-bg-elevated)] px-2 py-1.5 lg:hidden">
+        <button
+          type="button"
+          className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-lg border border-[var(--vl-border-strong)] bg-[var(--vl-bg-card)] text-[var(--vl-text)] shadow-sm active:bg-[var(--vl-bg-muted)]"
+          aria-label="Abrir menu de navegação"
+          aria-expanded={mobileNavOpen}
+          onClick={() => setMobileNavOpen(true)}
+        >
+          <Menu className="h-6 w-6" strokeWidth={2} aria-hidden />
+        </button>
+        <Link
+          to="/"
+          className="flex min-h-11 min-w-0 flex-1 items-center justify-center rounded-lg px-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50"
+          title="Ir para o painel"
+        >
+          <img
+            src="/logo-villareal.png"
+            alt="Villa Real"
+            className="h-9 max-h-9 w-auto max-w-[10rem] object-contain object-center"
+            width={160}
+            height={56}
+            decoding="async"
+          />
+        </Link>
+        <div
+          className="max-w-[42%] truncate rounded-lg border border-[var(--vl-border)] bg-[var(--vl-bg-card)] px-2.5 py-2 text-center text-xs font-semibold uppercase tracking-wide text-[var(--vl-text-secondary)]"
+          title={rotuloPerfilTopo}
+        >
+          {rotuloPerfilTopo}
+        </div>
+      </header>
+      <div className="flex min-h-0 min-w-0 flex-1 flex-row overflow-hidden">
+        <Sidebar mobileDrawerOpen={mobileNavOpen} onMobileDrawerChange={setMobileNavOpen} />
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden bg-[var(--vl-bg-page)] pb-[env(safe-area-inset-bottom,0px)]">
         <Suspense
           fallback={
             <div className="flex flex-1 items-center justify-center p-8 text-sm text-slate-600 dark:text-slate-400">
@@ -150,7 +199,8 @@ function Layout() {
             <Outlet />
           </div>
         </Suspense>
-      </main>
+        </main>
+      </div>
       {import.meta.env.MODE === 'homolog' ? (
         <div
           className="fixed bottom-0 left-0 right-0 z-[200] border-t border-amber-400/80 bg-amber-50 px-3 py-1.5 text-center text-[11px] text-amber-950 shadow-[0_-2px_8px_rgba(0,0,0,0.06)] dark:border-amber-500/50 dark:bg-amber-950/90 dark:text-amber-100"

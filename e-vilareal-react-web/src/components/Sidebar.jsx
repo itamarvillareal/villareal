@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { NavLink, useLocation, Link, useNavigate } from 'react-router-dom';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight, X } from 'lucide-react';
 import { navItems } from '../data/navConfig.js';
 import { SidebarMenuIcon } from './navigation/SidebarMenuIcons.jsx';
 import { getUsuariosAtivos } from '../data/agendaPersistenciaData';
@@ -26,7 +26,12 @@ function itemMenuPermitido(item, podeFn) {
   return podeFn(item.id);
 }
 
-export function Sidebar() {
+/**
+ * @param {object} [props]
+ * @param {boolean} [props.mobileDrawerOpen] — controlado pelo Layout (App) abaixo do breakpoint `lg`.
+ * @param {(open: boolean) => void} [props.onMobileDrawerChange] — fecha o drawer após navegar ou backdrop.
+ */
+export function Sidebar({ mobileDrawerOpen = false, onMobileDrawerChange } = {}) {
   const [, setMenuTick] = useState(0);
   const location = useLocation();
   const navigate = useNavigate();
@@ -96,8 +101,42 @@ export function Sidebar() {
     });
   };
 
+  const closeMobileDrawer = () => onMobileDrawerChange?.(false);
+
+  useEffect(() => {
+    if (!mobileDrawerOpen) return undefined;
+    const onKey = (e) => {
+      if (e.key === 'Escape') onMobileDrawerChange?.(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [mobileDrawerOpen, onMobileDrawerChange]);
+
   return (
-    <aside className="vl-sidebar w-52 h-full max-h-dvh min-h-0 bg-gray-200 border-r border-gray-300 flex flex-col shrink-0 shadow-sm">
+    <>
+      {mobileDrawerOpen ? (
+        <button
+          type="button"
+          className="fixed inset-0 z-[90] cursor-default bg-black/50 lg:hidden"
+          aria-label="Fechar menu"
+          onClick={closeMobileDrawer}
+        />
+      ) : null}
+      <aside
+        className={`vl-sidebar flex h-full max-h-dvh min-h-0 flex-col border-r border-gray-300 bg-gray-200 shadow-sm transition-transform duration-200 ease-out lg:static lg:z-auto lg:w-52 lg:shrink-0 lg:translate-x-0
+        fixed inset-y-0 left-0 z-[100] w-[min(19rem,90vw)] max-w-[20rem]
+        ${mobileDrawerOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}
+      >
+      <div className="flex shrink-0 items-center justify-end border-b border-gray-300 bg-gray-100 px-1 py-1 lg:hidden">
+        <button
+          type="button"
+          className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-gray-700 hover:bg-gray-200 dark:text-slate-200 dark:hover:bg-white/10"
+          aria-label="Fechar menu de navegação"
+          onClick={closeMobileDrawer}
+        >
+          <X className="h-6 w-6" strokeWidth={2} aria-hidden />
+        </button>
+      </div>
       <div className="vl-sidebar-header shrink-0 px-2 py-1.5 border-b border-gray-300 bg-gray-100">
         <Link
           to="/"
@@ -141,21 +180,25 @@ export function Sidebar() {
                     if (item.id === 'processos-grupo') {
                       setGruposAbertos((prev) => new Set(prev).add(item.id));
                       navigate('/processos');
+                      closeMobileDrawer();
                       return;
                     }
                     if (item.id === 'calcular-grupo') {
                       setGruposAbertos((prev) => new Set(prev).add(item.id));
                       if (subs[0]) navigate(`/${subs[0].id}`);
+                      closeMobileDrawer();
                       return;
                     }
                     if (item.id === 'admin-imoveis-grupo') {
                       setGruposAbertos((prev) => new Set(prev).add(item.id));
                       if (subs[0]) navigate(`/${subs[0].id}`);
+                      closeMobileDrawer();
                       return;
                     }
                     if (item.id === 'integracoes-grupo') {
                       setGruposAbertos((prev) => new Set(prev).add(item.id));
                       if (subs[0]) navigate(`/${subs[0].id}`);
+                      closeMobileDrawer();
                       return;
                     }
                     toggleGrupo(item.id);
@@ -182,6 +225,7 @@ export function Sidebar() {
                           key={ch.id}
                           to={`/${ch.id}`}
                           end={ch.id !== 'clientes/lista'}
+                          onClick={closeMobileDrawer}
                           className={({ isActive }) => {
                             const path = location.pathname.replace(/\/+$/, '') || '/';
                             let ativo = isActive;
@@ -212,6 +256,7 @@ export function Sidebar() {
             <NavLink
               key={item.id}
               to={`/${item.id}`}
+              onClick={closeMobileDrawer}
               className={({ isActive }) =>
                 `flex items-center gap-2 px-2 py-1.5 rounded-md text-gray-700 dark:text-slate-200 text-xs font-medium transition-all duration-200 mb-0 ${
                   isActive
@@ -294,5 +339,6 @@ export function Sidebar() {
         ) : null}
       </div>
     </aside>
+    </>
   );
 }

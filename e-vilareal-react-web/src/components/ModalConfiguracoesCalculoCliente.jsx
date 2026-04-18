@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { X } from 'lucide-react';
+import { ChevronLeft, X } from 'lucide-react';
 import {
   loadConfigCalculoCliente,
   saveConfigCalculoCliente,
@@ -65,18 +65,26 @@ export function ModalConfiguracoesCalculoCliente({ open, codigoCliente, nomeClie
 
   return (
     <div
-      className="fixed inset-0 z-[90] flex items-center justify-center bg-black/45 p-4"
+      className="fixed inset-0 z-[90] flex items-stretch justify-center bg-black/45 p-0 md:items-center md:p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="modal-config-calc-titulo"
-   >
-      <div className="w-full max-w-4xl max-h-[92vh] overflow-hidden flex flex-col rounded-lg border border-slate-200 bg-white shadow-xl">
-        <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 bg-slate-50 shrink-0">
-          <div>
+    >
+      <div className="flex h-full w-full max-w-none flex-col overflow-hidden rounded-none border border-slate-200 bg-white shadow-xl md:h-auto md:max-h-[92vh] md:max-w-4xl md:rounded-lg">
+        <div className="flex shrink-0 items-start justify-between gap-2 border-b border-slate-200 bg-slate-50 px-3 py-3 md:px-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 md:hidden"
+            aria-label="Voltar"
+          >
+            <ChevronLeft className="h-6 w-6" aria-hidden />
+          </button>
+          <div className="min-w-0 flex-1">
             <h2 id="modal-config-calc-titulo" className="text-base font-semibold text-slate-900">
               Configurações Personalizadas do Cliente
             </h2>
-            <p className="text-xs text-slate-600 mt-0.5">
+            <p className="mt-0.5 text-xs text-slate-600">
               Cliente <span className="font-mono font-medium">{codPad}</span>
               {nomeCliente ? ` — ${nomeCliente}` : ''}
             </p>
@@ -84,7 +92,7 @@ export function ModalConfiguracoesCalculoCliente({ open, codigoCliente, nomeClie
           <button
             type="button"
             onClick={onClose}
-            className="rounded p-1.5 text-slate-500 hover:bg-slate-200/80"
+            className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-200/80"
             aria-label="Fechar"
           >
             <X className="h-5 w-5" />
@@ -97,8 +105,8 @@ export function ModalConfiguracoesCalculoCliente({ open, codigoCliente, nomeClie
           configurações diferentes.
         </p>
 
-        <div className="flex-1 overflow-y-auto p-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="min-h-0 flex-1 overflow-y-auto p-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             {/* Coluna 1 — Honorários */}
             <fieldset className="border border-slate-200 rounded-lg p-3 bg-slate-50/80">
               <legend className="text-sm font-semibold text-slate-800 px-1">Honorários</legend>
@@ -129,7 +137,7 @@ export function ModalConfiguracoesCalculoCliente({ open, codigoCliente, nomeClie
                   value={honorariosVariaveisTexto}
                   onChange={(e) => setHonorariosVariaveisTexto(e.target.value)}
                   rows={5}
-                  className="w-full text-sm font-mono border border-slate-300 rounded px-2 py-1.5 bg-white"
+                  className="w-full border border-slate-300 rounded bg-white px-2 py-1.5 font-mono text-base md:text-sm"
                   placeholder={'Ex.:\n> 30 = 0%\n< 30 < 60 = 10%\n< 60 = 20%'}
                 />
               )}
@@ -138,7 +146,7 @@ export function ModalConfiguracoesCalculoCliente({ open, codigoCliente, nomeClie
                   type="text"
                   value={honorariosValor}
                   onChange={(e) => setHonorariosValor(e.target.value)}
-                  className="w-full text-sm border border-slate-300 rounded px-2 py-1.5 bg-white"
+                  className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-base md:text-sm"
                   placeholder="Ex.: 10 %"
                 />
               )}
@@ -152,7 +160,7 @@ export function ModalConfiguracoesCalculoCliente({ open, codigoCliente, nomeClie
                   type="text"
                   value={juros}
                   onChange={(e) => setJuros(e.target.value)}
-                  className="w-full text-sm border border-slate-300 rounded px-2 py-1.5"
+                  className="w-full rounded border border-slate-300 px-2 py-1.5 text-base md:text-sm"
                 />
               </fieldset>
               <fieldset className="border border-slate-200 rounded-lg p-3 bg-white">
@@ -161,7 +169,7 @@ export function ModalConfiguracoesCalculoCliente({ open, codigoCliente, nomeClie
                   type="text"
                   value={multa}
                   onChange={(e) => setMulta(e.target.value)}
-                  className="w-full text-sm border border-slate-300 rounded px-2 py-1.5"
+                  className="w-full rounded border border-slate-300 px-2 py-1.5 text-base md:text-sm"
                 />
               </fieldset>
               <fieldset className="border border-slate-200 rounded-lg p-3 bg-slate-50/80">
@@ -223,18 +231,18 @@ export function ModalConfiguracoesCalculoCliente({ open, codigoCliente, nomeClie
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center justify-center gap-3 border-t border-slate-200 px-4 py-3 bg-slate-50 shrink-0">
+        <div className="flex shrink-0 flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50 px-4 py-3 md:flex-row md:flex-wrap md:justify-center md:gap-3">
           <button
             type="button"
             onClick={onClose}
-            className="px-5 py-2 rounded border border-slate-300 bg-white text-slate-800 text-sm hover:bg-slate-100"
+            className="min-h-11 w-full rounded border border-slate-300 bg-white px-5 py-2 text-sm text-slate-800 hover:bg-slate-100 md:w-auto"
           >
             Fechar
           </button>
           <button
             type="button"
             onClick={salvar}
-            className="px-5 py-2 rounded bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700"
+            className="min-h-11 w-full rounded bg-indigo-600 px-5 py-2 text-sm font-medium text-white hover:bg-indigo-700 md:w-auto"
           >
             Salvar
           </button>

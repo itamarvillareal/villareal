@@ -282,6 +282,8 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
   const [clientesBuscaPorProcLoading, setClientesBuscaPorProcLoading] = useState(false);
   const [clientesBuscaPorProcErro, setClientesBuscaPorProcErro] = useState('');
   const [paginaProcessos, setPaginaProcessos] = useState(1);
+  /** Em mobile: barra extra da grade de processos (botões) fica atrás de «Filtros» recolhível. */
+  const [filtrosGradeProcessosAberto, setFiltrosGradeProcessosAberto] = useState(false);
   const [modalQualificacaoAberto, setModalQualificacaoAberto] = useState(false);
   const [modalConfigCalculoAberto, setModalConfigCalculoAberto] = useState(false);
   const [modalEscolherPessoa, setModalEscolherPessoa] = useState(false);
@@ -1177,8 +1179,8 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
             {erroApiCliente}
           </div>
         ) : null}
-        <header className="flex items-center justify-between mb-3 gap-2 rounded-xl border border-slate-200/80 bg-white/90 px-3 py-2.5 shadow-sm backdrop-blur-sm shrink-0">
-          <div className="flex items-center gap-2.5 min-w-0">
+        <header className="mb-3 flex shrink-0 flex-col gap-2 rounded-xl border border-slate-200/80 bg-white/90 px-3 py-2.5 shadow-sm backdrop-blur-sm sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-2.5">
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-md ring-1 ring-emerald-400/40">
               <Users className="w-5 h-5" aria-hidden />
             </span>
@@ -1223,7 +1225,7 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
                 type="text"
                 value={buscaClienteNome}
                 onChange={(e) => setBuscaClienteNome(e.target.value)}
-                className={`${inputClass} w-full min-w-[200px] max-w-md`}
+                className={`${inputClass} w-full min-w-0 text-base max-w-none sm:max-w-md md:text-sm`}
                 placeholder="Nome, código (8 dígitos) ou nº interno do processo…"
                 autoComplete="off"
               />
@@ -1282,66 +1284,32 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
               );
             })()}
             {clientesFiltradosPorCodigo8.length > 0 && (
-              <div className="border border-slate-200/90 rounded-xl bg-white overflow-x-auto max-h-56 overflow-y-auto mb-2 shadow-inner ring-1 ring-slate-100">
-                <table className="w-full text-sm border-collapse min-w-[480px]">
-                  <thead>
-                    <tr className={`${theadBuscaClass} sticky top-0`}>
-                      <th className="px-3 py-2.5 text-left font-semibold w-28">
-                        Código
-                      </th>
-                      <th className="px-3 py-2.5 text-left font-semibold">
-                        Nome / Razão social
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {clientesFiltradosPorCodigo8.map((row, idx) => (
-                      <tr
-                        key={row.codigoPadded}
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => selecionarClienteDaBuscaNome(row)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            selecionarClienteDaBuscaNome(row);
-                          }
-                        }}
-                        className={`cursor-pointer hover:bg-emerald-50/80 transition-colors ${
-                          idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'
-                        }`}
-                      >
-                        <td className="border-b border-slate-100 px-3 py-2 text-slate-800 font-mono tabular-nums whitespace-nowrap">
-                          {row.codigoPadded}
-                        </td>
-                        <td className="border-b border-slate-100 px-3 py-2 text-slate-800">{row.nome}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-            {(() => {
-              const rawBusca = String(buscaClienteNome ?? '').trim();
-              const procInterno = rawBusca.length > 0 && /^\d+$/.test(rawBusca) && !/^\d{8}$/.test(rawBusca);
-              if (!procInterno || clientesBuscaPorProcHits.length === 0) return null;
-              return (
-                <div className="border border-slate-200/90 rounded-xl bg-white overflow-x-auto max-h-56 overflow-y-auto mb-2 shadow-inner ring-1 ring-slate-100">
-                  <table className="w-full text-sm border-collapse min-w-[480px]">
+              <div className="mb-2 max-h-56 overflow-y-auto rounded-xl border border-slate-200/90 bg-white shadow-inner ring-1 ring-slate-100">
+                <div className="space-y-2 p-2 md:hidden">
+                  {clientesFiltradosPorCodigo8.map((row) => (
+                    <button
+                      key={row.codigoPadded}
+                      type="button"
+                      onClick={() => selecionarClienteDaBuscaNome(row)}
+                      className="flex w-full min-h-[3.25rem] flex-col gap-0.5 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-left active:bg-emerald-50/80"
+                    >
+                      <span className="font-mono text-sm font-semibold tabular-nums text-slate-900">{row.codigoPadded}</span>
+                      <span className="text-sm text-slate-700">{row.nome}</span>
+                    </button>
+                  ))}
+                </div>
+                <div className="hidden overflow-x-auto md:block">
+                  <table className="w-full min-w-[480px] border-collapse text-sm">
                     <thead>
                       <tr className={`${theadBuscaClass} sticky top-0`}>
-                        <th className="px-3 py-2.5 text-left font-semibold w-28">
-                          Código
-                        </th>
-                        <th className="px-3 py-2.5 text-left font-semibold">
-                          Cliente / processo
-                        </th>
+                        <th className="w-28 px-3 py-2.5 text-left font-semibold">Código</th>
+                        <th className="px-3 py-2.5 text-left font-semibold">Nome / Razão social</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {clientesBuscaPorProcHits.map((row, idx) => (
+                      {clientesFiltradosPorCodigo8.map((row, idx) => (
                         <tr
-                          key={`${row.codigoPadded}-${idx}`}
+                          key={row.codigoPadded}
                           role="button"
                           tabIndex={0}
                           onClick={() => selecionarClienteDaBuscaNome(row)}
@@ -1351,11 +1319,11 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
                               selecionarClienteDaBuscaNome(row);
                             }
                           }}
-                          className={`cursor-pointer hover:bg-emerald-50/80 transition-colors ${
+                          className={`cursor-pointer transition-colors hover:bg-emerald-50/80 ${
                             idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'
                           }`}
                         >
-                          <td className="border-b border-slate-100 px-3 py-2 text-slate-800 font-mono tabular-nums whitespace-nowrap">
+                          <td className="whitespace-nowrap border-b border-slate-100 px-3 py-2 font-mono tabular-nums text-slate-800">
                             {row.codigoPadded}
                           </td>
                           <td className="border-b border-slate-100 px-3 py-2 text-slate-800">{row.nome}</td>
@@ -1363,8 +1331,64 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
                       ))}
                     </tbody>
                   </table>
+                </div>
+              </div>
+            )}
+            {(() => {
+              const rawBusca = String(buscaClienteNome ?? '').trim();
+              const procInterno = rawBusca.length > 0 && /^\d+$/.test(rawBusca) && !/^\d{8}$/.test(rawBusca);
+              if (!procInterno || clientesBuscaPorProcHits.length === 0) return null;
+              return (
+                <div className="mb-2 max-h-56 overflow-y-auto rounded-xl border border-slate-200/90 bg-white shadow-inner ring-1 ring-slate-100">
+                  <div className="space-y-2 p-2 md:hidden">
+                    {clientesBuscaPorProcHits.map((row, idx) => (
+                      <button
+                        key={`${row.codigoPadded}-${idx}`}
+                        type="button"
+                        onClick={() => selecionarClienteDaBuscaNome(row)}
+                        className="flex w-full min-h-[3.25rem] flex-col gap-0.5 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-left active:bg-emerald-50/80"
+                      >
+                        <span className="font-mono text-sm font-semibold tabular-nums text-slate-900">{row.codigoPadded}</span>
+                        <span className="text-sm text-slate-700">{row.nome}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="hidden overflow-x-auto md:block">
+                    <table className="w-full min-w-[480px] border-collapse text-sm">
+                      <thead>
+                        <tr className={`${theadBuscaClass} sticky top-0`}>
+                          <th className="w-28 px-3 py-2.5 text-left font-semibold">Código</th>
+                          <th className="px-3 py-2.5 text-left font-semibold">Cliente / processo</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {clientesBuscaPorProcHits.map((row, idx) => (
+                          <tr
+                            key={`${row.codigoPadded}-${idx}`}
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => selecionarClienteDaBuscaNome(row)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                selecionarClienteDaBuscaNome(row);
+                              }
+                            }}
+                            className={`cursor-pointer transition-colors hover:bg-emerald-50/80 ${
+                              idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'
+                            }`}
+                          >
+                            <td className="whitespace-nowrap border-b border-slate-100 px-3 py-2 font-mono tabular-nums text-slate-800">
+                              {row.codigoPadded}
+                            </td>
+                            <td className="border-b border-slate-100 px-3 py-2 text-slate-800">{row.nome}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                   {clientesBuscaPorProcHits.length >= 80 && (
-                    <p className="text-xs text-slate-500 px-2 py-1.5 border-t border-slate-100">
+                    <p className="border-t border-slate-100 px-2 py-1.5 text-xs text-slate-500">
                       Mostrando até 80 resultados — refine o nº do processo se necessário.
                     </p>
                   )}
@@ -1372,45 +1396,56 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
               );
             })()}
             {clientesFiltradosPorNome.length > 0 && (
-              <div className="border border-slate-200/90 rounded-xl bg-white overflow-x-auto max-h-56 overflow-y-auto shadow-inner ring-1 ring-slate-100">
-                <table className="w-full text-sm border-collapse min-w-[480px]">
-                  <thead>
-                    <tr className={`${theadBuscaClass} sticky top-0`}>
-                      <th className="px-3 py-2.5 text-left font-semibold w-28">
-                        Código
-                      </th>
-                      <th className="px-3 py-2.5 text-left font-semibold">
-                        Nome / Razão social
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {clientesFiltradosPorNome.map((row, idx) => (
-                      <tr
-                        key={row.codigoPadded}
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => selecionarClienteDaBuscaNome(row)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            selecionarClienteDaBuscaNome(row);
-                          }
-                        }}
-                        className={`cursor-pointer hover:bg-emerald-50/80 transition-colors ${
-                          idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'
-                        }`}
-                      >
-                        <td className="border-b border-slate-100 px-3 py-2 text-slate-800 font-mono tabular-nums whitespace-nowrap">
-                          {row.codigoPadded}
-                        </td>
-                        <td className="border-b border-slate-100 px-3 py-2 text-slate-800">{row.nome}</td>
+              <div className="max-h-56 overflow-y-auto rounded-xl border border-slate-200/90 bg-white shadow-inner ring-1 ring-slate-100">
+                <div className="space-y-2 p-2 md:hidden">
+                  {clientesFiltradosPorNome.map((row) => (
+                    <button
+                      key={row.codigoPadded}
+                      type="button"
+                      onClick={() => selecionarClienteDaBuscaNome(row)}
+                      className="flex w-full min-h-[3.25rem] flex-col gap-0.5 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-left active:bg-emerald-50/80"
+                    >
+                      <span className="font-mono text-sm font-semibold tabular-nums text-slate-900">{row.codigoPadded}</span>
+                      <span className="text-sm text-slate-700">{row.nome}</span>
+                    </button>
+                  ))}
+                </div>
+                <div className="hidden overflow-x-auto md:block">
+                  <table className="w-full min-w-[480px] border-collapse text-sm">
+                    <thead>
+                      <tr className={`${theadBuscaClass} sticky top-0`}>
+                        <th className="w-28 px-3 py-2.5 text-left font-semibold">Código</th>
+                        <th className="px-3 py-2.5 text-left font-semibold">Nome / Razão social</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {clientesFiltradosPorNome.map((row, idx) => (
+                        <tr
+                          key={row.codigoPadded}
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => selecionarClienteDaBuscaNome(row)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              selecionarClienteDaBuscaNome(row);
+                            }
+                          }}
+                          className={`cursor-pointer transition-colors hover:bg-emerald-50/80 ${
+                            idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'
+                          }`}
+                        >
+                          <td className="whitespace-nowrap border-b border-slate-100 px-3 py-2 font-mono tabular-nums text-slate-800">
+                            {row.codigoPadded}
+                          </td>
+                          <td className="border-b border-slate-100 px-3 py-2 text-slate-800">{row.nome}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
                 {clientesFiltradosPorNome.length >= 80 && (
-                  <p className="text-xs text-slate-500 px-2 py-1.5 border-t border-slate-100">
+                  <p className="border-t border-slate-100 px-2 py-1.5 text-xs text-slate-500">
                     Mostrando até 80 resultados — refine a busca se necessário.
                   </p>
                 )}
@@ -1686,11 +1721,77 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
               <p className="text-xs text-sky-100/95 mt-0.5">Grade alinhada à tela Processos — duplo clique na linha para abrir</p>
             </div>
             <div className="p-3 sm:p-4">
-            <div className="flex flex-wrap items-center gap-2 mb-3">
+            <div className="mb-3 md:hidden">
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">Pesquisar processos</label>
+              <input
+                type="text"
+                value={pesquisaProcesso}
+                onChange={(e) => setPesquisaProcesso(e.target.value)}
+                className={`${inputClass} w-full text-base`}
+                placeholder="Buscar processo…"
+              />
+              <button
+                type="button"
+                className="mt-2 flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-[var(--vl-bg-card)] px-3 py-2 text-sm font-semibold text-[var(--vl-text)] shadow-sm"
+                aria-expanded={filtrosGradeProcessosAberto}
+                onClick={() => setFiltrosGradeProcessosAberto((v) => !v)}
+              >
+                <SlidersHorizontal className="h-4 w-4 shrink-0" aria-hidden />
+                {filtrosGradeProcessosAberto ? 'Ocultar filtros e ações' : 'Filtros e ações'}
+              </button>
+              {filtrosGradeProcessosAberto ? (
+                <div className="mt-2 flex flex-col gap-2">
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className="flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-sky-200 bg-white shadow-sm"
+                      title="Buscar"
+                    >
+                      <Search className="h-5 w-5 text-sky-700" />
+                    </button>
+                    <button
+                      type="button"
+                      className="min-h-11 flex-1 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 shadow-sm"
+                    >
+                      Pesquisa
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleIncluirNovoProcesso}
+                    disabled={edicaoDesabilitada}
+                    className={`inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold shadow-sm ${
+                      edicaoDesabilitada
+                        ? 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400'
+                        : 'border-emerald-500 bg-gradient-to-r from-emerald-500 to-teal-600 text-white hover:from-emerald-600 hover:to-teal-700'
+                    }`}
+                    title={
+                      edicaoDesabilitada
+                        ? 'Habilite a edição para incluir um novo processo'
+                        : 'Inclui na lista e abre a tela Processos para este número de processo'
+                    }
+                  >
+                    <PlusCircle className="h-5 w-5 shrink-0" aria-hidden />
+                    Incluir processo
+                  </button>
+                </div>
+              ) : null}
+            </div>
+            <div className="mb-3 hidden flex-wrap items-center gap-2 md:flex">
               <label className="text-sm font-medium text-slate-700">Pesquisar</label>
-              <input type="text" value={pesquisaProcesso} onChange={(e) => setPesquisaProcesso(e.target.value)} className={`${inputClass} w-64`} placeholder="Buscar processo..." />
-              <button type="button" className="p-2 rounded-lg border border-sky-200 bg-white hover:bg-sky-50 shadow-sm" title="Buscar"><Search className="w-4 h-4 text-sky-700" /></button>
-              <button type="button" className="px-3 py-2 rounded-lg border border-slate-200 bg-white text-slate-800 text-sm font-medium hover:bg-slate-50 shadow-sm">Pesquisa</button>
+              <input
+                type="text"
+                value={pesquisaProcesso}
+                onChange={(e) => setPesquisaProcesso(e.target.value)}
+                className={`${inputClass} w-64`}
+                placeholder="Buscar processo..."
+              />
+              <button type="button" className="p-2 rounded-lg border border-sky-200 bg-white hover:bg-sky-50 shadow-sm" title="Buscar">
+                <Search className="w-4 h-4 text-sky-700" />
+              </button>
+              <button type="button" className="px-3 py-2 rounded-lg border border-slate-200 bg-white text-slate-800 text-sm font-medium hover:bg-slate-50 shadow-sm">
+                Pesquisa
+              </button>
               <button
                 type="button"
                 onClick={handleIncluirNovoProcesso}
@@ -1710,7 +1811,37 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
                 Incluir processo
               </button>
             </div>
-            <div className="overflow-x-auto border border-slate-200/90 rounded-xl bg-white shadow-inner ring-1 ring-slate-100">
+            <div className="mb-3 space-y-2 md:hidden">
+              {processosPagina.map((proc, idx) => {
+                const n = proc.procNumero ?? idx + 1 + (paginaProcessos - 1) * PROCESSOS_POR_PAGINA;
+                const procLabel = String(n).padStart(2, '0');
+                const cnj = String(
+                  obterNumeroProcessoNovoUnificado(padCliente8(codigo), n, proc.processoNovo ?? '') || ''
+                ).trim();
+                return (
+                  <button
+                    key={proc.id}
+                    type="button"
+                    className="w-full rounded-xl border border-slate-200 bg-white p-3 text-left shadow-sm ring-1 ring-slate-100/80 active:bg-sky-50/80"
+                    onClick={() => abrirProcessos(n)}
+                  >
+                    <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                      <span className="font-mono text-sm font-bold text-indigo-900">Proc. {procLabel}</span>
+                      <FolderOpen className="h-5 w-5 shrink-0 text-slate-500" aria-hidden />
+                    </div>
+                    <p className="mt-2 line-clamp-2 break-all text-xs text-slate-600" title={cnj || undefined}>
+                      {cnj || '— sem CNJ'}
+                    </p>
+                    <p className="mt-1 line-clamp-2 text-sm text-slate-800">
+                      {String(
+                        obterDescricaoAcaoUnificada(padCliente8(codigo), n, proc.descricao ?? '') || '—'
+                      )}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="hidden overflow-x-auto rounded-xl border border-slate-200/90 bg-white shadow-inner ring-1 ring-slate-100 md:block">
               <table className="w-full text-sm border-collapse">
                 <thead>
                   <tr className="bg-gradient-to-r from-indigo-800 via-slate-800 to-violet-900 text-white [&_th]:border-b [&_th]:border-white/10">
@@ -1811,7 +1942,7 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
                 </tbody>
               </table>
             </div>
-            <div className="flex flex-wrap items-center justify-between gap-3 mt-3 px-0.5">
+            <div className="mt-3 flex flex-col gap-3 px-0.5 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
               <p className="text-sm text-slate-600">
                 Página <span className="font-semibold text-slate-800">{paginaProcessos}</span> de{' '}
                 <span className="font-semibold text-slate-800">{totalPaginasProcessos}</span>
@@ -1883,7 +2014,7 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
 
       {modalEscolherPessoa && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          className="fixed inset-0 z-50 flex items-stretch justify-center bg-black/40 p-0 md:items-center md:p-4"
           role="dialog"
           aria-modal="true"
           aria-labelledby="modal-escolher-pessoa-titulo"
@@ -1893,11 +2024,25 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
           }}
         >
           <div
-            className="bg-white rounded-lg shadow-xl border border-slate-300 w-full max-w-3xl max-h-[88vh] flex flex-col"
+            className="flex h-full w-full max-w-none flex-col overflow-hidden rounded-none border border-slate-300 bg-white shadow-xl md:h-auto md:max-h-[88vh] md:max-w-3xl md:rounded-lg"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between gap-3 shrink-0">
-              <h2 id="modal-escolher-pessoa-titulo" className="text-base font-semibold text-slate-800">
+            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-200 px-3 py-3 md:px-4">
+              <button
+                type="button"
+                className="flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 md:hidden"
+                aria-label="Voltar"
+                onClick={() => {
+                  setModalEscolherPessoa(false);
+                  setBuscaPessoaModal('');
+                }}
+              >
+                <ChevronLeft className="h-6 w-6" aria-hidden />
+              </button>
+              <h2
+                id="modal-escolher-pessoa-titulo"
+                className="min-w-0 flex-1 text-base font-semibold text-slate-800"
+              >
                 Escolher pessoa (cliente)
               </h2>
               <button
@@ -1906,13 +2051,13 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
                   setModalEscolherPessoa(false);
                   setBuscaPessoaModal('');
                 }}
-                className="p-2 rounded border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                className="flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
                 title="Fechar"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="p-4 space-y-3 shrink-0 border-b border-slate-100">
+            <div className="shrink-0 space-y-3 border-b border-slate-100 p-4">
               <label className="block text-sm font-medium text-slate-700">Pesquisar</label>
               <input
                 type="text"
@@ -1920,7 +2065,7 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
                 value={buscaPessoaModal}
                 onChange={(e) => setBuscaPessoaModal(e.target.value)}
                 placeholder="Nº da pessoa, nome ou CPF/CNPJ…"
-                className={inputClass}
+                className={`${inputClass} text-base md:text-sm`}
               />
               <p className="text-xs text-slate-500">
                 Permite o nº da pessoa no Cadastro de Pessoas, o nome (mínimo 2 letras) ou CPF/CNPJ em dígitos (11 ou 14
@@ -2011,31 +2156,41 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
 
       {modalQualificacaoAberto && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          className="fixed inset-0 z-50 flex items-stretch justify-center bg-black/40 p-0 md:items-center md:p-4"
           role="dialog"
           aria-modal="true"
           aria-labelledby="modal-qualificacao-titulo"
           onClick={() => setModalQualificacaoAberto(false)}
         >
           <div
-            className="bg-white rounded-lg shadow-xl border border-slate-300 w-full max-w-4xl max-h-[85vh] flex flex-col"
+            className="flex h-full w-full max-w-none flex-col overflow-hidden rounded-none border border-slate-300 bg-white shadow-xl md:h-auto md:max-h-[85vh] md:max-w-4xl md:rounded-lg"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
-              <h2 id="modal-qualificacao-titulo" className="text-base font-semibold text-slate-800">Texto</h2>
+            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-200 px-3 py-3 md:px-4">
+              <button
+                type="button"
+                className="flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 md:hidden"
+                aria-label="Voltar"
+                onClick={() => setModalQualificacaoAberto(false)}
+              >
+                <ChevronLeft className="h-6 w-6" aria-hidden />
+              </button>
+              <h2 id="modal-qualificacao-titulo" className="min-w-0 flex-1 text-base font-semibold text-slate-800">
+                Texto
+              </h2>
               <button
                 type="button"
                 onClick={() => setModalQualificacaoAberto(false)}
-                className="px-3 py-1.5 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
+                className="flex min-h-11 min-w-[5.5rem] items-center justify-center rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700 hover:bg-slate-50"
               >
                 Fechar
               </button>
             </div>
-            <div className="p-4 flex-1 min-h-0">
+            <div className="flex min-h-0 flex-1 flex-col p-4">
               <textarea
                 value={textoQualificacao}
                 readOnly
-                className="w-full h-full min-h-[300px] px-3 py-2 border border-slate-300 rounded text-sm bg-white resize-none"
+                className="min-h-[min(50vh,300px)] w-full flex-1 resize-none rounded border border-slate-300 bg-white px-3 py-2 text-base md:min-h-[300px] md:text-sm"
               />
             </div>
           </div>
