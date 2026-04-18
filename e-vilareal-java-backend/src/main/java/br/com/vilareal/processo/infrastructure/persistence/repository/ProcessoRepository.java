@@ -63,8 +63,8 @@ public interface ProcessoRepository extends JpaRepository<ProcessoEntity, Long> 
                           '-', ''),
                           ' ', ''),
                           '/', ''),
-                          '\u2013', ''),
-                          '\u2014', '') = :norm
+                          CHAR(0x2013 USING utf8mb4), ''),
+                          CHAR(0x2014 USING utf8mb4), '') = :norm
                     ORDER BY id ASC
                     LIMIT 50
                     """,
