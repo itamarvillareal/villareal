@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { CalendarDays, ChevronLeft, ChevronRight, Plus, X } from 'lucide-react';
+import { CalendarDays, CalendarX2, ChevronLeft, ChevronRight, Plus, X } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   agendaUsuarios,
@@ -304,6 +304,24 @@ function StatusCurtoCell({ evento, onSalvar, readOnly = false }) {
 /** Mínimo de linhas no corpo do formulário (eventos + linha nova + linhas vazias de preenchimento). */
 const MIN_LINHAS_FORMULARIO_AGENDA = 10;
 
+/** Empty state quando a API da agenda respondeu sem eventos (evita tela “em branco” confundindo com erro). */
+function AgendaPainelSemEventosApi({ nomeUsuario, dataFormatada }) {
+  return (
+    <div
+      role="status"
+      className="flex flex-col items-center justify-center gap-3 rounded-xl border border-rose-900/30 bg-gradient-to-b from-rose-950 via-rose-900 to-rose-950 px-4 py-10 text-center shadow-inner ring-1 ring-rose-950/50"
+    >
+      <CalendarX2 className="h-12 w-12 shrink-0 text-rose-200/95" strokeWidth={1.75} aria-hidden />
+      <p className="text-base font-semibold leading-snug text-rose-50">
+        Sem eventos para <span className="text-white">{nomeUsuario}</span> em {dataFormatada}.
+      </p>
+      <p className="max-w-sm text-sm leading-relaxed text-rose-100/90">
+        Troque o usuário ou a data para ver outros dias.
+      </p>
+    </div>
+  );
+}
+
 function ColunaDia({
   dataLabel,
   eventos,
@@ -317,6 +335,8 @@ function ColunaDia({
   resolverNomeUsuario = null,
   /** «esquerda» | «direita» — faixa de cor do cabeçalho da coluna */
   variantColuna = 'esquerda',
+  /** Com API da agenda: exibe aviso amigável quando não há eventos para o usuário/data. */
+  apiAgendaVazio = null,
 }) {
   /** Última linha (novo compromisso): id criado até liberar após salvar hora/descrição. */
   const pendingNovaLinhaIdRef = useRef(null);
@@ -365,6 +385,11 @@ function ColunaDia({
         {dataLabel}
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden bg-gradient-to-b from-slate-50/40 to-white p-2">
+        {apiAgendaVazio ? (
+          <div className="mb-3">
+            <AgendaPainelSemEventosApi nomeUsuario={apiAgendaVazio.nomeUsuario} dataFormatada={apiAgendaVazio.dataFormatada} />
+          </div>
+        ) : null}
         <div className="space-y-3 pb-2 md:hidden">
           {eventos.map((ev) => (
             <div
@@ -773,12 +798,6 @@ function PainelCalendario({
       <div className="flex flex-col gap-2 mt-auto pt-1">
         <button
           type="button"
-          className="min-h-11 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-800 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50"
-        >
-          Pesquisar
-        </button>
-        <button
-          type="button"
           onClick={() => onAbrirUsuariosSistema?.()}
           className="min-h-11 rounded-lg border border-indigo-300 bg-gradient-to-r from-indigo-600 to-violet-600 px-3 py-2 text-sm font-semibold text-white shadow-md transition-colors hover:from-indigo-700 hover:to-violet-700"
           title="Cadastro de pessoas da agenda (mesma lista da tela Usuários)"
@@ -831,6 +850,9 @@ export function Agenda() {
   const [usuariosAtivos, setUsuariosAtivosState] = useState(() => getUsuariosAtivos());
   const [eventosApiEsquerda, setEventosApiEsquerda] = useState([]);
   const [eventosApiDireita, setEventosApiDireita] = useState([]);
+  /** Evita flash de empty state antes do 1.º GET da API concluir. */
+  const [apiAgendaEsquerdaHydrated, setApiAgendaEsquerdaHydrated] = useState(false);
+  const [apiAgendaDireitaHydrated, setApiAgendaDireitaHydrated] = useState(false);
   const [relatorioAgendaMensal, setRelatorioAgendaMensal] = useState(() =>
     featureFlags.useApiAgenda
       ? { ano: 0, mes: 0, usuarioId: '', todosUsuarios: false, diasComEventos: [] }
@@ -969,8 +991,22 @@ export function Agenda() {
     if (!featureFlags.useApiAgenda) return;
     let cancelado = false;
     (async () => {
-      const data = await listarEventosPorDataUsuario(dataEsquerdaStr, usuarioEsquerda);
-      if (!cancelado) setEventosApiEsquerda(data);
+      console.debug('[Agenda] GET eventos', { lado: 'esquerda', data: dataEsquerdaStr, usuarioId: usuarioEsquerda });
+      try {
+        const data = await listarEventosPorDataUsuario(dataEsquerdaStr, usuarioEsquerda);
+        const arr = Array.isArray(data) ? data : [];
+        console.debug('[Agenda] <- eventos', { lado: 'esquerda', count: arr.length });
+        if (!cancelado) {
+          setEventosApiEsquerda(arr);
+          setApiAgendaEsquerdaHydrated(true);
+        }
+      } catch {
+        console.debug('[Agenda] <- eventos', { lado: 'esquerda', count: 0 });
+        if (!cancelado) {
+          setEventosApiEsquerda([]);
+          setApiAgendaEsquerdaHydrated(true);
+        }
+      }
     })();
     return () => {
       cancelado = true;
@@ -981,8 +1017,22 @@ export function Agenda() {
     if (!featureFlags.useApiAgenda) return;
     let cancelado = false;
     (async () => {
-      const data = await listarEventosPorDataUsuario(dataDireitaStr, usuarioDireita);
-      if (!cancelado) setEventosApiDireita(data);
+      console.debug('[Agenda] GET eventos', { lado: 'direita', data: dataDireitaStr, usuarioId: usuarioDireita });
+      try {
+        const data = await listarEventosPorDataUsuario(dataDireitaStr, usuarioDireita);
+        const arr = Array.isArray(data) ? data : [];
+        console.debug('[Agenda] <- eventos', { lado: 'direita', count: arr.length });
+        if (!cancelado) {
+          setEventosApiDireita(arr);
+          setApiAgendaDireitaHydrated(true);
+        }
+      } catch {
+        console.debug('[Agenda] <- eventos', { lado: 'direita', count: 0 });
+        if (!cancelado) {
+          setEventosApiDireita([]);
+          setApiAgendaDireitaHydrated(true);
+        }
+      }
     })();
     return () => {
       cancelado = true;
@@ -1082,6 +1132,41 @@ export function Agenda() {
     return u ? getNomeExibicaoUsuario(u) : usuarioEsquerda ?? '—';
   }, [usuariosAtivos, usuarioEsquerda]);
 
+  const nomeUsuarioAgendaDireita = useMemo(() => {
+    const u = (usuariosAtivos || []).find((x) => String(x.id) === String(usuarioDireita));
+    return u ? getNomeExibicaoUsuario(u) : usuarioDireita ?? '—';
+  }, [usuariosAtivos, usuarioDireita]);
+
+  const apiAgendaVazioEsquerda = useMemo(() => {
+    if (!featureFlags.useApiAgenda || !apiAgendaEsquerdaHydrated) return null;
+    if (eventosApiEsquerda.length !== 0 || eventosEsquerda.length !== 0) return null;
+    return {
+      nomeUsuario: nomeUsuarioAgenda,
+      dataFormatada: rotuloDataComDiaSemana(dataEsquerdaStr),
+    };
+  }, [
+    apiAgendaEsquerdaHydrated,
+    dataEsquerdaStr,
+    eventosApiEsquerda.length,
+    eventosEsquerda.length,
+    nomeUsuarioAgenda,
+  ]);
+
+  const apiAgendaVazioDireita = useMemo(() => {
+    if (!featureFlags.useApiAgenda || !apiAgendaDireitaHydrated) return null;
+    if (eventosApiDireita.length !== 0 || eventosDireita.length !== 0) return null;
+    return {
+      nomeUsuario: nomeUsuarioAgendaDireita,
+      dataFormatada: rotuloDataComDiaSemana(dataDireitaStr),
+    };
+  }, [
+    apiAgendaDireitaHydrated,
+    dataDireitaStr,
+    eventosApiDireita.length,
+    eventosDireita.length,
+    nomeUsuarioAgendaDireita,
+  ]);
+
   const tituloMesRelatorio = `${MESES[mesEsquerda - 1] ?? ''} de ${anoEsquerda}`;
   const totalCompromissosMensal = useMemo(
     () => (relatorioAgendaMensal.diasComEventos || []).reduce((acc, d) => acc + d.eventos.length, 0),
@@ -1141,6 +1226,7 @@ export function Agenda() {
             somenteLeitura={false}
             mostrarColunaUsuario={false}
             resolverNomeUsuario={resolverNomeUsuarioAgenda}
+            apiAgendaVazio={apiAgendaVazioEsquerda}
             onPersistenciaAlterada={async () => {
               if (featureFlags.useApiAgenda) {
                 await criarEvento(dataEsquerdaStr, usuarioEsquerda, {});
@@ -1164,6 +1250,7 @@ export function Agenda() {
             somenteLeitura={false}
             mostrarColunaUsuario={false}
             resolverNomeUsuario={resolverNomeUsuarioAgenda}
+            apiAgendaVazio={apiAgendaVazioDireita}
             onPersistenciaAlterada={async () => {
               if (featureFlags.useApiAgenda) {
                 await criarEvento(dataDireitaStr, usuarioDireita, {});
