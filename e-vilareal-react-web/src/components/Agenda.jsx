@@ -378,13 +378,13 @@ function ColunaDia({
       : 'bg-gradient-to-r from-sky-600 via-cyan-600 to-teal-600';
 
   return (
-    <div className="flex-1 min-w-0 min-h-0 flex flex-col border border-slate-200/90 rounded-2xl bg-white/95 overflow-hidden shadow-md ring-1 ring-slate-200/60">
+    <div className="flex w-full min-w-0 shrink-0 flex-col overflow-hidden rounded-2xl border border-slate-200/90 bg-white/95 shadow-md ring-1 ring-slate-200/60 lg:min-h-0 lg:flex-1">
       <div
         className={`px-3 py-2.5 shrink-0 text-sm font-semibold text-white shadow-sm ring-1 ring-white/10 ${headerGradient}`}
       >
         {dataLabel}
       </div>
-      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden bg-gradient-to-b from-slate-50/40 to-white p-2">
+      <div className="overflow-x-hidden bg-gradient-to-b from-slate-50/40 to-white p-2 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
         {apiAgendaVazio ? (
           <div className="mb-3">
             <AgendaPainelSemEventosApi nomeUsuario={apiAgendaVazio.nomeUsuario} dataFormatada={apiAgendaVazio.dataFormatada} />
@@ -1175,7 +1175,7 @@ export function Agenda() {
 
   return (
     <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-gradient-to-br from-slate-100 via-indigo-50/35 to-emerald-50/45 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d]">
-      <div className="mx-auto flex w-full max-w-[1800px] flex-1 min-h-0 flex-col gap-3 overflow-y-auto overflow-x-hidden p-2 pb-28 sm:p-3 md:gap-4 md:pb-24 lg:flex-row lg:overflow-hidden lg:pb-4">
+      <div className="mx-auto flex w-full max-w-[1800px] flex-1 min-h-0 flex-col gap-4 overflow-y-auto overflow-x-hidden p-2 pb-28 sm:p-3 md:pb-24 lg:flex-row lg:gap-3 lg:overflow-hidden lg:pb-4">
       {/* Painel esquerdo: calendário (em mobile fica no topo; em lg à esquerda). */}
       <PainelCalendario
         mesAtual={mesEsquerda}
@@ -1192,7 +1192,7 @@ export function Agenda() {
       />
 
       {/* Área central: em mobile lista empilhada por dia; em lg duas colunas lado a lado. */}
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200/90 bg-white/95 shadow-md ring-1 ring-indigo-500/5 backdrop-blur-sm">
+      <div className="flex w-full min-w-0 shrink-0 flex-col overflow-hidden rounded-2xl border border-slate-200/90 bg-white/95 shadow-md ring-1 ring-indigo-500/5 backdrop-blur-sm lg:min-h-0 lg:flex-1">
         <div className="flex shrink-0 flex-col gap-2 border-b border-slate-200/80 bg-white/90 px-3 py-2.5 shadow-sm rounded-t-2xl sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
           <div className="flex min-w-0 items-center gap-2.5">
             <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-sky-500 to-indigo-600 text-white shadow-md ring-1 ring-sky-400/40 md:h-9 md:w-9">
@@ -1215,7 +1215,7 @@ export function Agenda() {
             Agenda mensal
           </button>
         </div>
-        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto bg-gradient-to-b from-slate-50/50 to-transparent p-2 lg:flex-row lg:gap-2 lg:overflow-hidden">
+        <div className="flex w-full min-h-0 flex-col gap-4 bg-gradient-to-b from-slate-50/50 to-transparent p-2 lg:flex-1 lg:flex-row lg:gap-2 lg:overflow-hidden">
           <ColunaDia
             variantColuna="esquerda"
             dataLabel={`${dataEsquerdaStr} — Compromissos do dia`}
