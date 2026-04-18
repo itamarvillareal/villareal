@@ -10,8 +10,8 @@ export function Login() {
   const location = useLocation();
   const from = location.state?.from && typeof location.state.from === 'string' ? location.state.from : '/';
 
-  const [usuario, setUsuario] = useState('itamar');
-  const [senha, setSenha] = useState('123456');
+  const [usuario, setUsuario] = useState('');
+  const [senha, setSenha] = useState('');
   const [erro, setErro] = useState('');
   const [carregando, setCarregando] = useState(false);
 
@@ -79,7 +79,7 @@ export function Login() {
                   value={usuario}
                   onChange={(e) => setUsuario(e.target.value)}
                   className="w-full rounded-xl border border-white/10 bg-slate-950/50 pl-10 pr-3 py-2.5 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/40"
-                  placeholder="ex.: itamar"
+                  placeholder="Digite o usuário"
                 />
               </div>
             </div>
@@ -96,7 +96,7 @@ export function Login() {
                   value={senha}
                   onChange={(e) => setSenha(e.target.value)}
                   className="w-full rounded-xl border border-white/10 bg-slate-950/50 pl-10 pr-3 py-2.5 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/40"
-                  placeholder="••••••"
+                  placeholder="Digite a senha"
                 />
               </div>
             </div>
@@ -118,13 +118,6 @@ export function Login() {
               {carregando ? 'Entrando…' : 'Entrar'}
             </button>
           </form>
-
-          <p className="mt-6 text-center text-[11px] text-slate-500 leading-relaxed">
-            Desenvolvimento: login e senha vêm preenchidos (
-            <span className="text-slate-400 font-mono">itamar</span> /{' '}
-            <span className="text-slate-400 font-mono">123456</span>
-            ). Altere nos campos se precisar de outro usuário.
-          </p>
         </div>
 
         <p className="mt-8 text-center text-[11px] text-slate-600">
