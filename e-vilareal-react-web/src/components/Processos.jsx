@@ -53,6 +53,7 @@ import {
   X,
   FolderOpen,
   Calendar,
+  ChevronLeft,
   ChevronUp,
   ChevronDown,
   ArrowUp,
@@ -2187,8 +2188,8 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     >
       <div className={`max-w-[1400px] mx-auto px-3 py-3 ${isEmbedded ? 'min-w-0' : ''}`}>
         {/* Cabeçalho: Processos + X */}
-        <header className="flex items-center justify-between mb-3 gap-2 rounded-xl border border-slate-200/80 bg-white/90 px-3 py-2.5 shadow-sm backdrop-blur-sm">
-          <div className="flex items-center gap-2 flex-wrap min-w-0">
+        <header className="mb-3 flex flex-col gap-2 rounded-xl border border-slate-200/80 bg-white/90 px-3 py-2.5 shadow-sm backdrop-blur-sm sm:flex-row sm:items-center sm:justify-between sm:gap-2">
+          <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
             <h1 className="text-xl font-bold bg-gradient-to-r from-slate-900 via-indigo-900 to-slate-800 dark:from-slate-100 dark:via-indigo-200 dark:to-slate-200 bg-clip-text text-transparent">
               Processos
             </h1>
@@ -3071,44 +3072,73 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                       Manter Inf.
                     </button>
                   </div>
-                  <div className="overflow-x-auto overflow-y-auto min-h-[8rem] max-h-[min(72vh,56rem)]">
-                    <table className="w-full text-sm border-collapse table-fixed">
-                      <thead className="bg-slate-100 sticky top-0">
+                  <div className="space-y-2 border-t border-slate-200 p-2 md:hidden">
+                    {historicoPaginado.length === 0 ? (
+                      <p className="py-4 text-center text-sm text-slate-500">Nenhum registro.</p>
+                    ) : (
+                      historicoPaginado.map((h) => (
+                        <button
+                          key={h.id}
+                          type="button"
+                          className="w-full rounded-xl border border-slate-200 bg-white p-3 text-left shadow-sm ring-1 ring-slate-100/80 active:bg-slate-50"
+                          onClick={() => setInformacaoModal({ info: h.info, inf: h.inf, data: h.data, usuario: h.usuario })}
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2 text-xs text-slate-500">
+                            <span className="font-mono font-semibold text-slate-700">Inf. {h.inf}</span>
+                            <span className="shrink-0 text-slate-600">{h.data}</span>
+                          </div>
+                          <p className="mt-2 line-clamp-3 text-sm text-slate-800" title={h.info}>
+                            {h.info}
+                          </p>
+                          <p className="mt-1 truncate text-xs text-slate-500" title={h.usuario || ''}>
+                            {h.usuario}
+                          </p>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                  <div className="hidden max-h-[min(72vh,56rem)] min-h-[8rem] overflow-x-auto overflow-y-auto md:block">
+                    <table className="w-full table-fixed border-collapse text-sm">
+                      <thead className="sticky top-0 bg-slate-100">
                         <tr>
-                          <th className="text-left pl-2 pr-6 py-1.5 font-semibold text-slate-700 w-[6.25rem] shrink-0">
+                          <th className="w-[6.25rem] shrink-0 py-1.5 pl-2 pr-6 text-left font-semibold text-slate-700">
                             Inf.
                           </th>
-                          <th className="text-left pl-2 pr-3 py-1.5 font-semibold text-slate-700 min-w-0 w-[72%]">
+                          <th className="min-w-0 w-[72%] py-1.5 pl-2 pr-3 text-left font-semibold text-slate-700">
                             Informação
                           </th>
-                          <th className="text-left px-2 py-1.5 font-semibold text-slate-700 w-28 shrink-0 whitespace-nowrap">
+                          <th className="w-28 shrink-0 whitespace-nowrap px-2 py-1.5 text-left font-semibold text-slate-700">
                             Data
                           </th>
-                          <th className="text-left pl-2 pr-2 py-1.5 font-semibold text-slate-700 w-[11ch] max-w-[11ch] shrink-0">
+                          <th className="w-[11ch] max-w-[11ch] shrink-0 py-1.5 pl-2 pr-2 text-left font-semibold text-slate-700">
                             Usuário
                           </th>
                         </tr>
                       </thead>
                       <tbody>
                         {historicoPaginado.length === 0 ? (
-                          <tr><td colSpan={4} className="px-3 py-4 text-center text-slate-500">Nenhum registro.</td></tr>
+                          <tr>
+                            <td colSpan={4} className="px-3 py-4 text-center text-slate-500">
+                              Nenhum registro.
+                            </td>
+                          </tr>
                         ) : (
                           <>
                             {historicoPaginado.map((h) => (
                               <tr
                                 key={h.id}
-                                className="border-t border-slate-200 hover:bg-slate-50/50 cursor-pointer"
+                                className="cursor-pointer border-t border-slate-200 hover:bg-slate-50/50"
                                 onDoubleClick={() => setInformacaoModal({ info: h.info, inf: h.inf, data: h.data, usuario: h.usuario })}
                                 title="Duplo clique para ver o texto completo"
                               >
-                                <td className="pl-2 pr-6 py-1.5 text-slate-700 align-top whitespace-nowrap">
-                                  Inf.: {h.inf}
+                                <td className="whitespace-nowrap py-1.5 pl-2 pr-6 align-top text-slate-700">Inf.: {h.inf}</td>
+                                <td className="min-w-0 py-1.5 pl-2 pr-3 align-top text-slate-800">
+                                  <div className="truncate" title={h.info}>
+                                    {h.info}
+                                  </div>
                                 </td>
-                                <td className="pl-2 pr-3 py-1.5 text-slate-800 min-w-0 align-top">
-                                  <div className="truncate" title={h.info}>{h.info}</div>
-                                </td>
-                                <td className="px-2 py-1.5 text-slate-600 align-top whitespace-nowrap">{h.data}</td>
-                                <td className="pl-2 pr-2 py-1.5 text-slate-700 align-top min-w-0 max-w-[11ch]">
+                                <td className="whitespace-nowrap px-2 py-1.5 align-top text-slate-600">{h.data}</td>
+                                <td className="max-w-[11ch] min-w-0 py-1.5 pl-2 pr-2 align-top text-slate-700">
                                   <div className="truncate" title={h.usuario || ''}>
                                     {h.usuario}
                                   </div>
@@ -3178,7 +3208,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
 
       {modalTramitacaoAberto && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          className="fixed inset-0 z-50 flex items-stretch justify-center bg-black/50 p-0 md:items-center md:p-4"
           role="dialog"
           aria-modal="true"
           aria-labelledby="modal-tramitacao-titulo"
@@ -3186,21 +3216,29 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
           onClick={criarModalOverlayClickFechar(() => setModalTramitacaoAberto(false))}
         >
           <div
-            className="bg-white rounded-lg shadow-xl border border-slate-200 w-full max-w-md"
+            className="flex h-full w-full max-w-none flex-col rounded-none border border-slate-200 bg-white shadow-xl md:h-auto md:max-h-[min(90vh,36rem)] md:max-w-md md:rounded-lg"
             onMouseDown={onModalPanelMouseDown}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200">
-              <h2 id="modal-tramitacao-titulo" className="text-base font-semibold text-slate-800">
+            <div className="flex items-center justify-between gap-2 border-b border-slate-200 px-3 py-3 md:px-4">
+              <button
+                type="button"
+                className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 md:hidden"
+                aria-label="Voltar"
+                onClick={() => setModalTramitacaoAberto(false)}
+              >
+                <ChevronLeft className="h-6 w-6" aria-hidden />
+              </button>
+              <h2 id="modal-tramitacao-titulo" className="min-w-0 flex-1 text-base font-semibold text-slate-800">
                 Tramitação dos Autos
               </h2>
               <button
                 type="button"
                 onClick={() => setModalTramitacaoAberto(false)}
-                className="p-2 rounded text-slate-500 hover:bg-slate-100"
+                className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100"
                 aria-label="Fechar"
               >
-                <X className="w-5 h-5" />
+                <X className="h-5 w-5" />
               </button>
             </div>
             <div className="p-4 space-y-2">
@@ -3239,7 +3277,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
 
       {modalAcoesRedacaoAberto && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          className="fixed inset-0 z-50 flex items-stretch justify-center bg-black/50 p-0 md:items-center md:p-4"
           role="dialog"
           aria-modal="true"
           aria-labelledby="modal-acoes-redacao-titulo"
@@ -3247,21 +3285,29 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
           onClick={criarModalOverlayClickFechar(() => setModalAcoesRedacaoAberto(false))}
         >
           <div
-            className="bg-white rounded-lg shadow-xl border border-slate-200 w-full max-w-md flex flex-col max-h-[min(90vh,28rem)]"
+            className="flex h-full max-h-none w-full max-w-none flex-col rounded-none border border-slate-200 bg-white shadow-xl md:max-h-[min(90vh,28rem)] md:max-w-md md:rounded-lg"
             onMouseDown={onModalPanelMouseDown}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 shrink-0">
-              <h2 id="modal-acoes-redacao-titulo" className="text-base font-semibold text-slate-800 pr-2">
+            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-200 px-3 py-3 md:px-4">
+              <button
+                type="button"
+                className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 md:hidden"
+                aria-label="Voltar"
+                onClick={() => setModalAcoesRedacaoAberto(false)}
+              >
+                <ChevronLeft className="h-6 w-6" aria-hidden />
+              </button>
+              <h2 id="modal-acoes-redacao-titulo" className="min-w-0 flex-1 pr-2 text-base font-semibold text-slate-800">
                 Tipo de ação
               </h2>
               <button
                 type="button"
                 onClick={() => setModalAcoesRedacaoAberto(false)}
-                className="p-2 rounded text-slate-500 hover:bg-slate-100 shrink-0"
+                className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100"
                 aria-label="Fechar"
               >
-                <X className="w-5 h-5" />
+                <X className="h-5 w-5" />
               </button>
             </div>
             <p className="px-4 pt-3 pb-2 text-sm text-slate-600 border-b border-slate-100 shrink-0">
@@ -3316,7 +3362,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
 
       {modalAgendaLoteAberto && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          className="fixed inset-0 z-50 flex items-stretch justify-center bg-black/50 p-0 md:items-center md:p-4"
           role="dialog"
           aria-modal="true"
           aria-labelledby="modal-agenda-lote-titulo"
@@ -3324,24 +3370,32 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
           onClick={criarModalOverlayClickFechar(() => setModalAgendaLoteAberto(false))}
         >
           <div
-            className="bg-white rounded-lg shadow-xl border border-slate-200 w-full max-w-2xl"
+            className="flex h-full w-full max-w-none flex-col overflow-hidden rounded-none border border-slate-200 bg-white shadow-xl md:h-auto md:max-h-[90vh] md:max-w-2xl md:rounded-lg"
             onMouseDown={onModalPanelMouseDown}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200">
-              <h2 id="modal-agenda-lote-titulo" className="text-base font-semibold text-slate-800">
+            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-200 px-3 py-3 md:px-4">
+              <button
+                type="button"
+                className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 md:hidden"
+                aria-label="Voltar"
+                onClick={() => setModalAgendaLoteAberto(false)}
+              >
+                <ChevronLeft className="h-6 w-6" aria-hidden />
+              </button>
+              <h2 id="modal-agenda-lote-titulo" className="min-w-0 flex-1 text-base font-semibold text-slate-800">
                 Agendamento em lote
               </h2>
               <button
                 type="button"
-                className="p-2 rounded text-slate-500 hover:bg-slate-100"
+                className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100"
                 aria-label="Fechar"
                 onClick={() => setModalAgendaLoteAberto(false)}
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="p-4 space-y-4">
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
               <div className="text-sm text-slate-600">
                 Este compromisso será lançado para <strong>Dr. Itamar</strong>, <strong>Karla</strong> e <strong>Ana Luisa</strong>.
               </div>
@@ -3351,10 +3405,10 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                   value={agendaLoteTexto}
                   onChange={(e) => setAgendaLoteTexto(e.target.value)}
                   rows={2}
-                  className="w-full px-3 py-2 border border-slate-300 rounded text-sm bg-white"
+                  className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-base md:text-sm"
                 />
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Data</label>
                   <input
@@ -3366,7 +3420,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                     }}
                     onBlur={() => setAgendaLoteData(normalizarDataBr(agendaLoteData) || agendaLoteData)}
                     placeholder="dd/mm/aaaa ou hj"
-                    className="w-full px-3 py-2 border border-slate-300 rounded text-sm bg-white"
+                    className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-base md:text-sm"
                   />
                 </div>
                 <div>
@@ -3377,7 +3431,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                     onChange={(e) => setAgendaLoteHora(formatarHoraAudienciaInput(e.target.value))}
                     onBlur={() => setAgendaLoteHora(normalizarHoraAudiencia(agendaLoteHora) || '')}
                     placeholder="hh:mm"
-                    className="w-full px-3 py-2 border border-slate-300 rounded text-sm bg-white"
+                    className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-base md:text-sm"
                   />
                 </div>
                 <div>
@@ -3395,7 +3449,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                         }
                       }
                     }}
-                    className="w-full px-3 py-2 border border-slate-300 rounded text-sm bg-white"
+                    className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-base md:text-sm"
                   >
                     {PERIODICIDADES_AGENDA_LOTE.map((p) => (
                       <option key={p} value={p}>{p}</option>
@@ -3420,7 +3474,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                         setAgendaLoteDiaDoMes(String(limitado));
                       }}
                       placeholder="1 a 31"
-                      className="w-full px-3 py-2 border border-slate-300 rounded text-sm bg-white"
+                      className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-base md:text-sm"
                     />
                   </div>
                 </div>
@@ -3438,18 +3492,18 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                 </div>
               ) : null}
             </div>
-            <div className="px-4 py-3 border-t border-slate-200 flex justify-end gap-2">
+            <div className="flex shrink-0 flex-col-reverse gap-2 border-t border-slate-200 px-4 py-3 md:flex-row md:justify-end md:gap-2">
               <button
                 type="button"
                 onClick={() => setModalAgendaLoteAberto(false)}
-                className="px-4 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
+                className="min-h-11 w-full rounded border border-slate-300 bg-white px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 md:w-auto"
               >
                 Cancelar
               </button>
               <button
                 type="button"
                 onClick={salvarAgendaEmLote}
-                className="px-4 py-2 rounded border border-blue-600 bg-blue-600 text-white text-sm hover:bg-blue-700"
+                className="min-h-11 w-full rounded border border-blue-600 bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 md:w-auto"
               >
                 Salvar
               </button>
@@ -3460,7 +3514,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
 
       {modalVinculoPartes && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          className="fixed inset-0 z-50 flex items-stretch justify-center bg-black/50 p-0 md:items-center md:p-4"
           role="dialog"
           aria-modal="true"
           aria-labelledby="modal-vinculo-partes-titulo"
@@ -3468,20 +3522,30 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
           onClick={criarModalOverlayClickFechar(() => setModalVinculoPartes(null))}
         >
           <div
-            className="bg-white rounded-lg shadow-xl border border-slate-200 w-full max-w-4xl max-h-[90vh] flex flex-col"
+            className="flex h-full w-full max-w-none flex-col overflow-hidden rounded-none border border-slate-200 bg-white shadow-xl md:h-auto md:max-h-[90vh] md:max-w-4xl md:rounded-lg"
             onMouseDown={onModalPanelMouseDown}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200">
-              <div>
+            <div className="flex shrink-0 items-start gap-2 border-b border-slate-200 px-3 py-3 md:px-4">
+              <button
+                type="button"
+                className="mt-0.5 flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 md:hidden"
+                aria-label="Voltar"
+                onClick={() => setModalVinculoPartes(null)}
+              >
+                <ChevronLeft className="h-6 w-6" aria-hidden />
+              </button>
+              <div className="min-w-0 flex-1">
                 <h2 id="modal-vinculo-partes-titulo" className="text-base font-semibold text-slate-800">
                   Partes do processo
                 </h2>
-                <p className="text-xs text-slate-500 mt-0.5">Formulário com duas abas: primeiro Parte Cliente, depois Parte Oposta.</p>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  Formulário com duas abas: primeiro Parte Cliente, depois Parte Oposta.
+                </p>
               </div>
               <button
                 type="button"
-                className="p-2 rounded text-slate-500 hover:bg-slate-100"
+                className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100"
                 aria-label="Fechar"
                 onClick={() => setModalVinculoPartes(null)}
               >
@@ -3489,7 +3553,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
               </button>
             </div>
             <form
-              className="flex flex-col flex-1 min-h-0"
+              className="flex min-h-0 flex-1 flex-col"
               onSubmit={(e) => {
                 e.preventDefault();
                 salvarVinculoPartes();
@@ -3765,24 +3829,35 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
         const somaFormatada = formatValorContaCorrente(somaDasLinhasExibidas);
         return (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          className="fixed inset-0 z-50 flex items-stretch justify-center bg-black/50 p-0 md:items-center md:p-4"
           role="dialog"
           aria-modal="true"
           aria-labelledby="modal-conta-corrente-titulo"
         >
           <div
-            className="bg-white rounded-lg shadow-xl border border-slate-200 w-full max-w-4xl max-h-[90vh] flex flex-col"
+            className="flex h-full w-full max-w-none flex-col overflow-hidden rounded-none border border-slate-200 bg-white shadow-xl md:h-auto md:max-h-[90vh] md:max-w-4xl md:rounded-lg"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between px-4 py-2 border-b border-slate-200 shrink-0">
-              <h2 id="modal-conta-corrente-titulo" className="text-base font-semibold text-slate-800">
+            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-200 px-3 py-2 md:px-4">
+              <button
+                type="button"
+                className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 md:hidden"
+                aria-label="Voltar"
+                onClick={() => setModalContaCorrente(false)}
+              >
+                <ChevronLeft className="h-6 w-6" aria-hidden />
+              </button>
+              <h2
+                id="modal-conta-corrente-titulo"
+                className="min-w-0 flex-1 text-base font-semibold text-slate-800"
+              >
                 Conta Corrente – Cliente {codigoCliente}
                 {contaCorrenteModo === 'proc0' ? ', Processo 0 (mensalista / geral)' : processo ? `, Processo ${processo}` : ''}
               </h2>
               <button
                 type="button"
                 onClick={() => setModalContaCorrente(false)}
-                className="p-2 rounded text-slate-500 hover:bg-slate-100"
+                className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100"
                 aria-label="Fechar"
               >
                 <X className="w-5 h-5" />
@@ -3834,7 +3909,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                       type="text"
                       value={buscaContaCorrente.termo}
                       onChange={(e) => setBuscaContaCorrente((prev) => ({ ...prev, termo: e.target.value }))}
-                      className="flex-1 min-w-[220px] px-2 py-1 border border-slate-300 rounded text-xs bg-white"
+                      className="min-h-11 min-w-0 flex-1 rounded border border-slate-300 bg-white px-2 py-1 text-base md:min-h-0 md:min-w-[220px] md:text-xs"
                       placeholder="Digite para filtrar..."
                     />
                     <button
@@ -3964,11 +4039,11 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                   ) : null}
                 </div>
               </div>
-              <div className="flex justify-center pt-4">
+              <div className="flex justify-center px-4 pb-4 pt-4 md:px-0">
                 <button
                   type="button"
                   onClick={() => setModalContaCorrente(false)}
-                  className="px-8 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
+                  className="min-h-11 w-full rounded border border-slate-300 bg-white px-8 py-2 text-sm text-slate-700 hover:bg-slate-50 md:w-auto"
                 >
                   OK
                 </button>
@@ -3982,7 +4057,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       {/* Caixa de diálogo com o texto completo da informação */}
       {informacaoModal && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          className="fixed inset-0 z-50 flex items-stretch justify-center bg-black/50 p-0 md:items-center md:p-4"
           onMouseDown={onModalOverlayMouseDown}
           onClick={criarModalOverlayClickFechar(() => setInformacaoModal(null))}
           role="dialog"
@@ -3990,31 +4065,42 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
           aria-labelledby="modal-informacao-titulo"
         >
           <div
-            className="bg-white rounded-lg shadow-xl border border-slate-200 max-w-2xl w-full max-h-[80vh] flex flex-col"
+            className="flex h-full w-full max-w-none flex-col overflow-hidden rounded-none border border-slate-200 bg-white shadow-xl md:h-auto md:max-h-[80vh] md:max-w-2xl md:rounded-lg"
             onMouseDown={onModalPanelMouseDown}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200">
-              <h2 id="modal-informacao-titulo" className="text-sm font-semibold text-slate-800">
+            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-200 px-3 py-3 md:px-4">
+              <button
+                type="button"
+                className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 md:hidden"
+                aria-label="Voltar"
+                onClick={() => setInformacaoModal(null)}
+              >
+                <ChevronLeft className="h-6 w-6" aria-hidden />
+              </button>
+              <h2
+                id="modal-informacao-titulo"
+                className="min-w-0 flex-1 text-sm font-semibold leading-snug text-slate-800"
+              >
                 Inf.: {informacaoModal.inf} — {informacaoModal.data} — {informacaoModal.usuario}
               </h2>
               <button
                 type="button"
                 onClick={() => setInformacaoModal(null)}
-                className="p-2 rounded text-slate-500 hover:bg-slate-100"
+                className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100"
                 aria-label="Fechar"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="px-4 py-4 overflow-y-auto flex-1">
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
               <p className="text-slate-800 whitespace-pre-wrap break-words">{informacaoModal.info}</p>
             </div>
-            <div className="px-4 py-3 border-t border-slate-200 flex justify-end">
+            <div className="flex shrink-0 justify-end border-t border-slate-200 px-4 py-3">
               <button
                 type="button"
                 onClick={() => setInformacaoModal(null)}
-                className="px-4 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
+                className="min-h-11 w-full rounded border border-slate-300 bg-white px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 md:w-auto"
               >
                 Fechar
               </button>
@@ -4041,7 +4127,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
 
       {clientesEmbed ? (
         <div
-          className="fixed inset-0 z-[75] flex items-center justify-center p-2 sm:p-4 bg-black/55"
+          className="fixed inset-0 z-[75] flex items-stretch justify-center bg-black/55 p-0 md:items-center md:p-4"
           role="dialog"
           aria-modal="true"
           aria-labelledby="processos-clientes-embed-title"
@@ -4050,17 +4136,28 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
           }}
         >
           <div
-            className="flex flex-col w-[min(100vw-0.5rem,1280px)] h-[min(100dvh-0.5rem,920px)] max-h-[min(100dvh-0.5rem,920px)] min-h-0 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#0f141c] shadow-2xl overflow-hidden"
+            className="flex h-[100dvh] w-full max-w-none min-h-0 flex-col overflow-hidden rounded-none border border-slate-200 bg-white shadow-2xl dark:border-white/10 dark:bg-[#0f141c] md:h-[min(100dvh-0.5rem,920px)] md:max-h-[min(100dvh-0.5rem,920px)] md:w-[min(100vw-0.5rem,1280px)] md:rounded-xl"
             onMouseDown={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-[#141c2c] shrink-0">
-              <h2 id="processos-clientes-embed-title" className="text-sm font-semibold text-slate-900 dark:text-white">
+            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2 dark:border-white/10 dark:bg-[#141c2c] md:px-3">
+              <button
+                type="button"
+                onClick={() => setClientesEmbed(null)}
+                className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-200 dark:text-slate-300 dark:hover:bg-white/10 md:hidden"
+                aria-label="Voltar"
+              >
+                <ChevronLeft className="h-6 w-6" aria-hidden />
+              </button>
+              <h2
+                id="processos-clientes-embed-title"
+                className="min-w-0 flex-1 text-sm font-semibold text-slate-900 dark:text-white"
+              >
                 Cadastro de clientes
               </h2>
               <button
                 type="button"
                 onClick={() => setClientesEmbed(null)}
-                className="p-1.5 rounded-lg text-slate-600 hover:bg-slate-200 dark:text-slate-300 dark:hover:bg-white/10"
+                className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-200 dark:text-slate-300 dark:hover:bg-white/10"
                 aria-label="Fechar cadastro de clientes"
               >
                 <X className="w-5 h-5" />

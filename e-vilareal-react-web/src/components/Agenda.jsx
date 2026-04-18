@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { CalendarDays, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, Plus, X } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   agendaUsuarios,
@@ -213,7 +213,7 @@ function EditableTextCell({
               }
             }}
             rows={3}
-            className={`w-full px-1.5 py-1 text-sm border rounded focus:outline-none focus:ring-1 resize-y min-h-[3rem] ${inputAlign} ${classesTemaInput}`}
+            className={`w-full px-1.5 py-1 text-base md:text-sm border rounded focus:outline-none focus:ring-1 resize-y min-h-[3rem] ${inputAlign} ${classesTemaInput}`}
           />
         ) : (
           <input
@@ -242,7 +242,7 @@ function EditableTextCell({
                 setEditando(false);
               }
             }}
-            className={`w-full px-1.5 py-1 text-sm border rounded focus:outline-none focus:ring-1 ${inputAlign} ${classesTemaInput}`}
+            className={`w-full px-1.5 py-1 text-base md:text-sm border rounded focus:outline-none focus:ring-1 ${inputAlign} ${classesTemaInput}`}
             placeholder=""
             maxLength={maxLen}
           />
@@ -276,19 +276,22 @@ function StatusCurtoCell({ evento, onSalvar, readOnly = false }) {
   const valor = normalizarStatusCurtoAgenda(evento?.statusCurto);
   if (readOnly) {
     return (
-      <div className="w-[92px] flex items-center justify-end pr-1 text-sm text-slate-700" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="flex min-h-11 w-full max-w-[6rem] items-center justify-end pr-1 text-sm text-slate-700 md:w-[92px] md:min-h-0"
+        onClick={(e) => e.stopPropagation()}
+      >
         {valor === 'OK' ? 'OK' : '—'}
       </div>
     );
   }
   return (
-    <div className="w-[92px] flex items-center justify-end pr-1" onClick={(e) => e.stopPropagation()}>
+    <div className="flex w-full max-w-[6rem] items-center justify-end pr-1 md:w-[92px]" onClick={(e) => e.stopPropagation()}>
       <select
         value={valor}
         onChange={(e) => onSalvar?.(e.target.value === 'OK' ? 'OK' : '')}
         onDoubleClick={(e) => e.stopPropagation()}
         title="Status: em branco ou OK"
-        className="w-full min-w-0 max-w-[6rem] px-2 py-1 text-sm text-right border border-slate-200 rounded-lg bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-400/40 focus:border-indigo-400"
+        className="min-h-11 w-full min-w-0 max-w-[6rem] rounded-lg border border-slate-200 bg-white px-2 py-2 text-right text-base shadow-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-400/40 md:min-h-0 md:py-1 md:text-sm"
         aria-label="Status do compromisso"
       >
         <option value=""> </option>
@@ -361,46 +364,56 @@ function ColunaDia({
       >
         {dataLabel}
       </div>
-      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-2 bg-gradient-to-b from-slate-50/40 to-white">
-        <table className="w-full table-fixed border-collapse">
-          <thead>
-            <tr className="bg-gradient-to-r from-slate-800 via-indigo-900 to-violet-900 text-white [&_th]:border-b [&_th]:border-white/10">
-              <th className="w-[96px] px-2 py-2 text-left text-xs font-semibold">Hora</th>
-              {mostrarColunaUsuario ? (
-                <th className="w-[100px] px-2 py-2 text-left text-xs font-semibold">Quem</th>
-              ) : null}
-              <th className="px-2 py-2 text-left text-xs font-semibold">Descrição</th>
-              <th className="w-[92px] px-1 py-2 text-right text-xs font-semibold">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {eventos.map((ev) => (
-              <tr
-                key={ev._chaveUnicaAgenda ?? ev.id}
-                className={`border-b border-slate-100 min-h-[42px] overflow-hidden transition-colors hover:bg-indigo-50/40 ${
-                  ev.destaque ? 'bg-amber-100/90' : ''
-                }`}
-                onDoubleClick={() => onDuploCliqueEvento?.(ev)}
-              >
-                <td className="w-[96px] px-2 py-1.5 align-top text-sm">
-                  <EditableTextCell
-                    texto={ev.hora ?? ''}
-                    align="left"
-                    maxLen={12}
-                    readOnly={somenteLeitura}
-                    onDuploClique={() => onDuploCliqueEvento?.(ev)}
-                    onSalvar={(novo) => {
-                      if (!dataBrStr) return;
-                      onSalvarCampos?.(ev, { hora: novo });
-                    }}
-                  />
-                </td>
-                {mostrarColunaUsuario ? (
-                  <td className="w-[100px] px-2 py-1.5 align-top text-xs text-gray-600 truncate" title={resolverNomeUsuario?.(ev) ?? ''}>
-                    {resolverNomeUsuario?.(ev) ?? '—'}
-                  </td>
-                ) : null}
-                <td className="px-2 py-1.5 align-top text-sm min-w-0">
+      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden bg-gradient-to-b from-slate-50/40 to-white p-2">
+        <div className="space-y-3 pb-2 md:hidden">
+          {eventos.map((ev) => (
+            <div
+              key={ev._chaveUnicaAgenda ?? ev.id}
+              className={`rounded-xl border border-slate-200/90 bg-white p-3 shadow-sm ring-1 ring-slate-100/80 ${
+                ev.destaque ? 'bg-amber-50/90' : ''
+              }`}
+              onDoubleClick={() => onDuploCliqueEvento?.(ev)}
+            >
+              <div className="flex flex-col gap-3">
+                <div className="flex flex-wrap items-start gap-3">
+                  <div className="min-w-0 shrink-0 basis-[5.5rem]">
+                    <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Hora</span>
+                    <EditableTextCell
+                      texto={ev.hora ?? ''}
+                      align="left"
+                      maxLen={12}
+                      readOnly={somenteLeitura}
+                      onDuploClique={() => onDuploCliqueEvento?.(ev)}
+                      onSalvar={(novo) => {
+                        if (!dataBrStr) return;
+                        onSalvarCampos?.(ev, { hora: novo });
+                      }}
+                    />
+                  </div>
+                  {mostrarColunaUsuario ? (
+                    <div className="min-w-0 flex-1">
+                      <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Quem</span>
+                      <p className="text-sm text-slate-700" title={resolverNomeUsuario?.(ev) ?? ''}>
+                        {resolverNomeUsuario?.(ev) ?? '—'}
+                      </p>
+                    </div>
+                  ) : null}
+                  <div className="ml-auto min-w-0 shrink-0">
+                    <span className="mb-1 block text-right text-xs font-semibold uppercase tracking-wide text-slate-500">Status</span>
+                    <div className="flex justify-end">
+                      <StatusCurtoCell
+                        evento={ev}
+                        readOnly={somenteLeitura}
+                        onSalvar={(novo) => {
+                          if (!dataBrStr) return;
+                          onSalvarCampos?.(ev, { statusCurto: novo });
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div className="min-w-0">
+                  <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Descrição</span>
                   <EditableTextCell
                     texto={ev.descricao ?? ''}
                     multiline
@@ -414,48 +427,31 @@ function ColunaDia({
                       onSalvarCampos?.(ev, { descricao: novo });
                     }}
                   />
-                </td>
-                <td className="w-[92px] px-0 py-1.5 align-top text-right">
-                  <StatusCurtoCell
-                    evento={ev}
-                    readOnly={somenteLeitura}
-                    onSalvar={(novo) => {
-                      if (!dataBrStr) return;
-                      onSalvarCampos?.(ev, { statusCurto: novo });
-                    }}
-                  />
-                </td>
-              </tr>
-            ))}
-            {Array.from({ length: linhasPreenchimento }, (_, i) => (
-              <tr
-                key={`agenda-linha-vazia-${dataBrStr}-${usuarioAgendaId}-${i}`}
-                className="border-b border-slate-100 min-h-[42px] overflow-hidden"
-                aria-hidden
-              >
-                <td className="w-[96px] px-2 py-1.5 align-top text-sm text-slate-200 select-none">&nbsp;</td>
-                {mostrarColunaUsuario ? (
-                  <td className="w-[100px] px-2 py-1.5 align-top text-sm text-slate-200 select-none">&nbsp;</td>
-                ) : null}
-                <td className="px-2 py-1.5 align-top text-sm min-w-0 text-slate-200 select-none">&nbsp;</td>
-                <td className="w-[92px] px-0 py-1.5 align-top text-right">&nbsp;</td>
-              </tr>
-            ))}
-            {!somenteLeitura ? (
-              <tr
-                key={`linha-nova-${novaLinhaBump}`}
-                className="border-b border-emerald-100 min-h-[42px] overflow-hidden bg-gradient-to-r from-emerald-50/60 to-teal-50/40"
-              >
-                <td className="w-[96px] px-2 py-1.5 align-top text-sm">
-                  <EditableTextCell
-                    texto=""
-                    align="left"
-                    maxLen={12}
-                    onSalvar={(novo) => salvarLinhaVazia({ hora: novo })}
-                  />
-                </td>
-                {mostrarColunaUsuario ? <td className="w-[100px] px-2 py-1.5 align-top text-sm" /> : null}
-                <td className="px-2 py-1.5 align-top text-sm min-w-0">
+                </div>
+              </div>
+            </div>
+          ))}
+          {!somenteLeitura ? (
+            <div
+              id={`agenda-novo-foco-${dataBrStr}-${usuarioAgendaId}`}
+              className="rounded-xl border border-emerald-300/80 bg-gradient-to-br from-emerald-50/90 to-teal-50/50 p-3 shadow-sm ring-1 ring-emerald-200/60"
+            >
+              <p className="mb-2 text-xs font-bold uppercase tracking-wide text-emerald-900">Novo compromisso</p>
+              <div className="flex flex-col gap-3">
+                <div className="flex flex-wrap items-start gap-3">
+                  <div className="min-w-0 shrink-0 basis-[5.5rem]">
+                    <span className="mb-1 block text-xs font-semibold text-slate-600">Hora</span>
+                    <EditableTextCell texto="" align="left" maxLen={12} onSalvar={(novo) => salvarLinhaVazia({ hora: novo })} />
+                  </div>
+                  <div className="ml-auto min-w-0 shrink-0">
+                    <span className="mb-1 block text-right text-xs font-semibold text-slate-600">Status</span>
+                    <div className="flex justify-end">
+                      <StatusCurtoCell evento={{ statusCurto: '' }} onSalvar={(novo) => salvarLinhaVazia({ statusCurto: novo })} />
+                    </div>
+                  </div>
+                </div>
+                <div className="min-w-0">
+                  <span className="mb-1 block text-xs font-semibold text-slate-600">Descrição</span>
                   <EditableTextCell
                     texto=""
                     multiline
@@ -464,17 +460,118 @@ function ColunaDia({
                     temaPorPalavraChave
                     onSalvar={(novo) => salvarLinhaVazia({ descricao: novo })}
                   />
-                </td>
-                <td className="w-[92px] px-0 py-1.5 align-top text-right">
-                  <StatusCurtoCell
-                    evento={{ statusCurto: '' }}
-                    onSalvar={(novo) => salvarLinhaVazia({ statusCurto: novo })}
-                  />
-                </td>
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </div>
+        <div className="hidden md:block">
+          <table className="w-full table-fixed border-collapse">
+            <thead>
+              <tr className="bg-gradient-to-r from-slate-800 via-indigo-900 to-violet-900 text-white [&_th]:border-b [&_th]:border-white/10">
+                <th className="w-[96px] px-2 py-2 text-left text-xs font-semibold">Hora</th>
+                {mostrarColunaUsuario ? (
+                  <th className="w-[100px] px-2 py-2 text-left text-xs font-semibold">Quem</th>
+                ) : null}
+                <th className="px-2 py-2 text-left text-xs font-semibold">Descrição</th>
+                <th className="w-[92px] px-1 py-2 text-right text-xs font-semibold">Status</th>
               </tr>
-            ) : null}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {eventos.map((ev) => (
+                <tr
+                  key={ev._chaveUnicaAgenda ?? ev.id}
+                  className={`min-h-[42px] overflow-hidden border-b border-slate-100 transition-colors hover:bg-indigo-50/40 ${
+                    ev.destaque ? 'bg-amber-100/90' : ''
+                  }`}
+                  onDoubleClick={() => onDuploCliqueEvento?.(ev)}
+                >
+                  <td className="w-[96px] px-2 py-1.5 align-top text-sm">
+                    <EditableTextCell
+                      texto={ev.hora ?? ''}
+                      align="left"
+                      maxLen={12}
+                      readOnly={somenteLeitura}
+                      onDuploClique={() => onDuploCliqueEvento?.(ev)}
+                      onSalvar={(novo) => {
+                        if (!dataBrStr) return;
+                        onSalvarCampos?.(ev, { hora: novo });
+                      }}
+                    />
+                  </td>
+                  {mostrarColunaUsuario ? (
+                    <td className="w-[100px] px-2 py-1.5 align-top text-xs text-gray-600 truncate" title={resolverNomeUsuario?.(ev) ?? ''}>
+                      {resolverNomeUsuario?.(ev) ?? '—'}
+                    </td>
+                  ) : null}
+                  <td className="min-w-0 px-2 py-1.5 align-top text-sm">
+                    <EditableTextCell
+                      texto={ev.descricao ?? ''}
+                      multiline
+                      align="left"
+                      maxLen={2000}
+                      temaPorPalavraChave
+                      readOnly={somenteLeitura}
+                      onDuploClique={() => onDuploCliqueEvento?.(ev)}
+                      onSalvar={(novo) => {
+                        if (!dataBrStr) return;
+                        onSalvarCampos?.(ev, { descricao: novo });
+                      }}
+                    />
+                  </td>
+                  <td className="w-[92px] px-0 py-1.5 align-top text-right">
+                    <StatusCurtoCell
+                      evento={ev}
+                      readOnly={somenteLeitura}
+                      onSalvar={(novo) => {
+                        if (!dataBrStr) return;
+                        onSalvarCampos?.(ev, { statusCurto: novo });
+                      }}
+                    />
+                  </td>
+                </tr>
+              ))}
+              {Array.from({ length: linhasPreenchimento }, (_, i) => (
+                <tr
+                  key={`agenda-linha-vazia-${dataBrStr}-${usuarioAgendaId}-${i}`}
+                  className="min-h-[42px] overflow-hidden border-b border-slate-100"
+                  aria-hidden
+                >
+                  <td className="w-[96px] px-2 py-1.5 align-top text-sm text-slate-200 select-none">&nbsp;</td>
+                  {mostrarColunaUsuario ? (
+                    <td className="w-[100px] px-2 py-1.5 align-top text-sm text-slate-200 select-none">&nbsp;</td>
+                  ) : null}
+                  <td className="min-w-0 px-2 py-1.5 align-top text-sm text-slate-200 select-none">&nbsp;</td>
+                  <td className="w-[92px] px-0 py-1.5 align-top text-right">&nbsp;</td>
+                </tr>
+              ))}
+              {!somenteLeitura ? (
+                <tr
+                  key={`linha-nova-${novaLinhaBump}`}
+                  className="min-h-[42px] overflow-hidden border-b border-emerald-100 bg-gradient-to-r from-emerald-50/60 to-teal-50/40"
+                >
+                  <td className="w-[96px] px-2 py-1.5 align-top text-sm">
+                    <EditableTextCell texto="" align="left" maxLen={12} onSalvar={(novo) => salvarLinhaVazia({ hora: novo })} />
+                  </td>
+                  {mostrarColunaUsuario ? <td className="w-[100px] px-2 py-1.5 align-top text-sm" /> : null}
+                  <td className="min-w-0 px-2 py-1.5 align-top text-sm">
+                    <EditableTextCell
+                      texto=""
+                      multiline
+                      align="left"
+                      maxLen={2000}
+                      temaPorPalavraChave
+                      onSalvar={(novo) => salvarLinhaVazia({ descricao: novo })}
+                    />
+                  </td>
+                  <td className="w-[92px] px-0 py-1.5 align-top text-right">
+                    <StatusCurtoCell evento={{ statusCurto: '' }} onSalvar={(novo) => salvarLinhaVazia({ statusCurto: novo })} />
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
@@ -492,6 +589,8 @@ function PainelCalendario({
   nomeGrupo = 'painel',
   usuariosSistema,
   onAbrirUsuariosSistema,
+  /** Classes extra no container do painel (ex.: `hidden lg:flex` no painel espelho em mobile). */
+  panelClassName = '',
 }) {
   const n = new Date();
   const hojeReal = { dd: n.getDate(), mm: n.getMonth() + 1, yyyy: n.getFullYear() };
@@ -554,7 +653,9 @@ function PainelCalendario({
   }
 
   return (
-    <aside className="w-56 shrink-0 flex flex-col gap-3 p-3 rounded-2xl border border-violet-200/70 bg-gradient-to-b from-violet-50/90 via-white to-indigo-50/50 shadow-md ring-1 ring-violet-500/10 overflow-y-auto">
+    <aside
+      className={`flex shrink-0 flex-col gap-3 overflow-y-auto rounded-2xl border border-violet-200/70 bg-gradient-to-b from-violet-50/90 via-white to-indigo-50/50 p-3 shadow-md ring-1 ring-violet-500/10 w-full lg:w-56 ${panelClassName}`.trim()}
+    >
       <div className="border border-violet-200/60 rounded-xl overflow-hidden bg-white shadow-sm ring-1 ring-violet-100/80">
         <div className="px-2 py-2 bg-gradient-to-r from-violet-600 to-indigo-600 text-center">
           <span className="text-xs font-bold uppercase tracking-wide text-white/95">Mês</span>
@@ -567,9 +668,9 @@ function PainelCalendario({
               if (mesAtual <= 1) { setMesAtual(12); setAnoAtual((a) => a - 1); }
               else setMesAtual((m) => m - 1);
             }}
-            className="p-1.5 rounded-lg border border-violet-200 bg-violet-50 text-violet-800 hover:bg-violet-100 transition-colors"
+            className="flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-violet-200 bg-violet-50 p-1.5 text-violet-800 transition-colors hover:bg-violet-100 md:min-h-0 md:min-w-0"
           >
-            <ChevronLeft className="w-4 h-4" />
+            <ChevronLeft className="h-4 w-4" aria-hidden />
           </button>
           <span className="text-sm font-semibold capitalize text-slate-800">
             {nomeMesAtual} {anoAtual}
@@ -580,9 +681,9 @@ function PainelCalendario({
               if (mesAtual >= 12) { setMesAtual(1); setAnoAtual((a) => a + 1); }
               else setMesAtual((m) => m + 1);
             }}
-            className="p-1.5 rounded-lg border border-violet-200 bg-violet-50 text-violet-800 hover:bg-violet-100 transition-colors"
+            className="flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-violet-200 bg-violet-50 p-1.5 text-violet-800 transition-colors hover:bg-violet-100 md:min-h-0 md:min-w-0"
           >
-            <ChevronRight className="w-4 h-4" />
+            <ChevronRight className="h-4 w-4" aria-hidden />
           </button>
         </div>
         <div className="grid grid-cols-7 gap-0.5 text-xs">
@@ -599,7 +700,7 @@ function PainelCalendario({
               key={d}
               type="button"
               onClick={() => setDiaSelecionado(d)}
-              className={`py-1 rounded-md text-xs font-medium transition-colors ${
+              className={`min-h-9 rounded-md py-1 text-xs font-medium transition-colors md:min-h-0 ${
                 d === diaSelecionado
                   ? 'bg-gradient-to-br from-indigo-600 to-violet-700 text-white shadow-md ring-1 ring-indigo-400/50'
                   : mesAtual === hojeReal.mm && anoAtual === hojeReal.yyyy && d === hojeReal.dd
@@ -642,7 +743,7 @@ function PainelCalendario({
             if (e.key === 'Enter') aplicarTextoData();
           }}
           placeholder="dd/mm/aaaa ou hj"
-          className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-teal-400/40 focus:border-teal-500"
+          className="w-full min-h-11 rounded-lg border border-slate-200 px-3 py-2 text-base shadow-sm focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-400/40 md:min-h-0 md:text-sm"
         />
         </div>
       </div>
@@ -670,13 +771,16 @@ function PainelCalendario({
       </div>
 
       <div className="flex flex-col gap-2 mt-auto pt-1">
-        <button type="button" className="px-3 py-2 text-sm font-medium rounded-lg border border-slate-200 bg-white text-slate-800 shadow-sm hover:bg-slate-50 hover:border-slate-300 transition-colors">
+        <button
+          type="button"
+          className="min-h-11 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-800 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50"
+        >
           Pesquisar
         </button>
         <button
           type="button"
           onClick={() => onAbrirUsuariosSistema?.()}
-          className="px-3 py-2 text-sm font-semibold rounded-lg border border-indigo-300 bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-md hover:from-indigo-700 hover:to-violet-700 transition-colors"
+          className="min-h-11 rounded-lg border border-indigo-300 bg-gradient-to-r from-indigo-600 to-violet-600 px-3 py-2 text-sm font-semibold text-white shadow-md transition-colors hover:from-indigo-700 hover:to-violet-700"
           title="Cadastro de pessoas da agenda (mesma lista da tela Usuários)"
         >
           Usuários
@@ -985,9 +1089,9 @@ export function Agenda() {
   );
 
   return (
-    <div className="flex flex-1 min-h-0 min-w-0 flex-col bg-gradient-to-br from-slate-100 via-indigo-50/35 to-emerald-50/45 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d] overflow-hidden">
-      <div className="flex flex-1 min-h-0 p-3 md:p-4 gap-3 md:gap-4 overflow-hidden w-full max-w-[1800px] mx-auto">
-      {/* Painel esquerdo: Calendário + Usuário + Botões */}
+    <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-gradient-to-br from-slate-100 via-indigo-50/35 to-emerald-50/45 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d]">
+      <div className="mx-auto flex w-full max-w-[1800px] flex-1 min-h-0 flex-col gap-3 overflow-y-auto overflow-x-hidden p-2 pb-28 sm:p-3 md:gap-4 md:pb-24 lg:flex-row lg:overflow-hidden lg:pb-4">
+      {/* Painel esquerdo: calendário (em mobile fica no topo; em lg à esquerda). */}
       <PainelCalendario
         mesAtual={mesEsquerda}
         anoAtual={anoEsquerda}
@@ -1002,31 +1106,31 @@ export function Agenda() {
         onAbrirUsuariosSistema={() => navigate('/usuarios')}
       />
 
-      {/* Área central: duas colunas de compromissos (simétricas) */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden rounded-2xl border border-slate-200/90 bg-white/95 shadow-md ring-1 ring-indigo-500/5 backdrop-blur-sm">
-        <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 border-b border-slate-200/80 bg-white/90 shrink-0 rounded-t-2xl shadow-sm">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-sky-500 to-indigo-600 text-white shadow-md ring-1 ring-sky-400/40">
-              <CalendarDays className="w-5 h-5" aria-hidden />
+      {/* Área central: em mobile lista empilhada por dia; em lg duas colunas lado a lado. */}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200/90 bg-white/95 shadow-md ring-1 ring-indigo-500/5 backdrop-blur-sm">
+        <div className="flex shrink-0 flex-col gap-2 border-b border-slate-200/80 bg-white/90 px-3 py-2.5 shadow-sm rounded-t-2xl sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-sky-500 to-indigo-600 text-white shadow-md ring-1 ring-sky-400/40 md:h-9 md:w-9">
+              <CalendarDays className="h-5 w-5" aria-hidden />
             </span>
             <div className="min-w-0">
-              <h1 className="text-xl font-bold bg-gradient-to-r from-slate-900 via-indigo-900 to-sky-800 dark:from-slate-100 dark:via-indigo-200 dark:to-sky-200 bg-clip-text text-transparent">
+              <h1 className="bg-gradient-to-r from-slate-900 via-indigo-900 to-sky-800 bg-clip-text text-lg font-bold text-transparent dark:from-slate-100 dark:via-indigo-200 dark:to-sky-200 md:text-xl">
                 Agenda
               </h1>
-              <p className="text-xs text-slate-500 truncate">Compromissos por dia — duplo clique para detalhe ou processo</p>
+              <p className="truncate text-xs text-slate-500">Compromissos por dia — duplo toque para detalhe ou processo</p>
             </div>
           </div>
           <button
             type="button"
             onClick={() => setModalAgendaMensal(true)}
-            className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-emerald-400/60 bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-sm font-semibold shadow-md hover:from-emerald-600 hover:to-teal-700 shrink-0"
+            className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-emerald-400/60 bg-gradient-to-r from-emerald-500 to-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-md hover:from-emerald-600 hover:to-teal-700 sm:w-auto sm:shrink-0"
             title="Relatório de todos os compromissos do mês (usuário do calendário esquerdo)"
           >
-            <CalendarDays className="w-4 h-4 opacity-95" aria-hidden />
+            <CalendarDays className="h-4 w-4 opacity-95" aria-hidden />
             Agenda mensal
           </button>
         </div>
-        <div className="flex flex-1 min-h-0 overflow-hidden gap-2 p-2 bg-gradient-to-b from-slate-50/50 to-transparent">
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto bg-gradient-to-b from-slate-50/50 to-transparent p-2 lg:flex-row lg:gap-2 lg:overflow-hidden">
           <ColunaDia
             variantColuna="esquerda"
             dataLabel={`${dataEsquerdaStr} — Compromissos do dia`}
@@ -1076,7 +1180,7 @@ export function Agenda() {
         </div>
       </div>
 
-      {/* Painel direito: Calendário + Usuário + Botões (espelho do esquerdo) */}
+      {/* Painel direito: só em lg (em mobile o 2.º dia aparece empilhado na área central). */}
       <PainelCalendario
         mesAtual={mesDireita}
         anoAtual={anoDireita}
@@ -1089,22 +1193,36 @@ export function Agenda() {
         nomeGrupo="direita"
         usuariosSistema={usuariosAtivos}
         onAbrirUsuariosSistema={() => navigate('/usuarios')}
+        panelClassName="hidden lg:flex"
       />
       </div>
 
+      <button
+        type="button"
+        className="fixed bottom-[max(1rem,env(safe-area-inset-bottom,0px))] right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-lg ring-2 ring-white/50 active:scale-[0.97] lg:hidden"
+        aria-label="Ir para novo compromisso do dia principal"
+        onClick={() =>
+          document
+            .getElementById(`agenda-novo-foco-${dataEsquerdaStr}-${usuarioEsquerda}`)
+            ?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+        }
+      >
+        <Plus className="h-7 w-7" strokeWidth={2.25} aria-hidden />
+      </button>
+
       {modalAgendaMensal && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 backdrop-blur-[2px] p-4"
+          className="fixed inset-0 z-50 flex items-stretch justify-center bg-black/45 p-0 backdrop-blur-[2px] md:items-center md:p-4"
           role="dialog"
           aria-modal="true"
           aria-labelledby="agenda-mensal-titulo"
           onClick={() => setModalAgendaMensal(false)}
         >
           <div
-            className="bg-white rounded-2xl shadow-2xl border border-slate-200/90 w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden ring-1 ring-indigo-500/10"
+            className="flex h-full w-full max-w-none flex-col overflow-hidden border-0 border-slate-200/90 bg-white shadow-2xl ring-1 ring-indigo-500/10 md:h-auto md:max-h-[90vh] md:max-w-4xl md:rounded-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between gap-3 px-4 py-3 shrink-0 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 text-white shadow-md">
+            <div className="flex shrink-0 items-center justify-between gap-2 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 px-3 py-3 text-white shadow-md md:px-4">
               <div className="min-w-0">
                 <h2 id="agenda-mensal-titulo" className="text-base font-bold tracking-tight">
                   Agenda completa — {tituloMesRelatorio}
@@ -1117,14 +1235,24 @@ export function Agenda() {
                   {totalCompromissosMensal} compromisso(s)
                 </p>
               </div>
-              <button
-                type="button"
-                className="p-2 rounded-lg bg-white/15 text-white hover:bg-white/25 border border-white/20 shrink-0"
-                aria-label="Fechar"
-                onClick={() => setModalAgendaMensal(false)}
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex shrink-0 items-center gap-1">
+                <button
+                  type="button"
+                  className="flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-white/25 bg-white/10 text-white hover:bg-white/20 md:hidden"
+                  aria-label="Voltar"
+                  onClick={() => setModalAgendaMensal(false)}
+                >
+                  <ChevronLeft className="h-6 w-6" aria-hidden />
+                </button>
+                <button
+                  type="button"
+                  className="flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-white/20 bg-white/15 text-white hover:bg-white/25"
+                  aria-label="Fechar"
+                  onClick={() => setModalAgendaMensal(false)}
+                >
+                  <X className="h-5 w-5" aria-hidden />
+                </button>
+              </div>
             </div>
             <div className="px-4 py-3 overflow-y-auto flex-1 min-h-0 bg-gradient-to-b from-slate-50/40 to-white">
               {(relatorioAgendaMensal.diasComEventos || []).length === 0 ? (
@@ -1182,10 +1310,10 @@ export function Agenda() {
                 </div>
               )}
             </div>
-            <div className="px-4 py-3 border-t border-slate-200/80 flex justify-end shrink-0 bg-white">
+            <div className="flex shrink-0 justify-end border-t border-slate-200/80 bg-white px-3 py-3 md:px-4">
               <button
                 type="button"
-                className="px-5 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 text-white text-sm font-semibold shadow-md hover:from-indigo-700 hover:to-violet-700"
+                className="min-h-11 w-full rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md hover:from-indigo-700 hover:to-violet-700 md:w-auto"
                 onClick={() => setModalAgendaMensal(false)}
               >
                 Fechar
@@ -1197,22 +1325,28 @@ export function Agenda() {
 
       {eventoModal && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 backdrop-blur-[2px] p-4"
+          className="fixed inset-0 z-50 flex items-stretch justify-center bg-black/45 p-0 backdrop-blur-[2px] md:items-center md:p-4"
           role="dialog"
           aria-modal="true"
           onClick={() => setEventoModal(null)}
         >
           <div
-            className="bg-white rounded-2xl shadow-2xl border border-slate-200/90 w-full max-w-lg flex flex-col overflow-hidden ring-1 ring-sky-500/10"
+            className="flex h-full w-full max-w-none flex-col overflow-hidden border-0 border-slate-200/90 bg-white shadow-2xl ring-1 ring-sky-500/10 md:h-auto md:max-w-lg md:rounded-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-sky-600 to-indigo-600 text-white shadow-md shrink-0">
-              <h2 className="text-sm font-bold">
-                Texto completo do compromisso
-              </h2>
+            <div className="flex shrink-0 items-center justify-between gap-2 bg-gradient-to-r from-sky-600 to-indigo-600 px-3 py-3 text-white shadow-md md:px-4">
               <button
                 type="button"
-                className="px-2 py-1 rounded-lg bg-white/15 text-white text-xs font-semibold hover:bg-white/25 border border-white/20"
+                className="flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-white/25 bg-white/10 text-white hover:bg-white/20 md:hidden"
+                aria-label="Voltar"
+                onClick={() => setEventoModal(null)}
+              >
+                <ChevronLeft className="h-6 w-6" aria-hidden />
+              </button>
+              <h2 className="min-w-0 flex-1 text-sm font-bold">Texto completo do compromisso</h2>
+              <button
+                type="button"
+                className="rounded-lg border border-white/20 bg-white/15 px-3 py-2 text-xs font-semibold text-white hover:bg-white/25 min-h-11 md:min-h-0"
                 aria-label="Fechar"
                 onClick={() => setEventoModal(null)}
               >
@@ -1236,14 +1370,14 @@ export function Agenda() {
                 ) : null}
               </div>
             </div>
-            <div className="px-4 py-3 border-t border-slate-200/80 flex justify-end gap-2 flex-wrap bg-white">
+            <div className="flex flex-col gap-2 border-t border-slate-200/80 bg-white px-3 py-3 sm:flex-row sm:flex-wrap sm:justify-end md:px-4">
               {(() => {
                 const ch = extrairChaveProcessoEventoAgenda(eventoModal);
                 if (!ch) return null;
                 return (
                   <button
                     type="button"
-                    className="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 text-white text-sm font-semibold shadow-md hover:from-indigo-700 hover:to-violet-700"
+                    className="min-h-11 w-full rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md hover:from-indigo-700 hover:to-violet-700 sm:w-auto"
                     onClick={() => {
                       setEventoModal(null);
                       navigate('/processos', { state: buildRouterStateChaveClienteProcesso(ch.codCliente, ch.proc) });
@@ -1255,7 +1389,7 @@ export function Agenda() {
               })()}
               <button
                 type="button"
-                className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-800 text-sm font-medium shadow-sm hover:bg-slate-50"
+                className="min-h-11 w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-800 shadow-sm hover:bg-slate-50 sm:w-auto"
                 onClick={() => setEventoModal(null)}
               >
                 OK
