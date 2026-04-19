@@ -1,9 +1,7 @@
 package br.com.vilareal.financeiro.application;
 
 import br.com.vilareal.financeiro.api.dto.LimparExtratoResult;
-import br.com.vilareal.financeiro.infrastructure.persistence.entity.ContaContabilEntity;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.LancamentoFinanceiroEntity;
-import br.com.vilareal.financeiro.infrastructure.persistence.repository.ContaContabilRepository;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.LancamentoFinanceiroRepository;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
@@ -15,7 +13,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
-import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
@@ -24,8 +21,6 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class FinanceiroApplicationServiceLimparExtratoTest {
 
-    @Mock
-    private ContaContabilRepository contaContabilRepository;
     @Mock
     private LancamentoFinanceiroRepository lancamentoRepository;
     @Mock
@@ -38,12 +33,6 @@ class FinanceiroApplicationServiceLimparExtratoTest {
 
     @Test
     void limparCefComNumeroBancoAgregaPorNomeEPorNumeroEDeletaTodos() {
-        ContaContabilEntity contaN = new ContaContabilEntity();
-        contaN.setId(99L);
-        when(contaContabilRepository.findFirstByCodigoIgnoreCase("N")).thenReturn(Optional.of(contaN));
-        when(lancamentoRepository.findDistinctEloFinanceiroIdsByBancoNormalizado("CEF")).thenReturn(List.of());
-        when(lancamentoRepository.findDistinctEloFinanceiroIdsByNumeroBanco(5)).thenReturn(List.of());
-
         LancamentoFinanceiroEntity porNome = new LancamentoFinanceiroEntity();
         porNome.setId(1L);
         porNome.setBancoNome("CEF");

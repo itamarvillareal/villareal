@@ -11,7 +11,6 @@ import java.util.Optional;
  *
  * @param controleAtivoOpcional vazio = import legado (ativo só true na criação; updates não alteram ativo)
  * @param usarFaseEmAndamentoQuandoFaseVazia true = planilha clientes (L vazio → "Em Andamento")
- * @param atualizarComplementarDescricaoAcao false = import clientes.xlsx (R só em processo.descricao_acao)
  */
 public record DadosImportacaoLinha(
         int linhaExcel,
@@ -22,8 +21,7 @@ public record DadosImportacaoLinha(
         String descricaoAcaoOuNull,
         List<ParteSlot> partes,
         Optional<Boolean> controleAtivoOpcional,
-        boolean usarFaseEmAndamentoQuandoFaseVazia,
-        boolean atualizarComplementarDescricaoAcao) {
+        boolean usarFaseEmAndamentoQuandoFaseVazia) {
 
     public record ParteSlot(String polo, int ordem, long pessoaId) {}
 
@@ -45,8 +43,7 @@ public record DadosImportacaoLinha(
                 descricaoAcaoOuNull,
                 partes,
                 Optional.empty(),
-                false,
-                true);
+                false);
     }
 
     static List<ParteSlot> deduplicarPorPoloEPessoa(List<ParteSlot> raw) {

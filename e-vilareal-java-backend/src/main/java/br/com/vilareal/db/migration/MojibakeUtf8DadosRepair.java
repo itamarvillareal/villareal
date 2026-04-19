@@ -27,7 +27,6 @@ public final class MojibakeUtf8DadosRepair {
                 "descricao_acao",
                 "competencia",
                 "fase",
-                "status",
                 "tramitacao",
                 "observacao",
                 "cidade",
@@ -48,7 +47,6 @@ public final class MojibakeUtf8DadosRepair {
                 "profissao",
                 "nacionalidade",
                 "estado_civil",
-                "descricao_acao",
                 "genero");
         atualizarTabela(conn, "pessoa_endereco", "id", "rua", "bairro", "cidade", "estado", "cep");
         atualizarTabela(conn, "pessoa_contato", "id", "tipo", "valor", "usuario_lancamento");
@@ -76,8 +74,6 @@ public final class MojibakeUtf8DadosRepair {
                 "numero_lancamento",
                 "descricao",
                 "descricao_detalhada",
-                "eq_referencia",
-                "parcela_ref",
                 "origem",
                 "status");
         atualizarTabela(conn, "financeiro_conta_contabil", "id", "codigo", "nome");

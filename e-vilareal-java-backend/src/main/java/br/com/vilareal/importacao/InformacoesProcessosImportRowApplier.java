@@ -1,9 +1,7 @@
 package br.com.vilareal.importacao;
 
 import br.com.vilareal.common.text.Utf8MojibakeUtil;
-import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaComplementarEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
-import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaComplementarRepository;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoParteEntity;
@@ -30,17 +28,14 @@ public class InformacoesProcessosImportRowApplier {
     public static final String POLO_REU = "REU";
 
     private final PessoaRepository pessoaRepository;
-    private final PessoaComplementarRepository complementarRepository;
     private final ProcessoRepository processoRepository;
     private final ProcessoParteRepository parteRepository;
 
     public InformacoesProcessosImportRowApplier(
             PessoaRepository pessoaRepository,
-            PessoaComplementarRepository complementarRepository,
             ProcessoRepository processoRepository,
             ProcessoParteRepository parteRepository) {
         this.pessoaRepository = pessoaRepository;
-        this.complementarRepository = complementarRepository;
         this.processoRepository = processoRepository;
         this.parteRepository = parteRepository;
     }
@@ -81,10 +76,6 @@ public class InformacoesProcessosImportRowApplier {
                 criado ? "criado" : "atualizado",
                 processo.getId());
 
-        if (dados.atualizarComplementarDescricaoAcao()) {
-            atualizarDescricaoAcaoComplementar(dados.clientePessoaId(), descricaoAcaoCorrigida);
-        }
-
         parteRepository.deleteByProcesso_IdAndPolo(processo.getId(), POLO_AUTOR);
         parteRepository.deleteByProcesso_IdAndPolo(processo.getId(), POLO_REU);
 
@@ -117,17 +108,6 @@ public class InformacoesProcessosImportRowApplier {
                 reus);
 
         return new ResultadoAplicacao(processo.getId(), criado, autores, reus);
-    }
-
-    private void atualizarDescricaoAcaoComplementar(long pessoaId, String descricaoBruta) {
-        PessoaEntity p = pessoaRepository.findById(pessoaId).orElseThrow();
-        PessoaComplementarEntity e = complementarRepository.findById(pessoaId).orElseGet(() -> {
-            PessoaComplementarEntity x = new PessoaComplementarEntity();
-            x.setPessoa(p);
-            return x;
-        });
-        e.setDescricaoAcao(emptyToNull(descricaoBruta));
-        complementarRepository.save(e);
     }
 
     private static String emptyToNull(String s) {

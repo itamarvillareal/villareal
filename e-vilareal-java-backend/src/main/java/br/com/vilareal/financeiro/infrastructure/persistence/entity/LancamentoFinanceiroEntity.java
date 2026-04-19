@@ -68,23 +68,11 @@ public class LancamentoFinanceiroEntity {
     @Column(name = "ref_tipo", nullable = false, length = 1)
     private String refTipo = "N";
 
-    @Column(name = "eq_referencia", length = 120)
-    private String eqReferencia;
-
-    @Column(name = "parcela_ref", length = 80)
-    private String parcelaRef;
-
     @Column(nullable = false, length = 40)
     private String origem = "MANUAL";
 
     @Column(nullable = false, length = 20)
     private String status = "ATIVO";
-
-    @Column(name = "classificacao_financeira_id")
-    private Long classificacaoFinanceiraId;
-
-    @Column(name = "elo_financeiro_id")
-    private Long eloFinanceiroId;
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private Instant createdAt;

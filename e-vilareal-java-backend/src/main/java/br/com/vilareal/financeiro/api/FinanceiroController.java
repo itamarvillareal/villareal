@@ -111,7 +111,7 @@ public class FinanceiroController {
     }
 
     @PostMapping(value = "/lancamentos/limpar-extrato", consumes = MediaType.APPLICATION_JSON_VALUE)
-    @Operation(description = "Remove todos os lançamentos do extrato (por nome normalizado e/ou numeroBanco) e desfaz elo_financeiro_id nos demais bancos.")
+    @Operation(description = "Remove todos os lançamentos do extrato (por nome normalizado e/ou numeroBanco). Elos entre bancos foram removidos do modelo (V34).")
     public LimparExtratoResult limparExtratoBanco(@Valid @RequestBody LimparExtratoRequest request) {
         return financeiroService.limparExtratoBancoEElosRelacionados(
                 request.getBanco(), request.getNumeroBanco());

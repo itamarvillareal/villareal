@@ -57,9 +57,6 @@ public class ProcessoEntity {
     private String observacaoFase;
 
     @Column(length = 120)
-    private String status;
-
-    @Column(length = 120)
     private String tramitacao;
 
     @Column(name = "data_protocolo")

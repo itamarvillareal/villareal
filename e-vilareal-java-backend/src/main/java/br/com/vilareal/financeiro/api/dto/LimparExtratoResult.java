@@ -10,9 +10,6 @@ public class LimparExtratoResult {
     /** Lançamentos apagados do extrato do banco indicado (nome normalizado). */
     private int lancamentosRemovidos;
 
-    /**
-     * Lançamentos noutros bancos que partilhavam {@code elo_financeiro_id} com algum lançamento desse extrato;
-     * elo removido, conta para «N», cliente e processo desvinculados, eq_referencia limpa.
-     */
+    /** Sempre 0 após remoção de {@code elo_financeiro_id} (V34); mantido na API por compatibilidade. */
     private int lancamentosDesvinculadosOutrosBancos;
 }

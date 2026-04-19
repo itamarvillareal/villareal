@@ -161,7 +161,6 @@ public class PessoaApplicationService {
         e.setNacionalidade(payload.getNacionalidade());
         e.setEstadoCivil(payload.getEstadoCivil());
         e.setGenero(payload.getGenero());
-        e.setDescricaoAcao(payload.getDescricaoAcao());
         complementarRepository.save(e);
         return toComplementarPayload(e);
     }
@@ -315,7 +314,6 @@ public class PessoaApplicationService {
         p.setNacionalidade(Utf8MojibakeUtil.corrigir(e.getNacionalidade()));
         p.setEstadoCivil(Utf8MojibakeUtil.corrigir(e.getEstadoCivil()));
         p.setGenero(Utf8MojibakeUtil.corrigir(e.getGenero()));
-        p.setDescricaoAcao(Utf8MojibakeUtil.corrigir(e.getDescricaoAcao()));
         return p;
     }
 

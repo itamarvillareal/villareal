@@ -71,7 +71,6 @@ class InformacoesProcessosImportServiceParseTest {
             assertThat(d.partes().get(0).pessoaId()).isEqualTo(99L);
             assertThat(d.controleAtivoOpcional()).isEmpty();
             assertThat(d.usarFaseEmAndamentoQuandoFaseVazia()).isFalse();
-            assertThat(d.atualizarComplementarDescricaoAcao()).isTrue();
         }
     }
 
@@ -99,7 +98,6 @@ class InformacoesProcessosImportServiceParseTest {
             assertThat(d.numeroCnjOuNull()).isEqualTo(cnj);
             assertThat(d.partes()).hasSize(2);
             assertThat(d.controleAtivoOpcional()).isEmpty();
-            assertThat(d.atualizarComplementarDescricaoAcao()).isTrue();
         }
     }
 
