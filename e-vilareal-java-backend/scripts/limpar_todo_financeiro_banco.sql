@@ -1,9 +1,11 @@
+-- Atualizado 2026-04-19: removidas referências a colunas dropadas
+-- por V34 (classificacao_financeira_id, elo_financeiro_id,
+-- parcela_ref, eq_referencia, processo.status, descricao_acao).
 -- =============================================================================
 -- ZERA dados de movimentação financeira no MySQL (Villareal).
 --
 -- Remove TODOS os lançamentos em financeiro_lancamento (extratos, OFX/PDF,
--- vínculos cliente/processo, elos de compensação — elo_financeiro_id é coluna
--- nesta mesma tabela; some com as linhas).
+-- vínculos cliente/processo; colunas de elo/eq foram removidas em V34).
 --
 -- Limpa referências em locação (imóveis) que apontavam para lançamentos.
 --
