@@ -391,7 +391,6 @@ export async function salvarCabecalhoProcesso(payload) {
     competencia: payload.competencia || null,
     fase: payload.faseSelecionada || null,
     observacaoFase: payload.faseCampo || null,
-    status: payload.status || null,
     tramitacao: (payload.procedimento || payload.tramitacao || '').trim() || null,
     dataProtocolo: toIsoFromBrDate(payload.dataProtocolo),
     prazoFatal: toIsoFromBrDate(payload.prazoFatal),

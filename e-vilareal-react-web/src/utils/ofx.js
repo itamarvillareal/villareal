@@ -183,11 +183,9 @@ export function sanitizarLancamentoImportacaoExtrato(t) {
     processoId: null,
     descricaoDetalhada: stripTagParCompensacaoCampo(base.descricaoDetalhada),
     _financeiroMeta: {
-      ...prevMeta,
+      contaContabilId: prevMeta.contaContabilId ?? null,
       clienteId: null,
       processoId: null,
-      classificacaoFinanceiraId: null,
-      eloFinanceiroId: null,
     },
   };
 }
@@ -260,7 +258,7 @@ function isOrigemImportacaoArquivoExtrato(row) {
 }
 
 /**
- * API como base; campos de classificação vazios na API reaproveitam o cache local (edições / sync pendente).
+ * API como base; campos vazios na API reaproveitam o cache local (edições / sync pendente).
  * Exceção: linhas com origem OFX/PDF na API ignoram cache para Cód. cliente, Proc. e colunas à direita.
  */
 export function mesclarLinhaExtratoApiComLocal(apiT, locT) {
@@ -321,8 +319,6 @@ export function mesclarLinhaExtratoApiComLocal(apiT, locT) {
     eq,
     parcela,
     _financeiroMeta: {
-      ...metaLoc,
-      ...metaApi,
       contaContabilId: metaApi.contaContabilId ?? metaLoc.contaContabilId ?? null,
       clienteId: ignorarCacheVinculosImportacao
         ? metaApi.clienteId ?? null
@@ -330,12 +326,6 @@ export function mesclarLinhaExtratoApiComLocal(apiT, locT) {
       processoId: ignorarCacheVinculosImportacao
         ? metaApi.processoId ?? null
         : metaApi.processoId ?? metaLoc.processoId ?? null,
-      classificacaoFinanceiraId: ignorarCacheVinculosImportacao
-        ? metaApi.classificacaoFinanceiraId ?? null
-        : metaApi.classificacaoFinanceiraId ?? metaLoc.classificacaoFinanceiraId ?? null,
-      eloFinanceiroId: ignorarCacheVinculosImportacao
-        ? metaApi.eloFinanceiroId ?? null
-        : metaApi.eloFinanceiroId ?? metaLoc.eloFinanceiroId ?? null,
     },
   };
 }
@@ -344,7 +334,7 @@ export function mesclarLinhaExtratoApiComLocal(apiT, locT) {
  * Após GET na API financeira: `apiRows` reflete o servidor; `localRows` é cache (localStorage) ou base.
  * Entram todos os lançamentos da API; do local permanecem só os que **não** têm par na API
  * (mesma {@link chaveDedupeLancamento} ou mesmo `apiId`), para não sumirem OFX ainda não persistidos.
- * Linhas com a mesma chave: mescla classificações locais quando a API ainda não as preencheu.
+ * Linhas com a mesma chave: mescla campos locais quando a API ainda não os preencheu.
  */
 export function mergeExtratoApiComLocal(apiRows, localRows) {
   const apiList = Array.isArray(apiRows) ? apiRows : [];

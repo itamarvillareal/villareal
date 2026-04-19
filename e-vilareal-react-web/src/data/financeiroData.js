@@ -1065,8 +1065,8 @@ function normNomeBancoExtrato(k) {
 }
 
 /**
- * Remove o extrato do banco indicado e desfaz nos outros bancos os vínculos de compensação (letra E, proc, tag,
- * {@code eloFinanceiroId} em {@code _financeiroMeta}) que coincidiam com lançamentos desse extrato.
+ * Remove o extrato do banco indicado (lista vazia para essa chave). Compensações entre bancos (letra E, tag)
+ * permanecem só no estado local — o servidor já não persiste elo por lançamento (removido em V34).
  * Não grava no storage — chame {@link savePersistedExtratosFinanceiro} se usar modo só local.
  *
  * @param {Record<string, unknown[]>} extratosPorBanco
@@ -1081,45 +1081,6 @@ export function limparExtratoBancoEElosRelacionados(extratosPorBanco, nomeBanco)
   }
   const alvoNorm = normNomeBancoExtrato(alvo);
   const bancoKey = Object.keys(next).find((k) => normNomeBancoExtrato(k) === alvoNorm);
-  const listaAlvo = bancoKey ? next[bancoKey] : [];
-  const eloIds = new Set();
-  const eloProcs = new Set();
-  if (Array.isArray(listaAlvo)) {
-    for (const t of listaAlvo) {
-      const eid = Number(t?._financeiroMeta?.eloFinanceiroId);
-      if (Number.isFinite(eid) && eid > 0) {
-        eloIds.add(eid);
-      }
-      const p = String(t?.proc ?? '').trim();
-      if (/^\d{4}$/.test(p)) {
-        eloProcs.add(p);
-      }
-    }
-  }
-  for (const [nome, list] of Object.entries(next)) {
-    if (normNomeBancoExtrato(nome) === alvoNorm) {
-      continue;
-    }
-    if (!Array.isArray(list)) {
-      continue;
-    }
-    for (const t of list) {
-      const eid = Number(t?._financeiroMeta?.eloFinanceiroId);
-      const hitElo = Number.isFinite(eid) && eid > 0 && eloIds.has(eid);
-      const p = String(t?.proc ?? '').trim();
-      const hitProc = /^\d{4}$/.test(p) && eloProcs.has(p);
-      if (!hitElo && !hitProc) {
-        continue;
-      }
-      t.letra = 'N';
-      t.proc = '';
-      t.codCliente = '';
-      t.eq = '';
-      t.dimensao = '';
-      t._financeiroMeta = { ...(t._financeiroMeta || {}), eloFinanceiroId: null };
-      removerTagParCompensacaoEmLancamento(t);
-    }
-  }
   if (bancoKey) {
     next[bancoKey] = [];
   }

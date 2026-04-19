@@ -30,8 +30,6 @@ describe('sanitizarLancamentoImportacaoExtrato', () => {
       _financeiroMeta: {
         clienteId: 3,
         processoId: 4,
-        eloFinanceiroId: 5,
-        classificacaoFinanceiraId: 6,
       },
     };
     const limpo = sanitizarLancamentoImportacaoExtrato(sujo);
@@ -47,8 +45,6 @@ describe('sanitizarLancamentoImportacaoExtrato', () => {
     expect(limpo.processoId).toBeNull();
     expect(limpo._financeiroMeta.clienteId).toBeNull();
     expect(limpo._financeiroMeta.processoId).toBeNull();
-    expect(limpo._financeiroMeta.eloFinanceiroId).toBeNull();
-    expect(limpo._financeiroMeta.classificacaoFinanceiraId).toBeNull();
     expect(limpo.descricao).toBe('X');
     expect(limpo.valor).toBe(-10);
   });
