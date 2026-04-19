@@ -31,6 +31,11 @@ public class CalculoRodadaEntity {
     @Column(name = "importacao_id", length = 36)
     private String importacaoId;
 
+    /**
+     * LAZY: listagens que só precisam da chave (ex.: {@code findAll} em reconciliação de upsert) não puxam o JSON
+     * (~13 KB/linha em produção). Métodos que leem o payload devem rodar em transação ativa.
+     */
+    @Basic(fetch = FetchType.LAZY)
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "payload_json", nullable = false, columnDefinition = "json")
     private JsonNode payloadJson;
