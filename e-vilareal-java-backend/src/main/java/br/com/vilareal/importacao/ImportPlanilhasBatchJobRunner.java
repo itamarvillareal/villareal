@@ -7,9 +7,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.ApplicationListener;
 import org.springframework.context.ConfigurableApplicationContext;
-import org.springframework.context.annotation.Profile;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -29,10 +29,11 @@ import java.nio.file.Paths;
  * VILAREAL_IMPORT_BATCH_PATH_PESSOAS="/caminho/Cadastro Pessoas.xls" \\
  * VILAREAL_IMPORT_BATCH_PATH_CLIENTES="/caminho/import clientes.xlsx" \\
  * VILAREAL_IMPORT_BATCH_PATH_IMOVEIS="/caminho/imoveis.xlsx" \\
- * ./mvnw spring-boot:run -Dspring-boot.run.profiles=import-planilhas-batch,dev
+ * ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev \\
+ *   -Dspring-boot.run.jvmArguments="-Dspring.main.web-application-type=none"
  * </pre>
  */
-@Profile("import-planilhas-batch")
+@ConditionalOnProperty(prefix = "vilareal.import.batch", name = "enabled", havingValue = "true")
 @Component
 @Order(Integer.MAX_VALUE)
 public class ImportPlanilhasBatchJobRunner implements ApplicationListener<ApplicationReadyEvent> {
@@ -60,13 +61,6 @@ public class ImportPlanilhasBatchJobRunner implements ApplicationListener<Applic
 
     @Override
     public void onApplicationEvent(ApplicationReadyEvent event) {
-        if (!batchProperties.isEnabled()) {
-            log.info(
-                    "import-planilhas-batch: vilareal.import.batch.enabled=false — defina true (ou VILAREAL_IMPORT_BATCH_ENABLED=true).");
-            SpringApplication.exit(context, () -> 0);
-            return;
-        }
-
         if (!StringUtils.hasText(batchProperties.getPathPessoas())
                 || !StringUtils.hasText(batchProperties.getPathClientes())
                 || !StringUtils.hasText(batchProperties.getPathImoveis())) {

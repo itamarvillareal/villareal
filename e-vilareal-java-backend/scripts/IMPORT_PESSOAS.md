@@ -41,7 +41,7 @@ DRY_RUN=false LIMIT=0 ./scripts/run-import-pessoas.sh
 ## Requisitos
 
 - MySQL acessível (como no `application-dev.properties`).
-- Pode manter a **API normal na porta 8080**; o perfil `import-pessoas` **não** abre servidor HTTP.
+- Pode manter a **API normal na porta 8080**; o script passa **`spring.main.web-application-type=none`** para o job não abrir servidor HTTP na mesma porta.
 
 ## Relatório
 

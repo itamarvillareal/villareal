@@ -5,10 +5,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
+import br.com.vilareal.importacao.condition.ImportRunnerNotBatchEnabledCondition;
 import org.springframework.context.ApplicationListener;
 import org.springframework.context.ConfigurableApplicationContext;
-import org.springframework.context.annotation.Profile;
+import org.springframework.context.annotation.Conditional;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -22,10 +24,12 @@ import java.nio.file.Paths;
  * <pre>
  * VILAREAL_IMPORT_IMOVEIS_PLANILHA_JOB_ENABLED=true \\
  * VILAREAL_IMPORT_IMOVEIS_PLANILHA_PATH="/caminho/imoveis.xlsx" \\
- * ./mvnw spring-boot:run -Dspring-boot.run.profiles=import-imoveis-planilha,dev
+ * ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev \\
+ *   -Dspring-boot.run.jvmArguments="-Dspring.main.web-application-type=none"
  * </pre>
  */
-@Profile("import-imoveis-planilha")
+@ConditionalOnProperty(prefix = "vilareal.import.imoveis-planilha.job", name = "enabled", havingValue = "true")
+@Conditional(ImportRunnerNotBatchEnabledCondition.class)
 @Component
 @Order(Integer.MAX_VALUE)
 public class ImoveisPlanilhaImportJobRunner implements ApplicationListener<ApplicationReadyEvent> {
@@ -34,9 +38,6 @@ public class ImoveisPlanilhaImportJobRunner implements ApplicationListener<Appli
 
     private final ImoveisPlanilhaImportService imoveisPlanilhaImportService;
     private final ConfigurableApplicationContext context;
-
-    @Value("${vilareal.import.imoveis-planilha.job.enabled:false}")
-    private boolean jobEnabled;
 
     @Value("${vilareal.import.imoveis-planilha.path:}")
     private String configuredPath;
@@ -49,12 +50,6 @@ public class ImoveisPlanilhaImportJobRunner implements ApplicationListener<Appli
 
     @Override
     public void onApplicationEvent(ApplicationReadyEvent event) {
-        if (!jobEnabled) {
-            log.info(
-                    "import-imoveis-planilha: vilareal.import.imoveis-planilha.job.enabled=false — defina true (ou env VILAREAL_IMPORT_IMOVEIS_PLANILHA_JOB_ENABLED=true) para executar.");
-            SpringApplication.exit(context, () -> 0);
-            return;
-        }
         Path path =
                 StringUtils.hasText(configuredPath)
                         ? Paths.get(configuredPath.trim())

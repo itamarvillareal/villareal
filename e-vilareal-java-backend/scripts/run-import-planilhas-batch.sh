@@ -12,4 +12,5 @@ export VILAREAL_IMPORT_BATCH_PATH_IMOVEIS="${VILAREAL_IMPORT_BATCH_PATH_IMOVEIS:
 # true = só simula pessoas e gera CSV; false = grava pessoas no MySQL
 export VILAREAL_IMPORT_BATCH_PESSOAS_DRY_RUN="${VILAREAL_IMPORT_BATCH_PESSOAS_DRY_RUN:-false}"
 
-./mvnw spring-boot:run -Dspring-boot.run.profiles=import-planilhas-batch,dev
+./mvnw spring-boot:run -Dspring-boot.run.profiles=dev \
+  -Dspring-boot.run.jvmArguments="-Dspring.main.web-application-type=none"
