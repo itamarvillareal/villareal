@@ -118,12 +118,6 @@ export function mergeUiLancamentoComRespostaApi(row, saved) {
       clienteId: mascaraSoArquivoSemVinculo ? null : saved.clienteId ?? row._financeiroMeta?.clienteId ?? null,
       processoId: mascaraSoArquivoSemVinculo ? null : saved.processoId ?? row._financeiroMeta?.processoId ?? null,
       contaContabilId: saved.contaContabilId ?? row._financeiroMeta?.contaContabilId ?? null,
-      classificacaoFinanceiraId: mascaraSoArquivoSemVinculo
-        ? null
-        : saved.classificacaoFinanceiraId ?? row._financeiroMeta?.classificacaoFinanceiraId ?? null,
-      eloFinanceiroId: mascaraSoArquivoSemVinculo
-        ? null
-        : saved.eloFinanceiroId ?? row._financeiroMeta?.eloFinanceiroId ?? null,
     },
   };
 }
@@ -153,9 +147,9 @@ function mapApiLancamentoToUi(l, contaToLetra) {
     processoId: l.processoId ?? null,
     proc: procExibicaoDesdeApi(l),
     ref: String(l.refTipo || 'N').toUpperCase() === 'R' ? 'R' : 'N',
-    dimensao: String(l.eqReferencia ?? ''),
-    eq: String(l.eqReferencia ?? ''),
-    parcela: String(l.parcelaRef ?? ''),
+    dimensao: '',
+    eq: '',
+    parcela: '',
     nomeBanco: String(l.bancoNome ?? ''),
     numeroBanco: l.numeroBanco ?? null,
     origemImportacao,
@@ -163,8 +157,6 @@ function mapApiLancamentoToUi(l, contaToLetra) {
       clienteId: l.clienteId ?? null,
       processoId: l.processoId ?? null,
       contaContabilId: l.contaContabilId ?? null,
-      classificacaoFinanceiraId: l.classificacaoFinanceiraId ?? null,
-      eloFinanceiroId: l.eloFinanceiroId ?? null,
     },
   };
   if (!fromArquivo || apiDtoTemVinculoClienteOuProcesso(l)) return base;
@@ -183,8 +175,6 @@ function mapApiLancamentoToUi(l, contaToLetra) {
       ...base._financeiroMeta,
       clienteId: null,
       processoId: null,
-      eloFinanceiroId: null,
-      classificacaoFinanceiraId: null,
     },
   };
 }
@@ -200,8 +190,6 @@ function mapUiLancamentoToApi(t, contaIdByNome, letraToConta) {
   const valorNum = Number(t.valor ?? 0);
   const natureza = valorNum < 0 ? 'DEBITO' : 'CREDITO';
   const meta = t._financeiroMeta || {};
-  const cf = meta.classificacaoFinanceiraId;
-  const elo = meta.eloFinanceiroId;
   const body = {
     contaContabilId,
     clienteId: Number(meta.clienteId) || null,
@@ -216,15 +204,9 @@ function mapUiLancamentoToApi(t, contaIdByNome, letraToConta) {
     valor: Math.abs(valorNum),
     natureza,
     refTipo: normalizarRef(t.ref),
-    eqReferencia: String(t.eq || t.dimensao || ''),
-    parcelaRef: String(t.parcela || ''),
     origem: String(t.origemImportacao ?? '').trim() || 'MANUAL',
     status: 'ATIVO',
   };
-  const cfN = Number(cf);
-  if (cf != null && Number.isFinite(cfN) && cfN > 0) body.classificacaoFinanceiraId = cfN;
-  const eloN = Number(elo);
-  if (elo != null && Number.isFinite(eloN) && eloN > 0) body.eloFinanceiroId = eloN;
   return body;
 }
 
