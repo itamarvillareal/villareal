@@ -1,24 +1,13 @@
--- Uso único: apaga lançamentos do extrato CORA e remove vínculos de compensação (elo_financeiro_id)
--- nos demais bancos que compartilhavam o mesmo elo com algum lançamento Cora.
--- Reclassifica esses lançamentos pareados para a conta «N» (Conta Não Identificados).
+-- Atualizado 2026-04-19: removidas referências a colunas dropadas
+-- por V34 (classificacao_financeira_id, elo_financeiro_id,
+-- parcela_ref, eq_referencia, processo.status, descricao_acao).
 --
--- mysql -u root -p vilareal < scripts/limpar_extrato_cora_financeiro.sql
+-- Pós-V34: remove apenas lançamentos do extrato cujo banco normalizado é «CORA».
+-- (Elos entre bancos e metadados de referência do extrato deixaram de existir no modelo.)
 --
-SET @id_n := (SELECT id FROM financeiro_conta_contabil WHERE codigo = 'N' LIMIT 1);
-
-UPDATE financeiro_lancamento fl
-INNER JOIN (
-  SELECT DISTINCT elo_financeiro_id AS eid
-  FROM financeiro_lancamento
-  WHERE UPPER(TRIM(COALESCE(banco_nome, ''))) = 'CORA'
-    AND elo_financeiro_id IS NOT NULL
-) s ON fl.elo_financeiro_id = s.eid
-SET
-  fl.elo_financeiro_id = NULL,
-  fl.conta_contabil_id = @id_n,
-  fl.cliente_id = NULL,
-  fl.processo_id = NULL,
-  fl.eq_referencia = NULL;
+-- Uso:
+--   mysql -u root -p nome_da_base < scripts/limpar_extrato_cora_financeiro.sql
+--
 
 DELETE FROM financeiro_lancamento
 WHERE UPPER(TRIM(COALESCE(banco_nome, ''))) = 'CORA';
