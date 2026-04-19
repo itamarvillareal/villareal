@@ -343,13 +343,13 @@ public class PessoaApplicationService {
         return r;
     }
 
-    /** Garante linha em {@code cliente} após criar pessoa (Flyway V34 + novos cadastros). */
+    /** Garante linha em {@code cliente} após criar pessoa (tabela criada em {@code V10__cliente.sql}). */
     private void garantirClienteParaPessoa(PessoaEntity p) {
         if (clienteRepository.existsByPessoa_Id(p.getId())) {
             return;
         }
         long pid = p.getId();
-        // CHAR(8): ids > 99_999_999 não cabem em LPAD de 8 dígitos — mesmo padrão da migração V34/V36 (prefixo 9).
+        // CHAR(8): ids > 99_999_999 não cabem em LPAD de 8 dígitos — usa prefixo "9" + 7 dígitos (compatível com codigo_cliente).
         String canonico =
                 pid <= 99_999_999L
                         ? String.format("%08d", pid)

@@ -80,7 +80,7 @@ public class ProcessoApplicationService {
      * contém <strong>só</strong> esses vínculos: código na coluna A (normalizado em 8 dígitos) → pessoa
      * da coluna B. Não se assume mais “cliente N = pessoa N”.
      *
-     * <p>Sem dados na planilha, lista a tabela {@code cliente} (Flyway V34): uma linha por registro de
+     * <p>Sem dados na planilha, lista a tabela {@code cliente} ({@code V10__cliente.sql}): uma linha por registro de
      * cliente, em geral canônico {@code codigoCliente = formatar(pessoa.id)} e aliases vindos de import.
      */
     @Transactional(readOnly = true)
