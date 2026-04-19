@@ -46,4 +46,5 @@ export VILAREAL_IMPORT_PESSOAS_PATH="$PLANILHA_ABS"
 export VILAREAL_IMPORT_PESSOAS_DRY_RUN="${DRY_RUN:-${VILAREAL_IMPORT_PESSOAS_DRY_RUN:-true}}"
 export VILAREAL_IMPORT_PESSOAS_LIMIT="${LIMIT:-${VILAREAL_IMPORT_PESSOAS_LIMIT:-50}}"
 
-exec ./mvnw -q spring-boot:run -Dspring-boot.run.profiles=import-pessoas,dev
+exec ./mvnw -q spring-boot:run -Dspring-boot.run.profiles=dev \
+  -Dspring-boot.run.jvmArguments="-Dspring.main.web-application-type=none"

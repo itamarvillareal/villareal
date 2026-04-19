@@ -2,11 +2,13 @@ package br.com.vilareal.pessoa.importacao;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import br.com.vilareal.importacao.condition.ImportRunnerNotBatchEnabledCondition;
 import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.ApplicationListener;
 import org.springframework.context.ConfigurableApplicationContext;
-import org.springframework.context.annotation.Profile;
+import org.springframework.context.annotation.Conditional;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
@@ -17,10 +19,12 @@ import org.springframework.stereotype.Component;
  * <pre>
  * Variáveis de ambiente (evita problemas com espaços no path e vírgulas no Maven):<br>
  * {@code VILAREAL_IMPORT_PESSOAS_ENABLED=true}, {@code VILAREAL_IMPORT_PESSOAS_PATH}, {@code VILAREAL_IMPORT_PESSOAS_DRY_RUN}, {@code VILAREAL_IMPORT_PESSOAS_LIMIT}.<br>
- * Depois: {@code ./mvnw spring-boot:run -Dspring-boot.run.profiles=import-pessoas,dev}
+ * Depois: {@code ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev} com
+ * {@code -Dspring-boot.run.jvmArguments="-Dspring.main.web-application-type=none"} (ver script {@code run-import-pessoas.sh}).
  * </pre>
  */
-@Profile("import-pessoas")
+@ConditionalOnProperty(prefix = "vilareal.import.pessoas", name = "enabled", havingValue = "true")
+@Conditional(ImportRunnerNotBatchEnabledCondition.class)
 @Component
 @Order(Integer.MAX_VALUE)
 public class CadastroPessoasPlanilhaImportRunner implements ApplicationListener<ApplicationReadyEvent> {
@@ -42,10 +46,6 @@ public class CadastroPessoasPlanilhaImportRunner implements ApplicationListener<
 
     @Override
     public void onApplicationEvent(ApplicationReadyEvent event) {
-        if (!properties.isEnabled()) {
-            log.info("import-pessoas: vilareal.import.pessoas.enabled=false — runner ignorado.");
-            return;
-        }
         if (properties.getPath() == null || properties.getPath().isBlank()) {
             log.error("import-pessoas: enabled=true mas path vazio.");
             SpringApplication.exit(context, () -> 1);

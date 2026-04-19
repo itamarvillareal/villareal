@@ -112,7 +112,7 @@ Authorization: Bearer <token>
 
 ### Importação em lote — planilha “Cadastro Pessoas” (.xls)
 
-Propriedades: `vilareal.import.pessoas.*` em `application.properties`. Perfil Spring **`import-pessoas`** (ficheiro `application-import-pessoas.properties`): **não abre porta HTTP** (`web-application-type=none`), para poder correr em paralelo com a API em `8080`. Com `enabled=true`, lê o ficheiro, grava `pessoa` (id explícito), `pessoa_complementar`, `pessoa_endereco` (se houver rua), `pessoa_contato` (telefones), ajusta `AUTO_INCREMENT` ao fim, gera CSV de relatório e **encerra a JVM**.
+Propriedades: `vilareal.import.pessoas.*` em `application.properties`. O runner só regista quando **`vilareal.import.pessoas.enabled=true`** e **`vilareal.import.batch.enabled=false`** (o lote em batch desativa os jobs isolados). Para **não ocupar a porta 8080**, passe **`spring.main.web-application-type=none`** na JVM (o script `run-import-pessoas.sh` já faz isso). Com `enabled=true`, lê o ficheiro, grava `pessoa` (id explícito), `pessoa_complementar`, `pessoa_endereco` (se houver rua), `pessoa_contato` (telefones), ajusta `AUTO_INCREMENT` ao fim, gera CSV de relatório e **encerra a JVM**.
 
 **Importante:** não use **vírgulas** em `--vilareal.import.pessoas.enabled=true,--vilareal...` — o Spring trata o valor de `enabled` como `true,--vilareal.import.pessoas.path=...` e falha com “Invalid boolean value”. Caminhos com **espaços** sem aspas pioram o parse.
 
@@ -133,13 +133,15 @@ export VILAREAL_IMPORT_PESSOAS_ENABLED=true
 export VILAREAL_IMPORT_PESSOAS_PATH="$HOME/Downloads/Cadastro Pessoas - Itamar (1).xls"
 export VILAREAL_IMPORT_PESSOAS_DRY_RUN=true
 export VILAREAL_IMPORT_PESSOAS_LIMIT=50
-./mvnw -q spring-boot:run -Dspring-boot.run.profiles=import-pessoas,dev
+./mvnw -q spring-boot:run -Dspring-boot.run.profiles=dev \
+  -Dspring-boot.run.jvmArguments="-Dspring.main.web-application-type=none"
 ```
 
 Alternativa sem env: argumentos **separados por espaço** (não por vírgula), path entre aspas no shell:
 
 ```bash
-./mvnw -q spring-boot:run -Dspring-boot.run.profiles=import-pessoas,dev \
+./mvnw -q spring-boot:run -Dspring-boot.run.profiles=dev \
+  -Dspring-boot.run.jvmArguments="-Dspring.main.web-application-type=none" \
   -Dspring-boot.run.arguments='--vilareal.import.pessoas.enabled=true --vilareal.import.pessoas.path="/Users/exemplo/Downloads/Cadastro Pessoas - Itamar (1).xls" --vilareal.import.pessoas.dry-run=true --vilareal.import.pessoas.limit=50'
 ```
 

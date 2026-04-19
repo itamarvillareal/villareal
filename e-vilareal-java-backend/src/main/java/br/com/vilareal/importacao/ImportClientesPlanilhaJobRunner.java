@@ -5,10 +5,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
+import br.com.vilareal.importacao.condition.ImportRunnerNotBatchEnabledCondition;
 import org.springframework.context.ApplicationListener;
 import org.springframework.context.ConfigurableApplicationContext;
-import org.springframework.context.annotation.Profile;
+import org.springframework.context.annotation.Conditional;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -23,10 +25,12 @@ import java.nio.file.Paths;
  * <pre>
  * {@code VILAREAL_IMPORT_CLIENTES_PLANILHA_JOB_ENABLED=true} \\
  * {@code VILAREAL_IMPORT_CLIENTES_PLANILHA_PATH="/caminho/import clientes.xlsx"} \\
- * {@code ./mvnw spring-boot:run -Dspring-boot.run.profiles=import-clientes-planilha,dev}
+ * {@code ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev} \\
+ * {@code   -Dspring-boot.run.jvmArguments="-Dspring.main.web-application-type=none"}
  * </pre>
  */
-@Profile("import-clientes-planilha")
+@ConditionalOnProperty(prefix = "vilareal.import.clientes-planilha.job", name = "enabled", havingValue = "true")
+@Conditional(ImportRunnerNotBatchEnabledCondition.class)
 @Component
 @Order(Integer.MAX_VALUE)
 public class ImportClientesPlanilhaJobRunner implements ApplicationListener<ApplicationReadyEvent> {
@@ -35,9 +39,6 @@ public class ImportClientesPlanilhaJobRunner implements ApplicationListener<Appl
 
     private final ImportClientesPlanilhaService importClientesPlanilhaService;
     private final ConfigurableApplicationContext context;
-
-    @Value("${vilareal.import.clientes-planilha.job.enabled:false}")
-    private boolean jobEnabled;
 
     @Value("${vilareal.import.clientes-planilha.path:}")
     private String configuredPath;
@@ -50,12 +51,6 @@ public class ImportClientesPlanilhaJobRunner implements ApplicationListener<Appl
 
     @Override
     public void onApplicationEvent(ApplicationReadyEvent event) {
-        if (!jobEnabled) {
-            log.info(
-                    "import-clientes-planilha: vilareal.import.clientes-planilha.job.enabled=false — defina true (ou env VILAREAL_IMPORT_CLIENTES_PLANILHA_JOB_ENABLED=true) para executar.");
-            SpringApplication.exit(context, () -> 0);
-            return;
-        }
         Path path =
                 StringUtils.hasText(configuredPath)
                         ? Paths.get(configuredPath.trim())

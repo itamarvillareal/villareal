@@ -3,7 +3,7 @@ package br.com.vilareal.importacao;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
- * Job único: importar as três planilhas na ordem correta (perfil {@code import-planilhas-batch}).
+ * Job único: importar as três planilhas na ordem correta quando {@code vilareal.import.batch.enabled=true}.
  *
  * <p>Variáveis de ambiente: {@code VILAREAL_IMPORT_BATCH_ENABLED}, {@code VILAREAL_IMPORT_BATCH_PATH_PESSOAS},
  * {@code VILAREAL_IMPORT_BATCH_PATH_CLIENTES}, {@code VILAREAL_IMPORT_BATCH_PATH_IMOVEIS},
