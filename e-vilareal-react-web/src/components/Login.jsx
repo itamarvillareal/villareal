@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { LogIn, Lock, User } from 'lucide-react';
-import { useAuth } from '../context/AuthContext.jsx';
+import { useAuth, IDLE_SESSION_MESSAGE_STORAGE_KEY } from '../context/AuthContext.jsx';
 import { featureFlags } from '../config/featureFlags.js';
 
 export function Login() {
@@ -14,6 +14,19 @@ export function Login() {
   const [senha, setSenha] = useState('');
   const [erro, setErro] = useState('');
   const [carregando, setCarregando] = useState(false);
+  const [avisoInatividade, setAvisoInatividade] = useState('');
+
+  useEffect(() => {
+    try {
+      const msg = sessionStorage.getItem(IDLE_SESSION_MESSAGE_STORAGE_KEY);
+      if (msg) {
+        sessionStorage.removeItem(IDLE_SESSION_MESSAGE_STORAGE_KEY);
+        setAvisoInatividade(msg);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   if (!featureFlags.requiresApiAuth) {
     return <Navigate to="/" replace />;
@@ -100,6 +113,15 @@ export function Login() {
                 />
               </div>
             </div>
+
+            {avisoInatividade ? (
+              <div
+                className="rounded-xl border border-amber-500/35 bg-amber-950/35 px-3 py-2.5 text-sm text-amber-100"
+                role="status"
+              >
+                {avisoInatividade}
+              </div>
+            ) : null}
 
             {erro ? (
               <div

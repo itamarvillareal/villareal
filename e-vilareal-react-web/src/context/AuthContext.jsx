@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { clearAccessToken, getAccessToken, setAccessToken } from '../api/authTokenStorage.js';
 import { fetchAuthLogin, fetchAuthMe } from '../api/authApiService.js';
 import {
@@ -13,8 +13,15 @@ import { gravarSnapshotUsuariosApi } from '../services/syncApiUsuariosSnapshot.j
 
 const AuthContext = createContext(null);
 
+/** Chave em sessionStorage: mensagem exibida na tela de login após encerrar sessão por inatividade. */
+export const IDLE_SESSION_MESSAGE_STORAGE_KEY = 'vilareal.logoutMessageIdle.v1';
+
+const SESSION_IDLE_MS = 60 * 60 * 1000;
+const SESSION_IDLE_CHECK_MS = 30_000;
+
 export function AuthProvider({ children }) {
   const [token, setTokenState] = useState(() => getAccessToken());
+  const lastActivityRef = useRef(Date.now());
 
   /** Recarregar aba com JWT válido: repõe sessão de operador/perfil e snapshot de usuários. */
   useEffect(() => {
@@ -55,6 +62,45 @@ export function AuthProvider({ children }) {
     return () => window.removeEventListener('vilareal:api-unauthorized', on401);
   }, []);
 
+  /** Encerra sessão após 1 h sem interação (apenas com login JWT obrigatório). */
+  useEffect(() => {
+    if (!featureFlags.requiresApiAuth || !token) return;
+    lastActivityRef.current = Date.now();
+
+    const mark = () => {
+      lastActivityRef.current = Date.now();
+    };
+
+    const events = ['mousedown', 'keydown', 'scroll', 'touchstart', 'click', 'wheel'];
+    const opts = { capture: true, passive: true };
+    for (const ev of events) {
+      document.addEventListener(ev, mark, opts);
+    }
+
+    const intervalId = window.setInterval(() => {
+      if (Date.now() - lastActivityRef.current >= SESSION_IDLE_MS) {
+        try {
+          sessionStorage.setItem(
+            IDLE_SESSION_MESSAGE_STORAGE_KEY,
+            'Sua sessão foi encerrada por 1 hora sem atividade. Faça login novamente.',
+          );
+        } catch {
+          /* ignore */
+        }
+        clearAccessToken();
+        clearApiUsuarioSessao();
+        setTokenState('');
+      }
+    }, SESSION_IDLE_CHECK_MS);
+
+    return () => {
+      window.clearInterval(intervalId);
+      for (const ev of events) {
+        document.removeEventListener(ev, mark, opts);
+      }
+    };
+  }, [token]);
+
   const login = useCallback(async (loginStr, senha) => {
     const data = await fetchAuthLogin(loginStr, senha);
     const access = data?.accessToken;
@@ -63,6 +109,7 @@ export function AuthProvider({ children }) {
     }
     setAccessToken(access);
     setTokenState(access);
+    lastActivityRef.current = Date.now();
     const u = data?.usuario;
     if (u?.id != null) {
       setApiUsuarioSessao({
