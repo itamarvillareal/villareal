@@ -18,7 +18,6 @@ public class ProcessoResponse {
     private String competencia;
     private String fase;
     private String observacaoFase;
-    private String status;
     private String tramitacao;
     private LocalDate dataProtocolo;
     private LocalDate prazoFatal;
@@ -132,14 +131,6 @@ public class ProcessoResponse {
 
     public void setObservacaoFase(String observacaoFase) {
         this.observacaoFase = observacaoFase;
-    }
-
-    public String getStatus() {
-        return status;
-    }
-
-    public void setStatus(String status) {
-        this.status = status;
     }
 
     public String getTramitacao() {

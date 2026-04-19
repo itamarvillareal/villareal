@@ -149,11 +149,7 @@ public class CadastroPessoasPlanilhaImporter {
                     String estadoCivil = CadastroPessoasPlanilhaImportSupport.truncate(stringCell(row, 10, fmt), 40);
                     String profissao = CadastroPessoasPlanilhaImportSupport.truncate(stringCell(row, 11, fmt), 255);
 
-                    String admPj = stringCell(row, 4, fmt).trim();
-                    String endAdmPj = stringCell(row, 5, fmt).trim();
-                    String col29 = stringCell(row, 29, fmt).trim();
-                    String col38 = stringCell(row, 38, fmt).trim();
-                    String descricaoAcao = buildDescricaoAcao(admPj, endAdmPj, col29, col38);
+                    // colunas 4–5, 29 e 38 (Adm PJ / anomalias): removido em V34 — não gravar em pessoa_complementar
 
                     String rua = CadastroPessoasPlanilhaImportSupport.truncate(stringCell(row, 17, fmt), 255);
                     String bairro = CadastroPessoasPlanilhaImportSupport.truncate(stringCell(row, 13, fmt), 120);
@@ -218,8 +214,8 @@ public class CadastroPessoasPlanilhaImporter {
 
                         jdbcTemplate.update(
                                 """
-                                        INSERT INTO pessoa_complementar (pessoa_id, rg, orgao_expedidor, profissao, nacionalidade, estado_civil, genero, descricao_acao)
-                                        VALUES (?,?,?,?,?,?,?,?)
+                                        INSERT INTO pessoa_complementar (pessoa_id, rg, orgao_expedidor, profissao, nacionalidade, estado_civil, genero)
+                                        VALUES (?,?,?,?,?,?,?)
                                         """,
                                 pessoaId,
                                 rg.isBlank() ? null : rg,
@@ -227,8 +223,7 @@ public class CadastroPessoasPlanilhaImporter {
                                 profissao.isBlank() ? null : profissao,
                                 nacionalidade.isBlank() ? null : nacionalidade,
                                 estadoCivil.isBlank() ? null : estadoCivil,
-                                genero.isBlank() ? null : genero,
-                                descricaoAcao.isBlank() ? null : descricaoAcao);
+                                genero.isBlank() ? null : genero);
 
                         if (!rua.isBlank()) {
                             jdbcTemplate.update(
@@ -339,23 +334,6 @@ public class CadastroPessoasPlanilhaImporter {
             return "\"" + s.replace("\"", "\"\"") + "\"";
         }
         return s;
-    }
-
-    private static String buildDescricaoAcao(String admPj, String endAdmPj, String col29, String col38) {
-        List<String> parts = new ArrayList<>();
-        if (!admPj.isBlank()) {
-            parts.add("Adm PJ: " + admPj);
-        }
-        if (!endAdmPj.isBlank()) {
-            parts.add("End Adm PJ: " + endAdmPj);
-        }
-        if (!col29.isBlank()) {
-            parts.add("Planilha col29: " + col29);
-        }
-        if (!col38.isBlank()) {
-            parts.add("Planilha col38: " + col38);
-        }
-        return CadastroPessoasPlanilhaImportSupport.truncate(String.join("\n", parts), 32_000);
     }
 
     private record TelefoneSlot(String tel, String inf) {}

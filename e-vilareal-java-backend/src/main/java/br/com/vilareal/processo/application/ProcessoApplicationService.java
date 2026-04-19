@@ -612,7 +612,6 @@ public class ProcessoApplicationService {
         e.setCompetencia(trimToNull(req.getCompetencia()));
         e.setFase(trimToNull(req.getFase()));
         e.setObservacaoFase(trimToNull(req.getObservacaoFase()));
-        e.setStatus(trimToNull(req.getStatus()));
         e.setTramitacao(trimToNull(req.getTramitacao()));
         e.setDataProtocolo(req.getDataProtocolo());
         e.setPrazoFatal(req.getPrazoFatal());
@@ -741,7 +740,6 @@ public class ProcessoApplicationService {
                 StringUtils.hasText(e.getFase()) ? e.getFase().trim() : ProcessoEntity.FASE_PADRAO_EM_ANDAMENTO;
         r.setFase(Utf8MojibakeUtil.corrigir(faseExibir));
         r.setObservacaoFase(Utf8MojibakeUtil.corrigir(e.getObservacaoFase()));
-        r.setStatus(Utf8MojibakeUtil.corrigir(e.getStatus()));
         r.setTramitacao(Utf8MojibakeUtil.corrigir(e.getTramitacao()));
         r.setDataProtocolo(e.getDataProtocolo());
         r.setPrazoFatal(e.getPrazoFatal());

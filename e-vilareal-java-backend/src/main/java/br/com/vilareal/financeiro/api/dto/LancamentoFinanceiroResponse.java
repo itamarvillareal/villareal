@@ -31,10 +31,6 @@ public class LancamentoFinanceiroResponse {
     private BigDecimal valor;
     private NaturezaLancamento natureza;
     private String refTipo;
-    private String eqReferencia;
-    private String parcelaRef;
     private String origem;
     private String status;
-    private Long classificacaoFinanceiraId;
-    private Long eloFinanceiroId;
 }

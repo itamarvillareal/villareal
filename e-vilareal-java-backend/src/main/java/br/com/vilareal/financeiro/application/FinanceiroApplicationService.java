@@ -23,11 +23,9 @@ import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -143,8 +141,8 @@ public class FinanceiroApplicationService {
     }
 
     /**
-     * Apaga todos os lançamentos do extrato do banco indicado e remove o vínculo de compensação
-     * ({@code elo_financeiro_id}) em qualquer outro banco que partilhava o mesmo elo com algum lançamento desse extrato.
+     * Apaga todos os lançamentos do extrato do banco indicado (nome normalizado e/ou {@code numero_banco}).
+     * Colunas de elo/eq no servidor foram removidas (V34); não há mais desvinculação em outros bancos na API.
      *
      * @param numeroBanco opcional — quando informado, apaga todos os lançamentos com esse {@code numero_banco}
      *                    (Nº do consolidado na UI), além dos que batem pelo nome normalizado.
@@ -155,37 +153,6 @@ public class FinanceiroApplicationService {
             throw new BusinessRuleException("Nome do banco é obrigatório.");
         }
         final String bancoNorm = bancoRaw.trim().toUpperCase(Locale.ROOT);
-        ContaContabilEntity contaN = contaContabilRepository.findFirstByCodigoIgnoreCase("N")
-                .orElseThrow(() -> new ResourceNotFoundException("Conta contábil com código «N» não encontrada."));
-        Set<Long> eloIdSet = new LinkedHashSet<>();
-        for (Long e : lancamentoRepository.findDistinctEloFinanceiroIdsByBancoNormalizado(bancoNorm)) {
-            if (e != null) {
-                eloIdSet.add(e);
-            }
-        }
-        if (numeroBanco != null) {
-            for (Long e : lancamentoRepository.findDistinctEloFinanceiroIdsByNumeroBanco(numeroBanco)) {
-                if (e != null) {
-                    eloIdSet.add(e);
-                }
-            }
-        }
-        int desvinculados = 0;
-        if (!eloIdSet.isEmpty()) {
-            List<Long> eloIds = new ArrayList<>(eloIdSet);
-            List<LancamentoFinanceiroEntity> comElos = lancamentoRepository.findByEloFinanceiroIdIn(eloIds);
-            for (LancamentoFinanceiroEntity l : comElos) {
-                l.setEloFinanceiroId(null);
-                l.setContaContabil(contaN);
-                l.setCliente(null);
-                l.setProcesso(null);
-                l.setEqReferencia(null);
-            }
-            lancamentoRepository.saveAll(comElos);
-            desvinculados = (int) comElos.stream()
-                    .filter(l -> !pertenceAoExtratoLimpo(l, bancoNorm, numeroBanco))
-                    .count();
-        }
         Map<Long, LancamentoFinanceiroEntity> porId = new LinkedHashMap<>();
         for (LancamentoFinanceiroEntity l : lancamentoRepository.findAllByBancoNormalizado(bancoNorm)) {
             porId.put(l.getId(), l);
@@ -198,24 +165,12 @@ public class FinanceiroApplicationService {
         List<LancamentoFinanceiroEntity> toDelete = new ArrayList<>(porId.values());
         int removidos = toDelete.size();
         if (!toDelete.isEmpty()) {
-            /* deleteAll em vez de deleteAllInBatch: evita edge cases de sessão Hibernate com o mesmo TX dos elos. */
             lancamentoRepository.deleteAll(toDelete);
         }
         LimparExtratoResult r = new LimparExtratoResult();
         r.setLancamentosRemovidos(removidos);
-        r.setLancamentosDesvinculadosOutrosBancos(desvinculados);
+        r.setLancamentosDesvinculadosOutrosBancos(0);
         return r;
-    }
-
-    private static boolean pertenceAoExtratoLimpo(LancamentoFinanceiroEntity l, String bancoNorm, Integer numeroBanco) {
-        if (numeroBanco != null && numeroBanco.equals(l.getNumeroBanco())) {
-            return true;
-        }
-        String bn = l.getBancoNome();
-        if (bn != null && StringUtils.hasText(bn.trim())) {
-            return bancoNorm.equals(bn.trim().toUpperCase(Locale.ROOT));
-        }
-        return false;
     }
 
     /** Compatível com clientes que só chamavam a limpeza do extrato CORA. */
@@ -310,28 +265,12 @@ public class FinanceiroApplicationService {
                 ? req.getRefTipo().trim().toUpperCase()
                 : "";
         e.setRefTipo("R".equals(refTipoReq) ? "R" : "N");
-        e.setEqReferencia(
-                req.getEqReferencia() != null && StringUtils.hasText(req.getEqReferencia())
-                        ? req.getEqReferencia().trim()
-                        : null);
-        e.setParcelaRef(
-                req.getParcelaRef() != null && StringUtils.hasText(req.getParcelaRef())
-                        ? req.getParcelaRef().trim()
-                        : null);
 
         String origem = req.getOrigem() != null ? req.getOrigem().trim() : "";
         e.setOrigem(StringUtils.hasText(origem) ? origem : "MANUAL");
 
         String status = req.getStatus() != null ? req.getStatus().trim() : "";
         e.setStatus(StringUtils.hasText(status) ? status : "ATIVO");
-
-        // PUT do React não envia estes campos; preservar no update para não zerar no banco.
-        if (criacao || req.getClassificacaoFinanceiraId() != null) {
-            e.setClassificacaoFinanceiraId(req.getClassificacaoFinanceiraId());
-        }
-        if (criacao || req.getEloFinanceiroId() != null) {
-            e.setEloFinanceiroId(req.getEloFinanceiroId());
-        }
     }
 
     private ContaContabilResponse toContaResponse(ContaContabilEntity e) {
@@ -367,12 +306,8 @@ public class FinanceiroApplicationService {
         r.setValor(e.getValor());
         r.setNatureza(e.getNatureza());
         r.setRefTipo(Utf8MojibakeUtil.corrigir(e.getRefTipo()));
-        r.setEqReferencia(Utf8MojibakeUtil.corrigir(e.getEqReferencia()));
-        r.setParcelaRef(Utf8MojibakeUtil.corrigir(e.getParcelaRef()));
         r.setOrigem(Utf8MojibakeUtil.corrigir(e.getOrigem()));
         r.setStatus(Utf8MojibakeUtil.corrigir(e.getStatus()));
-        r.setClassificacaoFinanceiraId(e.getClassificacaoFinanceiraId());
-        r.setEloFinanceiroId(e.getEloFinanceiroId());
         return r;
     }
 }

@@ -7,7 +7,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *
  * <p>Políticas (plano aprovado): linhas sem CPF/CNPJ válido são ignoradas; primeiro e-mail por endereço
  * vence (demais com {@code email} nulo); primeiro CPF na planilha vence (duplicata na planilha ignorada);
- * Adm PJ / End Adm PJ e anomalias col. 29/38 vão para {@code descricao_acao}; col. 26/33 ignoradas como dado.
+ * col. 26/33 ignoradas como dado; col. 4–5 e 29/38 não são mais persistidas em complementar (V34).
  *
  * <p><b>Variáveis de ambiente</b> (binding Spring Boot): {@code VILAREAL_IMPORT_PESSOAS_ENABLED},
  * {@code VILAREAL_IMPORT_PESSOAS_PATH}, {@code VILAREAL_IMPORT_PESSOAS_DRY_RUN}, {@code VILAREAL_IMPORT_PESSOAS_LIMIT},

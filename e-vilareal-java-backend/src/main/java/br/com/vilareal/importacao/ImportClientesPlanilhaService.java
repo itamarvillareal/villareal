@@ -219,8 +219,7 @@ public class ImportClientesPlanilhaService {
                 StringUtils.hasText(colR) ? colR.trim() : null,
                 partes,
                 Optional.of(ativo),
-                true,
-                false);
+                true);
     }
 
     private static boolean parseAtivoColunaC(String colC, int linhaExcel) {

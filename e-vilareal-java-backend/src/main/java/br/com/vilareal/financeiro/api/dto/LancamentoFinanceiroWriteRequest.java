@@ -50,18 +50,9 @@ public class LancamentoFinanceiroWriteRequest {
     @Size(max = 1)
     private String refTipo;
 
-    @Size(max = 120)
-    private String eqReferencia;
-
-    @Size(max = 80)
-    private String parcelaRef;
-
     @Size(max = 40)
     private String origem;
 
     @Size(max = 20)
     private String status;
-
-    private Long classificacaoFinanceiraId;
-    private Long eloFinanceiroId;
 }
