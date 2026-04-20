@@ -21,12 +21,13 @@ import {
   executarSincronizacaoAudienciasAgendaEProcessosCompleta,
   executarSincronizacaoAudienciasAgendaMesEProcessos,
 } from '../services/sincronizacaoAudienciasAgendaProcessosService.js';
-import { resolverAliasHojeEmTexto } from '../services/hjDateAliasService.js';
+import { hojeDdMmYyyy, resolverAliasHojeEmTexto } from '../services/hjDateAliasService.js';
 import { listarImoveisResumoPorPessoaDiagnostico } from '../services/listarImoveisPorPessoaDiagnostico.js';
 import { listarCodigosClientePorIdPessoa } from '../data/clienteCodigoHelpers.js';
 import { listarClientesCadastro } from '../repositories/clientesRepository.js';
 import {
   listarProcessosPorNumeroProcessoDiagnostico,
+  listarProcessosPorPrazoFatalDiagnostico,
   listarProcessosVinculoPessoaDiagnostico,
 } from '../repositories/processosRepository.js';
 import { padCliente8Nav } from './cadastro-pessoas/cadastroPessoasNavUtils.js';
@@ -295,11 +296,16 @@ export function Diagnosticos() {
     setModalResultadoAberto(true);
   }
 
-  function consultarPrazoFatalPorData() {
-    const data = String(dataPrazoFatal ?? '').trim();
-    if (!data) return;
-    const itens = listarProcessosPorPrazoFatal(data);
-    setResultadoPrazoFatal(itens);
+  async function consultarPrazoFatalPorData() {
+    const bruto = String(dataPrazoFatal ?? '').trim();
+    if (!bruto) return;
+    const dataResolvida = resolverAliasHojeEmTexto(bruto, 'br') ?? bruto;
+    try {
+      const itens = await listarProcessosPorPrazoFatalDiagnostico(dataResolvida);
+      setResultadoPrazoFatal(itens);
+    } catch {
+      setResultadoPrazoFatal(listarProcessosPorPrazoFatal(dataResolvida));
+    }
     setModalPrazoFatalAberto(false);
     setModalResultadoPrazoFatalAberto(true);
   }
@@ -317,6 +323,10 @@ export function Diagnosticos() {
       c = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (modalPrazoFatalAberto) setDataPrazoFatal(hojeDdMmYyyy());
+  }, [modalPrazoFatalAberto]);
 
   async function abrirResultadoProcessosParaPessoa(pessoa) {
     const id = Number(pessoa.id);
@@ -686,8 +696,9 @@ export function Diagnosticos() {
             ) : null}
           </div>
           <p className="text-xs text-slate-600 text-center leading-relaxed">
-            Os relatórios usam apenas os dados já gravados neste navegador (histórico de processos, prazos e vínculos de
-            pessoas). Não há pacote de demonstração automático.
+            {featureFlags.useApiProcessos
+              ? 'Vários relatórios cruzam a API de processos com o histórico local deste navegador (ex.: busca por número, prazo fatal). Outros continuam só no histórico local (consultas, fases, audiências). Não há pacote de demonstração automático.'
+              : 'Os relatórios usam apenas os dados já gravados neste navegador (histórico de processos, prazos e vínculos de pessoas). Não há pacote de demonstração automático.'}
           </p>
         </div>
         <div className="px-6 pb-6 flex justify-center">
@@ -1120,7 +1131,7 @@ export function Diagnosticos() {
               <div className="mt-6 flex flex-col md:flex-row items-center justify-center gap-3">
                 <button
                   type="button"
-                  onClick={consultarPrazoFatalPorData}
+                  onClick={() => void consultarPrazoFatalPorData()}
                   className="min-w-[200px] px-6 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 text-sm font-semibold text-white shadow-lg shadow-indigo-500/25 hover:from-indigo-500 hover:to-violet-500"
                 >
                   Consultar

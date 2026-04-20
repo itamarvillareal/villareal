@@ -80,6 +80,47 @@ export const FASES = [
   'Em Andamento',
 ];
 
+/** Mesma normalização usada em `Processos.jsx` para cores / detecção de fase. */
+function faseProcessualCompactaPt(s) {
+  return String(s ?? '')
+    .toLocaleLowerCase('pt-BR')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .replace(/[^a-z0-9]/g, '');
+}
+
+/**
+ * Mapeia texto vindo da API ou legado para um rótulo de {@link FASES}, quando reconhecível.
+ * Ex.: «Aguardando Verificação» → «Ag. Verificação» (o cabeçalho pode continuar a mostrar o texto cru em `faseSelecionada`).
+ */
+export function canonicalizarFaseParaOpcoesRadiosProcessos(val) {
+  const raw = String(val ?? '').trim();
+  if (!raw) return '';
+  if (FASES.includes(raw)) return raw;
+  const c = faseProcessualCompactaPt(raw);
+  if (!c) return '';
+
+  if (c.includes('protoc') && c.includes('moviment')) return 'Protocolo / Movimentação';
+  if (c.includes('aguard') && c.includes('provid')) return 'Aguardando Providência';
+  if (c.includes('procadministrativo') || (c.includes('proced') && c.includes('adm'))) return 'Procedimento Adm.';
+
+  const agPrefix = c.startsWith('ag');
+  if (agPrefix && c.includes('docu') && (c.includes('ment') || c.includes('met'))) return 'Ag. Documentos';
+  if (
+    agPrefix &&
+    c.includes('petic') &&
+    (c.includes('ar') || c.includes('ionar') || c.includes('icion'))
+  ) {
+    return 'Ag. Peticionar';
+  }
+  if (agPrefix && (c.includes('verif') || c.includes('verificacao'))) return 'Ag. Verificação';
+
+  if (c.includes('emandamento')) return 'Em Andamento';
+
+  return '';
+}
+
 export const COMPETENCIAS = [
   '1º JUIZADO ESPECIAL CÍVEL',
   '2º JUIZADO ESPECIAL CÍVEL',

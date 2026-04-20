@@ -50,6 +50,15 @@ public class ProcessosController {
         return processoApplicationService.buscarDiagnosticoPorNumeroProcesso(numero);
     }
 
+    @GetMapping("/diagnostico/prazo-fatal")
+    @Operation(
+            summary = "Diagnóstico: processos com prazo fatal na data",
+            description = "Aceita `data` em dd/mm/aaaa ou yyyy-mm-dd; alinha com o cadastro na API (coluna prazo_fatal e prazos marcados como fatal).")
+    public List<ProcessoDiagnosticoPessoaItemResponse> buscarDiagnosticoPorPrazoFatal(
+            @RequestParam("data") String data) {
+        return processoApplicationService.buscarDiagnosticoPorPrazoFatal(data);
+    }
+
     @GetMapping("/{id}")
     public ProcessoResponse buscar(@PathVariable Long id) {
         return processoApplicationService.buscar(id);

@@ -14,6 +14,7 @@ import {
   UFS,
   CIDADES_POR_UF,
   FASES,
+  canonicalizarFaseParaOpcoesRadiosProcessos,
   COMPETENCIAS,
   TIPOS_AUDIENCIA,
   TRAMITACAO_OPCOES,
@@ -1998,6 +1999,8 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   const ufAtual = UFS.find((u) => u.sigla === estado);
 
   const faseSelecionadaNormalizada = normalizarTextoBusca(faseSelecionada);
+  /** Igualdade estrita com `FASES` falha quando a API grava sinónimo (ex.: «Aguardando Verificação» vs «Ag. Verificação»). */
+  const faseParaRadiosProcessos = canonicalizarFaseParaOpcoesRadiosProcessos(faseSelecionada);
   // Regra: se estiver em "Ag. Documentos", o formulário da tela deve ficar amarelo.
   // Mantemos uma detecção tolerante (ex.: "Ag. Documetos") removendo pontuação e comparando substrings.
   const faseSelecionadaCompacta = faseSelecionadaNormalizada.replace(/[^a-z0-9]/g, '');
@@ -2761,7 +2764,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                         <input
                           type="radio"
                           name="fase"
-                          checked={faseSelecionada === f}
+                          checked={faseParaRadiosProcessos === f}
                           disabled={camposBloqueados}
                           onChange={() => {
                             setFaseSelecionada(f);

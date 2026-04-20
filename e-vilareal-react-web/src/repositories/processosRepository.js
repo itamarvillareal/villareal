@@ -1,5 +1,6 @@
 import { request } from '../api/httpClient.js';
 import { featureFlags } from '../config/featureFlags.js';
+import { listarProcessosPorPrazoFatal, normalizarDataBr } from '../data/processosHistoricoData.js';
 
 function padCliente8(value) {
   const d = String(value ?? '').replace(/\D/g, '');
@@ -272,6 +273,60 @@ export async function listarProcessosPorNumeroProcessoDiagnostico(numeroBruto) {
       papeis: String(row.papeis ?? ''),
     };
   });
+}
+
+function chaveClienteProcItemPrazoFatal(item) {
+  const cod = padCliente8(item.codCliente ?? item.codigoCliente);
+  const pr = Math.floor(Number(String(item.proc ?? item.numeroInterno ?? '').replace(/\D/g, '')) || 0);
+  return `${cod}-${pr}`;
+}
+
+/**
+ * Diagnóstico «Prazo fatal»: histórico local + processos na API com a mesma data (cadastro / prazos).
+ */
+export async function listarProcessosPorPrazoFatalDiagnostico(dataBrParam) {
+  const locais = listarProcessosPorPrazoFatal(dataBrParam);
+  const dataCanon =
+    normalizarDataBr(String(dataBrParam ?? '').trim()) || String(dataBrParam ?? '').trim();
+  if (!featureFlags.useApiProcessos) return locais;
+  const q = String(dataBrParam ?? '').trim();
+  if (!q) return locais;
+  try {
+    const arr = await request('/api/processos/diagnostico/prazo-fatal', { query: { data: q } });
+    const apiRows = Array.isArray(arr) ? arr : [];
+    const fromApi = apiRows.map((row) => {
+      const codCliente = padCliente8(row.codigoCliente ?? row.codigo_cliente ?? '1');
+      const procNum = Number(row.numeroInterno ?? row.numero_interno);
+      const proc = String(Number.isFinite(procNum) && procNum >= 1 ? procNum : 0);
+      return {
+        codCliente,
+        proc,
+        cliente: String(row.cliente ?? ''),
+        parteCliente: String(row.parteCliente ?? row.cliente ?? ''),
+        parteOposta: String(row.parteOposta ?? ''),
+        numeroProcessoNovo: String(row.numeroProcessoNovo ?? row.numero_processo_novo ?? '').trim(),
+        prazoFatal: dataCanon,
+        papeis: String(row.papeis ?? ''),
+      };
+    });
+    const m = new Map();
+    for (const x of locais) {
+      m.set(chaveClienteProcItemPrazoFatal(x), x);
+    }
+    for (const x of fromApi) {
+      const k = chaveClienteProcItemPrazoFatal(x);
+      if (!m.has(k)) m.set(k, x);
+    }
+    const out = [...m.values()];
+    out.sort((a, b) => {
+      const ka = `${padCliente8(a.codCliente)}-${String(a.proc).padStart(4, '0')}`;
+      const kb = `${padCliente8(b.codCliente)}-${String(b.proc).padStart(4, '0')}`;
+      return ka.localeCompare(kb);
+    });
+    return out;
+  } catch {
+    return locais;
+  }
 }
 
 export async function buscarProcessoPorChaveNatural(codigoCliente, numeroInterno) {

@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { ChevronsLeft, ChevronsRight, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const DEFAULT_SIZES = [10, 20, 25, 50, 100];
@@ -14,14 +15,40 @@ export function TablePaginationBar({
   disabled = false,
   className = '',
   idPrefix = 'table-pag',
+  /** Caixa para digitar o nº da página (1…N); Enter ou sair do campo aplica. */
+  showPageJumpInput = true,
 }) {
   const lastIndex = Math.max(0, totalPages - 1);
   const safePage = Math.min(Math.max(0, page), lastIndex);
+  const displayPageOneBased = totalPages < 1 ? 0 : safePage + 1;
   const from = totalElements === 0 ? 0 : safePage * pageSize + 1;
   const to = totalElements === 0 ? 0 : Math.min(totalElements, (safePage + 1) * pageSize);
 
+  const [pageInput, setPageInput] = useState(() => String(displayPageOneBased));
+
+  useEffect(() => {
+    setPageInput(String(displayPageOneBased));
+  }, [displayPageOneBased, totalPages]);
+
+  const commitPageJump = () => {
+    if (totalPages < 1) {
+      setPageInput('0');
+      return;
+    }
+    const raw = String(pageInput).trim();
+    const n = parseInt(raw, 10);
+    if (!Number.isFinite(n)) {
+      setPageInput(String(displayPageOneBased));
+      return;
+    }
+    const clamped = Math.min(Math.max(1, n), totalPages);
+    onPageChange(clamped - 1);
+    setPageInput(String(clamped));
+  };
+
   const navDisabled = disabled || loading;
   const sizeId = `${idPrefix}-page-size`;
+  const jumpId = `${idPrefix}-page-jump`;
 
   return (
     <div
@@ -81,9 +108,36 @@ export function TablePaginationBar({
         >
           <ChevronLeft className="w-4 h-4" />
         </button>
-        <span className="text-xs text-slate-600 px-2 min-w-[7rem] text-center tabular-nums">
-          {totalPages < 1 ? '0 / 0' : `${safePage + 1} / ${totalPages}`}
-        </span>
+        {showPageJumpInput && totalPages >= 1 ? (
+          <div className="flex items-center gap-1 px-1">
+            <label htmlFor={jumpId} className="sr-only">
+              Ir para página (de 1 a {totalPages})
+            </label>
+            <input
+              id={jumpId}
+              type="text"
+              inputMode="numeric"
+              autoComplete="off"
+              disabled={navDisabled}
+              value={pageInput}
+              onChange={(e) => setPageInput(e.target.value)}
+              onBlur={commitPageJump}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  commitPageJump();
+                }
+              }}
+              className="w-11 sm:w-12 text-center text-xs border border-slate-300 rounded-lg px-1.5 py-1.5 bg-white text-slate-800 tabular-nums focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50"
+              aria-label={`Página atual (digite 1 a ${totalPages})`}
+            />
+            <span className="text-xs text-slate-600 tabular-nums whitespace-nowrap">/ {totalPages}</span>
+          </div>
+        ) : (
+          <span className="text-xs text-slate-600 px-2 min-w-[7rem] text-center tabular-nums">
+            {totalPages < 1 ? '0 / 0' : `${safePage + 1} / ${totalPages}`}
+          </span>
+        )}
         <button
           type="button"
           disabled={navDisabled || safePage >= lastIndex}
