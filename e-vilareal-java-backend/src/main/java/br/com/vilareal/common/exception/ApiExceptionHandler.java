@@ -11,6 +11,7 @@ import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.core.env.Environment;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
@@ -29,6 +30,13 @@ import java.util.stream.Collectors;
 public class ApiExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
+    private static final int MENSAGEM_500_DEV_MAX = 500;
+
+    private final Environment environment;
+
+    public ApiExceptionHandler(Environment environment) {
+        this.environment = environment;
+    }
 
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     public ResponseEntity<Map<String, Object>> maxUpload(MaxUploadSizeExceededException ex, HttpServletRequest req) {
@@ -75,7 +83,20 @@ public class ApiExceptionHandler {
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> generic(Exception ex, HttpServletRequest req) {
         log.error("Erro não tratado {} {}", req.getRequestURI(), ex.toString(), ex);
-        return body(HttpStatus.INTERNAL_SERVER_ERROR, "Erro interno.", req);
+        String message = "Erro interno.";
+        if (environment.matchesProfiles("dev")) {
+            String detail = ex.getMessage();
+            String shortClass = ex.getClass().getSimpleName();
+            if (detail != null && !detail.isBlank()) {
+                message = shortClass + ": " + detail;
+            } else {
+                message = shortClass;
+            }
+            if (message.length() > MENSAGEM_500_DEV_MAX) {
+                message = message.substring(0, MENSAGEM_500_DEV_MAX - 3) + "...";
+            }
+        }
+        return body(HttpStatus.INTERNAL_SERVER_ERROR, message, req);
     }
 
     private static ResponseEntity<Map<String, Object>> body(HttpStatus status, String message, HttpServletRequest req) {

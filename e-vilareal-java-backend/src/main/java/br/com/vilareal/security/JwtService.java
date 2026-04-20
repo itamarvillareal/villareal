@@ -4,6 +4,7 @@ import br.com.vilareal.config.SecurityProperties;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import jakarta.annotation.PostConstruct;
 import org.springframework.stereotype.Service;
 
 import javax.crypto.SecretKey;
@@ -14,10 +15,27 @@ import java.util.Map;
 @Service
 public class JwtService {
 
+    /** HS256 via {@link Keys#hmacShaKeyFor(byte[])} — mínimo 256 bits (32 octetos UTF-8 para ASCII). */
+    private static final int SECRET_MIN_BYTES = 32;
+
     private final SecurityProperties props;
 
     public JwtService(SecurityProperties props) {
         this.props = props;
+    }
+
+    @PostConstruct
+    public void validarSegredoInicializacao() {
+        String secret = props.getSecret();
+        int len = secret != null ? secret.getBytes(StandardCharsets.UTF_8).length : 0;
+        if (len < SECRET_MIN_BYTES) {
+            throw new IllegalStateException(
+                    "JWT: vilareal.security.jwt.secret (ou JWT_SECRET) precisa ter pelo menos "
+                            + SECRET_MIN_BYTES
+                            + " bytes; atual="
+                            + len
+                            + ". Sem isso o login falha ao gerar o token (JJWT HS256).");
+        }
     }
 
     public String generateToken(Long usuarioId, String login) {
