@@ -56,7 +56,8 @@ export async function montarIndiceCnjClienteProcAsync() {
       const u = mapApiProcessoToUiShape(raw);
       const p = Number(u.numeroInterno);
       if (!Number.isFinite(p) || p < 1) continue;
-      const cnj = obterNumeroProcessoNovoUnificado(codPad, p, u.numeroProcessoNovo ?? '');
+      const cnjApi = String(u.numeroProcessoNovo ?? '').trim();
+      const cnj = cnjApi || obterNumeroProcessoNovoUnificado(codPad, p, '');
       const key = normalizarCnjParaChave(cnj);
       if (!key || map.has(key)) continue;
       const reu = String(u.parteOposta ?? '').trim();

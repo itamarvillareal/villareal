@@ -18,7 +18,7 @@ import {
   Trash2,
   FileDown,
 } from 'lucide-react';
-import { extrairTextoPdfDeArquivo } from '../data/publicacoesPdfExtract.js';
+import { extrairTextoParaImportacaoPublicacoes } from '../data/publicacoesPdfExtract.js';
 import { executarPipelineImportacaoPublicacoes } from '../data/publicacoesPipeline.js';
 import { hashArquivoSHA256 } from '../data/publicacoesHashArquivo.js';
 import {
@@ -229,7 +229,7 @@ export function PublicacoesProcessos() {
       setLogImportacao(null);
       setSelecionados(new Set());
       try {
-        const texto = await extrairTextoPdfDeArquivo(file);
+        const { texto, fonte: extracaoFonte, numPages: pdfNumPages } = await extrairTextoParaImportacaoPublicacoes(file);
         const hashArquivo = await hashArquivoSHA256(file);
         const { parseados, metricas, limpo, logsItens } = await executarPipelineImportacaoPublicacoes(
           texto,
@@ -240,6 +240,8 @@ export function PublicacoesProcessos() {
         setPreview({
           nomeArquivo: file.name,
           hashArquivo,
+          extracaoFonte,
+          pdfNumPages,
           textoLimpoSample: limpo.slice(0, 1200),
           metricas,
           itens: parseados,
@@ -248,7 +250,10 @@ export function PublicacoesProcessos() {
         setSelecionados(new Set(parseados.map((_, i) => i)));
       } catch (e) {
         console.error(e);
-        setErro(e?.message || 'Falha ao ler o PDF. Verifique se o arquivo tem texto selecionável.');
+        setErro(
+          e?.message ||
+            'Falha ao ler o PDF. Verifique conexão (OCR depende de rede na primeira vez) ou se o arquivo está corrompido.'
+        );
       } finally {
         setCarregando(false);
       }
@@ -488,10 +493,12 @@ export function PublicacoesProcessos() {
             </div>
           </div>
           <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed max-w-3xl">
-            O sistema extrai <strong>texto selecionável</strong> do PDF (sem OCR), segmenta blocos, identifica o número
-            CNJ, <strong>Data de disponibilização</strong> e <strong>Data de publicação</strong> (inclusive com ano em 2
-            dígitos, ex.: 19/03/26), o teor após «Publicação», marca indisponibilidade de arquivos e cruza com o cadastro
-            interno (mesma base do Relatório de Processos). A API pública do CNJ (DataJud){' '}
+            Primeiro tentamos <strong>texto embutido</strong> no PDF (rápido). Se vier pouco texto (PDF só com imagem /
+            escaneado), rodamos <strong>OCR em todas as páginas</strong> no navegador (Tesseract, por+eng — pode levar um
+            minuto em arquivos longos e precisa de internet na primeira vez). Em seguida segmentamos blocos, identificamos o
+            número CNJ, <strong>Data de disponibilização</strong> e <strong>Data de publicação</strong> (inclusive ano em 2
+            dígitos, ex.: 19/03/26), o teor após «Publicação», marcamos indisponibilidade de arquivos e cruzamos com o
+            cadastro interno (mesma base do Relatório de Processos). A API pública do CNJ (DataJud){' '}
             <strong>não substitui o teor</strong> — apenas valida e enriquece metadados. Cada publicação na prévia e na
             grade gravada recebe um <strong>número sequencial (#)</strong> para você conferir se nada ficou de fora em
             relação ao PDF. Revise a prévia antes de confirmar.
@@ -517,7 +524,7 @@ export function PublicacoesProcessos() {
               }}
             />
             {carregando ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
-            {carregando ? 'Lendo PDF…' : 'Escolher PDF'}
+            {carregando ? 'Lendo PDF (OCR se necessário, pode demorar)…' : 'Escolher PDF'}
           </label>
           {erro ? (
             <p className="text-sm text-red-700 dark:text-red-300 flex items-center gap-2">
@@ -530,7 +537,21 @@ export function PublicacoesProcessos() {
         {preview ? (
           <section className="rounded-2xl border border-amber-200 dark:border-amber-500/25 bg-amber-50/50 dark:bg-amber-950/15 p-5 shadow-sm space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <h2 className="text-sm font-semibold text-amber-950 dark:text-amber-100">Pré-visualização — {preview.nomeArquivo}</h2>
+              <div className="space-y-1">
+                <h2 className="text-sm font-semibold text-amber-950 dark:text-amber-100">
+                  Pré-visualização — {preview.nomeArquivo}
+                </h2>
+                <p className="text-[11px] text-amber-900/85 dark:text-amber-200/85">
+                  Extração:{' '}
+                  <strong>{preview.extracaoFonte === 'ocr' ? 'OCR (PDF escaneado)' : 'texto do PDF'}</strong>
+                  {preview.pdfNumPages != null ? (
+                    <>
+                      {' '}
+                      · {preview.pdfNumPages} página{preview.pdfNumPages === 1 ? '' : 's'}
+                    </>
+                  ) : null}
+                </p>
+              </div>
               <div className="flex flex-wrap gap-2 text-xs text-amber-900/90 dark:text-amber-200/90">
                 <span>Blocos: {preview.metricas.blocosDetectados}</span>
                 <span>·</span>
