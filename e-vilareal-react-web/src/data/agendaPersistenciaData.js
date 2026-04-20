@@ -867,6 +867,40 @@ export function salvarCamposEventoAgendaPersistido({ dataBr, evento, patch }) {
 }
 
 /**
+ * Remove um compromisso da agenda persistida (localStorage).
+ * @returns {{ ok: true } | { ok: false, reason: string }}
+ */
+export function excluirEventoAgendaPersistido({ dataBr, evento }) {
+  const parsedData = parseDataBrCompleta(dataBr);
+  if (!parsedData) return { ok: false, reason: 'data-invalida' };
+  const data = dataStr(parsedData);
+
+  const store = loadStore();
+  const lista = Array.isArray(store[data]) ? store[data] : [];
+
+  const eventoId = evento?.id != null ? String(evento.id) : '';
+  const usuarioIdEv = evento?.usuarioId != null ? String(evento.usuarioId) : '';
+  if (!eventoId) return { ok: false, reason: 'evento-id-invalido' };
+
+  const idx = lista.findIndex((ev) => {
+    const idA = ev?.id != null ? String(ev.id) : '';
+    const uidA = ev?.usuarioId != null ? String(ev.usuarioId) : '';
+    return idA === eventoId && uidA === usuarioIdEv;
+  });
+
+  if (idx < 0) return { ok: false, reason: 'nao-encontrado' };
+
+  const next = lista.filter((_, i) => i !== idx);
+  if (next.length === 0) {
+    delete store[data];
+  } else {
+    store[data] = ordenarListaEventosAgenda(next);
+  }
+  saveStore(store);
+  return { ok: true };
+}
+
+/**
  * Cria um compromisso novo na data (linha vazia da grade), vinculado ao usuário da agenda.
  */
 export function criarNovoCompromissoAgendaPersistido({ dataBr, usuarioId, patch }) {

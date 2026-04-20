@@ -3,6 +3,7 @@ import { featureFlags } from '../config/featureFlags.js';
 import {
   getEventosAgendaPersistidosPorData,
   salvarCamposEventoAgendaPersistido,
+  excluirEventoAgendaPersistido,
   criarNovoCompromissoAgendaPersistido,
   listarTodosCompromissosAgendaMes,
   ordenarListaEventosAgenda,
@@ -95,6 +96,21 @@ export async function salvarCamposEvento(dataBr, evento, patch) {
     return;
   }
   await request('/api/agenda/eventos', { method: 'POST', body });
+}
+
+/**
+ * Elimina o compromisso (API ou localStorage).
+ * No modo API usa só o id numérico do evento.
+ */
+export async function excluirEvento(dataBr, evento) {
+  if (!featureFlags.useApiAgenda) {
+    return excluirEventoAgendaPersistido({ dataBr, evento });
+  }
+  const idNum = Number(evento?.id);
+  if (!Number.isFinite(idNum) || idNum < 1) return { ok: false, reason: 'id-invalido' };
+  await request(`/api/agenda/eventos/${idNum}`, { method: 'DELETE' });
+  dispararAgendaAtualizada();
+  return { ok: true };
 }
 
 export async function criarEvento(dataBr, usuarioId, patch) {

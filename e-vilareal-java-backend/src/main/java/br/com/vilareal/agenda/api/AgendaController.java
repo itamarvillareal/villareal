@@ -9,6 +9,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
@@ -73,5 +74,12 @@ public class AgendaController {
     @PutMapping("/{id}")
     public AgendaEventoResponse atualizar(@PathVariable Long id, @Valid @RequestBody AgendaEventoWriteRequest request) {
         return agendaService.atualizar(id, request);
+    }
+
+    @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Operation(description = "Remove o compromisso da agenda.")
+    public void excluir(@PathVariable Long id) {
+        agendaService.excluir(id);
     }
 }
