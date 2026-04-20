@@ -23,6 +23,9 @@ import org.springframework.util.StringUtils;
 import java.math.BigInteger;
 import java.text.Normalizer;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -311,7 +314,37 @@ public class ProcessoApplicationService {
         List<ProcessoEntity> lista = new ArrayList<>(processoRepository.findAllById(ids));
         lista.sort(Comparator.comparing((ProcessoEntity e) -> e.getPessoa().getId())
                 .thenComparing(ProcessoEntity::getNumeroInterno));
+        return montarDiagnosticoListaPorProcessos(lista, "Busca por número (CNJ)");
+    }
 
+    /**
+     * Diagnósticos: processos com prazo fatal na data (coluna {@code processo.prazo_fatal} ou prazo fatal na tabela
+     * de prazos com {@code data_fim}).
+     */
+    @Transactional(readOnly = true)
+    public List<ProcessoDiagnosticoPessoaItemResponse> buscarDiagnosticoPorPrazoFatal(String dataBruta) {
+        LocalDate data = parseDataParametroDiagnostico(dataBruta);
+        if (data == null) {
+            return List.of();
+        }
+        LinkedHashSet<Long> ids = new LinkedHashSet<>();
+        for (ProcessoEntity e : processoRepository.findByPrazoFatal(data)) {
+            ids.add(e.getId());
+        }
+        for (Long pid : prazoRepository.findDistinctProcessoIdsComPrazoFatalTrueAndDataFim(data)) {
+            ids.add(pid);
+        }
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+        List<ProcessoEntity> lista = new ArrayList<>(processoRepository.findAllById(ids));
+        lista.sort(Comparator.comparing((ProcessoEntity e) -> e.getPessoa().getId())
+                .thenComparing(ProcessoEntity::getNumeroInterno));
+        return montarDiagnosticoListaPorProcessos(lista, "Prazo fatal (cadastro API)");
+    }
+
+    private List<ProcessoDiagnosticoPessoaItemResponse> montarDiagnosticoListaPorProcessos(
+            List<ProcessoEntity> lista, String papeisRotulo) {
         List<Long> procIds = lista.stream().map(ProcessoEntity::getId).collect(Collectors.toList());
         Map<Long, List<ProcessoParteEntity>> partesPorProcesso = new LinkedHashMap<>();
         if (!procIds.isEmpty()) {
@@ -320,7 +353,6 @@ public class ProcessoApplicationService {
                 partesPorProcesso.computeIfAbsent(pid, k -> new ArrayList<>()).add(parte);
             }
         }
-
         List<ProcessoDiagnosticoPessoaItemResponse> out = new ArrayList<>();
         for (ProcessoEntity e : lista) {
             List<ProcessoParteEntity> partes = partesPorProcesso.getOrDefault(e.getId(), List.of());
@@ -336,10 +368,36 @@ public class ProcessoApplicationService {
             r.setParteCliente(nomeCliente);
             r.setParteOposta(parteOpostaTxt);
             r.setNumeroProcessoNovo(cnj == null ? "" : Utf8MojibakeUtil.corrigir(cnj));
-            r.setPapeis("Busca por número (CNJ)");
+            r.setPapeis(papeisRotulo);
             out.add(r);
         }
         return out;
+    }
+
+    private static LocalDate parseDataParametroDiagnostico(String raw) {
+        if (!StringUtils.hasText(raw)) {
+            return null;
+        }
+        String t = raw.trim();
+        try {
+            return LocalDate.parse(t, DateTimeFormatter.ISO_LOCAL_DATE);
+        } catch (DateTimeParseException ignored) {
+            // tenta dd/mm/aaaa
+        }
+        DateTimeFormatter[] formatos = {
+            DateTimeFormatter.ofPattern("dd/MM/uuuu"),
+            DateTimeFormatter.ofPattern("d/M/uuuu"),
+            DateTimeFormatter.ofPattern("dd/M/uuuu"),
+            DateTimeFormatter.ofPattern("d/MM/uuuu")
+        };
+        for (DateTimeFormatter fmt : formatos) {
+            try {
+                return LocalDate.parse(t, fmt);
+            } catch (DateTimeParseException ignored) {
+                // próximo
+            }
+        }
+        return null;
     }
 
     private String resolverCodigoClienteExibicaoParaPessoa(Long pessoaIdDonoProcesso) {

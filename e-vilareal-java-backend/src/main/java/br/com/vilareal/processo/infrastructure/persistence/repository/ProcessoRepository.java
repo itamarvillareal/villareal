@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.math.BigInteger;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -38,6 +39,9 @@ public interface ProcessoRepository extends JpaRepository<ProcessoEntity, Long> 
 
     /** Todos os processos com esse nº interno (há um por cliente titular). */
     List<ProcessoEntity> findByNumeroInternoOrderByIdAsc(Integer numeroInterno);
+
+    /** Diagnóstico «Prazo fatal»: cabeçalho do processo com data igual à informada. */
+    List<ProcessoEntity> findByPrazoFatal(LocalDate prazoFatal);
 
     long countByImportacaoId(String importacaoId);
 
