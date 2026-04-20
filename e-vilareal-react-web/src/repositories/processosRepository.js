@@ -536,8 +536,22 @@ export async function listarAndamentosProcesso(processoId) {
   return request(`/api/processos/${pid}/andamentos`);
 }
 
-function assinaturaAndamento(h) {
-  return `${String(h.movimentoEm || '')}|${String(h.titulo || '').trim().toLowerCase()}`;
+/**
+ * Só a parte calendário (YYYY-MM-DD), para casar o envio local `…T12:00:00` com `Instant` da API
+ * (offset / Z / milissegundos). Sem isso, o segundo sync apagava andamentos novos: o id real não
+ * estava em `idsDesejados` (a UI ainda tinha `Date.now()`) e a assinatura completa não batia.
+ */
+function dataChaveAndamento(movimentoEm) {
+  const s = String(movimentoEm ?? '').trim();
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  return m ? `${m[1]}-${m[2]}-${m[3]}` : '';
+}
+
+/** Assinatura estável para merge incremental (API + linhas novas na UI). Exportada para testes. */
+export function assinaturaAndamento(h) {
+  const movRaw = h?.movimentoEm ?? h?.movimento_em;
+  const tituloRaw = h?.titulo ?? h?.info ?? '';
+  return `${dataChaveAndamento(movRaw)}|${String(tituloRaw).trim().toLowerCase()}`;
 }
 
 export async function sincronizarAndamentosIncremental(processoId, historico) {

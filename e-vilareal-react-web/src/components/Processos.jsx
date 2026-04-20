@@ -1697,6 +1697,22 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       }
       if (pid && opts.syncAndamentos) {
         await sincronizarAndamentosIncremental(pid, snapshot.historico || []);
+        try {
+          const andamentos = await listarAndamentosProcesso(pid);
+          if (Array.isArray(andamentos)) {
+            if (andamentos.length > 0) {
+              const hist = andamentos.map((a, idx) =>
+                mapApiAndamentoToHistoricoItem(a, idx, andamentos.length)
+              );
+              setHistorico(hist);
+            } else {
+              setHistorico([]);
+            }
+            setPaginaHistorico(1);
+          }
+        } catch {
+          /* mantém o histórico já exibido se o GET falhar */
+        }
       }
       if (pid && opts.syncPrazoFatal) {
         await upsertPrazoFatalProcesso(pid, snapshot.prazoFatal);
