@@ -4,9 +4,11 @@ import br.com.vilareal.common.exception.BusinessRuleException;
 import br.com.vilareal.importacao.PlanilhaPasta1MapeamentoUtil;
 import br.com.vilareal.importacao.infrastructure.persistence.entity.PlanilhaPasta1ClienteEntity;
 import br.com.vilareal.importacao.infrastructure.persistence.repository.PlanilhaPasta1ClienteRepository;
+import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.ClienteRepository;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -65,6 +67,27 @@ public class ClienteCodigoPessoaResolver {
     /** {@code true} quando há import Pasta1 gravado — UI e APIs não devem assumir cliente N = pessoa N. */
     public boolean haMapeamentosPlanilhaPasta1() {
         return planilhaPasta1ClienteRepository.count() > 0;
+    }
+
+    /**
+     * Código de cliente para exibição em listagens (8 dígitos ou chave da planilha), alinhado a
+     * {@code ProcessoResponse#getCodigoCliente()} e à tela Processos.
+     */
+    public String codigoClienteExibicaoParaPessoaId(long pessoaIdDonoProcesso) {
+        if (haMapeamentosPlanilhaPasta1()) {
+            List<PlanilhaPasta1ClienteEntity> maps =
+                    planilhaPasta1ClienteRepository.findByPessoaIdOrderByChaveClienteAsc(pessoaIdDonoProcesso);
+            if (!maps.isEmpty()) {
+                String chave = maps.get(0).getChaveCliente();
+                return CodigoClienteUtil.normalizarCodigoClienteOitoDigitos(chave);
+            }
+        }
+        List<ClienteEntity> clientes =
+                clienteRepository.findByPessoa_IdOrderByCodigoClienteAsc(pessoaIdDonoProcesso);
+        if (!clientes.isEmpty()) {
+            return CodigoClienteUtil.normalizarCodigoClienteOitoDigitos(clientes.get(0).getCodigoCliente());
+        }
+        return CodigoClienteUtil.formatar(pessoaIdDonoProcesso);
     }
 
     /**

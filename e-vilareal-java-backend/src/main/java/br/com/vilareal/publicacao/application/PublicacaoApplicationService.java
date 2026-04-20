@@ -2,6 +2,7 @@ package br.com.vilareal.publicacao.application;
 
 import br.com.vilareal.common.exception.BusinessRuleException;
 import br.com.vilareal.common.exception.ResourceNotFoundException;
+import br.com.vilareal.processo.application.ClienteCodigoPessoaResolver;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
 import br.com.vilareal.publicacao.api.dto.*;
@@ -24,11 +25,15 @@ public class PublicacaoApplicationService {
 
     private final PublicacaoRepository publicacaoRepository;
     private final ProcessoRepository processoRepository;
+    private final ClienteCodigoPessoaResolver clienteCodigoPessoaResolver;
 
     public PublicacaoApplicationService(
-            PublicacaoRepository publicacaoRepository, ProcessoRepository processoRepository) {
+            PublicacaoRepository publicacaoRepository,
+            ProcessoRepository processoRepository,
+            ClienteCodigoPessoaResolver clienteCodigoPessoaResolver) {
         this.publicacaoRepository = publicacaoRepository;
         this.processoRepository = processoRepository;
+        this.clienteCodigoPessoaResolver = clienteCodigoPessoaResolver;
     }
 
     @Transactional(readOnly = true)
@@ -168,7 +173,17 @@ public class PublicacaoApplicationService {
         r.setId(e.getId());
         r.setCreatedAt(e.getCreatedAt());
         r.setNumeroProcessoEncontrado(e.getNumeroProcessoEncontrado());
-        r.setProcessoId(e.getProcesso() != null ? e.getProcesso().getId() : null);
+        ProcessoEntity proc = e.getProcesso();
+        if (proc != null) {
+            r.setProcessoId(proc.getId());
+            r.setNumeroInternoProcesso(proc.getNumeroInterno());
+            long pessoaId = proc.getPessoa().getId();
+            r.setCodigoClienteProcesso(clienteCodigoPessoaResolver.codigoClienteExibicaoParaPessoaId(pessoaId));
+        } else {
+            r.setProcessoId(null);
+            r.setNumeroInternoProcesso(null);
+            r.setCodigoClienteProcesso(null);
+        }
         r.setClienteId(e.getClienteRefId());
         r.setDataDisponibilizacao(e.getDataDisponibilizacao());
         r.setDataPublicacao(e.getDataPublicacao());

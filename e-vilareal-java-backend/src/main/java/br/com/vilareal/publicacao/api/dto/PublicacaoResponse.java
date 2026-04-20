@@ -14,6 +14,10 @@ public class PublicacaoResponse {
     private Instant createdAt;
     private String numeroProcessoEncontrado;
     private Long processoId;
+    /** Quando {@link #processoId} preenchido: código de cliente (8 dígitos ou chave planilha) do processo vinculado. */
+    private String codigoClienteProcesso;
+    /** Quando {@link #processoId} preenchido: nº interno do processo na pasta do cliente. */
+    private Integer numeroInternoProcesso;
     private Long clienteId;
     private LocalDate dataDisponibilizacao;
     private LocalDate dataPublicacao;

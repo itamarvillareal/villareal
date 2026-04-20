@@ -293,7 +293,7 @@ export function PublicacoesProcessos() {
     setGravadosTick((t) => t + 1);
   };
 
-  const confirmarVinculoModal = () => {
+  const confirmarVinculoModal = async () => {
     const { codCliente, procInterno, cliente } = vincForm;
     if (vinculoModal?.kind === 'preview') {
       if (!preview) return;
@@ -314,23 +314,23 @@ export function PublicacoesProcessos() {
       const row = itensGravados.find((x) => x.id === vinculoModal.id);
       if (!row) return;
       if (featureFlags.useApiPublicacoes) {
-        void (async () => {
+        try {
           const vinculado = await vincularPublicacaoProcessoPorChaveNatural(
             row._apiId ?? row.id,
             codCliente,
             procInterno,
             'Vínculo manual via tela de publicações.'
           );
-          if (!vinculado) {
+          if (vinculado == null) {
             setVinculoFormErro('Não foi possível resolver processo por código/proc interno.');
             return;
           }
           setGravadosTick((t) => t + 1);
           setVinculoModal(null);
           setVinculoFormErro('');
-        })().catch((e) => {
+        } catch (e) {
           setVinculoFormErro(e?.message || 'Falha ao vincular publicação na API.');
-        });
+        }
         return;
       }
       const next = aplicarVinculoManual(rowGravadoParaVinculo(row), { codCliente, procInterno, cliente });
@@ -380,7 +380,7 @@ export function PublicacoesProcessos() {
         'Vínculo automático reaplicado pelo índice CNJ.'
       )
         .then((v) => {
-          if (!v) {
+          if (v == null) {
             setErro('Não foi possível vincular automaticamente na API.');
             return;
           }
@@ -1307,7 +1307,7 @@ export function PublicacoesProcessos() {
                 </button>
                 <button
                   type="button"
-                  onClick={confirmarVinculoModal}
+                  onClick={() => void confirmarVinculoModal()}
                   className="px-4 py-2 rounded-lg bg-sky-600 text-white text-sm font-medium hover:bg-sky-700"
                 >
                   Salvar vínculo

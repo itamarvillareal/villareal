@@ -74,6 +74,16 @@ function mapApiStatusToUiVinculo(statusTratamento, processoId) {
 }
 
 export function mapApiPublicacaoToUi(r) {
+  const codApi = r.codigoClienteProcesso ?? r.codigo_cliente_processo;
+  let codCliente = '';
+  if (codApi != null && String(codApi).trim() !== '') {
+    codCliente = String(codApi).trim();
+  } else if (r.clienteId != null) {
+    codCliente = padCodCliente(String(r.clienteId));
+  }
+  const procInt = r.numeroInternoProcesso ?? r.numero_interno_processo;
+  const procInterno =
+    procInt != null && Number.isFinite(Number(procInt)) && Number(procInt) >= 1 ? String(Math.floor(Number(procInt))) : '';
   return {
     id: String(r.id),
     _apiId: r.id,
@@ -83,8 +93,8 @@ export function mapApiPublicacaoToUi(r) {
     hashArquivo: r.arquivoOrigemHash || '',
     processoCnjNormalizado: r.numeroProcessoEncontrado || '',
     numero_processo_cnj: r.numeroProcessoEncontrado || '',
-    procInterno: '',
-    codCliente: '',
+    procInterno,
+    codCliente,
     cliente: r.clienteId ? `Cliente #${r.clienteId}` : '',
     diario: r.diario || r.fonte || '',
     tribunalPdf: '',
@@ -376,10 +386,12 @@ export async function vincularPublicacaoProcessoPorProcessoId(id, processoId, ob
   if (!featureFlags.useApiPublicacoes) return null;
   const pid = Number(processoId);
   if (!Number.isFinite(pid) || pid <= 0) return null;
-  return request(`/api/publicacoes/${Number(id)}/vinculo-processo`, {
+  const data = await request(`/api/publicacoes/${Number(id)}/vinculo-processo`, {
     method: 'PATCH',
     body: { processoId: pid, observacao: observacao || '' },
   });
+  /** Corpo vazio com 200 não deve ser tratado como falha (evita UI a pensar que o vínculo não gravou). */
+  return data != null ? data : { ok: true, id: Number(id), processoId: pid };
 }
 
 /** Compatibilidade: resolve processo por código cliente × proc. interno e delega a `vincularPublicacaoProcessoPorProcessoId`. */
