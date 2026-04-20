@@ -79,7 +79,9 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration c = new CorsConfiguration();
-        c.setAllowedOriginPatterns(List.of("*"));
+        // Credenciais + navegadores: localhost explícito evita falhas quando o front não usa apenas o proxy do Vite.
+        c.setAllowedOriginPatterns(
+                List.of("http://localhost:*", "http://127.0.0.1:*", "https://localhost:*", "https://127.0.0.1:*", "*"));
         c.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         c.setAllowedHeaders(List.of("*"));
         c.setExposedHeaders(List.of(HttpHeaders.AUTHORIZATION));

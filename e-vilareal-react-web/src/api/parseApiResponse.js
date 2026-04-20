@@ -26,7 +26,10 @@ export async function parseApiJsonResponse(response) {
     }
   }
   if (!response.ok) {
-    const message = data?.message || data?.error || `Erro ${response.status}`;
+    let message = data?.message || data?.error || `Erro ${response.status}`;
+    if (data?.path && typeof data.path === 'string') {
+      message = `${message} — ${data.path}`;
+    }
     throw new Error(message);
   }
   return data;
