@@ -106,3 +106,62 @@ export async function rodarOcrDocumento(file) {
   };
 }
 
+/**
+ * OCR página a página (PDF escaneado / sem camada de texto).
+ * Usado pelo módulo Publicações quando pdf.js extrai pouco ou nada.
+ *
+ * @param {File} file
+ * @param {{ scale?: number }} [opts] — escala de renderização (padrão 2)
+ * @returns {Promise<string>} texto concatenado com \\n\\n entre páginas
+ */
+export async function rodarOcrPdfTodasPaginas(file, opts = {}) {
+  if (!file) throw new Error('Nenhum arquivo informado para OCR.');
+  const tipo = (file.type || '').split(';')[0].trim().toLowerCase();
+  if (tipo !== 'application/pdf') {
+    throw new Error('rodarOcrPdfTodasPaginas espera um arquivo PDF.');
+  }
+
+  const scale = typeof opts.scale === 'number' && opts.scale > 0 ? opts.scale : 2;
+  const pdfjsLib = await carregarPdfJs();
+  const Tesseract = await carregarTesseract();
+  const arrayBuffer = await file.arrayBuffer();
+  const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+  const pdf = await loadingTask.promise;
+  const lang = 'por+eng';
+  const partes = [];
+
+  for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+    const page = await pdf.getPage(pageNum);
+    const viewport = page.getViewport({ scale });
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    if (!context) {
+      throw new Error('Canvas 2D indisponível para OCR do PDF.');
+    }
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    await page.render({ canvasContext: context, viewport }).promise;
+
+    const blob = await new Promise((resolve, reject) => {
+      canvas.toBlob(
+        (b) => {
+          if (!b) {
+            reject(new Error(`Falha ao rasterizar página ${pageNum} do PDF para OCR.`));
+            return;
+          }
+          resolve(b);
+        },
+        'image/png',
+        0.92
+      );
+    });
+
+    const imgFile = new File([blob], `publicacoes-page-${pageNum}.png`, { type: 'image/png' });
+    const { data } = await Tesseract.recognize(imgFile, lang, { logger: () => {} });
+    const t = String(data.text || '').replace(/\r\n/g, '\n').trim();
+    if (t) partes.push(t);
+  }
+
+  return partes.join('\n\n');
+}
+
