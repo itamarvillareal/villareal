@@ -2659,7 +2659,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                 <div className="grid grid-cols-2 gap-2 sm:gap-3">
                   <Field label="Estado" className="min-w-0">
                     <select
-                      value={estado}
+                      value={estado ?? ''}
                       onChange={(e) => {
                         const uf = e.target.value;
                         setEstado(uf);
@@ -2669,6 +2669,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                       className={`w-full min-w-0 ${clsCampo}`}
                       title={ufAtual ? `${ufAtual.sigla} — ${ufAtual.nome}` : estado}
                     >
+                      <option value="">— Selecione —</option>
                       {!UFS.some((u) => u.sigla === estado) && estado ? (
                         <option value={estado}>{estado}</option>
                       ) : null}
@@ -2684,10 +2685,11 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                       <input type="text" readOnly value={cidade} className={`w-full min-w-0 ${clsCampo}`} title={cidade} />
                     ) : (
                       <select
-                        value={cidade}
+                        value={cidade ?? ''}
                         onChange={(e) => setCidade(e.target.value)}
                         className={`w-full min-w-0 ${inputClass}`}
                       >
+                        <option value="">— Selecione —</option>
                         {cidades.map((c) => (
                           <option key={c} value={c}>
                             {c}
@@ -2860,10 +2862,11 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                         <input type="text" readOnly value={competencia} className={`flex-1 min-w-0 ${clsCampoDenso}`} title={competencia} />
                       ) : (
                         <select
-                          value={competencia}
+                          value={competencia ?? ''}
                           onChange={(e) => setCompetencia(e.target.value)}
                           className={`flex-1 min-w-0 ${inputClassDenso}`}
                         >
+                          <option value="">— Selecione —</option>
                           {COMPETENCIAS.map((c) => (
                             <option key={c} value={c}>
                               {c}
