@@ -1,11 +1,14 @@
 /**
  * Extração de texto de PDF no navegador (pdf.js). Texto selecionável — sem OCR.
+ *
+ * O worker NÃO usa import com ?url (hash em /assets/): após deploy, referências
+ * antigas a pdf.worker.min-XXXX.mjs podem 404. Usa a mesma origem fixa que
+ * documentOcrService (unpkg, versão alinhada a package.json / pdfjs-dist).
  */
-
 import * as pdfjsLib from 'pdfjs-dist';
-import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
+const PDFJS_WORKER_UNPKG = 'https://unpkg.com/pdfjs-dist@4.10.38/build/pdf.worker.mjs';
+pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_UNPKG;
 
 /**
  * @param {File} file
