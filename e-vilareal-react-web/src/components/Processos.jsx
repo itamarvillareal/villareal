@@ -147,6 +147,8 @@ const PERIODICIDADES_AGENDA_LOTE = [
   'Todo dia X do mês',
 ];
 
+const AgendaModal = lazy(() => import('./Agenda.jsx').then((m) => ({ default: m.Agenda })));
+
 /** Vínculo mock cliente×processo → imóvel (mesma regra do useMemo `vinculoImovelMock`). */
 function buscarVinculoImovelMock() {
   return null;
@@ -404,6 +406,12 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   const [agendaLotePeriodicidade, setAgendaLotePeriodicidade] = useState('Agendamento único');
   const [agendaLoteDiaDoMes, setAgendaLoteDiaDoMes] = useState('');
   const [agendaLoteInfo, setAgendaLoteInfo] = useState('');
+  /** Duplo clique em «Audiência»: agenda em modal na data informada. */
+  const [modalAgendaAudiencia, setModalAgendaAudiencia] = useState({
+    aberto: false,
+    dataBr: null,
+    revision: 0,
+  });
   const [sortContaCorrente, setSortContaCorrente] = useState({ col: 'data', dir: 'desc' });
   const [buscaContaCorrente, setBuscaContaCorrente] = useState({ campo: 'todos', termo: '' });
   const [processoApiId, setProcessoApiId] = useState(null);
@@ -993,6 +1001,16 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     setAgendaLoteDiaDoMes(Number.isFinite(diaInicial) ? String(diaInicial) : '');
     setAgendaLoteInfo('');
     setModalAgendaLoteAberto(true);
+  }
+
+  function abrirAgendaFlutuanteNaDataAudiencia() {
+    const norm = normalizarDataBr(audienciaData);
+    if (!norm || !/^\d{2}\/\d{2}\/\d{4}$/.test(norm)) return;
+    setModalAgendaAudiencia((prev) => ({
+      aberto: true,
+      dataBr: norm,
+      revision: prev.revision + 1,
+    }));
   }
 
   async function salvarAgendaEmLote() {
@@ -2385,7 +2403,23 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                   ) : null}
                 </div>
                 <div className="flex-1 min-w-0 rounded-md border border-violet-300/70 bg-violet-50/35 p-1.5 sm:p-2">
-                  <div className="flex items-center gap-1.5 mb-1 pb-1 border-b border-violet-200/70">
+                  <div
+                    className={`flex items-center gap-1.5 mb-1 pb-1 border-b border-violet-200/70 ${
+                      camposBloqueados ? '' : 'cursor-pointer select-none'
+                    }`}
+                    onDoubleClick={(e) => {
+                      e.preventDefault();
+                      if (camposBloqueados) return;
+                      abrirAgendaFlutuanteNaDataAudiencia();
+                    }}
+                    title={
+                      camposBloqueados
+                        ? undefined
+                        : 'Duplo clique para abrir a Agenda nesta data (painel flutuante)'
+                    }
+                    role="group"
+                    aria-label="Audiência — duplo clique para abrir a agenda na data"
+                  >
                     <Calendar className="w-4 h-4 text-violet-600 shrink-0" aria-hidden />
                     <span className="text-[11px] font-bold uppercase tracking-wide text-violet-950">Audiência</span>
                     {avisoAudiencia === 'avisado' ? (
@@ -2405,17 +2439,6 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                         value={audienciaData}
                         readOnly={camposBloqueados}
                         onChange={(e) => setAudienciaData(formatarDataAudienciaInput(e.target.value))}
-                        onDoubleClick={() => {
-                          if (camposBloqueados) return;
-                          const norm = normalizarDataBr(audienciaData);
-                          if (!norm) return;
-                          const ok = /^(\d{2})\/(\d{2})\/(\d{4})$/.test(norm);
-                          if (!ok) return;
-                          navigate('/agenda', {
-                            replace: false,
-                            state: { agendaData: norm },
-                          });
-                        }}
                         onBlur={() => {
                           const norm = normalizarDataBr(audienciaData);
                           if (norm) setAudienciaData(norm);
@@ -3365,6 +3388,60 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
           </div>
         </div>
       )}
+
+      {modalAgendaAudiencia.aberto && modalAgendaAudiencia.dataBr ? (
+        <div
+          className="fixed inset-0 z-[60] flex items-stretch justify-center bg-black/50 p-0 backdrop-blur-[2px] md:items-center md:p-3"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="modal-agenda-audiencia-titulo"
+          onMouseDown={onModalOverlayMouseDown}
+          onClick={criarModalOverlayClickFechar(() =>
+            setModalAgendaAudiencia({ aberto: false, dataBr: null, revision: 0 })
+          )}
+        >
+          <div
+            className="flex h-full w-full max-w-none flex-col overflow-hidden border-0 border-slate-200 bg-white shadow-2xl md:h-[min(92vh,900px)] md:max-h-[92vh] md:max-w-[min(96vw,1800px)] md:rounded-2xl md:border md:border-slate-200/90"
+            onMouseDown={onModalPanelMouseDown}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-200 bg-gradient-to-r from-sky-600 to-indigo-700 px-3 py-3 text-white shadow-md md:rounded-t-2xl">
+              <button
+                type="button"
+                className="flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-white/25 bg-white/10 text-white hover:bg-white/20 md:hidden"
+                aria-label="Voltar"
+                onClick={() => setModalAgendaAudiencia({ aberto: false, dataBr: null, revision: 0 })}
+              >
+                <ChevronLeft className="h-6 w-6" aria-hidden />
+              </button>
+              <h2 id="modal-agenda-audiencia-titulo" className="min-w-0 flex-1 text-base font-semibold tracking-tight">
+                Agenda — {modalAgendaAudiencia.dataBr}
+              </h2>
+              <button
+                type="button"
+                className="flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-white/20 bg-white/15 text-white hover:bg-white/25"
+                aria-label="Fechar agenda"
+                onClick={() => setModalAgendaAudiencia({ aberto: false, dataBr: null, revision: 0 })}
+              >
+                <X className="h-5 w-5" aria-hidden />
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-hidden bg-slate-50/80">
+              <Suspense
+                fallback={
+                  <div className="flex h-48 items-center justify-center text-sm text-slate-600">A carregar agenda…</div>
+                }
+              >
+                <AgendaModal
+                  focoDataBr={modalAgendaAudiencia.dataBr}
+                  focoRevision={modalAgendaAudiencia.revision}
+                  modoFlutuante
+                />
+              </Suspense>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {modalAgendaLoteAberto && (
         <div

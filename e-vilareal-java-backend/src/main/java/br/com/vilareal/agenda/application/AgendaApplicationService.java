@@ -159,6 +159,17 @@ public class AgendaApplicationService {
         return toResponse(e);
     }
 
+    @Transactional
+    public void excluir(Long id) {
+        if (id == null || id < 1) {
+            throw new BusinessRuleException("Identificador do compromisso inválido.");
+        }
+        if (!agendaEventoRepository.existsById(id)) {
+            throw new ResourceNotFoundException("Compromisso não encontrado: " + id);
+        }
+        agendaEventoRepository.deleteById(id);
+    }
+
     private void aplicarCampos(AgendaEventoEntity e, AgendaEventoWriteRequest req) {
         e.setDataEvento(req.getDataEvento());
         e.setHoraEvento(trimToNull(req.getHoraEvento()));

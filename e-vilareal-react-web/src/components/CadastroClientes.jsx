@@ -39,6 +39,7 @@ import {
 } from '../data/processosHistoricoData.js';
 import { getContextoAuditoriaUsuario, registrarAuditoria } from '../services/auditoriaCliente.js';
 import { featureFlags } from '../config/featureFlags.js';
+import { validarFormatarCpfCnpjAoSair } from '../services/cpfValidatorService.js';
 import {
   buildRouterStateChaveClienteProcesso,
   extrairIntentNavegacaoProcessos,
@@ -275,6 +276,7 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
   const [edicaoDesabilitada, setEdicaoDesabilitada] = useState(ini.edicaoDesabilitada);
   const [clienteInativo, setClienteInativo] = useState(ini.clienteInativo);
   const [observacao, setObservacao] = useState(ini.observacao);
+  const [toastDocCliente, setToastDocCliente] = useState(null);
   const [pesquisaProcesso, setPesquisaProcesso] = useState('');
   const [buscaClienteNome, setBuscaClienteNome] = useState('');
   /** Resultados da busca só por dígitos: nº interno do processo (API/histórico). */
@@ -320,6 +322,12 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
   const processosApiReqIdRef = useRef(0);
   const codigoRef = useRef(codigo);
   codigoRef.current = codigo;
+
+  useEffect(() => {
+    if (!toastDocCliente?.mensagem) return undefined;
+    const t = window.setTimeout(() => setToastDocCliente(null), 4200);
+    return () => window.clearTimeout(t);
+  }, [toastDocCliente]);
 
   const refreshProcessosGrade = useCallback((padded, baseLista) => {
     const enriched = enriquecerListaProcessosComHistoricoLocal(padded, baseLista);
@@ -1594,7 +1602,24 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
             </div>
             <div className="w-44">
               <label className="block text-sm font-medium text-slate-700 mb-0.5">CNPJ / CPF</label>
-              <input type="text" value={cnpjCpf} onChange={(e) => setCnpjCpf(e.target.value)} disabled={edicaoDesabilitada} className={`${inputClass} ${edicaoDesabilitada ? 'bg-slate-50' : ''}`} />
+              <input
+                type="text"
+                value={cnpjCpf}
+                onChange={(e) => setCnpjCpf(e.target.value)}
+                onBlur={() => {
+                  if (edicaoDesabilitada) return;
+                  setCnpjCpf((v) => {
+                    const r = validarFormatarCpfCnpjAoSair(v);
+                    if (r.aviso) {
+                      queueMicrotask(() => setToastDocCliente({ mensagem: r.aviso }));
+                    }
+                    return r.valor;
+                  });
+                }}
+                disabled={edicaoDesabilitada}
+                placeholder="CPF ou CNPJ"
+                className={`${inputClass} ${edicaoDesabilitada ? 'bg-slate-50' : ''}`}
+              />
             </div>
             <div className="flex gap-2 items-end">
               <button
@@ -2196,6 +2221,15 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
           </div>
         </div>
       )}
+
+      {toastDocCliente?.mensagem ? (
+        <div
+          role="alert"
+          className="fixed bottom-6 left-1/2 z-[200] max-w-[min(92vw,24rem)] -translate-x-1/2 px-4 py-3 text-center text-sm font-medium text-rose-50 shadow-xl shadow-black/30 pointer-events-none rounded-xl border border-rose-400/40 bg-rose-950/95 ring-1 ring-white/10"
+        >
+          {toastDocCliente.mensagem}
+        </div>
+      ) : null}
     </div>
   );
 }

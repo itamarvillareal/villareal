@@ -25,7 +25,7 @@ import { listarPessoasComDocumento, salvarDocumentoPessoa } from '../../services
 import { ModalEnderecos } from './ModalEnderecos';
 import { ModalContatos } from './ModalContatos';
 import { extrairDadosDeTextoLivre } from '../../services/personTextAutofillService.js';
-import { validateCPF } from '../../services/cpfValidatorService.js';
+import { validateCPF, validarFormatarCpfCnpjAoSair } from '../../services/cpfValidatorService.js';
 import { listarCodigosClientePorIdPessoa } from '../../data/clienteCodigoHelpers.js';
 import { listarClientesCadastro } from '../../repositories/clientesRepository.js';
 import { listarProcessosPorIdPessoa } from '../../data/processosHistoricoData.js';
@@ -185,6 +185,14 @@ export function CadastroPessoas() {
     estadoCivil: false,
     email: false,
   });
+  /** Aviso flutuante (CPF/CNPJ inválido ao sair do campo). */
+  const [toastDocumento, setToastDocumento] = useState(null);
+
+  useEffect(() => {
+    if (!toastDocumento?.mensagem) return undefined;
+    const t = window.setTimeout(() => setToastDocumento(null), 4200);
+    return () => window.clearTimeout(t);
+  }, [toastDocumento]);
 
   useEffect(() => {
     return () => {
@@ -777,10 +785,18 @@ export function CadastroPessoas() {
 
   const salvar = async () => {
     if (!form.nome?.trim() || !form.cpf?.trim()) {
-      setError('Preencha nome e CPF.');
+      setError('Preencha nome e CPF ou CNPJ.');
       return;
     }
-    const docDigitos = normalizarDigitosCpfCnpj(form.cpf);
+    const docFmt = validarFormatarCpfCnpjAoSair(form.cpf);
+    if (!docFmt.ok) {
+      setError(docFmt.aviso || 'CPF ou CNPJ inválido.');
+      return;
+    }
+    if (docFmt.valor !== form.cpf) {
+      setForm((f) => ({ ...f, cpf: docFmt.valor }));
+    }
+    const docDigitos = normalizarDigitosCpfCnpj(docFmt.valor);
     const excluirDupCheck = modo === 'editar' ? editId : null;
     let listaParaDup = lista;
     if (listaParaDup.length === 0) {
@@ -808,7 +824,7 @@ export function CadastroPessoas() {
       const payload = {
         nome: form.nome.trim(),
         email: form.email?.trim() ? form.email.trim() : null,
-        cpf: form.cpf.trim().replace(/\D/g, ''),
+        cpf: docFmt.valor.replace(/\D/g, ''),
         telefone: form.contato?.trim() || null,
         dataNascimento: form.dataNascimento || null,
         ativo: form.ativo,
@@ -1344,7 +1360,7 @@ export function CadastroPessoas() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">CPF *</label>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">CPF / CNPJ *</label>
                       <div className="flex gap-2">
                         <input
                           type="text"
@@ -1353,9 +1369,20 @@ export function CadastroPessoas() {
                             setCamposPreenchidosPorTexto((c) => ({ ...c, cpf: false }));
                             setForm((f) => ({ ...f, cpf: e.target.value }));
                           }}
-                          onBlur={() => marcarAutofillRevisado('cpf')}
+                          onBlur={() => {
+                            marcarAutofillRevisado('cpf');
+                            setForm((f) => {
+                              if (f.edicaoDesabilitada) return f;
+                              const r = validarFormatarCpfCnpjAoSair(f.cpf);
+                              if (r.aviso) {
+                                queueMicrotask(() => setToastDocumento({ mensagem: r.aviso }));
+                              }
+                              if (r.valor === f.cpf) return f;
+                              return { ...f, cpf: r.valor };
+                            });
+                          }}
                           disabled={form.edicaoDesabilitada}
-                          placeholder="000.000.000-00"
+                          placeholder="000.000.000-00 ou 00.000.000/0000-00"
                           className={`flex-1 ${inputClassComAutofill('cpf')}`}
                         />
                         <button
@@ -1856,6 +1883,15 @@ export function CadastroPessoas() {
           </div>
         </div>
       )}
+
+      {toastDocumento?.mensagem ? (
+        <div
+          role="alert"
+          className="fixed bottom-6 left-1/2 z-[200] max-w-[min(92vw,24rem)] -translate-x-1/2 px-4 py-3 text-center text-sm font-medium text-rose-50 shadow-xl shadow-black/30 pointer-events-none rounded-xl border border-rose-400/40 bg-rose-950/95 ring-1 ring-white/10"
+        >
+          {toastDocumento.mensagem}
+        </div>
+      ) : null}
     </div>
   );
 }

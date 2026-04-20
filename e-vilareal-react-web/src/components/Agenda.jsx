@@ -32,6 +32,7 @@ import {
   listarAgendaMensal,
   salvarCamposEvento,
   criarEvento,
+  excluirEvento,
 } from '../repositories/agendaRepository.js';
 
 /** Retorna string DD/MM/YYYY para dia/mês/ano */
@@ -40,6 +41,24 @@ function dataStr(dia, mes, ano) {
 }
 
 const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+
+/** Linha com hora, descrição ou status OK — não confundir com a linha vazia «Novo compromisso». */
+function temCompromissoNaLinhaAgenda(ev) {
+  const h = String(ev?.hora ?? '').trim();
+  const d = String(ev?.descricao ?? '').trim();
+  const ok = normalizarStatusCurtoAgenda(ev?.statusCurto) === 'OK';
+  return !!(h || d || ok);
+}
+
+/** Pode enviar exclusão à API (id numérico) ou remover do armazenamento local (id presente). */
+function eventoAgendaPodeExcluir(ev, usarApiAgenda) {
+  if (!ev || !temCompromissoNaLinhaAgenda(ev)) return false;
+  if (usarApiAgenda) {
+    const n = Number(ev.id);
+    return Number.isFinite(n) && n >= 1;
+  }
+  return String(ev?.id ?? '').trim() !== '';
+}
 
 function parseDataBrCompleta(str) {
   const s = String(str ?? '').trim();
@@ -337,6 +356,8 @@ function ColunaDia({
   variantColuna = 'esquerda',
   /** Com API da agenda: exibe aviso amigável quando não há eventos para o usuário/data. */
   apiAgendaVazio = null,
+  usarApiAgenda = false,
+  onExcluirEvento = null,
 }) {
   /** Última linha (novo compromisso): id criado até liberar após salvar hora/descrição. */
   const pendingNovaLinhaIdRef = useRef(null);
@@ -346,6 +367,18 @@ function ColunaDia({
     pendingNovaLinhaIdRef.current = null;
     setNovaLinhaBump((n) => n + 1);
   }, [dataBrStr, usuarioAgendaId]);
+
+  function solicitarExclusaoCompromisso(ev) {
+    if (somenteLeitura || !onExcluirEvento || !eventoAgendaPodeExcluir(ev, usarApiAgenda)) return;
+    const trecho = [String(ev.hora ?? '').trim(), String(ev.descricao ?? '').trim().slice(0, 200)]
+      .filter(Boolean)
+      .join(' — ');
+    const msg = trecho
+      ? `Eliminar este compromisso?\n\n${trecho}${trecho.length >= 200 ? '…' : ''}`
+      : 'Eliminar este compromisso?';
+    if (!window.confirm(msg)) return;
+    onExcluirEvento(ev);
+  }
 
   function salvarLinhaVazia(patch) {
     if (somenteLeitura) return;
@@ -394,11 +427,25 @@ function ColunaDia({
           {eventos.map((ev) => (
             <div
               key={ev._chaveUnicaAgenda ?? ev.id}
-              className={`rounded-xl border border-slate-200/90 bg-white p-3 shadow-sm ring-1 ring-slate-100/80 ${
+              className={`relative rounded-xl border border-slate-200/90 bg-white p-3 pt-9 shadow-sm ring-1 ring-slate-100/80 ${
                 ev.destaque ? 'bg-amber-50/90' : ''
               }`}
               onDoubleClick={() => onDuploCliqueEvento?.(ev)}
             >
+              {!somenteLeitura && onExcluirEvento && eventoAgendaPodeExcluir(ev, usarApiAgenda) ? (
+                <button
+                  type="button"
+                  className="absolute right-2 top-2 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-rose-200/90 bg-white text-rose-600 shadow-sm hover:bg-rose-50 hover:border-rose-300"
+                  aria-label="Eliminar compromisso"
+                  title="Eliminar compromisso"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    solicitarExclusaoCompromisso(ev);
+                  }}
+                >
+                  <X className="h-4 w-4" strokeWidth={2.25} aria-hidden />
+                </button>
+              ) : null}
               <div className="flex flex-col gap-3">
                 <div className="flex flex-wrap items-start gap-3">
                   <div className="min-w-0 shrink-0 basis-[5.5rem]">
@@ -500,6 +547,11 @@ function ColunaDia({
                 ) : null}
                 <th className="px-2 py-2 text-left text-xs font-semibold">Descrição</th>
                 <th className="w-[92px] px-1 py-2 text-right text-xs font-semibold">Status</th>
+                {!somenteLeitura && onExcluirEvento ? (
+                  <th className="w-10 px-0 py-2 text-center text-xs font-semibold">
+                    <span className="sr-only">Eliminar</span>
+                  </th>
+                ) : null}
               </tr>
             </thead>
             <tbody>
@@ -554,6 +606,26 @@ function ColunaDia({
                       }}
                     />
                   </td>
+                  {!somenteLeitura && onExcluirEvento ? (
+                    <td className="w-10 px-0 py-1 align-top text-center">
+                      {eventoAgendaPodeExcluir(ev, usarApiAgenda) ? (
+                        <button
+                          type="button"
+                          className="mx-auto flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200/90 bg-white text-rose-600 hover:bg-rose-50"
+                          aria-label="Eliminar compromisso"
+                          title="Eliminar compromisso"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            solicitarExclusaoCompromisso(ev);
+                          }}
+                        >
+                          <X className="h-4 w-4" strokeWidth={2.25} aria-hidden />
+                        </button>
+                      ) : (
+                        <span className="inline-block w-8" aria-hidden />
+                      )}
+                    </td>
+                  ) : null}
                 </tr>
               ))}
               {Array.from({ length: linhasPreenchimento }, (_, i) => (
@@ -568,6 +640,7 @@ function ColunaDia({
                   ) : null}
                   <td className="min-w-0 px-2 py-1.5 align-top text-sm text-slate-200 select-none">&nbsp;</td>
                   <td className="w-[92px] px-0 py-1.5 align-top text-right">&nbsp;</td>
+                  {!somenteLeitura && onExcluirEvento ? <td className="w-10 px-0 py-1.5 align-top" aria-hidden /> : null}
                 </tr>
               ))}
               {!somenteLeitura ? (
@@ -592,6 +665,7 @@ function ColunaDia({
                   <td className="w-[92px] px-0 py-1.5 align-top text-right">
                     <StatusCurtoCell evento={{ statusCurto: '' }} onSalvar={(novo) => salvarLinhaVazia({ statusCurto: novo })} />
                   </td>
+                  {onExcluirEvento ? <td className="w-10 px-0 py-1.5 align-top" aria-hidden /> : null}
                 </tr>
               ) : null}
             </tbody>
@@ -833,7 +907,11 @@ function initialUsuarioIdAgenda() {
   return api?.id ? String(api.id) : 'itamar';
 }
 
-export function Agenda() {
+/**
+ * @param {{ focoDataBr?: string|null, focoRevision?: number, modoFlutuante?: boolean }} [props]
+ * `focoDataBr` — dd/mm/aaaa (ex.: modal em Processos); tem prioridade sobre `location.state.agendaData`.
+ */
+export function Agenda({ focoDataBr = null, focoRevision = 0, modoFlutuante = false } = {}) {
   const location = useLocation();
   const navigate = useNavigate();
   const [usuarioEsquerda, setUsuarioEsquerda] = useState(initialUsuarioIdAgenda);
@@ -962,11 +1040,17 @@ export function Agenda() {
     persistirUsuariosAtivos([...(usuariosAtivos || []), criarUsuarioRegistroMinimo(basePrimeiro)]);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Se vier uma data via navegação (Processos -> duplo clique em Data), posiciona o painel nela.
+  const agendaDataDoRouter =
+    location.state && typeof location.state === 'object' ? location.state.agendaData : null;
+  const dataBrParaPainel =
+    focoDataBr != null && String(focoDataBr).trim() !== ''
+      ? String(focoDataBr).trim()
+      : agendaDataDoRouter;
+
+  // Data via props (modal Processos) ou navegação (Processos → /agenda com state).
   useEffect(() => {
-    const raw = location.state && typeof location.state === 'object' ? location.state.agendaData : null;
-    if (!raw) return;
-    const parsed = parseDataBrCompleta(raw);
+    if (!dataBrParaPainel) return;
+    const parsed = parseDataBrCompleta(dataBrParaPainel);
     if (!parsed) return;
 
     setDiaEsquerda(parsed.dd);
@@ -978,7 +1062,7 @@ export function Agenda() {
     setDiaDireita(dt.getDate());
     setMesDireita(dt.getMonth() + 1);
     setAnoDireita(dt.getFullYear());
-  }, [location.key, location.state]);
+  }, [dataBrParaPainel, focoRevision, location.key, location.state]);
 
   const dataEsquerdaStr = dataStr(diaEsquerda, mesEsquerda, anoEsquerda);
   const dataDireitaStr = dataStr(diaDireita, mesDireita, anoDireita);
@@ -1173,9 +1257,16 @@ export function Agenda() {
     [relatorioAgendaMensal]
   );
 
+  const rootAgendaClass = modoFlutuante
+    ? 'relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-gradient-to-br from-slate-100 via-indigo-50/35 to-emerald-50/45 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d]'
+    : 'relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-gradient-to-br from-slate-100 via-indigo-50/35 to-emerald-50/45 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d]';
+  const innerAgendaClass = modoFlutuante
+    ? 'mx-auto flex w-full max-w-none flex-1 min-h-0 flex-col gap-2 overflow-y-auto overflow-x-hidden p-2 pb-2 sm:p-2 md:pb-2 lg:flex-row lg:gap-2 lg:overflow-hidden lg:pb-2'
+    : 'mx-auto flex w-full max-w-[1800px] flex-1 min-h-0 flex-col gap-4 overflow-y-auto overflow-x-hidden p-2 pb-28 sm:p-3 md:pb-24 lg:flex-row lg:gap-3 lg:overflow-hidden lg:pb-4';
+
   return (
-    <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-gradient-to-br from-slate-100 via-indigo-50/35 to-emerald-50/45 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d]">
-      <div className="mx-auto flex w-full max-w-[1800px] flex-1 min-h-0 flex-col gap-4 overflow-y-auto overflow-x-hidden p-2 pb-28 sm:p-3 md:pb-24 lg:flex-row lg:gap-3 lg:overflow-hidden lg:pb-4">
+    <div className={rootAgendaClass}>
+      <div className={innerAgendaClass}>
       {/* Painel esquerdo: calendário (em mobile fica no topo; em lg à esquerda). */}
       <PainelCalendario
         mesAtual={mesEsquerda}
@@ -1227,6 +1318,7 @@ export function Agenda() {
             mostrarColunaUsuario={false}
             resolverNomeUsuario={resolverNomeUsuarioAgenda}
             apiAgendaVazio={apiAgendaVazioEsquerda}
+            usarApiAgenda={featureFlags.useApiAgenda}
             onPersistenciaAlterada={async () => {
               if (featureFlags.useApiAgenda) {
                 await criarEvento(dataEsquerdaStr, usuarioEsquerda, {});
@@ -1236,6 +1328,16 @@ export function Agenda() {
             onSalvarCampos={(ev, patch) => {
               void (async () => {
                 await salvarCamposEvento(dataEsquerdaStr, { ...ev, usuarioId: ev.usuarioId ?? usuarioEsquerda }, patch);
+                setAgendaStatusNonce((n) => n + 1);
+              })();
+            }}
+            onExcluirEvento={(ev) => {
+              void (async () => {
+                const r = await excluirEvento(dataEsquerdaStr, { ...ev, usuarioId: ev.usuarioId ?? usuarioEsquerda });
+                if (r && r.ok === false && r.reason === 'nao-encontrado') {
+                  window.alert('Não foi possível eliminar este compromisso (pode ser um registo só de demonstração).');
+                  return;
+                }
                 setAgendaStatusNonce((n) => n + 1);
               })();
             }}
@@ -1251,6 +1353,7 @@ export function Agenda() {
             mostrarColunaUsuario={false}
             resolverNomeUsuario={resolverNomeUsuarioAgenda}
             apiAgendaVazio={apiAgendaVazioDireita}
+            usarApiAgenda={featureFlags.useApiAgenda}
             onPersistenciaAlterada={async () => {
               if (featureFlags.useApiAgenda) {
                 await criarEvento(dataDireitaStr, usuarioDireita, {});
@@ -1260,6 +1363,16 @@ export function Agenda() {
             onSalvarCampos={(ev, patch) => {
               void (async () => {
                 await salvarCamposEvento(dataDireitaStr, { ...ev, usuarioId: ev.usuarioId ?? usuarioDireita }, patch);
+                setAgendaStatusNonce((n) => n + 1);
+              })();
+            }}
+            onExcluirEvento={(ev) => {
+              void (async () => {
+                const r = await excluirEvento(dataDireitaStr, { ...ev, usuarioId: ev.usuarioId ?? usuarioDireita });
+                if (r && r.ok === false && r.reason === 'nao-encontrado') {
+                  window.alert('Não foi possível eliminar este compromisso (pode ser um registo só de demonstração).');
+                  return;
+                }
                 setAgendaStatusNonce((n) => n + 1);
               })();
             }}
@@ -1366,6 +1479,9 @@ export function Agenda() {
                               ) : null}
                               <th className="text-left px-3 py-2 font-semibold text-slate-800">Descrição</th>
                               <th className="text-right px-3 py-2 font-semibold text-slate-800 w-[72px]">Status</th>
+                              <th className="w-10 px-1 py-2 text-center font-semibold text-slate-800">
+                                <span className="sr-only">Eliminar</span>
+                              </th>
                             </tr>
                           </thead>
                           <tbody>
@@ -1386,6 +1502,42 @@ export function Agenda() {
                                 </td>
                                 <td className="px-3 py-2 align-top text-right text-slate-800">
                                   {normalizarStatusCurtoAgenda(ev.statusCurto) === 'OK' ? 'OK' : '—'}
+                                </td>
+                                <td className="px-1 py-1.5 align-top text-center">
+                                  {eventoAgendaPodeExcluir(ev, featureFlags.useApiAgenda) ? (
+                                    <button
+                                      type="button"
+                                      className="mx-auto flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200/90 bg-white text-rose-600 hover:bg-rose-50"
+                                      aria-label="Eliminar compromisso"
+                                      title="Eliminar compromisso"
+                                      onClick={() => {
+                                        void (async () => {
+                                          const trecho = [String(ev.hora ?? '').trim(), String(ev.descricao ?? '').trim().slice(0, 200)]
+                                            .filter(Boolean)
+                                            .join(' — ');
+                                          const msg = trecho
+                                            ? `Eliminar este compromisso?\n\n${trecho}${trecho.length >= 200 ? '…' : ''}`
+                                            : 'Eliminar este compromisso?';
+                                          if (!window.confirm(msg)) return;
+                                          const uid =
+                                            String(ev.usuarioId ?? '').trim() ||
+                                            String(usuarioEsquerda ?? '').trim();
+                                          const r = await excluirEvento(dataBr, { ...ev, usuarioId: uid });
+                                          if (r && r.ok === false && r.reason === 'nao-encontrado') {
+                                            window.alert(
+                                              'Não foi possível eliminar este compromisso (pode ser um registo só de demonstração).'
+                                            );
+                                            return;
+                                          }
+                                          setAgendaStatusNonce((n) => n + 1);
+                                        })();
+                                      }}
+                                    >
+                                      <X className="h-4 w-4" strokeWidth={2.25} aria-hidden />
+                                    </button>
+                                  ) : (
+                                    <span className="inline-block w-8" aria-hidden />
+                                  )}
                                 </td>
                               </tr>
                             ))}
