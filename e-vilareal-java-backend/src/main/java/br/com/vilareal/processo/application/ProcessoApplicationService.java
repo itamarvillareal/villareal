@@ -401,20 +401,7 @@ public class ProcessoApplicationService {
     }
 
     private String resolverCodigoClienteExibicaoParaPessoa(Long pessoaIdDonoProcesso) {
-        if (clienteCodigoPessoaResolver.haMapeamentosPlanilhaPasta1()) {
-            List<PlanilhaPasta1ClienteEntity> maps =
-                    planilhaPasta1ClienteRepository.findByPessoaIdOrderByChaveClienteAsc(pessoaIdDonoProcesso);
-            if (!maps.isEmpty()) {
-                String chave = maps.get(0).getChaveCliente();
-                return CodigoClienteUtil.normalizarCodigoClienteOitoDigitos(chave);
-            }
-        }
-        List<ClienteEntity> clientes =
-                clienteRepository.findByPessoa_IdOrderByCodigoClienteAsc(pessoaIdDonoProcesso);
-        if (!clientes.isEmpty()) {
-            return CodigoClienteUtil.normalizarCodigoClienteOitoDigitos(clientes.get(0).getCodigoCliente());
-        }
-        return CodigoClienteUtil.formatar(pessoaIdDonoProcesso);
+        return clienteCodigoPessoaResolver.codigoClienteExibicaoParaPessoaId(pessoaIdDonoProcesso);
     }
 
     @Transactional(readOnly = true)
