@@ -1,4 +1,6 @@
 HELP.md
+# Overrides locais (URL MySQL em Docker, etc.) — não commitar
+src/main/resources/application-local.properties
 # Config local da importação de pessoas (caminho da planilha — não commitar)
 scripts/import-pessoas.local.env
 target/
