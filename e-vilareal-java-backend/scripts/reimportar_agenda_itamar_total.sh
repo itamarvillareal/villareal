@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Limpa toda a tabela agenda_evento e importa de novo a planilha "total" (layout A=data, B=hora, C=desc).
+# Apaga apenas os eventos de agenda do Itamar e importa de novo a planilha "total" (layout A=data, B=hora, C=desc).
 #
 # Pré-requisitos: MySQL acessível, backend não precisa estar parado; Node na pasta do front; ficheiro .xlsx.
 #
@@ -18,6 +18,7 @@ WEB_ROOT="$REPO_ROOT/e-vilareal-react-web"
 
 MYSQL_USER="${MYSQL_USER:-root}"
 MYSQL_DB="${MYSQL_DB:-vilareal}"
+ITAMAR_USUARIO_ID="${ITAMAR_USUARIO_ID:-1}"
 # Caminho fixo da planilha (máquina Itamar); pode sobrepor: ./script.sh "/outro.xlsx"
 XLSX_FIXO="/Users/itamarvillarealjunior/Dropbox/COMUM/agenda itamar total.xlsx"
 XLSX_PATH="${1:-$XLSX_FIXO}"
@@ -48,10 +49,10 @@ mysql_exec() {
   fi
 }
 
-echo "→ A apagar todos os eventos de agenda ($MYSQL_DB)…"
-mysql_exec -e "START TRANSACTION; DELETE FROM agenda_evento; COMMIT;"
-COUNT=$(mysql_exec -Nse "SELECT COUNT(*) FROM agenda_evento;")
-echo "→ Linhas restantes em agenda_evento: $COUNT"
+echo "→ A apagar eventos de agenda do utilizador id=$ITAMAR_USUARIO_ID ($MYSQL_DB)…"
+mysql_exec -e "START TRANSACTION; DELETE FROM agenda_evento WHERE usuario_id = ${ITAMAR_USUARIO_ID}; COMMIT;"
+COUNT=$(mysql_exec -Nse "SELECT COUNT(*) FROM agenda_evento WHERE usuario_id = ${ITAMAR_USUARIO_ID};")
+echo "→ Eventos restantes deste utilizador: $COUNT"
 
 echo "→ A importar: $XLSX_PATH"
 cd "$WEB_ROOT"
