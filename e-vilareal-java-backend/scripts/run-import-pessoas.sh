@@ -13,7 +13,20 @@ LOCAL_ENV="$ROOT/scripts/import-pessoas.local.env"
 if [[ -f "$LOCAL_ENV" ]]; then
   # shellcheck disable=SC1090
   set +u
+  set -a
   source "$LOCAL_ENV"
+  set +a
+  set -u
+fi
+
+# VPS: credenciais e overrides (SPRING_DATASOURCE_*, etc.) — mesmo ficheiro do systemd.
+# systemd exporta cada linha; com `source` no bash é preciso set -a para exportar ao java/mvnw.
+if [[ -r /etc/vilareal/backend.env ]]; then
+  # shellcheck disable=SC1090
+  set +u
+  set -a
+  source /etc/vilareal/backend.env
+  set +a
   set -u
 fi
 
@@ -46,5 +59,19 @@ export VILAREAL_IMPORT_PESSOAS_PATH="$PLANILHA_ABS"
 export VILAREAL_IMPORT_PESSOAS_DRY_RUN="${DRY_RUN:-${VILAREAL_IMPORT_PESSOAS_DRY_RUN:-true}}"
 export VILAREAL_IMPORT_PESSOAS_LIMIT="${LIMIT:-${VILAREAL_IMPORT_PESSOAS_LIMIT:-50}}"
 
-exec ./mvnw -q spring-boot:run -Dspring-boot.run.profiles=dev \
+# Não forçar sempre "dev": em produção use SPRING_PROFILES_ACTIVE=prod (credenciais vêm do backend.env).
+IMPORT_RUN_PROFILE="${SPRING_PROFILES_ACTIVE:-dev}"
+
+# Em VPS (prod), spring-boot:run via Maven pode não aplicar SPRING_DATASOURCE_* ao contexto; o JAR replica o systemd.
+DEFAULT_API_JAR="/opt/vilareal/api/api.jar"
+API_JAR="${VILAREAL_IMPORT_PESSOAS_API_JAR:-}"
+if [[ -z "${API_JAR}" ]] && [[ -f "${DEFAULT_API_JAR}" ]]; then
+  API_JAR="${DEFAULT_API_JAR}"
+fi
+if [[ -n "${API_JAR}" ]] && [[ -f "${API_JAR}" ]] && [[ "${IMPORT_RUN_PROFILE}" == "prod" ]]; then
+  # shellcheck disable=SC2086
+  exec java ${JAVA_OPTS-} -Dspring.main.web-application-type=none -jar "${API_JAR}"
+fi
+
+exec ./mvnw -q spring-boot:run -Dspring-boot.run.profiles="${IMPORT_RUN_PROFILE}" \
   -Dspring-boot.run.jvmArguments="-Dspring.main.web-application-type=none"
