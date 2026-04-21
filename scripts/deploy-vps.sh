@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Deploy portal.villarealadvocacia.adv.br a partir do Mac (SSH como root na VPS).
-# Uso: ./scripts/deploy-vps.sh [--all|--frontend-only|--backend-only] [--no-pull] [--dry-run]
+# Uso: ./scripts/deploy-vps.sh [--all|--frontend-only|--backend-only] [--no-pull] [--dry-run] [--yes|-y]
 set -euo pipefail
 
 readonly VPS_HOST="${VPS_HOST:-161.97.175.73}"
@@ -29,11 +29,13 @@ Opções:
   --backend-only     Só Maven, JAR, restart do systemd e health
   --no-pull          Não executa git fetch/checkout/reset na VPS
   --dry-run          Mostra o que seria feito (não executa SSH)
+  --yes, -y          Sem prompt de confirmação no modo --all (deploy não-interativo)
   -h, --help         Esta ajuda
 
 Variáveis opcionais:
   VPS_HOST   (padrão: 161.97.175.73)
   VPS_USER   (padrão: root)
+  ASSUME_YES=1  Equivalente a --yes (útil em CI)
 
 Documentação: scripts/README-deploy.md
 USAGE
@@ -42,6 +44,7 @@ USAGE
 DEPLOY_MODE="all"
 NO_PULL="0"
 DRY_RUN="0"
+ASSUME_YES="${ASSUME_YES:-0}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -50,6 +53,7 @@ while [[ $# -gt 0 ]]; do
     --backend-only) DEPLOY_MODE="backend" ;;
     --no-pull) NO_PULL="1" ;;
     --dry-run) DRY_RUN="1" ;;
+    --yes|-y) ASSUME_YES="1" ;;
     -h|--help) usage; exit 0 ;;
     *)
       log_err "Opção desconhecida: $1"
@@ -64,6 +68,9 @@ START_TS="$(date +%s)"
 
 confirm_all() {
   if [[ "$DEPLOY_MODE" != "all" || "$DRY_RUN" == "1" ]]; then
+    return 0
+  fi
+  if [[ "$ASSUME_YES" == "1" ]]; then
     return 0
   fi
   echo
