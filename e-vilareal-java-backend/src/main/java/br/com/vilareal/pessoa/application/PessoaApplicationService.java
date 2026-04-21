@@ -227,6 +227,9 @@ public class PessoaApplicationService {
     }
 
     private void validarUnicidadeCpf(String cpf, Long idExcluir) {
+        if (cpf == null || cpf.isBlank()) {
+            return;
+        }
         if (idExcluir == null) {
             if (pessoaRepository.existsByCpf(cpf)) {
                 throw new BusinessRuleException("Já existe cadastro com o CPF informado.");
@@ -258,7 +261,11 @@ public class PessoaApplicationService {
     }
 
     private static String normalizarCpf(String cpf) {
-        return cpf == null ? "" : cpf.replaceAll("\\D", "");
+        if (cpf == null || cpf.isBlank()) {
+            return null;
+        }
+        String d = cpf.replaceAll("\\D", "");
+        return d.isEmpty() ? null : d;
     }
 
     private void aplicarNucleo(PessoaEntity p, PessoaCadastroRequest req, String cpfDigits) {

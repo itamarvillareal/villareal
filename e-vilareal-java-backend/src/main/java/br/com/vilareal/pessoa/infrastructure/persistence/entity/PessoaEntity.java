@@ -20,7 +20,7 @@ public class PessoaEntity {
     @Column(nullable = false, length = 255)
     private String nome;
 
-    @Column(nullable = false, length = 14)
+    @Column(nullable = true, length = 14)
     private String cpf;
 
     @Column(length = 255, unique = true)
