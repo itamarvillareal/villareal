@@ -27,6 +27,10 @@ Script pensado para correr **no Mac** (ou outra máquina com `ssh` e `git`). Lig
 # Equivalente explícito
 ./scripts/deploy-vps.sh --all
 
+# Deploy completo sem prompt (CI, Cursor, scripts) — flag --yes ou -y
+./scripts/deploy-vps.sh --all --yes
+# ou: ASSUME_YES=1 ./scripts/deploy-vps.sh --all
+
 # Só frontend (útil no dia a dia)
 ./scripts/deploy-vps.sh --frontend-only
 
@@ -51,7 +55,7 @@ VPS_HOST=161.97.175.73 VPS_USER=root ./scripts/deploy-vps.sh --frontend-only
 ## O que o script faz
 
 1. **Local:** mostra `git log -1 --oneline` da branch `main` (ou `origin/main` se não existir `main` local).
-2. **Só modo `--all`:** pergunta **Continuar? [y/N]** antes de SSH.
+2. **Só modo `--all`:** pergunta **Continuar? [y/N]** antes de SSH (salvo `--yes`/`-y` ou `ASSUME_YES=1`).
 3. **Na VPS (via SSH):**
    - Salvo `--no-pull`: `sudo -u vilareal` em `git fetch`, `checkout main`, `reset --hard origin/main`, `git log -1 --oneline`.
    - **Backend** (`--all` ou `--backend-only`): `./mvnw clean package -DskipTests` em `e-vilareal-java-backend`, copia o JAR para `/opt/vilareal/api/api.jar`, `chown`, `systemctl restart vilareal-backend`, espera 30s e valida `/actuator/health` em `127.0.0.1:8080` (com re tentativas).
