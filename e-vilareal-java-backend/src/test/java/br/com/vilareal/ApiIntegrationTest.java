@@ -12,6 +12,7 @@ import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -684,6 +685,102 @@ class ApiIntegrationTest extends AbstractIntegrationTest {
         assertThat(depois.getBody().stream()
                 .filter(m -> pfx.concat("itau").equals(String.valueOf(m.get("numeroLancamento"))))
                 .count()).isEqualTo(1L);
+    }
+
+    @Test
+    void criarPessoaSemCpfRetorna201ComCpfNull() {
+        String token = login();
+        HttpHeaders h = new HttpHeaders();
+        h.setBearerAuth(token);
+        h.setContentType(MediaType.APPLICATION_JSON);
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("nome", "Pessoa Sem CPF " + UUID.randomUUID().toString().substring(0, 8));
+        body.put("ativo", true);
+
+        ResponseEntity<Map<String, Object>> created = rest.exchange(
+                "/api/cadastro-pessoas",
+                HttpMethod.POST,
+                new HttpEntity<>(body, h),
+                new ParameterizedTypeReference<>() {});
+
+        assertThat(created.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(created.getBody()).isNotNull();
+        assertThat(created.getBody().get("cpf")).isNull();
+    }
+
+    @Test
+    void duasPessoasSemCpfNaoSaoDuplicatas() {
+        String token = login();
+        HttpHeaders h = new HttpHeaders();
+        h.setBearerAuth(token);
+        h.setContentType(MediaType.APPLICATION_JSON);
+
+        Map<String, Object> a = new LinkedHashMap<>();
+        a.put("nome", "Sem doc A " + UUID.randomUUID().toString().substring(0, 8));
+        a.put("ativo", true);
+        ResponseEntity<Map<String, Object>> r1 = rest.exchange(
+                "/api/cadastro-pessoas",
+                HttpMethod.POST,
+                new HttpEntity<>(a, h),
+                new ParameterizedTypeReference<>() {});
+        assertThat(r1.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+
+        Map<String, Object> b = new LinkedHashMap<>();
+        b.put("nome", "Sem doc B " + UUID.randomUUID().toString().substring(0, 8));
+        b.put("ativo", true);
+        ResponseEntity<Map<String, Object>> r2 = rest.exchange(
+                "/api/cadastro-pessoas",
+                HttpMethod.POST,
+                new HttpEntity<>(b, h),
+                new ParameterizedTypeReference<>() {});
+
+        assertThat(r2.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+    }
+
+    @Test
+    void putComCpfDuplicadoDeOutraPessoaRetorna422() {
+        String token = login();
+        HttpHeaders h = new HttpHeaders();
+        h.setBearerAuth(token);
+        h.setContentType(MediaType.APPLICATION_JSON);
+
+        String cpfUnico = String.format("%011d", Math.abs(UUID.randomUUID().getMostSignificantBits() % 10_000_000_000L));
+
+        Map<String, Object> comCpf = new LinkedHashMap<>();
+        comCpf.put("nome", "Titular CPF " + cpfUnico);
+        comCpf.put("cpf", cpfUnico);
+        comCpf.put("ativo", true);
+        ResponseEntity<Map<String, Object>> pA = rest.exchange(
+                "/api/cadastro-pessoas",
+                HttpMethod.POST,
+                new HttpEntity<>(comCpf, h),
+                new ParameterizedTypeReference<>() {});
+        assertThat(pA.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+
+        Map<String, Object> semCpf = new LinkedHashMap<>();
+        semCpf.put("nome", "Depois recebe CPF " + UUID.randomUUID().toString().substring(0, 8));
+        semCpf.put("ativo", true);
+        ResponseEntity<Map<String, Object>> pB = rest.exchange(
+                "/api/cadastro-pessoas",
+                HttpMethod.POST,
+                new HttpEntity<>(semCpf, h),
+                new ParameterizedTypeReference<>() {});
+        assertThat(pB.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        Long idB = ((Number) pB.getBody().get("id")).longValue();
+
+        Map<String, Object> atualiza = new LinkedHashMap<>();
+        atualiza.put("nome", pB.getBody().get("nome"));
+        atualiza.put("cpf", cpfUnico);
+        atualiza.put("ativo", true);
+
+        ResponseEntity<Map<String, Object>> put = rest.exchange(
+                "/api/cadastro-pessoas/" + idB,
+                HttpMethod.PUT,
+                new HttpEntity<>(atualiza, h),
+                new ParameterizedTypeReference<>() {});
+
+        assertThat(put.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
     }
 
     @Test

@@ -1,6 +1,7 @@
 package br.com.vilareal.pessoa.api.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -18,9 +19,17 @@ public class PessoaCadastroRequest {
     @Size(max = 255)
     private String email;
 
-    @NotBlank
-    @Size(min = 11, max = 14)
+    /** Opcional; dígitos normalizados no serviço. Null/blank permitidos. */
     private String cpf;
+
+    @AssertTrue(message = "CPF/CNPJ deve ter 11 ou 14 digitos quando informado")
+    public boolean isCpfValidOrEmpty() {
+        if (cpf == null || cpf.isBlank()) {
+            return true;
+        }
+        String d = cpf.replaceAll("\\D", "");
+        return d.length() == 11 || d.length() == 14;
+    }
 
     @Size(max = 40)
     private String telefone;
@@ -54,7 +63,7 @@ public class PessoaCadastroRequest {
     }
 
     public void setCpf(String cpf) {
-        this.cpf = cpf;
+        this.cpf = (cpf == null || cpf.isBlank()) ? null : cpf.trim();
     }
 
     public String getTelefone() {
