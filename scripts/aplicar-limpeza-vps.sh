@@ -5,8 +5,9 @@
 # (ou ASSUME_YES=1), tal como deploy-vps.sh.
 #
 # Pré-requisitos:
-#   export VILAREAL_VPS_MYSQL_PWD='senha-root-mysql-no-vps'
+#   export VILAREAL_VPS_MYSQL_PWD='senha-mysql-utilizador-vilareal-no-vps'
 #   SSH sem senha (vilareal-vps ou VPS_HOST).
+#   MySQL: utilizador default vilareal (override com VILAREAL_VPS_MYSQL_USER).
 #
 # Uso:
 #   ./scripts/aplicar-limpeza-vps.sh          # pede confirmação [y/N]
@@ -19,7 +20,7 @@ readonly VPS="${VPS_HOST:-vilareal-vps}"
 readonly SQL_LOCAL="${REPO_ROOT}/scripts/limpar-dados-negocio.sql"
 readonly SQL_REMOTE="/opt/vilareal/limpar-dados-negocio.sql"
 readonly LOG_DIR_REMOTE="/opt/vilareal/logs"
-readonly MYSQL_USER="${VILAREAL_VPS_MYSQL_USER:-root}"
+readonly MYSQL_USER="${VILAREAL_VPS_MYSQL_USER:-vilareal}"
 readonly DB_NAME="${VILAREAL_VPS_MYSQL_DB:-vilareal}"
 
 ASSUME_YES="${ASSUME_YES:-0}"

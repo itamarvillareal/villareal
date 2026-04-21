@@ -3,7 +3,9 @@
 #
 # Pré-requisitos:
 #   - SSH sem senha para o VPS (ex.: Host vilareal-vps ou root@161.97.175.73 no ~/.ssh/config).
-#   - Variável VILAREAL_VPS_MYSQL_PWD: senha do utilizador MySQL usado no mysqldump (típico: root no VPS).
+#   - Variável VILAREAL_VPS_MYSQL_PWD: senha do utilizador MySQL no VPS.
+#   - Utilizador MySQL default: vilareal (mesmo utilizador da app; credenciais em /etc/vilareal/backend.env no VPS).
+#   - --no-tablespaces evita aviso de PROCESS sem afetar o dump dos dados das tabelas.
 #
 # Uso:
 #   export VILAREAL_VPS_MYSQL_PWD='***'
@@ -20,7 +22,7 @@ set -euo pipefail
 readonly REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly VPS="${VPS_HOST:-vilareal-vps}"
 readonly REMOTE_DIR="/opt/vilareal/backups"
-readonly MYSQL_USER="${VILAREAL_VPS_MYSQL_USER:-root}"
+readonly MYSQL_USER="${VILAREAL_VPS_MYSQL_USER:-vilareal}"
 readonly DB_NAME="${VILAREAL_VPS_MYSQL_DB:-vilareal}"
 
 LABEL="$(date +%Y%m%d-%H%M%S)-backup"
@@ -37,7 +39,7 @@ Opções:
 
 Variáveis opcionais:
   VPS_HOST                    (default: vilareal-vps)
-  VILAREAL_VPS_MYSQL_USER     (default: root)
+  VILAREAL_VPS_MYSQL_USER     (default: vilareal)
   VILAREAL_VPS_MYSQL_DB       (default: vilareal)
 USAGE
 }
@@ -76,7 +78,7 @@ ssh -o ConnectTimeout=20 "${VPS}" "bash -s" <<REMOTE
 set -euo pipefail
 export MYSQL_PWD=${MYSQL_PWD_Q}
 mkdir -p "${REMOTE_DIR}"
-mysqldump -u"${MYSQL_USER}" --single-transaction --routines --triggers "${DB_NAME}" \\
+mysqldump -u"${MYSQL_USER}" --no-tablespaces --single-transaction --routines --triggers "${DB_NAME}" \\
   | gzip -c > "${REMOTE_FILE}"
 ls -lh "${REMOTE_FILE}"
 REMOTE
