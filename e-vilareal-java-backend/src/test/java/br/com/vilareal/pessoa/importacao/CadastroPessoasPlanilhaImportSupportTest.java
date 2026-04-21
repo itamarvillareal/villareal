@@ -7,6 +7,31 @@ import static org.assertj.core.api.Assertions.assertThat;
 class CadastroPessoasPlanilhaImportSupportTest {
 
     @Test
+    void analisarCpfCnpj_ausente_invalido_valido() {
+        assertThat(CadastroPessoasPlanilhaImportSupport.analisarCpfCnpj(null).resultado())
+                .isEqualTo(CadastroPessoasPlanilhaImportSupport.CpfCnpjResultado.AUSENTE);
+        assertThat(CadastroPessoasPlanilhaImportSupport.analisarCpfCnpj("").resultado())
+                .isEqualTo(CadastroPessoasPlanilhaImportSupport.CpfCnpjResultado.AUSENTE);
+        assertThat(CadastroPessoasPlanilhaImportSupport.analisarCpfCnpj("   ").resultado())
+                .isEqualTo(CadastroPessoasPlanilhaImportSupport.CpfCnpjResultado.AUSENTE);
+
+        assertThat(CadastroPessoasPlanilhaImportSupport.analisarCpfCnpj("1234567890").resultado())
+                .isEqualTo(CadastroPessoasPlanilhaImportSupport.CpfCnpjResultado.INVALIDO);
+        assertThat(CadastroPessoasPlanilhaImportSupport.analisarCpfCnpj("123456789012345").resultado())
+                .isEqualTo(CadastroPessoasPlanilhaImportSupport.CpfCnpjResultado.INVALIDO);
+
+        CadastroPessoasPlanilhaImportSupport.CpfCnpjNormalizado v11 =
+                CadastroPessoasPlanilhaImportSupport.analisarCpfCnpj("123.456.789-09");
+        assertThat(v11.resultado()).isEqualTo(CadastroPessoasPlanilhaImportSupport.CpfCnpjResultado.VALIDO);
+        assertThat(v11.valor()).isEqualTo("12345678909");
+
+        CadastroPessoasPlanilhaImportSupport.CpfCnpjNormalizado v14 =
+                CadastroPessoasPlanilhaImportSupport.analisarCpfCnpj("09.319.421/0001-54");
+        assertThat(v14.resultado()).isEqualTo(CadastroPessoasPlanilhaImportSupport.CpfCnpjResultado.VALIDO);
+        assertThat(v14.valor()).isEqualTo("09319421000154");
+    }
+
+    @Test
     void normalizeCpfCnpj_aceita11e14() {
         assertThat(CadastroPessoasPlanilhaImportSupport.normalizeCpfCnpj("123.456.789-09"))
                 .contains("12345678909");
