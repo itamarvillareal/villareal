@@ -13,6 +13,14 @@ public final class CadastroPessoasPlanilhaImportSupport {
 
     private static final Pattern NON_DIGITS = Pattern.compile("\\D+");
 
+    public enum CpfCnpjResultado {
+        AUSENTE,
+        INVALIDO,
+        VALIDO
+    }
+
+    public record CpfCnpjNormalizado(CpfCnpjResultado resultado, String valor) {}
+
     private CadastroPessoasPlanilhaImportSupport() {}
 
     public static String digitsOnly(String s) {
@@ -21,12 +29,26 @@ public final class CadastroPessoasPlanilhaImportSupport {
     }
 
     /**
-     * CPF 11 ou CNPJ 14 dígitos; rejeita outros tamanhos.
+     * Ausente (sem dígitos), inválido (número de dígitos ≠ 11 nem 14) ou válido (11 ou 14 dígitos).
+     */
+    public static CpfCnpjNormalizado analisarCpfCnpj(String raw) {
+        String d = digitsOnly(raw);
+        if (d.isEmpty()) {
+            return new CpfCnpjNormalizado(CpfCnpjResultado.AUSENTE, null);
+        }
+        if (d.length() == 11 || d.length() == 14) {
+            return new CpfCnpjNormalizado(CpfCnpjResultado.VALIDO, d);
+        }
+        return new CpfCnpjNormalizado(CpfCnpjResultado.INVALIDO, null);
+    }
+
+    /**
+     * CPF 11 ou CNPJ 14 dígitos; {@link Optional#empty()} se ausente ou inválido (compatível com fluxos antigos).
      */
     public static Optional<String> normalizeCpfCnpj(String raw) {
-        String d = digitsOnly(raw);
-        if (d.length() == 11 || d.length() == 14) {
-            return Optional.of(d);
+        CpfCnpjNormalizado n = analisarCpfCnpj(raw);
+        if (n.resultado() == CpfCnpjResultado.VALIDO) {
+            return Optional.of(n.valor());
         }
         return Optional.empty();
     }

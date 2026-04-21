@@ -108,17 +108,31 @@ public class CadastroPessoasPlanilhaImporter {
                     }
 
                     String cpfRaw = stringCell(row, 3, fmt);
-                    Optional<String> cpfOpt = CadastroPessoasPlanilhaImportSupport.normalizeCpfCnpj(cpfRaw);
-                    if (cpfOpt.isEmpty()) {
-                        writeLine(rep, excelRow, String.valueOf(pessoaId), "SKIP", "CPF/CNPJ ausente ou tamanho inválido");
+                    CadastroPessoasPlanilhaImportSupport.CpfCnpjNormalizado cpfNorm =
+                            CadastroPessoasPlanilhaImportSupport.analisarCpfCnpj(cpfRaw);
+                    String cpf = null;
+                    if (cpfNorm.resultado() == CadastroPessoasPlanilhaImportSupport.CpfCnpjResultado.INVALIDO) {
+                        writeLine(
+                                rep,
+                                excelRow,
+                                String.valueOf(pessoaId),
+                                "SKIP",
+                                "CPF/CNPJ com formato invalido (esperado 11 ou 14 digitos)");
                         stats.skipped++;
                         continue;
                     }
-                    String cpf = cpfOpt.get();
-                    if (!seenCpf.add(cpf)) {
-                        writeLine(rep, excelRow, String.valueOf(pessoaId), "SKIP", "CPF duplicado na planilha (mantida primeira ocorrência)");
-                        stats.skipped++;
-                        continue;
+                    if (cpfNorm.resultado() == CadastroPessoasPlanilhaImportSupport.CpfCnpjResultado.VALIDO) {
+                        cpf = cpfNorm.valor();
+                        if (!seenCpf.add(cpf)) {
+                            writeLine(
+                                    rep,
+                                    excelRow,
+                                    String.valueOf(pessoaId),
+                                    "SKIP",
+                                    "CPF duplicado na planilha (mantida primeira ocorrência)");
+                            stats.skipped++;
+                            continue;
+                        }
                     }
 
                     String emailRaw = CadastroPessoasPlanilhaImportSupport.normalizeEmailForStorage(stringCell(row, 12, fmt));
@@ -177,12 +191,14 @@ public class CadastroPessoasPlanilhaImporter {
                         continue;
                     }
 
-                    Long cpfClash = jdbcTemplate.queryForObject(
-                            "SELECT COUNT(*) FROM pessoa WHERE cpf = ?", Long.class, cpf);
-                    if (cpfClash != null && cpfClash > 0) {
-                        writeLine(rep, excelRow, String.valueOf(pessoaId), "SKIP", "CPF já existe no banco (outro id)");
-                        stats.skipped++;
-                        continue;
+                    if (cpf != null) {
+                        Long cpfClash = jdbcTemplate.queryForObject(
+                                "SELECT COUNT(*) FROM pessoa WHERE cpf = ?", Long.class, cpf);
+                        if (cpfClash != null && cpfClash > 0) {
+                            writeLine(rep, excelRow, String.valueOf(pessoaId), "SKIP", "CPF já existe no banco (outro id)");
+                            stats.skipped++;
+                            continue;
+                        }
                     }
 
                     if (!email.isBlank()) {
