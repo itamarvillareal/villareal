@@ -13,3 +13,6 @@ e-vilareal-java-backend/scripts/.vilareal-import-token
 
 # Pastas temporárias de análise de planilhas
 .tmp_xlsx_parse/
+
+# Backups mysqldump (scripts/backup-vps-db.sh, aplicar-limpeza-vps.sh)
+/backups/
