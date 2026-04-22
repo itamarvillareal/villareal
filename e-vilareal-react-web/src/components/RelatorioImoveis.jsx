@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowDown, ArrowUp, ArrowUpDown, Building2, RefreshCw, Search } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, Building2, RefreshCw } from 'lucide-react';
 import { carregarItensRelatorioImoveisApi } from '../repositories/imoveisRepository.js';
 import { featureFlags } from '../config/featureFlags.js';
 
@@ -129,10 +129,6 @@ const COLUNAS = [
   { key: 'linkVistoria', label: 'Link vistoria', truncate: true },
 ];
 
-function textoBuscaLinha(r) {
-  return COLUNAS.map((c) => s(r[c.key])).join(' ').toLowerCase();
-}
-
 /** Tipo de comparação por coluna (demais tratadas como texto). */
 const ORDENACAO_TIPO = {
   id: 'numero',
@@ -221,7 +217,6 @@ function compararLinhas(a, b, colKey, dir) {
 
 export function RelatorioImoveis() {
   const navigate = useNavigate();
-  const [busca, setBusca] = useState('');
   const [linhas, setLinhas] = useState([]);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState('');
@@ -248,27 +243,25 @@ export function RelatorioImoveis() {
     }
   }, []);
 
-  const filtradas = useMemo(() => {
-    const t = busca.trim().toLowerCase();
-    if (!t) return linhas;
-    return linhas.filter((r) => textoBuscaLinha(r).includes(t));
-  }, [linhas, busca]);
-
   const linhasOrdenadas = useMemo(() => {
     const col = ordenacao.col;
-    if (!col || filtradas.length === 0) return filtradas;
+    if (!col || linhas.length === 0) return linhas;
     const dir = ordenacao.dir;
-    return [...filtradas].sort((a, b) => compararLinhas(a, b, col, dir));
-  }, [filtradas, ordenacao.col, ordenacao.dir]);
+    return [...linhas].sort((a, b) => compararLinhas(a, b, col, dir));
+  }, [linhas, ordenacao.col, ordenacao.dir]);
 
   function aoClicarOrdenar(colKey) {
     setOrdenacao((prev) => {
       if (prev.col !== colKey) {
-        return { col: colKey, dir: 'asc' };
+        // Coluna "Nº" (id): primeiro clique = maior → menor; demais: primeiro A→Z / menor → maior.
+        const primeiroDir = colKey === 'id' ? 'desc' : 'asc';
+        return { col: colKey, dir: primeiroDir };
       }
-      if (prev.dir === 'asc') {
-        return { col: colKey, dir: 'desc' };
+      if (colKey === 'id') {
+        if (prev.dir === 'desc') return { col: colKey, dir: 'asc' };
+        return { col: null, dir: 'asc' };
       }
+      if (prev.dir === 'asc') return { col: colKey, dir: 'desc' };
       return { col: null, dir: 'asc' };
     });
   }
@@ -298,7 +291,8 @@ export function RelatorioImoveis() {
               <p className="text-sm text-slate-600 mt-1 max-w-3xl">
                 Lista o cadastro de cada imóvel na API (mesmos campos do formulário de administração). Use{' '}
                 <strong>Atualizar relatório</strong> para buscar os dados no servidor. Clique no{' '}
-                <strong>cabeçalho de uma coluna</strong> para ordenar (ascendente, descendente, depois volta ao padrão).
+                <strong>cabeçalho de uma coluna</strong> para ordenar (na coluna Nº: primeiro maior→menor; nas demais,
+                primeiro A→Z ou menor→maior; depois inverte; terceiro clique remove a ordenação).
                 Rolagem horizontal para ver todas as colunas; clique numa linha para abrir o imóvel no cadastro.
               </p>
               {!featureFlags.useApiImoveis ? (
@@ -337,18 +331,8 @@ export function RelatorioImoveis() {
 
         <div className="bg-white/95 backdrop-blur-sm rounded-2xl border border-slate-200/90 shadow-xl ring-1 ring-indigo-500/10 p-4">
           <div className="flex flex-wrap items-center gap-2 mb-3">
-            <div className="relative flex-1 min-w-[200px] max-w-md">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" aria-hidden />
-              <input
-                type="search"
-                value={busca}
-                onChange={(e) => setBusca(e.target.value)}
-                placeholder="Filtrar por qualquer coluna (endereço, contas, datas, nomes…)"
-                className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg text-sm"
-              />
-            </div>
             <span className="text-xs text-slate-500">
-              {filtradas.length} de {linhas.length} registro(s)
+              {linhas.length} registro(s)
               {ordenacao.col ? (
                 <span className="text-indigo-700 ml-1">
                   · ordenado por {COLUNAS.find((c) => c.key === ordenacao.col)?.label ?? ordenacao.col} (
@@ -377,7 +361,11 @@ export function RelatorioImoveis() {
                           type="button"
                           className={`${thBtn} ${col.right ? 'justify-end' : 'justify-start'}`}
                           onClick={() => aoClicarOrdenar(col.key)}
-                          title="Ordenar por esta coluna (clique de novo para inverter; terceiro clique remove ordenação)"
+                          title={
+                            col.key === 'id'
+                              ? 'Ordenar por Nº: 1º maior→menor, 2º menor→maior, 3º remove ordenação'
+                              : 'Ordenar por esta coluna (clique de novo para inverter; terceiro clique remove ordenação)'
+                          }
                         >
                           <span className="truncate">{col.label}</span>
                           <span className="inline-flex shrink-0 text-white/90 opacity-80 group-hover:opacity-100">
@@ -426,9 +414,6 @@ export function RelatorioImoveis() {
                   ? 'Nenhum dado carregado. Clique em «Atualizar relatório» para buscar os imóveis na API.'
                   : 'Ative a API de imóveis para usar este relatório.'}
               </p>
-            ) : null}
-            {linhas.length > 0 && filtradas.length === 0 ? (
-              <p className="text-sm text-slate-500 text-center py-8">Nenhum registro com o filtro atual.</p>
             ) : null}
           </div>
         </div>

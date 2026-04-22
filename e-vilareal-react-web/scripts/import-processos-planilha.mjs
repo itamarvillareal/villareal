@@ -11,7 +11,7 @@
  *
  * Envs: VILAREAL_IMPORT_SENHA, VILAREAL_API_BASE (ex.: http://localhost:8080), VILAREAL_IMPORT_CONCURRENCY (default 3).
  *
- * PENDENCIA (fase 4): prazos / audiencias via API de prazos ou andamentos — nao implementado neste script.
+ * Pos-import (Etapa C): POST /api/processos/{id}/andamentos (audiencia F+G+H) e POST .../prazos (J parseavel).
  */
 
 import fs from 'node:fs';
@@ -296,6 +296,184 @@ function mergePrefer(dst, src) {
   return out;
 }
 
+
+
+/** Data audiencia Col F + hora Col G em ISO-8601 UTC; G vazio => 12:00:00.000Z. */
+function buildMovimentoEmAudienciaUtc(r1) {
+  const ymd = parseData(r1?.[5]);
+  if (!ymd) return null;
+  const parts = ymd.split('-').map((x) => parseInt(x, 10));
+  const y = parts[0];
+  const mo = parts[1];
+  const da = parts[2];
+  const g = r1?.[6];
+  let hh = 12;
+  let mm = 0;
+  let ss = 0;
+  if (g != null && String(g).trim() !== '') {
+    if (typeof g === 'number' && Number.isFinite(g) && g >= 0 && g < 1) {
+      const secs = Math.round(g * 86400);
+      hh = Math.floor(secs / 3600) % 24;
+      mm = Math.floor((secs % 3600) / 60);
+      ss = secs % 60;
+    } else {
+      const str = String(g).trim();
+      const m = str.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+      if (m) {
+        hh = parseInt(m[1], 10);
+        mm = parseInt(m[2], 10);
+        ss = m[3] != null ? parseInt(m[3], 10) : 0;
+      }
+    }
+  }
+  const t = Date.UTC(y, mo - 1, da, hh, mm, ss, 0);
+  return new Date(t).toISOString();
+}
+
+function buildAndamentoAudienciaBody(r1) {
+  const movimentoEm = buildMovimentoEmAudienciaUtc(r1);
+  if (!movimentoEm) return null;
+  let titulo = parseTexto(r1?.[7]) ?? 'Audiência';
+  if (titulo.length > 500) titulo = titulo.slice(0, 500);
+  return {
+    movimentoEm,
+    titulo,
+    detalhe: null,
+    origem: 'IMPORT_PLANILHA',
+    origemAutomatica: false,
+    usuarioId: null,
+  };
+}
+
+function buildPrazoFatalBody(r1) {
+  const dataFim = parseData(r1?.[9]);
+  if (!dataFim) return null;
+  return {
+    dataFim,
+    prazoFatal: true,
+    status: 'PENDENTE',
+    descricao: 'Prazo fatal do processo',
+    dataInicio: null,
+    observacao: null,
+    andamentoId: null,
+  };
+}
+
+function diagnosticoColJPrawVsNPrazos(rows1, mergedMap, filtrados) {
+  const col1 = resolverIndicesProc(rows1, 'Aba1');
+  const byKey = new Map();
+  for (const e of mergedMap.values()) byKey.set(e.key, e);
+  const filtradosKeys = new Set(filtrados.map((e) => e.key));
+
+  const linhas = [];
+  for (let i = 1; i < rows1.length; i++) {
+    const r = rows1[i];
+    if (!Array.isArray(r)) continue;
+    const rawJ = r[9];
+    if (rawJ == null || String(rawJ).trim() === '') continue;
+    const cod = normalizarCodigoCliente(r[col1.idxCod]);
+    const ni = parseInt2(r[col1.idxProc]);
+    const key = chaveProcesso(r[col1.idxCod], r[col1.idxProc]);
+    const temParseRow = parseData(rawJ) != null;
+    const entry = key ? byKey.get(key) : null;
+    const inFiltrados = entry ? filtradosKeys.has(entry.key) : false;
+    const parseMerge = entry ? parseData(entry.r1?.[9]) : null;
+    let motivo;
+    if (!key) motivo = 'sem_chave_valida(cod_ou_numero_interno_invalidos_aba1)';
+    else if (!entry) motivo = 'nao_entrou_no_merge_aba1(ingest_descarta_sem_dados_uteis_so_aba1)';
+    else if (!inFiltrados) motivo = 'processo_fora_filtro_linhaTemDadosUteis(r1,r2)';
+    else if (!temParseRow) motivo = 'parseData_rejeita_J_bruto(formato_invalido_ou_nao_data)';
+    else if (!parseMerge) motivo = 'merge_J_final_vazio_ou_nao_parseavel(outra_linha_mesma_chave_venceu)';
+    else motivo = 'parseavel_no_merge_conta_em_n_prazos';
+
+    linhas.push({
+      excelLine: i + 1,
+      cod: cod ?? String(r[col1.idxCod] ?? ''),
+      numeroInterno: ni,
+      rawJ: String(rawJ),
+      temParseRow,
+      inFiltrados,
+      parseMergeOk: parseMerge != null,
+      motivo,
+      chave: key,
+    });
+  }
+
+  const nPrazos = filtrados.filter((e) => parseData(e.r1?.[9])).length;
+  const minLineComJPorChave = new Map();
+  for (const L of linhas) {
+    if (!L.chave) continue;
+    const prev = minLineComJPorChave.get(L.chave);
+    if (prev == null || L.excelLine < prev) minLineComJPorChave.set(L.chave, L.excelLine);
+  }
+  const redundantesMesmaChave = linhas.filter(
+    (L) =>
+      L.chave &&
+      L.motivo === 'parseavel_no_merge_conta_em_n_prazos' &&
+      minLineComJPorChave.get(L.chave) !== L.excelLine
+  );
+  const foraDoNPrazos = linhas.filter((L) => L.motivo !== 'parseavel_no_merge_conta_em_n_prazos');
+
+  return { linhas, nPrazos, redundantesMesmaChave, foraDoNPrazos, minLineComJPorChave };
+}
+
+function logDiagnosticoColJ(rep) {
+  console.log('\n--- Investigacao Col J (linhas Aba1 com J nao-vazio vs n_prazos) ---');
+  console.log('n_linhas_excel_aba1_col_J_nao_vazio: ' + rep.linhas.length);
+  console.log('n_prazos_POST_apos_merge_filtrados: ' + rep.nPrazos);
+  console.log(
+    'Diferenca bruta (linhas - processos com prazo): ' +
+      (rep.linhas.length - rep.nPrazos) +
+      ' | fora_do_n_prazos=' +
+      rep.foraDoNPrazos.length +
+      ' | redundantes_mesma_chave=' +
+      rep.redundantesMesmaChave.length
+  );
+  if (rep.foraDoNPrazos.length) {
+    console.log('Linhas com J bruto que nao entram no contador n_prazos (exclusao/parse/merge/filtro):');
+    for (const L of rep.foraDoNPrazos) {
+      console.log(
+        '  Excel L' +
+          L.excelLine +
+          ' cod=' +
+          L.cod +
+          ' numero_interno=' +
+          L.numeroInterno +
+          ' J=' +
+          JSON.stringify(L.rawJ) +
+          ' -> ' +
+          L.motivo
+      );
+    }
+  }
+  if (rep.redundantesMesmaChave.length) {
+    console.log('Linhas redundantes (mesma chave natural que outra linha com J; 1 POST prazo por processo):');
+    for (const L of rep.redundantesMesmaChave) {
+      console.log(
+        '  Excel L' +
+          L.excelLine +
+          ' cod=' +
+          L.cod +
+          ' numero_interno=' +
+          L.numeroInterno +
+          ' J=' +
+          JSON.stringify(L.rawJ) +
+          ' (primeira L' +
+          rep.minLineComJPorChave.get(L.chave) +
+          ' com mesma chave)'
+      );
+    }
+  }
+}
+
+function pickFirstMidLast(arr) {
+  if (arr.length === 0) return [];
+  if (arr.length === 1) return [arr[0]];
+  if (arr.length === 2) return [arr[0], arr[1]];
+  const mid = Math.floor(arr.length / 2);
+  return [arr[0], arr[mid], arr[arr.length - 1]];
+}
+
 /** Pares (codigoCliente, pessoaId) na aba 1: qualquer linha com D+E validos; valida consistencia do codigo. */
 function buildCodPessoaMap(rowsAba1) {
   const m = new Map();
@@ -428,23 +606,6 @@ function collectMerged(rowsAba1, rowsAba2) {
   return { map, discarded };
 }
 
-function montarObservacao(r1) {
-  if (!r1) return null;
-  const partes = [
-    ['Pasta', parseTexto(r1[14])],
-    ['Procedimento', parseTexto(r1[15])],
-    ['Responsavel', parseTexto(r1[17])],
-    ['ObsFase', parseTexto(r1[8])],
-    ['ClienteAtivoPlan', parseTexto(r1[12])],
-    ['Audiencia', [parseTexto(r1[5]), parseTexto(r1[6]), parseTexto(r1[7])].filter(Boolean).join(' ')],
-  ];
-  const s = partes
-    .filter(([, v]) => v)
-    .map(([k, v]) => `${k}: ${v}`)
-    .join(' | ');
-  return s || null;
-}
-
 function buildProcessoWrite(entry, logFase) {
   const { r1, r2, cod, numeroInterno } = entry;
   const pessoaPlan = parsePessoaIdCell(r1?.[4]) ?? parsePessoaIdCell(r2?.[4]);
@@ -453,7 +614,7 @@ function buildProcessoWrite(entry, logFase) {
   }
   const descricaoAcao = parseTexto(r1?.[20]) ?? parseTexto(r2?.[20]);
   const competencia = parseTexto(r1?.[10]);
-  const unidade = parseTexto(r1?.[16]) ?? competencia;
+  const unidade = parseTexto(r1?.[16]);
   const faseRaw = parseTexto(r2?.[14]);
   const fase = normalizarFaseOuNull(faseRaw, logFase);
   const ativo = parseAtivoColunas(r1?.[21], r2?.[5]);
@@ -461,12 +622,15 @@ function buildProcessoWrite(entry, logFase) {
     clienteId: pessoaPlan,
     numeroInterno,
     numeroCnj: parseTexto(r2?.[19]),
+    naturezaAcao: descricaoAcao,
     descricaoAcao,
+    pasta: parseTexto(r1?.[14]),
+    tramitacao: parseTexto(r1?.[15]),
+    consultor: parseTexto(r1?.[17]),
     competencia,
     unidade,
     fase,
     observacaoFase: parseTexto(r1?.[8]),
-    observacao: montarObservacao(r1),
     dataProtocolo: parseData(r1?.[11]),
     prazoFatal: parseData(r1?.[9]),
     valorCausa: parseValorCausa(r1?.[18]),
@@ -499,9 +663,6 @@ function collectPartes(r2, log) {
       out.push({ polo: 'REU', pessoaId: pid, ordem: ordem++ });
     }
   }
-  if (parseTexto(r2[21]) && out.filter((p) => p.polo === 'REU').length === 0) {
-    if (log) console.warn('[parte] Col V texto oposto sem pessoa_id — ignorado (regra planilha).');
-  }
   return out;
 }
 
@@ -525,17 +686,12 @@ async function login(opts) {
 
 async function ensureCliente(baseUrl, token, cod, pessoaId, stats) {
   const cod8 = normalizarCodigoCliente(cod);
-  const url = `${baseUrl}/api/clientes/resolucao?codigoCliente=${encodeURIComponent(cod8)}`;
-  const getRes = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-  if (getRes.ok) {
-    const j = await getRes.json();
-    const idApi = j.id ?? j.pessoaId;
-    if (Number(idApi) !== Number(pessoaId)) {
-      throw new Error(`Cliente ${cod8}: API pessoa ${idApi}, planilha ${pessoaId}`);
-    }
-    stats.jaExistiam++;
-    return;
-  }
+
+  // POST-first: o endpoint POST /api/clientes e idempotente (insere novo ou devolve
+  // existente se o par (codigoCliente, pessoaId) coincidir). NAO usamos o GET de
+  // resolucao do recurso clientes (fallback numerico: sem mapeamento em
+  // planilha_pasta1_cliente nem em cliente, interpreta o codigo como pessoa.id).
+  // Esse fallback gera falso positivo de divergencia quando codigoCliente != pessoaId.
   const postRes = await fetch(`${baseUrl}/api/clientes`, {
     method: 'POST',
     headers: {
@@ -545,12 +701,17 @@ async function ensureCliente(baseUrl, token, cod, pessoaId, stats) {
     body: JSON.stringify({ codigoCliente: cod8, pessoaId }),
   });
   const txt = await postRes.text();
-  if (postRes.status === 201 || postRes.status === 200) {
+
+  if (postRes.status === 201) {
     stats.criados++;
     return;
   }
-  if (postRes.status === 422 || postRes.status === 409) {
-    console.warn(`[cliente] POST ${cod8}: ${postRes.status} — ${txt.slice(0, 200)}`);
+  if (postRes.status === 200) {
+    stats.jaExistiam++;
+    return;
+  }
+  if (postRes.status === 409 || postRes.status === 422) {
+    console.warn(`[cliente] POST ${cod8} (pessoaId=${pessoaId}): ${postRes.status} — ${txt.slice(0, 300)}`);
     stats.falhas++;
     return;
   }
@@ -564,6 +725,50 @@ function isProcessoDuplicado422(status, text) {
       text.includes('Já existe processo') ||
       text.includes('numero interno'))
   );
+}
+
+
+async function postAndamentoEPrazoAposProcesso(baseUrl, token, entry, procId, stats) {
+  const andBody = buildAndamentoAudienciaBody(entry.r1);
+  if (andBody) {
+    try {
+      const res = await fetch(baseUrl + "/api/processos/" + procId + "/andamentos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+        body: JSON.stringify(andBody),
+      });
+      const txt = await res.text();
+      if (!res.ok) {
+        stats.andamentosFalhas++;
+        console.warn("[andamento] POST falhou cod=" + entry.cod + " numeroInterno=" + entry.numeroInterno + ": " + res.status + " " + txt.slice(0, 220));
+      } else {
+        stats.andamentosCriados++;
+      }
+    } catch (e) {
+      stats.andamentosFalhas++;
+      console.warn("[andamento] POST excecao cod=" + entry.cod + " numeroInterno=" + entry.numeroInterno + ": " + String(e && e.message ? e.message : e));
+    }
+  }
+  const prazoBody = buildPrazoFatalBody(entry.r1);
+  if (prazoBody) {
+    try {
+      const res = await fetch(baseUrl + "/api/processos/" + procId + "/prazos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+        body: JSON.stringify(prazoBody),
+      });
+      const txt = await res.text();
+      if (!res.ok) {
+        stats.prazosFalhas++;
+        console.warn("[prazo] POST falhou cod=" + entry.cod + " numeroInterno=" + entry.numeroInterno + ": " + res.status + " " + txt.slice(0, 220));
+      } else {
+        stats.prazosCriados++;
+      }
+    } catch (e) {
+      stats.prazosFalhas++;
+      console.warn("[prazo] POST excecao cod=" + entry.cod + " numeroInterno=" + entry.numeroInterno + ": " + String(e && e.message ? e.message : e));
+    }
+  }
 }
 
 async function postProcessoCompleto(baseUrl, token, entry, stats) {
@@ -621,6 +826,7 @@ async function postProcessoCompleto(baseUrl, token, entry, stats) {
     }
   }
   stats.processosOk++;
+  await postAndamentoEPrazoAposProcesso(baseUrl, token, entry, procId, stats);
   return { id: procId };
 }
 
@@ -682,8 +888,9 @@ async function main() {
     `[filtro] linhas descartadas (sem dados uteis): aba1=${discarded.aba1} aba2=${discarded.aba2} | processaveis=${filtrados.length}`
   );
 
+  const filtradosOk = filtrados.filter((e) => !buildProcessoWrite(e, false).erro);
   const samples = [];
-  for (const e of filtrados.slice(0, 3)) {
+  for (const e of pickFirstMidLast(filtradosOk)) {
     const built = buildProcessoWrite(e, false);
     if (!built.erro) {
       samples.push({
@@ -700,13 +907,41 @@ async function main() {
   console.log(`Processos apos merge+filtro: ${filtrados.length} | partes estimadas: ${totalPartes}`);
 
   if (opts.dryRun) {
-    console.log('\n--- Amostra (ate 3 payloads: cliente + processo + partes) ---');
+    const rep = diagnosticoColJPrawVsNPrazos(rows1, mergedMap, filtrados);
+    logDiagnosticoColJ(rep);
+    const nAndamentos = filtrados.filter((e) => buildAndamentoAudienciaBody(e.r1)).length;
+    const nPrazos = rep.nPrazos;
+    const andBodies = filtrados
+      .map((e) => ({ e, b: buildAndamentoAudienciaBody(e.r1) }))
+      .filter((x) => x.b);
+    let exemploAndamento = null;
+    if (andBodies.length) {
+      exemploAndamento =
+        andBodies.find((x) => parseTexto(x.e.r1?.[7]))?.b ??
+        andBodies.find((x) => x.e.r1?.[6] != null && String(x.e.r1[6]).trim() !== "")?.b ??
+        andBodies[0].b;
+    }
+    const primeiroPrazo = filtrados.find((e) => buildPrazoFatalBody(e.r1));
+    console.log("\n--- Amostra (3 processos: primeiro, meio, ultimo — cliente + processo + partes) ---");
     console.log(JSON.stringify(samples, null, 2));
-    console.log('\n--- Resumo dry-run ---');
+    console.log("\n--- Exemplo payload andamento (dry-run) ---");
+    console.log(exemploAndamento ? JSON.stringify(exemploAndamento, null, 2) : "(nenhum elegivel)");
+    console.log("\n--- Exemplo payload prazo (dry-run) ---");
+    console.log(
+      primeiroPrazo ? JSON.stringify(buildPrazoFatalBody(primeiroPrazo.r1), null, 2) : "(nenhum elegivel)"
+    );
+    console.log("\n--- Contadores finais (alinhados ao import real) ---");
+    console.log(`n_andamentos: ${nAndamentos} | n_prazos: ${nPrazos}`);
+    console.log("\n--- Resumo dry-run ---");
+    console.log(`[clientes] criados=0 ja_existiam=0 falhas=0 (nao executado)`);
+    console.log(`[processos] ok=0 dup_ou_422=0 falhas=0 skip=0 (previsto processaveis=${filtrados.length})`);
+    console.log(`[partes] ok=0 falhas=0 (estimado=${totalPartes})`);
+    console.log(`[prazos] criados=${nPrazos} falhas=0`);
+    console.log(`[andamentos] criados=${nAndamentos} falhas=0`);
     console.log(`Clientes unicos (mapa abas 1+2): ${codMap.size}`);
     console.log(`Processos processaveis: ${filtrados.length}`);
     console.log(`Partes estimadas: ${totalPartes}`);
-    console.log('Nenhum POST executado.');
+    console.log("Nenhum POST executado.");
     process.exit(0);
   }
 
@@ -722,6 +957,10 @@ async function main() {
     procSkip: 0,
     partesOk: 0,
     parteFail: 0,
+    prazosCriados: 0,
+    prazosFalhas: 0,
+    andamentosCriados: 0,
+    andamentosFalhas: 0,
   };
 
   for (const [cod, pid] of codMap) {
@@ -745,6 +984,8 @@ async function main() {
     `[processos] ok=${stats.processosOk} dup_ou_422=${stats.procDup} falhas=${stats.procFail} skip=${stats.procSkip}`
   );
   console.log(`[partes] ok=${stats.partesOk} falhas=${stats.parteFail}`);
+  console.log(`[prazos] criados=${stats.prazosCriados} falhas=${stats.prazosFalhas}`);
+  console.log(`[andamentos] criados=${stats.andamentosCriados} falhas=${stats.andamentosFalhas}`);
   process.exit(stats.procFail + stats.falhas > 0 ? 2 : 0);
 }
 

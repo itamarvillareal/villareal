@@ -421,9 +421,15 @@ export async function carregarItensRelatorioImoveisApi() {
     return { ok: true, itens: [] };
   }
   try {
-    const results = await Promise.all(list.map((im) => carregarImovelCadastro({ imovelId: im.id })));
-    const itens = results.map((r) => r.item).filter(Boolean);
-    return { ok: true, itens };
+    const results = await Promise.all(
+      list.map(async (im) => {
+        const r = await carregarImovelCadastro({ imovelId: im.id });
+        if (r.item) return r.item;
+        // Sempre incluir o imóvel: a lista GET já traz o mesmo shape de ImovelResponse; se o GET por id falhar, monta a linha só com esse payload + sem contrato.
+        return mapApiToUi(im, null);
+      }),
+    );
+    return { ok: true, itens: results };
   } catch (e) {
     return { ok: false, motivo: e?.message || 'Falha ao carregar dados para o relatório.', itens: [] };
   }

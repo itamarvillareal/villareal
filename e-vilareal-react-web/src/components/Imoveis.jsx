@@ -9,6 +9,7 @@ import {
   listarImoveisApi,
   salvarImovelCadastro,
 } from '../repositories/imoveisRepository.js';
+import { buscarCliente } from '../api/clientesService.js';
 import { featureFlags } from '../config/featureFlags.js';
 import { buildRouterStateChaveClienteProcesso } from '../domain/camposProcessoCliente.js';
 
@@ -46,6 +47,16 @@ function BlocoUtilidade({ titulo, accent = 'agua', children }) {
 
 const inputClass =
   'w-full px-3 py-2.5 text-sm rounded-xl border border-slate-300/90 dark:border-white/[0.1] bg-white dark:bg-[#141c2c] text-slate-900 dark:text-slate-100 shadow-sm placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/25 dark:focus:ring-cyan-400/20 focus:border-cyan-500/55 dark:focus:border-cyan-400/35 transition-[box-shadow,border-color] duration-200';
+
+const inputReadOnlyClass = `${inputClass} bg-slate-50/95 dark:bg-[#0f141f]/90 cursor-default focus:ring-0 focus:border-slate-300/90 dark:focus:border-white/[0.1]`;
+
+/** Formata CPF/CNPJ para exibição (mesma lógica usada em Cadastro de Clientes). */
+function formatDocBrExibicao(digits) {
+  const d = String(digits ?? '').replace(/\D/g, '');
+  if (d.length === 11) return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
+  if (d.length === 14) return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`;
+  return d || '—';
+}
 
 const sectionHeading =
   'text-base font-semibold text-slate-800 dark:text-slate-100 tracking-tight pb-3 mb-0 border-b border-slate-200/90 dark:border-white/[0.08]';
@@ -126,14 +137,18 @@ export function Imoveis() {
   const [titular, setTitular] = useState('');
   const [chavePix, setChavePix] = useState('');
   const [proprietarioNumeroPessoa, setProprietarioNumeroPessoa] = useState('');
-  const [proprietario, setProprietario] = useState('ITAMAR ALEXANDRE FELIX VILLA REAL JUNIOR');
-  const [proprietarioCpf, setProprietarioCpf] = useState('007.332.351-90');
-  const [proprietarioContato, setProprietarioContato] = useState('62-8234-5000 // 62 3018-6998');
+  const [proprietario, setProprietario] = useState('');
+  const [proprietarioCpf, setProprietarioCpf] = useState('');
+  const [proprietarioContato, setProprietarioContato] = useState('');
+  const [proprietarioCadastroCarregando, setProprietarioCadastroCarregando] = useState(false);
+  const [proprietarioCadastroErro, setProprietarioCadastroErro] = useState('');
   const [linkVistoria, setLinkVistoria] = useState('https://www.drop');
   const [inquilinoNumeroPessoa, setInquilinoNumeroPessoa] = useState('');
-  const [inquilino, setInquilino] = useState('ROSANGELA APARECIDA DA SILVA');
-  const [inquilinoCpf, setInquilinoCpf] = useState('765.529.341-49');
-  const [inquilinoContato, setInquilinoContato] = useState('62 99247-4815');
+  const [inquilino, setInquilino] = useState('');
+  const [inquilinoCpf, setInquilinoCpf] = useState('');
+  const [inquilinoContato, setInquilinoContato] = useState('');
+  const [inquilinoCadastroCarregando, setInquilinoCadastroCarregando] = useState(false);
+  const [inquilinoCadastroErro, setInquilinoCadastroErro] = useState('');
   const [showModalIptu, setShowModalIptu] = useState(false);
   const [infoIptuTexto, setInfoIptuTexto] = useState('IPTU 2025 cinco parcelas em atraso + duas à vencer R$1.323,30');
   const [showModalContrato, setShowModalContrato] = useState(false);
@@ -392,6 +407,118 @@ export function Imoveis() {
     if (!Number.isFinite(nextImovelId) || nextImovelId <= 0) return;
     setImovelId(nextImovelId);
   }, [location.key, location.state]);
+
+  useEffect(() => {
+    const raw = String(proprietarioNumeroPessoa ?? '').trim();
+    if (!raw) {
+      setProprietario('');
+      setProprietarioCpf('');
+      setProprietarioContato('');
+      setProprietarioCadastroErro('');
+      setProprietarioCadastroCarregando(false);
+      return undefined;
+    }
+    const id = Number.parseInt(raw.replace(/\D/g, ''), 10);
+    if (!Number.isFinite(id) || id < 1) {
+      setProprietario('');
+      setProprietarioCpf('');
+      setProprietarioContato('');
+      setProprietarioCadastroErro('Número da pessoa inválido.');
+      setProprietarioCadastroCarregando(false);
+      return undefined;
+    }
+
+    let cancelado = false;
+    setProprietarioCadastroCarregando(true);
+    setProprietarioCadastroErro('');
+    const t = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const c = await buscarCliente(id);
+          if (cancelado) return;
+          if (!c) {
+            setProprietario('');
+            setProprietarioCpf('');
+            setProprietarioContato('');
+            setProprietarioCadastroErro(`Nenhuma pessoa encontrada com o número ${id}.`);
+          } else {
+            setProprietario(String(c.nome ?? '').trim());
+            setProprietarioCpf(formatDocBrExibicao(c.cpf));
+            setProprietarioContato(String(c.telefone ?? '').trim() || '—');
+            setProprietarioCadastroErro('');
+          }
+        } catch {
+          if (cancelado) return;
+          setProprietario('');
+          setProprietarioCpf('');
+          setProprietarioContato('');
+          setProprietarioCadastroErro('Não foi possível carregar o cadastro de pessoas.');
+        } finally {
+          if (!cancelado) setProprietarioCadastroCarregando(false);
+        }
+      })();
+    }, 380);
+    return () => {
+      cancelado = true;
+      window.clearTimeout(t);
+    };
+  }, [proprietarioNumeroPessoa]);
+
+  useEffect(() => {
+    const raw = String(inquilinoNumeroPessoa ?? '').trim();
+    if (!raw) {
+      setInquilino('');
+      setInquilinoCpf('');
+      setInquilinoContato('');
+      setInquilinoCadastroErro('');
+      setInquilinoCadastroCarregando(false);
+      return undefined;
+    }
+    const id = Number.parseInt(raw.replace(/\D/g, ''), 10);
+    if (!Number.isFinite(id) || id < 1) {
+      setInquilino('');
+      setInquilinoCpf('');
+      setInquilinoContato('');
+      setInquilinoCadastroErro('Número da pessoa inválido.');
+      setInquilinoCadastroCarregando(false);
+      return undefined;
+    }
+
+    let cancelado = false;
+    setInquilinoCadastroCarregando(true);
+    setInquilinoCadastroErro('');
+    const t = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const c = await buscarCliente(id);
+          if (cancelado) return;
+          if (!c) {
+            setInquilino('');
+            setInquilinoCpf('');
+            setInquilinoContato('');
+            setInquilinoCadastroErro(`Nenhuma pessoa encontrada com o número ${id}.`);
+          } else {
+            setInquilino(String(c.nome ?? '').trim());
+            setInquilinoCpf(formatDocBrExibicao(c.cpf));
+            setInquilinoContato(String(c.telefone ?? '').trim() || '—');
+            setInquilinoCadastroErro('');
+          }
+        } catch {
+          if (cancelado) return;
+          setInquilino('');
+          setInquilinoCpf('');
+          setInquilinoContato('');
+          setInquilinoCadastroErro('Não foi possível carregar o cadastro de pessoas.');
+        } finally {
+          if (!cancelado) setInquilinoCadastroCarregando(false);
+        }
+      })();
+    }, 380);
+    return () => {
+      cancelado = true;
+      window.clearTimeout(t);
+    };
+  }, [inquilinoNumeroPessoa]);
 
   function abrirProcessoDoImovel() {
     navigate('/processos', {
@@ -948,20 +1075,48 @@ export function Imoveis() {
                   <Field label="Número da pessoa">
                     <input
                       type="text"
+                      inputMode="numeric"
                       value={proprietarioNumeroPessoa}
                       onChange={(e) => setProprietarioNumeroPessoa(e.target.value)}
                       className={inputClass}
                       autoComplete="off"
                     />
+                    {proprietarioCadastroCarregando ? (
+                      <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">Carregando cadastro de pessoas…</p>
+                    ) : null}
+                    {proprietarioCadastroErro ? (
+                      <p className="mt-1.5 text-xs text-amber-700 dark:text-amber-400/90">{proprietarioCadastroErro}</p>
+                    ) : null}
                   </Field>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 -mt-1">
+                    Nome, CPF e contato são preenchidos automaticamente a partir do cadastro de Pessoas (somente leitura nesta tela).
+                  </p>
                   <Field label="Nome">
-                    <input type="text" value={proprietario} onChange={(e) => setProprietario(e.target.value)} className={inputClass} />
+                    <input
+                      type="text"
+                      readOnly
+                      value={proprietario}
+                      className={inputReadOnlyClass}
+                      aria-readonly="true"
+                    />
                   </Field>
                   <Field label="CPF">
-                    <input type="text" value={proprietarioCpf} onChange={(e) => setProprietarioCpf(e.target.value)} className={inputClass} />
+                    <input
+                      type="text"
+                      readOnly
+                      value={proprietarioCpf}
+                      className={inputReadOnlyClass}
+                      aria-readonly="true"
+                    />
                   </Field>
                   <Field label="Contato">
-                    <input type="text" value={proprietarioContato} onChange={(e) => setProprietarioContato(e.target.value)} className={inputClass} />
+                    <input
+                      type="text"
+                      readOnly
+                      value={proprietarioContato}
+                      className={inputReadOnlyClass}
+                      aria-readonly="true"
+                    />
                   </Field>
                 </fieldset>
 
@@ -989,20 +1144,48 @@ export function Imoveis() {
                   <Field label="Número da pessoa">
                     <input
                       type="text"
+                      inputMode="numeric"
                       value={inquilinoNumeroPessoa}
                       onChange={(e) => setInquilinoNumeroPessoa(e.target.value)}
                       className={inputClass}
                       autoComplete="off"
                     />
+                    {inquilinoCadastroCarregando ? (
+                      <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">Carregando cadastro de pessoas…</p>
+                    ) : null}
+                    {inquilinoCadastroErro ? (
+                      <p className="mt-1.5 text-xs text-amber-700 dark:text-amber-400/90">{inquilinoCadastroErro}</p>
+                    ) : null}
                   </Field>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 -mt-1">
+                    Nome, CPF e contato são preenchidos automaticamente a partir do cadastro de Pessoas (somente leitura nesta tela).
+                  </p>
                   <Field label="Nome">
-                    <input type="text" value={inquilino} onChange={(e) => setInquilino(e.target.value)} className={inputClass} />
+                    <input
+                      type="text"
+                      readOnly
+                      value={inquilino}
+                      className={inputReadOnlyClass}
+                      aria-readonly="true"
+                    />
                   </Field>
                   <Field label="CPF">
-                    <input type="text" value={inquilinoCpf} onChange={(e) => setInquilinoCpf(e.target.value)} className={inputClass} />
+                    <input
+                      type="text"
+                      readOnly
+                      value={inquilinoCpf}
+                      className={inputReadOnlyClass}
+                      aria-readonly="true"
+                    />
                   </Field>
                   <Field label="Contato">
-                    <input type="text" value={inquilinoContato} onChange={(e) => setInquilinoContato(e.target.value)} className={inputClass} />
+                    <input
+                      type="text"
+                      readOnly
+                      value={inquilinoContato}
+                      className={inputReadOnlyClass}
+                      aria-readonly="true"
+                    />
                   </Field>
                 </fieldset>
               </div>
