@@ -372,7 +372,7 @@ export function mergeCadastroClientesProcessosComApi(codigoClientePadded8, lista
 
     const novoApi = String(api.numeroProcessoNovo ?? '').trim();
     const velhoApi = String(api.numeroProcessoVelho ?? '').trim();
-    const descApi = String(api.observacao ?? api.naturezaAcao ?? '').trim();
+    const descApi = String(api.descricaoAcao ?? api.naturezaAcao ?? '').trim();
     const poApi = String(api.parteOposta ?? api.parte_oposta ?? '').trim();
     const poRow = String(row.parteOposta ?? row.reu ?? '').trim();
 
@@ -399,7 +399,7 @@ export function mergeCadastroClientesProcessosComApi(codigoClientePadded8, lista
       reu: poNovo || '—',
       parteOposta: poNovo || '—',
       tipoAcao: '',
-      descricao: String(api.observacao ?? api.naturezaAcao ?? '').trim(),
+      descricao: String(api.descricaoAcao ?? api.naturezaAcao ?? '').trim(),
     });
   }
 
@@ -436,13 +436,14 @@ export async function buscarClientePorCodigo(codigoCliente) {
 export async function salvarCabecalhoProcesso(payload) {
   if (!featureFlags.useApiProcessos) return null;
   const processoId = await resolverProcessoId(payload);
+  const nat = String(payload.naturezaAcao ?? '').trim() || null;
   const body = {
     clienteId: Number(payload.clienteId),
     numeroInterno: Number(payload.numeroInterno),
     numeroCnj: payload.numeroProcessoNovo || null,
     numeroProcessoAntigo: payload.numeroProcessoVelho || null,
-    naturezaAcao: payload.naturezaAcao || null,
-    descricaoAcao: payload.observacao || null,
+    naturezaAcao: nat,
+    descricaoAcao: nat,
     competencia: payload.competencia || null,
     fase: payload.faseSelecionada || null,
     observacaoFase: payload.faseCampo || null,
@@ -450,7 +451,7 @@ export async function salvarCabecalhoProcesso(payload) {
     dataProtocolo: toIsoFromBrDate(payload.dataProtocolo),
     prazoFatal: toIsoFromBrDate(payload.prazoFatal),
     proximaConsulta: toIsoFromBrDate(payload.proximaConsultaData),
-    observacao: payload.observacao || null,
+    observacao: String(payload.observacao ?? '').trim() || null,
     valorCausa: payload.valorCausaNumero ?? null,
     uf: payload.estado || null,
     cidade: payload.cidade || null,
@@ -459,6 +460,7 @@ export async function salvarCabecalhoProcesso(payload) {
     consultor: payload.responsavel || null,
     usuarioResponsavelId: payload.usuarioResponsavelId || null,
     unidade: String(payload.unidade ?? '').trim() || null,
+    pasta: String(payload.pasta ?? '').trim() || null,
   };
   if (processoId) {
     return request(`/api/processos/${processoId}`, { method: 'PUT', body });
@@ -691,15 +693,15 @@ export function mapApiProcessoToUiShape(p) {
     numeroInterno: p.numeroInterno,
     numeroProcessoNovo: String(p.numeroCnj ?? p.numero_cnj ?? '').trim(),
     numeroProcessoVelho: String(p.numeroProcessoAntigo ?? p.numero_processo_antigo ?? '').trim(),
-    naturezaAcao: corrigirMojibakeUtf8(p.naturezaAcao || ''),
+    naturezaAcao: corrigirMojibakeUtf8(String(p.naturezaAcao || p.descricaoAcao || '').trim()),
+    descricaoAcao: corrigirMojibakeUtf8(String(p.descricaoAcao || p.naturezaAcao || '').trim()),
     competencia: corrigirMojibakeUtf8(p.competencia || ''),
     faseSelecionada: corrigirMojibakeUtf8(p.fase || ''),
     observacaoFase: corrigirMojibakeUtf8(p.observacaoFase || ''),
     statusAtivo: p.ativo !== false,
     prazoFatal: toBrFromIsoDate(p.prazoFatal),
     proximaConsultaData: toBrFromIsoDate(p.proximaConsulta),
-    // Importação Excel grava col. O em `descricaoAcao`; a UI usa o estado `observacao`.
-    observacao: corrigirMojibakeUtf8(p.observacao || p.descricaoAcao || ''),
+    observacao: corrigirMojibakeUtf8(String(p.observacao ?? '').trim()),
     cidade: corrigirMojibakeUtf8(p.cidade || ''),
     estado: p.uf || '',
     consultaAutomatica: p.consultaAutomatica === true,
@@ -711,5 +713,6 @@ export function mapApiProcessoToUiShape(p) {
     /** Só na listagem por cliente; mesma regra que partes «Réu» na tela Processos. */
     parteOposta: corrigirMojibakeUtf8(p.parteOposta || p.parte_oposta || ''),
     unidade: corrigirMojibakeUtf8(String(p.unidade ?? '').trim()),
+    pasta: corrigirMojibakeUtf8(String(p.pasta ?? '').trim()),
   };
 }

@@ -6,6 +6,8 @@ import br.com.vilareal.common.text.Utf8MojibakeUtil;
 import br.com.vilareal.importacao.PlanilhaPasta1MapeamentoUtil;
 import br.com.vilareal.importacao.infrastructure.persistence.entity.PlanilhaPasta1ClienteEntity;
 import br.com.vilareal.importacao.infrastructure.persistence.repository.PlanilhaPasta1ClienteRepository;
+import br.com.vilareal.pessoa.api.dto.ClienteCreateRequest;
+import br.com.vilareal.pessoa.api.dto.ClienteCreateResult;
 import br.com.vilareal.pessoa.api.dto.ClienteListItemResponse;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
@@ -178,6 +180,54 @@ public class ProcessoApplicationService {
                                         cod8,
                                         Utf8MojibakeUtil.corrigir(p.getNome()),
                                         somenteDigitosDocumento(p.getCpf()))));
+    }
+
+    /**
+     * Insere em {@code cliente} (código único → pessoa) ou devolve o registo existente se o par coincidir.
+     */
+    @Transactional
+    public ClienteCreateResult criarClienteMinimo(ClienteCreateRequest req) {
+        if (req.getPessoaId() == null) {
+            throw new BusinessRuleException("pessoaId é obrigatório");
+        }
+        if (!StringUtils.hasText(req.getCodigoCliente())) {
+            throw new BusinessRuleException("codigoCliente é obrigatório");
+        }
+        String cod8 = CodigoClienteUtil.normalizarCodigoClienteOitoDigitos(req.getCodigoCliente().trim());
+        if (!StringUtils.hasText(cod8)) {
+            throw new BusinessRuleException("codigoCliente inválido");
+        }
+        PessoaEntity pessoa = pessoaRepository
+                .findById(req.getPessoaId())
+                .orElseThrow(() -> new ResourceNotFoundException("Pessoa não encontrada: " + req.getPessoaId()));
+
+        Optional<ClienteEntity> existente = clienteRepository.findByCodigoClienteFetchPessoa(cod8);
+        if (existente.isPresent()) {
+            ClienteEntity c = existente.get();
+            if (!c.getPessoa().getId().equals(req.getPessoaId())) {
+                throw new BusinessRuleException("Código de cliente já existe para outra pessoa.");
+            }
+            return new ClienteCreateResult(clienteEntityParaResumo(c), false);
+        }
+
+        ClienteEntity novo = new ClienteEntity();
+        novo.setCodigoCliente(cod8);
+        novo.setPessoa(pessoa);
+        novo.setInativo(false);
+        novo = clienteRepository.save(novo);
+        return new ClienteCreateResult(clienteEntityParaResumo(novo), true);
+    }
+
+    private ClienteListItemResponse clienteEntityParaResumo(ClienteEntity c) {
+        PessoaEntity p = c.getPessoa();
+        String nome =
+                StringUtils.hasText(c.getNomeReferencia()) ? c.getNomeReferencia() : p.getNome();
+        String doc =
+                StringUtils.hasText(c.getDocumentoReferencia())
+                        ? somenteDigitosDocumento(c.getDocumentoReferencia())
+                        : somenteDigitosDocumento(p.getCpf());
+        return new ClienteListItemResponse(
+                p.getId(), c.getCodigoCliente(), Utf8MojibakeUtil.corrigir(nome), doc);
     }
 
     @Transactional(readOnly = true)
@@ -671,6 +721,7 @@ public class ProcessoApplicationService {
         }
         e.setCidade(trimToNull(req.getCidade()));
         e.setUnidade(trimToNull(req.getUnidade()));
+        e.setPasta(trimToNull(req.getPasta()));
         e.setConsultaAutomatica(Boolean.TRUE.equals(req.getConsultaAutomatica()));
         if (req.getAtivo() != null) {
             e.setAtivo(req.getAtivo());
@@ -794,6 +845,7 @@ public class ProcessoApplicationService {
         r.setUf(e.getUf());
         r.setCidade(Utf8MojibakeUtil.corrigir(e.getCidade()));
         r.setUnidade(Utf8MojibakeUtil.corrigir(trimToNull(e.getUnidade())));
+        r.setPasta(Utf8MojibakeUtil.corrigir(trimToNull(e.getPasta())));
         r.setConsultaAutomatica(e.getConsultaAutomatica());
         r.setAtivo(e.getAtivo());
         r.setConsultor(Utf8MojibakeUtil.corrigir(e.getConsultor()));
