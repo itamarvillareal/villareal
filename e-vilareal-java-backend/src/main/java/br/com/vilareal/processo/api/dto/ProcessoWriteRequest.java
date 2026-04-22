@@ -18,6 +18,9 @@ public class ProcessoWriteRequest {
     /** Unidade (ex.: A-0103); opcional. */
     private String unidade;
 
+    /** Pasta do processo (rótulo da planilha); opcional. */
+    private String pasta;
+
     private String numeroCnj;
     private String numeroProcessoAntigo;
     private String naturezaAcao;
@@ -63,6 +66,14 @@ public class ProcessoWriteRequest {
 
     public void setUnidade(String unidade) {
         this.unidade = unidade;
+    }
+
+    public String getPasta() {
+        return pasta;
+    }
+
+    public void setPasta(String pasta) {
+        this.pasta = pasta;
     }
 
     public String getNumeroCnj() {

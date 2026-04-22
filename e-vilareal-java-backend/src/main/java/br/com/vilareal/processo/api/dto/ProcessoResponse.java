@@ -28,6 +28,10 @@ public class ProcessoResponse {
     private String cidade;
     /** Unidade condominial (ex.: A-0103). */
     private String unidade;
+
+    /** Pasta do processo (planilha / cadastro). */
+    private String pasta;
+
     private Boolean consultaAutomatica;
     private Boolean ativo;
     private String consultor;
@@ -203,6 +207,14 @@ public class ProcessoResponse {
 
     public void setUnidade(String unidade) {
         this.unidade = unidade;
+    }
+
+    public String getPasta() {
+        return pasta;
+    }
+
+    public void setPasta(String pasta) {
+        this.pasta = pasta;
     }
 
     public Boolean getConsultaAutomatica() {
