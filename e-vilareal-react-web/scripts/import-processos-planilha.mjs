@@ -247,6 +247,24 @@ function parsePessoaIdCell(v) {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
+/**
+ * Coluna E so representa id numerico da pessoa quando o cabecalho (linha 1, col E)
+ * indica "N Pessoa Cliente" (case insensitive, trim, sem acentos).
+ * Cabecalho so "Cliente" (texto livre) -> false (Col E ignorada para pessoa_id).
+ */
+function colEHeaderIsNPessoaCliente(rows) {
+  const headers = Array.isArray(rows?.[0]) ? rows[0] : [];
+  const h = String(headers[4] ?? '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{M}+/gu, '')
+    .replace(/\s+/g, ' ');
+  if (!h) return false;
+  const compact = h.replace(/[^a-z0-9]/g, '');
+  return compact.includes('npessoa') && compact.includes('cliente');
+}
+
 function pickSheetIndex(names, opts) {
   if (opts != null && /^\d+$/.test(String(opts))) return Number(opts);
   const s = String(opts || '').trim();
@@ -474,22 +492,22 @@ function pickFirstMidLast(arr) {
   return [arr[0], arr[mid], arr[arr.length - 1]];
 }
 
-/** Pares (codigoCliente, pessoaId) na aba 1: qualquer linha com D+E validos; valida consistencia do codigo. */
-function buildCodPessoaMap(rowsAba1) {
-  const m = new Map();
-  for (let i = 1; i < rowsAba1.length; i++) {
-    const row = rowsAba1[i];
+/** Acrescenta pares (codigoCliente, pessoaId) ao mapa a partir de uma aba (Col E valida como id so com cabecalho "N Pessoa Cliente"). */
+function mergeCodPessoaMapFromSheet(rows, m, sheetTag) {
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i];
     if (!Array.isArray(row)) continue;
     const cod = normalizarCodigoCliente(row[3]);
     const pid = parsePessoaIdCell(row[4]);
     if (!cod || pid == null) continue;
     const prev = m.get(cod);
     if (prev != null && prev !== pid) {
-      throw new Error(`Mapa cod->pessoa_id inconsistente: cod=${cod} tinha ${prev}, linha ${i + 1} tem ${pid}`);
+      throw new Error(
+        `Mapa cod->pessoa_id inconsistente (${sheetTag} linha ${i + 1}): cod=${cod} tinha ${prev}, linha tem ${pid}`
+      );
     }
     m.set(cod, pid);
   }
-  return m;
 }
 
 function resolverIndicesProc(rows, nomeAba) {
@@ -508,6 +526,18 @@ function collectMerged(rowsAba1, rowsAba2) {
   const discarded = { aba1: 0, aba2: 0 };
   const col1 = resolverIndicesProc(rowsAba1, 'Aba1');
   const col2 = resolverIndicesProc(rowsAba2, 'Aba2');
+  const useColE1 = colEHeaderIsNPessoaCliente(rowsAba1);
+  const useColE2 = colEHeaderIsNPessoaCliente(rowsAba2);
+
+  /** Evita que texto livre em Col E ("Cliente") sobrescreva o id da outra aba no merge. */
+  function rowForIngest(row, which) {
+    if (!Array.isArray(row)) return row;
+    const use = which === 1 ? useColE1 : useColE2;
+    if (use) return row;
+    const out = row.slice();
+    out[4] = null;
+    return out;
+  }
 
   const mapAba1 = new Map();
   const mapAba2 = new Map();
@@ -530,11 +560,11 @@ function collectMerged(rowsAba1, rowsAba2) {
 
   for (let i = 1; i < rowsAba1.length; i++) {
     const row = rowsAba1[i];
-    if (Array.isArray(row)) ingestOne(row, i + 1, 1, col1.idxCod, col1.idxProc, mapAba1);
+    if (Array.isArray(row)) ingestOne(rowForIngest(row, 1), i + 1, 1, col1.idxCod, col1.idxProc, mapAba1);
   }
   for (let i = 1; i < rowsAba2.length; i++) {
     const row = rowsAba2[i];
-    if (Array.isArray(row)) ingestOne(row, i + 1, 2, col2.idxCod, col2.idxProc, mapAba2);
+    if (Array.isArray(row)) ingestOne(rowForIngest(row, 2), i + 1, 2, col2.idxCod, col2.idxProc, mapAba2);
   }
 
   const chavesAba1 = new Set(mapAba1.keys());
@@ -866,20 +896,20 @@ async function main() {
   const rows1 = sheetToMatrix(wb, i1);
   const rows2 = sheetToMatrix(wb, i2);
 
-  const codMap = buildCodPessoaMap(rows1);
-  for (let i = 1; i < rows2.length; i++) {
-    const row = rows2[i];
-    if (!Array.isArray(row)) continue;
-    const cod = normalizarCodigoCliente(row[3]);
-    const pid = parsePessoaIdCell(row[4]);
-    if (!cod || pid == null) continue;
-    const prev = codMap.get(cod);
-    if (prev != null && prev !== pid) {
-      throw new Error(`Mapa cod->pessoa_id inconsistente (aba2 linha ${i + 1}): cod=${cod}`);
-    }
-    codMap.set(cod, pid);
+  const useE1 = colEHeaderIsNPessoaCliente(rows1);
+  const useE2 = colEHeaderIsNPessoaCliente(rows2);
+  console.log(
+    `[mapa] Col E: aba1 cabecalho="${String(rows1?.[0]?.[4] ?? '').trim()}" usado_como_pessoa_id=${useE1} | aba2 cabecalho="${String(rows2?.[0]?.[4] ?? '').trim()}" usado_como_pessoa_id=${useE2}`
+  );
+  if (!useE1 && !useE2) {
+    throw new Error(
+      'Nenhuma aba tem na coluna E o cabecalho "N Pessoa Cliente" (coluna "Cliente" com texto livre nao fornece pessoa_id). Ajuste a planilha ou as abas importadas.'
+    );
   }
-  console.log(`[mapa] codigos unicos (aba1 D+E + aba2 D+E): ${codMap.size}`);
+  const codMap = new Map();
+  if (useE1) mergeCodPessoaMapFromSheet(rows1, codMap, 'aba1');
+  if (useE2) mergeCodPessoaMapFromSheet(rows2, codMap, 'aba2');
+  console.log(`[mapa] codigos unicos (Col E apenas onde cabecalho e "N Pessoa Cliente"): ${codMap.size}`);
   const { map: mergedMap, discarded } = collectMerged(rows1, rows2);
   const entries = [...mergedMap.values()];
 
