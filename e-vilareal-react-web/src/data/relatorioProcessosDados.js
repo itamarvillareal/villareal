@@ -110,7 +110,7 @@ export async function obterLinhasBaseRelatorioProcessos() {
       const consultor = CONSULTORES[(cHash + p + idx) % CONSULTORES.length];
       const temPrazo = (cHash + p + idx) % 4 === 0;
       const temAud = (cHash + p * 2) % 5 === 0;
-      const descricao = String(u.naturezaAcao ?? '').trim() || '—';
+      const descricao = String(u.descricaoAcao ?? u.naturezaAcao ?? '').trim() || '—';
       const parteSlice = '';
 
       out.push({
@@ -122,9 +122,7 @@ export async function obterLinhasBaseRelatorioProcessos() {
         ultimoAndamento: `ANDAMENTO — ${descricao.slice(0, 80)}`,
         dataConsulta: dataBrDeslocada(cHash, p, 0),
         proximaConsulta: String(u.proximaConsultaData ?? '').trim() || dataBrDeslocada(cHash, p, 28),
-        observacaoProcesso:
-          String(u.observacao ?? '').trim() ||
-          `Proc. cadastro ${codPad} / ${p}${parteSlice ? ` · ${parteSlice}…` : ''}`,
+        observacaoProcesso: String(u.observacao ?? '').trim(),
         consultor: String(u.responsavel ?? '').trim() || consultor,
         lmv: String((cHash * 3 + p * 5) % 40 || 1),
         fase: String(u.faseSelecionada ?? '').trim() || 'Em Andamento',

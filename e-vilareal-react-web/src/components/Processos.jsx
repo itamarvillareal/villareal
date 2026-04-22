@@ -361,7 +361,8 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   const [estado, setEstado] = useState('');
   const [cidade, setCidade] = useState('');
   const [dataProtocolo, setDataProtocolo] = useState('');
-  const [pastaArquivo, setPastaArquivo] = useState('');
+  /** Pasta do processo (API `pasta`); legado localStorage também em `pastaArquivo`. */
+  const [pasta, setPasta] = useState('');
   const [naturezaAcao, setNaturezaAcao] = useState('');
   const [valorCausa, setValorCausa] = useState('');
   const [procedimento, setProcedimento] = useState('');
@@ -780,7 +781,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       // Com API: cabeçalho, partes e histórico vêm de GET /api/processos e sub-rotas (importação/planilha).
       setPeriodicidadeConsulta(registroPersistido?.periodicidadeConsulta ?? '');
     }
-    setPastaArquivo(pickCampoStrSalvo(r, 'pastaArquivo', ''));
+    setPasta(pickCampoStrSalvo(r, 'pasta', pickCampoStrSalvo(r, 'pastaArquivo', '')));
     setProcedimento(pickCampoStrSalvo(r, 'procedimento', ''));
     setFaseCampo(pickCampoStrSalvo(r, 'faseCampo', ''));
     setAudienciaData(pickCampoStrSalvo(r, 'audienciaData', ''));
@@ -857,7 +858,8 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
         estado: pickCampoStrSalvo(r, 'estado', mock.estado),
         cidade: pickCampoStrSalvo(r, 'cidade', mock.cidade),
         dataProtocolo: pickCampoStrSalvo(r, 'dataProtocolo', mock.dataProtocolo),
-        pastaArquivo: pickCampoStrSalvo(r, 'pastaArquivo', ''),
+        pasta: pickCampoStrSalvo(r, 'pasta', pickCampoStrSalvo(r, 'pastaArquivo', '')),
+        pastaArquivo: pickCampoStrSalvo(r, 'pasta', pickCampoStrSalvo(r, 'pastaArquivo', '')),
         valorCausa: pickCampoStrSalvo(r, 'valorCausa', mock.valorCausa),
         procedimento: pickCampoStrSalvo(r, 'procedimento', ''),
         responsavel: pickCampoStrSalvo(r, 'responsavel', ''),
@@ -1112,9 +1114,9 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
 
   /** Disponível mesmo com edição desabilitada: abre http(s) ou mostra o caminho. */
   function abrirLinkPastaArquivo() {
-    const s = String(pastaArquivo || '').trim();
+    const s = String(pasta || '').trim();
     if (!s) {
-      window.alert('Informe o link ou caminho em "Pasta do Arquivo".');
+      window.alert('Informe o link ou caminho em "Pasta do Processo".');
       return;
     }
     if (/^https?:\/\//i.test(s)) {
@@ -1413,7 +1415,8 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       estado,
       cidade,
       dataProtocolo,
-      pastaArquivo,
+      pasta,
+      pastaArquivo: String(pasta ?? ''),
       valorCausa,
       procedimento,
       responsavel,
@@ -1580,6 +1583,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       setResponsavel(mapped.responsavel ?? '');
       setUnidadeEndereco(mapped.unidade ?? '');
       setUnidadeEnderecoManual(String(mapped.unidade ?? '').trim() !== '');
+      setPasta(mapped.pasta ?? '');
 
       const partes = await listarPartesProcesso(procApi.id);
       if (seq !== carregarProcessoApiSeqRef.current) return;
@@ -1763,7 +1767,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     estado,
     cidade,
     dataProtocolo,
-    pastaArquivo,
+    pasta,
     valorCausa,
     procedimento,
     responsavel,
@@ -2842,12 +2846,12 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                       className={clsCampoDenso}
                     />
                   </Field>
-                  <Field label="Pasta do Arquivo" dense className="col-span-1 md:col-span-3 min-w-0">
+                  <Field label="Pasta do Processo" dense className="col-span-1 md:col-span-3 min-w-0">
                     <input
                       type="text"
-                      value={pastaArquivo}
+                      value={pasta}
                       readOnly={camposBloqueados}
-                      onChange={(e) => setPastaArquivo(e.target.value)}
+                      onChange={(e) => setPasta(e.target.value)}
                       className={clsCampoDenso}
                     />
                   </Field>
