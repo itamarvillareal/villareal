@@ -169,7 +169,8 @@ Lista todas as pessoas com `id`, `nome` e **`codigoCliente`** (id formatado em 8
 
 | Método | Caminho | Descrição |
 |--------|---------|-----------|
-| GET | `/api/processos?codigoCliente=` | Lista processos do cliente (código 8 dígitos) |
+| GET | `/api/processos?codigoCliente=` | Lista processos do cliente (código 8 dígitos; array JSON) |
+| GET | `/api/processos?page=0&size=20` | Sem `codigoCliente`: lista paginada de todos (`Page` JSON: `content`, `totalElements`, …) |
 | GET | `/api/processos/{id}` | Detalhe (inclui `codigoCliente`, `clienteId`) |
 | POST | `/api/processos` | Criar |
 | PUT | `/api/processos/{id}` | Atualizar cabeçalho |
