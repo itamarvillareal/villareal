@@ -91,24 +91,32 @@ public class ClienteCodigoPessoaResolver {
     }
 
     /**
-     * Para listagens (processos, etc.): com Pasta1 importada, usa o mapeamento da planilha; se não houver
-     * linha para o código, tenta {@code cliente} (cadastro / import de clientes). Sem Pasta1, equivale a
-     * {@link #resolverPessoaId(String)} com retorno opcional.
+     * Para listagens (processos, etc.): primeiro tenta {@code cliente.codigo_cliente} (cadastro / import —
+     * fonte de verdade). Depois, se houver Pasta1 importada, o mapeamento da planilha. Por fim, convenção
+     * legada {@link #resolverPessoaId(String)} (código numérico = id da pessoa), que falha silenciosamente
+     * aqui via {@link Optional} quando não aplicável.
+     * <p>
+     * Sem consultar {@code cliente} antes do legado, um código como {@code 00000728} era interpretado como
+     * pessoa id 728 em ambiente sem linhas em {@code planilha_pasta1_cliente}, ignorando o {@code pessoa_id}
+     * real (ex.: 1809) gravado em {@code cliente}.
      */
     public Optional<Long> resolverPessoaIdComFallbackCliente(String codigoCliente) {
         if (codigoCliente == null || codigoCliente.isBlank()) {
             return Optional.empty();
+        }
+        String norm = CodigoClienteUtil.normalizarCodigoClienteOitoDigitos(codigoCliente.trim());
+        if (norm == null || norm.isEmpty()) {
+            return Optional.empty();
+        }
+        Optional<Long> fromCliente = clienteRepository.findByCodigoCliente(norm).map(c -> c.getPessoa().getId());
+        if (fromCliente.isPresent()) {
+            return fromCliente;
         }
         if (haMapeamentosPlanilhaPasta1()) {
             Optional<Long> fromPlanilha = resolverPessoaIdSomentePlanilha(codigoCliente);
             if (fromPlanilha.isPresent()) {
                 return fromPlanilha;
             }
-            String norm = CodigoClienteUtil.normalizarCodigoClienteOitoDigitos(codigoCliente.trim());
-            if (norm == null || norm.isEmpty()) {
-                return Optional.empty();
-            }
-            return clienteRepository.findByCodigoCliente(norm).map(c -> c.getPessoa().getId());
         }
         try {
             return Optional.of(resolverPessoaId(codigoCliente));
