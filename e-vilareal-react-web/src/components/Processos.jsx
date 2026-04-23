@@ -1517,7 +1517,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     setValorCausa('');
     setHistorico([]);
     setPeriodicidadeConsulta('');
-    setPastaArquivo('');
+    setPasta('');
     setProcedimento('');
     setFaseCampo('');
     setAudienciaData('');
