@@ -18,6 +18,8 @@ import br.com.vilareal.processo.infrastructure.persistence.entity.*;
 import br.com.vilareal.processo.infrastructure.persistence.repository.*;
 import br.com.vilareal.usuario.infrastructure.persistence.entity.UsuarioEntity;
 import br.com.vilareal.usuario.infrastructure.persistence.repository.UsuarioRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -255,6 +257,30 @@ public class ProcessoApplicationService {
                     return r;
                 })
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * Lista todos os processos com paginação Spring (sem filtro de cliente).
+     * Usado quando {@code GET /api/processos} é chamado sem {@code codigoCliente} (ex.: {@code ?page=0}).
+     */
+    @Transactional(readOnly = true)
+    public Page<ProcessoResponse> listarTodosPaginado(Pageable pageable) {
+        Page<ProcessoEntity> page = processoRepository.findAll(pageable);
+        List<Long> procIds = page.getContent().stream().map(ProcessoEntity::getId).collect(Collectors.toList());
+        Map<Long, List<ProcessoParteEntity>> partesPorProcesso = new LinkedHashMap<>();
+        if (!procIds.isEmpty()) {
+            for (ProcessoParteEntity parte :
+                    parteRepository.findAllByProcessoIdInWithPessoaEProcesso(procIds)) {
+                Long pid = parte.getProcesso().getId();
+                partesPorProcesso.computeIfAbsent(pid, k -> new ArrayList<>()).add(parte);
+            }
+        }
+        return page.map(e -> {
+            ProcessoResponse r = toResponse(e);
+            r.setParteOposta(montarTextoParteOpostaListagem(
+                    partesPorProcesso.getOrDefault(e.getId(), List.of())));
+            return r;
+        });
     }
 
     @Transactional(readOnly = true)

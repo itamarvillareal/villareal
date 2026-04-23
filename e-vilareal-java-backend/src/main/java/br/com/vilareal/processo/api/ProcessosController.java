@@ -5,7 +5,10 @@ import br.com.vilareal.processo.application.ProcessoApplicationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
@@ -24,9 +27,19 @@ public class ProcessosController {
     }
 
     @GetMapping
-    @Operation(summary = "Listar por código do cliente (8 dígitos)")
-    public List<ProcessoResponse> listar(@RequestParam String codigoCliente) {
-        return processoApplicationService.listarPorCodigoCliente(codigoCliente);
+    @Operation(
+            summary = "Listar processos",
+            description =
+                    "Com `codigoCliente` (8 dígitos): lista JSON em array desse cliente. "
+                            + "Sem `codigoCliente`: lista paginada de todos (`Page` Spring: `content`, `totalElements`, …; query `page`, `size`, `sort`).")
+    public ResponseEntity<?> listar(
+            @RequestParam(required = false) String codigoCliente,
+            @PageableDefault(size = 20, sort = "id") Pageable pageable) {
+        if (StringUtils.hasText(codigoCliente)) {
+            return ResponseEntity.ok(
+                    processoApplicationService.listarPorCodigoCliente(codigoCliente.trim()));
+        }
+        return ResponseEntity.ok(processoApplicationService.listarTodosPaginado(pageable));
     }
 
     @GetMapping("/por-numero-interno")
