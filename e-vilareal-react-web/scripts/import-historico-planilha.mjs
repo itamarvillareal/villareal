@@ -20,12 +20,16 @@ import XLSX from 'xlsx';
 const DEFAULT_FILE = String.raw`C:\Users\jrvill\Dropbox\sistema\historico_import.xls`;
 const SHEET_NAME = 'Planilha2';
 
-/** Variantes que normalizam para outro nome ou null. */
+/** Variantes que normalizam para outro nome, null, ou __SKIP__ (linha não importada). */
 const MAPA_RESPONSAVEL_NORMALIZACAO = {
   ITAMARR: 'ITAMAR',
   'ANA LUIZA': 'ANA LUISA',
   JESSYCA: 'JESSICA',
   '0)': null,
+  FERNANDAXLS: 'FERNANDA',
+  'RELATÓRIO - DÉBITOS CONDOMINIAIS - FERNANDA': 'FERNANDA',
+  'RHAYHANNY (2)': 'RHAYHANNY',
+  SISTEMA: '__SKIP__',
 };
 
 /** Nomes reconhecidos (após normalização; null não entra no set). */
@@ -50,22 +54,26 @@ const RESPONSAVEIS_RECONHECIDOS = new Set([
   'SABRINA',
   'ALINE',
   'LUCAS',
+  'FERNANDA',
+  'MARESSA',
+  'JOÃO PAULO',
+  'PATRICIA',
+  'MARIA EDUARDA',
 ]);
 
 /**
  * @param {unknown} valorBruto
  * @param {number} linhaExcel
- * @returns {string | null}
+ * @returns {string | null} null = sem responsável; '__SKIP__' = não importar a linha
  */
 function normalizarResponsavel(valorBruto, linhaExcel) {
   if (valorBruto == null) return null;
   const trim = String(valorBruto).trim();
   if (!trim) return null;
   const upper = trim.toUpperCase();
-  const normalizado = Object.prototype.hasOwnProperty.call(MAPA_RESPONSAVEL_NORMALIZACAO, upper)
-    ? MAPA_RESPONSAVEL_NORMALIZACAO[upper]
-    : upper;
+  const normalizado = upper in MAPA_RESPONSAVEL_NORMALIZACAO ? MAPA_RESPONSAVEL_NORMALIZACAO[upper] : upper;
   if (normalizado === null) return null;
+  if (normalizado === '__SKIP__') return '__SKIP__';
   if (!RESPONSAVEIS_RECONHECIDOS.has(normalizado)) {
     throw new Error(
       `Responsavel "${trim}" (linha Excel ${linhaExcel}) nao esta no mapa reconhecido.\n` +
@@ -461,11 +469,18 @@ async function main() {
   }
 
   if (opts.dryRun) {
+    let puladosSistemaDry = 0;
+    let candidatasSemSkip = 0;
+    for (const L of candidatas) {
+      if (L.detalheNorm === '__SKIP__') puladosSistemaDry += 1;
+      else candidatasSemSkip += 1;
+    }
     console.log(`[dry-run] ficheiro: ${abs}`);
     console.log(`[dry-run] total_linhas_planilha (shape): ${totalLinhas}`);
     console.log(`[dry-run] linhas com A/B/D preenchidos (bruto): ${brutas.length}`);
     console.log(`[dry-run] pulados_sem_data: ${puladosSemData}`);
-    console.log(`[dry-run] andamentos importáveis (simulação): ${candidatas.length}`);
+    console.log(`[dry-run] pulados_sistema (__SKIP__): ${puladosSistemaDry}`);
+    console.log(`[dry-run] andamentos importáveis (simulação): ${candidatasSemSkip}`);
     console.log('[dry-run] validacao responsaveis: OK (fail-fast passou)');
     console.log('\n[dry-run] contagem por cliente (linhas A/B/D):');
     for (const cod of Object.keys(porClienteLinhas).sort()) {
@@ -546,6 +561,7 @@ async function main() {
     falhas: 0,
     orfaos: 0,
     pulados_sem_data: puladosSemData,
+    pulados_sistema: 0,
     /** @type {Record<string, number>} */
     respCriados: {},
     respNull: 0,
@@ -562,6 +578,10 @@ async function main() {
     const linhasCliente = candidatasPorCliente.get(cod8) || [];
     for (const L of linhasCliente) {
       touchCliente(cod8);
+      if (L.detalheNorm === '__SKIP__') {
+        stats.pulados_sistema += 1;
+        continue;
+      }
       const procId = mapa.get(L.numeroInterno);
       if (procId == null) {
         stats.orfaos += 1;
@@ -599,7 +619,7 @@ async function main() {
   });
 
   console.log(
-    `[andamentos] criados=${stats.criados} falhas=${stats.falhas} orfaos=${stats.orfaos} pulados_sem_data=${stats.pulados_sem_data} total_linhas=${totalLinhas}`
+    `[andamentos] criados=${stats.criados} falhas=${stats.falhas} orfaos=${stats.orfaos} pulados_sem_data=${stats.pulados_sem_data} pulados_sistema=${stats.pulados_sistema} total_linhas=${totalLinhas}`
   );
   imprimirResumoResponsavel(stats.respCriados, stats.respNull);
   imprimirResumoCliente(porClienteStats);
