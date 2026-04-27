@@ -5,6 +5,7 @@ import br.com.vilareal.pagamento.infrastructure.persistence.entity.PagamentoEnti
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
+import org.hibernate.annotations.Formula;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -56,7 +57,7 @@ public class IptuParcelaEntity {
     @Column(columnDefinition = "TEXT")
     private String observacoes;
 
-    @Column(name = "contrato_uk", insertable = false, updatable = false)
+    @Formula("(coalesce(contrato_locacao_id, -(iptu_anual_id)))")
     private Long contratoUk;
 
     @Column(name = "created_at", insertable = false, updatable = false)

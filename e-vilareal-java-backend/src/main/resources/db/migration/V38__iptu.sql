@@ -36,20 +36,24 @@ CREATE TABLE iptu_parcela (
     observacoes TEXT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    contrato_uk BIGINT GENERATED ALWAYS AS (COALESCE(contrato_locacao_id, -(iptu_anual_id))) STORED,
     CONSTRAINT fk_iptu_parcela_anual FOREIGN KEY (iptu_anual_id) REFERENCES iptu_anual (id)
         ON DELETE CASCADE ON UPDATE CASCADE,
     CONSTRAINT fk_iptu_parcela_contrato FOREIGN KEY (contrato_locacao_id) REFERENCES contrato_locacao (id)
         ON DELETE SET NULL ON UPDATE CASCADE,
     CONSTRAINT fk_iptu_parcela_pagamento FOREIGN KEY (pagamento_id) REFERENCES pagamento (id)
-        ON DELETE SET NULL ON UPDATE CASCADE,
-    CONSTRAINT uq_iptu_parcela_competencia UNIQUE (iptu_anual_id, competencia_mes, contrato_uk)
+        ON DELETE SET NULL ON UPDATE CASCADE
 ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 CREATE INDEX idx_iptu_parcela_anual ON iptu_parcela (iptu_anual_id);
 CREATE INDEX idx_iptu_parcela_status ON iptu_parcela (status);
 CREATE INDEX idx_iptu_parcela_venc ON iptu_parcela (data_vencimento);
 CREATE INDEX idx_iptu_parcela_competencia ON iptu_parcela (competencia_mes);
+
+CREATE UNIQUE INDEX uq_iptu_parcela_competencia ON iptu_parcela (
+    iptu_anual_id,
+    competencia_mes,
+    (COALESCE(contrato_locacao_id, -(iptu_anual_id)))
+);
 
 CREATE TABLE iptu_consulta_debito (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
