@@ -6,7 +6,7 @@
  * Detecção de colunas por texto do cabeçalho (trim + lower + sem acentos).
  *
  * Uso:
- *   node scripts/import-calculos-planilha.mjs "C:\\Users\\...\\import-calculo.xls" [--dry-run] [--login=itamar]
+ *   node scripts/import-calculos-planilha.mjs "C:\\Users\\...\\import-calculo.xls" [--dry-run] [--codigo-cliente=00000491] [--login=itamar]
  *
  * Env: VILAREAL_API_BASE, VILAREAL_IMPORT_SENHA, VILAREAL_IMPORT_CONCURRENCY (default 3)
  *
@@ -153,6 +153,7 @@ function parseArgs(argv) {
     senha: process.env.VILAREAL_IMPORT_SENHA || '',
     baseUrl: (process.env.VILAREAL_API_BASE || 'http://localhost:8080').replace(/\/$/, ''),
     dryRun: false,
+    codigoCliente: null,
     concurrency: Math.min(
       32,
       Math.max(1, Number(process.env.VILAREAL_IMPORT_CONCURRENCY || 3) || 3)
@@ -163,12 +164,37 @@ function parseArgs(argv) {
     else if (a.startsWith('--login=')) out.login = a.slice(8);
     else if (a.startsWith('--senha=')) out.senha = a.slice(8);
     else if (a.startsWith('--base-url=')) out.baseUrl = a.slice(11).replace(/\/$/, '');
+    else if (a.startsWith('--codigo-cliente=')) out.codigoCliente = a.slice(17).trim();
     else if (a.startsWith('--concurrency=')) {
       const n = Number(a.slice(14));
       if (Number.isFinite(n) && n >= 1) out.concurrency = Math.min(32, Math.floor(n));
     } else if (!a.startsWith('-') && !out.file) out.file = a;
   }
   return out;
+}
+
+/** Mantém apenas chaves `${codigo8}|proc|dim`. */
+function filtrarMapPorCodigoCliente(map, codigo8) {
+  if (!codigo8) return map;
+  const out = new Map();
+  const prefix = `${codigo8}|`;
+  for (const [k, v] of map) {
+    if (k.startsWith(prefix)) out.set(k, v);
+  }
+  return out;
+}
+
+function somaMap(m) {
+  let s = 0;
+  for (const v of m.values()) s += v;
+  return s;
+}
+
+/** @param {Map<string, number>} m */
+function formatarContagemPorCliente(m) {
+  const keys = [...m.keys()].sort((a, b) => Number(a) - Number(b));
+  if (!keys.length) return '(nenhum)';
+  return keys.map((k) => `${Number(k)}=${m.get(k)}`).join(', ');
 }
 
 function pickAba1(sheetNames) {
@@ -254,6 +280,8 @@ function sheetToMatrix(wb, sheetName) {
 
 function parseAba1Rows(matrix, col) {
   const parcelasPorChave = new Map();
+  /** Linhas que viram parcela (SIM + chave válida + parcela válida), por código 8 dígitos. */
+  const linhasPorCliente = new Map();
   const start = DATA_START_1BASED - 1;
   for (let i = start; i < matrix.length; i++) {
     const row = matrix[i];
@@ -288,15 +316,18 @@ function parseAba1Rows(matrix, col) {
     }
     if (!parcelasPorChave.has(key)) parcelasPorChave.set(key, []);
     parcelasPorChave.get(key).push(parcela);
+    linhasPorCliente.set(codigoCliente, (linhasPorCliente.get(codigoCliente) ?? 0) + 1);
   }
   for (const [, arr] of parcelasPorChave) {
     arr.sort((a, b) => a.numero - b.numero);
   }
-  return { parcelasPorChave };
+  return { parcelasPorChave, linhasPorCliente };
 }
 
 function parseAba2Rows(matrix, col) {
   const debitosPorChave = new Map();
+  /** Linhas com chave válida que viram débito, por código 8 dígitos. */
+  const linhasPorCliente = new Map();
   const start = DATA_START_1BASED - 1;
   const ordemGlobalPorChave = new Map();
 
@@ -335,8 +366,9 @@ function parseAba2Rows(matrix, col) {
     };
     if (!debitosPorChave.has(key)) debitosPorChave.set(key, []);
     debitosPorChave.get(key).push(debito);
+    linhasPorCliente.set(codigoCliente, (linhasPorCliente.get(codigoCliente) ?? 0) + 1);
   }
-  return { debitosPorChave };
+  return { debitosPorChave, linhasPorCliente };
 }
 
 function buildRodadas(parcelasPorChave, debitosPorChave) {
@@ -430,6 +462,17 @@ function main() {
   const opts = parseArgs(process.argv.slice(2));
   const filePath = opts.file || DEFAULT_FILE;
   const abs = path.isAbsolute(filePath) ? filePath : path.resolve(process.cwd(), filePath);
+
+  let codigoClienteFiltro = null;
+  if (opts.codigoCliente) {
+    codigoClienteFiltro = normalizarCodigoCliente(opts.codigoCliente);
+    if (!codigoClienteFiltro) {
+      console.error('[import-calculos] --codigo-cliente inválido (use ex.: 00000491 ou 491)');
+      process.exit(1);
+    }
+    console.log(`[filtro] processando APENAS codigo_cliente=${codigoClienteFiltro}`);
+  }
+
   if (!fs.existsSync(abs)) {
     console.error(`Ficheiro não encontrado: ${abs}`);
     process.exit(1);
@@ -460,9 +503,28 @@ function main() {
   const col1 = resolveHeaderColumns(header1, ABA1_REQUIRED);
   const col2 = resolveHeaderColumns(header2, ABA2_REQUIRED);
 
-  const { parcelasPorChave } = parseAba1Rows(m1, col1);
-  const { debitosPorChave } = parseAba2Rows(m2, col2);
-  const { items, sortedKeys } = buildRodadas(parcelasPorChave, debitosPorChave);
+  const { parcelasPorChave: parcelasFull, linhasPorCliente: linhasAba1PorCliente } = parseAba1Rows(m1, col1);
+  const { debitosPorChave: debitosFull, linhasPorCliente: linhasAba2PorCliente } = parseAba2Rows(m2, col2);
+
+  const aba1LinhasAntes = somaMap(linhasAba1PorCliente);
+  const aba2LinhasAntes = somaMap(linhasAba2PorCliente);
+
+  let parcelasPorChave = parcelasFull;
+  let debitosPorChave = debitosFull;
+  if (codigoClienteFiltro) {
+    const alvo1 = linhasAba1PorCliente.get(codigoClienteFiltro) ?? 0;
+    const alvo2 = linhasAba2PorCliente.get(codigoClienteFiltro) ?? 0;
+    console.log(
+      `[filtro] aba1 parcelas (linhas): ${aba1LinhasAntes} -> ${alvo1} (outros clientes descartados)`
+    );
+    console.log(
+      `[filtro] aba2 débitos (linhas): ${aba2LinhasAntes} -> ${alvo2} (outros clientes descartados)`
+    );
+    parcelasPorChave = filtrarMapPorCodigoCliente(parcelasFull, codigoClienteFiltro);
+    debitosPorChave = filtrarMapPorCodigoCliente(debitosFull, codigoClienteFiltro);
+  }
+
+  const { items } = buildRodadas(parcelasPorChave, debitosPorChave);
 
   let totalParcelas = 0;
   let totalDebitos = 0;
@@ -475,6 +537,19 @@ function main() {
   const countB = items.filter((i) => i.scenario === 'B').length;
 
   if (opts.dryRun) {
+    console.log('\n[pré-filtro] aba1 parcelas (linhas SIM→parcela válida) por cliente:');
+    console.log(`  ${formatarContagemPorCliente(linhasAba1PorCliente)}  |  total=${aba1LinhasAntes}`);
+    console.log('[pré-filtro] aba2 débitos (linhas com chave válida) por cliente:');
+    console.log(`  ${formatarContagemPorCliente(linhasAba2PorCliente)}  |  total=${aba2LinhasAntes}`);
+    if (codigoClienteFiltro) {
+      const a1 = linhasAba1PorCliente.get(codigoClienteFiltro) ?? 0;
+      const a2 = linhasAba2PorCliente.get(codigoClienteFiltro) ?? 0;
+      console.log('\n[pós-filtro] linhas só do cliente filtrado:');
+      console.log(`  aba1 parcelas=${a1}  aba2 débitos=${a2}  |  soma=${a1 + a2}`);
+    }
+    const codigosRodadas = [...new Set(items.map((i) => i.cod8))].sort((a, b) => Number(a) - Number(b));
+    console.log(`\n[import-calculos] códigos nas rodadas (efetivo): ${codigosRodadas.join(', ') || '(nenhum)'}`);
+
     printDetectedHeaders(`Aba 1 (${name1})`, col1, ABA1_REQUIRED);
     printDetectedHeaders(`Aba 2 (${name2})`, col2, ABA2_REQUIRED);
     console.log(`\n[import-calculos] Rodadas cenário A: ${countA} | cenário B: ${countB} | total chaves: ${items.length}`);

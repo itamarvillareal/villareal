@@ -76,6 +76,8 @@ export function Sidebar({ mobileDrawerOpen = false, onMobileDrawerChange } = {})
     if (
       p === '/imoveis' ||
       p.startsWith('/imoveis/') ||
+      p === '/iptu' ||
+      p.startsWith('/iptu/') ||
       p === '/relatorio-imoveis' ||
       p.startsWith('/relatorio-imoveis/')
     ) {
@@ -141,7 +143,7 @@ export function Sidebar({ mobileDrawerOpen = false, onMobileDrawerChange } = {})
         <Link
           to="/"
           className="block rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-100 dark:focus-visible:ring-offset-[#0f141c]"
-          title="Ir para o painel"
+          title="Ir para a agenda"
         >
           <img
             src="/logo-villareal.png"
@@ -169,6 +171,9 @@ export function Sidebar({ mobileDrawerOpen = false, onMobileDrawerChange } = {})
               }
               if (ch.id === 'relatorio-imoveis') {
                 return path === '/relatorio-imoveis';
+              }
+              if (ch.id === 'iptu') {
+                return path === '/iptu' || path.startsWith('/iptu/');
               }
               return path === `/${ch.id}` || path.startsWith(`/${ch.id}/`);
             });
@@ -235,6 +240,8 @@ export function Sidebar({ mobileDrawerOpen = false, onMobileDrawerChange } = {})
                               ativo = path === '/clientes/relatorio';
                             } else if (ch.id === 'relatorio-imoveis') {
                               ativo = path === '/relatorio-imoveis';
+                            } else if (ch.id === 'iptu') {
+                              ativo = path === '/iptu' || path.startsWith('/iptu/');
                             }
                             return `flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-medium transition-all duration-200 ${
                               ativo

@@ -34,6 +34,8 @@ export const LazyMonitoringPeoplePage = fromNamed(
   'MonitoringPeoplePage'
 );
 export const LazyImoveis = fromNamed(() => import('../components/Imoveis.jsx'), 'Imoveis');
+export const LazyIptu = fromNamed(() => import('../components/Iptu.jsx'), 'Iptu');
+export const LazyIptuDashboard = fromNamed(() => import('../components/IptuDashboard.jsx'), 'IptuDashboard');
 export const LazyImoveisAdministracaoFinanceiro = fromNamed(
   () => import('../components/ImoveisAdministracaoFinanceiro.jsx'),
   'ImoveisAdministracaoFinanceiro'
@@ -48,6 +50,7 @@ export const LazyRelatorioCalculos = fromNamed(() => import('../components/Relat
 export const LazyCalculos = fromNamed(() => import('../components/Calculos.jsx'), 'Calculos');
 export const LazyDiagnosticos = fromNamed(() => import('../components/Diagnosticos.jsx'), 'Diagnosticos');
 export const LazyFinanceiro = fromNamed(() => import('../components/Financeiro.jsx'), 'Financeiro');
+export const LazyPagamentos = fromNamed(() => import('../components/Pagamentos.jsx'), 'Pagamentos');
 export const LazyUsuarios = fromNamed(() => import('../components/Usuarios.jsx'), 'Usuarios');
 export const LazyConfiguracoes = fromNamed(() => import('../components/Configuracoes.jsx'), 'Configuracoes');
 export const LazyTopicos = fromNamed(() => import('../components/Topicos.jsx'), 'Topicos');

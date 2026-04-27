@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { Fragment, useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { CalendarDays, CalendarX2, ChevronLeft, ChevronRight, Plus, X } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -410,6 +410,8 @@ function ColunaDia({
       ? 'bg-gradient-to-r from-indigo-700 via-violet-700 to-purple-800'
       : 'bg-gradient-to-r from-sky-600 via-cyan-600 to-teal-600';
 
+  const colspanCorpoAgenda = mostrarColunaUsuario ? 4 : 3;
+
   return (
     <div className="flex w-full min-w-0 shrink-0 flex-col overflow-hidden rounded-2xl border border-slate-200/90 bg-white/95 shadow-md ring-1 ring-slate-200/60 lg:min-h-0 lg:flex-1">
       <div
@@ -427,24 +429,26 @@ function ColunaDia({
           {eventos.map((ev) => (
             <div
               key={ev._chaveUnicaAgenda ?? ev.id}
-              className={`relative rounded-xl border border-slate-200/90 bg-white p-3 pt-9 shadow-sm ring-1 ring-slate-100/80 ${
+              className={`rounded-xl border border-slate-200/90 bg-white p-3 shadow-sm ring-1 ring-slate-100/80 ${
                 ev.destaque ? 'bg-amber-50/90' : ''
               }`}
               onDoubleClick={() => onDuploCliqueEvento?.(ev)}
             >
               {!somenteLeitura && onExcluirEvento && eventoAgendaPodeExcluir(ev, usarApiAgenda) ? (
-                <button
-                  type="button"
-                  className="absolute right-2 top-2 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-rose-200/90 bg-white text-rose-600 shadow-sm hover:bg-rose-50 hover:border-rose-300"
-                  aria-label="Eliminar compromisso"
-                  title="Eliminar compromisso"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    solicitarExclusaoCompromisso(ev);
-                  }}
-                >
-                  <X className="h-4 w-4" strokeWidth={2.25} aria-hidden />
-                </button>
+                <div className="-mt-1 mb-2 flex justify-end">
+                  <button
+                    type="button"
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-rose-200/90 bg-white text-rose-600 shadow-sm hover:bg-rose-50 hover:border-rose-300"
+                    aria-label="Eliminar compromisso"
+                    title="Eliminar compromisso"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      solicitarExclusaoCompromisso(ev);
+                    }}
+                  >
+                    <X className="h-4 w-4" strokeWidth={2.25} aria-hidden />
+                  </button>
+                </div>
               ) : null}
               <div className="flex flex-col gap-3">
                 <div className="flex flex-wrap items-start gap-3">
@@ -547,86 +551,82 @@ function ColunaDia({
                 ) : null}
                 <th className="px-2 py-2 text-left text-xs font-semibold">Descrição</th>
                 <th className="w-[92px] px-1 py-2 text-right text-xs font-semibold">Status</th>
-                {!somenteLeitura && onExcluirEvento ? (
-                  <th className="w-10 px-0 py-2 text-center text-xs font-semibold">
-                    <span className="sr-only">Eliminar</span>
-                  </th>
-                ) : null}
               </tr>
             </thead>
             <tbody>
               {eventos.map((ev) => (
-                <tr
-                  key={ev._chaveUnicaAgenda ?? ev.id}
-                  className={`min-h-[42px] overflow-hidden border-b border-slate-100 transition-colors hover:bg-indigo-50/40 ${
-                    ev.destaque ? 'bg-amber-100/90' : ''
-                  }`}
-                  onDoubleClick={() => onDuploCliqueEvento?.(ev)}
-                >
-                  <td className="w-[96px] px-2 py-1.5 align-top text-sm">
-                    <EditableTextCell
-                      texto={ev.hora ?? ''}
-                      align="left"
-                      maxLen={12}
-                      readOnly={somenteLeitura}
-                      onDuploClique={() => onDuploCliqueEvento?.(ev)}
-                      onSalvar={(novo) => {
-                        if (!dataBrStr) return;
-                        onSalvarCampos?.(ev, { hora: novo });
-                      }}
-                    />
-                  </td>
-                  {mostrarColunaUsuario ? (
-                    <td className="w-[100px] px-2 py-1.5 align-top text-xs text-gray-600 truncate" title={resolverNomeUsuario?.(ev) ?? ''}>
-                      {resolverNomeUsuario?.(ev) ?? '—'}
-                    </td>
+                <Fragment key={ev._chaveUnicaAgenda ?? ev.id}>
+                  {!somenteLeitura && onExcluirEvento && eventoAgendaPodeExcluir(ev, usarApiAgenda) ? (
+                    <tr className="border-b-0 hover:bg-transparent">
+                      <td colSpan={colspanCorpoAgenda} className="px-2 pb-1 pt-0.5">
+                        <div className="flex justify-end">
+                          <button
+                            type="button"
+                            className="flex h-7 w-7 items-center justify-center rounded-lg border border-rose-200/90 bg-white text-rose-600 shadow-sm hover:bg-rose-50"
+                            aria-label="Eliminar compromisso"
+                            title="Eliminar compromisso"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              solicitarExclusaoCompromisso(ev);
+                            }}
+                          >
+                            <X className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
                   ) : null}
-                  <td className="min-w-0 px-2 py-1.5 align-top text-sm">
-                    <EditableTextCell
-                      texto={ev.descricao ?? ''}
-                      multiline
-                      align="left"
-                      maxLen={2000}
-                      temaPorPalavraChave
-                      readOnly={somenteLeitura}
-                      onDuploClique={() => onDuploCliqueEvento?.(ev)}
-                      onSalvar={(novo) => {
-                        if (!dataBrStr) return;
-                        onSalvarCampos?.(ev, { descricao: novo });
-                      }}
-                    />
-                  </td>
-                  <td className="w-[92px] px-0 py-1.5 align-top text-right">
-                    <StatusCurtoCell
-                      evento={ev}
-                      readOnly={somenteLeitura}
-                      onSalvar={(novo) => {
-                        if (!dataBrStr) return;
-                        onSalvarCampos?.(ev, { statusCurto: novo });
-                      }}
-                    />
-                  </td>
-                  {!somenteLeitura && onExcluirEvento ? (
-                    <td className="w-10 px-0 py-1 align-top text-center">
-                      {eventoAgendaPodeExcluir(ev, usarApiAgenda) ? (
-                        <button
-                          type="button"
-                          className="mx-auto flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200/90 bg-white text-rose-600 hover:bg-rose-50"
-                          aria-label="Eliminar compromisso"
-                          title="Eliminar compromisso"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            solicitarExclusaoCompromisso(ev);
-                          }}
-                        >
-                          <X className="h-4 w-4" strokeWidth={2.25} aria-hidden />
-                        </button>
-                      ) : (
-                        <span className="inline-block w-8" aria-hidden />
-                      )}
+                  <tr
+                    className={`min-h-[42px] overflow-hidden border-b border-slate-100 transition-colors hover:bg-indigo-50/40 ${
+                      ev.destaque ? 'bg-amber-100/90' : ''
+                    }`}
+                    onDoubleClick={() => onDuploCliqueEvento?.(ev)}
+                  >
+                    <td className="w-[96px] px-2 py-1.5 align-top text-sm">
+                      <EditableTextCell
+                        texto={ev.hora ?? ''}
+                        align="left"
+                        maxLen={12}
+                        readOnly={somenteLeitura}
+                        onDuploClique={() => onDuploCliqueEvento?.(ev)}
+                        onSalvar={(novo) => {
+                          if (!dataBrStr) return;
+                          onSalvarCampos?.(ev, { hora: novo });
+                        }}
+                      />
                     </td>
-                  ) : null}
-                </tr>
+                    {mostrarColunaUsuario ? (
+                      <td className="w-[100px] px-2 py-1.5 align-top text-xs text-gray-600 truncate" title={resolverNomeUsuario?.(ev) ?? ''}>
+                        {resolverNomeUsuario?.(ev) ?? '—'}
+                      </td>
+                    ) : null}
+                    <td className="min-w-0 px-2 py-1.5 align-top text-sm">
+                      <EditableTextCell
+                        texto={ev.descricao ?? ''}
+                        multiline
+                        align="left"
+                        maxLen={2000}
+                        temaPorPalavraChave
+                        readOnly={somenteLeitura}
+                        onDuploClique={() => onDuploCliqueEvento?.(ev)}
+                        onSalvar={(novo) => {
+                          if (!dataBrStr) return;
+                          onSalvarCampos?.(ev, { descricao: novo });
+                        }}
+                      />
+                    </td>
+                    <td className="w-[92px] px-0 py-1.5 align-top text-right">
+                      <StatusCurtoCell
+                        evento={ev}
+                        readOnly={somenteLeitura}
+                        onSalvar={(novo) => {
+                          if (!dataBrStr) return;
+                          onSalvarCampos?.(ev, { statusCurto: novo });
+                        }}
+                      />
+                    </td>
+                  </tr>
+                </Fragment>
               ))}
               {Array.from({ length: linhasPreenchimento }, (_, i) => (
                 <tr
@@ -640,7 +640,6 @@ function ColunaDia({
                   ) : null}
                   <td className="min-w-0 px-2 py-1.5 align-top text-sm text-slate-200 select-none">&nbsp;</td>
                   <td className="w-[92px] px-0 py-1.5 align-top text-right">&nbsp;</td>
-                  {!somenteLeitura && onExcluirEvento ? <td className="w-10 px-0 py-1.5 align-top" aria-hidden /> : null}
                 </tr>
               ))}
               {!somenteLeitura ? (
@@ -665,7 +664,6 @@ function ColunaDia({
                   <td className="w-[92px] px-0 py-1.5 align-top text-right">
                     <StatusCurtoCell evento={{ statusCurto: '' }} onSalvar={(novo) => salvarLinhaVazia({ statusCurto: novo })} />
                   </td>
-                  {onExcluirEvento ? <td className="w-10 px-0 py-1.5 align-top" aria-hidden /> : null}
                 </tr>
               ) : null}
             </tbody>
@@ -1479,68 +1477,72 @@ export function Agenda({ focoDataBr = null, focoRevision = 0, modoFlutuante = fa
                               ) : null}
                               <th className="text-left px-3 py-2 font-semibold text-slate-800">Descrição</th>
                               <th className="text-right px-3 py-2 font-semibold text-slate-800 w-[72px]">Status</th>
-                              <th className="w-10 px-1 py-2 text-center font-semibold text-slate-800">
-                                <span className="sr-only">Eliminar</span>
-                              </th>
                             </tr>
                           </thead>
                           <tbody>
-                            {eventos.map((ev) => (
-                              <tr key={`${dataBr}-${ev.id}`} className="border-b border-slate-100 last:border-0 hover:bg-indigo-50/30 transition-colors">
-                                <td className="px-3 py-2 align-top text-slate-800 whitespace-nowrap">
-                                  {ev.hora ? ev.hora : '—'}
-                                </td>
-                                {relatorioAgendaMensal.todosUsuarios ? (
-                                  <td className="px-3 py-2 align-top text-slate-700 text-xs truncate max-w-[120px]">
-                                    {String(ev.usuarioNome ?? '').trim()
-                                      ? String(ev.usuarioNome).trim()
-                                      : resolverNomeUsuarioAgenda(ev)}
-                                  </td>
-                                ) : null}
-                                <td className="px-3 py-2 align-top text-slate-800 whitespace-pre-wrap break-words">
-                                  {ev.descricao ? ev.descricao : '—'}
-                                </td>
-                                <td className="px-3 py-2 align-top text-right text-slate-800">
-                                  {normalizarStatusCurtoAgenda(ev.statusCurto) === 'OK' ? 'OK' : '—'}
-                                </td>
-                                <td className="px-1 py-1.5 align-top text-center">
+                            {eventos.map((ev) => {
+                              const colspanMensal = relatorioAgendaMensal.todosUsuarios ? 4 : 3;
+                              return (
+                                <Fragment key={`${dataBr}-${ev.id}`}>
                                   {eventoAgendaPodeExcluir(ev, featureFlags.useApiAgenda) ? (
-                                    <button
-                                      type="button"
-                                      className="mx-auto flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200/90 bg-white text-rose-600 hover:bg-rose-50"
-                                      aria-label="Eliminar compromisso"
-                                      title="Eliminar compromisso"
-                                      onClick={() => {
-                                        void (async () => {
-                                          const trecho = [String(ev.hora ?? '').trim(), String(ev.descricao ?? '').trim().slice(0, 200)]
-                                            .filter(Boolean)
-                                            .join(' — ');
-                                          const msg = trecho
-                                            ? `Eliminar este compromisso?\n\n${trecho}${trecho.length >= 200 ? '…' : ''}`
-                                            : 'Eliminar este compromisso?';
-                                          if (!window.confirm(msg)) return;
-                                          const uid =
-                                            String(ev.usuarioId ?? '').trim() ||
-                                            String(usuarioEsquerda ?? '').trim();
-                                          const r = await excluirEvento(dataBr, { ...ev, usuarioId: uid });
-                                          if (r && r.ok === false && r.reason === 'nao-encontrado') {
-                                            window.alert(
-                                              'Não foi possível eliminar este compromisso (pode ser um registo só de demonstração).'
-                                            );
-                                            return;
-                                          }
-                                          setAgendaStatusNonce((n) => n + 1);
-                                        })();
-                                      }}
-                                    >
-                                      <X className="h-4 w-4" strokeWidth={2.25} aria-hidden />
-                                    </button>
-                                  ) : (
-                                    <span className="inline-block w-8" aria-hidden />
-                                  )}
-                                </td>
-                              </tr>
-                            ))}
+                                    <tr className="border-b-0 hover:bg-transparent">
+                                      <td colSpan={colspanMensal} className="px-3 pb-1 pt-0.5">
+                                        <div className="flex justify-end">
+                                          <button
+                                            type="button"
+                                            className="flex h-7 w-7 items-center justify-center rounded-lg border border-rose-200/90 bg-white text-rose-600 shadow-sm hover:bg-rose-50"
+                                            aria-label="Eliminar compromisso"
+                                            title="Eliminar compromisso"
+                                            onClick={() => {
+                                              void (async () => {
+                                                const trecho = [String(ev.hora ?? '').trim(), String(ev.descricao ?? '').trim().slice(0, 200)]
+                                                  .filter(Boolean)
+                                                  .join(' — ');
+                                                const msg = trecho
+                                                  ? `Eliminar este compromisso?\n\n${trecho}${trecho.length >= 200 ? '…' : ''}`
+                                                  : 'Eliminar este compromisso?';
+                                                if (!window.confirm(msg)) return;
+                                                const uid =
+                                                  String(ev.usuarioId ?? '').trim() ||
+                                                  String(usuarioEsquerda ?? '').trim();
+                                                const r = await excluirEvento(dataBr, { ...ev, usuarioId: uid });
+                                                if (r && r.ok === false && r.reason === 'nao-encontrado') {
+                                                  window.alert(
+                                                    'Não foi possível eliminar este compromisso (pode ser um registo só de demonstração).'
+                                                  );
+                                                  return;
+                                                }
+                                                setAgendaStatusNonce((n) => n + 1);
+                                              })();
+                                            }}
+                                          >
+                                            <X className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
+                                          </button>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  ) : null}
+                                  <tr className="border-b border-slate-100 last:border-0 hover:bg-indigo-50/30 transition-colors">
+                                    <td className="px-3 py-2 align-top text-slate-800 whitespace-nowrap">
+                                      {ev.hora ? ev.hora : '—'}
+                                    </td>
+                                    {relatorioAgendaMensal.todosUsuarios ? (
+                                      <td className="px-3 py-2 align-top text-slate-700 text-xs truncate max-w-[120px]">
+                                        {String(ev.usuarioNome ?? '').trim()
+                                          ? String(ev.usuarioNome).trim()
+                                          : resolverNomeUsuarioAgenda(ev)}
+                                      </td>
+                                    ) : null}
+                                    <td className="px-3 py-2 align-top text-slate-800 whitespace-pre-wrap break-words">
+                                      {ev.descricao ? ev.descricao : '—'}
+                                    </td>
+                                    <td className="px-3 py-2 align-top text-right text-slate-800">
+                                      {normalizarStatusCurtoAgenda(ev.statusCurto) === 'OK' ? 'OK' : '—'}
+                                    </td>
+                                  </tr>
+                                </Fragment>
+                              );
+                            })}
                           </tbody>
                         </table>
                       </div>

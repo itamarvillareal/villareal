@@ -11,6 +11,7 @@ br.com.vilareal
 ├── security             — JwtService, filtro, UserDetailsService
 ├── pessoa/              — cadastro-pessoas, complementares, endereços, contatos, GET /api/clientes
 ├── processo/            — processos judiciais (paridade Processos.jsx)
+├── iptu/                — IPTU anual, parcelas ao contrato, consultas à prefeitura (`/api/iptu`), job diário de atraso
 ├── usuario/             — CRUD usuário, perfis
 └── auth/                — login, /me
 ```
