@@ -7,7 +7,11 @@
  */
 
 import { useId } from 'react';
-import { Calculator as LucideCalculator } from 'lucide-react';
+import { Calculator as LucideCalculator, Receipt, Wallet } from 'lucide-react';
+
+function IconIptuMenu({ className }) {
+  return <Receipt className={className} strokeWidth={2} aria-hidden />;
+}
 
 const shadow = { filter: 'drop-shadow(0 1px 1px rgb(0 0 0 / 0.1))' };
 
@@ -479,6 +483,12 @@ function IconGerenteTopicos({ className }) {
   );
 }
 
+function IconPagamentosMenu({ className }) {
+  return (
+    <Wallet className={`block shrink-0 ${className ?? ''}`} strokeWidth={1.75} style={shadow} aria-hidden />
+  );
+}
+
 function IconConfiguracoes({ className }) {
   const uid = useId().replace(/:/g, '');
   const g1 = `cfg1-${uid}`;
@@ -520,6 +530,7 @@ const MENU_ICONS = {
   'relatorio-calculos': IconRelatorioCalculos,
   'admin-imoveis-grupo': IconLandmarkImoveis,
   imoveis: IconBuilding,
+  iptu: IconIptuMenu,
   'imoveis/relatorio-financeiro': IconFinanceiro,
   'relatorio-imoveis': IconSpreadsheet,
   agenda: IconAgenda,
@@ -527,6 +538,7 @@ const MENU_ICONS = {
   atividade: IconAtividade,
   'atividades-em-lote': IconTopicos,
   financeiro: IconFinanceiro,
+  pagamentos: IconPagamentosMenu,
   pendencias: IconPendencias,
   'topicos-grupo': IconTopicos,
   topicos: IconTopicos,

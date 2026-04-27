@@ -4,6 +4,7 @@ import br.com.vilareal.common.exception.BusinessRuleException;
 import br.com.vilareal.common.exception.ResourceNotFoundException;
 import br.com.vilareal.imovel.api.dto.*;
 import br.com.vilareal.imovel.infrastructure.persistence.entity.*;
+import br.com.vilareal.imovel.application.event.ContratoLocacaoAlteradoEvent;
 import br.com.vilareal.imovel.infrastructure.persistence.repository.*;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
@@ -12,6 +13,7 @@ import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaReposi
 import br.com.vilareal.processo.application.CodigoClienteUtil;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -29,6 +31,7 @@ public class ImovelApplicationService {
     private final PessoaRepository pessoaRepository;
     private final ClienteRepository clienteRepository;
     private final ProcessoRepository processoRepository;
+    private final ApplicationEventPublisher applicationEventPublisher;
 
     public ImovelApplicationService(
             ImovelRepository imovelRepository,
@@ -37,7 +40,8 @@ public class ImovelApplicationService {
             LocacaoDespesaRepository locacaoDespesaRepository,
             PessoaRepository pessoaRepository,
             ClienteRepository clienteRepository,
-            ProcessoRepository processoRepository) {
+            ProcessoRepository processoRepository,
+            ApplicationEventPublisher applicationEventPublisher) {
         this.imovelRepository = imovelRepository;
         this.contratoLocacaoRepository = contratoLocacaoRepository;
         this.locacaoRepasseRepository = locacaoRepasseRepository;
@@ -45,6 +49,7 @@ public class ImovelApplicationService {
         this.pessoaRepository = pessoaRepository;
         this.clienteRepository = clienteRepository;
         this.processoRepository = processoRepository;
+        this.applicationEventPublisher = applicationEventPublisher;
     }
 
     @Transactional(readOnly = true)
@@ -120,6 +125,10 @@ public class ImovelApplicationService {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Publica {@link ContratoLocacaoAlteradoEvent} após commit para recálculo de IPTU (ver
+     * {@link br.com.vilareal.iptu.application.IptuContratoRecalculoListener}).
+     */
     @Transactional
     public ContratoLocacaoResponse criarContrato(ContratoLocacaoWriteRequest req) {
         ImovelEntity im = requireImovel(req.getImovelId());
@@ -127,9 +136,11 @@ public class ImovelApplicationService {
         c.setImovel(im);
         aplicarContrato(c, req);
         c = contratoLocacaoRepository.save(c);
+        applicationEventPublisher.publishEvent(new ContratoLocacaoAlteradoEvent(c.getId()));
         return toContratoResponse(requireContrato(c.getId()));
     }
 
+    /** @see #criarContrato(ContratoLocacaoWriteRequest) */
     @Transactional
     public ContratoLocacaoResponse atualizarContrato(Long id, ContratoLocacaoWriteRequest req) {
         ContratoLocacaoEntity c = requireContrato(id);
@@ -138,6 +149,7 @@ public class ImovelApplicationService {
         }
         aplicarContrato(c, req);
         contratoLocacaoRepository.save(c);
+        applicationEventPublisher.publishEvent(new ContratoLocacaoAlteradoEvent(id));
         return toContratoResponse(requireContrato(id));
     }
 

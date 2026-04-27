@@ -9,6 +9,12 @@ Interface web do projeto jurídico **VILA real**, baseada no layout do sistema e
 - **React Router DOM** – navegação
 - **Lucide React** – ícones
 
+## IPTU (módulo novo)
+
+- Rotas: `/iptu` (dashboard consolidado) e `/iptu/:imovelId` (cadastro anual, parcelas, histórico de consultas à prefeitura).
+- Requer API de imóveis (`VITE_USE_API_IMOVEIS=true`) e backend com migration **V38** aplicada.
+- Rollback de UI na tela **Imóveis**: defina `VITE_FEATURE_IPTU_NOVO=false` (padrão é habilitado).
+
 ## Estrutura
 
 - **Sidebar**: Início, Clientes, Processos, Agenda, Relatório, Pendências, Diligências, Dativos

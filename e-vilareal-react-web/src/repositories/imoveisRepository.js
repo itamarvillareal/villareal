@@ -1,5 +1,5 @@
 import { request } from '../api/httpClient.js';
-import { featureFlags } from '../config/featureFlags.js';
+import { featureFlags, FEATURE_IPTU_NOVO } from '../config/featureFlags.js';
 import { montarPainelAdministracaoImovel } from '../data/imoveisAdministracaoFinanceiro.js';
 
 // -----------------------------------------------------------------------------
@@ -120,8 +120,14 @@ export function mapMockToUi(mock, imovelId) {
     diaPagAluguel: String(mock.diaPagAluguel ?? ''),
     dataPag1TxCond: String(mock.dataPag1TxCond ?? ''),
     inscricaoImobiliaria: String(mock.inscricaoImobiliaria ?? ''),
-    existeDebIptu: String(mock.existeDebIptu ?? ''),
-    dataConsIptu: String(mock.dataConsIptu ?? ''),
+    numeroPlanilhaColA: Number.isFinite(Number(imovelId)) ? Number(imovelId) : null,
+    ...(FEATURE_IPTU_NOVO
+      ? {}
+      : {
+          existeDebIptu: String(mock.existeDebIptu ?? ''),
+          dataConsIptu: String(mock.dataConsIptu ?? ''),
+          infoIptuTexto: String(mock.infoIptuTexto ?? ''),
+        }),
     aguaNumero: String(mock.aguaNumero ?? ''),
     dataConsAgua: String(mock.dataConsAgua ?? ''),
     existeDebAgua: String(mock.existeDebAgua ?? ''),
@@ -155,7 +161,6 @@ export function mapMockToUi(mock, imovelId) {
     inquilino: String(mock.inquilino ?? ''),
     inquilinoCpf: String(mock.inquilinoCpf ?? ''),
     inquilinoContato: String(mock.inquilinoContato ?? ''),
-    infoIptuTexto: String(mock.infoIptuTexto ?? ''),
     contratoAssinadoInquilino: 'nao',
     contratoAssinadoProprietario: 'nao',
     contratoAssinadoGarantidor: 'nao',
@@ -198,8 +203,15 @@ function mapApiToUi(imovel, contrato) {
     diaPagAluguel: contrato?.diaVencimentoAluguel != null ? String(contrato.diaVencimentoAluguel).padStart(2, '0') : '',
     dataPag1TxCond: String(extras.dataPag1TxCond ?? ''),
     inscricaoImobiliaria: String(imovel?.inscricaoImobiliaria ?? ''),
-    existeDebIptu: String(extras.existeDebIptu ?? ''),
-    dataConsIptu: String(extras.dataConsIptu ?? ''),
+    // IPTU: dedicated module (V38). Legacy JSON keys are only mapped when rollback flag is off.
+    numeroPlanilhaColA: np != null && Number.isFinite(np) ? np : null,
+    ...(FEATURE_IPTU_NOVO
+      ? {}
+      : {
+          existeDebIptu: String(extras.existeDebIptu ?? ''),
+          dataConsIptu: String(extras.dataConsIptu ?? ''),
+          infoIptuTexto: String(extras.infoIptuTexto ?? ''),
+        }),
     aguaNumero: String(extras.aguaNumero ?? ''),
     dataConsAgua: String(extras.dataConsAgua ?? ''),
     existeDebAgua: String(extras.existeDebAgua ?? ''),
@@ -233,7 +245,6 @@ function mapApiToUi(imovel, contrato) {
     inquilino: String(extras.inquilino ?? ''),
     inquilinoCpf: String(extras.inquilinoCpf ?? ''),
     inquilinoContato: String(extras.inquilinoContato ?? ''),
-    infoIptuTexto: String(extras.infoIptuTexto ?? ''),
     contratoAssinadoInquilino: String(extras.contratoAssinadoInquilino ?? 'nao'),
     contratoAssinadoProprietario: String(extras.contratoAssinadoProprietario ?? 'nao'),
     contratoAssinadoGarantidor: String(extras.contratoAssinadoGarantidor ?? 'nao'),
@@ -268,8 +279,13 @@ function montarPayloadImovelFromUi(ui, clienteId, processoId) {
     proc: String(ui.proc ?? ''),
     observacoesInquilino: String(ui.observacoesInquilino ?? ''),
     dataPag1TxCond: String(ui.dataPag1TxCond ?? ''),
-    existeDebIptu: String(ui.existeDebIptu ?? ''),
-    dataConsIptu: String(ui.dataConsIptu ?? ''),
+    ...(!FEATURE_IPTU_NOVO
+      ? {
+          existeDebIptu: String(ui.existeDebIptu ?? ''),
+          dataConsIptu: String(ui.dataConsIptu ?? ''),
+          infoIptuTexto: String(ui.infoIptuTexto ?? ''),
+        }
+      : {}),
     aguaNumero: String(ui.aguaNumero ?? ''),
     dataConsAgua: String(ui.dataConsAgua ?? ''),
     existeDebAgua: String(ui.existeDebAgua ?? ''),
@@ -291,7 +307,6 @@ function montarPayloadImovelFromUi(ui, clienteId, processoId) {
     inquilino: String(ui.inquilino ?? ''),
     inquilinoCpf: String(ui.inquilinoCpf ?? ''),
     inquilinoContato: String(ui.inquilinoContato ?? ''),
-    infoIptuTexto: String(ui.infoIptuTexto ?? ''),
     contratoAssinadoInquilino: String(ui.contratoAssinadoInquilino ?? 'nao'),
     contratoAssinadoProprietario: String(ui.contratoAssinadoProprietario ?? 'nao'),
     contratoAssinadoGarantidor: String(ui.contratoAssinadoGarantidor ?? 'nao'),

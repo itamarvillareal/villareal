@@ -17,9 +17,12 @@ import {
   LazyConfiguracoes,
   LazyDiagnosticos,
   LazyFinanceiro,
+  LazyPagamentos,
   LazyGerenteTopicos,
   LazyIntegracoesTribunalScraperLab,
   LazyImoveis,
+  LazyIptu,
+  LazyIptuDashboard,
   LazyImoveisAdministracaoFinanceiro,
   LazyMonitoringPeoplePage,
   LazyProcessos,
@@ -167,7 +170,7 @@ function Layout() {
         <Link
           to="/"
           className="flex min-h-11 min-w-0 flex-1 items-center justify-center rounded-lg px-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50"
-          title="Ir para o painel"
+          title="Ir para a agenda"
         >
           <img
             src="/logo-villareal.png"
@@ -309,7 +312,7 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route element={<ProtectedRoute />}>
             <Route element={<Layout />}>
-              <Route path="/" element={<LazyBoard />} />
+              <Route path="/" element={<Navigate to="/agenda" replace />} />
               <Route path="/clientes" element={<RedirectClientesParaLista />} />
               <Route path="/clientes/lista" element={<LazyCadastroPessoas />} />
               <Route path="/clientes/relatorio" element={<LazyRelatorioPessoas />} />
@@ -324,6 +327,8 @@ function App() {
               <Route path="/processos/publicacoes" element={<LazyPublicacoesProcessos />} />
               <Route path="/processos/monitoramento" element={<LazyMonitoringPeoplePage />} />
               <Route path="/imoveis" element={<LazyImoveis />} />
+              <Route path="/iptu/:imovelId" element={<LazyIptu />} />
+              <Route path="/iptu" element={<LazyIptuDashboard />} />
               <Route path="/imoveis/financeiro" element={<LazyImoveisAdministracaoFinanceiro />} />
               <Route path="/imoveis/relatorio-financeiro" element={<LazyRelatorioFinanceiroImoveis />} />
               <Route path="/relatorio-imoveis" element={<LazyRelatorioImoveis />} />
@@ -335,6 +340,7 @@ function App() {
               <Route path="/diagnosticos" element={<LazyDiagnosticos />} />
               <Route path="/integracoes/scraper-lab" element={<LazyIntegracoesTribunalScraperLab />} />
               <Route path="/financeiro" element={<LazyFinanceiro />} />
+              <Route path="/pagamentos" element={<LazyPagamentos />} />
               <Route path="/usuarios" element={<LazyUsuarios />} />
               <Route path="/configuracoes" element={<LazyConfiguracoes />} />
               <Route path="/diligencias" element={<Navigate to="/pendencias" replace />} />

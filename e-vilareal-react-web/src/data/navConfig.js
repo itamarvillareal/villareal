@@ -10,6 +10,7 @@ export const navItems = [
     icon: 'Landmark',
     children: [
       { id: 'imoveis', label: 'Imóveis', icon: 'Building2' },
+      { id: 'iptu', label: 'IPTU', icon: 'Receipt' },
       { id: 'imoveis/relatorio-financeiro', label: 'Relatório Financeiro Imóveis', icon: 'CircleDollarSign' },
       { id: 'relatorio-imoveis', label: 'Relatório Imóveis', icon: 'FileSpreadsheet' },
     ],
@@ -49,6 +50,7 @@ export const navItems = [
   { id: 'atividade', label: 'Atividade', icon: 'ClipboardList' },
   { id: 'atividades-em-lote', label: 'Atividades em Lote', icon: 'Layers' },
   { id: 'financeiro', label: 'Financeiro', icon: 'CircleDollarSign' },
+  { id: 'pagamentos', label: 'Pagamentos', icon: 'Wallet' },
   { id: 'pendencias', label: 'Pendências', icon: 'AlertTriangle' },
   {
     id: 'topicos-grupo',

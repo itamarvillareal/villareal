@@ -10,17 +10,9 @@ import {
   salvarImovelCadastro,
 } from '../repositories/imoveisRepository.js';
 import { buscarCliente } from '../api/clientesService.js';
-import { featureFlags } from '../config/featureFlags.js';
+import { featureFlags, FEATURE_IPTU_NOVO } from '../config/featureFlags.js';
 import { buildRouterStateChaveClienteProcesso } from '../domain/camposProcessoCliente.js';
-
-function Field({ label, children, className = '' }) {
-  return (
-    <div className={className}>
-      <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1.5 tracking-tight">{label}</label>
-      {children}
-    </div>
-  );
-}
+import { Field } from './ui/Field.jsx';
 
 const utilAccentTop = {
   agua: 'border-t-sky-500/70 dark:border-t-sky-400/55',
@@ -895,7 +887,7 @@ export function Imoveis() {
 
             {/* Garantia, locação, IPTU */}
             <section className="imoveis-admin-section rounded-2xl border border-slate-200/90 dark:border-white/[0.08] bg-slate-50/80 dark:bg-white/[0.025] p-5 sm:p-6 md:p-7 space-y-5 sm:space-y-6 shadow-sm">
-              <h2 className={sectionHeading}>Garantia, locação e IPTU</h2>
+              <h2 className={sectionHeading}>{FEATURE_IPTU_NOVO ? 'Garantia e locação' : 'Garantia, locação e IPTU'}</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
                 <Field label="Garantia">
                   <input type="text" value={garantia} onChange={(e) => setGarantia(e.target.value)} className={inputClass} />
@@ -934,17 +926,33 @@ export function Imoveis() {
                 <Field label="Inscrição Imobiliária" className="sm:col-span-2">
                   <input type="text" value={inscricaoImobiliaria} onChange={(e) => setInscricaoImobiliaria(e.target.value)} className={inputClass} />
                 </Field>
-                <Field label="Existe Deb. IPTU">
-                  <input type="text" value={existeDebIptu} onChange={(e) => setExisteDebIptu(e.target.value)} className={inputClass} />
-                </Field>
-                <Field label="Data Cons.">
-                  <input type="text" value={dataConsIptu} onChange={(e) => setDataConsIptu(e.target.value)} className={inputClass} />
-                </Field>
-                <div className="sm:col-span-2 lg:col-span-1 flex pb-0.5">
-                  <button type="button" onClick={() => setShowModalIptu(true)} className={`${btnPrimary} w-full sm:w-auto`}>
-                    IPTU
-                  </button>
-                </div>
+                {!FEATURE_IPTU_NOVO ? (
+                  <>
+                    <Field label="Existe Deb. IPTU">
+                      <input type="text" value={existeDebIptu} onChange={(e) => setExisteDebIptu(e.target.value)} className={inputClass} />
+                    </Field>
+                    <Field label="Data Cons.">
+                      <input type="text" value={dataConsIptu} onChange={(e) => setDataConsIptu(e.target.value)} className={inputClass} />
+                    </Field>
+                    <div className="sm:col-span-2 lg:col-span-1 flex pb-0.5">
+                      <button type="button" onClick={() => setShowModalIptu(true)} className={`${btnPrimary} w-full sm:w-auto`}>
+                        IPTU
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <div className="sm:col-span-2 flex pb-0.5">
+                    {featureFlags.useApiImoveis && Number(_apiImovelId) > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/iptu/${_apiImovelId}`)}
+                        className={`${btnPrimary} w-full sm:w-auto`}
+                      >
+                        Gerenciar IPTU
+                      </button>
+                    ) : null}
+                  </div>
+                )}
               </div>
             </section>
 
@@ -1337,8 +1345,8 @@ export function Imoveis() {
         </div>
       )}
 
-      {/* Modal Informações sobre o IPTU */}
-      {showModalIptu && (
+      {/* Modal Informações sobre o IPTU (legado; desligado quando FEATURE_IPTU_NOVO) */}
+      {!FEATURE_IPTU_NOVO && showModalIptu && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
           onClick={() => setShowModalIptu(false)}

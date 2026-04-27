@@ -10,6 +10,9 @@
  * perfis/permissões granulares (`/api/perfis`, `/api/permissoes` — ver `perfisPermissoesRepository.js`).
  * Muito estado de UI (colunas de relatório, presets, extratos em massa no navegador) permanece em localStorage de propósito.
  */
+/** When `false`, Imóveis keeps the legacy IPTU fields/modal (rollback). Default: enabled. */
+export const FEATURE_IPTU_NOVO = import.meta.env.VITE_FEATURE_IPTU_NOVO !== 'false';
+
 export const featureFlags = {
   useApiUsuarios: import.meta.env.VITE_USE_API_USUARIOS === 'true',
   useApiClientes: import.meta.env.VITE_USE_API_CLIENTES === 'true',
@@ -40,6 +43,8 @@ export const featureFlags = {
    * Nome da env mantido por compatibilidade: `VITE_SHOW_TRIBUNAL_SCRAPER_LAB`.
    */
   showTribunalScraperLab: import.meta.env.VITE_SHOW_TRIBUNAL_SCRAPER_LAB === 'true',
+  /** Delegates to {@link FEATURE_IPTU_NOVO} for `featureFlags.*` style access. */
+  iptuNovo: FEATURE_IPTU_NOVO,
 };
 
 export function isApiEnabled(flagName) {

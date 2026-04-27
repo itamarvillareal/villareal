@@ -314,12 +314,15 @@ export function getPerfilAtivoParaPermissoes() {
   return getOperadorEstacaoId();
 }
 
-/** Primeira rota permitida para o perfil (evita loop ao negar o módulo atual). */
+/** Primeira rota permitida para o perfil (evita loop ao negar o módulo atual). A raiz `/` redireciona à agenda. */
 export function getPrimeiraRotaPermitida(userId) {
   for (const m of MODULOS_PERMISSAO) {
-    if (usuarioPodeAcessarModulo(userId, m.id)) {
-      return m.id === 'inicio' ? '/' : `/${m.id}`;
+    if (!usuarioPodeAcessarModulo(userId, m.id)) continue;
+    if (m.id === 'inicio') {
+      if (usuarioPodeAcessarModulo(userId, 'agenda')) return '/agenda';
+      continue;
     }
+    return `/${m.id}`;
   }
-  return '/';
+  return '/agenda';
 }
