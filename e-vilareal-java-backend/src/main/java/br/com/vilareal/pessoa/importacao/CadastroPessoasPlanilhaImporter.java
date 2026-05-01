@@ -10,6 +10,7 @@ import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.ss.usermodel.WorkbookFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -42,11 +43,27 @@ public class CadastroPessoasPlanilhaImporter {
 
     private final JdbcTemplate jdbcTemplate;
 
-    public CadastroPessoasPlanilhaImporter(JdbcTemplate jdbcTemplate) {
+    /** Sufixo opcional (ex.: {@code _nova}) concatenado aos nomes das 4 tabelas de destino. */
+    private final String tableSuffix;
+    private final String tblPessoa;
+    private final String tblComplementar;
+    private final String tblEndereco;
+    private final String tblContato;
+
+    public CadastroPessoasPlanilhaImporter(
+            JdbcTemplate jdbcTemplate,
+            @Value("${vilareal.import.pessoas.table-suffix:}") String tableSuffix) {
         this.jdbcTemplate = jdbcTemplate;
+        this.tableSuffix = tableSuffix == null ? "" : tableSuffix;
+        this.tblPessoa = "pessoa" + this.tableSuffix;
+        this.tblComplementar = "pessoa_complementar" + this.tableSuffix;
+        this.tblEndereco = "pessoa_endereco" + this.tableSuffix;
+        this.tblContato = "pessoa_contato" + this.tableSuffix;
     }
 
     public ImportStats importar(CadastroPessoasPlanilhaImportProperties props) throws IOException {
+        log.info("Importando para tabelas com sufixo: '{}'", tableSuffix);
+
         Path path = Path.of(props.getPath());
         if (!Files.isRegularFile(path)) {
             throw new IOException("Arquivo não encontrado: " + path.toAbsolutePath());
@@ -184,7 +201,7 @@ public class CadastroPessoasPlanilhaImporter {
                     }
 
                     Long exists = jdbcTemplate.queryForObject(
-                            "SELECT COUNT(*) FROM pessoa WHERE id = ?", Long.class, pessoaId);
+                            "SELECT COUNT(*) FROM " + tblPessoa + " WHERE id = ?", Long.class, pessoaId);
                     if (exists != null && exists > 0) {
                         writeLine(rep, excelRow, String.valueOf(pessoaId), "SKIP", "ID já existe no banco");
                         stats.skipped++;
@@ -193,7 +210,7 @@ public class CadastroPessoasPlanilhaImporter {
 
                     if (cpf != null) {
                         Long cpfClash = jdbcTemplate.queryForObject(
-                                "SELECT COUNT(*) FROM pessoa WHERE cpf = ?", Long.class, cpf);
+                                "SELECT COUNT(*) FROM " + tblPessoa + " WHERE cpf = ?", Long.class, cpf);
                         if (cpfClash != null && cpfClash > 0) {
                             writeLine(rep, excelRow, String.valueOf(pessoaId), "SKIP", "CPF já existe no banco (outro id)");
                             stats.skipped++;
@@ -203,7 +220,7 @@ public class CadastroPessoasPlanilhaImporter {
 
                     if (!email.isBlank()) {
                         Long emailClash = jdbcTemplate.queryForObject(
-                                "SELECT COUNT(*) FROM pessoa WHERE LOWER(TRIM(email)) = ?", Long.class,
+                                "SELECT COUNT(*) FROM " + tblPessoa + " WHERE LOWER(TRIM(email)) = ?", Long.class,
                                 email.toLowerCase(Locale.ROOT));
                         if (emailClash != null && emailClash > 0) {
                             writeLine(rep, excelRow, String.valueOf(pessoaId), "ADJUST", "E-mail já no banco; gravando email=NULL");
@@ -215,8 +232,10 @@ public class CadastroPessoasPlanilhaImporter {
 
                     try {
                         jdbcTemplate.update(
-                                """
-                                        INSERT INTO pessoa (id, nome, cpf, email, telefone, data_nascimento, ativo, marcado_monitoramento, responsavel_id, created_at, updated_at)
+                                "INSERT INTO "
+                                        + tblPessoa
+                                        + """
+                                         (id, nome, cpf, email, telefone, data_nascimento, ativo, marcado_monitoramento, responsavel_id, created_at, updated_at)
                                         VALUES (?,?,?,?,?,?,TRUE,FALSE,NULL,?,?)
                                         """,
                                 pessoaId,
@@ -229,8 +248,10 @@ public class CadastroPessoasPlanilhaImporter {
                                 now);
 
                         jdbcTemplate.update(
-                                """
-                                        INSERT INTO pessoa_complementar (pessoa_id, rg, orgao_expedidor, profissao, nacionalidade, estado_civil, genero)
+                                "INSERT INTO "
+                                        + tblComplementar
+                                        + """
+                                         (pessoa_id, rg, orgao_expedidor, profissao, nacionalidade, estado_civil, genero)
                                         VALUES (?,?,?,?,?,?,?)
                                         """,
                                 pessoaId,
@@ -243,8 +264,10 @@ public class CadastroPessoasPlanilhaImporter {
 
                         if (!rua.isBlank()) {
                             jdbcTemplate.update(
-                                    """
-                                            INSERT INTO pessoa_endereco (pessoa_id, numero_ordem, rua, bairro, estado, cidade, cep, auto_preenchido)
+                                    "INSERT INTO "
+                                            + tblEndereco
+                                            + """
+                                             (pessoa_id, numero_ordem, rua, bairro, estado, cidade, cep, auto_preenchido)
                                             VALUES (?,?,?,?,?,?,?,FALSE)
                                             """,
                                     pessoaId,
@@ -262,8 +285,10 @@ public class CadastroPessoasPlanilhaImporter {
                                 continue;
                             }
                             jdbcTemplate.update(
-                                    """
-                                            INSERT INTO pessoa_contato (pessoa_id, tipo, valor, data_lancamento, data_alteracao, usuario_lancamento)
+                                    "INSERT INTO "
+                                            + tblContato
+                                            + """
+                                             (pessoa_id, tipo, valor, data_lancamento, data_alteracao, usuario_lancamento)
                                             VALUES (?,?,?,?,?,?)
                                             """,
                                     pessoaId,
@@ -279,7 +304,7 @@ public class CadastroPessoasPlanilhaImporter {
                         log.warn("Falha na linha Excel {} pessoa id {}: {}", excelRow, pessoaId, ex.getMessage());
                         writeLine(rep, excelRow, String.valueOf(pessoaId), "ERROR", truncateMsg(ex.getMessage()));
                         try {
-                            jdbcTemplate.update("DELETE FROM pessoa WHERE id = ?", pessoaId);
+                            jdbcTemplate.update("DELETE FROM " + tblPessoa + " WHERE id = ?", pessoaId);
                         } catch (DataAccessException delEx) {
                             log.debug("Rollback parcial: {}", delEx.getMessage());
                         }
@@ -305,13 +330,13 @@ public class CadastroPessoasPlanilhaImporter {
     }
 
     private void realinharAutoIncrementPessoa() {
-        Long max = jdbcTemplate.queryForObject("SELECT COALESCE(MAX(id), 0) FROM pessoa", Long.class);
+        Long max = jdbcTemplate.queryForObject("SELECT COALESCE(MAX(id), 0) FROM " + tblPessoa, Long.class);
         long next = max == null ? 1L : max + 1L;
         if (next < 1) {
             next = 1;
         }
-        jdbcTemplate.execute("ALTER TABLE pessoa AUTO_INCREMENT = " + next);
-        log.info("AUTO_INCREMENT de pessoa ajustado para {}", next);
+        jdbcTemplate.execute("ALTER TABLE " + tblPessoa + " AUTO_INCREMENT = " + next);
+        log.info("AUTO_INCREMENT de {} ajustado para {}", tblPessoa, next);
     }
 
     private static BufferedWriter openReport(String reportPath) throws IOException {
