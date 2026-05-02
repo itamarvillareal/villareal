@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 /**
  * Importa linhas da planilha .xls para {@code pessoa}, {@code pessoa_complementar}, {@code pessoa_endereco},
@@ -40,6 +41,14 @@ public class CadastroPessoasPlanilhaImporter {
     private static final Logger log = LoggerFactory.getLogger(CadastroPessoasPlanilhaImporter.class);
 
     private static final String USUARIO_IMPORT = "importacao-planilha";
+
+    /**
+     * Sufixo injetado em identificadores de tabela (MySQL 64 chars). Só {@code _ident} seguro — evita SQL injection
+     * em sentenças montadas com concatenação.
+     */
+    private static final Pattern SAFE_TABLE_SUFFIX = Pattern.compile("^_[A-Za-z][A-Za-z0-9_]{0,47}$");
+
+    private static final int LONGEST_BASE_TABLE = "pessoa_complementar".length();
 
     private final JdbcTemplate jdbcTemplate;
 
@@ -54,11 +63,32 @@ public class CadastroPessoasPlanilhaImporter {
             JdbcTemplate jdbcTemplate,
             @Value("${vilareal.import.pessoas.table-suffix:}") String tableSuffix) {
         this.jdbcTemplate = jdbcTemplate;
-        this.tableSuffix = tableSuffix == null ? "" : tableSuffix;
+        this.tableSuffix = normalizeAndValidateTableSuffix(tableSuffix);
         this.tblPessoa = "pessoa" + this.tableSuffix;
         this.tblComplementar = "pessoa_complementar" + this.tableSuffix;
         this.tblEndereco = "pessoa_endereco" + this.tableSuffix;
         this.tblContato = "pessoa_contato" + this.tableSuffix;
+    }
+
+    /**
+     * @return vazio (tabelas canónicas) ou sufixo no formato {@code _nome} (ex. {@code _nova}).
+     */
+    static String normalizeAndValidateTableSuffix(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return "";
+        }
+        String s = raw.trim();
+        if (!SAFE_TABLE_SUFFIX.matcher(s).matches()) {
+            throw new IllegalArgumentException(
+                    "vilareal.import.pessoas.table-suffix must be empty or like '_nova' (underscore, letter, then"
+                            + " letters/digits/underscores only, max 48 chars after '_'), got: "
+                            + s);
+        }
+        if (LONGEST_BASE_TABLE + s.length() > 64) {
+            throw new IllegalArgumentException("vilareal.import.pessoas.table-suffix: resulting table name would exceed"
+                    + " MySQL 64-char limit");
+        }
+        return s;
     }
 
     public ImportStats importar(CadastroPessoasPlanilhaImportProperties props) throws IOException {
