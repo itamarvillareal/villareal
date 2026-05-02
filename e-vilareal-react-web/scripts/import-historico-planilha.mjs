@@ -22,8 +22,11 @@ const SHEET_NAME = 'Planilha2';
 
 /** Variantes que normalizam para outro nome, null, ou __SKIP__ (linha não importada). */
 const MAPA_RESPONSAVEL_NORMALIZACAO = {
+  ITAMAR2: 'ITAMAR',
   ITAMARR: 'ITAMAR',
+  'ITAMAR (SALVO AUTOMATICAMENTE)': 'ITAMAR',
   'ANA LUIZA': 'ANA LUISA',
+  LUISA: 'ANA LUISA',
   JESSYCA: 'JESSICA',
   '0)': null,
   FERNANDAXLS: 'FERNANDA',
@@ -58,6 +61,7 @@ const RESPONSAVEIS_RECONHECIDOS = new Set([
   'MARESSA',
   'JOÃO PAULO',
   'PATRICIA',
+  'PRISCILA',
   'MARIA EDUARDA',
 ]);
 
