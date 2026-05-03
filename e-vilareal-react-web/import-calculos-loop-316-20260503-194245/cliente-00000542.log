@@ -1,0 +1,6 @@
+﻿[filtro] processando APENAS codigo_cliente=00000542
+[filtro] aba1 parcelas (linhas): 7920 -> 7 (outros clientes descartados)
+[filtro] aba2 d├®bitos (linhas): 5246 -> 13 (outros clientes descartados)
+[rodadas]   criadas_A=4  criadas_B=0  falhas=0  total=4
+[parcelas]  total=7
+[debitos]   total=13
