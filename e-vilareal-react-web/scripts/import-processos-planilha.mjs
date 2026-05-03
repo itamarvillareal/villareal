@@ -699,19 +699,64 @@ function collectPartes(r2, log) {
 async function login(opts) {
   const loginUrl = `${opts.baseUrl}/api/auth/login`;
   const loginNorm = String(opts.login).trim().toLowerCase();
-  const loginRes = await fetch(loginUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ login: loginNorm, senha: opts.senha }),
-  });
-  if (!loginRes.ok) {
-    const t = await loginRes.text();
-    throw new Error(`Login falhou ${loginRes.status}: ${t.slice(0, 400)}`);
+  const body = JSON.stringify({ login: loginNorm, senha: opts.senha });
+  const maxTentativas = 12;
+  for (let tentativa = 1; tentativa <= maxTentativas; tentativa++) {
+    try {
+      const loginRes = await fetch(loginUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+      });
+      if (!loginRes.ok) {
+        const t = await loginRes.text();
+        throw new Error(`Login falhou ${loginRes.status}: ${t.slice(0, 400)}`);
+      }
+      const loginJson = await loginRes.json();
+      const token = loginJson.accessToken;
+      if (!token) throw new Error('Resposta login sem accessToken');
+      return token;
+    } catch (err) {
+      const cod = err?.cause?.code ?? err?.code;
+      const msg = String(err?.message ?? '');
+      const rede =
+        cod === 'ECONNRESET' ||
+        cod === 'ETIMEDOUT' ||
+        cod === 'UND_ERR_CONNECT_TIMEOUT' ||
+        cod === 'UND_ERR_BODY_TIMEOUT' ||
+        cod === 'UND_ERR_SOCKET' ||
+        msg.includes('fetch failed') ||
+        msg.includes('terminated');
+      if (!rede || tentativa === maxTentativas) throw err;
+      const esperaMs = Math.min(45000, 2000 * tentativa ** 2);
+      await new Promise((res) => setTimeout(res, esperaMs));
+    }
   }
-  const loginJson = await loginRes.json();
-  const token = loginJson.accessToken;
-  if (!token) throw new Error('Resposta login sem accessToken');
-  return token;
+  throw new Error('login: retry excedido');
+}
+
+/** Fetch com retries para falhas transitórias de rede (timeout, reset). */
+async function fetchComRetryRede(url, options, maxTentativas = 10) {
+  for (let tentativa = 1; tentativa <= maxTentativas; tentativa++) {
+    try {
+      return await fetch(url, options);
+    } catch (err) {
+      const cod = err?.cause?.code ?? err?.code;
+      const msg = String(err?.message ?? '');
+      const rede =
+        cod === 'ECONNRESET' ||
+        cod === 'ETIMEDOUT' ||
+        cod === 'UND_ERR_CONNECT_TIMEOUT' ||
+        cod === 'UND_ERR_BODY_TIMEOUT' ||
+        cod === 'UND_ERR_SOCKET' ||
+        msg.includes('fetch failed') ||
+        msg.includes('terminated');
+      if (!rede || tentativa === maxTentativas) throw err;
+      const esperaMs = Math.min(45000, 1800 * tentativa ** 2);
+      await new Promise((res) => setTimeout(res, esperaMs));
+    }
+  }
+  throw new Error('fetchComRetryRede: excedido');
 }
 
 async function ensureCliente(baseUrl, token, cod, pessoaId, stats) {
@@ -811,7 +856,7 @@ async function postProcessoCompleto(baseUrl, token, entry, stats) {
   }
   const { body } = built;
   const partes = collectPartes(entry.r2, true);
-  const pr = await fetch(`${baseUrl}/api/processos`, {
+  const pr = await fetchComRetryRede(`${baseUrl}/api/processos`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -839,7 +884,7 @@ async function postProcessoCompleto(baseUrl, token, entry, stats) {
   }
   const procId = created.id;
   for (const p of partes) {
-    const prt = await fetch(`${baseUrl}/api/processos/${procId}/partes`, {
+    const prt = await fetchComRetryRede(`${baseUrl}/api/processos/${procId}/partes`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

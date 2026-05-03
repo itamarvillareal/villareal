@@ -29,10 +29,16 @@ const MAPA_RESPONSAVEL_NORMALIZACAO = {
   LUISA: 'ANA LUISA',
   JESSYCA: 'JESSICA',
   '0)': null,
+  '24880': null,
   FERNANDAXLS: 'FERNANDA',
   'RELATÓRIO - DÉBITOS CONDOMINIAIS - FERNANDA': 'FERNANDA',
+  'RELATÓRIO - DÉBITOS CONDOMINIAIS - SAVIT': 'SAVIT',
+  'RELATÓRIO - DÉBITOS CONDOMINIAIS - ITAMAR': 'ITAMAR',
   'RHAYHANNY (2)': 'RHAYHANNY',
+  'ADMINISTRAÇÃO DE IMÓVEIS - ISABELLA': 'ISABELLA',
   SISTEMA: '__SKIP__',
+  /** Ruído/colagem na exportação Excel (linha 2287 em lote amplo). */
+  '3 (1))': null,
 };
 
 /** Nomes reconhecidos (após normalização; null não entra no set). */
@@ -74,6 +80,10 @@ function normalizarResponsavel(valorBruto, linhaExcel) {
   if (valorBruto == null) return null;
   const trim = String(valorBruto).trim();
   if (!trim) return null;
+  // Coluna trocada ou ruído (ex.: "193", IDs); não é nome reconhecível.
+  if (/^\d+$/.test(trim)) return null;
+  // Valor numérico decimal / monetário colado na coluna errada (ex.: "2847,6").
+  if (/^[\d\s.,-]+$/.test(trim) && /\d/.test(trim) && !/[A-Za-zÀ-ÿ]/.test(trim)) return null;
   const upper = trim.toUpperCase();
   const normalizado = upper in MAPA_RESPONSAVEL_NORMALIZACAO ? MAPA_RESPONSAVEL_NORMALIZACAO[upper] : upper;
   if (normalizado === null) return null;
@@ -101,12 +111,36 @@ async function obterMapaProcessoId(token, baseUrl, codigoCliente8) {
     return cachesMapaPorCliente.get(codigoCliente8);
   }
   const url = `${baseUrl}/api/processos?codigoCliente=${encodeURIComponent(codigoCliente8)}`;
-  const res = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: 'application/json',
-    },
-  });
+  const maxTentativas = 8;
+  /** @type {Response | undefined} */
+  let res;
+  for (let tentativa = 1; tentativa <= maxTentativas; tentativa++) {
+    try {
+      res = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/json',
+        },
+      });
+      break;
+    } catch (err) {
+      const cod = err?.cause?.code ?? err?.code;
+      const msg = String(err?.message ?? '');
+      const rede =
+        cod === 'ECONNRESET' ||
+        cod === 'ETIMEDOUT' ||
+        cod === 'UND_ERR_CONNECT_TIMEOUT' ||
+        cod === 'UND_ERR_BODY_TIMEOUT' ||
+        cod === 'UND_ERR_SOCKET' ||
+        msg.includes('fetch failed') ||
+        msg.includes('terminated') ||
+        String(err?.cause?.code ?? '') === 'ECONNRESET';
+      if (!rede || tentativa === maxTentativas) throw err;
+      const esperaMs = Math.min(30000, 1500 * tentativa ** 2);
+      await new Promise((r) => setTimeout(r, esperaMs));
+    }
+  }
+  if (!res) throw new Error(`GET processos para ${codigoCliente8}: sem resposta`);
   if (!res.ok) {
     const t = await res.text();
     throw new Error(`GET processos para ${codigoCliente8} falhou ${res.status}: ${t.slice(0, 400)}`);
@@ -367,19 +401,40 @@ async function postAndamento(baseUrl, token, processoId, payload) {
     origemAutomatica: false,
     usuarioId: null,
   };
-  const r = await fetch(`${baseUrl}/api/processos/${processoId}/andamentos`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(body),
-  });
-  if (!r.ok) {
-    const t = await r.text();
-    return { ok: false, status: r.status, text: t };
+  const url = `${baseUrl}/api/processos/${processoId}/andamentos`;
+  const maxTentativas = 8;
+  for (let tentativa = 1; tentativa <= maxTentativas; tentativa++) {
+    try {
+      const r = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(body),
+      });
+      if (!r.ok) {
+        const t = await r.text();
+        return { ok: false, status: r.status, text: t };
+      }
+      return { ok: true };
+    } catch (err) {
+      const cod = err?.cause?.code ?? err?.code;
+      const msg = String(err?.message ?? '');
+      const rede =
+        cod === 'ECONNRESET' ||
+        cod === 'ETIMEDOUT' ||
+        cod === 'UND_ERR_CONNECT_TIMEOUT' ||
+        cod === 'UND_ERR_BODY_TIMEOUT' ||
+        cod === 'UND_ERR_SOCKET' ||
+        msg.includes('fetch failed') ||
+        msg.includes('terminated');
+      if (!rede || tentativa === maxTentativas) throw err;
+      const esperaMs = Math.min(30000, 1500 * tentativa ** 2);
+      await new Promise((res) => setTimeout(res, esperaMs));
+    }
   }
-  return { ok: true };
+  return { ok: false, status: 0, text: 'retry_exceeded' };
 }
 
 function imprimirResumoResponsavel(contagemResp, contagemNull) {
