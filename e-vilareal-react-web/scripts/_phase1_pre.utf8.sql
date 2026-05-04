@@ -1,0 +1,1 @@
+SELECT (SELECT COUNT(*) FROM cliente) AS clientes, (SELECT COUNT(*) FROM calculo_rodada) AS rodadas_total;\n
