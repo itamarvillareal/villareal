@@ -8,7 +8,13 @@ function buildUrl(path, query) {
   const qs = query
     ? Object.entries(query)
         .filter(([, v]) => v !== undefined && v !== null && String(v) !== '')
-        .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+        .flatMap(([k, v]) =>
+          Array.isArray(v)
+            ? v
+                .filter((item) => item !== undefined && item !== null && String(item) !== '')
+                .map((item) => `${encodeURIComponent(k)}=${encodeURIComponent(item)}`)
+            : [`${encodeURIComponent(k)}=${encodeURIComponent(v)}`]
+        )
         .join('&')
     : '';
   const fullPath = `${API_BASE_URL}${path}`;

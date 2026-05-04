@@ -202,12 +202,42 @@ function toIsoDateTimeFromBrDate(dateBr) {
   return `${isoDate}T12:00:00`;
 }
 
+/** Tamanho de página alinhado ao default do backend para `codigoCliente` (GET em fatias). */
+const PAGE_SIZE_LISTAGEM_CLIENTE = 100;
+
 export async function listarProcessosPorCodigoCliente(codigoCliente) {
   if (!featureFlags.useApiProcessos) return [];
-  const lista = await request('/api/processos', {
-    query: { codigoCliente: padCliente8(codigoCliente) },
-  });
-  return Array.isArray(lista) ? lista : [];
+  const cod = padCliente8(codigoCliente);
+  const out = [];
+  for (let page = 0; ; page++) {
+    let body;
+    try {
+      body = await request('/api/processos', {
+        query: {
+          codigoCliente: cod,
+          page: String(page),
+          size: String(PAGE_SIZE_LISTAGEM_CLIENTE),
+          sort: ['numeroInterno,asc', 'id,asc'],
+        },
+      });
+    } catch (e) {
+      throw e;
+    }
+    if (Array.isArray(body)) {
+      return body;
+    }
+    const chunk = body?.content;
+    if (!Array.isArray(chunk)) {
+      throw new Error(
+        'Resposta inválida ao listar processos por cliente: esperado Page JSON com content[] ou array legado.'
+      );
+    }
+    out.push(...chunk);
+    if (body.last === true || chunk.length < PAGE_SIZE_LISTAGEM_CLIENTE) {
+      break;
+    }
+  }
+  return out;
 }
 
 /** Busca global pelo nº interno do processo (ex.: tela Clientes — vários clientes podem ter o mesmo nº). */
