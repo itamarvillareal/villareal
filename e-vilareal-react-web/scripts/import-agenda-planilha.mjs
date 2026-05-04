@@ -15,6 +15,11 @@
  * Layout `--layout=total-acde` (colunas A,C,D,E com B vazio):
  *   A: data, C: hora, D: descrição, E: status
  *
+ * Layout `--layout=agendas-multi` (ex.: AGENDAS.XLS com várias abas):
+ *   Cada aba = um utilizador (nome deve coincidir com login, nome, apelido ou nome em cadastro na API).
+ *   Dados a partir da linha `--primeira-linha=` (padrão 8).
+ *   D: data, H: hora, J: descrição, X: status (OK; outros valores viram vazio no servidor).
+ *
  * Filtro opcional: --data-min=2026-05-01 (só datas >=; omitir = importa todas as linhas válidas).
  * Paralelismo: --concurrency=8 ou VILAREAL_IMPORT_CONCURRENCY (útil para ~20k linhas).
  *
@@ -31,6 +36,10 @@
  * Ana Luísa (planilha "agenda ana luisa total.xlsx", id 3 — login = usuarios.login, ex. ana.luisa):
  *   bash ../e-vilareal-java-backend/scripts/reimportar_agenda_ana_luisa_total.sh
  *   ou: VILAREAL_IMPORT_SENHA='***' node scripts/import-agenda-planilha.mjs ".../agenda ana luisa total.xlsx" --layout=total --login=ana.luisa --usuario-id=3
+ *
+ * AGENDAS.XLS (várias abas, colunas D/H/J/X a partir da linha 8):
+ *   VILAREAL_IMPORT_SENHA='***' node scripts/import-agenda-planilha.mjs "C:\\Users\\...\\AGENDAS.XLS" --layout=agendas-multi --login=itamar
+ *   (opcional produção: VILAREAL_API_BASE=https://seu-dominio node …)
  */
 
 import fs from 'node:fs';
@@ -54,6 +63,8 @@ function parseArgs(argv) {
       Math.max(1, Number(process.env.VILAREAL_IMPORT_CONCURRENCY || 8) || 8)
     ),
     usuarioIdBody: null,
+    /** Linha inicial no Excel (1-based), padrão 8 — só layout agendas-multi */
+    primeiraLinhaExcel: 8,
   };
   for (const a of argv) {
     if (a === '--dry-run') out.dryRun = true;
@@ -69,8 +80,11 @@ function parseArgs(argv) {
     else if (a.startsWith('--usuario-id=')) {
       const n = Number(a.slice(13));
       if (Number.isFinite(n) && n >= 1) out.usuarioIdBody = Math.floor(n);
-    } else if (a.startsWith('--base-url=')) out.baseUrl = a.replace(/\/$/, '');
-    else if (!a.startsWith('-') && !out.file) out.file = a;
+    } else if (a.startsWith('--base-url=')) out.baseUrl = a.slice(11).replace(/\/$/, '');
+    else if (a.startsWith('--primeira-linha=')) {
+      const n = Number(a.slice(17));
+      if (Number.isFinite(n) && n >= 1) out.primeiraLinhaExcel = Math.floor(n);
+    } else if (!a.startsWith('-') && !out.file) out.file = a;
   }
   if (out.usuarioIdBody == null && process.env.VILAREAL_IMPORT_USUARIO_ID) {
     const n = Number(process.env.VILAREAL_IMPORT_USUARIO_ID);
@@ -86,11 +100,18 @@ function pad2(n) {
 /** Converte célula de hora (Excel ou texto) para HH:mm ou null. */
 function normalizarHoraCelula(val) {
   if (val == null || val === '') return null;
-  if (typeof val === 'number' && val > 0 && val < 1) {
-    const totalMin = Math.round(val * 24 * 60);
-    const hh = Math.floor(totalMin / 60) % 24;
-    const mm = totalMin % 60;
-    return `${pad2(hh)}:${pad2(mm)}`;
+  if (typeof val === 'number' && Number.isFinite(val)) {
+    let frac = val;
+    if (val >= 1) {
+      frac = val % 1;
+      if (frac === 0 && val > 20000) return null;
+    }
+    if (frac > 0 && frac < 1) {
+      const totalMin = Math.round(frac * 24 * 60);
+      const hh = Math.floor(totalMin / 60) % 24;
+      const mm = totalMin % 60;
+      return `${pad2(hh)}:${pad2(mm)}`;
+    }
   }
   const s = String(val).trim();
   if (!s) return null;
@@ -137,6 +158,9 @@ function excelSerialParaISO(serial) {
 
 function parseDataCelula(val) {
   if (val == null || val === '') return null;
+  if (val instanceof Date && !Number.isNaN(val.getTime())) {
+    return `${val.getFullYear()}-${pad2(val.getMonth() + 1)}-${pad2(val.getDate())}`;
+  }
   if (typeof val === 'number' && Number.isFinite(val)) {
     const whole = Math.floor(val);
     // Serial de data Excel (1900+); evita confundir com dia 1–31 do layout «mês».
@@ -253,11 +277,154 @@ function buildLinhasLayoutTotalAcde(mat, opts) {
   return linhas;
 }
 
+/** Normaliza texto para casar o nome da aba com login / nome / apelido na API. */
+function normChave(s) {
+  return String(s ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
+/** Planilha tipo AGENDAS.XLS: D=data, H=hora, J=descrição, X=status (índices 0-based). */
+const COL_AGENDAS_MULTI = { data: 3, hora: 7, desc: 9, status: 23 };
+
+function construirMapaUsuariosPorChave(usuarios) {
+  const map = new Map();
+  const conflitos = [];
+
+  function add(rawKey, id) {
+    if (rawKey == null || rawKey === '') return;
+    const k = normChave(rawKey);
+    if (!k) return;
+    const prev = map.get(k);
+    if (prev != null && prev !== id) {
+      conflitos.push({ chave: k, id1: prev, id2: id });
+      return;
+    }
+    map.set(k, id);
+  }
+
+  for (const u of usuarios) {
+    if (!u || u.ativo === false) continue;
+    const id = u.id;
+    add(u.login, id);
+    add(u.nome, id);
+    add(u.nomePessoa, id);
+    add(u.apelido, id);
+    if (u.nome) {
+      const first = String(u.nome).trim().split(/\s+/)[0];
+      add(first, id);
+    }
+    if (u.nomePessoa) {
+      const first = String(u.nomePessoa).trim().split(/\s+/)[0];
+      add(first, id);
+    }
+  }
+  return { map, conflitos };
+}
+
+function buildLinhasLayoutAgendasMulti(wb, opts, usuarioPorChave) {
+  const primeiraLinhaIdx = Math.max(0, opts.primeiraLinhaExcel - 1);
+  const linhas = [];
+  const sheetsSemUsuario = [];
+  const ciD = COL_AGENDAS_MULTI.data;
+  const ciH = COL_AGENDAS_MULTI.hora;
+  const ciJ = COL_AGENDAS_MULTI.desc;
+  const ciX = COL_AGENDAS_MULTI.status;
+
+  for (const sheetName of wb.SheetNames) {
+    const rawName = String(sheetName ?? '').trim();
+    if (!rawName) continue;
+
+    const usuarioId = usuarioPorChave.get(normChave(rawName));
+    if (usuarioId == null) {
+      sheetsSemUsuario.push(rawName);
+      continue;
+    }
+
+    const sh = wb.Sheets[sheetName];
+    const mat = XLSX.utils.sheet_to_json(sh, { header: 1, defval: null, raw: true });
+
+    for (let i = primeiraLinhaIdx; i < mat.length; i += 1) {
+      const row = mat[i];
+      if (!Array.isArray(row)) continue;
+
+      const dataEvento = parseDataCelula(row[ciD]);
+      if (!dataEvento) continue;
+      if (opts.dataMin && !dataISOEhMaiorOuIgual(dataEvento, opts.dataMin)) continue;
+
+      const horaEvento = normalizarHoraCelula(row[ciH]);
+      const descricao = String(row[ciJ] ?? '').trim();
+      if (!descricao) continue;
+      const statusCurto = normalizarStatus(row[ciX]);
+
+      linhas.push({
+        usuarioId,
+        sheet: rawName,
+        linhaPlanilha: `${rawName}:${i + 1}`,
+        dataEvento,
+        horaEvento,
+        descricao,
+        statusCurto,
+      });
+    }
+  }
+
+  return { linhas, sheetsSemUsuario };
+}
+
+async function fetchUsuariosApi(baseUrl, token) {
+  const r = await fetch(`${baseUrl}/api/usuarios`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!r.ok) {
+    const t = await r.text();
+    throw new Error(`GET /api/usuarios falhou: ${r.status} ${t.slice(0, 400)}`);
+  }
+  return r.json();
+}
+
+async function loginObterToken(opts) {
+  const loginUrl = `${opts.baseUrl}/api/auth/login`;
+  const loginNorm = String(opts.login).trim().toLowerCase();
+  const loginRes = await fetch(loginUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ login: loginNorm, senha: opts.senha }),
+  });
+  if (!loginRes.ok) {
+    const t = await loginRes.text();
+    console.error('Falha no login', loginRes.status, t);
+    if (loginRes.status === 401) {
+      console.error(
+        'Dicas: confira o login em usuarios.login; seed costuma ser 123456 se o hash não mudou.'
+      );
+    }
+    process.exit(1);
+  }
+  const loginJson = await loginRes.json();
+  const token = loginJson.accessToken;
+  const usuarioIdJwt = loginJson.usuario?.id;
+  const usuarioId = opts.usuarioIdBody != null ? opts.usuarioIdBody : usuarioIdJwt;
+  if (!token || usuarioId == null || !Number.isFinite(Number(usuarioId))) {
+    console.error('Resposta de login inesperada:', loginJson);
+    process.exit(1);
+  }
+  if (opts.usuarioIdBody != null && usuarioIdJwt != null && usuarioIdJwt !== usuarioId) {
+    console.log(
+      `POST usará usuarioId=${usuarioId} (JWT: login=${opts.login}, id token=${usuarioIdJwt}).`
+    );
+  }
+  return { token, usuarioId };
+}
+
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
   if (!opts.file) {
     console.error(
-      'Uso: node scripts/import-agenda-planilha.mjs "<ficheiro.xlsx>" [--layout=mes|total|total-acde] [--mes=4 --ano=2026] [--data-min=AAAA-MM-DD] [--concurrency=8] [--login=itamar] [--dry-run]'
+      'Uso: node scripts/import-agenda-planilha.mjs "<ficheiro.xls|.xlsx>" [--layout=mes|total|total-acde|agendas-multi] [--primeira-linha=8] [--mes=4 --ano=2026] [--data-min=AAAA-MM-DD] [--concurrency=8] [--login=itamar] [--dry-run]'
     );
     process.exit(1);
   }
@@ -266,26 +433,65 @@ async function main() {
     console.error('Ficheiro não encontrado:', abs);
     process.exit(1);
   }
-  if (!opts.senha && !opts.dryRun) {
+
+  const layoutMulti = opts.layout === 'agendas-multi';
+
+  if (layoutMulti && !opts.senha) {
+    console.error(
+      'layout agendas-multi requer VILAREAL_IMPORT_SENHA ou --senha (para GET /api/usuarios e casar nomes das abas).'
+    );
+    process.exit(1);
+  }
+
+  if (!opts.senha && !opts.dryRun && !layoutMulti) {
     console.error('Defina a senha: variável VILAREAL_IMPORT_SENHA ou --senha=...');
     process.exit(1);
   }
 
-  const wb = XLSX.readFile(abs);
-  const sh = wb.Sheets[wb.SheetNames[0]];
-  const mat = XLSX.utils.sheet_to_json(sh, { header: 1, defval: null, raw: true });
+  if (layoutMulti && opts.usuarioIdBody != null) {
+    console.warn('[warn] --usuario-id é ignorado em agendas-multi (cada aba define o utilizador).');
+  }
+
+  const wb = XLSX.readFile(abs, { cellDates: true });
 
   let linhas;
   let label;
-  if (opts.layout === 'total') {
-    linhas = buildLinhasLayoutTotal(mat, opts);
-    label = `layout=total${opts.dataMin ? `, data>=${opts.dataMin}` : ''}`;
-  } else if (opts.layout === 'total-acde') {
-    linhas = buildLinhasLayoutTotalAcde(mat, opts);
-    label = `layout=total-acde${opts.dataMin ? `, data>=${opts.dataMin}` : ''}`;
+  /** Só agendas-multi: login antecipado para GET /usuarios e reutilização no POST */
+  let authMulti = null;
+
+  if (layoutMulti) {
+    authMulti = await loginObterToken(opts);
+    const lista = await fetchUsuariosApi(opts.baseUrl, authMulti.token);
+    const { map: usuarioPorChave, conflitos } = construirMapaUsuariosPorChave(lista);
+    if (conflitos.length > 0) {
+      console.warn(
+        '[warn] Chaves duplicadas no mapa de nomes (ignoradas; segundo utilizador não sobrescreve):',
+        conflitos.slice(0, 8)
+      );
+    }
+    const r = buildLinhasLayoutAgendasMulti(wb, opts, usuarioPorChave);
+    linhas = r.linhas;
+    if (r.sheetsSemUsuario.length > 0) {
+      console.warn(
+        `[warn] ${r.sheetsSemUsuario.length} aba(s) sem utilizador correspondente na API (ignoradas):`,
+        r.sheetsSemUsuario.join(', ')
+      );
+    }
+    label = `layout=agendas-multi, linha>=${opts.primeiraLinhaExcel}${opts.dataMin ? `, data>=${opts.dataMin}` : ''}`;
   } else {
-    linhas = buildLinhasLayoutMes(mat, opts);
-    label = `mês ${opts.mes}/${opts.ano}`;
+    const sh = wb.Sheets[wb.SheetNames[0]];
+    const mat = XLSX.utils.sheet_to_json(sh, { header: 1, defval: null, raw: true });
+
+    if (opts.layout === 'total') {
+      linhas = buildLinhasLayoutTotal(mat, opts);
+      label = `layout=total${opts.dataMin ? `, data>=${opts.dataMin}` : ''}`;
+    } else if (opts.layout === 'total-acde') {
+      linhas = buildLinhasLayoutTotalAcde(mat, opts);
+      label = `layout=total-acde${opts.dataMin ? `, data>=${opts.dataMin}` : ''}`;
+    } else {
+      linhas = buildLinhasLayoutMes(mat, opts);
+      label = `mês ${opts.mes}/${opts.ano}`;
+    }
   }
 
   console.log(`Linhas válidas: ${linhas.length} (${label}, ficheiro: ${abs})`);
@@ -305,52 +511,36 @@ async function main() {
     process.exit(1);
   }
 
-  const loginUrl = `${opts.baseUrl}/api/auth/login`;
-  const loginNorm = String(opts.login).trim().toLowerCase();
-  const loginRes = await fetch(loginUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ login: loginNorm, senha: opts.senha }),
-  });
-  if (!loginRes.ok) {
-    const t = await loginRes.text();
-    console.error('Falha no login', loginRes.status, t);
-    if (loginRes.status === 401) {
-      console.error(
-        'Dicas: confira o login exato na BD (SELECT id, login, ativo FROM usuarios WHERE id = 2 OR login LIKE "%karla%"); ' +
-          'a senha do seed SQL costuma ser 123456 só se o hash não foi alterado. ' +
-          'Alternativa: login de outro utilizador com --usuario-id=2 (se a API aceitar).'
-      );
-    }
-    process.exit(1);
-  }
-  const loginJson = await loginRes.json();
-  const token = loginJson.accessToken;
-  const usuarioIdJwt = loginJson.usuario?.id;
-  const usuarioId =
-    opts.usuarioIdBody != null ? opts.usuarioIdBody : usuarioIdJwt;
-  if (!token || usuarioId == null || !Number.isFinite(Number(usuarioId))) {
-    console.error('Resposta de login inesperada:', loginJson);
-    process.exit(1);
-  }
-  if (opts.usuarioIdBody != null && usuarioIdJwt != null && usuarioIdJwt !== usuarioId) {
-    console.log(
-      `Importação para usuarioId=${usuarioId} (JWT: login=${opts.login}, id token=${usuarioIdJwt}).`
-    );
+  let token;
+  let usuarioIdDefault;
+
+  if (layoutMulti && authMulti != null) {
+    token = authMulti.token;
+    usuarioIdDefault = authMulti.usuarioId;
+  } else {
+    const auth = await loginObterToken(opts);
+    token = auth.token;
+    usuarioIdDefault = auth.usuarioId;
   }
 
   const origem =
     opts.layout === 'total' || opts.layout === 'total-acde'
       ? 'import-xlsx-agenda-total'
-      : 'import-xlsx-agenda-mes';
+      : opts.layout === 'agendas-multi'
+        ? 'import-xlsx-agendas-multi'
+        : 'import-xlsx-agenda-mes';
 
   const conc = opts.concurrency;
   let ok = 0;
   let fail = 0;
 
   async function postUm(L) {
+    const usuarioIdPost =
+      L.usuarioId != null && Number.isFinite(Number(L.usuarioId))
+        ? Number(L.usuarioId)
+        : usuarioIdDefault;
     const body = {
-      usuarioId,
+      usuarioId: usuarioIdPost,
       dataEvento: L.dataEvento,
       horaEvento: L.horaEvento,
       descricao: L.descricao.slice(0, 2000),
@@ -377,8 +567,8 @@ async function main() {
   for (let i = 0; i < linhas.length; i += conc) {
     const batch = linhas.slice(i, i + conc);
     const results = await Promise.all(batch.map((L) => postUm(L)));
-    for (const r of results) {
-      if (r) ok += 1;
+    for (const rr of results) {
+      if (rr) ok += 1;
       else fail += 1;
     }
     const done = Math.min(i + conc, linhas.length);
