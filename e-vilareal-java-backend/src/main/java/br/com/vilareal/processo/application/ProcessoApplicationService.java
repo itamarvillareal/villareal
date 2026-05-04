@@ -239,7 +239,10 @@ public class ProcessoApplicationService {
             return List.of();
         }
         long pessoaId = resolved.get();
-        List<ProcessoEntity> lista = processoRepository.findByPessoa_IdOrderByNumeroInternoAsc(pessoaId);
+        // Titular, parte em processo alheio ou advogado vinculado — alinhado a findAllDistinctVinculadosPessoa
+        // (só pessoa_id do cabeçalho omitia processos em que o cliente figura só em partes).
+        List<ProcessoEntity> lista = new ArrayList<>(processoRepository.findAllDistinctVinculadosPessoa(pessoaId));
+        lista.sort(Comparator.comparing(ProcessoEntity::getNumeroInterno).thenComparing(ProcessoEntity::getId));
         List<Long> procIds = lista.stream().map(ProcessoEntity::getId).collect(Collectors.toList());
         Map<Long, List<ProcessoParteEntity>> partesPorProcesso = new LinkedHashMap<>();
         if (!procIds.isEmpty()) {
