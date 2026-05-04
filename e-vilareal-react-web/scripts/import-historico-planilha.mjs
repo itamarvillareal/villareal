@@ -9,6 +9,9 @@
  *   VILAREAL_IMPORT_SENHA='***' node scripts/import-historico-planilha.mjs [--login=itamar]
  *   node scripts/import-historico-planilha.mjs "C:\\caminho\\historico_import.xls" --dry-run
  *
+ * Só um cliente (código cadastro, ex. 119 → 00000119):
+ *   --cliente=119 --substituir-andamentos   # apaga andamentos actuais dos processos afectados, depois importa
+ *
  * Envs: VILAREAL_API_BASE, VILAREAL_IMPORT_SENHA, VILAREAL_IMPORT_CONCURRENCY (default 3)
  */
 
@@ -260,15 +263,21 @@ function parseArgs(argv) {
       32,
       Math.max(1, Number(process.env.VILAREAL_IMPORT_CONCURRENCY || 3) || 3)
     ),
+    /** Texto cru ex.: "119" — normalizado em main() */
+    codigoClienteRaw: null,
+    /** Apaga todos os andamentos dos processos que vão receber linhas da planilha, antes do POST */
+    substituirAndamentos: false,
   };
   for (const a of argv) {
     if (a === '--dry-run') out.dryRun = true;
+    else if (a === '--substituir-andamentos') out.substituirAndamentos = true;
     else if (a.startsWith('--login=')) out.login = a.slice(8);
     else if (a.startsWith('--senha=')) out.senha = a.slice(8);
+    else if (a.startsWith('--cliente=')) out.codigoClienteRaw = a.slice(10).trim();
     else if (a.startsWith('--concurrency=')) {
       const n = Number(a.slice(14));
       if (Number.isFinite(n) && n >= 1) out.concurrency = Math.min(32, Math.floor(n));
-    } else if (a.startsWith('--base-url=')) out.baseUrl = a.replace(/\/$/, '');
+    } else if (a.startsWith('--base-url=')) out.baseUrl = a.slice(11).replace(/\/$/, '');
     else if (!a.startsWith('-') && !out.file) out.file = a;
   }
   return out;
@@ -437,6 +446,52 @@ async function postAndamento(baseUrl, token, processoId, payload) {
   return { ok: false, status: 0, text: 'retry_exceeded' };
 }
 
+/**
+ * @param {string} baseUrl
+ * @param {string} token
+ * @param {number} processoId
+ * @returns {Promise<{ id: number }[]>}
+ */
+async function listarAndamentosIds(baseUrl, token, processoId) {
+  const url = `${baseUrl}/api/processos/${processoId}/andamentos`;
+  const r = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json',
+    },
+  });
+  if (!r.ok) {
+    const t = await r.text();
+    throw new Error(`GET andamentos proc ${processoId}: ${r.status} ${t.slice(0, 300)}`);
+  }
+  const list = await r.json();
+  if (!Array.isArray(list)) return [];
+  return list
+    .map((x) => (x?.id != null ? Number(x.id) : null))
+    .filter((id) => Number.isFinite(id) && id > 0);
+}
+
+/**
+ * @param {string} baseUrl
+ * @param {string} token
+ * @param {number} processoId
+ */
+async function excluirTodosAndamentosProcesso(baseUrl, token, processoId) {
+  const ids = await listarAndamentosIds(baseUrl, token, processoId);
+  for (const aid of ids) {
+    const url = `${baseUrl}/api/processos/${processoId}/andamentos/${aid}`;
+    const r = await fetch(url, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!r.ok && r.status !== 404) {
+      const t = await r.text();
+      throw new Error(`DELETE andamento ${aid} proc ${processoId}: ${r.status} ${t.slice(0, 200)}`);
+    }
+  }
+  return ids.length;
+}
+
 function imprimirResumoResponsavel(contagemResp, contagemNull) {
   const keys = Object.keys(contagemResp).sort((a, b) => contagemResp[b] - contagemResp[a]);
   console.log('[responsavel] (apenas POSTs com sucesso)');
@@ -480,6 +535,22 @@ function ordemClientesPrimeiraAparicao(candidatas) {
 
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
+  /** @type {string | null} */
+  let codigoClienteFiltro8 = null;
+  if (opts.codigoClienteRaw) {
+    codigoClienteFiltro8 = normalizarCodigoCliente8(opts.codigoClienteRaw);
+    if (!codigoClienteFiltro8) {
+      console.error('Código de cliente inválido para --cliente=', opts.codigoClienteRaw);
+      process.exit(1);
+    }
+  }
+  if (opts.substituirAndamentos && !codigoClienteFiltro8 && !opts.dryRun) {
+    console.error(
+      'Na importação real, use --cliente=N com --substituir-andamentos (evita apagar andamentos de vários clientes).'
+    );
+    process.exit(1);
+  }
+
   const filePath = opts.file || DEFAULT_FILE;
   const abs = path.resolve(filePath);
 
@@ -506,7 +577,7 @@ async function main() {
     process.exit(1);
   }
 
-  const candidatas = [];
+  let candidatas = [];
   let puladosSemData = 0;
   for (const L of brutas) {
     if (L.movimentoEm == null) {
@@ -515,6 +586,17 @@ async function main() {
       continue;
     }
     candidatas.push(L);
+  }
+
+  if (codigoClienteFiltro8) {
+    const antes = candidatas.length;
+    candidatas = candidatas.filter((L) => L.codigoCliente8 === codigoClienteFiltro8);
+    console.log(
+      `[filtro] cliente ${codigoClienteFiltro8}: ${candidatas.length} linhas com data (de ${antes} antes do filtro)`
+    );
+    if (candidatas.length === 0) {
+      console.warn('[filtro] Nenhuma linha para este cliente — verifique o código na coluna A da planilha.');
+    }
   }
 
   const porClienteLinhas = contarLinhasPorCliente(brutas);
@@ -528,6 +610,9 @@ async function main() {
   }
 
   if (opts.dryRun) {
+    if (opts.substituirAndamentos && !codigoClienteFiltro8) {
+      console.warn('[dry-run] --substituir-andamentos sem --cliente: em execução real, limpará vários processos.');
+    }
     let puladosSistemaDry = 0;
     let candidatasSemSkip = 0;
     for (const L of candidatas) {
@@ -652,6 +737,25 @@ async function main() {
       }
       tarefas.push({ L, procId, codigoCliente8: cod8 });
     }
+  }
+
+  if (opts.substituirAndamentos && tarefas.length > 0) {
+    const procIds = [...new Set(tarefas.map((t) => t.procId))];
+    console.log(
+      `[substituir] A remover andamentos existentes em ${procIds.length} processo(s) antes da importação…`
+    );
+    let removidos = 0;
+    for (const pid of procIds) {
+      try {
+        const n = await excluirTodosAndamentosProcesso(opts.baseUrl, token, pid);
+        removidos += n;
+        if (n > 0) console.log(`[substituir] processo ${pid}: ${n} andamento(s) removido(s)`);
+      } catch (e) {
+        console.error(e);
+        process.exit(1);
+      }
+    }
+    console.log(`[substituir] Total removido: ${removidos} andamento(s)`);
   }
 
   await runPool(tarefas, opts.concurrency, async ({ L, procId, codigoCliente8 }) => {
