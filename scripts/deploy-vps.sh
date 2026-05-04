@@ -104,6 +104,8 @@ show_local_main_tip() {
 run_remote_script() {
   ssh -o "ConnectTimeout=15" "${VPS_USER}@${VPS_HOST}" bash -s "$DEPLOY_MODE" "$NO_PULL" <<'REMOTE_SCRIPT'
 set -euo pipefail
+# SSH não-interactivo costuma vir com PATH vazio — curl deixa de ser encontrado.
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 DEPLOY_MODE="$1"
 NO_PULL="$2"
 
