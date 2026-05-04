@@ -40,6 +40,10 @@
  * AGENDAS.XLS (várias abas, colunas D/H/J/X a partir da linha 8):
  *   VILAREAL_IMPORT_SENHA='***' node scripts/import-agenda-planilha.mjs "C:\\Users\\...\\AGENDAS.XLS" --layout=agendas-multi --login=itamar
  *   (opcional produção: VILAREAL_API_BASE=https://seu-dominio node …)
+ *
+ * Reimportar do zero (apagar tudo na API, só ADMIN):
+ *   VILAREAL_IMPORT_SENHA='***' node scripts/zerar-agenda-api.mjs --login=itamar
+ *   (ou o mesmo com VILAREAL_API_BASE em produção)
  */
 
 import fs from 'node:fs';

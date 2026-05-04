@@ -2,6 +2,7 @@ package br.com.vilareal.agenda.infrastructure.persistence.repository;
 
 import br.com.vilareal.agenda.infrastructure.persistence.entity.AgendaEventoEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -31,4 +32,8 @@ public interface AgendaEventoRepository extends JpaRepository<AgendaEventoEntity
     List<AgendaEventoEntity> findByPeriodoTodosUsuarios(
             @Param("inicio") LocalDate inicio,
             @Param("fim") LocalDate fim);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(value = "DELETE FROM agenda_evento", nativeQuery = true)
+    int deleteAllInBulk();
 }

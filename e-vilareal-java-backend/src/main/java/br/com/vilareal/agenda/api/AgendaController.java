@@ -11,12 +11,14 @@ import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import java.net.URI;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/agenda/eventos")
@@ -74,6 +76,14 @@ public class AgendaController {
     @PutMapping("/{id}")
     public AgendaEventoResponse atualizar(@PathVariable Long id, @Valid @RequestBody AgendaEventoWriteRequest request) {
         return agendaService.atualizar(id, request);
+    }
+
+    @DeleteMapping("/todos")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    @Operation(description = "Remove todos os compromissos da agenda (apenas ADMIN). Para reimportar planilha.")
+    public ResponseEntity<Map<String, Integer>> excluirTodos() {
+        int removidos = agendaService.excluirTodosEventos();
+        return ResponseEntity.ok(Map.of("removidos", removidos));
     }
 
     @DeleteMapping("/{id}")

@@ -170,6 +170,16 @@ public class AgendaApplicationService {
         agendaEventoRepository.deleteById(id);
     }
 
+    /**
+     * Remove todos os compromissos (reimportação de planilha). Uso restrito a perfil ADMIN na API.
+     *
+     * @return quantidade de linhas apagadas no banco
+     */
+    @Transactional
+    public int excluirTodosEventos() {
+        return agendaEventoRepository.deleteAllInBulk();
+    }
+
     private void aplicarCampos(AgendaEventoEntity e, AgendaEventoWriteRequest req) {
         e.setDataEvento(req.getDataEvento());
         e.setHoraEvento(trimToNull(req.getHoraEvento()));
