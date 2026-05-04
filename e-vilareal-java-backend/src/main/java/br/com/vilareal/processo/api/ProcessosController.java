@@ -4,8 +4,11 @@ import br.com.vilareal.processo.api.dto.*;
 import br.com.vilareal.processo.application.ProcessoApplicationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.StringUtils;
@@ -13,7 +16,9 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import java.net.URI;
+import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/processos")
@@ -30,16 +35,78 @@ public class ProcessosController {
     @Operation(
             summary = "Listar processos",
             description =
-                    "Com `codigoCliente` (8 dígitos): lista JSON em array desse cliente. "
+                    "Com `codigoCliente` (8 dígitos): página JSON (`Page` Spring: `content`, `totalElements`, `last`, …; "
+                            + "query `page`, `size`, `sort`; padrão `page=0`, `size=100`, `sort=numeroInterno`, `id`). "
                             + "Sem `codigoCliente`: lista paginada de todos (`Page` Spring: `content`, `totalElements`, …; query `page`, `size`, `sort`).")
     public ResponseEntity<?> listar(
             @RequestParam(required = false) String codigoCliente,
+            HttpServletRequest request,
             @PageableDefault(size = 20, sort = "id") Pageable pageable) {
         if (StringUtils.hasText(codigoCliente)) {
-            return ResponseEntity.ok(
-                    processoApplicationService.listarPorCodigoCliente(codigoCliente.trim()));
+            return ResponseEntity.ok(processoApplicationService.listarPorCodigoCliente(
+                    codigoCliente.trim(), pageableParaCodigoCliente(request)));
         }
         return ResponseEntity.ok(processoApplicationService.listarTodosPaginado(pageable));
+    }
+
+    /**
+     * Paginação para {@code codigoCliente}: padrão {@code size=100}, {@code sort=numeroInterno asc, id asc}
+     * quando {@code sort} não é enviado (evita conflito com {@link PageableDefault}(size=20) do branch sem cliente).
+     */
+    private static Pageable pageableParaCodigoCliente(HttpServletRequest req) {
+        int page = parseNonNegativeInt(req.getParameter("page"), 0);
+        int size = parsePositiveIntWithDefault(req.getParameter("size"), 100);
+        Sort sort = sortParaCodigoCliente(req);
+        return PageRequest.of(page, size, sort);
+    }
+
+    private static int parsePositiveIntWithDefault(String raw, int defaultVal) {
+        if (raw == null || raw.isBlank()) {
+            return defaultVal;
+        }
+        try {
+            int v = Integer.parseInt(raw.trim());
+            return v < 1 ? defaultVal : v;
+        } catch (NumberFormatException e) {
+            return defaultVal;
+        }
+    }
+
+    private static int parseNonNegativeInt(String raw, int defaultVal) {
+        if (raw == null || raw.isBlank()) {
+            return defaultVal;
+        }
+        try {
+            int v = Integer.parseInt(raw.trim());
+            return Math.max(0, v);
+        } catch (NumberFormatException e) {
+            return defaultVal;
+        }
+    }
+
+    private static Sort sortParaCodigoCliente(HttpServletRequest req) {
+        String[] sortParams = req.getParameterValues("sort");
+        if (sortParams == null || sortParams.length == 0) {
+            return Sort.by(Sort.Order.asc("numeroInterno"), Sort.Order.asc("id"));
+        }
+        return Sort.by(Arrays.stream(sortParams)
+                .map(ProcessosController::ordemSort)
+                .collect(Collectors.toList()));
+    }
+
+    private static Sort.Order ordemSort(String token) {
+        if (token == null || token.isBlank()) {
+            return Sort.Order.asc("numeroInterno");
+        }
+        String t = token.trim();
+        int comma = t.lastIndexOf(',');
+        if (comma < 0) {
+            return Sort.Order.asc(t);
+        }
+        String prop = t.substring(0, comma).trim();
+        String dir = t.substring(comma + 1).trim();
+        Sort.Direction d = dir.equalsIgnoreCase("desc") ? Sort.Direction.DESC : Sort.Direction.ASC;
+        return new Sort.Order(d, prop);
     }
 
     @GetMapping("/por-numero-interno")

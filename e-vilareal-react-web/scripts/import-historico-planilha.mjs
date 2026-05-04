@@ -109,60 +109,84 @@ const cachesMapaPorCliente = new Map();
  * @param {string} baseUrl
  * @param {string} codigoCliente8
  */
+const PAGE_SIZE_MAPA_PROCESSOS = 100;
+
 async function obterMapaProcessoId(token, baseUrl, codigoCliente8) {
   if (cachesMapaPorCliente.has(codigoCliente8)) {
     return cachesMapaPorCliente.get(codigoCliente8);
   }
-  const url = `${baseUrl}/api/processos?codigoCliente=${encodeURIComponent(codigoCliente8)}`;
-  const maxTentativas = 8;
-  /** @type {Response | undefined} */
-  let res;
-  for (let tentativa = 1; tentativa <= maxTentativas; tentativa++) {
-    try {
-      res = await fetch(url, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/json',
-        },
-      });
-      break;
-    } catch (err) {
-      const cod = err?.cause?.code ?? err?.code;
-      const msg = String(err?.message ?? '');
-      const rede =
-        cod === 'ECONNRESET' ||
-        cod === 'ETIMEDOUT' ||
-        cod === 'UND_ERR_CONNECT_TIMEOUT' ||
-        cod === 'UND_ERR_BODY_TIMEOUT' ||
-        cod === 'UND_ERR_SOCKET' ||
-        msg.includes('fetch failed') ||
-        msg.includes('terminated') ||
-        String(err?.cause?.code ?? '') === 'ECONNRESET';
-      if (!rede || tentativa === maxTentativas) throw err;
-      const esperaMs = Math.min(30000, 1500 * tentativa ** 2);
-      await new Promise((r) => setTimeout(r, esperaMs));
-    }
-  }
-  if (!res) throw new Error(`GET processos para ${codigoCliente8}: sem resposta`);
-  if (!res.ok) {
-    const t = await res.text();
-    throw new Error(`GET processos para ${codigoCliente8} falhou ${res.status}: ${t.slice(0, 400)}`);
-  }
-  const list = await res.json();
-  if (!Array.isArray(list)) {
-    throw new Error(`GET processos para ${codigoCliente8}: resposta nao e array`);
-  }
   /** @type {Map<number, number>} */
   const map = new Map();
-  for (const p of list) {
-    const id = p?.id;
-    const ni = p?.numeroInterno;
-    if (id == null || ni == null) continue;
-    const idN = Number(id);
-    const niN = Number(ni);
-    if (!Number.isFinite(idN) || !Number.isFinite(niN)) continue;
-    map.set(niN, idN);
+  const maxTentativas = 8;
+
+  for (let page = 0; ; page++) {
+    const params = new URLSearchParams();
+    params.set('codigoCliente', codigoCliente8);
+    params.set('page', String(page));
+    params.set('size', String(PAGE_SIZE_MAPA_PROCESSOS));
+    params.append('sort', 'numeroInterno,asc');
+    params.append('sort', 'id,asc');
+    const url = `${baseUrl}/api/processos?${params.toString()}`;
+
+    /** @type {Response | undefined} */
+    let res;
+    for (let tentativa = 1; tentativa <= maxTentativas; tentativa++) {
+      try {
+        res = await fetch(url, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: 'application/json',
+          },
+        });
+        break;
+      } catch (err) {
+        const cod = err?.cause?.code ?? err?.code;
+        const msg = String(err?.message ?? '');
+        const rede =
+          cod === 'ECONNRESET' ||
+          cod === 'ETIMEDOUT' ||
+          cod === 'UND_ERR_CONNECT_TIMEOUT' ||
+          cod === 'UND_ERR_BODY_TIMEOUT' ||
+          cod === 'UND_ERR_SOCKET' ||
+          msg.includes('fetch failed') ||
+          msg.includes('terminated') ||
+          String(err?.cause?.code ?? '') === 'ECONNRESET';
+        if (!rede || tentativa === maxTentativas) throw err;
+        const esperaMs = Math.min(30000, 1500 * tentativa ** 2);
+        await new Promise((r) => setTimeout(r, esperaMs));
+      }
+    }
+    if (!res) throw new Error(`GET processos para ${codigoCliente8}: sem resposta`);
+    if (!res.ok) {
+      const t = await res.text();
+      throw new Error(`GET processos para ${codigoCliente8} falhou ${res.status}: ${t.slice(0, 400)}`);
+    }
+    const body = await res.json();
+    let list;
+    let fim = false;
+    if (Array.isArray(body)) {
+      list = body;
+      fim = true;
+    } else if (body && Array.isArray(body.content)) {
+      list = body.content;
+      fim = body.last === true || list.length < PAGE_SIZE_MAPA_PROCESSOS;
+    } else {
+      throw new Error(
+        `GET processos para ${codigoCliente8}: resposta invalida (esperado Page JSON com content ou array legado)`
+      );
+    }
+    for (const p of list) {
+      const id = p?.id;
+      const ni = p?.numeroInterno;
+      if (id == null || ni == null) continue;
+      const idN = Number(id);
+      const niN = Number(ni);
+      if (!Number.isFinite(idN) || !Number.isFinite(niN)) continue;
+      map.set(niN, idN);
+    }
+    if (fim) break;
   }
+
   cachesMapaPorCliente.set(codigoCliente8, map);
   console.log(`[mapa] cliente ${codigoCliente8}: ${map.size} processos carregados`);
   return map;

@@ -233,17 +233,16 @@ public class ProcessoApplicationService {
     }
 
     @Transactional(readOnly = true)
-    public List<ProcessoResponse> listarPorCodigoCliente(String codigoCliente) {
+    public Page<ProcessoResponse> listarPorCodigoCliente(String codigoCliente, Pageable pageable) {
         Optional<Long> resolved = clienteCodigoPessoaResolver.resolverPessoaIdComFallbackCliente(codigoCliente);
         if (resolved.isEmpty() || !pessoaRepository.existsById(resolved.get())) {
-            return List.of();
+            return Page.empty(pageable);
         }
         long pessoaId = resolved.get();
         // Titular, parte em processo alheio ou advogado vinculado — alinhado a findAllDistinctVinculadosPessoa
         // (só pessoa_id do cabeçalho omitia processos em que o cliente figura só em partes).
-        List<ProcessoEntity> lista = new ArrayList<>(processoRepository.findAllDistinctVinculadosPessoa(pessoaId));
-        lista.sort(Comparator.comparing(ProcessoEntity::getNumeroInterno).thenComparing(ProcessoEntity::getId));
-        List<Long> procIds = lista.stream().map(ProcessoEntity::getId).collect(Collectors.toList());
+        Page<ProcessoEntity> page = processoRepository.findAllDistinctVinculadosPessoa(pessoaId, pageable);
+        List<Long> procIds = page.getContent().stream().map(ProcessoEntity::getId).collect(Collectors.toList());
         Map<Long, List<ProcessoParteEntity>> partesPorProcesso = new LinkedHashMap<>();
         if (!procIds.isEmpty()) {
             for (ProcessoParteEntity parte :
@@ -252,14 +251,13 @@ public class ProcessoApplicationService {
                 partesPorProcesso.computeIfAbsent(pid, k -> new ArrayList<>()).add(parte);
             }
         }
-        return lista.stream()
-                .map(e -> {
+        return page.map(
+                e -> {
                     ProcessoResponse r = toResponse(e);
                     r.setParteOposta(montarTextoParteOpostaListagem(
                             partesPorProcesso.getOrDefault(e.getId(), List.of())));
                     return r;
-                })
-                .collect(Collectors.toList());
+                });
     }
 
     /**

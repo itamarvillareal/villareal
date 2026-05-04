@@ -1,6 +1,8 @@
 package br.com.vilareal.processo.infrastructure.persistence.repository;
 
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -32,6 +34,17 @@ public interface ProcessoRepository extends JpaRepository<ProcessoEntity, Long> 
                            WHERE adv.advogadoPessoa.id = :pid)
             """)
     List<ProcessoEntity> findAllDistinctVinculadosPessoa(@Param("pid") Long pid);
+
+    @Query(
+            """
+            SELECT DISTINCT p FROM ProcessoEntity p
+            WHERE p.pessoa.id = :pid
+               OR p.id IN (SELECT pp.processo.id FROM ProcessoParteEntity pp
+                           WHERE pp.pessoa IS NOT NULL AND pp.pessoa.id = :pid)
+               OR p.id IN (SELECT adv.processoParte.processo.id FROM ProcessoParteAdvogadoEntity adv
+                           WHERE adv.advogadoPessoa.id = :pid)
+            """)
+    Page<ProcessoEntity> findAllDistinctVinculadosPessoa(@Param("pid") Long pid, Pageable pageable);
 
     List<ProcessoEntity> findByPessoa_IdOrderByNumeroInternoAsc(Long pessoaId);
 
