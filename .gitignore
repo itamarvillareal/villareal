@@ -16,3 +16,4 @@ e-vilareal-java-backend/scripts/.vilareal-import-token
 
 # Backups mysqldump (scripts/backup-vps-db.sh, aplicar-limpeza-vps.sh)
 /backups/
+docker-compose.override.yml
