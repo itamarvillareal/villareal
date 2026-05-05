@@ -7,11 +7,27 @@ import {
 } from '../data/cadastroClientesStorage.js';
 
 function mapApiToFront(c) {
-  const pessoaIdStr =
-    c.pessoaId != null ? String(c.pessoaId) : c.id != null ? String(c.id) : '';
+  // `pessoaId` é canónico. `id` só como legado quando não há `clienteId` (evita confundir PK cliente com pessoa).
+  let pessoaIdStr =
+    c.pessoaId != null && String(c.pessoaId).trim() !== '' ? String(c.pessoaId) : '';
+  if (
+    !pessoaIdStr &&
+    (c.clienteId == null || c.clienteId === '') &&
+    c.id != null &&
+    String(c.id).trim() !== ''
+  ) {
+    pessoaIdStr = String(c.id);
+  }
+  const pessoaNum =
+    pessoaIdStr && Number.isFinite(Number(pessoaIdStr)) ? Number(pessoaIdStr) : null;
+  const clientePk =
+    c.clienteId != null && String(c.clienteId).trim() !== '' ? Number(c.clienteId) : null;
   return {
-    id: c.id,
-    codigo: padCliente8Cadastro(c.codigoCliente),
+    /** Mesmo significado que na API: id da pessoa (processos, CNJ, etc.). */
+    id: pessoaNum != null && Number.isFinite(pessoaNum) ? pessoaNum : null,
+    clienteId: clientePk != null && Number.isFinite(clientePk) ? clientePk : null,
+    pessoaId: pessoaIdStr,
+    codigo: padCliente8Cadastro(String(c.codigoCliente ?? '').trim()),
     pessoa: pessoaIdStr,
     nomeRazao: c.nomeReferencia ?? c.nome ?? '',
     cnpjCpf: c.documentoReferencia ?? '',
@@ -40,10 +56,10 @@ export async function listarClientesCadastro() {
 export async function obterClienteCadastroPorCodigo(codigo) {
   if (!featureFlags.useApiClientes) return null;
   const cod = padCliente8Cadastro(codigo);
+  const resolved = await resolverClienteCadastroPorCodigo(cod);
+  if (resolved) return resolved;
   const lista = await listarClientesCadastro();
-  const found = lista.find((c) => c.codigo === cod);
-  if (found) return found;
-  return resolverClienteCadastroPorCodigo(cod);
+  return lista.find((c) => c.codigo === cod) ?? null;
 }
 
 /**
@@ -75,18 +91,14 @@ export async function salvarClienteCadastro(dados) {
     emitCadastroClientesAtualizado();
     return loadCadastroClienteDados(dados.codigo);
   }
-  const atual = await obterClienteCadastroPorCodigo(dados.codigo);
-  if (atual?.id) {
-    const updated = await request(`/api/clientes/${atual.id}`, {
-      method: 'PUT',
-      body: mapFrontToApi(dados),
-    });
-    emitCadastroClientesAtualizado();
-    return mapApiToFront(updated);
+  const body = mapFrontToApi(dados);
+  if (body.pessoaId == null || body.pessoaId < 1) {
+    return null;
   }
+  /** Backend só expõe POST idempotente (codigoCliente+pessoaId); não há PUT /api/clientes/{id}. */
   const created = await request('/api/clientes', {
     method: 'POST',
-    body: mapFrontToApi(dados),
+    body,
   });
   emitCadastroClientesAtualizado();
   return mapApiToFront(created);

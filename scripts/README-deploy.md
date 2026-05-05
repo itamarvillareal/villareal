@@ -68,3 +68,27 @@ Saída na VPS usa cores (passo / ok / erro). Qualquer comando falha com `set -e`
 
 - O primeiro deploy ou alterações em `package-lock.json` exigem rede na VPS para `npm ci`.
 - Se o health check falhar, rever logs: `journalctl -u vilareal-backend -n 100 --no-pager` na VPS.
+
+## Copiar base `vilareal` do Docker local para a VPS (túnel MySQL)
+
+Cenário: validaste dados no Mac com MySQL em Docker opcional (`docker-compose.local-db.yml`, porta host **3307**) e queres substituir o conteúdo do MySQL na VPS por esse dump.
+
+1. Confirma que o código na VPS (e Flyway) está alinhado com o repositório — idealmente `./scripts/deploy-vps.sh --backend-only --yes` antes de importar dados.
+2. Abre o túnel SSH (exemplo: porta local 3308 → MySQL na VPS):
+
+   ```bash
+   ssh -N -L 3308:127.0.0.1:3306 root@161.97.175.73
+   ```
+
+3. Exporta a password do utilizador remoto (ex.: `villareal_remote` em `%`, **não** uses `root` via túnel se não tiveres password/socket).
+
+   ```bash
+   export VILLAREAL_VPS_MYSQL_TUNNEL_PWD='***'
+   ./scripts/push-local-docker-db-to-remote-tunnel.sh
+   ```
+
+O script (por omissão) faz **mysqldump do remoto antes do push** para `backups/vilareal-remote-before-push-*.sql.gz`, gera o dump do Docker local e importa no remoto. **Atenção:** isto repõe também `usuarios` e `flyway_schema_history` conforme o teu Docker local — só faz se for mesmo o pretendido.
+
+Opções úteis: `--dry-run`, `--no-backup-remote`, `--skip-flyway-check`, `ASSUME_YES=1`.
+
+Ver produção (via SSH no servidor, com user da app): `export VILAREAL_VPS_MYSQL_PWD=...` e `./scripts/check-prod-db.sh`.

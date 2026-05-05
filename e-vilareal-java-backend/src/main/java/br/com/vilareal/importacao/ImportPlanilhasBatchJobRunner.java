@@ -92,11 +92,10 @@ public class ImportPlanilhasBatchJobRunner implements ApplicationListener<Applic
             pessoasProps.setReportPath(batchProperties.getPessoasReportPath());
             CadastroPessoasPlanilhaImporter.ImportStats st = cadastroPessoasPlanilhaImporter.importar(pessoasProps);
             log.info(
-                    "import-planilhas-batch: pessoas ok — inseridas={}, dry_run_candidatas={}, ignoradas={}, email_anulado_planilha={}",
+                    "import-planilhas-batch: pessoas ok — inseridas={}, dry_run_candidatas={}, ignoradas={}",
                     st.inserted,
                     st.wouldInsert,
-                    st.skipped,
-                    st.emailNulled);
+                    st.skipped);
 
             int exitCode = 0;
 

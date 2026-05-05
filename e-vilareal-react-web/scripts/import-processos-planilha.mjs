@@ -12,12 +12,19 @@
  * Envs: VILAREAL_IMPORT_SENHA, VILAREAL_API_BASE (ex.: http://localhost:8080), VILAREAL_IMPORT_CONCURRENCY (default 3).
  *
  * Pos-import (Etapa C): POST /api/processos/{id}/andamentos (audiencia F+G+H) e POST .../prazos (J parseavel).
+ *
+ * Texto das celulas: aplicamos a mesma correcao de mojibake que na agenda
+ * (`scripts/lib/normalizar-texto-planilha.mjs`, via `parseTexto`).
+ * Nota: na UI a coluna «Parte Oposta» usa sobretudo `pessoa.nome` dos reus —
+ * dados ja gravados maus ai devem ser corrigidos no cadastro de pessoas ou pelo SQL em `scripts/sql/corrigir-mojibake-planilha-utf8.sql`.
  */
 
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import XLSX from 'xlsx';
+
+import { normalizarTextoPlanilha } from './lib/normalizar-texto-planilha.mjs';
 
 const INDICES_ABA1_UTIL = [4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 15, 16, 17, 18, 19, 20, 21];
 const INDICES_ABA2_UTIL = [4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 15, 16, 17, 18, 19, 20, 21];
@@ -134,8 +141,38 @@ function parseInt2(v) {
 
 function parseTexto(v) {
   if (v == null) return null;
-  const s = String(v).trim();
+  const s = normalizarTextoPlanilha(v);
   return s === '' ? null : s;
+}
+
+/** Limites VARCHAR alinhados a {@code ProcessoEntity} / Flyway (evita Data truncation no MySQL). */
+const LIM_PROCESSO_VARCHAR = {
+  tramitacao: 120,
+  unidade: 32,
+  pasta: 120,
+  competencia: 120,
+  fase: 120,
+  numeroCnj: 100,
+  numeroProcessoAntigo: 100,
+  naturezaAcao: 255,
+  consultor: 255,
+  uf: 2,
+  cidade: 120,
+};
+
+/**
+ * Trunca por comprimento em unidades Unicode (adequado a utf8mb4 / VARCHAR(n) no MySQL 8).
+ * @param {string|null|undefined} val
+ * @param {number} max
+ * @returns {string|null}
+ */
+function truncarVarchar(val, max) {
+  if (val == null) return null;
+  const s = String(val).trim();
+  if (!s) return null;
+  const chars = [...s];
+  if (chars.length <= max) return s;
+  return chars.slice(0, max).join('');
 }
 
 function normalizarCodigoCliente(v) {
@@ -352,7 +389,7 @@ function buildAndamentoAudienciaBody(r1) {
   const movimentoEm = buildMovimentoEmAudienciaUtc(r1);
   if (!movimentoEm) return null;
   let titulo = parseTexto(r1?.[7]) ?? 'Audiência';
-  if (titulo.length > 500) titulo = titulo.slice(0, 500);
+  titulo = truncarVarchar(titulo, 500) ?? 'Audiência';
   return {
     movimentoEm,
     titulo,
@@ -642,21 +679,22 @@ function buildProcessoWrite(entry, logFase) {
   if (pessoaPlan == null) {
     return { erro: 'pessoa_id (col E) vazio', entry };
   }
-  const descricaoAcao = parseTexto(r1?.[20]) ?? parseTexto(r2?.[20]);
-  const competencia = parseTexto(r1?.[10]);
-  const unidade = parseTexto(r1?.[16]);
+  const descricaoAcaoRaw = parseTexto(r1?.[20]) ?? parseTexto(r2?.[20]);
+  const descricaoAcao = descricaoAcaoRaw;
+  const competencia = truncarVarchar(parseTexto(r1?.[10]), LIM_PROCESSO_VARCHAR.competencia);
+  const unidade = truncarVarchar(parseTexto(r1?.[16]), LIM_PROCESSO_VARCHAR.unidade);
   const faseRaw = parseTexto(r2?.[14]);
-  const fase = normalizarFaseOuNull(faseRaw, logFase);
+  const fase = truncarVarchar(normalizarFaseOuNull(faseRaw, logFase), LIM_PROCESSO_VARCHAR.fase);
   const ativo = parseAtivoColunas(r1?.[21], r2?.[5]);
   const body = {
     clienteId: pessoaPlan,
     numeroInterno,
-    numeroCnj: parseTexto(r2?.[19]),
-    naturezaAcao: descricaoAcao,
+    numeroCnj: truncarVarchar(parseTexto(r2?.[19]), LIM_PROCESSO_VARCHAR.numeroCnj),
+    naturezaAcao: truncarVarchar(descricaoAcaoRaw, LIM_PROCESSO_VARCHAR.naturezaAcao),
     descricaoAcao,
-    pasta: parseTexto(r1?.[14]),
-    tramitacao: parseTexto(r1?.[15]),
-    consultor: parseTexto(r1?.[17]),
+    pasta: truncarVarchar(parseTexto(r1?.[14]), LIM_PROCESSO_VARCHAR.pasta),
+    tramitacao: truncarVarchar(parseTexto(r1?.[15]), LIM_PROCESSO_VARCHAR.tramitacao),
+    consultor: truncarVarchar(parseTexto(r1?.[17]), LIM_PROCESSO_VARCHAR.consultor),
     competencia,
     unidade,
     fase,

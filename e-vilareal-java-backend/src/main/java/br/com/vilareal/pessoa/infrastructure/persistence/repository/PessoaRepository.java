@@ -21,10 +21,6 @@ public interface PessoaRepository extends JpaRepository<PessoaEntity, Long>, Jpa
 
     Optional<PessoaEntity> findByCpf(String cpf);
 
-    boolean existsByEmailAndIdNot(String email, Long id);
-
-    boolean existsByEmail(String email);
-
     @Query("SELECT COALESCE(MAX(p.id), 0) + 1 FROM PessoaEntity p")
     long calcularProximoId();
 

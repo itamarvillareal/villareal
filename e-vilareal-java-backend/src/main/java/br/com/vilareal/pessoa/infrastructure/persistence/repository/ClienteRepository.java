@@ -16,6 +16,13 @@ public interface ClienteRepository extends JpaRepository<ClienteEntity, Long> {
     @Query("SELECT c FROM ClienteEntity c JOIN FETCH c.pessoa WHERE c.codigoCliente = :codigoCliente")
     Optional<ClienteEntity> findByCodigoClienteFetchPessoa(@Param("codigoCliente") String codigoCliente);
 
+    /**
+     * Mesmo que {@link #findByCodigoClienteFetchPessoa} com {@code TRIM} em ambos os lados — alinha a
+     * comparação a {@code CHAR(8)} com espaços do MySQL.
+     */
+    @Query("SELECT c FROM ClienteEntity c JOIN FETCH c.pessoa WHERE TRIM(c.codigoCliente) = TRIM(:codigoCliente)")
+    Optional<ClienteEntity> findByCodigoClienteFetchPessoaTrim(@Param("codigoCliente") String codigoCliente);
+
     boolean existsByPessoa_Id(Long pessoaId);
 
     boolean existsByCodigoCliente(String codigoCliente);

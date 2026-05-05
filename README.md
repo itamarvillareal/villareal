@@ -32,24 +32,45 @@ Edite os arquivos em `e-vilareal-react-web/src/data/` diretamente.
 
 O backend não é necessário para a execução do frontend com mocks.
 
-## Rodar tudo com Docker
+## Fonte de dados: sempre a VPS
 
-Na raiz do repositório:
+- **Onde vivem os dados:** MySQL na **VPS** (é o que o **portal** usa). Não há um “segundo banco oficial” no Mac.
+- **Trabalhar localmente:** abre o **túnel SSH** (`localhost:3308` → MySQL na VPS) e corre o backend apontando para esse túnel (ver `.env.docker` e `./scripts/dev-up.sh`). Assim, o teu `localhost:8081` lê e grava **no mesmo sítio** que o portal.
+- **Importações em Node** (`import-*-planilha.mjs`): para garantir que nada fica só na máquina, define sempre a API de produção, por exemplo  
+  `export VILAREAL_API_BASE='https://portal.villarealadvocacia.adv.br'`  
+  (ajusta o URL se o teu domínio for outro). Assim os `POST` vão para o backend da VPS e os dados caem na base certa.
+- **MySQL só em Docker no Mac** (`docker-compose.local-db.yml`): apenas para testes pontuais / legado — **não** usar como destino de cargas reais se quiseres paridade com o portal.
+
+## Rodar tudo com Docker (backend ligado ao MySQL na VPS)
+
+O stack por defeito **não** inclui MySQL em Docker: o backend usa o servidor na VPS através de um **túnel SSH** (`localhost:3308` → MySQL na VPS).
+
+1. Copiar credenciais do Compose: `cp .env.docker.example .env.docker` e editar `VILLAREAL_COMPOSE_JDBC_PASSWORD` (utilizador MySQL remoto na VPS, ex. `villareal_remote`).
+2. Abrir o túnel e subir os containers:
 
 ```bash
-docker compose up --build
+./scripts/dev-up.sh
 ```
 
-Serviços disponíveis:
+Ou manualmente: `ssh -N -L 3308:127.0.0.1:3306 root@SEU_HOST` e noutro terminal  
+`docker compose --env-file .env.docker up --build -d`.
+
+Serviços:
 
 - Frontend: `http://localhost:5173`
 - Backend: `http://localhost:8081`
-- Banco MySQL: `localhost:3307` (`root` / `root`)
+- Dados: MySQL na VPS (via túnel na porta **3308**)
 
-Para parar os containers:
+Para parar:
 
 ```bash
-docker compose down
+./scripts/dev-down.sh
+```
+
+MySQL local em Docker (opcional, legado):
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.local-db.yml up --build -d
 ```
 
 ## Observação sobre índices monetários

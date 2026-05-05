@@ -35,15 +35,29 @@ public interface ProcessoRepository extends JpaRepository<ProcessoEntity, Long> 
             """)
     List<ProcessoEntity> findAllDistinctVinculadosPessoa(@Param("pid") Long pid);
 
+    /**
+     * Paginação: Spring não deriva bem {@code count} para {@code SELECT DISTINCT} com subqueries —
+     * sem {@code countQuery} explícita o runtime pode responder 500 (SQL inválido / count errado).
+     */
     @Query(
-            """
-            SELECT DISTINCT p FROM ProcessoEntity p
-            WHERE p.pessoa.id = :pid
-               OR p.id IN (SELECT pp.processo.id FROM ProcessoParteEntity pp
-                           WHERE pp.pessoa IS NOT NULL AND pp.pessoa.id = :pid)
-               OR p.id IN (SELECT adv.processoParte.processo.id FROM ProcessoParteAdvogadoEntity adv
-                           WHERE adv.advogadoPessoa.id = :pid)
-            """)
+            value =
+                    """
+                    SELECT DISTINCT p FROM ProcessoEntity p
+                    WHERE p.pessoa.id = :pid
+                       OR p.id IN (SELECT pp.processo.id FROM ProcessoParteEntity pp
+                                   WHERE pp.pessoa IS NOT NULL AND pp.pessoa.id = :pid)
+                       OR p.id IN (SELECT adv.processoParte.processo.id FROM ProcessoParteAdvogadoEntity adv
+                                   WHERE adv.advogadoPessoa.id = :pid)
+                    """,
+            countQuery =
+                    """
+                    SELECT COUNT(DISTINCT p.id) FROM ProcessoEntity p
+                    WHERE p.pessoa.id = :pid
+                       OR p.id IN (SELECT pp.processo.id FROM ProcessoParteEntity pp
+                                   WHERE pp.pessoa IS NOT NULL AND pp.pessoa.id = :pid)
+                       OR p.id IN (SELECT adv.processoParte.processo.id FROM ProcessoParteAdvogadoEntity adv
+                                   WHERE adv.advogadoPessoa.id = :pid)
+                    """)
     Page<ProcessoEntity> findAllDistinctVinculadosPessoa(@Param("pid") Long pid, Pageable pageable);
 
     List<ProcessoEntity> findByPessoa_IdOrderByNumeroInternoAsc(Long pessoaId);

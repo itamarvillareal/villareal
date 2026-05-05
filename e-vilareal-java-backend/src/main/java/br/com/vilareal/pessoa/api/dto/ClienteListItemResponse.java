@@ -5,7 +5,14 @@ import io.swagger.v3.oas.annotations.media.Schema;
 @Schema(description = "Cliente para tela de Processos (GET /api/clientes)")
 public class ClienteListItemResponse {
 
-    private Long id;
+    /**
+     * PK da tabela {@code cliente}. Ausente quando o item veio só do import Pasta1 sem linha em {@code cliente}.
+     */
+    private Long clienteId;
+
+    /** {@code pessoa.id} do vínculo — não confundir com {@link #clienteId}. */
+    private Long pessoaId;
+
     private String codigoCliente;
     private String nome;
     /** CPF/CNPJ só dígitos — paridade com {@code clientesRepository.mapApiToFront}. */
@@ -13,23 +20,47 @@ public class ClienteListItemResponse {
 
     public ClienteListItemResponse() {}
 
-    public ClienteListItemResponse(Long id, String codigoCliente, String nome) {
-        this(id, codigoCliente, nome, null);
+    /** Item só da planilha Pasta1 (sem registo na tabela {@code cliente}). */
+    public ClienteListItemResponse(Long pessoaId, String codigoCliente, String nome, String documentoReferencia) {
+        this(null, pessoaId, codigoCliente, nome, documentoReferencia);
     }
 
-    public ClienteListItemResponse(Long id, String codigoCliente, String nome, String documentoReferencia) {
-        this.id = id;
+    /** Item canónico (tabela {@code cliente} + pessoa). */
+    public ClienteListItemResponse(
+            Long clienteId, Long pessoaId, String codigoCliente, String nome, String documentoReferencia) {
+        this.clienteId = clienteId;
+        this.pessoaId = pessoaId;
         this.codigoCliente = codigoCliente;
         this.nome = nome;
         this.documentoReferencia = documentoReferencia;
     }
 
+    /**
+     * Compatibilidade: mesmo valor que {@link #getPessoaId()} — {@code clienteId} na API é outro campo.
+     * Usado em testes e em fluxos que esperam {@code id} = pessoa titular (processos, financeiro).
+     */
     public Long getId() {
-        return id;
+        return pessoaId;
     }
 
     public void setId(Long id) {
-        this.id = id;
+        this.pessoaId = id;
+    }
+
+    public Long getClienteId() {
+        return clienteId;
+    }
+
+    public void setClienteId(Long clienteId) {
+        this.clienteId = clienteId;
+    }
+
+    public Long getPessoaId() {
+        return pessoaId;
+    }
+
+    public void setPessoaId(Long pessoaId) {
+        this.pessoaId = pessoaId;
     }
 
     public String getCodigoCliente() {
@@ -54,11 +85,6 @@ public class ClienteListItemResponse {
 
     public void setDocumentoReferencia(String documentoReferencia) {
         this.documentoReferencia = documentoReferencia;
-    }
-
-    /** Alias JSON para o front ({@code id} é sempre o {@code pessoa.id}). */
-    public Long getPessoaId() {
-        return id;
     }
 
     /** Alias JSON para o front. */

@@ -153,12 +153,12 @@ public class PessoaApplicationService {
             x.setPessoa(p);
             return x;
         });
-        e.setRg(payload.getRg());
-        e.setOrgaoExpedidor(payload.getOrgaoExpedidor());
-        e.setProfissao(payload.getProfissao());
-        e.setNacionalidade(payload.getNacionalidade());
-        e.setEstadoCivil(payload.getEstadoCivil());
-        e.setGenero(payload.getGenero());
+        e.setRg(Utf8MojibakeUtil.corrigir(payload.getRg()));
+        e.setOrgaoExpedidor(Utf8MojibakeUtil.corrigir(payload.getOrgaoExpedidor()));
+        e.setProfissao(Utf8MojibakeUtil.corrigir(payload.getProfissao()));
+        e.setNacionalidade(Utf8MojibakeUtil.corrigir(payload.getNacionalidade()));
+        e.setEstadoCivil(Utf8MojibakeUtil.corrigir(payload.getEstadoCivil()));
+        e.setGenero(Utf8MojibakeUtil.corrigir(payload.getGenero()));
         complementarRepository.save(e);
         return toComplementarPayload(e);
     }
@@ -180,11 +180,11 @@ public class PessoaApplicationService {
             PessoaEnderecoEntity e = new PessoaEnderecoEntity();
             e.setPessoa(p);
             e.setNumeroOrdem(r.getNumero());
-            e.setRua(r.getRua());
-            e.setBairro(r.getBairro());
-            e.setEstado(r.getEstado());
-            e.setCidade(r.getCidade());
-            e.setCep(r.getCep() != null ? r.getCep().replaceAll("\\D", "") : null);
+            e.setRua(Utf8MojibakeUtil.corrigir(r.getRua()));
+            e.setBairro(Utf8MojibakeUtil.corrigir(r.getBairro()));
+            e.setEstado(Utf8MojibakeUtil.corrigir(r.getEstado()));
+            e.setCidade(Utf8MojibakeUtil.corrigir(r.getCidade()));
+            e.setCep(r.getCep() != null ? Utf8MojibakeUtil.corrigir(r.getCep().replaceAll("\\D", "")) : null);
             e.setAutoPreenchido(Boolean.TRUE.equals(r.getAutoPreenchido()));
             enderecoRepository.save(e);
         }
@@ -208,11 +208,11 @@ public class PessoaApplicationService {
         for (PessoaContatoItemRequest r : itens) {
             PessoaContatoEntity c = new PessoaContatoEntity();
             c.setPessoa(p);
-            c.setTipo(r.getTipo());
-            c.setValor(r.getValor());
+            c.setTipo(Utf8MojibakeUtil.corrigir(r.getTipo()));
+            c.setValor(Utf8MojibakeUtil.corrigir(r.getValor()));
             c.setDataLancamento(r.getDataLancamento() != null ? r.getDataLancamento() : now);
             c.setDataAlteracao(r.getDataAlteracao() != null ? r.getDataAlteracao() : now);
-            c.setUsuarioLancamento(r.getUsuario());
+            c.setUsuarioLancamento(Utf8MojibakeUtil.corrigir(r.getUsuario()));
             contatoRepository.save(c);
         }
         return listarContatos(pessoaId);
@@ -256,10 +256,12 @@ public class PessoaApplicationService {
     }
 
     private void aplicarNucleo(PessoaEntity p, PessoaCadastroRequest req, String cpfDigits) {
-        p.setNome(req.getNome().trim());
+        p.setNome(Utf8MojibakeUtil.corrigir(req.getNome().trim()));
         p.setCpf(cpfDigits);
-        p.setEmail(req.getEmail());
-        p.setTelefone(StringUtils.hasText(req.getTelefone()) ? req.getTelefone().trim() : null);
+        p.setEmail(Utf8MojibakeUtil.corrigir(req.getEmail()));
+        p.setTelefone(StringUtils.hasText(req.getTelefone())
+                ? Utf8MojibakeUtil.corrigir(req.getTelefone().trim())
+                : null);
         p.setDataNascimento(req.getDataNascimento());
         p.setAtivo(req.getAtivo() != null ? req.getAtivo() : true);
         p.setMarcadoMonitoramento(Boolean.TRUE.equals(req.getMarcadoMonitoramento()));

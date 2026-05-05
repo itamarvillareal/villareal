@@ -108,7 +108,12 @@ public class ClienteCodigoPessoaResolver {
         if (norm == null || norm.isEmpty()) {
             return Optional.empty();
         }
-        Optional<Long> fromCliente = clienteRepository.findByCodigoCliente(norm).map(c -> c.getPessoa().getId());
+        Optional<ClienteEntity> linha =
+                clienteRepository.findByCodigoClienteFetchPessoa(norm);
+        if (linha.isEmpty()) {
+            linha = clienteRepository.findByCodigoClienteFetchPessoaTrim(norm);
+        }
+        Optional<Long> fromCliente = linha.map(c -> c.getPessoa().getId());
         if (fromCliente.isPresent()) {
             return fromCliente;
         }

@@ -19,9 +19,8 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 /**
- * Lista de clientes para Processos / Cadastro de Clientes. Com import Pasta1 gravado em {@code
- * planilha_pasta1_cliente}, cada item reflete coluna A → coluna B; sem planilha, código = id da pessoa
- * em 8 dígitos (legado).
+ * Lista de clientes para Processos / Cadastro de Clientes. O vínculo código → pessoa vem da tabela
+ * {@code cliente}; entradas só na {@code planilha_pasta1_cliente} completam códigos sem linha em {@code cliente}.
  */
 @RestController
 @RequestMapping("/api/clientes")
