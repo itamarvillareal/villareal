@@ -1,13 +1,18 @@
 #!/usr/bin/env node
 /**
- * Importa histórico de andamentos multicliente a partir de historico_import.xls (aba Planilha2).
- * Coluna A = código cliente (normalizado 8 dígitos); GET /api/processos?codigoCliente= por cliente (cache).
+ * Importa histórico de andamentos multicliente (.xls/.xlsx).
+ * Colunas: A = código cliente (8 dígitos), B = nº interno do processo, D = título, E = data/hora, F = responsável (nome).
+ * GET /api/processos?codigoCliente= por cliente (cache).
  *
- * Caminho default: C:\Users\jrvill\Dropbox\sistema\historico_import.xls
+ * Aba: por defeito tenta "Planilha2"; senão a primeira cujo nome contém "pasta2" (ex.: ficheiro Pasta2 - Copia.xls); senão a 1.ª aba.
+ * Override: --sheet=NomeExato
+ *
+ * Caminho default (legado Windows): C:\Users\jrvill\Dropbox\sistema\historico_import.xls
  *
  * Uso:
  *   VILAREAL_IMPORT_SENHA='***' node scripts/import-historico-planilha.mjs [--login=itamar]
- *   node scripts/import-historico-planilha.mjs "C:\\caminho\\historico_import.xls" --dry-run
+ *   node scripts/import-historico-planilha.mjs "/caminho/Pasta2 - Copia.xls" --dry-run
+ *   node scripts/import-historico-planilha.mjs "Pasta2.xls" --sheet="Planilha1"
  *
  * Só um cliente (código cadastro, ex. 119 → 00000119):
  *   --cliente=119 --substituir-andamentos   # apaga andamentos actuais dos processos afectados, depois importa
@@ -20,8 +25,10 @@ import path from 'node:path';
 import process from 'node:process';
 import XLSX from 'xlsx';
 
+import { normalizarTextoPlanilha } from './lib/normalizar-texto-planilha.mjs';
+
 const DEFAULT_FILE = String.raw`C:\Users\jrvill\Dropbox\sistema\historico_import.xls`;
-const SHEET_NAME = 'Planilha2';
+const SHEET_FALLBACK_PRIMARIO = 'Planilha2';
 
 /** Variantes que normalizam para outro nome, null, ou __SKIP__ (linha não importada). */
 const MAPA_RESPONSAVEL_NORMALIZACAO = {
@@ -81,7 +88,7 @@ const RESPONSAVEIS_RECONHECIDOS = new Set([
  */
 function normalizarResponsavel(valorBruto, linhaExcel) {
   if (valorBruto == null) return null;
-  const trim = String(valorBruto).trim();
+  const trim = normalizarTextoPlanilha(valorBruto);
   if (!trim) return null;
   // Coluna trocada ou ruído (ex.: "193", IDs); não é nome reconhecível.
   if (/^\d+$/.test(trim)) return null;
@@ -291,6 +298,7 @@ function parseArgs(argv) {
     codigoClienteRaw: null,
     /** Apaga todos os andamentos dos processos que vão receber linhas da planilha, antes do POST */
     substituirAndamentos: false,
+    sheetName: null,
   };
   for (const a of argv) {
     if (a === '--dry-run') out.dryRun = true;
@@ -302,9 +310,39 @@ function parseArgs(argv) {
       const n = Number(a.slice(14));
       if (Number.isFinite(n) && n >= 1) out.concurrency = Math.min(32, Math.floor(n));
     } else if (a.startsWith('--base-url=')) out.baseUrl = a.slice(11).replace(/\/$/, '');
+    else if (a.startsWith('--sheet=')) out.sheetName = a.slice(8).trim();
     else if (!a.startsWith('-') && !out.file) out.file = a;
   }
   return out;
+}
+
+/**
+ * Escolhe a aba: --sheet explícito → Planilha2 → nome contém "pasta2" → primeira aba.
+ * @param {import('xlsx').WorkBook} wb
+ */
+function resolverNomeAbaHistorico(wb, opts) {
+  const names = wb.SheetNames || [];
+  if (opts.sheetName) {
+    const exact = names.find((n) => String(n).trim() === opts.sheetName.trim());
+    if (!exact) {
+      throw new Error(
+        `Aba "${opts.sheetName}" não encontrada. Disponíveis: ${names.join(', ') || '(nenhuma)'}`
+      );
+    }
+    return exact;
+  }
+  if (names.includes(SHEET_FALLBACK_PRIMARIO)) {
+    return SHEET_FALLBACK_PRIMARIO;
+  }
+  const pasta2 = names.find((n) => /pasta\s*2/i.test(String(n)));
+  if (pasta2) {
+    console.log(`[aba] Usando "${pasta2}" (nome contém Pasta2).`);
+    return pasta2;
+  }
+  const first = names[0];
+  if (!first) throw new Error('Workbook sem abas.');
+  console.warn(`[aba] Aviso: usando primeira aba "${first}" (não há Planilha2 nem Pasta2 no nome).`);
+  return first;
 }
 
 /**
@@ -376,7 +414,7 @@ function buildLinhas(mat) {
       continue;
     }
 
-    let titulo = dStr;
+    let titulo = normalizarTextoPlanilha(dStr);
     if (!titulo.trim()) titulo = 'Andamento';
     if (titulo.length > 500) titulo = titulo.slice(0, 500);
 
@@ -584,11 +622,19 @@ async function main() {
   }
 
   const wb = XLSX.readFile(abs, { cellDates: true, dense: false });
-  const sh = wb.Sheets[SHEET_NAME];
-  if (!sh) {
-    console.error(`Aba "${SHEET_NAME}" não encontrada. Abas:`, wb.SheetNames.join(', '));
+  let sheetNome;
+  try {
+    sheetNome = resolverNomeAbaHistorico(wb, opts);
+  } catch (e) {
+    console.error(e.message || e);
     process.exit(1);
   }
+  const sh = wb.Sheets[sheetNome];
+  if (!sh) {
+    console.error(`Aba "${sheetNome}" inválida. Abas:`, wb.SheetNames.join(', '));
+    process.exit(1);
+  }
+  console.log(`[planilha] Aba: "${sheetNome}"`);
 
   const mat = XLSX.utils.sheet_to_json(sh, { header: 1, defval: null, raw: true });
   const brutas = buildLinhas(mat);

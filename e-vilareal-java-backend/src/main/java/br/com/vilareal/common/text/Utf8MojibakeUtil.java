@@ -1,5 +1,6 @@
 package br.com.vilareal.common.text;
 
+import java.text.Normalizer;
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
 import java.nio.charset.CharacterCodingException;
@@ -24,13 +25,52 @@ public final class Utf8MojibakeUtil {
     private static final int MAX_PASSES_DUPLA = 10;
     private static final Charset WINDOWS_1252 = Charset.forName("Windows-1252");
 
+    /**
+     * Mesma sequência que {@code scripts/lib/normalizar-texto-planilha.mjs} e imports Excel legados.
+     * Cobre casos em que o texto já é UTF-16 “válido” mas com code points errados (ex.: U+2021 em vez do
+     * byte 0x87), onde {@link #corrigirLatin1Utf8EmCadeia} não actua.
+     */
+    private static final String[][] MOJIBAKE_PLANILHA_UTF8 = {
+        {"\u00C3\u2021", "\u00C7"},
+        {"\u00C3\u0192", "\u00C3"},
+        {"\u00C3\u00A1", "\u00E1"},
+        {"\u00C3\u00A2", "\u00E2"},
+        {"\u00C3\u00A3", "\u00E3"},
+        {"\u00C3\u00A9", "\u00E9"},
+        {"\u00C3\u00AA", "\u00EA"},
+        {"\u00C3\u00AD", "\u00ED"},
+        {"\u00C3\u00B3", "\u00F3"},
+        {"\u00C3\u00B4", "\u00F4"},
+        {"\u00C3\u00B5", "\u00F5"},
+        {"\u00C3\u00BA", "\u00FA"},
+        {"\u00C3\u00A7", "\u00E7"},
+        {"\u00C3\u2030", "\u00C9"},
+        {"\u00C3\u0160", "\u00CA"},
+        {"\u00C3\u201C", "\u00D3"},
+        {"\u00C3\u201D", "\u00D4"},
+        {"\u00C3\u0161", "\u00DA"},
+        {"\u00C3\u20AC", "\u00C0"},
+        {"\u00C2\u00BA", "\u00BA"},
+        {"\u00C2\u00AA", "\u00AA"},
+        {"\u00E2\u20AC\u201C", "\u2013"},
+        {"\u00E2\u20AC\u201D", "\u2014"},
+        {"\u00E2\u20AC\u02DC", "\u2018"},
+        {"\u00E2\u20AC\u2122", "\u2019"},
+        {"\u00E2\u20AC\u0153", "\u201C"},
+        {"\u00E2\u20AC\u009D", "\u201D"},
+        {"\u00C2", ""},
+    };
+
     private Utf8MojibakeUtil() {}
 
     public static String corrigir(String s) {
-        if (s == null || s.isEmpty()) {
-            return s;
+        if (s == null) {
+            return null;
         }
-        String cur = s;
+        String cur = Normalizer.normalize(s.trim(), Normalizer.Form.NFC);
+        if (cur.isEmpty()) {
+            return "";
+        }
         if (deveTentarReverterDuplaCamada(cur)) {
             for (int k = 0; k < MAX_PASSES_DUPLA; k++) {
                 // Não interromper só porque o texto corrompido cabe em Latin-1: mojibake típico é todo <= U+00FF.
@@ -43,7 +83,23 @@ public final class Utf8MojibakeUtil {
         }
         String out = corrigirLatin1Utf8EmCadeia(cur);
         out = substituirClustersBlocoDesenhoU251c(out);
-        return corrigirLatin1Utf8EmCadeia(out);
+        out = corrigirLatin1Utf8EmCadeia(out);
+        return aplicarSubstituicoesPlanilhaUtf8Legado(out);
+    }
+
+    private static String aplicarSubstituicoesPlanilhaUtf8Legado(String s) {
+        if (s == null || s.isEmpty()) {
+            return s;
+        }
+        String t = s;
+        for (String[] pair : MOJIBAKE_PLANILHA_UTF8) {
+            String from = pair[0];
+            String to = pair[1];
+            if (!from.isEmpty() && t.contains(from)) {
+                t = t.replace(from, to);
+            }
+        }
+        return t.trim();
     }
 
     /**

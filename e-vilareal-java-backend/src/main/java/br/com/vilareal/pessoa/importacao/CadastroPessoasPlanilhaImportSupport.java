@@ -1,5 +1,7 @@
 package br.com.vilareal.pessoa.importacao;
 
+import br.com.vilareal.common.text.Utf8MojibakeUtil;
+
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.Locale;
@@ -22,6 +24,25 @@ public final class CadastroPessoasPlanilhaImportSupport {
     public record CpfCnpjNormalizado(CpfCnpjResultado resultado, String valor) {}
 
     private CadastroPessoasPlanilhaImportSupport() {}
+
+    /**
+     * Corrige texto livre vindo de células Excel antes de truncar/persistir.
+     * Delega em {@link Utf8MojibakeUtil#corrigir(String)} (mesma lógica que API e portal).
+     *
+     * @param raw valor cru ({@link String} já interpretado pela POI / JVM).
+     */
+    public static String corrigirMojibakePlanilhaUtf8(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return "";
+        }
+        String fixed = Utf8MojibakeUtil.corrigir(raw);
+        return fixed != null ? fixed : "";
+    }
+
+    /** {@link #truncate}(corrigirMojibakePlanilhaUtf8(raw), max). */
+    public static String truncatePlanilhaTexto(String raw, int max) {
+        return truncate(corrigirMojibakePlanilhaUtf8(raw == null ? "" : raw), max);
+    }
 
     public static String digitsOnly(String s) {
         if (s == null) return "";

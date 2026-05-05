@@ -54,11 +54,10 @@ public class CadastroPessoasPlanilhaImportRunner implements ApplicationListener<
         try {
             CadastroPessoasPlanilhaImporter.ImportStats stats = importer.importar(properties);
             log.info(
-                    "Resumo: inseridas={}, dry_run_candidatas={}, ignoradas={}, email_anulado_planilha={}",
+                    "Resumo: inseridas={}, dry_run_candidatas={}, ignoradas={}",
                     stats.inserted,
                     stats.wouldInsert,
-                    stats.skipped,
-                    stats.emailNulled);
+                    stats.skipped);
             SpringApplication.exit(context, () -> 0);
         } catch (Exception e) {
             log.error("Falha na importação de pessoas", e);

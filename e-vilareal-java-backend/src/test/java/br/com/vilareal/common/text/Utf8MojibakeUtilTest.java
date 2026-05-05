@@ -110,4 +110,11 @@ class Utf8MojibakeUtilTest {
                 "INDENIZA\u00c7\u00c3O DANO MORAL C/C REPETI\u00c7\u00c3O IND\u251c\u00e2\u00d4\u00c7\u2591BITO";
         assertEquals("INDENIZAÇÃO DANO MORAL C/C REPETIÇÃO INDÉBITO", Utf8MojibakeUtil.corrigir(corrupto));
     }
+
+    /** Excel legado: par U+00C3 + U+2021 no lugar de UTF-8 de Ç (não é só Latin-1 em cadeia). */
+    @Test
+    void substituicoesPlanilhaCedilhaEAgudo() {
+        assertEquals("\u00c7\u00e3o", Utf8MojibakeUtil.corrigir("\u00c3\u2021\u00c3\u00a3o"));
+        assertEquals("Jos\u00e9", Utf8MojibakeUtil.corrigir("Jos\u00c3\u00e9"));
+    }
 }

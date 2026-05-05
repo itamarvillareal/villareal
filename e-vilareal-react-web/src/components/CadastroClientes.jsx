@@ -210,6 +210,15 @@ function montarQualificacaoTexto({ nomeRazao, cnpjCpf, pessoaData }) {
   return `${joinComVirgula(blocos)}.`;
 }
 
+/**
+ * Com `useApiClientes`, o id da pessoa vem só do backend — não restaurar `pessoa` do localStorage
+ * (costumava ficar com o número derivado do código, ex. 728 para 00000728, e mascarava o vínculo real).
+ */
+function pessoaInicialDoPersistidoOuMock(persisted, mockPessoa) {
+  if (featureFlags.useApiClientes) return mockPessoa ?? '';
+  return persisted?.pessoa ?? mockPessoa ?? '';
+}
+
 function getInitialEstadoCliente(codPreferido, clientesApiIndex = []) {
   const resolved = resolverCodigoClienteInicial(codPreferido, clientesApiIndex);
   const cod = padCliente8(resolved ?? DEFAULT_CLIENTE_VAZIO.codigo);
@@ -218,7 +227,7 @@ function getInitialEstadoCliente(codPreferido, clientesApiIndex = []) {
   if (!mock) {
     return {
       codigo: cod,
-      pessoa: persisted?.pessoa ?? DEFAULT_CLIENTE_VAZIO.pessoa,
+      pessoa: pessoaInicialDoPersistidoOuMock(persisted, DEFAULT_CLIENTE_VAZIO.pessoa),
       nomeRazao: persisted?.nomeRazao ?? DEFAULT_CLIENTE_VAZIO.nomeRazao,
       cnpjCpf: persisted?.cnpjCpf ?? DEFAULT_CLIENTE_VAZIO.cnpjCpf,
       observacao: persisted?.observacao !== undefined ? persisted.observacao : DEFAULT_CLIENTE_VAZIO.observacao,
@@ -232,7 +241,7 @@ function getInitialEstadoCliente(codPreferido, clientesApiIndex = []) {
   }
   return {
     codigo: mock.codigoCliente,
-    pessoa: persisted?.pessoa ?? mock.pessoa ?? '',
+    pessoa: pessoaInicialDoPersistidoOuMock(persisted, mock.pessoa),
     nomeRazao: persisted?.nomeRazao ?? mock.nomeRazao,
     cnpjCpf: persisted?.cnpjCpf ?? mock.cnpjCpf,
     observacao: persisted?.observacao !== undefined ? persisted.observacao : DEFAULT_CLIENTE_VAZIO.observacao,
@@ -316,6 +325,8 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
   const primeiraSincPessoaRef = useRef(true);
   /** Ignora respostas antigas de GET /api/clientes/resolucao se o usuário mudar de código rápido. */
   const resolucaoCodigoReqIdRef = useRef(0);
+  /** Evita auto-save com snapshot vazio enquanto há GET /resolucao em voo (vários pedidos = contador). */
+  const resolucaoClientePendingRef = useRef(0);
   /** Com API: primeira visita sem último salvo — aplica o maior código da lista uma vez por entrada em /pessoas. */
   const aplicouUltimoClienteApiSemPersistRef = useRef(false);
   /** Evita aplicar GET /api/processos antigo ao trocar de cliente rápido. */
@@ -427,82 +438,69 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
     const padded = padCliente8(paddedRaw);
     const mock = gerarMockClienteEProcessos(padded, clientesApiIndex);
     const persisted = loadCadastroClienteDados(padded);
-    const api = featureFlags.useApiClientes
-      ? (clientesApiIndex || []).find((c) => c.codigo === padded)
-      : null;
-    if (api) {
-      setCodigo(api.codigo);
-      setPessoa(api.pessoa ?? '');
-      setNomeRazao(api.nomeRazao ?? '');
-      setCnpjCpf(api.cnpjCpf ?? '');
-      setObservacao(api.observacao ?? '');
-      setClienteInativo(api.clienteInativo ?? false);
-      setEdicaoDesabilitada(true);
-      const baseLista = mock
-        ? mergeProcessosLista(mock.processos, persisted?.processos)
-        : Array.isArray(persisted?.processos)
-          ? [...persisted.processos]
-          : [];
-      refreshProcessosGrade(padded, baseLista);
-      return;
-    }
 
     if (featureFlags.useApiClientes) {
       const myId = ++resolucaoCodigoReqIdRef.current;
+      const fromList = (clientesApiIndex || []).find((c) => c.codigo === padded);
       setCodigo(padded);
-      setPessoa('');
-      setNomeRazao('');
-      setCnpjCpf('');
-      setObservacao('');
-      setClienteInativo(false);
-      setEdicaoDesabilitada(true);
+      resolucaoClientePendingRef.current += 1;
 
-      void resolverClienteCadastroPorCodigo(padded).then((resolved) => {
-        if (resolucaoCodigoReqIdRef.current !== myId) return;
-        if (resolved) {
-          setCodigo(resolved.codigo);
-          setPessoa(resolved.pessoa ?? '');
-          setNomeRazao(resolved.nomeRazao ?? '');
-          setCnpjCpf(resolved.cnpjCpf ?? '');
-          setObservacao(resolved.observacao ?? '');
-          setClienteInativo(resolved.clienteInativo ?? false);
-          setEdicaoDesabilitada(true);
-          const baseLista = mock
-            ? mergeProcessosLista(mock.processos, persisted?.processos)
-            : Array.isArray(persisted?.processos)
-              ? [...persisted.processos]
-              : [];
-          refreshProcessosGrade(padded, baseLista);
-          return;
-        }
-        if (mock) {
-          setCodigo(mock.codigoCliente);
-          setPessoa(mock.pessoa ?? '');
-          setNomeRazao(persisted?.nomeRazao ?? mock.nomeRazao);
-          setCnpjCpf(persisted?.cnpjCpf ?? mock.cnpjCpf);
-          setObservacao(persisted?.observacao !== undefined ? persisted.observacao : DEFAULT_CLIENTE_VAZIO.observacao);
-          setClienteInativo(persisted?.clienteInativo ?? DEFAULT_CLIENTE_VAZIO.clienteInativo);
-          setEdicaoDesabilitada(true);
-          refreshProcessosGrade(
-            mock.codigoCliente,
-            mergeProcessosLista(mock.processos, persisted?.processos)
-          );
-        } else {
-          setCodigo(padded);
-          if (persisted) {
-            setPessoa('');
-            setNomeRazao(persisted.nomeRazao ?? '');
-            setCnpjCpf(persisted.cnpjCpf ?? '');
-            setObservacao(persisted.observacao ?? '');
-            setClienteInativo(persisted.clienteInativo ?? false);
+      void resolverClienteCadastroPorCodigo(padded)
+        .then((resolved) => {
+          if (resolucaoCodigoReqIdRef.current !== myId) return;
+          const api = resolved ?? fromList;
+          if (api) {
+            setCodigo(api.codigo);
+            setPessoa(api.pessoa ?? '');
+            setNomeRazao(api.nomeRazao ?? '');
+            setCnpjCpf(api.cnpjCpf ?? '');
+            setObservacao(api.observacao ?? '');
+            setClienteInativo(api.clienteInativo ?? false);
             setEdicaoDesabilitada(true);
-            refreshProcessosGrade(padded, Array.isArray(persisted.processos) ? persisted.processos : []);
-          } else {
-            setEdicaoDesabilitada(true);
-            refreshProcessosGrade(padded, []);
+            try {
+              saveCadastroClienteDados(padded, { pessoa: api.pessoa ?? '' });
+            } catch {
+              /* ignore */
+            }
+            const baseLista = mock
+              ? mergeProcessosLista(mock.processos, persisted?.processos)
+              : Array.isArray(persisted?.processos)
+                ? [...persisted.processos]
+                : [];
+            refreshProcessosGrade(padded, baseLista);
+            return;
           }
-        }
-      });
+          if (mock) {
+            setCodigo(mock.codigoCliente);
+            setPessoa(mock.pessoa ?? '');
+            setNomeRazao(persisted?.nomeRazao ?? mock.nomeRazao);
+            setCnpjCpf(persisted?.cnpjCpf ?? mock.cnpjCpf);
+            setObservacao(persisted?.observacao !== undefined ? persisted.observacao : DEFAULT_CLIENTE_VAZIO.observacao);
+            setClienteInativo(persisted?.clienteInativo ?? DEFAULT_CLIENTE_VAZIO.clienteInativo);
+            setEdicaoDesabilitada(true);
+            refreshProcessosGrade(
+              mock.codigoCliente,
+              mergeProcessosLista(mock.processos, persisted?.processos)
+            );
+          } else {
+            setCodigo(padded);
+            if (persisted) {
+              setPessoa(persisted.pessoa ?? '');
+              setNomeRazao(persisted.nomeRazao ?? '');
+              setCnpjCpf(persisted.cnpjCpf ?? '');
+              setObservacao(persisted.observacao ?? '');
+              setClienteInativo(persisted.clienteInativo ?? false);
+              setEdicaoDesabilitada(true);
+              refreshProcessosGrade(padded, Array.isArray(persisted.processos) ? persisted.processos : []);
+            } else {
+              setEdicaoDesabilitada(true);
+              refreshProcessosGrade(padded, []);
+            }
+          }
+        })
+        .finally(() => {
+          resolucaoClientePendingRef.current = Math.max(0, resolucaoClientePendingRef.current - 1);
+        });
       return;
     }
 
@@ -664,6 +662,7 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
       const s = persistSnapshotRef.current;
       if (!s) return;
       if (featureFlags.useApiClientes) {
+        if (resolucaoClientePendingRef.current > 0) return;
         void salvarClienteCadastro({
           codigo: s.codigo,
           pessoa: s.pessoa,

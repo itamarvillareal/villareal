@@ -27,13 +27,17 @@ br.com.vilareal
 
 ## Como rodar localmente
 
-1. **MySQL** (ou use Docker):
+1. **MySQL na VPS (recomendado):** abre o túnel SSH (`localhost:3308` → MySQL na VPS) e exporta a password do utilizador remoto, por exemplo:
 
    ```bash
-   docker compose up -d
+   export SPRING_DATASOURCE_PASSWORD='***'
    ```
 
-2. Variáveis opcionais: `DB_URL`, `DB_USER`, `DB_PASSWORD`, `JWT_SECRET`, `SPRING_PROFILES_ACTIVE` (padrão `dev`).
+   O profile `dev` usa por defeito `application-dev.properties` (`127.0.0.1:3308`, utilizador `villareal_remote`). Opcional: `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`.
+
+   **MySQL em Docker (opcional):** na raiz do monorepo, `docker compose -f docker-compose.yml -f docker-compose.local-db.yml up -d` e aponta o JDBC para `localhost:3307`.
+
+2. Outras variáveis opcionais: `JWT_SECRET`, `SPRING_PROFILES_ACTIVE` (padrão `dev`).
 
 3. Executar:
 

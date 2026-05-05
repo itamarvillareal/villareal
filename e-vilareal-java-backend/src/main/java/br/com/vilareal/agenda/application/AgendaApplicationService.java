@@ -182,15 +182,25 @@ public class AgendaApplicationService {
 
     private void aplicarCampos(AgendaEventoEntity e, AgendaEventoWriteRequest req) {
         e.setDataEvento(req.getDataEvento());
-        e.setHoraEvento(trimToNull(req.getHoraEvento()));
-        String desc = StringUtils.hasText(req.getDescricao()) ? req.getDescricao().trim() : "Compromisso";
+        e.setHoraEvento(trimToNull(Utf8MojibakeUtil.corrigir(req.getHoraEvento())));
+
+        String descRaw = StringUtils.hasText(req.getDescricao()) ? req.getDescricao().trim() : "";
+        String desc = Utf8MojibakeUtil.corrigir(descRaw);
+        if (!StringUtils.hasText(desc)) {
+            desc = "Compromisso";
+        }
         if (desc.length() > 2000) {
             throw new BusinessRuleException("Descrição excede 2000 caracteres.");
         }
         e.setDescricao(desc);
-        e.setStatusCurto(normalizarStatusCurto(req.getStatusCurto()));
-        e.setProcessoRef(trimToNull(req.getProcessoRef()));
-        e.setOrigem(StringUtils.hasText(req.getOrigem()) ? req.getOrigem().trim() : "frontend-agenda");
+
+        e.setStatusCurto(normalizarStatusCurto(Utf8MojibakeUtil.corrigir(req.getStatusCurto())));
+
+        e.setProcessoRef(trimToNull(Utf8MojibakeUtil.corrigir(req.getProcessoRef())));
+
+        String origRaw = StringUtils.hasText(req.getOrigem()) ? req.getOrigem().trim() : "";
+        String orig = Utf8MojibakeUtil.corrigir(origRaw);
+        e.setOrigem(StringUtils.hasText(orig) ? orig : "frontend-agenda");
     }
 
     private static String normalizarStatusCurto(String raw) {

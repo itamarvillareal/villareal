@@ -1,0 +1,166 @@
+{
+  "version": "2.0.0",
+  "presentation": {
+    "echo": true,
+    "reveal": "always",
+    "focus": false,
+    "panel": "shared",
+    "showReuseMessage": false,
+    "clear": false
+  },
+  "tasks": [
+    {
+      "label": "Villareal: Dev — subir (túnel SSH + Docker Compose)",
+      "type": "shell",
+      "command": "${workspaceFolder}/scripts/dev-up.sh",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {}
+      },
+      "problemMatcher": [],
+      "group": {
+        "kind": "build",
+        "isDefault": false
+      }
+    },
+    {
+      "label": "Villareal: Dev — parar (Docker + fechar túnel)",
+      "type": "shell",
+      "command": "${workspaceFolder}/scripts/dev-down.sh",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Villareal: Docker Compose — rebuild e subir",
+      "type": "shell",
+      "command": "docker compose --env-file '${workspaceFolder}/.env.docker' up -d --build",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Villareal: Frontend — Vite (npm run dev)",
+      "type": "shell",
+      "command": "npm run dev:web",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "vite",
+        "pattern": { "regexp": "^." },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": ".",
+          "endsPattern": "(Local:|ready in)"
+        }
+      }
+    },
+    {
+      "label": "Villareal: Backend — Maven Spring Boot (run)",
+      "type": "shell",
+      "command": "./mvnw -q spring-boot:run",
+      "options": {
+        "cwd": "${workspaceFolder}/e-vilareal-java-backend"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Villareal: Deploy VPS — dry-run",
+      "type": "shell",
+      "command": "${workspaceFolder}/scripts/deploy-vps.sh --dry-run",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Villareal: Deploy VPS — backend",
+      "type": "shell",
+      "command": "${workspaceFolder}/scripts/deploy-vps.sh --backend-only --yes",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Villareal: Deploy VPS — frontend",
+      "type": "shell",
+      "command": "${workspaceFolder}/scripts/deploy-vps.sh --frontend-only --yes",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Villareal: DB — corrigir mojibake (Docker + túnel 3308)",
+      "detail": "Requer túnel ativo em localhost:3308 e ficheiro .env.docker com password.",
+      "type": "shell",
+      "command": "${workspaceFolder}/scripts/db-corrigir-mojibake-docker.sh",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Villareal: Import — processos (planilha)",
+      "type": "shell",
+      "command": "VILAREAL_IMPORT_SENHA=\"${input:vilarealImportSenha}\" node scripts/import-processos-planilha.mjs \"${input:vilarealPlanilhaPath}\" --login=\"${input:vilarealLogin}\"",
+      "options": {
+        "cwd": "${workspaceFolder}/e-vilareal-react-web"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Villareal: Import — agenda (total)",
+      "type": "shell",
+      "command": "VILAREAL_IMPORT_SENHA=\"${input:vilarealImportSenha}\" node scripts/import-agenda-planilha.mjs \"${input:vilarealPlanilhaPath}\" --layout=total --login=\"${input:vilarealLogin}\"",
+      "options": {
+        "cwd": "${workspaceFolder}/e-vilareal-react-web"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Villareal: Import — histórico (dry-run)",
+      "detail": "Andamentos via API. Colunas A,B,D,E,F. Não precisa de senha.",
+      "type": "shell",
+      "command": "node scripts/import-historico-planilha.mjs \"${input:vilarealPlanilhaPath}\" --dry-run",
+      "options": {
+        "cwd": "${workspaceFolder}/e-vilareal-react-web"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Villareal: Import — histórico (executar POST)",
+      "detail": "Requer API acessível (VILAREAL_API_BASE) e processos já criados (cod. cliente + nº interno).",
+      "type": "shell",
+      "command": "VILAREAL_IMPORT_SENHA=\"${input:vilarealImportSenha}\" node scripts/import-historico-planilha.mjs \"${input:vilarealPlanilhaPath}\" --login=\"${input:vilarealLogin}\"",
+      "options": {
+        "cwd": "${workspaceFolder}/e-vilareal-react-web"
+      },
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "vilarealImportSenha",
+      "type": "promptString",
+      "password": true,
+      "description": "Senha do utilizador para login na API (VILAREAL_IMPORT_SENHA)"
+    },
+    {
+      "id": "vilarealLogin",
+      "type": "promptString",
+      "description": "Login API (ex.: itamar)",
+      "default": "itamar"
+    },
+    {
+      "id": "vilarealPlanilhaPath",
+      "type": "promptString",
+      "description": "Caminho absoluto da planilha (.xls / .xlsx)"
+    }
+  ]
+}

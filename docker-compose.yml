@@ -1,22 +1,4 @@
 services:
-  db:
-    image: mysql:8.0.36
-    container_name: vilareal-db
-    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
-    environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: vilareal
-    ports:
-      - "3307:3306"
-    volumes:
-      - db_data:/var/lib/mysql
-      - ./e-vilareal-java-backend/docker/mysql/init:/docker-entrypoint-initdb.d:ro
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-
   backend:
     build:
       context: ./e-vilareal-java-backend
@@ -24,15 +6,16 @@ services:
     container_name: vilareal-backend
     environment:
       SPRING_PROFILES_ACTIVE: dev
-      SPRING_DATASOURCE_URL: jdbc:mysql://db:3306/vilareal?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&characterEncoding=utf8&serverTimezone=UTC
-      SPRING_DATASOURCE_USERNAME: root
-      SPRING_DATASOURCE_PASSWORD: root
+      # Variáveis VILLAREAL_COMPOSE_* vêm de `.env.docker` (evita colidir com um `.env` genérico na raiz).
+      SPRING_DATASOURCE_URL: ${VILLAREAL_COMPOSE_JDBC_URL:-jdbc:mysql://host.docker.internal:3308/vilareal?createDatabaseIfNotExist=false&useSSL=false&allowPublicKeyRetrieval=true&characterEncoding=utf8&serverTimezone=UTC}
+      SPRING_DATASOURCE_USERNAME: ${VILLAREAL_COMPOSE_JDBC_USER:-villareal_remote}
+      SPRING_DATASOURCE_PASSWORD: ${VILLAREAL_COMPOSE_JDBC_PASSWORD:?Crie .env.docker a partir de .env.docker.example e defina VILLAREAL_COMPOSE_JDBC_PASSWORD}
       JWT_SECRET: dev-secret-change-me-min-32-chars-long!!
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "8081:8080"
-    depends_on:
-      db:
-        condition: service_healthy
+    # MySQL na VPS: mantém o túnel SSH local em 3308 (ex.: scripts/dev-up.sh).
 
   frontend:
     build:
@@ -43,6 +26,3 @@ services:
       - "5173:80"
     depends_on:
       - backend
-
-volumes:
-  db_data:

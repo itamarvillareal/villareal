@@ -34,7 +34,7 @@ describe('mergeDebitosCalculosPlanilha', () => {
     expect(nextRodadas[key].parcelas[0].dataVencimento).toMatch(/^\d{2}\/\d{2}\/\d{4}$/);
   });
 
-  it('última linha vence para mesma chave', () => {
+  it('mesma chave: cada linha ocupa o próximo slot de parcela/título', () => {
     const matrix = [
       ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'],
       [1, '01/01/2026', 1, '', '', '', 10, 0],
@@ -43,8 +43,10 @@ describe('mergeDebitosCalculosPlanilha', () => {
     const { nextRodadas, stats } = mergeDebitosCalculosPlanilha({}, matrix);
     expect(stats.aplicadas).toBe(2);
     const key = '00000001:10:0';
-    expect(nextRodadas[key].parcelas[0].dataVencimento).toBe('02/02/2026');
-    expect(nextRodadas[key].parcelas[0].valorParcela).toContain('2,00');
+    expect(nextRodadas[key].parcelas[0].dataVencimento).toBe('01/01/2026');
+    expect(nextRodadas[key].parcelas[0].valorParcela).toContain('1,00');
+    expect(nextRodadas[key].parcelas[1].dataVencimento).toBe('02/02/2026');
+    expect(nextRodadas[key].parcelas[1].valorParcela).toContain('2,00');
   });
 
   it('merge multi-folha: segunda folha sem cabeçalho explícito ainda importa linha', () => {
@@ -59,7 +61,7 @@ describe('mergeDebitosCalculosPlanilha', () => {
     expect(nextRodadas['00000001:10:0']).toBeTruthy();
   });
 
-  it('preserva titulos ao atualizar rodada existente', () => {
+  it('mantém cabeçalho e espelha data/valor da planilha em parcelas e titulos (slot 0)', () => {
     const base = {
       '00000001:10:0': {
         pagina: 1,
@@ -78,7 +80,7 @@ describe('mergeDebitosCalculosPlanilha', () => {
     const matrix = [['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'], [1, '05/05/2026', 99, '', '', '', 10, 0]];
     const { nextRodadas } = mergeDebitosCalculosPlanilha(base, matrix);
     expect(nextRodadas['00000001:10:0'].cabecalho).toEqual({ autor: 'X', reu: 'Y' });
-    expect(nextRodadas['00000001:10:0'].titulos[0].valorInicial).toBe('R$ 1,00');
+    expect(nextRodadas['00000001:10:0'].titulos[0].valorInicial).toBe('R$ 99,00');
     expect(nextRodadas['00000001:10:0'].parcelas[0].dataVencimento).toBe('05/05/2026');
   });
 });

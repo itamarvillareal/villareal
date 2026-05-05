@@ -50,6 +50,13 @@ FROM pessoa WHERE responsavel_id IS NOT NULL;
 DELETE FROM processo_prazo;
 SELECT 'AUDITORIA apos processo_prazo' AS etapa, COUNT(*) AS linhas_restantes FROM processo_prazo;
 
+-- Pagamentos (V37): referencia processo/cliente/imovel/contrato; remover antes das entidades ligadas.
+DELETE FROM pagamento_historico;
+SELECT 'AUDITORIA apos pagamento_historico' AS etapa, COUNT(*) AS linhas_restantes FROM pagamento_historico;
+
+DELETE FROM pagamento;
+SELECT 'AUDITORIA apos pagamento' AS etapa, COUNT(*) AS linhas_restantes FROM pagamento;
+
 DELETE FROM processo_parte_advogado;
 SELECT 'AUDITORIA apos processo_parte_advogado' AS etapa, COUNT(*) AS linhas_restantes FROM processo_parte_advogado;
 
@@ -135,6 +142,8 @@ ALTER TABLE imovel AUTO_INCREMENT = 1;
 ALTER TABLE locacao_despesa AUTO_INCREMENT = 1;
 ALTER TABLE locacao_repasse AUTO_INCREMENT = 1;
 ALTER TABLE planilha_pasta1_cliente AUTO_INCREMENT = 1;
+ALTER TABLE pagamento AUTO_INCREMENT = 1;
+ALTER TABLE pagamento_historico AUTO_INCREMENT = 1;
 ALTER TABLE processo AUTO_INCREMENT = 1;
 ALTER TABLE processo_andamento AUTO_INCREMENT = 1;
 ALTER TABLE processo_parte AUTO_INCREMENT = 1;
@@ -163,6 +172,8 @@ UNION ALL SELECT 'FINAL flyway_schema_history', COUNT(*) FROM flyway_schema_hist
 UNION ALL SELECT 'FINAL imovel', COUNT(*) FROM imovel
 UNION ALL SELECT 'FINAL locacao_despesa', COUNT(*) FROM locacao_despesa
 UNION ALL SELECT 'FINAL locacao_repasse', COUNT(*) FROM locacao_repasse
+UNION ALL SELECT 'FINAL pagamento', COUNT(*) FROM pagamento
+UNION ALL SELECT 'FINAL pagamento_historico', COUNT(*) FROM pagamento_historico
 UNION ALL SELECT 'FINAL perfil', COUNT(*) FROM perfil
 UNION ALL SELECT 'FINAL pessoa', COUNT(*) FROM pessoa
 UNION ALL SELECT 'FINAL pessoa_complementar', COUNT(*) FROM pessoa_complementar

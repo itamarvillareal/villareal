@@ -51,6 +51,8 @@ import path from 'node:path';
 import process from 'node:process';
 import XLSX from 'xlsx';
 
+import { normalizarTextoPlanilha } from './lib/normalizar-texto-planilha.mjs';
+
 function parseArgs(argv) {
   const out = {
     file: null,
@@ -104,6 +106,9 @@ function pad2(n) {
 /** Converte célula de hora (Excel ou texto) para HH:mm ou null. */
 function normalizarHoraCelula(val) {
   if (val == null || val === '') return null;
+  if (val instanceof Date && !Number.isNaN(val.getTime())) {
+    return `${pad2(val.getHours())}:${pad2(val.getMinutes())}`;
+  }
   if (typeof val === 'number' && Number.isFinite(val)) {
     let frac = val;
     if (val >= 1) {
@@ -119,6 +124,12 @@ function normalizarHoraCelula(val) {
   }
   const s = String(val).trim();
   if (!s) return null;
+  const isoDateTime = s.match(/^\d{4}-\d{2}-\d{2}T(\d{2}):(\d{2})/);
+  if (isoDateTime) {
+    const hh = Number(isoDateTime[1]);
+    const mm = Number(isoDateTime[2]);
+    if (hh >= 0 && hh <= 23 && mm >= 0 && mm <= 59) return `${pad2(hh)}:${pad2(mm)}`;
+  }
   const m = s.match(/^(\d{1,2})[h:](\d{2})$/i);
   if (m) {
     const hh = Number(m[1]);
@@ -139,7 +150,7 @@ function normalizarHoraCelula(val) {
 }
 
 function normalizarStatus(val) {
-  const t = String(val ?? '').trim();
+  const t = normalizarTextoPlanilha(val);
   if (!t) return null;
   if (t.toUpperCase() === 'OK') return 'OK';
   return null;
@@ -211,7 +222,7 @@ function buildLinhasLayoutMes(mat, opts) {
         : parseInt(String(diaRaw ?? '').trim(), 10);
     if (!Number.isFinite(dia) || dia < 1 || dia > maxDia) continue;
 
-    const descricao = String(desc ?? '').trim();
+    const descricao = normalizarTextoPlanilha(desc);
     if (!descricao) continue;
 
     const horaEvento = normalizarHoraCelula(horaRaw);
@@ -240,7 +251,7 @@ function buildLinhasLayoutTotal(mat, opts) {
     if (opts.dataMin && !dataISOEhMaiorOuIgual(dataEvento, opts.dataMin)) continue;
 
     const horaEvento = normalizarHoraCelula(row[1]);
-    const descricao = String(row[2] ?? '').trim();
+    const descricao = normalizarTextoPlanilha(row[2]);
     if (!descricao) continue;
     const statusCurto = normalizarStatus(row[3]);
 
@@ -266,7 +277,7 @@ function buildLinhasLayoutTotalAcde(mat, opts) {
     if (opts.dataMin && !dataISOEhMaiorOuIgual(dataEvento, opts.dataMin)) continue;
 
     const horaEvento = normalizarHoraCelula(row[2]);
-    const descricao = String(row[3] ?? '').trim();
+    const descricao = normalizarTextoPlanilha(row[3]);
     if (!descricao) continue;
     const statusCurto = normalizarStatus(row[4]);
 
@@ -314,16 +325,21 @@ function construirMapaUsuariosPorChave(usuarios) {
     if (!u || u.ativo === false) continue;
     const id = u.id;
     add(u.login, id);
+    add(String(u.login ?? '').replace(/[._-]+/g, ' '), id);
     add(u.nome, id);
     add(u.nomePessoa, id);
     add(u.apelido, id);
     if (u.nome) {
-      const first = String(u.nome).trim().split(/\s+/)[0];
+      const tokens = String(u.nome).trim().split(/\s+/).filter(Boolean);
+      const first = tokens[0];
       add(first, id);
+      if (tokens.length >= 2) add(`${tokens[0]} ${tokens[1]}`, id);
     }
     if (u.nomePessoa) {
-      const first = String(u.nomePessoa).trim().split(/\s+/)[0];
+      const tokens = String(u.nomePessoa).trim().split(/\s+/).filter(Boolean);
+      const first = tokens[0];
       add(first, id);
+      if (tokens.length >= 2) add(`${tokens[0]} ${tokens[1]}`, id);
     }
   }
   return { map, conflitos };
@@ -360,7 +376,7 @@ function buildLinhasLayoutAgendasMulti(wb, opts, usuarioPorChave) {
       if (opts.dataMin && !dataISOEhMaiorOuIgual(dataEvento, opts.dataMin)) continue;
 
       const horaEvento = normalizarHoraCelula(row[ciH]);
-      const descricao = String(row[ciJ] ?? '').trim();
+      const descricao = normalizarTextoPlanilha(row[ciJ]);
       if (!descricao) continue;
       const statusCurto = normalizarStatus(row[ciX]);
 

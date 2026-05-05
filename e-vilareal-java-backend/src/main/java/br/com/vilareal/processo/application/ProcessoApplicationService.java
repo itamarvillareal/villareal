@@ -83,16 +83,24 @@ public class ProcessoApplicationService {
     /**
      * Lista códigos de cliente para a UI.
      *
-     * <p>Se existir ao menos um registro em {@code planilha_pasta1_cliente} (import Pasta1), a lista
-     * contém <strong>só</strong> esses vínculos: código na coluna A (normalizado em 8 dígitos) → pessoa
-     * da coluna B. Não se assume mais “cliente N = pessoa N”.
-     *
-     * <p>Sem dados na planilha, lista a tabela {@code cliente} ({@code V10__cliente.sql}): uma linha por registro de
-     * cliente, em geral canônico {@code codigoCliente = formatar(pessoa.id)} e aliases vindos de import.
+     * <p><strong>Fonte de verdade:</strong> a tabela {@code cliente} ({@code codigo_cliente} → {@code pessoa_id}).
+     * Inclui-se depois, só para códigos que ainda não existem no mapa, o import Pasta1
+     * ({@code planilha_pasta1_cliente}). Assim um vínculo corrigido na base prevalece sobre uma linha antiga
+     * na planilha (ex.: código {@code 00000728} com pessoa correta 1809 em {@code cliente}, enquanto a
+     * planilha ainda apontava para outro id).
      */
     @Transactional(readOnly = true)
     public List<ClienteListItemResponse> listarClientesResumo() {
         Map<String, ClienteListItemResponse> porCodigo = new LinkedHashMap<>();
+
+        for (var c : clienteRepository.findAllFetchPessoaOrderByCodigo()) {
+            String codKey = codigoClienteNormalizadoParaMapa(c.getCodigoCliente());
+            if (!StringUtils.hasText(codKey)) {
+                continue;
+            }
+            porCodigo.put(codKey, clienteEntityParaResumo(c));
+        }
+
         List<PlanilhaPasta1ClienteEntity> mapeamentosPlanilha = planilhaPasta1ClienteRepository.findAll();
         if (!mapeamentosPlanilha.isEmpty()) {
             Map<String, List<PlanilhaPasta1ClienteEntity>> porCod8 = new HashMap<>();
@@ -106,6 +114,9 @@ public class ProcessoApplicationService {
             List<String> chavesOrdenadas = new ArrayList<>(porCod8.keySet());
             chavesOrdenadas.sort(String::compareTo);
             for (String cod8 : chavesOrdenadas) {
+                if (porCodigo.containsKey(cod8)) {
+                    continue;
+                }
                 long numeroCliente;
                 try {
                     numeroCliente = CodigoClienteUtil.parsePessoaId(cod8);
@@ -123,26 +134,8 @@ public class ProcessoApplicationService {
                                                 Utf8MojibakeUtil.corrigir(p.getNome()),
                                                 somenteDigitosDocumento(p.getCpf()))));
             }
-        } else {
-            for (var c : clienteRepository.findAllFetchPessoaOrderByCodigo()) {
-                PessoaEntity p = c.getPessoa();
-                String nome =
-                        StringUtils.hasText(c.getNomeReferencia())
-                                ? c.getNomeReferencia()
-                                : p.getNome();
-                String doc =
-                        StringUtils.hasText(c.getDocumentoReferencia())
-                                ? somenteDigitosDocumento(c.getDocumentoReferencia())
-                                : somenteDigitosDocumento(p.getCpf());
-                porCodigo.put(
-                        c.getCodigoCliente(),
-                        new ClienteListItemResponse(
-                                p.getId(),
-                                c.getCodigoCliente(),
-                                Utf8MojibakeUtil.corrigir(nome),
-                                doc));
-            }
         }
+
         return porCodigo.values().stream()
                 .sorted(Comparator.comparing(ClienteListItemResponse::getCodigoCliente))
                 .collect(Collectors.toList());
@@ -177,11 +170,21 @@ public class ProcessoApplicationService {
                 pid -> pessoaRepository
                         .findById(pid)
                         .map(
-                                p -> new ClienteListItemResponse(
-                                        p.getId(),
-                                        cod8,
-                                        Utf8MojibakeUtil.corrigir(p.getNome()),
-                                        somenteDigitosDocumento(p.getCpf()))));
+                                p -> {
+                                    Optional<ClienteEntity> linhaCliente =
+                                            clienteRepository.findByCodigoClienteFetchPessoa(cod8);
+                                    if (linhaCliente.isEmpty()) {
+                                        linhaCliente =
+                                                clienteRepository.findByCodigoClienteFetchPessoaTrim(cod8);
+                                    }
+                                    Long clientePk = linhaCliente.map(ClienteEntity::getId).orElse(null);
+                                    return new ClienteListItemResponse(
+                                            clientePk,
+                                            p.getId(),
+                                            cod8,
+                                            Utf8MojibakeUtil.corrigir(p.getNome()),
+                                            somenteDigitosDocumento(p.getCpf()));
+                                }));
     }
 
     /**
@@ -222,6 +225,7 @@ public class ProcessoApplicationService {
 
     private ClienteListItemResponse clienteEntityParaResumo(ClienteEntity c) {
         PessoaEntity p = c.getPessoa();
+        String codigoExibicao = codigoClienteNormalizadoParaMapa(c.getCodigoCliente());
         String nome =
                 StringUtils.hasText(c.getNomeReferencia()) ? c.getNomeReferencia() : p.getNome();
         String doc =
@@ -229,7 +233,16 @@ public class ProcessoApplicationService {
                         ? somenteDigitosDocumento(c.getDocumentoReferencia())
                         : somenteDigitosDocumento(p.getCpf());
         return new ClienteListItemResponse(
-                p.getId(), c.getCodigoCliente(), Utf8MojibakeUtil.corrigir(nome), doc);
+                c.getId(), p.getId(), codigoExibicao, Utf8MojibakeUtil.corrigir(nome), doc);
+    }
+
+    /** Alinha CHAR(8) / espaços do MySQL ao mesmo formato que o front usa na busca (8 dígitos). */
+    private static String codigoClienteNormalizadoParaMapa(String raw) {
+        if (raw == null) {
+            return "";
+        }
+        String t = CodigoClienteUtil.normalizarCodigoClienteOitoDigitos(raw.trim());
+        return t != null ? t : "";
     }
 
     @Transactional(readOnly = true)
