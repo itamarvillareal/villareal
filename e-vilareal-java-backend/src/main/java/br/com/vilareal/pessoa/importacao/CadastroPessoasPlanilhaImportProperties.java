@@ -5,8 +5,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 /**
  * Importação da planilha "Cadastro Pessoas" (.xls).
  *
- * <p>Políticas (plano aprovado): linhas sem CPF/CNPJ válido são ignoradas; primeiro e-mail por endereço
- * vence (demais com {@code email} nulo); primeiro CPF na planilha vence (duplicata na planilha ignorada);
+ * <p>Políticas (plano aprovado): linhas sem CPF/CNPJ válido são ignoradas; o mesmo e-mail pode repetir-se
+ * em várias pessoas; primeiro CPF na planilha vence (duplicata na planilha ignorada);
  * col. 26/33 ignoradas como dado; col. 4–5 e 29/38 não são mais persistidas em complementar (V34).
  *
  * <p><b>Variáveis de ambiente</b> (binding Spring Boot): {@code VILAREAL_IMPORT_PESSOAS_ENABLED},

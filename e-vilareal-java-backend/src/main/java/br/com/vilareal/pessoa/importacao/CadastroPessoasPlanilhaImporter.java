@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -33,7 +34,8 @@ import java.util.regex.Pattern;
 
 /**
  * Importa linhas da planilha .xls para {@code pessoa}, {@code pessoa_complementar}, {@code pessoa_endereco},
- * {@code pessoa_contato}. Ver javadoc em {@link CadastroPessoasPlanilhaImportProperties}.
+ * {@code pessoa_contato}. Antes de ler, copia o ficheiro de origem para um .xls temporário e remove-o ao terminar
+ * (igual ao fluxo do script Python). Ver {@link CadastroPessoasPlanilhaImportProperties}.
  */
 @Service
 public class CadastroPessoasPlanilhaImporter {
@@ -94,9 +96,9 @@ public class CadastroPessoasPlanilhaImporter {
     public ImportStats importar(CadastroPessoasPlanilhaImportProperties props) throws IOException {
         log.info("Importando para tabelas com sufixo: '{}'", tableSuffix);
 
-        Path path = Path.of(props.getPath());
-        if (!Files.isRegularFile(path)) {
-            throw new IOException("Arquivo não encontrado: " + path.toAbsolutePath());
+        Path origem = Path.of(props.getPath()).toAbsolutePath().normalize();
+        if (!Files.isRegularFile(origem)) {
+            throw new IOException("Arquivo não encontrado: " + origem);
         }
 
         int header0 = Math.max(0, props.getHeaderRow() - 1);
@@ -105,15 +107,19 @@ public class CadastroPessoasPlanilhaImporter {
         ImportStats stats = new ImportStats();
         DataFormatter fmt = new DataFormatter(Locale.forLanguageTag("pt-BR"));
 
-        try (var in = Files.newInputStream(path);
-                Workbook wb = WorkbookFactory.create(in)) {
+        Path copiaTrabalho = Files.createTempFile("cadastro_pessoas_import_", ".xls");
+        try {
+            Files.copy(origem, copiaTrabalho, StandardCopyOption.REPLACE_EXISTING);
+            log.info("Planilha copiada para ficheiro local de trabalho (será removido ao terminar): {}", copiaTrabalho);
+
+            try (var in = Files.newInputStream(copiaTrabalho);
+                    Workbook wb = WorkbookFactory.create(in)) {
             Sheet sh = wb.getNumberOfSheets() > 0 ? wb.getSheetAt(0) : null;
             if (sh == null) {
                 throw new IOException("Planilha sem abas.");
             }
 
             Set<String> seenCpf = new HashSet<>();
-            Set<String> seenEmailKey = new HashSet<>();
 
             try (BufferedWriter rep = openReport(props.getReportPath())) {
                 rep.write("excel_row,planilha_id,tipo,mensagem\n");
@@ -184,14 +190,6 @@ public class CadastroPessoasPlanilhaImporter {
 
                     String emailRaw = CadastroPessoasPlanilhaImportSupport.normalizeEmailForStorage(stringCell(row, 12, fmt));
                     String email = emailRaw;
-                    if (!email.isBlank()) {
-                        String key = CadastroPessoasPlanilhaImportSupport.emailDuplicateKey(email);
-                        if (!seenEmailKey.add(key)) {
-                            writeLine(rep, excelRow, String.valueOf(pessoaId), "ADJUST", "E-mail duplicado na planilha; gravando email=NULL");
-                            email = "";
-                            stats.emailNulled++;
-                        }
-                    }
 
                     LocalDate dataNasc = readDataNascimento(row, 8, fmt);
 
@@ -245,16 +243,6 @@ public class CadastroPessoasPlanilhaImporter {
                             writeLine(rep, excelRow, String.valueOf(pessoaId), "SKIP", "CPF já existe no banco (outro id)");
                             stats.skipped++;
                             continue;
-                        }
-                    }
-
-                    if (!email.isBlank()) {
-                        Long emailClash = jdbcTemplate.queryForObject(
-                                "SELECT COUNT(*) FROM " + tblPessoa + " WHERE LOWER(TRIM(email)) = ?", Long.class,
-                                email.toLowerCase(Locale.ROOT));
-                        if (emailClash != null && emailClash > 0) {
-                            writeLine(rep, excelRow, String.valueOf(pessoaId), "ADJUST", "E-mail já no banco; gravando email=NULL");
-                            email = "";
                         }
                     }
 
@@ -341,6 +329,13 @@ public class CadastroPessoasPlanilhaImporter {
                         stats.skipped++;
                     }
                 }
+            }
+            }
+        } finally {
+            try {
+                Files.deleteIfExists(copiaTrabalho);
+            } catch (IOException ex) {
+                log.warn("Não foi possível remover cópia temporária da planilha {}: {}", copiaTrabalho, ex.getMessage());
             }
         }
 

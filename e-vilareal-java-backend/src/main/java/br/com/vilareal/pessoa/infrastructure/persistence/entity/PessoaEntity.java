@@ -23,7 +23,7 @@ public class PessoaEntity {
     @Column(nullable = true, length = 14)
     private String cpf;
 
-    @Column(length = 255, unique = true)
+    @Column(length = 255)
     private String email;
 
     @Column(length = 40)

@@ -95,7 +95,6 @@ public class PessoaApplicationService {
     public PessoaCadastroResponse criar(PessoaCadastroRequest req) {
         String cpf = normalizarCpf(req.getCpf());
         validarUnicidadeCpf(cpf, null);
-        validarUnicidadeEmail(req.getEmail(), null);
         validarResponsavel(null, req.getResponsavelId());
 
         PessoaEntity p = new PessoaEntity();
@@ -111,7 +110,6 @@ public class PessoaApplicationService {
                 .orElseThrow(() -> new ResourceNotFoundException("Pessoa não encontrada: " + id));
         String cpf = normalizarCpf(req.getCpf());
         validarUnicidadeCpf(cpf, id);
-        validarUnicidadeEmail(req.getEmail(), id);
         validarResponsavel(id, req.getResponsavelId());
 
         aplicarNucleo(p, req, cpf);
@@ -236,17 +234,6 @@ public class PessoaApplicationService {
             }
         } else if (pessoaRepository.existsByCpfAndIdNot(cpf, idExcluir)) {
             throw new BusinessRuleException("Já existe cadastro com o CPF informado.");
-        }
-    }
-
-    private void validarUnicidadeEmail(String email, Long idExcluir) {
-        if (email == null || email.isBlank()) return;
-        if (idExcluir == null) {
-            if (pessoaRepository.existsByEmail(email)) {
-                throw new BusinessRuleException("Já existe cadastro com o e-mail informado.");
-            }
-        } else if (pessoaRepository.existsByEmailAndIdNot(email, idExcluir)) {
-            throw new BusinessRuleException("Já existe cadastro com o e-mail informado.");
         }
     }
 
