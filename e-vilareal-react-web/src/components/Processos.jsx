@@ -3126,9 +3126,9 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                     {historicoPaginado.length === 0 ? (
                       <p className="py-4 text-center text-sm text-slate-500">Nenhum registro.</p>
                     ) : (
-                      historicoPaginado.map((h) => (
+                      historicoPaginado.map((h, rowIdx) => (
                         <button
-                          key={h.id}
+                          key={`hist-m-${h.id}-${rowIdx}`}
                           type="button"
                           className="w-full rounded-xl border border-slate-200 bg-white p-3 text-left shadow-sm ring-1 ring-slate-100/80 active:bg-slate-50"
                           onClick={() => setInformacaoModal({ info: h.info, inf: h.inf, data: h.data, usuario: h.usuario })}
@@ -3174,9 +3174,9 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                           </tr>
                         ) : (
                           <>
-                            {historicoPaginado.map((h) => (
+                            {historicoPaginado.map((h, rowIdx) => (
                               <tr
-                                key={h.id}
+                                key={`hist-d-${h.id}-${rowIdx}`}
                                 className="cursor-pointer border-t border-slate-200 hover:bg-slate-50/50"
                                 onDoubleClick={() => setInformacaoModal({ info: h.info, inf: h.inf, data: h.data, usuario: h.usuario })}
                                 title="Duplo clique para ver o texto completo"

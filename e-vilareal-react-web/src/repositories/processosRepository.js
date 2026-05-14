@@ -16,11 +16,24 @@ function toIsoFromBrDate(dateBr) {
   return `${m[3]}-${m[2]}-${m[1]}`;
 }
 
+function dataUtcParaBr(d) {
+  if (!(d instanceof Date) || Number.isNaN(d.getTime())) return '';
+  const dd = String(d.getUTCDate()).padStart(2, '0');
+  const mo = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const y = d.getUTCFullYear();
+  return `${dd}/${mo}/${y}`;
+}
+
 /**
- * Spring/Jackson pode serializar {@code LocalDate} como {@code "yyyy-MM-dd"}, array {@code [ano,mês,dia]} ou objeto.
+ * Spring/Jackson pode serializar datas/instants como {@code "yyyy-MM-dd"}, ISO-8601 com hora,
+ * epoch em número, {@code [ano,mês,dia]}, objeto {@code LocalDate} ou {@code Instant} ({@code epochSecond}).
  */
 function dataApiParaDataBr(data) {
   if (data == null) return '';
+  if (typeof data === 'number' && Number.isFinite(data)) {
+    const ms = data > 1_000_000_000_000 ? data : Math.round(data * 1000);
+    return dataUtcParaBr(new Date(ms));
+  }
   if (typeof data === 'string') {
     const t = data.trim();
     const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(t);
@@ -33,7 +46,14 @@ function dataApiParaDataBr(data) {
     const d = String(Number(data[2])).padStart(2, '0');
     if (Number.isFinite(Number(y))) return `${d}/${mo}/${String(y)}`;
   }
-  if (typeof data === 'object') {
+  if (typeof data === 'object' && data != null) {
+    const es = data.epochSecond ?? data.seconds;
+    if (es !== undefined && es !== null && Number.isFinite(Number(es))) {
+      const sec = Number(es);
+      const nano = Number(data.nano ?? data.nanoOfSecond ?? data.nanoseconds ?? 0) || 0;
+      const ms = sec * 1000 + Math.floor(nano / 1_000_000);
+      return dataUtcParaBr(new Date(ms));
+    }
     const y = Number(data.year);
     const mo = String(Number(data.monthValue ?? data.month ?? 1)).padStart(2, '0');
     const d = String(Number(data.dayOfMonth ?? data.day ?? 1)).padStart(2, '0');
@@ -607,9 +627,10 @@ export async function sincronizarPartesIncremental(processoId, partes) {
 
 export async function listarAndamentosProcesso(processoId) {
   if (!featureFlags.useApiProcessos) return [];
-  const pid = await resolverProcessoId({ processoId });
-  if (!pid) return [];
-  return request(`/api/processos/${pid}/andamentos`);
+  const n = Number(processoId);
+  const pid = Number.isFinite(n) && n > 0 ? n : await resolverProcessoId({ processoId });
+  if (!pid || !Number.isFinite(Number(pid)) || Number(pid) < 1) return [];
+  return request(`/api/processos/${Number(pid)}/andamentos`);
 }
 
 /**
@@ -618,6 +639,24 @@ export async function listarAndamentosProcesso(processoId) {
  * estava em `idsDesejados` (a UI ainda tinha `Date.now()`) e a assinatura completa não batia.
  */
 function dataChaveAndamento(movimentoEm) {
+  if (movimentoEm == null) return '';
+  if (typeof movimentoEm === 'number' && Number.isFinite(movimentoEm)) {
+    const ms = movimentoEm > 1_000_000_000_000 ? movimentoEm : Math.round(movimentoEm * 1000);
+    const d = new Date(ms);
+    if (Number.isNaN(d.getTime())) return '';
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+  }
+  if (typeof movimentoEm === 'object' && movimentoEm != null && !Array.isArray(movimentoEm)) {
+    const es = movimentoEm.epochSecond ?? movimentoEm.seconds;
+    if (es !== undefined && es !== null && Number.isFinite(Number(es))) {
+      const sec = Number(es);
+      const nano = Number(movimentoEm.nano ?? movimentoEm.nanoOfSecond ?? movimentoEm.nanoseconds ?? 0) || 0;
+      const ms = sec * 1000 + Math.floor(nano / 1_000_000);
+      const d = new Date(ms);
+      if (Number.isNaN(d.getTime())) return '';
+      return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+    }
+  }
   const s = String(movimentoEm ?? '').trim();
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
   return m ? `${m[1]}-${m[2]}-${m[3]}` : '';
@@ -632,8 +671,9 @@ export function assinaturaAndamento(h) {
 
 export async function sincronizarAndamentosIncremental(processoId, historico) {
   if (!featureFlags.useApiProcessos) return [];
-  const pid = await resolverProcessoId({ processoId });
-  if (!pid) return [];
+  const n = Number(processoId);
+  const pid = Number.isFinite(n) && n > 0 ? n : await resolverProcessoId({ processoId });
+  if (!pid || !Number.isFinite(Number(pid)) || Number(pid) < 1) return [];
 
   const atuais = await listarAndamentosProcesso(pid);
   const atuaisPorId = new Map((atuais || []).map((a) => [Number(a.id), a]));
@@ -697,15 +737,17 @@ function extrairNomeConsultorDeDetalhe(detalhe) {
 
 export async function listarPrazosProcesso(processoId) {
   if (!featureFlags.useApiProcessos) return [];
-  const pid = await resolverProcessoId({ processoId });
-  if (!pid) return [];
-  return request(`/api/processos/${pid}/prazos`);
+  const n = Number(processoId);
+  const pid = Number.isFinite(n) && n > 0 ? n : await resolverProcessoId({ processoId });
+  if (!pid || !Number.isFinite(Number(pid)) || Number(pid) < 1) return [];
+  return request(`/api/processos/${Number(pid)}/prazos`);
 }
 
 export async function upsertPrazoFatalProcesso(processoId, prazoFatalBr) {
   if (!featureFlags.useApiProcessos) return null;
-  const pid = await resolverProcessoId({ processoId });
-  if (!pid) return null;
+  const n = Number(processoId);
+  const pid = Number.isFinite(n) && n > 0 ? n : await resolverProcessoId({ processoId });
+  if (!pid || !Number.isFinite(Number(pid)) || Number(pid) < 1) return null;
   const dataFim = toIsoFromBrDate(prazoFatalBr);
   if (!dataFim) return null;
   const prazos = await listarPrazosProcesso(pid);
@@ -719,27 +761,37 @@ export async function upsertPrazoFatalProcesso(processoId, prazoFatalBr) {
     status: prazoFatal?.status || 'PENDENTE',
     observacao: null,
   };
+  const pidNum = Number(pid);
   if (prazoFatal?.id) {
-    return request(`/api/processos/${pid}/prazos/${prazoFatal.id}`, {
+    return request(`/api/processos/${pidNum}/prazos/${prazoFatal.id}`, {
       method: 'PUT',
       body,
     });
   }
-  return request(`/api/processos/${pid}/prazos`, { method: 'POST', body });
+  return request(`/api/processos/${pidNum}/prazos`, { method: 'POST', body });
 }
 
 export function mapApiAndamentoToHistoricoItem(a, idx = 0, total = 1) {
   const movRaw = a?.movimentoEm ?? a?.movimento_em;
-  const tituloRaw = a?.titulo;
+  const tituloCampo = a?.titulo ?? a?.tituloAndamento ?? a?.titulo_andamento;
+  const det = a?.detalhe != null ? String(a.detalhe) : '';
+  const primeiraLinhaDet = det
+    ? det
+        .split(/\r?\n/)
+        .map((x) => x.trim())
+        .find((x) => x.length > 0) ?? ''
+    : '';
+  const tituloRaw = String(tituloCampo ?? '').trim() || primeiraLinhaDet;
   const idNum = Number(a?.id);
   const nome = String(a?.usuarioNome ?? a?.usuario_nome ?? '').trim();
   const login = String(a?.usuarioLogin ?? a?.usuario_login ?? '').trim();
   const consultor = extrairNomeConsultorDeDetalhe(a?.detalhe);
   const usuario = nome || login || consultor;
+  const infoTxt = String(tituloRaw ?? '').trim() || 'Andamento';
   return {
     id: Number.isFinite(idNum) && idNum >= 1 ? idNum : Date.now() + idx,
     inf: String(total - idx).padStart(2, '0'),
-    info: String(tituloRaw ?? '').trim(),
+    info: infoTxt.length > 500 ? infoTxt.slice(0, 500) : infoTxt,
     data: toBrFromIsoDate(movRaw),
     usuario,
     numero: String(total - idx).padStart(4, '0'),

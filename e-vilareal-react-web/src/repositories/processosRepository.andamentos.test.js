@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { assinaturaAndamento } from './processosRepository.js';
+import { assinaturaAndamento, mapApiAndamentoToHistoricoItem } from './processosRepository.js';
 
 describe('assinaturaAndamento', () => {
   it('iguala data local T12:00:00 com Instant da API no mesmo dia', () => {
@@ -12,5 +12,31 @@ describe('assinaturaAndamento', () => {
     const api = { movimento_em: '2026-03-03T03:00:00.000Z', titulo: 'DECISÃO' };
     const ui = { movimentoEm: '2026-03-03T12:00:00', info: 'DECISÃO' };
     expect(assinaturaAndamento(api)).toBe(assinaturaAndamento(ui));
+  });
+
+  it('aceita movimentoEm como epoch em ms (mesmo dia que ISO)', () => {
+    const iso = '2026-04-20T15:00:00.000Z';
+    const ms = Date.parse(iso);
+    const a = { movimentoEm: iso, titulo: 'X' };
+    const b = { movimentoEm: ms, titulo: 'X' };
+    expect(assinaturaAndamento(a)).toBe(assinaturaAndamento(b));
+  });
+});
+
+describe('mapApiAndamentoToHistoricoItem', () => {
+  it('formata data quando movimentoEm vem em milissegundos', () => {
+    const ms = Date.UTC(2025, 4, 10, 12, 0, 0);
+    const h = mapApiAndamentoToHistoricoItem({ id: 1, movimentoEm: ms, titulo: 'Título' }, 0, 1);
+    expect(h.data).toBe('10/05/2025');
+    expect(h.info).toBe('Título');
+  });
+
+  it('usa primeira linha de detalhe quando titulo vazio', () => {
+    const h = mapApiAndamentoToHistoricoItem(
+      { id: 2, movimentoEm: '2025-01-02T00:00:00Z', titulo: '', detalhe: 'Linha única' },
+      0,
+      1
+    );
+    expect(h.info).toBe('Linha única');
   });
 });
