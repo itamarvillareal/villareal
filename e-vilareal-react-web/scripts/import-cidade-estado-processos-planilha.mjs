@@ -8,6 +8,9 @@
  *   Col. C — UF ou nome do estado (normalização básica para sigla de 2 letras)
  *   Col. D — número interno do processo (nº proc.)
  *
+ * Leitura: matriz densa A–D a partir das células (não só `sheet_to_json`), para .xls com `!ref` incompleto
+ * não omitir linhas (ex. linha 21 com dados).
+ *
  * Ficheiro por defeito: `$HOME/Dropbox/sistema/Cidade Processos.xls` (override: env
  * `VILAREAL_PLANILHA_CIDADES_PROCESSOS` ou primeiro argumento posicional).
  *
@@ -350,7 +353,58 @@ function igualCidadeUfApi(r, cidade, uf) {
   return apiCid === nCid && apiUf === nUf;
 }
 
-/** Última linha 1-based com valor em A–D. */
+/**
+ * Constrói matriz densa A–D linha a linha a partir das células do worksheet.
+ * Evita o problema comum em .xls em que `sheet_to_json` respeita `!ref` desactualizado
+ * e **omite linhas** (ex.: dados na linha 21 não aparecem no array).
+ *
+ * @param {import('xlsx').WorkSheet} ws
+ * @param {number} colMaxZero índice 0-based da última coluna (3 = coluna D)
+ * @returns {unknown[][]}
+ */
+function worksheetParaMatrizColunas(ws, colMaxZero) {
+  let maxR = -1;
+  if (ws && ws['!ref']) {
+    try {
+      const rng = XLSX.utils.decode_range(ws['!ref']);
+      maxR = Math.max(maxR, rng.e.r);
+    } catch {
+      /* ignore */
+    }
+  }
+  if (ws && typeof ws === 'object') {
+    for (const k of Object.keys(ws)) {
+      if (!k || k[0] === '!') continue;
+      let c;
+      try {
+        c = XLSX.utils.decode_cell(k);
+      } catch {
+        continue;
+      }
+      if (c.c <= colMaxZero) maxR = Math.max(maxR, c.r);
+    }
+  }
+  if (maxR < 0) return [];
+  /** @type {unknown[][]} */
+  const mat = [];
+  for (let R = 0; R <= maxR; R += 1) {
+    const row = [];
+    for (let C = 0; C <= colMaxZero; C += 1) {
+      const addr = XLSX.utils.encode_cell({ r: R, c: C });
+      const cell = ws[addr];
+      if (cell == null || cell.t === 'z') {
+        row.push(null);
+        continue;
+      }
+      const v = Object.prototype.hasOwnProperty.call(cell, 'v') ? cell.v : null;
+      row.push(v ?? null);
+    }
+    mat.push(row);
+  }
+  return mat;
+}
+
+/** Última linha 1-based com valor em A–D (sobre matriz densa). */
 function contarLinhasUsadasAteD(mat) {
   let max = 0;
   for (let i = 0; i < mat.length; i += 1) {
@@ -374,7 +428,8 @@ function contarLinhasUsadasAteD(mat) {
 function extrairLinhasPlanilha(mat, linhaInicioExcel) {
   const startIdx = Math.max(0, linhaInicioExcel - 1);
   const total = contarLinhasUsadasAteD(mat);
-  const lim = total > 0 ? total : mat.length;
+  /** Incluir até ao fim da matriz (linhas vazias no meio/fim) e nunca parar antes da última linha com dados. */
+  const lim = Math.max(mat.length, total);
   /** @type {{ linhaExcel: number; codigoCliente8: string; cidade: string | null; uf: string | null; numeroInterno: number }[]} */
   const out = [];
   /** @type {string | null} */
@@ -496,14 +551,28 @@ async function main() {
   if (!ws) throw new Error(`Sheet object ausente: ${sheetName}`);
 
   /** @type {unknown[][]} */
-  const mat = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null, raw: true });
+  const mat = worksheetParaMatrizColunas(ws, 3);
+
+  if (opts.linhaInicio > mat.length) {
+    console.warn(
+      `[planilha] --linha-inicio=${opts.linhaInicio} é maior que o nº de linhas lidas (${mat.length}). ` +
+        'Nenhuma linha será processada. Use --linha-inicio=1 ou o nº da primeira linha Excel com dados.'
+    );
+  }
+
   const linhas = extrairLinhasPlanilha(mat, opts.linhaInicio);
 
   console.log(`Ficheiro: ${file}`);
-  console.log(`Aba: ${sheetName} | Linhas úteis (após filtro): ${linhas.length} | dry-run: ${opts.dryRun}`);
+  console.log(
+    `Aba: ${sheetName} | Linhas lidas (A–D): ${mat.length} | última linha com algum valor A–D: ${contarLinhasUsadasAteD(mat) || '—'} | ` +
+      `Linhas úteis (após filtro): ${linhas.length} | dry-run: ${opts.dryRun}`
+  );
 
   if (linhas.length === 0) {
-    console.log('Nada a importar.');
+    console.log(
+      'Nada a importar. Causas frequentes: aba errada (--sheet=), --linha-inicio acima dos dados, ' +
+        'cabeçalho na col. A que não é número de cliente, ou colunas deslocadas.'
+    );
     return;
   }
 
