@@ -7,7 +7,7 @@ const { parseApiJsonResponseMock } = vi.hoisted(() => ({
 vi.mock('./config.js', () => ({ API_BASE_URL: 'http://api.test' }));
 vi.mock('./apiAuthHeaders.js', () => ({ buildDefaultApiHeaders: () => ({ 'X-Test': '1' }) }));
 vi.mock('./parseApiResponse.js', () => ({
-  parseApiJsonResponse: (r) => parseApiJsonResponseMock(r),
+  parseApiJsonResponse: (r, opts) => parseApiJsonResponseMock(r, opts),
 }));
 
 import { request } from './httpClient.js';
@@ -34,7 +34,9 @@ describe('httpClient.request', () => {
         headers: expect.objectContaining({ 'X-Test': '1' }),
       }),
     );
-    expect(parseApiJsonResponseMock).toHaveBeenCalledWith(fakeResponse);
+    expect(parseApiJsonResponseMock).toHaveBeenCalledWith(fakeResponse, {
+      authTokenSnapshotAtRequest: '',
+    });
     expect(out).toEqual({ parsed: true });
   });
 

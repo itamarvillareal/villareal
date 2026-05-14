@@ -1,23 +1,33 @@
 #!/usr/bin/env node
 /**
  * Importa histórico de andamentos multicliente (.xls/.xlsx).
- * Colunas: A = código cliente (8 dígitos), B = nº interno do processo, D = título, E = data/hora, F = responsável (nome).
- * GET /api/processos?codigoCliente= por cliente (cache).
+ * Colunas: A = código cliente, B = nº interno do processo, D = título, E = data/hora, F = responsável (opcionais → null ou valor por defeito onde a API exija).
  *
- * Aba: por defeito tenta "Planilha2"; senão a primeira cujo nome contém "pasta2" (ex.: ficheiro Pasta2 - Copia.xls); senão a 1.ª aba.
- * Override: --sheet=NomeExato
+ * Comportamento por defeito (importação completa):
+ * - Antes de importar: DELETE em massa da `origem` escolhida (API; defeito IMPORT_PLANILHA). Desligar: `--nao-limpar-import`.
+ * - Outra planilha sem apagar a anterior: `--origem=IMPORT_PLANILHA_500_599` (A–Z, 0–9, _; máx. 40).
+ * - Cria processo (stub) em falta: ligado por defeito. Desligar: `--sem-criar-processos`.
+ * - Não salta linhas por data vazia (envia movimentoEm null → API usa instante actual).
+ * - Responsável vazio / ruído numérico / mapa→null (ex. SISTEMA) → detalhe null; **não catalogado** → texto da planilha em `detalhe`, `usuarioId` null (sem FK).
+ * - Faixa de código cliente (col. A): `--apenas-codigos-entre=500,599` (opcional).
+ * - Código cliente em falta na linha: reutiliza o último código lido na coluna A (planilhas agrupadas).
+ * - Nº interno inválido: usa 1.
  *
- * Caminho default (legado Windows): C:\Users\jrvill\Dropbox\sistema\historico_import.xls
+ * Aba: "Planilha2" → nome contém "pasta2" → 1.ª aba. Override: --sheet=NomeExato
  *
  * Uso:
- *   VILAREAL_IMPORT_SENHA='***' node scripts/import-historico-planilha.mjs [--login=itamar]
- *   node scripts/import-historico-planilha.mjs "/caminho/Pasta2 - Copia.xls" --dry-run
- *   node scripts/import-historico-planilha.mjs "Pasta2.xls" --sheet="Planilha1"
+ *   VILAREAL_IMPORT_SENHA='***' node scripts/import-historico-planilha.mjs "/caminho/Pasta2.xls" --login=itamar
+ *   node scripts/import-historico-planilha.mjs "ficheiro.xls" --dry-run
  *
- * Só um cliente (código cadastro, ex. 119 → 00000119):
- *   --cliente=119 --substituir-andamentos   # apaga andamentos actuais dos processos afectados, depois importa
+ * Opções:
+ *   --origem=IMPORT_PLANILHA_X   Origem dos andamentos e alvo do DELETE prévio (defeito: IMPORT_PLANILHA ou VILAREAL_IMPORT_ORIGEM)
+ *   --apenas-codigos-entre=500,599  Só linhas cuja col. A está nesta faixa de código cliente
+ *   --nao-limpar-import          Não apaga andamentos dessa origem antes de importar
+ *   --sem-criar-processos        Não cria cabeçalho de processo em falta
+ *   --apenas-orfaos             Só linhas sem processo na API (requer criação de stub; combina com --sem-criar-processos desactivado)
+ *   --cliente=119 --substituir-andamentos   Só um cliente: apaga todos os andamentos desses processos antes do POST
  *
- * Envs: VILAREAL_API_BASE, VILAREAL_IMPORT_SENHA, VILAREAL_IMPORT_CONCURRENCY (default 3)
+ * Envs: VILAREAL_API_BASE, VILAREAL_IMPORT_SENHA, VILAREAL_IMPORT_CONCURRENCY (default 3), VILAREAL_IMPORT_ORIGEM
  */
 
 import fs from 'node:fs';
@@ -29,8 +39,11 @@ import { normalizarTextoPlanilha } from './lib/normalizar-texto-planilha.mjs';
 
 const DEFAULT_FILE = String.raw`C:\Users\jrvill\Dropbox\sistema\historico_import.xls`;
 const SHEET_FALLBACK_PRIMARIO = 'Planilha2';
+const ORIGEM_IMPORT_PLANILHA_PADRAO = 'IMPORT_PLANILHA';
+/** Máx. texto em `detalhe` (responsável não catalogado); alinha com uso seguro em TEXT. */
+const DETALHE_RESPONSAVEL_MAX = 8000;
 
-/** Variantes que normalizam para outro nome, null, ou __SKIP__ (linha não importada). */
+/** Variantes que normalizam para outro nome ou null (detalhe omitido na API). */
 const MAPA_RESPONSAVEL_NORMALIZACAO = {
   ITAMAR2: 'ITAMAR',
   ITAMARR: 'ITAMAR',
@@ -46,12 +59,12 @@ const MAPA_RESPONSAVEL_NORMALIZACAO = {
   'RELATÓRIO - DÉBITOS CONDOMINIAIS - ITAMAR': 'ITAMAR',
   'RHAYHANNY (2)': 'RHAYHANNY',
   'ADMINISTRAÇÃO DE IMÓVEIS - ISABELLA': 'ISABELLA',
-  SISTEMA: '__SKIP__',
+  SISTEMA: null,
   /** Ruído/colagem na exportação Excel (linha 2287 em lote amplo). */
   '3 (1))': null,
 };
 
-/** Nomes reconhecidos (após normalização; null não entra no set). */
+/** Nomes reconhecidos (após normalização); fora disto → texto da planilha em detalhe (usuarioId null). */
 const RESPONSAVEIS_RECONHECIDOS = new Set([
   'KARLA',
   'ISABELLA',
@@ -81,35 +94,60 @@ const RESPONSAVEIS_RECONHECIDOS = new Set([
   'MARIA EDUARDA',
 ]);
 
+const warnedUnknownResponsavel = new Set();
+
 /**
  * @param {unknown} valorBruto
  * @param {number} linhaExcel
- * @returns {string | null} null = sem responsável; '__SKIP__' = não importar a linha
+ * @returns {string | null} null = sem texto em detalhe; caso contrário nome catalogado ou texto livre da planilha
  */
 function normalizarResponsavel(valorBruto, linhaExcel) {
   if (valorBruto == null) return null;
   const trim = normalizarTextoPlanilha(valorBruto);
   if (!trim) return null;
-  // Coluna trocada ou ruído (ex.: "193", IDs); não é nome reconhecível.
   if (/^\d+$/.test(trim)) return null;
-  // Valor numérico decimal / monetário colado na coluna errada (ex.: "2847,6").
   if (/^[\d\s.,-]+$/.test(trim) && /\d/.test(trim) && !/[A-Za-zÀ-ÿ]/.test(trim)) return null;
   const upper = trim.toUpperCase();
   const normalizado = upper in MAPA_RESPONSAVEL_NORMALIZACAO ? MAPA_RESPONSAVEL_NORMALIZACAO[upper] : upper;
   if (normalizado === null) return null;
-  if (normalizado === '__SKIP__') return '__SKIP__';
-  if (!RESPONSAVEIS_RECONHECIDOS.has(normalizado)) {
-    throw new Error(
-      `Responsavel "${trim}" (linha Excel ${linhaExcel}) nao esta no mapa reconhecido.\n` +
-        `Decida antes de rodar: adicione "${normalizado}" a RESPONSAVEIS_RECONHECIDOS se for pessoa valida, ` +
-        `ou mapeie em MAPA_RESPONSAVEL_NORMALIZACAO se for variante de outro nome.`
+  if (RESPONSAVEIS_RECONHECIDOS.has(normalizado)) {
+    return normalizado;
+  }
+  const livre = trim.length > DETALHE_RESPONSAVEL_MAX ? trim.slice(0, DETALHE_RESPONSAVEL_MAX) : trim;
+  const key = livre.slice(0, 120);
+  if (!warnedUnknownResponsavel.has(key)) {
+    warnedUnknownResponsavel.add(key);
+    console.warn(
+      `[responsavel] nome não catalogado "${trim.slice(0, 200)}" → detalhe texto livre, usuarioId=null (ex.: linha ${linhaExcel}); outras linhas iguais não repetem aviso`
     );
   }
-  return normalizado;
+  return livre;
 }
 
 /** @type {Map<string, Map<number, number>>} */
 const cachesMapaPorCliente = new Map();
+
+/**
+ * Remove todos os andamentos com a origem indicada (ex.: reimportação completa).
+ * @returns {Promise<number>}
+ */
+async function limparAndamentosPorOrigem(baseUrl, token, origem) {
+  const url = `${baseUrl.replace(/\/$/, '')}/api/processos/manutencao/andamentos-por-origem/${encodeURIComponent(origem)}`;
+  const res = await fetch(url, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const txt = await res.text();
+  if (!res.ok) {
+    const hint =
+      /NoResourceFoundException|No static resource.*andamentos-por-origem/i.test(txt)
+        ? ' Reinicie o backend com o código actual (endpoint DELETE /api/processos/manutencao/andamentos-por-origem/{origem}) ou use --nao-limpar-import.'
+        : '';
+    throw new Error(`DELETE manutencao/andamentos-por-origem falhou ${res.status}: ${txt.slice(0, 500)}${hint}`);
+  }
+  const j = JSON.parse(txt);
+  return Number(j.removidos) || 0;
+}
 
 /**
  * @param {string} token
@@ -288,25 +326,52 @@ function parseArgs(argv) {
     file: null,
     login: 'itamar',
     senha: process.env.VILAREAL_IMPORT_SENHA || '',
-    baseUrl: process.env.VILAREAL_API_BASE || 'http://localhost:8080',
+    baseUrl: (process.env.VILAREAL_API_BASE || 'http://localhost:8080').replace(/\/$/, ''),
     dryRun: false,
     concurrency: Math.min(
       32,
       Math.max(1, Number(process.env.VILAREAL_IMPORT_CONCURRENCY || 3) || 3)
     ),
-    /** Texto cru ex.: "119" — normalizado em main() */
     codigoClienteRaw: null,
-    /** Apaga todos os andamentos dos processos que vão receber linhas da planilha, antes do POST */
     substituirAndamentos: false,
     sheetName: null,
+    /** Por defeito: cria POST /api/processos quando o nº interno não existe. */
+    criarProcessosOrfaos: true,
+    apenasOrfaos: false,
+    /** Por defeito: DELETE em massa andamentos IMPORT_PLANILHA antes de importar. */
+    limparImportPlanilhaAntes: true,
+    /** Origem gravada em cada andamento (e alvo do DELETE prévio). Env: VILAREAL_IMPORT_ORIGEM */
+    origem: (process.env.VILAREAL_IMPORT_ORIGEM || '').trim() || ORIGEM_IMPORT_PLANILHA_PADRAO,
+    /** Filtro opcional col. A: --apenas-codigos-entre=500,599 */
+    codigoClienteMin: /** @type {number | null} */ (null),
+    codigoClienteMax: /** @type {number | null} */ (null),
   };
   for (const a of argv) {
     if (a === '--dry-run') out.dryRun = true;
     else if (a === '--substituir-andamentos') out.substituirAndamentos = true;
+    else if (a === '--criar-processos-orfaos') out.criarProcessosOrfaos = true;
+    else if (a === '--sem-criar-processos') out.criarProcessosOrfaos = false;
+    else if (a === '--apenas-orfaos') out.apenasOrfaos = true;
+    else if (a === '--nao-limpar-import') out.limparImportPlanilhaAntes = false;
     else if (a.startsWith('--login=')) out.login = a.slice(8);
     else if (a.startsWith('--senha=')) out.senha = a.slice(8);
     else if (a.startsWith('--cliente=')) out.codigoClienteRaw = a.slice(10).trim();
-    else if (a.startsWith('--concurrency=')) {
+    else if (a.startsWith('--origem=')) out.origem = a.slice(9).trim();
+    else if (a.startsWith('--apenas-codigos-entre=')) {
+      const rest = a.slice(23);
+      const parts = rest
+        .split(/[,;]/)
+        .map((x) => x.trim())
+        .filter(Boolean);
+      if (parts.length === 2) {
+        const mn = Number(parts[0]);
+        const mx = Number(parts[1]);
+        if (Number.isFinite(mn) && Number.isFinite(mx) && mn >= 0 && mx >= mn) {
+          out.codigoClienteMin = mn;
+          out.codigoClienteMax = mx;
+        }
+      }
+    } else if (a.startsWith('--concurrency=')) {
       const n = Number(a.slice(14));
       if (Number.isFinite(n) && n >= 1) out.concurrency = Math.min(32, Math.floor(n));
     } else if (a.startsWith('--base-url=')) out.baseUrl = a.slice(11).replace(/\/$/, '');
@@ -314,6 +379,24 @@ function parseArgs(argv) {
     else if (!a.startsWith('-') && !out.file) out.file = a;
   }
   return out;
+}
+
+/** @param {string} origem */
+function validarOrigemApi(origem) {
+  if (!origem || !/^[A-Za-z0-9_]{1,40}$/.test(origem)) {
+    console.error(
+      `Origem inválida: "${String(origem)}". Use 1–40 caracteres [A-Za-z0-9_] (regra da API de limpeza em massa).`
+    );
+    process.exit(1);
+  }
+}
+
+/** Código 8 dígitos → inteiro (ex. 00000500 → 500). */
+function codigoCliente8ParaInt(cod8) {
+  const d = String(cod8).replace(/\D/g, '');
+  if (!d) return NaN;
+  const n = Number.parseInt(d, 10);
+  return Number.isFinite(n) ? n : NaN;
 }
 
 /**
@@ -383,13 +466,16 @@ function contarLinhasUsadasAteF(mat) {
 }
 
 /**
- * Linhas com A/B/D; guarda responsavelBruto (validação fail-fast depois).
+ * Todas as linhas com algum conteúdo em A–F; campos em falta: título "Andamento", ni→1, data→null.
+ * Código A vazio reutiliza o último código válido da coluna A (mesmo cliente em blocos).
  * @param {unknown[][]} mat
  */
 function buildLinhas(mat) {
   const linhas = [];
   const totalLinhas = contarLinhasUsadasAteF(mat);
   const lim = totalLinhas > 0 ? totalLinhas : mat.length;
+  /** @type {string | null} */
+  let lastCod8 = null;
   for (let i = 0; i < lim; i += 1) {
     const row = mat[i];
     if (!Array.isArray(row)) continue;
@@ -400,23 +486,42 @@ function buildLinhas(mat) {
     const e = row[4];
     const f = row[5];
 
-    const cod8 = normalizarCodigoCliente8(a);
+    const semConteudo =
+      (a == null || String(a).trim() === '') &&
+      (b == null || String(b).trim() === '') &&
+      (d == null || String(d).trim() === '') &&
+      (e == null || String(e).trim() === '') &&
+      (f == null || String(f).trim() === '');
+    if (semConteudo) continue;
+
+    let cod8 = normalizarCodigoCliente8(a);
+    if (!cod8 && lastCod8) cod8 = lastCod8;
+    if (cod8) lastCod8 = cod8;
+    if (!cod8) {
+      console.warn(`[planilha] linha ${linhaExcel}: sem código cliente (col. A) — ignorada`);
+      continue;
+    }
+
     const bStr = b == null || b === '' ? '' : String(b).trim();
+    let numeroInterno = Number.parseInt(bStr, 10);
+    if (!Number.isFinite(numeroInterno) || numeroInterno < 1) {
+      if (bStr !== '') {
+        console.warn(`[planilha] linha ${linhaExcel}: nº interno inválido "${bStr}" — usa 1`);
+      }
+      numeroInterno = 1;
+    }
+
     const dStr = d == null || d === '' ? '' : String(d).trim();
-
-    if (!cod8 || !bStr || !dStr) {
-      continue;
-    }
-
-    const movimentoEm = parseMovimentoEmIso(e);
-    const numeroInterno = Number.parseInt(bStr, 10);
-    if (!Number.isFinite(numeroInterno)) {
-      continue;
-    }
-
     let titulo = normalizarTextoPlanilha(dStr);
     if (!titulo.trim()) titulo = 'Andamento';
     if (titulo.length > 500) titulo = titulo.slice(0, 500);
+
+    const movimentoEm = parseMovimentoEmIso(e);
+    if (movimentoEm == null && e != null && String(e).trim() !== '') {
+      console.warn(
+        `[planilha] linha ${linhaExcel}: data col. E não reconhecida — envia movimentoEm null (API usa instante actual)`
+      );
+    }
 
     linhas.push({
       linhaExcel,
@@ -431,8 +536,7 @@ function buildLinhas(mat) {
   return linhas;
 }
 
-/** Aplica normalização + validação responsável em todas as linhas (fail-fast). */
-function aplicarValidacaoResponsaveis(brutas) {
+function normalizarDetalheResponsavelLinhas(brutas) {
   for (const L of brutas) {
     L.detalheNorm = normalizarResponsavel(L.responsavelBruto, L.linhaExcel);
   }
@@ -456,19 +560,139 @@ async function login(opts) {
   return token;
 }
 
+/** @returns {Promise<Map<string, number>>} codigoCliente8 → pessoaId (titular) */
+async function carregarPessoaIdPorCodigoCliente(token, baseUrl) {
+  const url = `${baseUrl.replace(/\/$/, '')}/api/clientes`;
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+  });
+  if (!res.ok) {
+    const t = await res.text();
+    throw new Error(`GET /api/clientes falhou ${res.status}: ${t.slice(0, 400)}`);
+  }
+  const list = await res.json();
+  /** @type {Map<string, number>} */
+  const m = new Map();
+  if (!Array.isArray(list)) return m;
+  for (const c of list) {
+    const cod = normalizarCodigoCliente8(c.codigoCliente);
+    const pid = Number(c.pessoaId ?? c.id);
+    if (cod && Number.isFinite(pid) && pid > 0) m.set(cod, pid);
+  }
+  return m;
+}
+
+/**
+ * Resolve pessoaId para código cliente (cache GET lista + fallback /resolucao).
+ * @param {Map<string, number>} cache
+ */
+async function resolverPessoaIdCliente(token, baseUrl, cod8, cache) {
+  if (cache.has(cod8)) return cache.get(cod8);
+  const url = `${baseUrl.replace(/\/$/, '')}/api/clientes/resolucao?codigoCliente=${encodeURIComponent(cod8)}`;
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+  });
+  if (!res.ok) return null;
+  const j = await res.json();
+  const pid = Number(j.pessoaId ?? j.id);
+  if (!Number.isFinite(pid) || pid < 1) return null;
+  cache.set(cod8, pid);
+  return pid;
+}
+
+/**
+ * Cria processo mínimo (FK válida para andamentos). 422 + «já existe» → duplicate.
+ * @returns {Promise<{ ok: boolean, id?: number, duplicate?: boolean, status?: number, text?: string }>}
+ */
+async function criarProcessoCabecalhoMinimo(token, baseUrl, pessoaId, numeroInterno) {
+  const body = {
+    clienteId: pessoaId,
+    numeroInterno,
+    ativo: true,
+    consultaAutomatica: false,
+    descricaoAcao: 'Processo criado automaticamente na importação de histórico (cabecalho ausente na API).',
+  };
+  const res = await fetch(`${baseUrl.replace(/\/$/, '')}/api/processos`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+  const txt = await res.text();
+  if (res.status === 201 || res.status === 200) {
+    try {
+      const j = JSON.parse(txt);
+      const id = Number(j.id);
+      return { ok: true, id: Number.isFinite(id) ? id : undefined };
+    } catch {
+      return { ok: false, status: res.status, text: txt.slice(0, 300) };
+    }
+  }
+  if (res.status === 422 && /j[aá]\s*existe/i.test(txt)) {
+    return { ok: false, duplicate: true, text: txt };
+  }
+  return { ok: false, status: res.status, text: txt.slice(0, 300) };
+}
+
+/**
+ * @param {Map<number, number>} mapa
+ * @returns {Promise<{ procId: number | null, mapa: Map<number, number> }>}
+ */
+async function tentarStubProcessoSeNecessario(
+  token,
+  baseUrl,
+  cod8,
+  L,
+  mapa,
+  pessoaPorCod8,
+  stats,
+  opts
+) {
+  let m = mapa;
+  let procId = m.get(L.numeroInterno);
+  if (procId != null) return { procId, mapa: m };
+  if (!opts.criarProcessosOrfaos) return { procId: null, mapa: m };
+
+  const pessoaId =
+    pessoaPorCod8.get(cod8) ?? (await resolverPessoaIdCliente(token, baseUrl, cod8, pessoaPorCod8));
+  if (!pessoaId) return { procId: null, mapa: m };
+
+  const criado = await criarProcessoCabecalhoMinimo(token, baseUrl, pessoaId, L.numeroInterno);
+  if (criado.ok && criado.id != null) {
+    procId = criado.id;
+    m.set(L.numeroInterno, procId);
+    stats.processosStubCriados += 1;
+    return { procId, mapa: m };
+  }
+  if (criado.duplicate) {
+    cachesMapaPorCliente.delete(cod8);
+    m = await obterMapaProcessoId(token, baseUrl, cod8);
+    procId = m.get(L.numeroInterno) ?? null;
+    return { procId, mapa: m };
+  }
+  console.warn(
+    `[stub-falha] cod=${cod8} ni=${L.numeroInterno} pessoaId=${pessoaId}: ${criado.status ?? '?'} ${(criado.text || '').slice(0, 200)}`
+  );
+  return { procId: null, mapa: m };
+}
+
 /**
  * @param {string} baseUrl
  * @param {string} token
  * @param {number} processoId
- * @param {{ movimentoEm: string, titulo: string, detalhe: string | null }} payload
+ * @param {{ movimentoEm: string | null, titulo: string, detalhe: string | null }} payload
+ * @param {string} origem
  */
-async function postAndamento(baseUrl, token, processoId, payload) {
+async function postAndamento(baseUrl, token, processoId, payload, origem) {
   // POST /api/processos/{processoId}/andamentos
   const body = {
     movimentoEm: payload.movimentoEm,
     titulo: payload.titulo,
     detalhe: payload.detalhe,
-    origem: 'IMPORT_PLANILHA',
+    origem,
     origemAutomatica: false,
     usuarioId: null,
   };
@@ -612,6 +836,13 @@ async function main() {
     );
     process.exit(1);
   }
+  if (opts.apenasOrfaos && !opts.criarProcessosOrfaos) {
+    console.error('[import] --apenas-orfaos requer --criar-processos-orfaos.');
+    process.exit(1);
+  }
+
+  validarOrigemApi(opts.origem);
+  warnedUnknownResponsavel.clear();
 
   const filePath = opts.file || DEFAULT_FILE;
   const abs = path.resolve(filePath);
@@ -640,40 +871,41 @@ async function main() {
   const brutas = buildLinhas(mat);
   const totalLinhas = contarLinhasUsadasAteF(mat);
 
-  try {
-    aplicarValidacaoResponsaveis(brutas);
-  } catch (e) {
-    console.error(e);
-    process.exit(1);
-  }
-
-  let candidatas = [];
-  let puladosSemData = 0;
-  for (const L of brutas) {
-    if (L.movimentoEm == null) {
-      puladosSemData += 1;
-      console.warn(`[warn] linha ${L.linhaExcel}: data inválida ou vazia (coluna E) — ignorada`);
-      continue;
-    }
-    candidatas.push(L);
-  }
+  normalizarDetalheResponsavelLinhas(brutas);
+  let candidatas = [...brutas];
 
   if (codigoClienteFiltro8) {
     const antes = candidatas.length;
     candidatas = candidatas.filter((L) => L.codigoCliente8 === codigoClienteFiltro8);
     console.log(
-      `[filtro] cliente ${codigoClienteFiltro8}: ${candidatas.length} linhas com data (de ${antes} antes do filtro)`
+      `[filtro] cliente ${codigoClienteFiltro8}: ${candidatas.length} linhas (de ${antes} antes do filtro)`
     );
     if (candidatas.length === 0) {
       console.warn('[filtro] Nenhuma linha para este cliente — verifique o código na coluna A da planilha.');
     }
   }
 
-  const porClienteLinhas = contarLinhasPorCliente(brutas);
+  if (opts.codigoClienteMin != null && opts.codigoClienteMax != null) {
+    const antes = candidatas.length;
+    candidatas = candidatas.filter((L) => {
+      const n = codigoCliente8ParaInt(L.codigoCliente8);
+      return Number.isFinite(n) && n >= opts.codigoClienteMin && n <= opts.codigoClienteMax;
+    });
+    console.log(
+      `[filtro-faixa] códigos cliente ${opts.codigoClienteMin}–${opts.codigoClienteMax}: ${candidatas.length} linhas (de ${antes})`
+    );
+    if (candidatas.length === 0) {
+      console.warn('[filtro-faixa] Nenhuma linha nesta faixa — verifique a coluna A ou o intervalo.');
+    }
+  }
+
+  const linhasSemData = candidatas.filter((L) => L.movimentoEm == null).length;
+
+  const porClienteLinhas = contarLinhasPorCliente(candidatas);
   /** @type {Record<string, number>} */
   const respDry = {};
   let respNullDry = 0;
-  for (const L of brutas) {
+  for (const L of candidatas) {
     const key = L.detalheNorm == null ? null : L.detalheNorm;
     if (key == null) respNullDry += 1;
     else respDry[key] = (respDry[key] || 0) + 1;
@@ -683,24 +915,19 @@ async function main() {
     if (opts.substituirAndamentos && !codigoClienteFiltro8) {
       console.warn('[dry-run] --substituir-andamentos sem --cliente: em execução real, limpará vários processos.');
     }
-    let puladosSistemaDry = 0;
-    let candidatasSemSkip = 0;
-    for (const L of candidatas) {
-      if (L.detalheNorm === '__SKIP__') puladosSistemaDry += 1;
-      else candidatasSemSkip += 1;
-    }
     console.log(`[dry-run] ficheiro: ${abs}`);
     console.log(`[dry-run] total_linhas_planilha (shape): ${totalLinhas}`);
-    console.log(`[dry-run] linhas com A/B/D preenchidos (bruto): ${brutas.length}`);
-    console.log(`[dry-run] pulados_sem_data: ${puladosSemData}`);
-    console.log(`[dry-run] pulados_sistema (__SKIP__): ${puladosSistemaDry}`);
-    console.log(`[dry-run] andamentos importáveis (simulação): ${candidatasSemSkip}`);
-    console.log('[dry-run] validacao responsaveis: OK (fail-fast passou)');
-    console.log('\n[dry-run] contagem por cliente (linhas A/B/D):');
+    console.log(`[dry-run] linhas a importar (após regras A–F): ${brutas.length}`);
+    console.log(`[dry-run] movimentoEm null (API usará instante actual): ${linhasSemData}`);
+    console.log(`[dry-run] origem (andamentos): ${opts.origem}`);
+    console.log(`[dry-run] limpar origem antes (defeito): ${opts.limparImportPlanilhaAntes}`);
+    console.log(`[dry-run] criar processos em falta (defeito): ${opts.criarProcessosOrfaos}`);
+    console.log(`[dry-run] andamentos a POST (simulação): ${candidatas.length}`);
+    console.log('\n[dry-run] contagem por cliente:');
     for (const cod of Object.keys(porClienteLinhas).sort()) {
       console.log(`  ${cod}: ${porClienteLinhas[cod]}`);
     }
-    console.log('\n[dry-run] contagem por responsavel (normalizado, todas as linhas brutas):');
+    console.log('\n[dry-run] contagem por responsavel (catalogados em MAIÚSCULAS; outros = texto livre em detalhe):');
     const rk = Object.keys(respDry).sort((a, b) => respDry[b] - respDry[a]);
     for (const k of rk) {
       console.log(`  ${k}: ${respDry[k]}`);
@@ -724,7 +951,7 @@ async function main() {
             movimentoEm: L.movimentoEm,
             titulo: L.titulo,
             detalhe: L.detalheNorm,
-            origem: 'IMPORT_PLANILHA',
+            origem: opts.origem,
             origemAutomatica: false,
             usuarioId: null,
           },
@@ -747,6 +974,37 @@ async function main() {
   } catch (e) {
     console.error(e);
     process.exit(1);
+  }
+
+  /** @type {number} */
+  let removidosLimpeza = 0;
+  if (opts.limparImportPlanilhaAntes) {
+    try {
+      removidosLimpeza = await limparAndamentosPorOrigem(opts.baseUrl, token, opts.origem);
+      console.log(`[limpar] Removidos ${removidosLimpeza} andamento(s) com origem=${opts.origem}`);
+      cachesMapaPorCliente.clear();
+    } catch (e) {
+      console.error(e);
+      process.exit(1);
+    }
+  } else {
+    console.log(
+      `[limpar] Omitido (--nao-limpar-import); podem acumular-se andamentos com origem=${opts.origem} duplicados`
+    );
+  }
+
+  /** @type {Map<string, number>} */
+  let pessoaPorCod8 = new Map();
+  if (opts.criarProcessosOrfaos) {
+    try {
+      pessoaPorCod8 = await carregarPessoaIdPorCodigoCliente(token, opts.baseUrl);
+      console.log(
+        `[import] mapa inicial GET /api/clientes → ${pessoaPorCod8.size} códigos com pessoaId (criação de processos em falta: ligada)`
+      );
+    } catch (e) {
+      console.error(e);
+      process.exit(1);
+    }
   }
 
   /** @type {Record<string, { criados: number, falhas: number, orfaos: number }>} */
@@ -774,38 +1032,110 @@ async function main() {
     criados: 0,
     falhas: 0,
     orfaos: 0,
-    pulados_sem_data: puladosSemData,
+    processosStubCriados: 0,
+    pulados_sem_data: linhasSemData,
     pulados_sistema: 0,
     /** @type {Record<string, number>} */
     respCriados: {},
     respNull: 0,
+    detalheCatalogado: 0,
+    detalheTextoLivre: 0,
   };
 
-  for (const cod8 of ordemClientes) {
-    let mapa;
-    try {
-      mapa = await obterMapaProcessoId(token, opts.baseUrl, cod8);
-    } catch (e) {
-      console.error(e);
-      process.exit(1);
+  if (opts.apenasOrfaos) {
+    /** @type {Map<string, object[]>} */
+    const orfaosPorCod = new Map();
+    for (const cod8 of ordemClientes) {
+      let mapa;
+      try {
+        mapa = await obterMapaProcessoId(token, opts.baseUrl, cod8);
+      } catch (e) {
+        console.error(e);
+        process.exit(1);
+      }
+      for (const L of candidatasPorCliente.get(cod8) || []) {
+        if (mapa.get(L.numeroInterno) == null) {
+          if (!orfaosPorCod.has(cod8)) orfaosPorCod.set(cod8, []);
+          orfaosPorCod.get(cod8).push(L);
+        }
+      }
     }
-    const linhasCliente = candidatasPorCliente.get(cod8) || [];
-    for (const L of linhasCliente) {
-      touchCliente(cod8);
-      if (L.detalheNorm === '__SKIP__') {
-        stats.pulados_sistema += 1;
-        continue;
+    let nOrf = 0;
+    for (const arr of orfaosPorCod.values()) nOrf += arr.length;
+    console.log(`[apenas-orfaos] ${nOrf} linha(s) sem processo na API (stub + POST apenas nestas)`);
+
+    const cod8Ordenados = [...orfaosPorCod.keys()].sort((a, b) => Number(a) - Number(b));
+    for (const cod8 of cod8Ordenados) {
+      let mapa;
+      try {
+        mapa = await obterMapaProcessoId(token, opts.baseUrl, cod8);
+      } catch (e) {
+        console.error(e);
+        process.exit(1);
       }
-      const procId = mapa.get(L.numeroInterno);
-      if (procId == null) {
-        stats.orfaos += 1;
-        porClienteStats[cod8].orfaos += 1;
-        console.warn(
-          `[orfao] cod=${cod8} numeroInterno=${L.numeroInterno} -> processo nao encontrado no banco`
+      const listaOrf = orfaosPorCod.get(cod8) || [];
+      for (const L of listaOrf) {
+        touchCliente(cod8);
+        const r = await tentarStubProcessoSeNecessario(
+          token,
+          opts.baseUrl,
+          cod8,
+          L,
+          mapa,
+          pessoaPorCod8,
+          stats,
+          opts
         );
-        continue;
+        mapa = r.mapa;
+        const procId = r.procId;
+        if (procId == null) {
+          stats.orfaos += 1;
+          porClienteStats[cod8].orfaos += 1;
+          console.warn(
+            `[orfao] cod=${cod8} numeroInterno=${L.numeroInterno} -> processo nao encontrado no banco`
+          );
+          continue;
+        }
+        tarefas.push({ L, procId, codigoCliente8: cod8 });
       }
-      tarefas.push({ L, procId, codigoCliente8: cod8 });
+    }
+  } else {
+    for (const cod8 of ordemClientes) {
+      let mapa;
+      try {
+        mapa = await obterMapaProcessoId(token, opts.baseUrl, cod8);
+      } catch (e) {
+        console.error(e);
+        process.exit(1);
+      }
+      const linhasCliente = candidatasPorCliente.get(cod8) || [];
+      for (const L of linhasCliente) {
+        touchCliente(cod8);
+        let procId = mapa.get(L.numeroInterno);
+        if (procId == null) {
+          const r = await tentarStubProcessoSeNecessario(
+            token,
+            opts.baseUrl,
+            cod8,
+            L,
+            mapa,
+            pessoaPorCod8,
+            stats,
+            opts
+          );
+          mapa = r.mapa;
+          procId = r.procId;
+        }
+        if (procId == null) {
+          stats.orfaos += 1;
+          porClienteStats[cod8].orfaos += 1;
+          console.warn(
+            `[orfao] cod=${cod8} numeroInterno=${L.numeroInterno} -> processo nao encontrado no banco`
+          );
+          continue;
+        }
+        tarefas.push({ L, procId, codigoCliente8: cod8 });
+      }
     }
   }
 
@@ -833,10 +1163,10 @@ async function main() {
     const titulo = String(L.titulo || '').trim() || 'Andamento';
     const titulo500 = titulo.length > 500 ? titulo.slice(0, 500) : titulo;
     const r = await postAndamento(opts.baseUrl, token, procId, {
-      movimentoEm: /** @type {string} */ (L.movimentoEm),
+      movimentoEm: L.movimentoEm != null ? /** @type {string} */ (L.movimentoEm) : null,
       titulo: titulo500,
       detalhe: L.detalheNorm,
-    });
+    }, opts.origem);
     if (!r.ok) {
       stats.falhas += 1;
       porClienteStats[codigoCliente8].falhas += 1;
@@ -847,15 +1177,45 @@ async function main() {
     }
     stats.criados += 1;
     porClienteStats[codigoCliente8].criados += 1;
-    if (L.detalheNorm == null) stats.respNull += 1;
-    else stats.respCriados[L.detalheNorm] = (stats.respCriados[L.detalheNorm] || 0) + 1;
+    if (L.detalheNorm == null) {
+      stats.respNull += 1;
+    } else {
+      stats.respCriados[L.detalheNorm] = (stats.respCriados[L.detalheNorm] || 0) + 1;
+      if (RESPONSAVEIS_RECONHECIDOS.has(L.detalheNorm)) stats.detalheCatalogado += 1;
+      else stats.detalheTextoLivre += 1;
+    }
   });
 
   console.log(
-    `[andamentos] criados=${stats.criados} falhas=${stats.falhas} orfaos=${stats.orfaos} pulados_sem_data=${stats.pulados_sem_data} pulados_sistema=${stats.pulados_sistema} total_linhas=${totalLinhas}`
+    `[andamentos] criados=${stats.criados} falhas=${stats.falhas} orfaos=${stats.orfaos} processos_stub_criados=${stats.processosStubCriados} pulados_sem_data=${stats.pulados_sem_data} pulados_sistema=${stats.pulados_sistema} total_linhas=${totalLinhas}`
   );
   imprimirResumoResponsavel(stats.respCriados, stats.respNull);
   imprimirResumoCliente(porClienteStats);
+
+  const faixaText =
+    opts.codigoClienteMin != null && opts.codigoClienteMax != null
+      ? `${opts.codigoClienteMin}–${opts.codigoClienteMax}`
+      : '(nenhum)';
+  console.log('\n======== RELATÓRIO — IMPORTAÇÃO HISTÓRICO ========');
+  console.log(`Ficheiro: ${abs}`);
+  console.log(`Aba: ${sheetNome}`);
+  console.log(`Origem (andamentos / limpeza em massa): ${opts.origem}`);
+  console.log(`Filtro faixa código cliente (opcional): ${faixaText}`);
+  console.log(`Linhas com conteúdo A–F (shape da folha): ${totalLinhas}`);
+  console.log(`Linhas candidatas após filtros no script: ${candidatas.length}`);
+  console.log(`Limpeza prévia desta origem: removidos=${removidosLimpeza} (omitida=${!opts.limparImportPlanilhaAntes})`);
+  console.log(`POST andamentos com sucesso: ${stats.criados}`);
+  console.log(`POST falhou: ${stats.falhas}`);
+  console.log(`Órfãos (sem processo após tentativa de stub): ${stats.orfaos}`);
+  console.log(`Processos criados (stub): ${stats.processosStubCriados}`);
+  console.log(`Linhas com data ausente/ inválida (movimentoEm null → API usa instante): ${stats.pulados_sem_data}`);
+  console.log(`detalhe null (sem responsável ou ruído / mapa→null): ${stats.respNull}`);
+  console.log(`detalhe nome catalogado (equipa reconhecida): ${stats.detalheCatalogado}`);
+  console.log(`detalhe texto livre (não catalogado; usuarioId=null na API): ${stats.detalheTextoLivre}`);
+  console.log(
+    `Clientes com ≥1 andamento criado: ${Object.keys(porClienteStats).filter((k) => porClienteStats[k].criados > 0).length}`
+  );
+  console.log('==================================================\n');
 
   process.exit(stats.falhas > 0 ? 2 : 0);
 }

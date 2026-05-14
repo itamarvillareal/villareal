@@ -1,5 +1,6 @@
 package br.com.vilareal.importacao;
 
+import br.com.vilareal.common.text.Utf8MojibakeUtil;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellType;
 import org.apache.poi.ss.usermodel.DataFormatter;
@@ -26,6 +27,9 @@ final class PlanilhaExcelUtil {
     /**
      * Texto como o Excel exibe (importante para CNJ com pontos: célula numérica não pode usar
      * {@code getNumericCellValue()} — perde tudo após o primeiro segmento).
+     *
+     * <p>Aplica {@link Utf8MojibakeUtil#corrigir(String)} ao texto (UTF-8/Latin-1 mal interpretados em
+     * planilhas legadas), sem alterar dígitos de identificadores numéricos formatados como texto.
      */
     static String cellString(Row row, int colIndex) {
         if (row == null) {
@@ -35,6 +39,8 @@ final class PlanilhaExcelUtil {
         if (cell == null || cell.getCellType() == CellType.BLANK) {
             return "";
         }
-        return DATA_FORMATTER.formatCellValue(cell).trim();
+        String raw = DATA_FORMATTER.formatCellValue(cell).trim();
+        String fixed = Utf8MojibakeUtil.corrigir(raw);
+        return fixed != null ? fixed : "";
     }
 }

@@ -22,6 +22,7 @@ function buildUrl(path, query) {
 }
 
 export async function request(path, { method = 'GET', body, query, headers, signal } = {}) {
+  const authTokenSnapshotAtRequest = getAccessToken();
   const response = await fetch(buildUrl(path, query), {
     method,
     signal,
@@ -31,11 +32,12 @@ export async function request(path, { method = 'GET', body, query, headers, sign
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
-  return parseApiJsonResponse(response);
+  return parseApiJsonResponse(response, { authTokenSnapshotAtRequest });
 }
 
 /** POST multipart (não define Content-Type — o browser envia boundary). */
 export async function postFormData(path, formData, { signal } = {}) {
+  const authTokenSnapshotAtRequest = getAccessToken();
   const headers = { ...buildAuditoriaHeaders() };
   const t = getAccessToken();
   if (t) headers.Authorization = `Bearer ${t}`;
@@ -45,5 +47,5 @@ export async function postFormData(path, formData, { signal } = {}) {
     body: formData,
     signal,
   });
-  return parseApiJsonResponse(response);
+  return parseApiJsonResponse(response, { authTokenSnapshotAtRequest });
 }

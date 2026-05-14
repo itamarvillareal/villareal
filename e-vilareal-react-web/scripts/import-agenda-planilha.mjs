@@ -17,6 +17,7 @@
  *
  * Layout `--layout=agendas-multi` (ex.: AGENDAS.XLS com várias abas):
  *   Cada aba = um utilizador (nome deve coincidir com login, nome, apelido ou nome em cadastro na API).
+ *   Aba com nome que não casa (ex.: «Agenda por Mês»): use `--sheet=NomeExatoDaAba` com `--usuario-id=N` (login continua a ser quem autentica).
  *   Dados a partir da linha `--primeira-linha=` (padrão 8).
  *   D: data, H: hora, J: descrição, X: status (OK; outros valores viram vazio no servidor).
  *
@@ -39,6 +40,7 @@
  *
  * AGENDAS.XLS (várias abas, colunas D/H/J/X a partir da linha 8):
  *   VILAREAL_IMPORT_SENHA='***' node scripts/import-agenda-planilha.mjs "C:\\Users\\...\\AGENDAS.XLS" --layout=agendas-multi --login=itamar
+ *   Aba genérica + Karla (id 2): … --layout=agendas-multi --login=karla.pedroza --usuario-id=2 --sheet="Agenda por Mês"
  *   (opcional produção: VILAREAL_API_BASE=https://seu-dominio node …)
  *
  * Reimportar do zero (apagar tudo na API, só ADMIN):
@@ -69,6 +71,8 @@ function parseArgs(argv) {
       Math.max(1, Number(process.env.VILAREAL_IMPORT_CONCURRENCY || 8) || 8)
     ),
     usuarioIdBody: null,
+    /** Só agendas-multi: forçar uma aba e o utilizador dos eventos (quando o nome da aba não casa com a API). */
+    sheetName: null,
     /** Linha inicial no Excel (1-based), padrão 8 — só layout agendas-multi */
     primeiraLinhaExcel: 8,
   };
@@ -90,7 +94,8 @@ function parseArgs(argv) {
     else if (a.startsWith('--primeira-linha=')) {
       const n = Number(a.slice(17));
       if (Number.isFinite(n) && n >= 1) out.primeiraLinhaExcel = Math.floor(n);
-    } else if (!a.startsWith('-') && !out.file) out.file = a;
+    } else if (a.startsWith('--sheet=')) out.sheetName = a.slice(8).trim();
+    else if (!a.startsWith('-') && !out.file) out.file = a;
   }
   if (out.usuarioIdBody == null && process.env.VILAREAL_IMPORT_USUARIO_ID) {
     const n = Number(process.env.VILAREAL_IMPORT_USUARIO_ID);
@@ -354,17 +359,39 @@ function buildLinhasLayoutAgendasMulti(wb, opts, usuarioPorChave) {
   const ciJ = COL_AGENDAS_MULTI.desc;
   const ciX = COL_AGENDAS_MULTI.status;
 
-  for (const sheetName of wb.SheetNames) {
-    const rawName = String(sheetName ?? '').trim();
-    if (!rawName) continue;
+  const sheetForcado = opts.sheetName != null && String(opts.sheetName).trim() !== '';
+  const uidForcado =
+    opts.usuarioIdBody != null && Number.isFinite(Number(opts.usuarioIdBody))
+      ? Math.floor(Number(opts.usuarioIdBody))
+      : null;
 
-    const usuarioId = usuarioPorChave.get(normChave(rawName));
-    if (usuarioId == null) {
-      sheetsSemUsuario.push(rawName);
-      continue;
+  /** @type {{ sheetKey: string, rawName: string, usuarioId: number }[]} */
+  const folhasAProcessar = [];
+
+  if (sheetForcado && uidForcado != null) {
+    const target = String(opts.sheetName).trim();
+    const exact = wb.SheetNames.find((n) => String(n ?? '').trim() === target);
+    if (!exact) {
+      sheetsSemUsuario.push(`${target} (aba não encontrada; disponíveis: ${wb.SheetNames.join(', ')})`);
+      return { linhas, sheetsSemUsuario };
     }
+    folhasAProcessar.push({ sheetKey: exact, rawName: String(exact).trim(), usuarioId: uidForcado });
+  } else {
+    for (const sheetName of wb.SheetNames) {
+      const rawName = String(sheetName ?? '').trim();
+      if (!rawName) continue;
 
-    const sh = wb.Sheets[sheetName];
+      const usuarioId = usuarioPorChave.get(normChave(rawName));
+      if (usuarioId == null) {
+        sheetsSemUsuario.push(rawName);
+        continue;
+      }
+      folhasAProcessar.push({ sheetKey: sheetName, rawName, usuarioId });
+    }
+  }
+
+  for (const { sheetKey, rawName, usuarioId } of folhasAProcessar) {
+    const sh = wb.Sheets[sheetKey];
     const mat = XLSX.utils.sheet_to_json(sh, { header: 1, defval: null, raw: true });
 
     for (let i = primeiraLinhaIdx; i < mat.length; i += 1) {
@@ -456,6 +483,13 @@ async function main() {
 
   const layoutMulti = opts.layout === 'agendas-multi';
 
+  if (layoutMulti && opts.sheetName && opts.usuarioIdBody == null) {
+    console.error(
+      'agendas-multi com --sheet=... requer também --usuario-id= (id do utilizador dono dos eventos na API).'
+    );
+    process.exit(1);
+  }
+
   if (layoutMulti && !opts.senha) {
     console.error(
       'layout agendas-multi requer VILAREAL_IMPORT_SENHA ou --senha (para GET /api/usuarios e casar nomes das abas).'
@@ -468,7 +502,7 @@ async function main() {
     process.exit(1);
   }
 
-  if (layoutMulti && opts.usuarioIdBody != null) {
+  if (layoutMulti && opts.usuarioIdBody != null && !opts.sheetName) {
     console.warn('[warn] --usuario-id é ignorado em agendas-multi (cada aba define o utilizador).');
   }
 

@@ -16,11 +16,46 @@ function toIsoFromBrDate(dateBr) {
   return `${m[3]}-${m[2]}-${m[1]}`;
 }
 
+/**
+ * Spring/Jackson pode serializar {@code LocalDate} como {@code "yyyy-MM-dd"}, array {@code [ano,mês,dia]} ou objeto.
+ */
+function dataApiParaDataBr(data) {
+  if (data == null) return '';
+  if (typeof data === 'string') {
+    const t = data.trim();
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(t);
+    if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+    return '';
+  }
+  if (Array.isArray(data) && data.length >= 3) {
+    const y = data[0];
+    const mo = String(Number(data[1])).padStart(2, '0');
+    const d = String(Number(data[2])).padStart(2, '0');
+    if (Number.isFinite(Number(y))) return `${d}/${mo}/${String(y)}`;
+  }
+  if (typeof data === 'object') {
+    const y = Number(data.year);
+    const mo = String(Number(data.monthValue ?? data.month ?? 1)).padStart(2, '0');
+    const d = String(Number(data.dayOfMonth ?? data.day ?? 1)).padStart(2, '0');
+    if (Number.isFinite(y)) return `${d}/${mo}/${String(y)}`;
+  }
+  return '';
+}
+
 function toBrFromIsoDate(dateIso) {
-  const s = String(dateIso ?? '').trim();
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
-  if (!m) return '';
-  return `${m[3]}/${m[2]}/${m[1]}`;
+  return dataApiParaDataBr(dateIso);
+}
+
+/** Exibe valor da causa (API numérica) no formato de campo BR (1.234,56). */
+function formatarValorCausaApiParaCampoBr(val) {
+  if (val == null || val === '') return '';
+  const n = typeof val === 'number' ? val : Number(String(val).replace(/\./g, '').replace(',', '.'));
+  if (!Number.isFinite(n)) return '';
+  try {
+    return new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
+  } catch {
+    return String(n);
+  }
 }
 
 function latin1Somente(str) {
@@ -182,7 +217,13 @@ function tentarUmaPassagemDuplaCodificacaoUtf8(s) {
  * Alinhado a {@code Utf8MojibakeUtil} no backend.
  */
 function corrigirMojibakeUtf8(s) {
-  if (s == null || typeof s !== 'string' || s.length === 0) return s;
+  if (s == null) return '';
+  if (typeof s === 'number' && Number.isFinite(s)) {
+    s = String(s);
+  } else if (typeof s !== 'string') {
+    return '';
+  }
+  if (s.length === 0) return s;
   let cur = s;
   if (deveTentarReverterDuplaCamada(cur)) {
     for (let k = 0; k < 10; k++) {
@@ -205,11 +246,14 @@ function toIsoDateTimeFromBrDate(dateBr) {
 /** Tamanho de página alinhado ao default do backend para `codigoCliente` (GET em fatias). */
 const PAGE_SIZE_LISTAGEM_CLIENTE = 100;
 
+/** Evita loop infinito se a resposta paginada vier sem {@code last} ou com anomalia. */
+const MAX_PAGES_LISTAGEM_PROCESSOS_CLIENTE = 500;
+
 export async function listarProcessosPorCodigoCliente(codigoCliente) {
   if (!featureFlags.useApiProcessos) return [];
   const cod = padCliente8(codigoCliente);
   const out = [];
-  for (let page = 0; ; page++) {
+  for (let page = 0; page < MAX_PAGES_LISTAGEM_PROCESSOS_CLIENTE; page++) {
     let body;
     try {
       body = await request('/api/processos', {
@@ -233,7 +277,7 @@ export async function listarProcessosPorCodigoCliente(codigoCliente) {
       );
     }
     out.push(...chunk);
-    if (body.last === true || chunk.length < PAGE_SIZE_LISTAGEM_CLIENTE) {
+    if (chunk.length === 0 || body.last === true || chunk.length < PAGE_SIZE_LISTAGEM_CLIENTE) {
       break;
     }
   }
@@ -725,24 +769,25 @@ export function mapApiProcessoToUiShape(p) {
     numeroProcessoVelho: String(p.numeroProcessoAntigo ?? p.numero_processo_antigo ?? '').trim(),
     naturezaAcao: corrigirMojibakeUtf8(String(p.naturezaAcao || p.descricaoAcao || '').trim()),
     descricaoAcao: corrigirMojibakeUtf8(String(p.descricaoAcao || p.naturezaAcao || '').trim()),
-    competencia: corrigirMojibakeUtf8(p.competencia || ''),
-    faseSelecionada: corrigirMojibakeUtf8(p.fase || ''),
-    observacaoFase: corrigirMojibakeUtf8(p.observacaoFase || ''),
+    competencia: corrigirMojibakeUtf8(String(p.competencia ?? '').trim()),
+    faseSelecionada: corrigirMojibakeUtf8(String(p.fase ?? '').trim()),
+    observacaoFase: corrigirMojibakeUtf8(String(p.observacaoFase ?? '').trim()),
     statusAtivo: p.ativo !== false,
     prazoFatal: toBrFromIsoDate(p.prazoFatal),
     proximaConsultaData: toBrFromIsoDate(p.proximaConsulta),
     observacao: corrigirMojibakeUtf8(String(p.observacao ?? '').trim()),
-    cidade: corrigirMojibakeUtf8(p.cidade || ''),
-    estado: p.uf || '',
+    cidade: corrigirMojibakeUtf8(String(p.cidade ?? '').trim()),
+    estado: String(p.uf ?? '').trim(),
     consultaAutomatica: p.consultaAutomatica === true,
-    tramitacao: corrigirMojibakeUtf8(p.tramitacao || ''),
+    tramitacao: corrigirMojibakeUtf8(String(p.tramitacao ?? '').trim()),
     /** Mesmo valor que `tramitacao` na API (campo «Procedimento» no formulário). */
-    procedimento: corrigirMojibakeUtf8(p.tramitacao || ''),
+    procedimento: corrigirMojibakeUtf8(String(p.tramitacao ?? '').trim()),
     dataProtocolo: toBrFromIsoDate(p.dataProtocolo),
-    responsavel: corrigirMojibakeUtf8(p.consultor || ''),
+    responsavel: corrigirMojibakeUtf8(String(p.consultor ?? '').trim()),
     /** Só na listagem por cliente; mesma regra que partes «Réu» na tela Processos. */
-    parteOposta: corrigirMojibakeUtf8(p.parteOposta || p.parte_oposta || ''),
+    parteOposta: corrigirMojibakeUtf8(String(p.parteOposta ?? p.parte_oposta ?? '').trim()),
     unidade: corrigirMojibakeUtf8(String(p.unidade ?? '').trim()),
     pasta: corrigirMojibakeUtf8(String(p.pasta ?? '').trim()),
+    valorCausa: formatarValorCausaApiParaCampoBr(p.valorCausa),
   };
 }

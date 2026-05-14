@@ -38,9 +38,10 @@ class InformacoesProcessosImportServiceParseTest {
     }
 
     private DadosImportacaoLinha parseLinha(Row row, int linhaExcel) throws Exception {
-        Method m = InformacoesProcessosImportService.class.getDeclaredMethod("parseLinha", Row.class, int.class);
+        Method m = InformacoesProcessosImportService.class.getDeclaredMethod(
+                "parseLinha", Row.class, int.class, String.class);
         m.setAccessible(true);
-        return (DadosImportacaoLinha) m.invoke(service, row, linhaExcel);
+        return (DadosImportacaoLinha) m.invoke(service, row, linhaExcel, "Linha Excel " + linhaExcel);
     }
 
     @Test

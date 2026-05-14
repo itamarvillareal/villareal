@@ -27,15 +27,18 @@ br.com.vilareal
 
 ## Como rodar localmente
 
-1. **MySQL na VPS (recomendado):** abre o túnel SSH (`localhost:3308` → MySQL na VPS) e exporta a password do utilizador remoto, por exemplo:
+1. **MySQL tem de estar acessível antes do login.** O profile `dev` (`application-dev.properties`) aponta por defeito para **`localhost:3306`**, base **`vilareal`**, utilizador **`root`** / password **`root`**.
 
-   ```bash
-   export SPRING_DATASOURCE_PASSWORD='***'
-   ```
+   - **MySQL só (repositório `e-vilareal-java-backend`):** `docker compose up -d` (ficheiro `docker-compose.yml` do backend — porta **3306** no host).
+   - **Stack na raiz com DB local:** `docker compose -f docker-compose.yml -f docker-compose.local-db.yml up -d` — o MySQL expõe **3307** no host; ao correr `./mvnw spring-boot:run` **fora** do Docker, defina por exemplo:
+     ```bash
+     export SPRING_DATASOURCE_URL='jdbc:mysql://localhost:3307/vilareal?createDatabaseIfNotExist=false&useSSL=false&allowPublicKeyRetrieval=true&characterEncoding=utf8&serverTimezone=UTC'
+     export SPRING_DATASOURCE_USERNAME=root
+     export SPRING_DATASOURCE_PASSWORD=root
+     ```
+   - **MySQL na VPS / túnel SSH:** sobrescreva `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME` e `SPRING_DATASOURCE_PASSWORD` (o `docker-compose.yml` na raiz usa por defeito `host.docker.internal:3308` para o contentor do backend; no host, alinhe a porta ao seu túnel).
 
-   O profile `dev` usa por defeito `application-dev.properties` (`127.0.0.1:3308`, utilizador `villareal_remote`). Opcional: `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`.
-
-   **MySQL em Docker (opcional):** na raiz do monorepo, `docker compose -f docker-compose.yml -f docker-compose.local-db.yml up -d` e aponta o JDBC para `localhost:3307`.
+   Se aparecer **`CannotCreateTransactionException` … `/api/auth/login`**, a API não abriu transação JPA — em quase todos os casos **MySQL inacessível** ou **JDBC URL/porta errada** para o modo como arrancou o MySQL.
 
 2. Outras variáveis opcionais: `JWT_SECRET`, `SPRING_PROFILES_ACTIVE` (padrão `dev`).
 

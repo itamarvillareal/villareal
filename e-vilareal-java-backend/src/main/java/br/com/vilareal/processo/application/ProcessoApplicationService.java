@@ -252,9 +252,9 @@ public class ProcessoApplicationService {
             return Page.empty(pageable);
         }
         long pessoaId = resolved.get();
-        // Titular, parte em processo alheio ou advogado vinculado — alinhado a findAllDistinctVinculadosPessoa
-        // (só pessoa_id do cabeçalho omitia processos em que o cliente figura só em partes).
-        Page<ProcessoEntity> page = processoRepository.findAllDistinctVinculadosPessoa(pessoaId, pageable);
+        // Apenas titular do processo (cabeçalho pessoa_id). Partes/advogados noutros processos usam
+        // GET /api/processos/vinculo-pessoa/{id} (diagnóstico).
+        Page<ProcessoEntity> page = processoRepository.findByPessoa_Id(pessoaId, pageable);
         List<Long> procIds = page.getContent().stream().map(ProcessoEntity::getId).collect(Collectors.toList());
         Map<Long, List<ProcessoParteEntity>> partesPorProcesso = new LinkedHashMap<>();
         if (!procIds.isEmpty()) {
@@ -674,6 +674,19 @@ public class ProcessoApplicationService {
     public void excluirAndamento(Long processoId, Long andamentoId) {
         ProcessoAndamentoEntity a = requireAndamento(processoId, andamentoId);
         andamentoRepository.delete(a);
+    }
+
+    /**
+     * Exclusão em massa por {@code origem} (ex.: {@code IMPORT_PLANILHA} do script de importação de histórico).
+     *
+     * @return número de linhas removidas
+     */
+    @Transactional
+    public int excluirAndamentosPorOrigem(String origem) {
+        if (origem == null || !origem.matches("^[A-Za-z0-9_]{1,40}$")) {
+            throw new BusinessRuleException("Origem inválida para exclusão em massa.");
+        }
+        return andamentoRepository.deleteByOrigem(origem.trim());
     }
 
     @Transactional(readOnly = true)

@@ -1,4 +1,5 @@
 import { emitApiUnauthorized } from './apiAuthHeaders.js';
+import { getAccessToken } from './authTokenStorage.js';
 
 /**
  * Lê corpo JSON de Response; em 401 dispara sessão expirada; em erro lança Error.
@@ -10,10 +11,20 @@ import { emitApiUnauthorized } from './apiAuthHeaders.js';
  * - **422** — regras de negócio (`BusinessRuleException`); mensagem no corpo JSON.
  * - **400** — validação de bean (`MethodArgumentNotValidException`, etc.).
  * - **500** — erro interno; mensagem genérica ao utilizador.
+ *
+ * @param {{ authTokenSnapshotAtRequest?: string }} [options]
+ *   Quando `authTokenSnapshotAtRequest` vem de `httpClient.request` (valor de `getAccessToken()` no início do fetch),
+ *   em 401 só se chama `emitApiUnauthorized` se o token atual ainda for o mesmo — evita apagar um JWT **novo**
+ *   quando um pedido antigo (ex.: `GET /api/auth/me` ao abrir a app) completa 401 depois do login.
  */
-export async function parseApiJsonResponse(response) {
+export async function parseApiJsonResponse(response, options = {}) {
+  const { authTokenSnapshotAtRequest } = options;
   if (response.status === 401) {
-    emitApiUnauthorized();
+    if (authTokenSnapshotAtRequest === undefined) {
+      emitApiUnauthorized();
+    } else if (getAccessToken() === authTokenSnapshotAtRequest) {
+      emitApiUnauthorized();
+    }
   }
   if (response.status === 204) return null;
   const text = await response.text();

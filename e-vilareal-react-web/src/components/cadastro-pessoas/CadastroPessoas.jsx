@@ -464,7 +464,8 @@ export function CadastroPessoas() {
     /** Evita esvaziar o formulário no 1º paint quando a URL já é edição (o efeito da rota /clientes/editar/:id preenche em seguida). */
     if (/^\/clientes\/editar\/\d+$/.test(pathPessoasNorm)) return;
     if (!pessoaAtual) {
-      setForm(emptyPessoa);
+      // Em /clientes/lista o hub é só leitura — manter edicaoDesabilitada true para não lutar com o efeito que força o mesmo (evita loop de re-render / ecrã a piscar).
+      setForm(isRotaListaTodasPessoas ? { ...emptyPessoa, edicaoDesabilitada: true } : emptyPessoa);
       setEditId(null);
       setNacionalidadeSugestaoNaoValidada(false);
       return;
@@ -621,7 +622,11 @@ export function CadastroPessoas() {
 
   const cancelarForm = () => {
     setModo('listar');
-    setForm(emptyPessoa);
+    setForm(
+      pathPessoasNorm === '/clientes/lista'
+        ? { ...emptyPessoa, edicaoDesabilitada: true }
+        : emptyPessoa
+    );
     setNacionalidadeSugestaoNaoValidada(false);
     setEditId(null);
     setError(null);
@@ -650,9 +655,8 @@ export function CadastroPessoas() {
   }, [location.pathname, modo]);
 
   useEffect(() => {
-    if (isRotaListaTodasPessoas && modo === 'listar') {
-      setForm((f) => ({ ...f, edicaoDesabilitada: true }));
-    }
+    if (!isRotaListaTodasPessoas || modo !== 'listar') return;
+    setForm((f) => (f.edicaoDesabilitada ? f : { ...f, edicaoDesabilitada: true }));
   }, [isRotaListaTodasPessoas, modo]);
 
   useEffect(() => {

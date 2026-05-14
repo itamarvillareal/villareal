@@ -2,6 +2,7 @@ package br.com.vilareal.importacao.api;
 
 import br.com.vilareal.common.exception.BusinessRuleException;
 import br.com.vilareal.importacao.ComplementaresProcessosImportService;
+import br.com.vilareal.importacao.ImoveisPlanilhaImportService;
 import br.com.vilareal.importacao.ImportClientesPlanilhaService;
 import br.com.vilareal.importacao.InformacoesProcessosImportService;
 import br.com.vilareal.importacao.Pasta1ClientePessoaImportService;
@@ -40,6 +41,7 @@ public class ImportacaoController {
     private final Pasta1ClientePessoaImportService pasta1ClientePessoaImportService;
     private final ImportClientesPlanilhaService importClientesPlanilhaService;
     private final ProcessosInativarPlanilhaService processosInativarPlanilhaService;
+    private final ImoveisPlanilhaImportService imoveisPlanilhaImportService;
 
     @Value("${vilareal.import.pasta1-clientes.path:}")
     private String pasta1ConfiguredPath;
@@ -50,17 +52,20 @@ public class ImportacaoController {
             Pasta1ClientePessoaReader pasta1ClientePessoaReader,
             Pasta1ClientePessoaImportService pasta1ClientePessoaImportService,
             ImportClientesPlanilhaService importClientesPlanilhaService,
-            ProcessosInativarPlanilhaService processosInativarPlanilhaService) {
+            ProcessosInativarPlanilhaService processosInativarPlanilhaService,
+            ImoveisPlanilhaImportService imoveisPlanilhaImportService) {
         this.informacoesProcessosImportService = informacoesProcessosImportService;
         this.complementaresProcessosImportService = complementaresProcessosImportService;
         this.pasta1ClientePessoaReader = pasta1ClientePessoaReader;
         this.pasta1ClientePessoaImportService = pasta1ClientePessoaImportService;
         this.importClientesPlanilhaService = importClientesPlanilhaService;
         this.processosInativarPlanilhaService = processosInativarPlanilhaService;
+        this.imoveisPlanilhaImportService = imoveisPlanilhaImportService;
     }
 
     @PostMapping(value = "/informacoes-processos", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @Operation(summary = "Importar planilha (multipart)", description = "Campo opcional `file`. Sem ficheiro, usa `path` ou a property ou ~/Documents/Informacoes de processos.xls")
+    @Operation(summary = "Importar planilha (multipart)", description = "Campo opcional `file`. Sem ficheiro, usa `path` ou a property ou ~/Documents/Informacoes de processos.xls. "
+            + "Processa **todas as abas** do livro, cada uma com o mesmo layout (cabeçalho linha 1; dados linha 2+ até coluna A vazia).")
     public ImportacaoInformacoesProcessosResponse importarMultipart(
             @RequestParam(value = "file", required = false) MultipartFile file,
             @RequestParam(value = "path", required = false) String pathParam) {
@@ -84,7 +89,8 @@ public class ImportacaoController {
     }
 
     @PostMapping("/informacoes-processos")
-    @Operation(summary = "Importar planilha (path opcional)", description = "Query `path` opcional; senão property `vilareal.import.informacoes-processos.path`; senão %USERPROFILE%/Documents/Informacoes de processos.xls")
+    @Operation(summary = "Importar planilha (path opcional)", description = "Query `path` opcional; senão property `vilareal.import.informacoes-processos.path`; senão %USERPROFILE%/Documents/Informacoes de processos.xls. "
+            + "Todas as abas: mesmo layout por folha (cabeçalho linha 1; dados até A vazia).")
     public ImportacaoInformacoesProcessosResponse importarPorPathOuPadrao(
             @RequestParam(value = "path", required = false) String pathParam) {
         if (StringUtils.hasText(pathParam)) {
@@ -288,6 +294,54 @@ public class ImportacaoController {
             return importClientesPlanilhaService.importarDeArquivo(Path.of(pathParam.trim()));
         }
         return importClientesPlanilhaService.importarDeArquivo(null);
+    }
+
+    @PostMapping(value = "/imoveis-planilha", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(
+            summary = "Importar imoveis.xlsx (multipart)",
+            description =
+                    "Layout: 1ª aba, cabeçalho linha 1 Excel, dados linha 2+, colunas A–AZ conforme `ImoveisPlanilhaImportService`. "
+                            + "Campo `file` opcional; sem ficheiro usa `path` ou `vilareal.import.imoveis-planilha.path` ou ~/Dropbox/COMUM/imoveis.xlsx")
+    public ImportacaoInformacoesProcessosResponse importarImoveisPlanilhaMultipart(
+            @RequestParam(value = "file", required = false) MultipartFile file,
+            @RequestParam(value = "path", required = false) String pathParam) {
+        if (file != null && !file.isEmpty()) {
+            try {
+                String on = file.getOriginalFilename() != null ? file.getOriginalFilename() : "";
+                String suf =
+                        on.toLowerCase().endsWith(".xlsx")
+                                ? ".xlsx"
+                                : on.toLowerCase().endsWith(".xls") ? ".xls" : ".bin";
+                Path temp = Files.createTempFile("vilareal-import-imoveis-", suf);
+                try {
+                    file.transferTo(temp);
+                    return imoveisPlanilhaImportService.importarDeArquivo(temp);
+                } finally {
+                    Files.deleteIfExists(temp);
+                }
+            } catch (IOException e) {
+                throw new BusinessRuleException("Falha ao gravar ficheiro temporário: " + e.getMessage());
+            }
+        }
+        if (StringUtils.hasText(pathParam)) {
+            return imoveisPlanilhaImportService.importarDeArquivo(Path.of(pathParam.trim()));
+        }
+        return imoveisPlanilhaImportService.importarDeArquivo(null);
+    }
+
+    @PostMapping("/imoveis-planilha")
+    @Operation(
+            summary = "Importar imoveis.xlsx (path)",
+            description =
+                    "Query `path` opcional; senão `vilareal.import.imoveis-planilha.path`; senão ~/Dropbox/COMUM/imoveis.xlsx. "
+                            + "Para o export «Villa Real - Administração de Imóveis - *.xls», normalize antes com "
+                            + "`e-vilareal-java-backend/scripts/map_administracao_imoveis_to_imoveis_xlsx.py`.")
+    public ImportacaoInformacoesProcessosResponse importarImoveisPlanilhaPorPath(
+            @RequestParam(value = "path", required = false) String pathParam) {
+        if (StringUtils.hasText(pathParam)) {
+            return imoveisPlanilhaImportService.importarDeArquivo(Path.of(pathParam.trim()));
+        }
+        return imoveisPlanilhaImportService.importarDeArquivo(null);
     }
 
     private Path resolverPathPasta1(String pathParam) {

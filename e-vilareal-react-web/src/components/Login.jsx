@@ -1,14 +1,31 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { LogIn, Lock, User } from 'lucide-react';
 import { useAuth, IDLE_SESSION_MESSAGE_STORAGE_KEY } from '../context/AuthContext.jsx';
 import { featureFlags } from '../config/featureFlags.js';
 
+/** Evita redirecionar de volta para `/login` (loop infinito de `<Navigate />`) e caminhos inválidos. */
+function sanitizePostLoginPath(p) {
+  const fallback = '/';
+  if (p == null || typeof p !== 'string') return fallback;
+  const t = p.trim();
+  if (t === '' || !t.startsWith('/') || t.startsWith('//')) return fallback;
+  const pathOnly = (t.split(/[?#]/)[0] || fallback).replace(/\/+$/, '') || '/';
+  if (pathOnly === '/login' || pathOnly.startsWith('/login/')) return fallback;
+  return pathOnly;
+}
+
 export function Login() {
   const { login, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const from = location.state?.from && typeof location.state.from === 'string' ? location.state.from : '/';
+  const from = useMemo(
+    () =>
+      sanitizePostLoginPath(
+        location.state?.from && typeof location.state.from === 'string' ? location.state.from : '/'
+      ),
+    [location.state?.from]
+  );
 
   const [usuario, setUsuario] = useState('');
   const [senha, setSenha] = useState('');

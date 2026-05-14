@@ -35,7 +35,8 @@ public class ProcessosController {
     @Operation(
             summary = "Listar processos",
             description =
-                    "Com `codigoCliente` (8 dígitos): página JSON (`Page` Spring: `content`, `totalElements`, `last`, …; "
+                    "Com `codigoCliente` (8 dígitos): processos em que essa pessoa é **titular** do cabeçalho (`pessoa_id`), "
+                            + "página JSON (`Page` Spring: `content`, `totalElements`, `last`, …; "
                             + "query `page`, `size`, `sort`; padrão `page=0`, `size=100`, `sort=numeroInterno`, `id`). "
                             + "Sem `codigoCliente`: lista paginada de todos (`Page` Spring: `content`, `totalElements`, …; query `page`, `size`, `sort`).")
     public ResponseEntity<?> listar(
@@ -137,6 +138,17 @@ public class ProcessosController {
     public List<ProcessoDiagnosticoPessoaItemResponse> buscarDiagnosticoPorPrazoFatal(
             @RequestParam("data") String data) {
         return processoApplicationService.buscarDiagnosticoPorPrazoFatal(data);
+    }
+
+    @DeleteMapping("/manutencao/andamentos-por-origem/{origem}")
+    @Operation(
+            summary = "Excluir andamentos em massa por origem",
+            description =
+                    "Remove todos os registos em `processo_andamento` com a `origem` indicada (ex.: IMPORT_PLANILHA). "
+                            + "Usado antes de reimportar histórico a partir de planilha.")
+    public ResponseEntity<java.util.Map<String, Object>> excluirAndamentosPorOrigem(@PathVariable String origem) {
+        int removidos = processoApplicationService.excluirAndamentosPorOrigem(origem);
+        return ResponseEntity.ok(java.util.Map.of("origem", origem, "removidos", removidos));
     }
 
     @GetMapping("/{id}")
