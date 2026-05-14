@@ -90,11 +90,16 @@ public class ImportPlanilhasBatchJobRunner implements ApplicationListener<Applic
             pessoasProps.setHeaderRow(9);
             pessoasProps.setFirstDataRow(11);
             pessoasProps.setReportPath(batchProperties.getPessoasReportPath());
+            pessoasProps.setUpdateExisting(batchProperties.isPessoasUpdateExisting());
+            pessoasProps.setReconcileByCpfWhenIdMissing(batchProperties.isPessoasReconcileByCpfWhenIdMissing());
             CadastroPessoasPlanilhaImporter.ImportStats st = cadastroPessoasPlanilhaImporter.importar(pessoasProps);
             log.info(
-                    "import-planilhas-batch: pessoas ok — inseridas={}, dry_run_candidatas={}, ignoradas={}",
+                    "import-planilhas-batch: pessoas ok — inseridas={}, actualizadas={}, reconciliadas_por_cpf={}, dry_run_insert={}, dry_run_update={}, ignoradas={}",
                     st.inserted,
+                    st.updated,
+                    st.reconciled,
                     st.wouldInsert,
+                    st.wouldUpdate,
                     st.skipped);
 
             int exitCode = 0;

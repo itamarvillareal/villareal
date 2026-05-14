@@ -119,7 +119,8 @@ public class CadastroPessoasPlanilhaImporter {
                 throw new IOException("Planilha sem abas.");
             }
 
-            Set<String> seenCpf = new HashSet<>();
+            /** Evita repetir a mesma combinação CPF/CNPJ + id da planilha na mesma importação (não bloqueia dois ids distintos com o mesmo CNPJ). */
+            Set<String> vistoChaveCpfIdPlanilha = new HashSet<>();
 
             try (BufferedWriter rep = openReport(props.getReportPath())) {
                 rep.write("excel_row,planilha_id,tipo,mensagem\n");
@@ -153,14 +154,15 @@ public class CadastroPessoasPlanilhaImporter {
                     }
                     long pessoaId = idOpt.get();
 
-                    String nome = CadastroPessoasPlanilhaImportSupport.truncate(stringCell(row, 1, fmt), 255);
+                    String nome = CadastroPessoasPlanilhaImportSupport.truncatePlanilhaTexto(stringCell(row, 1, fmt), 255);
                     if (nome.isBlank()) {
                         writeLine(rep, excelRow, String.valueOf(pessoaId), "SKIP", "Nome vazio");
                         stats.skipped++;
                         continue;
                     }
 
-                    String cpfRaw = stringCell(row, 3, fmt);
+                    String cpfRaw =
+                            CadastroPessoasPlanilhaImportSupport.corrigirMojibakePlanilhaUtf8(stringCell(row, 3, fmt));
                     CadastroPessoasPlanilhaImportSupport.CpfCnpjNormalizado cpfNorm =
                             CadastroPessoasPlanilhaImportSupport.analisarCpfCnpj(cpfRaw);
                     String cpf = null;
@@ -176,19 +178,21 @@ public class CadastroPessoasPlanilhaImporter {
                     }
                     if (cpfNorm.resultado() == CadastroPessoasPlanilhaImportSupport.CpfCnpjResultado.VALIDO) {
                         cpf = cpfNorm.valor();
-                        if (!seenCpf.add(cpf)) {
+                        String chaveLinha = cpf + "\0#" + pessoaId;
+                        if (!vistoChaveCpfIdPlanilha.add(chaveLinha)) {
                             writeLine(
                                     rep,
                                     excelRow,
                                     String.valueOf(pessoaId),
                                     "SKIP",
-                                    "CPF duplicado na planilha (mantida primeira ocorrência)");
+                                    "Linha duplicada na planilha (mesmo CPF/CNPJ e mesmo ID de planilha)");
                             stats.skipped++;
                             continue;
                         }
                     }
 
-                    String emailRaw = CadastroPessoasPlanilhaImportSupport.normalizeEmailForStorage(stringCell(row, 12, fmt));
+                    String emailRaw = CadastroPessoasPlanilhaImportSupport.normalizeEmailForStorage(
+                            CadastroPessoasPlanilhaImportSupport.corrigirMojibakePlanilhaUtf8(stringCell(row, 12, fmt)));
                     String email = emailRaw;
 
                     LocalDate dataNasc = readDataNascimento(row, 8, fmt);
@@ -201,21 +205,26 @@ public class CadastroPessoasPlanilhaImporter {
                         telPessoaCol = CadastroPessoasPlanilhaImportSupport.truncate(telPessoaCol, 40);
                     }
 
-                    String genero = CadastroPessoasPlanilhaImportSupport.truncate(stringCell(row, 2, fmt), 8);
-                    String rg = CadastroPessoasPlanilhaImportSupport.truncate(stringCell(row, 6, fmt), 40);
-                    String orgaoRg = CadastroPessoasPlanilhaImportSupport.truncate(stringCell(row, 7, fmt), 120);
-                    String nacionalidade = CadastroPessoasPlanilhaImportSupport.truncate(stringCell(row, 9, fmt), 120);
-                    String estadoCivil = CadastroPessoasPlanilhaImportSupport.truncate(stringCell(row, 10, fmt), 40);
-                    String profissao = CadastroPessoasPlanilhaImportSupport.truncate(stringCell(row, 11, fmt), 255);
+                    String genero = CadastroPessoasPlanilhaImportSupport.truncatePlanilhaTexto(stringCell(row, 2, fmt), 8);
+                    String rg = CadastroPessoasPlanilhaImportSupport.truncatePlanilhaTexto(stringCell(row, 6, fmt), 40);
+                    String orgaoRg = CadastroPessoasPlanilhaImportSupport.truncatePlanilhaTexto(stringCell(row, 7, fmt), 120);
+                    String nacionalidade =
+                            CadastroPessoasPlanilhaImportSupport.truncatePlanilhaTexto(stringCell(row, 9, fmt), 120);
+                    String estadoCivil =
+                            CadastroPessoasPlanilhaImportSupport.truncatePlanilhaTexto(stringCell(row, 10, fmt), 40);
+                    String profissao =
+                            CadastroPessoasPlanilhaImportSupport.truncatePlanilhaTexto(stringCell(row, 11, fmt), 255);
 
                     // colunas 4–5, 29 e 38 (Adm PJ / anomalias): removido em V34 — não gravar em pessoa_complementar
 
-                    String rua = CadastroPessoasPlanilhaImportSupport.truncate(stringCell(row, 17, fmt), 255);
-                    String bairro = CadastroPessoasPlanilhaImportSupport.truncate(stringCell(row, 13, fmt), 120);
-                    String uf = CadastroPessoasPlanilhaImportSupport.normalizeUf(stringCell(row, 14, fmt));
+                    String rua = CadastroPessoasPlanilhaImportSupport.truncatePlanilhaTexto(stringCell(row, 17, fmt), 255);
+                    String bairro = CadastroPessoasPlanilhaImportSupport.truncatePlanilhaTexto(stringCell(row, 13, fmt), 120);
+                    String uf = CadastroPessoasPlanilhaImportSupport.normalizeUf(
+                            CadastroPessoasPlanilhaImportSupport.corrigirMojibakePlanilhaUtf8(stringCell(row, 14, fmt)));
                     uf = CadastroPessoasPlanilhaImportSupport.truncate(uf, 2);
-                    String cidade = CadastroPessoasPlanilhaImportSupport.truncate(stringCell(row, 15, fmt), 120);
-                    String cep = CadastroPessoasPlanilhaImportSupport.normalizeCep(stringCell(row, 16, fmt));
+                    String cidade = CadastroPessoasPlanilhaImportSupport.truncatePlanilhaTexto(stringCell(row, 15, fmt), 120);
+                    String cep = CadastroPessoasPlanilhaImportSupport.normalizeCep(
+                            CadastroPessoasPlanilhaImportSupport.corrigirMojibakePlanilhaUtf8(stringCell(row, 16, fmt)));
                     cep = CadastroPessoasPlanilhaImportSupport.truncate(cep, 8);
 
                     List<TelefoneSlot> slots = readTelefoneSlots(row, fmt);
@@ -223,30 +232,140 @@ public class CadastroPessoasPlanilhaImporter {
                     processed++;
 
                     if (props.isDryRun()) {
-                        stats.wouldInsert++;
+                        Long existsDry =
+                                jdbcTemplate.queryForObject(
+                                        "SELECT COUNT(*) FROM " + tblPessoa + " WHERE id = ?",
+                                        Long.class,
+                                        pessoaId);
+                        boolean idExisteDry = existsDry != null && existsDry > 0;
+                        if (idExisteDry) {
+                            if (props.isUpdateExisting()) {
+                                stats.wouldUpdate++;
+                            } else {
+                                stats.skipped++;
+                            }
+                        } else if (props.isReconcileByCpfWhenIdMissing() && cpf != null) {
+                            List<Long> byCpfDry =
+                                    jdbcTemplate.query(
+                                            "SELECT id FROM " + tblPessoa + " WHERE cpf = ? LIMIT 2",
+                                            (rs, rowNum) -> rs.getLong(1),
+                                            cpf);
+                            if (byCpfDry.size() == 1) {
+                                stats.wouldUpdate++;
+                            } else {
+                                stats.wouldInsert++;
+                            }
+                        } else {
+                            stats.wouldInsert++;
+                        }
                         log.debug("DRY-RUN row {} id {}", excelRow, pessoaId);
                         continue;
                     }
 
-                    Long exists = jdbcTemplate.queryForObject(
-                            "SELECT COUNT(*) FROM " + tblPessoa + " WHERE id = ?", Long.class, pessoaId);
-                    if (exists != null && exists > 0) {
-                        writeLine(rep, excelRow, String.valueOf(pessoaId), "SKIP", "ID já existe no banco");
-                        stats.skipped++;
+                    Long existsCount =
+                            jdbcTemplate.queryForObject(
+                                    "SELECT COUNT(*) FROM " + tblPessoa + " WHERE id = ?", Long.class, pessoaId);
+                    boolean idExiste = existsCount != null && existsCount > 0;
+                    Timestamp now = Timestamp.from(Instant.now());
+
+                    if (idExiste) {
+                        if (props.isUpdateExisting()) {
+                            try {
+                                persistPessoaActualizacao(
+                                        pessoaId,
+                                        nome,
+                                        cpf,
+                                        email,
+                                        telPessoaCol,
+                                        dataNasc,
+                                        rg,
+                                        orgaoRg,
+                                        profissao,
+                                        nacionalidade,
+                                        estadoCivil,
+                                        genero,
+                                        rua,
+                                        bairro,
+                                        uf,
+                                        cidade,
+                                        cep,
+                                        slots,
+                                        now);
+                                writeLine(rep, excelRow, String.valueOf(pessoaId), "UPDATE", "OK");
+                                stats.updated++;
+                            } catch (IllegalStateException ex) {
+                                writeLine(rep, excelRow, String.valueOf(pessoaId), "SKIP", truncateMsg(ex.getMessage()));
+                                stats.skipped++;
+                            } catch (DataAccessException ex) {
+                                log.warn("Falha na linha Excel {} pessoa id {}: {}", excelRow, pessoaId, ex.getMessage());
+                                writeLine(rep, excelRow, String.valueOf(pessoaId), "ERROR", truncateMsg(ex.getMessage()));
+                                stats.skipped++;
+                            }
+                        } else {
+                            writeLine(rep, excelRow, String.valueOf(pessoaId), "SKIP", "ID já existe no banco");
+                            stats.skipped++;
+                        }
                         continue;
                     }
 
+                    if (props.isReconcileByCpfWhenIdMissing() && cpf != null) {
+                        List<Long> byCpf =
+                                jdbcTemplate.query(
+                                        "SELECT id FROM " + tblPessoa + " WHERE cpf = ? LIMIT 2",
+                                        (rs, rowNum) -> rs.getLong(1),
+                                        cpf);
+                        if (byCpf.size() == 1) {
+                            long rid = byCpf.get(0);
+                            try {
+                                persistPessoaActualizacao(
+                                        rid,
+                                        nome,
+                                        cpf,
+                                        email,
+                                        telPessoaCol,
+                                        dataNasc,
+                                        rg,
+                                        orgaoRg,
+                                        profissao,
+                                        nacionalidade,
+                                        estadoCivil,
+                                        genero,
+                                        rua,
+                                        bairro,
+                                        uf,
+                                        cidade,
+                                        cep,
+                                        slots,
+                                        now);
+                                writeLine(
+                                        rep,
+                                        excelRow,
+                                        String.valueOf(pessoaId),
+                                        "RECONCILE_BY_CPF",
+                                        "OK — actualizado id BD " + rid);
+                                stats.reconciled++;
+                            } catch (IllegalStateException ex) {
+                                writeLine(rep, excelRow, String.valueOf(pessoaId), "SKIP", truncateMsg(ex.getMessage()));
+                                stats.skipped++;
+                            } catch (DataAccessException ex) {
+                                log.warn("Falha na linha Excel {} pessoa planilha id {}: {}", excelRow, pessoaId, ex.getMessage());
+                                writeLine(rep, excelRow, String.valueOf(pessoaId), "ERROR", truncateMsg(ex.getMessage()));
+                                stats.skipped++;
+                            }
+                            continue;
+                        }
+                    }
+
                     if (cpf != null) {
-                        Long cpfClash = jdbcTemplate.queryForObject(
-                                "SELECT COUNT(*) FROM " + tblPessoa + " WHERE cpf = ?", Long.class, cpf);
+                        Long cpfClash =
+                                jdbcTemplate.queryForObject(
+                                        "SELECT COUNT(*) FROM " + tblPessoa + " WHERE cpf = ?", Long.class, cpf);
                         if (cpfClash != null && cpfClash > 0) {
                             writeLine(rep, excelRow, String.valueOf(pessoaId), "SKIP", "CPF já existe no banco (outro id)");
                             stats.skipped++;
                             continue;
                         }
                     }
-
-                    Timestamp now = Timestamp.from(Instant.now());
 
                     try {
                         jdbcTemplate.update(
@@ -344,14 +463,121 @@ public class CadastroPessoasPlanilhaImporter {
         }
 
         log.info(
-                "Importação pessoas concluída: inseridas={}, candidatas_dry_run={}, ignoradas={}, emails_anulados_planilha={}, dryRun={}",
+                "Importação pessoas concluída: inseridas={}, actualizadas={}, reconciliadas_por_cpf={}, candidatas_dry_run_insert={}, candidatas_dry_run_update={}, ignoradas={}, emails_anulados_planilha={}, dryRun={}",
                 stats.inserted,
+                stats.updated,
+                stats.reconciled,
                 stats.wouldInsert,
+                stats.wouldUpdate,
                 stats.skipped,
                 stats.emailNulled,
                 props.isDryRun());
 
         return stats;
+    }
+
+    private void persistPessoaActualizacao(
+            long targetPessoaId,
+            String nome,
+            String cpf,
+            String email,
+            String telPessoaCol,
+            LocalDate dataNasc,
+            String rg,
+            String orgaoRg,
+            String profissao,
+            String nacionalidade,
+            String estadoCivil,
+            String genero,
+            String rua,
+            String bairro,
+            String uf,
+            String cidade,
+            String cep,
+            List<TelefoneSlot> slots,
+            Timestamp now) {
+        if (cpf != null) {
+            Long clash =
+                    jdbcTemplate.queryForObject(
+                            "SELECT COUNT(*) FROM " + tblPessoa + " WHERE cpf = ? AND id <> ?",
+                            Long.class,
+                            cpf,
+                            targetPessoaId);
+            if (clash != null && clash > 0) {
+                throw new IllegalStateException("CPF já existe no banco (outro id)");
+            }
+        }
+        jdbcTemplate.update(
+                "UPDATE "
+                        + tblPessoa
+                        + " SET nome = ?, cpf = ?, email = ?, telefone = ?, data_nascimento = ?, updated_at = ? WHERE id = ?",
+                nome,
+                cpf,
+                email.isBlank() ? null : email,
+                telPessoaCol.isBlank() ? null : telPessoaCol,
+                dataNasc,
+                now,
+                targetPessoaId);
+
+        jdbcTemplate.update(
+                "INSERT INTO "
+                        + tblComplementar
+                        + """
+                         (pessoa_id, rg, orgao_expedidor, profissao, nacionalidade, estado_civil, genero)
+                        VALUES (?,?,?,?,?,?,?)
+                        ON DUPLICATE KEY UPDATE rg = VALUES(rg), orgao_expedidor = VALUES(orgao_expedidor),
+                        profissao = VALUES(profissao), nacionalidade = VALUES(nacionalidade), estado_civil = VALUES(estado_civil), genero = VALUES(genero)
+                        """,
+                targetPessoaId,
+                rg.isBlank() ? null : rg,
+                orgaoRg.isBlank() ? null : orgaoRg,
+                profissao.isBlank() ? null : profissao,
+                nacionalidade.isBlank() ? null : nacionalidade,
+                estadoCivil.isBlank() ? null : estadoCivil,
+                genero.isBlank() ? null : genero);
+
+        jdbcTemplate.update(
+                "DELETE FROM " + tblEndereco + " WHERE pessoa_id = ? AND numero_ordem = ?", targetPessoaId, 1);
+        if (!rua.isBlank()) {
+            jdbcTemplate.update(
+                    "INSERT INTO "
+                            + tblEndereco
+                            + """
+                             (pessoa_id, numero_ordem, rua, bairro, estado, cidade, cep, auto_preenchido)
+                            VALUES (?,?,?,?,?,?,?,FALSE)
+                            """,
+                    targetPessoaId,
+                    1,
+                    rua,
+                    bairro.isBlank() ? null : bairro,
+                    uf.isBlank() ? null : uf,
+                    cidade.isBlank() ? null : cidade,
+                    cep.isBlank() ? null : cep);
+        }
+
+        jdbcTemplate.update(
+                "DELETE FROM " + tblContato + " WHERE pessoa_id = ? AND usuario_lancamento = ?",
+                targetPessoaId,
+                USUARIO_IMPORT);
+        for (TelefoneSlot sl : slots) {
+            String valor = CadastroPessoasPlanilhaImportSupport.mergeTelefoneValor(sl.tel(), sl.inf());
+            if (valor.isBlank()) {
+                continue;
+            }
+            jdbcTemplate.update(
+                    "INSERT INTO "
+                            + tblContato
+                            + """
+                             (pessoa_id, tipo, valor, data_lancamento, data_alteracao, usuario_lancamento)
+                            VALUES (?,?,?,?,?,?)
+                            """,
+                    targetPessoaId,
+                    "telefone",
+                    valor,
+                    now,
+                    now,
+                    USUARIO_IMPORT);
+        }
     }
 
     private void realinharAutoIncrementPessoa() {
@@ -408,8 +634,10 @@ public class CadastroPessoasPlanilhaImporter {
         List<TelefoneSlot> out = new ArrayList<>(4);
         int[][] pairs = {{18, 19}, {20, 21}, {22, 23}, {24, 25}};
         for (int[] p : pairs) {
-            String tel = stringCell(row, p[0], fmt).trim();
-            String inf = stringCell(row, p[1], fmt).trim();
+            String tel = CadastroPessoasPlanilhaImportSupport.corrigirMojibakePlanilhaUtf8(stringCell(row, p[0], fmt))
+                    .trim();
+            String inf = CadastroPessoasPlanilhaImportSupport.corrigirMojibakePlanilhaUtf8(stringCell(row, p[1], fmt))
+                    .trim();
             if (!tel.isEmpty() || !inf.isEmpty()) {
                 out.add(new TelefoneSlot(tel, inf));
             }
@@ -544,8 +772,14 @@ public class CadastroPessoasPlanilhaImporter {
     public static final class ImportStats {
         /** Linhas gravadas com sucesso (somente quando dryRun=false). */
         public int inserted;
-        /** Linhas que seriam gravadas em dry-run. */
+        /** Linhas actualizadas por id existente (update-existing). */
+        public int updated;
+        /** Linhas actualizadas por CNPJ/CPF quando o id da planilha não existia. */
+        public int reconciled;
+        /** Linhas que seriam gravadas em dry-run (INSERT). */
         public int wouldInsert;
+        /** Linhas que seriam actualizadas em dry-run (UPDATE ou reconciliação por CPF). */
+        public int wouldUpdate;
         public int skipped;
         public int emailNulled;
     }

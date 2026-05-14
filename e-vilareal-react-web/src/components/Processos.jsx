@@ -1584,6 +1584,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       setUnidadeEndereco(mapped.unidade ?? '');
       setUnidadeEnderecoManual(String(mapped.unidade ?? '').trim() !== '');
       setPasta(mapped.pasta ?? '');
+      setValorCausa(mapped.valorCausa ?? '');
 
       const partes = await listarPartesProcesso(procApi.id);
       if (seq !== carregarProcessoApiSeqRef.current) return;

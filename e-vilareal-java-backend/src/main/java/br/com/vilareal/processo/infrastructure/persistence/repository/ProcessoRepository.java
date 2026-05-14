@@ -62,6 +62,9 @@ public interface ProcessoRepository extends JpaRepository<ProcessoEntity, Long> 
 
     List<ProcessoEntity> findByPessoa_IdOrderByNumeroInternoAsc(Long pessoaId);
 
+    /** Processos em que a pessoa é o titular (cabeçalho {@code pessoa_id}) — listagem por código de cliente. */
+    Page<ProcessoEntity> findByPessoa_Id(Long pessoaId, Pageable pageable);
+
     Optional<ProcessoEntity> findByPessoa_IdAndNumeroInterno(Long pessoaId, Integer numeroInterno);
 
     /** Todos os processos com esse nº interno (há um por cliente titular). */

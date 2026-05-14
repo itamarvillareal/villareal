@@ -7,7 +7,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *
  * <p>Variáveis de ambiente: {@code VILAREAL_IMPORT_BATCH_ENABLED}, {@code VILAREAL_IMPORT_BATCH_PATH_PESSOAS},
  * {@code VILAREAL_IMPORT_BATCH_PATH_CLIENTES}, {@code VILAREAL_IMPORT_BATCH_PATH_IMOVEIS},
- * {@code VILAREAL_IMPORT_BATCH_PESSOAS_DRY_RUN}, {@code VILAREAL_IMPORT_BATCH_PESSOAS_REPORT_PATH}.
+ * {@code VILAREAL_IMPORT_BATCH_PESSOAS_DRY_RUN}, {@code VILAREAL_IMPORT_BATCH_PESSOAS_REPORT_PATH},
+ * {@code VILAREAL_IMPORT_BATCH_PESSOAS_UPDATE_EXISTING}, {@code VILAREAL_IMPORT_BATCH_PESSOAS_RECONCILE_BY_CPF}.
  */
 @ConfigurationProperties(prefix = "vilareal.import.batch")
 public class ImportPlanilhasBatchProperties {
@@ -22,6 +23,12 @@ public class ImportPlanilhasBatchProperties {
     private boolean pessoasDryRun = false;
 
     private String pessoasReportPath = "import-pessoas-batch-report.csv";
+
+    /** Pass-through para {@link br.com.vilareal.pessoa.importacao.CadastroPessoasPlanilhaImportProperties#setUpdateExisting}. */
+    private boolean pessoasUpdateExisting = false;
+
+    /** Pass-through para {@link br.com.vilareal.pessoa.importacao.CadastroPessoasPlanilhaImportProperties#setReconcileByCpfWhenIdMissing}. */
+    private boolean pessoasReconcileByCpfWhenIdMissing = false;
 
     public boolean isEnabled() {
         return enabled;
@@ -72,5 +79,21 @@ public class ImportPlanilhasBatchProperties {
                 pessoasReportPath == null || pessoasReportPath.isBlank()
                         ? "import-pessoas-batch-report.csv"
                         : pessoasReportPath.trim();
+    }
+
+    public boolean isPessoasUpdateExisting() {
+        return pessoasUpdateExisting;
+    }
+
+    public void setPessoasUpdateExisting(boolean pessoasUpdateExisting) {
+        this.pessoasUpdateExisting = pessoasUpdateExisting;
+    }
+
+    public boolean isPessoasReconcileByCpfWhenIdMissing() {
+        return pessoasReconcileByCpfWhenIdMissing;
+    }
+
+    public void setPessoasReconcileByCpfWhenIdMissing(boolean pessoasReconcileByCpfWhenIdMissing) {
+        this.pessoasReconcileByCpfWhenIdMissing = pessoasReconcileByCpfWhenIdMissing;
     }
 }

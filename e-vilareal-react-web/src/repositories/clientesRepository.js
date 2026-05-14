@@ -85,10 +85,15 @@ function emitCadastroClientesAtualizado() {
   }
 }
 
-export async function salvarClienteCadastro(dados) {
+/**
+ * @param {object} dados
+ * @param {{ suppressEmit?: boolean }} [options] — `suppressEmit` evita `vilareal:cadastro-clientes-externo-atualizado` (ex.: auto-save na mesma aba; o evento re-dispararia `aplicarDadosCliente` e um ciclo com a grade de processos).
+ */
+export async function salvarClienteCadastro(dados, options = {}) {
+  const suppressEmit = options.suppressEmit === true;
   if (!featureFlags.useApiClientes) {
     saveCadastroClienteDados(dados.codigo, dados);
-    emitCadastroClientesAtualizado();
+    if (!suppressEmit) emitCadastroClientesAtualizado();
     return loadCadastroClienteDados(dados.codigo);
   }
   const body = mapFrontToApi(dados);
@@ -100,6 +105,6 @@ export async function salvarClienteCadastro(dados) {
     method: 'POST',
     body,
   });
-  emitCadastroClientesAtualizado();
+  if (!suppressEmit) emitCadastroClientesAtualizado();
   return mapApiToFront(created);
 }

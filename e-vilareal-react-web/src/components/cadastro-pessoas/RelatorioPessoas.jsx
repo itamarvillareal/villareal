@@ -111,11 +111,21 @@ export function RelatorioPessoas() {
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      setDebouncedFiltros({
-        criterioBusca,
-        valorBusca,
-        valorBuscaCpf,
-        apenasAtivos,
+      setDebouncedFiltros((prev) => {
+        if (
+          prev.criterioBusca === criterioBusca &&
+          prev.valorBusca === valorBusca &&
+          prev.valorBuscaCpf === valorBuscaCpf &&
+          prev.apenasAtivos === apenasAtivos
+        ) {
+          return prev;
+        }
+        return {
+          criterioBusca,
+          valorBusca,
+          valorBuscaCpf,
+          apenasAtivos,
+        };
       });
     }, 400);
     return () => {

@@ -62,59 +62,76 @@ public class InformacoesProcessosImportService {
 
         try (InputStream in = Files.newInputStream(path);
                 Workbook workbook = WorkbookFactory.create(in)) {
-            Sheet sheet = workbook.getNumberOfSheets() > 0 ? workbook.getSheetAt(0) : null;
-            if (sheet == null) {
+            if (workbook.getNumberOfSheets() <= 0) {
                 throw new BusinessRuleException("Planilha sem abas.");
             }
 
-            int lastRowIdx = sheet.getLastRowNum();
-            resp.setTotalLinhasCorpo(Math.max(0, lastRowIdx));
-
+            int totalCorpo = 0;
             int ok = 0;
             int erros = 0;
 
-            // Linha 1 Excel (índice 0) = cabeçalho, não importa. Dados a partir da linha 2 (índice 1).
-            // Percorre sequencialmente todas as linhas até à primeira com coluna A vazia — aí encerra (não salta «buracos» como ignoradas).
-            for (int rowNum = 1; rowNum <= lastRowIdx; rowNum++) {
-                Row row = sheet.getRow(rowNum);
-                String colA = PlanilhaExcelUtil.cellString(row, 0);
-                if (!StringUtils.hasText(colA)) {
-                    log.info(
-                            "[import-informacoes-processos] encerrado na linha Excel {} (coluna A vazia; último índice folha={})",
-                            rowNum + 1,
-                            lastRowIdx + 1);
-                    break;
-                }
-                int linhaExcel = rowNum + 1;
-                try {
-                    DadosImportacaoLinha dados = parseLinha(row, linhaExcel);
-                    InformacoesProcessosImportRowApplier.ResultadoAplicacao res = rowApplier.aplicar(dados);
-                    ok++;
-                    ImportacaoLinhaDetalhe d = new ImportacaoLinhaDetalhe();
-                    d.setLinhaExcel(linhaExcel);
-                    d.setStatus(ImportacaoLinhaStatus.SUCESSO);
-                    d.setMensagem(
-                            (res.processoCriado() ? "Processo criado" : "Processo atualizado") + " id=" + res.processoId());
-                    d.setClientePessoaId(dados.clientePessoaId());
-                    d.setNumeroInterno(dados.numeroInterno());
-                    d.setAutoresVinculados(res.autoresVinculados());
-                    d.setReusVinculados(res.reusVinculados());
-                    resp.getDetalhes().add(d);
-                } catch (Exception e) {
-                    erros++;
-                    log.warn("[import-informacoes-processos] linha={} ERRO: {}", linhaExcel, e.getMessage());
-                    ImportacaoLinhaDetalhe d = new ImportacaoLinhaDetalhe();
-                    d.setLinhaExcel(linhaExcel);
-                    d.setStatus(ImportacaoLinhaStatus.ERRO);
-                    d.setMensagem(e.getMessage());
-                    resp.getDetalhes().add(d);
+            for (int si = 0; si < workbook.getNumberOfSheets(); si++) {
+                Sheet sheet = workbook.getSheetAt(si);
+                String nomeAba = StringUtils.hasText(sheet.getSheetName())
+                        ? sheet.getSheetName().trim()
+                        : ("#" + (si + 1));
+                int lastRowIdx = sheet.getLastRowNum();
+                totalCorpo += Math.max(0, lastRowIdx);
+
+                // Linha 1 Excel (índice 0) = cabeçalho, não importa. Dados a partir da linha 2 (índice 1).
+                // Por aba: percorre até à primeira coluna A vazia — aí passa à aba seguinte.
+                for (int rowNum = 1; rowNum <= lastRowIdx; rowNum++) {
+                    Row row = sheet.getRow(rowNum);
+                    String colA = PlanilhaExcelUtil.cellString(row, 0);
+                    if (!StringUtils.hasText(colA)) {
+                        log.info(
+                                "[import-informacoes-processos] aba «{}» encerrada na linha Excel {} (coluna A vazia; último índice folha={})",
+                                nomeAba,
+                                rowNum + 1,
+                                lastRowIdx + 1);
+                        break;
+                    }
+                    int linhaExcel = rowNum + 1;
+                    String ctxLinha = "Aba «" + nomeAba + "» linha " + linhaExcel;
+                    try {
+                        DadosImportacaoLinha dados = parseLinha(row, linhaExcel, ctxLinha);
+                        InformacoesProcessosImportRowApplier.ResultadoAplicacao res = rowApplier.aplicar(dados);
+                        ok++;
+                        ImportacaoLinhaDetalhe d = new ImportacaoLinhaDetalhe();
+                        d.setLinhaExcel(linhaExcel);
+                        d.setStatus(ImportacaoLinhaStatus.SUCESSO);
+                        d.setMensagem((res.processoCriado() ? "Processo criado" : "Processo atualizado")
+                                + " id="
+                                + res.processoId()
+                                + " — "
+                                + ctxLinha);
+                        d.setClientePessoaId(dados.clientePessoaId());
+                        d.setNumeroInterno(dados.numeroInterno());
+                        d.setAutoresVinculados(res.autoresVinculados());
+                        d.setReusVinculados(res.reusVinculados());
+                        resp.getDetalhes().add(d);
+                    } catch (Exception e) {
+                        erros++;
+                        log.warn("[import-informacoes-processos] {} ERRO: {}", ctxLinha, e.getMessage());
+                        ImportacaoLinhaDetalhe d = new ImportacaoLinhaDetalhe();
+                        d.setLinhaExcel(linhaExcel);
+                        d.setStatus(ImportacaoLinhaStatus.ERRO);
+                        d.setMensagem(ctxLinha + ": " + e.getMessage());
+                        resp.getDetalhes().add(d);
+                    }
                 }
             }
 
+            resp.setTotalLinhasCorpo(totalCorpo);
             resp.setLinhasIgnoradas(0);
             resp.setLinhasProcessadasComSucesso(ok);
             resp.setLinhasComErro(erros);
-            log.info("[import-informacoes-processos] ficheiro={} ok={} erros={}", path, ok, erros);
+            log.info(
+                    "[import-informacoes-processos] ficheiro={} abas={} ok={} erros={}",
+                    path,
+                    workbook.getNumberOfSheets(),
+                    ok,
+                    erros);
             return resp;
         } catch (BusinessRuleException e) {
             throw e;
@@ -131,7 +148,10 @@ public class InformacoesProcessosImportService {
         return Paths.get(System.getProperty("user.home"), "Documents", "Informacoes de processos.xls");
     }
 
-    private DadosImportacaoLinha parseLinha(Row row, int linhaExcel) {
+    /**
+     * @param etiquetaContexto texto para mensagens de erro (ex.: «Aba «Folha2» linha 5»)
+     */
+    private DadosImportacaoLinha parseLinha(Row row, int linhaExcel, String etiquetaContexto) {
         // Lê sempre A–O (índices 0..14) com a mesma regra de célula para toda a linha.
         String[] cel = new String[COL_LEITURA_ATE_INCLUSIVE + 1];
         for (int c = 0; c < cel.length; c++) {
@@ -142,7 +162,9 @@ public class InformacoesProcessosImportService {
         String colL = cel[11];
         if (!StringUtils.hasText(colA) || !StringUtils.hasText(colL)) {
             throw new IllegalArgumentException(
-                    "Colunas A (cliente) e L (proc.) são obrigatórias quando a linha tem dados (linha " + linhaExcel + ").");
+                    "Colunas A (cliente) e L (proc.) são obrigatórias quando a linha tem dados ("
+                            + etiquetaContexto
+                            + ").");
         }
 
         long clienteId = clienteCodigoPessoaResolver.resolverPessoaId(colA);

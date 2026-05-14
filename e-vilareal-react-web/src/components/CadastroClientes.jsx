@@ -304,6 +304,9 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
   const [pessoasModalApiErro, setPessoasModalApiErro] = useState('');
   const [processos, setProcessos] = useState(ini.processos);
   const [clientesApiIndex, setClientesApiIndex] = useState([]);
+  /** Ref sempre igual ao último `clientesApiIndex` — evita recriar `aplicarDadosCliente` a cada GET e re-disparar efeitos em cadeia. */
+  const clientesApiIndexRef = useRef(clientesApiIndex);
+  clientesApiIndexRef.current = clientesApiIndex;
   /** Quando `useApiClientes`, fica `true` após o primeiro GET /api/clientes terminar (mesmo com lista vazia). */
   const [clientesApiCarregados, setClientesApiCarregados] = useState(() => !featureFlags.useApiClientes);
   const [erroApiCliente, setErroApiCliente] = useState('');
@@ -319,7 +322,10 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
       ),
     [clientesApiIndex, codigo, pessoa, proximoClienteRefreshTick]
   );
-  const montagemInicialRef = useRef(true);
+  /** Primeira execução do auto-save API: não POSTa snapshot inicial ao montar. */
+  const skipInitialPersistApiRef = useRef(true);
+  /** Idem para modo local (processos + cadastro em localStorage). */
+  const skipInitialPersistLocalRef = useRef(true);
   /** Evita sobrescrever nome/CPF ao carregar cliente por código (persistido/mock). */
   const pularSincPorCargaClienteRef = useRef(false);
   const primeiraSincPessoaRef = useRef(true);
@@ -333,6 +339,8 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
   const processosApiReqIdRef = useRef(0);
   const codigoRef = useRef(codigo);
   codigoRef.current = codigo;
+  /** Última função `aplicarDadosCliente` — listeners com `[]` de deps chamam sempre a versão atual. */
+  const aplicarDadosClienteRef = useRef(() => {});
 
   useEffect(() => {
     if (!toastDocCliente?.mensagem) return undefined;
@@ -397,7 +405,7 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
     return () => {
       cancelado = true;
     };
-  }, [emTelaClientes, location.pathname, location.key]);
+  }, [emTelaClientes, location.pathname]);
 
   useEffect(() => {
     const now = Date.now();
@@ -436,12 +444,13 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
   const aplicarDadosCliente = useCallback((paddedRaw) => {
     pularSincPorCargaClienteRef.current = true;
     const padded = padCliente8(paddedRaw);
-    const mock = gerarMockClienteEProcessos(padded, clientesApiIndex);
+    const idx = clientesApiIndexRef.current;
+    const mock = gerarMockClienteEProcessos(padded, idx);
     const persisted = loadCadastroClienteDados(padded);
 
     if (featureFlags.useApiClientes) {
       const myId = ++resolucaoCodigoReqIdRef.current;
-      const fromList = (clientesApiIndex || []).find((c) => c.codigo === padded);
+      const fromList = (idx || []).find((c) => c.codigo === padded);
       setCodigo(padded);
       resolucaoClientePendingRef.current += 1;
 
@@ -531,7 +540,8 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
         refreshProcessosGrade(padded, []);
       }
     }
-  }, [clientesApiIndex, refreshProcessosGrade]);
+  }, [refreshProcessosGrade]);
+  aplicarDadosClienteRef.current = aplicarDadosCliente;
 
   /**
    * Com API: após o GET /api/clientes terminar (lista pode estar vazia), reaplica o código atual (`codigoRef`)
@@ -540,13 +550,13 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
   useEffect(() => {
     if (!featureFlags.useApiClientes) return;
     if (!clientesApiCarregados) return;
-    aplicarDadosCliente(padCliente8(codigoRef.current));
-  }, [clientesApiCarregados, clientesApiIndex, aplicarDadosCliente]);
+    aplicarDadosClienteRef.current(padCliente8(codigoRef.current));
+  }, [clientesApiCarregados, aplicarDadosCliente]);
 
   useEffect(() => {
     if (!emTelaClientes) return;
     aplicouUltimoClienteApiSemPersistRef.current = false;
-  }, [emTelaClientes, location.pathname, location.key]);
+  }, [emTelaClientes, location.pathname]);
 
   useEffect(() => {
     if (!featureFlags.useApiClientes) return;
@@ -554,17 +564,15 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
     if (codClienteFromState) return;
     if (loadUltimoCodigoCliente()) return;
     if (aplicouUltimoClienteApiSemPersistRef.current) return;
-    const codes = coletarCodigosClienteConhecidos(clientesApiIndex);
+    const codes = coletarCodigosClienteConhecidos(clientesApiIndexRef.current);
     if (codes.length === 0) return;
     aplicouUltimoClienteApiSemPersistRef.current = true;
     const ultimo = codes[codes.length - 1];
     if (padCliente8(codigoRef.current) !== padCliente8(ultimo)) {
-      aplicarDadosCliente(ultimo);
+      aplicarDadosClienteRef.current(ultimo);
     }
   }, [
     clientesApiCarregados,
-    clientesApiIndex,
-    aplicarDadosCliente,
     codClienteFromState,
   ]);
 
@@ -579,41 +587,20 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
 
   useEffect(() => {
     if (codClienteFromState) {
-      aplicarDadosCliente(codClienteFromState);
+      aplicarDadosClienteRef.current(padCliente8(codClienteFromState));
     }
     if (procFromState) setPesquisaProcesso(procFromState);
-  }, [codClienteFromState, procFromState, aplicarDadosCliente, intentRevisionForHydration]);
+  }, [codClienteFromState, procFromState, intentRevisionForHydration]);
 
   useEffect(() => {
-    const h = () => aplicarDadosCliente(codigo);
+    const h = () => aplicarDadosClienteRef.current(padCliente8(codigoRef.current));
     window.addEventListener('vilareal:cadastro-clientes-externo-atualizado', h);
     window.addEventListener('vilareal:processos-historico-atualizado', h);
     return () => {
       window.removeEventListener('vilareal:cadastro-clientes-externo-atualizado', h);
       window.removeEventListener('vilareal:processos-historico-atualizado', h);
     };
-  }, [codigo, aplicarDadosCliente]);
-
-  /** Volta da tela Processos (ou outro fluxo): alinha à grade ao histórico local e inclui Proc. novos gravados em Processos. */
-  useEffect(() => {
-    if (!emTelaClientes) return;
-    const padded = padCliente8(codigo);
-    setProcessos((prev) => enriquecerListaProcessosComHistoricoLocal(padded, prev));
-    if (!featureFlags.useApiProcessos) return;
-    const myId = ++processosApiReqIdRef.current;
-    void listarProcessosPorCodigoCliente(padded)
-      .then((apiList) => {
-        if (processosApiReqIdRef.current !== myId) return;
-        setProcessos((prev) =>
-          mergeCadastroClientesProcessosComApi(
-            padded,
-            enriquecerListaProcessosComHistoricoLocal(padded, prev),
-            apiList
-          )
-        );
-      })
-      .catch(() => {});
-  }, [emTelaClientes, location.pathname, location.key, codigo]);
+  }, []);
 
   useEffect(() => {
     if (primeiraSincPessoaRef.current) {
@@ -653,26 +640,41 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
     };
   }, [pessoa]);
 
+  /** Com API: não depender de `processos` — cada merge da grade disparava POST + evento + `aplicarDadosCliente` em loop. */
   useEffect(() => {
-    if (montagemInicialRef.current) {
-      montagemInicialRef.current = false;
+    if (!featureFlags.useApiClientes) return;
+    if (skipInitialPersistApiRef.current) {
+      skipInitialPersistApiRef.current = false;
       return;
     }
     const t = setTimeout(() => {
       const s = persistSnapshotRef.current;
       if (!s) return;
-      if (featureFlags.useApiClientes) {
-        if (resolucaoClientePendingRef.current > 0) return;
-        void salvarClienteCadastro({
+      if (resolucaoClientePendingRef.current > 0) return;
+      void salvarClienteCadastro(
+        {
           codigo: s.codigo,
           pessoa: s.pessoa,
           nomeRazao: s.nomeRazao,
           cnpjCpf: s.cnpjCpf,
           observacao: s.observacao,
           clienteInativo: s.clienteInativo,
-        }).catch(() => {});
-        return;
-      }
+        },
+        { suppressEmit: true }
+      ).catch(() => {});
+    }, 250);
+    return () => clearTimeout(t);
+  }, [codigo, pessoa, nomeRazao, cnpjCpf, observacao, clienteInativo, edicaoDesabilitada]);
+
+  useEffect(() => {
+    if (featureFlags.useApiClientes) return;
+    if (skipInitialPersistLocalRef.current) {
+      skipInitialPersistLocalRef.current = false;
+      return;
+    }
+    const t = setTimeout(() => {
+      const s = persistSnapshotRef.current;
+      if (!s) return;
       saveCadastroClienteDados(s.codigo, {
         pessoa: s.pessoa,
         nomeRazao: s.nomeRazao,
@@ -922,7 +924,10 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
   }, [pesquisaProcesso, codigo]);
 
   useEffect(() => {
-    setPaginaProcessos((p) => Math.min(p, totalPaginasProcessos));
+    setPaginaProcessos((p) => {
+      const cap = Math.max(1, totalPaginasProcessos);
+      return p > cap ? cap : p;
+    });
   }, [totalPaginasProcessos]);
 
   const pessoaSelecionada = useMemo(() => {

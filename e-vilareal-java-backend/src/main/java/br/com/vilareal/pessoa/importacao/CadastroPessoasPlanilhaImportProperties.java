@@ -12,7 +12,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * <p><b>Variáveis de ambiente</b> (binding Spring Boot): {@code VILAREAL_IMPORT_PESSOAS_ENABLED},
  * {@code VILAREAL_IMPORT_PESSOAS_PATH}, {@code VILAREAL_IMPORT_PESSOAS_DRY_RUN}, {@code VILAREAL_IMPORT_PESSOAS_LIMIT},
  * {@code VILAREAL_IMPORT_PESSOAS_REPORT_PATH}, {@code VILAREAL_IMPORT_PESSOAS_HEADER_ROW},
- * {@code VILAREAL_IMPORT_PESSOAS_FIRST_DATA_ROW}. Úteis quando o path tem espaços — evitar
+ * {@code VILAREAL_IMPORT_PESSOAS_FIRST_DATA_ROW}, {@code VILAREAL_IMPORT_PESSOAS_UPDATE_EXISTING},
+ * {@code VILAREAL_IMPORT_PESSOAS_RECONCILE_BY_CPF_WHEN_ID_MISSING}. Úteis quando o path tem espaços — evitar
  * {@code -Dspring-boot.run.arguments} com vírgulas, que quebra o parse do {@code enabled}.
  */
 @ConfigurationProperties(prefix = "vilareal.import.pessoas")
@@ -38,6 +39,19 @@ public class CadastroPessoasPlanilhaImportProperties {
 
     /** Primeira linha Excel de dados (1-based). */
     private int firstDataRow = 11;
+
+    /**
+     * Quando {@code true} e a coluna A (id) já existir em {@code pessoa}, aplica UPDATE no registo existente
+     * (cabeçalho + complementar + 1.º endereço + telefones gravados por este import).
+     */
+    private boolean updateExisting = false;
+
+    /**
+     * Quando {@code true} e o id da planilha <em>não</em> existir, mas o CPF/CNPJ da linha coincidir com
+     * exactamente um {@code pessoa.id} na base, aplica o mesmo UPDATE nesse id (útil quando a planilha traz
+     * um id legado diferente do id real na BD).
+     */
+    private boolean reconcileByCpfWhenIdMissing = false;
 
     public boolean isEnabled() {
         return enabled;
@@ -93,5 +107,21 @@ public class CadastroPessoasPlanilhaImportProperties {
 
     public void setFirstDataRow(int firstDataRow) {
         this.firstDataRow = firstDataRow;
+    }
+
+    public boolean isUpdateExisting() {
+        return updateExisting;
+    }
+
+    public void setUpdateExisting(boolean updateExisting) {
+        this.updateExisting = updateExisting;
+    }
+
+    public boolean isReconcileByCpfWhenIdMissing() {
+        return reconcileByCpfWhenIdMissing;
+    }
+
+    public void setReconcileByCpfWhenIdMissing(boolean reconcileByCpfWhenIdMissing) {
+        this.reconcileByCpfWhenIdMissing = reconcileByCpfWhenIdMissing;
     }
 }
