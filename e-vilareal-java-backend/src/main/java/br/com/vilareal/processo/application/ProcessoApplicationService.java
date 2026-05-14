@@ -878,7 +878,7 @@ public class ProcessoApplicationService {
         ProcessoResponse r = new ProcessoResponse();
         r.setId(e.getId());
         r.setClienteId(pessoaId);
-        r.setCodigoCliente(CodigoClienteUtil.formatar(pessoaId));
+        r.setCodigoCliente(resolverCodigoClienteExibicaoParaPessoa(pessoaId));
         r.setNumeroInterno(e.getNumeroInterno());
         r.setNumeroCnj(Utf8MojibakeUtil.corrigir(e.getNumeroCnj()));
         r.setNumeroProcessoAntigo(Utf8MojibakeUtil.corrigir(e.getNumeroProcessoAntigo()));
