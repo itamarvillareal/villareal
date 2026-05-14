@@ -310,6 +310,8 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
   /** Quando `useApiClientes`, fica `true` após o primeiro GET /api/clientes terminar (mesmo com lista vazia). */
   const [clientesApiCarregados, setClientesApiCarregados] = useState(() => !featureFlags.useApiClientes);
   const [erroApiCliente, setErroApiCliente] = useState('');
+  /** GET /api/processos?codigoCliente= falhou — a grade fica só com dados locais/mock. */
+  const [erroApiProcessosGrade, setErroApiProcessosGrade] = useState('');
   /** Incrementado a cada entrada na rota Clientes — força releitura de API/localStorage no «Próximo cliente». */
   const [proximoClienteRefreshTick, setProximoClienteRefreshTick] = useState(0);
   /** Atualiza ao trocar de cliente, dados da API e cada acesso ao formulário Clientes. */
@@ -351,18 +353,24 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
   const refreshProcessosGrade = useCallback((padded, baseLista) => {
     const enriched = enriquecerListaProcessosComHistoricoLocal(padded, baseLista);
     if (!featureFlags.useApiProcessos) {
+      setErroApiProcessosGrade('');
       setProcessos(enriched);
       return;
     }
     const myId = ++processosApiReqIdRef.current;
+    setErroApiProcessosGrade('');
     setProcessos(enriched);
     void listarProcessosPorCodigoCliente(padded)
       .then((apiList) => {
         if (processosApiReqIdRef.current !== myId) return;
+        setErroApiProcessosGrade('');
         setProcessos(mergeCadastroClientesProcessosComApi(padded, enriched, apiList));
       })
-      .catch(() => {
+      .catch((e) => {
         if (processosApiReqIdRef.current !== myId) return;
+        setErroApiProcessosGrade(
+          String(e?.message || '').trim() || 'Não foi possível carregar os processos deste cliente na API.'
+        );
         setProcessos(enriched);
       });
   }, []);
@@ -1189,6 +1197,11 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
         {erroApiCliente ? (
           <div className="mb-3 rounded-xl border border-red-200/90 bg-red-50/95 px-4 py-3 text-sm text-red-800 shadow-sm backdrop-blur-sm">
             {erroApiCliente}
+          </div>
+        ) : null}
+        {erroApiProcessosGrade ? (
+          <div className="mb-3 rounded-xl border border-amber-200/90 bg-amber-50/95 px-4 py-3 text-sm text-amber-950 shadow-sm backdrop-blur-sm">
+            {erroApiProcessosGrade}
           </div>
         ) : null}
         <header className="mb-3 flex shrink-0 flex-col gap-2 rounded-xl border border-slate-200/80 bg-white/90 px-3 py-2.5 shadow-sm backdrop-blur-sm sm:flex-row sm:items-center sm:justify-between">
