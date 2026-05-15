@@ -26,6 +26,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
@@ -91,9 +92,9 @@ public class PagamentoApplicationService {
 
     @Transactional
     public PagamentoResponse criar(PagamentoWriteRequest req) {
-        validarDominio(req);
         UsuarioEntity u = usuarioAtual();
         PagamentoEntity e = new PagamentoEntity();
+        validarDominio(req, e, true);
         e.setDataCadastro(req.getDataCadastro() != null ? req.getDataCadastro() : LocalDate.now(clock));
         e.setCriadoPorUsuario(u);
         aplicarCampos(e, req, u, true);
@@ -104,9 +105,9 @@ public class PagamentoApplicationService {
 
     @Transactional
     public PagamentoResponse atualizar(Long id, PagamentoWriteRequest req) {
-        validarDominio(req);
         UsuarioEntity u = usuarioAtual();
         PagamentoEntity e = requirePagamento(id);
+        validarDominio(req, e, false);
         String stAnt = e.getStatus();
         aplicarCampos(e, req, u, false);
         e.setAtualizadoPorUsuario(u);
@@ -370,25 +371,58 @@ public class PagamentoApplicationService {
         return new UrlResource(p.toUri());
     }
 
-    private void validarDominio(PagamentoWriteRequest req) {
-        if (!PagamentoDominio.STATUS_VALIDOS.contains(req.getStatus())) {
+    private void validarDominio(PagamentoWriteRequest req, PagamentoEntity e, boolean criacao) {
+        String statusEfetivo = resolverStatusPagamento(req, e, criacao);
+        if (!PagamentoDominio.STATUS_VALIDOS.contains(statusEfetivo)) {
             throw new BusinessRuleException("Status inválido.");
         }
         if (req.getDataAgendamento() != null
+                && req.getDataVencimento() != null
                 && req.getDataAgendamento().isAfter(req.getDataVencimento())) {
             throw new BusinessRuleException("Data de agendamento posterior ao vencimento — verifique as datas.");
         }
     }
 
+    /**
+     * Na criação, status ausente → {@link PagamentoDominio#ST_PENDENTE}; texto opcional ausente → {@code ""}.
+     * Na atualização, campo omitido (null) ou só espaços mantém o valor já gravado na entidade.
+     */
+    private static String resolverStatusPagamento(PagamentoWriteRequest req, PagamentoEntity e, boolean criacao) {
+        String incoming = req.getStatus();
+        if (!StringUtils.hasText(incoming)) {
+            return criacao ? PagamentoDominio.ST_PENDENTE : e.getStatus();
+        }
+        return incoming.trim();
+    }
+
+    private static String resolverTextoOpcionalPagamento(
+            String incoming, PagamentoEntity e, boolean criacao, java.util.function.Function<PagamentoEntity, String> atual, String padraoCriacao) {
+        if (incoming == null) {
+            return criacao ? padraoCriacao : nvl(atual.apply(e), padraoCriacao);
+        }
+        String t = incoming.trim();
+        if (!StringUtils.hasText(t)) {
+            return criacao ? padraoCriacao : nvl(atual.apply(e), padraoCriacao);
+        }
+        return t;
+    }
+
+    private static String nvl(String s, String fallback) {
+        return s != null ? s : fallback;
+    }
+
     private void aplicarCampos(PagamentoEntity e, PagamentoWriteRequest req, UsuarioEntity u, boolean criacao) {
+        String statusFinal = resolverStatusPagamento(req, e, criacao);
+
         e.setDataAgendamento(req.getDataAgendamento());
         e.setDataVencimento(req.getDataVencimento());
         e.setCodigoBarras(req.getCodigoBarras());
         e.setValor(req.getValor());
-        e.setDescricao(req.getDescricao().trim());
-        e.setCategoria(req.getCategoria().trim());
-        e.setFormaPagamento(req.getFormaPagamento().trim());
-        e.setStatus(req.getStatus());
+        e.setDescricao(resolverTextoOpcionalPagamento(req.getDescricao(), e, criacao, PagamentoEntity::getDescricao, ""));
+        e.setCategoria(resolverTextoOpcionalPagamento(req.getCategoria(), e, criacao, PagamentoEntity::getCategoria, ""));
+        e.setFormaPagamento(
+                resolverTextoOpcionalPagamento(req.getFormaPagamento(), e, criacao, PagamentoEntity::getFormaPagamento, ""));
+        e.setStatus(statusFinal);
         e.setPrioridade(req.getPrioridade() != null ? req.getPrioridade() : "NORMAL");
         e.setOrigem(req.getOrigem());
         e.setDataPagamentoEfetivo(req.getDataPagamentoEfetivo());
@@ -411,7 +445,7 @@ public class PagamentoApplicationService {
             e.setRecorrenciaPagamentoOrigem(requirePagamento(req.getRecorrenciaPagamentoOrigemId()));
         }
 
-        if (criacao && PagamentoDominio.ST_PAGO_CONFIRMADO.equals(req.getStatus())
+        if (criacao && PagamentoDominio.ST_PAGO_CONFIRMADO.equals(statusFinal)
                 && req.getDataPagamentoEfetivo() == null) {
             throw new BusinessRuleException("Informe a data do pagamento para status Pago confirmado.");
         }

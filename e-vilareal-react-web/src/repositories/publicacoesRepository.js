@@ -197,7 +197,8 @@ function mergeAndSortPublicacoesRelatorio(itensApi, extrasLegado) {
 
 /**
  * Relatório «Publicações deste processo» (modal em Processos).
- * Prioriza `processoId` nativo; resolve via API de processos quando possível; fallback legado sem apagar dados locais.
+ * Resolve o id de processo na API pelo par código cliente × proc. interno em primeiro lugar — igual a
+ * `vincularPublicacaoProcessoPorChaveNatural` — e usa `processoIdFromUi` só como fallback (ex.: processo ainda não listável pela chave natural).
  */
 export async function listarPublicacoesRelatorioPorProcesso({
   processoIdFromUi,
@@ -217,14 +218,16 @@ export async function listarPublicacoesRelatorioPorProcesso({
     };
   }
 
-  let pid =
+  const pidNatural = await resolverProcessoId({
+    processoId: null,
+    codigoCliente,
+    numeroInterno: processo,
+  });
+  const pidUi =
     Number.isFinite(Number(processoIdFromUi)) && Number(processoIdFromUi) > 0 ? Number(processoIdFromUi) : null;
-  if (!pid) {
-    pid = await resolverProcessoId({
-      processoId: null,
-      codigoCliente,
-      numeroInterno: processo,
-    });
+  let pid = pidNatural ?? pidUi;
+  if (pidNatural != null && pidUi != null && pidNatural !== pidUi) {
+    pid = pidNatural;
   }
 
   if (!pid) {
@@ -326,6 +329,69 @@ export async function listarPublicacoesModulo({
 
 // --- Escrita / importação ---
 
+async function aplicarVinculoProcessoAposCriarPublicacao(savedId, body) {
+  if (!savedId || !body._codCliente || !body._procInterno) return;
+  const processoEntidade = await buscarProcessoPorChaveNatural(body._codCliente, Number(body._procInterno));
+  if (!processoEntidade?.id) return;
+  try {
+    await request(`/api/publicacoes/${savedId}/vinculo-processo`, {
+      method: 'PATCH',
+      body: { processoId: processoEntidade.id, observacao: 'Vínculo inicial da importação.' },
+    });
+  } catch {
+    /* vínculo opcional na importação */
+  }
+}
+
+async function buscarIdPublicacaoApiPorHashConteudo(hash) {
+  const h = String(hash ?? '').trim();
+  if (!h) return null;
+  try {
+    const data = await request('/api/publicacoes', { query: {} });
+    const rows = Array.isArray(data) ? data : [];
+    const hit = rows.find((r) => String(r?.hashConteudo ?? '').trim() === h);
+    return hit?.id != null && Number.isFinite(Number(hit.id)) ? Number(hit.id) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Grava uma linha da pré-visualização na API e aplica vínculo ao processo quando código×proc vêm preenchidos.
+ * Usado ao «Salvar vínculo» na prévia (além do lote «Confirmar importação»).
+ */
+export async function importarUmaPublicacaoDaPreviaApi(item, arquivoOrigem, meta = {}) {
+  if (!featureFlags.useApiPublicacoes) {
+    return { ok: true, id: null };
+  }
+  const body = mapPreviewItemToApiRequest(item, arquivoOrigem, meta);
+  try {
+    const saved = await request('/api/publicacoes', { method: 'POST', body });
+    const id = saved?.id != null && Number.isFinite(Number(saved.id)) ? Number(saved.id) : null;
+    if (id) await aplicarVinculoProcessoAposCriarPublicacao(id, body);
+    return { ok: true, id };
+  } catch (e) {
+    const msg = String(e?.message || '').toLowerCase();
+    const dup =
+      msg.includes('duplicad') || msg.includes('422') || msg.includes('unprocessable entity');
+    if (!dup) {
+      return { ok: false, id: null, error: e?.message || 'Falha ao gravar publicação na API.' };
+    }
+    const hash = String(item.hashDedup || body.hashConteudo || '').trim();
+    const existingId = await buscarIdPublicacaoApiPorHashConteudo(hash);
+    if (!existingId) {
+      return {
+        ok: false,
+        id: null,
+        error:
+          'Esta publicação já existe na API mas não foi possível localizá-la pelo hash. Vincule pela lista «gravadas» ou confirme a importação em lote.',
+      };
+    }
+    await aplicarVinculoProcessoAposCriarPublicacao(existingId, body);
+    return { ok: true, id: existingId, reusedExisting: true };
+  }
+}
+
 export async function importarPublicacoesDaPrevia(itens, arquivoOrigem, meta = {}) {
   if (!featureFlags.useApiPublicacoes) {
     return appendPublicacoesConfirmadas(itens, arquivoOrigem, meta);
@@ -338,19 +404,7 @@ export async function importarPublicacoesDaPrevia(itens, arquivoOrigem, meta = {
     try {
       const saved = await request('/api/publicacoes', { method: 'POST', body });
       gravados += saved?.id ? 1 : 0;
-      if (saved?.id && body._codCliente && body._procInterno) {
-        const processo = await buscarProcessoPorChaveNatural(body._codCliente, Number(body._procInterno));
-        if (processo?.id) {
-          try {
-            await request(`/api/publicacoes/${saved.id}/vinculo-processo`, {
-              method: 'PATCH',
-              body: { processoId: processo.id, observacao: 'Vínculo inicial da importação.' },
-            });
-          } catch {
-            /* vínculo opcional na importação */
-          }
-        }
-      }
+      if (saved?.id) await aplicarVinculoProcessoAposCriarPublicacao(saved.id, body);
     } catch (e) {
       const msg = String(e?.message || '').toLowerCase();
       if (

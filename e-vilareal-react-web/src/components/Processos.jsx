@@ -69,7 +69,8 @@ import {
   Users,
   Undo2,
 } from 'lucide-react';
-import { ModalRelatorioPublicacoesProcesso } from './ModalRelatorioPublicacoesProcesso.jsx';
+import { ModalRelatorioPublicacoesProcesso, PublicacoesRelatorioConteudo } from './ModalRelatorioPublicacoesProcesso.jsx';
+import { listarPublicacoesRelatorioPorProcesso } from '../repositories/publicacoesRepository.js';
 import { ModalCriarTarefaContextual } from './ModalCriarTarefaContextual.jsx';
 import { buildContextFromProcesso, buildContextFromProcessoComPrazoFatal } from '../data/tarefasContextualPayload.js';
 import { featureFlags } from '../config/featureFlags.js';
@@ -459,6 +460,11 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   /** Geração de carregamento do histórico (evita «loading=false» no meio de outro GET). */
   const historicoApiCargaSeqRef = useRef(0);
   const [historicoApiCarregando, setHistoricoApiCarregando] = useState(false);
+  const [publicacoesRelatorioItens, setPublicacoesRelatorioItens] = useState([]);
+  const [publicacoesRelatorioMeta, setPublicacoesRelatorioMeta] = useState(null);
+  const [publicacoesRelatorioCarregando, setPublicacoesRelatorioCarregando] = useState(false);
+  const [publicacoesRelatorioErro, setPublicacoesRelatorioErro] = useState('');
+  const [publicacoesRelatorioTick, setPublicacoesRelatorioTick] = useState(0);
 
   /** Evita página vazia quando o nº de linhas do histórico diminui (ex.: troca de processo ou carga API). */
   useEffect(() => {
@@ -475,6 +481,43 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     window.addEventListener('vilareal:processos-historico-atualizado', h);
     return () => window.removeEventListener('vilareal:processos-historico-atualizado', h);
   }, []);
+
+  useEffect(() => {
+    const h = () => setPublicacoesRelatorioTick((t) => t + 1);
+    window.addEventListener('vilareal:publicacoes-processo-relatorio-atualizado', h);
+    return () => window.removeEventListener('vilareal:publicacoes-processo-relatorio-atualizado', h);
+  }, []);
+
+  useEffect(() => {
+    if (tabAtiva !== 'publicacoes') return undefined;
+    let cancelado = false;
+    setPublicacoesRelatorioCarregando(true);
+    setPublicacoesRelatorioErro('');
+    setPublicacoesRelatorioMeta(null);
+    void listarPublicacoesRelatorioPorProcesso({
+      processoIdFromUi: processoApiId,
+      codigoCliente,
+      processo,
+      numeroProcessoNovo,
+    })
+      .then((r) => {
+        if (cancelado) return;
+        setPublicacoesRelatorioItens(r.itens || []);
+        setPublicacoesRelatorioMeta(r);
+        setPublicacoesRelatorioErro(r.erro ? String(r.erro) : '');
+      })
+      .catch((e) => {
+        if (cancelado) return;
+        setPublicacoesRelatorioItens([]);
+        setPublicacoesRelatorioErro(e?.message || 'Não foi possível carregar as publicações.');
+      })
+      .finally(() => {
+        if (!cancelado) setPublicacoesRelatorioCarregando(false);
+      });
+    return () => {
+      cancelado = true;
+    };
+  }, [tabAtiva, processoApiId, codigoCliente, processo, numeroProcessoNovo, publicacoesRelatorioTick]);
 
   useEffect(() => {
     const n = Number(processoApiId);
@@ -3219,11 +3262,14 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
               </div>
             </section>
 
-            {/* Abas: Histórico do Processo | Observações | Execução */}
+            {/* Abas: Histórico do Processo | Publicações | Observações | Execução */}
             <section ref={abasProcessoRef} className="border-t border-slate-200/80 pt-3 mt-1">
               <div className="flex flex-wrap items-end gap-1 mb-0">
                 <button type="button" onClick={() => setTabAtiva('historico')} className={`px-3.5 py-2 text-sm font-semibold rounded-t-lg border border-b-0 transition-colors ${tabAtiva === 'historico' ? 'bg-white text-indigo-900 border-slate-300 border-indigo-300/60 -mb-px z-[1] shadow-[0_-2px_0_0_white]' : 'bg-slate-100/90 text-slate-600 border-transparent hover:bg-slate-200/90'}`}>
                   Histórico do Processo
+                </button>
+                <button type="button" onClick={() => setTabAtiva('publicacoes')} className={`px-3.5 py-2 text-sm font-semibold rounded-t-lg border border-b-0 transition-colors ${tabAtiva === 'publicacoes' ? 'bg-white text-indigo-900 border-slate-300 border-indigo-300/60 -mb-px z-[1] shadow-[0_-2px_0_0_white]' : 'bg-slate-100/90 text-slate-600 border-transparent hover:bg-slate-200/90'}`}>
+                  Publicações
                 </button>
                 <button type="button" onClick={() => setTabAtiva('observacoes')} className={`px-3.5 py-2 text-sm font-semibold rounded-t-lg border border-b-0 transition-colors ${tabAtiva === 'observacoes' ? 'bg-white text-indigo-900 border-slate-300 border-indigo-300/60 -mb-px z-[1] shadow-[0_-2px_0_0_white]' : 'bg-slate-100/90 text-slate-600 border-transparent hover:bg-slate-200/90'}`}>
                   Observações
@@ -3387,6 +3433,33 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                     >
                       Próxima →
                     </button>
+                  </div>
+                </div>
+              )}
+              {tabAtiva === 'publicacoes' && (
+                <div className="border border-slate-300 rounded-b-lg overflow-hidden bg-white shadow-sm -mt-px flex flex-col max-h-[min(72vh,56rem)]">
+                  <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2 shrink-0">
+                    <p className="text-sm text-slate-600">
+                      Registos vinculados a este processo após importação e confirmação em{' '}
+                      <strong className="text-slate-800">Processos → Publicações</strong>.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => navigate('/processos/publicacoes')}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-sky-300 bg-white text-sky-900 text-sm font-medium hover:bg-sky-50 shadow-sm shrink-0"
+                    >
+                      <Newspaper className="w-4 h-4 shrink-0" aria-hidden />
+                      Abrir Publicações
+                    </button>
+                  </div>
+                  <div className="flex flex-col flex-1 min-h-0 overflow-auto">
+                    <PublicacoesRelatorioConteudo
+                      itens={publicacoesRelatorioItens}
+                      carregando={publicacoesRelatorioCarregando}
+                      erro={publicacoesRelatorioErro}
+                      relatorioMeta={publicacoesRelatorioMeta}
+                      compact
+                    />
                   </div>
                 </div>
               )}

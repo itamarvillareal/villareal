@@ -2,7 +2,6 @@ package br.com.vilareal.pagamento.api.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.DecimalMin;
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
@@ -26,21 +25,19 @@ public class PagamentoWriteRequest {
     @DecimalMin(value = "0.01", inclusive = true)
     private BigDecimal valor;
 
-    @NotBlank
+    /** Opcional na criação: o serviço preenche string vazia se ausente. */
     @Size(max = 500)
     private String descricao;
 
-    @NotBlank
     @Size(max = 40)
     private String categoria;
 
-    @NotBlank
     @Size(max = 40)
     private String formaPagamento;
 
     private Long responsavelUsuarioId;
 
-    @NotBlank
+    /** Opcional na criação: o serviço assume {@code PENDENTE} se ausente. */
     @Size(max = 40)
     private String status;
 
