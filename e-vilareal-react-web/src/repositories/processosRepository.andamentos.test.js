@@ -58,7 +58,7 @@ describe('assinaturaAndamento', () => {
 });
 
 describe('mapApiAndamentoToHistoricoItem', () => {
-  it('marca fromApi:true para vínculo com sincronização incremental', () => {
+  it('marca fromApi:true apenas quando há id numérico válido do servidor', () => {
     const h = mapApiAndamentoToHistoricoItem(
       { id: 77, movimentoEm: '2026-06-01T12:00:00Z', titulo: 'X' },
       0,
@@ -66,6 +66,11 @@ describe('mapApiAndamentoToHistoricoItem', () => {
     );
     expect(h.fromApi).toBe(true);
     expect(h.id).toBe(77);
+  });
+
+  it('com id ausente ou inválido não finge vínculo API (fromApi:false)', () => {
+    const h = mapApiAndamentoToHistoricoItem({ movimentoEm: '2026-06-01T12:00:00Z', titulo: 'Y' }, 0, 1);
+    expect(h.fromApi).toBe(false);
   });
 
   it('formata data quando movimentoEm vem em milissegundos', () => {

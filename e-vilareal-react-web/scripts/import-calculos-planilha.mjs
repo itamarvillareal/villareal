@@ -2,7 +2,12 @@
 /**
  * Importa rodadas de cálculos (parcelas + débitos) a partir de import-calculo.xls.
  *
- * Layout: cabeçalhos na linha 5 (1-based), dados da linha 8.
+ * **Layout legado (este ficheiro):** cabeçalhos na linha 5 (1-based), dados da linha 8;
+ * aba «Relatório…» (parcelas) usa coluna «Cálculo Aceito» = SIM; aba «Relatorio Debitos…» = débitos.
+ *
+ * **Novo layout (análise apenas, sem gravar):** ver `scripts/relatorio-import-calculo-planilha.mjs`
+ * — cabeçalho linha 6, dados linha 7; aba débitos cadastrados → Títulos; relatório 001–999 → SIM na col. N.
+ *
  * Detecção de colunas por texto do cabeçalho (trim + lower + sem acentos).
  *
  * Uso:
