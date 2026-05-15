@@ -16,8 +16,8 @@ import {
   sincronizarAudienciasAgendaEntradas,
 } from '../data/processosHistoricoData.js';
 import { listarEventosAgendaPeriodoTodosUsuariosApi } from '../repositories/agendaRepository.js';
-import { listarClientesCadastro } from '../repositories/clientesRepository.js';
-import { listarProcessosPorCodigoCliente, mapApiProcessoToUiShape } from '../repositories/processosRepository.js';
+import { listarClientesIndiceCadastro } from '../repositories/clientesRepository.js';
+import { listarProcessosResumoPorCodigoCliente, mapApiProcessoToUiShape } from '../repositories/processosRepository.js';
 
 function chaveMatchDeRegistro(reg) {
   const cod = padCliente(reg.codCliente ?? '1');
@@ -41,13 +41,13 @@ export async function montarStoreObjetoParaMatchCnjMescladoComApi() {
   }
   if (!featureFlags.useApiProcessos || typeof window === 'undefined') return store;
   try {
-    const clientes = await listarClientesCadastro();
+    const clientes = await listarClientesIndiceCadastro();
     const lista = Array.isArray(clientes) ? clientes : [];
     for (const row of lista) {
       const cod = padCliente(row?.codigo ?? row?.codigoCliente ?? '1');
       let procs = [];
       try {
-        procs = await listarProcessosPorCodigoCliente(cod);
+        procs = await listarProcessosResumoPorCodigoCliente(cod);
       } catch {
         continue;
       }

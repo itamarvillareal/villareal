@@ -1,0 +1,35 @@
+{
+  "script": "deduplicar-andamentos-processo.mjs",
+  "geradoEm": "2026-05-15T13:19:19.038Z",
+  "modo": "dry-run",
+  "escopoAnalise": "Duplicados avaliados apenas dentro de cada processo_id (cliente + número interno); nunca entre processos diferentes.",
+  "cenarioReimportacao": "Detecta o mesmo movimento gravado com origens IMPORT_PLANILHA distintas (ex.: IMPORT_PLANILHA vs IMPORT_PLANILHA_376_499) no mesmo processo.",
+  "validacaoSql": {
+    "gruposBrutosMesmoProcesso": 0,
+    "linhasExcedentesBrutas": 0,
+    "gruposComOrigensDistintas": 0
+  },
+  "camadas": [
+    "BRUTA",
+    "ESTRITA",
+    "DATA"
+  ],
+  "opcoes": {
+    "cliente": null,
+    "processoId": null,
+    "exigirDetalheIgual": true
+  },
+  "estatisticas": {
+    "processosAnalisados": 3124,
+    "andamentosLidos": 31189,
+    "gruposDuplicados": 0,
+    "gruposIgnorados": 0,
+    "gruposReimportacaoEntreOrigens": 0,
+    "andamentosMarcadosRemover": 0,
+    "prazosReapontados": 0
+  },
+  "suspeitos": [],
+  "grupos": [],
+  "totalGruposRelatorio": 0,
+  "totalSuspeitos": 0
+}

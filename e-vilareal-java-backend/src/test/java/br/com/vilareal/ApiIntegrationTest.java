@@ -394,6 +394,14 @@ class ApiIntegrationTest extends AbstractIntegrationTest {
         assertThat(content.stream().anyMatch(m -> procId.equals(((Number) m.get("id")).longValue())))
                 .isTrue();
 
+        ResponseEntity<Map<String, Object>> porChave = rest.exchange(
+                "/api/processos?codigoCliente=" + cod8 + "&numeroInterno=77",
+                HttpMethod.GET,
+                new HttpEntity<>(h),
+                new ParameterizedTypeReference<>() {});
+        assertThat(porChave.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(((Number) porChave.getBody().get("id")).longValue()).isEqualTo(procId);
+
         Map<String, Object> parte = new LinkedHashMap<>();
         parte.put("pessoaId", pessoaId);
         parte.put("polo", "AUTOR");

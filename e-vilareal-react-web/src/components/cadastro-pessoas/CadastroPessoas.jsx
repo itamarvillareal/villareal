@@ -97,6 +97,13 @@ function buscarPessoaComMesmoDocumento(lista, digitos, excluirId) {
 /** Ao sair da tela Cadastro de Pessoas, reabrir com edição travada (checkbox marcado). */
 const SESSION_PESSOAS_EDICAO_AO_SAIR = 'vilareal:cadastro-pessoas:edicao-ao-sair:v1';
 
+const AUTOSAVE_DEBOUNCE_MS = 700;
+
+function buildSnapshotCadastro(form, enderecos, contatos) {
+  const { edicaoDesabilitada: _ed, ...formSemFlag } = form;
+  return JSON.stringify({ form: formSemFlag, enderecos, contatos });
+}
+
 async function resolverProximoCodigoNovaPessoa() {
   try {
     const id = await obterProximoIdCadastroPessoas();
@@ -122,7 +129,7 @@ const emptyPessoa = {
   ativo: true,
   /** Marca pessoa para a aba Processos → Monitoramento (DataJud). */
   marcadoMonitoramento: false,
-  edicaoDesabilitada: false,
+  edicaoDesabilitada: true,
   /** @type {number|null} */
   responsavelId: null,
   /** @type {{ id: number, nome: string, cpf?: string, tipoPessoa?: string }|null} */
@@ -151,6 +158,19 @@ export function CadastroPessoas() {
   const [modalEnderecos, setModalEnderecos] = useState(false);
   const [modalContatos, setModalContatos] = useState(false);
   const [modalVinculosSistema, setModalVinculosSistema] = useState(false);
+  /** Evita que o GET de complementares sobrescreva alterações já digitadas na ficha. */
+  const complementaresAplicadosParaIdRef = useRef(null);
+  /** Autosave: baseline após carga; pausa até complementares da ficha. */
+  const ultimoSnapshotSalvoRef = useRef(null);
+  const autosaveAtivoRef = useRef(false);
+  const autosaveTimerRef = useRef(null);
+  const autosaveEmCursoRef = useRef(false);
+  const autosaveReagendarRef = useRef(false);
+  const modoRef = useRef(modo);
+  const editIdRef = useRef(editId);
+  const formRef = useRef(form);
+  const enderecosRef = useRef(enderecos);
+  const contatosRef = useRef(contatos);
   /** CPF/CNPJ já cadastrado: oferece abrir a ficha existente. */
   const [modalCpfDuplicado, setModalCpfDuplicado] = useState(null);
   /** Enquanto true, o campo Nacionalidade fica em vermelho até o usuário entrar e sair (blur), validando a sugestão. */
@@ -189,10 +209,36 @@ export function CadastroPessoas() {
   const [toastDocumento, setToastDocumento] = useState(null);
 
   useEffect(() => {
+    modoRef.current = modo;
+  }, [modo]);
+
+  useEffect(() => {
+    editIdRef.current = editId;
+  }, [editId]);
+
+  useEffect(() => {
+    formRef.current = form;
+  }, [form]);
+
+  useEffect(() => {
+    enderecosRef.current = enderecos;
+  }, [enderecos]);
+
+  useEffect(() => {
+    contatosRef.current = contatos;
+  }, [contatos]);
+
+  useEffect(() => {
     if (!toastDocumento?.mensagem) return undefined;
     const t = window.setTimeout(() => setToastDocumento(null), 4200);
     return () => window.clearTimeout(t);
   }, [toastDocumento]);
+
+  useEffect(() => {
+    if (!mensagemSucesso) return undefined;
+    const t = window.setTimeout(() => setMensagemSucesso(''), 2800);
+    return () => window.clearTimeout(t);
+  }, [mensagemSucesso]);
 
   useEffect(() => {
     return () => {
@@ -208,12 +254,16 @@ export function CadastroPessoas() {
     try {
       if (window.sessionStorage.getItem(SESSION_PESSOAS_EDICAO_AO_SAIR) === '1') {
         window.sessionStorage.removeItem(SESSION_PESSOAS_EDICAO_AO_SAIR);
-        setForm((f) => ({ ...f, edicaoDesabilitada: true }));
+        const emFichaDedicada =
+          pathPessoasNorm === '/clientes/nova' || /^\/clientes\/editar\/\d+$/.test(pathPessoasNorm);
+        if (!emFichaDedicada) {
+          setForm((f) => ({ ...f, edicaoDesabilitada: true }));
+        }
       }
     } catch {
       /* ignore */
     }
-  }, []);
+  }, [pathPessoasNorm]);
 
   function limparTextoColagem() {
     setTextoColagemPessoa('');
@@ -309,7 +359,9 @@ export function CadastroPessoas() {
           );
         }
         setExtracaoResumo(
-          partesResumo.length ? `${partesResumo.join(' ')} Revise antes de salvar.` : ''
+          partesResumo.length
+            ? `${partesResumo.join(' ')} Revise os dados; alterações são gravadas automaticamente ao editar.`
+            : ''
         );
       } finally {
         setExtracaoProcessando(false);
@@ -515,12 +567,15 @@ export function CadastroPessoas() {
     } catch {
       codigoProximo = '1';
     }
+    autosaveAtivoRef.current = true;
+    ultimoSnapshotSalvoRef.current = null;
     setForm({
       ...emptyPessoa,
       codigo: codigoProximo,
       nacionalidade: NACIONALIDADE_PADRAO_BR,
       responsavelId: null,
       responsavel: null,
+      edicaoDesabilitada: true,
     });
     setNacionalidadeSugestaoNaoValidada(true);
     setEditId(null);
@@ -562,9 +617,13 @@ export function CadastroPessoas() {
 
   function aplicarEdicaoPessoa(item) {
     setEditId(item.id);
+    complementaresAplicadosParaIdRef.current = null;
+    autosaveAtivoRef.current = false;
+    ultimoSnapshotSalvoRef.current = null;
     const nacSalva = String(item.nacionalidade ?? '').trim();
     setForm({
       ...emptyPessoa,
+      edicaoDesabilitada: true,
       codigo: String(item.id ?? ''),
       nome: item.nome ?? '',
       genero: item.genero ?? '',
@@ -713,6 +772,7 @@ export function CadastroPessoas() {
   useEffect(() => {
     if (modo !== 'editar' || !editId) return;
     let cancelado = false;
+    const idNum = Number(editId);
     (async () => {
       try {
         setErroComplementar('');
@@ -723,27 +783,35 @@ export function CadastroPessoas() {
           : Promise.resolve([null, null]);
         const [comp, ec] = await Promise.all([compPromise, extrasPromise]);
         if (cancelado) return;
-        if (comp) {
-          setForm((f) => ({
-            ...f,
-            rg: comp.rg ?? f.rg,
-            orgaoExpedidor: comp.orgaoExpedidor ?? f.orgaoExpedidor,
-            profissao: comp.profissao ?? f.profissao,
-            nacionalidade: comp.nacionalidade ?? f.nacionalidade,
-            estadoCivil: comp.estadoCivil ?? f.estadoCivil,
-            genero: comp.genero ?? f.genero,
-          }));
+        const primeiraCargaComplementares = complementaresAplicadosParaIdRef.current !== idNum;
+        if (primeiraCargaComplementares) {
+          if (comp) {
+            setForm((f) => ({
+              ...f,
+              rg: comp.rg ?? f.rg,
+              orgaoExpedidor: comp.orgaoExpedidor ?? f.orgaoExpedidor,
+              profissao: comp.profissao ?? f.profissao,
+              nacionalidade: comp.nacionalidade ?? f.nacionalidade,
+              estadoCivil: comp.estadoCivil ?? f.estadoCivil,
+              genero: comp.genero ?? f.genero,
+            }));
+          }
+          if (featureFlags.useApiPessoasComplementares && ec) {
+            const [ends, conts] = ec;
+            if (ends != null) setEnderecos(enderecosApiParaUi(ends));
+            if (conts != null) setContatos(contatosApiParaUi(conts));
+          }
+          complementaresAplicadosParaIdRef.current = idNum;
         }
-        if (featureFlags.useApiPessoasComplementares && ec) {
-          const [ends, conts] = ec;
-          if (ends != null) setEnderecos(enderecosApiParaUi(ends));
-          if (conts != null) setContatos(contatosApiParaUi(conts));
+        if (!cancelado) {
+          autosaveAtivoRef.current = true;
         }
       } catch (e) {
         if (!cancelado) {
           setErroComplementar(
             e?.message || 'Erro ao carregar dados complementares, endereços ou contatos.'
           );
+          autosaveAtivoRef.current = true;
         }
       }
     })();
@@ -767,7 +835,7 @@ export function CadastroPessoas() {
   }, []);
 
   const handleClickUploadDocumento = () => {
-    if (docProcessando) return;
+    if (docProcessando || form.edicaoDesabilitada) return;
     if (inputDocRef.current) {
       inputDocRef.current.click();
     }
@@ -787,126 +855,238 @@ export function CadastroPessoas() {
     setModalContatos(true);
   }, [form.edicaoDesabilitada]);
 
-  const salvar = async () => {
-    if (!form.nome?.trim() || !form.cpf?.trim()) {
-      setError('Preencha nome e CPF ou CNPJ.');
-      return;
-    }
-    const docFmt = validarFormatarCpfCnpjAoSair(form.cpf);
-    if (!docFmt.ok) {
-      setError(docFmt.aviso || 'CPF ou CNPJ inválido.');
-      return;
-    }
-    if (docFmt.valor !== form.cpf) {
-      setForm((f) => ({ ...f, cpf: docFmt.valor }));
-    }
-    const docDigitos = normalizarDigitosCpfCnpj(docFmt.valor);
-    const excluirDupCheck = modo === 'editar' ? editId : null;
-    let listaParaDup = lista;
-    if (listaParaDup.length === 0) {
-      try {
-        const fresh = await listarClientes(apenasAtivos);
-        listaParaDup = Array.isArray(fresh) ? fresh : [];
-      } catch {
-        listaParaDup = [];
-      }
-    }
-    const duplicataNaLista = buscarPessoaComMesmoDocumento(listaParaDup, docDigitos, excluirDupCheck);
-    if (duplicataNaLista) {
-      setError(null);
-      setModalCpfDuplicado(duplicataNaLista);
-      return;
-    }
+  const persistirCadastro = useCallback(
+    async (opts = {}) => {
+      const snapshotEsperado = opts.snapshotEsperado;
+      const formAtual = formRef.current;
+      if (formAtual.edicaoDesabilitada) return false;
+      const modoAtual = modoRef.current;
+      if (modoAtual !== 'criar' && modoAtual !== 'editar') return false;
+      if (modoAtual === 'editar' && !autosaveAtivoRef.current) return false;
 
-    const previewDoc = docPreview;
-    const modoSalvar = modo;
-    const editIdSalvar = editId;
-    setSalvando(true);
-    setError(null);
-    setMensagemSucesso('');
-    try {
-      const payload = {
-        nome: form.nome.trim(),
-        email: form.email?.trim() ? form.email.trim() : null,
-        cpf: docFmt.valor.replace(/\D/g, ''),
-        telefone: form.contato?.trim() || null,
-        dataNascimento: form.dataNascimento || null,
-        ativo: form.ativo,
-        marcadoMonitoramento: form.marcadoMonitoramento === true,
-        responsavelId:
-          form.responsavelId != null && form.responsavelId !== ''
-            ? Number(form.responsavelId)
-            : null,
-      };
-      let idParaDocumento = null;
-      if (modoSalvar === 'criar') {
-        const criado = await criarCliente(payload);
-        idParaDocumento =
-          criado && (criado.id != null || criado.Id != null)
-            ? Number(criado.id ?? criado.Id)
-            : null;
-      } else {
-        await atualizarCliente(editIdSalvar, payload);
-        idParaDocumento = Number(editIdSalvar);
+      const enderecosAtual = enderecosRef.current;
+      const contatosAtual = contatosRef.current;
+      const snapAtual = buildSnapshotCadastro(formAtual, enderecosAtual, contatosAtual);
+      if (snapshotEsperado != null && snapshotEsperado !== snapAtual) return false;
+
+      if (!formAtual.nome?.trim() || !formAtual.cpf?.trim()) return false;
+
+      const docFmt = validarFormatarCpfCnpjAoSair(formAtual.cpf);
+      if (!docFmt.ok) return false;
+
+      if (docFmt.valor !== formAtual.cpf) {
+        setForm((f) => ({ ...f, cpf: docFmt.valor }));
       }
-      if (idParaDocumento && Number.isFinite(Number(idParaDocumento))) {
-        await salvarPessoaComplementar(idParaDocumento, {
-          rg: form.rg,
-          orgaoExpedidor: form.orgaoExpedidor,
-          profissao: form.profissao,
-          nacionalidade: form.nacionalidade,
-          estadoCivil: form.estadoCivil,
-          genero: form.genero,
-        });
-        if (featureFlags.useApiPessoasComplementares) {
-          const { usuarioNome } = getContextoAuditoriaUsuario();
-          await salvarEnderecosPessoa(idParaDocumento, enderecos);
-          await salvarContatosPessoa(idParaDocumento, contatos, usuarioNome);
-        }
-      }
-      if (previewDoc?.file && idParaDocumento && Number.isFinite(idParaDocumento)) {
-        try {
-          await salvarDocumentoPessoa(idParaDocumento, previewDoc.file, {
-            dadosExtraidos: previewDoc.dados,
-          });
-          setPessoasComDocumento(listarPessoasComDocumento());
-        } catch {
-          setDocStatus({
-            kind: 'error',
-            message:
-              'Pessoa salva, mas houve falha ao armazenar o documento localmente (navegador ou limite de espaço).',
-          });
-        }
-      }
-      setDocPreview(null);
-      cancelarForm();
-    } catch (err) {
-      const msg = String(err.message || '');
-      const pareceDuplicataCpf =
-        /cpf/i.test(msg) && (/já existe|ja existe|duplic/i.test(msg) || /cadastro com o CPF/i.test(msg));
-      if (pareceDuplicataCpf) {
+
+      const docDigitos = normalizarDigitosCpfCnpj(docFmt.valor);
+      const editIdAtual = editIdRef.current;
+      const excluirDupCheck = modoAtual === 'editar' ? editIdAtual : null;
+      let listaParaDup = lista;
+      if (listaParaDup.length === 0) {
         try {
           const fresh = await listarClientes(apenasAtivos);
-          const arr = Array.isArray(fresh) ? fresh : [];
-          const dup = buscarPessoaComMesmoDocumento(
-            arr,
-            docDigitos,
-            modoSalvar === 'editar' ? editIdSalvar : null
-          );
-          if (dup) {
-            setLista(arr);
-            setModalCpfDuplicado(dup);
-            return;
-          }
+          listaParaDup = Array.isArray(fresh) ? fresh : [];
         } catch {
-          /* segue para mensagem genérica */
+          listaParaDup = [];
         }
       }
-      setError(err.message || 'Erro ao salvar.');
-    } finally {
-      setSalvando(false);
-    }
-  };
+      const duplicataNaLista = buscarPessoaComMesmoDocumento(listaParaDup, docDigitos, excluirDupCheck);
+      if (duplicataNaLista) {
+        setError(null);
+        setModalCpfDuplicado(duplicataNaLista);
+        return false;
+      }
+
+      const previewDoc = docPreview;
+      const editIdSalvar = editIdAtual;
+      setSalvando(true);
+      setError(null);
+      try {
+        const payload = {
+          nome: formAtual.nome.trim(),
+          email: formAtual.email?.trim() ? formAtual.email.trim() : null,
+          cpf: docFmt.valor.replace(/\D/g, ''),
+          telefone: formAtual.contato?.trim() || null,
+          dataNascimento: formAtual.dataNascimento || null,
+          ativo: formAtual.ativo,
+          marcadoMonitoramento: formAtual.marcadoMonitoramento === true,
+          responsavelId:
+            formAtual.responsavelId != null && formAtual.responsavelId !== ''
+              ? Number(formAtual.responsavelId)
+              : null,
+        };
+        let idParaDocumento = null;
+        let criouNovo = false;
+        if (modoAtual === 'criar') {
+          const criado = await criarCliente(payload);
+          idParaDocumento =
+            criado && (criado.id != null || criado.Id != null)
+              ? Number(criado.id ?? criado.Id)
+              : null;
+          criouNovo = idParaDocumento != null && Number.isFinite(Number(idParaDocumento));
+        } else {
+          await atualizarCliente(editIdSalvar, payload);
+          idParaDocumento = Number(editIdSalvar);
+        }
+        if (idParaDocumento && Number.isFinite(Number(idParaDocumento))) {
+          await salvarPessoaComplementar(idParaDocumento, {
+            rg: formAtual.rg,
+            orgaoExpedidor: formAtual.orgaoExpedidor,
+            profissao: formAtual.profissao,
+            nacionalidade: formAtual.nacionalidade,
+            estadoCivil: formAtual.estadoCivil,
+            genero: formAtual.genero,
+          });
+          if (featureFlags.useApiPessoasComplementares) {
+            const { usuarioNome } = getContextoAuditoriaUsuario();
+            await salvarEnderecosPessoa(idParaDocumento, enderecosAtual);
+            await salvarContatosPessoa(idParaDocumento, contatosAtual, usuarioNome);
+          }
+        }
+        if (previewDoc?.file && idParaDocumento && Number.isFinite(idParaDocumento)) {
+          try {
+            await salvarDocumentoPessoa(idParaDocumento, previewDoc.file, {
+              dadosExtraidos: previewDoc.dados,
+            });
+            setPessoasComDocumento(listarPessoasComDocumento());
+          } catch {
+            setDocStatus({
+              kind: 'error',
+              message:
+                'Pessoa salva, mas houve falha ao armazenar o documento localmente (navegador ou limite de espaço).',
+            });
+          }
+        }
+        const patchLista = {
+          id: idParaDocumento,
+          nome: formAtual.nome.trim(),
+          cpf: docFmt.valor.replace(/\D/g, ''),
+          email: formAtual.email?.trim() ? formAtual.email.trim() : null,
+          telefone: formAtual.contato?.trim() || null,
+          dataNascimento: formAtual.dataNascimento || null,
+          ativo: formAtual.ativo,
+          marcadoMonitoramento: formAtual.marcadoMonitoramento === true,
+          responsavelId:
+            formAtual.responsavelId != null && formAtual.responsavelId !== ''
+              ? Number(formAtual.responsavelId)
+              : null,
+          nacionalidade: formAtual.nacionalidade,
+          rg: formAtual.rg,
+          orgaoExpedidor: formAtual.orgaoExpedidor,
+          profissao: formAtual.profissao,
+          estadoCivil: formAtual.estadoCivil,
+          genero: formAtual.genero,
+        };
+        setLista((prev) => {
+          const idx = prev.findIndex((p) => Number(p.id) === Number(idParaDocumento));
+          if (idx >= 0) {
+            const next = [...prev];
+            next[idx] = { ...next[idx], ...patchLista };
+            return next;
+          }
+          return [...prev, patchLista];
+        });
+        if (criouNovo) {
+          setEditId(idParaDocumento);
+          setModo('editar');
+          setForm((f) => ({ ...f, codigo: String(idParaDocumento) }));
+          editIdRef.current = idParaDocumento;
+          modoRef.current = 'editar';
+          navigate(`/clientes/editar/${idParaDocumento}`, { replace: true });
+          setMensagemSucesso(`Pessoa cadastrada (nº ${idParaDocumento}). Continuando edição…`);
+        } else {
+          setMensagemSucesso(`Cadastro nº ${idParaDocumento} atualizado.`);
+        }
+        setDocPreview(null);
+        ultimoSnapshotSalvoRef.current = buildSnapshotCadastro(
+          formRef.current,
+          enderecosRef.current,
+          contatosRef.current
+        );
+        return true;
+      } catch (err) {
+        const msg = String(err.message || '');
+        const pareceDuplicataCpf =
+          /cpf/i.test(msg) &&
+          (/já existe|ja existe|duplic/i.test(msg) || /cadastro com o CPF/i.test(msg));
+        if (pareceDuplicataCpf) {
+          try {
+            const fresh = await listarClientes(apenasAtivos);
+            const arr = Array.isArray(fresh) ? fresh : [];
+            const dup = buscarPessoaComMesmoDocumento(
+              arr,
+              docDigitos,
+              modoAtual === 'editar' ? editIdSalvar : null
+            );
+            if (dup) {
+              setLista(arr);
+              setModalCpfDuplicado(dup);
+              return false;
+            }
+          } catch {
+            /* segue para mensagem genérica */
+          }
+        }
+        setError(err.message || 'Erro ao salvar.');
+        return false;
+      } finally {
+        setSalvando(false);
+      }
+    },
+    [apenasAtivos, docPreview, lista, navigate]
+  );
+
+  useEffect(() => {
+    if (form.edicaoDesabilitada) return undefined;
+    if (modo !== 'criar' && modo !== 'editar') return undefined;
+    if (modo === 'editar' && !autosaveAtivoRef.current) return undefined;
+
+    const snap = buildSnapshotCadastro(form, enderecos, contatos);
+    if (ultimoSnapshotSalvoRef.current === snap) return undefined;
+
+    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    autosaveTimerRef.current = setTimeout(() => {
+      autosaveTimerRef.current = null;
+      const executar = async () => {
+        if (autosaveEmCursoRef.current) {
+          autosaveReagendarRef.current = true;
+          return;
+        }
+        autosaveEmCursoRef.current = true;
+        try {
+          await persistirCadastro({ snapshotEsperado: snap });
+        } finally {
+          autosaveEmCursoRef.current = false;
+          if (autosaveReagendarRef.current) {
+            autosaveReagendarRef.current = false;
+            const snapNovo = buildSnapshotCadastro(
+              formRef.current,
+              enderecosRef.current,
+              contatosRef.current
+            );
+            if (ultimoSnapshotSalvoRef.current !== snapNovo && !formRef.current.edicaoDesabilitada) {
+              void persistirCadastro({ snapshotEsperado: snapNovo });
+            }
+          }
+        }
+      };
+      void executar();
+    }, AUTOSAVE_DEBOUNCE_MS);
+
+    return () => {
+      if (autosaveTimerRef.current) {
+        clearTimeout(autosaveTimerRef.current);
+        autosaveTimerRef.current = null;
+      }
+    };
+  }, [form, enderecos, contatos, modo, persistirCadastro]);
+
+  useEffect(() => {
+    if (ultimoSnapshotSalvoRef.current !== null) return;
+    if (modo !== 'editar' && modo !== 'criar') return;
+    if (modo === 'editar' && !autosaveAtivoRef.current) return;
+    ultimoSnapshotSalvoRef.current = buildSnapshotCadastro(form, enderecos, contatos);
+  }, [form, enderecos, contatos, modo, editId]);
 
   function confirmarAbrirCadastroPessoaExistente() {
     if (!modalCpfDuplicado) return;
@@ -1083,16 +1263,25 @@ export function CadastroPessoas() {
             {mostrarFormularioEdicao ? (
               <>
                 <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-lg font-semibold text-slate-800">
-                    {modo === 'criar' ? 'Nova pessoa' : 'Editar pessoa'}
-                  </h2>
+                  <div>
+                    <h2 className="text-lg font-semibold text-slate-800">
+                      {modo === 'criar' ? 'Nova pessoa' : 'Editar pessoa'}
+                    </h2>
+                    {salvando && !form.edicaoDesabilitada ? (
+                      <p className="text-xs text-blue-700 mt-0.5 font-medium">Gravando alterações…</p>
+                    ) : !form.edicaoDesabilitada ? (
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Alterações gravadas automaticamente enquanto você digita.
+                      </p>
+                    ) : null}
+                  </div>
                   <div className="flex items-center gap-3">
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
                         onClick={handleClickUploadDocumento}
                         className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 disabled:opacity-60"
-                        disabled={docProcessando}
+                        disabled={docProcessando || form.edicaoDesabilitada}
                       >
                         <FileUp className="w-4 h-4" />
                         Anexar documento pessoal
@@ -1170,10 +1359,17 @@ export function CadastroPessoas() {
                         onChange={(e) => setForm((f) => ({ ...f, edicaoDesabilitada: e.target.checked }))}
                         className="rounded border-slate-300 text-blue-600"
                       />
-                      Edição desabilitada
+                      Edição Desabilitada
                     </label>
                   </div>
                 </div>
+                <div
+                  className={
+                    form.edicaoDesabilitada
+                      ? 'rounded-xl border border-slate-200/90 bg-slate-100/80 p-4 -mx-1 opacity-70 transition-colors duration-200'
+                      : 'transition-colors duration-200'
+                  }
+                >
                 {docPreview && (
                   <div className="mb-4 p-4 rounded-lg border border-emerald-200 bg-emerald-50 text-sm text-emerald-900">
                     <div className="flex items-start justify-between gap-3 mb-2">
@@ -1183,7 +1379,7 @@ export function CadastroPessoas() {
                           Dados sugeridos pelo OCR
                         </p>
                         <p className="text-xs text-emerald-800 mt-0.5">
-                          Revise os campos abaixo. Você pode editar manualmente antes de salvar.
+                          Revise os campos abaixo. As alterações são gravadas automaticamente ao editar.
                         </p>
                       </div>
                       <button
@@ -1571,7 +1767,8 @@ export function CadastroPessoas() {
                         <button
                           type="button"
                           onClick={() => setModalEnderecos(true)}
-                          className="inline-flex items-center gap-1.5 px-3 py-2 text-sm border border-slate-300 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200"
+                          disabled={form.edicaoDesabilitada}
+                          className="inline-flex items-center gap-1.5 px-3 py-2 text-sm border border-slate-300 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 disabled:opacity-50"
                         >
                           <MapPin className="w-4 h-4" />
                           Endereços
@@ -1604,7 +1801,8 @@ export function CadastroPessoas() {
                         <button
                           type="button"
                           onClick={() => setModalContatos(true)}
-                          className="inline-flex items-center gap-1.5 px-3 py-2 text-sm border border-slate-300 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200"
+                          disabled={form.edicaoDesabilitada}
+                          className="inline-flex items-center gap-1.5 px-3 py-2 text-sm border border-slate-300 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 disabled:opacity-50"
                         >
                           <Phone className="w-4 h-4" />
                           Abrir contatos
@@ -1638,16 +1836,9 @@ export function CadastroPessoas() {
                     ) : null}
                   </div>
                 )}
+                </div>
 
                 <div className="flex flex-wrap gap-3 mt-6 pt-6 border-t border-slate-200">
-                  <button
-                    type="button"
-                    onClick={() => salvar()}
-                    disabled={salvando}
-                    className="px-5 py-2.5 rounded-lg bg-blue-600 text-white font-medium text-sm hover:bg-blue-700 disabled:opacity-50 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-                  >
-                    {salvando ? 'Salvando...' : 'Salvar'}
-                  </button>
                   {modo === 'editar' && editId != null && (
                     <button
                       type="button"

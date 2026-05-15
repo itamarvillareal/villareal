@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { featureFlags } from '../config/featureFlags.js';
 import { padCliente8Cadastro } from '../data/cadastroClientesStorage.js';
-import { listarClientesCadastro } from '../repositories/clientesRepository.js';
+import { listarClientesIndiceCadastro } from '../repositories/clientesRepository.js';
 import {
   extrairInadimplenciaPdf,
   importarInadimplenciaConfirmado,
@@ -307,7 +307,7 @@ export function AtividadesEmLote() {
       setLoadingClientes(true);
       setErro(null);
       try {
-        const list = await listarClientesCadastro();
+        const list = await listarClientesIndiceCadastro();
         if (!cancelled) setClientes(Array.isArray(list) ? list : []);
       } catch (e) {
         if (!cancelled) setErro(e?.message || String(e));

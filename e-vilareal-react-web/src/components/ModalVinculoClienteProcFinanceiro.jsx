@@ -12,11 +12,11 @@ import {
 } from '../data/buscaClienteProcFinanceiro';
 import { normalizarCodigoClienteFinanceiro } from '../data/financeiroData.js';
 import {
-  listarClientesCadastro,
+  listarClientesIndiceCadastro,
   resolverClienteCadastroPorCodigo,
 } from '../repositories/clientesRepository.js';
 import {
-  listarProcessosPorCodigoCliente,
+  listarProcessosResumoPorCodigoCliente,
   mapApiProcessoToUiShape,
 } from '../repositories/processosRepository.js';
 
@@ -164,7 +164,7 @@ export function ModalVinculoClienteProcFinanceiro({
 
             const pessoas = await pesquisarCadastroPessoasPorNomeOuCpf(t, { limite: 60 });
             if (cancelled) return;
-            const listaCli = await listarClientesCadastro();
+            const listaCli = await listarClientesIndiceCadastro();
             const rows = [];
             for (const p of pessoas || []) {
               const pid = Number(p?.id);
@@ -219,7 +219,7 @@ export function ModalVinculoClienteProcFinanceiro({
       setProcessosPasso2([]);
       try {
         if (featureFlags.useApiProcessos) {
-          const raw = await listarProcessosPorCodigoCliente(clienteSel.codigoPadded);
+          const raw = await listarProcessosResumoPorCodigoCliente(clienteSel.codigoPadded);
           if (cancelled) return;
           setProcessosPasso2(
             (raw || []).map((row) => {

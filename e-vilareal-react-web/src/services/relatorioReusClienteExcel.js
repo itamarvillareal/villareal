@@ -1,6 +1,6 @@
 import { pesquisarCadastroPessoasPorNomeOuCpf, buscarCliente } from '../api/clientesService.js';
 import {
-  listarProcessosPorCodigoCliente,
+  listarProcessosResumoPorCodigoCliente,
   listarPartesProcesso,
   mapApiProcessoToUiShape,
 } from '../repositories/processosRepository.js';
@@ -93,7 +93,7 @@ async function exportarReusModoHistoricoLocal(codPad, onProgress) {
  * @param {(ev: { atual: number; total: number }) => void} [onProgress]
  */
 async function exportarReusModoApi(codPad, onProgress) {
-  const rawList = await listarProcessosPorCodigoCliente(codPad);
+  const rawList = await listarProcessosResumoPorCodigoCliente(codPad);
   const lista = Array.isArray(rawList) ? rawList : [];
   const unique = new Map();
 

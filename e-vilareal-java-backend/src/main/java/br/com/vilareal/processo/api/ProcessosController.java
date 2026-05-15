@@ -38,14 +38,23 @@ public class ProcessosController {
                     "Com `codigoCliente` (8 dígitos): processos em que essa pessoa é **titular** do cabeçalho (`pessoa_id`), "
                             + "página JSON (`Page` Spring: `content`, `totalElements`, `last`, …; "
                             + "query `page`, `size`, `sort`; padrão `page=0`, `size=100`, `sort=numeroInterno`, `id`). "
+                            + "Com `codigoCliente` e `numeroInterno`: um único processo (JSON objeto, 404 se inexistente). "
                             + "Sem `codigoCliente`: lista paginada de todos (`Page` Spring: `content`, `totalElements`, …; query `page`, `size`, `sort`).")
     public ResponseEntity<?> listar(
             @RequestParam(required = false) String codigoCliente,
+            @RequestParam(required = false) Integer numeroInterno,
             HttpServletRequest request,
             @PageableDefault(size = 20, sort = "id") Pageable pageable) {
+        if (StringUtils.hasText(codigoCliente) && numeroInterno != null) {
+            return processoApplicationService
+                    .buscarPorCodigoClienteENumeroInterno(codigoCliente.trim(), numeroInterno)
+                    .map(ResponseEntity::ok)
+                    .orElse(ResponseEntity.notFound().build());
+        }
         if (StringUtils.hasText(codigoCliente)) {
+            boolean resumo = "true".equalsIgnoreCase(String.valueOf(request.getParameter("resumo")).trim());
             return ResponseEntity.ok(processoApplicationService.listarPorCodigoCliente(
-                    codigoCliente.trim(), pageableParaCodigoCliente(request)));
+                    codigoCliente.trim(), pageableParaCodigoCliente(request), resumo));
         }
         return ResponseEntity.ok(processoApplicationService.listarTodosPaginado(pageable));
     }

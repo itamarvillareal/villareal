@@ -26,6 +26,7 @@
  *   --sem-criar-processos        Não cria cabeçalho de processo em falta
  *   --apenas-orfaos             Só linhas sem processo na API (requer criação de stub; combina com --sem-criar-processos desactivado)
  *   --cliente=119 --substituir-andamentos   Só um cliente: apaga todos os andamentos desses processos antes do POST
+ *   --processo=7                            Só linhas com nº interno (col. B) igual a 7 (combine com --cliente=)
  *   --apenas-novos           Só faz POST se não existir andamento com o mesmo movimentoEm + título (dedupe na API).
  *                             Desliga automaticamente a limpeza por origem (--nao-limpar-import).
  *                             Concorrência é reduzida a 1 para evitar duplicados em corrida na mesma chave.
@@ -350,6 +351,8 @@ function parseArgs(argv) {
     codigoClienteMax: /** @type {number | null} */ (null),
     /** Só POST andamentos cuja chave (data+título) ainda não existe no processo. */
     apenasNovos: false,
+    /** Filtro col. B: --processo=7 */
+    numeroInternoFiltro: /** @type {number | null} */ (null),
   };
   for (const a of argv) {
     if (a === '--dry-run') out.dryRun = true;
@@ -362,6 +365,10 @@ function parseArgs(argv) {
     else if (a.startsWith('--login=')) out.login = a.slice(8);
     else if (a.startsWith('--senha=')) out.senha = a.slice(8);
     else if (a.startsWith('--cliente=')) out.codigoClienteRaw = a.slice(10).trim();
+    else if (a.startsWith('--processo=')) {
+      const n = Number(a.slice('--processo='.length).trim());
+      if (Number.isFinite(n) && n >= 1) out.numeroInternoFiltro = Math.floor(n);
+    }
     else if (a.startsWith('--origem=')) out.origem = a.slice(9).trim();
     else if (a.startsWith('--apenas-codigos-entre=')) {
       const rest = a.slice(23);
@@ -963,6 +970,16 @@ async function main() {
     );
     if (candidatas.length === 0) {
       console.warn('[filtro-faixa] Nenhuma linha nesta faixa — verifique a coluna A ou o intervalo.');
+    }
+  }
+
+  if (opts.numeroInternoFiltro != null) {
+    const ni = opts.numeroInternoFiltro;
+    const antes = candidatas.length;
+    candidatas = candidatas.filter((L) => L.numeroInterno === ni);
+    console.log(`[filtro] processo (col. B) = ${ni}: ${candidatas.length} linhas (de ${antes})`);
+    if (candidatas.length === 0) {
+      console.warn('[filtro] Nenhuma linha para este nº interno — verifique a coluna B da planilha.');
     }
   }
 

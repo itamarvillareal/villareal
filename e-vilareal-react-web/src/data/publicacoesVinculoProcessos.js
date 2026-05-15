@@ -7,8 +7,8 @@ import { obterNumeroProcessoNovoUnificado } from './processosHistoricoData.js';
 import { normalizarCnjParaChave } from './publicacoesPdfParser.js';
 import { calcularScoreConfianca, datajudStubFromStatusValidacao } from './publicacoesValidacaoScore.js';
 import { featureFlags } from '../config/featureFlags.js';
-import { listarClientesCadastro } from '../repositories/clientesRepository.js';
-import { listarProcessosPorCodigoCliente, mapApiProcessoToUiShape } from '../repositories/processosRepository.js';
+import { listarClientesIndiceCadastro } from '../repositories/clientesRepository.js';
+import { listarProcessosResumoPorCodigoCliente, mapApiProcessoToUiShape } from '../repositories/processosRepository.js';
 
 /**
  * Índice vazio até {@link montarIndiceCnjClienteProcAsync} concluir (evita dados fictícios).
@@ -28,7 +28,7 @@ export async function montarIndiceCnjClienteProcAsync() {
   }
   let clientes;
   try {
-    clientes = await listarClientesCadastro();
+    clientes = await listarClientesIndiceCadastro();
   } catch {
     return map;
   }
@@ -47,7 +47,7 @@ export async function montarIndiceCnjClienteProcAsync() {
 
     let rawList;
     try {
-      rawList = await listarProcessosPorCodigoCliente(codPad);
+      rawList = await listarProcessosResumoPorCodigoCliente(codPad);
     } catch {
       continue;
     }

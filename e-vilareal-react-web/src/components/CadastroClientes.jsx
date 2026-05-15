@@ -25,10 +25,6 @@ import {
   obterProximoCodigoClienteSemPessoaAtribuida,
 } from '../data/cadastroClientesStorage.js';
 import {
-  obterDescricaoAcaoUnificada,
-  obterNumeroProcessoVelhoUnificado,
-  obterNumeroProcessoNovoUnificado,
-  obterParteOpostaUnificada,
   salvarNaturezaAcaoDoProcesso,
   salvarNumeroProcessoVelhoDoProcesso,
   salvarNumeroProcessoNovoDaGradeCadastro,
@@ -45,7 +41,7 @@ import {
   extrairIntentNavegacaoProcessos,
 } from '../domain/camposProcessoCliente.js';
 import {
-  listarClientesCadastro,
+  listarClientesIndiceCadastro,
   resolverClienteCadastroPorCodigo,
   salvarClienteCadastro,
 } from '../repositories/clientesRepository.js';
@@ -53,7 +49,7 @@ import { getIdPessoaPorCodCliente } from '../data/clienteCodigoHelpers.js';
 import {
   buscarClientePorCodigo,
   buscarProcessoPorChaveNatural,
-  listarProcessosPorCodigoCliente,
+  listarProcessosResumoPorCodigoCliente,
   listarProcessosPorNumeroInterno,
   mergeCadastroClientesProcessosComApi,
   salvarCabecalhoProcesso,
@@ -312,6 +308,7 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
   const [erroApiCliente, setErroApiCliente] = useState('');
   /** GET /api/processos?codigoCliente= falhou — a grade fica só com dados locais/mock. */
   const [erroApiProcessosGrade, setErroApiProcessosGrade] = useState('');
+  const [processosGradeCarregando, setProcessosGradeCarregando] = useState(false);
   /** Incrementado a cada entrada na rota Clientes — força releitura de API/localStorage no «Próximo cliente». */
   const [proximoClienteRefreshTick, setProximoClienteRefreshTick] = useState(0);
   /** Atualiza ao trocar de cliente, dados da API e cada acesso ao formulário Clientes. */
@@ -351,20 +348,26 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
   }, [toastDocCliente]);
 
   const refreshProcessosGrade = useCallback((padded, baseLista) => {
-    const enriched = enriquecerListaProcessosComHistoricoLocal(padded, baseLista);
+    const enriched = alinharListaProcessosDescricaoComHistorico(
+      padded,
+      enriquecerListaProcessosComHistoricoLocal(padded, baseLista)
+    );
     if (!featureFlags.useApiProcessos) {
       setErroApiProcessosGrade('');
+      setProcessosGradeCarregando(false);
       setProcessos(enriched);
       return;
     }
     const myId = ++processosApiReqIdRef.current;
     setErroApiProcessosGrade('');
     setProcessos(enriched);
-    void listarProcessosPorCodigoCliente(padded)
+    setProcessosGradeCarregando(true);
+    void listarProcessosResumoPorCodigoCliente(padded)
       .then((apiList) => {
         if (processosApiReqIdRef.current !== myId) return;
         setErroApiProcessosGrade('');
-        setProcessos(mergeCadastroClientesProcessosComApi(padded, enriched, apiList));
+        const merged = mergeCadastroClientesProcessosComApi(padded, enriched, apiList);
+        setProcessos(alinharListaProcessosDescricaoComHistorico(padded, merged));
       })
       .catch((e) => {
         if (processosApiReqIdRef.current !== myId) return;
@@ -372,6 +375,9 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
           String(e?.message || '').trim() || 'Não foi possível carregar os processos deste cliente na API.'
         );
         setProcessos(enriched);
+      })
+      .finally(() => {
+        if (processosApiReqIdRef.current === myId) setProcessosGradeCarregando(false);
       });
   }, []);
 
@@ -389,12 +395,13 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
 
   useEffect(() => {
     if (!emTelaClientes) return undefined;
+    aplicarDadosClienteRef.current(padCliente8(codigoRef.current));
     let cancelado = false;
     void (async () => {
       if (featureFlags.useApiClientes) {
         setClientesApiCarregados(false);
         try {
-          const data = await listarClientesCadastro();
+          const data = await listarClientesIndiceCadastro();
           if (!cancelado) {
             setClientesApiIndex(Array.isArray(data) ? data : []);
             setErroApiCliente('');
@@ -402,7 +409,7 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
         } catch (e) {
           if (!cancelado) {
             setClientesApiIndex([]);
-            setErroApiCliente(e?.message || 'Erro ao carregar clientes da API.');
+            setErroApiCliente(e?.message || 'Erro ao carregar índice de clientes da API.');
           }
         } finally {
           if (!cancelado) setClientesApiCarregados(true);
@@ -456,64 +463,66 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
     const mock = gerarMockClienteEProcessos(padded, idx);
     const persisted = loadCadastroClienteDados(padded);
 
+    const baseListaProcessos = () =>
+      mock
+        ? mergeProcessosLista(mock.processos, persisted?.processos)
+        : Array.isArray(persisted?.processos)
+          ? [...persisted.processos]
+          : [];
+
+    const aplicarCabecalhoApi = (api) => {
+      setCodigo(api.codigo);
+      setPessoa(api.pessoa ?? '');
+      setNomeRazao(api.nomeRazao ?? '');
+      setCnpjCpf(api.cnpjCpf ?? '');
+      setObservacao(api.observacao ?? '');
+      setClienteInativo(api.clienteInativo ?? false);
+      setEdicaoDesabilitada(true);
+      try {
+        saveCadastroClienteDados(api.codigo, { pessoa: api.pessoa ?? '' });
+      } catch {
+        /* ignore */
+      }
+    };
+
     if (featureFlags.useApiClientes) {
       const myId = ++resolucaoCodigoReqIdRef.current;
       const fromList = (idx || []).find((c) => c.codigo === padded);
       setCodigo(padded);
-      resolucaoClientePendingRef.current += 1;
 
+      if (fromList) {
+        aplicarCabecalhoApi(fromList);
+        refreshProcessosGrade(padded, baseListaProcessos());
+      } else if (mock) {
+        setCodigo(mock.codigoCliente);
+        setPessoa(mock.pessoa ?? '');
+        setNomeRazao(persisted?.nomeRazao ?? mock.nomeRazao);
+        setCnpjCpf(persisted?.cnpjCpf ?? mock.cnpjCpf);
+        setObservacao(persisted?.observacao !== undefined ? persisted.observacao : DEFAULT_CLIENTE_VAZIO.observacao);
+        setClienteInativo(persisted?.clienteInativo ?? DEFAULT_CLIENTE_VAZIO.clienteInativo);
+        setEdicaoDesabilitada(true);
+        refreshProcessosGrade(mock.codigoCliente, baseListaProcessos());
+      } else if (persisted) {
+        setPessoa(persisted.pessoa ?? '');
+        setNomeRazao(persisted.nomeRazao ?? '');
+        setCnpjCpf(persisted.cnpjCpf ?? '');
+        setObservacao(persisted.observacao ?? '');
+        setClienteInativo(persisted.clienteInativo ?? false);
+        setEdicaoDesabilitada(true);
+        refreshProcessosGrade(padded, baseListaProcessos());
+      } else {
+        setEdicaoDesabilitada(true);
+        refreshProcessosGrade(padded, []);
+      }
+
+      resolucaoClientePendingRef.current += 1;
       void resolverClienteCadastroPorCodigo(padded)
         .then((resolved) => {
           if (resolucaoCodigoReqIdRef.current !== myId) return;
           const api = resolved ?? fromList;
-          if (api) {
-            setCodigo(api.codigo);
-            setPessoa(api.pessoa ?? '');
-            setNomeRazao(api.nomeRazao ?? '');
-            setCnpjCpf(api.cnpjCpf ?? '');
-            setObservacao(api.observacao ?? '');
-            setClienteInativo(api.clienteInativo ?? false);
-            setEdicaoDesabilitada(true);
-            try {
-              saveCadastroClienteDados(padded, { pessoa: api.pessoa ?? '' });
-            } catch {
-              /* ignore */
-            }
-            const baseLista = mock
-              ? mergeProcessosLista(mock.processos, persisted?.processos)
-              : Array.isArray(persisted?.processos)
-                ? [...persisted.processos]
-                : [];
-            refreshProcessosGrade(padded, baseLista);
-            return;
-          }
-          if (mock) {
-            setCodigo(mock.codigoCliente);
-            setPessoa(mock.pessoa ?? '');
-            setNomeRazao(persisted?.nomeRazao ?? mock.nomeRazao);
-            setCnpjCpf(persisted?.cnpjCpf ?? mock.cnpjCpf);
-            setObservacao(persisted?.observacao !== undefined ? persisted.observacao : DEFAULT_CLIENTE_VAZIO.observacao);
-            setClienteInativo(persisted?.clienteInativo ?? DEFAULT_CLIENTE_VAZIO.clienteInativo);
-            setEdicaoDesabilitada(true);
-            refreshProcessosGrade(
-              mock.codigoCliente,
-              mergeProcessosLista(mock.processos, persisted?.processos)
-            );
-          } else {
-            setCodigo(padded);
-            if (persisted) {
-              setPessoa(persisted.pessoa ?? '');
-              setNomeRazao(persisted.nomeRazao ?? '');
-              setCnpjCpf(persisted.cnpjCpf ?? '');
-              setObservacao(persisted.observacao ?? '');
-              setClienteInativo(persisted.clienteInativo ?? false);
-              setEdicaoDesabilitada(true);
-              refreshProcessosGrade(padded, Array.isArray(persisted.processos) ? persisted.processos : []);
-            } else {
-              setEdicaoDesabilitada(true);
-              refreshProcessosGrade(padded, []);
-            }
-          }
+          if (!api) return;
+          aplicarCabecalhoApi(api);
+          refreshProcessosGrade(api.codigo, baseListaProcessos());
         })
         .finally(() => {
           resolucaoClientePendingRef.current = Math.max(0, resolucaoClientePendingRef.current - 1);
@@ -551,15 +560,13 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
   }, [refreshProcessosGrade]);
   aplicarDadosClienteRef.current = aplicarDadosCliente;
 
-  /**
-   * Com API: após o GET /api/clientes terminar (lista pode estar vazia), reaplica o código atual (`codigoRef`)
-   * para acionar /resolucao quando o cliente não está no índice. Omitir `codigo` nas deps evita /resolucao a cada tecla.
-   */
+  /** Após o índice leve carregar, revalida só se o cabeçalho ainda não veio do índice. */
   useEffect(() => {
-    if (!featureFlags.useApiClientes) return;
-    if (!clientesApiCarregados) return;
-    aplicarDadosClienteRef.current(padCliente8(codigoRef.current));
-  }, [clientesApiCarregados, aplicarDadosCliente]);
+    if (!featureFlags.useApiClientes || !clientesApiCarregados) return;
+    const padded = padCliente8(codigoRef.current);
+    const noIndice = (clientesApiIndexRef.current || []).some((c) => c.codigo === padded);
+    if (!noIndice) aplicarDadosClienteRef.current(padded);
+  }, [clientesApiCarregados]);
 
   useEffect(() => {
     if (!emTelaClientes) return;
@@ -1857,9 +1864,7 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
               {processosPagina.map((proc, idx) => {
                 const n = proc.procNumero ?? idx + 1 + (paginaProcessos - 1) * PROCESSOS_POR_PAGINA;
                 const procLabel = String(n).padStart(2, '0');
-                const cnj = String(
-                  obterNumeroProcessoNovoUnificado(padCliente8(codigo), n, proc.processoNovo ?? '') || ''
-                ).trim();
+                const cnj = String(proc.processoNovo ?? '').trim();
                 return (
                   <button
                     key={proc.id}
@@ -1875,9 +1880,7 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
                       {cnj || '— sem CNJ'}
                     </p>
                     <p className="mt-1 line-clamp-2 text-sm text-slate-800">
-                      {String(
-                        obterDescricaoAcaoUnificada(padCliente8(codigo), n, proc.descricao ?? '') || '—'
-                      )}
+                      {String(proc.descricao ?? '').trim() || '—'}
                     </p>
                   </button>
                 );
@@ -1896,6 +1899,13 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
                   </tr>
                 </thead>
                 <tbody>
+                  {processosGradeCarregando && processosPagina.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="border border-slate-200 px-3 py-6 text-center text-slate-500">
+                        A carregar processos…
+                      </td>
+                    </tr>
+                  ) : null}
                   {processosPagina.map((proc, idx) => (
                     <tr
                       key={proc.id}
@@ -1913,11 +1923,7 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
                       <td className="border border-slate-200 px-1 py-0.5" onClick={(e) => e.stopPropagation()}>
                         <input
                           type="text"
-                          value={obterNumeroProcessoVelhoUnificado(
-                            padCliente8(codigo),
-                            proc.procNumero ?? idx + 1 + (paginaProcessos - 1) * PROCESSOS_POR_PAGINA,
-                            proc.processoVelho ?? ''
-                          )}
+                          value={proc.processoVelho ?? ''}
                           onChange={(e) => atualizarCampoProcesso(proc.id, 'processoVelho', e.target.value)}
                           disabled={edicaoDesabilitada}
                           title="Mesmo dado que «Nº Processo Velho» na tela Processos (localStorage)."
@@ -1927,11 +1933,7 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
                       <td className="border border-slate-200 px-1 py-0.5" onClick={(e) => e.stopPropagation()}>
                         <input
                           type="text"
-                          value={obterNumeroProcessoNovoUnificado(
-                            padCliente8(codigo),
-                            proc.procNumero ?? idx + 1 + (paginaProcessos - 1) * PROCESSOS_POR_PAGINA,
-                            proc.processoNovo ?? ''
-                          )}
+                          value={proc.processoNovo ?? ''}
                           onChange={(e) => atualizarCampoProcesso(proc.id, 'processoNovo', e.target.value)}
                           disabled={edicaoDesabilitada}
                           title="Mesmo dado que «Nº Processo Novo» na tela Processos (localStorage)."
@@ -1941,11 +1943,7 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
                       <td className="border border-slate-200 px-1 py-0.5" onClick={(e) => e.stopPropagation()}>
                         <input
                           type="text"
-                          value={obterParteOpostaUnificada(
-                            padCliente8(codigo),
-                            proc.procNumero ?? idx + 1 + (paginaProcessos - 1) * PROCESSOS_POR_PAGINA,
-                            proc.parteOposta ?? ''
-                          )}
+                          value={proc.parteOposta ?? proc.reu ?? ''}
                           onChange={(e) => atualizarCampoProcesso(proc.id, 'parteOposta', e.target.value)}
                           disabled={edicaoDesabilitada}
                           title="Mesmo dado que «Parte Oposta» na tela Processos (localStorage)."
@@ -1955,11 +1953,7 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
                       <td className="border border-slate-200 px-1 py-0.5" onClick={(e) => e.stopPropagation()}>
                         <input
                           type="text"
-                          value={obterDescricaoAcaoUnificada(
-                            padCliente8(codigo),
-                            proc.procNumero ?? idx + 1 + (paginaProcessos - 1) * PROCESSOS_POR_PAGINA,
-                            proc.descricao ?? ''
-                          )}
+                          value={proc.descricao ?? ''}
                           onChange={(e) => atualizarCampoProcesso(proc.id, 'descricao', e.target.value)}
                           disabled={edicaoDesabilitada}
                           title="Mesmo dado que «Natureza da Ação» na tela Processos (localStorage)."

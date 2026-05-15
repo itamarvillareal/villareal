@@ -1,7 +1,7 @@
 import { request } from '../api/httpClient.js';
 import { featureFlags, FEATURE_IPTU_NOVO } from '../config/featureFlags.js';
 import { montarPainelAdministracaoImovel } from '../data/imoveisAdministracaoFinanceiro.js';
-import { listarProcessosPorCodigoCliente } from './processosRepository.js';
+import { buscarProcessoPorChaveNatural } from './processosRepository.js';
 
 // -----------------------------------------------------------------------------
 // Fase 7 — imóveis / locações
@@ -268,8 +268,7 @@ export async function resolverClienteIdPorCodigo(codigoCliente) {
 }
 
 export async function resolverProcessoIdPorChave(codigoCliente, procInterno) {
-  const list = await listarProcessosPorCodigoCliente(codigoCliente);
-  const p = (list || []).find((x) => Number(x.numeroInterno) === Number(procInterno));
+  const p = await buscarProcessoPorChaveNatural(codigoCliente, procInterno);
   return p?.id ?? null;
 }
 

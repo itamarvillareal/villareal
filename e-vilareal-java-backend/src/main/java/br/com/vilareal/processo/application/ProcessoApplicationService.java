@@ -141,6 +141,17 @@ public class ProcessoApplicationService {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Índice leve para busca/navegação (tela Clientes): só tabela {@code cliente}, sem varrer planilha Pasta1.
+     * Códigos só na planilha continuam acessíveis via {@link #resolverClientePorCodigo(String)}.
+     */
+    @Transactional(readOnly = true)
+    public List<ClienteListItemResponse> listarClientesIndice() {
+        return clienteRepository.findAllFetchPessoaOrderByCodigo().stream()
+                .map(this::clienteEntityParaResumo)
+                .collect(Collectors.toList());
+    }
+
     private static String somenteDigitosDocumento(String cpf) {
         if (cpf == null) {
             return null;
@@ -245,16 +256,42 @@ public class ProcessoApplicationService {
         return t != null ? t : "";
     }
 
+    /**
+     * Um processo pela chave natural (código cliente 8 dígitos + nº interno), sem listar todos os processos do titular.
+     */
+    @Transactional(readOnly = true)
+    public Optional<ProcessoResponse> buscarPorCodigoClienteENumeroInterno(String codigoCliente, int numeroInterno) {
+        if (numeroInterno < 0) {
+            return Optional.empty();
+        }
+        Optional<Long> resolved = clienteCodigoPessoaResolver.resolverPessoaIdComFallbackCliente(codigoCliente);
+        if (resolved.isEmpty()) {
+            return Optional.empty();
+        }
+        return processoRepository
+                .findByPessoa_IdAndNumeroInterno(resolved.get(), numeroInterno)
+                .map(this::toResponse);
+    }
+
     @Transactional(readOnly = true)
     public Page<ProcessoResponse> listarPorCodigoCliente(String codigoCliente, Pageable pageable) {
+        return listarPorCodigoCliente(codigoCliente, pageable, false);
+    }
+
+    /**
+     * @param resumo se {@code true}, não carrega partes (grade Clientes / combos); {@code parteOposta} fica vazia na API.
+     */
+    @Transactional(readOnly = true)
+    public Page<ProcessoResponse> listarPorCodigoCliente(String codigoCliente, Pageable pageable, boolean resumo) {
         Optional<Long> resolved = clienteCodigoPessoaResolver.resolverPessoaIdComFallbackCliente(codigoCliente);
         if (resolved.isEmpty() || !pessoaRepository.existsById(resolved.get())) {
             return Page.empty(pageable);
         }
         long pessoaId = resolved.get();
-        // Apenas titular do processo (cabeçalho pessoa_id). Partes/advogados noutros processos usam
-        // GET /api/processos/vinculo-pessoa/{id} (diagnóstico).
         Page<ProcessoEntity> page = processoRepository.findByPessoa_Id(pessoaId, pageable);
+        if (resumo) {
+            return page.map(this::toResponse);
+        }
         List<Long> procIds = page.getContent().stream().map(ProcessoEntity::getId).collect(Collectors.toList());
         Map<Long, List<ProcessoParteEntity>> partesPorProcesso = new LinkedHashMap<>();
         if (!procIds.isEmpty()) {
@@ -548,8 +585,21 @@ public class ProcessoApplicationService {
     @Transactional(readOnly = true)
     public List<ProcessoParteResponse> listarPartes(Long processoId) {
         requireProcesso(processoId);
-        return parteRepository.findByProcesso_IdOrderByOrdemAscIdAsc(processoId).stream()
-                .map(this::toParteResponse)
+        List<ProcessoParteEntity> partes = parteRepository.findByProcesso_IdOrderByOrdemAscIdAsc(processoId);
+        if (partes.isEmpty()) {
+            return List.of();
+        }
+        List<Long> parteIds = partes.stream().map(ProcessoParteEntity::getId).collect(Collectors.toList());
+        Map<Long, List<Long>> advogadosPorParteId = new HashMap<>();
+        for (ProcessoParteAdvogadoEntity link :
+                parteAdvogadoRepository.findByProcessoParte_IdInOrderByProcessoParte_IdAscOrdemAscIdAsc(parteIds)) {
+            Long parteId = link.getProcessoParte().getId();
+            advogadosPorParteId
+                    .computeIfAbsent(parteId, k -> new ArrayList<>())
+                    .add(link.getAdvogadoPessoa().getId());
+        }
+        return partes.stream()
+                .map(p -> toParteResponse(p, advogadosPorParteId.getOrDefault(p.getId(), List.of())))
                 .collect(Collectors.toList());
     }
 
@@ -911,6 +961,13 @@ public class ProcessoApplicationService {
     }
 
     private ProcessoParteResponse toParteResponse(ProcessoParteEntity p) {
+        List<Long> advIds = parteAdvogadoRepository.findByProcessoParte_IdOrderByOrdemAscIdAsc(p.getId()).stream()
+                .map(x -> x.getAdvogadoPessoa().getId())
+                .collect(Collectors.toList());
+        return toParteResponse(p, advIds);
+    }
+
+    private ProcessoParteResponse toParteResponse(ProcessoParteEntity p, List<Long> advogadoPessoaIds) {
         ProcessoParteResponse r = new ProcessoParteResponse();
         r.setId(p.getId());
         if (p.getPessoa() != null) {
@@ -924,10 +981,7 @@ public class ProcessoApplicationService {
         r.setPolo(Utf8MojibakeUtil.corrigir(p.getPolo()));
         r.setQualificacao(Utf8MojibakeUtil.corrigir(p.getQualificacao()));
         r.setOrdem(p.getOrdem());
-        List<Long> advIds = parteAdvogadoRepository.findByProcessoParte_IdOrderByOrdemAscIdAsc(p.getId()).stream()
-                .map(x -> x.getAdvogadoPessoa().getId())
-                .collect(Collectors.toList());
-        r.setAdvogadoPessoaIds(new ArrayList<>(advIds));
+        r.setAdvogadoPessoaIds(new ArrayList<>(advogadoPessoaIds != null ? advogadoPessoaIds : List.of()));
         return r;
     }
 

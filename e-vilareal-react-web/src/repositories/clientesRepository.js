@@ -53,13 +53,33 @@ export async function listarClientesCadastro() {
   return Array.isArray(data) ? data.map(mapApiToFront) : [];
 }
 
+function indiceClientesApiIndisponivel(err) {
+  const msg = String(err?.message ?? '');
+  return (
+    msg.includes('404') ||
+    msg.includes('500') ||
+    /No static resource|NoResourceFound|api\/clientes\/indice/i.test(msg) ||
+    /ECONNREFUSED|502|503|Bad Gateway|proxy error/i.test(msg)
+  );
+}
+
+/** Índice leve (sem planilha Pasta1) — busca por nome e navegação na tela Clientes. */
+export async function listarClientesIndiceCadastro() {
+  if (!featureFlags.useApiClientes) return [];
+  try {
+    const data = await request('/api/clientes/indice');
+    return Array.isArray(data) ? data.map(mapApiToFront) : [];
+  } catch (e) {
+    if (!indiceClientesApiIndisponivel(e)) throw e;
+    const legado = await request('/api/clientes');
+    return Array.isArray(legado) ? legado.map(mapApiToFront) : [];
+  }
+}
+
 export async function obterClienteCadastroPorCodigo(codigo) {
   if (!featureFlags.useApiClientes) return null;
   const cod = padCliente8Cadastro(codigo);
-  const resolved = await resolverClienteCadastroPorCodigo(cod);
-  if (resolved) return resolved;
-  const lista = await listarClientesCadastro();
-  return lista.find((c) => c.codigo === cod) ?? null;
+  return resolverClienteCadastroPorCodigo(cod);
 }
 
 /**

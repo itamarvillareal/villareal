@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { assinaturaAndamento, mapApiAndamentoToHistoricoItem } from './processosRepository.js';
+import {
+  assinaturaAndamento,
+  entradaHistoricoPertenceAoUsuarioAtivo,
+  mapApiAndamentoToHistoricoItem,
+} from './processosRepository.js';
 
 describe('assinaturaAndamento', () => {
   it('iguala data local T12:00:00 com Instant da API no mesmo dia', () => {
@@ -83,5 +87,62 @@ describe('mapApiAndamentoToHistoricoItem', () => {
       1
     );
     expect(h.usuario).toBe('ANA LUISA');
+  });
+
+  it('inclui usuarioId quando a API envia', () => {
+    const h = mapApiAndamentoToHistoricoItem(
+      { id: 9, movimentoEm: '2026-01-01T00:00:00Z', titulo: 'X', usuarioId: 3 },
+      0,
+      1
+    );
+    expect(h.usuarioId).toBe(3);
+  });
+});
+
+describe('entradaHistoricoPertenceAoUsuarioAtivo', () => {
+  const usuarios = [
+    { id: 1, apelido: 'ITAMAR', login: 'itamar' },
+    { id: 2, apelido: 'KARLA', login: 'karla' },
+  ];
+
+  it('reconhece pelo apelido na linha', () => {
+    expect(
+      entradaHistoricoPertenceAoUsuarioAtivo(
+        { usuario: 'ITAMAR' },
+        { perfilId: 1, usuariosAtivos: usuarios, nomeAtivo: 'ITAMAR' }
+      )
+    ).toBe(true);
+  });
+
+  it('rejeita se a última linha é de outro usuário', () => {
+    expect(
+      entradaHistoricoPertenceAoUsuarioAtivo(
+        { usuario: 'KARLA' },
+        { perfilId: 1, usuariosAtivos: usuarios, nomeAtivo: 'ITAMAR' }
+      )
+    ).toBe(false);
+  });
+
+  it('reconhece por usuarioId', () => {
+    expect(
+      entradaHistoricoPertenceAoUsuarioAtivo(
+        { usuario: '', usuarioId: 1 },
+        { perfilId: 1, usuariosAtivos: usuarios, nomeAtivo: 'ITAMAR' }
+      )
+    ).toBe(true);
+  });
+
+  it('reconhece pelo nome da sessão API', () => {
+    expect(
+      entradaHistoricoPertenceAoUsuarioAtivo(
+        { usuario: 'Itamar Villareal' },
+        {
+          perfilId: 'itamar',
+          usuariosAtivos: usuarios,
+          nomeAtivo: 'ITAMAR',
+          apiUsuario: { id: '1', nome: 'Itamar Villareal', login: 'itamar' },
+        }
+      )
+    ).toBe(true);
   });
 });
