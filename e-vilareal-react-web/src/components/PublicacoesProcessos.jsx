@@ -287,8 +287,6 @@ export function PublicacoesProcessos() {
       totalSelecionados: escolhidos.length,
       quando: new Date().toISOString(),
     });
-    setPreview(null);
-    setArquivoNome('');
     setSelecionados(new Set());
     setGravadosTick((t) => t + 1);
   };
@@ -804,6 +802,8 @@ export function PublicacoesProcessos() {
                 onClick={() => {
                   setPreview(null);
                   setArquivoNome('');
+                  setSelecionados(new Set());
+                  setLogImportacao(null);
                   setVinculoModal(null);
                 }}
                 className="px-4 py-2 rounded-lg border border-slate-300 dark:border-white/15 text-sm"
@@ -824,7 +824,10 @@ export function PublicacoesProcessos() {
               ? ` ${logImportacao.falhasApi} registro(s) com falha na API (ver rede / backend).`
               : ''}
             {Number(logImportacao.semVinculo || 0) > 0 ? ` ${logImportacao.semVinculo} registro(s) sem vínculo resolvido.` : ''}
-            {logImportacao.mensagem ? ` ${logImportacao.mensagem}` : ''}
+            {logImportacao.mensagem ? ` ${logImportacao.mensagem}` : ''}{' '}
+            <span className="block mt-2 text-xs text-emerald-800/90 dark:text-emerald-200/80 font-normal">
+              A prévia deste PDF permanece nesta aba até você escolher outro arquivo ou usar «Cancelar prévia».
+            </span>
           </div>
         ) : null}
 
