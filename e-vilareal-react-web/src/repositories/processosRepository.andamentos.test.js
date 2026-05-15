@@ -3,7 +3,37 @@ import {
   assinaturaAndamento,
   entradaHistoricoPertenceAoUsuarioAtivo,
   mapApiAndamentoToHistoricoItem,
+  resolverIdAndamentoPersistido,
+  toIsoDateTimeFromBrDate,
 } from './processosRepository.js';
+
+describe('toIsoDateTimeFromBrDate', () => {
+  it('emite UTC com sufixo Z para deserialização Instant no backend', () => {
+    expect(toIsoDateTimeFromBrDate('15/05/2026')).toBe('2026-05-15T12:00:00.000Z');
+  });
+
+  it('retorna null se data BR inválida', () => {
+    expect(toIsoDateTimeFromBrDate('')).toBeNull();
+  });
+});
+
+describe('resolverIdAndamentoPersistido', () => {
+  it('usa id quando marcado como vindo da API', () => {
+    expect(resolverIdAndamentoPersistido({ id: 42, fromApi: true })).toBe(42);
+  });
+
+  it('ignora linha nova marcada cliente (fromApi:false ainda tenha timestamp)', () => {
+    expect(resolverIdAndamentoPersistido({ id: 1_764_500_123_456, fromApi: false })).toBeNull();
+  });
+
+  it('trata timestamps grandes como provisório quando legado sem flag', () => {
+    expect(resolverIdAndamentoPersistido({ id: 1_764_500_123_456 })).toBeNull();
+  });
+
+  it('mantém ids pequenos no legado (sem fromApi)', () => {
+    expect(resolverIdAndamentoPersistido({ id: 12 })).toBe(12);
+  });
+});
 
 describe('assinaturaAndamento', () => {
   it('iguala data local T12:00:00 com Instant da API no mesmo dia', () => {
@@ -28,6 +58,16 @@ describe('assinaturaAndamento', () => {
 });
 
 describe('mapApiAndamentoToHistoricoItem', () => {
+  it('marca fromApi:true para vínculo com sincronização incremental', () => {
+    const h = mapApiAndamentoToHistoricoItem(
+      { id: 77, movimentoEm: '2026-06-01T12:00:00Z', titulo: 'X' },
+      0,
+      1
+    );
+    expect(h.fromApi).toBe(true);
+    expect(h.id).toBe(77);
+  });
+
   it('formata data quando movimentoEm vem em milissegundos', () => {
     const ms = Date.UTC(2025, 4, 10, 12, 0, 0);
     const h = mapApiAndamentoToHistoricoItem({ id: 1, movimentoEm: ms, titulo: 'Título' }, 0, 1);
@@ -72,7 +112,7 @@ describe('mapApiAndamentoToHistoricoItem', () => {
       0,
       1
     );
-    expect(h.usuario).toBe('Karla Silva');
+    expect(h.usuario).toBe('KARLA SILVA');
   });
 
   it('extrai Consultor: do detalhe com título preenchido', () => {

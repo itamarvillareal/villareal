@@ -257,10 +257,11 @@ function corrigirMojibakeUtf8(s) {
   return corrigirLatin1Utf8EmCadeia(out);
 }
 
-function toIsoDateTimeFromBrDate(dateBr) {
+/** Instant na API (Jackson): iso sem fuso falha ou é ambíguo; sempre UTC explícito. */
+export function toIsoDateTimeFromBrDate(dateBr) {
   const isoDate = toIsoFromBrDate(dateBr);
   if (!isoDate) return null;
-  return `${isoDate}T12:00:00`;
+  return `${isoDate}T12:00:00.000Z`;
 }
 
 /** Tamanho de página alinhado ao default do backend para `codigoCliente` (GET em fatias). */
@@ -728,7 +729,7 @@ export async function sincronizarAndamentosIncremental(processoId, historico) {
   const atuaisPorId = new Map((atuais || []).map((a) => [Number(a.id), a]));
   const atuaisPorAssinatura = new Map((atuais || []).map((a) => [assinaturaAndamento(a), a]));
   const desejados = (historico || []).map((h) => ({
-    id: Number.isFinite(Number(h.id)) ? Number(h.id) : null,
+    id: resolverIdAndamentoPersistido(h),
     movimentoEm: toIsoDateTimeFromBrDate(h.data) || new Date().toISOString(),
     titulo: String(h.info || '').slice(0, 500) || 'Andamento',
     detalhe: null,
@@ -739,14 +740,25 @@ export async function sincronizarAndamentosIncremental(processoId, historico) {
       return Number.isFinite(uid) && uid >= 1 ? uid : null;
     })(),
   }));
-  const idsDesejados = new Set(desejados.map((d) => Number(d.id)).filter(Number.isFinite));
+  const idsDesejados = new Set(desejados.map((d) => d.id).filter((x) => x != null));
 
-  for (const atual of atuais || []) {
-    const idNum = Number(atual.id);
-    if (!idsDesejados.has(idNum)) {
-      const assinaturaExiste = desejados.some((d) => assinaturaAndamento(d) === assinaturaAndamento(atual));
-      if (!assinaturaExiste) {
-        await request(`/api/processos/${pid}/andamentos/${atual.id}`, { method: 'DELETE' });
+  if (desejados.length === 0) {
+    for (const atual of atuais || []) {
+      await request(`/api/processos/${pid}/andamentos/${atual.id}`, { method: 'DELETE' });
+    }
+    return [];
+  }
+
+  /** Sem nenhuma âncora de id do servidor na lista desejada: estado da UI incompleta (ex.: só linhas novas). */
+  const temAncorasApiServidor = desejados.some((d) => d.id != null);
+  if ((atuais || []).length > 0 && temAncorasApiServidor) {
+    for (const atual of atuais || []) {
+      const idNum = Number(atual.id);
+      if (!idsDesejados.has(idNum)) {
+        const assinaturaExiste = desejados.some((d) => assinaturaAndamento(d) === assinaturaAndamento(atual));
+        if (!assinaturaExiste) {
+          await request(`/api/processos/${pid}/andamentos/${atual.id}`, { method: 'DELETE' });
+        }
       }
     }
   }
@@ -844,6 +856,17 @@ export async function upsertPrazoFatalProcesso(processoId, prazoFatalBr) {
   return request(`/api/processos/${pidNum}/prazos`, { method: 'POST', body });
 }
 
+/** Rótulo do utilizador na grade «Histórico»: sempre em maiúsculas (apelido / nome). */
+export function formatarUsuarioHistoricoExibicao(s) {
+  const t = String(s ?? '').trim();
+  if (!t) return '';
+  try {
+    return t.toLocaleUpperCase('pt-BR');
+  } catch {
+    return t.toUpperCase();
+  }
+}
+
 export function mapApiAndamentoToHistoricoItem(a, idx = 0, total = 1) {
   const movRaw = a?.movimentoEm ?? a?.movimento_em;
   const tituloCampo = a?.titulo ?? a?.tituloAndamento ?? a?.titulo_andamento;
@@ -860,12 +883,14 @@ export function mapApiAndamentoToHistoricoItem(a, idx = 0, total = 1) {
   const nome = String(a?.usuarioNome ?? a?.usuario_nome ?? '').trim();
   const login = String(a?.usuarioLogin ?? a?.usuario_login ?? '').trim();
   const responsavelPlanilha = extrairResponsavelPlanilhaDeDetalhe(a?.detalhe, tituloPreenchido);
-  const usuario = nome || login || responsavelPlanilha;
+  const usuario = formatarUsuarioHistoricoExibicao(nome || login || responsavelPlanilha);
   const infoTxt = String(tituloRaw ?? '').trim() || 'Andamento';
   const usuarioIdRaw = a?.usuarioId ?? a?.usuario_id;
   const usuarioIdNum = Number(usuarioIdRaw);
+  const persistidoServidor = Number.isFinite(idNum) && idNum >= 1;
   return {
-    id: Number.isFinite(idNum) && idNum >= 1 ? idNum : Date.now() + idx,
+    id: persistidoServidor ? idNum : Date.now() + idx,
+    fromApi: persistidoServidor,
     inf: String(total - idx).padStart(2, '0'),
     info: infoTxt.length > 500 ? infoTxt.slice(0, 500) : infoTxt,
     data: toBrFromIsoDate(movRaw),
@@ -873,6 +898,20 @@ export function mapApiAndamentoToHistoricoItem(a, idx = 0, total = 1) {
     usuarioId: Number.isFinite(usuarioIdNum) && usuarioIdNum >= 1 ? usuarioIdNum : null,
     numero: String(total - idx).padStart(4, '0'),
   };
+}
+
+/**
+ * `id` vindo da linha histórico na UI: só confiamos como FK do servidor quando veio da API
+ * ({@link mapApiAndamentoToHistoricoItem}) ou legado com id pequeno. Linhas novas usavam {@code Date.now()}
+ * e faziam {@link sincronizarAndamentosIncremental} apagar todos os andamentos do processo antes do POST.
+ */
+export function resolverIdAndamentoPersistido(h) {
+  const n = Number(h?.id);
+  if (!Number.isFinite(n) || n < 1) return null;
+  if (h?.fromApi === false) return null;
+  if (h?.fromApi === true) return n;
+  if (n >= 100_000_000_000) return null;
+  return n;
 }
 
 function normalizarRotuloUsuarioHistorico(s) {

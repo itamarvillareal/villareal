@@ -76,6 +76,7 @@ import { featureFlags } from '../config/featureFlags.js';
 import { obterClienteCadastroPorCodigo } from '../repositories/clientesRepository.js';
 import {
   buscarClientePorCodigo,
+  formatarUsuarioHistoricoExibicao,
   buscarProcessoPorChaveNatural,
   resolverProcessoId,
   mapApiProcessoToUiShape,
@@ -200,10 +201,10 @@ function nomeUsuarioAtivoParaHistorico() {
   const lista = getUsuariosAtivos();
   const u = (lista || []).find((x) => String(x.id) === String(perfilId));
   const nome = getNomeExibicaoUsuario(u);
-  if (nome && nome !== '—') return nome;
+  if (nome && nome !== '—') return formatarUsuarioHistoricoExibicao(nome);
   const id = String(perfilId || '').trim();
-  if (id) return id.charAt(0).toUpperCase() + id.slice(1).toLowerCase();
-  return 'Usuário';
+  if (id) return formatarUsuarioHistoricoExibicao(id.charAt(0).toUpperCase() + id.slice(1).toLowerCase());
+  return formatarUsuarioHistoricoExibicao('Usuário');
 }
 
 function usuarioAtivoIdParaHistorico() {
@@ -450,6 +451,13 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   const carregarProcessoApiSeqRef = useRef(0);
   /** Evita recarregar histórico da API para o mesmo processoId. */
   const historicoCarregadoParaProcessoRef = useRef(null);
+  /**
+   * Id do processo na API efetivamente selecionado (alinha com commit React).
+   * Evita que GET /andamentos «atrasado» de outro `processoApiId` grave por cima do estado atual.
+   */
+  const processoApiIdRef = useRef(null);
+  /** Geração de carregamento do histórico (evita «loading=false» no meio de outro GET). */
+  const historicoApiCargaSeqRef = useRef(0);
   const [historicoApiCarregando, setHistoricoApiCarregando] = useState(false);
 
   /** Evita página vazia quando o nº de linhas do histórico diminui (ex.: troca de processo ou carga API). */
@@ -467,6 +475,11 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     window.addEventListener('vilareal:processos-historico-atualizado', h);
     return () => window.removeEventListener('vilareal:processos-historico-atualizado', h);
   }, []);
+
+  useEffect(() => {
+    const n = Number(processoApiId);
+    processoApiIdRef.current = Number.isFinite(n) && n > 0 ? n : null;
+  }, [processoApiId]);
 
   useEffect(() => {
     if (!featureFlags.useApiFinanceiro || !Number(processoApiId) || !modalContaCorrente) {
@@ -1573,10 +1586,13 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
 
   async function carregarHistoricoApi(processoId, seq) {
     if (!featureFlags.useApiProcessos || !Number(processoId)) return;
+    const carga = ++historicoApiCargaSeqRef.current;
     setHistoricoApiCarregando(true);
     try {
       const andamentos = await listarAndamentosProcesso(processoId);
       if (seq !== carregarProcessoApiSeqRef.current) return;
+      if (Number(processoId) !== Number(processoApiIdRef.current)) return;
+
       if (!Array.isArray(andamentos)) {
         setHistorico([]);
         setPaginaHistorico(1);
@@ -1590,15 +1606,25 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
         setHistorico(hist);
         setPaginaHistorico(1);
       } else {
-        setHistorico([]);
-        setPaginaHistorico(1);
+        /** GET vazio: mantém último estado local se houver (ex.: redes/falhas evitando apagar novo andamento só na UI). */
+        const persisted = getHistoricoDoProcesso(codigoCliente, processo);
+        if (persisted.length > 0) {
+          setHistorico(persisted);
+          setPaginaHistorico(1);
+        } else {
+          setHistorico([]);
+          setPaginaHistorico(1);
+        }
       }
       historicoCarregadoParaProcessoRef.current = processoId;
     } catch (e) {
       if (seq !== carregarProcessoApiSeqRef.current) return;
+      if (Number(processoId) !== Number(processoApiIdRef.current)) return;
       setApiError(e?.message || 'Falha ao carregar histórico da API.');
     } finally {
-      if (seq === carregarProcessoApiSeqRef.current) setHistoricoApiCarregando(false);
+      if (seq === carregarProcessoApiSeqRef.current && carga === historicoApiCargaSeqRef.current) {
+        setHistoricoApiCarregando(false);
+      }
     }
   }
 
@@ -1618,6 +1644,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       if (seq !== carregarProcessoApiSeqRef.current) return;
       if (!procApi) {
         setProcessoApiId(null);
+        processoApiIdRef.current = null;
         setClienteProcessoApiId(null);
         setParteClienteEntradas([]);
         setParteOpostaEntradas([]);
@@ -1627,6 +1654,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
         return;
       }
       setProcessoApiId(procApi.id);
+      processoApiIdRef.current = Number(procApi.id);
       const mapped = mapApiProcessoToUiShape(procApi);
       setClienteProcessoApiId(
         mapped.clienteId != null && Number.isFinite(Number(mapped.clienteId)) && Number(mapped.clienteId) > 0
@@ -1659,6 +1687,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       const partes = await listarPartesProcesso(procApi.id);
       if (seq !== carregarProcessoApiSeqRef.current) return;
       aplicarListaPartesApiNaUi(partes);
+      await carregarHistoricoApi(procApi.id, seq);
     } catch (e) {
       if (seq !== carregarProcessoApiSeqRef.current) return;
       setApiError(e?.message || 'Falha ao carregar processo da API.');
@@ -1686,7 +1715,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     setApiSaving(true);
     setApiError('');
     try {
-      const snapshot = montarPayloadRegistroProcesso(overrides);
+      let snapshot = montarPayloadRegistroProcesso(overrides);
       const clienteApi = await buscarClientePorCodigo(snapshot.codCliente);
       if (!clienteApi?.id) throw new Error('Cliente não encontrado na API para este código.');
       const saved = await salvarCabecalhoProcesso({
@@ -1698,6 +1727,11 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       });
       const pid = saved?.id || processoApiId;
       setProcessoApiId(pid);
+      if (pid != null && Number.isFinite(Number(pid)) && Number(pid) > 0) {
+        processoApiIdRef.current = Number(pid);
+      } else {
+        processoApiIdRef.current = null;
+      }
       if (saved?.id && snapshot.statusAtivo !== undefined) {
         await alterarAtivoProcesso(saved.id, snapshot.statusAtivo !== false);
       }
@@ -1756,16 +1790,26 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
         try {
           const andamentos = await listarAndamentosProcesso(pid);
           if (Array.isArray(andamentos)) {
+            const aindaMesmoProcesso = Number(pid) === Number(processoApiIdRef.current);
+            const tinhaNoSnapshot = (snapshot.historico || []).length > 0;
             if (andamentos.length > 0) {
               const hist = andamentos.map((a, idx) =>
                 mapApiAndamentoToHistoricoItem(a, idx, andamentos.length)
               );
-              setHistorico(hist);
-            } else {
-              setHistorico([]);
+              if (aindaMesmoProcesso) {
+                snapshot = { ...snapshot, historico: hist };
+                setHistorico(hist);
+                setPaginaHistorico(1);
+                historicoCarregadoParaProcessoRef.current = pid;
+              }
+            } else if (aindaMesmoProcesso) {
+              if (!tinhaNoSnapshot) {
+                snapshot = { ...snapshot, historico: [] };
+                setHistorico([]);
+                setPaginaHistorico(1);
+              }
+              historicoCarregadoParaProcessoRef.current = pid;
             }
-            setPaginaHistorico(1);
-            historicoCarregadoParaProcessoRef.current = pid;
           }
         } catch {
           /* mantém o histórico já exibido se o GET falhar */
@@ -2026,18 +2070,21 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       const atualizado = { ...primeiro, usuario, data: hoje };
       const historicoAtualizado = [atualizado, ...resto];
       setHistorico(historicoAtualizado);
-      const payloadHistorico = montarPayloadRegistroProcesso({ historico: historicoAtualizado });
+      /** Rascunho explícito: evita gravar estado antigo no snapshot (setState é assíncrono; sync API usa snapshot inicial). */
+      const overridesHistorico = {
+        historico: historicoAtualizado,
+        proximaInformacao: '',
+        dataProximaInformacao: '',
+      };
+      const payloadHistorico = montarPayloadRegistroProcesso(overridesHistorico);
       salvarHistoricoDoProcesso(payloadHistorico);
       if (featureFlags.useApiProcessos) {
-        void sincronizarApiProcessoAtual(
-          { historico: historicoAtualizado },
-          {
-            syncPartes: false,
-            syncAndamentos: true,
-            syncPrazoFatal: false,
-            permitirComEdicaoDesabilitada: true,
-          }
-        );
+        void sincronizarApiProcessoAtual(overridesHistorico, {
+          syncPartes: false,
+          syncAndamentos: true,
+          syncPrazoFatal: false,
+          permitirComEdicaoDesabilitada: true,
+        });
       }
       return;
     }
@@ -2051,6 +2098,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     const novoNumero = maiorNumero + 1;
     const novoItem = {
       id: Date.now(),
+      fromApi: false,
       inf: String(novoNumero).padStart(2, '0'),
       info,
       data,
@@ -2063,18 +2111,21 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     setPaginaHistorico(1);
     setProximaInformacao('');
     setDataProximaInformacao('');
-    const payloadHistorico = montarPayloadRegistroProcesso({ historico: historicoAtualizado });
+    /** Rascunho zerado nos overrides: `montarPayload` e `sincronizarApiProcessoAtual` rodam antes do re-render com estado velho. */
+    const overridesHistorico = {
+      historico: historicoAtualizado,
+      proximaInformacao: '',
+      dataProximaInformacao: '',
+    };
+    const payloadHistorico = montarPayloadRegistroProcesso(overridesHistorico);
     salvarHistoricoDoProcesso(payloadHistorico);
     if (featureFlags.useApiProcessos) {
-      void sincronizarApiProcessoAtual(
-        { historico: historicoAtualizado },
-        {
-          syncPartes: false,
-          syncAndamentos: true,
-          syncPrazoFatal: false,
-          permitirComEdicaoDesabilitada: true,
-        }
-      );
+      void sincronizarApiProcessoAtual(overridesHistorico, {
+        syncPartes: false,
+        syncAndamentos: true,
+        syncPrazoFatal: false,
+        permitirComEdicaoDesabilitada: true,
+      });
     }
   }
 
@@ -3250,8 +3301,8 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                           <p className="mt-2 line-clamp-3 text-sm text-slate-800" title={h.info}>
                             {h.info}
                           </p>
-                          <p className="mt-1 truncate text-xs text-slate-500" title={h.usuario || ''}>
-                            {h.usuario}
+                          <p className="mt-1 truncate text-xs text-slate-500" title={formatarUsuarioHistoricoExibicao(h.usuario)}>
+                            {formatarUsuarioHistoricoExibicao(h.usuario)}
                           </p>
                         </button>
                       ))
@@ -3305,8 +3356,8 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                                 </td>
                                 <td className="whitespace-nowrap px-2 py-1.5 align-top text-slate-600">{h.data}</td>
                                 <td className="max-w-[11ch] min-w-0 py-1.5 pl-2 pr-2 align-top text-slate-700">
-                                  <div className="truncate" title={h.usuario || ''}>
-                                    {h.usuario}
+                                  <div className="truncate" title={formatarUsuarioHistoricoExibicao(h.usuario)}>
+                                    {formatarUsuarioHistoricoExibicao(h.usuario)}
                                   </div>
                                 </td>
                               </tr>
@@ -4302,7 +4353,8 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                 id="modal-informacao-titulo"
                 className="min-w-0 flex-1 text-sm font-semibold leading-snug text-slate-800"
               >
-                Inf.: {informacaoModal.inf} — {informacaoModal.data} — {informacaoModal.usuario}
+                Inf.: {informacaoModal.inf} — {informacaoModal.data} —{' '}
+                {formatarUsuarioHistoricoExibicao(informacaoModal.usuario)}
               </h2>
               <button
                 type="button"
