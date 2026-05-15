@@ -34,9 +34,13 @@
  * Em desenvolvimento, use o proxy em `vite.config` (`/datajud-proxy`) e `DATAJUD_API_KEY` ou `VITE_DATAJUD_API_KEY` no .env
  * (preferir `DATAJUD_API_KEY` — não entra no bundle) para injetar `Authorization: APIKey …` no servidor de dev.
  *
- * Em produção, configure o mesmo proxy no gateway ou um endpoint backend.
+ * Em produção, o front usa por omissão `…/api/integrations/datajud` no backend (JWT + `DATAJUD_API_KEY` no servidor).
+ * Isto evita pedidos a `/datajud-proxy`, rota que só existe no Vite e que, sem proxy no nginx, pode devolver 401 Basic
+ * e abrir o diálogo nativo de autenticação do navegador.
  */
 
+import { API_BASE_URL } from '../api/config.js';
+import { buildDefaultApiHeaders } from '../api/apiAuthHeaders.js';
 import { DATAJUD_CAMPO } from './datajudGlossario.js';
 import { mtdNormalizarListaString } from './datajudMtd12.js';
 import { datajudBoletimLegendaMovimento } from './datajudParametrizacaoCnj.js';
@@ -93,7 +97,16 @@ function cacheSet(key, data) {
 export function getDatajudRequestBase() {
   const b = import.meta.env.VITE_DATAJUD_BASE;
   if (b && String(b).trim()) return String(b).replace(/\/$/, '');
-  return '/datajud-proxy';
+  if (import.meta.env.DEV) return '/datajud-proxy';
+  const prefix = String(API_BASE_URL ?? '').replace(/\/$/, '');
+  return `${prefix}/api/integrations/datajud`;
+}
+
+/** Produção (build) sem URL explícita: DataJud via backend com JWT. */
+function datajudUsaIntegracaoBackend() {
+  if (import.meta.env.DEV) return false;
+  const b = import.meta.env.VITE_DATAJUD_BASE;
+  return !(b && String(b).trim());
 }
 
 /**
@@ -243,6 +256,9 @@ export function normalizarHitDatajud(hit, cnjHint) {
 }
 
 function datajudAuthHeaders() {
+  if (datajudUsaIntegracaoBackend()) {
+    return buildDefaultApiHeaders();
+  }
   const headers = { 'Content-Type': 'application/json' };
   if (import.meta.env.DEV && !import.meta.env.VITE_DATAJUD_BASE) {
     /* Chave aplicada pelo proxy Vite; não enviar do browser. */

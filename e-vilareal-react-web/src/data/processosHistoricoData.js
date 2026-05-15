@@ -326,13 +326,17 @@ function normalizarHistoricoItem(item) {
   if (!item || typeof item !== 'object') return null;
   const info = String(item.info ?? '').trim();
   if (!info) return null;
+  const id = Number(item.id);
+  const uid = Number(item.usuarioId);
   return {
-    id: Number(item.id) || Date.now(),
+    id: Number.isFinite(id) && id >= 1 ? id : Date.now(),
+    fromApi: item.fromApi === true,
     inf: String(item.inf ?? ''),
     info,
     data: String(item.data ?? ''),
     usuario: String(item.usuario ?? ''),
     numero: String(item.numero ?? ''),
+    usuarioId: Number.isFinite(uid) && uid >= 1 ? uid : null,
   };
 }
 
