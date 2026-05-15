@@ -735,6 +735,27 @@ function extrairNomeConsultorDeDetalhe(detalhe) {
   return m2 ? m2[1].trim() : '';
 }
 
+/**
+ * Import planilha grava responsável catalogado em `detalhe` (usuarioId null).
+ * Só usa `detalhe` como nome quando o título já veio preenchido (evita duplicar texto da informação).
+ */
+function extrairResponsavelPlanilhaDeDetalhe(detalhe, tituloPreenchido) {
+  if (!tituloPreenchido) return '';
+  const consultor = extrairNomeConsultorDeDetalhe(detalhe);
+  if (consultor) return consultor;
+  const s = String(detalhe ?? '').trim();
+  if (!s) return '';
+  const lines = s
+    .split(/\r?\n/)
+    .map((x) => x.trim())
+    .filter((x) => x.length > 0);
+  if (lines.length !== 1) return '';
+  const line = lines[0];
+  if (/^\s*Consultor:/i.test(line)) return '';
+  if (line.length > 120) return '';
+  return line;
+}
+
 export async function listarPrazosProcesso(processoId) {
   if (!featureFlags.useApiProcessos) return [];
   const n = Number(processoId);
@@ -782,11 +803,12 @@ export function mapApiAndamentoToHistoricoItem(a, idx = 0, total = 1) {
         .find((x) => x.length > 0) ?? ''
     : '';
   const tituloRaw = String(tituloCampo ?? '').trim() || primeiraLinhaDet;
+  const tituloPreenchido = String(tituloCampo ?? '').trim().length > 0;
   const idNum = Number(a?.id);
   const nome = String(a?.usuarioNome ?? a?.usuario_nome ?? '').trim();
   const login = String(a?.usuarioLogin ?? a?.usuario_login ?? '').trim();
-  const consultor = extrairNomeConsultorDeDetalhe(a?.detalhe);
-  const usuario = nome || login || consultor;
+  const responsavelPlanilha = extrairResponsavelPlanilhaDeDetalhe(a?.detalhe, tituloPreenchido);
+  const usuario = nome || login || responsavelPlanilha;
   const infoTxt = String(tituloRaw ?? '').trim() || 'Andamento';
   return {
     id: Number.isFinite(idNum) && idNum >= 1 ? idNum : Date.now() + idx,

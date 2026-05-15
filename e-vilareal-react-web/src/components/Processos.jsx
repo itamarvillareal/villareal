@@ -1974,13 +1974,18 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       const atualizado = { ...primeiro, usuario, data: hoje };
       const historicoAtualizado = [atualizado, ...resto];
       setHistorico(historicoAtualizado);
+      const payloadHistorico = montarPayloadRegistroProcesso({ historico: historicoAtualizado });
+      salvarHistoricoDoProcesso(payloadHistorico);
       if (featureFlags.useApiProcessos) {
         void sincronizarApiProcessoAtual(
           { historico: historicoAtualizado },
-          { syncPartes: false, syncAndamentos: true, syncPrazoFatal: false }
+          {
+            syncPartes: false,
+            syncAndamentos: true,
+            syncPrazoFatal: false,
+            permitirComEdicaoDesabilitada: true,
+          }
         );
-      } else {
-        salvarHistoricoDoProcesso(montarPayloadRegistroProcesso({ historico: historicoAtualizado }));
       }
       return;
     }
@@ -2005,13 +2010,18 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     setPaginaHistorico(1);
     setProximaInformacao('');
     setDataProximaInformacao('');
+    const payloadHistorico = montarPayloadRegistroProcesso({ historico: historicoAtualizado });
+    salvarHistoricoDoProcesso(payloadHistorico);
     if (featureFlags.useApiProcessos) {
       void sincronizarApiProcessoAtual(
         { historico: historicoAtualizado },
-        { syncPartes: false, syncAndamentos: true, syncPrazoFatal: false }
+        {
+          syncPartes: false,
+          syncAndamentos: true,
+          syncPrazoFatal: false,
+          permitirComEdicaoDesabilitada: true,
+        }
       );
-    } else {
-      salvarHistoricoDoProcesso(montarPayloadRegistroProcesso({ historico: historicoAtualizado }));
     }
   }
 
