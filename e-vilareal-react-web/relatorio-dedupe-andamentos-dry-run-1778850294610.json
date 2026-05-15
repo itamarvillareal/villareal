@@ -1,0 +1,27 @@
+{
+  "script": "deduplicar-andamentos-processo.mjs",
+  "geradoEm": "2026-05-15T13:04:54.610Z",
+  "modo": "dry-run",
+  "escopoAnalise": "Duplicados avaliados apenas dentro de cada processo_id (cliente + número interno); nunca entre processos diferentes.",
+  "camadas": [
+    "BRUTA",
+    "ESTRITA"
+  ],
+  "opcoes": {
+    "cliente": null,
+    "processoId": null,
+    "exigirDetalheIgual": true
+  },
+  "estatisticas": {
+    "processosAnalisados": 5,
+    "andamentosLidos": 43,
+    "gruposDuplicados": 0,
+    "gruposIgnorados": 0,
+    "andamentosMarcadosRemover": 0,
+    "prazosReapontados": 0
+  },
+  "suspeitos": [],
+  "grupos": [],
+  "totalGruposRelatorio": 0,
+  "totalSuspeitos": 0
+}

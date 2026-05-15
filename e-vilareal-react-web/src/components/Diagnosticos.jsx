@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { X, Stethoscope } from 'lucide-react';
+import { X, Stethoscope, ChevronUp, ChevronDown } from 'lucide-react';
 import { buscarCliente, pesquisarCadastroPessoasPorNomeOuCpf } from '../api/clientesService.js';
 import {
   DEMO_DATA_CONSULTA_BR,
@@ -135,6 +135,33 @@ function diaSemanaPtBr(brDate) {
   const d = new Date(Number(yyyy), Number(mm) - 1, Number(dd));
   if (Number.isNaN(d.getTime())) return '';
   return d.toLocaleDateString('pt-BR', { weekday: 'long' });
+}
+
+function pad2DiaMes(n) {
+  return String(Math.trunc(n)).padStart(2, '0');
+}
+
+/**
+ * Desloca uma data em formato dd/mm/aaaa (após resolver alias «hj» externamente).
+ * @param {string} dataBr
+ * @param {number} deltaDias
+ * @returns {string | null} dd/mm/aaaa ou null se inválido
+ */
+function deslocarDataBrDias(dataBr, deltaDias) {
+  const t = String(dataBr ?? '').trim();
+  const m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!m) return null;
+  const dd = Number(m[1]);
+  const mo = Number(m[2]);
+  const yyyy = Number(m[3]);
+  if (!Number.isFinite(dd) || !Number.isFinite(mo) || !Number.isFinite(yyyy)) return null;
+  const d = new Date(yyyy, mo - 1, dd);
+  if (Number.isNaN(d.getTime()) || d.getFullYear() !== yyyy || d.getMonth() !== mo - 1 || d.getDate() !== dd) {
+    return null;
+  }
+  d.setDate(d.getDate() + deltaDias);
+  if (Number.isNaN(d.getTime())) return null;
+  return `${pad2DiaMes(d.getDate())}/${pad2DiaMes(d.getMonth() + 1)}/${d.getFullYear()}`;
 }
 
 export function Diagnosticos() {
@@ -1112,16 +1139,49 @@ export function Diagnosticos() {
                   Informe o dia que deseja consultar o prazo fatal:
                 </p>
                 <div className="rounded border border-slate-200 bg-white p-4">
-                  <input
-                    type="text"
-                    placeholder="dd/mm/aaaa ou hj"
-                    value={dataPrazoFatal}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setDataPrazoFatal(resolverAliasHojeEmTexto(v, 'br') ?? v);
-                    }}
-                    className="w-full h-10 px-3 text-sm border border-slate-300 rounded bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
-                  />
+                  <div className="flex h-10 min-h-[2.5rem] overflow-hidden rounded border border-slate-300 bg-white shadow-sm focus-within:ring-2 focus-within:ring-slate-300 focus-within:ring-offset-0">
+                    <input
+                      type="text"
+                      placeholder="dd/mm/aaaa ou hj"
+                      value={dataPrazoFatal}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setDataPrazoFatal(resolverAliasHojeEmTexto(v, 'br') ?? v);
+                      }}
+                      className="min-w-0 flex-1 border-0 bg-transparent px-3 text-sm focus:outline-none focus:ring-0"
+                      aria-label="Data do prazo fatal"
+                    />
+                    <div className="flex w-9 shrink-0 flex-col divide-y divide-slate-300 border-l border-slate-300 bg-slate-50">
+                      <button
+                        type="button"
+                        className="flex flex-1 items-center justify-center text-slate-700 hover:bg-slate-100 active:bg-slate-200"
+                        aria-label="Avançar um dia"
+                        onClick={() => {
+                          setDataPrazoFatal((prev) => {
+                            const bruto = String(prev ?? '').trim();
+                            const base = resolverAliasHojeEmTexto(bruto, 'br') ?? bruto;
+                            return deslocarDataBrDias(base, 1) ?? hojeDdMmYyyy();
+                          });
+                        }}
+                      >
+                        <ChevronUp className="h-4 w-4" strokeWidth={2.5} aria-hidden />
+                      </button>
+                      <button
+                        type="button"
+                        className="flex flex-1 items-center justify-center text-slate-700 hover:bg-slate-100 active:bg-slate-200"
+                        aria-label="Retroceder um dia"
+                        onClick={() => {
+                          setDataPrazoFatal((prev) => {
+                            const bruto = String(prev ?? '').trim();
+                            const base = resolverAliasHojeEmTexto(bruto, 'br') ?? bruto;
+                            return deslocarDataBrDias(base, -1) ?? hojeDdMmYyyy();
+                          });
+                        }}
+                      >
+                        <ChevronDown className="h-4 w-4" strokeWidth={2.5} aria-hidden />
+                      </button>
+                    </div>
+                  </div>
                   <p className="mt-2 text-sm leading-none text-slate-700 min-h-[1.25rem]">
                     {diaSemanaPtBr(dataPrazoFatal) || ' '}
                   </p>

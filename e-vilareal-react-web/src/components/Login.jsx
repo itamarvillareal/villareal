@@ -1,31 +1,15 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { LogIn, Lock, User } from 'lucide-react';
 import { useAuth, IDLE_SESSION_MESSAGE_STORAGE_KEY } from '../context/AuthContext.jsx';
 import { featureFlags } from '../config/featureFlags.js';
 
-/** Evita redirecionar de volta para `/login` (loop infinito de `<Navigate />`) e caminhos inválidos. */
-function sanitizePostLoginPath(p) {
-  const fallback = '/';
-  if (p == null || typeof p !== 'string') return fallback;
-  const t = p.trim();
-  if (t === '' || !t.startsWith('/') || t.startsWith('//')) return fallback;
-  const pathOnly = (t.split(/[?#]/)[0] || fallback).replace(/\/+$/, '') || '/';
-  if (pathOnly === '/login' || pathOnly.startsWith('/login/')) return fallback;
-  return pathOnly;
-}
+/** Após autenticação bem-sucedida, entrada no sistema abre sempre a agenda. */
+const ROTA_APOS_LOGIN = '/agenda';
 
 export function Login() {
   const { login, isAuthenticated } = useAuth();
   const navigate = useNavigate();
-  const location = useLocation();
-  const from = useMemo(
-    () =>
-      sanitizePostLoginPath(
-        location.state?.from && typeof location.state.from === 'string' ? location.state.from : '/'
-      ),
-    [location.state?.from]
-  );
 
   const [usuario, setUsuario] = useState('');
   const [senha, setSenha] = useState('');
@@ -50,7 +34,7 @@ export function Login() {
   }
 
   if (isAuthenticated) {
-    return <Navigate to={from} replace />;
+    return <Navigate to={ROTA_APOS_LOGIN} replace />;
   }
 
   async function handleSubmit(e) {
@@ -64,7 +48,7 @@ export function Login() {
     setCarregando(true);
     try {
       await login(u, senha);
-      navigate(from, { replace: true });
+      navigate(ROTA_APOS_LOGIN, { replace: true });
     } catch (err) {
       setErro(err?.message || 'Falha no login.');
     } finally {

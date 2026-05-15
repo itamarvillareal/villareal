@@ -955,10 +955,63 @@ public class ProcessoApplicationService {
             r.setUsuarioLogin(StringUtils.hasText(login) ? login : null);
         } else {
             r.setUsuarioId(null);
-            r.setUsuarioNome(null);
+            String nomeDetalhe = nomeResponsavelDeDetalhe(a.getTitulo(), a.getDetalhe());
+            if (StringUtils.hasText(nomeDetalhe)) {
+                r.setUsuarioNome(Utf8MojibakeUtil.corrigir(nomeDetalhe));
+            } else {
+                r.setUsuarioNome(null);
+            }
             r.setUsuarioLogin(null);
         }
         return r;
+    }
+
+    /**
+     * Import da planilha grava equipa reconhecida em {@code detalhe} sem FK em {@code usuario_id}.
+     * Expõe o nome em {@code usuarioNome} para a UI quando o título já está preenchido.
+     */
+    private static String nomeResponsavelDeDetalhe(String titulo, String detalhe) {
+        if (!StringUtils.hasText(titulo) || !StringUtils.hasText(detalhe)) {
+            return null;
+        }
+        String d = detalhe.trim();
+        for (String line : d.split("\\r?\\n")) {
+            String t = line.trim();
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile("(?i)^\\s*Consultor:\\s*(.+)$")
+                    .matcher(t);
+            if (m.matches()) {
+                return m.group(1).trim();
+            }
+        }
+        java.util.regex.Matcher m2 =
+                java.util.regex.Pattern.compile("(?i)Consultor:\\s*([^\\r\\n]+)").matcher(d);
+        if (m2.find()) {
+            return m2.group(1).trim();
+        }
+        String[] lines = d.split("\\r?\\n");
+        String unica = null;
+        int n = 0;
+        for (String line : lines) {
+            String t = line.trim();
+            if (t.isEmpty()) {
+                continue;
+            }
+            n++;
+            unica = t;
+            if (n > 1) {
+                return null;
+            }
+        }
+        if (n != 1 || unica == null) {
+            return null;
+        }
+        if (unica.length() > 120) {
+            return null;
+        }
+        if (unica.matches("(?i)^\\s*Consultor:.*")) {
+            return null;
+        }
+        return unica;
     }
 
     private ProcessoPrazoResponse toPrazoResponse(ProcessoPrazoEntity z) {

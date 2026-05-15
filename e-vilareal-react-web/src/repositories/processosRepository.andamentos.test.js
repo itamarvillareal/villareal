@@ -38,5 +38,50 @@ describe('mapApiAndamentoToHistoricoItem', () => {
       1
     );
     expect(h.info).toBe('Linha única');
+    expect(h.usuario).toBe('');
+  });
+
+  it('exibe responsável importado em detalhe quando usuarioId é null', () => {
+    const h = mapApiAndamentoToHistoricoItem(
+      {
+        id: 3,
+        movimentoEm: '2026-04-22T00:00:00Z',
+        titulo: 'PUBLICOU EM 20/04',
+        detalhe: 'KARLA',
+        usuarioId: null,
+      },
+      0,
+      1
+    );
+    expect(h.usuario).toBe('KARLA');
+  });
+
+  it('prioriza usuarioNome da API sobre detalhe', () => {
+    const h = mapApiAndamentoToHistoricoItem(
+      {
+        id: 4,
+        movimentoEm: '2026-04-22T00:00:00Z',
+        titulo: 'Título',
+        detalhe: 'KARLA',
+        usuarioNome: 'Karla Silva',
+      },
+      0,
+      1
+    );
+    expect(h.usuario).toBe('Karla Silva');
+  });
+
+  it('extrai Consultor: do detalhe com título preenchido', () => {
+    const h = mapApiAndamentoToHistoricoItem(
+      {
+        id: 5,
+        movimentoEm: '2026-01-01T00:00:00Z',
+        titulo: 'Andamento',
+        detalhe: 'Consultor: ANA LUISA',
+      },
+      0,
+      1
+    );
+    expect(h.usuario).toBe('ANA LUISA');
   });
 });

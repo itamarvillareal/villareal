@@ -26,6 +26,9 @@
  *   --sem-criar-processos        Não cria cabeçalho de processo em falta
  *   --apenas-orfaos             Só linhas sem processo na API (requer criação de stub; combina com --sem-criar-processos desactivado)
  *   --cliente=119 --substituir-andamentos   Só um cliente: apaga todos os andamentos desses processos antes do POST
+ *   --apenas-novos           Só faz POST se não existir andamento com o mesmo movimentoEm + título (dedupe na API).
+ *                             Desliga automaticamente a limpeza por origem (--nao-limpar-import).
+ *                             Concorrência é reduzida a 1 para evitar duplicados em corrida na mesma chave.
  *
  * Envs: VILAREAL_API_BASE, VILAREAL_IMPORT_SENHA, VILAREAL_IMPORT_CONCURRENCY (default 3), VILAREAL_IMPORT_ORIGEM
  */
@@ -345,9 +348,12 @@ function parseArgs(argv) {
     /** Filtro opcional col. A: --apenas-codigos-entre=500,599 */
     codigoClienteMin: /** @type {number | null} */ (null),
     codigoClienteMax: /** @type {number | null} */ (null),
+    /** Só POST andamentos cuja chave (data+título) ainda não existe no processo. */
+    apenasNovos: false,
   };
   for (const a of argv) {
     if (a === '--dry-run') out.dryRun = true;
+    else if (a === '--apenas-novos') out.apenasNovos = true;
     else if (a === '--substituir-andamentos') out.substituirAndamentos = true;
     else if (a === '--criar-processos-orfaos') out.criarProcessosOrfaos = true;
     else if (a === '--sem-criar-processos') out.criarProcessosOrfaos = false;
@@ -757,6 +763,55 @@ async function listarAndamentosIds(baseUrl, token, processoId) {
     .filter((id) => Number.isFinite(id) && id > 0);
 }
 
+/** Título alinhado ao POST (trim + mojibake + maiúsculas + espaços). */
+function chaveTituloParaDedupe(titulo) {
+  const u = normalizarTextoPlanilha(String(titulo ?? ''))
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, ' ');
+  return u.length > 500 ? u.slice(0, 500) : u;
+}
+
+/** Data/hora comparável (segundos UTC) para dedupe com a API. */
+function chaveMovimentoEmParaDedupe(movimentoEm) {
+  if (movimentoEm == null || movimentoEm === '') return '_null_';
+  const d = new Date(/** @type {string} */ (movimentoEm));
+  if (Number.isNaN(d.getTime())) return String(movimentoEm).slice(0, 48);
+  return d.toISOString().slice(0, 19) + 'Z';
+}
+
+function chaveAndamentoDedupe(movimentoEm, titulo500) {
+  return `${chaveMovimentoEmParaDedupe(movimentoEm)}|${chaveTituloParaDedupe(titulo500)}`;
+}
+
+/** Lista completa de andamentos (JSON) para montar chaves de dedupe. */
+async function listarAndamentosParaDedupe(baseUrl, token, processoId) {
+  const url = `${baseUrl}/api/processos/${processoId}/andamentos`;
+  const r = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json',
+    },
+  });
+  if (!r.ok) {
+    const t = await r.text();
+    throw new Error(`GET andamentos proc ${processoId}: ${r.status} ${t.slice(0, 300)}`);
+  }
+  const list = await r.json();
+  return Array.isArray(list) ? list : [];
+}
+
+/** @param {unknown[]} list */
+function popularSetChavesDeLista(list) {
+  const s = new Set();
+  for (const x of list) {
+    const tit = chaveTituloParaDedupe(x?.titulo ?? '');
+    const mov = x?.movimentoEm ?? x?.movimento_em;
+    s.add(chaveAndamentoDedupe(mov, tit || 'Andamento'));
+  }
+  return s;
+}
+
 /**
  * @param {string} baseUrl
  * @param {string} token
@@ -839,6 +894,18 @@ async function main() {
   if (opts.apenasOrfaos && !opts.criarProcessosOrfaos) {
     console.error('[import] --apenas-orfaos requer --criar-processos-orfaos.');
     process.exit(1);
+  }
+  if (opts.apenasNovos) {
+    if (opts.limparImportPlanilhaAntes) {
+      console.warn(
+        '[apenas-novos] Limpeza por origem desligada: não faz sentido apagar por origem antes de deduplicar por conteúdo.'
+      );
+    }
+    opts.limparImportPlanilhaAntes = false;
+    if (opts.concurrency > 1) {
+      console.warn('[apenas-novos] Concorrência fixada em 1 (evita POST duplicado na mesma chave data+título).');
+      opts.concurrency = 1;
+    }
   }
 
   validarOrigemApi(opts.origem);
@@ -923,6 +990,11 @@ async function main() {
     console.log(`[dry-run] limpar origem antes (defeito): ${opts.limparImportPlanilhaAntes}`);
     console.log(`[dry-run] criar processos em falta (defeito): ${opts.criarProcessosOrfaos}`);
     console.log(`[dry-run] andamentos a POST (simulação): ${candidatas.length}`);
+    if (opts.apenasNovos) {
+      console.log(
+        '[dry-run] --apenas-novos: na execução real serão omitidos POSTs cuja data+título já existam no processo (requer GET por processo).'
+      );
+    }
     console.log('\n[dry-run] contagem por cliente:');
     for (const cod of Object.keys(porClienteLinhas).sort()) {
       console.log(`  ${cod}: ${porClienteLinhas[cod]}`);
@@ -1035,6 +1107,7 @@ async function main() {
     processosStubCriados: 0,
     pulados_sem_data: linhasSemData,
     pulados_sistema: 0,
+    puladosJaExistem: 0,
     /** @type {Record<string, number>} */
     respCriados: {},
     respNull: 0,
@@ -1158,12 +1231,37 @@ async function main() {
     console.log(`[substituir] Total removido: ${removidos} andamento(s)`);
   }
 
+  /** @type {Map<number, Set<string>> | null} */
+  let chavesPorProcId = null;
+  if (opts.apenasNovos && tarefas.length > 0) {
+    chavesPorProcId = new Map();
+    const ids = [...new Set(tarefas.map((t) => t.procId))].sort((a, b) => a - b);
+    console.log(`[apenas-novos] A indexar andamentos existentes em ${ids.length} processo(s)…`);
+    let totalChaves = 0;
+    for (const pid of ids) {
+      const rows = await listarAndamentosParaDedupe(opts.baseUrl, token, pid);
+      const set = popularSetChavesDeLista(rows);
+      chavesPorProcId.set(pid, set);
+      totalChaves += set.size;
+    }
+    console.log(`[apenas-novos] Chaves já existentes (data+título normalizados): ${totalChaves}`);
+  }
+
   await runPool(tarefas, opts.concurrency, async ({ L, procId, codigoCliente8 }) => {
     touchCliente(codigoCliente8);
     const titulo = String(L.titulo || '').trim() || 'Andamento';
     const titulo500 = titulo.length > 500 ? titulo.slice(0, 500) : titulo;
+    const movPost = L.movimentoEm != null ? /** @type {string} */ (L.movimentoEm) : null;
+    const chave = chaveAndamentoDedupe(movPost, titulo500);
+    if (chavesPorProcId) {
+      const set = chavesPorProcId.get(procId);
+      if (set && set.has(chave)) {
+        stats.puladosJaExistem += 1;
+        return;
+      }
+    }
     const r = await postAndamento(opts.baseUrl, token, procId, {
-      movimentoEm: L.movimentoEm != null ? /** @type {string} */ (L.movimentoEm) : null,
+      movimentoEm: movPost,
       titulo: titulo500,
       detalhe: L.detalheNorm,
     }, opts.origem);
@@ -1177,6 +1275,10 @@ async function main() {
     }
     stats.criados += 1;
     porClienteStats[codigoCliente8].criados += 1;
+    if (chavesPorProcId) {
+      if (!chavesPorProcId.has(procId)) chavesPorProcId.set(procId, new Set());
+      chavesPorProcId.get(procId).add(chave);
+    }
     if (L.detalheNorm == null) {
       stats.respNull += 1;
     } else {
@@ -1187,7 +1289,7 @@ async function main() {
   });
 
   console.log(
-    `[andamentos] criados=${stats.criados} falhas=${stats.falhas} orfaos=${stats.orfaos} processos_stub_criados=${stats.processosStubCriados} pulados_sem_data=${stats.pulados_sem_data} pulados_sistema=${stats.pulados_sistema} total_linhas=${totalLinhas}`
+    `[andamentos] criados=${stats.criados} falhas=${stats.falhas} orfaos=${stats.orfaos} processos_stub_criados=${stats.processosStubCriados} pulados_sem_data=${stats.pulados_sem_data} pulados_sistema=${stats.pulados_sistema} pulados_ja_existem=${stats.puladosJaExistem} total_linhas=${totalLinhas}`
   );
   imprimirResumoResponsavel(stats.respCriados, stats.respNull);
   imprimirResumoCliente(porClienteStats);
@@ -1206,6 +1308,7 @@ async function main() {
   console.log(`Limpeza prévia desta origem: removidos=${removidosLimpeza} (omitida=${!opts.limparImportPlanilhaAntes})`);
   console.log(`POST andamentos com sucesso: ${stats.criados}`);
   console.log(`POST falhou: ${stats.falhas}`);
+  console.log(`Pulados (já existiam data+título no processo): ${stats.puladosJaExistem}`);
   console.log(`Órfãos (sem processo após tentativa de stub): ${stats.orfaos}`);
   console.log(`Processos criados (stub): ${stats.processosStubCriados}`);
   console.log(`Linhas com data ausente/ inválida (movimentoEm null → API usa instante): ${stats.pulados_sem_data}`);

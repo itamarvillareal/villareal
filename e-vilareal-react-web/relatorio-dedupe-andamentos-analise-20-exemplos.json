@@ -1,0 +1,651 @@
+{
+  "meta": {
+    "base": "MySQL local Docker vilareal-db:3307",
+    "geradoEm": "2026-05-15T13:01:28.616Z",
+    "modo": "dry-run",
+    "estatisticas": {
+      "processosAnalisados": 3124,
+      "andamentosLidos": 31226,
+      "gruposDuplicados": 36,
+      "gruposIgnorados": 0,
+      "andamentosMarcadosRemover": 37,
+      "prazosReapontados": 0
+    },
+    "validacaoSqlBruta": {
+      "grupos_estimados": 36,
+      "linhas_excedentes": "37"
+    },
+    "nota": "Nenhum registo foi apagado. Aprovação necessária para --executar."
+  },
+  "exemplosParaRevisao": [
+    {
+      "n": 1,
+      "camada": "BRUTA",
+      "processoId": 8792,
+      "codigoCliente": "00000024",
+      "numeroInterno": 14,
+      "clienteNome": "GIANCARLO GOMES DA SILVA",
+      "manterId": 982,
+      "removerIds": [
+        983
+      ],
+      "alertas": [],
+      "registos": [
+        {
+          "id": 982,
+          "data": "2021-07-23T03:00:00.000Z",
+          "titulo": "PETIÇÃO DA INF. ANTERIOR JUNTADA EM 23/07/2021",
+          "detalhe": "VINICIUS",
+          "origem": "IMPORT_PLANILHA",
+          "importacao_id": null
+        },
+        {
+          "id": 983,
+          "data": "2021-07-23T03:00:00.000Z",
+          "titulo": "PETIÇÃO DA INF. ANTERIOR JUNTADA EM 23/07/2021",
+          "detalhe": "VINICIUS",
+          "origem": "IMPORT_PLANILHA",
+          "importacao_id": null
+        }
+      ]
+    },
+    {
+      "n": 2,
+      "camada": "BRUTA",
+      "processoId": 9092,
+      "codigoCliente": "00000054",
+      "numeroInterno": 123,
+      "clienteNome": "ALDRIANO SERGIO PIMENTA",
+      "manterId": 2734,
+      "removerIds": [
+        2736
+      ],
+      "alertas": [],
+      "registos": [
+        {
+          "id": 2734,
+          "data": "2020-10-29T03:00:00.000Z",
+          "titulo": "AUDIÊNCIA CANCELADA (CONCILIAÇÃO - 29/10/2020 09:10) 29/10/2020 09:14:24",
+          "detalhe": "KARLA",
+          "origem": "IMPORT_PLANILHA",
+          "importacao_id": null
+        },
+        {
+          "id": 2736,
+          "data": "2020-10-29T03:00:00.000Z",
+          "titulo": "AUDIÊNCIA CANCELADA (CONCILIAÇÃO - 29/10/2020 09:10) 29/10/2020 09:14:24",
+          "detalhe": "KARLA",
+          "origem": "IMPORT_PLANILHA",
+          "importacao_id": null
+        }
+      ]
+    },
+    {
+      "n": 3,
+      "camada": "BRUTA",
+      "processoId": 9654,
+      "codigoCliente": "00000149",
+      "numeroInterno": 28,
+      "clienteNome": "ITAMAR ALEXANDRE FELIX VILLA REAL JUNIOR",
+      "manterId": 4535,
+      "removerIds": [
+        4536
+      ],
+      "alertas": [],
+      "registos": [
+        {
+          "id": 4535,
+          "data": "2024-01-29T03:00:00.000Z",
+          "titulo": "PETIÇÃO DA INFORMAÇÃO ANTERIOR JUNTADA EM 29/01/2024",
+          "detalhe": "ITAMAR",
+          "origem": "IMPORT_PLANILHA",
+          "importacao_id": null
+        },
+        {
+          "id": 4536,
+          "data": "2024-01-29T03:00:00.000Z",
+          "titulo": "PETIÇÃO DA INFORMAÇÃO ANTERIOR JUNTADA EM 29/01/2024",
+          "detalhe": "ITAMAR",
+          "origem": "IMPORT_PLANILHA",
+          "importacao_id": null
+        }
+      ]
+    },
+    {
+      "n": 4,
+      "camada": "BRUTA",
+      "processoId": 9700,
+      "codigoCliente": "00000157",
+      "numeroInterno": 1,
+      "clienteNome": "MARIA HELENA ARANTES",
+      "manterId": 5485,
+      "removerIds": [
+        5486,
+        5487
+      ],
+      "alertas": [],
+      "registos": [
+        {
+          "id": 5485,
+          "data": "2013-01-17T02:00:00.000Z",
+          "titulo": "AGUARDANDO PETICIONAR",
+          "detalhe": null,
+          "origem": "IMPORT_PLANILHA",
+          "importacao_id": null
+        },
+        {
+          "id": 5486,
+          "data": "2013-01-17T02:00:00.000Z",
+          "titulo": "AGUARDANDO PETICIONAR",
+          "detalhe": null,
+          "origem": "IMPORT_PLANILHA",
+          "importacao_id": null
+        },
+        {
+          "id": 5487,
+          "data": "2013-01-17T02:00:00.000Z",
+          "titulo": "AGUARDANDO PETICIONAR",
+          "detalhe": null,
+          "origem": "IMPORT_PLANILHA",
+          "importacao_id": null
+        }
+      ]
+    },
+    {
+      "n": 5,
+      "camada": "BRUTA",
+      "processoId": 9970,
+      "codigoCliente": "00000235",
+      "numeroInterno": 6,
+      "clienteNome": "VALDIR ALVES DOS REIS",
+      "manterId": 6423,
+      "removerIds": [
+        6426
+      ],
+      "alertas": [],
+      "registos": [
+        {
+          "id": 6423,
+          "data": "2021-05-11T03:00:00.000Z",
+          "titulo": "PETIÇÃO DA INF. ANTERIOR JUNTADA EM 11/05/2021",
+          "detalhe": "KARLA",
+          "origem": "IMPORT_PLANILHA",
+          "importacao_id": null
+        },
+        {
+          "id": 6426,
+          "data": "2021-05-11T03:00:00.000Z",
+          "titulo": "PETIÇÃO DA INF. ANTERIOR JUNTADA EM 11/05/2021",
+          "detalhe": "KARLA",
+          "origem": "IMPORT_PLANILHA",
+          "importacao_id": null
+        }
+      ]
+    },
+    {
+      "n": 6,
+      "camada": "BRUTA",
+      "processoId": 10087,
+      "codigoCliente": "00000257",
+      "numeroInterno": 18,
+      "clienteNome": "RAFAEL DA SILVA SIQUEIRA",
+      "manterId": 7093,
+      "removerIds": [
+        7094
+      ],
+      "alertas": [],
+      "registos": [
+        {
+          "id": 7093,
+          "data": "2025-03-07T03:00:00.000Z",
+          "titulo": "SUSPENSÃO DE PROCESSO 25/01/2026 00:00:00",
+          "detalhe": "ISABELLA",
+          "origem": "IMPORT_PLANILHA",
+          "importacao_id": null
+        },
+        {
+          "id": 7094,
+          "data": "2025-03-07T03:00:00.000Z",
+          "titulo": "SUSPENSÃO DE PROCESSO 25/01/2026 00:00:00",
+          "detalhe": "ISABELLA",
+          "origem": "IMPORT_PLANILHA",
+          "importacao_id": null
+        }
+      ]
+    },
+    {
+      "n": 7,
+      "camada": "BRUTA",
+      "processoId": 10177,
+      "codigoCliente": "00000291",
+      "numeroInterno": 2,
+      "clienteNome": "KASSIO HENRIQUE ROSA",
+      "manterId": 7541,
+      "removerIds": [
+        7544
+      ],
+      "alertas": [],
+      "registos": [
+        {
+          "id": 7541,
+          "data": "2015-08-04T03:00:00.000Z",
+          "titulo": "30/07/2015 - 13:32 COM CARGA PARA O MINISTERIO PUBLICO",
+          "detalhe": "ITAMAR",
+          "origem": "IMPORT_PLANILHA",
+          "importacao_id": null
+        },
+        {
+          "id": 7544,
+          "data": "2015-08-04T03:00:00.000Z",
+          "titulo": "30/07/2015 - 13:32 COM CARGA PARA O MINISTERIO PUBLICO",
+          "detalhe": "ITAMAR",
+          "origem": "IMPORT_PLANILHA",
+          "importacao_id": null
+        }
+      ]
+    },
+    {
+      "n": 8,
+      "camada": "BRUTA",
+      "processoId": 10503,
+      "codigoCliente": "00000390",
+      "numeroInterno": 1,
+      "clienteNome": "MARIA APARECIDA CRISPIM DE SOUZA CESARIO",
+      "manterId": 8880,
+      "removerIds": [
+        8881
+      ],
+      "alertas": [],
+      "registos": [
+        {
+          "id": 8880,
+          "data": "2024-02-29T03:00:00.000Z",
+          "titulo": "PETIÇÃO DA INFORMAÇÃO ANTERIOR JUNTADA EM 29/02/2024",
+          "detalhe": "ITAMAR",
+          "origem": "IMPORT_PLANILHA",
+          "importacao_id": null
+        },
+        {
+          "id": 8881,
+          "data": "2024-02-29T03:00:00.000Z",
+          "titulo": "PETIÇÃO DA INFORMAÇÃO ANTERIOR JUNTADA EM 29/02/2024",
+          "detalhe": "ITAMAR",
+          "origem": "IMPORT_PLANILHA",
+          "importacao_id": null
+        }
+      ]
+    },
+    {
+      "n": 9,
+      "camada": "BRUTA",
+      "processoId": 11081,
+      "codigoCliente": "00000491",
+      "numeroInterno": 232,
+      "clienteNome": "CONDOMINIO RESIDENCIAL VEREDAS DO BOSQUE",
+      "manterId": 11659,
+      "removerIds": [
+        11661
+      ],
+      "alertas": [],
+      "registos": [
+        {
+          "id": 11659,
+          "data": "2020-03-09T03:00:00.000Z",
+          "titulo": "PETIÇÃO DA INF. ANTERIOR JUNTADA EM 09/03/2020",
+          "detalhe": null,
+          "origem": "IMPORT_PLANILHA",
+          "importacao_id": null
+        },
+        {
+          "id": 11661,
+          "data": "2020-03-09T03:00:00.000Z",
+          "titulo": "PETIÇÃO DA INF. ANTERIOR JUNTADA EM 09/03/2020",
+          "detalhe": null,
+          "origem": "IMPORT_PLANILHA",
+          "importacao_id": null
+        }
+      ]
+    },
+    {
+      "n": 10,
+      "camada": "BRUTA",
+      "processoId": 11092,
+      "codigoCliente": "00000491",
+      "numeroInterno": 221,
+      "clienteNome": "CONDOMINIO RESIDENCIAL VEREDAS DO BOSQUE",
+      "manterId": 11585,
+      "removerIds": [
+        11586
+      ],
+      "alertas": [],
+      "registos": [
+        {
+          "id": 11585,
+          "data": "2019-03-22T03:00:00.000Z",
+          "titulo": "EMAIL AUTOMATICO PARA CONFECÇÃO DOS BOLETOS REFERENTE AO ACORDO ENTABULADO ENVIADO EM 22/03/2019",
+          "detalhe": null,
+          "origem": "IMPORT_PLANILHA",
+          "importacao_id": null
+        },
+        {
+          "id": 11586,
+          "data": "2019-03-22T03:00:00.000Z",
+          "titulo": "EMAIL AUTOMATICO PARA CONFECÇÃO DOS BOLETOS REFERENTE AO ACORDO ENTABULADO ENVIADO EM 22/03/2019",
+          "detalhe": null,
+          "origem": "IMPORT_PLANILHA",
+          "importacao_id": null
+        }
+      ]
+    },
+    {
+      "n": 11,
+      "camada": "BRUTA",
+      "processoId": 11116,
+      "codigoCliente": "00000491",
+      "numeroInterno": 198,
+      "clienteNome": "CONDOMINIO RESIDENCIAL VEREDAS DO BOSQUE",
+      "manterId": 11493,
+      "removerIds": [
+        11494
+      ],
+      "alertas": [],
+      "registos": [
+        {
+          "id": 11493,
+          "data": "2019-07-22T03:00:00.000Z",
+          "titulo": "EMAIL AUTOMATICO PARA CONFECÇÃO DOS BOLETOS REFERENTE AO ACORDO ENTABULADO ENVIADO EM 22/07/2019",
+          "detalhe": null,
+          "origem": "IMPORT_PLANILHA",
+          "importacao_id": null
+        },
+        {
+          "id": 11494,
+          "data": "2019-07-22T03:00:00.000Z",
+          "titulo": "EMAIL AUTOMATICO PARA CONFECÇÃO DOS BOLETOS REFERENTE AO ACORDO ENTABULADO ENVIADO EM 22/07/2019",
+          "detalhe": null,
+          "origem": "IMPORT_PLANILHA",
+          "importacao_id": null
+        }
+      ]
+    },
+    {
+      "n": 12,
+      "camada": "BRUTA",
+      "processoId": 11437,
+      "codigoCliente": "00000525",
+      "numeroInterno": 1,
+      "clienteNome": "JOSE DO NASCIMENTO DA SILVA",
+      "manterId": 12357,
+      "removerIds": [
+        12358
+      ],
+      "alertas": [],
+      "registos": [
+        {
+          "id": 12357,
+          "data": "2020-10-22T03:00:00.000Z",
+          "titulo": "JUNTAR PETIÇÃO INSERIDA NA PASTA EM 22/10/2020",
+          "detalhe": "VINICIUS",
+          "origem": "IMPORT_PLANILHA",
+          "importacao_id": null
+        },
+        {
+          "id": 12358,
+          "data": "2020-10-22T03:00:00.000Z",
+          "titulo": "JUNTAR PETIÇÃO INSERIDA NA PASTA EM 22/10/2020",
+          "detalhe": "VINICIUS",
+          "origem": "IMPORT_PLANILHA",
+          "importacao_id": null
+        }
+      ]
+    },
+    {
+      "n": 13,
+      "camada": "BRUTA",
+      "processoId": 11558,
+      "codigoCliente": "00000560",
+      "numeroInterno": 82,
+      "clienteNome": "CONDOMINIO RESIDENCIAL SOL NASCENTE",
+      "manterId": 13404,
+      "removerIds": [
+        13407
+      ],
+      "alertas": [],
+      "registos": [
+        {
+          "id": 13404,
+          "data": "2020-03-16T03:00:00.000Z",
+          "titulo": "EMAIL AUTOMATICO PARA CONFECÇÃO DOS BOLETOS REFERENTE AO ACORDO ENTABULADO ENVIADO EM 16/03/2020",
+          "detalhe": null,
+          "origem": "IMPORT_PLANILHA",
+          "importacao_id": null
+        },
+        {
+          "id": 13407,
+          "data": "2020-03-16T03:00:00.000Z",
+          "titulo": "EMAIL AUTOMATICO PARA CONFECÇÃO DOS BOLETOS REFERENTE AO ACORDO ENTABULADO ENVIADO EM 16/03/2020",
+          "detalhe": null,
+          "origem": "IMPORT_PLANILHA",
+          "importacao_id": null
+        }
+      ]
+    },
+    {
+      "n": 14,
+      "camada": "BRUTA",
+      "processoId": 11630,
+      "codigoCliente": "00000560",
+      "numeroInterno": 9,
+      "clienteNome": "CONDOMINIO RESIDENCIAL SOL NASCENTE",
+      "manterId": 12933,
+      "removerIds": [
+        12939
+      ],
+      "alertas": [],
+      "registos": [
+        {
+          "id": 12933,
+          "data": "2017-02-21T03:00:00.000Z",
+          "titulo": "RECIBO NO VALOR TOTAL DE R$ 459,42; REFERENTE A PARCELA 05 (HONORÁRIOS: R$ 121,48) CONFECCIONADO E ENVIADO EM 21/02/2017",
+          "detalhe": null,
+          "origem": "IMPORT_PLANILHA",
+          "importacao_id": null
+        },
+        {
+          "id": 12939,
+          "data": "2017-02-21T03:00:00.000Z",
+          "titulo": "RECIBO NO VALOR TOTAL DE R$ 459,42; REFERENTE A PARCELA 05 (HONORÁRIOS: R$ 121,48) CONFECCIONADO E ENVIADO EM 21/02/2017",
+          "detalhe": null,
+          "origem": "IMPORT_PLANILHA",
+          "importacao_id": null
+        }
+      ]
+    },
+    {
+      "n": 15,
+      "camada": "BRUTA",
+      "processoId": 11630,
+      "codigoCliente": "00000560",
+      "numeroInterno": 9,
+      "clienteNome": "CONDOMINIO RESIDENCIAL SOL NASCENTE",
+      "manterId": 12936,
+      "removerIds": [
+        12940
+      ],
+      "alertas": [],
+      "registos": [
+        {
+          "id": 12936,
+          "data": "2017-02-21T03:00:00.000Z",
+          "titulo": "RECIBO NO VALOR TOTAL DE R$ 459,42; REFERENTE A PARCELA 04 (HONORÁRIOS: R$ 121,48) CONFECCIONADO E ENVIADO EM 21/02/2017",
+          "detalhe": null,
+          "origem": "IMPORT_PLANILHA",
+          "importacao_id": null
+        },
+        {
+          "id": 12940,
+          "data": "2017-02-21T03:00:00.000Z",
+          "titulo": "RECIBO NO VALOR TOTAL DE R$ 459,42; REFERENTE A PARCELA 04 (HONORÁRIOS: R$ 121,48) CONFECCIONADO E ENVIADO EM 21/02/2017",
+          "detalhe": null,
+          "origem": "IMPORT_PLANILHA",
+          "importacao_id": null
+        }
+      ]
+    },
+    {
+      "n": 16,
+      "camada": "BRUTA",
+      "processoId": 11736,
+      "codigoCliente": "00000572",
+      "numeroInterno": 2,
+      "clienteNome": "CONDOMINIO RESIDENCIAL PONTA VERDE",
+      "manterId": 14104,
+      "removerIds": [
+        14105
+      ],
+      "alertas": [],
+      "registos": [
+        {
+          "id": 14104,
+          "data": "2019-04-03T03:00:00.000Z",
+          "titulo": "RECIBO NO VALOR TOTAL DE R$ 614,90; REFERENTE A PARCELA 02 (HONORÁRIOS: R$ 61,49) CONFECCIONADO E ENVIADO EM 03/04/2019",
+          "detalhe": null,
+          "origem": "IMPORT_PLANILHA",
+          "importacao_id": null
+        },
+        {
+          "id": 14105,
+          "data": "2019-04-03T03:00:00.000Z",
+          "titulo": "RECIBO NO VALOR TOTAL DE R$ 614,90; REFERENTE A PARCELA 02 (HONORÁRIOS: R$ 61,49) CONFECCIONADO E ENVIADO EM 03/04/2019",
+          "detalhe": null,
+          "origem": "IMPORT_PLANILHA",
+          "importacao_id": null
+        }
+      ]
+    },
+    {
+      "n": 17,
+      "camada": "BRUTA",
+      "processoId": 11809,
+      "codigoCliente": "00000578",
+      "numeroInterno": 220,
+      "clienteNome": "CONDOMINIO RESIDENCIAL SÃƒO JOSÃ‰",
+      "manterId": 16448,
+      "removerIds": [
+        16450
+      ],
+      "alertas": [],
+      "registos": [
+        {
+          "id": 16448,
+          "data": "2020-05-21T03:00:00.000Z",
+          "titulo": "EMAIL AUTOMATICO PARA CONFECÇÃO DOS BOLETOS REFERENTE AO ACORDO ENTABULADO ENVIADO EM 21/05/2020",
+          "detalhe": null,
+          "origem": "IMPORT_PLANILHA",
+          "importacao_id": null
+        },
+        {
+          "id": 16450,
+          "data": "2020-05-21T03:00:00.000Z",
+          "titulo": "EMAIL AUTOMATICO PARA CONFECÇÃO DOS BOLETOS REFERENTE AO ACORDO ENTABULADO ENVIADO EM 21/05/2020",
+          "detalhe": null,
+          "origem": "IMPORT_PLANILHA",
+          "importacao_id": null
+        }
+      ]
+    },
+    {
+      "n": 18,
+      "camada": "BRUTA",
+      "processoId": 11897,
+      "codigoCliente": "00000578",
+      "numeroInterno": 132,
+      "clienteNome": "CONDOMINIO RESIDENCIAL SÃƒO JOSÃ‰",
+      "manterId": 16060,
+      "removerIds": [
+        16063
+      ],
+      "alertas": [],
+      "registos": [
+        {
+          "id": 16060,
+          "data": "2020-04-09T03:00:00.000Z",
+          "titulo": "EMAIL AUTOMATICO PARA CONFECÇÃO DOS BOLETOS REFERENTE AO ACORDO ENTABULADO ENVIADO EM 09/04/2020",
+          "detalhe": null,
+          "origem": "IMPORT_PLANILHA",
+          "importacao_id": null
+        },
+        {
+          "id": 16063,
+          "data": "2020-04-09T03:00:00.000Z",
+          "titulo": "EMAIL AUTOMATICO PARA CONFECÇÃO DOS BOLETOS REFERENTE AO ACORDO ENTABULADO ENVIADO EM 09/04/2020",
+          "detalhe": null,
+          "origem": "IMPORT_PLANILHA",
+          "importacao_id": null
+        }
+      ]
+    },
+    {
+      "n": 19,
+      "camada": "BRUTA",
+      "processoId": 11965,
+      "codigoCliente": "00000578",
+      "numeroInterno": 64,
+      "clienteNome": "CONDOMINIO RESIDENCIAL SÃƒO JOSÃ‰",
+      "manterId": 15078,
+      "removerIds": [
+        15079
+      ],
+      "alertas": [],
+      "registos": [
+        {
+          "id": 15078,
+          "data": "2019-02-05T02:00:00.000Z",
+          "titulo": "RECIBO NO VALOR TOTAL DE R$ 3.093,85; REFERENTE A PARCELA 02 (HONORÁRIOS: R$ 91,92) CONFECCIONADO E ENVIADO EM 05/02/2019",
+          "detalhe": null,
+          "origem": "IMPORT_PLANILHA",
+          "importacao_id": null
+        },
+        {
+          "id": 15079,
+          "data": "2019-02-05T02:00:00.000Z",
+          "titulo": "RECIBO NO VALOR TOTAL DE R$ 3.093,85; REFERENTE A PARCELA 02 (HONORÁRIOS: R$ 91,92) CONFECCIONADO E ENVIADO EM 05/02/2019",
+          "detalhe": null,
+          "origem": "IMPORT_PLANILHA",
+          "importacao_id": null
+        }
+      ]
+    },
+    {
+      "n": 20,
+      "camada": "BRUTA",
+      "processoId": 11965,
+      "codigoCliente": "00000578",
+      "numeroInterno": 64,
+      "clienteNome": "CONDOMINIO RESIDENCIAL SÃƒO JOSÃ‰",
+      "manterId": 15080,
+      "removerIds": [
+        15081
+      ],
+      "alertas": [],
+      "registos": [
+        {
+          "id": 15080,
+          "data": "2019-02-05T02:00:00.000Z",
+          "titulo": "RECIBO NO VALOR TOTAL DE R$ 3.093,85; REFERENTE A PARCELA 03 (HONORÁRIOS: R$ 91,92) CONFECCIONADO E ENVIADO EM 05/02/2019",
+          "detalhe": null,
+          "origem": "IMPORT_PLANILHA",
+          "importacao_id": null
+        },
+        {
+          "id": 15081,
+          "data": "2019-02-05T02:00:00.000Z",
+          "titulo": "RECIBO NO VALOR TOTAL DE R$ 3.093,85; REFERENTE A PARCELA 03 (HONORÁRIOS: R$ 91,92) CONFECCIONADO E ENVIADO EM 05/02/2019",
+          "detalhe": null,
+          "origem": "IMPORT_PLANILHA",
+          "importacao_id": null
+        }
+      ]
+    }
+  ]
+}

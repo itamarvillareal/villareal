@@ -1,0 +1,1665 @@
+{
+  "script": "deduplicar-andamentos-processo.mjs",
+  "geradoEm": "2026-05-15T13:06:31.159Z",
+  "modo": "dry-run",
+  "escopoAnalise": "Duplicados avaliados apenas dentro de cada processo_id (cliente + número interno); nunca entre processos diferentes.",
+  "cenarioReimportacao": "Detecta o mesmo movimento gravado com origens IMPORT_PLANILHA distintas (ex.: IMPORT_PLANILHA vs IMPORT_PLANILHA_376_499) no mesmo processo.",
+  "validacaoSql": {
+    "gruposBrutosMesmoProcesso": 36,
+    "linhasExcedentesBrutas": 37,
+    "gruposComOrigensDistintas": 0
+  },
+  "camadas": [
+    "BRUTA",
+    "ESTRITA"
+  ],
+  "opcoes": {
+    "cliente": null,
+    "processoId": null,
+    "exigirDetalheIgual": true
+  },
+  "estatisticas": {
+    "processosAnalisados": 3124,
+    "andamentosLidos": 31226,
+    "gruposDuplicados": 36,
+    "gruposIgnorados": 0,
+    "gruposReimportacaoEntreOrigens": 0,
+    "andamentosMarcadosRemover": 37,
+    "prazosReapontados": 0
+  },
+  "suspeitos": [],
+  "grupos": [
+    {
+      "escopo": {
+        "tipo": "PROCESSO_UNICO",
+        "processoId": 8792,
+        "codigoCliente": "00000024",
+        "numeroInterno": 14,
+        "regra": "Comparação apenas entre andamentos deste processo_id; nunca entre processos diferentes."
+      },
+      "camada": "BRUTA",
+      "chave": "proc:8792|2021-07-23T00:00:00.000Z\u0000PETIÇÃO DA INF. ANTERIOR JUNTADA EM 23/07/2021",
+      "acao": "REMOVER_DUPLICADOS",
+      "motivo": {
+        "motivo": "REIMPORTACAO_MESMA_ORIGEM",
+        "descricao": "Linhas repetidas na mesma origem (POST duplicado ou import sem --apenas-novos).",
+        "origens": [
+          "IMPORT_PLANILHA"
+        ]
+      },
+      "origens": [
+        "IMPORT_PLANILHA"
+      ],
+      "manter": {
+        "id": 982,
+        "movimento_em": "2021-07-23T00:00:00.000Z",
+        "titulo": "PETIÇÃO DA INF. ANTERIOR JUNTADA EM 23/07/2021",
+        "detalhe": "VINICIUS",
+        "origem": "IMPORT_PLANILHA",
+        "origemImportPlanilha": true,
+        "usuario_id": null,
+        "prazo_refs": 0
+      },
+      "remover": [
+        {
+          "id": 983,
+          "movimento_em": "2021-07-23T00:00:00.000Z",
+          "titulo": "PETIÇÃO DA INF. ANTERIOR JUNTADA EM 23/07/2021",
+          "detalhe": "VINICIUS",
+          "origem": "IMPORT_PLANILHA",
+          "origemImportPlanilha": true,
+          "usuario_id": null,
+          "prazo_refs": 0
+        }
+      ],
+      "alertas": []
+    },
+    {
+      "escopo": {
+        "tipo": "PROCESSO_UNICO",
+        "processoId": 9092,
+        "codigoCliente": "00000054",
+        "numeroInterno": 123,
+        "regra": "Comparação apenas entre andamentos deste processo_id; nunca entre processos diferentes."
+      },
+      "camada": "BRUTA",
+      "chave": "proc:9092|2020-10-29T00:00:00.000Z\u0000AUDIÊNCIA CANCELADA (CONCILIAÇÃO - 29/10/2020 09:10) 29/10/2020 09:14:24",
+      "acao": "REMOVER_DUPLICADOS",
+      "motivo": {
+        "motivo": "REIMPORTACAO_MESMA_ORIGEM",
+        "descricao": "Linhas repetidas na mesma origem (POST duplicado ou import sem --apenas-novos).",
+        "origens": [
+          "IMPORT_PLANILHA"
+        ]
+      },
+      "origens": [
+        "IMPORT_PLANILHA"
+      ],
+      "manter": {
+        "id": 2734,
+        "movimento_em": "2020-10-29T00:00:00.000Z",
+        "titulo": "AUDIÊNCIA CANCELADA (CONCILIAÇÃO - 29/10/2020 09:10) 29/10/2020 09:14:24",
+        "detalhe": "KARLA",
+        "origem": "IMPORT_PLANILHA",
+        "origemImportPlanilha": true,
+        "usuario_id": null,
+        "prazo_refs": 0
+      },
+      "remover": [
+        {
+          "id": 2736,
+          "movimento_em": "2020-10-29T00:00:00.000Z",
+          "titulo": "AUDIÊNCIA CANCELADA (CONCILIAÇÃO - 29/10/2020 09:10) 29/10/2020 09:14:24",
+          "detalhe": "KARLA",
+          "origem": "IMPORT_PLANILHA",
+          "origemImportPlanilha": true,
+          "usuario_id": null,
+          "prazo_refs": 0
+        }
+      ],
+      "alertas": []
+    },
+    {
+      "escopo": {
+        "tipo": "PROCESSO_UNICO",
+        "processoId": 9654,
+        "codigoCliente": "00000149",
+        "numeroInterno": 28,
+        "regra": "Comparação apenas entre andamentos deste processo_id; nunca entre processos diferentes."
+      },
+      "camada": "BRUTA",
+      "chave": "proc:9654|2024-01-29T00:00:00.000Z\u0000PETIÇÃO DA INFORMAÇÃO ANTERIOR JUNTADA EM 29/01/2024",
+      "acao": "REMOVER_DUPLICADOS",
+      "motivo": {
+        "motivo": "REIMPORTACAO_MESMA_ORIGEM",
+        "descricao": "Linhas repetidas na mesma origem (POST duplicado ou import sem --apenas-novos).",
+        "origens": [
+          "IMPORT_PLANILHA"
+        ]
+      },
+      "origens": [
+        "IMPORT_PLANILHA"
+      ],
+      "manter": {
+        "id": 4535,
+        "movimento_em": "2024-01-29T00:00:00.000Z",
+        "titulo": "PETIÇÃO DA INFORMAÇÃO ANTERIOR JUNTADA EM 29/01/2024",
+        "detalhe": "ITAMAR",
+        "origem": "IMPORT_PLANILHA",
+        "origemImportPlanilha": true,
+        "usuario_id": null,
+        "prazo_refs": 0
+      },
+      "remover": [
+        {
+          "id": 4536,
+          "movimento_em": "2024-01-29T00:00:00.000Z",
+          "titulo": "PETIÇÃO DA INFORMAÇÃO ANTERIOR JUNTADA EM 29/01/2024",
+          "detalhe": "ITAMAR",
+          "origem": "IMPORT_PLANILHA",
+          "origemImportPlanilha": true,
+          "usuario_id": null,
+          "prazo_refs": 0
+        }
+      ],
+      "alertas": []
+    },
+    {
+      "escopo": {
+        "tipo": "PROCESSO_UNICO",
+        "processoId": 9700,
+        "codigoCliente": "00000157",
+        "numeroInterno": 1,
+        "regra": "Comparação apenas entre andamentos deste processo_id; nunca entre processos diferentes."
+      },
+      "camada": "BRUTA",
+      "chave": "proc:9700|2013-01-17T00:00:00.000Z\u0000AGUARDANDO PETICIONAR",
+      "acao": "REMOVER_DUPLICADOS",
+      "motivo": {
+        "motivo": "REIMPORTACAO_MESMA_ORIGEM",
+        "descricao": "Linhas repetidas na mesma origem (POST duplicado ou import sem --apenas-novos).",
+        "origens": [
+          "IMPORT_PLANILHA"
+        ]
+      },
+      "origens": [
+        "IMPORT_PLANILHA"
+      ],
+      "manter": {
+        "id": 5485,
+        "movimento_em": "2013-01-17T00:00:00.000Z",
+        "titulo": "AGUARDANDO PETICIONAR",
+        "detalhe": null,
+        "origem": "IMPORT_PLANILHA",
+        "origemImportPlanilha": true,
+        "usuario_id": null,
+        "prazo_refs": 0
+      },
+      "remover": [
+        {
+          "id": 5486,
+          "movimento_em": "2013-01-17T00:00:00.000Z",
+          "titulo": "AGUARDANDO PETICIONAR",
+          "detalhe": null,
+          "origem": "IMPORT_PLANILHA",
+          "origemImportPlanilha": true,
+          "usuario_id": null,
+          "prazo_refs": 0
+        },
+        {
+          "id": 5487,
+          "movimento_em": "2013-01-17T00:00:00.000Z",
+          "titulo": "AGUARDANDO PETICIONAR",
+          "detalhe": null,
+          "origem": "IMPORT_PLANILHA",
+          "origemImportPlanilha": true,
+          "usuario_id": null,
+          "prazo_refs": 0
+        }
+      ],
+      "alertas": []
+    },
+    {
+      "escopo": {
+        "tipo": "PROCESSO_UNICO",
+        "processoId": 9970,
+        "codigoCliente": "00000235",
+        "numeroInterno": 6,
+        "regra": "Comparação apenas entre andamentos deste processo_id; nunca entre processos diferentes."
+      },
+      "camada": "BRUTA",
+      "chave": "proc:9970|2021-05-11T00:00:00.000Z\u0000PETIÇÃO DA INF. ANTERIOR JUNTADA EM 11/05/2021",
+      "acao": "REMOVER_DUPLICADOS",
+      "motivo": {
+        "motivo": "REIMPORTACAO_MESMA_ORIGEM",
+        "descricao": "Linhas repetidas na mesma origem (POST duplicado ou import sem --apenas-novos).",
+        "origens": [
+          "IMPORT_PLANILHA"
+        ]
+      },
+      "origens": [
+        "IMPORT_PLANILHA"
+      ],
+      "manter": {
+        "id": 6423,
+        "movimento_em": "2021-05-11T00:00:00.000Z",
+        "titulo": "PETIÇÃO DA INF. ANTERIOR JUNTADA EM 11/05/2021",
+        "detalhe": "KARLA",
+        "origem": "IMPORT_PLANILHA",
+        "origemImportPlanilha": true,
+        "usuario_id": null,
+        "prazo_refs": 0
+      },
+      "remover": [
+        {
+          "id": 6426,
+          "movimento_em": "2021-05-11T00:00:00.000Z",
+          "titulo": "PETIÇÃO DA INF. ANTERIOR JUNTADA EM 11/05/2021",
+          "detalhe": "KARLA",
+          "origem": "IMPORT_PLANILHA",
+          "origemImportPlanilha": true,
+          "usuario_id": null,
+          "prazo_refs": 0
+        }
+      ],
+      "alertas": []
+    },
+    {
+      "escopo": {
+        "tipo": "PROCESSO_UNICO",
+        "processoId": 10087,
+        "codigoCliente": "00000257",
+        "numeroInterno": 18,
+        "regra": "Comparação apenas entre andamentos deste processo_id; nunca entre processos diferentes."
+      },
+      "camada": "BRUTA",
+      "chave": "proc:10087|2025-03-07T00:00:00.000Z\u0000SUSPENSÃO DE PROCESSO 25/01/2026 00:00:00",
+      "acao": "REMOVER_DUPLICADOS",
+      "motivo": {
+        "motivo": "REIMPORTACAO_MESMA_ORIGEM",
+        "descricao": "Linhas repetidas na mesma origem (POST duplicado ou import sem --apenas-novos).",
+        "origens": [
+          "IMPORT_PLANILHA"
+        ]
+      },
+      "origens": [
+        "IMPORT_PLANILHA"
+      ],
+      "manter": {
+        "id": 7093,
+        "movimento_em": "2025-03-07T00:00:00.000Z",
+        "titulo": "SUSPENSÃO DE PROCESSO 25/01/2026 00:00:00",
+        "detalhe": "ISABELLA",
+        "origem": "IMPORT_PLANILHA",
+        "origemImportPlanilha": true,
+        "usuario_id": null,
+        "prazo_refs": 0
+      },
+      "remover": [
+        {
+          "id": 7094,
+          "movimento_em": "2025-03-07T00:00:00.000Z",
+          "titulo": "SUSPENSÃO DE PROCESSO 25/01/2026 00:00:00",
+          "detalhe": "ISABELLA",
+          "origem": "IMPORT_PLANILHA",
+          "origemImportPlanilha": true,
+          "usuario_id": null,
+          "prazo_refs": 0
+        }
+      ],
+      "alertas": []
+    },
+    {
+      "escopo": {
+        "tipo": "PROCESSO_UNICO",
+        "processoId": 10177,
+        "codigoCliente": "00000291",
+        "numeroInterno": 2,
+        "regra": "Comparação apenas entre andamentos deste processo_id; nunca entre processos diferentes."
+      },
+      "camada": "BRUTA",
+      "chave": "proc:10177|2015-08-04T00:00:00.000Z\u000030/07/2015 - 13:32 COM CARGA PARA O MINISTERIO PUBLICO",
+      "acao": "REMOVER_DUPLICADOS",
+      "motivo": {
+        "motivo": "REIMPORTACAO_MESMA_ORIGEM",
+        "descricao": "Linhas repetidas na mesma origem (POST duplicado ou import sem --apenas-novos).",
+        "origens": [
+          "IMPORT_PLANILHA"
+        ]
+      },
+      "origens": [
+        "IMPORT_PLANILHA"
+      ],
+      "manter": {
+        "id": 7541,
+        "movimento_em": "2015-08-04T00:00:00.000Z",
+        "titulo": "30/07/2015 - 13:32 COM CARGA PARA O MINISTERIO PUBLICO",
+        "detalhe": "ITAMAR",
+        "origem": "IMPORT_PLANILHA",
+        "origemImportPlanilha": true,
+        "usuario_id": null,
+        "prazo_refs": 0
+      },
+      "remover": [
+        {
+          "id": 7544,
+          "movimento_em": "2015-08-04T00:00:00.000Z",
+          "titulo": "30/07/2015 - 13:32 COM CARGA PARA O MINISTERIO PUBLICO",
+          "detalhe": "ITAMAR",
+          "origem": "IMPORT_PLANILHA",
+          "origemImportPlanilha": true,
+          "usuario_id": null,
+          "prazo_refs": 0
+        }
+      ],
+      "alertas": []
+    },
+    {
+      "escopo": {
+        "tipo": "PROCESSO_UNICO",
+        "processoId": 10503,
+        "codigoCliente": "00000390",
+        "numeroInterno": 1,
+        "regra": "Comparação apenas entre andamentos deste processo_id; nunca entre processos diferentes."
+      },
+      "camada": "BRUTA",
+      "chave": "proc:10503|2024-02-29T00:00:00.000Z\u0000PETIÇÃO DA INFORMAÇÃO ANTERIOR JUNTADA EM 29/02/2024",
+      "acao": "REMOVER_DUPLICADOS",
+      "motivo": {
+        "motivo": "REIMPORTACAO_MESMA_ORIGEM",
+        "descricao": "Linhas repetidas na mesma origem (POST duplicado ou import sem --apenas-novos).",
+        "origens": [
+          "IMPORT_PLANILHA"
+        ]
+      },
+      "origens": [
+        "IMPORT_PLANILHA"
+      ],
+      "manter": {
+        "id": 8880,
+        "movimento_em": "2024-02-29T00:00:00.000Z",
+        "titulo": "PETIÇÃO DA INFORMAÇÃO ANTERIOR JUNTADA EM 29/02/2024",
+        "detalhe": "ITAMAR",
+        "origem": "IMPORT_PLANILHA",
+        "origemImportPlanilha": true,
+        "usuario_id": null,
+        "prazo_refs": 0
+      },
+      "remover": [
+        {
+          "id": 8881,
+          "movimento_em": "2024-02-29T00:00:00.000Z",
+          "titulo": "PETIÇÃO DA INFORMAÇÃO ANTERIOR JUNTADA EM 29/02/2024",
+          "detalhe": "ITAMAR",
+          "origem": "IMPORT_PLANILHA",
+          "origemImportPlanilha": true,
+          "usuario_id": null,
+          "prazo_refs": 0
+        }
+      ],
+      "alertas": []
+    },
+    {
+      "escopo": {
+        "tipo": "PROCESSO_UNICO",
+        "processoId": 11116,
+        "codigoCliente": "00000491",
+        "numeroInterno": 198,
+        "regra": "Comparação apenas entre andamentos deste processo_id; nunca entre processos diferentes."
+      },
+      "camada": "BRUTA",
+      "chave": "proc:11116|2019-07-22T00:00:00.000Z\u0000EMAIL AUTOMATICO PARA CONFECÇÃO DOS BOLETOS REFERENTE AO ACORDO ENTABULADO ENVIADO EM 22/07/2019",
+      "acao": "REMOVER_DUPLICADOS",
+      "motivo": {
+        "motivo": "REIMPORTACAO_MESMA_ORIGEM",
+        "descricao": "Linhas repetidas na mesma origem (POST duplicado ou import sem --apenas-novos).",
+        "origens": [
+          "IMPORT_PLANILHA"
+        ]
+      },
+      "origens": [
+        "IMPORT_PLANILHA"
+      ],
+      "manter": {
+        "id": 11493,
+        "movimento_em": "2019-07-22T00:00:00.000Z",
+        "titulo": "EMAIL AUTOMATICO PARA CONFECÇÃO DOS BOLETOS REFERENTE AO ACORDO ENTABULADO ENVIADO EM 22/07/2019",
+        "detalhe": null,
+        "origem": "IMPORT_PLANILHA",
+        "origemImportPlanilha": true,
+        "usuario_id": null,
+        "prazo_refs": 0
+      },
+      "remover": [
+        {
+          "id": 11494,
+          "movimento_em": "2019-07-22T00:00:00.000Z",
+          "titulo": "EMAIL AUTOMATICO PARA CONFECÇÃO DOS BOLETOS REFERENTE AO ACORDO ENTABULADO ENVIADO EM 22/07/2019",
+          "detalhe": null,
+          "origem": "IMPORT_PLANILHA",
+          "origemImportPlanilha": true,
+          "usuario_id": null,
+          "prazo_refs": 0
+        }
+      ],
+      "alertas": []
+    },
+    {
+      "escopo": {
+        "tipo": "PROCESSO_UNICO",
+        "processoId": 11092,
+        "codigoCliente": "00000491",
+        "numeroInterno": 221,
+        "regra": "Comparação apenas entre andamentos deste processo_id; nunca entre processos diferentes."
+      },
+      "camada": "BRUTA",
+      "chave": "proc:11092|2019-03-22T00:00:00.000Z\u0000EMAIL AUTOMATICO PARA CONFECÇÃO DOS BOLETOS REFERENTE AO ACORDO ENTABULADO ENVIADO EM 22/03/2019",
+      "acao": "REMOVER_DUPLICADOS",
+      "motivo": {
+        "motivo": "REIMPORTACAO_MESMA_ORIGEM",
+        "descricao": "Linhas repetidas na mesma origem (POST duplicado ou import sem --apenas-novos).",
+        "origens": [
+          "IMPORT_PLANILHA"
+        ]
+      },
+      "origens": [
+        "IMPORT_PLANILHA"
+      ],
+      "manter": {
+        "id": 11585,
+        "movimento_em": "2019-03-22T00:00:00.000Z",
+        "titulo": "EMAIL AUTOMATICO PARA CONFECÇÃO DOS BOLETOS REFERENTE AO ACORDO ENTABULADO ENVIADO EM 22/03/2019",
+        "detalhe": null,
+        "origem": "IMPORT_PLANILHA",
+        "origemImportPlanilha": true,
+        "usuario_id": null,
+        "prazo_refs": 0
+      },
+      "remover": [
+        {
+          "id": 11586,
+          "movimento_em": "2019-03-22T00:00:00.000Z",
+          "titulo": "EMAIL AUTOMATICO PARA CONFECÇÃO DOS BOLETOS REFERENTE AO ACORDO ENTABULADO ENVIADO EM 22/03/2019",
+          "detalhe": null,
+          "origem": "IMPORT_PLANILHA",
+          "origemImportPlanilha": true,
+          "usuario_id": null,
+          "prazo_refs": 0
+        }
+      ],
+      "alertas": []
+    },
+    {
+      "escopo": {
+        "tipo": "PROCESSO_UNICO",
+        "processoId": 11081,
+        "codigoCliente": "00000491",
+        "numeroInterno": 232,
+        "regra": "Comparação apenas entre andamentos deste processo_id; nunca entre processos diferentes."
+      },
+      "camada": "BRUTA",
+      "chave": "proc:11081|2020-03-09T00:00:00.000Z\u0000PETIÇÃO DA INF. ANTERIOR JUNTADA EM 09/03/2020",
+      "acao": "REMOVER_DUPLICADOS",
+      "motivo": {
+        "motivo": "REIMPORTACAO_MESMA_ORIGEM",
+        "descricao": "Linhas repetidas na mesma origem (POST duplicado ou import sem --apenas-novos).",
+        "origens": [
+          "IMPORT_PLANILHA"
+        ]
+      },
+      "origens": [
+        "IMPORT_PLANILHA"
+      ],
+      "manter": {
+        "id": 11659,
+        "movimento_em": "2020-03-09T00:00:00.000Z",
+        "titulo": "PETIÇÃO DA INF. ANTERIOR JUNTADA EM 09/03/2020",
+        "detalhe": null,
+        "origem": "IMPORT_PLANILHA",
+        "origemImportPlanilha": true,
+        "usuario_id": null,
+        "prazo_refs": 0
+      },
+      "remover": [
+        {
+          "id": 11661,
+          "movimento_em": "2020-03-09T00:00:00.000Z",
+          "titulo": "PETIÇÃO DA INF. ANTERIOR JUNTADA EM 09/03/2020",
+          "detalhe": null,
+          "origem": "IMPORT_PLANILHA",
+          "origemImportPlanilha": true,
+          "usuario_id": null,
+          "prazo_refs": 0
+        }
+      ],
+      "alertas": []
+    },
+    {
+      "escopo": {
+        "tipo": "PROCESSO_UNICO",
+        "processoId": 11437,
+        "codigoCliente": "00000525",
+        "numeroInterno": 1,
+        "regra": "Comparação apenas entre andamentos deste processo_id; nunca entre processos diferentes."
+      },
+      "camada": "BRUTA",
+      "chave": "proc:11437|2020-10-22T00:00:00.000Z\u0000JUNTAR PETIÇÃO INSERIDA NA PASTA EM 22/10/2020",
+      "acao": "REMOVER_DUPLICADOS",
+      "motivo": {
+        "motivo": "REIMPORTACAO_MESMA_ORIGEM",
+        "descricao": "Linhas repetidas na mesma origem (POST duplicado ou import sem --apenas-novos).",
+        "origens": [
+          "IMPORT_PLANILHA"
+        ]
+      },
+      "origens": [
+        "IMPORT_PLANILHA"
+      ],
+      "manter": {
+        "id": 12357,
+        "movimento_em": "2020-10-22T00:00:00.000Z",
+        "titulo": "JUNTAR PETIÇÃO INSERIDA NA PASTA EM 22/10/2020",
+        "detalhe": "VINICIUS",
+        "origem": "IMPORT_PLANILHA",
+        "origemImportPlanilha": true,
+        "usuario_id": null,
+        "prazo_refs": 0
+      },
+      "remover": [
+        {
+          "id": 12358,
+          "movimento_em": "2020-10-22T00:00:00.000Z",
+          "titulo": "JUNTAR PETIÇÃO INSERIDA NA PASTA EM 22/10/2020",
+          "detalhe": "VINICIUS",
+          "origem": "IMPORT_PLANILHA",
+          "origemImportPlanilha": true,
+          "usuario_id": null,
+          "prazo_refs": 0
+        }
+      ],
+      "alertas": []
+    },
+    {
+      "escopo": {
+        "tipo": "PROCESSO_UNICO",
+        "processoId": 11630,
+        "codigoCliente": "00000560",
+        "numeroInterno": 9,
+        "regra": "Comparação apenas entre andamentos deste processo_id; nunca entre processos diferentes."
+      },
+      "camada": "BRUTA",
+      "chave": "proc:11630|2017-02-21T00:00:00.000Z\u0000RECIBO NO VALOR TOTAL DE R$ 459,42; REFERENTE A PARCELA 05 (HONORÁRIOS: R$ 121,48) CONFECCIONADO E ENVIADO EM 21/02/2017",
+      "acao": "REMOVER_DUPLICADOS",
+      "motivo": {
+        "motivo": "REIMPORTACAO_MESMA_ORIGEM",
+        "descricao": "Linhas repetidas na mesma origem (POST duplicado ou import sem --apenas-novos).",
+        "origens": [
+          "IMPORT_PLANILHA"
+        ]
+      },
+      "origens": [
+        "IMPORT_PLANILHA"
+      ],
+      "manter": {
+        "id": 12933,
+        "movimento_em": "2017-02-21T00:00:00.000Z",
+        "titulo": "RECIBO NO VALOR TOTAL DE R$ 459,42; REFERENTE A PARCELA 05 (HONORÁRIOS: R$ 121,48) CONFECCIONADO E ENVIADO EM 21/02/2017",
+        "detalhe": null,
+        "origem": "IMPORT_PLANILHA",
+        "origemImportPlanilha": true,
+        "usuario_id": null,
+        "prazo_refs": 0
+      },
+      "remover": [
+        {
+          "id": 12939,
+          "movimento_em": "2017-02-21T00:00:00.000Z",
+          "titulo": "RECIBO NO VALOR TOTAL DE R$ 459,42; REFERENTE A PARCELA 05 (HONORÁRIOS: R$ 121,48) CONFECCIONADO E ENVIADO EM 21/02/2017",
+          "detalhe": null,
+          "origem": "IMPORT_PLANILHA",
+          "origemImportPlanilha": true,
+          "usuario_id": null,
+          "prazo_refs": 0
+        }
+      ],
+      "alertas": []
+    },
+    {
+      "escopo": {
+        "tipo": "PROCESSO_UNICO",
+        "processoId": 11630,
+        "codigoCliente": "00000560",
+        "numeroInterno": 9,
+        "regra": "Comparação apenas entre andamentos deste processo_id; nunca entre processos diferentes."
+      },
+      "camada": "BRUTA",
+      "chave": "proc:11630|2017-02-21T00:00:00.000Z\u0000RECIBO NO VALOR TOTAL DE R$ 459,42; REFERENTE A PARCELA 04 (HONORÁRIOS: R$ 121,48) CONFECCIONADO E ENVIADO EM 21/02/2017",
+      "acao": "REMOVER_DUPLICADOS",
+      "motivo": {
+        "motivo": "REIMPORTACAO_MESMA_ORIGEM",
+        "descricao": "Linhas repetidas na mesma origem (POST duplicado ou import sem --apenas-novos).",
+        "origens": [
+          "IMPORT_PLANILHA"
+        ]
+      },
+      "origens": [
+        "IMPORT_PLANILHA"
+      ],
+      "manter": {
+        "id": 12936,
+        "movimento_em": "2017-02-21T00:00:00.000Z",
+        "titulo": "RECIBO NO VALOR TOTAL DE R$ 459,42; REFERENTE A PARCELA 04 (HONORÁRIOS: R$ 121,48) CONFECCIONADO E ENVIADO EM 21/02/2017",
+        "detalhe": null,
+        "origem": "IMPORT_PLANILHA",
+        "origemImportPlanilha": true,
+        "usuario_id": null,
+        "prazo_refs": 0
+      },
+      "remover": [
+        {
+          "id": 12940,
+          "movimento_em": "2017-02-21T00:00:00.000Z",
+          "titulo": "RECIBO NO VALOR TOTAL DE R$ 459,42; REFERENTE A PARCELA 04 (HONORÁRIOS: R$ 121,48) CONFECCIONADO E ENVIADO EM 21/02/2017",
+          "detalhe": null,
+          "origem": "IMPORT_PLANILHA",
+          "origemImportPlanilha": true,
+          "usuario_id": null,
+          "prazo_refs": 0
+        }
+      ],
+      "alertas": []
+    },
+    {
+      "escopo": {
+        "tipo": "PROCESSO_UNICO",
+        "processoId": 11558,
+        "codigoCliente": "00000560",
+        "numeroInterno": 82,
+        "regra": "Comparação apenas entre andamentos deste processo_id; nunca entre processos diferentes."
+      },
+      "camada": "BRUTA",
+      "chave": "proc:11558|2020-03-16T00:00:00.000Z\u0000EMAIL AUTOMATICO PARA CONFECÇÃO DOS BOLETOS REFERENTE AO ACORDO ENTABULADO ENVIADO EM 16/03/2020",
+      "acao": "REMOVER_DUPLICADOS",
+      "motivo": {
+        "motivo": "REIMPORTACAO_MESMA_ORIGEM",
+        "descricao": "Linhas repetidas na mesma origem (POST duplicado ou import sem --apenas-novos).",
+        "origens": [
+          "IMPORT_PLANILHA"
+        ]
+      },
+      "origens": [
+        "IMPORT_PLANILHA"
+      ],
+      "manter": {
+        "id": 13404,
+        "movimento_em": "2020-03-16T00:00:00.000Z",
+        "titulo": "EMAIL AUTOMATICO PARA CONFECÇÃO DOS BOLETOS REFERENTE AO ACORDO ENTABULADO ENVIADO EM 16/03/2020",
+        "detalhe": null,
+        "origem": "IMPORT_PLANILHA",
+        "origemImportPlanilha": true,
+        "usuario_id": null,
+        "prazo_refs": 0
+      },
+      "remover": [
+        {
+          "id": 13407,
+          "movimento_em": "2020-03-16T00:00:00.000Z",
+          "titulo": "EMAIL AUTOMATICO PARA CONFECÇÃO DOS BOLETOS REFERENTE AO ACORDO ENTABULADO ENVIADO EM 16/03/2020",
+          "detalhe": null,
+          "origem": "IMPORT_PLANILHA",
+          "origemImportPlanilha": true,
+          "usuario_id": null,
+          "prazo_refs": 0
+        }
+      ],
+      "alertas": []
+    },
+    {
+      "escopo": {
+        "tipo": "PROCESSO_UNICO",
+        "processoId": 11736,
+        "codigoCliente": "00000572",
+        "numeroInterno": 2,
+        "regra": "Comparação apenas entre andamentos deste processo_id; nunca entre processos diferentes."
+      },
+      "camada": "BRUTA",
+      "chave": "proc:11736|2019-04-03T00:00:00.000Z\u0000RECIBO NO VALOR TOTAL DE R$ 614,90; REFERENTE A PARCELA 02 (HONORÁRIOS: R$ 61,49) CONFECCIONADO E ENVIADO EM 03/04/2019",
+      "acao": "REMOVER_DUPLICADOS",
+      "motivo": {
+        "motivo": "REIMPORTACAO_MESMA_ORIGEM",
+        "descricao": "Linhas repetidas na mesma origem (POST duplicado ou import sem --apenas-novos).",
+        "origens": [
+          "IMPORT_PLANILHA"
+        ]
+      },
+      "origens": [
+        "IMPORT_PLANILHA"
+      ],
+      "manter": {
+        "id": 14104,
+        "movimento_em": "2019-04-03T00:00:00.000Z",
+        "titulo": "RECIBO NO VALOR TOTAL DE R$ 614,90; REFERENTE A PARCELA 02 (HONORÁRIOS: R$ 61,49) CONFECCIONADO E ENVIADO EM 03/04/2019",
+        "detalhe": null,
+        "origem": "IMPORT_PLANILHA",
+        "origemImportPlanilha": true,
+        "usuario_id": null,
+        "prazo_refs": 0
+      },
+      "remover": [
+        {
+          "id": 14105,
+          "movimento_em": "2019-04-03T00:00:00.000Z",
+          "titulo": "RECIBO NO VALOR TOTAL DE R$ 614,90; REFERENTE A PARCELA 02 (HONORÁRIOS: R$ 61,49) CONFECCIONADO E ENVIADO EM 03/04/2019",
+          "detalhe": null,
+          "origem": "IMPORT_PLANILHA",
+          "origemImportPlanilha": true,
+          "usuario_id": null,
+          "prazo_refs": 0
+        }
+      ],
+      "alertas": []
+    },
+    {
+      "escopo": {
+        "tipo": "PROCESSO_UNICO",
+        "processoId": 11975,
+        "codigoCliente": "00000578",
+        "numeroInterno": 54,
+        "regra": "Comparação apenas entre andamentos deste processo_id; nunca entre processos diferentes."
+      },
+      "camada": "BRUTA",
+      "chave": "proc:11975|2022-04-11T00:00:00.000Z\u0000PÁGINA: 0002097 EDIÇÃO: ANO XV – EDIÇÃO Nº 3451 SUPLEMENTO – SEÇÃO III INTIMACAO EFETIVADA REF. A MOV. JULGAMENTO -] COM RESOLUCAO DO MERITO -] HOMOLOGACAO DE TRANSACAO - DATA DA MOVIMENTACAO 07/04/2022 16: 28: 25 LOCAL : ANAPOLIS - 4ª VARA CIVEL NR.PROCESSO : 0421855-67.2016.8.09.0006 CLASSE PROCESSUAL : PROCESSO CIVEL E DO TRABALHO -] PROCESSO DE EXECUCAO -] EXECUCAO DE TITULO EXTRAJUDICIAL -] EXECUCAO DE TITULO EXTRAJUDICIAL POLO ATIVO : CONDOMINIO RESIDENCIAL SAO JOSE POLO PASSIVO : SUZANA S",
+      "acao": "REMOVER_DUPLICADOS",
+      "motivo": {
+        "motivo": "REIMPORTACAO_MESMA_ORIGEM",
+        "descricao": "Linhas repetidas na mesma origem (POST duplicado ou import sem --apenas-novos).",
+        "origens": [
+          "IMPORT_PLANILHA"
+        ]
+      },
+      "origens": [
+        "IMPORT_PLANILHA"
+      ],
+      "manter": {
+        "id": 15030,
+        "movimento_em": "2022-04-11T00:00:00.000Z",
+        "titulo": "PÁGINA: 0002097 EDIÇÃO: ANO XV – EDIÇÃO Nº 3451 SUPLEMENTO – SEÇÃO III INTIMACAO EFETIVADA REF. A MOV. JULGAMENTO -] COM",
+        "detalhe": "LORENA",
+        "origem": "IMPORT_PLANILHA",
+        "origemImportPlanilha": true,
+        "usuario_id": null,
+        "prazo_refs": 0
+      },
+      "remover": [
+        {
+          "id": 15031,
+          "movimento_em": "2022-04-11T00:00:00.000Z",
+          "titulo": "PÁGINA: 0002097 EDIÇÃO: ANO XV – EDIÇÃO Nº 3451 SUPLEMENTO – SEÇÃO III INTIMACAO EFETIVADA REF. A MOV. JULGAMENTO -] COM",
+          "detalhe": "LORENA",
+          "origem": "IMPORT_PLANILHA",
+          "origemImportPlanilha": true,
+          "usuario_id": null,
+          "prazo_refs": 0
+        }
+      ],
+      "alertas": []
+    },
+    {
+      "escopo": {
+        "tipo": "PROCESSO_UNICO",
+        "processoId": 11965,
+        "codigoCliente": "00000578",
+        "numeroInterno": 64,
+        "regra": "Comparação apenas entre andamentos deste processo_id; nunca entre processos diferentes."
+      },
+      "camada": "BRUTA",
+      "chave": "proc:11965|2019-02-05T00:00:00.000Z\u0000RECIBO NO VALOR TOTAL DE R$ 3.093,85; REFERENTE A PARCELA 02 (HONORÁRIOS: R$ 91,92) CONFECCIONADO E ENVIADO EM 05/02/2019",
+      "acao": "REMOVER_DUPLICADOS",
+      "motivo": {
+        "motivo": "REIMPORTACAO_MESMA_ORIGEM",
+        "descricao": "Linhas repetidas na mesma origem (POST duplicado ou import sem --apenas-novos).",
+        "origens": [
+          "IMPORT_PLANILHA"
+        ]
+      },
+      "origens": [
+        "IMPORT_PLANILHA"
+      ],
+      "manter": {
+        "id": 15078,
+        "movimento_em": "2019-02-05T00:00:00.000Z",
+        "titulo": "RECIBO NO VALOR TOTAL DE R$ 3.093,85; REFERENTE A PARCELA 02 (HONORÁRIOS: R$ 91,92) CONFECCIONADO E ENVIADO EM 05/02/201",
+        "detalhe": null,
+        "origem": "IMPORT_PLANILHA",
+        "origemImportPlanilha": true,
+        "usuario_id": null,
+        "prazo_refs": 0
+      },
+      "remover": [
+        {
+          "id": 15079,
+          "movimento_em": "2019-02-05T00:00:00.000Z",
+          "titulo": "RECIBO NO VALOR TOTAL DE R$ 3.093,85; REFERENTE A PARCELA 02 (HONORÁRIOS: R$ 91,92) CONFECCIONADO E ENVIADO EM 05/02/201",
+          "detalhe": null,
+          "origem": "IMPORT_PLANILHA",
+          "origemImportPlanilha": true,
+          "usuario_id": null,
+          "prazo_refs": 0
+        }
+      ],
+      "alertas": []
+    },
+    {
+      "escopo": {
+        "tipo": "PROCESSO_UNICO",
+        "processoId": 11965,
+        "codigoCliente": "00000578",
+        "numeroInterno": 64,
+        "regra": "Comparação apenas entre andamentos deste processo_id; nunca entre processos diferentes."
+      },
+      "camada": "BRUTA",
+      "chave": "proc:11965|2019-02-05T00:00:00.000Z\u0000RECIBO NO VALOR TOTAL DE R$ 3.093,85; REFERENTE A PARCELA 03 (HONORÁRIOS: R$ 91,92) CONFECCIONADO E ENVIADO EM 05/02/2019",
+      "acao": "REMOVER_DUPLICADOS",
+      "motivo": {
+        "motivo": "REIMPORTACAO_MESMA_ORIGEM",
+        "descricao": "Linhas repetidas na mesma origem (POST duplicado ou import sem --apenas-novos).",
+        "origens": [
+          "IMPORT_PLANILHA"
+        ]
+      },
+      "origens": [
+        "IMPORT_PLANILHA"
+      ],
+      "manter": {
+        "id": 15080,
+        "movimento_em": "2019-02-05T00:00:00.000Z",
+        "titulo": "RECIBO NO VALOR TOTAL DE R$ 3.093,85; REFERENTE A PARCELA 03 (HONORÁRIOS: R$ 91,92) CONFECCIONADO E ENVIADO EM 05/02/201",
+        "detalhe": null,
+        "origem": "IMPORT_PLANILHA",
+        "origemImportPlanilha": true,
+        "usuario_id": null,
+        "prazo_refs": 0
+      },
+      "remover": [
+        {
+          "id": 15081,
+          "movimento_em": "2019-02-05T00:00:00.000Z",
+          "titulo": "RECIBO NO VALOR TOTAL DE R$ 3.093,85; REFERENTE A PARCELA 03 (HONORÁRIOS: R$ 91,92) CONFECCIONADO E ENVIADO EM 05/02/201",
+          "detalhe": null,
+          "origem": "IMPORT_PLANILHA",
+          "origemImportPlanilha": true,
+          "usuario_id": null,
+          "prazo_refs": 0
+        }
+      ],
+      "alertas": []
+    },
+    {
+      "escopo": {
+        "tipo": "PROCESSO_UNICO",
+        "processoId": 11897,
+        "codigoCliente": "00000578",
+        "numeroInterno": 132,
+        "regra": "Comparação apenas entre andamentos deste processo_id; nunca entre processos diferentes."
+      },
+      "camada": "BRUTA",
+      "chave": "proc:11897|2020-04-09T00:00:00.000Z\u0000EMAIL AUTOMATICO PARA CONFECÇÃO DOS BOLETOS REFERENTE AO ACORDO ENTABULADO ENVIADO EM 09/04/2020",
+      "acao": "REMOVER_DUPLICADOS",
+      "motivo": {
+        "motivo": "REIMPORTACAO_MESMA_ORIGEM",
+        "descricao": "Linhas repetidas na mesma origem (POST duplicado ou import sem --apenas-novos).",
+        "origens": [
+          "IMPORT_PLANILHA"
+        ]
+      },
+      "origens": [
+        "IMPORT_PLANILHA"
+      ],
+      "manter": {
+        "id": 16060,
+        "movimento_em": "2020-04-09T00:00:00.000Z",
+        "titulo": "EMAIL AUTOMATICO PARA CONFECÇÃO DOS BOLETOS REFERENTE AO ACORDO ENTABULADO ENVIADO EM 09/04/2020",
+        "detalhe": null,
+        "origem": "IMPORT_PLANILHA",
+        "origemImportPlanilha": true,
+        "usuario_id": null,
+        "prazo_refs": 0
+      },
+      "remover": [
+        {
+          "id": 16063,
+          "movimento_em": "2020-04-09T00:00:00.000Z",
+          "titulo": "EMAIL AUTOMATICO PARA CONFECÇÃO DOS BOLETOS REFERENTE AO ACORDO ENTABULADO ENVIADO EM 09/04/2020",
+          "detalhe": null,
+          "origem": "IMPORT_PLANILHA",
+          "origemImportPlanilha": true,
+          "usuario_id": null,
+          "prazo_refs": 0
+        }
+      ],
+      "alertas": []
+    },
+    {
+      "escopo": {
+        "tipo": "PROCESSO_UNICO",
+        "processoId": 11809,
+        "codigoCliente": "00000578",
+        "numeroInterno": 220,
+        "regra": "Comparação apenas entre andamentos deste processo_id; nunca entre processos diferentes."
+      },
+      "camada": "BRUTA",
+      "chave": "proc:11809|2020-05-21T00:00:00.000Z\u0000EMAIL AUTOMATICO PARA CONFECÇÃO DOS BOLETOS REFERENTE AO ACORDO ENTABULADO ENVIADO EM 21/05/2020",
+      "acao": "REMOVER_DUPLICADOS",
+      "motivo": {
+        "motivo": "REIMPORTACAO_MESMA_ORIGEM",
+        "descricao": "Linhas repetidas na mesma origem (POST duplicado ou import sem --apenas-novos).",
+        "origens": [
+          "IMPORT_PLANILHA"
+        ]
+      },
+      "origens": [
+        "IMPORT_PLANILHA"
+      ],
+      "manter": {
+        "id": 16448,
+        "movimento_em": "2020-05-21T00:00:00.000Z",
+        "titulo": "EMAIL AUTOMATICO PARA CONFECÇÃO DOS BOLETOS REFERENTE AO ACORDO ENTABULADO ENVIADO EM 21/05/2020",
+        "detalhe": null,
+        "origem": "IMPORT_PLANILHA",
+        "origemImportPlanilha": true,
+        "usuario_id": null,
+        "prazo_refs": 0
+      },
+      "remover": [
+        {
+          "id": 16450,
+          "movimento_em": "2020-05-21T00:00:00.000Z",
+          "titulo": "EMAIL AUTOMATICO PARA CONFECÇÃO DOS BOLETOS REFERENTE AO ACORDO ENTABULADO ENVIADO EM 21/05/2020",
+          "detalhe": null,
+          "origem": "IMPORT_PLANILHA",
+          "origemImportPlanilha": true,
+          "usuario_id": null,
+          "prazo_refs": 0
+        }
+      ],
+      "alertas": []
+    },
+    {
+      "escopo": {
+        "tipo": "PROCESSO_UNICO",
+        "processoId": 12247,
+        "codigoCliente": "00000600",
+        "numeroInterno": 136,
+        "regra": "Comparação apenas entre andamentos deste processo_id; nunca entre processos diferentes."
+      },
+      "camada": "BRUTA",
+      "chave": "proc:12247|2024-07-30T00:00:00.000Z\u0000A PARTE RECLAMADA NÃO TEM OUTRAS TESTEMUNHAS A SEREM OUVIDAS. SEM OUTRAS PROVAS E COM A CONCORDNCIA DAS PARTES, FICA ENCERRADA A INSTRUÇÃO PROCESSUAL. RAZÕES FINAIS REMISSIVAS PELAS PARTES. REJEITADA A PROPOSTA FINAL DE CONCILIAÇÃO. VENHAM OS AUTOS CONCLUSOS PARA PROLAÇÃO DE SENTENÇA.",
+      "acao": "REMOVER_DUPLICADOS",
+      "motivo": {
+        "motivo": "REIMPORTACAO_MESMA_ORIGEM",
+        "descricao": "Linhas repetidas na mesma origem (POST duplicado ou import sem --apenas-novos).",
+        "origens": [
+          "IMPORT_PLANILHA"
+        ]
+      },
+      "origens": [
+        "IMPORT_PLANILHA"
+      ],
+      "manter": {
+        "id": 18733,
+        "movimento_em": "2024-07-30T00:00:00.000Z",
+        "titulo": "A PARTE RECLAMADA NÃO TEM OUTRAS TESTEMUNHAS A SEREM OUVIDAS. SEM OUTRAS PROVAS E COM A CONCORDNCIA DAS PARTES, FICA ENC",
+        "detalhe": "KARLA",
+        "origem": "IMPORT_PLANILHA",
+        "origemImportPlanilha": true,
+        "usuario_id": null,
+        "prazo_refs": 0
+      },
+      "remover": [
+        {
+          "id": 18736,
+          "movimento_em": "2024-07-30T00:00:00.000Z",
+          "titulo": "A PARTE RECLAMADA NÃO TEM OUTRAS TESTEMUNHAS A SEREM OUVIDAS. SEM OUTRAS PROVAS E COM A CONCORDNCIA DAS PARTES, FICA ENC",
+          "detalhe": "KARLA",
+          "origem": "IMPORT_PLANILHA",
+          "origemImportPlanilha": true,
+          "usuario_id": null,
+          "prazo_refs": 0
+        }
+      ],
+      "alertas": []
+    },
+    {
+      "escopo": {
+        "tipo": "PROCESSO_UNICO",
+        "processoId": 12493,
+        "codigoCliente": "00000613",
+        "numeroInterno": 4,
+        "regra": "Comparação apenas entre andamentos deste processo_id; nunca entre processos diferentes."
+      },
+      "camada": "BRUTA",
+      "chave": "proc:12493|2019-12-11T00:00:00.000Z\u0000SEGUNDA VARA CRIMINAL COMARCA DE ANAPOLIS A. 201 603487527 PROCED A-SE A DESTRUICAO. ANAPOLIS, 25 DE NOVEMBRO DE 2019. DATA NESTA D ATA RECEBO EM CARTORIO OS PRESENTES AUTOS. ANAPOLIS, DE DE . ESCR IVA",
+      "acao": "REMOVER_DUPLICADOS",
+      "motivo": {
+        "motivo": "REIMPORTACAO_MESMA_ORIGEM",
+        "descricao": "Linhas repetidas na mesma origem (POST duplicado ou import sem --apenas-novos).",
+        "origens": [
+          "IMPORT_PLANILHA"
+        ]
+      },
+      "origens": [
+        "IMPORT_PLANILHA"
+      ],
+      "manter": {
+        "id": 19697,
+        "movimento_em": "2019-12-11T00:00:00.000Z",
+        "titulo": "SEGUNDA VARA CRIMINAL COMARCA DE ANAPOLIS A. 201 603487527 PROCED A-SE A DESTRUICAO. ANAPOLIS, 25 DE NOVEMBRO DE 2019. D",
+        "detalhe": "KARLA",
+        "origem": "IMPORT_PLANILHA",
+        "origemImportPlanilha": true,
+        "usuario_id": null,
+        "prazo_refs": 0
+      },
+      "remover": [
+        {
+          "id": 19698,
+          "movimento_em": "2019-12-11T00:00:00.000Z",
+          "titulo": "SEGUNDA VARA CRIMINAL COMARCA DE ANAPOLIS A. 201 603487527 PROCED A-SE A DESTRUICAO. ANAPOLIS, 25 DE NOVEMBRO DE 2019. D",
+          "detalhe": "KARLA",
+          "origem": "IMPORT_PLANILHA",
+          "origemImportPlanilha": true,
+          "usuario_id": null,
+          "prazo_refs": 0
+        }
+      ],
+      "alertas": []
+    },
+    {
+      "escopo": {
+        "tipo": "PROCESSO_UNICO",
+        "processoId": 12992,
+        "codigoCliente": "00000715",
+        "numeroInterno": 4,
+        "regra": "Comparação apenas entre andamentos deste processo_id; nunca entre processos diferentes."
+      },
+      "camada": "BRUTA",
+      "chave": "proc:12992|2024-09-30T00:00:00.000Z\u0000ISSO POSTO, HOMOLOGO O ACORDO CELEBRADO PARA QUE PRODUZA SEUS EFEITOS JURÍDICOS E, POR CONSEGUINTE, JULGO EXTINTO O PROCESSO, COM RESOLUÇÃO DE MÉRITO, NA FORMA DO ART. 487, III, \"B\", DO CÓDIGO DE PROCESSO CIVIL. SEM CUSTAS E SEM HONORÁRIOS ADVOCATÍCIOS SUCUMBENCIAIS (ART. 55, CAPUT, LEI Nº 9.099/95) . FICA FACULTADO À PARTE CREDORA REQUERER A INSTAURAÇÃO DA FASE DE CUMPRIMENTO DA SENTENÇA HOMOLOGATÓRIA DO ACORDO, CASO ESTE NÃO SEJA IMPLEMENTADO NA FORMA PACTUADA. O PEDIDO DEVERÁ SER FEITO MEDIAN",
+      "acao": "REMOVER_DUPLICADOS",
+      "motivo": {
+        "motivo": "REIMPORTACAO_MESMA_ORIGEM",
+        "descricao": "Linhas repetidas na mesma origem (POST duplicado ou import sem --apenas-novos).",
+        "origens": [
+          "IMPORT_PLANILHA"
+        ]
+      },
+      "origens": [
+        "IMPORT_PLANILHA"
+      ],
+      "manter": {
+        "id": 22000,
+        "movimento_em": "2024-09-30T00:00:00.000Z",
+        "titulo": "ISSO POSTO, HOMOLOGO O ACORDO CELEBRADO PARA QUE PRODUZA SEUS EFEITOS JURÍDICOS E, POR CONSEGUINTE, JULGO EXTINTO O PROC",
+        "detalhe": "ISABELLA",
+        "origem": "IMPORT_PLANILHA",
+        "origemImportPlanilha": true,
+        "usuario_id": null,
+        "prazo_refs": 0
+      },
+      "remover": [
+        {
+          "id": 22003,
+          "movimento_em": "2024-09-30T00:00:00.000Z",
+          "titulo": "ISSO POSTO, HOMOLOGO O ACORDO CELEBRADO PARA QUE PRODUZA SEUS EFEITOS JURÍDICOS E, POR CONSEGUINTE, JULGO EXTINTO O PROC",
+          "detalhe": "ISABELLA",
+          "origem": "IMPORT_PLANILHA",
+          "origemImportPlanilha": true,
+          "usuario_id": null,
+          "prazo_refs": 0
+        }
+      ],
+      "alertas": []
+    },
+    {
+      "escopo": {
+        "tipo": "PROCESSO_UNICO",
+        "processoId": 14701,
+        "codigoCliente": "00000728",
+        "numeroInterno": 16,
+        "regra": "Comparação apenas entre andamentos deste processo_id; nunca entre processos diferentes."
+      },
+      "camada": "BRUTA",
+      "chave": "proc:14701|2024-02-20T00:00:00.000Z\u0000JUNTAR PETIÇÃO INSERIDA NA PASTA EM 20/02/2024 (MANIFESTAÇÃO DILAÇÃO DE PRAZO)",
+      "acao": "REMOVER_DUPLICADOS",
+      "motivo": {
+        "motivo": "REIMPORTACAO_MESMA_ORIGEM",
+        "descricao": "Linhas repetidas na mesma origem (POST duplicado ou import sem --apenas-novos).",
+        "origens": [
+          "IMPORT_PLANILHA"
+        ]
+      },
+      "origens": [
+        "IMPORT_PLANILHA"
+      ],
+      "manter": {
+        "id": 22878,
+        "movimento_em": "2024-02-20T00:00:00.000Z",
+        "titulo": "JUNTAR PETIÇÃO INSERIDA NA PASTA EM 20/02/2024 (MANIFESTAÇÃO DILAÇÃO DE PRAZO)",
+        "detalhe": "ITAMAR",
+        "origem": "IMPORT_PLANILHA",
+        "origemImportPlanilha": true,
+        "usuario_id": null,
+        "prazo_refs": 0
+      },
+      "remover": [
+        {
+          "id": 22882,
+          "movimento_em": "2024-02-20T00:00:00.000Z",
+          "titulo": "JUNTAR PETIÇÃO INSERIDA NA PASTA EM 20/02/2024 (MANIFESTAÇÃO DILAÇÃO DE PRAZO)",
+          "detalhe": "ITAMAR",
+          "origem": "IMPORT_PLANILHA",
+          "origemImportPlanilha": true,
+          "usuario_id": null,
+          "prazo_refs": 0
+        }
+      ],
+      "alertas": []
+    },
+    {
+      "escopo": {
+        "tipo": "PROCESSO_UNICO",
+        "processoId": 14677,
+        "codigoCliente": "00000728",
+        "numeroInterno": 40,
+        "regra": "Comparação apenas entre andamentos deste processo_id; nunca entre processos diferentes."
+      },
+      "camada": "BRUTA",
+      "chave": "proc:14677|2024-02-20T00:00:00.000Z\u0000JUNTAR PETIÇÃO INSERIDA NA PASTA EM 20/02/2024 (MANIFESTAÇÃO DILAÇÃO DE PRAZO)",
+      "acao": "REMOVER_DUPLICADOS",
+      "motivo": {
+        "motivo": "REIMPORTACAO_MESMA_ORIGEM",
+        "descricao": "Linhas repetidas na mesma origem (POST duplicado ou import sem --apenas-novos).",
+        "origens": [
+          "IMPORT_PLANILHA"
+        ]
+      },
+      "origens": [
+        "IMPORT_PLANILHA"
+      ],
+      "manter": {
+        "id": 23027,
+        "movimento_em": "2024-02-20T00:00:00.000Z",
+        "titulo": "JUNTAR PETIÇÃO INSERIDA NA PASTA EM 20/02/2024 (MANIFESTAÇÃO DILAÇÃO DE PRAZO)",
+        "detalhe": "ITAMAR",
+        "origem": "IMPORT_PLANILHA",
+        "origemImportPlanilha": true,
+        "usuario_id": null,
+        "prazo_refs": 0
+      },
+      "remover": [
+        {
+          "id": 23028,
+          "movimento_em": "2024-02-20T00:00:00.000Z",
+          "titulo": "JUNTAR PETIÇÃO INSERIDA NA PASTA EM 20/02/2024 (MANIFESTAÇÃO DILAÇÃO DE PRAZO)",
+          "detalhe": "ITAMAR",
+          "origem": "IMPORT_PLANILHA",
+          "origemImportPlanilha": true,
+          "usuario_id": null,
+          "prazo_refs": 0
+        }
+      ],
+      "alertas": []
+    },
+    {
+      "escopo": {
+        "tipo": "PROCESSO_UNICO",
+        "processoId": 14582,
+        "codigoCliente": "00000728",
+        "numeroInterno": 135,
+        "regra": "Comparação apenas entre andamentos deste processo_id; nunca entre processos diferentes."
+      },
+      "camada": "BRUTA",
+      "chave": "proc:14582|2023-10-26T00:00:00.000Z\u0000PETIÇÃO DA INFORMAÇÃO ANTERIOR JUNTADA EM 26/10/2023",
+      "acao": "REMOVER_DUPLICADOS",
+      "motivo": {
+        "motivo": "REIMPORTACAO_MESMA_ORIGEM",
+        "descricao": "Linhas repetidas na mesma origem (POST duplicado ou import sem --apenas-novos).",
+        "origens": [
+          "IMPORT_PLANILHA"
+        ]
+      },
+      "origens": [
+        "IMPORT_PLANILHA"
+      ],
+      "manter": {
+        "id": 23405,
+        "movimento_em": "2023-10-26T00:00:00.000Z",
+        "titulo": "PETIÇÃO DA INFORMAÇÃO ANTERIOR JUNTADA EM 26/10/2023",
+        "detalhe": "JESSICA",
+        "origem": "IMPORT_PLANILHA",
+        "origemImportPlanilha": true,
+        "usuario_id": null,
+        "prazo_refs": 0
+      },
+      "remover": [
+        {
+          "id": 23407,
+          "movimento_em": "2023-10-26T00:00:00.000Z",
+          "titulo": "PETIÇÃO DA INFORMAÇÃO ANTERIOR JUNTADA EM 26/10/2023",
+          "detalhe": "JESSICA",
+          "origem": "IMPORT_PLANILHA",
+          "origemImportPlanilha": true,
+          "usuario_id": null,
+          "prazo_refs": 0
+        }
+      ],
+      "alertas": []
+    },
+    {
+      "escopo": {
+        "tipo": "PROCESSO_UNICO",
+        "processoId": 15052,
+        "codigoCliente": "00000752",
+        "numeroInterno": 22,
+        "regra": "Comparação apenas entre andamentos deste processo_id; nunca entre processos diferentes."
+      },
+      "camada": "BRUTA",
+      "chave": "proc:15052|2020-07-17T00:00:00.000Z\u0000AOS 17 DE JULHO DE 2020, ÀS 10H45MIN, NA SALA DE AUDIÊNCIA VIRTUAL DA PLATAFORMA ZOOM, VERIFICOU-SE A PRESENÇA DA PARTE REQUERENTE, CUJO DOCUMENTO DE IDENTIFICAÇÃO FOI AVERIGUADO, E AUSÊNCIA DA PARTE REQUERIDA, APESAR DE QUE LHE FOI EXPEDIDA A COMPETENTE CARTA DE CITAÇÃO, BEM COMO ORIENTAÇÕES E LINK DE ACESSO AO PRESENTE ATO (EVENTO 45) . A PARTE AUTORA REQUER, PORTANTO, A APLICAÇÃO DA PENA DE REVELIA EM FACE DA PARTE REQUERIDA, MOTIVO PELO QUAL PROCEDO À CONCLUSÃO DOS AUTOS. ATESTO PARA OS DEVI",
+      "acao": "REMOVER_DUPLICADOS",
+      "motivo": {
+        "motivo": "REIMPORTACAO_MESMA_ORIGEM",
+        "descricao": "Linhas repetidas na mesma origem (POST duplicado ou import sem --apenas-novos).",
+        "origens": [
+          "IMPORT_PLANILHA"
+        ]
+      },
+      "origens": [
+        "IMPORT_PLANILHA"
+      ],
+      "manter": {
+        "id": 24460,
+        "movimento_em": "2020-07-17T00:00:00.000Z",
+        "titulo": "AOS 17 DE JULHO DE 2020, ÀS 10H45MIN, NA SALA DE AUDIÊNCIA VIRTUAL DA PLATAFORMA ZOOM, VERIFICOU-SE A PRESENÇA DA PARTE ",
+        "detalhe": null,
+        "origem": "IMPORT_PLANILHA",
+        "origemImportPlanilha": true,
+        "usuario_id": null,
+        "prazo_refs": 0
+      },
+      "remover": [
+        {
+          "id": 24461,
+          "movimento_em": "2020-07-17T00:00:00.000Z",
+          "titulo": "AOS 17 DE JULHO DE 2020, ÀS 10H45MIN, NA SALA DE AUDIÊNCIA VIRTUAL DA PLATAFORMA ZOOM, VERIFICOU-SE A PRESENÇA DA PARTE ",
+          "detalhe": null,
+          "origem": "IMPORT_PLANILHA",
+          "origemImportPlanilha": true,
+          "usuario_id": null,
+          "prazo_refs": 0
+        }
+      ],
+      "alertas": []
+    },
+    {
+      "escopo": {
+        "tipo": "PROCESSO_UNICO",
+        "processoId": 15052,
+        "codigoCliente": "00000752",
+        "numeroInterno": 22,
+        "regra": "Comparação apenas entre andamentos deste processo_id; nunca entre processos diferentes."
+      },
+      "camada": "BRUTA",
+      "chave": "proc:15052|2020-07-17T00:00:00.000Z\u0000AUTOS CONCLUSOS P/ SENTENÇA 17/07/2020 10:55:24",
+      "acao": "REMOVER_DUPLICADOS",
+      "motivo": {
+        "motivo": "REIMPORTACAO_MESMA_ORIGEM",
+        "descricao": "Linhas repetidas na mesma origem (POST duplicado ou import sem --apenas-novos).",
+        "origens": [
+          "IMPORT_PLANILHA"
+        ]
+      },
+      "origens": [
+        "IMPORT_PLANILHA"
+      ],
+      "manter": {
+        "id": 24463,
+        "movimento_em": "2020-07-17T00:00:00.000Z",
+        "titulo": "AUTOS CONCLUSOS P/ SENTENÇA 17/07/2020 10:55:24",
+        "detalhe": null,
+        "origem": "IMPORT_PLANILHA",
+        "origemImportPlanilha": true,
+        "usuario_id": null,
+        "prazo_refs": 0
+      },
+      "remover": [
+        {
+          "id": 24465,
+          "movimento_em": "2020-07-17T00:00:00.000Z",
+          "titulo": "AUTOS CONCLUSOS P/ SENTENÇA 17/07/2020 10:55:24",
+          "detalhe": null,
+          "origem": "IMPORT_PLANILHA",
+          "origemImportPlanilha": true,
+          "usuario_id": null,
+          "prazo_refs": 0
+        }
+      ],
+      "alertas": []
+    },
+    {
+      "escopo": {
+        "tipo": "PROCESSO_UNICO",
+        "processoId": 15013,
+        "codigoCliente": "00000752",
+        "numeroInterno": 61,
+        "regra": "Comparação apenas entre andamentos deste processo_id; nunca entre processos diferentes."
+      },
+      "camada": "BRUTA",
+      "chave": "proc:15013|2026-02-02T00:00:00.000Z\u0000PETIÇÃO DA INF. ANTERIOR JUNTADA EM 02/02/2026 ()",
+      "acao": "REMOVER_DUPLICADOS",
+      "motivo": {
+        "motivo": "REIMPORTACAO_MESMA_ORIGEM",
+        "descricao": "Linhas repetidas na mesma origem (POST duplicado ou import sem --apenas-novos).",
+        "origens": [
+          "IMPORT_PLANILHA"
+        ]
+      },
+      "origens": [
+        "IMPORT_PLANILHA"
+      ],
+      "manter": {
+        "id": 24690,
+        "movimento_em": "2026-02-02T00:00:00.000Z",
+        "titulo": "PETIÇÃO DA INF. ANTERIOR JUNTADA EM 02/02/2026 ()",
+        "detalhe": "ITAMAR",
+        "origem": "IMPORT_PLANILHA",
+        "origemImportPlanilha": true,
+        "usuario_id": null,
+        "prazo_refs": 0
+      },
+      "remover": [
+        {
+          "id": 24691,
+          "movimento_em": "2026-02-02T00:00:00.000Z",
+          "titulo": "PETIÇÃO DA INF. ANTERIOR JUNTADA EM 02/02/2026 ()",
+          "detalhe": "ITAMAR",
+          "origem": "IMPORT_PLANILHA",
+          "origemImportPlanilha": true,
+          "usuario_id": null,
+          "prazo_refs": 0
+        }
+      ],
+      "alertas": []
+    },
+    {
+      "escopo": {
+        "tipo": "PROCESSO_UNICO",
+        "processoId": 14914,
+        "codigoCliente": "00000752",
+        "numeroInterno": 160,
+        "regra": "Comparação apenas entre andamentos deste processo_id; nunca entre processos diferentes."
+      },
+      "camada": "BRUTA",
+      "chave": "proc:14914|2022-02-11T00:00:00.000Z\u0000PETIÇÃO DA INF. ANTERIOR JUNTADA EM 11/02/2022",
+      "acao": "REMOVER_DUPLICADOS",
+      "motivo": {
+        "motivo": "REIMPORTACAO_MESMA_ORIGEM",
+        "descricao": "Linhas repetidas na mesma origem (POST duplicado ou import sem --apenas-novos).",
+        "origens": [
+          "IMPORT_PLANILHA"
+        ]
+      },
+      "origens": [
+        "IMPORT_PLANILHA"
+      ],
+      "manter": {
+        "id": 25300,
+        "movimento_em": "2022-02-11T00:00:00.000Z",
+        "titulo": "PETIÇÃO DA INF. ANTERIOR JUNTADA EM 11/02/2022",
+        "detalhe": "GIOVANNA",
+        "origem": "IMPORT_PLANILHA",
+        "origemImportPlanilha": true,
+        "usuario_id": null,
+        "prazo_refs": 0
+      },
+      "remover": [
+        {
+          "id": 25301,
+          "movimento_em": "2022-02-11T00:00:00.000Z",
+          "titulo": "PETIÇÃO DA INF. ANTERIOR JUNTADA EM 11/02/2022",
+          "detalhe": "KARLA",
+          "origem": "IMPORT_PLANILHA",
+          "origemImportPlanilha": true,
+          "usuario_id": null,
+          "prazo_refs": 0
+        }
+      ],
+      "alertas": []
+    },
+    {
+      "escopo": {
+        "tipo": "PROCESSO_UNICO",
+        "processoId": 16088,
+        "codigoCliente": "00000928",
+        "numeroInterno": 2,
+        "regra": "Comparação apenas entre andamentos deste processo_id; nunca entre processos diferentes."
+      },
+      "camada": "BRUTA",
+      "chave": "proc:16088|2025-06-12T00:00:00.000Z\u0000ANTE O EXPOSTO, JULGO PROCEDENTE O PEDIDO PARA CONDENAR A REQUERIDA A PAGAR À REQUERENTE O VALOR DE R$ 5.056,52 (CINCO MIL E CINQUENTA E SEIS REAIS E CINQUENTA E DOIS CENTAVOS) , CORRIGIDO PELA SELIC (QUE JÁ ENGLOBA JUROS DE MORA) , DESDE A DATA DA CITAÇÃO, RESOLVENDO O MÉRITO, COM FULCRO NO ARTIGO 487, INCISO I, DO CÓDIGO DE PROCESSO CIVIL.",
+      "acao": "REMOVER_DUPLICADOS",
+      "motivo": {
+        "motivo": "REIMPORTACAO_MESMA_ORIGEM",
+        "descricao": "Linhas repetidas na mesma origem (POST duplicado ou import sem --apenas-novos).",
+        "origens": [
+          "IMPORT_PLANILHA"
+        ]
+      },
+      "origens": [
+        "IMPORT_PLANILHA"
+      ],
+      "manter": {
+        "id": 28563,
+        "movimento_em": "2025-06-12T00:00:00.000Z",
+        "titulo": "ANTE O EXPOSTO, JULGO PROCEDENTE O PEDIDO PARA CONDENAR A REQUERIDA A PAGAR À REQUERENTE O VALOR DE R$ 5.056,52 (CINCO M",
+        "detalhe": "KARLA",
+        "origem": "IMPORT_PLANILHA",
+        "origemImportPlanilha": true,
+        "usuario_id": null,
+        "prazo_refs": 0
+      },
+      "remover": [
+        {
+          "id": 28564,
+          "movimento_em": "2025-06-12T00:00:00.000Z",
+          "titulo": "ANTE O EXPOSTO, JULGO PROCEDENTE O PEDIDO PARA CONDENAR A REQUERIDA A PAGAR À REQUERENTE O VALOR DE R$ 5.056,52 (CINCO M",
+          "detalhe": "ISABELLA",
+          "origem": "IMPORT_PLANILHA",
+          "origemImportPlanilha": true,
+          "usuario_id": null,
+          "prazo_refs": 0
+        }
+      ],
+      "alertas": []
+    },
+    {
+      "escopo": {
+        "tipo": "PROCESSO_UNICO",
+        "processoId": 16081,
+        "codigoCliente": "00000928",
+        "numeroInterno": 9,
+        "regra": "Comparação apenas entre andamentos deste processo_id; nunca entre processos diferentes."
+      },
+      "camada": "BRUTA",
+      "chave": "proc:16081|2024-04-02T00:00:00.000Z\u0000PETIÇÃO DA INFORMAÇÃO ANTERIOR JUNTADA EM 02/04/2024",
+      "acao": "REMOVER_DUPLICADOS",
+      "motivo": {
+        "motivo": "REIMPORTACAO_MESMA_ORIGEM",
+        "descricao": "Linhas repetidas na mesma origem (POST duplicado ou import sem --apenas-novos).",
+        "origens": [
+          "IMPORT_PLANILHA"
+        ]
+      },
+      "origens": [
+        "IMPORT_PLANILHA"
+      ],
+      "manter": {
+        "id": 28762,
+        "movimento_em": "2024-04-02T00:00:00.000Z",
+        "titulo": "PETIÇÃO DA INFORMAÇÃO ANTERIOR JUNTADA EM 02/04/2024",
+        "detalhe": "ITAMAR",
+        "origem": "IMPORT_PLANILHA",
+        "origemImportPlanilha": true,
+        "usuario_id": null,
+        "prazo_refs": 0
+      },
+      "remover": [
+        {
+          "id": 28765,
+          "movimento_em": "2024-04-02T00:00:00.000Z",
+          "titulo": "PETIÇÃO DA INFORMAÇÃO ANTERIOR JUNTADA EM 02/04/2024",
+          "detalhe": "ITAMAR",
+          "origem": "IMPORT_PLANILHA",
+          "origemImportPlanilha": true,
+          "usuario_id": null,
+          "prazo_refs": 0
+        }
+      ],
+      "alertas": []
+    },
+    {
+      "escopo": {
+        "tipo": "PROCESSO_UNICO",
+        "processoId": 15980,
+        "codigoCliente": "00000928",
+        "numeroInterno": 112,
+        "regra": "Comparação apenas entre andamentos deste processo_id; nunca entre processos diferentes."
+      },
+      "camada": "BRUTA",
+      "chave": "proc:15980|2025-07-14T00:00:00.000Z\u0000PETIÇÃO DA INFORMAÇÃO ANTERIOR JUNTADA EM 14/07/2025",
+      "acao": "REMOVER_DUPLICADOS",
+      "motivo": {
+        "motivo": "REIMPORTACAO_MESMA_ORIGEM",
+        "descricao": "Linhas repetidas na mesma origem (POST duplicado ou import sem --apenas-novos).",
+        "origens": [
+          "IMPORT_PLANILHA"
+        ]
+      },
+      "origens": [
+        "IMPORT_PLANILHA"
+      ],
+      "manter": {
+        "id": 29441,
+        "movimento_em": "2025-07-14T00:00:00.000Z",
+        "titulo": "PETIÇÃO DA INFORMAÇÃO ANTERIOR JUNTADA EM 14/07/2025",
+        "detalhe": "ISABELLA",
+        "origem": "IMPORT_PLANILHA",
+        "origemImportPlanilha": true,
+        "usuario_id": null,
+        "prazo_refs": 0
+      },
+      "remover": [
+        {
+          "id": 29444,
+          "movimento_em": "2025-07-14T00:00:00.000Z",
+          "titulo": "PETIÇÃO DA INFORMAÇÃO ANTERIOR JUNTADA EM 14/07/2025",
+          "detalhe": "ISABELLA",
+          "origem": "IMPORT_PLANILHA",
+          "origemImportPlanilha": true,
+          "usuario_id": null,
+          "prazo_refs": 0
+        }
+      ],
+      "alertas": []
+    },
+    {
+      "escopo": {
+        "tipo": "PROCESSO_UNICO",
+        "processoId": 15916,
+        "codigoCliente": "00000928",
+        "numeroInterno": 180,
+        "regra": "Comparação apenas entre andamentos deste processo_id; nunca entre processos diferentes."
+      },
+      "camada": "BRUTA",
+      "chave": "proc:15916|2026-03-12T00:00:00.000Z\u0000JUNTAR PETIÇÃO INSERIDA NA PASTA EM 12/03/2026 (INICIAL)",
+      "acao": "REMOVER_DUPLICADOS",
+      "motivo": {
+        "motivo": "REIMPORTACAO_MESMA_ORIGEM",
+        "descricao": "Linhas repetidas na mesma origem (POST duplicado ou import sem --apenas-novos).",
+        "origens": [
+          "IMPORT_PLANILHA"
+        ]
+      },
+      "origens": [
+        "IMPORT_PLANILHA"
+      ],
+      "manter": {
+        "id": 29603,
+        "movimento_em": "2026-03-12T00:00:00.000Z",
+        "titulo": "JUNTAR PETIÇÃO INSERIDA NA PASTA EM 12/03/2026 (INICIAL)",
+        "detalhe": "KARLA",
+        "origem": "IMPORT_PLANILHA",
+        "origemImportPlanilha": true,
+        "usuario_id": null,
+        "prazo_refs": 0
+      },
+      "remover": [
+        {
+          "id": 29604,
+          "movimento_em": "2026-03-12T00:00:00.000Z",
+          "titulo": "JUNTAR PETIÇÃO INSERIDA NA PASTA EM 12/03/2026 (INICIAL)",
+          "detalhe": "ANA LUISA",
+          "origem": "IMPORT_PLANILHA",
+          "origemImportPlanilha": true,
+          "usuario_id": null,
+          "prazo_refs": 0
+        }
+      ],
+      "alertas": []
+    },
+    {
+      "escopo": {
+        "tipo": "PROCESSO_UNICO",
+        "processoId": 16328,
+        "codigoCliente": "00000966",
+        "numeroInterno": 5,
+        "regra": "Comparação apenas entre andamentos deste processo_id; nunca entre processos diferentes."
+      },
+      "camada": "BRUTA",
+      "chave": "proc:16328|2024-12-20T00:00:00.000Z\u0000AVISEI DO VENCIMENTO DA QUARTA PARCELA NO GRUPO",
+      "acao": "REMOVER_DUPLICADOS",
+      "motivo": {
+        "motivo": "REIMPORTACAO_MESMA_ORIGEM",
+        "descricao": "Linhas repetidas na mesma origem (POST duplicado ou import sem --apenas-novos).",
+        "origens": [
+          "IMPORT_PLANILHA"
+        ]
+      },
+      "origens": [
+        "IMPORT_PLANILHA"
+      ],
+      "manter": {
+        "id": 30080,
+        "movimento_em": "2024-12-20T00:00:00.000Z",
+        "titulo": "AVISEI DO VENCIMENTO DA QUARTA PARCELA NO GRUPO",
+        "detalhe": "KARLA",
+        "origem": "IMPORT_PLANILHA",
+        "origemImportPlanilha": true,
+        "usuario_id": null,
+        "prazo_refs": 0
+      },
+      "remover": [
+        {
+          "id": 30081,
+          "movimento_em": "2024-12-20T00:00:00.000Z",
+          "titulo": "AVISEI DO VENCIMENTO DA QUARTA PARCELA NO GRUPO",
+          "detalhe": "ISABELLA",
+          "origem": "IMPORT_PLANILHA",
+          "origemImportPlanilha": true,
+          "usuario_id": null,
+          "prazo_refs": 0
+        }
+      ],
+      "alertas": []
+    }
+  ],
+  "totalGruposRelatorio": 36,
+  "totalSuspeitos": 0
+}
