@@ -5,7 +5,7 @@
 import { featureFlags } from '../config/featureFlags.js';
 import { fetchCalculoRodada, fetchCalculoRodadasResumo } from '../repositories/calculosRepository.js';
 import {
-  listarProcessosPorCodigoCliente,
+  listarProcessosResumoPorCodigoCliente,
   mapApiProcessoToUiShape,
 } from '../repositories/processosRepository.js';
 import { loadRodadasCalculos, normalizarRodadaRecebidaApi } from './calculosRodadasStorage.js';
@@ -279,7 +279,7 @@ export async function carregarMapaProcessoExtrasRelatorioCalculos(codigosCliente
       chunk.map(async (cod8) => {
         let rawList = [];
         try {
-          rawList = await listarProcessosPorCodigoCliente(cod8);
+          rawList = await listarProcessosResumoPorCodigoCliente(cod8);
         } catch (e) {
           console.warn('[relatorio-calculos] falha ao listar processos do cliente', cod8, e);
           return;

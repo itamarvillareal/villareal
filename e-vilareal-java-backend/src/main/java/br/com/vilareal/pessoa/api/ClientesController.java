@@ -39,6 +39,15 @@ public class ClientesController {
         return processoApplicationService.listarClientesResumo();
     }
 
+    @GetMapping("/indice")
+    @Operation(
+            summary = "Índice leve de clientes (código + nome)",
+            description =
+                    "Apenas registos em `cliente` (sem merge planilha Pasta1). Use `/resolucao` para códigos só na planilha.")
+    public List<ClienteListItemResponse> listarIndice() {
+        return processoApplicationService.listarClientesIndice();
+    }
+
     @PostMapping
     @Operation(summary = "Criar cliente (código → pessoa)", description = "Idempotente: mesmo codigoCliente + pessoaId devolve 200.")
     public ResponseEntity<ClienteListItemResponse> criar(@Valid @RequestBody ClienteCreateRequest request) {

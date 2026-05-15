@@ -269,7 +269,7 @@ const PAGE_SIZE_LISTAGEM_CLIENTE = 100;
 /** Evita loop infinito se a resposta paginada vier sem {@code last} ou com anomalia. */
 const MAX_PAGES_LISTAGEM_PROCESSOS_CLIENTE = 500;
 
-export async function listarProcessosPorCodigoCliente(codigoCliente) {
+async function listarProcessosPorCodigoClientePaginado(codigoCliente, { resumo = false } = {}) {
   if (!featureFlags.useApiProcessos) return [];
   const cod = padCliente8(codigoCliente);
   const out = [];
@@ -282,6 +282,7 @@ export async function listarProcessosPorCodigoCliente(codigoCliente) {
           page: String(page),
           size: String(PAGE_SIZE_LISTAGEM_CLIENTE),
           sort: ['numeroInterno,asc', 'id,asc'],
+          ...(resumo ? { resumo: 'true' } : {}),
         },
       });
     } catch (e) {
@@ -302,6 +303,29 @@ export async function listarProcessosPorCodigoCliente(codigoCliente) {
     }
   }
   return out;
+}
+
+/** Listagem completa (inclui `parteOposta` montada a partir de partes na API). */
+export async function listarProcessosPorCodigoCliente(codigoCliente) {
+  return listarProcessosPorCodigoClientePaginado(codigoCliente, { resumo: false });
+}
+
+/**
+ * Grade Clientes / combos: sem join de partes no servidor (`?resumo=true`).
+ * Se a API ainda não expõe `resumo` (Docker antigo) ou o proxy falha, repete sem o parâmetro.
+ */
+export async function listarProcessosResumoPorCodigoCliente(codigoCliente) {
+  try {
+    return await listarProcessosPorCodigoClientePaginado(codigoCliente, { resumo: true });
+  } catch (e) {
+    const msg = String(e?.message ?? '');
+    const retry =
+      msg.includes('404') ||
+      msg.includes('500') ||
+      /resumo|No static resource|NoResourceFound|ECONNREFUSED|502|503|Bad Gateway/i.test(msg);
+    if (!retry) throw e;
+    return listarProcessosPorCodigoClientePaginado(codigoCliente, { resumo: false });
+  }
 }
 
 /** Busca global pelo nº interno do processo (ex.: tela Clientes — vários clientes podem ter o mesmo nº). */
@@ -423,11 +447,39 @@ export async function listarProcessosPorPrazoFatalDiagnostico(dataBrParam) {
   }
 }
 
+function extrairProcessoDaRespostaChaveNatural(body, numeroInternoAlvo) {
+  const ni = Math.floor(Number(numeroInternoAlvo));
+  if (body == null) return null;
+  if (Array.isArray(body)) {
+    return body.find((p) => Number(p?.numeroInterno) === ni) ?? null;
+  }
+  if (typeof body === 'object' && Array.isArray(body.content)) {
+    return body.content.find((p) => Number(p?.numeroInterno) === ni) ?? null;
+  }
+  if (typeof body === 'object' && body.id != null && Number.isFinite(Number(body.id))) {
+    if (!Number.isFinite(ni) || ni < 0) return body;
+    const niResp = Number(body.numeroInterno);
+    return !Number.isFinite(niResp) || niResp === ni ? body : null;
+  }
+  return null;
+}
+
 export async function buscarProcessoPorChaveNatural(codigoCliente, numeroInterno) {
   if (!featureFlags.useApiProcessos) return null;
-  const lista = await listarProcessosPorCodigoCliente(codigoCliente);
+  const cod = padCliente8(codigoCliente);
   const procNum = Number(numeroInterno);
-  return lista.find((p) => Number(p.numeroInterno) === procNum) || null;
+  if (!Number.isFinite(procNum) || procNum < 0) return null;
+  const ni = Math.floor(procNum);
+  try {
+    const body = await request('/api/processos', {
+      query: { codigoCliente: cod, numeroInterno: String(ni) },
+    });
+    return extrairProcessoDaRespostaChaveNatural(body, ni);
+  } catch (e) {
+    const msg = String(e?.message ?? '');
+    if (msg.includes('404') || /não encontrad/i.test(msg)) return null;
+    throw e;
+  }
 }
 
 /**
@@ -517,9 +569,6 @@ export async function resolverProcessoId({ processoId, codigoCliente, numeroInte
 export async function buscarClientePorCodigo(codigoCliente) {
   if (!featureFlags.useApiProcessos) return null;
   const cod = padCliente8(codigoCliente);
-  const clientes = await request('/api/clientes');
-  const found = (clientes || []).find((c) => String(c.codigoCliente) === cod);
-  if (found) return found;
   try {
     return await request('/api/clientes/resolucao', { query: { codigoCliente: cod } });
   } catch {
@@ -685,7 +734,10 @@ export async function sincronizarAndamentosIncremental(processoId, historico) {
     detalhe: null,
     origem: 'MANUAL',
     origemAutomatica: false,
-    usuarioId: null,
+    usuarioId: (() => {
+      const uid = Number(h.usuarioId);
+      return Number.isFinite(uid) && uid >= 1 ? uid : null;
+    })(),
   }));
   const idsDesejados = new Set(desejados.map((d) => Number(d.id)).filter(Number.isFinite));
 
@@ -810,14 +862,68 @@ export function mapApiAndamentoToHistoricoItem(a, idx = 0, total = 1) {
   const responsavelPlanilha = extrairResponsavelPlanilhaDeDetalhe(a?.detalhe, tituloPreenchido);
   const usuario = nome || login || responsavelPlanilha;
   const infoTxt = String(tituloRaw ?? '').trim() || 'Andamento';
+  const usuarioIdRaw = a?.usuarioId ?? a?.usuario_id;
+  const usuarioIdNum = Number(usuarioIdRaw);
   return {
     id: Number.isFinite(idNum) && idNum >= 1 ? idNum : Date.now() + idx,
     inf: String(total - idx).padStart(2, '0'),
     info: infoTxt.length > 500 ? infoTxt.slice(0, 500) : infoTxt,
     data: toBrFromIsoDate(movRaw),
     usuario,
+    usuarioId: Number.isFinite(usuarioIdNum) && usuarioIdNum >= 1 ? usuarioIdNum : null,
     numero: String(total - idx).padStart(4, '0'),
   };
+}
+
+function normalizarRotuloUsuarioHistorico(s) {
+  return String(s ?? '')
+    .trim()
+    .toLocaleLowerCase('pt-BR')
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '');
+}
+
+/** Compara responsável da linha com o perfil ativo (apelido/login/id ou usuarioId). */
+export function entradaHistoricoPertenceAoUsuarioAtivo(entrada, { perfilId, usuariosAtivos, nomeAtivo, apiUsuario }) {
+  if (!entrada) return false;
+
+  const linhaNorm = normalizarRotuloUsuarioHistorico(entrada.usuario);
+  const ativoNorm = normalizarRotuloUsuarioHistorico(nomeAtivo);
+  if (linhaNorm && ativoNorm && linhaNorm === ativoNorm) return true;
+
+  if (apiUsuario && linhaNorm) {
+    const apiNome = normalizarRotuloUsuarioHistorico(apiUsuario.nome);
+    const apiLogin = normalizarRotuloUsuarioHistorico(apiUsuario.login);
+    if ((apiNome && apiNome === linhaNorm) || (apiLogin && apiLogin === linhaNorm)) return true;
+  }
+
+  const lista = Array.isArray(usuariosAtivos) ? usuariosAtivos : [];
+  const u = lista.find((x) => String(x.id) === String(perfilId));
+  if (u) {
+    const candidatos = [u.apelido, u.login, u.nome, nomeAtivo, apiUsuario?.nome, apiUsuario?.login]
+      .map((x) => normalizarRotuloUsuarioHistorico(x))
+      .filter(Boolean);
+    if (linhaNorm && candidatos.some((c) => c === linhaNorm)) return true;
+  }
+
+  const entradaUid = entrada.usuarioId != null ? Number(entrada.usuarioId) : NaN;
+  const perfilNum = Number(perfilId);
+  if (Number.isFinite(entradaUid) && entradaUid >= 1 && Number.isFinite(perfilNum) && perfilNum >= 1) {
+    return entradaUid === perfilNum;
+  }
+  const apiUid = apiUsuario?.id != null ? Number(apiUsuario.id) : NaN;
+  if (Number.isFinite(entradaUid) && entradaUid >= 1 && Number.isFinite(apiUid) && apiUid >= 1) {
+    return entradaUid === apiUid;
+  }
+  return false;
+}
+
+export async function excluirAndamentoProcesso(processoId, andamentoId) {
+  if (!featureFlags.useApiProcessos) return;
+  const pid = Number(processoId);
+  const aid = Number(andamentoId);
+  if (!Number.isFinite(pid) || pid < 1 || !Number.isFinite(aid) || aid < 1) return;
+  await request(`/api/processos/${pid}/andamentos/${aid}`, { method: 'DELETE' });
 }
 
 export async function obterCamposProcessoApiFirst({ processoId, codigoCliente, numeroInterno }) {

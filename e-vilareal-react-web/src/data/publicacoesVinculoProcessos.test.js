@@ -2,9 +2,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as hist from './processosHistoricoData.js';
 import { buscarHitIndiceCnjPorCnj, montarIndiceCnjClienteProcAsync } from './publicacoesVinculoProcessos.js';
 
-const { listarClientesCadastro, listarProcessosPorCodigoCliente } = vi.hoisted(() => ({
-  listarClientesCadastro: vi.fn(),
-  listarProcessosPorCodigoCliente: vi.fn(),
+const { listarClientesIndiceCadastro, listarProcessosResumoPorCodigoCliente } = vi.hoisted(() => ({
+  listarClientesIndiceCadastro: vi.fn(),
+  listarProcessosResumoPorCodigoCliente: vi.fn(),
 }));
 
 vi.mock('../config/featureFlags.js', () => ({
@@ -12,14 +12,14 @@ vi.mock('../config/featureFlags.js', () => ({
 }));
 
 vi.mock('../repositories/clientesRepository.js', () => ({
-  listarClientesCadastro: (...args) => listarClientesCadastro(...args),
+  listarClientesIndiceCadastro: (...args) => listarClientesIndiceCadastro(...args),
 }));
 
 vi.mock('../repositories/processosRepository.js', async (importOriginal) => {
   const actual = await importOriginal();
   return {
     ...actual,
-    listarProcessosPorCodigoCliente: (...args) => listarProcessosPorCodigoCliente(...args),
+    listarProcessosResumoPorCodigoCliente: (...args) => listarProcessosResumoPorCodigoCliente(...args),
   };
 });
 
@@ -54,13 +54,13 @@ describe('buscarHitIndiceCnjPorCnj', () => {
 describe('montarIndiceCnjClienteProcAsync', () => {
   afterEach(() => {
     vi.restoreAllMocks();
-    listarClientesCadastro.mockReset();
-    listarProcessosPorCodigoCliente.mockReset();
+    listarClientesIndiceCadastro.mockReset();
+    listarProcessosResumoPorCodigoCliente.mockReset();
   });
 
   beforeEach(() => {
-    listarClientesCadastro.mockResolvedValue([{ codigo: '00000513', nomeRazao: 'Cliente X' }]);
-    listarProcessosPorCodigoCliente.mockResolvedValue([
+    listarClientesIndiceCadastro.mockResolvedValue([{ codigo: '00000513', nomeRazao: 'Cliente X' }]);
+    listarProcessosResumoPorCodigoCliente.mockResolvedValue([
       { id: 1, codigoCliente: '00000513', numeroInterno: 9, numeroCnj: '5393953-78.2021.8.09.0006' },
     ]);
   });
@@ -75,7 +75,7 @@ describe('montarIndiceCnjClienteProcAsync', () => {
   });
 
   it('quando a API não envia CNJ, usa obterNumeroProcessoNovoUnificado', async () => {
-    listarProcessosPorCodigoCliente.mockResolvedValue([
+    listarProcessosResumoPorCodigoCliente.mockResolvedValue([
       { id: 1, codigoCliente: '00000513', numeroInterno: 9, numeroCnj: null },
     ]);
     const spy = vi.spyOn(hist, 'obterNumeroProcessoNovoUnificado').mockReturnValue('5393953-78.2021.8.09.0006');

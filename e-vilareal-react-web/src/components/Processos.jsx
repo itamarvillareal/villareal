@@ -47,7 +47,7 @@ import {
   replicarAudienciaProcessoTodosColaboradoresApi,
   replicarCompromissoLoteTodosColaboradoresApi,
 } from '../repositories/agendaRepository.js';
-import { getPerfilAtivoParaPermissoes } from '../data/usuarioPermissoesStorage.js';
+import { getApiUsuarioSessao, getPerfilAtivoParaPermissoes } from '../data/usuarioPermissoesStorage.js';
 import { getNomeExibicaoUsuario } from '../data/usuarioDisplayHelpers.js';
 import { SidebarMenuIcon } from './navigation/SidebarMenuIcons.jsx';
 import {
@@ -67,6 +67,7 @@ import {
   PenLine,
   AlertCircle,
   Users,
+  Undo2,
 } from 'lucide-react';
 import { ModalRelatorioPublicacoesProcesso } from './ModalRelatorioPublicacoesProcesso.jsx';
 import { ModalCriarTarefaContextual } from './ModalCriarTarefaContextual.jsx';
@@ -84,6 +85,7 @@ import {
   listarAndamentosProcesso,
   sincronizarAndamentosIncremental,
   mapApiAndamentoToHistoricoItem,
+  entradaHistoricoPertenceAoUsuarioAtivo,
   upsertPrazoFatalProcesso,
   alterarAtivoProcesso,
 } from '../repositories/processosRepository.js';
@@ -202,6 +204,29 @@ function nomeUsuarioAtivoParaHistorico() {
   const id = String(perfilId || '').trim();
   if (id) return id.charAt(0).toUpperCase() + id.slice(1).toLowerCase();
   return 'Usuário';
+}
+
+function usuarioAtivoIdParaHistorico() {
+  const perfilId = getPerfilAtivoParaPermissoes();
+  const perfilNum = Number(perfilId);
+  if (Number.isFinite(perfilNum) && perfilNum >= 1) return perfilNum;
+  const lista = getUsuariosAtivos();
+  const u = (lista || []).find((x) => String(x.id) === String(perfilId));
+  const idLista = Number(u?.id);
+  if (Number.isFinite(idLista) && idLista >= 1) return idLista;
+  const api = getApiUsuarioSessao();
+  const apiNum = Number(api?.id);
+  if (Number.isFinite(apiNum) && apiNum >= 1) return apiNum;
+  return null;
+}
+
+function ultimaEntradaHistoricoEhDoUsuarioAtivo(entrada) {
+  return entradaHistoricoPertenceAoUsuarioAtivo(entrada, {
+    perfilId: getPerfilAtivoParaPermissoes(),
+    usuariosAtivos: getUsuariosAtivos(),
+    nomeAtivo: nomeUsuarioAtivoParaHistorico(),
+    apiUsuario: getApiUsuarioSessao(),
+  });
 }
 
 function formatValorContaCorrente(v) {
@@ -423,6 +448,9 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   const [historicoExternoTick, setHistoricoExternoTick] = useState(0);
   /** Evita aplicar resposta antiga se o usuário trocar de processo antes do GET terminar. */
   const carregarProcessoApiSeqRef = useRef(0);
+  /** Evita recarregar histórico da API para o mesmo processoId. */
+  const historicoCarregadoParaProcessoRef = useRef(null);
+  const [historicoApiCarregando, setHistoricoApiCarregando] = useState(false);
 
   /** Evita página vazia quando o nº de linhas do histórico diminui (ex.: troca de processo ou carga API). */
   useEffect(() => {
@@ -441,9 +469,11 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   }, []);
 
   useEffect(() => {
-    if (!featureFlags.useApiFinanceiro || !Number(processoApiId)) {
-      setResumoContaCorrenteApi(null);
-      setResumoContaCorrenteApiErro('');
+    if (!featureFlags.useApiFinanceiro || !Number(processoApiId) || !modalContaCorrente) {
+      if (!modalContaCorrente) {
+        setResumoContaCorrenteApi(null);
+        setResumoContaCorrenteApiErro('');
+      }
       return;
     }
     let ativo = true;
@@ -460,7 +490,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     return () => {
       ativo = false;
     };
-  }, [processoApiId]);
+  }, [processoApiId, modalContaCorrente]);
 
   useEffect(() => {
     const h = () => setContaCorrenteListaApiTick((t) => t + 1);
@@ -925,6 +955,14 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     void carregarProcessoApiAtual();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [codigoCliente, processo]);
+
+  useEffect(() => {
+    if (!featureFlags.useApiProcessos || tabAtiva !== 'historico' || !processoApiId) return;
+    if (historicoCarregadoParaProcessoRef.current === processoApiId) return;
+    const seq = carregarProcessoApiSeqRef.current;
+    void carregarHistoricoApi(processoApiId, seq);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabAtiva, processoApiId]);
 
   useEffect(() => {
     // Ao mudar cliente/processo, permite de novo o preenchimento automático do vínculo com imóvel
@@ -1533,16 +1571,49 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     setPaginaHistorico(1);
   }
 
+  async function carregarHistoricoApi(processoId, seq) {
+    if (!featureFlags.useApiProcessos || !Number(processoId)) return;
+    setHistoricoApiCarregando(true);
+    try {
+      const andamentos = await listarAndamentosProcesso(processoId);
+      if (seq !== carregarProcessoApiSeqRef.current) return;
+      if (!Array.isArray(andamentos)) {
+        setHistorico([]);
+        setPaginaHistorico(1);
+        setApiError(
+          typeof andamentos?.message === 'string' && andamentos.message
+            ? andamentos.message
+            : 'Histórico: resposta inválida da API (não é uma lista). Verifique GET /api/processos/…/andamentos na rede.'
+        );
+      } else if (andamentos.length > 0) {
+        const hist = andamentos.map((a, idx) => mapApiAndamentoToHistoricoItem(a, idx, andamentos.length));
+        setHistorico(hist);
+        setPaginaHistorico(1);
+      } else {
+        setHistorico([]);
+        setPaginaHistorico(1);
+      }
+      historicoCarregadoParaProcessoRef.current = processoId;
+    } catch (e) {
+      if (seq !== carregarProcessoApiSeqRef.current) return;
+      setApiError(e?.message || 'Falha ao carregar histórico da API.');
+    } finally {
+      if (seq === carregarProcessoApiSeqRef.current) setHistoricoApiCarregando(false);
+    }
+  }
+
   async function carregarProcessoApiAtual() {
     if (!featureFlags.useApiProcessos) return;
     const seq = ++carregarProcessoApiSeqRef.current;
+    historicoCarregadoParaProcessoRef.current = null;
+    setHistorico([]);
+    setHistoricoApiCarregando(false);
     setApiError('');
     try {
       setParteClienteEntradas([]);
       setParteOpostaEntradas([]);
       setParteCliente('');
       setParteOposta('');
-      // Sempre pela chave natural (cliente + proc.): processoApiId pode ser do cliente anterior ao trocar o código.
       const procApi = await buscarProcessoPorChaveNatural(codigoCliente, processo);
       if (seq !== carregarProcessoApiSeqRef.current) return;
       if (!procApi) {
@@ -1564,7 +1635,6 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
             ? Number(procApi.clienteId)
             : null
       );
-      // Valores exatamente como na API (sem || estado anterior): evita manter mock/localStorage quando a API devolve vazio.
       setNumeroProcessoNovo(mapped.numeroProcessoNovo ?? '');
       setNumeroProcessoVelho(mapped.numeroProcessoVelho ?? '');
       setNaturezaAcao(mapped.naturezaAcao ?? '');
@@ -1589,25 +1659,6 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       const partes = await listarPartesProcesso(procApi.id);
       if (seq !== carregarProcessoApiSeqRef.current) return;
       aplicarListaPartesApiNaUi(partes);
-
-      const andamentos = await listarAndamentosProcesso(procApi.id);
-      if (seq !== carregarProcessoApiSeqRef.current) return;
-      if (!Array.isArray(andamentos)) {
-        setHistorico([]);
-        setPaginaHistorico(1);
-        setApiError(
-          typeof andamentos?.message === 'string' && andamentos.message
-            ? andamentos.message
-            : 'Histórico: resposta inválida da API (não é uma lista). Verifique GET /api/processos/…/andamentos na rede.'
-        );
-      } else if (andamentos.length > 0) {
-        const hist = andamentos.map((a, idx) => mapApiAndamentoToHistoricoItem(a, idx, andamentos.length));
-        setHistorico(hist);
-        setPaginaHistorico(1);
-      } else {
-        setHistorico([]);
-        setPaginaHistorico(1);
-      }
     } catch (e) {
       if (seq !== carregarProcessoApiSeqRef.current) return;
       setApiError(e?.message || 'Falha ao carregar processo da API.');
@@ -1714,6 +1765,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
               setHistorico([]);
             }
             setPaginaHistorico(1);
+            historicoCarregadoParaProcessoRef.current = pid;
           }
         } catch {
           /* mantém o histórico já exibido se o GET falhar */
@@ -2003,6 +2055,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       info,
       data,
       usuario: nomeUsuarioAtivoParaHistorico(),
+      usuarioId: usuarioAtivoIdParaHistorico(),
       numero: String(novoNumero).padStart(4, '0'),
     };
     const historicoAtualizado = [novoItem, ...historico];
@@ -2010,6 +2063,37 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     setPaginaHistorico(1);
     setProximaInformacao('');
     setDataProximaInformacao('');
+    const payloadHistorico = montarPayloadRegistroProcesso({ historico: historicoAtualizado });
+    salvarHistoricoDoProcesso(payloadHistorico);
+    if (featureFlags.useApiProcessos) {
+      void sincronizarApiProcessoAtual(
+        { historico: historicoAtualizado },
+        {
+          syncPartes: false,
+          syncAndamentos: true,
+          syncPrazoFatal: false,
+          permitirComEdicaoDesabilitada: true,
+        }
+      );
+    }
+  }
+
+  function desfazerUltimaInformacaoHistorico() {
+    if (historico.length === 0) return;
+    const ultima = historico[0];
+    if (!ultimaEntradaHistoricoEhDoUsuarioAtivo(ultima)) return;
+
+    const resumo = String(ultima.info ?? '').trim() || '(sem texto)';
+    const ok = window.confirm(
+      `Remover a última informação que você inseriu neste processo?\n\nInf. ${ultima.inf}: ${resumo}`
+    );
+    if (!ok) return;
+
+    const historicoAtualizado = historico.slice(1);
+    setHistorico(historicoAtualizado);
+    const totalP = Math.max(1, Math.ceil(historicoAtualizado.length / HISTORICO_POR_PAGINA));
+    if (paginaHistorico > totalP) setPaginaHistorico(totalP);
+
     const payloadHistorico = montarPayloadRegistroProcesso({ historico: historicoAtualizado });
     salvarHistoricoDoProcesso(payloadHistorico);
     if (featureFlags.useApiProcessos) {
@@ -2045,6 +2129,8 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     (paginaHistorico - 1) * HISTORICO_POR_PAGINA,
     paginaHistorico * HISTORICO_POR_PAGINA
   );
+  const podeDesfazerUltimaInformacaoHistorico =
+    historico.length > 0 && ultimaEntradaHistoricoEhDoUsuarioAtivo(historico[0]);
   const ufAtual = UFS.find((u) => u.sigla === estado);
 
   const faseSelecionadaNormalizada = normalizarTextoBusca(faseSelecionada);
@@ -3131,9 +3217,23 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                     >
                       Manter Inf.
                     </button>
+                    {podeDesfazerUltimaInformacaoHistorico ? (
+                      <button
+                        type="button"
+                        onClick={desfazerUltimaInformacaoHistorico}
+                        disabled={apiSaving}
+                        className="inline-flex items-center gap-1.5 px-3 py-2 rounded border border-amber-300 bg-amber-50 text-amber-900 text-sm hover:bg-amber-100 whitespace-nowrap disabled:opacity-50"
+                        title="Remove só a informação mais recente, se foi inserida por você (correção de digitação acidental)"
+                      >
+                        <Undo2 className="w-4 h-4 shrink-0" />
+                        Desfazer última
+                      </button>
+                    ) : null}
                   </div>
                   <div className="space-y-2 border-t border-slate-200 p-2 md:hidden">
-                    {historicoPaginado.length === 0 ? (
+                    {historicoApiCarregando ? (
+                      <p className="py-4 text-center text-sm text-slate-500">A carregar histórico…</p>
+                    ) : historicoPaginado.length === 0 ? (
                       <p className="py-4 text-center text-sm text-slate-500">Nenhum registro.</p>
                     ) : (
                       historicoPaginado.map((h, rowIdx) => (
@@ -3176,7 +3276,13 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                         </tr>
                       </thead>
                       <tbody>
-                        {historicoPaginado.length === 0 ? (
+                        {historicoApiCarregando ? (
+                          <tr>
+                            <td colSpan={4} className="px-3 py-4 text-center text-slate-500">
+                              A carregar histórico…
+                            </td>
+                          </tr>
+                        ) : historicoPaginado.length === 0 ? (
                           <tr>
                             <td colSpan={4} className="px-3 py-4 text-center text-slate-500">
                               Nenhum registro.

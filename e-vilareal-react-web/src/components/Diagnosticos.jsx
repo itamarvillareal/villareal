@@ -24,7 +24,7 @@ import {
 import { hojeDdMmYyyy, resolverAliasHojeEmTexto } from '../services/hjDateAliasService.js';
 import { listarImoveisResumoPorPessoaDiagnostico } from '../services/listarImoveisPorPessoaDiagnostico.js';
 import { listarCodigosClientePorIdPessoa } from '../data/clienteCodigoHelpers.js';
-import { listarClientesCadastro } from '../repositories/clientesRepository.js';
+import { listarClientesIndiceCadastro } from '../repositories/clientesRepository.js';
 import {
   listarProcessosPorNumeroProcessoDiagnostico,
   listarProcessosPorPrazoFatalDiagnostico,
@@ -339,7 +339,7 @@ export function Diagnosticos() {
 
   useEffect(() => {
     let c = true;
-    void listarClientesCadastro()
+    void listarClientesIndiceCadastro()
       .then((list) => {
         if (c) setClientesCodigosLista(Array.isArray(list) ? list : []);
       })
