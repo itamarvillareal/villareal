@@ -11,19 +11,21 @@
  * Detecção de colunas por texto do cabeçalho (trim + lower + sem acentos).
  *
  * Uso:
- *   node scripts/import-calculos-planilha.mjs "C:\\Users\\...\\import-calculo.xls" [--dry-run] [--codigo-cliente=00000491] [--login=itamar]
+ *   node scripts/import-calculos-planilha.mjs [--dry-run] [--codigo-cliente=00000491] [--login=itamar]
+ *   (sem argumento: procura import-calculo.xls em Dropbox/sistema ou ./sistema — ver resolve-import-calculo-xls.mjs)
  *
- * Env: VILAREAL_API_BASE, VILAREAL_IMPORT_SENHA, VILAREAL_IMPORT_CONCURRENCY (default 3)
+ * Envs: VILAREAL_API_BASE, VILAREAL_IMPORT_SENHA, VILAREAL_IMPORT_CONCURRENCY (default 3)
+ * Opcional: `.env.import.local` ou `~/.vilareal-import-env` com `VILAREAL_IMPORT_SENHA=…`
  *
  * PUT /api/calculos/rodadas/{codigoCliente}/{numeroProcesso}/{dimensao}
  */
 
-import fs from 'node:fs';
-import path from 'node:path';
+import './lib/load-vilareal-import-env.mjs';
+
 import process from 'node:process';
 import XLSX from 'xlsx';
-
-const DEFAULT_FILE = 'C:\\Users\\jrvill\\Dropbox\\sistema\\import-calculo.xls';
+import { parseValorMonetarioBr } from '../src/utils/parseValorMonetarioBr.js';
+import { resolveImportCalculoXlsPath, candidatosImportCalculoXlsParaLog } from './lib/resolve-import-calculo-xls.mjs';
 
 const HEADER_LINE_1BASED = 5;
 const DATA_START_1BASED = 8;
@@ -85,25 +87,6 @@ function parseData(val) {
   const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
   return null;
-}
-
-function parseValorMonetario(v) {
-  if (v == null || v === '') return null;
-  if (typeof v === 'number' && Number.isFinite(v)) return v;
-  const t = String(v).trim().replace(/\s/g, '');
-  if (!t) return null;
-  if (/R\$/i.test(t)) {
-    const s = t.replace(/R\$/gi, '').replace(/\./g, '').replace(',', '.');
-    const n = Number(s);
-    return Number.isFinite(n) ? n : null;
-  }
-  if (t.includes(',')) {
-    const s = t.replace(/\./g, '').replace(',', '.');
-    const n = Number(s);
-    return Number.isFinite(n) ? n : null;
-  }
-  const n = Number(t);
-  return Number.isFinite(n) ? n : null;
 }
 
 function parseTexto(v) {
@@ -311,8 +294,8 @@ function parseAba1Rows(matrix, col) {
       numero: parseNumeroProcesso(row[col.parcela]),
       dataVencimento: parseData(row[col.dataVencimento]),
       dataPagamento: parseData(row[col.dataPagamento]),
-      valorParcela: parseValorMonetario(row[col.valor]),
-      honorariosParcela: parseValorMonetario(row[col.valorHonorarios]),
+      valorParcela: parseValorMonetarioBr(row[col.valor]),
+      honorariosParcela: parseValorMonetarioBr(row[col.valorHonorarios]),
       observacao: parseTexto(row[col.obs]),
     };
     if (parcela.numero == null) {
@@ -365,7 +348,7 @@ function parseAba2Rows(matrix, col) {
       chaveDescricao: parseTexto(row[col.chaveDesc]),
       dataVencimento: parseData(row[col.dataVencimento]),
       dataPagamento: parseData(row[col.dataPagamento]),
-      valor: parseValorMonetario(row[col.valor]),
+      valor: parseValorMonetarioBr(row[col.valor]),
       dataInicialJuros: parseData(row[col.dataInicialJuros]),
       dataInicialAtualizacaoMonetaria: parseData(row[col.dataInicialAtualizacaoMonetaria]),
     };
@@ -465,8 +448,13 @@ function printDetectedHeaders(title, colMap, labels) {
 
 function main() {
   const opts = parseArgs(process.argv.slice(2));
-  const filePath = opts.file || DEFAULT_FILE;
-  const abs = path.isAbsolute(filePath) ? filePath : path.resolve(process.cwd(), filePath);
+  const abs = resolveImportCalculoXlsPath(opts.file);
+  if (!abs) {
+    console.error('[import-calculos] import-calculo.xls não encontrado. Tentados:');
+    for (const p of candidatosImportCalculoXlsParaLog(opts.file)) console.error(' ', p);
+    process.exit(1);
+  }
+  console.log(`[import-calculos] planilha: ${abs}`);
 
   let codigoClienteFiltro = null;
   if (opts.codigoCliente) {
@@ -478,10 +466,6 @@ function main() {
     console.log(`[filtro] processando APENAS codigo_cliente=${codigoClienteFiltro}`);
   }
 
-  if (!fs.existsSync(abs)) {
-    console.error(`Ficheiro não encontrado: ${abs}`);
-    process.exit(1);
-  }
   if (!opts.dryRun && !opts.senha) {
     console.error('Defina VILAREAL_IMPORT_SENHA ou --senha=... (ou use --dry-run)');
     process.exit(1);

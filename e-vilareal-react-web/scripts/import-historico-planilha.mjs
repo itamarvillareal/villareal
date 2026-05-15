@@ -32,7 +32,10 @@
  *                             Concorrência é reduzida a 1 para evitar duplicados em corrida na mesma chave.
  *
  * Envs: VILAREAL_API_BASE, VILAREAL_IMPORT_SENHA, VILAREAL_IMPORT_CONCURRENCY (default 3), VILAREAL_IMPORT_ORIGEM
+ * Opcional: `.env.import.local` ou `~/.vilareal-import-env` com `VILAREAL_IMPORT_SENHA=…`
  */
+
+import './lib/load-vilareal-import-env.mjs';
 
 import fs from 'node:fs';
 import path from 'node:path';

@@ -127,16 +127,10 @@ export function formatBRLDebitos(n) {
   return `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+import { parseValorMonetarioBr } from './parseValorMonetarioBr.js';
+
 function parseValorCelula(val) {
-  if (val == null || val === '') return null;
-  if (typeof val === 'number' && Number.isFinite(val)) return val;
-  const s = String(val)
-    .trim()
-    .replace(/R\$\s?/i, '')
-    .replace(/\./g, '')
-    .replace(',', '.');
-  const n = Number(s.replace(/[^\d.-]/g, ''));
-  return Number.isFinite(n) ? n : null;
+  return parseValorMonetarioBr(val);
 }
 
 function rodadaKeyFromAGH(codRaw, procRaw, dimRaw) {

@@ -35,6 +35,7 @@ import { featureFlags } from '../config/featureFlags.js';
 import {
   alterarStatusPublicacao,
   importarPublicacoesDaPrevia,
+  importarUmaPublicacaoDaPreviaApi,
   limparTodasPublicacoes,
   listarPublicacoesModulo,
   vincularPublicacaoProcessoPorChaveNatural,
@@ -217,6 +218,11 @@ export function PublicacoesProcessos() {
     gravadosTick,
   ]);
 
+  useEffect(() => {
+    if (gravadosTick === 0) return;
+    window.dispatchEvent(new CustomEvent('vilareal:publicacoes-processo-relatorio-atualizado'));
+  }, [gravadosTick]);
+
   const processarArquivo = useCallback(
     async (file) => {
       if (!file || file.type !== 'application/pdf') {
@@ -301,8 +307,25 @@ export function PublicacoesProcessos() {
         setVinculoFormErro(next.erroVinculo);
         return;
       }
+      let stored = next;
+      if (featureFlags.useApiPublicacoes) {
+        const nomeArq =
+          (arquivoNome && String(arquivoNome).trim()) || preview.nomeArquivo || 'publicacoes-previa.pdf';
+        const r = await importarUmaPublicacaoDaPreviaApi(next, nomeArq, {
+          hashArquivo: preview.hashArquivo ?? '',
+          importacaoConfirmadaEm: new Date().toISOString(),
+        });
+        if (!r.ok) {
+          setVinculoFormErro(r.error || 'Falha ao gravar publicação na API.');
+          return;
+        }
+        setGravadosTick((t) => t + 1);
+        if (r.id != null) {
+          stored = { ...next, _apiId: r.id, id: String(r.id) };
+        }
+      }
       const itens = [...preview.itens];
-      itens[vinculoModal.index] = next;
+      itens[vinculoModal.index] = stored;
       setPreview({ ...preview, itens });
       setVinculoModal(null);
       setVinculoFormErro('');

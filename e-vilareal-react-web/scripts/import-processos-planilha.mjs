@@ -10,6 +10,7 @@
  *   node scripts/import-processos-planilha.mjs "<ficheiro.xls>" --login=itamar --dry-run
  *
  * Envs: VILAREAL_IMPORT_SENHA, VILAREAL_API_BASE (ex.: http://localhost:8080), VILAREAL_IMPORT_CONCURRENCY (default 3).
+ * Opcional: `.env.import.local` ou `~/.vilareal-import-env` com `VILAREAL_IMPORT_SENHA=…`
  *
  * Pos-import (Etapa C): POST /api/processos/{id}/andamentos (audiencia F+G+H) e POST .../prazos (J parseavel).
  *
@@ -18,6 +19,8 @@
  * Nota: na UI a coluna «Parte Oposta» usa sobretudo `pessoa.nome` dos reus —
  * dados ja gravados maus ai devem ser corrigidos no cadastro de pessoas ou pelo SQL em `scripts/sql/corrigir-mojibake-planilha-utf8.sql`.
  */
+
+import './lib/load-vilareal-import-env.mjs';
 
 import fs from 'node:fs';
 import path from 'node:path';
