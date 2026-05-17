@@ -4,6 +4,8 @@ import br.com.vilareal.financeiro.domain.TipoMatch;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.math.BigDecimal;
+
 @Getter
 @Setter
 public class RegraClassificacaoResponse {
@@ -14,8 +16,10 @@ public class RegraClassificacaoResponse {
     private Long contaContabilId;
     private String contaContabilCodigo;
     private String contaContabilNome;
+    private String letraDestino;
     private Integer numeroBanco;
     private Integer prioridade;
+    private BigDecimal confianca;
     private Boolean ativo;
     private Long clienteId;
     private Long processoId;

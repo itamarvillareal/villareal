@@ -7,6 +7,7 @@ import br.com.vilareal.financeiro.application.FinanceiroCompensacaoService;
 import br.com.vilareal.financeiro.application.FinanceiroFaturaSugestaoService;
 import br.com.vilareal.financeiro.application.FinanceiroMesApplicationService;
 import br.com.vilareal.financeiro.application.FinanceiroSaudeService;
+import br.com.vilareal.financeiro.application.ClassificacaoAutomaticaService;
 import br.com.vilareal.financeiro.application.FinanceiroSugestaoService;
 import br.com.vilareal.financeiro.application.RegraClassificacaoApplicationService;
 import br.com.vilareal.financeiro.domain.EtapaLancamento;
@@ -41,6 +42,7 @@ public class FinanceiroController {
     private final FinanceiroPagamentoFaturaApplicationService pagamentoFaturaService;
     private final RegraClassificacaoApplicationService regraClassificacaoService;
     private final FinanceiroSugestaoService financeiroSugestaoService;
+    private final ClassificacaoAutomaticaService classificacaoAutomaticaService;
     private final FinanceiroCompensacaoService financeiroCompensacaoService;
     private final CartaoBancoMapeamentoApplicationService cartaoBancoMapeamentoService;
     private final FinanceiroFaturaSugestaoService financeiroFaturaSugestaoService;
@@ -53,6 +55,7 @@ public class FinanceiroController {
             FinanceiroPagamentoFaturaApplicationService pagamentoFaturaService,
             RegraClassificacaoApplicationService regraClassificacaoService,
             FinanceiroSugestaoService financeiroSugestaoService,
+            ClassificacaoAutomaticaService classificacaoAutomaticaService,
             FinanceiroCompensacaoService financeiroCompensacaoService,
             CartaoBancoMapeamentoApplicationService cartaoBancoMapeamentoService,
             FinanceiroFaturaSugestaoService financeiroFaturaSugestaoService,
@@ -63,6 +66,7 @@ public class FinanceiroController {
         this.pagamentoFaturaService = pagamentoFaturaService;
         this.regraClassificacaoService = regraClassificacaoService;
         this.financeiroSugestaoService = financeiroSugestaoService;
+        this.classificacaoAutomaticaService = classificacaoAutomaticaService;
         this.financeiroCompensacaoService = financeiroCompensacaoService;
         this.cartaoBancoMapeamentoService = cartaoBancoMapeamentoService;
         this.financeiroFaturaSugestaoService = financeiroFaturaSugestaoService;
@@ -227,7 +231,7 @@ public class FinanceiroController {
     @PostMapping("/lancamentos/auto-classificar")
     @Operation(description = "Auto-classificação por confiança mínima (dry-run ou aplicação).")
     public AutoClassificarResponse autoClassificar(@Valid @RequestBody AutoClassificarRequest request) {
-        return financeiroSugestaoService.autoClassificar(request);
+        return classificacaoAutomaticaService.autoClassificar(request);
     }
 
     @PostMapping("/lancamentos/parear")

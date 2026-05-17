@@ -15,7 +15,9 @@ import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -86,8 +88,13 @@ public class RegraClassificacaoApplicationService {
         e.setPadraoDescricao(req.getPadraoDescricao().trim());
         e.setTipoMatch(req.getTipoMatch());
         e.setContaContabil(conta);
+        e.setLetraDestino(
+                StringUtils.hasText(req.getLetraDestino())
+                        ? req.getLetraDestino().trim().toUpperCase()
+                        : conta.getCodigo().toUpperCase());
         e.setNumeroBanco(req.getNumeroBanco());
         e.setPrioridade(req.getPrioridade());
+        e.setConfianca(req.getConfianca() != null ? req.getConfianca() : new BigDecimal("0.8000"));
         e.setAtivo(req.getAtivo());
 
         PessoaEntity cliente = null;
@@ -118,8 +125,11 @@ public class RegraClassificacaoApplicationService {
         r.setContaContabilId(e.getContaContabil().getId());
         r.setContaContabilCodigo(Utf8MojibakeUtil.corrigir(e.getContaContabil().getCodigo()));
         r.setContaContabilNome(Utf8MojibakeUtil.corrigir(e.getContaContabil().getNome()));
+        r.setLetraDestino(
+                e.getLetraDestino() != null ? e.getLetraDestino() : e.getContaContabil().getCodigo());
         r.setNumeroBanco(e.getNumeroBanco());
         r.setPrioridade(e.getPrioridade());
+        r.setConfianca(e.getConfianca());
         r.setAtivo(e.getAtivo());
         r.setClienteId(e.getCliente() != null ? e.getCliente().getId() : null);
         r.setProcessoId(e.getProcesso() != null ? e.getProcesso().getId() : null);

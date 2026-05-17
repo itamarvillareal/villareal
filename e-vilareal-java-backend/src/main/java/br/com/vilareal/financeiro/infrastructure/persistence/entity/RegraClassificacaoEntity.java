@@ -7,6 +7,7 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 
 @Entity
@@ -30,11 +31,17 @@ public class RegraClassificacaoEntity {
     @JoinColumn(name = "conta_contabil_id", nullable = false)
     private ContaContabilEntity contaContabil;
 
+    @Column(name = "letra_destino", columnDefinition = "CHAR(1)")
+    private String letraDestino;
+
     @Column(name = "numero_banco")
     private Integer numeroBanco;
 
     @Column(nullable = false)
     private Integer prioridade = 100;
+
+    @Column(nullable = false, precision = 5, scale = 4)
+    private BigDecimal confianca = new BigDecimal("0.8000");
 
     @Column(nullable = false)
     private Boolean ativo = true;
