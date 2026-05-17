@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * Importa rodadas de cálculo (layout 2026) + opcionalmente pagamentos quando a coluna H (data pagamento) está preenchida.
+ * Importa rodadas de cálculo (layout 2026) + opcionalmente pagamentos quando a coluna F (data pagamento, aba 2) está preenchida.
  *
  * Fluxo por chave `codigo8|proc|dim`:
  * 1) Garante `processoId` (GET /api/processos por cliente; se não existir e não for `--sem-criar-processos`, POST mínimo).
- * 2) GET rodada existente; funde com títulos (aba débitos) e parcelas (aba relatório, só linhas N=SIM).
+ * 2) GET rodada existente; funde com títulos (aba débitos) e parcelas (aba relatório, só linhas com «Cálculo Aceito» = SIM na col L).
  * 3) PUT /api/calculos/rodadas/{cod8}/{proc}/{dim}
  * 4) Se `--skip-pagamentos` não estiver ativo: para cada parcela com data em H, POST /api/pagamentos
  *    (`PAGO_SEM_COMPROVANTE` + `dataPagamentoEfetivo`; demais campos opcionais no servidor).

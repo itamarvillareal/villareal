@@ -1,6 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as hist from './processosHistoricoData.js';
-import { buscarHitIndiceCnjPorCnj, montarIndiceCnjClienteProcAsync } from './publicacoesVinculoProcessos.js';
+import {
+  buscarHitIndiceCnjPorCnj,
+  montarIndiceCnjClienteProcAsync,
+  vincularPublicacaoAoCadastro,
+} from './publicacoesVinculoProcessos.js';
+import {
+  processarTextoPdfPublicacoes,
+  deduplicarParseados,
+  fundirParesComplementaresPublicacoes,
+} from './publicacoesPdfParser.js';
 
 const { listarClientesIndiceCadastro, listarProcessosResumoPorCodigoCliente } = vi.hoisted(() => ({
   listarClientesIndiceCadastro: vi.fn(),
@@ -48,6 +57,59 @@ describe('buscarHitIndiceCnjPorCnj', () => {
     const r = buscarHitIndiceCnjPorCnj(map, '0056280-15.2016.8.09.0006');
     expect(r?.hit).toEqual(cadastro);
     expect(r?.chaveUsada).toBe('56280-15.2016.8.09.0006');
+  });
+
+  it('associa por tolerância de 1 dígito no 1.º segmento (OCR vs cadastro)', () => {
+    const map = new Map();
+    const cadastro = { codCliente: '00000766', proc: '3', cliente: 'X', reu: 'Y' };
+    map.set('5402633-78.2017.8.09.0006', cadastro);
+    const r = buscarHitIndiceCnjPorCnj(map, '5482633-78.2017.8.09.0006');
+    expect(r?.hit).toEqual(cadastro);
+    expect(r?.chaveUsada).toBe('5402633-78.2017.8.09.0006');
+  });
+
+  it('fuzzy: índice com chave só em 20 dígitos (como algumas APIs gravam)', () => {
+    const map = new Map();
+    const cadastro = { codCliente: '00000100', proc: '15', cliente: 'Cliente', reu: 'Réu' };
+    map.set('54026337820178090006', cadastro);
+    const r = buscarHitIndiceCnjPorCnj(map, '5482633-78.2017.8.09.0006');
+    expect(r?.hit).toEqual(cadastro);
+  });
+
+  it('pipeline Gmail/Jusbrasil: CNJ 548… no PDF vincula ao cadastro 540…', () => {
+    const texto = `
+Processo
+5482633-78.2017.8.09.0006
+Termos encontrados
+ITAMAR ALEXANDRE FELIX VILLA REAL
+Data de disponibilização
+12/05/26
+Data de publicação
+13/05/26
+Diário
+TJGO · Tribunal de Justiça de Goiás
+
+Publicação
+Unidade Jurisdicional NÚMERO ÚNICO: 5482633-78.2017.8.09.0006 POLO ATIVO
+ARQUIVOS DIGITAIS INDISPONÍVEIS (NÃO SÃO DO TIPO PÚBLICO)
+`.trim();
+    const { parseados } = processarTextoPdfPublicacoes(texto);
+    const { itens: ded } = deduplicarParseados(parseados);
+    const fund = fundirParesComplementaresPublicacoes(ded);
+    const map = new Map();
+    map.set('5402633-78.2017.8.09.0006', {
+      codCliente: '00000100',
+      proc: '15',
+      cliente: 'Cliente Teste',
+      reu: 'Parte ré',
+    });
+    const row = fund.find((r) => String(r.processoCnjNormalizado || '').includes('5482633'));
+    expect(row).toBeTruthy();
+    const v = vincularPublicacaoAoCadastro(row, map);
+    expect(v.statusVinculo).toBe('vinculado');
+    expect(v.codCliente).toBe('00000100');
+    expect(v.procInterno).toBe('15');
+    expect(v.reu).toBe('Parte ré');
   });
 });
 

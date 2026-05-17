@@ -10,6 +10,7 @@ import {
 import { featureFlags } from '../config/featureFlags.js';
 import { listarUsuarios } from '../repositories/usuariosRepository.js';
 import { gravarSnapshotUsuariosApi } from '../services/syncApiUsuariosSnapshot.js';
+import { clearPublicacoesPreviasSession } from '../data/publicacoesPreviasSession.js';
 
 const AuthContext = createContext(null);
 
@@ -57,6 +58,7 @@ export function AuthProvider({ children }) {
     const on401 = () => {
       setTokenState('');
       clearApiUsuarioSessao();
+      clearPublicacoesPreviasSession();
     };
     window.addEventListener('vilareal:api-unauthorized', on401);
     return () => window.removeEventListener('vilareal:api-unauthorized', on401);
@@ -89,6 +91,7 @@ export function AuthProvider({ children }) {
         }
         clearAccessToken();
         clearApiUsuarioSessao();
+        clearPublicacoesPreviasSession();
         setTokenState('');
       }
     }, SESSION_IDLE_CHECK_MS);
@@ -102,6 +105,7 @@ export function AuthProvider({ children }) {
   }, [token]);
 
   const login = useCallback(async (loginStr, senha) => {
+    clearPublicacoesPreviasSession();
     const data = await fetchAuthLogin(loginStr, senha);
     const access = data?.accessToken;
     if (!access || typeof access !== 'string') {
@@ -135,6 +139,7 @@ export function AuthProvider({ children }) {
   const logout = useCallback(() => {
     clearAccessToken();
     clearApiUsuarioSessao();
+    clearPublicacoesPreviasSession();
     setTokenState('');
   }, []);
 

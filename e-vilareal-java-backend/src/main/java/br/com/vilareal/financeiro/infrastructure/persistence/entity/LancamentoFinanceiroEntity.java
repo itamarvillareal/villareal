@@ -74,6 +74,10 @@ public class LancamentoFinanceiroEntity {
     @Column(nullable = false, length = 20)
     private String status = "ATIVO";
 
+    /** Par de compensação (col. M na planilha ou Elo na UI). */
+    @Column(name = "grupo_compensacao", length = 40)
+    private String grupoCompensacao;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Instant createdAt;
 

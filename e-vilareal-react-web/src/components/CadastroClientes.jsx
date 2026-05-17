@@ -40,6 +40,7 @@ import {
   buildRouterStateChaveClienteProcesso,
   extrairIntentNavegacaoProcessos,
 } from '../domain/camposProcessoCliente.js';
+import { termoDigitosCorrespondeCnjCampo } from '../domain/cnjFuzzyBusca.js';
 import {
   listarClientesIndiceCadastro,
   resolverClienteCadastroPorCodigo,
@@ -905,7 +906,11 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
           Number.isFinite(termN) &&
           procN >= 0 &&
           procN === termN;
-        return internoExato || numeroNovo.includes(termoNumero);
+        return (
+          internoExato ||
+          numeroNovo.includes(termoNumero) ||
+          termoDigitosCorrespondeCnjCampo(termoNumero, proc.processoNovo ?? '')
+        );
       })();
 
       const autorStr = normalizarTextoBusca(proc.autor ?? '');

@@ -230,6 +230,10 @@ export function getPermissoesUsuario(userId) {
 }
 
 export function usuarioPodeAcessarModulo(userId, moduloId) {
+  if (moduloId === 'financeiro/relatorios') {
+    const p = getPermissoesUsuario(userId);
+    if (p.financeiro !== false) return true;
+  }
   if (!moduloId || !IDS_MODULO.has(moduloId)) return true;
   const p = getPermissoesUsuario(userId);
   const vals = MODULOS_PERMISSAO.map((m) => p[m.id]);

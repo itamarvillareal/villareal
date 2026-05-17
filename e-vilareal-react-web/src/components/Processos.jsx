@@ -68,6 +68,7 @@ import {
   AlertCircle,
   Users,
   Undo2,
+  Copy,
 } from 'lucide-react';
 import { ModalRelatorioPublicacoesProcesso, PublicacoesRelatorioConteudo } from './ModalRelatorioPublicacoesProcesso.jsx';
 import { listarPublicacoesRelatorioPorProcesso } from '../repositories/publicacoesRepository.js';
@@ -104,6 +105,25 @@ const CadastroClientesLazy = lazy(() =>
 
 /** Linhas por página na aba Histórico — preenche melhor a área útil sem depender de linhas vazias. */
 const HISTORICO_POR_PAGINA = 24;
+
+/** Dois primeiros blocos do nº novo (CNJ): segmento antes do 1.º ponto — ex. `NNNNNNN-DD.aaaa…` → `NNNNNNN-DD`. */
+function doisPrimeirosBlocosNumeroProcessoNovoParaCopia(valor) {
+  const s = String(valor ?? '').trim();
+  if (!s) return '';
+  const i = s.indexOf('.');
+  return i === -1 ? s : s.slice(0, i);
+}
+
+/** Legenda do botão «copiar prefixo»: exemplo com o nº novo atual (quando houver). */
+function tituloCopiarPrefixoNumeroProcessoNovo(numeroProcessoNovo) {
+  const s = String(numeroProcessoNovo ?? '').trim();
+  const trecho = doisPrimeirosBlocosNumeroProcessoNovoParaCopia(numeroProcessoNovo);
+  if (!trecho) return 'Copiar só o trecho até o 1.º ponto';
+  if (trecho === s) {
+    return `Copiar só o trecho até o 1.º ponto (sem ponto no número: copia o valor inteiro — ${s})`;
+  }
+  return `Copiar só o trecho até o 1.º ponto (ex.: ${trecho} a partir de ${s})`;
+}
 
 /**
  * Nome / Razão Social do módulo Clientes (localStorage), alinhado a CadastroClientes.
@@ -384,6 +404,8 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   const draftParteOpostaLinhasRef = useRef([]);
   const [numeroProcessoVelho, setNumeroProcessoVelho] = useState('');
   const [numeroProcessoNovo, setNumeroProcessoNovo] = useState('');
+  const [hintCopiaNumeroProcessoNovo, setHintCopiaNumeroProcessoNovo] = useState('');
+  const hintCopiaNumeroProcessoNovoTimerRef = useRef(null);
   const [consultaAutomatica, setConsultaAutomatica] = useState(false);
   const [estado, setEstado] = useState('');
   const [cidade, setCidade] = useState('');
@@ -2843,6 +2865,46 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                     />
                     <button
                       type="button"
+                      title={tituloCopiarPrefixoNumeroProcessoNovo(numeroProcessoNovo)}
+                      disabled={!doisPrimeirosBlocosNumeroProcessoNovoParaCopia(numeroProcessoNovo)}
+                      className="p-1.5 rounded border border-slate-300 hover:bg-slate-100 disabled:opacity-40 disabled:pointer-events-none shrink-0"
+                      onClick={() => {
+                        const t = doisPrimeirosBlocosNumeroProcessoNovoParaCopia(numeroProcessoNovo);
+                        if (hintCopiaNumeroProcessoNovoTimerRef.current != null) {
+                          window.clearTimeout(hintCopiaNumeroProcessoNovoTimerRef.current);
+                          hintCopiaNumeroProcessoNovoTimerRef.current = null;
+                        }
+                        if (!t) {
+                          setHintCopiaNumeroProcessoNovo('Nada para copiar');
+                          hintCopiaNumeroProcessoNovoTimerRef.current = window.setTimeout(
+                            () => setHintCopiaNumeroProcessoNovo(''),
+                            2000
+                          );
+                          return;
+                        }
+                        void navigator.clipboard.writeText(t).then(
+                          () => {
+                            setHintCopiaNumeroProcessoNovo('Copiado.');
+                            hintCopiaNumeroProcessoNovoTimerRef.current = window.setTimeout(
+                              () => setHintCopiaNumeroProcessoNovo(''),
+                              2000
+                            );
+                          },
+                          () => {
+                            setHintCopiaNumeroProcessoNovo('Cópia não disponível neste navegador.');
+                            hintCopiaNumeroProcessoNovoTimerRef.current = window.setTimeout(
+                              () => setHintCopiaNumeroProcessoNovo(''),
+                              2500
+                            );
+                          }
+                        );
+                      }}
+                    >
+                      <Copy className="w-4 h-4 text-slate-600" aria-hidden />
+                      <span className="sr-only">Copiar prefixo do nº processo novo</span>
+                    </button>
+                    <button
+                      type="button"
                       disabled={camposBloqueados}
                       className="p-1.5 rounded border border-slate-300 hover:bg-slate-100 disabled:opacity-50 disabled:pointer-events-none"
                       title="Documentos"
@@ -2850,6 +2912,11 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                       <FolderOpen className="w-4 h-4 text-slate-600" />
                     </button>
                   </div>
+                  {hintCopiaNumeroProcessoNovo ? (
+                    <p className="mt-0.5 text-xs text-emerald-800" role="status">
+                      {hintCopiaNumeroProcessoNovo}
+                    </p>
+                  ) : null}
                 </Field>
               </div>
 

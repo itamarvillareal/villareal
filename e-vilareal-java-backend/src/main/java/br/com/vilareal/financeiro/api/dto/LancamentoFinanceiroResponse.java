@@ -33,4 +33,6 @@ public class LancamentoFinanceiroResponse {
     private String refTipo;
     private String origem;
     private String status;
+    /** Par de compensação (col. M / Elo). */
+    private String grupoCompensacao;
 }

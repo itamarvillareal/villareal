@@ -104,4 +104,31 @@ public interface ProcessoRepository extends JpaRepository<ProcessoEntity, Long> 
                     """,
             nativeQuery = true)
     List<BigInteger> findIdsByNumeroCnjNormalizadoDiagnostico(@Param("norm") String norm);
+
+    /**
+     * Diagnósticos: o CNJ normalizado (só dígitos, mesma cadeia de {@code REPLACE} que o método de igualdade)
+     * contém o fragmento {@code norm} — para buscas com 7–19 dígitos sem o número completo.
+     */
+    @Query(
+            value =
+                    """
+                    SELECT id FROM processo
+                    WHERE numero_cnj IS NOT NULL
+                      AND LENGTH(TRIM(numero_cnj)) > 0
+                      AND REPLACE(
+                          REPLACE(
+                          REPLACE(
+                          REPLACE(
+                          REPLACE(
+                          REPLACE(UPPER(TRIM(numero_cnj)), '.', ''),
+                          '-', ''),
+                          ' ', ''),
+                          '/', ''),
+                          CHAR(0x2013 USING utf8mb4), ''),
+                          CHAR(0x2014 USING utf8mb4), '') LIKE CONCAT('%', :norm, '%')
+                    ORDER BY id ASC
+                    LIMIT 50
+                    """,
+            nativeQuery = true)
+    List<BigInteger> findIdsByNumeroCnjDigitosContendo(@Param("norm") String norm);
 }

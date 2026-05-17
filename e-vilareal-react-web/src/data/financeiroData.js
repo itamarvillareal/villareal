@@ -92,17 +92,41 @@ const CONTA_TO_LETRA = Object.fromEntries(Object.entries(LETRA_TO_CONTA).map(([k
 /** Nome da conta contábil que agrega todas as linhas no consolidado (paridade BD + API). */
 export const NOME_CONTA_CONTABIL_GERAL = 'Geral';
 
+/** Contas bancárias / extratos correntes (sem cartões de crédito). */
 const BANCO_TO_NUMERO = {
   'Itaú': 1, 'Bradesco': 2, 'BB': 3, 'Sicoob': 4, 'CEF': 5, 'Itaú Poupança': 6,
-  'Mastercard': 7, 'Visa': 8, 'LANÇ MANUAIS': 9, 'Poupança Bradesco': 10,
+  'LANÇ MANUAIS': 9, 'Poupança Bradesco': 10,
   'Mercado Pago': 11, 'CEF Poupança': 12, 'Nubank': 13, 'PicPay': 14, 'PicPay Rachel': 15,
-  'Mastercard Sicoob': 16, 'LANÇ EM DINHEIRO': 17, 'LANÇ MANUAIS (2)': 18,
-  'Mastercard Black': 19, 'BTG Cartão': 20, 'BTG': 21, 'ITI': 22, 'Itaú Empresas': 23,
+  'LANÇ EM DINHEIRO': 17, 'LANÇ MANUAIS (2)': 18,
+  'BTG': 21, 'ITI': 22, 'Itaú Empresas': 23,
   'BTG Banking': 24, 'BTG (2)': 25, 'CORA': 26, 'BTG JA': 27, 'BTG RACHEL': 28, 'Sicoob VRV': 29,
 };
 
+/** Cartões de crédito — extrato fatura (sinal da fatura; inversão só no consolidado contábil). */
+export const CARTAO_TO_NUMERO = {
+  Mastercard: 7,
+  Visa: 8,
+  'Mastercard Sicoob': 16,
+  'Mastercard Black': 19,
+  'BTG Cartão': 20,
+};
+
+const CARTAO_NOMES = new Set(Object.keys(CARTAO_TO_NUMERO));
+
+export function isNomeCartaoFinanceiro(nome) {
+  return CARTAO_NOMES.has(String(nome ?? '').trim());
+}
+
+/** Valor contábil para consolidado: inverte o sinal do extrato de cartão. */
+export function valorContabilDesdeExtratoCartao(valorFatura) {
+  const v = Number(valorFatura);
+  return Number.isFinite(v) ? -v : 0;
+}
+
 /** Extratos iniciais vazios (sem dados de demonstração). */
 const MOCK_EXTRATOS_POR_BANCO = Object.fromEntries(Object.keys(BANCO_TO_NUMERO).map((k) => [k, []]));
+
+const MOCK_EXTRATOS_POR_CARTAO = Object.fromEntries(Object.keys(CARTAO_TO_NUMERO).map((k) => [k, []]));
 
 export const STORAGE_FINANCEIRO_EXTRATOS_KEY = 'vilareal.financeiro.extratos.v20';
 /** Chave anterior; migrada para v20 com extrato Itaú PF zerado (remove mocks/XLS antigos persistidos). */
@@ -683,6 +707,10 @@ function getExtratosIniciais() {
   return parearCompensacaoInterbancaria(cloneExtratos(MOCK_EXTRATOS_POR_BANCO));
 }
 
+export function getExtratosCartaoIniciais() {
+  return cloneExtratos(MOCK_EXTRATOS_POR_CARTAO);
+}
+
 /**
  * Reinsere nos extratos persistidos os lançamentos de teste de vinculação automática (nº 88000–88049)
  * quando faltarem (exceto Itaú PF — extrato real só via OFX/importação).
@@ -744,6 +772,8 @@ function lancamentoElegivelParearCompensacao(t) {
   const c = centavos(t.valor);
   if (!t?.data || c === null || c === 0) return false;
   const procS = String(t.proc ?? '').trim();
+  const grupo = String(t.grupoCompensacao ?? t._financeiroMeta?.grupoCompensacao ?? '').trim();
+  if (t.letra === 'E' && grupo) return false;
   const orfaoCompensacao = t.letra === 'E' && procS.startsWith('?');
   return t.letra === 'N' || (t.letra === 'E' && !procS) || orfaoCompensacao;
 }
@@ -778,33 +808,51 @@ function resumoPerna(x) {
   };
 }
 
+function encontrarParceiroCompensacao(flat, a, usado, opts = {}) {
+  const { apenasMesmoBanco = false } = opts;
+  return flat.find((b) => {
+    if (usado.has(b.k) || b.k === a.k) return false;
+    const mesmoBanco = b.nomeBanco === a.nomeBanco;
+    if (apenasMesmoBanco && !mesmoBanco) return false;
+    if (!apenasMesmoBanco && opts.excluirMesmoBanco && mesmoBanco) return false;
+    if (b.t.data !== a.t.data) return false;
+    return valoresCompensamExatos(a.t.valor, b.t.valor);
+  });
+}
+
 /**
  * Identifica pares de compensação sem alterar dados (mesma lógica da aplicação).
  * Elo sugerido: 0001, 0002… a partir do próximo após os já existentes.
+ * @param {object} extratosPorBanco
+ * @param {{ incluirMesmoBanco?: boolean }} [opts] — `incluirMesmoBanco` (default true): empréstimo/devolução na mesma conta
  */
-export function detectarParesCompensacao(extratosPorBanco) {
+export function detectarParesCompensacao(extratosPorBanco, opts = {}) {
+  const incluirMesmoBanco = opts.incluirMesmoBanco !== false;
   const next = cloneExtratos(extratosPorBanco);
   const flat = montarPoolCompensacao(next);
   const usado = new Set();
   let idPar = maiorIdParCompensacao(next) + 1;
   const pares = [];
-  for (const a of flat) {
-    if (usado.has(a.k)) continue;
-    const parceiro = flat.find((b) => {
-      if (usado.has(b.k) || b.k === a.k) return false;
-      if (b.nomeBanco === a.nomeBanco) return false;
-      if (b.t.data !== a.t.data) return false;
-      return valoresCompensamExatos(a.t.valor, b.t.valor);
-    });
-    if (!parceiro) continue;
-    const elo = eloFormatado(idPar++);
-    usado.add(a.k);
-    usado.add(parceiro.k);
-    const ra = resumoPerna(a);
-    const rb = resumoPerna(parceiro);
-    const credito = ra.valor > 0 ? ra : rb;
-    const debito = ra.valor < 0 ? ra : rb;
-    pares.push({ elo, data: a.t.data, credito, debito });
+
+  const passadas = incluirMesmoBanco
+    ? [{ excluirMesmoBanco: true }, { apenasMesmoBanco: true }]
+    : [{ excluirMesmoBanco: true }];
+
+  for (const pass of passadas) {
+    for (const a of flat) {
+      if (usado.has(a.k)) continue;
+      const parceiro = encontrarParceiroCompensacao(flat, a, usado, pass);
+      if (!parceiro) continue;
+      const elo = eloFormatado(idPar++);
+      usado.add(a.k);
+      usado.add(parceiro.k);
+      const ra = resumoPerna(a);
+      const rb = resumoPerna(parceiro);
+      const credito = ra.valor > 0 ? ra : rb;
+      const debito = ra.valor < 0 ? ra : rb;
+      const mesmoBanco = a.nomeBanco === parceiro.nomeBanco;
+      pares.push({ elo, data: a.t.data, credito, debito, mesmoBanco });
+    }
   }
   return pares;
 }
@@ -983,9 +1031,6 @@ export function aplicarUmParCompensacaoInterbancaria(extratosPorBanco, par) {
     return { ok: false, message: 'Par inválido.', extratos: next };
   }
   const { credito, debito } = par;
-  if (credito.banco === debito.banco) {
-    return { ok: false, message: 'O par precisa ser entre bancos diferentes.', extratos: next };
-  }
   const a = localizarLancamentoExtrato(next, credito.banco, credito.numero, credito.data, credito.valor);
   const b = localizarLancamentoExtrato(next, debito.banco, debito.numero, debito.data, debito.valor);
   if (!a || !b) {
@@ -1013,6 +1058,8 @@ export function aplicarUmParCompensacaoInterbancaria(extratosPorBanco, par) {
     hit.t.letra = 'E';
     hit.t.codCliente = '';
     hit.t.proc = pid;
+    hit.t.grupoCompensacao = pid;
+    if (hit.t._financeiroMeta) hit.t._financeiroMeta.grupoCompensacao = pid;
     aplicarTagParCompensacaoEmLancamento(hit.t);
   }
   renormalizarOrfaosCompensacao(next);
@@ -1094,33 +1141,16 @@ export function limparExtratoCoraEElosRelacionados(extratosPorBanco) {
 }
 
 /**
- * Emparelha transferências entre bancos: mesmo dia, valores opostos exatos (centavos), bancos diferentes.
+ * Emparelha compensações: mesmo dia, valores opostos exatos (centavos), mesmo banco ou bancos diferentes.
  * Conta Compensação (E): Elo em 4 dígitos (0001, 0002…).
  */
 export function parearCompensacaoInterbancaria(extratosPorBanco) {
-  const next = cloneExtratos(extratosPorBanco);
-  const flat = montarPoolCompensacao(next);
-  const usado = new Set();
-  let idPar = maiorIdParCompensacao(next) + 1;
-  for (const a of flat) {
-    if (usado.has(a.k)) continue;
-    const parceiro = flat.find((b) => {
-      if (usado.has(b.k) || b.k === a.k) return false;
-      if (b.nomeBanco === a.nomeBanco) return false;
-      if (b.t.data !== a.t.data) return false;
-      return valoresCompensamExatos(a.t.valor, b.t.valor);
-    });
-    if (!parceiro) continue;
-    const pid = eloFormatado(idPar++);
-    for (const x of [a, parceiro]) {
-      usado.add(x.k);
-      x.t.letra = 'E';
-      x.t.codCliente = '';
-      x.t.proc = pid;
-      aplicarTagParCompensacaoEmLancamento(x.t);
-    }
+  const pares = detectarParesCompensacao(extratosPorBanco, { incluirMesmoBanco: true });
+  let next = cloneExtratos(extratosPorBanco);
+  for (const par of pares) {
+    const r = aplicarUmParCompensacaoInterbancaria(next, par);
+    if (r.ok) next = r.extratos;
   }
-  renormalizarOrfaosCompensacao(next);
   return next;
 }
 
@@ -1157,23 +1187,31 @@ export function somasPorParCompensacao(extratosPorBanco, numeroPorBancoMap, cont
  * @param {string[]} [ordemLetras] — ordem das letras para desempate
  * @returns {Array<{ letra: string, nome: string, count: number, saldo: number }>}
  */
-export function getContasContabeisDerivadasExtratos(extratosPorBanco, letraToContaMap, ordemLetras) {
+export function getContasContabeisDerivadasExtratos(
+  extratosPorBanco,
+  letraToContaMap,
+  ordemLetras,
+  extratosPorCartao,
+) {
   const map = letraToContaMap ?? LETRA_TO_CONTA;
   const ordem = ordemLetras ?? ORDEM_LETRA_CONTA_BASE;
   const stats = {};
   for (const letra of Object.keys(map)) {
     stats[letra] = { count: 0, saldo: 0 };
   }
-  for (const list of Object.values(extratosPorBanco || {})) {
-    if (!Array.isArray(list)) continue;
+  const acumular = (list, inverter) => {
+    if (!Array.isArray(list)) return;
     for (const t of list) {
       const L = String(t.letra ?? '').trim().toUpperCase();
       if (!stats[L]) continue;
       stats[L].count += 1;
-      const v = Number(t.valor);
+      const raw = Number(t.valor);
+      const v = inverter ? valorContabilDesdeExtratoCartao(raw) : raw;
       if (Number.isFinite(v)) stats[L].saldo += v;
     }
-  }
+  };
+  for (const list of Object.values(extratosPorBanco || {})) acumular(list, false);
+  for (const list of Object.values(extratosPorCartao || {})) acumular(list, true);
   if (stats.G && map.G === NOME_CONTA_CONTABIL_GERAL) {
     let count = 0;
     let saldo = 0;
@@ -1182,6 +1220,14 @@ export function getContasContabeisDerivadasExtratos(extratosPorBanco, letraToCon
       for (const t of list) {
         count += 1;
         const v = Number(t.valor);
+        if (Number.isFinite(v)) saldo += v;
+      }
+    }
+    for (const list of Object.values(extratosPorCartao || {})) {
+      if (!Array.isArray(list)) continue;
+      for (const t of list) {
+        count += 1;
+        const v = valorContabilDesdeExtratoCartao(t.valor);
         if (Number.isFinite(v)) saldo += v;
       }
     }
@@ -1211,19 +1257,42 @@ export function getContasContabeisDerivadasExtratos(extratosPorBanco, letraToCon
 /**
  * Consolida lançamentos cuja letra no extrato corresponde à conta contábil (ex.: A → Conta Escritório, E → Compensação).
  */
-export function getTransacoesConsolidadas(extratosPorBanco, contaContabilNome, numeroPorBancoMap, contaToLetraMap) {
+function pushTransacaoConsolidada(lista, t, nomeInstituicao, numeroInstituicao, origemExtrato) {
+  const valorBase = Number(t.valor) || 0;
+  const valor =
+    origemExtrato === 'cartao' ? valorContabilDesdeExtratoCartao(valorBase) : valorBase;
+  lista.push({
+    ...t,
+    valor,
+    valorFatura: origemExtrato === 'cartao' ? valorBase : undefined,
+    nomeBanco: nomeInstituicao,
+    numeroBanco: numeroInstituicao ?? '-',
+    origemExtrato,
+  });
+}
+
+export function getTransacoesConsolidadas(
+  extratosPorBanco,
+  contaContabilNome,
+  numeroPorBancoMap,
+  contaToLetraMap,
+  extratosPorCartao,
+) {
   const map = numeroPorBancoMap ?? getBancoNumeroMapMerged();
+  const mapCartao = { ...CARTAO_TO_NUMERO };
   const ctl = contaToLetraMap ?? CONTA_TO_LETRA;
   if (String(contaContabilNome ?? '').trim() === NOME_CONTA_CONTABIL_GERAL) {
     const lista = [];
     for (const [nomeBanco, transacoes] of Object.entries(extratosPorBanco || {})) {
       if (!Array.isArray(transacoes)) continue;
       for (const t of transacoes) {
-        lista.push({
-          ...t,
-          nomeBanco,
-          numeroBanco: map[nomeBanco] ?? '-',
-        });
+        pushTransacaoConsolidada(lista, t, nomeBanco, map[nomeBanco], 'banco');
+      }
+    }
+    for (const [nomeCartao, transacoes] of Object.entries(extratosPorCartao || {})) {
+      if (!Array.isArray(transacoes)) continue;
+      for (const t of transacoes) {
+        pushTransacaoConsolidada(lista, t, nomeCartao, mapCartao[nomeCartao], 'cartao');
       }
     }
     return lista.sort((a, b) => String(a.data ?? '').localeCompare(String(b.data ?? '')));
@@ -1236,11 +1305,15 @@ export function getTransacoesConsolidadas(extratosPorBanco, contaContabilNome, n
     if (!Array.isArray(transacoes)) continue;
     for (const t of transacoes) {
       if (String(t.letra ?? '').trim().toUpperCase() === letraU) {
-        lista.push({
-          ...t,
-          nomeBanco,
-          numeroBanco: map[nomeBanco] ?? '-',
-        });
+        pushTransacaoConsolidada(lista, t, nomeBanco, map[nomeBanco], 'banco');
+      }
+    }
+  }
+  for (const [nomeCartao, transacoes] of Object.entries(extratosPorCartao || {})) {
+    if (!Array.isArray(transacoes)) continue;
+    for (const t of transacoes) {
+      if (String(t.letra ?? '').trim().toUpperCase() === letraU) {
+        pushTransacaoConsolidada(lista, t, nomeCartao, mapCartao[nomeCartao], 'cartao');
       }
     }
   }
@@ -1372,32 +1445,45 @@ function getExtratosParaContaCorrente() {
  * Transações completas dos extratos (mesmo critério da Conta Corrente em Processos), com nome do banco.
  * Usado pela Administração de Imóveis para classificar aluguel / repasse / despesas sem duplicar lançamentos.
  */
-export function getTransacoesContaCorrenteCompleto(codigoCliente, processo) {
+export function getTransacoesContaCorrenteCompleto(codigoCliente, processo, extratosPorCartaoOverride) {
   const codigoNorm = normalizarCodigoCliente(codigoCliente);
   const procNorm = normalizarProc(processo);
   const extratos = getExtratosParaContaCorrente();
+  const extratosCartao = extratosPorCartaoOverride ?? getExtratosCartaoIniciais();
   const map = getBancoNumeroMapMerged();
+  const mapCartao = { ...CARTAO_TO_NUMERO };
 
   if (!codigoNorm) return [];
 
   const filtrado = [];
   const seen = new Set();
-  for (const [nomeBanco, transacoes] of Object.entries(extratos)) {
-    if (!Array.isArray(transacoes)) continue;
+  const ingest = (nomeInst, transacoes, numeroMap, origemExtrato) => {
+    if (!Array.isArray(transacoes)) return;
     for (const t of transacoes) {
       if (normalizarCodigoCliente(t.codCliente) !== codigoNorm) continue;
       if (procNorm !== '') {
         if (normalizarProc(t.proc) !== procNorm) continue;
       }
-      const key = `${nomeBanco}|${String(t.numero ?? '')}|${String(t.data ?? '')}`;
+      const key = `${origemExtrato}|${nomeInst}|${String(t.numero ?? '')}|${String(t.data ?? '')}`;
       if (seen.has(key)) continue;
       seen.add(key);
+      const valorBase = Number(t.valor) || 0;
+      const valor =
+        origemExtrato === 'cartao' ? valorContabilDesdeExtratoCartao(valorBase) : valorBase;
       filtrado.push({
         ...t,
-        nomeBanco,
-        numeroBanco: map[nomeBanco] ?? '-',
+        valor,
+        nomeBanco: nomeInst,
+        numeroBanco: numeroMap[nomeInst] ?? '-',
+        origemExtrato,
       });
     }
+  };
+  for (const [nomeBanco, transacoes] of Object.entries(extratos)) {
+    ingest(nomeBanco, transacoes, map, 'banco');
+  }
+  for (const [nomeCartao, transacoes] of Object.entries(extratosCartao)) {
+    ingest(nomeCartao, transacoes, mapCartao, 'cartao');
   }
 
   filtrado.sort((a, b) => {
@@ -1448,6 +1534,96 @@ export function mergeContaCorrenteComLinhaOrigem(lancamentos, soma, linhaOrigem,
     return Number(a.numero) - Number(b.numero);
   });
   return { lancamentos: merged, soma: merged.reduce((s, t) => s + t.valor, 0) };
+}
+
+/** Soma dos valores de um extrato ou lista consolidada (saldo líquido do período carregado). */
+export function somarValoresLancamentosFinanceiro(lista) {
+  if (!Array.isArray(lista)) return 0;
+  let total = 0;
+  for (const t of lista) {
+    const v = Number(t?.valor);
+    if (Number.isFinite(v)) total += v;
+  }
+  return total;
+}
+
+/**
+ * Saldo atual por instituição (extrato bancário).
+ * @param {Record<string, object[]>} extratosPorBanco
+ * @param {{ ordemNomes?: string[], inativos?: string[], numeroPorBanco?: Record<string, number>, incluirSemMovimento?: boolean }} [opts]
+ * @returns {Array<{ nome: string, numeroBanco: number | null, count: number, saldo: number, inativo: boolean }>}
+ */
+export function getSaldosPorInstituicaoFinanceiro(extratosPorBanco, opts = {}) {
+  const inativosSet = new Set(opts.inativos || []);
+  const numeroPorBanco = opts.numeroPorBanco || getBancoNumeroMapMerged();
+  const ordemBase = opts.ordemNomes?.length
+    ? [...opts.ordemNomes]
+    : [...Object.keys(BANCO_TO_NUMERO), ...(loadPersistedContasExtrasFinanceiro() || []).map((c) => c.nome)];
+  const vistos = new Set();
+  const linhas = [];
+
+  const pushBanco = (nome) => {
+    const n = String(nome || '').trim();
+    if (!n || vistos.has(n)) return;
+    vistos.add(n);
+    const lista = extratosPorBanco?.[n];
+    const count = Array.isArray(lista) ? lista.length : 0;
+    const saldo = somarValoresLancamentosFinanceiro(lista);
+    if (!opts.incluirSemMovimento && count === 0) return;
+    linhas.push({
+      nome: n,
+      numeroBanco: numeroPorBanco[n] ?? null,
+      count,
+      saldo,
+      inativo: inativosSet.has(n),
+    });
+  };
+
+  for (const nome of ordemBase) pushBanco(nome);
+  for (const nome of Object.keys(extratosPorBanco || {})) pushBanco(nome);
+
+  linhas.sort((a, b) => {
+    const na = a.numeroBanco ?? 9999;
+    const nb = b.numeroBanco ?? 9999;
+    if (na !== nb) return na - nb;
+    return a.nome.localeCompare(b.nome, 'pt-BR');
+  });
+  return linhas;
+}
+
+export function getSaldosPorCartaoFinanceiro(extratosPorCartao, opts = {}) {
+  const inativosSet = new Set(opts.inativos || []);
+  const ordemBase = opts.ordemNomes?.length ? [...opts.ordemNomes] : Object.keys(CARTAO_TO_NUMERO);
+  const vistos = new Set();
+  const linhas = [];
+
+  const push = (nome) => {
+    const n = String(nome || '').trim();
+    if (!n || vistos.has(n)) return;
+    vistos.add(n);
+    const lista = extratosPorCartao?.[n];
+    const count = Array.isArray(lista) ? lista.length : 0;
+    const saldo = somarValoresLancamentosFinanceiro(lista);
+    if (!opts.incluirSemMovimento && count === 0) return;
+    linhas.push({
+      nome: n,
+      numeroCartao: CARTAO_TO_NUMERO[n] ?? null,
+      count,
+      saldo,
+      inativo: inativosSet.has(n),
+    });
+  };
+
+  for (const nome of ordemBase) push(nome);
+  for (const nome of Object.keys(extratosPorCartao || {})) push(nome);
+
+  linhas.sort((a, b) => {
+    const na = a.numeroCartao ?? 9999;
+    const nb = b.numeroCartao ?? 9999;
+    if (na !== nb) return na - nb;
+    return a.nome.localeCompare(b.nome, 'pt-BR');
+  });
+  return linhas;
 }
 
 export {

@@ -2,6 +2,9 @@ import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   getExtratosIniciais,
+  getExtratosCartaoIniciais,
+  isNomeCartaoFinanceiro,
+  CARTAO_TO_NUMERO,
   getTransacoesConsolidadas,
   cloneExtratos,
   buildNumeroBancoMap,
@@ -38,6 +41,7 @@ import {
   limparExtratoBancoEElosRelacionados,
   savePersistedExtratosFinanceiro,
 } from '../data/financeiroData';
+import { detectarSugestoesPagamentoFatura } from '../data/financeiroPagamentoFatura.js';
 import { loadRodadasCalculos, countRodadasParcelamentoAceitoResumo } from '../data/calculosRodadasStorage';
 import { EVENT_FINANCEIRO_PERSISTENCIA_EXTERNA } from '../services/crossTabLocalStorageSync.js';
 import {
@@ -61,7 +65,13 @@ import {
   contarLancamentosNovos,
   chaveDedupeLancamento,
 } from '../utils/ofx';
-import { isInstituicaoBtgExtratoPdf, parseBtgPdfExtratoText } from '../utils/btgPdfExtrato';
+import {
+  arquivoExtratoEhOfx,
+  arquivoExtratoEhPdf,
+  isInstituicaoExtratoPdfImport,
+  parseExtratoPdfText,
+  rotuloInstituicaoExtratoPdf,
+} from '../utils/extratoPdfImport';
 import { extrairTextoPdfDeArquivo } from '../data/publicacoesPdfExtract.js';
 import { OFX_ITAU_REAL_EXEMPLO, OFX_CORA_REAL_EXEMPLO } from '../data/ofxItauCoraReal';
 import {
@@ -74,7 +84,6 @@ import {
   Trash2,
   Undo2,
   Unlink,
-  Wallet,
 } from 'lucide-react';
 import { ModalVinculoClienteProcFinanceiro } from './ModalVinculoClienteProcFinanceiro.jsx';
 import { buscarClientePorCodigo, buscarProcessoPorChaveNatural } from '../repositories/processosRepository.js';
@@ -86,7 +95,13 @@ import {
   persistirFallbackExtratos,
   persistirImportacaoOfxFinanceiroApi,
   salvarOuAtualizarLancamentoFinanceiroApi,
+  salvarOuAtualizarLancamentoCartaoFinanceiroApi,
   limparExtratoBancoFinanceiroApi,
+  limparExtratoCartaoFinanceiroApi,
+  removerLancamentoCartaoFinanceiroApi,
+  listarVinculosPagamentoFaturaApi,
+  criarVinculoPagamentoFaturaApi,
+  removerVinculoPagamentoFaturaApi,
 } from '../repositories/financeiroRepository.js';
 /** Ref. exibida: só N ou R (vazio/legado → N). */
 function textoRefLancamento(t) {
@@ -128,6 +143,15 @@ function contaEscritorioOuPrimeiraAtiva(inativasSet, ordemNomes) {
 }
 function getTransacoesBanco(extratosPorBanco, nomeBanco) {
   return extratosPorBanco[nomeBanco] ?? [];
+}
+
+function getTransacoesCartao(extratosPorCartao, nomeCartao) {
+  return extratosPorCartao[nomeCartao] ?? [];
+}
+
+function getTransacoesInstituicao(extratosPorBanco, extratosPorCartao, nome) {
+  if (isNomeCartaoFinanceiro(nome)) return getTransacoesCartao(extratosPorCartao, nome);
+  return getTransacoesBanco(extratosPorBanco, nome);
 }
 
 /** Após POST na API (importação OFX), associa `apiId` e metadados às linhas locais pela chave FITID+data+valor. */
@@ -480,7 +504,7 @@ function ordenarTransacoesConsolidado(lista, col, dir) {
 
 /** Chave estável da linha no modal «Parear compensações» (inclui estado eloAplicado no objeto). */
 function chaveModalParCompensacao(p) {
-  return `${p.credito.banco}|${p.credito.numero}|${p.debito.banco}|${p.debito.numero}|${p.data}`;
+  return `${p.mesmoBanco ? 'S' : 'I'}|${p.credito.banco}|${p.credito.numero}|${p.debito.banco}|${p.debito.numero}|${p.data}`;
 }
 
 function chaveCandidatoRecorrenciaModal(g, c) {
@@ -511,6 +535,14 @@ const INSTITUICOES_LINHA_2 = [
   'Nubank',
   'PicPay',
   'PicPay Rachel',
+];
+
+const CARTOES_LINHA = [
+  'Visa',
+  'Mastercard',
+  'Mastercard Black',
+  'Mastercard Sicoob',
+  'BTG Cartão',
 ];
 
 const TODAS_INSTITUICOES_PREDEF = [...INSTITUICOES_LINHA_1, ...INSTITUICOES_LINHA_2];
@@ -567,6 +599,12 @@ const COD_PROC_FINANCEIRO_API_DEBOUNCE_MS = 450;
 export function Financeiro() {
   const navigate = useNavigate();
   const location = useLocation();
+  const [extratosPorCartao, setExtratosPorCartao] = useState(() => getExtratosCartaoIniciais());
+  const extratosPorCartaoRef = useRef(extratosPorCartao);
+  useEffect(() => {
+    extratosPorCartaoRef.current = extratosPorCartao;
+  }, [extratosPorCartao]);
+
   const [extratosPorBanco, setExtratosPorBanco] = useState(() => {
     const persisted = loadPersistedExtratosFinanceiro();
     const extrasContas = loadPersistedContasExtrasFinanceiro();
@@ -854,11 +892,11 @@ export function Financeiro() {
   const [filtroConciliacaoEloConsolidado, setFiltroConciliacaoEloConsolidado] = useState('todos');
   const linhaConsolidadoRef = useRef(null);
   const linhaBancoRef = useRef(null);
-  const fileInputOfxRef = useRef(null);
-  const fileInputBtgPdfRef = useRef(null);
+  const fileInputExtratoRef = useRef(null);
   const [ofxStatus, setOfxStatus] = useState({ kind: 'idle', message: '' });
   const [substituirExtratoOfxCompleto, setSubstituirExtratoOfxCompleto] = useState(false);
   const [modalParearCompensacao, setModalParearCompensacao] = useState(null);
+  const [modalPagamentoFatura, setModalPagamentoFatura] = useState(null);
   /** null | { nomeBanco, grupos, selecionados: Set<string> } — copiar letra A + Cód./Proc. do modelo para outros meses. */
   const [modalRecorrenciaMensal, setModalRecorrenciaMensal] = useState(null);
   const saveTimerRef = useRef(null);
@@ -900,26 +938,34 @@ export function Financeiro() {
       const dados = await carregarExtratosFinanceiroApiFirst({ signal: ac.signal });
       if (extratosReloadAcRef.current !== ac) return;
       if (!dados || typeof dados !== 'object') return;
+      const apiBancos = dados.extratosPorBanco ?? dados;
+      const apiCartoes = dados.extratosPorCartao ?? getExtratosCartaoIniciais();
       const base = getExtratosIniciais();
+      const baseCartao = getExtratosCartaoIniciais();
       const cached = loadPersistedExtratosFinanceiro() || {};
-      const bankKeys = new Set([...Object.keys(base), ...Object.keys(cached), ...Object.keys(dados)]);
+      const bankKeys = new Set([...Object.keys(base), ...Object.keys(cached), ...Object.keys(apiBancos)]);
       const merged = { ...base };
       for (const k of bankKeys) {
+        if (isNomeCartaoFinanceiro(k)) continue;
         const cacheRows = Array.isArray(cached[k]) ? cached[k] : [];
         const baseRows = Array.isArray(base[k]) ? base[k] : [];
         const localFallback = cacheRows.length > 0 ? cacheRows : baseRows;
-        if (Object.prototype.hasOwnProperty.call(dados, k)) {
-          const apiRows = Array.isArray(dados[k]) ? dados[k] : [];
+        if (Object.prototype.hasOwnProperty.call(apiBancos, k)) {
+          const apiRows = Array.isArray(apiBancos[k]) ? apiBancos[k] : [];
           merged[k] = mergeExtratoApiComLocal(apiRows, localFallback);
         } else if (cacheRows.length > 0) {
-          /* Chave ausente na API = zero lançamentos desse banco no servidor; não reidratar só do cache
-           * (senão extrato apagado no BD reaparece). Mantém só linhas ainda não persistidas (sem apiId). */
           merged[k] = mergeExtratoApiComLocal([], cacheRows);
         } else {
           merged[k] = [...baseRows];
         }
       }
+      const mergedCartao = { ...baseCartao };
+      for (const k of Object.keys(baseCartao)) {
+        const apiRows = Array.isArray(apiCartoes[k]) ? apiCartoes[k] : [];
+        mergedCartao[k] = apiRows;
+      }
       setExtratosPorBanco(merged);
+      setExtratosPorCartao(mergedCartao);
     } catch (e) {
       if (e?.name === 'AbortError') return;
       if (extratosReloadAcRef.current !== ac) return;
@@ -956,25 +1002,42 @@ export function Financeiro() {
       let removidos = 0;
       let desvinc = 0;
       if (featureFlags.useApiFinanceiro) {
-        const nb = buildNumeroBancoMap(contasExtras)[nome];
-        const r = await limparExtratoBancoFinanceiroApi(nome, nb);
-        removidos = Number(r?.lancamentosRemovidos) || 0;
-        desvinc = Number(r?.lancamentosDesvinculadosOutrosBancos) || 0;
+        if (isNomeCartaoFinanceiro(nome)) {
+          const nc = CARTAO_TO_NUMERO[nome];
+          const r = await limparExtratoCartaoFinanceiroApi(nome, nc);
+          removidos = Number(r?.lancamentosRemovidos) || 0;
+        } else {
+          const nb = buildNumeroBancoMap(contasExtras)[nome];
+          const r = await limparExtratoBancoFinanceiroApi(nome, nb);
+          removidos = Number(r?.lancamentosRemovidos) || 0;
+          desvinc = Number(r?.lancamentosDesvinculadosOutrosBancos) || 0;
+        }
       }
       const mergedBase = {
         ...getExtratosIniciais(),
         ...(loadPersistedExtratosFinanceiro() || {}),
       };
-      const cleaned = limparExtratoBancoEElosRelacionados(mergedBase, nome);
-      savePersistedExtratosFinanceiro(cleaned);
-      delete desfazerImportacaoExtratoRef.current[nome];
-      setDesfazerImportacaoTick((t) => t + 1);
-      if (featureFlags.useApiFinanceiro) {
-        await recarregarExtratosFinanceiroApi();
+      if (isNomeCartaoFinanceiro(nome)) {
+        setExtratosPorCartao((prev) => {
+          const next = cloneExtratos(prev);
+          next[nome] = [];
+          return next;
+        });
       } else {
-        setExtratosPorBanco((prev) =>
-          limparExtratoBancoEElosRelacionados({ ...getExtratosIniciais(), ...prev }, nome),
-        );
+        const cleaned = limparExtratoBancoEElosRelacionados(mergedBase, nome);
+        savePersistedExtratosFinanceiro(cleaned);
+        delete desfazerImportacaoExtratoRef.current[nome];
+        if (featureFlags.useApiFinanceiro) {
+          await recarregarExtratosFinanceiroApi();
+        } else {
+          setExtratosPorBanco((prev) =>
+            limparExtratoBancoEElosRelacionados({ ...getExtratosIniciais(), ...prev }, nome),
+          );
+        }
+      }
+      setDesfazerImportacaoTick((t) => t + 1);
+      if (featureFlags.useApiFinanceiro && isNomeCartaoFinanceiro(nome)) {
+        await recarregarExtratosFinanceiroApi();
       }
       const extra =
         featureFlags.useApiFinanceiro && (removidos > 0 || desvinc > 0)
@@ -1182,9 +1245,10 @@ export function Financeiro() {
         extratosPorBanco,
         contaContabilSelecionada,
         numeroBancoMap,
-        contaToLetraMerged
+        contaToLetraMerged,
+        extratosPorCartao,
       ),
-    [extratosPorBanco, contaContabilSelecionada, numeroBancoMap, contaToLetraMerged]
+    [extratosPorBanco, extratosPorCartao, contaContabilSelecionada, numeroBancoMap, contaToLetraMerged]
   );
   const isContaCompensacao = contaContabilSelecionada === 'Conta Compensação';
   const isContaEscritorio = contaContabilSelecionada === 'Conta Escritório';
@@ -1200,10 +1264,14 @@ export function Financeiro() {
 
   const listaExtratoBancoOrdenada = useMemo(() => {
     if (!instituicaoSelecionada) return [];
-    const bruto = getTransacoesBanco(extratosPorBanco, instituicaoSelecionada);
+    const bruto = getTransacoesInstituicao(
+      extratosPorBanco,
+      extratosPorCartao,
+      instituicaoSelecionada,
+    );
     const normalizado = ordenarExtratoBancoERecalcularSaldo(bruto);
     return ordenarTransacoesBanco(normalizado, sortExtratoBanco.col, sortExtratoBanco.dir);
-  }, [extratosPorBanco, instituicaoSelecionada, sortExtratoBanco.col, sortExtratoBanco.dir]);
+  }, [extratosPorBanco, extratosPorCartao, instituicaoSelecionada, sortExtratoBanco.col, sortExtratoBanco.dir]);
 
   const listaConsolidadaOrdenada = useMemo(
     () => ordenarTransacoesConsolidado(transacoesConsolidadas, sortConsolidado.col, sortConsolidado.dir),
@@ -1426,8 +1494,14 @@ export function Financeiro() {
 
   /** Contas ordenadas pelo uso real nos extratos (quantidade e soma dos valores por letra). */
   const contasDerivadasDosExtratos = useMemo(
-    () => getContasContabeisDerivadasExtratos(extratosPorBanco, letraToContaMerged, ordemLetrasCompleta),
-    [extratosPorBanco, letraToContaMerged, ordemLetrasCompleta]
+    () =>
+      getContasContabeisDerivadasExtratos(
+        extratosPorBanco,
+        letraToContaMerged,
+        ordemLetrasCompleta,
+        extratosPorCartao,
+      ),
+    [extratosPorBanco, extratosPorCartao, letraToContaMerged, ordemLetrasCompleta]
   );
   const contasContabeisChipsAtivas = useMemo(
     () => contasDerivadasDosExtratos.filter((c) => !contasContabeisInativasSet.has(c.nome)),
@@ -1557,7 +1631,10 @@ export function Financeiro() {
    */
   async function sincronizarLancamentoApi(nomeBanco, numero, data, linhaSnapshot = null) {
     try {
-      const list = extratosPorBancoRef.current?.[nomeBanco];
+      const isCartao = isNomeCartaoFinanceiro(nomeBanco);
+      const list = isCartao
+        ? extratosPorCartaoRef.current?.[nomeBanco]
+        : extratosPorBancoRef.current?.[nomeBanco];
       const chaveRow = `${nomeBanco}|${numero}|${data}`;
       const atual =
         linhaSnapshot &&
@@ -1609,9 +1686,11 @@ export function Financeiro() {
         }
       }
 
-      const saved = await salvarOuAtualizarLancamentoFinanceiroApi(rowParaApi);
+      const saved = isCartao
+        ? await salvarOuAtualizarLancamentoCartaoFinanceiroApi(rowParaApi)
+        : await salvarOuAtualizarLancamentoFinanceiroApi(rowParaApi);
       if (!saved?.id) return;
-      setExtratosPorBanco((prev) => {
+      const applySaved = (prev) => {
         const next = cloneExtratos(prev);
         const arr = next[nomeBanco];
         if (!Array.isArray(arr)) return prev;
@@ -1620,7 +1699,9 @@ export function Financeiro() {
         arr[i] = mergeUiLancamentoComRespostaApi({ ...arr[i], nomeBanco }, saved);
         ultimaLinhaEdicaoExtratoRef.current.delete(`${nomeBanco}|${numero}|${data}`);
         return next;
-      });
+      };
+      if (isCartao) setExtratosPorCartao(applySaved);
+      else setExtratosPorBanco(applySaved);
     } catch (e) {
       setApiFinanceiroErro(e?.message || 'Falha ao sincronizar lançamento com API.');
     }
@@ -1641,7 +1722,8 @@ export function Financeiro() {
     const msg = `Excluir lançamento ${t.numero} de ${t.data}?`;
     if (!window.confirm(msg)) return;
     const removerLocal = () => {
-      setExtratosPorBanco((prev) => {
+      const setter = isNomeCartaoFinanceiro(t.nomeBanco) ? setExtratosPorCartao : setExtratosPorBanco;
+      setter((prev) => {
         const next = cloneExtratos(prev);
         const list = next[t.nomeBanco];
         if (!Array.isArray(list)) return prev;
@@ -1659,7 +1741,11 @@ export function Financeiro() {
         setOfxStatus({ kind: 'error', message: 'Lançamento sem id de API. Edite/sincronize antes de excluir.' });
         return;
       }
-      await removerLancamentoFinanceiroApi(t.apiId);
+      if (isNomeCartaoFinanceiro(t.nomeBanco)) {
+        await removerLancamentoCartaoFinanceiroApi(t.apiId);
+      } else {
+        await removerLancamentoFinanceiroApi(t.apiId);
+      }
       removerLocal();
       setOfxStatus({ kind: 'success', message: 'Lançamento excluído na API com sucesso.' });
     } catch (e) {
@@ -2452,9 +2538,32 @@ export function Financeiro() {
     setMsgNovaContaBancaria({ kind: 'success', text: `Conta "${nome}" criada — identificação Nº ${numero} no consolidado.` });
   }
 
-  async function importarBtgPdfArquivo(file) {
+  async function importarExtratoArquivo(file) {
+    if (!file) return;
+    const pdf = arquivoExtratoEhPdf(file);
+    const ofx = arquivoExtratoEhOfx(file);
+    if (!pdf && !ofx) {
+      setOfxStatus({
+        kind: 'error',
+        message: 'Selecione um arquivo de extrato com extensão .ofx ou .pdf.',
+      });
+      return;
+    }
+    if (pdf) {
+      if (!isInstituicaoExtratoPdfImport(instituicaoSelecionada)) {
+        setOfxStatus({
+          kind: 'error',
+          message: `Para ${instituicaoSelecionada}, use arquivo OFX. Importação em PDF está disponível para BTG e Sicoob.`,
+        });
+        return;
+      }
+      return importarExtratoPdfArquivo(file);
+    }
+    return importarOfxArquivo(file);
+  }
+
+  async function importarExtratoPdfArquivo(file) {
     try {
-      if (!isInstituicaoBtgExtratoPdf(instituicaoSelecionada)) return;
       if (extratosInativosSet.has(instituicaoSelecionada)) {
         setOfxStatus({
           kind: 'error',
@@ -2465,17 +2574,20 @@ export function Financeiro() {
       const nome = String(file?.name ?? '').toLowerCase();
       const tipo = String(file?.type ?? '');
       if (!nome.endsWith('.pdf') && tipo !== 'application/pdf') {
-        setOfxStatus({ kind: 'error', message: 'Selecione um arquivo PDF do extrato de conta corrente BTG.' });
+        setOfxStatus({
+          kind: 'error',
+          message: `Selecione um arquivo PDF do extrato de conta corrente (${rotuloInstituicaoExtratoPdf(instituicaoSelecionada)}).`,
+        });
         return;
       }
+      const modeloPdf = rotuloInstituicaoExtratoPdf(instituicaoSelecionada);
       setOfxStatus({ kind: 'loading', message: `Lendo PDF do extrato ${instituicaoSelecionada}...` });
       const texto = await extrairTextoPdfDeArquivo(file, { ordenarItensPorPosicao: true });
-      const extrato = parseBtgPdfExtratoText(texto);
+      const extrato = parseExtratoPdfText(texto, instituicaoSelecionada);
       if (!extrato.length) {
         setOfxStatus({
           kind: 'error',
-          message:
-            'Não foi possível extrair lançamentos do PDF. Use o extrato de conta corrente BTG Pactual (texto selecionável), como no app ou PDF oficial.',
+          message: `Não foi possível extrair lançamentos do PDF. Use o extrato oficial ${modeloPdf} (texto selecionável), como no app ou PDF do banco.`,
         });
         return;
       }
@@ -2489,8 +2601,8 @@ export function Financeiro() {
       });
       const base =
         modo === 'mesclar'
-          ? `PDF BTG: +${novosContados} lanç. novos em ${instituicaoSelecionada} (${extrato.length - novosContados} já no extrato, ignorados; repetições só no arquivo importam-se). Extrato mantido.`
-          : `PDF BTG: extrato de ${instituicaoSelecionada} substituído (${extrato.length} lanç.).`;
+          ? `PDF (${modeloPdf}): +${novosContados} lanç. novos em ${instituicaoSelecionada} (${extrato.length - novosContados} já no extrato, ignorados; repetições só no arquivo importam-se). Extrato mantido.`
+          : `PDF (${modeloPdf}): extrato de ${instituicaoSelecionada} substituído (${extrato.length} lanç.).`;
 
       if (featureFlags.useApiFinanceiro) {
         setOfxStatus({ kind: 'loading', message: `Gravando lançamentos de ${instituicaoSelecionada} no servidor...` });
@@ -2556,10 +2668,10 @@ export function Financeiro() {
 
   async function importarOfxArquivo(file) {
     try {
-      if (isInstituicaoBtgExtratoPdf(instituicaoSelecionada)) {
+      if (isInstituicaoExtratoPdfImport(instituicaoSelecionada)) {
         setOfxStatus({
           kind: 'error',
-          message: `Contas BTG importam o extrato por arquivo PDF (botão «Importar PDF»), não por OFX.`,
+          message: `Para ${instituicaoSelecionada}, selecione um arquivo PDF (${rotuloInstituicaoExtratoPdf(instituicaoSelecionada)}). OFX não é suportado neste banco.`,
         });
         return;
       }
@@ -2897,9 +3009,14 @@ export function Financeiro() {
     navigate(location.pathname, { replace: true, state: {} });
   }, [location.state, location.pathname, navigate]);
 
-  const ofxBloqueadoExtratoInativo = extratosInativosSet.has(instituicaoSelecionada);
-  const extratoBtgUsaPdfImport = isInstituicaoBtgExtratoPdf(instituicaoSelecionada);
+  useEffect(() => {
+    const nome = location.state?.instituicaoSelecionada;
+    if (!nome || typeof nome !== 'string') return;
+    setInstituicaoSelecionada(nome);
+    navigate(location.pathname, { replace: true, state: {} });
+  }, [location.state, location.pathname, navigate]);
 
+  const ofxBloqueadoExtratoInativo = extratosInativosSet.has(instituicaoSelecionada);
   function onChangeTipoPeriodo(novo) {
     setPeriodoVisao(novo);
     if (novo === 'personalizado') {
@@ -3075,20 +3192,10 @@ export function Financeiro() {
   }
 
   return (
-    <div className="min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/35 to-emerald-50/45 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d] flex flex-col">
-      <div className="max-w-[2000px] mx-auto w-full flex flex-col flex-1 min-h-0 min-w-0">
-      <header className="px-4 py-3 shrink-0 rounded-b-xl border border-slate-200/80 border-t-0 bg-white/90 shadow-sm backdrop-blur-sm mx-2 mt-2 mb-1">
+    <>
+      <header className="px-4 py-3 shrink-0 rounded-xl border border-slate-200/80 bg-white/90 shadow-sm backdrop-blur-sm mx-2 mb-1">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex items-start gap-2.5 min-w-0 flex-wrap">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 via-teal-600 to-cyan-600 text-white shadow-md ring-1 ring-emerald-400/40">
-              <Wallet className="w-5 h-5" aria-hidden />
-            </span>
-            <div className="min-w-0">
-              <h1 className="text-xl font-bold bg-gradient-to-r from-slate-900 via-emerald-900 to-indigo-900 dark:from-slate-100 dark:via-emerald-200 dark:to-indigo-200 bg-clip-text text-transparent">
-                Financeiro
-              </h1>
-              <p className="text-xs text-slate-500">Extratos, consolidado e vínculos com processos</p>
-            </div>
             <button
               type="button"
               onClick={() => setModalConfigFinanceiro(true)}
@@ -3150,11 +3257,7 @@ export function Financeiro() {
             <button
               type="button"
               disabled={ofxBloqueadoExtratoInativo}
-              onClick={() =>
-                extratoBtgUsaPdfImport
-                  ? fileInputBtgPdfRef.current?.click()
-                  : fileInputOfxRef.current?.click()
-              }
+              onClick={() => fileInputExtratoRef.current?.click()}
               className={`px-4 py-2 rounded-xl text-sm font-semibold shadow-md ${
                 ofxBloqueadoExtratoInativo
                   ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
@@ -3162,18 +3265,25 @@ export function Financeiro() {
               }`}
               title={
                 ofxBloqueadoExtratoInativo
-                  ? extratoBtgUsaPdfImport
-                    ? 'Extrato inativo — reative para importar PDF'
-                    : 'Extrato inativo — reative para importar OFX'
-                  : extratoBtgUsaPdfImport
-                    ? `Importar extrato em PDF (${instituicaoSelecionada}) — modelo BTG Pactual; mescla por padrão`
-                    : `Importar OFX em ${instituicaoSelecionada} (mescla por padrão)`
+                  ? 'Extrato inativo — reative para importar'
+                  : isInstituicaoExtratoPdfImport(instituicaoSelecionada)
+                    ? `Importar extrato (.pdf ou .ofx) em ${instituicaoSelecionada} — PDF ${rotuloInstituicaoExtratoPdf(instituicaoSelecionada)}; mescla por padrão`
+                    : `Importar extrato (.ofx ou .pdf) em ${instituicaoSelecionada} — mescla por padrão`
               }
             >
-              {extratoBtgUsaPdfImport
-                ? `Importar PDF (${instituicaoSelecionada})`
-                : `Importar OFX (${instituicaoSelecionada})`}
+              Importar extrato ({instituicaoSelecionada})
             </button>
+            <input
+              ref={fileInputExtratoRef}
+              type="file"
+              accept=".ofx,.qfx,.pdf,application/pdf,application/x-ofx,text/ofx,text/plain"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = '';
+                if (file) void importarExtratoArquivo(file);
+              }}
+            />
             <label className="flex items-center gap-2 text-xs text-slate-600 cursor-pointer select-none">
               <input
                 type="checkbox"
@@ -3242,13 +3352,37 @@ export function Financeiro() {
             <button
               type="button"
               onClick={() => {
-                const pares = detectarParesCompensacao(extratosPorBanco);
+                const pares = detectarParesCompensacao(extratosPorBanco, { incluirMesmoBanco: true });
                 setModalParearCompensacao({ pares });
               }}
               className="px-3 py-2 rounded-lg border border-amber-300 bg-amber-50 text-amber-900 text-sm font-medium hover:bg-amber-100"
               title="1) Identifica pares entre extratos; 2) Aplica Elo 0001… na Conta Compensação"
             >
               Parear compensações
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const sugestoes = detectarSugestoesPagamentoFatura(extratosPorBanco, extratosPorCartao);
+                setModalPagamentoFatura({ sugestoes, vinculos: [], carregando: featureFlags.useApiFinanceiro });
+                if (featureFlags.useApiFinanceiro) {
+                  void listarVinculosPagamentoFaturaApi()
+                    .then((vinculos) =>
+                      setModalPagamentoFatura((m) => (m ? { ...m, vinculos: vinculos || [], carregando: false } : m)),
+                    )
+                    .catch((err) => {
+                      setModalPagamentoFatura((m) => (m ? { ...m, carregando: false } : m));
+                      setOfxStatus({
+                        kind: 'error',
+                        message: err?.message || 'Não foi possível carregar vínculos de pagamento de fatura.',
+                      });
+                    });
+                }
+              }}
+              className="px-3 py-2 rounded-lg border border-pink-300 bg-pink-50 text-pink-900 text-sm font-medium hover:bg-pink-100"
+              title="Vincula débito no banco (ex. CARTAO PERSONNALITE) ao pagamento na fatura do cartão — separado da Compensação entre bancos"
+            >
+              Pagamentos fatura
             </button>
             <button
               type="button"
@@ -3349,8 +3483,9 @@ export function Financeiro() {
           </div>
           <div className="p-4 md:p-5 space-y-3">
           <p className="text-xs text-slate-600 mb-1 leading-relaxed">
-            Instituições <strong>BTG</strong> importam o extrato por <strong>PDF</strong> (modelo conta corrente BTG
-            Pactual, texto selecionável); os outros bancos usam <strong>OFX</strong>. Por padrão, cada importação{' '}
+            O botão <strong>Importar extrato</strong> aceita <strong>.ofx</strong> e <strong>.pdf</strong> no mesmo seletor;
+            o sistema valida conforme o banco selecionado. <strong>BTG</strong> e <strong>Sicoob</strong> usam PDF (modelos
+            oficiais de conta corrente, texto selecionável); os demais bancos usam OFX. Por padrão, cada importação{' '}
             <strong>acrescenta</strong> lançamentos (sem apagar mock nem extrato já importados). Duplicatas (mesma chave
             data + valor + identificador) são ignoradas.{' '}
             {featureFlags.useApiFinanceiro ? (
@@ -3424,11 +3559,7 @@ export function Financeiro() {
             <button
               type="button"
               disabled={ofxBloqueadoExtratoInativo}
-              onClick={() =>
-                extratoBtgUsaPdfImport
-                  ? fileInputBtgPdfRef.current?.click()
-                  : fileInputOfxRef.current?.click()
-              }
+              onClick={() => fileInputExtratoRef.current?.click()}
               className={`px-4 py-2 rounded-xl text-sm font-semibold shadow-md ${
                 ofxBloqueadoExtratoInativo
                   ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
@@ -3436,40 +3567,14 @@ export function Financeiro() {
               }`}
               title={
                 ofxBloqueadoExtratoInativo
-                  ? extratoBtgUsaPdfImport
-                    ? 'Extrato inativo — reative para importar PDF'
-                    : 'Extrato inativo — reative para importar OFX'
-                  : extratoBtgUsaPdfImport
-                    ? `Importar PDF e atualizar o extrato de ${instituicaoSelecionada} (BTG)`
-                    : `Importar OFX e atualizar o extrato de ${instituicaoSelecionada}`
+                  ? 'Extrato inativo — reative para importar'
+                  : isInstituicaoExtratoPdfImport(instituicaoSelecionada)
+                    ? `Importar extrato (.pdf ou .ofx) — PDF ${rotuloInstituicaoExtratoPdf(instituicaoSelecionada)}`
+                    : `Importar extrato (.ofx ou .pdf) em ${instituicaoSelecionada}`
               }
             >
-              {extratoBtgUsaPdfImport
-                ? `Importar PDF (${instituicaoSelecionada})`
-                : `Importar OFX (${instituicaoSelecionada})`}
+              Importar extrato ({instituicaoSelecionada})
             </button>
-            <input
-              ref={fileInputOfxRef}
-              type="file"
-              accept=".ofx,application/x-ofx,text/ofx,text/plain"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                e.target.value = '';
-                if (file) importarOfxArquivo(file);
-              }}
-            />
-            <input
-              ref={fileInputBtgPdfRef}
-              type="file"
-              accept=".pdf,application/pdf"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                e.target.value = '';
-                if (file) importarBtgPdfArquivo(file);
-              }}
-            />
             {ofxStatus.kind !== 'idle' && (
               <span
                 className={`text-xs ${
@@ -3535,6 +3640,28 @@ export function Financeiro() {
                   <span className="tabular-nums opacity-90 font-normal">(Nº {c.numero})</span>
                 </button>
               ))}
+          </div>
+          <p className="text-xs text-slate-500 mt-4 mb-1 font-medium">
+            Cartões (fatura — sinal da fatura; consolidado inverte)
+          </p>
+          <div className="flex flex-wrap gap-2 mb-1">
+            {CARTOES_LINHA.map((nome) => (
+              <button
+                key={nome}
+                type="button"
+                onClick={() => setInstituicaoSelecionada(nome)}
+                className={`px-4 py-2 rounded-xl text-sm font-medium transition-all shadow-sm ${
+                  instituicaoSelecionada === nome
+                    ? 'bg-white text-rose-900 ring-2 ring-rose-500 shadow-md border border-rose-400/60'
+                    : 'bg-gradient-to-br from-rose-600 to-pink-800 text-white hover:from-rose-700 hover:to-pink-900'
+                }`}
+              >
+                {nome}
+                <span className="tabular-nums opacity-90 font-normal ml-1">
+                  (Nº {CARTAO_TO_NUMERO[nome]})
+                </span>
+              </button>
+            ))}
           </div>
           {mostrarExtratosInativos && extratosInativos.length > 0 && (
             <>
@@ -5330,7 +5457,6 @@ export function Financeiro() {
           </div>
         )}
       </div>
-      </div>
 
       {modalParearCompensacao != null && Array.isArray(modalParearCompensacao.pares) && (
         <div
@@ -5358,18 +5484,17 @@ export function Financeiro() {
             </div>
             <div className="p-4 overflow-y-auto flex-1 text-sm space-y-3">
               <p className="text-slate-600">
-                <strong>Passo 1 — Identificação:</strong> pares com mesma data, valor oposto exato (centavos) e bancos
-                diferentes. <strong>Passo 2 — Aplicar:</strong> classifica como <strong>Conta Compensação (letra E)</strong>{' '}
-                e grava o <strong>Elo</strong> (número natural: 0001, 0002…): cada Elo deve ter <strong>soma zero</strong>,
-                registrando só a troca de numerário entre contas. Em cada linha use <strong>Vincular</strong> para aplicar
-                só aquele par; o botão passa a <strong>Desvincular</strong> (cinza) para desfazer. O Elo gravado é sempre o{' '}
-                <strong>próximo livre</strong> (pode diferir do número sugerido na coluna Elo se você já aplicou outros antes).
+                <strong>Passo 1 — Identificação:</strong> pares com mesma data e valor oposto exato (centavos), no{' '}
+                <strong>mesmo banco</strong> (ex.: empréstimo a amigo — saída e devolução na mesma conta) ou em{' '}
+                <strong>bancos diferentes</strong> (transferência entre contas). <strong>Passo 2 — Aplicar:</strong>{' '}
+                classifica como <strong>Conta Compensação (letra E)</strong> e grava o <strong>Elo</strong> (0001, 0002…):
+                soma zero na compensação, sem registro contábil definitivo. Use <strong>Vincular</strong> por linha ou aplique
+                todos de uma vez.
               </p>
               {modalParearCompensacao.pares.length === 0 ? (
                 <p className="py-6 text-center text-amber-800 bg-amber-50 rounded border border-amber-200">
-                  Nenhum par encontrado. Os lançamentos devem estar em <strong>N</strong> (ou E órfão), mesma data,
-                  crédito e débito de mesmo valor absoluto em <strong>bancos diferentes</strong> (ex.: Itaú +16.068,01 e
-                  Cora -16.068,01 em 17/03).
+                  Nenhum par encontrado. Os lançamentos devem estar em <strong>N</strong> (ou E órfão), mesma data e
+                  valores opostos exatos (ex.: Itaú -1.000 e Itaú +1.000 no mesmo dia, ou Itaú -16.068 e Cora +16.068).
                 </p>
               ) : (
                 <div className="border border-slate-200 rounded overflow-hidden">
@@ -5380,6 +5505,7 @@ export function Financeiro() {
                           Ação
                         </th>
                         <th className="text-left py-2 px-2 font-semibold text-slate-700">Elo</th>
+                        <th className="text-left py-2 px-2 font-semibold text-slate-700">Tipo</th>
                         <th className="text-left py-2 px-2 font-semibold text-slate-700">Data</th>
                         <th className="text-left py-2 px-2 font-semibold text-slate-700">Crédito</th>
                         <th className="text-right py-2 px-2 font-semibold text-slate-700">Valor</th>
@@ -5477,6 +5603,9 @@ export function Financeiro() {
                           <td className="py-2 px-2 font-mono font-semibold text-amber-900">
                             {p.eloAplicado ?? p.elo}
                           </td>
+                          <td className="py-2 px-2 text-xs text-slate-600 whitespace-nowrap">
+                            {p.mesmoBanco ? 'Mesmo banco' : 'Entre bancos'}
+                          </td>
                           <td className="py-2 px-2 text-slate-700">{p.data}</td>
                           <td className="py-2 px-2 text-slate-700">
                             {p.credito.banco}
@@ -5520,6 +5649,128 @@ export function Financeiro() {
                 className="px-4 py-2 rounded bg-amber-600 text-white text-sm font-semibold hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Aplicar {modalParearCompensacao.pares.filter((row) => !row.eloAplicado).length} compensação(ões)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {modalPagamentoFatura != null && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="modal-pagamento-fatura-titulo"
+        >
+          <div
+            className="bg-white rounded-lg shadow-xl border border-pink-200 w-full max-w-5xl max-h-[90vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-4 py-3 border-b border-pink-200 flex items-center justify-between shrink-0">
+              <h2 id="modal-pagamento-fatura-titulo" className="text-base font-bold text-slate-800">
+                Pagamentos de fatura (banco ↔ cartão)
+              </h2>
+              <button
+                type="button"
+                onClick={() => setModalPagamentoFatura(null)}
+                className="px-2 py-1 text-slate-500 hover:bg-slate-100 rounded text-lg leading-none"
+                aria-label="Fechar"
+              >
+                ×
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto flex-1 text-sm space-y-4">
+              <p className="text-slate-600">
+                Vincula débito no banco (ex. CARTAO PERSONNALITE, letra E) ao pagamento na fatura do cartão. Separado
+                da Compensação entre bancos.
+              </p>
+              {modalPagamentoFatura.carregando ? <p className="text-slate-500">Carregando vínculos…</p> : null}
+              {(modalPagamentoFatura.vinculos?.length ?? 0) > 0 ? (
+                <div>
+                  <h3 className="font-semibold mb-2">Vínculos ({modalPagamentoFatura.vinculos.length})</h3>
+                  <ul className="space-y-1 text-xs">
+                    {modalPagamentoFatura.vinculos.map((v) => (
+                      <li key={v.id} className="flex justify-between gap-2 border-b border-slate-100 py-1">
+                        <span>
+                          {v.bancoNome} ↔ {v.cartaoNome} · {formatValor(Number(v.valorCartao))}
+                        </span>
+                        {featureFlags.useApiFinanceiro ? (
+                          <button
+                            type="button"
+                            className="underline shrink-0"
+                            onClick={() => {
+                              void removerVinculoPagamentoFaturaApi(v.id).then(() => {
+                                setModalPagamentoFatura((m) =>
+                                  m
+                                    ? { ...m, vinculos: (m.vinculos || []).filter((x) => x.id !== v.id) }
+                                    : m,
+                                );
+                              });
+                            }}
+                          >
+                            Remover
+                          </button>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              <div>
+                <h3 className="font-semibold mb-2">Sugestões ({modalPagamentoFatura.sugestoes?.length ?? 0})</h3>
+                {(modalPagamentoFatura.sugestoes?.length ?? 0) === 0 ? (
+                  <p className="py-3 text-pink-800 bg-pink-50 rounded border border-pink-200 text-center">
+                    Nenhuma sugestão automática no histórico carregado.
+                  </p>
+                ) : (
+                  <ul className="max-h-[40vh] overflow-y-auto space-y-2 text-xs">
+                    {modalPagamentoFatura.sugestoes.map((s, i) => (
+                      <li
+                        key={`${s.banco.apiId}-${s.cartao.apiId}-${i}`}
+                        className="flex flex-wrap items-center justify-between gap-2 border border-slate-100 rounded p-2"
+                      >
+                        <span>
+                          [{s.confianca}] {s.banco.nome} {s.banco.data} {formatValor(s.banco.valor)} ↔ {s.cartao.nome}{' '}
+                          {s.cartao.data} {formatValor(s.cartao.valor)}
+                        </span>
+                        {featureFlags.useApiFinanceiro && s.banco.apiId && s.cartao.apiId ? (
+                          <button
+                            type="button"
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded border border-pink-500 bg-pink-50"
+                            onClick={() => {
+                              void criarVinculoPagamentoFaturaApi(s.banco.apiId, s.cartao.apiId).then((novo) => {
+                                setModalPagamentoFatura((m) =>
+                                  m
+                                    ? {
+                                        ...m,
+                                        vinculos: [...(m.vinculos || []), novo],
+                                        sugestoes: (m.sugestoes || []).filter(
+                                          (x) =>
+                                            x.banco.apiId !== s.banco.apiId || x.cartao.apiId !== s.cartao.apiId,
+                                        ),
+                                      }
+                                    : m,
+                                );
+                              });
+                            }}
+                          >
+                            <Link2 className="w-3.5 h-3.5" aria-hidden />
+                            Vincular
+                          </button>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+            <div className="px-4 py-3 border-t flex justify-end bg-slate-50">
+              <button
+                type="button"
+                onClick={() => setModalPagamentoFatura(null)}
+                className="px-4 py-2 rounded border border-slate-300 bg-white text-sm"
+              >
+                Fechar
               </button>
             </div>
           </div>
@@ -6146,6 +6397,6 @@ export function Financeiro() {
         onAplicar={aplicarVinculoClienteProcNosCampos}
         modoContaEscritorio={Boolean(modalVinculoLancamento?.modoContaEscritorio)}
       />
-    </div>
+    </>
   );
 }

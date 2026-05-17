@@ -38,6 +38,14 @@ Publicação: Intimação para manifestação.
     expect(normalizarCnjParaChave(raw)).toBe('5377175-91.2025.8.09.0006');
   });
 
+  it('normaliza CNJ gravado só com 20 dígitos (sem pontuação)', () => {
+    expect(normalizarCnjParaChave('54026337820178090006')).toBe('5402633-78.2017.8.09.0006');
+  });
+
+  it('não trata 19 dígitos como CNJ completo', () => {
+    expect(normalizarCnjParaChave('5402633782017809000')).toBe('');
+  });
+
   it('prefere CNJ após NR.PROCESSO em vez de outro número no meio do bloco', () => {
     const bloco = `
 Algo 1234567-89.2020.8.09.0001 irrelevante

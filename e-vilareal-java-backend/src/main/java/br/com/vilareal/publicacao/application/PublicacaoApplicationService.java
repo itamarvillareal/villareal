@@ -3,6 +3,8 @@ package br.com.vilareal.publicacao.application;
 import br.com.vilareal.common.exception.BusinessRuleException;
 import br.com.vilareal.common.exception.ResourceNotFoundException;
 import br.com.vilareal.processo.application.ClienteCodigoPessoaResolver;
+import br.com.vilareal.processo.application.ProcessoApplicationService;
+import br.com.vilareal.processo.api.dto.ProcessoPartesVinculoTexto;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
 import br.com.vilareal.publicacao.api.dto.*;
@@ -15,7 +17,9 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDate;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 @Service
@@ -26,14 +30,17 @@ public class PublicacaoApplicationService {
     private final PublicacaoRepository publicacaoRepository;
     private final ProcessoRepository processoRepository;
     private final ClienteCodigoPessoaResolver clienteCodigoPessoaResolver;
+    private final ProcessoApplicationService processoApplicationService;
 
     public PublicacaoApplicationService(
             PublicacaoRepository publicacaoRepository,
             ProcessoRepository processoRepository,
-            ClienteCodigoPessoaResolver clienteCodigoPessoaResolver) {
+            ClienteCodigoPessoaResolver clienteCodigoPessoaResolver,
+            ProcessoApplicationService processoApplicationService) {
         this.publicacaoRepository = publicacaoRepository;
         this.processoRepository = processoRepository;
         this.clienteCodigoPessoaResolver = clienteCodigoPessoaResolver;
+        this.processoApplicationService = processoApplicationService;
     }
 
     @Transactional(readOnly = true)
@@ -47,16 +54,21 @@ public class PublicacaoApplicationService {
             String origemImportacao) {
         var spec = PublicacaoSpecifications.comFiltros(
                 dataInicio, dataFim, statusTratamento, processoId, clienteId, texto, origemImportacao);
-        return publicacaoRepository
-                .findAll(spec, Sort.by(Sort.Direction.DESC, "createdAt"))
-                .stream()
-                .map(this::toResponse)
-                .toList();
+        List<PublicacaoEntity> lista = publicacaoRepository.findAll(spec, Sort.by(Sort.Direction.DESC, "createdAt"));
+        Set<Long> procIds = new LinkedHashSet<>();
+        for (PublicacaoEntity e : lista) {
+            if (e.getProcesso() != null && e.getProcesso().getId() != null) {
+                procIds.add(e.getProcesso().getId());
+            }
+        }
+        Map<Long, ProcessoPartesVinculoTexto> partesPorProcesso =
+                procIds.isEmpty() ? Map.of() : processoApplicationService.resolverTextosPartesVinculoEmLote(procIds);
+        return lista.stream().map(e -> toResponse(e, partesPorProcesso)).toList();
     }
 
     @Transactional(readOnly = true)
     public PublicacaoResponse buscar(Long id) {
-        return toResponse(requirePublicacao(id));
+        return toResponse(requirePublicacao(id), null);
     }
 
     @Transactional
@@ -93,7 +105,7 @@ public class PublicacaoApplicationService {
         e.setStatusTratamento(normalizarStatus(req.getStatusTratamento()));
         e.setLida(Boolean.TRUE.equals(req.getLida()));
         e.setObservacao(trimToNull(req.getObservacao()));
-        return toResponse(publicacaoRepository.save(e));
+        return toResponse(publicacaoRepository.save(e), null);
     }
 
     @Transactional
@@ -107,7 +119,7 @@ public class PublicacaoApplicationService {
         if (StringUtils.hasText(req.getObservacao())) {
             e.setObservacao(req.getObservacao().trim());
         }
-        return toResponse(publicacaoRepository.save(e));
+        return toResponse(publicacaoRepository.save(e), null);
     }
 
     @Transactional
@@ -122,7 +134,7 @@ public class PublicacaoApplicationService {
         if (StringUtils.hasText(req.getObservacao())) {
             e.setObservacao(req.getObservacao().trim());
         }
-        return toResponse(publicacaoRepository.save(e));
+        return toResponse(publicacaoRepository.save(e), null);
     }
 
     @Transactional
@@ -168,7 +180,7 @@ public class PublicacaoApplicationService {
         return "PENDENTE";
     }
 
-    private PublicacaoResponse toResponse(PublicacaoEntity e) {
+    private PublicacaoResponse toResponse(PublicacaoEntity e, Map<Long, ProcessoPartesVinculoTexto> partesPorProcessoIdOrNull) {
         PublicacaoResponse r = new PublicacaoResponse();
         r.setId(e.getId());
         r.setCreatedAt(e.getCreatedAt());
@@ -179,10 +191,24 @@ public class PublicacaoApplicationService {
             r.setNumeroInternoProcesso(proc.getNumeroInterno());
             long pessoaId = proc.getPessoa().getId();
             r.setCodigoClienteProcesso(clienteCodigoPessoaResolver.codigoClienteExibicaoParaPessoaId(pessoaId));
+            Map<Long, ProcessoPartesVinculoTexto> map =
+                    partesPorProcessoIdOrNull != null
+                            ? partesPorProcessoIdOrNull
+                            : processoApplicationService.resolverTextosPartesVinculoEmLote(Set.of(proc.getId()));
+            ProcessoPartesVinculoTexto pt = map.get(proc.getId());
+            if (pt != null) {
+                r.setParteCliente(trimToNull(pt.getParteCliente()));
+                r.setParteOposta(trimToNull(pt.getParteOposta()));
+            } else {
+                r.setParteCliente(null);
+                r.setParteOposta(null);
+            }
         } else {
             r.setProcessoId(null);
             r.setNumeroInternoProcesso(null);
             r.setCodigoClienteProcesso(null);
+            r.setParteCliente(null);
+            r.setParteOposta(null);
         }
         r.setClienteId(e.getClienteRefId());
         r.setDataDisponibilizacao(e.getDataDisponibilizacao());

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { X, Newspaper, Loader2 } from 'lucide-react';
 import { listarPublicacoesRelatorioPorProcesso } from '../repositories/publicacoesRepository.js';
 import { featureFlags } from '../config/featureFlags.js';
+import { formatarRotuloVinculoPartes } from '../data/publicacoesDisplayHelpers.js';
 
 function Badge({ children, tone = 'slate' }) {
   const cls = {
@@ -128,9 +129,19 @@ export function PublicacoesRelatorioConteudo({
                     <td className="p-2">
                       <ScoreBadge score={row.scoreConfianca} />
                     </td>
-                    <td className="p-2 text-slate-700">
+                    <td className="p-2 text-slate-700 max-w-[220px]">
                       {row.statusVinculo === 'vinculado' ? (
-                        <span className="text-emerald-800">Vinculado</span>
+                        <div className="space-y-0.5">
+                          <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-900">
+                            Vinculado
+                          </span>
+                          <div
+                            className="text-[10px] text-slate-600 truncate"
+                            title={[row.cliente, row.reu].filter(Boolean).join(' · ')}
+                          >
+                            {formatarRotuloVinculoPartes(row)}
+                          </div>
+                        </div>
                       ) : (
                         row.statusVinculo || '—'
                       )}

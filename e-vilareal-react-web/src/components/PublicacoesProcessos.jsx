@@ -17,6 +17,9 @@ import {
   ListTodo,
   Trash2,
   FileDown,
+  ChevronDown,
+  ChevronRight,
+  Table2,
 } from 'lucide-react';
 import { extrairTextoParaImportacaoPublicacoes } from '../data/publicacoesPdfExtract.js';
 import { executarPipelineImportacaoPublicacoes } from '../data/publicacoesPipeline.js';
@@ -29,6 +32,11 @@ import {
   buscarHitIndiceCnjPorCnj,
 } from '../data/publicacoesVinculoProcessos.js';
 import { appendPublicacoesConfirmadas, updatePublicacaoImportada } from '../data/publicacoesStorage.js';
+import {
+  clearPublicacoesPreviasSession,
+  loadPublicacoesPreviasSession,
+  savePublicacoesPreviasSession,
+} from '../data/publicacoesPreviasSession.js';
 import { agruparPublicacoesPorDia } from '../data/publicacoesDiaria.js';
 import { downloadRelatorioPublicacoesCsv } from '../data/publicacoesRelatorioExport.js';
 import { featureFlags } from '../config/featureFlags.js';
@@ -43,6 +51,7 @@ import {
 import { ModalCriarTarefaContextual } from './ModalCriarTarefaContextual.jsx';
 import { buildContextFromPublicacaoRow } from '../data/tarefasContextualPayload.js';
 import { buildRouterStateChaveClienteProcesso } from '../domain/camposProcessoCliente.js';
+import { formatarRotuloVinculoPartes } from '../data/publicacoesDisplayHelpers.js';
 
 const ProcessosLazy = lazy(() =>
   import('./Processos.jsx').then((module) => ({ default: module.Processos }))
@@ -138,12 +147,43 @@ export function PublicacoesProcessos() {
   const [vinculoFormErro, setVinculoFormErro] = useState('');
   /** Critério do consolidado diário: dia da publicação oficial ou da disponibilização no diário. */
   const [consolidadoCriterio, setConsolidadoCriterio] = useState('publicacao');
+  /** Chaves `chaveSort` (yyyy-mm-dd) dos dias com o resumo compacto expandido na listagem diária. */
+  const [diasResumoExpandidos, setDiasResumoExpandidos] = useState(() => new Set());
+  /** Dia (`chaveSort`) cujo relatório detalhado em tabela está visível; `null` = tabela oculta. */
+  const [diaRelatorioDetalheChaveSort, setDiaRelatorioDetalheChaveSort] = useState(null);
   const [modalTarefaContextual, setModalTarefaContextual] = useState(null);
   /** Formulário completo de Processos (lazy) — duplo clique na coluna «Vínculo». */
   const [processoEmbed, setProcessoEmbed] = useState(null);
   const [limpandoPublicacoes, setLimpandoPublicacoes] = useState(false);
+  /** Evita sobrescrever sessionStorage antes de repor a prévia guardada ao remontar a rota. */
+  const [previaSessaoPronta, setPreviaSessaoPronta] = useState(false);
 
   const [indiceCnj, setIndiceCnj] = useState(() => new Map());
+
+  useEffect(() => {
+    const p = loadPublicacoesPreviasSession();
+    if (p?.preview) {
+      setPreview(p.preview);
+      setArquivoNome(p.arquivoNome || '');
+      setSelecionados(new Set(p.selecionados ?? []));
+      if (p.logImportacao != null) setLogImportacao(p.logImportacao);
+    }
+    setPreviaSessaoPronta(true);
+  }, []);
+
+  useEffect(() => {
+    if (!previaSessaoPronta) return;
+    if (!preview) {
+      clearPublicacoesPreviasSession();
+      return;
+    }
+    savePublicacoesPreviasSession({
+      preview,
+      arquivoNome,
+      selecionados: [...selecionados],
+      logImportacao,
+    });
+  }, [previaSessaoPronta, preview, arquivoNome, selecionados, logImportacao]);
 
   useEffect(() => {
     let ativo = true;
@@ -154,6 +194,58 @@ export function PublicacoesProcessos() {
       ativo = false;
     };
   }, []);
+
+  /**
+   * O índice CNJ×cadastro carrega em paralelo; se o PDF for processado antes, o vínculo roda com Map vazio.
+   * Quando o índice ficar disponível, re-aplica o vínculo na prévia (sem sobrescrever vínculo manual).
+   * Não exige hash/nome do ficheiro na prévia (sessões antigas ou cópias parciais do JSON omitiam isso).
+   */
+  useEffect(() => {
+    if (!preview?.itens?.length) return;
+    if (!(indiceCnj instanceof Map) || indiceCnj.size === 0) return;
+
+    setPreview((prev) => {
+      if (!prev?.itens?.length) return prev;
+      const itens = prev.itens.map((row) =>
+        row.vinculoOrigem === 'manual' ? row : reaplicarVinculoCadastro(row, indiceCnj)
+      );
+      const vinculadosInterno = itens.filter((x) => x.statusVinculo === 'vinculado').length;
+      const naoVinculados = itens.filter(
+        (x) => x.statusVinculo === 'nao_vinculado' || x.statusVinculo === 'sem_cnj'
+      ).length;
+
+      let changed = false;
+      for (let i = 0; i < itens.length; i++) {
+        const a = prev.itens[i];
+        const b = itens[i];
+        if (
+          a.statusVinculo !== b.statusVinculo ||
+          String(a.codCliente ?? '') !== String(b.codCliente ?? '') ||
+          String(a.procInterno ?? '') !== String(b.procInterno ?? '') ||
+          String(a.cliente ?? '') !== String(b.cliente ?? '')
+        ) {
+          changed = true;
+          break;
+        }
+      }
+      const m0 = prev.metricas ?? {};
+      const metricsChanged =
+        (m0.vinculadosInterno ?? m0.vinculosEncontrados ?? 0) !== vinculadosInterno ||
+        (m0.naoVinculados ?? 0) !== naoVinculados;
+      if (!changed && !metricsChanged) return prev;
+
+      return {
+        ...prev,
+        itens,
+        metricas: {
+          ...m0,
+          vinculadosInterno,
+          vinculosEncontrados: vinculadosInterno,
+          naoVinculados,
+        },
+      };
+    });
+  }, [indiceCnj, preview?.itens?.length, preview?.hashArquivo]);
 
   const abrirFormularioProcessoDesdeVinculo = useCallback(
     (row) => {
@@ -237,9 +329,16 @@ export function PublicacoesProcessos() {
       try {
         const { texto, fonte: extracaoFonte, numPages: pdfNumPages } = await extrairTextoParaImportacaoPublicacoes(file);
         const hashArquivo = await hashArquivoSHA256(file);
+        let idxCnj = indiceCnj;
+        if (!(idxCnj instanceof Map) || idxCnj.size === 0) {
+          idxCnj = await montarIndiceCnjClienteProcAsync();
+          if (idxCnj instanceof Map && idxCnj.size > 0) {
+            setIndiceCnj(idxCnj);
+          }
+        }
         const { parseados, metricas, limpo, logsItens } = await executarPipelineImportacaoPublicacoes(
           texto,
-          indiceCnj,
+          idxCnj instanceof Map ? idxCnj : new Map(),
           { skipDatajud: !consultarDatajud }
         );
         setArquivoNome(file.name);
@@ -446,6 +545,37 @@ export function PublicacoesProcessos() {
     () => agruparPublicacoesPorDia(filtrados, consolidadoCriterio),
     [filtrados, consolidadoCriterio]
   );
+
+  const blocoRelatorioDetalhe = useMemo(
+    () =>
+      diaRelatorioDetalheChaveSort
+        ? consolidadoGravados.find((x) => x.chaveSort === diaRelatorioDetalheChaveSort) ?? null
+        : null,
+    [consolidadoGravados, diaRelatorioDetalheChaveSort]
+  );
+
+  const filtradosRelatorioDetalheDia = blocoRelatorioDetalhe?.itens ?? [];
+
+  useEffect(() => {
+    if (!diaRelatorioDetalheChaveSort) return;
+    if (!consolidadoGravados.some((b) => b.chaveSort === diaRelatorioDetalheChaveSort)) {
+      setDiaRelatorioDetalheChaveSort(null);
+    }
+  }, [consolidadoGravados, diaRelatorioDetalheChaveSort]);
+
+  const toggleDiaResumoLista = useCallback((chaveSort) => {
+    setDiasResumoExpandidos((prev) => {
+      const next = new Set(prev);
+      if (next.has(chaveSort)) next.delete(chaveSort);
+      else next.add(chaveSort);
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    setDiasResumoExpandidos(new Set());
+    setDiaRelatorioDetalheChaveSort(null);
+  }, [consolidadoCriterio, filtrados]);
 
   const executarLimparTodasPublicacoes = async () => {
     const ok = window.confirm(
@@ -730,12 +860,10 @@ export function PublicacoesProcessos() {
                                   ) : null}
                                 </div>
                                 <div
-                                  className="text-[10px] text-slate-600 dark:text-slate-400 mt-0.5 space-y-0.5"
-                                  title={[row.cliente, row.reu ? `Réu: ${row.reu}` : ''].filter(Boolean).join('\n')}
+                                  className="text-[10px] text-slate-600 dark:text-slate-400 mt-0.5"
+                                  title={[row.cliente, row.reu].filter(Boolean).join(' · ')}
                                 >
-                                  {row.cliente ? <div className="truncate">{row.cliente}</div> : null}
-                                  {row.reu ? <div className="truncate text-slate-500">Réu: {row.reu}</div> : null}
-                                  {!row.cliente && !row.reu ? <div className="text-slate-500">—</div> : null}
+                                  <div className="truncate">{formatarRotuloVinculoPartes(row)}</div>
                                 </div>
                               </>
                             ) : (
@@ -828,6 +956,7 @@ export function PublicacoesProcessos() {
                   setSelecionados(new Set());
                   setLogImportacao(null);
                   setVinculoModal(null);
+                  clearPublicacoesPreviasSession();
                 }}
                 className="px-4 py-2 rounded-lg border border-slate-300 dark:border-white/15 text-sm"
               >
@@ -849,7 +978,7 @@ export function PublicacoesProcessos() {
             {Number(logImportacao.semVinculo || 0) > 0 ? ` ${logImportacao.semVinculo} registro(s) sem vínculo resolvido.` : ''}
             {logImportacao.mensagem ? ` ${logImportacao.mensagem}` : ''}{' '}
             <span className="block mt-2 text-xs text-emerald-800/90 dark:text-emerald-200/80 font-normal">
-              A prévia deste PDF permanece nesta aba até você escolher outro arquivo ou usar «Cancelar prévia».
+              A prévia deste PDF permanece até novo arquivo, «Cancelar prévia», nova sessão (login/logout) ou sair do sistema.
             </span>
           </div>
         ) : null}
@@ -976,17 +1105,23 @@ export function PublicacoesProcessos() {
                   <CalendarDays className="w-4 h-4 shrink-0" />
                   Listagem diária consolidada
                 </h3>
-                <label className="flex items-center gap-2 text-[11px] text-slate-600 dark:text-slate-400">
-                  Agrupar por
-                  <select
-                    value={consolidadoCriterio}
-                    onChange={(e) => setConsolidadoCriterio(e.target.value)}
-                    className="rounded border border-slate-300 dark:border-white/15 bg-white dark:bg-[#0d1018] px-2 py-1 text-[11px]"
-                  >
-                    <option value="publicacao">Data de publicação</option>
-                    <option value="disponibilizacao">Data de disponibilização</option>
-                  </select>
-                </label>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 max-w-[30rem] leading-snug">
+                    Use o cabeçalho para expandir o resumo do dia. O relatório detalhado em tabela (CNJ, vínculo,
+                    ações) só abre pelo botão <strong>Relatório</strong> de cada dia.
+                  </p>
+                  <label className="flex items-center gap-2 text-[11px] text-slate-600 dark:text-slate-400">
+                    Agrupar por
+                    <select
+                      value={consolidadoCriterio}
+                      onChange={(e) => setConsolidadoCriterio(e.target.value)}
+                      className="rounded border border-slate-300 dark:border-white/15 bg-white dark:bg-[#0d1018] px-2 py-1 text-[11px]"
+                    >
+                      <option value="publicacao">Data de publicação</option>
+                      <option value="disponibilizacao">Data de disponibilização</option>
+                    </select>
+                  </label>
+                </div>
               </div>
               {consolidadoGravados.length === 0 ? (
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
@@ -994,263 +1129,379 @@ export function PublicacoesProcessos() {
                 </p>
               ) : (
                 <ul className="space-y-2 text-xs">
-                  {consolidadoGravados.map((b) => (
-                    <li
-                      key={b.chaveSort}
-                      className="border border-slate-200 dark:border-white/10 rounded-lg p-3 bg-white dark:bg-[#0d1018]/60"
-                    >
-                      <div className="font-semibold text-slate-800 dark:text-slate-100 mb-2">
-                        {b.dia} — {b.total} publicaç{b.total === 1 ? 'ão' : 'ões'}
-                      </div>
-                      <ul className="space-y-1.5 text-slate-700 dark:text-slate-300">
-                        {b.itens.map((row) => {
-                          const nLista = filtrados.indexOf(row) + 1;
-                          return (
-                          <li
-                            key={row.id}
-                            className="flex flex-wrap gap-x-3 gap-y-0.5 border-t border-slate-100 dark:border-white/[0.06] pt-1.5 first:border-0 first:pt-0"
+                  {consolidadoGravados.map((b) => {
+                    const aberto = diasResumoExpandidos.has(b.chaveSort);
+                    const relatorioDesteDia = diaRelatorioDetalheChaveSort === b.chaveSort;
+                    return (
+                      <li
+                        key={b.chaveSort}
+                        className="border border-slate-200 dark:border-white/10 rounded-lg bg-white dark:bg-[#0d1018]/60 overflow-hidden"
+                      >
+                        <div className="flex border-b border-slate-100 dark:border-white/[0.06]">
+                          <button
+                            type="button"
+                            onClick={() => toggleDiaResumoLista(b.chaveSort)}
+                            aria-expanded={aberto}
+                            className="flex-1 min-w-0 flex items-center gap-2 text-left px-3 py-2.5 font-semibold text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-white/[0.04] transition-colors"
                           >
-                            <span
-                              className="inline-flex min-w-[1.75rem] justify-center rounded bg-slate-200/90 dark:bg-white/10 px-1 text-[10px] font-bold text-slate-700 dark:text-slate-200 tabular-nums"
-                              title="Nº na lista filtrada (conferência)"
-                            >
-                              {nLista > 0 ? nLista : '—'}
+                            {aberto ? (
+                              <ChevronDown className="w-4 h-4 shrink-0 text-slate-500" aria-hidden />
+                            ) : (
+                              <ChevronRight className="w-4 h-4 shrink-0 text-slate-500" aria-hidden />
+                            )}
+                            <span className="truncate">
+                              {b.dia} — {b.total} publicaç{b.total === 1 ? 'ão' : 'ões'}
                             </span>
-                            <span className="font-mono text-[11px]">{row.numero_processo_cnj || '—'}</span>
-                            <span className="text-slate-500 dark:text-slate-400">
-                              Pub. {row.dataPublicacao || '—'} · Disp. {row.dataDisponibilizacao || '—'}
+                            <span className="ml-auto shrink-0 text-[10px] font-normal text-slate-500 dark:text-slate-400">
+                              {aberto ? 'Recolher' : 'Expandir'}
                             </span>
-                            <span>{row.tipoPublicacao || '—'}</span>
-                          </li>
-                          );
-                        })}
-                      </ul>
-                    </li>
-                  ))}
+                          </button>
+                          <button
+                            type="button"
+                            aria-pressed={relatorioDesteDia}
+                            title="Abre ou fecha o relatório detalhado de importação (tabela com CNJ, vínculo e ações) apenas para as publicações deste dia."
+                            onClick={() =>
+                              setDiaRelatorioDetalheChaveSort((cur) => (cur === b.chaveSort ? null : b.chaveSort))
+                            }
+                            className={`shrink-0 flex items-center gap-1.5 px-3 py-2.5 text-[10px] font-semibold border-l border-slate-200 dark:border-white/10 transition-colors ${
+                              relatorioDesteDia
+                                ? 'bg-indigo-100 text-indigo-900 dark:bg-indigo-950/60 dark:text-indigo-100'
+                                : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/[0.06]'
+                            }`}
+                          >
+                            <Table2 className="w-3.5 h-3.5 shrink-0" aria-hidden />
+                            Relatório
+                          </button>
+                        </div>
+                        {aberto ? (
+                          <ul className="space-y-1.5 text-slate-700 dark:text-slate-300 px-3 pb-3 pt-0 border-t border-slate-100 dark:border-white/[0.06]">
+                            {b.itens.map((row, idxNoDia) => {
+                              const nLista = idxNoDia + 1;
+                              return (
+                                <li
+                                  key={row.id}
+                                  className="flex flex-wrap gap-x-3 gap-y-0.5 border-t border-slate-100 dark:border-white/[0.06] pt-1.5 first:border-0 first:pt-0"
+                                >
+                                  <span
+                                    className="inline-flex min-w-[1.75rem] justify-center rounded bg-slate-200/90 dark:bg-white/10 px-1 text-[10px] font-bold text-slate-700 dark:text-slate-200 tabular-nums"
+                                    title="Nº sequencial dentro deste dia (conferência)"
+                                  >
+                                    {nLista > 0 ? nLista : '—'}
+                                  </span>
+                                  <span className="font-mono text-[11px]">{row.numero_processo_cnj || '—'}</span>
+                                  <span className="text-slate-500 dark:text-slate-400">
+                                    Pub. {row.dataPublicacao || '—'} · Disp. {row.dataDisponibilizacao || '—'}
+                                  </span>
+                                  <span>{row.tipoPublicacao || '—'}</span>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        ) : null}
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </div>
           ) : null}
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs min-w-[1200px]">
-              <thead className="bg-slate-50 dark:bg-black/25 border-b border-slate-200 dark:border-white/[0.08]">
-                <tr className="text-left">
-                  <th
-                    className="p-2 w-9 text-center"
-                    title="Numeração sequencial — conferência com a importação / PDF"
-                  >
-                    #
-                  </th>
-                  <th className="p-2">Importação</th>
-                  <th className="p-2">CNJ</th>
-                  <th className="p-2">Cliente / proc.</th>
-                  <th className="p-2">Data pub.</th>
-                  <th className="p-2">Data disp.</th>
-                  <th className="p-2">Diário</th>
-                  <th className="p-2">Tipo</th>
-                  <th className="p-2">Status CNJ</th>
-                  <th className="p-2">Score</th>
-                  <th className="p-2">Vínculo</th>
-                  <th className="p-2 min-w-[200px]">Resumo</th>
-                  <th className="p-2 w-[120px]">Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtrados.length === 0 ? (
+          {filtrados.length === 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs min-w-[1200px]">
+                <thead className="bg-slate-50 dark:bg-black/25 border-b border-slate-200 dark:border-white/[0.08]">
+                  <tr className="text-left">
+                    <th
+                      className="p-2 w-9 text-center"
+                      title="Numeração sequencial — conferência com a importação / PDF"
+                    >
+                      #
+                    </th>
+                    <th className="p-2">Importação</th>
+                    <th className="p-2">CNJ</th>
+                    <th className="p-2">Cliente / proc.</th>
+                    <th className="p-2">Data pub.</th>
+                    <th className="p-2">Data disp.</th>
+                    <th className="p-2">Diário</th>
+                    <th className="p-2">Tipo</th>
+                    <th className="p-2">Status CNJ</th>
+                    <th className="p-2">Score</th>
+                    <th className="p-2">Vínculo</th>
+                    <th className="p-2 min-w-[200px]">Resumo</th>
+                    <th className="p-2 w-[120px]">Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
                   <tr>
                     <td colSpan={13} className="p-8 text-center text-slate-500">
                       Nenhuma publicação gravada ou nada corresponde ao filtro.
                     </td>
                   </tr>
-                ) : (
-                  filtrados.map((r, idxLista) => {
-                    const sugG = lookupSugestaoVinculoCadastro(r, indiceCnj);
-                    const destaque =
-                      r.scoreConfianca === 'baixo'
-                        ? 'bg-red-50/50 dark:bg-red-950/20'
-                        : r.statusValidacaoCnj === 'divergencia_pdf_cnj'
-                          ? 'bg-amber-50/40 dark:bg-amber-950/15'
-                          : r.statusVinculo === 'nao_vinculado' || r.statusVinculo === 'sem_cnj'
-                            ? 'border-l-2 border-l-amber-400/80'
-                            : '';
-                    return (
-                      <tr key={r.id} className={`border-b border-slate-100 dark:border-white/[0.06] align-top ${destaque}`}>
-                        <td className="p-2 text-center tabular-nums font-semibold text-slate-600 dark:text-slate-300">
-                          {idxLista + 1}
+                </tbody>
+              </table>
+            </div>
+          ) : !diaRelatorioDetalheChaveSort ? (
+            <div className="rounded-xl border border-dashed border-slate-300 dark:border-white/15 bg-slate-50/50 dark:bg-black/20 px-4 py-6 text-center text-sm text-slate-600 dark:text-slate-300">
+              {consolidadoGravados.length === 0 ? (
+                <p>
+                  Não há datas classificáveis para agrupar por dia. O relatório detalhado em tabela abre pelo botão{' '}
+                  <strong>Relatório</strong> no cabeçalho de cada dia — ajuste filtros se necessário.
+                </p>
+              ) : (
+                <p>
+                  O relatório geral de importação (tabela com colunas CNJ, vínculo, ações) não é carregado
+                  automaticamente. Escolha um dia e clique em <strong>Relatório</strong> no cabeçalho do bloco desse
+                  dia.
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-xs font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                  <Table2 className="w-4 h-4 shrink-0 text-indigo-600 dark:text-indigo-400" aria-hidden />
+                  Relatório de importação — {blocoRelatorioDetalhe?.dia ?? diaRelatorioDetalheChaveSort} (
+                  {filtradosRelatorioDetalheDia.length} publicaç{filtradosRelatorioDetalheDia.length === 1 ? 'ão' : 'ões'}
+                  )
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setDiaRelatorioDetalheChaveSort(null)}
+                  className="text-xs font-medium text-indigo-700 dark:text-indigo-300 hover:underline"
+                >
+                  Fechar relatório
+                </button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs min-w-[1200px]">
+                  <thead className="bg-slate-50 dark:bg-black/25 border-b border-slate-200 dark:border-white/[0.08]">
+                    <tr className="text-left">
+                      <th
+                        className="p-2 w-9 text-center"
+                        title="Numeração sequencial — conferência com a importação / PDF"
+                      >
+                        #
+                      </th>
+                      <th className="p-2">Importação</th>
+                      <th className="p-2">CNJ</th>
+                      <th className="p-2">Cliente / proc.</th>
+                      <th className="p-2">Data pub.</th>
+                      <th className="p-2">Data disp.</th>
+                      <th className="p-2">Diário</th>
+                      <th className="p-2">Tipo</th>
+                      <th className="p-2">Status CNJ</th>
+                      <th className="p-2">Score</th>
+                      <th className="p-2">Vínculo</th>
+                      <th className="p-2 min-w-[200px]">Resumo</th>
+                      <th className="p-2 w-[120px]">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtradosRelatorioDetalheDia.length === 0 ? (
+                      <tr>
+                        <td colSpan={13} className="p-8 text-center text-slate-500">
+                          Nenhum registro neste dia (dados ou filtros podem ter mudado).
                         </td>
-                        <td className="p-2 whitespace-nowrap text-slate-500">
-                          {r.dataImportacao?.slice(0, 10)}
-                          <div className="text-[10px] truncate max-w-[120px]" title={r.arquivoOrigem}>
-                            {r.arquivoOrigem || '—'}
-                          </div>
-                        </td>
-                        <td className="p-2 font-mono text-[11px]">{r.numero_processo_cnj}</td>
-                        <td className="p-2 max-w-[200px]">
-                          {r.statusVinculo === 'vinculado' ? (
-                            <>
-                              <div>{r.codCliente || '—'}</div>
-                              <div className="text-slate-500">proc {r.procInterno || '—'}</div>
-                              <div className="text-[10px] text-slate-500 truncate" title={r.cliente}>
-                                {r.cliente || '—'}
+                      </tr>
+                    ) : (
+                      filtradosRelatorioDetalheDia.map((r, idxLista) => {
+                        const sugG = lookupSugestaoVinculoCadastro(r, indiceCnj);
+                        const destaque =
+                          r.scoreConfianca === 'baixo'
+                            ? 'bg-red-50/50 dark:bg-red-950/20'
+                            : r.statusValidacaoCnj === 'divergencia_pdf_cnj'
+                              ? 'bg-amber-50/40 dark:bg-amber-950/15'
+                              : r.statusVinculo === 'nao_vinculado' || r.statusVinculo === 'sem_cnj'
+                                ? 'border-l-2 border-l-amber-400/80'
+                                : '';
+                        return (
+                          <tr
+                            key={r.id}
+                            className={`border-b border-slate-100 dark:border-white/[0.06] align-top ${destaque}`}
+                          >
+                            <td className="p-2 text-center tabular-nums font-semibold text-slate-600 dark:text-slate-300">
+                              {idxLista + 1}
+                            </td>
+                            <td className="p-2 whitespace-nowrap text-slate-500">
+                              {r.dataImportacao?.slice(0, 10)}
+                              <div className="text-[10px] truncate max-w-[120px]" title={r.arquivoOrigem}>
+                                {r.arquivoOrigem || '—'}
                               </div>
-                              {r.reu ? (
-                                <div className="text-[10px] text-slate-500 truncate mt-0.5" title={r.reu}>
-                                  Réu: {r.reu}
-                                </div>
-                              ) : null}
-                            </>
-                          ) : sugG ? (
-                            <>
-                              <div className="text-[10px] font-semibold text-sky-800 dark:text-sky-200">Sugestão (cadastro)</div>
-                              <div>{sugG.codCliente}</div>
-                              <div className="text-slate-500">proc {sugG.procInterno}</div>
-                              <div className="text-[10px] text-slate-600 dark:text-slate-400 truncate" title={sugG.cliente}>
-                                {sugG.cliente}
-                              </div>
-                              {sugG.reu ? (
-                                <div className="text-[10px] text-slate-500 truncate mt-0.5" title={sugG.reu}>
-                                  Réu: {sugG.reu}
-                                </div>
-                              ) : null}
-                            </>
-                          ) : (
-                            <>
-                              <div>{r.codCliente || '—'}</div>
-                              <div className="text-slate-500">proc {r.procInterno || '—'}</div>
-                              <div className="text-[10px] text-slate-500 truncate max-w-[160px]" title={r.cliente}>
-                                {r.cliente || '—'}
-                              </div>
-                            </>
-                          )}
-                        </td>
-                        <td className="p-2 whitespace-nowrap">{r.dataPublicacao || '—'}</td>
-                        <td className="p-2 whitespace-nowrap text-slate-600 dark:text-slate-400">
-                          {r.dataDisponibilizacao || '—'}
-                        </td>
-                        <td className="p-2 max-w-[120px]">
-                          <div className="line-clamp-2 text-[11px]" title={r.diario || ''}>
-                            {r.diario || '—'}
-                          </div>
-                        </td>
-                        <td className="p-2">{r.tipoPublicacao}</td>
-                        <td className="p-2">
-                          <span className="text-[11px]">{rotuloStatusCnj(r.statusValidacaoCnj)}</span>
-                        </td>
-                        <td className="p-2">
-                          <ScoreBadge score={r.scoreConfianca} />
-                        </td>
-                        <td
-                          className="p-2 max-w-[240px] cursor-pointer"
-                          title="Duplo clique: abrir o formulário de Processos (cliente e proc. vinculados ou sugeridos)"
-                          onDoubleClick={() => abrirFormularioProcessoDesdeVinculo(r)}
-                        >
-                          {r.statusVinculo === 'vinculado' ? (
-                            <>
-                              <div className="flex flex-wrap items-center gap-1">
-                                <Badge tone="green">Vinculado</Badge>
-                                {r.vinculoOrigem === 'manual' ? (
-                                  <span className="text-[9px] uppercase text-sky-700 dark:text-sky-300">manual</span>
-                                ) : null}
-                              </div>
-                              <div
-                                className="text-[10px] text-slate-600 dark:text-slate-400 mt-0.5 space-y-0.5"
-                                title={[r.cliente, r.reu ? `Réu: ${r.reu}` : ''].filter(Boolean).join('\n')}
-                              >
-                                {r.cliente ? <div className="truncate">{r.cliente}</div> : null}
-                                {r.reu ? <div className="truncate text-slate-500">Réu: {r.reu}</div> : null}
-                                {!r.cliente && !r.reu ? <div className="text-slate-500">—</div> : null}
-                              </div>
-                            </>
-                          ) : (
-                            <>
-                              <Badge tone="amber" title={r.statusVinculo === 'nao_vinculado' ? 'Processo não vinculado ao cadastro interno' : ''}>
-                                {r.statusVinculo === 'nao_vinculado' ? 'Processo não vinculado' : 'Pendente'}
-                              </Badge>
-                              {sugG ? (
-                                <div className="text-[10px] text-slate-600 dark:text-slate-400 mt-0.5 space-y-0.5">
-                                  <div className="font-medium text-sky-800 dark:text-sky-200">Sugestão (cadastro)</div>
+                            </td>
+                            <td className="p-2 font-mono text-[11px]">{r.numero_processo_cnj}</td>
+                            <td className="p-2 max-w-[200px]">
+                              {r.statusVinculo === 'vinculado' ? (
+                                <>
+                                  <div>{r.codCliente || '—'}</div>
+                                  <div className="text-slate-500">proc {r.procInterno || '—'}</div>
+                                  <div className="text-[10px] text-slate-500 truncate" title={r.cliente}>
+                                    {r.cliente || '—'}
+                                  </div>
+                                  {r.reu ? (
+                                    <div className="text-[10px] text-slate-500 truncate mt-0.5" title={r.reu}>
+                                      Réu: {r.reu}
+                                    </div>
+                                  ) : null}
+                                </>
+                              ) : sugG ? (
+                                <>
+                                  <div className="text-[10px] font-semibold text-sky-800 dark:text-sky-200">
+                                    Sugestão (cadastro)
+                                  </div>
+                                  <div>{sugG.codCliente}</div>
+                                  <div className="text-slate-500">proc {sugG.procInterno}</div>
                                   <div
-                                    className="truncate"
-                                    title={`${sugG.cliente} · ${sugG.codCliente} / proc ${sugG.procInterno}`}
+                                    className="text-[10px] text-slate-600 dark:text-slate-400 truncate"
+                                    title={sugG.cliente}
                                   >
-                                    Cliente: {sugG.cliente} · {sugG.codCliente} / proc {sugG.procInterno}
+                                    {sugG.cliente}
                                   </div>
                                   {sugG.reu ? (
-                                    <div className="truncate text-slate-500" title={sugG.reu}>
+                                    <div className="text-[10px] text-slate-500 truncate mt-0.5" title={sugG.reu}>
                                       Réu: {sugG.reu}
                                     </div>
                                   ) : null}
-                                  <div className="text-[9px] text-slate-400">Use o botão Auto para aplicar ao item.</div>
-                                </div>
-                              ) : null}
-                            </>
-                          )}
-                        </td>
-                        <td className="p-2 text-slate-700 dark:text-slate-300">
-                          <div className="line-clamp-4">{r.resumoPublicacao}</div>
-                        </td>
-                        <td className="p-2 align-top">
-                          <div className="flex flex-col gap-1">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setVinculoModal({ kind: 'saved', id: r.id });
-                                setVincForm({
-                                  codCliente: r.codCliente || sugG?.codCliente || '',
-                                  procInterno: r.procInterno || sugG?.procInterno || '',
-                                  cliente: r.cliente || sugG?.cliente || '',
-                                });
-                                setVinculoFormErro('');
-                              }}
-                              className="inline-flex items-center gap-1 px-2 py-1 rounded border border-slate-200 dark:border-white/15 text-[10px] font-medium hover:bg-slate-100 dark:hover:bg-white/5"
+                                </>
+                              ) : (
+                                <>
+                                  <div>{r.codCliente || '—'}</div>
+                                  <div className="text-slate-500">proc {r.procInterno || '—'}</div>
+                                  <div className="text-[10px] text-slate-500 truncate max-w-[160px]" title={r.cliente}>
+                                    {r.cliente || '—'}
+                                  </div>
+                                </>
+                              )}
+                            </td>
+                            <td className="p-2 whitespace-nowrap">{r.dataPublicacao || '—'}</td>
+                            <td className="p-2 whitespace-nowrap text-slate-600 dark:text-slate-400">
+                              {r.dataDisponibilizacao || '—'}
+                            </td>
+                            <td className="p-2 max-w-[120px]">
+                              <div className="line-clamp-2 text-[11px]" title={r.diario || ''}>
+                                {r.diario || '—'}
+                              </div>
+                            </td>
+                            <td className="p-2">{r.tipoPublicacao}</td>
+                            <td className="p-2">
+                              <span className="text-[11px]">{rotuloStatusCnj(r.statusValidacaoCnj)}</span>
+                            </td>
+                            <td className="p-2">
+                              <ScoreBadge score={r.scoreConfianca} />
+                            </td>
+                            <td
+                              className="p-2 max-w-[240px] cursor-pointer"
+                              title="Duplo clique: abrir o formulário de Processos (cliente e proc. vinculados ou sugeridos)"
+                              onDoubleClick={() => abrirFormularioProcessoDesdeVinculo(r)}
                             >
-                              <Link2 className="w-3 h-3" />
-                              Vincular
-                            </button>
-                            <button
-                              type="button"
-                              title="Reaplica o cruzamento automático pelo CNJ no cadastro"
-                              onClick={() => reaplicarVinculoGravado(r)}
-                              className="inline-flex items-center gap-1 px-2 py-1 rounded border border-slate-200 dark:border-white/15 text-[10px] font-medium hover:bg-slate-100 dark:hover:bg-white/5"
-                            >
-                              <RotateCcw className="w-3 h-3" />
-                              Auto
-                            </button>
-                            {featureFlags.useApiTarefas ? (
-                              <button
-                                type="button"
-                                onClick={() => abrirModalTarefaPublicacao(r)}
-                                className="inline-flex items-center gap-1 px-2 py-1 rounded border border-sky-200 dark:border-sky-500/40 text-[10px] font-medium text-sky-800 dark:text-sky-200 hover:bg-sky-50 dark:hover:bg-sky-950/30"
-                                title="Criar tarefa operacional com vínculos quando a API estiver ativa"
-                              >
-                                <ListTodo className="w-3 h-3" />
-                                Criar tarefa
-                              </button>
-                            ) : null}
-                            <button
-                              type="button"
-                              onClick={() => alterarStatusGravado(r, 'TRATADA')}
-                              className="inline-flex items-center gap-1 px-2 py-1 rounded border border-emerald-200 dark:border-emerald-500/40 text-[10px] font-medium text-emerald-800 dark:text-emerald-200 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
-                            >
-                              Tratar
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => alterarStatusGravado(r, 'IGNORADA')}
-                              className="inline-flex items-center gap-1 px-2 py-1 rounded border border-amber-200 dark:border-amber-500/40 text-[10px] font-medium text-amber-800 dark:text-amber-200 hover:bg-amber-50 dark:hover:bg-amber-950/30"
-                            >
-                              Ignorar
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+                              {r.statusVinculo === 'vinculado' ? (
+                                <>
+                                  <div className="flex flex-wrap items-center gap-1">
+                                    <Badge tone="green">Vinculado</Badge>
+                                    {r.vinculoOrigem === 'manual' ? (
+                                      <span className="text-[9px] uppercase text-sky-700 dark:text-sky-300">manual</span>
+                                    ) : null}
+                                  </div>
+                                  <div
+                                    className="text-[10px] text-slate-600 dark:text-slate-400 mt-0.5"
+                                    title={[r.cliente, r.reu].filter(Boolean).join(' · ')}
+                                  >
+                                    <div className="truncate">{formatarRotuloVinculoPartes(r)}</div>
+                                  </div>
+                                </>
+                              ) : (
+                                <>
+                                  <Badge
+                                    tone="amber"
+                                    title={r.statusVinculo === 'nao_vinculado' ? 'Processo não vinculado ao cadastro interno' : ''}
+                                  >
+                                    {r.statusVinculo === 'nao_vinculado' ? 'Processo não vinculado' : 'Pendente'}
+                                  </Badge>
+                                  {sugG ? (
+                                    <div className="text-[10px] text-slate-600 dark:text-slate-400 mt-0.5 space-y-0.5">
+                                      <div className="font-medium text-sky-800 dark:text-sky-200">Sugestão (cadastro)</div>
+                                      <div
+                                        className="truncate"
+                                        title={`${sugG.cliente} · ${sugG.codCliente} / proc ${sugG.procInterno}`}
+                                      >
+                                        Cliente: {sugG.cliente} · {sugG.codCliente} / proc {sugG.procInterno}
+                                      </div>
+                                      {sugG.reu ? (
+                                        <div className="truncate text-slate-500" title={sugG.reu}>
+                                          Réu: {sugG.reu}
+                                        </div>
+                                      ) : null}
+                                      <div className="text-[9px] text-slate-400">Use o botão Auto para aplicar ao item.</div>
+                                    </div>
+                                  ) : null}
+                                </>
+                              )}
+                            </td>
+                            <td className="p-2 text-slate-700 dark:text-slate-300">
+                              <div className="line-clamp-4">{r.resumoPublicacao}</div>
+                            </td>
+                            <td className="p-2 align-top">
+                              <div className="flex flex-col gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setVinculoModal({ kind: 'saved', id: r.id });
+                                    setVincForm({
+                                      codCliente: r.codCliente || sugG?.codCliente || '',
+                                      procInterno: r.procInterno || sugG?.procInterno || '',
+                                      cliente: r.cliente || sugG?.cliente || '',
+                                    });
+                                    setVinculoFormErro('');
+                                  }}
+                                  className="inline-flex items-center gap-1 px-2 py-1 rounded border border-slate-200 dark:border-white/15 text-[10px] font-medium hover:bg-slate-100 dark:hover:bg-white/5"
+                                >
+                                  <Link2 className="w-3 h-3" />
+                                  Vincular
+                                </button>
+                                <button
+                                  type="button"
+                                  title="Reaplica o cruzamento automático pelo CNJ no cadastro"
+                                  onClick={() => reaplicarVinculoGravado(r)}
+                                  className="inline-flex items-center gap-1 px-2 py-1 rounded border border-slate-200 dark:border-white/15 text-[10px] font-medium hover:bg-slate-100 dark:hover:bg-white/5"
+                                >
+                                  <RotateCcw className="w-3 h-3" />
+                                  Auto
+                                </button>
+                                {featureFlags.useApiTarefas ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => abrirModalTarefaPublicacao(r)}
+                                    className="inline-flex items-center gap-1 px-2 py-1 rounded border border-sky-200 dark:border-sky-500/40 text-[10px] font-medium text-sky-800 dark:text-sky-200 hover:bg-sky-50 dark:hover:bg-sky-950/30"
+                                    title="Criar tarefa operacional com vínculos quando a API estiver ativa"
+                                  >
+                                    <ListTodo className="w-3 h-3" />
+                                    Criar tarefa
+                                  </button>
+                                ) : null}
+                                <button
+                                  type="button"
+                                  onClick={() => alterarStatusGravado(r, 'TRATADA')}
+                                  className="inline-flex items-center gap-1 px-2 py-1 rounded border border-emerald-200 dark:border-emerald-500/40 text-[10px] font-medium text-emerald-800 dark:text-emerald-200 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                                >
+                                  Tratar
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => alterarStatusGravado(r, 'IGNORADA')}
+                                  className="inline-flex items-center gap-1 px-2 py-1 rounded border border-amber-200 dark:border-amber-500/40 text-[10px] font-medium text-amber-800 dark:text-amber-200 hover:bg-amber-50 dark:hover:bg-amber-950/30"
+                                >
+                                  Ignorar
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </section>
 
         {vinculoModal ? (

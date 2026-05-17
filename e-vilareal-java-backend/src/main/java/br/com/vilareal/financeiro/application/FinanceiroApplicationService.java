@@ -271,6 +271,11 @@ public class FinanceiroApplicationService {
 
         String status = req.getStatus() != null ? req.getStatus().trim() : "";
         e.setStatus(StringUtils.hasText(status) ? status : "ATIVO");
+
+        if (req.getGrupoCompensacao() != null) {
+            String g = req.getGrupoCompensacao().trim();
+            e.setGrupoCompensacao(StringUtils.hasText(g) ? g : null);
+        }
     }
 
     private ContaContabilResponse toContaResponse(ContaContabilEntity e) {
@@ -308,6 +313,47 @@ public class FinanceiroApplicationService {
         r.setRefTipo(Utf8MojibakeUtil.corrigir(e.getRefTipo()));
         r.setOrigem(Utf8MojibakeUtil.corrigir(e.getOrigem()));
         r.setStatus(Utf8MojibakeUtil.corrigir(e.getStatus()));
+        r.setGrupoCompensacao(Utf8MojibakeUtil.corrigir(e.getGrupoCompensacao()));
         return r;
+    }
+
+    /**
+     * Atualiza {@code grupo_compensacao} em lote (backfill planilha col. M), por {@code numero_lancamento}.
+     */
+    @Transactional
+    public GrupoCompensacaoLoteResult sincronizarGruposCompensacaoLote(List<GrupoCompensacaoLoteItemRequest> itens) {
+        GrupoCompensacaoLoteResult result = new GrupoCompensacaoLoteResult();
+        if (itens == null || itens.isEmpty()) {
+            return result;
+        }
+        List<String> numeros = itens.stream()
+                .filter(i -> i != null && StringUtils.hasText(i.getNumeroLancamento()))
+                .map(i -> i.getNumeroLancamento().trim())
+                .distinct()
+                .toList();
+        Map<String, LancamentoFinanceiroEntity> porNumero = lancamentoRepository.findByNumeroLancamentoIn(numeros)
+                .stream()
+                .collect(Collectors.toMap(LancamentoFinanceiroEntity::getNumeroLancamento, e -> e, (a, b) -> a));
+        List<LancamentoFinanceiroEntity> toSave = new ArrayList<>();
+        for (GrupoCompensacaoLoteItemRequest item : itens) {
+            if (item == null || !StringUtils.hasText(item.getNumeroLancamento())) {
+                result.setIgnorados(result.getIgnorados() + 1);
+                continue;
+            }
+            String num = item.getNumeroLancamento().trim();
+            LancamentoFinanceiroEntity e = porNumero.get(num);
+            if (e == null) {
+                result.setNaoEncontrados(result.getNaoEncontrados() + 1);
+                continue;
+            }
+            String g = item.getGrupoCompensacao() != null ? item.getGrupoCompensacao().trim() : "";
+            e.setGrupoCompensacao(StringUtils.hasText(g) ? g : null);
+            toSave.add(e);
+            result.setAtualizados(result.getAtualizados() + 1);
+        }
+        if (!toSave.isEmpty()) {
+            lancamentoRepository.saveAll(toSave);
+        }
+        return result;
     }
 }

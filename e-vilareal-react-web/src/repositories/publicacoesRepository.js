@@ -84,6 +84,11 @@ export function mapApiPublicacaoToUi(r) {
   const procInt = r.numeroInternoProcesso ?? r.numero_interno_processo;
   const procInterno =
     procInt != null && Number.isFinite(Number(procInt)) && Number(procInt) >= 1 ? String(Math.floor(Number(procInt))) : '';
+  const parteClienteApi = String(r.parteCliente ?? r.parte_cliente ?? '').trim();
+  const parteOpostaApi = String(r.parteOposta ?? r.parte_oposta ?? '').trim();
+  const cliente = parteClienteApi || (r.clienteId != null ? `Cliente #${r.clienteId}` : '');
+  const reu = parteOpostaApi;
+
   return {
     id: String(r.id),
     _apiId: r.id,
@@ -95,7 +100,8 @@ export function mapApiPublicacaoToUi(r) {
     numero_processo_cnj: r.numeroProcessoEncontrado || '',
     procInterno,
     codCliente,
-    cliente: r.clienteId ? `Cliente #${r.clienteId}` : '',
+    cliente,
+    reu,
     diario: r.diario || r.fonte || '',
     tribunalPdf: '',
     tribunalCnj: '',

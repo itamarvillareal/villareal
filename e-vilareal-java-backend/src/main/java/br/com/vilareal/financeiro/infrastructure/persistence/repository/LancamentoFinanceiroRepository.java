@@ -12,7 +12,9 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.math.BigDecimal;
+import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 
 public interface LancamentoFinanceiroRepository extends JpaRepository<LancamentoFinanceiroEntity, Long>,
         JpaSpecificationExecutor<LancamentoFinanceiroEntity> {
@@ -24,6 +26,10 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
     List<LancamentoFinanceiroEntity> findAllByBancoNormalizado(@Param("bn") String bancoNormalizado);
 
     List<LancamentoFinanceiroEntity> findAllByNumeroBanco(Integer numeroBanco);
+
+    Optional<LancamentoFinanceiroEntity> findByNumeroLancamento(String numeroLancamento);
+
+    List<LancamentoFinanceiroEntity> findByNumeroLancamentoIn(Collection<String> numerosLancamento);
 
     @EntityGraph(attributePaths = {"contaContabil", "cliente", "processo"})
     @Override
