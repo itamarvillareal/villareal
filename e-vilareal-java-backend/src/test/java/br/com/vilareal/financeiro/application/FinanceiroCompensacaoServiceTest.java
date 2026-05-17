@@ -3,6 +3,7 @@ package br.com.vilareal.financeiro.application;
 import br.com.vilareal.financeiro.api.dto.ParearCompensacaoItemRequest;
 import br.com.vilareal.financeiro.api.dto.ParearCompensacaoRequest;
 import br.com.vilareal.financeiro.api.dto.ParearCompensacaoResponse;
+import br.com.vilareal.financeiro.api.dto.ParesSugeridosCompensacaoResponse;
 import br.com.vilareal.financeiro.domain.EtapaLancamento;
 import br.com.vilareal.financeiro.domain.NaturezaLancamento;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.ContaContabilEntity;
@@ -24,6 +25,9 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -116,5 +120,44 @@ class FinanceiroCompensacaoServiceTest {
 
         assertThat(r.getPareados()).isZero();
         assertThat(r.getErros()).hasSize(1);
+    }
+
+    @Test
+    void listarParesSugeridos_filtraPorMesmoDiaUtilBancario() {
+        LocalDate sexta = LocalDate.of(2025, 3, 14);
+        LocalDate segunda = LocalDate.of(2025, 3, 17);
+        LocalDate quinta = LocalDate.of(2025, 3, 13);
+
+        LancamentoFinanceiroEntity itau = lancamentoOrfao(10L, 1, NaturezaLancamento.DEBITO, sexta);
+        LancamentoFinanceiroEntity pay99 = lancamentoOrfao(20L, 30, NaturezaLancamento.CREDITO, segunda);
+        LancamentoFinanceiroEntity outro = lancamentoOrfao(30L, 2, NaturezaLancamento.CREDITO, quinta);
+
+        when(lancamentoRepository.countParesCompensacaoSugeridos(any(), any(), any(), eq(3), anyBoolean()))
+                .thenReturn(2L);
+        when(lancamentoRepository.findParesCompensacaoSugeridosIds(any(), any(), any(), eq(3), anyBoolean(), anyInt(), anyInt()))
+                .thenReturn(
+                        List.<Object[]>of(new Object[] {10L, 20L, 1, 30}, new Object[] {10L, 30L, 1, 2}),
+                        List.of());
+        when(lancamentoRepository.findAllByIdIn(any())).thenReturn(List.of(itau, pay99, outro));
+
+        ParesSugeridosCompensacaoResponse r = service.listarParesSugeridos(null, null, null, 0, 50, true);
+
+        assertThat(r.getTotalPares()).isEqualTo(1);
+        assertThat(r.getPares()).hasSize(1);
+        assertThat(r.getPares().get(0).getLancamentoA().getId()).isEqualTo(10L);
+        assertThat(r.getPares().get(0).getLancamentoB().getId()).isEqualTo(20L);
+    }
+
+    private static LancamentoFinanceiroEntity lancamentoOrfao(
+            long id, int numeroBanco, NaturezaLancamento natureza, LocalDate data) {
+        LancamentoFinanceiroEntity e = new LancamentoFinanceiroEntity();
+        e.setId(id);
+        e.setNumeroBanco(numeroBanco);
+        e.setValor(new BigDecimal("500.00"));
+        e.setNatureza(natureza);
+        e.setDataLancamento(data);
+        e.setContaContabil(contaN());
+        e.setEtapa(EtapaLancamento.CLASSIFICADO);
+        return e;
     }
 }

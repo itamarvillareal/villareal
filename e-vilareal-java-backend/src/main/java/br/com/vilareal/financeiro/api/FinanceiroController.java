@@ -248,12 +248,11 @@ public class FinanceiroController {
             @RequestParam(value = "numeroBanco", required = false) Integer numeroBanco,
             @RequestParam(value = "ano", required = false) Integer ano,
             @RequestParam(value = "mes", required = false) Integer mes,
-            @RequestParam(value = "diasTolerancia", defaultValue = "3") int diasTolerancia,
             @RequestParam(value = "apenasInterbancario", defaultValue = "false") boolean apenasInterbancario,
             @RequestParam(value = "page", defaultValue = "0") int page,
             @RequestParam(value = "size", defaultValue = "50") int size) {
         return financeiroCompensacaoService.listarParesSugeridos(
-                numeroBanco, ano, mes, page, size, diasTolerancia, apenasInterbancario);
+                numeroBanco, ano, mes, page, size, apenasInterbancario);
     }
 
     @GetMapping("/lancamentos/grupos-compensacao/inconsistentes")
