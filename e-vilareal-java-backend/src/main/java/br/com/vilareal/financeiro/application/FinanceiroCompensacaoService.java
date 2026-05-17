@@ -15,6 +15,7 @@ import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -64,12 +65,13 @@ public class FinanceiroCompensacaoService {
         return r;
     }
 
-    private static final int DIAS_TOLERANCIA_PADRAO = 3;
+    /** Pré-filtro SQL: cobre sexta→segunda (3 dias corridos no pior caso). */
+    private static final int DIAS_TOLERANCIA_SQL = 3;
 
     @Transactional(readOnly = true)
     public ParesSugeridosCompensacaoResponse listarParesSugeridos(
             Integer numeroBanco, Integer ano, Integer mes, int page, int size) {
-        return listarParesSugeridos(numeroBanco, ano, mes, page, size, DIAS_TOLERANCIA_PADRAO, false);
+        return listarParesSugeridos(numeroBanco, ano, mes, page, size, false);
     }
 
     @Transactional(readOnly = true)
@@ -79,16 +81,60 @@ public class FinanceiroCompensacaoService {
             Integer mes,
             int page,
             int size,
-            int diasTolerancia,
             boolean apenasInterbancario) {
-        int dias = Math.max(0, diasTolerancia);
         int limit = Math.max(1, Math.min(size, 200));
-        int offset = Math.max(0, page) * limit;
-        long total = lancamentoRepository.countParesCompensacaoSugeridos(
-                numeroBanco, ano, mes, dias, apenasInterbancario);
-        List<Object[]> rows = lancamentoRepository.findParesCompensacaoSugeridosIds(
-                numeroBanco, ano, mes, dias, apenasInterbancario, limit, offset);
+        int skip = Math.max(0, page) * limit;
+        List<ParCompensacaoSugeridoResponse> todosFiltrados =
+                coletarParesFiltradosPorDiaUtil(numeroBanco, ano, mes, apenasInterbancario, 0, Integer.MAX_VALUE);
+        long totalFiltrado = todosFiltrados.size();
+        List<ParCompensacaoSugeridoResponse> pares = todosFiltrados.stream()
+                .skip(skip)
+                .limit(limit)
+                .toList();
 
+        ParesSugeridosCompensacaoResponse response = new ParesSugeridosCompensacaoResponse();
+        response.setPares(pares);
+        response.setTotalPares(totalFiltrado);
+        response.setPage(page);
+        response.setTotalPages(totalFiltrado == 0 ? 0 : (int) Math.ceil((double) totalFiltrado / limit));
+        return response;
+    }
+
+    private List<ParCompensacaoSugeridoResponse> coletarParesFiltradosPorDiaUtil(
+            Integer numeroBanco,
+            Integer ano,
+            Integer mes,
+            boolean apenasInterbancario,
+            int skip,
+            int limit) {
+        long totalSql = lancamentoRepository.countParesCompensacaoSugeridos(
+                numeroBanco, ano, mes, DIAS_TOLERANCIA_SQL, apenasInterbancario);
+        List<ParCompensacaoSugeridoResponse> resultado = new ArrayList<>();
+        int ignorados = 0;
+        int sqlOffset = 0;
+        int batchSize = 500;
+        while (resultado.size() < limit && sqlOffset < totalSql) {
+            List<Object[]> rows = lancamentoRepository.findParesCompensacaoSugeridosIds(
+                    numeroBanco, ano, mes, DIAS_TOLERANCIA_SQL, apenasInterbancario, batchSize, sqlOffset);
+            if (rows.isEmpty()) {
+                break;
+            }
+            sqlOffset += rows.size();
+            for (ParCompensacaoSugeridoResponse par : mapearParesFiltradosPorDiaUtil(rows, rows.size())) {
+                if (ignorados < skip) {
+                    ignorados++;
+                    continue;
+                }
+                resultado.add(par);
+                if (resultado.size() >= limit) {
+                    break;
+                }
+            }
+        }
+        return resultado;
+    }
+
+    private List<ParCompensacaoSugeridoResponse> mapearParesFiltradosPorDiaUtil(List<Object[]> rows, int maxPares) {
         Set<Long> ids = new LinkedHashSet<>();
         List<long[]> paresMeta = new ArrayList<>();
         for (Object[] row : rows) {
@@ -104,9 +150,15 @@ public class FinanceiroCompensacaoService {
         Map<Long, LancamentoFinanceiroEntity> porId = carregarPorIds(ids);
         List<ParCompensacaoSugeridoResponse> pares = new ArrayList<>();
         for (long[] meta : paresMeta) {
+            if (pares.size() >= maxPares) {
+                break;
+            }
             LancamentoFinanceiroEntity a = porId.get(meta[0]);
             LancamentoFinanceiroEntity b = porId.get(meta[1]);
             if (a == null || b == null) {
+                continue;
+            }
+            if (!mesmoDiaUtilParaCompensacao(a.getDataLancamento(), b.getDataLancamento())) {
                 continue;
             }
             ParCompensacaoSugeridoResponse par = new ParCompensacaoSugeridoResponse();
@@ -116,13 +168,11 @@ public class FinanceiroCompensacaoService {
             par.setConfianca(ConfiancaSugestao.ALTA);
             pares.add(par);
         }
+        return pares;
+    }
 
-        ParesSugeridosCompensacaoResponse response = new ParesSugeridosCompensacaoResponse();
-        response.setPares(pares);
-        response.setTotalPares(total);
-        response.setPage(page);
-        response.setTotalPages(total == 0 ? 0 : (int) Math.ceil((double) total / limit));
-        return response;
+    private static boolean mesmoDiaUtilParaCompensacao(LocalDate dataA, LocalDate dataB) {
+        return CompensacaoDateUtils.mesmoDiaUtilBancario(dataA, dataB);
     }
 
     @Transactional(readOnly = true)
@@ -170,34 +220,14 @@ public class FinanceiroCompensacaoService {
         }
 
         String tipoFiltro = request.getTipo() != null ? request.getTipo().trim().toUpperCase(Locale.ROOT) : "TODOS";
-        int diasTolerancia =
-                request.getDiasTolerancia() != null ? Math.max(0, request.getDiasTolerancia()) : DIAS_TOLERANCIA_PADRAO;
         boolean apenasInterbancarioSql = "INTERBANCARIO".equals(tipoFiltro);
-        int pageSize = 500;
-        int page = 0;
+        List<ParCompensacaoSugeridoResponse> candidatos = coletarParesFiltradosPorDiaUtil(
+                request.getNumeroBanco(), ano, mes, apenasInterbancarioSql, 0, Integer.MAX_VALUE);
         List<ParCompensacaoSugeridoResponse> todosPares = new ArrayList<>();
-        while (true) {
-            ParesSugeridosCompensacaoResponse chunk = listarParesSugeridos(
-                    request.getNumeroBanco(),
-                    ano,
-                    mes,
-                    page,
-                    pageSize,
-                    diasTolerancia,
-                    apenasInterbancarioSql);
-            if (chunk.getPares() == null || chunk.getPares().isEmpty()) {
-                break;
+        for (ParCompensacaoSugeridoResponse par : candidatos) {
+            if ("TODOS".equals(tipoFiltro) || par.getTipo().name().equals(tipoFiltro)) {
+                todosPares.add(par);
             }
-            for (ParCompensacaoSugeridoResponse par : chunk.getPares()) {
-                if ("TODOS".equals(tipoFiltro)
-                        || par.getTipo().name().equals(tipoFiltro)) {
-                    todosPares.add(par);
-                }
-            }
-            if (page + 1 >= chunk.getTotalPages()) {
-                break;
-            }
-            page++;
         }
 
         AutoParearResponse response = new AutoParearResponse();
