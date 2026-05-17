@@ -134,7 +134,9 @@ export function gerarResumoConsolidado(resultado) {
 
   for (const p of comMudanca) {
     porAcao[p.tipoAcao] = (porAcao[p.tipoAcao] || 0) + 1;
-    const cod = p.codNum;
+    const cod =
+      p.codNum ?? Number.parseInt(String(p.cod8 || '').replace(/\D/g, ''), 10) || 0;
+    if (!cod) continue;
     if (!porCliente.has(cod)) porCliente.set(cod, { eliminar: 0, corrigir: 0, procs: [] });
     const row = porCliente.get(cod);
     if (p.tipoAcao === 'eliminar_indice') row.eliminar += 1;
@@ -153,7 +155,7 @@ export function gerarResumoConsolidado(resultado) {
   const clientesComAlteracao = [...porCliente.entries()]
     .map(([cod, v]) => ({
       cod,
-      cod8: processos.find((p) => p.codNum === cod)?.cod8,
+      cod8: processos.find((p) => (p.codNum ?? Number.parseInt(String(p.cod8 || '').replace(/\D/g, ''), 10)) === cod)?.cod8,
       total: v.eliminar + v.corrigir,
       eliminar: v.eliminar,
       corrigir: v.corrigir,

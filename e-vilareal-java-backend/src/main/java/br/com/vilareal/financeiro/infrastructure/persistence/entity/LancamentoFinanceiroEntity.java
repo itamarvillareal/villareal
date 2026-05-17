@@ -1,5 +1,6 @@
 package br.com.vilareal.financeiro.infrastructure.persistence.entity;
 
+import br.com.vilareal.financeiro.domain.EtapaLancamento;
 import br.com.vilareal.financeiro.domain.NaturezaLancamento;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
@@ -73,6 +74,10 @@ public class LancamentoFinanceiroEntity {
 
     @Column(nullable = false, length = 20)
     private String status = "ATIVO";
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private EtapaLancamento etapa = EtapaLancamento.IMPORTADO;
 
     /** Par de compensação (col. M na planilha ou Elo na UI). */
     @Column(name = "grupo_compensacao", length = 40)

@@ -1,7 +1,15 @@
 package br.com.vilareal.financeiro.api;
 
 import br.com.vilareal.financeiro.api.dto.*;
+import br.com.vilareal.financeiro.application.CartaoBancoMapeamentoApplicationService;
 import br.com.vilareal.financeiro.application.FinanceiroApplicationService;
+import br.com.vilareal.financeiro.application.FinanceiroCompensacaoService;
+import br.com.vilareal.financeiro.application.FinanceiroFaturaSugestaoService;
+import br.com.vilareal.financeiro.application.FinanceiroMesApplicationService;
+import br.com.vilareal.financeiro.application.FinanceiroSaudeService;
+import br.com.vilareal.financeiro.application.FinanceiroSugestaoService;
+import br.com.vilareal.financeiro.application.RegraClassificacaoApplicationService;
+import br.com.vilareal.financeiro.domain.EtapaLancamento;
 import br.com.vilareal.financeiro.application.FinanceiroCartaoApplicationService;
 import br.com.vilareal.financeiro.application.FinanceiroPagamentoFaturaApplicationService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -21,6 +29,7 @@ import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 import java.net.URI;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/financeiro")
@@ -30,14 +39,41 @@ public class FinanceiroController {
     private final FinanceiroApplicationService financeiroService;
     private final FinanceiroCartaoApplicationService financeiroCartaoService;
     private final FinanceiroPagamentoFaturaApplicationService pagamentoFaturaService;
+    private final RegraClassificacaoApplicationService regraClassificacaoService;
+    private final FinanceiroSugestaoService financeiroSugestaoService;
+    private final FinanceiroCompensacaoService financeiroCompensacaoService;
+    private final CartaoBancoMapeamentoApplicationService cartaoBancoMapeamentoService;
+    private final FinanceiroFaturaSugestaoService financeiroFaturaSugestaoService;
+    private final FinanceiroSaudeService financeiroSaudeService;
+    private final FinanceiroMesApplicationService financeiroMesService;
 
     public FinanceiroController(
             FinanceiroApplicationService financeiroService,
             FinanceiroCartaoApplicationService financeiroCartaoService,
-            FinanceiroPagamentoFaturaApplicationService pagamentoFaturaService) {
+            FinanceiroPagamentoFaturaApplicationService pagamentoFaturaService,
+            RegraClassificacaoApplicationService regraClassificacaoService,
+            FinanceiroSugestaoService financeiroSugestaoService,
+            FinanceiroCompensacaoService financeiroCompensacaoService,
+            CartaoBancoMapeamentoApplicationService cartaoBancoMapeamentoService,
+            FinanceiroFaturaSugestaoService financeiroFaturaSugestaoService,
+            FinanceiroSaudeService financeiroSaudeService,
+            FinanceiroMesApplicationService financeiroMesService) {
         this.financeiroService = financeiroService;
         this.financeiroCartaoService = financeiroCartaoService;
         this.pagamentoFaturaService = pagamentoFaturaService;
+        this.regraClassificacaoService = regraClassificacaoService;
+        this.financeiroSugestaoService = financeiroSugestaoService;
+        this.financeiroCompensacaoService = financeiroCompensacaoService;
+        this.cartaoBancoMapeamentoService = cartaoBancoMapeamentoService;
+        this.financeiroFaturaSugestaoService = financeiroFaturaSugestaoService;
+        this.financeiroSaudeService = financeiroSaudeService;
+        this.financeiroMesService = financeiroMesService;
+    }
+
+    @GetMapping("/saude")
+    @Operation(description = "Indicadores de saúde do módulo financeiro.")
+    public FinanceiroSaudeResponse saude() {
+        return financeiroSaudeService.obterSaude();
     }
 
     @GetMapping("/contas")
@@ -78,6 +114,18 @@ public class FinanceiroController {
         return financeiroService.listarLancamentos(clienteId, processoId, contaContabilId, dataInicio, dataFim);
     }
 
+    @GetMapping("/lancamentos/contadores-etapa")
+    @Operation(description = "Contagem de lançamentos bancários por etapa do workflow.")
+    public Map<String, Long> contadoresEtapa() {
+        return financeiroService.contarPorEtapa();
+    }
+
+    @GetMapping("/lancamentos/saldo-banco")
+    @Operation(description = "Saldo acumulado (crédito − débito) e data do último lançamento do banco.")
+    public SaldoBancoResponse saldoBanco(@RequestParam("numeroBanco") Integer numeroBanco) {
+        return financeiroService.saldoPorNumeroBanco(numeroBanco);
+    }
+
     @GetMapping("/lancamentos/paginada")
     @Operation(description = "Mesmos filtros de GET /lancamentos, com paginação.")
     public Page<LancamentoFinanceiroResponse> listarLancamentosPaginada(
@@ -86,9 +134,32 @@ public class FinanceiroController {
             @RequestParam(value = "contaContabilId", required = false) Long contaContabilId,
             @RequestParam(value = "dataInicio", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataInicio,
             @RequestParam(value = "dataFim", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataFim,
+            @RequestParam(value = "etapa", required = false) String etapa,
+            @RequestParam(value = "numeroBanco", required = false) Integer numeroBanco,
+            @RequestParam(value = "busca", required = false) String busca,
+            @RequestParam(value = "semClienteId", required = false) Boolean semClienteId,
+            @RequestParam(value = "semGrupoCompensacao", required = false) Boolean semGrupoCompensacao,
+            @RequestParam(value = "ano", required = false) Integer ano,
+            @RequestParam(value = "mes", required = false) Integer mes,
             @PageableDefault(size = 20, sort = "dataLancamento", direction = Sort.Direction.ASC) Pageable pageable) {
+        EtapaLancamento etapaEnum = null;
+        if (etapa != null && !etapa.isBlank()) {
+            etapaEnum = EtapaLancamento.valueOf(etapa.trim().toUpperCase());
+        }
         return financeiroService.listarLancamentosPaginado(
-                clienteId, processoId, contaContabilId, dataInicio, dataFim, pageable);
+                clienteId,
+                processoId,
+                contaContabilId,
+                dataInicio,
+                dataFim,
+                etapaEnum,
+                numeroBanco,
+                busca,
+                semClienteId,
+                semGrupoCompensacao,
+                ano,
+                mes,
+                pageable);
     }
 
     @GetMapping("/lancamentos/{id}")
@@ -124,6 +195,128 @@ public class FinanceiroController {
     public GrupoCompensacaoLoteResult sincronizarGruposCompensacaoLote(
             @Valid @RequestBody List<GrupoCompensacaoLoteItemRequest> itens) {
         return financeiroService.sincronizarGruposCompensacaoLote(itens);
+    }
+
+    @GetMapping("/lancamentos/{id}/sugestao-classificacao")
+    @Operation(description = "Sugestões de classificação (regras, histórico, recorrência).")
+    public List<SugestaoClassificacaoResponse> sugestaoClassificacao(@PathVariable Long id) {
+        return financeiroSugestaoService.sugerir(id);
+    }
+
+    @PostMapping("/lancamentos/sugestoes-classificacao/lote")
+    @Operation(description = "Sugestões em lote (máx. 50 lançamentos).")
+    public SugestaoClassificacaoLoteResponse sugestoesClassificacaoLote(
+            @Valid @RequestBody SugestaoClassificacaoLoteRequest request) {
+        SugestaoClassificacaoLoteResponse response = new SugestaoClassificacaoLoteResponse();
+        response.setSugestoes(financeiroSugestaoService.sugerirLote(request.getLancamentoIds()));
+        return response;
+    }
+
+    @PostMapping("/lancamentos/aplicar-sugestao")
+    @Operation(description = "Aplica classificação sugerida e recalcula etapa.")
+    public LancamentoFinanceiroResponse aplicarSugestao(@Valid @RequestBody AplicarSugestaoRequest request) {
+        return financeiroSugestaoService.aplicarSugestao(request);
+    }
+
+    @PostMapping("/lancamentos/aplicar-sugestoes/lote")
+    @Operation(description = "Aplica classificações em lote.")
+    public AplicarSugestaoLoteResult aplicarSugestoesLote(@Valid @RequestBody AplicarSugestaoLoteRequest request) {
+        return financeiroSugestaoService.aplicarSugestoesLote(request);
+    }
+
+    @PostMapping("/lancamentos/auto-classificar")
+    @Operation(description = "Auto-classificação por confiança mínima (dry-run ou aplicação).")
+    public AutoClassificarResponse autoClassificar(@Valid @RequestBody AutoClassificarRequest request) {
+        return financeiroSugestaoService.autoClassificar(request);
+    }
+
+    @PostMapping("/lancamentos/parear")
+    @Operation(description = "Pareia lançamentos de compensação (conta E + grupo_compensacao).")
+    public ParearCompensacaoResponse parearCompensacao(@Valid @RequestBody ParearCompensacaoRequest request) {
+        return financeiroCompensacaoService.parear(request);
+    }
+
+    @DeleteMapping("/lancamentos/parear/{grupoCompensacao}")
+    @Operation(description = "Remove vínculo de compensação de um grupo (volta conta N / IMPORTADO).")
+    public DesparearCompensacaoResponse desparearCompensacao(@PathVariable String grupoCompensacao) {
+        return financeiroCompensacaoService.desparear(grupoCompensacao);
+    }
+
+    @GetMapping("/lancamentos/pares-sugeridos")
+    @Operation(description = "Pares de compensação sugeridos (valor oposto, sem grupo, janela de datas).")
+    public ParesSugeridosCompensacaoResponse paresSugeridos(
+            @RequestParam(value = "numeroBanco", required = false) Integer numeroBanco,
+            @RequestParam(value = "ano", required = false) Integer ano,
+            @RequestParam(value = "mes", required = false) Integer mes,
+            @RequestParam(value = "diasTolerancia", defaultValue = "3") int diasTolerancia,
+            @RequestParam(value = "apenasInterbancario", defaultValue = "false") boolean apenasInterbancario,
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "50") int size) {
+        return financeiroCompensacaoService.listarParesSugeridos(
+                numeroBanco, ano, mes, page, size, diasTolerancia, apenasInterbancario);
+    }
+
+    @GetMapping("/lancamentos/grupos-compensacao/inconsistentes")
+    @Operation(description = "Grupos de compensação cuja soma não fecha em zero.")
+    public GruposCompensacaoInconsistentesResponse gruposCompensacaoInconsistentes(
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "20") int size) {
+        return financeiroCompensacaoService.listarGruposInconsistentes(page, size);
+    }
+
+    @PostMapping("/lancamentos/auto-parear")
+    @Operation(description = "Pareamento automático de pares sugeridos (dry-run ou aplicação).")
+    public AutoParearResponse autoParear(@Valid @RequestBody AutoParearRequest request) {
+        return financeiroCompensacaoService.autoParear(request);
+    }
+
+    @PostMapping("/lancamentos/fechar-mes")
+    @Operation(description = "Fecha o mês bancário (etapa FECHADO) se não houver IMPORTADO.")
+    public FecharMesResponse fecharMes(@Valid @RequestBody FecharMesRequest request) {
+        return financeiroMesService.fecharMes(request);
+    }
+
+    @PostMapping("/lancamentos/reabrir-mes")
+    @Operation(description = "Reabre lançamentos FECHADO recalculando a etapa.")
+    public ReabrirMesResponse reabrirMes(@Valid @RequestBody FecharMesRequest request) {
+        return financeiroMesService.reabrirMes(request);
+    }
+
+    // --- Regras de classificação ---
+
+    @GetMapping("/regras-classificacao")
+    @Operation(description = "Lista regras de classificação (ativas e inativas).")
+    public List<RegraClassificacaoResponse> listarRegrasClassificacao() {
+        return regraClassificacaoService.listarTodas();
+    }
+
+    @GetMapping("/regras-classificacao/{id}")
+    public RegraClassificacaoResponse buscarRegraClassificacao(@PathVariable Long id) {
+        return regraClassificacaoService.buscar(id);
+    }
+
+    @PostMapping("/regras-classificacao")
+    public ResponseEntity<RegraClassificacaoResponse> criarRegraClassificacao(
+            @Valid @RequestBody RegraClassificacaoWriteRequest request) {
+        RegraClassificacaoResponse body = regraClassificacaoService.criar(request);
+        URI uri = ServletUriComponentsBuilder.fromCurrentRequest()
+                .path("/{id}")
+                .buildAndExpand(body.getId())
+                .toUri();
+        return ResponseEntity.created(uri).body(body);
+    }
+
+    @PutMapping("/regras-classificacao/{id}")
+    public RegraClassificacaoResponse atualizarRegraClassificacao(
+            @PathVariable Long id,
+            @Valid @RequestBody RegraClassificacaoWriteRequest request) {
+        return regraClassificacaoService.atualizar(id, request);
+    }
+
+    @DeleteMapping("/regras-classificacao/{id}")
+    public ResponseEntity<Void> removerRegraClassificacao(@PathVariable Long id) {
+        regraClassificacaoService.remover(id);
+        return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
     }
 
     @PostMapping(value = "/lancamentos/limpar-extrato", consumes = MediaType.APPLICATION_JSON_VALUE)
@@ -226,6 +419,51 @@ public class FinanceiroController {
     @DeleteMapping("/pagamentos-fatura/vinculos/{id}")
     public ResponseEntity<Void> removerVinculoPagamentoFatura(@PathVariable Long id) {
         pagamentoFaturaService.removerVinculo(id);
+        return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
+    }
+
+    @GetMapping("/pagamentos-fatura/sugestoes")
+    @Operation(description = "Sugestões de vínculo pagamento de fatura (banco ↔ cartão).")
+    public SugestoesPagamentoFaturaResponse sugestoesPagamentoFatura(
+            @RequestParam("mes") String mes,
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "20") int size) {
+        return financeiroFaturaSugestaoService.listarSugestoes(mes, page, size);
+    }
+
+    // --- Mapeamento cartão ↔ banco (fatura) ---
+
+    @GetMapping("/cartao-banco-mapeamento")
+    @Operation(description = "Lista regras de mapeamento débito bancário → cartão.")
+    public List<CartaoBancoMapeamentoResponse> listarCartaoBancoMapeamento() {
+        return cartaoBancoMapeamentoService.listarTodas();
+    }
+
+    @GetMapping("/cartao-banco-mapeamento/{id}")
+    public CartaoBancoMapeamentoResponse buscarCartaoBancoMapeamento(@PathVariable Long id) {
+        return cartaoBancoMapeamentoService.buscar(id);
+    }
+
+    @PostMapping("/cartao-banco-mapeamento")
+    public ResponseEntity<CartaoBancoMapeamentoResponse> criarCartaoBancoMapeamento(
+            @Valid @RequestBody CartaoBancoMapeamentoWriteRequest request) {
+        CartaoBancoMapeamentoResponse body = cartaoBancoMapeamentoService.criar(request);
+        URI uri = ServletUriComponentsBuilder.fromCurrentRequest()
+                .path("/{id}")
+                .buildAndExpand(body.getId())
+                .toUri();
+        return ResponseEntity.created(uri).body(body);
+    }
+
+    @PutMapping("/cartao-banco-mapeamento/{id}")
+    public CartaoBancoMapeamentoResponse atualizarCartaoBancoMapeamento(
+            @PathVariable Long id, @Valid @RequestBody CartaoBancoMapeamentoWriteRequest request) {
+        return cartaoBancoMapeamentoService.atualizar(id, request);
+    }
+
+    @DeleteMapping("/cartao-banco-mapeamento/{id}")
+    public ResponseEntity<Void> removerCartaoBancoMapeamento(@PathVariable Long id) {
+        cartaoBancoMapeamentoService.remover(id);
         return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
     }
 }

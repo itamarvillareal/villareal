@@ -373,8 +373,8 @@ async function importarUmBanco(opts, token, wb, bancoNome, contaIdPorLetra) {
     if (res.ok) stats.criados += 1;
     else {
       stats.errosPost += 1;
-      if (stats.amostraErros.length < 5) {
-        stats.amostraErros.push(`L${row.linhaExcel}: HTTP ${res.status}`);
+      if (stats.amostraErros.length < 3) {
+        stats.amostraErros.push(`L${row.linhaExcel}: HTTP ${res.status} — ${res.text || ''}`);
       }
     }
     done += 1;

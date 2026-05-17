@@ -3,18 +3,24 @@
  */
 
 import { isInstituicaoBtgExtratoPdf, parseBtgPdfExtratoText } from './btgPdfExtrato.js';
+import { isInstituicaoPay99ExtratoPdf, parsePay99PdfExtratoText } from './pay99PdfExtrato.js';
 import { isInstituicaoSicoobExtratoPdf, parseSicoobPdfExtratoText } from './sicoobPdfExtrato.js';
 
-export { isInstituicaoBtgExtratoPdf, isInstituicaoSicoobExtratoPdf };
+export { isInstituicaoBtgExtratoPdf, isInstituicaoPay99ExtratoPdf, isInstituicaoSicoobExtratoPdf };
 
 /** Instituições cujo extrato oficial é importado por PDF (não OFX). */
 export function isInstituicaoExtratoPdfImport(nome) {
-  return isInstituicaoBtgExtratoPdf(nome) || isInstituicaoSicoobExtratoPdf(nome);
+  return (
+    isInstituicaoBtgExtratoPdf(nome) ||
+    isInstituicaoSicoobExtratoPdf(nome) ||
+    isInstituicaoPay99ExtratoPdf(nome)
+  );
 }
 
 export function rotuloInstituicaoExtratoPdf(nome) {
   if (isInstituicaoBtgExtratoPdf(nome)) return 'BTG Pactual';
   if (isInstituicaoSicoobExtratoPdf(nome)) return 'Sicoob (SISBR)';
+  if (isInstituicaoPay99ExtratoPdf(nome)) return '99 Pay';
   return 'PDF';
 }
 
@@ -29,6 +35,9 @@ export function parseExtratoPdfText(textoBruto, nomeInstituicao) {
   }
   if (isInstituicaoBtgExtratoPdf(nomeInstituicao)) {
     return parseBtgPdfExtratoText(textoBruto);
+  }
+  if (isInstituicaoPay99ExtratoPdf(nomeInstituicao)) {
+    return parsePay99PdfExtratoText(textoBruto);
   }
   return [];
 }

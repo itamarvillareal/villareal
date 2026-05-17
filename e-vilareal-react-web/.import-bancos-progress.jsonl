@@ -1,0 +1,25 @@
+{"banco":"Bradesco","numeroBanco":2,"linhas_enviadas":2595,"POST_ok":2595,"POST_erro":0,"tempo_segundos":9,"exitCode":0,"taxa_erro":0}
+{"banco":"BB","numeroBanco":3,"linhas_enviadas":3951,"POST_ok":3951,"POST_erro":0,"tempo_segundos":14,"exitCode":0,"taxa_erro":0}
+{"banco":"Sicoob","numeroBanco":4,"linhas_enviadas":4135,"POST_ok":4135,"POST_erro":0,"tempo_segundos":10,"exitCode":0,"taxa_erro":0}
+{"banco":"CEF","numeroBanco":5,"linhas_enviadas":2721,"POST_ok":2721,"POST_erro":0,"tempo_segundos":10,"exitCode":0,"taxa_erro":0}
+{"banco":"Itaú Poupança","numeroBanco":6,"linhas_enviadas":1251,"POST_ok":1251,"POST_erro":0,"tempo_segundos":7,"exitCode":0,"taxa_erro":0}
+{"banco":"LANÇ MANUAIS","numeroBanco":9,"linhas_enviadas":905,"POST_ok":905,"POST_erro":0,"tempo_segundos":7,"exitCode":0,"taxa_erro":0}
+{"banco":"Poupança Bradesco","numeroBanco":10,"linhas_enviadas":121,"POST_ok":121,"POST_erro":0,"tempo_segundos":5,"exitCode":0,"taxa_erro":0}
+{"banco":"Mercado Pago","numeroBanco":11,"linhas_enviadas":4154,"POST_ok":4154,"POST_erro":0,"tempo_segundos":10,"exitCode":0,"taxa_erro":0}
+{"banco":"CEF Poupança","numeroBanco":12,"linhas_enviadas":292,"POST_ok":292,"POST_erro":0,"tempo_segundos":5,"exitCode":0,"taxa_erro":0}
+{"banco":"Nubank","numeroBanco":13,"linhas_enviadas":0,"POST_ok":0,"POST_erro":0,"tempo_segundos":5,"exitCode":1,"taxa_erro":0}
+{"banco":"Nubank","numeroBanco":13,"linhas_enviadas":308,"POST_ok":308,"POST_erro":0,"tempo_segundos":7,"exitCode":0,"taxa_erro":0}
+{"banco":"PicPay","numeroBanco":14,"linhas_enviadas":1283,"POST_ok":1283,"POST_erro":0,"tempo_segundos":8,"exitCode":0,"taxa_erro":0}
+{"banco":"PicPay Rachel","numeroBanco":15,"linhas_enviadas":192,"POST_ok":192,"POST_erro":0,"tempo_segundos":6,"exitCode":0,"taxa_erro":0}
+{"banco":"LANÇ EM DINHEIRO","numeroBanco":17,"linhas_enviadas":32,"POST_ok":32,"POST_erro":0,"tempo_segundos":5,"exitCode":0,"taxa_erro":0}
+{"banco":"LANÇ MANUAIS (2)","numeroBanco":18,"linhas_enviadas":6827,"POST_ok":6827,"POST_erro":0,"tempo_segundos":20,"exitCode":0,"taxa_erro":0}
+{"banco":"BTG","numeroBanco":21,"linhas_enviadas":2626,"POST_ok":2626,"POST_erro":0,"tempo_segundos":10,"exitCode":0,"taxa_erro":0}
+{"banco":"ITI","numeroBanco":22,"linhas_enviadas":1230,"POST_ok":1230,"POST_erro":0,"tempo_segundos":7,"exitCode":0,"taxa_erro":0}
+{"banco":"Itaú Empresas","numeroBanco":23,"linhas_enviadas":2238,"POST_ok":2238,"POST_erro":0,"tempo_segundos":9,"exitCode":0,"taxa_erro":0}
+{"banco":"BTG Banking","numeroBanco":24,"linhas_enviadas":1077,"POST_ok":1077,"POST_erro":0,"tempo_segundos":7,"exitCode":0,"taxa_erro":0}
+{"banco":"BTG (2)","numeroBanco":25,"linhas_enviadas":170,"POST_ok":170,"POST_erro":0,"tempo_segundos":6,"exitCode":0,"taxa_erro":0}
+{"banco":"CORA","numeroBanco":26,"linhas_enviadas":0,"POST_ok":0,"POST_erro":0,"tempo_segundos":5,"exitCode":1,"taxa_erro":0}
+{"banco":"CORA","numeroBanco":26,"linhas_enviadas":1153,"POST_ok":1153,"POST_erro":0,"tempo_segundos":8,"exitCode":0,"taxa_erro":0}
+{"banco":"BTG JA","numeroBanco":27,"linhas_enviadas":219,"POST_ok":219,"POST_erro":0,"tempo_segundos":5,"exitCode":0,"taxa_erro":0}
+{"banco":"BTG RACHEL","numeroBanco":28,"linhas_enviadas":253,"POST_ok":253,"POST_erro":0,"tempo_segundos":6,"exitCode":0,"taxa_erro":0}
+{"banco":"Sicoob VRV","numeroBanco":29,"linhas_enviadas":147,"POST_ok":147,"POST_erro":0,"tempo_segundos":6,"exitCode":0,"taxa_erro":0}

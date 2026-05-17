@@ -248,6 +248,16 @@ export async function listarLancamentosFinanceiro(filtros = {}, opts = {}) {
   });
 }
 
+/** Saldo acumulado da conta bancária (todos os lançamentos importados). */
+export async function obterSaldoBancoFinanceiro(numeroBanco, opts = {}) {
+  const { signal } = opts;
+  if (!featureFlags.useApiFinanceiro || numeroBanco == null) return null;
+  return request('/api/financeiro/lancamentos/saldo-banco', {
+    signal,
+    query: { numeroBanco: Number(numeroBanco) },
+  });
+}
+
 export async function listarLancamentosFinanceiroPaginados(filtros = {}, opts = {}) {
   const { signal } = opts;
   if (!featureFlags.useApiFinanceiro) {
@@ -255,15 +265,27 @@ export async function listarLancamentosFinanceiroPaginados(filtros = {}, opts = 
   }
   const query = {
     page: filtros.page != null ? Math.max(0, Number(filtros.page) || 0) : 0,
-    size: clampCadastroPessoasPageSize(filtros.size ?? 20),
-    sort: filtros.sort ?? 'dataLancamento,asc',
+    size: clampCadastroPessoasPageSize(filtros.size ?? 100),
+    sort: filtros.sort ?? 'dataLancamento,desc',
     clienteId: filtros.clienteId ?? undefined,
     processoId: filtros.processoId ?? undefined,
     contaContabilId: filtros.contaContabilId ?? undefined,
     dataInicio: filtros.dataInicio ?? undefined,
     dataFim: filtros.dataFim ?? undefined,
+    etapa: filtros.etapa ?? undefined,
+    numeroBanco: filtros.numeroBanco ?? undefined,
+    busca: filtros.busca ?? undefined,
+    semClienteId: filtros.semClienteId === true ? true : undefined,
+    semGrupoCompensacao: filtros.semGrupoCompensacao === true ? true : undefined,
+    ano: filtros.ano ?? undefined,
+    mes: filtros.mes ?? undefined,
   };
   return request('/api/financeiro/lancamentos/paginada', { query, signal });
+}
+
+export async function buscarLancamentoFinanceiroApi(id, opts = {}) {
+  if (!featureFlags.useApiFinanceiro || !Number(id)) return null;
+  return request(`/api/financeiro/lancamentos/${Number(id)}`, { signal: opts.signal });
 }
 
 function mapApiLancamentoCartaoToUi(l, contaToLetra) {
@@ -573,4 +595,142 @@ export async function criarVinculoPagamentoFaturaApi(lancamentoBancoId, lancamen
 export async function removerVinculoPagamentoFaturaApi(vinculoId) {
   if (!featureFlags.useApiFinanceiro || !Number(vinculoId)) return;
   await request(`/api/financeiro/pagamentos-fatura/vinculos/${Number(vinculoId)}`, { method: 'DELETE' });
+}
+
+export async function obterSaudeFinanceiroApi(opts = {}) {
+  if (!featureFlags.useApiFinanceiro) return null;
+  return request('/api/financeiro/saude', { signal: opts.signal });
+}
+
+export async function listarContadoresEtapaApi(opts = {}) {
+  if (!featureFlags.useApiFinanceiro) return null;
+  return request('/api/financeiro/lancamentos/contadores-etapa', { signal: opts.signal });
+}
+
+export async function listarParesSugeridosCompensacaoApi(opts = {}) {
+  if (!featureFlags.useApiFinanceiro) return { pares: [], totalPares: 0, totalPages: 0 };
+  const { page = 0, size = 50, numeroBanco, ano, mes, signal } = opts;
+  return request('/api/financeiro/lancamentos/pares-sugeridos', {
+    query: { page, size, numeroBanco, ano, mes },
+    signal,
+  });
+}
+
+export async function listarGruposCompensacaoInconsistentesApi(opts = {}) {
+  if (!featureFlags.useApiFinanceiro) return { grupos: [], total: 0, totalPages: 0 };
+  const { page = 0, size = 20, signal } = opts;
+  return request('/api/financeiro/lancamentos/grupos-compensacao/inconsistentes', {
+    query: { page, size },
+    signal,
+  });
+}
+
+export async function sugestoesClassificacaoLoteApi(lancamentoIds, opts = {}) {
+  if (!featureFlags.useApiFinanceiro) return { sugestoes: {} };
+  return request('/api/financeiro/lancamentos/sugestoes-classificacao/lote', {
+    method: 'POST',
+    body: { lancamentoIds },
+    signal: opts.signal,
+  });
+}
+
+export async function aplicarSugestoesLoteApi(aplicacoes, opts = {}) {
+  if (!featureFlags.useApiFinanceiro) throw new Error('API financeiro desativada');
+  return request('/api/financeiro/lancamentos/aplicar-sugestoes/lote', {
+    method: 'POST',
+    body: { aplicacoes },
+    signal: opts.signal,
+  });
+}
+
+export async function listarSugestoesPagamentoFaturaApi(mesRef, opts = {}) {
+  if (!featureFlags.useApiFinanceiro) return { sugestoes: [], totalSugestoes: 0 };
+  const { page = 0, size = 20, signal } = opts;
+  return request('/api/financeiro/pagamentos-fatura/sugestoes', {
+    query: { mes: mesRef, page, size },
+    signal,
+  });
+}
+
+export async function obterSugestaoClassificacaoApi(lancamentoId, opts = {}) {
+  if (!featureFlags.useApiFinanceiro) return null;
+  return request(`/api/financeiro/lancamentos/${lancamentoId}/sugestao-classificacao`, {
+    signal: opts.signal,
+  });
+}
+
+export async function aplicarSugestaoClassificacaoApi(body, opts = {}) {
+  if (!featureFlags.useApiFinanceiro) throw new Error('API financeiro desativada');
+  return request('/api/financeiro/lancamentos/aplicar-sugestao', {
+    method: 'POST',
+    body,
+    signal: opts.signal,
+  });
+}
+
+export async function parearCompensacaoApi(body, opts = {}) {
+  if (!featureFlags.useApiFinanceiro) throw new Error('API financeiro desativada');
+  return request('/api/financeiro/lancamentos/parear', { method: 'POST', body, signal: opts.signal });
+}
+
+export async function listarCartaoBancoMapeamentoApi(opts = {}) {
+  if (!featureFlags.useApiFinanceiro) return [];
+  return request('/api/financeiro/cartao-banco-mapeamento', { signal: opts.signal });
+}
+
+export async function criarCartaoBancoMapeamentoApi(body, opts = {}) {
+  if (!featureFlags.useApiFinanceiro) throw new Error('API financeiro desativada');
+  return request('/api/financeiro/cartao-banco-mapeamento', {
+    method: 'POST',
+    body,
+    signal: opts.signal,
+  });
+}
+
+export async function atualizarCartaoBancoMapeamentoApi(id, body, opts = {}) {
+  if (!featureFlags.useApiFinanceiro) throw new Error('API financeiro desativada');
+  return request(`/api/financeiro/cartao-banco-mapeamento/${Number(id)}`, {
+    method: 'PUT',
+    body,
+    signal: opts.signal,
+  });
+}
+
+export async function removerCartaoBancoMapeamentoApi(id, opts = {}) {
+  if (!featureFlags.useApiFinanceiro) return;
+  await request(`/api/financeiro/cartao-banco-mapeamento/${Number(id)}`, {
+    method: 'DELETE',
+    signal: opts.signal,
+  });
+}
+
+export async function listarRegrasClassificacaoApi(opts = {}) {
+  if (!featureFlags.useApiFinanceiro) return [];
+  return request('/api/financeiro/regras-classificacao', { signal: opts.signal });
+}
+
+export async function criarRegraClassificacaoApi(body, opts = {}) {
+  if (!featureFlags.useApiFinanceiro) throw new Error('API financeiro desativada');
+  return request('/api/financeiro/regras-classificacao', {
+    method: 'POST',
+    body,
+    signal: opts.signal,
+  });
+}
+
+export async function atualizarRegraClassificacaoApi(id, body, opts = {}) {
+  if (!featureFlags.useApiFinanceiro) throw new Error('API financeiro desativada');
+  return request(`/api/financeiro/regras-classificacao/${Number(id)}`, {
+    method: 'PUT',
+    body,
+    signal: opts.signal,
+  });
+}
+
+export async function removerRegraClassificacaoApi(id, opts = {}) {
+  if (!featureFlags.useApiFinanceiro) return;
+  await request(`/api/financeiro/regras-classificacao/${Number(id)}`, {
+    method: 'DELETE',
+    signal: opts.signal,
+  });
 }

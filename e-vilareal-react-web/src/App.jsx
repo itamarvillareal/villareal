@@ -17,6 +17,14 @@ import {
   LazyConfiguracoes,
   LazyDiagnosticos,
   LazyFinanceiro,
+  LazyFinanceiroCartao,
+  LazyFinanceiroCompensacao,
+  LazyFinanceiroConfig,
+  LazyFinanceiroConsolidado,
+  LazyFinanceiroDashboard,
+  LazyFinanceiroExtrato,
+  LazyFinanceiroFatura,
+  LazyFinanceiroInbox,
   LazyFinanceiroLayout,
   LazyFinanceiroRelatorios,
   LazyPagamentos,
@@ -342,8 +350,20 @@ function App() {
               <Route path="/diagnosticos" element={<LazyDiagnosticos />} />
               <Route path="/integracoes/scraper-lab" element={<LazyIntegracoesTribunalScraperLab />} />
               <Route path="/financeiro" element={<LazyFinanceiroLayout />}>
-                <Route index element={<LazyFinanceiro />} />
+                <Route index element={<LazyFinanceiroDashboard />} />
+                <Route path="extrato" element={<LazyFinanceiroExtrato />} />
+                <Route path="inbox" element={<LazyFinanceiroInbox />} />
+                <Route path="inbox/:tipo" element={<LazyFinanceiroInbox />} />
+                <Route path="consolidado" element={<LazyFinanceiroConsolidado />} />
+                <Route path="consolidado/:conta" element={<LazyFinanceiroConsolidado />} />
+                <Route path="compensacao" element={<LazyFinanceiroCompensacao />} />
+                <Route path="fatura" element={<LazyFinanceiroFatura />} />
+                <Route path="cartao" element={<LazyFinanceiroCartao />} />
+                <Route path="cartao/:id" element={<LazyFinanceiroCartao />} />
                 <Route path="relatorios" element={<LazyFinanceiroRelatorios />} />
+                <Route path="configuracao" element={<LazyFinanceiroConfig />} />
+                {/* Legado: view completa extrato+consolidado */}
+                <Route path="legado" element={<LazyFinanceiro />} />
               </Route>
               <Route path="/pagamentos" element={<LazyPagamentos />} />
               <Route path="/usuarios" element={<LazyUsuarios />} />

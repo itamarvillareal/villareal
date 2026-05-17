@@ -366,6 +366,7 @@ export function analisarProcessoHistorico(base, codNum, procNum, opts = {}) {
   const nReal = indicesValidos.length;
   const plano = {
     cod8,
+    codNum,
     procNum,
     procStr,
     indiceDeclarado: valorDeclarado,
@@ -520,8 +521,19 @@ export function executarAnaliseHistoricoLocal(opts) {
 
   const codLo = opts.filtroClienteCod != null ? opts.filtroClienteCod : clienteMin;
   const codHi = opts.filtroClienteCod != null ? opts.filtroClienteCod : clienteMax;
+  const lista =
+    Array.isArray(opts.clientesLista) && opts.clientesLista.length
+      ? [...new Set(opts.clientesLista.map((c) => Math.trunc(Number(c))).filter((c) => c >= 1 && c <= 999))].sort(
+          (a, b) => a - b
+        )
+      : null;
 
-  for (let cod = codLo; cod <= codHi; cod += 1) {
+  const codigos = lista ?? [];
+  if (!lista) {
+    for (let cod = codLo; cod <= codHi; cod += 1) codigos.push(cod);
+  }
+
+  for (const cod of codigos) {
     const procsAlvo = listarProcessosHistoricoCliente(base, cod);
     if (!procsAlvo.length) continue;
     stats.clientesComHistorico += 1;
@@ -582,7 +594,10 @@ export function aplicarPlanoProcessoHistorico(base, plano) {
       mkdirpForFile(abs);
       fs.writeFileSync(abs, valorNovo, 'utf8');
     }
-    if (plano.renumerar?.length && plano.indicesValidosLista?.length) {
+    if (
+      plano.indicesValidosLista?.length &&
+      (plano.renumerar?.length || plano.precisaRenumerar)
+    ) {
       renumerarEntradas(
         base,
         plano.cod8,
@@ -644,7 +659,12 @@ export function corrigirProcessoHistorico(base, codNum, procNum, opts = {}) {
  * @param {object} opts
  */
 export function executarCorrecaoHistoricoLocal(opts) {
-  const analise = executarAnaliseHistoricoLocal({ ...opts, dryRun: true });
+  const aplicar = opts.dryRun === false;
+  const analise = executarAnaliseHistoricoLocal({
+    ...opts,
+    dryRun: true,
+    modoRapido: !aplicar,
+  });
   if (opts.dryRun !== false) {
     return {
       stats: {

@@ -4,6 +4,7 @@ import br.com.vilareal.common.exception.BusinessRuleException;
 import br.com.vilareal.common.exception.ResourceNotFoundException;
 import br.com.vilareal.common.text.Utf8MojibakeUtil;
 import br.com.vilareal.financeiro.api.dto.*;
+import br.com.vilareal.financeiro.domain.EtapaLancamento;
 import br.com.vilareal.financeiro.infrastructure.persistence.LancamentoFinanceiroSpecifications;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.ContaContabilEntity;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.LancamentoFinanceiroEntity;
@@ -105,10 +106,56 @@ public class FinanceiroApplicationService {
             Long contaContabilId,
             java.time.LocalDate dataInicio,
             java.time.LocalDate dataFim,
+            EtapaLancamento etapa,
+            Integer numeroBanco,
+            String busca,
+            Boolean semClienteId,
+            Boolean semGrupoCompensacao,
+            Integer ano,
+            Integer mes,
             Pageable pageable) {
         var spec = LancamentoFinanceiroSpecifications.comFiltros(
-                clienteId, processoId, contaContabilId, dataInicio, dataFim);
+                clienteId,
+                processoId,
+                contaContabilId,
+                dataInicio,
+                dataFim,
+                etapa,
+                numeroBanco,
+                busca,
+                semClienteId,
+                semGrupoCompensacao,
+                ano,
+                mes);
         return lancamentoRepository.findAll(spec, pageable).map(this::toLancamentoResponse);
+    }
+
+    @Transactional(readOnly = true)
+    public SaldoBancoResponse saldoPorNumeroBanco(Integer numeroBanco) {
+        if (numeroBanco == null) {
+            throw new BusinessRuleException("numeroBanco é obrigatório.");
+        }
+        var saldo = lancamentoRepository.sumSaldoAssinadoPorNumeroBanco(numeroBanco);
+        var r = new SaldoBancoResponse();
+        r.setNumeroBanco(numeroBanco);
+        r.setSaldo(saldo != null ? saldo : java.math.BigDecimal.ZERO);
+        r.setDataUltimoLancamento(lancamentoRepository.findDataUltimoLancamentoPorNumeroBanco(numeroBanco));
+        r.setTotalLancamentos(lancamentoRepository.countByNumeroBanco(numeroBanco));
+        return r;
+    }
+
+    @Transactional(readOnly = true)
+    public Map<String, Long> contarPorEtapa() {
+        Map<String, Long> mapa = new LinkedHashMap<>();
+        for (EtapaLancamento e : EtapaLancamento.values()) {
+            mapa.put(e.name(), 0L);
+        }
+        for (Object[] row : lancamentoRepository.contarPorEtapa()) {
+            EtapaLancamento etapa = (EtapaLancamento) row[0];
+            Long total = (Long) row[1];
+            mapa.put(etapa.name(), total);
+        }
+        return mapa;
     }
 
     @Transactional(readOnly = true)
@@ -276,6 +323,18 @@ public class FinanceiroApplicationService {
             String g = req.getGrupoCompensacao().trim();
             e.setGrupoCompensacao(StringUtils.hasText(g) ? g : null);
         }
+
+        aplicarEtapa(e, req, conta);
+    }
+
+    private void aplicarEtapa(
+            LancamentoFinanceiroEntity e, LancamentoFinanceiroWriteRequest req, ContaContabilEntity conta) {
+        if (req.getEtapa() != null && StringUtils.hasText(req.getEtapa())) {
+            e.setEtapa(EtapaLancamento.valueOf(req.getEtapa().trim().toUpperCase(Locale.ROOT)));
+            return;
+        }
+        Long clienteId = e.getCliente() != null ? e.getCliente().getId() : null;
+        e.setEtapa(EtapaLancamento.calcular(conta.getCodigo(), e.getGrupoCompensacao(), clienteId));
     }
 
     private ContaContabilResponse toContaResponse(ContaContabilEntity e) {
@@ -313,6 +372,7 @@ public class FinanceiroApplicationService {
         r.setRefTipo(Utf8MojibakeUtil.corrigir(e.getRefTipo()));
         r.setOrigem(Utf8MojibakeUtil.corrigir(e.getOrigem()));
         r.setStatus(Utf8MojibakeUtil.corrigir(e.getStatus()));
+        r.setEtapa(e.getEtapa() != null ? e.getEtapa().name() : EtapaLancamento.IMPORTADO.name());
         r.setGrupoCompensacao(Utf8MojibakeUtil.corrigir(e.getGrupoCompensacao()));
         return r;
     }
