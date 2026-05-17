@@ -22,10 +22,7 @@ import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.time.YearMonth;
 import java.util.*;
-import java.util.regex.Pattern;
-import java.util.regex.PatternSyntaxException;
 import java.util.stream.Collectors;
 
 @Service
@@ -106,72 +103,6 @@ public class FinanceiroSugestaoService {
         return result;
     }
 
-    @Transactional
-    public AutoClassificarResponse autoClassificar(AutoClassificarRequest req) {
-        ConfiancaSugestao minimo = req.getConfiancaMinima() != null ? req.getConfiancaMinima() : ConfiancaSugestao.ALTA;
-        Integer ano = null;
-        Integer mes = null;
-        if (StringUtils.hasText(req.getMes())) {
-            YearMonth ym = YearMonth.parse(req.getMes().trim());
-            ano = ym.getYear();
-            mes = ym.getMonthValue();
-        }
-
-        var spec = LancamentoFinanceiroSpecifications.comFiltros(
-                null,
-                null,
-                null,
-                null,
-                null,
-                EtapaLancamento.IMPORTADO,
-                req.getNumeroBanco(),
-                null,
-                null,
-                null,
-                ano,
-                mes);
-
-        List<LancamentoFinanceiroEntity> candidatos = lancamentoRepository.findAll(spec);
-
-        AutoClassificarResponse response = new AutoClassificarResponse();
-        response.setSimulacao(req.isDryRun());
-        response.setCandidatos(candidatos.size());
-        List<AutoClassificarDetalheResponse> detalhes = new ArrayList<>();
-        Map<String, Integer> porConta = new LinkedHashMap<>();
-        int classificaveis = 0;
-
-        for (LancamentoFinanceiroEntity l : candidatos) {
-            List<SugestaoClassificacaoResponse> sugestoes = sugerir(l);
-            Optional<SugestaoClassificacaoResponse> melhor = sugestoes.stream()
-                    .filter(s -> s.getConfianca().atendeMinimo(minimo))
-                    .findFirst();
-            if (melhor.isEmpty()) {
-                continue;
-            }
-            classificaveis++;
-            SugestaoClassificacaoResponse s = melhor.get();
-            porConta.merge(s.getContaCodigo(), 1, Integer::sum);
-
-            AutoClassificarDetalheResponse d = new AutoClassificarDetalheResponse();
-            d.setLancamentoId(l.getId());
-            d.setDescricao(Utf8MojibakeUtil.corrigir(l.getDescricao()));
-            d.setSugestao(s.getContaCodigo());
-            d.setConfianca(s.getConfianca());
-            d.setOrigem(s.getOrigem());
-            detalhes.add(d);
-
-            if (!req.isDryRun()) {
-                aplicarClassificacaoEmEntity(l, s.getContaContabilId(), s.getClienteId(), s.getProcessoId());
-                lancamentoRepository.save(l);
-            }
-        }
-
-        response.setClassificaveis(classificaveis);
-        response.setPorConta(porConta);
-        response.setDetalhes(detalhes);
-        return response;
-    }
-
     private List<SugestaoClassificacaoResponse> camadaRegras(LancamentoFinanceiroEntity lancamento) {
         String texto = textoParaMatch(lancamento);
         List<SugestaoClassificacaoResponse> out = new ArrayList<>();
@@ -180,10 +111,11 @@ public class FinanceiroSugestaoService {
                     && !Objects.equals(regra.getNumeroBanco(), lancamento.getNumeroBanco())) {
                 continue;
             }
-            if (!matchRegra(regra, texto)) {
+            if (!ClassificacaoAutomaticaService.matchRegra(regra, texto)) {
                 continue;
             }
-            SugestaoClassificacaoResponse s = baseSugestao(regra.getContaContabil(), ConfiancaSugestao.ALTA, OrigemSugestao.REGRA);
+            ConfiancaSugestao conf = confiancaDeRegra(regra.getConfianca());
+            SugestaoClassificacaoResponse s = baseSugestao(regra.getContaContabil(), conf, OrigemSugestao.REGRA);
             s.setRegraId(regra.getId());
             s.setDescricaoRegra(regra.getPadraoDescricao() + " → " + regra.getContaContabil().getCodigo());
             if (regra.getCliente() != null) {
@@ -278,24 +210,17 @@ public class FinanceiroSugestaoService {
         return List.of(s);
     }
 
-    private boolean matchRegra(RegraClassificacaoEntity regra, String texto) {
-        String padrao = regra.getPadraoDescricao();
-        if (!StringUtils.hasText(padrao) || !StringUtils.hasText(texto)) {
-            return false;
+    private static ConfiancaSugestao confiancaDeRegra(BigDecimal confianca) {
+        if (confianca == null) {
+            return ConfiancaSugestao.ALTA;
         }
-        return switch (regra.getTipoMatch()) {
-            case CONTAINS -> texto.toUpperCase(Locale.ROOT).contains(padrao.trim().toUpperCase(Locale.ROOT));
-            case EXACT -> texto.equalsIgnoreCase(padrao.trim());
-            case REGEX -> {
-                try {
-                    yield Pattern.compile(padrao, Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE)
-                            .matcher(texto)
-                            .find();
-                } catch (PatternSyntaxException ex) {
-                    yield false;
-                }
-            }
-        };
+        if (confianca.compareTo(new BigDecimal("0.90")) >= 0) {
+            return ConfiancaSugestao.ALTA;
+        }
+        if (confianca.compareTo(new BigDecimal("0.70")) >= 0) {
+            return ConfiancaSugestao.MEDIA;
+        }
+        return ConfiancaSugestao.BAIXA;
     }
 
     private static String textoParaMatch(LancamentoFinanceiroEntity lancamento) {

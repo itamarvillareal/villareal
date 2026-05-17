@@ -83,6 +83,7 @@ class FinanceiroSugestaoServiceTest {
         regra.setTipoMatch(TipoMatch.CONTAINS);
         regra.setContaContabil(contaE);
         regra.setPrioridade(10);
+        regra.setConfianca(new BigDecimal("0.99"));
         regra.setAtivo(true);
 
         when(regraRepository.findByAtivoTrueOrderByPrioridadeAscIdAsc()).thenReturn(List.of(regra));

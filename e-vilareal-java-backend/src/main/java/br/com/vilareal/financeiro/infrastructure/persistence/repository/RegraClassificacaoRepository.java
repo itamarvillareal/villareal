@@ -10,4 +10,6 @@ public interface RegraClassificacaoRepository extends JpaRepository<RegraClassif
 
     @EntityGraph(attributePaths = {"contaContabil", "cliente", "processo"})
     List<RegraClassificacaoEntity> findByAtivoTrueOrderByPrioridadeAscIdAsc();
+
+    List<RegraClassificacaoEntity> findByAtivoTrueOrderByConfiancaDescPrioridadeAscIdAsc();
 }

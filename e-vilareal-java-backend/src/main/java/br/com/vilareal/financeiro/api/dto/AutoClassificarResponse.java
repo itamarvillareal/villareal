@@ -14,6 +14,8 @@ public class AutoClassificarResponse {
     private boolean simulacao;
     private int candidatos;
     private int classificaveis;
+    private int totalReclassificados;
     private Map<String, Integer> porConta = new LinkedHashMap<>();
     private List<AutoClassificarDetalheResponse> detalhes;
+    private List<AutoClassificarRegraAplicadaResponse> regrasAplicadas;
 }
