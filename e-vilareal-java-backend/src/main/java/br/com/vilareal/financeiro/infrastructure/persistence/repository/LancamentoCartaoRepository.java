@@ -28,4 +28,20 @@ public interface LancamentoCartaoRepository
             WHERE c.numeroCartao = :numero
             """)
     List<LancamentoCartaoEntity> findAllByNumeroCartao(@Param("numero") Integer numero);
+
+    @Query("""
+            SELECT l FROM LancamentoCartaoEntity l
+            JOIN FETCH l.cartao
+            JOIN FETCH l.contaContabil
+            LEFT JOIN FETCH l.cliente
+            LEFT JOIN FETCH l.processo
+            WHERE l.cartao.id = :cartaoId
+              AND l.dataLancamento BETWEEN :inicio AND :fim
+              AND l.status = 'ATIVO'
+            ORDER BY l.dataLancamento DESC, l.id DESC
+            """)
+    List<LancamentoCartaoEntity> findByCartaoAndPeriodo(
+            @Param("cartaoId") Long cartaoId,
+            @Param("inicio") java.time.LocalDate inicio,
+            @Param("fim") java.time.LocalDate fim);
 }

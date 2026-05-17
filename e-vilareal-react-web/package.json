@@ -34,6 +34,8 @@
     "import:debitos-calculos:devtools": "node scripts/import-debitos-calculos-planilha.mjs \"/Users/itamarvillarealjunior/Dropbox/COMUM/debitos.xlsx\" --out=\"/tmp/vilareal-rodadas-debitos-merged.json\" --devtools-snippet",
     "emit:sql:calculo-rodada-debitos": "node scripts/emit-calculo-rodada-sql-from-debitos-xlsx.mjs \"/Users/itamarvillarealjunior/Dropbox/COMUM/debitos.xlsx\"",
     "import:calculos-layout2026": "node scripts/import-calculos-planilha-layout2026.mjs",
+    "import:extrato-99pay-pdf": "node scripts/import-extrato-99pay-pdf.mjs",
+    "import:extrato-99pay-xlsx": "node scripts/import-extrato-99pay-xlsx.mjs",
     "import:extrato-bancos-itau": "node scripts/import-extrato-bancos-planilha.mjs \"/Users/itamar/Downloads/Extratos Bancos - Itamar.xls\" --sheet=Itaú --banco=Itaú --layout=itau-pf --substituir --login=itamar",
     "import:extrato-bancos-todos": "node scripts/import-extrato-bancos-planilha.mjs \"/Users/itamar/Downloads/Extratos Bancos - Itamar.xls\" --todos-bancos --substituir --login=itamar",
     "import:extrato-cartoes-todos": "node scripts/import-extrato-cartoes-planilha.mjs \"/Users/itamar/Downloads/Extratos Bancos - Itamar.xls\" --todos-cartoes --substituir --login=itamar",
@@ -46,6 +48,7 @@
     "verificar:grupos-compensacao": "node scripts/verificar-grupos-compensacao-api.mjs"
   },
   "dependencies": {
+    "@tanstack/react-virtual": "^3.13.24",
     "docx": "^9.6.1",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.7",
@@ -54,6 +57,7 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router-dom": "^7.13.1",
+    "recharts": "^3.8.1",
     "tesseract.js": "^5.1.0",
     "xlsx": "^0.18.5"
   },

@@ -96,8 +96,28 @@ export function parseNumeroInternoProcesso(val) {
   return n;
 }
 
+/** Remove diacríticos (È → E, Á → A, etc.). */
+function removerAcentos(s) {
+  return String(s)
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '');
+}
+
+/**
+ * Normaliza texto bruto da coluna B antes do lookup em LETRA_PARA_CONTA:
+ * trim → upper → sem acentos → colapsa repetição (EE → E).
+ * @param {unknown} raw
+ */
+export function prepararLetraPlanilhaRaw(raw) {
+  let s = String(raw ?? '').trim().toUpperCase();
+  if (!s) return '';
+  s = removerAcentos(s);
+  if (/^([A-Z])\1+$/.test(s)) s = s[0];
+  return s;
+}
+
 export function normalizarLetraPlanilha(raw) {
-  const L = String(raw ?? '').trim().toUpperCase();
+  const L = prepararLetraPlanilhaRaw(raw);
   if (!L) return null;
   if (LETRA_PARA_CONTA[L]) return L;
   return null;

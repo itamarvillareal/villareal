@@ -1,0 +1,137 @@
+/* Tokens visuais do módulo Financeiro */
+
+:root {
+  --fin-conta-a: #3b82f6;
+  --fin-conta-a-bg: #eff6ff;
+  --fin-conta-a-border: #93c5fd;
+  --fin-conta-b: #8b5cf6;
+  --fin-conta-b-bg: #f5f3ff;
+  --fin-conta-b-border: #c4b5fd;
+  --fin-conta-c: #06b6d4;
+  --fin-conta-c-bg: #ecfeff;
+  --fin-conta-c-border: #67e8f9;
+  --fin-conta-d: #10b981;
+  --fin-conta-d-bg: #ecfdf5;
+  --fin-conta-d-border: #6ee7b7;
+  --fin-conta-e: #f59e0b;
+  --fin-conta-e-bg: #fffbeb;
+  --fin-conta-e-border: #fcd34d;
+  --fin-conta-f: #6366f1;
+  --fin-conta-f-bg: #eef2ff;
+  --fin-conta-f-border: #a5b4fc;
+  --fin-conta-g: #64748b;
+  --fin-conta-g-bg: #f8fafc;
+  --fin-conta-g-border: #cbd5e1;
+  --fin-conta-i: #d946ef;
+  --fin-conta-i-bg: #fdf4ff;
+  --fin-conta-i-border: #e879f9;
+  --fin-conta-j: #14b8a6;
+  --fin-conta-j-bg: #f0fdfa;
+  --fin-conta-j-border: #5eead4;
+  --fin-conta-m: #ea580c;
+  --fin-conta-m-bg: #fff7ed;
+  --fin-conta-m-border: #fb923c;
+  --fin-conta-n: #ef4444;
+  --fin-conta-n-bg: #fef2f2;
+  --fin-conta-n-border: #fca5a5;
+  --fin-conta-p: #0ea5e9;
+  --fin-conta-p-bg: #f0f9ff;
+  --fin-conta-p-border: #7dd3fc;
+  --fin-conta-r: #ec4899;
+  --fin-conta-r-bg: #fdf2f8;
+  --fin-conta-r-border: #f9a8d4;
+
+  --fin-etapa-importado: #f59e0b;
+  --fin-etapa-importado-bg: #fffbeb;
+  --fin-etapa-classificado: #3b82f6;
+  --fin-etapa-classificado-bg: #eff6ff;
+  --fin-etapa-compensado: #10b981;
+  --fin-etapa-compensado-bg: #ecfdf5;
+  --fin-etapa-vinculado: #8b5cf6;
+  --fin-etapa-vinculado-bg: #f5f3ff;
+  --fin-etapa-fechado: #64748b;
+  --fin-etapa-fechado-bg: #f8fafc;
+
+  --fin-confianca-alta: #10b981;
+  --fin-confianca-media: #f59e0b;
+  --fin-confianca-baixa: #ef4444;
+
+  --fin-credito: #047857;
+  --fin-debito: #b91c1c;
+
+  --fin-inbox-badge: #ef4444;
+  --fin-inbox-badge-bg: #fef2f2;
+
+  --fin-row-hover: #f8fafc;
+  --fin-row-selected: #eff6ff;
+  --fin-row-alt: #f9fafb;
+  --fin-row-pendente: #fef2f2;
+  --fin-header-bg: #f1f5f9;
+
+  --fin-progress-baixo: #ef4444;
+  --fin-progress-medio: #f59e0b;
+  --fin-progress-alto: #10b981;
+}
+
+[data-theme='dark'],
+.dark {
+  --fin-conta-a: #60a5fa;
+  --fin-conta-a-bg: #1e3a5f;
+  --fin-conta-a-border: #2563eb;
+  --fin-conta-b: #a78bfa;
+  --fin-conta-b-bg: #2e1065;
+  --fin-conta-b-border: #7c3aed;
+  --fin-conta-c: #22d3ee;
+  --fin-conta-c-bg: #164e63;
+  --fin-conta-c-border: #0891b2;
+  --fin-conta-d: #34d399;
+  --fin-conta-d-bg: #064e3b;
+  --fin-conta-d-border: #059669;
+  --fin-conta-e: #fbbf24;
+  --fin-conta-e-bg: #451a03;
+  --fin-conta-e-border: #d97706;
+  --fin-conta-f: #818cf8;
+  --fin-conta-f-bg: #1e1b4b;
+  --fin-conta-f-border: #4f46e5;
+  --fin-conta-g: #94a3b8;
+  --fin-conta-g-bg: #1e293b;
+  --fin-conta-g-border: #475569;
+  --fin-conta-i: #e879f9;
+  --fin-conta-i-bg: #4a044e;
+  --fin-conta-i-border: #c026d3;
+  --fin-conta-j: #2dd4bf;
+  --fin-conta-j-bg: #134e4a;
+  --fin-conta-j-border: #0d9488;
+  --fin-conta-m: #fb923c;
+  --fin-conta-m-bg: #431407;
+  --fin-conta-m-border: #c2410c;
+  --fin-conta-n: #f87171;
+  --fin-conta-n-bg: #451a1a;
+  --fin-conta-n-border: #dc2626;
+  --fin-conta-p: #38bdf8;
+  --fin-conta-p-bg: #0c4a6e;
+  --fin-conta-p-border: #0284c7;
+  --fin-conta-r: #f472b6;
+  --fin-conta-r-bg: #500724;
+  --fin-conta-r-border: #db2777;
+
+  --fin-etapa-importado: #fbbf24;
+  --fin-etapa-importado-bg: #451a03;
+  --fin-etapa-classificado: #60a5fa;
+  --fin-etapa-classificado-bg: #1e3a5f;
+  --fin-etapa-compensado: #34d399;
+  --fin-etapa-compensado-bg: #064e3b;
+  --fin-etapa-vinculado: #a78bfa;
+  --fin-etapa-vinculado-bg: #2e1065;
+  --fin-etapa-fechado: #94a3b8;
+  --fin-etapa-fechado-bg: #1e293b;
+
+  --fin-credito: #34d399;
+  --fin-debito: #f87171;
+
+  --fin-row-hover: #1e293b;
+  --fin-row-selected: #1e3a5f;
+  --fin-row-alt: #0f172a;
+  --fin-row-pendente: #451a1a;
+  --fin-header-bg: #1e293b;
+}

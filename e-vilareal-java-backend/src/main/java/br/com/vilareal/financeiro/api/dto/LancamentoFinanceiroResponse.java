@@ -33,6 +33,8 @@ public class LancamentoFinanceiroResponse {
     private String refTipo;
     private String origem;
     private String status;
+    /** Etapa do workflow: IMPORTADO, CLASSIFICADO, COMPENSADO, VINCULADO, FECHADO. */
+    private String etapa;
     /** Par de compensação (col. M / Elo). */
     private String grupoCompensacao;
 }

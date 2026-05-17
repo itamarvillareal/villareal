@@ -1,6 +1,20 @@
+// ⚠️ LEGADO — Este componente monolítico está mantido apenas
+// para a rota /financeiro/legado como fallback.
+// Todas as funcionalidades foram migradas para:
+//   - extrato/ExtratoPage.jsx
+//   - inbox/InboxPage.jsx
+//   - dashboard/DashboardPage.jsx
+//   - consolidado/ConsolidadoPage.jsx
+//   - compensacao/CompensacaoPage.jsx
+//   - fatura/FaturaPage.jsx
+//   - cartao/CartaoPage.jsx
+//   - config/ConfigPage.jsx
+// Data da migração: Maio/2026
+
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import {
+  getBancoNumeroMapMerged,
   getExtratosIniciais,
   getExtratosCartaoIniciais,
   isNomeCartaoFinanceiro,
@@ -596,7 +610,10 @@ function loadExibicaoFinanceiro() {
 /** PUT a cada tecla em Cód./Proc. gerava corrida: resposta antiga repunha o valor no input. */
 const COD_PROC_FINANCEIRO_API_DEBOUNCE_MS = 450;
 
-export function Financeiro() {
+/**
+ * @param {{ paineisRelatorios?: 'ambos' | 'so_extrato' | 'so_consolidado', instituicaoInicial?: string, embedMode?: boolean }} [props]
+ */
+export function Financeiro({ paineisRelatorios: paineisRelatoriosProp, instituicaoInicial, embedMode = false } = {}) {
   const navigate = useNavigate();
   const location = useLocation();
   const [extratosPorCartao, setExtratosPorCartao] = useState(() => getExtratosCartaoIniciais());
@@ -646,13 +663,17 @@ export function Financeiro() {
   const [contasExtras, setContasExtras] = useState(() => loadPersistedContasExtrasFinanceiro());
   const [nomeNovaContaBancaria, setNomeNovaContaBancaria] = useState('');
   const [msgNovaContaBancaria, setMsgNovaContaBancaria] = useState(null);
-  const [instituicaoSelecionada, setInstituicaoSelecionada] = useState(() =>
-    primeiraInstituicaoAtiva(loadPersistedExtratosInativosFinanceiro(), [
+  const [instituicaoSelecionada, setInstituicaoSelecionada] = useState(() => {
+    const inativas = loadPersistedExtratosInativosFinanceiro();
+    const lista = [
       ...INSTITUICOES_LINHA_1,
       ...INSTITUICOES_LINHA_2,
       ...loadPersistedContasExtrasFinanceiro().map((c) => c.nome),
-    ])
-  );
+    ];
+    const ini = String(instituicaoInicial ?? '').trim();
+    if (ini && lista.includes(ini) && !inativas.includes(ini)) return ini;
+    return primeiraInstituicaoAtiva(inativas, lista);
+  });
   const [mostrarExtratosInativos, setMostrarExtratosInativos] = useState(false);
   const [contasContabeisExtras, setContasContabeisExtras] = useState(() =>
     loadPersistedContasContabeisExtrasFinanceiro()
@@ -756,6 +777,29 @@ export function Financeiro() {
     setExtratoLinhasSelecionadas(new Set());
     setLetraLoteExtrato('');
   }, [instituicaoSelecionada]);
+
+  useEffect(() => {
+    if (searchParams.get('acao') !== 'importar') return undefined;
+    const bancoNum = searchParams.get('banco');
+    if (bancoNum) {
+      const map = getBancoNumeroMapMerged();
+      const nome = Object.entries(map).find(([, n]) => String(n) === String(bancoNum))?.[0];
+      if (nome) setInstituicaoSelecionada(nome);
+    }
+    const t = window.setTimeout(() => {
+      fileInputExtratoRef.current?.click();
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete('acao');
+          next.delete('banco');
+          return next;
+        },
+        { replace: true },
+      );
+    }, 400);
+    return () => clearTimeout(t);
+  }, [searchParams, setSearchParams]);
 
   useEffect(() => {
     if (!menuFiltroValorExtratoAberto) return undefined;
@@ -893,6 +937,7 @@ export function Financeiro() {
   const linhaConsolidadoRef = useRef(null);
   const linhaBancoRef = useRef(null);
   const fileInputExtratoRef = useRef(null);
+  const [searchParams, setSearchParams] = useSearchParams();
   const [ofxStatus, setOfxStatus] = useState({ kind: 'idle', message: '' });
   const [substituirExtratoOfxCompleto, setSubstituirExtratoOfxCompleto] = useState(false);
   const [modalParearCompensacao, setModalParearCompensacao] = useState(null);
@@ -924,7 +969,9 @@ export function Financeiro() {
   const [disposicaoRelatorios, setDisposicaoRelatorios] = useState(
     () => loadExibicaoFinanceiro().disposicao
   );
-  const [paineisRelatorios, setPaineisRelatorios] = useState(() => loadExibicaoFinanceiro().paineis);
+  const [paineisRelatorios, setPaineisRelatorios] = useState(
+    () => paineisRelatoriosProp ?? loadExibicaoFinanceiro().paineis,
+  );
   const [ordemRelatorios, setOrdemRelatorios] = useState(() => loadExibicaoFinanceiro().ordem);
 
   const recarregarExtratosFinanceiroApi = useCallback(async () => {
@@ -3193,6 +3240,7 @@ export function Financeiro() {
 
   return (
     <>
+      {!embedMode ? (
       <header className="px-4 py-3 shrink-0 rounded-xl border border-slate-200/80 bg-white/90 shadow-sm backdrop-blur-sm mx-2 mb-1">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex items-start gap-2.5 min-w-0 flex-wrap">
@@ -3441,6 +3489,7 @@ export function Financeiro() {
           </div>
         </div>
       </header>
+      ) : null}
       {filtroConciliacaoHonorarios && (
         <div className="mx-3 md:mx-4 mb-2 rounded-xl border border-indigo-200/90 bg-indigo-50/95 px-4 py-3 text-sm text-indigo-950 flex flex-wrap items-center justify-between gap-2 shrink-0 shadow-sm ring-1 ring-indigo-500/10">
           <p>

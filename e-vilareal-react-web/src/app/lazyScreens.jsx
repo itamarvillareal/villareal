@@ -50,8 +50,40 @@ export const LazyRelatorioCalculos = fromNamed(() => import('../components/Relat
 export const LazyCalculos = fromNamed(() => import('../components/Calculos.jsx'), 'Calculos');
 export const LazyDiagnosticos = fromNamed(() => import('../components/Diagnosticos.jsx'), 'Diagnosticos');
 export const LazyFinanceiroLayout = fromNamed(
-  () => import('../components/FinanceiroLayout.jsx'),
+  () => import('../components/financeiro/FinanceiroLayout.jsx'),
   'FinanceiroLayout',
+);
+export const LazyFinanceiroDashboard = fromNamed(
+  () => import('../components/financeiro/dashboard/DashboardPage.jsx'),
+  'DashboardPage',
+);
+export const LazyFinanceiroExtrato = fromNamed(
+  () => import('../components/financeiro/extrato/ExtratoPage.jsx'),
+  'ExtratoPage',
+);
+export const LazyFinanceiroInbox = fromNamed(
+  () => import('../components/financeiro/inbox/InboxPage.jsx'),
+  'InboxPage',
+);
+export const LazyFinanceiroConsolidado = fromNamed(
+  () => import('../components/financeiro/consolidado/ConsolidadoPage.jsx'),
+  'ConsolidadoPage',
+);
+export const LazyFinanceiroCompensacao = fromNamed(
+  () => import('../components/financeiro/compensacao/CompensacaoPage.jsx'),
+  'CompensacaoPage',
+);
+export const LazyFinanceiroFatura = fromNamed(
+  () => import('../components/financeiro/fatura/FaturaPage.jsx'),
+  'FaturaPage',
+);
+export const LazyFinanceiroCartao = fromNamed(
+  () => import('../components/financeiro/cartao/CartaoPage.jsx'),
+  'CartaoPage',
+);
+export const LazyFinanceiroConfig = fromNamed(
+  () => import('../components/financeiro/config/ConfigPage.jsx'),
+  'ConfigPage',
 );
 export const LazyFinanceiro = fromNamed(() => import('../components/Financeiro.jsx'), 'Financeiro');
 export const LazyFinanceiroRelatorios = fromNamed(

@@ -56,6 +56,10 @@ public class LancamentoFinanceiroWriteRequest {
     @Size(max = 20)
     private String status;
 
+    /** Opcional; se omitido, o backend calcula via {@link br.com.vilareal.financeiro.domain.EtapaLancamento#calcular}. */
+    @Size(max = 20)
+    private String etapa;
+
     /** Par de compensação (planilha col. M / Elo). */
     @Size(max = 40)
     private String grupoCompensacao;
