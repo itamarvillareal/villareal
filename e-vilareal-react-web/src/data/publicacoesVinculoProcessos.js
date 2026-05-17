@@ -9,6 +9,7 @@ import { calcularScoreConfianca, datajudStubFromStatusValidacao } from './public
 import { featureFlags } from '../config/featureFlags.js';
 import { listarClientesIndiceCadastro } from '../repositories/clientesRepository.js';
 import { listarProcessosResumoPorCodigoCliente, mapApiProcessoToUiShape } from '../repositories/processosRepository.js';
+import { digitosCnjNormalizados, termoDigitosCorrespondeCnjCampo } from '../domain/cnjFuzzyBusca.js';
 
 /**
  * Índice vazio até {@link montarIndiceCnjClienteProcAsync} concluir (evita dados fictícios).
@@ -105,6 +106,16 @@ export function buscarHitIndiceCnjPorCnj(indiceMap, cnjRaw) {
       }
       if (!seg.startsWith('0') || seg.length <= 1) break;
       seg = seg.slice(1);
+    }
+  }
+
+  // OCR / PDF: um dígito trocado no 1.º segmento (ex.: 5482633… vs cadastro 5402633…).
+  const digBusca = digitosCnjNormalizados(s0);
+  if (digBusca.length >= 7) {
+    for (const [k, hit] of indiceMap) {
+      if (termoDigitosCorrespondeCnjCampo(digBusca, k)) {
+        return { hit, chaveUsada: k };
+      }
     }
   }
   return null;

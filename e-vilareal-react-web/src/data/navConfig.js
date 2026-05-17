@@ -49,7 +49,15 @@ export const navItems = [
   { id: 'agenda', label: 'Agenda', icon: 'Calendar' },
   { id: 'atividade', label: 'Atividade', icon: 'ClipboardList' },
   { id: 'atividades-em-lote', label: 'Atividades em Lote', icon: 'Layers' },
-  { id: 'financeiro', label: 'Financeiro', icon: 'CircleDollarSign' },
+  {
+    id: 'financeiro-grupo',
+    label: 'Financeiro',
+    icon: 'CircleDollarSign',
+    children: [
+      { id: 'financeiro', label: 'Extratos', icon: 'CircleDollarSign' },
+      { id: 'financeiro/relatorios', label: 'Relatórios', icon: 'FileBarChart' },
+    ],
+  },
   { id: 'pagamentos', label: 'Pagamentos', icon: 'Wallet' },
   { id: 'pendencias', label: 'Pendências', icon: 'AlertTriangle' },
   {

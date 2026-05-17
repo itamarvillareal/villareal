@@ -55,4 +55,8 @@ public class LancamentoFinanceiroWriteRequest {
 
     @Size(max = 20)
     private String status;
+
+    /** Par de compensação (planilha col. M / Elo). */
+    @Size(max = 40)
+    private String grupoCompensacao;
 }

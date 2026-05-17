@@ -49,7 +49,15 @@ export const LazyRelatorio = fromNamed(() => import('../components/Relatorio.jsx
 export const LazyRelatorioCalculos = fromNamed(() => import('../components/RelatorioCalculos.jsx'), 'RelatorioCalculos');
 export const LazyCalculos = fromNamed(() => import('../components/Calculos.jsx'), 'Calculos');
 export const LazyDiagnosticos = fromNamed(() => import('../components/Diagnosticos.jsx'), 'Diagnosticos');
+export const LazyFinanceiroLayout = fromNamed(
+  () => import('../components/FinanceiroLayout.jsx'),
+  'FinanceiroLayout',
+);
 export const LazyFinanceiro = fromNamed(() => import('../components/Financeiro.jsx'), 'Financeiro');
+export const LazyFinanceiroRelatorios = fromNamed(
+  () => import('../components/FinanceiroRelatorios.jsx'),
+  'FinanceiroRelatorios',
+);
 export const LazyPagamentos = fromNamed(() => import('../components/Pagamentos.jsx'), 'Pagamentos');
 export const LazyUsuarios = fromNamed(() => import('../components/Usuarios.jsx'), 'Usuarios');
 export const LazyConfiguracoes = fromNamed(() => import('../components/Configuracoes.jsx'), 'Configuracoes');

@@ -38,4 +38,10 @@ public class PublicacaoResponse {
     private String statusTratamento;
     private boolean lida;
     private String observacao;
+
+    /** Nome da pessoa titular (cliente da pasta), quando {@link #processoId} preenchido. */
+    private String parteCliente;
+
+    /** Parte(s) oposta(s) agregada(s), critério alinhado a {@code ProcessoResponse#getParteOposta()}. */
+    private String parteOposta;
 }

@@ -5,7 +5,10 @@ import {
   buildContaToLetraMerge,
   buildLetraToContaMerge,
   buildNumeroToNomeBancoMap,
+  CARTAO_TO_NUMERO,
+  getExtratosCartaoIniciais,
   getExtratosIniciais,
+  isNomeCartaoFinanceiro,
   loadPersistedContasContabeisExtrasFinanceiro,
   loadPersistedContasExtrasFinanceiro,
   loadPersistedExtratosFinanceiro,
@@ -63,6 +66,8 @@ function codClienteExibicaoDesdeApi(l) {
 }
 
 function procExibicaoDesdeApi(l) {
+  const grupo = String(l.grupoCompensacao ?? '').trim();
+  if (grupo) return grupo;
   const ni = l.numeroInternoProcesso ?? l.numero_interno_processo;
   if (ni == null || ni === '') return '';
   return normalizarProcFinanceiro(ni) || '';
@@ -112,12 +117,18 @@ export function mergeUiLancamentoComRespostaApi(row, saved) {
     eq: mascaraSoArquivoSemVinculo ? '' : row.eq,
     parcela: mascaraSoArquivoSemVinculo ? '' : row.parcela,
     categoria: mascaraSoArquivoSemVinculo ? '' : row.categoria,
-    numeroBanco: saved.numeroBanco ?? row.numeroBanco ?? null,
+    nomeBanco: String(saved.cartaoNome ?? saved.bancoNome ?? row.nomeBanco ?? ''),
+    numeroBanco: saved.numeroCartao ?? saved.numeroBanco ?? row.numeroBanco ?? null,
+    valor:
+      saved.valor != null && saved.cartaoNome != null
+        ? Number(saved.valor)
+        : row.valor,
     _financeiroMeta: {
       ...(row._financeiroMeta || {}),
       clienteId: mascaraSoArquivoSemVinculo ? null : saved.clienteId ?? row._financeiroMeta?.clienteId ?? null,
       processoId: mascaraSoArquivoSemVinculo ? null : saved.processoId ?? row._financeiroMeta?.processoId ?? null,
       contaContabilId: saved.contaContabilId ?? row._financeiroMeta?.contaContabilId ?? null,
+      cartaoId: saved.cartaoId ?? row._financeiroMeta?.cartaoId ?? null,
     },
   };
 }
@@ -150,13 +161,14 @@ function mapApiLancamentoToUi(l, contaToLetra) {
     dimensao: '',
     eq: '',
     parcela: '',
-    nomeBanco: String(l.bancoNome ?? ''),
-    numeroBanco: l.numeroBanco ?? null,
+    nomeBanco: String(l.bancoNome ?? l.cartaoNome ?? ''),
+    numeroBanco: l.numeroBanco ?? l.numeroCartao ?? null,
     origemImportacao,
     _financeiroMeta: {
       clienteId: l.clienteId ?? null,
       processoId: l.processoId ?? null,
       contaContabilId: l.contaContabilId ?? null,
+      grupoCompensacao: l.grupoCompensacao ?? null,
     },
   };
   if (!fromArquivo || apiDtoTemVinculoClienteOuProcesso(l)) return base;
@@ -206,6 +218,10 @@ function mapUiLancamentoToApi(t, contaIdByNome, letraToConta) {
     refTipo: normalizarRef(t.ref),
     origem: String(t.origemImportacao ?? '').trim() || 'MANUAL',
     status: 'ATIVO',
+    grupoCompensacao:
+      String(t.letra ?? '').toUpperCase() === 'E'
+        ? String(t.proc ?? t._financeiroMeta?.grupoCompensacao ?? '').trim() || null
+        : null,
   };
   return body;
 }
@@ -250,30 +266,162 @@ export async function listarLancamentosFinanceiroPaginados(filtros = {}, opts = 
   return request('/api/financeiro/lancamentos/paginada', { query, signal });
 }
 
+function mapApiLancamentoCartaoToUi(l, contaToLetra) {
+  const letra = contaToLetra[l.contaContabilNome] || 'N';
+  const valorNum = Number(l.valor ?? 0);
+  const origemImportacao = String(l.origem ?? '').trim();
+  const dataLancBr = toBrDate(l.dataLancamento);
+  const dataCompBr = l.dataCompetencia != null ? toBrDate(l.dataCompetencia) : dataLancBr;
+  return {
+    apiId: l.id,
+    letra,
+    numero: String(l.numeroLancamento ?? ''),
+    data: dataLancBr,
+    dataCompetencia: dataCompBr,
+    descricao: String(l.descricao ?? ''),
+    valor: valorNum,
+    saldo: 0,
+    saldoDesc: '',
+    descricaoDetalhada: String(l.descricaoDetalhada ?? ''),
+    categoria: String(l.descricaoDetalhada ?? ''),
+    codCliente: codClienteExibicaoDesdeApi(l),
+    proc: procExibicaoDesdeApi(l),
+    ref: String(l.refTipo || 'N').toUpperCase() === 'R' ? 'R' : 'N',
+    dimensao: '',
+    eq: '',
+    parcela: '',
+    nomeBanco: String(l.cartaoNome ?? ''),
+    numeroBanco: l.numeroCartao ?? null,
+    origemImportacao,
+    origemExtrato: 'cartao',
+    _financeiroMeta: {
+      clienteId: l.clienteId ?? null,
+      processoId: l.processoId ?? null,
+      contaContabilId: l.contaContabilId ?? null,
+      cartaoId: l.cartaoId ?? null,
+    },
+  };
+}
+
+function mapUiLancamentoCartaoToApi(t, contaIdByNome, letraToConta, cartaoIdByNome) {
+  const contaNome = letraToConta[String(t.letra ?? '').toUpperCase()] || 'Conta Não Identificados';
+  const contaContabilId = contaIdByNome.get(contaNome);
+  const nomeCartao = String(t.nomeBanco ?? '').trim();
+  const cartaoId = cartaoIdByNome.get(nomeCartao) ?? t._financeiroMeta?.cartaoId ?? null;
+  if (!contaContabilId || !cartaoId) return null;
+  const valorNum = Number(t.valor ?? 0);
+  return {
+    cartaoId: Number(cartaoId),
+    contaContabilId,
+    clienteId: Number(t._financeiroMeta?.clienteId) || null,
+    processoId: Number(t._financeiroMeta?.processoId) || null,
+    numeroLancamento: String(t.numero ?? ''),
+    dataLancamento: parseBrDateToIso(t.data),
+    dataCompetencia: parseBrDateToIso(t.dataCompetencia) || parseBrDateToIso(t.data),
+    descricao: String(t.descricao || '').trim() || 'Lançamento cartão',
+    descricaoDetalhada: String(t.descricaoDetalhada || t.categoria || '').trim(),
+    valor: valorNum,
+    refTipo: normalizarRef(t.ref),
+    origem: String(t.origemImportacao ?? '').trim() || 'MANUAL',
+    status: 'ATIVO',
+  };
+}
+
+export async function listarCartoesFinanceiro(opts = {}) {
+  const { signal } = opts;
+  if (!featureFlags.useApiFinanceiro) return [];
+  return request('/api/financeiro/cartoes', { signal });
+}
+
+export async function listarLancamentosCartaoFinanceiro(filtros = {}, opts = {}) {
+  const { signal } = opts;
+  if (!featureFlags.useApiFinanceiro) return [];
+  return request('/api/financeiro/cartoes/lancamentos', {
+    signal,
+    query: {
+      clienteId: filtros.clienteId ?? undefined,
+      processoId: filtros.processoId ?? undefined,
+      contaContabilId: filtros.contaContabilId ?? undefined,
+      cartaoId: filtros.cartaoId ?? undefined,
+      dataInicio: filtros.dataInicio ?? undefined,
+      dataFim: filtros.dataFim ?? undefined,
+    },
+  });
+}
+
+export async function salvarOuAtualizarLancamentoCartaoFinanceiroApi(t) {
+  if (!featureFlags.useApiFinanceiro) return null;
+  const [contas, cartoes] = await Promise.all([listarContasFinanceiro(), listarCartoesFinanceiro()]);
+  const contaIdByNome = new Map((contas || []).map((c) => [c.nome, c.id]));
+  const cartaoIdByNome = new Map((cartoes || []).map((c) => [c.nome, c.id]));
+  const { letraToConta } = contaMaps();
+  const body = mapUiLancamentoCartaoToApi(t, contaIdByNome, letraToConta, cartaoIdByNome);
+  if (!body?.contaContabilId || !body.numeroLancamento || !body.dataLancamento) return null;
+  if (Number(t.apiId)) {
+    return request(`/api/financeiro/cartoes/lancamentos/${Number(t.apiId)}`, { method: 'PUT', body });
+  }
+  return request('/api/financeiro/cartoes/lancamentos', { method: 'POST', body });
+}
+
+export async function removerLancamentoCartaoFinanceiroApi(apiId) {
+  if (!featureFlags.useApiFinanceiro || !Number(apiId)) return;
+  await request(`/api/financeiro/cartoes/lancamentos/${Number(apiId)}`, { method: 'DELETE' });
+}
+
+export async function limparExtratoCartaoFinanceiroApi(nomeCartao, numeroCartao) {
+  if (!featureFlags.useApiFinanceiro) {
+    return { lancamentosRemovidos: 0 };
+  }
+  const nc = Number(numeroCartao);
+  const body = {
+    cartao: String(nomeCartao || '').trim(),
+    ...(Number.isFinite(nc) ? { numeroCartao: nc } : {}),
+  };
+  return request('/api/financeiro/cartoes/limpar-extrato', { method: 'POST', body });
+}
+
 export async function carregarExtratosFinanceiroApiFirst({ signal } = {}) {
   if (!featureFlags.useApiFinanceiro) {
     const persisted = loadPersistedExtratosFinanceiro();
-    return persisted ? { ...getExtratosIniciais(), ...persisted } : getExtratosIniciais();
+    const merged = persisted ? { ...getExtratosIniciais(), ...persisted } : getExtratosIniciais();
+    const cartoes = getExtratosCartaoIniciais();
+    for (const nome of Object.keys(CARTAO_TO_NUMERO)) {
+      if (Array.isArray(merged[nome])) cartoes[nome] = merged[nome];
+      delete merged[nome];
+    }
+    return { extratosPorBanco: merged, extratosPorCartao: cartoes };
   }
-  const [contas, lancs] = await Promise.all([
+  const [contas, lancs, lancsCartao] = await Promise.all([
     listarContasFinanceiro({ signal }),
     listarLancamentosFinanceiro({}, { signal }),
+    listarLancamentosCartaoFinanceiro({}, { signal }),
   ]);
   const contaToLetra = {
     ...contaMaps().contaToLetra,
     ...Object.fromEntries((contas || []).map((c) => [c.nome, c.codigo])),
   };
   const numeroToNome = buildNumeroToNomeBancoMap(loadPersistedContasExtrasFinanceiro());
-  const out = {};
+  const outBanco = {};
   for (const b of Object.keys(getExtratosIniciais())) {
-    out[b] = [];
+    outBanco[b] = [];
   }
   for (const l of lancs || []) {
     const banco = nomeBancoChaveExtrato(l, numeroToNome);
-    if (!Array.isArray(out[banco])) out[banco] = [];
-    out[banco].push(mapApiLancamentoToUi(l, contaToLetra));
+    if (isNomeCartaoFinanceiro(banco)) continue;
+    if (!Array.isArray(outBanco[banco])) outBanco[banco] = [];
+    outBanco[banco].push(mapApiLancamentoToUi(l, contaToLetra));
   }
-  return out;
+  const outCartao = {};
+  for (const c of Object.keys(getExtratosCartaoIniciais())) {
+    outCartao[c] = [];
+  }
+  for (const l of lancsCartao || []) {
+    const nome = String(l.cartaoNome ?? '').trim();
+    if (!nome) continue;
+    if (!Array.isArray(outCartao[nome])) outCartao[nome] = [];
+    outCartao[nome].push(mapApiLancamentoCartaoToUi(l, contaToLetra));
+  }
+  return { extratosPorBanco: outBanco, extratosPorCartao: outCartao };
 }
 
 export async function salvarOuAtualizarLancamentoFinanceiroApi(t) {
@@ -405,4 +553,24 @@ export async function listarLancamentosProcessoApiFirst({ processoId, codigoClie
 /** Cache local dos extratos: com API ativa continua útil para 1ª pintura e se o GET falhar ou atrasar. */
 export function persistirFallbackExtratos(extratos) {
   savePersistedExtratosFinanceiro(extratos);
+}
+
+export async function listarVinculosPagamentoFaturaApi() {
+  if (!featureFlags.useApiFinanceiro) return [];
+  return request('/api/financeiro/pagamentos-fatura/vinculos');
+}
+
+export async function criarVinculoPagamentoFaturaApi(lancamentoBancoId, lancamentoCartaoId) {
+  if (!featureFlags.useApiFinanceiro) {
+    throw new Error('API financeiro desativada');
+  }
+  return request('/api/financeiro/pagamentos-fatura/vinculos', {
+    method: 'POST',
+    body: { lancamentoBancoId: Number(lancamentoBancoId), lancamentoCartaoId: Number(lancamentoCartaoId) },
+  });
+}
+
+export async function removerVinculoPagamentoFaturaApi(vinculoId) {
+  if (!featureFlags.useApiFinanceiro || !Number(vinculoId)) return;
+  await request(`/api/financeiro/pagamentos-fatura/vinculos/${Number(vinculoId)}`, { method: 'DELETE' });
 }

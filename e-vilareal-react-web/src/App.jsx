@@ -17,6 +17,8 @@ import {
   LazyConfiguracoes,
   LazyDiagnosticos,
   LazyFinanceiro,
+  LazyFinanceiroLayout,
+  LazyFinanceiroRelatorios,
   LazyPagamentos,
   LazyGerenteTopicos,
   LazyIntegracoesTribunalScraperLab,
@@ -84,7 +86,7 @@ function Layout() {
   /** Metadados das rodadas (`GET /rodadas/resumo`): leve; payloads completos vêm sob demanda em Cálculos. */
   useEffect(() => {
     if (!featureFlags.useApiCalculos) return;
-    void hydrateRodadasCalculosResumoFromApi();
+    void hydrateRodadasCalculosResumoFromApi({ silent: true });
   }, []);
 
   useEffect(() => {
@@ -339,7 +341,10 @@ function App() {
               <Route path="/topicos/gerente" element={<LazyGerenteTopicos />} />
               <Route path="/diagnosticos" element={<LazyDiagnosticos />} />
               <Route path="/integracoes/scraper-lab" element={<LazyIntegracoesTribunalScraperLab />} />
-              <Route path="/financeiro" element={<LazyFinanceiro />} />
+              <Route path="/financeiro" element={<LazyFinanceiroLayout />}>
+                <Route index element={<LazyFinanceiro />} />
+                <Route path="relatorios" element={<LazyFinanceiroRelatorios />} />
+              </Route>
               <Route path="/pagamentos" element={<LazyPagamentos />} />
               <Route path="/usuarios" element={<LazyUsuarios />} />
               <Route path="/configuracoes" element={<LazyConfiguracoes />} />

@@ -73,9 +73,15 @@ export function removerRuidoCabecalhoRodape(texto) {
 }
 
 export function normalizarCnjParaChave(cnj) {
-  const m = String(cnj ?? '').match(RE_CNJ_LINHA);
-  if (!m) return '';
-  return `${m[1]}-${m[2]}.${m[3]}.${m[4]}.${m[5]}.${m[6]}`.toUpperCase();
+  const s = String(cnj ?? '').trim();
+  const m = s.match(RE_CNJ_LINHA);
+  if (m) return `${m[1]}-${m[2]}.${m[3]}.${m[4]}.${m[5]}.${m[6]}`.toUpperCase();
+  /** API / MySQL por vezes gravam só os 20 dígitos — sem isso o índice de Publicações ignora o processo. */
+  const d = s.replace(/\D/g, '');
+  if (d.length === 20) {
+    return `${d.slice(0, 7)}-${d.slice(7, 9)}.${d.slice(9, 13)}.${d.slice(13, 14)}.${d.slice(14, 16)}.${d.slice(16, 20)}`.toUpperCase();
+  }
+  return '';
 }
 
 /**

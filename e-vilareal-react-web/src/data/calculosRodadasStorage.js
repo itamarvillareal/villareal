@@ -38,6 +38,33 @@ let __fullRodadasMapPosAdminSync = null;
  */
 let __hidratacaoCalculosConcluida = !featureFlags.useApiCalculos;
 
+/** Pilha de `cursor: wait` no `<html>` — evita cursor preso quando hidratações se sobrepõem. */
+let __cursorWaitDepth = 0;
+let __cursorWaitEstiloAnterior = '';
+
+function pushCursorWaitGlobal() {
+  if (typeof document === 'undefined') return;
+  const root = document.documentElement;
+  if (__cursorWaitDepth === 0) {
+    __cursorWaitEstiloAnterior = root.style.cursor || '';
+    root.style.cursor = 'wait';
+  }
+  __cursorWaitDepth += 1;
+}
+
+function popCursorWaitGlobal() {
+  if (typeof document === 'undefined') return;
+  if (__cursorWaitDepth <= 0) {
+    __cursorWaitDepth = 0;
+    return;
+  }
+  __cursorWaitDepth -= 1;
+  if (__cursorWaitDepth === 0) {
+    document.documentElement.style.cursor = __cursorWaitEstiloAnterior;
+    __cursorWaitEstiloAnterior = '';
+  }
+}
+
 function lruSet(key, val) {
   if (__rodadasPayloadLru.has(key)) __rodadasPayloadLru.delete(key);
   __rodadasPayloadLru.set(key, val);
@@ -312,10 +339,8 @@ export async function hydrateRodadasCalculosResumoFromApi(options = {}) {
   if (!silent) {
     __hidratacaoCalculosConcluida = false;
     window.dispatchEvent(new CustomEvent('vilareal:calculos-rodadas-api-hidratacao-iniciada'));
+    pushCursorWaitGlobal();
   }
-  const root = document.documentElement;
-  const cursorAntes = root.style.cursor;
-  if (!silent) root.style.cursor = 'wait';
   try {
     __fullRodadasMapPosAdminSync = null;
     console.info(`${LOG_CALC_API} GET /api/calculos/rodadas/resumo → em curso…`);
@@ -328,21 +353,25 @@ export async function hydrateRodadasCalculosResumoFromApi(options = {}) {
     console.info(`${LOG_CALC_API} GET /api/calculos/rodadas/resumo → OK, entradas: ${rows.length}`);
     __hidratacaoCalculosConcluida = true;
     emitRodadasAtualizadas();
-    window.dispatchEvent(
-      new CustomEvent('vilareal:calculos-rodadas-api-hidratacao-concluida', {
-        detail: { ok: true, nRodadas: rows.length, modo: 'resumo' },
-      })
-    );
+    if (!silent) {
+      window.dispatchEvent(
+        new CustomEvent('vilareal:calculos-rodadas-api-hidratacao-concluida', {
+          detail: { ok: true, nRodadas: rows.length, modo: 'resumo' },
+        })
+      );
+    }
   } catch (err) {
     console.error('[vilareal] Falha ao hidratar resumo de rodadas pela API:', err);
-    __hidratacaoCalculosConcluida = false;
-    window.dispatchEvent(
-      new CustomEvent('vilareal:calculos-rodadas-api-hidratacao-concluida', {
-        detail: { ok: false, nRodadas: 0, erro: String(err?.message || err) },
-      })
-    );
+    if (!silent) {
+      __hidratacaoCalculosConcluida = false;
+      window.dispatchEvent(
+        new CustomEvent('vilareal:calculos-rodadas-api-hidratacao-concluida', {
+          detail: { ok: false, nRodadas: 0, erro: String(err?.message || err) },
+        })
+      );
+    }
   } finally {
-    if (!silent) root.style.cursor = cursorAntes;
+    if (!silent) popCursorWaitGlobal();
   }
 }
 
@@ -358,9 +387,7 @@ export async function hydrateRodadasCalculosFromApi(options = {}) {
   const preferServer = options.preferServer === true;
   __hidratacaoCalculosConcluida = false;
   window.dispatchEvent(new CustomEvent('vilareal:calculos-rodadas-api-hidratacao-iniciada'));
-  const root = document.documentElement;
-  const cursorAntes = root.style.cursor;
-  root.style.cursor = 'wait';
+  pushCursorWaitGlobal();
   try {
     console.info(`${LOG_CALC_API} GET /api/calculos/rodadas → em curso…`);
     const data = await fetchCalculoRodadas({});
@@ -418,6 +445,6 @@ export async function hydrateRodadasCalculosFromApi(options = {}) {
       })
     );
   } finally {
-    root.style.cursor = cursorAntes;
+    popCursorWaitGlobal();
   }
 }

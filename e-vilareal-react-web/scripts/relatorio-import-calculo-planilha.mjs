@@ -14,7 +14,7 @@
  *   --header-row=N --data-row=N ou --header-row-aba1= --data-row-aba1= --header-row-aba2= --data-row-aba2=
  *
  * Layout (confirmar com seu ficheiro real):
- * - Cabeçalho/dados: inferidos nas primeiras ~80 linhas (por texto nas cols D/M/N na aba 1 e D/M/U na aba 2), ou fixados por CLI `--header-row` / `--data-row` / por aba.
+ * - Cabeçalho/dados: inferidos nas primeiras ~80 linhas (por texto nas cols C/L/M na aba 1 e B/K/S na aba 2), ou fixados por CLI `--header-row` / `--data-row` / por aba.
  * - Constantes legado: linha 6 = cabeçalho, linha 7+ = dados (quando a inferência falha ou não encontra marcadores).
  * - Aba 1: nome contém "relatorio" e "debitos" e "cadastrad" (ex.: "Relatorio Debitos Cadastrad (4)").
  * - Aba 2: nome contém "relatorio" e ("001" ou "999") (ex.: "Relatório - 001 a 999").
@@ -174,12 +174,12 @@ function main() {
     console.log('\n## Reforço de colunas (índice 0-based / letra Excel)\n');
     console.log('| Campo | Coluna |');
     console.log('|-------|--------|');
-    console.log(`| Código Cliente | D (${COL.ABA1_D_COD_CLIENTE}) |`);
-    console.log(`| Vencimento | G (${COL.ABA1_G_VENCIMENTO}) |`);
-    console.log(`| Valor (título) | I (${COL.ABA1_I_VALOR}) |`);
-    console.log(`| Parcela (referência) | L (${COL.ABA1_L_PARCELA}) |`);
-    console.log(`| Proc | M (${COL.ABA1_M_PROC}) |`);
-    console.log(`| Dimensão | N (${COL.ABA1_N_DIM}) |`);
+    console.log(`| Código Cliente | ${XLSX.utils.encode_col(COL.ABA1_COD_CLIENTE)} (${COL.ABA1_COD_CLIENTE}) |`);
+    console.log(`| Vencimento | ${XLSX.utils.encode_col(COL.ABA1_VENCIMENTO)} (${COL.ABA1_VENCIMENTO}) |`);
+    console.log(`| Valor (título) | ${XLSX.utils.encode_col(COL.ABA1_VALOR_TITULO)} (${COL.ABA1_VALOR_TITULO}) |`);
+    console.log(`| Parcela (referência) | ${XLSX.utils.encode_col(COL.ABA1_PARCELA_REF)} (${COL.ABA1_PARCELA_REF}) |`);
+    console.log(`| Proc | ${XLSX.utils.encode_col(COL.ABA1_PROC)} (${COL.ABA1_PROC}) |`);
+    console.log(`| Dimensão | ${XLSX.utils.encode_col(COL.ABA1_DIM)} (${COL.ABA1_DIM}) |`);
     console.log(`\nColunas de cabeçalho mapeadas para campos de Títulos: ${Object.keys(colTituloMapDebitos).length}`);
     if (colunasNaoMapeadas.length) {
       console.log('\n### Cabeçalhos não mapeados automaticamente (rever manualmente)\n');
@@ -202,19 +202,19 @@ function main() {
     console.log(`Aba: ${nameRel}`);
     const m2 = layoutLinhas?.aba2;
     if (m2) console.log(`Cabeçalho/dados (aba 2): ${metaLinhasStr(m2)}`);
-    console.log('Filtro: coluna N = **SIM** (case-insensitive).');
+    console.log('Filtro: coluna L «Cálculo Aceito» = **SIM** (case-insensitive).');
     console.log('\n## Reforço de colunas\n');
     console.log('| Campo | Coluna |');
     console.log('|-------|--------|');
-    console.log(`| Código Cliente | D (${COL.ABA2_D_COD_CLIENTE}) |`);
-    console.log(`| Proc | M (${COL.ABA2_M_PROC}) |`);
-    console.log(`| Flag importação pagamento | N (${COL.ABA2_N_FLAG_SIM}) |`);
-    console.log(`| Parcela | L (${COL.ABA2_L_PARCELA}) |`);
-    console.log(`| Vencimento | G (${COL.ABA2_G_VENCIMENTO}) |`);
-    console.log(`| Data pagamento | H (${COL.ABA2_H_PAGAMENTO}) |`);
-    console.log(`| Valor | I (${COL.ABA2_I_VALOR}) |`);
-    console.log(`| Observação parcela | K (${COL.ABA2_K_OBS}) |`);
-    console.log(`| Dimensão | U (${COL.ABA2_U_DIM}) |`);
+    console.log(`| Código Cliente | ${XLSX.utils.encode_col(COL.ABA2_COD_CLIENTE)} (${COL.ABA2_COD_CLIENTE}) |`);
+    console.log(`| Proc | ${XLSX.utils.encode_col(COL.ABA2_PROC)} (${COL.ABA2_PROC}) |`);
+    console.log(`| Cálculo Aceito (importa parcelamento) | ${XLSX.utils.encode_col(COL.ABA2_FLAG_CALCULO_ACEITO_SIM)} (${COL.ABA2_FLAG_CALCULO_ACEITO_SIM}) |`);
+    console.log(`| Parcela | ${XLSX.utils.encode_col(COL.ABA2_PARCELA)} (${COL.ABA2_PARCELA}) |`);
+    console.log(`| Vencimento | ${XLSX.utils.encode_col(COL.ABA2_VENCIMENTO)} (${COL.ABA2_VENCIMENTO}) |`);
+    console.log(`| Data pagamento | ${XLSX.utils.encode_col(COL.ABA2_DATA_PAGAMENTO)} (${COL.ABA2_DATA_PAGAMENTO}) |`);
+    console.log(`| Valor | ${XLSX.utils.encode_col(COL.ABA2_VALOR)} (${COL.ABA2_VALOR}) |`);
+    console.log(`| Observação parcela | ${XLSX.utils.encode_col(COL.ABA2_OBS_PARCELA)} (${COL.ABA2_OBS_PARCELA}) |`);
+    console.log(`| Dimensão | ${XLSX.utils.encode_col(COL.ABA2_DIM)} (${COL.ABA2_DIM}) |`);
 
     const nChavesP = Object.keys(porChaveParcelamento).length;
     let nParc = 0;
@@ -223,7 +223,7 @@ function main() {
     console.log('**Efeito previsto no sistema:**');
     console.log('- `parcelamentoAceito: true` (checkbox «Aceitar Pagamento») para cada chave acima.');
     console.log('- `parcelas[]` preenchido na rodada (PUT /api/calculos/rodadas/{cod8}/{proc}/{dim}).');
-    console.log('- **Pagamentos (API):** apenas quando a coluna **H** tiver data efetiva; caso contrário só atualiza rodada/parcelamento.');
+    console.log('- **Pagamentos (API):** apenas quando a coluna **F** (data pagamento) tiver data efetiva; caso contrário só atualiza rodada/parcelamento.');
     console.log('  `POST /api/pagamentos` aceita `descricao`, `categoria`, `formaPagamento` e `status` omitidos — o servidor normaliza (strings vazias; status → PENDENTE).');
   }
 

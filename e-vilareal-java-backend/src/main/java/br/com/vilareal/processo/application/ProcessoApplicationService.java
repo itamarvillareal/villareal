@@ -433,7 +433,10 @@ public class ProcessoApplicationService {
         if (norm.length() < 7) {
             return List.of();
         }
-        List<BigInteger> rawIds = processoRepository.findIdsByNumeroCnjNormalizadoDiagnostico(norm);
+        List<BigInteger> rawIds =
+                norm.length() < 20
+                        ? processoRepository.findIdsByNumeroCnjDigitosContendo(norm)
+                        : processoRepository.findIdsByNumeroCnjNormalizadoDiagnostico(norm);
         if (rawIds.isEmpty()) {
             return List.of();
         }
@@ -529,6 +532,37 @@ public class ProcessoApplicationService {
 
     private String resolverCodigoClienteExibicaoParaPessoa(Long pessoaIdDonoProcesso) {
         return clienteCodigoPessoaResolver.codigoClienteExibicaoParaPessoaId(pessoaIdDonoProcesso);
+    }
+
+    /**
+     * Nomes «parte cliente» e «parte oposta» para listagens (ex.: vínculo em Publicações), em lote para evitar N+1.
+     */
+    @Transactional(readOnly = true)
+    public Map<Long, ProcessoPartesVinculoTexto> resolverTextosPartesVinculoEmLote(Set<Long> processoIds) {
+        if (processoIds == null || processoIds.isEmpty()) {
+            return Map.of();
+        }
+        List<Long> idList = processoIds.stream().filter(id -> id != null && id > 0).distinct().toList();
+        if (idList.isEmpty()) {
+            return Map.of();
+        }
+        List<ProcessoEntity> processos = processoRepository.findAllById(idList);
+        Map<Long, List<ProcessoParteEntity>> partesPorProcesso = new LinkedHashMap<>();
+        for (ProcessoParteEntity parte : parteRepository.findAllByProcessoIdInWithPessoaEProcesso(idList)) {
+            Long pid = parte.getProcesso().getId();
+            partesPorProcesso.computeIfAbsent(pid, k -> new ArrayList<>()).add(parte);
+        }
+        Map<Long, ProcessoPartesVinculoTexto> out = new LinkedHashMap<>();
+        for (ProcessoEntity e : processos) {
+            e.getPessoa().getNome();
+            List<ProcessoParteEntity> partes = partesPorProcesso.getOrDefault(e.getId(), List.of());
+            String pc = Utf8MojibakeUtil.corrigir(e.getPessoa().getNome());
+            String parteCliente = StringUtils.hasText(pc) ? pc.trim() : "";
+            String po = montarTextoParteOpostaListagem(partes);
+            String parteOposta = StringUtils.hasText(po) ? po.trim() : "";
+            out.put(e.getId(), new ProcessoPartesVinculoTexto(parteCliente, parteOposta));
+        }
+        return out;
     }
 
     @Transactional(readOnly = true)

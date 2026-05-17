@@ -42,10 +42,18 @@ br.com.vilareal
 
 2. Outras variáveis opcionais: `JWT_SECRET`, `SPRING_PROFILES_ACTIVE` (padrão `dev`).
 
-3. Executar:
+3. Executar (exige **Java 21** — se `release version 21 not supported`, o `java` do PATH é 17):
 
    ```bash
-   ./mvnw spring-boot:run
+   ./scripts/run-dev.sh
+   ```
+
+   Ou manualmente:
+
+   ```bash
+   export JAVA_HOME="/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home"
+   export PATH="$JAVA_HOME/bin:$PATH"
+   ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
    ```
 
 4. **Swagger UI** (profile `dev`): http://localhost:8080/swagger-ui.html  
