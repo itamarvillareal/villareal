@@ -89,6 +89,25 @@ export function formatCentenaPasta(cent) {
 }
 
 /**
+ * Decodifica buffer de ficheiro txt legado (UTF-8 ou ISO-8859-1 / Windows-1252).
+ * @param {Buffer} buf
+ * @returns {string}
+ */
+export function decodeHistoricoTextBuffer(buf) {
+  if (!buf?.length) return '';
+  let start = 0;
+  if (buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf) start = 3;
+  const body = start > 0 ? buf.subarray(start) : buf;
+  if (!body.length) return '';
+  try {
+    new TextDecoder('utf-8', { fatal: true }).decode(body);
+    return body.toString('utf8');
+  } catch {
+    return body.toString('latin1');
+  }
+}
+
+/**
  * @param {string} p
  * @returns {string | null}
  */
@@ -96,14 +115,7 @@ export function readOneLineFile(p) {
   try {
     if (!fs.existsSync(p) || !fs.statSync(p).isFile()) return null;
     const buf = fs.readFileSync(p);
-    let s = buf.toString('utf8').replace(/^\uFEFF/, '');
-    if (/[\x80-\xFF]/.test(s) && !/[\u0100-\uFFFF]/.test(s)) {
-      try {
-        s = buf.toString('latin1');
-      } catch {
-        /* keep utf8 */
-      }
-    }
+    const s = decodeHistoricoTextBuffer(buf);
     const line = s.split(/\r?\n/).find((l) => String(l).trim() !== '');
     return line != null ? String(line).trim() : null;
   } catch {
