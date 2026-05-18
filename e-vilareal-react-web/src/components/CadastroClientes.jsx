@@ -14,6 +14,7 @@ import {
 import { ModalConfiguracoesCalculoCliente } from './ModalConfiguracoesCalculoCliente.jsx';
 import { getDadosProcessoClienteUnificado } from '../data/processoClienteProcUnificado.js';
 import { buscarCliente, pesquisarCadastroPessoasPorNomeOuCpf } from '../api/clientesService.js';
+import { corrigirNomePessoaExibicao } from '../utils/utf8MojibakeUtil.js';
 import {
   loadCadastroClienteDados,
   saveCadastroClienteDados,
@@ -476,7 +477,7 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
     const aplicarCabecalhoApi = (api) => {
       setCodigo(api.codigo);
       setPessoa(api.pessoa ?? '');
-      setNomeRazao(api.nomeRazao ?? '');
+      setNomeRazao(corrigirNomePessoaExibicao(api.nomeRazao ?? ''));
       setCnpjCpf(api.cnpjCpf ?? '');
       setObservacao(api.observacao ?? '');
       setClienteInativo(api.clienteInativo ?? false);
@@ -499,7 +500,7 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
       } else if (mock) {
         setCodigo(mock.codigoCliente);
         setPessoa(mock.pessoa ?? '');
-        setNomeRazao(persisted?.nomeRazao ?? mock.nomeRazao);
+        setNomeRazao(corrigirNomePessoaExibicao(persisted?.nomeRazao ?? mock.nomeRazao));
         setCnpjCpf(persisted?.cnpjCpf ?? mock.cnpjCpf);
         setObservacao(persisted?.observacao !== undefined ? persisted.observacao : DEFAULT_CLIENTE_VAZIO.observacao);
         setClienteInativo(persisted?.clienteInativo ?? DEFAULT_CLIENTE_VAZIO.clienteInativo);
@@ -507,7 +508,7 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
         refreshProcessosGrade(mock.codigoCliente, baseListaProcessos());
       } else if (persisted) {
         setPessoa(persisted.pessoa ?? '');
-        setNomeRazao(persisted.nomeRazao ?? '');
+        setNomeRazao(corrigirNomePessoaExibicao(persisted.nomeRazao ?? ''));
         setCnpjCpf(persisted.cnpjCpf ?? '');
         setObservacao(persisted.observacao ?? '');
         setClienteInativo(persisted.clienteInativo ?? false);
@@ -549,7 +550,7 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
       setCodigo(padded);
       if (persisted) {
         setPessoa(persisted.pessoa ?? '');
-        setNomeRazao(persisted.nomeRazao ?? '');
+        setNomeRazao(corrigirNomePessoaExibicao(persisted.nomeRazao ?? ''));
         setCnpjCpf(persisted.cnpjCpf ?? '');
         setObservacao(persisted.observacao ?? '');
         setClienteInativo(persisted.clienteInativo ?? false);
@@ -620,6 +621,13 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
     };
   }, []);
 
+  /** Corrige mojibake residual na exibição (ex.: GONÃ‡ALVES → GONÇALVES). */
+  useEffect(() => {
+    if (!/Ã|â€|├/u.test(String(nomeRazao ?? ''))) return;
+    const fixed = corrigirNomePessoaExibicao(nomeRazao);
+    if (fixed && fixed !== nomeRazao) setNomeRazao(fixed);
+  }, [nomeRazao]);
+
   useEffect(() => {
     if (primeiraSincPessoaRef.current) {
       primeiraSincPessoaRef.current = false;
@@ -639,7 +647,9 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
           const api = await buscarCliente(id);
           if (cancelado) return;
           if (api) {
-            setNomeRazao(String(api.nome ?? '').trim() || `Pessoa nº ${id}`);
+            setNomeRazao(
+              corrigirNomePessoaExibicao(String(api.nome ?? '').trim()) || `Pessoa nº ${id}`
+            );
             setCnpjCpf(formatDocBR(api.cpf));
             return;
           }
@@ -1058,7 +1068,7 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
   function aplicarPessoaSelecionada(p) {
     pularSincPorCargaClienteRef.current = true;
     setPessoa(String(p.id));
-    setNomeRazao(p.nome);
+    setNomeRazao(corrigirNomePessoaExibicao(p.nome));
     setCnpjCpf(formatDocBR(p.cpf));
     setModalEscolherPessoa(false);
     setBuscaPessoaModal('');

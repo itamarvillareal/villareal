@@ -9,10 +9,10 @@ import {
   formatCod8,
   formatProcNomeArquivo,
   pastaNumeroClienteHistorico,
-  parseDataDdMmYyyy,
   readOneLineFile,
   SEGMENTO_MIL,
 } from './historico-local-txt-paths.mjs';
+import { parseDataCabecalhoProcessoIso } from './datas-legado-vb.mjs';
 import { parseDataPrazoFatalTxt } from './gerais-145-1-prazo-fatal.mjs';
 import { resolverBaseBancoDados } from './gerais-fase-processo-txt.mjs';
 
@@ -34,6 +34,8 @@ export const MAPA_TIPO_NUMERICO_VB = {
   '12.1': { campo: 'cidade', pasta: 'proc', truncar: 120 },
   '13.1': { campo: 'competencia', pasta: 'proc', truncar: 120 },
   '19.1': { campo: 'observacao', pasta: 'gerais' },
+  '20.1': { campo: '_responsavelNome', pasta: 'gerais' },
+  '0.88.1': { campo: 'unidade', pasta: 'gerais', truncar: 32 },
   '145.1': { campo: 'prazoFatal', pasta: 'gerais' },
   '148.1': { campo: 'proximaConsulta', pasta: 'gerais' },
 };
@@ -45,7 +47,13 @@ const LIM = {
   numeroCnj: 100,
   numeroProcessoAntigo: 100,
   naturezaAcao: 255,
+  unidade: 32,
 };
+
+/** @deprecated Use parseDataCabecalhoProcessoIso */
+export function parseDataCabecalhoIso(texto) {
+  return parseDataCabecalhoProcessoIso(texto);
+}
 
 /**
  * @param {string | null | undefined} val
@@ -58,24 +66,6 @@ function truncar(val, max) {
   if (!max) return s;
   const chars = [...s];
   return chars.length <= max ? s : chars.slice(0, max).join('');
-}
-
-/**
- * @param {string | null | undefined} texto
- * @returns {string | null} yyyy-MM-dd
- */
-export function parseDataCabecalhoIso(texto) {
-  if (texto == null) return null;
-  const t = String(texto).trim();
-  if (!t) return null;
-  const parsed = parseDataDdMmYyyy(t);
-  if (parsed) {
-    return `${parsed.yyyy}-${String(parsed.mo).padStart(2, '0')}-${String(parsed.dd).padStart(2, '0')}`;
-  }
-  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(t);
-  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
-  const slash = parseDataPrazoFatalTxt(t);
-  return slash;
 }
 
 /**
@@ -140,8 +130,11 @@ function normalizarValorTipo(tipoMeio, texto, meta) {
   if (!t) return null;
 
   if (tipoMeio === '9.1') return parseValorCausaTxt(t);
-  if (tipoMeio === '3.1' || tipoMeio === '148.1' || tipoMeio === '145.1') {
-    return parseDataCabecalhoIso(t);
+  if (tipoMeio === '3.1' || tipoMeio === '148.1') {
+    return parseDataCabecalhoProcessoIso(t);
+  }
+  if (tipoMeio === '145.1') {
+    return parseDataCabecalhoProcessoIso(t) ?? parseDataPrazoFatalTxt(t);
   }
   if (meta.truncar) return truncar(t, meta.truncar);
   if (meta.campo === 'uf') return truncar(t.toUpperCase(), LIM.uf);
@@ -223,7 +216,7 @@ export function lerCabecalhoProcessoTxt(codNum, numeroInterno, opts = {}) {
   /** @type {string[]} */
   const avisos = [];
 
-  /** @type {{ parteClienteNome?: string, parteContraparteNome?: string }} */
+  /** @type {{ parteClienteNome?: string, parteContraparteNome?: string, responsavelNome?: string }} */
   const partesTxt = {};
 
   for (const [tipoMeio, meta] of Object.entries(MAPA_TIPO_NUMERICO_VB)) {
@@ -241,6 +234,11 @@ export function lerCabecalhoProcessoTxt(codNum, numeroInterno, opts = {}) {
     if (meta.campo === '_parteContraparteNome') {
       partesTxt.parteContraparteNome = String(valor);
       fontes.parteContraparteNome = arquivo;
+      continue;
+    }
+    if (meta.campo === '_responsavelNome') {
+      partesTxt.responsavelNome = String(valor);
+      fontes.responsavelNome = arquivo;
       continue;
     }
 

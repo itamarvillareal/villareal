@@ -37,7 +37,7 @@ export function normalizarTextoPlanilha(val) {
     ['â€™', '’'],
     ['â€œ', '“'],
     ['â€\u009d', '”'],
-    ['Â', ''],
+    /* Não remover «Â» isolado — destrói nomes válidos (ex.: CÂMARA). Use só pares Âº/Âª acima. */
   ];
   for (const [from, to] of trocas) {
     if (s.includes(from)) {

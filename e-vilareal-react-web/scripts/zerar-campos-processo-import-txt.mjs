@@ -16,8 +16,10 @@
  *   --incluir-cabecalho-txt        Também zera CNJ, fase, competência, etc. (tipos 3.1–148.1)
  *   --incluir-historico-txt         DELETE andamentos IMPORT_TXT_LOCAL (cuidado: apaga histórico importado)
  *   --incluir-partes                DELETE processo_parte
+ *   --incluir-imovel-vinculo        Desvincula imóveis ligados por import-processo-txt (0.89.1)
  *   --incluir-ativo                 UPDATE processo SET ativo = 1
  *   --zerar-tabela-prazos           DELETE processo_prazo
+ *   --escopo-import-processo-txt    Cabeçalho + semânticos + histórico + partes + vínculo imóvel
  */
 
 import './lib/load-vilareal-import-env.mjs';
@@ -38,14 +40,21 @@ function parseArgs(argv) {
     incluirCabecalhoTxt: false,
     incluirHistoricoTxt: false,
     incluirPartes: false,
+    incluirImovelVinculo: false,
     incluirAtivo: false,
     zerarTabelaPrazos: false,
   };
   for (const a of argv) {
     if (a === '--dry-run') out.dryRun = true;
-    else if (a === '--incluir-cabecalho-txt') out.incluirCabecalhoTxt = true;
+    else if (a === '--escopo-import-processo-txt') {
+      out.incluirCabecalhoTxt = true;
+      out.incluirHistoricoTxt = true;
+      out.incluirPartes = true;
+      out.incluirImovelVinculo = true;
+    } else if (a === '--incluir-cabecalho-txt') out.incluirCabecalhoTxt = true;
     else if (a === '--incluir-historico-txt') out.incluirHistoricoTxt = true;
     else if (a === '--incluir-partes') out.incluirPartes = true;
+    else if (a === '--incluir-imovel-vinculo') out.incluirImovelVinculo = true;
     else if (a === '--incluir-ativo') out.incluirAtivo = true;
     else if (a === '--zerar-tabela-prazos') out.zerarTabelaPrazos = true;
     else if (a.startsWith('--confirmar=')) out.confirmar = a.slice(12);
@@ -140,6 +149,15 @@ async function main() {
       await conn.query(`DELETE FROM processo_parte_advogado`);
       const [delPartes] = await conn.query(`DELETE FROM processo_parte`);
       console.log(`  processo_parte apagadas: ${delPartes.affectedRows ?? 0}`);
+    }
+
+    if (opts.incluirImovelVinculo) {
+      const [updImo] = await conn.query(
+        `UPDATE imovel SET processo_id = NULL
+         WHERE processo_id IS NOT NULL
+           AND (observacoes LIKE '%import-processo-txt%' OR observacoes LIKE '%Proc/0.89.1%')`
+      );
+      console.log(`  Imóveis desvinculados (import-processo-txt): ${updImo.affectedRows ?? 0}`);
     }
 
     if (opts.incluirAtivo) {

@@ -1,17 +1,5 @@
 import { Fragment, useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import {
-  CalendarDays,
-  CalendarX2,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  Gavel,
-  Pin,
-  Plus,
-  Scale,
-  CircleAlert,
-  X,
-} from 'lucide-react';
+import { CalendarDays, CalendarX2, ChevronLeft, ChevronRight, Plus, X } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   agendaUsuarios,
@@ -46,6 +34,14 @@ import {
   criarEvento,
   excluirEvento,
 } from '../repositories/agendaRepository.js';
+import {
+  CompromissoCard,
+  NovoCompromissoCard,
+  corChipUsuarioAgenda,
+  DOT_CALENDARIO_CLASSE,
+  urgenciaDiaAgenda,
+  tipoCompromissoAgenda,
+} from './agendaUiShared.jsx';
 
 /** Retorna string DD/MM/YYYY para dia/mês/ano */
 function dataStr(dia, mes, ano) {
@@ -95,109 +91,12 @@ function rotuloDataComDiaSemana(dataBr) {
   return `${dataBr} (${dias[dt.getDay()] ?? '—'})`;
 }
 
-/** Remove acentos e minúsculas para busca insensível a maiúsculas/acentos. */
-function normalizarParaBuscaPalavraChave(str) {
-  return String(str ?? '')
-    .normalize('NFD')
-    .replace(/\p{M}/gu, '')
-    .toLowerCase();
-}
-
-/** Tipo visual do compromisso (cards coloridos). Instrução tem prioridade sobre os demais. */
-function tipoCompromissoAgenda(texto) {
-  const n = normalizarParaBuscaPalavraChave(texto);
-  if (n.includes('instrucao')) return 'instrucao';
-  if (n.includes('sessao de julgamento')) return 'julgamento';
-  if (n.includes('conciliacao')) return 'conciliacao';
-  return 'comum';
-}
-
-/** @deprecated use tipoCompromissoAgenda — mantido para o modal de detalhe. */
+/** @deprecated — mantido para o modal de detalhe. */
 function temaPorTextoCompromisso(texto) {
   const t = tipoCompromissoAgenda(texto);
   if (t === 'instrucao') return 'instrucao';
   if (t === 'conciliacao' || t === 'julgamento') return 'conciliacao';
   return null;
-}
-
-const ESTILO_TIPO_COMPROMISSO = {
-  instrucao: {
-    card: 'bg-red-50 border-l-4 border-l-red-500 border-red-100/80 hover:border-red-200',
-    badge: 'bg-red-500 text-white',
-    rotulo: 'INSTRUÇÃO',
-    Icon: CircleAlert,
-    iconClass: 'text-red-600',
-  },
-  conciliacao: {
-    card: 'bg-amber-50 border-l-4 border-l-amber-500 border-amber-100/80 hover:border-amber-200',
-    badge: 'bg-amber-500 text-white',
-    rotulo: 'CONCILIAÇÃO',
-    Icon: Scale,
-    iconClass: 'text-amber-600',
-  },
-  julgamento: {
-    card: 'bg-purple-50 border-l-4 border-l-purple-500 border-purple-100/80 hover:border-purple-200',
-    badge: 'bg-purple-500 text-white',
-    rotulo: 'JULGAMENTO',
-    Icon: Gavel,
-    iconClass: 'text-purple-600',
-  },
-  comum: {
-    card: 'bg-white border-l-4 border-l-gray-300 border-slate-200/90 hover:border-slate-300',
-    badge: '',
-    rotulo: '',
-    Icon: Pin,
-    iconClass: 'text-gray-400',
-  },
-};
-
-/** Urgência do dot no mini-calendário: instrucao > conciliação > julgamento > comum. */
-function urgenciaDiaAgenda(eventos) {
-  if (!eventos?.length) return null;
-  let result = 'comum';
-  for (const ev of eventos) {
-    const t = tipoCompromissoAgenda(ev?.descricao);
-    if (t === 'instrucao') return 'instrucao';
-    if (t === 'conciliacao') result = 'conciliacao';
-    else if (t === 'julgamento' && result !== 'conciliacao') result = 'julgamento';
-  }
-  return result;
-}
-
-const DOT_CALENDARIO_CLASSE = {
-  instrucao: 'bg-red-500',
-  conciliacao: 'bg-amber-500',
-  julgamento: 'bg-purple-500',
-  comum: 'bg-blue-500',
-};
-
-function parseCorpoCompromisso(descricao) {
-  const raw = String(descricao ?? '').trim();
-  if (!raw) return { partes: '', autosLocal: '' };
-  const linhas = raw.split(/\n+/).map((s) => s.trim()).filter(Boolean);
-  if (linhas.length >= 2) {
-    return { partes: linhas[0], autosLocal: linhas.slice(1).join(' · ') };
-  }
-  const mAutos = raw.match(/^(.*?)(?:\s*[-–—]\s*|\s+)(autos\s*n[º°.]?\s*.+)$/i);
-  if (mAutos) {
-    return { partes: mAutos[1].trim(), autosLocal: mAutos[2].trim() };
-  }
-  return { partes: raw, autosLocal: '' };
-}
-
-function corChipUsuarioAgenda(u) {
-  const login = String(u?.login ?? '').toLowerCase();
-  const id = String(u?.id ?? '').toLowerCase();
-  if (login.includes('ana') || id.includes('ana')) {
-    return { dot: 'bg-blue-500', chip: 'border-blue-200 text-blue-900', chipAtivo: 'bg-blue-600 text-white border-blue-600 shadow-sm' };
-  }
-  if (login.includes('karla') || id.includes('karla')) {
-    return { dot: 'bg-pink-500', chip: 'border-pink-200 text-pink-900', chipAtivo: 'bg-pink-600 text-white border-pink-600 shadow-sm' };
-  }
-  if (login.includes('itamar') || id.includes('itamar')) {
-    return { dot: 'bg-emerald-500', chip: 'border-emerald-200 text-emerald-900', chipAtivo: 'bg-emerald-600 text-white border-emerald-600 shadow-sm' };
-  }
-  return { dot: 'bg-violet-500', chip: 'border-violet-200 text-violet-900', chipAtivo: 'bg-violet-600 text-white border-violet-600 shadow-sm' };
 }
 
 function tituloColunaAgenda(dataBr, variantColuna) {
@@ -226,213 +125,6 @@ function classesTemaDescricaoModal(texto) {
   return 'text-sm text-slate-800 whitespace-pre-wrap';
 }
 
-/** Campo de texto clicável para editar (hora ou descrição). */
-function EditableTextCell({
-  texto,
-  onSalvar,
-  multiline = false,
-  align = 'left',
-  maxLen = 2000,
-  temaPorPalavraChave = false,
-  /** Duplo clique (2º clique): abre detalhe / processo — não entra em edição. */
-  onDuploClique = null,
-  /** Quando true, só exibe texto (sem edição). */
-  readOnly = false,
-}) {
-  const original = String(texto ?? '');
-  const [editando, setEditando] = useState(false);
-  const [valor, setValor] = useState(original);
-  const inputRef = useRef(null);
-  const cancelouRef = useRef(false);
-
-  useEffect(() => {
-    if (!editando) setValor(original);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [original]);
-
-  useEffect(() => {
-    if (!editando) return;
-    const el = inputRef.current;
-    if (!el) return;
-    try {
-      el.focus();
-      if (!multiline) el.select?.();
-    } catch {
-      // ignore
-    }
-  }, [editando, multiline]);
-
-  function salvarSeMudou() {
-    const novo = String(valor ?? '').slice(0, maxLen);
-    if (novo === original) {
-      setEditando(false);
-      return;
-    }
-    onSalvar?.(novo);
-    setEditando(false);
-  }
-
-  const alignClass = align === 'right' ? 'text-right' : 'text-left';
-  const inputAlign = align === 'right' ? 'text-right' : 'text-left';
-
-  const textoParaTema = temaPorPalavraChave ? String(editando ? valor : original) : '';
-  const tema = temaPorPalavraChave ? temaPorTextoCompromisso(textoParaTema) : null;
-  const classesTemaInput =
-    tema === 'instrucao'
-      ? 'bg-red-600 text-white border-red-700 focus:ring-red-400 placeholder:text-red-200'
-      : tema === 'conciliacao'
-        ? 'bg-yellow-300 text-black border-yellow-600 focus:ring-yellow-600 placeholder:text-yellow-900/60'
-        : 'bg-white text-gray-900 border-slate-200 focus:ring-indigo-400/50 focus:border-indigo-400';
-  const classesTemaLeitura =
-    tema === 'instrucao'
-      ? 'bg-red-600 text-white border border-red-700 rounded px-1.5 py-1'
-      : tema === 'conciliacao'
-        ? 'bg-yellow-300 text-black border border-yellow-600 rounded px-1.5 py-1'
-        : 'text-gray-800';
-
-  if (readOnly) {
-    return (
-      <div className="min-w-0 w-full" onClick={(e) => e.stopPropagation()}>
-        <div
-          className={`${classesTemaLeitura} ${multiline ? 'text-sm whitespace-pre-wrap break-words' : 'text-sm truncate'} block w-full select-none ${alignClass} ${multiline ? 'min-h-[1.25rem]' : ''}`}
-          style={multiline ? undefined : { minHeight: '18px' }}
-          onDoubleClick={(e) => {
-            e.stopPropagation();
-            onDuploClique?.();
-          }}
-          title={original}
-        >
-          {original || '\u00A0'}
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div
-      className="min-w-0 w-full"
-      onClick={(e) => {
-        e.stopPropagation();
-      }}
-    >
-      {editando ? (
-        multiline ? (
-          <textarea
-            ref={inputRef}
-            value={valor}
-            onChange={(e) => setValor(e.target.value.slice(0, maxLen))}
-            onDoubleClick={(e) => e.stopPropagation()}
-            onBlur={() => {
-              if (cancelouRef.current) {
-                cancelouRef.current = false;
-                setEditando(false);
-                return;
-              }
-              salvarSeMudou();
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') {
-                e.preventDefault();
-                cancelouRef.current = true;
-                setValor(original);
-                setEditando(false);
-              }
-              if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-                e.preventDefault();
-                salvarSeMudou();
-              }
-            }}
-            rows={3}
-            className={`w-full px-1.5 py-1 text-base md:text-sm border rounded focus:outline-none focus:ring-1 resize-y min-h-[3rem] ${inputAlign} ${classesTemaInput}`}
-          />
-        ) : (
-          <input
-            ref={inputRef}
-            type="text"
-            value={valor}
-            onChange={(e) => setValor(e.target.value.slice(0, maxLen))}
-            onDoubleClick={(e) => e.stopPropagation()}
-            onBlur={() => {
-              if (cancelouRef.current) {
-                cancelouRef.current = false;
-                setEditando(false);
-                return;
-              }
-              salvarSeMudou();
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                salvarSeMudou();
-              }
-              if (e.key === 'Escape') {
-                e.preventDefault();
-                cancelouRef.current = true;
-                setValor(original);
-                setEditando(false);
-              }
-            }}
-            className={`w-full px-1.5 py-1 text-base md:text-sm border rounded focus:outline-none focus:ring-1 ${inputAlign} ${classesTemaInput}`}
-            placeholder=""
-            maxLength={maxLen}
-          />
-        )
-      ) : (
-        <div
-          className={`${classesTemaLeitura} ${multiline ? 'text-sm whitespace-pre-wrap break-words' : 'text-sm truncate'} block w-full cursor-text select-none ${alignClass} ${multiline ? 'min-h-[1.25rem]' : ''}`}
-          style={multiline ? undefined : { minHeight: '18px' }}
-          onClick={(e) => {
-            e.stopPropagation();
-            if (onDuploClique && e.detail === 2) {
-              e.preventDefault();
-              setEditando(false);
-              onDuploClique();
-              return;
-            }
-            setEditando(true);
-          }}
-          onDoubleClick={(e) => e.stopPropagation()}
-          title={original}
-        >
-          {original || '\u00A0'}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** Status: apenas em branco ou "OK" (persistência normaliza outros valores). */
-function StatusCurtoCell({ evento, onSalvar, readOnly = false }) {
-  const valor = normalizarStatusCurtoAgenda(evento?.statusCurto);
-  if (readOnly) {
-    return (
-      <div
-        className="flex min-h-11 w-full max-w-[6rem] items-center justify-end pr-1 text-sm text-slate-700 md:w-[92px] md:min-h-0"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {valor === 'OK' ? 'OK' : '—'}
-      </div>
-    );
-  }
-  return (
-    <div className="flex w-full max-w-[6rem] items-center justify-end pr-1 md:w-[92px]" onClick={(e) => e.stopPropagation()}>
-      <select
-        value={valor}
-        onChange={(e) => onSalvar?.(e.target.value === 'OK' ? 'OK' : '')}
-        onDoubleClick={(e) => e.stopPropagation()}
-        title="Status: em branco ou OK"
-        className="min-h-11 w-full min-w-0 max-w-[6rem] rounded-lg border border-slate-200 bg-white px-2 py-2 text-right text-base shadow-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-400/40 md:min-h-0 md:py-1 md:text-sm"
-        aria-label="Status do compromisso"
-      >
-        <option value=""> </option>
-        <option value="OK">OK</option>
-      </select>
-    </div>
-  );
-}
-
-/** Mínimo de linhas no corpo do formulário (eventos + linha nova + linhas vazias de preenchimento). */
-const MIN_LINHAS_FORMULARIO_AGENDA = 10;
 
 /** Empty state quando a API da agenda respondeu sem eventos (evita tela “em branco” confundindo com erro). */
 function AgendaPainelSemEventosApi({ nomeUsuario, dataFormatada }) {
@@ -469,6 +161,7 @@ function ColunaDia({
   apiAgendaVazio = null,
   usarApiAgenda = false,
   onExcluirEvento = null,
+  onStatusAlterado = null,
 }) {
   /** Última linha (novo compromisso): id criado até liberar após salvar hora/descrição. */
   const pendingNovaLinhaIdRef = useRef(null);
@@ -513,277 +206,51 @@ function ColunaDia({
     }
   }
 
-  const linhasBase = somenteLeitura ? eventos.length : eventos.length + 1;
-  const linhasPreenchimento = Math.max(0, MIN_LINHAS_FORMULARIO_AGENDA - linhasBase);
-
-  const headerGradient =
-    variantColuna === 'direita'
-      ? 'bg-gradient-to-r from-indigo-700 via-violet-700 to-purple-800'
-      : 'bg-gradient-to-r from-sky-600 via-cyan-600 to-teal-600';
-
-  const colspanCorpoAgenda = mostrarColunaUsuario ? 4 : 3;
+  const titulo = tituloColunaAgenda(dataBrStr, variantColuna);
+  const headerClass = variantColuna === 'direita' ? 'bg-slate-600' : 'bg-violet-600';
+  const idNovoFoco = `agenda-novo-foco-${dataBrStr}-${usuarioAgendaId}`;
 
   return (
-    <div className="flex w-full min-w-0 shrink-0 flex-col overflow-hidden rounded-2xl border border-slate-200/90 bg-white/95 shadow-md ring-1 ring-slate-200/60 lg:min-h-0 lg:flex-1">
-      <div
-        className={`px-3 py-2.5 shrink-0 text-sm font-semibold text-white shadow-sm ring-1 ring-white/10 ${headerGradient}`}
-      >
-        {dataLabel}
+    <div className="flex w-full min-w-0 shrink-0 flex-col overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-md ring-1 ring-slate-200/60 lg:min-h-0 lg:flex-1">
+      <div className={`px-3 py-2.5 shrink-0 text-sm font-semibold text-white shadow-sm ${headerClass}`}>
+        {titulo}
       </div>
-      <div className="overflow-x-hidden bg-gradient-to-b from-slate-50/40 to-white p-2 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+      <div className="bg-slate-50/50 p-2 lg:min-h-0 lg:flex-1">
         {apiAgendaVazio ? (
           <div className="mb-3">
             <AgendaPainelSemEventosApi nomeUsuario={apiAgendaVazio.nomeUsuario} dataFormatada={apiAgendaVazio.dataFormatada} />
           </div>
         ) : null}
-        <div className="space-y-3 pb-2 md:hidden">
+        <div
+          key={`${dataBrStr}-${usuarioAgendaId}-${novaLinhaBump}`}
+          className="max-h-[70vh] space-y-2.5 overflow-y-auto scroll-smooth pr-1 pb-2 [scrollbar-width:thin] [scrollbar-color:rgb(203_213_225)_transparent]"
+        >
           {eventos.map((ev) => (
-            <div
+            <CompromissoCard
               key={ev._chaveUnicaAgenda ?? ev.id}
-              className={`rounded-xl border border-slate-200/90 bg-white p-3 shadow-sm ring-1 ring-slate-100/80 ${
-                ev.destaque ? 'bg-amber-50/90' : ''
-              }`}
-              onDoubleClick={() => onDuploCliqueEvento?.(ev)}
-            >
-              {!somenteLeitura && onExcluirEvento && eventoAgendaPodeExcluir(ev, usarApiAgenda) ? (
-                <div className="-mt-1 mb-2 flex justify-end">
-                  <button
-                    type="button"
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-rose-200/90 bg-white text-rose-600 shadow-sm hover:bg-rose-50 hover:border-rose-300"
-                    aria-label="Eliminar compromisso"
-                    title="Eliminar compromisso"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      solicitarExclusaoCompromisso(ev);
-                    }}
-                  >
-                    <X className="h-4 w-4" strokeWidth={2.25} aria-hidden />
-                  </button>
-                </div>
-              ) : null}
-              <div className="flex flex-col gap-3">
-                <div className="flex flex-wrap items-start gap-3">
-                  <div className="min-w-0 shrink-0 basis-[5.5rem]">
-                    <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Hora</span>
-                    <EditableTextCell
-                      texto={ev.hora ?? ''}
-                      align="left"
-                      maxLen={12}
-                      readOnly={somenteLeitura}
-                      onDuploClique={() => onDuploCliqueEvento?.(ev)}
-                      onSalvar={(novo) => {
-                        if (!dataBrStr) return;
-                        onSalvarCampos?.(ev, { hora: novo });
-                      }}
-                    />
-                  </div>
-                  {mostrarColunaUsuario ? (
-                    <div className="min-w-0 flex-1">
-                      <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Quem</span>
-                      <p className="text-sm text-slate-700" title={resolverNomeUsuario?.(ev) ?? ''}>
-                        {resolverNomeUsuario?.(ev) ?? '—'}
-                      </p>
-                    </div>
-                  ) : null}
-                  <div className="ml-auto min-w-0 shrink-0">
-                    <span className="mb-1 block text-right text-xs font-semibold uppercase tracking-wide text-slate-500">Status</span>
-                    <div className="flex justify-end">
-                      <StatusCurtoCell
-                        evento={ev}
-                        readOnly={somenteLeitura}
-                        onSalvar={(novo) => {
-                          if (!dataBrStr) return;
-                          onSalvarCampos?.(ev, { statusCurto: novo });
-                        }}
-                      />
-                    </div>
-                  </div>
-                </div>
-                <div className="min-w-0">
-                  <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Descrição</span>
-                  <EditableTextCell
-                    texto={ev.descricao ?? ''}
-                    multiline
-                    align="left"
-                    maxLen={2000}
-                    temaPorPalavraChave
-                    readOnly={somenteLeitura}
-                    onDuploClique={() => onDuploCliqueEvento?.(ev)}
-                    onSalvar={(novo) => {
-                      if (!dataBrStr) return;
-                      onSalvarCampos?.(ev, { descricao: novo });
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
+              ev={ev}
+              somenteLeitura={somenteLeitura}
+              onDuploCliqueEvento={onDuploCliqueEvento}
+              dataBrStr={dataBrStr}
+              onSalvarCampos={onSalvarCampos}
+              onExcluirEvento={onExcluirEvento}
+              usarApiAgenda={usarApiAgenda}
+              eventoAgendaPodeExcluir={eventoAgendaPodeExcluir}
+              onSolicitarExclusao={solicitarExclusaoCompromisso}
+              onStatusAlterado={onStatusAlterado}
+              mostrarColunaUsuario={mostrarColunaUsuario}
+              resolverNomeUsuario={resolverNomeUsuario}
+            />
           ))}
           {!somenteLeitura ? (
-            <div
-              id={`agenda-novo-foco-${dataBrStr}-${usuarioAgendaId}`}
-              className="rounded-xl border border-emerald-300/80 bg-gradient-to-br from-emerald-50/90 to-teal-50/50 p-3 shadow-sm ring-1 ring-emerald-200/60"
-            >
-              <p className="mb-2 text-xs font-bold uppercase tracking-wide text-emerald-900">Novo compromisso</p>
-              <div className="flex flex-col gap-3">
-                <div className="flex flex-wrap items-start gap-3">
-                  <div className="min-w-0 shrink-0 basis-[5.5rem]">
-                    <span className="mb-1 block text-xs font-semibold text-slate-600">Hora</span>
-                    <EditableTextCell texto="" align="left" maxLen={12} onSalvar={(novo) => salvarLinhaVazia({ hora: novo })} />
-                  </div>
-                  <div className="ml-auto min-w-0 shrink-0">
-                    <span className="mb-1 block text-right text-xs font-semibold text-slate-600">Status</span>
-                    <div className="flex justify-end">
-                      <StatusCurtoCell evento={{ statusCurto: '' }} onSalvar={(novo) => salvarLinhaVazia({ statusCurto: novo })} />
-                    </div>
-                  </div>
-                </div>
-                <div className="min-w-0">
-                  <span className="mb-1 block text-xs font-semibold text-slate-600">Descrição</span>
-                  <EditableTextCell
-                    texto=""
-                    multiline
-                    align="left"
-                    maxLen={2000}
-                    temaPorPalavraChave
-                    onSalvar={(novo) => salvarLinhaVazia({ descricao: novo })}
-                  />
-                </div>
-              </div>
-            </div>
+            <NovoCompromissoCard idFoco={idNovoFoco} salvarLinhaVazia={salvarLinhaVazia} />
           ) : null}
-        </div>
-        <div className="hidden md:block">
-          <table className="w-full table-fixed border-collapse">
-            <thead>
-              <tr className="bg-gradient-to-r from-slate-800 via-indigo-900 to-violet-900 text-white [&_th]:border-b [&_th]:border-white/10">
-                <th className="w-[96px] px-2 py-2 text-left text-xs font-semibold">Hora</th>
-                {mostrarColunaUsuario ? (
-                  <th className="w-[100px] px-2 py-2 text-left text-xs font-semibold">Quem</th>
-                ) : null}
-                <th className="px-2 py-2 text-left text-xs font-semibold">Descrição</th>
-                <th className="w-[92px] px-1 py-2 text-right text-xs font-semibold">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {eventos.map((ev) => (
-                <Fragment key={ev._chaveUnicaAgenda ?? ev.id}>
-                  {!somenteLeitura && onExcluirEvento && eventoAgendaPodeExcluir(ev, usarApiAgenda) ? (
-                    <tr className="border-b-0 hover:bg-transparent">
-                      <td colSpan={colspanCorpoAgenda} className="px-2 pb-1 pt-0.5">
-                        <div className="flex justify-end">
-                          <button
-                            type="button"
-                            className="flex h-7 w-7 items-center justify-center rounded-lg border border-rose-200/90 bg-white text-rose-600 shadow-sm hover:bg-rose-50"
-                            aria-label="Eliminar compromisso"
-                            title="Eliminar compromisso"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              solicitarExclusaoCompromisso(ev);
-                            }}
-                          >
-                            <X className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ) : null}
-                  <tr
-                    className={`min-h-[42px] overflow-hidden border-b border-slate-100 transition-colors hover:bg-indigo-50/40 ${
-                      ev.destaque ? 'bg-amber-100/90' : ''
-                    }`}
-                    onDoubleClick={() => onDuploCliqueEvento?.(ev)}
-                  >
-                    <td className="w-[96px] px-2 py-1.5 align-top text-sm">
-                      <EditableTextCell
-                        texto={ev.hora ?? ''}
-                        align="left"
-                        maxLen={12}
-                        readOnly={somenteLeitura}
-                        onDuploClique={() => onDuploCliqueEvento?.(ev)}
-                        onSalvar={(novo) => {
-                          if (!dataBrStr) return;
-                          onSalvarCampos?.(ev, { hora: novo });
-                        }}
-                      />
-                    </td>
-                    {mostrarColunaUsuario ? (
-                      <td className="w-[100px] px-2 py-1.5 align-top text-xs text-gray-600 truncate" title={resolverNomeUsuario?.(ev) ?? ''}>
-                        {resolverNomeUsuario?.(ev) ?? '—'}
-                      </td>
-                    ) : null}
-                    <td className="min-w-0 px-2 py-1.5 align-top text-sm">
-                      <EditableTextCell
-                        texto={ev.descricao ?? ''}
-                        multiline
-                        align="left"
-                        maxLen={2000}
-                        temaPorPalavraChave
-                        readOnly={somenteLeitura}
-                        onDuploClique={() => onDuploCliqueEvento?.(ev)}
-                        onSalvar={(novo) => {
-                          if (!dataBrStr) return;
-                          onSalvarCampos?.(ev, { descricao: novo });
-                        }}
-                      />
-                    </td>
-                    <td className="w-[92px] px-0 py-1.5 align-top text-right">
-                      <StatusCurtoCell
-                        evento={ev}
-                        readOnly={somenteLeitura}
-                        onSalvar={(novo) => {
-                          if (!dataBrStr) return;
-                          onSalvarCampos?.(ev, { statusCurto: novo });
-                        }}
-                      />
-                    </td>
-                  </tr>
-                </Fragment>
-              ))}
-              {Array.from({ length: linhasPreenchimento }, (_, i) => (
-                <tr
-                  key={`agenda-linha-vazia-${dataBrStr}-${usuarioAgendaId}-${i}`}
-                  className="min-h-[42px] overflow-hidden border-b border-slate-100"
-                  aria-hidden
-                >
-                  <td className="w-[96px] px-2 py-1.5 align-top text-sm text-slate-200 select-none">&nbsp;</td>
-                  {mostrarColunaUsuario ? (
-                    <td className="w-[100px] px-2 py-1.5 align-top text-sm text-slate-200 select-none">&nbsp;</td>
-                  ) : null}
-                  <td className="min-w-0 px-2 py-1.5 align-top text-sm text-slate-200 select-none">&nbsp;</td>
-                  <td className="w-[92px] px-0 py-1.5 align-top text-right">&nbsp;</td>
-                </tr>
-              ))}
-              {!somenteLeitura ? (
-                <tr
-                  key={`linha-nova-${novaLinhaBump}`}
-                  className="min-h-[42px] overflow-hidden border-b border-emerald-100 bg-gradient-to-r from-emerald-50/60 to-teal-50/40"
-                >
-                  <td className="w-[96px] px-2 py-1.5 align-top text-sm">
-                    <EditableTextCell texto="" align="left" maxLen={12} onSalvar={(novo) => salvarLinhaVazia({ hora: novo })} />
-                  </td>
-                  {mostrarColunaUsuario ? <td className="w-[100px] px-2 py-1.5 align-top text-sm" /> : null}
-                  <td className="min-w-0 px-2 py-1.5 align-top text-sm">
-                    <EditableTextCell
-                      texto=""
-                      multiline
-                      align="left"
-                      maxLen={2000}
-                      temaPorPalavraChave
-                      onSalvar={(novo) => salvarLinhaVazia({ descricao: novo })}
-                    />
-                  </td>
-                  <td className="w-[92px] px-0 py-1.5 align-top text-right">
-                    <StatusCurtoCell evento={{ statusCurto: '' }} onSalvar={(novo) => salvarLinhaVazia({ statusCurto: novo })} />
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
         </div>
       </div>
     </div>
   );
 }
+
 
 function PainelCalendario({
   mesAtual,
@@ -797,6 +264,8 @@ function PainelCalendario({
   nomeGrupo = 'painel',
   usuariosSistema,
   onAbrirUsuariosSistema,
+  /** Mapa dia (1–31) → tipo de urgência para dots no calendário. */
+  indicadoresPorDia = null,
   /** Classes extra no container do painel (ex.: `hidden lg:flex` no painel espelho em mobile). */
   panelClassName = '',
 }) {
@@ -903,22 +372,33 @@ function PainelCalendario({
           {Array.from({ length: primeiroDiaSemana }).map((_, i) => (
             <div key={`v-${i}`} />
           ))}
-          {dias.map((d) => (
-            <button
-              key={d}
-              type="button"
-              onClick={() => setDiaSelecionado(d)}
-              className={`min-h-9 rounded-md py-1 text-xs font-medium transition-colors md:min-h-0 ${
-                d === diaSelecionado
-                  ? 'bg-gradient-to-br from-indigo-600 to-violet-700 text-white shadow-md ring-1 ring-indigo-400/50'
-                  : mesAtual === hojeReal.mm && anoAtual === hojeReal.yyyy && d === hojeReal.dd
-                    ? 'bg-sky-500 text-white shadow-sm'
-                    : 'hover:bg-violet-100 text-slate-800'
-              }`}
-            >
-              {String(d).padStart(2, '0')}
-            </button>
-          ))}
+          {dias.map((d) => {
+            const ehHoje = mesAtual === hojeReal.mm && anoAtual === hojeReal.yyyy && d === hojeReal.dd;
+            const ehSelecionado = d === diaSelecionado;
+            const urgencia = indicadoresPorDia?.[d] ?? null;
+            const dotClass = urgencia ? DOT_CALENDARIO_CLASSE[urgencia] : null;
+            return (
+              <button
+                key={d}
+                type="button"
+                onClick={() => setDiaSelecionado(d)}
+                className={`relative flex min-h-9 flex-col items-center justify-center rounded-md py-0.5 text-xs font-medium transition-all md:min-h-0 ${
+                  ehHoje
+                    ? 'bg-violet-600 text-white shadow-sm ring-2 ring-violet-400'
+                    : ehSelecionado
+                      ? 'bg-violet-50 text-violet-900 ring-2 ring-violet-400'
+                      : 'text-slate-800 hover:bg-violet-50'
+                }`}
+              >
+                <span>{String(d).padStart(2, '0')}</span>
+                {dotClass ? (
+                  <span className={`mt-0.5 h-1 w-1 shrink-0 rounded-full ${dotClass}`} aria-hidden />
+                ) : (
+                  <span className="mt-0.5 h-1 w-1 shrink-0" aria-hidden />
+                )}
+              </button>
+            );
+          })}
         </div>
         <p
           className="text-[11px] text-indigo-600 mt-2 cursor-pointer select-none font-medium hover:text-indigo-800 hover:underline"
@@ -957,24 +437,25 @@ function PainelCalendario({
       </div>
 
       <div className="rounded-xl border border-indigo-200/70 bg-white/90 p-2.5 shadow-sm ring-1 ring-indigo-100/60">
-        <div className="text-sm font-semibold text-indigo-950 mb-0.5">Usuário</div>
-        <p className="text-[11px] text-slate-600 mb-2 leading-snug">
-          Agenda por pessoa — mesmos cadastros ativos da tela <strong className="font-medium text-indigo-800">Usuários</strong>.
-        </p>
-        <div className="space-y-1 max-h-40 overflow-y-auto pr-0.5">
-          {usuariosSistema.map((u) => (
-            <label key={u.id} className="flex items-center gap-2 text-sm cursor-pointer text-slate-800 hover:text-indigo-900">
-              <input
-                type="radio"
-                name={`usuario-${nomeGrupo}`}
-                value={u.id}
-                checked={usuarioSelecionado === u.id}
-                onChange={() => setUsuarioSelecionado(u.id)}
-                className="text-indigo-600 accent-indigo-600"
-              />
-              {getNomeExibicaoUsuario(u)}
-            </label>
-          ))}
+        <div className="mb-2 text-sm font-semibold text-indigo-950">Usuários</div>
+        <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto pr-0.5">
+          {usuariosSistema.map((u) => {
+            const cores = corChipUsuarioAgenda(u);
+            const ativo = String(usuarioSelecionado) === String(u.id);
+            return (
+              <button
+                key={u.id}
+                type="button"
+                onClick={() => setUsuarioSelecionado(u.id)}
+                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                  ativo ? cores.chipAtivo : cores.chip
+                }`}
+              >
+                <span className={`h-2 w-2 shrink-0 rounded-full ${cores.dot}`} aria-hidden />
+                {getNomeExibicaoUsuario(u)}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -1049,6 +530,17 @@ export function Agenda({ focoDataBr = null, focoRevision = 0, modoFlutuante = fa
           usuarioId: usuarioEsquerda,
         })
   );
+  const [toastAgenda, setToastAgenda] = useState('');
+
+  useEffect(() => {
+    if (!toastAgenda) return undefined;
+    const t = window.setTimeout(() => setToastAgenda(''), 2600);
+    return () => window.clearTimeout(t);
+  }, [toastAgenda]);
+
+  const aoStatusAlteradoAgenda = useCallback((rotulo) => {
+    setToastAgenda(rotulo === 'OK' ? 'Compromisso marcado como concluído (✓ OK)' : 'Status alterado para pendente');
+  }, []);
 
   const resolverNomeUsuarioAgenda = useCallback(
     (ev) => {
@@ -1366,9 +858,20 @@ export function Agenda({ focoDataBr = null, focoRevision = 0, modoFlutuante = fa
     [relatorioAgendaMensal]
   );
 
+  const indicadoresPorDiaEsquerda = useMemo(() => {
+    const map = {};
+    for (const { dataBr, eventos } of relatorioAgendaMensal.diasComEventos || []) {
+      const p = parseDataBrCompleta(dataBr);
+      if (!p || p.mm !== mesEsquerda || p.yyyy !== anoEsquerda) continue;
+      const u = urgenciaDiaAgenda(eventos);
+      if (u) map[p.dd] = u;
+    }
+    return map;
+  }, [relatorioAgendaMensal, mesEsquerda, anoEsquerda]);
+
   const rootAgendaClass = modoFlutuante
-    ? 'relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-gradient-to-br from-slate-100 via-indigo-50/35 to-emerald-50/45 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d]'
-    : 'relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-gradient-to-br from-slate-100 via-indigo-50/35 to-emerald-50/45 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d]';
+    ? 'relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-slate-100 dark:bg-[#0a0d12]'
+    : 'relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-slate-100 dark:bg-[#0a0d12]';
   const innerAgendaClass = modoFlutuante
     ? 'mx-auto flex w-full max-w-none flex-1 min-h-0 flex-col gap-2 overflow-y-auto overflow-x-hidden p-2 pb-2 sm:p-2 md:pb-2 lg:flex-row lg:gap-2 lg:overflow-hidden lg:pb-2'
     : 'mx-auto flex w-full max-w-[1800px] flex-1 min-h-0 flex-col gap-4 overflow-y-auto overflow-x-hidden p-2 pb-28 sm:p-3 md:pb-24 lg:flex-row lg:gap-3 lg:overflow-hidden lg:pb-4';
@@ -1389,6 +892,7 @@ export function Agenda({ focoDataBr = null, focoRevision = 0, modoFlutuante = fa
         nomeGrupo="esquerda"
         usuariosSistema={usuariosAtivos}
         onAbrirUsuariosSistema={() => navigate('/usuarios')}
+        indicadoresPorDia={indicadoresPorDiaEsquerda}
       />
 
       {/* Área central: em mobile lista empilhada por dia; em lg duas colunas lado a lado. */}
@@ -1415,11 +919,12 @@ export function Agenda({ focoDataBr = null, focoRevision = 0, modoFlutuante = fa
             Agenda mensal
           </button>
         </div>
-        <div className="flex w-full min-h-0 flex-col gap-4 bg-gradient-to-b from-slate-50/50 to-transparent p-2 lg:flex-1 lg:flex-row lg:gap-2 lg:overflow-hidden">
+        <div className="flex w-full min-h-0 flex-col gap-4 bg-slate-100/80 p-2 lg:flex-1 lg:flex-row lg:gap-2 lg:overflow-hidden">
           <ColunaDia
             variantColuna="esquerda"
             dataLabel={`${dataEsquerdaStr} — Compromissos do dia`}
             eventos={eventosEsquerda}
+            onStatusAlterado={aoStatusAlteradoAgenda}
             onDuploCliqueEvento={aoDuploCliqueCompromisso}
             dataBrStr={dataEsquerdaStr}
             usuarioAgendaId={usuarioEsquerda}
@@ -1455,6 +960,7 @@ export function Agenda({ focoDataBr = null, focoRevision = 0, modoFlutuante = fa
             variantColuna="direita"
             dataLabel={`${dataDireitaStr} — Próximo dia`}
             eventos={eventosDireita}
+            onStatusAlterado={aoStatusAlteradoAgenda}
             onDuploCliqueEvento={aoDuploCliqueCompromisso}
             dataBrStr={dataDireitaStr}
             usuarioAgendaId={usuarioDireita}
@@ -1750,6 +1256,15 @@ export function Agenda({ focoDataBr = null, focoRevision = 0, modoFlutuante = fa
           </div>
         </div>
       )}
+
+      {toastAgenda ? (
+        <div
+          role="status"
+          className="pointer-events-none fixed bottom-24 left-1/2 z-50 max-w-sm -translate-x-1/2 rounded-xl border border-slate-200/90 bg-slate-900 px-4 py-2.5 text-center text-sm font-medium text-white shadow-lg ring-1 ring-black/10 lg:bottom-6"
+        >
+          {toastAgenda}
+        </div>
+      ) : null}
     </div>
   );
 }

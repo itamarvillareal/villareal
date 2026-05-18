@@ -20,6 +20,7 @@ import {
   SEGMENTO_MIL,
 } from './historico-local-txt-paths.mjs';
 import { resolverBaseBancoDados } from './gerais-fase-processo-txt.mjs';
+import { parseDataAudienciaLegadoIso } from './datas-legado-vb.mjs';
 
 export const SEMANTIC_KEYS = {
   PAPEL_CLIENTE: 'ClienteRequerenteOuRequerido',
@@ -145,13 +146,7 @@ export function normalizarAvisoAudienciaTxt(texto) {
  * @returns {string | null} ISO yyyy-MM-dd
  */
 export function normalizarDataAudienciaTxt(texto) {
-  const t = String(texto ?? '').trim();
-  if (!t) return null;
-  let m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(t);
-  if (m) return `${m[3]}-${m[2]}-${m[1]}`;
-  m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(t);
-  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
-  return null;
+  return parseDataAudienciaLegadoIso(texto);
 }
 
 /**

@@ -9,6 +9,7 @@ import { execSync } from 'node:child_process';
 import XLSX from 'xlsx';
 import { levantarDadosProcessoTxt, montarPatchProcessoFromTxt } from './lib/proc-processo-dados-txt.mjs';
 import { normalizarTextoPlanilha } from './lib/normalizar-texto-planilha.mjs';
+import { parseDataPlanilhaCellIso } from './lib/datas-legado-vb.mjs';
 
 const PLANILHA = '/Users/itamar/Dropbox/sistema/Processos_imp.xls';
 
@@ -57,6 +58,18 @@ const PAIRS = [
   [533, 14],
 ];
 
+/** Coluna 4 da aba 1 = ID pessoa (não código cliente 8 dígitos). */
+const PESSOA_POR_CLIENTE = new Map([
+  [594, 1693],
+  [560, 379],
+  [149, 868],
+  [578, 378],
+  [533, 362],
+  [752, 1247],
+  [715, 717],
+  [473, 2053],
+]);
+
 function normKey(s) {
   if (s == null) return '';
   return String(s)
@@ -74,20 +87,7 @@ function normCnj(s) {
 }
 
 function excelDateToIso(v) {
-  if (v == null || v === '') return null;
-  if (v instanceof Date && !Number.isNaN(v.getTime())) {
-    return v.toISOString().slice(0, 10);
-  }
-  const t = String(v).trim();
-  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(t);
-  if (m) return `${m[3]}-${m[2]}-${m[1]}`;
-  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(t);
-  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
-  if (typeof v === 'number' && v > 1000) {
-    const d = XLSX.SSF.parse_date_code(v);
-    if (d) return `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}`;
-  }
-  return null;
+  return parseDataPlanilhaCellIso(v);
 }
 
 function parseValor(v) {
@@ -111,17 +111,17 @@ function loadPlanilhaRows() {
   /** @type {Map<string, { row0: unknown[], row1: unknown[], linha: number }>} */
   const map = new Map();
 
-  for (let r = 1; r < s0.length; r++) {
-    const proc = Number.parseInt(String(s0[r][S0.PROC] ?? '').replace(/\D/g, ''), 10);
+  for (let r = 1; r < s1.length; r++) {
+    const proc = Number.parseInt(String(s1[r][S1.PROC] ?? '').replace(/\D/g, ''), 10);
     if (!Number.isFinite(proc)) continue;
-    for (const [c] of PAIRS) {
-      if (map.has(`${c}|${proc}`)) continue;
-      const cod8 = String(c).padStart(8, '0');
-      const rowStr = s0[r].map((x) => String(x ?? '')).join('|');
-      if (rowStr.includes(cod8) || rowStr.includes(String(c))) {
-        map.set(`${c}|${proc}`, { row0: s0[r], row1: s1[r], linha: r + 1 });
-        break;
-      }
+    const pessoaId = Number.parseInt(String(s1[r][S1.PESSOA_CLIENTE] ?? '').replace(/\D/g, ''), 10);
+    if (!Number.isFinite(pessoaId)) continue;
+
+    for (const [c, p] of PAIRS) {
+      if (PESSOA_POR_CLIENTE.get(c) !== pessoaId) continue;
+      const key = `${c}|${proc}`;
+      if (p !== proc || map.has(key)) continue;
+      map.set(key, { row0: s0[r], row1: s1[r], linha: r + 1 });
     }
   }
   return map;

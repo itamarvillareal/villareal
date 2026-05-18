@@ -10,6 +10,7 @@ import { deduplicarPrazosFatais145_1, iterarPrazosFatais145_1 } from './gerais-1
 import { levantarCamposSemanticosProcesso } from './proc-processo-semantic-txt.mjs';
 import { lerCabecalhoProcessoTxt } from './proc-processo-cabecalho-txt.mjs';
 import { levantarVinculosImovelProc } from './proc-imovel-vinculo-txt.mjs';
+import { lerNumeroPessoaCliente151Txt } from './cliente-pessoa-151-txt.mjs';
 import { formatCod8 } from './historico-local-txt-paths.mjs';
 
 /**
@@ -27,6 +28,7 @@ export function levantarDadosProcessoTxt(codNum, numeroInterno, opts = {}) {
   const chave = `${cod8}|${numeroInterno}`;
 
   const cabecalho = lerCabecalhoProcessoTxt(codNum, numeroInterno, { baseBanco });
+  const pessoaCliente = lerNumeroPessoaCliente151Txt(codNum, { baseBanco });
 
   const semanticMap = levantarCamposSemanticosProcesso({
     clienteFiltro: codNum,
@@ -67,6 +69,7 @@ export function levantarDadosProcessoTxt(codNum, numeroInterno, opts = {}) {
     codNum,
     numeroInterno,
     cabecalho,
+    pessoaCliente,
     semantic,
     fase: faseReg,
     prazoArvore,
@@ -78,6 +81,14 @@ export function levantarDadosProcessoTxt(codNum, numeroInterno, opts = {}) {
       temFase: Boolean(faseReg?.faseCanonica),
       temObsFase: Boolean(faseReg?.observacaoFase),
       statusInativo: Boolean(faseReg?.statusInativo),
+      pessoaClienteTxt: pessoaCliente.pessoaId ?? null,
+      temResponsavel: Boolean(cabecalho.partesTxt?.responsavelNome),
+      temUnidade: Boolean(cabecalho.campos.unidade),
+      temAudiencia: Boolean(
+        semantic?.campos?.audienciaData ||
+          semantic?.campos?.audienciaHora ||
+          semantic?.campos?.audienciaTipo
+      ),
       temPrazo: Boolean(cabecalho.campos.prazoFatal || prazoArvore?.prazoFatalIso),
       temImovel: Boolean(imovel?.numeroPlanilha),
       entradasHistorico: entradasHistorico.length,
@@ -106,8 +117,14 @@ export function montarPatchProcessoFromTxt(dados) {
     patch.observacaoFase = null;
     delete patch.fase;
   } else {
+    patch.ativo = true;
     if (dados.fase?.faseCanonica) patch.fase = dados.fase.faseCanonica;
     if (dados.fase?.observacaoFase != null) patch.observacaoFase = dados.fase.observacaoFase;
+  }
+
+  const responsavelNome = dados.cabecalho.partesTxt?.responsavelNome;
+  if (responsavelNome) {
+    patch._responsavelNome = responsavelNome;
   }
 
   delete patch._parteClienteNome;
