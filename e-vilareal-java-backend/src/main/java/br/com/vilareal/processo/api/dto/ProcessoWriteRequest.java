@@ -21,6 +21,19 @@ public class ProcessoWriteRequest {
     /** Pasta do processo (rótulo da planilha); opcional. */
     private String pasta;
 
+    /** REQUERENTE ou REQUERIDO. */
+    private String papelCliente;
+
+    private LocalDate audienciaData;
+
+    /** Formato HH:mm. */
+    private String audienciaHora;
+
+    private String audienciaTipo;
+
+    /** AVISADO ou NAO_AVISADO. */
+    private String avisoAudiencia;
+
     private String numeroCnj;
     private String numeroProcessoAntigo;
     private String naturezaAcao;
@@ -74,6 +87,46 @@ public class ProcessoWriteRequest {
 
     public void setPasta(String pasta) {
         this.pasta = pasta;
+    }
+
+    public String getPapelCliente() {
+        return papelCliente;
+    }
+
+    public void setPapelCliente(String papelCliente) {
+        this.papelCliente = papelCliente;
+    }
+
+    public LocalDate getAudienciaData() {
+        return audienciaData;
+    }
+
+    public void setAudienciaData(LocalDate audienciaData) {
+        this.audienciaData = audienciaData;
+    }
+
+    public String getAudienciaHora() {
+        return audienciaHora;
+    }
+
+    public void setAudienciaHora(String audienciaHora) {
+        this.audienciaHora = audienciaHora;
+    }
+
+    public String getAudienciaTipo() {
+        return audienciaTipo;
+    }
+
+    public void setAudienciaTipo(String audienciaTipo) {
+        this.audienciaTipo = audienciaTipo;
+    }
+
+    public String getAvisoAudiencia() {
+        return avisoAudiencia;
+    }
+
+    public void setAvisoAudiencia(String avisoAudiencia) {
+        this.avisoAudiencia = avisoAudiencia;
     }
 
     public String getNumeroCnj() {

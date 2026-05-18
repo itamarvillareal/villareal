@@ -34,6 +34,23 @@ public class ProcessoEntity {
     @Column(name = "pasta", length = 120)
     private String pasta;
 
+    /** Papel do cliente no processo: REQUERENTE ou REQUERIDO (legado VB). */
+    @Column(name = "papel_cliente", length = 16)
+    private String papelCliente;
+
+    @Column(name = "audiencia_data")
+    private LocalDate audienciaData;
+
+    @Column(name = "audiencia_hora", length = 5)
+    private String audienciaHora;
+
+    @Column(name = "audiencia_tipo", length = 120)
+    private String audienciaTipo;
+
+    /** AVISADO ou NAO_AVISADO (legado «ClienteAvisado»). */
+    @Column(name = "aviso_audiencia", length = 20)
+    private String avisoAudiencia;
+
     /** UUID da importação (PDF/XLS) que criou este processo; usado na reversão. */
     @Column(name = "importacao_id", length = 36)
     private String importacaoId;

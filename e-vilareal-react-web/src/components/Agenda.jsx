@@ -1,5 +1,17 @@
 import { Fragment, useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { CalendarDays, CalendarX2, ChevronLeft, ChevronRight, Plus, X } from 'lucide-react';
+import {
+  CalendarDays,
+  CalendarX2,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Gavel,
+  Pin,
+  Plus,
+  Scale,
+  CircleAlert,
+  X,
+} from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   agendaUsuarios,
@@ -91,16 +103,115 @@ function normalizarParaBuscaPalavraChave(str) {
     .toLowerCase();
 }
 
-/**
- * "instrução" / "instrucao" → vermelho;
- * "conciliação" / "sessão de julgamento" (e variantes sem acento) → amarelo.
- * Se instrução e amarelo aparecerem, instrução tem prioridade.
- */
-function temaPorTextoCompromisso(texto) {
+/** Tipo visual do compromisso (cards coloridos). Instrução tem prioridade sobre os demais. */
+function tipoCompromissoAgenda(texto) {
   const n = normalizarParaBuscaPalavraChave(texto);
   if (n.includes('instrucao')) return 'instrucao';
-  if (n.includes('conciliacao') || n.includes('sessao de julgamento')) return 'conciliacao';
+  if (n.includes('sessao de julgamento')) return 'julgamento';
+  if (n.includes('conciliacao')) return 'conciliacao';
+  return 'comum';
+}
+
+/** @deprecated use tipoCompromissoAgenda — mantido para o modal de detalhe. */
+function temaPorTextoCompromisso(texto) {
+  const t = tipoCompromissoAgenda(texto);
+  if (t === 'instrucao') return 'instrucao';
+  if (t === 'conciliacao' || t === 'julgamento') return 'conciliacao';
   return null;
+}
+
+const ESTILO_TIPO_COMPROMISSO = {
+  instrucao: {
+    card: 'bg-red-50 border-l-4 border-l-red-500 border-red-100/80 hover:border-red-200',
+    badge: 'bg-red-500 text-white',
+    rotulo: 'INSTRUÇÃO',
+    Icon: CircleAlert,
+    iconClass: 'text-red-600',
+  },
+  conciliacao: {
+    card: 'bg-amber-50 border-l-4 border-l-amber-500 border-amber-100/80 hover:border-amber-200',
+    badge: 'bg-amber-500 text-white',
+    rotulo: 'CONCILIAÇÃO',
+    Icon: Scale,
+    iconClass: 'text-amber-600',
+  },
+  julgamento: {
+    card: 'bg-purple-50 border-l-4 border-l-purple-500 border-purple-100/80 hover:border-purple-200',
+    badge: 'bg-purple-500 text-white',
+    rotulo: 'JULGAMENTO',
+    Icon: Gavel,
+    iconClass: 'text-purple-600',
+  },
+  comum: {
+    card: 'bg-white border-l-4 border-l-gray-300 border-slate-200/90 hover:border-slate-300',
+    badge: '',
+    rotulo: '',
+    Icon: Pin,
+    iconClass: 'text-gray-400',
+  },
+};
+
+/** Urgência do dot no mini-calendário: instrucao > conciliação > julgamento > comum. */
+function urgenciaDiaAgenda(eventos) {
+  if (!eventos?.length) return null;
+  let result = 'comum';
+  for (const ev of eventos) {
+    const t = tipoCompromissoAgenda(ev?.descricao);
+    if (t === 'instrucao') return 'instrucao';
+    if (t === 'conciliacao') result = 'conciliacao';
+    else if (t === 'julgamento' && result !== 'conciliacao') result = 'julgamento';
+  }
+  return result;
+}
+
+const DOT_CALENDARIO_CLASSE = {
+  instrucao: 'bg-red-500',
+  conciliacao: 'bg-amber-500',
+  julgamento: 'bg-purple-500',
+  comum: 'bg-blue-500',
+};
+
+function parseCorpoCompromisso(descricao) {
+  const raw = String(descricao ?? '').trim();
+  if (!raw) return { partes: '', autosLocal: '' };
+  const linhas = raw.split(/\n+/).map((s) => s.trim()).filter(Boolean);
+  if (linhas.length >= 2) {
+    return { partes: linhas[0], autosLocal: linhas.slice(1).join(' · ') };
+  }
+  const mAutos = raw.match(/^(.*?)(?:\s*[-–—]\s*|\s+)(autos\s*n[º°.]?\s*.+)$/i);
+  if (mAutos) {
+    return { partes: mAutos[1].trim(), autosLocal: mAutos[2].trim() };
+  }
+  return { partes: raw, autosLocal: '' };
+}
+
+function corChipUsuarioAgenda(u) {
+  const login = String(u?.login ?? '').toLowerCase();
+  const id = String(u?.id ?? '').toLowerCase();
+  if (login.includes('ana') || id.includes('ana')) {
+    return { dot: 'bg-blue-500', chip: 'border-blue-200 text-blue-900', chipAtivo: 'bg-blue-600 text-white border-blue-600 shadow-sm' };
+  }
+  if (login.includes('karla') || id.includes('karla')) {
+    return { dot: 'bg-pink-500', chip: 'border-pink-200 text-pink-900', chipAtivo: 'bg-pink-600 text-white border-pink-600 shadow-sm' };
+  }
+  if (login.includes('itamar') || id.includes('itamar')) {
+    return { dot: 'bg-emerald-500', chip: 'border-emerald-200 text-emerald-900', chipAtivo: 'bg-emerald-600 text-white border-emerald-600 shadow-sm' };
+  }
+  return { dot: 'bg-violet-500', chip: 'border-violet-200 text-violet-900', chipAtivo: 'bg-violet-600 text-white border-violet-600 shadow-sm' };
+}
+
+function tituloColunaAgenda(dataBr, variantColuna) {
+  const rotulo = rotuloDataComDiaSemana(dataBr);
+  if (variantColuna === 'direita') return `Próximo dia · ${rotulo}`;
+  const p = parseDataBrCompleta(dataBr);
+  const hoje = new Date();
+  const ehHoje =
+    p &&
+    p.dd === hoje.getDate() &&
+    p.mm === hoje.getMonth() + 1 &&
+    p.yyyy === hoje.getFullYear();
+  if (ehHoje) return `Hoje · ${rotulo}`;
+  return rotulo;
 }
 
 /** Classes para o bloco de descrição no modal (duplo clique). */

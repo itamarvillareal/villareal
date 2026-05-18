@@ -32,6 +32,12 @@ public class ProcessoResponse {
     /** Pasta do processo (planilha / cadastro). */
     private String pasta;
 
+    private String papelCliente;
+    private LocalDate audienciaData;
+    private String audienciaHora;
+    private String audienciaTipo;
+    private String avisoAudiencia;
+
     private Boolean consultaAutomatica;
     private Boolean ativo;
     private String consultor;
@@ -215,6 +221,46 @@ public class ProcessoResponse {
 
     public void setPasta(String pasta) {
         this.pasta = pasta;
+    }
+
+    public String getPapelCliente() {
+        return papelCliente;
+    }
+
+    public void setPapelCliente(String papelCliente) {
+        this.papelCliente = papelCliente;
+    }
+
+    public LocalDate getAudienciaData() {
+        return audienciaData;
+    }
+
+    public void setAudienciaData(LocalDate audienciaData) {
+        this.audienciaData = audienciaData;
+    }
+
+    public String getAudienciaHora() {
+        return audienciaHora;
+    }
+
+    public void setAudienciaHora(String audienciaHora) {
+        this.audienciaHora = audienciaHora;
+    }
+
+    public String getAudienciaTipo() {
+        return audienciaTipo;
+    }
+
+    public void setAudienciaTipo(String audienciaTipo) {
+        this.audienciaTipo = audienciaTipo;
+    }
+
+    public String getAvisoAudiencia() {
+        return avisoAudiencia;
+    }
+
+    public void setAvisoAudiencia(String avisoAudiencia) {
+        this.avisoAudiencia = avisoAudiencia;
     }
 
     public Boolean getConsultaAutomatica() {

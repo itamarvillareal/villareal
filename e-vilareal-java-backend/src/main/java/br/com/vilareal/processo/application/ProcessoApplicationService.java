@@ -909,6 +909,62 @@ public class ProcessoApplicationService {
         return z;
     }
 
+    private static String normalizarPapelCliente(String raw) {
+        if (!StringUtils.hasText(raw)) {
+            return null;
+        }
+        String n = Normalizer.normalize(raw.trim(), Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "")
+                .toUpperCase(Locale.ROOT);
+        if (n.contains("REQUERIDO") || n.equals("REU")) {
+            return "REQUERIDO";
+        }
+        if (n.contains("REQUERENTE") || n.equals("AUTOR")) {
+            return "REQUERENTE";
+        }
+        return null;
+    }
+
+    private static String normalizarAvisoAudiencia(String raw) {
+        if (!StringUtils.hasText(raw)) {
+            return null;
+        }
+        String n = Normalizer.normalize(raw.trim(), Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "")
+                .toUpperCase(Locale.ROOT);
+        if (n.startsWith("N") || n.contains("NAO") || n.equals("0") || n.equals("FALSE")) {
+            return "NAO_AVISADO";
+        }
+        if (n.startsWith("S") || n.contains("AVIS") || n.equals("1") || n.equals("TRUE")) {
+            return "AVISADO";
+        }
+        return null;
+    }
+
+    private static String normalizarHoraAudiencia(String raw) {
+        if (!StringUtils.hasText(raw)) {
+            return null;
+        }
+        String t = raw.trim().replace('.', ':');
+        if (t.matches("^\\d{1,2}:\\d{2}$")) {
+            String[] p = t.split(":");
+            int h = Integer.parseInt(p[0]);
+            int m = Integer.parseInt(p[1]);
+            if (h >= 0 && h <= 23 && m >= 0 && m <= 59) {
+                return String.format(Locale.ROOT, "%02d:%02d", h, m);
+            }
+        }
+        if (t.matches("^\\d{3,4}$")) {
+            String d = t.length() == 3 ? "0" + t : t;
+            int h = Integer.parseInt(d.substring(0, 2));
+            int m = Integer.parseInt(d.substring(2));
+            if (h >= 0 && h <= 23 && m >= 0 && m <= 59) {
+                return String.format(Locale.ROOT, "%02d:%02d", h, m);
+            }
+        }
+        return null;
+    }
+
     private void aplicarCabecalho(ProcessoEntity e, ProcessoWriteRequest req) {
         e.setNumeroInterno(req.getNumeroInterno());
         e.setNumeroCnj(trimToNull(req.getNumeroCnj()));
@@ -933,6 +989,11 @@ public class ProcessoApplicationService {
         e.setCidade(trimToNull(req.getCidade()));
         e.setUnidade(trimToNull(req.getUnidade()));
         e.setPasta(trimToNull(req.getPasta()));
+        e.setPapelCliente(normalizarPapelCliente(req.getPapelCliente()));
+        e.setAudienciaData(req.getAudienciaData());
+        e.setAudienciaHora(normalizarHoraAudiencia(req.getAudienciaHora()));
+        e.setAudienciaTipo(trimToNull(req.getAudienciaTipo()));
+        e.setAvisoAudiencia(normalizarAvisoAudiencia(req.getAvisoAudiencia()));
         e.setConsultaAutomatica(Boolean.TRUE.equals(req.getConsultaAutomatica()));
         if (req.getAtivo() != null) {
             e.setAtivo(req.getAtivo());
@@ -1057,6 +1118,11 @@ public class ProcessoApplicationService {
         r.setCidade(Utf8MojibakeUtil.corrigir(e.getCidade()));
         r.setUnidade(Utf8MojibakeUtil.corrigir(trimToNull(e.getUnidade())));
         r.setPasta(Utf8MojibakeUtil.corrigir(trimToNull(e.getPasta())));
+        r.setPapelCliente(e.getPapelCliente());
+        r.setAudienciaData(e.getAudienciaData());
+        r.setAudienciaHora(e.getAudienciaHora());
+        r.setAudienciaTipo(Utf8MojibakeUtil.corrigir(trimToNull(e.getAudienciaTipo())));
+        r.setAvisoAudiencia(e.getAvisoAudiencia());
         r.setConsultaAutomatica(e.getConsultaAutomatica());
         r.setAtivo(e.getAtivo());
         r.setConsultor(Utf8MojibakeUtil.corrigir(e.getConsultor()));
