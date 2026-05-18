@@ -46,6 +46,7 @@ import {
   pastaNumeroClienteHistorico,
   SEGMENTO_MIL,
 } from './lib/historico-local-txt-paths.mjs';
+import { listarProcessosHistoricoCliente } from './lib/historico-local-txt-correcao.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
@@ -130,6 +131,28 @@ export function listarProcessosComCabecalhoTxt(baseBanco, codNum) {
   return [...new Set(procs)].sort((a, b) => a - b);
 }
 
+/**
+ * Processos com ficheiro de índice `152.1` na pasta mil (HC / Inativos).
+ * Alguns clientes legados não têm `3.1` em Proc mas têm histórico completo em 152.1.
+ */
+export function listarProcessosIndice152Cliente(baseBanco, codNum) {
+  const cent = centenaPastaClienteHistorico(codNum);
+  const pastaCli = pastaNumeroClienteHistorico(codNum);
+  const cod8 = formatCod8(codNum);
+  const re = new RegExp(`^${cod8.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\.152\\.1\\.(\\d+)\\.txt$`, 'i');
+  /** @type {number[]} */
+  const procs = [];
+  for (const pre of ['HC', 'Historico de Consultas Inativos']) {
+    const dir = path.join(baseBanco, pre, SEGMENTO_MIL, String(cent), pastaCli);
+    if (!fs.existsSync(dir)) continue;
+    for (const f of fs.readdirSync(dir)) {
+      const m = re.exec(f);
+      if (m) procs.push(Number.parseInt(m[1], 10));
+    }
+  }
+  return [...new Set(procs)].sort((a, b) => a - b);
+}
+
 function filtrarProcessos(procs, opts) {
   return procs.filter((p) => {
     if (opts.processo != null && p !== opts.processo) return false;
@@ -199,7 +222,7 @@ function executarImportHistoricoCliente(opts) {
   return executarScript(SCRIPT_HISTORICO, args);
 }
 
-function imprimirResumoCliente(opts, procs) {
+function imprimirResumoCliente(opts, procs, fonteProcs = '3.1') {
   const cent = centenaPastaClienteHistorico(opts.cliente);
   const pasta = pastaNumeroClienteHistorico(opts.cliente);
   console.log('\n=== import-real ===\n');
@@ -207,7 +230,7 @@ function imprimirResumoCliente(opts, procs) {
   console.log(`Base: ${opts.base}`);
   console.log(`Pasta Proc: Proc/${SEGMENTO_MIL}/${cent}/${pasta}/`);
   console.log(`Modo: ${opts.dryRun ? 'dry-run' : 'aplicar'}`);
-  console.log(`Processos com 3.1: ${procs.length}`);
+  console.log(`Processos (${fonteProcs}): ${procs.length}`);
   if (procs.length) {
     console.log(`  intervalo: ${procs[0]} … ${procs[procs.length - 1]}`);
   }
@@ -242,20 +265,30 @@ async function main() {
     process.exit(1);
   }
 
-  const todosProcs = listarProcessosComCabecalhoTxt(opts.base, opts.cliente);
+  let todosProcs = listarProcessosComCabecalhoTxt(opts.base, opts.cliente);
+  let fonteProcs = 'cabecalho 3.1';
+  if (todosProcs.length === 0) {
+    todosProcs = listarProcessosHistoricoCliente(opts.base, opts.cliente);
+    fonteProcs = 'historico HC (14 / 15–17)';
+  }
+  if (todosProcs.length === 0) {
+    todosProcs = listarProcessosIndice152Cliente(opts.base, opts.cliente);
+    fonteProcs = 'historico HC (152.1)';
+  }
   const procs = filtrarProcessos(todosProcs, opts);
 
   /** @type {object} */
   const relatorio = {
     cliente: opts.cliente,
     modo: opts.dryRun ? 'dry-run' : 'aplicar',
-    processosCom31: todosProcs.length,
+    fonteProcessos: fonteProcs,
+    processosCom31: listarProcessosComCabecalhoTxt(opts.base, opts.cliente).length,
     processosAlvo: procs.length,
     etapas: {},
     falhas: [],
   };
 
-  imprimirResumoCliente(opts, procs);
+  imprimirResumoCliente(opts, procs, fonteProcs);
 
   if (opts.processo != null && procs.length === 0) {
     console.warn(
@@ -265,14 +298,22 @@ async function main() {
   }
 
   if (procs.length === 0 && opts.processo == null) {
-    console.error('Nenhum processo com ficheiro 3.1 encontrado para este cliente.');
+    console.error(
+      'Nenhum processo encontrado (sem cabecalho 3.1 nem ficheiros de historico HC para este cliente).'
+    );
     process.exit(2);
+  }
+
+  if (fonteProcs.startsWith('historico')) {
+    console.log(
+      `[aviso] Cliente sem ficheiros 3.1 em Proc — lista de processos vem do historico (${procs.length} processo(s)).\n`
+    );
   }
 
   // Um único processo: delega ao import-processo-txt (histórico por processo, fluxo completo).
   if (opts.processo != null) {
     console.log(`\n[import-real] Processo único ${opts.processo} — fluxo completo.\n`);
-    const extras = [];
+    const extras = ['--sem-cliente-pessoa'];
     if (opts.semHistorico) extras.push('--sem-historico');
     if (opts.substituirHistorico) extras.push('--substituir-historico');
     if (!opts.aplicarCorrecaoHistorico) extras.push('--sem-corrigir-historico');
@@ -356,12 +397,23 @@ async function main() {
     console.log('\n[2/3] Histórico ignorado (--sem-historico).\n');
   }
 
+  const temCabecalho31 = relatorio.processosCom31 > 0;
   const procsCabecalho =
     opts.dryRun && opts.amostraProcessosDryRun >= 0
       ? procs.slice(0, opts.amostraProcessosDryRun === 0 ? 0 : opts.amostraProcessosDryRun)
       : procs;
 
-  if (opts.dryRun && procsCabecalho.length < procs.length) {
+  let ok = 0;
+  let fail = 0;
+  /** @type {number[]} */
+  const falhasProc = [];
+
+  if (!temCabecalho31) {
+    relatorio.etapas.processos = 'omitido_sem_cabecalho_31';
+    console.log(
+      `\n[3/3] Cabeçalho/fase/imóvel por processo: omitido — cliente sem ficheiros 3.1 em Proc (${procs.length} processo(s) só no historico).\n`
+    );
+  } else if (opts.dryRun && procsCabecalho.length < procs.length) {
     console.log(
       `\n[3/3] Dry-run: pré-visualização de ${procsCabecalho.length} processo(s) (de ${procs.length}; use --amostra-processos=N ou --aplicar para todos).\n`
     );
@@ -371,12 +423,7 @@ async function main() {
     );
   }
 
-  let ok = 0;
-  let fail = 0;
-  /** @type {number[]} */
-  const falhasProc = [];
-
-  for (let i = 0; i < procsCabecalho.length; i++) {
+  for (let i = 0; temCabecalho31 && i < procsCabecalho.length; i++) {
     const p = procsCabecalho[i];
     const extras = ['--sem-historico', '--sem-corrigir-historico', '--sem-cliente-pessoa'];
 
@@ -394,13 +441,15 @@ async function main() {
     }
   }
 
-  relatorio.etapas.processos = {
-    ok,
-    fail,
-    total: procs.length,
-    executados: procsCabecalho.length,
-    falhas: falhasProc,
-  };
+  if (temCabecalho31) {
+    relatorio.etapas.processos = {
+      ok,
+      fail,
+      total: procs.length,
+      executados: procsCabecalho.length,
+      falhas: falhasProc,
+    };
+  }
   relatorio.duracaoMs = Date.now() - inicio;
 
   if (opts.relatorio) {
@@ -409,9 +458,12 @@ async function main() {
   }
 
   console.log(`\n=== import-real concluído (${(relatorio.duracaoMs / 1000).toFixed(1)}s) ===`);
-  console.log(`Processos: ${ok} ok, ${fail} falha(s)\n`);
-
-  if (fail > 0) process.exit(1);
+  if (temCabecalho31) {
+    console.log(`Processos: ${ok} ok, ${fail} falha(s)\n`);
+    if (fail > 0) process.exit(1);
+  } else {
+    console.log('');
+  }
 }
 
 main().catch((e) => {
