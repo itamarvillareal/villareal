@@ -1,0 +1,37 @@
+{
+  "baseAgenda": "/Users/itamar/Dropbox/Banco de Dados/Agenda",
+  "usuariosPasta": [
+    "Dr. Itamar",
+    "KARLA",
+    "Ana Luisa"
+  ],
+  "eventos": 44018,
+  "grupos": 44090,
+  "porPasta": {
+    "Ana Luisa": 553,
+    "Dr. Itamar": 22635,
+    "KARLA": 20830
+  },
+  "ficheirosIgnorados": 51,
+  "ficheirosNomeInvalido": 0,
+  "msLevantamento": 21185,
+  "filtros": {
+    "usuarios": [
+      "Dr. Itamar",
+      "KARLA",
+      "Ana Luisa"
+    ],
+    "dataMin": null,
+    "dataMax": null
+  },
+  "aplicar": {
+    "criados": 43408,
+    "puts": 9,
+    "fail": 0,
+    "puladosDupTxt": 360,
+    "puladosSemConteudo": 217,
+    "puladosIgual": 24,
+    "puladosAmbiguo": 0,
+    "enviadosUnicos": 43441
+  }
+}

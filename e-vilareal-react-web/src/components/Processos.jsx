@@ -1775,6 +1775,11 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       setUnidadeEnderecoManual(String(mapped.unidade ?? '').trim() !== '');
       setPasta(mapped.pasta ?? '');
       setValorCausa(mapped.valorCausa ?? '');
+      setPapelParte(mapped.papelParte ?? 'requerente');
+      setAudienciaData(mapped.audienciaData ?? '');
+      setAudienciaHora(mapped.audienciaHora ?? '');
+      setAudienciaTipo(mapped.audienciaTipo ?? '');
+      setAvisoAudiencia(mapped.avisoAudiencia ?? 'nao_avisado');
 
       const partes = await listarPartesProcesso(procApi.id);
       if (seq !== carregarProcessoApiSeqRef.current) return;
@@ -1842,36 +1847,44 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                 pessoaId: Number(id),
                 advogadoPessoaIds: [],
               }));
+        const poloCliente =
+          snapshot.papelParte === 'requerido' ? 'REU' : 'AUTOR';
+        const poloOposta =
+          snapshot.papelParte === 'requerido' ? 'AUTOR' : 'REU';
+        const qualCliente =
+          snapshot.papelParte === 'requerido' ? 'Parte cliente (requerido)' : 'Parte cliente';
+        const qualOposta =
+          snapshot.papelParte === 'requerido' ? 'Parte oposta (requerente)' : 'Parte oposta';
         await sincronizarPartesIncremental(pid, [
           ...linhasCli.map((row, ordem) => ({
             pessoaId: Number(row.pessoaId),
             nomeLivre: null,
-            polo: 'AUTOR',
-            qualificacao: 'Parte cliente',
+            polo: poloCliente,
+            qualificacao: qualCliente,
             ordem,
             advogadoPessoaIds: row.advogadoPessoaIds || [],
           })),
           ...linhasOp.map((row, ordem) => ({
             pessoaId: Number(row.pessoaId),
             nomeLivre: null,
-            polo: 'REU',
-            qualificacao: 'Parte oposta',
+            polo: poloOposta,
+            qualificacao: qualOposta,
             ordem,
             advogadoPessoaIds: row.advogadoPessoaIds || [],
           })),
           ...(linhasCli.length ? [] : [{
             pessoaId: null,
             nomeLivre: snapshot.parteCliente || null,
-            polo: 'AUTOR',
-            qualificacao: 'Parte cliente',
+            polo: poloCliente,
+            qualificacao: qualCliente,
             ordem: 0,
             advogadoPessoaIds: [],
           }]),
           ...(linhasOp.length ? [] : [{
             pessoaId: null,
             nomeLivre: snapshot.parteOposta || null,
-            polo: 'REU',
-            qualificacao: 'Parte oposta',
+            polo: poloOposta,
+            qualificacao: qualOposta,
             ordem: 0,
             advogadoPessoaIds: [],
           }]),
@@ -1914,7 +1927,6 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
         const partesAtualizadas = await listarPartesProcesso(pid);
         aplicarListaPartesApiNaUi(partesAtualizadas);
       }
-      // O backend ainda não persiste audiência; o relatório «Audiências pendentes» (Diagnósticos) lê só o histórico local.
       salvarHistoricoDoProcesso(snapshot);
     } catch (e) {
       setApiError(e?.message || 'Falha ao sincronizar processo na API.');

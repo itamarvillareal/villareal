@@ -1,0 +1,117 @@
+/**
+ * Agrega todos os dados TXT de um processo (cliente × nº interno).
+ */
+
+import path from 'node:path';
+import { coletarEntradasHistoricoLocal } from './historico-local-txt-iterar.mjs';
+import { DEFAULT_BASE_HISTORICO_LOCAL } from './historico-local-txt-paths.mjs';
+import { levantarFasesProcessos, resolverBaseBancoDados } from './gerais-fase-processo-txt.mjs';
+import { deduplicarPrazosFatais145_1, iterarPrazosFatais145_1 } from './gerais-145-1-prazo-fatal.mjs';
+import { levantarCamposSemanticosProcesso } from './proc-processo-semantic-txt.mjs';
+import { lerCabecalhoProcessoTxt } from './proc-processo-cabecalho-txt.mjs';
+import { levantarVinculosImovelProc } from './proc-imovel-vinculo-txt.mjs';
+import { formatCod8 } from './historico-local-txt-paths.mjs';
+
+/**
+ * @param {number} codNum
+ * @param {number} numeroInterno
+ * @param {{
+ *   baseBanco?: string,
+ *   baseHistorico?: string,
+ * }} [opts]
+ */
+export function levantarDadosProcessoTxt(codNum, numeroInterno, opts = {}) {
+  const baseBanco = opts.baseBanco ?? resolverBaseBancoDados();
+  const baseHistorico = opts.baseHistorico ?? DEFAULT_BASE_HISTORICO_LOCAL;
+  const cod8 = formatCod8(codNum);
+  const chave = `${cod8}|${numeroInterno}`;
+
+  const cabecalho = lerCabecalhoProcessoTxt(codNum, numeroInterno, { baseBanco });
+
+  const semanticMap = levantarCamposSemanticosProcesso({
+    clienteFiltro: codNum,
+    baseProcMil: path.join(baseBanco, 'Proc', '1000'),
+    baseGeraisMil: path.join(baseBanco, 'Gerais', '1000'),
+  });
+  const semantic = semanticMap.get(chave) ?? null;
+
+  const baseFase = path.join(baseBanco, 'fase');
+  const baseGeraisMil = path.join(baseBanco, 'Gerais', '1000');
+  const faseReg =
+    levantarFasesProcessos(baseFase, baseGeraisMil, { clienteFiltro: codNum }).find(
+      (r) => r.numeroInterno === numeroInterno
+    ) ?? null;
+
+  const prazos145 = deduplicarPrazosFatais145_1(
+    iterarPrazosFatais145_1(path.join(baseBanco, 'Gerais', '145.1'), {
+      clienteFiltro: codNum,
+    })
+  );
+  const prazoArvore = prazos145.find((p) => p.numeroInterno === numeroInterno) ?? null;
+
+  const imovel =
+    levantarVinculosImovelProc(path.join(baseBanco, 'Proc'), { clienteFiltro: codNum }).find(
+      (r) => r.numeroInterno === numeroInterno
+    ) ?? null;
+
+  const entradasHistorico = coletarEntradasHistoricoLocal({
+    base: baseHistorico,
+    clienteMin: codNum,
+    clienteMax: codNum,
+    filtroClienteCod: codNum,
+    filtroProcesso: numeroInterno,
+  });
+
+  return {
+    cod8,
+    codNum,
+    numeroInterno,
+    cabecalho,
+    semantic,
+    fase: faseReg,
+    prazoArvore,
+    imovel,
+    entradasHistorico,
+    resumo: {
+      camposCabecalho: Object.keys(cabecalho.campos).length,
+      camposSemanticos: semantic ? Object.keys(semantic.campos).length : 0,
+      temFase: Boolean(faseReg?.faseCanonica),
+      temObsFase: Boolean(faseReg?.observacaoFase),
+      statusInativo: Boolean(faseReg?.statusInativo),
+      temPrazo: Boolean(cabecalho.campos.prazoFatal || prazoArvore?.prazoFatalIso),
+      temImovel: Boolean(imovel?.numeroPlanilha),
+      entradasHistorico: entradasHistorico.length,
+    },
+  };
+}
+
+/**
+ * Monta patch para PUT /api/processos/{id}.
+ * @param {ReturnType<typeof levantarDadosProcessoTxt>} dados
+ */
+export function montarPatchProcessoFromTxt(dados) {
+  /** @type {Record<string, unknown>} */
+  const patch = { ...dados.cabecalho.campos };
+
+  if (dados.prazoArvore?.prazoFatalIso && !patch.prazoFatal) {
+    patch.prazoFatal = dados.prazoArvore.prazoFatalIso;
+  }
+
+  if (dados.semantic?.campos) {
+    Object.assign(patch, dados.semantic.campos);
+  }
+
+  if (dados.fase?.statusInativo) {
+    patch.ativo = false;
+    patch.observacaoFase = null;
+    delete patch.fase;
+  } else {
+    if (dados.fase?.faseCanonica) patch.fase = dados.fase.faseCanonica;
+    if (dados.fase?.observacaoFase != null) patch.observacaoFase = dados.fase.observacaoFase;
+  }
+
+  delete patch._parteClienteNome;
+  delete patch._parteContraparteNome;
+
+  return patch;
+}

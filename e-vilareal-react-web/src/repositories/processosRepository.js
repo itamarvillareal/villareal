@@ -21,6 +21,51 @@ function toIsoFromBrDate(dateBr) {
   return `${m[3]}-${m[2]}-${m[1]}`;
 }
 
+/** UI → API: `requerente` | `requerido` → REQUERENTE | REQUERIDO */
+export function papelParteUiParaApi(ui) {
+  const p = String(ui ?? '')
+    .trim()
+    .toLowerCase();
+  return p === 'requerido' ? 'REQUERIDO' : p === 'requerente' ? 'REQUERENTE' : null;
+}
+
+/** API → UI */
+export function papelParteApiParaUi(api) {
+  const p = String(api ?? '')
+    .trim()
+    .toUpperCase();
+  if (p === 'REQUERIDO') return 'requerido';
+  if (p === 'REQUERENTE') return 'requerente';
+  return 'requerente';
+}
+
+export function avisoAudienciaUiParaApi(ui) {
+  const p = String(ui ?? '')
+    .trim()
+    .toLowerCase();
+  if (p === 'avisado') return 'AVISADO';
+  if (p === 'nao_avisado' || p === 'não_avisado') return 'NAO_AVISADO';
+  return null;
+}
+
+export function avisoAudienciaApiParaUi(api) {
+  const p = String(api ?? '')
+    .trim()
+    .toUpperCase();
+  return p === 'AVISADO' ? 'avisado' : 'nao_avisado';
+}
+
+function normalizarHoraAudienciaCampo(val) {
+  const t = String(val ?? '').trim().replace('.', ':');
+  if (!t) return null;
+  const m = /^(\d{1,2}):(\d{2})$/.exec(t);
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (h < 0 || h > 23 || min < 0 || min > 59) return null;
+  return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
+}
+
 function dataUtcParaBr(d) {
   if (!(d instanceof Date) || Number.isNaN(d.getTime())) return '';
   const dd = String(d.getUTCDate()).padStart(2, '0');
@@ -670,6 +715,11 @@ export async function salvarCabecalhoProcesso(payload) {
     usuarioResponsavelId: payload.usuarioResponsavelId || null,
     unidade: String(payload.unidade ?? '').trim() || null,
     pasta: String(payload.pasta ?? '').trim() || null,
+    papelCliente: papelParteUiParaApi(payload.papelParte),
+    audienciaData: toIsoFromBrDate(payload.audienciaData),
+    audienciaHora: normalizarHoraAudienciaCampo(payload.audienciaHora),
+    audienciaTipo: String(payload.audienciaTipo ?? '').trim() || null,
+    avisoAudiencia: avisoAudienciaUiParaApi(payload.avisoAudiencia),
   };
   if (processoId) {
     return request(`/api/processos/${processoId}`, { method: 'PUT', body });
@@ -1073,5 +1123,10 @@ export function mapApiProcessoToUiShape(p) {
     unidade: corrigirMojibakeUtf8(String(p.unidade ?? '').trim()),
     pasta: corrigirMojibakeUtf8(String(p.pasta ?? '').trim()),
     valorCausa: formatarValorCausaApiParaCampoBr(p.valorCausa),
+    papelParte: papelParteApiParaUi(p.papelCliente ?? p.papel_cliente),
+    audienciaData: toBrFromIsoDate(p.audienciaData),
+    audienciaHora: String(p.audienciaHora ?? '').trim(),
+    audienciaTipo: corrigirMojibakeUtf8(String(p.audienciaTipo ?? '').trim()),
+    avisoAudiencia: avisoAudienciaApiParaUi(p.avisoAudiencia ?? p.aviso_audiencia),
   };
 }
