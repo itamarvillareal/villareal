@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { X, Stethoscope, ChevronUp, ChevronDown } from 'lucide-react';
 import { buscarCliente, pesquisarCadastroPessoasPorNomeOuCpf } from '../api/clientesService.js';
 import {
-  DEMO_DATA_CONSULTA_BR,
   listarConsultasARealizarPorData,
   listarHistoricoPorData,
   listarProcessosFaseAguardandoDocumentos,
@@ -27,6 +26,7 @@ import { listarCodigosClientePorIdPessoa } from '../data/clienteCodigoHelpers.js
 import { listarClientesIndiceCadastro } from '../repositories/clientesRepository.js';
 import {
   listarProcessosPorNumeroProcessoDiagnostico,
+  listarHistoricoPorDataDiagnostico,
   listarProcessosPorPrazoFatalDiagnostico,
   listarProcessosVinculoPessoaDiagnostico,
 } from '../repositories/processosRepository.js';
@@ -36,6 +36,8 @@ import { buildRouterStateChaveClienteProcesso } from '../domain/camposProcessoCl
 import { exportarReusClienteParaExcel } from '../services/relatorioReusClienteExcel.js';
 import { getContextoAuditoriaUsuario, registrarAuditoria } from '../services/auditoriaCliente.js';
 import { chaveNumeroProcessoBuscaDiagnostico } from '../domain/normalizarNumeroProcessoBuscaDiagnostico.js';
+import { ModalResultadoHistoricoLista } from './diagnosticos/ModalResultadoHistoricoLista.jsx';
+import { ModalResultadoPrazoFatal } from './diagnosticos/ModalResultadoPrazoFatal.jsx';
 
 /** Delay antes de chamar a API enquanto o usuário digita (ms). */
 const DEBOUNCE_BUSCA_PESSOA_API_MS = 320;
@@ -164,14 +166,59 @@ function deslocarDataBrDias(dataBr, deltaDias) {
   return `${pad2DiaMes(d.getDate())}/${pad2DiaMes(d.getMonth() + 1)}/${d.getFullYear()}`;
 }
 
+function CampoDataBrComContador({ value, onChange, ariaLabel, placeholder = 'dd/mm/aaaa ou hj' }) {
+  const shift = (delta) => {
+    const bruto = String(value ?? '').trim();
+    const base = resolverAliasHojeEmTexto(bruto, 'br') ?? bruto;
+    onChange(deslocarDataBrDias(base, delta) ?? hojeDdMmYyyy());
+  };
+
+  return (
+    <div className="rounded border border-slate-200 bg-white p-4">
+      <div className="flex h-10 min-h-[2.5rem] overflow-hidden rounded border border-slate-300 bg-white shadow-sm focus-within:ring-2 focus-within:ring-slate-300 focus-within:ring-offset-0">
+        <input
+          type="text"
+          placeholder={placeholder}
+          value={value}
+          onChange={(e) => {
+            const v = e.target.value;
+            onChange(resolverAliasHojeEmTexto(v, 'br') ?? v);
+          }}
+          className="min-w-0 flex-1 border-0 bg-transparent px-3 text-sm focus:outline-none focus:ring-0"
+          aria-label={ariaLabel}
+        />
+        <div className="flex w-9 shrink-0 flex-col divide-y divide-slate-300 border-l border-slate-300 bg-slate-50">
+          <button
+            type="button"
+            className="flex flex-1 items-center justify-center text-slate-700 hover:bg-slate-100 active:bg-slate-200"
+            aria-label="Avançar um dia"
+            onClick={() => shift(1)}
+          >
+            <ChevronUp className="h-4 w-4" strokeWidth={2.5} aria-hidden />
+          </button>
+          <button
+            type="button"
+            className="flex flex-1 items-center justify-center text-slate-700 hover:bg-slate-100 active:bg-slate-200"
+            aria-label="Retroceder um dia"
+            onClick={() => shift(-1)}
+          >
+            <ChevronDown className="h-4 w-4" strokeWidth={2.5} aria-hidden />
+          </button>
+        </div>
+      </div>
+      <p className="mt-2 text-sm leading-none text-slate-700 min-h-[1.25rem]">{diaSemanaPtBr(value) || ' '}</p>
+    </div>
+  );
+}
+
 export function Diagnosticos() {
   const navigate = useNavigate();
   const [focado, setFocado] = useState('Consultas Realizadas');
   const [modalConsultasRealizadasAberto, setModalConsultasRealizadasAberto] = useState(false);
-  const [dataConsulta, setDataConsulta] = useState(DEMO_DATA_CONSULTA_BR);
+  const [dataConsulta, setDataConsulta] = useState(() => hojeDdMmYyyy());
   const [modalResultadoAberto, setModalResultadoAberto] = useState(false);
   const [resultadoConsulta, setResultadoConsulta] = useState([]);
-  const [rotuloResultadoConsulta, setRotuloResultadoConsulta] = useState('Processos Consultados');
+  const [rotuloResultadoConsulta, setRotuloResultadoConsulta] = useState('Histórico gravado na data');
   const [modalPrazoFatalAberto, setModalPrazoFatalAberto] = useState(false);
   const [dataPrazoFatal, setDataPrazoFatal] = useState('');
   const [modalResultadoPrazoFatalAberto, setModalResultadoPrazoFatalAberto] = useState(false);
@@ -293,12 +340,17 @@ export function Diagnosticos() {
     }
   }
 
-  function consultarPorData() {
-    const data = String(dataConsulta ?? '').trim();
-    if (!data) return;
-    const itens = listarHistoricoPorData(data);
-    setResultadoConsulta(itens);
-    setRotuloResultadoConsulta('Processos Consultados');
+  async function consultarPorData() {
+    const bruto = String(dataConsulta ?? '').trim();
+    if (!bruto) return;
+    const dataResolvida = resolverAliasHojeEmTexto(bruto, 'br') ?? bruto;
+    try {
+      const itens = await listarHistoricoPorDataDiagnostico(dataResolvida);
+      setResultadoConsulta(itens);
+    } catch {
+      setResultadoConsulta(listarHistoricoPorData(dataResolvida));
+    }
+    setRotuloResultadoConsulta('Histórico gravado na data');
     setModalConsultasRealizadasAberto(false);
     setModalResultadoAberto(true);
   }
@@ -313,11 +365,16 @@ export function Diagnosticos() {
     setModalResultadoAberto(true);
   }
 
-  function consultarPorDataPublicacoes() {
-    const data = String(dataConsulta ?? '').trim();
-    if (!data) return;
-    const itens = listarHistoricoPorData(data);
-    setResultadoConsulta(itens);
+  async function consultarPorDataPublicacoes() {
+    const bruto = String(dataConsulta ?? '').trim();
+    if (!bruto) return;
+    const dataResolvida = resolverAliasHojeEmTexto(bruto, 'br') ?? bruto;
+    try {
+      const itens = await listarHistoricoPorDataDiagnostico(dataResolvida);
+      setResultadoConsulta(itens);
+    } catch {
+      setResultadoConsulta(listarHistoricoPorData(dataResolvida));
+    }
     setRotuloResultadoConsulta('Publicações');
     setModalPublicacoesAberto(false);
     setModalResultadoAberto(true);
@@ -354,6 +411,12 @@ export function Diagnosticos() {
   useEffect(() => {
     if (modalPrazoFatalAberto) setDataPrazoFatal(hojeDdMmYyyy());
   }, [modalPrazoFatalAberto]);
+
+  useEffect(() => {
+    if (modalConsultasRealizadasAberto || modalConsultasARealizarAberto || modalPublicacoesAberto) {
+      setDataConsulta(hojeDdMmYyyy());
+    }
+  }, [modalConsultasRealizadasAberto, modalConsultasARealizarAberto, modalPublicacoesAberto]);
 
   async function abrirResultadoProcessosParaPessoa(pessoa) {
     const id = Number(pessoa.id);
@@ -724,8 +787,8 @@ export function Diagnosticos() {
           </div>
           <p className="text-xs text-slate-600 text-center leading-relaxed">
             {featureFlags.useApiProcessos
-              ? 'Vários relatórios cruzam a API de processos com o histórico local deste navegador (ex.: busca por número, prazo fatal). Outros continuam só no histórico local (consultas, fases, audiências). Não há pacote de demonstração automático.'
-              : 'Os relatórios usam apenas os dados já gravados neste navegador (histórico de processos, prazos e vínculos de pessoas). Não há pacote de demonstração automático.'}
+              ? '«Consultas Realizadas» lista andamentos gravados na API na data (como o legado), excluindo linhas automáticas «JUNTAR PETIÇÃO…» e «PETIÇÃO DA INF. ANTERIOR…». Outros relatórios podem cruzar histórico local.'
+              : 'Os relatórios usam apenas os dados gravados neste navegador. «Consultas Realizadas» = linhas do histórico na data, exceto títulos automáticos do legado.'}
           </p>
         </div>
         <div className="px-6 pb-6 flex justify-center">
@@ -743,7 +806,9 @@ export function Diagnosticos() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px] p-4">
           <div className="w-full max-w-2xl bg-white border border-slate-200/90 shadow-2xl rounded-2xl overflow-hidden ring-1 ring-indigo-500/10">
             <div className="flex items-center justify-between px-4 py-3 border-b border-white/20 bg-gradient-to-r from-indigo-600 to-violet-700 shrink-0">
-              <h3 className="text-lg leading-none font-semibold text-white">Consultas Realizadas</h3>
+              <h3 className="text-lg leading-none font-semibold text-white" title="Lista todas as linhas do histórico de processos gravadas na data">
+                Consultas Realizadas
+              </h3>
               <button
                 type="button"
                 onClick={() => setModalConsultasRealizadasAberto(false)}
@@ -757,29 +822,19 @@ export function Diagnosticos() {
             <div className="px-6 py-6">
               <div className="grid grid-cols-1 md:grid-cols-[1fr_280px] items-start gap-6">
                 <p className="text-base md:text-xl leading-snug font-medium text-slate-800">
-                  Informe o dia que deseja consultar:
+                  Informe o dia para listar todas as informações de histórico gravadas em processos:
                 </p>
-                <div className="rounded border border-slate-200 bg-white p-4">
-                  <input
-                    type="text"
-                    placeholder="dd/mm/aaaa ou hj"
-                    value={dataConsulta}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setDataConsulta(resolverAliasHojeEmTexto(v, 'br') ?? v);
-                    }}
-                    className="w-full h-10 px-3 text-sm border border-slate-300 rounded bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
-                  />
-                  <p className="mt-2 text-sm leading-none text-slate-700 min-h-[1.25rem]">
-                    {diaSemanaPtBr(dataConsulta) || ' '}
-                  </p>
-                </div>
+                <CampoDataBrComContador
+                  value={dataConsulta}
+                  onChange={setDataConsulta}
+                  ariaLabel="Data do histórico gravado"
+                />
               </div>
 
               <div className="mt-6 flex flex-col md:flex-row items-center justify-center gap-3">
                 <button
                   type="button"
-                  onClick={consultarPorData}
+                  onClick={() => void consultarPorData()}
                   className="min-w-[200px] px-6 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 text-sm font-semibold text-white shadow-lg shadow-indigo-500/25 hover:from-indigo-500 hover:to-violet-500"
                 >
                   Consultar
@@ -1138,54 +1193,11 @@ export function Diagnosticos() {
                 <p className="text-base md:text-xl leading-snug font-medium text-slate-800">
                   Informe o dia que deseja consultar o prazo fatal:
                 </p>
-                <div className="rounded border border-slate-200 bg-white p-4">
-                  <div className="flex h-10 min-h-[2.5rem] overflow-hidden rounded border border-slate-300 bg-white shadow-sm focus-within:ring-2 focus-within:ring-slate-300 focus-within:ring-offset-0">
-                    <input
-                      type="text"
-                      placeholder="dd/mm/aaaa ou hj"
-                      value={dataPrazoFatal}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        setDataPrazoFatal(resolverAliasHojeEmTexto(v, 'br') ?? v);
-                      }}
-                      className="min-w-0 flex-1 border-0 bg-transparent px-3 text-sm focus:outline-none focus:ring-0"
-                      aria-label="Data do prazo fatal"
-                    />
-                    <div className="flex w-9 shrink-0 flex-col divide-y divide-slate-300 border-l border-slate-300 bg-slate-50">
-                      <button
-                        type="button"
-                        className="flex flex-1 items-center justify-center text-slate-700 hover:bg-slate-100 active:bg-slate-200"
-                        aria-label="Avançar um dia"
-                        onClick={() => {
-                          setDataPrazoFatal((prev) => {
-                            const bruto = String(prev ?? '').trim();
-                            const base = resolverAliasHojeEmTexto(bruto, 'br') ?? bruto;
-                            return deslocarDataBrDias(base, 1) ?? hojeDdMmYyyy();
-                          });
-                        }}
-                      >
-                        <ChevronUp className="h-4 w-4" strokeWidth={2.5} aria-hidden />
-                      </button>
-                      <button
-                        type="button"
-                        className="flex flex-1 items-center justify-center text-slate-700 hover:bg-slate-100 active:bg-slate-200"
-                        aria-label="Retroceder um dia"
-                        onClick={() => {
-                          setDataPrazoFatal((prev) => {
-                            const bruto = String(prev ?? '').trim();
-                            const base = resolverAliasHojeEmTexto(bruto, 'br') ?? bruto;
-                            return deslocarDataBrDias(base, -1) ?? hojeDdMmYyyy();
-                          });
-                        }}
-                      >
-                        <ChevronDown className="h-4 w-4" strokeWidth={2.5} aria-hidden />
-                      </button>
-                    </div>
-                  </div>
-                  <p className="mt-2 text-sm leading-none text-slate-700 min-h-[1.25rem]">
-                    {diaSemanaPtBr(dataPrazoFatal) || ' '}
-                  </p>
-                </div>
+                <CampoDataBrComContador
+                  value={dataPrazoFatal}
+                  onChange={setDataPrazoFatal}
+                  ariaLabel="Data do prazo fatal"
+                />
               </div>
 
               <div className="mt-6 flex flex-col md:flex-row items-center justify-center gap-3">
@@ -1229,21 +1241,11 @@ export function Diagnosticos() {
                 <p className="text-base md:text-xl leading-snug font-medium text-slate-800">
                   Informe o dia que deseja consultar:
                 </p>
-                <div className="rounded border border-slate-200 bg-white p-4">
-                  <input
-                    type="text"
-                    placeholder="dd/mm/aaaa ou hj"
-                    value={dataConsulta}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setDataConsulta(resolverAliasHojeEmTexto(v, 'br') ?? v);
-                    }}
-                    className="w-full h-10 px-3 text-sm border border-slate-300 rounded bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
-                  />
-                  <p className="mt-2 text-sm leading-none text-slate-700 min-h-[1.25rem]">
-                    {diaSemanaPtBr(dataConsulta) || ' '}
-                  </p>
-                </div>
+                <CampoDataBrComContador
+                  value={dataConsulta}
+                  onChange={setDataConsulta}
+                  ariaLabel="Data da consulta"
+                />
               </div>
 
               <div className="mt-6 flex flex-col md:flex-row items-center justify-center gap-3">
@@ -1287,27 +1289,17 @@ export function Diagnosticos() {
                 <p className="text-base md:text-xl leading-snug font-medium text-slate-800">
                   Informe o dia que deseja consultar:
                 </p>
-                <div className="rounded border border-slate-200 bg-white p-4">
-                  <input
-                    type="text"
-                    placeholder="dd/mm/aaaa ou hj"
-                    value={dataConsulta}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setDataConsulta(resolverAliasHojeEmTexto(v, 'br') ?? v);
-                    }}
-                    className="w-full h-10 px-3 text-sm border border-slate-300 rounded bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
-                  />
-                  <p className="mt-2 text-sm leading-none text-slate-700 min-h-[1.25rem]">
-                    {diaSemanaPtBr(dataConsulta) || ' '}
-                  </p>
-                </div>
+                <CampoDataBrComContador
+                  value={dataConsulta}
+                  onChange={setDataConsulta}
+                  ariaLabel="Data da consulta"
+                />
               </div>
 
               <div className="mt-6 flex flex-col md:flex-row items-center justify-center gap-3">
                 <button
                   type="button"
-                  onClick={consultarPorDataPublicacoes}
+                  onClick={() => void consultarPorDataPublicacoes()}
                   className="min-w-[200px] px-6 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 text-sm font-semibold text-white shadow-lg shadow-indigo-500/25 hover:from-indigo-500 hover:to-violet-500"
                 >
                   Consultar
@@ -1325,56 +1317,14 @@ export function Diagnosticos() {
         </div>
       )}
 
-      {modalResultadoAberto && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-[2px] p-4">
-          <div className="w-full max-w-6xl bg-white border border-slate-200/90 shadow-2xl rounded-2xl overflow-hidden ring-1 ring-indigo-500/10 flex flex-col">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-white/20 bg-gradient-to-r from-indigo-600 to-violet-700 text-white shrink-0">
-              <p className="text-base text-white">
-                Informação sobre {rotuloResultadoConsulta} em {dataConsulta}:
-              </p>
-              <button
-                type="button"
-                onClick={() => setModalResultadoAberto(false)}
-                className="p-1 rounded-lg text-white/90 hover:bg-white/15"
-                aria-label="Fechar relatório"
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-            <div className="px-4 py-3">
-              <p className="text-sm text-slate-700 mb-3">
-                Você tem {resultadoConsulta.length} item(ns) em {rotuloResultadoConsulta} na data {dataConsulta}. Veja: (duplo clique na linha abre o processo)
-              </p>
-              <div className="border border-slate-200 rounded-xl bg-white h-[430px] overflow-auto p-2 text-[13px] leading-relaxed font-mono ring-1 ring-slate-100">
-                {resultadoConsulta.length === 0 ? (
-                  <p>Nenhum histórico encontrado para a data informada.</p>
-                ) : (
-                  resultadoConsulta.map((item, idx) => (
-                    <p
-                      key={`${item.codCliente}-${item.proc}-${item.id}-${idx}`}
-                      className="whitespace-pre-wrap break-words cursor-pointer hover:bg-slate-100 rounded px-1 -mx-1 select-none"
-                      onDoubleClick={() => abrirProcessoPorItem(item)}
-                      title="Duplo clique: abrir em Processos"
-                    >
-                      {String(idx + 1).padStart(3, '0')} - (Cod. {item.codCliente}, Proc. {String(item.proc).padStart(2, '0')}): {item.parteCliente || item.cliente || 'CLIENTE'} x {item.parteOposta || 'PARTE OPOSTA'} ({item.numeroProcessoNovo || 'sem nº'}){' '}
-                      {item.info}
-                    </p>
-                  ))
-                )}
-              </div>
-            </div>
-            <div className="px-4 py-3 border-t border-slate-200/80 flex justify-center bg-slate-50/90">
-              <button
-                type="button"
-                onClick={() => setModalResultadoAberto(false)}
-                className="min-w-[120px] px-8 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 text-sm font-semibold text-white shadow-lg shadow-indigo-500/25 hover:from-indigo-500 hover:to-violet-500"
-              >
-                OK
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ModalResultadoHistoricoLista
+        open={modalResultadoAberto}
+        onClose={() => setModalResultadoAberto(false)}
+        titulo={rotuloResultadoConsulta}
+        dataConsulta={dataConsulta}
+        itens={resultadoConsulta}
+        onOpenProcesso={abrirProcessoPorItem}
+      />
 
       {modalResultadoBuscaPessoaAberto && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-[2px] p-4">
@@ -1970,58 +1920,13 @@ export function Diagnosticos() {
         </div>
       )}
 
-      {modalResultadoPrazoFatalAberto && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-[2px] p-4">
-          <div className="w-full max-w-6xl bg-white border border-slate-200/90 shadow-2xl rounded-2xl overflow-hidden ring-1 ring-indigo-500/10 flex flex-col">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-white/20 bg-gradient-to-r from-indigo-600 to-violet-700 text-white shrink-0">
-              <p className="text-base text-white">
-                Processos com Prazo Fatal em {dataPrazoFatal}:
-              </p>
-              <button
-                type="button"
-                onClick={() => setModalResultadoPrazoFatalAberto(false)}
-                className="p-1 rounded-lg text-white/90 hover:bg-white/15"
-                aria-label="Fechar relatório"
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-            <div className="px-4 py-3">
-              <p className="text-sm text-slate-700 mb-3">
-                Você tem {resultadoPrazoFatal.length} processo(s) com prazo fatal nesta data. Veja: (duplo clique na linha abre o processo)
-              </p>
-              <div className="border border-slate-200 rounded-xl bg-white h-[430px] overflow-auto p-2 text-[13px] leading-relaxed font-mono ring-1 ring-slate-100">
-                {resultadoPrazoFatal.length === 0 ? (
-                  <p>Nenhum processo com prazo fatal para a data informada.</p>
-                ) : (
-                  resultadoPrazoFatal.map((item, idx) => (
-                    <p
-                      key={`${item.codCliente}-${item.proc}-${idx}`}
-                      className="whitespace-pre-wrap break-words cursor-pointer hover:bg-slate-100 rounded px-1 -mx-1 select-none"
-                      onDoubleClick={() => abrirProcessoPorItem(item)}
-                      title="Duplo clique: abrir em Processos"
-                    >
-                      {String(idx + 1).padStart(3, '0')} - (Cod. {item.codCliente}, Proc. {String(item.proc).padStart(2, '0')}):{' '}
-                      {item.parteCliente || item.cliente || 'CLIENTE'} x {item.parteOposta || 'PARTE OPOSTA'} ({item.numeroProcessoNovo || 'sem nº'})
-                      {' — '}
-                      Prazo fatal: {item.prazoFatal}
-                    </p>
-                  ))
-                )}
-              </div>
-            </div>
-            <div className="px-4 py-3 border-t border-slate-200/80 flex justify-center bg-slate-50/90">
-              <button
-                type="button"
-                onClick={() => setModalResultadoPrazoFatalAberto(false)}
-                className="min-w-[120px] px-8 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 text-sm font-semibold text-white shadow-lg shadow-indigo-500/25 hover:from-indigo-500 hover:to-violet-500"
-              >
-                OK
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ModalResultadoPrazoFatal
+        open={modalResultadoPrazoFatalAberto}
+        onClose={() => setModalResultadoPrazoFatalAberto(false)}
+        dataPrazoFatal={dataPrazoFatal}
+        itens={resultadoPrazoFatal}
+        onOpenProcesso={abrirProcessoPorItem}
+      />
     </div>
   );
 }

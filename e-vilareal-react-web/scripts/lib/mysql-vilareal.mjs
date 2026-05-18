@@ -4,6 +4,9 @@
  * Envs: VILAREAL_MYSQL_HOST, VILAREAL_MYSQL_PORT, VILAREAL_MYSQL_USER,
  *       VILAREAL_MYSQL_PASSWORD, VILAREAL_MYSQL_DATABASE,
  *       VILAREAL_MYSQL_DOCKER (ex.: vilareal-db → usa `docker exec` sem mysql2).
+ *
+ * Porta defeito **3306** (mesma do Spring `application-dev` / API local).
+ * Use 3307 só para o container `vilareal-db` (schema vazio / Flyway do zero).
  */
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -39,7 +42,7 @@ export async function conectarMysqlVilareal() {
 function resolverCredenciais() {
   return {
     host: process.env.VILAREAL_MYSQL_HOST || '127.0.0.1',
-    port: Number(process.env.VILAREAL_MYSQL_PORT || '3307'),
+    port: Number(process.env.VILAREAL_MYSQL_PORT || '3306'),
     user: process.env.VILAREAL_MYSQL_USER || 'root',
     password: process.env.VILAREAL_MYSQL_PASSWORD ?? 'root',
     database: process.env.VILAREAL_MYSQL_DATABASE || 'vilareal',

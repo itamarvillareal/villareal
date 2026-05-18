@@ -12,6 +12,7 @@ import {
 } from '../domain/cnjAgendaResolucao.js';
 import { padCliente } from './processosDadosRelatorio.js';
 import { chaveNumeroProcessoBuscaDiagnostico } from '../domain/normalizarNumeroProcessoBuscaDiagnostico.js';
+import { ehTituloHistoricoSistemaLegado } from '../domain/historicoTituloLegadoSistema.js';
 
 /**
  * Histórico local por processo — chaves JSON legadas (equivalentes canônicas):
@@ -1029,8 +1030,12 @@ export function salvarPrazoFatalDoProcesso(codCliente, proc, prazoFatalBr, dados
   });
 }
 
+/**
+ * Todas as linhas de histórico de processos gravadas na data informada (histórico local do navegador).
+ * Compara datas normalizadas (dd/mm/aaaa); aceita alias «hj» na data consultada.
+ */
 export function listarHistoricoPorData(dataBr) {
-  const target = String(dataBr ?? '').trim();
+  const target = normalizarDataBr(String(dataBr ?? '').trim());
   if (!target) return [];
   const out = [];
   const current = loadStore();
@@ -1038,7 +1043,8 @@ export function listarHistoricoPorData(dataBr) {
     const reg = normalizarRegistroProcesso(rawReg);
     if (!reg) return;
     reg.historico.forEach((h) => {
-      if (String(h.data ?? '').trim() !== target) return;
+      if (normalizarDataBr(h.data) !== target) return;
+      if (ehTituloHistoricoSistemaLegado(h.info)) return;
       out.push({
         codCliente: reg.codCliente,
         proc: reg.proc,

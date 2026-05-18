@@ -52,8 +52,19 @@ export function* iterarEntradasHistoricoLocal(opts) {
 
   const codLo = opts.filtroClienteCod != null ? opts.filtroClienteCod : clienteMin;
   const codHi = opts.filtroClienteCod != null ? opts.filtroClienteCod : clienteMax;
+  const lista =
+    Array.isArray(opts.clientesLista) && opts.clientesLista.length
+      ? [...new Set(opts.clientesLista.map((c) => Math.trunc(Number(c))).filter((c) => c >= 1 && c <= 999))].sort(
+          (a, b) => a - b
+        )
+      : null;
 
-  for (let cod = codLo; cod <= codHi; cod += 1) {
+  const codigos = lista ?? [];
+  if (!lista) {
+    for (let cod = codLo; cod <= codHi; cod += 1) codigos.push(cod);
+  }
+
+  for (const cod of codigos) {
     const cod8 = formatCod8(cod);
     const maxProc = maxProcParaCliente(cod, contagens);
 
