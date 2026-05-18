@@ -149,6 +149,15 @@ public class ProcessosController {
         return processoApplicationService.buscarDiagnosticoPorPrazoFatal(data);
     }
 
+    @GetMapping("/diagnostico/historico-data")
+    @Operation(
+            summary = "Diagnóstico: andamentos (histórico) na data",
+            description = "Lista todas as linhas de histórico gravadas na API (`processo_andamento`) cuja data do movimento coincide com o parâmetro.")
+    public List<ProcessoDiagnosticoHistoricoItemResponse> buscarDiagnosticoHistoricoPorData(
+            @RequestParam("data") String data) {
+        return processoApplicationService.buscarDiagnosticoHistoricoPorData(data);
+    }
+
     @DeleteMapping("/manutencao/andamentos-por-origem/{origem}")
     @Operation(
             summary = "Excluir andamentos em massa por origem",

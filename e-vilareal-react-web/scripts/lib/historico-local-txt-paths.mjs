@@ -271,17 +271,56 @@ function* iterPastasYyyyMmDiretorio(yyyyRoot) {
   }
 }
 
-export function parseDataDdMmYyyy(s) {
+/**
+ * Interpreta `d/m/aaaa` ou `m/d/aaaa` (legado VB/Excel nos txt).
+ * @param {number | null} [mmPastaHint] mês da pasta `Ano/aaaa/mm` para datas ambíguas
+ * @returns {{ dd: number, mo: number, yyyy: number } | null}
+ */
+export function parseDataSlashComHint(s, mmPastaHint = null) {
   if (s == null || String(s).trim() === '') return null;
   const t = String(s).trim();
   const m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (!m) return null;
-  const dd = Number(m[1]);
-  const mo = Number(m[2]);
+  const a = Number(m[1]);
+  const b = Number(m[2]);
   const yyyy = Number(m[3]);
-  if (!Number.isFinite(dd) || !Number.isFinite(mo) || !Number.isFinite(yyyy)) return null;
+  if (!Number.isFinite(a) || !Number.isFinite(b) || !Number.isFinite(yyyy)) return null;
+
+  let dd;
+  let mo;
+  if (a > 12 && b <= 12) {
+    dd = a;
+    mo = b;
+  } else if (b > 12 && a <= 12) {
+    mo = a;
+    dd = b;
+  } else if (a > 12 && b > 12) {
+    return null;
+  } else if (mmPastaHint != null && mmPastaHint >= 1 && mmPastaHint <= 12) {
+    if (b === mmPastaHint) {
+      dd = a;
+      mo = b;
+    } else if (a === mmPastaHint) {
+      mo = a;
+      dd = b;
+    } else {
+      dd = a;
+      mo = b;
+    }
+  } else {
+    dd = a;
+    mo = b;
+  }
   if (mo < 1 || mo > 12 || dd < 1 || dd > 31) return null;
-  return { dd, mo, yyyy, original: t };
+  const dim = new Date(yyyy, mo, 0).getDate();
+  if (dd > dim) return null;
+  return { dd, mo, yyyy };
+}
+
+export function parseDataDdMmYyyy(s, mmPastaHint = null) {
+  const p = parseDataSlashComHint(s, mmPastaHint);
+  if (!p) return null;
+  return { ...p, original: String(s).trim() };
 }
 
 /**
@@ -492,7 +531,7 @@ export function ymdComLinhaEPastaAno(linha, yyyyPasta, mmPasta) {
     mmPasta >= 1 &&
     mmPasta <= 12
   ) {
-    const br = parseDataDdMmYyyy(linha);
+    const br = parseDataDdMmYyyy(linha, mmPasta);
     if (br && br.dd >= 1 && br.dd <= 31) {
       const dim = new Date(yyyyPasta, mmPasta, 0).getDate();
       if (br.dd <= dim) return `${yyyyPasta}-${pad2internal(mmPasta)}-${pad2internal(br.dd)}`;

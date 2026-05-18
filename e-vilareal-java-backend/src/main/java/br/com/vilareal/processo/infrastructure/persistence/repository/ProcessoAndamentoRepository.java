@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.Instant;
 import java.util.List;
 
 public interface ProcessoAndamentoRepository extends JpaRepository<ProcessoAndamentoEntity, Long> {
@@ -28,4 +29,16 @@ public interface ProcessoAndamentoRepository extends JpaRepository<ProcessoAndam
     long countByImportacaoId(String importacaoId);
 
     long deleteByImportacaoId(String importacaoId);
+
+    @Query(
+            """
+            SELECT a FROM ProcessoAndamentoEntity a
+            JOIN FETCH a.processo p
+            JOIN FETCH p.pessoa
+            LEFT JOIN FETCH a.usuario
+            WHERE a.movimentoEm >= :inicio AND a.movimentoEm < :fim
+            ORDER BY a.movimentoEm DESC, a.id DESC
+            """)
+    List<ProcessoAndamentoEntity> findByMovimentoEmBetween(
+            @Param("inicio") Instant inicio, @Param("fim") Instant fim);
 }

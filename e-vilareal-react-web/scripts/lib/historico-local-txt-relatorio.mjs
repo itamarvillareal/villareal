@@ -135,7 +135,8 @@ export function gerarResumoConsolidado(resultado) {
   for (const p of comMudanca) {
     porAcao[p.tipoAcao] = (porAcao[p.tipoAcao] || 0) + 1;
     const cod =
-      p.codNum ?? Number.parseInt(String(p.cod8 || '').replace(/\D/g, ''), 10) || 0;
+      p.codNum ??
+      (Number.parseInt(String(p.cod8 || '').replace(/\D/g, ''), 10) || 0);
     if (!cod) continue;
     if (!porCliente.has(cod)) porCliente.set(cod, { eliminar: 0, corrigir: 0, procs: [] });
     const row = porCliente.get(cod);

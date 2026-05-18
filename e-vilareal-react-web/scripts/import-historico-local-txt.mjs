@@ -85,6 +85,8 @@ function parseArgs(argv) {
     corrigirAntes: true,
     somenteCorrigir: false,
     aplicarCorrecao: false,
+    clientesLista: null,
+    clientesFile: null,
   };
 
   for (const a of argv) {
@@ -102,7 +104,14 @@ function parseArgs(argv) {
       const n = Number(a.slice(11));
       if (Number.isFinite(n) && n >= 1) out.processoFiltro = Math.trunc(n);
     } else if (a.startsWith('--contagens=')) out.contagensPath = path.resolve(a.slice(12));
-    else if (a.startsWith('--limite-entradas=')) out.limiteEntradas = Math.max(0, Number(a.slice(18)) || 0);
+    else if (a.startsWith('--clientes-file=')) out.clientesFile = path.resolve(a.slice(16));
+    else if (a.startsWith('--clientes=')) {
+      out.clientesLista = a
+        .slice(11)
+        .split(/[,;\s]+/)
+        .map((x) => Math.trunc(Number(x)))
+        .filter((n) => Number.isFinite(n) && n >= 1);
+    } else if (a.startsWith('--limite-entradas=')) out.limiteEntradas = Math.max(0, Number(a.slice(18)) || 0);
     else if (a.startsWith('--gerar-xls=')) out.gerarXls = path.resolve(a.slice(12));
     else if (a === '--dry-run') {
       out.dryRun = true;
@@ -110,7 +119,17 @@ function parseArgs(argv) {
     } else out.importArgv.push(a);
   }
 
-  if (out.clienteFiltro != null) {
+  if (out.clientesFile && fs.existsSync(out.clientesFile)) {
+    const raw = fs.readFileSync(out.clientesFile, 'utf8');
+    out.clientesLista = raw
+      .split(/[\s,;]+/)
+      .map((x) => Math.trunc(Number(x.replace(/\D/g, ''))))
+      .filter((n) => Number.isFinite(n) && n >= 1);
+  }
+  if (out.clientesLista?.length) {
+    out.clienteMin = Math.min(...out.clientesLista);
+    out.clienteMax = Math.max(...out.clientesLista);
+  } else if (out.clienteFiltro != null) {
     out.clienteMin = out.clienteFiltro;
     out.clienteMax = out.clienteFiltro;
   }
@@ -219,8 +238,9 @@ function main() {
     clienteMax: opts.clienteMax,
     contagensPath: opts.contagensPath,
     limiteEntradas: opts.limiteEntradas,
-    filtroClienteCod: opts.clienteFiltro,
+    filtroClienteCod: opts.clientesLista?.length ? null : opts.clienteFiltro,
     filtroProcesso: opts.processoFiltro,
+    clientesLista: opts.clientesLista,
   });
 
   const stats = {

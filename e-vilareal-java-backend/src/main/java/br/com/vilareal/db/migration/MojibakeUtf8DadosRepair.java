@@ -1,6 +1,6 @@
 package br.com.vilareal.db.migration;
 
-import br.com.vilareal.common.text.Utf8MojibakeUtil;
+import br.com.vilareal.common.text.PortuguesTextoCorrecaoUtil;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -104,7 +104,7 @@ public final class MojibakeUtf8DadosRepair {
                         corrigidos.add(null);
                         continue;
                     }
-                    String f = Utf8MojibakeUtil.corrigir(v);
+                    String f = PortuguesTextoCorrecaoUtil.normalizar(v);
                     corrigidos.add(f);
                     if (!Objects.equals(v, f)) {
                         mudou = true;
@@ -155,7 +155,7 @@ public final class MojibakeUtf8DadosRepair {
                         corrigidos.add(null);
                         continue;
                     }
-                    String f = Utf8MojibakeUtil.corrigir(v);
+                    String f = PortuguesTextoCorrecaoUtil.normalizar(v);
                     corrigidos.add(f);
                     if (!Objects.equals(v, f)) {
                         mudou = true;

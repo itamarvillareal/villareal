@@ -1,6 +1,11 @@
 import { request } from '../api/httpClient.js';
 import { featureFlags } from '../config/featureFlags.js';
-import { listarProcessosPorPrazoFatal, normalizarDataBr } from '../data/processosHistoricoData.js';
+import {
+  listarHistoricoPorData,
+  listarProcessosPorPrazoFatal,
+  normalizarDataBr,
+} from '../data/processosHistoricoData.js';
+import { ehTituloHistoricoSistemaLegado } from '../domain/historicoTituloLegadoSistema.js';
 
 function padCliente8(value) {
   const d = String(value ?? '').replace(/\D/g, '');
@@ -403,6 +408,59 @@ function chaveClienteProcItemPrazoFatal(item) {
 /**
  * Diagnóstico «Prazo fatal»: histórico local + processos na API com a mesma data (cadastro / prazos).
  */
+function ordenarItensHistoricoDiagnostico(out) {
+  out.sort((a, b) => {
+    const na = Number(a.numero) || 0;
+    const nb = Number(b.numero) || 0;
+    if (nb !== na) return nb - na;
+    return `${padCliente8(a.codCliente)}-${String(a.proc).padStart(4, '0')}`.localeCompare(
+      `${padCliente8(b.codCliente)}-${String(b.proc).padStart(4, '0')}`,
+    );
+  });
+  return out;
+}
+
+/**
+ * Diagnóstico «Consultas Realizadas»: andamentos na API na data (fonte principal), alinhado ao legado VB.
+ * Sem API: histórico local do navegador. Exclui títulos automáticos «JUNTAR PETIÇÃO…» / «PETIÇÃO DA INF. ANTERIOR…».
+ */
+export async function listarHistoricoPorDataDiagnostico(dataBrParam) {
+  const dataCanon = normalizarDataBr(String(dataBrParam ?? '').trim());
+  if (!dataCanon) return [];
+  const locais = listarHistoricoPorData(dataBrParam);
+  if (!featureFlags.useApiProcessos) return locais;
+  const q = String(dataBrParam ?? '').trim();
+  if (!q) return locais;
+  try {
+    const arr = await request('/api/processos/diagnostico/historico-data', { query: { data: q } });
+    const apiRows = Array.isArray(arr) ? arr : [];
+    const fromApi = apiRows
+      .map((row) => {
+        const info = String(row.info ?? '').trim();
+        if (!info || ehTituloHistoricoSistemaLegado(info)) return null;
+        const aid = row.andamentoId ?? row.andamento_id;
+        return {
+          codCliente: padCliente8(row.codigoCliente ?? row.codigo_cliente ?? '1'),
+          proc: String(row.numeroInterno ?? row.numero_interno ?? ''),
+          cliente: String(row.cliente ?? ''),
+          parteCliente: String(row.parteCliente ?? row.cliente ?? ''),
+          parteOposta: String(row.parteOposta ?? ''),
+          numeroProcessoNovo: String(row.numeroProcessoNovo ?? row.numero_processo_novo ?? '').trim(),
+          info,
+          data: normalizarDataBr(row.data) || dataCanon,
+          usuario: String(row.usuario ?? '').trim(),
+          id: aid != null ? Number(aid) : Date.now(),
+          fromApi: true,
+          numero: aid != null ? String(aid).padStart(4, '0') : '',
+        };
+      })
+      .filter(Boolean);
+    return ordenarItensHistoricoDiagnostico(fromApi);
+  } catch {
+    return locais;
+  }
+}
+
 export async function listarProcessosPorPrazoFatalDiagnostico(dataBrParam) {
   const locais = listarProcessosPorPrazoFatal(dataBrParam);
   const dataCanon =

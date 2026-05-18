@@ -2,6 +2,7 @@ package br.com.vilareal.processo.application;
 
 import br.com.vilareal.common.exception.BusinessRuleException;
 import br.com.vilareal.common.exception.ResourceNotFoundException;
+import br.com.vilareal.common.text.PortuguesTextoCorrecaoUtil;
 import br.com.vilareal.common.text.Utf8MojibakeUtil;
 import br.com.vilareal.importacao.PlanilhaPasta1MapeamentoUtil;
 import br.com.vilareal.importacao.infrastructure.persistence.entity.PlanilhaPasta1ClienteEntity;
@@ -14,6 +15,7 @@ import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.ClienteRepository;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
 import br.com.vilareal.processo.api.dto.*;
+import br.com.vilareal.processo.domain.HistoricoTituloLegadoSistema;
 import br.com.vilareal.processo.infrastructure.persistence.entity.*;
 import br.com.vilareal.processo.infrastructure.persistence.repository.*;
 import br.com.vilareal.usuario.infrastructure.persistence.entity.UsuarioEntity;
@@ -28,6 +30,7 @@ import java.math.BigInteger;
 import java.text.Normalizer;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
@@ -45,6 +48,8 @@ import java.util.stream.Collectors;
 
 @Service
 public class ProcessoApplicationService {
+
+    private static final ZoneId ZONA_BR = ZoneId.of("America/Sao_Paulo");
 
     private final ProcessoRepository processoRepository;
     private final ProcessoParteRepository parteRepository;
@@ -471,6 +476,75 @@ public class ProcessoApplicationService {
         lista.sort(Comparator.comparing((ProcessoEntity e) -> e.getPessoa().getId())
                 .thenComparing(ProcessoEntity::getNumeroInterno));
         return montarDiagnosticoListaPorProcessos(lista, "Prazo fatal (cadastro API)");
+    }
+
+    /**
+     * Diagnósticos «Consultas Realizadas»: todos os andamentos ({@code processo_andamento}) cuja data do
+     * movimento coincide com o parâmetro (fuso America/Sao_Paulo).
+     */
+    @Transactional(readOnly = true)
+    public List<ProcessoDiagnosticoHistoricoItemResponse> buscarDiagnosticoHistoricoPorData(String dataBruta) {
+        LocalDate data = parseDataParametroDiagnostico(dataBruta);
+        if (data == null) {
+            return List.of();
+        }
+        Instant inicio = data.atStartOfDay(ZONA_BR).toInstant();
+        Instant fim = data.plusDays(1).atStartOfDay(ZONA_BR).toInstant();
+        List<ProcessoAndamentoEntity> andamentos = andamentoRepository.findByMovimentoEmBetween(inicio, fim);
+        if (andamentos.isEmpty()) {
+            return List.of();
+        }
+        List<Long> procIds =
+                andamentos.stream().map(a -> a.getProcesso().getId()).distinct().collect(Collectors.toList());
+        Map<Long, List<ProcessoParteEntity>> partesPorProcesso = new LinkedHashMap<>();
+        for (ProcessoParteEntity parte : parteRepository.findAllByProcessoIdInWithPessoaEProcesso(procIds)) {
+            Long pid = parte.getProcesso().getId();
+            partesPorProcesso.computeIfAbsent(pid, k -> new ArrayList<>()).add(parte);
+        }
+        List<ProcessoDiagnosticoHistoricoItemResponse> out = new ArrayList<>();
+        for (ProcessoAndamentoEntity a : andamentos) {
+            ProcessoEntity p = a.getProcesso();
+            List<ProcessoParteEntity> partes = partesPorProcesso.getOrDefault(p.getId(), List.of());
+            Long ownerId = p.getPessoa().getId();
+            String cod8 = resolverCodigoClienteExibicaoParaPessoa(ownerId);
+            String nomeCliente = Utf8MojibakeUtil.corrigir(p.getPessoa().getNome());
+            String parteOpostaTxt = montarTextoParteOpostaListagem(partes);
+            String cnj = trimToNull(p.getNumeroCnj());
+            String titulo = Utf8MojibakeUtil.corrigir(StringUtils.hasText(a.getTitulo()) ? a.getTitulo() : "Andamento");
+            if (HistoricoTituloLegadoSistema.ehTituloSistemaLegado(titulo)) {
+                continue;
+            }
+            ProcessoDiagnosticoHistoricoItemResponse r = new ProcessoDiagnosticoHistoricoItemResponse();
+            r.setCodigoCliente(cod8);
+            r.setNumeroInterno(p.getNumeroInterno());
+            r.setCliente(nomeCliente);
+            r.setParteCliente(nomeCliente);
+            r.setParteOposta(parteOpostaTxt);
+            r.setNumeroProcessoNovo(cnj == null ? "" : Utf8MojibakeUtil.corrigir(cnj));
+            r.setAndamentoId(a.getId());
+            r.setInfo(titulo);
+            r.setData(formatarDataBrDiagnostico(a.getMovimentoEm()));
+            UsuarioEntity u = a.getUsuario();
+            if (u != null) {
+                String nome = StringUtils.hasText(u.getNome()) ? u.getNome() : u.getLogin();
+                r.setUsuario(Utf8MojibakeUtil.corrigir(nome).toUpperCase(Locale.ROOT));
+            } else {
+                r.setUsuario("");
+            }
+            out.add(r);
+        }
+        out.sort(Comparator.comparing(ProcessoDiagnosticoHistoricoItemResponse::getCodigoCliente)
+                .thenComparing(ProcessoDiagnosticoHistoricoItemResponse::getNumeroInterno)
+                .thenComparing((ProcessoDiagnosticoHistoricoItemResponse x) -> x.getAndamentoId() != null ? x.getAndamentoId() : 0L,
+                        Comparator.reverseOrder()));
+        return out;
+    }
+
+    private static String formatarDataBrDiagnostico(Instant instant) {
+        if (instant == null) {
+            return "";
+        }
+        return instant.atZone(ZONA_BR).toLocalDate().format(DateTimeFormatter.ofPattern("dd/MM/yyyy"));
     }
 
     private List<ProcessoDiagnosticoPessoaItemResponse> montarDiagnosticoListaPorProcessos(
@@ -1027,8 +1101,8 @@ public class ProcessoApplicationService {
         ProcessoAndamentoResponse r = new ProcessoAndamentoResponse();
         r.setId(a.getId());
         r.setMovimentoEm(a.getMovimentoEm());
-        r.setTitulo(Utf8MojibakeUtil.corrigir(a.getTitulo()));
-        r.setDetalhe(Utf8MojibakeUtil.corrigir(a.getDetalhe()));
+        r.setTitulo(PortuguesTextoCorrecaoUtil.normalizar(a.getTitulo()));
+        r.setDetalhe(PortuguesTextoCorrecaoUtil.normalizar(a.getDetalhe()));
         r.setOrigem(Utf8MojibakeUtil.corrigir(a.getOrigem()));
         r.setOrigemAutomatica(a.getOrigemAutomatica());
         UsuarioEntity u = usuarioResolvido != null ? usuarioResolvido : a.getUsuario();
