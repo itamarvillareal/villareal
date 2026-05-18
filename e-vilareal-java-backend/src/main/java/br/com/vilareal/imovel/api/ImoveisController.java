@@ -2,6 +2,7 @@ package br.com.vilareal.imovel.api;
 
 import br.com.vilareal.imovel.api.dto.ImovelNumeroPlanilhaResponse;
 import br.com.vilareal.imovel.api.dto.ImovelResponse;
+import br.com.vilareal.imovel.api.dto.ImovelVinculosProcessoResponse;
 import br.com.vilareal.imovel.api.dto.ImovelWriteRequest;
 import br.com.vilareal.imovel.application.ImovelApplicationService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -42,6 +43,18 @@ public class ImoveisController {
     @Operation(summary = "Buscar imóvel pelo número da planilha (col. A)")
     public ImovelResponse porNumeroPlanilha(@PathVariable int numeroPlanilha) {
         return imovelApplicationService.buscarImovelPorNumeroPlanilha(numeroPlanilha);
+    }
+
+    @GetMapping("/por-numero-planilha/{numeroPlanilha}/vinculos-processo")
+    @Operation(summary = "Listar todos os pares cliente+proc. vinculados ao nº do imóvel (planilha)")
+    public ImovelVinculosProcessoResponse vinculosPorNumeroPlanilha(@PathVariable int numeroPlanilha) {
+        return imovelApplicationService.listarVinculosProcessoPorNumeroPlanilha(numeroPlanilha);
+    }
+
+    @GetMapping("/{id}/vinculos-processo")
+    @Operation(summary = "Listar vínculos processo do imóvel (pelo nº da planilha ou legado nas observações)")
+    public ImovelVinculosProcessoResponse vinculosPorImovelId(@PathVariable Long id) {
+        return imovelApplicationService.listarVinculosProcessoPorImovelId(id);
     }
 
     @GetMapping("/{id}")

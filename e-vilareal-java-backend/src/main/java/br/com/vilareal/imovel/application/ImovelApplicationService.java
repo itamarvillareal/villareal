@@ -18,7 +18,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Service
@@ -75,6 +80,99 @@ public class ImovelApplicationService {
     /**
      * Resolve o número da planilha (col. A) a partir do código de cliente (8 dígitos) e do número interno do processo.
      */
+    private static final Pattern LEGADO_PLANILHA_OBS =
+            Pattern.compile("planilha\\s+legado\\s+(\\d+)", Pattern.CASE_INSENSITIVE);
+
+    /**
+     * Lista todos os pares (código cliente, proc.) cujo imóvel no cadastro aponta para o mesmo nº da planilha
+     * (registos com {@code numero_planilha} ou importados via Proc/0.89.1 nas observações).
+     */
+    @Transactional(readOnly = true)
+    public ImovelVinculosProcessoResponse listarVinculosProcessoPorNumeroPlanilha(int numeroPlanilha) {
+        if (numeroPlanilha < 1) {
+            throw new BusinessRuleException("numeroPlanilha inválido");
+        }
+        ImovelVinculosProcessoResponse out = new ImovelVinculosProcessoResponse();
+        out.setNumeroPlanilha(numeroPlanilha);
+        out.setVinculos(coletarVinculosProcesso(numeroPlanilha, null));
+        return out;
+    }
+
+    @Transactional(readOnly = true)
+    public ImovelVinculosProcessoResponse listarVinculosProcessoPorImovelId(Long imovelId) {
+        ImovelEntity ref = requireImovel(imovelId);
+        int numero = ref.getNumeroPlanilha() != null
+                ? ref.getNumeroPlanilha()
+                : extrairNumeroPlanilhaLegadoObservacoes(ref.getObservacoes());
+        if (numero < 1) {
+            throw new BusinessRuleException(
+                    "Imóvel sem número da planilha nem referência «planilha legado» nas observações.");
+        }
+        ImovelVinculosProcessoResponse out = new ImovelVinculosProcessoResponse();
+        out.setNumeroPlanilha(numero);
+        out.setVinculos(coletarVinculosProcesso(numero, imovelId));
+        return out;
+    }
+
+    private List<ImovelVinculoProcessoItemResponse> coletarVinculosProcesso(int numeroPlanilha, Long imovelIdCadastroAtual) {
+        List<ImovelEntity> candidatos = imovelRepository.findAllComProcessoPorNumeroPlanilhaLegado(numeroPlanilha);
+        Map<String, ImovelVinculoProcessoItemResponse> porChave = new LinkedHashMap<>();
+
+        for (ImovelEntity im : candidatos) {
+            ProcessoEntity proc = im.getProcesso();
+            if (proc == null || proc.getNumeroInterno() == null) {
+                continue;
+            }
+            String cod8 = resolverCodigoClienteDaPessoa(proc.getPessoa().getId());
+            if (!StringUtils.hasText(cod8)) {
+                continue;
+            }
+            String chave = cod8 + "|" + proc.getNumeroInterno();
+            ImovelVinculoProcessoItemResponse item = porChave.get(chave);
+            if (item == null) {
+                item = new ImovelVinculoProcessoItemResponse();
+                item.setCodigoCliente(cod8);
+                item.setNumeroInterno(proc.getNumeroInterno());
+                item.setProcessoId(proc.getId());
+                item.setImovelId(im.getId());
+                item.setNumeroPlanilhaImovel(im.getNumeroPlanilha() != null ? im.getNumeroPlanilha() : numeroPlanilha);
+                item.setCadastroAtual(imovelIdCadastroAtual != null && imovelIdCadastroAtual.equals(im.getId()));
+                porChave.put(chave, item);
+            } else if (imovelIdCadastroAtual != null && imovelIdCadastroAtual.equals(im.getId())) {
+                item.setCadastroAtual(true);
+                item.setImovelId(im.getId());
+            }
+        }
+
+        return new ArrayList<>(porChave.values());
+    }
+
+    private String resolverCodigoClienteDaPessoa(Long pessoaId) {
+        if (pessoaId == null) {
+            return null;
+        }
+        List<ClienteEntity> clientes = clienteRepository.findByPessoa_IdOrderByCodigoClienteAsc(pessoaId);
+        if (clientes.isEmpty()) {
+            return null;
+        }
+        return CodigoClienteUtil.normalizarCodigoClienteOitoDigitos(clientes.get(0).getCodigoCliente());
+    }
+
+    private static int extrairNumeroPlanilhaLegadoObservacoes(String observacoes) {
+        if (!StringUtils.hasText(observacoes)) {
+            return -1;
+        }
+        Matcher m = LEGADO_PLANILHA_OBS.matcher(observacoes);
+        if (!m.find()) {
+            return -1;
+        }
+        try {
+            return Integer.parseInt(m.group(1));
+        } catch (NumberFormatException e) {
+            return -1;
+        }
+    }
+
     @Transactional(readOnly = true)
     public ImovelNumeroPlanilhaResponse resolverNumeroPlanilhaPorVinculo(String codigoCliente, int numeroInternoProcesso) {
         String codNorm = CodigoClienteUtil.normalizarCodigoClienteOitoDigitos(codigoCliente);

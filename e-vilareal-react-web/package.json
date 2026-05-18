@@ -25,6 +25,8 @@
     "corrigir:historico-local-txt": "node scripts/corrigir-historico-local-txt.mjs",
     "verificar:historico-txt-vs-mysql": "node scripts/verificar-historico-txt-vs-mysql.mjs",
     "import:prazos-fatais-145-1": "node scripts/import-prazos-fatais-gerais-145-1.mjs",
+    "extrair:proc-imovel-vinculo-txt": "node scripts/extrair-proc-imovel-vinculo-txt.mjs",
+    "import:proc-imovel-vinculo-txt": "node scripts/import-proc-imovel-vinculo-txt.mjs --aplicar",
     "dedupe:andamentos-processo": "node scripts/deduplicar-andamentos-processo.mjs",
     "import:cidade-estado-processos": "node scripts/import-cidade-estado-processos-planilha.mjs",
     "import:agenda-itamar-total": "node scripts/import-agenda-planilha.mjs \"/Users/itamarvillarealjunior/Dropbox/COMUM/agenda itamar total.xlsx\" --layout=total --login=itamar",

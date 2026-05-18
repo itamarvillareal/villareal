@@ -1,0 +1,827 @@
+{
+  "geradoEm": "2026-05-18T04:47:56.785Z",
+  "opts": {
+    "baseUrl": "http://localhost:8081",
+    "dryRun": false,
+    "forcar": true,
+    "total": 90
+  },
+  "contagem": {
+    "criado_sem_numero_planilha": 17,
+    "ja_vinculado": 36,
+    "atualizado": 36,
+    "sem_processo": 1
+  },
+  "resultados": [
+    {
+      "cod8": "00000149",
+      "numeroInterno": 51,
+      "numeroPlanilha": 32,
+      "acao": "criado_sem_numero_planilha",
+      "mensagem": "Imóvel criado sem nº planilha (legado 32 indisponível)",
+      "processoId": 9632,
+      "imovelId": 66
+    },
+    {
+      "cod8": "00000149",
+      "numeroInterno": 64,
+      "numeroPlanilha": 15,
+      "acao": "criado_sem_numero_planilha",
+      "mensagem": "Imóvel criado sem nº planilha (legado 15 indisponível)",
+      "processoId": 9618,
+      "imovelId": 67
+    },
+    {
+      "cod8": "00000149",
+      "numeroInterno": 82,
+      "numeroPlanilha": 34,
+      "acao": "criado_sem_numero_planilha",
+      "mensagem": "Imóvel criado sem nº planilha (legado 34 indisponível)",
+      "processoId": 9600,
+      "imovelId": 68
+    },
+    {
+      "cod8": "00000149",
+      "numeroInterno": 84,
+      "numeroPlanilha": 35,
+      "acao": "criado_sem_numero_planilha",
+      "mensagem": "Imóvel criado sem nº planilha (legado 35 indisponível)",
+      "processoId": 9598,
+      "imovelId": 69
+    },
+    {
+      "cod8": "00000149",
+      "numeroInterno": 85,
+      "numeroPlanilha": 26,
+      "acao": "ja_vinculado",
+      "mensagem": "Imóvel já vinculado a este processo",
+      "processoId": 9597,
+      "imovelId": 21
+    },
+    {
+      "cod8": "00000149",
+      "numeroInterno": 90,
+      "numeroPlanilha": 31,
+      "acao": "atualizado",
+      "mensagem": "processo_id gravado no imóvel",
+      "processoId": 9592,
+      "imovelId": 26
+    },
+    {
+      "cod8": "00000149",
+      "numeroInterno": 91,
+      "numeroPlanilha": 31,
+      "acao": "atualizado",
+      "mensagem": "processo_id gravado no imóvel",
+      "processoId": 9590,
+      "imovelId": 26
+    },
+    {
+      "cod8": "00000149",
+      "numeroInterno": 127,
+      "numeroPlanilha": 43,
+      "acao": "criado_sem_numero_planilha",
+      "mensagem": "Imóvel criado sem nº planilha (legado 43 indisponível)",
+      "processoId": 9554,
+      "imovelId": 70
+    },
+    {
+      "cod8": "00000149",
+      "numeroInterno": 132,
+      "numeroPlanilha": 20,
+      "acao": "ja_vinculado",
+      "mensagem": "Imóvel já vinculado a este processo",
+      "processoId": 9551,
+      "imovelId": 20
+    },
+    {
+      "cod8": "00000149",
+      "numeroInterno": 135,
+      "numeroPlanilha": 22,
+      "acao": "atualizado",
+      "mensagem": "processo_id gravado no imóvel",
+      "processoId": 9547,
+      "imovelId": 23
+    },
+    {
+      "cod8": "00000149",
+      "numeroInterno": 136,
+      "numeroPlanilha": 27,
+      "acao": "criado_sem_numero_planilha",
+      "mensagem": "Imóvel criado sem nº planilha (legado 27 indisponível)",
+      "processoId": 9546,
+      "imovelId": 71
+    },
+    {
+      "cod8": "00000149",
+      "numeroInterno": 143,
+      "numeroPlanilha": 1,
+      "acao": "ja_vinculado",
+      "mensagem": "Imóvel já vinculado a este processo",
+      "processoId": 9539,
+      "imovelId": 65
+    },
+    {
+      "cod8": "00000149",
+      "numeroInterno": 155,
+      "numeroPlanilha": 22,
+      "acao": "atualizado",
+      "mensagem": "processo_id gravado no imóvel",
+      "processoId": 9527,
+      "imovelId": 23
+    },
+    {
+      "cod8": "00000485",
+      "numeroInterno": 1,
+      "numeroPlanilha": 23,
+      "acao": "atualizado",
+      "mensagem": "processo_id gravado no imóvel",
+      "processoId": 10875,
+      "imovelId": 25
+    },
+    {
+      "cod8": "00000485",
+      "numeroInterno": 2,
+      "numeroPlanilha": 23,
+      "acao": "atualizado",
+      "mensagem": "processo_id gravado no imóvel",
+      "processoId": 10873,
+      "imovelId": 25
+    },
+    {
+      "cod8": "00000491",
+      "numeroInterno": 359,
+      "numeroPlanilha": 27,
+      "acao": "criado_sem_numero_planilha",
+      "mensagem": "Imóvel criado sem nº planilha (legado 27 indisponível)",
+      "processoId": 10954,
+      "imovelId": 72
+    },
+    {
+      "cod8": "00000606",
+      "numeroInterno": 52,
+      "numeroPlanilha": 8,
+      "acao": "ja_vinculado",
+      "mensagem": "Imóvel já vinculado a este processo",
+      "processoId": 12408,
+      "imovelId": 10
+    },
+    {
+      "cod8": "00000655",
+      "numeroInterno": 9,
+      "numeroPlanilha": 27,
+      "acao": "ja_vinculado",
+      "mensagem": "Imóvel já vinculado a este processo",
+      "processoId": 12749,
+      "imovelId": 28
+    },
+    {
+      "cod8": "00000675",
+      "numeroInterno": 10,
+      "numeroPlanilha": 28,
+      "acao": "ja_vinculado",
+      "mensagem": "Imóvel já vinculado a este processo",
+      "processoId": 12840,
+      "imovelId": 30
+    },
+    {
+      "cod8": "00000692",
+      "numeroInterno": 6,
+      "numeroPlanilha": 24,
+      "acao": "criado_sem_numero_planilha",
+      "mensagem": "Imóvel criado sem nº planilha (legado 24 indisponível)",
+      "processoId": 12906,
+      "imovelId": 73
+    },
+    {
+      "cod8": "00000717",
+      "numeroInterno": 4,
+      "numeroPlanilha": 29,
+      "acao": "criado_sem_numero_planilha",
+      "mensagem": "Imóvel criado sem nº planilha (legado 29 indisponível)",
+      "processoId": 13006,
+      "imovelId": 74
+    },
+    {
+      "cod8": "00000722",
+      "numeroInterno": 3,
+      "numeroPlanilha": 39,
+      "acao": "atualizado",
+      "mensagem": "processo_id gravado no imóvel",
+      "processoId": 13031,
+      "imovelId": 37
+    },
+    {
+      "cod8": "00000722",
+      "numeroInterno": 4,
+      "numeroPlanilha": 39,
+      "acao": "atualizado",
+      "mensagem": "processo_id gravado no imóvel",
+      "processoId": 13030,
+      "imovelId": 37
+    },
+    {
+      "cod8": "00000762",
+      "numeroInterno": 2,
+      "numeroPlanilha": 30,
+      "acao": "criado_sem_numero_planilha",
+      "mensagem": "Imóvel criado sem nº planilha (legado 30 indisponível)",
+      "processoId": 15100,
+      "imovelId": 75
+    },
+    {
+      "cod8": "00000792",
+      "numeroInterno": 3,
+      "numeroPlanilha": 10,
+      "acao": "ja_vinculado",
+      "mensagem": "Imóvel já vinculado a este processo",
+      "processoId": 15229,
+      "imovelId": 8
+    },
+    {
+      "cod8": "00000792",
+      "numeroInterno": 10,
+      "numeroPlanilha": 11,
+      "acao": "ja_vinculado",
+      "mensagem": "Imóvel já vinculado a este processo",
+      "processoId": 15225,
+      "imovelId": 7
+    },
+    {
+      "cod8": "00000793",
+      "numeroInterno": 10,
+      "numeroPlanilha": 6,
+      "acao": "ja_vinculado",
+      "mensagem": "Imóvel já vinculado a este processo",
+      "processoId": 15246,
+      "imovelId": 2
+    },
+    {
+      "cod8": "00000793",
+      "numeroInterno": 14,
+      "numeroPlanilha": 17,
+      "acao": "atualizado",
+      "mensagem": "processo_id gravado no imóvel",
+      "processoId": 15239,
+      "imovelId": 18
+    },
+    {
+      "cod8": "00000793",
+      "numeroInterno": 15,
+      "numeroPlanilha": 12,
+      "acao": "ja_vinculado",
+      "mensagem": "Imóvel já vinculado a este processo",
+      "processoId": 15240,
+      "imovelId": 14
+    },
+    {
+      "cod8": "00000793",
+      "numeroInterno": 16,
+      "numeroPlanilha": 7,
+      "acao": "ja_vinculado",
+      "mensagem": "Imóvel já vinculado a este processo",
+      "processoId": 15241,
+      "imovelId": 9
+    },
+    {
+      "cod8": "00000793",
+      "numeroInterno": 17,
+      "numeroPlanilha": 3,
+      "acao": "atualizado",
+      "mensagem": "processo_id gravado no imóvel",
+      "processoId": 15238,
+      "imovelId": 5
+    },
+    {
+      "cod8": "00000793",
+      "numeroInterno": 18,
+      "numeroPlanilha": 17,
+      "acao": "atualizado",
+      "mensagem": "processo_id gravado no imóvel",
+      "processoId": 15237,
+      "imovelId": 18
+    },
+    {
+      "cod8": "00000793",
+      "numeroInterno": 20,
+      "numeroPlanilha": 3,
+      "acao": "atualizado",
+      "mensagem": "processo_id gravado no imóvel",
+      "processoId": 15235,
+      "imovelId": 5
+    },
+    {
+      "cod8": "00000797",
+      "numeroInterno": 5,
+      "numeroPlanilha": 5,
+      "acao": "ja_vinculado",
+      "mensagem": "Imóvel já vinculado a este processo",
+      "processoId": 15267,
+      "imovelId": 1
+    },
+    {
+      "cod8": "00000797",
+      "numeroInterno": 10,
+      "numeroPlanilha": 46,
+      "acao": "ja_vinculado",
+      "mensagem": "Imóvel já vinculado a este processo",
+      "processoId": 15262,
+      "imovelId": 44
+    },
+    {
+      "cod8": "00000804",
+      "numeroInterno": 1,
+      "numeroPlanilha": 2,
+      "acao": "atualizado",
+      "mensagem": "processo_id gravado no imóvel",
+      "processoId": 15446,
+      "imovelId": 4
+    },
+    {
+      "cod8": "00000808",
+      "numeroInterno": 3,
+      "numeroPlanilha": 13,
+      "acao": "criado_sem_numero_planilha",
+      "mensagem": "Imóvel criado sem nº planilha (legado 13 indisponível)",
+      "processoId": 15454,
+      "imovelId": 76
+    },
+    {
+      "cod8": "00000856",
+      "numeroInterno": 4,
+      "numeroPlanilha": 4,
+      "acao": "ja_vinculado",
+      "mensagem": "Imóvel já vinculado a este processo",
+      "processoId": 15588,
+      "imovelId": 3
+    },
+    {
+      "cod8": "00000869",
+      "numeroInterno": 2,
+      "numeroPlanilha": 45,
+      "acao": "ja_vinculado",
+      "mensagem": "Imóvel já vinculado a este processo",
+      "processoId": 15609,
+      "imovelId": 43
+    },
+    {
+      "cod8": "00000909",
+      "numeroInterno": 1,
+      "numeroPlanilha": 9,
+      "acao": "ja_vinculado",
+      "mensagem": "Imóvel já vinculado a este processo",
+      "processoId": 15778,
+      "imovelId": 6
+    },
+    {
+      "cod8": "00000911",
+      "numeroInterno": 3,
+      "numeroPlanilha": 55,
+      "acao": "ja_vinculado",
+      "mensagem": "Imóvel já vinculado a este processo",
+      "processoId": 15785,
+      "imovelId": 53
+    },
+    {
+      "cod8": "00000915",
+      "numeroInterno": 1,
+      "numeroPlanilha": 40,
+      "acao": "criado_sem_numero_planilha",
+      "mensagem": "Imóvel criado sem nº planilha (legado 40 indisponível)",
+      "processoId": 15795,
+      "imovelId": 77
+    },
+    {
+      "cod8": "00000915",
+      "numeroInterno": 2,
+      "numeroPlanilha": 40,
+      "acao": "criado_sem_numero_planilha",
+      "mensagem": "Imóvel criado sem nº planilha (legado 40 indisponível)",
+      "processoId": 15796,
+      "imovelId": 78
+    },
+    {
+      "cod8": "00000929",
+      "numeroInterno": 1,
+      "numeroPlanilha": 36,
+      "acao": "atualizado",
+      "mensagem": "processo_id gravado no imóvel",
+      "processoId": 16091,
+      "imovelId": 33
+    },
+    {
+      "cod8": "00000929",
+      "numeroInterno": 2,
+      "numeroPlanilha": 36,
+      "acao": "atualizado",
+      "mensagem": "processo_id gravado no imóvel",
+      "processoId": 16090,
+      "imovelId": 33
+    },
+    {
+      "cod8": "00000934",
+      "numeroInterno": 1,
+      "numeroPlanilha": 25,
+      "acao": "criado_sem_numero_planilha",
+      "mensagem": "Imóvel criado sem nº planilha (legado 25 indisponível)",
+      "processoId": 16101,
+      "imovelId": 79
+    },
+    {
+      "cod8": "00000938",
+      "numeroInterno": 3,
+      "numeroPlanilha": 33,
+      "acao": "ja_vinculado",
+      "mensagem": "Imóvel já vinculado a este processo",
+      "processoId": 16158,
+      "imovelId": 32
+    },
+    {
+      "cod8": "00000938",
+      "numeroInterno": 4,
+      "numeroPlanilha": 34,
+      "acao": "ja_vinculado",
+      "mensagem": "Imóvel já vinculado a este processo",
+      "processoId": 16157,
+      "imovelId": 35
+    },
+    {
+      "cod8": "00000938",
+      "numeroInterno": 6,
+      "numeroPlanilha": 15,
+      "acao": "atualizado",
+      "mensagem": "processo_id gravado no imóvel",
+      "processoId": 16156,
+      "imovelId": 15
+    },
+    {
+      "cod8": "00000938",
+      "numeroInterno": 7,
+      "numeroPlanilha": 43,
+      "acao": "atualizado",
+      "mensagem": "processo_id gravado no imóvel",
+      "processoId": 16154,
+      "imovelId": 45
+    },
+    {
+      "cod8": "00000938",
+      "numeroInterno": 8,
+      "numeroPlanilha": 16,
+      "acao": "ja_vinculado",
+      "mensagem": "Imóvel já vinculado a este processo",
+      "processoId": 16153,
+      "imovelId": 12
+    },
+    {
+      "cod8": "00000938",
+      "numeroInterno": 9,
+      "numeroPlanilha": 32,
+      "acao": "atualizado",
+      "mensagem": "processo_id gravado no imóvel",
+      "processoId": 16152,
+      "imovelId": 34
+    },
+    {
+      "cod8": "00000938",
+      "numeroInterno": 10,
+      "numeroPlanilha": 35,
+      "acao": "ja_vinculado",
+      "mensagem": "Imóvel já vinculado a este processo",
+      "processoId": 16151,
+      "imovelId": 31
+    },
+    {
+      "cod8": "00000938",
+      "numeroInterno": 11,
+      "numeroPlanilha": 51,
+      "acao": "atualizado",
+      "mensagem": "processo_id gravado no imóvel",
+      "processoId": 16150,
+      "imovelId": 50
+    },
+    {
+      "cod8": "00000938",
+      "numeroInterno": 13,
+      "numeroPlanilha": 52,
+      "acao": "ja_vinculado",
+      "mensagem": "Imóvel já vinculado a este processo",
+      "processoId": 16148,
+      "imovelId": 55
+    },
+    {
+      "cod8": "00000938",
+      "numeroInterno": 14,
+      "numeroPlanilha": 30,
+      "acao": "ja_vinculado",
+      "mensagem": "Imóvel já vinculado a este processo",
+      "processoId": 16146,
+      "imovelId": 27
+    },
+    {
+      "cod8": "00000938",
+      "numeroInterno": 15,
+      "numeroPlanilha": 43,
+      "acao": "atualizado",
+      "mensagem": "processo_id gravado no imóvel",
+      "processoId": 16147,
+      "imovelId": 45
+    },
+    {
+      "cod8": "00000938",
+      "numeroInterno": 16,
+      "numeroPlanilha": 51,
+      "acao": "atualizado",
+      "mensagem": "processo_id gravado no imóvel",
+      "processoId": 16145,
+      "imovelId": 50
+    },
+    {
+      "cod8": "00000938",
+      "numeroInterno": 17,
+      "numeroPlanilha": 56,
+      "acao": "atualizado",
+      "mensagem": "processo_id gravado no imóvel",
+      "processoId": 16144,
+      "imovelId": 54
+    },
+    {
+      "cod8": "00000938",
+      "numeroInterno": 18,
+      "numeroPlanilha": 57,
+      "acao": "atualizado",
+      "mensagem": "processo_id gravado no imóvel",
+      "processoId": 16142,
+      "imovelId": 57
+    },
+    {
+      "cod8": "00000938",
+      "numeroInterno": 19,
+      "numeroPlanilha": 58,
+      "acao": "ja_vinculado",
+      "mensagem": "Imóvel já vinculado a este processo",
+      "processoId": 16143,
+      "imovelId": 56
+    },
+    {
+      "cod8": "00000938",
+      "numeroInterno": 20,
+      "numeroPlanilha": 24,
+      "acao": "atualizado",
+      "mensagem": "processo_id gravado no imóvel",
+      "processoId": 16141,
+      "imovelId": 22
+    },
+    {
+      "cod8": "00000938",
+      "numeroInterno": 21,
+      "numeroPlanilha": 32,
+      "acao": "atualizado",
+      "mensagem": "processo_id gravado no imóvel",
+      "processoId": 16140,
+      "imovelId": 34
+    },
+    {
+      "cod8": "00000938",
+      "numeroInterno": 22,
+      "numeroPlanilha": 29,
+      "acao": "ja_vinculado",
+      "mensagem": "Imóvel já vinculado a este processo",
+      "processoId": 16139,
+      "imovelId": 29
+    },
+    {
+      "cod8": "00000938",
+      "numeroInterno": 23,
+      "numeroPlanilha": 15,
+      "acao": "atualizado",
+      "mensagem": "processo_id gravado no imóvel",
+      "processoId": 8870,
+      "imovelId": 15
+    },
+    {
+      "cod8": "00000938",
+      "numeroInterno": 24,
+      "numeroPlanilha": 24,
+      "acao": "atualizado",
+      "mensagem": "processo_id gravado no imóvel",
+      "processoId": 16136,
+      "imovelId": 22
+    },
+    {
+      "cod8": "00000938",
+      "numeroInterno": 25,
+      "numeroPlanilha": 40,
+      "acao": "ja_vinculado",
+      "mensagem": "Imóvel já vinculado a este processo",
+      "processoId": 16137,
+      "imovelId": 36
+    },
+    {
+      "cod8": "00000938",
+      "numeroInterno": 26,
+      "numeroPlanilha": 13,
+      "acao": "ja_vinculado",
+      "mensagem": "Imóvel já vinculado a este processo",
+      "processoId": 16135,
+      "imovelId": 13
+    },
+    {
+      "cod8": "00000938",
+      "numeroInterno": 27,
+      "numeroPlanilha": 2,
+      "acao": "criado_sem_numero_planilha",
+      "mensagem": "Imóvel criado sem nº planilha (legado 2 indisponível)",
+      "processoId": 16134,
+      "imovelId": 80
+    },
+    {
+      "cod8": "00000938",
+      "numeroInterno": 28,
+      "numeroPlanilha": 59,
+      "acao": "ja_vinculado",
+      "mensagem": "Imóvel já vinculado a este processo",
+      "processoId": 16133,
+      "imovelId": 59
+    },
+    {
+      "cod8": "00000938",
+      "numeroInterno": 29,
+      "numeroPlanilha": 60,
+      "acao": "ja_vinculado",
+      "mensagem": "Imóvel já vinculado a este processo",
+      "processoId": 16132,
+      "imovelId": 60
+    },
+    {
+      "cod8": "00000938",
+      "numeroInterno": 30,
+      "numeroPlanilha": 61,
+      "acao": "ja_vinculado",
+      "mensagem": "Imóvel já vinculado a este processo",
+      "processoId": 16130,
+      "imovelId": 58
+    },
+    {
+      "cod8": "00000938",
+      "numeroInterno": 32,
+      "numeroPlanilha": 25,
+      "acao": "ja_vinculado",
+      "mensagem": "Imóvel já vinculado a este processo",
+      "processoId": 16131,
+      "imovelId": 24
+    },
+    {
+      "cod8": "00000938",
+      "numeroInterno": 33,
+      "numeroPlanilha": 57,
+      "acao": "atualizado",
+      "mensagem": "processo_id gravado no imóvel",
+      "processoId": 16129,
+      "imovelId": 57
+    },
+    {
+      "cod8": "00000938",
+      "numeroInterno": 34,
+      "numeroPlanilha": 15,
+      "acao": "atualizado",
+      "mensagem": "processo_id gravado no imóvel",
+      "processoId": 16127,
+      "imovelId": 15
+    },
+    {
+      "cod8": "00000938",
+      "numeroInterno": 36,
+      "numeroPlanilha": 49,
+      "acao": "ja_vinculado",
+      "mensagem": "Imóvel já vinculado a este processo",
+      "processoId": 16126,
+      "imovelId": 49
+    },
+    {
+      "cod8": "00000938",
+      "numeroInterno": 37,
+      "numeroPlanilha": 44,
+      "acao": "ja_vinculado",
+      "mensagem": "Imóvel já vinculado a este processo",
+      "processoId": 16125,
+      "imovelId": 42
+    },
+    {
+      "cod8": "00000938",
+      "numeroInterno": 40,
+      "numeroPlanilha": 62,
+      "acao": "atualizado",
+      "mensagem": "processo_id gravado no imóvel",
+      "processoId": 16122,
+      "imovelId": 64
+    },
+    {
+      "cod8": "00000938",
+      "numeroInterno": 41,
+      "numeroPlanilha": 14,
+      "acao": "criado_sem_numero_planilha",
+      "mensagem": "Imóvel criado sem nº planilha (legado 14 indisponível)",
+      "processoId": 16121,
+      "imovelId": 81
+    },
+    {
+      "cod8": "00000938",
+      "numeroInterno": 42,
+      "numeroPlanilha": 43,
+      "acao": "atualizado",
+      "mensagem": "processo_id gravado no imóvel",
+      "processoId": 16120,
+      "imovelId": 45
+    },
+    {
+      "cod8": "00000938",
+      "numeroInterno": 43,
+      "numeroPlanilha": 15,
+      "acao": "atualizado",
+      "mensagem": "processo_id gravado no imóvel",
+      "processoId": 16119,
+      "imovelId": 15
+    },
+    {
+      "cod8": "00000938",
+      "numeroInterno": 45,
+      "numeroPlanilha": 56,
+      "acao": "atualizado",
+      "mensagem": "processo_id gravado no imóvel",
+      "processoId": 16117,
+      "imovelId": 54
+    },
+    {
+      "cod8": "00000938",
+      "numeroInterno": 47,
+      "numeroPlanilha": 50,
+      "acao": "ja_vinculado",
+      "mensagem": "Imóvel já vinculado a este processo",
+      "processoId": 16115,
+      "imovelId": 46
+    },
+    {
+      "cod8": "00000938",
+      "numeroInterno": 48,
+      "numeroPlanilha": 64,
+      "acao": "ja_vinculado",
+      "mensagem": "Imóvel já vinculado a este processo",
+      "processoId": 16114,
+      "imovelId": 63
+    },
+    {
+      "cod8": "00000938",
+      "numeroInterno": 50,
+      "numeroPlanilha": 56,
+      "acao": "atualizado",
+      "mensagem": "processo_id gravado no imóvel",
+      "processoId": 16113,
+      "imovelId": 54
+    },
+    {
+      "cod8": "00000938",
+      "numeroInterno": 51,
+      "numeroPlanilha": 62,
+      "acao": "atualizado",
+      "mensagem": "processo_id gravado no imóvel",
+      "processoId": 16111,
+      "imovelId": 64
+    },
+    {
+      "cod8": "00000938",
+      "numeroInterno": 52,
+      "numeroPlanilha": 39,
+      "acao": "criado_sem_numero_planilha",
+      "mensagem": "Imóvel criado sem nº planilha (legado 39 indisponível)",
+      "processoId": 16109,
+      "imovelId": 82
+    },
+    {
+      "cod8": "00000938",
+      "numeroInterno": 53,
+      "numeroPlanilha": 43,
+      "acao": "atualizado",
+      "mensagem": "processo_id gravado no imóvel",
+      "processoId": 16110,
+      "imovelId": 45
+    },
+    {
+      "cod8": "00000972",
+      "numeroInterno": 1,
+      "numeroPlanilha": 47,
+      "acao": "ja_vinculado",
+      "mensagem": "Imóvel já vinculado a este processo",
+      "processoId": 16342,
+      "imovelId": 48
+    },
+    {
+      "cod8": "00002932",
+      "numeroInterno": 1195,
+      "numeroPlanilha": 5,
+      "acao": "sem_processo",
+      "mensagem": "Processo não encontrado na API",
+      "processoId": null,
+      "imovelId": null
+    }
+  ]
+}

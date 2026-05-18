@@ -14,6 +14,7 @@ import {
 import { normalizarFiltroProcessoAtivo } from '../data/relatorioPresets.js';
 import { obterLinhasBaseRelatorioProcessos } from '../data/relatorioProcessosDados.js';
 import { preaquecerCamposRelatorioApiFirst } from '../data/processosDadosRelatorio.js';
+import { featureFlags } from '../config/featureFlags.js';
 import { EVENT_RELATORIO_PERSISTENCIA_EXTERNA } from '../services/crossTabLocalStorageSync.js';
 import { buildRouterStateChaveClienteProcesso } from '../domain/camposProcessoCliente.js';
 
@@ -264,34 +265,56 @@ export function Relatorio() {
   /** Só após o usuário clicar em «Emitir relatório» — evita montar milhares de linhas ao abrir a página. */
   const [relatorioEmitido, setRelatorioEmitido] = useState(false);
   const [emitindoRelatorio, setEmitindoRelatorio] = useState(false);
+  const [enriquecendoDetalhes, setEnriquecendoDetalhes] = useState(false);
+  const [erroEmissao, setErroEmissao] = useState('');
   const emitindoRelatorioRef = useRef(false);
+  const baseRawEmissaoRef = useRef([]);
 
   const emitirOuAtualizarRelatorio = useCallback(() => {
     if (emitindoRelatorioRef.current) return;
     emitindoRelatorioRef.current = true;
     setEmitindoRelatorio(true);
+    setErroEmissao('');
     void (async () => {
       let baseRaw = [];
       try {
-        baseRaw = await obterLinhasBaseRelatorioProcessos();
+        if (!featureFlags.useApiProcessos || !featureFlags.useApiClientes) {
+          setErroEmissao(
+            'Relatório requer API de clientes e processos ativa (VITE_USE_API_CLIENTES e VITE_USE_API_PROCESSOS).'
+          );
+        } else {
+          baseRaw = await obterLinhasBaseRelatorioProcessos();
+        }
       } catch (e) {
         console.error(e);
+        setErroEmissao(e?.message || 'Não foi possível carregar processos da API.');
         baseRaw = [];
       }
+
+      baseRawEmissaoRef.current = baseRaw;
+      const baseEnriched = montarLinhasRelatorioBaseDeCruas(baseRaw);
+      const next = mesclarLinhasRelatorioComPersistido(relatorioEmitido, baseEnriched);
+      setDados(next);
+      setRelatorioEmitido(true);
+      emitindoRelatorioRef.current = false;
+      setEmitindoRelatorio(false);
+
+      if (!featureFlags.useApiProcessos || baseRaw.length === 0) return;
+
+      const entradasPreaquecer = baseRaw.map((r) => ({
+        codCliente: r.codCliente,
+        proc: r.proc,
+        processoId: r.processoApiId,
+      }));
+      setEnriquecendoDetalhes(true);
       try {
-        const basePairs = baseRaw.map((r) => [r.codCliente, r.proc]);
-        await preaquecerCamposRelatorioApiFirst(basePairs);
+        await preaquecerCamposRelatorioApiFirst(entradasPreaquecer, { concurrency: 12 });
+        const atualizado = montarLinhasRelatorioBaseDeCruas(baseRawEmissaoRef.current);
+        setDados(mesclarLinhasRelatorioComPersistido(true, atualizado));
       } catch {
-        /* mock/local cobre */
-      }
-      try {
-        const baseEnriched = montarLinhasRelatorioBaseDeCruas(baseRaw);
-        const next = mesclarLinhasRelatorioComPersistido(relatorioEmitido, baseEnriched);
-        setDados(next);
-        setRelatorioEmitido(true);
+        /* grade já exibida com dados da listagem */
       } finally {
-        emitindoRelatorioRef.current = false;
-        setEmitindoRelatorio(false);
+        setEnriquecendoDetalhes(false);
       }
     })();
   }, [relatorioEmitido]);
@@ -383,8 +406,11 @@ export function Relatorio() {
               </p>
             ) : (
               <p className="mt-1 text-sm text-slate-600">
+                {enriquecendoDetalhes ? (
+                  <span className="text-indigo-700">Carregando partes e histórico em segundo plano…</span>
+                ) : null}
                 {dados.length === 0 ? (
-                  'Nenhum processo carregado.'
+                  erroEmissao || 'Nenhum processo carregado.'
                 ) : dadosFiltrados.length === dados.length ? (
                   <>
                     <span className="font-semibold text-slate-800 tabular-nums">{dadosFiltrados.length}</span>
@@ -529,6 +555,9 @@ export function Relatorio() {
                 <Loader2 className="w-5 h-5 animate-spin text-indigo-600" aria-hidden />
                 Atualizando…
               </div>
+            ) : null}
+            {erroEmissao && dados.length === 0 ? (
+              <p className="px-4 py-3 text-sm text-red-700 bg-red-50 border-b border-red-100">{erroEmissao}</p>
             ) : null}
             <table
               className={`w-full text-sm border-collapse ${larguraUniforme ? 'table-fixed' : ''}`}

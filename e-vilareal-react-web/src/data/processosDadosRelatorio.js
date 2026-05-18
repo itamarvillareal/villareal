@@ -265,52 +265,97 @@ function extrairUltimoAndamento(lista = []) {
   return { info, data };
 }
 
-export async function preaquecerCamposRelatorioApiFirst(paresClienteProc = []) {
+function normalizarEntradaPreaquecerRelatorio(entrada) {
+  if (Array.isArray(entrada)) {
+    return {
+      codCliente: entrada[0],
+      proc: entrada[1],
+      processoId: entrada[2] ?? null,
+    };
+  }
+  return {
+    codCliente: entrada?.codCliente ?? entrada?.cod,
+    proc: entrada?.proc,
+    processoId: entrada?.processoId ?? entrada?.processoApiId ?? null,
+  };
+}
+
+async function preaquecerUmProcessoRelatorio({ codCliente: codRaw, proc: procRaw, processoId: processoIdHint }) {
+  const cod = padCliente(codRaw);
+  const proc = Number(normalizarProcesso(procRaw));
+  const key = keyClienteProc(cod, proc);
+  if (_cacheCamposApi.has(key)) return;
+
+  const hinted =
+    processoIdHint != null && Number.isFinite(Number(processoIdHint)) && Number(processoIdHint) > 0
+      ? Number(processoIdHint)
+      : null;
+  const processoId = hinted ?? (await resolverProcessoId({ codigoCliente: cod, numeroInterno: proc }));
+  if (!processoId) return;
+
+  const [cabecalho, partes, andamentos] = await Promise.all([
+    obterCamposProcessoApiFirst({ processoId, codigoCliente: cod, numeroInterno: proc }),
+    listarPartesProcesso(processoId),
+    listarAndamentosProcesso(processoId),
+  ]);
+  const nomesCliente = [];
+  const nomesOposta = [];
+  for (const p of partes || []) {
+    const polo = String(p.polo || '').toUpperCase();
+    const nome = p.nomeExibicao || p.nomeLivre || '';
+    if (!nome) continue;
+    if (polo.includes('AUTOR') || polo.includes('REQUERENTE') || polo.includes('CLIENTE')) nomesCliente.push(nome);
+    else nomesOposta.push(nome);
+  }
+  const ultimo = extrairUltimoAndamento(andamentos || []);
+  _cacheCamposApi.set(key, {
+    processoId,
+    numeroProcessoNovo: cabecalho?.numeroProcessoNovo || '',
+    numeroProcessoVelho: cabecalho?.numeroProcessoVelho || '',
+    naturezaAcaoProcesso: cabecalho?.naturezaAcao || '',
+    competenciaCadastroProcesso: cabecalho?.competencia || '',
+    faseCadastroProcesso: cabecalho?.faseSelecionada || '',
+    statusAtivoTexto: cabecalho?.statusAtivo === false ? 'Inativo' : 'Ativo',
+    processoCadastroAtivo: cabecalho?.statusAtivo !== false,
+    prazoFatalCadastroProcesso: cabecalho?.prazoFatal || '',
+    observacaoCadastroProcesso: cabecalho?.observacao || '',
+    parteCliente: formatarListaComConjuncaoE(nomesCliente),
+    parteOposta: formatarListaComConjuncaoE(nomesOposta),
+    ultimoHistoricoInfo: ultimo.info,
+    ultimoHistoricoData: ultimo.data,
+  });
+}
+
+/**
+ * Preenche cache de partes/andamentos para colunas dinâmicas do relatório.
+ * Em paralelo (não bloqueia a grade); aceita `[cod, proc]`, `[cod, proc, id]` ou objeto.
+ */
+export async function preaquecerCamposRelatorioApiFirst(paresClienteProc = [], options = {}) {
   if (!featureFlags.useApiProcessos) return;
-  const pares = Array.isArray(paresClienteProc) ? paresClienteProc : [];
-  for (const [codRaw, procRaw] of pares) {
-    const cod = padCliente(codRaw);
-    const proc = Number(normalizarProcesso(procRaw));
-    const key = keyClienteProc(cod, proc);
-    if (_cacheCamposApi.has(key)) continue;
-    try {
-      const processoId = await resolverProcessoId({ codigoCliente: cod, numeroInterno: proc });
-      if (!processoId) continue;
-      const [cabecalho, partes, andamentos] = await Promise.all([
-        obterCamposProcessoApiFirst({ processoId, codigoCliente: cod, numeroInterno: proc }),
-        listarPartesProcesso(processoId),
-        listarAndamentosProcesso(processoId),
-      ]);
-      const nomesCliente = [];
-      const nomesOposta = [];
-      for (const p of partes || []) {
-        const polo = String(p.polo || '').toUpperCase();
-        const nome = p.nomeExibicao || p.nomeLivre || '';
-        if (!nome) continue;
-        if (polo.includes('AUTOR') || polo.includes('REQUERENTE') || polo.includes('CLIENTE')) nomesCliente.push(nome);
-        else nomesOposta.push(nome);
+  const entradas = (Array.isArray(paresClienteProc) ? paresClienteProc : [])
+    .map(normalizarEntradaPreaquecerRelatorio)
+    .filter((e) => e.codCliente != null && e.proc != null);
+  if (entradas.length === 0) return;
+
+  const concurrency = Math.max(1, Math.min(24, Number(options.concurrency) || 10));
+  let cursor = 0;
+
+  async function worker() {
+    while (cursor < entradas.length) {
+      const i = cursor;
+      cursor += 1;
+      const entrada = entradas[i];
+      try {
+        await preaquecerUmProcessoRelatorio(entrada);
+      } catch {
+        /* fallback local/mock permanece soberano */
       }
-      const ultimo = extrairUltimoAndamento(andamentos || []);
-      _cacheCamposApi.set(key, {
-        processoId,
-        numeroProcessoNovo: cabecalho?.numeroProcessoNovo || '',
-        numeroProcessoVelho: cabecalho?.numeroProcessoVelho || '',
-        naturezaAcaoProcesso: cabecalho?.naturezaAcao || '',
-        competenciaCadastroProcesso: cabecalho?.competencia || '',
-        faseCadastroProcesso: cabecalho?.faseSelecionada || '',
-        statusAtivoTexto: cabecalho?.statusAtivo === false ? 'Inativo' : 'Ativo',
-        processoCadastroAtivo: cabecalho?.statusAtivo !== false,
-        prazoFatalCadastroProcesso: cabecalho?.prazoFatal || '',
-        observacaoCadastroProcesso: cabecalho?.observacao || '',
-        parteCliente: formatarListaComConjuncaoE(nomesCliente),
-        parteOposta: formatarListaComConjuncaoE(nomesOposta),
-        ultimoHistoricoInfo: ultimo.info,
-        ultimoHistoricoData: ultimo.data,
-      });
-    } catch {
-      // fallback local/mock permanece soberano
+      options.onProgress?.(i + 1, entradas.length);
     }
   }
+
+  const workers = Math.min(concurrency, entradas.length);
+  await Promise.all(Array.from({ length: workers }, () => worker()));
 }
 
 /**
