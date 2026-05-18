@@ -25,3 +25,4 @@ scripts/__pycache__/
 # Backups mysqldump (scripts/backup-vps-db.sh, aplicar-limpeza-vps.sh)
 /backups/
 docker-compose.override.yml
+e-vilareal-react-web/tmp/

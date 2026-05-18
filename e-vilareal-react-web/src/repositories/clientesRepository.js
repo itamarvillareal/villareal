@@ -1,5 +1,6 @@
 import { request } from '../api/httpClient.js';
 import { featureFlags } from '../config/featureFlags.js';
+import { corrigirNomePessoaExibicao } from '../utils/utf8MojibakeUtil.js';
 import {
   loadCadastroClienteDados,
   saveCadastroClienteDados,
@@ -29,7 +30,7 @@ function mapApiToFront(c) {
     pessoaId: pessoaIdStr,
     codigo: padCliente8Cadastro(String(c.codigoCliente ?? '').trim()),
     pessoa: pessoaIdStr,
-    nomeRazao: c.nomeReferencia ?? c.nome ?? '',
+    nomeRazao: corrigirNomePessoaExibicao(c.nomeReferencia ?? c.nome ?? ''),
     cnpjCpf: c.documentoReferencia ?? '',
     observacao: c.observacao ?? '',
     clienteInativo: c.inativo === true,
@@ -40,7 +41,7 @@ function mapFrontToApi(d) {
   return {
     codigoCliente: padCliente8Cadastro(d.codigo),
     pessoaId: d.pessoa ? Number(String(d.pessoa).replace(/\D/g, '')) || null : null,
-    nomeReferencia: String(d.nomeRazao ?? '').trim(),
+    nomeReferencia: corrigirNomePessoaExibicao(String(d.nomeRazao ?? '').trim()),
     documentoReferencia: String(d.cnpjCpf ?? '').replace(/\D/g, '').slice(0, 20) || null,
     observacao: String(d.observacao ?? ''),
     inativo: d.clienteInativo === true,

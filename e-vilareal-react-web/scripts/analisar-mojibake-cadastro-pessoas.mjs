@@ -6,6 +6,9 @@
  * Uso:
  *   VILAREAL_MYSQL_PORT=3306 node scripts/analisar-mojibake-cadastro-pessoas.mjs
  *   VILAREAL_MYSQL_PORT=3306 node scripts/analisar-mojibake-cadastro-pessoas.mjs --limite=500 --json=relatorio.json
+ *
+ * Corrigir no banco: node scripts/corrigir-mojibake-cadastro-pessoas.mjs --aplicar
+ * (ou npm run corrigir:mojibake-cadastro-pessoas)
  */
 
 import fs from 'node:fs';

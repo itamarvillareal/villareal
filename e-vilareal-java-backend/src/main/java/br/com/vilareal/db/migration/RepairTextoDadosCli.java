@@ -14,11 +14,24 @@ public final class RepairTextoDadosCli {
                 "jdbc:mysql://localhost:3306/vilareal?useSSL=false&allowPublicKeyRetrieval=true&characterEncoding=utf8&serverTimezone=UTC");
         String user = System.getenv().getOrDefault("JDBC_USER", "root");
         String pass = System.getenv().getOrDefault("JDBC_PASSWORD", "root");
+        boolean soPessoas = false;
+        for (String a : args) {
+            if ("--cadastro-pessoas".equals(a) || "--pessoas".equals(a)) {
+                soPessoas = true;
+            }
+        }
         try (var conn = DriverManager.getConnection(url, user, pass)) {
             conn.setAutoCommit(false);
-            MojibakeUtf8DadosRepair.executar(conn);
+            if (soPessoas) {
+                MojibakeUtf8DadosRepair.executarCadastroPessoas(conn);
+            } else {
+                MojibakeUtf8DadosRepair.executar(conn);
+            }
             conn.commit();
-            System.out.println("RepairTextoDadosCli: concluído.");
+            System.out.println(
+                    soPessoas
+                            ? "RepairTextoDadosCli: cadastro de pessoas concluído."
+                            : "RepairTextoDadosCli: concluído (schema completo).");
         }
     }
 }

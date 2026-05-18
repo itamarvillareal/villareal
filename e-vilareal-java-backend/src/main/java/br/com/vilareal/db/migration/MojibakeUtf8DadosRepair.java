@@ -18,6 +18,24 @@ public final class MojibakeUtf8DadosRepair {
 
     private MojibakeUtf8DadosRepair() {}
 
+    /** Apenas tabelas do cadastro de pessoas (e cliente vinculado). */
+    public static void executarCadastroPessoas(Connection conn) throws Exception {
+        atualizarTabela(conn, "pessoa", "id", "nome", "email", "telefone");
+        atualizarTabela(
+                conn,
+                "pessoa_complementar",
+                "pessoa_id",
+                "rg",
+                "orgao_expedidor",
+                "profissao",
+                "nacionalidade",
+                "estado_civil",
+                "genero");
+        atualizarTabela(conn, "pessoa_endereco", "id", "rua", "bairro", "cidade", "estado", "cep");
+        atualizarTabela(conn, "pessoa_contato", "id", "tipo", "valor", "usuario_lancamento");
+        atualizarTabela(conn, "cliente", "id", "nome_referencia", "documento_referencia", "observacao");
+    }
+
     public static void executar(Connection conn) throws Exception {
         atualizarTabela(
                 conn,
@@ -37,7 +55,7 @@ public final class MojibakeUtf8DadosRepair {
         atualizarTabela(conn, "processo_parte", "id", "nome_livre", "qualificacao");
         atualizarTabela(conn, "processo_andamento", "id", "titulo", "detalhe", "origem");
         atualizarTabela(conn, "processo_prazo", "id", "descricao", "status", "observacao");
-        atualizarTabela(conn, "pessoa", "id", "nome", "email");
+        atualizarTabela(conn, "pessoa", "id", "nome", "email", "telefone");
         atualizarTabela(
                 conn,
                 "pessoa_complementar",

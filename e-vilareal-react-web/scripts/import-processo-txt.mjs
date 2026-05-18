@@ -3,10 +3,11 @@
  * Importação de **um** processo a partir dos txt locais (Dropbox «Banco de Dados»).
  *
  * Ordem (com --aplicar):
- *   1. Cabeçalho (Proc/Gerais numéricos + semânticos + fase/obs + prazo)
- *   2. Histórico HC → `import-historico-local-txt.mjs` (normalização e API existentes)
- *   3. Vínculo imóvel `0.89.1` (opcional)
- *   4. Partes `1.1` / `6.1` (opcional, --importar-partes)
+ *   1. Cliente — pessoa (Gerais `151.1.0` → POST /api/clientes)
+ *   2. Cabeçalho (Proc/Gerais numéricos + semânticos + fase/obs + prazo)
+ *   3. Histórico HC → `import-historico-local-txt.mjs` (normalização e API existentes)
+ *   4. Vínculo imóvel `0.89.1` (opcional)
+ *   5. Partes `1.1` / `6.1` (opcional, --importar-partes)
  *
  * Uso:
  *   node scripts/import-processo-txt.mjs --cliente=728 --processo=239 --dry-run
@@ -17,6 +18,7 @@
  *   --dry-run | --aplicar
  *   --sem-historico              Não importa andamentos
  *   --sem-imovel                 Não vincula imóvel 0.89.1
+ *   --sem-cliente-pessoa         Não sincroniza pessoa do cliente (151.1.0)
  *   --importar-partes            Cria partes a partir de 1.1 e 6.1 (se ainda não existirem)
  *   --substituir-historico       Repassa --substituir-andamentos ao import de histórico
  *   --sem-corrigir-historico     Repassa --sem-corrigir ao import de histórico
@@ -41,10 +43,16 @@ import {
 } from './lib/vilareal-import-processo-api.mjs';
 import { atualizarProcessoApi } from './lib/import-processo-put-body.mjs';
 import {
+  construirMapaUsuarioPorNomeResponsavel,
+  fetchUsuariosImportApi,
+  resolverUsuarioResponsavelId,
+} from './lib/responsavel-usuario-import.mjs';
+import {
   levantarDadosProcessoTxt,
   montarPatchProcessoFromTxt,
 } from './lib/proc-processo-dados-txt.mjs';
 import { resolverBaseBancoDados } from './lib/gerais-fase-processo-txt.mjs';
+import { sincronizarVinculoClientePessoaApi } from './lib/cliente-pessoa-151-txt.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SCRIPT_HISTORICO = path.join(__dirname, 'import-historico-local-txt.mjs');
@@ -57,6 +65,7 @@ function parseArgs(argv) {
     aplicar: false,
     semHistorico: false,
     semImovel: false,
+    semClientePessoa: false,
     importarPartes: false,
     substituirHistorico: false,
     semCorrigirHistorico: false,
@@ -76,6 +85,7 @@ function parseArgs(argv) {
       out.dryRun = false;
     } else if (a === '--sem-historico') out.semHistorico = true;
     else if (a === '--sem-imovel') out.semImovel = true;
+    else if (a === '--sem-cliente-pessoa') out.semClientePessoa = true;
     else if (a === '--importar-partes') out.importarPartes = true;
     else if (a === '--substituir-historico') out.substituirHistorico = true;
     else if (a === '--sem-corrigir-historico') out.semCorrigirHistorico = true;
@@ -120,7 +130,26 @@ function imprimirPreview(dados, patch) {
       fase: dados.fase.faseCanonica,
       obs: dados.fase.observacaoFase?.slice?.(0, 60),
       inativo: dados.fase.statusInativo,
+      statusBruto: dados.fase.statusBruto,
     });
+  }
+  if (dados.cabecalho.partesTxt?.responsavelNome) {
+    console.log('\nResponsável txt (20.1):', dados.cabecalho.partesTxt.responsavelNome);
+  }
+  if (dados.cabecalho.campos.unidade) {
+    console.log('Unidade txt (0.88.1):', dados.cabecalho.campos.unidade);
+  }
+  if (dados.semantic?.campos?.audienciaData || dados.semantic?.campos?.audienciaHora) {
+    console.log('Audiência txt:', {
+      data: dados.semantic.campos.audienciaData,
+      hora: dados.semantic.campos.audienciaHora,
+      tipo: dados.semantic.campos.audienciaTipo,
+    });
+  }
+  if (dados.pessoaCliente?.pessoaId) {
+    console.log('\nPessoa cliente txt (151.1.0):', dados.pessoaCliente.pessoaId);
+  } else if (dados.pessoaCliente?.arquivo) {
+    console.log('\nPessoa cliente txt (151.1.0): arquivo presente mas sem ID válido');
   }
   if (dados.imovel?.numeroPlanilha) {
     console.log('\nImóvel 0.89.1:', dados.imovel.numeroPlanilha, dados.imovel.arquivo);
@@ -385,6 +414,33 @@ async function main() {
 
   const token = await loginImportApi(opts.baseUrl, opts.login, opts.senha);
   const pessoaPorCod8 = new Map();
+
+  if (!opts.semClientePessoa && dados.pessoaCliente?.pessoaId) {
+    try {
+      const rCliente = await sincronizarVinculoClientePessoaApi(
+        opts.baseUrl,
+        token,
+        dados.cod8,
+        dados.pessoaCliente.pessoaId,
+        pessoaPorCod8
+      );
+      resultado.etapas.clientePessoa = rCliente;
+      console.log('\n[cliente/pessoa 151.1.0]', rCliente);
+      if (rCliente.acao === 'divergente_api') {
+        console.warn(
+          `[cliente] código ${dados.cod8} já vinculado à pessoa ${rCliente.pessoaIdApi} na API; txt indica ${rCliente.pessoaIdTxt} — não alterado.`
+        );
+      }
+    } catch (e) {
+      resultado.etapas.clientePessoa = { erro: e?.message || String(e) };
+      console.warn('[cliente/pessoa 151.1.0] erro:', e?.message || e);
+    }
+  } else if (opts.semClientePessoa) {
+    resultado.etapas.clientePessoa = 'ignorado_flag';
+  } else {
+    resultado.etapas.clientePessoa = 'ausente_txt';
+  }
+
   const proc = await buscarProcesso(opts.baseUrl, token, dados.cod8, dados.numeroInterno, pessoaPorCod8);
 
   if (!proc?.id) {
@@ -394,8 +450,24 @@ async function main() {
     process.exit(2);
   }
 
-  if (Object.keys(patch).length > 0) {
-    await atualizarProcessoApi(opts.baseUrl, token, proc, patch);
+  const patchApi = { ...patch };
+  if (patchApi._responsavelNome) {
+    const usuarios = await fetchUsuariosImportApi(opts.baseUrl, token);
+    const mapaResp = construirMapaUsuarioPorNomeResponsavel(usuarios);
+    const uid = resolverUsuarioResponsavelId(patchApi._responsavelNome, mapaResp);
+    if (uid != null) {
+      patchApi.usuarioResponsavelId = uid;
+      console.log(`[responsável] ${patchApi._responsavelNome} → usuarioId=${uid}`);
+    } else {
+      console.warn(
+        `[responsável] "${String(patchApi._responsavelNome).slice(0, 80)}" não casou com /api/usuarios — mantém valor atual na API`
+      );
+    }
+    delete patchApi._responsavelNome;
+  }
+
+  if (Object.keys(patchApi).length > 0) {
+    await atualizarProcessoApi(opts.baseUrl, token, proc, patchApi);
     resultado.etapas.cabecalho = 'atualizado';
     console.log('\n[cabeçalho] Processo atualizado na API.');
   } else {

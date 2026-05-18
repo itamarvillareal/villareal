@@ -84,8 +84,9 @@ export function formatIndice4(n) {
   return String(Math.trunc(Number(n))).padStart(4, '0');
 }
 
+/** Nome da pasta centena no disco (`1000/0`, `1000/100`, …) — sem zeros à esquerda na centena 0. */
 export function formatCentenaPasta(cent) {
-  return String(Math.trunc(Number(cent))).padStart(3, '0');
+  return String(Math.trunc(Number(cent)));
 }
 
 /**

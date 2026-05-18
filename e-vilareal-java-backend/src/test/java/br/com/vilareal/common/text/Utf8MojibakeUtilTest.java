@@ -117,4 +117,19 @@ class Utf8MojibakeUtilTest {
         assertEquals("\u00c7\u00e3o", Utf8MojibakeUtil.corrigir("\u00c3\u2021\u00c3\u00a3o"));
         assertEquals("Jos\u00e9", Utf8MojibakeUtil.corrigir("Jos\u00c3\u00e9"));
     }
+
+    @Test
+    void nomeValidoComCircunflexoNaoEsvazia() {
+        assertEquals("GRAZIELA SILVA CÂMARA", Utf8MojibakeUtil.corrigir("GRAZIELA SILVA CÂMARA"));
+    }
+
+    @Test
+    void sobrenomeGoncalvesMojibakePlanilha() {
+        assertEquals(
+                "FABIO GONÇALVES PAULINO",
+                Utf8MojibakeUtil.corrigir("FABIO GON\u00c3\u2021ALVES PAULINO"));
+        assertEquals(
+                "FABIO GONÇALVES PAULINO",
+                Utf8MojibakeUtil.corrigir("FABIO GON\u00c3\u00a7ALVES PAULINO"));
+    }
 }

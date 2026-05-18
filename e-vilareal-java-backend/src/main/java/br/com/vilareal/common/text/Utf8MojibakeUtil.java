@@ -58,7 +58,7 @@ public final class Utf8MojibakeUtil {
         {"\u00E2\u20AC\u2122", "\u2019"},
         {"\u00E2\u20AC\u0153", "\u201C"},
         {"\u00E2\u20AC\u009D", "\u201D"},
-        {"\u00C2", ""},
+        /* Não remover U+00C2 isolado — destrói «CÂMARA» e outros nomes válidos em português. */
     };
 
     private Utf8MojibakeUtil() {}
@@ -84,7 +84,16 @@ public final class Utf8MojibakeUtil {
         String out = corrigirLatin1Utf8EmCadeia(cur);
         out = substituirClustersBlocoDesenhoU251c(out);
         out = corrigirLatin1Utf8EmCadeia(out);
-        return aplicarSubstituicoesPlanilhaUtf8Legado(out);
+        out = aplicarSubstituicoesPlanilhaUtf8Legado(out);
+        return ajustarCedilhaMinusculaEmPalavraMaiuscula(out);
+    }
+
+    /** Ex.: GONÃ§ALVES → GONçALVES → GONÇALVES após substituição planilha. */
+    private static String ajustarCedilhaMinusculaEmPalavraMaiuscula(String s) {
+        if (s == null || s.isEmpty() || !s.contains("ç")) {
+            return s;
+        }
+        return s.replaceAll("([\\p{Lu}À-ÖØ-Þ])ç([\\p{Lu}À-ÖØ-Þ])", "$1Ç$2");
     }
 
     private static String aplicarSubstituicoesPlanilhaUtf8Legado(String s) {

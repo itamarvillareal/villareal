@@ -1,6 +1,7 @@
 import { API_BASE_URL } from './config';
 import { buildDefaultApiHeaders } from './apiAuthHeaders.js';
 import { parseApiJsonResponse } from './parseApiResponse.js';
+import { corrigirMojibakeUtf8, corrigirNomePessoaExibicao } from '../utils/utf8MojibakeUtil.js';
 
 const BASE = `${API_BASE_URL}/api/cadastro-pessoas`;
 
@@ -98,7 +99,8 @@ export async function pesquisarCadastroPessoasPorNomeOuCpf(termo, { apenasAtivos
   const res = await fetch(`${BASE}?${qs.toString()}`, getOptions('GET'));
   const data = await handleResponse(res);
   const arr = Array.isArray(data) ? data : [];
-  return typeof limite === 'number' && limite > 0 ? arr.slice(0, limite) : arr;
+  const norm = arr.map((row) => normalizarPessoaApiResponse(row));
+  return typeof limite === 'number' && limite > 0 ? norm.slice(0, limite) : norm;
 }
 
 /**
@@ -120,10 +122,21 @@ export async function obterProximoIdCadastroPessoas() {
  * @param {number} id
  * @returns {Promise<Object|null>}
  */
+function normalizarPessoaApiResponse(data) {
+  if (!data || typeof data !== 'object') return data;
+  return {
+    ...data,
+    nome: data.nome != null ? corrigirNomePessoaExibicao(data.nome) : data.nome,
+    email: data.email != null ? corrigirMojibakeUtf8(data.email) : data.email,
+    telefone: data.telefone != null ? corrigirMojibakeUtf8(data.telefone) : data.telefone,
+  };
+}
+
 export async function buscarCliente(id) {
   const res = await fetch(`${BASE}/${id}`, getOptions('GET'));
   if (res.status === 404) return null;
-  return handleResponse(res);
+  const data = await handleResponse(res);
+  return normalizarPessoaApiResponse(data);
 }
 
 /**
