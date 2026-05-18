@@ -375,6 +375,29 @@ export async function listarImoveisApi() {
   }
 }
 
+/**
+ * Todos os pares (codigoCliente, numeroInterno) com imóvel ligado ao nº da planilha.
+ * @param {{ numeroPlanilha?: number, imovelIdApi?: number }} opts
+ */
+export async function listarVinculosProcessoImovel(opts = {}) {
+  if (!featureFlags.useApiImoveis) {
+    return { numeroPlanilha: opts.numeroPlanilha ?? null, vinculos: [] };
+  }
+  const np = Number(opts.numeroPlanilha);
+  const idApi = Number(opts.imovelIdApi);
+  try {
+    if (Number.isFinite(idApi) && idApi > 0) {
+      return await request(`/api/imoveis/${idApi}/vinculos-processo`);
+    }
+    if (Number.isFinite(np) && np >= 1) {
+      return await request(`/api/imoveis/por-numero-planilha/${np}/vinculos-processo`);
+    }
+    return { numeroPlanilha: null, vinculos: [] };
+  } catch {
+    return { numeroPlanilha: np >= 1 ? np : null, vinculos: [] };
+  }
+}
+
 /** Número da planilha (col. A) para o par código de cliente + proc; null se não houver imóvel ou API desligada. */
 export async function buscarNumeroImovelPorVinculo(codigoCliente, numeroInterno) {
   if (!featureFlags.useApiImoveis) return null;

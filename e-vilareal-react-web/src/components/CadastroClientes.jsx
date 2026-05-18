@@ -339,6 +339,8 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
   const processosApiReqIdRef = useRef(0);
   const codigoRef = useRef(codigo);
   codigoRef.current = codigo;
+  const pesquisaProcessoInputDesktopRef = useRef(null);
+  const pesquisaProcessoInputMobileRef = useRef(null);
   /** Última função `aplicarDadosCliente` — listeners com `[]` de deps chamam sempre a versão atual. */
   const aplicarDadosClienteRef = useRef(() => {});
 
@@ -812,6 +814,21 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
   function handleCodigoInputBlur(value) {
     const digits = apenasDigitos(value);
     aplicarCodigoCliente(digits || '1');
+  }
+
+  function focusCampoPesquisaProcesso() {
+    const mobile =
+      typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches;
+    const el = mobile ? pesquisaProcessoInputMobileRef.current : pesquisaProcessoInputDesktopRef.current;
+    el?.focus();
+    el?.select?.();
+  }
+
+  function handleCodigoClienteKeyDown(e) {
+    if (e.key === 'Tab' && !e.shiftKey) {
+      e.preventDefault();
+      focusCampoPesquisaProcesso();
+    }
   }
 
   function abrirProcessos(procNumero) {
@@ -1577,6 +1594,7 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
                   value={codigo}
                   onChange={(e) => handleCodigoInputChange(e.target.value)}
                   onBlur={(e) => handleCodigoInputBlur(e.target.value)}
+                  onKeyDown={handleCodigoClienteKeyDown}
                   className="flex-1 px-2 py-2 text-sm font-mono text-center border-0 bg-white text-indigo-950"
                 />
                 <button
@@ -1778,6 +1796,7 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
             <div className="mb-3 md:hidden">
               <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">Pesquisar processos</label>
               <input
+                ref={pesquisaProcessoInputMobileRef}
                 type="text"
                 value={pesquisaProcesso}
                 onChange={(e) => setPesquisaProcesso(e.target.value)}
@@ -1834,6 +1853,7 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
             <div className="mb-3 hidden flex-wrap items-center gap-2 md:flex">
               <label className="text-sm font-medium text-slate-700">Pesquisar</label>
               <input
+                ref={pesquisaProcessoInputDesktopRef}
                 type="text"
                 value={pesquisaProcesso}
                 onChange={(e) => setPesquisaProcesso(e.target.value)}

@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { X, ChevronUp, ChevronDown, UserPlus, Landmark, Search, FileSpreadsheet } from 'lucide-react';
+import { FileSpreadsheet, X } from 'lucide-react';
+import { enderecoUmaLinha, imoveisBtnIconGhost, imoveisBtnPrimary, imoveisBtnSecondary, imoveisInputClass, imoveisInputReadOnlyClass } from './imoveis/ImoveisAdminLayout.jsx';
+import { ImoveisCadastroView } from './imoveis/ImoveisCadastroView.jsx';
+import { ModalVinculosProcessoImovel } from './imoveis/ModalVinculosProcessoImovel.jsx';
 import { padCliente } from '../data/processosDadosRelatorio.js';
 import { resolverAliasHojeEmTexto } from '../services/hjDateAliasService.js';
 import {
@@ -13,57 +16,12 @@ import { buscarCliente } from '../api/clientesService.js';
 import { featureFlags, FEATURE_IPTU_NOVO } from '../config/featureFlags.js';
 import { buildRouterStateChaveClienteProcesso } from '../domain/camposProcessoCliente.js';
 import { Field } from './ui/Field.jsx';
+const inputClass = imoveisInputClass;
+const inputReadOnlyClass = imoveisInputReadOnlyClass;
+const btnPrimary = imoveisBtnPrimary;
+const btnSecondary = imoveisBtnSecondary;
+const btnIconGhost = imoveisBtnIconGhost;
 
-const utilAccentTop = {
-  agua: 'border-t-sky-500/70 dark:border-t-sky-400/55',
-  energia: 'border-t-violet-500/70 dark:border-t-violet-400/50',
-  gas: 'border-t-emerald-500/70 dark:border-t-emerald-400/50',
-  contrato: 'border-t-amber-500/70 dark:border-t-amber-400/45',
-  cond: 'border-t-orange-400/80 dark:border-t-orange-300/45',
-};
-
-/** Coluna (Água / Energia / …): card com faixa superior de cor e hierarquia clara. */
-function BlocoUtilidade({ titulo, accent = 'agua', children }) {
-  const top = utilAccentTop[accent] || utilAccentTop.agua;
-  return (
-    <div
-      className={`rounded-xl border border-slate-200/90 dark:border-white/[0.08] bg-slate-50/95 dark:bg-[#161f2e] p-4 shadow-sm dark:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)] flex flex-col gap-3 min-h-0 border-t-[3px] ${top}`}
-    >
-      <p className="text-[11px] font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider border-b border-slate-200/90 dark:border-white/[0.07] pb-2.5 shrink-0">
-        {titulo}
-      </p>
-      <div className="space-y-3 flex-1 min-w-0">{children}</div>
-    </div>
-  );
-}
-
-const inputClass =
-  'w-full px-3 py-2.5 text-sm rounded-xl border border-slate-300/90 dark:border-white/[0.1] bg-white dark:bg-[#141c2c] text-slate-900 dark:text-slate-100 shadow-sm placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/25 dark:focus:ring-cyan-400/20 focus:border-cyan-500/55 dark:focus:border-cyan-400/35 transition-[box-shadow,border-color] duration-200';
-
-const inputReadOnlyClass = `${inputClass} bg-slate-50/95 dark:bg-[#0f141f]/90 cursor-default focus:ring-0 focus:border-slate-300/90 dark:focus:border-white/[0.1]`;
-
-/** Formata CPF/CNPJ para exibição (mesma lógica usada em Cadastro de Clientes). */
-function formatDocBrExibicao(digits) {
-  const d = String(digits ?? '').replace(/\D/g, '');
-  if (d.length === 11) return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
-  if (d.length === 14) return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`;
-  return d || '—';
-}
-
-const sectionHeading =
-  'text-base font-semibold text-slate-800 dark:text-slate-100 tracking-tight pb-3 mb-0 border-b border-slate-200/90 dark:border-white/[0.08]';
-
-const btnPrimary =
-  'inline-flex items-center justify-center px-4 py-2.5 rounded-xl text-sm font-semibold text-white bg-gradient-to-b from-cyan-600 to-teal-700 dark:from-cyan-600 dark:to-teal-800 border border-cyan-500/40 shadow-md shadow-cyan-950/25 hover:brightness-110 active:scale-[0.99] transition-all duration-200 disabled:opacity-50 disabled:pointer-events-none';
-
-const btnSecondary =
-  'inline-flex items-center justify-center px-4 py-2.5 rounded-xl text-sm font-medium border border-slate-300/90 dark:border-white/[0.12] bg-white dark:bg-white/[0.04] text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.08] active:scale-[0.99] transition-all duration-200';
-
-const btnTealOutline =
-  'inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-semibold border border-teal-500/50 dark:border-teal-400/40 bg-teal-50/90 dark:bg-teal-500/10 text-teal-900 dark:text-teal-100 hover:bg-teal-100/90 dark:hover:bg-teal-500/18 disabled:opacity-45 disabled:cursor-not-allowed transition-all duration-200 shadow-sm dark:shadow-teal-950/20';
-
-const btnIconGhost =
-  'p-2.5 rounded-xl border border-slate-300/90 dark:border-white/[0.1] bg-white dark:bg-white/[0.04] text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/[0.08] transition-colors shrink-0';
 
 function textoSemAcentoMin(s) {
   return String(s ?? '')
@@ -144,6 +102,7 @@ export function Imoveis() {
   const [showModalIptu, setShowModalIptu] = useState(false);
   const [infoIptuTexto, setInfoIptuTexto] = useState('IPTU 2025 cinco parcelas em atraso + duas à vencer R$1.323,30');
   const [showModalContrato, setShowModalContrato] = useState(false);
+  const [showModalVinculosProc, setShowModalVinculosProc] = useState(false);
   const [contratoAssinadoInquilino, setContratoAssinadoInquilino] = useState('nao');
   const [contratoAssinadoProprietario, setContratoAssinadoProprietario] = useState('nao');
   const [contratoAssinadoGarantidor, setContratoAssinadoGarantidor] = useState('nao');
@@ -512,13 +471,20 @@ export function Imoveis() {
     };
   }, [inquilinoNumeroPessoa]);
 
-  function abrirProcessoDoImovel() {
+  function navegarParaProcesso(codigoCliente, numeroInterno) {
     navigate('/processos', {
-      state: buildRouterStateChaveClienteProcesso(padCliente(codigo ?? ''), proc ?? '', {
-        /** Mesmo nº deste cadastro — Processos usa getImovelMock(imovelId) como fonte única. */
+      state: buildRouterStateChaveClienteProcesso(codigoCliente, numeroInterno, {
         imovelId: String(imovelId),
       }),
     });
+  }
+
+  function abrirProcessoDoImovel() {
+    if (featureFlags.useApiImoveis) {
+      setShowModalVinculosProc(true);
+      return;
+    }
+    navegarParaProcesso(padCliente(codigo ?? ''), proc ?? '');
   }
 
   const vinculoClienteProcOk =
@@ -607,8 +573,42 @@ export function Imoveis() {
     }
   }
 
+  const mapsUrl = useMemo(() => {
+    const q = [endereco, condominio, unidade].filter((s) => String(s ?? '').trim()).join(', ');
+    if (!q.trim()) return null;
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
+  }, [endereco, condominio, unidade]);
+
+  function onCopiarEndereco() {
+    const t = enderecoUmaLinha(endereco, condominio, unidade);
+    if (!t) return;
+    void navigator.clipboard?.writeText(t);
+    setApiSuccess('Endereço copiado.');
+  }
+
+  function onSelecionarImovelPesquisa(im) {
+    const n = im.numeroPlanilha != null ? Number(im.numeroPlanilha) : Number(im.id);
+    if (Number.isFinite(n) && n > 0) {
+      setPesquisaCondUnidade('');
+      setImovelId(n);
+    }
+  }
+
+  useEffect(() => {
+    if (!apiSuccess) return undefined;
+    const t = window.setTimeout(() => setApiSuccess(''), 3000);
+    return () => window.clearTimeout(t);
+  }, [apiSuccess]);
+
+  const contaCorrenteDisabled = !vinculoClienteProcOk || (featureFlags.useApiImoveis && !_apiImovelId);
+  const contaCorrenteTitle = !vinculoClienteProcOk
+    ? 'Informe Código e Proc. para vincular ao Cliente e Processo'
+    : featureFlags.useApiImoveis && !_apiImovelId
+      ? 'Salve o cadastro do imóvel na API antes de abrir o financeiro (é necessário o id interno do registro).'
+      : 'Movimentações do Financeiro com o mesmo Cod. cliente e Proc. (conta corrente do processo)';
+
   return (
-    <div className="min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/35 to-emerald-50/45 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d]">
+    <div className="min-h-full bg-slate-100 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d]">
       <div className="max-w-[1600px] mx-auto px-4 sm:px-5 py-5 sm:py-7 pb-10">
         <header className="flex items-start justify-between gap-4 mb-6 lg:mb-8">
           <div className="min-w-0 space-y-1">
@@ -655,566 +655,173 @@ export function Imoveis() {
           </div>
         </header>
 
-        <div className="imoveis-admin-sheet bg-white rounded-2xl border border-slate-200/90 dark:border-white/[0.07] shadow-sm overflow-hidden ring-1 ring-slate-900/[0.03] dark:ring-white/[0.04]">
-          {(apiLoading || apiError || apiSuccess) && (
-            <div className="px-5 py-3 border-b border-slate-200 dark:border-white/[0.08] bg-slate-50/80 dark:bg-white/[0.03] text-sm">
-              {apiLoading ? <p className="text-indigo-700 dark:text-indigo-300">Carregando cadastro do imóvel...</p> : null}
-              {apiError ? <p className="text-red-700 dark:text-red-300">{apiError}</p> : null}
-              {apiSuccess ? <p className="text-emerald-700 dark:text-emerald-300">{apiSuccess}</p> : null}
-            </div>
-          )}
-          {/* Faixa superior: identificação */}
-          <div className="imoveis-admin-toolbar px-5 py-4 sm:px-6 border-b border-slate-200 dark:border-white/[0.06] bg-slate-50/95 dark:bg-black/20">
-            <div className="flex flex-wrap items-end gap-x-6 gap-y-4">
-              <Field
-                label={featureFlags.useApiImoveis ? 'Nº (planilha)' : 'Imóvel'}
-                className="w-[5.75rem] shrink-0"
-              >
-                <div className="flex border border-slate-300/90 dark:border-white/[0.12] rounded-xl overflow-hidden bg-white dark:bg-[#141c2c] shadow-sm">
-                  <button
-                    type="button"
-                    className="px-2 py-2.5 border-r border-slate-200 dark:border-white/[0.08] hover:bg-slate-50 dark:hover:bg-white/[0.05] text-slate-600 dark:text-slate-400 transition-colors"
-                    onClick={() => setImovelId((i) => Math.max(1, i - 1))}
-                    aria-label="Imóvel anterior"
-                  >
-                    <ChevronUp className="w-3.5 h-3.5" />
-                  </button>
-                  <input
-                    type="number"
-                    value={imovelId}
-                    onChange={(e) => setImovelId(Number(e.target.value) || 0)}
-                    className="w-12 px-1 py-2 text-sm text-center border-0 bg-transparent tabular-nums text-slate-900 dark:text-slate-100"
-                  />
-                  <button
-                    type="button"
-                    className="px-2 py-2.5 border-l border-slate-200 dark:border-white/[0.08] hover:bg-slate-50 dark:hover:bg-white/[0.05] text-slate-600 dark:text-slate-400 transition-colors"
-                    onClick={() => setImovelId((i) => i + 1)}
-                    aria-label="Próximo imóvel"
-                  >
-                    <ChevronDown className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </Field>
-
-              <fieldset className="border border-slate-300/90 dark:border-white/[0.1] rounded-xl px-4 py-2.5 bg-white dark:bg-[#141c2c]/80 shrink-0 shadow-sm">
-                <legend className="text-xs font-semibold text-slate-700 dark:text-slate-300 px-1.5">Imóvel ocupado</legend>
-                <div className="flex gap-5 pt-0.5">
-                  <label className="flex items-center gap-2 text-sm cursor-pointer text-slate-700 dark:text-slate-200">
-                    <input type="radio" name="ocupado" checked={imovelOcupado} onChange={() => setImovelOcupado(true)} className="text-cyan-600" />
-                    Sim
-                  </label>
-                  <label className="flex items-center gap-2 text-sm cursor-pointer text-slate-700 dark:text-slate-200">
-                    <input type="radio" name="ocupado" checked={!imovelOcupado} onChange={() => setImovelOcupado(false)} className="text-cyan-600" />
-                    Não
-                  </label>
-                </div>
-              </fieldset>
-
-              <button type="button" onClick={abrirProcessoDoImovel} className={btnPrimary}>
-                Abrir Proc.
-              </button>
-
-              <button
-                type="button"
-                onClick={() =>
-                  navigate({
-                    pathname: '/imoveis/financeiro',
-                    hash: '#extrato-imoveis',
-                    state: { imovelId: _apiImovelId ?? imovelId },
-                  })
-                }
-                disabled={!vinculoClienteProcOk || (featureFlags.useApiImoveis && !_apiImovelId)}
-                title={
-                  !vinculoClienteProcOk
-                    ? 'Informe Código e Proc. para vincular ao Cliente e Processo'
-                    : featureFlags.useApiImoveis && !_apiImovelId
-                      ? 'Salve o cadastro do imóvel na API antes de abrir o financeiro (é necessário o id interno do registro).'
-                      : 'Movimentações do Financeiro com o mesmo Cod. cliente e Proc. (conta corrente do processo)'
-                }
-                className={btnTealOutline}
-              >
-                <Landmark className="w-4 h-4 shrink-0" aria-hidden />
-                Conta Corrente
-              </button>
-
-              <Field label="Código" className="w-[5.5rem] shrink-0">
-                <input type="text" value={codigo} onChange={(e) => setCodigo(e.target.value)} className={inputClass} />
-              </Field>
-              <Field label="Proc." className="w-[5.5rem] shrink-0">
-                <input type="text" value={proc} onChange={(e) => setProc(e.target.value)} className={inputClass} />
-              </Field>
-            </div>
-
-            {featureFlags.useApiImoveis ? (
-              <div className="mt-4 pt-4 border-t border-slate-200/90 dark:border-white/[0.08] w-full">
-                <div className="relative max-w-2xl">
-                  <Field label="Pesquisar (condomínio e unidade)">
-                    <div className="relative">
-                      <Search
-                        className="pointer-events-none absolute left-3 top-1/2 z-[1] h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500"
-                        aria-hidden
-                      />
-                      <input
-                        type="search"
-                        value={pesquisaCondUnidade}
-                        onChange={(e) => setPesquisaCondUnidade(e.target.value)}
-                        placeholder="Ex.: Veredas 1101 ou nome do condomínio"
-                        autoComplete="off"
-                        className={`${inputClass} pl-9`}
-                        aria-autocomplete="list"
-                        aria-controls="imoveis-pesquisa-cond-unidade-listbox"
-                        aria-expanded={resultadosPesquisaCondUnidade.length > 0}
-                      />
-                    </div>
-                  </Field>
-                  {pesquisaCondUnidade.trim() ? (
-                    <ul
-                      id="imoveis-pesquisa-cond-unidade-listbox"
-                      role="listbox"
-                      className="absolute left-0 right-0 top-full z-30 mt-1 max-h-64 overflow-auto rounded-xl border border-slate-200/95 bg-white py-1 shadow-lg dark:border-white/[0.12] dark:bg-[#141c2c]"
-                    >
-                      {resultadosPesquisaCondUnidade.length === 0 ? (
-                        <li className="px-3 py-2.5 text-sm text-slate-500 dark:text-slate-400">Nenhum imóvel encontrado.</li>
-                      ) : (
-                        resultadosPesquisaCondUnidade.slice(0, 25).map((im) => (
-                          <li key={im.id} role="presentation">
-                            <button
-                              type="button"
-                              role="option"
-                              className="flex w-full flex-col items-start gap-0.5 px-3 py-2.5 text-left text-sm text-slate-800 hover:bg-slate-100 dark:text-slate-100 dark:hover:bg-white/[0.08]"
-                              onMouseDown={(e) => e.preventDefault()}
-                              onClick={() => {
-                                const n = im.numeroPlanilha != null ? Number(im.numeroPlanilha) : Number(im.id);
-                                if (Number.isFinite(n) && n > 0) {
-                                  setPesquisaCondUnidade('');
-                                  setImovelId(n);
-                                }
-                              }}
-                            >
-                              <span className="font-medium text-slate-900 dark:text-slate-50">
-                                {im.condominio?.trim() ? im.condominio : '—'}
-                                {im.unidade?.trim() ? (
-                                  <span className="font-normal text-slate-600 dark:text-slate-400">
-                                    {' '}
-                                    · {im.unidade}
-                                  </span>
-                                ) : null}
-                              </span>
-                              <span className="text-xs text-slate-500 dark:text-slate-400">
-                                id {im.id}
-                                {im.numeroPlanilha != null ? '' : ' · sem nº planilha'}
-                              </span>
-                            </button>
-                          </li>
-                        ))
-                      )}
-                      {resultadosPesquisaCondUnidade.length > 25 ? (
-                        <li className="border-t border-slate-100 px-3 py-2 text-xs text-slate-500 dark:border-white/[0.08] dark:text-slate-400">
-                          Mostrando 25 de {resultadosPesquisaCondUnidade.length} — refine a pesquisa.
-                        </li>
-                      ) : null}
-                    </ul>
-                  ) : null}
-                </div>
-                <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">
-                  Busca sem acentos; várias palavras restringem o resultado (todas devem constar em condomínio ou unidade).
-                </p>
-              </div>
-            ) : null}
-
-            {featureFlags.useApiImoveis && _apiImovelId ? (
-              <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-3 pt-3 border-t border-slate-200/90 dark:border-white/[0.08] w-full leading-relaxed">
-                Referência principal (API): imóvel{' '}
-                <span className="font-mono tabular-nums text-slate-800 dark:text-slate-200">{_apiImovelId}</span>
-                {_apiContratoId != null ? (
-                  <>
-                    {' '}
-                    · contrato <span className="font-mono tabular-nums text-slate-800 dark:text-slate-200">{_apiContratoId}</span>
-                  </>
-                ) : null}
-                {_apiClienteId != null ? (
-                  <>
-                    {' '}
-                    · cliente <span className="font-mono tabular-nums text-slate-800 dark:text-slate-200">{_apiClienteId}</span>
-                  </>
-                ) : null}
-                {_apiProcessoId != null ? (
-                  <>
-                    {' '}
-                    · processo <span className="font-mono tabular-nums text-slate-800 dark:text-slate-200">{_apiProcessoId}</span>
-                  </>
-                ) : null}
-                . Cod. e Proc. seguem como vínculo com Processos e Financeiro (legado operacional).
-              </p>
-            ) : null}
-          </div>
-
-          <div className="p-5 sm:p-6 md:p-8 space-y-8 md:space-y-10">
-            {/* Endereço + observações */}
-            <section className="grid grid-cols-1 xl:grid-cols-12 gap-6 lg:gap-8">
-              <div className="xl:col-span-8 imoveis-admin-section rounded-2xl border border-slate-200/90 dark:border-white/[0.08] bg-white/60 dark:bg-white/[0.02] p-5 sm:p-6 space-y-5 shadow-sm">
-                <h2 className={sectionHeading}>Endereço e unidade</h2>
-                <Field label="Endereço">
-                  <textarea value={endereco} onChange={(e) => setEndereco(e.target.value)} rows={4} className={`${inputClass} resize-y min-h-[5.5rem] leading-relaxed`} />
-                </Field>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-4 sm:gap-5">
-                  <Field label="Condomínio" className="sm:col-span-2 lg:col-span-6">
-                    <input type="text" value={condominio} onChange={(e) => setCondominio(e.target.value)} className={inputClass} />
-                  </Field>
-                  <Field label="Unidade" className="lg:col-span-4">
-                    <input type="text" value={unidade} onChange={(e) => setUnidade(e.target.value)} className={inputClass} />
-                  </Field>
-                  <Field label="Garagens" className="lg:col-span-2">
-                    <input type="text" value={garagens} onChange={(e) => setGaragens(e.target.value)} className={inputClass} />
-                  </Field>
-                </div>
-              </div>
-              <fieldset className="imoveis-admin-obs xl:col-span-4 rounded-2xl border border-amber-200/60 dark:border-amber-500/20 bg-amber-50/40 dark:bg-amber-950/20 p-5 sm:p-6 flex flex-col min-h-[12rem] shadow-md">
-                <legend className="text-sm font-semibold text-slate-800 dark:text-amber-100/95 px-1.5">
-                  Observações sobre o inquilino
-                </legend>
-                <p className="text-[11px] text-slate-600 dark:text-amber-200/70 mb-3 leading-snug">
-                  Notas internas sobre a locação; leitura confortável em qualquer tema.
-                </p>
-                <textarea
-                  value={observacoesInquilino}
-                  onChange={(e) => setObservacoesInquilino(e.target.value)}
-                  rows={6}
-                  className={`${inputClass} resize-y flex-1 min-h-[9rem] mt-0 bg-white/90 dark:bg-[#0d1018]/70 leading-relaxed`}
-                />
-              </fieldset>
-            </section>
-
-            {/* Garantia, locação, IPTU */}
-            <section className="imoveis-admin-section rounded-2xl border border-slate-200/90 dark:border-white/[0.08] bg-slate-50/80 dark:bg-white/[0.025] p-5 sm:p-6 md:p-7 space-y-5 sm:space-y-6 shadow-sm">
-              <h2 className={sectionHeading}>{FEATURE_IPTU_NOVO ? 'Garantia e locação' : 'Garantia, locação e IPTU'}</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
-                <Field label="Garantia">
-                  <input type="text" value={garantia} onChange={(e) => setGarantia(e.target.value)} className={inputClass} />
-                </Field>
-                <Field label="Valor da Garantia">
-                  <input type="text" value={valorGarantia} onChange={(e) => setValorGarantia(e.target.value)} className={inputClass} />
-                </Field>
-                <Field label="Valor da Locação">
-                  <input type="text" value={valorLocacao} onChange={(e) => setValorLocacao(e.target.value)} className={inputClass} />
-                </Field>
-                <Field label="Dia Pag. Aluguel">
-                  <input type="text" value={diaPagAluguel} onChange={(e) => setDiaPagAluguel(e.target.value)} className={inputClass} />
-                </Field>
-              </div>
-              <div className="flex flex-wrap items-end gap-3 pt-1">
-                <button type="button" className={btnSecondary}>
-                  Catálogo
-                </button>
-                <button type="button" className={btnSecondary}>
-                  Doc. Interessados
-                </button>
-                <Field label="Data pag. 1ª Tx. Cond." className="w-full sm:w-44">
-                  <input
-                    type="text"
-                    value={dataPag1TxCond}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setDataPag1TxCond(resolverAliasHojeEmTexto(v, 'br') ?? v);
-                    }}
-                    placeholder="dd/mm/aaaa ou hj"
-                    className={inputClass}
-                  />
-                </Field>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5 items-end pt-5 border-t border-slate-200/90 dark:border-white/[0.08]">
-                <Field label="Inscrição Imobiliária" className="sm:col-span-2">
-                  <input type="text" value={inscricaoImobiliaria} onChange={(e) => setInscricaoImobiliaria(e.target.value)} className={inputClass} />
-                </Field>
-                {!FEATURE_IPTU_NOVO ? (
-                  <>
-                    <Field label="Existe Deb. IPTU">
-                      <input type="text" value={existeDebIptu} onChange={(e) => setExisteDebIptu(e.target.value)} className={inputClass} />
-                    </Field>
-                    <Field label="Data Cons.">
-                      <input type="text" value={dataConsIptu} onChange={(e) => setDataConsIptu(e.target.value)} className={inputClass} />
-                    </Field>
-                    <div className="sm:col-span-2 lg:col-span-1 flex pb-0.5">
-                      <button type="button" onClick={() => setShowModalIptu(true)} className={`${btnPrimary} w-full sm:w-auto`}>
-                        IPTU
-                      </button>
-                    </div>
-                  </>
-                ) : (
-                  <div className="sm:col-span-2 flex pb-0.5">
-                    {featureFlags.useApiImoveis && Number(_apiImovelId) > 0 ? (
-                      <button
-                        type="button"
-                        onClick={() => navigate(`/iptu/${_apiImovelId}`)}
-                        className={`${btnPrimary} w-full sm:w-auto`}
-                      >
-                        Gerenciar IPTU
-                      </button>
-                    ) : null}
-                  </div>
-                )}
-              </div>
-            </section>
-
-            {/* Cinco colunas: água, energia, gás, contrato, condomínio/repasse */}
-            <section className="space-y-5">
-              <h2 className={`${sectionHeading} mb-1`}>Água, energia, gás, contrato e condomínio</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4 lg:gap-5">
-                <BlocoUtilidade titulo="Água" accent="agua">
-                  <Field label="Número">
-                    <input type="text" value={aguaNumero} onChange={(e) => setAguaNumero(e.target.value)} className={inputClass} />
-                  </Field>
-                  <Field label="Data cons.">
-                    <input type="text" value={dataConsAgua} onChange={(e) => setDataConsAgua(e.target.value)} className={inputClass} />
-                  </Field>
-                  <Field label="Existe débito">
-                    <input type="text" value={existeDebAgua} onChange={(e) => setExisteDebAgua(e.target.value)} className={inputClass} />
-                  </Field>
-                  <Field label="Dia venc.">
-                    <input type="text" value={diaVencAgua} onChange={(e) => setDiaVencAgua(e.target.value)} className={inputClass} />
-                  </Field>
-                </BlocoUtilidade>
-                <BlocoUtilidade titulo="Energia" accent="energia">
-                  <Field label="Número">
-                    <input type="text" value={energiaNumero} onChange={(e) => setEnergiaNumero(e.target.value)} className={inputClass} />
-                  </Field>
-                  <Field label="Data cons.">
-                    <input type="text" value={dataConsEnergia} onChange={(e) => setDataConsEnergia(e.target.value)} className={inputClass} />
-                  </Field>
-                  <Field label="Existe débito">
-                    <input type="text" value={existeDebEnergia} onChange={(e) => setExisteDebEnergia(e.target.value)} className={inputClass} />
-                  </Field>
-                  <Field label="Dia venc.">
-                    <input type="text" value={diaVencEnergia} onChange={(e) => setDiaVencEnergia(e.target.value)} className={inputClass} />
-                  </Field>
-                </BlocoUtilidade>
-                <BlocoUtilidade titulo="Gás" accent="gas">
-                  <Field label="Número">
-                    <input type="text" value={gasNumero} onChange={(e) => setGasNumero(e.target.value)} className={inputClass} />
-                  </Field>
-                  <Field label="Data cons.">
-                    <input type="text" value={dataConsGas} onChange={(e) => setDataConsGas(e.target.value)} className={inputClass} />
-                  </Field>
-                  <Field label="Existe débito">
-                    <input type="text" value={existeDebGas} onChange={(e) => setExisteDebGas(e.target.value)} className={inputClass} />
-                  </Field>
-                  <Field label="Dia venc.">
-                    <input type="text" value={diaVencGas} onChange={(e) => setDiaVencGas(e.target.value)} className={inputClass} />
-                  </Field>
-                </BlocoUtilidade>
-                <BlocoUtilidade titulo="Contrato" accent="contrato">
-                  <button type="button" onClick={() => setShowModalContrato(true)} className={`${btnPrimary} w-full`}>
-                    Contrato
-                  </button>
-                  <Field label="Data início">
-                    <input type="text" value={dataInicioContrato} onChange={(e) => setDataInicioContrato(e.target.value)} className={inputClass} />
-                  </Field>
-                  <Field label="Data fim">
-                    <input type="text" value={dataFimContrato} onChange={(e) => setDataFimContrato(e.target.value)} className={inputClass} />
-                  </Field>
-                </BlocoUtilidade>
-                <BlocoUtilidade titulo="Condomínio / repasse" accent="cond">
-                  <Field label="Data cons. débito cond.">
-                    <input type="text" value={dataConsDebitoCond} onChange={(e) => setDataConsDebitoCond(e.target.value)} className={inputClass} />
-                  </Field>
-                  <Field label="Existe débito cond.">
-                    <input type="text" value={existeDebitoCond} onChange={(e) => setExisteDebitoCond(e.target.value)} className={inputClass} />
-                  </Field>
-                  <Field label="Dia repasse">
-                    <input type="text" value={diaRepasse} onChange={(e) => setDiaRepasse(e.target.value)} className={inputClass} />
-                  </Field>
-                </BlocoUtilidade>
-              </div>
-            </section>
-
-            <fieldset className="imoveis-admin-section rounded-2xl border border-slate-200/90 dark:border-white/[0.08] bg-slate-50/60 dark:bg-white/[0.02] p-5 sm:p-6 shadow-sm">
-              <legend className="text-sm font-semibold text-slate-800 dark:text-slate-100 px-2">Dados bancários</legend>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mb-4 mt-1 leading-relaxed">
-                Conta para repasse (banco, agência, conta, titular, PIX).
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
-                <Field label="Banco">
-                  <input type="text" value={banco} onChange={(e) => setBanco(e.target.value)} className={inputClass} />
-                </Field>
-                <Field label="Nº Banco">
-                  <input type="text" value={numeroBanco} onChange={(e) => setNumeroBanco(e.target.value)} className={inputClass} />
-                </Field>
-                <Field label="Agência">
-                  <input type="text" value={agencia} onChange={(e) => setAgencia(e.target.value)} className={inputClass} />
-                </Field>
-                <Field label="Conta">
-                  <input type="text" value={conta} onChange={(e) => setConta(e.target.value)} className={inputClass} />
-                </Field>
-                <Field label="CPF">
-                  <input type="text" value={cpfBanco} onChange={(e) => setCpfBanco(e.target.value)} className={inputClass} />
-                </Field>
-                <Field label="Chave Pix" className="lg:col-span-2">
-                  <input type="text" value={chavePix} onChange={(e) => setChavePix(e.target.value)} className={inputClass} />
-                </Field>
-                <Field label="Titular" className="sm:col-span-2 lg:col-span-4">
-                  <input type="text" value={titular} onChange={(e) => setTitular(e.target.value)} className={inputClass} />
-                </Field>
-              </div>
-            </fieldset>
-
-            <section className="space-y-6">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 items-start">
-                <fieldset className="rounded-2xl border border-slate-200/90 dark:border-white/[0.08] p-5 sm:p-6 space-y-4 bg-white/80 dark:bg-[#151d2c]/90 shadow-sm">
-                  <legend className="text-sm font-semibold text-slate-800 dark:text-slate-100 px-2">Proprietário</legend>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        navigate('/clientes/lista', {
-                          state: {
-                            origemImoveis: true,
-                            papelPropriedade: 'proprietario',
-                            imovelId,
-                            codigoImovel: String(codigo ?? ''),
-                          },
-                        })
-                      }
-                      className="inline-flex items-center gap-1.5 text-sm font-semibold text-cyan-700 dark:text-cyan-400 hover:text-cyan-900 dark:hover:text-cyan-300 underline underline-offset-4 decoration-cyan-500/50 hover:decoration-cyan-600 transition-colors"
-                    >
-                      <UserPlus className="w-4 h-4 shrink-0" aria-hidden />
-                      Vincular pessoa
-                    </button>
-                  </div>
-                  <Field label="Número da pessoa">
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={proprietarioNumeroPessoa}
-                      onChange={(e) => setProprietarioNumeroPessoa(e.target.value)}
-                      className={inputClass}
-                      autoComplete="off"
-                    />
-                    {proprietarioCadastroCarregando ? (
-                      <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">Carregando cadastro de pessoas…</p>
-                    ) : null}
-                    {proprietarioCadastroErro ? (
-                      <p className="mt-1.5 text-xs text-amber-700 dark:text-amber-400/90">{proprietarioCadastroErro}</p>
-                    ) : null}
-                  </Field>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 -mt-1">
-                    Nome, CPF e contato são preenchidos automaticamente a partir do cadastro de Pessoas (somente leitura nesta tela).
-                  </p>
-                  <Field label="Nome">
-                    <input
-                      type="text"
-                      readOnly
-                      value={proprietario}
-                      className={inputReadOnlyClass}
-                      aria-readonly="true"
-                    />
-                  </Field>
-                  <Field label="CPF">
-                    <input
-                      type="text"
-                      readOnly
-                      value={proprietarioCpf}
-                      className={inputReadOnlyClass}
-                      aria-readonly="true"
-                    />
-                  </Field>
-                  <Field label="Contato">
-                    <input
-                      type="text"
-                      readOnly
-                      value={proprietarioContato}
-                      className={inputReadOnlyClass}
-                      aria-readonly="true"
-                    />
-                  </Field>
-                </fieldset>
-
-                <fieldset className="rounded-2xl border border-slate-200/90 dark:border-white/[0.08] p-5 sm:p-6 space-y-4 bg-white/80 dark:bg-[#151d2c]/90 min-w-0 shadow-sm">
-                  <legend className="text-sm font-semibold text-slate-800 dark:text-slate-100 px-2">Inquilino</legend>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        navigate('/clientes/lista', {
-                          state: {
-                            origemImoveis: true,
-                            papelPropriedade: 'inquilino',
-                            imovelId,
-                            codigoImovel: String(codigo ?? ''),
-                          },
-                        })
-                      }
-                      className="inline-flex items-center gap-1.5 text-sm font-semibold text-cyan-700 dark:text-cyan-400 hover:text-cyan-900 dark:hover:text-cyan-300 underline underline-offset-4 decoration-cyan-500/50 hover:decoration-cyan-600 transition-colors"
-                    >
-                      <UserPlus className="w-4 h-4 shrink-0" aria-hidden />
-                      Vincular pessoa
-                    </button>
-                  </div>
-                  <Field label="Número da pessoa">
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={inquilinoNumeroPessoa}
-                      onChange={(e) => setInquilinoNumeroPessoa(e.target.value)}
-                      className={inputClass}
-                      autoComplete="off"
-                    />
-                    {inquilinoCadastroCarregando ? (
-                      <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">Carregando cadastro de pessoas…</p>
-                    ) : null}
-                    {inquilinoCadastroErro ? (
-                      <p className="mt-1.5 text-xs text-amber-700 dark:text-amber-400/90">{inquilinoCadastroErro}</p>
-                    ) : null}
-                  </Field>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 -mt-1">
-                    Nome, CPF e contato são preenchidos automaticamente a partir do cadastro de Pessoas (somente leitura nesta tela).
-                  </p>
-                  <Field label="Nome">
-                    <input
-                      type="text"
-                      readOnly
-                      value={inquilino}
-                      className={inputReadOnlyClass}
-                      aria-readonly="true"
-                    />
-                  </Field>
-                  <Field label="CPF">
-                    <input
-                      type="text"
-                      readOnly
-                      value={inquilinoCpf}
-                      className={inputReadOnlyClass}
-                      aria-readonly="true"
-                    />
-                  </Field>
-                  <Field label="Contato">
-                    <input
-                      type="text"
-                      readOnly
-                      value={inquilinoContato}
-                      className={inputReadOnlyClass}
-                      aria-readonly="true"
-                    />
-                  </Field>
-                </fieldset>
-              </div>
-              <Field label="Link Vistoria" className="max-w-full pt-2">
-                <input type="text" value={linkVistoria} onChange={(e) => setLinkVistoria(e.target.value)} className={inputClass} />
-              </Field>
-            </section>
-
-            <footer className="flex justify-center pt-6 border-t border-slate-200/90 dark:border-white/[0.08]">
-              <div className="flex flex-wrap gap-3">
-                <button type="button" onClick={salvarCadastroAtual} disabled={apiSaving} className={`${btnPrimary} px-10 py-3 font-semibold`}>
-                  {apiSaving ? 'Salvando...' : 'Salvar'}
-                </button>
-                <button type="button" onClick={() => window.history.back()} className={`${btnSecondary} px-12 py-3 font-semibold`}>
-                  Fechar
-                </button>
-              </div>
-            </footer>
-          </div>
+        <div className="imoveis-admin-sheet overflow-visible">
+          <ImoveisCadastroView
+            apiLoading={apiLoading}
+            apiError={apiError}
+            apiSuccess={apiSuccess}
+            setApiSuccess={setApiSuccess}
+            apiSaving={apiSaving}
+            imovelId={imovelId}
+            setImovelId={setImovelId}
+            imovelOcupado={imovelOcupado}
+            setImovelOcupado={setImovelOcupado}
+            codigo={codigo}
+            setCodigo={setCodigo}
+            proc={proc}
+            setProc={setProc}
+            _apiImovelId={_apiImovelId}
+            _apiContratoId={_apiContratoId}
+            _apiClienteId={_apiClienteId}
+            _apiProcessoId={_apiProcessoId}
+            pesquisaCondUnidade={pesquisaCondUnidade}
+            setPesquisaCondUnidade={setPesquisaCondUnidade}
+            resultadosPesquisaCondUnidade={resultadosPesquisaCondUnidade}
+            onSelecionarImovelPesquisa={onSelecionarImovelPesquisa}
+            endereco={endereco}
+            setEndereco={setEndereco}
+            condominio={condominio}
+            setCondominio={setCondominio}
+            unidade={unidade}
+            setUnidade={setUnidade}
+            garagens={garagens}
+            setGaragens={setGaragens}
+            onCopiarEndereco={onCopiarEndereco}
+            mapsUrl={mapsUrl}
+            garantia={garantia}
+            setGarantia={setGarantia}
+            valorGarantia={valorGarantia}
+            setValorGarantia={setValorGarantia}
+            valorLocacao={valorLocacao}
+            setValorLocacao={setValorLocacao}
+            diaPagAluguel={diaPagAluguel}
+            setDiaPagAluguel={setDiaPagAluguel}
+            dataPag1TxCond={dataPag1TxCond}
+            setDataPag1TxCond={setDataPag1TxCond}
+            inscricaoImobiliaria={inscricaoImobiliaria}
+            setInscricaoImobiliaria={setInscricaoImobiliaria}
+            existeDebIptu={existeDebIptu}
+            setExisteDebIptu={setExisteDebIptu}
+            dataConsIptu={dataConsIptu}
+            setDataConsIptu={setDataConsIptu}
+            aguaNumero={aguaNumero}
+            setAguaNumero={setAguaNumero}
+            dataConsAgua={dataConsAgua}
+            setDataConsAgua={setDataConsAgua}
+            existeDebAgua={existeDebAgua}
+            setExisteDebAgua={setExisteDebAgua}
+            diaVencAgua={diaVencAgua}
+            setDiaVencAgua={setDiaVencAgua}
+            energiaNumero={energiaNumero}
+            setEnergiaNumero={setEnergiaNumero}
+            dataConsEnergia={dataConsEnergia}
+            setDataConsEnergia={setDataConsEnergia}
+            existeDebEnergia={existeDebEnergia}
+            setExisteDebEnergia={setExisteDebEnergia}
+            diaVencEnergia={diaVencEnergia}
+            setDiaVencEnergia={setDiaVencEnergia}
+            gasNumero={gasNumero}
+            setGasNumero={setGasNumero}
+            dataConsGas={dataConsGas}
+            setDataConsGas={setDataConsGas}
+            existeDebGas={existeDebGas}
+            setExisteDebGas={setExisteDebGas}
+            diaVencGas={diaVencGas}
+            setDiaVencGas={setDiaVencGas}
+            dataInicioContrato={dataInicioContrato}
+            setDataInicioContrato={setDataInicioContrato}
+            dataFimContrato={dataFimContrato}
+            setDataFimContrato={setDataFimContrato}
+            dataConsDebitoCond={dataConsDebitoCond}
+            setDataConsDebitoCond={setDataConsDebitoCond}
+            existeDebitoCond={existeDebitoCond}
+            setExisteDebitoCond={setExisteDebitoCond}
+            diaRepasse={diaRepasse}
+            setDiaRepasse={setDiaRepasse}
+            banco={banco}
+            setBanco={setBanco}
+            agencia={agencia}
+            setAgencia={setAgencia}
+            numeroBanco={numeroBanco}
+            setNumeroBanco={setNumeroBanco}
+            conta={conta}
+            setConta={setConta}
+            cpfBanco={cpfBanco}
+            setCpfBanco={setCpfBanco}
+            titular={titular}
+            setTitular={setTitular}
+            chavePix={chavePix}
+            setChavePix={setChavePix}
+            proprietarioNumeroPessoa={proprietarioNumeroPessoa}
+            setProprietarioNumeroPessoa={setProprietarioNumeroPessoa}
+            proprietario={proprietario}
+            proprietarioCpf={proprietarioCpf}
+            proprietarioContato={proprietarioContato}
+            proprietarioCadastroCarregando={proprietarioCadastroCarregando}
+            proprietarioCadastroErro={proprietarioCadastroErro}
+            inquilinoNumeroPessoa={inquilinoNumeroPessoa}
+            setInquilinoNumeroPessoa={setInquilinoNumeroPessoa}
+            inquilino={inquilino}
+            inquilinoCpf={inquilinoCpf}
+            inquilinoContato={inquilinoContato}
+            inquilinoCadastroCarregando={inquilinoCadastroCarregando}
+            inquilinoCadastroErro={inquilinoCadastroErro}
+            observacoesInquilino={observacoesInquilino}
+            setObservacoesInquilino={setObservacoesInquilino}
+            linkVistoria={linkVistoria}
+            setLinkVistoria={setLinkVistoria}
+            onSalvar={salvarCadastroAtual}
+            onAbrirProc={abrirProcessoDoImovel}
+            onContaCorrente={() =>
+              navigate({
+                pathname: '/imoveis/financeiro',
+                hash: '#extrato-imoveis',
+                state: { imovelId: _apiImovelId ?? imovelId },
+              })
+            }
+            contaCorrenteDisabled={contaCorrenteDisabled}
+            contaCorrenteTitle={contaCorrenteTitle}
+            onGerenciarIptu={() => navigate(`/iptu/${_apiImovelId}`)}
+            onRelatorio={() => navigate('/relatorio-imoveis')}
+            onFechar={() => window.history.back()}
+            onAbrirContrato={() => setShowModalContrato(true)}
+            onAbrirIptu={() => setShowModalIptu(true)}
+            onVincularProprietario={() =>
+              navigate('/clientes/lista', {
+                state: {
+                  origemImoveis: true,
+                  papelPropriedade: 'proprietario',
+                  imovelId,
+                  codigoImovel: String(codigo ?? ''),
+                },
+              })
+            }
+            onVincularInquilino={() =>
+              navigate('/clientes/lista', {
+                state: {
+                  origemImoveis: true,
+                  papelPropriedade: 'inquilino',
+                  imovelId,
+                  codigoImovel: String(codigo ?? ''),
+                },
+              })
+            }
+          />
         </div>
       </div>
+
+      <ModalVinculosProcessoImovel
+        open={showModalVinculosProc}
+        onClose={() => setShowModalVinculosProc(false)}
+        numeroPlanilha={Number(imovelId) || 1}
+        imovelIdApi={_apiImovelId}
+        codigoCadastro={codigo}
+        procCadastro={proc}
+        onAbrirProcesso={(codigoCliente, numeroInterno) => {
+          setShowModalVinculosProc(false);
+          navegarParaProcesso(codigoCliente, numeroInterno);
+        }}
+      />
 
       {/* Modal Informações sobre o Contrato */}
       {showModalContrato && (

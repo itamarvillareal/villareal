@@ -533,7 +533,14 @@ export async function buscarProcessoPorChaveNatural(codigoCliente, numeroInterno
     const body = await request('/api/processos', {
       query: { codigoCliente: cod, numeroInterno: String(ni) },
     });
-    return extrairProcessoDaRespostaChaveNatural(body, ni);
+    const direto = extrairProcessoDaRespostaChaveNatural(body, ni);
+    if (direto) return direto;
+    /** Backend Docker antigo ignora `numeroInterno` e devolve só a 1.ª página — varrer listagem. */
+    if (body != null && typeof body === 'object' && Array.isArray(body.content)) {
+      const todos = await listarProcessosPorCodigoClientePaginado(cod);
+      return todos.find((p) => Number(p?.numeroInterno) === ni) ?? null;
+    }
+    return null;
   } catch (e) {
     const msg = String(e?.message ?? '');
     if (msg.includes('404') || /não encontrad/i.test(msg)) return null;

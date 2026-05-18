@@ -69,7 +69,33 @@ import {
   Users,
   Undo2,
   Copy,
+  AlertTriangle,
+  CircleDollarSign,
+  GitBranch,
+  Scale,
+  Link2,
+  Building2,
+  Clock,
 } from 'lucide-react';
+import {
+  ProcessosAccordionSection,
+  ProcessosStickyHeader,
+  ProcessosSummaryCards,
+  ProcessosTabButton,
+  ProcessosToast,
+  diasAteDataBr,
+  formatValorCausaExibicao,
+  processosBtnGhost,
+  processosBtnIndigo,
+  processosBtnOutlineIndigo,
+  processosBtnPrimary,
+  processosBtnSecondary,
+  processosInputClass,
+  processosInputDenseClass,
+  processosInputDenseReadOnlyClass,
+  processosInputReadOnlyClass,
+  processosLinkClass,
+} from './processos/ProcessosAdminLayout.jsx';
 import { ModalRelatorioPublicacoesProcesso, PublicacoesRelatorioConteudo } from './ModalRelatorioPublicacoesProcesso.jsx';
 import { listarPublicacoesRelatorioPorProcesso } from '../repositories/publicacoesRepository.js';
 import { ModalCriarTarefaContextual } from './ModalCriarTarefaContextual.jsx';
@@ -438,6 +464,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   const [modalTramitacaoAberto, setModalTramitacaoAberto] = useState(false);
   const [tramitacaoDraft, setTramitacaoDraft] = useState('');
   const [tabAtiva, setTabAtiva] = useState('historico');
+  const [historicoToast, setHistoricoToast] = useState('');
   const abasProcessoRef = useRef(null);
   const [modalAcoesRedacaoAberto, setModalAcoesRedacaoAberto] = useState(false);
   const [indiceAcaoRedacaoFocada, setIndiceAcaoRedacaoFocada] = useState(0);
@@ -2151,6 +2178,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
           permitirComEdicaoDesabilitada: true,
         });
       }
+      setHistoricoToast('Informação atualizada no histórico.');
       return;
     }
 
@@ -2192,6 +2220,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
         permitirComEdicaoDesabilitada: true,
       });
     }
+    setHistoricoToast('Informação adicionada ao histórico.');
   }
 
   function desfazerUltimaInformacaoHistorico() {
@@ -2271,17 +2300,25 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     faseSelecionadaCompacta.includes('procadministrativo') ||
     (faseSelecionadaCompacta.includes('proced') && faseSelecionadaCompacta.includes('adm'));
 
-  const inputClass = "w-full px-2 py-1.5 border border-slate-300 rounded text-sm bg-white";
-  /** Fundo neutro + select-text: em readOnly o usuário ainda seleciona/copia o conteúdo. */
-  const inputDisabledClass = "w-full px-2 py-1.5 border border-slate-300 rounded text-sm bg-slate-50 select-text";
-  /** Edição desabilitada: campos não editáveis, mas texto ainda selecionável/copiável (readOnly, não disabled). */
+  const inputClass = processosInputClass;
+  const inputDisabledClass = processosInputReadOnlyClass;
   const camposBloqueados = edicaoDesabilitada;
   const clsCampo = camposBloqueados ? inputDisabledClass : inputClass;
   /** Campos mais baixos na secção «Dados processuais» (menos rolagem). */
-  const inputClassDenso = 'w-full px-1.5 py-1 border border-slate-300 rounded text-sm leading-tight bg-white';
-  const inputDisabledClassDenso =
-    'w-full px-1.5 py-1 border border-slate-300 rounded text-sm leading-tight bg-slate-50 select-text';
+  const inputClassDenso = processosInputDenseClass;
+  const inputDisabledClassDenso = processosInputDenseReadOnlyClass;
   const clsCampoDenso = camposBloqueados ? inputDisabledClassDenso : inputClassDenso;
+
+  const diasPrazoFatal = diasAteDataBr(prazoFatal);
+  const prazoUrgente = diasPrazoFatal != null && diasPrazoFatal >= 0 && diasPrazoFatal < 5;
+  const valorCausaFmt = formatValorCausaExibicao(valorCausa);
+  const valorCausaZerado = !String(valorCausa ?? '').trim() || valorCausaFmt === 'R$ 0,00';
+
+  useEffect(() => {
+    if (!historicoToast) return undefined;
+    const t = window.setTimeout(() => setHistoricoToast(''), 3200);
+    return () => window.clearTimeout(t);
+  }, [historicoToast]);
 
   const agendarAudienciaApiDebounceRef = useRef(null);
 
@@ -2436,77 +2473,72 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     []
   );
 
+  const audienciaResumo = [audienciaData, audienciaHora, audienciaTipo].filter((x) => String(x ?? '').trim()).join(' · ') || 'Sem audiência agendada';
+
   return (
     <div
-      className={`${isEmbedded ? 'min-h-0 w-full' : 'min-h-full'} bg-gradient-to-br from-slate-100 via-indigo-50/35 to-emerald-50/45 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d]`}
+      className={`${isEmbedded ? 'min-h-0 w-full' : 'min-h-full'} bg-slate-100`}
     >
-      <div className={`max-w-[1400px] mx-auto px-3 py-3 ${isEmbedded ? 'min-w-0' : ''}`}>
-        {/* Cabeçalho: Processos + X */}
-        <header className="mb-3 flex flex-col gap-2 rounded-xl border border-slate-200/80 bg-white/90 px-3 py-2.5 shadow-sm backdrop-blur-sm sm:flex-row sm:items-center sm:justify-between sm:gap-2">
-          <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-            <h1 className="text-xl font-bold bg-gradient-to-r from-slate-900 via-indigo-900 to-slate-800 dark:from-slate-100 dark:via-indigo-200 dark:to-slate-200 bg-clip-text text-transparent">
-              Processos
-            </h1>
-            <button
-              type="button"
-              onClick={() =>
-                setClientesEmbed({
-                  revision: Date.now(),
-                  routerState: buildRouterStateChaveClienteProcesso(codigoCliente, processo),
-                })
-              }
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-500/60 bg-emerald-50 text-emerald-900 text-sm font-medium hover:bg-emerald-100 shrink-0"
-              title="Abrir cadastro de clientes com este código de cliente e nº de processo (janela suspensa)"
-            >
-              <Users className="w-4 h-4" aria-hidden />
-              Clientes
-            </button>
-            <button
-              type="button"
-              onClick={() => setModalRelatorioPublicacoes(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-400 bg-white text-slate-800 text-sm font-medium hover:bg-slate-50 shrink-0"
-              title="Relatório das publicações importadas vinculadas a este processo"
-            >
-              <Newspaper className="w-4 h-4" aria-hidden />
-              Publicações
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setIndiceAcaoRedacaoFocada(0);
-                indiceAcaoRedacaoFocadaRef.current = 0;
-                setModalAcoesRedacaoAberto(true);
-              }}
-              className="inline-flex items-center justify-center p-2 rounded-lg border border-slate-400 bg-white text-slate-800 hover:bg-slate-50 shrink-0"
-              title="Escolher tipo de ação de redação para este processo"
-              aria-label="Abrir ações de redação vinculadas ao processo"
-            >
-              <IconMaoEscrevendo />
-            </button>
-            {featureFlags.useApiTarefas ? (
+      <div className={`max-w-[1400px] mx-auto px-3 sm:px-4 py-4 ${isEmbedded ? 'min-w-0' : ''}`}>
+        <ProcessosToast message={historicoToast} onClose={() => setHistoricoToast('')} />
+        <ProcessosStickyHeader
+          numeroCnj={numeroProcessoNovo}
+          cliente={cliente}
+          statusAtivo={statusAtivo}
+          faseSelecionada={faseSelecionada}
+          onFechar={() => {
+            if (isEmbedded && typeof onFecharEmbed === 'function') onFecharEmbed();
+            else window.history.back();
+          }}
+          actions={
+            <>
               <button
                 type="button"
-                onClick={abrirModalTarefaDoProcesso}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-500/60 bg-emerald-50 text-emerald-900 text-sm font-medium hover:bg-emerald-100 shrink-0"
-                title="Criar tarefa operacional vinculada a este processo (API)"
+                onClick={() =>
+                  setClientesEmbed({
+                    revision: Date.now(),
+                    routerState: buildRouterStateChaveClienteProcesso(codigoCliente, processo),
+                  })
+                }
+                className={processosBtnGhost}
               >
-                <ListTodo className="w-4 h-4" aria-hidden />
-                Criar tarefa
+                <Users className="w-4 h-4" aria-hidden />
+                Clientes
               </button>
-            ) : null}
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              if (isEmbedded && typeof onFecharEmbed === 'function') onFecharEmbed();
-              else window.history.back();
-            }}
-            className="p-2 rounded border border-slate-400 bg-white text-slate-600 hover:bg-slate-100 shrink-0"
-            aria-label="Fechar"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </header>
+              <button type="button" onClick={() => setModalRelatorioPublicacoes(true)} className={processosBtnGhost}>
+                <Newspaper className="w-4 h-4" aria-hidden />
+                Publicações
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIndiceAcaoRedacaoFocada(0);
+                  indiceAcaoRedacaoFocadaRef.current = 0;
+                  setModalAcoesRedacaoAberto(true);
+                }}
+                className={processosBtnGhost}
+                aria-label="Ações de redação"
+              >
+                <IconMaoEscrevendo />
+              </button>
+              {featureFlags.useApiTarefas ? (
+                <button type="button" onClick={abrirModalTarefaDoProcesso} className={processosBtnPrimary}>
+                  <ListTodo className="w-4 h-4" aria-hidden />
+                  Criar tarefa
+                </button>
+              ) : null}
+            </>
+          }
+        />
+        <ProcessosSummaryCards
+          cards={[
+            { variant: 'prazo', label: 'Prazo fatal / urgência', value: String(prazoFatal ?? '').trim() || 'Sem prazo fatal', muted: !String(prazoFatal ?? '').trim(), alert: prazoUrgente, Icon: AlertTriangle },
+            { variant: 'audiencia', label: 'Audiência', value: audienciaResumo, muted: audienciaResumo === 'Sem audiência agendada', Icon: Calendar, extra: <span className={`mt-1 inline-flex text-[10px] font-semibold px-2 py-0.5 rounded-full border ${avisoAudiencia === 'avisado' ? 'bg-green-100 text-green-700 border-green-300' : 'bg-amber-100 text-amber-700 border-amber-300'}`}>{avisoAudiencia === 'avisado' ? 'Avisado' : 'Não avisado'}</span> },
+            { variant: 'fase', label: 'Fase processual', value: faseSelecionada || 'Não definida', muted: !String(faseSelecionada ?? '').trim(), Icon: GitBranch },
+            { variant: 'valor', label: 'Valor da causa', value: valorCausaFmt, muted: valorCausaZerado, Icon: CircleDollarSign },
+          ]}
+        />
+
         {featureFlags.useApiProcessos && apiSaving ? (
           <div className="mb-3 rounded border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm text-indigo-800">
             Salvando alterações no backend...
@@ -2543,64 +2575,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
           </div>
         ) : null}
 
-        <div
-          className={`rounded-2xl border shadow-md overflow-hidden ${
-            isProtocoloMovimentacao
-              ? 'bg-black border-slate-700 text-slate-100 dark-mode-protocolo'
-              : isAguardandoProvidencia
-                ? 'bg-sky-700 border-sky-800 text-white processos-fase-aguardando-providencia'
-              : isProcAdministrativo
-                ? 'bg-teal-200 border-cyan-300'
-              : isAgPeticionar
-                ? 'bg-red-400/85 border-red-700 text-slate-900'
-                : isAgDocumentos
-                  ? 'bg-yellow-200 border-yellow-400'
-                  : isAgVerificacao
-                    ? 'bg-purple-200 border-purple-400'
-                    : 'bg-white border-slate-300'
-          }`}
-        >
-          <div className="p-2.5 sm:p-3 space-y-2.5">
-            {/* Faixa CNJ + cliente — distinto de valor da causa e dados internos */}
-            <div className="rounded-lg border border-indigo-400/40 bg-gradient-to-br from-indigo-950 via-slate-900 to-indigo-950 px-3 py-2 shadow-md ring-1 ring-indigo-500/30 text-white">
-              <div className="flex flex-wrap items-start justify-between gap-2.5">
-                <div className="min-w-0 flex-1">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-indigo-200/90 mb-0.5">
-                    Número no tribunal (CNJ)
-                  </p>
-                  <p
-                    className="font-mono text-[15px] sm:text-lg font-semibold tracking-tight break-all leading-snug"
-                    title={(numeroProcessoNovo || '').trim() || undefined}
-                  >
-                    {(numeroProcessoNovo || '').trim() || '—'}
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-center gap-1.5 shrink-0">
-                  <span
-                    className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
-                      statusAtivo
-                        ? 'bg-emerald-400/20 text-emerald-100 ring-1 ring-emerald-400/35'
-                        : 'bg-slate-600/60 text-slate-100'
-                    }`}
-                  >
-                    {statusAtivo ? 'Ativo' : 'Inativo'}
-                  </span>
-                  <span
-                    className="rounded-full bg-white/12 px-2 py-0.5 text-[10px] font-semibold text-indigo-50 max-w-[10.5rem] sm:max-w-[14rem] truncate ring-1 ring-white/15"
-                    title={faseSelecionada || undefined}
-                  >
-                    {faseSelecionada || 'Fase'}
-                  </span>
-                </div>
-              </div>
-              <div className="mt-1.5 pt-1.5 border-t border-white/15 flex items-baseline gap-2 min-w-0">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-300/90 shrink-0">Cliente</span>
-                <span className="text-sm font-medium text-white/95 truncate" title={cliente}>
-                  {cliente || '—'}
-                </span>
-              </div>
-            </div>
-
+                <div className="space-y-4 pb-6">
             {/* Urgência: prazo fatal + audiência no topo para leitura imediata */}
             <div className="rounded-lg border-2 border-violet-300/50 bg-gradient-to-br from-violet-50/95 via-white to-rose-50/40 p-2 sm:p-2 shadow-sm">
               <div className="flex flex-col lg:flex-row gap-2 lg:items-stretch">
@@ -2944,7 +2919,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                   <button
                     type="button"
                     onClick={abrirModalDetalhesPartes}
-                    className="w-full px-3 py-2 rounded-lg border border-indigo-300 bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 shadow-sm"
+                    className={processosBtnOutlineIndigo + " w-full"}
                     title="Partes e advogados — disponível mesmo com «Edição Desabilitada» marcada."
                   >
                     Detalhes das partes
@@ -3054,28 +3029,22 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                     </label>
                   </div>
                 </div>
-                <div className="rounded-lg border border-blue-200/80 border-l-4 border-l-blue-600 bg-gradient-to-br from-blue-50/90 to-slate-50/50 p-2 shadow-sm">
-                  <p className="text-xs font-bold uppercase tracking-wide text-blue-900 mb-1">Fase processual</p>
-                  <div className="space-y-0.5 max-h-[11rem] overflow-y-auto pr-0.5">
-                    {FASES.map((f) => (
-                      <label
-                        key={f}
-                        className={`flex items-center gap-2 text-sm ${camposBloqueados ? 'cursor-default opacity-90' : 'cursor-pointer'}`}
-                      >
-                        <input
-                          type="radio"
-                          name="fase"
-                          checked={faseParaRadiosProcessos === f}
-                          disabled={camposBloqueados}
-                          onChange={() => {
-                            setFaseSelecionada(f);
-                            salvarHistoricoDoProcesso(montarPayloadRegistroProcesso({ faseSelecionada: f }));
-                          }}
-                          className="text-blue-600"
-                        />
-                        {f}
-                      </label>
-                    ))}
+                <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-4 md:col-span-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                    <p className="text-sm font-semibold text-blue-800">Fase processual</p>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-medium text-slate-600">Status</span>
+                      <button type="button" disabled={camposBloqueados} onClick={() => setStatusAtivo(true)} className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${statusAtivo ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-600 border-gray-200'}`}>Ativo</button>
+                      <button type="button" disabled={camposBloqueados} onClick={() => setStatusAtivo(false)} className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${!statusAtivo ? 'bg-gray-500 text-white border-gray-500' : 'bg-white text-slate-600 border-gray-200'}`}>Inativo</button>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2 max-h-[12rem] overflow-y-auto">
+                    {FASES.map((f) => {
+                      const ativa = faseParaRadiosProcessos === f;
+                      return (
+                        <button key={f} type="button" disabled={camposBloqueados} onClick={() => { setFaseSelecionada(f); salvarHistoricoDoProcesso(montarPayloadRegistroProcesso({ faseSelecionada: f })); }} className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all duration-150 hover:scale-105 ${ativa ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-white text-blue-600 border-blue-200 hover:bg-blue-50'}`}>{f}</button>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
@@ -3122,14 +3091,14 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                       className={clsCampoDenso}
                     />
                   </Field>
-                  <div className="col-span-2 md:col-span-4 rounded-md border-l-[3px] border-amber-500 bg-amber-50/90 pl-2 pr-1.5 py-1 ring-1 ring-amber-200/50 min-w-0">
-                    <Field label="Valor da Causa" dense className="[&_label]:text-amber-900/90">
+                                    <div className="col-span-2 md:col-span-4 min-w-0 border-l-4 border-emerald-500 pl-3">
+                    <Field label="Valor da Causa" dense>
                       <input
                         type="text"
                         value={valorCausa}
                         readOnly={camposBloqueados}
                         onChange={(e) => setValorCausa(e.target.value)}
-                        className={`${clsCampoDenso} border-amber-200/90`}
+                        className={clsCampoDenso}
                       />
                     </Field>
                   </div>
@@ -3243,7 +3212,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                       <button
                         type="button"
                         onClick={abrirModalTramitacao}
-                        className="shrink-0 px-3 py-1 rounded-md border border-slate-500 bg-slate-800 text-white text-xs font-semibold hover:bg-slate-900 self-end"
+                        className={processosBtnIndigo + " shrink-0 self-end text-sm py-2"}
                       >
                         Tramitação
                       </button>
@@ -3330,23 +3299,15 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
             </section>
 
             {/* Abas: Histórico do Processo | Publicações | Observações | Execução */}
-            <section ref={abasProcessoRef} className="border-t border-slate-200/80 pt-3 mt-1">
-              <div className="flex flex-wrap items-end gap-1 mb-0">
-                <button type="button" onClick={() => setTabAtiva('historico')} className={`px-3.5 py-2 text-sm font-semibold rounded-t-lg border border-b-0 transition-colors ${tabAtiva === 'historico' ? 'bg-white text-indigo-900 border-slate-300 border-indigo-300/60 -mb-px z-[1] shadow-[0_-2px_0_0_white]' : 'bg-slate-100/90 text-slate-600 border-transparent hover:bg-slate-200/90'}`}>
-                  Histórico do Processo
-                </button>
-                <button type="button" onClick={() => setTabAtiva('publicacoes')} className={`px-3.5 py-2 text-sm font-semibold rounded-t-lg border border-b-0 transition-colors ${tabAtiva === 'publicacoes' ? 'bg-white text-indigo-900 border-slate-300 border-indigo-300/60 -mb-px z-[1] shadow-[0_-2px_0_0_white]' : 'bg-slate-100/90 text-slate-600 border-transparent hover:bg-slate-200/90'}`}>
-                  Publicações
-                </button>
-                <button type="button" onClick={() => setTabAtiva('observacoes')} className={`px-3.5 py-2 text-sm font-semibold rounded-t-lg border border-b-0 transition-colors ${tabAtiva === 'observacoes' ? 'bg-white text-indigo-900 border-slate-300 border-indigo-300/60 -mb-px z-[1] shadow-[0_-2px_0_0_white]' : 'bg-slate-100/90 text-slate-600 border-transparent hover:bg-slate-200/90'}`}>
-                  Observações
-                </button>
-                <button type="button" onClick={() => setTabAtiva('execucao')} className={`px-3.5 py-2 text-sm font-semibold rounded-t-lg border border-b-0 transition-colors ${tabAtiva === 'execucao' ? 'bg-white text-indigo-900 border-slate-300 border-indigo-300/60 -mb-px z-[1] shadow-[0_-2px_0_0_white]' : 'bg-slate-100/90 text-slate-600 border-transparent hover:bg-slate-200/90'}`}>
-                  Execução
-                </button>
+            <section ref={abasProcessoRef} className="mt-2">
+                            <div className="flex flex-wrap items-end gap-0.5 bg-white shadow-sm rounded-t-xl px-1 pt-1" role="tablist">
+                <ProcessosTabButton id="tab-historico" label="Histórico do Processo" active={tabAtiva === 'historico'} count={historico.length} onClick={() => setTabAtiva('historico')} />
+                <ProcessosTabButton id="tab-publicacoes" label="Publicações" active={tabAtiva === 'publicacoes'} count={publicacoesRelatorioItens?.length ?? 0} onClick={() => setTabAtiva('publicacoes')} />
+                <ProcessosTabButton id="tab-observacoes" label="Observações" active={tabAtiva === 'observacoes'} onClick={() => setTabAtiva('observacoes')} />
+                <ProcessosTabButton id="tab-execucao" label="Execução" active={tabAtiva === 'execucao'} onClick={() => setTabAtiva('execucao')} />
               </div>
               {tabAtiva === 'historico' && (
-                <div className="border border-slate-300 rounded-b-lg overflow-hidden bg-white shadow-sm -mt-px">
+                <div className="border border-slate-200 rounded-b-xl overflow-hidden bg-white shadow-sm p-0">
                   <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 flex flex-wrap items-end gap-3">
                     <div className="flex-1 min-w-[200px]">
                       <label className="block text-sm font-medium text-slate-700 mb-0.5">Próxima informação</label>
@@ -3355,7 +3316,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                         value={proximaInformacao}
                         onChange={(e) => setProximaInformacao(e.target.value)}
                         placeholder="Digite a próxima informação a ser inserida..."
-                        className={inputClass}
+                        className={`${inputClass} focus:ring-teal-400 focus:border-teal-400`}
                         title="Editável mesmo com «Edição Desabilitada» — para incluir andamento no histórico"
                       />
                     </div>
@@ -3376,7 +3337,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                     <button
                       type="button"
                       onClick={manterInformacaoNoHistorico}
-                      className="px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50 whitespace-nowrap"
+                      className={processosBtnPrimary + " whitespace-nowrap"}
                       title="Grava a informação no histórico (disponível mesmo com edição do formulário desabilitada)"
                     >
                       Manter Inf.
@@ -3423,9 +3384,9 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                   </div>
                   <div className="hidden max-h-[min(72vh,56rem)] min-h-[8rem] overflow-x-auto overflow-y-auto md:block">
                     <table className="w-full table-fixed border-collapse text-sm">
-                      <thead className="sticky top-0 bg-slate-100">
+                      <thead className="sticky top-0 bg-slate-50">
                         <tr>
-                          <th className="w-[6.25rem] shrink-0 py-1.5 pl-2 pr-6 text-left font-semibold text-slate-700">
+                          <th className="w-[6.25rem] shrink-0 py-2.5 pl-3 pr-6 text-left text-xs font-medium uppercase tracking-wider text-slate-500">
                             Inf.
                           </th>
                           <th className="min-w-0 w-[72%] py-1.5 pl-2 pr-3 text-left font-semibold text-slate-700">
@@ -3457,7 +3418,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                             {historicoPaginado.map((h, rowIdx) => (
                               <tr
                                 key={`hist-d-${h.id}-${rowIdx}`}
-                                className="cursor-pointer border-t border-slate-200 hover:bg-slate-50/50"
+                                className="cursor-pointer border-t border-slate-100 even:bg-slate-50/40 hover:bg-slate-100 transition-colors"
                                 onDoubleClick={() => setInformacaoModal({ info: h.info, inf: h.inf, data: h.data, usuario: h.usuario })}
                                 title="Duplo clique para ver o texto completo"
                               >
@@ -3544,12 +3505,12 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
 
             {/* Rodapé */}
             <footer className="flex flex-wrap gap-2 pt-3 border-t border-slate-200">
-              <button type="button" className="px-4 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50">
+              <button type="button" className={processosLinkClass}>
                 Texto para Área de Trasnf.
               </button>
               <button
                 type="button"
-                className="px-4 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
+                className={processosLinkClass}
                 onClick={() => {
                   setContaCorrenteModo('processo');
                   setModalContaCorrente(true);
@@ -3560,7 +3521,6 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
               </button>
             </footer>
           </div>
-        </div>
       </div>
 
       {modalTramitacaoAberto && (
