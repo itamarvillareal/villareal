@@ -135,10 +135,10 @@ export function readFirstExistingComCaminho(base, relPaths) {
     const t = readOneLineFile(abs);
     if (t != null) {
       const relNorm = rel.split(path.sep).join('/');
-      return { texto: String(t).trim(), relAposRaiz: relNorm };
+      return { texto: String(t).trim(), relAposRaiz: relNorm, abs };
     }
   }
-  return { texto: null, relAposRaiz: null };
+  return { texto: null, relAposRaiz: null, abs: null };
 }
 
 export function readFirstExisting(base, relPaths) {
@@ -434,6 +434,7 @@ export function procurarFicheiroHistoricoEmArvoreData(base, cod8, procStr, tipo,
           yyyy,
           mm,
           relAposRaiz: path.relative(base, abs).split(path.sep).join('/'),
+          abs,
         };
         break;
       }
@@ -483,6 +484,41 @@ export function lerTextoTipoHistoricoEncadeado(
     relPathsIndiceOuDataTipo(base, cod8, codNum, procStr, tipo, indice4)
   );
   return mil != null && String(mil).trim() !== '' ? String(mil).trim() : null;
+}
+
+/**
+ * Caminho absoluto do ficheiro txt usado para tipo 15/17 (informação / utilizador).
+ * Mesma ordem de procura que `lerTextoTipoHistoricoEncadeado`.
+ * @param {{ yyyy?: number, mm?: number } | null} [pastaAnoMes]
+ * @returns {string | null}
+ */
+export function resolverAbsFicheiroTipoHistoricoEncadeado(
+  base,
+  cod8,
+  codNum,
+  procStr,
+  tipo,
+  indice4,
+  pastaAnoMes
+) {
+  if (pastaAnoMes?.yyyy != null && pastaAnoMes?.mm != null) {
+    const hit = readFirstExistingComCaminho(
+      base,
+      relPathsDataPorAnoMes(cod8, procStr, pastaAnoMes.yyyy, pastaAnoMes.mm, tipo, indice4)
+    );
+    if (hit.abs) return hit.abs;
+  }
+  const yyyyBusca = pastaAnoMes?.yyyy ?? null;
+  let emArvore = procurarFicheiroHistoricoEmArvoreData(base, cod8, procStr, tipo, indice4, yyyyBusca);
+  if (!emArvore?.abs && yyyyBusca != null) {
+    emArvore = procurarFicheiroHistoricoEmArvoreData(base, cod8, procStr, tipo, indice4, null);
+  }
+  if (emArvore?.abs) return emArvore.abs;
+  const mil = readFirstExistingComCaminho(
+    base,
+    relPathsIndiceOuDataTipo(base, cod8, codNum, procStr, tipo, indice4)
+  );
+  return mil.abs ?? null;
 }
 
 /**

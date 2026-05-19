@@ -22,11 +22,13 @@ import { resolverBaseBancoDados } from './gerais-fase-processo-txt.mjs';
  * @type {Record<string, { campo: string, pasta: PastaTipo, truncar?: number }>}
  */
 export const MAPA_TIPO_NUMERICO_VB = {
-  '1.1': { campo: '_parteClienteNome', pasta: 'proc' },
+  /** Título texto do 1.º autor — não é `151.1.0` (pessoa do cadastro Clientes). */
+  '1.1': { campo: '_tituloAutor11', pasta: 'proc' },
   '3.1': { campo: 'dataProtocolo', pasta: 'proc' },
   '4.1': { campo: 'numeroProcessoAntigo', pasta: 'gerais', truncar: 100 },
   '5.1': { campo: 'numeroCnj', pasta: 'gerais', truncar: 100 },
-  '6.1': { campo: '_parteContraparteNome', pasta: 'proc' },
+  /** Título texto do 1.º réu — não confundir com partes 90/95 nem com 151.1.0. */
+  '6.1': { campo: '_tituloReu61', pasta: 'proc' },
   '7.1': { campo: 'descricaoAcao', pasta: 'proc' },
   '8.1': { campo: 'naturezaAcao', pasta: 'gerais', truncar: 255 },
   '9.1': { campo: 'valorCausa', pasta: 'gerais' },
@@ -216,7 +218,17 @@ export function lerCabecalhoProcessoTxt(codNum, numeroInterno, opts = {}) {
   /** @type {string[]} */
   const avisos = [];
 
-  /** @type {{ parteClienteNome?: string, parteContraparteNome?: string, responsavelNome?: string }} */
+  /**
+   * Rótulos 1.1 / 6.1 (só texto). Partes com pessoaId vêm de 90/95 por processo.
+   * Pessoa do cadastro Clientes: `151.1.0` em Gerais (`cliente-pessoa-151-txt.mjs`).
+   * @type {{
+   *   tituloAutor11?: string,
+   *   tituloReu61?: string,
+   *   parteClienteNome?: string,
+   *   parteContraparteNome?: string,
+   *   responsavelNome?: string,
+   * }}
+   */
   const partesTxt = {};
 
   for (const [tipoMeio, meta] of Object.entries(MAPA_TIPO_NUMERICO_VB)) {
@@ -226,13 +238,17 @@ export function lerCabecalhoProcessoTxt(codNum, numeroInterno, opts = {}) {
     const valor = normalizarValorTipo(tipoMeio, texto, meta);
     if (valor == null || valor === '') continue;
 
-    if (meta.campo === '_parteClienteNome') {
-      partesTxt.parteClienteNome = String(valor);
+    if (meta.campo === '_tituloAutor11') {
+      partesTxt.tituloAutor11 = String(valor);
+      partesTxt.parteClienteNome = partesTxt.tituloAutor11;
+      fontes.tituloAutor11 = arquivo;
       fontes.parteClienteNome = arquivo;
       continue;
     }
-    if (meta.campo === '_parteContraparteNome') {
-      partesTxt.parteContraparteNome = String(valor);
+    if (meta.campo === '_tituloReu61') {
+      partesTxt.tituloReu61 = String(valor);
+      partesTxt.parteContraparteNome = partesTxt.tituloReu61;
+      fontes.tituloReu61 = arquivo;
       fontes.parteContraparteNome = arquivo;
       continue;
     }

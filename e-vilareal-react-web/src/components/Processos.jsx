@@ -55,8 +55,6 @@ import {
   FolderOpen,
   Calendar,
   ChevronLeft,
-  ChevronUp,
-  ChevronDown,
   ArrowUp,
   ArrowDown,
   ArrowUpDown,
@@ -102,6 +100,7 @@ import { ModalCriarTarefaContextual } from './ModalCriarTarefaContextual.jsx';
 import { buildContextFromProcesso, buildContextFromProcessoComPrazoFatal } from '../data/tarefasContextualPayload.js';
 import { featureFlags } from '../config/featureFlags.js';
 import { obterClienteCadastroPorCodigo } from '../repositories/clientesRepository.js';
+import { CampoNumeroComContador } from './ui/CampoNumeroComContador.jsx';
 import {
   buscarClientePorCodigo,
   formatarUsuarioHistoricoExibicao,
@@ -2755,71 +2754,28 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                     label="Código do Cliente"
                     title="Único campo editável com «Edição desabilitada» marcada: permite trocar de cliente e recarregar o formulário."
                   >
-                    <div className="flex border border-slate-300 rounded overflow-hidden bg-white">
-                      <button
-                        type="button"
-                        className="p-1 border-r border-slate-300 hover:bg-slate-100"
-                        onClick={() => setCodigoCliente((v) => padCliente(Math.max(1, Number(normalizarCliente(v)) - 1)))}
-                      >
-                        <ChevronUp className="w-3 h-3" />
-                      </button>
-                      <input
-                        type="text"
-                        value={codigoCliente}
-                        onChange={(e) => {
-                          const digits = apenasDigitos(e.target.value);
-                          // Permite apagar completamente durante digitação (mobile/backspace).
-                          setCodigoCliente(digits);
-                        }}
-                        onBlur={(e) => {
-                          const digits = apenasDigitos(e.target.value);
-                          setCodigoCliente(padCliente(digits || '1'));
-                        }}
-                        className="w-20 px-1 py-1 text-sm text-center border-0 bg-white"
-                      />
-                      <button
-                        type="button"
-                        className="p-1 border-l border-slate-300 hover:bg-slate-100"
-                        onClick={() => setCodigoCliente((v) => padCliente(Number(normalizarCliente(v)) + 1))}
-                      >
-                        <ChevronDown className="w-3 h-3" />
-                      </button>
-                    </div>
+                    <CampoNumeroComContador
+                      variant="embedded"
+                      formato="paddedCliente"
+                      className="w-[8.75rem] shrink-0"
+                      value={codigoCliente}
+                      onChange={setCodigoCliente}
+                      ariaLabel="Código do Cliente"
+                    />
                   </Field>
                   <Field
                     label="Processo"
                     title="Único campo editável com «Edição desabilitada» marcada: permite trocar de processo e recarregar o formulário."
                   >
-                    <div className="flex border border-slate-300 rounded overflow-hidden w-20">
-                      <button
-                        type="button"
-                        className="p-1 border-r border-slate-300 hover:bg-slate-100"
-                        onClick={() => setProcesso((p) => Math.max(1, (Number(p) || 1) - 1))}
-                      >
-                        <ChevronUp className="w-3 h-3" />
-                      </button>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        value={String(processo)}
-                        onChange={(e) => {
-                          const raw = String(e.target.value ?? '').replace(/\D/g, '');
-                          if (raw === '') {
-                            setProcesso(1);
-                            return;
-                          }
-                          setProcesso(Math.max(1, Number(raw) || 1));
-                        }}
-                        className="w-10 px-0 py-1 text-sm text-center border-0 bg-white"
-                      />
-                      <button
-                        type="button"
-                        className="p-1 hover:bg-slate-100"
-                        onClick={() => setProcesso((p) => p + 1)}
-                      >
-                        <ChevronDown className="w-3 h-3" />
-                      </button>
-                    </div>
+                    <CampoNumeroComContador
+                      variant="embedded"
+                      className="w-[5.5rem] shrink-0"
+                      value={processo}
+                      onChange={setProcesso}
+                      min={1}
+                      ariaLabel="Número do processo"
+                      inputClassName="text-center"
+                    />
                   </Field>
                   <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer shrink-0">
                     <input type="checkbox" checked={edicaoDesabilitada} onChange={(e) => setEdicaoDesabilitada(e.target.checked)} className="rounded border-slate-300" />

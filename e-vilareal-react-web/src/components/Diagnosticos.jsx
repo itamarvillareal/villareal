@@ -27,6 +27,7 @@ import { listarClientesIndiceCadastro } from '../repositories/clientesRepository
 import {
   listarProcessosPorNumeroProcessoDiagnostico,
   listarHistoricoPorDataDiagnostico,
+  erroEndpointHistoricoDataIndisponivel,
   listarProcessosPorPrazoFatalDiagnostico,
   listarProcessosVinculoPessoaDiagnostico,
 } from '../repositories/processosRepository.js';
@@ -219,6 +220,7 @@ export function Diagnosticos() {
   const [modalResultadoAberto, setModalResultadoAberto] = useState(false);
   const [resultadoConsulta, setResultadoConsulta] = useState([]);
   const [rotuloResultadoConsulta, setRotuloResultadoConsulta] = useState('Histórico gravado na data');
+  const [consultaHistoricoErro, setConsultaHistoricoErro] = useState('');
   const [modalPrazoFatalAberto, setModalPrazoFatalAberto] = useState(false);
   const [dataPrazoFatal, setDataPrazoFatal] = useState('');
   const [modalResultadoPrazoFatalAberto, setModalResultadoPrazoFatalAberto] = useState(false);
@@ -344,11 +346,20 @@ export function Diagnosticos() {
     const bruto = String(dataConsulta ?? '').trim();
     if (!bruto) return;
     const dataResolvida = resolverAliasHojeEmTexto(bruto, 'br') ?? bruto;
+    setConsultaHistoricoErro('');
     try {
       const itens = await listarHistoricoPorDataDiagnostico(dataResolvida);
       setResultadoConsulta(itens);
-    } catch {
-      setResultadoConsulta(listarHistoricoPorData(dataResolvida));
+    } catch (e) {
+      const locais = listarHistoricoPorData(dataResolvida);
+      setResultadoConsulta(locais);
+      if (locais.length === 0 && erroEndpointHistoricoDataIndisponivel(e)) {
+        setConsultaHistoricoErro(
+          'O backend em execução não expõe o relatório na API (imagem Docker desatualizada). Reinicie com: docker compose -f docker-compose.yml -f docker-compose.local-db.yml up -d --build backend',
+        );
+      } else if (locais.length === 0) {
+        setConsultaHistoricoErro(String(e?.message || 'Falha ao consultar histórico na API.'));
+      }
     }
     setRotuloResultadoConsulta('Histórico gravado na data');
     setModalConsultasRealizadasAberto(false);
@@ -787,7 +798,7 @@ export function Diagnosticos() {
           </div>
           <p className="text-xs text-slate-600 text-center leading-relaxed">
             {featureFlags.useApiProcessos
-              ? '«Consultas Realizadas» lista andamentos gravados na API na data (como o legado), excluindo linhas automáticas «JUNTAR PETIÇÃO…» e «PETIÇÃO DA INF. ANTERIOR…». Outros relatórios podem cruzar histórico local.'
+              ? '«Consultas Realizadas» lista histórico gravado ou atualizado na API na data (e cruza com o histórico local deste navegador), excluindo linhas automáticas «JUNTAR PETIÇÃO…» e «PETIÇÃO DA INF. ANTERIOR…».'
               : 'Os relatórios usam apenas os dados gravados neste navegador. «Consultas Realizadas» = linhas do histórico na data, exceto títulos automáticos do legado.'}
           </p>
         </div>
@@ -1323,6 +1334,7 @@ export function Diagnosticos() {
         titulo={rotuloResultadoConsulta}
         dataConsulta={dataConsulta}
         itens={resultadoConsulta}
+        erroMensagem={consultaHistoricoErro}
         onOpenProcesso={abrirProcessoPorItem}
       />
 

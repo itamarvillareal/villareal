@@ -145,6 +145,10 @@ function parseArgs(argv) {
     out.importArgv.push(`--origem=${envOrigem || ORIGEM_PADRAO_TXT}`);
   }
 
+  if (out.clienteFiltro != null && !out.importArgv.some((x) => x.startsWith('--cliente='))) {
+    out.importArgv.push(`--cliente=${out.clienteFiltro}`);
+  }
+
   return out;
 }
 
@@ -161,7 +165,12 @@ function entradasParaLinhasPlanilha(entradas) {
     if (!titulo.trim()) titulo = 'Andamento';
     if (titulo.length > 500) titulo = titulo.slice(0, 500);
 
-    const movimentoEm = movimentoEmFromHistoricoLocal(e.dataBruta, e.yyyyPasta, e.mmPasta);
+    const movimentoEm = movimentoEmFromHistoricoLocal(
+      e.dataBruta,
+      e.yyyyPasta,
+      e.mmPasta,
+      e.infoArquivoAbs
+    );
     let dataPlanilha = e.dataBruta || '';
     if (movimentoEm) {
       const [y, mo, da] = movimentoEm.slice(0, 10).split('-');

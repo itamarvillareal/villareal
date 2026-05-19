@@ -152,6 +152,8 @@ function ColunaDia({
   onSalvarCampos,
   usuarioAgendaId,
   onPersistenciaAlterada,
+  /** Cria compromisso na API ou localStorage; deve devolver `{ ok, id }`. */
+  onCriarNovoCompromisso = null,
   somenteLeitura = false,
   mostrarColunaUsuario = false,
   resolverNomeUsuario = null,
@@ -166,9 +168,12 @@ function ColunaDia({
   /** Última linha (novo compromisso): id criado até liberar após salvar hora/descrição. */
   const pendingNovaLinhaIdRef = useRef(null);
   const [novaLinhaBump, setNovaLinhaBump] = useState(0);
+  /** Após Tab na hora do card verde: focar descrição do compromisso criado na lista. */
+  const [focoDescricaoEventoId, setFocoDescricaoEventoId] = useState(null);
 
   useEffect(() => {
     pendingNovaLinhaIdRef.current = null;
+    setFocoDescricaoEventoId(null);
     setNovaLinhaBump((n) => n + 1);
   }, [dataBrStr, usuarioAgendaId]);
 
@@ -184,25 +189,47 @@ function ColunaDia({
     onExcluirEvento(ev);
   }
 
-  function salvarLinhaVazia(patch) {
+  async function salvarLinhaVazia(patch, opts = {}) {
     if (somenteLeitura) return;
     if (!dataBrStr) return;
     const uid = String(usuarioAgendaId ?? '');
     const pendingId = pendingNovaLinhaIdRef.current;
+    const liberarNovoCard =
+      (patch.hora !== undefined && String(patch.hora ?? '').trim() !== '') ||
+      (patch.descricao !== undefined && String(patch.descricao ?? '').trim() !== '') ||
+      (patch.statusCurto !== undefined && normalizarStatusCurtoAgenda(patch.statusCurto) === 'OK');
+
+    const deveFocarDescricao =
+      opts.focarDescricao &&
+      patch.hora !== undefined &&
+      String(patch.hora ?? '').trim() !== '' &&
+      !(patch.descricao !== undefined && String(patch.descricao ?? '').trim() !== '');
+
     if (pendingId) {
-      onSalvarCampos?.({ id: pendingId, usuarioId: uid }, patch);
-      const atualizaHoraOuDesc = patch.hora !== undefined || patch.descricao !== undefined;
-      if (atualizaHoraOuDesc) {
+      await onSalvarCampos?.({ id: pendingId, usuarioId: uid }, patch);
+      if (liberarNovoCard) {
+        if (deveFocarDescricao) setFocoDescricaoEventoId(String(pendingId));
         pendingNovaLinhaIdRef.current = null;
         setNovaLinhaBump((n) => n + 1);
       }
+      await onPersistenciaAlterada?.();
       return;
     }
-    const r = criarNovoCompromissoAgendaPersistido({ dataBr: dataBrStr, usuarioId: uid, patch });
-    if (r.ok && r.id) {
-      pendingNovaLinhaIdRef.current = r.id;
-      setNovaLinhaBump((n) => n + 1);
-      onPersistenciaAlterada?.();
+
+    const criar = onCriarNovoCompromisso
+      ? () => onCriarNovoCompromisso(patch)
+      : () => Promise.resolve(criarNovoCompromissoAgendaPersistido({ dataBr: dataBrStr, usuarioId: uid, patch }));
+
+    const r = await criar();
+    if (r?.ok && r.id) {
+      const idStr = String(r.id);
+      if (deveFocarDescricao) setFocoDescricaoEventoId(idStr);
+      pendingNovaLinhaIdRef.current = idStr;
+      if (liberarNovoCard) {
+        pendingNovaLinhaIdRef.current = null;
+        setNovaLinhaBump((n) => n + 1);
+      }
+      await onPersistenciaAlterada?.();
     }
   }
 
@@ -222,7 +249,6 @@ function ColunaDia({
           </div>
         ) : null}
         <div
-          key={`${dataBrStr}-${usuarioAgendaId}-${novaLinhaBump}`}
           className="max-h-[70vh] space-y-2.5 overflow-y-auto scroll-smooth pr-1 pb-2 [scrollbar-width:thin] [scrollbar-color:rgb(203_213_225)_transparent]"
         >
           {eventos.map((ev) => (
@@ -240,10 +266,17 @@ function ColunaDia({
               onStatusAlterado={onStatusAlterado}
               mostrarColunaUsuario={mostrarColunaUsuario}
               resolverNomeUsuario={resolverNomeUsuario}
+              focarDescricao={focoDescricaoEventoId != null && String(ev.id) === focoDescricaoEventoId}
+              onFocoDescricaoAplicado={() => setFocoDescricaoEventoId(null)}
             />
           ))}
           {!somenteLeitura ? (
-            <NovoCompromissoCard idFoco={idNovoFoco} salvarLinhaVazia={salvarLinhaVazia} />
+            <NovoCompromissoCard
+              key={`novo-${dataBrStr}-${usuarioAgendaId}-${novaLinhaBump}`}
+              idFoco={idNovoFoco}
+              salvarLinhaVazia={salvarLinhaVazia}
+              suprimirAutoFocoHora={focoDescricaoEventoId != null}
+            />
           ) : null}
         </div>
       </div>
@@ -934,16 +967,16 @@ export function Agenda({ focoDataBr = null, focoRevision = 0, modoFlutuante = fa
             apiAgendaVazio={apiAgendaVazioEsquerda}
             usarApiAgenda={featureFlags.useApiAgenda}
             onPersistenciaAlterada={async () => {
-              if (featureFlags.useApiAgenda) {
-                await criarEvento(dataEsquerdaStr, usuarioEsquerda, {});
-              }
               setAgendaStatusNonce((n) => n + 1);
             }}
-            onSalvarCampos={(ev, patch) => {
-              void (async () => {
-                await salvarCamposEvento(dataEsquerdaStr, { ...ev, usuarioId: ev.usuarioId ?? usuarioEsquerda }, patch);
-                setAgendaStatusNonce((n) => n + 1);
-              })();
+            onCriarNovoCompromisso={async (patch) => {
+              const r = await criarEvento(dataEsquerdaStr, usuarioEsquerda, patch);
+              setAgendaStatusNonce((n) => n + 1);
+              return r;
+            }}
+            onSalvarCampos={async (ev, patch) => {
+              await salvarCamposEvento(dataEsquerdaStr, { ...ev, usuarioId: ev.usuarioId ?? usuarioEsquerda }, patch);
+              setAgendaStatusNonce((n) => n + 1);
             }}
             onExcluirEvento={(ev) => {
               void (async () => {
@@ -970,16 +1003,16 @@ export function Agenda({ focoDataBr = null, focoRevision = 0, modoFlutuante = fa
             apiAgendaVazio={apiAgendaVazioDireita}
             usarApiAgenda={featureFlags.useApiAgenda}
             onPersistenciaAlterada={async () => {
-              if (featureFlags.useApiAgenda) {
-                await criarEvento(dataDireitaStr, usuarioDireita, {});
-              }
               setAgendaStatusNonce((n) => n + 1);
             }}
-            onSalvarCampos={(ev, patch) => {
-              void (async () => {
-                await salvarCamposEvento(dataDireitaStr, { ...ev, usuarioId: ev.usuarioId ?? usuarioDireita }, patch);
-                setAgendaStatusNonce((n) => n + 1);
-              })();
+            onCriarNovoCompromisso={async (patch) => {
+              const r = await criarEvento(dataDireitaStr, usuarioDireita, patch);
+              setAgendaStatusNonce((n) => n + 1);
+              return r;
+            }}
+            onSalvarCampos={async (ev, patch) => {
+              await salvarCamposEvento(dataDireitaStr, { ...ev, usuarioId: ev.usuarioId ?? usuarioDireita }, patch);
+              setAgendaStatusNonce((n) => n + 1);
             }}
             onExcluirEvento={(ev) => {
               void (async () => {

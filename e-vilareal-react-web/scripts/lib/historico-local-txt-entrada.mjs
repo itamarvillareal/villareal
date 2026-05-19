@@ -10,6 +10,7 @@ import {
   parseDataDdMmYyyy,
   TIPO_INFO,
   TIPO_USUARIO,
+  resolverAbsFicheiroTipoHistoricoEncadeado,
 } from './historico-local-txt-paths.mjs';
 
 /**
@@ -36,6 +37,15 @@ export function lerConteudoEntradaHistorico(base, cod8, codNum, procStr, indice)
 
   const infoTrim =
     lerTextoTipoHistoricoEncadeado(base, cod8, codNum, procStr, TIPO_INFO, idx4, pastaAnoMes) ?? '';
+  const infoArquivoAbs = resolverAbsFicheiroTipoHistoricoEncadeado(
+    base,
+    cod8,
+    codNum,
+    procStr,
+    TIPO_INFO,
+    idx4,
+    pastaAnoMes
+  );
   const userTrim =
     lerTextoTipoHistoricoEncadeado(base, cod8, codNum, procStr, TIPO_USUARIO, idx4, pastaAnoMes) ?? '';
   const dataTrim = dataRaw != null ? String(dataRaw).trim() : '';
@@ -58,6 +68,7 @@ export function lerConteudoEntradaHistorico(base, cod8, codNum, procStr, indice)
     infoTrim,
     dataTrim,
     userTrim,
+    infoArquivoAbs,
     yyyyPasta: meta16.yyyyPasta,
     mmPasta: meta16.mmPasta,
   };

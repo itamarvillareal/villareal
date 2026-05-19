@@ -154,9 +154,12 @@ function imprimirPreview(dados, patch) {
   if (dados.imovel?.numeroPlanilha) {
     console.log('\nImóvel 0.89.1:', dados.imovel.numeroPlanilha, dados.imovel.arquivo);
   }
-  const { parteClienteNome, parteContraparteNome } = dados.cabecalho.partesTxt;
-  if (parteClienteNome || parteContraparteNome) {
-    console.log('\nPartes txt:', { parteClienteNome, parteContraparteNome });
+  const { tituloAutor11, tituloReu61 } = dados.cabecalho.partesTxt;
+  if (tituloAutor11 || tituloReu61) {
+    console.log('\nTítulos 1.1/6.1 (texto, não são 151.1.0 nem 90/95):', {
+      tituloAutor11,
+      tituloReu61,
+    });
   }
   console.log(`\nHistórico: ${dados.entradasHistorico.length} entrada(s) válida(s) para importar\n`);
 }
@@ -231,9 +234,12 @@ async function criarParte(baseUrl, token, processoId, body) {
  * @param {ReturnType<typeof levantarDadosProcessoTxt>} dados
  */
 async function importarPartesTxt(opts, token, proc, dados) {
-  const { parteClienteNome, parteContraparteNome } = dados.cabecalho.partesTxt;
-  if (!parteClienteNome && !parteContraparteNome) {
-    console.log('[partes] Sem ficheiros 1.1 / 6.1 — ignorado.');
+  const { tituloAutor11, tituloReu61, parteClienteNome, parteContraparteNome } =
+    dados.cabecalho.partesTxt;
+  const nomeAutor = tituloAutor11 ?? parteClienteNome;
+  const nomeReu = tituloReu61 ?? parteContraparteNome;
+  if (!nomeAutor && !nomeReu) {
+    console.log('[partes] Sem títulos 1.1 / 6.1 — ignorado (use import-processo-partes-txt para 90/95).');
     return { criadas: 0, puladas: 0 };
   }
 
@@ -252,8 +258,8 @@ async function importarPartesTxt(opts, token, proc, dados) {
 
   /** @type {{ nome: string, polo: string, ordem: number }[]} */
   const plano = [];
-  if (parteClienteNome) plano.push({ nome: parteClienteNome, polo: poloCliente, ordem: 0 });
-  if (parteContraparteNome) plano.push({ nome: parteContraparteNome, polo: poloContraparte, ordem: 0 });
+  if (nomeAutor) plano.push({ nome: nomeAutor, polo: poloCliente, ordem: 0 });
+  if (nomeReu) plano.push({ nome: nomeReu, polo: poloContraparte, ordem: 0 });
 
   let criadas = 0;
   let puladas = 0;

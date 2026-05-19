@@ -93,9 +93,11 @@ export async function salvarCamposEvento(dataBr, evento, patch) {
   };
   if (Number.isFinite(idNum) && idNum > 0) {
     await request(`/api/agenda/eventos/${idNum}`, { method: 'PUT', body });
-    return;
+    return { ok: true, id: String(idNum) };
   }
-  await request('/api/agenda/eventos', { method: 'POST', body });
+  const created = await request('/api/agenda/eventos', { method: 'POST', body });
+  const mapped = created && typeof created === 'object' ? mapApiEventoToFront(created) : null;
+  return { ok: true, id: mapped?.id ?? null, evento: mapped };
 }
 
 /**
@@ -117,12 +119,13 @@ export async function criarEvento(dataBr, usuarioId, patch) {
   if (!featureFlags.useApiAgenda) {
     return criarNovoCompromissoAgendaPersistido({ dataBr, usuarioId, patch });
   }
-  await salvarCamposEvento(
+  const r = await salvarCamposEvento(
     dataBr,
     { id: null, usuarioId, hora: '', descricao: '', statusCurto: '', origem: 'frontend-agenda' },
     patch
   );
-  return { ok: true };
+  if (!r?.id) return { ok: false, reason: 'sem-id' };
+  return { ok: true, id: r.id, evento: r.evento ?? null };
 }
 
 /** Modal «Agenda mensal»: mesma forma que `listarTodosCompromissosAgendaMes` no modo local. */

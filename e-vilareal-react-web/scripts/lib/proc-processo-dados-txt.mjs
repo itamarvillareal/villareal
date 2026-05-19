@@ -127,6 +127,8 @@ export function montarPatchProcessoFromTxt(dados) {
     patch._responsavelNome = responsavelNome;
   }
 
+  delete patch._tituloAutor11;
+  delete patch._tituloReu61;
   delete patch._parteClienteNome;
   delete patch._parteContraparteNome;
 

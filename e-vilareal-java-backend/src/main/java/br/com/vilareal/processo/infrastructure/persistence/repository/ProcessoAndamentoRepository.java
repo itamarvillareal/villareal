@@ -41,4 +41,21 @@ public interface ProcessoAndamentoRepository extends JpaRepository<ProcessoAndam
             """)
     List<ProcessoAndamentoEntity> findByMovimentoEmBetween(
             @Param("inicio") Instant inicio, @Param("fim") Instant fim);
+
+    /**
+     * Andamentos cuja data do movimento ou cuja gravação/atualização na API cai no intervalo
+     * (relatório «Consultas Realizadas»).
+     */
+    @Query(
+            """
+            SELECT a FROM ProcessoAndamentoEntity a
+            JOIN FETCH a.processo p
+            JOIN FETCH p.pessoa
+            LEFT JOIN FETCH a.usuario
+            WHERE (a.movimentoEm >= :inicio AND a.movimentoEm < :fim)
+               OR (a.atualizadoEm >= :inicio AND a.atualizadoEm < :fim)
+            ORDER BY a.atualizadoEm DESC, a.id DESC
+            """)
+    List<ProcessoAndamentoEntity> findByMovimentoEmOrAtualizadoEmBetween(
+            @Param("inicio") Instant inicio, @Param("fim") Instant fim);
 }
