@@ -89,7 +89,7 @@ function carregarContagensBd(cod8Cliente) {
   const esc = String(cod8Cliente).replace(/'/g, "''");
   const sql = `SELECT p.numero_interno,COUNT(a.id) FROM cliente c JOIN processo p ON p.pessoa_id=c.pessoa_id LEFT JOIN processo_andamento a ON a.processo_id=p.id WHERE c.codigo_cliente='${esc}' GROUP BY p.numero_interno`;
   const out = execSync(
-    `docker exec vilareal-local-db mysql -uroot -proot vilareal -N -e ${JSON.stringify(sql)}`,
+    `docker exec vilareal-db mysql -uroot -proot vilareal -N -e ${JSON.stringify(sql)}`,
     { encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 }
   );
   /** @type {Map<number, number>} */
@@ -126,7 +126,7 @@ let bd;
 try {
   bd = carregarContagensBd(cod8);
 } catch (e) {
-  console.error('Falha ao ler BD (docker vilareal-local-db).', e?.message || e);
+  console.error('Falha ao ler BD (docker vilareal-db).', e?.message || e);
   process.exit(1);
 }
 

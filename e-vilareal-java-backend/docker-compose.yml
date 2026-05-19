@@ -1,11 +1,14 @@
-services:
-  mysql:
-    image: mysql:8.0.36
-    environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: vilareal
-    ports:
-      - "3306:3306"
-    volumes:
-      - ./docker/mysql/init:/docker-entrypoint-initdb.d:ro
-    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+# MySQL local oficial: monorepo na raiz — `docker-compose.local-db.yml` (container `vilareal-db`, host :3307).
+#
+# Subir só o banco:
+#   cd .. && docker compose -f docker-compose.yml -f docker-compose.local-db.yml up -d db
+#
+# API em Docker (8081) + MySQL:
+#   cd .. && docker compose -f docker-compose.yml -f docker-compose.local-db.yml up -d
+#
+# API com Maven no host (profile dev → localhost:3307):
+#   ./scripts/run-dev.sh
+#
+# Não há serviço `mysql` neste ficheiro (evita segundo volume na porta 3306).
+
+services: {}

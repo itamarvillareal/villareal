@@ -3,9 +3,9 @@
  * Migra `processo_andamento` entre duas instâncias MySQL (opção C),
  * remapeando `processo_id` pela chave de negócio código cliente (8) + nº interno.
  *
- * Caso típico (dev):
- *   origem  → vilareal-local-db (host 3306) — histórico já importado dos txt
- *   destino → vilareal-db (host 3307) — base usada pelo backend Docker :8081
+ * Caso típico (dev): duas bases no mesmo `vilareal-db` (ex. vilareal → vilareal_old):
+ *   origem  → localhost:3307 / base vilareal_old (backup)
+ *   destino → localhost:3307 / base vilareal (API :8081)
  *
  * Uso:
  *   node scripts/migrar-andamentos-mysql-origem-destino.mjs --dry-run
@@ -13,7 +13,7 @@
  *   node scripts/migrar-andamentos-mysql-origem-destino.mjs --confirmar=MIGRAR-ANDAMENTOS --zerar-destino
  *
  * Envs:
- *   VILAREAL_MYSQL_SOURCE_PORT (3306), VILAREAL_MYSQL_TARGET_PORT (3307)
+ *   VILAREAL_MYSQL_SOURCE_PORT / TARGET_PORT (defeito 3307, container vilareal-db)
  *   VILAREAL_MYSQL_* user/password/database
  */
 
@@ -186,7 +186,7 @@ async function inserirLote(dest, batch) {
 
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
-  const portOrigem = Number(process.env.VILAREAL_MYSQL_SOURCE_PORT || '3306');
+  const portOrigem = Number(process.env.VILAREAL_MYSQL_SOURCE_PORT || '3307');
   const portDestino = Number(process.env.VILAREAL_MYSQL_TARGET_PORT || '3307');
 
   console.log('\n══════════════════════════════════════════════════════════');

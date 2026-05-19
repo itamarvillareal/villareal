@@ -12,7 +12,7 @@
  *   --confirmar=ZERAR-HISTORICO   Executa DELETE
  *   --apenas-origens-import   Apaga só IMPORT_PLANILHA, IMPORT_TXT_LOCAL, etc. (não recomendado se o objectivo é só txt)
  *
- * MySQL: `VILAREAL_MYSQL_*` — porta defeito **3306** (base da API local; não usar 3307 salvo schema vazio).
+ * MySQL: `VILAREAL_MYSQL_*` — porta defeito **3307** (`vilareal-db`) ou `VILAREAL_MYSQL_DOCKER=vilareal-db`.
  */
 
 import './lib/load-vilareal-import-env.mjs';

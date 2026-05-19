@@ -1,3 +1,12 @@
+# Stack VilaReal (API, front). MySQL local opcional: docker-compose.local-db.yml
+#
+# Banco oficial em dev: container vilareal-db (compose.local-db.yml), host localhost:3307.
+# Dump:  docker exec vilareal-db mysqldump -u root -proot vilareal > vilareal-dump.sql
+#        ./scripts/dump-db-local.sh
+# Restore: ver cabeçalho de docker-compose.local-db.yml
+#
+# Sem MySQL local: backend usa túnel VPS (3308) via .env.docker — ver .env.docker.example
+
 services:
   backend:
     build:
