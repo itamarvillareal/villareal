@@ -212,19 +212,32 @@ export function EditableTextCell({
   temaPorPalavraChave = false,
   onDuploClique = null,
   readOnly = false,
+  /** Abre já em modo edição (linha «Novo compromisso»). */
+  iniciarEmEdicao = false,
+  /** Chamado uma vez após foco automático (ex.: Tab na hora → descrição do card criado). */
+  onEdicaoIniciada = null,
   classNameLeitura = '',
   classNameInput = '',
 }) {
   const original = String(texto ?? '');
-  const [editando, setEditando] = useState(false);
+  const [editando, setEditando] = useState(iniciarEmEdicao);
   const [valor, setValor] = useState(original);
   const inputRef = useRef(null);
   const cancelouRef = useRef(false);
+  const focoInicialAplicadoRef = useRef(false);
 
   useEffect(() => {
     if (!editando) setValor(original);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [original]);
+
+  useEffect(() => {
+    if (!iniciarEmEdicao) {
+      focoInicialAplicadoRef.current = false;
+      return;
+    }
+    setEditando(true);
+  }, [iniciarEmEdicao]);
 
   useEffect(() => {
     if (!editando) return;
@@ -233,10 +246,14 @@ export function EditableTextCell({
     try {
       el.focus();
       if (!multiline) el.select?.();
+      if (iniciarEmEdicao && !focoInicialAplicadoRef.current) {
+        focoInicialAplicadoRef.current = true;
+        onEdicaoIniciada?.();
+      }
     } catch {
       // ignore
     }
-  }, [editando, multiline]);
+  }, [editando, multiline, iniciarEmEdicao, onEdicaoIniciada]);
 
   function salvarSeMudou() {
     const novo = String(valor ?? '').slice(0, maxLen);
@@ -385,7 +402,10 @@ export function CompromissoCard({
   onStatusAlterado,
   mostrarColunaUsuario = false,
   resolverNomeUsuario = null,
+  focarDescricao = false,
+  onFocoDescricaoAplicado = null,
 }) {
+  const cardRef = useRef(null);
   const tipo = tipoCompromissoAgenda(ev?.descricao);
   const estilo = ESTILO_TIPO_COMPROMISSO[tipo] ?? ESTILO_TIPO_COMPROMISSO.comum;
   const { partes, autosLocal } = parseCorpoCompromisso(ev?.descricao);
@@ -393,8 +413,14 @@ export function CompromissoCard({
   const Icon = estilo.Icon;
   const podeExcluir = !somenteLeitura && onExcluirEvento && eventoAgendaPodeExcluir(ev, usarApiAgenda);
 
+  useEffect(() => {
+    if (!focarDescricao) return;
+    cardRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [focarDescricao]);
+
   return (
     <article
+      ref={cardRef}
       className={`group relative rounded-xl border p-3 shadow-sm transition-all duration-300 hover:shadow-md ${estilo.card} ${
         concluido ? 'opacity-60' : ''
       }`}
@@ -444,6 +470,8 @@ export function CompromissoCard({
                 maxLen={2000}
                 temaPorPalavraChave
                 readOnly={somenteLeitura}
+                iniciarEmEdicao={focarDescricao}
+                onEdicaoIniciada={onFocoDescricaoAplicado}
                 classNameLeitura="text-base font-medium text-gray-800 bg-transparent border-0 p-0 whitespace-pre-wrap break-words"
                 onDuploClique={() => onDuploCliqueEvento?.(ev)}
                 onSalvar={(novo) => {
@@ -489,7 +517,44 @@ export function CompromissoCard({
   );
 }
 
-export function NovoCompromissoCard({ idFoco, salvarLinhaVazia }) {
+export function NovoCompromissoCard({ idFoco, salvarLinhaVazia, suprimirAutoFocoHora = false }) {
+  const [hora, setHora] = useState('');
+  const [descricao, setDescricao] = useState('');
+  const horaInputRef = useRef(null);
+  const horaEnviadaRef = useRef('');
+  const descricaoEnviadaRef = useRef('');
+  const pedirFocoDescricaoRef = useRef(false);
+
+  useEffect(() => {
+    if (suprimirAutoFocoHora) return undefined;
+    const id = requestAnimationFrame(() => horaInputRef.current?.focus());
+    return () => cancelAnimationFrame(id);
+  }, [suprimirAutoFocoHora]);
+
+  const tema = temaPorTextoCompromisso(descricao);
+  const classesDescricao =
+    tema === 'instrucao'
+      ? 'bg-red-600 text-white border-red-700 focus:ring-red-400 placeholder:text-red-200'
+      : tema === 'conciliacao'
+        ? 'bg-yellow-300 text-black border-yellow-600 focus:ring-yellow-600 placeholder:text-yellow-900/60'
+        : 'bg-white text-gray-900 border-slate-300 focus:ring-indigo-400/50 focus:border-indigo-400';
+
+  async function gravarHora() {
+    const focarDescricao = pedirFocoDescricaoRef.current;
+    pedirFocoDescricaoRef.current = false;
+    const v = String(hora ?? '').trim();
+    if (v === horaEnviadaRef.current) return;
+    horaEnviadaRef.current = v;
+    if (v) await salvarLinhaVazia({ hora: v }, { focarDescricao });
+  }
+
+  async function gravarDescricao() {
+    const v = String(descricao ?? '').trim();
+    if (v === descricaoEnviadaRef.current) return;
+    descricaoEnviadaRef.current = v;
+    if (v) await salvarLinhaVazia({ descricao: v });
+  }
+
   return (
     <article
       id={idFoco}
@@ -497,30 +562,59 @@ export function NovoCompromissoCard({ idFoco, salvarLinhaVazia }) {
     >
       <p className="mb-2 text-xs font-bold uppercase tracking-wide text-emerald-800">Novo compromisso</p>
       <div className="flex items-start gap-3">
-        <div className="w-14 shrink-0">
-          <span className="mb-1 block text-xs font-semibold text-slate-500">Hora</span>
-          <EditableTextCell
-            texto=""
-            align="left"
-            maxLen={12}
-            classNameLeitura="text-sm font-mono font-bold text-gray-500"
-            onSalvar={(novo) => salvarLinhaVazia({ hora: novo })}
+        <div className="w-[4.5rem] shrink-0">
+          <label className="mb-1 block text-xs font-semibold text-slate-500" htmlFor={`${idFoco}-hora`}>
+            Hora
+          </label>
+          <input
+            id={`${idFoco}-hora`}
+            ref={horaInputRef}
+            type="text"
+            inputMode="numeric"
+            autoComplete="off"
+            value={hora}
+            maxLength={12}
+            placeholder="14:30"
+            onChange={(e) => setHora(e.target.value)}
+            onBlur={() => void gravarHora()}
+            onKeyDown={(e) => {
+              if (e.key === 'Tab' && !e.shiftKey && String(hora ?? '').trim()) {
+                pedirFocoDescricaoRef.current = true;
+                e.preventDefault();
+                void gravarHora();
+                return;
+              }
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                void gravarHora();
+              }
+            }}
+            className="w-full rounded border border-slate-300 bg-white px-1.5 py-1.5 text-sm font-mono font-bold text-gray-900 shadow-sm focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400/50"
           />
         </div>
         <div className="min-w-0 flex-1">
-          <span className="mb-1 block text-xs font-semibold text-slate-500">Descrição</span>
-          <EditableTextCell
-            texto=""
-            multiline
-            align="left"
-            maxLen={2000}
-            temaPorPalavraChave
-            classNameLeitura="text-base text-gray-700"
-            onSalvar={(novo) => salvarLinhaVazia({ descricao: novo })}
+          <label className="mb-1 block text-xs font-semibold text-slate-500" htmlFor={`${idFoco}-desc`}>
+            Descrição
+          </label>
+          <textarea
+            id={`${idFoco}-desc`}
+            value={descricao}
+            rows={3}
+            maxLength={2000}
+            placeholder="Descreva o compromisso…"
+            onChange={(e) => setDescricao(e.target.value)}
+            onBlur={() => void gravarDescricao()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                void gravarDescricao();
+              }
+            }}
+            className={`w-full resize-y rounded border px-2 py-1.5 text-sm shadow-sm focus:outline-none focus:ring-1 min-h-[3rem] ${classesDescricao}`}
           />
         </div>
         <div className="shrink-0 pt-5">
-          <StatusBadgeAgenda evento={{ statusCurto: '' }} onSalvar={(novo) => salvarLinhaVazia({ statusCurto: novo })} />
+          <StatusBadgeAgenda evento={{ statusCurto: '' }} onSalvar={(novo) => void salvarLinhaVazia({ statusCurto: novo })} />
         </div>
       </div>
     </article>

@@ -465,10 +465,47 @@ function ordenarItensHistoricoDiagnostico(out) {
   return out;
 }
 
+function chaveHistoricoDiagnosticoItem(x) {
+  const info = String(x.info ?? '')
+    .trim()
+    .toLowerCase();
+  return `${padCliente8(x.codCliente)}:${String(x.proc)}:${normalizarDataBr(x.data)}:${info}`;
+}
+
+function mapRowHistoricoDiagnosticoApi(row, dataCanon) {
+  const info = String(row.info ?? '').trim();
+  if (!info || ehTituloHistoricoSistemaLegado(info)) return null;
+  const aid = row.andamentoId ?? row.andamento_id;
+  return {
+    codCliente: padCliente8(row.codigoCliente ?? row.codigo_cliente ?? '1'),
+    proc: String(row.numeroInterno ?? row.numero_interno ?? ''),
+    cliente: String(row.cliente ?? ''),
+    parteCliente: String(row.parteCliente ?? row.cliente ?? ''),
+    parteOposta: String(row.parteOposta ?? ''),
+    numeroProcessoNovo: String(row.numeroProcessoNovo ?? row.numero_processo_novo ?? '').trim(),
+    info,
+    data: normalizarDataBr(row.data) || dataCanon,
+    usuario: String(row.usuario ?? '').trim(),
+    id: aid != null ? Number(aid) : Date.now(),
+    fromApi: true,
+    numero: aid != null ? String(aid).padStart(4, '0') : '',
+  };
+}
+
 /**
- * Diagnóstico «Consultas Realizadas»: andamentos na API na data (fonte principal), alinhado ao legado VB.
- * Sem API: histórico local do navegador. Exclui títulos automáticos «JUNTAR PETIÇÃO…» / «PETIÇÃO DA INF. ANTERIOR…».
+ * Diagnóstico «Consultas Realizadas»: histórico na API (movimento ou atualização na data) + local.
+ * Exclui títulos automáticos «JUNTAR PETIÇÃO…» / «PETIÇÃO DA INF. ANTERIOR…».
  */
+/** Indica falha típica de backend desatualizado (endpoint ainda não publicado no JAR). */
+export function erroEndpointHistoricoDataIndisponivel(err) {
+  const msg = String(err?.message ?? err ?? '').toLowerCase();
+  return (
+    msg.includes('historico-data') ||
+    msg.includes('no static resource') ||
+    msg.includes('noresourcefound')
+  );
+}
+
 export async function listarHistoricoPorDataDiagnostico(dataBrParam) {
   const dataCanon = normalizarDataBr(String(dataBrParam ?? '').trim());
   if (!dataCanon) return [];
@@ -479,29 +516,21 @@ export async function listarHistoricoPorDataDiagnostico(dataBrParam) {
   try {
     const arr = await request('/api/processos/diagnostico/historico-data', { query: { data: q } });
     const apiRows = Array.isArray(arr) ? arr : [];
-    const fromApi = apiRows
-      .map((row) => {
-        const info = String(row.info ?? '').trim();
-        if (!info || ehTituloHistoricoSistemaLegado(info)) return null;
-        const aid = row.andamentoId ?? row.andamento_id;
-        return {
-          codCliente: padCliente8(row.codigoCliente ?? row.codigo_cliente ?? '1'),
-          proc: String(row.numeroInterno ?? row.numero_interno ?? ''),
-          cliente: String(row.cliente ?? ''),
-          parteCliente: String(row.parteCliente ?? row.cliente ?? ''),
-          parteOposta: String(row.parteOposta ?? ''),
-          numeroProcessoNovo: String(row.numeroProcessoNovo ?? row.numero_processo_novo ?? '').trim(),
-          info,
-          data: normalizarDataBr(row.data) || dataCanon,
-          usuario: String(row.usuario ?? '').trim(),
-          id: aid != null ? Number(aid) : Date.now(),
-          fromApi: true,
-          numero: aid != null ? String(aid).padStart(4, '0') : '',
-        };
-      })
-      .filter(Boolean);
-    return ordenarItensHistoricoDiagnostico(fromApi);
-  } catch {
+    const fromApi = apiRows.map((row) => mapRowHistoricoDiagnosticoApi(row, dataCanon)).filter(Boolean);
+    if (fromApi.length === 0) return ordenarItensHistoricoDiagnostico(locais);
+    if (locais.length === 0) return ordenarItensHistoricoDiagnostico(fromApi);
+    const seen = new Set();
+    const merged = [];
+    for (const item of [...fromApi, ...locais]) {
+      const k = chaveHistoricoDiagnosticoItem(item);
+      if (seen.has(k)) continue;
+      seen.add(k);
+      merged.push(item);
+    }
+    return ordenarItensHistoricoDiagnostico(merged);
+  } catch (e) {
+    if (locais.length > 0) return locais;
+    if (erroEndpointHistoricoDataIndisponivel(e)) throw e;
     return locais;
   }
 }

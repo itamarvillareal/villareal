@@ -2,6 +2,7 @@
  * Converte texto de data do histórico local → ISO UTC para `movimento_em` (API / MySQL).
  */
 
+import fs from 'node:fs';
 import { parseDataSlashComHint, ymdComLinhaEPastaAno } from './historico-local-txt-paths.mjs';
 
 function pad2(n) {
@@ -53,14 +54,37 @@ export function parseMovimentoEmIso(val, mmPastaHint = null) {
 }
 
 /**
+ * Data de criação do ficheiro (birthtime; senão mtime) → meio-dia UTC no dia local.
+ * @param {string | null} absPath
+ * @returns {string | null}
+ */
+export function movimentoEmFromCriacaoFicheiro(absPath) {
+  if (!absPath || !String(absPath).trim()) return null;
+  try {
+    if (!fs.existsSync(absPath) || !fs.statSync(absPath).isFile()) return null;
+    const st = fs.statSync(absPath);
+    let t = st.birthtime;
+    if (!t || Number.isNaN(t.getTime()) || t.getTime() <= 0) t = st.mtime;
+    if (!t || Number.isNaN(t.getTime())) return null;
+    return `${t.getFullYear()}-${pad2(t.getMonth() + 1)}-${pad2(t.getDate())}T12:00:00.000Z`;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Data do tipo 16 com ano/mês da pasta `Ano/aaaa/mm` quando aplicável.
+ * Sem data no txt: usa data de criação do ficheiro da informação (tipo 15).
  * @param {string} dataBruta
  * @param {number | null} yyyyPasta
  * @param {number | null} mmPasta
+ * @param {string | null} [infoArquivoAbs]
  */
-export function movimentoEmFromHistoricoLocal(dataBruta, yyyyPasta, mmPasta) {
-  if (!dataBruta || !String(dataBruta).trim()) return null;
-  const ymd = ymdComLinhaEPastaAno(dataBruta, yyyyPasta, mmPasta);
-  if (ymd) return `${ymd}T12:00:00.000Z`;
-  return parseMovimentoEmIso(dataBruta, mmPasta);
+export function movimentoEmFromHistoricoLocal(dataBruta, yyyyPasta, mmPasta, infoArquivoAbs = null) {
+  if (dataBruta && String(dataBruta).trim()) {
+    const ymd = ymdComLinhaEPastaAno(dataBruta, yyyyPasta, mmPasta);
+    if (ymd) return `${ymd}T12:00:00.000Z`;
+    return parseMovimentoEmIso(dataBruta, mmPasta);
+  }
+  return movimentoEmFromCriacaoFicheiro(infoArquivoAbs);
 }

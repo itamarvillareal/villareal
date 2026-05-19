@@ -28,6 +28,7 @@ import { lerConteudoEntradaHistorico } from './historico-local-txt-entrada.mjs';
  * @property {number | null} mmPasta
  * @property {string} informacao — tipo 15
  * @property {string} usuarioBruto — tipo 17
+ * @property {string | null} infoArquivoAbs — ficheiro tipo 15 (informação)
  * @property {string | null} localAposBancoDeDados
  */
 
@@ -40,6 +41,8 @@ import { lerConteudoEntradaHistorico } from './historico-local-txt-entrada.mjs';
  * @param {number} [opts.limiteEntradas] — 0 = sem limite
  * @param {number | null} [opts.filtroClienteCod] — só este cliente (número 1..999)
  * @param {number | null} [opts.filtroProcesso]
+ * @param {number | null} [opts.indiceMin] — só índices >= (ex.: sync incremental)
+ * @param {number | null} [opts.indiceMax]
  * @yields {EntradaHistoricoLocal}
  */
 export function* iterarEntradasHistoricoLocal(opts) {
@@ -77,7 +80,10 @@ export function* iterarEntradasHistoricoLocal(opts) {
       const maxIdx = lerMaxIndiceHistorico(base, cod8, cod, procStr);
       if (maxIdx == null) continue;
 
-      for (let i = 1; i <= maxIdx; i += 1) {
+      const iMin = opts.indiceMin != null ? Math.max(1, Math.trunc(opts.indiceMin)) : 1;
+      const iMax = opts.indiceMax != null ? Math.min(maxIdx, Math.trunc(opts.indiceMax)) : maxIdx;
+
+      for (let i = iMin; i <= iMax; i += 1) {
         if (limite > 0 && emitidas >= limite) return;
 
         const c = lerConteudoEntradaHistorico(base, cod8, cod, procStr, i);
@@ -102,6 +108,7 @@ export function* iterarEntradasHistoricoLocal(opts) {
           mmPasta: c.mmPasta,
           informacao: infoTrim,
           usuarioBruto: userTrim,
+          infoArquivoAbs: c.infoArquivoAbs ?? null,
           localAposBancoDeDados: null,
         };
       }

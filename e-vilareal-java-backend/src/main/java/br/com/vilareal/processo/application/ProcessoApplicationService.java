@@ -479,8 +479,9 @@ public class ProcessoApplicationService {
     }
 
     /**
-     * Diagnósticos «Consultas Realizadas»: todos os andamentos ({@code processo_andamento}) cuja data do
-     * movimento coincide com o parâmetro (fuso America/Sao_Paulo).
+     * Diagnósticos «Consultas Realizadas»: andamentos ({@code processo_andamento}) gravados ou atualizados
+     * na data (via {@code atualizado_em}) ou cuja data do movimento coincide com o parâmetro
+     * (fuso America/Sao_Paulo).
      */
     @Transactional(readOnly = true)
     public List<ProcessoDiagnosticoHistoricoItemResponse> buscarDiagnosticoHistoricoPorData(String dataBruta) {
@@ -490,7 +491,8 @@ public class ProcessoApplicationService {
         }
         Instant inicio = data.atStartOfDay(ZONA_BR).toInstant();
         Instant fim = data.plusDays(1).atStartOfDay(ZONA_BR).toInstant();
-        List<ProcessoAndamentoEntity> andamentos = andamentoRepository.findByMovimentoEmBetween(inicio, fim);
+        List<ProcessoAndamentoEntity> andamentos =
+                andamentoRepository.findByMovimentoEmOrAtualizadoEmBetween(inicio, fim);
         if (andamentos.isEmpty()) {
             return List.of();
         }

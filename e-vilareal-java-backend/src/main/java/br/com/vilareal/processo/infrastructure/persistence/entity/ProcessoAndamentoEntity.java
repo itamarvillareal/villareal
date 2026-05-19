@@ -43,4 +43,10 @@ public class ProcessoAndamentoEntity {
     /** UUID da importação em lote; usado na reversão por `importacao_id`. */
     @Column(name = "importacao_id", length = 36)
     private String importacaoId;
+
+    @Column(name = "criado_em", insertable = false, updatable = false)
+    private Instant criadoEm;
+
+    @Column(name = "atualizado_em", insertable = false, updatable = false)
+    private Instant atualizadoEm;
 }

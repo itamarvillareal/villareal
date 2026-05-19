@@ -3,11 +3,11 @@
  * Importação real completa de um cliente a partir dos txt locais (Dropbox «Banco de Dados»).
  *
  * Consolida, num único comando, tudo o que antes exigia vários scripts:
- *   - Pessoa do cliente (`151.1.0` → API clientes)
+ *   - Pessoa do cadastro Clientes (`Gerais/…/151.1.0` → API clientes — independente de processo)
  *   - Cabeçalho do processo (Proc/Gerais, semânticos, fase, status, prazo)
  *   - Histórico HC (`import-historico-local-txt.mjs`, em massa por cliente)
  *   - Vínculo imóvel `0.89.1` (por processo)
- *   - Partes `1.1` / `6.1` (opcional, `--importar-partes`)
+ *   - Partes do processo (`Proc/…/90` e `95` por proc) — `import-processo-partes-txt.mjs` (por defeito; `--sem-partes` omite)
  *
  * Uso:
  *   node scripts/import-real.mjs --cliente=728 --dry-run
@@ -23,7 +23,8 @@
  *   --processo-min= --processo-max=   Filtra intervalo na importação em lote
  *   --sem-historico          Não importa andamentos
  *   --sem-imovel             Não vincula imóvel 0.89.1
- *   --importar-partes        Cria partes a partir de 1.1 e 6.1
+ *   --sem-partes             Não importa partes do processo (90/95)
+ *   --importar-partes        (legado; partes já correm por defeito)
  *   --substituir-historico   Apaga andamentos IMPORT_TXT_LOCAL antes (só com um cliente)
  *   --aplicar-correcao-historico  Corrige txt (índice 14) antes do histórico (lento; por defeito não)
  *   --base=PATH              Raiz «Banco de Dados»
@@ -52,6 +53,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
 const SCRIPT_PROCESSO = path.join(__dirname, 'import-processo-txt.mjs');
 const SCRIPT_HISTORICO = path.join(__dirname, 'import-historico-local-txt.mjs');
+const SCRIPT_PARTES = path.join(__dirname, 'import-processo-partes-txt.mjs');
 
 function parseArgs(argv) {
   const out = {
@@ -63,7 +65,7 @@ function parseArgs(argv) {
     aplicar: false,
     semHistorico: false,
     semImovel: false,
-    importarPartes: false,
+    semPartes: false,
     substituirHistorico: false,
     aplicarCorrecaoHistorico: false,
     base: resolverBaseBancoDados(),
@@ -80,7 +82,10 @@ function parseArgs(argv) {
       out.dryRun = false;
     } else if (a === '--sem-historico') out.semHistorico = true;
     else if (a === '--sem-imovel') out.semImovel = true;
-    else if (a === '--importar-partes') out.importarPartes = true;
+    else if (a === '--sem-partes') out.semPartes = true;
+    else if (a === '--importar-partes') {
+      /* legado: partes passam a correr por defeito */
+    }
     else if (a === '--substituir-historico') out.substituirHistorico = true;
     else if (a === '--aplicar-correcao-historico') out.aplicarCorrecaoHistorico = true;
     else if (a.startsWith('--cliente=')) {
@@ -187,8 +192,22 @@ function argsComunsProcesso(opts, processo, extras = []) {
   if (opts.dryRun) args.push('--dry-run');
   else args.push('--aplicar');
   if (opts.semImovel) args.push('--sem-imovel');
-  if (opts.importarPartes) args.push('--importar-partes');
   return [...args, ...extras];
+}
+
+function argsPartesCliente(opts) {
+  const args = [`--cliente=${opts.cliente}`, `--base=${opts.base}`, `--login=${opts.login}`];
+  if (opts.senha) args.push(`--senha=${opts.senha}`);
+  if (opts.dryRun) args.push('--dry-run');
+  else args.push('--aplicar');
+  if (opts.processo != null) args.push(`--processo=${opts.processo}`);
+  if (opts.processoMin != null) args.push(`--processo-min=${opts.processoMin}`);
+  if (opts.processoMax != null) args.push(`--processo-max=${opts.processoMax}`);
+  return args;
+}
+
+function executarImportPartes(opts) {
+  return executarScript(SCRIPT_PARTES, argsPartesCliente(opts));
 }
 
 function executarImportProcesso(opts, processo, extras = []) {
@@ -241,7 +260,7 @@ function imprimirResumoCliente(opts, procs, fonteProcs = '3.1') {
       opts.semHistorico ? null : 'histórico (massa)',
       'cabeçalho/fase/semânticos por processo',
       opts.semImovel ? null : 'imóvel 0.89.1',
-      opts.importarPartes ? 'partes 1.1/6.1' : null,
+      opts.semPartes ? null : 'partes processo 90/95',
     ]
       .filter(Boolean)
       .join(' → ')
@@ -322,6 +341,16 @@ async function main() {
     const code = executarImportProcesso(opts, opts.processo, extras);
     relatorio.etapas.processoUnico = code === 0 ? 'ok' : 'falhou';
     if (code !== 0) process.exit(code);
+
+    if (!opts.semPartes) {
+      console.log('\n[partes processo 90/95] Processo único — import-processo-partes-txt…\n');
+      const codePartes = executarImportPartes(opts);
+      relatorio.etapas.partes = codePartes === 0 ? 'ok' : 'falhou';
+      if (codePartes !== 0) process.exit(codePartes);
+    } else {
+      relatorio.etapas.partes = 'ignorado';
+    }
+
     if (opts.relatorio) {
       relatorio.duracaoMs = Date.now() - inicio;
       fs.writeFileSync(opts.relatorio, JSON.stringify(relatorio, null, 2), 'utf8');
@@ -333,7 +362,7 @@ async function main() {
   // —— Cliente inteiro ——
   const primeiro = procs[0];
 
-  console.log('\n[1/3] Pessoa do cliente (151.1.0)…\n');
+  console.log('\n[1/4] Pessoa do cliente (151.1.0)…\n');
   const codePessoa = executarImportProcesso(opts, primeiro, [
     '--sem-historico',
     '--sem-corrigir-historico',
@@ -349,10 +378,10 @@ async function main() {
     if (opts.dryRun) {
       relatorio.etapas.historico = 'dry-run_omitido';
       console.log(
-        '\n[2/3] Histórico: omitido em dry-run (com --aplicar corre em massa via import-historico-local-txt).\n'
+        '\n[2/4] Histórico: omitido em dry-run (com --aplicar corre em massa via import-historico-local-txt).\n'
       );
     } else if (opts.processoMin != null || opts.processoMax != null) {
-      console.log(`\n[2/3] Histórico (${procs.length} processo(s) no intervalo)…\n`);
+      console.log(`\n[2/4] Histórico (${procs.length} processo(s) no intervalo)…\n`);
       let histOk = 0;
       let histFail = 0;
       /** @type {number[]} */
@@ -383,7 +412,7 @@ async function main() {
         process.exit(1);
       }
     } else {
-      console.log('\n[2/3] Histórico (todos os processos do cliente)…\n');
+      console.log('\n[2/4] Histórico (todos os processos do cliente)…\n');
       const codeHist = executarImportHistoricoCliente(opts);
       relatorio.etapas.historico = codeHist === 0 ? 'ok' : 'falhou';
       if (codeHist !== 0) {
@@ -394,7 +423,7 @@ async function main() {
     }
   } else {
     relatorio.etapas.historico = 'ignorado';
-    console.log('\n[2/3] Histórico ignorado (--sem-historico).\n');
+    console.log('\n[2/4] Histórico ignorado (--sem-historico).\n');
   }
 
   const temCabecalho31 = relatorio.processosCom31 > 0;
@@ -411,15 +440,15 @@ async function main() {
   if (!temCabecalho31) {
     relatorio.etapas.processos = 'omitido_sem_cabecalho_31';
     console.log(
-      `\n[3/3] Cabeçalho/fase/imóvel por processo: omitido — cliente sem ficheiros 3.1 em Proc (${procs.length} processo(s) só no historico).\n`
+      `\n[3/4] Cabeçalho/fase/imóvel por processo: omitido — cliente sem ficheiros 3.1 em Proc (${procs.length} processo(s) só no historico).\n`
     );
   } else if (opts.dryRun && procsCabecalho.length < procs.length) {
     console.log(
-      `\n[3/3] Dry-run: pré-visualização de ${procsCabecalho.length} processo(s) (de ${procs.length}; use --amostra-processos=N ou --aplicar para todos).\n`
+      `\n[3/4] Dry-run: pré-visualização de ${procsCabecalho.length} processo(s) (de ${procs.length}; use --amostra-processos=N ou --aplicar para todos).\n`
     );
   } else {
     console.log(
-      `\n[3/3] Processos (${procs.length}): cabeçalho, fase, semânticos${opts.semImovel ? '' : ', imóvel'}${opts.importarPartes ? ', partes' : ''}…\n`
+      `\n[3/4] Processos (${procs.length}): cabeçalho, fase, semânticos${opts.semImovel ? '' : ', imóvel'}…\n`
     );
   }
 
@@ -450,6 +479,25 @@ async function main() {
       falhas: falhasProc,
     };
   }
+
+  if (!opts.semPartes) {
+    console.log('\n[4/4] Partes do processo (90/95 — não confundir com 151.1.0)…\n');
+    const codePartes = executarImportPartes(opts);
+    relatorio.etapas.partes = codePartes === 0 ? 'ok' : 'falhou';
+    if (codePartes !== 0) {
+      relatorio.falhas.push({ etapa: 'partes', code: codePartes });
+      relatorio.duracaoMs = Date.now() - inicio;
+      if (opts.relatorio) {
+        fs.writeFileSync(opts.relatorio, JSON.stringify(relatorio, null, 2), 'utf8');
+      }
+      console.error('[import-real] Falha na importação de partes — abortando.');
+      process.exit(codePartes);
+    }
+  } else {
+    relatorio.etapas.partes = 'ignorado';
+    console.log('\n[4/4] Partes ignoradas (--sem-partes).\n');
+  }
+
   relatorio.duracaoMs = Date.now() - inicio;
 
   if (opts.relatorio) {

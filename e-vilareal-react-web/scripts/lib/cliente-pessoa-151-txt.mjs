@@ -1,6 +1,9 @@
 /**
- * Número de pessoa do cliente — txt legado VB `COD.151.1.0` (sem nº de processo).
- * Alimenta o campo «Pessoa» na tela de clientes (`pessoaId` na API).
+ * **Pessoa do cadastro Clientes** — txt legado VB `COD.151.1.0` (Gerais, sem nº de processo).
+ * Alimenta o campo «Pessoa» no formulário **Clientes** (`POST /api/clientes`).
+ *
+ * Não confundir com partes do processo (`Proc/…/90.{proc}.NN` e `95.{proc}.NN`) — ver
+ * `legado-pessoa-cliente-vs-partes-processo.mjs` e `proc-processo-partes-txt.mjs`.
  */
 
 import fs from 'node:fs';

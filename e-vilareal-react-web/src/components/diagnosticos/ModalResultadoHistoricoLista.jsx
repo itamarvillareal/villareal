@@ -99,7 +99,15 @@ function HistoricoCard({ item, indice, onDoubleClick }) {
   );
 }
 
-export function ModalResultadoHistoricoLista({ open, onClose, titulo, dataConsulta, itens, onOpenProcesso }) {
+export function ModalResultadoHistoricoLista({
+  open,
+  onClose,
+  titulo,
+  dataConsulta,
+  itens,
+  onOpenProcesso,
+  erroMensagem = '',
+}) {
   const [busca, setBusca] = useState('');
   const [copiado, setCopiado] = useState(false);
 
@@ -182,7 +190,14 @@ export function ModalResultadoHistoricoLista({ open, onClose, titulo, dataConsul
 
         <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 sm:px-4 py-3 bg-slate-50/80">
           {total === 0 ? (
-            <p className="text-sm text-slate-600 text-center py-8">Nenhuma informação de histórico nesta data.</p>
+            <div className="text-center py-8 space-y-3">
+              <p className="text-sm text-slate-600">Nenhuma informação de histórico nesta data.</p>
+              {erroMensagem ? (
+                <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mx-auto max-w-md text-left">
+                  {erroMensagem}
+                </p>
+              ) : null}
+            </div>
           ) : visiveis === 0 ? (
             <p className="text-sm text-slate-600 text-center py-8">Nenhum item corresponde ao filtro digitado.</p>
           ) : (
