@@ -3,8 +3,8 @@
  * Compara histórico na base antiga (backup → schema vilareal_old) com a importação txt (vilareal).
  *
  * Pré-requisito: backup restaurado, ex.:
- *   docker exec vilareal-local-db mysql -uroot -proot -e "CREATE DATABASE vilareal_old"
- *   docker exec -i vilareal-local-db mysql -uroot -proot vilareal_old < /tmp/vilareal-local-backup-20260515_1640.sql
+ *   docker exec vilareal-db mysql -uroot -proot -e "CREATE DATABASE vilareal_old"
+ *   docker exec -i vilareal-db mysql -uroot -proot vilareal_old < /tmp/vilareal-local-backup-20260515_1640.sql
  *
  * Uso:
  *   node scripts/comparar-historico-antigo-vs-novo-mysql.mjs

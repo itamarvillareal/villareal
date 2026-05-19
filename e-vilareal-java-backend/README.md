@@ -27,16 +27,15 @@ br.com.vilareal
 
 ## Como rodar localmente
 
-1. **MySQL tem de estar acessível antes do login.** O profile `dev` (`application-dev.properties`) aponta por defeito para **`localhost:3306`**, base **`vilareal`**, utilizador **`root`** / password **`root`**.
+1. **MySQL tem de estar acessível antes do login.** O profile `dev` (`application-dev.properties`) aponta para **`localhost:3307`**, base **`vilareal`**, **`root`** / **`root`** (container **`vilareal-db`** na raiz do monorepo).
 
-   - **MySQL só (repositório `e-vilareal-java-backend`):** `docker compose up -d` (ficheiro `docker-compose.yml` do backend — porta **3306** no host).
-   - **Stack na raiz com DB local:** `docker compose -f docker-compose.yml -f docker-compose.local-db.yml up -d` — o MySQL expõe **3307** no host; ao correr `./mvnw spring-boot:run` **fora** do Docker, defina por exemplo:
+   - **MySQL local (oficial):** na raiz do monorepo:
      ```bash
-     export SPRING_DATASOURCE_URL='jdbc:mysql://localhost:3307/vilareal?createDatabaseIfNotExist=false&useSSL=false&allowPublicKeyRetrieval=true&characterEncoding=utf8&serverTimezone=UTC'
-     export SPRING_DATASOURCE_USERNAME=root
-     export SPRING_DATASOURCE_PASSWORD=root
+     docker compose -f docker-compose.yml -f docker-compose.local-db.yml up -d db
      ```
-   - **MySQL na VPS / túnel SSH:** sobrescreva `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME` e `SPRING_DATASOURCE_PASSWORD` (o `docker-compose.yml` na raiz usa por defeito `host.docker.internal:3308` para o contentor do backend; no host, alinhe a porta ao seu túnel).
+   - **API + MySQL + front em Docker:** mesmo compose com `up -d --build` (API **8081**).
+   - **Dump:** `docker exec vilareal-db mysqldump -u root -proot vilareal > vilareal-dump.sql` ou `./scripts/dump-db-local.sh` na raiz.
+   - **MySQL na VPS / túnel SSH:** sobrescreva `SPRING_DATASOURCE_*` (o `docker-compose.yml` na raiz, sem `local-db`, usa `host.docker.internal:3308` por defeito).
 
    Se aparecer **`CannotCreateTransactionException` … `/api/auth/login`**, a API não abriu transação JPA — em quase todos os casos **MySQL inacessível** ou **JDBC URL/porta errada** para o modo como arrancou o MySQL.
 

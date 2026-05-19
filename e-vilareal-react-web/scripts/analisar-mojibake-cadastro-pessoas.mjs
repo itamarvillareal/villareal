@@ -4,8 +4,8 @@
  * Usa a mesma heurística base de `scripts/lib/normalizar-texto-planilha.mjs` + padrões UTF-8 corrompidos comuns.
  *
  * Uso:
- *   VILAREAL_MYSQL_PORT=3306 node scripts/analisar-mojibake-cadastro-pessoas.mjs
- *   VILAREAL_MYSQL_PORT=3306 node scripts/analisar-mojibake-cadastro-pessoas.mjs --limite=500 --json=relatorio.json
+ *   VILAREAL_MYSQL_PORT=3307 node scripts/analisar-mojibake-cadastro-pessoas.mjs
+ *   VILAREAL_MYSQL_DOCKER=vilareal-db node scripts/analisar-mojibake-cadastro-pessoas.mjs --limite=500 --json=relatorio.json
  *
  * Corrigir no banco: node scripts/corrigir-mojibake-cadastro-pessoas.mjs --aplicar
  * (ou npm run corrigir:mojibake-cadastro-pessoas)

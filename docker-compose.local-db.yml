@@ -1,8 +1,28 @@
-# MySQL em Docker (opcional). Stack por defeito usa apenas o MySQL na VPS via túnel (3308).
+# MySQL local oficial para desenvolvimento (única instância no monorepo).
 #
-# Uso:
+# Container: vilareal-db
+# Host:      localhost:3307  (root / root, base vilareal)
+# Volume:    villareal_db_data (nome explícito abaixo)
+#
+# Subir só o MySQL:
+#   docker compose -f docker-compose.yml -f docker-compose.local-db.yml up -d db
+#
+# Stack completa (API :8081 + MySQL + front :5173):
 #   docker compose -f docker-compose.yml -f docker-compose.local-db.yml up -d --build
 #
+# Dump:
+#   docker exec vilareal-db mysqldump -u root -proot vilareal > vilareal-dump.sql
+#   # ou: ./scripts/dump-db-local.sh
+#
+# Restore (apaga e recria a base):
+#   docker exec vilareal-db mysql -u root -proot -e "DROP DATABASE IF EXISTS vilareal; CREATE DATABASE vilareal CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+#   docker exec -i vilareal-db mysql -u root -proot vilareal < vilareal-dump.sql
+#
+# Sync a partir da VPS: ./scripts/sync-db-local.sh
+#
+# Spring Boot no host (profile dev): application-dev.properties → localhost:3307
+# API em Docker: JDBC interno jdbc:mysql://db:3306/... (serviço `db` nesta rede)
+
 services:
   db:
     image: mysql:8.0.36
@@ -14,7 +34,7 @@ services:
     ports:
       - "3307:3306"
     volumes:
-      - db_data:/var/lib/mysql
+      - villareal_db_data:/var/lib/mysql
       - ./e-vilareal-java-backend/docker/mysql/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
@@ -32,4 +52,4 @@ services:
         condition: service_healthy
 
 volumes:
-  db_data:
+  villareal_db_data:
