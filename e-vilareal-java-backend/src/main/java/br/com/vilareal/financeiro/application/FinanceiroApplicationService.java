@@ -15,7 +15,11 @@ import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaReposi
 import br.com.vilareal.processo.application.CodigoClienteUtil;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -32,6 +36,9 @@ import java.util.stream.Collectors;
 @Service
 public class FinanceiroApplicationService {
 
+    private static final Logger log = LoggerFactory.getLogger(FinanceiroApplicationService.class);
+    private static final int LISTAGEM_SEM_PAGINACAO_MAX = 5000;
+
     private static final Sort ORDEM_LANCAMENTOS =
             Sort.by(Sort.Direction.ASC, "dataLancamento", "id");
 
@@ -39,16 +46,23 @@ public class FinanceiroApplicationService {
     private final LancamentoFinanceiroRepository lancamentoRepository;
     private final PessoaRepository pessoaRepository;
     private final ProcessoRepository processoRepository;
+    private final FinanceiroSaudeService financeiroSaudeService;
 
     public FinanceiroApplicationService(
             ContaContabilRepository contaContabilRepository,
             LancamentoFinanceiroRepository lancamentoRepository,
             PessoaRepository pessoaRepository,
-            ProcessoRepository processoRepository) {
+            ProcessoRepository processoRepository,
+            @Lazy FinanceiroSaudeService financeiroSaudeService) {
         this.contaContabilRepository = contaContabilRepository;
         this.lancamentoRepository = lancamentoRepository;
         this.pessoaRepository = pessoaRepository;
         this.processoRepository = processoRepository;
+        this.financeiroSaudeService = financeiroSaudeService;
+    }
+
+    private void invalidarCacheSaude() {
+        financeiroSaudeService.invalidarCacheSaude();
     }
 
     @Transactional(readOnly = true)
@@ -92,11 +106,27 @@ public class FinanceiroApplicationService {
             Long contaContabilId,
             java.time.LocalDate dataInicio,
             java.time.LocalDate dataFim) {
-        var spec = LancamentoFinanceiroSpecifications.comFiltros(
-                clienteId, processoId, contaContabilId, dataInicio, dataFim);
-        return lancamentoRepository.findAll(spec, ORDEM_LANCAMENTOS).stream()
-                .map(this::toLancamentoResponse)
-                .collect(Collectors.toList());
+        Page<LancamentoFinanceiroResponse> page = listarLancamentosPaginado(
+                clienteId,
+                processoId,
+                contaContabilId,
+                dataInicio,
+                dataFim,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                PageRequest.of(0, LISTAGEM_SEM_PAGINACAO_MAX, ORDEM_LANCAMENTOS));
+        if (page.getTotalElements() > LISTAGEM_SEM_PAGINACAO_MAX) {
+            log.warn(
+                    "GET /lancamentos sem paginação atingiu limite de {} de {} registros",
+                    LISTAGEM_SEM_PAGINACAO_MAX,
+                    page.getTotalElements());
+        }
+        return page.getContent();
     }
 
     @Transactional(readOnly = true)
@@ -131,17 +161,161 @@ public class FinanceiroApplicationService {
     }
 
     @Transactional(readOnly = true)
+    public Page<LancamentoExtratoListItemResponse> listarExtratoPaginado(
+            Long clienteId,
+            Long processoId,
+            Long contaContabilId,
+            java.time.LocalDate dataInicio,
+            java.time.LocalDate dataFim,
+            EtapaLancamento etapa,
+            Integer numeroBanco,
+            String busca,
+            Boolean semClienteId,
+            Boolean semGrupoCompensacao,
+            Integer ano,
+            Integer mes,
+            Pageable pageable) {
+        var spec = LancamentoFinanceiroSpecifications.comFiltros(
+                clienteId,
+                processoId,
+                contaContabilId,
+                dataInicio,
+                dataFim,
+                etapa,
+                numeroBanco,
+                busca,
+                semClienteId,
+                semGrupoCompensacao,
+                ano,
+                mes);
+        return lancamentoRepository.findAll(spec, pageable).map(this::toExtratoListItem);
+    }
+
+    @Transactional(readOnly = true)
     public SaldoBancoResponse saldoPorNumeroBanco(Integer numeroBanco) {
+        return saldoPorNumeroBanco(numeroBanco, null);
+    }
+
+    @Transactional(readOnly = true)
+    public SaldoBancoResponse saldoPorNumeroBanco(Integer numeroBanco, java.time.LocalDate dataReferencia) {
         if (numeroBanco == null) {
             throw new BusinessRuleException("numeroBanco é obrigatório.");
         }
-        var saldo = lancamentoRepository.sumSaldoAssinadoPorNumeroBanco(numeroBanco);
         var r = new SaldoBancoResponse();
         r.setNumeroBanco(numeroBanco);
-        r.setSaldo(saldo != null ? saldo : java.math.BigDecimal.ZERO);
         r.setDataUltimoLancamento(lancamentoRepository.findDataUltimoLancamentoPorNumeroBanco(numeroBanco));
-        r.setTotalLancamentos(lancamentoRepository.countByNumeroBanco(numeroBanco));
+        if (dataReferencia != null) {
+            var saldoAte = lancamentoRepository.sumSaldoAssinadoPorNumeroBancoAteData(numeroBanco, dataReferencia);
+            var movDia = lancamentoRepository.sumSaldoAssinadoPorNumeroBancoNoDia(numeroBanco, dataReferencia);
+            r.setDataReferencia(dataReferencia);
+            r.setSaldo(saldoAte != null ? saldoAte : java.math.BigDecimal.ZERO);
+            r.setLancamentosAteData(lancamentoRepository.countByNumeroBancoAteData(numeroBanco, dataReferencia));
+            r.setMovimentoNoDia(movDia != null ? movDia : java.math.BigDecimal.ZERO);
+            r.setLancamentosNoDia(lancamentoRepository.countByNumeroBancoNoDia(numeroBanco, dataReferencia));
+            r.setTotalLancamentos(lancamentoRepository.countByNumeroBanco(numeroBanco));
+        } else {
+            var saldo = lancamentoRepository.sumSaldoAssinadoPorNumeroBanco(numeroBanco);
+            r.setSaldo(saldo != null ? saldo : java.math.BigDecimal.ZERO);
+            r.setTotalLancamentos(lancamentoRepository.countByNumeroBanco(numeroBanco));
+        }
         return r;
+    }
+
+    @Transactional(readOnly = true)
+    public SaldoBancoMensalResponse saldoMensalPorDia(Integer numeroBanco, int ano, int mes) {
+        if (numeroBanco == null) {
+            throw new BusinessRuleException("numeroBanco é obrigatório.");
+        }
+        if (mes < 1 || mes > 12) {
+            throw new BusinessRuleException("mes deve estar entre 1 e 12.");
+        }
+        var inicioMes = java.time.LocalDate.of(ano, mes, 1);
+        var fimMes = inicioMes.withDayOfMonth(inicioMes.lengthOfMonth());
+
+        var saldoInicial = lancamentoRepository.sumSaldoAssinadoPorNumeroBancoAteData(
+                numeroBanco, inicioMes.minusDays(1));
+        if (saldoInicial == null) {
+            saldoInicial = java.math.BigDecimal.ZERO;
+        }
+
+        var movPorDia = new java.util.HashMap<java.time.LocalDate, java.math.BigDecimal>();
+        var countPorDia = new java.util.HashMap<java.time.LocalDate, Long>();
+        for (Object[] row : lancamentoRepository.sumMovimentoPorDiaNoPeriodo(numeroBanco, inicioMes, fimMes)) {
+            var data = toLocalDate(row[0]);
+            if (data == null) {
+                continue;
+            }
+            movPorDia.put(data, row[1] != null ? new java.math.BigDecimal(row[1].toString()) : java.math.BigDecimal.ZERO);
+            countPorDia.put(data, row[2] != null ? ((Number) row[2]).longValue() : 0L);
+        }
+
+        var acumulado = saldoInicial;
+        var dias = new java.util.ArrayList<SaldoBancoDiaResponse>();
+        for (int d = 1; d <= fimMes.getDayOfMonth(); d++) {
+            var dia = inicioMes.withDayOfMonth(d);
+            var mov = movPorDia.getOrDefault(dia, java.math.BigDecimal.ZERO);
+            acumulado = acumulado.add(mov);
+            var item = new SaldoBancoDiaResponse();
+            item.setData(dia);
+            item.setMovimento(mov);
+            item.setSaldo(acumulado);
+            item.setLancamentosNoDia(countPorDia.getOrDefault(dia, 0L));
+            dias.add(item);
+        }
+
+        var resp = new SaldoBancoMensalResponse();
+        resp.setNumeroBanco(numeroBanco);
+        resp.setAno(ano);
+        resp.setMes(mes);
+        resp.setSaldoInicial(saldoInicial);
+        resp.setDias(dias);
+        return resp;
+    }
+
+    private static java.time.LocalDate toLocalDate(Object raw) {
+        if (raw == null) {
+            return null;
+        }
+        if (raw instanceof java.time.LocalDate ld) {
+            return ld;
+        }
+        if (raw instanceof java.sql.Date sd) {
+            return sd.toLocalDate();
+        }
+        if (raw instanceof java.util.Date ud) {
+            return new java.sql.Date(ud.getTime()).toLocalDate();
+        }
+        return java.time.LocalDate.parse(raw.toString().substring(0, 10));
+    }
+
+    @Transactional(readOnly = true)
+    public ResumoConsolidadoContasResponse resumoConsolidadoUltimosMeses(int meses) {
+        int qtdMeses = Math.max(1, Math.min(meses, 24));
+        var fimExclusive = java.time.LocalDate.now().plusMonths(1).withDayOfMonth(1);
+        var inicio = fimExclusive.minusMonths(qtdMeses);
+
+        ResumoConsolidadoContasResponse out = new ResumoConsolidadoContasResponse();
+        for (Object[] row : lancamentoRepository.countLancamentosPorContaCodigo()) {
+            String cod = row[0] != null ? String.valueOf(row[0]).trim().toUpperCase() : "";
+            if (!cod.isEmpty()) {
+                out.getTotaisPorConta().put(cod, row[1] != null ? ((Number) row[1]).longValue() : 0L);
+            }
+        }
+
+        for (Object[] row : lancamentoRepository.resumoMensalPorContaNoPeriodo(inicio, fimExclusive)) {
+            ResumoMensalContaResponse item = new ResumoMensalContaResponse();
+            item.setContaCodigo(row[0] != null ? String.valueOf(row[0]).trim().toUpperCase() : "");
+            item.setContaNome(row[1] != null ? Utf8MojibakeUtil.corrigir(String.valueOf(row[1])) : "");
+            item.setAno(row[2] != null ? ((Number) row[2]).intValue() : 0);
+            item.setMes(row[3] != null ? ((Number) row[3]).intValue() : 0);
+            item.setSaldoMes(
+                    row[4] != null
+                            ? new java.math.BigDecimal(row[4].toString())
+                            : java.math.BigDecimal.ZERO);
+            item.setQuantidadeLancamentos(row[5] != null ? ((Number) row[5]).longValue() : 0L);
+            out.getMeses().add(item);
+        }
+        return out;
     }
 
     @Transactional(readOnly = true)
@@ -168,7 +342,9 @@ public class FinanceiroApplicationService {
     public LancamentoFinanceiroResponse criarLancamento(LancamentoFinanceiroWriteRequest req) {
         LancamentoFinanceiroEntity e = new LancamentoFinanceiroEntity();
         aplicarLancamento(e, req, true);
-        return toLancamentoResponse(lancamentoRepository.save(e));
+        LancamentoFinanceiroResponse saved = toLancamentoResponse(lancamentoRepository.save(e));
+        invalidarCacheSaude();
+        return saved;
     }
 
     @Transactional
@@ -176,7 +352,9 @@ public class FinanceiroApplicationService {
         LancamentoFinanceiroEntity e = lancamentoRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Lançamento não encontrado: " + id));
         aplicarLancamento(e, req, false);
-        return toLancamentoResponse(lancamentoRepository.save(e));
+        LancamentoFinanceiroResponse saved = toLancamentoResponse(lancamentoRepository.save(e));
+        invalidarCacheSaude();
+        return saved;
     }
 
     @Transactional
@@ -185,6 +363,7 @@ public class FinanceiroApplicationService {
             throw new ResourceNotFoundException("Lançamento não encontrado: " + id);
         }
         lancamentoRepository.deleteById(id);
+        invalidarCacheSaude();
     }
 
     /**
@@ -213,6 +392,7 @@ public class FinanceiroApplicationService {
         int removidos = toDelete.size();
         if (!toDelete.isEmpty()) {
             lancamentoRepository.deleteAll(toDelete);
+            invalidarCacheSaude();
         }
         LimparExtratoResult r = new LimparExtratoResult();
         r.setLancamentosRemovidos(removidos);
@@ -344,6 +524,34 @@ public class FinanceiroApplicationService {
         r.setNome(Utf8MojibakeUtil.corrigir(e.getNome()));
         r.setAtivo(e.getAtivo());
         r.setOrdemExibicao(e.getOrdemExibicao());
+        return r;
+    }
+
+    private LancamentoExtratoListItemResponse toExtratoListItem(LancamentoFinanceiroEntity e) {
+        LancamentoExtratoListItemResponse r = new LancamentoExtratoListItemResponse();
+        r.setId(e.getId());
+        r.setContaContabilId(e.getContaContabil().getId());
+        r.setContaContabilNome(e.getContaContabil().getNome());
+        r.setClienteId(e.getCliente() != null ? e.getCliente().getId() : null);
+        r.setProcessoId(e.getProcesso() != null ? e.getProcesso().getId() : null);
+        if (e.getCliente() != null) {
+            r.setCodigoCliente(CodigoClienteUtil.formatar(e.getCliente().getId()));
+        }
+        if (e.getProcesso() != null && e.getProcesso().getNumeroInterno() != null) {
+            r.setNumeroInternoProcesso(e.getProcesso().getNumeroInterno());
+        }
+        r.setBancoNome(e.getBancoNome());
+        r.setNumeroBanco(e.getNumeroBanco());
+        r.setNumeroLancamento(e.getNumeroLancamento());
+        r.setDataLancamento(e.getDataLancamento());
+        r.setDescricao(e.getDescricao());
+        r.setDescricaoDetalhada(e.getDescricaoDetalhada());
+        r.setValor(e.getValor());
+        r.setNatureza(e.getNatureza());
+        r.setRefTipo(e.getRefTipo());
+        r.setOrigem(e.getOrigem());
+        r.setEtapa(e.getEtapa() != null ? e.getEtapa().name() : EtapaLancamento.IMPORTADO.name());
+        r.setGrupoCompensacao(e.getGrupoCompensacao());
         return r;
     }
 

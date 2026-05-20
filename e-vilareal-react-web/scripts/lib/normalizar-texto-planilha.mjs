@@ -6,7 +6,10 @@
  * @returns {string} texto normalizado ou string vazia
  */
 export function normalizarTextoPlanilha(val) {
-  let s = String(val ?? '').normalize('NFC').trim();
+  let s = String(val ?? '')
+    .replace(/\u0000/g, '')
+    .normalize('NFC')
+    .trim();
   if (!s) return '';
   /** Ordem relevante (ex.: tratar Ã‡ antes de remover Â residual). */
   const trocas = [

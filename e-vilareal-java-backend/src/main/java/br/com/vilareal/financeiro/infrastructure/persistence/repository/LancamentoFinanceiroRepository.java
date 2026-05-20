@@ -1,9 +1,11 @@
 package br.com.vilareal.financeiro.infrastructure.persistence.repository;
 
+import br.com.vilareal.financeiro.domain.CompensacaoSqlDiaUtil;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.LancamentoFinanceiroEntity;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import br.com.vilareal.financeiro.domain.EtapaLancamento;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -57,6 +59,56 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
     BigDecimal sumSaldoAssinadoPorNumeroBanco(@Param("numeroBanco") Integer numeroBanco);
 
     @Query(value = """
+            SELECT COALESCE(SUM(CASE WHEN natureza = 'CREDITO' THEN valor ELSE -valor END), 0)
+            FROM financeiro_lancamento
+            WHERE numero_banco = :numeroBanco
+              AND data_lancamento <= :dataAte
+            """, nativeQuery = true)
+    BigDecimal sumSaldoAssinadoPorNumeroBancoAteData(
+            @Param("numeroBanco") Integer numeroBanco, @Param("dataAte") LocalDate dataAte);
+
+    @Query(value = """
+            SELECT COALESCE(SUM(CASE WHEN natureza = 'CREDITO' THEN valor ELSE -valor END), 0)
+            FROM financeiro_lancamento
+            WHERE numero_banco = :numeroBanco
+              AND data_lancamento = :dataDia
+            """, nativeQuery = true)
+    BigDecimal sumSaldoAssinadoPorNumeroBancoNoDia(
+            @Param("numeroBanco") Integer numeroBanco, @Param("dataDia") LocalDate dataDia);
+
+    @Query(value = """
+            SELECT COUNT(*)
+            FROM financeiro_lancamento
+            WHERE numero_banco = :numeroBanco
+              AND data_lancamento <= :dataAte
+            """, nativeQuery = true)
+    long countByNumeroBancoAteData(@Param("numeroBanco") Integer numeroBanco, @Param("dataAte") LocalDate dataAte);
+
+    @Query(value = """
+            SELECT COUNT(*)
+            FROM financeiro_lancamento
+            WHERE numero_banco = :numeroBanco
+              AND data_lancamento = :dataDia
+            """, nativeQuery = true)
+    long countByNumeroBancoNoDia(@Param("numeroBanco") Integer numeroBanco, @Param("dataDia") LocalDate dataDia);
+
+    @Query(value = """
+            SELECT data_lancamento,
+                   COALESCE(SUM(CASE WHEN natureza = 'CREDITO' THEN valor ELSE -valor END), 0),
+                   COUNT(*)
+            FROM financeiro_lancamento
+            WHERE numero_banco = :numeroBanco
+              AND data_lancamento >= :dataInicio
+              AND data_lancamento <= :dataFim
+            GROUP BY data_lancamento
+            ORDER BY data_lancamento
+            """, nativeQuery = true)
+    List<Object[]> sumMovimentoPorDiaNoPeriodo(
+            @Param("numeroBanco") Integer numeroBanco,
+            @Param("dataInicio") LocalDate dataInicio,
+            @Param("dataFim") LocalDate dataFim);
+
+    @Query(value = """
             SELECT MAX(data_lancamento)
             FROM financeiro_lancamento
             WHERE numero_banco = :numeroBanco
@@ -101,6 +153,33 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
             @Param("valorMax") java.math.BigDecimal valorMax,
             @Param("anoMes") int anoMes);
 
+    /**
+     * Depósitos já classificados em conta A cuja descrição contém o CPF do pagador
+     * (mesma pessoa em lançamentos anteriores).
+     */
+    @Query("""
+            SELECT l FROM LancamentoFinanceiroEntity l
+            JOIN FETCH l.contaContabil c
+            LEFT JOIN FETCH l.cliente
+            LEFT JOIN FETCH l.processo
+            WHERE l.id <> :excluirId
+              AND l.etapa <> :importado
+              AND l.cliente IS NOT NULL
+              AND UPPER(c.codigo) = 'A'
+              AND (
+                  REPLACE(REPLACE(REPLACE(UPPER(COALESCE(l.descricao, '')), '.', ''), '-', ''), ' ', '')
+                      LIKE CONCAT('%', :cpfDigitos, '%')
+                  OR REPLACE(REPLACE(REPLACE(UPPER(COALESCE(l.descricaoDetalhada, '')), '.', ''), '-', ''), ' ', '')
+                      LIKE CONCAT('%', :cpfDigitos, '%')
+              )
+            ORDER BY l.dataLancamento DESC, l.id DESC
+            """)
+    List<LancamentoFinanceiroEntity> findDepositosIdentificadosPorCpfNoTexto(
+            @Param("cpfDigitos") String cpfDigitos,
+            @Param("excluirId") Long excluirId,
+            @Param("importado") EtapaLancamento importado,
+            Pageable pageable);
+
     @EntityGraph(attributePaths = {"contaContabil", "cliente", "processo"})
     List<LancamentoFinanceiroEntity> findAllByGrupoCompensacao(String grupoCompensacao);
 
@@ -111,8 +190,10 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
             SELECT a.id, b.id, a.numero_banco, b.numero_banco
             FROM financeiro_lancamento a
             INNER JOIN financeiro_lancamento b ON
-                ABS(DATEDIFF(a.data_lancamento, b.data_lancamento)) <= :diasTolerancia
-                AND a.valor = b.valor
+                """
+            + CompensacaoSqlDiaUtil.MESMO_DIA_UTIL_BANCARIO_JOIN_AB
+            + """
+                 AND a.valor = b.valor
                 AND a.natureza <> b.natureza
                 AND a.id < b.id
             WHERE a.etapa IN ('IMPORTADO', 'CLASSIFICADO')
@@ -120,8 +201,11 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
               AND (a.grupo_compensacao IS NULL OR a.grupo_compensacao = '')
               AND (b.grupo_compensacao IS NULL OR b.grupo_compensacao = '')
               AND (:numeroBanco IS NULL OR a.numero_banco = :numeroBanco OR b.numero_banco = :numeroBanco)
-              AND (:ano IS NULL OR (YEAR(a.data_lancamento) = :ano AND MONTH(a.data_lancamento) = :mes))
+              AND (:ano IS NULL OR (YEAR(a.data_lancamento) = :ano AND (:mes IS NULL OR MONTH(a.data_lancamento) = :mes)))
               AND (:apenasInterbancario = false OR a.numero_banco <> b.numero_banco)
+              AND (:apenasMesmoBanco = false OR a.numero_banco = b.numero_banco)
+              AND (:apenasMesmoDiaCalendario = false OR a.data_lancamento = b.data_lancamento)
+              AND (:apenasDiaDivergente = false OR a.data_lancamento <> b.data_lancamento)
             ORDER BY a.data_lancamento DESC
             LIMIT :limit OFFSET :offset
             """, nativeQuery = true)
@@ -131,6 +215,9 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
             @Param("mes") Integer mes,
             @Param("diasTolerancia") int diasTolerancia,
             @Param("apenasInterbancario") boolean apenasInterbancario,
+            @Param("apenasMesmoBanco") boolean apenasMesmoBanco,
+            @Param("apenasMesmoDiaCalendario") boolean apenasMesmoDiaCalendario,
+            @Param("apenasDiaDivergente") boolean apenasDiaDivergente,
             @Param("limit") int limit,
             @Param("offset") int offset);
 
@@ -138,8 +225,10 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
             SELECT COUNT(*)
             FROM financeiro_lancamento a
             INNER JOIN financeiro_lancamento b ON
-                ABS(DATEDIFF(a.data_lancamento, b.data_lancamento)) <= :diasTolerancia
-                AND a.valor = b.valor
+                """
+            + CompensacaoSqlDiaUtil.MESMO_DIA_UTIL_BANCARIO_JOIN_AB
+            + """
+                 AND a.valor = b.valor
                 AND a.natureza <> b.natureza
                 AND a.id < b.id
             WHERE a.etapa IN ('IMPORTADO', 'CLASSIFICADO')
@@ -147,41 +236,67 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
               AND (a.grupo_compensacao IS NULL OR a.grupo_compensacao = '')
               AND (b.grupo_compensacao IS NULL OR b.grupo_compensacao = '')
               AND (:numeroBanco IS NULL OR a.numero_banco = :numeroBanco OR b.numero_banco = :numeroBanco)
-              AND (:ano IS NULL OR (YEAR(a.data_lancamento) = :ano AND MONTH(a.data_lancamento) = :mes))
+              AND (:ano IS NULL OR (YEAR(a.data_lancamento) = :ano AND (:mes IS NULL OR MONTH(a.data_lancamento) = :mes)))
               AND (:apenasInterbancario = false OR a.numero_banco <> b.numero_banco)
+              AND (:apenasMesmoBanco = false OR a.numero_banco = b.numero_banco)
+              AND (:apenasMesmoDiaCalendario = false OR a.data_lancamento = b.data_lancamento)
+              AND (:apenasDiaDivergente = false OR a.data_lancamento <> b.data_lancamento)
             """, nativeQuery = true)
     long countParesCompensacaoSugeridos(
             @Param("numeroBanco") Integer numeroBanco,
             @Param("ano") Integer ano,
             @Param("mes") Integer mes,
             @Param("diasTolerancia") int diasTolerancia,
-            @Param("apenasInterbancario") boolean apenasInterbancario);
+            @Param("apenasInterbancario") boolean apenasInterbancario,
+            @Param("apenasMesmoBanco") boolean apenasMesmoBanco,
+            @Param("apenasMesmoDiaCalendario") boolean apenasMesmoDiaCalendario,
+            @Param("apenasDiaDivergente") boolean apenasDiaDivergente);
 
     @Query(value = """
-            SELECT grupo_compensacao,
-                   SUM(CASE WHEN natureza = 'CREDITO' THEN valor ELSE -valor END) AS soma,
-                   COUNT(*) AS total
-            FROM financeiro_lancamento
-            WHERE grupo_compensacao IS NOT NULL AND grupo_compensacao <> ''
-            GROUP BY grupo_compensacao
-            HAVING ABS(SUM(CASE WHEN natureza = 'CREDITO' THEN valor ELSE -valor END)) > 0.01
-            ORDER BY ABS(SUM(CASE WHEN natureza = 'CREDITO' THEN valor ELSE -valor END)) DESC
-            LIMIT :limit OFFSET :offset
-            """, nativeQuery = true)
-    List<Object[]> findGruposCompensacaoInconsistentesResumo(
-            @Param("limit") int limit,
-            @Param("offset") int offset);
-
-    @Query(value = """
-            SELECT COUNT(*) FROM (
-                SELECT grupo_compensacao
+            SELECT g.grupo_compensacao,
+                   g.soma,
+                   g.total
+            FROM (
+                SELECT grupo_compensacao,
+                       SUM(CASE WHEN natureza = 'CREDITO' THEN valor ELSE -valor END) AS soma,
+                       COUNT(*) AS total
                 FROM financeiro_lancamento
                 WHERE grupo_compensacao IS NOT NULL AND grupo_compensacao <> ''
                 GROUP BY grupo_compensacao
                 HAVING ABS(SUM(CASE WHEN natureza = 'CREDITO' THEN valor ELSE -valor END)) > 0.01
             ) g
+            INNER JOIN financeiro_lancamento l ON l.grupo_compensacao = g.grupo_compensacao
+            WHERE (:ano IS NULL OR (YEAR(l.data_lancamento) = :ano AND (:mes IS NULL OR MONTH(l.data_lancamento) = :mes)))
+              AND (:numeroBanco IS NULL OR l.numero_banco = :numeroBanco)
+            GROUP BY g.grupo_compensacao, g.soma, g.total
+            ORDER BY ABS(g.soma) DESC
+            LIMIT :limit OFFSET :offset
             """, nativeQuery = true)
-    long countGruposCompensacaoInconsistentes();
+    List<Object[]> findGruposCompensacaoInconsistentesResumo(
+            @Param("ano") Integer ano,
+            @Param("mes") Integer mes,
+            @Param("numeroBanco") Integer numeroBanco,
+            @Param("limit") int limit,
+            @Param("offset") int offset);
+
+    @Query(value = """
+            SELECT COUNT(*) FROM (
+                SELECT g.grupo_compensacao
+                FROM (
+                    SELECT grupo_compensacao
+                    FROM financeiro_lancamento
+                    WHERE grupo_compensacao IS NOT NULL AND grupo_compensacao <> ''
+                    GROUP BY grupo_compensacao
+                    HAVING ABS(SUM(CASE WHEN natureza = 'CREDITO' THEN valor ELSE -valor END)) > 0.01
+                ) g
+                INNER JOIN financeiro_lancamento l ON l.grupo_compensacao = g.grupo_compensacao
+                WHERE (:ano IS NULL OR (YEAR(l.data_lancamento) = :ano AND (:mes IS NULL OR MONTH(l.data_lancamento) = :mes)))
+                  AND (:numeroBanco IS NULL OR l.numero_banco = :numeroBanco)
+                GROUP BY g.grupo_compensacao
+            ) x
+            """, nativeQuery = true)
+    long countGruposCompensacaoInconsistentes(
+            @Param("ano") Integer ano, @Param("mes") Integer mes, @Param("numeroBanco") Integer numeroBanco);
 
     @Query(value = """
             SELECT COUNT(*)
@@ -216,4 +331,31 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
             @Param("numeroBanco") Integer numeroBanco,
             @Param("inicio") java.time.LocalDate inicio,
             @Param("fim") java.time.LocalDate fim);
+
+    @Query(value = """
+            SELECT UPPER(TRIM(c.codigo)) AS codigo,
+                   TRIM(c.nome) AS nome,
+                   YEAR(l.data_lancamento) AS ano,
+                   MONTH(l.data_lancamento) AS mes,
+                   SUM(CASE WHEN l.natureza = 'DEBITO' THEN -l.valor ELSE l.valor END) AS saldo,
+                   COUNT(l.id) AS qtd
+            FROM financeiro_lancamento l
+            INNER JOIN financeiro_conta_contabil c ON c.id = l.conta_contabil_id
+            WHERE l.data_lancamento >= :dataInicio
+              AND l.data_lancamento < :dataFimExclusive
+            GROUP BY UPPER(TRIM(c.codigo)), TRIM(c.nome), YEAR(l.data_lancamento), MONTH(l.data_lancamento)
+            ORDER BY codigo, ano, mes
+            """, nativeQuery = true)
+    List<Object[]> resumoMensalPorContaNoPeriodo(
+            @Param("dataInicio") LocalDate dataInicio,
+            @Param("dataFimExclusive") LocalDate dataFimExclusive);
+
+    @Query(value = """
+            SELECT UPPER(TRIM(c.codigo)) AS codigo,
+                   COUNT(l.id) AS qtd
+            FROM financeiro_lancamento l
+            INNER JOIN financeiro_conta_contabil c ON c.id = l.conta_contabil_id
+            GROUP BY UPPER(TRIM(c.codigo))
+            """, nativeQuery = true)
+    List<Object[]> countLancamentosPorContaCodigo();
 }

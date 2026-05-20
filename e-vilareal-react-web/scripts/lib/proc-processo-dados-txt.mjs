@@ -5,7 +5,12 @@
 import path from 'node:path';
 import { coletarEntradasHistoricoLocal } from './historico-local-txt-iterar.mjs';
 import { DEFAULT_BASE_HISTORICO_LOCAL } from './historico-local-txt-paths.mjs';
-import { levantarFasesProcessos, resolverBaseBancoDados } from './gerais-fase-processo-txt.mjs';
+import {
+  levantarFasesProcessos,
+  lerStatusProcessoTxt,
+  resolverAtivoFromStatusProcessoTxt,
+  resolverBaseBancoDados,
+} from './gerais-fase-processo-txt.mjs';
 import { deduplicarPrazosFatais145_1, iterarPrazosFatais145_1 } from './gerais-145-1-prazo-fatal.mjs';
 import { levantarCamposSemanticosProcesso } from './proc-processo-semantic-txt.mjs';
 import { lerCabecalhoProcessoTxt } from './proc-processo-cabecalho-txt.mjs';
@@ -39,6 +44,7 @@ export function levantarDadosProcessoTxt(codNum, numeroInterno, opts = {}) {
 
   const baseFase = path.join(baseBanco, 'fase');
   const baseGeraisMil = path.join(baseBanco, 'Gerais', '1000');
+  const statusProcesso = lerStatusProcessoTxt(codNum, numeroInterno, { baseBanco, baseGeraisMil });
   const faseReg =
     levantarFasesProcessos(baseFase, baseGeraisMil, { clienteFiltro: codNum }).find(
       (r) => r.numeroInterno === numeroInterno
@@ -72,6 +78,7 @@ export function levantarDadosProcessoTxt(codNum, numeroInterno, opts = {}) {
     pessoaCliente,
     semantic,
     fase: faseReg,
+    statusProcesso,
     prazoArvore,
     imovel,
     entradasHistorico,
@@ -80,7 +87,9 @@ export function levantarDadosProcessoTxt(codNum, numeroInterno, opts = {}) {
       camposSemanticos: semantic ? Object.keys(semantic.campos).length : 0,
       temFase: Boolean(faseReg?.faseCanonica),
       temObsFase: Boolean(faseReg?.observacaoFase),
-      statusInativo: Boolean(faseReg?.statusInativo),
+      statusInativo: Boolean(statusProcesso.statusInativo),
+      temArquivoStatus: Boolean(statusProcesso.temArquivoStatus),
+      statusBruto: statusProcesso.statusBruto ?? null,
       pessoaClienteTxt: pessoaCliente.pessoaId ?? null,
       temResponsavel: Boolean(cabecalho.partesTxt?.responsavelNome),
       temUnidade: Boolean(cabecalho.campos.unidade),
@@ -112,12 +121,22 @@ export function montarPatchProcessoFromTxt(dados) {
     Object.assign(patch, dados.semantic.campos);
   }
 
-  if (dados.fase?.statusInativo) {
+  const st =
+    dados.statusProcesso ??
+    resolverAtivoFromStatusProcessoTxt(dados.fase?.statusBruto ?? null, {
+      temArquivo: Boolean(dados.fase?.arquivoStatus),
+    });
+
+  patch.ativo = st.ativo;
+  if (st.statusInativo) {
+    patch.observacaoFase = null;
+    delete patch.fase;
+  } else if (dados.fase?.statusInativo) {
+    /* legado: fase txt com INATIVO sem ficheiro Status.Processo */
     patch.ativo = false;
     patch.observacaoFase = null;
     delete patch.fase;
   } else {
-    patch.ativo = true;
     if (dados.fase?.faseCanonica) patch.fase = dados.fase.faseCanonica;
     if (dados.fase?.observacaoFase != null) patch.observacaoFase = dados.fase.observacaoFase;
   }

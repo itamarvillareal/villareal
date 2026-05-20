@@ -1,5 +1,6 @@
 package br.com.vilareal.importacao;
 
+import org.apache.poi.ss.usermodel.Row;
 import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
@@ -127,5 +128,24 @@ final class ImoveisPlanilhaImportSupport {
 
     static String trimToEmpty(String s) {
         return s == null ? "" : s.trim();
+    }
+
+    /**
+     * Converte uma linha do export «Administração de Imóveis - Itamar.xls» para o layout canónico A–AZ
+     * (índices 0–51), igual a {@code map_administracao_imoveis_to_imoveis_xlsx.py}.
+     */
+    static String[] mapLinhaAdministracaoParaCanonica(Row row) {
+        String[] u = new String[56];
+        for (int c = 0; c < u.length; c++) {
+            u[c] = trimToEmpty(PlanilhaExcelUtil.cellString(row, c));
+        }
+        String[] j = new String[52];
+        for (int jc = 0; jc < 41; jc++) {
+            j[jc] = u[jc + 1];
+        }
+        for (int k = 0; k < 11; k++) {
+            j[41 + k] = u[45 + k];
+        }
+        return j;
     }
 }

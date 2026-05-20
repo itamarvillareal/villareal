@@ -1,5 +1,39 @@
 import { describe, expect, it } from 'vitest';
-import { mergeUiLancamentoComRespostaApi } from './financeiroRepository.js';
+import {
+  lancamentoBateContaCorrenteProcesso,
+  mergeUiLancamentoComRespostaApi,
+  pessoaIdDesdeCodigoClienteFinanceiro,
+} from './financeiroRepository.js';
+
+describe('pessoaIdDesdeCodigoClienteFinanceiro', () => {
+  it('extrai pessoa id dos dígitos do código', () => {
+    expect(pessoaIdDesdeCodigoClienteFinanceiro('00000938')).toBe(938);
+    expect(pessoaIdDesdeCodigoClienteFinanceiro(938)).toBe(938);
+  });
+});
+
+describe('lancamentoBateContaCorrenteProcesso', () => {
+  it('aceita lançamento pelo nº interno na pessoa do código, não só processoId oficial', () => {
+    const ok = lancamentoBateContaCorrenteProcesso(
+      {
+        clienteId: 938,
+        processoId: 51853,
+        codigoCliente: '00000938',
+        numeroInternoProcesso: 4,
+      },
+      { codigoNorm: '938', procNorm: '4', resolvedProcessoId: 7448 },
+    );
+    expect(ok).toBe(true);
+  });
+
+  it('rejeita quando o código do lançamento não bate', () => {
+    const ok = lancamentoBateContaCorrenteProcesso(
+      { clienteId: 100, codigoCliente: '00000100', numeroInternoProcesso: 4 },
+      { codigoNorm: '938', procNorm: '4', resolvedProcessoId: null },
+    );
+    expect(ok).toBe(false);
+  });
+});
 
 describe('mergeUiLancamentoComRespostaApi', () => {
   it('com origem OFX e API devolvendo cliente/processo, não apaga o vínculo (modal Vincular)', () => {

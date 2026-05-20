@@ -12,12 +12,16 @@ import { padCliente } from '../data/processosDadosRelatorio.js';
 import {
   gerarAlertasAdministracaoImovel,
   nomeContaPorLetra,
+  PAPEL_CREDITO,
+  PAPEL_DEBITO,
   PAPEL_DESPESA_REPASSAR,
   processoEhAdministracaoImovel,
   rotuloPapelAdministracao,
 } from '../data/imoveisAdministracaoFinanceiro.js';
+import { ImoveisSugestoesVinculoPanel } from './imoveis/ImoveisSugestoesVinculoPanel.jsx';
 import {
   carregarPainelAdministracaoImovel,
+  recarregarSomentePainelFinanceiroImovel,
   salvarDespesaLocacao,
   salvarRepasseLocacao,
 } from '../repositories/imoveisRepository.js';
@@ -65,6 +69,7 @@ export function ImoveisAdministracaoFinanceiro() {
     categoria: 'OUTROS',
   });
 
+  /** Nº do imóvel na planilha (col. A) — mesmo valor exibido no cadastro e no relatório. */
   const imovelId = useMemo(() => {
     const st = location.state && typeof location.state === 'object' ? location.state : null;
     const fromState = st?.imovelId != null ? Number(st.imovelId) : NaN;
@@ -73,6 +78,16 @@ export function ImoveisAdministracaoFinanceiro() {
     const fromQ = Number(q.get('imovel'));
     if (Number.isFinite(fromQ) && fromQ >= 1) return Math.floor(fromQ);
     return 1;
+  }, [location.state, location.search]);
+
+  const imovelIdApi = useMemo(() => {
+    const st = location.state && typeof location.state === 'object' ? location.state : null;
+    const fromState = st?.imovelIdApi != null ? Number(st.imovelIdApi) : NaN;
+    if (Number.isFinite(fromState) && fromState >= 1) return Math.floor(fromState);
+    const q = new URLSearchParams(location.search || '');
+    const fromQ = Number(q.get('imovelApi'));
+    if (Number.isFinite(fromQ) && fromQ >= 1) return Math.floor(fromQ);
+    return null;
   }, [location.state, location.search]);
 
   const mock = useMemo(() => imovelUi, [imovelUi]);
@@ -87,9 +102,18 @@ export function ImoveisAdministracaoFinanceiro() {
     return gerarAlertasAdministracaoImovel(mock, painel.porMes, painel.mesesOrdenados);
   }, [painel, mock]);
 
-  const ehAdm = vinculoOk && processoEhAdministracaoImovel(codigoStr, procStr);
+  const ehAdm = vinculoOk && processoEhAdministracaoImovel(codigoStr, procStr, { assumirAdm: true });
+  const painelFonteApi = painel?.fonte === 'api' && featureFlags.useApiFinanceiro;
 
   const recarregar = useCallback(() => setRefreshTick((t) => t + 1), []);
+
+  /** Após aprovar vínculo: só atualiza extrato/conta corrente, sem travar a página inteira. */
+  const atualizarExtratoAposVinculo = useCallback(() => {
+    if (!vinculoOk) return;
+    void recarregarSomentePainelFinanceiroImovel({ imovelId, imovelIdApi }).then((painel) => {
+      if (painel) setPainelApi(painel);
+    });
+  }, [imovelId, imovelIdApi, vinculoOk]);
 
   useEffect(() => {
     setRepasseEditandoId(null);
@@ -103,7 +127,7 @@ export function ImoveisAdministracaoFinanceiro() {
     setCarregando(true);
     setErro('');
     setSucesso('');
-    void carregarPainelAdministracaoImovel({ imovelId })
+    void carregarPainelAdministracaoImovel({ imovelId, imovelIdApi })
       .then((r) => {
         if (!ativo) return;
         setImovelUi(r.imovel);
@@ -122,7 +146,7 @@ export function ImoveisAdministracaoFinanceiro() {
     return () => {
       ativo = false;
     };
-  }, [imovelId, refreshTick]);
+  }, [imovelId, imovelIdApi, refreshTick]);
 
   async function criarRepasseMinimo() {
     try {
@@ -302,8 +326,15 @@ export function ImoveisAdministracaoFinanceiro() {
               </h1>
               <p className="text-sm text-slate-600 mt-1 max-w-3xl">
                 Movimentações são as mesmas da <strong>Conta Corrente</strong> em Processos e do módulo{' '}
-                <strong>Financeiro</strong> (Cod. cliente + Proc.). A remuneração do escritório é calculada aqui; não há
-                lançamento explícito só para isso no extrato.
+                <strong>Financeiro</strong> (Cod. cliente + Proc.).
+                {painelFonteApi ? (
+                  <>
+                    {' '}
+                    Com a <strong>API financeira</strong> ativa, o extrato abaixo vem do servidor (não da cópia local do
+                    navegador).
+                  </>
+                ) : null}{' '}
+                A remuneração do escritório é calculada aqui; não há lançamento explícito só para isso no extrato.
               </p>
             </div>
           </div>
@@ -370,26 +401,54 @@ export function ImoveisAdministracaoFinanceiro() {
 
         {mock && (
           <>
-            <div className="bg-white rounded-lg border border-slate-300 shadow-sm p-4 space-y-2">
+            <div className="bg-white rounded-lg border border-slate-300 shadow-sm p-4 space-y-3">
               <p className="text-sm font-semibold text-slate-800">Vínculo obrigatório (cliente + processo)</p>
-              <div className="flex flex-wrap gap-4 text-sm text-slate-700">
+              <div className="grid gap-3 sm:grid-cols-3 text-sm">
+                <div className="min-w-0 rounded-lg border border-slate-100 bg-slate-50/80 px-3 py-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Unidade</p>
+                  <p className="mt-0.5 font-medium text-slate-900 break-words">
+                    {String(mock.unidade || mock.condominio || '—').trim() || '—'}
+                  </p>
+                  {mock.condominio && mock.unidade && String(mock.condominio).trim() !== String(mock.unidade).trim() ? (
+                    <p className="text-xs text-slate-500 mt-0.5 break-words">{mock.condominio}</p>
+                  ) : null}
+                </div>
+                <div className="min-w-0 rounded-lg border border-slate-100 bg-slate-50/80 px-3 py-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Locador</p>
+                  <p className="mt-0.5 font-medium text-slate-900 break-words">
+                    {String(mock.proprietario || '—').trim() || '—'}
+                  </p>
+                  <p className="text-xs text-slate-600 mt-0.5 font-mono tabular-nums">
+                    {vinculoOk ? (
+                      <>
+                        Cod. {padCliente(codigoStr)} · Proc. {procStr}
+                      </>
+                    ) : (
+                      'Cod. e Proc. não preenchidos no cadastro'
+                    )}
+                  </p>
+                </div>
+                <div className="min-w-0 rounded-lg border border-slate-100 bg-slate-50/80 px-3 py-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Locatário</p>
+                  <p className="mt-0.5 font-medium text-slate-900 break-words">
+                    {String(mock.inquilino || '—').trim() || '—'}
+                  </p>
+                  {mock.valorLocacao || mock.diaPagAluguel ? (
+                    <p className="text-xs text-slate-600 mt-0.5">
+                      {mock.valorLocacao ? <>Aluguel {String(mock.valorLocacao)}</> : null}
+                      {mock.valorLocacao && mock.diaPagAluguel ? ' · ' : null}
+                      {mock.diaPagAluguel ? <>venc. dia {String(mock.diaPagAluguel).padStart(2, '0')}</> : null}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600">
                 <span>
-                  <span className="text-slate-500">Nº imóvel:</span>{' '}
-                  <strong className="tabular-nums">{imovelId}</strong>
-                </span>
-                <span>
-                  <span className="text-slate-500">Cod. cliente (locador):</span>{' '}
-                  <strong className="font-mono">{vinculoOk ? padCliente(codigoStr) : '—'}</strong>
-                </span>
-                <span>
-                  <span className="text-slate-500">Proc.:</span>{' '}
-                  <strong className="tabular-nums">{vinculoOk ? procStr : '—'}</strong>
-                </span>
-                <span>
-                  <span className="text-slate-500">Unidade:</span> <strong>{mock.unidade}</strong>
+                  <span className="text-slate-500">Nº imóvel (planilha):</span>{' '}
+                  <strong className="tabular-nums text-slate-800">{imovelId}</strong>
                 </span>
                 {featureFlags.useApiImoveis && mock._apiImovelId ? (
-                  <span className="w-full basis-full mt-1 text-xs text-slate-600">
+                  <span className="w-full sm:w-auto">
                     Referência API: imóvel <span className="font-mono tabular-nums">{mock._apiImovelId}</span>
                     {mock._apiContratoId != null ? (
                       <>
@@ -439,6 +498,13 @@ export function ImoveisAdministracaoFinanceiro() {
               )}
             </div>
 
+            <ImoveisSugestoesVinculoPanel
+              imovelIdContexto={vinculoOk ? imovelId : null}
+              onAprovado={atualizarExtratoAposVinculo}
+              estrategia="melhorPorLancamento"
+              limite={50}
+            />
+
             {!vinculoOk || !painel ? null : (
               <>
                 {alertas.length > 0 && (
@@ -462,25 +528,28 @@ export function ImoveisAdministracaoFinanceiro() {
                 <div className="bg-white rounded-lg border border-slate-300 shadow-sm p-4">
                   <h2 className="text-sm font-semibold text-slate-800 mb-3">Consolidação mensal</h2>
                   <p className="text-xs text-slate-500 mb-3">
-                    Valores derivados dos lançamentos do Financeiro. <strong>Remuneração do escritório</strong> = líquido
-                    após despesas − repasse efetivo ao locador (não aparece como linha separada no extrato).
+                    Todos os créditos e débitos vinculados a este Cod. cliente + Proc. entram na lista abaixo.
+                    {painelFonteApi ? ' Fonte: API (banco e cartão).' : ' Fonte: extrato local.'}{' '}
+                    A coluna <strong>Papel</strong> é só sugestão (aluguel, repasse, despesa ou crédito/débito a classificar) — use as tags{' '}
+                    <code className="text-[10px]">[ADM_IMOVEL:…]</code> no Financeiro quando quiser fixar o tipo.
                   </p>
                   <div className="overflow-x-auto rounded border border-slate-200">
-                    <table className="w-full text-left border-collapse min-w-[720px]">
+                    <table className="w-full text-left border-collapse min-w-[880px]">
                       <thead>
                         <tr>
                           <th className={th}>Mês</th>
-                          <th className={`${th} text-right`}>Recebido (inquilino)</th>
-                          <th className={`${th} text-right`}>Despesas (repassar)</th>
-                          <th className={`${th} text-right`}>Líquido após despesas</th>
-                          <th className={`${th} text-right`}>Repasse ao locador</th>
+                          <th className={`${th} text-right`}>Créditos (total)</th>
+                          <th className={`${th} text-right`}>Débitos (total)</th>
+                          <th className={`${th} text-right`}>Aluguel (sug.)</th>
+                          <th className={`${th} text-right`}>Despesas (sug.)</th>
+                          <th className={`${th} text-right`}>Repasse (sug.)</th>
                           <th className={`${th} text-right`}>Remuneração escritório</th>
                         </tr>
                       </thead>
                       <tbody>
                         {painel.mesesOrdenados.length === 0 ? (
                           <tr>
-                            <td colSpan={6} className={`${td} text-slate-500 text-center py-6`}>
+                            <td colSpan={7} className={`${td} text-slate-500 text-center py-6`}>
                               Nenhum lançamento com este Cod. cliente e Proc. no extrato. Inclua ou vincule lançamentos no
                               Financeiro.
                             </td>
@@ -491,11 +560,16 @@ export function ImoveisAdministracaoFinanceiro() {
                             return (
                               <tr key={chave}>
                                 <td className={`${td} font-medium`}>{row.label}</td>
+                                <td className={`${td} text-right tabular-nums text-emerald-800`}>
+                                  {formatBRL(row.totalCreditos)}
+                                </td>
+                                <td className={`${td} text-right tabular-nums text-red-800`}>
+                                  {formatBRL(row.totalDebitos)}
+                                </td>
                                 <td className={`${td} text-right tabular-nums`}>{formatBRL(row.totalRecebido)}</td>
                                 <td className={`${td} text-right tabular-nums text-orange-800`}>
                                   {formatBRL(row.totalDespesasRepassar)}
                                 </td>
-                                <td className={`${td} text-right tabular-nums`}>{formatBRL(row.liquidoAposDespesas)}</td>
                                 <td className={`${td} text-right tabular-nums text-slate-800`}>
                                   {formatBRL(row.totalRepasse)}
                                 </td>
@@ -514,15 +588,17 @@ export function ImoveisAdministracaoFinanceiro() {
                 <div id="extrato-imoveis" className="bg-white rounded-lg border border-slate-300 shadow-sm p-4 scroll-mt-4">
                   <h2 className="text-sm font-semibold text-slate-800 mb-1">Conta corrente do imóvel</h2>
                   <p className="text-xs text-slate-500 mb-3">
-                    Lista espelhada do Financeiro (todos os lançamentos com o mesmo Cod. cliente e Proc.). Despesas a
-                    descontar do repasse aparecem com destaque.
+                    {painelFonteApi
+                      ? 'Todos os lançamentos de crédito ou débito (banco e cartão) com o mesmo Cod. cliente e Proc.'
+                      : 'Lista espelhada do extrato local no navegador.'}{' '}
+                    Nada é ocultado por tipo: repasse, aluguel, despesa ou outro — o papel na última coluna é orientação para você classificar.
                   </p>
                   <div className="overflow-x-auto rounded border border-slate-200">
                     <table className="w-full text-left border-collapse min-w-[960px]">
                       <thead>
                         <tr>
                           <th className={th}>Data</th>
-                          <th className={th}>Banco</th>
+                          <th className={th}>Banco / cartão</th>
                           <th className={th}>Conta contábil</th>
                           <th className={th}>Descrição</th>
                           <th className={th}>Detalhe / classificação</th>
@@ -541,11 +617,22 @@ export function ImoveisAdministracaoFinanceiro() {
                           painel.transacoes.map((t, idx) => {
                             const { papel, despesaRepassarAoLocador } = t.classificacao;
                             const isDesp = papel === PAPEL_DESPESA_REPASSAR || despesaRepassarAoLocador;
-                            const rowClass = isDesp ? 'bg-orange-50/80' : '';
+                            const rowClass = isDesp
+                              ? 'bg-orange-50/80'
+                              : papel === PAPEL_CREDITO
+                                ? 'bg-emerald-50/50'
+                                : papel === PAPEL_DEBITO
+                                  ? 'bg-slate-50/80'
+                                  : '';
                             return (
-                              <tr key={`${t.nomeBanco}-${t.numero}-${t.data}-${idx}`} className={rowClass}>
+                              <tr key={`${t.apiId ?? t.numero}-${t.nomeBanco}-${t.data}-${idx}`} className={rowClass}>
                                 <td className={`${td} tabular-nums whitespace-nowrap`}>{t.data}</td>
-                                <td className={td}>{t.nomeBanco}</td>
+                                <td className={td}>
+                                  {t.nomeBanco}
+                                  {t.origemExtrato === 'cartao' ? (
+                                    <span className="ml-1 text-[10px] text-slate-500">(cartão)</span>
+                                  ) : null}
+                                </td>
                                 <td className={`${td} text-xs`}>{nomeContaPorLetra(t.letra)}</td>
                                 <td className={td}>{t.descricao}</td>
                                 <td className={`${td} text-xs max-w-[220px]`}>
@@ -579,7 +666,8 @@ export function ImoveisAdministracaoFinanceiro() {
                 <div className="bg-white rounded-lg border border-slate-300 shadow-sm p-4 space-y-4">
                   <h2 className="text-sm font-semibold text-slate-800">Operação mínima de repasses e despesas</h2>
                   <p className="text-xs text-slate-500">
-                    Fonte operacional do módulo imobiliário (API de locações). O extrato financeiro acima permanece como conferência.
+                    Fonte operacional do módulo imobiliário (API de locações). O extrato financeiro acima
+                    {painelFonteApi ? ' segue a API financeira' : ' usa cópia local até a API financeira estar ativa'}.
                   </p>
                   <div className="grid md:grid-cols-2 gap-4">
                     <div className="rounded border border-slate-200 p-3 space-y-2">

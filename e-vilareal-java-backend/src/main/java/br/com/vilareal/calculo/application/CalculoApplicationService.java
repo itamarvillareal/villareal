@@ -7,6 +7,7 @@ import br.com.vilareal.calculo.api.dto.CalculoRodadasResumoResponse;
 import br.com.vilareal.calculo.api.dto.CalculoRodadasWriteRequest;
 import br.com.vilareal.calculo.infrastructure.persistence.entity.CalculoClienteConfigEntity;
 import br.com.vilareal.calculo.infrastructure.persistence.entity.CalculoRodadaEntity;
+import br.com.vilareal.calculo.infrastructure.persistence.projection.CalculoRodadaResumoProjection;
 import br.com.vilareal.calculo.infrastructure.persistence.repository.CalculoClienteConfigRepository;
 import br.com.vilareal.calculo.infrastructure.persistence.repository.CalculoRodadaRepository;
 import br.com.vilareal.calculo.model.RodadaCalculoChave;
@@ -17,6 +18,7 @@ import br.com.vilareal.processo.application.ClienteCodigoPessoaResolver;
 import br.com.vilareal.processo.application.CodigoClienteUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -80,13 +82,30 @@ public class CalculoApplicationService {
 
     @Transactional(readOnly = true)
     public Optional<JsonNode> obterRodada(String codigoCliente, int numeroProcesso, int dimensao) {
+        return obterRodada(codigoCliente, numeroProcesso, dimensao, null, null);
+    }
+
+    /**
+     * @param titulosPage 1-based; com {@code titulosLimit} aplica fatia em {@code titulos[]} (não em
+     *     {@code titulosGravadosAceito}).
+     * @param titulosLimit padrão 20 quando {@code titulosPage} informado
+     */
+    @Transactional(readOnly = true)
+    public Optional<JsonNode> obterRodada(
+            String codigoCliente, int numeroProcesso, int dimensao, Integer titulosPage, Integer titulosLimit) {
         RodadaCalculoChave chave = RodadaCalculoChave.fromPath(codigoCliente, numeroProcesso, dimensao);
         return rodadaRepository
                 .findByCodigoClienteAndNumeroProcessoAndDimensao(
                         chave.codigoCliente(), chave.numeroProcesso(), chave.dimensao())
                 .map(e -> {
                     JsonNode p = corrigirPayloadJsonRodadaTolerante(e);
-                    return p != null ? p : objectMapper.createObjectNode();
+                    if (p == null || !p.isObject()) {
+                        return objectMapper.createObjectNode();
+                    }
+                    if (titulosPage == null && titulosLimit == null) {
+                        return p;
+                    }
+                    return aplicarPaginacaoTitulosNoPayload((ObjectNode) p, titulosPage, titulosLimit);
                 });
     }
 
@@ -122,6 +141,7 @@ public class CalculoApplicationService {
         entity.setNumeroProcesso(chave.numeroProcesso());
         entity.setDimensao(chave.dimensao());
         entity.setPayloadJson(payload);
+        sincronizarParcelamentoAceito(entity, payload);
         if (inserindo && StringUtils.hasText(importacaoIdParaNovaRodada)) {
             entity.setImportacaoId(importacaoIdParaNovaRodada.trim());
         }
@@ -132,17 +152,10 @@ public class CalculoApplicationService {
     @Transactional(readOnly = true)
     public CalculoRodadasResumoResponse listarResumoRodadas() {
         List<CalculoRodadaResumoItem> items = new ArrayList<>();
-        for (CalculoRodadaEntity row : rodadaRepository.findAll()) {
-            if (!chaveRodadaCompleta(row)) {
-                log.warn(
-                        "calculo_rodada id={} omitida em GET /rodadas/resumo: codigo_cliente, numero_processo ou dimensao nulos",
-                        row.getId());
-                continue;
-            }
-            JsonNode payload = corrigirPayloadJsonRodadaTolerante(row);
+        for (CalculoRodadaResumoProjection row : rodadaRepository.findAllResumo()) {
             RodadaCalculoChave ch = new RodadaCalculoChave(
-                    row.getCodigoCliente(), row.getNumeroProcesso(), row.getDimensao());
-            items.add(new CalculoRodadaResumoItem(ch.toMapKey(), lerParcelamentoAceito(payload)));
+                    row.codigoCliente(), row.numeroProcesso(), row.dimensao());
+            items.add(new CalculoRodadaResumoItem(ch.toMapKey(), row.parcelamentoAceito()));
         }
         items.sort(Comparator.comparing(CalculoRodadaResumoItem::chave));
         return new CalculoRodadasResumoResponse(items);
@@ -174,6 +187,121 @@ public class CalculoApplicationService {
                     row.getDimensao(),
                     e.getMessage());
             return null;
+        }
+    }
+
+    private ObjectNode aplicarPaginacaoTitulosNoPayload(ObjectNode payload, Integer titulosPage, Integer titulosLimit) {
+        ObjectNode out = payload.deepCopy();
+        JsonNode titulosNode = out.get("titulos");
+        if (titulosNode == null || !titulosNode.isArray()) {
+            return out;
+        }
+        int page = titulosPage != null && titulosPage > 0 ? titulosPage : 1;
+        int limit = titulosLimit != null && titulosLimit > 0 ? Math.min(titulosLimit, 500) : 20;
+        int total = titulosNode.size();
+        int start = (page - 1) * limit;
+        int end = Math.min(start + limit, total);
+        ArrayNode paginated = objectMapper.createArrayNode();
+        if (start < total) {
+            for (int i = start; i < end; i++) {
+                paginated.add(titulosNode.get(i));
+            }
+        }
+        out.set("titulos", paginated);
+        int totalPages = limit > 0 ? (int) Math.ceil((double) total / limit) : 1;
+        ObjectNode pagination = objectMapper.createObjectNode();
+        pagination.put("page", page);
+        pagination.put("limit", limit);
+        pagination.put("total", total);
+        pagination.put("totalPages", Math.max(1, totalPages));
+        pagination.put("hasNext", page < totalPages);
+        pagination.put("hasPrev", page > 1);
+        out.set("titulosPagination", pagination);
+        out.set("titulosResumo", calcularTitulosResumoJson(titulosNode));
+        return out;
+    }
+
+    /** Soma campos monetários das linhas com {@code valorInicial} preenchido (paridade resumo geral do front). */
+    private ObjectNode calcularTitulosResumoJson(JsonNode titulosNode) {
+        ObjectNode resumo = objectMapper.createObjectNode();
+        int qtd = 0;
+        double sumValorInicial = 0;
+        double sumAtualizacao = 0;
+        double sumJuros = 0;
+        double sumMulta = 0;
+        double sumHonorarios = 0;
+        double sumTotal = 0;
+        long sumDias = 0;
+        if (titulosNode != null && titulosNode.isArray()) {
+            for (JsonNode t : titulosNode) {
+                if (t == null || !t.isObject()) {
+                    continue;
+                }
+                String vi = textOrEmpty(t.get("valorInicial"));
+                if (vi.isBlank()) {
+                    continue;
+                }
+                qtd++;
+                sumValorInicial += parseBrlMonetario(vi);
+                sumAtualizacao += parseBrlMonetario(textOrEmpty(t.get("atualizacaoMonetaria")));
+                sumJuros += parseBrlMonetario(textOrEmpty(t.get("juros")));
+                sumMulta += parseBrlMonetario(textOrEmpty(t.get("multa")));
+                sumHonorarios += parseBrlMonetario(textOrEmpty(t.get("honorarios")));
+                sumTotal += parseBrlMonetario(textOrEmpty(t.get("total")));
+                String dias = textOrEmpty(t.get("diasAtraso")).replaceAll("\\D", "");
+                if (!dias.isBlank()) {
+                    try {
+                        sumDias += Long.parseLong(dias);
+                    } catch (NumberFormatException ignored) {
+                        // ignora
+                    }
+                }
+            }
+        }
+        resumo.put("quantidadeTitulos", qtd);
+        resumo.put("totalValorInicial", trunc2(sumValorInicial));
+        resumo.put("totalAtualizacao", trunc2(sumAtualizacao));
+        resumo.put("totalJuros", trunc2(sumJuros));
+        resumo.put("totalMulta", trunc2(sumMulta));
+        resumo.put("totalHonorarios", trunc2(sumHonorarios));
+        resumo.put("totalGeral", trunc2(sumTotal));
+        resumo.put("totalDiasAtraso", sumDias);
+        return resumo;
+    }
+
+    private static String textOrEmpty(JsonNode n) {
+        if (n == null || n.isNull()) {
+            return "";
+        }
+        return n.asText("").trim();
+    }
+
+    private static double parseBrlMonetario(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return 0;
+        }
+        String s = raw.replaceAll("(?i)R\\$\\s?", "").trim().replace(".", "").replace(",", ".");
+        s = s.replaceAll("[^\\d.-]", "");
+        if (s.isBlank()) {
+            return 0;
+        }
+        try {
+            return Double.parseDouble(s);
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    private static double trunc2(double n) {
+        return Math.floor(n * 100.0) / 100.0;
+    }
+
+    /** Coluna desnormalizada + campo no JSON permanecem alinhados. */
+    private void sincronizarParcelamentoAceito(CalculoRodadaEntity entity, JsonNode payload) {
+        boolean aceito = lerParcelamentoAceito(payload);
+        entity.setParcelamentoAceito(aceito);
+        if (payload instanceof ObjectNode objectNode) {
+            objectNode.put("parcelamentoAceito", aceito);
         }
     }
 
@@ -216,6 +344,7 @@ public class CalculoApplicationService {
             entity.setNumeroProcesso(chave.numeroProcesso());
             entity.setDimensao(chave.dimensao());
             entity.setPayloadJson(payload);
+            sincronizarParcelamentoAceito(entity, payload);
             rodadaRepository.save(entity);
         }
         java.util.HashSet<String> keys = new java.util.HashSet<>(incoming.keySet());

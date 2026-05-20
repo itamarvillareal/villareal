@@ -1,21 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Check, Pencil, SkipForward } from 'lucide-react';
 import { ContaBadge } from '../../shared/ContaBadge.jsx';
 import { ConfiancaDots } from '../../shared/ConfiancaDots.jsx';
 import { ValorText } from '../../shared/ValorText.jsx';
+import { filtrarSugestoesClassificacao, melhorSugestao } from '../inboxClassificacaoGrupos.js';
 import { textoOrigemSugestao } from '../inboxMappers.js';
-
-const ORDEM_CONFIANCA = { ALTA: 0, MEDIA: 1, BAIXA: 2 };
-
-function melhorSugestao(lista) {
-  if (!lista?.length) return null;
-  return [...lista].sort(
-    (a, b) =>
-      (ORDEM_CONFIANCA[String(a.confianca).toUpperCase()] ?? 9) -
-      (ORDEM_CONFIANCA[String(b.confianca).toUpperCase()] ?? 9),
-  )[0];
-}
 
 export function ClassificacaoCard({
   lancamento,
@@ -30,16 +20,15 @@ export function ClassificacaoCard({
   focused = false,
 }) {
   const navigate = useNavigate();
-  const principal = useMemo(() => melhorSugestao(sugestoes), [sugestoes]);
+  const sugestoesUteis = useMemo(() => filtrarSugestoesClassificacao(sugestoes), [sugestoes]);
+  const principal = useMemo(() => melhorSugestao(sugestoesUteis), [sugestoesUteis]);
   const alternativas = useMemo(() => {
-    if (!principal) return sugestoes.slice(0, 3);
-    return sugestoes.filter((s) => s.contaContabilId !== principal.contaContabilId).slice(0, 3);
-  }, [sugestoes, principal]);
+    if (!principal) return sugestoesUteis.slice(0, 3);
+    return sugestoesUteis.filter((s) => s.contaContabilId !== principal.contaContabilId).slice(0, 3);
+  }, [sugestoesUteis, principal]);
 
   const conf = String(principal?.confianca ?? '').toUpperCase();
   const semSugestao = !principal;
-  const [contaManual, setContaManual] = useState('');
-
   const borderLeft =
     conf === 'ALTA'
       ? 'border-l-[3px] border-l-green-500'
@@ -48,9 +37,7 @@ export function ClassificacaoCard({
         : 'border-l-[3px] border-l-slate-300 dark:border-l-slate-600';
 
   const codigoAprovar =
-    principal?.contaCodigo ??
-    contas.find((c) => String(c.id) === String(contaManual))?.codigo ??
-    'N';
+    principal?.contaCodigo ?? contas.find((c) => String(c.id) === String(contaManual))?.codigo ?? '';
 
   const handleAprovar = (sug) => {
     const s = sug ?? principal;
@@ -102,25 +89,29 @@ export function ClassificacaoCard({
           <span className="text-slate-700 dark:text-slate-200">{principal.contaNome}</span>
           <ConfiancaDots nivel={principal.confianca} />
           <span className="text-[12px] italic text-slate-400">{textoOrigemSugestao(principal)}</span>
+          {principal.rotuloVinculo &&
+          String(principal.origem ?? '').toUpperCase() !== 'PESSOA_PROCESSO' ? (
+            <span className="text-[12px] font-medium text-blue-700 dark:text-blue-300">
+              {principal.rotuloVinculo}
+            </span>
+          ) : null}
         </div>
       ) : null}
 
       {semSugestao ? (
-        <div className="mt-3">
-          <label className="text-xs text-slate-500 block mb-1">Conta contábil</label>
-          <select
-            value={contaManual}
-            onChange={(e) => setContaManual(e.target.value)}
-            className="w-full max-w-md text-sm rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1.5"
+        <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+          Sem sugestão automática — classifique no{' '}
+          <button
+            type="button"
+            className="text-indigo-700 dark:text-indigo-300 font-medium hover:underline"
+            onClick={() =>
+              navigate(`/financeiro/extrato?busca=${encodeURIComponent(lancamento.descricao ?? '')}`)
+            }
           >
-            <option value="">Selecione…</option>
-            {contas.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.codigo} — {c.nome}
-              </option>
-            ))}
-          </select>
-        </div>
+            extrato
+          </button>
+          .
+        </p>
       ) : (
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
           <span className="text-xs text-slate-500">Alternativas:</span>
@@ -131,7 +122,7 @@ export function ClassificacaoCard({
               disabled={busy}
               onClick={() => handleAprovar(alt)}
               className="inline-flex rounded-full focus:outline-none focus:ring-2 focus:ring-blue-400"
-              title={alt.contaNome}
+              title={alt.rotuloVinculo || alt.contaNome}
             >
               <ContaBadge codigo={alt.contaCodigo} />
             </button>
@@ -155,29 +146,33 @@ export function ClassificacaoCard({
             }}
           >
             <option value="">Outra ▼</option>
-            {contas.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.codigo} — {c.nome}
-              </option>
-            ))}
+            {contas
+              .filter((c) => String(c.codigo ?? '').toUpperCase() !== 'N')
+              .map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.codigo} — {c.nome}
+                </option>
+              ))}
           </select>
         </div>
       )}
 
       <div className="mt-3 flex flex-wrap gap-2 justify-end">
-        <button
-          type="button"
-          disabled={busy || (semSugestao && !contaManual)}
-          onClick={() => handleAprovar()}
-          className={`inline-flex items-center gap-1 rounded-md text-white font-medium disabled:opacity-50 ${
-            conf === 'ALTA'
-              ? 'bg-green-600 hover:bg-green-700 text-sm px-4 py-2'
-              : 'bg-blue-600 hover:bg-blue-700 text-sm px-3 py-1.5'
-          }`}
-        >
-          <Check className="w-4 h-4" />
-          Aprovar {codigoAprovar}
-        </button>
+        {principal ? (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => handleAprovar()}
+            className={`inline-flex items-center gap-1 rounded-md text-white font-medium disabled:opacity-50 ${
+              conf === 'ALTA'
+                ? 'bg-green-600 hover:bg-green-700 text-sm px-4 py-2'
+                : 'bg-blue-600 hover:bg-blue-700 text-sm px-3 py-1.5'
+            }`}
+          >
+            <Check className="w-4 h-4" />
+            Aprovar {codigoAprovar}
+          </button>
+        ) : null}
         <button
           type="button"
           disabled={busy}

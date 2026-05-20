@@ -108,6 +108,80 @@ export async function resolverPessoaIdCliente(baseUrl, token, cod8, cache) {
   return pid;
 }
 
+const DESCRICAO_STUB_IMPORT =
+  'Processo criado automaticamente antes do import-real (cabecalho ausente na API).';
+
+/**
+ * POST stub mínimo em /api/processos.
+ * @param {string} [descricaoAcao]
+ */
+export async function criarProcessoStubImport(
+  baseUrl,
+  token,
+  pessoaId,
+  numeroInterno,
+  descricaoAcao = DESCRICAO_STUB_IMPORT
+) {
+  const body = {
+    clienteId: pessoaId,
+    numeroInterno: Math.trunc(Number(numeroInterno)),
+    ativo: true,
+    consultaAutomatica: false,
+    descricaoAcao,
+  };
+  const res = await fetch(`${baseUrl.replace(/\/$/, '')}/api/processos`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+  const txt = await res.text();
+  if (res.status === 201 || res.status === 200) return { ok: true };
+  if (res.status === 422 && /j[aá]\s*existe/i.test(txt)) return { ok: true, duplicate: true };
+  return { ok: false, status: res.status, text: txt.slice(0, 300) };
+}
+
+/**
+ * Garante registo do processo na API; cria stub se ainda não existir.
+ * @param {Map<string, number>} [pessoaPorCod8]
+ * @returns {Promise<{ ok: boolean, criado: boolean, processo: object | null, erro?: string }>}
+ */
+export async function garantirProcessoNaApi(
+  baseUrl,
+  token,
+  cod8,
+  numeroInterno,
+  pessoaPorCod8 = new Map()
+) {
+  const ni = Math.trunc(Number(numeroInterno));
+  let proc = await buscarProcesso(baseUrl, token, cod8, ni, pessoaPorCod8);
+  if (proc?.id) return { ok: true, criado: false, processo: proc };
+
+  const pessoaId = await resolverPessoaIdCliente(baseUrl, token, cod8, pessoaPorCod8);
+  if (!pessoaId) {
+    return { ok: false, criado: false, processo: null, erro: 'pessoa do cliente não resolvida na API' };
+  }
+
+  const r = await criarProcessoStubImport(baseUrl, token, pessoaId, ni);
+  if (!r.ok) {
+    return {
+      ok: false,
+      criado: false,
+      processo: null,
+      erro: `POST processo falhou ${r.status ?? '?'}: ${r.text ?? ''}`,
+    };
+  }
+
+  proc = await buscarProcesso(baseUrl, token, cod8, ni, pessoaPorCod8);
+  if (!proc?.id) {
+    return { ok: false, criado: true, processo: null, erro: 'stub criado mas processo não encontrado após POST' };
+  }
+  return { ok: true, criado: true, processo: proc };
+}
+
 export async function loginImportApi(baseUrl, login, senha) {
   const res = await fetch(`${baseUrl}/api/auth/login`, {
     method: 'POST',

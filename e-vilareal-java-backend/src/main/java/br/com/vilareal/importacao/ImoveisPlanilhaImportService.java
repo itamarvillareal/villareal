@@ -36,6 +36,7 @@ import java.nio.file.Paths;
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 
@@ -53,6 +54,15 @@ public class ImoveisPlanilhaImportService {
     private static final Logger log = LoggerFactory.getLogger(ImoveisPlanilhaImportService.class);
     private static final int ULTIMA_COL_INCLUSIVE = 51;
     private static final LocalDate DATA_INICIO_PADRAO = LocalDate.of(2000, 1, 1);
+    /** Export «Villa Real - Administração de Imóveis - Itamar.xls»: dados a partir da linha Excel 9. */
+    private static final int ADMIN_FIRST_ROW_0 = 8;
+
+    private static final int ADMIN_LAST_ROW_0 = 71;
+    private static final Path PATH_PLANILHA_ADMIN_ITAMAR_PADRAO = Paths.get(
+            System.getProperty("user.home"),
+            "Dropbox",
+            "sistema",
+            "Villa Real - Administração de Imóveis - Itamar.xls");
 
     private final ImovelRepository imovelRepository;
     private final ContratoLocacaoRepository contratoLocacaoRepository;
@@ -83,7 +93,7 @@ public class ImoveisPlanilhaImportService {
         if (StringUtils.hasText(configuredPath)) {
             return Paths.get(configuredPath.trim());
         }
-        return Paths.get(System.getProperty("user.home"), "Dropbox", "COMUM", "imoveis.xlsx");
+        return PATH_PLANILHA_ADMIN_ITAMAR_PADRAO;
     }
 
     @Transactional
@@ -103,6 +113,10 @@ public class ImoveisPlanilhaImportService {
             }
             int lastRowIdx = sheet.getLastRowNum();
             resp.setTotalLinhasCorpo(Math.max(0, lastRowIdx));
+
+            if (isLayoutAdministracaoItamar(path, sheet)) {
+                return importarLayoutAdministracao(sheet, path, resp);
+            }
 
             int ok = 0;
             int erros = 0;
@@ -151,12 +165,78 @@ public class ImoveisPlanilhaImportService {
         }
     }
 
+    private boolean isLayoutAdministracaoItamar(Path path, Sheet sheet) {
+        String nome = path.getFileName().toString().toLowerCase(Locale.ROOT);
+        if (nome.contains("administra") && nome.endsWith(".xls")) {
+            return true;
+        }
+        Row amostra = sheet.getRow(ADMIN_FIRST_ROW_0);
+        if (amostra == null) {
+            return false;
+        }
+        Integer np = ImoveisPlanilhaImportSupport.parseInteiro(PlanilhaExcelUtil.cellString(amostra, 1));
+        String col0 = PlanilhaExcelUtil.cellString(amostra, 0);
+        return np != null && np >= 1 && StringUtils.hasText(col0) && col0.contains("//");
+    }
+
+    private ImportacaoInformacoesProcessosResponse importarLayoutAdministracao(
+            Sheet sheet, Path path, ImportacaoInformacoesProcessosResponse resp) {
+        int last = Math.min(ADMIN_LAST_ROW_0, sheet.getLastRowNum());
+        int ok = 0;
+        int erros = 0;
+        int ignoradas = 0;
+        log.info("[import-imoveis-planilha] layout administracao Itamar: ficheiro={}", path.toAbsolutePath());
+
+        for (int rowNum = ADMIN_FIRST_ROW_0; rowNum <= last; rowNum++) {
+            Row row = sheet.getRow(rowNum);
+            if (PlanilhaExcelUtil.linhaTotalmenteVaziaAteColuna(row, ULTIMA_COL_INCLUSIVE + 4)) {
+                ignoradas++;
+                continue;
+            }
+            int linhaExcel = rowNum + 1;
+            String[] c = ImoveisPlanilhaImportSupport.mapLinhaAdministracaoParaCanonica(row);
+            if (!StringUtils.hasText(c[0])) {
+                ignoradas++;
+                continue;
+            }
+            if (!StringUtils.hasText(c[1]) && !StringUtils.hasText(c[2]) && !StringUtils.hasText(c[4])) {
+                ignoradas++;
+                continue;
+            }
+            try {
+                aplicarLinhaColunas(c, linhaExcel);
+                ok++;
+                ImportacaoLinhaDetalhe d = new ImportacaoLinhaDetalhe();
+                d.setLinhaExcel(linhaExcel);
+                d.setStatus(ImportacaoLinhaStatus.SUCESSO);
+                d.setMensagem("Imóvel importado (nº planilha=" + ImoveisPlanilhaImportSupport.parseInteiro(c[0]) + ")");
+                resp.getDetalhes().add(d);
+            } catch (Exception e) {
+                erros++;
+                log.warn("[import-imoveis-planilha] linha={} ERRO: {}", linhaExcel, e.getMessage());
+                ImportacaoLinhaDetalhe d = new ImportacaoLinhaDetalhe();
+                d.setLinhaExcel(linhaExcel);
+                d.setStatus(ImportacaoLinhaStatus.ERRO);
+                d.setMensagem(e.getMessage());
+                resp.getDetalhes().add(d);
+            }
+        }
+        resp.setLinhasIgnoradas(ignoradas);
+        resp.setLinhasProcessadasComSucesso(ok);
+        resp.setLinhasComErro(erros);
+        log.info("[import-imoveis-planilha] ficheiro={} ok={} erros={} ignoradas={}", path, ok, erros, ignoradas);
+        return resp;
+    }
+
     private void aplicarLinha(Row row, int linhaExcel) throws Exception {
         String[] c = new String[ULTIMA_COL_INCLUSIVE + 1];
         for (int i = 0; i < c.length; i++) {
             c[i] = PlanilhaExcelUtil.cellString(row, i);
         }
+        aplicarLinhaColunas(c, linhaExcel);
+    }
 
+    private void aplicarLinhaColunas(String[] c, int linhaExcel) throws Exception {
         Integer numeroPlanilha = ImoveisPlanilhaImportSupport.parseInteiro(c[0]);
         if (numeroPlanilha == null || numeroPlanilha < 1) {
             throw new IllegalArgumentException("Coluna A (Cód) inválida ou vazia.");

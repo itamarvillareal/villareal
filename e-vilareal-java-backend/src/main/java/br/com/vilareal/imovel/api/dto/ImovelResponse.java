@@ -8,7 +8,11 @@ public class ImovelResponse {
     private Long id;
     /** {@code pessoa.id} quando houver cliente vinculado; {@code null} se imóvel sem cliente (ex.: import planilha). */
     private Long clienteId;
+    /** Código de 8 dígitos (col. B da planilha canónica), quando houver cliente vinculado. */
+    private String codigoCliente;
     private Long processoId;
+    /** Nº interno do processo (col. C da planilha canónica), quando houver processo vinculado. */
+    private Integer numeroInternoProcesso;
     private Integer numeroPlanilha;
     private Long responsavelPessoaId;
     private String titulo;
@@ -39,12 +43,28 @@ public class ImovelResponse {
         this.clienteId = clienteId;
     }
 
+    public String getCodigoCliente() {
+        return codigoCliente;
+    }
+
+    public void setCodigoCliente(String codigoCliente) {
+        this.codigoCliente = codigoCliente;
+    }
+
     public Long getProcessoId() {
         return processoId;
     }
 
     public void setProcessoId(Long processoId) {
         this.processoId = processoId;
+    }
+
+    public Integer getNumeroInternoProcesso() {
+        return numeroInternoProcesso;
+    }
+
+    public void setNumeroInternoProcesso(Integer numeroInternoProcesso) {
+        this.numeroInternoProcesso = numeroInternoProcesso;
     }
 
     public Integer getNumeroPlanilha() {

@@ -135,8 +135,15 @@ public class CadastroPessoasPlanilhaImporter {
                     }
                 }
 
+                int lastDataRow0 = lastDataRowIndex(sh, dataStart0, fmt);
+                log.info(
+                        "Linhas de dados: Excel {}–{} (última linha com ID ou nome: {})",
+                        dataStart0 + 1,
+                        lastDataRow0 + 1,
+                        lastDataRow0 + 1);
+
                 int processed = 0;
-                for (int r = dataStart0; r <= sh.getLastRowNum(); r++) {
+                for (int r = dataStart0; r <= lastDataRow0; r++) {
                     if (props.getLimit() > 0 && processed >= props.getLimit()) {
                         break;
                     }
@@ -154,7 +161,8 @@ public class CadastroPessoasPlanilhaImporter {
                     }
                     long pessoaId = idOpt.get();
 
-                    String nome = CadastroPessoasPlanilhaImportSupport.truncatePlanilhaTexto(stringCell(row, 1, fmt), 255);
+                    String nome =
+                            CadastroPessoasPlanilhaImportSupport.normalizeNomeCadastro(stringCell(row, 1, fmt));
                     if (nome.isBlank()) {
                         writeLine(rep, excelRow, String.valueOf(pessoaId), "SKIP", "Nome vazio");
                         stats.skipped++;
@@ -674,7 +682,32 @@ public class CadastroPessoasPlanilhaImporter {
         return null;
     }
 
-    private Optional<Long> readLongId(Row row, int col) {
+    /**
+     * Evita percorrer até {@link Sheet#getLastRowNum()} quando o .xls reserva milhares de linhas vazias.
+     * Considera a última linha com ID na coluna A ou nome na coluna B.
+     */
+    static int lastDataRowIndex(Sheet sh, int dataStart0, DataFormatter fmt) {
+        int poiLast = sh.getLastRowNum();
+        for (int r = poiLast; r >= dataStart0; r--) {
+            Row row = sh.getRow(r);
+            if (row == null) {
+                continue;
+            }
+            if (readLongIdStatic(row, 0).isPresent()) {
+                return r;
+            }
+            String nome = stringCellStatic(row, 1, fmt);
+            if (nome != null && !nome.isBlank()) {
+                return r;
+            }
+        }
+        return Math.max(dataStart0 - 1, 0);
+    }
+
+    private static Optional<Long> readLongIdStatic(Row row, int col) {
+        if (row == null) {
+            return Optional.empty();
+        }
         Cell c = row.getCell(col);
         if (c == null) {
             return Optional.empty();
@@ -715,6 +748,32 @@ public class CadastroPessoasPlanilhaImporter {
             return Optional.empty();
         }
         return Optional.empty();
+    }
+
+    private static String stringCellStatic(Row row, int colIndex, DataFormatter fmt) {
+        Cell c = row.getCell(colIndex);
+        if (c == null) {
+            return "";
+        }
+        try {
+            return switch (c.getCellType()) {
+                case STRING -> nullToEmpty(c.getStringCellValue());
+                case NUMERIC -> {
+                    double v = c.getNumericCellValue();
+                    if (v == Math.rint(v) && v >= Long.MIN_VALUE && v <= Long.MAX_VALUE) {
+                        yield String.valueOf((long) v);
+                    }
+                    yield String.valueOf(v);
+                }
+                default -> fmt.formatCellValue(c);
+            };
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    private Optional<Long> readLongId(Row row, int col) {
+        return readLongIdStatic(row, col);
     }
 
     private String stringCell(Row row, int colIndex, DataFormatter fmt) {

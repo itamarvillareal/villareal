@@ -3,7 +3,14 @@
  */
 import { getRegistroProcesso } from './processosHistoricoData.js';
 import { featureFlags } from '../config/featureFlags.js';
-import { listarAndamentosProcesso, listarPartesProcesso, obterCamposProcessoApiFirst, resolverProcessoId } from '../repositories/processosRepository.js';
+import {
+  listarAndamentosProcesso,
+  listarPartesProcesso,
+  listarProcessosPorCodigoCliente,
+  mapApiProcessoToUiShape,
+  obterCamposProcessoApiFirst,
+  resolverProcessoId,
+} from '../repositories/processosRepository.js';
 
 /** Todos os estados brasileiros (UF) + Distrito Federal — ordem alfabética por sigla. */
 export const UFS = [
@@ -146,6 +153,83 @@ function formatarListaComConjuncaoE(itens) {
   if (lista.length === 1) return lista[0];
   if (lista.length === 2) return `${lista[0]} e ${lista[1]}`;
   return `${lista.slice(0, -1).join(', ')} e ${lista[lista.length - 1]}`;
+}
+
+/** Mesma regra da tela Processos / relatório: polos autor-requerente-cliente vs oposta. */
+export function textosPartesFromListaPartesApi(partes) {
+  const nomesCliente = [];
+  const nomesOposta = [];
+  for (const p of partes || []) {
+    const polo = String(p.polo || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toUpperCase();
+    const nome = String(p.nomeExibicao || p.nomeLivre || '').trim();
+    if (!nome) continue;
+    if (polo.includes('AUTOR') || polo.includes('REQUERENTE') || polo.includes('CLIENTE')) {
+      nomesCliente.push(nome);
+    } else {
+      nomesOposta.push(nome);
+    }
+  }
+  return {
+    parteCliente: formatarListaComConjuncaoE(nomesCliente),
+    parteOposta: formatarListaComConjuncaoE(nomesOposta),
+  };
+}
+
+function textosPartesFromRegistroLocal(cod, proc) {
+  const reg = getRegistroProcesso(cod, proc);
+  return {
+    parteCliente: String(reg?.parteCliente ?? reg?.cliente ?? '').trim(),
+    parteOposta: String(reg?.parteOposta ?? reg?.reu ?? '').trim(),
+  };
+}
+
+/**
+ * Parte Cliente × Parte Oposta para cabeçalhos (Cálculos, PDF), alinhado à tela Processos.
+ */
+export async function resolverTextosPartesCabecalhoCalculo(codigoClienteRaw, procRaw) {
+  const cod = padCliente(codigoClienteRaw);
+  const proc = Number(normalizarProcesso(procRaw));
+  if (!Number.isFinite(proc) || proc < 1) {
+    return { parteCliente: '', parteOposta: '' };
+  }
+
+  if (!featureFlags.useApiProcessos) {
+    return textosPartesFromRegistroLocal(cod, proc);
+  }
+
+  const processoId = await resolverProcessoId({ codigoCliente: cod, numeroInterno: proc });
+  if (processoId) {
+    try {
+      const partes = await listarPartesProcesso(processoId);
+      const { parteCliente, parteOposta } = textosPartesFromListaPartesApi(partes);
+      if (parteCliente || parteOposta) {
+        return { parteCliente, parteOposta };
+      }
+    } catch {
+      /* listagem / local abaixo */
+    }
+  }
+
+  try {
+    const rawList = await listarProcessosPorCodigoCliente(cod);
+    const row = (Array.isArray(rawList) ? rawList : []).find((p) => Number(p?.numeroInterno) === proc);
+    if (row) {
+      const u = mapApiProcessoToUiShape(row);
+      const parteOposta = String(u.parteOposta ?? '').trim();
+      const local = textosPartesFromRegistroLocal(cod, proc);
+      return {
+        parteCliente: local.parteCliente,
+        parteOposta: parteOposta || local.parteOposta,
+      };
+    }
+  } catch {
+    /* local */
+  }
+
+  return textosPartesFromRegistroLocal(cod, proc);
 }
 
 export function normalizarCliente(val) {
@@ -298,15 +382,7 @@ async function preaquecerUmProcessoRelatorio({ codCliente: codRaw, proc: procRaw
     listarPartesProcesso(processoId),
     listarAndamentosProcesso(processoId),
   ]);
-  const nomesCliente = [];
-  const nomesOposta = [];
-  for (const p of partes || []) {
-    const polo = String(p.polo || '').toUpperCase();
-    const nome = p.nomeExibicao || p.nomeLivre || '';
-    if (!nome) continue;
-    if (polo.includes('AUTOR') || polo.includes('REQUERENTE') || polo.includes('CLIENTE')) nomesCliente.push(nome);
-    else nomesOposta.push(nome);
-  }
+  const { parteCliente, parteOposta } = textosPartesFromListaPartesApi(partes);
   const ultimo = extrairUltimoAndamento(andamentos || []);
   _cacheCamposApi.set(key, {
     processoId,
@@ -319,8 +395,8 @@ async function preaquecerUmProcessoRelatorio({ codCliente: codRaw, proc: procRaw
     processoCadastroAtivo: cabecalho?.statusAtivo !== false,
     prazoFatalCadastroProcesso: cabecalho?.prazoFatal || '',
     observacaoCadastroProcesso: cabecalho?.observacao || '',
-    parteCliente: formatarListaComConjuncaoE(nomesCliente),
-    parteOposta: formatarListaComConjuncaoE(nomesOposta),
+    parteCliente,
+    parteOposta,
     ultimoHistoricoInfo: ultimo.info,
     ultimoHistoricoData: ultimo.data,
   });

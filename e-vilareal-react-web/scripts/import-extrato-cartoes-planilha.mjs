@@ -21,8 +21,10 @@ import {
   extrairLancamentosDaAba,
   layoutExtratoPorNomeInstituicao,
 } from './lib/extrato-bancos-planilha-layouts.mjs';
-
-const DEFAULT_FILE = '/Users/itamar/Downloads/Extratos Bancos - Itamar.xls';
+import {
+  candidatosExtratoBancosPlanilhaXlsParaLog,
+  resolveExtratoBancosPlanilhaXlsPath,
+} from './lib/resolve-extrato-bancos-planilha-xls.mjs';
 
 function parseArgs(argv) {
   const out = {
@@ -58,7 +60,17 @@ function parseArgs(argv) {
       if (Number.isFinite(n) && n > 0) out.limite = Math.floor(n);
     } else if (!a.startsWith('-')) out.file = a;
   }
-  if (!out.file) out.file = DEFAULT_FILE;
+  if (!out.file) {
+    const resolved = resolveExtratoBancosPlanilhaXlsPath(null);
+    if (!resolved) {
+      console.error(
+        'Planilha Extratos Bancos não encontrada. Tentados:\n',
+        candidatosExtratoBancosPlanilhaXlsParaLog(null).map((p) => `  ${p}`).join('\n'),
+      );
+      process.exit(1);
+    }
+    out.file = resolved;
+  }
   if (!argv.includes('--substituir') && !out.dryRun) out.substituir = true;
   return out;
 }

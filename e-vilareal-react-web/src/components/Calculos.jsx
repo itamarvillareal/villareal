@@ -9,8 +9,15 @@ import {
   loadRodadasCalculos,
   mapaRodadasTemValorTituloOuParcela,
   normalizarRodadaRecebidaApi,
+  parcelamentoAceitoResumoParaChave,
   saveRodadasCalculos,
 } from '../data/calculosRodadasStorage';
+import {
+  garantirArrayTitulosTamanho,
+  mesclarTitulosPaginaNoArray,
+  resumoTitulosFromApi,
+  TITULOS_POR_PAGINA_API,
+} from '../data/calculosRodadaTitulosPaginacao.js';
 import { fetchCalculoRodada } from '../repositories/calculosRepository.js';
 import { RODADAS_VINCULACAO_TESTE_50 } from '../data/vinculacaoAutomaticaTestMock';
 import {
@@ -34,13 +41,12 @@ import { featureFlags } from '../config/featureFlags.js';
 import { resolverAliasHojeEmTexto } from '../services/hjDateAliasService.js';
 import { buildRouterStateChaveClienteProcesso, extrairIntentNavegacaoProcessos } from '../domain/camposProcessoCliente.js';
 import { mergeDebitosCalculosMultiSheet } from '../utils/mergeDebitosCalculosPlanilha.js';
-import {
-  buscarClientePorCodigo,
-  buscarProcessoPorChaveNatural,
-  mapApiProcessoToUiShape,
-} from '../repositories/processosRepository.js';
-import { obterClienteCadastroPorCodigo } from '../repositories/clientesRepository.js';
-import { getRegistroProcesso } from '../data/processosHistoricoData.js';
+import { resolverTextosPartesCabecalhoCalculo } from '../data/processosDadosRelatorio.js';
+import { calcularTotalTituloGrade, titulosGradeTemValor } from '../data/calculosDebitosTitulos.js';
+import TitulosGrid from './calculos/TitulosGrid.jsx';
+import { IndicesAtualizacaoConferenciaModal } from './calculos/IndicesAtualizacaoConferenciaModal.jsx';
+import { parseValorMonetarioBr } from '../utils/parseValorMonetarioBr.js';
+import { enriquecerTitulosAPartirDeParcelasNaRodada } from '../data/calculosTitulosParcelasSync.js';
 
 const ProcessosLazy = lazy(() =>
   import('./Processos.jsx').then((module) => ({ default: module.Processos }))
@@ -195,16 +201,38 @@ function gerarDataParcelaMensalBR(dataCalculoStr, indiceZeroBased) {
   return formatDateBRFromDate(d);
 }
 
-function SpinnerField({ value, onChange, min = 0, className = 'w-20' }) {
+function SpinnerField({ value, onChange, min = 0, className = 'w-20', inputRef, onKeyDown }) {
   const num = Number(value);
   return (
     <div className={`flex border border-slate-300 rounded overflow-hidden bg-white ${className}`}>
-      <button type="button" className="px-2 py-1.5 border-r border-slate-300 hover:bg-slate-100" onClick={() => onChange(Math.max(min, (isNaN(num) ? 0 : num) - 1))}>
-        <ChevronUp className="w-4 h-4" />
-      </button>
-      <input type="text" value={value} onChange={(e) => { const v = Number(e.target.value); onChange(isNaN(v) ? min : v); }} className="w-full min-w-[3ch] px-1 py-1.5 text-sm text-center border-0 tabular-nums" />
-      <button type="button" className="px-2 py-1.5 border-l border-slate-300 hover:bg-slate-100" onClick={() => onChange((isNaN(num) ? 0 : num) + 1)}>
+      <button
+        type="button"
+        tabIndex={-1}
+        className="px-2 py-1.5 border-r border-slate-300 hover:bg-slate-100"
+        onClick={() => onChange(Math.max(min, (isNaN(num) ? 0 : num) - 1))}
+        aria-label="Diminuir"
+      >
         <ChevronDown className="w-4 h-4" />
+      </button>
+      <input
+        ref={inputRef}
+        type="text"
+        value={value}
+        onChange={(e) => {
+          const v = Number(e.target.value);
+          onChange(isNaN(v) ? min : v);
+        }}
+        onKeyDown={onKeyDown}
+        className="w-full min-w-[3ch] px-1 py-1.5 text-sm text-center border-0 tabular-nums"
+      />
+      <button
+        type="button"
+        tabIndex={-1}
+        className="px-2 py-1.5 border-l border-slate-300 hover:bg-slate-100"
+        onClick={() => onChange((isNaN(num) ? 0 : num) + 1)}
+        aria-label="Aumentar"
+      >
+        <ChevronUp className="w-4 h-4" />
       </button>
     </div>
   );
@@ -220,6 +248,8 @@ function SpinnerFieldManual({
   parseInput = (s) => Number(String(s).replace(/\D/g, '')),
   onStep,
   onBlur,
+  inputRef,
+  onKeyDown,
 }) {
   const num = Number(parseInput(value));
   const safeNum = Number.isFinite(num) ? num : min;
@@ -227,6 +257,7 @@ function SpinnerFieldManual({
     <div className={`flex border border-slate-300 rounded overflow-hidden bg-white ${className}`}>
       <button
         type="button"
+        tabIndex={-1}
         className="px-2 py-1.5 border-r border-slate-300 hover:bg-slate-100"
         onClick={() => {
           const next = formatDisplay(Math.max(min, safeNum - step));
@@ -235,18 +266,21 @@ function SpinnerFieldManual({
         }}
         aria-label="Diminuir"
       >
-        <ChevronUp className="w-4 h-4" />
+        <ChevronDown className="w-4 h-4" />
       </button>
       <input
+        ref={inputRef}
         type="text"
         inputMode="numeric"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onBlur={onBlur}
+        onKeyDown={onKeyDown}
         className="w-full min-w-[6ch] px-2 py-1.5 text-sm text-center border-0 tabular-nums"
       />
       <button
         type="button"
+        tabIndex={-1}
         className="px-2 py-1.5 border-l border-slate-300 hover:bg-slate-100"
         onClick={() => {
           const next = formatDisplay(safeNum + step);
@@ -255,7 +289,7 @@ function SpinnerFieldManual({
         }}
         aria-label="Aumentar"
       >
-        <ChevronDown className="w-4 h-4" />
+        <ChevronUp className="w-4 h-4" />
       </button>
     </div>
   );
@@ -285,6 +319,10 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
 
   const [tabAtiva, setTabAtiva] = useState('Títulos');
   const tabAnteriorRef = useRef('Títulos');
+  const inputCodClienteRodadaRef = useRef(null);
+  const inputProcRodadaRef = useRef(null);
+  const inputDimensaoRodadaRef = useRef(null);
+  const btnIrRodadaRef = useRef(null);
   const [pagina, setPagina] = useState(1);
   const [paginaParcelamento, setPaginaParcelamento] = useState(1);
   const [proc, setProc] = useState(35);
@@ -302,6 +340,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
   const [periodicidade, setPeriodicidade] = useState('mensal');
   const [modeloListaDebitos, setModeloListaDebitos] = useState('01');
   const [indiceMenuAberto, setIndiceMenuAberto] = useState(false);
+  const [modalIndicesConferencia, setModalIndicesConferencia] = useState(false);
   const indicePickerRef = useRef(null);
   const [aceitarPagamento, setAceitarPagamento] = useState(false);
   const [modoAlteracao, setModoAlteracao] = useState(false);
@@ -323,6 +362,12 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
   );
   const saveRodadasTimerRef = useRef(null);
   const fetchRodadaReqIdRef = useRef(0);
+  const fetchRodadaAbortRef = useRef(null);
+  /** `${rodadaKey}:page:${n}` → payload normalizado da página */
+  const paginasRodadaCacheRef = useRef(new Map());
+  const isDirtyRodadaRef = useRef(false);
+  const [titulosResumoApi, setTitulosResumoApi] = useState(null);
+  const [carregandoRodadaApi, setCarregandoRodadaApi] = useState(false);
   const debitosPlanilhaInputRef = useRef(null);
   const [sincronizandoRodadasApi, setSincronizandoRodadasApi] = useState(false);
   const rodadasStateRef = useRef(rodadasState);
@@ -548,13 +593,20 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
   /** Persiste rodadas no navegador (Financeiro usa para buscar parcelas no extrato). PUT na API só após hidratação GET (ver `hidratacaoConcluida` + `calculosRodadasStorage`). */
   useEffect(() => {
     if (featureFlags.useApiCalculos && !hidratacaoConcluida) return undefined;
+    if (featureFlags.useApiCalculos && !isDirtyRodadaRef.current) return undefined;
     if (saveRodadasTimerRef.current) window.clearTimeout(saveRodadasTimerRef.current);
     saveRodadasTimerRef.current = window.setTimeout(() => {
       if (featureFlags.useApiCalculos) {
         saveRodadasCalculos(rodadasState, { persistRodadaKey: rodadaKey });
+        for (const k of paginasRodadaCacheRef.current.keys()) {
+          if (String(k).startsWith(`${rodadaKey}:`)) {
+            paginasRodadaCacheRef.current.delete(k);
+          }
+        }
       } else {
         saveRodadasCalculos(rodadasState);
       }
+      isDirtyRodadaRef.current = false;
     }, 450);
     return () => {
       if (saveRodadasTimerRef.current) window.clearTimeout(saveRodadasTimerRef.current);
@@ -593,6 +645,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
         const def = loadConfigCalculoCliente(codigoClienteNorm);
         const mergedBase = mergeConfigPainelCalculo(def, cur.panelConfig);
         const nextPanel = { ...mergedBase, ...partial };
+        isDirtyRodadaRef.current = true;
         return { ...prev, [rodadaKey]: { ...cur, panelConfig: nextPanel } };
       });
     },
@@ -663,6 +716,18 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     setProcManual((v) => String(normalizarProc(v)));
   }
 
+  function commitClienteProcManual() {
+    normalizarCampoManual();
+    aplicarClienteProcManual();
+  }
+
+  function handleEnterCampoRodada(e, proximoRef, onCommit = commitClienteProcManual) {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    onCommit();
+    proximoRef?.current?.focus?.();
+  }
+
   /**
    * Os campos «Cod Cliente» / «Proc.» são manuais até clicar «Ir»; ao entrar em Títulos ou Parcelamento
    * aplicamos automaticamente se diferirem do par já em uso — evita ver rodada vazia por chave errada.
@@ -714,19 +779,66 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     return undefined;
   }, [rodadaKey, codigoClienteNorm, procNorm, dimensaoNorm]);
 
-  // Com API: carrega ou cria (404) só a chave atual — sem GET global de rodadas.
+  // Com API: carrega ou cria (404) só a chave atual — GET paginado exceto rodada com aceite (snapshot completo).
   useEffect(() => {
     if (!featureFlags.useApiCalculos || !hidratacaoConcluida) return undefined;
+
+    if (fetchRodadaAbortRef.current) {
+      fetchRodadaAbortRef.current.abort();
+    }
+    const controller = new AbortController();
+    fetchRodadaAbortRef.current = controller;
+
     const myId = ++fetchRodadaReqIdRef.current;
     const key = rodadaKey;
     const parts = key.split(':');
     const sc = parts[0];
     const sp = Number(parts[1]);
     const sd = Number(parts[2]);
+    const aceiteResumo = parcelamentoAceitoResumoParaChave(key);
+    let paginaFetch = Math.max(1, Number(pagina) || 1);
+    const cacheKey = aceiteResumo ? `${key}:full` : `${key}:page:${paginaFetch}`;
+
+    if (!aceiteResumo && paginasRodadaCacheRef.current.has(cacheKey)) {
+      setCarregandoRodadaApi(false);
+      const cached = paginasRodadaCacheRef.current.get(cacheKey);
+      if (cached && myId === fetchRodadaReqIdRef.current) {
+        setRodadasState((prev) => {
+          const cur = prev[key];
+          const mergedTitulos = mesclarTitulosPaginaNoArray(
+            cur?.titulos,
+            cached.titulos,
+            paginaFetch,
+            TITULOS_POR_PAGINA_API
+          );
+          return {
+            ...prev,
+            [key]: {
+              ...(cur && typeof cur === 'object' ? cur : {}),
+              ...cached,
+              titulos: mergedTitulos,
+              pagina: paginaFetch,
+            },
+          };
+        });
+        if (cached.titulosResumo) {
+          setTitulosResumoApi(cached.titulosResumo);
+        }
+      }
+      return () => controller.abort();
+    }
+
+    setCarregandoRodadaApi(true);
     (async () => {
       try {
-        const raw = await fetchCalculoRodada(sc, sp, sd);
-        if (myId !== fetchRodadaReqIdRef.current) return;
+        const fetchOpts = {
+          signal: controller.signal,
+          ...(aceiteResumo
+            ? {}
+            : { titulosPage: paginaFetch, titulosLimit: TITULOS_POR_PAGINA_API }),
+        };
+        const raw = await fetchCalculoRodada(sc, sp, sd, fetchOpts);
+        if (controller.signal.aborted || myId !== fetchRodadaReqIdRef.current) return;
         if (raw == null) {
           setRodadasState((prev) => {
             if (prev[key]) return prev;
@@ -750,17 +862,84 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
           });
           return;
         }
-        const one = normalizarRodadaRecebidaApi(key, raw);
-        if (!one || myId !== fetchRodadaReqIdRef.current) return;
-        setRodadasState((prev) => ({ ...prev, [key]: one }));
+        let one = normalizarRodadaRecebidaApi(key, raw);
+        if (!one || controller.signal.aborted || myId !== fetchRodadaReqIdRef.current) return;
+
+        let rawFinal = raw;
+        const pagination = raw.titulosPagination;
+        if (!aceiteResumo && one.parcelamentoAceito && pagination) {
+          const rawFull = await fetchCalculoRodada(sc, sp, sd, { signal: controller.signal });
+          if (controller.signal.aborted || myId !== fetchRodadaReqIdRef.current) return;
+          if (rawFull) {
+            rawFinal = rawFull;
+            one = normalizarRodadaRecebidaApi(key, rawFull) ?? one;
+          }
+        }
+
+        if (rawFinal.titulosResumo && typeof rawFinal.titulosResumo === 'object') {
+          setTitulosResumoApi(rawFinal.titulosResumo);
+        }
+
+        const paginationFinal = rawFinal.titulosPagination;
+        const travadoPayload = Boolean(one.parcelamentoAceito);
+        const totalTitulos =
+          paginationFinal?.total != null ? Number(paginationFinal.total) : one.titulos?.length ?? 0;
+
+        if (!travadoPayload && paginationFinal) {
+          paginasRodadaCacheRef.current.set(cacheKey, {
+            ...one,
+            titulos: Array.isArray(one.titulos) ? one.titulos : [],
+          });
+        } else if (travadoPayload) {
+          paginasRodadaCacheRef.current.set(`${key}:full`, one);
+        }
+
+        setRodadasState((prev) => {
+          const cur = prev[key];
+          let titulosMerged;
+          if (travadoPayload) {
+            titulosMerged = Array.isArray(one.titulos) ? one.titulos : [];
+            paginaFetch = 1;
+          } else {
+            const base = garantirArrayTitulosTamanho(cur?.titulos, totalTitulos);
+            titulosMerged = mesclarTitulosPaginaNoArray(
+              base,
+              one.titulos,
+              paginaFetch,
+              TITULOS_POR_PAGINA_API
+            );
+          }
+          return {
+            ...prev,
+            [key]: {
+              ...(cur && typeof cur === 'object' ? cur : {}),
+              ...one,
+              titulos: titulosMerged,
+              pagina: paginaFetch,
+            },
+          };
+        });
       } catch (e) {
+        if (e?.name === 'AbortError') return;
         if (myId === fetchRodadaReqIdRef.current) {
           console.error('[vilareal] Falha ao carregar rodada de cálculo:', e);
         }
+      } finally {
+        if (myId === fetchRodadaReqIdRef.current) {
+          setCarregandoRodadaApi(false);
+        }
       }
     })();
-    return undefined;
-  }, [rodadaKey, hidratacaoConcluida, codigoClienteNorm, procNorm, dimensaoNorm]);
+
+    return () => {
+      controller.abort();
+      setCarregandoRodadaApi(false);
+    };
+  }, [rodadaKey, hidratacaoConcluida, codigoClienteNorm, procNorm, dimensaoNorm, pagina]);
+
+  useEffect(() => {
+    setTitulosResumoApi(null);
+  }, [rodadaKey]);
 
   const rodadaAtual = rodadasState[rodadaKey] || {
     pagina: 1,
@@ -779,6 +958,11 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
 
   const rodadaExisteNoEstado = rodadasState[rodadaKey] != null;
 
+  useEffect(() => {
+    const dc = String(rodadaAtual.dataCalculoRodada ?? '').trim();
+    if (aceitarPagamento && dc) setDataCalculo(dc);
+  }, [rodadaKey, aceitarPagamento, rodadaAtual.dataCalculoRodada]);
+
   // Preenche cabecalho.autor / .reu a partir de Processos + Cliente (API) ou histórico local, sem sobrescrever texto já salvo na rodada.
   useEffect(() => {
     if (featureFlags.useApiCalculos && !hidratacaoConcluida) return undefined;
@@ -793,30 +977,10 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
       let autor = '';
       let reu = '';
       try {
-        if (featureFlags.useApiProcessos) {
-          const raw = await buscarProcessoPorChaveNatural(cod8, procN);
-          if (cancelled) return;
-          if (raw) {
-            reu = String(mapApiProcessoToUiShape(raw).parteOposta ?? '').trim();
-          }
-          if (featureFlags.useApiClientes) {
-            const c = await obterClienteCadastroPorCodigo(cod8);
-            if (cancelled) return;
-            autor = String(c?.nomeRazao ?? '').trim();
-          }
-          if (!autor) {
-            const row = await buscarClientePorCodigo(cod8);
-            if (cancelled) return;
-            autor = String(row?.nomeReferencia ?? row?.nome ?? '').trim();
-          }
-        } else {
-          const reg = getRegistroProcesso(cod8, procN);
-          if (cancelled) return;
-          if (reg) {
-            autor = String(reg.parteCliente ?? reg.cliente ?? '').trim();
-            reu = String(reg.parteOposta ?? reg.reu ?? '').trim();
-          }
-        }
+        const partes = await resolverTextosPartesCabecalhoCalculo(cod8, procN);
+        if (cancelled) return;
+        autor = String(partes.parteCliente ?? '').trim();
+        reu = String(partes.parteOposta ?? '').trim();
       } catch {
         /* rede / storage: mantém cabecalho já persistido */
       }
@@ -853,11 +1017,11 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     setAceitarPagamento(Boolean(parcelamentoAceitoRodadaAtual));
   }, [rodadaKey, parcelamentoAceitoRodadaAtual]);
 
-  // Ao trocar cliente/proc/dimensão, restaura as páginas salvas daquela rodada (cada dimensão = rodada própria).
+  // Ao trocar dimensão/rodada, volta à página 1 (evita grade vazia se a rodada anterior ficou na pág. 2+).
   useEffect(() => {
-    setPagina(rodadaAtual.pagina || 1);
-    setPaginaParcelamento(rodadaAtual.paginaParcelamento || 1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setPagina(1);
+    setPaginaParcelamento(1);
+    paginasRodadaCacheRef.current = new Map();
   }, [rodadaKey]);
 
   // Mantém a página (Títulos) sincronizada no estado da rodada atual
@@ -882,7 +1046,60 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     });
   }, [paginaParcelamento, rodadaKey]);
 
-  const titulos = rodadaAtual.titulos;
+  const calculoTravadoAceito = Boolean(rodadaAtual.parcelamentoAceito);
+
+  const titulos = useMemo(() => {
+    const gravados = rodadaAtual.titulosGravadosAceito;
+    const mapTitulosAceitos = (lista) =>
+      lista.map((t) => {
+        const vi = parseValorMonetarioBr(t.valorInicial);
+        if (vi != null && vi < 0) {
+          return { ...t, total: calcularTotalTituloGrade(t) };
+        }
+        return t;
+      });
+    if (calculoTravadoAceito) {
+      if (Array.isArray(gravados) && gravados.length > 0) {
+        return mapTitulosAceitos(gravados);
+      }
+      const fallback = Array.isArray(rodadaAtual.titulos) ? rodadaAtual.titulos : [];
+      if (fallback.some((t) => String(t?.valorInicial ?? '').trim() !== '')) {
+        return mapTitulosAceitos(fallback);
+      }
+    }
+    const enriquecida = enriquecerTitulosAPartirDeParcelasNaRodada(rodadaAtual);
+    const t = enriquecida.titulos;
+    return Array.isArray(t) ? t : [];
+  }, [rodadaAtual, calculoTravadoAceito]);
+
+  // Corrige estado persistido se um recálculo antigo sobrescreveu títulos com cálculo aceito.
+  useEffect(() => {
+    if (!calculoTravadoAceito || modoAlteracao) return;
+    setRodadasState((prev) => {
+      const cur = prev[rodadaKey];
+      if (!cur) return prev;
+      const gravados = cur.titulosGravadosAceito;
+      if (!Array.isArray(gravados) || gravados.length === 0) return prev;
+      const atual = cur.titulos;
+      if (Array.isArray(atual) && atual.length === gravados.length) {
+        const igual = gravados.every((g, i) => {
+          const a = atual[i];
+          return (
+            g?.juros === a?.juros &&
+            g?.multa === a?.multa &&
+            g?.atualizacaoMonetaria === a?.atualizacaoMonetaria &&
+            g?.total === a?.total
+          );
+        });
+        if (igual) return prev;
+      }
+      return {
+        ...prev,
+        [rodadaKey]: { ...cur, titulos: gravados.map((t) => ({ ...t })) },
+      };
+    });
+  }, [rodadaKey, calculoTravadoAceito, modoAlteracao, parcelamentoAceitoRodadaAtual]);
+
   const parcelas = Array.isArray(rodadaAtual.parcelas) ? rodadaAtual.parcelas : gerarParcelasMock();
   const quantidadeParcelasInformada = rodadaAtual.quantidadeParcelasInformada ?? '00';
   const taxaJurosParcelamento = rodadaAtual.taxaJurosParcelamento ?? '0,00';
@@ -905,17 +1122,22 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
       .join('\f');
   }, [titulos]);
 
-  const totalPaginas = Math.max(1, Math.ceil(titulos.length / TITULOS_POR_PAGINA));
+  const titulosPaginationMeta = rodadaAtual.titulosPagination;
+  const totalPaginas =
+    titulosPaginationMeta?.totalPages != null
+      ? Math.max(1, Number(titulosPaginationMeta.totalPages) || 1)
+      : Math.max(1, Math.ceil(titulos.length / TITULOS_POR_PAGINA));
   useEffect(() => {
     setPagina((p) => Math.min(Math.max(1, Number(p) || 1), totalPaginas));
   }, [totalPaginas]);
 
   const inicio = (pagina - 1) * TITULOS_POR_PAGINA;
   const fim = inicio + TITULOS_POR_PAGINA;
-  const titulosPagina = titulos.slice(inicio, fim);
-  const titulosPaginaCompletos =
-    titulosPagina.length < TITULOS_POR_PAGINA
-      ? [
+
+  const titulosPaginaCompletos = useMemo(() => {
+    const titulosPagina = titulos.slice(inicio, fim);
+    if (titulosPagina.length < TITULOS_POR_PAGINA) {
+      return [
         ...titulosPagina,
         ...Array.from({ length: TITULOS_POR_PAGINA - titulosPagina.length }, () => ({
           dataVencimento: '',
@@ -929,8 +1151,10 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
           total: '',
           descricaoValor: '',
         })),
-      ]
-      : titulosPagina;
+      ];
+    }
+    return titulosPagina;
+  }, [titulos, inicio, fim]);
 
   const totalPaginasParcelas = Math.max(1, Math.ceil(parcelas.length / PARCELAS_POR_PAGINA));
   useEffect(() => {
@@ -957,7 +1181,10 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     const sumJuros = valid.reduce((acc, r) => acc + parseBRL(r.juros), 0);
     const sumMulta = valid.reduce((acc, r) => acc + parseBRL(r.multa), 0);
     const sumHonorarios = valid.reduce((acc, r) => acc + parseBRL(r.honorarios), 0);
-    const sumTotal = valid.reduce((acc, r) => acc + parseBRL(r.total), 0);
+    // Total geral: soma algébrica (créditos negativos subtraem, como Excel Somar_Taxas).
+    const sumTotal = trunc2(
+      sumValorInicial + sumAtualizacao + sumJuros + sumMulta + sumHonorarios
+    );
 
     const diasNums = valid
       .map((r) => Number(String(r?.diasAtraso ?? '').trim()))
@@ -979,8 +1206,48 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
   }
 
   // Resumo da página atual vs resumo geral (todas páginas).
-  const resumoPagina = calcularResumo(titulosPaginaCompletos);
-  const resumoGeral = calcularResumo(titulos);
+  const resumoPagina = useMemo(
+    () => calcularResumo(titulosPaginaCompletos),
+    [titulosPaginaCompletos]
+  );
+  const resumoGeral = useMemo(
+    () => resumoTitulosFromApi(titulosResumoApi ?? rodadaAtual.titulosResumo) ?? calcularResumo(titulos),
+    [titulosResumoApi, rodadaAtual.titulosResumo, titulos]
+  );
+
+  const showAvisoParcelasTitulosVazios = useMemo(
+    () =>
+      !titulosGradeTemValor(titulos) &&
+      (parcelas || []).some((p) =>
+        ['dataVencimento', 'valorParcela', 'honorariosParcela', 'observacao', 'dataPagamento'].some(
+          (k) => String(p?.[k] ?? '').trim() !== ''
+        )
+      ),
+    [titulos, parcelas]
+  );
+
+  const rodadaTitulosLength = (rodadaAtual.titulos || []).length;
+
+  const handleTituloFieldChange = useCallback(
+    (globalIdx, patch) => {
+      atualizarTituloNaRodada(globalIdx, patch);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rodadaKey, calculoTravadoAceito, aceitarPagamento, indicesMensaisINPC, indicesMensaisIPCA, pagina]
+  );
+
+  const handleAbrirDatasEspeciais = useCallback((globalIdx) => {
+    abrirModalDatasEspeciais(globalIdx);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rodadaKey, rodadaAtual.titulos]);
+
+  const handlePaginaAnterior = useCallback(() => {
+    setPagina((p) => Math.max(1, Number(p) || 1) - 1);
+  }, []);
+
+  const handlePaginaProxima = useCallback(() => {
+    setPagina((p) => Math.min(totalPaginas, Math.max(1, Number(p) || 1) + 1));
+  }, [totalPaginas]);
 
   function gerarNomeArquivoPdf() {
     const hoje = new Date();
@@ -1247,9 +1514,10 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
   }
 
   function parsePercent(str) {
-    const s = String(str ?? '').replace('%', '').trim().replace(',', '.');
-    const n = Number(s);
-    return Number.isNaN(n) ? 0 : n / 100;
+    const raw = String(str ?? '').trim();
+    if (!raw) return 0;
+    const n = parsePercentualBR(raw.replace(/R\$\s*/gi, ''));
+    return Number.isFinite(n) ? n / 100 : 0;
   }
 
   function trunc2(n) {
@@ -1474,9 +1742,11 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     return { next, changed };
   }
 
-  // Recalcula ao abrir e a cada mudança, exceto quando "Aceitar Pagamento" estiver marcado (travado).
+  // Recalcula ao abrir e a cada mudança, exceto quando a rodada está aceita (travada como no Excel).
+  // Usa `parcelamentoAceito` da rodada, não só o checkbox — evita corrida antes do sync do checkbox.
   useEffect(() => {
-    if (aceitarPagamento) return;
+    if (calculoTravadoAceito || aceitarPagamento) return;
+    if (featureFlags.useApiCalculos && !rodadaExisteNoEstado) return;
     const hoje = hojeBR();
     setDataCalculo((prev) => (prev !== hoje ? hoje : prev));
     const idxUpperGeral = String(indice).toUpperCase();
@@ -1493,21 +1763,38 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
 
     if (precisaINPC && indicesMensaisINPC == null) return;
     if (precisaIPCA && indicesMensaisIPCA == null) return;
+    const inicioRec = (pagina - 1) * TITULOS_POR_PAGINA;
+    const fimRec = inicioRec + TITULOS_POR_PAGINA;
     setRodadasState((prev) => {
       const cur = prev[rodadaKey] || { ...rodadaAtual };
-      const { next, changed } = recalcularTitulos(cur.titulos, indicesMensaisINPC, indicesMensaisIPCA);
+      const listaFull = Array.isArray(cur.titulos) ? cur.titulos : [];
+      const slice = listaFull.slice(inicioRec, fimRec);
+      const { next, changed } = recalcularTitulos(slice, indicesMensaisINPC, indicesMensaisIPCA);
       if (!changed) return prev;
+      const titulosFull = [...listaFull];
+      for (let i = 0; i < next.length; i++) {
+        const idx = inicioRec + i;
+        if (idx < titulosFull.length) {
+          titulosFull[idx] = next[i];
+        } else {
+          titulosFull.push(next[i]);
+        }
+      }
+      isDirtyRodadaRef.current = true;
+      paginasRodadaCacheRef.current.delete(`${rodadaKey}:page:${pagina}`);
       return {
         ...prev,
         [rodadaKey]: {
           ...cur,
-          titulos: next,
+          titulos: titulosFull,
         },
       };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
+    calculoTravadoAceito,
     aceitarPagamento,
+    rodadaExisteNoEstado,
     indice,
     juros,
     multa,
@@ -1515,6 +1802,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     honorariosValor,
     dataCalculo,
     rodadaKey,
+    pagina,
     indicesMensaisINPC,
     indicesMensaisIPCA,
     titulosChaveRecalculo,
@@ -1522,7 +1810,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
 
   // Carrega índices mensais do INPC antes de recalcular.
   useEffect(() => {
-    if (aceitarPagamento && !modoAlteracao) return;
+    if ((calculoTravadoAceito || aceitarPagamento) && !modoAlteracao) return;
     const idxUpperGeral = String(indice).toUpperCase();
     const precisaINPC =
       idxUpperGeral === 'INPC' ||
@@ -1568,11 +1856,11 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [aceitarPagamento, modoAlteracao, indice, dataCalculo, rodadaKey, indicesRefreshToken, titulosChaveRecalculo]);
+  }, [calculoTravadoAceito, aceitarPagamento, modoAlteracao, indice, dataCalculo, rodadaKey, indicesRefreshToken, titulosChaveRecalculo]);
 
   // Carrega índices mensais do IPCA (IPCA / “IPCA-E”) antes de recalcular.
   useEffect(() => {
-    if (aceitarPagamento && !modoAlteracao) return;
+    if ((calculoTravadoAceito || aceitarPagamento) && !modoAlteracao) return;
     const idxUpper = String(indice).toUpperCase();
     const precisaIPCA =
       idxUpper === 'IPCA-E' ||
@@ -1624,7 +1912,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [aceitarPagamento, modoAlteracao, indice, dataCalculo, rodadaKey, indicesRefreshToken, titulosChaveRecalculo]);
+  }, [calculoTravadoAceito, aceitarPagamento, modoAlteracao, indice, dataCalculo, rodadaKey, indicesRefreshToken, titulosChaveRecalculo]);
 
   function abrirModalDatasEspeciais(indexGlobal) {
     const linha = (rodadaAtual.titulos || [])[indexGlobal];
@@ -1681,7 +1969,12 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
       });
       // Se o cálculo estiver travado (Aceitar Pagamento), em Modo de Alteração o usuário pode editar manualmente
       // sem que a rotina de recálculo sobrescreva os valores digitados.
-      const next = aceitarPagamento ? titulosAtualizados : recalcularTitulos(titulosAtualizados, indicesMensaisINPC, indicesMensaisIPCA).next;
+      const next =
+        calculoTravadoAceito || aceitarPagamento
+          ? titulosAtualizados
+          : recalcularTitulos(titulosAtualizados, indicesMensaisINPC, indicesMensaisIPCA).next;
+      isDirtyRodadaRef.current = true;
+      paginasRodadaCacheRef.current.delete(`${rodadaKey}:page:${pagina}`);
       return {
         ...prev,
         [rodadaKey]: { ...cur, titulos: next },
@@ -1860,9 +2153,9 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
   }, [linhasHonorariosTitulo, linhasHonorariosParcela, honorariosRecebimentoMap, titulos, parcelas]);
 
   // Preenche valor da parcela e honorários por parcela: totais da aba Títulos + quantidade + taxa mensal (Price).
-  // Com "Aceitar Pagamento" marcado, não recalcula automaticamente (parcelas imutáveis até "Modo de Alteração").
+  // Com cálculo aceito/travado, não recalcula automaticamente (parcelas imutáveis até "Modo de Alteração").
   useEffect(() => {
-    if (aceitarPagamento) return;
+    if (calculoTravadoAceito || aceitarPagamento) return;
 
     const tm = setTimeout(() => {
       const nParc = parseQuantidadeParcelasNumero(quantidadeParcelasInformada);
@@ -1932,6 +2225,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     resumoGeral.total,
     resumoGeral.honorarios,
     dataCalculo,
+    calculoTravadoAceito,
     aceitarPagamento,
   ]);
 
@@ -2003,224 +2297,25 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
       <div className="flex-1 min-h-0 flex overflow-hidden">
         <div className="flex-1 min-w-0 overflow-auto p-2">
           {tabAtiva === 'Títulos' && (
-            <>
-              {!(titulos || []).some((t) => String(t?.valorInicial ?? '').trim() !== '') &&
-                (parcelas || []).some((p) =>
-                  ['dataVencimento', 'valorParcela', 'honorariosParcela', 'observacao', 'dataPagamento'].some(
-                    (k) => String(p?.[k] ?? '').trim() !== ''
-                  )
-                ) && (
-                <p className="text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded px-3 py-2 mb-2">
-                  Há valores na aba <strong>Parcelamento</strong>, mas a grade de <strong>Títulos</strong> está vazia
-                  (campos <code className="text-xs">titulos[]</code> no armazenamento). Abra <strong>Parcelamento</strong>{' '}
-                  para ver as parcelas importadas, ou reimporte com a versão atual do merge (títulos espelham a 1ª
-                  parcela). Dados gravados só em <code className="text-xs">parcelas</code> não preenchem automaticamente
-                  juros/multa/total desta aba até o fluxo de cálculo recalcular.
-                </p>
-              )}
-              <p className="text-sm text-slate-600 mb-2">
-                Página {String(pagina).padStart(2, '0')} — Linhas {inicio + 1} a {Math.min(fim, titulos.length)} (de {titulos.length})
-              </p>
-              <div className="overflow-x-auto border border-slate-300 rounded bg-white">
-                <table className="w-full table-fixed text-sm border-collapse">
-                  <thead>
-                    <tr className="bg-slate-100">
-                      <th className="border border-slate-300 px-2 py-1.5 text-left font-semibold text-slate-700 w-12">#</th>
-                      <th className="border border-slate-300 px-1.5 py-1.5 text-left font-semibold text-slate-700 w-[7rem] min-w-0 max-w-[7rem] whitespace-normal text-[11px] leading-tight">
-                        Data de Vencimento
-                      </th>
-                      <th className="border border-slate-300 px-2 py-1.5 text-left font-semibold text-slate-700 min-w-[120px]">Valor inicial do título</th>
-                      <th className="border border-slate-300 px-2 py-1.5 text-left font-semibold text-slate-700 min-w-[120px]">Atualização Monetária</th>
-                      <th className="border border-slate-300 px-2 py-1.5 text-left font-semibold text-slate-700 min-w-[80px]">Dias de Atraso</th>
-                      <th className="border border-slate-300 px-2 py-1.5 text-left font-semibold text-slate-700 min-w-[90px]">Juros</th>
-                      <th className="border border-slate-300 px-2 py-1.5 text-left font-semibold text-slate-700 min-w-[80px]">Multa</th>
-                      <th className="border border-slate-300 px-2 py-1.5 text-left font-semibold text-slate-700 min-w-[80px]">Honorários</th>
-                      <th className="border border-slate-300 px-2 py-1.5 text-left font-semibold text-slate-700 min-w-[100px]">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {titulosPaginaCompletos.map((row, idx) => {
-                      const globalIdx = inicio + idx;
-                      const podeEditarLinha =
-                        globalIdx < (rodadaAtual.titulos || []).length && (!aceitarPagamento || modoAlteracao);
-                      return (
-                      <tr key={globalIdx} className={globalIdx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
-                        <td
-                          className="border border-slate-200 px-2 py-1 text-slate-600 cursor-pointer hover:bg-slate-50"
-                          onDoubleClick={() => {
-                            if (podeEditarLinha) abrirModalDatasEspeciais(globalIdx);
-                          }}
-                          title="Duplo clique: Configurações Especiais"
-                        >
-                          {String(globalIdx + 1).padStart(3, '0')}
-                        </td>
-                        <td className="border border-slate-200 px-1 py-1 w-[7rem] min-w-0 max-w-[7rem] align-top">
-                          {podeEditarLinha ? (
-                            <input
-                              type="text"
-                              inputMode="numeric"
-                              placeholder=""
-                              autoComplete="off"
-                              value={row.dataVencimento || ''}
-                              onChange={(e) => {
-                                const v = e.target.value;
-                                const r = resolverAliasHojeEmTexto(v, 'br');
-                                atualizarTituloNaRodada(globalIdx, { dataVencimento: r ?? v });
-                              }}
-                              onBlur={(e) =>
-                                atualizarTituloNaRodada(globalIdx, {
-                                  dataVencimento: normalizarTextoDataBRparaSalvar(e.target.value),
-                                })
-                              }
-                              className="w-full min-w-0 max-w-full box-border px-1 py-0.5 border border-slate-300 rounded text-sm tabular-nums"
-                            />
-                          ) : (
-                            <span className="block truncate text-sm tabular-nums" title={row.dataVencimento || undefined}>
-                              {row.dataVencimento}
-                            </span>
-                          )}
-                        </td>
-                        <td className="border border-slate-200 px-2 py-1">
-                          {podeEditarLinha ? (
-                            <input
-                              type="text"
-                              value={row.valorInicial}
-                              onChange={(e) => {
-                                atualizarTituloNaRodada(globalIdx, {
-                                  valorInicial: e.target.value,
-                                });
-                              }}
-                              onBlur={(e) => {
-                                const raw = String(e.target.value ?? '');
-                                const rawTrim = raw.trim();
-                                if (rawTrim === '') {
-                                  atualizarTituloNaRodada(globalIdx, { valorInicial: '' });
-                                  return;
-                                }
-                                const n = parseBRL(rawTrim);
-                                atualizarTituloNaRodada(globalIdx, {
-                                  valorInicial: formatBRL(n),
-                                });
-                              }}
-                              className="w-full px-1 py-0.5 border border-slate-300 rounded text-sm"
-                            />
-                          ) : (
-                            row.valorInicial
-                          )}
-                        </td>
-                        <td className={`border border-slate-200 px-2 py-1 ${modoAlteracao ? 'text-red-600 font-medium' : ''}`}>
-                          {podeEditarLinha && modoAlteracao ? (
-                            <input
-                              type="text"
-                              value={row.atualizacaoMonetaria}
-                              onChange={(e) => atualizarTituloNaRodada(globalIdx, { atualizacaoMonetaria: e.target.value })}
-                              onBlur={(e) => atualizarTituloNaRodada(globalIdx, { atualizacaoMonetaria: formatBRL(parseBRL(e.target.value)) })}
-                              className="w-full px-1 py-0.5 border border-slate-300 rounded text-sm"
-                            />
-                          ) : (
-                            row.atualizacaoMonetaria
-                          )}
-                        </td>
-                        <td className={`border border-slate-200 px-2 py-1 ${modoAlteracao ? 'text-red-600 font-medium' : ''}`}>
-                          {podeEditarLinha && modoAlteracao ? (
-                            <input
-                              type="text"
-                              inputMode="numeric"
-                              value={row.diasAtraso}
-                              onChange={(e) => atualizarTituloNaRodada(globalIdx, { diasAtraso: e.target.value })}
-                              onBlur={(e) => {
-                                const n = Number(String(e.target.value ?? '').replace(/\D/g, ''));
-                                atualizarTituloNaRodada(globalIdx, { diasAtraso: n ? String(Math.max(0, Math.floor(n))) : '0' });
-                              }}
-                              className="w-full px-1 py-0.5 border border-slate-300 rounded text-sm"
-                            />
-                          ) : (
-                            row.diasAtraso
-                          )}
-                        </td>
-                        <td className={`border border-slate-200 px-2 py-1 ${modoAlteracao ? 'text-red-600 font-medium' : ''}`}>
-                          {podeEditarLinha && modoAlteracao ? (
-                            <input
-                              type="text"
-                              value={row.juros}
-                              onChange={(e) => atualizarTituloNaRodada(globalIdx, { juros: e.target.value })}
-                              onBlur={(e) => atualizarTituloNaRodada(globalIdx, { juros: formatBRL(parseBRL(e.target.value)) })}
-                              className="w-full px-1 py-0.5 border border-slate-300 rounded text-sm"
-                            />
-                          ) : (
-                            row.juros
-                          )}
-                        </td>
-                        <td className={`border border-slate-200 px-2 py-1 ${modoAlteracao ? 'text-red-600 font-medium' : ''}`}>
-                          {podeEditarLinha && modoAlteracao ? (
-                            <input
-                              type="text"
-                              value={row.multa}
-                              onChange={(e) => atualizarTituloNaRodada(globalIdx, { multa: e.target.value })}
-                              onBlur={(e) => atualizarTituloNaRodada(globalIdx, { multa: formatBRL(parseBRL(e.target.value)) })}
-                              className="w-full px-1 py-0.5 border border-slate-300 rounded text-sm"
-                            />
-                          ) : (
-                            row.multa
-                          )}
-                        </td>
-                        <td className={`border border-slate-200 px-2 py-1 ${modoAlteracao ? 'text-red-600 font-medium' : ''}`}>
-                          {podeEditarLinha && modoAlteracao ? (
-                            <input
-                              type="text"
-                              value={row.honorarios}
-                              onChange={(e) => atualizarTituloNaRodada(globalIdx, { honorarios: e.target.value })}
-                              onBlur={(e) => atualizarTituloNaRodada(globalIdx, { honorarios: formatBRL(parseBRL(e.target.value)) })}
-                              className="w-full px-1 py-0.5 border border-slate-300 rounded text-sm"
-                            />
-                          ) : (
-                            row.honorarios
-                          )}
-                        </td>
-                        <td className={`border border-slate-200 px-2 py-1 font-medium ${modoAlteracao ? 'text-red-600' : ''}`}>
-                          {podeEditarLinha && modoAlteracao ? (
-                            <input
-                              type="text"
-                              value={row.total}
-                              onChange={(e) => atualizarTituloNaRodada(globalIdx, { total: e.target.value })}
-                              onBlur={(e) => atualizarTituloNaRodada(globalIdx, { total: formatBRL(parseBRL(e.target.value)) })}
-                              className="w-full px-1 py-0.5 border border-slate-300 rounded text-sm font-medium"
-                            />
-                          ) : (
-                            row.total
-                          )}
-                        </td>
-                      </tr>
-                      );
-                    })}
-                  </tbody>
-                  <tfoot>
-                    {/* Linha 1: soma somente da página atual */}
-                    <tr className="bg-slate-100 font-medium">
-                      <td className="border border-slate-300 px-2 py-1" colSpan={2}>{resumoPagina.qtd}</td>
-                      <td className="border border-slate-300 px-2 py-1">{resumoPagina.valorInicial}</td>
-                      <td className="border border-slate-300 px-2 py-1">{resumoPagina.atualizacao}</td>
-                      <td className="border border-slate-300 px-2 py-1">{resumoPagina.diasAtraso}</td>
-                      <td className="border border-slate-300 px-2 py-1">{resumoPagina.juros}</td>
-                      <td className="border border-slate-300 px-2 py-1">{resumoPagina.multa}</td>
-                      <td className="border border-slate-300 px-2 py-1">{resumoPagina.honorarios}</td>
-                      <td className="border border-slate-300 px-2 py-1">{resumoPagina.total}</td>
-                    </tr>
-                    {/* Linha 2: soma de todas as páginas (sem vermelho) */}
-                    <tr className="bg-slate-100 font-medium">
-                      <td className="border border-slate-300 px-2 py-1" colSpan={2}>{resumoGeral.qtd}</td>
-                      <td className="border border-slate-300 px-2 py-1">{resumoGeral.valorInicial}</td>
-                      <td className="border border-slate-300 px-2 py-1">{resumoGeral.atualizacao}</td>
-                      <td className="border border-slate-300 px-2 py-1">{resumoGeral.diasAtraso}</td>
-                      <td className="border border-slate-300 px-2 py-1">{resumoGeral.juros}</td>
-                      <td className="border border-slate-300 px-2 py-1">{resumoGeral.multa}</td>
-                      <td className="border border-slate-300 px-2 py-1">{resumoGeral.honorarios}</td>
-                      <td className="border border-slate-300 px-2 py-1">{resumoGeral.total}</td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            </>
+            <TitulosGrid
+              titulosPaginaCompletos={titulosPaginaCompletos}
+              resumoPagina={resumoPagina}
+              resumoGeral={resumoGeral}
+              pagina={pagina}
+              totalPaginas={totalPaginas}
+              inicio={inicio}
+              fim={fim}
+              titulosTotalLength={titulos.length}
+              rodadaTitulosLength={rodadaTitulosLength}
+              aceitarPagamento={aceitarPagamento}
+              modoAlteracao={modoAlteracao}
+              showAvisoParcelasVazias={showAvisoParcelasTitulosVazios}
+              isLoading={featureFlags.useApiCalculos && carregandoRodadaApi}
+              onTituloFieldChange={handleTituloFieldChange}
+              onAbrirDatasEspeciais={handleAbrirDatasEspeciais}
+              onPaginaAnterior={handlePaginaAnterior}
+              onPaginaProxima={handlePaginaProxima}
+            />
           )}
           {tabAtiva === 'Parcelamento' && (
             <div className="border border-slate-300 rounded bg-white p-3">
@@ -2911,6 +3006,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
               <div>
                 <label className="block text-[11px] font-medium text-slate-700 mb-0.5">Cod Cliente</label>
                 <SpinnerFieldManual
+                  inputRef={inputCodClienteRodadaRef}
                   value={codClienteManual}
                   onChange={(v) => setCodClienteManual(v)}
                   min={1}
@@ -2919,15 +3015,14 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
                   formatDisplay={(n) => String(Math.max(1, Math.floor(Number(n) || 1))).padStart(8, '0')}
                   parseInput={(s) => Number(String(s).replace(/\D/g, ''))}
                   onStep={(nextCod) => aplicarClienteProcComValores(nextCod, procManual)}
-                  onBlur={() => {
-                    normalizarCampoManual();
-                    aplicarClienteProcManual();
-                  }}
+                  onBlur={commitClienteProcManual}
+                  onKeyDown={(e) => handleEnterCampoRodada(e, inputProcRodadaRef)}
                 />
               </div>
               <div>
                 <label className="block text-[11px] font-medium text-slate-700 mb-0.5">Proc.</label>
                 <SpinnerFieldManual
+                  inputRef={inputProcRodadaRef}
                   value={procManual}
                   onChange={(v) => setProcManual(v)}
                   min={1}
@@ -2936,17 +3031,28 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
                   formatDisplay={(n) => String(Math.max(1, Math.floor(Number(n) || 1)))}
                   parseInput={(s) => Number(String(s).replace(/\D/g, ''))}
                   onStep={(nextProc) => aplicarClienteProcComValores(codClienteManual, nextProc)}
-                  onBlur={() => {
-                    normalizarCampoManual();
-                    aplicarClienteProcManual();
-                  }}
+                  onBlur={commitClienteProcManual}
+                  onKeyDown={(e) => handleEnterCampoRodada(e, inputDimensaoRodadaRef)}
                 />
               </div>
               <div>
                 <label className="block text-[11px] font-medium text-slate-700 mb-0.5">Dimensão</label>
-                <SpinnerField value={dimensao} onChange={setDimensao} min={0} className="w-full" />
+                <SpinnerField
+                  inputRef={inputDimensaoRodadaRef}
+                  value={dimensao}
+                  onChange={setDimensao}
+                  min={0}
+                  className="w-full"
+                  onKeyDown={(e) =>
+                    handleEnterCampoRodada(e, btnIrRodadaRef, () => {
+                      setDimensao((v) => Math.max(0, Math.floor(Number(v) || 0)));
+                      commitClienteProcManual();
+                    })
+                  }
+                />
               </div>
               <button
+                ref={btnIrRodadaRef}
                 type="button"
                 onClick={aplicarClienteProcManual}
                 className="w-full px-2 py-1.5 rounded bg-blue-600 text-white text-xs font-medium hover:bg-blue-700"
@@ -3055,10 +3161,17 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
                 <button
                   type="button"
                   onClick={() => setIndiceMenuAberto((v) => !v)}
+                  onDoubleClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setIndiceMenuAberto(false);
+                    setModalIndicesConferencia(true);
+                  }}
+                  title="Clique para escolher; duplo clique para conferir índices mês a mês"
                   className="w-full flex items-center justify-between gap-1.5 px-2 py-1.5 rounded border border-slate-200 bg-white text-left text-[11px] font-medium text-slate-800 hover:bg-slate-50"
                   aria-expanded={indiceMenuAberto}
                   aria-haspopup="listbox"
-                  aria-label={`Índice: ${indice}. Abrir lista`}
+                  aria-label={`Índice: ${indice}. Abrir lista; duplo clique confere valores mensais`}
                 >
                   <span className="flex items-center gap-1 min-w-0 truncate">
                     {indice}
@@ -3132,7 +3245,20 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
                   setRodadasState((prev) => {
                     const cur = prev[rodadaKey];
                     if (!cur) return prev;
-                    return { ...prev, [rodadaKey]: { ...cur, parcelamentoAceito: next } };
+                    const patch = { parcelamentoAceito: next };
+                    if (next) {
+                      const snap =
+                        Array.isArray(cur.titulosGravadosAceito) && cur.titulosGravadosAceito.length
+                          ? cur.titulosGravadosAceito
+                          : cur.titulos;
+                      if (Array.isArray(snap) && snap.length) {
+                        patch.titulosGravadosAceito = snap.map((t) => ({ ...t }));
+                        patch.titulos = patch.titulosGravadosAceito;
+                      }
+                    }
+                    isDirtyRodadaRef.current = true;
+                    paginasRodadaCacheRef.current = new Map();
+                    return { ...prev, [rodadaKey]: { ...cur, ...patch } };
                   });
                 }}
                 className="rounded border-slate-300"
@@ -3449,6 +3575,22 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
           </div>
         </div>
       ) : null}
+
+      <IndicesAtualizacaoConferenciaModal
+        open={modalIndicesConferencia}
+        onClose={() => setModalIndicesConferencia(false)}
+        indice={indice}
+        titulos={
+          Array.isArray(rodadaAtual.titulosGravadosAceito) && rodadaAtual.titulosGravadosAceito.length
+            ? rodadaAtual.titulosGravadosAceito
+            : titulos
+        }
+        dataCalculo={dataCalculo}
+        aceitarPagamento={aceitarPagamento}
+        hojeBR={hojeBR}
+        indicesMensaisINPC={indicesMensaisINPC}
+        indicesMensaisIPCA={indicesMensaisIPCA}
+      />
     </div>
   );
 }

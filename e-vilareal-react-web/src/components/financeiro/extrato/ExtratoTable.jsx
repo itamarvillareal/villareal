@@ -1,25 +1,33 @@
+import { memo, useMemo } from 'react';
 import { ContaBadge } from '../shared/ContaBadge.jsx';
 import { EtapaDot } from '../shared/EtapaDot.jsx';
 import { ValorText } from '../shared/ValorText.jsx';
 import { ExtratoSkeleton } from '../shared/LoadingSkeleton.jsx';
 import { ETAPAS } from '../constants/financeiroConstants.js';
+import { contaCodigoExtratoExibicao } from '../shared/financeiroDescricaoContaF.js';
 import { textoObsExtrato } from './extratoMappers.js';
 
-export function ExtratoTable({
+function ExtratoTableInner({
   data = [],
   selectedIds,
   onSelect,
   onSelectAll,
   onRowClick,
   isLoading,
+  sortDataAsc = false,
+  onSortDataDoubleClick,
+  highlightLancamentoId = null,
 }) {
   if (isLoading) {
     return <ExtratoSkeleton />;
   }
 
-  const ids = data.map((r) => r.id).filter((id) => id != null);
-  const allSelected = ids.length > 0 && ids.every((id) => selectedIds.has(id));
-  const someSelected = ids.some((id) => selectedIds.has(id));
+  const ids = useMemo(() => data.map((r) => r.id).filter((id) => id != null), [data]);
+  const allSelected = useMemo(
+    () => ids.length > 0 && ids.every((id) => selectedIds.has(id)),
+    [ids, selectedIds],
+  );
+  const someSelected = useMemo(() => ids.some((id) => selectedIds.has(id)), [ids, selectedIds]);
 
   return (
     <div className="overflow-x-auto min-w-0">
@@ -51,7 +59,23 @@ export function ExtratoTable({
               />
             </th>
             <th className="px-2 py-2 text-left whitespace-nowrap">Conta</th>
-            <th className="px-2 py-2 text-left whitespace-nowrap">Data</th>
+            <th
+              className="px-2 py-2 text-left whitespace-nowrap cursor-pointer select-none hover:text-slate-700 dark:hover:text-slate-200"
+              onDoubleClick={(e) => {
+                e.preventDefault();
+                onSortDataDoubleClick?.();
+              }}
+              title={
+                sortDataAsc
+                  ? 'Duplo clique: ordenar do mais novo para o mais antigo'
+                  : 'Duplo clique: ordenar do mais antigo para o mais novo'
+              }
+            >
+              Data
+              <span className="ml-1 text-[10px] opacity-70" aria-hidden>
+                {sortDataAsc ? '↑' : '↓'}
+              </span>
+            </th>
             <th className="px-2 py-2 text-left min-w-0">Descrição</th>
             <th className="px-2 py-2 text-right whitespace-nowrap">Valor</th>
             <th className="px-2 py-2 text-left min-w-0">Obs</th>
@@ -68,18 +92,21 @@ export function ExtratoTable({
           ) : (
             data.map((item, idx) => {
               const selected = selectedIds.has(item.id);
+              const destacado = highlightLancamentoId != null && Number(item.id) === Number(highlightLancamentoId);
               const pendente = item.etapa === ETAPAS.IMPORTADO;
               const fechado = item.etapa === ETAPAS.FECHADO;
               let rowBg = idx % 2 === 1 ? 'var(--fin-row-alt)' : 'transparent';
               if (pendente) rowBg = 'var(--fin-row-pendente)';
               if (selected) rowBg = 'var(--fin-row-selected)';
+              if (destacado) rowBg = 'var(--fin-row-selected)';
 
               return (
                 <tr
                   key={item.id}
+                  data-lancamento-id={item.id}
                   className={`group border-b transition-colors cursor-pointer ${
                     fechado ? 'opacity-70' : ''
-                  }`}
+                  } ${destacado ? 'ring-2 ring-inset ring-indigo-500/70' : ''}`}
                   style={{
                     borderColor: 'var(--vl-border, #e2e8f0)',
                     background: rowBg,
@@ -104,7 +131,7 @@ export function ExtratoTable({
                     />
                   </td>
                   <td className="px-2 py-2 align-middle overflow-hidden">
-                    <ContaBadge codigo={item.contaCodigo} />
+                    <ContaBadge codigo={contaCodigoExtratoExibicao(item)} />
                   </td>
                   <td className="px-2 py-2 align-middle text-slate-500 dark:text-slate-400 tabular-nums whitespace-nowrap overflow-hidden text-ellipsis">
                     {item.dataExibicao}
@@ -137,3 +164,5 @@ export function ExtratoTable({
     </div>
   );
 }
+
+export const ExtratoTable = memo(ExtratoTableInner);

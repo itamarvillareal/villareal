@@ -1,5 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { formatDataExtratoColuna, mapApiLancamentoToExtratoRow, textoObsExtrato } from './extratoMappers.js';
+import {
+  formatDataExtratoColuna,
+  mapApiLancamentoToExtratoRow,
+  promoverContaEscritorioSeVinculado,
+  textoObsExtrato,
+} from './extratoMappers.js';
+import { mesAnoFromDataLancamento } from './extratoMesUtils.js';
+
+describe('extratoMesUtils', () => {
+  it('mesAnoFromDataLancamento extrai YYYY-MM', () => {
+    expect(mesAnoFromDataLancamento('2026-03-02')).toBe('2026-03');
+    expect(mesAnoFromDataLancamento(null)).toBeNull();
+    expect(mesAnoFromDataLancamento('')).toBeNull();
+  });
+});
 
 describe('extratoMappers', () => {
   it('formatDataExtratoColuna omite ano quando corrente', () => {
@@ -8,15 +22,22 @@ describe('extratoMappers', () => {
     expect(formatDataExtratoColuna('2020-03-25')).toBe('25/03/2020');
   });
 
-  it('textoObsExtrato prioriza cod/proc na conta A', () => {
+  it('textoObsExtrato exibe cod/proc quando há vínculo (mesmo com conta N)', () => {
     const row = {
-      contaCodigo: 'A',
-      codCliente: '123',
-      proc: '45',
+      contaCodigo: 'N',
+      codCliente: '104',
+      proc: '4',
       clienteId: 1,
-      observacao: 'detalhe',
+      observacao: 'CREDIT - Pagamento',
     };
-    expect(textoObsExtrato(row)).toBe('123/45');
+    expect(textoObsExtrato(row)).toBe('104/4');
+  });
+
+  it('promoverContaEscritorioSeVinculado altera N para A', () => {
+    const row = { contaCodigo: 'N', codCliente: '104', proc: '4' };
+    const out = promoverContaEscritorioSeVinculado(row, [{ id: 1, codigo: 'A', nome: 'Conta Escritório' }]);
+    expect(out.contaCodigo).toBe('A');
+    expect(out.contaContabilId).toBe(1);
   });
 
   it('mapApiLancamentoToExtratoRow mapeia etapa e natureza', () => {

@@ -5,7 +5,8 @@ import br.com.vilareal.common.exception.ResourceNotFoundException;
 import br.com.vilareal.common.text.Utf8MojibakeUtil;
 import br.com.vilareal.financeiro.api.dto.*;
 import br.com.vilareal.financeiro.domain.*;
-import br.com.vilareal.financeiro.infrastructure.persistence.LancamentoFinanceiroSpecifications;
+import br.com.vilareal.financeiro.domain.FinanceiroDescricaoPessoaExtracao;
+import br.com.vilareal.financeiro.domain.FinanceiroDescricaoPessoaExtrator;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.ContaContabilEntity;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.LancamentoFinanceiroEntity;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.RegraClassificacaoEntity;
@@ -14,14 +15,18 @@ import br.com.vilareal.financeiro.infrastructure.persistence.repository.Lancamen
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.RegraClassificacaoRepository;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
+import br.com.vilareal.processo.application.ClienteCodigoPessoaResolver;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.text.Normalizer;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -33,18 +38,24 @@ public class FinanceiroSugestaoService {
     private final ContaContabilRepository contaContabilRepository;
     private final PessoaRepository pessoaRepository;
     private final ProcessoRepository processoRepository;
+    private final ClienteCodigoPessoaResolver clienteCodigoPessoaResolver;
+    private final FinanceiroSaudeService financeiroSaudeService;
 
     public FinanceiroSugestaoService(
             RegraClassificacaoRepository regraRepository,
             LancamentoFinanceiroRepository lancamentoRepository,
             ContaContabilRepository contaContabilRepository,
             PessoaRepository pessoaRepository,
-            ProcessoRepository processoRepository) {
+            ProcessoRepository processoRepository,
+            ClienteCodigoPessoaResolver clienteCodigoPessoaResolver,
+            @Lazy FinanceiroSaudeService financeiroSaudeService) {
         this.regraRepository = regraRepository;
         this.lancamentoRepository = lancamentoRepository;
         this.contaContabilRepository = contaContabilRepository;
         this.pessoaRepository = pessoaRepository;
         this.processoRepository = processoRepository;
+        this.clienteCodigoPessoaResolver = clienteCodigoPessoaResolver;
+        this.financeiroSaudeService = financeiroSaudeService;
     }
 
     @Transactional(readOnly = true)
@@ -56,7 +67,13 @@ public class FinanceiroSugestaoService {
     @Transactional(readOnly = true)
     public List<SugestaoClassificacaoResponse> sugerir(LancamentoFinanceiroEntity lancamento) {
         List<SugestaoClassificacaoResponse> todas = new ArrayList<>();
+        todas.addAll(camadaRendimentosAplicacoes(lancamento));
         todas.addAll(camadaRegras(lancamento));
+        List<SugestaoClassificacaoResponse> deposito = camadaDepositoIdentificado(lancamento);
+        todas.addAll(deposito);
+        if (deposito.isEmpty()) {
+            todas.addAll(camadaPessoaProcessos(lancamento));
+        }
         todas.addAll(camadaHistorico(lancamento));
         todas.addAll(camadaRecorrencia(lancamento));
         return deduplicarEOrdenar(todas);
@@ -81,7 +98,9 @@ public class FinanceiroSugestaoService {
     public LancamentoFinanceiroResponse aplicarSugestao(AplicarSugestaoRequest req) {
         LancamentoFinanceiroEntity e = carregarLancamento(req.getLancamentoId());
         aplicarClassificacaoEmEntity(e, req.getContaContabilId(), req.getClienteId(), req.getProcessoId());
-        return toLancamentoResponse(lancamentoRepository.save(e));
+        LancamentoFinanceiroResponse saved = toLancamentoResponse(lancamentoRepository.save(e));
+        financeiroSaudeService.invalidarCacheSaude();
+        return saved;
     }
 
     @Transactional
@@ -100,7 +119,25 @@ public class FinanceiroSugestaoService {
                 result.getErros().add(item.getLancamentoId() + ": " + ex.getMessage());
             }
         }
+        if (result.getAplicados() > 0) {
+            financeiroSaudeService.invalidarCacheSaude();
+        }
         return result;
+    }
+
+    private List<SugestaoClassificacaoResponse> camadaRendimentosAplicacoes(LancamentoFinanceiroEntity lancamento) {
+        if (!FinanceiroDescricaoIndicaContaF.indica(lancamento.getDescricao(), lancamento.getDescricaoDetalhada())) {
+            return List.of();
+        }
+        ContaContabilEntity contaF =
+                contaContabilRepository.findFirstByCodigoIgnoreCase("F").orElse(null);
+        if (contaF == null) {
+            return List.of();
+        }
+        SugestaoClassificacaoResponse s =
+                baseSugestao(contaF, ConfiancaSugestao.ALTA, OrigemSugestao.REGRA);
+        s.setDescricaoRegra("rendimentos/aplicações (COR JURS, JUROS, CRI, LCA, CDB) → F");
+        return List.of(s);
     }
 
     private List<SugestaoClassificacaoResponse> camadaRegras(LancamentoFinanceiroEntity lancamento) {
@@ -124,6 +161,93 @@ public class FinanceiroSugestaoService {
             if (regra.getProcesso() != null) {
                 s.setProcessoId(regra.getProcesso().getId());
             }
+            out.add(s);
+        }
+        return out;
+    }
+
+    private List<SugestaoClassificacaoResponse> camadaDepositoIdentificado(LancamentoFinanceiroEntity lancamento) {
+        FinanceiroDescricaoPessoaExtracao ext = FinanceiroDescricaoPessoaExtrator.extrair(
+                lancamento.getDescricao(), lancamento.getDescricaoDetalhada());
+        if (!ext.temCpf()) {
+            return List.of();
+        }
+        Optional<PessoaEntity> pessoaOpt = pessoaRepository.findByCpf(ext.cpfDigitos());
+        if (pessoaOpt.isPresent() && StringUtils.hasText(ext.nome())
+                && !nomesCompativeis(ext.nome(), pessoaOpt.get().getNome())) {
+            return List.of();
+        }
+
+        List<LancamentoFinanceiroEntity> anteriores = lancamentoRepository.findDepositosIdentificadosPorCpfNoTexto(
+                ext.cpfDigitos(),
+                lancamento.getId(),
+                EtapaLancamento.IMPORTADO,
+                PageRequest.of(0, 3));
+        if (anteriores.isEmpty()) {
+            return List.of();
+        }
+
+        LancamentoFinanceiroEntity ref = anteriores.get(0);
+        if (ref.getCliente() == null) {
+            return List.of();
+        }
+        ContaContabilEntity contaA = ref.getContaContabil();
+        if (contaA == null || !"A".equalsIgnoreCase(contaA.getCodigo())) {
+            contaA = contaContabilRepository.findFirstByCodigoIgnoreCase("A").orElse(null);
+        }
+        if (contaA == null) {
+            return List.of();
+        }
+
+        SugestaoClassificacaoResponse s = baseSugestao(contaA, ConfiancaSugestao.ALTA, OrigemSugestao.DEPOSITO_IDENTIFICADO);
+        s.setClienteId(ref.getCliente().getId());
+        if (ref.getProcesso() != null) {
+            s.setProcessoId(ref.getProcesso().getId());
+        }
+        pessoaOpt.ifPresent(p -> s.setPagadorPessoaId(p.getId()));
+        s.setOcorrencias((long) anteriores.size());
+        s.setDescricaoRegra(montarDescricaoDepositoAnterior(ref, ext));
+        s.setRotuloVinculo(montarRotuloVinculo(ref.getCliente().getId(), ref.getProcesso()));
+        return List.of(s);
+    }
+
+    private List<SugestaoClassificacaoResponse> camadaPessoaProcessos(LancamentoFinanceiroEntity lancamento) {
+        FinanceiroDescricaoPessoaExtracao ext = FinanceiroDescricaoPessoaExtrator.extrair(
+                lancamento.getDescricao(), lancamento.getDescricaoDetalhada());
+        if (!ext.temCpf()) {
+            return List.of();
+        }
+        PessoaEntity pessoa = pessoaRepository.findByCpf(ext.cpfDigitos()).orElse(null);
+        if (pessoa == null) {
+            return List.of();
+        }
+        if (StringUtils.hasText(ext.nome()) && !nomesCompativeis(ext.nome(), pessoa.getNome())) {
+            return List.of();
+        }
+
+        ContaContabilEntity contaA =
+                contaContabilRepository.findFirstByCodigoIgnoreCase("A").orElse(null);
+        if (contaA == null) {
+            return List.of();
+        }
+
+        List<ProcessoEntity> processos = processoRepository.findAllDistinctVinculadosPessoa(pessoa.getId());
+        if (processos.isEmpty()) {
+            return List.of();
+        }
+
+        List<SugestaoClassificacaoResponse> out = new ArrayList<>();
+        for (ProcessoEntity proc : processos) {
+            if (proc.getPessoa() == null || proc.getNumeroInterno() == null) {
+                continue;
+            }
+            SugestaoClassificacaoResponse s =
+                    baseSugestao(contaA, ConfiancaSugestao.MEDIA, OrigemSugestao.PESSOA_PROCESSO);
+            s.setClienteId(proc.getPessoa().getId());
+            s.setProcessoId(proc.getId());
+            s.setPagadorPessoaId(pessoa.getId());
+            s.setRotuloVinculo(montarRotuloVinculo(proc.getPessoa().getId(), proc));
+            s.setDescricaoRegra("cliente: " + resumirNome(pessoa.getNome()) + " → " + s.getRotuloVinculo());
             out.add(s);
         }
         return out;
@@ -241,16 +365,97 @@ public class FinanceiroSugestaoService {
     }
 
     private List<SugestaoClassificacaoResponse> deduplicarEOrdenar(List<SugestaoClassificacaoResponse> todas) {
-        Map<Long, SugestaoClassificacaoResponse> porConta = new LinkedHashMap<>();
+        Map<String, SugestaoClassificacaoResponse> porChave = new LinkedHashMap<>();
         for (SugestaoClassificacaoResponse s : todas) {
-            SugestaoClassificacaoResponse existente = porConta.get(s.getContaContabilId());
+            if (contaDesconhecida(s.getContaCodigo())) {
+                continue;
+            }
+            String chave = chaveSugestao(s);
+            SugestaoClassificacaoResponse existente = porChave.get(chave);
             if (existente == null || s.getConfianca().ordinal() < existente.getConfianca().ordinal()) {
-                porConta.put(s.getContaContabilId(), s);
+                porChave.put(chave, s);
             }
         }
-        return porConta.values().stream()
+        return porChave.values().stream()
                 .sorted(Comparator.comparingInt(s -> s.getConfianca().ordinal()))
                 .collect(Collectors.toList());
+    }
+
+    /** Conta N = importado sem classificação; não sugerir aprovação automática. */
+    private static boolean contaDesconhecida(String contaCodigo) {
+        return StringUtils.hasText(contaCodigo) && "N".equalsIgnoreCase(contaCodigo.trim());
+    }
+
+    private static String chaveSugestao(SugestaoClassificacaoResponse s) {
+        return s.getContaContabilId()
+                + "|"
+                + (s.getClienteId() != null ? s.getClienteId() : "")
+                + "|"
+                + (s.getProcessoId() != null ? s.getProcessoId() : "");
+    }
+
+    private String montarRotuloVinculo(Long clientePessoaId, ProcessoEntity processo) {
+        if (clientePessoaId == null) {
+            return "";
+        }
+        String cod = clienteCodigoPessoaResolver.codigoClienteExibicaoParaPessoaId(clientePessoaId);
+        if (processo != null && processo.getNumeroInterno() != null) {
+            return cod + " · proc " + processo.getNumeroInterno();
+        }
+        return cod;
+    }
+
+    private String montarDescricaoDepositoAnterior(
+            LancamentoFinanceiroEntity ref, FinanceiroDescricaoPessoaExtracao ext) {
+        String rotulo = montarRotuloVinculo(
+                ref.getCliente().getId(), ref.getProcesso());
+        String quando = ref.getDataLancamento() != null ? ref.getDataLancamento().toString() : "";
+        String nome = StringUtils.hasText(ext.nome()) ? resumirNome(ext.nome()) : "mesmo CPF";
+        return "depósito anterior (" + nome + ", " + quando + "): " + rotulo;
+    }
+
+    private static String resumirNome(String nome) {
+        if (!StringUtils.hasText(nome)) {
+            return "";
+        }
+        String t = nome.trim();
+        return t.length() > 48 ? t.substring(0, 45) + "…" : t;
+    }
+
+    private static boolean nomesCompativeis(String nomeExtrato, String nomeCadastro) {
+        String a = normalizarNomeComparacao(nomeExtrato);
+        String b = normalizarNomeComparacao(nomeCadastro);
+        if (!StringUtils.hasText(a) || !StringUtils.hasText(b)) {
+            return true;
+        }
+        if (a.contains(b) || b.contains(a)) {
+            return true;
+        }
+        Set<String> ta = tokensNomeSignificativos(a);
+        Set<String> tb = tokensNomeSignificativos(b);
+        if (ta.isEmpty() || tb.isEmpty()) {
+            return false;
+        }
+        long comuns = ta.stream().filter(tb::contains).count();
+        return comuns >= 2 || (comuns >= 1 && (ta.size() == 1 || tb.size() == 1));
+    }
+
+    private static String normalizarNomeComparacao(String nome) {
+        if (!StringUtils.hasText(nome)) {
+            return "";
+        }
+        String n = Normalizer.normalize(nome.trim().toLowerCase(Locale.ROOT), Normalizer.Form.NFD);
+        return n.replaceAll("\\p{M}+", "").replaceAll("[^a-z0-9\\s]", " ").replaceAll("\\s+", " ").trim();
+    }
+
+    private static Set<String> tokensNomeSignificativos(String nomeNorm) {
+        Set<String> out = new LinkedHashSet<>();
+        for (String t : nomeNorm.split("\\s+")) {
+            if (t.length() >= 3 && !Set.of("dos", "das", "de", "da", "do", "e").contains(t)) {
+                out.add(t);
+            }
+        }
+        return out;
     }
 
     private void aplicarClassificacaoEmEntity(

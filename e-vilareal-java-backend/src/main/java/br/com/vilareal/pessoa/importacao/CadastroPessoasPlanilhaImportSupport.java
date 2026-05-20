@@ -1,5 +1,6 @@
 package br.com.vilareal.pessoa.importacao;
 
+import br.com.vilareal.common.text.PortuguesTextoCorrecaoUtil;
 import br.com.vilareal.common.text.Utf8MojibakeUtil;
 
 import java.time.LocalDate;
@@ -39,9 +40,21 @@ public final class CadastroPessoasPlanilhaImportSupport {
         return fixed != null ? fixed : "";
     }
 
-    /** {@link #truncate}(corrigirMojibakePlanilhaUtf8(raw), max). */
+    /**
+     * Mojibake + U+FFFD + léxico (mesma rotina que histórico de processos e reparo Flyway).
+     * Alinhado a {@code scripts/lib/normalizar-texto-planilha.mjs} no front.
+     */
+    public static String normalizarTextoPlanilha(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return "";
+        }
+        String fixed = PortuguesTextoCorrecaoUtil.normalizar(raw);
+        return fixed != null ? fixed : "";
+    }
+
+    /** {@link #truncate}({@link #normalizarTextoPlanilha}(raw), max). */
     public static String truncatePlanilhaTexto(String raw, int max) {
-        return truncate(corrigirMojibakePlanilhaUtf8(raw == null ? "" : raw), max);
+        return truncate(normalizarTextoPlanilha(raw == null ? "" : raw), max);
     }
 
     public static String digitsOnly(String s) {
@@ -121,16 +134,16 @@ public final class CadastroPessoasPlanilhaImportSupport {
     }
 
     /**
-     * Nome no cadastro de pessoas: trim, truncagem a 255 e maiúsculas ({@link Locale#ROOT}).
+     * Nome no cadastro de pessoas: normalização de texto, truncagem a 255 e maiúsculas ({@link Locale#ROOT}).
      */
     public static String normalizeNomeCadastro(String raw) {
-        return truncate(raw, 255).toUpperCase(Locale.ROOT);
+        return truncate(normalizarTextoPlanilha(raw), 255).toUpperCase(Locale.ROOT);
     }
 
     /** Remove ';' final e trim; não força lower no valor persistido (só para chave de duplicata). */
     public static String normalizeEmailForStorage(String raw) {
         if (raw == null) return "";
-        String t = raw.trim();
+        String t = normalizarTextoPlanilha(raw);
         while (t.endsWith(";")) {
             t = t.substring(0, t.length() - 1).trim();
         }

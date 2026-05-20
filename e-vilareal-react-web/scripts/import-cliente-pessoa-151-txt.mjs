@@ -7,6 +7,7 @@
  *   node scripts/import-cliente-pessoa-151-txt.mjs --cliente=257 --dry-run
  *   node scripts/import-cliente-pessoa-151-txt.mjs --cliente=257 --aplicar
  *   node scripts/import-cliente-pessoa-151-txt.mjs --cliente-min=1 --cliente-max=10 --aplicar
+ *   node scripts/import-cliente-pessoa-151-txt.mjs --cliente-min=1 --cliente-max=999 --aplicar --substituir
  */
 
 import './lib/load-vilareal-import-env.mjs';
@@ -20,6 +21,7 @@ import {
 import { resolverBaseBancoDados } from './lib/gerais-fase-processo-txt.mjs';
 import { formatCod8 } from './lib/historico-local-txt-paths.mjs';
 import { TXT_PESSOA_CLIENTE_CADASTRO } from './lib/legado-pessoa-cliente-vs-partes-processo.mjs';
+import { conectarMysqlVilareal } from './lib/mysql-vilareal.mjs';
 import { loginImportApi } from './lib/vilareal-import-processo-api.mjs';
 
 function parseArgs(argv) {
@@ -28,6 +30,7 @@ function parseArgs(argv) {
     clienteMin: null,
     clienteMax: null,
     aplicar: false,
+    substituir: false,
     base: resolverBaseBancoDados(),
     login: process.env.VILAREAL_IMPORT_LOGIN || 'itamar',
     senha: process.env.VILAREAL_IMPORT_SENHA || '',
@@ -36,6 +39,7 @@ function parseArgs(argv) {
   for (const a of argv) {
     if (a === '--aplicar') out.aplicar = true;
     else if (a === '--dry-run') out.aplicar = false;
+    else if (a === '--substituir') out.substituir = true;
     else if (a.startsWith('--cliente=')) {
       const n = Number(a.slice(10));
       if (Number.isFinite(n) && n >= 1) out.cliente = Math.trunc(n);
@@ -79,15 +83,28 @@ async function main() {
 
   console.log('\n=== import-cliente-pessoa-151-txt ===\n');
   console.log(`Modo: ${opts.aplicar ? 'aplicar' : 'dry-run'}`);
+  if (opts.substituir) console.log('Substituir vínculo divergente: sim (UPDATE cliente.pessoa_id)');
   console.log(`Clientes: ${clientes[0]}..${clientes[clientes.length - 1]} (${clientes.length})\n`);
 
+  if (opts.substituir && !opts.aplicar) {
+    console.error('--substituir requer --aplicar');
+    process.exit(1);
+  }
+
   let token = null;
-  if (opts.aplicar) token = await loginImportApi(opts.baseUrl, opts.login, opts.senha);
+  /** @type {import('mysql2/promise').Connection | null} */
+  let conn = null;
+  if (opts.aplicar) {
+    token = await loginImportApi(opts.baseUrl, opts.login, opts.senha);
+    if (opts.substituir) conn = await conectarMysqlVilareal();
+  }
 
   const cache = new Map();
   let ok = 0;
   let semTxt = 0;
   let divergentes = 0;
+  let atualizados = 0;
+  let pessoaInexistente = 0;
   let falhas = 0;
 
   for (const codNum of clientes) {
@@ -114,13 +131,26 @@ async function main() {
         token,
         cod8,
         txt.pessoaId,
-        cache
+        cache,
+        { substituir: opts.substituir, conn: conn ?? undefined }
       );
       if (r.acao === 'divergente_api') {
         divergentes += 1;
         console.warn(
           `cliente ${codNum}: divergente — API pessoa ${r.pessoaIdApi}, txt ${r.pessoaIdTxt}`
         );
+      } else if (r.acao === 'atualizado_mysql') {
+        atualizados += 1;
+        ok += 1;
+        console.log(
+          `cliente ${codNum}: atualizado pessoaId ${r.pessoaIdAnterior} → ${txt.pessoaId}`
+        );
+      } else if (r.acao === 'pessoa_inexistente') {
+        pessoaInexistente += 1;
+        console.warn(`cliente ${codNum}: pessoa ${txt.pessoaId} não existe na base`);
+      } else if (r.acao === 'sem_linha_cliente' || r.acao === 'rejeitado') {
+        falhas += 1;
+        console.warn(`cliente ${codNum}: ${r.acao} pessoaId=${txt.pessoaId}${r.detalhe ? ` — ${r.detalhe}` : ''}`);
       } else {
         ok += 1;
         console.log(`cliente ${codNum}: ${r.acao} pessoaId=${txt.pessoaId}`);
@@ -131,8 +161,10 @@ async function main() {
     }
   }
 
+  if (conn) await conn.end();
+
   console.log(
-    `\n=== concluído === ok=${ok} sem_txt=${semTxt} divergentes=${divergentes} falhas=${falhas}\n`
+    `\n=== concluído === ok=${ok} atualizados=${atualizados} sem_txt=${semTxt} divergentes=${divergentes} pessoa_inexistente=${pessoaInexistente} falhas=${falhas}\n`
   );
   process.exit(falhas > 0 ? 2 : 0);
 }

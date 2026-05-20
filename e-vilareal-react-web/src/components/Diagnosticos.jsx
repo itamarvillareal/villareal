@@ -798,7 +798,7 @@ export function Diagnosticos() {
           </div>
           <p className="text-xs text-slate-600 text-center leading-relaxed">
             {featureFlags.useApiProcessos
-              ? '«Consultas Realizadas» lista histórico gravado ou atualizado na API na data (e cruza com o histórico local deste navegador), excluindo linhas automáticas «JUNTAR PETIÇÃO…» e «PETIÇÃO DA INF. ANTERIOR…».'
+              ? '«Consultas Realizadas» lista linhas de histórico cuja data do movimento coincide com o dia (API + histórico local), excluindo «JUNTAR PETIÇÃO…» e «PETIÇÃO DA INF. ANTERIOR…».'
               : 'Os relatórios usam apenas os dados gravados neste navegador. «Consultas Realizadas» = linhas do histórico na data, exceto títulos automáticos do legado.'}
           </p>
         </div>

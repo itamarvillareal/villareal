@@ -19,4 +19,8 @@ public class SugestaoClassificacaoResponse {
     private Long ocorrencias;
     private Long clienteId;
     private Long processoId;
+    /** Pessoa do cadastro identificada na descrição (pagador), quando distinta do titular do processo. */
+    private Long pagadorPessoaId;
+    /** Texto para escolha entre vários pares cliente/proc (ex.: «00000728 · proc 12»). */
+    private String rotuloVinculo;
 }

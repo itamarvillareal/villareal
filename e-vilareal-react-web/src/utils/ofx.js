@@ -149,9 +149,156 @@ export async function readOfxFileAsText(file) {
   return utf8;
 }
 
+/** Converte DD/MM/AAAA ou ISO em YYYY-MM-DD. */
+export function dataLancamentoParaIso(dataBrOuIso) {
+  const s = String(dataBrOuIso ?? '').trim();
+  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  const br = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(s);
+  if (br) return `${br[3]}-${br[2]}-${br[1]}`;
+  const brCurto = /^(\d{2})\/(\d{2})$/.exec(s);
+  if (brCurto) {
+    const ano = new Date().getFullYear();
+    return `${ano}-${brCurto[2]}-${brCurto[1]}`;
+  }
+  return '';
+}
+
 export function chaveDedupeLancamento(t) {
   const c = Math.round((Number(t.valor) || 0) * 100);
   return `${String(t.numero ?? '').trim()}|${String(t.data ?? '').trim()}|${c}`;
+}
+
+/**
+ * Normaliza descrição para comparar OFX com planilha (espaços, 07/05 vs 07 05, acentos, pontos em números).
+ */
+export function normalizarDescricaoParaDedupe(descricao) {
+  let s = String(descricao ?? '')
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+  s = s.replace(/(\d{2})[\s/.-]+(\d{2})(?:[\s/.-]+(\d{4}))?/g, (_, d, m, y) =>
+    y ? `${d}${m}${y}` : `${d}${m}`,
+  );
+  s = s.replace(/(\d)[\s.,-]+(?=\d)/g, '$1');
+  return s.replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/** Só dígitos presentes na descrição (ex.: TED 208.0001 vs 208 0001). */
+export function digitosDescricao(descricao) {
+  return String(descricao ?? '').replace(/\D/g, '');
+}
+
+/**
+ * Chave sem origem do número (FITID vs PL-…): data + valor + descrição normalizada.
+ * Permite ignorar OFX já importado via planilha.
+ */
+export function chaveSemanticaLancamento(t) {
+  const data = dataLancamentoParaIso(t?.data) || String(t?.data ?? '').trim();
+  const cents = Math.round((Number(t?.valor) || 0) * 100);
+  const desc = normalizarDescricaoParaDedupe(t?.descricao);
+  return `${data}|${cents}|${desc}`;
+}
+
+/**
+ * Chaves alternativas para tolerar variações banco/planilha (APR vs MAIS, TED com pontos).
+ * @param {object} t
+ * @returns {string[]}
+ */
+export function listarChavesSemanticasLancamento(t) {
+  const data = dataLancamentoParaIso(t?.data) || String(t?.data ?? '').trim();
+  const cents = Math.round((Number(t?.valor) || 0) * 100);
+  const desc = normalizarDescricaoParaDedupe(t?.descricao);
+  const chaves = new Set([`${data}|${cents}|${desc}`]);
+
+  if (desc.startsWith('rend pago aplic aut')) {
+    chaves.add(`${data}|${cents}|rend-pago-aplic-aut`);
+  }
+  if (desc.startsWith('ted ') || desc.startsWith('ted')) {
+    const dig = digitosDescricao(t?.descricao);
+    if (dig) chaves.add(`${data}|${cents}|ted|${dig}`);
+  }
+  const mPix = desc.match(/^(dev pix|pix transf)\s+(.+)$/);
+  if (mPix) {
+    const sufixo = mPix[2].replace(/\d{4}$/, '').trim();
+    if (sufixo.length >= 3) {
+      chaves.add(`${data}|${cents}|${mPix[1]}|${sufixo.slice(0, 40)}`);
+    }
+  }
+
+  return [...chaves];
+}
+
+function consumirDoMapa(contagens, chave) {
+  const n = contagens.get(chave) || 0;
+  if (n <= 0) return false;
+  if (n === 1) contagens.delete(chave);
+  else contagens.set(chave, n - 1);
+  return true;
+}
+
+function registrarChavesSemanticas(contagens, t) {
+  for (const k of listarChavesSemanticasLancamento(t)) {
+    contagens.set(k, (contagens.get(k) || 0) + 1);
+  }
+}
+
+function tentarConsumirSemantico(contagens, t) {
+  for (const k of listarChavesSemanticasLancamento(t)) {
+    if (consumirDoMapa(contagens, k)) return true;
+  }
+  return false;
+}
+
+function construirContagens(existente) {
+  const estritas = new Map();
+  const semanticas = new Map();
+  for (const t of existente || []) {
+    const ke = chaveDedupeLancamento(t);
+    estritas.set(ke, (estritas.get(ke) || 0) + 1);
+    registrarChavesSemanticas(semanticas, t);
+  }
+  return { estritas, semanticas };
+}
+
+/**
+ * @param {object[]} existente
+ * @param {object[]} novo
+ * @returns {{ novos: object[], ignorados: number, porDia: Map<string, { existentes: number, ofx: number, novos: number, ignorados: number }> }}
+ */
+export function analisarLancamentosNovosDedupe(existente, novo) {
+  const { estritas, semanticas } = construirContagens(existente);
+  const porDia = new Map();
+  const novos = [];
+  let ignorados = 0;
+
+  const bumpDia = (dataIso, field) => {
+    const d = dataIso || '—';
+    if (!porDia.has(d)) {
+      porDia.set(d, { existentes: 0, ofx: 0, novos: 0, ignorados: 0 });
+    }
+    porDia.get(d)[field] += 1;
+  };
+
+  for (const t of existente || []) {
+    bumpDia(dataLancamentoParaIso(t.data), 'existentes');
+  }
+
+  for (const t of novo || []) {
+    const dataIso = dataLancamentoParaIso(t.data);
+    bumpDia(dataIso, 'ofx');
+    const ke = chaveDedupeLancamento(t);
+    if (consumirDoMapa(estritas, ke) || tentarConsumirSemantico(semanticas, t)) {
+      ignorados += 1;
+      bumpDia(dataIso, 'ignorados');
+      continue;
+    }
+    novos.push(t);
+    bumpDia(dataIso, 'novos');
+  }
+
+  return { novos, ignorados, porDia };
 }
 
 /** Remove marcação de par de compensação (não deve vir de arquivo OFX/PDF). */
@@ -196,21 +343,16 @@ export function sanitizarLancamentoImportacaoExtrato(t) {
  * Várias linhas idênticas no próprio arquivo `novo` contam todas, exceto as que batem com `existente`.
  */
 export function contarLancamentosNovos(existente, novo) {
-  const keys = new Set((existente || []).map((t) => chaveDedupeLancamento(t)));
-  let n = 0;
-  for (const t of novo || []) {
-    if (!keys.has(chaveDedupeLancamento(t))) n += 1;
-  }
-  return n;
+  return analisarLancamentosNovosDedupe(existente, novo).novos.length;
 }
 
 /**
- * Lista os lançamentos de `novo` cuja chave ainda não está em `existente` (extrato já gravado/carregado).
- * Duplicatas **dentro** de `novo` mantêm-se: só a comparação com `existente` usa deduplicação.
+ * Lista os lançamentos de `novo` que ainda não existem no extrato/base.
+ * Compara FITID/nº (chave estrita) e data+valor+descrição normalizada (planilha vs OFX).
+ * Duplicatas **dentro** de `novo` mantêm-se quando não há par em `existente`.
  */
 export function listarLancamentosNovosDedupe(existente, novo) {
-  const keys = new Set((existente || []).map((t) => chaveDedupeLancamento(t)));
-  return (novo || []).filter((t) => !keys.has(chaveDedupeLancamento(t)));
+  return analisarLancamentosNovosDedupe(existente, novo).novos;
 }
 
 /**
@@ -221,12 +363,9 @@ export function listarLancamentosNovosDedupe(existente, novo) {
  * Recalcula saldo em ordem cronológica.
  */
 export function mergeExtratoBancario(existente, novo) {
-  const keysExistente = new Set((existente || []).map((t) => chaveDedupeLancamento(t)));
   const base = (existente || []).map((t) => ({ ...t }));
   const adicionados = [];
-  for (const t of novo || []) {
-    const k = chaveDedupeLancamento(t);
-    if (keysExistente.has(k)) continue;
+  for (const t of listarLancamentosNovosDedupe(existente, novo)) {
     const row = sanitizarLancamentoImportacaoExtrato({ ...t });
     const L = String(row.letra ?? '').trim().toUpperCase();
     if (!L) row.letra = 'N';

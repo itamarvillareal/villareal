@@ -6,6 +6,7 @@ import br.com.vilareal.financeiro.api.dto.ParearCompensacaoResponse;
 import br.com.vilareal.financeiro.api.dto.ParesSugeridosCompensacaoResponse;
 import br.com.vilareal.financeiro.domain.EtapaLancamento;
 import br.com.vilareal.financeiro.domain.NaturezaLancamento;
+import br.com.vilareal.financeiro.domain.TipoParCompensacao;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.ContaContabilEntity;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.LancamentoFinanceiroEntity;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.ContaContabilRepository;
@@ -123,6 +124,39 @@ class FinanceiroCompensacaoServiceTest {
     }
 
     @Test
+    void listarParesSugeridos_priorizaPixInterbancarioSobreDepositoMesmoBanco() {
+        LocalDate dia = LocalDate.of(2026, 4, 24);
+        LancamentoFinanceiroEntity bbPix = lancamentoOrfao(10L, 2, NaturezaLancamento.DEBITO, dia);
+        bbPix.setDescricao("Pix - Enviado");
+        bbPix.setValor(new BigDecimal("10934.30"));
+        LancamentoFinanceiroEntity bbDeposito = lancamentoOrfao(20L, 2, NaturezaLancamento.CREDITO, dia);
+        bbDeposito.setDescricao("Credito Deposito Judicial");
+        bbDeposito.setValor(new BigDecimal("10934.30"));
+        LancamentoFinanceiroEntity itauPix = lancamentoOrfao(30L, 1, NaturezaLancamento.CREDITO, dia);
+        itauPix.setDescricao("PIX TRANSF ITAMAR 24/04");
+        itauPix.setValor(new BigDecimal("10934.30"));
+
+        when(lancamentoRepository.countParesCompensacaoSugeridos(
+                        any(), any(), any(), eq(3), anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean()))
+                .thenReturn(2L);
+        when(lancamentoRepository.findParesCompensacaoSugeridosIds(
+                        any(), any(), any(), eq(3), anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean(), anyInt(), anyInt()))
+                .thenReturn(
+                        List.<Object[]>of(new Object[] {10L, 20L, 2, 2}, new Object[] {10L, 30L, 2, 1}),
+                        List.of());
+        when(lancamentoRepository.findAllByIdIn(any())).thenReturn(List.of(bbPix, bbDeposito, itauPix));
+
+        ParesSugeridosCompensacaoResponse r =
+                service.listarParesSugeridos(null, 2026, 4, 0, 50, false, false, false, false);
+
+        assertThat(r.getTotalPares()).isEqualTo(1);
+        assertThat(r.getPares()).hasSize(1);
+        assertThat(r.getPares().get(0).getTipo()).isEqualTo(TipoParCompensacao.INTERBANCARIO);
+        assertThat(r.getPares().get(0).getLancamentoA().getId()).isEqualTo(10L);
+        assertThat(r.getPares().get(0).getLancamentoB().getId()).isEqualTo(30L);
+    }
+
+    @Test
     void listarParesSugeridos_filtraPorMesmoDiaUtilBancario() {
         LocalDate sexta = LocalDate.of(2025, 3, 14);
         LocalDate segunda = LocalDate.of(2025, 3, 17);
@@ -132,20 +166,53 @@ class FinanceiroCompensacaoServiceTest {
         LancamentoFinanceiroEntity pay99 = lancamentoOrfao(20L, 30, NaturezaLancamento.CREDITO, segunda);
         LancamentoFinanceiroEntity outro = lancamentoOrfao(30L, 2, NaturezaLancamento.CREDITO, quinta);
 
-        when(lancamentoRepository.countParesCompensacaoSugeridos(any(), any(), any(), eq(3), anyBoolean()))
+        when(lancamentoRepository.countParesCompensacaoSugeridos(
+                        any(), any(), any(), eq(3), anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean()))
                 .thenReturn(2L);
-        when(lancamentoRepository.findParesCompensacaoSugeridosIds(any(), any(), any(), eq(3), anyBoolean(), anyInt(), anyInt()))
+        when(lancamentoRepository.findParesCompensacaoSugeridosIds(
+                        any(), any(), any(), eq(3), anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean(), anyInt(), anyInt()))
                 .thenReturn(
                         List.<Object[]>of(new Object[] {10L, 20L, 1, 30}, new Object[] {10L, 30L, 1, 2}),
                         List.of());
         when(lancamentoRepository.findAllByIdIn(any())).thenReturn(List.of(itau, pay99, outro));
 
-        ParesSugeridosCompensacaoResponse r = service.listarParesSugeridos(null, null, null, 0, 50, true);
+        ParesSugeridosCompensacaoResponse r =
+                service.listarParesSugeridos(null, null, null, 0, 50, true, false, false, false);
 
         assertThat(r.getTotalPares()).isEqualTo(1);
         assertThat(r.getPares()).hasSize(1);
         assertThat(r.getPares().get(0).getLancamentoA().getId()).isEqualTo(10L);
         assertThat(r.getPares().get(0).getLancamentoB().getId()).isEqualTo(20L);
+    }
+
+    @Test
+    void listarParesSugeridos_paginaRetornaSubconjunto() {
+        LocalDate dia = LocalDate.of(2026, 5, 10);
+        LancamentoFinanceiroEntity d1 = lancamentoOrfao(1L, 1, NaturezaLancamento.DEBITO, dia);
+        LancamentoFinanceiroEntity c1 = lancamentoOrfao(2L, 2, NaturezaLancamento.CREDITO, dia);
+        LancamentoFinanceiroEntity d2 = lancamentoOrfao(3L, 1, NaturezaLancamento.DEBITO, dia);
+        LancamentoFinanceiroEntity c2 = lancamentoOrfao(4L, 2, NaturezaLancamento.CREDITO, dia);
+
+        when(lancamentoRepository.countParesCompensacaoSugeridos(
+                        any(), any(), any(), eq(3), anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean()))
+                .thenReturn(2L);
+        when(lancamentoRepository.findParesCompensacaoSugeridosIds(
+                        any(), any(), any(), eq(3), anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean(), anyInt(), anyInt()))
+                .thenReturn(
+                        List.<Object[]>of(new Object[] {1L, 2L, 1, 2}, new Object[] {3L, 4L, 1, 2}),
+                        List.of());
+        when(lancamentoRepository.findAllByIdIn(any())).thenReturn(List.of(d1, c1, d2, c2));
+
+        ParesSugeridosCompensacaoResponse p0 =
+                service.listarParesSugeridos(null, null, null, 0, 1, false, false, false, false);
+        ParesSugeridosCompensacaoResponse p1 =
+                service.listarParesSugeridos(null, null, null, 1, 1, false, false, false, false);
+
+        assertThat(p0.getTotalPares()).isEqualTo(2);
+        assertThat(p0.getPares()).hasSize(1);
+        assertThat(p1.getPares()).hasSize(1);
+        assertThat(p0.getPares().get(0).getLancamentoA().getId()).isNotEqualTo(
+                p1.getPares().get(0).getLancamentoA().getId());
     }
 
     private static LancamentoFinanceiroEntity lancamentoOrfao(

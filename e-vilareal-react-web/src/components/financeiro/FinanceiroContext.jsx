@@ -3,7 +3,8 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { CARTAO_TO_NUMERO, getBancoNumeroMapMerged } from '../../data/financeiroData.js';
 import { useExtratoFilters } from './hooks/useExtratoFilters.js';
 
-const FinanceiroContext = createContext(null);
+const FinanceiroFiltersContext = createContext(null);
+const FinanceiroChromeContext = createContext(null);
 
 const TOP_BANCOS_VISIVEIS = 5;
 
@@ -16,20 +17,7 @@ export function FinanceiroProvider({
 }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const {
-    filters,
-    apiQuery,
-    setBanco,
-    setMes,
-    setEtapa,
-    setContaCodigo,
-    setBusca,
-    setSemClienteId,
-    setSemGrupoCompensacao,
-    setPage,
-    setSize,
-    clearFilters,
-  } = useExtratoFilters();
+  const extratoFilters = useExtratoFilters();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [bancosExpandidos, setBancosExpandidos] = useState(false);
 
@@ -56,37 +44,64 @@ export function FinanceiroProvider({
 
   const selecionarBanco = useCallback(
     (numero) => {
-      setBanco(numero);
+      extratoFilters.setBanco(numero);
       const path = location.pathname.replace(/\/$/, '');
       if (path === '/financeiro') {
         navigate('/financeiro/extrato');
       }
     },
-    [setBanco, navigate, location.pathname],
+    [extratoFilters.setBanco, navigate, location.pathname],
   );
 
-  const value = useMemo(
+  const filtersValue = useMemo(
     () => ({
-      filters,
-      apiQuery,
-      setBanco,
-      setMes,
-      setEtapa,
-      setContaCodigo,
-      setBusca,
-      setSemClienteId,
-      setSemGrupoCompensacao,
-      setPage,
-      setSize,
-      clearFilters,
+      filters: extratoFilters.filters,
+      apiQuery: extratoFilters.apiQuery,
+      setBanco: extratoFilters.setBanco,
+      setMes: extratoFilters.setMes,
+      setTipoPar: extratoFilters.setTipoPar,
+      setTipoDia: extratoFilters.setTipoDia,
+      setEtapa: extratoFilters.setEtapa,
+      setContaCodigo: extratoFilters.setContaCodigo,
+      setBusca: extratoFilters.setBusca,
+      setSemClienteId: extratoFilters.setSemClienteId,
+      setSemGrupoCompensacao: extratoFilters.setSemGrupoCompensacao,
+      setPage: extratoFilters.setPage,
+      setSize: extratoFilters.setSize,
+      setSort: extratoFilters.setSort,
+      toggleSortData: extratoFilters.toggleSortData,
+      clearFilters: extratoFilters.clearFilters,
+    }),
+    [
+      extratoFilters.filters,
+      extratoFilters.apiQuery,
+      extratoFilters.setBanco,
+      extratoFilters.setMes,
+      extratoFilters.setTipoPar,
+      extratoFilters.setTipoDia,
+      extratoFilters.setEtapa,
+      extratoFilters.setContaCodigo,
+      extratoFilters.setBusca,
+      extratoFilters.setSemClienteId,
+      extratoFilters.setSemGrupoCompensacao,
+      extratoFilters.setPage,
+      extratoFilters.setSize,
+      extratoFilters.setSort,
+      extratoFilters.toggleSortData,
+      extratoFilters.clearFilters,
+    ],
+  );
+
+  const chromeValue = useMemo(
+    () => ({
       totalPendentes,
       contadores,
       bancos,
       bancosVisiveis,
       bancosRestantes: Math.max(0, bancos.length - TOP_BANCOS_VISIVEIS),
       cartoes,
-      bancoAtivo: Number.isFinite(filters.banco) ? filters.banco : null,
-      mesAtivo: filters.mes,
+      bancoAtivo: Number.isFinite(extratoFilters.filters.banco) ? extratoFilters.filters.banco : null,
+      mesAtivo: extratoFilters.filters.mes,
       sidebarCollapsed,
       setSidebarCollapsed,
       bancosExpandidos,
@@ -95,23 +110,13 @@ export function FinanceiroProvider({
       refreshBancos,
     }),
     [
-      filters,
-      apiQuery,
-      setBanco,
-      setMes,
-      setEtapa,
-      setContaCodigo,
-      setBusca,
-      setSemClienteId,
-      setSemGrupoCompensacao,
-      setPage,
-      setSize,
-      clearFilters,
       totalPendentes,
       contadores,
       bancos,
       bancosVisiveis,
       cartoes,
+      extratoFilters.filters.banco,
+      extratoFilters.filters.mes,
       sidebarCollapsed,
       bancosExpandidos,
       selecionarBanco,
@@ -119,11 +124,26 @@ export function FinanceiroProvider({
     ],
   );
 
-  return <FinanceiroContext.Provider value={value}>{children}</FinanceiroContext.Provider>;
+  return (
+    <FinanceiroChromeContext.Provider value={chromeValue}>
+      <FinanceiroFiltersContext.Provider value={filtersValue}>{children}</FinanceiroFiltersContext.Provider>
+    </FinanceiroChromeContext.Provider>
+  );
 }
 
-export function useFinanceiro() {
-  const ctx = useContext(FinanceiroContext);
-  if (!ctx) throw new Error('useFinanceiro deve ser usado dentro de FinanceiroProvider');
+export function useFinanceiroFilters() {
+  const ctx = useContext(FinanceiroFiltersContext);
+  if (!ctx) throw new Error('useFinanceiroFilters deve ser usado dentro de FinanceiroProvider');
   return ctx;
+}
+
+export function useFinanceiroChrome() {
+  const ctx = useContext(FinanceiroChromeContext);
+  if (!ctx) throw new Error('useFinanceiroChrome deve ser usado dentro de FinanceiroProvider');
+  return ctx;
+}
+
+/** Compatibilidade: combina filtros + chrome (re-renderiza se qualquer um mudar). */
+export function useFinanceiro() {
+  return { ...useFinanceiroFilters(), ...useFinanceiroChrome() };
 }

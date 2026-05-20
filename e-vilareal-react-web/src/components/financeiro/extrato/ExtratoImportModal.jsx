@@ -6,7 +6,11 @@ import { useFinanceiro } from '../FinanceiroContext.jsx';
 import { useFinanceiroToast } from '../shared/Toast.jsx';
 import { ConfirmDialog } from '../shared/ConfirmDialog.jsx';
 import { NovoBancoModal } from './NovoBancoModal.jsx';
-import { executarImportacaoExtrato, parseArquivoExtrato } from './importUtils.js';
+import {
+  executarImportacaoExtrato,
+  parseArquivoExtrato,
+  resumirNovosImportacaoMesclar,
+} from './importUtils.js';
 
 export function ExtratoImportModal({ open, onClose, bancoInicial = null, onSuccess }) {
   const { bancos, refreshBancos } = useFinanceiro();
@@ -31,6 +35,14 @@ export function ExtratoImportModal({ open, onClose, bancoInicial = null, onSucce
 
   const wasOpenRef = useRef(false);
 
+  const resolverBancoInicial = useCallback(() => {
+    if (bancoInicial != null) {
+      const hit = bancos.find((b) => b.numero === bancoInicial);
+      if (hit?.nome) return hit.nome;
+    }
+    return bancos[0]?.nome ?? '';
+  }, [bancoInicial, bancos]);
+
   useEffect(() => {
     if (!open) {
       wasOpenRef.current = false;
@@ -43,9 +55,15 @@ export function ExtratoImportModal({ open, onClose, bancoInicial = null, onSucce
     setResult(null);
     setFile(null);
     setModo('mesclar');
-    const inicial = bancoInicial != null ? bancos.find((b) => b.numero === bancoInicial) : null;
-    setBancoNome(inicial?.nome ?? '');
-  }, [open, bancoInicial, bancos]);
+    setBancoNome(resolverBancoInicial());
+  }, [open, resolverBancoInicial]);
+
+  /** Lista de bancos pode carregar após abrir o modal — preenche banco se ainda vazio. */
+  useEffect(() => {
+    if (!open || bancoNome) return;
+    const nome = resolverBancoInicial();
+    if (nome) setBancoNome(nome);
+  }, [open, bancoNome, resolverBancoInicial]);
 
   const resetAndClose = useCallback(() => {
     setFile(null);
@@ -63,12 +81,21 @@ export function ExtratoImportModal({ open, onClose, bancoInicial = null, onSucce
     if (!file || !bancoNome) return;
     setBusy(true);
     const parsed = await parseArquivoExtrato(file, bancoNome);
-    setBusy(false);
     if (!parsed.ok) {
+      setBusy(false);
       toast.error(parsed.message);
       return;
     }
-    setPreview(parsed);
+    let resumoMesclar = null;
+    if (modo === 'mesclar' && featureFlags.useApiFinanceiro && numeroBanco != null) {
+      try {
+        resumoMesclar = await resumirNovosImportacaoMesclar(parsed.rows, numeroBanco);
+      } catch {
+        resumoMesclar = null;
+      }
+    }
+    setBusy(false);
+    setPreview({ ...parsed, resumoMesclar });
     setStep('preview');
   };
 
@@ -86,6 +113,10 @@ export function ExtratoImportModal({ open, onClose, bancoInicial = null, onSucce
       if (res.erros?.length) {
         toast.warn(
           `${res.importados} importados com ${res.erros.length} erro(s). ${res.erros.slice(0, 2).join(' · ')}`,
+        );
+      } else if (res.ignorados > 0) {
+        toast.success(
+          `${res.importados} lançamento(s) importados. ${res.ignorados} ignorado(s) (já constavam no banco, comparados por data/valor/descrição).`,
         );
       } else {
         toast.success(`${res.importados} lançamento(s) importados.`);
@@ -138,6 +169,12 @@ export function ExtratoImportModal({ open, onClose, bancoInicial = null, onSucce
               <div className="space-y-3 text-sm">
                 <p className="text-slate-800 dark:text-slate-100">
                   <strong>{Number(result.importados).toLocaleString('pt-BR')}</strong> importados.
+                  {result.ignorados > 0 ? (
+                    <span className="text-slate-600 dark:text-slate-400">
+                      {' '}
+                      <strong>{Number(result.ignorados).toLocaleString('pt-BR')}</strong> ignorados (já no banco).
+                    </span>
+                  ) : null}
                   {result.erros?.length ? (
                     <span className="text-amber-600 dark:text-amber-400">
                       {' '}
@@ -157,15 +194,24 @@ export function ExtratoImportModal({ open, onClose, bancoInicial = null, onSucce
                 </Link>
               </div>
             ) : step === 'preview' && preview ? (
-              <p className="text-sm text-slate-700 dark:text-slate-200">
-                <strong>{preview.total.toLocaleString('pt-BR')}</strong> lançamentos encontrados no arquivo (
-                {preview.origem}).
-                {modo === 'substituir' ? (
-                  <span className="block mt-2 text-amber-700 dark:text-amber-300">
-                    O extrato atual deste banco será substituído na API.
-                  </span>
+              <div className="text-sm text-slate-700 dark:text-slate-200 space-y-2">
+                <p>
+                  <strong>{preview.total.toLocaleString('pt-BR')}</strong> lançamentos no arquivo ({preview.origem}
+                  ).
+                </p>
+                {preview.resumoMesclar ? (
+                  <p>
+                    No banco: <strong>{preview.resumoMesclar.noBanco.toLocaleString('pt-BR')}</strong> · a importar:{' '}
+                    <strong>{preview.resumoMesclar.novos.toLocaleString('pt-BR')}</strong> · ignorados (duplicados):{' '}
+                    <strong>{preview.resumoMesclar.ignorados.toLocaleString('pt-BR')}</strong>
+                  </p>
                 ) : null}
-              </p>
+                {modo === 'substituir' ? (
+                  <p className="text-amber-700 dark:text-amber-300">
+                    O extrato atual deste banco será substituído na API.
+                  </p>
+                ) : null}
+              </div>
             ) : (
               <>
                 <div className="flex flex-wrap items-end gap-2">
@@ -175,7 +221,11 @@ export function ExtratoImportModal({ open, onClose, bancoInicial = null, onSucce
                       value={bancoNome}
                       onChange={(e) => setBancoNome(e.target.value)}
                       className="mt-1 w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1.5 text-sm"
+                      required
                     >
+                      <option value="" disabled>
+                        Selecione o banco
+                      </option>
                       {bancos.map((b) => (
                         <option key={b.nome} value={b.nome}>
                           {b.nome}

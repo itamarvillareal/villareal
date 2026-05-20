@@ -18,6 +18,7 @@ import {
 } from '../data/financeiroData.js';
 import { carregarExtratosFinanceiroApiFirst } from '../repositories/financeiroRepository.js';
 import { EVENT_FINANCEIRO_PERSISTENCIA_EXTERNA } from '../services/crossTabLocalStorageSync.js';
+import { VerificacaoSaldoDiario } from './financeiro/relatorios/VerificacaoSaldoDiario.jsx';
 
 function fmtReais(v) {
   const n = Number(v) || 0;
@@ -229,6 +230,8 @@ export function FinanceiroRelatorios() {
         <p className="mx-1 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{erro}</p>
       ) : null}
       {loading ? <p className="mx-1 text-sm text-indigo-700">Carregando lançamentos…</p> : null}
+
+      <VerificacaoSaldoDiario bancos={saldosBancos} extratosPorBanco={extratosPorBanco} />
 
       <div className="mx-1 rounded-xl border border-emerald-200 bg-emerald-50/80 px-4 py-3 flex flex-wrap items-baseline justify-between gap-2">
         <span className="text-sm font-medium text-emerald-950">Saldo líquido (todos os extratos bancários)</span>

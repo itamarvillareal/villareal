@@ -153,8 +153,8 @@ public class ProcessosController {
     @Operation(
             summary = "Diagnóstico: andamentos (histórico) na data",
             description =
-                    "Lista linhas de histórico na API (`processo_andamento`) cuja data do movimento coincide com o parâmetro "
-                            + "ou que foram gravadas/atualizadas nesse dia (`atualizado_em`, fuso America/Sao_Paulo).")
+                    "Lista linhas de histórico na API (`processo_andamento`) cuja data do movimento (`movimento_em`) "
+                            + "coincide com o parâmetro (fuso America/Sao_Paulo), alinhado ao relatório legado «Consultas Realizadas».")
     public List<ProcessoDiagnosticoHistoricoItemResponse> buscarDiagnosticoHistoricoPorData(
             @RequestParam("data") String data) {
         return processoApplicationService.buscarDiagnosticoHistoricoPorData(data);

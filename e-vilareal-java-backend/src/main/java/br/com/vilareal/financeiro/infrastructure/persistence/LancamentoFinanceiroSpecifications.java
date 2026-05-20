@@ -65,6 +65,8 @@ public final class LancamentoFinanceiroSpecifications {
         }
         if (ano != null && mes != null) {
             spec = spec.and(comMes(ano, mes));
+        } else if (ano != null) {
+            spec = spec.and(comAno(ano));
         }
         return spec;
     }
@@ -139,6 +141,17 @@ public final class LancamentoFinanceiroSpecifications {
             }
             LocalDate inicio = LocalDate.of(ano, mes, 1);
             LocalDate fim = inicio.plusMonths(1).minusDays(1);
+            return cb.between(root.get("dataLancamento"), inicio, fim);
+        };
+    }
+
+    public static Specification<LancamentoFinanceiroEntity> comAno(Integer ano) {
+        return (root, query, cb) -> {
+            if (ano == null) {
+                return null;
+            }
+            LocalDate inicio = LocalDate.of(ano, 1, 1);
+            LocalDate fim = LocalDate.of(ano, 12, 31);
             return cb.between(root.get("dataLancamento"), inicio, fim);
         };
     }

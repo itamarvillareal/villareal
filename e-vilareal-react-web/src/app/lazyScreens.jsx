@@ -40,6 +40,10 @@ export const LazyImoveisAdministracaoFinanceiro = fromNamed(
   () => import('../components/ImoveisAdministracaoFinanceiro.jsx'),
   'ImoveisAdministracaoFinanceiro'
 );
+export const LazyImoveisSugestoesVinculoGeral = fromNamed(
+  () => import('../components/ImoveisSugestoesVinculoGeral.jsx'),
+  'ImoveisSugestoesVinculoGeral'
+);
 export const LazyRelatorioFinanceiroImoveis = fromNamed(
   () => import('../components/RelatorioFinanceiroImoveis.jsx'),
   'RelatorioFinanceiroImoveis'

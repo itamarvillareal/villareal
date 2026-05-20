@@ -1,13 +1,11 @@
+import { memo } from 'react';
 import { Check, SkipForward, X } from 'lucide-react';
 import { ConfiancaDots } from '../../shared/ConfiancaDots.jsx';
 import { ValorText } from '../../shared/ValorText.jsx';
-import { labelTipoPar, mapLancamentoInbox, somaParCompensacao } from '../inboxMappers.js';
 
-const TOLERANCIA = 0.01;
 const fmt = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-function LinhaLancamento({ l, tone }) {
-  const row = mapLancamentoInbox(l);
+const LinhaLancamento = memo(function LinhaLancamento({ row, tone }) {
   const box =
     tone === 'debito'
       ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
@@ -25,10 +23,10 @@ function LinhaLancamento({ l, tone }) {
       </div>
     </div>
   );
-}
+});
 
-export function CompensacaoCard({
-  par,
+function CompensacaoCardInner({
+  ui,
   onParear,
   onRejeitar,
   onPular,
@@ -38,24 +36,14 @@ export function CompensacaoCard({
   busy,
   focused = false,
 }) {
-  const soma = somaParCompensacao(par);
-  const zero = Math.abs(soma) < TOLERANCIA;
-  const dentroTolerancia = !zero && Math.abs(soma) <= 1;
-
-  const deb =
-    String(par.lancamentoA?.natureza ?? '').toUpperCase() === 'DEBITO'
-      ? par.lancamentoA
-      : par.lancamentoB;
-  const cred =
-    String(par.lancamentoA?.natureza ?? '').toUpperCase() === 'CREDITO'
-      ? par.lancamentoA
-      : par.lancamentoB;
+  const { par, debRow, credRow, soma, zero, dentroTolerancia, tipoLabel, diaLabel } = ui;
 
   return (
     <article
-      className={`rounded-lg border border-[var(--color-border-tertiary,#e2e8f0)] dark:border-slate-700 px-4 py-3 mb-2 bg-white dark:bg-slate-900 hover:shadow-sm transition-all duration-300 ${
+      className={`rounded-lg border border-[var(--color-border-tertiary,#e2e8f0)] dark:border-slate-700 px-4 py-3 mb-2 bg-white dark:bg-slate-900 hover:shadow-sm ${
         focused ? 'ring-2 ring-blue-500 ring-offset-2 dark:ring-offset-slate-950' : ''
-      } ${fading ? 'opacity-0 scale-[0.98]' : 'opacity-100'}`}
+      } ${fading ? 'opacity-0' : 'opacity-100'}`}
+      style={{ transition: fading ? 'opacity 280ms ease-out' : undefined }}
     >
       <div className="flex items-center justify-between gap-2 mb-3">
         <label className="flex items-center gap-2 cursor-pointer">
@@ -75,11 +63,11 @@ export function CompensacaoCard({
       <div className="space-y-2">
         <div>
           <p className="text-[10px] font-medium uppercase text-red-600 dark:text-red-400 mb-0.5">Débito</p>
-          <LinhaLancamento l={deb ?? par.lancamentoA} tone="debito" />
+          <LinhaLancamento row={debRow} tone="debito" />
         </div>
         <div>
           <p className="text-[10px] font-medium uppercase text-green-600 dark:text-green-400 mb-0.5">Crédito</p>
-          <LinhaLancamento l={cred ?? par.lancamentoB} tone="credito" />
+          <LinhaLancamento row={credRow} tone="credito" />
         </div>
       </div>
 
@@ -96,8 +84,13 @@ export function CompensacaoCard({
           Soma: R$ {fmt.format(soma)}
           {zero ? ' ✓' : dentroTolerancia ? ` ⚠ (dif. ${fmt.format(soma)})` : ''}
         </span>
-        <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
-          {labelTipoPar(par.tipo)}
+        <span className="flex flex-wrap gap-1 justify-end">
+          <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+            {tipoLabel}
+          </span>
+          <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+            {diaLabel}
+          </span>
         </span>
       </div>
 
@@ -133,3 +126,5 @@ export function CompensacaoCard({
     </article>
   );
 }
+
+export const CompensacaoCard = memo(CompensacaoCardInner);

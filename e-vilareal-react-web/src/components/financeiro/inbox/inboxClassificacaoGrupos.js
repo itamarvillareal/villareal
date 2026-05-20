@@ -1,8 +1,19 @@
 const ORDEM_CONFIANCA = { ALTA: 0, MEDIA: 1, BAIXA: 2 };
 
+/** Conta N = ainda sem classificação conhecida — não deve ser sugerida para aprovação. */
+export function contaContabilDesconhecida(codigo) {
+  return String(codigo ?? '').trim().toUpperCase() === 'N';
+}
+
+export function filtrarSugestoesClassificacao(lista) {
+  if (!Array.isArray(lista)) return [];
+  return lista.filter((s) => s?.contaContabilId && !contaContabilDesconhecida(s.contaCodigo));
+}
+
 export function melhorSugestao(lista) {
-  if (!lista?.length) return null;
-  return [...lista].sort(
+  const util = filtrarSugestoesClassificacao(lista);
+  if (!util.length) return null;
+  return [...util].sort(
     (a, b) =>
       (ORDEM_CONFIANCA[String(a.confianca).toUpperCase()] ?? 9) -
       (ORDEM_CONFIANCA[String(b.confianca).toUpperCase()] ?? 9),
@@ -31,7 +42,7 @@ export function agruparLancamentosClassificacao(lancamentos, sugestoesMap) {
 
   for (const lanc of lancamentos) {
     const sugestao = melhorSugestao(sugestoesMap[lanc.id]);
-    if (!sugestao?.contaContabilId) {
+    if (!sugestao?.contaContabilId || contaContabilDesconhecida(sugestao.contaCodigo)) {
       semSugestao.push(lanc);
       continue;
     }

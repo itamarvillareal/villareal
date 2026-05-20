@@ -14,11 +14,11 @@ import {
   BANCOS_IMPORT_PLANILHA,
   NUMERO_PARA_BANCO,
 } from './lib/extrato-bancos-planilha-constantes.mjs';
+import { requireExtratoBancosPlanilhaXlsPath } from './lib/resolve-extrato-bancos-planilha-xls.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
-const FILE =
-  process.argv[2] || '/Users/itamar/Downloads/Extratos Bancos - Itamar.xls';
+const FILE = requireExtratoBancosPlanilhaXlsPath(process.argv[2]);
 const PROGRESS = process.argv[3] || path.join(ROOT, '.import-bancos-progress.jsonl');
 const START_FROM = process.argv[4] || '';
 

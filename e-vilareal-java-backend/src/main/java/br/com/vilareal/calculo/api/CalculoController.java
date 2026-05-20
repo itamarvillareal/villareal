@@ -56,9 +56,11 @@ public class CalculoController {
     public ResponseEntity<JsonNode> obterRodada(
             @PathVariable String codigoCliente,
             @PathVariable int processo,
-            @PathVariable int dimensao) {
+            @PathVariable int dimensao,
+            @RequestParam(required = false) Integer titulosPage,
+            @RequestParam(required = false) Integer titulosLimit) {
         return calculoApplicationService
-                .obterRodada(codigoCliente, processo, dimensao)
+                .obterRodada(codigoCliente, processo, dimensao, titulosPage, titulosLimit)
                 .map(node -> ResponseEntity.ok()
                         .contentType(MediaType.APPLICATION_JSON)
                         .cacheControl(CacheControl.noStore())

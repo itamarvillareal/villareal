@@ -19,7 +19,7 @@ import {
   ImoveisToast,
   IMOVEIS_SECTION_ACCENTS,
   TabelaUtilidades,
-  enderecoUmaLinha,
+  unidadeResumoCabecalho,
   formatValorMoeda,
   imoveisBtnPrimary,
   imoveisBtnSecondary,
@@ -166,7 +166,7 @@ export function ImoveisCadastroView(props) {
     onVincularInquilino,
   } = props;
 
-  const enderecoResumo = enderecoUmaLinha(endereco, condominio, unidade);
+  const unidadeResumo = unidadeResumoCabecalho(unidade, condominio);
 
   const summaryCards = useMemo(
     () => [
@@ -301,7 +301,7 @@ export function ImoveisCadastroView(props) {
         <ImoveisStickyHeader
           imovelId={imovelId}
           imovelOcupado={imovelOcupado}
-          enderecoResumo={enderecoResumo}
+          unidadeResumo={unidadeResumo}
           valorLocacao={valorLocacao}
           inquilinoNome={inquilino}
           apiSaving={apiSaving}
@@ -371,8 +371,15 @@ export function ImoveisCadastroView(props) {
               </div>
             </fieldset>
 
-            <Field label="Código" className="w-[5.5rem] shrink-0">
-              <input type="text" value={codigo} onChange={(e) => setCodigo(e.target.value)} className={imoveisInputClass} />
+            <Field label="Código" className="w-[7.5rem] shrink-0">
+              <input
+                type="text"
+                inputMode="numeric"
+                maxLength={8}
+                value={codigo}
+                onChange={(e) => setCodigo(e.target.value.replace(/\D/g, '').slice(0, 8))}
+                className={`${imoveisInputClass} font-mono tabular-nums text-center tracking-tight`}
+              />
             </Field>
             <Field label="Proc." className="w-[5.5rem] shrink-0">
               <input
