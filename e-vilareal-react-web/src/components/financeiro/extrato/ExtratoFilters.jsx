@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Search } from 'lucide-react';
-import { useFinanceiro } from '../FinanceiroContext.jsx';
+import { useFinanceiroChrome, useFinanceiroFilters } from '../FinanceiroContext.jsx';
 import { PeriodoSelector } from '../shared/PeriodoSelector.jsx';
 import { FilterTag } from '../shared/FilterTag.jsx';
 import { formatDataCurta, formatMoeda } from '../shared/financeiroFormat.js';
@@ -21,9 +21,8 @@ export function ExtratoFilters({
     setSemClienteId,
     setSemGrupoCompensacao,
     setBanco,
-    bancoAtivo,
-    bancos,
-  } = useFinanceiro();
+  } = useFinanceiroFilters();
+  const { bancoAtivo, bancos } = useFinanceiroChrome();
 
   const [buscaLocal, setBuscaLocal] = useState(filters.busca ?? '');
 

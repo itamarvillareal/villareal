@@ -17,6 +17,7 @@ import {
 import {
   listarContasFinanceiro,
   listarLancamentosFinanceiroPaginados,
+  obterResumoConsolidadoContasApi,
 } from '../../../repositories/financeiroRepository.js';
 import { ContaBadge } from '../shared/ContaBadge.jsx';
 import { Pagination } from '../shared/Pagination.jsx';
@@ -29,7 +30,6 @@ import {
   contaChartColor,
   labelContaTab,
   mesAtualIso,
-  somaLancamentosApi,
   ultimos12Meses,
 } from './consolidadoUtils.js';
 
@@ -73,6 +73,7 @@ export function ConsolidadoPage() {
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [detailItem, setDetailItem] = useState(null);
 
+  const [resumoConsolidado, setResumoConsolidado] = useState(null);
   const [chartData, setChartData] = useState([]);
   const [chartLoading, setChartLoading] = useState(false);
   const [chartErro, setChartErro] = useState('');
@@ -105,82 +106,51 @@ export function ConsolidadoPage() {
   }, []);
 
   useEffect(() => {
-    if (!featureFlags.useApiFinanceiro || !contasApi.length) return undefined;
-    const ac = new AbortController();
-    (async () => {
-      const counts = {};
-      await Promise.all(
-        CONTAS_LETRAS.map(async (cod) => {
-          const hit = contasApi.find((c) => String(c.codigo ?? '').toUpperCase() === cod);
-          if (!hit?.id) {
-            counts[cod] = 0;
-            return;
-          }
-          try {
-            const res = await listarLancamentosFinanceiroPaginados(
-              { contaContabilId: hit.id, page: 0, size: 1 },
-              { signal: ac.signal },
-            );
-            counts[cod] = Number(res?.totalElements ?? 0);
-          } catch {
-            counts[cod] = null;
-          }
-        }),
-      );
-      if (!ac.signal.aborted) setTabCounts(counts);
-    })();
-    return () => ac.abort();
-  }, [contasApi]);
-
-  const loadChart = useCallback(
-    async (signal) => {
-      if (!contaContabilId) {
-        setChartData([]);
-        return;
-      }
-      setChartLoading(true);
-      setChartErro('');
-      try {
-        const meses = ultimos12Meses();
-        const pontos = await Promise.all(
-          meses.map(async (m) => {
-            const res = await listarLancamentosFinanceiroPaginados(
-              {
-                contaContabilId,
-                ano: m.ano,
-                mes: m.mes,
-                page: 0,
-                size: 100,
-                sort: 'dataLancamento,asc',
-              },
-              { signal },
-            );
-            const { saldo } = somaLancamentosApi(res?.content);
-            return {
-              ...m,
-              saldo,
-              total: Number(res?.totalElements ?? 0),
-            };
-          }),
-        );
-        setChartData(pontos);
-      } catch (e) {
-        if (e?.name === 'AbortError') return;
-        setChartErro(e?.message || 'Não foi possível carregar o gráfico.');
-        setChartData([]);
-      } finally {
-        setChartLoading(false);
-      }
-    },
-    [contaContabilId],
-  );
-
-  useEffect(() => {
     if (!featureFlags.useApiFinanceiro) return undefined;
     const ac = new AbortController();
-    loadChart(ac.signal);
+    setChartLoading(true);
+    obterResumoConsolidadoContasApi({ signal: ac.signal, meses: 12 })
+      .then((res) => {
+        if (ac.signal.aborted) return;
+        setResumoConsolidado(res);
+        const totais = res?.totaisPorConta ?? {};
+        const counts = {};
+        for (const cod of CONTAS_LETRAS) {
+          counts[cod] = Number(totais[cod] ?? 0);
+        }
+        setTabCounts(counts);
+      })
+      .catch(() => {
+        if (!ac.signal.aborted) setTabCounts({});
+      })
+      .finally(() => {
+        if (!ac.signal.aborted) setChartLoading(false);
+      });
     return () => ac.abort();
-  }, [loadChart]);
+  }, []);
+
+  useEffect(() => {
+    if (!codigoAtivo) {
+      setChartData([]);
+      return;
+    }
+    const mesesRef = ultimos12Meses();
+    const porMes = new Map(
+      (resumoConsolidado?.meses ?? [])
+        .filter((r) => String(r.contaCodigo ?? '').toUpperCase() === codigoAtivo)
+        .map((r) => [`${r.ano}-${r.mes}`, r]),
+    );
+    const pontos = mesesRef.map((m) => {
+      const hit = porMes.get(`${m.ano}-${m.mes}`);
+      return {
+        ...m,
+        saldo: hit != null ? Number(hit.saldoMes) : 0,
+        total: hit != null ? Number(hit.quantidadeLancamentos) : 0,
+      };
+    });
+    setChartData(pontos);
+    setChartErro('');
+  }, [codigoAtivo, resumoConsolidado]);
 
   useEffect(() => {
     setPage(0);

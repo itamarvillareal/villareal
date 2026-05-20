@@ -9,8 +9,8 @@ import lombok.Setter;
 @Setter
 public class ParCompensacaoSugeridoResponse {
 
-    private LancamentoFinanceiroResponse lancamentoA;
-    private LancamentoFinanceiroResponse lancamentoB;
+    private ResumoLancamentoParResponse lancamentoA;
+    private ResumoLancamentoParResponse lancamentoB;
     private TipoParCompensacao tipo;
     private ConfiancaSugestao confianca;
 }

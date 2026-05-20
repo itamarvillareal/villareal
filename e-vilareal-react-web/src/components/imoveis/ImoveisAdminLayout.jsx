@@ -21,6 +21,9 @@ import {
   X,
   Zap,
 } from 'lucide-react';
+import { formatValorMoeda, formatValorMoedaCampo } from '../../utils/moneyBr.js';
+
+export { formatValorMoeda, formatValorMoedaCampo };
 
 export const imoveisInputClass =
   'w-full px-3 py-2.5 text-sm rounded-xl border border-gray-200 dark:border-white/[0.1] bg-white dark:bg-[#141c2c] text-gray-800 font-medium dark:text-slate-100 placeholder:text-gray-300 placeholder:italic placeholder:font-normal dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-teal-400 focus:border-teal-400 dark:focus:ring-teal-400/30 dark:focus:border-teal-400/40 transition-[box-shadow,border-color] duration-200';
@@ -150,21 +153,20 @@ export function iniciaisNome(nome) {
   return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
 }
 
-export function formatValorMoeda(val) {
-  const s = String(val ?? '').trim();
-  if (!s) return '—';
-  const n = Number(s.replace(/\./g, '').replace(',', '.'));
-  if (Number.isFinite(n)) {
-    return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-  }
-  return s.startsWith('R$') ? s : `R$ ${s}`;
-}
-
 export function enderecoUmaLinha(endereco, condominio, unidade) {
   const e = String(endereco ?? '').trim();
   if (e) return e.split(/\r?\n/)[0].slice(0, 120);
   const c = [condominio, unidade].filter(Boolean).join(' · ');
   return c || 'Endereço não informado';
+}
+
+/** Resumo exibido no cabeçalho fixo do cadastro (campo Unidade). */
+export function unidadeResumoCabecalho(unidade, condominio) {
+  const u = String(unidade ?? '').trim();
+  if (u) return u;
+  const c = String(condominio ?? '').trim();
+  if (c) return c;
+  return 'Unidade não informada';
 }
 
 function telHref(contato) {
@@ -272,7 +274,7 @@ export function AccordionSection({
  * @param {{
  *   imovelId: number,
  *   imovelOcupado: boolean,
- *   enderecoResumo: string,
+ *   unidadeResumo: string,
  *   valorLocacao: string,
  *   inquilinoNome: string,
  *   apiSaving: boolean,
@@ -291,7 +293,7 @@ export function AccordionSection({
 export function ImoveisStickyHeader({
   imovelId,
   imovelOcupado,
-  enderecoResumo,
+  unidadeResumo,
   valorLocacao,
   inquilinoNome,
   apiSaving,
@@ -335,9 +337,9 @@ export function ImoveisStickyHeader({
           <p className="text-2xl sm:text-[1.65rem] font-bold text-teal-700 dark:text-teal-300 tabular-nums leading-tight">
             {valorFormatado}
           </p>
-          <p className="text-sm text-slate-500 dark:text-slate-400 truncate flex items-center gap-1.5" title={enderecoResumo}>
+          <p className="text-sm text-slate-500 dark:text-slate-400 truncate flex items-center gap-1.5" title={unidadeResumo}>
             <MapPin className="w-3.5 h-3.5 shrink-0 text-slate-400 dark:text-slate-500" aria-hidden />
-            {enderecoResumo}
+            {unidadeResumo}
           </p>
           {inquilinoNome?.trim() ? (
             <p className="text-xs text-slate-500 dark:text-slate-400 truncate">

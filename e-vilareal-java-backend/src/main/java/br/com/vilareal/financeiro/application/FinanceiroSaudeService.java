@@ -7,12 +7,18 @@ import br.com.vilareal.financeiro.infrastructure.persistence.repository.Lancamen
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 @Service
 public class FinanceiroSaudeService {
+
+    private static final Duration CACHE_TTL = Duration.ofSeconds(60);
+
+    private volatile FinanceiroSaudeResponse cachedSaude;
+    private volatile Instant cacheExpiry = Instant.EPOCH;
 
     private final LancamentoFinanceiroRepository lancamentoRepository;
     private final LancamentoCartaoRepository lancamentoCartaoRepository;
@@ -27,8 +33,17 @@ public class FinanceiroSaudeService {
         this.financeiroApplicationService = financeiroApplicationService;
     }
 
+    public void invalidarCacheSaude() {
+        cacheExpiry = Instant.EPOCH;
+        cachedSaude = null;
+    }
+
     @Transactional(readOnly = true)
     public FinanceiroSaudeResponse obterSaude() {
+        Instant agora = Instant.now();
+        if (cachedSaude != null && agora.isBefore(cacheExpiry)) {
+            return cachedSaude;
+        }
         long totalLancamentos = lancamentoRepository.count();
         long totalCartao = lancamentoCartaoRepository.count();
 
@@ -56,9 +71,11 @@ public class FinanceiroSaudeService {
         semCli.setPercentual(percentual(aSemCliente, totalLancamentos));
         response.setASemCliente(semCli);
 
-        response.setGruposInconsistentes(lancamentoRepository.countGruposCompensacaoInconsistentes());
+        response.setGruposInconsistentes(
+                lancamentoRepository.countGruposCompensacaoInconsistentes(null, null, null));
         response.setParesOrfaosSugeridos(
-                lancamentoRepository.countParesCompensacaoSugeridos(null, null, null, 3, false));
+                lancamentoRepository.countParesCompensacaoSugeridos(
+                        null, null, null, 3, false, false, false, false));
 
         for (Object[] row : lancamentoRepository.findMesesAbertosResumo()) {
             FinanceiroSaudeResponse.MesAbertoResponse m = new FinanceiroSaudeResponse.MesAbertoResponse();
@@ -72,7 +89,9 @@ public class FinanceiroSaudeService {
             response.getMesesAbertos().add(m);
         }
 
-        response.setAtualizadoEm(Instant.now().toString());
+        response.setAtualizadoEm(agora.toString());
+        cachedSaude = response;
+        cacheExpiry = agora.plus(CACHE_TTL);
         return response;
     }
 

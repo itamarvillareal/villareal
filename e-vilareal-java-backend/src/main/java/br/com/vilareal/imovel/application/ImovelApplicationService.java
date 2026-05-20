@@ -454,10 +454,21 @@ public class ImovelApplicationService {
         r.setId(e.getId());
         if (e.getPessoa() != null) {
             r.setClienteId(e.getPessoa().getId());
+            List<ClienteEntity> clientes =
+                    clienteRepository.findByPessoa_IdOrderByCodigoClienteAsc(e.getPessoa().getId());
+            if (!clientes.isEmpty()) {
+                r.setCodigoCliente(clientes.get(0).getCodigoCliente());
+            }
         } else {
             r.setClienteId(null);
         }
-        r.setProcessoId(e.getProcesso() != null ? e.getProcesso().getId() : null);
+        if (e.getProcesso() != null) {
+            r.setProcessoId(e.getProcesso().getId());
+            r.setNumeroInternoProcesso(e.getProcesso().getNumeroInterno());
+        } else {
+            r.setProcessoId(null);
+            r.setNumeroInternoProcesso(null);
+        }
         r.setNumeroPlanilha(e.getNumeroPlanilha());
         if (e.getResponsavelPessoa() != null) {
             e.getResponsavelPessoa().getId();

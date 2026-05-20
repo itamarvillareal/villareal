@@ -15,7 +15,9 @@ import {
 
 const base = (process.env.VILAREAL_API_BASE || 'http://localhost:8080').replace(/\/$/, '');
 const senha = process.env.VILAREAL_IMPORT_SENHA || '123456';
-const PLANILHA = '/Users/itamar/Downloads/Extratos Bancos - Itamar.xls';
+import { requireExtratoBancosPlanilhaXlsPath } from './lib/resolve-extrato-bancos-planilha-xls.mjs';
+
+const PLANILHA = requireExtratoBancosPlanilhaXlsPath();
 const HOJE_ISO = '2026-05-17';
 
 const { accessToken } = await fetch(`${base}/api/auth/login`, {

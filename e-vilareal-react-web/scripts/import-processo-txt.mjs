@@ -38,8 +38,8 @@ import { spawnSync } from 'node:child_process';
 import { DEFAULT_BASE_HISTORICO_LOCAL } from './lib/historico-local-txt-paths.mjs';
 import {
   buscarProcesso,
+  garantirProcessoNaApi,
   loginImportApi,
-  resolverPessoaIdCliente,
 } from './lib/vilareal-import-processo-api.mjs';
 import { atualizarProcessoApi } from './lib/import-processo-put-body.mjs';
 import {
@@ -124,6 +124,15 @@ function imprimirPreview(dados, patch) {
     for (const [k, v] of Object.entries(dados.semantic.fontes)) {
       console.log(`  ${k}: ${path.basename(v)}`);
     }
+  }
+  if (dados.statusProcesso) {
+    const st = dados.statusProcesso;
+    console.log('\nStatus.Processo txt:', {
+      arquivo: st.arquivoStatus ? path.basename(st.arquivoStatus) : '(ausente)',
+      statusBruto: st.statusBruto ?? '(vazio)',
+      ativo: st.ativo,
+      inativo: st.statusInativo,
+    });
   }
   if (dados.fase) {
     console.log('\nFase txt:', {
@@ -447,13 +456,27 @@ async function main() {
     resultado.etapas.clientePessoa = 'ausente_txt';
   }
 
-  const proc = await buscarProcesso(opts.baseUrl, token, dados.cod8, dados.numeroInterno, pessoaPorCod8);
+  let proc = await buscarProcesso(opts.baseUrl, token, dados.cod8, dados.numeroInterno, pessoaPorCod8);
 
   if (!proc?.id) {
-    console.error(
-      `\nProcesso ${dados.cod8}/${dados.numeroInterno} não existe na API. Crie o registo (planilha ou cadastro) antes de importar.\n`
+    console.log(
+      `\n[processo] ${dados.cod8}/${dados.numeroInterno} ausente na API — a criar stub automaticamente…`
     );
-    process.exit(2);
+    const garantido = await garantirProcessoNaApi(
+      opts.baseUrl,
+      token,
+      dados.cod8,
+      dados.numeroInterno,
+      pessoaPorCod8
+    );
+    if (!garantido.ok || !garantido.processo?.id) {
+      console.error(
+        `\nProcesso ${dados.cod8}/${dados.numeroInterno} não existe na API e não foi possível criar: ${garantido.erro ?? 'erro desconhecido'}\n`
+      );
+      process.exit(2);
+    }
+    proc = garantido.processo;
+    console.log(`[processo] stub criado na API (id=${proc.id}).`);
   }
 
   const patchApi = { ...patch };
@@ -475,7 +498,17 @@ async function main() {
   if (Object.keys(patchApi).length > 0) {
     await atualizarProcessoApi(opts.baseUrl, token, proc, patchApi);
     resultado.etapas.cabecalho = 'atualizado';
+    resultado.etapas.statusProcesso = {
+      ativo: patchApi.ativo,
+      statusBruto: dados.statusProcesso?.statusBruto ?? null,
+      temArquivo: Boolean(dados.statusProcesso?.temArquivoStatus),
+    };
     console.log('\n[cabeçalho] Processo atualizado na API.');
+    if (dados.statusProcesso) {
+      console.log(
+        `[status] ativo=${patchApi.ativo} (txt: ${JSON.stringify(dados.statusProcesso.statusBruto ?? 'ausente/vazio')})`
+      );
+    }
   } else {
     resultado.etapas.cabecalho = 'vazio';
     console.log('\n[cabeçalho] Nenhum campo txt para gravar.');

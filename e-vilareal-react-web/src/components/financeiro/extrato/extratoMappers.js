@@ -51,12 +51,29 @@ export function formatDataExtratoColuna(isoOrBr) {
   return `${d}/${mo}/${y}`;
 }
 
-export function textoObsExtrato(item) {
-  const letra = String(item.contaCodigo ?? '').toUpperCase();
-  const temCliente =
+function temVinculoClienteExtrato(item) {
+  return (
     (item.clienteId != null && Number(item.clienteId) > 0) ||
-    String(item.codCliente ?? '').trim() !== '';
-  if (letra === 'A' && temCliente) {
+    String(item.codCliente ?? '').trim() !== ''
+  );
+}
+
+/** Com cliente/proc. preenchidos e conta ainda N, promove para A (Conta Escritório). */
+export function promoverContaEscritorioSeVinculado(draft, contas = []) {
+  if (!temVinculoClienteExtrato(draft)) return draft;
+  const letra = String(draft.contaCodigo ?? 'N').trim().toUpperCase() || 'N';
+  if (letra !== 'N') return draft;
+  const contaA = contas.find((c) => String(c.codigo ?? '').trim().toUpperCase() === 'A');
+  return {
+    ...draft,
+    contaCodigo: 'A',
+    contaContabilId: contaA?.id ?? draft.contaContabilId,
+    contaContabilNome: contaA?.nome ?? 'Conta Escritório',
+  };
+}
+
+export function textoObsExtrato(item) {
+  if (temVinculoClienteExtrato(item)) {
     const cod = String(item.codCliente ?? '').trim();
     const proc = String(item.proc ?? '').trim();
     const vinc = [cod, proc].filter(Boolean).join('/');

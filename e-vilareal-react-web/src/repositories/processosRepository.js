@@ -493,7 +493,7 @@ function mapRowHistoricoDiagnosticoApi(row, dataCanon) {
 }
 
 /**
- * Diagnóstico «Consultas Realizadas»: histórico na API (movimento ou atualização na data) + local.
+ * Diagnóstico «Consultas Realizadas»: histórico na API na data do movimento + local.
  * Exclui títulos automáticos «JUNTAR PETIÇÃO…» / «PETIÇÃO DA INF. ANTERIOR…».
  */
 /** Indica falha típica de backend desatualizado (endpoint ainda não publicado no JAR). */

@@ -7,6 +7,8 @@ import {
   sanitizarLancamentoImportacaoExtrato,
   contarLancamentosNovos,
   listarLancamentosNovosDedupe,
+  chaveSemanticaLancamento,
+  normalizarDescricaoParaDedupe,
 } from './ofx.js';
 
 describe('sanitizarLancamentoImportacaoExtrato', () => {
@@ -68,6 +70,108 @@ describe('mergeExtratoBancario (mesclar OFX/PDF com extrato)', () => {
     expect(m.filter((t) => t.numero === 'B' && t.data === '02/01/2026')).toHaveLength(2);
     expect(contarLancamentosNovos(existente, novo)).toBe(2);
     expect(listarLancamentosNovosDedupe(existente, novo)).toHaveLength(2);
+  });
+
+  it('ignora REND com sufixo APR (planilha) vs MAIS (OFX)', () => {
+    const existente = [
+      {
+        numero: 'PL-1',
+        data: '06/05/2026',
+        valor: 0.14,
+        descricao: 'REND PAGO APLIC AUT APR',
+      },
+    ];
+    const novo = [
+      {
+        numero: '20260506001',
+        data: '06/05/2026',
+        valor: 0.14,
+        descricao: 'REND PAGO APLIC AUT MAIS',
+        origemImportacao: 'OFX',
+      },
+    ];
+    expect(listarLancamentosNovosDedupe(existente, novo)).toHaveLength(0);
+  });
+
+  it('ignora TED com pontos na planilha e espaços no OFX', () => {
+    const existente = [
+      {
+        numero: 'PL-2',
+        data: '18/05/2026',
+        valor: 18000,
+        descricao: 'TED 208.0001.ITAMAR A F',
+      },
+    ];
+    const novo = [
+      {
+        numero: '20260518001',
+        data: '18/05/2026',
+        valor: 18000,
+        descricao: 'TED 208 0001 ITAMAR A F',
+        origemImportacao: 'OFX',
+      },
+    ];
+    expect(listarLancamentosNovosDedupe(existente, novo)).toHaveLength(0);
+  });
+
+  it('segundo OFX no mesmo dia só acrescenta linhas novas (FITID)', () => {
+    const existente = [
+      { numero: 'fit-1', data: '19/05/2026', valor: -5000, descricao: 'PIX A', origemImportacao: 'OFX' },
+    ];
+    const ofxTarde = [
+      { numero: 'fit-1', data: '19/05/2026', valor: -5000, descricao: 'PIX A', origemImportacao: 'OFX' },
+      { numero: 'fit-2', data: '19/05/2026', valor: 100, descricao: 'PIX B', origemImportacao: 'OFX' },
+    ];
+    expect(listarLancamentosNovosDedupe(existente, ofxTarde)).toHaveLength(1);
+    expect(listarLancamentosNovosDedupe(existente, ofxTarde)[0].numero).toBe('fit-2');
+  });
+
+  it('ignora OFX quando planilha já tem mesmo data+valor+descrição (formato diferente)', () => {
+    const existente = [
+      {
+        numero: 'PL-abc',
+        data: '07/05/2026',
+        valor: 339.5,
+        descricao: 'PIX TRANSF CONDOMI07/05',
+        origemImportacao: 'PLANILHA',
+      },
+      {
+        numero: 'PL-def',
+        data: '07/05/2026',
+        valor: 725.1,
+        descricao: 'PIX TRANSF VRV SOL07/05',
+        origemImportacao: 'PLANILHA',
+      },
+    ];
+    const novo = [
+      {
+        numero: 'ofx-1',
+        data: '07/05/2026',
+        valor: 339.5,
+        descricao: 'PIX TRANSF CONDOMI07 05',
+        origemImportacao: 'OFX',
+      },
+      {
+        numero: 'ofx-2',
+        data: '07/05/2026',
+        valor: 725.1,
+        descricao: 'PIX TRANSF VRV SOL07 05',
+        origemImportacao: 'OFX',
+      },
+      {
+        numero: 'ofx-3',
+        data: '07/05/2026',
+        valor: -100,
+        descricao: 'LANÇAMENTO NOVO',
+        origemImportacao: 'OFX',
+      },
+    ];
+    expect(normalizarDescricaoParaDedupe('PIX TRANSF CONDOMI07/05')).toBe(
+      normalizarDescricaoParaDedupe('PIX TRANSF CONDOMI07 05'),
+    );
+    expect(listarLancamentosNovosDedupe(existente, novo)).toHaveLength(1);
+    expect(contarLancamentosNovos(existente, novo)).toBe(1);
+    expect(chaveSemanticaLancamento(existente[0])).toBe(chaveSemanticaLancamento(novo[0]));
   });
 
   it('ignora linhas do arquivo novo que já existem no extrato; não usa duplicata interna do novo para pular a segunda', () => {

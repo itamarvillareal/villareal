@@ -46,6 +46,12 @@ public final class PortuguesTextoCorrecaoUtil {
         {"INDENIZACAO", "INDENIZAÇÃO"},
         {"INQU" + REPL + "RITO", "INQUÉRITO"},
         {"INQUERITO", "INQUÉRITO"},
+        {"TR" + REPL + "NSITO", "TRÂNSITO"},
+        {"TR" + REPL + "ÂNSITO", "TRÂNSITO"},
+        {"GOI" + REPL + "S", "GOIÁS"},
+        {"GOI" + REPL + "ÁS", "GOIÁS"},
+        {"AN" + REPL + "POLIS", "ANÁPOLIS"},
+        {"AN" + REPL + "ÁPOLIS", "ANÁPOLIS"},
         {"AGRAV" + REPL + "O", "AGRAVO"},
         {"PREJUDIC" + REPL + "ADA", "PREJUDICADA"},
         {"PREJUDICADA", "PREJUDICADA"},
@@ -104,6 +110,11 @@ public final class PortuguesTextoCorrecaoUtil {
         {"PETICAO", "PETIÇÃO"},
         {"SENTENCA", "SENTENÇA"},
         {"REGIAO", "REGIÃO"},
+        {"TRANSITO", "TRÂNSITO"},
+        {"TRNSITO", "TRÂNSITO"},
+        {" DE GOIAS", " DE GOIÁS"},
+        {" GOIAS", " GOIÁS"},
+        {"ANAPOLIS", "ANÁPOLIS"},
     };
 
     private PortuguesTextoCorrecaoUtil() {}

@@ -1,7 +1,12 @@
 /**
- * Sincroniza `titulos[]` a partir de `parcelas[]` quando a grade de Títulos ficou vazia
- * (import SQL / planilha legada só preenchia parcelamento).
+ * Sincroniza `titulos[]` a partir de `debitos[]` (legado txt) ou, só se ainda vazio,
+ * espelha vencimento/valor de `parcelas[]` (não mistura parcelamento com títulos do Excel).
  */
+
+import {
+  enriquecerTitulosAPartirDeDebitosNaRodada,
+  titulosGradeTemValor,
+} from './calculosDebitosTitulos.js';
 
 export function linhaTituloVaziaCalculos() {
   return {
@@ -26,9 +31,14 @@ export function linhaTituloVaziaCalculos() {
  */
 export function enriquecerTitulosAPartirDeParcelasNaRodada(rodada) {
   if (!rodada || typeof rodada !== 'object') return rodada;
-  const parcelas = Array.isArray(rodada.parcelas) ? rodada.parcelas : [];
-  let titulos = Array.isArray(rodada.titulos)
-    ? rodada.titulos.map((t) => ({ ...linhaTituloVaziaCalculos(), ...(t && typeof t === 'object' ? t : {}) }))
+  if (titulosGradeTemValor(rodada.titulos)) return rodada;
+
+  const comDebitos = enriquecerTitulosAPartirDeDebitosNaRodada(rodada);
+  if (titulosGradeTemValor(comDebitos.titulos)) return comDebitos;
+
+  const parcelas = Array.isArray(comDebitos.parcelas) ? comDebitos.parcelas : [];
+  let titulos = Array.isArray(comDebitos.titulos)
+    ? comDebitos.titulos.map((t) => ({ ...linhaTituloVaziaCalculos(), ...(t && typeof t === 'object' ? t : {}) }))
     : [];
 
   let changed = false;
@@ -59,8 +69,8 @@ export function enriquecerTitulosAPartirDeParcelasNaRodada(rodada) {
     }
   }
 
-  if (!changed) return rodada;
-  return { ...rodada, titulos };
+  if (!changed) return comDebitos;
+  return { ...comDebitos, titulos };
 }
 
 /**

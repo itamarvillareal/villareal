@@ -12,6 +12,8 @@
  * Na raiz do repositório villareal/:
  *   npm run import:extrato-bancos-itau
  *
+ * Planilha por defeito: `~/Dropbox/sistema/Extratos Bancos - Itamar.xls` (override: argumento ou `VILAREAL_EXTRATO_BANCOS_XLS`).
+ *
  * Envs: VILAREAL_API_BASE, VILAREAL_IMPORT_SENHA, VILAREAL_IMPORT_CONCURRENCY (default 12)
  * Senha também em `.env.import.local` ou `~/.vilareal-import-env` (ver load-vilareal-import-env.mjs).
  */
@@ -34,8 +36,10 @@ import {
   extrairLancamentosDaAba,
   layoutExtratoPorNomeInstituicao,
 } from './lib/extrato-bancos-planilha-layouts.mjs';
-
-const DEFAULT_FILE = '/Users/itamar/Downloads/Extratos Bancos - Itamar.xls';
+import {
+  candidatosExtratoBancosPlanilhaXlsParaLog,
+  resolveExtratoBancosPlanilhaXlsPath,
+} from './lib/resolve-extrato-bancos-planilha-xls.mjs';
 
 function parseArgs(argv) {
   const out = {
@@ -53,6 +57,12 @@ function parseArgs(argv) {
       Math.max(1, Number(process.env.VILAREAL_IMPORT_CONCURRENCY || 12) || 12),
     ),
     limite: null,
+    /** YYYY-MM-DD — importa só lançamentos desta data (sem limpar extrato inteiro). */
+    data: null,
+    /** YYYY-MM — importa só lançamentos do mês (sem limpar extrato inteiro). */
+    mes: null,
+    /** YYYY-MM-DD — importa lançamentos com data >= valor (sem limpar extrato inteiro). */
+    desde: null,
     todosBancos: false,
     pularItau: true,
   };
@@ -73,12 +83,44 @@ function parseArgs(argv) {
     else if (a.startsWith('--limite=')) {
       const n = Number(a.slice(9));
       if (Number.isFinite(n) && n > 0) out.limite = Math.floor(n);
-    }     else if (!a.startsWith('-')) out.file = a;
+    } else if (a.startsWith('--data=')) {
+      const d = a.slice(7).trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) {
+        console.error('--data deve ser YYYY-MM-DD');
+        process.exit(1);
+      }
+      out.data = d;
+    } else if (a.startsWith('--mes=')) {
+      const m = a.slice(6).trim();
+      if (!/^\d{4}-\d{2}$/.test(m)) {
+        console.error('--mes deve ser YYYY-MM');
+        process.exit(1);
+      }
+      out.mes = m;
+    } else if (a.startsWith('--desde=')) {
+      const d = a.slice(8).trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) {
+        console.error('--desde deve ser YYYY-MM-DD');
+        process.exit(1);
+      }
+      out.desde = d;
+    } else if (!a.startsWith('-')) out.file = a;
   }
-  if (!out.file) out.file = DEFAULT_FILE;
-  if (!argv.includes('--substituir') && !out.dryRun) {
+  if (!out.file) {
+    const resolved = resolveExtratoBancosPlanilhaXlsPath(null);
+    if (!resolved) {
+      console.error(
+        'Planilha Extratos Bancos não encontrada. Tentados:\n',
+        candidatosExtratoBancosPlanilhaXlsParaLog(null).map((p) => `  ${p}`).join('\n'),
+      );
+      process.exit(1);
+    }
+    out.file = resolved;
+  }
+  if (!argv.includes('--substituir') && !out.dryRun && !out.data && !out.mes && !out.desde) {
     out.substituir = true;
   }
+  if (out.data || out.mes || out.desde) out.substituir = false;
   return out;
 }
 
@@ -299,6 +341,9 @@ async function importarUmBanco(opts, token, wb, bancoNome, contaIdPorLetra) {
   }
 
   let linhas = extrairLancamentosDaAba(ws, layout, bancoNome);
+  if (opts.data) linhas = linhas.filter((r) => r.dataIso === opts.data);
+  else if (opts.mes) linhas = linhas.filter((r) => r.dataIso.startsWith(`${opts.mes}-`));
+  else if (opts.desde) linhas = linhas.filter((r) => r.dataIso >= opts.desde);
   if (opts.limite != null) linhas = linhas.slice(0, opts.limite);
 
   const stats = {
@@ -402,7 +447,19 @@ async function main() {
 
   console.log(`Ficheiro: ${filePath}`);
   console.log(`Bancos (${bancosAlvo.length}): ${bancosAlvo.join(', ')}`);
-  console.log(`Modo: ${opts.dryRun ? 'DRY-RUN' : opts.substituir ? 'SUBSTITUIR + IMPORTAR' : 'IMPORTAR'}`);
+  const modo = opts.dryRun
+    ? 'DRY-RUN'
+    : opts.substituir
+      ? 'SUBSTITUIR + IMPORTAR'
+      : 'IMPORTAR';
+  const periodo = opts.data
+    ? ` (só ${opts.data})`
+    : opts.mes
+      ? ` (mês ${opts.mes})`
+      : opts.desde
+        ? ` (desde ${opts.desde})`
+        : '';
+  console.log(`Modo: ${modo}${periodo}`);
 
   const wb = XLSX.readFile(filePath, { cellDates: true, cellNF: false });
 

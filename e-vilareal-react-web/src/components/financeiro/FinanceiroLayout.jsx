@@ -16,7 +16,7 @@ import {
 import { featureFlags } from '../../config/featureFlags.js';
 import { listarContadoresEtapaApi } from '../../repositories/financeiroRepository.js';
 import { ETAPAS } from './constants/financeiroConstants.js';
-import { FinanceiroProvider, useFinanceiro } from './FinanceiroContext.jsx';
+import { FinanceiroProvider, useFinanceiroChrome } from './FinanceiroContext.jsx';
 import { FinanceiroToastProvider } from './shared/Toast.jsx';
 import { BancoItem } from './shared/BancoItem.jsx';
 import { ExtratoImportModal } from './extrato/ExtratoImportModal.jsx';
@@ -63,7 +63,7 @@ function FinanceiroShell({ importOpen, onOpenImport, onCloseImport, onImportSucc
     sidebarCollapsed,
     setSidebarCollapsed,
     cartoes,
-  } = useFinanceiro();
+  } = useFinanceiroChrome();
 
   const handleImportSuccess = useCallback(
     ({ numeroBanco, bancoNome } = {}) => {

@@ -7,7 +7,7 @@ import {
   formatIndice4,
   lerTextoTipoHistoricoEncadeado,
   lerTipo16PrincipalComMeta,
-  parseDataDdMmYyyy,
+  parseDataHistoricoLocalMmDdYyyy,
   TIPO_INFO,
   TIPO_USUARIO,
   resolverAbsFicheiroTipoHistoricoEncadeado,
@@ -24,7 +24,7 @@ export function lerConteudoEntradaHistorico(base, cod8, codNum, procStr, indice)
   const idx4 = formatIndice4(indice);
   const meta16 = lerTipo16PrincipalComMeta(base, cod8, codNum, procStr, idx4);
   const dataRaw = meta16.texto;
-  const dataParsed = dataRaw != null ? parseDataDdMmYyyy(dataRaw) : null;
+  const dataParsed = dataRaw != null ? parseDataHistoricoLocalMmDdYyyy(dataRaw) : null;
   /** @type {{ yyyy: number, mo: number } | null} */
   let pastaAnoMes =
     meta16.yyyyPasta != null && meta16.mmPasta != null

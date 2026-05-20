@@ -1,6 +1,26 @@
-import { mapApiLancamentoToExtratoRow } from '../extrato/extratoMappers.js';
+import { dataNoPeriodo } from '../shared/periodoFinanceiro.js';
+import { formatDataExtratoColuna, mapApiLancamentoToExtratoRow } from '../extrato/extratoMappers.js';
+
+/** Linha mínima de par de compensação ({@link ResumoLancamentoParResponse}). */
+export function mapResumoParToExtratoRow(l) {
+  const dataIso = String(l?.dataLancamento ?? '').slice(0, 10);
+  const natureza = String(l?.natureza ?? '').toUpperCase() === 'DEBITO' ? 'DEBITO' : 'CREDITO';
+  return {
+    id: Number(l?.id),
+    dataLancamento: dataIso,
+    dataExibicao: formatDataExtratoColuna(dataIso),
+    descricao: String(l?.descricao ?? ''),
+    bancoNome: String(l?.banco ?? l?.bancoNome ?? ''),
+    numeroBanco: l?.numeroBanco ?? null,
+    valor: Math.abs(Number(l?.valor ?? 0)),
+    natureza,
+  };
+}
 
 export function mapLancamentoInbox(l) {
+  if (l?.dataLancamento != null && l?.banco != null && l?.contaContabilNome == null) {
+    return mapResumoParToExtratoRow(l);
+  }
   return mapApiLancamentoToExtratoRow(l);
 }
 
@@ -15,6 +35,13 @@ export function textoOrigemSugestao(sug) {
   }
   if (origem === 'RECORRENCIA') {
     return 'recorrência mensal';
+  }
+  if (origem === 'DEPOSITO_IDENTIFICADO' && sug.descricaoRegra) {
+    return sug.descricaoRegra;
+  }
+  if (origem === 'PESSOA_PROCESSO') {
+    if (sug.rotuloVinculo) return `cliente: ${sug.rotuloVinculo}`;
+    if (sug.descricaoRegra) return sug.descricaoRegra;
   }
   return origem.toLowerCase();
 }
@@ -42,6 +69,85 @@ export function labelTipoPar(tipo) {
   if (t === 'INTERBANCARIO') return 'Interbancário';
   if (t === 'MESMO_BANCO') return 'Mesmo banco';
   return tipo || '—';
+}
+
+export function labelDiaPar(par) {
+  const da = dataCalendarioPar(par?.lancamentoA);
+  const db = dataCalendarioPar(par?.lancamentoB);
+  if (da && db && da === db) return 'Mesmo dia';
+  if (da && db) return 'Dia divergente';
+  return '—';
+}
+
+function dataCalendarioPar(lanc) {
+  return String(lanc?.dataLancamento ?? '').slice(0, 10);
+}
+
+/**
+ * Garante que a lista obedece aos filtros da UI (tipo banco / dia calendário),
+ * mesmo se a API ignorar parâmetros ou devolver resposta de requisição antiga.
+ */
+export function parPassaFiltrosCompensacao(
+  par,
+  { tipoPar = 'TODOS', tipoDia = 'TODOS', periodo = null } = {},
+) {
+  const t = String(par?.tipo ?? '').toUpperCase();
+  if (tipoPar === 'INTERBANCARIO' && t !== 'INTERBANCARIO') return false;
+  if (tipoPar === 'MESMO_BANCO' && t !== 'MESMO_BANCO') return false;
+
+  const da = dataCalendarioPar(par?.lancamentoA);
+  const db = dataCalendarioPar(par?.lancamentoB);
+  if (!da || !db) return false;
+  const mesmoDia = da === db;
+  if (tipoDia === 'MESMO_DIA' && !mesmoDia) return false;
+  if (tipoDia === 'DIVERGENTE' && mesmoDia) return false;
+
+  if (periodo) {
+    if (
+      !dataNoPeriodo(par?.lancamentoA?.dataLancamento, periodo) ||
+      !dataNoPeriodo(par?.lancamentoB?.dataLancamento, periodo)
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+export function filtrarParesCompensacao(pares, filtros) {
+  const lista = Array.isArray(pares) ? pares : [];
+  return lista.filter((p) => parPassaFiltrosCompensacao(p, filtros));
+}
+
+const TOLERANCIA_PAR = 0.01;
+
+/**
+ * Pré-processa par para a UI (evita mapLancamentoInbox a cada render).
+ * @param {object} par
+ */
+export function mapParCompensacaoParaUi(par) {
+  const deb =
+    String(par.lancamentoA?.natureza ?? '').toUpperCase() === 'DEBITO'
+      ? par.lancamentoA
+      : par.lancamentoB;
+  const cred =
+    String(par.lancamentoA?.natureza ?? '').toUpperCase() === 'CREDITO'
+      ? par.lancamentoA
+      : par.lancamentoB;
+  const soma = somaParCompensacao(par);
+  const zero = Math.abs(soma) < TOLERANCIA_PAR;
+  const dentroTolerancia = !zero && Math.abs(soma) <= 1;
+
+  return {
+    key: parKey(par),
+    par,
+    debRow: mapLancamentoInbox(deb ?? par.lancamentoA),
+    credRow: mapLancamentoInbox(cred ?? par.lancamentoB),
+    soma,
+    zero,
+    dentroTolerancia,
+    tipoLabel: labelTipoPar(par.tipo),
+    diaLabel: labelDiaPar(par),
+  };
 }
 
 export function acaoInconsistencia(sugestao, soma) {

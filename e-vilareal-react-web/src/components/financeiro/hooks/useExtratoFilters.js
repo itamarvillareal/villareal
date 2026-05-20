@@ -1,11 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { mesAtualIso, periodoParaQueryApi } from '../shared/periodoFinanceiro.js';
 
 const DEBOUNCE_MS = 300;
 
-function mesAtualIso() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+const SORT_DATA_ASC = 'dataLancamento,asc';
+const SORT_DATA_DESC = 'dataLancamento,desc';
+
+export function isSortDataAsc(sort) {
+  return String(sort ?? '').toLowerCase() === SORT_DATA_ASC.toLowerCase();
+}
+
+export function toggleSortDataLancamento(sort) {
+  return isSortDataAsc(sort) ? SORT_DATA_DESC : SORT_DATA_ASC;
 }
 
 function parseBancoParam(params) {
@@ -15,10 +22,33 @@ function parseBancoParam(params) {
   return Number.isFinite(n) ? n : null;
 }
 
+function parseLancamentoParam(params) {
+  const n = Number(params.get('lancamento'));
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+const TIPO_PAR_COMPENSAR_TODOS = 'TODOS';
+const TIPO_DIA_COMPENSAR_TODOS = 'TODOS';
+
+function readTipoParParam(params) {
+  const raw = params.get('tipoPar');
+  if (raw === 'MESMO_BANCO' || raw === 'INTERBANCARIO') return raw;
+  return TIPO_PAR_COMPENSAR_TODOS;
+}
+
+function readTipoDiaParam(params) {
+  const raw = params.get('tipoDia');
+  if (raw === 'MESMO_DIA' || raw === 'DIVERGENTE') return raw;
+  return TIPO_DIA_COMPENSAR_TODOS;
+}
+
 function readFilters(params) {
   return {
     banco: parseBancoParam(params),
+    lancamento: parseLancamentoParam(params),
     mes: params.get('mes') || mesAtualIso(),
+    tipoPar: readTipoParParam(params),
+    tipoDia: readTipoDiaParam(params),
     etapa: params.get('etapa') || null,
     contaCodigo: params.get('conta') || null,
     busca: params.get('busca') || '',
@@ -26,7 +56,7 @@ function readFilters(params) {
     semGrupoCompensacao: params.get('semGrupo') === '1',
     page: params.get('page') ? Math.max(0, Number(params.get('page')) || 0) : 0,
     size: params.get('size') ? Number(params.get('size')) || 100 : 100,
-    sort: params.get('sort') || 'dataLancamento,desc',
+    sort: params.get('sort') || SORT_DATA_DESC,
   };
 }
 
@@ -37,7 +67,16 @@ function writeFilters(params, f) {
     else next.set(key, String(val));
   };
   setOrDel('banco', Number.isFinite(f.banco) ? f.banco : null);
+  setOrDel('lancamento', Number.isFinite(f.lancamento) ? f.lancamento : null);
   setOrDel('mes', f.mes);
+  setOrDel(
+    'tipoPar',
+    f.tipoPar && f.tipoPar !== TIPO_PAR_COMPENSAR_TODOS ? f.tipoPar : null,
+  );
+  setOrDel(
+    'tipoDia',
+    f.tipoDia && f.tipoDia !== TIPO_DIA_COMPENSAR_TODOS ? f.tipoDia : null,
+  );
   setOrDel('etapa', f.etapa);
   setOrDel('conta', f.contaCodigo);
   setOrDel('busca', f.busca);
@@ -45,7 +84,7 @@ function writeFilters(params, f) {
   setOrDel('semGrupo', f.semGrupoCompensacao ? '1' : null);
   setOrDel('page', f.page > 0 ? f.page : null);
   setOrDel('size', f.size !== 100 ? f.size : null);
-  setOrDel('sort', f.sort !== 'dataLancamento,desc' ? f.sort : null);
+  setOrDel('sort', f.sort !== SORT_DATA_DESC ? f.sort : null);
   return next;
 }
 
@@ -98,11 +137,11 @@ export function useExtratoFilters() {
     [pushParams],
   );
 
-  const apiQuery = useMemo(
-    () => ({
+  const apiQuery = useMemo(() => {
+    const periodo = periodoParaQueryApi(filters.mes);
+    return {
       numeroBanco: Number.isFinite(filters.banco) ? filters.banco : undefined,
-      mes: filters.mes?.split('-')[1] ?? undefined,
-      ano: filters.mes?.split('-')[0] ?? undefined,
+      ...periodo,
       etapa: filters.etapa ?? undefined,
       busca: filters.busca || undefined,
       semClienteId: filters.semClienteId || undefined,
@@ -110,22 +149,29 @@ export function useExtratoFilters() {
       page: filters.page,
       size: filters.size,
       sort: filters.sort,
-    }),
-    [
-      filters.banco,
-      filters.mes,
-      filters.etapa,
-      filters.busca,
-      filters.semClienteId,
-      filters.semGrupoCompensacao,
-      filters.page,
-      filters.size,
-      filters.sort,
-    ],
-  );
+    };
+  }, [
+    filters.banco,
+    filters.mes,
+    filters.etapa,
+    filters.busca,
+    filters.semClienteId,
+    filters.semGrupoCompensacao,
+    filters.page,
+    filters.size,
+    filters.sort,
+  ]);
 
   const setBanco = useCallback((banco) => syncUrl({ banco, resetPage: true }), [syncUrl]);
   const setMes = useCallback((mes) => syncUrl({ mes, resetPage: true }), [syncUrl]);
+  const setTipoPar = useCallback(
+    (tipoPar) => syncUrl({ tipoPar: tipoPar || TIPO_PAR_COMPENSAR_TODOS, resetPage: true }),
+    [syncUrl],
+  );
+  const setTipoDia = useCallback(
+    (tipoDia) => syncUrl({ tipoDia: tipoDia || TIPO_DIA_COMPENSAR_TODOS, resetPage: true }),
+    [syncUrl],
+  );
   const setEtapa = useCallback((etapa) => syncUrl({ etapa, resetPage: true }), [syncUrl]);
   const setContaCodigo = useCallback((contaCodigo) => syncUrl({ contaCodigo, resetPage: true }), [syncUrl]);
   const setBusca = useCallback((busca) => setBuscaDraft(busca ?? ''), []);
@@ -139,6 +185,10 @@ export function useExtratoFilters() {
   );
   const setPage = useCallback((page) => syncUrl({ page }), [syncUrl]);
   const setSize = useCallback((size) => syncUrl({ size, resetPage: true }), [syncUrl]);
+  const setSort = useCallback((sort) => syncUrl({ sort, resetPage: true }), [syncUrl]);
+  const toggleSortData = useCallback(() => {
+    syncUrl({ sort: toggleSortDataLancamento(filters.sort), resetPage: true });
+  }, [syncUrl, filters.sort]);
   const clearFilters = useCallback(() => {
     setSearchParams(new URLSearchParams(), { replace: true });
   }, [setSearchParams]);
@@ -148,6 +198,8 @@ export function useExtratoFilters() {
     apiQuery,
     setBanco,
     setMes,
+    setTipoPar,
+    setTipoDia,
     setEtapa,
     setContaCodigo,
     setBusca,
@@ -155,6 +207,8 @@ export function useExtratoFilters() {
     setSemGrupoCompensacao,
     setPage,
     setSize,
+    setSort,
+    toggleSortData,
     clearFilters,
   };
 }

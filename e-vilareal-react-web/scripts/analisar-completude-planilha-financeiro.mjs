@@ -14,8 +14,9 @@ import {
   extrairLancamentosDaAba,
   layoutExtratoPorNomeInstituicao,
 } from './lib/extrato-bancos-planilha-layouts.mjs';
+import { requireExtratoBancosPlanilhaXlsPath } from './lib/resolve-extrato-bancos-planilha-xls.mjs';
 
-const FILE = process.argv[2] || '/Users/itamar/Downloads/Extratos Bancos - Itamar.xls';
+const FILE = requireExtratoBancosPlanilhaXlsPath(process.argv[2]);
 
 function mesAno(dataIso) {
   if (!dataIso) return null;

@@ -111,6 +111,11 @@ export function countRodadasParcelamentoAceitoResumo() {
   return n;
 }
 
+/** Metadado do GET `/rodadas/resumo` (sem carregar payload). */
+export function parcelamentoAceitoResumoParaChave(chave) {
+  return __resumoParcelamentoAceito.get(String(chave ?? '')) ?? false;
+}
+
 function campoValorNaoVazio(s) {
   return String(s ?? '').trim() !== '';
 }

@@ -1,26 +1,39 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { featureFlags } from '../../../config/featureFlags.js';
 import {
   buildContaToLetraMerge,
   loadPersistedContasContabeisExtrasFinanceiro,
 } from '../../../data/financeiroData.js';
 import {
+  buscarLancamentoFinanceiroApi,
   listarContasFinanceiro,
-  listarLancamentosFinanceiroPaginados,
+  listarLancamentosExtratoPaginados,
   obterSaldoBancoFinanceiro,
 } from '../../../repositories/financeiroRepository.js';
 import { useFinanceiro } from '../FinanceiroContext.jsx';
+import { isSortDataAsc } from '../hooks/useExtratoFilters.js';
+import { useExtratoMesAoSelecionarBanco } from '../hooks/useExtratoMesAoSelecionarBanco.js';
 import { FINANCEIRO_REFRESH_PENDENTES } from '../hooks/useKeyboardShortcuts.js';
 import { Pagination } from '../shared/Pagination.jsx';
 import { ExtratoFilters } from './ExtratoFilters.jsx';
 import { ExtratoTable } from './ExtratoTable.jsx';
 import { ExtratoDetailPanel } from './ExtratoDetailPanel.jsx';
+import { mesAnoFromDataLancamento } from './extratoMesUtils.js';
+import { scrollExtratoParaLancamento } from './extratoDeepLink.js';
 import { mapApiLancamentoToExtratoRow } from './extratoMappers.js';
 
 export function ExtratoPage() {
-  const { apiQuery, filters, setPage, setSize, bancoAtivo } = useFinanceiro();
+  const { apiQuery, filters, setPage, setSize, setMes, setBanco, bancoAtivo, toggleSortData } = useFinanceiro();
+
+  useExtratoMesAoSelecionarBanco(bancoAtivo, filters.mes, setMes);
   const scrollRef = useRef(null);
   const fetchKeyRef = useRef('');
+  const paginasCacheRef = useRef(new Map());
+  const lancamentoFocusRef = useRef(null);
+
+  const limparCachePaginas = useCallback(() => {
+    paginasCacheRef.current.clear();
+  }, []);
   const [rows, setRows] = useState([]);
   const [totalElements, setTotalElements] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
@@ -71,21 +84,42 @@ export function ExtratoPage() {
     }
     const myKey = fetchKey;
     fetchKeyRef.current = myKey;
+    const cached = paginasCacheRef.current.get(myKey);
+    if (cached) {
+      setRows(cached.rows);
+      setTotalElements(cached.totalElements);
+      setTotalPages(cached.totalPages);
+      setLoading(false);
+      setErro('');
+      return undefined;
+    }
+
     const ac = new AbortController();
     let cancelled = false;
     setRows([]);
     setSelectedIds(new Set());
-    setDetailItem(null);
+    if (!filters.lancamento) setDetailItem(null);
     setLoading(true);
     setErro('');
     (async () => {
       try {
-        const res = await listarLancamentosFinanceiroPaginados(fetchParams, { signal: ac.signal });
+        const res = await listarLancamentosExtratoPaginados(fetchParams, { signal: ac.signal });
         if (cancelled || fetchKeyRef.current !== myKey) return;
         const content = (res?.content ?? []).map((l) => mapApiLancamentoToExtratoRow(l, contaToLetra));
+        const totalEl = Number(res?.totalElements) || 0;
+        const totalPg = Number(res?.totalPages) || 0;
         setRows(content);
-        setTotalElements(Number(res?.totalElements) || 0);
-        setTotalPages(Number(res?.totalPages) || 0);
+        setTotalElements(totalEl);
+        setTotalPages(totalPg);
+        if (paginasCacheRef.current.size > 20) {
+          const firstKey = paginasCacheRef.current.keys().next().value;
+          paginasCacheRef.current.delete(firstKey);
+        }
+        paginasCacheRef.current.set(myKey, {
+          rows: content,
+          totalElements: totalEl,
+          totalPages: totalPg,
+        });
       } catch (e) {
         if (cancelled || e?.name === 'AbortError' || fetchKeyRef.current !== myKey) return;
         setErro(e?.message || 'Erro ao carregar extrato.');
@@ -98,7 +132,7 @@ export function ExtratoPage() {
       cancelled = true;
       ac.abort();
     };
-  }, [fetchKey, fetchParams, contaToLetra, extratoRefreshKey]);
+  }, [fetchKey, fetchParams, contaToLetra, extratoRefreshKey, filters.lancamento]);
 
   useEffect(() => {
     if (!featureFlags.useApiFinanceiro || bancoAtivo == null) {
@@ -126,14 +160,70 @@ export function ExtratoPage() {
   }, [bancoAtivo, extratoRefreshKey]);
 
   useEffect(() => {
-    const onRefresh = () => setExtratoRefreshKey((n) => n + 1);
+    const onRefresh = () => {
+      limparCachePaginas();
+      setExtratoRefreshKey((n) => n + 1);
+    };
     window.addEventListener(FINANCEIRO_REFRESH_PENDENTES, onRefresh);
     return () => window.removeEventListener(FINANCEIRO_REFRESH_PENDENTES, onRefresh);
-  }, []);
+  }, [limparCachePaginas]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
-  }, [filters.page, filters.size, filters.banco, filters.mes, filters.etapa, filters.contaCodigo]);
+  }, [filters.page, filters.size, filters.banco, filters.mes, filters.etapa, filters.contaCodigo, filters.sort]);
+
+  useEffect(() => {
+    const id = filters.lancamento;
+    if (!id || !featureFlags.useApiFinanceiro) return undefined;
+    if (lancamentoFocusRef.current === id) return undefined;
+
+    const naPagina = rows.find((r) => Number(r.id) === Number(id));
+    if (naPagina) {
+      setDetailItem(naPagina);
+      lancamentoFocusRef.current = id;
+      requestAnimationFrame(() => scrollExtratoParaLancamento(id));
+      return undefined;
+    }
+
+    const ac = new AbortController();
+    let cancelled = false;
+    (async () => {
+      try {
+        const api = await buscarLancamentoFinanceiroApi(id, { signal: ac.signal });
+        if (cancelled || !api) return;
+        const nb = Number(api.numeroBanco);
+        if (Number.isFinite(nb) && nb !== filters.banco) setBanco(nb);
+        const mes = mesAnoFromDataLancamento(api.dataLancamento);
+        if (mes && mes !== filters.mes) setMes(mes);
+        const mapped = mapApiLancamentoToExtratoRow(api, contaToLetra);
+        if (!cancelled) {
+          setDetailItem(mapped);
+          lancamentoFocusRef.current = id;
+        }
+      } catch (e) {
+        if (!cancelled && e?.name !== 'AbortError') {
+          setErro(e?.message || 'Não foi possível abrir o lançamento solicitado.');
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+      ac.abort();
+    };
+  }, [filters.lancamento, filters.banco, filters.mes, rows, contaToLetra, setBanco, setMes]);
+
+  useEffect(() => {
+    if (!filters.lancamento) lancamentoFocusRef.current = null;
+  }, [filters.lancamento]);
+
+  useEffect(() => {
+    const id = filters.lancamento;
+    if (!id || loading) return undefined;
+    const naPagina = rows.find((r) => Number(r.id) === Number(id));
+    if (!naPagina) return undefined;
+    requestAnimationFrame(() => scrollExtratoParaLancamento(id));
+    return undefined;
+  }, [filters.lancamento, rows, loading]);
 
   useEffect(() => {
     const onKey = (e) => {
@@ -143,28 +233,44 @@ export function ExtratoPage() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  const toggleSelect = (id) => {
+  const toggleSelect = useCallback((id) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
-  };
+  }, []);
 
-  const toggleSelectAll = () => {
-    const ids = rows.map((r) => r.id);
-    const all = ids.length > 0 && ids.every((id) => selectedIds.has(id));
-    if (all) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(ids));
-    }
-  };
+  const toggleSelectAll = useCallback(() => {
+    setSelectedIds((prev) => {
+      const ids = rows.map((r) => r.id);
+      const all = ids.length > 0 && ids.every((id) => prev.has(id));
+      return all ? new Set() : new Set(ids);
+    });
+  }, [rows]);
+
+  const handleRowClick = useCallback((item) => {
+    setDetailItem(item);
+  }, []);
 
   const handleRowSaved = (updated) => {
+    limparCachePaginas();
     setRows((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
     setDetailItem(updated);
+    setExtratoRefreshKey((n) => n + 1);
+  };
+
+  const handleRowDeleted = (apiId) => {
+    limparCachePaginas();
+    setRows((prev) => prev.filter((r) => Number(r.id) !== Number(apiId)));
+    setTotalElements((n) => Math.max(0, Number(n) - 1));
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.delete(apiId);
+      return next;
+    });
+    setDetailItem(null);
     setExtratoRefreshKey((n) => n + 1);
   };
 
@@ -198,8 +304,11 @@ export function ExtratoPage() {
           selectedIds={selectedIds}
           onSelect={toggleSelect}
           onSelectAll={toggleSelectAll}
-          onRowClick={setDetailItem}
+          onRowClick={handleRowClick}
           isLoading={loading}
+          sortDataAsc={isSortDataAsc(filters.sort)}
+          onSortDataDoubleClick={toggleSortData}
+          highlightLancamentoId={filters.lancamento}
         />
       </div>
 
@@ -225,6 +334,7 @@ export function ExtratoPage() {
             item={detailItem}
             onClose={() => setDetailItem(null)}
             onSaved={handleRowSaved}
+            onDeleted={handleRowDeleted}
           />
         </>
       ) : null}

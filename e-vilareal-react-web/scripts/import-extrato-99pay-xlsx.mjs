@@ -6,6 +6,7 @@
  *   node scripts/import-extrato-99pay-xlsx.mjs "/caminho/extrato_consolidado_auditado.xlsx"
  *   node scripts/import-extrato-99pay-xlsx.mjs arquivo.xlsx --dry-run
  *   node scripts/import-extrato-99pay-xlsx.mjs arquivo.xlsx --substituir --numero-banco=30
+ *   node scripts/import-extrato-99pay-xlsx.mjs outro.xlsx --append
  *
  * Envs: VILAREAL_API_BASE, VILAREAL_IMPORT_SENHA, VILAREAL_IMPORT_CONCURRENCY
  */
@@ -34,6 +35,7 @@ function parseArgs(argv) {
     baseUrl: (process.env.VILAREAL_API_BASE || 'http://localhost:8080').replace(/\/$/, ''),
     dryRun: false,
     substituir: false,
+    append: false,
     concurrency: Math.min(
       24,
       Math.max(1, Number(process.env.VILAREAL_IMPORT_CONCURRENCY || 12) || 12),
@@ -42,6 +44,7 @@ function parseArgs(argv) {
   };
   for (const a of argv) {
     if (a === '--dry-run') out.dryRun = true;
+    else if (a === '--append') out.append = true;
     else if (a === '--substituir') out.substituir = true;
     else if (a.startsWith('--banco=')) out.banco = a.slice(8).trim();
     else if (a.startsWith('--numero-banco=')) {
@@ -56,7 +59,7 @@ function parseArgs(argv) {
       if (Number.isFinite(n) && n >= 1) out.concurrency = Math.min(24, Math.floor(n));
     } else if (!a.startsWith('-')) out.xlsx = a;
   }
-  if (!argv.includes('--substituir') && !out.dryRun) {
+  if (!argv.includes('--substituir') && !out.append && !out.dryRun) {
     out.substituir = true;
   }
   return out;

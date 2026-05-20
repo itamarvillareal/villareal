@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { isSortDataAsc, toggleSortDataLancamento } from './useExtratoFilters.js';
 
 // Testes das funções puras replicadas do hook (evita mock de react-router)
 function parseBancoParam(params) {
@@ -35,6 +36,15 @@ function writeFilters(params, f) {
   setOrDel('mes', f.mes);
   return next;
 }
+
+describe('toggleSortDataLancamento', () => {
+  it('alterna entre asc e desc', () => {
+    expect(toggleSortDataLancamento('dataLancamento,desc')).toBe('dataLancamento,asc');
+    expect(toggleSortDataLancamento('dataLancamento,asc')).toBe('dataLancamento,desc');
+    expect(isSortDataAsc('dataLancamento,asc')).toBe(true);
+    expect(isSortDataAsc('dataLancamento,desc')).toBe(false);
+  });
+});
 
 describe('useExtratoFilters — parse banco', () => {
   it('lê banco numérico da URL', () => {

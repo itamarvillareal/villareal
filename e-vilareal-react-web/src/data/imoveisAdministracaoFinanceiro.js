@@ -4,10 +4,15 @@
  */
 
 import { getTransacoesContaCorrenteCompleto, LETRA_TO_CONTA } from './financeiroData.js';
+import { parseValorMonetarioBr } from '../utils/parseValorMonetarioBr.js';
 
 export const PAPEL_ALUGUEL = 'aluguel';
 export const PAPEL_REPASSE = 'repasse';
 export const PAPEL_DESPESA_REPASSAR = 'despesa_repassar';
+/** Crédito vinculado ao processo — papel sugerido; o usuário reclassifica na tela do imóvel. */
+export const PAPEL_CREDITO = 'credito';
+/** Débito vinculado ao processo — papel sugerido; o usuário reclassifica na tela do imóvel. */
+export const PAPEL_DEBITO = 'debito';
 export const PAPEL_OUTRO = 'outro';
 
 /** Marcadores opcionais na descrição detalhada / categoria (classificação no Financeiro). */
@@ -19,9 +24,16 @@ export function imovelIdPorCodigoProc() {
   return null;
 }
 
-/** Sem cadastro legado local — classificação só com dados reais da API de imóveis (quando existir). */
-export function processoEhAdministracaoImovel() {
-  return false;
+/**
+ * Heurísticas de classificação (aluguel/repasse/despesa) na tela de administração de imóveis.
+ * @param {string} [_codigoCliente]
+ * @param {string|number} [_proc]
+ * @param {{ assumirAdm?: boolean, naturezaAcao?: string }} [opts]
+ */
+export function processoEhAdministracaoImovel(_codigoCliente, _proc, opts = {}) {
+  if (opts.assumirAdm === true) return true;
+  const n = String(opts.naturezaAcao ?? '').toUpperCase();
+  return /ADMINISTRA/.test(n) && /IM[OÓ]VEL/.test(n);
 }
 
 function textoClassificacao(t) {
@@ -52,7 +64,7 @@ export function classificarLancamentoAdministracaoImovel(t, codigoCliente, proc)
     };
   }
 
-  const ehAdm = processoEhAdministracaoImovel(codigoCliente, proc);
+  const ehAdm = processoEhAdministracaoImovel(codigoCliente, proc, { assumirAdm: true });
   if (!ehAdm) {
     return { papel: PAPEL_OUTRO, motivo: 'generico', despesaRepassarAoLocador: false };
   }
@@ -61,7 +73,12 @@ export function classificarLancamentoAdministracaoImovel(t, codigoCliente, proc)
   if (v > 0 && /\b(ALUG|ALUGUEL|LOCA|LOCAÇ|LOCAC)\b/.test(txt)) {
     return { papel: PAPEL_ALUGUEL, motivo: 'heuristica', despesaRepassarAoLocador: false };
   }
-  if (v < 0 && /\b(REPASSE|REPAS\.|LOCADOR|PROPRIET|PIX.*LOCAD)\b/.test(txt)) {
+  const pareceRepasse =
+    v < 0 &&
+    (/\b(REPASSE|REPAS\.|LOCADOR|PROPRIET|PROPRIETÁRIO|PROPRIETARIO)\b/.test(txt) ||
+      /\bPIX\s*TRANSF\b/.test(txt) ||
+      /\bTRANSF(?:ER[ÊE]NCIA)?\b/.test(txt));
+  if (pareceRepasse) {
     return { papel: PAPEL_REPASSE, motivo: 'heuristica', despesaRepassarAoLocador: false };
   }
   if (
@@ -70,6 +87,13 @@ export function classificarLancamentoAdministracaoImovel(t, codigoCliente, proc)
       String(t.letra ?? '').trim().toUpperCase() === 'I')
   ) {
     return { papel: PAPEL_DESPESA_REPASSAR, motivo: 'heuristica', despesaRepassarAoLocador: true };
+  }
+
+  if (v > 0) {
+    return { papel: PAPEL_CREDITO, motivo: 'padrao_credito', despesaRepassarAoLocador: false };
+  }
+  if (v < 0) {
+    return { papel: PAPEL_DEBITO, motivo: 'padrao_debito', despesaRepassarAoLocador: false };
   }
 
   return { papel: PAPEL_OUTRO, motivo: 'generico', despesaRepassarAoLocador: false };
@@ -92,6 +116,11 @@ export function mesReferenciaDataBr(dataBr) {
   };
 }
 
+/** Mês do relatório / painel: data do lançamento no extrato; se ausente, competência. */
+export function mesReferenciaLancamentoParaRelatorio(t) {
+  return mesReferenciaDataBr(t?.data) || mesReferenciaDataBr(t?.dataCompetencia);
+}
+
 /**
  * @returns {{
  *   transacoes: Array<object & { classificacao: ReturnType<classificarLancamentoAdministracaoImovel> }>,
@@ -106,11 +135,11 @@ export function mesReferenciaDataBr(dataBr) {
  *     valorLiquidoRepassarLocador: number,
  *   }>,
  *   mesesOrdenados: string[],
+ *   fonte?: 'api' | 'local',
  * }}
  */
-export function montarPainelAdministracaoImovel(codigoCliente, proc) {
-  const raw = getTransacoesContaCorrenteCompleto(codigoCliente, proc);
-  const transacoes = raw.map((t) => ({
+export function montarPainelAdministracaoImovelDeTransacoes(transacoesRaw, codigoCliente, proc, opts = {}) {
+  const transacoes = (transacoesRaw || []).map((t) => ({
     ...t,
     classificacao: classificarLancamentoAdministracaoImovel(t, codigoCliente, proc),
   }));
@@ -118,12 +147,14 @@ export function montarPainelAdministracaoImovel(codigoCliente, proc) {
   const porMes = new Map();
 
   for (const t of transacoes) {
-    const mes = mesReferenciaDataBr(t.data);
+    const mes = mesReferenciaLancamentoParaRelatorio(t);
     if (!mes) continue;
     if (!porMes.has(mes.chave)) {
       porMes.set(mes.chave, {
         chave: mes.chave,
         label: mes.label,
+        totalCreditos: 0,
+        totalDebitos: 0,
         totalRecebido: 0,
         totalRepasse: 0,
         totalDespesasRepassar: 0,
@@ -134,6 +165,9 @@ export function montarPainelAdministracaoImovel(codigoCliente, proc) {
     const row = porMes.get(mes.chave);
     const { papel } = t.classificacao;
     const v = Number(t.valor) || 0;
+
+    if (v > 0) row.totalCreditos += v;
+    if (v < 0) row.totalDebitos += Math.abs(v);
 
     if (papel === PAPEL_ALUGUEL && v > 0) {
       row.totalRecebido += v;
@@ -153,7 +187,19 @@ export function montarPainelAdministracaoImovel(codigoCliente, proc) {
 
   const mesesOrdenados = [...porMes.keys()].sort();
 
-  return { transacoes, porMes, mesesOrdenados };
+  transacoes.sort((a, b) => {
+    const ka = mesReferenciaLancamentoParaRelatorio(a)?.sortKey ?? '';
+    const kb = mesReferenciaLancamentoParaRelatorio(b)?.sortKey ?? '';
+    return kb.localeCompare(ka);
+  });
+
+  return { transacoes, porMes, mesesOrdenados, fonte: opts.fonte };
+}
+
+/** Extrato local (localStorage) — fallback quando a API financeira está desligada. */
+export function montarPainelAdministracaoImovel(codigoCliente, proc) {
+  const raw = getTransacoesContaCorrenteCompleto(codigoCliente, proc);
+  return montarPainelAdministracaoImovelDeTransacoes(raw, codigoCliente, proc, { fonte: 'local' });
 }
 
 /** Alertas operacionais (aluguel / repasse ausentes no extrato). */
@@ -161,7 +207,7 @@ export function gerarAlertasAdministracaoImovel(imovelMock, porMes, mesesOrdenad
   const alertas = [];
   if (!imovelMock || !imovelMock.imovelOcupado) return alertas;
 
-  const valorRef = Number(String(imovelMock.valorLocacao ?? '').replace(',', '.')) || 0;
+  const valorRef = parseValorMonetarioBr(imovelMock.valorLocacao) ?? 0;
   const diaPag = Number(String(imovelMock.diaPagAluguel ?? '').replace(/\D/g, '')) || null;
   const diaRep = Number(String(imovelMock.diaRepasse ?? '').replace(/\D/g, '')) || null;
 
@@ -199,9 +245,188 @@ export function rotuloPapelAdministracao(papel) {
       return 'Repasse ao locador';
     case PAPEL_DESPESA_REPASSAR:
       return 'Despesa a repassar ao locador';
+    case PAPEL_CREDITO:
+      return 'Crédito (classificar)';
+    case PAPEL_DEBITO:
+      return 'Débito (classificar)';
     default:
       return 'Outros (extrato)';
   }
+}
+
+function parseDiaCadastro(diaCadastro) {
+  const n = Number(String(diaCadastro ?? '').replace(/\D/g, ''));
+  if (!Number.isFinite(n) || n < 1 || n > 31) return null;
+  return n;
+}
+
+function dataLimitePrazoNoMes(chaveMesYYYYMM, dia) {
+  const [ys, ms] = String(chaveMesYYYYMM).split('-');
+  const y = Number(ys);
+  const m = Number(ms);
+  if (!y || !m) return null;
+  const ultimoDia = new Date(y, m, 0).getDate();
+  const d = Math.min(dia, ultimoDia);
+  return new Date(y, m - 1, d, 23, 59, 59, 999);
+}
+
+/** Situação de aluguel ou repasse em um mês (cadastro do dia + totais do extrato). */
+export function avaliarSituacaoFluxoMes({
+  totalNoMes,
+  dataPrimeiroNoMes,
+  diaCadastro,
+  chaveMesYYYYMM,
+  hoje = new Date(),
+}) {
+  const total = Number(totalNoMes) || 0;
+  const dia = parseDiaCadastro(diaCadastro);
+
+  if (total > 0) {
+    const legenda = dataPrimeiroNoMes ? `Recebido em ${dataPrimeiroNoMes}` : '';
+    if (!dia) return { status: 'ok_sem_prazo', legenda };
+    return { status: 'ok', legenda };
+  }
+
+  if (!dia) {
+    return { status: 'sem_prazo_cadastrado', legenda: 'Cadastre o dia no contrato do imóvel.' };
+  }
+
+  const [ys, ms] = String(chaveMesYYYYMM).split('-');
+  const y = Number(ys);
+  const m = Number(ms);
+  const fimMes = new Date(y, m, 0, 23, 59, 59, 999);
+  const limite = dataLimitePrazoNoMes(chaveMesYYYYMM, dia);
+
+  if (hoje > fimMes) {
+    return {
+      status: 'ausente',
+      legenda: `Sem lançamento no mês (prazo dia ${String(dia).padStart(2, '0')}).`,
+    };
+  }
+
+  if (limite && hoje > limite) {
+    return { status: 'atraso', legenda: `Previsto até dia ${String(dia).padStart(2, '0')}.` };
+  }
+
+  return { status: 'pendente', legenda: `Previsto dia ${String(dia).padStart(2, '0')}.` };
+}
+
+export function avaliarSituacaoRepasseMes({
+  totalRepasse,
+  totalAluguel,
+  diaCadastro,
+  chaveMesYYYYMM,
+  dataPrimeiroRepasse,
+  hoje = new Date(),
+}) {
+  const repasse = Number(totalRepasse) || 0;
+  const aluguel = Number(totalAluguel) || 0;
+
+  if (repasse > 0) {
+    return avaliarSituacaoFluxoMes({
+      totalNoMes: repasse,
+      dataPrimeiroNoMes: dataPrimeiroRepasse,
+      diaCadastro,
+      chaveMesYYYYMM,
+      hoje,
+    });
+  }
+
+  if (aluguel > 0) {
+    const base = avaliarSituacaoFluxoMes({
+      totalNoMes: 0,
+      dataPrimeiroNoMes: null,
+      diaCadastro,
+      chaveMesYYYYMM,
+      hoje,
+    });
+    if (base.status === 'pendente' || base.status === 'atraso' || base.status === 'ausente') {
+      return {
+        status: 'aguarda_aluguel',
+        legenda: 'Aluguel no mês; repasse ainda não identificado no extrato.',
+      };
+    }
+    return base;
+  }
+
+  return avaliarSituacaoFluxoMes({
+    totalNoMes: 0,
+    dataPrimeiroNoMes: null,
+    diaCadastro,
+    chaveMesYYYYMM,
+    hoje,
+  });
+}
+
+export function extrairTotaisFinanceirosMes(lancamentos, codigoCliente, proc, chaveMesYYYYMM) {
+  const doMes = (lancamentos || []).filter(
+    (t) => mesReferenciaLancamentoParaRelatorio(t)?.chave === chaveMesYYYYMM,
+  );
+  const marcados = doMes.map((t) => ({
+    ...t,
+    classificacao: classificarLancamentoAdministracaoImovel(t, codigoCliente, proc),
+  }));
+  const aluguel = marcados.find((t) => t.classificacao?.papel === 'aluguel' && Number(t.valor) > 0);
+  const repasse = marcados.find((t) => t.classificacao?.papel === 'repasse' && Number(t.valor) < 0);
+  return {
+    totalAluguel: marcados
+      .filter((t) => t.classificacao?.papel === 'aluguel' && Number(t.valor) > 0)
+      .reduce((s, t) => s + Number(t.valor || 0), 0),
+    totalRepasse: Math.abs(
+      marcados
+        .filter((t) => t.classificacao?.papel === 'repasse' && Number(t.valor) < 0)
+        .reduce((s, t) => s + Number(t.valor || 0), 0),
+    ),
+    dataPrimeiroAluguel: aluguel?.data ?? null,
+    dataPrimeiroRepasse: repasse?.data ?? null,
+  };
+}
+
+export function linhaRelatorioFinanceiroFromCadastro(item, chaveMesYYYYMM, totaisFinanceiros = {}) {
+  const codigoNum = Number(String(item.codigo ?? '').replace(/\D/g, ''));
+  const procStr = item.proc != null && String(item.proc).trim() !== '' ? String(item.proc).trim() : '';
+  const temVinculo = codigoNum > 0 && procStr !== '';
+
+  const {
+    totalAluguel = 0,
+    totalRepasse = 0,
+    dataPrimeiroAluguel = null,
+    dataPrimeiroRepasse = null,
+  } = totaisFinanceiros;
+
+  const valorReferenciaLocacao = parseValorMonetarioBr(item.valorLocacao) ?? 0;
+  const alug = avaliarSituacaoFluxoMes({
+    totalNoMes: totalAluguel,
+    dataPrimeiroNoMes: dataPrimeiroAluguel,
+    diaCadastro: item.diaPagAluguel,
+    chaveMesYYYYMM,
+  });
+  const rep = avaliarSituacaoRepasseMes({
+    totalRepasse,
+    totalAluguel,
+    diaCadastro: item.diaRepasse,
+    chaveMesYYYYMM,
+    dataPrimeiroRepasse,
+  });
+
+  const locatario = String(item.inquilino ?? '').trim();
+
+  return {
+    imovelId: item.imovelId,
+    unidade: String(item.unidade || item.condominio || item.endereco || '').trim() || '—',
+    locatario: locatario || '—',
+    codigo: codigoNum > 0 ? codigoNum : item.codigo || '—',
+    proc: procStr || '—',
+    valorReferenciaLocacao,
+    totalAluguel,
+    totalRepasse,
+    dataPrimeiroAluguel,
+    dataPrimeiroRepasse,
+    statusAluguel: temVinculo ? alug.status : 'n_a',
+    legendaAluguel: temVinculo ? alug.legenda : 'Vincule Cod. cliente e Proc. no cadastro.',
+    statusRepasse: temVinculo ? rep.status : 'n_a',
+    legendaRepasse: temVinculo ? rep.legenda : '',
+  };
 }
 
 /**
@@ -209,11 +434,14 @@ export function rotuloPapelAdministracao(papel) {
  * Dados: mesmos lançamentos do Financeiro com Cod. cliente + Proc. do imóvel; classificação aluguel/repasse
  * (tags `[ADM_IMOVEL:ALUGUEL]` / `[ADM_IMOVEL:REPASSE]` ou heurísticas em `classificarLancamentoAdministracaoImovel`).
  *
+ * @param {object[]} itens cadastro UI (`mapApiToUi`)
  * @param {string} chaveMesYYYYMM ex. `2026-03`
  * @param {{ soOcupados?: boolean }} opts
  */
-export function buildRelatorioFinanceiroImoveisMes(chaveMesYYYYMM, opts = {}) {
-  void chaveMesYYYYMM;
-  void opts;
-  return [];
+export function buildRelatorioFinanceiroImoveisMes(itens, chaveMesYYYYMM, opts = {}) {
+  const { soOcupados = true } = opts;
+  return (itens || [])
+    .filter((item) => !soOcupados || item.imovelOcupado)
+    .map((item) => linhaRelatorioFinanceiroFromCadastro(item, chaveMesYYYYMM))
+    .sort((a, b) => (Number(a.imovelId) || 0) - (Number(b.imovelId) || 0));
 }

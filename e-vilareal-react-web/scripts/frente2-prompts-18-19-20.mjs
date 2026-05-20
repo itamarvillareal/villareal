@@ -12,12 +12,13 @@ import {
   extrairLancamentosDaAba,
   layoutExtratoPorNomeInstituicao,
 } from './lib/extrato-bancos-planilha-layouts.mjs';
+import { requireExtratoBancosPlanilhaXlsPath } from './lib/resolve-extrato-bancos-planilha-xls.mjs';
 
 const base = (process.env.VILAREAL_API_BASE || 'http://localhost:8080').replace(/\/$/, '');
 const senha = process.env.VILAREAL_IMPORT_SENHA || '123456';
 const PLANILHA =
   process.argv.find((a) => a.endsWith('.xls') || a.endsWith('.xlsx')) ||
-  '/Users/itamar/Downloads/Extratos Bancos - Itamar.xls';
+  requireExtratoBancosPlanilhaXlsPath();
 const EXECUTAR_PAREAR = process.argv.includes('--executar-auto-parear');
 const HOJE = new Date();
 HOJE.setHours(0, 0, 0, 0);

@@ -125,9 +125,63 @@ public class FinanceiroController {
     }
 
     @GetMapping("/lancamentos/saldo-banco")
-    @Operation(description = "Saldo acumulado (crédito − débito) e data do último lançamento do banco.")
-    public SaldoBancoResponse saldoBanco(@RequestParam("numeroBanco") Integer numeroBanco) {
-        return financeiroService.saldoPorNumeroBanco(numeroBanco);
+    @Operation(description = "Saldo acumulado (crédito − débito) do banco. Com parâmetro data, saldo ao fim do dia (inclusive) e movimento no dia.")
+    public SaldoBancoResponse saldoBanco(
+            @RequestParam("numeroBanco") Integer numeroBanco,
+            @RequestParam(value = "data", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate data) {
+        return financeiroService.saldoPorNumeroBanco(numeroBanco, data);
+    }
+
+    @GetMapping("/lancamentos/saldo-banco-mensal")
+    @Operation(description = "Saldo ao fim de cada dia do mês (todos os dias do calendário, com movimento e saldo acumulado).")
+    public SaldoBancoMensalResponse saldoBancoMensal(
+            @RequestParam("numeroBanco") Integer numeroBanco,
+            @RequestParam("ano") int ano,
+            @RequestParam("mes") int mes) {
+        return financeiroService.saldoMensalPorDia(numeroBanco, ano, mes);
+    }
+
+    @GetMapping("/lancamentos/resumo-consolidado")
+    @Operation(description = "Totais por conta e saldo mensal agregado (últimos N meses) para a tela Consolidado.")
+    public ResumoConsolidadoContasResponse resumoConsolidado(
+            @RequestParam(value = "meses", defaultValue = "12") int meses) {
+        return financeiroService.resumoConsolidadoUltimosMeses(meses);
+    }
+
+    @GetMapping("/lancamentos/extrato/paginada")
+    @Operation(description = "Mesmos filtros de /lancamentos/paginada, com DTO enxuto para a grade do extrato.")
+    public Page<LancamentoExtratoListItemResponse> listarExtratoPaginada(
+            @RequestParam(value = "clienteId", required = false) Long clienteId,
+            @RequestParam(value = "processoId", required = false) Long processoId,
+            @RequestParam(value = "contaContabilId", required = false) Long contaContabilId,
+            @RequestParam(value = "dataInicio", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataInicio,
+            @RequestParam(value = "dataFim", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataFim,
+            @RequestParam(value = "etapa", required = false) String etapa,
+            @RequestParam(value = "numeroBanco", required = false) Integer numeroBanco,
+            @RequestParam(value = "busca", required = false) String busca,
+            @RequestParam(value = "semClienteId", required = false) Boolean semClienteId,
+            @RequestParam(value = "semGrupoCompensacao", required = false) Boolean semGrupoCompensacao,
+            @RequestParam(value = "ano", required = false) Integer ano,
+            @RequestParam(value = "mes", required = false) Integer mes,
+            @PageableDefault(size = 20, sort = "dataLancamento", direction = Sort.Direction.ASC) Pageable pageable) {
+        EtapaLancamento etapaEnum = null;
+        if (etapa != null && !etapa.isBlank()) {
+            etapaEnum = EtapaLancamento.valueOf(etapa.trim().toUpperCase());
+        }
+        return financeiroService.listarExtratoPaginado(
+                clienteId,
+                processoId,
+                contaContabilId,
+                dataInicio,
+                dataFim,
+                etapaEnum,
+                numeroBanco,
+                busca,
+                semClienteId,
+                semGrupoCompensacao,
+                ano,
+                mes,
+                pageable);
     }
 
     @GetMapping("/lancamentos/paginada")
@@ -166,7 +220,42 @@ public class FinanceiroController {
                 pageable);
     }
 
-    @GetMapping("/lancamentos/{id}")
+    @GetMapping("/lancamentos/inbox/classificar")
+    @Operation(description = "Página de lançamentos IMPORTADO + sugestões de classificação em uma única resposta.")
+    public InboxClassificarPaginaResponse inboxClassificar(
+            @RequestParam(value = "numeroBanco", required = false) Integer numeroBanco,
+            @RequestParam(value = "ano", required = false) Integer ano,
+            @RequestParam(value = "mes", required = false) Integer mes,
+            @PageableDefault(size = 50, sort = "dataLancamento", direction = Sort.Direction.DESC) Pageable pageable) {
+        EtapaLancamento etapaImportado = EtapaLancamento.IMPORTADO;
+        Page<LancamentoFinanceiroResponse> page = financeiroService.listarLancamentosPaginado(
+                null,
+                null,
+                null,
+                null,
+                null,
+                etapaImportado,
+                numeroBanco,
+                null,
+                null,
+                null,
+                ano,
+                mes,
+                pageable);
+        List<Long> ids = page.getContent().stream().map(LancamentoFinanceiroResponse::getId).toList();
+        Map<Long, List<SugestaoClassificacaoResponse>> sugestoes =
+                ids.isEmpty() ? Map.of() : financeiroSugestaoService.sugerirLote(ids);
+        InboxClassificarPaginaResponse response = new InboxClassificarPaginaResponse();
+        response.setContent(page.getContent());
+        response.setTotalElements(page.getTotalElements());
+        response.setTotalPages(page.getTotalPages());
+        response.setPage(page.getNumber());
+        response.setSize(page.getSize());
+        response.setSugestoes(sugestoes);
+        return response;
+    }
+
+    @GetMapping("/lancamentos/{id:\\d+}")
     public LancamentoFinanceiroResponse buscarLancamento(@PathVariable Long id) {
         return financeiroService.buscarLancamento(id);
     }
@@ -181,14 +270,14 @@ public class FinanceiroController {
         return ResponseEntity.created(uri).body(body);
     }
 
-    @PutMapping("/lancamentos/{id}")
+    @PutMapping("/lancamentos/{id:\\d+}")
     public LancamentoFinanceiroResponse atualizarLancamento(
             @PathVariable Long id,
             @Valid @RequestBody LancamentoFinanceiroWriteRequest request) {
         return financeiroService.atualizarLancamento(id, request);
     }
 
-    @DeleteMapping("/lancamentos/{id}")
+    @DeleteMapping("/lancamentos/{id:\\d+}")
     public ResponseEntity<Void> removerLancamento(@PathVariable Long id) {
         financeiroService.removerLancamento(id);
         return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
@@ -201,7 +290,7 @@ public class FinanceiroController {
         return financeiroService.sincronizarGruposCompensacaoLote(itens);
     }
 
-    @GetMapping("/lancamentos/{id}/sugestao-classificacao")
+    @GetMapping("/lancamentos/{id:\\d+}/sugestao-classificacao")
     @Operation(description = "Sugestões de classificação (regras, histórico, recorrência).")
     public List<SugestaoClassificacaoResponse> sugestaoClassificacao(@PathVariable Long id) {
         return financeiroSugestaoService.sugerir(id);
@@ -253,18 +342,32 @@ public class FinanceiroController {
             @RequestParam(value = "ano", required = false) Integer ano,
             @RequestParam(value = "mes", required = false) Integer mes,
             @RequestParam(value = "apenasInterbancario", defaultValue = "false") boolean apenasInterbancario,
+            @RequestParam(value = "apenasMesmoBanco", defaultValue = "false") boolean apenasMesmoBanco,
+            @RequestParam(value = "apenasMesmoDiaCalendario", defaultValue = "false") boolean apenasMesmoDiaCalendario,
+            @RequestParam(value = "apenasDiaDivergente", defaultValue = "false") boolean apenasDiaDivergente,
             @RequestParam(value = "page", defaultValue = "0") int page,
             @RequestParam(value = "size", defaultValue = "50") int size) {
         return financeiroCompensacaoService.listarParesSugeridos(
-                numeroBanco, ano, mes, page, size, apenasInterbancario);
+                numeroBanco,
+                ano,
+                mes,
+                page,
+                size,
+                apenasInterbancario,
+                apenasMesmoBanco,
+                apenasMesmoDiaCalendario,
+                apenasDiaDivergente);
     }
 
     @GetMapping("/lancamentos/grupos-compensacao/inconsistentes")
     @Operation(description = "Grupos de compensação cuja soma não fecha em zero.")
     public GruposCompensacaoInconsistentesResponse gruposCompensacaoInconsistentes(
+            @RequestParam(value = "numeroBanco", required = false) Integer numeroBanco,
+            @RequestParam(value = "ano", required = false) Integer ano,
+            @RequestParam(value = "mes", required = false) Integer mes,
             @RequestParam(value = "page", defaultValue = "0") int page,
             @RequestParam(value = "size", defaultValue = "20") int size) {
-        return financeiroCompensacaoService.listarGruposInconsistentes(page, size);
+        return financeiroCompensacaoService.listarGruposInconsistentes(numeroBanco, ano, mes, page, size);
     }
 
     @PostMapping("/lancamentos/auto-parear")

@@ -21,6 +21,8 @@ describe('parseValorMonetarioBr', () => {
   it('formato com ponto decimal (EN) quando último separador é ponto', () => {
     expect(parseValorMonetarioBr('1200.45')).toBe(1200.45);
     expect(parseValorMonetarioBr('1,234.56')).toBe(1234.56);
+    expect(parseValorMonetarioBr('1605.6')).toBe(1605.6);
+    expect(parseValorMonetarioBr('1605,60')).toBe(1605.6);
   });
 
   it('retorna null para vazio ou inválido', () => {

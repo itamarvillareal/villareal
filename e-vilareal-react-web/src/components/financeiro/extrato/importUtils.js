@@ -11,6 +11,7 @@ import {
   rotuloInstituicaoExtratoPdf,
 } from '../../../utils/extratoPdfImport.js';
 import {
+  analisarLancamentosNovosDedupe,
   parseOfxToExtrato,
   readOfxFileAsText,
   sanitizarLancamentoImportacaoExtrato,
@@ -106,6 +107,23 @@ async function carregarLancamentosExistentesBanco(numeroBanco, signal) {
 }
 
 /**
+ * Prévia de quantos lançamentos do arquivo seriam gravados (modo mesclar).
+ * @param {object[]} rows
+ * @param {number|null} numeroBanco
+ * @param {AbortSignal} [signal]
+ */
+export async function resumirNovosImportacaoMesclar(rows, numeroBanco, signal) {
+  const existente = await carregarLancamentosExistentesBanco(numeroBanco, signal);
+  const { novos, ignorados } = analisarLancamentosNovosDedupe(existente, rows);
+  return {
+    totalArquivo: rows?.length ?? 0,
+    noBanco: existente.length,
+    novos: novos.length,
+    ignorados,
+  };
+}
+
+/**
  * @param {{ nomeBanco: string, numeroBanco: number|null, modo: 'mesclar'|'substituir', rows: object[], origem: string, signal?: AbortSignal }}
  */
 export async function executarImportacaoExtrato({
@@ -131,9 +149,15 @@ export async function executarImportacaoExtrato({
     origemImportacao: origem,
   });
 
+  const totalArquivo = rows?.length ?? 0;
+  const ignorados = result.ignorados ?? Math.max(0, totalArquivo - (result.criados ?? 0));
+
   return {
     ...result,
     importados: result.criados ?? 0,
     pendentes: result.criados ?? 0,
+    ignorados,
+    totalArquivo,
+    porDiaDedupe: result.porDiaDedupe ?? {},
   };
 }

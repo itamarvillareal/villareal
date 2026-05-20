@@ -28,6 +28,10 @@ public class CalculoRodadaEntity {
     @Column(nullable = false)
     private Integer dimensao = 0;
 
+    /** Espelho de {@code payload_json.parcelamentoAceito} — listagem resumo sem carregar JSON. */
+    @Column(name = "parcelamento_aceito", nullable = false)
+    private boolean parcelamentoAceito = false;
+
     @Column(name = "importacao_id", length = 36)
     private String importacaoId;
 

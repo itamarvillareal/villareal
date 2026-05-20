@@ -1,7 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { FileSpreadsheet, X } from 'lucide-react';
-import { enderecoUmaLinha, imoveisBtnIconGhost, imoveisBtnPrimary, imoveisBtnSecondary, imoveisInputClass, imoveisInputReadOnlyClass } from './imoveis/ImoveisAdminLayout.jsx';
+import {
+  enderecoUmaLinha,
+  formatDocBrExibicao,
+  imoveisBtnIconGhost,
+  imoveisBtnPrimary,
+  imoveisBtnSecondary,
+  imoveisInputClass,
+  imoveisInputReadOnlyClass,
+} from './imoveis/ImoveisAdminLayout.jsx';
 import { ImoveisCadastroView } from './imoveis/ImoveisCadastroView.jsx';
 import { ModalVinculosProcessoImovel } from './imoveis/ModalVinculosProcessoImovel.jsx';
 import { padCliente } from '../data/processosDadosRelatorio.js';
@@ -42,10 +50,14 @@ function imovelCondUnidadeCorresponde(imovelApi, queryBruta) {
   return tokens.every((t) => hay.includes(t));
 }
 
-export function Imoveis() {
+export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onCadastroSalvo } = {}) {
   const location = useLocation();
   const navigate = useNavigate();
-  const [imovelId, setImovelId] = useState(43);
+  const idInicial = Number(imovelIdInicial);
+  const [imovelId, setImovelId] = useState(() => {
+    if (Number.isFinite(idInicial) && idInicial > 0) return idInicial;
+    return 43;
+  });
   const [imovelOcupado, setImovelOcupado] = useState(true);
   const [codigo, setCodigo] = useState('938');
   const [proc, setProc] = useState(42);
@@ -118,7 +130,14 @@ export function Imoveis() {
   const [_apiContratoId, setApiContratoId] = useState(null);
   const [_apiClienteId, setApiClienteId] = useState(null);
   const [_apiProcessoId, setApiProcessoId] = useState(null);
-  const unidadeAlvo = location.state && typeof location.state === 'object' ? location.state.unidade : null;
+  const unidadeAlvo =
+    !modoModal && location.state && typeof location.state === 'object' ? location.state.unidade : null;
+
+  useEffect(() => {
+    if (!modoModal) return;
+    const n = Number(imovelIdInicial);
+    if (Number.isFinite(n) && n > 0) setImovelId(n);
+  }, [modoModal, imovelIdInicial]);
 
   const [pesquisaCondUnidade, setPesquisaCondUnidade] = useState('');
   const [listaImoveisPesquisa, setListaImoveisPesquisa] = useState([]);
@@ -276,10 +295,11 @@ export function Imoveis() {
 
     void (async () => {
       try {
-        const state = location.state && typeof location.state === 'object' ? location.state : null;
+        const state =
+          !modoModal && location.state && typeof location.state === 'object' ? location.state : null;
         const np = state?.numeroPlanilha != null ? Number(state.numeroPlanilha) : null;
 
-        if (featureFlags.useApiImoveis && Number.isFinite(np) && np >= 1) {
+        if (!modoModal && featureFlags.useApiImoveis && Number.isFinite(np) && np >= 1) {
           const porPlanilha = await carregarImovelCadastroPorNumeroPlanilha(np);
           if (!ativo) return;
           if (porPlanilha.item) {
@@ -345,9 +365,10 @@ export function Imoveis() {
     return () => {
       ativo = false;
     };
-  }, [imovelId, unidadeAlvo, location.key, location.state]);
+  }, [imovelId, unidadeAlvo, location.key, location.state, modoModal]);
 
   useEffect(() => {
+    if (modoModal) return;
     const state = location.state && typeof location.state === 'object' ? location.state : null;
     const npNav = state?.numeroPlanilha != null ? Number(state.numeroPlanilha) : null;
     if (Number.isFinite(npNav) && npNav >= 1) {
@@ -357,7 +378,7 @@ export function Imoveis() {
     const nextImovelId = state?.imovelId != null ? Number(state.imovelId) : null;
     if (!Number.isFinite(nextImovelId) || nextImovelId <= 0) return;
     setImovelId(nextImovelId);
-  }, [location.key, location.state]);
+  }, [location.key, location.state, modoModal]);
 
   useEffect(() => {
     const raw = String(proprietarioNumeroPessoa ?? '').trim();
@@ -566,6 +587,7 @@ export function Imoveis() {
       } else {
         setApiSuccess('Fluxo em fallback legado/mock (sem persistência real).');
       }
+      onCadastroSalvo?.();
     } catch (e) {
       setApiError(e?.message || 'Falha ao salvar cadastro do imóvel.');
     } finally {
@@ -607,53 +629,65 @@ export function Imoveis() {
       ? 'Salve o cadastro do imóvel na API antes de abrir o financeiro (é necessário o id interno do registro).'
       : 'Movimentações do Financeiro com o mesmo Cod. cliente e Proc. (conta corrente do processo)';
 
+  const overlayModalClass = modoModal
+    ? 'fixed inset-0 z-[210] flex items-center justify-center bg-black/50 p-4'
+    : 'fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4';
+
   return (
-    <div className="min-h-full bg-slate-100 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d]">
-      <div className="max-w-[1600px] mx-auto px-4 sm:px-5 py-5 sm:py-7 pb-10">
-        <header className="flex items-start justify-between gap-4 mb-6 lg:mb-8">
-          <div className="min-w-0 space-y-1">
-            <p className="text-[11px] font-semibold uppercase tracking-widest text-cyan-700 dark:text-cyan-400/90">
-              Administração de imóveis
-            </p>
-            <h1 className="text-2xl sm:text-[1.65rem] font-bold text-slate-800 dark:text-slate-50 tracking-tight">
-              Imóveis em Administração
-            </h1>
-            <p className="text-sm text-slate-600 dark:text-slate-400 max-w-3xl leading-relaxed mt-2">
-              Cadastro do imóvel, locação, utilidades, conta para repasse e partes.
+    <div
+      className={
+        modoModal
+          ? 'bg-transparent'
+          : 'min-h-full bg-slate-100 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d]'
+      }
+    >
+      <div className={modoModal ? 'px-3 sm:px-4 py-4 pb-6' : 'max-w-[1600px] mx-auto px-4 sm:px-5 py-5 sm:py-7 pb-10'}>
+        {!modoModal ? (
+          <header className="flex items-start justify-between gap-4 mb-6 lg:mb-8">
+            <div className="min-w-0 space-y-1">
+              <p className="text-[11px] font-semibold uppercase tracking-widest text-cyan-700 dark:text-cyan-400/90">
+                Administração de imóveis
+              </p>
+              <h1 className="text-2xl sm:text-[1.65rem] font-bold text-slate-800 dark:text-slate-50 tracking-tight">
+                Imóveis em Administração
+              </h1>
+              <p className="text-sm text-slate-600 dark:text-slate-400 max-w-3xl leading-relaxed mt-2">
+                Cadastro do imóvel, locação, utilidades, conta para repasse e partes.
+                {featureFlags.useApiImoveis ? (
+                  <>
+                    {' '}
+                    Com a API ativa, o <strong className="text-slate-800 dark:text-slate-200 font-semibold">número do imóvel</strong> no topo é o{' '}
+                    <strong className="text-slate-800 dark:text-slate-200 font-semibold">mesmo da coluna A</strong> da planilha de importação. O{' '}
+                    <strong className="text-slate-800 dark:text-slate-200 font-semibold">nº Imóvel</strong> em Processos segue o vínculo por código de cliente e proc. Com{' '}
+                  </>
+                ) : (
+                  <>
+                    {' '}
+                    O <strong className="text-slate-800 dark:text-slate-200 font-semibold">nº Imóvel</strong> é o mesmo usado na tela{' '}
+                    <strong className="text-slate-800 dark:text-slate-200 font-semibold">Processos</strong> (vínculo por código de cliente e proc.). Com{' '}
+                  </>
+                )}
+                <strong className="text-slate-800 dark:text-slate-200 font-semibold">Código</strong> e <strong className="text-slate-800 dark:text-slate-200 font-semibold">Proc.</strong> preenchidos, use{' '}
+                <strong className="text-slate-800 dark:text-slate-200 font-semibold">Conta Corrente</strong> para ver lançamentos do Financeiro, consolidação mensal e alertas de aluguel/repasse.
+              </p>
+            </div>
+            <div className="flex flex-col gap-2 shrink-0 items-end">
               {featureFlags.useApiImoveis ? (
-                <>
-                  {' '}
-                  Com a API ativa, o <strong className="text-slate-800 dark:text-slate-200 font-semibold">número do imóvel</strong> no topo é o{' '}
-                  <strong className="text-slate-800 dark:text-slate-200 font-semibold">mesmo da coluna A</strong> da planilha de importação. O{' '}
-                  <strong className="text-slate-800 dark:text-slate-200 font-semibold">nº Imóvel</strong> em Processos segue o vínculo por código de cliente e proc. Com{' '}
-                </>
-              ) : (
-                <>
-                  {' '}
-                  O <strong className="text-slate-800 dark:text-slate-200 font-semibold">nº Imóvel</strong> é o mesmo usado na tela{' '}
-                  <strong className="text-slate-800 dark:text-slate-200 font-semibold">Processos</strong> (vínculo por código de cliente e proc.). Com{' '}
-                </>
-              )}
-              <strong className="text-slate-800 dark:text-slate-200 font-semibold">Código</strong> e <strong className="text-slate-800 dark:text-slate-200 font-semibold">Proc.</strong> preenchidos, use{' '}
-              <strong className="text-slate-800 dark:text-slate-200 font-semibold">Conta Corrente</strong> para ver lançamentos do Financeiro, consolidação mensal e alertas de aluguel/repasse.
-            </p>
-          </div>
-          <div className="flex flex-col gap-2 shrink-0 items-end">
-            {featureFlags.useApiImoveis ? (
-              <button
-                type="button"
-                onClick={() => navigate('/relatorio-imoveis')}
-                className={`${btnSecondary} inline-flex items-center gap-1.5 text-xs py-2 px-3`}
-              >
-                <FileSpreadsheet className="w-4 h-4 shrink-0" aria-hidden />
-                Relatório de imóveis
+                <button
+                  type="button"
+                  onClick={() => navigate('/relatorio-imoveis')}
+                  className={`${btnSecondary} inline-flex items-center gap-1.5 text-xs py-2 px-3`}
+                >
+                  <FileSpreadsheet className="w-4 h-4 shrink-0" aria-hidden />
+                  Relatório de imóveis
+                </button>
+              ) : null}
+              <button type="button" onClick={() => window.history.back()} className={btnIconGhost} aria-label="Fechar">
+                <X className="w-5 h-5" />
               </button>
-            ) : null}
-            <button type="button" onClick={() => window.history.back()} className={btnIconGhost} aria-label="Fechar">
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-        </header>
+            </div>
+          </header>
+        ) : null}
 
         <div className="imoveis-admin-sheet overflow-visible">
           <ImoveisCadastroView
@@ -772,18 +806,28 @@ export function Imoveis() {
             setLinkVistoria={setLinkVistoria}
             onSalvar={salvarCadastroAtual}
             onAbrirProc={abrirProcessoDoImovel}
-            onContaCorrente={() =>
+            onContaCorrente={() => {
+              const np = Number(imovelId);
+              const idApi = _apiImovelId != null ? Number(_apiImovelId) : null;
+              if (modoModal && onFecharModal) onFecharModal();
               navigate({
                 pathname: '/imoveis/financeiro',
                 hash: '#extrato-imoveis',
-                state: { imovelId: _apiImovelId ?? imovelId },
-              })
-            }
+                search:
+                  Number.isFinite(np) && np >= 1
+                    ? `?imovel=${np}${Number.isFinite(idApi) && idApi >= 1 ? `&imovelApi=${idApi}` : ''}`
+                    : '',
+                state: {
+                  imovelId: np,
+                  imovelIdApi: Number.isFinite(idApi) && idApi >= 1 ? idApi : null,
+                },
+              });
+            }}
             contaCorrenteDisabled={contaCorrenteDisabled}
             contaCorrenteTitle={contaCorrenteTitle}
             onGerenciarIptu={() => navigate(`/iptu/${_apiImovelId}`)}
             onRelatorio={() => navigate('/relatorio-imoveis')}
-            onFechar={() => window.history.back()}
+            onFechar={modoModal && onFecharModal ? onFecharModal : () => window.history.back()}
             onAbrirContrato={() => setShowModalContrato(true)}
             onAbrirIptu={() => setShowModalIptu(true)}
             onVincularProprietario={() =>
@@ -826,7 +870,7 @@ export function Imoveis() {
       {/* Modal Informações sobre o Contrato */}
       {showModalContrato && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          className={overlayModalClass}
           onClick={() => setShowModalContrato(false)}
           role="dialog"
           aria-modal="true"
@@ -955,7 +999,7 @@ export function Imoveis() {
       {/* Modal Informações sobre o IPTU (legado; desligado quando FEATURE_IPTU_NOVO) */}
       {!FEATURE_IPTU_NOVO && showModalIptu && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          className={overlayModalClass}
           onClick={() => setShowModalIptu(false)}
           role="dialog"
           aria-modal="true"

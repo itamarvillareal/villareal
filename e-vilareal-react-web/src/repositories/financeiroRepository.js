@@ -17,7 +17,10 @@ import {
   savePersistedExtratosFinanceiro,
 } from '../data/financeiroData.js';
 import { resolverProcessoId } from './processosRepository.js';
-import { listarLancamentosNovosDedupe, sanitizarLancamentoImportacaoExtrato } from '../utils/ofx.js';
+import {
+  analisarLancamentosNovosDedupe,
+  sanitizarLancamentoImportacaoExtrato,
+} from '../utils/ofx.js';
 
 function parseBrDateToIso(v) {
   const s = String(v ?? '').trim();
@@ -250,20 +253,42 @@ export async function listarLancamentosFinanceiro(filtros = {}, opts = {}) {
 
 /** Saldo acumulado da conta bancária (todos os lançamentos importados). */
 export async function obterSaldoBancoFinanceiro(numeroBanco, opts = {}) {
-  const { signal } = opts;
+  const { signal, dataReferencia } = opts;
   if (!featureFlags.useApiFinanceiro || numeroBanco == null) return null;
   return request('/api/financeiro/lancamentos/saldo-banco', {
     signal,
-    query: { numeroBanco: Number(numeroBanco) },
+    query: {
+      numeroBanco: Number(numeroBanco),
+      ...(dataReferencia ? { data: String(dataReferencia) } : {}),
+    },
   });
 }
 
-export async function listarLancamentosFinanceiroPaginados(filtros = {}, opts = {}) {
+/** Saldo ao fim de cada dia do mês (todos os dias do calendário). */
+export async function obterResumoConsolidadoContasApi(opts = {}) {
+  const { signal, meses = 12 } = opts;
+  if (!featureFlags.useApiFinanceiro) return { totaisPorConta: {}, meses: [] };
+  return request('/api/financeiro/lancamentos/resumo-consolidado', {
+    signal,
+    query: { meses },
+  });
+}
+
+export async function obterSaldoBancoMensalFinanceiro(numeroBanco, ano, mes, opts = {}) {
   const { signal } = opts;
-  if (!featureFlags.useApiFinanceiro) {
-    return { content: [], totalElements: 0, totalPages: 0, size: filtros.size ?? 20, number: 0 };
-  }
-  const query = {
+  if (!featureFlags.useApiFinanceiro || numeroBanco == null) return null;
+  return request('/api/financeiro/lancamentos/saldo-banco-mensal', {
+    signal,
+    query: {
+      numeroBanco: Number(numeroBanco),
+      ano: Number(ano),
+      mes: Number(mes),
+    },
+  });
+}
+
+function queryLancamentosPaginados(filtros = {}) {
+  return {
     page: filtros.page != null ? Math.max(0, Number(filtros.page) || 0) : 0,
     size: clampCadastroPessoasPageSize(filtros.size ?? 100),
     sort: filtros.sort ?? 'dataLancamento,desc',
@@ -280,7 +305,102 @@ export async function listarLancamentosFinanceiroPaginados(filtros = {}, opts = 
     ano: filtros.ano ?? undefined,
     mes: filtros.mes ?? undefined,
   };
-  return request('/api/financeiro/lancamentos/paginada', { query, signal });
+}
+
+function erroRotaExtratoLegada(err) {
+  const msg = String(err?.message ?? '');
+  return (
+    msg.includes('MethodArgumentTypeMismatch') ||
+    msg.includes('extrato-paginada') ||
+    msg.includes('extrato/paginada')
+  );
+}
+
+function erroRotaInboxClassificarLegada(err) {
+  const msg = String(err?.message ?? '');
+  return (
+    msg.includes('404') ||
+    (/No static resource|NoResourceFound/i.test(msg) && /inbox\/classificar/i.test(msg))
+  );
+}
+
+async function listarInboxClassificarPaginaLegada(filtros = {}, opts = {}) {
+  const { signal } = opts;
+  const pageRes = await listarLancamentosFinanceiroPaginados(
+    {
+      ...filtros,
+      etapa: 'IMPORTADO',
+    },
+    { signal },
+  );
+  const content = pageRes?.content ?? [];
+  const ids = content.map((l) => Number(l?.id)).filter((id) => Number.isFinite(id) && id > 0);
+  let sugestoes = {};
+  const LOTE = 50;
+  for (let i = 0; i < ids.length; i += LOTE) {
+    const chunk = ids.slice(i, i + LOTE);
+    const sugRes = await sugestoesClassificacaoLoteApi(chunk, { signal });
+    if (sugRes?.sugestoes && typeof sugRes.sugestoes === 'object') {
+      sugestoes = { ...sugestoes, ...sugRes.sugestoes };
+    }
+  }
+  return {
+    content,
+    totalElements: Number(pageRes?.totalElements ?? content.length),
+    totalPages: Number(pageRes?.totalPages ?? 1),
+    page: Number(pageRes?.number ?? pageRes?.page ?? filtros.page ?? 0),
+    size: Number(pageRes?.size ?? filtros.size ?? 50),
+    sugestoes,
+  };
+}
+
+/** Grade do extrato — DTO enxuto (`/extrato/paginada`); fallback para `/paginada` se o backend ainda não foi reiniciado. */
+export async function listarLancamentosExtratoPaginados(filtros = {}, opts = {}) {
+  const { signal } = opts;
+  if (!featureFlags.useApiFinanceiro) {
+    return { content: [], totalElements: 0, totalPages: 0, size: filtros.size ?? 20, number: 0 };
+  }
+  const query = queryLancamentosPaginados(filtros);
+  try {
+    return await request('/api/financeiro/lancamentos/extrato/paginada', { query, signal });
+  } catch (e) {
+    if (erroRotaExtratoLegada(e) || String(e?.message ?? '').includes('404')) {
+      return request('/api/financeiro/lancamentos/paginada', { query, signal });
+    }
+    throw e;
+  }
+}
+
+export async function listarInboxClassificarPaginaApi(filtros = {}, opts = {}) {
+  const { signal } = opts;
+  if (!featureFlags.useApiFinanceiro) {
+    return { content: [], totalElements: 0, totalPages: 0, sugestoes: {} };
+  }
+  const query = {
+    page: filtros.page != null ? Math.max(0, Number(filtros.page) || 0) : 0,
+    size: clampCadastroPessoasPageSize(filtros.size ?? 50),
+    sort: filtros.sort ?? 'dataLancamento,desc',
+    numeroBanco: filtros.numeroBanco ?? undefined,
+    ano: filtros.ano ?? undefined,
+    mes: filtros.mes ?? undefined,
+  };
+  try {
+    return await request('/api/financeiro/lancamentos/inbox/classificar', { query, signal });
+  } catch (e) {
+    if (!erroRotaInboxClassificarLegada(e)) throw e;
+    return listarInboxClassificarPaginaLegada({ ...filtros, ...query }, { signal });
+  }
+}
+
+export async function listarLancamentosFinanceiroPaginados(filtros = {}, opts = {}) {
+  const { signal } = opts;
+  if (!featureFlags.useApiFinanceiro) {
+    return { content: [], totalElements: 0, totalPages: 0, size: filtros.size ?? 20, number: 0 };
+  }
+  return request('/api/financeiro/lancamentos/paginada', {
+    query: queryLancamentosPaginados(filtros),
+    signal,
+  });
 }
 
 export async function buscarLancamentoFinanceiroApi(id, opts = {}) {
@@ -402,6 +522,10 @@ export async function limparExtratoCartaoFinanceiroApi(nomeCartao, numeroCartao)
   return request('/api/financeiro/cartoes/limpar-extrato', { method: 'POST', body });
 }
 
+/**
+ * Carga total de extratos (legado / relatórios). Com API ativa o backend limita a 5000 lançamentos
+ * em GET /lancamentos — preferir telas paginadas (/financeiro/extrato).
+ */
 export async function carregarExtratosFinanceiroApiFirst({ signal } = {}) {
   if (!featureFlags.useApiFinanceiro) {
     const persisted = loadPersistedExtratosFinanceiro();
@@ -497,10 +621,15 @@ export async function persistirImportacaoOfxFinanceiroApi({
     }
   }
 
-  const paraCriar =
+  const analiseDedupe =
     modo === 'substituir'
-      ? transacoesOfx || []
-      : listarLancamentosNovosDedupe(transacoesAntesNoBanco, transacoesOfx);
+      ? {
+          novos: transacoesOfx || [],
+          ignorados: 0,
+          porDia: new Map(),
+        }
+      : analisarLancamentosNovosDedupe(transacoesAntesNoBanco, transacoesOfx);
+  const paraCriar = analiseDedupe.novos;
 
   const nb =
     numeroBanco != null && Number.isFinite(Number(numeroBanco)) ? Number(numeroBanco) : null;
@@ -532,6 +661,9 @@ export async function persistirImportacaoOfxFinanceiroApi({
     removidos,
     erros,
     savedPairs,
+    ignorados: analiseDedupe.ignorados,
+    totalOfx: (transacoesOfx || []).length,
+    porDiaDedupe: Object.fromEntries(analiseDedupe.porDia),
   };
 }
 
@@ -557,19 +689,99 @@ export async function limparExtratoBancoFinanceiroApi(nomeBanco, numeroBanco) {
   return request('/api/financeiro/lancamentos/limpar-extrato', { method: 'POST', body });
 }
 
-export async function carregarResumoContaCorrenteProcesso(processoId) {
-  if (!featureFlags.useApiFinanceiro || !Number(processoId)) return null;
+/** Pessoa id = dígitos do código (00000938 → 938), mesmo critério do extrato / vínculo na planilha. */
+export function pessoaIdDesdeCodigoClienteFinanceiro(codigoCliente) {
+  const codNorm = normalizarCodigoClienteFinanceiro(codigoCliente);
+  if (!codNorm) return null;
+  const n = Number(codNorm);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/**
+ * Mesmo critério da Conta Corrente local ({@code getLancamentosContaCorrente}): cod. cliente + proc.,
+ * não só o processoId da resolução oficial (que pode apontar para outra pessoa).
+ */
+export function lancamentoBateContaCorrenteProcesso(l, { codigoNorm, procNorm, resolvedProcessoId }) {
+  const codApi = codClienteExibicaoDesdeApi(l);
+  if (codigoNorm && codApi !== codigoNorm) return false;
+
+  if (procNorm === '0') {
+    const ni = l.numeroInternoProcesso;
+    return ni == null || ni === '' || Number(ni) === 0;
+  }
+
+  if (procNorm) {
+    const ni = Number(l.numeroInternoProcesso);
+    if (Number.isFinite(ni) && String(ni) === procNorm) return true;
+    if (resolvedProcessoId && Number(l.processoId) === resolvedProcessoId) return true;
+    return false;
+  }
+
+  return true;
+}
+
+export async function carregarResumoContaCorrenteProcesso(
+  processoId,
+  { codigoCliente, numeroInterno } = {},
+) {
+  if (!featureFlags.useApiFinanceiro) return null;
+  const codigoNorm = normalizarCodigoClienteFinanceiro(codigoCliente);
+  const procNorm = normalizarProcFinanceiro(numeroInterno);
+  if (codigoNorm && procNorm !== '') {
+    const rows = await listarLancamentosProcessoApiFirst({
+      processoId,
+      codigoCliente,
+      numeroInterno,
+    });
+    const saldo = (rows || []).reduce((s, r) => s + (Number(r.valor) || 0), 0);
+    return { saldo, totalLancamentos: rows.length };
+  }
+  if (!Number(processoId)) return null;
   return request(`/api/financeiro/lancamentos/resumo-processo/${Number(processoId)}`);
+}
+
+function mesclarLancamentosApiSemDuplicar(partes) {
+  const byKey = new Map();
+  for (const list of partes) {
+    for (const l of list || []) {
+      if (l?.id == null) continue;
+      const key =
+        l.cartaoId != null || String(l.cartaoNome ?? '').trim() !== '' ? `c-${l.id}` : `b-${l.id}`;
+      byKey.set(key, l);
+    }
+  }
+  return [...byKey.values()];
 }
 
 /** Leitura de transações por processo em modo API-first, aceitando chave natural como compatibilidade. */
 export async function listarLancamentosProcessoApiFirst({ processoId, codigoCliente, numeroInterno }) {
   if (!featureFlags.useApiFinanceiro) return [];
+  const codigoNorm = normalizarCodigoClienteFinanceiro(codigoCliente);
+  const procNorm = normalizarProcFinanceiro(numeroInterno);
+  const pessoaId = pessoaIdDesdeCodigoClienteFinanceiro(codigoCliente);
   const resolvedProcessoId = await resolverProcessoId({ processoId, codigoCliente, numeroInterno });
-  if (!resolvedProcessoId) return [];
-  const rows = await listarLancamentosFinanceiro({ processoId: resolvedProcessoId });
+
+  const consultas = [];
+  if (pessoaId) {
+    consultas.push(listarLancamentosFinanceiro({ clienteId: pessoaId }));
+    consultas.push(listarLancamentosCartaoFinanceiro({ clienteId: pessoaId }));
+  }
+  if (resolvedProcessoId) {
+    consultas.push(listarLancamentosFinanceiro({ processoId: resolvedProcessoId }));
+    consultas.push(listarLancamentosCartaoFinanceiro({ processoId: resolvedProcessoId }));
+  }
+
+  const rows = consultas.length > 0 ? mesclarLancamentosApiSemDuplicar(await Promise.all(consultas)) : [];
+
+  const filtered = rows.filter((l) =>
+    lancamentoBateContaCorrenteProcesso(l, { codigoNorm, procNorm, resolvedProcessoId }),
+  );
+
   const { contaToLetra } = contaMaps();
-  return (rows || []).map((l) => mapApiLancamentoToUi(l, contaToLetra));
+  const ehCartao = (l) => l.cartaoId != null || String(l.cartaoNome ?? '').trim() !== '';
+  return filtered.map((l) =>
+    ehCartao(l) ? mapApiLancamentoCartaoToUi(l, contaToLetra) : mapApiLancamentoToUi(l, contaToLetra),
+  );
 }
 
 /** Cache local dos extratos: com API ativa continua útil para 1ª pintura e se o GET falhar ou atrasar. */
@@ -609,18 +821,39 @@ export async function listarContadoresEtapaApi(opts = {}) {
 
 export async function listarParesSugeridosCompensacaoApi(opts = {}) {
   if (!featureFlags.useApiFinanceiro) return { pares: [], totalPares: 0, totalPages: 0 };
-  const { page = 0, size = 50, numeroBanco, ano, mes, signal } = opts;
+  const {
+    page = 0,
+    size = 50,
+    numeroBanco,
+    ano,
+    mes,
+    apenasInterbancario,
+    apenasMesmoBanco,
+    apenasMesmoDiaCalendario,
+    apenasDiaDivergente,
+    signal,
+  } = opts;
   return request('/api/financeiro/lancamentos/pares-sugeridos', {
-    query: { page, size, numeroBanco, ano, mes },
+    query: {
+      page,
+      size,
+      numeroBanco,
+      ano,
+      mes,
+      apenasInterbancario: apenasInterbancario ? true : undefined,
+      apenasMesmoBanco: apenasMesmoBanco ? true : undefined,
+      apenasMesmoDiaCalendario: apenasMesmoDiaCalendario ? true : undefined,
+      apenasDiaDivergente: apenasDiaDivergente ? true : undefined,
+    },
     signal,
   });
 }
 
 export async function listarGruposCompensacaoInconsistentesApi(opts = {}) {
   if (!featureFlags.useApiFinanceiro) return { grupos: [], total: 0, totalPages: 0 };
-  const { page = 0, size = 20, signal } = opts;
+  const { page = 0, size = 20, numeroBanco, ano, mes, signal } = opts;
   return request('/api/financeiro/lancamentos/grupos-compensacao/inconsistentes', {
-    query: { page, size },
+    query: { page, size, numeroBanco, ano, mes },
     signal,
   });
 }

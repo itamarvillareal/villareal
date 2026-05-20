@@ -6,7 +6,9 @@ import {
   parseNomeArquivoFase21_1,
   parseNomeArquivoObservacao146_1,
   parseNomeArquivoStatusProcesso,
+  resolverAtivoFromStatusProcessoTxt,
 } from './gerais-fase-processo-txt.mjs';
+import { montarPatchStatusProcesso } from './sincronizar-status-processo-import-real.mjs';
 
 describe('parseNomeArquivoFase21_1', () => {
   it('extrai cod8 e proc entre 3.º e 4.º ponto', () => {
@@ -49,6 +51,30 @@ describe('ehStatusProcessoInativo', () => {
   it('reconhece INATIVO no txt de status', () => {
     expect(ehStatusProcessoInativo('INATIVO')).toBe(true);
     expect(ehStatusProcessoInativo('ATIVO')).toBe(false);
+  });
+});
+
+describe('resolverAtivoFromStatusProcessoTxt', () => {
+  it('INATIVO → ativo false; resto → ativo true', () => {
+    expect(resolverAtivoFromStatusProcessoTxt('INATIVO').ativo).toBe(false);
+    expect(resolverAtivoFromStatusProcessoTxt('INATIVO').statusInativo).toBe(true);
+    expect(resolverAtivoFromStatusProcessoTxt('ATIVO').ativo).toBe(true);
+    expect(resolverAtivoFromStatusProcessoTxt('').ativo).toBe(true);
+    expect(resolverAtivoFromStatusProcessoTxt(null, { temArquivo: false }).ativo).toBe(true);
+  });
+});
+
+describe('montarPatchStatusProcesso', () => {
+  it('limpa fase e obs quando inativo', () => {
+    const p = montarPatchStatusProcesso(resolverAtivoFromStatusProcessoTxt('INATIVO'));
+    expect(p.ativo).toBe(false);
+    expect(p.observacaoFase).toBeNull();
+    expect(p.fase).toBeNull();
+  });
+  it('mantém ativo sem limpar fase', () => {
+    const p = montarPatchStatusProcesso(resolverAtivoFromStatusProcessoTxt('ATIVO'));
+    expect(p.ativo).toBe(true);
+    expect(p).not.toHaveProperty('observacaoFase');
   });
 });
 

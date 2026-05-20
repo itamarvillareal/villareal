@@ -581,7 +581,11 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       return;
     }
     let ativo = true;
-    void carregarResumoContaCorrenteProcesso(processoApiId)
+    const procResumo = contaCorrenteModo === 'proc0' ? 0 : Number(processo) || 0;
+    void carregarResumoContaCorrenteProcesso(processoApiId, {
+      codigoCliente,
+      numeroInterno: procResumo,
+    })
       .then((r) => {
         if (!ativo) return;
         setResumoContaCorrenteApi(r || null);
@@ -594,7 +598,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     return () => {
       ativo = false;
     };
-  }, [processoApiId, modalContaCorrente]);
+  }, [processoApiId, modalContaCorrente, codigoCliente, processo, contaCorrenteModo]);
 
   useEffect(() => {
     const h = () => setContaCorrenteListaApiTick((t) => t + 1);
@@ -2769,12 +2773,12 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                   >
                     <CampoNumeroComContador
                       variant="embedded"
-                      className="w-[5.5rem] shrink-0"
+                      className="w-[7.25rem] shrink-0"
                       value={processo}
                       onChange={setProcesso}
                       min={1}
                       ariaLabel="Número do processo"
-                      inputClassName="text-center"
+                      inputClassName="text-center min-w-[3ch]"
                     />
                   </Field>
                   <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer shrink-0">

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   agruparLancamentosClassificacao,
   chaveGrupoClassificacao,
+  filtrarSugestoesClassificacao,
   melhorSugestao,
 } from './inboxClassificacaoGrupos.js';
 
@@ -50,6 +51,27 @@ describe('agruparLancamentosClassificacao', () => {
     const { semSugestao, grupos } = agruparLancamentosClassificacao(lancamentos, {});
     expect(semSugestao).toHaveLength(1);
     expect(grupos).toHaveLength(0);
+  });
+
+  it('ignora sugestão em conta N (desconhecido)', () => {
+    const lancamentos = [{ id: 1, descricao: 'PIX', numeroBanco: 1, dataLancamento: '2026-05-17' }];
+    const { semSugestao, individuais, grupos } = agruparLancamentosClassificacao(lancamentos, {
+      1: [{ contaContabilId: 5, contaCodigo: 'N', confianca: 'ALTA' }],
+    });
+    expect(semSugestao).toHaveLength(1);
+    expect(individuais).toHaveLength(0);
+    expect(grupos).toHaveLength(0);
+  });
+});
+
+describe('filtrarSugestoesClassificacao', () => {
+  it('remove conta N', () => {
+    expect(
+      filtrarSugestoesClassificacao([
+        { contaContabilId: 1, contaCodigo: 'N' },
+        { contaContabilId: 2, contaCodigo: 'A' },
+      ]),
+    ).toHaveLength(1);
   });
 });
 

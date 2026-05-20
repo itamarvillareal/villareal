@@ -89,6 +89,8 @@ export function ModalVinculoClienteProcFinanceiro({
   resumoLancamento,
   onAplicar,
   modoContaEscritorio = false,
+  titulo = null,
+  placeholderBuscaCliente = null,
 }) {
   const [termo, setTermo] = useState('');
   const [passo, setPasso] = useState(1);
@@ -273,8 +275,13 @@ export function ModalVinculoClienteProcFinanceiro({
 
   if (!aberto) return null;
 
-  const tituloWizard = 'Vincular (Conta Escritório — letra A)';
-  const tituloLivre = 'Vincular cliente e processo';
+  const tituloWizard = titulo ?? 'Vincular (Conta Escritório — letra A)';
+  const tituloLivre = titulo ?? 'Vincular cliente e processo';
+  const placeholderCliente =
+    placeholderBuscaCliente ??
+    (modoContaEscritorio
+      ? 'Nome, código (8 dígitos) ou nº interno do processo…'
+      : 'Ex.: nome da parte, réu, CPF ou nº do processo…');
 
   return (
     <div
@@ -299,10 +306,10 @@ export function ModalVinculoClienteProcFinanceiro({
             </h2>
             {modoContaEscritorio ? (
               <p className="text-xs text-slate-600 mt-1">
-                <strong>1.</strong> Pesquise o cliente por <strong>nome</strong> ou <strong>código</strong>.{' '}
-                <strong>2.</strong> Escolha o processo (use a busca por <strong>autor</strong>, <strong>réu</strong> ou{' '}
-                <strong>nº do processo</strong> quando houver muitos). Depois clique na linha para vincular{' '}
-                <strong>Cod. cliente</strong> e <strong>Proc.</strong>
+                <strong>1.</strong> Pesquise por <strong>nome</strong>, <strong>código (8 dígitos)</strong> ou{' '}
+                <strong>nº interno do processo</strong>. <strong>2.</strong> Escolha o processo (filtre por{' '}
+                <strong>autor</strong>, <strong>réu</strong> ou <strong>nº do processo</strong>). Clique na linha para
+                vincular <strong>código</strong> e <strong>proc.</strong> ao lançamento.
               </p>
             ) : (
               <p className="text-xs text-slate-600 mt-1">
@@ -352,7 +359,7 @@ export function ModalVinculoClienteProcFinanceiro({
                       type="search"
                       value={termo}
                       onChange={(e) => setTermo(e.target.value)}
-                      placeholder="Nome do cliente ou código (mín. 2 caracteres)…"
+                      placeholder={placeholderCliente}
                       className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
                       autoFocus
                     />

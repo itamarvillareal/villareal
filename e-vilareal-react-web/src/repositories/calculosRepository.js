@@ -26,7 +26,15 @@ export async function fetchCalculoRodada(codigoCliente8, processo, dimensao, opt
   const c = encodeURIComponent(String(codigoCliente8 ?? '').trim());
   const p = encodeURIComponent(String(processo ?? '').trim());
   const d = encodeURIComponent(String(dimensao ?? '').trim());
-  const response = await fetch(`${API_BASE_URL}/api/calculos/rodadas/${c}/${p}/${d}`, {
+  const query = {};
+  if (opts.titulosPage != null) query.titulosPage = opts.titulosPage;
+  if (opts.titulosLimit != null) query.titulosLimit = opts.titulosLimit;
+  const qs = Object.entries(query)
+    .filter(([, v]) => v !== undefined && v !== null && String(v) !== '')
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+    .join('&');
+  const path = `/api/calculos/rodadas/${c}/${p}/${d}${qs ? `?${qs}` : ''}`;
+  const response = await fetch(`${API_BASE_URL}${path}`, {
     method: 'GET',
     headers: { ...buildDefaultApiHeaders() },
     signal: opts.signal,

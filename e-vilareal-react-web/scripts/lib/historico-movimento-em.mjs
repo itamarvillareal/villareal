@@ -41,7 +41,7 @@ export function parseMovimentoEmIso(val, mmPastaHint = null) {
   if (m) return `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}.000Z`;
   m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (m) return `${m[1]}-${m[2]}-${m[3]}T12:00:00.000Z`;
-  const slash = parseDataSlashComHint(s, mmPastaHint);
+  const slash = parseDataSlashComHint(s, mmPastaHint, { preferMmDd: true });
   if (slash) {
     return `${slash.yyyy}-${pad2(slash.mo)}-${pad2(slash.dd)}T12:00:00.000Z`;
   }

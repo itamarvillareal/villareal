@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { featureFlags } from '../../../config/featureFlags.js';
 import {
@@ -6,16 +6,21 @@ import {
   aplicarSugestoesLoteApi,
   listarContasFinanceiro,
   listarGruposCompensacaoInconsistentesApi,
+  listarInboxClassificarPaginaApi,
   listarLancamentosFinanceiroPaginados,
   listarParesSugeridosCompensacaoApi,
   listarSugestoesPagamentoFaturaApi,
   obterSaudeFinanceiroApi,
   parearCompensacaoApi,
-  sugestoesClassificacaoLoteApi,
 } from '../../../repositories/financeiroRepository.js';
 import { ETAPAS, INBOX_TIPOS } from '../constants/financeiroConstants.js';
 import { useFinanceiro } from '../FinanceiroContext.jsx';
 import { PeriodoSelector } from '../shared/PeriodoSelector.jsx';
+import {
+  periodoParaAnoMesApi,
+  periodoParaMesRefObrigatorio,
+  periodoParaQueryApi,
+} from '../shared/periodoFinanceiro.js';
 import { Pagination } from '../shared/Pagination.jsx';
 import { useFinanceiroToast } from '../shared/Toast.jsx';
 import { InboxTabs } from './InboxTabs.jsx';
@@ -23,50 +28,65 @@ import { InboxBatchBar } from './InboxBatchBar.jsx';
 import { InboxEmptyState } from './InboxEmptyState.jsx';
 import { ClassificacaoCard } from './cards/ClassificacaoCard.jsx';
 import { ClassificacaoGroupCard } from './cards/ClassificacaoGroupCard.jsx';
-import { agruparLancamentosClassificacao } from './inboxClassificacaoGrupos.js';
+import {
+  agruparLancamentosClassificacao,
+  filtrarSugestoesClassificacao,
+  melhorSugestao,
+} from './inboxClassificacaoGrupos.js';
 import { CompensacaoCard } from './cards/CompensacaoCard.jsx';
 import { InconsistenciaCard } from './cards/InconsistenciaCard.jsx';
 import { dispatchRefreshPendentes } from '../hooks/useKeyboardShortcuts.js';
 import { scrollInboxCardIntoView, useInboxKeyboard } from '../hooks/useInboxKeyboard.js';
-import { mapLancamentoInbox, parKey } from './inboxMappers.js';
+import {
+  filtrarParesCompensacao,
+  mapLancamentoInbox,
+  mapParCompensacaoParaUi,
+  parKey,
+} from './inboxMappers.js';
 
 const TIPOS_VALIDOS = new Set(Object.values(INBOX_TIPOS));
 const FADE_MS = 280;
+const COMPENSAR_PAGE_SIZE = 25;
+const COUNTS_DEBOUNCE_MS = 500;
 
-function mesParaAnoMes(yyyyMm) {
-  if (!yyyyMm) return {};
-  const [ano, mes] = String(yyyyMm).split('-').map(Number);
-  if (!ano || !mes) return {};
-  return { ano, mes };
+/** Valores de filters.tipoPar (URL ?tipoPar=) na aba Compensar. */
+const TIPO_PAR_TODOS = 'TODOS';
+
+const TIPO_DIA_TODOS = 'TODOS';
+
+function queryFiltroTipoPar(tipoPar) {
+  if (tipoPar === 'INTERBANCARIO') {
+    return { apenasInterbancario: true, apenasMesmoBanco: false };
+  }
+  if (tipoPar === 'MESMO_BANCO') {
+    return { apenasInterbancario: false, apenasMesmoBanco: true };
+  }
+  return { apenasInterbancario: false, apenasMesmoBanco: false };
+}
+
+function queryFiltroTipoDia(tipoDia) {
+  if (tipoDia === 'MESMO_DIA') {
+    return { apenasMesmoDiaCalendario: true, apenasDiaDivergente: false };
+  }
+  if (tipoDia === 'DIVERGENTE') {
+    return { apenasMesmoDiaCalendario: false, apenasDiaDivergente: true };
+  }
+  return { apenasMesmoDiaCalendario: false, apenasDiaDivergente: false };
 }
 
 function normalizeSugestoesMap(raw) {
   if (!raw || typeof raw !== 'object') return {};
   const out = {};
   for (const [k, v] of Object.entries(raw)) {
-    out[Number(k)] = Array.isArray(v) ? v : [];
+    out[Number(k)] = filtrarSugestoesClassificacao(Array.isArray(v) ? v : []);
   }
   return out;
-}
-
-function melhorSugestao(lista) {
-  if (!lista?.length) return null;
-  const ordem = { ALTA: 0, MEDIA: 1, BAIXA: 2 };
-  return [...lista].sort(
-    (a, b) =>
-      (ordem[String(a.confianca).toUpperCase()] ?? 9) - (ordem[String(b.confianca).toUpperCase()] ?? 9),
-  )[0];
-}
-
-function grupoEnvolveBanco(grupo, numeroBanco) {
-  if (!numeroBanco) return true;
-  return (grupo?.lancamentos ?? []).some((l) => Number(l.numeroBanco) === numeroBanco);
 }
 
 export function InboxPage() {
   const { tipo: tipoParam } = useParams();
   const tipo = TIPOS_VALIDOS.has(tipoParam) ? tipoParam : INBOX_TIPOS.classificar;
-  const { bancos, bancoAtivo, filters, setBanco, setMes } = useFinanceiro();
+  const { bancos, bancoAtivo, filters, setBanco, setMes, setTipoPar, setTipoDia } = useFinanceiro();
   const toast = useFinanceiroToast();
 
   const [page, setPage] = useState(0);
@@ -91,16 +111,45 @@ export function InboxPage() {
   const [fading, setFading] = useState(() => new Set());
   const [focusedIndex, setFocusedIndex] = useState(-1);
   const listRef = useRef(null);
+  const countsDebounceRef = useRef(null);
 
-  const periodo = useMemo(() => mesParaAnoMes(filters.mes), [filters.mes]);
+  const periodo = useMemo(() => periodoParaQueryApi(filters.mes), [filters.mes]);
+  const periodoAnoMes = useMemo(() => periodoParaAnoMesApi(filters.mes), [filters.mes]);
   const bancoFiltro = useMemo(() => {
     if (!Number.isFinite(bancoAtivo)) return undefined;
     return bancoAtivo;
   }, [bancoAtivo]);
 
+  const filtroTipoPar = filters.tipoPar ?? TIPO_PAR_TODOS;
+  const filtroTipoDia = filters.tipoDia ?? TIPO_DIA_TODOS;
+  const queryTipoPar = useMemo(() => queryFiltroTipoPar(filtroTipoPar), [filtroTipoPar]);
+  const queryTipoDia = useMemo(() => queryFiltroTipoDia(filtroTipoDia), [filtroTipoDia]);
+  const queryCompensar = useMemo(
+    () => ({ ...queryTipoPar, ...queryTipoDia }),
+    [queryTipoPar, queryTipoDia],
+  );
+
+  const chaveFiltrosCompensar = useMemo(
+    () => [filters.mes, bancoFiltro ?? '', filtroTipoPar, filtroTipoDia].join('|'),
+    [filters.mes, bancoFiltro, filtroTipoPar, filtroTipoDia],
+  );
+
+  const chaveListaCompensar = useMemo(
+    () =>
+      [
+        chaveFiltrosCompensar,
+        page,
+        Math.min(pageSize, COMPENSAR_PAGE_SIZE),
+      ].join('|'),
+    [chaveFiltrosCompensar, page, pageSize],
+  );
+
+  const cargaCompensarRef = useRef(null);
+  const chaveFiltrosCompensarRef = useRef(chaveFiltrosCompensar);
+
   const loadCounts = useCallback(
     async (signal) => {
-      const [classificarRes, compensarRes, fatura, saude, inconsistentesRes] = await Promise.all([
+      const [classificarRes, fatura, saude, inconsistentesRes] = await Promise.all([
         listarLancamentosFinanceiroPaginados(
           {
             page: 0,
@@ -111,36 +160,48 @@ export function InboxPage() {
           },
           { signal },
         ),
-        listarParesSugeridosCompensacaoApi({
+        listarSugestoesPagamentoFaturaApi(periodoParaMesRefObrigatorio(filters.mes), {
+          signal,
           page: 0,
           size: 1,
-          ...periodo,
+        }),
+        obterSaudeFinanceiroApi({ signal }),
+        listarGruposCompensacaoInconsistentesApi({
+          page: 0,
+          size: 1,
+          ...periodoAnoMes,
           numeroBanco: bancoFiltro,
           signal,
         }),
-        listarSugestoesPagamentoFaturaApi(filters.mes, { signal, page: 0, size: 1 }),
-        obterSaudeFinanceiroApi({ signal }),
-        bancoFiltro
-          ? listarGruposCompensacaoInconsistentesApi({ page: 0, size: 100, signal })
-          : Promise.resolve(null),
       ]);
 
-      let inconsistentes = Number(saude?.gruposInconsistentes ?? 0);
-      if (bancoFiltro && inconsistentesRes) {
-        inconsistentes = (inconsistentesRes.grupos ?? []).filter((g) =>
-          grupoEnvolveBanco(g, bancoFiltro),
-        ).length;
-      }
-
-      setCounts({
+      setCounts((prev) => ({
         [INBOX_TIPOS.classificar]: Number(classificarRes?.totalElements ?? 0),
-        [INBOX_TIPOS.compensar]: Number(compensarRes?.totalPares ?? compensarRes?.pares?.length ?? 0),
+        [INBOX_TIPOS.compensar]:
+          tipo === INBOX_TIPOS.compensar && prev[INBOX_TIPOS.compensar] != null
+            ? prev[INBOX_TIPOS.compensar]
+            : Number(saude?.paresOrfaosSugeridos ?? 0),
         [INBOX_TIPOS.fatura]: Number(fatura?.totalSugestoes ?? 0),
-        [INBOX_TIPOS.inconsistentes]: inconsistentes,
-      });
+        [INBOX_TIPOS.inconsistentes]: Number(inconsistentesRes?.total ?? 0),
+      }));
     },
-    [filters.mes, periodo, bancoFiltro],
+    [filters.mes, periodo, periodoAnoMes, bancoFiltro, tipo],
   );
+
+  const scheduleLoadCounts = useCallback(() => {
+    if (countsDebounceRef.current) clearTimeout(countsDebounceRef.current);
+    countsDebounceRef.current = setTimeout(() => {
+      countsDebounceRef.current = null;
+      loadCounts().catch(() => {});
+    }, COUNTS_DEBOUNCE_MS);
+  }, [loadCounts]);
+
+  const patchCount = useCallback((inboxTipo, delta) => {
+    setCounts((c) => ({
+      ...c,
+      [inboxTipo]: Math.max(0, Number(c[inboxTipo] ?? 0) + delta),
+    }));
+  }, []);
 
   useEffect(() => {
     if (!featureFlags.useApiFinanceiro) {
@@ -156,11 +217,22 @@ export function InboxPage() {
     return () => ac.abort();
   }, [loadCounts]);
 
+  useEffect(
+    () => () => {
+      if (countsDebounceRef.current) clearTimeout(countsDebounceRef.current);
+    },
+    [],
+  );
+
   useEffect(() => {
     setPage(0);
     setSelected(new Set());
     setFocusedIndex(-1);
-  }, [tipo, filters.mes, bancoAtivo]);
+    if (tipo === INBOX_TIPOS.compensar) {
+      setPares([]);
+      setPageSize((s) => (s > COMPENSAR_PAGE_SIZE ? COMPENSAR_PAGE_SIZE : s));
+    }
+  }, [tipo, filters.mes, bancoAtivo, filtroTipoPar, filtroTipoDia]);
 
   useEffect(() => {
     if (!featureFlags.useApiFinanceiro) return undefined;
@@ -171,12 +243,21 @@ export function InboxPage() {
 
     const run = async () => {
       try {
+        if (tipo === INBOX_TIPOS.compensar) {
+          const filtrosMudaram = chaveFiltrosCompensarRef.current !== chaveFiltrosCompensar;
+          chaveFiltrosCompensarRef.current = chaveFiltrosCompensar;
+          if (filtrosMudaram && page !== 0) {
+            setPage(0);
+            return;
+          }
+        }
+
         if (tipo === INBOX_TIPOS.classificar) {
-          const res = await listarLancamentosFinanceiroPaginados(
+          setLancamentos([]);
+          const res = await listarInboxClassificarPaginaApi(
             {
               page,
               size: pageSize,
-              etapa: ETAPAS.IMPORTADO,
               ...periodo,
               numeroBanco: bancoFiltro,
               sort: 'dataLancamento,desc',
@@ -188,28 +269,41 @@ export function InboxPage() {
           setLancamentos(rows);
           setTotalElements(Number(res?.totalElements ?? rows.length));
           setTotalPages(Number(res?.totalPages ?? 1));
-
-          const ids = rows.map((r) => r.id).filter(Boolean);
-          if (ids.length) {
-            const sugRes = await sugestoesClassificacaoLoteApi(ids, { signal: ac.signal });
-            setSugestoesMap(normalizeSugestoesMap(sugRes?.sugestoes));
-          } else {
-            setSugestoesMap({});
-          }
+          setSugestoesMap(normalizeSugestoesMap(res?.sugestoes));
           return;
         }
 
         if (tipo === INBOX_TIPOS.compensar) {
+          const token = chaveListaCompensar;
+          cargaCompensarRef.current = token;
           const res = await listarParesSugeridosCompensacaoApi({
             page,
-            size: pageSize,
-            ...periodo,
+            size: Math.min(pageSize, COMPENSAR_PAGE_SIZE),
+            ...periodoAnoMes,
             numeroBanco: bancoFiltro,
+            ...queryCompensar,
             signal: ac.signal,
           });
-          setPares(res?.pares ?? []);
-          setTotalElements(Number(res?.totalPares ?? res?.pares?.length ?? 0));
-          setTotalPages(Math.max(1, Number(res?.totalPages ?? 1)));
+          if (cancelled || cargaCompensarRef.current !== token) return;
+          const paresFiltrados = filtrarParesCompensacao(res?.pares ?? [], {
+            tipoPar: filtroTipoPar,
+            tipoDia: filtroTipoDia,
+            periodo: filters.mes,
+          });
+          const total = Number(res?.totalPares ?? paresFiltrados.length);
+          startTransition(() => {
+            if (cargaCompensarRef.current !== token) return;
+            setPares(paresFiltrados);
+            setTotalElements(
+              paresFiltrados.length < (res?.pares?.length ?? 0) ? paresFiltrados.length : total,
+            );
+            setTotalPages(Math.max(1, Number(res?.totalPages ?? 1)));
+            setCounts((c) => ({
+              ...c,
+              [INBOX_TIPOS.compensar]:
+                paresFiltrados.length < (res?.pares?.length ?? 0) ? paresFiltrados.length : total,
+            }));
+          });
           return;
         }
 
@@ -217,21 +311,16 @@ export function InboxPage() {
           const res = await listarGruposCompensacaoInconsistentesApi({
             page,
             size: Math.min(pageSize, 20),
+            ...periodoAnoMes,
+            numeroBanco: bancoFiltro,
             signal: ac.signal,
           });
-          const todos = res?.grupos ?? [];
-          const filtrados = bancoFiltro
-            ? todos.filter((g) => grupoEnvolveBanco(g, bancoFiltro))
-            : todos;
-          setGrupos(filtrados);
-          setTotalElements(
-            bancoFiltro ? filtrados.length : Number(res?.total ?? filtrados.length),
-          );
-          setTotalPages(
-            bancoFiltro
-              ? 1
-              : Math.max(1, Number(res?.totalPages ?? 1)),
-          );
+          const gruposLista = res?.grupos ?? [];
+          setGrupos(gruposLista);
+          const total = Number(res?.total ?? gruposLista.length);
+          setTotalElements(total);
+          setTotalPages(Math.max(1, Number(res?.totalPages ?? 1)));
+          setCounts((c) => ({ ...c, [INBOX_TIPOS.inconsistentes]: total }));
           return;
         }
 
@@ -253,7 +342,20 @@ export function InboxPage() {
       cancelled = true;
       ac.abort();
     };
-  }, [tipo, page, pageSize, periodo, bancoFiltro]);
+  }, [
+    tipo,
+    page,
+    pageSize,
+    periodo,
+    periodoAnoMes,
+    bancoFiltro,
+    queryCompensar,
+    chaveListaCompensar,
+    chaveFiltrosCompensar,
+    filtroTipoPar,
+    filtroTipoDia,
+    filters.mes,
+  ]);
 
   const removeComFade = useCallback((keys, updater) => {
     setFading((prev) => new Set([...prev, ...keys]));
@@ -288,7 +390,8 @@ export function InboxPage() {
           setLancamentos((prev) => prev.filter((l) => l.id !== body.lancamentoId));
           setTotalElements((t) => Math.max(0, t - 1));
         });
-        loadCounts().catch(() => {});
+        patchCount(INBOX_TIPOS.classificar, -1);
+        scheduleLoadCounts();
         dispatchRefreshPendentes();
       } catch (e) {
         toast.error(`Falha ao classificar: ${e?.message || 'erro desconhecido'}`);
@@ -296,7 +399,7 @@ export function InboxPage() {
         setBusy(false);
       }
     },
-    [toast, removeComFade, loadCounts, contas, sugestoesMap],
+    [toast, removeComFade, patchCount, scheduleLoadCounts, contas, sugestoesMap],
   );
 
   const handleParear = useCallback(
@@ -313,7 +416,8 @@ export function InboxPage() {
           setPares((prev) => prev.filter((p) => parKey(p) !== key));
           setTotalElements((t) => Math.max(0, t - 1));
         });
-        loadCounts().catch(() => {});
+        patchCount(INBOX_TIPOS.compensar, -1);
+        scheduleLoadCounts();
         dispatchRefreshPendentes();
       } catch (e) {
         toast.error(`Falha ao parear: ${e?.message || 'erro desconhecido'}`);
@@ -321,7 +425,7 @@ export function InboxPage() {
         setBusy(false);
       }
     },
-    [toast, removeComFade, loadCounts],
+    [toast, removeComFade, patchCount, scheduleLoadCounts],
   );
 
   const handleBatchAprovar = useCallback(async () => {
@@ -352,7 +456,8 @@ export function InboxPage() {
           setLancamentos((prev) => prev.filter((l) => !ids.includes(l.id)));
           setTotalElements((t) => Math.max(0, t - ids.length));
         });
-        loadCounts().catch(() => {});
+        patchCount(INBOX_TIPOS.classificar, -ids.length);
+        scheduleLoadCounts();
         dispatchRefreshPendentes();
         return;
       }
@@ -374,7 +479,8 @@ export function InboxPage() {
           setPares((prev) => prev.filter((p) => !selected.has(parKey(p))));
           setTotalElements((t) => Math.max(0, t - paresBody.length));
         });
-        loadCounts().catch(() => {});
+        patchCount(INBOX_TIPOS.compensar, -paresBody.length);
+        scheduleLoadCounts();
         dispatchRefreshPendentes();
       }
     } catch (e) {
@@ -382,7 +488,7 @@ export function InboxPage() {
     } finally {
       setBusy(false);
     }
-  }, [tipo, selected, sugestoesMap, pares, toast, removeComFade, loadCounts]);
+  }, [tipo, selected, sugestoesMap, pares, toast, removeComFade, patchCount, scheduleLoadCounts]);
 
   const handleBatchPular = useCallback(() => {
     const keys = [...selected];
@@ -400,6 +506,8 @@ export function InboxPage() {
     () => agruparLancamentosClassificacao(lancamentosVisiveis, sugestoesMap),
     [lancamentosVisiveis, sugestoesMap],
   );
+
+  const ocultosSemSugestao = classificacaoAgrupada.semSugestao.length;
 
   const handleAprovarGrupo = useCallback(
     async (grupo) => {
@@ -425,7 +533,8 @@ export function InboxPage() {
           setLancamentos((prev) => prev.filter((l) => !ids.includes(l.id)));
           setTotalElements((t) => Math.max(0, t - ids.length));
         });
-        loadCounts().catch(() => {});
+        patchCount(INBOX_TIPOS.classificar, -ids.length);
+        scheduleLoadCounts();
         dispatchRefreshPendentes();
       } catch (e) {
         toast.error(`Falha ao classificar grupo: ${e?.message || 'erro desconhecido'}`);
@@ -433,7 +542,7 @@ export function InboxPage() {
         setBusy(false);
       }
     },
-    [toast, removeComFade, loadCounts, contas],
+    [toast, removeComFade, patchCount, scheduleLoadCounts, contas],
   );
 
   const handlePularIds = useCallback((ids) => {
@@ -441,10 +550,18 @@ export function InboxPage() {
     setSkipped((prev) => new Set([...prev, ...ids]));
   }, []);
 
-  const paresVisiveis = useMemo(
-    () => pares.filter((p) => !skipped.has(parKey(p)) && !fading.has(parKey(p))),
-    [pares, skipped, fading],
-  );
+  const paresVisiveis = useMemo(() => {
+    const filtros = {
+      tipoPar: filtroTipoPar,
+      tipoDia: filtroTipoDia,
+      periodo: filters.mes,
+    };
+    return filtrarParesCompensacao(pares, filtros).filter(
+      (p) => !skipped.has(parKey(p)) && !fading.has(parKey(p)),
+    );
+  }, [pares, skipped, fading, filtroTipoPar, filtroTipoDia, filters.mes]);
+
+  const paresUi = useMemo(() => paresVisiveis.map(mapParCompensacaoParaUi), [paresVisiveis]);
 
   const gruposVisiveis = useMemo(
     () =>
@@ -456,13 +573,17 @@ export function InboxPage() {
 
   const itensNavegaveis = useMemo(() => {
     if (tipo === INBOX_TIPOS.classificar) {
-      return lancamentos.filter((l) => !skipped.has(l.id));
+      const idsComSugestao = new Set([
+        ...classificacaoAgrupada.grupos.flatMap((g) => g.lancamentos.map((l) => l.id)),
+        ...classificacaoAgrupada.individuais.map((l) => l.id),
+      ]);
+      return lancamentos.filter((l) => !skipped.has(l.id) && idsComSugestao.has(l.id));
     }
     if (tipo === INBOX_TIPOS.compensar) {
       return pares.filter((p) => !skipped.has(parKey(p)));
     }
     return [];
-  }, [tipo, lancamentos, pares, skipped]);
+  }, [tipo, lancamentos, pares, skipped, classificacaoAgrupada]);
 
   const onAprovarFocado = useCallback(() => {
     const item = itensNavegaveis[focusedIndex];
@@ -554,7 +675,7 @@ export function InboxPage() {
     !loading &&
     !erro &&
     (tipo === INBOX_TIPOS.classificar
-      ? lancamentosVisiveis.length === 0
+      ? classificacaoAgrupada.grupos.length === 0 && classificacaoAgrupada.individuais.length === 0
       : tipo === INBOX_TIPOS.compensar
         ? paresVisiveis.length === 0
         : tipo === INBOX_TIPOS.inconsistentes
@@ -584,6 +705,30 @@ export function InboxPage() {
             </option>
           ))}
         </select>
+        {tipo === INBOX_TIPOS.compensar ? (
+          <select
+            value={filtroTipoPar}
+            onChange={(e) => setTipoPar(e.target.value)}
+            className="text-sm rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1"
+            aria-label="Filtrar tipo de par"
+          >
+            <option value={TIPO_PAR_TODOS}>Mesmo banco e interbancário</option>
+            <option value="MESMO_BANCO">Mesmo banco apenas</option>
+            <option value="INTERBANCARIO">Interbancário apenas</option>
+          </select>
+        ) : null}
+        {tipo === INBOX_TIPOS.compensar ? (
+          <select
+            value={filtroTipoDia}
+            onChange={(e) => setTipoDia(e.target.value)}
+            className="text-sm rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1"
+            aria-label="Filtrar data do par"
+          >
+            <option value={TIPO_DIA_TODOS}>Mesmo dia e divergente</option>
+            <option value="MESMO_DIA">Mesmo dia (exato)</option>
+            <option value="DIVERGENTE">Dia divergente</option>
+          </select>
+        ) : null}
       </div>
 
       {showBatch ? (
@@ -605,6 +750,16 @@ export function InboxPage() {
           <InboxEmptyState tipo={tipo} />
         ) : tipo === INBOX_TIPOS.classificar ? (
           <>
+            {ocultosSemSugestao > 0 ? (
+              <p className="text-xs text-slate-500 dark:text-slate-400 mb-3 px-1">
+                {ocultosSemSugestao} lançamento{ocultosSemSugestao !== 1 ? 's' : ''} nesta página sem
+                sugestão de conta (conta N / desconhecido) — use o{' '}
+                <a href="/financeiro/extrato" className="text-indigo-700 dark:text-indigo-300 hover:underline">
+                  extrato
+                </a>{' '}
+                para classificar manualmente.
+              </p>
+            ) : null}
             {classificacaoAgrupada.grupos.map((grupo, idx) => {
               const ids = grupo.lancamentos.map((l) => l.id);
               const grupoFading = ids.some((id) => fading.has(id));
@@ -634,8 +789,7 @@ export function InboxPage() {
                 </div>
               );
             })}
-            {[...classificacaoAgrupada.individuais, ...classificacaoAgrupada.semSugestao].map(
-              (l, idx) => {
+            {classificacaoAgrupada.individuais.map((l, idx) => {
                 const cardIdx = classificacaoAgrupada.grupos.length + idx;
                 return (
                   <div key={l.id} data-inbox-card-index={cardIdx}>
@@ -664,31 +818,28 @@ export function InboxPage() {
             )}
           </>
         ) : tipo === INBOX_TIPOS.compensar ? (
-          itensNavegaveis.map((par, idx) => {
-            const key = parKey(par);
-            return (
-              <div key={key} data-inbox-card-index={idx}>
-                <CompensacaoCard
-                  par={par}
-                  onParear={() => handleParear(par)}
-                  onRejeitar={() => setSkipped((s) => new Set([...s, key]))}
-                  onPular={() => setSkipped((s) => new Set([...s, key]))}
-                  isSelected={selected.has(key)}
-                  focused={idx === focusedIndex}
-                  onSelect={(on) => {
-                    setSelected((prev) => {
-                      const next = new Set(prev);
-                      if (on) next.add(key);
-                      else next.delete(key);
-                      return next;
-                    });
-                  }}
-                  fading={fading.has(key)}
-                  busy={busy}
-                />
-              </div>
-            );
-          })
+          paresUi.map((ui, idx) => (
+            <div key={ui.key} data-inbox-card-index={idx}>
+              <CompensacaoCard
+                ui={ui}
+                onParear={() => handleParear(ui.par)}
+                onRejeitar={() => setSkipped((s) => new Set([...s, ui.key]))}
+                onPular={() => setSkipped((s) => new Set([...s, ui.key]))}
+                isSelected={selected.has(ui.key)}
+                focused={idx === focusedIndex}
+                onSelect={(on) => {
+                  setSelected((prev) => {
+                    const next = new Set(prev);
+                    if (on) next.add(ui.key);
+                    else next.delete(ui.key);
+                    return next;
+                  });
+                }}
+                fading={fading.has(ui.key)}
+                busy={busy}
+              />
+            </div>
+          ))
         ) : tipo === INBOX_TIPOS.inconsistentes ? (
           grupos
             .filter((g) => !skipped.has(g.grupoCompensacao))
@@ -714,7 +865,13 @@ export function InboxPage() {
           page={page}
           totalPages={totalPages}
           onPageChange={setPage}
-          pageSize={tipo === INBOX_TIPOS.inconsistentes ? Math.min(pageSize, 20) : pageSize}
+          pageSize={
+            tipo === INBOX_TIPOS.inconsistentes
+              ? Math.min(pageSize, 20)
+              : tipo === INBOX_TIPOS.compensar
+                ? Math.min(pageSize, COMPENSAR_PAGE_SIZE)
+                : pageSize
+          }
           onPageSizeChange={(s) => {
             setPageSize(s);
             setPage(0);

@@ -127,6 +127,74 @@ export function ehStatusProcessoInativo(textoBruto) {
   return ehFaseTxtInativo(textoBruto);
 }
 
+/**
+ * Regra de negócio: txt `Status.Processo` com `INATIVO` → inativo; qualquer outro conteúdo (ou ausência de ficheiro) → ativo.
+ * @param {string | null | undefined} textoBruto
+ * @param {{ temArquivo?: boolean }} [opts]
+ */
+export function resolverAtivoFromStatusProcessoTxt(textoBruto, opts = {}) {
+  const statusInativo = ehStatusProcessoInativo(textoBruto);
+  const bruto = textoBruto == null ? null : String(textoBruto).trim();
+  return {
+    ativo: !statusInativo,
+    statusInativo,
+    statusBruto: bruto === '' ? null : bruto,
+    temArquivoStatus: opts.temArquivo === true,
+    avisoStatus: statusInativo
+      ? 'inativo_status_processo'
+      : bruto
+        ? 'status_nao_inativo'
+        : opts.temArquivo
+          ? 'status_vazio'
+          : 'status_ausente',
+  };
+}
+
+/**
+ * Lê o ficheiro VBA `Cod_Cliente.Status.Processo<Class>.Processos.txt` para um processo.
+ * @param {number} codNum
+ * @param {number} numeroInterno
+ * @param {{ baseBanco?: string, baseGeraisMil?: string }} [opts]
+ */
+export function lerStatusProcessoTxt(codNum, numeroInterno, opts = {}) {
+  const baseGeraisMil =
+    opts.baseGeraisMil ?? path.join(opts.baseBanco ?? resolverBaseBancoDados(), 'Gerais', SEGMENTO_MIL);
+  const esperado = caminhoStatusProcessoEsperado(baseGeraisMil, codNum, numeroInterno);
+  if (!esperado || !fs.existsSync(esperado)) {
+    return resolverAtivoFromStatusProcessoTxt(null, { temArquivo: false });
+  }
+  const texto = readOneLineFile(esperado);
+  return {
+    ...resolverAtivoFromStatusProcessoTxt(texto, { temArquivo: true }),
+    arquivoStatus: esperado,
+    cod8: formatCod8(codNum),
+    codNum,
+    numeroInterno,
+  };
+}
+
+/**
+ * @param {string} baseGeraisMil
+ * @param {number} codNum
+ * @returns {Array<ReturnType<typeof lerStatusProcessoTxt> & { cod8: string, codNum: number, numeroInterno: number, arquivoStatus: string }>}
+ */
+export function listarStatusProcessoPorCliente(baseGeraisMil, codNum) {
+  /** @type {Map<string, object>} */
+  const map = new Map();
+  for (const row of iterarStatusProcesso(baseGeraisMil, { clienteFiltro: codNum })) {
+    const key = `${row.cod8}|${row.numeroInterno}`;
+    const parsed = resolverAtivoFromStatusProcessoTxt(row.texto, { temArquivo: true });
+    map.set(key, {
+      ...parsed,
+      cod8: row.cod8,
+      codNum: row.codNum,
+      numeroInterno: row.numeroInterno,
+      arquivoStatus: row.arquivo,
+    });
+  }
+  return [...map.values()].sort((a, b) => a.numeroInterno - b.numeroInterno);
+}
+
 const FASES_CANONICAS = [
   'Ag. Documentos',
   'Ag. Peticionar',

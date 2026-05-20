@@ -1,8 +1,15 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowDown, ArrowUp, ArrowUpDown, Building2, RefreshCw } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, Building2, Filter, RefreshCw, X } from 'lucide-react';
 import { carregarItensRelatorioImoveisApi } from '../repositories/imoveisRepository.js';
 import { featureFlags } from '../config/featureFlags.js';
+import { parseValorMonetarioBr } from '../utils/parseValorMonetarioBr.js';
+import {
+  COLUNAS_MODO_REPASSE,
+  diaDoMesAmanha,
+  FILTROS_RELATORIO_IMOVEIS_INICIAL,
+  linhaPassaFiltrosRelatorioImoveis,
+} from './imoveis/relatorioImoveisFiltros.js';
 
 function s(v) {
   if (v == null) return '';
@@ -164,13 +171,12 @@ function parseNumeroMoedaOuDia(str) {
   const t = String(str ?? '').trim();
   if (!t) return Number.NaN;
   const soDigitos = t.replace(/\D/g, '');
-  if (soDigitos && /^\d+$/.test(soDigitos) && t.length <= 3) {
+  if (soDigitos && /^\d+$/.test(soDigitos) && t.length <= 3 && !t.includes(',') && !t.includes('.')) {
     const n = Number(soDigitos);
     return Number.isFinite(n) ? n : Number.NaN;
   }
-  const normalizado = t.replace(/\./g, '').replace(',', '.').replace(/[^\d.-]/g, '');
-  const n = Number(normalizado);
-  return Number.isFinite(n) ? n : Number.NaN;
+  const n = parseValorMonetarioBr(t);
+  return n != null && Number.isFinite(n) ? n : Number.NaN;
 }
 
 function valorOrdenacaoCelula(row, colKey) {
@@ -215,6 +221,9 @@ function compararLinhas(a, b, colKey, dir) {
   return (a.apiImovelId ?? 0) - (b.apiImovelId ?? 0);
 }
 
+const inputFiltroClass =
+  'rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-[#0d1018] px-3 py-2 text-sm min-w-0';
+
 export function RelatorioImoveis() {
   const navigate = useNavigate();
   const [linhas, setLinhas] = useState([]);
@@ -222,6 +231,10 @@ export function RelatorioImoveis() {
   const [erro, setErro] = useState('');
   const [ultimaCarga, setUltimaCarga] = useState(null);
   const [ordenacao, setOrdenacao] = useState({ col: null, dir: 'asc' });
+  const [filtros, setFiltros] = useState({ ...FILTROS_RELATORIO_IMOVEIS_INICIAL });
+  const [modoVisualizacao, setModoVisualizacao] = useState('completo');
+
+  const diaRepasseAmanha = useMemo(() => diaDoMesAmanha(), []);
 
   const executarRelatorio = useCallback(async () => {
     setErro('');
@@ -243,12 +256,53 @@ export function RelatorioImoveis() {
     }
   }, []);
 
+  const linhasFiltradas = useMemo(
+    () => linhas.filter((row) => linhaPassaFiltrosRelatorioImoveis(row, filtros)),
+    [linhas, filtros],
+  );
+
+  const filtrosAtivos =
+    Boolean(filtros.busca?.trim()) ||
+    Boolean(filtros.diaRepasse) ||
+    Boolean(filtros.diaPagAluguel) ||
+    filtros.soOcupados ||
+    filtros.somenteComVinculo;
+
+  const colunasVisiveis = useMemo(() => {
+    if (modoVisualizacao === 'repasses') {
+      const set = new Set(COLUNAS_MODO_REPASSE);
+      return COLUNAS.filter((c) => set.has(c.key));
+    }
+    return COLUNAS;
+  }, [modoVisualizacao]);
+
+  useEffect(() => {
+    if (modoVisualizacao === 'repasses' && !ordenacao.col) {
+      setOrdenacao({ col: 'diaRepasse', dir: 'asc' });
+    }
+  }, [modoVisualizacao, ordenacao.col]);
+
   const linhasOrdenadas = useMemo(() => {
     const col = ordenacao.col;
-    if (!col || linhas.length === 0) return linhas;
+    if (!col || linhasFiltradas.length === 0) return linhasFiltradas;
     const dir = ordenacao.dir;
-    return [...linhas].sort((a, b) => compararLinhas(a, b, col, dir));
-  }, [linhas, ordenacao.col, ordenacao.dir]);
+    return [...linhasFiltradas].sort((a, b) => compararLinhas(a, b, col, dir));
+  }, [linhasFiltradas, ordenacao.col, ordenacao.dir]);
+
+  function aplicarFiltroRepassesAmanha() {
+    setModoVisualizacao('repasses');
+    setFiltros((prev) => ({
+      ...prev,
+      diaRepasse: String(diaRepasseAmanha),
+      soOcupados: true,
+      somenteComVinculo: true,
+    }));
+    setOrdenacao({ col: 'unidade', dir: 'asc' });
+  }
+
+  function limparFiltros() {
+    setFiltros({ ...FILTROS_RELATORIO_IMOVEIS_INICIAL });
+  }
 
   function aoClicarOrdenar(colKey) {
     setOrdenacao((prev) => {
@@ -293,7 +347,9 @@ export function RelatorioImoveis() {
                 <strong>Atualizar relatório</strong> para buscar os dados no servidor. Clique no{' '}
                 <strong>cabeçalho de uma coluna</strong> para ordenar (na coluna Nº: primeiro maior→menor; nas demais,
                 primeiro A→Z ou menor→maior; depois inverte; terceiro clique remove a ordenação).
-                Rolagem horizontal para ver todas as colunas; clique numa linha para abrir o imóvel no cadastro.
+                Use os <strong>filtros</strong> para listar repasses por dia (ex.: amanhã), ocupados ou com vínculo
+                Cod.+Proc. O modo <strong>Lista repasses</strong> mostra só as colunas da rotina de repasse. Clique numa
+                linha para abrir o cadastro do imóvel.
               </p>
               {!featureFlags.useApiImoveis ? (
                 <p className="text-sm text-amber-800 mt-2">
@@ -329,13 +385,119 @@ export function RelatorioImoveis() {
           <div className="bg-red-50 border border-red-200 rounded-2xl p-3 text-sm text-red-800 shadow-sm">{erro}</div>
         ) : null}
 
-        <div className="bg-white/95 backdrop-blur-sm rounded-2xl border border-slate-200/90 shadow-xl ring-1 ring-indigo-500/10 p-4">
-          <div className="flex flex-wrap items-center gap-2 mb-3">
+        <div className="bg-white/95 backdrop-blur-sm rounded-2xl border border-slate-200/90 shadow-xl ring-1 ring-indigo-500/10 p-4 space-y-4">
+          <div className="rounded-xl border border-slate-200/90 dark:border-white/[0.08] bg-slate-50/80 dark:bg-white/[0.03] p-4 space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <Filter className="w-4 h-4 text-indigo-600 shrink-0" aria-hidden />
+              <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">Filtros</span>
+              {filtrosAtivos ? (
+                <button
+                  type="button"
+                  onClick={limparFiltros}
+                  className="inline-flex items-center gap-1 text-xs font-medium text-slate-600 hover:text-indigo-700 dark:text-slate-400 dark:hover:text-indigo-300"
+                >
+                  <X className="w-3.5 h-3.5" aria-hidden />
+                  Limpar filtros
+                </button>
+              ) : null}
+            </div>
+            <div className="flex flex-wrap items-end gap-3">
+              <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-slate-400 min-w-[12rem] flex-1">
+                Busca (unidade, condomínio, inquilino, código…)
+                <input
+                  type="search"
+                  value={filtros.busca}
+                  onChange={(e) => setFiltros((p) => ({ ...p, busca: e.target.value }))}
+                  placeholder="Ex.: Veredas, 604, Maria…"
+                  className={inputFiltroClass}
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-slate-400 w-28">
+                Dia repasse
+                <input
+                  type="number"
+                  min={1}
+                  max={31}
+                  value={filtros.diaRepasse}
+                  onChange={(e) => setFiltros((p) => ({ ...p, diaRepasse: e.target.value }))}
+                  placeholder="—"
+                  className={`${inputFiltroClass} tabular-nums`}
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-slate-400 w-28">
+                Dia pag. aluguel
+                <input
+                  type="number"
+                  min={1}
+                  max={31}
+                  value={filtros.diaPagAluguel}
+                  onChange={(e) => setFiltros((p) => ({ ...p, diaPagAluguel: e.target.value }))}
+                  placeholder="—"
+                  className={`${inputFiltroClass} tabular-nums`}
+                />
+              </label>
+              <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300 cursor-pointer pb-2">
+                <input
+                  type="checkbox"
+                  checked={filtros.soOcupados}
+                  onChange={(e) => setFiltros((p) => ({ ...p, soOcupados: e.target.checked }))}
+                  className="rounded border-slate-300 dark:border-white/20"
+                />
+                Só ocupados
+              </label>
+              <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300 cursor-pointer pb-2">
+                <input
+                  type="checkbox"
+                  checked={filtros.somenteComVinculo}
+                  onChange={(e) => setFiltros((p) => ({ ...p, somenteComVinculo: e.target.checked }))}
+                  className="rounded border-slate-300 dark:border-white/20"
+                />
+                Com Cod. + Proc.
+              </label>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={aplicarFiltroRepassesAmanha}
+                disabled={linhas.length === 0}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 shadow-sm disabled:opacity-50"
+                title={`Filtra dia repasse ${diaRepasseAmanha}, só ocupados com vínculo`}
+              >
+                Repasses amanhã (dia {diaRepasseAmanha})
+              </button>
+              <span className="text-xs text-slate-500 dark:text-slate-400">Visualização:</span>
+              <button
+                type="button"
+                onClick={() => setModoVisualizacao('completo')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium border ${
+                  modoVisualizacao === 'completo'
+                    ? 'border-indigo-300 bg-indigo-50 text-indigo-900 dark:bg-indigo-950/40 dark:text-indigo-100'
+                    : 'border-slate-200 text-slate-600 dark:border-white/10 dark:text-slate-400'
+                }`}
+              >
+                Completo
+              </button>
+              <button
+                type="button"
+                onClick={() => setModoVisualizacao('repasses')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium border ${
+                  modoVisualizacao === 'repasses'
+                    ? 'border-indigo-300 bg-indigo-50 text-indigo-900 dark:bg-indigo-950/40 dark:text-indigo-100'
+                    : 'border-slate-200 text-slate-600 dark:border-white/10 dark:text-slate-400'
+                }`}
+              >
+                Lista repasses
+              </button>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs text-slate-500">
-              {linhas.length} registro(s)
+              {linhasFiltradas.length} de {linhas.length} registro(s)
+              {filtrosAtivos ? <span className="text-emerald-700 dark:text-emerald-400 ml-1">· filtrado</span> : null}
               {ordenacao.col ? (
                 <span className="text-indigo-700 ml-1">
-                  · ordenado por {COLUNAS.find((c) => c.key === ordenacao.col)?.label ?? ordenacao.col} (
+                  · ordenado por {colunasVisiveis.find((c) => c.key === ordenacao.col)?.label ?? ordenacao.col} (
                   {(() => {
                     const t = ORDENACAO_TIPO[ordenacao.col];
                     if (t === 'texto' || t == null) {
@@ -350,10 +512,14 @@ export function RelatorioImoveis() {
           </div>
 
           <div className="overflow-x-auto rounded-xl border border-slate-200/90 ring-1 ring-slate-100">
-            <table className="w-full text-left border-collapse min-w-[2400px]">
+            <table
+              className={`w-full text-left border-collapse ${
+                modoVisualizacao === 'repasses' ? 'min-w-[1100px]' : 'min-w-[2400px]'
+              }`}
+            >
               <thead>
                 <tr>
-                  {COLUNAS.map((col) => {
+                  {colunasVisiveis.map((col) => {
                     const ativo = ordenacao.col === col.key;
                     return (
                       <th key={col.key} className={`${th} ${col.right ? 'text-right' : ''}`} scope="col">
@@ -394,7 +560,7 @@ export function RelatorioImoveis() {
                       })
                     }
                   >
-                    {COLUNAS.map((col) => {
+                    {colunasVisiveis.map((col) => {
                       const val = r[col.key];
                       const base = `${td} ${col.right ? 'text-right tabular-nums' : ''} ${col.mono ? 'font-mono text-xs' : ''} ${col.narrow ? 'tabular-nums' : ''}`;
                       const cellClass = col.truncate ? `${base} max-w-[200px] truncate` : base;
@@ -413,6 +579,11 @@ export function RelatorioImoveis() {
                 {featureFlags.useApiImoveis
                   ? 'Nenhum dado carregado. Clique em «Atualizar relatório» para buscar os imóveis na API.'
                   : 'Ative a API de imóveis para usar este relatório.'}
+              </p>
+            ) : null}
+            {linhas.length > 0 && linhasFiltradas.length === 0 && !carregando ? (
+              <p className="text-sm text-slate-500 text-center py-8">
+                Nenhum imóvel corresponde aos filtros. Ajuste os critérios ou clique em «Limpar filtros».
               </p>
             ) : null}
           </div>

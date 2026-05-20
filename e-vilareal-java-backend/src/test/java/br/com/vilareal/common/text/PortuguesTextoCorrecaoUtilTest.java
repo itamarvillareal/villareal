@@ -36,4 +36,14 @@ class PortuguesTextoCorrecaoUtilTest {
         String corrupto = "EXECU\u251c\u00e2\u00d4\u00c7\u00ed\u251c\u00e2\u00e3\u00c6O DE PENS\u251c\u00e2\u00e3\u00c6O";
         assertThat(PortuguesTextoCorrecaoUtil.normalizar(corrupto)).isEqualTo("EXECUÇÃO DE PENSÃO");
     }
+
+    @Test
+    void lexicoTransitoGoiásAnapolis() {
+        assertThat(PortuguesTextoCorrecaoUtil.normalizar("DEPARTAMENTO DE TRANSITO DE GOIAS"))
+                .isEqualTo("DEPARTAMENTO DE TRÂNSITO DE GOIÁS");
+        assertThat(PortuguesTextoCorrecaoUtil.normalizar(
+                        "COMPANHIA MUNICIPAL DE TR\uFFFDNSITO E TRANSPORTES DE AN\uFFFDPOLIS"))
+                .contains("TRÂNSITO")
+                .contains("ANÁPOLIS");
+    }
 }

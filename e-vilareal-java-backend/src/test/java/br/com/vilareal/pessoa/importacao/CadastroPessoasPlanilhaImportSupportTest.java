@@ -72,6 +72,16 @@ class CadastroPessoasPlanilhaImportSupportTest {
     }
 
     @Test
+    void normalizeNomeCadastro_detranTransitoGoiás() {
+        assertThat(CadastroPessoasPlanilhaImportSupport.normalizeNomeCadastro(
+                        "DETRAN - DEPARTAMENTO DE TRANSITO DE GOIAS"))
+                .isEqualTo("DETRAN - DEPARTAMENTO DE TRÂNSITO DE GOIÁS");
+        assertThat(CadastroPessoasPlanilhaImportSupport.normalizeNomeCadastro(
+                        "DETRAN - DEPARTAMENTO DE TR\uFFFDNSITO DE GOI\uFFFDS"))
+                .isEqualTo("DETRAN - DEPARTAMENTO DE TRÂNSITO DE GOIÁS");
+    }
+
+    @Test
     void resolveCpfCnpjDigitosPlanilha_brutoOuNormalizado() {
         assertThat(CadastroPessoasPlanilhaImportSupport.resolveCpfCnpjDigitosPlanilha("123.456.789-09", ""))
                 .isEqualTo("12345678909");

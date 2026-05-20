@@ -4,6 +4,7 @@ import br.com.vilareal.common.exception.ResourceNotFoundException;
 import br.com.vilareal.common.text.Utf8MojibakeUtil;
 import br.com.vilareal.financeiro.api.dto.*;
 import br.com.vilareal.financeiro.domain.EtapaLancamento;
+import br.com.vilareal.financeiro.domain.FinanceiroDescricaoIndicaContaF;
 import br.com.vilareal.financeiro.domain.TipoMatch;
 import br.com.vilareal.financeiro.infrastructure.persistence.LancamentoFinanceiroSpecifications;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.ContaContabilEntity;
@@ -135,6 +136,14 @@ public class ClassificacaoAutomaticaService {
             List<RegraClassificacaoEntity> regras,
             LancamentoFinanceiroEntity lancamento,
             BigDecimal confiancaMinima) {
+        if (FinanceiroDescricaoIndicaContaF.indica(lancamento.getDescricao(), lancamento.getDescricaoDetalhada())) {
+            Optional<RegraClassificacaoEntity> regraF = contaContabilRepository
+                    .findFirstByCodigoIgnoreCase("F")
+                    .map(this::regraSinteticaRendimentos);
+            if (regraF.isPresent()) {
+                return regraF;
+            }
+        }
         String texto = textoParaMatch(lancamento);
         for (RegraClassificacaoEntity regra : regras) {
             if (regra.getConfianca() == null
@@ -166,6 +175,19 @@ public class ClassificacaoAutomaticaService {
         Long clienteId = lancamento.getCliente() != null ? lancamento.getCliente().getId() : null;
         lancamento.setEtapa(EtapaLancamento.calcular(
                 regra.getContaContabil().getCodigo(), lancamento.getGrupoCompensacao(), clienteId));
+    }
+
+    private RegraClassificacaoEntity regraSinteticaRendimentos(ContaContabilEntity contaF) {
+        RegraClassificacaoEntity regra = new RegraClassificacaoEntity();
+        regra.setId(0L);
+        regra.setPadraoDescricao("COR JURS/JUROS/CRI/LCA/CDB");
+        regra.setTipoMatch(TipoMatch.CONTAINS);
+        regra.setContaContabil(contaF);
+        regra.setLetraDestino("F");
+        regra.setPrioridade(1);
+        regra.setConfianca(new BigDecimal("0.9900"));
+        regra.setAtivo(true);
+        return regra;
     }
 
     static boolean matchRegra(RegraClassificacaoEntity regra, String texto) {

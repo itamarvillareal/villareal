@@ -6,7 +6,8 @@
  * 1. Índice **14** por processo (`…14.1.<proc>.txt`) → N; se vazio/ausente, infere-se N pelo maior `….16.1.<proc>.<IIII>.txt` na pasta.
  * 2. Para cada índice: **16** (data) — procura-se em `…/Ano/<aaaa>/<mm>/` ou legado `…/<aaaa>/<mm>/`;
  *    senão na árvore `1000/<centena>/<nº cliente>/`.
- *    Ao comparar ou exportar, **dd/mm** na linha usa o **ano e mês da pasta** quando o ficheiro vem dessas pastas.
+ *    Nos txt tipo **16**, a data costuma estar em **mm/dd/aaaa** (legado VB/Access). Com pasta `Ano/aaaa/mm`,
+ *    o **mês da pasta** desambigua; na árvore `1000/…` usa-se mm/dd na linha.
  * 3. Informação **15** e utilizador **17**: mesmas pastas por ano/mês (com varredura se o mês da data não coincidir);
  *    senão fallback na árvore mil (HC e «Historico de Consultas Inativos»).
  * 4. Cliente **728**: ficheiros ficam sempre sob a pasta de centena **700** (não depende de outras centenas).
@@ -116,9 +117,9 @@ export function readOneLineFile(p) {
   try {
     if (!fs.existsSync(p) || !fs.statSync(p).isFile()) return null;
     const buf = fs.readFileSync(p);
-    const s = decodeHistoricoTextBuffer(buf);
-    const line = s.split(/\r?\n/).find((l) => String(l).trim() !== '');
-    return line != null ? String(line).trim() : null;
+    const s = decodeHistoricoTextBuffer(buf).replace(/\u0000/g, '');
+    const line = s.split(/\r?\n/).find((l) => String(l).replace(/\u0000/g, '').trim() !== '');
+    return line != null ? String(line).replace(/\u0000/g, '').trim() : null;
   } catch {
     return null;
   }
@@ -285,12 +286,14 @@ function* iterPastasYyyyMmDiretorio(yyyyRoot) {
 }
 
 /**
- * Interpreta `d/m/aaaa` ou `m/d/aaaa` (legado VB/Excel nos txt).
+ * Interpreta `m/d/aaaa` ou `d/m/aaaa`.
  * @param {number | null} [mmPastaHint] mês da pasta `Ano/aaaa/mm` para datas ambíguas
+ * @param {{ preferMmDd?: boolean }} [opts] `preferMmDd: true` — txt tipo 16 do histórico HC (VB grava mm/dd)
  * @returns {{ dd: number, mo: number, yyyy: number } | null}
  */
-export function parseDataSlashComHint(s, mmPastaHint = null) {
+export function parseDataSlashComHint(s, mmPastaHint = null, opts = {}) {
   if (s == null || String(s).trim() === '') return null;
+  const preferMmDd = opts.preferMmDd === true;
   const t = String(s).trim();
   const m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (!m) return null;
@@ -310,7 +313,20 @@ export function parseDataSlashComHint(s, mmPastaHint = null) {
   } else if (a > 12 && b > 12) {
     return null;
   } else if (mmPastaHint != null && mmPastaHint >= 1 && mmPastaHint <= 12) {
-    if (b === mmPastaHint) {
+    if (preferMmDd) {
+      const mmdd = { mo: a, dd: b };
+      const dmy = { mo: b, dd: a };
+      if (mmdd.mo === mmPastaHint) {
+        mo = mmdd.mo;
+        dd = mmdd.dd;
+      } else if (dmy.mo === mmPastaHint) {
+        mo = dmy.mo;
+        dd = dmy.dd;
+      } else {
+        mo = mmdd.mo;
+        dd = mmdd.dd;
+      }
+    } else if (b === mmPastaHint) {
       dd = a;
       mo = b;
     } else if (a === mmPastaHint) {
@@ -320,6 +336,9 @@ export function parseDataSlashComHint(s, mmPastaHint = null) {
       dd = a;
       mo = b;
     }
+  } else if (preferMmDd) {
+    mo = a;
+    dd = b;
   } else {
     dd = a;
     mo = b;
@@ -330,6 +349,14 @@ export function parseDataSlashComHint(s, mmPastaHint = null) {
   return { dd, mo, yyyy };
 }
 
+/** Txt histórico tipo 16 — **mm/dd/aaaa** (VB), com desambiguação pela pasta `Ano/aaaa/mm`. */
+export function parseDataHistoricoLocalMmDdYyyy(s, mmPastaHint = null) {
+  const p = parseDataSlashComHint(s, mmPastaHint, { preferMmDd: true });
+  if (!p) return null;
+  return { ...p, original: String(s).trim() };
+}
+
+/** Cabeçalhos / planilhas brasileiras — **dd/mm/aaaa**. */
 export function parseDataDdMmYyyy(s, mmPastaHint = null) {
   const p = parseDataSlashComHint(s, mmPastaHint);
   if (!p) return null;
@@ -344,7 +371,7 @@ export function parseDataDdMmYyyy(s, mmPastaHint = null) {
  */
 export function extrairYmdParaPastasAno(s) {
   if (s == null || String(s).trim() === '') return null;
-  const br = parseDataDdMmYyyy(s);
+  const br = parseDataHistoricoLocalMmDdYyyy(s);
   if (br) return { yyyy: br.yyyy, mo: br.mo, dd: br.dd };
   const t = String(s).trim();
   const iso = t.match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -567,7 +594,7 @@ export function lerTipo16PrincipalComMeta(base, cod8, codNum, procStr, indice4) 
 }
 
 /**
- * Data canónica `yyyy-mm-dd`: com pasta `Ano`, interpreta **dd/mm** na linha com **ano e mês da pasta**;
+ * Data canónica `yyyy-mm-dd`: com pasta `Ano`, interpreta **mm/dd** na linha com **ano e mês da pasta**;
  * senão usa `extrairYmdParaPastasAno` na linha.
  */
 export function ymdComLinhaEPastaAno(linha, yyyyPasta, mmPasta) {
@@ -580,8 +607,8 @@ export function ymdComLinhaEPastaAno(linha, yyyyPasta, mmPasta) {
     mmPasta >= 1 &&
     mmPasta <= 12
   ) {
-    const br = parseDataDdMmYyyy(linha, mmPasta);
-    if (br && br.dd >= 1 && br.dd <= 31) {
+    const br = parseDataHistoricoLocalMmDdYyyy(linha, mmPasta);
+    if (br && br.mo === mmPasta && br.dd >= 1 && br.dd <= 31) {
       const dim = new Date(yyyyPasta, mmPasta, 0).getDate();
       if (br.dd <= dim) return `${yyyyPasta}-${pad2internal(mmPasta)}-${pad2internal(br.dd)}`;
     }

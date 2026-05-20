@@ -14,7 +14,9 @@ import {
   layoutExtratoPorNomeInstituicao,
 } from './lib/extrato-bancos-planilha-layouts.mjs';
 
-const FILE = process.argv[2] || '/Users/itamar/Downloads/Extratos Bancos - Itamar.xls';
+import { requireExtratoBancosPlanilhaXlsPath } from './lib/resolve-extrato-bancos-planilha-xls.mjs';
+
+const FILE = requireExtratoBancosPlanilhaXlsPath(process.argv[2]);
 const base = (process.env.VILAREAL_API_BASE || 'http://localhost:8080').replace(/\/$/, '');
 const senha = process.env.VILAREAL_IMPORT_SENHA || '123456';
 

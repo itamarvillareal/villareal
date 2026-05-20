@@ -9,30 +9,44 @@ import br.com.vilareal.financeiro.infrastructure.persistence.entity.LancamentoFi
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.ContaContabilRepository;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.LancamentoFinanceiroRepository;
 import br.com.vilareal.processo.application.CodigoClienteUtil;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 @Service
 public class FinanceiroCompensacaoService {
 
     private static final BigDecimal TOLERANCIA_GRUPO = new BigDecimal("0.01");
+    /** Mantido na assinatura do repositório; o filtro efetivo é dia útil bancário no SQL. */
+    private static final int DIAS_TOLERANCIA_SQL = 3;
+    private static final int SQL_BATCH_SIZE = 1000;
+    /** Limite de linhas SQL de candidatos por execução greedy (evita OOM com explosão de pares). */
+    private static final long MAX_CANDIDATE_SQL_ROWS = 50_000;
+    private static final int DESCRICAO_RESUMO_MAX = 120;
+    private static final long CACHE_GREEDY_TTL_SECONDS = 45;
 
     private final LancamentoFinanceiroRepository lancamentoRepository;
     private final ContaContabilRepository contaContabilRepository;
+    private final FinanceiroSaudeService financeiroSaudeService;
+    private final ConcurrentHashMap<String, CacheGreedyPares> cacheGreedyPares = new ConcurrentHashMap<>();
 
     public FinanceiroCompensacaoService(
             LancamentoFinanceiroRepository lancamentoRepository,
-            ContaContabilRepository contaContabilRepository) {
+            ContaContabilRepository contaContabilRepository,
+            @Lazy FinanceiroSaudeService financeiroSaudeService) {
         this.lancamentoRepository = lancamentoRepository;
         this.contaContabilRepository = contaContabilRepository;
+        this.financeiroSaudeService = financeiroSaudeService;
     }
 
     @Transactional
@@ -41,6 +55,10 @@ public class FinanceiroCompensacaoService {
         ParearCompensacaoResponse response = new ParearCompensacaoResponse();
         for (ParearCompensacaoItemRequest par : request.getPares()) {
             processarPar(par, contaE, response);
+        }
+        if (response.getPareados() > 0) {
+            cacheGreedyPares.clear();
+            financeiroSaudeService.invalidarCacheSaude();
         }
         return response;
     }
@@ -60,18 +78,19 @@ public class FinanceiroCompensacaoService {
             e.setEtapa(EtapaLancamento.calcular(contaN.getCodigo(), null, clienteId));
         }
         lancamentoRepository.saveAll(lista);
+        if (!lista.isEmpty()) {
+            cacheGreedyPares.clear();
+            financeiroSaudeService.invalidarCacheSaude();
+        }
         DesparearCompensacaoResponse r = new DesparearCompensacaoResponse();
         r.setDesvinculados(lista.size());
         return r;
     }
 
-    /** Pré-filtro SQL: cobre sexta→segunda (3 dias corridos no pior caso). */
-    private static final int DIAS_TOLERANCIA_SQL = 3;
-
     @Transactional(readOnly = true)
     public ParesSugeridosCompensacaoResponse listarParesSugeridos(
             Integer numeroBanco, Integer ano, Integer mes, int page, int size) {
-        return listarParesSugeridos(numeroBanco, ano, mes, page, size, false);
+        return listarParesSugeridos(numeroBanco, ano, mes, page, size, false, false, false, false);
     }
 
     @Transactional(readOnly = true)
@@ -82,15 +101,49 @@ public class FinanceiroCompensacaoService {
             int page,
             int size,
             boolean apenasInterbancario) {
+        return listarParesSugeridos(numeroBanco, ano, mes, page, size, apenasInterbancario, false, false, false);
+    }
+
+    @Transactional(readOnly = true)
+    public ParesSugeridosCompensacaoResponse listarParesSugeridos(
+            Integer numeroBanco,
+            Integer ano,
+            Integer mes,
+            int page,
+            int size,
+            boolean apenasInterbancario,
+            boolean apenasMesmoBanco) {
+        return listarParesSugeridos(
+                numeroBanco, ano, mes, page, size, apenasInterbancario, apenasMesmoBanco, false, false);
+    }
+
+    @Transactional(readOnly = true)
+    public ParesSugeridosCompensacaoResponse listarParesSugeridos(
+            Integer numeroBanco,
+            Integer ano,
+            Integer mes,
+            int page,
+            int size,
+            boolean apenasInterbancario,
+            boolean apenasMesmoBanco,
+            boolean apenasMesmoDiaCalendario,
+            boolean apenasDiaDivergente) {
         int limit = Math.max(1, Math.min(size, 200));
         int skip = Math.max(0, page) * limit;
-        List<ParCompensacaoSugeridoResponse> todosFiltrados =
-                coletarParesFiltradosPorDiaUtil(numeroBanco, ano, mes, apenasInterbancario, 0, Integer.MAX_VALUE);
+        List<ParCompensacaoSugeridoResponse> todosFiltrados = filtrarParesPorDiaCalendario(
+                obterParesGreedyComCache(
+                        numeroBanco,
+                        ano,
+                        mes,
+                        apenasInterbancario,
+                        apenasMesmoBanco,
+                        apenasMesmoDiaCalendario,
+                        apenasDiaDivergente),
+                apenasMesmoDiaCalendario,
+                apenasDiaDivergente);
         long totalFiltrado = todosFiltrados.size();
-        List<ParCompensacaoSugeridoResponse> pares = todosFiltrados.stream()
-                .skip(skip)
-                .limit(limit)
-                .toList();
+        List<ParCompensacaoSugeridoResponse> pares =
+                todosFiltrados.stream().skip(skip).limit(limit).toList();
 
         ParesSugeridosCompensacaoResponse response = new ParesSugeridosCompensacaoResponse();
         response.setPares(pares);
@@ -100,43 +153,144 @@ public class FinanceiroCompensacaoService {
         return response;
     }
 
-    private List<ParCompensacaoSugeridoResponse> coletarParesFiltradosPorDiaUtil(
+    private record CacheGreedyPares(List<ParCompensacaoSugeridoResponse> pares, Instant expiraEm) {}
+
+    private record CandidatosCompensacao(
+            List<ParCompensacaoSugeridoResponse> pares, Map<Long, LancamentoFinanceiroEntity> porId) {}
+
+    private List<ParCompensacaoSugeridoResponse> obterParesGreedyComCache(
             Integer numeroBanco,
             Integer ano,
             Integer mes,
             boolean apenasInterbancario,
-            int skip,
-            int limit) {
+            boolean apenasMesmoBanco,
+            boolean apenasMesmoDiaCalendario,
+            boolean apenasDiaDivergente) {
+        String chave = chaveCacheGreedy(
+                numeroBanco,
+                ano,
+                mes,
+                apenasInterbancario,
+                apenasMesmoBanco,
+                apenasMesmoDiaCalendario,
+                apenasDiaDivergente);
+        Instant agora = Instant.now();
+        CacheGreedyPares hit = cacheGreedyPares.get(chave);
+        if (hit != null && hit.expiraEm().isAfter(agora)) {
+            return hit.pares();
+        }
+        List<ParCompensacaoSugeridoResponse> calculado = coletarMelhoresParesGreedy(
+                numeroBanco,
+                ano,
+                mes,
+                apenasInterbancario,
+                apenasMesmoBanco,
+                apenasMesmoDiaCalendario,
+                apenasDiaDivergente);
+        cacheGreedyPares.put(
+                chave,
+                new CacheGreedyPares(
+                        calculado, agora.plusSeconds(CACHE_GREEDY_TTL_SECONDS)));
+        return calculado;
+    }
+
+    private static String chaveCacheGreedy(
+            Integer numeroBanco,
+            Integer ano,
+            Integer mes,
+            boolean apenasInterbancario,
+            boolean apenasMesmoBanco,
+            boolean apenasMesmoDiaCalendario,
+            boolean apenasDiaDivergente) {
+        return numeroBanco
+                + "|"
+                + ano
+                + "|"
+                + mes
+                + "|"
+                + apenasInterbancario
+                + "|"
+                + apenasMesmoBanco
+                + "|"
+                + apenasMesmoDiaCalendario
+                + "|"
+                + apenasDiaDivergente;
+    }
+
+    /** Carrega pares SQL (dia útil no banco), uma carga de entidades e seleção greedy. */
+    private List<ParCompensacaoSugeridoResponse> coletarMelhoresParesGreedy(
+            Integer numeroBanco,
+            Integer ano,
+            Integer mes,
+            boolean apenasInterbancario,
+            boolean apenasMesmoBanco,
+            boolean apenasMesmoDiaCalendario,
+            boolean apenasDiaDivergente) {
+        CandidatosCompensacao dados = carregarCandidatosCompensacao(
+                numeroBanco,
+                ano,
+                mes,
+                apenasInterbancario,
+                apenasMesmoBanco,
+                apenasMesmoDiaCalendario,
+                apenasDiaDivergente);
+        return selecionarMelhoresParesGreedy(dados.pares(), dados.porId());
+    }
+
+    private CandidatosCompensacao carregarCandidatosCompensacao(
+            Integer numeroBanco,
+            Integer ano,
+            Integer mes,
+            boolean apenasInterbancario,
+            boolean apenasMesmoBanco,
+            boolean apenasMesmoDiaCalendario,
+            boolean apenasDiaDivergente) {
         long totalSql = lancamentoRepository.countParesCompensacaoSugeridos(
-                numeroBanco, ano, mes, DIAS_TOLERANCIA_SQL, apenasInterbancario);
-        List<ParCompensacaoSugeridoResponse> resultado = new ArrayList<>();
-        int ignorados = 0;
+                numeroBanco,
+                ano,
+                mes,
+                DIAS_TOLERANCIA_SQL,
+                apenasInterbancario,
+                apenasMesmoBanco,
+                apenasMesmoDiaCalendario,
+                apenasDiaDivergente);
+        if (totalSql == 0) {
+            return new CandidatosCompensacao(List.of(), Map.of());
+        }
+        long limiteLinhas = Math.min(totalSql, MAX_CANDIDATE_SQL_ROWS);
+        List<Object[]> todasLinhas = new ArrayList<>((int) Math.min(limiteLinhas, Integer.MAX_VALUE));
         int sqlOffset = 0;
-        int batchSize = 500;
-        while (resultado.size() < limit && sqlOffset < totalSql) {
+        while (sqlOffset < limiteLinhas) {
+            int batch = (int) Math.min(SQL_BATCH_SIZE, limiteLinhas - sqlOffset);
             List<Object[]> rows = lancamentoRepository.findParesCompensacaoSugeridosIds(
-                    numeroBanco, ano, mes, DIAS_TOLERANCIA_SQL, apenasInterbancario, batchSize, sqlOffset);
+                    numeroBanco,
+                    ano,
+                    mes,
+                    DIAS_TOLERANCIA_SQL,
+                    apenasInterbancario,
+                    apenasMesmoBanco,
+                    apenasMesmoDiaCalendario,
+                    apenasDiaDivergente,
+                    batch,
+                    sqlOffset);
             if (rows.isEmpty()) {
                 break;
             }
+            todasLinhas.addAll(rows);
             sqlOffset += rows.size();
-            for (ParCompensacaoSugeridoResponse par : mapearParesFiltradosPorDiaUtil(rows, rows.size())) {
-                if (ignorados < skip) {
-                    ignorados++;
-                    continue;
-                }
-                resultado.add(par);
-                if (resultado.size() >= limit) {
-                    break;
-                }
+            if (rows.size() < batch) {
+                break;
             }
         }
-        return resultado;
+        return mapearCandidatosCompensacao(todasLinhas);
     }
 
-    private List<ParCompensacaoSugeridoResponse> mapearParesFiltradosPorDiaUtil(List<Object[]> rows, int maxPares) {
+    private CandidatosCompensacao mapearCandidatosCompensacao(List<Object[]> rows) {
+        if (rows.isEmpty()) {
+            return new CandidatosCompensacao(List.of(), Map.of());
+        }
         Set<Long> ids = new LinkedHashSet<>();
-        List<long[]> paresMeta = new ArrayList<>();
+        List<long[]> paresMeta = new ArrayList<>(rows.size());
         for (Object[] row : rows) {
             long idA = ((Number) row[0]).longValue();
             long idB = ((Number) row[1]).longValue();
@@ -144,15 +298,13 @@ public class FinanceiroCompensacaoService {
             ids.add(idB);
             Integer nbA = row[2] != null ? ((Number) row[2]).intValue() : null;
             Integer nbB = row[3] != null ? ((Number) row[3]).intValue() : null;
-            paresMeta.add(new long[] {idA, idB, nbA != null ? nbA.longValue() : -1L, nbB != null ? nbB.longValue() : -1L});
+            paresMeta.add(
+                    new long[] {idA, idB, nbA != null ? nbA.longValue() : -1L, nbB != null ? nbB.longValue() : -1L});
         }
 
         Map<Long, LancamentoFinanceiroEntity> porId = carregarPorIds(ids);
-        List<ParCompensacaoSugeridoResponse> pares = new ArrayList<>();
+        List<ParCompensacaoSugeridoResponse> pares = new ArrayList<>(paresMeta.size());
         for (long[] meta : paresMeta) {
-            if (pares.size() >= maxPares) {
-                break;
-            }
             LancamentoFinanceiroEntity a = porId.get(meta[0]);
             LancamentoFinanceiroEntity b = porId.get(meta[1]);
             if (a == null || b == null) {
@@ -162,25 +314,134 @@ public class FinanceiroCompensacaoService {
                 continue;
             }
             ParCompensacaoSugeridoResponse par = new ParCompensacaoSugeridoResponse();
-            par.setLancamentoA(toLancamentoResponse(a));
-            par.setLancamentoB(toLancamentoResponse(b));
+            par.setLancamentoA(resumoParFromEntity(a));
+            par.setLancamentoB(resumoParFromEntity(b));
             par.setTipo(classificarTipoPar(meta[2], meta[3], a, b));
-            par.setConfianca(ConfiancaSugestao.ALTA);
             pares.add(par);
         }
-        return pares;
+        return new CandidatosCompensacao(pares, porId);
+    }
+
+    /**
+     * Um lançamento entra em no máximo um par sugerido. Ordem: PIX↔PIX / transf↔transf, depois entre bancos,
+     * por último mesmo banco (só valor + data).
+     */
+    private List<ParCompensacaoSugeridoResponse> selecionarMelhoresParesGreedy(
+            List<ParCompensacaoSugeridoResponse> candidatos, Map<Long, LancamentoFinanceiroEntity> porId) {
+        if (candidatos.isEmpty()) {
+            return List.of();
+        }
+
+        List<ParCompensacaoSugeridoResponse> ordenados = candidatos.stream()
+                .sorted((p1, p2) -> {
+                    LancamentoFinanceiroEntity a1 = porId.get(p1.getLancamentoA().getId());
+                    LancamentoFinanceiroEntity b1 = porId.get(p1.getLancamentoB().getId());
+                    LancamentoFinanceiroEntity a2 = porId.get(p2.getLancamentoA().getId());
+                    LancamentoFinanceiroEntity b2 = porId.get(p2.getLancamentoB().getId());
+                    int s = Integer.compare(
+                            CompensacaoParPrioridade.pontuar(a2, b2), CompensacaoParPrioridade.pontuar(a1, b1));
+                    if (s != 0) {
+                        return s;
+                    }
+                    if (p1.getTipo() != p2.getTipo()) {
+                        return p1.getTipo() == TipoParCompensacao.INTERBANCARIO ? -1 : 1;
+                    }
+                    return Long.compare(
+                            p1.getLancamentoA().getId(),
+                            p2.getLancamentoA().getId());
+                })
+                .toList();
+
+        Set<Long> usados = new HashSet<>();
+        List<ParCompensacaoSugeridoResponse> resultado = new ArrayList<>();
+        for (ParCompensacaoSugeridoResponse par : ordenados) {
+            long idA = par.getLancamentoA().getId();
+            long idB = par.getLancamentoB().getId();
+            if (usados.contains(idA) || usados.contains(idB)) {
+                continue;
+            }
+            usados.add(idA);
+            usados.add(idB);
+            par.setConfianca(confiancaPorPontuacao(porId.get(idA), porId.get(idB)));
+            resultado.add(par);
+        }
+        return resultado;
+    }
+
+    private static ConfiancaSugestao confiancaPorPontuacao(
+            LancamentoFinanceiroEntity a, LancamentoFinanceiroEntity b) {
+        int pontos = CompensacaoParPrioridade.pontuar(a, b);
+        if (pontos >= CompensacaoParPrioridade.PESO_MESMA_FAMILIA_MOVIMENTO
+                + CompensacaoParPrioridade.PESO_BANCOS_DIFERENTES) {
+            return ConfiancaSugestao.ALTA;
+        }
+        if (pontos >= CompensacaoParPrioridade.PESO_MESMA_FAMILIA_MOVIMENTO
+                || pontos >= CompensacaoParPrioridade.PESO_BANCOS_DIFERENTES) {
+            return ConfiancaSugestao.MEDIA;
+        }
+        return ConfiancaSugestao.BAIXA;
+    }
+
+    private List<ParCompensacaoSugeridoResponse> coletarParesFiltradosPorDiaUtil(
+            Integer numeroBanco,
+            Integer ano,
+            Integer mes,
+            boolean apenasInterbancario,
+            boolean apenasMesmoBanco,
+            boolean apenasMesmoDiaCalendario,
+            boolean apenasDiaDivergente,
+            int skip,
+            int limit) {
+        return obterParesGreedyComCache(
+                        numeroBanco,
+                        ano,
+                        mes,
+                        apenasInterbancario,
+                        apenasMesmoBanco,
+                        apenasMesmoDiaCalendario,
+                        apenasDiaDivergente)
+                .stream()
+                .skip(skip)
+                .limit(limit)
+                .toList();
     }
 
     private static boolean mesmoDiaUtilParaCompensacao(LocalDate dataA, LocalDate dataB) {
         return CompensacaoDateUtils.mesmoDiaUtilBancario(dataA, dataB);
     }
 
+    /** Reforço pós-greedy: mesmo dia = data de calendário igual; divergente = datas diferentes. */
+    private static List<ParCompensacaoSugeridoResponse> filtrarParesPorDiaCalendario(
+            List<ParCompensacaoSugeridoResponse> pares,
+            boolean apenasMesmoDiaCalendario,
+            boolean apenasDiaDivergente) {
+        if (!apenasMesmoDiaCalendario && !apenasDiaDivergente) {
+            return pares;
+        }
+        return pares.stream()
+                .filter(par -> {
+                    LocalDate da = par.getLancamentoA() != null ? par.getLancamentoA().getDataLancamento() : null;
+                    LocalDate db = par.getLancamentoB() != null ? par.getLancamentoB().getDataLancamento() : null;
+                    if (da == null || db == null) {
+                        return false;
+                    }
+                    boolean mesmoDia = da.equals(db);
+                    if (apenasMesmoDiaCalendario) {
+                        return mesmoDia;
+                    }
+                    return !mesmoDia;
+                })
+                .toList();
+    }
+
     @Transactional(readOnly = true)
-    public GruposCompensacaoInconsistentesResponse listarGruposInconsistentes(int page, int size) {
+    public GruposCompensacaoInconsistentesResponse listarGruposInconsistentes(
+            Integer numeroBanco, Integer ano, Integer mes, int page, int size) {
         int limit = Math.max(1, Math.min(size, 100));
         int offset = Math.max(0, page) * limit;
-        long total = lancamentoRepository.countGruposCompensacaoInconsistentes();
-        List<Object[]> resumos = lancamentoRepository.findGruposCompensacaoInconsistentesResumo(limit, offset);
+        long total = lancamentoRepository.countGruposCompensacaoInconsistentes(ano, mes, numeroBanco);
+        List<Object[]> resumos =
+                lancamentoRepository.findGruposCompensacaoInconsistentesResumo(ano, mes, numeroBanco, limit, offset);
 
         List<GrupoCompensacaoInconsistenteResponse> grupos = new ArrayList<>();
         for (Object[] row : resumos) {
@@ -221,8 +482,17 @@ public class FinanceiroCompensacaoService {
 
         String tipoFiltro = request.getTipo() != null ? request.getTipo().trim().toUpperCase(Locale.ROOT) : "TODOS";
         boolean apenasInterbancarioSql = "INTERBANCARIO".equals(tipoFiltro);
+        boolean apenasMesmoBancoSql = "MESMO_BANCO".equals(tipoFiltro);
         List<ParCompensacaoSugeridoResponse> candidatos = coletarParesFiltradosPorDiaUtil(
-                request.getNumeroBanco(), ano, mes, apenasInterbancarioSql, 0, Integer.MAX_VALUE);
+                request.getNumeroBanco(),
+                ano,
+                mes,
+                apenasInterbancarioSql,
+                apenasMesmoBancoSql,
+                false,
+                false,
+                0,
+                Integer.MAX_VALUE);
         List<ParCompensacaoSugeridoResponse> todosPares = new ArrayList<>();
         for (ParCompensacaoSugeridoResponse par : candidatos) {
             if ("TODOS".equals(tipoFiltro) || par.getTipo().name().equals(tipoFiltro)) {
@@ -394,8 +664,8 @@ public class FinanceiroCompensacaoService {
 
     private AutoParearDetalheResponse toAutoParearDetalhe(ParCompensacaoSugeridoResponse par) {
         AutoParearDetalheResponse d = new AutoParearDetalheResponse();
-        d.setLancamentoA(resumoPar(par.getLancamentoA()));
-        d.setLancamentoB(resumoPar(par.getLancamentoB()));
+        d.setLancamentoA(par.getLancamentoA());
+        d.setLancamentoB(par.getLancamentoB());
         d.setTipo(par.getTipo());
         return d;
     }
@@ -404,10 +674,35 @@ public class FinanceiroCompensacaoService {
         ResumoLancamentoParResponse r = new ResumoLancamentoParResponse();
         r.setId(l.getId());
         r.setBanco(l.getBancoNome());
-        r.setDescricao(l.getDescricao());
+        r.setNumeroBanco(l.getNumeroBanco());
+        r.setDataLancamento(l.getDataLancamento());
+        r.setDescricao(truncarDescricaoResumo(l.getDescricao()));
         r.setValor(l.getValor());
         r.setNatureza(l.getNatureza());
         return r;
+    }
+
+    private ResumoLancamentoParResponse resumoParFromEntity(LancamentoFinanceiroEntity e) {
+        ResumoLancamentoParResponse r = new ResumoLancamentoParResponse();
+        r.setId(e.getId());
+        r.setBanco(Utf8MojibakeUtil.corrigir(e.getBancoNome()));
+        r.setNumeroBanco(e.getNumeroBanco());
+        r.setDataLancamento(e.getDataLancamento());
+        r.setDescricao(truncarDescricaoResumo(Utf8MojibakeUtil.corrigir(e.getDescricao())));
+        r.setValor(e.getValor());
+        r.setNatureza(e.getNatureza());
+        return r;
+    }
+
+    private static String truncarDescricaoResumo(String descricao) {
+        if (descricao == null) {
+            return "";
+        }
+        String s = descricao.trim();
+        if (s.length() <= DESCRICAO_RESUMO_MAX) {
+            return s;
+        }
+        return s.substring(0, DESCRICAO_RESUMO_MAX) + "…";
     }
 
     private LancamentoFinanceiroResponse toLancamentoResponse(LancamentoFinanceiroEntity e) {

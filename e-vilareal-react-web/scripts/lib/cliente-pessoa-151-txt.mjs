@@ -59,21 +59,56 @@ export function lerNumeroPessoaCliente151Txt(codNum, opts = {}) {
 }
 
 /**
- * Garante vínculo `codigoCliente` → `pessoaId` (POST idempotente).
- * Não altera se o código já estiver ligado a outra pessoa na API.
+ * Atualiza `cliente.pessoa_id` quando a API já tem outro vínculo (legado codigo≈pessoa).
+ * @param {import('mysql2/promise').Connection} conn
+ * @param {string} cod8
+ * @param {number} pessoaIdTxt
+ */
+export async function substituirVinculoClientePessoaMysql(conn, cod8, pessoaIdTxt) {
+  const pid = Math.trunc(Number(pessoaIdTxt));
+  if (!Number.isFinite(pid) || pid < 1) {
+    return { acao: 'ignorado', motivo: 'pessoa_id_invalido' };
+  }
+
+  const [rows] = await conn.query(
+    'SELECT id, pessoa_id FROM cliente WHERE codigo_cliente = ? LIMIT 1',
+    [cod8]
+  );
+  if (!rows?.length) {
+    return { acao: 'sem_linha_cliente', pessoaId: pid };
+  }
+
+  const atual = Number(rows[0].pessoa_id);
+  if (atual === pid) {
+    return { acao: 'ja_ok', pessoaId: pid };
+  }
+
+  const [pessoa] = await conn.query('SELECT id FROM pessoa WHERE id = ? LIMIT 1', [pid]);
+  if (!pessoa?.length) {
+    return { acao: 'pessoa_inexistente', pessoaId: pid, pessoaIdAnterior: atual };
+  }
+
+  await conn.query('UPDATE cliente SET pessoa_id = ? WHERE codigo_cliente = ?', [pid, cod8]);
+  return { acao: 'atualizado_mysql', pessoaId: pid, pessoaIdAnterior: atual };
+}
+
+/**
+ * Garante vínculo `codigoCliente` → `pessoaId` (POST ou UPDATE MySQL com `--substituir`).
  *
  * @param {string} baseUrl
  * @param {string} token
  * @param {string} cod8
  * @param {number} pessoaIdTxt
  * @param {Map<string, number>} [cache]
+ * @param {{ substituir?: boolean, conn?: import('mysql2/promise').Connection }} [opts]
  */
 export async function sincronizarVinculoClientePessoaApi(
   baseUrl,
   token,
   cod8,
   pessoaIdTxt,
-  cache = new Map()
+  cache = new Map(),
+  opts = {}
 ) {
   const pid = Math.trunc(Number(pessoaIdTxt));
   if (!Number.isFinite(pid) || pid < 1) {
@@ -85,12 +120,27 @@ export async function sincronizarVinculoClientePessoaApi(
     return { acao: 'ja_ok', pessoaId: pid };
   }
   if (atual != null && atual !== pid) {
-    return {
-      acao: 'divergente_api',
-      pessoaIdApi: atual,
-      pessoaIdTxt: pid,
-      motivo: 'codigo_ja_vinculado_outra_pessoa',
-    };
+    if (opts.substituir && opts.conn) {
+      const sub = await substituirVinculoClientePessoaMysql(opts.conn, cod8, pid);
+      if (sub.acao === 'atualizado_mysql' || sub.acao === 'ja_ok') {
+        cache.set(cod8, pid);
+        return sub;
+      }
+      if (sub.acao === 'pessoa_inexistente') {
+        return sub;
+      }
+      if (sub.acao !== 'sem_linha_cliente') {
+        return sub;
+      }
+      // Sem linha em `cliente` — fallback da API não é vínculo real; segue POST abaixo.
+    } else {
+      return {
+        acao: 'divergente_api',
+        pessoaIdApi: atual,
+        pessoaIdTxt: pid,
+        motivo: 'codigo_ja_vinculado_outra_pessoa',
+      };
+    }
   }
 
   const res = await fetch(`${baseUrl}/api/clientes`, {

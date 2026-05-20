@@ -63,6 +63,26 @@ class CalculoRodadaRepositoryIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     @Transactional
+    void findAllResumo_naoCarregaPayloadJson() throws Exception {
+        CalculoRodadaEntity e = new CalculoRodadaEntity();
+        e.setCodigoCliente("00000003");
+        e.setNumeroProcesso(1);
+        e.setDimensao(0);
+        e.setParcelamentoAceito(true);
+        e.setPayloadJson(objectMapper.readTree("{\"parcelamentoAceito\":true,\"k\":\"v\"}"));
+        calculoRodadaRepository.save(e);
+        calculoRodadaRepository.flush();
+        HibernateSqlCapture.clear();
+
+        var rows = calculoRodadaRepository.findAllResumo();
+        assertThat(rows).hasSize(1);
+        assertThat(rows.get(0).parcelamentoAceito()).isTrue();
+
+        assertThat(HibernateSqlCapture.statementsReferencingCalculoRodada()).noneMatch(s -> containsPayloadJsonColumn(s));
+    }
+
+    @Test
+    @Transactional
     void findById_comAcessoAoPayload_carregaJson() throws Exception {
         CalculoRodadaEntity inserted = new CalculoRodadaEntity();
         inserted.setCodigoCliente("00000002");

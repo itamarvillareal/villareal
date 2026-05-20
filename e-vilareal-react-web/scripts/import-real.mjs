@@ -4,10 +4,12 @@
  *
  * Consolida, num único comando, tudo o que antes exigia vários scripts:
  *   - Pessoa do cadastro Clientes (`Gerais/…/151.1.0` → API clientes — independente de processo)
- *   - Cabeçalho do processo (Proc/Gerais, semânticos, fase, status, prazo)
+ *   - Cabeçalho do processo (Proc/Gerais, semânticos, fase, prazo)
+ *   - Status ativo/inativo (`Gerais/…/Status.Processo<proc>.Processos.txt` — INATIVO → inativo; resto → ativo)
  *   - Histórico HC (`import-historico-local-txt.mjs`, em massa por cliente)
  *   - Vínculo imóvel `0.89.1` (por processo)
  *   - Partes do processo (`Proc/…/90` e `95` por proc) — `import-processo-partes-txt.mjs` (por defeito; `--sem-partes` omite)
+ *   - Processos em falta na API são criados automaticamente (stub) antes da importação
  *
  * Uso:
  *   node scripts/import-real.mjs --cliente=728 --dry-run
@@ -37,10 +39,11 @@ import './lib/load-vilareal-import-env.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
 import { resolverBaseBancoDados } from './lib/gerais-fase-processo-txt.mjs';
+import { sincronizarStatusProcessoImportReal } from './lib/sincronizar-status-processo-import-real.mjs';
 import {
   centenaPastaClienteHistorico,
   formatCod8,
@@ -54,6 +57,7 @@ const ROOT = path.join(__dirname, '..');
 const SCRIPT_PROCESSO = path.join(__dirname, 'import-processo-txt.mjs');
 const SCRIPT_HISTORICO = path.join(__dirname, 'import-historico-local-txt.mjs');
 const SCRIPT_PARTES = path.join(__dirname, 'import-processo-partes-txt.mjs');
+const SCRIPT_GARANTIR_PROCESSOS = path.join(__dirname, 'garantir-processos-import-real.mjs');
 
 function parseArgs(argv) {
   const out = {
@@ -210,8 +214,45 @@ function executarImportPartes(opts) {
   return executarScript(SCRIPT_PARTES, argsPartesCliente(opts));
 }
 
+/**
+ * @param {ReturnType<typeof parseArgs>} opts
+ * @param {object} relatorio
+ */
+async function executarSincronizarStatusProcesso(opts, relatorio) {
+  const baseUrl = (process.env.VILAREAL_API_BASE || 'http://localhost:8081').replace(/\/$/, '');
+  console.log('\n[status] txt `Status.Processo*.Processos` — INATIVO → inativo; demais → ativo…\n');
+  try {
+    const st = await sincronizarStatusProcessoImportReal(opts, { baseUrl });
+    relatorio.etapas.statusProcesso = st;
+    console.log(
+      `\n[status] concluído: txt=${st.txtStatus} inativos=${st.inativos} ativos=${st.ativos} aplicados=${st.aplicados} pulados=${st.pulados_igual} sem_api=${st.sem_processo_api} falhas=${st.falhas}\n`
+    );
+    return st.falhas > 0 ? 1 : 0;
+  } catch (e) {
+    relatorio.etapas.statusProcesso = { erro: e?.message || String(e) };
+    console.error('[status] falha:', e?.message || e);
+    return 1;
+  }
+}
+
 function executarImportProcesso(opts, processo, extras = []) {
   return executarScript(SCRIPT_PROCESSO, argsComunsProcesso(opts, processo, extras));
+}
+
+/**
+ * @param {ReturnType<typeof parseArgs>} opts
+ * @param {number[]} [processosAlvo] Processos do lote atual (garantidos mesmo sem 3.1)
+ */
+function executarGarantirProcessos(opts, processosAlvo = []) {
+  const args = [`--cliente=${opts.cliente}`, `--base=${opts.base}`, `--login=${opts.login}`];
+  if (opts.senha) args.push(`--senha=${opts.senha}`);
+  if (opts.dryRun) args.push('--dry-run');
+  if (opts.processo != null) {
+    args.push(`--processo=${opts.processo}`);
+  } else if (processosAlvo.length > 0) {
+    args.push(`--processos=${processosAlvo.join(',')}`);
+  }
+  return executarScript(SCRIPT_GARANTIR_PROCESSOS, args);
 }
 
 function executarImportHistoricoCliente(opts) {
@@ -232,7 +273,8 @@ function executarImportHistoricoCliente(opts) {
     );
   }
   if (opts.substituirHistorico) {
-    args.push('--substituir-andamentos');
+    // Só apaga andamentos do(s) processo(s) do cliente (--substituir-andamentos), não toda a origem IMPORT_TXT_LOCAL.
+    args.push('--substituir-andamentos', '--nao-limpar-import');
   } else {
     args.push('--nao-limpar-import', '--apenas-novos');
   }
@@ -258,6 +300,7 @@ function imprimirResumoCliente(opts, procs, fonteProcs = '3.1') {
     [
       'pessoa cliente (151.1.0)',
       opts.semHistorico ? null : 'histórico (massa)',
+      'status Processo (ativo/inativo)',
       'cabeçalho/fase/semânticos por processo',
       opts.semImovel ? null : 'imóvel 0.89.1',
       opts.semPartes ? null : 'partes processo 90/95',
@@ -331,6 +374,12 @@ async function main() {
 
   // Um único processo: delega ao import-processo-txt (histórico por processo, fluxo completo).
   if (opts.processo != null) {
+    if (!opts.dryRun) {
+      console.log('\n[0/4] Garantir processos na API (stubs em falta)…\n');
+      const codeGarantir = executarGarantirProcessos(opts);
+      relatorio.etapas.garantirProcessos = codeGarantir === 0 ? 'ok' : 'falhou';
+      if (codeGarantir !== 0) process.exit(codeGarantir);
+    }
     console.log(`\n[import-real] Processo único ${opts.processo} — fluxo completo.\n`);
     const extras = ['--sem-cliente-pessoa'];
     if (opts.semHistorico) extras.push('--sem-historico');
@@ -361,6 +410,17 @@ async function main() {
 
   // —— Cliente inteiro ——
   const primeiro = procs[0];
+
+  if (!opts.dryRun && procs.length > 0) {
+    console.log('\n[0/4] Garantir processos na API (stubs em falta)…\n');
+    const codeGarantir = executarGarantirProcessos(opts, procs);
+    relatorio.etapas.garantirProcessos = codeGarantir === 0 ? 'ok' : 'falhou';
+    if (codeGarantir !== 0) {
+      relatorio.falhas.push({ etapa: 'garantirProcessos', code: codeGarantir });
+      console.error('[import-real] Falha ao garantir processos na API — abortando.');
+      process.exit(codeGarantir);
+    }
+  }
 
   console.log('\n[1/4] Pessoa do cliente (151.1.0)…\n');
   const codePessoa = executarImportProcesso(opts, primeiro, [
@@ -424,6 +484,15 @@ async function main() {
   } else {
     relatorio.etapas.historico = 'ignorado';
     console.log('\n[2/4] Histórico ignorado (--sem-historico).\n');
+  }
+
+  const codeStatus = await executarSincronizarStatusProcesso(opts, relatorio);
+  if (codeStatus !== 0) {
+    relatorio.falhas.push({ etapa: 'statusProcesso', code: codeStatus });
+    if (!opts.dryRun) {
+      console.error('[import-real] Falha na sincronização de status Processo — abortando.');
+      process.exit(codeStatus);
+    }
   }
 
   const temCabecalho31 = relatorio.processosCom31 > 0;
@@ -514,7 +583,13 @@ async function main() {
   }
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+const isMain =
+  process.argv[1] != null &&
+  import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
+
+if (isMain) {
+  main().catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });
+}
