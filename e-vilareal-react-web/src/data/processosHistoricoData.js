@@ -10,6 +10,7 @@ import {
   extrairTipoAudienciaDaDescricaoAgenda,
   extrairChavesCandidatasCnjDoTextoAgenda,
 } from '../domain/cnjAgendaResolucao.js';
+import { loadCadastroClienteDados } from './cadastroClientesStorage.js';
 import { padCliente } from './processosDadosRelatorio.js';
 import { chaveNumeroProcessoBuscaDiagnostico } from '../domain/normalizarNumeroProcessoBuscaDiagnostico.js';
 import { ehTituloHistoricoSistemaLegado } from '../domain/historicoTituloLegadoSistema.js';
@@ -536,7 +537,27 @@ export function obterNumeroProcessoNovoUnificado(codCliente, procNumero, fallbac
 export function obterParteOpostaUnificada(codCliente, procNumero, fallbackParteOposta = '') {
   const po = String(getRegistroProcesso(codCliente, procNumero)?.parteOposta ?? '').trim();
   if (po) return po;
-  return String(fallbackParteOposta ?? '').trim();
+  try {
+    const cad = loadCadastroClienteDados(codCliente);
+    const rows = cad?.processos;
+    if (Array.isArray(rows)) {
+      const row = rows.find((p) => Number(p?.procNumero) === Number(procNumero));
+      const t = String(row?.parteOposta ?? row?.reu ?? '').trim();
+      if (t && t !== '—') return t;
+    }
+  } catch {
+    /* ignore */
+  }
+  const fb = String(fallbackParteOposta ?? '').trim();
+  return fb && fb !== '—' ? fb : '';
+}
+
+/** Mesmo critério que «Ativo/Inativo» na tela Processos (`statusAtivo` no histórico). */
+export function obterStatusAtivoUnificado(codCliente, procNumero, fallbackAtivo = true) {
+  const reg = getRegistroProcesso(codCliente, procNumero);
+  if (reg && reg.statusAtivo !== null) return reg.statusAtivo !== false;
+  if (fallbackAtivo === false) return false;
+  return true;
 }
 
 /**
@@ -660,13 +681,22 @@ export function alinharListaProcessosDescricaoComHistorico(codClientePadded8, li
     const velhoUnif = obterNumeroProcessoVelhoUnificado(cod, n, p.processoVelho ?? '');
     const novoUnif = obterNumeroProcessoNovoUnificado(cod, n, p.processoNovo ?? '');
     const opostaUnif = obterParteOpostaUnificada(cod, n, p.parteOposta ?? '');
+    const statusAtivoUnif = obterStatusAtivoUnificado(cod, n, p.statusAtivo !== false);
     const sameDesc = (p.descricao ?? '') === descUnif;
     const sameVelho = (p.processoVelho ?? '') === velhoUnif;
     const sameNovo = (p.processoNovo ?? '') === novoUnif;
     const sameOposta = (p.parteOposta ?? '') === opostaUnif;
-    if (sameDesc && sameVelho && sameNovo && sameOposta) return p;
+    const sameStatus = (p.statusAtivo !== false) === statusAtivoUnif;
+    if (sameDesc && sameVelho && sameNovo && sameOposta && sameStatus) return p;
     changed = true;
-    return { ...p, descricao: descUnif, processoVelho: velhoUnif, processoNovo: novoUnif, parteOposta: opostaUnif };
+    return {
+      ...p,
+      descricao: descUnif,
+      processoVelho: velhoUnif,
+      processoNovo: novoUnif,
+      parteOposta: opostaUnif,
+      statusAtivo: statusAtivoUnif,
+    };
   });
   return changed ? out : listaProcessos;
 }

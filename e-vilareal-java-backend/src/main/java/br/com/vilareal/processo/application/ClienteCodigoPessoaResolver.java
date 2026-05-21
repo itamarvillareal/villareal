@@ -74,6 +74,15 @@ public class ClienteCodigoPessoaResolver {
      * {@code ProcessoResponse#getCodigoCliente()} e à tela Processos.
      */
     public String codigoClienteExibicaoParaPessoaId(long pessoaIdDonoProcesso) {
+        List<ClienteEntity> clientes =
+                clienteRepository.findByPessoa_IdOrderByCodigoClienteAsc(pessoaIdDonoProcesso);
+        if (!clientes.isEmpty()) {
+            String codCadastro =
+                    CodigoClienteUtil.normalizarCodigoClienteOitoDigitos(clientes.get(0).getCodigoCliente());
+            if (codCadastro != null && !codCadastro.isEmpty()) {
+                return codCadastro;
+            }
+        }
         if (haMapeamentosPlanilhaPasta1()) {
             List<PlanilhaPasta1ClienteEntity> maps =
                     planilhaPasta1ClienteRepository.findByPessoaIdOrderByChaveClienteAsc(pessoaIdDonoProcesso);
@@ -81,11 +90,6 @@ public class ClienteCodigoPessoaResolver {
                 String chave = maps.get(0).getChaveCliente();
                 return CodigoClienteUtil.normalizarCodigoClienteOitoDigitos(chave);
             }
-        }
-        List<ClienteEntity> clientes =
-                clienteRepository.findByPessoa_IdOrderByCodigoClienteAsc(pessoaIdDonoProcesso);
-        if (!clientes.isEmpty()) {
-            return CodigoClienteUtil.normalizarCodigoClienteOitoDigitos(clientes.get(0).getCodigoCliente());
         }
         return CodigoClienteUtil.formatar(pessoaIdDonoProcesso);
     }

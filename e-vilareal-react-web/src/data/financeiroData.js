@@ -1329,6 +1329,110 @@ export function normalizarCodigoClienteFinanceiro(val) {
   return String(n);
 }
 
+/** API antiga devolvia {@code pessoa.id} formatado como codigoCliente (ex.: 6277 em vez de 938). */
+export function codigoClienteApiPareceIdPessoa(codigoClienteRaw, clienteIdPessoa) {
+  const cod = normalizarCodigoClienteFinanceiro(codigoClienteRaw);
+  const pid = Number(clienteIdPessoa);
+  if (!cod || !Number.isFinite(pid) || pid <= 0) return false;
+  return cod === normalizarCodigoClienteFinanceiro(String(pid));
+}
+
+/** Vínculo gravado só com {@code clienteId}; a API pode devolver codigoCliente = id da pessoa. */
+const STORAGE_COD_CLIENTE_PESSOA = 'vilareal.financeiro.codClientePorPessoaId.v1';
+const codigoClientePorPessoaIdMemoria = new Map();
+
+function persistirCodigoClientePorPessoaId() {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(
+      STORAGE_COD_CLIENTE_PESSOA,
+      JSON.stringify(Object.fromEntries(codigoClientePorPessoaIdMemoria)),
+    );
+  } catch {
+    /* quota / privado */
+  }
+}
+
+function carregarCodigoClientePorPessoaIdPersistido() {
+  if (typeof window === 'undefined') return;
+  try {
+    const raw = window.localStorage.getItem(STORAGE_COD_CLIENTE_PESSOA);
+    if (!raw) return;
+    const obj = JSON.parse(raw);
+    if (!obj || typeof obj !== 'object') return;
+    for (const [k, v] of Object.entries(obj)) {
+      const pid = Number(k);
+      const cod = normalizarCodigoClienteFinanceiro(v);
+      if (Number.isFinite(pid) && pid > 0 && cod) codigoClientePorPessoaIdMemoria.set(pid, cod);
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+carregarCodigoClientePorPessoaIdPersistido();
+
+export function registrarCodigoClienteFinanceiroPorPessoaId(pessoaId, codigoClienteRaw) {
+  const pid = Number(pessoaId);
+  const cod = normalizarCodigoClienteFinanceiro(codigoClienteRaw);
+  if (!Number.isFinite(pid) || pid <= 0 || !cod) return;
+  if (codigoClienteApiPareceIdPessoa(cod, pid)) return;
+  codigoClientePorPessoaIdMemoria.set(pid, cod);
+  persistirCodigoClientePorPessoaId();
+}
+
+export function obterCodigoClienteFinanceiroPorPessoaId(pessoaId) {
+  const pid = Number(pessoaId);
+  if (!Number.isFinite(pid) || pid <= 0) return '';
+  return codigoClientePorPessoaIdMemoria.get(pid) || '';
+}
+
+/** Tag em {@code descricaoDetalhada} com o código da planilha (import extrato). */
+export const TAG_CC_CLI_PREFIX = 'CC_CLI:';
+const RE_TAG_CC_CLI = /\[CC_CLI:(\d+)\]/i;
+
+export function extrairCodigoClienteTagDescricaoDetalhada(descricaoDetalhada) {
+  const m = RE_TAG_CC_CLI.exec(String(descricaoDetalhada ?? ''));
+  if (!m) return '';
+  return normalizarCodigoClienteFinanceiro(m[1]);
+}
+
+export function anexarCodigoClienteTagDescricaoDetalhada(descricaoDetalhada, codigoClienteRaw) {
+  const cod = normalizarCodigoClienteFinanceiro(codigoClienteRaw);
+  if (!cod) return String(descricaoDetalhada ?? '').trim();
+  let base = String(descricaoDetalhada ?? '').trim();
+  if (RE_TAG_CC_CLI.test(base)) {
+    base = base.replace(RE_TAG_CC_CLI, '').replace(/\s+/g, ' ').trim();
+  }
+  const tag = `[${TAG_CC_CLI_PREFIX}${cod}]`;
+  const out = base ? `${base} ${tag}` : tag;
+  return out.length > 2000 ? out.slice(0, 2000) : out;
+}
+
+/**
+ * Código do cliente para coluna / formulário do extrato (DTO da API ou linha mapeada).
+ * @param {{ codigoCliente?: string|null, clienteId?: number|null, descricaoDetalhada?: string|null }} dto
+ */
+export function codigoClienteExtratoDesdeApiDto(dto) {
+  const pid = Number(dto?.clienteId);
+  const fromTag = extrairCodigoClienteTagDescricaoDetalhada(dto?.descricaoDetalhada);
+  if (fromTag) {
+    if (Number.isFinite(pid) && pid > 0) registrarCodigoClienteFinanceiroPorPessoaId(pid, fromTag);
+    return fromTag;
+  }
+  const raw = dto?.codigoCliente != null ? String(dto.codigoCliente).trim() : '';
+  if (raw && !codigoClienteApiPareceIdPessoa(raw, pid)) {
+    const digits = raw.replace(/\D/g, '');
+    const n = Number(digits);
+    const cod = normalizarCodigoClienteFinanceiro(Number.isFinite(n) && n >= 1 ? n : '');
+    if (cod) {
+      if (Number.isFinite(pid) && pid > 0) registrarCodigoClienteFinanceiroPorPessoaId(pid, cod);
+      return cod;
+    }
+  }
+  return obterCodigoClienteFinanceiroPorPessoaId(pid);
+}
+
 /** Normaliza número de processo (1–100). Retorna '' se vazio ou não numérico. */
 export function normalizarProcFinanceiro(val) {
   const s = String(val ?? '').trim();
@@ -1406,6 +1510,13 @@ function lancamentoParaContaCorrenteModal(t) {
     nome: obs.slice(0, 24) || '—',
     nomeBanco: t.nomeBanco,
     numero: t.numero,
+    apiId: t.apiId ?? null,
+    descricaoDetalhada: String(t.descricaoDetalhada ?? t.categoria ?? ''),
+    letra: t.letra,
+    ref: t.ref,
+    chave: `${String(t.nomeBanco ?? '').trim()}|${String(t.numero ?? '').trim()}|${String(t.data ?? '').trim()}`,
+    _financeiroMeta: t._financeiroMeta ?? null,
+    origemExtrato: t.origemExtrato,
   };
 }
 

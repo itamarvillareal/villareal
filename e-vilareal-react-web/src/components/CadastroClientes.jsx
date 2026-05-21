@@ -41,7 +41,7 @@ import {
   buildRouterStateChaveClienteProcesso,
   extrairIntentNavegacaoProcessos,
 } from '../domain/camposProcessoCliente.js';
-import { termoDigitosCorrespondeCnjCampo } from '../domain/cnjFuzzyBusca.js';
+import { filtrarProcessosGradeCliente } from '../data/buscaProcessosGradeCliente.js';
 import {
   listarClientesIndiceCadastro,
   resolverClienteCadastroPorCodigo,
@@ -51,7 +51,7 @@ import { getIdPessoaPorCodCliente } from '../data/clienteCodigoHelpers.js';
 import {
   buscarClientePorCodigo,
   buscarProcessoPorChaveNatural,
-  listarProcessosResumoPorCodigoCliente,
+  listarProcessosPorCodigoCliente,
   listarProcessosPorNumeroInterno,
   mergeCadastroClientesProcessosComApi,
   salvarCabecalhoProcesso,
@@ -75,6 +75,13 @@ function formatDocBR(digits) {
   if (d.length === 11) return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
   if (d.length === 14) return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`;
   return d || '—';
+}
+
+function classeGradeProcessoCliente(proc, idxAlternado) {
+  if (proc?.statusAtivo === false) {
+    return 'bg-slate-300/75 text-slate-600 cursor-pointer hover:bg-slate-400/60 transition-colors ring-1 ring-inset ring-slate-300/80';
+  }
+  return `${idxAlternado % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'} cursor-pointer hover:bg-indigo-50/60 transition-colors`;
 }
 
 function dadosClientePorCodigo(n, clientesApiIndex) {
@@ -366,7 +373,7 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
     setErroApiProcessosGrade('');
     setProcessos(enriched);
     setProcessosGradeCarregando(true);
-    void listarProcessosResumoPorCodigoCliente(padded)
+    void listarProcessosPorCodigoCliente(padded)
       .then((apiList) => {
         if (processosApiReqIdRef.current !== myId) return;
         setErroApiProcessosGrade('');
@@ -908,53 +915,10 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
     navigate('/processos', { state: buildRouterStateChaveClienteProcesso(padCliente8(codigo), next) });
   }
 
-  const processosFiltrados = useMemo(() => {
-    const termoRaw = String(pesquisaProcesso ?? '');
-    const termo = normalizarTextoBusca(termoRaw);
-    const termoNumero = normalizarNumeroBusca(termoRaw);
-    if (!termo) return processos;
-
-    // Termo numérico curto: busca parcial no “Proc.” (comportamento antigo, ex.: 1–2 dígitos).
-    // Com 3+ dígitos, antes só se buscava no nº novo (CNJ), ignorando o nº interno — ex.: “278” não achava Proc. 278.
-    const buscaProcCurta = termoNumero.length > 0 && termoNumero.length <= 2;
-
-    return (processos || []).filter((proc) => {
-      const procNumeroStr = String(proc.procNumero ?? '');
-      const procInternoDigits = apenasDigitos(proc.procNumero);
-      const numeroNovo = normalizarNumeroBusca(proc.processoNovo ?? '');
-
-      const numeroMatch = (() => {
-        if (!termoNumero) return false;
-        if (buscaProcCurta) return procNumeroStr.includes(termoNumero);
-        const procN = Number(procInternoDigits);
-        const termN = Number(termoNumero);
-        const internoExato =
-          Number.isFinite(procN) &&
-          Number.isFinite(termN) &&
-          procN >= 0 &&
-          procN === termN;
-        return (
-          internoExato ||
-          numeroNovo.includes(termoNumero) ||
-          termoDigitosCorrespondeCnjCampo(termoNumero, proc.processoNovo ?? '')
-        );
-      })();
-
-      const autorStr = normalizarTextoBusca(proc.autor ?? '');
-      const reuStr = normalizarTextoBusca(proc.reu ?? proc.parteOposta ?? '');
-      const tipoAcaoStr = normalizarTextoBusca(proc.tipoAcao ?? proc.descricao ?? '');
-
-      return (
-        numeroMatch ||
-        autorStr.includes(termo) ||
-        reuStr.includes(termo) ||
-        tipoAcaoStr.includes(termo) ||
-        // fallback: procura genérica em campos de texto já visíveis
-        normalizarTextoBusca(proc.parteOposta ?? '').includes(termo) ||
-        normalizarTextoBusca(proc.descricao ?? '').includes(termo)
-      );
-    });
-  }, [processos, pesquisaProcesso]);
+  const processosFiltrados = useMemo(
+    () => filtrarProcessosGradeCliente(processos, pesquisaProcesso),
+    [processos, pesquisaProcesso]
+  );
 
   const totalPaginasProcessos = useMemo(() => {
     const n = processosFiltrados.length;
@@ -1904,7 +1868,11 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
                   <button
                     key={proc.id}
                     type="button"
-                    className="w-full rounded-xl border border-slate-200 bg-white p-3 text-left shadow-sm ring-1 ring-slate-100/80 active:bg-sky-50/80"
+                    className={`w-full rounded-xl border p-3 text-left shadow-sm ${
+                      proc.statusAtivo === false
+                        ? 'border-slate-300 bg-slate-300/75 text-slate-600 ring-1 ring-slate-300/80 active:bg-slate-400/70'
+                        : 'border-slate-200 bg-white ring-1 ring-slate-100/80 active:bg-sky-50/80'
+                    }`}
                     onClick={() => abrirProcessos(n)}
                   >
                     <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2">
@@ -1944,8 +1912,12 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
                   {processosPagina.map((proc, idx) => (
                     <tr
                       key={proc.id}
-                      className={`${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'} cursor-pointer hover:bg-indigo-50/60 transition-colors`}
-                      title="Duplo clique: abrir este processo (fora dos campos editáveis)"
+                      className={classeGradeProcessoCliente(proc, idx)}
+                      title={
+                        proc.statusAtivo === false
+                          ? 'Processo inativo — duplo clique para abrir'
+                          : 'Duplo clique: abrir este processo (fora dos campos editáveis)'
+                      }
                       onDoubleClick={(e) => {
                         if (e.target.closest('input, textarea, button')) return;
                         abrirProcessos(proc.procNumero ?? idx + 1 + (paginaProcessos - 1) * PROCESSOS_POR_PAGINA);

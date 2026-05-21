@@ -4,6 +4,7 @@ import br.com.vilareal.financeiro.api.dto.LimparExtratoResult;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.LancamentoFinanceiroEntity;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.LancamentoFinanceiroRepository;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
+import br.com.vilareal.processo.application.ClienteCodigoPessoaResolver;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -27,6 +28,8 @@ class FinanceiroApplicationServiceLimparExtratoTest {
     private PessoaRepository pessoaRepository;
     @Mock
     private ProcessoRepository processoRepository;
+    @Mock
+    private ClienteCodigoPessoaResolver clienteCodigoPessoaResolver;
 
     @InjectMocks
     private FinanceiroApplicationService service;

@@ -12,6 +12,7 @@ import {
   loadPersistedContasContabeisExtrasFinanceiro,
   loadPersistedContasExtrasFinanceiro,
   loadPersistedExtratosFinanceiro,
+  codigoClienteExtratoDesdeApiDto,
   normalizarCodigoClienteFinanceiro,
   normalizarProcFinanceiro,
   savePersistedExtratosFinanceiro,
@@ -61,11 +62,7 @@ function lancamentoPertenceAoBancoExtrato(l, normBanco, numeroToNome) {
 }
 
 function codClienteExibicaoDesdeApi(l) {
-  const raw = l.codigoCliente != null ? String(l.codigoCliente).trim() : '';
-  if (raw === '') return '';
-  const digits = raw.replace(/\D/g, '');
-  const n = Number(digits);
-  return normalizarCodigoClienteFinanceiro(Number.isFinite(n) && n >= 1 ? n : '');
+  return codigoClienteExtratoDesdeApiDto(l);
 }
 
 function procExibicaoDesdeApi(l) {

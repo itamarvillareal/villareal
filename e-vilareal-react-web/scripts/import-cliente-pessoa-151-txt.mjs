@@ -142,8 +142,12 @@ async function main() {
       } else if (r.acao === 'atualizado_mysql') {
         atualizados += 1;
         ok += 1;
+        const m = r.migracao;
+        const migLog = m
+          ? `; processos=${m.processosMigrados ?? 0} conflitos=${m.processosConflito ?? 0}`
+          : '';
         console.log(
-          `cliente ${codNum}: atualizado pessoaId ${r.pessoaIdAnterior} → ${txt.pessoaId}`
+          `cliente ${codNum}: atualizado pessoaId ${r.pessoaIdAnterior} → ${txt.pessoaId}${migLog}`
         );
       } else if (r.acao === 'pessoa_inexistente') {
         pessoaInexistente += 1;

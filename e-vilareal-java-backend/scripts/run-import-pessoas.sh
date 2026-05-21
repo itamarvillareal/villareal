@@ -222,11 +222,12 @@ cp -f "$PREFLIGHT_JSON" "$SNAPSHOT_PATH"
 
 SUCESSO="$(awk -F, 'NR>1 && ($3=="UPDATE" || $3=="INSERT" || $3=="RECONCILE_BY_CPF")' "$REPORT_PATH" | wc -l | tr -d ' ')"
 python3 -c "
-import json, datetime, timezone
+import json
+from datetime import datetime, timezone
 from pathlib import Path
 snap = json.loads(Path('$PREFLIGHT_JSON').read_text(encoding='utf-8'))
 meta = {
-  'concluido_em': datetime.datetime.now(timezone.utc).isoformat(),
+  'concluido_em': datetime.now(timezone.utc).isoformat(),
   'planilha': snap.get('planilha'),
   'planilha_sha256': snap.get('planilha_sha256'),
   'linhas_importaveis': snap.get('linhas_importaveis'),

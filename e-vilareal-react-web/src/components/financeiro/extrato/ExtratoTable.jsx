@@ -36,9 +36,9 @@ function ExtratoTableInner({
           <col style={{ width: 36 }} />
           <col style={{ width: 48 }} />
           <col style={{ width: 108 }} />
+          <col style={{ width: 300 }} />
+          <col style={{ width: 112 }} />
           <col />
-          <col style={{ width: 116 }} />
-          <col style={{ width: 176 }} />
           <col style={{ width: 44 }} />
         </colgroup>
         <thead>

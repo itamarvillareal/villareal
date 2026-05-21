@@ -1,18 +1,26 @@
-import { useCallback, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ChevronDown, ChevronRight, Link2, Trash2, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, FolderOpen, Link2, Trash2, X } from 'lucide-react';
 import { ModalVinculoClienteProcFinanceiro } from '../../ModalVinculoClienteProcFinanceiro.jsx';
-import { normalizarCodigoClienteFinanceiro, normalizarProcFinanceiro } from '../../../data/financeiroData.js';
+import {
+  codigoClienteApiPareceIdPessoa,
+  normalizarCodigoClienteFinanceiro,
+  normalizarProcFinanceiro,
+  registrarCodigoClienteFinanceiroPorPessoaId,
+} from '../../../data/financeiroData.js';
+import { buildRouterStateChaveClienteProcesso } from '../../../domain/camposProcessoCliente.js';
 import { buscarClientePorCodigo, buscarProcessoPorChaveNatural } from '../../../repositories/processosRepository.js';
 import { featureFlags } from '../../../config/featureFlags.js';
 import { ContaBadge } from '../shared/ContaBadge.jsx';
 import { EtapaDot } from '../shared/EtapaDot.jsx';
 import { ValorText } from '../shared/ValorText.jsx';
 import { ETAPA_LABELS } from '../constants/financeiroConstants.js';
+import { resolverTextosPartesCabecalhoCalculo } from '../../../data/processosDadosRelatorio.js';
 import {
   extratoRowToUi,
   formatDataExtratoColuna,
   mergeExtratoRowComRespostaApi,
+  montarObservacaoExtratoVinculo,
   promoverContaEscritorioSeVinculado,
 } from './extratoMappers.js';
 import {
@@ -27,6 +35,17 @@ import {
 import { ConfirmDialog } from '../shared/ConfirmDialog.jsx';
 import { useFinanceiroToast } from '../shared/Toast.jsx';
 import { dispatchRefreshPendentes } from '../hooks/useKeyboardShortcuts.js';
+
+const ProcessosLazy = lazy(() =>
+  import('../../Processos.jsx').then((module) => ({ default: module.Processos })),
+);
+
+function lancamentoPodeAbrirProcesso(draft) {
+  if (String(draft?.contaCodigo ?? '').trim().toUpperCase() !== 'A') return false;
+  const cod = normalizarCodigoClienteFinanceiro(draft?.codCliente);
+  const proc = normalizarProcFinanceiro(draft?.proc);
+  return Boolean(cod && proc !== '');
+}
 
 function Field({ label, children }) {
   return (
@@ -46,6 +65,7 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted }) {
   const [deleting, setDeleting] = useState(false);
   const [confirmExcluir, setConfirmExcluir] = useState(false);
   const [modalVinculoAberto, setModalVinculoAberto] = useState(false);
+  const [processoEmbed, setProcessoEmbed] = useState(null);
 
   useEffect(() => {
     setDraft(item);
@@ -65,7 +85,35 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted }) {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const draftSalvar = promoverContaEscritorioSeVinculado(draft, contas);
+      let draftSalvar = promoverContaEscritorioSeVinculado(draft, contas);
+      const codDigitado = normalizarCodigoClienteFinanceiro(draftSalvar.codCliente);
+      if (
+        codDigitado &&
+        !(Number(draftSalvar.clienteId) > 0) &&
+        featureFlags.useApiFinanceiro &&
+        featureFlags.useApiProcessos
+      ) {
+        try {
+          const cliente = await buscarClientePorCodigo(codDigitado);
+          const pessoaId =
+            cliente?.pessoaId != null && Number.isFinite(Number(cliente.pessoaId))
+              ? Number(cliente.pessoaId)
+              : cliente?.id != null && Number.isFinite(Number(cliente.id))
+                ? Number(cliente.id)
+                : null;
+          if (pessoaId) {
+            const codResolucao = normalizarCodigoClienteFinanceiro(cliente?.codigoCliente);
+            const codGravado =
+              codResolucao && !codigoClienteApiPareceIdPessoa(codResolucao, pessoaId)
+                ? codResolucao
+                : codDigitado;
+            draftSalvar = { ...draftSalvar, clienteId: pessoaId, codCliente: codGravado };
+            registrarCodigoClienteFinanceiroPorPessoaId(pessoaId, codGravado);
+          }
+        } catch {
+          /* mantém save sem clienteId se API de resolução falhar */
+        }
+      }
       if (draftSalvar.contaCodigo !== draft.contaCodigo) {
         setDraft(draftSalvar);
       }
@@ -77,6 +125,9 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted }) {
       }
       const contaToLetra = buildContaToLetraMerge(loadPersistedContasContabeisExtrasFinanceiro());
       const merged = mergeExtratoRowComRespostaApi(draftSalvar, saved, contaToLetra);
+      if (merged.clienteId && merged.codCliente) {
+        registrarCodigoClienteFinanceiroPorPessoaId(merged.clienteId, merged.codCliente);
+      }
       onSaved(merged);
       setDraft(merged);
       toast.success('Lançamento atualizado.');
@@ -101,14 +152,29 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted }) {
     let clienteId = draft.clienteId ?? null;
     let processoId = draft.processoId ?? null;
 
+    let codGravado = cod;
+    let clienteResolvido = null;
+    let processoResolvido = null;
+
     if (featureFlags.useApiFinanceiro && featureFlags.useApiProcessos) {
       try {
-        const cliente = await buscarClientePorCodigo(cod);
-        const processo = procNorm ? await buscarProcessoPorChaveNatural(cod, procNorm) : null;
-        clienteId =
-          cliente?.id != null && Number.isFinite(Number(cliente.id)) ? Number(cliente.id) : null;
+        clienteResolvido = await buscarClientePorCodigo(cod);
+        processoResolvido = procNorm ? await buscarProcessoPorChaveNatural(cod, procNorm) : null;
+        const pessoaId =
+          clienteResolvido?.pessoaId != null && Number.isFinite(Number(clienteResolvido.pessoaId))
+            ? Number(clienteResolvido.pessoaId)
+            : clienteResolvido?.id != null && Number.isFinite(Number(clienteResolvido.id))
+              ? Number(clienteResolvido.id)
+              : null;
+        const codResolucao = normalizarCodigoClienteFinanceiro(clienteResolvido?.codigoCliente);
+        if (codResolucao && !codigoClienteApiPareceIdPessoa(codResolucao, pessoaId)) {
+          codGravado = codResolucao;
+        }
+        clienteId = pessoaId;
         processoId =
-          processo?.id != null && Number.isFinite(Number(processo.id)) ? Number(processo.id) : null;
+          processoResolvido?.id != null && Number.isFinite(Number(processoResolvido.id))
+            ? Number(processoResolvido.id)
+            : null;
       } catch (e) {
         toast.error(e?.message || 'Falha ao resolver cliente/processo na API.');
         setSaving(false);
@@ -116,16 +182,36 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted }) {
       }
     }
 
+    let obsVinculo = '';
+    if (procNorm) {
+      try {
+        const partes = await resolverTextosPartesCabecalhoCalculo(codGravado, procNorm);
+        obsVinculo = montarObservacaoExtratoVinculo(partes.parteCliente, partes.parteOposta);
+      } catch {
+        /* fallback abaixo */
+      }
+      if (!obsVinculo) {
+        const pc = String(
+          clienteResolvido?.nomeReferencia ?? clienteResolvido?.nomeRazao ?? clienteResolvido?.nome ?? '',
+        ).trim();
+        const po = String(processoResolvido?.parteOposta ?? processoResolvido?.parte_oposta ?? '').trim();
+        obsVinculo = montarObservacaoExtratoVinculo(pc, po);
+      }
+    }
+
     const nextDraft = promoverContaEscritorioSeVinculado(
       {
         ...draft,
-        codCliente: cod,
+        codCliente: codGravado,
         proc: procNorm || '',
         clienteId,
         processoId,
+        ...(obsVinculo ? { observacao: obsVinculo, descricaoDetalhada: obsVinculo } : {}),
       },
       contas,
     );
+
+    if (clienteId) registrarCodigoClienteFinanceiroPorPessoaId(clienteId, codGravado);
 
     try {
       if (!featureFlags.useApiFinanceiro) {
@@ -146,7 +232,7 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted }) {
       setDraft(merged);
       onSaved?.(merged);
       dispatchRefreshPendentes();
-      toast.success(`Vinculado: cliente ${cod}, proc. ${procNorm || '—'} — conta A (Escritório).`);
+      toast.success(`Vinculado: cliente ${codGravado}, proc. ${procNorm || '—'} — conta A (Escritório).`);
     } catch (e) {
       toast.error(e?.message || 'Falha ao gravar vínculo.');
     } finally {
@@ -183,6 +269,17 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted }) {
   const resumoVinculo = `${draft.descricao} · ${dataCompleta} · ${draft.bancoNome ?? ''}`;
   const podeExcluir = featureFlags.useApiFinanceiro && Number(draft.id) > 0;
   const etapaLabel = ETAPA_LABELS[draft.etapa] ?? draft.etapa;
+  const podeAbrirProcesso = useMemo(() => lancamentoPodeAbrirProcesso(draft), [draft]);
+
+  const abrirProcessoFlutuante = useCallback(() => {
+    const cod = normalizarCodigoClienteFinanceiro(draft.codCliente);
+    const proc = normalizarProcFinanceiro(draft.proc);
+    if (!cod || proc === '') return;
+    setProcessoEmbed({
+      revision: Date.now(),
+      routerState: buildRouterStateChaveClienteProcesso(cod, proc),
+    });
+  }, [draft.codCliente, draft.proc]);
 
   return (
     <aside
@@ -221,20 +318,46 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted }) {
           {draft.saldo != null ? (
             <p className="text-xs text-slate-500">Saldo: {Number(draft.saldo).toLocaleString('pt-BR')}</p>
           ) : null}
+          <Field label="Observação">
+            <textarea
+              value={draft.observacao ?? ''}
+              onChange={(e) => {
+                const v = e.target.value;
+                patch({ observacao: v, descricaoDetalhada: v });
+              }}
+              rows={2}
+              className="w-full text-sm rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1.5 resize-y"
+              placeholder="Observação do lançamento"
+            />
+          </Field>
         </section>
 
         <section className="space-y-2 border-t border-slate-100 dark:border-slate-800 pt-3">
           <div className="flex items-center justify-between gap-2">
             <p className="text-xs font-medium text-slate-500">Classificação</p>
-            <button
-              type="button"
-              disabled={saving || deleting}
-              onClick={() => setModalVinculoAberto(true)}
-              className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md border border-indigo-200 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 dark:border-indigo-800 dark:text-indigo-300 dark:bg-indigo-950/50 dark:hover:bg-indigo-950 disabled:opacity-50"
-            >
-              <Link2 className="w-3.5 h-3.5" aria-hidden />
-              Vincular a Processo
-            </button>
+            <div className="flex items-center gap-1.5 shrink-0">
+              {podeAbrirProcesso ? (
+                <button
+                  type="button"
+                  disabled={saving || deleting}
+                  onClick={abrirProcessoFlutuante}
+                  className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md border border-slate-300 text-slate-800 bg-white hover:bg-slate-50 dark:border-slate-600 dark:text-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 disabled:opacity-50"
+                  title={`Abrir processo (cliente ${normalizarCodigoClienteFinanceiro(draft.codCliente)}, proc. ${normalizarProcFinanceiro(draft.proc)})`}
+                >
+                  <FolderOpen className="w-3.5 h-3.5" aria-hidden />
+                  Abrir processo
+                </button>
+              ) : null}
+              <button
+                type="button"
+                disabled={saving || deleting}
+                onClick={() => setModalVinculoAberto(true)}
+                className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md border border-indigo-200 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 dark:border-indigo-800 dark:text-indigo-300 dark:bg-indigo-950/50 dark:hover:bg-indigo-950 disabled:opacity-50"
+              >
+                <Link2 className="w-3.5 h-3.5" aria-hidden />
+                Vincular a Processo
+              </button>
+            </div>
           </div>
           <Field label="Conta">
             <select
@@ -324,10 +447,6 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted }) {
           {extrasOpen ? (
             <div className="mt-2 space-y-2 text-xs text-slate-600 dark:text-slate-400">
               <p>
-                <span className="text-slate-400">Obs: </span>
-                {draft.observacao || '—'}
-              </p>
-              <p>
                 <span className="text-slate-400">Dimensão: </span>
                 {draft.dimensao || '—'}
               </p>
@@ -398,6 +517,53 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted }) {
         onCancel={() => setConfirmExcluir(false)}
         onConfirm={() => void handleExcluir()}
       />
+
+      {processoEmbed ? (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center p-2 sm:p-4 bg-black/55"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="extrato-processo-embed-title"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setProcessoEmbed(null);
+          }}
+        >
+          <div
+            className="flex flex-col w-[min(100vw-0.5rem,1280px)] h-[min(100dvh-0.5rem,920px)] max-h-[min(100dvh-0.5rem,920px)] min-h-0 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#0f141c] shadow-2xl overflow-hidden"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-[#141c2c] shrink-0">
+              <h2 id="extrato-processo-embed-title" className="text-sm font-semibold text-slate-900 dark:text-white">
+                Processo (cadastro)
+              </h2>
+              <button
+                type="button"
+                onClick={() => setProcessoEmbed(null)}
+                className="p-1.5 rounded-lg text-slate-600 hover:bg-slate-200 dark:text-slate-300 dark:hover:bg-white/10"
+                aria-label="Fechar formulário de processo"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden overscroll-contain [-webkit-overflow-scrolling:touch]">
+              <Suspense
+                fallback={
+                  <div className="flex min-h-[12rem] items-center justify-center p-8 text-sm text-slate-600 dark:text-slate-400">
+                    Carregando formulário de processos…
+                  </div>
+                }
+              >
+                <ProcessosLazy
+                  key={processoEmbed.revision}
+                  embedIntent={processoEmbed.routerState}
+                  embedIntentRevision={processoEmbed.revision}
+                  onFecharEmbed={() => setProcessoEmbed(null)}
+                />
+              </Suspense>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <style>{`
         @keyframes extratoPanelIn {

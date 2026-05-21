@@ -23,6 +23,7 @@
     "test:agenda-local-txt": "node --test scripts/lib/agenda-local-txt.test.mjs",
     "import:historico": "node scripts/import-historico-planilha.mjs",
     "extrair:historico-local-txt": "node scripts/extrair-historico-local-txt-para-xls.mjs",
+    "listar:txt-hc-por-data": "node scripts/listar-txt-hc-por-data-criacao.mjs",
     "import:historico-local-txt": "node scripts/import-historico-local-txt.mjs",
     "import:real": "node scripts/import-real.mjs",
     "import:historico-local-lotes": "node scripts/import-historico-local-lotes.mjs",

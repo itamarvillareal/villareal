@@ -30,6 +30,7 @@ export function ExtratoPage() {
   const fetchKeyRef = useRef('');
   const paginasCacheRef = useRef(new Map());
   const lancamentoFocusRef = useRef(null);
+  const vinculoOverlayRef = useRef(new Map());
 
   const limparCachePaginas = useCallback(() => {
     paginasCacheRef.current.clear();
@@ -106,9 +107,23 @@ export function ExtratoPage() {
         const res = await listarLancamentosExtratoPaginados(fetchParams, { signal: ac.signal });
         if (cancelled || fetchKeyRef.current !== myKey) return;
         const content = (res?.content ?? []).map((l) => mapApiLancamentoToExtratoRow(l, contaToLetra));
+        const mesclarVinculo = (m, anterior) => {
+          const o = vinculoOverlayRef.current.get(Number(m.id));
+          const cod = m.codCliente || anterior?.codCliente || o?.codCliente || '';
+          const proc = m.proc || anterior?.proc || o?.proc || '';
+          const clienteId = m.clienteId ?? anterior?.clienteId ?? o?.clienteId ?? null;
+          const processoId = m.processoId ?? anterior?.processoId ?? o?.processoId ?? null;
+          if (!cod && !proc && !clienteId && !processoId) return m;
+          return { ...m, codCliente: cod, proc, clienteId, processoId };
+        };
         const totalEl = Number(res?.totalElements) || 0;
         const totalPg = Number(res?.totalPages) || 0;
-        setRows(content);
+        let mergedRows = content;
+        setRows((prev) => {
+          const byId = new Map((prev || []).map((r) => [Number(r.id), r]));
+          mergedRows = content.map((m) => mesclarVinculo(m, byId.get(Number(m.id))));
+          return mergedRows;
+        });
         setTotalElements(totalEl);
         setTotalPages(totalPg);
         if (paginasCacheRef.current.size > 20) {
@@ -116,7 +131,7 @@ export function ExtratoPage() {
           paginasCacheRef.current.delete(firstKey);
         }
         paginasCacheRef.current.set(myKey, {
-          rows: content,
+          rows: mergedRows,
           totalElements: totalEl,
           totalPages: totalPg,
         });
@@ -255,6 +270,12 @@ export function ExtratoPage() {
   }, []);
 
   const handleRowSaved = (updated) => {
+    vinculoOverlayRef.current.set(Number(updated.id), {
+      codCliente: updated.codCliente,
+      proc: updated.proc,
+      clienteId: updated.clienteId,
+      processoId: updated.processoId,
+    });
     limparCachePaginas();
     setRows((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
     setDetailItem(updated);
