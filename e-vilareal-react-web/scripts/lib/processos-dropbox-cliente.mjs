@@ -143,7 +143,7 @@ export async function removerProcessosForaDropboxMysql(conn, pessoaId, numerosDr
   const pid = Math.trunc(Number(pessoaId));
   const nums = [
     ...new Set(
-      numerosDropbox.map((n) => Math.trunc(Number(n))).filter((n) => Number.isFinite(n) && n >= 1)
+      numerosDropbox.map((n) => Math.trunc(Number(n))).filter((n) => Number.isFinite(n) && n >= 0)
     ),
   ];
 
