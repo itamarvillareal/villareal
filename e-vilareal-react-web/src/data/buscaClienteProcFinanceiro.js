@@ -62,6 +62,7 @@ export function prepararIndiceBuscaProcessoVinculo(p, nomeClienteTitular) {
   const velho = String(p.numeroProcessoVelho ?? '');
   const procInt = String(p.numeroInterno ?? '');
   const obs = String(p.observacao ?? '');
+  const unidade = [p.unidade, p.unidadeEndereco].map((v) => String(v ?? '').trim()).filter(Boolean).join(' ');
   return {
     ...p,
     _vinculoBusca: {
@@ -70,6 +71,7 @@ export function prepararIndiceBuscaProcessoVinculo(p, nomeClienteTitular) {
       cnj: normalizarTextoBusca(cnj),
       velho: normalizarTextoBusca(velho),
       obs: normalizarTextoBusca(obs),
+      unidade: normalizarTextoBusca(unidade),
       procTexto: normalizarTextoBusca(procInt),
       procNumero: procInt,
       cnjDigits: normalizarNumeroBusca(cnj),
@@ -118,6 +120,7 @@ function processoCorrespondeFiltroPasso2ComIndice(idx, termoRaw) {
     idx.cnj.includes(termo) ||
     idx.velho.includes(termo) ||
     idx.obs.includes(termo) ||
+    idx.unidade.includes(termo) ||
     idx.procTexto.includes(termo)
   );
 }

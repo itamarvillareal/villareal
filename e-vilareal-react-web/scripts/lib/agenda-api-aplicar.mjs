@@ -86,6 +86,20 @@ export function chaveDedupImport(usuarioId, ev) {
   return `${usuarioId}|${ev.dataEvento}|${chaveConteudoEvento(ev)}`;
 }
 
+/**
+ * Evita duplicar no mesmo lote txt eventos equivalentes (descrição/hora flexível).
+ * @param {object[]} linhas
+ * @param {object} ev
+ */
+export function jaTemEquivalenteNoLote(linhas, ev) {
+  return linhas.some(
+    (L) =>
+      L.usuarioId === ev.usuarioId &&
+      L.dataEvento === ev.dataEvento &&
+      compromissosEquivalentes(ev, L)
+  );
+}
+
 export function buildBodyAgenda(L, origem, processoRef = null) {
   return {
     usuarioId: L.usuarioId,

@@ -55,7 +55,7 @@ export function extrairChavesCandidatasCnjDoTextoAgenda(texto) {
   const out = [];
 
   function push(d) {
-    if (!d || d.length < 11 || vistos.has(d)) return;
+    if (!d || d.length < 7 || vistos.has(d)) return;
     vistos.add(d);
     out.push(d);
   }
@@ -84,7 +84,41 @@ export function extrairChavesCandidatasCnjDoTextoAgenda(texto) {
     push(`${m[1]}${m[2]}${m[3]}`);
   }
 
+  const reCurtoSemAno = /\b(\d{6,7})\s*\.\s*(\d{2})\b/g;
+  while ((m = reCurtoSemAno.exec(s)) !== null) {
+    push(`${m[1]}${m[2]}`);
+  }
+
   return out;
+}
+
+/**
+ * Extrai «Parte A x Parte B» do texto do compromisso (parênteses ou trecho livre).
+ * @param {string} texto
+ * @returns {{ parteA: string, parteB: string } | null}
+ */
+export function extrairPartesClienteOpostaDoTextoCompromisso(texto) {
+  const s = normalizarTextoAgendaParaExtracaoCnj(texto);
+  if (!s) return null;
+
+  const reParen = /\(([^()]{4,}?)\s+x\s+([^()]{3,}?)\)/i;
+  const mp = reParen.exec(s);
+  if (mp) {
+    const parteA = mp[1].trim().replace(/\s+/g, ' ');
+    const parteB = mp[2].trim().replace(/\s+/g, ' ');
+    if (parteA.length >= 4 && parteB.length >= 3) return { parteA, parteB };
+  }
+
+  const reLivre =
+    /(?:^|[\s,;])([A-ZÁÉÍÓÚÂÊÔÃÇ][A-Za-záéíóúâêôãçÀ-ÿ0-9./&ºª\-–—]{4,}?)\s+x\s+([A-ZÁÉÍÓÚÂÊÔÃÇ][A-Za-záéíóúâêôãçÀ-ÿ0-9./&ºª\-–—]{4,}?)(?=\s|,|\(|$)/i;
+  const ml = reLivre.exec(s);
+  if (ml) {
+    const parteA = ml[1].trim().replace(/\s+/g, ' ');
+    const parteB = ml[2].trim().replace(/\s+/g, ' ');
+    if (parteA.length >= 4 && parteB.length >= 4) return { parteA, parteB };
+  }
+
+  return null;
 }
 
 function cnjDigitosCombinaCandidato(digitosProcesso, candidato) {

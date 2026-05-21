@@ -115,10 +115,6 @@ function eventoImportavel(ev) {
   return false;
 }
 
-function chaveDedupImport(usuarioId, ev) {
-  return `${usuarioId}|${ev.dataEvento}|${chaveConteudoEvento(ev)}`;
-}
-
 function buildBodyAgenda(L, origem, processoRef = null) {
   return {
     usuarioId: L.usuarioId,
@@ -667,7 +663,6 @@ async function main() {
 
   const token = await loginObterToken(opts);
 
-  const vistosTxt = new Set();
   const linhas = [];
   let puladosDupTxt = 0;
   let puladosSemConteudo = 0;
@@ -677,12 +672,17 @@ async function main() {
       puladosSemConteudo += 1;
       continue;
     }
-    const ck = chaveDedupImport(e.usuarioId, e);
-    if (vistosTxt.has(ck)) {
+    if (
+      linhas.some(
+        (L) =>
+          L.usuarioId === e.usuarioId &&
+          L.dataEvento === e.dataEvento &&
+          compromissosEquivalentes(e, L)
+      )
+    ) {
       puladosDupTxt += 1;
       continue;
     }
-    vistosTxt.add(ck);
     linhas.push(e);
   }
 

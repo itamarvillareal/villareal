@@ -3,12 +3,8 @@ import { featureFlags } from '../config/featureFlags.js';
 import { padCliente8Cadastro } from './cadastroClientesStorage.js';
 import { normalizarCodigoClienteFinanceiro } from './financeiroData.js';
 import {
-  listarRegistrosProcessosHistoricoNormalizados,
-} from './processosHistoricoData.js';
-import {
   resolverClienteCadastroPorCodigo,
 } from '../repositories/clientesRepository.js';
-import { listarProcessosPorNumeroInterno } from '../repositories/processosRepository.js';
 
 function formatDocBR(digits) {
   const d = String(digits || '').replace(/\D/g, '');
@@ -57,7 +53,51 @@ function termoPermiteBusca(raw) {
 }
 
 /**
- * Pesquisa clientes no índice de cadastro (nome/razão, código 8 dígitos, CPF/CNPJ ou nº interno do processo),
+ * Filtra o índice local por código do cliente (8 dígitos exatos ou sufixo numérico, ex.: 491 → 00000491).
+ * @param {Array<{ codigoPadded: string, codigoNum: number, nome: string, cnpjCpf?: string }>} indice
+ */
+export function filtrarClientesIndicePorCodigo(indice, termoRaw, { limite = 80 } = {}) {
+  const raw = String(termoRaw ?? '').trim();
+  if (!/^\d+$/.test(raw)) return [];
+
+  const digits = raw.replace(/\D/g, '');
+  const vistos = new Set();
+  const hits = [];
+
+  function push(row) {
+    if (!row || vistos.has(row.codigoPadded) || hits.length >= limite) return;
+    vistos.add(row.codigoPadded);
+    hits.push(row);
+  }
+
+  if (/^\d{8}$/.test(raw)) {
+    const cod8 = padCliente8Cadastro(raw);
+    push(indice.find((r) => r.codigoPadded === cod8));
+    hits.sort((a, b) => a.codigoNum - b.codigoNum);
+    return hits;
+  }
+
+  const cod8Tentativa = padCliente8Cadastro(digits);
+  push(indice.find((r) => r.codigoPadded === cod8Tentativa));
+
+  for (const row of indice) {
+    if (hits.length >= limite) break;
+    const pad = row.codigoPadded;
+    const numStr = String(row.codigoNum);
+    if (
+      pad.endsWith(digits) ||
+      numStr === digits ||
+      (digits.length >= 2 && numStr.endsWith(digits))
+    ) {
+      push(row);
+    }
+  }
+  hits.sort((a, b) => a.codigoNum - b.codigoNum);
+  return hits;
+}
+
+/**
+ * Pesquisa clientes no índice de cadastro (nome/razão, código 8 dígitos ou parcial, CPF/CNPJ),
  * alinhada à seção «Buscar cliente» da tela /pessoas — não usa o cadastro de pessoas.
  *
  * @returns {Promise<Array<{ codCliente: string, codigoPadded: string, nomeCliente: string, cpfLabel: string }>>}
@@ -119,57 +159,8 @@ export async function pesquisarClientesCadastroPorTermo(termoRaw, clientesApiInd
   }
 
   if (soDigitos && !codigo8 && !pareceCpfCnpj) {
-    const n = Number(raw);
-    if (!Number.isFinite(n) || n < 0 || n > 2_147_483_647) return [];
-    const hits = [];
-    if (featureFlags.useApiProcessos) {
-      const arr = await listarProcessosPorNumeroInterno(n);
-      for (const p of arr || []) {
-        if (hits.length >= limite) break;
-        const cod8 = padCliente8Cadastro(p.codigoCliente);
-        const idxRow = (clientesApiIndex || []).find((c) => c.codigo === cod8);
-        const nomeCli = String(idxRow?.nomeRazao ?? '').trim();
-        const cnj = String(p.numeroCnj ?? '').trim();
-        const po = String(p.parteOposta ?? '').trim();
-        const rotulo = [
-          nomeCli || `Cliente ${cod8}`,
-          `Proc. ${p.numeroInterno ?? n}`,
-          cnj ? `CNJ ${cnj}` : null,
-          po ? (po.length > 100 ? `${po.slice(0, 100)}…` : po) : null,
-        ]
-          .filter(Boolean)
-          .join(' · ');
-        const codigoNum = Number(String(cod8).replace(/\D/g, '')) || 0;
-        const m = toModalRow({
-          codigoPadded: cod8,
-          codigoNum,
-          nome: rotulo,
-          cnpjCpf: String(idxRow?.cnpjCpf ?? '').replace(/\D/g, ''),
-        });
-        if (m) hits.push(m);
-      }
-    } else {
-      const seen = new Set();
-      for (const reg of listarRegistrosProcessosHistoricoNormalizados()) {
-        if (Number(reg.proc) !== n) continue;
-        const codJur = String(reg.codCliente ?? '').trim();
-        const codNum = Number(String(codJur).replace(/^0+/, '') || 0);
-        if (!Number.isFinite(codNum) || codNum < 1) continue;
-        const cod8 = padCliente8Cadastro(codNum);
-        if (seen.has(cod8)) continue;
-        seen.add(cod8);
-        const nomeC = String(reg.cliente ?? '').trim() || `Cliente ${cod8}`;
-        const m = toModalRow({
-          codigoPadded: cod8,
-          codigoNum: codNum,
-          nome: `${nomeC} · proc. ${n}`,
-          cnpjCpf: '',
-        });
-        if (m) hits.push(m);
-        if (hits.length >= limite) break;
-      }
-    }
-    return hits;
+    const rows = filtrarClientesIndicePorCodigo(indice, raw, { limite });
+    return rows.map((row) => toModalRow(row)).filter(Boolean);
   }
 
   const t = normalizarTextoBusca(raw);

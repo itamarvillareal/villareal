@@ -23,6 +23,10 @@ function apenasDigitos(val) {
   return String(val ?? '').replace(/\D/g, '');
 }
 
+function textoUnidadeProcessoGrade(proc) {
+  return [proc?.unidade, proc?.unidadeEndereco].map((v) => String(v ?? '').trim()).filter(Boolean).join(' ');
+}
+
 function enriquecerParteOpostaNaGrade(row, codigoPadded8) {
   const n = Number(row.procNumero);
   if (!Number.isFinite(n) || n < 1) return row;
@@ -67,6 +71,7 @@ export function filtrarProcessosGradeCliente(processos, termoRaw) {
     const autorStr = normalizarTextoBusca(proc.autor ?? '');
     const reuStr = normalizarTextoBusca(proc.reu ?? proc.parteOposta ?? '');
     const tipoAcaoStr = normalizarTextoBusca(proc.tipoAcao ?? proc.descricao ?? '');
+    const unidadeStr = normalizarTextoBusca(textoUnidadeProcessoGrade(proc));
 
     return (
       numeroMatch ||
@@ -74,7 +79,8 @@ export function filtrarProcessosGradeCliente(processos, termoRaw) {
       reuStr.includes(termo) ||
       tipoAcaoStr.includes(termo) ||
       normalizarTextoBusca(proc.parteOposta ?? '').includes(termo) ||
-      normalizarTextoBusca(proc.descricao ?? '').includes(termo)
+      normalizarTextoBusca(proc.descricao ?? '').includes(termo) ||
+      unidadeStr.includes(termo)
     );
   });
 }
