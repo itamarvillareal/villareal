@@ -12,6 +12,7 @@ import br.com.vilareal.financeiro.infrastructure.persistence.repository.ContaCon
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.LancamentoFinanceiroRepository;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
+import br.com.vilareal.processo.application.ClienteCodigoPessoaResolver;
 import br.com.vilareal.processo.application.CodigoClienteUtil;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
@@ -46,6 +47,7 @@ public class FinanceiroApplicationService {
     private final LancamentoFinanceiroRepository lancamentoRepository;
     private final PessoaRepository pessoaRepository;
     private final ProcessoRepository processoRepository;
+    private final ClienteCodigoPessoaResolver clienteCodigoPessoaResolver;
     private final FinanceiroSaudeService financeiroSaudeService;
 
     public FinanceiroApplicationService(
@@ -53,11 +55,13 @@ public class FinanceiroApplicationService {
             LancamentoFinanceiroRepository lancamentoRepository,
             PessoaRepository pessoaRepository,
             ProcessoRepository processoRepository,
+            ClienteCodigoPessoaResolver clienteCodigoPessoaResolver,
             @Lazy FinanceiroSaudeService financeiroSaudeService) {
         this.contaContabilRepository = contaContabilRepository;
         this.lancamentoRepository = lancamentoRepository;
         this.pessoaRepository = pessoaRepository;
         this.processoRepository = processoRepository;
+        this.clienteCodigoPessoaResolver = clienteCodigoPessoaResolver;
         this.financeiroSaudeService = financeiroSaudeService;
     }
 
@@ -517,6 +521,17 @@ public class FinanceiroApplicationService {
         e.setEtapa(EtapaLancamento.calcular(conta.getCodigo(), e.getGrupoCompensacao(), clienteId));
     }
 
+    /**
+     * {@code financeiro_lancamento.cliente_id} referencia {@code pessoa.id} — exibir código de negócio (ex. 938),
+     * não o id da pessoa (ex. 6277).
+     */
+    private String codigoClienteExibicaoLancamento(PessoaEntity cliente) {
+        if (cliente == null) {
+            return null;
+        }
+        return clienteCodigoPessoaResolver.codigoClienteExibicaoParaPessoaId(cliente.getId());
+    }
+
     private ContaContabilResponse toContaResponse(ContaContabilEntity e) {
         ContaContabilResponse r = new ContaContabilResponse();
         r.setId(e.getId());
@@ -535,7 +550,7 @@ public class FinanceiroApplicationService {
         r.setClienteId(e.getCliente() != null ? e.getCliente().getId() : null);
         r.setProcessoId(e.getProcesso() != null ? e.getProcesso().getId() : null);
         if (e.getCliente() != null) {
-            r.setCodigoCliente(CodigoClienteUtil.formatar(e.getCliente().getId()));
+            r.setCodigoCliente(codigoClienteExibicaoLancamento(e.getCliente()));
         }
         if (e.getProcesso() != null && e.getProcesso().getNumeroInterno() != null) {
             r.setNumeroInternoProcesso(e.getProcesso().getNumeroInterno());
@@ -563,7 +578,7 @@ public class FinanceiroApplicationService {
         r.setClienteId(e.getCliente() != null ? e.getCliente().getId() : null);
         r.setProcessoId(e.getProcesso() != null ? e.getProcesso().getId() : null);
         if (e.getCliente() != null) {
-            r.setCodigoCliente(CodigoClienteUtil.formatar(e.getCliente().getId()));
+            r.setCodigoCliente(codigoClienteExibicaoLancamento(e.getCliente()));
         }
         if (e.getProcesso() != null && e.getProcesso().getNumeroInterno() != null) {
             r.setNumeroInternoProcesso(e.getProcesso().getNumeroInterno());

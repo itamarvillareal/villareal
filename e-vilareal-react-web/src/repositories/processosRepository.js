@@ -669,6 +669,7 @@ export function mergeCadastroClientesProcessosComApi(codigoClientePadded8, lista
       descricao: descApi || String(row.descricao ?? '').trim() || row.descricao,
       parteOposta: poApi || poRow || row.parteOposta,
       reu: poApi || poRow || row.reu,
+      statusAtivo: api.statusAtivo !== false,
     };
   });
 
@@ -686,6 +687,7 @@ export function mergeCadastroClientesProcessosComApi(codigoClientePadded8, lista
       parteOposta: poNovo || '—',
       tipoAcao: '',
       descricao: String(api.descricaoAcao ?? api.naturezaAcao ?? '').trim(),
+      statusAtivo: api.statusAtivo !== false,
     });
   }
 

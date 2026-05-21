@@ -40,6 +40,7 @@ import {
   candidatosExtratoBancosPlanilhaXlsParaLog,
   resolveExtratoBancosPlanilhaXlsPath,
 } from './lib/resolve-extrato-bancos-planilha-xls.mjs';
+import { anexarCodigoClienteTagDescricaoDetalhada } from '../src/data/financeiroData.js';
 
 function parseArgs(argv) {
   const out = {
@@ -249,6 +250,10 @@ function rowParaPayloadApi(row, contaIdPorLetra, bancoNome, numeroBanco) {
 
   const valorNum = Number(row.valor) || 0;
   const natureza = valorNum < 0 ? 'DEBITO' : 'CREDITO';
+  const descricaoDetalhada =
+    row.letra === 'A' && row.codigoCliente
+      ? anexarCodigoClienteTagDescricaoDetalhada(row.descricaoDetalhada, row.codigoCliente)
+      : String(row.descricaoDetalhada || '');
 
   return {
     ok: true,
@@ -262,7 +267,7 @@ function rowParaPayloadApi(row, contaIdPorLetra, bancoNome, numeroBanco) {
       dataLancamento: row.dataIso,
       dataCompetencia: row.dataIso,
       descricao: String(row.descricao || 'Lançamento extrato').slice(0, 500),
-      descricaoDetalhada: String(row.descricaoDetalhada || '').slice(0, 2000),
+      descricaoDetalhada: descricaoDetalhada.slice(0, 2000),
       valor: Math.abs(valorNum),
       natureza,
       refTipo: row.refTipo || 'N',

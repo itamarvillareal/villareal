@@ -52,7 +52,10 @@ import {
   montarPatchProcessoFromTxt,
 } from './lib/proc-processo-dados-txt.mjs';
 import { resolverBaseBancoDados } from './lib/gerais-fase-processo-txt.mjs';
-import { sincronizarVinculoClientePessoaApi } from './lib/cliente-pessoa-151-txt.mjs';
+import {
+  sincronizarVinculoClientePessoaApi,
+} from './lib/cliente-pessoa-151-txt.mjs';
+import { conectarMysqlVilareal } from './lib/mysql-vilareal.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SCRIPT_HISTORICO = path.join(__dirname, 'import-historico-local-txt.mjs');
@@ -66,6 +69,7 @@ function parseArgs(argv) {
     semHistorico: false,
     semImovel: false,
     semClientePessoa: false,
+    substituirClientePessoa: false,
     importarPartes: false,
     substituirHistorico: false,
     semCorrigirHistorico: false,
@@ -86,6 +90,7 @@ function parseArgs(argv) {
     } else if (a === '--sem-historico') out.semHistorico = true;
     else if (a === '--sem-imovel') out.semImovel = true;
     else if (a === '--sem-cliente-pessoa') out.semClientePessoa = true;
+    else if (a === '--substituir-cliente-pessoa') out.substituirClientePessoa = true;
     else if (a === '--importar-partes') out.importarPartes = true;
     else if (a === '--substituir-historico') out.substituirHistorico = true;
     else if (a === '--sem-corrigir-historico') out.semCorrigirHistorico = true;
@@ -429,6 +434,11 @@ async function main() {
 
   const token = await loginImportApi(opts.baseUrl, opts.login, opts.senha);
   const pessoaPorCod8 = new Map();
+  /** @type {import('mysql2/promise').Connection | null} */
+  let connPessoa = null;
+  if (opts.substituirClientePessoa && opts.aplicar) {
+    connPessoa = await conectarMysqlVilareal();
+  }
 
   if (!opts.semClientePessoa && dados.pessoaCliente?.pessoaId) {
     try {
@@ -437,7 +447,11 @@ async function main() {
         token,
         dados.cod8,
         dados.pessoaCliente.pessoaId,
-        pessoaPorCod8
+        pessoaPorCod8,
+        {
+          substituir: opts.substituirClientePessoa,
+          conn: connPessoa ?? undefined,
+        }
       );
       resultado.etapas.clientePessoa = rCliente;
       console.log('\n[cliente/pessoa 151.1.0]', rCliente);
@@ -445,6 +459,16 @@ async function main() {
         console.warn(
           `[cliente] código ${dados.cod8} já vinculado à pessoa ${rCliente.pessoaIdApi} na API; txt indica ${rCliente.pessoaIdTxt} — não alterado.`
         );
+      } else if (rCliente.acao === 'atualizado_mysql') {
+        const m = rCliente.migracao;
+        const migLog = m
+          ? `; processos migrados=${m.processosMigrados ?? 0} conflitos=${m.processosConflito ?? 0}`
+          : '';
+        console.log(
+          `[cliente] pessoa atualizada ${rCliente.pessoaIdAnterior} → ${rCliente.pessoaId} (151.1.0)${migLog}`
+        );
+      } else if (rCliente.acao === 'pessoa_inexistente') {
+        console.warn(`[cliente] pessoa ${rCliente.pessoaId} não existe na base`);
       }
     } catch (e) {
       resultado.etapas.clientePessoa = { erro: e?.message || String(e) };
@@ -455,6 +479,7 @@ async function main() {
   } else {
     resultado.etapas.clientePessoa = 'ausente_txt';
   }
+  if (connPessoa) await connPessoa.end();
 
   let proc = await buscarProcesso(opts.baseUrl, token, dados.cod8, dados.numeroInterno, pessoaPorCod8);
 

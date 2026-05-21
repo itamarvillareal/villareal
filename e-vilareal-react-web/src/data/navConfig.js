@@ -36,6 +36,7 @@ export const navItems = [
       { id: 'processos/publicacoes', label: 'Publicações', icon: 'Newspaper' },
       { id: 'processos/monitoramento', label: 'Monitoramento de Pessoas', icon: 'Radar' },
       { id: 'relatorio', label: 'Relatório de Processos', icon: 'FileSpreadsheet' },
+      { id: 'relatorio-resultado-processos', label: 'Resultado financeiro (proc.)', icon: 'CircleDollarSign' },
     ],
   },
   {

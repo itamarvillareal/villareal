@@ -1,7 +1,7 @@
 {
   "planilha": "/Users/itamar/Dropbox/Sistema/Cadastro Pessoas - Itamar.xls",
-  "planilha_sha256": "bd8dced0ee1ba0b9c0c3cbce310bc2976341443b3b9540b268dd8360c5366d71",
-  "planilha_mtime": 1779204099,
+  "planilha_sha256": "26d78b63294feeb5ab1655d4fdc231b83d43d449de8f5085f39d95fc93ed9c63",
+  "planilha_mtime": 1779330030,
   "planilha_size": 4882944,
   "header_row": 9,
   "first_data_row": 11,
@@ -58662,5 +58662,17 @@
       "nome": "D J BONAN AUTOPECAS E TRANSPORTES LTDA"
     }
   },
-  "gerado_em": "2026-05-20T03:44:50.275774+00:00"
+  "gerado_em": "2026-05-21T05:05:14.564115+00:00",
+  "diff_ultima_importacao": {
+    "planilha_mudou": false,
+    "sha256_anterior": "26d78b63294feeb5ab1655d4fdc231b83d43d449de8f5085f39d95fc93ed9c63",
+    "sha256_atual": "26d78b63294feeb5ab1655d4fdc231b83d43d449de8f5085f39d95fc93ed9c63",
+    "ids_novos": [],
+    "ids_removidos": [],
+    "ids_alterados": [],
+    "total_alterados": 0,
+    "total_novos": 0,
+    "total_removidos": 0,
+    "houve_alteracoes": false
+  }
 }

@@ -1,0 +1,21 @@
+{
+  "concluido_em": "2026-05-21T05:05:59.624862+00:00",
+  "planilha": "/Users/itamar/Dropbox/Sistema/Cadastro Pessoas - Itamar.xls",
+  "planilha_sha256": "26d78b63294feeb5ab1655d4fdc231b83d43d449de8f5085f39d95fc93ed9c63",
+  "linhas_importaveis": 7175,
+  "linhas_com_sucesso": 7175,
+  "dry_run": false,
+  "relatorio": "/Users/itamar/Documents/villareal/e-vilareal-java-backend/import-pessoas-report.csv",
+  "diff": {
+    "planilha_mudou": false,
+    "sha256_anterior": "26d78b63294feeb5ab1655d4fdc231b83d43d449de8f5085f39d95fc93ed9c63",
+    "sha256_atual": "26d78b63294feeb5ab1655d4fdc231b83d43d449de8f5085f39d95fc93ed9c63",
+    "ids_novos": [],
+    "ids_removidos": [],
+    "ids_alterados": [],
+    "total_alterados": 0,
+    "total_novos": 0,
+    "total_removidos": 0,
+    "houve_alteracoes": false
+  }
+}

@@ -2,12 +2,28 @@ import { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback, laz
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   getLancamentosContaCorrente,
+  getTransacoesContaCorrenteCompleto,
   mapLinhasFinanceiroParaContaCorrenteModal,
   mergeContaCorrenteComLinhaOrigem,
 } from '../data/financeiroData';
 import {
+  PAPEL_DESPESA,
+  PAPEL_ENTRADA,
+  PAPEL_OUTRO,
+  PAPEL_PAGAMENTO,
+  aplicarNumeroVinculoDescricao,
+  aplicarTagPapelDescricao,
+  atribuirNumeroVinculoLancamentos,
+  gravarPapelManualProcesso,
+  montarPainelResultadoContaCorrenteProcesso,
+  normalizarNumeroVinculo,
+  proximoNumeroVinculoProcesso,
+  rotuloPapelContaCorrenteProcesso,
+} from '../data/contaCorrenteProcessoResultado.js';
+import {
   carregarResumoContaCorrenteProcesso,
   listarLancamentosProcessoApiFirst,
+  salvarOuAtualizarLancamentoFinanceiroApi,
 } from '../repositories/financeiroRepository.js';
 import { EVENT_FINANCEIRO_PERSISTENCIA_EXTERNA } from '../services/crossTabLocalStorageSync.js';
 import {
@@ -75,6 +91,7 @@ import {
   Building2,
   Clock,
 } from 'lucide-react';
+import { ContaCorrenteVinculoAssist } from './processos/ContaCorrenteVinculoAssist.jsx';
 import {
   ProcessosAccordionSection,
   ProcessosStickyHeader,
@@ -366,6 +383,14 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     error: '',
   });
   const [contaCorrenteListaApiTick, setContaCorrenteListaApiTick] = useState(0);
+  const [contaCorrenteTransacoesUi, setContaCorrenteTransacoesUi] = useState([]);
+  const [ccSelecionados, setCcSelecionados] = useState(() => new Set());
+  const [ccVinculoTick, setCcVinculoTick] = useState(0);
+  const [ccSalvandoPapel, setCcSalvandoPapel] = useState(false);
+  const [ccNumeroVinculoInput, setCcNumeroVinculoInput] = useState('');
+  const [ccModoVincular, setCcModoVincular] = useState(true);
+  const [ccPendenteChave, setCcPendenteChave] = useState(null);
+  const [ccFiltroSemVinculo, setCcFiltroSemVinculo] = useState(false);
   const [modalRelatorioPublicacoes, setModalRelatorioPublicacoes] = useState(false);
   /** Modal com cadastro de clientes (mesmo formulário de /pessoas) para o cliente e proc. atuais. */
   const [clientesEmbed, setClientesEmbed] = useState(null);
@@ -609,6 +634,10 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   useEffect(() => {
     if (!modalContaCorrente) {
       setContaCorrenteListaApi({ phase: 'idle', data: null, error: '' });
+      setContaCorrenteTransacoesUi([]);
+      setCcSelecionados(new Set());
+      setCcPendenteChave(null);
+      setCcFiltroSemVinculo(false);
       return;
     }
     if (!featureFlags.useApiFinanceiro) {
@@ -638,6 +667,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
         });
         if (!alive) return;
         const mapped = mapLinhasFinanceiroParaContaCorrenteModal(rows);
+        setContaCorrenteTransacoesUi(Array.isArray(rows) ? rows : []);
         setContaCorrenteListaApi({ phase: 'ok', data: mapped, error: '' });
       } catch (e) {
         if (!alive) return;
@@ -1370,6 +1400,143 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       }
       return { col: 'data', dir: 'desc' };
     });
+  }
+
+  function toggleCcSelecionado(chave) {
+    setCcSelecionados((prev) => {
+      const next = new Set(prev);
+      if (next.has(chave)) next.delete(chave);
+      else next.add(chave);
+      return next;
+    });
+  }
+
+  async function persistirNumeroVinculoLinha(chave, numeroVinculo, transacaoUi) {
+    const procEf = contaCorrenteModo === 'proc0' ? 0 : processo;
+    const num = normalizarNumeroVinculo(numeroVinculo);
+    atribuirNumeroVinculoLancamentos(codigoCliente, procEf, [chave], num);
+    if (featureFlags.useApiFinanceiro && transacaoUi?.apiId) {
+      const baseDesc = aplicarTagPapelDescricao(
+        transacaoUi.descricaoDetalhada,
+        transacaoUi.classificacao?.papel,
+      );
+      const novaDesc = aplicarNumeroVinculoDescricao(baseDesc, num);
+      await salvarOuAtualizarLancamentoFinanceiroApi({
+        ...transacaoUi,
+        descricaoDetalhada: novaDesc,
+        categoria: novaDesc,
+        eq: num,
+      });
+      setContaCorrenteListaApiTick((t) => t + 1);
+    }
+    setCcVinculoTick((t) => t + 1);
+  }
+
+  async function handlePapelContaCorrenteLinha(chave, papel, transacaoUi) {
+    const procEf = contaCorrenteModo === 'proc0' ? 0 : processo;
+    setCcSalvandoPapel(true);
+    try {
+      gravarPapelManualProcesso(codigoCliente, procEf, chave, papel);
+      if (featureFlags.useApiFinanceiro && transacaoUi?.apiId) {
+        const comVinc = aplicarNumeroVinculoDescricao(
+          aplicarTagPapelDescricao(transacaoUi.descricaoDetalhada, papel),
+          transacaoUi.numeroVinculo,
+        );
+        await salvarOuAtualizarLancamentoFinanceiroApi({
+          ...transacaoUi,
+          descricaoDetalhada: comVinc,
+          categoria: comVinc,
+        });
+        setContaCorrenteListaApiTick((t) => t + 1);
+      }
+      setCcVinculoTick((t) => t + 1);
+    } catch {
+      /* mantém classificação local */
+    } finally {
+      setCcSalvandoPapel(false);
+    }
+  }
+
+  async function handleCcParDoisCliques(linha, transacoesFonte) {
+    const ch = linha.chave;
+    const procEf = contaCorrenteModo === 'proc0' ? 0 : processo;
+    const mapa = new Map((transacoesFonte || []).map((t) => [t.chave, t]));
+    if (!ccPendenteChave) {
+      setCcPendenteChave(ch);
+      return;
+    }
+    if (ccPendenteChave === ch) {
+      setCcPendenteChave(null);
+      return;
+    }
+    const num = proximoNumeroVinculoProcesso(codigoCliente, procEf, transacoesFonte);
+    setCcSalvandoPapel(true);
+    try {
+      await persistirNumeroVinculoLinha(ccPendenteChave, num, mapa.get(ccPendenteChave));
+      await persistirNumeroVinculoLinha(ch, num, mapa.get(ch));
+      setCcPendenteChave(null);
+    } catch {
+      /* mantém local */
+    } finally {
+      setCcSalvandoPapel(false);
+    }
+  }
+
+  async function handleVincularParSugeridoCc(par, transacoesFonte) {
+    const procEf = contaCorrenteModo === 'proc0' ? 0 : processo;
+    const num = proximoNumeroVinculoProcesso(codigoCliente, procEf, transacoesFonte);
+    setCcSalvandoPapel(true);
+    try {
+      await persistirNumeroVinculoLinha(par.entrada.chave, num, par.entrada);
+      await persistirNumeroVinculoLinha(par.pagamento.chave, num, par.pagamento);
+    } finally {
+      setCcSalvandoPapel(false);
+    }
+  }
+
+  async function handleVincularTodosParesSugeridosCc(pares, transacoesFonte) {
+    const procEf = contaCorrenteModo === 'proc0' ? 0 : processo;
+    let fonte = transacoesFonte || [];
+    setCcSalvandoPapel(true);
+    try {
+      for (const par of pares) {
+        const num = proximoNumeroVinculoProcesso(codigoCliente, procEf, fonte);
+        await persistirNumeroVinculoLinha(par.entrada.chave, num, par.entrada);
+        await persistirNumeroVinculoLinha(par.pagamento.chave, num, par.pagamento);
+        fonte = fonte.map((t) => {
+          if (t.chave === par.entrada.chave || t.chave === par.pagamento.chave) {
+            return { ...t, numeroVinculo: num, eq: num };
+          }
+          return t;
+        });
+      }
+      setCcVinculoTick((t) => t + 1);
+      setContaCorrenteListaApiTick((t) => t + 1);
+    } finally {
+      setCcSalvandoPapel(false);
+    }
+  }
+
+  async function handleAtribuirNumeroVinculoCc(transacoesFonte) {
+    const procEf = contaCorrenteModo === 'proc0' ? 0 : processo;
+    const chaves = [...ccSelecionados];
+    if (chaves.length < 2) return;
+    const num =
+      normalizarNumeroVinculo(ccNumeroVinculoInput) ||
+      proximoNumeroVinculoProcesso(codigoCliente, procEf, transacoesFonte);
+    setCcSalvandoPapel(true);
+    try {
+      const mapaChave = new Map((transacoesFonte || []).map((t) => [t.chave, t]));
+      for (const ch of chaves) {
+        await persistirNumeroVinculoLinha(ch, num, mapaChave.get(ch));
+      }
+      setCcSelecionados(new Set());
+      setCcNumeroVinculoInput('');
+    } catch {
+      /* mantém vínculo local */
+    } finally {
+      setCcSalvandoPapel(false);
+    }
   }
 
   function normalizarTextoBusca(s) {
@@ -2140,6 +2307,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
         nome: l.nome,
         banco: l.nomeBanco,
         numero: l.numero,
+        vinculo: l.numeroVinculo,
       };
       if (c === 'valor') {
         if (valorNum == null) return false;
@@ -2151,6 +2319,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       if (c === 'nome') return normalizarTextoBusca(hay.nome).includes(t);
       if (c === 'banco') return normalizarTextoBusca(hay.banco).includes(t);
       if (c === 'numero') return normalizarTextoBusca(hay.numero).includes(t);
+      if (c === 'vinculo') return normalizarTextoBusca(hay.vinculo).includes(t);
       // todos
       return (
         normalizarTextoBusca(hay.data).includes(t) ||
@@ -3002,14 +3171,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                   </div>
                 </div>
                 <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-4 md:col-span-3">
-                  <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-                    <p className="text-sm font-semibold text-blue-800">Fase processual</p>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-medium text-slate-600">Status</span>
-                      <button type="button" disabled={camposBloqueados} onClick={() => setStatusAtivo(true)} className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${statusAtivo ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-600 border-gray-200'}`}>Ativo</button>
-                      <button type="button" disabled={camposBloqueados} onClick={() => setStatusAtivo(false)} className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${!statusAtivo ? 'bg-gray-500 text-white border-gray-500' : 'bg-white text-slate-600 border-gray-200'}`}>Inativo</button>
-                    </div>
-                  </div>
+                  <p className="text-sm font-semibold text-blue-800 mb-3">Fase processual</p>
                   <div className="flex flex-wrap gap-2 max-h-[12rem] overflow-y-auto">
                     {FASES.map((f) => {
                       const ativa = faseParaRadiosProcessos === f;
@@ -4165,11 +4327,39 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
           codigoCliente,
           processoContaCorrenteEfetivo
         );
-        const listaBase = lancamentos.map((l, idx) => ({ ...l, numero: l.numero ?? (idx + 1) }));
-        const listaFiltrada = filtrarLancamentosContaCorrente(listaBase, buscaContaCorrente.campo, buscaContaCorrente.termo);
+        const transacoesFonte =
+          featureFlags.useApiFinanceiro &&
+          contaCorrenteListaApi.phase === 'ok' &&
+          contaCorrenteTransacoesUi.length > 0
+            ? contaCorrenteTransacoesUi
+            : getTransacoesContaCorrenteCompleto(codigoCliente, processoContaCorrenteEfetivo);
+        void ccVinculoTick;
+        const painelCc = montarPainelResultadoContaCorrenteProcesso(
+          transacoesFonte,
+          codigoCliente,
+          processoContaCorrenteEfetivo,
+        );
+        const mapaClass = new Map(painelCc.transacoes.map((t) => [t.chave, t]));
+        const listaBase = lancamentos.map((l, idx) => {
+          const chave = l.chave || `${String(l.nomeBanco ?? '').trim()}|${String(l.numero ?? '').trim()}|${String(l.data ?? '').trim()}`;
+          const enriched = mapaClass.get(chave);
+          return {
+            ...l,
+            numero: l.numero ?? (idx + 1),
+            chave,
+            classificacao: enriched?.classificacao,
+            numeroVinculo: enriched?.numeroVinculo ?? '',
+            transacaoUi: enriched,
+          };
+        });
+        let listaFiltrada = filtrarLancamentosContaCorrente(listaBase, buscaContaCorrente.campo, buscaContaCorrente.termo);
+        if (ccFiltroSemVinculo) {
+          listaFiltrada = listaFiltrada.filter((l) => !String(l.numeroVinculo ?? '').trim());
+        }
         const somaDasLinhasExibidas = listaFiltrada.reduce((s, l) => s + (Number(l.valor) || 0), 0);
         const listaOrdenada = ordenarLancamentosContaCorrente(listaFiltrada, sortContaCorrente.col, sortContaCorrente.dir);
         const somaFormatada = formatValorContaCorrente(somaDasLinhasExibidas);
+        const qtdCcSel = ccSelecionados.size;
         return (
         <div
           className="fixed inset-0 z-50 flex items-stretch justify-center bg-black/50 p-0 md:items-center md:p-4"
@@ -4178,7 +4368,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
           aria-labelledby="modal-conta-corrente-titulo"
         >
           <div
-            className="flex h-full w-full max-w-none flex-col overflow-hidden rounded-none border border-slate-200 bg-white shadow-xl md:h-auto md:max-h-[90vh] md:max-w-4xl md:rounded-lg"
+            className="flex h-full w-full max-w-none flex-col overflow-hidden rounded-none border border-slate-200 bg-white shadow-xl md:h-auto md:max-h-[90vh] md:max-w-5xl md:rounded-lg"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-200 px-3 py-2 md:px-4">
@@ -4206,18 +4396,6 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <p className="text-xs text-slate-600 px-4 py-2 border-b border-slate-200 bg-emerald-50/50 shrink-0">
-              Origem: lançamentos dos <strong>extratos bancários</strong> no Financeiro com os mesmos{' '}
-              <strong>Cod. Cliente</strong> e <strong>Proc.</strong> deste processo (inclui qualquer letra contábil, ex.: A, N),
-              como após vincular pelo número do processo ou editar o extrato.{' '}
-              {featureFlags.useApiFinanceiro && contaCorrenteListaApi.phase === 'ok' ? (
-                <>
-                  Com a <strong>API financeira</strong> ativa, a lista abaixo segue o servidor (inclui após zerar extrato).{' '}
-                </>
-              ) : null}
-              <strong>Clique no cabeçalho</strong> de uma coluna para ordenar (ascendente → descendente → volta à ordem por data
-              mais recente). Duplo clique numa <strong>linha</strong> continua abrindo o lançamento no Financeiro.
-            </p>
             {featureFlags.useApiFinanceiro &&
             contaCorrenteListaApi.phase === 'error' &&
             contaCorrenteListaApi.error ? (
@@ -4226,8 +4404,57 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
               </p>
             ) : null}
             <div className="flex-1 min-h-0 flex flex-col p-4">
-              <div className="flex gap-4 flex-1 min-h-0">
-                <div className="flex-1 min-w-0 overflow-auto border border-slate-300 rounded bg-white">
+              <div className="flex-1 min-h-0 overflow-auto border border-slate-300 rounded bg-white">
+                  <div className="px-2 py-2 border-b border-slate-200 bg-slate-50 flex flex-wrap items-center justify-center gap-2">
+                    <label className="text-sm font-medium text-slate-700 shrink-0">Soma:</label>
+                    <input
+                      type="text"
+                      readOnly
+                      value={somaFormatada}
+                      className="w-36 px-2 py-1.5 border border-slate-300 rounded text-sm bg-white text-right font-medium tabular-nums"
+                    />
+                    {featureFlags.useApiFinanceiro && Number(processoApiId) ? (
+                      <span className="text-[11px] text-slate-600 shrink-0">
+                        API: {Number(resumoContaCorrenteApi?.totalLancamentos ?? 0)} lanç.
+                      </span>
+                    ) : null}
+                    {featureFlags.useApiFinanceiro && resumoContaCorrenteApiErro ? (
+                      <span className="text-[11px] text-red-600 shrink-0">{resumoContaCorrenteApiErro}</span>
+                    ) : null}
+                  </div>
+                  <ContaCorrenteVinculoAssist
+                    painel={painelCc}
+                    modoVincular={ccModoVincular}
+                    onToggleModoVincular={() => {
+                      setCcModoVincular((v) => !v);
+                      setCcPendenteChave(null);
+                    }}
+                    filtroSemVinculo={ccFiltroSemVinculo}
+                    onToggleFiltroSemVinculo={() => setCcFiltroSemVinculo((v) => !v)}
+                    pendenteChave={ccPendenteChave}
+                    onCancelarPendente={() => setCcPendenteChave(null)}
+                    onFiltrarNumero={(n) =>
+                      setBuscaContaCorrente({ campo: 'vinculo', termo: String(n) })
+                    }
+                    onVincularParSugerido={(par) => void handleVincularParSugeridoCc(par, transacoesFonte)}
+                    onVincularTodosSugeridos={() =>
+                      void handleVincularTodosParesSugeridosCc(painelCc.paresSugeridos, transacoesFonte)
+                    }
+                    salvando={ccSalvandoPapel}
+                    qtdSelecionados={qtdCcSel}
+                    numeroVinculoInput={ccNumeroVinculoInput}
+                    onNumeroVinculoInputChange={setCcNumeroVinculoInput}
+                    onAtribuirSelecionados={() => void handleAtribuirNumeroVinculoCc(transacoesFonte)}
+                  />
+                  <div className="px-2 py-1 border-b border-indigo-50 flex justify-end">
+                    <button
+                      type="button"
+                      className="text-[11px] text-indigo-700 hover:underline"
+                      onClick={() => navigate('/relatorio-resultado-processos')}
+                    >
+                      Relatório de resultados →
+                    </button>
+                  </div>
                   <div className="p-2 border-b border-slate-200 bg-slate-50 flex flex-wrap items-center gap-2">
                     <div className="flex items-center gap-2">
                       <Search className="w-4 h-4 text-slate-500" />
@@ -4246,6 +4473,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                       <option value="nome">Nome</option>
                       <option value="proc">Proc.</option>
                       <option value="numero">Nº</option>
+                      <option value="vinculo">Vínculo</option>
                       <option value="data">Data</option>
                     </select>
                     <input
@@ -4277,12 +4505,17 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                   <table className="w-full text-sm border-collapse">
                     <thead>
                       <tr className="bg-slate-100">
+                        {!ccModoVincular ? (
+                          <th className="border border-slate-300 w-8 px-1 py-1" scope="col">
+                            <span className="sr-only">Selecionar</span>
+                          </th>
+                        ) : null}
                         {[
                           { key: 'data', label: 'Data', w: 'w-24', align: 'text-left' },
-                          { key: 'descricao', label: 'Descrição', w: 'min-w-[180px]', align: 'text-left' },
-                          { key: 'dataOuId', label: 'Proc.', w: 'w-24', align: 'text-left' },
+                          { key: 'descricao', label: 'Descrição', w: 'min-w-[160px]', align: 'text-left' },
+                          { key: 'dataOuId', label: 'Proc.', w: 'w-16', align: 'text-left' },
                           { key: 'valor', label: 'Valor', w: 'w-28', align: 'text-right' },
-                          { key: 'nome', label: 'Nome', w: 'min-w-[120px]', align: 'text-left' },
+                          { key: 'nome', label: 'Nome', w: 'min-w-[100px]', align: 'text-left' },
                           { key: 'numero', label: 'Nº', w: 'w-12', align: 'text-center' },
                         ].map((h) => {
                           const ativo = sortContaCorrente.col === h.key;
@@ -4312,29 +4545,63 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                             </th>
                           );
                         })}
+                        <th className="border border-slate-300 px-2 py-1.5 font-semibold text-slate-700 w-16 text-center">
+                          Vínc.
+                        </th>
+                        <th className="border border-slate-300 px-2 py-1.5 font-semibold text-slate-700 min-w-[120px] text-left">
+                          Papel
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
                       {carregandoListaApi ? (
                         <tr>
-                          <td colSpan={6} className="border border-slate-200 px-2 py-4 text-center text-slate-500">
+                          <td colSpan={ccModoVincular ? 8 : 9} className="border border-slate-200 px-2 py-4 text-center text-slate-500">
                             A carregar lançamentos da API…
                           </td>
                         </tr>
                       ) : listaOrdenada.length === 0 ? (
                         <tr>
-                          <td colSpan={6} className="border border-slate-200 px-2 py-4 text-center text-slate-500">
+                          <td colSpan={ccModoVincular ? 8 : 9} className="border border-slate-200 px-2 py-4 text-center text-slate-500">
                             Nenhum lançamento do Financeiro vinculado ao cliente {codigoCliente}
                             {contaCorrenteModo === 'proc0' ? ' e processo 0' : processo ? ` e processo ${processo}` : ''}.
                           </td>
                         </tr>
                       ) : (
-                        listaOrdenada.map((linha, idx) => (
+                        listaOrdenada.map((linha, idx) => {
+                          const papelAtual = linha.classificacao?.papel ?? PAPEL_OUTRO;
+                          const ehPendente = ccModoVincular && ccPendenteChave === linha.chave;
+                          const rowTint = ehPendente
+                            ? 'bg-indigo-200/60 ring-2 ring-inset ring-indigo-500'
+                            : linha.numeroVinculo
+                              ? 'bg-indigo-50/70'
+                              : papelAtual === PAPEL_ENTRADA
+                                ? 'bg-emerald-50/50'
+                                : papelAtual === PAPEL_PAGAMENTO
+                                  ? 'bg-orange-50/40'
+                                  : idx % 2 === 0
+                                    ? 'bg-white'
+                                    : 'bg-slate-50/50';
+                          return (
                           <tr
-                            key={`${linha.numero ?? idx}-${linha.data}-${idx}`}
-                            className={`${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'} ${linha.nomeBanco && linha.numero ? 'cursor-pointer hover:bg-blue-50' : ''}`}
-                            title={linha.nomeBanco && linha.numero ? 'Duplo clique: abrir no Financeiro (conta corrente e extrato Itaú)' : undefined}
+                            key={`${linha.chave ?? linha.numero ?? idx}-${idx}`}
+                            className={`${rowTint} ${ccModoVincular || (linha.nomeBanco && linha.numero) ? 'cursor-pointer hover:bg-blue-50/80' : ''}`}
+                            title={
+                              ccModoVincular
+                                ? ccPendenteChave
+                                  ? 'Clique na 2ª linha do par (entrada + pagamento)'
+                                  : '1º clique: marcar linha do par'
+                                : linha.nomeBanco && linha.numero
+                                  ? 'Duplo clique: abrir no Financeiro'
+                                  : undefined
+                            }
+                            onClick={(e) => {
+                              if (!ccModoVincular) return;
+                              if (e.target.closest('input, select, button, textarea')) return;
+                              void handleCcParDoisCliques(linha, transacoesFonte);
+                            }}
                             onDoubleClick={() => {
+                              if (ccModoVincular) return;
                               if (!linha.nomeBanco || linha.numero == null || !linha.data) return;
                               setModalContaCorrente(false);
                               navigate('/financeiro', {
@@ -4348,6 +4615,17 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                               });
                             }}
                           >
+                            {!ccModoVincular ? (
+                              <td className="border border-slate-200 px-1 py-1 text-center">
+                                <input
+                                  type="checkbox"
+                                  checked={ccSelecionados.has(linha.chave)}
+                                  onChange={() => toggleCcSelecionado(linha.chave)}
+                                  onClick={(e) => e.stopPropagation()}
+                                  aria-label="Selecionar para vínculo"
+                                />
+                              </td>
+                            ) : null}
                             <td className="border border-slate-200 px-2 py-1 text-slate-700">{linha.data}</td>
                             <td className="border border-slate-200 px-2 py-1 text-slate-700">{linha.descricao}</td>
                             <td className="border border-slate-200 px-2 py-1 text-slate-700">{linha.dataOuId}</td>
@@ -4356,31 +4634,46 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                             </td>
                             <td className="border border-slate-200 px-2 py-1 text-slate-700">{linha.nome}</td>
                             <td className="border border-slate-200 px-2 py-1 text-center text-slate-600">{linha.numero ?? (idx + 1)}</td>
+                            <td className="border border-slate-200 px-1 py-0.5 text-center">
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                value={linha.numeroVinculo ?? ''}
+                                disabled={ccSalvandoPapel}
+                                onClick={(e) => e.stopPropagation()}
+                                onBlur={(e) => {
+                                  const v = e.target.value.replace(/\D/g, '');
+                                  const chave = linha.chave;
+                                  const mapa = new Map(painelCc.transacoes.map((t) => [t.chave, t]));
+                                  void persistirNumeroVinculoLinha(chave, v, mapa.get(chave) ?? linha.transacaoUi);
+                                }}
+                                className="w-12 mx-auto px-1 py-0.5 text-xs text-center border border-slate-300 rounded bg-white font-mono"
+                                title="Número de vínculo (igual na entrada e no pagamento)"
+                              />
+                            </td>
+                            <td className="border border-slate-200 px-1 py-0.5">
+                              <select
+                                value={papelAtual}
+                                disabled={ccSalvandoPapel}
+                                onChange={(e) =>
+                                  void handlePapelContaCorrenteLinha(linha.chave, e.target.value, linha.transacaoUi)
+                                }
+                                onClick={(e) => e.stopPropagation()}
+                                className="w-full text-xs border border-slate-300 rounded px-1 py-1 bg-white"
+                                title={rotuloPapelContaCorrenteProcesso(papelAtual)}
+                              >
+                                <option value={PAPEL_ENTRADA}>Entrada</option>
+                                <option value={PAPEL_PAGAMENTO}>Pagamento</option>
+                                <option value={PAPEL_DESPESA}>Despesa</option>
+                                <option value={PAPEL_OUTRO}>Outro</option>
+                              </select>
+                            </td>
                           </tr>
-                        ))
+                          );
+                        })
                       )}
                     </tbody>
                   </table>
-                </div>
-                <div className="shrink-0 flex flex-col gap-2">
-                  <div className="flex items-center gap-2">
-                    <label className="text-sm font-medium text-slate-700">Soma:</label>
-                    <input
-                      type="text"
-                      readOnly
-                      value={somaFormatada}
-                      className="w-32 px-2 py-1.5 border border-slate-300 rounded text-sm bg-slate-50 text-right font-medium"
-                    />
-                  </div>
-                  {featureFlags.useApiFinanceiro && Number(processoApiId) ? (
-                    <p className="text-[11px] text-slate-600">
-                      Resumo API: {Number(resumoContaCorrenteApi?.totalLancamentos ?? 0)} lançamento(s)
-                    </p>
-                  ) : null}
-                  {featureFlags.useApiFinanceiro && resumoContaCorrenteApiErro ? (
-                    <p className="text-[11px] text-red-600">{resumoContaCorrenteApiErro}</p>
-                  ) : null}
-                </div>
               </div>
               <div className="flex justify-center px-4 pb-4 pt-4 md:px-0">
                 <button

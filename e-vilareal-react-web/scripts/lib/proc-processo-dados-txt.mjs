@@ -111,7 +111,11 @@ export function levantarDadosProcessoTxt(codNum, numeroInterno, opts = {}) {
  */
 export function montarPatchProcessoFromTxt(dados) {
   /** @type {Record<string, unknown>} */
-  const patch = { ...dados.cabecalho.campos };
+  const patch = {
+    descricaoAcao: null,
+    naturezaAcao: null,
+    ...dados.cabecalho.campos,
+  };
 
   if (dados.prazoArvore?.prazoFatalIso && !patch.prazoFatal) {
     patch.prazoFatal = dados.prazoArvore.prazoFatalIso;

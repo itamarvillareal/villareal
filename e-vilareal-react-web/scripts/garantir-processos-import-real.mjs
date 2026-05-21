@@ -10,22 +10,11 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 import { resolverBaseBancoDados } from './lib/gerais-fase-processo-txt.mjs';
-import { listarProcessosHistoricoCliente } from './lib/historico-local-txt-correcao.mjs';
 import { formatCod8 } from './lib/historico-local-txt-paths.mjs';
 import { garantirProcessoNaApi, loginImportApi } from './lib/vilareal-import-processo-api.mjs';
-import {
-  listarProcessosComCabecalhoTxt,
-  listarProcessosIndice152Cliente,
-} from './import-real.mjs';
+import { listarProcessosDropboxCliente } from './lib/processos-dropbox-cliente.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-function listarProcessosCliente(base, codNum) {
-  let procs = listarProcessosComCabecalhoTxt(base, codNum);
-  if (procs.length === 0) procs = listarProcessosHistoricoCliente(base, codNum);
-  if (procs.length === 0) procs = listarProcessosIndice152Cliente(base, codNum);
-  return procs;
-}
 
 function parseArgs(argv) {
   const out = {
@@ -73,7 +62,7 @@ function mergeProcessosAlvo(baseProcs, opts) {
 
 async function garantirCliente(opts, codNum) {
   const cod8 = formatCod8(codNum);
-  const procs = mergeProcessosAlvo(listarProcessosCliente(opts.base, codNum), opts);
+  const procs = mergeProcessosAlvo(listarProcessosDropboxCliente(opts.base, codNum), opts);
   if (procs.length === 0) {
     console.log(`[garantir] cliente ${codNum}: sem processos nos txt — nada a fazer`);
     return { criados: 0, existentes: 0, falhas: 0, procs: 0 };

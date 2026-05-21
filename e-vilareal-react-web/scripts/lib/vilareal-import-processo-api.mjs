@@ -108,27 +108,25 @@ export async function resolverPessoaIdCliente(baseUrl, token, cod8, cache) {
   return pid;
 }
 
-const DESCRICAO_STUB_IMPORT =
-  'Processo criado automaticamente antes do import-real (cabecalho ausente na API).';
-
 /**
  * POST stub mínimo em /api/processos.
- * @param {string} [descricaoAcao]
+ * @param {string} [descricaoAcao] Só enviada à API se indicada (sem texto por defeito).
  */
 export async function criarProcessoStubImport(
   baseUrl,
   token,
   pessoaId,
   numeroInterno,
-  descricaoAcao = DESCRICAO_STUB_IMPORT
+  descricaoAcao
 ) {
   const body = {
     clienteId: pessoaId,
     numeroInterno: Math.trunc(Number(numeroInterno)),
     ativo: true,
     consultaAutomatica: false,
-    descricaoAcao,
   };
+  const desc = descricaoAcao != null ? String(descricaoAcao).trim() : '';
+  if (desc) body.descricaoAcao = desc;
   const res = await fetch(`${baseUrl.replace(/\/$/, '')}/api/processos`, {
     method: 'POST',
     headers: {

@@ -1,82 +1,24 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Search, X, Link2, ChevronLeft, Loader2 } from 'lucide-react';
-import { normalizarNumeroBusca, normalizarTextoBusca } from './CadastroClientes.jsx';
-import { pesquisarCadastroPessoasPorNomeOuCpf } from '../api/clientesService.js';
+import {
+  pesquisarClientesCadastroPorTermo,
+  termoPermiteBuscaClienteCadastro,
+} from '../data/buscaClientesCadastro.js';
 import { featureFlags } from '../config/featureFlags.js';
 import { padCliente8Cadastro } from '../data/cadastroClientesStorage.js';
-import { listarCodigosClientePorIdPessoa } from '../data/clienteCodigoHelpers.js';
 import {
   buscarClientesUnicosPorTextoHistorico,
   buscarParesClienteProcPorTexto,
-  listarParesPorCodigoClienteHistorico,
+  filtrarProcessosVinculoPasso2,
 } from '../data/buscaClienteProcFinanceiro';
-import { normalizarCodigoClienteFinanceiro } from '../data/financeiroData.js';
+import {
+  carregarProcessosGradeClienteLocal,
+  mapearGradeParaLinhasVinculoModal,
+  mesclarProcessosGradeClienteComApi,
+} from '../data/buscaProcessosGradeCliente.js';
 import {
   listarClientesIndiceCadastro,
-  resolverClienteCadastroPorCodigo,
 } from '../repositories/clientesRepository.js';
-import {
-  listarProcessosResumoPorCodigoCliente,
-  mapApiProcessoToUiShape,
-} from '../repositories/processosRepository.js';
-
-function formatDocBR(digits) {
-  const d = String(digits || '').replace(/\D/g, '');
-  if (d.length === 11) return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
-  if (d.length === 14) return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`;
-  return d || '—';
-}
-
-function digitosCorrespondemBusca(hayDigits, needleDigits) {
-  if (!needleDigits) return false;
-  if (!hayDigits) return false;
-  return hayDigits.includes(needleDigits) || needleDigits.includes(hayDigits);
-}
-
-/**
- * Filtra linhas do passo 2 por autor/parte cliente, réu, nº processo (CNJ / antigo / interno) ou observação.
- * @param {Record<string, unknown>} p
- * @param {string} nomeClienteTitular
- * @param {string} termoRaw
- */
-function processoCorrespondeFiltroPasso2(p, nomeClienteTitular, termoRaw) {
-  const t = String(termoRaw ?? '').trim();
-  if (!t) return true;
-  const parteAutor = String(p.parteClienteAutor ?? nomeClienteTitular ?? '');
-  const reu = String(p.parteOposta ?? '');
-  const cnj = String(p.numeroProcessoNovo ?? '');
-  const velho = String(p.numeroProcessoVelho ?? '');
-  const procInt = String(p.numeroInterno ?? '');
-  const obs = String(p.observacao ?? '');
-
-  const termoTxt = normalizarTextoBusca(t);
-  const termoNum = normalizarNumeroBusca(t);
-
-  const blobTxt = [
-    normalizarTextoBusca(parteAutor),
-    normalizarTextoBusca(reu),
-    normalizarTextoBusca(cnj),
-    normalizarTextoBusca(velho),
-    normalizarTextoBusca(obs),
-    normalizarTextoBusca(procInt),
-  ].join(' ');
-
-  const txtOk = termoTxt.length >= 1 && blobTxt.includes(termoTxt);
-
-  let numOk = false;
-  if (termoNum.length >= 2) {
-    const cnjD = normalizarNumeroBusca(cnj);
-    const velD = normalizarNumeroBusca(velho);
-    const intD = normalizarNumeroBusca(procInt);
-    numOk =
-      digitosCorrespondemBusca(cnjD, termoNum) ||
-      digitosCorrespondemBusca(velD, termoNum) ||
-      digitosCorrespondemBusca(intD, termoNum) ||
-      digitosCorrespondemBusca(`${cnjD}${velD}${intD}`, termoNum);
-  }
-
-  return txtOk || numOk;
-}
 
 /**
  * Modal para vincular cod. cliente + proc. no lançamento do Financeiro.
@@ -98,20 +40,71 @@ export function ModalVinculoClienteProcFinanceiro({
   const [clienteSel, setClienteSel] = useState(null);
   const [clientesPasso1, setClientesPasso1] = useState([]);
   const [loadingClientes, setLoadingClientes] = useState(false);
-  const [processosPasso2, setProcessosPasso2] = useState([]);
+  const [processosGrade, setProcessosGrade] = useState([]);
   const [termoBuscaProcesso, setTermoBuscaProcesso] = useState('');
-  const [loadingProcessos, setLoadingProcessos] = useState(false);
+  const [processosApiCarregando, setProcessosApiCarregando] = useState(false);
   const [erro, setErro] = useState('');
+  const [clientesIndiceApi, setClientesIndiceApi] = useState([]);
+
+  const refBuscaCliente = useRef(null);
+  const refPrimeiroCliente = useRef(null);
+  const refBuscaProcesso = useRef(null);
+  const refPrimeiroProcesso = useRef(null);
+  const refBuscaLivre = useRef(null);
+  const refPrimeiroLivre = useRef(null);
+
+  const focarPrimeiroDaLista = useCallback((refPrimeiro) => {
+    refPrimeiro.current?.focus();
+  }, []);
+
+  const aoTabSairCampoBusca = useCallback((e, refPrimeiro, temItens) => {
+    if (e.key !== 'Tab' || e.shiftKey || !temItens) return;
+    e.preventDefault();
+    focarPrimeiroDaLista(refPrimeiro);
+  }, [focarPrimeiroDaLista]);
+
+  const aoAtivarLinhaTeclado = useCallback((e, acao) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      acao();
+    }
+  }, []);
+
+  const avancarComClientePasso1 = useCallback((c) => {
+    if (!c) return;
+    setClienteSel(c);
+    setTermoBuscaProcesso('');
+    setPasso(2);
+  }, []);
+
+  const selecionarPrimeiroClientePasso1 = useCallback(() => {
+    if (loadingClientes || clientesPasso1.length === 0) return;
+    avancarComClientePasso1(clientesPasso1[0]);
+  }, [loadingClientes, clientesPasso1, avancarComClientePasso1]);
+
+  const aoKeyDownBuscaClientePasso1 = useCallback(
+    (e) => {
+      if (e.key === 'Enter') {
+        if (clientesPasso1.length > 0 && !loadingClientes) {
+          e.preventDefault();
+          selecionarPrimeiroClientePasso1();
+        }
+        return;
+      }
+      aoTabSairCampoBusca(e, refPrimeiroCliente, clientesPasso1.length > 0);
+    },
+    [clientesPasso1.length, loadingClientes, selecionarPrimeiroClientePasso1, aoTabSairCampoBusca],
+  );
 
   const resetWizard = useCallback(() => {
     setTermo('');
     setPasso(1);
     setClienteSel(null);
     setClientesPasso1([]);
-    setProcessosPasso2([]);
+    setProcessosGrade([]);
     setTermoBuscaProcesso('');
     setLoadingClientes(false);
-    setLoadingProcessos(false);
+    setProcessosApiCarregando(false);
     setErro('');
   }, []);
 
@@ -123,9 +116,24 @@ export function ModalVinculoClienteProcFinanceiro({
   }, [aberto, modoContaEscritorio, resetWizard]);
 
   useEffect(() => {
+    if (!aberto || !modoContaEscritorio || !featureFlags.useApiClientes) return;
+    let cancelled = false;
+    void listarClientesIndiceCadastro()
+      .then((data) => {
+        if (!cancelled) setClientesIndiceApi(Array.isArray(data) ? data : []);
+      })
+      .catch(() => {
+        if (!cancelled) setClientesIndiceApi([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [aberto, modoContaEscritorio]);
+
+  useEffect(() => {
     if (!aberto || !modoContaEscritorio || passo !== 1) return;
     const t = termo.trim();
-    if (t.length < 2) {
+    if (!termoPermiteBuscaClienteCadastro(t)) {
       setClientesPasso1([]);
       setLoadingClientes(false);
       return;
@@ -137,52 +145,8 @@ export function ModalVinculoClienteProcFinanceiro({
         setErro('');
         try {
           if (featureFlags.useApiClientes) {
-            const hasLetters = /[a-zA-ZÀ-ÿ\u00C0-\u024F]/.test(t);
-            const digits = t.replace(/\D/g, '');
-            const pareceCpfCnpj = digits.length === 11 || digits.length === 14;
-            if (!hasLetters && digits.length > 0 && !pareceCpfCnpj) {
-              const resolved = await resolverClienteCadastroPorCodigo(digits);
-              if (cancelled) return;
-              if (resolved) {
-                const pid = Number(String(resolved.pessoa ?? '').replace(/\D/g, ''));
-                if (Number.isFinite(pid) && pid >= 1) {
-                  const codigoPadded = String(resolved.codigo ?? '').trim() || padCliente8Cadastro(digits);
-                  const nCod = Number(String(codigoPadded).replace(/\D/g, ''));
-                  const codCliente = normalizarCodigoClienteFinanceiro(Number.isFinite(nCod) && nCod >= 1 ? nCod : '');
-                  if (codCliente) {
-                    setClientesPasso1([
-                      {
-                        codCliente,
-                        codigoPadded,
-                        nomeCliente: String(resolved.nomeRazao ?? '').trim() || `Pessoa ${pid}`,
-                        cpfLabel: formatDocBR(resolved.cnpjCpf),
-                      },
-                    ]);
-                    return;
-                  }
-                }
-              }
-            }
-
-            const pessoas = await pesquisarCadastroPessoasPorNomeOuCpf(t, { limite: 60 });
+            const rows = await pesquisarClientesCadastroPorTermo(t, clientesIndiceApi, { limite: 80 });
             if (cancelled) return;
-            const listaCli = await listarClientesIndiceCadastro();
-            const rows = [];
-            for (const p of pessoas || []) {
-              const pid = Number(p?.id);
-              if (!Number.isFinite(pid) || pid < 1) continue;
-              const cods = listarCodigosClientePorIdPessoa(pid, listaCli);
-              const codigoPadded = cods[0] ?? padCliente8Cadastro(pid);
-              const nCod = Number(String(codigoPadded).replace(/\D/g, ''));
-              const codCliente = normalizarCodigoClienteFinanceiro(nCod);
-              if (!codCliente) continue;
-              rows.push({
-                codCliente,
-                codigoPadded,
-                nomeCliente: String(p?.nome ?? '').trim() || `Pessoa ${pid}`,
-                cpfLabel: formatDocBR(p?.cpf),
-              });
-            }
             setClientesPasso1(rows);
           } else {
             if (cancelled) return;
@@ -210,68 +174,66 @@ export function ModalVinculoClienteProcFinanceiro({
       cancelled = true;
       window.clearTimeout(id);
     };
-  }, [aberto, modoContaEscritorio, passo, termo]);
+  }, [aberto, modoContaEscritorio, passo, termo, clientesIndiceApi]);
 
   useEffect(() => {
     if (!aberto || !modoContaEscritorio || passo !== 2 || !clienteSel) return;
     let cancelled = false;
-    void (async () => {
-      setLoadingProcessos(true);
-      setErro('');
-      setProcessosPasso2([]);
-      try {
-        if (featureFlags.useApiProcessos) {
-          const raw = await listarProcessosResumoPorCodigoCliente(clienteSel.codigoPadded);
-          if (cancelled) return;
-          setProcessosPasso2(
-            (raw || []).map((row) => {
-              const m = mapApiProcessoToUiShape(row);
-              return {
-                ...m,
-                parteClienteAutor: clienteSel.nomeCliente,
-              };
-            })
-          );
-        } else {
-          if (cancelled) return;
-          const hist = listarParesPorCodigoClienteHistorico(clienteSel.codCliente, { maxResults: 200 });
-          setProcessosPasso2(
-            hist.map((r) => ({
-              numeroInterno: Number(r.proc),
-              numeroProcessoNovo: r.processoNovo || '',
-              numeroProcessoVelho: r.processoVelho || '',
-              parteOposta: r.reu || '',
-              parteClienteAutor: String(r.autor ?? '').trim() || clienteSel.nomeCliente,
-              observacao: r.tipoAcao || '',
-              codigoCliente: padCliente8Cadastro(r.codCliente),
-            }))
-          );
-        }
-      } catch (e) {
+    const codPad = clienteSel.codigoPadded;
+    setErro('');
+    const local = carregarProcessosGradeClienteLocal(codPad);
+    setProcessosGrade(local);
+
+    if (!featureFlags.useApiProcessos) {
+      setProcessosApiCarregando(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setProcessosApiCarregando(true);
+    void mesclarProcessosGradeClienteComApi(codPad, local, { comPartesNaApi: true })
+      .then((merged) => {
+        if (!cancelled) setProcessosGrade(merged);
+      })
+      .catch((e) => {
         if (!cancelled) {
-          setErro(e?.message || 'Falha ao listar processos do cliente.');
-          setProcessosPasso2([]);
+          setErro(e?.message || 'Não foi possível atualizar processos na API.');
         }
-      } finally {
-        if (!cancelled) setLoadingProcessos(false);
-      }
-    })();
+      })
+      .finally(() => {
+        if (!cancelled) setProcessosApiCarregando(false);
+      });
+
     return () => {
       cancelled = true;
     };
   }, [aberto, modoContaEscritorio, passo, clienteSel]);
 
+  const processosPasso2Linhas = useMemo(() => {
+    if (!clienteSel) return [];
+    return mapearGradeParaLinhasVinculoModal(
+      processosGrade,
+      clienteSel.nomeCliente,
+      clienteSel.codigoPadded
+    );
+  }, [processosGrade, clienteSel]);
+
+  const processosPasso2Filtrados = useMemo(
+    () =>
+      filtrarProcessosVinculoPasso2(
+        processosPasso2Linhas,
+        clienteSel?.nomeCliente ?? '',
+        termoBuscaProcesso,
+        clienteSel?.codigoPadded ?? ''
+      ),
+    [processosPasso2Linhas, clienteSel, termoBuscaProcesso]
+  );
+
   const resultadosBuscaLivre = useMemo(
     () => buscarParesClienteProcPorTexto(termo, { maxResults: 150 }),
     [termo]
   );
-
-  const processosPasso2Filtrados = useMemo(() => {
-    if (!clienteSel) return processosPasso2;
-    return processosPasso2.filter((p) =>
-      processoCorrespondeFiltroPasso2(p, clienteSel.nomeCliente, termoBuscaProcesso)
-    );
-  }, [processosPasso2, clienteSel, termoBuscaProcesso]);
 
   if (!aberto) return null;
 
@@ -356,9 +318,11 @@ export function ModalVinculoClienteProcFinanceiro({
                   <div className="flex items-center gap-2">
                     <Search className="w-4 h-4 text-slate-500 shrink-0" />
                     <input
+                      ref={refBuscaCliente}
                       type="search"
                       value={termo}
                       onChange={(e) => setTermo(e.target.value)}
+                      onKeyDown={aoKeyDownBuscaClientePasso1}
                       placeholder={placeholderCliente}
                       className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
                       autoFocus
@@ -367,9 +331,10 @@ export function ModalVinculoClienteProcFinanceiro({
                   </div>
                 </div>
                 <div className="flex-1 min-h-0 overflow-auto p-4">
-                  {termo.trim().length < 2 ? (
+                  {!termoPermiteBuscaClienteCadastro(termo) ? (
                     <p className="text-sm text-slate-500 text-center py-8">
-                      Digite pelo menos 2 caracteres para buscar clientes.
+                      Digite pelo menos 2 letras no nome, ou use números para código (8 dígitos), CPF/CNPJ ou nº
+                      interno do processo.
                     </p>
                   ) : clientesPasso1.length === 0 && !loadingClientes ? (
                     <p className="text-sm text-slate-600 text-center py-8">
@@ -392,22 +357,25 @@ export function ModalVinculoClienteProcFinanceiro({
                           </tr>
                         </thead>
                         <tbody>
-                          {clientesPasso1.map((c, idx) => (
+                          {clientesPasso1.map((c, idx) => {
+                            const selecionarCliente = () => avancarComClientePasso1(c);
+                            return (
                             <tr
                               key={`${c.codigoPadded}-${idx}`}
-                              className="border-b border-slate-100 hover:bg-indigo-50/80 cursor-pointer"
-                              onClick={() => {
-                                setClienteSel(c);
-                                setTermoBuscaProcesso('');
-                                setPasso(2);
-                              }}
+                              ref={idx === 0 ? refPrimeiroCliente : undefined}
+                              tabIndex={0}
+                              role="button"
+                              className="border-b border-slate-100 hover:bg-indigo-50/80 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500"
+                              onClick={selecionarCliente}
+                              onKeyDown={(e) => aoAtivarLinhaTeclado(e, selecionarCliente)}
                               title="Clique para listar os processos deste cliente"
                             >
                               <td className="px-3 py-2 tabular-nums text-slate-900 font-medium">{c.codigoPadded}</td>
                               <td className="px-3 py-2 text-slate-800 font-medium">{c.nomeCliente}</td>
                               <td className="px-3 py-2 text-slate-600 text-xs">{c.cpfLabel}</td>
                             </tr>
-                          ))}
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>
@@ -421,7 +389,7 @@ export function ModalVinculoClienteProcFinanceiro({
                     type="button"
                     onClick={() => {
                       setPasso(1);
-                      setProcessosPasso2([]);
+                      setProcessosGrade([]);
                       setTermoBuscaProcesso('');
                     }}
                     className="inline-flex items-center gap-1 px-2 py-1 rounded border border-slate-300 text-xs text-slate-700 hover:bg-slate-50"
@@ -429,10 +397,10 @@ export function ModalVinculoClienteProcFinanceiro({
                     <ChevronLeft className="w-4 h-4" />
                     Voltar aos clientes
                   </button>
-                  {loadingProcessos ? (
+                  {processosApiCarregando ? (
                     <span className="inline-flex items-center gap-1 text-xs text-slate-500">
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      Carregando processos…
+                      Atualizando lista na API…
                     </span>
                   ) : null}
                 </div>
@@ -440,25 +408,29 @@ export function ModalVinculoClienteProcFinanceiro({
                   <div className="flex items-center gap-2">
                     <Search className="w-4 h-4 text-slate-500 shrink-0" />
                     <input
+                      ref={refBuscaProcesso}
                       type="search"
                       value={termoBuscaProcesso}
                       onChange={(e) => setTermoBuscaProcesso(e.target.value)}
+                      onKeyDown={(e) =>
+                        aoTabSairCampoBusca(e, refPrimeiroProcesso, processosPasso2Filtrados.length > 0)
+                      }
                       placeholder="Filtrar: autor, réu, CNJ, nº antigo ou proc. interno…"
                       className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
-                      disabled={loadingProcessos}
                     />
                   </div>
-                  {!loadingProcessos && processosPasso2.length > 0 ? (
+                  {processosGrade.length > 0 ? (
                     <p className="text-[11px] text-slate-500 mt-1.5">
-                      Mostrando <strong>{processosPasso2Filtrados.length}</strong> de {processosPasso2.length} processo(s)
-                      {termoBuscaProcesso.trim() ? ' (filtro ativo)' : ''}.
+                      Mostrando <strong>{processosPasso2Filtrados.length}</strong> de {processosGrade.length} processo(s)
+                      {termoBuscaProcesso.trim() ? ' (filtro ativo)' : ''}
+                      {processosApiCarregando ? ' — complementando na API…' : ''}.
                     </p>
                   ) : null}
                 </div>
                 <div className="flex-1 min-h-0 overflow-auto p-4">
-                  {loadingProcessos ? (
-                    <p className="text-sm text-slate-500 text-center py-8">Carregando lista de processos…</p>
-                  ) : processosPasso2.length === 0 ? (
+                  {processosGrade.length === 0 && processosApiCarregando ? (
+                    <p className="text-sm text-slate-500 text-center py-8">Carregando processos do cliente…</p>
+                  ) : processosGrade.length === 0 ? (
                     <p className="text-sm text-slate-600 text-center py-8">
                       Nenhum processo encontrado para este cliente.
                     </p>
@@ -494,17 +466,22 @@ export function ModalVinculoClienteProcFinanceiro({
                             const procNum = Number(p.numeroInterno);
                             const procStr = Number.isFinite(procNum) && procNum >= 0 ? String(procNum) : '';
                             const exibeAutor = String(p.parteClienteAutor ?? '').trim() || clienteSel?.nomeCliente || '—';
+                            const vincularProcesso = () => {
+                              if (!clienteSel || !procStr) return;
+                              onAplicar({
+                                codCliente: clienteSel.codCliente,
+                                proc: procStr,
+                              });
+                            };
                             return (
                               <tr
                                 key={`${p.processoId ?? 'h'}-${procStr}-${idx}`}
-                                className="border-b border-slate-100 hover:bg-indigo-50/80 cursor-pointer"
-                                onClick={() => {
-                                  if (!clienteSel || !procStr) return;
-                                  onAplicar({
-                                    codCliente: clienteSel.codCliente,
-                                    proc: procStr,
-                                  });
-                                }}
+                                ref={idx === 0 ? refPrimeiroProcesso : undefined}
+                                tabIndex={procStr ? 0 : -1}
+                                role="button"
+                                className="border-b border-slate-100 hover:bg-indigo-50/80 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500"
+                                onClick={vincularProcesso}
+                                onKeyDown={(e) => aoAtivarLinhaTeclado(e, vincularProcesso)}
                                 title="Clique para vincular este processo ao lançamento"
                               >
                                 <td className="px-3 py-2 tabular-nums font-medium text-slate-900">{procStr}</td>
@@ -536,9 +513,13 @@ export function ModalVinculoClienteProcFinanceiro({
               <div className="flex items-center gap-2">
                 <Search className="w-4 h-4 text-slate-500 shrink-0" />
                 <input
+                  ref={refBuscaLivre}
                   type="search"
                   value={termo}
                   onChange={(e) => setTermo(e.target.value)}
+                  onKeyDown={(e) =>
+                    aoTabSairCampoBusca(e, refPrimeiroLivre, resultadosBuscaLivre.length > 0)
+                  }
                   placeholder="Ex.: nome da parte, réu, CPF ou nº do processo…"
                   className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
                   autoFocus
@@ -574,11 +555,17 @@ export function ModalVinculoClienteProcFinanceiro({
                       </tr>
                     </thead>
                     <tbody>
-                      {resultadosBuscaLivre.map((r, idx) => (
+                      {resultadosBuscaLivre.map((r, idx) => {
+                        const vincularPar = () => onAplicar({ codCliente: r.codCliente, proc: r.proc });
+                        return (
                         <tr
                           key={`${r.codCliente}-${r.proc}-${r.processoNovo}-${idx}`}
-                          className="border-b border-slate-100 hover:bg-indigo-50/80 cursor-pointer"
-                          onClick={() => onAplicar({ codCliente: r.codCliente, proc: r.proc })}
+                          ref={idx === 0 ? refPrimeiroLivre : undefined}
+                          tabIndex={0}
+                          role="button"
+                          className="border-b border-slate-100 hover:bg-indigo-50/80 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500"
+                          onClick={vincularPar}
+                          onKeyDown={(e) => aoAtivarLinhaTeclado(e, vincularPar)}
                           title="Clique para vincular a este lançamento"
                         >
                           <td className="px-3 py-2 tabular-nums text-slate-900 font-medium">{r.codCliente}</td>
@@ -596,7 +583,8 @@ export function ModalVinculoClienteProcFinanceiro({
                             {r.tipoAcao ? <div className="text-slate-500 mt-0.5">{r.tipoAcao}</div> : null}
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

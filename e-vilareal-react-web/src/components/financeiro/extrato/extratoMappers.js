@@ -1,8 +1,10 @@
 import {
   buildContaToLetraMerge,
+  codigoClienteExtratoDesdeApiDto,
   loadPersistedContasContabeisExtrasFinanceiro,
   normalizarCodigoClienteFinanceiro,
   normalizarProcFinanceiro,
+  obterCodigoClienteFinanceiroPorPessoaId,
 } from '../../../data/financeiroData.js';
 
 function toBrDate(iso) {
@@ -13,11 +15,7 @@ function toBrDate(iso) {
 }
 
 function codClienteExibicao(l) {
-  const raw = l.codigoCliente != null ? String(l.codigoCliente).trim() : '';
-  if (raw === '') return '';
-  const digits = raw.replace(/\D/g, '');
-  const n = Number(digits);
-  return normalizarCodigoClienteFinanceiro(Number.isFinite(n) && n >= 1 ? n : '');
+  return codigoClienteExtratoDesdeApiDto(l);
 }
 
 function procExibicao(l) {
@@ -73,14 +71,16 @@ export function promoverContaEscritorioSeVinculado(draft, contas = []) {
 }
 
 export function textoObsExtrato(item) {
-  if (temVinculoClienteExtrato(item)) {
-    const cod = String(item.codCliente ?? '').trim();
-    const proc = String(item.proc ?? '').trim();
-    const vinc = [cod, proc].filter(Boolean).join('/');
-    return vinc || '—';
-  }
   const obs = String(item.observacao ?? '').trim();
   return obs || '—';
+}
+
+/** Observação padrão após vínculo cliente + processo (Parte Cliente x Parte Oposta). */
+export function montarObservacaoExtratoVinculo(parteCliente, parteOposta) {
+  const pc = String(parteCliente ?? '').trim();
+  const po = String(parteOposta ?? '').trim();
+  if (pc && po) return `${pc} x ${po}`;
+  return pc || po || '';
 }
 
 /**
@@ -161,5 +161,31 @@ export function extratoRowToUi(row) {
 }
 
 export function mergeExtratoRowComRespostaApi(row, saved, contaToLetra) {
-  return mapApiLancamentoToExtratoRow(saved, contaToLetra);
+  const mapped = mapApiLancamentoToExtratoRow(saved, contaToLetra);
+  const clienteId =
+    Number(mapped.clienteId) > 0
+      ? mapped.clienteId
+      : Number(row.clienteId) > 0
+        ? row.clienteId
+        : null;
+  const processoId =
+    mapped.processoId != null && Number(mapped.processoId) > 0
+      ? mapped.processoId
+      : row.processoId != null && Number(row.processoId) > 0
+        ? row.processoId
+        : null;
+  const proc =
+    String(mapped.proc ?? '').trim() || String(row.proc ?? '').trim() || '';
+  const pid = Number(clienteId) || 0;
+  let codEnviado =
+    normalizarCodigoClienteFinanceiro(row.codCliente) ||
+    (pid > 0 ? obterCodigoClienteFinanceiroPorPessoaId(pid) : '');
+  const temVinculo = pid > 0 || proc !== '';
+  const base = { ...mapped, clienteId, processoId, proc: proc || mapped.proc };
+  if (codEnviado && temVinculo) {
+    return { ...base, codCliente: codEnviado };
+  }
+  if (mapped.codCliente) return base;
+  if (codEnviado) return { ...base, codCliente: codEnviado };
+  return base;
 }
