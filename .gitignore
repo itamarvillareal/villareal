@@ -26,3 +26,4 @@ scripts/__pycache__/
 /backups/
 docker-compose.override.yml
 e-vilareal-react-web/tmp/
+e-vilareal-react-web/relatorio-dedupe-*.json
