@@ -1,5 +1,9 @@
 import { Fragment, useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { CalendarDays, CalendarX2, ChevronLeft, ChevronRight, Plus, X } from 'lucide-react';
+import {
+  buscarProcessoPorTextoCompromissoAgenda,
+  mensagemResultadoLocalizarProcesso,
+} from '../data/agendaLocalizarProcesso.js';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   agendaUsuarios,
@@ -19,12 +23,11 @@ import {
   criarUsuarioRegistroMinimo,
   listarTodosCompromissosAgendaMes,
 } from '../data/agendaPersistenciaData';
-import { buscarProcessoUnicoNaBasePorTextoAgenda } from '../data/processosHistoricoData';
 import { resolverAliasHojeEmTexto } from '../services/hjDateAliasService.js';
 import { getNomeExibicaoUsuario } from '../data/usuarioDisplayHelpers.js';
 import { featureFlags } from '../config/featureFlags.js';
 import { buildRouterStateChaveClienteProcesso } from '../domain/camposProcessoCliente.js';
-import { extrairChaveProcessoEventoAgenda } from '../domain/agendaProcessoRef.js';
+import { extrairChaveProcessoEventoAgenda, montarProcessoRefAgenda } from '../domain/agendaProcessoRef.js';
 import { listarUsuarios } from '../repositories/usuariosRepository.js';
 import { getApiUsuarioSessao } from '../data/usuarioPermissoesStorage.js';
 import {
@@ -42,6 +45,7 @@ import {
   urgenciaDiaAgenda,
   tipoCompromissoAgenda,
 } from './agendaUiShared.jsx';
+import { ProcessoEmbedModal } from './ProcessoEmbedModal.jsx';
 
 /** Retorna string DD/MM/YYYY para dia/mês/ano */
 function dataStr(dia, mes, ano) {
@@ -649,21 +653,57 @@ export function Agenda({ focoDataBr = null, focoRevision = 0, modoFlutuante = fa
     return true;
   }
 
-  /** Duplo clique: prioriza vínculo explícito (processoRef / cliente×proc); senão tenta CNJ no texto. */
-  function aoDuploCliqueCompromisso(ev) {
-    const chave = extrairChaveProcessoEventoAgenda(ev);
-    if (chave) {
-      navigate('/processos', { state: buildRouterStateChaveClienteProcesso(chave.codCliente, chave.proc) });
-      return;
-    }
-    const texto = `${ev.descricao ?? ''}\n${ev.titulo ?? ''}\n${ev.hora ?? ''}`;
-    const found = buscarProcessoUnicoNaBasePorTextoAgenda(texto);
-    if (found) {
-      navigate('/processos', { state: buildRouterStateChaveClienteProcesso(found.codCliente, found.proc) });
-      return;
-    }
-    setEventoModal(ev);
-  }
+  const [processoEmbed, setProcessoEmbed] = useState(null);
+
+  const abrirProcessoEmJanela = useCallback((codCliente, proc) => {
+    setProcessoEmbed({
+      revision: Date.now(),
+      routerState: buildRouterStateChaveClienteProcesso(codCliente, proc),
+    });
+  }, []);
+
+  const aoDuploCliqueCompromisso = useCallback(
+    (dataBrStr, usuarioAgendaId) => async (ev) => {
+      const chave = extrairChaveProcessoEventoAgenda(ev);
+      if (chave) {
+        abrirProcessoEmJanela(chave.codCliente, chave.proc);
+        return;
+      }
+      const texto = String(ev?.descricao ?? '').trim();
+      if (!texto) {
+        setEventoModal(ev);
+        return;
+      }
+      try {
+        const r = await buscarProcessoPorTextoCompromissoAgenda(texto);
+        if (r.ok) {
+          const ref = montarProcessoRefAgenda(r.codCliente, r.proc);
+          if (ref && dataBrStr) {
+            await salvarCamposEvento(
+              dataBrStr,
+              { ...ev, usuarioId: ev.usuarioId ?? usuarioAgendaId },
+              { processoRef: ref }
+            );
+            setAgendaStatusNonce((n) => n + 1);
+          }
+          const via =
+            r.metodo === 'cnj' ? 'número do processo' : r.metodo === 'partes' ? 'partes' : 'texto';
+          setToastAgenda(`Processo localizado (${via}): cliente ${r.codCliente}, proc ${r.proc}`);
+          abrirProcessoEmJanela(r.codCliente, r.proc);
+          return;
+        }
+        if (r.motivo === 'ambiguo_cnj' || r.motivo === 'ambiguo_partes') {
+          window.alert(mensagemResultadoLocalizarProcesso(r));
+          return;
+        }
+      } catch (e) {
+        window.alert(e?.message || 'Erro ao localizar processo.');
+        return;
+      }
+      setEventoModal(ev);
+    },
+    [abrirProcessoEmJanela]
+  );
 
   useEffect(() => {
     // Mantém o 1o usuário base ativo (no print ele aparece sem botões).
@@ -928,8 +968,9 @@ export function Agenda({ focoDataBr = null, focoRevision = 0, modoFlutuante = fa
         indicadoresPorDia={indicadoresPorDiaEsquerda}
       />
 
-      {/* Área central: em mobile lista empilhada por dia; em lg duas colunas lado a lado. */}
-      <div className="flex w-full min-w-0 shrink-0 flex-col overflow-hidden rounded-2xl border border-slate-200/90 bg-white/95 shadow-md ring-1 ring-indigo-500/5 backdrop-blur-sm lg:min-h-0 lg:flex-1">
+      {/* Área central: −20% (scale 0.8), proporcional como zoom */}
+      <div className="flex w-full min-w-0 shrink-0 flex-col items-center justify-center overflow-hidden lg:min-h-0 lg:flex-1">
+        <div className="flex w-full min-w-0 flex-col overflow-hidden rounded-2xl border border-slate-200/90 bg-white/95 shadow-md ring-1 ring-indigo-500/5 backdrop-blur-sm origin-center scale-[0.8] lg:min-h-0 lg:h-full lg:max-h-full">
         <div className="flex shrink-0 flex-col gap-2 border-b border-slate-200/80 bg-white/90 px-3 py-2.5 shadow-sm rounded-t-2xl sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
           <div className="flex min-w-0 items-center gap-2.5">
             <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-sky-500 to-indigo-600 text-white shadow-md ring-1 ring-sky-400/40 md:h-9 md:w-9">
@@ -939,7 +980,7 @@ export function Agenda({ focoDataBr = null, focoRevision = 0, modoFlutuante = fa
               <h1 className="bg-gradient-to-r from-slate-900 via-indigo-900 to-sky-800 bg-clip-text text-lg font-bold text-transparent dark:from-slate-100 dark:via-indigo-200 dark:to-sky-200 md:text-xl">
                 Agenda
               </h1>
-              <p className="truncate text-xs text-slate-500">Compromissos por dia — duplo toque para detalhe ou processo</p>
+              <p className="truncate text-xs text-slate-500">Compromissos por dia — duplo clique abre o processo na base</p>
             </div>
           </div>
           <button
@@ -958,7 +999,7 @@ export function Agenda({ focoDataBr = null, focoRevision = 0, modoFlutuante = fa
             dataLabel={`${dataEsquerdaStr} — Compromissos do dia`}
             eventos={eventosEsquerda}
             onStatusAlterado={aoStatusAlteradoAgenda}
-            onDuploCliqueEvento={aoDuploCliqueCompromisso}
+            onDuploCliqueEvento={aoDuploCliqueCompromisso(dataEsquerdaStr, usuarioEsquerda)}
             dataBrStr={dataEsquerdaStr}
             usuarioAgendaId={usuarioEsquerda}
             somenteLeitura={false}
@@ -994,7 +1035,7 @@ export function Agenda({ focoDataBr = null, focoRevision = 0, modoFlutuante = fa
             dataLabel={`${dataDireitaStr} — Próximo dia`}
             eventos={eventosDireita}
             onStatusAlterado={aoStatusAlteradoAgenda}
-            onDuploCliqueEvento={aoDuploCliqueCompromisso}
+            onDuploCliqueEvento={aoDuploCliqueCompromisso(dataDireitaStr, usuarioDireita)}
             dataBrStr={dataDireitaStr}
             usuarioAgendaId={usuarioDireita}
             somenteLeitura={false}
@@ -1025,6 +1066,7 @@ export function Agenda({ focoDataBr = null, focoRevision = 0, modoFlutuante = fa
               })();
             }}
           />
+        </div>
         </div>
       </div>
 
@@ -1271,7 +1313,7 @@ export function Agenda({ focoDataBr = null, focoRevision = 0, modoFlutuante = fa
                     className="min-h-11 w-full rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md hover:from-indigo-700 hover:to-violet-700 sm:w-auto"
                     onClick={() => {
                       setEventoModal(null);
-                      navigate('/processos', { state: buildRouterStateChaveClienteProcesso(ch.codCliente, ch.proc) });
+                      abrirProcessoEmJanela(ch.codCliente, ch.proc);
                     }}
                   >
                     Abrir processo
@@ -1298,6 +1340,8 @@ export function Agenda({ focoDataBr = null, focoRevision = 0, modoFlutuante = fa
           {toastAgenda}
         </div>
       ) : null}
+
+      <ProcessoEmbedModal embed={processoEmbed} onFechar={() => setProcessoEmbed(null)} />
     </div>
   );
 }

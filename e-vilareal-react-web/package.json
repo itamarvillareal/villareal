@@ -38,6 +38,7 @@
     "extrair:proc-imovel-vinculo-txt": "node scripts/extrair-proc-imovel-vinculo-txt.mjs",
     "import:proc-imovel-vinculo-txt": "node scripts/import-proc-imovel-vinculo-txt.mjs --aplicar",
     "dedupe:andamentos-processo": "node scripts/deduplicar-andamentos-processo.mjs",
+    "dedupe:agenda": "node scripts/deduplicar-agenda-eventos.mjs",
     "import:cidade-estado-processos": "node scripts/import-cidade-estado-processos-planilha.mjs",
     "import:agenda-itamar-total": "node scripts/import-agenda-planilha.mjs \"/Users/itamarvillarealjunior/Dropbox/COMUM/agenda itamar total.xlsx\" --layout=total --login=itamar",
     "reimport:agenda-itamar-total": "bash ../e-vilareal-java-backend/scripts/reimportar_agenda_itamar_total.sh",

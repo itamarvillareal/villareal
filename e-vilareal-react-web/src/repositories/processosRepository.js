@@ -662,6 +662,7 @@ export function mergeCadastroClientesProcessosComApi(codigoClientePadded8, lista
     const poApi = String(api.parteOposta ?? api.parte_oposta ?? '').trim();
     const poRow = String(row.parteOposta ?? row.reu ?? '').trim();
 
+    const unidadeApi = String(api.unidade ?? '').trim();
     return {
       ...row,
       processoNovo: novoApi || String(row.processoNovo ?? '').trim() || row.processoNovo,
@@ -669,6 +670,8 @@ export function mergeCadastroClientesProcessosComApi(codigoClientePadded8, lista
       descricao: descApi || String(row.descricao ?? '').trim() || row.descricao,
       parteOposta: poApi || poRow || row.parteOposta,
       reu: poApi || poRow || row.reu,
+      unidade: unidadeApi || String(row.unidade ?? '').trim() || row.unidade,
+      unidadeEndereco: unidadeApi || String(row.unidadeEndereco ?? row.unidade ?? '').trim(),
       statusAtivo: api.statusAtivo !== false,
     };
   });
@@ -677,6 +680,7 @@ export function mergeCadastroClientesProcessosComApi(codigoClientePadded8, lista
     if (seen.has(n)) continue;
     seen.add(n);
     const poNovo = String(api.parteOposta ?? api.parte_oposta ?? '').trim();
+    const unidadeNovo = String(api.unidade ?? '').trim();
     out.push({
       id: `${codN}-${n}`,
       procNumero: n,
@@ -687,6 +691,8 @@ export function mergeCadastroClientesProcessosComApi(codigoClientePadded8, lista
       parteOposta: poNovo || '—',
       tipoAcao: '',
       descricao: String(api.descricaoAcao ?? api.naturezaAcao ?? '').trim(),
+      unidade: unidadeNovo,
+      unidadeEndereco: unidadeNovo,
       statusAtivo: api.statusAtivo !== false,
     });
   }

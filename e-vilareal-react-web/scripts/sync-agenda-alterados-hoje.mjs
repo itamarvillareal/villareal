@@ -42,10 +42,10 @@ import {
 } from './lib/agenda-local-txt.mjs';
 import {
   aplicarEventosAgenda,
-  chaveDedupImport,
   construirMapaUsuariosPorChave,
   eventoImportavel,
   fetchUsuariosApi,
+  jaTemEquivalenteNoLote,
   loginObterToken,
   resolverUsuarioIdPasta,
 } from './lib/agenda-api-aplicar.mjs';
@@ -178,7 +178,6 @@ async function main() {
     process.exit(0);
   }
 
-  const vistosTxt = new Set();
   const linhas = [];
   let puladosDupTxt = 0;
   let puladosSemConteudo = 0;
@@ -188,12 +187,10 @@ async function main() {
       puladosSemConteudo += 1;
       continue;
     }
-    const ck = chaveDedupImport(e.usuarioId, e);
-    if (vistosTxt.has(ck)) {
+    if (jaTemEquivalenteNoLote(linhas, e)) {
       puladosDupTxt += 1;
       continue;
     }
-    vistosTxt.add(ck);
     linhas.push(e);
   }
 

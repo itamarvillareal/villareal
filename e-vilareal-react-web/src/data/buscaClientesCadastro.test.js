@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  filtrarClientesIndicePorCodigo,
   pesquisarClientesCadastroPorTermo,
   termoPermiteBuscaClienteCadastro,
 } from './buscaClientesCadastro.js';
@@ -10,10 +11,6 @@ vi.mock('../config/featureFlags.js', () => ({
 
 vi.mock('../repositories/clientesRepository.js', () => ({
   resolverClienteCadastroPorCodigo: vi.fn(),
-}));
-
-vi.mock('../repositories/processosRepository.js', () => ({
-  listarProcessosPorNumeroInterno: vi.fn(),
 }));
 
 const indice = [
@@ -51,5 +48,26 @@ describe('buscaClientesCadastro', () => {
     const hits = await pesquisarClientesCadastroPorTermo('00000966', indice);
     expect(hits).toHaveLength(1);
     expect(hits[0].codCliente).toBeTruthy();
+  });
+
+  it('filtrarClientesIndicePorCodigo: 491 encontra código 00000491, não proc. 491', () => {
+    const indiceCod = [
+      { codigoPadded: '00000491', codigoNum: 491, nome: 'CLIENTE 491' },
+      { codigoPadded: '00000824', codigoNum: 824, nome: 'THIAGO - Proc. 491' },
+    ];
+    const hits = filtrarClientesIndicePorCodigo(indiceCod, '491');
+    expect(hits).toHaveLength(1);
+    expect(hits[0].codigoPadded).toBe('00000491');
+  });
+
+  it('pesquisarClientesCadastroPorTermo: dígitos parciais buscam código, não processo', async () => {
+    const indiceCod = [
+      { codigo: '00000491', nomeRazao: 'CLIENTE 491', cnpjCpf: '', pessoa: '1' },
+      { codigo: '00000824', nomeRazao: 'OUTRO', cnpjCpf: '', pessoa: '2' },
+    ];
+    const hits = await pesquisarClientesCadastroPorTermo('491', indiceCod);
+    expect(hits).toHaveLength(1);
+    expect(hits[0].codigoPadded).toBe('00000491');
+    expect(hits[0].nomeCliente).toBe('CLIENTE 491');
   });
 });

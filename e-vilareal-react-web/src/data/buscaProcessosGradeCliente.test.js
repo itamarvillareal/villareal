@@ -30,4 +30,19 @@ describe('filtrarProcessosGradeCliente', () => {
     const semReu = [{ procNumero: 12, parteOposta: '', descricao: 'ADMINISTRAÇÃO DE IMÓVEL' }];
     expect(filtrarProcessosGradeCliente(semReu, 'tavares')).toHaveLength(0);
   });
+
+  it('filtra pelo campo Unidades', () => {
+    const comUnidade = [
+      {
+        procNumero: 3,
+        processoNovo: '',
+        parteOposta: 'X',
+        descricao: 'AÇÃO',
+        unidade: 'COND. RES. ALVORADA A-1101',
+      },
+      { procNumero: 4, processoNovo: '', parteOposta: 'Y', descricao: 'OUTRA', unidade: 'BLOCO B 202' },
+    ];
+    expect(filtrarProcessosGradeCliente(comUnidade, 'alvorada')).toHaveLength(1);
+    expect(filtrarProcessosGradeCliente(comUnidade, 'alvorada')[0].procNumero).toBe(3);
+  });
 });
