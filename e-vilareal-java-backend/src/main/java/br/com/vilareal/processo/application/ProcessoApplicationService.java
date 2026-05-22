@@ -274,8 +274,9 @@ public class ProcessoApplicationService {
         if (numeroInterno < 0) {
             return Optional.empty();
         }
-        try {
-            ClienteEntity cliente = clienteResolverService.resolverClientePorCodigo(codigoCliente);
+        Optional<ClienteEntity> clienteOpt = clienteResolverService.encontrarClientePorCodigo(codigoCliente);
+        if (clienteOpt.isPresent()) {
+            ClienteEntity cliente = clienteOpt.get();
             Optional<ProcessoEntity> porCliente = resolverProcessoCanonicoPorCliente(
                     cliente.getId(), cliente.getPessoa().getId(), numeroInterno);
             if (porCliente.isPresent()) {
@@ -284,15 +285,14 @@ public class ProcessoApplicationService {
             return processoRepository
                     .findByPessoa_IdAndNumeroInterno(cliente.getPessoa().getId(), numeroInterno)
                     .map(this::toResponse);
-        } catch (ResourceNotFoundException ignored) {
-            Optional<Long> resolved = clienteCodigoPessoaResolver.resolverPessoaIdComFallbackCliente(codigoCliente);
-            if (resolved.isEmpty()) {
-                return Optional.empty();
-            }
-            return processoRepository
-                    .findByPessoa_IdAndNumeroInterno(resolved.get(), numeroInterno)
-                    .map(this::toResponse);
         }
+        Optional<Long> resolved = clienteCodigoPessoaResolver.resolverPessoaIdComFallbackCliente(codigoCliente);
+        if (resolved.isEmpty()) {
+            return Optional.empty();
+        }
+        return processoRepository
+                .findByPessoa_IdAndNumeroInterno(resolved.get(), numeroInterno)
+                .map(this::toResponse);
     }
 
     @Transactional(readOnly = true)
@@ -306,13 +306,14 @@ public class ProcessoApplicationService {
     @Transactional(readOnly = true)
     public Page<ProcessoResponse> listarPorCodigoCliente(String codigoCliente, Pageable pageable, boolean resumo) {
         Page<ProcessoEntity> page;
-        try {
-            ClienteEntity cliente = clienteResolverService.resolverClientePorCodigo(codigoCliente);
+        Optional<ClienteEntity> clienteOpt = clienteResolverService.encontrarClientePorCodigo(codigoCliente);
+        if (clienteOpt.isPresent()) {
+            ClienteEntity cliente = clienteOpt.get();
             page = processoRepository.findByCliente_Id(cliente.getId(), pageable);
             if (page.isEmpty()) {
                 page = processoRepository.findByPessoa_Id(cliente.getPessoa().getId(), pageable);
             }
-        } catch (ResourceNotFoundException e) {
+        } else {
             Optional<Long> resolved = clienteCodigoPessoaResolver.resolverPessoaIdComFallbackCliente(codigoCliente);
             if (resolved.isEmpty() || !pessoaRepository.existsById(resolved.get())) {
                 return Page.empty(pageable);
@@ -559,11 +560,31 @@ public class ProcessoApplicationService {
             }
             out.add(r);
         }
+        out = agruparConsultasRealizadasUmaLinhaPorProcesso(out);
         out.sort(Comparator.comparing(ProcessoDiagnosticoHistoricoItemResponse::getCodigoCliente)
                 .thenComparing(ProcessoDiagnosticoHistoricoItemResponse::getNumeroInterno)
                 .thenComparing((ProcessoDiagnosticoHistoricoItemResponse x) -> x.getAndamentoId() != null ? x.getAndamentoId() : 0L,
                         Comparator.reverseOrder()));
         return out;
+    }
+
+    /**
+     * Legado VB: no dia, um processo aparece uma vez no relatório «Consultas Realizadas»
+     * (fica o andamento de maior id na data).
+     */
+    private static List<ProcessoDiagnosticoHistoricoItemResponse> agruparConsultasRealizadasUmaLinhaPorProcesso(
+            List<ProcessoDiagnosticoHistoricoItemResponse> linhas) {
+        Map<String, ProcessoDiagnosticoHistoricoItemResponse> melhor = new LinkedHashMap<>();
+        for (ProcessoDiagnosticoHistoricoItemResponse r : linhas) {
+            String chave = r.getCodigoCliente() + ":" + r.getNumeroInterno();
+            ProcessoDiagnosticoHistoricoItemResponse prev = melhor.get(chave);
+            long id = r.getAndamentoId() != null ? r.getAndamentoId() : 0L;
+            long prevId = prev != null && prev.getAndamentoId() != null ? prev.getAndamentoId() : -1L;
+            if (prev == null || id >= prevId) {
+                melhor.put(chave, r);
+            }
+        }
+        return new ArrayList<>(melhor.values());
     }
 
     private static String formatarDataBrDiagnostico(Instant instant) {

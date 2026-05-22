@@ -32,6 +32,7 @@ import {
   listarProcessosVinculoPessoaDiagnostico,
 } from '../repositories/processosRepository.js';
 import { padCliente8Nav } from './cadastro-pessoas/cadastroPessoasNavUtils.js';
+import { agruparConsultasRealizadasPorProcesso } from '../domain/historicoTituloLegadoSistema.js';
 import { featureFlags } from '../config/featureFlags.js';
 import { buildRouterStateChaveClienteProcesso } from '../domain/camposProcessoCliente.js';
 import { exportarReusClienteParaExcel } from '../services/relatorioReusClienteExcel.js';
@@ -348,11 +349,11 @@ export function Diagnosticos() {
     const dataResolvida = resolverAliasHojeEmTexto(bruto, 'br') ?? bruto;
     setConsultaHistoricoErro('');
     try {
-      const itens = await listarHistoricoPorDataDiagnostico(dataResolvida);
+      const itens = await listarHistoricoPorDataDiagnostico(dataResolvida, { umaLinhaPorProcesso: true });
       setResultadoConsulta(itens);
     } catch (e) {
       const locais = listarHistoricoPorData(dataResolvida);
-      setResultadoConsulta(locais);
+      setResultadoConsulta(agruparConsultasRealizadasPorProcesso(locais));
       if (locais.length === 0 && erroEndpointHistoricoDataIndisponivel(e)) {
         setConsultaHistoricoErro(
           'O backend em execução não expõe o relatório na API (imagem Docker desatualizada). Reinicie com: docker compose -f docker-compose.yml -f docker-compose.local-db.yml up -d --build backend',
@@ -381,7 +382,7 @@ export function Diagnosticos() {
     if (!bruto) return;
     const dataResolvida = resolverAliasHojeEmTexto(bruto, 'br') ?? bruto;
     try {
-      const itens = await listarHistoricoPorDataDiagnostico(dataResolvida);
+      const itens = await listarHistoricoPorDataDiagnostico(dataResolvida, { umaLinhaPorProcesso: false });
       setResultadoConsulta(itens);
     } catch {
       setResultadoConsulta(listarHistoricoPorData(dataResolvida));
@@ -798,7 +799,7 @@ export function Diagnosticos() {
           </div>
           <p className="text-xs text-slate-600 text-center leading-relaxed">
             {featureFlags.useApiProcessos
-              ? '«Consultas Realizadas» lista linhas de histórico cuja data do movimento coincide com o dia (API + histórico local), excluindo «JUNTAR PETIÇÃO…» e «PETIÇÃO DA INF. ANTERIOR…».'
+              ? '«Consultas Realizadas» lista um processo por linha na data do movimento (API + histórico local); se houver várias notas no mesmo dia, mostra a mais recente. Exclui «JUNTAR PETIÇÃO…» e «PETIÇÃO DA INF. ANTERIOR…».'
               : 'Os relatórios usam apenas os dados gravados neste navegador. «Consultas Realizadas» = linhas do histórico na data, exceto títulos automáticos do legado.'}
           </p>
         </div>

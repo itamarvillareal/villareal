@@ -85,6 +85,20 @@ class ClienteResolverServiceTest {
     }
 
     @Test
+    void encontrarClientePorCodigo_vazioQuandoCodigoInexistente() {
+        when(clienteRepository.findByCodigoClienteFetchPessoaTrim("00009999")).thenReturn(Optional.empty());
+        when(clienteRepository.findByCodigoClienteFetchPessoa("00009999")).thenReturn(Optional.empty());
+
+        assertThat(service.encontrarClientePorCodigo("00009999")).isEmpty();
+    }
+
+    @Test
+    void encontrarClientePorCodigo_vazioQuandoCodigoEmBranco() {
+        assertThat(service.encontrarClientePorCodigo("  ")).isEmpty();
+        assertThat(service.encontrarClientePorCodigo(null)).isEmpty();
+    }
+
+    @Test
     void buscarPorId_retornaCliente() {
         ClienteEntity c = new ClienteEntity();
         c.setId(5L);
