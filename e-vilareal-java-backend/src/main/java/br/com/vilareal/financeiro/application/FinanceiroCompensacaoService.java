@@ -8,7 +8,7 @@ import br.com.vilareal.financeiro.infrastructure.persistence.entity.ContaContabi
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.LancamentoFinanceiroEntity;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.ContaContabilRepository;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.LancamentoFinanceiroRepository;
-import br.com.vilareal.processo.application.CodigoClienteUtil;
+import br.com.vilareal.pessoa.application.TitularPessoaRefHelper;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -713,8 +713,10 @@ public class FinanceiroCompensacaoService {
         if (e.getClienteEntidade() != null) {
             r.setClienteId(e.getClienteEntidade().getId());
         }
-        if (e.getPessoaRef() != null) {
-            r.setPessoaRefId(e.getPessoaRef().getId());
+        Long titularId =
+                TitularPessoaRefHelper.titularPessoaId(e.getProcesso(), e.getPessoaRef(), e.getClienteEntidade());
+        if (titularId != null) {
+            r.setPessoaRefId(titularId);
         }
         r.setProcessoId(e.getProcesso() != null ? e.getProcesso().getId() : null);
         if (e.getClienteEntidade() != null) {

@@ -1006,3 +1006,16 @@ export async function removerRegraClassificacaoApi(id, opts = {}) {
     signal: opts.signal,
   });
 }
+
+/** Débitos do extrato ainda não vinculados a pagamento operacional. */
+export async function buscarLancamentosNaoVinculados(params = {}, opts = {}) {
+  const { signal } = opts;
+  if (!featureFlags.useApiFinanceiro) return [];
+  const q = {};
+  if (params.periodoInicio) q.periodoInicio = params.periodoInicio;
+  if (params.periodoFim) q.periodoFim = params.periodoFim;
+  if (params.numeroBanco != null && String(params.numeroBanco).trim() !== '') {
+    q.numeroBanco = Number(params.numeroBanco);
+  }
+  return request('/api/financeiro/lancamentos/nao-vinculados-pagamento', { query: q, signal });
+}

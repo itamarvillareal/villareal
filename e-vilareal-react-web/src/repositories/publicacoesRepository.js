@@ -78,8 +78,6 @@ export function mapApiPublicacaoToUi(r) {
   let codCliente = '';
   if (codApi != null && String(codApi).trim() !== '') {
     codCliente = String(codApi).trim();
-  } else if (r.pessoaRefId != null) {
-    codCliente = padCodCliente(String(r.pessoaRefId));
   }
   const procInt = r.numeroInternoProcesso ?? r.numero_interno_processo;
   const procInterno =

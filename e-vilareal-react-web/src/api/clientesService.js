@@ -140,9 +140,9 @@ export async function buscarCliente(id) {
 }
 
 /**
- * Cria um novo cliente.
- * @param {Object} dados - { nome, email, cpf, telefone?, dataNascimento?, ativo?, marcadoMonitoramento?, responsavelId? }
- * @returns {Promise<Object>}
+ * POST /api/clientes — cadastro mínimo (pessoa + codigoCliente).
+ * O nome da função é histórico; o retorno é {@code ClienteListItem} (PK cliente + pessoaId).
+ * @param {Object} dados - { pessoaId, codigoCliente }
  */
 export async function criarCliente(dados) {
   const res = await fetch(BASE, getOptions('POST', dados));

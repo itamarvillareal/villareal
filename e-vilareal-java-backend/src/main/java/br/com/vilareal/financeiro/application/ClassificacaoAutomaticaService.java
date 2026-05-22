@@ -163,17 +163,11 @@ public class ClassificacaoAutomaticaService {
 
     private void aplicarRegra(LancamentoFinanceiroEntity lancamento, RegraClassificacaoEntity regra) {
         lancamento.setContaContabil(regra.getContaContabil());
-        if (regra.getPessoaRef() != null) {
-            lancamento.setPessoaRef(regra.getPessoaRef());
-        }
         if (regra.getClienteEntidade() != null) {
             lancamento.setClienteEntidade(regra.getClienteEntidade());
         }
         if (regra.getProcesso() != null) {
             lancamento.setProcesso(regra.getProcesso());
-            if (lancamento.getPessoaRef() == null) {
-                lancamento.setPessoaRef(regra.getProcesso().getPessoa());
-            }
             if (lancamento.getClienteEntidade() == null && regra.getProcesso().getCliente() != null) {
                 lancamento.setClienteEntidade(regra.getProcesso().getCliente());
             }

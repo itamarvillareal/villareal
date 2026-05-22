@@ -846,7 +846,6 @@ export function salvarCamposEventoAgendaPersistido({ dataBr, evento, patch }) {
   }
   if (patch.codCliente !== undefined && String(patch.codCliente).trim() !== '') {
     base.codCliente = padCliente(patch.codCliente);
-    base.clienteId = base.codCliente;
   }
   if (patch.proc !== undefined && Number.isFinite(Number(patch.proc)) && Number(patch.proc) >= 1) {
     const pn = Math.floor(Number(patch.proc));

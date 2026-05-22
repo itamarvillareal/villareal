@@ -1329,15 +1329,6 @@ export function normalizarCodigoClienteFinanceiro(val) {
   return String(n);
 }
 
-/** API antiga devolvia {@code pessoa.id} formatado como codigoCliente (ex.: 6277 em vez de 938). */
-export function codigoClienteApiPareceIdPessoa(codigoClienteRaw, clienteIdPessoa) {
-  const cod = normalizarCodigoClienteFinanceiro(codigoClienteRaw);
-  const pid = Number(clienteIdPessoa);
-  if (!cod || !Number.isFinite(pid) || pid <= 0) return false;
-  return cod === normalizarCodigoClienteFinanceiro(String(pid));
-}
-
-/** Vínculo gravado só com {@code clienteId}; a API pode devolver codigoCliente = id da pessoa. */
 const STORAGE_COD_CLIENTE_PESSOA = 'vilareal.financeiro.codClientePorPessoaId.v1';
 const codigoClientePorPessoaIdMemoria = new Map();
 
@@ -1376,7 +1367,6 @@ export function registrarCodigoClienteFinanceiroPorPessoaId(pessoaId, codigoClie
   const pid = Number(pessoaId);
   const cod = normalizarCodigoClienteFinanceiro(codigoClienteRaw);
   if (!Number.isFinite(pid) || pid <= 0 || !cod) return;
-  if (codigoClienteApiPareceIdPessoa(cod, pid)) return;
   codigoClientePorPessoaIdMemoria.set(pid, cod);
   persistirCodigoClientePorPessoaId();
 }
@@ -1423,7 +1413,7 @@ export function codigoClienteExtratoDesdeApiDto(dto) {
     return fromTag;
   }
   const raw = dto?.codigoCliente != null ? String(dto.codigoCliente).trim() : '';
-  if (raw && !codigoClienteApiPareceIdPessoa(raw, pessoaRefId)) {
+  if (raw) {
     const digits = raw.replace(/\D/g, '');
     const n = Number(digits);
     const cod = normalizarCodigoClienteFinanceiro(Number.isFinite(n) && n >= 1 ? n : '');

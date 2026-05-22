@@ -138,6 +138,7 @@ public class ProcessoApplicationService {
                                 p -> porCodigo.put(
                                         cod8,
                                         new ClienteListItemResponse(
+                                                null,
                                                 p.getId(),
                                                 cod8,
                                                 Utf8MojibakeUtil.corrigir(p.getNome()),
@@ -673,7 +674,7 @@ public class ProcessoApplicationService {
 
     @Transactional
     public ProcessoResponse criar(ProcessoWriteRequest req) {
-        ClienteEntity cliente = clienteResolverService.resolverClienteIdRequest(req.getClienteId());
+        ClienteEntity cliente = clienteResolverService.buscarPorId(req.getClienteId());
         processoRepository
                 .findByCliente_IdAndNumeroInterno(cliente.getId(), req.getNumeroInterno())
                 .ifPresent(x -> {
@@ -689,7 +690,7 @@ public class ProcessoApplicationService {
     @Transactional
     public ProcessoResponse atualizar(Long id, ProcessoWriteRequest req) {
         ProcessoEntity e = requireProcesso(id);
-        ClienteEntity cliente = clienteResolverService.resolverClienteIdRequest(req.getClienteId());
+        ClienteEntity cliente = clienteResolverService.buscarPorId(req.getClienteId());
         boolean chaveNaturalMudou =
                 e.getCliente() == null
                         || !cliente.getId().equals(e.getCliente().getId())

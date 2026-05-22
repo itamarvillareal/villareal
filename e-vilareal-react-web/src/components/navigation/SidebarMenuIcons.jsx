@@ -7,10 +7,14 @@
  */
 
 import { useId } from 'react';
-import { Calculator as LucideCalculator, Receipt, Sparkles, Wallet } from 'lucide-react';
+import { Calculator as LucideCalculator, Link2, Receipt, Sparkles, Wallet } from 'lucide-react';
 
 function IconSparkles({ className }) {
   return <Sparkles className={className} strokeWidth={2} aria-hidden />;
+}
+
+function IconConciliacao({ className }) {
+  return <Link2 className={className} strokeWidth={2} aria-hidden />;
 }
 
 function IconIptuMenu({ className }) {
@@ -535,6 +539,7 @@ const MENU_ICONS = {
   'admin-imoveis-grupo': IconLandmarkImoveis,
   imoveis: IconBuilding,
   'imoveis/pagamentos': IconPagamentosMenu,
+  'imoveis/pagamentos/conciliacao': IconConciliacao,
   'imoveis/sugestoes-vinculo': IconSparkles,
   iptu: IconIptuMenu,
   'imoveis/relatorio-financeiro': IconFinanceiro,

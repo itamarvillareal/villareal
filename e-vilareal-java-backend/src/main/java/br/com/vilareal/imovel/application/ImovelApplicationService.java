@@ -417,7 +417,7 @@ public class ImovelApplicationService {
 
     private void aplicarImovel(ImovelEntity e, ImovelWriteRequest req) {
         if (req.getClienteId() != null) {
-            var cliente = clienteResolverService.resolverClienteIdRequest(req.getClienteId());
+            var cliente = clienteResolverService.buscarPorId(req.getClienteId());
             e.setCliente(cliente);
             e.setPessoa(cliente.getPessoa());
         } else {

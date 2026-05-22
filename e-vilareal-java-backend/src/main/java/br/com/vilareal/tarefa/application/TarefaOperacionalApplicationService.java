@@ -53,7 +53,7 @@ public class TarefaOperacionalApplicationService {
             Long processoId,
             LocalDate dataLimiteDe,
             LocalDate dataLimiteAte) {
-        Long clientePk = resolverClienteIdRequest(clienteId);
+        Long clientePk = clienteResolverService.buscarPorId(clienteId).getId();
         var spec = TarefaOperacionalSpecifications.comFiltros(
                 responsavelId, status, prioridade, clientePk, processoId, dataLimiteDe, dataLimiteAte);
         return tarefaRepository.findAll(spec, ORDEM_RECENTES).stream()
@@ -71,7 +71,7 @@ public class TarefaOperacionalApplicationService {
             LocalDate dataLimiteDe,
             LocalDate dataLimiteAte,
             Pageable pageable) {
-        Long clientePk = resolverClienteIdRequest(clienteId);
+        Long clientePk = clienteResolverService.buscarPorId(clienteId).getId();
         var spec = TarefaOperacionalSpecifications.comFiltros(
                 responsavelId, status, prioridade, clientePk, processoId, dataLimiteDe, dataLimiteAte);
         return tarefaRepository.findAll(spec, pageable).map(this::toResponse);
@@ -148,7 +148,7 @@ public class TarefaOperacionalApplicationService {
             e.setStatus(req.getStatus() != null ? req.getStatus() : TarefaStatus.PENDENTE);
             e.setPrioridade(req.getPrioridade() != null ? req.getPrioridade() : TarefaPrioridade.NORMAL);
             e.setDataLimite(req.getDataLimite());
-            e.setClienteId(resolverClienteIdRequest(req.getClienteId()));
+            e.setClienteId(clienteResolverService.buscarPorId(req.getClienteId()).getId());
             e.setProcessoId(req.getProcessoId());
             e.setPublicacaoId(req.getPublicacaoId());
             e.setProcessoPrazoId(req.getProcessoPrazoId());
@@ -157,7 +157,7 @@ public class TarefaOperacionalApplicationService {
                 e.setDataLimite(req.getDataLimite());
             }
             if (req.getClienteId() != null) {
-                e.setClienteId(resolverClienteIdRequest(req.getClienteId()));
+                e.setClienteId(clienteResolverService.buscarPorId(req.getClienteId()).getId());
             }
             if (req.getProcessoId() != null) {
                 e.setProcessoId(req.getProcessoId());
@@ -223,10 +223,4 @@ public class TarefaOperacionalApplicationService {
         return r;
     }
 
-    private Long resolverClienteIdRequest(Long clienteIdRequest) {
-        if (clienteIdRequest == null) {
-            return null;
-        }
-        return clienteResolverService.resolverClienteIdRequest(clienteIdRequest).getId();
-    }
 }

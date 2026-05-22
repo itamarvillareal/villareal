@@ -187,6 +187,15 @@ public class FinanceiroController {
                 pageable);
     }
 
+    @GetMapping("/lancamentos/nao-vinculados-pagamento")
+    @Operation(description = "Débitos ATIVOS do extrato ainda não vinculados a pagamento operacional.")
+    public List<LancamentoNaoVinculadoPagamentoResponse> listarLancamentosNaoVinculadosPagamento(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate periodoInicio,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate periodoFim,
+            @RequestParam(required = false) Integer numeroBanco) {
+        return financeiroService.listarDebitosNaoVinculadosPagamento(periodoInicio, periodoFim, numeroBanco);
+    }
+
     @GetMapping("/lancamentos/paginada")
     @Operation(description = "Mesmos filtros de GET /lancamentos, com paginação.")
     public Page<LancamentoFinanceiroResponse> listarLancamentosPaginada(

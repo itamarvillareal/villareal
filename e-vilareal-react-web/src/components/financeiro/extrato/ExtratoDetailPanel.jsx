@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import { ChevronDown, ChevronRight, FolderOpen, Link2, Trash2, X } from 'lucide-react';
 import { ModalVinculoClienteProcFinanceiro } from '../../ModalVinculoClienteProcFinanceiro.jsx';
 import {
-  codigoClienteApiPareceIdPessoa,
   normalizarCodigoClienteFinanceiro,
   normalizarProcFinanceiro,
   registrarCodigoClienteFinanceiroPorPessoaId,
@@ -107,10 +106,7 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted }) {
               : null;
           if (clientePk) {
             const codResolucao = normalizarCodigoClienteFinanceiro(cliente?.codigoCliente);
-            const codGravado =
-              codResolucao && !codigoClienteApiPareceIdPessoa(codResolucao, pessoaRefId)
-                ? codResolucao
-                : codDigitado;
+            const codGravado = codResolucao || codDigitado;
             draftSalvar = {
               ...draftSalvar,
               clienteId: clientePk,
@@ -181,9 +177,7 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted }) {
             ? Number(clienteResolvido.pessoaId)
             : null;
         const codResolucao = normalizarCodigoClienteFinanceiro(clienteResolvido?.codigoCliente);
-        if (codResolucao && !codigoClienteApiPareceIdPessoa(codResolucao, pessoaRefId)) {
-          codGravado = codResolucao;
-        }
+        if (codResolucao) codGravado = codResolucao;
         clienteId = clientePk;
         processoId =
           processoResolvido?.id != null && Number.isFinite(Number(processoResolvido.id))

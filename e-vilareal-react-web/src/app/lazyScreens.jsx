@@ -103,6 +103,10 @@ export const LazyImoveisPagamentos = fromNamed(
   () => import('../components/ImoveisPagamentos.jsx'),
   'ImoveisPagamentos',
 );
+export const LazyConciliacaoBancaria = fromNamed(
+  () => import('../components/ConciliacaoBancaria.jsx'),
+  'ConciliacaoBancaria',
+);
 export const LazyUsuarios = fromNamed(() => import('../components/Usuarios.jsx'), 'Usuarios');
 export const LazyConfiguracoes = fromNamed(() => import('../components/Configuracoes.jsx'), 'Configuracoes');
 export const LazyTopicos = fromNamed(() => import('../components/Topicos.jsx'), 'Topicos');

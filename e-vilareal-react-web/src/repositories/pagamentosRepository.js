@@ -79,6 +79,36 @@ export async function carregarAlertasPagamentos(opts = {}) {
   return request('/api/pagamentos/alertas', { signal: opts.signal });
 }
 
+export async function conferirPagamento(id, body, opts = {}) {
+  return request(`/api/pagamentos/${Number(id)}/conferir`, { method: 'POST', body, signal: opts.signal });
+}
+
+export async function acertarPagamento(id, body, opts = {}) {
+  return request(`/api/pagamentos/${Number(id)}/acertar`, { method: 'POST', body, signal: opts.signal });
+}
+
+export async function reabrirPagamento(id, body, opts = {}) {
+  return request(`/api/pagamentos/${Number(id)}/reabrir`, { method: 'POST', body, signal: opts.signal });
+}
+
+export async function buscarSugestoesConciliacao(params = {}, opts = {}) {
+  const q = {};
+  if (params.periodoInicio) q.periodoInicio = params.periodoInicio;
+  if (params.periodoFim) q.periodoFim = params.periodoFim;
+  if (params.numeroBanco != null && String(params.numeroBanco).trim() !== '') {
+    q.numeroBanco = String(params.numeroBanco).trim();
+  }
+  return request('/api/pagamentos/conciliacao/sugestoes', { query: q, signal: opts.signal });
+}
+
+export async function vincularConciliacao(body, opts = {}) {
+  return request('/api/pagamentos/conciliacao/vincular', { method: 'POST', body, signal: opts.signal });
+}
+
+export async function desvincularConciliacao(body, opts = {}) {
+  return request('/api/pagamentos/conciliacao/desvincular', { method: 'POST', body, signal: opts.signal });
+}
+
 export async function anexarBoletoPagamento(id, file, opts = {}) {
   const fd = new FormData();
   fd.append('file', file);
