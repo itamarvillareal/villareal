@@ -1,8 +1,9 @@
 package br.com.vilareal.importacao;
 
 import br.com.vilareal.common.text.Utf8MojibakeUtil;
-import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.pessoa.application.ClienteResolverService;
+import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
+import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoParteEntity;
@@ -17,9 +18,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.Comparator;
 import java.util.List;
 
-/**
- * Uma transação por linha da planilha (commit isolado).
- */
 @Service
 public class InformacoesProcessosImportRowApplier {
 
@@ -46,15 +44,16 @@ public class InformacoesProcessosImportRowApplier {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW, rollbackFor = Exception.class)
     public ResultadoAplicacao aplicar(DadosImportacaoLinha dados) {
-        PessoaEntity cliente = pessoaRepository.getReferenceById(dados.clientePessoaId());
+        ClienteEntity cliente = clienteResolverService.buscarPorId(dados.clientePkId());
+        PessoaEntity titular = pessoaRepository.getReferenceById(dados.titularPessoaId());
 
         ProcessoEntity processo = processoRepository
-                .findByPessoa_IdAndNumeroInterno(dados.clientePessoaId(), dados.numeroInterno())
+                .findByCliente_IdAndNumeroInterno(dados.clientePkId(), dados.numeroInterno())
                 .orElseGet(ProcessoEntity::new);
 
         boolean criado = processo.getId() == null;
-        processo.setPessoa(cliente);
-        processo.setCliente(clienteResolverService.resolverClienteParaTitular(dados.clientePessoaId()));
+        processo.setCliente(cliente);
+        processo.setPessoa(titular);
         processo.setNumeroInterno(dados.numeroInterno());
         if (dados.faseOpcional().isPresent()) {
             processo.setFase(dados.faseOpcional().get());
@@ -74,9 +73,10 @@ public class InformacoesProcessosImportRowApplier {
         }
         processo = processoRepository.save(processo);
         log.info(
-                "[import-informacoes-processos] linha={} cliente={} proc={} processo {} id={}",
+                "[import-informacoes-processos] linha={} clientePk={} titular={} proc={} processo {} id={}",
                 dados.linhaExcel(),
-                dados.clientePessoaId(),
+                dados.clientePkId(),
+                dados.titularPessoaId(),
                 dados.numeroInterno(),
                 criado ? "criado" : "atualizado",
                 processo.getId());

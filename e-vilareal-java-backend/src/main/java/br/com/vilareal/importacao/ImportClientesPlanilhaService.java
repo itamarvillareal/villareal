@@ -4,8 +4,10 @@ import br.com.vilareal.common.exception.BusinessRuleException;
 import br.com.vilareal.importacao.dto.ImportacaoInformacoesProcessosResponse;
 import br.com.vilareal.importacao.dto.ImportacaoLinhaDetalhe;
 import br.com.vilareal.importacao.dto.ImportacaoLinhaStatus;
+import br.com.vilareal.pessoa.application.ClienteResolverService;
+import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
-import br.com.vilareal.processo.application.ClienteCodigoPessoaResolver;
+import br.com.vilareal.processo.application.CodigoClienteUtil;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
@@ -35,7 +37,7 @@ public class ImportClientesPlanilhaService {
 
     private final PessoaRepository pessoaRepository;
     private final InformacoesProcessosImportRowApplier rowApplier;
-    private final ClienteCodigoPessoaResolver clienteCodigoPessoaResolver;
+    private final ClienteResolverService clienteResolverService;
     private final Pasta1ClientePessoaImportService pasta1ClientePessoaImportService;
 
     @Value("${vilareal.import.clientes-planilha.path:}")
@@ -44,11 +46,11 @@ public class ImportClientesPlanilhaService {
     public ImportClientesPlanilhaService(
             PessoaRepository pessoaRepository,
             InformacoesProcessosImportRowApplier rowApplier,
-            ClienteCodigoPessoaResolver clienteCodigoPessoaResolver,
+            ClienteResolverService clienteResolverService,
             Pasta1ClientePessoaImportService pasta1ClientePessoaImportService) {
         this.pessoaRepository = pessoaRepository;
         this.rowApplier = rowApplier;
-        this.clienteCodigoPessoaResolver = clienteCodigoPessoaResolver;
+        this.clienteResolverService = clienteResolverService;
         this.pasta1ClientePessoaImportService = pasta1ClientePessoaImportService;
     }
 
@@ -152,20 +154,10 @@ public class ImportClientesPlanilhaService {
         long pessoaIdPlanilha = parseLongPessoa(colB, "B (pessoa)", linhaExcel);
         pasta1ClientePessoaImportService.upsertMapeamentoClientePasta1(colA, pessoaIdPlanilha);
 
-        long clientePessoaId = clienteCodigoPessoaResolver.resolverPessoaIdAposMapeamentoChaveExacta(colA);
-        if (clientePessoaId != pessoaIdPlanilha) {
-            throw new IllegalArgumentException(
-                    "Inconsistência A/B: coluna B (pessoa "
-                            + pessoaIdPlanilha
-                            + ") difere do mapeamento resolvido para A=\""
-                            + colA
-                            + "\" ("
-                            + clientePessoaId
-                            + "). Linha "
-                            + linhaExcel);
-        }
-        if (!pessoaRepository.existsById(clientePessoaId)) {
-            throw new IllegalArgumentException("Pessoa cliente não encontrada: id=" + clientePessoaId);
+        String cod8 = CodigoClienteUtil.normalizarCodigoClienteOitoDigitos(colA);
+        ClienteEntity cliente = clienteResolverService.resolverClientePorCodigo(cod8);
+        if (!pessoaRepository.existsById(pessoaIdPlanilha)) {
+            throw new IllegalArgumentException("Pessoa titular não encontrada: id=" + pessoaIdPlanilha);
         }
 
         int numeroInterno = parseInteiroPositivo(colK, "K (Proc.)", linhaExcel);
@@ -212,7 +204,8 @@ public class ImportClientesPlanilhaService {
 
         return new DadosImportacaoLinha(
                 linhaExcel,
-                clientePessoaId,
+                cliente.getId(),
+                pessoaIdPlanilha,
                 numeroInterno,
                 faseOpt,
                 StringUtils.hasText(colQ) ? colQ.trim() : null,

@@ -9,12 +9,15 @@ import java.util.Optional;
 /**
  * Linha já validada e pronta para persistência (transação isolada por linha).
  *
+ * @param clientePkId PK da tabela {@code cliente} (código col. A)
+ * @param titularPessoaId PK {@code pessoa} titular do processo (col. B na planilha clientes; senão pessoa do cliente)
  * @param controleAtivoOpcional vazio = import legado (ativo só true na criação; updates não alteram ativo)
  * @param usarFaseEmAndamentoQuandoFaseVazia true = planilha clientes (L vazio → "Em Andamento")
  */
 public record DadosImportacaoLinha(
         int linhaExcel,
-        long clientePessoaId,
+        long clientePkId,
+        long titularPessoaId,
         int numeroInterno,
         Optional<String> faseOpcional,
         String numeroCnjOuNull,
@@ -25,10 +28,15 @@ public record DadosImportacaoLinha(
 
     public record ParteSlot(String polo, int ordem, long pessoaId) {}
 
+    public long clientePessoaId() {
+        return titularPessoaId;
+    }
+
     /** Import legado «Informacoes de processos»: fase vazia → null; grava complementar. */
     public static DadosImportacaoLinha legadoInformacoesProcessos(
             int linhaExcel,
-            long clientePessoaId,
+            long clientePkId,
+            long titularPessoaId,
             int numeroInterno,
             Optional<String> faseOpcional,
             String numeroCnjOuNull,
@@ -36,7 +44,8 @@ public record DadosImportacaoLinha(
             List<ParteSlot> partes) {
         return new DadosImportacaoLinha(
                 linhaExcel,
-                clientePessoaId,
+                clientePkId,
+                titularPessoaId,
                 numeroInterno,
                 faseOpcional,
                 numeroCnjOuNull,

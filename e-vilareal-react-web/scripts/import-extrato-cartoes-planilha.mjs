@@ -161,8 +161,8 @@ async function resolverCliente(token, baseUrl, codigoCliente8, cache) {
   let val = null;
   if (res.ok) {
     const j = await res.json();
-    val = j.pessoaId ?? j.id ?? null;
-    val = val != null ? Number(val) : null;
+    const clientePk = Number(j.clienteId ?? j.id);
+    val = Number.isFinite(clientePk) && clientePk > 0 ? clientePk : null;
   }
   cache.set(codigoCliente8, val);
   return val;
@@ -285,8 +285,8 @@ async function importarUmCartao(opts, token, wb, nomeCartao, cartaoIdPorNome, co
   for (const row of linhas) {
     if (row.letra !== 'A') continue;
     if (row.codigoCliente) {
-      const pessoaId = await resolverCliente(token, opts.baseUrl, row.codigoCliente, cacheCliente);
-      if (pessoaId) row.clienteId = pessoaId;
+      const clientePk = await resolverCliente(token, opts.baseUrl, row.codigoCliente, cacheCliente);
+      if (clientePk) row.clienteId = clientePk;
       else stats.clienteNaoAchado += 1;
       if (row.numeroInterno != null && row.clienteId) {
         const processoId = await resolverProcesso(

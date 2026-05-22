@@ -42,6 +42,8 @@ public class PessoaCadastroRequest {
 
     private Long responsavelId;
 
+    private Boolean criarCliente = false;
+
     public String getNome() {
         return nome;
     }
@@ -104,5 +106,13 @@ public class PessoaCadastroRequest {
 
     public void setResponsavelId(Long responsavelId) {
         this.responsavelId = responsavelId;
+    }
+
+    public Boolean getCriarCliente() {
+        return criarCliente;
+    }
+
+    public void setCriarCliente(Boolean criarCliente) {
+        this.criarCliente = criarCliente;
     }
 }

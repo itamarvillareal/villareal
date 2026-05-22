@@ -40,6 +40,7 @@ import {
   buscarProcesso,
   garantirProcessoNaApi,
   loginImportApi,
+  resolverClienteFromApi,
 } from './lib/vilareal-import-processo-api.mjs';
 import { atualizarProcessoApi } from './lib/import-processo-put-body.mjs';
 import {
@@ -321,14 +322,10 @@ async function importarImovelTxt(opts, token, proc, dados) {
     return { acao: 'dry_run' };
   }
 
-  const pessoaPorCod8 = new Map();
-  const pessoaId = await resolverPessoaIdCliente(
-    opts.baseUrl,
-    token,
-    dados.cod8,
-    pessoaPorCod8
-  );
-  if (!pessoaId) throw new Error('Cliente não encontrado na API');
+  const clientePorCod8 = new Map();
+  const cliente = await resolverClienteFromApi(opts.baseUrl, token, dados.cod8, clientePorCod8);
+  if (!cliente?.clientePk) throw new Error('Cliente não encontrado na API');
+  const clientePk = cliente.clientePk;
 
   const resImoveis = await fetch(`${opts.baseUrl}/api/imoveis`, {
     headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
@@ -337,7 +334,7 @@ async function importarImovelTxt(opts, token, proc, dados) {
   const todos = await resImoveis.json();
   let imovel = todos.find(
     (i) =>
-      Number(i.clienteId) === Number(pessoaId) &&
+      Number(i.clienteId) === Number(clientePk) &&
       Number(i.numeroPlanilha) === Number(reg.numeroPlanilha)
   );
 
@@ -347,7 +344,7 @@ async function importarImovelTxt(opts, token, proc, dados) {
 
   if (imovel?.id) {
     const putBody = {
-      clienteId: pessoaId,
+      clienteId: clientePk,
       processoId: proc.id,
       numeroPlanilha: imovel.numeroPlanilha ?? reg.numeroPlanilha,
       situacao: imovel.situacao ?? 'DESOCUPADO',
@@ -376,7 +373,7 @@ async function importarImovelTxt(opts, token, proc, dados) {
       Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify({
-      clienteId: pessoaId,
+      clienteId: clientePk,
       processoId: proc.id,
       numeroPlanilha: reg.numeroPlanilha,
       situacao: 'DESOCUPADO',

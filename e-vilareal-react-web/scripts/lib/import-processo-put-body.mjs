@@ -2,14 +2,18 @@
  * Corpo PUT /api/processos/{id} — preserva campos não alterados pelo patch.
  */
 
+import { clientePkFromApiDto } from './vilareal-import-processo-api.mjs';
+
 /**
  * @param {object} p — ProcessoResponse da API
  * @param {Record<string, unknown>} [patch]
  */
 export function corpoPutProcesso(p, patch = {}) {
   const px = patch ?? {};
-  return {
-    clienteId: p.clienteId ?? p.pessoaId,
+  const clientePk = clientePkFromApiDto(p);
+  const titular = Number(p.pessoaTitularId ?? p.pessoaId);
+  const body = {
+    clienteId: clientePk,
     numeroInterno: p.numeroInterno,
     numeroCnj: px.numeroCnj !== undefined ? px.numeroCnj : (p.numeroCnj ?? null),
     numeroProcessoAntigo:
@@ -41,6 +45,10 @@ export function corpoPutProcesso(p, patch = {}) {
     usuarioResponsavelId:
       px.usuarioResponsavelId !== undefined ? px.usuarioResponsavelId : (p.usuarioResponsavelId ?? null),
   };
+  if (Number.isFinite(titular) && titular > 0) {
+    body.pessoaTitularId = titular;
+  }
+  return body;
 }
 
 /**
