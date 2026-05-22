@@ -26,6 +26,19 @@ export const ROTULO_ALERTA = {
   conferidosNaoAcertados: 'Conferidos sem acerto',
 };
 
+export const ROTULO_STATUS = {
+  PENDENTE: 'Pendente',
+  AGENDADO: 'Agendado',
+  PAGO_CONFIRMADO: 'Pago confirmado',
+  PAGO_SEM_COMPROVANTE: 'Pago sem comprovante',
+  CONFERENCIA_PENDENTE: 'Aguard. confirmação',
+  CONFERIDO: 'Conferido',
+  ACERTADO: 'Acertado',
+  VENCIDO: 'Vencido',
+  CANCELADO: 'Cancelado',
+  SUBSTITUIDO: 'Substituído',
+};
+
 export function extrairAlertasLegados(raw) {
   if (!raw || typeof raw !== 'object') return {};
   const out = {};

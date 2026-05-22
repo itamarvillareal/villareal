@@ -10,7 +10,7 @@
  *   - Vínculo imóvel `0.89.1` (por processo, via import-processo-txt: garantir imóvel por cliente+planilha + POST /api/imoveis/{id}/processos)
  *   - Partes do processo (`Proc/…/90` e `95` por proc) — `import-processo-partes-txt.mjs` (por defeito; `--sem-partes` omite)
  *   - Cálculos / débitos (`Calculos/…` → API rodadas) — `import-calculos-txt.mjs` (por defeito; `--sem-calculos` omite)
- *   - Processos em falta na API são criados automaticamente (stub) antes da importação
+ *   - Processos em falta na API são criados automaticamente (stub) após pessoa/cliente existir na API
  *
  * Uso:
  *   node scripts/import-real.mjs --cliente=728 --dry-run
@@ -72,6 +72,7 @@ const SCRIPT_PROCESSO = path.join(__dirname, 'import-processo-txt.mjs');
 const SCRIPT_HISTORICO = path.join(__dirname, 'import-historico-local-txt.mjs');
 const SCRIPT_PARTES = path.join(__dirname, 'import-processo-partes-txt.mjs');
 const SCRIPT_GARANTIR_PROCESSOS = path.join(__dirname, 'garantir-processos-import-real.mjs');
+const SCRIPT_CLIENTE_PESSOA = path.join(__dirname, 'import-cliente-pessoa-151-txt.mjs');
 const SCRIPT_CALCULOS = path.join(__dirname, 'import-calculos-txt.mjs');
 
 export function parseArgs(argv) {
@@ -202,6 +203,16 @@ function executarImportPartes(opts) {
   return executarScript(SCRIPT_PARTES, argsPartesCliente(opts));
 }
 
+/** Gerais/…/{cod8}.151.1.0.txt → POST /api/clientes (antes de stubs de processo). */
+function executarImportClientePessoa151(opts) {
+  const args = [`--cliente=${opts.cliente}`, `--base=${opts.base}`, `--login=${opts.login}`];
+  if (opts.senha) args.push(`--senha=${opts.senha}`);
+  if (opts.dryRun) args.push('--dry-run');
+  else args.push('--aplicar');
+  if (!opts.semZerar && opts.aplicar) args.push('--substituir');
+  return executarScript(SCRIPT_CLIENTE_PESSOA, args);
+}
+
 function argsCalculosCliente(opts) {
   const args = [`--cliente=${opts.cliente}`, `--base=${opts.base}`, `--login=${opts.login}`];
   if (opts.senha) args.push(`--senha=${opts.senha}`);
@@ -219,10 +230,10 @@ function argsCalculosCliente(opts) {
 function executarImportCalculos(opts) {
   const dir = dirCalculosCliente(opts.cliente, opts.base);
   if (!fs.existsSync(dir)) {
-    console.log('\n[5/5] Cálculos: pasta Calculos do cliente ausente — etapa ignorada.\n');
+    console.log('\n[6/6] Cálculos: pasta Calculos do cliente ausente — etapa ignorada.\n');
     return { code: 0, status: 'ignorado_sem_pasta' };
   }
-  console.log('\n[5/5] Cálculos (import-calculos-txt — Dropbox Calculos → API)…\n');
+  console.log('\n[6/6] Cálculos (import-calculos-txt — Dropbox Calculos → API)…\n');
   const code = executarScript(SCRIPT_CALCULOS, argsCalculosCliente(opts));
   return { code, status: code === 0 ? 'ok' : 'falhou' };
 }
@@ -401,6 +412,14 @@ async function main() {
   }
 
   if (procs.length === 0 && opts.processo == null) {
+    console.log('\n[1/1] Pessoa do cliente (151.1.0)…\n');
+    const codePessoa = executarImportClientePessoa151(opts);
+    relatorio.etapas.pessoaCliente = codePessoa === 0 ? 'ok' : 'falhou';
+    if (codePessoa !== 0) {
+      relatorio.falhas.push({ etapa: 'pessoaCliente', code: codePessoa });
+      console.error('[import-real] Falha ao sincronizar pessoa do cliente — abortando.');
+      process.exit(codePessoa);
+    }
     if (opts.semZerar) {
       console.error(
         'Nenhum processo no Dropbox (3.1 + histórico HC + 152.1) e --sem-zerar: MySQL não foi alinhado.'
@@ -438,13 +457,23 @@ async function main() {
     );
   }
 
-  // Um único processo: delega ao import-processo-txt (histórico por processo, fluxo completo).
+  // Um único processo: pessoa 151 → garantir stub → import-processo-txt (sem repetir pessoa).
   if (opts.processo != null) {
+    console.log('\n[1/5] Pessoa do cliente (151.1.0)…\n');
+    const codePessoa = executarImportClientePessoa151(opts);
+    relatorio.etapas.pessoaCliente = codePessoa === 0 ? 'ok' : 'falhou';
+    if (codePessoa !== 0) {
+      relatorio.falhas.push({ etapa: 'pessoaCliente', code: codePessoa });
+      console.error('[import-real] Falha ao sincronizar pessoa do cliente — abortando.');
+      process.exit(codePessoa);
+    }
     if (!opts.dryRun) {
-      console.log('\n[0/4] Garantir processos na API (stubs em falta)…\n');
+      console.log('\n[2/5] Garantir processos na API (stubs em falta)…\n');
       const codeGarantir = executarGarantirProcessos(opts);
       relatorio.etapas.garantirProcessos = codeGarantir === 0 ? 'ok' : 'falhou';
       if (codeGarantir !== 0) process.exit(codeGarantir);
+    } else {
+      relatorio.etapas.garantirProcessos = 'dry-run_omitido';
     }
     console.log(`\n[import-real] Processo único ${opts.processo} — fluxo completo.\n`);
     const extras = ['--sem-cliente-pessoa'];
@@ -486,10 +515,17 @@ async function main() {
   }
 
   // —— Cliente inteiro ——
-  const primeiro = procsCabecalho31.find((p) => p >= 1) ?? procs.find((p) => p >= 1) ?? procs[0];
+  console.log('\n[1/5] Pessoa do cliente (151.1.0)…\n');
+  const codePessoa = executarImportClientePessoa151(opts);
+  relatorio.etapas.pessoaCliente = codePessoa === 0 ? 'ok' : 'falhou';
+  if (codePessoa !== 0) {
+    relatorio.falhas.push({ etapa: 'pessoaCliente', code: codePessoa });
+    console.error('[import-real] Falha ao sincronizar pessoa do cliente — abortando.');
+    process.exit(codePessoa);
+  }
 
   if (!opts.dryRun && procs.length > 0) {
-    console.log('\n[0/4] Garantir processos na API (stubs em falta)…\n');
+    console.log('\n[2/5] Garantir processos na API (stubs em falta)…\n');
     const codeGarantir = executarGarantirProcessos(opts, procs);
     relatorio.etapas.garantirProcessos = codeGarantir === 0 ? 'ok' : 'falhou';
     if (codeGarantir !== 0) {
@@ -497,27 +533,18 @@ async function main() {
       console.error('[import-real] Falha ao garantir processos na API — abortando.');
       process.exit(codeGarantir);
     }
-  }
-
-  console.log('\n[1/4] Pessoa do cliente (151.1.0)…\n');
-  const extrasPessoa = ['--sem-historico', '--sem-corrigir-historico'];
-  if (!opts.semZerar && opts.aplicar) extrasPessoa.push('--substituir-cliente-pessoa');
-  const codePessoa = executarImportProcesso(opts, primeiro, extrasPessoa);
-  relatorio.etapas.pessoaCliente = codePessoa === 0 ? 'ok' : 'falhou';
-  if (codePessoa !== 0) {
-    relatorio.falhas.push({ etapa: 'pessoaCliente', processo: primeiro, code: codePessoa });
-    console.error('[import-real] Falha ao sincronizar pessoa do cliente — abortando.');
-    process.exit(codePessoa);
+  } else if (opts.dryRun && procs.length > 0) {
+    relatorio.etapas.garantirProcessos = 'dry-run_omitido';
   }
 
   if (!opts.semHistorico) {
     if (opts.dryRun) {
       relatorio.etapas.historico = 'dry-run_omitido';
       console.log(
-        '\n[2/4] Histórico: omitido em dry-run (com --aplicar corre em massa via import-historico-local-txt).\n'
+        '\n[3/5] Histórico: omitido em dry-run (com --aplicar corre em massa via import-historico-local-txt).\n'
       );
     } else if (opts.processoMin != null || opts.processoMax != null) {
-      console.log(`\n[2/4] Histórico (${procs.length} processo(s) no intervalo)…\n`);
+      console.log(`\n[3/5] Histórico (${procs.length} processo(s) no intervalo)…\n`);
       let histOk = 0;
       let histFail = 0;
       /** @type {number[]} */
@@ -548,7 +575,7 @@ async function main() {
         process.exit(1);
       }
     } else {
-      console.log('\n[2/4] Histórico (todos os processos do cliente)…\n');
+      console.log('\n[3/5] Histórico (todos os processos do cliente)…\n');
       const codeHist = executarImportHistoricoCliente(opts);
       relatorio.etapas.historico = codeHist === 0 ? 'ok' : 'falhou';
       if (codeHist !== 0) {
@@ -559,7 +586,7 @@ async function main() {
     }
   } else {
     relatorio.etapas.historico = 'ignorado';
-    console.log('\n[2/4] Histórico ignorado (--sem-historico).\n');
+    console.log('\n[3/5] Histórico ignorado (--sem-historico).\n');
   }
 
   const codeStatus = await executarSincronizarStatusProcesso(opts, relatorio);
@@ -589,15 +616,15 @@ async function main() {
   if (!temCabecalhoTxt) {
     relatorio.etapas.processos = 'omitido_sem_cabecalho_txt';
     console.log(
-      `\n[3/4] Cabeçalho/fase/imóvel por processo: omitido — sem txt de cabeçalho (${procs.length} processo(s) só no historico).\n`
+      `\n[4/5] Cabeçalho/fase/imóvel por processo: omitido — sem txt de cabeçalho (${procs.length} processo(s) só no historico).\n`
     );
   } else if (opts.dryRun && procsCabecalho.length < procsCabecalhoBase.length) {
     console.log(
-      `\n[3/4] Dry-run: pré-visualização de ${procsCabecalho.length} processo(s) com cabeçalho txt (de ${procsCabecalhoBase.length}; total cliente ${procs.length}).\n`
+      `\n[4/5] Dry-run: pré-visualização de ${procsCabecalho.length} processo(s) com cabeçalho txt (de ${procsCabecalhoBase.length}; total cliente ${procs.length}).\n`
     );
   } else {
     console.log(
-      `\n[3/4] Processos com cabeçalho txt (${procsCabecalhoBase.length} de ${procs.length} no cliente): cabeçalho, fase, semânticos${opts.semImovel ? '' : ', imóvel'}…\n`
+      `\n[4/5] Processos com cabeçalho txt (${procsCabecalhoBase.length} de ${procs.length} no cliente): cabeçalho, fase, semânticos${opts.semImovel ? '' : ', imóvel'}…\n`
     );
   }
 
@@ -632,7 +659,7 @@ async function main() {
   }
 
   if (!opts.semPartes) {
-    console.log('\n[4/5] Partes do processo (90/95 — não confundir com 151.1.0)…\n');
+    console.log('\n[5/6] Partes do processo (90/95 — não confundir com 151.1.0)…\n');
     const codePartes = executarImportPartes(opts);
     relatorio.etapas.partes = codePartes === 0 ? 'ok' : 'falhou';
     if (codePartes !== 0) {
@@ -646,7 +673,7 @@ async function main() {
     }
   } else {
     relatorio.etapas.partes = 'ignorado';
-    console.log('\n[4/5] Partes ignoradas (--sem-partes).\n');
+    console.log('\n[5/6] Partes ignoradas (--sem-partes).\n');
   }
 
   if (!opts.semCalculos) {
@@ -663,7 +690,7 @@ async function main() {
     }
   } else {
     relatorio.etapas.calculos = 'ignorado';
-    console.log('\n[5/5] Cálculos ignorados (--sem-calculos).\n');
+    console.log('\n[6/6] Cálculos ignorados (--sem-calculos).\n');
   }
 
   relatorio.duracaoMs = Date.now() - inicio;

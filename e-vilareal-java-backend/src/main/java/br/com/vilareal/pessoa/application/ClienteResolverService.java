@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.util.List;
+import java.util.Optional;
 
 @Service
 public class ClienteResolverService {
@@ -46,14 +47,23 @@ public class ClienteResolverService {
     }
 
     @Transactional(readOnly = true)
+    public Optional<ClienteEntity> encontrarClientePorCodigo(String codigoCliente) {
+        if (!StringUtils.hasText(codigoCliente)) {
+            return Optional.empty();
+        }
+        String cod = codigoCliente.trim();
+        return clienteRepository
+                .findByCodigoClienteFetchPessoaTrim(cod)
+                .or(() -> clienteRepository.findByCodigoClienteFetchPessoa(cod));
+    }
+
+    @Transactional(readOnly = true)
     public ClienteEntity resolverClientePorCodigo(String codigoCliente) {
         if (!StringUtils.hasText(codigoCliente)) {
             throw new ResourceNotFoundException("Código de cliente é obrigatório.");
         }
         String cod = codigoCliente.trim();
-        return clienteRepository
-                .findByCodigoClienteFetchPessoaTrim(cod)
-                .or(() -> clienteRepository.findByCodigoClienteFetchPessoa(cod))
+        return encontrarClientePorCodigo(cod)
                 .orElseThrow(() -> new ResourceNotFoundException("Cliente não encontrado para código: " + cod));
     }
 

@@ -5,7 +5,10 @@ import {
   listarProcessosPorPrazoFatal,
   normalizarDataBr,
 } from '../data/processosHistoricoData.js';
-import { ehTituloHistoricoSistemaLegado } from '../domain/historicoTituloLegadoSistema.js';
+import {
+  agruparConsultasRealizadasPorProcesso,
+  ehTituloHistoricoSistemaLegado,
+} from '../domain/historicoTituloLegadoSistema.js';
 
 function padCliente8(value) {
   const d = String(value ?? '').replace(/\D/g, '');
@@ -523,19 +526,24 @@ export function erroEndpointHistoricoDataIndisponivel(err) {
   );
 }
 
-export async function listarHistoricoPorDataDiagnostico(dataBrParam) {
+export async function listarHistoricoPorDataDiagnostico(dataBrParam, opts = {}) {
+  const umaLinhaPorProcesso = opts.umaLinhaPorProcesso !== false;
   const dataCanon = normalizarDataBr(String(dataBrParam ?? '').trim());
   if (!dataCanon) return [];
   const locais = listarHistoricoPorData(dataBrParam);
-  if (!featureFlags.useApiProcessos) return locais;
+  const finalizar = (lista) => {
+    const ordenada = ordenarItensHistoricoDiagnostico(lista);
+    return umaLinhaPorProcesso ? agruparConsultasRealizadasPorProcesso(ordenada) : ordenada;
+  };
+  if (!featureFlags.useApiProcessos) return finalizar(locais);
   const q = String(dataBrParam ?? '').trim();
-  if (!q) return locais;
+  if (!q) return finalizar(locais);
   try {
     const arr = await request('/api/processos/diagnostico/historico-data', { query: { data: q } });
     const apiRows = Array.isArray(arr) ? arr : [];
     const fromApi = apiRows.map((row) => mapRowHistoricoDiagnosticoApi(row, dataCanon)).filter(Boolean);
-    if (fromApi.length === 0) return ordenarItensHistoricoDiagnostico(locais);
-    if (locais.length === 0) return ordenarItensHistoricoDiagnostico(fromApi);
+    if (fromApi.length === 0) return finalizar(locais);
+    if (locais.length === 0) return finalizar(fromApi);
     const seen = new Set();
     const merged = [];
     for (const item of [...fromApi, ...locais]) {
@@ -544,11 +552,11 @@ export async function listarHistoricoPorDataDiagnostico(dataBrParam) {
       seen.add(k);
       merged.push(item);
     }
-    return ordenarItensHistoricoDiagnostico(merged);
+    return finalizar(merged);
   } catch (e) {
-    if (locais.length > 0) return locais;
+    if (locais.length > 0) return finalizar(locais);
     if (erroEndpointHistoricoDataIndisponivel(e)) throw e;
-    return locais;
+    return finalizar(locais);
   }
 }
 

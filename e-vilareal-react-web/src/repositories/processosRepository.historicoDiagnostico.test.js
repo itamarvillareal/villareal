@@ -116,6 +116,41 @@ describe('listarHistoricoPorDataDiagnostico', () => {
     expect(itens).toHaveLength(1);
     expect(itens[0].fromApi).toBe(true);
   });
+
+  it('agrupa vários andamentos do mesmo processo numa linha (legado VB)', async () => {
+    vi.mocked(request).mockResolvedValue([
+      {
+        codigoCliente: '728',
+        numeroInterno: 973,
+        cliente: 'C',
+        info: 'Nota antiga',
+        data: '21/05/2026',
+        andamentoId: 1,
+      },
+      {
+        codigoCliente: '728',
+        numeroInterno: 973,
+        cliente: 'C',
+        info: 'Nota recente',
+        data: '21/05/2026',
+        andamentoId: 99,
+      },
+    ]);
+
+    const itens = await listarHistoricoPorDataDiagnostico('21/05/2026');
+    expect(itens).toHaveLength(1);
+    expect(itens[0].info).toBe('Nota recente');
+    expect(itens[0].id).toBe(99);
+  });
+
+  it('umaLinhaPorProcesso=false mantém todas as linhas', async () => {
+    vi.mocked(request).mockResolvedValue([
+      { codigoCliente: '728', numeroInterno: 973, info: 'A', data: '21/05/2026', andamentoId: 1 },
+      { codigoCliente: '728', numeroInterno: 973, info: 'B', data: '21/05/2026', andamentoId: 2 },
+    ]);
+    const itens = await listarHistoricoPorDataDiagnostico('21/05/2026', { umaLinhaPorProcesso: false });
+    expect(itens).toHaveLength(2);
+  });
 });
 
 describe('erroEndpointHistoricoDataIndisponivel', () => {
