@@ -159,6 +159,8 @@ ALTER TABLE financeiro_lancamento_cartao
 ALTER TABLE financeiro_regra_classificacao
     DROP FOREIGN KEY fk_frc_cliente;
 
+DROP INDEX fk_frc_cliente ON financeiro_regra_classificacao;
+
 ALTER TABLE financeiro_regra_classificacao
     CHANGE COLUMN cliente_id pessoa_ref_id BIGINT NULL;
 
