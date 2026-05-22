@@ -30,4 +30,25 @@ public interface PagamentoRepository extends JpaRepository<PagamentoEntity, Long
             @Param("statuses") Collection<String> statuses,
             @Param("inicio") LocalDate inicio,
             @Param("fim") LocalDate fim);
+
+    @Query("""
+            SELECT DISTINCT p FROM PagamentoEntity p
+            LEFT JOIN FETCH p.imovel im
+            WHERE p.status = :status
+              AND p.prestacaoContas IS NULL
+              AND (p.cliente.id = :clienteId OR im.cliente.id = :clienteId)
+              AND (
+                  :periodoInicio IS NULL OR :periodoFim IS NULL
+                  OR (p.dataPagamentoEfetivo IS NOT NULL
+                      AND p.dataPagamentoEfetivo BETWEEN :periodoInicio AND :periodoFim)
+                  OR (p.dataConferencia IS NOT NULL
+                      AND p.dataConferencia BETWEEN :periodoInicio AND :periodoFim)
+              )
+            ORDER BY im.id, p.dataVencimento, p.id
+            """)
+    List<PagamentoEntity> findPendentesPrestacaoContas(
+            @Param("status") String status,
+            @Param("clienteId") Long clienteId,
+            @Param("periodoInicio") LocalDate periodoInicio,
+            @Param("periodoFim") LocalDate periodoFim);
 }

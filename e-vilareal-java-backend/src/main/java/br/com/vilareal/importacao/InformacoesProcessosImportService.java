@@ -4,8 +4,10 @@ import br.com.vilareal.common.exception.BusinessRuleException;
 import br.com.vilareal.importacao.dto.ImportacaoInformacoesProcessosResponse;
 import br.com.vilareal.importacao.dto.ImportacaoLinhaDetalhe;
 import br.com.vilareal.importacao.dto.ImportacaoLinhaStatus;
+import br.com.vilareal.pessoa.application.ClienteResolverService;
+import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
-import br.com.vilareal.processo.application.ClienteCodigoPessoaResolver;
+import br.com.vilareal.processo.application.CodigoClienteUtil;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
@@ -34,7 +36,7 @@ public class InformacoesProcessosImportService {
 
     private final PessoaRepository pessoaRepository;
     private final InformacoesProcessosImportRowApplier rowApplier;
-    private final ClienteCodigoPessoaResolver clienteCodigoPessoaResolver;
+    private final ClienteResolverService clienteResolverService;
 
     @Value("${vilareal.import.informacoes-processos.path:}")
     private String configuredPath;
@@ -42,10 +44,10 @@ public class InformacoesProcessosImportService {
     public InformacoesProcessosImportService(
             PessoaRepository pessoaRepository,
             InformacoesProcessosImportRowApplier rowApplier,
-            ClienteCodigoPessoaResolver clienteCodigoPessoaResolver) {
+            ClienteResolverService clienteResolverService) {
         this.pessoaRepository = pessoaRepository;
         this.rowApplier = rowApplier;
-        this.clienteCodigoPessoaResolver = clienteCodigoPessoaResolver;
+        this.clienteResolverService = clienteResolverService;
     }
 
     /**
@@ -167,10 +169,9 @@ public class InformacoesProcessosImportService {
                             + ").");
         }
 
-        long clienteId = clienteCodigoPessoaResolver.resolverPessoaId(colA);
-        if (!pessoaRepository.existsById(clienteId)) {
-            throw new IllegalArgumentException("Cliente (pessoa) não encontrado para o código da coluna A: " + colA);
-        }
+        String cod8 = CodigoClienteUtil.normalizarCodigoClienteOitoDigitos(colA.trim());
+        ClienteEntity cliente = clienteResolverService.resolverClientePorCodigo(cod8);
+        long titularPessoaId = cliente.getPessoa().getId();
 
         int numeroInterno = parseInteiroPositivo(colL, "L (Proc.)");
 
@@ -215,7 +216,8 @@ public class InformacoesProcessosImportService {
 
         return DadosImportacaoLinha.legadoInformacoesProcessos(
                 linhaExcel,
-                clienteId,
+                cliente.getId(),
+                titularPessoaId,
                 numeroInterno,
                 faseOpt,
                 StringUtils.hasText(colN) ? colN.trim() : null,

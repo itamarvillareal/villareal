@@ -4,8 +4,6 @@ import br.com.vilareal.common.exception.BusinessRuleException;
 import br.com.vilareal.importacao.dto.ImportacaoInformacoesProcessosResponse;
 import br.com.vilareal.importacao.dto.ImportacaoLinhaDetalhe;
 import br.com.vilareal.importacao.dto.ImportacaoLinhaStatus;
-import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
-import br.com.vilareal.processo.application.ClienteCodigoPessoaResolver;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
@@ -31,19 +29,12 @@ public class ComplementaresProcessosImportService {
 
     private static final Logger log = LoggerFactory.getLogger(ComplementaresProcessosImportService.class);
 
-    private final PessoaRepository pessoaRepository;
-    private final ClienteCodigoPessoaResolver clienteCodigoPessoaResolver;
     private final ComplementaresProcessosImportRowMerger rowMerger;
 
     @Value("${vilareal.import.complementares-processos.path:}")
     private String configuredPath;
 
-    public ComplementaresProcessosImportService(
-            PessoaRepository pessoaRepository,
-            ClienteCodigoPessoaResolver clienteCodigoPessoaResolver,
-            ComplementaresProcessosImportRowMerger rowMerger) {
-        this.pessoaRepository = pessoaRepository;
-        this.clienteCodigoPessoaResolver = clienteCodigoPessoaResolver;
+    public ComplementaresProcessosImportService(ComplementaresProcessosImportRowMerger rowMerger) {
         this.rowMerger = rowMerger;
     }
 
@@ -85,22 +76,18 @@ public class ComplementaresProcessosImportService {
                     if (!StringUtils.hasText(colB)) {
                         throw new IllegalArgumentException("Coluna B (Proc.) obrigatória.");
                     }
-                    long clienteId = clienteCodigoPessoaResolver.resolverPessoaId(colA);
-                    if (!pessoaRepository.existsById(clienteId)) {
-                        throw new IllegalArgumentException("Cliente não encontrado para o código da coluna A: " + colA);
-                    }
                     int numeroInterno = parseInteiroPositivo(colB, "B (Proc.)");
 
                     ComplementaresProcessosImportRowMerger.LinhaParsed linha = parseLinha(row);
                     ComplementaresProcessosImportRowMerger.MergeResult res =
-                            rowMerger.aplicar(clienteId, numeroInterno, linhaExcel, linha);
+                            rowMerger.aplicar(colA.trim(), numeroInterno, linhaExcel, linha);
 
                     ok++;
                     ImportacaoLinhaDetalhe d = new ImportacaoLinhaDetalhe();
                     d.setLinhaExcel(linhaExcel);
                     d.setStatus(ImportacaoLinhaStatus.SUCESSO);
                     d.setMensagem((res.criado() ? "Processo criado" : "Processo atualizado") + " id=" + res.processoId());
-                    d.setClientePessoaId(clienteId);
+                    d.setClientePessoaId(null);
                     d.setNumeroInterno(numeroInterno);
                     resp.getDetalhes().add(d);
                 } catch (Exception e) {

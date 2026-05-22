@@ -122,6 +122,19 @@ export function badgeCategoriaClass(categoria) {
   }`;
 }
 
+export function badgePrestacaoStatus(status) {
+  switch (status) {
+    case 'RASCUNHO':
+      return 'inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200';
+    case 'ENVIADO':
+      return 'inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold bg-sky-100 text-sky-900 dark:bg-sky-950/60 dark:text-sky-100';
+    case 'APROVADO':
+      return 'inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-100';
+    default:
+      return 'inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium bg-slate-100 text-slate-600';
+  }
+}
+
 export function tooltipConciliado(row) {
   if (row.financeiroLancamentoId == null) return '';
   let t = `Conciliado — Banco: ${formatBRL(Number(row.valorPagoBanco ?? row.valor ?? 0))}`;

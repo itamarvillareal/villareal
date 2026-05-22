@@ -1,8 +1,11 @@
 package br.com.vilareal.importacao;
 
 import br.com.vilareal.common.exception.BusinessRuleException;
+import br.com.vilareal.common.exception.ResourceNotFoundException;
+import br.com.vilareal.pessoa.application.ClienteResolverService;
+import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
+import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
-import br.com.vilareal.processo.application.ClienteCodigoPessoaResolver;
 import org.apache.poi.hssf.usermodel.HSSFWorkbook;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
@@ -11,11 +14,11 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-
 import java.lang.reflect.Method;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -28,13 +31,22 @@ class InformacoesProcessosImportServiceParseTest {
     InformacoesProcessosImportRowApplier rowApplier;
 
     @Mock
-    ClienteCodigoPessoaResolver clienteCodigoPessoaResolver;
+    ClienteResolverService clienteResolverService;
 
     InformacoesProcessosImportService service;
 
     @BeforeEach
     void setUp() {
-        service = new InformacoesProcessosImportService(pessoaRepository, rowApplier, clienteCodigoPessoaResolver);
+        service = new InformacoesProcessosImportService(pessoaRepository, rowApplier, clienteResolverService);
+    }
+
+    private static ClienteEntity clienteComPessoa(long clientePk, long pessoaId) {
+        PessoaEntity pessoa = new PessoaEntity();
+        pessoa.setId(pessoaId);
+        ClienteEntity cliente = new ClienteEntity();
+        cliente.setId(clientePk);
+        cliente.setPessoa(pessoa);
+        return cliente;
     }
 
     private DadosImportacaoLinha parseLinha(Row row, int linhaExcel) throws Exception {
@@ -46,8 +58,7 @@ class InformacoesProcessosImportServiceParseTest {
 
     @Test
     void parseBasicoComFaseEPartes() throws Exception {
-        when(clienteCodigoPessoaResolver.resolverPessoaId("00000001")).thenReturn(1L);
-        when(pessoaRepository.existsById(1L)).thenReturn(true);
+        when(clienteResolverService.resolverClientePorCodigo("00000001")).thenReturn(clienteComPessoa(10L, 1L));
         when(pessoaRepository.existsById(99L)).thenReturn(true);
 
         try (HSSFWorkbook wb = new HSSFWorkbook()) {
@@ -61,6 +72,7 @@ class InformacoesProcessosImportServiceParseTest {
             r.createCell(14).setCellValue("Descrição O");
 
             DadosImportacaoLinha d = parseLinha(r, 2);
+            assertThat(d.clientePkId()).isEqualTo(10L);
             assertThat(d.clientePessoaId()).isEqualTo(1L);
             assertThat(d.numeroInterno()).isEqualTo(5);
             assertThat(d.faseOpcional()).contains("Ag. Documentos");
@@ -77,8 +89,7 @@ class InformacoesProcessosImportServiceParseTest {
 
     @Test
     void parseCnjComPontosColunaN() throws Exception {
-        when(clienteCodigoPessoaResolver.resolverPessoaId("00000149")).thenReturn(149L);
-        when(pessoaRepository.existsById(149L)).thenReturn(true);
+        when(clienteResolverService.resolverClientePorCodigo("00000149")).thenReturn(clienteComPessoa(500L, 149L));
         when(pessoaRepository.existsById(686L)).thenReturn(true);
         when(pessoaRepository.existsById(1531L)).thenReturn(true);
 
@@ -94,6 +105,7 @@ class InformacoesProcessosImportServiceParseTest {
             r.createCell(13).setCellValue(cnj);
 
             DadosImportacaoLinha d = parseLinha(r, 2);
+            assertThat(d.clientePkId()).isEqualTo(500L);
             assertThat(d.clientePessoaId()).isEqualTo(149L);
             assertThat(d.numeroInterno()).isEqualTo(1);
             assertThat(d.numeroCnjOuNull()).isEqualTo(cnj);
@@ -104,8 +116,8 @@ class InformacoesProcessosImportServiceParseTest {
 
     @Test
     void clienteInexistente() throws Exception {
-        when(clienteCodigoPessoaResolver.resolverPessoaId("00000002")).thenReturn(2L);
-        when(pessoaRepository.existsById(2L)).thenReturn(false);
+        when(clienteResolverService.resolverClientePorCodigo("00000002"))
+                .thenThrow(new ResourceNotFoundException("Cliente não encontrado"));
 
         try (HSSFWorkbook wb = new HSSFWorkbook()) {
             Sheet sh = wb.createSheet();
@@ -116,15 +128,14 @@ class InformacoesProcessosImportServiceParseTest {
             assertThatThrownBy(() -> parseLinha(r, 2))
                     .isInstanceOf(java.lang.reflect.InvocationTargetException.class)
                     .cause()
-                    .isInstanceOf(IllegalArgumentException.class)
+                    .isInstanceOf(ResourceNotFoundException.class)
                     .hasMessageContaining("Cliente");
         }
     }
 
     @Test
     void faseInvalida() throws Exception {
-        when(clienteCodigoPessoaResolver.resolverPessoaId("00000001")).thenReturn(1L);
-        when(pessoaRepository.existsById(1L)).thenReturn(true);
+        when(clienteResolverService.resolverClientePorCodigo("00000001")).thenReturn(clienteComPessoa(10L, 1L));
 
         try (HSSFWorkbook wb = new HSSFWorkbook()) {
             Sheet sh = wb.createSheet();
@@ -142,7 +153,7 @@ class InformacoesProcessosImportServiceParseTest {
 
     @Test
     void codigoClienteInvalidoReflectionEnvolveBusinessRule() throws Exception {
-        when(clienteCodigoPessoaResolver.resolverPessoaId("abc"))
+        when(clienteResolverService.resolverClientePorCodigo(eq("abc")))
                 .thenThrow(new BusinessRuleException("codigoCliente inválido"));
         try (HSSFWorkbook wb = new HSSFWorkbook()) {
             Sheet sh = wb.createSheet();

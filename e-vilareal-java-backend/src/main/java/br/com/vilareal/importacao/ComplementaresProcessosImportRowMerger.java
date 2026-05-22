@@ -1,9 +1,11 @@
 package br.com.vilareal.importacao;
 
 import br.com.vilareal.common.text.Utf8MojibakeUtil;
-import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.pessoa.application.ClienteResolverService;
+import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
+import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
+import br.com.vilareal.processo.application.CodigoClienteUtil;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
 import org.slf4j.Logger;
@@ -16,9 +18,6 @@ import org.springframework.util.StringUtils;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
-/**
- * Uma transação por linha: atualiza só cabeçalho do processo (não apaga partes).
- */
 @Service
 public class ComplementaresProcessosImportRowMerger {
 
@@ -40,16 +39,20 @@ public class ComplementaresProcessosImportRowMerger {
     public record MergeResult(long processoId, boolean criado) {}
 
     @Transactional(propagation = Propagation.REQUIRES_NEW, rollbackFor = Exception.class)
-    public MergeResult aplicar(long clientePessoaId, int numeroInterno, int linhaExcel, LinhaParsed linha) {
-        PessoaEntity cliente = pessoaRepository.getReferenceById(clientePessoaId);
+    public MergeResult aplicar(String codigoClienteColA, int numeroInterno, int linhaExcel, LinhaParsed linha) {
+        String cod8 = CodigoClienteUtil.normalizarCodigoClienteOitoDigitos(codigoClienteColA.trim());
+        ClienteEntity cliente = clienteResolverService.resolverClientePorCodigo(cod8);
+        long titularPessoaId = cliente.getPessoa().getId();
+
+        PessoaEntity titular = pessoaRepository.getReferenceById(titularPessoaId);
         ProcessoEntity p = processoRepository
-                .findByPessoa_IdAndNumeroInterno(clientePessoaId, numeroInterno)
+                .findByCliente_IdAndNumeroInterno(cliente.getId(), numeroInterno)
                 .orElse(null);
         boolean criado = p == null;
         if (p == null) {
             p = new ProcessoEntity();
-            p.setPessoa(cliente);
-            p.setCliente(clienteResolverService.resolverClienteParaTitular(clientePessoaId));
+            p.setCliente(cliente);
+            p.setPessoa(titular);
             p.setNumeroInterno(numeroInterno);
             p.setAtivo(true);
             p.setConsultaAutomatica(false);
@@ -89,20 +92,19 @@ public class ComplementaresProcessosImportRowMerger {
             p.setPrazoFatal(linha.prazoFatal());
         }
 
-        p.setCliente(clienteResolverService.resolverClienteParaTitular(clientePessoaId));
+        p.setCliente(cliente);
 
         p = processoRepository.save(p);
         log.info(
-                "[import-complementares-processos] linha={} cliente={} proc={} {} id={}",
+                "[import-complementares-processos] linha={} clientePk={} proc={} {} id={}",
                 linhaExcel,
-                clientePessoaId,
+                cliente.getId(),
                 numeroInterno,
                 criado ? "criado" : "atualizado",
                 p.getId());
         return new MergeResult(p.getId(), criado);
     }
 
-    /** @param observacaoFase {@code null} ou vazio na origem = não alterar; texto = gravar. */
     public record LinhaParsed(
             String observacaoProcesso,
             String cidade,

@@ -100,7 +100,9 @@ public class PessoaApplicationService {
         PessoaEntity p = new PessoaEntity();
         aplicarNucleo(p, req, cpf);
         p = pessoaRepository.save(p);
-        garantirClienteParaPessoa(p);
+        if (Boolean.TRUE.equals(req.getCriarCliente())) {
+            garantirClienteParaPessoa(p);
+        }
         return toResponseCompleto(pessoaRepository.findDetailById(p.getId()).orElse(p));
     }
 
@@ -114,7 +116,9 @@ public class PessoaApplicationService {
 
         aplicarNucleo(p, req, cpf);
         p = pessoaRepository.save(p);
-        garantirClienteParaPessoa(p);
+        if (Boolean.TRUE.equals(req.getCriarCliente())) {
+            garantirClienteParaPessoa(p);
+        }
         return toResponseCompleto(pessoaRepository.findDetailById(p.getId()).orElse(p));
     }
 
