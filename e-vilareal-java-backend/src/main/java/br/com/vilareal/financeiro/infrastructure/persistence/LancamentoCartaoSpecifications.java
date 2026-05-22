@@ -19,7 +19,7 @@ public final class LancamentoCartaoSpecifications {
         return (root, query, cb) -> {
             var preds = cb.conjunction();
             if (clienteId != null) {
-                preds = cb.and(preds, cb.equal(root.get("cliente").get("id"), clienteId));
+                preds = cb.and(preds, cb.equal(root.get("clienteEntidade").get("id"), clienteId));
             }
             if (processoId != null) {
                 preds = cb.and(preds, cb.equal(root.get("processo").get("id"), processoId));

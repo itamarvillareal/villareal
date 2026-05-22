@@ -8,8 +8,11 @@ import java.time.LocalDate;
 public class ProcessoResponse {
 
     private Long id;
+    @Schema(description = "PK da tabela cliente (processo.cliente_id)")
     private Long clienteId;
     private String codigoCliente;
+    @Schema(description = "PK da pessoa titular/sujeito do processo (processo.pessoa_id)")
+    private Long pessoaTitularId;
     private Integer numeroInterno;
     private String numeroCnj;
     private String numeroProcessoAntigo;
@@ -26,27 +29,17 @@ public class ProcessoResponse {
     private BigDecimal valorCausa;
     private String uf;
     private String cidade;
-    /** Unidade condominial (ex.: A-0103). */
     private String unidade;
-
-    /** Pasta do processo (planilha / cadastro). */
     private String pasta;
-
     private String papelCliente;
     private LocalDate audienciaData;
     private String audienciaHora;
     private String audienciaTipo;
     private String avisoAudiencia;
-
     private Boolean consultaAutomatica;
     private Boolean ativo;
     private String consultor;
     private Long usuarioResponsavelId;
-
-    /**
-     * Nomes da parte oposta (polo ≠ autor/requerente/cliente), no mesmo critério da tela Processos —
-     * ex.: "NET ANÁPOLIS LTDA e OUTRA"; só preenchido em {@code GET /api/processos?codigoCliente=}.
-     */
     private String parteOposta;
 
     public Long getId() {
@@ -65,10 +58,18 @@ public class ProcessoResponse {
         this.clienteId = clienteId;
     }
 
-    /** Id em {@code pessoa} (coluna B); espelha {@code clienteId} para alinhar com GET /api/clientes ({@code id}/{@code pessoaId}). */
-    @Schema(description = "Id da pessoa (FK processo.pessoa_id); igual a clienteId")
+    public Long getPessoaTitularId() {
+        return pessoaTitularId;
+    }
+
+    public void setPessoaTitularId(Long pessoaTitularId) {
+        this.pessoaTitularId = pessoaTitularId;
+    }
+
+    @Deprecated
+    @Schema(description = "Deprecado: use pessoaTitularId (mesmo valor)")
     public Long getPessoaId() {
-        return clienteId;
+        return pessoaTitularId;
     }
 
     public String getCodigoCliente() {

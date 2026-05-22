@@ -123,8 +123,8 @@ export function RelatorioFinanceiroImoveis() {
                 Relatório Financeiro Imóveis
               </h1>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Aluguel e repasse a partir do Financeiro (Cod. cliente + Proc.) × cadastro do imóvel (dias de pagamento e
-                repasse)
+                Lançamentos dos extratos bancários (Cod. cliente + Proc.) com imóvel informado no processo × cadastro
+                (dias de pagamento e repasse)
               </p>
             </div>
           </div>
@@ -216,8 +216,9 @@ export function RelatorioFinanceiroImoveis() {
           <div className="flex gap-2 items-start text-xs text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-black/20 rounded-lg px-3 py-2 border border-slate-100 dark:border-white/[0.06]">
             <Info className="w-4 h-4 shrink-0 mt-0.5 text-slate-500" />
             <p>
-              Os lançamentos são os mesmos da <strong>Conta Corrente</strong> do processo no Financeiro (vínculo{' '}
-              <strong>Cod. cliente</strong> + <strong>Proc.</strong> iguais aos do imóvel). Classificação de{' '}
+              O relatório lista apenas pares <strong>Cod. cliente</strong> + <strong>Proc.</strong> que tenham lançamento
+              no mês nos <strong>extratos bancários</strong> e número de <strong>Imóvel</strong> preenchido no cadastro do
+              processo (ou no imóvel). Os valores vêm da <strong>Conta Corrente</strong> desse par. Classificação de{' '}
               <strong>aluguel</strong> e <strong>repasse</strong>: use as tags{' '}
               <code className="text-[10px] bg-white dark:bg-black/30 px-1 rounded">{TAG_ADM_ALUGUEL}</code> e{' '}
               <code className="text-[10px] bg-white dark:bg-black/30 px-1 rounded">{TAG_ADM_REPASSE}</code> na

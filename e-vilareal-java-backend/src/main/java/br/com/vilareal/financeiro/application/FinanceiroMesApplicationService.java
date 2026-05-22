@@ -73,7 +73,7 @@ public class FinanceiroMesApplicationService {
 
         for (LancamentoFinanceiroEntity l : fechados) {
             String codigo = l.getContaContabil().getCodigo();
-            Long clienteId = l.getCliente() != null ? l.getCliente().getId() : null;
+            Long clienteId = l.getClienteEntidade() != null ? l.getClienteEntidade().getId() : null;
             l.setEtapa(EtapaLancamento.calcular(codigo, l.getGrupoCompensacao(), clienteId));
         }
         lancamentoRepository.saveAll(new ArrayList<>(fechados));

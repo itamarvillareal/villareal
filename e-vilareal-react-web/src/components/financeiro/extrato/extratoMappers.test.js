@@ -60,7 +60,8 @@ describe('extratoMappers', () => {
       id: 99,
       codCliente: '938',
       proc: '12',
-      clienteId: 6277,
+      clienteId: 100,
+      pessoaRefId: 6277,
       contaCodigo: 'A',
       descricao: 'PIX',
       dataLancamento: '2026-05-19',
@@ -71,7 +72,8 @@ describe('extratoMappers', () => {
       id: 99,
       contaContabilNome: 'Conta Escritório',
       codigoCliente: '00006277',
-      clienteId: 6277,
+      clienteId: 100,
+      pessoaRefId: 6277,
       numeroInternoProcesso: 12,
       dataLancamento: '2026-05-19',
       descricao: 'PIX',
@@ -81,19 +83,22 @@ describe('extratoMappers', () => {
     }, { 'Conta Escritório': 'A' });
     expect(merged.codCliente).toBe('938');
     expect(merged.proc).toBe('12');
-    expect(merged.clienteId).toBe(6277);
+    expect(merged.clienteId).toBe(100);
   });
 
-  it('codigoClienteExtrato usa cache do vínculo quando API devolve id da pessoa', () => {
+  it('codigoClienteExtrato usa cache do vínculo quando API devolve pessoaRefId', () => {
     registrarCodigoClienteFinanceiroPorPessoaId(6277, '986');
-    expect(codigoClienteExtratoDesdeApiDto({ codigoCliente: '00006277', clienteId: 6277 })).toBe('986');
+    expect(
+      codigoClienteExtratoDesdeApiDto({ codigoCliente: '00006277', clienteId: 100, pessoaRefId: 6277 }),
+    ).toBe('986');
   });
 
-  it('codigoClienteExtrato lê tag CC_CLI quando API devolve id da pessoa', () => {
+  it('codigoClienteExtrato lê tag CC_CLI quando API devolve pessoaRefId', () => {
     expect(
       codigoClienteExtratoDesdeApiDto({
         codigoCliente: '00000084',
-        clienteId: 84,
+        clienteId: 500,
+        pessoaRefId: 84,
         descricaoDetalhada: 'Partes x y [CC_CLI:793]',
       }),
     ).toBe('793');
@@ -102,7 +107,8 @@ describe('extratoMappers', () => {
         id: 97614,
         contaContabilNome: 'Conta Escritório',
         codigoCliente: '00000084',
-        clienteId: 84,
+        clienteId: 500,
+        pessoaRefId: 84,
         processoId: 7233,
         numeroInternoProcesso: 10,
         descricaoDetalhada: 'ALOISIO x NEEMIAS [CC_CLI:793]',
@@ -124,7 +130,8 @@ describe('extratoMappers', () => {
         id: 1,
         contaContabilNome: 'Conta Escritório',
         codigoCliente: '00009999',
-        clienteId: 9999,
+        clienteId: 50,
+        pessoaRefId: 9999,
         dataLancamento: '2026-05-19',
         descricao: 'PIX',
         valor: 100,

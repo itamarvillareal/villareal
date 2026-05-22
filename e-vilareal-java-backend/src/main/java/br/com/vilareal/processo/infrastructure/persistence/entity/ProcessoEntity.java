@@ -1,5 +1,6 @@
 package br.com.vilareal.processo.infrastructure.persistence.entity;
 
+import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.usuario.infrastructure.persistence.entity.UsuarioEntity;
 import jakarta.persistence.*;
@@ -23,6 +24,10 @@ public class ProcessoEntity {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "pessoa_id", nullable = false)
     private PessoaEntity pessoa;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "cliente_id")
+    private ClienteEntity cliente;
 
     @Column(name = "numero_interno", nullable = false)
     private Integer numeroInterno;

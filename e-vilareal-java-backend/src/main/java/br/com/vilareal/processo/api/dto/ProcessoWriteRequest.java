@@ -10,7 +10,11 @@ import java.time.LocalDate;
 public class ProcessoWriteRequest {
 
     @NotNull
+    @Schema(description = "PK da tabela cliente; aceita pessoa.id legado via resolução no servidor")
     private Long clienteId;
+
+    @Schema(description = "PK da pessoa titular (processo.pessoa_id); se omitido, usa pessoa_id do cliente")
+    private Long pessoaTitularId;
 
     @NotNull
     private Integer numeroInterno;
@@ -63,6 +67,14 @@ public class ProcessoWriteRequest {
 
     public void setClienteId(Long clienteId) {
         this.clienteId = clienteId;
+    }
+
+    public Long getPessoaTitularId() {
+        return pessoaTitularId;
+    }
+
+    public void setPessoaTitularId(Long pessoaTitularId) {
+        this.pessoaTitularId = pessoaTitularId;
     }
 
     public Integer getNumeroInterno() {

@@ -9,6 +9,7 @@ import br.com.vilareal.tarefa.api.dto.TarefaStatusPatchRequest;
 import br.com.vilareal.tarefa.infrastructure.persistence.TarefaOperacionalSpecifications;
 import br.com.vilareal.tarefa.infrastructure.persistence.entity.TarefaOperacionalEntity;
 import br.com.vilareal.tarefa.infrastructure.persistence.repository.TarefaOperacionalRepository;
+import br.com.vilareal.pessoa.application.ClienteResolverService;
 import br.com.vilareal.tarefa.model.TarefaPrioridade;
 import br.com.vilareal.tarefa.model.TarefaStatus;
 import br.com.vilareal.usuario.infrastructure.persistence.entity.UsuarioEntity;
@@ -32,12 +33,15 @@ public class TarefaOperacionalApplicationService {
 
     private final TarefaOperacionalRepository tarefaRepository;
     private final UsuarioRepository usuarioRepository;
+    private final ClienteResolverService clienteResolverService;
 
     public TarefaOperacionalApplicationService(
             TarefaOperacionalRepository tarefaRepository,
-            UsuarioRepository usuarioRepository) {
+            UsuarioRepository usuarioRepository,
+            ClienteResolverService clienteResolverService) {
         this.tarefaRepository = tarefaRepository;
         this.usuarioRepository = usuarioRepository;
+        this.clienteResolverService = clienteResolverService;
     }
 
     @Transactional(readOnly = true)
@@ -49,8 +53,9 @@ public class TarefaOperacionalApplicationService {
             Long processoId,
             LocalDate dataLimiteDe,
             LocalDate dataLimiteAte) {
+        Long clientePk = resolverClienteIdRequest(clienteId);
         var spec = TarefaOperacionalSpecifications.comFiltros(
-                responsavelId, status, prioridade, clienteId, processoId, dataLimiteDe, dataLimiteAte);
+                responsavelId, status, prioridade, clientePk, processoId, dataLimiteDe, dataLimiteAte);
         return tarefaRepository.findAll(spec, ORDEM_RECENTES).stream()
                 .map(this::toResponse)
                 .collect(Collectors.toList());
@@ -66,8 +71,9 @@ public class TarefaOperacionalApplicationService {
             LocalDate dataLimiteDe,
             LocalDate dataLimiteAte,
             Pageable pageable) {
+        Long clientePk = resolverClienteIdRequest(clienteId);
         var spec = TarefaOperacionalSpecifications.comFiltros(
-                responsavelId, status, prioridade, clienteId, processoId, dataLimiteDe, dataLimiteAte);
+                responsavelId, status, prioridade, clientePk, processoId, dataLimiteDe, dataLimiteAte);
         return tarefaRepository.findAll(spec, pageable).map(this::toResponse);
     }
 
@@ -142,7 +148,7 @@ public class TarefaOperacionalApplicationService {
             e.setStatus(req.getStatus() != null ? req.getStatus() : TarefaStatus.PENDENTE);
             e.setPrioridade(req.getPrioridade() != null ? req.getPrioridade() : TarefaPrioridade.NORMAL);
             e.setDataLimite(req.getDataLimite());
-            e.setClienteId(req.getClienteId());
+            e.setClienteId(resolverClienteIdRequest(req.getClienteId()));
             e.setProcessoId(req.getProcessoId());
             e.setPublicacaoId(req.getPublicacaoId());
             e.setProcessoPrazoId(req.getProcessoPrazoId());
@@ -151,7 +157,7 @@ public class TarefaOperacionalApplicationService {
                 e.setDataLimite(req.getDataLimite());
             }
             if (req.getClienteId() != null) {
-                e.setClienteId(req.getClienteId());
+                e.setClienteId(resolverClienteIdRequest(req.getClienteId()));
             }
             if (req.getProcessoId() != null) {
                 e.setProcessoId(req.getProcessoId());
@@ -215,5 +221,12 @@ public class TarefaOperacionalApplicationService {
         r.setCreatedAt(e.getCreatedAt());
         r.setDataConclusao(e.getDataConclusao());
         return r;
+    }
+
+    private Long resolverClienteIdRequest(Long clienteIdRequest) {
+        if (clienteIdRequest == null) {
+            return null;
+        }
+        return clienteResolverService.resolverClienteIdRequest(clienteIdRequest).getId();
     }
 }

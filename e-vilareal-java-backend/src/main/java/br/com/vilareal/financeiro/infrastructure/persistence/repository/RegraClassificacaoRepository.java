@@ -8,7 +8,7 @@ import java.util.List;
 
 public interface RegraClassificacaoRepository extends JpaRepository<RegraClassificacaoEntity, Long> {
 
-    @EntityGraph(attributePaths = {"contaContabil", "cliente", "processo"})
+    @EntityGraph(attributePaths = {"contaContabil", "pessoaRef", "clienteEntidade", "processo"})
     List<RegraClassificacaoEntity> findByAtivoTrueOrderByPrioridadeAscIdAsc();
 
     List<RegraClassificacaoEntity> findByAtivoTrueOrderByConfiancaDescPrioridadeAscIdAsc();

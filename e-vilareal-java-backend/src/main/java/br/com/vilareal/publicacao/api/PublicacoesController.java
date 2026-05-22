@@ -3,6 +3,7 @@ package br.com.vilareal.publicacao.api;
 import br.com.vilareal.publicacao.api.dto.*;
 import br.com.vilareal.publicacao.application.PublicacaoApplicationService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -33,7 +34,9 @@ public class PublicacoesController {
             @RequestParam(value = "dataFim", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataFim,
             @RequestParam(value = "status", required = false) String statusTratamento,
             @RequestParam(value = "processoId", required = false) Long processoId,
-            @RequestParam(value = "clienteId", required = false) Long clienteId,
+            @Parameter(description = "PK da tabela cliente (aceita pessoa.id legado na resolução)")
+            @RequestParam(value = "clienteId", required = false)
+            Long clienteId,
             @RequestParam(value = "texto", required = false) String texto,
             @RequestParam(value = "origemImportacao", required = false) String origemImportacao) {
         return publicacaoService.listar(

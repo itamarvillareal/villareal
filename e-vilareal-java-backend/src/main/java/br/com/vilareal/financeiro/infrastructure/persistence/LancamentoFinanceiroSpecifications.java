@@ -83,7 +83,7 @@ public final class LancamentoFinanceiroSpecifications {
             }
             var p = cb.conjunction();
             if (clienteId != null) {
-                var j = root.join("cliente", JoinType.INNER);
+                var j = root.join("clienteEntidade", JoinType.INNER);
                 p = cb.and(p, cb.equal(j.get("id"), clienteId));
             }
             if (processoId != null) {
@@ -125,7 +125,7 @@ public final class LancamentoFinanceiroSpecifications {
     }
 
     public static Specification<LancamentoFinanceiroEntity> semClienteId() {
-        return (root, query, cb) -> cb.isNull(root.get("cliente"));
+        return (root, query, cb) -> cb.isNull(root.get("clienteEntidade"));
     }
 
     public static Specification<LancamentoFinanceiroEntity> semGrupoCompensacao() {

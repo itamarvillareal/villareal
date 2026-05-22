@@ -3,6 +3,7 @@ package br.com.vilareal.financeiro.application;
 import br.com.vilareal.financeiro.api.dto.LimparExtratoResult;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.LancamentoFinanceiroEntity;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.LancamentoFinanceiroRepository;
+import br.com.vilareal.pessoa.application.ClienteResolverService;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
 import br.com.vilareal.processo.application.ClienteCodigoPessoaResolver;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
@@ -30,6 +31,10 @@ class FinanceiroApplicationServiceLimparExtratoTest {
     private ProcessoRepository processoRepository;
     @Mock
     private ClienteCodigoPessoaResolver clienteCodigoPessoaResolver;
+    @Mock
+    private ClienteResolverService clienteResolverService;
+    @Mock
+    private FinanceiroSaudeService financeiroSaudeService;
 
     @InjectMocks
     private FinanceiroApplicationService service;

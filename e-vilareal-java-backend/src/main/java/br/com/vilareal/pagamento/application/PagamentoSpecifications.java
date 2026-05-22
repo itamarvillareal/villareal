@@ -38,7 +38,12 @@ public final class PagamentoSpecifications {
             Boolean proximos7Dias,
             Boolean mesAtual,
             Boolean somenteSemComprovante,
-            Boolean altoValorMin) {
+            Boolean altoValorMin,
+            String mesReferencia,
+            String contaReferenciaContains,
+            Boolean autoGerado,
+            Boolean conciliado,
+            Boolean somenteNaoConciliado) {
 
         public boolean temAlgum() {
             return descricaoContains != null
@@ -63,7 +68,12 @@ public final class PagamentoSpecifications {
                     || Boolean.TRUE.equals(proximos7Dias)
                     || Boolean.TRUE.equals(mesAtual)
                     || Boolean.TRUE.equals(somenteSemComprovante)
-                    || Boolean.TRUE.equals(altoValorMin);
+                    || Boolean.TRUE.equals(altoValorMin)
+                    || mesReferencia != null
+                    || contaReferenciaContains != null
+                    || autoGerado != null
+                    || conciliado != null
+                    || Boolean.TRUE.equals(somenteNaoConciliado);
         }
     }
 
@@ -150,6 +160,28 @@ public final class PagamentoSpecifications {
             }
             if (Boolean.TRUE.equals(f.altoValorMin())) {
                 p.add(cb.greaterThanOrEqualTo(root.get("valor"), new BigDecimal("10000")));
+            }
+            if (f.mesReferencia() != null && !f.mesReferencia().isBlank()) {
+                p.add(cb.equal(root.get("mesReferencia"), f.mesReferencia().trim()));
+            }
+            if (f.contaReferenciaContains() != null && !f.contaReferenciaContains().isBlank()) {
+                String d = "%" + f.contaReferenciaContains().trim().toLowerCase() + "%";
+                p.add(cb.like(cb.lower(root.get("contaReferencia")), d));
+            }
+            if (f.autoGerado() != null) {
+                p.add(cb.equal(root.get("autoGerado"), f.autoGerado()));
+            }
+            if (f.conciliado() != null) {
+                if (Boolean.TRUE.equals(f.conciliado())) {
+                    p.add(cb.isNotNull(root.get("financeiroLancamento")));
+                } else {
+                    p.add(cb.isNull(root.get("financeiroLancamento")));
+                }
+            }
+            if (Boolean.TRUE.equals(f.somenteNaoConciliado())) {
+                p.add(root.get("status").in(
+                        PagamentoDominio.ST_PAGO_CONFIRMADO, PagamentoDominio.ST_PAGO_SEM_COMPROVANTE));
+                p.add(cb.isNull(root.get("financeiroLancamento")));
             }
 
             if (p.isEmpty()) {

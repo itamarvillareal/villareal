@@ -1,6 +1,7 @@
 package br.com.vilareal.pagamento.api;
 
 import br.com.vilareal.pagamento.application.PagamentoApplicationService;
+import br.com.vilareal.pagamento.application.PagamentoConciliacaoApplicationService;
 import br.com.vilareal.pagamento.application.PagamentoSpecifications;
 import br.com.vilareal.pagamento.api.dto.*;
 import io.swagger.v3.oas.annotations.Operation;
@@ -16,7 +17,6 @@ import org.springframework.web.multipart.MultipartFile;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/pagamentos")
@@ -24,9 +24,13 @@ import java.util.Map;
 public class PagamentosController {
 
     private final PagamentoApplicationService pagamentoApplicationService;
+    private final PagamentoConciliacaoApplicationService pagamentoConciliacaoApplicationService;
 
-    public PagamentosController(PagamentoApplicationService pagamentoApplicationService) {
+    public PagamentosController(
+            PagamentoApplicationService pagamentoApplicationService,
+            PagamentoConciliacaoApplicationService pagamentoConciliacaoApplicationService) {
         this.pagamentoApplicationService = pagamentoApplicationService;
+        this.pagamentoConciliacaoApplicationService = pagamentoConciliacaoApplicationService;
     }
 
     @GetMapping
@@ -54,7 +58,12 @@ public class PagamentosController {
             @RequestParam(required = false) Boolean proximos7Dias,
             @RequestParam(required = false) Boolean mesAtual,
             @RequestParam(required = false) Boolean somenteSemComprovante,
-            @RequestParam(required = false) Boolean altoValor) {
+            @RequestParam(required = false) Boolean altoValor,
+            @RequestParam(required = false) String mesReferencia,
+            @RequestParam(required = false) String contaReferencia,
+            @RequestParam(required = false) Boolean autoGerado,
+            @RequestParam(required = false) Boolean conciliado,
+            @RequestParam(required = false) Boolean somenteNaoConciliado) {
         var filtro = new PagamentoSpecifications.FiltroLista(
                 descricao,
                 codigoBarras,
@@ -78,8 +87,43 @@ public class PagamentosController {
                 proximos7Dias,
                 mesAtual,
                 somenteSemComprovante,
-                altoValor);
+                altoValor,
+                mesReferencia,
+                contaReferencia,
+                autoGerado,
+                conciliado,
+                somenteNaoConciliado);
         return pagamentoApplicationService.listar(filtro);
+    }
+
+    @GetMapping("/conciliacao/sugestoes")
+    @Operation(summary = "Sugestões de conciliação pagamento × extrato")
+    public List<ConciliacaoSugestaoPagamentoResponse> sugestoesConciliacao(
+            @RequestParam LocalDate periodoInicio,
+            @RequestParam LocalDate periodoFim,
+            @RequestParam(required = false) String numeroBanco) {
+        return pagamentoConciliacaoApplicationService.sugestoesConciliacao(periodoInicio, periodoFim, numeroBanco);
+    }
+
+    @PostMapping("/conciliacao/vincular")
+    public PagamentoResponse vincularConciliacao(@Valid @RequestBody PagamentoConciliacaoVincularRequest req) {
+        return pagamentoConciliacaoApplicationService.vincularConciliacao(req);
+    }
+
+    @PostMapping("/conciliacao/desvincular")
+    public PagamentoResponse desvincularConciliacao(@Valid @RequestBody PagamentoConciliacaoDesvincularRequest req) {
+        return pagamentoConciliacaoApplicationService.desvincularConciliacao(req);
+    }
+
+    @GetMapping("/dashboard")
+    public PagamentoDashboardResponse dashboard(
+            @RequestParam(required = false) Integer ano, @RequestParam(required = false) Integer mes) {
+        return pagamentoApplicationService.dashboard(ano, mes);
+    }
+
+    @GetMapping("/alertas")
+    public PagamentoAlertasResponse alertas() {
+        return pagamentoApplicationService.contagemAlertas();
     }
 
     @GetMapping("/{id}")
@@ -123,20 +167,24 @@ public class PagamentosController {
         return pagamentoApplicationService.substituir(id, novoPagamentoId);
     }
 
+    @PostMapping("/{id}/conferir")
+    public PagamentoResponse conferir(@PathVariable Long id, @Valid @RequestBody PagamentoConferirRequest req) {
+        return pagamentoConciliacaoApplicationService.conferir(id, req);
+    }
+
+    @PostMapping("/{id}/acertar")
+    public PagamentoResponse acertar(@PathVariable Long id, @RequestBody(required = false) PagamentoAcertarRequest req) {
+        return pagamentoConciliacaoApplicationService.acertar(id, req);
+    }
+
+    @PostMapping("/{id}/reabrir")
+    public PagamentoResponse reabrir(@PathVariable Long id, @Valid @RequestBody PagamentoReabrirRequest req) {
+        return pagamentoConciliacaoApplicationService.reabrir(id, req);
+    }
+
     @GetMapping("/{id}/historico")
     public List<PagamentoHistoricoResponse> historico(@PathVariable Long id) {
         return pagamentoApplicationService.listarHistorico(id);
-    }
-
-    @GetMapping("/dashboard")
-    public PagamentoDashboardResponse dashboard(
-            @RequestParam(required = false) Integer ano, @RequestParam(required = false) Integer mes) {
-        return pagamentoApplicationService.dashboard(ano, mes);
-    }
-
-    @GetMapping("/alertas")
-    public Map<String, Long> alertas() {
-        return pagamentoApplicationService.contagemAlertas();
     }
 
     @PostMapping(value = "/{id}/anexo-boleto", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)

@@ -2,6 +2,7 @@ package br.com.vilareal.tarefa.api.dto;
 
 import br.com.vilareal.tarefa.model.TarefaPrioridade;
 import br.com.vilareal.tarefa.model.TarefaStatus;
+import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -22,6 +23,7 @@ public class TarefaOperacionalResponse {
     private TarefaStatus status;
     private TarefaPrioridade prioridade;
     private LocalDate dataLimite;
+    @Schema(description = "PK da tabela cliente")
     private Long clienteId;
     private Long processoId;
     private Long publicacaoId;

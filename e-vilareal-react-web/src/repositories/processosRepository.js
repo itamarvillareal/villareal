@@ -14,6 +14,29 @@ function padCliente8(value) {
   return String(safe).padStart(8, '0');
 }
 
+/** PK da tabela `cliente` (DTO GET /api/clientes ou /api/processos). */
+export function clientePkFromApiDto(dto) {
+  if (!dto) return null;
+  const pk =
+    dto.clienteId != null && dto.clienteId !== ''
+      ? Number(dto.clienteId)
+      : dto.id != null && dto.pessoaId != null
+        ? Number(dto.id)
+        : dto.id != null && dto.pessoaTitularId == null && dto.pessoaId == null
+          ? Number(dto.id)
+          : NaN;
+  return Number.isFinite(pk) && pk > 0 ? pk : null;
+}
+
+/** `pessoa.id` do vínculo cliente ou titular do processo. */
+export function pessoaIdFromApiDto(dto) {
+  if (!dto) return null;
+  const raw =
+    dto.pessoaTitularId ?? dto.pessoaId ?? dto.pessoaRefId ?? dto.pessoa;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
 function toIsoFromBrDate(dateBr) {
   const s = String(dateBr ?? '').trim();
   const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(s);
@@ -728,8 +751,13 @@ export async function salvarCabecalhoProcesso(payload) {
   if (!featureFlags.useApiProcessos) return null;
   const processoId = await resolverProcessoId(payload);
   const nat = String(payload.naturezaAcao ?? '').trim() || null;
+  const titularRaw = payload.pessoaTitularId ?? payload.pessoaId;
   const body = {
     clienteId: Number(payload.clienteId),
+    pessoaTitularId:
+      titularRaw != null && Number.isFinite(Number(titularRaw)) && Number(titularRaw) > 0
+        ? Number(titularRaw)
+        : null,
     numeroInterno: Number(payload.numeroInterno),
     numeroCnj: payload.numeroProcessoNovo || null,
     numeroProcessoAntigo: payload.numeroProcessoVelho || null,
@@ -1127,13 +1155,14 @@ export async function obterCamposProcessoApiFirst({ processoId, codigoCliente, n
 }
 
 export function mapApiProcessoToUiShape(p) {
-  const pessoaRef =
-    p.pessoaId != null ? Number(p.pessoaId) : p.clienteId != null ? Number(p.clienteId) : null;
+  const clientePk = clientePkFromApiDto(p);
+  const titularId = pessoaIdFromApiDto(p);
   return {
     processoId: p.id,
-    /** Id em `pessoa` (col. B) — par com «Pessoa» em Clientes; `pessoaId` ou `clienteId` na API. */
-    clienteId: pessoaRef,
-    pessoaId: pessoaRef,
+    clienteId: clientePk,
+    clienteIdNativo: clientePk,
+    pessoaTitularId: titularId,
+    pessoaId: titularId,
     codigoCliente: p.codigoCliente,
     numeroInterno: p.numeroInterno,
     numeroProcessoNovo: String(p.numeroCnj ?? p.numero_cnj ?? '').trim(),

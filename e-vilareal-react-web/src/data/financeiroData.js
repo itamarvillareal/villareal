@@ -1414,23 +1414,27 @@ export function anexarCodigoClienteTagDescricaoDetalhada(descricaoDetalhada, cod
  * @param {{ codigoCliente?: string|null, clienteId?: number|null, descricaoDetalhada?: string|null }} dto
  */
 export function codigoClienteExtratoDesdeApiDto(dto) {
-  const pid = Number(dto?.clienteId);
+  const pessoaRefId = Number(dto?.pessoaRefId ?? dto?.pessoaId);
   const fromTag = extrairCodigoClienteTagDescricaoDetalhada(dto?.descricaoDetalhada);
   if (fromTag) {
-    if (Number.isFinite(pid) && pid > 0) registrarCodigoClienteFinanceiroPorPessoaId(pid, fromTag);
+    if (Number.isFinite(pessoaRefId) && pessoaRefId > 0) {
+      registrarCodigoClienteFinanceiroPorPessoaId(pessoaRefId, fromTag);
+    }
     return fromTag;
   }
   const raw = dto?.codigoCliente != null ? String(dto.codigoCliente).trim() : '';
-  if (raw && !codigoClienteApiPareceIdPessoa(raw, pid)) {
+  if (raw && !codigoClienteApiPareceIdPessoa(raw, pessoaRefId)) {
     const digits = raw.replace(/\D/g, '');
     const n = Number(digits);
     const cod = normalizarCodigoClienteFinanceiro(Number.isFinite(n) && n >= 1 ? n : '');
     if (cod) {
-      if (Number.isFinite(pid) && pid > 0) registrarCodigoClienteFinanceiroPorPessoaId(pid, cod);
+      if (Number.isFinite(pessoaRefId) && pessoaRefId > 0) {
+        registrarCodigoClienteFinanceiroPorPessoaId(pessoaRefId, cod);
+      }
       return cod;
     }
   }
-  return obterCodigoClienteFinanceiroPorPessoaId(pid);
+  return obterCodigoClienteFinanceiroPorPessoaId(pessoaRefId);
 }
 
 /** Normaliza número de processo (1–100). Retorna '' se vazio ou não numérico. */

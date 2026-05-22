@@ -7,6 +7,8 @@ import {
   sanitizarLancamentoImportacaoExtrato,
   contarLancamentosNovos,
   listarLancamentosNovosDedupe,
+  analisarLancamentosNovosDedupe,
+  diasIgnorarPorContagemIgual,
   chaveSemanticaLancamento,
   normalizarDescricaoParaDedupe,
 } from './ofx.js';
@@ -182,6 +184,49 @@ describe('mergeExtratoBancario (mesclar OFX/PDF com extrato)', () => {
     expect(m.some((t) => t.numero === 'Y')).toBe(true);
     expect(contarLancamentosNovos(existente, novo)).toBe(1);
     expect(listarLancamentosNovosDedupe(existente, novo)).toHaveLength(1);
+  });
+
+  it('ignora dia inteiro quando contagem coincide (último dia no banco = 12/05, FITIDs diferentes)', () => {
+    const existente = [
+      { numero: 'old-1', data: '12/05/2026', valor: -11120.48, descricao: 'Pix enviada', origemImportacao: 'OFX' },
+      { numero: 'old-2', data: '12/05/2026', valor: -130.12, descricao: 'Boleto equatorial', origemImportacao: 'OFX' },
+      { numero: 'old-3', data: '12/05/2026', valor: 105, descricao: 'Pagamento Maria', origemImportacao: 'OFX' },
+      { numero: 'old-4', data: '12/05/2026', valor: 1605.6, descricao: 'Pagamento Bianca', origemImportacao: 'OFX' },
+      { numero: 'old-5', data: '12/05/2026', valor: 2940, descricao: 'Pagamento Sergio', origemImportacao: 'OFX' },
+      { numero: 'old-6', data: '12/05/2026', valor: 1600, descricao: 'Pagamento Maria 2', origemImportacao: 'OFX' },
+      { numero: 'old-7', data: '12/05/2026', valor: 5000, descricao: 'Pix recebida', origemImportacao: 'OFX' },
+      { numero: 'old-8', data: '11/05/2026', valor: -100, descricao: 'Dia anterior', origemImportacao: 'OFX' },
+    ];
+    const ofxMes = [
+      { numero: '40198c8d', data: '01/05/2026', valor: 10, descricao: 'Maio inicio', origemImportacao: 'OFX' },
+      { numero: 'fit-12-1', data: '12/05/2026', valor: -11120.48, descricao: 'Transf Pix enviada', origemImportacao: 'OFX' },
+      { numero: 'fit-12-2', data: '12/05/2026', valor: -130.12, descricao: 'Boleto pago Equatorial', origemImportacao: 'OFX' },
+      { numero: 'fit-12-3', data: '12/05/2026', valor: 105, descricao: 'Pagamento recebido Maria', origemImportacao: 'OFX' },
+      { numero: 'fit-12-4', data: '12/05/2026', valor: 1605.6, descricao: 'Pagamento recebido Bianca', origemImportacao: 'OFX' },
+      { numero: 'fit-12-5', data: '12/05/2026', valor: 2940, descricao: 'Pagamento recebido Sergio', origemImportacao: 'OFX' },
+      { numero: 'fit-12-6', data: '12/05/2026', valor: 1600, descricao: 'Pagamento recebido Maria', origemImportacao: 'OFX' },
+      { numero: 'fit-12-7', data: '12/05/2026', valor: 5000, descricao: 'Transf Pix recebida', origemImportacao: 'OFX' },
+      { numero: 'fit-13-1', data: '13/05/2026', valor: 1000, descricao: 'Dia novo', origemImportacao: 'OFX' },
+    ];
+    expect(diasIgnorarPorContagemIgual(existente, ofxMes)).toEqual(new Set(['2026-05-12']));
+    expect(listarLancamentosNovosDedupe(existente, ofxMes)).toHaveLength(2);
+    const analise = analisarLancamentosNovosDedupe(existente, ofxMes);
+    expect(analise.diasIgnoradosPorContagem).toEqual(['2026-05-12']);
+    expect(analise.porDia.get('2026-05-12')?.ignoradosContagemDia).toBe(7);
+  });
+
+  it('no dia de fronteira, se contagem difere, ainda importa lançamentos não pareados', () => {
+    const existente = [
+      { numero: 'a', data: '12/05/2026', valor: 100, descricao: 'x', origemImportacao: 'OFX' },
+      { numero: 'b', data: '12/05/2026', valor: 200, descricao: 'y', origemImportacao: 'OFX' },
+    ];
+    const novo = [
+      { numero: 'c', data: '12/05/2026', valor: 100, descricao: 'x', origemImportacao: 'OFX' },
+      { numero: 'd', data: '12/05/2026', valor: 200, descricao: 'y', origemImportacao: 'OFX' },
+      { numero: 'e', data: '12/05/2026', valor: 300, descricao: 'z novo', origemImportacao: 'OFX' },
+    ];
+    expect(listarLancamentosNovosDedupe(existente, novo)).toHaveLength(1);
+    expect(listarLancamentosNovosDedupe(existente, novo)[0].numero).toBe('e');
   });
 });
 

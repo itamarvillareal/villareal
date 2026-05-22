@@ -17,7 +17,11 @@ import {
   normalizarProcFinanceiro,
   savePersistedExtratosFinanceiro,
 } from '../data/financeiroData.js';
-import { resolverProcessoId } from './processosRepository.js';
+import {
+  buscarClientePorCodigo,
+  clientePkFromApiDto,
+  resolverProcessoId,
+} from './processosRepository.js';
 import {
   analisarLancamentosNovosDedupe,
   sanitizarLancamentoImportacaoExtrato,
@@ -154,6 +158,7 @@ function mapApiLancamentoToUi(l, contaToLetra) {
     descricaoDetalhada: String(l.descricaoDetalhada ?? ''),
     categoria: String(l.descricaoDetalhada ?? ''),
     clienteId: l.clienteId ?? null,
+    pessoaRefId: l.pessoaRefId ?? null,
     codCliente: codClienteExibicaoDesdeApi(l),
     processoId: l.processoId ?? null,
     proc: procExibicaoDesdeApi(l),
@@ -166,6 +171,7 @@ function mapApiLancamentoToUi(l, contaToLetra) {
     origemImportacao,
     _financeiroMeta: {
       clienteId: l.clienteId ?? null,
+      pessoaRefId: l.pessoaRefId ?? null,
       processoId: l.processoId ?? null,
       contaContabilId: l.contaContabilId ?? null,
       grupoCompensacao: l.grupoCompensacao ?? null,
@@ -400,6 +406,33 @@ export async function listarLancamentosFinanceiroPaginados(filtros = {}, opts = 
   });
 }
 
+/** Todos os lançamentos de extrato bancário em um intervalo (paginação automática). */
+export async function listarLancamentosExtratoNoIntervalo(
+  { dataInicio, dataFim, size = 500 } = {},
+  opts = {},
+) {
+  if (!featureFlags.useApiFinanceiro || !dataInicio || !dataFim) return [];
+  const { signal } = opts;
+  const { contaToLetra } = contaMaps();
+  const out = [];
+  let page = 0;
+  let totalPages = 1;
+  while (page < totalPages) {
+    const res = await listarLancamentosFinanceiroPaginados(
+      { dataInicio, dataFim, page, size, sort: 'dataLancamento,asc' },
+      { signal },
+    );
+    const content = res?.content ?? [];
+    for (const l of content) {
+      out.push(mapApiLancamentoToUi(l, contaToLetra));
+    }
+    totalPages = Math.max(1, Number(res?.totalPages ?? 1));
+    page += 1;
+    if (!content.length) break;
+  }
+  return out;
+}
+
 export async function buscarLancamentoFinanceiroApi(id, opts = {}) {
   if (!featureFlags.useApiFinanceiro || !Number(id)) return null;
   return request(`/api/financeiro/lancamentos/${Number(id)}`, { signal: opts.signal });
@@ -435,6 +468,7 @@ function mapApiLancamentoCartaoToUi(l, contaToLetra) {
     origemExtrato: 'cartao',
     _financeiroMeta: {
       clienteId: l.clienteId ?? null,
+      pessoaRefId: l.pessoaRefId ?? null,
       processoId: l.processoId ?? null,
       contaContabilId: l.contaContabilId ?? null,
       cartaoId: l.cartaoId ?? null,
@@ -755,13 +789,21 @@ export async function listarLancamentosProcessoApiFirst({ processoId, codigoClie
   if (!featureFlags.useApiFinanceiro) return [];
   const codigoNorm = normalizarCodigoClienteFinanceiro(codigoCliente);
   const procNorm = normalizarProcFinanceiro(numeroInterno);
-  const pessoaId = pessoaIdDesdeCodigoClienteFinanceiro(codigoCliente);
   const resolvedProcessoId = await resolverProcessoId({ processoId, codigoCliente, numeroInterno });
+  let clientePk = null;
+  if (codigoNorm && featureFlags.useApiProcessos) {
+    try {
+      const c = await buscarClientePorCodigo(codigoNorm);
+      clientePk = clientePkFromApiDto(c);
+    } catch {
+      /* fallback por processo abaixo */
+    }
+  }
 
   const consultas = [];
-  if (pessoaId) {
-    consultas.push(listarLancamentosFinanceiro({ clienteId: pessoaId }));
-    consultas.push(listarLancamentosCartaoFinanceiro({ clienteId: pessoaId }));
+  if (clientePk) {
+    consultas.push(listarLancamentosFinanceiro({ clienteId: clientePk }));
+    consultas.push(listarLancamentosCartaoFinanceiro({ clienteId: clientePk }));
   }
   if (resolvedProcessoId) {
     consultas.push(listarLancamentosFinanceiro({ processoId: resolvedProcessoId }));

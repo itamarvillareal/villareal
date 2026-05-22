@@ -501,7 +501,12 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
   }
 
   function abrirProcessoDoImovel() {
+    const np = Number(imovelId);
     if (featureFlags.useApiImoveis) {
+      if (!Number.isFinite(np) || np < 1) {
+        window.alert('Informe o nº do imóvel antes de abrir a lista de processos vinculados.');
+        return;
+      }
       setShowModalVinculosProc(true);
       return;
     }
@@ -857,7 +862,7 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
       <ModalVinculosProcessoImovel
         open={showModalVinculosProc}
         onClose={() => setShowModalVinculosProc(false)}
-        numeroPlanilha={Number(imovelId) || 1}
+        numeroPlanilha={Number(imovelId) >= 1 ? Number(imovelId) : 0}
         imovelIdApi={_apiImovelId}
         codigoCadastro={codigo}
         procCadastro={proc}

@@ -35,16 +35,13 @@ public class ClienteListItemResponse {
         this.documentoReferencia = documentoReferencia;
     }
 
-    /**
-     * Compatibilidade: mesmo valor que {@link #getPessoaId()} — {@code clienteId} na API é outro campo.
-     * Usado em testes e em fluxos que esperam {@code id} = pessoa titular (processos, financeiro).
-     */
+    @Schema(description = "PK da tabela cliente; igual a clienteId quando houver registro em cliente")
     public Long getId() {
-        return pessoaId;
+        return clienteId;
     }
 
     public void setId(Long id) {
-        this.pessoaId = id;
+        this.clienteId = id;
     }
 
     public Long getClienteId() {

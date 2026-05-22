@@ -78,8 +78,8 @@ export function mapApiPublicacaoToUi(r) {
   let codCliente = '';
   if (codApi != null && String(codApi).trim() !== '') {
     codCliente = String(codApi).trim();
-  } else if (r.clienteId != null) {
-    codCliente = padCodCliente(String(r.clienteId));
+  } else if (r.pessoaRefId != null) {
+    codCliente = padCodCliente(String(r.pessoaRefId));
   }
   const procInt = r.numeroInternoProcesso ?? r.numero_interno_processo;
   const procInterno =
@@ -131,6 +131,7 @@ export function mapApiPublicacaoToUi(r) {
     _origemImportacao: r.origemImportacao || 'MANUAL',
     _processoId: r.processoId ?? null,
     _clienteId: r.clienteId ?? null,
+    _pessoaRefId: r.pessoaRefId ?? null,
   };
 }
 

@@ -6,8 +6,10 @@ import io.swagger.v3.oas.annotations.media.Schema;
 public class ImovelResponse {
 
     private Long id;
-    /** {@code pessoa.id} quando houver cliente vinculado; {@code null} se imóvel sem cliente (ex.: import planilha). */
+    @Schema(description = "PK da tabela cliente")
     private Long clienteId;
+    @Schema(description = "pessoa.id vinculada ao imóvel (legado)")
+    private Long pessoaRefId;
     /** Código de 8 dígitos (col. B da planilha canónica), quando houver cliente vinculado. */
     private String codigoCliente;
     private Long processoId;
@@ -41,6 +43,14 @@ public class ImovelResponse {
 
     public void setClienteId(Long clienteId) {
         this.clienteId = clienteId;
+    }
+
+    public Long getPessoaRefId() {
+        return pessoaRefId;
+    }
+
+    public void setPessoaRefId(Long pessoaRefId) {
+        this.pessoaRefId = pessoaRefId;
     }
 
     public String getCodigoCliente() {

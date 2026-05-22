@@ -1,5 +1,7 @@
 package br.com.vilareal;
 
+import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
+import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.web.client.TestRestTemplate;
@@ -20,6 +22,9 @@ class ApiIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private TestRestTemplate rest;
+
+    @Autowired
+    private ProcessoRepository processoRepository;
 
     @Test
     void loginAdminAndListPessoas() {
@@ -357,11 +362,12 @@ class ApiIntegrationTest extends AbstractIntegrationTest {
         assertThat(clientes.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(clientes.getBody()).isNotEmpty();
         Map<String, Object> primeiroCliente = clientes.getBody().get(0);
-        Long pessoaId = ((Number) primeiroCliente.get("id")).longValue();
+        Long clientePk = clientePkDaLista(primeiroCliente);
+        Long pessoaId = pessoaIdDaLista(primeiroCliente);
         String cod8 = (String) primeiroCliente.get("codigoCliente");
 
         var processoBody = Map.of(
-                "clienteId", pessoaId,
+                "clienteId", clientePk,
                 "numeroInterno", 77,
                 "numeroCnj", "5000000-00.0000.0.00.0000",
                 "naturezaAcao", "Cível",
@@ -381,6 +387,13 @@ class ApiIntegrationTest extends AbstractIntegrationTest {
         assertThat(created.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         Long procId = ((Number) created.getBody().get("id")).longValue();
         assertThat(created.getBody().get("codigoCliente")).isEqualTo(cod8);
+
+        ProcessoEntity processoSalvo = processoRepository.findById(procId).orElseThrow();
+        assertThat(processoSalvo.getCliente()).isNotNull();
+        assertThat(processoSalvo.getCliente().getId()).isEqualTo(clientePk);
+        assertThat(processoSalvo.getPessoa().getId()).isEqualTo(pessoaId);
+        assertThat(((Number) created.getBody().get("clienteId")).longValue()).isEqualTo(clientePk);
+        assertThat(((Number) created.getBody().get("pessoaTitularId")).longValue()).isEqualTo(pessoaId);
 
         ResponseEntity<Map<String, Object>> lista = rest.exchange(
                 "/api/processos?codigoCliente=" + cod8,
@@ -516,10 +529,12 @@ class ApiIntegrationTest extends AbstractIntegrationTest {
                 new HttpEntity<>(h),
                 new ParameterizedTypeReference<>() {});
 
-        Long pessoaId = ((Number) clientes.getBody().get(0).get("id")).longValue();
+        Map<String, Object> clienteFin = clientes.getBody().get(0);
+        Long clientePk = clientePkDaLista(clienteFin);
+        Long pessoaId = pessoaIdDaLista(clienteFin);
 
         var processoBody = Map.of(
-                "clienteId", pessoaId,
+                "clienteId", clientePk,
                 "numeroInterno", 88,
                 "naturezaAcao", "Cível",
                 "ativo", true,
@@ -536,7 +551,7 @@ class ApiIntegrationTest extends AbstractIntegrationTest {
 
         Map<String, Object> lanc = new LinkedHashMap<>();
         lanc.put("contaContabilId", contaEscritorioId);
-        lanc.put("clienteId", pessoaId);
+        lanc.put("clienteId", clientePk);
         lanc.put("processoId", procId);
         lanc.put("bancoNome", "CEF");
         lanc.put("numeroBanco", 5);
@@ -560,9 +575,10 @@ class ApiIntegrationTest extends AbstractIntegrationTest {
         assertThat(postL.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         Long lancId = ((Number) postL.getBody().get("id")).longValue();
         assertThat(postL.getBody().get("contaContabilNome")).isEqualTo("Conta Escritório");
-        assertThat(((Number) postL.getBody().get("clienteId")).longValue()).isEqualTo(pessoaId);
+        assertThat(((Number) postL.getBody().get("clienteId")).longValue()).isEqualTo(clientePk);
+        assertThat(((Number) postL.getBody().get("pessoaRefId")).longValue()).isEqualTo(pessoaId);
         assertThat(((Number) postL.getBody().get("processoId")).longValue()).isEqualTo(procId);
-        assertThat(postL.getBody().get("codigoCliente")).isEqualTo(String.format("%08d", pessoaId));
+        assertThat(postL.getBody().get("codigoCliente")).isEqualTo(clienteFin.get("codigoCliente"));
         assertThat(((Number) postL.getBody().get("numeroInternoProcesso")).intValue()).isEqualTo(88);
         assertThat(postL.getBody().get("dataCompetencia")).isEqualTo("2026-03-15");
 
@@ -824,6 +840,20 @@ class ApiIntegrationTest extends AbstractIntegrationTest {
                 new HttpEntity<>(loginBody),
                 new ParameterizedTypeReference<>() {});
         return (String) login.getBody().get("accessToken");
+    }
+
+    private static Long clientePkDaLista(Map<String, Object> item) {
+        if (item.get("clienteId") != null) {
+            return ((Number) item.get("clienteId")).longValue();
+        }
+        return ((Number) item.get("id")).longValue();
+    }
+
+    private static Long pessoaIdDaLista(Map<String, Object> item) {
+        if (item.get("pessoaId") != null) {
+            return ((Number) item.get("pessoaId")).longValue();
+        }
+        return ((Number) item.get("id")).longValue();
     }
 
     private long usuarioIdParaLoginItamar(String token) {

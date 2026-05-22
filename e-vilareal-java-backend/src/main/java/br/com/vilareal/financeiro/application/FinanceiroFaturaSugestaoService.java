@@ -223,10 +223,15 @@ public class FinanceiroFaturaSugestaoService {
         r.setId(e.getId());
         r.setContaContabilId(e.getContaContabil().getId());
         r.setContaContabilNome(Utf8MojibakeUtil.corrigir(e.getContaContabil().getNome()));
-        r.setClienteId(e.getCliente() != null ? e.getCliente().getId() : null);
+        if (e.getClienteEntidade() != null) {
+            r.setClienteId(e.getClienteEntidade().getId());
+        }
+        if (e.getPessoaRef() != null) {
+            r.setPessoaRefId(e.getPessoaRef().getId());
+        }
         r.setProcessoId(e.getProcesso() != null ? e.getProcesso().getId() : null);
-        if (e.getCliente() != null) {
-            r.setCodigoCliente(CodigoClienteUtil.formatar(e.getCliente().getId()));
+        if (e.getClienteEntidade() != null) {
+            r.setCodigoCliente(e.getClienteEntidade().getCodigoCliente());
         }
         if (e.getProcesso() != null && e.getProcesso().getNumeroInterno() != null) {
             r.setNumeroInternoProcesso(e.getProcesso().getNumeroInterno());
@@ -256,10 +261,15 @@ public class FinanceiroFaturaSugestaoService {
         r.setNumeroCartao(e.getCartao().getNumeroCartao());
         r.setContaContabilId(e.getContaContabil().getId());
         r.setContaContabilNome(Utf8MojibakeUtil.corrigir(e.getContaContabil().getNome()));
-        r.setClienteId(e.getCliente() != null ? e.getCliente().getId() : null);
+        if (e.getClienteEntidade() != null) {
+            r.setClienteId(e.getClienteEntidade().getId());
+        }
+        if (e.getPessoaRef() != null) {
+            r.setPessoaRefId(e.getPessoaRef().getId());
+        }
         r.setProcessoId(e.getProcesso() != null ? e.getProcesso().getId() : null);
-        if (e.getCliente() != null) {
-            r.setCodigoCliente(CodigoClienteUtil.formatar(e.getCliente().getId()));
+        if (e.getClienteEntidade() != null) {
+            r.setCodigoCliente(e.getClienteEntidade().getCodigoCliente());
         }
         if (e.getProcesso() != null && e.getProcesso().getNumeroInterno() != null) {
             r.setNumeroInternoProcesso(e.getProcesso().getNumeroInterno());

@@ -13,6 +13,10 @@ public class PagamentoDashboardResponse {
     private BigDecimal totalVencido;
     private BigDecimal totalConferenciaPendente;
     private BigDecimal totalPagoSemComprovante;
+    private BigDecimal totalConferido;
+    private BigDecimal totalAcertado;
+    private long conferenciasPendentes;
+    private long acertosPendentes;
     private Map<String, BigDecimal> porCategoria = new LinkedHashMap<>();
     private Map<String, BigDecimal> porResponsavel = new LinkedHashMap<>();
 
@@ -86,5 +90,37 @@ public class PagamentoDashboardResponse {
 
     public void setPorResponsavel(Map<String, BigDecimal> porResponsavel) {
         this.porResponsavel = porResponsavel;
+    }
+
+    public BigDecimal getTotalConferido() {
+        return totalConferido;
+    }
+
+    public void setTotalConferido(BigDecimal totalConferido) {
+        this.totalConferido = totalConferido;
+    }
+
+    public BigDecimal getTotalAcertado() {
+        return totalAcertado;
+    }
+
+    public void setTotalAcertado(BigDecimal totalAcertado) {
+        this.totalAcertado = totalAcertado;
+    }
+
+    public long getConferenciasPendentes() {
+        return conferenciasPendentes;
+    }
+
+    public void setConferenciasPendentes(long conferenciasPendentes) {
+        this.conferenciasPendentes = conferenciasPendentes;
+    }
+
+    public long getAcertosPendentes() {
+        return acertosPendentes;
+    }
+
+    public void setAcertosPendentes(long acertosPendentes) {
+        this.acertosPendentes = acertosPendentes;
     }
 }

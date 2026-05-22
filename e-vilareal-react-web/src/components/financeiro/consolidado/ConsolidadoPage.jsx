@@ -232,7 +232,7 @@ export function ConsolidadoPage() {
   }
 
   return (
-    <div className="flex flex-col min-h-full bg-slate-50 dark:bg-slate-950">
+    <div className="relative flex flex-col min-h-full bg-slate-50 dark:bg-slate-950">
       <nav
         className="flex gap-0 overflow-x-auto border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shrink-0"
         aria-label="Contas contábeis"
@@ -374,7 +374,7 @@ export function ConsolidadoPage() {
         <>
           <button
             type="button"
-            className="fixed inset-0 z-40 bg-black/20"
+            className="absolute inset-0 z-10 bg-black/20"
             aria-label="Fechar painel"
             onClick={() => setDetailItem(null)}
           />
@@ -384,6 +384,16 @@ export function ConsolidadoPage() {
             onSaved={(updated) => {
               setRows((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
               setDetailItem(updated);
+            }}
+            onDeleted={(apiId) => {
+              setRows((prev) => prev.filter((r) => Number(r.id) !== Number(apiId)));
+              setTotalElements((n) => Math.max(0, Number(n) - 1));
+              setSelectedIds((prev) => {
+                const next = new Set(prev);
+                next.delete(apiId);
+                return next;
+              });
+              setDetailItem(null);
             }}
           />
         </>

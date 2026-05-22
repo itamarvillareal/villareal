@@ -3,8 +3,13 @@ import {
   avaliarSituacaoFluxoMes,
   avaliarSituacaoRepasseMes,
   buildRelatorioFinanceiroImoveisMes,
+  chaveParCodProc,
   classificarLancamentoAdministracaoImovel,
+  construirIndiceImoveisPorCodProc,
   extrairTotaisFinanceirosMes,
+  montarLinhasRelatorioFinanceiroImoveisExtrato,
+  paresCodProcComLancamentosNoMes,
+  resolverNumeroImovelParCodProc,
 } from './imoveisAdministracaoFinanceiro.js';
 
 describe('avaliarSituacaoFluxoMes', () => {
@@ -64,6 +69,69 @@ describe('classificarLancamentoAdministracaoImovel / extrairTotaisFinanceirosMes
     const totais = extrairTotaisFinanceirosMes([t], '793', 20, '2026-02');
     expect(totais.totalRepasse).toBe(1800);
     expect(totais.dataPrimeiroRepasse).toBeTruthy();
+  });
+});
+
+describe('montarLinhasRelatorioFinanceiroImoveisExtrato', () => {
+  it('só inclui par com lançamento no mês e nº de imóvel', () => {
+    const itens = [
+      {
+        imovelId: 3,
+        imovelOcupado: true,
+        codigo: '793',
+        proc: '20',
+        unidade: 'Unidade 606 A',
+        valorLocacao: '2.100,00',
+      },
+      {
+        imovelId: 99,
+        imovelOcupado: true,
+        codigo: '100',
+        proc: '1',
+        valorLocacao: '1.000,00',
+      },
+    ];
+    const indice = construirIndiceImoveisPorCodProc(itens);
+    const par = { codigoNorm: '00000793', procNorm: '20', codigoNum: 793, procNum: 20 };
+    expect(resolverNumeroImovelParCodProc(par, indice)).toBe(3);
+
+    const linhas = montarLinhasRelatorioFinanceiroImoveisExtrato(itens, [par], '2026-05', {
+      totaisPorPar: new Map([
+        [
+          chaveParCodProc('00000793', '20'),
+          { totalAluguel: 2100, totalRepasse: 0, dataPrimeiroAluguel: '10/05/2026' },
+        ],
+      ]),
+    });
+    expect(linhas).toHaveLength(1);
+    expect(linhas[0].imovelId).toBe(3);
+    expect(linhas[0].totalAluguel).toBe(2100);
+  });
+
+  it('exclui par sem número de imóvel', () => {
+    const par = { codigoNorm: '00000500', procNorm: '1', codigoNum: 500, procNum: 1 };
+    const linhas = montarLinhasRelatorioFinanceiroImoveisExtrato(
+      [{ imovelId: 1, imovelOcupado: true, codigo: '999', proc: '9' }],
+      [par],
+      '2026-05',
+    );
+    expect(linhas).toHaveLength(0);
+  });
+});
+
+describe('paresCodProcComLancamentosNoMes', () => {
+  it('agrupa por cod.+proc. no mês', () => {
+    const pares = paresCodProcComLancamentosNoMes(
+      [
+        { data: '05/05/2026', codCliente: '00000793', proc: '20', valor: 100 },
+        { data: '10/05/2026', codCliente: '793', proc: '20', valor: -50 },
+        { data: '01/05/2026', codCliente: '100', proc: '1', valor: 10 },
+        { data: '01/04/2026', codCliente: '100', proc: '1', valor: 10 },
+      ],
+      '2026-05',
+    );
+    expect(pares).toHaveLength(2);
+    expect(pares.map((p) => p.procNorm).sort()).toEqual(['1', '20']);
   });
 });
 

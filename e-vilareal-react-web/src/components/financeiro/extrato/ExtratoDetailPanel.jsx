@@ -95,20 +95,29 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted }) {
       ) {
         try {
           const cliente = await buscarClientePorCodigo(codDigitado);
-          const pessoaId =
-            cliente?.pessoaId != null && Number.isFinite(Number(cliente.pessoaId))
-              ? Number(cliente.pessoaId)
-              : cliente?.id != null && Number.isFinite(Number(cliente.id))
+          const clientePk =
+            cliente?.clienteId != null
+              ? Number(cliente.clienteId)
+              : cliente?.id != null
                 ? Number(cliente.id)
                 : null;
-          if (pessoaId) {
+          const pessoaRefId =
+            cliente?.pessoaId != null && Number.isFinite(Number(cliente.pessoaId))
+              ? Number(cliente.pessoaId)
+              : null;
+          if (clientePk) {
             const codResolucao = normalizarCodigoClienteFinanceiro(cliente?.codigoCliente);
             const codGravado =
-              codResolucao && !codigoClienteApiPareceIdPessoa(codResolucao, pessoaId)
+              codResolucao && !codigoClienteApiPareceIdPessoa(codResolucao, pessoaRefId)
                 ? codResolucao
                 : codDigitado;
-            draftSalvar = { ...draftSalvar, clienteId: pessoaId, codCliente: codGravado };
-            registrarCodigoClienteFinanceiroPorPessoaId(pessoaId, codGravado);
+            draftSalvar = {
+              ...draftSalvar,
+              clienteId: clientePk,
+              pessoaRefId,
+              codCliente: codGravado,
+            };
+            if (pessoaRefId) registrarCodigoClienteFinanceiroPorPessoaId(pessoaRefId, codGravado);
           }
         } catch {
           /* mantém save sem clienteId se API de resolução falhar */
@@ -125,8 +134,8 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted }) {
       }
       const contaToLetra = buildContaToLetraMerge(loadPersistedContasContabeisExtrasFinanceiro());
       const merged = mergeExtratoRowComRespostaApi(draftSalvar, saved, contaToLetra);
-      if (merged.clienteId && merged.codCliente) {
-        registrarCodigoClienteFinanceiroPorPessoaId(merged.clienteId, merged.codCliente);
+      if (merged.pessoaRefId && merged.codCliente) {
+        registrarCodigoClienteFinanceiroPorPessoaId(merged.pessoaRefId, merged.codCliente);
       }
       onSaved(merged);
       setDraft(merged);
@@ -150,6 +159,7 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted }) {
     setSaving(true);
 
     let clienteId = draft.clienteId ?? null;
+    let pessoaRefId = draft.pessoaRefId ?? null;
     let processoId = draft.processoId ?? null;
 
     let codGravado = cod;
@@ -160,17 +170,21 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted }) {
       try {
         clienteResolvido = await buscarClientePorCodigo(cod);
         processoResolvido = procNorm ? await buscarProcessoPorChaveNatural(cod, procNorm) : null;
-        const pessoaId =
-          clienteResolvido?.pessoaId != null && Number.isFinite(Number(clienteResolvido.pessoaId))
-            ? Number(clienteResolvido.pessoaId)
-            : clienteResolvido?.id != null && Number.isFinite(Number(clienteResolvido.id))
+        const clientePk =
+          clienteResolvido?.clienteId != null
+            ? Number(clienteResolvido.clienteId)
+            : clienteResolvido?.id != null
               ? Number(clienteResolvido.id)
               : null;
+        pessoaRefId =
+          clienteResolvido?.pessoaId != null && Number.isFinite(Number(clienteResolvido.pessoaId))
+            ? Number(clienteResolvido.pessoaId)
+            : null;
         const codResolucao = normalizarCodigoClienteFinanceiro(clienteResolvido?.codigoCliente);
-        if (codResolucao && !codigoClienteApiPareceIdPessoa(codResolucao, pessoaId)) {
+        if (codResolucao && !codigoClienteApiPareceIdPessoa(codResolucao, pessoaRefId)) {
           codGravado = codResolucao;
         }
-        clienteId = pessoaId;
+        clienteId = clientePk;
         processoId =
           processoResolvido?.id != null && Number.isFinite(Number(processoResolvido.id))
             ? Number(processoResolvido.id)
@@ -205,13 +219,14 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted }) {
         codCliente: codGravado,
         proc: procNorm || '',
         clienteId,
+        pessoaRefId,
         processoId,
         ...(obsVinculo ? { observacao: obsVinculo, descricaoDetalhada: obsVinculo } : {}),
       },
       contas,
     );
 
-    if (clienteId) registrarCodigoClienteFinanceiroPorPessoaId(clienteId, codGravado);
+    if (pessoaRefId) registrarCodigoClienteFinanceiroPorPessoaId(pessoaRefId, codGravado);
 
     try {
       if (!featureFlags.useApiFinanceiro) {
@@ -283,7 +298,7 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted }) {
 
   return (
     <aside
-      className="absolute right-0 top-0 bottom-0 z-20 w-[360px] flex flex-col bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-700 shadow-[-4px_0_12px_rgba(0,0,0,0.05)] animate-in"
+      className="absolute right-0 top-0 bottom-0 z-30 w-[360px] flex flex-col bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-700 shadow-[-4px_0_12px_rgba(0,0,0,0.05)] animate-in pointer-events-auto"
       style={{ animation: 'extratoPanelIn 200ms ease' }}
       role="dialog"
       aria-label="Detalhes do lançamento"

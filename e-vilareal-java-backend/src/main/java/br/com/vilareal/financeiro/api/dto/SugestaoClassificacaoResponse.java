@@ -18,6 +18,7 @@ public class SugestaoClassificacaoResponse {
     private String descricaoRegra;
     private Long ocorrencias;
     private Long clienteId;
+    private Long pessoaRefId;
     private Long processoId;
     /** Pessoa do cadastro identificada na descrição (pagador), quando distinta do titular do processo. */
     private Long pagadorPessoaId;

@@ -750,11 +750,17 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
           void (async () => {
             try {
               const clienteApi = await buscarClientePorCodigo(padCliente8(codigo));
-              if (!clienteApi?.id) return;
+              const clientePk =
+                clienteApi?.clienteId != null
+                  ? Number(clienteApi.clienteId)
+                  : clienteApi?.id != null
+                    ? Number(clienteApi.id)
+                    : null;
+              if (!Number.isFinite(clientePk) || clientePk < 1) return;
               const procNum = Number(row.procNumero);
               const existente = await buscarProcessoPorChaveNatural(padCliente8(codigo), procNum);
               await salvarCabecalhoProcesso({
-                clienteId: clienteApi.id,
+                clienteId: clientePk,
                 codigoCliente: padCliente8(codigo),
                 numeroInterno: procNum,
                 numeroProcessoNovo: campo === 'processoNovo' ? valor : row.processoNovo,
