@@ -11,6 +11,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { loginImportApi, buscarProcesso, resolverClienteFromApi } from './lib/vilareal-import-processo-api.mjs';
+import {
+  garantirImovelClientePlanilha,
+  jaVinculadoProcesso,
+  vincularProcessoImovel,
+} from './lib/imovel-processo-vinculo-api.mjs';
 
 function parseArgs(argv) {
   const out = {
@@ -26,18 +31,6 @@ function parseArgs(argv) {
     else if (a.startsWith('--audit=')) out.auditJson = a.slice(8);
   }
   return out;
-}
-
-async function vincular(baseUrl, token, imovelId, processoId, observacao) {
-  const res = await fetch(`${baseUrl}/api/imoveis/${imovelId}/processos`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ processoId, observacao }),
-  });
-  const t = await res.text();
-  if (res.ok || res.status === 201) return { ok: true };
-  if (/duplicate|unique/i.test(t)) return { ok: true, idempotente: true };
-  return { ok: false, status: res.status, text: t };
 }
 
 async function main() {
@@ -66,66 +59,86 @@ async function main() {
       continue;
     }
     if (opts.dryRun) {
-      console.log(`  ${row.cod8} proc=${row.numeroInterno} → POST imovel ${row.imovelId} processo ${row.processoId}`);
+      console.log(
+        `  ${row.cod8} proc=${row.numeroInterno} → POST /api/imoveis/${row.imovelId}/processos (${row.processoId})`
+      );
       ok += 1;
       continue;
     }
-    const r = await vincular(
+    const imovel = { id: row.imovelId, clienteId: row.clienteId, processoId: row.processoIdNoBanco };
+    if (await jaVinculadoProcesso(opts.baseUrl, token, imovel, row.processoId)) {
+      ok += 1;
+      console.log(`  OK (já) ${row.cod8} proc=${row.numeroInterno}`);
+      continue;
+    }
+    const r = await vincularProcessoImovel(
       opts.baseUrl,
       token,
-      row.imovelId,
+      imovel,
       row.processoId,
-      `Backfill V67 ${row.cod8} proc ${row.numeroInterno}`
+      `Backfill V67 ${row.cod8} proc ${row.numeroInterno}`,
+      row.clienteId
     );
     if (r.ok) {
       ok += 1;
-      console.log(`  OK ${row.cod8} proc=${row.numeroInterno} imovel=${row.imovelId}`);
+      console.log(`  OK ${row.cod8} proc=${row.numeroInterno} modo=${r.modo}`);
     } else {
       fail += 1;
       console.log(`  ERRO ${row.cod8}: ${r.status} ${r.text?.slice(0, 120)}`);
     }
   }
 
-  const resIm = await fetch(`${opts.baseUrl}/api/imoveis`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  });
-  if (token && resIm.ok) {
-    const imoveis = await resIm.json();
-    const orfaos = imoveis.filter((i) => i.clienteId == null && i.processoId == null);
-    console.log('\nÓrfãos (sem cliente e processo):', orfaos.length);
-    for (const o of orfaos.slice(0, 9)) {
-      let extras = {};
-      try {
-        extras = o.camposExtrasJson ? JSON.parse(o.camposExtrasJson) : {};
-      } catch {
-        extras = {};
-      }
-      const cod = extras.codigo;
-      const proc = extras.proc ? Number.parseInt(String(extras.proc), 10) : null;
-      if (!cod || !proc) {
-        console.log(`  imovel ${o.id}: sem cod/proc nos extras — revisão manual`);
-        continue;
-      }
-      const cliente = await resolverClienteFromApi(opts.baseUrl, token, cod, clienteMap);
-      if (!cliente?.clientePk) continue;
-      const procEnt = await buscarProcesso(opts.baseUrl, token, cod, proc, clienteMap);
-      if (opts.dryRun) {
-        console.log(`  imovel ${o.id}: atribuiria cliente ${cod} proc ${proc}`);
-        continue;
-      }
-      const putRes = await fetch(`${opts.baseUrl}/api/imoveis/${o.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          clienteId: cliente.clientePk,
-          numeroPlanilha: o.numeroPlanilha,
-          situacao: o.situacao ?? 'DESOCUPADO',
-          ativo: o.ativo ?? true,
-        }),
-      });
-      if (putRes.ok && procEnt?.id) {
-        await vincular(opts.baseUrl, token, o.id, procEnt.id, `Backfill órfão V67`);
-        console.log(`  imovel ${o.id}: cliente + vínculo aplicados`);
+  if (token) {
+    const resIm = await fetch(`${opts.baseUrl}/api/imoveis`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (resIm.ok) {
+      const imoveis = await resIm.json();
+      const orfaos = imoveis.filter((i) => i.clienteId == null && i.processoId == null);
+      console.log('\nÓrfãos (sem cliente e processo):', orfaos.length);
+      for (const o of orfaos.slice(0, 9)) {
+        let extras = {};
+        try {
+          extras = o.camposExtrasJson ? JSON.parse(o.camposExtrasJson) : {};
+        } catch {
+          extras = {};
+        }
+        const cod = extras.codigo;
+        const proc = extras.proc ? Number.parseInt(String(extras.proc), 10) : null;
+        if (!cod || !proc) {
+          console.log(`  imovel ${o.id}: sem cod/proc nos extras — revisão manual`);
+          continue;
+        }
+        const cliente = await resolverClienteFromApi(opts.baseUrl, token, cod, clienteMap);
+        if (!cliente?.clientePk) continue;
+        const procEnt = await buscarProcesso(opts.baseUrl, token, cod, proc, clienteMap);
+        if (opts.dryRun) {
+          console.log(`  imovel ${o.id}: atribuiria cliente ${cod} proc ${proc}`);
+          continue;
+        }
+        const putRes = await fetch(`${opts.baseUrl}/api/imoveis/${o.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            clienteId: cliente.clientePk,
+            numeroPlanilha: o.numeroPlanilha,
+            situacao: o.situacao ?? 'DESOCUPADO',
+            ativo: o.ativo ?? true,
+          }),
+        });
+        if (!putRes.ok) continue;
+        const imAtualizado = await putRes.json();
+        if (procEnt?.id) {
+          await vincularProcessoImovel(
+            opts.baseUrl,
+            token,
+            imAtualizado,
+            procEnt.id,
+            'Backfill órfão V67',
+            cliente.clientePk
+          );
+          console.log(`  imovel ${o.id}: cliente + vínculo aplicados`);
+        }
       }
     }
   }
