@@ -29,6 +29,11 @@ import process from 'node:process';
 import XLSX from 'xlsx';
 import { parseLayout2026FromWorkbook } from './lib/import-calculo-layout2026-parse.mjs';
 import { candidatosImportCalculoXlsParaLog, resolveImportCalculoXlsPath } from './lib/resolve-import-calculo-xls.mjs';
+import {
+  garantirProcessoNaApi,
+  resolverClienteFromApi,
+  loginImportApi,
+} from './lib/vilareal-import-processo-api.mjs';
 
 const PAGE_SIZE_MAPA_PROCESSOS = 100;
 
@@ -266,80 +271,30 @@ async function obterMapaProcessoId(token, baseUrl, codigoCliente8) {
   return map;
 }
 
-async function resolverPessoaIdCliente(token, baseUrl, cod8, cache) {
-  if (cache.has(cod8)) return cache.get(cod8);
-  const url = `${baseUrl}/api/clientes/resolucao?codigoCliente=${encodeURIComponent(cod8)}`;
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-  });
-  if (!res.ok) return null;
-  const j = await res.json();
-  const pid = Number(j.pessoaId ?? j.id);
-  if (!Number.isFinite(pid) || pid < 1) return null;
-  cache.set(cod8, pid);
-  return pid;
-}
-
-async function criarProcessoCabecalhoMinimo(token, baseUrl, pessoaId, numeroInterno) {
-  const body = {
-    clienteId: pessoaId,
-    numeroInterno,
-    ativo: true,
-    consultaAutomatica: false,
-    descricaoAcao: 'Processo criado automaticamente na importação import-calculos-planilha-layout2026.',
-  };
-  const res = await fetch(`${baseUrl}/api/processos`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-    },
-    body: JSON.stringify(body),
-  });
-  const txt = await res.text();
-  if (res.status === 201 || res.status === 200) {
-    try {
-      const j = JSON.parse(txt);
-      const id = Number(j.id);
-      return { ok: true, id: Number.isFinite(id) ? id : undefined };
-    } catch {
-      return { ok: false, status: res.status, text: txt.slice(0, 300) };
-    }
-  }
-  if (res.status === 422 && /j[aá]\s*existe/i.test(txt)) {
-    return { ok: false, duplicate: true, text: txt };
-  }
-  return { ok: false, status: res.status, text: txt.slice(0, 300) };
-}
-
 /**
  * @returns {Promise<number | null>}
  */
-async function garantirProcessoId(token, baseUrl, cod8, numeroInterno, pessoaPorCod8, criarStub, stats) {
+async function garantirProcessoId(token, baseUrl, cod8, numeroInterno, clientePorCod8, criarStub, stats) {
   let map = await obterMapaProcessoId(token, baseUrl, cod8);
   let procId = map.get(numeroInterno);
   if (procId != null) return procId;
   if (!criarStub) return null;
 
-  const pessoaId = await resolverPessoaIdCliente(token, baseUrl, cod8, pessoaPorCod8);
-  if (!pessoaId) {
-    console.warn(`[layout2026] cod=${cod8} proc=${numeroInterno}: cliente não resolvido em /api/clientes/resolucao — não criamos processo.`);
-    return null;
+  const garantido = await garantirProcessoNaApi(baseUrl, token, cod8, numeroInterno, clientePorCod8);
+  if (garantido.ok && garantido.processo?.id != null) {
+    procId = Number(garantido.processo.id);
+    if (garantido.criado) stats.processosCriados++;
+    map.set(numeroInterno, procId);
+    return procId;
   }
-
-  const criado = await criarProcessoCabecalhoMinimo(token, baseUrl, pessoaId, numeroInterno);
-  if (criado.ok && criado.id != null) {
-    stats.processosCriados++;
-    map.set(numeroInterno, criado.id);
-    return criado.id;
-  }
-  if (criado.duplicate) {
+  if (!garantido.ok && /duplicate|j[aá]\s*existe/i.test(garantido.erro ?? '')) {
     cachesMapaPorCliente.delete(cod8);
     map = await obterMapaProcessoId(token, baseUrl, cod8);
     return map.get(numeroInterno) ?? null;
   }
-  console.warn(`[layout2026] falha criar processo cod=${cod8} ni=${numeroInterno}: ${criado.status ?? '?'} ${(criado.text || '').slice(0, 200)}`);
+  console.warn(
+    `[layout2026] falha criar processo cod=${cod8} ni=${numeroInterno}: ${garantido.erro ?? 'erro'}`
+  );
   return null;
 }
 
@@ -419,7 +374,7 @@ async function mainAsync(opts, trabalhos) {
 
   const token = await login(opts);
   /** @type {Map<string, number>} */
-  const pessoaPorCod8 = new Map();
+  const clientePorCod8 = new Map();
   const stats = {
     rodadasOk: 0,
     rodadasFalha: 0,
@@ -437,7 +392,7 @@ async function mainAsync(opts, trabalhos) {
         opts.baseUrl,
         cod8,
         numeroProcesso,
-        pessoaPorCod8,
+        clientePorCod8,
         opts.criarProcessos,
         stats
       );
@@ -458,11 +413,12 @@ async function mainAsync(opts, trabalhos) {
 
       if (opts.skipPagamentos || !parcEntry?.parcelas?.length) return;
 
-      const pessoaId = await resolverPessoaIdCliente(token, opts.baseUrl, cod8, pessoaPorCod8);
-      if (!pessoaId) {
-        console.warn(`[layout2026] POST pagamentos omitidos — sem pessoaId para cod=${cod8}`);
+      const clienteCtx = await resolverClienteFromApi(opts.baseUrl, token, cod8, clientePorCod8);
+      if (!clienteCtx?.clientePk) {
+        console.warn(`[layout2026] POST pagamentos omitidos — sem cliente PK para cod=${cod8}`);
         return;
       }
+      const clientePk = clienteCtx.clientePk;
       if (processoId == null) {
         console.warn(
           `[layout2026] POST pagamentos omitidos para ${cod8}|${numeroProcesso}|${dimensao} — sem processoId (use --sem-criar-processos só se já existir processo na API).`
@@ -491,7 +447,7 @@ async function mainAsync(opts, trabalhos) {
         const body = {
           dataVencimento: dataVenc,
           valor: Number(valor),
-          clienteId: pessoaId,
+          clienteId: clientePk,
           processoId,
           dataPagamentoEfetivo: dataPgto,
           status: 'PAGO_SEM_COMPROVANTE',

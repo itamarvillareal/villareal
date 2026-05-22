@@ -36,7 +36,7 @@ public class PagamentoEntity {
     @Column(name = "codigo_barras", length = 180)
     private String codigoBarras;
 
-    @Column(nullable = false, precision = 19, scale = 2)
+    @Column(precision = 19, scale = 2)
     private BigDecimal valor;
 
     @Column(nullable = false, length = 500)

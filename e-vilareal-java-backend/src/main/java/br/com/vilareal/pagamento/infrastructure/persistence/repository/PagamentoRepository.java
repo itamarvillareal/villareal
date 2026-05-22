@@ -1,6 +1,8 @@
 package br.com.vilareal.pagamento.infrastructure.persistence.repository;
 
 import br.com.vilareal.pagamento.infrastructure.persistence.entity.PagamentoEntity;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
@@ -9,6 +11,7 @@ import org.springframework.data.repository.query.Param;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 
 public interface PagamentoRepository extends JpaRepository<PagamentoEntity, Long>, JpaSpecificationExecutor<PagamentoEntity> {
 
@@ -51,4 +54,9 @@ public interface PagamentoRepository extends JpaRepository<PagamentoEntity, Long
             @Param("clienteId") Long clienteId,
             @Param("periodoInicio") LocalDate periodoInicio,
             @Param("periodoFim") LocalDate periodoFim);
+
+    Optional<PagamentoEntity> findFirstByRecorrenciaConfig_IdAndMesReferencia(Long recorrenciaConfigId, String mesReferencia);
+
+    Page<PagamentoEntity> findByRecorrenciaConfig_IdOrderByMesReferenciaDescIdDesc(
+            Long recorrenciaConfigId, Pageable pageable);
 }

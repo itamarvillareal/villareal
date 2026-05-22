@@ -48,6 +48,10 @@ export const LazyRelatorioFinanceiroImoveis = fromNamed(
   () => import('../components/RelatorioFinanceiroImoveis.jsx'),
   'RelatorioFinanceiroImoveis'
 );
+export const LazyRelatorioPagamentos = fromNamed(
+  () => import('../components/RelatorioPagamentos.jsx'),
+  'RelatorioPagamentos'
+);
 export const LazyRelatorioImoveis = fromNamed(() => import('../components/RelatorioImoveis.jsx'), 'RelatorioImoveis');
 export const LazyRelatorio = fromNamed(() => import('../components/Relatorio.jsx'), 'Relatorio');
 export const LazyRelatorioResultadoProcessos = fromNamed(

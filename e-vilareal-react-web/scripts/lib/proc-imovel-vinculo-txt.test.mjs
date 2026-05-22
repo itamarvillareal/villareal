@@ -1,7 +1,11 @@
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   parseNomeArquivoImovelVinculo0891,
   parseNumeroPlanilhaImovelTxt,
+  resolverBaseProc,
+  validarRaizProc,
+  PASTA_PROC,
 } from './proc-imovel-vinculo-txt.mjs';
 
 describe('parseNomeArquivoImovelVinculo0891', () => {
@@ -19,6 +23,22 @@ describe('parseNomeArquivoImovelVinculo0891', () => {
     expect(parseNomeArquivoImovelVinculo0891('00000149.21.1.127.txt')).toBeNull();
     expect(parseNomeArquivoImovelVinculo0891('00003247.87.1.01.txt')).toBeNull();
     expect(parseNomeArquivoImovelVinculo0891('00000149.0.89.1.127.0001.txt')).toBeNull();
+  });
+});
+
+describe('validarRaizProc', () => {
+  it('normaliza raiz Banco de Dados para subpasta Proc', () => {
+    const banco = '/tmp/Banco de Dados';
+    expect(validarRaizProc(banco)).toBe(path.join(banco, PASTA_PROC));
+  });
+
+  it('aceita caminho que já termina em Proc', () => {
+    const proc = '/tmp/Banco de Dados/Proc';
+    expect(validarRaizProc(proc)).toBe(proc);
+  });
+
+  it('resolverBaseProc sem argumento termina em Proc', () => {
+    expect(resolverBaseProc().endsWith(`${path.sep}Proc`)).toBe(true);
   });
 });
 

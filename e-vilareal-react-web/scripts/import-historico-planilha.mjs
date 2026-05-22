@@ -43,6 +43,7 @@ import process from 'node:process';
 import XLSX from 'xlsx';
 
 import { normalizarTextoPlanilha } from './lib/normalizar-texto-planilha.mjs';
+import { garantirProcessoNaApi } from './lib/vilareal-import-processo-api.mjs';
 
 const DEFAULT_FILE = String.raw`C:\Users\jrvill\Dropbox\sistema\historico_import.xls`;
 const SHEET_FALLBACK_PRIMARIO = 'Planilha2';
@@ -576,83 +577,6 @@ async function login(opts) {
   return token;
 }
 
-/** @returns {Promise<Map<string, number>>} codigoCliente8 → pessoaId (titular) */
-async function carregarPessoaIdPorCodigoCliente(token, baseUrl) {
-  const url = `${baseUrl.replace(/\/$/, '')}/api/clientes`;
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-  });
-  if (!res.ok) {
-    const t = await res.text();
-    throw new Error(`GET /api/clientes falhou ${res.status}: ${t.slice(0, 400)}`);
-  }
-  const list = await res.json();
-  /** @type {Map<string, number>} */
-  const m = new Map();
-  if (!Array.isArray(list)) return m;
-  for (const c of list) {
-    const cod = normalizarCodigoCliente8(c.codigoCliente);
-    const pid = Number(c.pessoaId ?? c.id);
-    if (cod && Number.isFinite(pid) && pid > 0) m.set(cod, pid);
-  }
-  return m;
-}
-
-/**
- * Resolve pessoaId para código cliente (cache GET lista + fallback /resolucao).
- * @param {Map<string, number>} cache
- */
-async function resolverPessoaIdCliente(token, baseUrl, cod8, cache) {
-  if (cache.has(cod8)) return cache.get(cod8);
-  const url = `${baseUrl.replace(/\/$/, '')}/api/clientes/resolucao?codigoCliente=${encodeURIComponent(cod8)}`;
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-  });
-  if (!res.ok) return null;
-  const j = await res.json();
-  const pid = Number(j.pessoaId ?? j.id);
-  if (!Number.isFinite(pid) || pid < 1) return null;
-  cache.set(cod8, pid);
-  return pid;
-}
-
-/**
- * Cria processo mínimo (FK válida para andamentos). 422 + «já existe» → duplicate.
- * @returns {Promise<{ ok: boolean, id?: number, duplicate?: boolean, status?: number, text?: string }>}
- */
-async function criarProcessoCabecalhoMinimo(token, baseUrl, pessoaId, numeroInterno) {
-  const body = {
-    clienteId: pessoaId,
-    numeroInterno,
-    ativo: true,
-    consultaAutomatica: false,
-    descricaoAcao: 'Processo criado automaticamente na importação de histórico (cabecalho ausente na API).',
-  };
-  const res = await fetch(`${baseUrl.replace(/\/$/, '')}/api/processos`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-    },
-    body: JSON.stringify(body),
-  });
-  const txt = await res.text();
-  if (res.status === 201 || res.status === 200) {
-    try {
-      const j = JSON.parse(txt);
-      const id = Number(j.id);
-      return { ok: true, id: Number.isFinite(id) ? id : undefined };
-    } catch {
-      return { ok: false, status: res.status, text: txt.slice(0, 300) };
-    }
-  }
-  if (res.status === 422 && /j[aá]\s*existe/i.test(txt)) {
-    return { ok: false, duplicate: true, text: txt };
-  }
-  return { ok: false, status: res.status, text: txt.slice(0, 300) };
-}
-
 /**
  * @param {Map<number, number>} mapa
  * @returns {Promise<{ procId: number | null, mapa: Map<number, number> }>}
@@ -663,7 +587,7 @@ async function tentarStubProcessoSeNecessario(
   cod8,
   L,
   mapa,
-  pessoaPorCod8,
+  clientePorCod8,
   stats,
   opts
 ) {
@@ -672,18 +596,20 @@ async function tentarStubProcessoSeNecessario(
   if (procId != null) return { procId, mapa: m };
   if (!opts.criarProcessosOrfaos) return { procId: null, mapa: m };
 
-  const pessoaId =
-    pessoaPorCod8.get(cod8) ?? (await resolverPessoaIdCliente(token, baseUrl, cod8, pessoaPorCod8));
-  if (!pessoaId) return { procId: null, mapa: m };
-
-  const criado = await criarProcessoCabecalhoMinimo(token, baseUrl, pessoaId, L.numeroInterno);
-  if (criado.ok && criado.id != null) {
-    procId = criado.id;
+  const garantido = await garantirProcessoNaApi(
+    baseUrl,
+    token,
+    cod8,
+    L.numeroInterno,
+    clientePorCod8
+  );
+  if (garantido.ok && garantido.processo?.id != null) {
+    procId = Number(garantido.processo.id);
     m.set(L.numeroInterno, procId);
-    stats.processosStubCriados += 1;
+    if (garantido.criado) stats.processosStubCriados += 1;
     return { procId, mapa: m };
   }
-  if (criado.duplicate) {
+  if (!garantido.ok && /j[aá]\s*existe|duplicate/i.test(garantido.erro ?? '')) {
     cachesMapaPorCliente.delete(cod8);
     m = await obterMapaProcessoId(token, baseUrl, cod8);
     procId = m.get(L.numeroInterno) ?? null;
@@ -1086,12 +1012,11 @@ async function main() {
   }
 
   /** @type {Map<string, number>} */
-  let pessoaPorCod8 = new Map();
+  const clientePorCod8 = new Map();
   if (opts.criarProcessosOrfaos) {
     try {
-      pessoaPorCod8 = await carregarPessoaIdPorCodigoCliente(token, opts.baseUrl);
       console.log(
-        `[import] mapa inicial GET /api/clientes → ${pessoaPorCod8.size} códigos com pessoaId (criação de processos em falta: ligada)`
+        '[import] criação de processos em falta: ligada (resolução via GET /api/clientes/resolucao por código)'
       );
     } catch (e) {
       console.error(e);
@@ -1175,7 +1100,7 @@ async function main() {
           cod8,
           L,
           mapa,
-          pessoaPorCod8,
+          clientePorCod8,
           stats,
           opts
         );
@@ -1212,7 +1137,7 @@ async function main() {
             cod8,
             L,
             mapa,
-            pessoaPorCod8,
+            clientePorCod8,
             stats,
             opts
           );

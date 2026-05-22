@@ -125,8 +125,17 @@ export async function resolverClienteFromApi(baseUrl, token, cod8, cache) {
 }
 
 /**
- * @param {Map<string, number>} cache legado: cod8 → pessoaId
- * @deprecated use {@link resolverClienteFromApi}
+ * PK `cliente` para código 8 dígitos.
+ * @param {Map<string, { clientePk: number, pessoaId: number }>} cache
+ */
+export async function resolverClientePk(baseUrl, token, cod8, cache) {
+  const entry = await resolverClienteFromApi(baseUrl, token, cod8, cache);
+  return entry?.clientePk ?? null;
+}
+
+/**
+ * @param {Map<string, number | { clientePk: number, pessoaId: number }>} cache
+ * @deprecated use {@link resolverClientePk} ou {@link resolverClienteFromApi}
  */
 export async function resolverPessoaIdCliente(baseUrl, token, cod8, cache) {
   const existing = cache.get(cod8);
@@ -134,6 +143,54 @@ export async function resolverPessoaIdCliente(baseUrl, token, cod8, cache) {
   if (existing?.pessoaId) return existing.pessoaId;
   const entry = await resolverClienteFromApi(baseUrl, token, cod8, cache);
   return entry?.pessoaId ?? null;
+}
+
+/**
+ * POST processo inativo (txt Status.Processo INATIVO).
+ * @param {Map<string, { clientePk: number, pessoaId: number }>} [clientePorCod8]
+ */
+export async function criarProcessoInativoMinimo(
+  baseUrl,
+  token,
+  cod8,
+  numeroInterno,
+  clientePorCod8 = new Map()
+) {
+  const resolved = await resolverClienteFromApi(baseUrl, token, cod8, clientePorCod8);
+  if (!resolved) {
+    return { ok: false, status: 0, text: 'cliente não resolvido na API' };
+  }
+  const body = {
+    clienteId: resolved.clientePk,
+    numeroInterno: Math.trunc(Number(numeroInterno)),
+    ativo: false,
+    consultaAutomatica: false,
+    observacaoFase: null,
+    descricaoAcao: 'Processo criado a partir de Status.Processo INATIVO (legado Dropbox).',
+  };
+  const res = await fetch(`${baseUrl.replace(/\/$/, '')}/api/processos`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+  const txt = await res.text();
+  if (res.status === 201 || res.status === 200) {
+    try {
+      const j = JSON.parse(txt);
+      const id = Number(j.id);
+      return { ok: true, id: Number.isFinite(id) ? id : undefined };
+    } catch {
+      return { ok: false, status: res.status, text: txt.slice(0, 300) };
+    }
+  }
+  if (res.status === 422 && /j[aá]\s*existe/i.test(txt)) {
+    return { ok: false, duplicate: true, text: txt };
+  }
+  return { ok: false, status: res.status, text: txt.slice(0, 300) };
 }
 
 /**

@@ -45,6 +45,7 @@ import {
   LazyRelatorioResultadoProcessos,
   LazyRelatorioCalculos,
   LazyRelatorioFinanceiroImoveis,
+  LazyRelatorioPagamentos,
   LazyRelatorioImoveis,
   LazyRelatorioPessoas,
   LazyTopicos,
@@ -350,6 +351,7 @@ function App() {
               <Route path="/imoveis/acerto-cliente" element={<LazyAcertoCliente />} />
               <Route path="/imoveis/sugestoes-vinculo" element={<LazyImoveisSugestoesVinculoGeral />} />
               <Route path="/imoveis/relatorio-financeiro" element={<LazyRelatorioFinanceiroImoveis />} />
+              <Route path="/imoveis/relatorio-pagamentos" element={<LazyRelatorioPagamentos />} />
               <Route path="/relatorio-imoveis" element={<LazyRelatorioImoveis />} />
               <Route path="/relatorio" element={<LazyRelatorio />} />
               <Route path="/relatorio-resultado-processos" element={<LazyRelatorioResultadoProcessos />} />

@@ -69,6 +69,8 @@ public interface ProcessoRepository extends JpaRepository<ProcessoEntity, Long> 
 
     Optional<ProcessoEntity> findByCliente_IdAndNumeroInterno(Long clienteId, Integer numeroInterno);
 
+    List<ProcessoEntity> findAllByCliente_IdAndNumeroInternoOrderByIdDesc(Long clienteId, Integer numeroInterno);
+
     Page<ProcessoEntity> findByCliente_Id(Long clienteId, Pageable pageable);
 
     /** Todos os processos com esse nº interno (há um por cliente titular). */

@@ -34,6 +34,7 @@ import process from 'node:process';
 import XLSX from 'xlsx';
 
 import { normalizarTextoPlanilha } from './lib/normalizar-texto-planilha.mjs';
+import { clientePkFromApiDto } from './lib/vilareal-import-processo-api.mjs';
 
 const LIM_CIDADE = 120;
 
@@ -319,7 +320,7 @@ function processoResponseParaWriteRequest(r, patch) {
   const ativo = r.ativo !== false;
 
   return {
-    clienteId: r.clienteId,
+    clienteId: clientePkFromApiDto(r) ?? r.clienteId,
     numeroInterno: r.numeroInterno,
     unidade: r.unidade ?? null,
     pasta: r.pasta ?? null,

@@ -12,6 +12,7 @@ import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.ClienteRepository;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
 import br.com.vilareal.processo.application.CodigoClienteUtil;
+import br.com.vilareal.processo.application.ProcessoCanonicalLookup;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -267,8 +268,11 @@ public class ImovelApplicationService {
                 .findByCodigoCliente(codNorm)
                 .orElseThrow(() -> new ResourceNotFoundException("Cliente não encontrado para código: " + codNorm));
         Long pessoaId = cliente.getPessoa().getId();
-        ProcessoEntity processo = processoRepository
-                .findByPessoa_IdAndNumeroInterno(pessoaId, numeroInternoProcesso)
+        ProcessoEntity processo = ProcessoCanonicalLookup.escolher(
+                        processoRepository.findAllByCliente_IdAndNumeroInternoOrderByIdDesc(
+                                cliente.getId(), numeroInternoProcesso),
+                        pessoaId)
+                .or(() -> processoRepository.findByPessoa_IdAndNumeroInterno(pessoaId, numeroInternoProcesso))
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Processo não encontrado para cliente " + codNorm + " e proc " + numeroInternoProcesso));
         ImovelEntity imovel = imovelRepository

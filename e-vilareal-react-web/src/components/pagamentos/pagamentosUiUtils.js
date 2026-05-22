@@ -115,6 +115,34 @@ const CORES_CATEGORIA = {
   OUTROS: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200',
 };
 
+export const CORES_CATEGORIA_CHART = {
+  CONDOMINIO: '#8b5cf6',
+  ALUGUEL: '#6366f1',
+  TRIBUTO: '#f59e0b',
+  IMPOSTO: '#d97706',
+  ENERGIA: '#eab308',
+  AGUA: '#06b6d4',
+  AGUA_ESGOTO: '#06b6d4',
+  GAS: '#f97316',
+  INTERNET: '#0ea5e9',
+  ACORDO: '#a855f7',
+  PARCELAMENTO: '#ec4899',
+  CLIENTE: '#64748b',
+  FORNECEDOR: '#78716c',
+  PROCESSO_JUDICIAL: '#475569',
+  FUNCIONARIO: '#94a3b8',
+  SISTEMA_SOFTWARE: '#3b82f6',
+  ESCRITORIO: '#57534e',
+  VEICULO: '#71717a',
+  OBRA_REFORMA: '#ca8a04',
+  OUTROS: '#94a3b8',
+};
+
+export function corCategoriaChart(categoria) {
+  const c = String(categoria || '').toUpperCase();
+  return CORES_CATEGORIA_CHART[c] || '#94a3b8';
+}
+
 export function badgeCategoriaClass(categoria) {
   const c = String(categoria || '').toUpperCase();
   return `inline-flex rounded px-1.5 py-0.5 text-[10px] font-semibold ${

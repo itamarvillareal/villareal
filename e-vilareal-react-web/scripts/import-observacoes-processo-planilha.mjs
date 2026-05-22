@@ -18,6 +18,7 @@ import process from 'node:process';
 import XLSX from 'xlsx';
 
 import { normalizarTextoPlanilha } from './lib/normalizar-texto-planilha.mjs';
+import { clientePkFromApiDto } from './lib/vilareal-import-processo-api.mjs';
 
 const COL_CLIENTE = 3; // D
 const COL_OBS = 4; // E
@@ -141,7 +142,7 @@ async function buscarProcesso(token, baseUrl, codigoCliente8, numeroInterno) {
 /** @param {Record<string, unknown>} r @param {string} observacao */
 function processoParaPut(r, observacao) {
   return {
-    clienteId: r.clienteId,
+    clienteId: clientePkFromApiDto(r) ?? r.clienteId,
     numeroInterno: r.numeroInterno,
     unidade: r.unidade ?? null,
     pasta: r.pasta ?? null,
