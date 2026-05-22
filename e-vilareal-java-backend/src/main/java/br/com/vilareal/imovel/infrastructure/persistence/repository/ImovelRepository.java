@@ -14,6 +14,8 @@ public interface ImovelRepository extends JpaRepository<ImovelEntity, Long> {
 
     Optional<ImovelEntity> findByNumeroPlanilha(Integer numeroPlanilha);
 
+    Optional<ImovelEntity> findByCliente_IdAndNumeroPlanilha(Long clienteId, Integer numeroPlanilha);
+
     Optional<ImovelEntity> findFirstByProcesso_IdOrderByIdAsc(Long processoId);
 
     /**
