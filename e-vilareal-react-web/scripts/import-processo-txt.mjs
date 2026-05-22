@@ -42,6 +42,12 @@ import {
   loginImportApi,
   resolverClienteFromApi,
 } from './lib/vilareal-import-processo-api.mjs';
+import {
+  buscarImovelPorClientePlanilha,
+  garantirImovelClientePlanilha,
+  jaVinculadoProcesso,
+  vincularProcessoImovel,
+} from './lib/imovel-processo-vinculo-api.mjs';
 import { atualizarProcessoApi } from './lib/import-processo-put-body.mjs';
 import {
   construirMapaUsuarioPorNomeResponsavel,
@@ -327,74 +333,48 @@ async function importarImovelTxt(opts, token, proc, dados) {
   if (!cliente?.clientePk) throw new Error('Cliente não encontrado na API');
   const clientePk = cliente.clientePk;
 
-  const resImoveis = await fetch(`${opts.baseUrl}/api/imoveis`, {
-    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-  });
-  if (!resImoveis.ok) throw new Error(`GET imoveis: ${resImoveis.status}`);
-  const todos = await resImoveis.json();
-  let imovel = todos.find(
-    (i) =>
-      Number(i.clienteId) === Number(clientePk) &&
-      Number(i.numeroPlanilha) === Number(reg.numeroPlanilha)
+  let imovel = await buscarImovelPorClientePlanilha(
+    opts.baseUrl,
+    token,
+    clientePk,
+    reg.numeroPlanilha
   );
 
-  if (imovel?.id) {
-    const resVinc = await fetch(`${opts.baseUrl}/api/imoveis/${imovel.id}/processos`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        processoId: proc.id,
-        observacao: `Vínculo Proc/0.89.1 (import-processo-txt).`,
-      }),
-    });
-    if (resVinc.ok || resVinc.status === 201) {
-      return { acao: 'vinculado', imovelId: imovel.id };
-    }
-    const t = await resVinc.text();
-    if (/duplicate|unique|já vinculado|ja vinculado/i.test(t)) {
-      return { acao: 'ja_vinculado', imovelId: imovel.id };
-    }
-    throw new Error(`POST imovel/processos: ${resVinc.status} ${t.slice(0, 200)}`);
+  if (imovel?.id && (await jaVinculadoProcesso(opts.baseUrl, token, imovel, proc.id))) {
+    return { acao: 'ja_vinculado', imovelId: imovel.id };
   }
 
-  const resPost = await fetch(`${opts.baseUrl}/api/imoveis`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({
-      clienteId: clientePk,
-      numeroPlanilha: reg.numeroPlanilha,
-      situacao: 'DESOCUPADO',
-      ativo: true,
-      observacoes: `Vínculo Proc/0.89.1 (import-processo-txt).`,
-    }),
-  });
-  if (!resPost.ok) {
-    const t = await resPost.text();
-    throw new Error(`POST imovel: ${resPost.status} ${t.slice(0, 200)}`);
+  let criado = false;
+  if (!imovel) {
+    const garantido = await garantirImovelClientePlanilha(
+      opts.baseUrl,
+      token,
+      clientePk,
+      reg.numeroPlanilha,
+      { observacoes: 'Vínculo Proc/0.89.1 (import-processo-txt).' }
+    );
+    imovel = garantido.imovel;
+    criado = garantido.criado;
   }
-  const criado = await resPost.json();
-  const resVinc = await fetch(`${opts.baseUrl}/api/imoveis/${criado.id}/processos`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({
-      processoId: proc.id,
-      observacao: `Vínculo Proc/0.89.1 (import-processo-txt).`,
-    }),
-  });
-  if (!resVinc.ok && resVinc.status !== 201) {
-    const t = await resVinc.text();
-    throw new Error(`POST imovel/processos: ${resVinc.status} ${t.slice(0, 200)}`);
+
+  const vinc = await vincularProcessoImovel(
+    opts.baseUrl,
+    token,
+    imovel,
+    proc.id,
+    'Vínculo Proc/0.89.1 (import-processo-txt).',
+    clientePk
+  );
+  if (!vinc.ok) {
+    throw new Error(
+      `Vínculo imóvel-processo: ${vinc.status} ${vinc.text?.slice(0, 200)}${vinc.hint ? ` — ${vinc.hint}` : ''}`
+    );
   }
-  return { acao: 'criado', imovelId: criado.id };
+  return {
+    acao: vinc.idempotente ? 'ja_vinculado' : criado ? 'criado' : 'vinculado',
+    imovelId: imovel.id,
+    modo: vinc.modo,
+  };
 }
 
 async function main() {

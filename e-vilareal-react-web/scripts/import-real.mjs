@@ -7,7 +7,7 @@
  *   - Cabeçalho do processo (Proc/Gerais, semânticos, fase, prazo)
  *   - Status ativo/inativo (`Gerais/…/Status.Processo<proc>.Processos.txt` — INATIVO → inativo; resto → ativo)
  *   - Histórico HC (`import-historico-local-txt.mjs`, em massa por cliente)
- *   - Vínculo imóvel `0.89.1` (por processo)
+ *   - Vínculo imóvel `0.89.1` (por processo, via import-processo-txt: garantir imóvel por cliente+planilha + POST /api/imoveis/{id}/processos)
  *   - Partes do processo (`Proc/…/90` e `95` por proc) — `import-processo-partes-txt.mjs` (por defeito; `--sem-partes` omite)
  *   - Cálculos / débitos (`Calculos/…` → API rodadas) — `import-calculos-txt.mjs` (por defeito; `--sem-calculos` omite)
  *   - Processos em falta na API são criados automaticamente (stub) antes da importação
