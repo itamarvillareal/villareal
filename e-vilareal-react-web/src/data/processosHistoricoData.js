@@ -503,6 +503,29 @@ export function listarRegistrosProcessosHistoricoNormalizados() {
   return out;
 }
 
+function numeroImovelProcessoValido(valor) {
+  const n = Math.trunc(Number(String(valor ?? '').replace(/\D/g, '')));
+  return Number.isFinite(n) && n >= 1 ? n : null;
+}
+
+/**
+ * Pares (cod. cliente + proc.) com campo Imóvel = nº da planilha no formulário Processos (histórico local).
+ * @param {number|string} numeroPlanilha
+ */
+export function listarParesCodProcPorNumeroImovelProcessos(numeroPlanilha) {
+  const np = numeroImovelProcessoValido(numeroPlanilha);
+  if (!np) return [];
+  const out = [];
+  for (const reg of listarRegistrosProcessosHistoricoNormalizados()) {
+    if (numeroImovelProcessoValido(reg.imovelId) !== np) continue;
+    const cod = String(reg.codCliente ?? '').replace(/\D/g, '');
+    const proc = Math.trunc(Number(String(reg.proc ?? '').replace(/\D/g, '')));
+    if (!cod || !Number.isFinite(proc) || proc < 1) continue;
+    out.push({ codigoCliente: cod.padStart(8, '0'), numeroInterno: proc });
+  }
+  return out;
+}
+
 /**
  * Mesma informação que "Natureza da Ação" (Processos) e "Descrição da Ação" (Cadastro de Clientes).
  * Prioriza `naturezaAcao` persistida em `vilareal:processos-historico:v1`; senão usa o texto de fallback (ex.: mock/lista do cadastro).

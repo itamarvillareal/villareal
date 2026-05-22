@@ -11,6 +11,7 @@ public class ImovelVinculoProcessoItemResponse {
     private Long imovelId;
     private Integer numeroPlanilhaImovel;
     private boolean cadastroAtual;
+    private boolean principal;
 
     public String getCodigoCliente() {
         return codigoCliente;
@@ -58,5 +59,13 @@ public class ImovelVinculoProcessoItemResponse {
 
     public void setCadastroAtual(boolean cadastroAtual) {
         this.cadastroAtual = cadastroAtual;
+    }
+
+    public boolean isPrincipal() {
+        return principal;
+    }
+
+    public void setPrincipal(boolean principal) {
+        this.principal = principal;
     }
 }

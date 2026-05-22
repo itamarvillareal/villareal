@@ -9,8 +9,7 @@ import br.com.vilareal.financeiro.infrastructure.persistence.entity.ContaContabi
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.RegraClassificacaoEntity;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.ContaContabilRepository;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.RegraClassificacaoRepository;
-import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
-import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
+import br.com.vilareal.pessoa.application.ClienteResolverService;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
 import org.springframework.stereotype.Service;
@@ -26,18 +25,18 @@ public class RegraClassificacaoApplicationService {
 
     private final RegraClassificacaoRepository regraRepository;
     private final ContaContabilRepository contaContabilRepository;
-    private final PessoaRepository pessoaRepository;
     private final ProcessoRepository processoRepository;
+    private final ClienteResolverService clienteResolverService;
 
     public RegraClassificacaoApplicationService(
             RegraClassificacaoRepository regraRepository,
             ContaContabilRepository contaContabilRepository,
-            PessoaRepository pessoaRepository,
-            ProcessoRepository processoRepository) {
+            ProcessoRepository processoRepository,
+            ClienteResolverService clienteResolverService) {
         this.regraRepository = regraRepository;
         this.contaContabilRepository = contaContabilRepository;
-        this.pessoaRepository = pessoaRepository;
         this.processoRepository = processoRepository;
+        this.clienteResolverService = clienteResolverService;
     }
 
     @Transactional(readOnly = true)
@@ -97,23 +96,15 @@ public class RegraClassificacaoApplicationService {
         e.setConfianca(req.getConfianca() != null ? req.getConfianca() : new BigDecimal("0.8000"));
         e.setAtivo(req.getAtivo());
 
-        PessoaEntity cliente = null;
-        if (req.getClienteId() != null) {
-            cliente = pessoaRepository.findById(req.getClienteId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Cliente não encontrado: " + req.getClienteId()));
-        }
         ProcessoEntity processo = null;
         if (req.getProcessoId() != null) {
             processo = processoRepository.findById(req.getProcessoId())
                     .orElseThrow(() -> new ResourceNotFoundException("Processo não encontrado: " + req.getProcessoId()));
-            if (cliente != null && !processo.getPessoa().getId().equals(cliente.getId())) {
-                throw new BusinessRuleException("O processo informado não pertence ao cliente indicado.");
-            }
-            if (cliente == null) {
-                cliente = processo.getPessoa();
-            }
         }
-        e.setCliente(cliente);
+        ClienteResolverService.VinculoClientePessoa vinculo =
+                clienteResolverService.resolverVinculoOpcional(req.getClienteId(), processo);
+        e.setPessoaRef(vinculo.pessoaRef());
+        e.setClienteEntidade(vinculo.clienteEntidade());
         e.setProcesso(processo);
     }
 
@@ -131,7 +122,12 @@ public class RegraClassificacaoApplicationService {
         r.setPrioridade(e.getPrioridade());
         r.setConfianca(e.getConfianca());
         r.setAtivo(e.getAtivo());
-        r.setClienteId(e.getCliente() != null ? e.getCliente().getId() : null);
+        if (e.getClienteEntidade() != null) {
+            r.setClienteId(e.getClienteEntidade().getId());
+        }
+        if (e.getPessoaRef() != null) {
+            r.setPessoaRefId(e.getPessoaRef().getId());
+        }
         r.setProcessoId(e.getProcesso() != null ? e.getProcesso().getId() : null);
         return r;
     }

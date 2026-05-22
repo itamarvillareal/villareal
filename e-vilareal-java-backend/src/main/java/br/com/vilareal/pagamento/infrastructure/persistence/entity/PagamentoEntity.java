@@ -1,5 +1,6 @@
 package br.com.vilareal.pagamento.infrastructure.persistence.entity;
 
+import br.com.vilareal.financeiro.infrastructure.persistence.entity.LancamentoFinanceiroEntity;
 import br.com.vilareal.imovel.infrastructure.persistence.entity.ContratoLocacaoEntity;
 import br.com.vilareal.imovel.infrastructure.persistence.entity.ImovelEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
@@ -71,6 +72,43 @@ public class PagamentoEntity {
 
     @Column(name = "comprovante_arquivo_path", length = 500)
     private String comprovanteArquivoPath;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "financeiro_lancamento_id")
+    private LancamentoFinanceiroEntity financeiroLancamento;
+
+    @Column(name = "data_conferencia")
+    private LocalDate dataConferencia;
+
+    @Column(name = "data_acerto")
+    private LocalDate dataAcerto;
+
+    @Column(name = "valor_pago_banco", precision = 19, scale = 2)
+    private BigDecimal valorPagoBanco;
+
+    @Column(name = "valor_diferenca", precision = 19, scale = 2)
+    private BigDecimal valorDiferenca;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "conferido_por_usuario_id")
+    private UsuarioEntity conferidoPorUsuario;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "prestacao_contas_id")
+    private PrestacaoContasEntity prestacaoContas;
+
+    @Column(name = "mes_referencia", length = 7)
+    private String mesReferencia;
+
+    @Column(name = "conta_referencia", length = 50)
+    private String contaReferencia;
+
+    @Column(name = "auto_gerado", nullable = false)
+    private Boolean autoGerado = false;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "recorrencia_config_id")
+    private PagamentoRecorrenciaConfigEntity recorrenciaConfig;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "cliente_id")

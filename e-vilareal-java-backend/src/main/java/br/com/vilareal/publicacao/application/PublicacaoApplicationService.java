@@ -2,6 +2,7 @@ package br.com.vilareal.publicacao.application;
 
 import br.com.vilareal.common.exception.BusinessRuleException;
 import br.com.vilareal.common.exception.ResourceNotFoundException;
+import br.com.vilareal.pessoa.application.ClienteResolverService;
 import br.com.vilareal.processo.application.ClienteCodigoPessoaResolver;
 import br.com.vilareal.processo.application.ProcessoApplicationService;
 import br.com.vilareal.processo.api.dto.ProcessoPartesVinculoTexto;
@@ -31,16 +32,19 @@ public class PublicacaoApplicationService {
     private final ProcessoRepository processoRepository;
     private final ClienteCodigoPessoaResolver clienteCodigoPessoaResolver;
     private final ProcessoApplicationService processoApplicationService;
+    private final ClienteResolverService clienteResolverService;
 
     public PublicacaoApplicationService(
             PublicacaoRepository publicacaoRepository,
             ProcessoRepository processoRepository,
             ClienteCodigoPessoaResolver clienteCodigoPessoaResolver,
-            ProcessoApplicationService processoApplicationService) {
+            ProcessoApplicationService processoApplicationService,
+            ClienteResolverService clienteResolverService) {
         this.publicacaoRepository = publicacaoRepository;
         this.processoRepository = processoRepository;
         this.clienteCodigoPessoaResolver = clienteCodigoPessoaResolver;
         this.processoApplicationService = processoApplicationService;
+        this.clienteResolverService = clienteResolverService;
     }
 
     @Transactional(readOnly = true)
@@ -52,8 +56,15 @@ public class PublicacaoApplicationService {
             Long clienteId,
             String texto,
             String origemImportacao) {
+        Long clientePk = null;
+        Long clientePessoaRef = null;
+        if (clienteId != null && clienteId > 0) {
+            var cliente = clienteResolverService.resolverClienteIdRequest(clienteId);
+            clientePk = cliente.getId();
+            clientePessoaRef = cliente.getPessoa().getId();
+        }
         var spec = PublicacaoSpecifications.comFiltros(
-                dataInicio, dataFim, statusTratamento, processoId, clienteId, texto, origemImportacao);
+                dataInicio, dataFim, statusTratamento, processoId, clientePk, clientePessoaRef, texto, origemImportacao);
         List<PublicacaoEntity> lista = publicacaoRepository.findAll(spec, Sort.by(Sort.Direction.DESC, "createdAt"));
         Set<Long> procIds = new LinkedHashSet<>();
         for (PublicacaoEntity e : lista) {
@@ -130,6 +141,11 @@ public class PublicacaoApplicationService {
                 .orElseThrow(() -> new ResourceNotFoundException("Processo não encontrado: " + req.getProcessoId()));
         e.setProcesso(p);
         e.setClienteRefId(p.getPessoa().getId());
+        if (p.getCliente() != null) {
+            e.setCliente(p.getCliente());
+        } else {
+            e.setCliente(clienteResolverService.resolverClienteParaTitular(p.getPessoa().getId()));
+        }
         e.setStatusTratamento("VINCULADA");
         if (StringUtils.hasText(req.getObservacao())) {
             e.setObservacao(req.getObservacao().trim());
@@ -210,7 +226,10 @@ public class PublicacaoApplicationService {
             r.setParteCliente(null);
             r.setParteOposta(null);
         }
-        r.setClienteId(e.getClienteRefId());
+        if (e.getCliente() != null) {
+            r.setClienteId(e.getCliente().getId());
+        }
+        r.setPessoaRefId(e.getClienteRefId());
         r.setDataDisponibilizacao(e.getDataDisponibilizacao());
         r.setDataPublicacao(e.getDataPublicacao());
         r.setFonte(e.getFonte());

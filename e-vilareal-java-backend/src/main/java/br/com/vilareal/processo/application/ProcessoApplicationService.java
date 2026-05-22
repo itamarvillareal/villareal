@@ -12,6 +12,7 @@ import br.com.vilareal.pessoa.api.dto.ClienteCreateResult;
 import br.com.vilareal.pessoa.api.dto.ClienteListItemResponse;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
+import br.com.vilareal.pessoa.application.ClienteResolverService;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.ClienteRepository;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
 import br.com.vilareal.processo.api.dto.*;
@@ -61,6 +62,7 @@ public class ProcessoApplicationService {
     private final PlanilhaPasta1ClienteRepository planilhaPasta1ClienteRepository;
     private final ClienteCodigoPessoaResolver clienteCodigoPessoaResolver;
     private final ClienteRepository clienteRepository;
+    private final ClienteResolverService clienteResolverService;
 
     public ProcessoApplicationService(
             ProcessoRepository processoRepository,
@@ -72,7 +74,8 @@ public class ProcessoApplicationService {
             UsuarioRepository usuarioRepository,
             PlanilhaPasta1ClienteRepository planilhaPasta1ClienteRepository,
             ClienteCodigoPessoaResolver clienteCodigoPessoaResolver,
-            ClienteRepository clienteRepository) {
+            ClienteRepository clienteRepository,
+            ClienteResolverService clienteResolverService) {
         this.processoRepository = processoRepository;
         this.parteRepository = parteRepository;
         this.parteAdvogadoRepository = parteAdvogadoRepository;
@@ -83,6 +86,7 @@ public class ProcessoApplicationService {
         this.planilhaPasta1ClienteRepository = planilhaPasta1ClienteRepository;
         this.clienteCodigoPessoaResolver = clienteCodigoPessoaResolver;
         this.clienteRepository = clienteRepository;
+        this.clienteResolverService = clienteResolverService;
     }
 
     /**
@@ -269,13 +273,25 @@ public class ProcessoApplicationService {
         if (numeroInterno < 0) {
             return Optional.empty();
         }
-        Optional<Long> resolved = clienteCodigoPessoaResolver.resolverPessoaIdComFallbackCliente(codigoCliente);
-        if (resolved.isEmpty()) {
-            return Optional.empty();
+        try {
+            ClienteEntity cliente = clienteResolverService.resolverClientePorCodigo(codigoCliente);
+            Optional<ProcessoEntity> porCliente =
+                    processoRepository.findByCliente_IdAndNumeroInterno(cliente.getId(), numeroInterno);
+            if (porCliente.isPresent()) {
+                return porCliente.map(this::toResponse);
+            }
+            return processoRepository
+                    .findByPessoa_IdAndNumeroInterno(cliente.getPessoa().getId(), numeroInterno)
+                    .map(this::toResponse);
+        } catch (ResourceNotFoundException ignored) {
+            Optional<Long> resolved = clienteCodigoPessoaResolver.resolverPessoaIdComFallbackCliente(codigoCliente);
+            if (resolved.isEmpty()) {
+                return Optional.empty();
+            }
+            return processoRepository
+                    .findByPessoa_IdAndNumeroInterno(resolved.get(), numeroInterno)
+                    .map(this::toResponse);
         }
-        return processoRepository
-                .findByPessoa_IdAndNumeroInterno(resolved.get(), numeroInterno)
-                .map(this::toResponse);
     }
 
     @Transactional(readOnly = true)
@@ -288,12 +304,20 @@ public class ProcessoApplicationService {
      */
     @Transactional(readOnly = true)
     public Page<ProcessoResponse> listarPorCodigoCliente(String codigoCliente, Pageable pageable, boolean resumo) {
-        Optional<Long> resolved = clienteCodigoPessoaResolver.resolverPessoaIdComFallbackCliente(codigoCliente);
-        if (resolved.isEmpty() || !pessoaRepository.existsById(resolved.get())) {
-            return Page.empty(pageable);
+        Page<ProcessoEntity> page;
+        try {
+            ClienteEntity cliente = clienteResolverService.resolverClientePorCodigo(codigoCliente);
+            page = processoRepository.findByCliente_Id(cliente.getId(), pageable);
+            if (page.isEmpty()) {
+                page = processoRepository.findByPessoa_Id(cliente.getPessoa().getId(), pageable);
+            }
+        } catch (ResourceNotFoundException e) {
+            Optional<Long> resolved = clienteCodigoPessoaResolver.resolverPessoaIdComFallbackCliente(codigoCliente);
+            if (resolved.isEmpty() || !pessoaRepository.existsById(resolved.get())) {
+                return Page.empty(pageable);
+            }
+            page = processoRepository.findByPessoa_Id(resolved.get(), pageable);
         }
-        long pessoaId = resolved.get();
-        Page<ProcessoEntity> page = processoRepository.findByPessoa_Id(pessoaId, pageable);
         if (resumo) {
             return page.map(this::toResponse);
         }
@@ -649,15 +673,14 @@ public class ProcessoApplicationService {
 
     @Transactional
     public ProcessoResponse criar(ProcessoWriteRequest req) {
-        PessoaEntity pessoa = pessoaRepository.findById(req.getClienteId())
-                .orElseThrow(() -> new ResourceNotFoundException("Cliente não encontrado: " + req.getClienteId()));
+        ClienteEntity cliente = clienteResolverService.resolverClienteIdRequest(req.getClienteId());
         processoRepository
-                .findByPessoa_IdAndNumeroInterno(req.getClienteId(), req.getNumeroInterno())
+                .findByCliente_IdAndNumeroInterno(cliente.getId(), req.getNumeroInterno())
                 .ifPresent(x -> {
                     throw new BusinessRuleException("Já existe processo com este número interno para o cliente.");
                 });
         ProcessoEntity e = new ProcessoEntity();
-        e.setPessoa(pessoa);
+        aplicarClienteTitularDoRequest(e, cliente, req);
         aplicarCabecalho(e, req);
         e = processoRepository.save(e);
         return toResponse(requireProcesso(e.getId()));
@@ -666,18 +689,20 @@ public class ProcessoApplicationService {
     @Transactional
     public ProcessoResponse atualizar(Long id, ProcessoWriteRequest req) {
         ProcessoEntity e = requireProcesso(id);
-        PessoaEntity pessoa = pessoaRepository.findById(req.getClienteId())
-                .orElseThrow(() -> new ResourceNotFoundException("Cliente não encontrado: " + req.getClienteId()));
-        if (!pessoa.getId().equals(e.getPessoa().getId())
-                || !req.getNumeroInterno().equals(e.getNumeroInterno())) {
+        ClienteEntity cliente = clienteResolverService.resolverClienteIdRequest(req.getClienteId());
+        boolean chaveNaturalMudou =
+                e.getCliente() == null
+                        || !cliente.getId().equals(e.getCliente().getId())
+                        || !req.getNumeroInterno().equals(e.getNumeroInterno());
+        if (chaveNaturalMudou) {
             processoRepository
-                    .findByPessoa_IdAndNumeroInterno(req.getClienteId(), req.getNumeroInterno())
+                    .findByCliente_IdAndNumeroInterno(cliente.getId(), req.getNumeroInterno())
                     .filter(other -> !other.getId().equals(id))
                     .ifPresent(x -> {
                         throw new BusinessRuleException("Já existe processo com este número interno para o cliente.");
                     });
         }
-        e.setPessoa(pessoa);
+        aplicarClienteTitularDoRequest(e, cliente, req);
         e.setNumeroInterno(req.getNumeroInterno());
         aplicarCabecalho(e, req);
         processoRepository.save(e);
@@ -1093,12 +1118,32 @@ public class ProcessoApplicationService {
         z.setObservacao(trimToNull(req.getObservacao()));
     }
 
+    private void aplicarClienteTitularDoRequest(ProcessoEntity e, ClienteEntity cliente, ProcessoWriteRequest req) {
+        PessoaEntity titular;
+        if (req.getPessoaTitularId() != null) {
+            titular = pessoaRepository
+                    .findById(req.getPessoaTitularId())
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "Titular não encontrado: " + req.getPessoaTitularId()));
+        } else {
+            titular = cliente.getPessoa();
+        }
+        e.setCliente(cliente);
+        e.setPessoa(titular);
+    }
+
     private ProcessoResponse toResponse(ProcessoEntity e) {
-        Long pessoaId = e.getPessoa().getId();
+        Long titularId = e.getPessoa().getId();
         ProcessoResponse r = new ProcessoResponse();
         r.setId(e.getId());
-        r.setClienteId(pessoaId);
-        r.setCodigoCliente(resolverCodigoClienteExibicaoParaPessoa(pessoaId));
+        r.setPessoaTitularId(titularId);
+        if (e.getCliente() != null) {
+            r.setClienteId(e.getCliente().getId());
+            r.setCodigoCliente(codigoClienteNormalizadoParaMapa(e.getCliente().getCodigoCliente()));
+        } else {
+            r.setClienteId(null);
+            r.setCodigoCliente(resolverCodigoClienteExibicaoParaPessoa(titularId));
+        }
         r.setNumeroInterno(e.getNumeroInterno());
         r.setNumeroCnj(Utf8MojibakeUtil.corrigir(e.getNumeroCnj()));
         r.setNumeroProcessoAntigo(Utf8MojibakeUtil.corrigir(e.getNumeroProcessoAntigo()));

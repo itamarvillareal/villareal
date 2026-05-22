@@ -77,6 +77,12 @@ public class PagamentoWriteRequest {
 
     private Long recorrenciaPagamentoOrigemId;
 
+    @Size(max = 7)
+    private String mesReferencia;
+
+    @Size(max = 50)
+    private String contaReferencia;
+
     public LocalDate getDataCadastro() {
         return dataCadastro;
     }
@@ -291,5 +297,21 @@ public class PagamentoWriteRequest {
 
     public void setRecorrenciaPagamentoOrigemId(Long recorrenciaPagamentoOrigemId) {
         this.recorrenciaPagamentoOrigemId = recorrenciaPagamentoOrigemId;
+    }
+
+    public String getMesReferencia() {
+        return mesReferencia;
+    }
+
+    public void setMesReferencia(String mesReferencia) {
+        this.mesReferencia = mesReferencia;
+    }
+
+    public String getContaReferencia() {
+        return contaReferencia;
+    }
+
+    public void setContaReferencia(String contaReferencia) {
+        this.contaReferencia = contaReferencia;
     }
 }

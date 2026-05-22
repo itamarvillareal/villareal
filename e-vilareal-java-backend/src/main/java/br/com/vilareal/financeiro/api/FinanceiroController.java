@@ -14,6 +14,7 @@ import br.com.vilareal.financeiro.domain.EtapaLancamento;
 import br.com.vilareal.financeiro.application.FinanceiroCartaoApplicationService;
 import br.com.vilareal.financeiro.application.FinanceiroPagamentoFaturaApplicationService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.MediaType;
@@ -110,7 +111,9 @@ public class FinanceiroController {
     @GetMapping("/lancamentos")
     @Operation(description = "Lista lançamentos com filtros opcionais (paridade com `financeiroRepository.js`).")
     public List<LancamentoFinanceiroResponse> listarLancamentos(
-            @RequestParam(value = "clienteId", required = false) Long clienteId,
+            @Parameter(description = "PK da tabela cliente (aceita pessoa.id legado na resolução)")
+            @RequestParam(value = "clienteId", required = false)
+            Long clienteId,
             @RequestParam(value = "processoId", required = false) Long processoId,
             @RequestParam(value = "contaContabilId", required = false) Long contaContabilId,
             @RequestParam(value = "dataInicio", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataInicio,

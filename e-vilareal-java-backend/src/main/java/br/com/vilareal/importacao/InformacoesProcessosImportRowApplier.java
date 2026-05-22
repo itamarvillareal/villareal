@@ -2,6 +2,7 @@ package br.com.vilareal.importacao;
 
 import br.com.vilareal.common.text.Utf8MojibakeUtil;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
+import br.com.vilareal.pessoa.application.ClienteResolverService;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoParteEntity;
@@ -30,14 +31,17 @@ public class InformacoesProcessosImportRowApplier {
     private final PessoaRepository pessoaRepository;
     private final ProcessoRepository processoRepository;
     private final ProcessoParteRepository parteRepository;
+    private final ClienteResolverService clienteResolverService;
 
     public InformacoesProcessosImportRowApplier(
             PessoaRepository pessoaRepository,
             ProcessoRepository processoRepository,
-            ProcessoParteRepository parteRepository) {
+            ProcessoParteRepository parteRepository,
+            ClienteResolverService clienteResolverService) {
         this.pessoaRepository = pessoaRepository;
         this.processoRepository = processoRepository;
         this.parteRepository = parteRepository;
+        this.clienteResolverService = clienteResolverService;
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW, rollbackFor = Exception.class)
@@ -50,6 +54,7 @@ public class InformacoesProcessosImportRowApplier {
 
         boolean criado = processo.getId() == null;
         processo.setPessoa(cliente);
+        processo.setCliente(clienteResolverService.resolverClienteParaTitular(dados.clientePessoaId()));
         processo.setNumeroInterno(dados.numeroInterno());
         if (dados.faseOpcional().isPresent()) {
             processo.setFase(dados.faseOpcional().get());

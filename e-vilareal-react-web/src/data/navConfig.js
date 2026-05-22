@@ -10,6 +10,7 @@ export const navItems = [
     icon: 'Landmark',
     children: [
       { id: 'imoveis', label: 'Imóveis', icon: 'Building2' },
+      { id: 'imoveis/pagamentos', label: 'Pagamentos', icon: 'Wallet' },
       { id: 'imoveis/sugestoes-vinculo', label: 'Sugestões de vínculo', icon: 'Sparkles' },
       { id: 'iptu', label: 'IPTU', icon: 'Receipt' },
       { id: 'imoveis/relatorio-financeiro', label: 'Relatório Financeiro Imóveis', icon: 'CircleDollarSign' },

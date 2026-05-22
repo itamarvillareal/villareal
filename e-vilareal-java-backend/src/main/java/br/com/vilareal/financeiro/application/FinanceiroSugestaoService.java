@@ -13,9 +13,13 @@ import br.com.vilareal.financeiro.infrastructure.persistence.entity.RegraClassif
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.ContaContabilRepository;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.LancamentoFinanceiroRepository;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.RegraClassificacaoRepository;
+import br.com.vilareal.pessoa.application.ClienteResolverService;
+import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
+import br.com.vilareal.processo.api.dto.ProcessoPartesVinculoTexto;
 import br.com.vilareal.processo.application.ClienteCodigoPessoaResolver;
+import br.com.vilareal.processo.application.ProcessoApplicationService;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
 import org.springframework.context.annotation.Lazy;
@@ -39,7 +43,9 @@ public class FinanceiroSugestaoService {
     private final PessoaRepository pessoaRepository;
     private final ProcessoRepository processoRepository;
     private final ClienteCodigoPessoaResolver clienteCodigoPessoaResolver;
+    private final ProcessoApplicationService processoApplicationService;
     private final FinanceiroSaudeService financeiroSaudeService;
+    private final ClienteResolverService clienteResolverService;
 
     public FinanceiroSugestaoService(
             RegraClassificacaoRepository regraRepository,
@@ -48,6 +54,8 @@ public class FinanceiroSugestaoService {
             PessoaRepository pessoaRepository,
             ProcessoRepository processoRepository,
             ClienteCodigoPessoaResolver clienteCodigoPessoaResolver,
+            @Lazy ProcessoApplicationService processoApplicationService,
+            ClienteResolverService clienteResolverService,
             @Lazy FinanceiroSaudeService financeiroSaudeService) {
         this.regraRepository = regraRepository;
         this.lancamentoRepository = lancamentoRepository;
@@ -55,6 +63,8 @@ public class FinanceiroSugestaoService {
         this.pessoaRepository = pessoaRepository;
         this.processoRepository = processoRepository;
         this.clienteCodigoPessoaResolver = clienteCodigoPessoaResolver;
+        this.processoApplicationService = processoApplicationService;
+        this.clienteResolverService = clienteResolverService;
         this.financeiroSaudeService = financeiroSaudeService;
     }
 
@@ -155,9 +165,7 @@ public class FinanceiroSugestaoService {
             SugestaoClassificacaoResponse s = baseSugestao(regra.getContaContabil(), conf, OrigemSugestao.REGRA);
             s.setRegraId(regra.getId());
             s.setDescricaoRegra(regra.getPadraoDescricao() + " → " + regra.getContaContabil().getCodigo());
-            if (regra.getCliente() != null) {
-                s.setClienteId(regra.getCliente().getId());
-            }
+            preencherClienteIdSugestao(s, regra.getClienteEntidade(), regra.getPessoaRef(), regra.getProcesso());
             if (regra.getProcesso() != null) {
                 s.setProcessoId(regra.getProcesso().getId());
             }
@@ -188,7 +196,7 @@ public class FinanceiroSugestaoService {
         }
 
         LancamentoFinanceiroEntity ref = anteriores.get(0);
-        if (ref.getCliente() == null) {
+        if (ref.getPessoaRef() == null) {
             return List.of();
         }
         ContaContabilEntity contaA = ref.getContaContabil();
@@ -200,14 +208,14 @@ public class FinanceiroSugestaoService {
         }
 
         SugestaoClassificacaoResponse s = baseSugestao(contaA, ConfiancaSugestao.ALTA, OrigemSugestao.DEPOSITO_IDENTIFICADO);
-        s.setClienteId(ref.getCliente().getId());
+        preencherClienteIdSugestao(s, ref.getClienteEntidade(), ref.getPessoaRef(), ref.getProcesso());
         if (ref.getProcesso() != null) {
             s.setProcessoId(ref.getProcesso().getId());
         }
         pessoaOpt.ifPresent(p -> s.setPagadorPessoaId(p.getId()));
         s.setOcorrencias((long) anteriores.size());
         s.setDescricaoRegra(montarDescricaoDepositoAnterior(ref, ext));
-        s.setRotuloVinculo(montarRotuloVinculo(ref.getCliente().getId(), ref.getProcesso()));
+        s.setRotuloVinculo(montarRotuloVinculo(ref.getPessoaRef().getId(), ref.getProcesso()));
         return List.of(s);
     }
 
@@ -243,7 +251,7 @@ public class FinanceiroSugestaoService {
             }
             SugestaoClassificacaoResponse s =
                     baseSugestao(contaA, ConfiancaSugestao.MEDIA, OrigemSugestao.PESSOA_PROCESSO);
-            s.setClienteId(proc.getPessoa().getId());
+            preencherClienteIdSugestaoProcesso(s, proc);
             s.setProcessoId(proc.getId());
             s.setPagadorPessoaId(pessoa.getId());
             s.setRotuloVinculo(montarRotuloVinculo(proc.getPessoa().getId(), proc));
@@ -304,7 +312,7 @@ public class FinanceiroSugestaoService {
         for (LancamentoFinanceiroEntity c : candidatos) {
             Long contaId = c.getContaContabil().getId();
             freqPorConta.merge(contaId, 1L, Long::sum);
-            if ("A".equalsIgnoreCase(c.getContaContabil().getCodigo()) && c.getCliente() != null) {
+            if ("A".equalsIgnoreCase(c.getContaContabil().getCodigo()) && c.getPessoaRef() != null) {
                 if (melhorA == null || c.getDataLancamento().isAfter(melhorA.getDataLancamento())) {
                     melhorA = c;
                 }
@@ -326,7 +334,7 @@ public class FinanceiroSugestaoService {
         SugestaoClassificacaoResponse s = baseSugestao(conta, ConfiancaSugestao.MEDIA, OrigemSugestao.RECORRENCIA);
         s.setOcorrencias(freqPorConta.get(contaIdMaisFrequente));
         if (melhorA != null && "A".equalsIgnoreCase(conta.getCodigo())) {
-            s.setClienteId(melhorA.getCliente().getId());
+            preencherClienteIdSugestao(s, melhorA.getClienteEntidade(), melhorA.getPessoaRef(), melhorA.getProcesso());
             if (melhorA.getProcesso() != null) {
                 s.setProcessoId(melhorA.getProcesso().getId());
             }
@@ -399,16 +407,44 @@ public class FinanceiroSugestaoService {
             return "";
         }
         String cod = clienteCodigoPessoaResolver.codigoClienteExibicaoParaPessoaId(clientePessoaId);
-        if (processo != null && processo.getNumeroInterno() != null) {
-            return cod + " · proc " + processo.getNumeroInterno();
+        String base =
+                processo != null && processo.getNumeroInterno() != null
+                        ? cod + " · proc " + processo.getNumeroInterno()
+                        : cod;
+        return base + montarSufixoPartesProcesso(processo);
+    }
+
+    /** «Parte Cliente x Parte oposta», alinhado à tela Processos / Publicações. */
+    private String montarSufixoPartesProcesso(ProcessoEntity processo) {
+        if (processo == null || processo.getId() == null) {
+            return "";
         }
-        return cod;
+        ProcessoPartesVinculoTexto textos =
+                processoApplicationService
+                        .resolverTextosPartesVinculoEmLote(Set.of(processo.getId()))
+                        .get(processo.getId());
+        if (textos == null) {
+            return "";
+        }
+        String parteCliente = StringUtils.hasText(textos.getParteCliente())
+                ? textos.getParteCliente().trim()
+                : "";
+        String parteOposta = StringUtils.hasText(textos.getParteOposta())
+                ? textos.getParteOposta().trim()
+                : "";
+        if (parteCliente.isEmpty() && parteOposta.isEmpty()) {
+            return "";
+        }
+        if (!parteCliente.isEmpty() && !parteOposta.isEmpty()) {
+            return " - " + parteCliente + " x " + parteOposta;
+        }
+        return " - " + (parteCliente.isEmpty() ? parteOposta : parteCliente);
     }
 
     private String montarDescricaoDepositoAnterior(
             LancamentoFinanceiroEntity ref, FinanceiroDescricaoPessoaExtracao ext) {
         String rotulo = montarRotuloVinculo(
-                ref.getCliente().getId(), ref.getProcesso());
+                ref.getPessoaRef().getId(), ref.getProcesso());
         String quando = ref.getDataLancamento() != null ? ref.getDataLancamento().toString() : "";
         String nome = StringUtils.hasText(ext.nome()) ? resumirNome(ext.nome()) : "mesmo CPF";
         return "depósito anterior (" + nome + ", " + quando + "): " + rotulo;
@@ -464,26 +500,18 @@ public class FinanceiroSugestaoService {
                 .orElseThrow(() -> new ResourceNotFoundException("Conta contábil não encontrada: " + contaContabilId));
         e.setContaContabil(conta);
 
-        PessoaEntity cliente = null;
-        if (clienteId != null) {
-            cliente = pessoaRepository.findById(clienteId)
-                    .orElseThrow(() -> new ResourceNotFoundException("Cliente não encontrado: " + clienteId));
-        }
         ProcessoEntity processo = null;
         if (processoId != null) {
             processo = processoRepository.findById(processoId)
                     .orElseThrow(() -> new ResourceNotFoundException("Processo não encontrado: " + processoId));
-            if (cliente != null && !processo.getPessoa().getId().equals(cliente.getId())) {
-                throw new BusinessRuleException("O processo informado não pertence ao cliente indicado.");
-            }
-            if (cliente == null) {
-                cliente = processo.getPessoa();
-            }
         }
-        e.setCliente(cliente);
+        ClienteResolverService.VinculoClientePessoa vinculo =
+                clienteResolverService.resolverVinculoOpcional(clienteId, processo);
+        e.setPessoaRef(vinculo.pessoaRef());
+        e.setClienteEntidade(vinculo.clienteEntidade());
         e.setProcesso(processo);
 
-        Long cid = e.getCliente() != null ? e.getCliente().getId() : null;
+        Long cid = e.getClienteEntidade() != null ? e.getClienteEntidade().getId() : null;
         e.setEtapa(EtapaLancamento.calcular(conta.getCodigo(), e.getGrupoCompensacao(), cid));
     }
 
@@ -497,7 +525,12 @@ public class FinanceiroSugestaoService {
         r.setId(e.getId());
         r.setContaContabilId(e.getContaContabil().getId());
         r.setContaContabilNome(Utf8MojibakeUtil.corrigir(e.getContaContabil().getNome()));
-        r.setClienteId(e.getCliente() != null ? e.getCliente().getId() : null);
+        if (e.getClienteEntidade() != null) {
+            r.setClienteId(e.getClienteEntidade().getId());
+        }
+        if (e.getPessoaRef() != null) {
+            r.setPessoaRefId(e.getPessoaRef().getId());
+        }
         r.setProcessoId(e.getProcesso() != null ? e.getProcesso().getId() : null);
         r.setBancoNome(Utf8MojibakeUtil.corrigir(e.getBancoNome()));
         r.setNumeroBanco(e.getNumeroBanco());
@@ -514,5 +547,36 @@ public class FinanceiroSugestaoService {
         r.setEtapa(e.getEtapa() != null ? e.getEtapa().name() : EtapaLancamento.IMPORTADO.name());
         r.setGrupoCompensacao(Utf8MojibakeUtil.corrigir(e.getGrupoCompensacao()));
         return r;
+    }
+
+    private void preencherClienteIdSugestaoProcesso(SugestaoClassificacaoResponse s, ProcessoEntity proc) {
+        ClienteEntity cliente = proc.getCliente();
+        if (cliente == null && proc.getPessoa() != null) {
+            cliente = clienteResolverService.resolverClienteParaTitular(proc.getPessoa().getId());
+        }
+        if (cliente != null) {
+            s.setClienteId(cliente.getId());
+        }
+        if (proc.getPessoa() != null) {
+            s.setPessoaRefId(proc.getPessoa().getId());
+        }
+    }
+
+    private void preencherClienteIdSugestao(
+            SugestaoClassificacaoResponse s,
+            ClienteEntity cliente,
+            PessoaEntity pessoaRef,
+            ProcessoEntity processo) {
+        if (cliente != null) {
+            s.setClienteId(cliente.getId());
+        } else if (pessoaRef != null) {
+            s.setClienteId(clienteResolverService.resolverClienteParaTitular(pessoaRef.getId()).getId());
+        } else if (processo != null) {
+            preencherClienteIdSugestaoProcesso(s, processo);
+            return;
+        }
+        if (pessoaRef != null) {
+            s.setPessoaRefId(pessoaRef.getId());
+        }
     }
 }

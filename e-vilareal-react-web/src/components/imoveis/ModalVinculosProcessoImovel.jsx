@@ -66,7 +66,8 @@ export function ModalVinculosProcessoImovel({
               Processos do imóvel {numeroPlanilha}
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-              Todos os códigos de cliente e proc. vinculados a este número no cadastro (Proc/0.89.1).
+              Pares Código + Proc. com este nº no campo Imóvel (Processos), na ordem de cadastro. O último é o
+              principal.
             </p>
           </div>
           <button type="button" onClick={onClose} className={imoveisBtnIconGhost} aria-label="Fechar">
@@ -88,13 +89,15 @@ export function ModalVinculosProcessoImovel({
               {vinculos.map((v) => {
                 const cod = padCliente(v.codigoCliente ?? '');
                 const procN = Number(v.numeroInterno);
+                const ehPrincipal = !!v.principal;
                 const ehCadastroAtual =
                   (codCad && procCad && cod === codCad && String(procN) === procCad) || v.cadastroAtual;
+                const destaque = ehPrincipal || ehCadastroAtual;
                 return (
                   <li
-                    key={`${cod}-${procN}-${v.processoId ?? v.imovelId}`}
+                    key={`${cod}-${procN}-${v.processoId ?? v.imovelId ?? 'x'}`}
                     className={`flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-2.5 ${
-                      ehCadastroAtual
+                      destaque
                         ? 'border-teal-400/60 bg-teal-50/80 dark:bg-teal-950/30 dark:border-teal-500/40'
                         : 'border-slate-200/80 dark:border-white/[0.08] bg-slate-50/50 dark:bg-white/[0.03]'
                     }`}
@@ -103,9 +106,13 @@ export function ModalVinculosProcessoImovel({
                       <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 tabular-nums">
                         Cliente {cod} · Proc. {procN}
                       </p>
-                      {ehCadastroAtual ? (
+                      {ehPrincipal ? (
+                        <p className="text-[11px] text-teal-700 dark:text-teal-300 mt-0.5 font-medium">
+                          Principal (último cadastrado)
+                        </p>
+                      ) : ehCadastroAtual ? (
                         <p className="text-[11px] text-teal-700 dark:text-teal-300 mt-0.5">
-                          Preenchido neste cadastro
+                          Referência deste cadastro
                         </p>
                       ) : null}
                     </div>
@@ -128,16 +135,16 @@ export function ModalVinculosProcessoImovel({
           <button type="button" onClick={onClose} className={imoveisBtnSecondary}>
             Fechar
           </button>
-          {vinculos.length === 1 ? (
+          {vinculos.length >= 1 ? (
             <button
               type="button"
               className={imoveisBtnPrimary}
               onClick={() => {
-                const v = vinculos[0];
+                const v = vinculos.find((x) => x.principal) || vinculos[vinculos.length - 1];
                 onAbrirProcesso(padCliente(v.codigoCliente), Number(v.numeroInterno));
               }}
             >
-              Abrir processo
+              Abrir processo principal
             </button>
           ) : null}
         </div>

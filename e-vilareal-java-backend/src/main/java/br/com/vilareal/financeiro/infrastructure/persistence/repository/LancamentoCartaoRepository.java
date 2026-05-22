@@ -33,7 +33,8 @@ public interface LancamentoCartaoRepository
             SELECT l FROM LancamentoCartaoEntity l
             JOIN FETCH l.cartao
             JOIN FETCH l.contaContabil
-            LEFT JOIN FETCH l.cliente
+            LEFT JOIN FETCH l.pessoaRef
+            LEFT JOIN FETCH l.clienteEntidade
             LEFT JOIN FETCH l.processo
             WHERE l.cartao.id = :cartaoId
               AND l.dataLancamento BETWEEN :inicio AND :fim

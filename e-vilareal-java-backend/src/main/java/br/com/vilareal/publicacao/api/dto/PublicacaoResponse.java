@@ -18,7 +18,10 @@ public class PublicacaoResponse {
     private String codigoClienteProcesso;
     /** Quando {@link #processoId} preenchido: nº interno do processo na pasta do cliente. */
     private Integer numeroInternoProcesso;
+    @io.swagger.v3.oas.annotations.media.Schema(description = "PK da tabela cliente")
     private Long clienteId;
+    @io.swagger.v3.oas.annotations.media.Schema(description = "pessoa.id titular legado (cliente_ref_id)")
+    private Long pessoaRefId;
     private LocalDate dataDisponibilizacao;
     private LocalDate dataPublicacao;
     private String fonte;

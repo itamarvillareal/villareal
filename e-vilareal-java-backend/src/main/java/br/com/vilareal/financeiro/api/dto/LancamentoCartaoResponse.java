@@ -16,6 +16,7 @@ public class LancamentoCartaoResponse {
     private Long contaContabilId;
     private String contaContabilNome;
     private Long clienteId;
+    private Long pessoaRefId;
     private Long processoId;
     private String codigoCliente;
     private Integer numeroInternoProcesso;

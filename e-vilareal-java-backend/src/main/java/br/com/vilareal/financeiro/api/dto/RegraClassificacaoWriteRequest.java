@@ -41,6 +41,8 @@ public class RegraClassificacaoWriteRequest {
     @NotNull
     private Boolean ativo;
 
+    @io.swagger.v3.oas.annotations.media.Schema(
+            description = "PK da tabela cliente; aceita pessoa.id legado via resolução no servidor")
     private Long clienteId;
     private Long processoId;
 }

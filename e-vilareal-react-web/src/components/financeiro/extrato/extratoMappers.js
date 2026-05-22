@@ -115,6 +115,7 @@ export function mapApiLancamentoToExtratoRow(l, contaToLetra) {
     codCliente: codClienteExibicao(l),
     proc: procExibicao(l),
     clienteId: l.clienteId ?? null,
+    pessoaRefId: l.pessoaRefId ?? null,
     processoId: l.processoId ?? null,
     bancoNome: String(l.bancoNome ?? ''),
     numeroBanco: l.numeroBanco ?? null,
@@ -153,6 +154,7 @@ export function extratoRowToUi(row) {
     origemImportacao: row.origem,
     _financeiroMeta: {
       clienteId: row.clienteId,
+      pessoaRefId: row.pessoaRefId ?? null,
       processoId: row.processoId,
       contaContabilId: row.contaContabilId,
       grupoCompensacao: row.grupoCompensacao,
@@ -176,11 +178,11 @@ export function mergeExtratoRowComRespostaApi(row, saved, contaToLetra) {
         : null;
   const proc =
     String(mapped.proc ?? '').trim() || String(row.proc ?? '').trim() || '';
-  const pid = Number(clienteId) || 0;
+  const pessoaRef = Number(mapped.pessoaRefId ?? row.pessoaRefId) || 0;
   let codEnviado =
     normalizarCodigoClienteFinanceiro(row.codCliente) ||
-    (pid > 0 ? obterCodigoClienteFinanceiroPorPessoaId(pid) : '');
-  const temVinculo = pid > 0 || proc !== '';
+    (pessoaRef > 0 ? obterCodigoClienteFinanceiroPorPessoaId(pessoaRef) : '');
+  const temVinculo = Number(clienteId) > 0 || proc !== '';
   const base = { ...mapped, clienteId, processoId, proc: proc || mapped.proc };
   if (codEnviado && temVinculo) {
     return { ...base, codCliente: codEnviado };

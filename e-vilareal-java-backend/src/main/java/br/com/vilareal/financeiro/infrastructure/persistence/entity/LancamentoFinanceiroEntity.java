@@ -2,6 +2,7 @@ package br.com.vilareal.financeiro.infrastructure.persistence.entity;
 
 import br.com.vilareal.financeiro.domain.EtapaLancamento;
 import br.com.vilareal.financeiro.domain.NaturezaLancamento;
+import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import jakarta.persistence.*;
@@ -31,8 +32,12 @@ public class LancamentoFinanceiroEntity {
     private ContaContabilEntity contaContabil;
 
     @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "pessoa_ref_id")
+    private PessoaEntity pessoaRef;
+
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "cliente_id")
-    private PessoaEntity cliente;
+    private ClienteEntity clienteEntidade;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "processo_id")

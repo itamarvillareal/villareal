@@ -2,13 +2,22 @@ import { request } from '../api/httpClient.js';
 import { formatValorMoedaCampo } from '../utils/moneyBr.js';
 import { parseValorMonetarioBr } from '../utils/parseValorMonetarioBr.js';
 import { featureFlags, FEATURE_IPTU_NOVO } from '../config/featureFlags.js';
-import { getTransacoesContaCorrenteCompleto } from '../data/financeiroData.js';
 import {
-  buildRelatorioFinanceiroImoveisMes,
+  getTransacoesContaCorrenteCompleto,
+  normalizarCodigoClienteFinanceiro,
+  normalizarProcFinanceiro,
+} from '../data/financeiroData.js';
+import {
+  chaveParCodProc,
+  construirIndiceImoveisPorCodProc,
   extrairTotaisFinanceirosMes,
+  intervaloIsoMesReferencia,
   linhaRelatorioFinanceiroFromCadastro,
+  montarLinhasRelatorioFinanceiroImoveisExtrato,
   montarPainelAdministracaoImovel,
   montarPainelAdministracaoImovelDeTransacoes,
+  paresCodProcComLancamentosNoMes,
+  resolverNumeroImovelParCodProc,
 } from '../data/imoveisAdministracaoFinanceiro.js';
 import { TAG_ADM_ALUGUEL } from '../data/imoveisAdministracaoFinanceiro.js';
 import {
@@ -25,6 +34,7 @@ import { mapApiLancamentoToExtratoRow, extratoRowToUi } from '../components/fina
 import { buscarCliente } from '../api/clientesService.js';
 import {
   buscarLancamentoFinanceiroApi,
+  listarLancamentosExtratoNoIntervalo,
   listarLancamentosFinanceiroPaginados,
   listarLancamentosProcessoApiFirst,
   salvarOuAtualizarLancamentoFinanceiroApi,
@@ -35,6 +45,7 @@ import {
   buscarProcessoPorId,
   resolverProcessoId,
 } from './processosRepository.js';
+import { listarParesCodProcPorNumeroImovelProcessos } from '../data/processosHistoricoData.js';
 
 /** Cache em memória: número da pessoa → nome (evita N×GET no relatório). */
 const cacheNomePessoa = new Map();
@@ -162,7 +173,9 @@ async function enriquecerCodigoProcDoVinculo(item, apiImovel) {
     numeroPlanilha: np != null ? Number(np) : undefined,
     imovelIdApi: idApi != null ? Number(idApi) : undefined,
   });
-  const prim = (v.vinculos || []).find((x) => x.cadastroAtual) || (v.vinculos || [])[0];
+  const lista = v.vinculos || [];
+  const prim =
+    lista.find((x) => x.principal) || lista.find((x) => x.cadastroAtual) || lista[lista.length - 1];
   if (!prim) return item;
   return {
     ...item,
@@ -445,7 +458,9 @@ export async function resolverClienteIdPorCodigo(codigoCliente) {
   const cod = padCliente8(codigoCliente);
   const list = await request('/api/clientes');
   const c = (list || []).find((x) => String(x.codigoCliente) === cod);
-  return c?.id ?? null;
+  if (!c) return null;
+  if (c.clienteId != null && Number.isFinite(Number(c.clienteId))) return Number(c.clienteId);
+  return c.id != null && c.pessoaId != null ? Number(c.id) : null;
 }
 
 export async function resolverProcessoIdPorChave(codigoCliente, procInterno) {
@@ -556,27 +571,204 @@ export async function listarImoveisApi() {
   }
 }
 
+function chaveVinculoCodProc(codigoCliente, numeroInterno) {
+  return `${padCliente8(codigoCliente)}|${Math.trunc(Number(numeroInterno))}`;
+}
+
+function mesclarVinculosProcessoImovel(apiPayload, numeroPlanilha) {
+  const np = Number(numeroPlanilha);
+  const merged = Array.isArray(apiPayload?.vinculos) ? [...apiPayload.vinculos] : [];
+  const seen = new Set(merged.map((v) => chaveVinculoCodProc(v.codigoCliente, v.numeroInterno)));
+
+  for (const lp of listarParesCodProcPorNumeroImovelProcessos(np)) {
+    const chave = chaveVinculoCodProc(lp.codigoCliente, lp.numeroInterno);
+    if (seen.has(chave)) continue;
+    seen.add(chave);
+    merged.push({
+      codigoCliente: padCliente8(lp.codigoCliente),
+      numeroInterno: lp.numeroInterno,
+      processoId: null,
+      imovelId: null,
+      cadastroAtual: false,
+      principal: false,
+    });
+  }
+
+  merged.forEach((v, i) => {
+    v.principal = i === merged.length - 1;
+  });
+  return {
+    numeroPlanilha: apiPayload?.numeroPlanilha ?? (np >= 1 ? np : null),
+    vinculos: merged,
+  };
+}
+
 /**
  * Todos os pares (codigoCliente, numeroInterno) com imóvel ligado ao nº da planilha.
  * @param {{ numeroPlanilha?: number, imovelIdApi?: number }} opts
  */
 export async function listarVinculosProcessoImovel(opts = {}) {
-  if (!featureFlags.useApiImoveis) {
-    return { numeroPlanilha: opts.numeroPlanilha ?? null, vinculos: [] };
-  }
   const np = Number(opts.numeroPlanilha);
   const idApi = Number(opts.imovelIdApi);
-  try {
-    if (Number.isFinite(idApi) && idApi > 0) {
-      return await request(`/api/imoveis/${idApi}/vinculos-processo`);
-    }
-    if (Number.isFinite(np) && np >= 1) {
-      return await request(`/api/imoveis/por-numero-planilha/${np}/vinculos-processo`);
-    }
-    return { numeroPlanilha: null, vinculos: [] };
-  } catch {
-    return { numeroPlanilha: np >= 1 ? np : null, vinculos: [] };
+
+  if (!featureFlags.useApiImoveis) {
+    return mesclarVinculosProcessoImovel({ numeroPlanilha: np >= 1 ? np : null, vinculos: [] }, np);
   }
+
+  try {
+    let apiPayload;
+    if (Number.isFinite(idApi) && idApi > 0) {
+      apiPayload = await request(`/api/imoveis/${idApi}/vinculos-processo`);
+    } else if (Number.isFinite(np) && np >= 1) {
+      apiPayload = await request(`/api/imoveis/por-numero-planilha/${np}/vinculos-processo`);
+    } else {
+      return mesclarVinculosProcessoImovel({ numeroPlanilha: null, vinculos: [] }, np);
+    }
+    return mesclarVinculosProcessoImovel(apiPayload, apiPayload?.numeroPlanilha ?? np);
+  } catch {
+    return mesclarVinculosProcessoImovel({ numeroPlanilha: np >= 1 ? np : null, vinculos: [] }, np);
+  }
+}
+
+function corpoPutImovelFromApi(imo, patch) {
+  return {
+    clienteId: patch.clienteId !== undefined ? patch.clienteId : (imo.clienteId ?? null),
+    processoId: patch.processoId !== undefined ? patch.processoId : (imo.processoId ?? null),
+    numeroPlanilha: patch.numeroPlanilha !== undefined ? patch.numeroPlanilha : (imo.numeroPlanilha ?? null),
+    responsavelPessoaId: imo.responsavelPessoaId ?? null,
+    titulo: imo.titulo ?? null,
+    enderecoCompleto: imo.enderecoCompleto ?? null,
+    condominio: imo.condominio ?? null,
+    unidade: patch.unidade !== undefined ? patch.unidade : (imo.unidade ?? null),
+    tipoImovel: imo.tipoImovel ?? null,
+    situacao: imo.situacao ?? 'DESOCUPADO',
+    garagens: imo.garagens ?? null,
+    inscricaoImobiliaria: imo.inscricaoImobiliaria ?? null,
+    observacoes: patch.observacoes !== undefined ? patch.observacoes : (imo.observacoes ?? null),
+    camposExtrasJson: imo.camposExtrasJson ?? null,
+    ativo: imo.ativo ?? true,
+  };
+}
+
+/**
+ * Vincula o par código cliente + proc. ao nº sequencial do imóvel (col. A da planilha).
+ * Vários processos podem partilhar o mesmo nº (linhas distintas em `imovel`, ver Proc/0.89.1).
+ * @param {string} codigoCliente
+ * @param {number} numeroInterno
+ * @param {number} numeroPlanilha
+ */
+export async function vincularProcessoAoNumeroImovel(codigoCliente, numeroInterno, numeroPlanilha) {
+  if (!featureFlags.useApiImoveis) {
+    return { ok: false, acao: 'api_desligada', mensagem: 'API de imóveis desligada.' };
+  }
+  const np = Math.trunc(Number(numeroPlanilha));
+  const proc = Math.trunc(Number(numeroInterno));
+  if (!Number.isFinite(np) || np < 1) {
+    return { ok: false, acao: 'numero_invalido', mensagem: 'Informe um nº de imóvel válido.' };
+  }
+  if (!Number.isFinite(proc) || proc < 1) {
+    return { ok: false, acao: 'processo_invalido', mensagem: 'Selecione um processo válido.' };
+  }
+
+  const procApi = await buscarProcessoPorChaveNatural(codigoCliente, proc);
+  if (!procApi?.id) {
+    return { ok: false, acao: 'sem_processo', mensagem: 'Processo não encontrado na API.' };
+  }
+
+  const clienteApi = await buscarClientePorCodigo(codigoCliente);
+  const clientePk =
+    clienteApi?.clienteId != null
+      ? Number(clienteApi.clienteId)
+      : clienteApi?.id != null
+        ? Number(clienteApi.id)
+        : procApi.clienteId != null
+          ? Number(procApi.clienteId)
+          : null;
+  if (!Number.isFinite(clientePk) || clientePk < 1) {
+    return { ok: false, acao: 'sem_cliente', mensagem: 'Cliente não encontrado na API.' };
+  }
+
+  const todos = await listarImoveisApi();
+  let imovel = todos.find(
+    (i) => Number(i.clienteId) === clientePk && Number(i.numeroPlanilha) === np
+  );
+
+  if (!imovel) {
+    try {
+      const global = await request(`/api/imoveis/por-numero-planilha/${np}`);
+      if (global && Number(global.clienteId) === clientePk) {
+        imovel = global;
+      }
+    } catch {
+      /* sem imóvel com esse nº para este cliente */
+    }
+  }
+
+  if (imovel?.processoId != null && Number(imovel.processoId) === Number(procApi.id)) {
+    return {
+      ok: true,
+      acao: 'ja_vinculado',
+      mensagem: 'Este processo já está vinculado a este imóvel.',
+      numeroPlanilha: np,
+      imovelIdApi: imovel.id,
+      unidade: imovel.unidade ?? null,
+    };
+  }
+
+  if (imovel?.id) {
+    const putBody = corpoPutImovelFromApi(imovel, {
+      clienteId: clientePk,
+      processoId: procApi.id,
+    });
+    const atualizado = await request(`/api/imoveis/${imovel.id}`, { method: 'PUT', body: putBody });
+    return {
+      ok: true,
+      acao: 'atualizado',
+      mensagem: 'Processo vinculado ao imóvel.',
+      numeroPlanilha: np,
+      imovelIdApi: atualizado.id,
+      unidade: atualizado.unidade ?? null,
+    };
+  }
+
+  const baseBody = {
+    clienteId: clientePk,
+    processoId: procApi.id,
+    situacao: 'DESOCUPADO',
+    ativo: true,
+    observacoes: `Vínculo Processos (planilha legado ${np}).`,
+  };
+
+  try {
+    const criado = await request('/api/imoveis', {
+      method: 'POST',
+      body: { ...baseBody, numeroPlanilha: np },
+    });
+    return {
+      ok: true,
+      acao: 'criado',
+      mensagem: 'Imóvel vinculado — use «Abrir Proc.» no cadastro Imóveis para ver todos os processos.',
+      numeroPlanilha: np,
+      imovelIdApi: criado.id,
+      unidade: criado.unidade ?? null,
+    };
+  } catch (e) {
+    const msg = String(e?.message ?? e);
+    if (!/já vinculado|ja vinculado|duplicate|unique|planilha/i.test(msg)) {
+      return { ok: false, acao: 'erro_criar', mensagem: msg.slice(0, 300) };
+    }
+  }
+
+  const criadoLegado = await request('/api/imoveis', { method: 'POST', body: baseBody });
+  return {
+    ok: true,
+    acao: 'criado_legado',
+    mensagem:
+      'Processo vinculado (nº já usado por outro registo — listado em «Abrir Proc.» pelo nº do imóvel).',
+    numeroPlanilha: np,
+    imovelIdApi: criadoLegado.id,
+    unidade: criadoLegado.unidade ?? null,
+  };
 }
 
 /** Número da planilha (col. A) para o par código de cliente + proc; null se não houver imóvel ou API desligada. */
@@ -686,39 +878,80 @@ export async function carregarItensRelatorioImoveisApi() {
 }
 
 /**
- * Relatório financeiro consolidado (imóveis × mês): cadastro na API + totais da conta corrente por processo.
+ * Relatório financeiro (imóveis × mês): extratos bancários com Cod.+Proc., filtrado por nº de imóvel no processo.
  */
 export async function carregarRelatorioFinanceiroImoveisMes(chaveMesYYYYMM, opts = {}) {
-  const { soOcupados = true } = opts;
+  const { soOcupados = true, signal } = opts;
   const cad = await carregarItensRelatorioImoveisApi();
   if (!cad.ok) {
     return { ok: false, motivo: cad.motivo, linhas: [], ultimaCarga: null };
   }
 
-  let linhas = buildRelatorioFinanceiroImoveisMes(cad.itens, chaveMesYYYYMM, { soOcupados });
+  const indice = construirIndiceImoveisPorCodProc(cad.itens);
+  let pares = [];
 
-  if (featureFlags.useApiFinanceiro && linhas.length > 0) {
-    const itensPorId = new Map(cad.itens.map((i) => [i.imovelId, i]));
-    linhas = await Promise.all(
-      linhas.map(async (linha) => {
-        const procNum = Number(String(linha.proc).replace(/\D/g, ''));
-        const codNum = Number(String(linha.codigo).replace(/\D/g, ''));
-        if (!codNum || !Number.isFinite(procNum)) return linha;
+  if (featureFlags.useApiFinanceiro) {
+    const intervalo = intervaloIsoMesReferencia(chaveMesYYYYMM);
+    if (intervalo) {
+      const lancsMes = await listarLancamentosExtratoNoIntervalo({ ...intervalo, size: 500 }, { signal });
+      pares = paresCodProcComLancamentosNoMes(lancsMes, chaveMesYYYYMM);
+    }
+  } else {
+    const vistos = new Set();
+    for (const item of cad.itens) {
+      const chave = chaveParCodProc(item.codigo, item.proc);
+      if (!chave || vistos.has(chave)) continue;
+      const lancs = getTransacoesContaCorrenteCompleto(item.codigo, item.proc);
+      if (!paresCodProcComLancamentosNoMes(lancs, chaveMesYYYYMM).length) continue;
+      vistos.add(chave);
+      const cod = normalizarCodigoClienteFinanceiro(item.codigo);
+      const procNorm = normalizarProcFinanceiro(item.proc);
+      pares.push({
+        codigoNorm: cod,
+        procNorm,
+        codigoNum: Number(cod),
+        procNum: Number(procNorm),
+      });
+    }
+  }
+
+  const totaisPorPar = new Map();
+  if (featureFlags.useApiFinanceiro) {
+    await Promise.all(
+      pares.map(async (par) => {
+        const chave = chaveParCodProc(par.codigoNorm, par.procNorm);
+        if (!resolverNumeroImovelParCodProc(par, indice)) return;
         try {
           const lancs = await listarLancamentosProcessoApiFirst({
-            codigoCliente: String(codNum).padStart(8, '0'),
-            numeroInterno: procNum,
+            codigoCliente: par.codigoNorm,
+            numeroInterno: par.procNum ?? par.procNorm,
+            signal,
           });
-          const totais = extrairTotaisFinanceirosMes(lancs, codNum, procNum, chaveMesYYYYMM);
-          const item = itensPorId.get(linha.imovelId);
-          if (!item) return { ...linha, ...totais };
-          return linhaRelatorioFinanceiroFromCadastro(item, chaveMesYYYYMM, totais);
+          totaisPorPar.set(
+            chave,
+            extrairTotaisFinanceirosMes(lancs, par.codigoNum, par.procNum ?? par.procNorm, chaveMesYYYYMM),
+          );
         } catch {
-          return linha;
+          /* mantém totais vazios */
         }
       }),
     );
+  } else {
+    for (const par of pares) {
+      const chave = chaveParCodProc(par.codigoNorm, par.procNorm);
+      if (!resolverNumeroImovelParCodProc(par, indice)) continue;
+      const lancs = getTransacoesContaCorrenteCompleto(par.codigoNorm, par.procNorm);
+      totaisPorPar.set(
+        chave,
+        extrairTotaisFinanceirosMes(lancs, par.codigoNum, par.procNum ?? par.procNorm, chaveMesYYYYMM),
+      );
+    }
   }
+
+  const linhas = montarLinhasRelatorioFinanceiroImoveisExtrato(cad.itens, pares, chaveMesYYYYMM, {
+    soOcupados,
+    totaisPorPar,
+  });
 
   return { ok: true, linhas, ultimaCarga: new Date() };
 }
@@ -1064,16 +1297,25 @@ export async function resolverIdsVinculoLancamentoCodProc(codigoCliente, proc, o
   if (featureFlags.useApiProcessos && cod8) {
     try {
       const c = await buscarClientePorCodigo(cod8);
-      if (c?.id != null && Number.isFinite(Number(c.id))) {
-        clienteId = Number(c.id);
+      const pk =
+        c?.clienteId != null
+          ? Number(c.clienteId)
+          : c?.id != null && c?.pessoaId != null
+            ? Number(c.id)
+            : null;
+      if (pk != null && Number.isFinite(pk)) {
+        clienteId = pk;
       }
       if (!processoId && Number.isFinite(procNum) && procNum >= 0) {
         const p = await buscarProcessoPorChaveNatural(cod8, procNum);
         if (p?.id != null && Number.isFinite(Number(p.id))) {
           processoId = Number(p.id);
-          const pessoaProc = p.clienteId ?? p.pessoaId;
-          if (pessoaProc != null && Number.isFinite(Number(pessoaProc))) {
-            clienteId = Number(pessoaProc);
+          const procClientePk =
+            p.clienteId != null
+              ? Number(p.clienteId)
+              : null;
+          if (procClientePk != null && Number.isFinite(procClientePk)) {
+            clienteId = procClientePk;
           }
         }
       }
@@ -1087,9 +1329,8 @@ export async function resolverIdsVinculoLancamentoCodProc(codigoCliente, proc, o
   }
   if (processoId && !clienteId) {
     const p = await buscarProcessoPorId(processoId);
-    const pessoaProc = p?.clienteId ?? p?.pessoaId;
-    if (pessoaProc != null && Number.isFinite(Number(pessoaProc))) {
-      clienteId = Number(pessoaProc);
+    if (p?.clienteId != null && Number.isFinite(Number(p.clienteId))) {
+      clienteId = Number(p.clienteId);
     }
   }
 

@@ -3,7 +3,13 @@
  * Fonte única: mesmos lançamentos dos extratos (Cod. Cliente + Proc.) usados em Processos.
  */
 
-import { getTransacoesContaCorrenteCompleto, LETRA_TO_CONTA } from './financeiroData.js';
+import {
+  getTransacoesContaCorrenteCompleto,
+  LETRA_TO_CONTA,
+  normalizarCodigoClienteFinanceiro,
+  normalizarProcFinanceiro,
+} from './financeiroData.js';
+import { getRegistroProcesso } from './processosHistoricoData.js';
 import { parseValorMonetarioBr } from '../utils/parseValorMonetarioBr.js';
 
 export const PAPEL_ALUGUEL = 'aluguel';
@@ -22,6 +28,98 @@ export const TAG_ADM_DESPESA = '[ADM_IMOVEL:DESPESA_REPASSAR]';
 
 export function imovelIdPorCodigoProc() {
   return null;
+}
+
+export function numeroImovelCampoProcessoValido(valor) {
+  const n = Math.trunc(Number(String(valor ?? '').replace(/\D/g, '')));
+  return Number.isFinite(n) && n >= 1 ? n : null;
+}
+
+export function chaveParCodProc(codigoCliente, proc) {
+  const cod = normalizarCodigoClienteFinanceiro(codigoCliente);
+  const procNorm = normalizarProcFinanceiro(proc);
+  if (!cod || procNorm === '') return '';
+  return `${cod}|${procNorm}`;
+}
+
+export function parCodProcDeLancamentoUi(t) {
+  const cod = normalizarCodigoClienteFinanceiro(t?.codCliente ?? t?.codigo);
+  const procNorm = normalizarProcFinanceiro(t?.proc);
+  if (!cod || procNorm === '') return null;
+  const procNum = Number(procNorm);
+  return {
+    codigoNorm: cod,
+    procNorm,
+    codigoNum: Number(cod),
+    procNum: Number.isFinite(procNum) ? procNum : null,
+  };
+}
+
+/** Pares distintos (cod. cliente + proc.) com pelo menos um lançamento no mês de referência. */
+export function paresCodProcComLancamentosNoMes(lancamentos, chaveMesYYYYMM) {
+  const pares = new Map();
+  for (const t of lancamentos || []) {
+    if (mesReferenciaLancamentoParaRelatorio(t)?.chave !== chaveMesYYYYMM) continue;
+    const par = parCodProcDeLancamentoUi(t);
+    if (!par) continue;
+    pares.set(chaveParCodProc(par.codigoNorm, par.procNorm), par);
+  }
+  return [...pares.values()];
+}
+
+export function intervaloIsoMesReferencia(chaveMesYYYYMM) {
+  const [ys, ms] = String(chaveMesYYYYMM).split('-');
+  const y = Number(ys);
+  const m = Number(ms);
+  if (!y || !m) return null;
+  const ultimoDia = new Date(y, m, 0).getDate();
+  const mm = String(m).padStart(2, '0');
+  return {
+    dataInicio: `${y}-${mm}-01`,
+    dataFim: `${y}-${mm}-${String(ultimoDia).padStart(2, '0')}`,
+  };
+}
+
+/**
+ * Índice cod.+proc. → cadastro UI do imóvel (extras, contrato, unidade).
+ * @param {object[]} itensCadastro
+ */
+export function construirIndiceImoveisPorCodProc(itensCadastro) {
+  const map = new Map();
+  for (const item of itensCadastro || []) {
+    const chave = chaveParCodProc(item.codigo, item.proc);
+    if (!chave) continue;
+    map.set(chave, item);
+  }
+  return map;
+}
+
+/**
+ * Nº do imóvel (campo Imóvel em Processos / col. A): cadastro do imóvel ou histórico local do processo.
+ */
+export function resolverNumeroImovelParCodProc(par, indicePorCodProc) {
+  if (!par) return null;
+  const chave = chaveParCodProc(par.codigoNorm, par.procNorm);
+  const doCadastro = numeroImovelCampoProcessoValido(indicePorCodProc?.get(chave)?.imovelId);
+  if (doCadastro) return doCadastro;
+  const reg = getRegistroProcesso(par.codigoNorm, par.procNorm);
+  return numeroImovelCampoProcessoValido(reg?.imovelId);
+}
+
+export function itemCadastroMinimoRelatorioImovel(par, numeroImovel) {
+  return {
+    imovelId: numeroImovel,
+    imovelOcupado: true,
+    codigo: par.codigoNum,
+    proc: String(par.procNorm),
+    unidade: '',
+    condominio: '',
+    endereco: '',
+    inquilino: '',
+    valorLocacao: '',
+    diaPagAluguel: '',
+    diaRepasse: '',
+  };
 }
 
 /**
@@ -430,9 +528,8 @@ export function linhaRelatorioFinanceiroFromCadastro(item, chaveMesYYYYMM, totai
 }
 
 /**
- * Monta linhas do relatório consolidado (todos os imóveis × um mês de referência).
- * Dados: mesmos lançamentos do Financeiro com Cod. cliente + Proc. do imóvel; classificação aluguel/repasse
- * (tags `[ADM_IMOVEL:ALUGUEL]` / `[ADM_IMOVEL:REPASSE]` ou heurísticas em `classificarLancamentoAdministracaoImovel`).
+ * Monta linhas do relatório a partir do cadastro (sem filtro por extrato).
+ * Preferir {@link montarLinhasRelatorioFinanceiroImoveisExtrato}.
  *
  * @param {object[]} itens cadastro UI (`mapApiToUi`)
  * @param {string} chaveMesYYYYMM ex. `2026-03`
@@ -444,4 +541,43 @@ export function buildRelatorioFinanceiroImoveisMes(itens, chaveMesYYYYMM, opts =
     .filter((item) => !soOcupados || item.imovelOcupado)
     .map((item) => linhaRelatorioFinanceiroFromCadastro(item, chaveMesYYYYMM))
     .sort((a, b) => (Number(a.imovelId) || 0) - (Number(b.imovelId) || 0));
+}
+
+/**
+ * Relatório orientado ao extrato: só pares com lançamento no mês e nº de imóvel (Processos ou cadastro).
+ *
+ * @param {object[]} itensCadastro
+ * @param {Array<{ codigoNorm: string, procNorm: string, codigoNum: number, procNum: number|null }>} paresCodProc
+ * @param {string} chaveMesYYYYMM
+ * @param {{ soOcupados?: boolean, totaisPorPar?: Map<string, object> }} opts
+ */
+export function montarLinhasRelatorioFinanceiroImoveisExtrato(
+  itensCadastro,
+  paresCodProc,
+  chaveMesYYYYMM,
+  opts = {},
+) {
+  const { soOcupados = true, totaisPorPar = new Map() } = opts;
+  const indice = construirIndiceImoveisPorCodProc(itensCadastro);
+  const porNumero = new Map();
+  for (const item of itensCadastro || []) {
+    const np = numeroImovelCampoProcessoValido(item.imovelId);
+    if (np) porNumero.set(np, item);
+  }
+
+  const linhas = [];
+  for (const par of paresCodProc || []) {
+    const numeroImovel = resolverNumeroImovelParCodProc(par, indice);
+    if (!numeroImovel) continue;
+
+    const chave = chaveParCodProc(par.codigoNorm, par.procNorm);
+    let item = indice.get(chave) || porNumero.get(numeroImovel);
+    if (!item) item = itemCadastroMinimoRelatorioImovel(par, numeroImovel);
+    if (soOcupados && !item.imovelOcupado) continue;
+
+    const totais = totaisPorPar.get(chave) || {};
+    linhas.push(linhaRelatorioFinanceiroFromCadastro(item, chaveMesYYYYMM, totais));
+  }
+
+  return linhas.sort((a, b) => (Number(a.imovelId) || 0) - (Number(b.imovelId) || 0));
 }

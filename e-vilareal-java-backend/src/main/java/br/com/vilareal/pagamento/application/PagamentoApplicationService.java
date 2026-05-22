@@ -219,6 +219,10 @@ public class PagamentoApplicationService {
         BigDecimal venc = BigDecimal.ZERO;
         BigDecimal conf = BigDecimal.ZERO;
         BigDecimal semComp = BigDecimal.ZERO;
+        BigDecimal totalConferido = BigDecimal.ZERO;
+        BigDecimal totalAcertado = BigDecimal.ZERO;
+        long conferenciasPendentes = 0;
+        long acertosPendentes = 0;
 
         Map<String, BigDecimal> porCat = new LinkedHashMap<>();
         Map<String, BigDecimal> porResp = new LinkedHashMap<>();
@@ -249,8 +253,30 @@ public class PagamentoApplicationService {
                 case PagamentoDominio.ST_VENCIDO -> venc = venc.add(p.getValor());
                 case PagamentoDominio.ST_CONFERENCIA_PENDENTE -> conf = conf.add(p.getValor());
                 case PagamentoDominio.ST_PAGO_SEM_COMPROVANTE -> semComp = semComp.add(p.getValor());
+                case PagamentoDominio.ST_CONFERIDO -> {
+                    if (p.getDataConferencia() != null
+                            && !p.getDataConferencia().isBefore(ini)
+                            && !p.getDataConferencia().isAfter(fim)) {
+                        totalConferido = totalConferido.add(p.getValor());
+                    }
+                }
+                case PagamentoDominio.ST_ACERTADO -> {
+                    if (p.getDataAcerto() != null
+                            && !p.getDataAcerto().isBefore(ini)
+                            && !p.getDataAcerto().isAfter(fim)) {
+                        totalAcertado = totalAcertado.add(p.getValor());
+                    }
+                }
                 default -> {
                 }
+            }
+            if ((PagamentoDominio.ST_PAGO_CONFIRMADO.equals(p.getStatus())
+                            || PagamentoDominio.ST_PAGO_SEM_COMPROVANTE.equals(p.getStatus()))
+                    && p.getFinanceiroLancamento() == null) {
+                conferenciasPendentes++;
+            }
+            if (PagamentoDominio.ST_CONFERIDO.equals(p.getStatus()) && p.getPrestacaoContas() == null) {
+                acertosPendentes++;
             }
             porCat.merge(p.getCategoria(), p.getValor(), BigDecimal::add);
             String respNome =
@@ -267,6 +293,10 @@ public class PagamentoApplicationService {
         d.setTotalPagoSemComprovante(semComp.setScale(2, RoundingMode.HALF_UP));
         d.setPorCategoria(porCat);
         d.setPorResponsavel(porResp);
+        d.setTotalConferido(totalConferido.setScale(2, RoundingMode.HALF_UP));
+        d.setTotalAcertado(totalAcertado.setScale(2, RoundingMode.HALF_UP));
+        d.setConferenciasPendentes(conferenciasPendentes);
+        d.setAcertosPendentes(acertosPendentes);
         return d;
     }
 
@@ -285,7 +315,9 @@ public class PagamentoApplicationService {
             if (PagamentoDominio.ST_CANCELADO.equals(st)
                     || PagamentoDominio.ST_SUBSTITUIDO.equals(st)
                     || PagamentoDominio.ST_PAGO_CONFIRMADO.equals(st)
-                    || PagamentoDominio.ST_PAGO_SEM_COMPROVANTE.equals(st)) {
+                    || PagamentoDominio.ST_PAGO_SEM_COMPROVANTE.equals(st)
+                    || PagamentoDominio.ST_CONFERIDO.equals(st)
+                    || PagamentoDominio.ST_ACERTADO.equals(st)) {
                 continue;
             }
             String novo = null;
@@ -435,6 +467,12 @@ public class PagamentoApplicationService {
         e.setRecorrenciaDescricaoPadrao(req.getRecorrenciaDescricaoPadrao());
         e.setCondominioTexto(req.getCondominioTexto());
         e.setFornecedorTexto(req.getFornecedorTexto());
+        if (req.getMesReferencia() != null) {
+            e.setMesReferencia(req.getMesReferencia().trim().isEmpty() ? null : req.getMesReferencia().trim());
+        }
+        if (req.getContaReferencia() != null) {
+            e.setContaReferencia(req.getContaReferencia().trim().isEmpty() ? null : req.getContaReferencia().trim());
+        }
 
         e.setCliente(resolveCliente(req.getClienteId()));
         e.setProcesso(resolveProcesso(req.getProcessoId()));
@@ -478,6 +516,10 @@ public class PagamentoApplicationService {
 
     private PagamentoEntity requirePagamento(Long id) {
         return pagamentoRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Pagamento não encontrado."));
+    }
+
+    public PagamentoResponse toResponsePublic(PagamentoEntity e) {
+        return toResponse(e);
     }
 
     private PagamentoResponse toResponse(PagamentoEntity e) {
@@ -540,6 +582,22 @@ public class PagamentoApplicationService {
         }
         r.setCriadoEm(e.getCriadoEm());
         r.setAtualizadoEm(e.getAtualizadoEm());
+        if (e.getFinanceiroLancamento() != null) {
+            r.setFinanceiroLancamentoId(e.getFinanceiroLancamento().getId());
+        }
+        r.setDataConferencia(e.getDataConferencia());
+        r.setDataAcerto(e.getDataAcerto());
+        r.setValorPagoBanco(e.getValorPagoBanco());
+        r.setValorDiferenca(e.getValorDiferenca());
+        if (e.getConferidoPorUsuario() != null) {
+            r.setConferidoPorUsuarioId(e.getConferidoPorUsuario().getId());
+        }
+        if (e.getPrestacaoContas() != null) {
+            r.setPrestacaoContasId(e.getPrestacaoContas().getId());
+        }
+        r.setMesReferencia(e.getMesReferencia());
+        r.setContaReferencia(e.getContaReferencia());
+        r.setAutoGerado(Boolean.TRUE.equals(e.getAutoGerado()));
         return r;
     }
 
@@ -591,54 +649,58 @@ public class PagamentoApplicationService {
         return u.getPerfil() != null && "ADMIN".equalsIgnoreCase(u.getPerfil().getCodigo());
     }
 
-    /** Expõe contagens para painel de alertas (frontend pode refinar mensagens). */
     @Transactional(readOnly = true)
-    public Map<String, Long> contagemAlertas() {
+    public PagamentoAlertasResponse contagemAlertas() {
         LocalDate hoje = LocalDate.now(clock);
-        Map<String, Long> m = new LinkedHashMap<>();
         List<PagamentoEntity> todos = pagamentoRepository.findAll();
-        m.put(
-                "vencidos",
-                todos.stream()
-                        .filter(p -> hoje.isAfter(p.getDataVencimento()))
-                        .filter(p -> !List.of(
-                                        PagamentoDominio.ST_PAGO_CONFIRMADO,
-                                        PagamentoDominio.ST_CANCELADO,
-                                        PagamentoDominio.ST_SUBSTITUIDO)
-                                .contains(p.getStatus()))
-                        .count());
-        m.put("vencendoHoje", todos.stream().filter(p -> hoje.equals(p.getDataVencimento())).count());
-        m.put(
-                "proximos3Dias",
-                todos.stream()
-                        .filter(p -> !p.getDataVencimento().isBefore(hoje)
-                                && !p.getDataVencimento().isAfter(hoje.plusDays(3)))
-                        .count());
-        m.put(
-                "proximos7Dias",
-                todos.stream()
-                        .filter(p -> !p.getDataVencimento().isBefore(hoje)
-                                && !p.getDataVencimento().isAfter(hoje.plusDays(7)))
-                        .count());
-        m.put(
-                "agendadosAguardandoConfirmacao",
+        PagamentoAlertasResponse r = new PagamentoAlertasResponse();
+        r.setVencidos(todos.stream()
+                .filter(p -> hoje.isAfter(p.getDataVencimento()))
+                .filter(p -> !List.of(
+                                PagamentoDominio.ST_PAGO_CONFIRMADO,
+                                PagamentoDominio.ST_PAGO_SEM_COMPROVANTE,
+                                PagamentoDominio.ST_CONFERIDO,
+                                PagamentoDominio.ST_ACERTADO,
+                                PagamentoDominio.ST_CANCELADO,
+                                PagamentoDominio.ST_SUBSTITUIDO)
+                        .contains(p.getStatus()))
+                .count());
+        r.setVencendoHoje(todos.stream().filter(p -> hoje.equals(p.getDataVencimento())).count());
+        r.setProximos3Dias(todos.stream()
+                .filter(p -> !p.getDataVencimento().isBefore(hoje) && !p.getDataVencimento().isAfter(hoje.plusDays(3)))
+                .count());
+        r.setProximos7Dias(todos.stream()
+                .filter(p -> !p.getDataVencimento().isBefore(hoje) && !p.getDataVencimento().isAfter(hoje.plusDays(7)))
+                .count());
+        r.setAgendadosAguardandoConfirmacao(
                 todos.stream().filter(p -> PagamentoDominio.ST_AGENDADO.equals(p.getStatus())).count());
-        m.put(
-                "conferenciaPendente",
-                todos.stream()
-                        .filter(p -> PagamentoDominio.ST_CONFERENCIA_PENDENTE.equals(p.getStatus()))
-                        .count());
-        m.put(
-                "pagoSemComprovante",
-                todos.stream()
-                        .filter(p -> PagamentoDominio.ST_PAGO_SEM_COMPROVANTE.equals(p.getStatus()))
-                        .count());
-        m.put(
-                "altoValor",
-                todos.stream().filter(p -> p.getValor().compareTo(new BigDecimal("10000")) >= 0).count());
-        m.put(
-                "urgentes",
-                todos.stream().filter(p -> "URGENTE".equalsIgnoreCase(p.getPrioridade())).count());
-        return m;
+        r.setConferenciaPendente(todos.stream()
+                .filter(p -> PagamentoDominio.ST_CONFERENCIA_PENDENTE.equals(p.getStatus()))
+                .count());
+        r.setPagoSemComprovante(todos.stream()
+                .filter(p -> PagamentoDominio.ST_PAGO_SEM_COMPROVANTE.equals(p.getStatus()))
+                .count());
+        r.setAltoValor(todos.stream().filter(p -> p.getValor().compareTo(new BigDecimal("10000")) >= 0).count());
+        r.setUrgentes(todos.stream().filter(p -> "URGENTE".equalsIgnoreCase(p.getPrioridade())).count());
+
+        List<PagamentoEntity> pagosNaoConc = todos.stream()
+                .filter(p -> PagamentoDominio.ST_PAGO_CONFIRMADO.equals(p.getStatus())
+                        || PagamentoDominio.ST_PAGO_SEM_COMPROVANTE.equals(p.getStatus()))
+                .filter(p -> p.getFinanceiroLancamento() == null)
+                .toList();
+        r.setPagosNaoConciliados(new PagamentoAlertaValorResponse(
+                pagosNaoConc.size(),
+                pagosNaoConc.stream().map(PagamentoEntity::getValor).reduce(BigDecimal.ZERO, BigDecimal::add)
+                        .setScale(2, RoundingMode.HALF_UP)));
+
+        List<PagamentoEntity> confSemAcerto = todos.stream()
+                .filter(p -> PagamentoDominio.ST_CONFERIDO.equals(p.getStatus()))
+                .filter(p -> p.getPrestacaoContas() == null)
+                .toList();
+        r.setConferidosNaoAcertados(new PagamentoAlertaValorResponse(
+                confSemAcerto.size(),
+                confSemAcerto.stream().map(PagamentoEntity::getValor).reduce(BigDecimal.ZERO, BigDecimal::add)
+                        .setScale(2, RoundingMode.HALF_UP)));
+        return r;
     }
 }

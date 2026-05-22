@@ -534,6 +534,7 @@ const MENU_ICONS = {
   'relatorio-calculos': IconRelatorioCalculos,
   'admin-imoveis-grupo': IconLandmarkImoveis,
   imoveis: IconBuilding,
+  'imoveis/pagamentos': IconPagamentosMenu,
   'imoveis/sugestoes-vinculo': IconSparkles,
   iptu: IconIptuMenu,
   'imoveis/relatorio-financeiro': IconFinanceiro,

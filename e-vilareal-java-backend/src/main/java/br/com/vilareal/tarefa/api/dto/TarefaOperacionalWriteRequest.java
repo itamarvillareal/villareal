@@ -2,6 +2,7 @@ package br.com.vilareal.tarefa.api.dto;
 
 import br.com.vilareal.tarefa.model.TarefaPrioridade;
 import br.com.vilareal.tarefa.model.TarefaStatus;
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.Getter;
@@ -27,6 +28,7 @@ public class TarefaOperacionalWriteRequest {
 
     private LocalDate dataLimite;
 
+    @Schema(description = "PK da tabela cliente; aceita pessoa.id legado via resolução no servidor")
     private Long clienteId;
     private Long processoId;
     private Long publicacaoId;

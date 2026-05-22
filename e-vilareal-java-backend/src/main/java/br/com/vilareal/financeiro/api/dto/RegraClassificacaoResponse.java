@@ -22,5 +22,6 @@ public class RegraClassificacaoResponse {
     private BigDecimal confianca;
     private Boolean ativo;
     private Long clienteId;
+    private Long pessoaRefId;
     private Long processoId;
 }

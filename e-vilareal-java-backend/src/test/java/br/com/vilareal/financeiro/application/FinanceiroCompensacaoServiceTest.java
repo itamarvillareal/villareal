@@ -39,6 +39,8 @@ class FinanceiroCompensacaoServiceTest {
     private LancamentoFinanceiroRepository lancamentoRepository;
     @Mock
     private ContaContabilRepository contaContabilRepository;
+    @Mock
+    private FinanceiroSaudeService financeiroSaudeService;
 
     @InjectMocks
     private FinanceiroCompensacaoService service;

@@ -135,6 +135,11 @@ import {
   alterarAtivoProcesso,
 } from '../repositories/processosRepository.js';
 import {
+  buscarNumeroImovelPorVinculo,
+  carregarImovelCadastroPorNumeroPlanilha,
+  vincularProcessoAoNumeroImovel,
+} from '../repositories/imoveisRepository.js';
+import {
   buildRouterStateChaveClienteProcesso,
   extrairIntentNavegacaoProcessos,
   gravarUltimaSelecaoProcessosArmazenamento,
@@ -480,8 +485,10 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   const [avisoAudiencia, setAvisoAudiencia] = useState('nao_avisado');
   const [prazoFatal, setPrazoFatal] = useState('');
   const [unidadeEndereco, setUnidadeEndereco] = useState('');
-  const [imovelId, setImovelId] = useState(''); // vínculo com a aba Imóveis (mock)
+  const [imovelId, setImovelId] = useState('');
   const [imovelManual, setImovelManual] = useState(false);
+  const [imovelVinculando, setImovelVinculando] = useState(false);
+  const [imovelVinculoMsg, setImovelVinculoMsg] = useState('');
   /** Evita sobrescrever o texto da unidade quando o vínculo mock mudar, após edição manual. */
   const [unidadeEnderecoManual, setUnidadeEnderecoManual] = useState(false);
   const [tramitacao, setTramitacao] = useState('');
@@ -1103,10 +1110,9 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   }, [tabAtiva, processoApiId]);
 
   useEffect(() => {
-    // Ao mudar cliente/processo, permite de novo o preenchimento automático do vínculo com imóvel
-    // (valores vêm do registro persistido ou do mock no efeito de carga).
     setImovelManual(false);
     setUnidadeEnderecoManual(false);
+    setImovelVinculoMsg('');
   }, [codigoCliente, processo]);
 
   const vinculoImovelMock = useMemo(() => null, [codigoCliente, processo]);
@@ -1121,8 +1127,32 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vinculoImovelMock]);
 
-  function handleImovelIdBlur() {
-    /* Unidade vem do cadastro de imóveis na API ou do que o usuário informou. */
+  async function handleImovelIdBlur() {
+    const np = Math.trunc(Number(String(imovelId ?? '').replace(/\D/g, '')));
+    const procNum = Math.trunc(Number(normalizarProcesso(processo)));
+    if (!featureFlags.useApiImoveis || !String(codigoCliente ?? '').trim() || procNum < 1 || np < 1) {
+      return;
+    }
+
+    setImovelVinculando(true);
+    setImovelVinculoMsg('');
+    try {
+      const r = await vincularProcessoAoNumeroImovel(codigoCliente, procNum, np);
+      if (r.ok) {
+        setImovelId(String(np));
+        const un = String(r.unidade ?? '').trim();
+        if (un && !unidadeEnderecoManual && !String(unidadeEndereco ?? '').trim()) {
+          setUnidadeEndereco(un);
+        }
+        setImovelVinculoMsg(r.mensagem || 'Vínculo gravado.');
+      } else {
+        setImovelVinculoMsg(r.mensagem || 'Não foi possível vincular o imóvel.');
+      }
+    } catch (e) {
+      setImovelVinculoMsg(e?.message || 'Erro ao vincular imóvel.');
+    } finally {
+      setImovelVinculando(false);
+    }
   }
 
   function handleAbrirImovel() {
@@ -1919,10 +1949,10 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       processoApiIdRef.current = Number(procApi.id);
       const mapped = mapApiProcessoToUiShape(procApi);
       setClienteProcessoApiId(
-        mapped.clienteId != null && Number.isFinite(Number(mapped.clienteId)) && Number(mapped.clienteId) > 0
-          ? Number(mapped.clienteId)
-          : procApi.clienteId != null
-            ? Number(procApi.clienteId)
+        mapped.clienteIdNativo != null && Number.isFinite(Number(mapped.clienteIdNativo))
+          ? Number(mapped.clienteIdNativo)
+          : mapped.clienteId != null && Number.isFinite(Number(mapped.clienteId))
+            ? Number(mapped.clienteId)
             : null
       );
       setNumeroProcessoNovo(mapped.numeroProcessoNovo ?? '');
@@ -1955,6 +1985,20 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       if (seq !== carregarProcessoApiSeqRef.current) return;
       aplicarListaPartesApiNaUi(partes);
       await carregarHistoricoApi(procApi.id, seq);
+
+      if (featureFlags.useApiImoveis) {
+        const numImovel = await buscarNumeroImovelPorVinculo(codigoCliente, processo);
+        if (seq === carregarProcessoApiSeqRef.current && numImovel) {
+          setImovelId(numImovel);
+          const cad = await carregarImovelCadastroPorNumeroPlanilha(numImovel);
+          if (seq === carregarProcessoApiSeqRef.current) {
+            const u = String(cad.item?.unidade ?? '').trim();
+            if (u && !unidadeEnderecoManual) {
+              setUnidadeEndereco(u);
+            }
+          }
+        }
+      }
     } catch (e) {
       if (seq !== carregarProcessoApiSeqRef.current) return;
       setApiError(e?.message || 'Falha ao carregar processo da API.');
@@ -1984,11 +2028,25 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     try {
       let snapshot = montarPayloadRegistroProcesso(overrides);
       const clienteApi = await buscarClientePorCodigo(snapshot.codCliente);
-      if (!clienteApi?.id) throw new Error('Cliente não encontrado na API para este código.');
+      const clientePk =
+        clienteApi?.clienteId != null
+          ? Number(clienteApi.clienteId)
+          : clienteApi?.id != null
+            ? Number(clienteApi.id)
+            : null;
+      if (!Number.isFinite(clientePk) || clientePk < 1) {
+        throw new Error('Cliente não encontrado na API para este código.');
+      }
+      const titularPartes =
+        snapshot.parteClienteEntradas?.[0]?.pessoaId ?? snapshot.parteClienteIds?.[0] ?? null;
       const saved = await salvarCabecalhoProcesso({
         ...snapshot,
         processoId: processoApiId,
-        clienteId: clienteApi.id,
+        clienteId: clientePk,
+        pessoaTitularId:
+          titularPartes != null && Number.isFinite(Number(titularPartes))
+            ? Number(titularPartes)
+            : null,
         numeroInterno: Number(snapshot.proc),
         valorCausaNumero: parseValorMonetarioBr(snapshot.valorCausa),
       });
@@ -3383,7 +3441,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
             {/* Imóvel / agenda / cálculos — barra operacional */}
             <section className="rounded-lg border border-sky-200/80 bg-gradient-to-r from-sky-50/90 via-white to-cyan-50/50 px-2.5 py-2 mt-1.5 shadow-sm">
               <p className="w-full text-[10px] text-sky-900/80 leading-snug mb-1.5">
-                <strong className="text-sky-950">Imóveis:</strong> o nº do imóvel vem do cadastro no menu lateral; ao sair do campo Imóvel, a <strong>Unidade</strong> acima preenche-se automaticamente se estiver vazia.
+                <strong className="text-sky-950">Imóveis:</strong> informe o nº sequencial do cadastro Imóveis (col. A). Ao sair do campo, o par <strong>Código + Proc.</strong> atual é vinculado na API e passa a aparecer em <strong>Abrir Proc.</strong> na ficha do imóvel. A <strong>Unidade</strong> acima preenche-se se estiver vazia.
               </p>
               <div className="flex flex-wrap items-end gap-2">
               <button
@@ -3407,11 +3465,18 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                     setImovelId(e.target.value);
                     setImovelManual(true);
                   }}
-                  onBlur={handleImovelIdBlur}
+                  onBlur={() => void handleImovelIdBlur()}
                   className={clsCampo}
                   placeholder="(vazio)"
+                  disabled={imovelVinculando}
                 />
               </Field>
+              {imovelVinculando ? (
+                <span className="text-[10px] text-sky-800 self-center">Vinculando…</span>
+              ) : null}
+              {imovelVinculoMsg ? (
+                <p className="w-full text-[10px] text-sky-900/90 leading-snug basis-full">{imovelVinculoMsg}</p>
+              ) : null}
               <button
                 type="button"
                 onClick={handleAbrirImovel}

@@ -6,6 +6,7 @@ import br.com.vilareal.imovel.api.dto.*;
 import br.com.vilareal.imovel.infrastructure.persistence.entity.*;
 import br.com.vilareal.imovel.application.event.ContratoLocacaoAlteradoEvent;
 import br.com.vilareal.imovel.infrastructure.persistence.repository.*;
+import br.com.vilareal.pessoa.application.ClienteResolverService;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.ClienteRepository;
@@ -13,15 +14,16 @@ import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaReposi
 import br.com.vilareal.processo.application.CodigoClienteUtil;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
+import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -37,6 +39,8 @@ public class ImovelApplicationService {
     private final ClienteRepository clienteRepository;
     private final ProcessoRepository processoRepository;
     private final ApplicationEventPublisher applicationEventPublisher;
+    private final ObjectMapper objectMapper;
+    private final ClienteResolverService clienteResolverService;
 
     public ImovelApplicationService(
             ImovelRepository imovelRepository,
@@ -46,7 +50,9 @@ public class ImovelApplicationService {
             PessoaRepository pessoaRepository,
             ClienteRepository clienteRepository,
             ProcessoRepository processoRepository,
-            ApplicationEventPublisher applicationEventPublisher) {
+            ApplicationEventPublisher applicationEventPublisher,
+            ObjectMapper objectMapper,
+            ClienteResolverService clienteResolverService) {
         this.imovelRepository = imovelRepository;
         this.contratoLocacaoRepository = contratoLocacaoRepository;
         this.locacaoRepasseRepository = locacaoRepasseRepository;
@@ -55,6 +61,8 @@ public class ImovelApplicationService {
         this.clienteRepository = clienteRepository;
         this.processoRepository = processoRepository;
         this.applicationEventPublisher = applicationEventPublisher;
+        this.objectMapper = objectMapper;
+        this.clienteResolverService = clienteResolverService;
     }
 
     @Transactional(readOnly = true)
@@ -115,36 +123,73 @@ public class ImovelApplicationService {
     }
 
     private List<ImovelVinculoProcessoItemResponse> coletarVinculosProcesso(int numeroPlanilha, Long imovelIdCadastroAtual) {
-        List<ImovelEntity> candidatos = imovelRepository.findAllComProcessoPorNumeroPlanilhaLegado(numeroPlanilha);
-        Map<String, ImovelVinculoProcessoItemResponse> porChave = new LinkedHashMap<>();
+        List<ImovelEntity> candidatos = imovelRepository.findAllPorNumeroPlanilhaLegado(numeroPlanilha);
+        List<ImovelVinculoProcessoItemResponse> itens = new ArrayList<>();
 
         for (ImovelEntity im : candidatos) {
-            ProcessoEntity proc = im.getProcesso();
-            if (proc == null || proc.getNumeroInterno() == null) {
-                continue;
-            }
-            String cod8 = resolverCodigoClienteDaPessoa(proc.getPessoa().getId());
-            if (!StringUtils.hasText(cod8)) {
-                continue;
-            }
-            String chave = cod8 + "|" + proc.getNumeroInterno();
-            ImovelVinculoProcessoItemResponse item = porChave.get(chave);
-            if (item == null) {
-                item = new ImovelVinculoProcessoItemResponse();
-                item.setCodigoCliente(cod8);
-                item.setNumeroInterno(proc.getNumeroInterno());
-                item.setProcessoId(proc.getId());
-                item.setImovelId(im.getId());
-                item.setNumeroPlanilhaImovel(im.getNumeroPlanilha() != null ? im.getNumeroPlanilha() : numeroPlanilha);
-                item.setCadastroAtual(imovelIdCadastroAtual != null && imovelIdCadastroAtual.equals(im.getId()));
-                porChave.put(chave, item);
-            } else if (imovelIdCadastroAtual != null && imovelIdCadastroAtual.equals(im.getId())) {
-                item.setCadastroAtual(true);
-                item.setImovelId(im.getId());
+            ImovelVinculoProcessoItemResponse item = montarVinculoProcessoDeImovel(im, numeroPlanilha, imovelIdCadastroAtual);
+            if (item != null) {
+                itens.add(item);
             }
         }
 
-        return new ArrayList<>(porChave.values());
+        if (!itens.isEmpty()) {
+            itens.get(itens.size() - 1).setPrincipal(true);
+        }
+        return itens;
+    }
+
+    private ImovelVinculoProcessoItemResponse montarVinculoProcessoDeImovel(
+            ImovelEntity im, int numeroPlanilha, Long imovelIdCadastroAtual) {
+        ProcessoEntity proc = im.getProcesso();
+        String cod8 = null;
+        Integer numeroInterno = null;
+        Long processoId = null;
+
+        if (proc != null && proc.getNumeroInterno() != null) {
+            numeroInterno = proc.getNumeroInterno();
+            processoId = proc.getId();
+            cod8 = resolverCodigoClienteImovelProcesso(im, proc);
+        } else {
+            CodProcExtras extras = extrairCodProcExtras(im.getCamposExtrasJson());
+            if (extras == null || extras.procNum() == null) {
+                return null;
+            }
+            cod8 = extras.codigo();
+            numeroInterno = extras.procNum();
+            processoId = buscarProcessoPorCodigoProc(cod8, numeroInterno).map(ProcessoEntity::getId).orElse(null);
+        }
+
+        if (!StringUtils.hasText(cod8) || numeroInterno == null || numeroInterno < 1) {
+            return null;
+        }
+
+        ImovelVinculoProcessoItemResponse item = new ImovelVinculoProcessoItemResponse();
+        item.setCodigoCliente(cod8);
+        item.setNumeroInterno(numeroInterno);
+        item.setProcessoId(processoId);
+        item.setImovelId(im.getId());
+        item.setNumeroPlanilhaImovel(im.getNumeroPlanilha() != null ? im.getNumeroPlanilha() : numeroPlanilha);
+        item.setCadastroAtual(imovelIdCadastroAtual != null && imovelIdCadastroAtual.equals(im.getId()));
+        return item;
+    }
+
+    private String resolverCodigoClienteImovelProcesso(ImovelEntity im, ProcessoEntity proc) {
+        if (im.getPessoa() != null) {
+            String cod = resolverCodigoClienteDaPessoa(im.getPessoa().getId());
+            if (StringUtils.hasText(cod)) {
+                return cod;
+            }
+        }
+        if (proc.getPessoa() != null) {
+            String cod = resolverCodigoClienteDaPessoa(proc.getPessoa().getId());
+            if (StringUtils.hasText(cod)) {
+                return cod;
+            }
+            return CodigoClienteUtil.normalizarCodigoClienteOitoDigitos(
+                    String.format("%08d", proc.getPessoa().getId()));
+        }
+        return null;
     }
 
     private String resolverCodigoClienteDaPessoa(Long pessoaId) {
@@ -157,6 +202,45 @@ public class ImovelApplicationService {
         }
         return CodigoClienteUtil.normalizarCodigoClienteOitoDigitos(clientes.get(0).getCodigoCliente());
     }
+
+    private Optional<ProcessoEntity> buscarProcessoPorCodigoProc(String codigoCliente, int numeroInterno) {
+        String codNorm = CodigoClienteUtil.normalizarCodigoClienteOitoDigitos(codigoCliente);
+        if (!StringUtils.hasText(codNorm)) {
+            return Optional.empty();
+        }
+        return clienteRepository
+                .findByCodigoCliente(codNorm)
+                .flatMap(c -> processoRepository.findByPessoa_IdAndNumeroInterno(c.getPessoa().getId(), numeroInterno));
+    }
+
+    private CodProcExtras extrairCodProcExtras(String json) {
+        if (!StringUtils.hasText(json)) {
+            return null;
+        }
+        try {
+            JsonNode root = objectMapper.readTree(json);
+            if (!root.has("codigo") || !root.has("proc")) {
+                return null;
+            }
+            String cod = CodigoClienteUtil.normalizarCodigoClienteOitoDigitos(root.get("codigo").asText());
+            if (!StringUtils.hasText(cod)) {
+                return null;
+            }
+            String procRaw = root.get("proc").asText().replaceAll("\\D", "");
+            if (!StringUtils.hasText(procRaw)) {
+                return null;
+            }
+            int procNum = Integer.parseInt(procRaw);
+            if (procNum < 1) {
+                return null;
+            }
+            return new CodProcExtras(cod, procNum);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private record CodProcExtras(String codigo, Integer procNum) {}
 
     private static int extrairNumeroPlanilhaLegadoObservacoes(String observacoes) {
         if (!StringUtils.hasText(observacoes)) {
@@ -333,12 +417,12 @@ public class ImovelApplicationService {
 
     private void aplicarImovel(ImovelEntity e, ImovelWriteRequest req) {
         if (req.getClienteId() != null) {
-            PessoaEntity pessoa = pessoaRepository
-                    .findById(req.getClienteId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Pessoa (cliente) não encontrada: " + req.getClienteId()));
-            e.setPessoa(pessoa);
+            var cliente = clienteResolverService.resolverClienteIdRequest(req.getClienteId());
+            e.setCliente(cliente);
+            e.setPessoa(cliente.getPessoa());
         } else {
             e.setPessoa(null);
+            e.setCliente(null);
         }
         if (req.getProcessoId() != null) {
             ProcessoEntity proc = processoRepository
@@ -452,15 +536,15 @@ public class ImovelApplicationService {
     private ImovelResponse toImovelResponse(ImovelEntity e) {
         ImovelResponse r = new ImovelResponse();
         r.setId(e.getId());
-        if (e.getPessoa() != null) {
-            r.setClienteId(e.getPessoa().getId());
-            List<ClienteEntity> clientes =
-                    clienteRepository.findByPessoa_IdOrderByCodigoClienteAsc(e.getPessoa().getId());
-            if (!clientes.isEmpty()) {
-                r.setCodigoCliente(clientes.get(0).getCodigoCliente());
-            }
+        if (e.getCliente() != null) {
+            r.setClienteId(e.getCliente().getId());
+            r.setCodigoCliente(e.getCliente().getCodigoCliente());
         } else {
             r.setClienteId(null);
+            r.setCodigoCliente(null);
+        }
+        if (e.getPessoa() != null) {
+            r.setPessoaRefId(e.getPessoa().getId());
         }
         if (e.getProcesso() != null) {
             r.setProcessoId(e.getProcesso().getId());

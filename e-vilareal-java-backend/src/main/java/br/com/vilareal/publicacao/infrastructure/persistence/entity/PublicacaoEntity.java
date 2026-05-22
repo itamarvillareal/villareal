@@ -1,5 +1,6 @@
 package br.com.vilareal.publicacao.infrastructure.persistence.entity;
 
+import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import jakarta.persistence.*;
 import lombok.Getter;
@@ -30,6 +31,10 @@ public class PublicacaoEntity {
      */
     @Column(name = "cliente_ref_id")
     private Long clienteRefId;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "cliente_id")
+    private ClienteEntity cliente;
 
     @Column(name = "data_disponibilizacao")
     private LocalDate dataDisponibilizacao;

@@ -12,9 +12,13 @@ import br.com.vilareal.financeiro.infrastructure.persistence.entity.RegraClassif
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.ContaContabilRepository;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.LancamentoFinanceiroRepository;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.RegraClassificacaoRepository;
+import br.com.vilareal.pessoa.application.ClienteResolverService;
+import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
+import br.com.vilareal.processo.api.dto.ProcessoPartesVinculoTexto;
 import br.com.vilareal.processo.application.ClienteCodigoPessoaResolver;
+import br.com.vilareal.processo.application.ProcessoApplicationService;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -30,7 +34,9 @@ import org.springframework.data.domain.Pageable;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.*;
@@ -53,6 +59,12 @@ class FinanceiroSugestaoServiceTest {
     private ProcessoRepository processoRepository;
     @Mock
     private ClienteCodigoPessoaResolver clienteCodigoPessoaResolver;
+    @Mock
+    private ProcessoApplicationService processoApplicationService;
+    @Mock
+    private FinanceiroSaudeService financeiroSaudeService;
+    @Mock
+    private ClienteResolverService clienteResolverService;
 
     @InjectMocks
     private FinanceiroSugestaoService service;
@@ -87,6 +99,9 @@ class FinanceiroSugestaoServiceTest {
         lenient()
                 .when(clienteCodigoPessoaResolver.codigoClienteExibicaoParaPessoaId(anyLong()))
                 .thenAnswer(inv -> String.format("COD-%d", inv.getArgument(0, Long.class)));
+        lenient()
+                .when(processoApplicationService.resolverTextosPartesVinculoEmLote(anySet()))
+                .thenReturn(Map.of());
 
         lancamento.setDescricao("PAGTO CARTAO PERSONNALITE");
         lancamento.setValor(new BigDecimal("1500.00"));
@@ -205,15 +220,22 @@ class FinanceiroSugestaoServiceTest {
         titular.setId(728L);
         titular.setNome("Cliente Titular");
 
+        ClienteEntity cliente728 = new ClienteEntity();
+        cliente728.setId(99L);
+        cliente728.setCodigoCliente("00000728");
+        cliente728.setPessoa(titular);
+
         ProcessoEntity processo = new ProcessoEntity();
         processo.setId(50L);
         processo.setPessoa(titular);
+        processo.setCliente(cliente728);
         processo.setNumeroInterno(12);
 
         LancamentoFinanceiroEntity anterior = new LancamentoFinanceiroEntity();
         anterior.setId(10L);
         anterior.setContaContabil(contaA);
-        anterior.setCliente(titular);
+        anterior.setPessoaRef(titular);
+        anterior.setClienteEntidade(cliente728);
         anterior.setProcesso(processo);
         anterior.setDataLancamento(LocalDate.of(2026, 4, 10));
 
@@ -225,6 +247,12 @@ class FinanceiroSugestaoServiceTest {
         when(lancamentoRepository.contarContaPorDescricaoHistorico(any(), any())).thenReturn(List.of());
         when(lancamentoRepository.findRecorrenciaCandidatos(any(), any(), any(), any(), anyInt()))
                 .thenReturn(List.of());
+        when(processoApplicationService.resolverTextosPartesVinculoEmLote(Set.of(50L)))
+                .thenReturn(
+                        Map.of(
+                                50L,
+                                new ProcessoPartesVinculoTexto(
+                                        "Itamar Villa Real", "Ana Luisa")));
 
         List<SugestaoClassificacaoResponse> sugestoes = service.sugerir(lancamento);
 
@@ -232,9 +260,11 @@ class FinanceiroSugestaoServiceTest {
         SugestaoClassificacaoResponse primeira = sugestoes.get(0);
         assertThat(primeira.getOrigem()).isEqualTo(OrigemSugestao.DEPOSITO_IDENTIFICADO);
         assertThat(primeira.getContaCodigo()).isEqualTo("A");
-        assertThat(primeira.getClienteId()).isEqualTo(728L);
+        assertThat(primeira.getClienteId()).isEqualTo(99L);
+        assertThat(primeira.getPessoaRefId()).isEqualTo(728L);
         assertThat(primeira.getProcessoId()).isEqualTo(50L);
-        assertThat(primeira.getRotuloVinculo()).isEqualTo("COD-728 · proc 12");
+        assertThat(primeira.getRotuloVinculo())
+                .isEqualTo("COD-728 · proc 12 - Itamar Villa Real x Ana Luisa");
     }
 
     @Test
@@ -250,17 +280,30 @@ class FinanceiroSugestaoServiceTest {
         PessoaEntity titular = new PessoaEntity();
         titular.setId(728L);
 
+        ClienteEntity cliente728 = new ClienteEntity();
+        cliente728.setId(99L);
+        cliente728.setCodigoCliente("00000728");
+        cliente728.setPessoa(titular);
+
         ProcessoEntity processo = new ProcessoEntity();
         processo.setId(50L);
         processo.setPessoa(titular);
+        processo.setCliente(cliente728);
         processo.setNumeroInterno(3);
 
         when(regraRepository.findByAtivoTrueOrderByPrioridadeAscIdAsc()).thenReturn(List.of());
         when(pessoaRepository.findByCpf("76467791134")).thenReturn(Optional.of(pagador));
+        when(clienteResolverService.resolverClienteParaTitular(728L)).thenReturn(cliente728);
         when(lancamentoRepository.findDepositosIdentificadosPorCpfNoTexto(any(), any(), any(), any()))
                 .thenReturn(List.of());
         when(contaContabilRepository.findFirstByCodigoIgnoreCase("A")).thenReturn(Optional.of(contaA));
         when(processoRepository.findAllDistinctVinculadosPessoa(900L)).thenReturn(List.of(processo));
+        when(processoApplicationService.resolverTextosPartesVinculoEmLote(Set.of(50L)))
+                .thenReturn(
+                        Map.of(
+                                50L,
+                                new ProcessoPartesVinculoTexto(
+                                        "Itamar Villa Real", "Ana Luisa")));
         when(lancamentoRepository.contarContaPorDescricaoHistorico(any(), any())).thenReturn(List.of());
         when(lancamentoRepository.findRecorrenciaCandidatos(any(), any(), any(), any(), anyInt()))
                 .thenReturn(List.of());
@@ -271,6 +314,6 @@ class FinanceiroSugestaoServiceTest {
                 s.getOrigem() == OrigemSugestao.PESSOA_PROCESSO
                         && "A".equals(s.getContaCodigo())
                         && s.getProcessoId().equals(50L)
-                        && "COD-728 · proc 3".equals(s.getRotuloVinculo()));
+                        && "COD-728 · proc 3 - Itamar Villa Real x Ana Luisa".equals(s.getRotuloVinculo()));
     }
 }

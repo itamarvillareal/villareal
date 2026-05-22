@@ -281,7 +281,7 @@ function montarPayloadWrite(f) {
   };
 }
 
-export function Pagamentos() {
+export function Pagamentos({ ocultarCabecalho = false } = {}) {
   const [lista, setLista] = useState([]);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState('');
@@ -748,9 +748,14 @@ export function Pagamentos() {
     : [];
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 min-h-full p-4 md:p-6 bg-gradient-to-br from-slate-100 via-indigo-50/35 to-emerald-50/45 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d]">
+    <div
+      className={`flex-1 flex flex-col min-h-0 min-h-full ${
+        ocultarCabecalho ? 'p-0 bg-transparent dark:bg-transparent' : 'p-4 md:p-6 bg-gradient-to-br from-slate-100 via-indigo-50/35 to-emerald-50/45 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d]'
+      }`}
+    >
       <input ref={fileRef} type="file" className="hidden" accept=".pdf,.png,.jpg,.jpeg,.webp" onChange={onFileSelecionado} />
 
+      {!ocultarCabecalho ? (
       <header className="flex flex-wrap items-start gap-3 mb-4">
         <div className="p-2.5 rounded-xl bg-gradient-to-br from-emerald-600 to-teal-700 text-white shadow-lg shadow-emerald-500/25 ring-1 ring-white/20">
           <Wallet className="w-7 h-7" aria-hidden />
@@ -798,6 +803,7 @@ export function Pagamentos() {
           </button>
         </div>
       </header>
+      ) : null}
 
       {erro ? (
         <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/50 dark:text-red-200">

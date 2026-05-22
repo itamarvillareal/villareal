@@ -1,4 +1,5 @@
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { RefreshCw } from 'lucide-react';
 import { useParams } from 'react-router-dom';
 import { featureFlags } from '../../../config/featureFlags.js';
 import {
@@ -17,6 +18,7 @@ import { ETAPAS, INBOX_TIPOS } from '../constants/financeiroConstants.js';
 import { useFinanceiro } from '../FinanceiroContext.jsx';
 import { PeriodoSelector } from '../shared/PeriodoSelector.jsx';
 import {
+  isPeriodoAnoInteiro,
   periodoParaAnoMesApi,
   periodoParaMesRefObrigatorio,
   periodoParaQueryApi,
@@ -112,6 +114,10 @@ export function InboxPage() {
   const [focusedIndex, setFocusedIndex] = useState(-1);
   const listRef = useRef(null);
   const countsDebounceRef = useRef(null);
+  const refazerRelatorioPendenteRef = useRef(false);
+
+  const [reloadNonce, setReloadNonce] = useState(0);
+  const [refazendoRelatorio, setRefazendoRelatorio] = useState(false);
 
   const periodo = useMemo(() => periodoParaQueryApi(filters.mes), [filters.mes]);
   const periodoAnoMes = useMemo(() => periodoParaAnoMesApi(filters.mes), [filters.mes]);
@@ -258,7 +264,7 @@ export function InboxPage() {
             {
               page,
               size: pageSize,
-              ...periodo,
+              ...periodoAnoMes,
               numeroBanco: bancoFiltro,
               sort: 'dataLancamento,desc',
             },
@@ -332,8 +338,27 @@ export function InboxPage() {
       } catch (e) {
         if (cancelled || e?.name === 'AbortError') return;
         setErro(e?.message || 'Falha ao carregar inbox.');
+        if (refazerRelatorioPendenteRef.current && tipo === INBOX_TIPOS.classificar) {
+          refazerRelatorioPendenteRef.current = false;
+          setRefazendoRelatorio(false);
+          toast.error('Não foi possível refazer o relatório de classificação.');
+        }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+          if (refazerRelatorioPendenteRef.current && tipo === INBOX_TIPOS.classificar) {
+            refazerRelatorioPendenteRef.current = false;
+            setRefazendoRelatorio(false);
+            loadCounts().catch(() => {});
+            dispatchRefreshPendentes();
+            const mesLabel = isPeriodoAnoInteiro(filters.mes)
+              ? `ano ${filters.mes}`
+              : String(filters.mes ?? '').replace(/^(\d{4})-(\d{2})$/, '$2/$1');
+            toast.success(
+              `Relatório de classificação atualizado${mesLabel ? ` (${mesLabel})` : ''}.`,
+            );
+          }
+        }
       }
     };
 
@@ -355,6 +380,9 @@ export function InboxPage() {
     filtroTipoPar,
     filtroTipoDia,
     filters.mes,
+    reloadNonce,
+    loadCounts,
+    toast,
   ]);
 
   const removeComFade = useCallback((keys, updater) => {
@@ -670,6 +698,17 @@ export function InboxPage() {
     return () => window.removeEventListener('financeiro:limpar-selecao', onLimpar);
   }, []);
 
+  const handleRefazerRelatorio = useCallback(() => {
+    if (refazendoRelatorio || busy || loading) return;
+    refazerRelatorioPendenteRef.current = true;
+    setRefazendoRelatorio(true);
+    setSkipped(new Set());
+    setSelected(new Set());
+    setFocusedIndex(-1);
+    setPage(0);
+    setReloadNonce((n) => n + 1);
+  }, [refazendoRelatorio, busy, loading]);
+
   const showBatch = tipo === INBOX_TIPOS.classificar || tipo === INBOX_TIPOS.compensar;
   const empty =
     !loading &&
@@ -728,6 +767,21 @@ export function InboxPage() {
             <option value="MESMO_DIA">Mesmo dia (exato)</option>
             <option value="DIVERGENTE">Dia divergente</option>
           </select>
+        ) : null}
+        {tipo === INBOX_TIPOS.classificar ? (
+          <button
+            type="button"
+            onClick={handleRefazerRelatorio}
+            disabled={refazendoRelatorio || busy}
+            className="inline-flex items-center gap-1.5 text-sm px-2.5 py-1 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50"
+            title="Recarrega grupos e sugestões de classificação para o período e banco selecionados"
+          >
+            <RefreshCw
+              className={`w-3.5 h-3.5 ${refazendoRelatorio ? 'animate-spin' : ''}`}
+              aria-hidden
+            />
+            {refazendoRelatorio ? 'Atualizando…' : 'Refazer relatório'}
+          </button>
         ) : null}
       </div>
 

@@ -2,9 +2,10 @@ package br.com.vilareal.imovel.api.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
-@Schema(description = "Criar/atualizar imóvel — clienteId = pessoa.id (GET /api/clientes); opcional se só planilha/extras.")
+@Schema(description = "Criar/atualizar imóvel")
 public class ImovelWriteRequest {
 
+    @Schema(description = "PK da tabela cliente; aceita pessoa.id legado via resolução no servidor")
     private Long clienteId;
 
     private Long processoId;

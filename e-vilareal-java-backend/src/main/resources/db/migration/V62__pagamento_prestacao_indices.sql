@@ -1,0 +1,10 @@
+CREATE INDEX idx_pag_financeiro_lancamento ON pagamento (financeiro_lancamento_id);
+CREATE INDEX idx_pag_prestacao_contas ON pagamento (prestacao_contas_id);
+CREATE INDEX idx_pag_mes_referencia ON pagamento (mes_referencia);
+CREATE INDEX idx_pag_recorrencia_config ON pagamento (recorrencia_config_id);
+CREATE INDEX idx_prec_config_imovel ON pagamento_recorrencia_config (imovel_id);
+CREATE INDEX idx_prec_config_ativo ON pagamento_recorrencia_config (ativo, imovel_id);
+CREATE INDEX idx_prestacao_cliente ON prestacao_contas (cliente_id);
+CREATE INDEX idx_prestacao_status ON prestacao_contas (status);
+CREATE INDEX idx_prestacao_periodo ON prestacao_contas (periodo_inicio, periodo_fim);
+CREATE INDEX idx_pcp_prestacao ON prestacao_contas_pagamento (prestacao_contas_id);

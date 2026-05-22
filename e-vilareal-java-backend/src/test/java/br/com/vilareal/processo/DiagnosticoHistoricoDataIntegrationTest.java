@@ -55,10 +55,14 @@ class DiagnosticoHistoricoDataIntegrationTest extends AbstractIntegrationTest {
                 new HttpEntity<>(h),
                 new ParameterizedTypeReference<>() {});
         assertThat(clientes.getBody()).isNotEmpty();
-        Long pessoaId = ((Number) clientes.getBody().get(0).get("id")).longValue();
+        Map<String, Object> clienteItem = clientes.getBody().get(0);
+        Long clientePk =
+                clienteItem.get("clienteId") != null
+                        ? ((Number) clienteItem.get("clienteId")).longValue()
+                        : ((Number) clienteItem.get("id")).longValue();
 
         var processoBody = Map.of(
-                "clienteId", pessoaId,
+                "clienteId", clientePk,
                 "numeroInterno", 88,
                 "numeroCnj", "5999999-99.2026.8.09.0007",
                 "naturezaAcao", "Cível",

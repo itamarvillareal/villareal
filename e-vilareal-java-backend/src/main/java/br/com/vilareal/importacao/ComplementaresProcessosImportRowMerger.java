@@ -2,6 +2,7 @@ package br.com.vilareal.importacao;
 
 import br.com.vilareal.common.text.Utf8MojibakeUtil;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
+import br.com.vilareal.pessoa.application.ClienteResolverService;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
@@ -25,11 +26,15 @@ public class ComplementaresProcessosImportRowMerger {
 
     private final PessoaRepository pessoaRepository;
     private final ProcessoRepository processoRepository;
+    private final ClienteResolverService clienteResolverService;
 
     public ComplementaresProcessosImportRowMerger(
-            PessoaRepository pessoaRepository, ProcessoRepository processoRepository) {
+            PessoaRepository pessoaRepository,
+            ProcessoRepository processoRepository,
+            ClienteResolverService clienteResolverService) {
         this.pessoaRepository = pessoaRepository;
         this.processoRepository = processoRepository;
+        this.clienteResolverService = clienteResolverService;
     }
 
     public record MergeResult(long processoId, boolean criado) {}
@@ -44,6 +49,7 @@ public class ComplementaresProcessosImportRowMerger {
         if (p == null) {
             p = new ProcessoEntity();
             p.setPessoa(cliente);
+            p.setCliente(clienteResolverService.resolverClienteParaTitular(clientePessoaId));
             p.setNumeroInterno(numeroInterno);
             p.setAtivo(true);
             p.setConsultaAutomatica(false);
@@ -82,6 +88,8 @@ public class ComplementaresProcessosImportRowMerger {
         if (linha.prazoFatal() != null) {
             p.setPrazoFatal(linha.prazoFatal());
         }
+
+        p.setCliente(clienteResolverService.resolverClienteParaTitular(clientePessoaId));
 
         p = processoRepository.save(p);
         log.info(

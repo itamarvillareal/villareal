@@ -7,6 +7,7 @@ import br.com.vilareal.tarefa.application.TarefaOperacionalApplicationService;
 import br.com.vilareal.tarefa.model.TarefaPrioridade;
 import br.com.vilareal.tarefa.model.TarefaStatus;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;
@@ -39,7 +40,9 @@ public class TarefaOperacionalController {
             @RequestParam(value = "responsavelId", required = false) Long responsavelId,
             @RequestParam(value = "status", required = false) TarefaStatus status,
             @RequestParam(value = "prioridade", required = false) TarefaPrioridade prioridade,
-            @RequestParam(value = "clienteId", required = false) Long clienteId,
+            @Parameter(description = "PK da tabela cliente (aceita pessoa.id legado na resolução)")
+            @RequestParam(value = "clienteId", required = false)
+            Long clienteId,
             @RequestParam(value = "processoId", required = false) Long processoId,
             @RequestParam(value = "dataLimiteDe", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataLimiteDe,
             @RequestParam(value = "dataLimiteAte", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataLimiteAte) {

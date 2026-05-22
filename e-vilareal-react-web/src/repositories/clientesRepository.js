@@ -8,7 +8,6 @@ import {
 } from '../data/cadastroClientesStorage.js';
 
 function mapApiToFront(c) {
-  // `pessoaId` é canónico. `id` só como legado quando não há `clienteId` (evita confundir PK cliente com pessoa).
   let pessoaIdStr =
     c.pessoaId != null && String(c.pessoaId).trim() !== '' ? String(c.pessoaId) : '';
   if (
@@ -22,10 +21,19 @@ function mapApiToFront(c) {
   const pessoaNum =
     pessoaIdStr && Number.isFinite(Number(pessoaIdStr)) ? Number(pessoaIdStr) : null;
   const clientePk =
-    c.clienteId != null && String(c.clienteId).trim() !== '' ? Number(c.clienteId) : null;
+    c.clienteId != null && String(c.clienteId).trim() !== ''
+      ? Number(c.clienteId)
+      : c.pessoaId != null && c.id != null && String(c.id).trim() !== ''
+        ? Number(c.id)
+        : null;
+  const idPk =
+    clientePk != null && Number.isFinite(clientePk)
+      ? clientePk
+      : pessoaNum != null && Number.isFinite(pessoaNum)
+        ? pessoaNum
+        : null;
   return {
-    /** Mesmo significado que na API: id da pessoa (processos, CNJ, etc.). */
-    id: pessoaNum != null && Number.isFinite(pessoaNum) ? pessoaNum : null,
+    id: idPk,
     clienteId: clientePk != null && Number.isFinite(clientePk) ? clientePk : null,
     pessoaId: pessoaIdStr,
     codigo: padCliente8Cadastro(String(c.codigoCliente ?? '').trim()),

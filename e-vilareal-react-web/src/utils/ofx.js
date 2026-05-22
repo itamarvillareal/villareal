@@ -262,13 +262,75 @@ function construirContagens(existente) {
   return { estritas, semanticas };
 }
 
+/** @param {object[]} lancamentos */
+export function contagemLancamentosPorDia(lancamentos) {
+  /** @type {Map<string, number>} */
+  const map = new Map();
+  for (const t of lancamentos || []) {
+    const d = dataLancamentoParaIso(t?.data);
+    if (!d) continue;
+    map.set(d, (map.get(d) || 0) + 1);
+  }
+  return map;
+}
+
+/** @param {Map<string, number>} map */
+function menorDiaIso(map) {
+  const keys = [...map.keys()].filter((k) => k && k !== '—');
+  if (!keys.length) return null;
+  return keys.sort()[0];
+}
+
+/** @param {Map<string, number>} map */
+function maiorDiaIso(map) {
+  const keys = [...map.keys()].filter((k) => k && k !== '—');
+  if (!keys.length) return null;
+  return keys.sort().pop();
+}
+
+/**
+ * Dias em que o OFX repete o que já está no banco: mesma quantidade de lançamentos no dia.
+ * Reforço no último dia já gravado, no primeiro dia do arquivo e em todo o intervalo sobreposto.
+ * @param {object[]} existente
+ * @param {object[]} novo
+ * @returns {Set<string>}
+ */
+export function diasIgnorarPorContagemIgual(existente, novo) {
+  const ce = contagemLancamentosPorDia(existente);
+  const cn = contagemLancamentosPorDia(novo);
+  const ultimoBanco = maiorDiaIso(ce);
+  const primeiroOfx = menorDiaIso(cn);
+  /** @type {Set<string>} */
+  const dias = new Set();
+
+  const contagemIgualNoDia = (d) => {
+    const ex = ce.get(d) || 0;
+    const nx = cn.get(d) || 0;
+    return ex > 0 && nx > 0 && ex === nx;
+  };
+
+  if (ultimoBanco && contagemIgualNoDia(ultimoBanco)) dias.add(ultimoBanco);
+  if (primeiroOfx && contagemIgualNoDia(primeiroOfx)) dias.add(primeiroOfx);
+
+  if (ultimoBanco && primeiroOfx) {
+    for (const d of cn.keys()) {
+      if (d >= primeiroOfx && d <= ultimoBanco && contagemIgualNoDia(d)) {
+        dias.add(d);
+      }
+    }
+  }
+
+  return dias;
+}
+
 /**
  * @param {object[]} existente
  * @param {object[]} novo
- * @returns {{ novos: object[], ignorados: number, porDia: Map<string, { existentes: number, ofx: number, novos: number, ignorados: number }> }}
+ * @returns {{ novos: object[], ignorados: number, porDia: Map<string, { existentes: number, ofx: number, novos: number, ignorados: number, ignoradosContagemDia: number }>, diasIgnoradosPorContagem: string[] }}
  */
 export function analisarLancamentosNovosDedupe(existente, novo) {
   const { estritas, semanticas } = construirContagens(existente);
+  const diasIgnorarContagem = diasIgnorarPorContagemIgual(existente, novo);
   const porDia = new Map();
   const novos = [];
   let ignorados = 0;
@@ -276,7 +338,7 @@ export function analisarLancamentosNovosDedupe(existente, novo) {
   const bumpDia = (dataIso, field) => {
     const d = dataIso || '—';
     if (!porDia.has(d)) {
-      porDia.set(d, { existentes: 0, ofx: 0, novos: 0, ignorados: 0 });
+      porDia.set(d, { existentes: 0, ofx: 0, novos: 0, ignorados: 0, ignoradosContagemDia: 0 });
     }
     porDia.get(d)[field] += 1;
   };
@@ -288,6 +350,12 @@ export function analisarLancamentosNovosDedupe(existente, novo) {
   for (const t of novo || []) {
     const dataIso = dataLancamentoParaIso(t.data);
     bumpDia(dataIso, 'ofx');
+    if (diasIgnorarContagem.has(dataIso)) {
+      ignorados += 1;
+      bumpDia(dataIso, 'ignorados');
+      bumpDia(dataIso, 'ignoradosContagemDia');
+      continue;
+    }
     const ke = chaveDedupeLancamento(t);
     if (consumirDoMapa(estritas, ke) || tentarConsumirSemantico(semanticas, t)) {
       ignorados += 1;
@@ -298,7 +366,12 @@ export function analisarLancamentosNovosDedupe(existente, novo) {
     bumpDia(dataIso, 'novos');
   }
 
-  return { novos, ignorados, porDia };
+  return {
+    novos,
+    ignorados,
+    porDia,
+    diasIgnoradosPorContagem: [...diasIgnorarContagem].sort(),
+  };
 }
 
 /** Remove marcação de par de compensação (não deve vir de arquivo OFX/PDF). */

@@ -46,6 +46,16 @@ public class PagamentoResponse {
     private Long atualizadoPorUsuarioId;
     private Instant criadoEm;
     private Instant atualizadoEm;
+    private Long financeiroLancamentoId;
+    private LocalDate dataConferencia;
+    private LocalDate dataAcerto;
+    private BigDecimal valorPagoBanco;
+    private BigDecimal valorDiferenca;
+    private Long conferidoPorUsuarioId;
+    private Long prestacaoContasId;
+    private String mesReferencia;
+    private String contaReferencia;
+    private boolean autoGerado;
 
     public Long getId() {
         return id;
@@ -365,5 +375,85 @@ public class PagamentoResponse {
 
     public void setAtualizadoEm(Instant atualizadoEm) {
         this.atualizadoEm = atualizadoEm;
+    }
+
+    public Long getFinanceiroLancamentoId() {
+        return financeiroLancamentoId;
+    }
+
+    public void setFinanceiroLancamentoId(Long financeiroLancamentoId) {
+        this.financeiroLancamentoId = financeiroLancamentoId;
+    }
+
+    public LocalDate getDataConferencia() {
+        return dataConferencia;
+    }
+
+    public void setDataConferencia(LocalDate dataConferencia) {
+        this.dataConferencia = dataConferencia;
+    }
+
+    public LocalDate getDataAcerto() {
+        return dataAcerto;
+    }
+
+    public void setDataAcerto(LocalDate dataAcerto) {
+        this.dataAcerto = dataAcerto;
+    }
+
+    public BigDecimal getValorPagoBanco() {
+        return valorPagoBanco;
+    }
+
+    public void setValorPagoBanco(BigDecimal valorPagoBanco) {
+        this.valorPagoBanco = valorPagoBanco;
+    }
+
+    public BigDecimal getValorDiferenca() {
+        return valorDiferenca;
+    }
+
+    public void setValorDiferenca(BigDecimal valorDiferenca) {
+        this.valorDiferenca = valorDiferenca;
+    }
+
+    public Long getConferidoPorUsuarioId() {
+        return conferidoPorUsuarioId;
+    }
+
+    public void setConferidoPorUsuarioId(Long conferidoPorUsuarioId) {
+        this.conferidoPorUsuarioId = conferidoPorUsuarioId;
+    }
+
+    public Long getPrestacaoContasId() {
+        return prestacaoContasId;
+    }
+
+    public void setPrestacaoContasId(Long prestacaoContasId) {
+        this.prestacaoContasId = prestacaoContasId;
+    }
+
+    public String getMesReferencia() {
+        return mesReferencia;
+    }
+
+    public void setMesReferencia(String mesReferencia) {
+        this.mesReferencia = mesReferencia;
+    }
+
+    public String getContaReferencia() {
+        return contaReferencia;
+    }
+
+    public void setContaReferencia(String contaReferencia) {
+        this.contaReferencia = contaReferencia;
+    }
+
+    public boolean isAutoGerado() {
+        return autoGerado;
+    }
+
+    public void setAutoGerado(boolean autoGerado) {
+        this.autoGerado = autoGerado;
     }
 }

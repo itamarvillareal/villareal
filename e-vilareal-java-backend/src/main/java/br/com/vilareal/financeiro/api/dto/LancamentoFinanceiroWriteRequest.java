@@ -1,6 +1,7 @@
 package br.com.vilareal.financeiro.api.dto;
 
 import br.com.vilareal.financeiro.domain.NaturezaLancamento;
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -15,6 +16,7 @@ public class LancamentoFinanceiroWriteRequest {
     @NotNull(message = "contaContabilId é obrigatório.")
     private Long contaContabilId;
 
+    @Schema(description = "PK da tabela cliente; aceita pessoa.id legado via resolução no servidor")
     private Long clienteId;
     private Long processoId;
 

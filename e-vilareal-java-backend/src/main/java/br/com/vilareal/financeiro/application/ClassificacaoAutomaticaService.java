@@ -163,16 +163,22 @@ public class ClassificacaoAutomaticaService {
 
     private void aplicarRegra(LancamentoFinanceiroEntity lancamento, RegraClassificacaoEntity regra) {
         lancamento.setContaContabil(regra.getContaContabil());
-        if (regra.getCliente() != null) {
-            lancamento.setCliente(regra.getCliente());
+        if (regra.getPessoaRef() != null) {
+            lancamento.setPessoaRef(regra.getPessoaRef());
+        }
+        if (regra.getClienteEntidade() != null) {
+            lancamento.setClienteEntidade(regra.getClienteEntidade());
         }
         if (regra.getProcesso() != null) {
             lancamento.setProcesso(regra.getProcesso());
-            if (lancamento.getCliente() == null) {
-                lancamento.setCliente(regra.getProcesso().getPessoa());
+            if (lancamento.getPessoaRef() == null) {
+                lancamento.setPessoaRef(regra.getProcesso().getPessoa());
+            }
+            if (lancamento.getClienteEntidade() == null && regra.getProcesso().getCliente() != null) {
+                lancamento.setClienteEntidade(regra.getProcesso().getCliente());
             }
         }
-        Long clienteId = lancamento.getCliente() != null ? lancamento.getCliente().getId() : null;
+        Long clienteId = lancamento.getClienteEntidade() != null ? lancamento.getClienteEntidade().getId() : null;
         lancamento.setEtapa(EtapaLancamento.calcular(
                 regra.getContaContabil().getCodigo(), lancamento.getGrupoCompensacao(), clienteId));
     }

@@ -20,7 +20,8 @@ public final class PublicacaoSpecifications {
             LocalDate dataFim,
             String statusTratamento,
             Long processoId,
-            Long clienteId,
+            Long clientePk,
+            Long clientePessoaRef,
             String texto,
             String origemImportacao) {
         return (root, query, cb) -> {
@@ -43,8 +44,16 @@ public final class PublicacaoSpecifications {
             if (processoId != null && processoId > 0) {
                 preds.add(cb.equal(root.join("processo", JoinType.INNER).get("id"), processoId));
             }
-            if (clienteId != null && clienteId > 0) {
-                preds.add(cb.equal(root.get("clienteRefId"), clienteId));
+            if (clientePk != null && clientePk > 0) {
+                var jc = root.join("cliente", JoinType.LEFT);
+                if (clientePessoaRef != null) {
+                    preds.add(
+                            cb.or(
+                                    cb.equal(jc.get("id"), clientePk),
+                                    cb.equal(root.get("clienteRefId"), clientePessoaRef)));
+                } else {
+                    preds.add(cb.equal(jc.get("id"), clientePk));
+                }
             }
             if (StringUtils.hasText(origemImportacao)) {
                 preds.add(cb.equal(root.get("origemImportacao"), origemImportacao.trim()));

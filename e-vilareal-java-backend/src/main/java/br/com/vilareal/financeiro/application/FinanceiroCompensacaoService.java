@@ -74,7 +74,7 @@ public class FinanceiroCompensacaoService {
         for (LancamentoFinanceiroEntity e : lista) {
             e.setGrupoCompensacao(null);
             e.setContaContabil(contaN);
-            Long clienteId = e.getCliente() != null ? e.getCliente().getId() : null;
+            Long clienteId = e.getClienteEntidade() != null ? e.getClienteEntidade().getId() : null;
             e.setEtapa(EtapaLancamento.calcular(contaN.getCodigo(), null, clienteId));
         }
         lancamentoRepository.saveAll(lista);
@@ -582,7 +582,7 @@ public class FinanceiroCompensacaoService {
         for (LancamentoFinanceiroEntity e : List.of(a, b)) {
             e.setContaContabil(contaE);
             e.setGrupoCompensacao(grupo);
-            Long clienteId = e.getCliente() != null ? e.getCliente().getId() : null;
+            Long clienteId = e.getClienteEntidade() != null ? e.getClienteEntidade().getId() : null;
             e.setEtapa(EtapaLancamento.calcular(contaE.getCodigo(), grupo, clienteId));
         }
     }
@@ -710,10 +710,15 @@ public class FinanceiroCompensacaoService {
         r.setId(e.getId());
         r.setContaContabilId(e.getContaContabil().getId());
         r.setContaContabilNome(Utf8MojibakeUtil.corrigir(e.getContaContabil().getNome()));
-        r.setClienteId(e.getCliente() != null ? e.getCliente().getId() : null);
+        if (e.getClienteEntidade() != null) {
+            r.setClienteId(e.getClienteEntidade().getId());
+        }
+        if (e.getPessoaRef() != null) {
+            r.setPessoaRefId(e.getPessoaRef().getId());
+        }
         r.setProcessoId(e.getProcesso() != null ? e.getProcesso().getId() : null);
-        if (e.getCliente() != null) {
-            r.setCodigoCliente(CodigoClienteUtil.formatar(e.getCliente().getId()));
+        if (e.getClienteEntidade() != null) {
+            r.setCodigoCliente(e.getClienteEntidade().getCodigoCliente());
         }
         if (e.getProcesso() != null && e.getProcesso().getNumeroInterno() != null) {
             r.setNumeroInternoProcesso(e.getProcesso().getNumeroInterno());

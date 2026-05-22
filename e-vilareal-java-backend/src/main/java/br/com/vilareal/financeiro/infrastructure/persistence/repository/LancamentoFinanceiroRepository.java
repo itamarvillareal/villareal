@@ -1,6 +1,7 @@
 package br.com.vilareal.financeiro.infrastructure.persistence.repository;
 
 import br.com.vilareal.financeiro.domain.CompensacaoSqlDiaUtil;
+import br.com.vilareal.financeiro.domain.NaturezaLancamento;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.LancamentoFinanceiroEntity;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -34,11 +35,11 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
 
     List<LancamentoFinanceiroEntity> findByNumeroLancamentoIn(Collection<String> numerosLancamento);
 
-    @EntityGraph(attributePaths = {"contaContabil", "cliente", "processo"})
+    @EntityGraph(attributePaths = {"contaContabil", "pessoaRef", "clienteEntidade", "processo"})
     @Override
     List<LancamentoFinanceiroEntity> findAll(Specification<LancamentoFinanceiroEntity> spec, Sort sort);
 
-    @EntityGraph(attributePaths = {"contaContabil", "cliente", "processo"})
+    @EntityGraph(attributePaths = {"contaContabil", "pessoaRef", "clienteEntidade", "processo"})
     @Override
     Page<LancamentoFinanceiroEntity> findAll(Specification<LancamentoFinanceiroEntity> spec, Pageable pageable);
 
@@ -137,7 +138,8 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
     @Query("""
             SELECT l FROM LancamentoFinanceiroEntity l
             JOIN FETCH l.contaContabil c
-            LEFT JOIN FETCH l.cliente
+            LEFT JOIN FETCH l.pessoaRef
+            LEFT JOIN FETCH l.clienteEntidade
             LEFT JOIN FETCH l.processo
             WHERE l.etapa <> br.com.vilareal.financeiro.domain.EtapaLancamento.IMPORTADO
               AND l.numeroBanco = :numeroBanco
@@ -160,11 +162,12 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
     @Query("""
             SELECT l FROM LancamentoFinanceiroEntity l
             JOIN FETCH l.contaContabil c
-            LEFT JOIN FETCH l.cliente
+            LEFT JOIN FETCH l.pessoaRef
+            LEFT JOIN FETCH l.clienteEntidade
             LEFT JOIN FETCH l.processo
             WHERE l.id <> :excluirId
               AND l.etapa <> :importado
-              AND l.cliente IS NOT NULL
+              AND l.pessoaRef IS NOT NULL
               AND UPPER(c.codigo) = 'A'
               AND (
                   REPLACE(REPLACE(REPLACE(UPPER(COALESCE(l.descricao, '')), '.', ''), '-', ''), ' ', '')
@@ -180,10 +183,10 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
             @Param("importado") EtapaLancamento importado,
             Pageable pageable);
 
-    @EntityGraph(attributePaths = {"contaContabil", "cliente", "processo"})
+    @EntityGraph(attributePaths = {"contaContabil", "pessoaRef", "clienteEntidade", "processo"})
     List<LancamentoFinanceiroEntity> findAllByGrupoCompensacao(String grupoCompensacao);
 
-    @EntityGraph(attributePaths = {"contaContabil", "cliente", "processo"})
+    @EntityGraph(attributePaths = {"contaContabil", "pessoaRef", "clienteEntidade", "processo"})
     List<LancamentoFinanceiroEntity> findAllByIdIn(Collection<Long> ids);
 
     @Query(value = """
@@ -322,7 +325,8 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
     @Query("""
             SELECT l FROM LancamentoFinanceiroEntity l
             JOIN FETCH l.contaContabil
-            LEFT JOIN FETCH l.cliente
+            LEFT JOIN FETCH l.pessoaRef
+            LEFT JOIN FETCH l.clienteEntidade
             LEFT JOIN FETCH l.processo
             WHERE l.numeroBanco = :numeroBanco
               AND l.dataLancamento BETWEEN :inicio AND :fim
@@ -358,4 +362,21 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
             GROUP BY UPPER(TRIM(c.codigo))
             """, nativeQuery = true)
     List<Object[]> countLancamentosPorContaCodigo();
+
+    @Query("""
+            SELECT l FROM LancamentoFinanceiroEntity l
+            WHERE l.natureza = :debito
+              AND l.dataLancamento BETWEEN :inicio AND :fim
+              AND (:numeroBanco IS NULL OR l.numeroBanco = :numeroBanco)
+              AND NOT EXISTS (
+                  SELECT 1 FROM PagamentoEntity p
+                  WHERE p.financeiroLancamento = l
+              )
+            ORDER BY l.dataLancamento DESC, l.id DESC
+            """)
+    List<LancamentoFinanceiroEntity> findDebitosNaoVinculadosPagamento(
+            @Param("debito") NaturezaLancamento debito,
+            @Param("inicio") LocalDate inicio,
+            @Param("fim") LocalDate fim,
+            @Param("numeroBanco") Integer numeroBanco);
 }

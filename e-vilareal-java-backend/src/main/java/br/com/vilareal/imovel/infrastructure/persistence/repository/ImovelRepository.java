@@ -25,12 +25,9 @@ public interface ImovelRepository extends JpaRepository<ImovelEntity, Long> {
             LEFT JOIN FETCH i.processo p
             LEFT JOIN FETCH p.pessoa
             LEFT JOIN FETCH i.pessoa
-            WHERE i.processo IS NOT NULL
-              AND (
-                i.numeroPlanilha = :numero
-                OR (i.observacoes IS NOT NULL AND LOWER(i.observacoes) LIKE LOWER(CONCAT('%planilha legado ', :numero, '%')))
-              )
+            WHERE i.numeroPlanilha = :numero
+               OR (i.observacoes IS NOT NULL AND LOWER(i.observacoes) LIKE LOWER(CONCAT('%planilha legado ', :numero, '%')))
             ORDER BY i.id ASC
             """)
-    List<ImovelEntity> findAllComProcessoPorNumeroPlanilhaLegado(@Param("numero") Integer numero);
+    List<ImovelEntity> findAllPorNumeroPlanilhaLegado(@Param("numero") Integer numero);
 }
