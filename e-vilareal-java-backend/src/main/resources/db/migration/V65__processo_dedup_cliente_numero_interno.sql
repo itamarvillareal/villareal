@@ -83,6 +83,3 @@ INNER JOIN proc_dedup_map m ON p.id = m.drop_id;
 DROP TEMPORARY TABLE proc_dedup_ranked;
 DROP TEMPORARY TABLE proc_dedup_keep;
 DROP TEMPORARY TABLE proc_dedup_map;
-
-ALTER TABLE processo
-    ADD CONSTRAINT uk_processo_cliente_numero UNIQUE (cliente_id, numero_interno);
