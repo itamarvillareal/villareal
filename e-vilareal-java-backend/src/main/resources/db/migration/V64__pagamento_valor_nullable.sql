@@ -1,0 +1,2 @@
+ALTER TABLE pagamento
+    MODIFY COLUMN valor DECIMAL(19, 2) NULL;

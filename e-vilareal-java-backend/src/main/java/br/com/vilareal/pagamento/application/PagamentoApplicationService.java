@@ -10,6 +10,7 @@ import br.com.vilareal.pagamento.api.dto.*;
 import br.com.vilareal.pagamento.domain.PagamentoDominio;
 import br.com.vilareal.pagamento.infrastructure.persistence.entity.PagamentoEntity;
 import br.com.vilareal.pagamento.infrastructure.persistence.entity.PagamentoHistoricoEntity;
+import br.com.vilareal.pagamento.infrastructure.persistence.entity.PagamentoRecorrenciaConfigEntity;
 import br.com.vilareal.pagamento.infrastructure.persistence.repository.PagamentoHistoricoRepository;
 import br.com.vilareal.pagamento.infrastructure.persistence.repository.PagamentoRepository;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
@@ -144,8 +145,50 @@ public class PagamentoApplicationService {
     }
 
     @Transactional
+    public PagamentoEntity criarPagamentoRecorrente(
+            PagamentoRecorrenciaConfigEntity config, String mesAno, LocalDate dataVencimento, UsuarioEntity u) {
+        if (config.getImovel() == null) {
+            throw new BusinessRuleException("Imóvel não encontrado.");
+        }
+        PagamentoEntity e = new PagamentoEntity();
+        e.setDataCadastro(LocalDate.now(clock));
+        e.setDataVencimento(dataVencimento);
+        e.setValor(config.getValorEstimado());
+        e.setDescricao(config.getDescricaoPadrao() + " - " + mesAno);
+        e.setCategoria(config.getCategoria());
+        e.setFormaPagamento(config.getFormaPagamento());
+        e.setStatus(PagamentoDominio.ST_PENDENTE);
+        e.setPrioridade(config.getPrioridade() != null ? config.getPrioridade() : "NORMAL");
+        e.setMesReferencia(mesAno);
+        e.setContaReferencia(config.getContaReferencia());
+        e.setAutoGerado(true);
+        e.setRecorrente(false);
+        e.setImovel(config.getImovel());
+        e.setCliente(config.getCliente());
+        e.setContratoLocacao(config.getContratoLocacao());
+        e.setResponsavelUsuario(config.getResponsavelUsuario());
+        e.setRecorrenciaConfig(config);
+        e.setCriadoPorUsuario(u);
+        e = pagamentoRepository.save(e);
+        String dados =
+                "{\"recorrenciaConfigId\":" + config.getId() + ",\"mesAno\":\"" + mesAno + "\"}";
+        registrarHistorico(
+                e,
+                u,
+                "CRIACAO_AUTOMATICA",
+                null,
+                e.getStatus(),
+                dados,
+                "Gerado automaticamente pela recorrência: " + config.getDescricaoPadrao());
+        return e;
+    }
+
+    @Transactional
     public PagamentoResponse marcarAgendado(Long id) {
         PagamentoEntity e = requirePagamento(id);
+        if (e.getValor() == null) {
+            throw new BusinessRuleException("Não é possível agendar pagamento sem valor definido.");
+        }
         UsuarioEntity u = usuarioAtual();
         String ant = e.getStatus();
         e.setStatus(PagamentoDominio.ST_AGENDADO);
@@ -228,6 +271,7 @@ public class PagamentoApplicationService {
         Map<String, BigDecimal> porResp = new LinkedHashMap<>();
 
         for (PagamentoEntity p : todos) {
+            BigDecimal v = valorOuZero(p.getValor());
             if (entreVencimento(p, ini, fim)) {
                 String st = p.getStatus();
                 if (List.of(
@@ -236,35 +280,35 @@ public class PagamentoApplicationService {
                                 PagamentoDominio.ST_CONFERENCIA_PENDENTE,
                                 PagamentoDominio.ST_VENCIDO)
                         .contains(st)) {
-                    apagar = apagar.add(p.getValor());
+                    apagar = apagar.add(v);
                 }
                 if (PagamentoDominio.ST_PAGO_CONFIRMADO.equals(st)
                         || PagamentoDominio.ST_PAGO_SEM_COMPROVANTE.equals(st)) {
                     if (p.getDataPagamentoEfetivo() != null
                             && !p.getDataPagamentoEfetivo().isBefore(ini)
                             && !p.getDataPagamentoEfetivo().isAfter(fim)) {
-                        pago = pago.add(p.getValor());
+                        pago = pago.add(v);
                     }
                 }
             }
             switch (p.getStatus()) {
-                case PagamentoDominio.ST_PENDENTE -> pend = pend.add(p.getValor());
-                case PagamentoDominio.ST_AGENDADO -> ag = ag.add(p.getValor());
-                case PagamentoDominio.ST_VENCIDO -> venc = venc.add(p.getValor());
-                case PagamentoDominio.ST_CONFERENCIA_PENDENTE -> conf = conf.add(p.getValor());
-                case PagamentoDominio.ST_PAGO_SEM_COMPROVANTE -> semComp = semComp.add(p.getValor());
+                case PagamentoDominio.ST_PENDENTE -> pend = pend.add(v);
+                case PagamentoDominio.ST_AGENDADO -> ag = ag.add(v);
+                case PagamentoDominio.ST_VENCIDO -> venc = venc.add(v);
+                case PagamentoDominio.ST_CONFERENCIA_PENDENTE -> conf = conf.add(v);
+                case PagamentoDominio.ST_PAGO_SEM_COMPROVANTE -> semComp = semComp.add(v);
                 case PagamentoDominio.ST_CONFERIDO -> {
                     if (p.getDataConferencia() != null
                             && !p.getDataConferencia().isBefore(ini)
                             && !p.getDataConferencia().isAfter(fim)) {
-                        totalConferido = totalConferido.add(p.getValor());
+                        totalConferido = totalConferido.add(v);
                     }
                 }
                 case PagamentoDominio.ST_ACERTADO -> {
                     if (p.getDataAcerto() != null
                             && !p.getDataAcerto().isBefore(ini)
                             && !p.getDataAcerto().isAfter(fim)) {
-                        totalAcertado = totalAcertado.add(p.getValor());
+                        totalAcertado = totalAcertado.add(v);
                     }
                 }
                 default -> {
@@ -278,10 +322,10 @@ public class PagamentoApplicationService {
             if (PagamentoDominio.ST_CONFERIDO.equals(p.getStatus()) && p.getPrestacaoContas() == null) {
                 acertosPendentes++;
             }
-            porCat.merge(p.getCategoria(), p.getValor(), BigDecimal::add);
+            porCat.merge(p.getCategoria(), v, BigDecimal::add);
             String respNome =
                     p.getResponsavelUsuario() != null ? p.getResponsavelUsuario().getNome() : "(sem responsável)";
-            porResp.merge(respNome, p.getValor(), BigDecimal::add);
+            porResp.merge(respNome, v, BigDecimal::add);
         }
 
         d.setTotalAPagarMes(apagar.setScale(2, RoundingMode.HALF_UP));
@@ -443,6 +487,10 @@ public class PagamentoApplicationService {
         return s != null ? s : fallback;
     }
 
+    private static BigDecimal valorOuZero(BigDecimal valor) {
+        return valor != null ? valor : BigDecimal.ZERO;
+    }
+
     private void aplicarCampos(PagamentoEntity e, PagamentoWriteRequest req, UsuarioEntity u, boolean criacao) {
         String statusFinal = resolverStatusPagamento(req, e, criacao);
 
@@ -598,6 +646,10 @@ public class PagamentoApplicationService {
         r.setMesReferencia(e.getMesReferencia());
         r.setContaReferencia(e.getContaReferencia());
         r.setAutoGerado(Boolean.TRUE.equals(e.getAutoGerado()));
+        if (e.getRecorrenciaConfig() != null) {
+            r.setRecorrenciaConfigId(e.getRecorrenciaConfig().getId());
+            r.setRecorrenciaConfigDescricao(e.getRecorrenciaConfig().getDescricaoPadrao());
+        }
         return r;
     }
 
@@ -680,7 +732,9 @@ public class PagamentoApplicationService {
         r.setPagoSemComprovante(todos.stream()
                 .filter(p -> PagamentoDominio.ST_PAGO_SEM_COMPROVANTE.equals(p.getStatus()))
                 .count());
-        r.setAltoValor(todos.stream().filter(p -> p.getValor().compareTo(new BigDecimal("10000")) >= 0).count());
+        r.setAltoValor(todos.stream()
+                .filter(p -> p.getValor() != null && p.getValor().compareTo(new BigDecimal("10000")) >= 0)
+                .count());
         r.setUrgentes(todos.stream().filter(p -> "URGENTE".equalsIgnoreCase(p.getPrioridade())).count());
 
         List<PagamentoEntity> pagosNaoConc = todos.stream()
@@ -690,7 +744,9 @@ public class PagamentoApplicationService {
                 .toList();
         r.setPagosNaoConciliados(new PagamentoAlertaValorResponse(
                 pagosNaoConc.size(),
-                pagosNaoConc.stream().map(PagamentoEntity::getValor).reduce(BigDecimal.ZERO, BigDecimal::add)
+                pagosNaoConc.stream()
+                        .map(p -> p.getValor() != null ? p.getValor() : BigDecimal.ZERO)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add)
                         .setScale(2, RoundingMode.HALF_UP)));
 
         List<PagamentoEntity> confSemAcerto = todos.stream()
@@ -699,7 +755,9 @@ public class PagamentoApplicationService {
                 .toList();
         r.setConferidosNaoAcertados(new PagamentoAlertaValorResponse(
                 confSemAcerto.size(),
-                confSemAcerto.stream().map(PagamentoEntity::getValor).reduce(BigDecimal.ZERO, BigDecimal::add)
+                confSemAcerto.stream()
+                        .map(p -> p.getValor() != null ? p.getValor() : BigDecimal.ZERO)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add)
                         .setScale(2, RoundingMode.HALF_UP)));
         return r;
     }

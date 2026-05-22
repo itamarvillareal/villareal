@@ -13,6 +13,7 @@ export const navItems = [
       { id: 'imoveis/pagamentos', label: 'Pagamentos', icon: 'Wallet' },
       { id: 'imoveis/pagamentos/conciliacao', label: 'Conciliação bancária', icon: 'Link2' },
       { id: 'imoveis/acerto-cliente', label: 'Acerto com Cliente', icon: 'FileCheck' },
+      { id: 'imoveis/relatorio-pagamentos', label: 'Relatório Pagamentos', icon: 'BarChart3' },
       { id: 'imoveis/sugestoes-vinculo', label: 'Sugestões de vínculo', icon: 'Sparkles' },
       { id: 'iptu', label: 'IPTU', icon: 'Receipt' },
       { id: 'imoveis/relatorio-financeiro', label: 'Relatório Financeiro Imóveis', icon: 'CircleDollarSign' },

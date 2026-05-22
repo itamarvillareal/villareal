@@ -1,7 +1,10 @@
 /**
- * Vínculo processo → imóvel (número da planilha) em ficheiros txt (Dropbox «Banco de Dados»).
+ * Vínculo processo → imóvel (número da planilha) em ficheiros txt.
  *
- * Caminho: `Proc/1000/<centena>/<nº cliente>/<cod8>.0.89.1.<proc>.txt`
+ * **Escopo obrigatório:** apenas a pasta `Banco de Dados/Proc/` (não varre HC, Gerais, etc.).
+ * Varredura recursiva com `fs.Dirent` (`readdir` + `withFileTypes: true`).
+ *
+ * Caminho típico: `Proc/1000/<centena>/<nº cliente>/<cod8>.0.89.1.<proc>.txt`
  *   — também pastas legadas sob `Proc/0/…` quando existirem.
  *
  * Regras do nome:
@@ -9,7 +12,8 @@
  *   - Proc: segmento entre o 4.º e o 5.º ponto (`00000149.0.89.1.127` → `127`)
  *   - Tipo fixo: `0.89.1`
  *
- * Conteúdo (uma linha): número do imóvel no cadastro (col. A da planilha de imóveis).
+ * Conteúdo (uma linha): número do imóvel no cadastro (col. A) → gravado em
+ * `imovel.numero_planilha` + `imovel.processo_id` (mesmo campo «Imóvel» na tela Processos).
  */
 
 import fs from 'node:fs';
@@ -22,12 +26,55 @@ export { resolverBaseBancoDados };
 export const TIPO_IMOVEL_VINCULO = '0.89.1';
 export const PASTA_PROC = 'Proc';
 
-export function defaultBaseProcMil() {
-  return path.join(resolverBaseBancoDados(), PASTA_PROC, SEGMENTO_MIL);
+/**
+ * Raiz `…/Banco de Dados/Proc` (única pasta permitida para estes scripts).
+ * @param {string} [candidato] — pasta `Proc` ou raiz `Banco de Dados` (acrescenta `Proc`)
+ * @returns {string}
+ */
+export function resolverBaseProc(candidato) {
+  if (candidato == null || String(candidato).trim() === '') {
+    return path.join(resolverBaseBancoDados(), PASTA_PROC);
+  }
+  return validarRaizProc(candidato);
 }
 
+/**
+ * Garante que o caminho resolve para `…/Banco de Dados/Proc`.
+ * @param {string} candidato
+ * @returns {string}
+ */
+export function validarRaizProc(candidato) {
+  const resolved = path.resolve(String(candidato).trim());
+  const baseProc =
+    path.basename(resolved) === PASTA_PROC
+      ? resolved
+      : path.join(resolved, PASTA_PROC);
+
+  if (path.basename(baseProc) !== PASTA_PROC) {
+    throw new Error(
+      `Este script só executa em «Banco de Dados/Proc». Caminho inválido: ${candidato}`
+    );
+  }
+
+  const parentName = path.basename(path.dirname(baseProc));
+  const banco = path.resolve(resolverBaseBancoDados());
+  const procEsperado = path.join(banco, PASTA_PROC);
+  if (path.resolve(baseProc) !== procEsperado && parentName !== 'Banco de Dados') {
+    throw new Error(
+      `Pasta Proc deve ficar em «…/Banco de Dados/Proc». Recebido: ${baseProc}`
+    );
+  }
+
+  return baseProc;
+}
+
+export function defaultBaseProcMil() {
+  return path.join(resolverBaseProc(), SEGMENTO_MIL);
+}
+
+/** @deprecated Use {@link resolverBaseProc} */
 export function defaultBaseProcRaiz() {
-  return path.join(resolverBaseBancoDados(), PASTA_PROC);
+  return resolverBaseProc();
 }
 
 /**
@@ -86,28 +133,32 @@ export function parseNumeroPlanilhaImovelTxt(textoBruto) {
 }
 
 /**
+ * Varre recursivamente com `fs.Dirent` e devolve apenas `*.0.89.1.*.txt`.
  * @param {string} dir
- * @param {{ clienteFiltro?: number | null, origem?: string }} [opts]
+ * @param {{ clienteFiltro?: number | null, origem?: string, raizProc?: string }} [opts]
  */
-function* iterarTxtImovelVinculoEmDiretorio(dir, opts = {}) {
+export function* iterarTxt0891ComDirent(dir, opts = {}) {
   if (!fs.existsSync(dir)) return;
 
-  let entries;
+  /** @type {import('node:fs').Dirent[]} */
+  let dirents;
   try {
-    entries = fs.readdirSync(dir, { withFileTypes: true });
+    dirents = fs.readdirSync(dir, { withFileTypes: true });
   } catch {
     return;
   }
 
-  for (const ent of entries) {
-    const abs = path.join(dir, ent.name);
-    if (ent.isDirectory()) {
-      yield* iterarTxtImovelVinculoEmDiretorio(abs, opts);
+  const raizBanco = resolverBaseBancoDados();
+
+  for (const dirent of dirents) {
+    const abs = path.join(dir, dirent.name);
+    if (dirent.isDirectory()) {
+      yield* iterarTxt0891ComDirent(abs, opts);
       continue;
     }
-    if (!ent.isFile() || !ent.name.toLowerCase().endsWith('.txt')) continue;
+    if (!dirent.isFile() || !dirent.name.toLowerCase().endsWith('.txt')) continue;
 
-    const parsed = parseNomeArquivoImovelVinculo0891(ent.name);
+    const parsed = parseNomeArquivoImovelVinculo0891(dirent.name);
     if (!parsed) continue;
     if (opts.clienteFiltro != null && parsed.codNum !== opts.clienteFiltro) continue;
 
@@ -126,11 +177,12 @@ function* iterarTxtImovelVinculoEmDiretorio(dir, opts = {}) {
       numeroPlanilha,
       avisoConteudo: aviso,
       arquivo: abs,
-      relAposBanco: path
-        .relative(resolverBaseBancoDados(), abs)
+      relAposBanco: path.relative(raizBanco, abs).split(path.sep).join('/'),
+      relAposProc: path
+        .relative(opts.raizProc ?? dir, abs)
         .split(path.sep)
         .join('/'),
-      origem: opts.origem ?? 'Proc',
+      origem: opts.origem ?? PASTA_PROC,
       mtimeMs,
     };
   }
@@ -138,26 +190,30 @@ function* iterarTxtImovelVinculoEmDiretorio(dir, opts = {}) {
 
 /**
  * Árvore `Proc/1000/<cent>/<cliente>/` e outras pastas sob `Proc/` (ex.: `Proc/0/…`).
- * @param {string} baseRaizProc — pasta `Proc` (pai de `1000`)
+ * @param {string} baseRaizProc — pasta `Proc` (pai de `1000`); use {@link resolverBaseProc}
  * @param {{ clienteFiltro?: number | null }} [opts]
  */
 export function* iterarVinculosImovelProc(baseRaizProc, opts = {}) {
-  const mil = path.join(baseRaizProc, SEGMENTO_MIL);
-  yield* iterarTxtImovelVinculoEmDiretorio(mil, { ...opts, origem: 'Proc/1000' });
+  const raiz = validarRaizProc(baseRaizProc);
+  const walkOpts = { ...opts, raizProc: raiz };
 
+  const mil = path.join(raiz, SEGMENTO_MIL);
+  yield* iterarTxt0891ComDirent(mil, { ...walkOpts, origem: 'Proc/1000' });
+
+  /** @type {import('node:fs').Dirent[]} */
   let top;
   try {
-    top = fs.readdirSync(baseRaizProc, { withFileTypes: true });
+    top = fs.readdirSync(raiz, { withFileTypes: true });
   } catch {
     return;
   }
 
-  for (const ent of top) {
-    if (!ent.isDirectory() || ent.name === SEGMENTO_MIL) continue;
-    const legado = path.join(baseRaizProc, ent.name);
-    yield* iterarTxtImovelVinculoEmDiretorio(legado, {
-      ...opts,
-      origem: `Proc/${ent.name}`,
+  for (const dirent of top) {
+    if (!dirent.isDirectory() || dirent.name === SEGMENTO_MIL) continue;
+    const legado = path.join(raiz, dirent.name);
+    yield* iterarTxt0891ComDirent(legado, {
+      ...walkOpts,
+      origem: `Proc/${dirent.name}`,
     });
   }
 }
@@ -167,10 +223,11 @@ export function* iterarVinculosImovelProc(baseRaizProc, opts = {}) {
  * @param {{ clienteFiltro?: number | null }} [opts]
  */
 export function levantarVinculosImovelProc(baseRaizProc, opts = {}) {
+  const raiz = validarRaizProc(baseRaizProc);
   /** @type {Map<string, object>} */
   const map = new Map();
 
-  for (const row of iterarVinculosImovelProc(baseRaizProc, opts)) {
+  for (const row of iterarVinculosImovelProc(raiz, opts)) {
     const key = `${row.cod8}|${row.numeroInterno}`;
     const prev = map.get(key);
     if (!prev || (row.mtimeMs ?? 0) >= (prev.mtimeMs ?? 0)) {

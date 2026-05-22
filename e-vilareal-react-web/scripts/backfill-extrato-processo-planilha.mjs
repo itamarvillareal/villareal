@@ -26,8 +26,11 @@ import {
   resolveExtratoBancosPlanilhaXlsPath,
 } from './lib/resolve-extrato-bancos-planilha-xls.mjs';
 import {
-  criarProcessoStubImport,
+  buscarProcesso,
+  clientePkFromApiDto,
+  garantirProcessoNaApi,
   loginImportApi,
+  resolverClienteFromApi,
 } from './lib/vilareal-import-processo-api.mjs';
 
 function parseArgs(argv) {
@@ -87,43 +90,29 @@ export function pessoaIdDoCodigoCliente(cod8) {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
-async function buscarProcessoNaPessoa(baseUrl, token, pessoaId, numeroInterno) {
-  const ni = Math.trunc(Number(numeroInterno));
-  const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' };
-  const res = await fetch(
-    `${baseUrl}/api/processos/por-numero-interno?${new URLSearchParams({ numeroInterno: String(ni) })}`,
-    { headers },
-  );
-  if (!res.ok) return null;
-  const lista = await res.json();
-  if (!Array.isArray(lista)) return null;
-  return lista.find((p) => Number(p?.clienteId) === Number(pessoaId)) ?? null;
-}
-
-async function garantirProcessoNaPessoa(baseUrl, token, pessoaId, numeroInterno, dryRun) {
-  let proc = await buscarProcessoNaPessoa(baseUrl, token, pessoaId, numeroInterno);
+async function garantirProcessoPorCodigo(baseUrl, token, cod8, numeroInterno, dryRun, clientePorCod8) {
+  let proc = await buscarProcesso(baseUrl, token, cod8, numeroInterno, clientePorCod8);
   if (proc?.id) return { ok: true, criado: false, processo: proc };
 
   if (dryRun) {
     return { ok: true, criado: true, processo: null, dryRunStub: true };
   }
 
-  const r = await criarProcessoStubImport(
+  const garantido = await garantirProcessoNaApi(
     baseUrl,
     token,
-    pessoaId,
+    cod8,
     numeroInterno,
-    'Processo garantido para vínculo extrato (planilha col. M).',
+    clientePorCod8
   );
-  if (!r.ok) {
-    return { ok: false, erro: `POST processo: ${r.status} ${r.text}` };
+  if (!garantido.ok) {
+    return { ok: false, erro: garantido.erro ?? 'falha ao garantir processo' };
   }
-
-  proc = await buscarProcessoNaPessoa(baseUrl, token, pessoaId, numeroInterno);
-  if (!proc?.id) {
-    return { ok: false, erro: 'stub criado mas processo não encontrado na pessoa' };
-  }
-  return { ok: true, criado: true, processo: proc };
+  return {
+    ok: true,
+    criado: garantido.criado,
+    processo: garantido.processo,
+  };
 }
 
 function lancamentoParaPut(l, processoId) {
@@ -256,6 +245,7 @@ async function main() {
   };
   const amostra = [];
   const cacheProc = new Map();
+  const clientePorCod8 = new Map();
   const pendentesPut = [];
 
   for (const row of linhas) {
@@ -269,37 +259,51 @@ async function main() {
       continue;
     }
 
-    const pessoaCodigo = pessoaIdDoCodigoCliente(row.codigoCliente);
-    const pessoaId =
-      api.clienteId != null ? Number(api.clienteId) : pessoaCodigo;
-    if (pessoaId == null || !Number.isFinite(pessoaId)) {
+    const cod8 = normalizarCodigoCliente8(row.codigoCliente);
+    const clienteCtx = await resolverClienteFromApi(
+      opts.baseUrl,
+      token,
+      cod8,
+      clientePorCod8
+    );
+    const clientePk =
+      clienteCtx?.clientePk ??
+      (api.clienteId != null ? clientePkFromApiDto(api) : null);
+    if (clientePk == null || !Number.isFinite(Number(clientePk))) {
       stats.clienteAusente += 1;
       continue;
     }
-    if (pessoaCodigo != null && api.clienteId != null && Number(api.clienteId) !== pessoaCodigo) {
+    const pessoaLegado = pessoaIdDoCodigoCliente(cod8);
+    if (
+      pessoaLegado != null &&
+      api.clienteId != null &&
+      Number(api.clienteId) !== Number(clientePk) &&
+      Number(api.clienteId) === pessoaLegado
+    ) {
       stats.clienteDivergeCodigo += 1;
       if (amostra.length < 15) {
         amostra.push({
-          tipo: 'clienteDiverge',
+          tipo: 'clienteDivergeLegado',
           linha: row.linhaExcel,
           banco: row.bancoNome,
-          codigo: row.codigoCliente,
+          codigo: cod8,
           clienteIdApi: api.clienteId,
-          pessoaCodigo,
+          clientePk,
           proc: row.numeroInterno,
         });
       }
     }
 
-    const chaveProc = `${pessoaId}:${row.numeroInterno}`;
+    const chaveProc = `${clientePk}:${row.numeroInterno}`;
     let procId = cacheProc.get(chaveProc);
     if (procId === undefined) {
-      const g = await garantirProcessoNaPessoa(
+      const g = await garantirProcessoPorCodigo(
         opts.baseUrl,
         token,
-        pessoaId,
+        cod8,
         row.numeroInterno,
         opts.dryRun,
+        clientePorCod8
       );
       if (!g.ok) {
         stats.processoFalhou += 1;
@@ -307,7 +311,8 @@ async function main() {
           amostra.push({
             tipo: 'processoFalhou',
             linha: row.linhaExcel,
-            pessoaId,
+            codigo: cod8,
+            clientePk,
             proc: row.numeroInterno,
             erro: g.erro,
           });

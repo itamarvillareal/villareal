@@ -276,8 +276,8 @@ public class ProcessoApplicationService {
         }
         try {
             ClienteEntity cliente = clienteResolverService.resolverClientePorCodigo(codigoCliente);
-            Optional<ProcessoEntity> porCliente =
-                    processoRepository.findByCliente_IdAndNumeroInterno(cliente.getId(), numeroInterno);
+            Optional<ProcessoEntity> porCliente = resolverProcessoCanonicoPorCliente(
+                    cliente.getId(), cliente.getPessoa().getId(), numeroInterno);
             if (porCliente.isPresent()) {
                 return porCliente.map(this::toResponse);
             }
@@ -672,11 +672,18 @@ public class ProcessoApplicationService {
         return toResponse(e);
     }
 
+    private Optional<ProcessoEntity> resolverProcessoCanonicoPorCliente(
+            Long clienteId, Long clientePessoaId, int numeroInterno) {
+        return ProcessoCanonicalLookup.escolher(
+                processoRepository.findAllByCliente_IdAndNumeroInternoOrderByIdDesc(clienteId, numeroInterno),
+                clientePessoaId);
+    }
+
     @Transactional
     public ProcessoResponse criar(ProcessoWriteRequest req) {
         ClienteEntity cliente = clienteResolverService.buscarPorId(req.getClienteId());
-        processoRepository
-                .findByCliente_IdAndNumeroInterno(cliente.getId(), req.getNumeroInterno())
+        resolverProcessoCanonicoPorCliente(
+                        cliente.getId(), cliente.getPessoa().getId(), req.getNumeroInterno())
                 .ifPresent(x -> {
                     throw new BusinessRuleException("Já existe processo com este número interno para o cliente.");
                 });
@@ -696,8 +703,8 @@ public class ProcessoApplicationService {
                         || !cliente.getId().equals(e.getCliente().getId())
                         || !req.getNumeroInterno().equals(e.getNumeroInterno());
         if (chaveNaturalMudou) {
-            processoRepository
-                    .findByCliente_IdAndNumeroInterno(cliente.getId(), req.getNumeroInterno())
+            resolverProcessoCanonicoPorCliente(
+                            cliente.getId(), cliente.getPessoa().getId(), req.getNumeroInterno())
                     .filter(other -> !other.getId().equals(id))
                     .ifPresent(x -> {
                         throw new BusinessRuleException("Já existe processo com este número interno para o cliente.");

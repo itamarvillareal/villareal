@@ -2,6 +2,8 @@
  * Gravação de prazo fatal na API (processo + entidade processo_prazo).
  */
 
+import { corpoPutProcesso } from './import-processo-put-body.mjs';
+
 /**
  * @param {string} baseUrl
  * @param {string} login
@@ -32,31 +34,7 @@ export function normalizarDataApi(val) {
 
 /** @param {object} p @param {string} prazoFatalIso */
 export function corpoPutProcessoComPrazoFatal(p, prazoFatalIso) {
-  return {
-    clienteId: p.clienteId ?? p.pessoaId,
-    numeroInterno: p.numeroInterno,
-    numeroCnj: p.numeroCnj ?? null,
-    numeroProcessoAntigo: p.numeroProcessoAntigo ?? null,
-    naturezaAcao: p.naturezaAcao ?? null,
-    descricaoAcao: p.descricaoAcao ?? null,
-    competencia: p.competencia ?? null,
-    fase: p.fase ?? null,
-    observacaoFase: p.observacaoFase ?? null,
-    tramitacao: p.tramitacao ?? null,
-    dataProtocolo: p.dataProtocolo ?? null,
-    prazoFatal: prazoFatalIso,
-    proximaConsulta: p.proximaConsulta ?? null,
-    observacao: p.observacao ?? null,
-    valorCausa: p.valorCausa ?? null,
-    uf: p.uf ?? null,
-    cidade: p.cidade ?? null,
-    unidade: p.unidade ?? null,
-    pasta: p.pasta ?? null,
-    consultaAutomatica: p.consultaAutomatica ?? false,
-    ativo: p.ativo ?? true,
-    consultor: p.consultor ?? null,
-    usuarioResponsavelId: p.usuarioResponsavelId ?? null,
-  };
+  return corpoPutProcesso(p, { prazoFatal: prazoFatalIso });
 }
 
 /**

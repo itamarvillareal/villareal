@@ -12,7 +12,7 @@ import process from "node:process";
 import "./lib/load-vilareal-import-env.mjs";
 import XLSX from "xlsx";
 import { parseDataPlanilhaCellIso } from "./lib/parse-data-planilha-br.mjs";
-import { buscarProcesso } from "./lib/vilareal-import-processo-api.mjs";
+import { buscarProcesso, clientePkFromApiDto } from "./lib/vilareal-import-processo-api.mjs";
 
 /** @param {unknown} v */
 function parseDecimal(v) {
@@ -233,8 +233,9 @@ async function fetchClientesMap(baseUrl, token) {
   const map = new Map();
   for (const it of list) {
     const cod = normalizarCodigoCliente(it.codigoCliente);
-    if (cod && it.id != null) {
-      map.set(cod, it.id);
+    const clientePk = clientePkFromApiDto(it);
+    if (cod && clientePk != null) {
+      map.set(cod, clientePk);
     }
   }
   return map;

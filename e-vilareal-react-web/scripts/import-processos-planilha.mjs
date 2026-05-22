@@ -28,6 +28,7 @@ import process from 'node:process';
 import XLSX from 'xlsx';
 
 import { normalizarTextoPlanilha } from './lib/normalizar-texto-planilha.mjs';
+import { resolverClienteFromApi } from './lib/vilareal-import-processo-api.mjs';
 
 const INDICES_ABA1_UTIL = [4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 15, 16, 17, 18, 19, 20, 21];
 const INDICES_ABA2_UTIL = [4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 15, 16, 17, 18, 19, 20, 21];
@@ -676,7 +677,7 @@ function collectMerged(rowsAba1, rowsAba2) {
   return { map, discarded };
 }
 
-function buildProcessoWrite(entry, logFase) {
+function buildProcessoWriteSync(entry, logFase) {
   const { r1, r2, cod, numeroInterno } = entry;
   const pessoaPlan = parsePessoaIdCell(r1?.[4]) ?? parsePessoaIdCell(r2?.[4]);
   if (pessoaPlan == null) {
@@ -690,7 +691,6 @@ function buildProcessoWrite(entry, logFase) {
   const fase = truncarVarchar(normalizarFaseOuNull(faseRaw, logFase), LIM_PROCESSO_VARCHAR.fase);
   const ativo = parseAtivoColunas(r1?.[21], r2?.[5]);
   const body = {
-    clienteId: pessoaPlan,
     numeroInterno,
     numeroCnj: truncarVarchar(parseTexto(r2?.[19]), LIM_PROCESSO_VARCHAR.numeroCnj),
     naturezaAcao: truncarVarchar(descricaoAcaoRaw, LIM_PROCESSO_VARCHAR.naturezaAcao),
@@ -712,7 +712,25 @@ function buildProcessoWrite(entry, logFase) {
   Object.keys(body).forEach((k) => {
     if (body[k] === undefined) delete body[k];
   });
-  return { body, pessoaPlan, cod };
+  return { body, pessoaPlan, cod, numeroInterno };
+}
+
+async function buildProcessoWrite(entry, logFase, baseUrl, token, clientePorCod8) {
+  const base = buildProcessoWriteSync(entry, logFase);
+  if (base.erro) return base;
+  const resolved = await resolverClienteFromApi(baseUrl, token, base.cod, clientePorCod8);
+  if (!resolved?.clientePk) {
+    return { erro: `cliente não resolvido na API (${base.cod})`, entry };
+  }
+  const body = {
+    ...base.body,
+    clienteId: resolved.clientePk,
+    numeroInterno: base.numeroInterno,
+  };
+  if (Number(base.pessoaPlan) !== Number(resolved.pessoaId)) {
+    body.pessoaTitularId = base.pessoaPlan;
+  }
+  return { body, pessoaPlan: base.pessoaPlan, cod: base.cod };
 }
 
 function collectPartes(r2, log) {
@@ -887,9 +905,9 @@ async function postAndamentoEPrazoAposProcesso(baseUrl, token, entry, procId, st
   }
 }
 
-async function postProcessoCompleto(baseUrl, token, entry, stats) {
+async function postProcessoCompleto(baseUrl, token, entry, stats, clientePorCod8) {
   const logFase = true;
-  const built = buildProcessoWrite(entry, logFase);
+  const built = await buildProcessoWrite(entry, logFase, baseUrl, token, clientePorCod8);
   if (built.erro) {
     console.warn(`[linha aba1=${entry.lineAba1} aba2=${entry.lineAba2}] ${built.erro}`);
     stats.procSkip++;
@@ -1004,10 +1022,10 @@ async function main() {
     `[filtro] linhas descartadas (sem dados uteis): aba1=${discarded.aba1} aba2=${discarded.aba2} | processaveis=${filtrados.length}`
   );
 
-  const filtradosOk = filtrados.filter((e) => !buildProcessoWrite(e, false).erro);
+  const filtradosOk = filtrados.filter((e) => !buildProcessoWriteSync(e, false).erro);
   const samples = [];
   for (const e of pickFirstMidLast(filtradosOk)) {
-    const built = buildProcessoWrite(e, false);
+    const built = buildProcessoWriteSync(e, false);
     if (!built.erro) {
       samples.push({
         cliente: { codigoCliente: normalizarCodigoCliente(e.cod), pessoaId: built.pessoaPlan },
@@ -1062,6 +1080,7 @@ async function main() {
   }
 
   const token = await login(opts);
+  const clientePorCod8 = new Map();
 
   const stats = {
     jaExistiam: 0,
@@ -1090,7 +1109,7 @@ async function main() {
   let idx = 0;
   await runPool(filtrados, conc, async (entry) => {
     const n = ++idx;
-    await postProcessoCompleto(opts.baseUrl, token, entry, stats);
+    await postProcessoCompleto(opts.baseUrl, token, entry, stats, clientePorCod8);
     if (filtrados.length > 50 && n % 50 === 0) {
       console.log(`… processos ${n}/${filtrados.length}`);
     }

@@ -56,6 +56,8 @@ public class PagamentoResponse {
     private String mesReferencia;
     private String contaReferencia;
     private boolean autoGerado;
+    private Long recorrenciaConfigId;
+    private String recorrenciaConfigDescricao;
 
     public Long getId() {
         return id;
@@ -455,5 +457,21 @@ public class PagamentoResponse {
 
     public void setAutoGerado(boolean autoGerado) {
         this.autoGerado = autoGerado;
+    }
+
+    public Long getRecorrenciaConfigId() {
+        return recorrenciaConfigId;
+    }
+
+    public void setRecorrenciaConfigId(Long recorrenciaConfigId) {
+        this.recorrenciaConfigId = recorrenciaConfigId;
+    }
+
+    public String getRecorrenciaConfigDescricao() {
+        return recorrenciaConfigDescricao;
+    }
+
+    public void setRecorrenciaConfigDescricao(String recorrenciaConfigDescricao) {
+        this.recorrenciaConfigDescricao = recorrenciaConfigDescricao;
     }
 }

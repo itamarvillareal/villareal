@@ -1,15 +1,17 @@
 #!/usr/bin/env node
 /**
- * Importa vínculos processo → imóvel a partir dos txt `Proc/…/<cod8>.0.89.1.<proc>.txt`.
+ * Importa vínculos processo → imóvel **somente** a partir de `Banco de Dados/Proc/`.
  *
- * Para cada par (cliente, proc): localiza o processo na API e associa `processo_id` no imóvel
- * cujo `numero_planilha` coincide com o conteúdo do txt.
+ * Varre a árvore com `fs.Dirent`, identifica `*.0.89.1.*.txt`, lê o nº da planilha (col. A)
+ * e grava na API em `imovel.numero_planilha` + `imovel.processo_id` (campo «Imóvel» em Processos).
  *
  * Uso:
  *   node scripts/import-proc-imovel-vinculo-txt.mjs --dry-run
  *   VILAREAL_IMPORT_SENHA='…' node scripts/import-proc-imovel-vinculo-txt.mjs --aplicar --login=itamar
  *   node scripts/import-proc-imovel-vinculo-txt.mjs --aplicar --csv=tmp/proc-imovel-vinculo.csv
- *   node scripts/import-proc-imovel-vinculo-txt.mjs --aplicar --forcar   # sobrescreve processo_id diferente
+ *   node scripts/import-proc-imovel-vinculo-txt.mjs --aplicar --forcar
+ *
+ * `--base=` / `--base-proc=` → pasta `Proc` (ou raiz «Banco de Dados», acrescenta `Proc`).
  */
 
 import './lib/load-vilareal-import-env.mjs';
@@ -18,18 +20,19 @@ import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import {
-  defaultBaseProcRaiz,
   levantarVinculosImovelProc,
+  resolverBaseProc,
+  validarRaizProc,
 } from './lib/proc-imovel-vinculo-txt.mjs';
 import {
   buscarProcesso,
   loginImportApi,
-  resolverPessoaIdCliente,
+  resolverClienteFromApi,
 } from './lib/vilareal-import-processo-api.mjs';
 
 function parseArgs(argv) {
   const out = {
-    baseProc: defaultBaseProcRaiz(),
+    baseProc: resolverBaseProc(),
     baseUrl: (process.env.VILAREAL_API_BASE || 'http://localhost:8081').replace(/\/$/, ''),
     login: process.env.VILAREAL_IMPORT_LOGIN || 'itamar',
     senha: process.env.VILAREAL_IMPORT_SENHA || '',
@@ -47,7 +50,10 @@ function parseArgs(argv) {
       out.aplicar = true;
       out.dryRun = false;
     } else if (a === '--forcar') out.forcar = true;
-    else if (a.startsWith('--base-proc=')) out.baseProc = a.slice(12);
+    else if (a.startsWith('--base=') || a.startsWith('--base-proc=')) {
+      const raw = a.startsWith('--base=') ? a.slice(7) : a.slice(12);
+      out.baseProc = validarRaizProc(raw);
+    }
     else if (a.startsWith('--base-url=')) out.baseUrl = a.slice(11).replace(/\/$/, '');
     else if (a.startsWith('--login=')) out.login = a.slice(8);
     else if (a.startsWith('--senha=')) out.senha = a.slice(8);
@@ -84,11 +90,11 @@ function corpoPutImovelFromResponse(imo, patch) {
 }
 
 /** @type {Map<string, object[]>} */
-const cacheImoveisPorPessoa = new Map();
+const cacheImoveisPorClientePk = new Map();
 
-async function listarImoveisPorPessoaId(baseUrl, token, pessoaId) {
-  const key = String(pessoaId);
-  if (cacheImoveisPorPessoa.has(key)) return cacheImoveisPorPessoa.get(key);
+async function listarImoveisPorClientePk(baseUrl, token, clientePk) {
+  const key = String(clientePk);
+  if (cacheImoveisPorClientePk.has(key)) return cacheImoveisPorClientePk.get(key);
 
   const res = await fetch(`${baseUrl}/api/imoveis`, {
     headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
@@ -98,16 +104,13 @@ async function listarImoveisPorPessoaId(baseUrl, token, pessoaId) {
     throw new Error(`GET /api/imoveis: ${res.status} ${t.slice(0, 200)}`);
   }
   const todos = await res.json();
-  const doCliente = todos.filter((i) => Number(i.clienteId) === Number(pessoaId));
-  cacheImoveisPorPessoa.set(key, doCliente);
+  const doCliente = todos.filter((i) => Number(i.clienteId) === Number(clientePk));
+  cacheImoveisPorClientePk.set(key, doCliente);
   return doCliente;
 }
 
-/**
- * Imóvel do cliente (pessoa) com número da planilha — evita colisão entre clientes distintos.
- */
-async function buscarImovelDoCliente(baseUrl, token, pessoaId, numeroPlanilha) {
-  const lista = await listarImoveisPorPessoaId(baseUrl, token, pessoaId);
+async function buscarImovelDoCliente(baseUrl, token, clientePk, numeroPlanilha) {
+  const lista = await listarImoveisPorClientePk(baseUrl, token, clientePk);
   const local = lista.find((i) => Number(i.numeroPlanilha) === Number(numeroPlanilha));
   if (local) return { imovel: local, origem: 'cliente' };
 
@@ -124,7 +127,7 @@ async function buscarImovelDoCliente(baseUrl, token, pessoaId, numeroPlanilha) {
   const global = await res.json();
   const cid = global.clienteId;
   if (cid == null) return { imovel: global, origem: 'global_sem_cliente' };
-  if (Number(cid) === Number(pessoaId)) return { imovel: global, origem: 'global_mesmo_cliente' };
+  if (Number(cid) === Number(clientePk)) return { imovel: global, origem: 'global_mesmo_cliente' };
   return {
     imovel: null,
     origem: 'planilha_outro_cliente',
@@ -193,9 +196,9 @@ function carregarRegistos(opts) {
  * @param {object} opts
  * @param {string} token
  * @param {object} reg
- * @param {Map<string, number>} pessoaPorCod8
+ * @param {Map<string, { clientePk: number, pessoaId: number }>} clientePorCod8
  */
-async function aplicarUmVinculo(opts, token, reg, pessoaPorCod8) {
+async function aplicarUmVinculo(opts, token, reg, clientePorCod8) {
   const resultado = {
     cod8: reg.cod8,
     numeroInterno: reg.numeroInterno,
@@ -206,7 +209,7 @@ async function aplicarUmVinculo(opts, token, reg, pessoaPorCod8) {
     imovelId: null,
   };
 
-  const proc = await buscarProcesso(opts.baseUrl, token, reg.cod8, reg.numeroInterno, pessoaPorCod8);
+  const proc = await buscarProcesso(opts.baseUrl, token, reg.cod8, reg.numeroInterno, clientePorCod8);
   if (!proc?.id) {
     resultado.acao = 'sem_processo';
     resultado.mensagem = 'Processo não encontrado na API';
@@ -214,14 +217,15 @@ async function aplicarUmVinculo(opts, token, reg, pessoaPorCod8) {
   }
   resultado.processoId = proc.id;
 
-  const pessoaId = await resolverPessoaIdCliente(opts.baseUrl, token, reg.cod8, pessoaPorCod8);
-  if (pessoaId == null) {
+  const clienteCtx = await resolverClienteFromApi(opts.baseUrl, token, reg.cod8, clientePorCod8);
+  if (!clienteCtx?.clientePk) {
     resultado.acao = 'sem_cliente';
     resultado.mensagem = 'Cliente não encontrado na API';
     return resultado;
   }
+  const clientePk = clienteCtx.clientePk;
 
-  const busca = await buscarImovelDoCliente(opts.baseUrl, token, pessoaId, reg.numeroPlanilha);
+  const busca = await buscarImovelDoCliente(opts.baseUrl, token, clientePk, reg.numeroPlanilha);
   let imovel = busca.imovel;
 
   if (imovel?.processoId != null && Number(imovel.processoId) === Number(proc.id)) {
@@ -253,7 +257,7 @@ async function aplicarUmVinculo(opts, token, reg, pessoaPorCod8) {
 
   if (!imovel) {
     const baseBody = {
-      clienteId: pessoaId,
+      clienteId: clientePk,
       processoId: proc.id,
       situacao: 'DESOCUPADO',
       ativo: true,
@@ -274,7 +278,7 @@ async function aplicarUmVinculo(opts, token, reg, pessoaPorCod8) {
       resultado.mensagem = `${criado.status} ${criado.text?.slice(0, 200)}`;
       return resultado;
     }
-    cacheImoveisPorPessoa.delete(String(pessoaId));
+    cacheImoveisPorClientePk.delete(String(clientePk));
     resultado.acao = criado.imovel.numeroPlanilha ? 'criado' : 'criado_sem_numero_planilha';
     resultado.imovelId = criado.imovel.id;
     resultado.mensagem = criado.imovel.numeroPlanilha
@@ -285,7 +289,7 @@ async function aplicarUmVinculo(opts, token, reg, pessoaPorCod8) {
 
   const patch = {
     processoId: proc.id,
-    clienteId: pessoaId,
+    clienteId: clientePk,
   };
   const putBody = corpoPutImovelFromResponse(imovel, patch);
   const atualizado = await atualizarImovel(opts.baseUrl, token, imovel.id, putBody);
@@ -318,6 +322,12 @@ async function runPool(items, concurrency, fn) {
 
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
+  opts.baseProc = validarRaizProc(opts.baseProc);
+
+  if (!fs.existsSync(opts.baseProc)) {
+    console.error('Pasta Proc não encontrada:', opts.baseProc);
+    process.exit(1);
+  }
 
   if (!opts.dryRun && !opts.senha) {
     console.error('Defina VILAREAL_IMPORT_SENHA ou use --dry-run.');
@@ -330,7 +340,8 @@ async function main() {
     process.exit(1);
   }
 
-  console.log('\n=== Import vínculo processo → imóvel (Proc/0.89.1) ===');
+  console.log('\n=== Import vínculo processo → imóvel (somente Banco de Dados/Proc, 0.89.1) ===');
+  console.log('Pasta Proc:', opts.baseProc);
   console.log('API:', opts.baseUrl);
   console.log('Modo:', opts.dryRun ? 'dry-run' : 'aplicar');
   console.log('Registos:', registos.length);
@@ -346,10 +357,10 @@ async function main() {
     process.exit(0);
   }
 
-  const pessoaPorCod8 = new Map();
+  const clientePorCod8 = new Map();
   const resultados = await runPool(registos, opts.concurrency, async (reg) => {
     try {
-      return await aplicarUmVinculo(opts, token, reg, pessoaPorCod8);
+      return await aplicarUmVinculo(opts, token, reg, clientePorCod8);
     } catch (e) {
       return {
         cod8: reg.cod8,

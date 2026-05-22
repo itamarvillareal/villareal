@@ -39,6 +39,12 @@ import {
   levantarFasesProcessos,
   resolverBaseBancoDados,
 } from './lib/gerais-fase-processo-txt.mjs';
+import {
+  buscarProcesso,
+  loginImportApi,
+  criarProcessoInativoMinimo,
+} from './lib/vilareal-import-processo-api.mjs';
+import { atualizarProcessoApi } from './lib/import-processo-put-body.mjs';
 
 function parseArgs(argv) {
   const baseBanco = resolverBaseBancoDados();
@@ -111,197 +117,6 @@ async function login(opts) {
   const json = await res.json();
   if (!json.accessToken) throw new Error('Login sem accessToken');
   return json.accessToken;
-}
-
-/**
- * @param {unknown} body
- * @param {number} numeroInternoAlvo
- */
-function extrairProcessoUnico(body, numeroInternoAlvo) {
-  const ni = Math.trunc(Number(numeroInternoAlvo));
-  if (body == null || typeof body !== 'object') return null;
-  if (Array.isArray(body)) {
-    return body.find((p) => Number(p?.numeroInterno) === ni) ?? null;
-  }
-  if (Array.isArray(body.content)) {
-    return body.content.find((p) => Number(p?.numeroInterno) === ni) ?? null;
-  }
-  if (body.id != null) {
-    const niResp = Number(body.numeroInterno);
-    return !Number.isFinite(niResp) || niResp === ni ? body : null;
-  }
-  return null;
-}
-
-function processoDoCliente(proc, cod8, pessoaId) {
-  if (!proc?.id) return false;
-  const codResp = String(proc.codigoCliente ?? '').replace(/\D/g, '').padStart(8, '0');
-  const codAlvo = String(cod8 ?? '').replace(/\D/g, '').padStart(8, '0');
-  if (codResp === codAlvo) return true;
-  if (pessoaId != null && Number(proc.clienteId ?? proc.pessoaId) === Number(pessoaId)) return true;
-  return false;
-}
-
-/**
- * Busca processo por código cliente + nº interno (suporta resposta única, página ou várias páginas).
- * @param {Map<string, number>} [pessoaPorCod8]
- */
-async function buscarProcesso(baseUrl, token, cod8, numeroInterno, pessoaPorCod8 = new Map()) {
-  const ni = Math.trunc(Number(numeroInterno));
-  const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' };
-
-  const urlDireto = `${baseUrl}/api/processos?${new URLSearchParams({
-    codigoCliente: cod8,
-    numeroInterno: String(ni),
-  })}`;
-  const resDireto = await fetch(urlDireto, { headers });
-  if (resDireto.status === 404) return null;
-  if (resDireto.ok) {
-    const json = await resDireto.json();
-    const hit = extrairProcessoUnico(json, ni);
-    if (hit?.id) return hit;
-    if (json?.content && json.last === true) {
-      return extrairProcessoUnico(json, ni);
-    }
-  } else if (resDireto.status !== 404) {
-    const t = await resDireto.text();
-    throw new Error(`GET processo ${cod8}/${ni}: ${resDireto.status} ${t.slice(0, 200)}`);
-  }
-
-  const pessoaId =
-    pessoaPorCod8.get(cod8) ?? (await resolverPessoaIdCliente(baseUrl, token, cod8, pessoaPorCod8));
-
-  for (let page = 0; page < 50; page += 1) {
-    const url = `${baseUrl}/api/processos?${new URLSearchParams({
-      codigoCliente: cod8,
-      page: String(page),
-      size: '100',
-    })}`;
-    const res = await fetch(url, { headers });
-    if (!res.ok) break;
-    const json = await res.json();
-    const hit = extrairProcessoUnico(json, ni);
-    if (hit?.id) return hit;
-    if (json?.last === true || !json?.content?.length) break;
-  }
-
-  const urlPorNi = `${baseUrl}/api/processos/por-numero-interno?${new URLSearchParams({
-    numeroInterno: String(ni),
-  })}`;
-  const resNi = await fetch(urlPorNi, { headers });
-  if (resNi.ok) {
-    const lista = await resNi.json();
-    if (Array.isArray(lista)) {
-      const hit = lista.find((p) => processoDoCliente(p, cod8, pessoaId));
-      if (hit?.id) return hit;
-    }
-  }
-
-  return null;
-}
-
-function corpoPutProcesso(p, patch) {
-  return {
-    clienteId: p.clienteId ?? p.pessoaId,
-    numeroInterno: p.numeroInterno,
-    numeroCnj: p.numeroCnj ?? null,
-    numeroProcessoAntigo: p.numeroProcessoAntigo ?? null,
-    naturezaAcao: p.naturezaAcao ?? null,
-    descricaoAcao: p.descricaoAcao ?? null,
-    competencia: p.competencia ?? null,
-    fase: patch.fase !== undefined ? patch.fase : (p.fase ?? null),
-    observacaoFase:
-      patch.observacaoFase !== undefined ? patch.observacaoFase : (p.observacaoFase ?? null),
-    tramitacao: p.tramitacao ?? null,
-    dataProtocolo: p.dataProtocolo ?? null,
-    prazoFatal: p.prazoFatal ?? null,
-    proximaConsulta: p.proximaConsulta ?? null,
-    observacao: p.observacao ?? null,
-    valorCausa: p.valorCausa ?? null,
-    uf: p.uf ?? null,
-    cidade: p.cidade ?? null,
-    unidade: p.unidade ?? null,
-    pasta: p.pasta ?? null,
-    papelCliente: p.papelCliente ?? null,
-    audienciaData: p.audienciaData ?? null,
-    audienciaHora: p.audienciaHora ?? null,
-    audienciaTipo: p.audienciaTipo ?? null,
-    avisoAudiencia: p.avisoAudiencia ?? null,
-    consultaAutomatica: p.consultaAutomatica ?? false,
-    ativo: p.ativo ?? true,
-    consultor: p.consultor ?? null,
-    usuarioResponsavelId: p.usuarioResponsavelId ?? null,
-  };
-}
-
-async function atualizarProcesso(baseUrl, token, proc, patch) {
-  const res = await fetch(`${baseUrl}/api/processos/${proc.id}`, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(corpoPutProcesso(proc, patch)),
-  });
-  if (!res.ok) {
-    const t = await res.text();
-    throw new Error(`PUT processo ${proc.id}: ${res.status} ${t.slice(0, 200)}`);
-  }
-}
-
-/**
- * @param {Map<string, number>} cache
- */
-async function resolverPessoaIdCliente(baseUrl, token, cod8, cache) {
-  if (cache.has(cod8)) return cache.get(cod8);
-  const url = `${baseUrl}/api/clientes/resolucao?${new URLSearchParams({ codigoCliente: cod8 })}`;
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-  });
-  if (!res.ok) return null;
-  const j = await res.json();
-  const pid = Number(j.pessoaId ?? j.id);
-  if (!Number.isFinite(pid) || pid < 1) return null;
-  cache.set(cod8, pid);
-  return pid;
-}
-
-/**
- * Cria processo já inativo (txt Status.Processo = INATIVO).
- * @returns {Promise<{ ok: boolean, id?: number, duplicate?: boolean, status?: number, text?: string }>}
- */
-async function criarProcessoInativoMinimo(baseUrl, token, pessoaId, numeroInterno) {
-  const body = {
-    clienteId: pessoaId,
-    numeroInterno,
-    ativo: false,
-    consultaAutomatica: false,
-    observacaoFase: null,
-    descricaoAcao: 'Processo criado a partir de Status.Processo INATIVO (legado Dropbox).',
-  };
-  const res = await fetch(`${baseUrl}/api/processos`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-    },
-    body: JSON.stringify(body),
-  });
-  const txt = await res.text();
-  if (res.status === 201 || res.status === 200) {
-    try {
-      const j = JSON.parse(txt);
-      const id = Number(j.id);
-      return { ok: true, id: Number.isFinite(id) ? id : undefined };
-    } catch {
-      return { ok: false, status: res.status, text: txt.slice(0, 300) };
-    }
-  }
-  if (res.status === 422 && /j[aá]\s*existe/i.test(txt)) {
-    return { ok: false, duplicate: true, text: txt };
-  }
-  return { ok: false, status: res.status, text: txt.slice(0, 300) };
 }
 
 async function patchAtivoProcesso(baseUrl, token, processoId, ativo) {
@@ -413,7 +228,7 @@ async function validarAmostraComRelatorio(registos, opts, ctx = {}) {
   let apiErroLogin = null;
   if (opts.compararApi && opts.senha) {
     try {
-      token = await login(opts);
+      token = await loginImportApi(opts.baseUrl, opts.login, opts.senha);
       console.log('[api] Login OK — a comparar amostra com a base\n');
     } catch (e) {
       apiErroLogin = String(e.message);
@@ -428,7 +243,7 @@ async function validarAmostraComRelatorio(registos, opts, ctx = {}) {
   /** @type {object[]} */
   const casos = [];
   /** @type {Map<string, number>} */
-  const pessoaPorCod8 = new Map();
+  const clientePorCod8 = new Map();
   let i = 0;
 
   for (const reg of amostra) {
@@ -467,7 +282,7 @@ async function validarAmostraComRelatorio(registos, opts, ctx = {}) {
 
     if (token) {
       try {
-        const proc = await buscarProcesso(opts.baseUrl, token, reg.cod8, reg.numeroInterno, pessoaPorCod8);
+        const proc = await buscarProcesso(opts.baseUrl, token, reg.cod8, reg.numeroInterno, clientePorCod8);
         if (!proc?.id) {
           console.log('  API:          (processo não encontrado)');
           contagem.fase.sem_processo += 1;
@@ -684,7 +499,7 @@ async function main() {
   };
   const detalhes = [];
   /** @type {Map<string, number>} */
-  const pessoaPorCod8 = new Map();
+  const clientePorCod8 = new Map();
 
   let token = null;
   if (!opts.dryRun) {
@@ -692,7 +507,7 @@ async function main() {
       console.error('Defina VILAREAL_IMPORT_SENHA ou --senha=');
       process.exit(1);
     }
-    token = await login(opts);
+    token = await loginImportApi(opts.baseUrl, opts.login, opts.senha);
     console.log('[api] Login OK\n');
   }
 
@@ -718,21 +533,21 @@ async function main() {
     }
 
     try {
-      let proc = await buscarProcesso(opts.baseUrl, token, reg.cod8, reg.numeroInterno, pessoaPorCod8);
+      let proc = await buscarProcesso(opts.baseUrl, token, reg.cod8, reg.numeroInterno, clientePorCod8);
 
       if (!proc?.id && opts.criarOrfaosInativos) {
-        const pessoaId = await resolverPessoaIdCliente(opts.baseUrl, token, reg.cod8, pessoaPorCod8);
-        if (!pessoaId) {
+        const criado = await criarProcessoInativoMinimo(
+          opts.baseUrl,
+          token,
+          reg.cod8,
+          reg.numeroInterno,
+          clientePorCod8
+        );
+        if (!criado.ok && !criado.duplicate && criado.text?.includes('cliente não resolvido')) {
           stats.semCliente += 1;
           detalhes.push({ ...linha, acao: 'sem_cliente_api' });
           return;
         }
-        const criado = await criarProcessoInativoMinimo(
-          opts.baseUrl,
-          token,
-          pessoaId,
-          reg.numeroInterno
-        );
         if (criado.ok && criado.id != null) {
           stats.processosCriadosInativos += 1;
           stats.inativados += 1;
@@ -740,12 +555,12 @@ async function main() {
             ...linha,
             acao: 'criado_inativo',
             processoId: criado.id,
-            pessoaId,
+            clientePk: clientePorCod8.get(reg.cod8)?.clientePk,
           });
           return;
         }
         if (criado.duplicate) {
-          proc = await buscarProcesso(opts.baseUrl, token, reg.cod8, reg.numeroInterno, pessoaPorCod8);
+          proc = await buscarProcesso(opts.baseUrl, token, reg.cod8, reg.numeroInterno, clientePorCod8);
         } else {
           stats.criarOrfaoFalhas += 1;
           detalhes.push({
@@ -774,7 +589,7 @@ async function main() {
         await patchAtivoProcesso(opts.baseUrl, token, proc.id, false);
       }
       if (normalizarStr(proc.observacaoFase) !== '') {
-        await atualizarProcesso(opts.baseUrl, token, proc, { observacaoFase: null });
+        await atualizarProcessoApi(opts.baseUrl, token, proc, { observacaoFase: null });
       }
 
       stats.inativados += 1;
@@ -809,7 +624,7 @@ async function main() {
     }
 
     try {
-      const proc = await buscarProcesso(opts.baseUrl, token, reg.cod8, reg.numeroInterno, pessoaPorCod8);
+      const proc = await buscarProcesso(opts.baseUrl, token, reg.cod8, reg.numeroInterno, clientePorCod8);
       if (!proc?.id) {
         stats.semProcesso += 1;
         detalhes.push({ ...linha, acao: 'sem_processo' });
@@ -830,7 +645,7 @@ async function main() {
         return;
       }
 
-      await atualizarProcesso(opts.baseUrl, token, proc, patch);
+      await atualizarProcessoApi(opts.baseUrl, token, proc, patch);
       stats.ok += 1;
       detalhes.push({ ...linha, acao: 'atualizado', processoId: proc.id, patch });
     } catch (e) {
