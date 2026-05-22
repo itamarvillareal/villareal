@@ -3,7 +3,7 @@
  * Importa vínculos processo → imóvel **somente** a partir de `Banco de Dados/Proc/`.
  *
  * Varre a árvore com `fs.Dirent`, identifica `*.0.89.1.*.txt`, lê o nº da planilha (col. A)
- * e grava na API em `imovel.numero_planilha` + `imovel.processo_id` (campo «Imóvel» em Processos).
+ * e grava na API em `imovel.numero_planilha` + POST `/api/imoveis/{id}/processos` (histórico N:N).
  *
  * Uso:
  *   node scripts/import-proc-imovel-vinculo-txt.mjs --dry-run
@@ -69,26 +69,6 @@ function parseArgs(argv) {
   return out;
 }
 
-function corpoPutImovelFromResponse(imo, patch) {
-  return {
-    clienteId: patch.clienteId !== undefined ? patch.clienteId : (imo.clienteId ?? null),
-    processoId: patch.processoId !== undefined ? patch.processoId : (imo.processoId ?? null),
-    numeroPlanilha: patch.numeroPlanilha ?? imo.numeroPlanilha,
-    responsavelPessoaId: imo.responsavelPessoaId ?? null,
-    titulo: imo.titulo ?? null,
-    enderecoCompleto: imo.enderecoCompleto ?? null,
-    condominio: imo.condominio ?? null,
-    unidade: imo.unidade ?? null,
-    tipoImovel: imo.tipoImovel ?? null,
-    situacao: imo.situacao ?? 'DESOCUPADO',
-    garagens: imo.garagens ?? null,
-    inscricaoImobiliaria: imo.inscricaoImobiliaria ?? null,
-    observacoes: imo.observacoes ?? null,
-    camposExtrasJson: imo.camposExtrasJson ?? null,
-    ativo: imo.ativo ?? true,
-  };
-}
-
 /** @type {Map<string, object[]>} */
 const cacheImoveisPorClientePk = new Map();
 
@@ -109,14 +89,16 @@ async function listarImoveisPorClientePk(baseUrl, token, clientePk) {
   return doCliente;
 }
 
-async function buscarImovelDoCliente(baseUrl, token, clientePk, numeroPlanilha) {
+async function buscarImovelDoCliente(baseUrl, token, clientePk, cod8, numeroPlanilha) {
   const lista = await listarImoveisPorClientePk(baseUrl, token, clientePk);
   const local = lista.find((i) => Number(i.numeroPlanilha) === Number(numeroPlanilha));
   if (local) return { imovel: local, origem: 'cliente' };
 
-  const res = await fetch(`${baseUrl}/api/imoveis/por-numero-planilha/${numeroPlanilha}`, {
-    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-  });
+  const q = new URLSearchParams({ codigoCliente: cod8 });
+  const res = await fetch(
+    `${baseUrl}/api/imoveis/por-numero-planilha/${numeroPlanilha}?${q}`,
+    { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } }
+  );
   if (res.status === 404) {
     return { imovel: null, origem: 'sem_imovel_no_cliente' };
   }
@@ -135,25 +117,42 @@ async function buscarImovelDoCliente(baseUrl, token, clientePk, numeroPlanilha) 
   };
 }
 
-async function criarImovel(baseUrl, token, body) {
-  const res = await fetch(`${baseUrl}/api/imoveis`, {
+async function listarVinculosProcessoImovel(baseUrl, token, imovelId) {
+  const res = await fetch(`${baseUrl}/api/imoveis/${imovelId}/processos`, {
+    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+  });
+  if (!res.ok) {
+    const t = await res.text();
+    throw new Error(`GET imovel processos: ${res.status} ${t.slice(0, 200)}`);
+  }
+  return res.json();
+}
+
+async function vincularProcessoImovel(baseUrl, token, imovelId, processoId, observacao) {
+  const res = await fetch(`${baseUrl}/api/imoveis/${imovelId}/processos`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify({
+      processoId,
+      observacao: observacao ?? `Vínculo Proc/0.89.1 (planilha legado).`,
+    }),
   });
   const t = await res.text();
-  if (!res.ok) {
-    return { ok: false, status: res.status, text: t };
+  if (res.status === 201 || res.ok) {
+    return { ok: true, vinculo: t ? JSON.parse(t) : null };
   }
-  return { ok: true, imovel: JSON.parse(t) };
+  if (res.status === 409 || /duplicate|unique|já vinculado|ja vinculado/i.test(t)) {
+    return { ok: true, idempotente: true };
+  }
+  return { ok: false, status: res.status, text: t };
 }
 
-async function atualizarImovel(baseUrl, token, id, body) {
-  const res = await fetch(`${baseUrl}/api/imoveis/${id}`, {
-    method: 'PUT',
+async function criarImovel(baseUrl, token, body) {
+  const res = await fetch(`${baseUrl}/api/imoveis`, {
+    method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
@@ -225,40 +224,38 @@ async function aplicarUmVinculo(opts, token, reg, clientePorCod8) {
   }
   const clientePk = clienteCtx.clientePk;
 
-  const busca = await buscarImovelDoCliente(opts.baseUrl, token, clientePk, reg.numeroPlanilha);
+  const busca = await buscarImovelDoCliente(opts.baseUrl, token, clientePk, reg.cod8, reg.numeroPlanilha);
   let imovel = busca.imovel;
 
-  if (imovel?.processoId != null && Number(imovel.processoId) === Number(proc.id)) {
-    resultado.acao = 'ja_vinculado';
-    resultado.imovelId = imovel.id;
-    resultado.mensagem = 'Imóvel já vinculado a este processo';
+  if (busca.origem === 'planilha_outro_cliente') {
+    resultado.acao = 'planilha_outro_cliente';
+    resultado.imovelId = busca.imovelOutroClienteId ?? null;
+    resultado.mensagem = `Nº planilha ${reg.numeroPlanilha} pertence a outro cliente (imóvel ${busca.imovelOutroClienteId})`;
     return resultado;
   }
 
-  if (
-    imovel?.processoId != null &&
-    Number(imovel.processoId) !== Number(proc.id) &&
-    !opts.forcar
-  ) {
-    resultado.acao = 'conflito_processo';
-    resultado.imovelId = imovel.id;
-    resultado.mensagem = `Imóvel já vinculado ao processo ${imovel.processoId}`;
-    return resultado;
+  if (imovel?.id) {
+    const vinculos = await listarVinculosProcessoImovel(opts.baseUrl, token, imovel.id);
+    if (vinculos.some((v) => Number(v.processoId) === Number(proc.id))) {
+      resultado.acao = 'ja_vinculado';
+      resultado.imovelId = imovel.id;
+      resultado.mensagem = 'Vínculo imóvel-processo já existe';
+      return resultado;
+    }
   }
 
   if (opts.dryRun) {
-    resultado.acao = imovel ? 'atualizaria' : 'criaria';
+    resultado.acao = imovel ? 'vincularia' : 'criaria';
     resultado.imovelId = imovel?.id ?? null;
     resultado.mensagem = imovel
-      ? `PUT imovel ${imovel.id} processoId=${proc.id}`
-      : `POST imovel numeroPlanilha=${reg.numeroPlanilha} processoId=${proc.id}`;
+      ? `POST /api/imoveis/${imovel.id}/processos processoId=${proc.id}`
+      : `POST imovel + vínculo processoId=${proc.id} planilha=${reg.numeroPlanilha}`;
     return resultado;
   }
 
   if (!imovel) {
     const baseBody = {
       clienteId: clientePk,
-      processoId: proc.id,
       situacao: 'DESOCUPADO',
       ativo: true,
       observacoes: `Vínculo Proc/0.89.1 (planilha legado ${reg.numeroPlanilha}).`,
@@ -267,42 +264,28 @@ async function aplicarUmVinculo(opts, token, reg, clientePorCod8) {
       ...baseBody,
       numeroPlanilha: reg.numeroPlanilha,
     });
-    if (
-      !criado.ok &&
-      /já vinculado|ja vinculado|duplicate|unique/i.test(criado.text || '')
-    ) {
-      criado = await criarImovel(opts.baseUrl, token, baseBody);
-    }
     if (!criado.ok) {
       resultado.acao = 'erro_criar';
       resultado.mensagem = `${criado.status} ${criado.text?.slice(0, 200)}`;
       return resultado;
     }
+    imovel = criado.imovel;
     cacheImoveisPorClientePk.delete(String(clientePk));
     resultado.acao = criado.imovel.numeroPlanilha ? 'criado' : 'criado_sem_numero_planilha';
-    resultado.imovelId = criado.imovel.id;
-    resultado.mensagem = criado.imovel.numeroPlanilha
-      ? 'Imóvel criado com vínculo'
-      : `Imóvel criado sem nº planilha (legado ${reg.numeroPlanilha} indisponível)`;
-    return resultado;
+    resultado.imovelId = imovel.id;
   }
 
-  const patch = {
-    processoId: proc.id,
-    clienteId: clientePk,
-  };
-  const putBody = corpoPutImovelFromResponse(imovel, patch);
-  const atualizado = await atualizarImovel(opts.baseUrl, token, imovel.id, putBody);
-  cacheImoveisPorPessoa.delete(String(pessoaId));
-  if (!atualizado.ok) {
-    resultado.acao = 'erro_atualizar';
+  const obs = `Vínculo Proc/0.89.1 cod=${reg.cod8} proc=${reg.numeroInterno} planilha=${reg.numeroPlanilha}.`;
+  const vinc = await vincularProcessoImovel(opts.baseUrl, token, imovel.id, proc.id, obs);
+  if (!vinc.ok) {
+    resultado.acao = 'erro_vinculo';
     resultado.imovelId = imovel.id;
-    resultado.mensagem = `${atualizado.status} ${atualizado.text?.slice(0, 200)}`;
+    resultado.mensagem = `${vinc.status} ${vinc.text?.slice(0, 200)}`;
     return resultado;
   }
-  resultado.acao = 'atualizado';
-  resultado.imovelId = atualizado.imovel.id;
-  resultado.mensagem = 'processo_id gravado no imóvel';
+  resultado.acao = vinc.idempotente ? 'ja_vinculado' : imovel.processoId ? 'vinculado' : 'vinculado_novo';
+  resultado.imovelId = imovel.id;
+  resultado.mensagem = vinc.idempotente ? 'Vínculo já existia' : 'Vínculo gravado em imovel_processo';
   return resultado;
 }
 
@@ -385,7 +368,6 @@ async function main() {
     [
       'sem_processo',
       'sem_cliente',
-      'conflito_processo',
       'planilha_outro_cliente',
       'erro',
       'erro_criar',

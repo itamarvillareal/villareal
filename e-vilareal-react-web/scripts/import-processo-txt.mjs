@@ -338,32 +338,26 @@ async function importarImovelTxt(opts, token, proc, dados) {
       Number(i.numeroPlanilha) === Number(reg.numeroPlanilha)
   );
 
-  if (imovel?.processoId != null && Number(imovel.processoId) === Number(proc.id)) {
-    return { acao: 'ja_vinculado', imovelId: imovel.id };
-  }
-
   if (imovel?.id) {
-    const putBody = {
-      clienteId: clientePk,
-      processoId: proc.id,
-      numeroPlanilha: imovel.numeroPlanilha ?? reg.numeroPlanilha,
-      situacao: imovel.situacao ?? 'DESOCUPADO',
-      ativo: imovel.ativo ?? true,
-      observacoes: imovel.observacoes ?? null,
-    };
-    const resPut = await fetch(`${opts.baseUrl}/api/imoveis/${imovel.id}`, {
-      method: 'PUT',
+    const resVinc = await fetch(`${opts.baseUrl}/api/imoveis/${imovel.id}/processos`, {
+      method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify(putBody),
+      body: JSON.stringify({
+        processoId: proc.id,
+        observacao: `Vínculo Proc/0.89.1 (import-processo-txt).`,
+      }),
     });
-    if (!resPut.ok) {
-      const t = await resPut.text();
-      throw new Error(`PUT imovel: ${resPut.status} ${t.slice(0, 200)}`);
+    if (resVinc.ok || resVinc.status === 201) {
+      return { acao: 'vinculado', imovelId: imovel.id };
     }
-    return { acao: 'atualizado', imovelId: imovel.id };
+    const t = await resVinc.text();
+    if (/duplicate|unique|já vinculado|ja vinculado/i.test(t)) {
+      return { acao: 'ja_vinculado', imovelId: imovel.id };
+    }
+    throw new Error(`POST imovel/processos: ${resVinc.status} ${t.slice(0, 200)}`);
   }
 
   const resPost = await fetch(`${opts.baseUrl}/api/imoveis`, {
@@ -374,7 +368,6 @@ async function importarImovelTxt(opts, token, proc, dados) {
     },
     body: JSON.stringify({
       clienteId: clientePk,
-      processoId: proc.id,
       numeroPlanilha: reg.numeroPlanilha,
       situacao: 'DESOCUPADO',
       ativo: true,
@@ -386,6 +379,21 @@ async function importarImovelTxt(opts, token, proc, dados) {
     throw new Error(`POST imovel: ${resPost.status} ${t.slice(0, 200)}`);
   }
   const criado = await resPost.json();
+  const resVinc = await fetch(`${opts.baseUrl}/api/imoveis/${criado.id}/processos`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      processoId: proc.id,
+      observacao: `Vínculo Proc/0.89.1 (import-processo-txt).`,
+    }),
+  });
+  if (!resVinc.ok && resVinc.status !== 201) {
+    const t = await resVinc.text();
+    throw new Error(`POST imovel/processos: ${resVinc.status} ${t.slice(0, 200)}`);
+  }
   return { acao: 'criado', imovelId: criado.id };
 }
 

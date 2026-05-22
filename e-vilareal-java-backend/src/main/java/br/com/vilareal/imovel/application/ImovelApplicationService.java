@@ -42,6 +42,8 @@ public class ImovelApplicationService {
     private final ApplicationEventPublisher applicationEventPublisher;
     private final ObjectMapper objectMapper;
     private final ClienteResolverService clienteResolverService;
+    private final ImovelProcessoLinkService imovelProcessoLinkService;
+    private final ImovelProcessoRepository imovelProcessoRepository;
 
     public ImovelApplicationService(
             ImovelRepository imovelRepository,
@@ -53,7 +55,9 @@ public class ImovelApplicationService {
             ProcessoRepository processoRepository,
             ApplicationEventPublisher applicationEventPublisher,
             ObjectMapper objectMapper,
-            ClienteResolverService clienteResolverService) {
+            ClienteResolverService clienteResolverService,
+            ImovelProcessoLinkService imovelProcessoLinkService,
+            ImovelProcessoRepository imovelProcessoRepository) {
         this.imovelRepository = imovelRepository;
         this.contratoLocacaoRepository = contratoLocacaoRepository;
         this.locacaoRepasseRepository = locacaoRepasseRepository;
@@ -64,6 +68,8 @@ public class ImovelApplicationService {
         this.applicationEventPublisher = applicationEventPublisher;
         this.objectMapper = objectMapper;
         this.clienteResolverService = clienteResolverService;
+        this.imovelProcessoLinkService = imovelProcessoLinkService;
+        this.imovelProcessoRepository = imovelProcessoRepository;
     }
 
     @Transactional(readOnly = true)
@@ -79,11 +85,25 @@ public class ImovelApplicationService {
     }
 
     @Transactional(readOnly = true)
-    public ImovelResponse buscarImovelPorNumeroPlanilha(int numeroPlanilha) {
-        ImovelEntity e = imovelRepository
-                .findByNumeroPlanilha(numeroPlanilha)
-                .orElseThrow(() -> new ResourceNotFoundException("Imóvel não encontrado para número da planilha: " + numeroPlanilha));
+    public ImovelResponse buscarImovelPorNumeroPlanilha(int numeroPlanilha, Long clienteId, String codigoCliente) {
+        ImovelEntity e = resolverImovelPorNumeroPlanilha(numeroPlanilha, clienteId, codigoCliente);
         return toImovelResponse(e);
+    }
+
+    @Transactional(readOnly = true)
+    public List<ImovelProcessoResponse> listarProcessosDoImovel(Long imovelId) {
+        return imovelProcessoLinkService.listarPorImovel(imovelId);
+    }
+
+    @Transactional
+    public ImovelProcessoResponse vincularProcesso(Long imovelId, ImovelProcessoWriteRequest req) {
+        return imovelProcessoLinkService.vincular(imovelId, req);
+    }
+
+    @Transactional
+    public ImovelProcessoResponse desativarVinculoProcesso(
+            Long imovelId, Long processoId, ImovelProcessoPatchRequest req) {
+        return imovelProcessoLinkService.desativar(imovelId, processoId, req);
     }
 
     /**
@@ -275,8 +295,10 @@ public class ImovelApplicationService {
                 .or(() -> processoRepository.findByPessoa_IdAndNumeroInterno(pessoaId, numeroInternoProcesso))
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Processo não encontrado para cliente " + codNorm + " e proc " + numeroInternoProcesso));
-        ImovelEntity imovel = imovelRepository
+        ImovelEntity imovel = imovelProcessoRepository
                 .findFirstByProcesso_IdOrderByIdAsc(processo.getId())
+                .map(ip -> ip.getImovel())
+                .or(() -> imovelRepository.findFirstByProcesso_IdOrderByIdAsc(processo.getId()))
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Nenhum imóvel vinculado ao processo " + numeroInternoProcesso + " do cliente " + codNorm));
         if (imovel.getNumeroPlanilha() == null) {
@@ -290,16 +312,24 @@ public class ImovelApplicationService {
     @Transactional
     public ImovelResponse criarImovel(ImovelWriteRequest req) {
         ImovelEntity e = new ImovelEntity();
-        aplicarImovel(e, req);
+        Long processoId = req.getProcessoId();
+        aplicarImovel(e, req, false);
         e = imovelRepository.save(e);
+        if (processoId != null) {
+            imovelProcessoLinkService.vincularSeProcessoInformado(e, processoId);
+        }
         return toImovelResponse(requireImovel(e.getId()));
     }
 
     @Transactional
     public ImovelResponse atualizarImovel(Long id, ImovelWriteRequest req) {
         ImovelEntity e = requireImovel(id);
-        aplicarImovel(e, req);
+        Long processoId = req.getProcessoId();
+        aplicarImovel(e, req, processoId != null);
         imovelRepository.save(e);
+        if (processoId != null) {
+            imovelProcessoLinkService.vincularSeProcessoInformado(e, processoId);
+        }
         return toImovelResponse(requireImovel(id));
     }
 
@@ -419,7 +449,39 @@ public class ImovelApplicationService {
                 .orElseThrow(() -> new ResourceNotFoundException("Despesa não encontrada: " + id));
     }
 
-    private void aplicarImovel(ImovelEntity e, ImovelWriteRequest req) {
+    private ImovelEntity resolverImovelPorNumeroPlanilha(int numeroPlanilha, Long clienteId, String codigoCliente) {
+        if (clienteId != null) {
+            return imovelRepository
+                    .findByCliente_IdAndNumeroPlanilha(clienteId, numeroPlanilha)
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "Imóvel não encontrado para cliente " + clienteId + " e planilha " + numeroPlanilha));
+        }
+        if (StringUtils.hasText(codigoCliente)) {
+            String codNorm = CodigoClienteUtil.normalizarCodigoClienteOitoDigitos(codigoCliente);
+            ClienteEntity cliente = clienteRepository
+                    .findByCodigoCliente(codNorm)
+                    .orElseThrow(() -> new ResourceNotFoundException("Cliente não encontrado: " + codNorm));
+            return imovelRepository
+                    .findByCliente_IdAndNumeroPlanilha(cliente.getId(), numeroPlanilha)
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "Imóvel não encontrado para cliente " + codNorm + " e planilha " + numeroPlanilha));
+        }
+        List<ImovelEntity> todos = imovelRepository.findAllByOrderByIdAsc().stream()
+                .filter(i -> numeroPlanilha == i.getNumeroPlanilha())
+                .toList();
+        if (todos.isEmpty()) {
+            throw new ResourceNotFoundException("Imóvel não encontrado para número da planilha: " + numeroPlanilha);
+        }
+        if (todos.size() > 1) {
+            throw new BusinessRuleException(
+                    "Mais de um imóvel com planilha "
+                            + numeroPlanilha
+                            + "; informe clienteId ou codigoCliente.");
+        }
+        return todos.get(0);
+    }
+
+    private void aplicarImovel(ImovelEntity e, ImovelWriteRequest req, boolean vincularProcessoViaLink) {
         if (req.getClienteId() != null) {
             var cliente = clienteResolverService.buscarPorId(req.getClienteId());
             e.setCliente(cliente);
@@ -428,13 +490,16 @@ public class ImovelApplicationService {
             e.setPessoa(null);
             e.setCliente(null);
         }
-        if (req.getProcessoId() != null) {
-            ProcessoEntity proc = processoRepository
-                    .findById(req.getProcessoId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Processo não encontrado: " + req.getProcessoId()));
-            e.setProcesso(proc);
-        } else {
-            e.setProcesso(null);
+        if (!vincularProcessoViaLink) {
+            if (req.getProcessoId() != null) {
+                ProcessoEntity proc = processoRepository
+                        .findById(req.getProcessoId())
+                        .orElseThrow(() -> new ResourceNotFoundException(
+                                "Processo não encontrado: " + req.getProcessoId()));
+                e.setProcesso(proc);
+            } else {
+                e.setProcesso(null);
+            }
         }
         e.setTitulo(trimToNull(req.getTitulo()));
         e.setEnderecoCompleto(trimToNull(req.getEnderecoCompleto()));
@@ -451,11 +516,22 @@ public class ImovelApplicationService {
         e.setObservacoes(trimToNull(req.getObservacoes()));
         e.setCamposExtrasJson(trimToNull(req.getCamposExtrasJson()));
         if (req.getNumeroPlanilha() != null) {
-            imovelRepository.findByNumeroPlanilha(req.getNumeroPlanilha()).ifPresent(other -> {
-                if (e.getId() == null || !other.getId().equals(e.getId())) {
-                    throw new BusinessRuleException("Número da planilha já vinculado a outro imóvel.");
-                }
-            });
+            if (e.getCliente() != null) {
+                imovelRepository
+                        .findByCliente_IdAndNumeroPlanilha(e.getCliente().getId(), req.getNumeroPlanilha())
+                        .ifPresent(other -> {
+                            if (e.getId() == null || !other.getId().equals(e.getId())) {
+                                throw new BusinessRuleException(
+                                        "Número da planilha já vinculado a outro imóvel deste cliente.");
+                            }
+                        });
+            } else {
+                imovelRepository.findByNumeroPlanilha(req.getNumeroPlanilha()).ifPresent(other -> {
+                    if (e.getId() == null || !other.getId().equals(e.getId())) {
+                        throw new BusinessRuleException("Número da planilha já vinculado a outro imóvel.");
+                    }
+                });
+            }
             e.setNumeroPlanilha(req.getNumeroPlanilha());
         } else if (e.getId() == null) {
             e.setNumeroPlanilha(null);

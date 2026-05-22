@@ -6,6 +6,7 @@ import br.com.vilareal.importacao.dto.ImportacaoLinhaDetalhe;
 import br.com.vilareal.importacao.dto.ImportacaoLinhaStatus;
 import br.com.vilareal.imovel.infrastructure.persistence.entity.ContratoLocacaoEntity;
 import br.com.vilareal.imovel.infrastructure.persistence.entity.ImovelEntity;
+import br.com.vilareal.imovel.application.ImovelProcessoLinkService;
 import br.com.vilareal.imovel.infrastructure.persistence.repository.ContratoLocacaoRepository;
 import br.com.vilareal.imovel.infrastructure.persistence.repository.ImovelRepository;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
@@ -13,6 +14,7 @@ import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.ClienteRepository;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
 import br.com.vilareal.processo.application.CodigoClienteUtil;
+import br.com.vilareal.processo.application.ProcessoCanonicalLookup;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -69,6 +71,7 @@ public class ImoveisPlanilhaImportService {
     private final ClienteRepository clienteRepository;
     private final PessoaRepository pessoaRepository;
     private final ProcessoRepository processoRepository;
+    private final ImovelProcessoLinkService imovelProcessoLinkService;
     private final ObjectMapper objectMapper;
 
     @Value("${vilareal.import.imoveis-planilha.path:}")
@@ -80,12 +83,14 @@ public class ImoveisPlanilhaImportService {
             ClienteRepository clienteRepository,
             PessoaRepository pessoaRepository,
             ProcessoRepository processoRepository,
+            ImovelProcessoLinkService imovelProcessoLinkService,
             ObjectMapper objectMapper) {
         this.imovelRepository = imovelRepository;
         this.contratoLocacaoRepository = contratoLocacaoRepository;
         this.clienteRepository = clienteRepository;
         this.pessoaRepository = pessoaRepository;
         this.processoRepository = processoRepository;
+        this.imovelProcessoLinkService = imovelProcessoLinkService;
         this.objectMapper = objectMapper;
     }
 
@@ -247,12 +252,12 @@ public class ImoveisPlanilhaImportService {
         if (StringUtils.hasText(colBRaw) && (codB == null || codB.isEmpty())) {
             throw new IllegalArgumentException("Coluna B (Cód. Cliente) inválida (linha " + linhaExcel + ").");
         }
+        ClienteEntity clienteEntity = null;
         PessoaEntity pessoaCliente = null;
         if (StringUtils.hasText(codB)) {
-            ClienteEntity cliente =
-                    clienteRepository.findByCodigoCliente(codB).orElseThrow(() -> new IllegalArgumentException(
-                            "Cliente não encontrado para código " + codB + " (linha " + linhaExcel + ")."));
-            pessoaCliente = cliente.getPessoa();
+            clienteEntity = clienteRepository.findByCodigoCliente(codB).orElseThrow(() -> new IllegalArgumentException(
+                    "Cliente não encontrado para código " + codB + " (linha " + linhaExcel + ")."));
+            pessoaCliente = clienteEntity.getPessoa();
         }
 
         Integer procInt = ImoveisPlanilhaImportSupport.parseInteiro(c[2]);
@@ -260,13 +265,17 @@ public class ImoveisPlanilhaImportService {
             throw new IllegalArgumentException("Coluna C (Proc.) inválida (linha " + linhaExcel + ").");
         }
         ProcessoEntity processo = null;
-        if (procInt != null && procInt >= 1 && pessoaCliente != null) {
-            processo = processoRepository
-                    .findByPessoa_IdAndNumeroInterno(pessoaCliente.getId(), procInt)
+        if (procInt != null && procInt >= 1 && clienteEntity != null) {
+            Long pessoaId = pessoaCliente.getId();
+            processo = ProcessoCanonicalLookup.escolher(
+                            processoRepository.findAllByCliente_IdAndNumeroInternoOrderByIdDesc(
+                                    clienteEntity.getId(), procInt),
+                            pessoaId)
+                    .or(() -> processoRepository.findByPessoa_IdAndNumeroInterno(pessoaId, procInt))
                     .orElse(null);
             if (processo == null) {
                 log.info(
-                        "[import-imoveis-planilha] linha={} sem vínculo processo: cliente={} proc={} (imóvel gravado sem processo_id)",
+                        "[import-imoveis-planilha] linha={} sem vínculo processo: cliente={} proc={} (imóvel gravado sem vínculo)",
                         linhaExcel,
                         codB,
                         procInt);
@@ -291,13 +300,15 @@ public class ImoveisPlanilhaImportService {
                             "Pessoa coluna Z (Inquilino) não encontrada: " + idInq + " (linha " + linhaExcel + ")."));
         }
 
-        ImovelEntity imovel = imovelRepository.findByNumeroPlanilha(numeroPlanilha).orElseGet(ImovelEntity::new);
+        ImovelEntity imovel = clienteEntity != null
+                ? imovelRepository
+                        .findByCliente_IdAndNumeroPlanilha(clienteEntity.getId(), numeroPlanilha)
+                        .orElseGet(ImovelEntity::new)
+                : imovelRepository.findByNumeroPlanilha(numeroPlanilha).orElseGet(ImovelEntity::new);
         boolean existente = imovel.getId() != null;
         if (!existente || StringUtils.hasText(codB)) {
+            imovel.setCliente(clienteEntity);
             imovel.setPessoa(pessoaCliente);
-        }
-        if (!existente || (procInt != null && procInt >= 1 && pessoaCliente != null)) {
-            imovel.setProcesso(processo);
         }
         imovel.setNumeroPlanilha(numeroPlanilha);
         imovel.setResponsavelPessoa(responsavel);
@@ -371,6 +382,10 @@ public class ImoveisPlanilhaImportService {
         imovel.setCamposExtrasJson(objectMapper.writeValueAsString(extras));
         imovel.setAtivo(true);
         imovel = imovelRepository.save(imovel);
+
+        if (processo != null) {
+            imovelProcessoLinkService.vincularSeProcessoInformado(imovel, processo.getId());
+        }
 
         ContratoLocacaoEntity contrato = resolverContratoPrincipal(imovel.getId());
         boolean novo = contrato.getId() == null;
