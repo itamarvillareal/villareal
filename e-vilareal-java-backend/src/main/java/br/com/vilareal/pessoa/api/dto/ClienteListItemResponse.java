@@ -20,11 +20,6 @@ public class ClienteListItemResponse {
 
     public ClienteListItemResponse() {}
 
-    /** Item só da planilha Pasta1 (sem registo na tabela {@code cliente}). */
-    public ClienteListItemResponse(Long pessoaId, String codigoCliente, String nome, String documentoReferencia) {
-        this(null, pessoaId, codigoCliente, nome, documentoReferencia);
-    }
-
     /** Item canónico (tabela {@code cliente} + pessoa). */
     public ClienteListItemResponse(
             Long clienteId, Long pessoaId, String codigoCliente, String nome, String documentoReferencia) {

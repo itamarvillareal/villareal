@@ -5,6 +5,7 @@ import br.com.vilareal.common.exception.ResourceNotFoundException;
 import br.com.vilareal.common.text.Utf8MojibakeUtil;
 import br.com.vilareal.financeiro.api.dto.*;
 import br.com.vilareal.financeiro.domain.EtapaLancamento;
+import br.com.vilareal.financeiro.domain.NaturezaLancamento;
 import br.com.vilareal.financeiro.infrastructure.persistence.LancamentoFinanceiroSpecifications;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.ContaContabilEntity;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.LancamentoFinanceiroEntity;
@@ -15,7 +16,7 @@ import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
 import br.com.vilareal.processo.application.ClienteCodigoPessoaResolver;
-import br.com.vilareal.processo.application.CodigoClienteUtil;
+import br.com.vilareal.pessoa.application.TitularPessoaRefHelper;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
 import org.slf4j.Logger;
@@ -29,6 +30,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -467,7 +469,6 @@ public class FinanceiroApplicationService {
         }
         ClienteResolverService.VinculoClientePessoa vinculo =
                 clienteResolverService.resolverVinculoOpcional(req.getClienteId(), processo);
-        e.setPessoaRef(vinculo.pessoaRef());
         e.setClienteEntidade(vinculo.clienteEntidade());
         e.setProcesso(processo);
 
@@ -530,7 +531,7 @@ public class FinanceiroApplicationService {
         if (clienteIdParam == null) {
             return null;
         }
-        return clienteResolverService.resolverClienteIdRequest(clienteIdParam).getId();
+        return clienteResolverService.buscarPorId(clienteIdParam).getId();
     }
 
     private ContaContabilResponse toContaResponse(ContaContabilEntity e) {
@@ -551,8 +552,10 @@ public class FinanceiroApplicationService {
         if (e.getClienteEntidade() != null) {
             r.setClienteId(e.getClienteEntidade().getId());
         }
-        if (e.getPessoaRef() != null) {
-            r.setPessoaRefId(e.getPessoaRef().getId());
+        Long titularId =
+                TitularPessoaRefHelper.titularPessoaId(e.getProcesso(), e.getPessoaRef(), e.getClienteEntidade());
+        if (titularId != null) {
+            r.setPessoaRefId(titularId);
         }
         r.setProcessoId(e.getProcesso() != null ? e.getProcesso().getId() : null);
         r.setCodigoCliente(codigoClienteExibicaoLancamento(e));
@@ -582,8 +585,10 @@ public class FinanceiroApplicationService {
         if (e.getClienteEntidade() != null) {
             r.setClienteId(e.getClienteEntidade().getId());
         }
-        if (e.getPessoaRef() != null) {
-            r.setPessoaRefId(e.getPessoaRef().getId());
+        Long titularId =
+                TitularPessoaRefHelper.titularPessoaId(e.getProcesso(), e.getPessoaRef(), e.getClienteEntidade());
+        if (titularId != null) {
+            r.setPessoaRefId(titularId);
         }
         r.setProcessoId(e.getProcesso() != null ? e.getProcesso().getId() : null);
         r.setCodigoCliente(codigoClienteExibicaoLancamento(e));
@@ -645,5 +650,31 @@ public class FinanceiroApplicationService {
             lancamentoRepository.saveAll(toSave);
         }
         return result;
+    }
+
+    @Transactional(readOnly = true)
+    public List<LancamentoNaoVinculadoPagamentoResponse> listarDebitosNaoVinculadosPagamento(
+            LocalDate periodoInicio, LocalDate periodoFim, Integer numeroBanco) {
+        if (periodoInicio == null || periodoFim == null) {
+            throw new BusinessRuleException("Informe periodoInicio e periodoFim.");
+        }
+        return lancamentoRepository
+                .findDebitosNaoVinculadosPagamento(NaturezaLancamento.DEBITO, periodoInicio, periodoFim, numeroBanco)
+                .stream()
+                .map(this::toNaoVinculadoPagamentoResponse)
+                .collect(Collectors.toList());
+    }
+
+    private LancamentoNaoVinculadoPagamentoResponse toNaoVinculadoPagamentoResponse(LancamentoFinanceiroEntity e) {
+        LancamentoNaoVinculadoPagamentoResponse r = new LancamentoNaoVinculadoPagamentoResponse();
+        r.setId(e.getId());
+        r.setDataLancamento(e.getDataLancamento());
+        r.setDescricao(e.getDescricao());
+        r.setDescricaoDetalhada(e.getDescricaoDetalhada());
+        r.setValor(e.getValor());
+        r.setBancoNome(e.getBancoNome());
+        r.setNumeroBanco(e.getNumeroBanco());
+        r.setContaContabilId(e.getContaContabil() != null ? e.getContaContabil().getId() : null);
+        return r;
     }
 }

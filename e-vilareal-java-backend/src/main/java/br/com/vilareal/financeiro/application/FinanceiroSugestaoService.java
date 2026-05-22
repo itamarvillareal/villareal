@@ -14,6 +14,7 @@ import br.com.vilareal.financeiro.infrastructure.persistence.repository.ContaCon
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.LancamentoFinanceiroRepository;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.RegraClassificacaoRepository;
 import br.com.vilareal.pessoa.application.ClienteResolverService;
+import br.com.vilareal.pessoa.application.TitularPessoaRefHelper;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
@@ -507,7 +508,6 @@ public class FinanceiroSugestaoService {
         }
         ClienteResolverService.VinculoClientePessoa vinculo =
                 clienteResolverService.resolverVinculoOpcional(clienteId, processo);
-        e.setPessoaRef(vinculo.pessoaRef());
         e.setClienteEntidade(vinculo.clienteEntidade());
         e.setProcesso(processo);
 
@@ -528,8 +528,10 @@ public class FinanceiroSugestaoService {
         if (e.getClienteEntidade() != null) {
             r.setClienteId(e.getClienteEntidade().getId());
         }
-        if (e.getPessoaRef() != null) {
-            r.setPessoaRefId(e.getPessoaRef().getId());
+        Long titularId =
+                TitularPessoaRefHelper.titularPessoaId(e.getProcesso(), e.getPessoaRef(), e.getClienteEntidade());
+        if (titularId != null) {
+            r.setPessoaRefId(titularId);
         }
         r.setProcessoId(e.getProcesso() != null ? e.getProcesso().getId() : null);
         r.setBancoNome(Utf8MojibakeUtil.corrigir(e.getBancoNome()));

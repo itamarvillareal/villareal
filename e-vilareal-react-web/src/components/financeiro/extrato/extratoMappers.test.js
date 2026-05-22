@@ -86,11 +86,11 @@ describe('extratoMappers', () => {
     expect(merged.clienteId).toBe(100);
   });
 
-  it('codigoClienteExtrato usa cache do vínculo quando API devolve pessoaRefId', () => {
+  it('codigoClienteExtrato prefere codigoCliente retornado pela API', () => {
     registrarCodigoClienteFinanceiroPorPessoaId(6277, '986');
     expect(
-      codigoClienteExtratoDesdeApiDto({ codigoCliente: '00006277', clienteId: 100, pessoaRefId: 6277 }),
-    ).toBe('986');
+      codigoClienteExtratoDesdeApiDto({ codigoCliente: '00000938', clienteId: 100, pessoaRefId: 6277 }),
+    ).toBe('938');
   });
 
   it('codigoClienteExtrato lê tag CC_CLI quando API devolve pessoaRefId', () => {
@@ -124,14 +124,14 @@ describe('extratoMappers', () => {
     expect(row.proc).toBe('10');
   });
 
-  it('codClienteExibicao ignora codigoCliente quando é só o id da pessoa (sem cache)', () => {
+  it('codClienteExibicao usa codigoCliente retornado pela API', () => {
     const row = mapApiLancamentoToExtratoRow(
       {
         id: 1,
         contaContabilNome: 'Conta Escritório',
-        codigoCliente: '00009999',
+        codigoCliente: '00000938',
         clienteId: 50,
-        pessoaRefId: 9999,
+        pessoaRefId: 6277,
         dataLancamento: '2026-05-19',
         descricao: 'PIX',
         valor: 100,
@@ -140,7 +140,7 @@ describe('extratoMappers', () => {
       },
       { 'Conta Escritório': 'A' },
     );
-    expect(row.codCliente).toBe('');
+    expect(row.codCliente).toBe('938');
   });
 
   it('mapApiLancamentoToExtratoRow mapeia etapa e natureza', () => {

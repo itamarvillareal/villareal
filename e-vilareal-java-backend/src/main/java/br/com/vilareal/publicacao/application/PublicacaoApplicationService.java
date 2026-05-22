@@ -57,14 +57,11 @@ public class PublicacaoApplicationService {
             String texto,
             String origemImportacao) {
         Long clientePk = null;
-        Long clientePessoaRef = null;
         if (clienteId != null && clienteId > 0) {
-            var cliente = clienteResolverService.resolverClienteIdRequest(clienteId);
-            clientePk = cliente.getId();
-            clientePessoaRef = cliente.getPessoa().getId();
+            clientePk = clienteResolverService.buscarPorId(clienteId).getId();
         }
         var spec = PublicacaoSpecifications.comFiltros(
-                dataInicio, dataFim, statusTratamento, processoId, clientePk, clientePessoaRef, texto, origemImportacao);
+                dataInicio, dataFim, statusTratamento, processoId, clientePk, texto, origemImportacao);
         List<PublicacaoEntity> lista = publicacaoRepository.findAll(spec, Sort.by(Sort.Direction.DESC, "createdAt"));
         Set<Long> procIds = new LinkedHashSet<>();
         for (PublicacaoEntity e : lista) {
@@ -140,7 +137,6 @@ public class PublicacaoApplicationService {
                 .findById(req.getProcessoId())
                 .orElseThrow(() -> new ResourceNotFoundException("Processo não encontrado: " + req.getProcessoId()));
         e.setProcesso(p);
-        e.setClienteRefId(p.getPessoa().getId());
         if (p.getCliente() != null) {
             e.setCliente(p.getCliente());
         } else {
@@ -229,7 +225,9 @@ public class PublicacaoApplicationService {
         if (e.getCliente() != null) {
             r.setClienteId(e.getCliente().getId());
         }
-        r.setPessoaRefId(e.getClienteRefId());
+        if (proc != null && proc.getPessoa() != null) {
+            r.setPessoaRefId(proc.getPessoa().getId());
+        }
         r.setDataDisponibilizacao(e.getDataDisponibilizacao());
         r.setDataPublicacao(e.getDataPublicacao());
         r.setFonte(e.getFonte());

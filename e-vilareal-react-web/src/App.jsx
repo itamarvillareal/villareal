@@ -36,6 +36,7 @@ import {
   LazyImoveisAdministracaoFinanceiro,
   LazyImoveisSugestoesVinculoGeral,
   LazyImoveisPagamentos,
+  LazyConciliacaoBancaria,
   LazyMonitoringPeoplePage,
   LazyProcessos,
   LazyPublicacoesProcessos,
@@ -344,6 +345,7 @@ function App() {
               <Route path="/iptu" element={<LazyIptuDashboard />} />
               <Route path="/imoveis/financeiro" element={<LazyImoveisAdministracaoFinanceiro />} />
               <Route path="/imoveis/pagamentos" element={<LazyImoveisPagamentos />} />
+              <Route path="/imoveis/pagamentos/conciliacao" element={<LazyConciliacaoBancaria />} />
               <Route path="/imoveis/sugestoes-vinculo" element={<LazyImoveisSugestoesVinculoGeral />} />
               <Route path="/imoveis/relatorio-financeiro" element={<LazyRelatorioFinanceiroImoveis />} />
               <Route path="/relatorio-imoveis" element={<LazyRelatorioImoveis />} />

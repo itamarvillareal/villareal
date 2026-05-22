@@ -20,7 +20,7 @@ public class PublicacaoResponse {
     private Integer numeroInternoProcesso;
     @io.swagger.v3.oas.annotations.media.Schema(description = "PK da tabela cliente")
     private Long clienteId;
-    @io.swagger.v3.oas.annotations.media.Schema(description = "pessoa.id titular legado (cliente_ref_id)")
+    @io.swagger.v3.oas.annotations.media.Schema(description = "pessoa.id titular do processo vinculado")
     private Long pessoaRefId;
     private LocalDate dataDisponibilizacao;
     private LocalDate dataPublicacao;

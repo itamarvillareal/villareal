@@ -26,12 +26,6 @@ public class PublicacaoEntity {
     @JoinColumn(name = "processo_id")
     private ProcessoEntity processo;
 
-    /**
-     * Mesma semântica de {@code ProcessoResponse.clienteId}: id da pessoa titular (não FK obrigatória à tabela {@code cliente}).
-     */
-    @Column(name = "cliente_ref_id")
-    private Long clienteRefId;
-
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "cliente_id")
     private ClienteEntity cliente;

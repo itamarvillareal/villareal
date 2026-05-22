@@ -366,6 +366,7 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
     @Query("""
             SELECT l FROM LancamentoFinanceiroEntity l
             WHERE l.natureza = :debito
+              AND l.status = 'ATIVO'
               AND l.dataLancamento BETWEEN :inicio AND :fim
               AND (:numeroBanco IS NULL OR l.numeroBanco = :numeroBanco)
               AND NOT EXISTS (

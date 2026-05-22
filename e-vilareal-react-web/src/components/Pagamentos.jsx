@@ -3,13 +3,17 @@ import {
   AlertTriangle,
   Banknote,
   CalendarClock,
+  Check,
+  Circle,
   ClipboardList,
   Copy,
   Download,
+  FileCheck,
   FileSpreadsheet,
   FileText,
   Filter,
   History,
+  Link2,
   Loader2,
   Pencil,
   Plus,
@@ -22,6 +26,7 @@ import {
 } from 'lucide-react';
 import { listarUsuarios } from '../repositories/usuariosRepository.js';
 import {
+  acertarPagamento,
   anexarBoletoPagamento,
   anexarComprovantePagamento,
   atualizarPagamento,
@@ -31,13 +36,23 @@ import {
   carregarAlertasPagamentos,
   carregarDashboardPagamentos,
   criarPagamento,
+  desvincularConciliacao,
   excluirPagamento,
   listarHistoricoPagamento,
   listarPagamentos,
   marcarPagamentoAgendado,
   marcarPagamentoPago,
+  reabrirPagamento,
   substituirPagamento,
 } from '../repositories/pagamentosRepository.js';
+import { ModalConferirPagamento } from './pagamentos/ModalConferirPagamento.jsx';
+import {
+  badgeStatusClass,
+  badgeStatusStyle,
+  extrairAlertasLegados,
+  ROTULO_ALERTA,
+  tooltipConciliado,
+} from './pagamentos/pagamentosUiUtils.js';
 import { featureFlags } from '../config/featureFlags.js';
 import { getApiUsuarioSessao } from '../data/usuarioPermissoesStorage.js';
 import { formatBRL } from '../data/relatorioCalculosData.js';
@@ -85,6 +100,8 @@ const STATUS_LIST = [
   'PAGO_CONFIRMADO',
   'PAGO_SEM_COMPROVANTE',
   'CONFERENCIA_PENDENTE',
+  'CONFERIDO',
+  'ACERTADO',
   'VENCIDO',
   'CANCELADO',
   'SUBSTITUIDO',
@@ -97,22 +114,12 @@ const ROTULO_STATUS = {
   AGENDADO: 'Agendado',
   PAGO_CONFIRMADO: 'Pago confirmado',
   PAGO_SEM_COMPROVANTE: 'Pago sem comprovante',
-  CONFERENCIA_PENDENTE: 'Conferência pendente',
+  CONFERENCIA_PENDENTE: 'Aguard. confirmação',
+  CONFERIDO: 'Conferido',
+  ACERTADO: 'Acertado',
   VENCIDO: 'Vencido',
   CANCELADO: 'Cancelado',
   SUBSTITUIDO: 'Substituído',
-};
-
-const ROTULO_ALERTA = {
-  vencidos: 'Vencidos (não quitados)',
-  vencendoHoje: 'Vencendo hoje',
-  proximos3Dias: 'Próximos 3 dias',
-  proximos7Dias: 'Próximos 7 dias',
-  agendadosAguardandoConfirmacao: 'Agendados aguardando confirmação',
-  conferenciaPendente: 'Conferência pendente',
-  pagoSemComprovante: 'Pagos sem comprovante',
-  altoValor: 'Alto valor (≥ R$ 10.000)',
-  urgentes: 'Prioridade urgente',
 };
 
 function fmtData(iso) {
@@ -158,9 +165,18 @@ function classeLinhaStatus(st) {
       return 'bg-slate-100/90 dark:bg-slate-800/50';
     case 'SUBSTITUIDO':
       return 'bg-violet-100/80 dark:bg-violet-950/40';
+    case 'CONFERIDO':
+      return 'bg-teal-50/90 dark:bg-teal-950/35';
+    case 'ACERTADO':
+      return 'bg-violet-50/90 dark:bg-violet-950/30';
     default:
       return '';
   }
+}
+
+function linhaVencidaDestaque(st) {
+  if (st === 'VENCIDO') return 'ring-1 ring-inset ring-red-200/80 dark:ring-red-900/50';
+  return '';
 }
 
 function valorNum(v) {
@@ -198,6 +214,8 @@ function defaultForm() {
     recorrenciaValorFixo: true,
     recorrenciaDescricaoPadrao: '',
     recorrenciaPagamentoOrigemId: '',
+    mesReferencia: '',
+    contaReferencia: '',
   };
 }
 
@@ -233,6 +251,8 @@ function mapApiParaForm(p) {
   f.recorrenciaDescricaoPadrao = p.recorrenciaDescricaoPadrao ?? '';
   f.recorrenciaPagamentoOrigemId =
     p.recorrenciaPagamentoOrigemId != null ? String(p.recorrenciaPagamentoOrigemId) : '';
+  f.mesReferencia = p.mesReferencia ?? '';
+  f.contaReferencia = p.contaReferencia ?? '';
   return f;
 }
 
@@ -278,6 +298,8 @@ function montarPayloadWrite(f) {
     recorrenciaValorFixo: f.recorrente ? !!f.recorrenciaValorFixo : null,
     recorrenciaDescricaoPadrao: f.recorrente ? f.recorrenciaDescricaoPadrao?.trim() || null : null,
     recorrenciaPagamentoOrigemId: parseOptLong(f.recorrenciaPagamentoOrigemId),
+    mesReferencia: f.mesReferencia?.trim() || null,
+    contaReferencia: f.contaReferencia?.trim() || null,
   };
 }
 
@@ -286,8 +308,9 @@ export function Pagamentos({ ocultarCabecalho = false } = {}) {
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState('');
   const [dashboard, setDashboard] = useState(null);
-  const [alertas, setAlertas] = useState({});
+  const [alertasPayload, setAlertasPayload] = useState(null);
   const [usuarios, setUsuarios] = useState([]);
+  const [mensagemOk, setMensagemOk] = useState('');
 
   const [filtros, setFiltros] = useState(() => ({
     descricao: '',
@@ -313,6 +336,8 @@ export function Pagamentos({ ocultarCabecalho = false } = {}) {
     mesAtual: false,
     somenteSemComprovante: false,
     altoValor: false,
+    mesReferencia: '',
+    naoConciliado: false,
   }));
 
   const [modalAberto, setModalAberto] = useState(false);
@@ -328,6 +353,12 @@ export function Pagamentos({ ocultarCabecalho = false } = {}) {
   const [pagoData, setPagoData] = useState(() => hojeIsoLocal());
   const [pagoSemComp, setPagoSemComp] = useState(false);
 
+  const [conferirRow, setConferirRow] = useState(null);
+  const [acertarRow, setAcertarRow] = useState(null);
+  const [acertarObs, setAcertarObs] = useState('');
+  const [reabrirRow, setReabrirRow] = useState(null);
+  const [reabrirObs, setReabrirObs] = useState('');
+
   const fileRef = useRef(null);
   const [uploadCtx, setUploadCtx] = useState(null);
 
@@ -340,6 +371,38 @@ export function Pagamentos({ ocultarCabecalho = false } = {}) {
     const d = new Date();
     return { ano: d.getFullYear(), mes: d.getMonth() + 1 };
   }, []);
+
+  const alertasLegados = useMemo(() => extrairAlertasLegados(alertasPayload), [alertasPayload]);
+
+  const alertasNovos = useMemo(() => {
+    if (!alertasPayload) return [];
+    const itens = [];
+    const pnc = alertasPayload.pagosNaoConciliados;
+    if (pnc && Number(pnc.count) > 0) {
+      itens.push({
+        k: 'pagosNaoConciliados',
+        icone: Link2,
+        texto: `${ROTULO_ALERTA.pagosNaoConciliados}: ${pnc.count} (${formatBRL(Number(pnc.valorTotal ?? 0))})`,
+        filtro: 'conciliacao',
+      });
+    }
+    const cna = alertasPayload.conferidosNaoAcertados;
+    if (cna && Number(cna.count) > 0) {
+      itens.push({
+        k: 'conferidosNaoAcertados',
+        icone: FileCheck,
+        texto: `${ROTULO_ALERTA.conferidosNaoAcertados}: ${cna.count} (${formatBRL(Number(cna.valorTotal ?? 0))})`,
+        filtro: 'conferido',
+      });
+    }
+    return itens;
+  }, [alertasPayload]);
+
+  useEffect(() => {
+    if (!mensagemOk) return undefined;
+    const t = setTimeout(() => setMensagemOk(''), 4500);
+    return () => clearTimeout(t);
+  }, [mensagemOk]);
 
   const montarQueryLista = useCallback(() => {
     const q = {};
@@ -372,6 +435,11 @@ export function Pagamentos({ ocultarCabecalho = false } = {}) {
     if (filtros.mesAtual) q.mesAtual = true;
     if (filtros.somenteSemComprovante) q.somenteSemComprovante = true;
     if (filtros.altoValor) q.altoValor = true;
+    if (trim(filtros.mesReferencia)) q.mesReferencia = trim(filtros.mesReferencia);
+    if (filtros.naoConciliado) {
+      q.conciliado = false;
+      q.somenteNaoConciliado = true;
+    }
     return q;
   }, [filtros]);
 
@@ -388,7 +456,7 @@ export function Pagamentos({ ocultarCabecalho = false } = {}) {
       ]);
       setLista(Array.isArray(rows) ? rows : []);
       setDashboard(dash || null);
-      setAlertas(al && typeof al === 'object' ? al : {});
+      setAlertasPayload(al && typeof al === 'object' ? al : null);
       setUsuarios(Array.isArray(us) ? us : []);
     } catch (e) {
       setErro(e?.message || 'Falha ao carregar pagamentos.');
@@ -482,6 +550,83 @@ export function Pagamentos({ ocultarCabecalho = false } = {}) {
     setPagoModal(row.id);
     setPagoData(row.dataPagamentoEfetivo ? String(row.dataPagamentoEfetivo).slice(0, 10) : hojeIsoLocal());
     setPagoSemComp(false);
+  }
+
+  function aplicarFiltroConciliacaoPendente() {
+    setFiltros((f) => ({
+      ...f,
+      status: 'PAGO_CONFIRMADO',
+      naoConciliado: true,
+      somenteSemComprovante: false,
+    }));
+  }
+
+  function aplicarFiltroPagosNaoConciliados() {
+    setFiltros((f) => ({
+      ...f,
+      status: '',
+      naoConciliado: true,
+      somenteSemComprovante: false,
+    }));
+  }
+
+  function aplicarFiltroConferido() {
+    setFiltros((f) => ({
+      ...f,
+      status: 'CONFERIDO',
+      naoConciliado: false,
+    }));
+  }
+
+  async function acaoAcertarConfirmar() {
+    if (!acertarRow) return;
+    setErro('');
+    try {
+      await acertarPagamento(acertarRow.id, { observacao: acertarObs.trim() || null });
+      setAcertarRow(null);
+      setAcertarObs('');
+      setMensagemOk('Pagamento marcado como acertado.');
+      await recarregarTudo();
+    } catch (e) {
+      setErro(e?.message || 'Falha ao acertar pagamento.');
+    }
+  }
+
+  async function acaoReabrirConfirmar() {
+    if (!reabrirRow) return;
+    const obs = reabrirObs.trim();
+    if (obs.length < 5) {
+      setErro('Informe uma observação com pelo menos 5 caracteres.');
+      return;
+    }
+    setErro('');
+    try {
+      await reabrirPagamento(reabrirRow.id, { observacao: obs });
+      setReabrirRow(null);
+      setReabrirObs('');
+      setMensagemOk('Pagamento reaberto como pendente.');
+      await recarregarTudo();
+    } catch (e) {
+      setErro(e?.message || 'Falha ao reabrir pagamento.');
+    }
+  }
+
+  async function acaoDesvincular(row) {
+    if (
+      !window.confirm(
+        'Deseja remover o vínculo com a transação bancária? O status voltará para Pago confirmado.',
+      )
+    ) {
+      return;
+    }
+    setErro('');
+    try {
+      await desvincularConciliacao({ pagamentoId: row.id });
+      setMensagemOk('Vínculo com extrato removido.');
+      await recarregarTudo();
+    } catch (e) {
+      setErro(e?.message || 'Falha ao desvincular.');
+    }
   }
 
   async function acaoConfirmarPago() {
@@ -735,6 +880,11 @@ export function Pagamentos({ ocultarCabecalho = false } = {}) {
     setModalAberto(true);
   }
 
+  const valorAlerta = (bloco) => {
+    const v = bloco?.valorTotal;
+    return v != null && Number.isFinite(Number(v)) ? Number(v) : null;
+  };
+
   const cartoesDash = dashboard
     ? [
         { k: 'totalAPagarMes', label: 'Total a pagar no mês', v: dashboard.totalAPagarMes },
@@ -742,10 +892,48 @@ export function Pagamentos({ ocultarCabecalho = false } = {}) {
         { k: 'totalPendente', label: 'Total pendente', v: dashboard.totalPendente },
         { k: 'totalAgendado', label: 'Total agendado', v: dashboard.totalAgendado },
         { k: 'totalVencido', label: 'Total vencido', v: dashboard.totalVencido },
-        { k: 'totalConferenciaPendente', label: 'Conferência pendente', v: dashboard.totalConferenciaPendente },
+        { k: 'totalConferenciaPendente', label: 'Aguard. confirmação (oper.)', v: dashboard.totalConferenciaPendente },
         { k: 'totalPagoSemComprovante', label: 'Pago sem comprovante', v: dashboard.totalPagoSemComprovante },
+        {
+          k: 'conferenciasPendentes',
+          label: 'Conf. extrato pendente',
+          modo: 'contagem',
+          count: Number(dashboard.conferenciasPendentes ?? 0),
+          valor: valorAlerta(alertasPayload?.pagosNaoConciliados),
+          onClick: aplicarFiltroConciliacaoPendente,
+          cardClass:
+            'border-orange-200/90 bg-orange-50/90 dark:border-orange-900/60 dark:bg-orange-950/35 cursor-pointer hover:ring-2 hover:ring-orange-300/80',
+        },
+        {
+          k: 'acertosPendentes',
+          label: 'Acerto pendente',
+          modo: 'contagem',
+          count: Number(dashboard.acertosPendentes ?? 0),
+          valor: valorAlerta(alertasPayload?.conferidosNaoAcertados),
+          onClick: aplicarFiltroConferido,
+          cardClass:
+            'border-violet-200/90 bg-violet-50/90 dark:border-violet-900/60 dark:bg-violet-950/35 cursor-pointer hover:ring-2 hover:ring-violet-300/80',
+        },
       ]
     : [];
+
+  function iconeConciliado(row) {
+    if (row.financeiroLancamentoId != null) {
+      return (
+        <span title={tooltipConciliado(row)} className="inline-flex text-emerald-600 dark:text-emerald-400">
+          <Check className="w-4 h-4" strokeWidth={3} />
+        </span>
+      );
+    }
+    if (['PAGO_CONFIRMADO', 'PAGO_SEM_COMPROVANTE', 'CONFERENCIA_PENDENTE'].includes(row.status)) {
+      return (
+        <span title="Não conciliado com extrato" className="inline-flex text-slate-400">
+          <Circle className="w-4 h-4" />
+        </span>
+      );
+    }
+    return null;
+  }
 
   return (
     <div
@@ -811,19 +999,59 @@ export function Pagamentos({ ocultarCabecalho = false } = {}) {
         </div>
       ) : null}
 
+      {mensagemOk ? (
+        <div className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-100">
+          {mensagemOk}
+        </div>
+      ) : null}
+
       {cartoesDash.length > 0 ? (
-        <section className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-2 mb-4">
-          {cartoesDash.map((c) => (
-            <div
-              key={c.k}
-              className="rounded-xl border border-slate-200/80 bg-white/90 px-3 py-2 shadow-sm dark:border-slate-700 dark:bg-slate-900/80"
-            >
-              <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400 leading-tight">{c.label}</div>
-              <div className="text-sm font-bold text-slate-900 dark:text-slate-50 tabular-nums">
-                {formatBRL(Number(c.v ?? 0))}
+        <section className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-9 gap-2 mb-4">
+          {cartoesDash.map((c) => {
+            const baseClass =
+              c.cardClass ||
+              'border-slate-200/80 bg-white/90 dark:border-slate-700 dark:bg-slate-900/80';
+            const inner =
+              c.modo === 'contagem' ? (
+                <>
+                  <div className="text-[11px] font-medium text-slate-600 dark:text-slate-300 leading-tight">
+                    {c.label}
+                  </div>
+                  <div className="text-lg font-bold text-slate-900 dark:text-slate-50 tabular-nums">{c.count}</div>
+                  {c.valor != null ? (
+                    <div className="text-[11px] text-slate-600 dark:text-slate-400 tabular-nums">
+                      {formatBRL(c.valor)}
+                    </div>
+                  ) : null}
+                </>
+              ) : (
+                <>
+                  <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400 leading-tight">
+                    {c.label}
+                  </div>
+                  <div className="text-sm font-bold text-slate-900 dark:text-slate-50 tabular-nums">
+                    {formatBRL(Number(c.v ?? 0))}
+                  </div>
+                </>
+              );
+            if (c.onClick) {
+              return (
+                <button
+                  key={c.k}
+                  type="button"
+                  onClick={c.onClick}
+                  className={`rounded-xl border px-3 py-2 shadow-sm text-left ${baseClass}`}
+                >
+                  {inner}
+                </button>
+              );
+            }
+            return (
+              <div key={c.k} className={`rounded-xl border px-3 py-2 shadow-sm ${baseClass}`}>
+                {inner}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </section>
       ) : null}
 
@@ -866,15 +1094,35 @@ export function Pagamentos({ ocultarCabecalho = false } = {}) {
           Alertas e indicadores
         </h2>
         <div className="flex flex-wrap gap-2">
-          {Object.entries(alertas).map(([k, n]) => (
-            <span
-              key={k}
-              className="inline-flex items-center gap-1 rounded-full bg-white/90 px-2.5 py-1 text-xs font-medium text-amber-950 ring-1 ring-amber-200 dark:bg-slate-900/90 dark:text-amber-100 dark:ring-amber-800"
-            >
-              {ROTULO_ALERTA[k] || k}: <strong>{n}</strong>
-            </span>
-          ))}
-          {Object.keys(alertas).length === 0 ? <span className="text-xs text-amber-900/80">Sem dados.</span> : null}
+          {Object.entries(alertasLegados).map(([k, n]) =>
+            Number(n) > 0 ? (
+              <span
+                key={k}
+                className="inline-flex items-center gap-1 rounded-full bg-white/90 px-2.5 py-1 text-xs font-medium text-amber-950 ring-1 ring-amber-200 dark:bg-slate-900/90 dark:text-amber-100 dark:ring-amber-800"
+              >
+                {ROTULO_ALERTA[k] || k}: <strong>{n}</strong>
+              </span>
+            ) : null,
+          )}
+          {alertasNovos.map((a) => {
+            const Ico = a.icone;
+            const onClick =
+              a.filtro === 'conciliacao' ? aplicarFiltroPagosNaoConciliados : aplicarFiltroConferido;
+            return (
+              <button
+                key={a.k}
+                type="button"
+                onClick={onClick}
+                className="inline-flex items-center gap-1 rounded-full bg-white/90 px-2.5 py-1 text-xs font-medium text-amber-950 ring-1 ring-amber-200 hover:bg-amber-100/80 dark:bg-slate-900/90 dark:text-amber-100 dark:ring-amber-800 dark:hover:bg-slate-800"
+              >
+                <Ico className="w-3.5 h-3.5 shrink-0" />
+                {a.texto}
+              </button>
+            );
+          })}
+          {Object.keys(alertasLegados).length === 0 && alertasNovos.length === 0 ? (
+            <span className="text-xs text-amber-900/80">Sem dados.</span>
+          ) : null}
         </div>
       </section>
 
@@ -991,6 +1239,16 @@ export function Pagamentos({ ocultarCabecalho = false } = {}) {
               className="rounded border border-slate-300 px-2 py-1 dark:bg-slate-950 dark:border-slate-600"
               value={filtros.origem}
               onChange={(e) => setFiltros((f) => ({ ...f, origem: e.target.value }))}
+            />
+          </label>
+          <label className="flex flex-col gap-0.5">
+            <span className="text-slate-500">Mês referência</span>
+            <input
+              placeholder="MM/AAAA"
+              maxLength={7}
+              className="rounded border border-slate-300 px-2 py-1 dark:bg-slate-950 dark:border-slate-600"
+              value={filtros.mesReferencia}
+              onChange={(e) => setFiltros((f) => ({ ...f, mesReferencia: e.target.value }))}
             />
           </label>
           <label className="flex flex-col gap-0.5">
@@ -1111,6 +1369,14 @@ export function Pagamentos({ ocultarCabecalho = false } = {}) {
             />
             Alto valor
           </label>
+          <label className="inline-flex items-center gap-1.5 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={filtros.naoConciliado}
+              onChange={(e) => setFiltros((f) => ({ ...f, naoConciliado: e.target.checked }))}
+            />
+            Não conciliado
+          </label>
           <button
             type="button"
             onClick={() => void recarregarTudo()}
@@ -1138,17 +1404,27 @@ export function Pagamentos({ ocultarCabecalho = false } = {}) {
                 <th className="px-2 py-2 font-semibold">Pri.</th>
                 <th className="px-2 py-2 font-semibold">Boleto</th>
                 <th className="px-2 py-2 font-semibold">Comp.</th>
-                <th className="px-2 py-2 font-semibold w-[260px]">Ações</th>
+                <th className="px-2 py-2 font-semibold text-center">Conc.</th>
+                <th className="px-2 py-2 font-semibold w-[300px]">Ações</th>
               </tr>
             </thead>
             <tbody>
               {lista.map((row) => (
-                <tr key={row.id} className={`border-t border-slate-200 dark:border-slate-700 ${classeLinhaStatus(row.status)}`}>
+                <tr
+                  key={row.id}
+                  className={`border-t border-slate-200 dark:border-slate-700 ${classeLinhaStatus(row.status)} ${linhaVencidaDestaque(row.status)}`}
+                >
                   <td className="px-2 py-1.5 whitespace-nowrap">{fmtData(row.dataVencimento)}</td>
                   <td className="px-2 py-1.5 whitespace-nowrap">{fmtData(row.dataAgendamento)}</td>
                   <td className="px-2 py-1.5 max-w-[220px]">
-                    <span className="line-clamp-2" title={row.descricao}>
-                      {row.descricao}
+                    <span className="line-clamp-2 inline-flex items-start gap-1" title={row.descricao}>
+                      {row.autoGerado ? (
+                        <RefreshCw
+                          className="w-3 h-3 shrink-0 text-slate-400 mt-0.5"
+                          title="Gerado automaticamente"
+                        />
+                      ) : null}
+                      <span>{row.descricao}</span>
                     </span>
                   </td>
                   <td className="px-2 py-1.5">{row.categoria}</td>
@@ -1156,13 +1432,18 @@ export function Pagamentos({ ocultarCabecalho = false } = {}) {
                   <td className="px-2 py-1.5 max-w-[140px] truncate font-mono text-[11px]" title={row.codigoBarras}>
                     {row.codigoBarras || '—'}
                   </td>
-                  <td className="px-2 py-1.5 whitespace-nowrap">{ROTULO_STATUS[row.status] || row.status}</td>
+                  <td className="px-2 py-1.5 whitespace-nowrap">
+                    <span className={badgeStatusClass(row.status)} style={badgeStatusStyle(row.status)}>
+                      {ROTULO_STATUS[row.status] || row.status}
+                    </span>
+                  </td>
                   <td className="px-2 py-1.5 max-w-[100px] truncate" title={row.responsavelNome}>
                     {row.responsavelNome || '—'}
                   </td>
                   <td className="px-2 py-1.5">{row.prioridade}</td>
                   <td className="px-2 py-1.5">{row.temBoletoAnexo ? 'Sim' : 'Não'}</td>
                   <td className="px-2 py-1.5">{row.temComprovanteAnexo ? 'Sim' : 'Não'}</td>
+                  <td className="px-2 py-1.5 text-center">{iconeConciliado(row)}</td>
                   <td className="px-2 py-1.5">
                     <div className="flex flex-wrap gap-1">
                       <button
@@ -1189,6 +1470,52 @@ export function Pagamentos({ ocultarCabecalho = false } = {}) {
                       >
                         <Banknote className="w-3.5 h-3.5" />
                       </button>
+                      {['PAGO_CONFIRMADO', 'PAGO_SEM_COMPROVANTE'].includes(row.status) ? (
+                        <button
+                          type="button"
+                          title="Conferir com extrato"
+                          className="rounded border border-teal-300 px-1 py-0.5 hover:bg-teal-50 text-[10px] font-semibold"
+                          onClick={() => setConferirRow(row)}
+                        >
+                          Conf.
+                        </button>
+                      ) : null}
+                      {row.status === 'CONFERIDO' ? (
+                        <>
+                          <button
+                            type="button"
+                            title="Marcar como acertado"
+                            className="rounded border border-violet-300 px-1 py-0.5 hover:bg-violet-50 text-[10px] font-semibold"
+                            onClick={() => {
+                              setAcertarObs('');
+                              setAcertarRow(row);
+                            }}
+                          >
+                            Acert.
+                          </button>
+                          <button
+                            type="button"
+                            title="Desvincular do extrato"
+                            className="rounded border border-orange-300 px-1 py-0.5 hover:bg-orange-50 text-[10px] font-semibold"
+                            onClick={() => void acaoDesvincular(row)}
+                          >
+                            Desv.
+                          </button>
+                        </>
+                      ) : null}
+                      {['CANCELADO', 'VENCIDO'].includes(row.status) ? (
+                        <button
+                          type="button"
+                          title="Reabrir pagamento"
+                          className="rounded border border-sky-300 px-1 py-0.5 hover:bg-sky-50 text-[10px] font-semibold"
+                          onClick={() => {
+                            setReabrirObs('');
+                            setReabrirRow(row);
+                          }}
+                        >
+                          Reab.
+                        </button>
+                      ) : null}
                       <button
                         type="button"
                         title="Copiar linha digitável"
@@ -1335,6 +1662,16 @@ export function Pagamentos({ ocultarCabecalho = false } = {}) {
                 />
               </label>
               <label className="flex flex-col gap-0.5">
+                <span>Mês referência</span>
+                <input
+                  placeholder="MM/AAAA"
+                  maxLength={7}
+                  className="rounded border border-slate-300 px-2 py-1 dark:bg-slate-950"
+                  value={form.mesReferencia}
+                  onChange={(e) => setForm((f) => ({ ...f, mesReferencia: e.target.value }))}
+                />
+              </label>
+              <label className="flex flex-col gap-0.5">
                 <span>Valor *</span>
                 <input
                   type="number"
@@ -1359,6 +1696,16 @@ export function Pagamentos({ ocultarCabecalho = false } = {}) {
                   className="rounded border border-slate-300 px-2 py-1 dark:bg-slate-950 font-mono text-[11px]"
                   value={form.codigoBarras}
                   onChange={(e) => setForm((f) => ({ ...f, codigoBarras: e.target.value }))}
+                />
+              </label>
+              <label className="flex flex-col gap-0.5">
+                <span>Conta referência</span>
+                <input
+                  placeholder="Matrícula/conta concessionária"
+                  maxLength={50}
+                  className="rounded border border-slate-300 px-2 py-1 dark:bg-slate-950"
+                  value={form.contaReferencia}
+                  onChange={(e) => setForm((f) => ({ ...f, contaReferencia: e.target.value }))}
                 />
               </label>
               <label className="flex flex-col gap-0.5">
@@ -1619,6 +1966,81 @@ export function Pagamentos({ ocultarCabecalho = false } = {}) {
                 onClick={() => void acaoConfirmarPago()}
               >
                 Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {conferirRow ? (
+        <ModalConferirPagamento
+          pagamento={conferirRow}
+          onClose={() => setConferirRow(null)}
+          onSuccess={() => {
+            setConferirRow(null);
+            setMensagemOk('Pagamento conferido com sucesso.');
+            void recarregarTudo();
+          }}
+        />
+      ) : null}
+
+      {acertarRow ? (
+        <div className="fixed inset-0 z-[210] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-4 shadow-xl dark:border-slate-600 dark:bg-slate-900">
+            <h3 className="text-sm font-bold mb-2">Marcar como acertado</h3>
+            <p className="text-xs text-slate-600 dark:text-slate-400 mb-3 truncate">{acertarRow.descricao}</p>
+            <label className="flex flex-col gap-1 text-xs mb-4">
+              <span>Observação (opcional)</span>
+              <textarea
+                rows={3}
+                maxLength={500}
+                className="rounded border border-slate-300 px-2 py-1 dark:bg-slate-950"
+                value={acertarObs}
+                onChange={(e) => setAcertarObs(e.target.value)}
+              />
+            </label>
+            <div className="flex justify-end gap-2">
+              <button type="button" className="rounded-lg border px-3 py-1 text-sm" onClick={() => setAcertarRow(null)}>
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="rounded-lg bg-violet-600 px-3 py-1 text-sm font-semibold text-white"
+                onClick={() => void acaoAcertarConfirmar()}
+              >
+                Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {reabrirRow ? (
+        <div className="fixed inset-0 z-[210] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-4 shadow-xl dark:border-slate-600 dark:bg-slate-900">
+            <h3 className="text-sm font-bold mb-2">Reabrir pagamento</h3>
+            <p className="text-xs text-slate-600 dark:text-slate-400 mb-3 truncate">{reabrirRow.descricao}</p>
+            <label className="flex flex-col gap-1 text-xs mb-4">
+              <span>Observação * (mín. 5 caracteres)</span>
+              <textarea
+                rows={3}
+                maxLength={500}
+                required
+                className="rounded border border-slate-300 px-2 py-1 dark:bg-slate-950"
+                value={reabrirObs}
+                onChange={(e) => setReabrirObs(e.target.value)}
+              />
+            </label>
+            <div className="flex justify-end gap-2">
+              <button type="button" className="rounded-lg border px-3 py-1 text-sm" onClick={() => setReabrirRow(null)}>
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="rounded-lg bg-sky-600 px-3 py-1 text-sm font-semibold text-white"
+                onClick={() => void acaoReabrirConfirmar()}
+              >
+                Reabrir
               </button>
             </div>
           </div>

@@ -67,19 +67,6 @@ public class ClienteResolverService {
                 .orElseThrow(() -> new ResourceNotFoundException("Cliente não encontrado: " + clienteId));
     }
 
-    /**
-     * {@code clienteId} do request da API ainda pode ser {@code pessoa.id} (legado) ou PK de {@code cliente}.
-     */
-    @Transactional(readOnly = true)
-    public ClienteEntity resolverClienteIdRequest(Long clienteIdRequest) {
-        if (clienteIdRequest == null) {
-            return null;
-        }
-        return clienteRepository
-                .findById(clienteIdRequest)
-                .orElseGet(() -> resolverClienteParaTitular(clienteIdRequest));
-    }
-
     @Transactional(readOnly = true)
     public VinculoClientePessoa resolverVinculoPorPessoaId(Long pessoaId) {
         PessoaEntity pessoa = pessoaRepository
@@ -91,26 +78,25 @@ public class ClienteResolverService {
 
     @Transactional(readOnly = true)
     public VinculoClientePessoa resolverVinculoOpcional(Long clienteIdFromRequest, ProcessoEntity processo) {
-        PessoaEntity pessoaRef = null;
         ClienteEntity clienteEntidade = null;
         if (clienteIdFromRequest != null) {
-            clienteEntidade = resolverClienteIdRequest(clienteIdFromRequest);
-            pessoaRef = clienteEntidade.getPessoa();
+            clienteEntidade = buscarPorId(clienteIdFromRequest);
         }
         if (processo != null) {
             if (clienteEntidade != null && processo.getCliente() != null
                     && !processo.getCliente().getId().equals(clienteEntidade.getId())) {
                 throw new BusinessRuleException("O processo informado não pertence ao cliente indicado.");
             }
-            if (pessoaRef == null) {
-                pessoaRef = processo.getPessoa();
+            if (clienteEntidade == null) {
                 clienteEntidade =
                         processo.getCliente() != null
                                 ? processo.getCliente()
-                                : resolverClienteParaTitular(pessoaRef.getId());
+                                : resolverClienteParaTitular(processo.getPessoa().getId());
             }
         }
-        return new VinculoClientePessoa(clienteEntidade, pessoaRef);
+        PessoaEntity titular =
+                processo != null && processo.getPessoa() != null ? processo.getPessoa() : null;
+        return new VinculoClientePessoa(clienteEntidade, titular);
     }
 
     public static String codigoClienteLpad(long pessoaId) {

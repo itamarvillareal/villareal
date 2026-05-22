@@ -12,6 +12,7 @@ import br.com.vilareal.financeiro.infrastructure.persistence.repository.CartaoRe
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.ContaContabilRepository;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.LancamentoCartaoRepository;
 import br.com.vilareal.pessoa.application.ClienteResolverService;
+import br.com.vilareal.pessoa.application.TitularPessoaRefHelper;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
 import org.springframework.data.domain.Sort;
@@ -67,7 +68,7 @@ public class FinanceiroCartaoApplicationService {
             java.time.LocalDate dataInicio,
             java.time.LocalDate dataFim) {
         Long clientePk =
-                clienteId != null ? clienteResolverService.resolverClienteIdRequest(clienteId).getId() : null;
+                clienteId != null ? clienteResolverService.buscarPorId(clienteId).getId() : null;
         var spec = LancamentoCartaoSpecifications.comFiltros(
                 clientePk, processoId, contaContabilId, cartaoId, dataInicio, dataFim);
         return lancamentoCartaoRepository.findAll(spec, ORDEM).stream()
@@ -147,7 +148,6 @@ public class FinanceiroCartaoApplicationService {
         }
         ClienteResolverService.VinculoClientePessoa vinculo =
                 clienteResolverService.resolverVinculoOpcional(req.getClienteId(), processo);
-        e.setPessoaRef(vinculo.pessoaRef());
         e.setClienteEntidade(vinculo.clienteEntidade());
         e.setProcesso(processo);
         e.setNumeroLancamento(req.getNumeroLancamento().trim());
@@ -198,8 +198,10 @@ public class FinanceiroCartaoApplicationService {
             r.setClienteId(e.getClienteEntidade().getId());
             r.setCodigoCliente(e.getClienteEntidade().getCodigoCliente());
         }
-        if (e.getPessoaRef() != null) {
-            r.setPessoaRefId(e.getPessoaRef().getId());
+        Long titularId =
+                TitularPessoaRefHelper.titularPessoaId(e.getProcesso(), e.getPessoaRef(), e.getClienteEntidade());
+        if (titularId != null) {
+            r.setPessoaRefId(titularId);
         }
         r.setProcessoId(e.getProcesso() != null ? e.getProcesso().getId() : null);
         if (e.getProcesso() != null && e.getProcesso().getNumeroInterno() != null) {

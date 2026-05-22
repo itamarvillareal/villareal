@@ -17,14 +17,8 @@ function padCliente8(value) {
 /** PK da tabela `cliente` (DTO GET /api/clientes ou /api/processos). */
 export function clientePkFromApiDto(dto) {
   if (!dto) return null;
-  const pk =
-    dto.clienteId != null && dto.clienteId !== ''
-      ? Number(dto.clienteId)
-      : dto.id != null && dto.pessoaId != null
-        ? Number(dto.id)
-        : dto.id != null && dto.pessoaTitularId == null && dto.pessoaId == null
-          ? Number(dto.id)
-          : NaN;
+  const raw = dto.clienteId ?? dto.id;
+  const pk = Number(raw);
   return Number.isFinite(pk) && pk > 0 ? pk : null;
 }
 

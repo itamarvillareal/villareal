@@ -66,12 +66,6 @@ public class ProcessoResponse {
         this.pessoaTitularId = pessoaTitularId;
     }
 
-    @Deprecated
-    @Schema(description = "Deprecado: use pessoaTitularId (mesmo valor)")
-    public Long getPessoaId() {
-        return pessoaTitularId;
-    }
-
     public String getCodigoCliente() {
         return codigoCliente;
     }

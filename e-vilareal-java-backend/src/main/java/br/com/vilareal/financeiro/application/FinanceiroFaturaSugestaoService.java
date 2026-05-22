@@ -16,7 +16,7 @@ import br.com.vilareal.financeiro.infrastructure.persistence.repository.CartaoBa
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.LancamentoCartaoRepository;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.LancamentoFinanceiroRepository;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.PagamentoFaturaVinculoRepository;
-import br.com.vilareal.processo.application.CodigoClienteUtil;
+import br.com.vilareal.pessoa.application.TitularPessoaRefHelper;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -226,8 +226,10 @@ public class FinanceiroFaturaSugestaoService {
         if (e.getClienteEntidade() != null) {
             r.setClienteId(e.getClienteEntidade().getId());
         }
-        if (e.getPessoaRef() != null) {
-            r.setPessoaRefId(e.getPessoaRef().getId());
+        Long titularId =
+                TitularPessoaRefHelper.titularPessoaId(e.getProcesso(), e.getPessoaRef(), e.getClienteEntidade());
+        if (titularId != null) {
+            r.setPessoaRefId(titularId);
         }
         r.setProcessoId(e.getProcesso() != null ? e.getProcesso().getId() : null);
         if (e.getClienteEntidade() != null) {
@@ -264,8 +266,10 @@ public class FinanceiroFaturaSugestaoService {
         if (e.getClienteEntidade() != null) {
             r.setClienteId(e.getClienteEntidade().getId());
         }
-        if (e.getPessoaRef() != null) {
-            r.setPessoaRefId(e.getPessoaRef().getId());
+        Long titularCartao =
+                TitularPessoaRefHelper.titularPessoaId(e.getProcesso(), e.getPessoaRef(), e.getClienteEntidade());
+        if (titularCartao != null) {
+            r.setPessoaRefId(titularCartao);
         }
         r.setProcessoId(e.getProcesso() != null ? e.getProcesso().getId() : null);
         if (e.getClienteEntidade() != null) {

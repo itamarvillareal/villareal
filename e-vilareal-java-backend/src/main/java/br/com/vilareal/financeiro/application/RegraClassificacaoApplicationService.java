@@ -10,6 +10,7 @@ import br.com.vilareal.financeiro.infrastructure.persistence.entity.RegraClassif
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.ContaContabilRepository;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.RegraClassificacaoRepository;
 import br.com.vilareal.pessoa.application.ClienteResolverService;
+import br.com.vilareal.pessoa.application.TitularPessoaRefHelper;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
 import org.springframework.stereotype.Service;
@@ -103,7 +104,6 @@ public class RegraClassificacaoApplicationService {
         }
         ClienteResolverService.VinculoClientePessoa vinculo =
                 clienteResolverService.resolverVinculoOpcional(req.getClienteId(), processo);
-        e.setPessoaRef(vinculo.pessoaRef());
         e.setClienteEntidade(vinculo.clienteEntidade());
         e.setProcesso(processo);
     }
@@ -125,8 +125,10 @@ public class RegraClassificacaoApplicationService {
         if (e.getClienteEntidade() != null) {
             r.setClienteId(e.getClienteEntidade().getId());
         }
-        if (e.getPessoaRef() != null) {
-            r.setPessoaRefId(e.getPessoaRef().getId());
+        Long titularId =
+                TitularPessoaRefHelper.titularPessoaId(e.getProcesso(), e.getPessoaRef(), e.getClienteEntidade());
+        if (titularId != null) {
+            r.setPessoaRefId(titularId);
         }
         r.setProcessoId(e.getProcesso() != null ? e.getProcesso().getId() : null);
         return r;
