@@ -4,7 +4,7 @@
  *
  * Consolida, num único comando, tudo o que antes exigia vários scripts:
  *   - Pessoa do cadastro Clientes (`Gerais/…/151.1.0` → API clientes — independente de processo)
- *   - Cabeçalho do processo (Proc/Gerais, semânticos, fase, prazo)
+ *   - Cabeçalho do processo (Proc/Gerais, semânticos, fase, prazo, tramitação 147.1)
  *   - Status ativo/inativo (`Gerais/…/Status.Processo<proc>.Processos.txt` — INATIVO → inativo; resto → ativo)
  *   - Histórico HC (`import-historico-local-txt.mjs`, em massa por cliente)
  *   - Vínculo imóvel `0.89.1` (por processo, via import-processo-txt: garantir imóvel por cliente+planilha + POST /api/imoveis/{id}/processos)

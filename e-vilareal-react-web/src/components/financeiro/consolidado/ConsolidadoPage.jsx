@@ -232,7 +232,7 @@ export function ConsolidadoPage() {
   }
 
   return (
-    <div className="relative flex flex-col min-h-full bg-slate-50 dark:bg-slate-950">
+    <div className="relative flex flex-col min-h-0 h-full overflow-hidden bg-slate-50 dark:bg-slate-950">
       <nav
         className="flex gap-0 overflow-x-auto border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shrink-0"
         aria-label="Contas contábeis"
@@ -263,7 +263,7 @@ export function ConsolidadoPage() {
         })}
       </nav>
 
-      <div className="flex-1 overflow-auto p-4 space-y-4 max-w-6xl w-full mx-auto">
+      <div className="flex-1 min-h-0 overflow-auto p-4 space-y-4 max-w-6xl w-full mx-auto">
         <header>
           <h1 className="text-lg font-medium text-slate-900 dark:text-slate-100 flex items-center gap-2">
             <ContaBadge codigo={codigoAtivo} size="md" />

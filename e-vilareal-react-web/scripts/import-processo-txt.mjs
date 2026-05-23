@@ -4,7 +4,7 @@
  *
  * Ordem (com --aplicar):
  *   1. Cliente — pessoa (Gerais `151.1.0` → POST /api/clientes)
- *   2. Cabeçalho (Proc/Gerais numéricos + semânticos + fase/obs + prazo)
+ *   2. Cabeçalho (Proc/Gerais numéricos + semânticos + fase/obs + prazo + tramitação 147.1)
  *   3. Histórico HC → `import-historico-local-txt.mjs` (normalização e API existentes)
  *   4. Vínculo imóvel `0.89.1` (opcional)
  *   5. Partes `1.1` / `6.1` (opcional, --importar-partes)
@@ -159,6 +159,9 @@ function imprimirPreview(dados, patch) {
   }
   if (dados.cabecalho.campos.unidade) {
     console.log('Unidade txt (0.88.1):', dados.cabecalho.campos.unidade);
+  }
+  if (dados.cabecalho.campos.tramitacao) {
+    console.log('Tramitação txt (147.1):', dados.cabecalho.campos.tramitacao);
   }
   if (dados.semantic?.campos?.audienciaData || dados.semantic?.campos?.audienciaHora) {
     console.log('Audiência txt:', {

@@ -333,9 +333,9 @@ public class ImportacaoController {
     @Operation(
             summary = "Importar imoveis.xlsx (path)",
             description =
-                    "Query `path` opcional; senão `vilareal.import.imoveis-planilha.path`; senão ~/Dropbox/COMUM/imoveis.xlsx. "
-                            + "Para o export «Villa Real - Administração de Imóveis - *.xls», normalize antes com "
-                            + "`e-vilareal-java-backend/scripts/map_administracao_imoveis_to_imoveis_xlsx.py`.")
+                    "Query `path` opcional; senão `vilareal.import.imoveis-planilha.path`. "
+                            + "Export «Administração de Imóveis - *.xls»: conversão automática via Python se o POI falhar (LinkTable). "
+                            + "CLI: `e-vilareal-react-web/scripts/run-import-imoveis-itamar.sh`.")
     public ImportacaoInformacoesProcessosResponse importarImoveisPlanilhaPorPath(
             @RequestParam(value = "path", required = false) String pathParam) {
         if (StringUtils.hasText(pathParam)) {

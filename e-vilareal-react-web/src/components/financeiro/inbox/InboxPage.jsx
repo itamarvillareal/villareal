@@ -726,7 +726,7 @@ export function InboxPage() {
   }
 
   return (
-    <div className="flex flex-col min-h-full bg-slate-50 dark:bg-slate-950">
+    <div className="flex flex-col min-h-0 h-full overflow-hidden bg-slate-50 dark:bg-slate-950">
       <InboxTabs counts={counts} />
 
       <div className="flex flex-wrap items-center gap-2 px-3 py-2 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shrink-0">
@@ -795,7 +795,7 @@ export function InboxPage() {
         />
       ) : null}
 
-      <div ref={listRef} className="flex-1 overflow-auto p-3">
+      <div ref={listRef} className="flex-1 min-h-0 overflow-auto p-3">
         {loading ? (
           <p className="text-sm text-slate-500 p-4">Carregando…</p>
         ) : erro ? (

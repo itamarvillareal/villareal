@@ -1,5 +1,5 @@
 import { Fragment, useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { CalendarDays, CalendarX2, ChevronLeft, ChevronRight, Plus, X } from 'lucide-react';
+import { CalendarDays, CalendarX2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Plus, X } from 'lucide-react';
 import {
   buscarProcessoPorTextoCompromissoAgenda,
   mensagemResultadoLocalizarProcesso,
@@ -86,6 +86,15 @@ function parseDataBrCompleta(str) {
   return { dd, mm, yyyy };
 }
 
+/** Desloca uma data BR em dias (delta positivo = dia seguinte). */
+function somarDiasDataBr(dataBr, deltaDias) {
+  const p = parseDataBrCompleta(dataBr);
+  if (!p || !Number.isFinite(Number(deltaDias))) return null;
+  const dt = new Date(p.yyyy, p.mm - 1, p.dd);
+  dt.setDate(dt.getDate() + Number(deltaDias));
+  return { dd: dt.getDate(), mm: dt.getMonth() + 1, yyyy: dt.getFullYear() };
+}
+
 /** Ex.: "10/03/2026 (ter)" */
 function rotuloDataComDiaSemana(dataBr) {
   const p = parseDataBrCompleta(dataBr);
@@ -168,6 +177,8 @@ function ColunaDia({
   usarApiAgenda = false,
   onExcluirEvento = null,
   onStatusAlterado = null,
+  /** +1 dia (seta ↑) ou −1 dia (seta ↓); atualiza calendário lateral e campo Data completa. */
+  onMudarDia = null,
 }) {
   /** Última linha (novo compromisso): id criado até liberar após salvar hora/descrição. */
   const pendingNovaLinhaIdRef = useRef(null);
@@ -243,8 +254,30 @@ function ColunaDia({
 
   return (
     <div className="flex w-full min-w-0 shrink-0 flex-col overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-md ring-1 ring-slate-200/60 lg:min-h-0 lg:flex-1">
-      <div className={`px-3 py-2.5 shrink-0 text-sm font-semibold text-white shadow-sm ${headerClass}`}>
-        {titulo}
+      <div className={`flex shrink-0 items-stretch text-sm font-semibold text-white shadow-sm ${headerClass}`}>
+        {onMudarDia ? (
+          <div className="flex flex-col border-r border-white/25 shrink-0">
+            <button
+              type="button"
+              onClick={() => onMudarDia(1)}
+              className="flex flex-1 min-h-[1.35rem] min-w-[2.25rem] items-center justify-center px-1 hover:bg-white/15 active:bg-white/25"
+              title="Dia seguinte (+1)"
+              aria-label="Avançar um dia"
+            >
+              <ChevronUp className="h-4 w-4" aria-hidden />
+            </button>
+            <button
+              type="button"
+              onClick={() => onMudarDia(-1)}
+              className="flex flex-1 min-h-[1.35rem] min-w-[2.25rem] items-center justify-center border-t border-white/25 px-1 hover:bg-white/15 active:bg-white/25"
+              title="Dia anterior (−1)"
+              aria-label="Voltar um dia"
+            >
+              <ChevronDown className="h-4 w-4" aria-hidden />
+            </button>
+          </div>
+        ) : null}
+        <div className="flex min-w-0 flex-1 items-center px-3 py-2.5 leading-snug">{titulo}</div>
       </div>
       <div className="bg-slate-50/50 p-2 lg:min-h-0 lg:flex-1">
         {apiAgendaVazio ? (
@@ -741,6 +774,22 @@ export function Agenda({ focoDataBr = null, focoRevision = 0, modoFlutuante = fa
   const dataEsquerdaStr = dataStr(diaEsquerda, mesEsquerda, anoEsquerda);
   const dataDireitaStr = dataStr(diaDireita, mesDireita, anoDireita);
 
+  const mudarDataEsquerda = useCallback((deltaDias) => {
+    const next = somarDiasDataBr(dataEsquerdaStr, deltaDias);
+    if (!next) return;
+    setDiaEsquerda(next.dd);
+    setMesEsquerda(next.mm);
+    setAnoEsquerda(next.yyyy);
+  }, [dataEsquerdaStr]);
+
+  const mudarDataDireita = useCallback((deltaDias) => {
+    const next = somarDiasDataBr(dataDireitaStr, deltaDias);
+    if (!next) return;
+    setDiaDireita(next.dd);
+    setMesDireita(next.mm);
+    setAnoDireita(next.yyyy);
+  }, [dataDireitaStr]);
+
   // Recalcula ao mudar `agendaStatusNonce` (salvando statusCurto no localStorage).
   const eventosPersistidosEsquerda = getEventosAgendaPersistidosPorData(dataEsquerdaStr);
   const eventosPersistidosDireita = getEventosAgendaPersistidosPorData(dataDireitaStr);
@@ -996,6 +1045,7 @@ export function Agenda({ focoDataBr = null, focoRevision = 0, modoFlutuante = fa
         <div className="flex w-full min-h-0 flex-col gap-4 bg-slate-100/80 p-2 lg:flex-1 lg:flex-row lg:gap-2 lg:overflow-hidden">
           <ColunaDia
             variantColuna="esquerda"
+            onMudarDia={mudarDataEsquerda}
             dataLabel={`${dataEsquerdaStr} — Compromissos do dia`}
             eventos={eventosEsquerda}
             onStatusAlterado={aoStatusAlteradoAgenda}
@@ -1032,6 +1082,7 @@ export function Agenda({ focoDataBr = null, focoRevision = 0, modoFlutuante = fa
           />
           <ColunaDia
             variantColuna="direita"
+            onMudarDia={mudarDataDireita}
             dataLabel={`${dataDireitaStr} — Próximo dia`}
             eventos={eventosDireita}
             onStatusAlterado={aoStatusAlteradoAgenda}

@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { montarPanelConfigDesdeTxt } from './calculos-dropbox-payload.mjs';
 import { extrairConfigRodada } from './calculos-recalcular-rodada.mjs';
-import { carregarBundleCalculosCliente } from './calculos-dropbox-txt.mjs';
+import {
+  carregarBundleCalculosCliente,
+  parseNomeArquivoCalculo,
+} from './calculos-dropbox-txt.mjs';
 
 test('montarPanelConfigDesdeTxt: taxa honorários fixa 20% → «20 %» no painel', () => {
   const bundle = carregarBundleCalculosCliente(728);
@@ -15,6 +18,22 @@ test('montarPanelConfigDesdeTxt: taxa honorários fixa 20% → «20 %» no paine
   assert.equal(panel.honorariosTipo, 'fixos');
   assert.equal(panel.honorariosValor, '20 %');
   assert.doesNotMatch(panel.honorariosValor, /^R\$/i);
+});
+
+test('parseNome: 00000149.0.95.1.186.txt é dimensão 0 (não 1)', () => {
+  const meta = parseNomeArquivoCalculo('00000149.0.95.1.186.txt');
+  assert.equal(meta?.dimensao, 0);
+  assert.equal(meta?.tipo, 95);
+  assert.equal(meta?.numeroProcesso, 186);
+});
+
+test('149/186/1 lê taxa honorários 20% de 00000149.1.95.1.186.txt', () => {
+  const bundle = carregarBundleCalculosCliente(149);
+  const rodada = bundle.porRodada.get('00000149|186|1');
+  assert.ok(rodada);
+  assert.ok(rodada.porTipo.get('95'), 'esperado 00000149.1.95.1.186.txt');
+  assert.equal(extrairConfigRodada(rodada).taxaHonorariosPct, 20);
+  assert.equal(montarPanelConfigDesdeTxt(rodada).honorariosValor, '20 %');
 });
 
 test('recálculo 149/76/2 inclui linhas 2 e 3 só com valor (sem vencimento)', async () => {

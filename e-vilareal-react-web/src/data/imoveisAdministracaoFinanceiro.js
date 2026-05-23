@@ -536,10 +536,14 @@ export function linhaRelatorioFinanceiroFromCadastro(item, chaveMesYYYYMM, totai
  * @param {{ soOcupados?: boolean }} opts
  */
 export function buildRelatorioFinanceiroImoveisMes(itens, chaveMesYYYYMM, opts = {}) {
-  const { soOcupados = true } = opts;
+  const { soOcupados = true, totaisPorPar = new Map() } = opts;
   return (itens || [])
     .filter((item) => !soOcupados || item.imovelOcupado)
-    .map((item) => linhaRelatorioFinanceiroFromCadastro(item, chaveMesYYYYMM))
+    .map((item) => {
+      const chave = chaveParCodProc(item.codigo, item.proc);
+      const totais = chave ? totaisPorPar.get(chave) || {} : {};
+      return linhaRelatorioFinanceiroFromCadastro(item, chaveMesYYYYMM, totais);
+    })
     .sort((a, b) => (Number(a.imovelId) || 0) - (Number(b.imovelId) || 0));
 }
 
