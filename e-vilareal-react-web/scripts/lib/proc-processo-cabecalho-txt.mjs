@@ -15,6 +15,7 @@ import {
 import { parseDataCabecalhoProcessoIso } from './datas-legado-vb.mjs';
 import { parseDataPrazoFatalTxt } from './gerais-145-1-prazo-fatal.mjs';
 import { resolverBaseBancoDados } from './gerais-fase-processo-txt.mjs';
+import { normalizarTramitacaoTxt } from './gerais-tramitacao-147-1.mjs';
 
 /** @typedef {'proc' | 'gerais'} PastaTipo */
 
@@ -39,6 +40,7 @@ export const MAPA_TIPO_NUMERICO_VB = {
   '20.1': { campo: '_responsavelNome', pasta: 'gerais' },
   '0.88.1': { campo: 'unidade', pasta: 'gerais', truncar: 32 },
   '145.1': { campo: 'prazoFatal', pasta: 'gerais' },
+  '147.1': { campo: 'tramitacao', pasta: 'gerais' },
   '148.1': { campo: 'proximaConsulta', pasta: 'gerais' },
 };
 
@@ -137,6 +139,9 @@ function normalizarValorTipo(tipoMeio, texto, meta) {
   }
   if (tipoMeio === '145.1') {
     return parseDataCabecalhoProcessoIso(t) ?? parseDataPrazoFatalTxt(t);
+  }
+  if (tipoMeio === '147.1') {
+    return normalizarTramitacaoTxt(t).tramitacao;
   }
   if (meta.truncar) return truncar(t, meta.truncar);
   if (meta.campo === 'uf') return truncar(t.toUpperCase(), LIM.uf);

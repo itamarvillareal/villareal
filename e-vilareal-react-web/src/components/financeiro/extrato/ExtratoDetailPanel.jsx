@@ -65,11 +65,39 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted }) {
   const [confirmExcluir, setConfirmExcluir] = useState(false);
   const [modalVinculoAberto, setModalVinculoAberto] = useState(false);
   const [processoEmbed, setProcessoEmbed] = useState(null);
+  const [partesLegenda, setPartesLegenda] = useState(null);
+  const [partesLegendaLoading, setPartesLegendaLoading] = useState(false);
 
   useEffect(() => {
     setDraft(item);
     setExtrasOpen(false);
   }, [item]);
+
+  const codLegenda = normalizarCodigoClienteFinanceiro(draft.codCliente);
+  const procLegenda = normalizarProcFinanceiro(draft.proc);
+
+  useEffect(() => {
+    if (!codLegenda || procLegenda === '') {
+      setPartesLegenda(null);
+      setPartesLegendaLoading(false);
+      return undefined;
+    }
+    let cancelled = false;
+    setPartesLegendaLoading(true);
+    resolverTextosPartesCabecalhoCalculo(codLegenda, procLegenda)
+      .then((partes) => {
+        if (!cancelled) setPartesLegenda(partes);
+      })
+      .catch(() => {
+        if (!cancelled) setPartesLegenda({ parteCliente: '', parteOposta: '' });
+      })
+      .finally(() => {
+        if (!cancelled) setPartesLegendaLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [codLegenda, procLegenda]);
 
   useEffect(() => {
     const ac = new AbortController();
@@ -412,6 +440,24 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted }) {
               placeholder="Nº processo"
             />
           </Field>
+          {codLegenda && procLegenda !== '' ? (
+            <div className="rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 px-2.5 py-2 space-y-1 text-xs">
+              {partesLegendaLoading ? (
+                <p className="text-slate-500 dark:text-slate-400">Carregando partes do processo…</p>
+              ) : (
+                <>
+                  <p className="text-slate-700 dark:text-slate-200">
+                    <span className="font-medium text-slate-500 dark:text-slate-400">Parte autora: </span>
+                    {partesLegenda?.parteCliente?.trim() ? partesLegenda.parteCliente : '—'}
+                  </p>
+                  <p className="text-slate-700 dark:text-slate-200">
+                    <span className="font-medium text-slate-500 dark:text-slate-400">Parte oposta: </span>
+                    {partesLegenda?.parteOposta?.trim() ? partesLegenda.parteOposta : '—'}
+                  </p>
+                </>
+              )}
+            </div>
+          ) : null}
           <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
             <EtapaDot etapa={draft.etapa} />
             <span>{etapaLabel}</span>

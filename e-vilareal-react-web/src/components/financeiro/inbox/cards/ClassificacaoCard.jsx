@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Check, Pencil, SkipForward } from 'lucide-react';
 import { ContaBadge } from '../../shared/ContaBadge.jsx';
@@ -20,12 +20,33 @@ export function ClassificacaoCard({
   focused = false,
 }) {
   const navigate = useNavigate();
+  const [contaEscolhidaId, setContaEscolhidaId] = useState(null);
+
+  useEffect(() => {
+    setContaEscolhidaId(null);
+  }, [lancamento.id]);
+
   const sugestoesUteis = useMemo(() => filtrarSugestoesClassificacao(sugestoes), [sugestoes]);
   const principal = useMemo(() => melhorSugestao(sugestoesUteis), [sugestoesUteis]);
   const alternativas = useMemo(() => {
     if (!principal) return sugestoesUteis.slice(0, 3);
     return sugestoesUteis.filter((s) => s.contaContabilId !== principal.contaContabilId).slice(0, 3);
   }, [sugestoesUteis, principal]);
+
+  const contaEscolhida = useMemo(() => {
+    if (contaEscolhidaId == null || contaEscolhidaId === '') return null;
+    const c = contas.find((x) => String(x.id) === String(contaEscolhidaId));
+    if (!c) return null;
+    return {
+      contaContabilId: c.id,
+      contaCodigo: c.codigo,
+      contaNome: c.nome,
+      clienteId: null,
+      processoId: null,
+    };
+  }, [contaEscolhidaId, contas]);
+
+  const contaAtiva = contaEscolhida ?? principal;
 
   const conf = String(principal?.confianca ?? '').toUpperCase();
   const semSugestao = !principal;
@@ -36,12 +57,11 @@ export function ClassificacaoCard({
         ? 'border-l-[3px] border-l-amber-500'
         : 'border-l-[3px] border-l-slate-300 dark:border-l-slate-600';
 
-  const codigoAprovar =
-    principal?.contaCodigo ?? contas.find((c) => String(c.id) === String(contaManual))?.codigo ?? '';
+  const codigoAprovar = contaAtiva?.contaCodigo ?? '';
 
   const handleAprovar = (sug) => {
-    const s = sug ?? principal;
-    const contaId = s?.contaContabilId ?? Number(contaManual);
+    const s = sug ?? contaAtiva;
+    const contaId = s?.contaContabilId;
     if (!contaId) return;
     onAprovar({
       lancamentoId: lancamento.id,
@@ -84,17 +104,27 @@ export function ClassificacaoCard({
 
       {principal ? (
         <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
-          <span className="text-slate-500 dark:text-slate-400">Sugestão:</span>
-          <ContaBadge codigo={principal.contaCodigo} title={principal.contaNome} />
-          <span className="text-slate-700 dark:text-slate-200">{principal.contaNome}</span>
-          <ConfiancaDots nivel={principal.confianca} />
-          <span className="text-[12px] italic text-slate-400">{textoOrigemSugestao(principal)}</span>
-          {principal.rotuloVinculo &&
-          String(principal.origem ?? '').toUpperCase() !== 'PESSOA_PROCESSO' ? (
-            <span className="text-[12px] font-medium text-blue-700 dark:text-blue-300">
-              {principal.rotuloVinculo}
+          <span className="text-slate-500 dark:text-slate-400">
+            {contaEscolhida ? 'Classificar como:' : 'Sugestão:'}
+          </span>
+          <ContaBadge codigo={contaAtiva.contaCodigo} title={contaAtiva.contaNome} />
+          <span className="text-slate-700 dark:text-slate-200">{contaAtiva.contaNome}</span>
+          {!contaEscolhida ? (
+            <>
+              <ConfiancaDots nivel={principal.confianca} />
+              <span className="text-[12px] italic text-slate-400">{textoOrigemSugestao(principal)}</span>
+              {principal.rotuloVinculo &&
+              String(principal.origem ?? '').toUpperCase() !== 'PESSOA_PROCESSO' ? (
+                <span className="text-[12px] font-medium text-blue-700 dark:text-blue-300">
+                  {principal.rotuloVinculo}
+                </span>
+              ) : null}
+            </>
+          ) : (
+            <span className="text-[12px] text-slate-400">
+              (sugestão automática: {principal.contaCodigo} — {principal.contaNome})
             </span>
-          ) : null}
+          )}
         </div>
       ) : null}
 
@@ -120,8 +150,12 @@ export function ClassificacaoCard({
               key={`${alt.contaContabilId}-${alt.origem}`}
               type="button"
               disabled={busy}
-              onClick={() => handleAprovar(alt)}
-              className="inline-flex rounded-full focus:outline-none focus:ring-2 focus:ring-blue-400"
+              onClick={() => setContaEscolhidaId(alt.contaContabilId)}
+              className={`inline-flex rounded-full focus:outline-none focus:ring-2 focus:ring-blue-400 ${
+                String(contaEscolhidaId) === String(alt.contaContabilId)
+                  ? 'ring-2 ring-blue-500 ring-offset-1'
+                  : ''
+              }`}
               title={alt.rotuloVinculo || alt.contaNome}
             >
               <ContaBadge codigo={alt.contaCodigo} />
@@ -129,20 +163,10 @@ export function ClassificacaoCard({
           ))}
           <select
             className="text-xs rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-1.5 py-0.5"
-            defaultValue=""
+            value={contaEscolhidaId ?? ''}
             onChange={(e) => {
               const id = e.target.value;
-              if (!id) return;
-              const c = contas.find((x) => String(x.id) === id);
-              if (c) {
-                handleAprovar({
-                  contaContabilId: c.id,
-                  contaCodigo: c.codigo,
-                  clienteId: null,
-                  processoId: null,
-                });
-              }
-              e.target.value = '';
+              setContaEscolhidaId(id || null);
             }}
           >
             <option value="">Outra ▼</option>
@@ -158,13 +182,13 @@ export function ClassificacaoCard({
       )}
 
       <div className="mt-3 flex flex-wrap gap-2 justify-end">
-        {principal ? (
+        {contaAtiva ? (
           <button
             type="button"
-            disabled={busy}
+            disabled={busy || !codigoAprovar}
             onClick={() => handleAprovar()}
             className={`inline-flex items-center gap-1 rounded-md text-white font-medium disabled:opacity-50 ${
-              conf === 'ALTA'
+              conf === 'ALTA' && !contaEscolhida
                 ? 'bg-green-600 hover:bg-green-700 text-sm px-4 py-2'
                 : 'bg-blue-600 hover:bg-blue-700 text-sm px-3 py-1.5'
             }`}

@@ -12,10 +12,11 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react(), tailwindcss()],
     server: {
+      host: true,
       proxy: {
         '/api': {
           // Backend Docker expõe 8081; Spring local (mvnw) usa 8080. Override: VITE_DEV_API_PROXY_TARGET
-          target: env.VITE_DEV_API_PROXY_TARGET || 'http://localhost:8081',
+          target: env.VITE_DEV_API_PROXY_TARGET || 'http://localhost:8080',
           changeOrigin: true,
         },
         '/datajud-proxy': {

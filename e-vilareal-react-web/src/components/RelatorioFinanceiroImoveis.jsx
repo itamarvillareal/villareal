@@ -217,8 +217,8 @@ export function RelatorioFinanceiroImoveis() {
             <Info className="w-4 h-4 shrink-0 mt-0.5 text-slate-500" />
             <p>
               O relatório lista apenas pares <strong>Cod. cliente</strong> + <strong>Proc.</strong> que tenham lançamento
-              no mês nos <strong>extratos bancários</strong> e número de <strong>Imóvel</strong> preenchido no cadastro do
-              processo (ou no imóvel). Os valores vêm da <strong>Conta Corrente</strong> desse par. Classificação de{' '}
+              lista os <strong>imóveis do cadastro</strong> (filtro «Somente ocupados» quando marcado). Para cada um com
+              Cod. cliente + Proc., os valores do mês vêm da <strong>Conta Corrente</strong> desse par. Classificação de{' '}
               <strong>aluguel</strong> e <strong>repasse</strong>: use as tags{' '}
               <code className="text-[10px] bg-white dark:bg-black/30 px-1 rounded">{TAG_ADM_ALUGUEL}</code> e{' '}
               <code className="text-[10px] bg-white dark:bg-black/30 px-1 rounded">{TAG_ADM_REPASSE}</code> na
@@ -244,7 +244,7 @@ export function RelatorioFinanceiroImoveis() {
               Mês de referência: <span className="text-white/95 font-bold">{labelMesPt(chaveMes)}</span>
             </span>
             <span className="text-xs text-white/80">
-              ({linhas.length} imóvel{linhas.length === 1 ? '' : 'es'})
+              ({linhas.length} {linhas.length === 1 ? 'Imóvel' : 'Imóveis'})
             </span>
           </div>
           <div className="overflow-x-auto">

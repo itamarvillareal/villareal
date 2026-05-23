@@ -8,16 +8,10 @@ import {
   normalizarProcFinanceiro,
 } from '../data/financeiroData.js';
 import {
+  buildRelatorioFinanceiroImoveisMes,
   chaveParCodProc,
-  construirIndiceImoveisPorCodProc,
   extrairTotaisFinanceirosMes,
-  intervaloIsoMesReferencia,
-  linhaRelatorioFinanceiroFromCadastro,
-  montarLinhasRelatorioFinanceiroImoveisExtrato,
-  montarPainelAdministracaoImovel,
   montarPainelAdministracaoImovelDeTransacoes,
-  paresCodProcComLancamentosNoMes,
-  resolverNumeroImovelParCodProc,
 } from '../data/imoveisAdministracaoFinanceiro.js';
 import { TAG_ADM_ALUGUEL } from '../data/imoveisAdministracaoFinanceiro.js';
 import {
@@ -844,6 +838,32 @@ export async function carregarImovelCadastro({ imovelId }) {
   }
 }
 
+/** Export admin Itamar: col. A da planilha = nº 1…66 (não código de cliente nem id interno da API). */
+export const MAX_NUMERO_PLANILHA_RELATORIO_IMOVEIS = 66;
+
+function scoreItemRelatorioImovel(item) {
+  let s = 0;
+  if (String(item?.unidade ?? '').trim()) s += 4;
+  if (String(item?.condominio ?? '').trim()) s += 2;
+  if (String(item?.codigo ?? '').trim()) s += 1;
+  if (item?.imovelOcupado) s += 1;
+  return s;
+}
+
+/** Uma linha por nº da planilha (1–66); descarta duplicados de import-real e registos com nº inválido. */
+export function filtrarItensRelatorioPlanilhaAdmin(itens) {
+  const porNumero = new Map();
+  for (const item of itens || []) {
+    const np = Number(item?.imovelId ?? item?.numeroPlanilhaColA);
+    if (!Number.isFinite(np) || np < 1 || np > MAX_NUMERO_PLANILHA_RELATORIO_IMOVEIS) continue;
+    const prev = porNumero.get(np);
+    if (!prev || scoreItemRelatorioImovel(item) > scoreItemRelatorioImovel(prev)) {
+      porNumero.set(np, item);
+    }
+  }
+  return [...porNumero.values()].sort((a, b) => Number(a.imovelId) - Number(b.imovelId));
+}
+
 /**
  * Itens de formulário/UI (como em `mapApiToUi`) para o Relatório Imóveis.
  * Um GET de cadastro completo por imóvel; em paralelo — cuidado com bases muito grandes.
@@ -870,7 +890,9 @@ export async function carregarItensRelatorioImoveisApi() {
         return enriquecerNomesPartesImovelUi(base);
       }),
     );
-    const itens = await enriquecerNomesPartesImoveisLote(results);
+    const itens = filtrarItensRelatorioPlanilhaAdmin(
+      await enriquecerNomesPartesImoveisLote(results),
+    );
     return { ok: true, itens };
   } catch (e) {
     return { ok: false, motivo: e?.message || 'Falha ao carregar dados para o relatório.', itens: [] };
@@ -887,68 +909,47 @@ export async function carregarRelatorioFinanceiroImoveisMes(chaveMesYYYYMM, opts
     return { ok: false, motivo: cad.motivo, linhas: [], ultimaCarga: null };
   }
 
-  const indice = construirIndiceImoveisPorCodProc(cad.itens);
-  let pares = [];
-
-  if (featureFlags.useApiFinanceiro) {
-    const intervalo = intervaloIsoMesReferencia(chaveMesYYYYMM);
-    if (intervalo) {
-      const lancsMes = await listarLancamentosExtratoNoIntervalo({ ...intervalo, size: 500 }, { signal });
-      pares = paresCodProcComLancamentosNoMes(lancsMes, chaveMesYYYYMM);
-    }
-  } else {
-    const vistos = new Set();
-    for (const item of cad.itens) {
-      const chave = chaveParCodProc(item.codigo, item.proc);
-      if (!chave || vistos.has(chave)) continue;
-      const lancs = getTransacoesContaCorrenteCompleto(item.codigo, item.proc);
-      if (!paresCodProcComLancamentosNoMes(lancs, chaveMesYYYYMM).length) continue;
-      vistos.add(chave);
-      const cod = normalizarCodigoClienteFinanceiro(item.codigo);
-      const procNorm = normalizarProcFinanceiro(item.proc);
-      pares.push({
-        codigoNorm: cod,
-        procNorm,
-        codigoNum: Number(cod),
-        procNum: Number(procNorm),
-      });
-    }
+  const totaisPorPar = new Map();
+  const chavesVinculo = new Set();
+  for (const item of cad.itens || []) {
+    const cod = normalizarCodigoClienteFinanceiro(item.codigo);
+    const procNorm = normalizarProcFinanceiro(item.proc);
+    const chave = chaveParCodProc(cod, procNorm);
+    if (chave) chavesVinculo.add(chave);
   }
 
-  const totaisPorPar = new Map();
   if (featureFlags.useApiFinanceiro) {
     await Promise.all(
-      pares.map(async (par) => {
-        const chave = chaveParCodProc(par.codigoNorm, par.procNorm);
-        if (!resolverNumeroImovelParCodProc(par, indice)) return;
+      [...chavesVinculo].map(async (chave) => {
+        const [cod, procNorm] = chave.split('|');
+        const procNum = Number(procNorm);
         try {
           const lancs = await listarLancamentosProcessoApiFirst({
-            codigoCliente: par.codigoNorm,
-            numeroInterno: par.procNum ?? par.procNorm,
+            codigoCliente: cod,
+            numeroInterno: Number.isFinite(procNum) && procNum >= 1 ? procNum : procNorm,
             signal,
           });
           totaisPorPar.set(
             chave,
-            extrairTotaisFinanceirosMes(lancs, par.codigoNum, par.procNum ?? par.procNorm, chaveMesYYYYMM),
+            extrairTotaisFinanceirosMes(lancs, Number(cod), procNum, chaveMesYYYYMM),
           );
         } catch {
-          /* mantém totais vazios */
+          /* mantém totais vazios para o par */
         }
       }),
     );
   } else {
-    for (const par of pares) {
-      const chave = chaveParCodProc(par.codigoNorm, par.procNorm);
-      if (!resolverNumeroImovelParCodProc(par, indice)) continue;
-      const lancs = getTransacoesContaCorrenteCompleto(par.codigoNorm, par.procNorm);
+    for (const chave of chavesVinculo) {
+      const [cod, procNorm] = chave.split('|');
+      const lancs = getTransacoesContaCorrenteCompleto(cod, procNorm);
       totaisPorPar.set(
         chave,
-        extrairTotaisFinanceirosMes(lancs, par.codigoNum, par.procNum ?? par.procNorm, chaveMesYYYYMM),
+        extrairTotaisFinanceirosMes(lancs, Number(cod), Number(procNorm), chaveMesYYYYMM),
       );
     }
   }
 
-  const linhas = montarLinhasRelatorioFinanceiroImoveisExtrato(cad.itens, pares, chaveMesYYYYMM, {
+  const linhas = buildRelatorioFinanceiroImoveisMes(cad.itens, chaveMesYYYYMM, {
     soOcupados,
     totaisPorPar,
   });

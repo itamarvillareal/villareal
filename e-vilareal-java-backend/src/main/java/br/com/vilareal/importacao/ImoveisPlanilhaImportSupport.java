@@ -77,6 +77,47 @@ final class ImoveisPlanilhaImportSupport {
         }
     }
 
+    private static final int MAX_NUMERO_PLANILHA_PLAUSIVEL = 200;
+
+    /**
+     * Col. A do export admin pode ser {@code 938//37} ou {@code 911//4} (cliente//proc.). POI às vezes devolve só
+     * {@code 938}. O nº da planilha (1–66) está em col. B; após {@code //} pode ser proc., não o nº da linha.
+     */
+    static Integer resolverNumeroPlanilha(String colA, String colB) {
+        Integer npA = parseInteiro(colA);
+        Integer npB = parseInteiro(colB);
+        boolean aPlausivel = numeroPlanilhaPlausivel(npA);
+        boolean bPlausivel = numeroPlanilhaPlausivel(npB);
+
+        if (StringUtils.hasText(colA) && colA.contains("//")) {
+            Integer depois = parseInteiro(colA.substring(colA.indexOf("//") + 2));
+            if (numeroPlanilhaPlausivel(depois) && bPlausivel && depois.equals(npB)) {
+                return depois;
+            }
+            if (bPlausivel) {
+                return npB;
+            }
+            if (numeroPlanilhaPlausivel(depois)) {
+                return depois;
+            }
+        }
+
+        if (aPlausivel && !bPlausivel) {
+            return npA;
+        }
+        if (bPlausivel && !aPlausivel) {
+            return npB;
+        }
+        if (aPlausivel) {
+            return npA;
+        }
+        return npB != null ? npB : npA;
+    }
+
+    private static boolean numeroPlanilhaPlausivel(Integer n) {
+        return n != null && n >= 1 && n <= MAX_NUMERO_PLANILHA_PLAUSIVEL;
+    }
+
     static Long parseLongId(String raw) {
         Integer n = parseInteiro(raw);
         return n == null ? null : n.longValue();

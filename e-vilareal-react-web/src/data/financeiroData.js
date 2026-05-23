@@ -1020,6 +1020,40 @@ function localizarLancamentoExtrato(next, banco, numero, data, valor) {
   return i >= 0 ? { list, idx: i, t: list[i] } : null;
 }
 
+function localizarLancamentoExtratoPorChave(next, banco, numero, data) {
+  const list = next[banco];
+  if (!Array.isArray(list)) return null;
+  const i = list.findIndex((t) => {
+    if (String(t.numero ?? '') !== String(numero ?? '')) return false;
+    return String(t.data ?? '').trim() === String(data ?? '').trim();
+  });
+  return i >= 0 ? { list, idx: i, t: list[i] } : null;
+}
+
+/**
+ * Remove vínculo Cod. cliente + Proc. no extrato local (lançamento permanece no banco/cartão).
+ */
+export function desvincularLancamentoClienteProcessoLocal({ nomeBanco, numero, data }) {
+  const banco = String(nomeBanco ?? '').trim();
+  if (!banco) return { ok: false, message: 'Banco/cartão não informado.' };
+  const persisted = loadPersistedExtratosFinanceiro();
+  const next = { ...getExtratosIniciais(), ...(persisted || {}) };
+  const hit = localizarLancamentoExtratoPorChave(next, banco, numero, data);
+  if (!hit) return { ok: false, message: 'Lançamento não encontrado no extrato local.' };
+  hit.t.codCliente = '';
+  hit.t.proc = '';
+  if (hit.t.letra === 'E') {
+    hit.t.grupoCompensacao = null;
+  }
+  if (hit.t._financeiroMeta) {
+    hit.t._financeiroMeta.clienteId = null;
+    hit.t._financeiroMeta.processoId = null;
+    hit.t._financeiroMeta.grupoCompensacao = null;
+  }
+  savePersistedExtratosFinanceiro(next);
+  return { ok: true };
+}
+
 /**
  * Aplica um único par (como em {@link detectarParesCompensacao}): letra E + próximo Elo disponível.
  * @param {object} par — `{ credito, debito }` com `banco`, `numero`, `data`, `valor` (como no retorno da detecção)

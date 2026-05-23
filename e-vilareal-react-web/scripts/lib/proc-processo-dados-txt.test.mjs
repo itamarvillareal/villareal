@@ -30,4 +30,18 @@ describe('montarPatchProcessoFromTxt', () => {
     assert.equal(patch.descricaoAcao, 'Execução');
     assert.equal(patch.naturezaAcao, 'Cível');
   });
+
+  it('inclui tramitacao do txt 147.1 no patch', () => {
+    const patch = montarPatchProcessoFromTxt({
+      cabecalho: {
+        campos: { tramitacao: 'Projudi' },
+        partesTxt: {},
+      },
+      prazoArvore: null,
+      semantic: null,
+      statusProcesso: { ativo: true, statusInativo: false },
+      fase: null,
+    });
+    assert.equal(patch.tramitacao, 'Projudi');
+  });
 });

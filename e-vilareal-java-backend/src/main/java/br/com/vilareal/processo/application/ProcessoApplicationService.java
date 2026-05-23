@@ -4,6 +4,7 @@ import br.com.vilareal.common.exception.BusinessRuleException;
 import br.com.vilareal.common.exception.ResourceNotFoundException;
 import br.com.vilareal.common.text.PortuguesTextoCorrecaoUtil;
 import br.com.vilareal.common.text.Utf8MojibakeUtil;
+import br.com.vilareal.documento.DocumentoDrivePastaService;
 import br.com.vilareal.importacao.PlanilhaPasta1MapeamentoUtil;
 import br.com.vilareal.importacao.infrastructure.persistence.entity.PlanilhaPasta1ClienteEntity;
 import br.com.vilareal.importacao.infrastructure.persistence.repository.PlanilhaPasta1ClienteRepository;
@@ -45,6 +46,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Locale;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 @Service
@@ -63,6 +65,7 @@ public class ProcessoApplicationService {
     private final ClienteCodigoPessoaResolver clienteCodigoPessoaResolver;
     private final ClienteRepository clienteRepository;
     private final ClienteResolverService clienteResolverService;
+    private final DocumentoDrivePastaService documentoDrivePastaService;
 
     public ProcessoApplicationService(
             ProcessoRepository processoRepository,
@@ -75,7 +78,8 @@ public class ProcessoApplicationService {
             PlanilhaPasta1ClienteRepository planilhaPasta1ClienteRepository,
             ClienteCodigoPessoaResolver clienteCodigoPessoaResolver,
             ClienteRepository clienteRepository,
-            ClienteResolverService clienteResolverService) {
+            ClienteResolverService clienteResolverService,
+            DocumentoDrivePastaService documentoDrivePastaService) {
         this.processoRepository = processoRepository;
         this.parteRepository = parteRepository;
         this.parteAdvogadoRepository = parteAdvogadoRepository;
@@ -87,6 +91,7 @@ public class ProcessoApplicationService {
         this.clienteCodigoPessoaResolver = clienteCodigoPessoaResolver;
         this.clienteRepository = clienteRepository;
         this.clienteResolverService = clienteResolverService;
+        this.documentoDrivePastaService = documentoDrivePastaService;
     }
 
     /**
@@ -774,6 +779,7 @@ public class ProcessoApplicationService {
         aplicarParte(p, req);
         p = parteRepository.save(p);
         substituirAdvogadosDaParte(p, req.getAdvogadoPessoaIds() != null ? req.getAdvogadoPessoaIds() : List.of());
+        agendarAtualizacaoPastaDrive(processoId);
         return toParteResponse(requireParte(processoId, p.getId()));
     }
 
@@ -785,6 +791,7 @@ public class ProcessoApplicationService {
         if (req.getAdvogadoPessoaIds() != null) {
             substituirAdvogadosDaParte(p, req.getAdvogadoPessoaIds());
         }
+        agendarAtualizacaoPastaDrive(processoId);
         return toParteResponse(requireParte(processoId, parteId));
     }
 
@@ -792,6 +799,11 @@ public class ProcessoApplicationService {
     public void excluirParte(Long processoId, Long parteId) {
         ProcessoParteEntity p = requireParte(processoId, parteId);
         parteRepository.delete(p);
+        agendarAtualizacaoPastaDrive(processoId);
+    }
+
+    private void agendarAtualizacaoPastaDrive(Long processoId) {
+        CompletableFuture.runAsync(() -> documentoDrivePastaService.atualizarPastaDriveAposAlteracaoPartes(processoId));
     }
 
     @Transactional(readOnly = true)

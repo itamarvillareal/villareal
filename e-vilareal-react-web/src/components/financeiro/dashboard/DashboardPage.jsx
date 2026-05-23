@@ -179,7 +179,7 @@ export function DashboardPage() {
   }
 
   return (
-    <div className="p-4 space-y-4 max-w-6xl">
+    <div className="min-h-0 h-full overflow-auto p-4 space-y-4 max-w-6xl">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <KpiCard label="Total lançamentos" value={saude?.totalLancamentos} />
         <KpiCard

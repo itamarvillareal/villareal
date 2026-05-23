@@ -123,3 +123,7 @@ export const LazyIntegracoesTribunalScraperLab = fromNamed(
   () => import('../components/integracoes/IntegracoesTribunalScraperLab.jsx'),
   'IntegracoesTribunalScraperLab'
 );
+export const LazyGerarDocumento = fromNamed(
+  () => import('../pages/documentos/GerarDocumento.jsx'),
+  'GerarDocumento'
+);

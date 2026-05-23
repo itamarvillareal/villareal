@@ -1,6 +1,7 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback, lazy, Suspense } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
+  desvincularLancamentoClienteProcessoLocal,
   getLancamentosContaCorrente,
   getTransacoesContaCorrenteCompleto,
   mapLinhasFinanceiroParaContaCorrenteModal,
@@ -22,6 +23,7 @@ import {
 } from '../data/contaCorrenteProcessoResultado.js';
 import {
   carregarResumoContaCorrenteProcesso,
+  desvincularLancamentoClienteProcesso,
   listarLancamentosProcessoApiFirst,
   salvarOuAtualizarLancamentoFinanceiroApi,
 } from '../repositories/financeiroRepository.js';
@@ -90,6 +92,9 @@ import {
   Link2,
   Building2,
   Clock,
+  Trash2,
+  FileText,
+  FileSignature,
 } from 'lucide-react';
 import { ContaCorrenteVinculoAssist } from './processos/ContaCorrenteVinculoAssist.jsx';
 import {
@@ -115,6 +120,14 @@ import { ModalRelatorioPublicacoesProcesso, PublicacoesRelatorioConteudo } from 
 import { listarPublicacoesRelatorioPorProcesso } from '../repositories/publicacoesRepository.js';
 import { ModalCriarTarefaContextual } from './ModalCriarTarefaContextual.jsx';
 import { buildContextFromProcesso, buildContextFromProcessoComPrazoFatal } from '../data/tarefasContextualPayload.js';
+import { montarDadosParaDocumentoFromProcesso } from '../helpers/documentoHelper.js';
+import {
+  downloadPdfBlob,
+  gerarProcuracao,
+  nomeArquivoProcuracaoPdf,
+} from '../repositories/documentosRepository.js';
+import { obterStatusDrive } from '../repositories/driveRepository.js';
+import DriveExplorer from './DriveExplorer.jsx';
 import { featureFlags } from '../config/featureFlags.js';
 import { obterClienteCadastroPorCodigo } from '../repositories/clientesRepository.js';
 import { CampoNumeroComContador } from './ui/CampoNumeroComContador.jsx';
@@ -396,6 +409,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   const [ccModoVincular, setCcModoVincular] = useState(true);
   const [ccPendenteChave, setCcPendenteChave] = useState(null);
   const [ccFiltroSemVinculo, setCcFiltroSemVinculo] = useState(false);
+  const [ccMensagem, setCcMensagem] = useState('');
   const [modalRelatorioPublicacoes, setModalRelatorioPublicacoes] = useState(false);
   /** Modal com cadastro de clientes (mesmo formulário de /pessoas) para o cliente e proc. atuais. */
   const [clientesEmbed, setClientesEmbed] = useState(null);
@@ -526,6 +540,10 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   /** `clienteId` retornado pelo GET do processo na API (preferência sobre resolução por código). */
   const [clienteProcessoApiId, setClienteProcessoApiId] = useState(null);
   const [apiSaving, setApiSaving] = useState(false);
+  const [gerandoDocNav, setGerandoDocNav] = useState(false);
+  const [gerandoProcuracao, setGerandoProcuracao] = useState(false);
+  const [driveExplorerAberto, setDriveExplorerAberto] = useState(false);
+  const [driveConfigurado, setDriveConfigurado] = useState(false);
   const [apiError, setApiError] = useState('');
   const [historicoExternoTick, setHistoricoExternoTick] = useState(0);
   /** Evita aplicar resposta antiga se o usuário trocar de processo antes do GET terminar. */
@@ -645,6 +663,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       setCcSelecionados(new Set());
       setCcPendenteChave(null);
       setCcFiltroSemVinculo(false);
+      setCcMensagem('');
       return;
     }
     if (!featureFlags.useApiFinanceiro) {
@@ -1547,6 +1566,68 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     }
   }
 
+  async function handleExcluirLancamentoContaCorrente(linha) {
+    const ui =
+      linha.transacaoUi ??
+      (linha.nomeBanco && linha.numero != null && linha.data
+        ? {
+            nomeBanco: linha.nomeBanco,
+            numero: String(linha.numero),
+            data: linha.data,
+            valor: linha.valor,
+            descricao: linha.descricao,
+            descricaoDetalhada: linha.descricaoDetalhada,
+            letra: linha.letra,
+            apiId: linha.apiId ?? null,
+            codCliente: '',
+            proc: '',
+            _financeiroMeta: linha._financeiroMeta ?? null,
+          }
+        : null);
+    if (!ui) {
+      setCcMensagem('Não foi possível identificar o lançamento para excluir.');
+      return;
+    }
+    const ok = window.confirm(
+      'Remover este lançamento da Conta Corrente deste processo?\n\nO código de cliente e o nº de processo serão apagados no Financeiro. O lançamento continua no extrato.',
+    );
+    if (!ok) return;
+    setCcSalvandoPapel(true);
+    setCcMensagem('');
+    try {
+      if (featureFlags.useApiFinanceiro && Number(ui.apiId) > 0) {
+        const r = await desvincularLancamentoClienteProcesso(ui);
+        if (!r.ok) {
+          setCcMensagem(r.message || 'Falha ao desvincular na API.');
+          return;
+        }
+      } else {
+        const r = desvincularLancamentoClienteProcessoLocal({
+          nomeBanco: ui.nomeBanco ?? linha.nomeBanco,
+          numero: ui.numero ?? linha.numero,
+          data: ui.data ?? linha.data,
+        });
+        if (!r.ok) {
+          setCcMensagem(r.message || 'Lançamento não encontrado no extrato local.');
+          return;
+        }
+        window.dispatchEvent(new CustomEvent(EVENT_FINANCEIRO_PERSISTENCIA_EXTERNA));
+      }
+      setCcSelecionados((prev) => {
+        const next = new Set(prev);
+        next.delete(linha.chave);
+        return next;
+      });
+      setContaCorrenteListaApiTick((t) => t + 1);
+      setCcVinculoTick((t) => t + 1);
+      setCcMensagem('Lançamento removido da Conta Corrente (código e processo apagados).');
+    } catch (e) {
+      setCcMensagem(e?.message || 'Falha ao excluir vínculo do lançamento.');
+    } finally {
+      setCcSalvandoPapel(false);
+    }
+  }
+
   async function handleAtribuirNumeroVinculoCc(transacoesFonte) {
     const procEf = contaCorrenteModo === 'proc0' ? 0 : processo;
     const chaves = [...ccSelecionados];
@@ -1731,6 +1812,111 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       .filter(Boolean);
     return nomes.length ? nomes.join(', ') : parteOposta;
   }, [parteOpostaEntradas, pessoasPorId, parteOposta]);
+
+  const podeGerarDocumento =
+    featureFlags.useApiProcessos &&
+    (Number(processoApiId) > 0 || String(numeroProcessoNovo ?? '').trim() !== '');
+
+  useEffect(() => {
+    if (!podeGerarDocumento) {
+      setDriveConfigurado(false);
+      return;
+    }
+    let cancelado = false;
+    obterStatusDrive()
+      .then((ok) => {
+        if (!cancelado) setDriveConfigurado(ok);
+      })
+      .catch(() => {
+        if (!cancelado) setDriveConfigurado(false);
+      });
+    return () => {
+      cancelado = true;
+    };
+  }, [podeGerarDocumento]);
+
+  const handleGerarDocumento = useCallback(async () => {
+    if (!podeGerarDocumento || gerandoDocNav) return;
+    setGerandoDocNav(true);
+    setApiError('');
+    try {
+      const dadosProcesso = await montarDadosParaDocumentoFromProcesso({
+        processoApiId,
+        codigoCliente,
+        processo,
+        numeroInterno: processo,
+        numeroProcessoNovo,
+        numeroProcessoVelho,
+        naturezaAcao,
+        competencia,
+        valorCausa,
+        cidade,
+        estado,
+        observacao,
+        papelParte,
+        textoParteCliente,
+        textoParteOposta,
+        parteCliente,
+        parteOposta,
+        pessoasVinculoCache,
+      });
+      navigate('/documentos/gerar', { state: { dadosProcesso } });
+    } catch (e) {
+      setApiError(e?.message || 'Falha ao preparar dados para gerar documento.');
+    } finally {
+      setGerandoDocNav(false);
+    }
+  }, [
+    podeGerarDocumento,
+    gerandoDocNav,
+    processoApiId,
+    codigoCliente,
+    processo,
+    numeroProcessoNovo,
+    numeroProcessoVelho,
+    naturezaAcao,
+    competencia,
+    valorCausa,
+    cidade,
+    estado,
+    observacao,
+    papelParte,
+    textoParteCliente,
+    textoParteOposta,
+    parteCliente,
+    parteOposta,
+    pessoasVinculoCache,
+    navigate,
+  ]);
+
+  const handleGerarProcuracao = useCallback(async () => {
+    if (!podeGerarDocumento || gerandoProcuracao) return;
+    const entrada = (parteClienteEntradas || []).find((e) => Number(e?.pessoaId) > 0);
+    const pessoaId = entrada ? Number(entrada.pessoaId) : null;
+    if (!pessoaId) {
+      setApiError('Nenhuma parte cliente com pessoa cadastrada encontrada neste processo.');
+      return;
+    }
+    const pid = Number(entrada.pessoaId);
+    const pessoa = pessoasPorId.get(pid);
+    const nomeArquivo = nomeArquivoProcuracaoPdf(pessoa?.nome || textoParteCliente);
+    setGerandoProcuracao(true);
+    setApiError('');
+    try {
+      const blob = await gerarProcuracao({ pessoaId });
+      downloadPdfBlob(blob, nomeArquivo);
+    } catch (e) {
+      setApiError(e?.message || 'Falha ao gerar procuração.');
+    } finally {
+      setGerandoProcuracao(false);
+    }
+  }, [
+    podeGerarDocumento,
+    gerandoProcuracao,
+    parteClienteEntradas,
+    pessoasPorId,
+    textoParteCliente,
+  ]);
 
   /** Snapshot completo do formulário para `localStorage` (processo × cliente). */
   function montarPayloadRegistroProcesso(overrides = {}) {
@@ -2753,6 +2939,54 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
               </button>
               <button
                 type="button"
+                className={processosBtnGhost}
+                onClick={() => {
+                  setContaCorrenteModo('processo');
+                  setModalContaCorrente(true);
+                }}
+                title="Lançamentos do Financeiro com Cod. Cliente e Proc. iguais a este processo (qualquer classificação contábil no extrato)"
+              >
+                <CircleDollarSign className="w-4 h-4" aria-hidden />
+                Conta Corrente
+              </button>
+              {podeGerarDocumento ? (
+                <>
+                  <button
+                    type="button"
+                    className={processosBtnGhost}
+                    disabled={gerandoDocNav || gerandoProcuracao || apiSaving}
+                    onClick={() => void handleGerarDocumento()}
+                    title="Gerar petição ou documento com dados deste processo"
+                  >
+                    <FileText className="w-4 h-4" aria-hidden />
+                    {gerandoDocNav ? 'Preparando…' : 'Gerar Documento'}
+                  </button>
+                  <button
+                    type="button"
+                    className={processosBtnGhost}
+                    disabled={gerandoProcuracao || gerandoDocNav || apiSaving}
+                    onClick={() => void handleGerarProcuracao()}
+                    title="Gerar procuração Ad Judicia da parte cliente"
+                  >
+                    <FileSignature className="w-4 h-4" aria-hidden />
+                    {gerandoProcuracao ? 'Gerando…' : 'Procuração'}
+                  </button>
+                  {driveConfigurado ? (
+                    <button
+                      type="button"
+                      className={processosBtnGhost}
+                      disabled={apiSaving}
+                      onClick={() => setDriveExplorerAberto(true)}
+                      title="Arquivos do processo no Google Drive"
+                    >
+                      <FolderOpen className="w-4 h-4" aria-hidden />
+                      Arquivos
+                    </button>
+                  ) : null}
+                </>
+              ) : null}
+              <button
+                type="button"
                 onClick={() => {
                   setIndiceAcaoRedacaoFocada(0);
                   indiceAcaoRedacaoFocadaRef.current = 0;
@@ -3707,17 +3941,6 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
               <button type="button" className={processosLinkClass}>
                 Texto para Área de Trasnf.
               </button>
-              <button
-                type="button"
-                className={processosLinkClass}
-                onClick={() => {
-                  setContaCorrenteModo('processo');
-                  setModalContaCorrente(true);
-                }}
-                title="Lançamentos do Financeiro com Cod. Cliente e Proc. iguais a este processo (qualquer classificação contábil no extrato)"
-              >
-                Conta Corrente
-              </button>
             </footer>
           </div>
       </div>
@@ -4511,6 +4734,18 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                     onNumeroVinculoInputChange={setCcNumeroVinculoInput}
                     onAtribuirSelecionados={() => void handleAtribuirNumeroVinculoCc(transacoesFonte)}
                   />
+                  {ccMensagem ? (
+                    <p
+                      className={`text-xs px-3 py-1.5 border-b shrink-0 ${
+                        /falha|não encontrado/i.test(ccMensagem)
+                          ? 'text-red-700 bg-red-50 border-red-100'
+                          : 'text-emerald-800 bg-emerald-50 border-emerald-100'
+                      }`}
+                      role="status"
+                    >
+                      {ccMensagem}
+                    </p>
+                  ) : null}
                   <div className="px-2 py-1 border-b border-indigo-50 flex justify-end">
                     <button
                       type="button"
@@ -4616,18 +4851,21 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                         <th className="border border-slate-300 px-2 py-1.5 font-semibold text-slate-700 min-w-[120px] text-left">
                           Papel
                         </th>
+                        <th className="border border-slate-300 px-1 py-1.5 font-semibold text-slate-700 w-10 text-center">
+                          <span className="sr-only">Excluir</span>
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
                       {carregandoListaApi ? (
                         <tr>
-                          <td colSpan={ccModoVincular ? 8 : 9} className="border border-slate-200 px-2 py-4 text-center text-slate-500">
+                          <td colSpan={ccModoVincular ? 9 : 10} className="border border-slate-200 px-2 py-4 text-center text-slate-500">
                             A carregar lançamentos da API…
                           </td>
                         </tr>
                       ) : listaOrdenada.length === 0 ? (
                         <tr>
-                          <td colSpan={ccModoVincular ? 8 : 9} className="border border-slate-200 px-2 py-4 text-center text-slate-500">
+                          <td colSpan={ccModoVincular ? 9 : 10} className="border border-slate-200 px-2 py-4 text-center text-slate-500">
                             Nenhum lançamento do Financeiro vinculado ao cliente {codigoCliente}
                             {contaCorrenteModo === 'proc0' ? ' e processo 0' : processo ? ` e processo ${processo}` : ''}.
                           </td>
@@ -4732,6 +4970,21 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                                 <option value={PAPEL_DESPESA}>Despesa</option>
                                 <option value={PAPEL_OUTRO}>Outro</option>
                               </select>
+                            </td>
+                            <td className="border border-slate-200 px-1 py-0.5 text-center">
+                              <button
+                                type="button"
+                                disabled={ccSalvandoPapel}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void handleExcluirLancamentoContaCorrente(linha);
+                                }}
+                                className="inline-flex items-center justify-center p-1 rounded text-red-600 hover:bg-red-50 disabled:opacity-40"
+                                title="Excluir da Conta Corrente (apaga código cliente e processo no Financeiro)"
+                                aria-label="Excluir lançamento da Conta Corrente"
+                              >
+                                <Trash2 className="w-4 h-4" aria-hidden />
+                              </button>
                             </td>
                           </tr>
                           );
@@ -4883,6 +5136,14 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
             </div>
           </div>
         </div>
+      ) : null}
+
+      {driveExplorerAberto && driveConfigurado ? (
+        <DriveExplorer
+          codigoCliente={String(codigoCliente ?? '').trim()}
+          numeroInterno={Number(processo)}
+          onClose={() => setDriveExplorerAberto(false)}
+        />
       ) : null}
     </div>
   );

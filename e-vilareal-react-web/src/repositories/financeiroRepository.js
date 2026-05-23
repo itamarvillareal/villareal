@@ -705,6 +705,46 @@ export async function removerLancamentoFinanceiroApi(apiId) {
 }
 
 /**
+ * Retira o lançamento da Conta Corrente do processo: zera Cod. cliente e Proc. (API ou só local).
+ * O registro permanece no extrato/consolidado.
+ */
+export async function desvincularLancamentoClienteProcesso(t) {
+  if (!t || typeof t !== 'object') {
+    return { ok: false, message: 'Lançamento inválido.' };
+  }
+  const cleared = {
+    ...t,
+    codCliente: '',
+    proc: '',
+    clienteId: null,
+    processoId: null,
+    _financeiroMeta: {
+      ...(t._financeiroMeta || {}),
+      clienteId: null,
+      processoId: null,
+      grupoCompensacao: null,
+    },
+  };
+  if (String(cleared.letra ?? '').toUpperCase() === 'E' || String(cleared.grupoCompensacao ?? '').trim()) {
+    cleared.grupoCompensacao = null;
+  }
+  const nome = String(cleared.nomeBanco ?? '').trim();
+  const ehCartao =
+    isNomeCartaoFinanceiro(nome) || Number(cleared._financeiroMeta?.cartaoId) > 0;
+
+  if (featureFlags.useApiFinanceiro && Number(cleared.apiId) > 0) {
+    const saved = ehCartao
+      ? await salvarOuAtualizarLancamentoCartaoFinanceiroApi(cleared)
+      : await salvarOuAtualizarLancamentoFinanceiroApi(cleared);
+    if (!saved?.id) {
+      return { ok: false, message: 'Falha ao gravar desvinculação na API.' };
+    }
+    return { ok: true, saved };
+  }
+  return { ok: true, saved: cleared };
+}
+
+/**
  * Apaga na API todos os lançamentos do extrato do banco e desfaz elos de compensação nos outros bancos.
  * Com `useApiFinanceiro` desligado, não chama o servidor (use limpeza local em `financeiroData`).
  */

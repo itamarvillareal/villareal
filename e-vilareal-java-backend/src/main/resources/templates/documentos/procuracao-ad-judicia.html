@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:th="http://www.thymeleaf.org" lang="pt-BR">
+<head>
+    <meta charset="UTF-8"/>
+    <title>Procuração Ad Judicia</title>
+    <style type="text/css" th:if="${marcaDaguaBase64 != null and !marcaDaguaBase64.isEmpty()}" th:inline="css">
+        @page {
+            background-image: url([(${marcaDaguaBase64})]);
+            background-repeat: no-repeat;
+            background-position: center center;
+            background-size: 15cm auto;
+        }
+    </style>
+    <style type="text/css">
+        @page {
+            size: A4;
+            margin: 28mm 15mm 15mm 15mm;
+            @top-center {
+                content: element(cabecalho-padrao);
+                vertical-align: top;
+            }
+            @bottom-center {
+                content: element(rodape);
+                vertical-align: bottom;
+            }
+        }
+
+        @page :first {
+            margin: 0 15mm 15mm 15mm;
+            @top-center {
+                content: none;
+            }
+            @bottom-center {
+                content: element(rodape-primeira);
+                vertical-align: bottom;
+            }
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: "Arial Unicode MS", Arial, sans-serif;
+            font-size: 12pt;
+            line-height: 1.0;
+            color: #000;
+        }
+
+        .cabecalho-primeira {
+            width: 100%;
+            padding-top: 3mm;
+            margin-bottom: 15pt;
+            margin-left: 0;
+        }
+
+        .cabecalho-padrao {
+            position: running(cabecalho-padrao);
+            width: 100%;
+        }
+
+        .cabecalho-layout {
+            width: 100%;
+            border-collapse: collapse;
+            border: none;
+        }
+
+        .cabecalho-layout td {
+            border: none;
+            padding: 0;
+            vertical-align: middle;
+        }
+
+        .cabecalho-logo {
+            width: 35%;
+            text-align: left;
+        }
+
+        .cabecalho-advogado {
+            width: 65%;
+            text-align: right;
+        }
+
+        .cabecalho-logo img {
+            height: 2.3cm;
+            width: 5.9cm;
+            object-fit: contain;
+        }
+
+        .advogado-nome {
+            font-family: "Lucida Calligraphy", "Lucida Handwriting", cursive;
+            font-style: italic;
+            font-weight: bold;
+            font-size: 11pt;
+            text-align: right;
+            margin: 0;
+            line-height: 1.2;
+        }
+
+        .advogado-oab {
+            font-weight: bold;
+            text-align: right;
+            margin: 2pt 0 0 0;
+            line-height: 1.0;
+            font-size: 11pt;
+        }
+
+        .paginacao-direita {
+            font-family: "Aldine401 BT", serif;
+            text-align: right;
+            margin: 0 0 4pt 0;
+            font-size: 10pt;
+            line-height: 1.0;
+        }
+
+        .pag-num-atual::before {
+            content: counter(page);
+            font-weight: bold;
+        }
+
+        .pag-num-total::before {
+            content: counter(pages);
+            font-weight: bold;
+        }
+
+        .rodape-primeira-running {
+            position: running(rodape-primeira);
+            width: 100%;
+            text-align: center;
+        }
+
+        .rodape-running {
+            position: running(rodape);
+            width: 100%;
+            text-align: center;
+        }
+
+        .corpo-documento {
+            line-height: 1.0;
+            margin-left: 15mm;
+        }
+
+        .titulo-procuracao {
+            font-family: "Arial Unicode MS", Arial, sans-serif;
+            font-size: 14pt;
+            font-weight: bold;
+            font-style: italic;
+            text-align: center;
+            text-indent: 0;
+            margin-top: 24pt;
+            margin-bottom: 24pt;
+        }
+
+        .corpo-procuracao {
+            font-family: Arial, sans-serif;
+            font-size: 11pt;
+            text-align: justify;
+            line-height: 1.0;
+            text-indent: 4.0cm;
+            margin-top: 12pt;
+            margin-bottom: 12pt;
+        }
+
+        .data-procuracao {
+            font-family: Arial, sans-serif;
+            font-size: 11pt;
+            text-align: center;
+            text-indent: 0;
+            line-height: 1.0;
+            margin-top: 24pt;
+            margin-bottom: 12pt;
+        }
+
+        .assinatura-outorgante {
+            text-align: center;
+            margin-top: 48pt;
+            font-family: Arial, sans-serif;
+            font-size: 11pt;
+        }
+
+        .assinatura-outorgante .nome {
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        .assinatura-outorgante .cpf {
+            margin-top: 4pt;
+        }
+
+        .rodape-linha1,
+        .rodape-linha2 {
+            font-family: "Courier New", Courier, monospace;
+            font-size: 8pt;
+            font-weight: bold;
+            text-align: center;
+            margin: 0;
+            line-height: 1.0;
+        }
+
+        .rodape-linha3,
+        .rodape-linha4 {
+            font-family: Arial, sans-serif;
+            font-size: 8pt;
+            font-weight: normal;
+            text-align: center;
+            margin: 1pt 0 0 0;
+            line-height: 1.0;
+        }
+    </style>
+</head>
+<body>
+
+<div class="cabecalho-primeira">
+    <table class="cabecalho-layout">
+        <tr>
+            <td class="cabecalho-logo">
+                <img th:if="${logoCabecalhoBase64 != null and !logoCabecalhoBase64.isEmpty()}"
+                     th:src="${logoCabecalhoBase64}" alt="Villa Real e Advogados"/>
+            </td>
+            <td class="cabecalho-advogado">
+                <p class="advogado-nome">Dr. Itamar Alexandre Felix Villa Real Junior</p>
+                <p class="advogado-oab">OAB/GO 33.329</p>
+            </td>
+        </tr>
+    </table>
+</div>
+
+<div class="cabecalho-padrao">
+    <p class="paginacao-direita">
+        <span class="pag-num-atual"></span> de <span class="pag-num-total"></span>
+    </p>
+    <table class="cabecalho-layout">
+        <tr>
+            <td class="cabecalho-logo">
+                <img th:if="${logoCabecalhoBase64 != null and !logoCabecalhoBase64.isEmpty()}"
+                     th:src="${logoCabecalhoBase64}" alt="Villa Real e Advogados"/>
+            </td>
+            <td class="cabecalho-advogado">
+                <p class="advogado-nome">Dr. Itamar Alexandre Felix Villa Real Junior</p>
+                <p class="advogado-oab">OAB/GO 33.329</p>
+            </td>
+        </tr>
+    </table>
+</div>
+
+<div class="rodape-primeira-running">
+    <p class="rodape-linha1">Av. Pinheiro Chagas, nº 232, Bairro Jundiaí, Anápolis-GO, CEP n 75.110-580.</p>
+    <p class="rodape-linha2">Telefones: 62-3321-2374 (fixo), 62-98129-6212 (tim)</p>
+    <p class="rodape-linha3">E-mail: villareal@villarealadvocacia.adv.br</p>
+    <p class="rodape-linha4">www.villarealadvocacia.adv.br</p>
+</div>
+
+<div class="rodape-running">
+    <p class="rodape-linha1">Av. Pinheiro Chagas, nº 232, Bairro Jundiaí, Anápolis-GO, CEP n 75.110-580.</p>
+    <p class="rodape-linha3">E-mail: villareal@villarealadvocacia.adv.br</p>
+    <p class="rodape-linha4">www.villarealadvocacia.adv.br</p>
+</div>
+
+<div class="corpo-documento">
+    <p class="titulo-procuracao">PROCURAÇÃO AD JUDICIA</p>
+
+    <p class="corpo-procuracao">
+        <span th:utext="${qualificacaoOutorgante}">NOME DO OUTORGANTE, qualificação...</span>,
+        pelo presente instrumento particular de mandado, constitui e nomeia
+        seu bastante procurador o advogado <strong>Dr. ITAMAR ALEXANDRE FELIX VILLA REAL JUNIOR</strong>,
+        brasileiro, casado, advogado, inscrito na OAB/GO sob o nº 33.329 e CPF nº 007.332.351-90,
+        com escritório profissional na Avenida Pinheiro Chagas, nº 232, Bairro Jundiaí,
+        CEP nº 75.110-580, Anápolis, Estado de Goiás, onde recebe as intimações de praxe,
+        a quem confere amplos, gerais e ilimitados poderes para o foro em geral, a fim de que possa,
+        isolada ou conjuntamente e independente da ordem de nomeação, em todas Comarcas,
+        em qualquer Juízo ou Tribunal, Estaduais e Federais, Secretaria da Fazenda de Goiás
+        (Conselho Administrativo Tributário e Gerência de Processos de Cobrança e Especiais), INSS,
+        onde se tomar necessário e com esta se apresentar, defender os direitos, interesses e obrigações
+        do outorgante, podendo propor contra quem de direito requerimentos, impugnações, recursos,
+        revisões, ações competentes e defesa nas contrárias, seguindo umas e outras, até decisão final,
+        usando dos recursos legais e acompanhar, para o fim disposto nos artigos 447 e 448 do Código
+        de Processo Civil, podendo praticar todos os poderes constantes do artigo 38 do Código de
+        Processo Civil e demais poderes 'et extra', até final decisão e execução, variar de ações, apelar,
+        agravar de retido ou de instrumento, recorrer ordinária e extraordinariamente para Superior
+        Instância, assinar e conciliar, apresentar arguição de relevância, embargar de infringente,
+        apresentar embargo de terceiro, declaração regimental, medidas preparatórias, cautelares, ou
+        preventivas, promover penhora, praça, leilão, adjudicar, remir e licitar bens, ceder a quem lhe
+        convier os direitos respectivos, chamar terceiros à ação de litisconsórcio, habilitar-se como tais,
+        ou opoentes propor ações sumárias ou sumaríssimas, acompanhá-las; ou procedimento especial
+        ou ordinário, de execução, impetrar mandado de segurança, despejos, conferindo ainda, poderes
+        especiais para transigir, desistir, receber e dar quitação, assinar recibos, renunciar, renunciar à
+        valor de crédito que exceder alçada de juizado ou RPV, reconhecer a procedência do pedido,
+        firmar compromisso judicial ou extrajudicial, confessar e, ainda, representar perante os Poderes
+        Federais, Estaduais e Municipais, por seus órgãos de Administração Direta ou Indireta, inclusive
+        Autarquias, Empresas Públicas e Sociedades de Economia Mista, servindo também para
+        representação em processos administrativos de qualquer natureza junto a órgãos policiais,
+        podendo assinar declaração de isenção de imposto de renda junto à Receita Federal, oferecer
+        representação e queixa-crime, habilitar como assistente de acusação, requerer gratuidade de
+        justiça para os fins do art. 5º, LXXIV da Constituição Federal, c/c Artigos 1º e seguintes da
+        Lei nº 1.060/50, com suas modificações, além de substabelecer esta a outrem, com ou sem
+        reserva de iguais poderes, dando tudo por fiel, firme e valioso.
+    </p>
+
+    <p class="data-procuracao" th:text="${localData}">Anápolis, estado de Goiás, data.</p>
+
+    <div class="assinatura-outorgante">
+        <p class="nome" th:text="${nomeOutorgante}">NOME DO OUTORGANTE</p>
+        <p class="cpf" th:if="${cpfOutorgante != null and !cpfOutorgante.isEmpty()}">
+            CPF/MF nº <span th:text="${cpfOutorgante}">000.000.000-00</span>
+        </p>
+    </div>
+</div>
+
+</body>
+</html>

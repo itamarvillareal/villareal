@@ -30,8 +30,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.io.IOException;
 import java.io.InputStream;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -107,10 +109,47 @@ public class ImoveisPlanilhaImportService {
         if (!Files.isRegularFile(path)) {
             throw new BusinessRuleException("Arquivo não encontrado: " + path.toAbsolutePath());
         }
-        ImportacaoInformacoesProcessosResponse resp = new ImportacaoInformacoesProcessosResponse();
-        resp.setArquivo(path.toAbsolutePath().toString());
+        try {
+            return importarWorkbookDeArquivo(path, path);
+        } catch (BusinessRuleException e) {
+            throw e;
+        } catch (Exception e) {
+            if (ehErroXlsLegadoPoi(path, e)) {
+                log.warn(
+                        "[import-imoveis-planilha] POI não leu {} ({}); convertendo com Python.",
+                        path.getFileName(),
+                        e.getMessage());
+                Path convertido = null;
+                try {
+                    convertido = converterAdministracaoXlsParaXlsx(path);
+                    ImportacaoInformacoesProcessosResponse resp = importarWorkbookDeArquivo(path, convertido);
+                    resp.setArquivo(path.toAbsolutePath() + " (convertido automaticamente)");
+                    return resp;
+                } catch (BusinessRuleException be) {
+                    throw be;
+                } catch (Exception e2) {
+                    throw new BusinessRuleException("Falha ao converter/importar .xls legado: " + e2.getMessage());
+                } finally {
+                    if (convertido != null) {
+                        try {
+                            Files.deleteIfExists(convertido);
+                        } catch (IOException ignored) {
+                            /* temp */
+                        }
+                    }
+                }
+            }
+            log.error("[import-imoveis-planilha] falha ao ler planilha", e);
+            throw new BusinessRuleException("Falha ao ler planilha: " + e.getMessage());
+        }
+    }
 
-        try (InputStream in = Files.newInputStream(path);
+    private ImportacaoInformacoesProcessosResponse importarWorkbookDeArquivo(Path pathOrigem, Path pathLeitura)
+            throws Exception {
+        ImportacaoInformacoesProcessosResponse resp = new ImportacaoInformacoesProcessosResponse();
+        resp.setArquivo(pathOrigem.toAbsolutePath().toString());
+
+        try (InputStream in = Files.newInputStream(pathLeitura);
                 Workbook workbook = WorkbookFactory.create(in)) {
             Sheet sheet = workbook.getNumberOfSheets() > 0 ? workbook.getSheetAt(0) : null;
             if (sheet == null) {
@@ -119,8 +158,10 @@ public class ImoveisPlanilhaImportService {
             int lastRowIdx = sheet.getLastRowNum();
             resp.setTotalLinhasCorpo(Math.max(0, lastRowIdx));
 
-            if (isLayoutAdministracaoItamar(path, sheet)) {
-                return importarLayoutAdministracao(sheet, path, resp);
+            boolean layoutAdministracao =
+                    pathLeitura.equals(pathOrigem) && isLayoutAdministracaoItamar(pathOrigem, sheet);
+            if (layoutAdministracao) {
+                return importarLayoutAdministracao(sheet, pathOrigem, resp);
             }
 
             int ok = 0;
@@ -160,14 +201,76 @@ public class ImoveisPlanilhaImportService {
             resp.setLinhasIgnoradas(ignoradas);
             resp.setLinhasProcessadasComSucesso(ok);
             resp.setLinhasComErro(erros);
-            log.info("[import-imoveis-planilha] ficheiro={} ok={} erros={} ignoradas={}", path, ok, erros, ignoradas);
+            log.info(
+                    "[import-imoveis-planilha] ficheiro={} ok={} erros={} ignoradas={}",
+                    pathOrigem,
+                    ok,
+                    erros,
+                    ignoradas);
             return resp;
-        } catch (BusinessRuleException e) {
-            throw e;
-        } catch (Exception e) {
-            log.error("[import-imoveis-planilha] falha ao ler planilha", e);
-            throw new BusinessRuleException("Falha ao ler planilha: " + e.getMessage());
         }
+    }
+
+    static boolean ehErroXlsLegadoPoi(Path path, Throwable e) {
+        if (path == null || e == null) {
+            return false;
+        }
+        String nome = path.getFileName().toString().toLowerCase(Locale.ROOT);
+        if (!nome.endsWith(".xls")) {
+            return false;
+        }
+        String msg = e.getMessage();
+        if (!StringUtils.hasText(msg)) {
+            return false;
+        }
+        String m = msg.toLowerCase(Locale.ROOT);
+        return m.contains("linktable") || m.contains("extern sheet");
+    }
+
+    private Path converterAdministracaoXlsParaXlsx(Path entrada) throws IOException, InterruptedException {
+        Path script = resolverScriptMapAdministracao();
+        Path temp = Files.createTempFile("vilareal-import-imoveis-", ".xlsx");
+        ProcessBuilder pb = new ProcessBuilder(
+                "python3",
+                script.toAbsolutePath().toString(),
+                entrada.toAbsolutePath().toString(),
+                temp.toAbsolutePath().toString());
+        pb.redirectErrorStream(true);
+        Process proc = pb.start();
+        String out = new String(proc.getInputStream().readAllBytes(), StandardCharsets.UTF_8).trim();
+        int code = proc.waitFor();
+        if (code != 0) {
+            Files.deleteIfExists(temp);
+            throw new BusinessRuleException(
+                    "Conversão Python falhou (exit " + code + "). Instale: pip install xlrd openpyxl. Saída: "
+                            + out);
+        }
+        if (!Files.isRegularFile(temp) || Files.size(temp) == 0) {
+            Files.deleteIfExists(temp);
+            throw new BusinessRuleException("Conversão Python não gerou ficheiro em " + temp);
+        }
+        log.info("[import-imoveis-planilha] convertido {} -> {} ({})", entrada.getFileName(), temp, out);
+        return temp;
+    }
+
+    private Path resolverScriptMapAdministracao() {
+        String env = System.getenv("VILAREAL_MAP_ADMIN_IMOVEIS_SCRIPT");
+        if (StringUtils.hasText(env)) {
+            Path p = Paths.get(env.trim());
+            if (Files.isRegularFile(p)) {
+                return p.toAbsolutePath();
+            }
+            throw new BusinessRuleException("Script de conversão não encontrado: " + p.toAbsolutePath());
+        }
+        Path cwd = Paths.get("").toAbsolutePath();
+        for (Path base : List.of(cwd, cwd.getParent(), cwd.resolve("e-vilareal-java-backend"))) {
+            Path script = base.resolve("scripts/map_administracao_imoveis_to_imoveis_xlsx.py");
+            if (Files.isRegularFile(script)) {
+                return script.toAbsolutePath();
+            }
+        }
+        throw new BusinessRuleException(
+                "Script map_administracao_imoveis_to_imoveis_xlsx.py não encontrado. Defina VILAREAL_MAP_ADMIN_IMOVEIS_SCRIPT ou execute a partir de e-vilareal-java-backend.");
     }
 
     private boolean isLayoutAdministracaoItamar(Path path, Sheet sheet) {
@@ -242,9 +345,9 @@ public class ImoveisPlanilhaImportService {
     }
 
     private void aplicarLinhaColunas(String[] c, int linhaExcel) throws Exception {
-        Integer numeroPlanilha = ImoveisPlanilhaImportSupport.parseInteiro(c[0]);
-        if (numeroPlanilha == null || numeroPlanilha < 1) {
-            throw new IllegalArgumentException("Coluna A (Cód) inválida ou vazia.");
+        Integer numeroPlanilha = ImoveisPlanilhaImportSupport.resolverNumeroPlanilha(c[0], c[1]);
+        if (numeroPlanilha == null || numeroPlanilha < 1 || numeroPlanilha > 999) {
+            throw new IllegalArgumentException("Nº da planilha (col. A/B) inválido ou vazio (linha " + linhaExcel + ").");
         }
 
         String colBRaw = c[1] == null ? "" : c[1].trim();

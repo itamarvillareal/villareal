@@ -85,7 +85,7 @@ function FinanceiroShell({ importOpen, onOpenImport, onCloseImport, onImportSucc
   );
 
   return (
-    <div className="flex flex-col h-full min-h-0 bg-slate-50 dark:bg-slate-950">
+    <div className="flex flex-1 flex-col min-h-0 h-full overflow-hidden bg-slate-50 dark:bg-slate-950">
       <header className="h-11 shrink-0 flex items-center justify-between px-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
         <div className="flex items-center gap-2 min-w-0">
           <h1 className="text-base font-medium text-slate-900 dark:text-slate-100">Financeiro</h1>
@@ -119,9 +119,9 @@ function FinanceiroShell({ importOpen, onOpenImport, onCloseImport, onImportSucc
         </div>
       </header>
 
-      <div className="flex flex-1 min-h-0 min-w-0">
+      <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
         <aside
-          className={`shrink-0 sticky top-0 h-[calc(100vh-2.75rem)] overflow-y-auto border-r border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/80 transition-[width] ${
+          className={`shrink-0 h-full min-h-0 overflow-y-auto overscroll-y-contain border-r border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/80 transition-[width] ${
             sidebarCollapsed ? 'w-12' : 'w-[180px]'
           }`}
         >
@@ -226,7 +226,9 @@ function FinanceiroShell({ importOpen, onOpenImport, onCloseImport, onImportSucc
           ) : null}
         </aside>
 
-        <main className="flex-1 min-w-0 overflow-y-auto"><Outlet /></main>
+        <main className="flex flex-1 flex-col min-h-0 min-w-0 overflow-hidden">
+          <Outlet />
+        </main>
       </div>
 
       <ExtratoImportModal

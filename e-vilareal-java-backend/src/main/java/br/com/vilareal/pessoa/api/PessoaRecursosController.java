@@ -1,5 +1,6 @@
 package br.com.vilareal.pessoa.api;
 
+import br.com.vilareal.documento.QualificacaoPessoaUtil;
 import br.com.vilareal.pessoa.api.dto.*;
 import br.com.vilareal.pessoa.application.PessoaApplicationService;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -14,9 +15,18 @@ import java.util.List;
 public class PessoaRecursosController {
 
     private final PessoaApplicationService pessoaService;
+    private final QualificacaoPessoaUtil qualificacaoPessoaUtil;
 
-    public PessoaRecursosController(PessoaApplicationService pessoaService) {
+    public PessoaRecursosController(
+            PessoaApplicationService pessoaService,
+            QualificacaoPessoaUtil qualificacaoPessoaUtil) {
         this.pessoaService = pessoaService;
+        this.qualificacaoPessoaUtil = qualificacaoPessoaUtil;
+    }
+
+    @GetMapping("/{id}/qualificacao-juridica")
+    public QualificacaoJuridicaResponse qualificacaoJuridica(@PathVariable Long id) {
+        return qualificacaoPessoaUtil.gerarQualificacaoJuridicaResponse(id);
     }
 
     @GetMapping("/{id}/complementares")

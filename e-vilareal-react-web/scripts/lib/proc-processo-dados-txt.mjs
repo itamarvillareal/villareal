@@ -99,6 +99,7 @@ export function levantarDadosProcessoTxt(codNum, numeroInterno, opts = {}) {
           semantic?.campos?.audienciaTipo
       ),
       temPrazo: Boolean(cabecalho.campos.prazoFatal || prazoArvore?.prazoFatalIso),
+      temTramitacao: Boolean(cabecalho.campos.tramitacao),
       temImovel: Boolean(imovel?.numeroPlanilha),
       entradasHistorico: entradasHistorico.length,
     },

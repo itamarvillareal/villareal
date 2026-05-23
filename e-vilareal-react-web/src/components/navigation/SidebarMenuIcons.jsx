@@ -7,7 +7,15 @@
  */
 
 import { useId } from 'react';
-import { Calculator as LucideCalculator, FileCheck, Link2, Receipt, Sparkles, Wallet } from 'lucide-react';
+import {
+  Calculator as LucideCalculator,
+  FileCheck,
+  FileText,
+  Link2,
+  Receipt,
+  Sparkles,
+  Wallet,
+} from 'lucide-react';
 
 function IconSparkles({ className }) {
   return <Sparkles className={className} strokeWidth={2} aria-hidden />;
@@ -501,6 +509,12 @@ function IconPagamentosMenu({ className }) {
   );
 }
 
+function IconGerarDocumento({ className }) {
+  return (
+    <FileText className={`block shrink-0 ${className ?? ''}`} strokeWidth={1.75} style={shadow} aria-hidden />
+  );
+}
+
 function IconConfiguracoes({ className }) {
   const uid = useId().replace(/:/g, '');
   const g1 = `cfg1-${uid}`;
@@ -550,6 +564,7 @@ const MENU_ICONS = {
   iptu: IconIptuMenu,
   'imoveis/relatorio-financeiro': IconFinanceiro,
   'relatorio-imoveis': IconSpreadsheet,
+  'documentos/gerar': IconGerarDocumento,
   agenda: IconAgenda,
   'ana-luisa': IconClientes,
   atividade: IconAtividade,

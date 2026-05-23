@@ -52,6 +52,7 @@ export const navItems = [
       { id: 'relatorio-calculos', label: 'Relatório de Cálculos', icon: 'Table2' },
     ],
   },
+  { id: 'documentos/gerar', label: 'Gerar Documento', icon: 'FileText' },
   { id: 'agenda', label: 'Agenda', icon: 'Calendar' },
   { id: 'atividade', label: 'Atividade', icon: 'ClipboardList' },
   { id: 'atividades-em-lote', label: 'Atividades em Lote', icon: 'Layers' },
