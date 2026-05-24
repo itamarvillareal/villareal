@@ -1,11 +1,14 @@
 package br.com.vilareal.whatsapp.service;
 
 import br.com.vilareal.common.exception.BusinessRuleException;
+import br.com.vilareal.common.util.CpfUtil;
 import br.com.vilareal.documento.ClaudeApiService;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
+import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaContatoEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.ClienteRepository;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaContatoRepository;
+import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoAndamentoEntity;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoAndamentoRepository;
@@ -32,7 +35,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Assistente WhatsApp com Claude — monta contexto do cliente/processos e responde automaticamente.
+ * Assistente WhatsApp com Claude — monta contexto do cliente/processos/financeiro e responde automaticamente.
  */
 @Service
 public class WhatsAppAIService {
@@ -43,8 +46,9 @@ public class WhatsAppAIService {
     private static final int MAX_HISTORY_MESSAGES = 20;
     private static final int RATE_LIMIT_MAX = 10;
     private static final long RATE_LIMIT_WINDOW_SECONDS = 60L;
-    private static final int CLAUDE_MAX_TOKENS = 500;
+    private static final int CLAUDE_MAX_TOKENS = 800;
     private static final double CLAUDE_TEMPERATURE = 0.3;
+    private static final String USUARIO_CONTATO_WHATSAPP = "whatsapp-ia";
 
     private static final String FALLBACK_EMPTY_CLAUDE =
             "Obrigado pela sua mensagem! No momento não consegui processar sua solicitação. "
@@ -60,48 +64,72 @@ public class WhatsAppAIService {
             """
             Você é o assistente virtual do escritório Villa Real e Advogados Associados, localizado em Anápolis-GO. O advogado responsável é Dr. Itamar (OAB/GO 33.329).
 
-            REGRAS QUE VOCÊ DEVE SEGUIR RIGOROSAMENTE:
+            REGRAS FUNDAMENTAIS:
+            1. Você NÃO é advogado. NUNCA dê parecer jurídico, conselho legal, ou interprete leis.
+            2. Se o cliente fizer pergunta jurídica, responda: "Essa é uma questão jurídica que precisa ser analisada pelo Dr. Itamar pessoalmente. Posso agendar um horário para você?"
+            3. NUNCA invente informações. Use APENAS os dados fornecidos no contexto.
+            4. Respostas curtas e objetivas (máximo 3 parágrafos). Formatação para WhatsApp (sem markdown).
+            5. Horário: segunda a sexta, 8h às 18h. Endereço: Anápolis-GO.
 
-            1. Você NÃO é advogado e NÃO pode dar parecer jurídico, conselho legal, interpretar leis, artigos, súmulas ou jurisprudência. Nunca diga "no seu caso, o artigo X se aplica" ou qualquer variação.
+            CAPACIDADES — O QUE VOCÊ PODE FAZER:
 
-            2. Sua função é EXCLUSIVAMENTE:
-               - Informar sobre andamento de processos (usando APENAS os dados fornecidos abaixo, nunca inventando)
-               - Agendar atendimentos presenciais ou por videochamada
-               - Responder dúvidas operacionais: horário, endereço, documentos necessários
-               - Encaminhar questões jurídicas para o advogado
+            A) INFORMAR ANDAMENTO DE PROCESSOS
+               - Informar dados dos processos listados em "PROCESSOS ATIVOS"
+               - Se o cliente perguntar sobre um processo que não está listado, diga que vai verificar com o escritório
 
-            3. Se o cliente fizer qualquer pergunta jurídica (sobre direitos, prazos legais, chances de ganhar, o que fazer juridicamente, etc.), responda:
-               "Essa é uma questão jurídica que precisa ser analisada pelo Dr. Itamar pessoalmente. Posso agendar um horário para você?"
+            B) CONSULTA DE DÉBITOS E PAGAMENTOS
+               - Quando o cliente mencionar "pagar", "pagamento", "boleto", "dívida", "débito", "parcela", "honorário", "quanto devo", "segunda via":
+               - Se o cliente está identificado: informar a situação financeira listada em "SITUAÇÃO FINANCEIRA"
+               - Apresentar cada parcela pendente/vencida com valor e vencimento
+               - Informar o total pendente
+               - Se houver parcelas vencidas, informar há quantos dias estão vencidas
+               - Para segunda via de boleto ou forma de pagamento: diga que vai solicitar ao setor financeiro e retornará em breve, ou que o cliente pode ligar para o escritório
+               - NUNCA calcule juros, multas ou correção monetária — informe apenas os valores que estão nos dados
+               - NUNCA negocie valores, descontos ou prazos — encaminhe para o escritório
 
-            4. NUNCA invente informações sobre processos, movimentações, datas de audiência ou qualquer dado que não esteja explicitamente listado abaixo em "PROCESSOS ATIVOS".
+            C) IDENTIFICAÇÃO DO CLIENTE
+               - Se o cliente NÃO está identificado no sistema, pergunte educadamente o nome completo e o CPF
+               - Se o cliente informou CPF e foi identificado (os dados aparecerão no contexto), confirme: "Encontrei seu cadastro, {nome}! Como posso ajudar?"
+               - Se o CPF informado não foi encontrado, diga: "Não encontrei cadastro com esse CPF. Pode confirmar? Se preferir, entre em contato pelo telefone do escritório."
 
-            5. Se não tiver informação sobre algo que o cliente perguntou, diga que vai verificar com o escritório e retornar.
+            D) AGENDAMENTO DE ATENDIMENTOS
+               - Pergunte a preferência de dia e horário
+               - Diga que vai confirmar a disponibilidade com o escritório
 
-            6. Respostas devem ser:
-               - Em português brasileiro
-               - Cordiais e profissionais, mas sem formalidade excessiva
-               - Curtas e objetivas (máximo 3 parágrafos curtos)
-               - Adequadas para WhatsApp (sem formatação markdown, sem asteriscos, sem listas longas)
+            E) DÚVIDAS OPERACIONAIS
+               - Horário, endereço, documentos necessários, formas de contato
 
-            7. Informações do escritório:
-               - Horário: segunda a sexta, 8h às 18h
-               - Endereço: Anápolis-GO (o cliente pode perguntar o endereço completo ao escritório)
-               - Telefone: o mesmo número desta conversa
-               - Para agendar: sugerir que o cliente indique dia e horário de preferência
+            EXEMPLOS DE RESPOSTAS:
 
-            8. Se a pessoa não for cliente cadastrado, seja educado, apresente brevemente o escritório e ofereça agendar uma consulta inicial.
+            Cliente: "quero pagar"
+            → Se identificado com débitos: informe parcelas pendentes com valores e vencimentos, total pendente, e ofereça solicitar segunda via ao financeiro
+            → Se identificado sem débitos: informe que não constam parcelas pendentes
+            → Se não identificado: peça nome completo e CPF
 
-            9. Se receber mensagem que não é texto legível (imagem, áudio, documento), responda:
-               "Recebi seu arquivo! Vou encaminhar para a equipe analisar. Se preferir, pode descrever sua dúvida por texto que respondo na hora."
+            Cliente: "quanto eu devo?"
+            → Mesmo fluxo de débitos
+
+            Cliente: "preciso de segunda via do boleto"
+            → Se identificado: mostrar parcelas pendentes e dizer que vai solicitar ao financeiro
+
+            Cliente: "quero agendar uma consulta"
+            → "Claro! Qual dia e horário seria melhor para você? Nosso horário de atendimento é de segunda a sexta, 8h às 18h."
+
+            Se a pessoa não for cliente cadastrado e não informar CPF, apresente o escritório e ofereça agendar consulta inicial.
+
+            Se receber mensagem que não é texto legível (imagem, áudio, documento), responda:
+            "Recebi seu arquivo! Vou encaminhar para a equipe analisar. Se preferir, pode descrever sua dúvida por texto que respondo na hora."
             """;
 
     private final ClaudeApiService claudeApiService;
     private final WhatsAppService whatsAppService;
     private final WhatsAppMessageRepository whatsAppMessageRepository;
     private final ClienteRepository clienteRepository;
+    private final PessoaRepository pessoaRepository;
     private final ProcessoRepository processoRepository;
     private final ProcessoAndamentoRepository processoAndamentoRepository;
     private final PessoaContatoRepository pessoaContatoRepository;
+    private final WhatsAppFinanceiroContextService financeiroContextService;
 
     private final ConcurrentHashMap<String, MessageCounter> rateLimits = new ConcurrentHashMap<>();
 
@@ -110,16 +138,20 @@ public class WhatsAppAIService {
             WhatsAppService whatsAppService,
             WhatsAppMessageRepository whatsAppMessageRepository,
             ClienteRepository clienteRepository,
+            PessoaRepository pessoaRepository,
             ProcessoRepository processoRepository,
             ProcessoAndamentoRepository processoAndamentoRepository,
-            PessoaContatoRepository pessoaContatoRepository) {
+            PessoaContatoRepository pessoaContatoRepository,
+            WhatsAppFinanceiroContextService financeiroContextService) {
         this.claudeApiService = claudeApiService;
         this.whatsAppService = whatsAppService;
         this.whatsAppMessageRepository = whatsAppMessageRepository;
         this.clienteRepository = clienteRepository;
+        this.pessoaRepository = pessoaRepository;
         this.processoRepository = processoRepository;
         this.processoAndamentoRepository = processoAndamentoRepository;
         this.pessoaContatoRepository = pessoaContatoRepository;
+        this.financeiroContextService = financeiroContextService;
     }
 
     public void handleIncomingMessage(String phoneNumber, String messageBody, String contactName) {
@@ -128,7 +160,7 @@ public class WhatsAppAIService {
                 return;
             }
 
-            ConversationContext context = loadConversationContext(phoneNumber, contactName);
+            ConversationContext context = loadConversationContext(phoneNumber, contactName, messageBody);
             log.info(
                     "Contexto WhatsApp IA montado para {} — cliente {}",
                     maskPhoneNumber(phoneNumber),
@@ -154,9 +186,28 @@ public class WhatsAppAIService {
         }
     }
 
-    @Transactional(readOnly = true)
-    ConversationContext loadConversationContext(String phoneNumber, String contactName) {
+    @Transactional
+    ConversationContext loadConversationContext(String phoneNumber, String contactName, String messageBody) {
         Optional<ClienteEntity> clienteOpt = findClienteByPhone(phoneNumber);
+        boolean identificadoPorCpf = false;
+
+        if (clienteOpt.isEmpty() && StringUtils.hasText(messageBody)) {
+            String cpf = CpfUtil.extrairCpfValido(messageBody);
+            if (cpf != null) {
+                log.info("CPF detectado na mensagem WhatsApp de {} — buscando cadastro", maskPhoneNumber(phoneNumber));
+                clienteOpt = buscarClientePorCpf(cpf);
+                if (clienteOpt.isPresent()) {
+                    identificadoPorCpf = true;
+                    vincularTelefoneAPessoa(clienteOpt.get().getPessoa().getId(), phoneNumber);
+                    log.info(
+                            "Cliente {} identificado por CPF via WhatsApp",
+                            clienteOpt.get().getId());
+                } else {
+                    log.info("CPF informado via WhatsApp não encontrado no cadastro");
+                }
+            }
+        }
+
         String clienteInfo;
         String processosInfo;
         Long clienteId = null;
@@ -164,16 +215,81 @@ public class WhatsAppAIService {
         if (clienteOpt.isPresent()) {
             ClienteEntity cliente = clienteOpt.get();
             clienteId = cliente.getId();
-            clienteInfo = formatClienteInfo(cliente, contactName, phoneNumber);
+            clienteInfo = formatClienteInfo(cliente, contactName, phoneNumber, identificadoPorCpf);
             processosInfo = formatProcessosInfo(clienteId);
         } else {
             clienteInfo = "Cliente não identificado no sistema. Telefone: " + phoneNumber
-                    + (StringUtils.hasText(contactName) ? " (contato: " + contactName + ")" : "");
+                    + (StringUtils.hasText(contactName) ? " (contato: " + contactName + ")" : "")
+                    + "\nSolicite nome completo e CPF se necessário.";
             processosInfo = "Nenhum processo vinculado (cliente não cadastrado)";
         }
 
+        String contextoFinanceiro = financeiroContextService.montarContextoFinanceiro(clienteId);
         String historico = formatHistorico(phoneNumber);
-        return new ConversationContext(clienteId, clienteInfo, processosInfo, historico);
+        return new ConversationContext(clienteId, clienteInfo, processosInfo, contextoFinanceiro, historico);
+    }
+
+    private Optional<ClienteEntity> buscarClientePorCpf(String cpf) {
+        return pessoaRepository.findByCpf(cpf).flatMap(pessoa -> clienteRepository
+                .findByPessoa_IdOrderByCodigoClienteAsc(pessoa.getId())
+                .stream()
+                .findFirst());
+    }
+
+    private void vincularTelefoneAPessoa(Long pessoaId, String phoneFrom) {
+        if (pessoaId == null || !StringUtils.hasText(phoneFrom)) {
+            return;
+        }
+        String digits = phoneFrom.replaceAll("\\D", "");
+        if (digits.isEmpty()) {
+            return;
+        }
+
+        Optional<Long> pessoaExistente = pessoaContatoRepository.findPessoaIdByTelefoneNormalizado(digits);
+        if (pessoaExistente.isPresent()) {
+            if (!pessoaExistente.get().equals(pessoaId)) {
+                log.warn(
+                        "Telefone {} já vinculado a outra pessoa (pessoaId={}) — não alterar",
+                        maskPhoneNumber(phoneFrom),
+                        pessoaExistente.get());
+            }
+            return;
+        }
+
+        List<PessoaContatoEntity> contatos = pessoaContatoRepository.findByPessoa_IdOrderByIdAsc(pessoaId);
+        boolean jaCadastrado = contatos.stream()
+                .anyMatch(c -> "telefone".equalsIgnoreCase(c.getTipo())
+                        && telefonesEquivalentes(c.getValor(), digits));
+        if (jaCadastrado) {
+            return;
+        }
+
+        PessoaEntity pessoa = pessoaRepository.getReferenceById(pessoaId);
+        Instant now = Instant.now();
+        PessoaContatoEntity contato = new PessoaContatoEntity();
+        contato.setPessoa(pessoa);
+        contato.setTipo("telefone");
+        contato.setValor(digits);
+        contato.setDataLancamento(now);
+        contato.setDataAlteracao(now);
+        contato.setUsuarioLancamento(USUARIO_CONTATO_WHATSAPP);
+        pessoaContatoRepository.save(contato);
+        log.info("Telefone {} vinculado à pessoa {} via WhatsApp IA", maskPhoneNumber(phoneFrom), pessoaId);
+    }
+
+    private static boolean telefonesEquivalentes(String valorCadastro, String digitsConversa) {
+        if (!StringUtils.hasText(valorCadastro)) {
+            return false;
+        }
+        String cad = valorCadastro.replaceAll("\\D", "");
+        if (cad.equals(digitsConversa)) {
+            return true;
+        }
+        if (cad.length() >= 10 && digitsConversa.length() >= 10) {
+            return cad.endsWith(digitsConversa.substring(digitsConversa.length() - 10))
+                    || digitsConversa.endsWith(cad.substring(cad.length() - 10));
+        }
+        return false;
     }
 
     private boolean checkRateLimit(String phoneNumber) {
@@ -215,13 +331,21 @@ public class WhatsAppAIService {
                 PROCESSOS ATIVOS:
                 %s
 
+                SITUAÇÃO FINANCEIRA:
+                %s
+
                 HISTÓRICO DA CONVERSA (últimas 24h):
                 %s
 
                 MENSAGEM ATUAL DO CLIENTE:
                 %s
                 """
-                .formatted(context.clienteInfo(), context.processosInfo(), context.historico(), messageBody);
+                .formatted(
+                        context.clienteInfo(),
+                        context.processosInfo(),
+                        context.contextoFinanceiro(),
+                        context.historico(),
+                        messageBody);
     }
 
     private Optional<ClienteEntity> findClienteByPhone(String phoneFrom) {
@@ -240,13 +364,17 @@ public class WhatsAppAIService {
                         .findFirst());
     }
 
-    private String formatClienteInfo(ClienteEntity cliente, String contactName, String phoneNumber) {
+    private String formatClienteInfo(
+            ClienteEntity cliente, String contactName, String phoneNumber, boolean identificadoPorCpf) {
         PessoaEntity pessoa = cliente.getPessoa();
         StringBuilder sb = new StringBuilder();
         sb.append("Nome: ")
                 .append(pessoa != null && StringUtils.hasText(pessoa.getNome()) ? pessoa.getNome() : "—");
         if (StringUtils.hasText(contactName)) {
             sb.append(" (WhatsApp: ").append(contactName).append(")");
+        }
+        if (identificadoPorCpf) {
+            sb.append("\nIdentificado nesta mensagem via CPF informado pelo cliente");
         }
         sb.append("\nCódigo cliente: ").append(cliente.getCodigoCliente());
         if (pessoa != null) {
@@ -350,5 +478,10 @@ public class WhatsAppAIService {
 
     private record MessageCounter(AtomicInteger count, Instant windowStart) {}
 
-    record ConversationContext(Long clienteId, String clienteInfo, String processosInfo, String historico) {}
+    record ConversationContext(
+            Long clienteId,
+            String clienteInfo,
+            String processosInfo,
+            String contextoFinanceiro,
+            String historico) {}
 }

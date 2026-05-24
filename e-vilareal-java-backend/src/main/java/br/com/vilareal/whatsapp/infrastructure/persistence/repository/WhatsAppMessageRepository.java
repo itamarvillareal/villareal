@@ -1,5 +1,6 @@
 package br.com.vilareal.whatsapp.infrastructure.persistence.repository;
 
+import br.com.vilareal.whatsapp.WhatsAppMessageStatus;
 import br.com.vilareal.whatsapp.WhatsAppMessageDirection;
 import br.com.vilareal.whatsapp.infrastructure.persistence.entity.WhatsAppMessageEntity;
 import org.springframework.data.domain.Page;
@@ -22,4 +23,6 @@ public interface WhatsAppMessageRepository extends JpaRepository<WhatsAppMessage
     Page<WhatsAppMessageEntity> findByClienteIdOrderByCreatedAtDesc(Long clienteId, Pageable pageable);
 
     long countByDirectionAndCreatedAtAfter(WhatsAppMessageDirection direction, Instant after);
+
+    long countByStatusAndCreatedAtAfter(WhatsAppMessageStatus status, Instant after);
 }

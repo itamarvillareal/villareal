@@ -24,4 +24,6 @@ public interface ScheduledWhatsAppMessageRepository extends JpaRepository<Schedu
 
     List<ScheduledWhatsAppMessageEntity> findByProcessoIdAndStatusAndTemplateName(
             Long processoId, ScheduledMessageStatus status, String templateName);
+
+    long countByStatus(ScheduledMessageStatus status);
 }
