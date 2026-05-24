@@ -129,19 +129,38 @@ export function ClassificacaoCard({
       ) : null}
 
       {semSugestao ? (
-        <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
-          Sem sugestão automática — classifique no{' '}
-          <button
-            type="button"
-            className="text-indigo-700 dark:text-indigo-300 font-medium hover:underline"
-            onClick={() =>
-              navigate(`/financeiro/extrato?busca=${encodeURIComponent(lancamento.descricao ?? '')}`)
-            }
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <p className="text-xs text-slate-500 dark:text-slate-400 w-full">
+            Sem sugestão automática — escolha a conta ou classifique no{' '}
+            <button
+              type="button"
+              className="text-indigo-700 dark:text-indigo-300 font-medium hover:underline"
+              onClick={() =>
+                navigate(`/financeiro/extrato?busca=${encodeURIComponent(lancamento.descricao ?? '')}`)
+              }
+            >
+              extrato
+            </button>
+            .
+          </p>
+          <select
+            className="text-xs rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-1.5 py-0.5"
+            value={contaEscolhidaId ?? ''}
+            onChange={(e) => {
+              const id = e.target.value;
+              setContaEscolhidaId(id || null);
+            }}
           >
-            extrato
-          </button>
-          .
-        </p>
+            <option value="">Escolher conta ▼</option>
+            {contas
+              .filter((c) => String(c.codigo ?? '').toUpperCase() !== 'N')
+              .map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.codigo} — {c.nome}
+                </option>
+              ))}
+          </select>
+        </div>
       ) : (
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
           <span className="text-xs text-slate-500">Alternativas:</span>

@@ -38,6 +38,7 @@ export const navItems = [
     children: [
       { id: 'processos', label: 'Processos', icon: 'Folder' },
       { id: 'processos/publicacoes', label: 'Publicações', icon: 'Newspaper' },
+      { id: 'publicacoes-email', label: 'Publicações Email', icon: 'Mail' },
       { id: 'processos/monitoramento', label: 'Monitoramento de Pessoas', icon: 'Radar' },
       { id: 'relatorio', label: 'Relatório de Processos', icon: 'FileSpreadsheet' },
       { id: 'relatorio-resultado-processos', label: 'Resultado financeiro (proc.)', icon: 'CircleDollarSign' },
@@ -52,7 +53,6 @@ export const navItems = [
       { id: 'relatorio-calculos', label: 'Relatório de Cálculos', icon: 'Table2' },
     ],
   },
-  { id: 'documentos/gerar', label: 'Gerar Documento', icon: 'FileText' },
   { id: 'agenda', label: 'Agenda', icon: 'Calendar' },
   { id: 'atividade', label: 'Atividade', icon: 'ClipboardList' },
   { id: 'atividades-em-lote', label: 'Atividades em Lote', icon: 'Layers' },

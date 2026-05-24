@@ -535,8 +535,6 @@ export function InboxPage() {
     [lancamentosVisiveis, sugestoesMap],
   );
 
-  const ocultosSemSugestao = classificacaoAgrupada.semSugestao.length;
-
   const handleAprovarGrupo = useCallback(
     async (grupo) => {
       const sug = grupo.sugestao;
@@ -601,17 +599,13 @@ export function InboxPage() {
 
   const itensNavegaveis = useMemo(() => {
     if (tipo === INBOX_TIPOS.classificar) {
-      const idsComSugestao = new Set([
-        ...classificacaoAgrupada.grupos.flatMap((g) => g.lancamentos.map((l) => l.id)),
-        ...classificacaoAgrupada.individuais.map((l) => l.id),
-      ]);
-      return lancamentos.filter((l) => !skipped.has(l.id) && idsComSugestao.has(l.id));
+      return lancamentosVisiveis;
     }
     if (tipo === INBOX_TIPOS.compensar) {
       return pares.filter((p) => !skipped.has(parKey(p)));
     }
     return [];
-  }, [tipo, lancamentos, pares, skipped, classificacaoAgrupada]);
+  }, [tipo, lancamentosVisiveis, pares, skipped]);
 
   const onAprovarFocado = useCallback(() => {
     const item = itensNavegaveis[focusedIndex];
@@ -714,7 +708,9 @@ export function InboxPage() {
     !loading &&
     !erro &&
     (tipo === INBOX_TIPOS.classificar
-      ? classificacaoAgrupada.grupos.length === 0 && classificacaoAgrupada.individuais.length === 0
+      ? classificacaoAgrupada.grupos.length === 0 &&
+        classificacaoAgrupada.individuais.length === 0 &&
+        classificacaoAgrupada.semSugestao.length === 0
       : tipo === INBOX_TIPOS.compensar
         ? paresVisiveis.length === 0
         : tipo === INBOX_TIPOS.inconsistentes
@@ -804,16 +800,6 @@ export function InboxPage() {
           <InboxEmptyState tipo={tipo} />
         ) : tipo === INBOX_TIPOS.classificar ? (
           <>
-            {ocultosSemSugestao > 0 ? (
-              <p className="text-xs text-slate-500 dark:text-slate-400 mb-3 px-1">
-                {ocultosSemSugestao} lançamento{ocultosSemSugestao !== 1 ? 's' : ''} nesta página sem
-                sugestão de conta (conta N / desconhecido) — use o{' '}
-                <a href="/financeiro/extrato" className="text-indigo-700 dark:text-indigo-300 hover:underline">
-                  extrato
-                </a>{' '}
-                para classificar manualmente.
-              </p>
-            ) : null}
             {classificacaoAgrupada.grupos.map((grupo, idx) => {
               const ids = grupo.lancamentos.map((l) => l.id);
               const grupoFading = ids.some((id) => fading.has(id));
@@ -870,6 +856,33 @@ export function InboxPage() {
                 );
               },
             )}
+            {classificacaoAgrupada.semSugestao.map((l, idx) => {
+              const cardIdx =
+                classificacaoAgrupada.grupos.length + classificacaoAgrupada.individuais.length + idx;
+              return (
+                <div key={l.id} data-inbox-card-index={cardIdx}>
+                  <ClassificacaoCard
+                    lancamento={l}
+                    sugestoes={sugestoesMap[l.id] ?? []}
+                    contas={contas}
+                    onAprovar={handleAprovarClassificacao}
+                    onPular={(id) => setSkipped((s) => new Set([...s, id]))}
+                    isSelected={selected.has(l.id)}
+                    focused={cardIdx === focusedIndex}
+                    onSelect={(id, on) => {
+                      setSelected((prev) => {
+                        const next = new Set(prev);
+                        if (on) next.add(id);
+                        else next.delete(id);
+                        return next;
+                      });
+                    }}
+                    fading={fading.has(l.id)}
+                    busy={busy}
+                  />
+                </div>
+              );
+            })}
           </>
         ) : tipo === INBOX_TIPOS.compensar ? (
           paresUi.map((ui, idx) => (

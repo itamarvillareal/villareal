@@ -250,6 +250,8 @@ export function pathParaModuloId(pathname) {
   const path = String(pathname || '').replace(/\/+$/, '') || '/';
   if (path === '/' || path === '') return 'inicio';
   const noLead = path.replace(/^\//, '');
+  /** Gerar documento só é acessível a partir de Processos — mesma permissão do módulo. */
+  if (noLead === 'documentos/gerar') return 'processos';
   if (noLead === 'clientes') return 'clientes/lista';
   if (noLead.startsWith('clientes/editar/')) return 'clientes/lista';
   if (noLead === 'clientes/relatorio') return 'clientes/relatorio';

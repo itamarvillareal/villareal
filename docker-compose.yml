@@ -20,10 +20,13 @@ services:
       SPRING_DATASOURCE_USERNAME: ${VILLAREAL_COMPOSE_JDBC_USER:-villareal_remote}
       SPRING_DATASOURCE_PASSWORD: ${VILLAREAL_COMPOSE_JDBC_PASSWORD:?Crie .env.docker a partir de .env.docker.example e defina VILLAREAL_COMPOSE_JDBC_PASSWORD}
       JWT_SECRET: dev-secret-change-me-min-32-chars-long!!
+      GMAIL_TOKENS_DIRECTORY: /home/vilareal/gmail-tokens
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
       - "8081:8080"
+    volumes:
+      - /Users/itamar/gmail-tokens:/home/vilareal/gmail-tokens
     # MySQL na VPS: mantém o túnel SSH local em 3308 (ex.: scripts/dev-up.sh).
 
   frontend:

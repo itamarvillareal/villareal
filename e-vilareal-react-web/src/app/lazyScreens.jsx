@@ -29,6 +29,10 @@ export const LazyPublicacoesProcessos = fromNamed(
   () => import('../components/PublicacoesProcessos.jsx'),
   'PublicacoesProcessos'
 );
+export const LazyPublicacoesEmail = fromNamed(
+  () => import('../components/PublicacoesEmail.jsx'),
+  'PublicacoesEmail'
+);
 export const LazyMonitoringPeoplePage = fromNamed(
   () => import('../components/monitoring/MonitoringPeoplePage.jsx'),
   'MonitoringPeoplePage'

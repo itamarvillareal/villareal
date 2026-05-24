@@ -12,6 +12,7 @@ import {
   FileCheck,
   FileText,
   Link2,
+  Mail,
   Receipt,
   Sparkles,
   Wallet,
@@ -509,6 +510,12 @@ function IconPagamentosMenu({ className }) {
   );
 }
 
+function IconPublicacoesEmail({ className }) {
+  return (
+    <Mail className={`block shrink-0 ${className ?? ''}`} strokeWidth={1.75} style={shadow} aria-hidden />
+  );
+}
+
 function IconGerarDocumento({ className }) {
   return (
     <FileText className={`block shrink-0 ${className ?? ''}`} strokeWidth={1.75} style={shadow} aria-hidden />
@@ -549,6 +556,7 @@ const MENU_ICONS = {
   'processos-grupo': IconFolderProcessos,
   processos: IconFolderProcessos,
   'processos/publicacoes': IconPublicacoes,
+  'publicacoes-email': IconPublicacoesEmail,
   'processos/monitoramento': IconMonitoramento,
   relatorio: IconRelatorioProcessos,
   'calcular-grupo': IconCalculator,

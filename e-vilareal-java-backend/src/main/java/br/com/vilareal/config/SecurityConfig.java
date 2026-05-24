@@ -63,6 +63,7 @@ public class SecurityConfig {
                     } else {
                         auth.requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
                                 .requestMatchers("/actuator/health", "/actuator/info").permitAll()
+                                .requestMatchers("/api/webhook/whatsapp").permitAll()
                                 .requestMatchers(
                                         "/v3/api-docs/**",
                                         "/swagger-ui/**",
