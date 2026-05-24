@@ -67,7 +67,14 @@ export function Sidebar({ mobileDrawerOpen = false, onMobileDrawerChange } = {})
 
   useEffect(() => {
     const p = location.pathname.replace(/\/+$/, '') || '/';
-    if (p === '/processos' || p.startsWith('/processos/') || p === '/relatorio' || p.startsWith('/relatorio/')) {
+    if (
+      p === '/processos' ||
+      p.startsWith('/processos/') ||
+      p === '/documentos/gerar' ||
+      p.startsWith('/documentos/') ||
+      p === '/relatorio' ||
+      p.startsWith('/relatorio/')
+    ) {
       setGruposAbertos((prev) => new Set(prev).add('processos-grupo'));
     }
     if (p === '/calculos' || p.startsWith('/calculos/') || p === '/relatorio-calculos' || p.startsWith('/relatorio-calculos/')) {
