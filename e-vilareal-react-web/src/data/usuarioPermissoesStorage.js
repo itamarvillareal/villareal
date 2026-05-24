@@ -230,6 +230,10 @@ export function getPermissoesUsuario(userId) {
 }
 
 export function usuarioPodeAcessarModulo(userId, moduloId) {
+  /** Gerar Documento herda permissão do módulo Processos. */
+  if (moduloId === 'documentos/gerar') {
+    return usuarioPodeAcessarModulo(userId, 'processos');
+  }
   if (moduloId === 'financeiro/relatorios') {
     const p = getPermissoesUsuario(userId);
     if (p.financeiro !== false) return true;
@@ -250,8 +254,6 @@ export function pathParaModuloId(pathname) {
   const path = String(pathname || '').replace(/\/+$/, '') || '/';
   if (path === '/' || path === '') return 'inicio';
   const noLead = path.replace(/^\//, '');
-  /** Gerar documento só é acessível a partir de Processos — mesma permissão do módulo. */
-  if (noLead === 'documentos/gerar') return 'processos';
   if (noLead === 'clientes') return 'clientes/lista';
   if (noLead.startsWith('clientes/editar/')) return 'clientes/lista';
   if (noLead === 'clientes/relatorio') return 'clientes/relatorio';
