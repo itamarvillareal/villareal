@@ -59,4 +59,15 @@ public interface PagamentoRepository extends JpaRepository<PagamentoEntity, Long
 
     Page<PagamentoEntity> findByRecorrenciaConfig_IdOrderByMesReferenciaDescIdDesc(
             Long recorrenciaConfigId, Pageable pageable);
+
+    @Query("""
+            SELECT p FROM PagamentoEntity p
+            LEFT JOIN p.processo proc
+            LEFT JOIN p.imovel im
+            WHERE p.status NOT IN :statusEncerrados
+              AND (p.cliente.id = :clienteId OR im.cliente.id = :clienteId)
+            ORDER BY p.dataVencimento ASC, p.id ASC
+            """)
+    List<PagamentoEntity> findAbertosPorCliente(
+            @Param("clienteId") Long clienteId, @Param("statusEncerrados") Collection<String> statusEncerrados);
 }

@@ -137,4 +137,21 @@ public interface ProcessoRepository extends JpaRepository<ProcessoEntity, Long> 
                     """,
             nativeQuery = true)
     List<BigInteger> findIdsByNumeroCnjDigitosContendo(@Param("norm") String norm);
+
+    /**
+     * Audiências agendadas em {@code processo.audiencia_data} (fonte canônica; agenda espelha via front).
+     * Inclusive nas datas {@code inicio} e {@code fim}.
+     */
+    @Query("""
+            SELECT p FROM ProcessoEntity p
+            JOIN FETCH p.cliente c
+            JOIN FETCH c.pessoa
+            JOIN FETCH p.pessoa
+            WHERE p.ativo = true
+              AND p.audienciaData IS NOT NULL
+              AND p.audienciaData >= :inicio
+              AND p.audienciaData <= :fim
+            ORDER BY p.audienciaData ASC, p.audienciaHora ASC, p.id ASC
+            """)
+    List<ProcessoEntity> findAudienciasEntre(@Param("inicio") LocalDate inicio, @Param("fim") LocalDate fim);
 }

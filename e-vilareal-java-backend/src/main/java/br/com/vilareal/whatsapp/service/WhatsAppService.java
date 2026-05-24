@@ -357,7 +357,7 @@ public class WhatsAppService {
         return message.id() != null ? message.id() : "desconhecido";
     }
 
-    static String formatPhoneNumber(String phone) {
+    public static String formatPhoneNumber(String phone) {
         if (phone == null || phone.isBlank()) {
             throw new IllegalArgumentException("Número de telefone inválido: " + phone);
         }
