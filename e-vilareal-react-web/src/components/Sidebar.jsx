@@ -99,6 +99,9 @@ export function Sidebar({ mobileDrawerOpen = false, onMobileDrawerChange } = {})
     if (p === '/integracoes/scraper-lab' || p.startsWith('/integracoes/')) {
       setGruposAbertos((prev) => new Set(prev).add('integracoes-grupo'));
     }
+    if (p === '/whatsapp' || p.startsWith('/whatsapp/')) {
+      setGruposAbertos((prev) => new Set(prev).add('whatsapp-grupo'));
+    }
   }, [location.pathname]);
 
   const toggleGrupo = (grupoId) => {
@@ -210,6 +213,12 @@ export function Sidebar({ mobileDrawerOpen = false, onMobileDrawerChange } = {})
                     if (item.id === 'integracoes-grupo') {
                       setGruposAbertos((prev) => new Set(prev).add(item.id));
                       if (subs[0]) navigate(`/${subs[0].id}`);
+                      closeMobileDrawer();
+                      return;
+                    }
+                    if (item.id === 'whatsapp-grupo') {
+                      setGruposAbertos((prev) => new Set(prev).add(item.id));
+                      navigate('/whatsapp/dashboard');
                       closeMobileDrawer();
                       return;
                     }

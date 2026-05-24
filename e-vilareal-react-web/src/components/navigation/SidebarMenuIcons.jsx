@@ -9,18 +9,35 @@
 import { useId } from 'react';
 import {
   Calculator as LucideCalculator,
+  CalendarClock,
   FileCheck,
   FileText,
+  LayoutDashboard,
   Link2,
   Mail,
+  MessageCircle,
   Receipt,
+  Send,
   Sparkles,
   Wallet,
 } from 'lucide-react';
 
-function IconSparkles({ className }) {
-  return <Sparkles className={className} strokeWidth={2} aria-hidden />;
+function IconWhatsApp({ className }) {
+  return <MessageCircle className={className} strokeWidth={2} aria-hidden />;
 }
+
+function IconWhatsAppDashboard({ className }) {
+  return <LayoutDashboard className={className} strokeWidth={2} aria-hidden />;
+}
+
+function IconWhatsAppSend({ className }) {
+  return <Send className={className} strokeWidth={2} aria-hidden />;
+}
+
+function IconWhatsAppSchedule({ className }) {
+  return <CalendarClock className={className} strokeWidth={2} aria-hidden />;
+}
+
 
 function IconConciliacao({ className }) {
   return <Link2 className={className} strokeWidth={2} aria-hidden />;
@@ -28,6 +45,10 @@ function IconConciliacao({ className }) {
 
 function IconAcertoCliente({ className }) {
   return <FileCheck className={className} strokeWidth={2} aria-hidden />;
+}
+
+function IconSparkles({ className }) {
+  return <Sparkles className={className} strokeWidth={2} aria-hidden />;
 }
 
 function IconIptuMenu({ className }) {
@@ -586,6 +607,11 @@ const MENU_ICONS = {
   topicos: IconTopicos,
   'topicos/gerente': IconGerenteTopicos,
   diagnosticos: IconDiagnosticos,
+  'whatsapp-grupo': IconWhatsApp,
+  'whatsapp/dashboard': IconWhatsAppDashboard,
+  'whatsapp/conversas': IconWhatsApp,
+  'whatsapp/enviar': IconWhatsAppSend,
+  'whatsapp/agendamentos': IconWhatsAppSchedule,
   'integracoes-grupo': IconMonitoramento,
   'integracoes/scraper-lab': IconRelatorioProcessos,
   usuarios: IconUsuarios,

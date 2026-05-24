@@ -131,3 +131,23 @@ export const LazyGerarDocumento = fromNamed(
   () => import('../pages/documentos/GerarDocumento.jsx'),
   'GerarDocumento'
 );
+export const LazyWhatsAppLayout = fromNamed(
+  () => import('../components/whatsapp/WhatsAppLayout.jsx'),
+  'WhatsAppLayout',
+);
+export const LazyWhatsAppDashboard = fromNamed(
+  () => import('../components/whatsapp/Dashboard.jsx'),
+  'WhatsAppDashboard',
+);
+export const LazyWhatsAppConversas = fromNamed(
+  () => import('../components/whatsapp/Conversas.jsx'),
+  'WhatsAppConversas',
+);
+export const LazyWhatsAppEnviarMensagem = fromNamed(
+  () => import('../components/whatsapp/EnviarMensagem.jsx'),
+  'WhatsAppEnviarMensagem',
+);
+export const LazyWhatsAppAgendamentos = fromNamed(
+  () => import('../components/whatsapp/Agendamentos.jsx'),
+  'WhatsAppAgendamentos',
+);
