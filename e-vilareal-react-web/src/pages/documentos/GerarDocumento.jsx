@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { FileSignature, FileText, Loader2, Sparkles } from 'lucide-react';
+import { FileSignature, FileText, Layers, Loader2, Sparkles } from 'lucide-react';
 import { mapearDadosProcessoParaFormIA } from '../../helpers/documentoHelper.js';
 import {
   downloadPdfBlob,
@@ -21,12 +21,14 @@ import { ConfiguracaoIA } from './components/ConfiguracaoIA.jsx';
 import { SecoesManuais } from './components/SecoesManuais.jsx';
 import { PreviewPeticao } from './components/PreviewPeticao.jsx';
 import { pedidosPreenchidos } from './components/PedidosEspecificos.jsx';
+import { ModoModeloTopicos } from './components/ModoModeloTopicos.jsx';
 
 const hojeIso = () => new Date().toISOString().split('T')[0];
 
 const MODO_IA = 'ia';
 const MODO_MANUAL = 'manual';
 const MODO_PROCURACAO = 'procuracao';
+const MODO_MODELO = 'modelo';
 
 const estadoInicialIA = () => ({
   enderecamentoSelect: '',
@@ -137,6 +139,7 @@ export function GerarDocumento() {
   const [modo, setModo] = useState(() => (vindoDoProcesso ? MODO_IA : MODO_IA));
   const modoIA = modo === MODO_IA;
   const modoProcuracao = modo === MODO_PROCURACAO;
+  const modoModelo = modo === MODO_MODELO;
   const [formIA, setFormIA] = useState(formInicialIA);
   const [formManual, setFormManual] = useState(estadoInicialManual);
   const [formProcuracao, setFormProcuracao] = useState(() => ({
@@ -284,7 +287,7 @@ export function GerarDocumento() {
   const ocupado = loading || loadingPreview;
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-6 pb-32 lg:px-6">
+    <div className={`mx-auto px-4 py-6 lg:px-6 ${modoModelo ? 'max-w-7xl pb-8' : 'max-w-4xl pb-32'}`}>
       <header className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-100 text-cyan-700 dark:bg-cyan-500/15 dark:text-cyan-300">
@@ -356,6 +359,24 @@ export function GerarDocumento() {
             <FileSignature className="h-4 w-4" aria-hidden />
             Procuração
           </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={modoModelo}
+            className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition ${
+              modoModelo
+                ? 'bg-white text-cyan-700 shadow-sm dark:bg-slate-900 dark:text-cyan-300'
+                : 'text-slate-600 hover:text-slate-900 dark:text-slate-400'
+            }`}
+            onClick={() => {
+              setModo(MODO_MODELO);
+              setErrors({});
+              setMensagemErro('');
+            }}
+          >
+            <Layers className="h-4 w-4" aria-hidden />
+            A partir de Modelo
+          </button>
         </div>
       </header>
 
@@ -382,7 +403,15 @@ export function GerarDocumento() {
       )}
 
       <div className="space-y-4">
-        {modoProcuracao ? (
+        {modoModelo ? (
+          <ModoModeloTopicos
+            onErro={setMensagemErro}
+            onLoadingChange={(v) => {
+              if (v) setLoading(true);
+              else setLoading(false);
+            }}
+          />
+        ) : modoProcuracao ? (
           <CollapsibleSection title="Procuração Ad Judicia" defaultOpen>
             <p className="mb-4 text-sm text-slate-600 dark:text-slate-400">
               Gera procuração com texto fixo dos poderes. Informe o ID da pessoa outorgante (dados
@@ -454,6 +483,7 @@ export function GerarDocumento() {
         )}
       </div>
 
+      {!modoModelo ? (
       <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-slate-200 bg-white/95 px-4 py-4 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95 lg:left-56">
         <div className="mx-auto flex max-w-4xl flex-wrap items-center gap-3">
           <button type="button" className={btnPrimary} disabled={ocupado} onClick={() => void handleGerarPdf()}>
@@ -495,6 +525,7 @@ export function GerarDocumento() {
           )}
         </div>
       </div>
+      ) : null}
 
       <PreviewPeticao
         open={previewOpen}
