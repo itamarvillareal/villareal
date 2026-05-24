@@ -19,6 +19,8 @@ public interface TopicoRepository extends JpaRepository<TopicoEntity, Long> {
 
     Optional<TopicoEntity> findByChaveNavegacao(String chaveNavegacao);
 
+    Optional<TopicoEntity> findByChaveNavegacaoAndBlocoIndice(String chaveNavegacao, Integer blocoIndice);
+
     @Query(
             """
             SELECT DISTINCT t.categoria FROM TopicoEntity t

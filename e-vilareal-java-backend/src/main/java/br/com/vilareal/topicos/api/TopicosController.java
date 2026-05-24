@@ -2,6 +2,7 @@ package br.com.vilareal.topicos.api;
 
 import br.com.vilareal.topicos.api.dto.*;
 import br.com.vilareal.topicos.application.TopicoConteudoApplicationService;
+import br.com.vilareal.topicos.application.TopicoImportService;
 import br.com.vilareal.topicos.application.TopicoProcessadorService;
 import br.com.vilareal.topicos.application.TopicosApplicationService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -10,6 +11,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -21,14 +23,17 @@ public class TopicosController {
     private final TopicosApplicationService topicosApplicationService;
     private final TopicoConteudoApplicationService topicoConteudoApplicationService;
     private final TopicoProcessadorService topicoProcessadorService;
+    private final TopicoImportService topicoImportService;
 
     public TopicosController(
             TopicosApplicationService topicosApplicationService,
             TopicoConteudoApplicationService topicoConteudoApplicationService,
-            TopicoProcessadorService topicoProcessadorService) {
+            TopicoProcessadorService topicoProcessadorService,
+            TopicoImportService topicoImportService) {
         this.topicosApplicationService = topicosApplicationService;
         this.topicoConteudoApplicationService = topicoConteudoApplicationService;
         this.topicoProcessadorService = topicoProcessadorService;
+        this.topicoImportService = topicoImportService;
     }
 
     @GetMapping("/hierarchy")
@@ -81,5 +86,11 @@ public class TopicosController {
                 body.getProcessoId(),
                 body.getParametros()));
         return resp;
+    }
+
+    @PostMapping("/importar")
+    @Operation(description = "Importa tópicos de arquivos .txt (multipart). Cada arquivo pode conter múltiplos blocos.")
+    public TopicoImportResultDto importar(@RequestParam("files") List<MultipartFile> files) {
+        return topicoImportService.importar(files);
     }
 }
