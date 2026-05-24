@@ -1,0 +1,21 @@
+CREATE TABLE whatsapp_messages (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    wa_message_id VARCHAR(255) NULL,
+    phone_number VARCHAR(20) NOT NULL,
+    contact_name VARCHAR(255) NULL,
+    direction VARCHAR(10) NOT NULL,
+    message_type VARCHAR(20) NOT NULL,
+    content TEXT NULL,
+    template_name VARCHAR(100) NULL,
+    status VARCHAR(15) NOT NULL,
+    error_message VARCHAR(500) NULL,
+    cliente_id BIGINT NULL,
+    processo_id BIGINT NULL,
+    created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    UNIQUE KEY uk_whatsapp_messages_wa_message_id (wa_message_id),
+    INDEX idx_whatsapp_phone (phone_number),
+    INDEX idx_whatsapp_cliente (cliente_id),
+    INDEX idx_whatsapp_wa_msg_id (wa_message_id),
+    INDEX idx_whatsapp_created (created_at)
+) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;

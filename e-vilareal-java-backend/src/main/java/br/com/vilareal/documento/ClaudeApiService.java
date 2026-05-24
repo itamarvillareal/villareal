@@ -58,6 +58,10 @@ public class ClaudeApiService {
     }
 
     public String enviarMensagem(String systemPrompt, String userMessage) {
+        return enviarMensagem(systemPrompt, userMessage, null, null);
+    }
+
+    public String enviarMensagem(String systemPrompt, String userMessage, Integer maxTokensOverride, Double temperature) {
         if (apiKey == null || apiKey.isBlank()) {
             throw new BusinessRuleException(
                     "API key da Anthropic não configurada. Defina a variável ANTHROPIC_API_KEY.");
@@ -65,7 +69,10 @@ public class ClaudeApiService {
 
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("model", model);
-        body.put("max_tokens", maxTokens);
+        body.put("max_tokens", maxTokensOverride != null ? maxTokensOverride : maxTokens);
+        if (temperature != null) {
+            body.put("temperature", temperature);
+        }
         body.put("system", systemPrompt);
         body.put("messages", List.of(Map.of("role", "user", "content", userMessage)));
 

@@ -1,0 +1,20 @@
+CREATE TABLE scheduled_whatsapp_messages (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    phone_number VARCHAR(20) NOT NULL,
+    template_name VARCHAR(100) NOT NULL,
+    template_params TEXT NULL,
+    scheduled_at TIMESTAMP(3) NOT NULL,
+    status VARCHAR(15) NOT NULL DEFAULT 'PENDING',
+    sent_at TIMESTAMP(3) NULL,
+    error_message VARCHAR(500) NULL,
+    retry_count INT NOT NULL DEFAULT 0,
+    cliente_id BIGINT NULL,
+    processo_id BIGINT NULL,
+    created_by VARCHAR(100) NULL,
+    descricao VARCHAR(255) NULL,
+    created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    INDEX idx_scheduled_status_time (status, scheduled_at),
+    INDEX idx_scheduled_cliente (cliente_id),
+    INDEX idx_scheduled_processo (processo_id)
+) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;

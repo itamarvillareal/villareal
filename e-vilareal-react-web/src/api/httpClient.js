@@ -23,15 +23,26 @@ function buildUrl(path, query) {
 
 export async function request(path, { method = 'GET', body, query, headers, signal } = {}) {
   const authTokenSnapshotAtRequest = getAccessToken();
-  const response = await fetch(buildUrl(path, query), {
-    method,
-    signal,
-    headers: {
-      ...buildDefaultApiHeaders(),
-      ...(headers || {}),
-    },
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
+  let response;
+  try {
+    response = await fetch(buildUrl(path, query), {
+      method,
+      signal,
+      headers: {
+        ...buildDefaultApiHeaders(),
+        ...(headers || {}),
+      },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+  } catch (err) {
+    const msg = String(err?.message ?? err);
+    if (msg === 'Failed to fetch' || err instanceof TypeError) {
+      throw new Error(
+        'API indisponível. Verifique se o backend Java está rodando (porta 8080) e reinicie o Vite se necessário.',
+      );
+    }
+    throw err;
+  }
   return parseApiJsonResponse(response, { authTokenSnapshotAtRequest });
 }
 

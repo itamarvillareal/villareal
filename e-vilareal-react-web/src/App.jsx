@@ -42,6 +42,7 @@ import {
   LazyMonitoringPeoplePage,
   LazyProcessos,
   LazyPublicacoesProcessos,
+  LazyPublicacoesEmail,
   LazyRelatorio,
   LazyRelatorioResultadoProcessos,
   LazyRelatorioCalculos,
@@ -342,6 +343,7 @@ function App() {
               <Route path="/atividades-em-lote" element={<LazyAtividadesEmLote />} />
               <Route path="/processos" element={<LazyProcessos />} />
               <Route path="/processos/publicacoes" element={<LazyPublicacoesProcessos />} />
+              <Route path="/publicacoes-email" element={<LazyPublicacoesEmail />} />
               <Route path="/processos/monitoramento" element={<LazyMonitoringPeoplePage />} />
               <Route path="/imoveis" element={<LazyImoveis />} />
               <Route path="/iptu/:imovelId" element={<LazyIptu />} />
