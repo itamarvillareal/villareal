@@ -79,6 +79,17 @@ export const navItems = [
   },
   { id: 'diagnosticos', label: 'Diagnósticos', icon: 'Activity' },
   {
+    id: 'whatsapp-grupo',
+    label: 'WhatsApp',
+    icon: 'MessageCircle',
+    children: [
+      { id: 'whatsapp/dashboard', label: 'Dashboard', icon: 'LayoutDashboard' },
+      { id: 'whatsapp/conversas', label: 'Conversas', icon: 'MessageCircle' },
+      { id: 'whatsapp/enviar', label: 'Enviar mensagem', icon: 'Send' },
+      { id: 'whatsapp/agendamentos', label: 'Agendamentos', icon: 'CalendarClock' },
+    ],
+  },
+  {
     id: 'integracoes-grupo',
     label: 'Integrações (lab)',
     icon: 'Plug',

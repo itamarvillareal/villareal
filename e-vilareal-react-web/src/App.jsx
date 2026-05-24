@@ -52,6 +52,11 @@ import {
   LazyRelatorioPessoas,
   LazyTopicos,
   LazyUsuarios,
+  LazyWhatsAppLayout,
+  LazyWhatsAppDashboard,
+  LazyWhatsAppConversas,
+  LazyWhatsAppEnviarMensagem,
+  LazyWhatsAppAgendamentos,
 } from './app/lazyScreens.jsx';
 import { atualizarIndicesMensaisAposDia10 } from './services/monetaryIndicesService.js';
 import {
@@ -363,6 +368,13 @@ function App() {
               <Route path="/topicos" element={<LazyTopicos />} />
               <Route path="/topicos/gerente" element={<LazyGerenteTopicos />} />
               <Route path="/diagnosticos" element={<LazyDiagnosticos />} />
+              <Route path="/whatsapp" element={<LazyWhatsAppLayout />}>
+                <Route index element={<Navigate to="dashboard" replace />} />
+                <Route path="dashboard" element={<LazyWhatsAppDashboard />} />
+                <Route path="conversas" element={<LazyWhatsAppConversas />} />
+                <Route path="enviar" element={<LazyWhatsAppEnviarMensagem />} />
+                <Route path="agendamentos" element={<LazyWhatsAppAgendamentos />} />
+              </Route>
               <Route path="/integracoes/scraper-lab" element={<LazyIntegracoesTribunalScraperLab />} />
               <Route path="/documentos/gerar" element={<LazyGerarDocumento />} />
               <Route path="/financeiro" element={<LazyFinanceiroLayout />}>

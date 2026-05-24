@@ -21,6 +21,13 @@ services:
       SPRING_DATASOURCE_PASSWORD: ${VILLAREAL_COMPOSE_JDBC_PASSWORD:?Crie .env.docker a partir de .env.docker.example e defina VILLAREAL_COMPOSE_JDBC_PASSWORD}
       JWT_SECRET: dev-secret-change-me-min-32-chars-long!!
       GMAIL_TOKENS_DIRECTORY: /home/vilareal/gmail-tokens
+      # WhatsApp Cloud API — valores reais em `.env.docker` na VPS (ver WHATSAPP_SETUP.md)
+      WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID:-}
+      WHATSAPP_ACCESS_TOKEN: ${WHATSAPP_ACCESS_TOKEN:-}
+      WHATSAPP_VERIFY_TOKEN: ${WHATSAPP_VERIFY_TOKEN:-}
+      WHATSAPP_WABA_ID: ${WHATSAPP_WABA_ID:-}
+      WHATSAPP_APP_SECRET: ${WHATSAPP_APP_SECRET:-}
+      WHATSAPP_VALIDATE_SIGNATURE: ${WHATSAPP_VALIDATE_SIGNATURE:-false}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
