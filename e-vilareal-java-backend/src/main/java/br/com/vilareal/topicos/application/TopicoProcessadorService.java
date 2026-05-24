@@ -274,8 +274,7 @@ public class TopicoProcessadorService {
     }
 
     private static String normalizarPolo(String polo) {
-        return String.valueOf(polo != null ? polo : "")
-                .normalize(java.text.Normalizer.Form.NFD)
+        return java.text.Normalizer.normalize(String.valueOf(polo != null ? polo : ""), java.text.Normalizer.Form.NFD)
                 .replaceAll("\\p{M}", "")
                 .toUpperCase(Locale.ROOT);
     }

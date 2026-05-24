@@ -7,7 +7,10 @@ import lombok.Setter;
 import java.time.Instant;
 
 @Entity
-@Table(name = "topico")
+@Table(
+        name = "topico",
+        uniqueConstraints =
+                @UniqueConstraint(name = "uk_topico_chave_bloco", columnNames = {"chave_navegacao", "bloco_indice"}))
 @Getter
 @Setter
 public class TopicoEntity {
@@ -25,8 +28,11 @@ public class TopicoEntity {
     @Column(nullable = false, length = 300)
     private String nome;
 
-    @Column(name = "chave_navegacao", nullable = false, length = 500, unique = true)
+    @Column(name = "chave_navegacao", nullable = false, length = 500)
     private String chaveNavegacao;
+
+    @Column(name = "bloco_indice", nullable = false)
+    private Integer blocoIndice = 0;
 
     @Column(name = "conteudo_template", nullable = false, columnDefinition = "LONGTEXT")
     private String conteudoTemplate;
