@@ -130,6 +130,8 @@ export function mapApiPublicacaoToUi(r) {
     _processoId: r.processoId ?? null,
     _clienteId: r.clienteId ?? null,
     _pessoaRefId: r.pessoaRefId ?? null,
+    emailRecebidoEm: r.emailRecebidoEm || null,
+    teor: r.teor || '',
   };
 }
 
@@ -451,6 +453,78 @@ export async function vincularPublicacaoProcessoPorProcessoId(id, processoId, ob
   });
   /** Corpo vazio com 200 não deve ser tratado como falha (evita UI a pensar que o vínculo não gravou). */
   return data != null ? data : { ok: true, id: Number(id), processoId: pid };
+}
+
+/**
+ * Vincula pelo CNJ gravado na publicação (busca em `processo.numero_cnj` no backend).
+ */
+export async function vincularPublicacaoProcessoAutomatico(id, observacao = '') {
+  if (!featureFlags.useApiPublicacoes) return null;
+  return request(`/api/publicacoes/${Number(id)}/vinculo-por-cnj`, {
+    method: 'PATCH',
+    body: { observacao: observacao || '' },
+  });
+}
+
+/**
+ * Mapa CNJ normalizado → sugestão { codCliente, procInterno, cliente, reu, ambiguo }
+ * para linhas ainda não vinculadas (consulta `/api/processos/diagnostico/busca-numero`).
+ */
+export async function carregarSugestoesVinculoPorPublicacoes(rows) {
+  const { normalizarCnjParaChave } = await import('../data/publicacoesPdfParser.js');
+  const map = new Map();
+  if (!featureFlags.useApiProcessos || !Array.isArray(rows)) {
+    return map;
+  }
+  const chaves = [];
+  const vistos = new Set();
+  for (const row of rows) {
+    if (row?.statusVinculo === 'vinculado' && row?._processoId) {
+      continue;
+    }
+    const raw = row?.processoCnjNormalizado || row?.numero_processo_cnj || '';
+    const key = normalizarCnjParaChave(String(raw).trim());
+    if (!key || vistos.has(key)) continue;
+    vistos.add(key);
+    chaves.push({ key, raw: String(raw).trim() });
+  }
+  const LOTE = 6;
+  for (let i = 0; i < chaves.length; i += LOTE) {
+    const fatia = chaves.slice(i, i + LOTE);
+    await Promise.all(
+      fatia.map(async ({ key, raw }) => {
+        const sug = await buscarSugestaoVinculoPorCnjDiagnostico(raw);
+        if (sug) {
+          map.set(key, sug);
+        }
+      })
+    );
+  }
+  return map;
+}
+
+/** Sugestão de vínculo a partir do cadastro de processos (diagnóstico por CNJ). */
+export async function buscarSugestaoVinculoPorCnjDiagnostico(cnj) {
+  if (!featureFlags.useApiProcessos) return null;
+  const numero = String(cnj ?? '').trim();
+  if (!numero) return null;
+  try {
+    const hits = await request('/api/processos/diagnostico/busca-numero', {
+      query: { numero },
+    });
+    const lista = Array.isArray(hits) ? hits : [];
+    if (lista.length === 0) return null;
+    const h = lista[0];
+    return {
+      codCliente: h.codigoCliente ?? '',
+      procInterno: h.numeroInterno != null ? String(h.numeroInterno) : '',
+      cliente: h.cliente || h.parteCliente || '',
+      reu: h.parteOposta || '',
+      ambiguo: lista.length > 1,
+    };
+  } catch {
+    return null;
+  }
 }
 
 /** Compatibilidade: resolve processo por código cliente × proc. interno e delega a `vincularPublicacaoProcessoPorProcessoId`. */

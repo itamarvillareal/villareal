@@ -75,6 +75,10 @@ public class PublicacaoEntity {
     @Column(name = "arquivo_origem_hash", length = 128)
     private String arquivoOrigemHash;
 
+    /** {@code Message.internalDate} do Gmail na importação por email. */
+    @Column(name = "email_recebido_em")
+    private Instant emailRecebidoEm;
+
     @Column(name = "json_referencia", columnDefinition = "LONGTEXT")
     private String jsonReferencia;
 

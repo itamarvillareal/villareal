@@ -70,6 +70,17 @@ public class PublicacoesController {
         return publicacaoService.patchVinculoProcesso(id, request);
     }
 
+    @PatchMapping("/{id}/vinculo-por-cnj")
+    @Operation(
+            summary = "Vincular publicação ao processo pelo CNJ",
+            description =
+                    "Resolve o processo em `processo.numero_cnj` usando o número da publicação e aplica o vínculo.")
+    public PublicacaoResponse patchVinculoPorCnj(
+            @PathVariable Long id, @RequestBody(required = false) PublicacaoVinculoAutomaticoPatchRequest request) {
+        String obs = request != null ? request.getObservacao() : null;
+        return publicacaoService.patchVinculoPorCnj(id, obs);
+    }
+
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> excluir(@PathVariable Long id) {
         publicacaoService.excluir(id);

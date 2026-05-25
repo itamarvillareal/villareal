@@ -37,6 +37,8 @@ public class PublicacaoResponse {
     private String origemImportacao;
     private String arquivoOrigemNome;
     private String arquivoOrigemHash;
+    /** Data/hora em que o email Jusbrasil chegou na caixa Gmail. */
+    private Instant emailRecebidoEm;
     private String jsonReferencia;
     private String statusTratamento;
     private boolean lida;

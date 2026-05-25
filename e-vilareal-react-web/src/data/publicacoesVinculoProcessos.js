@@ -129,6 +129,7 @@ export function lookupSugestaoVinculoCadastro(item, indiceMap) {
   const cnj =
     item?.processoCnjNormalizado ||
     item?.numero_processo_cnj ||
+    item?.numeroProcessoEncontrado ||
     item?.numeroCnj ||
     '';
   const res = buscarHitIndiceCnjPorCnj(indiceMap, cnj);
@@ -140,6 +141,31 @@ export function lookupSugestaoVinculoCadastro(item, indiceMap) {
     cliente: hit.cliente,
     reu: hit.reu || '',
   };
+}
+
+/**
+ * Sugestão de vínculo para uma linha: índice local (cadastro) e, em seguida, mapa da API de diagnóstico.
+ */
+export function resolverSugestaoVinculoLinha(row, indiceMap, sugestoesApiMap) {
+  if (!row) return null;
+  if (row.statusVinculo === 'vinculado' && (row.codCliente || row._processoId)) {
+    return null;
+  }
+  const cnjBase =
+    row.processoCnjNormalizado || row.numero_processo_cnj || row.numeroProcessoEncontrado || '';
+  const itemLookup = {
+    processoCnjNormalizado: cnjBase,
+    numero_processo_cnj: cnjBase,
+    numeroProcessoEncontrado: cnjBase,
+  };
+  const sugIdx = lookupSugestaoVinculoCadastro(itemLookup, indiceMap);
+  if (sugIdx) return { ...sugIdx, fonte: 'cadastro' };
+  const key = normalizarCnjParaChave(cnjBase);
+  if (key && sugestoesApiMap instanceof Map) {
+    const sugApi = sugestoesApiMap.get(key);
+    if (sugApi) return { ...sugApi, fonte: 'api' };
+  }
+  return null;
 }
 
 export function vincularPublicacaoAoCadastro(parseado, indiceMap) {

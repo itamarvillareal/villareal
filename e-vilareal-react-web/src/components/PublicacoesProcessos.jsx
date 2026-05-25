@@ -46,6 +46,7 @@ import {
   importarUmaPublicacaoDaPreviaApi,
   limparTodasPublicacoes,
   listarPublicacoesModulo,
+  vincularPublicacaoProcessoAutomatico,
   vincularPublicacaoProcessoPorChaveNatural,
 } from '../repositories/publicacoesRepository.js';
 import { ModalCriarTarefaContextual } from './ModalCriarTarefaContextual.jsx';
@@ -484,29 +485,34 @@ export function PublicacoesProcessos() {
 
   const reaplicarVinculoGravado = (row) => {
     if (featureFlags.useApiPublicacoes) {
-      const resHit = buscarHitIndiceCnjPorCnj(
-        indiceCnj,
-        row.processoCnjNormalizado || row.numero_processo_cnj || ''
-      );
-      const hit = resHit?.hit;
-      if (!hit) {
-        setErro('Não há correspondência automática no cadastro para este CNJ.');
-        return;
-      }
-      void vincularPublicacaoProcessoPorChaveNatural(
-        row._apiId ?? row.id,
-        hit.codCliente,
-        hit.proc,
-        'Vínculo automático reaplicado pelo índice CNJ.'
-      )
-        .then((v) => {
-          if (v == null) {
-            setErro('Não foi possível vincular automaticamente na API.');
+      const pubId = row._apiId ?? row.id;
+      void vincularPublicacaoProcessoAutomatico(pubId, 'Vínculo automático por CNJ (processo cadastrado).')
+        .then(() => setGravadosTick((t) => t + 1))
+        .catch(() => {
+          const resHit = buscarHitIndiceCnjPorCnj(
+            indiceCnj,
+            row.processoCnjNormalizado || row.numero_processo_cnj || ''
+          );
+          const hit = resHit?.hit;
+          if (!hit) {
+            setErro('Não há processo cadastrado com este CNJ para vincular automaticamente.');
             return;
           }
-          setGravadosTick((t) => t + 1);
-        })
-        .catch((e) => setErro(e?.message || 'Falha ao reaplicar vínculo automático.'));
+          void vincularPublicacaoProcessoPorChaveNatural(
+            pubId,
+            hit.codCliente,
+            hit.proc,
+            'Vínculo automático reaplicado pelo índice CNJ.'
+          )
+            .then((v) => {
+              if (v == null) {
+                setErro('Não foi possível vincular automaticamente na API.');
+                return;
+              }
+              setGravadosTick((t) => t + 1);
+            })
+            .catch((e) => setErro(e?.message || 'Falha ao reaplicar vínculo automático.'));
+        });
       return;
     }
     const next = reaplicarVinculoCadastro(rowGravadoParaVinculo(row), indiceCnj);
