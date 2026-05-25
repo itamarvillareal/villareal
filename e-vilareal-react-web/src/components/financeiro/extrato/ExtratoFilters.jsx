@@ -124,23 +124,39 @@ export function ExtratoFilters({
         </div>
       ) : null}
 
-      <label className="flex flex-1 min-w-[120px] items-center gap-1.5 px-2 py-1 rounded-md bg-slate-100 dark:bg-slate-800">
+      <label className="flex flex-1 min-w-[160px] items-center gap-1.5 px-2 py-1 rounded-md bg-slate-100 dark:bg-slate-800">
         <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" aria-hidden />
         <input
           id="financeiro-campo-busca"
           type="search"
           value={buscaLocal}
-            onChange={(e) => setBusca(e.target.value)}
-          placeholder="Buscar na descrição..."
+          onChange={(e) => {
+            const v = e.target.value;
+            setBuscaLocal(v);
+            setBusca(v);
+          }}
+          placeholder="Buscar na descrição ou valor..."
           className="flex-1 min-w-0 bg-transparent border-0 text-sm text-slate-900 dark:text-slate-100 focus:outline-none"
-          aria-label="Buscar na descrição"
+          aria-label="Buscar na descrição ou valor"
         />
       </label>
 
-      <span className="text-[11px] text-slate-400 tabular-nums shrink-0 ml-auto">
-        {totalNaPagina.toLocaleString('pt-BR')} de {totalGeral.toLocaleString('pt-BR')}
+      <span className="text-[11px] text-slate-400 tabular-nums shrink-0 ml-auto text-right">
+        {filters.busca?.trim() ? (
+          <>
+            {totalGeral.toLocaleString('pt-BR')} encontrado{totalGeral === 1 ? '' : 's'} no período
+            {totalNaPagina > 0 ? (
+              <span className="block text-[10px]">
+                exibindo {totalNaPagina.toLocaleString('pt-BR')} nesta página
+              </span>
+            ) : null}
+          </>
+        ) : (
+          <>
+            {totalNaPagina.toLocaleString('pt-BR')} de {totalGeral.toLocaleString('pt-BR')}
+          </>
+        )}
       </span>
     </div>
   );
 }
-

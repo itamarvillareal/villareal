@@ -3,6 +3,7 @@ package br.com.vilareal.email;
 import br.com.vilareal.common.exception.BusinessRuleException;
 import br.com.vilareal.publicacao.api.dto.PublicacaoWriteRequest;
 import br.com.vilareal.publicacao.application.PublicacaoApplicationService;
+import br.com.vilareal.publicacao.infrastructure.persistence.repository.PublicacaoRepository;
 import com.google.api.services.gmail.Gmail;
 import com.google.api.services.gmail.model.ListMessagesResponse;
 import com.google.api.services.gmail.model.Message;
@@ -21,18 +22,24 @@ import java.util.List;
 public class GmailPublicacaoService {
 
     private static final Logger log = LoggerFactory.getLogger(GmailPublicacaoService.class);
-    private static final String QUERY = "from:publicacoes-diarios@jusbrasil.com.br is:unread";
+    /** Scheduler automático: só não lidos. */
+    private static final String QUERY_NAO_LIDOS = "from:publicacoes-diarios@jusbrasil.com.br is:unread";
+    /** Disparo manual (API / botão): últimos 7 dias, inclusive já lidos no Gmail. */
+    private static final String QUERY_RECENTES_7D = "from:publicacoes-diarios@jusbrasil.com.br newer_than:7d";
 
     private final Gmail gmail;
     private final PublicacaoApplicationService publicacaoApplicationService;
+    private final PublicacaoRepository publicacaoRepository;
     private final String gmailUser;
 
     public GmailPublicacaoService(
             @Autowired(required = false) Gmail gmail,
             PublicacaoApplicationService publicacaoApplicationService,
+            PublicacaoRepository publicacaoRepository,
             @Value("${gmail.user:me}") String gmailUser) {
         this.gmail = gmail;
         this.publicacaoApplicationService = publicacaoApplicationService;
+        this.publicacaoRepository = publicacaoRepository;
         this.gmailUser = gmailUser;
     }
 
@@ -40,19 +47,34 @@ public class GmailPublicacaoService {
         return gmail != null;
     }
 
+    /** Scheduler (a cada 3 h): apenas emails ainda não lidos no Gmail. */
     public PublicacaoEmailProcessamentoResumo buscarEProcessarPublicacoes() throws IOException {
+        return buscarEProcessar(QUERY_NAO_LIDOS, false);
+    }
+
+    /** API / botão «Buscar Emails Agora»: últimos 7 dias, inclusive lidos; ignora emails já importados. */
+    public PublicacaoEmailProcessamentoResumo buscarEProcessarPublicacoesManual() throws IOException {
+        return buscarEProcessar(QUERY_RECENTES_7D, true);
+    }
+
+    private PublicacaoEmailProcessamentoResumo buscarEProcessar(String query, boolean pularEmailsJaImportados)
+            throws IOException {
         PublicacaoEmailProcessamentoResumo resumo = new PublicacaoEmailProcessamentoResumo();
         if (gmail == null) {
             resumo.getErros().add("Gmail API não configurada.");
             return resumo;
         }
 
-        log.info("Iniciando busca de publicações Jusbrasil no Gmail (query={})", QUERY);
-        List<Message> mensagens = listarMensagensNaoLidas();
-        log.info("Emails Jusbrasil não lidos encontrados: {}", mensagens.size());
+        log.info("Iniciando busca de publicações Jusbrasil no Gmail (query={})", query);
+        List<Message> mensagens = listarMensagens(query);
+        log.info("Emails Jusbrasil encontrados: {}", mensagens.size());
 
         for (Message ref : mensagens) {
             String messageId = ref.getId();
+            if (pularEmailsJaImportados && emailJaImportado(messageId)) {
+                log.debug("Email {} já importado anteriormente; ignorado.", messageId);
+                continue;
+            }
             try {
                 Message completa =
                         gmail.users().messages().get(gmailUser, messageId).setFormat("full").execute();
@@ -110,14 +132,18 @@ public class GmailPublicacaoService {
         return resumo;
     }
 
-    private List<Message> listarMensagensNaoLidas() throws IOException {
+    private boolean emailJaImportado(String messageId) {
+        return publicacaoRepository.existsByArquivoOrigemNomeContaining("[" + messageId + "]");
+    }
+
+    private List<Message> listarMensagens(String query) throws IOException {
         List<Message> out = new ArrayList<>();
         String pageToken = null;
         do {
             ListMessagesResponse resp = gmail.users()
                     .messages()
                     .list(gmailUser)
-                    .setQ(QUERY)
+                    .setQ(query)
                     .setMaxResults(50L)
                     .setPageToken(pageToken)
                     .execute();

@@ -31,7 +31,7 @@ public class PublicacaoEmailController {
                             "Gmail API não configurada. Verifique credentials.json e tokens OAuth em gmail.tokens.directory."));
         }
         try {
-            PublicacaoEmailProcessamentoResumo resumo = gmailPublicacaoService.buscarEProcessarPublicacoes();
+            PublicacaoEmailProcessamentoResumo resumo = gmailPublicacaoService.buscarEProcessarPublicacoesManual();
             return ResponseEntity.ok(resumo);
         } catch (Exception ex) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
