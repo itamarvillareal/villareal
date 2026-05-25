@@ -5,6 +5,7 @@ import br.com.vilareal.common.exception.ResourceNotFoundException;
 import br.com.vilareal.pessoa.application.ClienteResolverService;
 import br.com.vilareal.processo.application.ClienteCodigoPessoaResolver;
 import br.com.vilareal.processo.application.ProcessoApplicationService;
+import br.com.vilareal.processo.application.ProcessoDiagnosticoNumeroBuscaUtil;
 import br.com.vilareal.processo.api.dto.ProcessoPartesVinculoTexto;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
@@ -17,6 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.math.BigInteger;
 import java.time.LocalDate;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -91,9 +93,11 @@ public class PublicacaoApplicationService {
         if (publicacaoRepository.existsByHashConteudo(hashConteudo)) {
             throw new BusinessRuleException("Publicação já existe (conteúdo duplicado).");
         }
+        String origem = normalizarOrigem(req.getOrigemImportacao());
         PublicacaoEntity e = new PublicacaoEntity();
-        e.setNumeroProcessoEncontrado(
-                StringUtils.hasText(req.getNumeroProcessoEncontrado()) ? req.getNumeroProcessoEncontrado().trim() : "");
+        String numeroProcesso =
+                StringUtils.hasText(req.getNumeroProcessoEncontrado()) ? req.getNumeroProcessoEncontrado().trim() : "";
+        e.setNumeroProcessoEncontrado(numeroProcesso);
         e.setDataDisponibilizacao(req.getDataDisponibilizacao());
         e.setDataPublicacao(req.getDataPublicacao());
         e.setFonte(trimToNull(req.getFonte()));
@@ -106,9 +110,10 @@ public class PublicacaoApplicationService {
         e.setScoreConfianca(trimToNull(req.getScoreConfianca()));
         e.setHashTeor(StringUtils.hasText(req.getHashTeor()) ? req.getHashTeor().trim() : "");
         e.setHashConteudo(hashConteudo);
-        e.setOrigemImportacao(normalizarOrigem(req.getOrigemImportacao()));
+        e.setOrigemImportacao(origem);
         e.setArquivoOrigemNome(trimToNull(req.getArquivoOrigemNome()));
         e.setArquivoOrigemHash(trimToNull(req.getArquivoOrigemHash()));
+        e.setEmailRecebidoEm(req.getEmailRecebidoEm());
         e.setJsonReferencia(trimToNull(req.getJsonReferencia()));
         e.setStatusTratamento(normalizarStatus(req.getStatusTratamento()));
         e.setLida(Boolean.TRUE.equals(req.getLida()));
@@ -147,6 +152,48 @@ public class PublicacaoApplicationService {
             e.setObservacao(req.getObservacao().trim());
         }
         return toResponse(publicacaoRepository.save(e), null);
+    }
+
+    /**
+     * Vincula a publicação ao processo cadastrado cujo {@code numero_cnj} coincide com
+     * {@link PublicacaoEntity#getNumeroProcessoEncontrado()} (mesma normalização dos diagnósticos).
+     */
+    @Transactional
+    public PublicacaoResponse patchVinculoPorCnj(Long id, String observacaoOpcional) {
+        PublicacaoEntity e = requirePublicacao(id);
+        String cnj = e.getNumeroProcessoEncontrado();
+        if (!StringUtils.hasText(cnj)) {
+            throw new BusinessRuleException("Publicação sem número de processo para vincular.");
+        }
+        String norm = ProcessoDiagnosticoNumeroBuscaUtil.normalizarSomenteDigitos(cnj);
+        if (norm.length() < 20) {
+            throw new BusinessRuleException(
+                    "CNJ da publicação incompleto para vínculo automático (mínimo 20 dígitos).");
+        }
+        List<BigInteger> ids = processoRepository.findIdsByNumeroCnjNormalizadoDiagnostico(norm);
+        if (ids.isEmpty()) {
+            throw new BusinessRuleException(
+                    "Nenhum processo cadastrado com o CNJ " + cnj.trim() + ". Cadastre o processo ou vincule manualmente.");
+        }
+        if (ids.size() > 1) {
+            throw new BusinessRuleException(
+                    "Mais de um processo cadastrado com o mesmo CNJ; use vínculo manual por código cliente e proc. interno.");
+        }
+        PublicacaoVinculoPatchRequest req = new PublicacaoVinculoPatchRequest();
+        req.setProcessoId(ids.getFirst().longValue());
+        req.setObservacao(observacaoOpcional);
+        return patchVinculoProcesso(id, req);
+    }
+
+    /** Tenta vínculo por CNJ sem falhar o lote de importação (ex.: email Jusbrasil). */
+    @Transactional
+    public boolean tentarVinculoAutomaticoPorCnj(Long publicacaoId) {
+        try {
+            patchVinculoPorCnj(publicacaoId, "Vínculo automático por CNJ na importação.");
+            return true;
+        } catch (Exception ex) {
+            return false;
+        }
     }
 
     @Transactional
@@ -243,6 +290,7 @@ public class PublicacaoApplicationService {
         r.setOrigemImportacao(e.getOrigemImportacao());
         r.setArquivoOrigemNome(e.getArquivoOrigemNome());
         r.setArquivoOrigemHash(e.getArquivoOrigemHash());
+        r.setEmailRecebidoEm(e.getEmailRecebidoEm());
         r.setJsonReferencia(e.getJsonReferencia());
         r.setStatusTratamento(e.getStatusTratamento());
         r.setLida(e.isLida());

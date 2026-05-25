@@ -35,7 +35,19 @@ public class PublicacaoEmailController {
             return ResponseEntity.ok(resumo);
         } catch (Exception ex) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("message", "Falha ao processar emails: " + ex.getMessage()));
+                    .body(Map.of("message", "Falha ao processar emails: " + mensagemRaiz(ex)));
         }
+    }
+
+    private static String mensagemRaiz(Throwable ex) {
+        Throwable t = ex;
+        String last = t.getMessage() != null ? t.getMessage() : t.getClass().getSimpleName();
+        while (t.getCause() != null && t.getCause() != t) {
+            t = t.getCause();
+            if (t.getMessage() != null && !t.getMessage().isBlank()) {
+                last = t.getMessage();
+            }
+        }
+        return last;
     }
 }

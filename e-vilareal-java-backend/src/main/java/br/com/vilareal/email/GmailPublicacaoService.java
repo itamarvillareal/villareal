@@ -1,8 +1,6 @@
 package br.com.vilareal.email;
 
-import br.com.vilareal.common.exception.BusinessRuleException;
 import br.com.vilareal.publicacao.api.dto.PublicacaoWriteRequest;
-import br.com.vilareal.publicacao.application.PublicacaoApplicationService;
 import br.com.vilareal.publicacao.infrastructure.persistence.repository.PublicacaoRepository;
 import com.google.api.services.gmail.Gmail;
 import com.google.api.services.gmail.model.ListMessagesResponse;
@@ -15,8 +13,12 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
+import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 public class GmailPublicacaoService {
@@ -28,17 +30,17 @@ public class GmailPublicacaoService {
     private static final String QUERY_RECENTES_7D = "from:publicacoes-diarios@jusbrasil.com.br newer_than:7d";
 
     private final Gmail gmail;
-    private final PublicacaoApplicationService publicacaoApplicationService;
+    private final PublicacaoEmailImportacaoTransacionalService importacaoTransacional;
     private final PublicacaoRepository publicacaoRepository;
     private final String gmailUser;
 
     public GmailPublicacaoService(
             @Autowired(required = false) Gmail gmail,
-            PublicacaoApplicationService publicacaoApplicationService,
+            PublicacaoEmailImportacaoTransacionalService importacaoTransacional,
             PublicacaoRepository publicacaoRepository,
             @Value("${gmail.user:me}") String gmailUser) {
         this.gmail = gmail;
-        this.publicacaoApplicationService = publicacaoApplicationService;
+        this.importacaoTransacional = importacaoTransacional;
         this.publicacaoRepository = publicacaoRepository;
         this.gmailUser = gmailUser;
     }
@@ -49,32 +51,51 @@ public class GmailPublicacaoService {
 
     /** Scheduler (a cada 3 h): apenas emails ainda não lidos no Gmail. */
     public PublicacaoEmailProcessamentoResumo buscarEProcessarPublicacoes() throws IOException {
-        return buscarEProcessar(QUERY_NAO_LIDOS, false);
+        return buscarEProcessar(QUERY_NAO_LIDOS, false, false);
     }
 
-    /** API / botão «Buscar Emails Agora»: últimos 7 dias, inclusive lidos; ignora emails já importados. */
+    /**
+     * API / botão «Buscar Emails Agora»: últimos 7 dias, inclusive lidos;
+     * reprocessa emails já importados (remove publicações anteriores do mesmo messageId).
+     */
     public PublicacaoEmailProcessamentoResumo buscarEProcessarPublicacoesManual() throws IOException {
-        return buscarEProcessar(QUERY_RECENTES_7D, true);
+        return buscarEProcessar(QUERY_RECENTES_7D, false, true);
     }
 
-    private PublicacaoEmailProcessamentoResumo buscarEProcessar(String query, boolean pularEmailsJaImportados)
-            throws IOException {
+    private PublicacaoEmailProcessamentoResumo buscarEProcessar(
+            String query, boolean pularEmailsJaImportados, boolean reprocessarEmailsExistentes) throws IOException {
         PublicacaoEmailProcessamentoResumo resumo = new PublicacaoEmailProcessamentoResumo();
         if (gmail == null) {
             resumo.getErros().add("Gmail API não configurada.");
             return resumo;
         }
 
-        log.info("Iniciando busca de publicações Jusbrasil no Gmail (query={})", query);
+        log.info(
+                "Iniciando busca de publicações Jusbrasil no Gmail (query={}, reprocessar={})",
+                query,
+                reprocessarEmailsExistentes);
         List<Message> mensagens = listarMensagens(query);
         log.info("Emails Jusbrasil encontrados: {}", mensagens.size());
 
+        Set<String> processosUnicosLote = new LinkedHashSet<>();
+
         for (Message ref : mensagens) {
             String messageId = ref.getId();
-            if (pularEmailsJaImportados && emailJaImportado(messageId)) {
+            boolean jaImportado = emailJaImportado(messageId);
+
+            if (pularEmailsJaImportados && jaImportado) {
                 log.debug("Email {} já importado anteriormente; ignorado.", messageId);
                 continue;
             }
+
+            if (reprocessarEmailsExistentes && jaImportado) {
+                int removidos = removerPublicacoesDoEmail(messageId);
+                log.info(
+                        "Reprocessamento email {}: removidas {} publicação(ões) anteriores antes de nova extração",
+                        messageId,
+                        removidos);
+            }
+
             try {
                 Message completa =
                         gmail.users().messages().get(gmailUser, messageId).setFormat("full").execute();
@@ -88,48 +109,108 @@ public class GmailPublicacaoService {
                 }
 
                 String arquivoOrigem = montarArquivoOrigem(assunto, messageId);
-                List<PublicacaoWriteRequest> publicacoes =
-                        PublicacaoTextoImportacaoParser.parseHtmlJusbrasil(html, arquivoOrigem);
+                Instant emailRecebidoEm = extrairDataRecebimentoEmail(completa);
+
                 log.info(
-                        "Processando email {} (assunto={}): {} publicação(ões) extraída(s)",
+                        "Extraindo publicações do email messageId={} assunto={} arquivoOrigem={}",
                         messageId,
                         assunto,
-                        publicacoes.size());
+                        arquivoOrigem);
+
+                List<PublicacaoWriteRequest> publicacoes =
+                        PublicacaoTextoImportacaoParser.parseHtmlJusbrasil(html, arquivoOrigem);
+                for (PublicacaoWriteRequest req : publicacoes) {
+                    req.setEmailRecebidoEm(emailRecebidoEm);
+                }
+
+                Set<String> principaisEmail = publicacoes.stream()
+                        .map(PublicacaoWriteRequest::getNumeroProcessoEncontrado)
+                        .filter(n -> n != null && !n.isBlank())
+                        .map(String::trim)
+                        .map(String::toUpperCase)
+                        .collect(Collectors.toCollection(LinkedHashSet::new));
+
+                resumo.setPublicacoesEncontradas(resumo.getPublicacoesEncontradas() + publicacoes.size());
+                processosUnicosLote.addAll(principaisEmail);
+
+                log.info(
+                        "Email {} (assunto={}): publicacoesExtraidas={}, processosUnicosNoEmail={}, processos={}",
+                        messageId,
+                        assunto,
+                        publicacoes.size(),
+                        principaisEmail.size(),
+                        principaisEmail);
 
                 int gravadas = 0;
+                int vinculosAutomaticos = 0;
+                int duplicadas = 0;
                 for (PublicacaoWriteRequest req : publicacoes) {
                     try {
-                        publicacaoApplicationService.criar(req);
+                        Long pubId = importacaoTransacional.criarPublicacaoEmail(req);
+                        if (pubId == null) {
+                            duplicadas++;
+                            log.info(
+                                    "Publicação duplicada ignorada (email {} processo {})",
+                                    messageId,
+                                    req.getNumeroProcessoEncontrado());
+                            continue;
+                        }
                         gravadas++;
                         resumo.setPublicacoesProcessadas(resumo.getPublicacoesProcessadas() + 1);
-                    } catch (BusinessRuleException ex) {
-                        if (String.valueOf(ex.getMessage()).toLowerCase().contains("duplicad")) {
-                            log.debug("Publicação duplicada ignorada (email {}): {}", messageId, ex.getMessage());
-                        } else {
-                            throw ex;
+                        if (importacaoTransacional.tentarVinculoAutomaticoPorCnj(pubId)) {
+                            vinculosAutomaticos++;
                         }
+                    } catch (Exception ex) {
+                        String msg = mensagemRaiz(ex);
+                        resumo.getErros().add(
+                                "Falha ao gravar publicação "
+                                        + req.getNumeroProcessoEncontrado()
+                                        + " (email "
+                                        + messageId
+                                        + "): "
+                                        + msg);
+                        log.error(
+                                "Falha ao gravar publicação email {} processo {}: {}",
+                                messageId,
+                                req.getNumeroProcessoEncontrado(),
+                                msg,
+                                ex);
                     }
                 }
+                resumo.setPublicacoesDuplicadasIgnoradas(
+                        resumo.getPublicacoesDuplicadasIgnoradas() + duplicadas);
+                resumo.setVinculosAutomaticos(resumo.getVinculosAutomaticos() + vinculosAutomaticos);
 
                 marcarComoLido(messageId);
                 resumo.setEmailsLidos(resumo.getEmailsLidos() + 1);
                 log.info(
-                        "Email {} processado: {} gravada(s), marcado como lido",
+                        "Email {} processado: gravadas={}, vinculosAutomaticosPorCnj={}, duplicadasIgnoradas={}, marcado como lido",
                         messageId,
-                        gravadas);
+                        gravadas,
+                        vinculosAutomaticos,
+                        duplicadas);
             } catch (Exception ex) {
-                String msg = "Falha no email " + messageId + ": " + ex.getMessage();
+                String msg = "Falha no email " + messageId + ": " + mensagemRaiz(ex);
                 log.error(msg, ex);
                 resumo.getErros().add(msg);
             }
         }
 
+        resumo.setProcessosUnicos(processosUnicosLote.size());
+
         log.info(
-                "Busca Gmail concluída: emailsLidos={}, publicacoesProcessadas={}, erros={}",
+                "Busca Gmail concluída: emailsLidos={}, publicacoesEncontradas={}, processosUnicos={}, publicacoesProcessadas={}, duplicadasIgnoradas={}, erros={}",
                 resumo.getEmailsLidos(),
+                resumo.getPublicacoesEncontradas(),
+                resumo.getProcessosUnicos(),
                 resumo.getPublicacoesProcessadas(),
+                resumo.getPublicacoesDuplicadasIgnoradas(),
                 resumo.getErros().size());
         return resumo;
+    }
+
+    private int removerPublicacoesDoEmail(String messageId) {
+        return publicacaoRepository.deleteByArquivoOrigemNomeContaining("[" + messageId + "]");
     }
 
     private boolean emailJaImportado(String messageId) {
@@ -171,6 +252,14 @@ public class GmailPublicacaoService {
                 .orElse("");
     }
 
+    private static Instant extrairDataRecebimentoEmail(Message message) {
+        Long ms = message.getInternalDate();
+        if (ms == null || ms <= 0L) {
+            return null;
+        }
+        return Instant.ofEpochMilli(ms);
+    }
+
     private static String montarArquivoOrigem(String assunto, String messageId) {
         String a = assunto == null ? "" : assunto.trim();
         if (a.isBlank()) {
@@ -180,5 +269,17 @@ public class GmailPublicacaoService {
             a = a.substring(0, 200);
         }
         return a + " [" + messageId + "]";
+    }
+
+    private static String mensagemRaiz(Throwable ex) {
+        Throwable t = ex;
+        String last = t.getMessage() != null ? t.getMessage() : t.getClass().getSimpleName();
+        while (t.getCause() != null && t.getCause() != t) {
+            t = t.getCause();
+            if (t.getMessage() != null && !t.getMessage().isBlank()) {
+                last = t.getMessage();
+            }
+        }
+        return last;
     }
 }

@@ -1,17 +1,16 @@
+import { listarPublicacoesModulo } from '../repositories/publicacoesRepository.js';
 import { request } from './httpClient.js';
 
 /**
  * Publicações importadas automaticamente via Gmail/Jusbrasil (origem MONITORAMENTO).
  */
-export async function buscarPublicacoesEmail({ texto, status } = {}) {
-  const data = await request('/api/publicacoes', {
-    query: {
-      origemImportacao: 'MONITORAMENTO',
-      texto: texto || undefined,
-      status: status || undefined,
-    },
+export async function buscarPublicacoesEmail({ texto, status, filtroVinculo } = {}) {
+  return listarPublicacoesModulo({
+    origemImportacao: 'MONITORAMENTO',
+    texto: texto || undefined,
+    statusTratamento: status || undefined,
+    filtroVinculo: filtroVinculo || 'todos',
   });
-  return Array.isArray(data) ? data : [];
 }
 
 /** Dispara importação manual (mesmo fluxo do scheduler). */

@@ -1,16 +1,38 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  AlertTriangle,
   ArrowLeft,
   ChevronDown,
   ChevronRight,
+  FolderOpen,
+  Link2,
   Loader2,
   Mail,
   RefreshCw,
+  RotateCcw,
   Search,
   X,
 } from 'lucide-react';
 import { buscarPublicacoesEmail, processarEmailsAgora } from '../api/publicacoesEmailApi.js';
+import { buildRouterStateChaveClienteProcesso } from '../domain/camposProcessoCliente.js';
+import { formatarRotuloVinculoPartes } from '../data/publicacoesDisplayHelpers.js';
+import {
+  buscarHitIndiceCnjPorCnj,
+  montarIndiceCnjClienteProcAsync,
+  resolverSugestaoVinculoLinha,
+} from '../data/publicacoesVinculoProcessos.js';
+import {
+  alterarStatusPublicacao,
+  buscarSugestaoVinculoPorCnjDiagnostico,
+  carregarSugestoesVinculoPorPublicacoes,
+  vincularPublicacaoProcessoAutomatico,
+  vincularPublicacaoProcessoPorChaveNatural,
+} from '../repositories/publicacoesRepository.js';
+
+const ProcessosLazy = lazy(() =>
+  import('./Processos.jsx').then((module) => ({ default: module.Processos }))
+);
 
 const STATUS_OPCOES = [
   { value: '', label: 'Todos' },
@@ -20,12 +42,27 @@ const STATUS_OPCOES = [
   { value: 'IGNORADA', label: 'Ignorada' },
 ];
 
+const VINCULO_FILTRO_OPCOES = [
+  { value: 'todos', label: 'Todos os vínculos' },
+  { value: 'nao_vinculados', label: 'Não vinculados' },
+];
+
 const STATUS_LABEL = {
   PENDENTE: 'Pendente',
   VINCULADA: 'Vinculada',
   TRATADA: 'Tratada',
   IGNORADA: 'Ignorada',
 };
+
+function Badge({ children, tone = 'slate' }) {
+  const cls = {
+    slate: 'bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-200',
+    green: 'bg-emerald-100 text-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-200',
+    amber: 'bg-amber-100 text-amber-950 dark:bg-amber-950/40 dark:text-amber-100',
+    red: 'bg-red-100 text-red-900 dark:bg-red-950/40 dark:text-red-200',
+  }[tone];
+  return <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-semibold ${cls}`}>{children}</span>;
+}
 
 function fmtDataBr(isoDate) {
   if (!isoDate) return '—';
@@ -35,6 +72,21 @@ function fmtDataBr(isoDate) {
     return `${d}/${m}/${y}`;
   }
   return s;
+}
+
+function parseDataPublicacaoMs(isoDate) {
+  if (!isoDate) return Number.NEGATIVE_INFINITY;
+  const s = String(isoDate).trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+    const t = new Date(s.slice(0, 10)).getTime();
+    return Number.isNaN(t) ? Number.NEGATIVE_INFINITY : t;
+  }
+  const br = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if (br) {
+    const t = new Date(`${br[3]}-${br[2]}-${br[1]}`).getTime();
+    return Number.isNaN(t) ? Number.NEGATIVE_INFINITY : t;
+  }
+  return Number.NEGATIVE_INFINITY;
 }
 
 function fmtInstant(iso) {
@@ -66,59 +118,388 @@ function badgeStatusClass(status) {
   }
 }
 
-function ModalTeor({ publicacao, onClose }) {
+function cnjLinha(row) {
+  return row.numeroProcessoEncontrado || row.numero_processo_cnj || row.processoCnjNormalizado || '—';
+}
+
+function teorLinha(row) {
+  return row.teor || row.teorIntegral || '';
+}
+
+function parseProcessosCitadosNoTeor(jsonReferencia) {
+  if (!jsonReferencia) return [];
+  try {
+    const o = typeof jsonReferencia === 'string' ? JSON.parse(jsonReferencia) : jsonReferencia;
+    const arr = o?.processosCitadosNoTeor;
+    return Array.isArray(arr) ? arr.filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+}
+
+function construirStateProcessosDesdeLinha(row, indiceCnj, sugestoesApi) {
+  const sug = resolverSugestaoVinculoLinha(row, indiceCnj, sugestoesApi);
+  const codRaw = row?.codCliente || sug?.codCliente;
+  const procRaw =
+    row?.procInterno != null && String(row.procInterno).trim() !== '' ? row.procInterno : sug?.procInterno;
+  const cod = codRaw != null && String(codRaw).trim() !== '' ? String(codRaw).trim() : '';
+  if (!cod) {
+    window.alert(
+      'Não há código de cliente para abrir o processo. Vincule à publicação ou confira a sugestão de cadastro.'
+    );
+    return null;
+  }
+  const procNum = Number(procRaw);
+  if (!Number.isFinite(procNum) || procNum < 1) {
+    window.alert('Não há número de processo interno (proc.) sugerido ou vinculado para abrir o cadastro.');
+    return null;
+  }
+  return buildRouterStateChaveClienteProcesso(cod, procNum);
+}
+
+function ModalTeor({ publicacao, onClose, onAbrirProcesso }) {
   if (!publicacao) return null;
+  const citados = parseProcessosCitadosNoTeor(publicacao.jsonCnjBruto || publicacao.jsonReferencia);
+  const vinculoLabel = formatarRotuloVinculoPartes(publicacao);
+  const temVinculoInterno =
+    (publicacao.codCliente && publicacao.procInterno) || publicacao.statusVinculo === 'vinculado';
   return (
     <div
-        className="fixed inset-0 z-50 flex items-end justify-center bg-black/45 p-0 sm:items-center sm:p-4"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="modal-teor-titulo"
-        onClick={onClose}
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/45 p-0 sm:items-center sm:p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="modal-teor-titulo"
+      onClick={onClose}
+    >
+      <div
+        className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-t-2xl bg-white shadow-xl dark:bg-[#141922] sm:rounded-2xl"
+        onClick={(e) => e.stopPropagation()}
       >
-        <div
-          className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-t-2xl bg-white shadow-xl dark:bg-[#141922] sm:rounded-2xl"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-white/10">
-            <h2 id="modal-teor-titulo" className="text-base font-semibold">
-              Teor completo
-            </h2>
+        <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-white/10">
+          <h2 id="modal-teor-titulo" className="text-base font-semibold">
+            Teor completo
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 dark:hover:bg-white/10"
+            aria-label="Fechar"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="space-y-3 overflow-y-auto p-4 text-sm">
+          <div className="grid gap-2 sm:grid-cols-2">
+            <p>
+              <span className="font-medium text-slate-600 dark:text-slate-400">Processo:</span>{' '}
+              {cnjLinha(publicacao)}
+            </p>
+            <p>
+              <span className="font-medium text-slate-600 dark:text-slate-400">Data publicação:</span>{' '}
+              {fmtDataBr(publicacao.dataPublicacao)}
+            </p>
+            <p>
+              <span className="font-medium text-slate-600 dark:text-slate-400">Status:</span>{' '}
+              {STATUS_LABEL[publicacao._statusTratamento] || publicacao._statusTratamento || 'PENDENTE'}
+            </p>
+            <p>
+              <span className="font-medium text-slate-600 dark:text-slate-400">Email recebido:</span>{' '}
+              {fmtInstant(publicacao.emailRecebidoEm)}
+            </p>
+            <p className="sm:col-span-2">
+              <span className="font-medium text-slate-600 dark:text-slate-400">Origem:</span>{' '}
+              {publicacao.arquivoOrigem || publicacao.arquivoOrigemNome || '—'}
+            </p>
+          </div>
+          {citados.length > 0 ? (
+            <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-3 dark:border-white/10 dark:bg-white/5">
+              <p className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                Processos citados no teor (referência — não são publicações principais)
+              </p>
+              <ul className="mt-2 list-inside list-disc font-mono text-[11px] text-slate-700 dark:text-slate-300">
+                {citados.map((c) => (
+                  <li key={c}>{c}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          <pre className="max-h-[50vh] overflow-auto whitespace-pre-wrap rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs leading-relaxed dark:border-white/10 dark:bg-white/5">
+            {teorLinha(publicacao) || '—'}
+          </pre>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 px-4 py-3 dark:border-white/10">
+          <p className="min-w-0 truncate text-[11px] text-slate-500 dark:text-slate-400" title={vinculoLabel}>
+            {temVinculoInterno ? vinculoLabel : 'Vincule ou use sugestão de cadastro para abrir o processo.'}
+          </p>
+          <div className="flex shrink-0 flex-wrap justify-end gap-2">
+            {onAbrirProcesso ? (
+              <button
+                type="button"
+                onClick={onAbrirProcesso}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-sky-600 px-3 py-2 text-sm font-medium text-white hover:bg-sky-700"
+              >
+                <FolderOpen className="h-4 w-4" />
+                Abrir processo
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 dark:hover:bg-white/10"
-              aria-label="Fechar"
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:border-white/15 dark:text-slate-200 dark:hover:bg-white/5"
             >
-              <X className="h-5 w-5" />
+              Fechar
             </button>
-          </div>
-          <div className="space-y-3 overflow-y-auto p-4 text-sm">
-            <div className="grid gap-2 sm:grid-cols-2">
-              <p>
-                <span className="font-medium text-slate-600 dark:text-slate-400">Processo:</span>{' '}
-                {publicacao.numeroProcessoEncontrado || '—'}
-              </p>
-              <p>
-                <span className="font-medium text-slate-600 dark:text-slate-400">Data publicação:</span>{' '}
-                {fmtDataBr(publicacao.dataPublicacao)}
-              </p>
-              <p className="sm:col-span-2">
-                <span className="font-medium text-slate-600 dark:text-slate-400">Origem:</span>{' '}
-                {publicacao.arquivoOrigemNome || '—'}
-              </p>
-            </div>
-            <pre className="max-h-[50vh] overflow-auto whitespace-pre-wrap rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs leading-relaxed dark:border-white/10 dark:bg-white/5">
-              {publicacao.teor || '—'}
-            </pre>
           </div>
         </div>
       </div>
+    </div>
   );
 }
 
-function CardMobileRow({ row, expandido, onToggle }) {
-  const status = row.statusTratamento || 'PENDENTE';
+function ModalVinculo({ onClose, vincForm, setVincForm, vinculoFormErro, onConfirmar }) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="vinculo-modal-title"
+    >
+      <div className="w-full max-w-md space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-xl dark:border-white/10 dark:bg-[#141c2c]">
+        <div className="flex items-start justify-between gap-2">
+          <h3
+            id="vinculo-modal-title"
+            className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-white"
+          >
+            <Link2 className="h-4 w-4 shrink-0" />
+            Vincular ao cadastro interno
+          </h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg p-1 text-slate-500 hover:bg-slate-100 dark:hover:bg-white/10"
+            aria-label="Fechar"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-400">
+          Informe o <strong>código do cliente</strong> e o <strong>proc. interno</strong>, como na tela de publicações
+          por PDF.
+        </p>
+        <div className="grid gap-3">
+          <label className="grid gap-1 text-xs font-medium text-slate-700 dark:text-slate-300">
+            Código do cliente
+            <input
+              type="text"
+              inputMode="numeric"
+              value={vincForm.codCliente}
+              onChange={(e) => setVincForm((f) => ({ ...f, codCliente: e.target.value }))}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm dark:border-white/10 dark:bg-[#0d1018]"
+              placeholder="ex.: 00000001"
+            />
+          </label>
+          <label className="grid gap-1 text-xs font-medium text-slate-700 dark:text-slate-300">
+            Proc. interno
+            <input
+              type="text"
+              value={vincForm.procInterno}
+              onChange={(e) => setVincForm((f) => ({ ...f, procInterno: e.target.value }))}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm dark:border-white/10 dark:bg-[#0d1018]"
+              placeholder="número do processo interno"
+            />
+          </label>
+          <label className="grid gap-1 text-xs font-medium text-slate-700 dark:text-slate-300">
+            Cliente (opcional)
+            <input
+              type="text"
+              value={vincForm.cliente}
+              onChange={(e) => setVincForm((f) => ({ ...f, cliente: e.target.value }))}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm dark:border-white/10 dark:bg-[#0d1018]"
+              placeholder="Nome para exibição"
+            />
+          </label>
+        </div>
+        {vinculoFormErro ? (
+          <p className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            {vinculoFormErro}
+          </p>
+        ) : null}
+        <div className="flex flex-wrap justify-end gap-2 pt-1">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-slate-300 px-4 py-2 text-sm dark:border-white/15"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={() => void onConfirmar()}
+            className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700"
+          >
+            Salvar vínculo
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CelulaClienteProc({ row, indiceCnj, sugestoesApi }) {
+  if (row.statusVinculo === 'vinculado' && row.codCliente) {
+    return (
+      <>
+        <div>{row.codCliente}</div>
+        <div className="text-slate-500">proc {row.procInterno || '—'}</div>
+        <div className="truncate text-[10px] text-slate-500" title={row.cliente}>
+          {row.cliente || '—'}
+        </div>
+      </>
+    );
+  }
+  const sug = resolverSugestaoVinculoLinha(row, indiceCnj, sugestoesApi);
+  if (sug) {
+    return (
+      <>
+        <div className="font-medium text-sky-800 dark:text-sky-200">{sug.codCliente}</div>
+        <div className="text-sky-700 dark:text-sky-300">proc {sug.procInterno}</div>
+        <div className="truncate text-[10px] text-sky-700/90 dark:text-sky-300/90" title={sug.cliente}>
+          {sug.cliente || '—'}
+        </div>
+      </>
+    );
+  }
+  return (
+    <>
+      <div>{row.codCliente || '—'}</div>
+      <div className="text-slate-500">proc {row.procInterno || '—'}</div>
+      <div className="truncate text-[10px] text-slate-500" title={row.cliente}>
+        {row.cliente || '—'}
+      </div>
+    </>
+  );
+}
+
+function CelulaVinculo({ row, indiceCnj, sugestoesApi, carregandoSugestoes, onAbrirProcesso, onAplicarSugestao }) {
+  const sug = resolverSugestaoVinculoLinha(row, indiceCnj, sugestoesApi);
+  if (row.statusVinculo === 'vinculado') {
+    return (
+      <div
+        className="cursor-pointer"
+        title="Duplo clique: abrir Processos"
+        onDoubleClick={onAbrirProcesso}
+      >
+        <Badge tone="green">Vinculado</Badge>
+        <div className="mt-0.5 truncate text-[10px] text-slate-600 dark:text-slate-400" title={formatarRotuloVinculoPartes(row)}>
+          {formatarRotuloVinculoPartes(row)}
+        </div>
+        <div className="text-[10px] text-slate-500">
+          {row.codCliente || '—'} / proc {row.procInterno || '—'}
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="cursor-pointer" onDoubleClick={onAbrirProcesso} title="Duplo clique: abrir Processos (se houver sugestão)">
+      <Badge tone="amber">{row.statusVinculo === 'nao_vinculado' ? 'Não vinculado' : 'Pendente'}</Badge>
+      {carregandoSugestoes && !sug ? (
+        <div className="mt-1 flex items-center gap-1 text-[10px] text-slate-500">
+          <Loader2 className="h-3 w-3 animate-spin" />
+          Buscando sugestão…
+        </div>
+      ) : null}
+      {sug ? (
+        <div className="mt-1 space-y-1 text-[10px] text-slate-600 dark:text-slate-400">
+          <Badge tone="slate">
+            Sugestão{sug.fonte === 'api' ? ' (API)' : ' (cadastro)'}
+            {sug.ambiguo ? ' · ambíguo' : ''}
+          </Badge>
+          <div className="font-medium text-sky-800 dark:text-sky-200">
+            {sug.cliente || '—'}
+          </div>
+          <div>
+            {sug.codCliente} / proc {sug.procInterno}
+          </div>
+          {onAplicarSugestao ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onAplicarSugestao();
+              }}
+              className="mt-0.5 rounded border border-sky-300 px-1.5 py-0.5 text-[10px] font-medium text-sky-800 hover:bg-sky-50 dark:border-sky-500/40 dark:text-sky-200 dark:hover:bg-sky-950/30"
+            >
+              Aplicar sugestão
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function AcoesLinha({ onVincular, onAuto, onTratar, onIgnorar, onMarcarVinculada }) {
+  return (
+    <div className="flex flex-col gap-1" onClick={(e) => e.stopPropagation()}>
+      <button
+        type="button"
+        onClick={onVincular}
+        className="inline-flex items-center gap-1 rounded border border-slate-200 px-2 py-1 text-[10px] font-medium hover:bg-slate-100 dark:border-white/15 dark:hover:bg-white/5"
+      >
+        <Link2 className="h-3 w-3" />
+        Vincular
+      </button>
+      <button
+        type="button"
+        title="Reaplica o cruzamento automático pelo CNJ no cadastro"
+        onClick={onAuto}
+        className="inline-flex items-center gap-1 rounded border border-slate-200 px-2 py-1 text-[10px] font-medium hover:bg-slate-100 dark:border-white/15 dark:hover:bg-white/5"
+      >
+        <RotateCcw className="h-3 w-3" />
+        Auto
+      </button>
+      <button
+        type="button"
+        onClick={onMarcarVinculada}
+        className="inline-flex items-center gap-1 rounded border border-sky-200 px-2 py-1 text-[10px] font-medium text-sky-800 hover:bg-sky-50 dark:border-sky-500/40 dark:text-sky-200 dark:hover:bg-sky-950/30"
+      >
+        Vinculada
+      </button>
+      <button
+        type="button"
+        onClick={onTratar}
+        className="inline-flex items-center gap-1 rounded border border-emerald-200 px-2 py-1 text-[10px] font-medium text-emerald-800 hover:bg-emerald-50 dark:border-emerald-500/40 dark:text-emerald-200 dark:hover:bg-emerald-950/30"
+      >
+        Tratar
+      </button>
+      <button
+        type="button"
+        onClick={onIgnorar}
+        className="inline-flex items-center gap-1 rounded border border-amber-200 px-2 py-1 text-[10px] font-medium text-amber-800 hover:bg-amber-50 dark:border-amber-500/40 dark:text-amber-200 dark:hover:bg-amber-950/30"
+      >
+        Ignorar
+      </button>
+    </div>
+  );
+}
+
+function CardMobileRow({
+  row,
+  indiceCnj,
+  sugestoesApi,
+  carregandoSugestoes,
+  expandido,
+  onToggle,
+  onAbrirProcesso,
+  onAplicarSugestao,
+  onVincular,
+  onAuto,
+  onTratar,
+  onIgnorar,
+  onMarcarVinculada,
+}) {
+  const status = row._statusTratamento || 'PENDENTE';
   return (
     <article className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:border-white/10 dark:bg-[#141922]">
       <button type="button" onClick={onToggle} className="w-full text-left">
@@ -135,18 +516,31 @@ function CardMobileRow({ row, expandido, onToggle }) {
             <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
           )}
         </div>
-        <p className="mt-2 font-mono text-xs text-sky-800 dark:text-sky-300">
-          {row.numeroProcessoEncontrado || '—'}
-        </p>
-        <p className="mt-1 line-clamp-3 text-xs text-slate-700 dark:text-slate-300" title={row.teor}>
-          {truncarTeor(row.teor, 150)}
-        </p>
-        <p className="mt-2 truncate text-[10px] text-slate-500">{row.arquivoOrigemNome || '—'}</p>
-        <p className="mt-1 text-[10px] text-slate-400">Importado: {fmtInstant(row.createdAt)}</p>
+        <p className="mt-2 font-mono text-xs text-sky-800 dark:text-sky-300">{cnjLinha(row)}</p>
+        <p className="mt-1 line-clamp-3 text-xs text-slate-700 dark:text-slate-300">{truncarTeor(teorLinha(row), 150)}</p>
       </button>
+      <div className="mt-2 border-t border-slate-100 pt-2 dark:border-white/10">
+        <CelulaVinculo
+          row={row}
+          indiceCnj={indiceCnj}
+          sugestoesApi={sugestoesApi}
+          carregandoSugestoes={carregandoSugestoes}
+          onAbrirProcesso={onAbrirProcesso}
+          onAplicarSugestao={onAplicarSugestao}
+        />
+        <div className="mt-2">
+          <AcoesLinha
+            onVincular={onVincular}
+            onAuto={onAuto}
+            onTratar={onTratar}
+            onIgnorar={onIgnorar}
+            onMarcarVinculada={onMarcarVinculada}
+          />
+        </div>
+      </div>
       {expandido ? (
         <pre className="mt-3 max-h-48 overflow-auto whitespace-pre-wrap rounded border border-slate-200 bg-slate-50 p-2 text-xs dark:border-white/10 dark:bg-white/5">
-          {row.teor || '—'}
+          {teorLinha(row) || '—'}
         </pre>
       ) : null}
     </article>
@@ -159,12 +553,54 @@ export function PublicacoesEmail() {
   const [loading, setLoading] = useState(true);
   const [processando, setProcessando] = useState(false);
   const [err, setErr] = useState('');
+  const [msgOk, setMsgOk] = useState('');
   const [buscaTexto, setBuscaTexto] = useState('');
   const [filtroStatus, setFiltroStatus] = useState('');
+  const [filtroVinculo, setFiltroVinculo] = useState('todos');
   const [buscaDebounced, setBuscaDebounced] = useState('');
   const [resultadoProcessamento, setResultadoProcessamento] = useState(null);
   const [expandidoId, setExpandidoId] = useState(null);
   const [modalPublicacao, setModalPublicacao] = useState(null);
+  const [processoEmbed, setProcessoEmbed] = useState(null);
+  const [indiceCnj, setIndiceCnj] = useState(new Map());
+  const [sugestoesApi, setSugestoesApi] = useState(() => new Map());
+  const [carregandoSugestoes, setCarregandoSugestoes] = useState(false);
+  const [vinculoModal, setVinculoModal] = useState(null);
+  const [vincForm, setVincForm] = useState({ codCliente: '', procInterno: '', cliente: '' });
+  const [vinculoFormErro, setVinculoFormErro] = useState('');
+  const [ordemDataAsc, setOrdemDataAsc] = useState(true);
+  const [ordenacaoDataAtiva, setOrdenacaoDataAtiva] = useState(false);
+
+  useEffect(() => {
+    void montarIndiceCnjClienteProcAsync().then((m) => setIndiceCnj(m));
+  }, []);
+
+  useEffect(() => {
+    if (indiceCnj.size === 0 && rows.length > 0) {
+      void montarIndiceCnjClienteProcAsync().then((m) => {
+        if (m.size > 0) setIndiceCnj(m);
+      });
+    }
+  }, [rows.length, indiceCnj.size]);
+
+  useEffect(() => {
+    if (!rows.length) {
+      setSugestoesApi(new Map());
+      setCarregandoSugestoes(false);
+      return undefined;
+    }
+    let cancelled = false;
+    setCarregandoSugestoes(true);
+    void carregarSugestoesVinculoPorPublicacoes(rows).then((m) => {
+      if (!cancelled) {
+        setSugestoesApi(m);
+        setCarregandoSugestoes(false);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [rows]);
 
   useEffect(() => {
     const t = setTimeout(() => setBuscaDebounced(buscaTexto.trim()), 400);
@@ -178,6 +614,7 @@ export function PublicacoesEmail() {
       const data = await buscarPublicacoesEmail({
         texto: buscaDebounced || undefined,
         status: filtroStatus || undefined,
+        filtroVinculo,
       });
       setRows(data);
     } catch (e) {
@@ -186,24 +623,47 @@ export function PublicacoesEmail() {
     } finally {
       setLoading(false);
     }
-  }, [buscaDebounced, filtroStatus]);
+  }, [buscaDebounced, filtroStatus, filtroVinculo]);
 
   useEffect(() => {
     carregar();
   }, [carregar]);
 
+  const rowsExibidas = useMemo(() => {
+    if (!ordenacaoDataAtiva) return rows;
+    return [...rows].sort((a, b) => {
+      const da = parseDataPublicacaoMs(a.dataPublicacao);
+      const db = parseDataPublicacaoMs(b.dataPublicacao);
+      if (da !== db) return ordemDataAsc ? da - db : db - da;
+      return Number(b.id ?? 0) - Number(a.id ?? 0);
+    });
+  }, [rows, ordenacaoDataAtiva, ordemDataAsc]);
+
   const totalLabel = useMemo(() => {
     const n = rows.length;
-    const temFiltro = Boolean(buscaDebounced || filtroStatus);
+    const processosUnicos = new Set(
+      rows.map((r) => String(cnjLinha(r)).trim().toUpperCase()).filter((c) => c !== '—')
+    ).size;
+    const comSugestao = rows.filter(
+      (r) => r.statusVinculo !== 'vinculado' && resolverSugestaoVinculoLinha(r, indiceCnj, sugestoesApi)
+    ).length;
+    const temFiltro = Boolean(buscaDebounced || filtroStatus || filtroVinculo !== 'todos');
+    const sugestaoTxt =
+      comSugestao > 0
+        ? ` · ${comSugestao} com sugestão de vínculo${carregandoSugestoes ? ' (carregando…)' : ''}`
+        : carregandoSugestoes
+          ? ' · buscando sugestões de vínculo…'
+          : '';
     if (temFiltro) {
-      return `${n} publicação${n === 1 ? '' : 'ões'} (filtro ativo)`;
+      return `${n} publicação${n === 1 ? '' : 'ões'} · ${processosUnicos} processo${processosUnicos === 1 ? '' : 's'} único${processosUnicos === 1 ? '' : 's'} (filtro ativo)${sugestaoTxt}`;
     }
-    return `${n} publicação${n === 1 ? '' : 'ões'} importada${n === 1 ? '' : 's'} por email`;
-  }, [rows.length, buscaDebounced, filtroStatus]);
+    return `${n} publicação${n === 1 ? '' : 'ões'} · ${processosUnicos} processo${processosUnicos === 1 ? '' : 's'} único${processosUnicos === 1 ? '' : 's'} por email${sugestaoTxt}`;
+  }, [rows, buscaDebounced, filtroStatus, filtroVinculo, indiceCnj, sugestoesApi, carregandoSugestoes]);
 
   const handleProcessar = async () => {
     setProcessando(true);
     setErr('');
+    setMsgOk('');
     setResultadoProcessamento(null);
     try {
       const res = await processarEmailsAgora();
@@ -216,6 +676,145 @@ export function PublicacoesEmail() {
     }
   };
 
+  const alterarStatus = async (row, status) => {
+    setErr('');
+    setMsgOk('');
+    try {
+      await alterarStatusPublicacao(row._apiId ?? row.id, status, 'Atualização na tela de publicações por email.');
+      setMsgOk(`Status atualizado para ${STATUS_LABEL[status] || status}.`);
+      await carregar();
+    } catch (e) {
+      setErr(e?.message || 'Falha ao atualizar status.');
+    }
+  };
+
+  const abrirVinculoModal = (row) => {
+    const sug = resolverSugestaoVinculoLinha(row, indiceCnj, sugestoesApi);
+    setVinculoModal({ id: row.id });
+    setVincForm({
+      codCliente: row.codCliente || sug?.codCliente || '',
+      procInterno: row.procInterno || sug?.procInterno || '',
+      cliente: row.cliente || sug?.cliente || '',
+    });
+    setVinculoFormErro(sug?.ambiguo ? 'Há mais de um processo com CNJ semelhante; confira código e proc. interno.' : '');
+    if (sug) return;
+    void buscarSugestaoVinculoPorCnjDiagnostico(cnjLinha(row)).then((sugApi) => {
+      if (!sugApi) return;
+      setVincForm((f) => ({
+        codCliente: f.codCliente || sugApi.codCliente || '',
+        procInterno: f.procInterno || sugApi.procInterno || '',
+        cliente: f.cliente || sugApi.cliente || '',
+      }));
+      if (sugApi.ambiguo) {
+        setVinculoFormErro('Há mais de um processo com CNJ semelhante; confira código e proc. interno.');
+      }
+    });
+  };
+
+  const aplicarSugestaoVinculo = async (row) => {
+    const sug = resolverSugestaoVinculoLinha(row, indiceCnj, sugestoesApi);
+    if (!sug?.codCliente || !sug?.procInterno) {
+      setErr('Não há sugestão de vínculo para este CNJ no cadastro.');
+      return;
+    }
+    setErr('');
+    setMsgOk('');
+    try {
+      const vinculado = await vincularPublicacaoProcessoPorChaveNatural(
+        row._apiId ?? row.id,
+        sug.codCliente,
+        sug.procInterno,
+        'Vínculo pela sugestão de cadastro (CNJ).'
+      );
+      if (vinculado == null) {
+        setErr('Não foi possível aplicar a sugestão na API.');
+        return;
+      }
+      setMsgOk('Sugestão de vínculo aplicada com sucesso.');
+      await carregar();
+    } catch (e) {
+      setErr(e?.message || 'Falha ao aplicar sugestão de vínculo.');
+    }
+  };
+
+  const confirmarVinculoModal = async () => {
+    const row = rows.find((x) => x.id === vinculoModal?.id);
+    if (!row) return;
+    try {
+      const vinculado = await vincularPublicacaoProcessoPorChaveNatural(
+        row._apiId ?? row.id,
+        vincForm.codCliente,
+        vincForm.procInterno,
+        'Vínculo manual via tela de publicações por email.'
+      );
+      if (vinculado == null) {
+        setVinculoFormErro('Não foi possível resolver processo por código/proc. interno.');
+        return;
+      }
+      setVinculoModal(null);
+      setVinculoFormErro('');
+      setMsgOk('Vínculo salvo com sucesso.');
+      await carregar();
+    } catch (e) {
+      setVinculoFormErro(e?.message || 'Falha ao vincular publicação na API.');
+    }
+  };
+
+  const reaplicarVinculoAuto = async (row) => {
+    setErr('');
+    setMsgOk('');
+    const pubId = row._apiId ?? row.id;
+    try {
+      await vincularPublicacaoProcessoAutomatico(
+        pubId,
+        'Vínculo automático por CNJ (processo cadastrado no sistema).'
+      );
+      setMsgOk('Vínculo automático aplicado ao processo existente no cadastro.');
+      await carregar();
+      return;
+    } catch (eApi) {
+      const resHit = buscarHitIndiceCnjPorCnj(indiceCnj, cnjLinha(row));
+      const hit = resHit?.hit;
+      if (!hit) {
+        setErr(
+          eApi?.message ||
+            'Nenhum processo cadastrado com este CNJ. Cadastre o processo em Processos ou vincule manualmente.'
+        );
+        return;
+      }
+      try {
+        const v = await vincularPublicacaoProcessoPorChaveNatural(
+          pubId,
+          hit.codCliente,
+          hit.proc,
+          'Vínculo automático pelo índice CNJ (cadastro).'
+        );
+        if (v == null) {
+          setErr('Não foi possível vincular automaticamente na API.');
+          return;
+        }
+        setMsgOk('Vínculo automático aplicado.');
+        await carregar();
+      } catch (e2) {
+        setErr(e2?.message || 'Falha ao reaplicar vínculo automático.');
+      }
+    }
+  };
+
+  const abrirProcesso = (row) => {
+    const state = construirStateProcessosDesdeLinha(row, indiceCnj, sugestoesApi);
+    if (state) navigate('/processos', { state });
+  };
+
+  const abrirFormularioProcessoFlutuante = useCallback(
+    (row) => {
+      const st = construirStateProcessosDesdeLinha(row, indiceCnj, sugestoesApi);
+      if (!st) return;
+      setProcessoEmbed({ revision: Date.now(), routerState: st });
+    },
+    [indiceCnj, sugestoesApi]
+  );
+
   const toggleLinha = (row) => {
     if (window.matchMedia('(min-width: 768px)').matches) {
       setModalPublicacao(row);
@@ -223,6 +822,20 @@ export function PublicacoesEmail() {
     }
     setExpandidoId((prev) => (prev === row.id ? null : row.id));
   };
+
+  const toggleOrdemDataPublicacao = (e) => {
+    e.preventDefault();
+    setOrdenacaoDataAtiva(true);
+    setOrdemDataAsc((v) => !v);
+  };
+
+  const acoesProps = (row) => ({
+    onVincular: () => abrirVinculoModal(row),
+    onAuto: () => void reaplicarVinculoAuto(row),
+    onTratar: () => void alterarStatus(row, 'TRATADA'),
+    onIgnorar: () => void alterarStatus(row, 'IGNORADA'),
+    onMarcarVinculada: () => void alterarStatus(row, 'VINCULADA'),
+  });
 
   return (
     <div className="min-h-full bg-gradient-to-br from-slate-100 via-sky-50/35 to-indigo-50/40 text-slate-900 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d] dark:text-slate-100">
@@ -269,16 +882,19 @@ export function PublicacoesEmail() {
             <p className="font-medium text-emerald-900 dark:text-emerald-100">Processamento concluído</p>
             <ul className="mt-2 space-y-1 text-emerald-800 dark:text-emerald-200">
               <li>Emails lidos: {resultadoProcessamento.emailsLidos ?? 0}</li>
-              <li>Publicações processadas: {resultadoProcessamento.publicacoesProcessadas ?? 0}</li>
+              <li>Publicações encontradas: {resultadoProcessamento.publicacoesEncontradas ?? 0}</li>
+              <li>Processos únicos: {resultadoProcessamento.processosUnicos ?? 0}</li>
+              <li>Publicações gravadas: {resultadoProcessamento.publicacoesProcessadas ?? 0}</li>
+              <li>Duplicadas ignoradas: {resultadoProcessamento.publicacoesDuplicadasIgnoradas ?? 0}</li>
+              <li>Vínculos automáticos (CNJ): {resultadoProcessamento.vinculosAutomaticos ?? 0}</li>
               <li>Erros: {(resultadoProcessamento.erros || []).length}</li>
             </ul>
-            {(resultadoProcessamento.erros || []).length > 0 ? (
-              <ul className="mt-2 list-disc pl-5 text-xs text-red-700 dark:text-red-300">
-                {resultadoProcessamento.erros.map((msg) => (
-                  <li key={msg}>{msg}</li>
-                ))}
-              </ul>
-            ) : null}
+          </div>
+        ) : null}
+
+        {msgOk ? (
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-200">
+            {msgOk}
           </div>
         ) : null}
 
@@ -295,7 +911,7 @@ export function PublicacoesEmail() {
               type="search"
               value={buscaTexto}
               onChange={(e) => setBuscaTexto(e.target.value)}
-              placeholder="Buscar no teor ou número do processo…"
+              placeholder="Buscar no teor, CNJ, cliente…"
               className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-3 text-sm dark:border-white/15 dark:bg-white/5"
             />
           </div>
@@ -306,6 +922,17 @@ export function PublicacoesEmail() {
           >
             {STATUS_OPCOES.map((op) => (
               <option key={op.value || 'todos'} value={op.value}>
+                {op.label}
+              </option>
+            ))}
+          </select>
+          <select
+            value={filtroVinculo}
+            onChange={(e) => setFiltroVinculo(e.target.value)}
+            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-white/15 dark:bg-white/5"
+          >
+            {VINCULO_FILTRO_OPCOES.map((op) => (
+              <option key={op.value} value={op.value}>
                 {op.label}
               </option>
             ))}
@@ -324,49 +951,97 @@ export function PublicacoesEmail() {
         ) : (
           <>
             <div className="space-y-3 md:hidden">
-              {rows.map((row) => (
+              {rowsExibidas.map((row) => (
                 <CardMobileRow
                   key={row.id}
                   row={row}
+                  indiceCnj={indiceCnj}
+                  sugestoesApi={sugestoesApi}
+                  carregandoSugestoes={carregandoSugestoes}
                   expandido={expandidoId === row.id}
                   onToggle={() => toggleLinha(row)}
+                  onAbrirProcesso={() => abrirProcesso(row)}
+                  onAplicarSugestao={() => void aplicarSugestaoVinculo(row)}
+                  {...acoesProps(row)}
                 />
               ))}
             </div>
             <div className="hidden overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-white/10 dark:bg-[#141922] md:block">
-              <table className="w-full min-w-[960px] text-xs">
+              <table className="w-full min-w-[1280px] text-xs">
                 <thead className="bg-slate-50 text-left text-slate-600 dark:bg-white/5 dark:text-slate-400">
                   <tr>
-                    <th className="px-3 py-2.5 font-medium">Data publicação</th>
+                    <th
+                      className="cursor-pointer select-none whitespace-nowrap px-3 py-2.5 font-medium hover:bg-slate-100/80 dark:hover:bg-white/10"
+                      onDoubleClick={toggleOrdemDataPublicacao}
+                    >
+                      Data publicação
+                      {ordenacaoDataAtiva ? (
+                        <span className="ml-1 text-[10px] opacity-70">{ordemDataAsc ? '↑' : '↓'}</span>
+                      ) : null}
+                    </th>
                     <th className="px-3 py-2.5 font-medium">Nº processo</th>
-                    <th className="min-w-[280px] px-3 py-2.5 font-medium">Teor</th>
-                    <th className="min-w-[180px] px-3 py-2.5 font-medium">Origem / Email</th>
+                    <th className="min-w-[140px] px-3 py-2.5 font-medium">Cliente / proc.</th>
+                    <th className="min-w-[220px] px-3 py-2.5 font-medium">Teor</th>
+                    <th className="min-w-[160px] px-3 py-2.5 font-medium">Vínculo</th>
+                    <th className="min-w-[160px] px-3 py-2.5 font-medium">Origem / Email</th>
+                    <th className="whitespace-nowrap px-3 py-2.5 font-medium">Recebimento</th>
                     <th className="px-3 py-2.5 font-medium">Status</th>
-                    <th className="px-3 py-2.5 font-medium">Importação</th>
+                    <th className="w-[120px] px-3 py-2.5 font-medium">Ações</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-white/10">
-                  {rows.map((row) => {
-                    const status = row.statusTratamento || 'PENDENTE';
+                  {rowsExibidas.map((row) => {
+                    const status = row._statusTratamento || 'PENDENTE';
+                    const destaque =
+                      row.statusVinculo === 'nao_vinculado' || row.statusVinculo === 'sem_cnj'
+                        ? 'border-l-2 border-l-amber-400/80'
+                        : '';
                     return (
                       <tr
                         key={row.id}
-                        className="cursor-pointer hover:bg-slate-50/80 dark:hover:bg-white/5"
-                        onClick={() => toggleLinha(row)}
-                        title="Clique para ver o teor completo"
+                        className={`align-top hover:bg-slate-50/80 dark:hover:bg-white/5 ${destaque}`}
                       >
-                        <td className="whitespace-nowrap px-3 py-2.5">{fmtDataBr(row.dataPublicacao)}</td>
-                        <td className="whitespace-nowrap px-3 py-2.5 font-mono text-sky-800 dark:text-sky-300">
-                          {row.numeroProcessoEncontrado || '—'}
-                        </td>
-                        <td className="px-3 py-2.5 text-slate-700 dark:text-slate-300" title={row.teor}>
-                          {truncarTeor(row.teor, 150)}
+                        <td
+                          className="cursor-pointer whitespace-nowrap px-3 py-2.5"
+                          onClick={() => toggleLinha(row)}
+                          title="Ver teor completo"
+                        >
+                          {fmtDataBr(row.dataPublicacao)}
                         </td>
                         <td
-                          className="max-w-[220px] truncate px-3 py-2.5 text-slate-600 dark:text-slate-400"
-                          title={row.arquivoOrigemNome}
+                          className="cursor-pointer whitespace-nowrap px-3 py-2.5 font-mono text-sky-800 dark:text-sky-300"
+                          onClick={() => toggleLinha(row)}
                         >
-                          {row.arquivoOrigemNome || '—'}
+                          {cnjLinha(row)}
+                        </td>
+                        <td className="max-w-[160px] px-3 py-2.5">
+                          <CelulaClienteProc row={row} indiceCnj={indiceCnj} sugestoesApi={sugestoesApi} />
+                        </td>
+                        <td
+                          className="cursor-pointer px-3 py-2.5 text-slate-700 dark:text-slate-300"
+                          onClick={() => toggleLinha(row)}
+                          title={teorLinha(row)}
+                        >
+                          {truncarTeor(teorLinha(row), 120)}
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <CelulaVinculo
+                            row={row}
+                            indiceCnj={indiceCnj}
+                            sugestoesApi={sugestoesApi}
+                            carregandoSugestoes={carregandoSugestoes}
+                            onAbrirProcesso={() => abrirProcesso(row)}
+                            onAplicarSugestao={() => void aplicarSugestaoVinculo(row)}
+                          />
+                        </td>
+                        <td
+                          className="max-w-[200px] truncate px-3 py-2.5 text-slate-600 dark:text-slate-400"
+                          title={row.arquivoOrigem}
+                        >
+                          {row.arquivoOrigem || '—'}
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-2.5 text-slate-600 dark:text-slate-400">
+                          {fmtInstant(row.emailRecebidoEm)}
                         </td>
                         <td className="px-3 py-2.5">
                           <span
@@ -375,7 +1050,9 @@ export function PublicacoesEmail() {
                             {STATUS_LABEL[status] || status}
                           </span>
                         </td>
-                        <td className="whitespace-nowrap px-3 py-2.5 text-slate-500">{fmtInstant(row.createdAt)}</td>
+                        <td className="px-3 py-2.5">
+                          <AcoesLinha {...acoesProps(row)} />
+                        </td>
                       </tr>
                     );
                   })}
@@ -386,7 +1063,74 @@ export function PublicacoesEmail() {
         )}
       </div>
 
-      {modalPublicacao ? <ModalTeor publicacao={modalPublicacao} onClose={() => setModalPublicacao(null)} /> : null}
+      {modalPublicacao ? (
+        <ModalTeor
+          publicacao={modalPublicacao}
+          onClose={() => setModalPublicacao(null)}
+          onAbrirProcesso={() => abrirFormularioProcessoFlutuante(modalPublicacao)}
+        />
+      ) : null}
+      {processoEmbed ? (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/55 p-2 sm:p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="publicacoes-email-processo-embed-title"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setProcessoEmbed(null);
+          }}
+        >
+          <div
+            className="flex h-[min(100dvh-0.5rem,920px)] max-h-[min(100dvh-0.5rem,920px)] min-h-0 w-[min(100vw-0.5rem,1280px)] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-white/10 dark:bg-[#0f141c]"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2 dark:border-white/10 dark:bg-[#141c2c]">
+              <h2
+                id="publicacoes-email-processo-embed-title"
+                className="text-sm font-semibold text-slate-900 dark:text-white"
+              >
+                Processo (cadastro)
+              </h2>
+              <button
+                type="button"
+                onClick={() => setProcessoEmbed(null)}
+                className="rounded-lg p-1.5 text-slate-600 hover:bg-slate-200 dark:text-slate-300 dark:hover:bg-white/10"
+                aria-label="Fechar formulário de processo"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain [-webkit-overflow-scrolling:touch]">
+              <Suspense
+                fallback={
+                  <div className="flex min-h-[12rem] items-center justify-center p-8 text-sm text-slate-600 dark:text-slate-400">
+                    Carregando formulário de processos…
+                  </div>
+                }
+              >
+                <ProcessosLazy
+                  key={processoEmbed.revision}
+                  embedIntent={processoEmbed.routerState}
+                  embedIntentRevision={processoEmbed.revision}
+                  onFecharEmbed={() => setProcessoEmbed(null)}
+                />
+              </Suspense>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {vinculoModal ? (
+        <ModalVinculo
+          vincForm={vincForm}
+          setVincForm={setVincForm}
+          vinculoFormErro={vinculoFormErro}
+          onClose={() => {
+            setVinculoModal(null);
+            setVinculoFormErro('');
+          }}
+          onConfirmar={confirmarVinculoModal}
+        />
+      ) : null}
     </div>
   );
 }
