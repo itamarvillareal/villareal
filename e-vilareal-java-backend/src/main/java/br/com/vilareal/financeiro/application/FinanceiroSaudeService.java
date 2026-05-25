@@ -1,5 +1,7 @@
 package br.com.vilareal.financeiro.application;
 
+import br.com.vilareal.financeiro.api.dto.FinanceiroSaudeIndicadorDto;
+import br.com.vilareal.financeiro.api.dto.FinanceiroSaudeMesAbertoDto;
 import br.com.vilareal.financeiro.api.dto.FinanceiroSaudeResponse;
 import br.com.vilareal.financeiro.domain.EtapaLancamento;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.LancamentoCartaoRepository;
@@ -61,12 +63,12 @@ public class FinanceiroSaudeService {
         response.setTotalCartao(totalCartao);
         response.setPorEtapa(porEtapa);
 
-        FinanceiroSaudeResponse.IndicadorSaude naoId = new FinanceiroSaudeResponse.IndicadorSaude();
+        FinanceiroSaudeIndicadorDto naoId = new FinanceiroSaudeIndicadorDto();
         naoId.setTotal(importados);
         naoId.setPercentual(percentual(importados, totalLancamentos));
         response.setNaoIdentificados(naoId);
 
-        FinanceiroSaudeResponse.IndicadorSaude semCli = new FinanceiroSaudeResponse.IndicadorSaude();
+        FinanceiroSaudeIndicadorDto semCli = new FinanceiroSaudeIndicadorDto();
         semCli.setTotal(aSemCliente);
         semCli.setPercentual(percentual(aSemCliente, totalLancamentos));
         response.setASemCliente(semCli);
@@ -78,7 +80,7 @@ public class FinanceiroSaudeService {
                         null, null, null, 3, false, false, false, false));
 
         for (Object[] row : lancamentoRepository.findMesesAbertosResumo()) {
-            FinanceiroSaudeResponse.MesAbertoResponse m = new FinanceiroSaudeResponse.MesAbertoResponse();
+            FinanceiroSaudeMesAbertoDto m = new FinanceiroSaudeMesAbertoDto();
             m.setAno(((Number) row[0]).intValue());
             m.setMes(((Number) row[1]).intValue());
             long total = ((Number) row[2]).longValue();

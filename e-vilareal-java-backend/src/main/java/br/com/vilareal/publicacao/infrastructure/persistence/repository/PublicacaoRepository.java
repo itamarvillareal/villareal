@@ -7,4 +7,7 @@ import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 public interface PublicacaoRepository extends JpaRepository<PublicacaoEntity, Long>, JpaSpecificationExecutor<PublicacaoEntity> {
 
     boolean existsByHashConteudo(String hashConteudo);
+
+    /** Detecta email Gmail já importado ({@code arquivo_origem_nome} termina com {@code [messageId]}). */
+    boolean existsByArquivoOrigemNomeContaining(String fragment);
 }

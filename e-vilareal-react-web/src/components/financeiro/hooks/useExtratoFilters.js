@@ -97,10 +97,18 @@ export function useExtratoFilters() {
   const filters = useMemo(() => readFilters(searchParams), [searchKey]);
 
   const [buscaDraft, setBuscaDraft] = useState(filters.busca);
+  const [debouncedBusca, setDebouncedBusca] = useState(filters.busca);
 
   useEffect(() => {
     setBuscaDraft(filters.busca);
+    setDebouncedBusca(filters.busca);
   }, [filters.busca]);
+
+  useEffect(() => {
+    if (buscaDraft === debouncedBusca) return undefined;
+    const t = window.setTimeout(() => setDebouncedBusca(buscaDraft), DEBOUNCE_MS);
+    return () => window.clearTimeout(t);
+  }, [buscaDraft, debouncedBusca]);
 
   const pushParams = useCallback(
     (buildNext) => {
@@ -114,16 +122,20 @@ export function useExtratoFilters() {
     [setSearchParams],
   );
 
+  /** Ao digitar busca, volta para página 0 antes do debounce (evita buscar só na página atual). */
   useEffect(() => {
     if (buscaDraft === filters.busca) return undefined;
-    const t = window.setTimeout(() => {
-      pushParams((prev) => {
-        const next = { ...prev, busca: buscaDraft, page: 0 };
-        return next;
-      });
-    }, DEBOUNCE_MS);
-    return () => window.clearTimeout(t);
-  }, [buscaDraft, filters.busca, pushParams]);
+    if (filters.page > 0) {
+      pushParams((prev) => ({ ...prev, page: 0 }));
+    }
+    return undefined;
+  }, [buscaDraft, filters.busca, filters.page, pushParams]);
+
+  useEffect(() => {
+    if (debouncedBusca === filters.busca) return undefined;
+    pushParams((prev) => ({ ...prev, busca: debouncedBusca, page: 0 }));
+    return undefined;
+  }, [debouncedBusca, filters.busca, pushParams]);
 
   const syncUrl = useCallback(
     (patch) => {
@@ -139,14 +151,16 @@ export function useExtratoFilters() {
 
   const apiQuery = useMemo(() => {
     const periodo = periodoParaQueryApi(filters.mes);
+    const busca = String(debouncedBusca ?? '').trim();
+    const buscaPendente = busca !== String(filters.busca ?? '').trim();
     return {
       numeroBanco: Number.isFinite(filters.banco) ? filters.banco : undefined,
       ...periodo,
       etapa: filters.etapa ?? undefined,
-      busca: filters.busca || undefined,
+      busca: busca || undefined,
       semClienteId: filters.semClienteId || undefined,
       semGrupoCompensacao: filters.semGrupoCompensacao || undefined,
-      page: filters.page,
+      page: buscaPendente ? 0 : filters.page,
       size: filters.size,
       sort: filters.sort,
     };
@@ -155,6 +169,7 @@ export function useExtratoFilters() {
     filters.mes,
     filters.etapa,
     filters.busca,
+    debouncedBusca,
     filters.semClienteId,
     filters.semGrupoCompensacao,
     filters.page,

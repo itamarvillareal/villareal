@@ -185,7 +185,11 @@ export function ExtratoPage() {
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
-  }, [filters.page, filters.size, filters.banco, filters.mes, filters.etapa, filters.contaCodigo, filters.sort]);
+  }, [filters.page, filters.size, filters.banco, filters.mes, filters.etapa, filters.contaCodigo, filters.busca, filters.sort]);
+
+  useEffect(() => {
+    limparCachePaginas();
+  }, [filters.busca, limparCachePaginas]);
 
   useEffect(() => {
     const id = filters.lancamento;
