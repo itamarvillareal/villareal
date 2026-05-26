@@ -63,6 +63,11 @@ public class ApiExceptionHandler {
         return body(HttpStatus.UNPROCESSABLE_ENTITY, ex.getMessage(), req);
     }
 
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<Map<String, Object>> illegalArgument(IllegalArgumentException ex, HttpServletRequest req) {
+        return body(HttpStatus.UNPROCESSABLE_ENTITY, ex.getMessage(), req);
+    }
+
     @ExceptionHandler(BadCredentialsException.class)
     public ResponseEntity<Map<String, Object>> badCreds(BadCredentialsException ex, HttpServletRequest req) {
         return body(HttpStatus.UNAUTHORIZED, "Login ou senha inválidos.", req);

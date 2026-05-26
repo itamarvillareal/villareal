@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+<th:block th:fragment="runs(conteudo)">
+    <th:block th:each="trecho : ${conteudo}">
+        <strong th:if="${trecho.negrito && !trecho.italico}" th:text="${trecho.texto}">texto</strong>
+        <em th:if="${trecho.italico && !trecho.negrito}" th:text="${trecho.texto}">texto</em>
+        <strong th:if="${trecho.negrito && trecho.italico}"><em th:text="${trecho.texto}">texto</em></strong>
+        <span th:if="${!trecho.negrito && !trecho.italico}" th:text="${trecho.texto}">texto</span>
+    </th:block>
+</th:block>
+
+<th:block th:fragment="paragrafo(paragrafo)">
+    <p th:class="${paragrafo.tipo.name() == 'ENUMERACAO' ? 'enumeracao' :
+                   paragrafo.tipo.name() == 'FECHO' ? 'fecho' : 'corpo'}">
+        <th:block th:replace="~{documentos/fragments-paragrafo :: runs(${paragrafo.conteudo})}"/>
+    </p>
+</th:block>
+</body>
+</html>

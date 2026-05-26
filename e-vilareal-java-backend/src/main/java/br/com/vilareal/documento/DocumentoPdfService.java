@@ -4,6 +4,7 @@ import com.openhtmltopdf.extend.FSSupplier;
 import com.openhtmltopdf.pdfboxout.PdfRendererBuilder;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import org.thymeleaf.context.Context;
 import org.thymeleaf.spring6.SpringTemplateEngine;
 
@@ -45,18 +46,30 @@ public class DocumentoPdfService {
     }
 
     public byte[] gerarPeticaoPdf(DocumentoGerarRequest request) {
-        LocalDate data = request.data() != null ? request.data() : LocalDate.now();
-        String cidadeEstado = request.cidadeEstado() != null && !request.cidadeEstado().isBlank()
-                ? request.cidadeEstado()
+        return gerarPdf(DocumentoRenderContext.legado(request));
+    }
+
+    public byte[] gerarPdf(DocumentoRenderContext ctx) {
+        LocalDate data = ctx.data() != null ? ctx.data() : LocalDate.now();
+        String cidadeEstado = ctx.cidadeEstado() != null && !ctx.cidadeEstado().isBlank()
+                ? ctx.cidadeEstado()
                 : "Anápolis, estado de Goiás";
-        String localData = montarLocalData(cidadeEstado, data);
+        String localData = StringUtils.hasText(ctx.localDataCustom())
+                ? ctx.localDataCustom()
+                : montarLocalData(cidadeEstado, data);
 
         Map<String, Object> variables = new HashMap<>();
-        variables.put("enderecamento", request.enderecamento());
-        variables.put("numeroProcesso", request.numeroProcesso());
-        variables.put("preambulo", request.preambulo());
-        variables.put("secoes", request.secoes() != null ? request.secoes() : List.of());
-        variables.put("pedidos", request.pedidos() != null ? request.pedidos() : List.of());
+        variables.put("enderecamento", ctx.enderecamento());
+        variables.put("numeroProcesso", ctx.numeroProcesso());
+        variables.put("modoReformatado", ctx.modoReformatado());
+        variables.put("nomePeca", ctx.nomePeca());
+        variables.put("preambulo", ctx.preambuloHtml());
+        variables.put("preambuloParagrafos", ctx.preambuloParagrafos());
+        variables.put("secoes", ctx.secoesLegado());
+        variables.put("secoesDocumento", ctx.secoesDocumento());
+        variables.put("fechoParagrafos", ctx.fechoParagrafos());
+        variables.put("omitirFechoPadrao", ctx.omitirFechoPadrao());
+        variables.put("pedidos", ctx.pedidos());
         variables.put("localData", localData);
         return gerarPdfDeTemplate(TEMPLATE_PETICAO, variables);
     }

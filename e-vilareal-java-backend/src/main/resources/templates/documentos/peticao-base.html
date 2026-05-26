@@ -295,6 +295,66 @@
             margin: 1pt 0 0 0;
             line-height: 1.0;
         }
+
+        .nome-peca {
+            font-family: "Arial Unicode MS", Arial, sans-serif;
+            font-size: 12pt;
+            font-weight: bold;
+            text-transform: uppercase;
+            text-align: center;
+            text-indent: 0;
+            margin: 18pt 0 18pt 0;
+            line-height: 1.0;
+        }
+
+        .titulo-principal {
+            text-align: center;
+            font-weight: bold;
+            text-transform: uppercase;
+            font-size: 12pt;
+            font-family: "Arial Unicode MS", Arial, sans-serif;
+            margin-top: 18pt;
+            margin-bottom: 12pt;
+            text-indent: 0;
+            line-height: 1.0;
+        }
+
+        .subtitulo {
+            text-align: justify;
+            font-weight: bold;
+            font-size: 12pt;
+            font-family: "Arial Unicode MS", Arial, sans-serif;
+            margin-top: 15pt;
+            margin-bottom: 10pt;
+            text-indent: 0;
+            line-height: 1.0;
+        }
+
+        .enumeracao {
+            text-align: justify;
+            font-size: 12pt;
+            font-family: "Arial Unicode MS", Arial, sans-serif;
+            text-indent: 4.0cm;
+            line-height: 1.0;
+            margin-top: 9pt;
+            margin-bottom: 9pt;
+        }
+
+        .fecho {
+            text-align: justify;
+            font-size: 12pt;
+            font-family: "Arial Unicode MS", Arial, sans-serif;
+            text-indent: 2.5cm;
+            line-height: 1.0;
+            margin-top: 4pt;
+            margin-bottom: 4pt;
+        }
+
+        .preambulo-rich p.corpo,
+        .preambulo-rich p.enumeracao {
+            text-indent: 2.0cm;
+            margin-left: 2.0cm;
+        }
     </style>
 </head>
 <body>
@@ -352,37 +412,76 @@
         Processo nº <span th:text="${numeroProcesso}">0000000-00.0000.0.00.0000</span>
     </p>
 
-    <div class="preambulo" th:utext="${preambulo}">Preâmbulo</div>
-
-    <th:block th:each="secao, secaoStat : ${secoes}">
-        <p class="titulo-secao">
-            <span th:text="${secaoStat.index + 1}">1</span>.
-            <span th:text="${secao.titulo}">DOS FATOS</span>:
-        </p>
-        <div class="secao-conteudo" th:utext="${secao.conteudo}">Conteúdo</div>
-    </th:block>
-
-    <th:block th:if="${pedidos != null and !pedidos.isEmpty()}">
-        <p class="titulo-secao">
-            <span th:text="${#lists.size(secoes) + 1}">3</span>. DOS PEDIDOS:
-        </p>
-        <table class="pedido-layout" th:each="pedido, pedidoStat : ${pedidos}">
-            <tr>
-                <td class="pedido-letra"><span th:text="${#strings.substring('abcdefghijklmnopqrstuvwxyz', pedidoStat.index, pedidoStat.index + 1)}">a</span>)</td>
-                <td class="pedido-conteudo" th:text="${pedido}">Pedido</td>
-            </tr>
-        </table>
-    </th:block>
-
-    <div class="bloco-fecho">
-        <p style="margin-top: 42pt; margin-bottom: 0; text-align: left; font-family: 'Arial Unicode MS', Arial, sans-serif; font-size: 12pt; line-height: 1.0; padding-left: 2.5cm;">Nestes termos,</p>
-        <p style="margin-top: 4pt; margin-bottom: 18pt; text-align: left; font-family: 'Arial Unicode MS', Arial, sans-serif; font-size: 12pt; line-height: 1.0; padding-left: 2.5cm;">pede deferimento.</p>
-        <p class="data" th:text="${localData}">Anápolis, estado de Goiás, data.</p>
-        <div class="assinatura">
-            <p class="assinatura-nome">Dr. ITAMAR ALEXANDRE FÉLIX VILLA REAL JÚNIOR</p>
-            <p class="assinatura-oab">OAB/GO n° 33.329</p>
+    <!-- Modo reformatado (upload Word/PDF) -->
+    <th:block th:if="${modoReformatado}">
+        <div class="preambulo-rich" th:if="${preambuloParagrafos != null and !preambuloParagrafos.isEmpty()}">
+            <th:block th:each="par : ${preambuloParagrafos}">
+                <th:block th:replace="~{documentos/fragments-paragrafo :: paragrafo(${par})}"/>
+            </th:block>
         </div>
-    </div>
+
+        <p class="nome-peca" th:if="${nomePeca != null and !nomePeca.isEmpty()}" th:text="${nomePeca}">NOME DA PEÇA</p>
+
+        <th:block th:each="secao : ${secoesDocumento}">
+            <h2 th:if="${secao.tipoTitulo.name() == 'PRINCIPAL'}" class="titulo-principal" th:text="${secao.titulo}">TÍTULO</h2>
+            <h3 th:if="${secao.tipoTitulo.name() == 'SUB'}" class="subtitulo" th:text="${secao.titulo}">Subtítulo</h3>
+            <th:block th:each="par : ${secao.paragrafos}">
+                <th:block th:replace="~{documentos/fragments-paragrafo :: paragrafo(${par})}"/>
+            </th:block>
+        </th:block>
+
+        <div class="bloco-fecho">
+            <th:block th:if="${fechoParagrafos != null and !fechoParagrafos.isEmpty()}">
+                <th:block th:each="par : ${fechoParagrafos}">
+                    <th:block th:replace="~{documentos/fragments-paragrafo :: paragrafo(${par})}"/>
+                </th:block>
+            </th:block>
+            <th:block th:unless="${omitirFechoPadrao}">
+                <p style="margin-top: 42pt; margin-bottom: 0; text-align: left; font-family: 'Arial Unicode MS', Arial, sans-serif; font-size: 12pt; line-height: 1.0; padding-left: 2.5cm;">Nestes termos,</p>
+                <p style="margin-top: 4pt; margin-bottom: 18pt; text-align: left; font-family: 'Arial Unicode MS', Arial, sans-serif; font-size: 12pt; line-height: 1.0; padding-left: 2.5cm;">pede deferimento.</p>
+            </th:block>
+            <p class="data" th:text="${localData}">Anápolis, estado de Goiás, data.</p>
+            <div class="assinatura">
+                <p class="assinatura-nome">Dr. ITAMAR ALEXANDRE FÉLIX VILLA REAL JÚNIOR</p>
+                <p class="assinatura-oab">OAB/GO n° 33.329</p>
+            </div>
+        </div>
+    </th:block>
+
+    <!-- Modo legado (IA / manual) -->
+    <th:block th:unless="${modoReformatado}">
+        <div class="preambulo" th:utext="${preambulo}">Preâmbulo</div>
+
+        <th:block th:each="secao, secaoStat : ${secoes}">
+            <p class="titulo-secao">
+                <span th:text="${secaoStat.index + 1}">1</span>.
+                <span th:text="${secao.titulo}">DOS FATOS</span>:
+            </p>
+            <div class="secao-conteudo" th:utext="${secao.conteudo}">Conteúdo</div>
+        </th:block>
+
+        <th:block th:if="${pedidos != null and !pedidos.isEmpty()}">
+            <p class="titulo-secao">
+                <span th:text="${#lists.size(secoes) + 1}">3</span>. DOS PEDIDOS:
+            </p>
+            <table class="pedido-layout" th:each="pedido, pedidoStat : ${pedidos}">
+                <tr>
+                    <td class="pedido-letra"><span th:text="${#strings.substring('abcdefghijklmnopqrstuvwxyz', pedidoStat.index, pedidoStat.index + 1)}">a</span>)</td>
+                    <td class="pedido-conteudo" th:text="${pedido}">Pedido</td>
+                </tr>
+            </table>
+        </th:block>
+
+        <div class="bloco-fecho">
+            <p style="margin-top: 42pt; margin-bottom: 0; text-align: left; font-family: 'Arial Unicode MS', Arial, sans-serif; font-size: 12pt; line-height: 1.0; padding-left: 2.5cm;">Nestes termos,</p>
+            <p style="margin-top: 4pt; margin-bottom: 18pt; text-align: left; font-family: 'Arial Unicode MS', Arial, sans-serif; font-size: 12pt; line-height: 1.0; padding-left: 2.5cm;">pede deferimento.</p>
+            <p class="data" th:text="${localData}">Anápolis, estado de Goiás, data.</p>
+            <div class="assinatura">
+                <p class="assinatura-nome">Dr. ITAMAR ALEXANDRE FÉLIX VILLA REAL JÚNIOR</p>
+                <p class="assinatura-oab">OAB/GO n° 33.329</p>
+            </div>
+        </div>
+    </th:block>
 </div>
 
 </body>
