@@ -51,6 +51,24 @@ describe('obterLinhasBaseRelatorioProcessos', () => {
     expect(rows[0].cliente).toBe('Cliente Teste');
     expect(rows[0].numeroProcesso).toContain('5004132');
     expect(rows[0].descricaoAcao).toBe('Cobrança');
+    expect(rows[0].processoCadastroAtivo).toBe(true);
+    expect(rows[0].statusAtivoTexto).toBe('Ativo');
+  });
+
+  it('com API: marca processo inativo na linha base', async () => {
+    mockListarClientes.mockResolvedValue([{ codigo: '00000001', nomeRazao: 'A', clienteInativo: false }]);
+    mockListarProcessos.mockResolvedValue([
+      {
+        id: 2,
+        codigoCliente: '00000001',
+        numeroInterno: 1,
+        numeroCnj: '0000000-00.0000.0.00.0000',
+        ativo: false,
+      },
+    ]);
+    const rows = await obterLinhasBaseRelatorioProcessos();
+    expect(rows[0].processoCadastroAtivo).toBe(false);
+    expect(rows[0].statusAtivoTexto).toBe('Inativo');
   });
 
   it('com API: retorna vazio quando não há clientes', async () => {

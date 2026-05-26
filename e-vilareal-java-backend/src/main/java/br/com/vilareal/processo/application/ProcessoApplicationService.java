@@ -1246,6 +1246,18 @@ public class ProcessoApplicationService {
         return r;
     }
 
+    /** Apelido; se vazio, login (nunca o nome civil completo do cadastro). */
+    private static String nomeExibicaoUsuario(UsuarioEntity u) {
+        if (u == null) {
+            return "";
+        }
+        String ap = u.getApelido() != null ? u.getApelido().trim() : "";
+        if (StringUtils.hasText(ap)) {
+            return Utf8MojibakeUtil.corrigir(ap);
+        }
+        return Utf8MojibakeUtil.corrigir(u.getLogin() != null ? u.getLogin().trim() : "");
+    }
+
     /**
      * @param usuarioResolvido se não nulo, usado para nome/login no DTO; se nulo, usa {@code a.getUsuario()}
      *        (criação/atualização de um único andamento dentro da mesma transação).
@@ -1261,11 +1273,8 @@ public class ProcessoApplicationService {
         UsuarioEntity u = usuarioResolvido != null ? usuarioResolvido : a.getUsuario();
         if (u != null) {
             r.setUsuarioId(u.getId());
-            String apelido =
-                    StringUtils.hasText(u.getApelido()) ? Utf8MojibakeUtil.corrigir(u.getApelido().trim()) : "";
-            String nome = StringUtils.hasText(u.getNome()) ? Utf8MojibakeUtil.corrigir(u.getNome().trim()) : "";
+            String exibicao = nomeExibicaoUsuario(u);
             String login = StringUtils.hasText(u.getLogin()) ? Utf8MojibakeUtil.corrigir(u.getLogin().trim()) : "";
-            String exibicao = StringUtils.hasText(apelido) ? apelido : nome;
             r.setUsuarioNome(StringUtils.hasText(exibicao) ? exibicao : null);
             r.setUsuarioLogin(StringUtils.hasText(login) ? login : null);
         } else {

@@ -133,10 +133,18 @@ function mesclarLinhasRelatorioComPersistido(preferirCamposDaBase, baseLinhas) {
     if (!Array.isArray(p) || p.length !== n) return base;
     return p.map((salvo, i) => {
       const b = base[i];
+      const statusDaBase =
+        typeof b.processoCadastroAtivo === 'boolean'
+          ? {
+              processoCadastroAtivo: b.processoCadastroAtivo,
+              statusAtivoTexto: b.statusAtivoTexto,
+            }
+          : {};
       if (preferirCamposDaBase) {
         return {
           ...salvo,
           ...b,
+          ...statusDaBase,
           __relatorioIdx: i,
           codCliente: b.codCliente,
           proc: b.proc,
@@ -145,6 +153,7 @@ function mesclarLinhasRelatorioComPersistido(preferirCamposDaBase, baseLinhas) {
       return {
         ...b,
         ...salvo,
+        ...statusDaBase,
         __relatorioIdx: i,
         codCliente: b.codCliente,
         proc: b.proc,

@@ -119,6 +119,7 @@ export async function obterLinhasBaseRelatorioProcessos() {
         proc: String(p),
         processoApiId: raw.id != null ? Number(raw.id) : null,
         processoCadastroAtivo: u.statusAtivo !== false,
+        statusAtivoTexto: u.statusAtivo === false ? 'Inativo' : 'Ativo',
         numeroProcesso: String(u.numeroProcessoNovo ?? '').trim(),
         inRequerente: (cHash + p + idx) % 4 === 1 ? 'REQUERIDO' : '',
         ultimoAndamento: `ANDAMENTO — ${descricao.slice(0, 80)}`,

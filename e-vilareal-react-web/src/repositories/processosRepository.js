@@ -9,6 +9,7 @@ import {
   agruparConsultasRealizadasPorProcesso,
   ehTituloHistoricoSistemaLegado,
 } from '../domain/historicoTituloLegadoSistema.js';
+import { getNomeExibicaoUsuario } from '../data/usuarioDisplayHelpers.js';
 
 function padCliente8(value) {
   const d = String(value ?? '').replace(/\D/g, '');
@@ -1038,7 +1039,7 @@ export async function upsertPrazoFatalProcesso(processoId, prazoFatalBr) {
   return request(`/api/processos/${pidNum}/prazos`, { method: 'POST', body });
 }
 
-/** Rótulo do utilizador na grade «Histórico»: sempre em maiúsculas (apelido / nome). */
+/** Rótulo do utilizador na grade «Histórico»: sempre em maiúsculas (apelido / login). */
 export function formatarUsuarioHistoricoExibicao(s) {
   const t = String(s ?? '').trim();
   if (!t) return '';
@@ -1047,6 +1048,23 @@ export function formatarUsuarioHistoricoExibicao(s) {
   } catch {
     return t.toUpperCase();
   }
+}
+
+/**
+ * Exibe só apelido (ou login) do utilizador — nunca o nome civil gravado em andamentos antigos.
+ * @param {{ usuario?: string, usuarioId?: number|null }} entrada
+ * @param {Array<{ id?: string|number, apelido?: string, login?: string, nome?: string }>} [usuariosAtivos]
+ */
+export function usuarioHistoricoParaExibicao(entrada, usuariosAtivos = []) {
+  const uid = entrada?.usuarioId;
+  if (uid != null) {
+    const u = (usuariosAtivos || []).find((x) => Number(x.id) === Number(uid));
+    if (u) {
+      const rotulo = getNomeExibicaoUsuario(u);
+      if (rotulo && rotulo !== '—') return formatarUsuarioHistoricoExibicao(rotulo);
+    }
+  }
+  return formatarUsuarioHistoricoExibicao(entrada?.usuario ?? '');
 }
 
 export function mapApiAndamentoToHistoricoItem(a, idx = 0, total = 1) {

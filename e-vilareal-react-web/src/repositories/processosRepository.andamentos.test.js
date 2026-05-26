@@ -5,6 +5,7 @@ import {
   mapApiAndamentoToHistoricoItem,
   resolverIdAndamentoPersistido,
   toIsoDateTimeFromBrDate,
+  usuarioHistoricoParaExibicao,
 } from './processosRepository.js';
 
 describe('toIsoDateTimeFromBrDate', () => {
@@ -189,5 +190,34 @@ describe('entradaHistoricoPertenceAoUsuarioAtivo', () => {
         }
       )
     ).toBe(true);
+  });
+});
+
+describe('usuarioHistoricoParaExibicao', () => {
+  const usuarios = [
+    { id: 1, apelido: 'ITAMAR', login: 'itamar', nome: 'ITAMAR ALEXANDRE FELIX VILLA REAL JUNIOR' },
+    { id: 2, apelido: 'KARLA', login: 'karla' },
+  ];
+
+  it('prioriza apelido do catálogo quando há usuarioId', () => {
+    expect(
+      usuarioHistoricoParaExibicao(
+        { usuario: 'ITAMAR ALEXANDRE FELIX VILLA REAL JUNIOR', usuarioId: 1 },
+        usuarios
+      )
+    ).toBe('ITAMAR');
+  });
+
+  it('usa login do catálogo quando apelido está vazio', () => {
+    expect(
+      usuarioHistoricoParaExibicao(
+        { usuario: 'MARIA SILVA COMPLETA', usuarioId: 3 },
+        [{ id: 3, apelido: '', login: 'maria.silva' }]
+      )
+    ).toBe('MARIA.SILVA');
+  });
+
+  it('mantém texto legado importado sem usuarioId', () => {
+    expect(usuarioHistoricoParaExibicao({ usuario: 'ANA LUISA' }, usuarios)).toBe('ANA LUISA');
   });
 });

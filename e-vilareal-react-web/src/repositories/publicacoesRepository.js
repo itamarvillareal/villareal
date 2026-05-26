@@ -433,7 +433,11 @@ export async function importarPublicacoesDaPrevia(itens, arquivoOrigem, meta = {
 export async function alterarStatusPublicacao(id, status, observacao = '') {
   if (!featureFlags.useApiPublicacoes) {
     const statusVinculo = status === 'VINCULADA' || status === 'TRATADA' ? 'vinculado' : status === 'IGNORADA' ? 'ignorada' : 'nao_vinculado';
-    updatePublicacaoImportada(id, { statusVinculo, observacoesTecnicas: observacao || '' });
+    updatePublicacaoImportada(id, {
+      statusVinculo,
+      _statusTratamento: status,
+      observacoesTecnicas: observacao || '',
+    });
     return null;
   }
   return request(`/api/publicacoes/${Number(id)}/status`, {
