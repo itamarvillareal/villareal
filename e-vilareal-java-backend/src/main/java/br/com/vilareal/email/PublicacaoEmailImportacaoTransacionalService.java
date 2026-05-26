@@ -3,6 +3,7 @@ package br.com.vilareal.email;
 import br.com.vilareal.common.exception.BusinessRuleException;
 import br.com.vilareal.publicacao.api.dto.PublicacaoWriteRequest;
 import br.com.vilareal.publicacao.application.PublicacaoApplicationService;
+import br.com.vilareal.publicacao.infrastructure.persistence.repository.PublicacaoRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,9 +16,18 @@ import org.springframework.transaction.annotation.Transactional;
 public class PublicacaoEmailImportacaoTransacionalService {
 
     private final PublicacaoApplicationService publicacaoApplicationService;
+    private final PublicacaoRepository publicacaoRepository;
 
-    public PublicacaoEmailImportacaoTransacionalService(PublicacaoApplicationService publicacaoApplicationService) {
+    public PublicacaoEmailImportacaoTransacionalService(
+            PublicacaoApplicationService publicacaoApplicationService,
+            PublicacaoRepository publicacaoRepository) {
         this.publicacaoApplicationService = publicacaoApplicationService;
+        this.publicacaoRepository = publicacaoRepository;
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW, rollbackFor = Exception.class)
+    public int removerPublicacoesDoEmail(String messageId) {
+        return publicacaoRepository.deleteByArquivoOrigemNomeContaining("[" + messageId + "]");
     }
 
     /**

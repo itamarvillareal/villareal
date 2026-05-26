@@ -12,7 +12,7 @@ public class ProcessoAndamentoResponse {
     private Boolean origemAutomatica;
     private Long usuarioId;
 
-    /** Texto para exibição: {@code usuarios.apelido} se preenchido, senão {@code usuarios.nome}. */
+    /** Texto para exibição: {@code usuarios.apelido} se preenchido, senão {@code usuarios.login}. */
     private String usuarioNome;
 
     /** Login do usuário (tabela {@code usuarios.login}); útil quando nome estiver vazio. */

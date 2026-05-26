@@ -465,10 +465,9 @@ export function getCamposExtrasRelatorioPorProcesso(codClienteRaw, procRaw) {
 
   const papel = String(reg?.papelParte ?? '').toLowerCase();
   const temRegistro = !!reg;
-  /** Sem persistência local: coluna de status fica vazia; filtro «ativos» ainda inclui a linha (boolean true). */
-  const processoCadastroAtivo = temRegistro ? reg.statusAtivo !== false : true;
-  const statusAtivoTexto =
-    temRegistro ? (reg.statusAtivo === false ? 'Inativo' : 'Ativo') : '';
+  /** Só o cadastro local define status aqui; sem registro, não sobrescrever o valor da listagem API na linha. */
+  const processoCadastroAtivo = temRegistro ? reg.statusAtivo !== false : undefined;
+  const statusAtivoTexto = temRegistro ? (reg.statusAtivo === false ? 'Inativo' : 'Ativo') : undefined;
 
   const base = {
     codigoClienteProcesso: mock.codigoCliente,
@@ -494,8 +493,7 @@ export function getCamposExtrasRelatorioPorProcesso(codClienteRaw, procRaw) {
       reg?.numeroProcessoNovo != null && String(reg.numeroProcessoNovo).trim() !== ''
         ? String(reg.numeroProcessoNovo)
         : mock.numeroProcessoNovo ?? '',
-    processoCadastroAtivo,
-    statusAtivoTexto,
+    ...(processoCadastroAtivo !== undefined ? { processoCadastroAtivo, statusAtivoTexto } : {}),
     parteRequerenteTexto: temRegistro ? simNao(papel === 'requerente') : '',
     parteRevelTexto: '',
     parteRequeridoTexto: temRegistro ? simNao(papel === 'requerido') : '',

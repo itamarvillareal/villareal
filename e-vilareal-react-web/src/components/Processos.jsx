@@ -134,6 +134,7 @@ import { CampoNumeroComContador } from './ui/CampoNumeroComContador.jsx';
 import {
   buscarClientePorCodigo,
   formatarUsuarioHistoricoExibicao,
+  usuarioHistoricoParaExibicao,
   buscarProcessoPorChaveNatural,
   resolverProcessoId,
   mapApiProcessoToUiShape,
@@ -276,7 +277,7 @@ function hojeBr() {
   return `${dd}/${mm}/${yyyy}`;
 }
 
-/** Mesmo critério do seletor «Perfil ativo» no menu (apelido ou nome do cadastro Agenda). */
+/** Mesmo critério do seletor «Perfil ativo» no menu (apelido ou login). */
 function nomeUsuarioAtivoParaHistorico() {
   const perfilId = getPerfilAtivoParaPermissoes();
   const lista = getUsuariosAtivos();
@@ -286,6 +287,10 @@ function nomeUsuarioAtivoParaHistorico() {
   const id = String(perfilId || '').trim();
   if (id) return formatarUsuarioHistoricoExibicao(id.charAt(0).toUpperCase() + id.slice(1).toLowerCase());
   return formatarUsuarioHistoricoExibicao('Usuário');
+}
+
+function rotuloUsuarioHistoricoLinha(h) {
+  return usuarioHistoricoParaExibicao(h, getUsuariosAtivos());
 }
 
 function usuarioAtivoIdParaHistorico() {
@@ -3799,7 +3804,15 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                           key={`hist-m-${h.id}-${rowIdx}`}
                           type="button"
                           className="w-full rounded-xl border border-slate-200 bg-white p-3 text-left shadow-sm ring-1 ring-slate-100/80 active:bg-slate-50"
-                          onClick={() => setInformacaoModal({ info: h.info, inf: h.inf, data: h.data, usuario: h.usuario })}
+                          onClick={() =>
+                            setInformacaoModal({
+                              info: h.info,
+                              inf: h.inf,
+                              data: h.data,
+                              usuario: h.usuario,
+                              usuarioId: h.usuarioId,
+                            })
+                          }
                         >
                           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2 text-xs text-slate-500">
                             <span className="font-mono font-semibold text-slate-700">Inf. {h.inf}</span>
@@ -3808,8 +3821,8 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                           <p className="mt-2 line-clamp-3 text-sm text-slate-800" title={h.info}>
                             {h.info}
                           </p>
-                          <p className="mt-1 truncate text-xs text-slate-500" title={formatarUsuarioHistoricoExibicao(h.usuario)}>
-                            {formatarUsuarioHistoricoExibicao(h.usuario)}
+                          <p className="mt-1 truncate text-xs text-slate-500" title={rotuloUsuarioHistoricoLinha(h)}>
+                            {rotuloUsuarioHistoricoLinha(h)}
                           </p>
                         </button>
                       ))
@@ -3852,7 +3865,15 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                               <tr
                                 key={`hist-d-${h.id}-${rowIdx}`}
                                 className="cursor-pointer border-t border-slate-100 even:bg-slate-50/40 hover:bg-slate-100 transition-colors"
-                                onDoubleClick={() => setInformacaoModal({ info: h.info, inf: h.inf, data: h.data, usuario: h.usuario })}
+                                onDoubleClick={() =>
+                                  setInformacaoModal({
+                                    info: h.info,
+                                    inf: h.inf,
+                                    data: h.data,
+                                    usuario: h.usuario,
+                                    usuarioId: h.usuarioId,
+                                  })
+                                }
                                 title="Duplo clique para ver o texto completo"
                               >
                                 <td className="whitespace-nowrap py-1.5 pl-2 pr-6 align-top text-slate-700">Inf.: {h.inf}</td>
@@ -3863,8 +3884,8 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                                 </td>
                                 <td className="whitespace-nowrap px-2 py-1.5 align-top text-slate-600">{h.data}</td>
                                 <td className="max-w-[11ch] min-w-0 py-1.5 pl-2 pr-2 align-top text-slate-700">
-                                  <div className="truncate" title={formatarUsuarioHistoricoExibicao(h.usuario)}>
-                                    {formatarUsuarioHistoricoExibicao(h.usuario)}
+                                  <div className="truncate" title={rotuloUsuarioHistoricoLinha(h)}>
+                                    {rotuloUsuarioHistoricoLinha(h)}
                                   </div>
                                 </td>
                               </tr>
@@ -5037,7 +5058,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                 className="min-w-0 flex-1 text-sm font-semibold leading-snug text-slate-800"
               >
                 Inf.: {informacaoModal.inf} — {informacaoModal.data} —{' '}
-                {formatarUsuarioHistoricoExibicao(informacaoModal.usuario)}
+                {usuarioHistoricoParaExibicao(informacaoModal, getUsuariosAtivos())}
               </h2>
               <button
                 type="button"

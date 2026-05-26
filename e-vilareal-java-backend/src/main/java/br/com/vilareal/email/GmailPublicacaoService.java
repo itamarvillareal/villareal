@@ -89,7 +89,7 @@ public class GmailPublicacaoService {
             }
 
             if (reprocessarEmailsExistentes && jaImportado) {
-                int removidos = removerPublicacoesDoEmail(messageId);
+                int removidos = importacaoTransacional.removerPublicacoesDoEmail(messageId);
                 log.info(
                         "Reprocessamento email {}: removidas {} publicação(ões) anteriores antes de nova extração",
                         messageId,
@@ -207,10 +207,6 @@ public class GmailPublicacaoService {
                 resumo.getPublicacoesDuplicadasIgnoradas(),
                 resumo.getErros().size());
         return resumo;
-    }
-
-    private int removerPublicacoesDoEmail(String messageId) {
-        return publicacaoRepository.deleteByArquivoOrigemNomeContaining("[" + messageId + "]");
     }
 
     private boolean emailJaImportado(String messageId) {
