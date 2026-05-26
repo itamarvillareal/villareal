@@ -57,6 +57,7 @@ import {
   LazyWhatsAppConversas,
   LazyWhatsAppEnviarMensagem,
   LazyWhatsAppAgendamentos,
+  LazyPoliticaPrivacidade,
 } from './app/lazyScreens.jsx';
 import { atualizarIndicesMensaisAposDia10 } from './services/monetaryIndicesService.js';
 import {
@@ -333,6 +334,20 @@ function App() {
       <AuthProvider>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route
+            path="/privacidade"
+            element={
+              <Suspense
+                fallback={
+                  <div className="flex min-h-screen items-center justify-center bg-white p-8 text-sm text-slate-600">
+                    Carregando…
+                  </div>
+                }
+              >
+                <LazyPoliticaPrivacidade />
+              </Suspense>
+            }
+          />
           <Route element={<ProtectedRoute />}>
             <Route element={<Layout />}>
               <Route path="/" element={<Navigate to="/agenda" replace />} />

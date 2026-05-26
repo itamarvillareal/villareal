@@ -49,8 +49,51 @@ export function downloadPdfBlob(blob, filename) {
   window.URL.revokeObjectURL(url);
 }
 
-export function nomeArquivoPeticaoPdf() {
-  return `peticao_${new Date().toISOString().split('T')[0]}.pdf`;
+export function nomeArquivoPeticaoPdf(sufixo) {
+  const base = sufixo
+    ? String(sufixo)
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-zA-Z0-9]+/g, '_')
+        .replace(/^_|_$/g, '')
+        .slice(0, 40)
+    : 'peticao';
+  return `${base}_${new Date().toISOString().split('T')[0]}.pdf`;
+}
+
+function headersMultipart() {
+  const h = { ...buildAuditoriaHeaders() };
+  const t = getAccessToken();
+  if (t) h.Authorization = `Bearer ${t}`;
+  return h;
+}
+
+/**
+ * Envia Word (.docx) ou PDF e devolve PDF com identidade visual do escritório.
+ */
+export async function formatarArquivoPdf(arquivo, opts = {}) {
+  const fd = new FormData();
+  fd.append('arquivo', arquivo);
+  if (opts.enderecamento) fd.append('enderecamento', opts.enderecamento);
+  if (opts.numeroProcesso) fd.append('numeroProcesso', opts.numeroProcesso);
+  if (opts.cidadeEstado) fd.append('cidadeEstado', opts.cidadeEstado);
+  if (opts.data) fd.append('data', opts.data);
+  if (opts.codigoCliente) fd.append('codigoCliente', String(opts.codigoCliente));
+  if (opts.numeroInterno != null && opts.numeroInterno !== '') {
+    fd.append('numeroInterno', String(opts.numeroInterno));
+  }
+
+  const res = await fetch(`${API_BASE_URL}/api/documentos/reformatar`, {
+    method: 'POST',
+    headers: headersMultipart(),
+    body: fd,
+    signal: opts.signal,
+  });
+  if (res.status === 401) emitApiUnauthorized();
+  if (!res.ok) {
+    throw new Error(await parseErrorResponse(res));
+  }
+  return res.blob();
 }
 
 export async function gerarPdfComIA(dados, opts = {}) {

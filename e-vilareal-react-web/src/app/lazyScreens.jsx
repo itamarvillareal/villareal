@@ -151,3 +151,7 @@ export const LazyWhatsAppAgendamentos = fromNamed(
   () => import('../components/whatsapp/Agendamentos.jsx'),
   'WhatsAppAgendamentos',
 );
+export const LazyPoliticaPrivacidade = fromNamed(
+  () => import('../pages/PoliticaPrivacidade.jsx'),
+  'PoliticaPrivacidade',
+);

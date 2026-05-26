@@ -9,7 +9,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -26,18 +28,24 @@ public class DocumentoController {
     private final ProcuracaoService procuracaoService;
     private final GoogleDriveService googleDriveService;
     private final DocumentoDrivePastaService documentoDrivePastaService;
+    private final DocumentoArquivoImportacaoService arquivoImportacaoService;
+    private final DocumentoReformatarService reformatarService;
 
     public DocumentoController(
             DocumentoPdfService pdfService,
             PeticaoAiService peticaoAiService,
             ProcuracaoService procuracaoService,
             GoogleDriveService googleDriveService,
-            DocumentoDrivePastaService documentoDrivePastaService) {
+            DocumentoDrivePastaService documentoDrivePastaService,
+            DocumentoArquivoImportacaoService arquivoImportacaoService,
+            DocumentoReformatarService reformatarService) {
         this.pdfService = pdfService;
         this.peticaoAiService = peticaoAiService;
         this.procuracaoService = procuracaoService;
         this.googleDriveService = googleDriveService;
         this.documentoDrivePastaService = documentoDrivePastaService;
+        this.arquivoImportacaoService = arquivoImportacaoService;
+        this.reformatarService = reformatarService;
     }
 
     @PostMapping("/gerar-pdf")
@@ -69,6 +77,65 @@ public class DocumentoController {
     public ResponseEntity<DocumentoGerarRequest> gerarConteudoComIA(@RequestBody PeticaoAiRequest request) {
         DocumentoGerarRequest documentoRequest = peticaoAiService.gerarConteudoPeticao(request);
         return ResponseEntity.ok(documentoRequest);
+    }
+
+    @PostMapping("/reformatar")
+    public ResponseEntity<byte[]> reformatar(
+            @RequestParam("arquivo") MultipartFile arquivo,
+            @RequestParam(value = "enderecamento", required = false) String enderecamento,
+            @RequestParam(value = "numeroProcesso", required = false) String numeroProcesso,
+            @RequestParam(value = "cidadeEstado", required = false) String cidadeEstado,
+            @RequestParam(value = "data", required = false) String data,
+            @RequestParam(value = "codigoCliente", required = false) String codigoCliente,
+            @RequestParam(value = "numeroInterno", required = false) Integer numeroInterno)
+            throws Exception {
+        return responderReformatacao(
+                arquivo, enderecamento, numeroProcesso, cidadeEstado, data, codigoCliente, numeroInterno);
+    }
+
+    @PostMapping("/formatar-arquivo")
+    public ResponseEntity<byte[]> formatarArquivo(
+            @RequestParam("arquivo") MultipartFile arquivo,
+            @RequestParam(value = "enderecamento", required = false) String enderecamento,
+            @RequestParam(value = "numeroProcesso", required = false) String numeroProcesso,
+            @RequestParam(value = "cidadeEstado", required = false) String cidadeEstado,
+            @RequestParam(value = "data", required = false) String data,
+            @RequestParam(value = "codigoCliente", required = false) String codigoCliente,
+            @RequestParam(value = "numeroInterno", required = false) Integer numeroInterno)
+            throws Exception {
+        return responderReformatacao(
+                arquivo, enderecamento, numeroProcesso, cidadeEstado, data, codigoCliente, numeroInterno);
+    }
+
+    private ResponseEntity<byte[]> responderReformatacao(
+            MultipartFile arquivo,
+            String enderecamento,
+            String numeroProcesso,
+            String cidadeEstado,
+            String data,
+            String codigoCliente,
+            Integer numeroInterno)
+            throws Exception {
+        byte[] pdf = reformatarService.reformatar(arquivo, enderecamento, numeroProcesso, cidadeEstado, data);
+        LocalDate dataDoc = LocalDate.now();
+        if (data != null && !data.isBlank()) {
+            try {
+                dataDoc = LocalDate.parse(data.trim());
+            } catch (Exception ignored) {
+                // mantém hoje
+            }
+        }
+        String nomeSaida = nomePdfReformatado(arquivo.getOriginalFilename(), dataDoc);
+        salvarPdfNoDriveAsync(pdf, nomeSaida, codigoCliente, numeroInterno, null, TipoDocumento.PETICAO);
+        return respostaPdf(nomeSaida, pdf);
+    }
+
+    private static String nomePdfReformatado(String nomeOriginal, LocalDate data) {
+        if (nomeOriginal != null && !nomeOriginal.isBlank()) {
+            String base = nomeOriginal.replaceAll("(?i)\\.(docx|pdf)$", "") + "_formatado.pdf";
+            return base.replaceAll("[^a-zA-Z0-9._\\- ]", "_");
+        }
+        return DocumentoDrivePastaService.formatarNomeArquivoPeticao("Documento_Formatado", data);
     }
 
     @PostMapping("/procuracao")

@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { FileSignature, FileText, Layers, Loader2, Sparkles } from 'lucide-react';
+import { FileSignature, FileText, FileUp, Layers, Loader2, Sparkles } from 'lucide-react';
 import { mapearDadosProcessoParaFormIA } from '../../helpers/documentoHelper.js';
 import {
   downloadPdfBlob,
@@ -22,6 +22,7 @@ import { SecoesManuais } from './components/SecoesManuais.jsx';
 import { PreviewPeticao } from './components/PreviewPeticao.jsx';
 import { pedidosPreenchidos } from './components/PedidosEspecificos.jsx';
 import { ModoModeloTopicos } from './components/ModoModeloTopicos.jsx';
+import { ModoEnviarArquivo } from './components/ModoEnviarArquivo.jsx';
 
 const hojeIso = () => new Date().toISOString().split('T')[0];
 
@@ -29,6 +30,7 @@ const MODO_IA = 'ia';
 const MODO_MANUAL = 'manual';
 const MODO_PROCURACAO = 'procuracao';
 const MODO_MODELO = 'modelo';
+const MODO_ARQUIVO = 'arquivo';
 
 const estadoInicialIA = () => ({
   enderecamentoSelect: '',
@@ -140,6 +142,7 @@ export function GerarDocumento() {
   const modoIA = modo === MODO_IA;
   const modoProcuracao = modo === MODO_PROCURACAO;
   const modoModelo = modo === MODO_MODELO;
+  const modoArquivo = modo === MODO_ARQUIVO;
   const [formIA, setFormIA] = useState(formInicialIA);
   const [formManual, setFormManual] = useState(estadoInicialManual);
   const [formProcuracao, setFormProcuracao] = useState(() => ({
@@ -287,7 +290,7 @@ export function GerarDocumento() {
   const ocupado = loading || loadingPreview;
 
   return (
-    <div className={`mx-auto px-4 py-6 lg:px-6 ${modoModelo ? 'max-w-7xl pb-8' : 'max-w-4xl pb-32'}`}>
+    <div className={`mx-auto px-4 py-6 lg:px-6 ${modoModelo || modoArquivo ? 'max-w-4xl pb-8' : 'max-w-4xl pb-32'}`}>
       <header className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-100 text-cyan-700 dark:bg-cyan-500/15 dark:text-cyan-300">
@@ -296,7 +299,7 @@ export function GerarDocumento() {
           <div>
             <h1 className="text-xl font-bold text-slate-900 dark:text-slate-50">Gerar Documento</h1>
             <p className="text-sm text-slate-500 dark:text-slate-400">
-              Petições e peças processuais em PDF
+              Petições e peças processuais em PDF — inclusive a partir de Word ou PDF enviado
             </p>
           </div>
         </div>
@@ -377,6 +380,24 @@ export function GerarDocumento() {
             <Layers className="h-4 w-4" aria-hidden />
             A partir de Modelo
           </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={modoArquivo}
+            className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition ${
+              modoArquivo
+                ? 'bg-white text-cyan-700 shadow-sm dark:bg-slate-900 dark:text-cyan-300'
+                : 'text-slate-600 hover:text-slate-900 dark:text-slate-400'
+            }`}
+            onClick={() => {
+              setModo(MODO_ARQUIVO);
+              setErrors({});
+              setMensagemErro('');
+            }}
+          >
+            <FileUp className="h-4 w-4" aria-hidden />
+            Enviar arquivo
+          </button>
         </div>
       </header>
 
@@ -405,6 +426,15 @@ export function GerarDocumento() {
       <div className="space-y-4">
         {modoModelo ? (
           <ModoModeloTopicos
+            onErro={setMensagemErro}
+            onLoadingChange={(v) => {
+              if (v) setLoading(true);
+              else setLoading(false);
+            }}
+          />
+        ) : modoArquivo ? (
+          <ModoEnviarArquivo
+            dadosProcesso={dadosProcesso}
             onErro={setMensagemErro}
             onLoadingChange={(v) => {
               if (v) setLoading(true);
@@ -483,7 +513,7 @@ export function GerarDocumento() {
         )}
       </div>
 
-      {!modoModelo ? (
+      {!modoModelo && !modoArquivo ? (
       <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-slate-200 bg-white/95 px-4 py-4 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95 lg:left-56">
         <div className="mx-auto flex max-w-4xl flex-wrap items-center gap-3">
           <button type="button" className={btnPrimary} disabled={ocupado} onClick={() => void handleGerarPdf()}>
