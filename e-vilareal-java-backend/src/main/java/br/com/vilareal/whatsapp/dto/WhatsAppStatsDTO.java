@@ -1,3 +1,11 @@
 package br.com.vilareal.whatsapp.dto;
 
-public record WhatsAppStatsDTO(long sentToday, long receivedToday, long scheduledPending, long failedToday) {}
+import java.time.Instant;
+
+public record WhatsAppStatsDTO(
+        long sentToday,
+        long receivedToday,
+        long scheduledPending,
+        long failedToday,
+        boolean integrationConfigured,
+        Instant fetchedAt) {}

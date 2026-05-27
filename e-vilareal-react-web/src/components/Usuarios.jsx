@@ -515,11 +515,7 @@ export function Usuarios() {
             <h1 className="text-xl font-bold bg-gradient-to-r from-indigo-800 to-violet-800 dark:from-indigo-200 dark:to-violet-200 bg-clip-text text-transparent">
               Usuários
             </h1>
-            <p className="text-sm text-slate-600">
-              Cada usuário deve ter uma pessoa no <strong>Cadastro de Pessoas</strong> (nº único) para evitar homônimos.
-              O <strong>apelido</strong> é o único nome de usuário mostrado no sistema (Agenda, histórico de processos,
-              menu, etc.); o nome civil fica só no cadastro da pessoa. Login e senha servem para o acesso futuro.
-            </p>
+            <p className="text-sm text-slate-600">Gerencie quem tem acesso ao sistema.</p>
           </div>
         </div>
         <div className="flex flex-wrap gap-2 self-start">
@@ -550,8 +546,7 @@ export function Usuarios() {
             <div className="border-b border-white/20 bg-gradient-to-r from-indigo-600 to-violet-700 px-4 py-3">
               <h2 className="text-base font-semibold text-white">Usuários do sistema</h2>
               <p className="mt-1 text-xs text-white/85">
-                Listagem paginada (mesmo padrão do relatório de pessoas). A agenda e pendências continuam usando o espelho
-                completo de usuários ativos carregado em segundo plano.
+                Usuários cadastrados no escritório. Cada um precisa estar vinculado a uma ficha em Cadastro de Pessoas.
               </p>
             </div>
             <div className="p-4">

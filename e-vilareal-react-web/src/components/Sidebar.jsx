@@ -90,8 +90,11 @@ export function Sidebar({ mobileDrawerOpen = false, onMobileDrawerChange } = {})
     ) {
       setGruposAbertos((prev) => new Set(prev).add('admin-imoveis-grupo'));
     }
-    if (p === '/clientes' || p.startsWith('/clientes/')) {
+    if (p === '/clientes' || p.startsWith('/clientes/') || p === '/pessoas') {
       setGruposAbertos((prev) => new Set(prev).add('pessoas-grupo'));
+    }
+    if (p === '/financeiro' || p.startsWith('/financeiro/')) {
+      setGruposAbertos((prev) => new Set(prev).add('financeiro-grupo'));
     }
     if (p === '/topicos' || p.startsWith('/topicos/')) {
       setGruposAbertos((prev) => new Set(prev).add('topicos-grupo'));
@@ -205,6 +208,26 @@ export function Sidebar({ mobileDrawerOpen = false, onMobileDrawerChange } = {})
                       return;
                     }
                     if (item.id === 'admin-imoveis-grupo') {
+                      setGruposAbertos((prev) => new Set(prev).add(item.id));
+                      if (subs[0]) navigate(`/${subs[0].id}`);
+                      closeMobileDrawer();
+                      return;
+                    }
+                    if (item.id === 'pessoas-grupo') {
+                      setGruposAbertos((prev) => new Set(prev).add(item.id));
+                      const dest =
+                        subs.find((ch) => ch.id === 'clientes/lista')?.id || subs[0]?.id;
+                      if (dest) navigate(`/${dest}`);
+                      closeMobileDrawer();
+                      return;
+                    }
+                    if (item.id === 'financeiro-grupo') {
+                      setGruposAbertos((prev) => new Set(prev).add(item.id));
+                      navigate('/financeiro');
+                      closeMobileDrawer();
+                      return;
+                    }
+                    if (item.id === 'topicos-grupo') {
                       setGruposAbertos((prev) => new Set(prev).add(item.id));
                       if (subs[0]) navigate(`/${subs[0].id}`);
                       closeMobileDrawer();
@@ -357,7 +380,7 @@ export function Sidebar({ mobileDrawerOpen = false, onMobileDrawerChange } = {})
               navigate('/login', { replace: true });
             }}
           >
-            Sair (sessão API)
+            Sair do sistema
           </button>
         ) : null}
       </div>

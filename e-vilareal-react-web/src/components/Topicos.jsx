@@ -19,10 +19,10 @@ export function Topicos() {
         </div>
         <div>
           <h1 className="text-xl font-bold bg-gradient-to-r from-indigo-800 to-violet-800 dark:from-indigo-200 dark:to-violet-200 bg-clip-text text-transparent">
-            Tópicos
+            Catálogo de tópicos
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            Navegue pelas categorias; na última camada, marque os tópicos e clique em Carregar.
+            Categorias usadas em documentos e processos — não é o quadro de tarefas (veja «Pendências» no menu).
           </p>
         </div>
       </header>
@@ -32,12 +32,16 @@ export function Topicos() {
         <>
           <TopicosHierarchyPicker raiz={raiz} />
           {usandoApi && erro ? (
-            <p className="text-xs text-amber-700 dark:text-amber-300 mt-3 max-w-3xl">
-              Não foi possível carregar do servidor; exibindo hierarquia local.
+            <p className="text-xs text-amber-700 dark:text-amber-300 mt-3 max-w-3xl" role="status">
+              Não foi possível atualizar pelo servidor; a lista local continua disponível.
             </p>
           ) : null}
         </>
-      ) : null}
+      ) : (
+        <p className="text-sm text-slate-500 dark:text-slate-400 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/50 px-4 py-6 max-w-lg">
+          Nenhuma categoria de tópico disponível. Peça ao administrador para configurar a hierarquia de tópicos.
+        </p>
+      )}
     </div>
   );
 }

@@ -4,11 +4,13 @@ import { TablePaginationBar } from '../ui/TablePaginationBar.jsx';
 import { clampCadastroPessoasPageSize } from '../../api/clientesService.js';
 import { listarUsuariosPaginados, alternarUsuarioAtivo } from '../../repositories/usuariosRepository.js';
 import { getNomeExibicaoUsuario } from '../../data/usuarioDisplayHelpers.js';
+import { getApiUsuarioSessao } from '../../data/usuarioPermissoesStorage.js';
+import { mensagemErroAmigavel } from '../../utils/mensagemErroAmigavel.js';
 
 const LS_PAGE_SIZE = 'vilareal:pageSize:usuarios';
 
 const CRITERIOS = [
-  { value: 'nome', label: 'Apelido ou nome de cadastro (API)' },
+  { value: 'nome', label: 'Apelido ou nome completo' },
   { value: 'login', label: 'Login' },
   { value: 'codigo', label: 'Código (id)' },
   { value: 'nomePessoa', label: 'Nome da pessoa' },
@@ -191,14 +193,16 @@ export function UsuariosListaApiPaginada({
       </div>
 
       {error ? (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 shadow-sm">{error}</div>
+        <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 shadow-sm">
+          {mensagemErroAmigavel(error, 'carregar os usuários')}
+        </div>
       ) : null}
 
       <div className="border border-slate-200/90 rounded-2xl overflow-hidden bg-white shadow-md ring-1 ring-indigo-500/10">
         <div className="px-3 py-2.5 border-b border-white/20 bg-gradient-to-r from-indigo-600 to-violet-700 flex items-center gap-2 text-xs font-medium text-white">
           <Search className="h-3.5 w-3.5 shrink-0 opacity-90" aria-hidden />
           <span>
-            {loading ? 'Carregando…' : `${totalElements} registro(s)`} — mesma paginação do relatório de pessoas
+            {loading ? 'Carregando…' : `${totalElements} usuário(s) encontrado(s)`}
           </span>
         </div>
         <div className="overflow-x-auto">
@@ -209,7 +213,9 @@ export function UsuariosListaApiPaginada({
                 <th className="px-3 py-2.5 w-[28%]">Nome (Pessoas)</th>
                 <th className="px-3 py-2.5 w-[18%]">Apelido</th>
                 <th className="px-3 py-2.5 w-28">Login</th>
-                <th className="px-3 py-2.5 w-24">Pessoa nº</th>
+                <th className="px-3 py-2.5 w-24" title="Número da ficha no Cadastro de Pessoas">
+                  Cód. cadastro
+                </th>
                 <th className="px-3 py-2.5 w-16">Ativo</th>
                 <th className="px-3 py-2.5 text-right w-[11rem]">Ações</th>
               </tr>
@@ -228,9 +234,19 @@ export function UsuariosListaApiPaginada({
                   </td>
                 </tr>
               ) : (
-                content.map((u) => (
+                content.map((u) => {
+                  const sessaoId = getApiUsuarioSessao()?.id;
+                  const euMesmo = sessaoId != null && String(sessaoId) === String(u.id);
+                  return (
                   <tr key={String(u.id)} className="hover:bg-indigo-50/40 transition-colors">
-                    <td className="px-3 py-2 font-mono text-xs text-slate-600">{u.id}</td>
+                    <td className="px-3 py-2 font-mono text-xs text-slate-600">
+                      {u.id}
+                      {euMesmo ? (
+                        <span className="ml-1 inline-block rounded bg-indigo-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-indigo-800">
+                          Você
+                        </span>
+                      ) : null}
+                    </td>
                     <td className="px-3 py-2 text-slate-900 align-top overflow-hidden">
                       <div className="truncate" title={String(u.nomePessoa ?? '').trim() || undefined}>
                         {String(u.nomePessoa ?? '').trim() || '—'}
@@ -271,15 +287,22 @@ export function UsuariosListaApiPaginada({
                           <button
                             type="button"
                             onClick={async () => {
-                              if (!window.confirm('Inativar este usuário?')) return;
+                              const nome = getNomeExibicaoUsuario(u) || u.login || 'este usuário';
+                              if (
+                                !window.confirm(
+                                  `Tem certeza que deseja inativar ${nome}? Ele perderá o acesso ao sistema.`,
+                                )
+                              ) {
+                                return;
+                              }
                               try {
                                 await alternarUsuarioAtivo(u.id, false);
                                 await onAposMutacao?.();
                               } catch (e) {
-                                window.alert(e?.message || 'Erro ao inativar.');
+                                window.alert(mensagemErroAmigavel(e, 'inativar o usuário'));
                               }
                             }}
-                            className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 hover:bg-slate-50 shadow-sm"
+                            className="rounded-lg border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-900 hover:bg-amber-100 shadow-sm"
                           >
                             Inativar
                           </button>
@@ -287,7 +310,8 @@ export function UsuariosListaApiPaginada({
                       </div>
                     </td>
                   </tr>
-                ))
+                );
+                })
               )}
             </tbody>
           </table>

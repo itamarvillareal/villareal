@@ -606,7 +606,7 @@ const MENU_ICONS = {
   'topicos-grupo': IconTopicos,
   topicos: IconTopicos,
   'topicos/gerente': IconGerenteTopicos,
-  diagnosticos: IconDiagnosticos,
+  diagnosticos: IconRelatorioProcessos,
   'whatsapp-grupo': IconWhatsApp,
   'whatsapp/dashboard': IconWhatsAppDashboard,
   'whatsapp/conversas': IconWhatsApp,

@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { X, Stethoscope, ChevronUp, ChevronDown } from 'lucide-react';
+import { X, ClipboardList, ChevronUp, ChevronDown, Loader2 } from 'lucide-react';
+import { useUsuarioPerfil } from '../hooks/useUsuarioPerfil.js';
+import { mensagemErroAmigavel } from '../utils/mensagemErroAmigavel.js';
 import { buscarCliente, pesquisarCadastroPessoasPorNomeOuCpf } from '../api/clientesService.js';
 import {
   listarConsultasARealizarPorData,
@@ -112,26 +114,102 @@ function mergeItensDiagnosticoBuscaPessoa(apiItens, locais) {
   return [...m.values()].sort((a, b) => chaveItemDiagBuscaPessoa(a).localeCompare(chaveItemDiagBuscaPessoa(b)));
 }
 
-const BOTOES_ESQUERDA = [
-  'Consultas Realizadas',
-  'Consultas à Realizar',
-  'Audiências pendentes',
-  'Prazo Fatal',
-  'Consultas Atrasadas',
-  'Publicações',
-  'Busca pessoa',
-  'Busca por número',
-  'Réus por cliente (Excel)',
-];
+/** @typedef {{ id: string, label: string, dica: string, emBreve?: boolean }} BotaoRelatorio */
 
-const BOTOES_DIREITA = [
-  'Aguardando Documentos',
-  'Aguardando Peticionar',
-  'Aguardando Verificação',
-  'Aguardando Protocolo',
-  'Aguardando Providência',
-  'Proc. Administrativo',
-  'Baixar Protocolos',
+/** @type {{ titulo: string, botoes: BotaoRelatorio[] }[]} */
+const GRUPOS_RELATORIOS = [
+  {
+    titulo: 'Consultas e buscas',
+    botoes: [
+      {
+        id: 'Consultas Realizadas',
+        label: 'Consultas Realizadas',
+        dica: 'Lista o que foi registrado no histórico do processo na data escolhida.',
+      },
+      {
+        id: 'Consultas à Realizar',
+        label: 'Consultas a Realizar',
+        dica: 'Compromissos e consultas previstas para datas futuras.',
+      },
+      {
+        id: 'Audiências pendentes',
+        label: 'Audiências pendentes',
+        dica: 'Audiências ainda não realizadas nos processos do escritório.',
+      },
+      {
+        id: 'Prazo Fatal',
+        label: 'Prazo Fatal',
+        dica: 'Processos com prazo fatal na data informada.',
+      },
+      {
+        id: 'Consultas Atrasadas',
+        label: 'Consultas Atrasadas',
+        dica: 'Consultas que passaram da data prevista (em breve).',
+        emBreve: true,
+      },
+      {
+        id: 'Publicações',
+        label: 'Publicações',
+        dica: 'Acesso rápido ao relatório de publicações do DJE.',
+      },
+      {
+        id: 'Busca pessoa',
+        label: 'Busca por pessoa',
+        dica: 'Localiza processos vinculados a uma pessoa por nome, CPF ou código.',
+      },
+      {
+        id: 'Busca por número',
+        label: 'Busca por número',
+        dica: 'Encontra processos pelo número CNJ ou número interno.',
+      },
+      {
+        id: 'Réus por cliente (Excel)',
+        label: 'Réus por cliente (Excel)',
+        dica: 'Gera planilha Excel com os réus dos processos de um cliente.',
+      },
+    ],
+  },
+  {
+    titulo: 'Situação dos processos',
+    botoes: [
+      {
+        id: 'Aguardando Documentos',
+        label: 'Aguardando Documentos',
+        dica: 'Processos na fase em que faltam documentos do cliente.',
+      },
+      {
+        id: 'Aguardando Peticionar',
+        label: 'Aguardando Peticionar',
+        dica: 'Processos prontos para elaborar e protocolar petição.',
+      },
+      {
+        id: 'Aguardando Verificação',
+        label: 'Aguardando Verificação',
+        dica: 'Processos aguardando conferência interna antes do protocolo.',
+      },
+      {
+        id: 'Aguardando Protocolo',
+        label: 'Aguardando Protocolo',
+        dica: 'Processos com petição pronta aguardando protocolo no tribunal.',
+      },
+      {
+        id: 'Aguardando Providência',
+        label: 'Aguardando Providência',
+        dica: 'Processos que dependem de providência do escritório ou do cliente.',
+      },
+      {
+        id: 'Proc. Administrativo',
+        label: 'Processo Administrativo',
+        dica: 'Processos em fase de procedimento administrativo.',
+      },
+      {
+        id: 'Baixar Protocolos',
+        label: 'Baixar Protocolos',
+        dica: 'Download em lote de protocolos (em breve).',
+        emBreve: true,
+      },
+    ],
+  },
 ];
 
 function diaSemanaPtBr(brDate) {
@@ -215,7 +293,10 @@ function CampoDataBrComContador({ value, onChange, ariaLabel, placeholder = 'dd/
 
 export function Diagnosticos() {
   const navigate = useNavigate();
+  const { isAdmin } = useUsuarioPerfil();
   const [focado, setFocado] = useState('Consultas Realizadas');
+  const [relatorioCarregando, setRelatorioCarregando] = useState(false);
+  const [relatorioAviso, setRelatorioAviso] = useState('');
   const [modalConsultasRealizadasAberto, setModalConsultasRealizadasAberto] = useState(false);
   const [dataConsulta, setDataConsulta] = useState(() => hojeDdMmYyyy());
   const [modalResultadoAberto, setModalResultadoAberto] = useState(false);
@@ -287,6 +368,7 @@ export function Diagnosticos() {
     }
     setReusExcelErro('');
     setReusExcelProgresso('');
+    setRelatorioCarregando(true);
     setReusExcelCarregando(true);
     try {
       const res = await exportarReusClienteParaExcel(raw, (ev) => {
@@ -294,7 +376,7 @@ export function Diagnosticos() {
       });
       const { usuarioNome } = getContextoAuditoriaUsuario();
       registrarAuditoria({
-        modulo: 'Diagnósticos',
+        modulo: 'Relatórios',
         tela: '/diagnosticos',
         tipoAcao: 'EXPORTACAO_EXCEL',
         descricao: `Excel de réus por cliente: ${res.linhas} linha(s), ficheiro ${res.nomeArquivo}. Utilizador: ${usuarioNome || '—'}.`,
@@ -304,6 +386,7 @@ export function Diagnosticos() {
       setReusExcelErro(String(e?.message || e || 'Erro ao gerar o Excel.'));
     } finally {
       setReusExcelCarregando(false);
+      setRelatorioCarregando(false);
     }
   }
 
@@ -320,6 +403,7 @@ export function Diagnosticos() {
       setBuscaNumeroProcessoErro('Informe ao menos 7 dígitos (número incompleto ou sem dígitos reconhecíveis).');
       return;
     }
+    setRelatorioCarregando(true);
     setBuscaNumeroProcessoCarregando(true);
     setResultadoBuscaNumeroProcesso([]);
     try {
@@ -340,6 +424,7 @@ export function Diagnosticos() {
       );
     } finally {
       setBuscaNumeroProcessoCarregando(false);
+      setRelatorioCarregando(false);
     }
   }
 
@@ -575,6 +660,10 @@ export function Diagnosticos() {
     if (r.reason === 'mes-ano-invalido') {
       return `${prefixo}Mês ou ano inválidos.`;
     }
+    if (!isAdmin) {
+      const n = Number(r.processosAtualizados) || 0;
+      return `${prefixo}${n > 0 ? `${n} processo(s) atualizado(s) com dados da agenda.` : 'Nenhum processo precisou de atualização neste período.'}`;
+    }
     const apiFalhou = r.detalhe?.agendaApi?.reason === 'api-agenda-falha';
     const sufixoApi = apiFalhou
       ? ' — Aviso: falha ao listar compromissos na API (rede/sessão); só a agenda local foi usada nessa parte.'
@@ -586,23 +675,89 @@ export function Diagnosticos() {
     return `${prefixo}${corpo}${sufixoApi}`;
   }
 
+  function acionarRelatorio(btn) {
+    const label = btn.id;
+    setRelatorioAviso('');
+    if (btn.emBreve) {
+      setRelatorioAviso('Esta opção ainda não está disponível.');
+      setFocado(label);
+      return;
+    }
+    setFocado(label);
+    if (label === 'Consultas Realizadas') {
+      setModalConsultasRealizadasAberto(true);
+    }
+    if (label === 'Consultas à Realizar') {
+      setModalConsultasARealizarAberto(true);
+    }
+    if (label === 'Audiências pendentes') {
+      abrirListaAudienciasPendentes();
+    }
+    if (label === 'Prazo Fatal') {
+      setModalPrazoFatalAberto(true);
+    }
+    if (label === 'Publicações') {
+      setModalPublicacoesAberto(true);
+    }
+    if (label === 'Busca pessoa') {
+      setCandidatosBuscaPessoa([]);
+      setBuscaPessoaErro('');
+      setBuscaPessoaCarregando(false);
+      setTermoBuscaPessoa('');
+      setModalBuscaPessoaAberto(true);
+    }
+    if (label === 'Busca por número') {
+      setTermoBuscaNumeroProcesso('');
+      setBuscaNumeroProcessoErro('');
+      setBuscaNumeroProcessoCarregando(false);
+      setResultadoBuscaNumeroProcesso([]);
+      setRotuloBuscaNumeroProcesso('');
+      setModalBuscaNumeroProcessoAberto(true);
+    }
+    if (label === 'Réus por cliente (Excel)') {
+      setCodigoClienteReusExcel('');
+      setReusExcelErro('');
+      setReusExcelProgresso('');
+      setReusExcelCarregando(false);
+      setModalReusClienteExcelAberto(true);
+    }
+    if (label === 'Aguardando Documentos') {
+      abrirListaAguardandoDocumentos();
+    }
+    if (label === 'Aguardando Peticionar') {
+      abrirListaAguardandoPeticionar();
+    }
+    if (label === 'Aguardando Verificação') {
+      abrirListaAguardandoVerificacao();
+    }
+    if (label === 'Aguardando Protocolo') {
+      abrirListaAguardandoProtocolo();
+    }
+    if (label === 'Aguardando Providência') {
+      abrirListaAguardandoProvidencia();
+    }
+    if (label === 'Proc. Administrativo') {
+      abrirListaProcAdministrativo();
+    }
+  }
+
   async function executarSincronizacaoAudienciasAgendaProcessos() {
-    setSyncAgendaMsg('Sincronizando (API de processos + agenda local + API de agenda)…');
+    setSyncAgendaMsg('Atualizando audiências…');
     try {
       const r = await executarSincronizacaoAudienciasAgendaMesEProcessos(syncAgendaMes, syncAgendaAno);
-      setSyncAgendaMsg(mensagemResumoSincAgenda(r, `[Mês ${syncAgendaMes}/${syncAgendaAno}] `));
+      setSyncAgendaMsg(mensagemResumoSincAgenda(r, `[${syncAgendaMes}/${syncAgendaAno}] `));
     } catch (e) {
-      setSyncAgendaMsg(String(e?.message || 'Erro na sincronização.'));
+      setSyncAgendaMsg(mensagemErroAmigavel(e, 'atualizar as audiências'));
     }
   }
 
   async function executarSincronizacaoTodaAgendaProcessos() {
-    setSyncAgendaMsg('Sincronizando (API de processos + agenda local + API de agenda)…');
+    setSyncAgendaMsg('Atualizando audiências…');
     try {
       const r = await executarSincronizacaoAudienciasAgendaEProcessosCompleta();
-      setSyncAgendaMsg(mensagemResumoSincAgenda(r, '[Toda a agenda] '));
+      setSyncAgendaMsg(mensagemResumoSincAgenda(r, ''));
     } catch (e) {
-      setSyncAgendaMsg(String(e?.message || 'Erro na sincronização.'));
+      setSyncAgendaMsg(mensagemErroAmigavel(e, 'atualizar as audiências'));
     }
   }
 
@@ -631,13 +786,26 @@ export function Diagnosticos() {
 
   return (
     <div className="min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/40 to-emerald-50/50 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d] p-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:p-6">
-      <div className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl border border-slate-200/90 ring-1 ring-indigo-500/10 w-full max-w-2xl mx-auto overflow-hidden flex flex-col">
+      <div className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl border border-slate-200/90 ring-1 ring-indigo-500/10 w-full max-w-2xl mx-auto overflow-hidden flex flex-col relative">
+        {relatorioCarregando ? (
+          <div
+            className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-white/80 backdrop-blur-[2px] rounded-2xl"
+            role="status"
+            aria-live="polite"
+          >
+            <Loader2 className="h-8 w-8 animate-spin text-indigo-600" aria-hidden />
+            <p className="text-sm font-medium text-slate-700">Gerando relatório…</p>
+          </div>
+        ) : null}
         <div className="flex items-center justify-between px-5 py-4 border-b border-white/20 bg-gradient-to-r from-indigo-600 to-violet-700 text-white shrink-0">
           <div className="flex items-center gap-3 min-w-0">
             <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/15 ring-1 ring-white/20 shrink-0">
-              <Stethoscope className="w-5 h-5 text-white" aria-hidden />
+              <ClipboardList className="w-5 h-5 text-white" aria-hidden />
             </span>
-            <h2 className="text-base font-semibold text-white truncate">Informe o relatório que deseja fazer</h2>
+            <div className="min-w-0">
+              <h2 className="text-base font-semibold text-white truncate">Relatórios e Consultas</h2>
+              <p className="text-xs text-white/80 truncate">Escolha o relatório que deseja gerar</p>
+            </div>
           </div>
           <button
             type="button"
@@ -649,111 +817,45 @@ export function Diagnosticos() {
           </button>
         </div>
         <div className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-6">
-          <div className="flex flex-col gap-2">
-            {BOTOES_ESQUERDA.map((label) => (
-              <button
-                key={label}
-                type="button"
-                onFocus={() => setFocado(label)}
-                onClick={() => {
-                  setFocado(label);
-                  if (label === 'Consultas Realizadas') {
-                    setModalConsultasRealizadasAberto(true);
-                  }
-                  if (label === 'Consultas à Realizar') {
-                    setModalConsultasARealizarAberto(true);
-                  }
-                  if (label === 'Audiências pendentes') {
-                    abrirListaAudienciasPendentes();
-                  }
-                  if (label === 'Prazo Fatal') {
-                    setModalPrazoFatalAberto(true);
-                  }
-                  if (label === 'Publicações') {
-                    setModalPublicacoesAberto(true);
-                  }
-                  if (label === 'Busca pessoa') {
-                    setCandidatosBuscaPessoa([]);
-                    setBuscaPessoaErro('');
-                    setBuscaPessoaCarregando(false);
-                    setTermoBuscaPessoa('');
-                    setModalBuscaPessoaAberto(true);
-                  }
-                  if (label === 'Busca por número') {
-                    setTermoBuscaNumeroProcesso('');
-                    setBuscaNumeroProcessoErro('');
-                    setBuscaNumeroProcessoCarregando(false);
-                    setResultadoBuscaNumeroProcesso([]);
-                    setRotuloBuscaNumeroProcesso('');
-                    setModalBuscaNumeroProcessoAberto(true);
-                  }
-                  if (label === 'Réus por cliente (Excel)') {
-                    setCodigoClienteReusExcel('');
-                    setReusExcelErro('');
-                    setReusExcelProgresso('');
-                    setReusExcelCarregando(false);
-                    setModalReusClienteExcelAberto(true);
-                  }
-                }}
-                className={`px-4 py-2.5 rounded-xl border text-left text-sm font-medium transition-all ${
-                  focado === label
-                    ? 'border-indigo-400 border-2 bg-indigo-50/90 text-indigo-950 shadow-sm ring-2 ring-indigo-200/50'
-                    : 'border-slate-200/90 bg-white text-slate-700 hover:bg-slate-50 hover:border-indigo-200'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          <div className="flex flex-col gap-2">
-            {BOTOES_DIREITA.map((label) => (
-              <button
-                key={label}
-                type="button"
-                onFocus={() => setFocado(label)}
-                onClick={() => {
-                  setFocado(label);
-                  if (label === 'Aguardando Documentos') {
-                    abrirListaAguardandoDocumentos();
-                  }
-                  if (label === 'Aguardando Peticionar') {
-                    abrirListaAguardandoPeticionar();
-                  }
-                  if (label === 'Aguardando Verificação') {
-                    abrirListaAguardandoVerificacao();
-                  }
-                  if (label === 'Aguardando Protocolo') {
-                    abrirListaAguardandoProtocolo();
-                  }
-                  if (label === 'Aguardando Providência') {
-                    abrirListaAguardandoProvidencia();
-                  }
-                  if (label === 'Proc. Administrativo') {
-                    abrirListaProcAdministrativo();
-                  }
-                }}
-                className={`px-4 py-2.5 rounded-xl border text-left text-sm font-medium transition-all ${
-                  focado === label
-                    ? 'border-indigo-400 border-2 bg-indigo-50/90 text-indigo-950 shadow-sm ring-2 ring-indigo-200/50'
-                    : 'border-slate-200/90 bg-white text-slate-700 hover:bg-slate-50 hover:border-indigo-200'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+          {GRUPOS_RELATORIOS.map((grupo) => (
+            <div key={grupo.titulo} className="flex flex-col gap-2">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500 px-1">{grupo.titulo}</h3>
+              {grupo.botoes.map((btn) => (
+                <button
+                  key={btn.id}
+                  type="button"
+                  title={btn.dica}
+                  disabled={relatorioCarregando}
+                  onFocus={() => setFocado(btn.id)}
+                  onClick={() => acionarRelatorio(btn)}
+                  className={`px-4 py-2.5 rounded-xl border text-left text-sm font-medium transition-all ${
+                    btn.emBreve ? 'opacity-60 cursor-not-allowed' : ''
+                  } ${
+                    focado === btn.id
+                      ? 'border-indigo-400 border-2 bg-indigo-50/90 text-indigo-950 shadow-sm ring-2 ring-indigo-200/50'
+                      : 'border-slate-200/90 bg-white text-slate-700 hover:bg-slate-50 hover:border-indigo-200'
+                  }`}
+                >
+                  {btn.label}
+                </button>
+              ))}
+            </div>
+          ))}
         </div>
+        {relatorioAviso ? (
+          <p className="px-6 -mt-2 text-xs text-amber-800 text-center" role="status">
+            {relatorioAviso}
+          </p>
+        ) : null}
         <div className="px-6 pb-4 space-y-3 border-t border-slate-100 pt-4 bg-slate-50/30">
           <div className="rounded-2xl border border-indigo-200/40 bg-gradient-to-br from-indigo-50/50 to-violet-50/30 p-4 space-y-2 shadow-sm">
             <p className="text-xs font-medium text-slate-700 text-center">
-              Sincronizar audiências da agenda com o formulário de processos
+              Atualizar audiências nos processos a partir da agenda
             </p>
             <p className="text-[11px] text-slate-600 text-center leading-relaxed">
-              Ao abrir o sistema, roda em segundo plano: agenda no navegador,{' '}
-              <span className="font-medium">agenda na API</span> (todos os usuários, intervalo amplo) e casamento de CNJ
-              usando <span className="font-medium">processos na API</span> além do histórico local. Exige APIs de agenda,
-              clientes e processos ativas quando usar o backend. O vínculo no evento (<code className="text-[10px]">processoRef</code>)
-              ou CNJ único atualiza o histórico local (audiência).
+              {isAdmin
+                ? 'Alinha compromissos da agenda com o histórico de audiência de cada processo (local + API quando ativa).'
+                : 'Atualiza automaticamente as audiências dos processos com base nos compromissos da agenda. Escolha o mês ou toda a agenda.'}
             </p>
             <div className="flex flex-wrap items-center justify-center gap-2">
               <label className="flex items-center gap-1 text-xs text-slate-700">
@@ -783,14 +885,14 @@ export function Diagnosticos() {
                 onClick={executarSincronizacaoAudienciasAgendaProcessos}
                 className="px-3 py-1.5 rounded-lg border border-indigo-200 bg-white text-xs font-medium text-indigo-900 hover:bg-indigo-50 shadow-sm"
               >
-                Só este mês/ano
+                Atualizar este mês
               </button>
               <button
                 type="button"
                 onClick={executarSincronizacaoTodaAgendaProcessos}
                 className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-indigo-600 to-violet-600 text-xs font-semibold text-white shadow-md shadow-indigo-500/20 hover:from-indigo-500 hover:to-violet-500"
               >
-                Toda a agenda
+                Atualizar toda a agenda
               </button>
             </div>
             {syncAgendaMsg ? (
