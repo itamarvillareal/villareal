@@ -1,5 +1,5 @@
 import { Fragment, useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Plus, X } from 'lucide-react';
+import { CalendarDays, CalendarX2, ChevronLeft, ChevronRight, Plus, X } from 'lucide-react';
 import {
   buscarProcessoPorTextoCompromissoAgenda,
   mensagemResultadoLocalizarProcesso,
@@ -86,15 +86,6 @@ function parseDataBrCompleta(str) {
   return { dd, mm, yyyy };
 }
 
-/** Desloca uma data BR em dias (delta positivo = dia seguinte). */
-function somarDiasDataBr(dataBr, deltaDias) {
-  const p = parseDataBrCompleta(dataBr);
-  if (!p || !Number.isFinite(Number(deltaDias))) return null;
-  const dt = new Date(p.yyyy, p.mm - 1, p.dd);
-  dt.setDate(dt.getDate() + Number(deltaDias));
-  return { dd: dt.getDate(), mm: dt.getMonth() + 1, yyyy: dt.getFullYear() };
-}
-
 /** Ex.: "10/03/2026 (ter)" */
 function rotuloDataComDiaSemana(dataBr) {
   const p = parseDataBrCompleta(dataBr);
@@ -144,15 +135,14 @@ function AgendaPainelSemEventosApi({ nomeUsuario, dataFormatada }) {
   return (
     <div
       role="status"
-      className="flex flex-col items-center justify-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-10 text-center shadow-sm"
+      className="flex flex-col items-center justify-center gap-3 rounded-xl border border-rose-900/30 bg-gradient-to-b from-rose-950 via-rose-900 to-rose-950 px-4 py-10 text-center shadow-inner ring-1 ring-rose-950/50"
     >
-      <CalendarDays className="h-12 w-12 shrink-0 text-slate-300" strokeWidth={1.75} aria-hidden />
-      <p className="text-base font-medium leading-snug text-slate-700">
-        Nenhum compromisso agendado para <span className="font-semibold">{nomeUsuario}</span> em{' '}
-        {dataFormatada}.
+      <CalendarX2 className="h-12 w-12 shrink-0 text-rose-200/95" strokeWidth={1.75} aria-hidden />
+      <p className="text-base font-semibold leading-snug text-rose-50">
+        Sem eventos para <span className="text-white">{nomeUsuario}</span> em {dataFormatada}.
       </p>
-      <p className="max-w-sm text-sm leading-relaxed text-slate-500">
-        Use <strong>+ Novo compromisso</strong> abaixo ou escolha outro dia no calendário.
+      <p className="max-w-sm text-sm leading-relaxed text-rose-100/90">
+        Troque o usuário ou a data para ver outros dias.
       </p>
     </div>
   );
@@ -178,13 +168,10 @@ function ColunaDia({
   usarApiAgenda = false,
   onExcluirEvento = null,
   onStatusAlterado = null,
-  /** +1 dia (seta ↑) ou −1 dia (seta ↓); atualiza calendário lateral e campo Data completa. */
-  onMudarDia = null,
 }) {
   /** Última linha (novo compromisso): id criado até liberar após salvar hora/descrição. */
   const pendingNovaLinhaIdRef = useRef(null);
   const [novaLinhaBump, setNovaLinhaBump] = useState(0);
-  const [novoCompromissoVisivel, setNovoCompromissoVisivel] = useState(false);
   /** Após Tab na hora do card verde: focar descrição do compromisso criado na lista. */
   const [focoDescricaoEventoId, setFocoDescricaoEventoId] = useState(null);
 
@@ -192,7 +179,6 @@ function ColunaDia({
     pendingNovaLinhaIdRef.current = null;
     setFocoDescricaoEventoId(null);
     setNovaLinhaBump((n) => n + 1);
-    setNovoCompromissoVisivel(false);
   }, [dataBrStr, usuarioAgendaId]);
 
   function solicitarExclusaoCompromisso(ev) {
@@ -256,41 +242,17 @@ function ColunaDia({
   const idNovoFoco = `agenda-novo-foco-${dataBrStr}-${usuarioAgendaId}`;
 
   return (
-    <div className="flex w-full min-w-0 shrink-0 flex-col overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-md ring-1 ring-slate-200/60 lg:min-h-0 lg:flex-1">
-      <div className={`flex shrink-0 items-stretch text-sm font-semibold text-white shadow-sm ${headerClass}`}>
-        {onMudarDia ? (
-          <div className="flex flex-col border-r border-white/25 shrink-0">
-            <button
-              type="button"
-              onClick={() => onMudarDia(1)}
-              className="flex flex-1 min-h-[1.35rem] min-w-[2.25rem] items-center justify-center px-1 hover:bg-white/15 active:bg-white/25"
-              title="Dia seguinte (+1)"
-              aria-label="Avançar um dia"
-            >
-              <ChevronUp className="h-4 w-4" aria-hidden />
-            </button>
-            <button
-              type="button"
-              onClick={() => onMudarDia(-1)}
-              className="flex flex-1 min-h-[1.35rem] min-w-[2.25rem] items-center justify-center border-t border-white/25 px-1 hover:bg-white/15 active:bg-white/25"
-              title="Dia anterior (−1)"
-              aria-label="Voltar um dia"
-            >
-              <ChevronDown className="h-4 w-4" aria-hidden />
-            </button>
-          </div>
-        ) : null}
-        <div className="flex min-w-0 flex-1 items-center px-3 py-2.5 leading-snug">{titulo}</div>
+    <div className="flex w-full min-w-0 flex-col overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-md ring-1 ring-slate-200/60 lg:min-h-0 lg:min-w-0 lg:flex-1">
+      <div className={`shrink-0 px-3 py-2.5 text-sm font-semibold text-white shadow-sm ${headerClass}`}>
+        {titulo}
       </div>
-      <div className="bg-slate-50/50 p-2 lg:min-h-0 lg:flex-1">
+      <div className="flex min-h-0 flex-1 flex-col bg-slate-50/50 p-2">
         {apiAgendaVazio ? (
-          <div className="mb-3">
+          <div className="mb-3 shrink-0">
             <AgendaPainelSemEventosApi nomeUsuario={apiAgendaVazio.nomeUsuario} dataFormatada={apiAgendaVazio.dataFormatada} />
           </div>
         ) : null}
-        <div
-          className="max-h-[70vh] space-y-2.5 overflow-y-auto scroll-smooth pr-1 pb-2 [scrollbar-width:thin] [scrollbar-color:rgb(203_213_225)_transparent]"
-        >
+        <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto scroll-smooth pr-1 pb-2 [scrollbar-width:thin] [scrollbar-color:rgb(203_213_225)_transparent] max-lg:max-h-[min(70vh,100%)] lg:max-h-none">
           {eventos.map((ev) => (
             <CompromissoCard
               key={ev._chaveUnicaAgenda ?? ev.id}
@@ -311,23 +273,12 @@ function ColunaDia({
             />
           ))}
           {!somenteLeitura ? (
-            novoCompromissoVisivel ? (
-              <NovoCompromissoCard
-                key={`novo-${dataBrStr}-${usuarioAgendaId}-${novaLinhaBump}`}
-                idFoco={idNovoFoco}
-                salvarLinhaVazia={salvarLinhaVazia}
-                suprimirAutoFocoHora={focoDescricaoEventoId != null}
-              />
-            ) : (
-              <button
-                type="button"
-                onClick={() => setNovoCompromissoVisivel(true)}
-                className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-emerald-400/80 bg-emerald-50/80 px-3 py-3 text-sm font-semibold text-emerald-800 shadow-sm hover:bg-emerald-100/90 transition-colors"
-              >
-                <Plus className="h-4 w-4" aria-hidden />
-                Novo compromisso
-              </button>
-            )
+            <NovoCompromissoCard
+              key={`novo-${dataBrStr}-${usuarioAgendaId}-${novaLinhaBump}`}
+              idFoco={idNovoFoco}
+              salvarLinhaVazia={salvarLinhaVazia}
+              suprimirAutoFocoHora={focoDescricaoEventoId != null}
+            />
           ) : null}
         </div>
       </div>
@@ -521,7 +472,7 @@ function PainelCalendario({
       </div>
 
       <div className="rounded-xl border border-indigo-200/70 bg-white/90 p-2.5 shadow-sm ring-1 ring-indigo-100/60">
-        <div className="mb-2 text-sm font-semibold text-indigo-950">Filtrar por usuário</div>
+        <div className="mb-2 text-sm font-semibold text-indigo-950">Usuários</div>
         <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto pr-0.5">
           {usuariosSistema.map((u) => {
             const cores = corChipUsuarioAgenda(u);
@@ -548,9 +499,9 @@ function PainelCalendario({
           type="button"
           onClick={() => onAbrirUsuariosSistema?.()}
           className="min-h-11 rounded-lg border border-indigo-300 bg-gradient-to-r from-indigo-600 to-violet-600 px-3 py-2 text-sm font-semibold text-white shadow-md transition-colors hover:from-indigo-700 hover:to-violet-700"
-          title="Abrir cadastro de usuários do sistema"
+          title="Cadastro de pessoas da agenda (mesma lista da tela Usuários)"
         >
-          Gerenciar usuários
+          Usuários
         </button>
       </div>
     </aside>
@@ -788,22 +739,6 @@ export function Agenda({ focoDataBr = null, focoRevision = 0, modoFlutuante = fa
   const dataEsquerdaStr = dataStr(diaEsquerda, mesEsquerda, anoEsquerda);
   const dataDireitaStr = dataStr(diaDireita, mesDireita, anoDireita);
 
-  const mudarDataEsquerda = useCallback((deltaDias) => {
-    const next = somarDiasDataBr(dataEsquerdaStr, deltaDias);
-    if (!next) return;
-    setDiaEsquerda(next.dd);
-    setMesEsquerda(next.mm);
-    setAnoEsquerda(next.yyyy);
-  }, [dataEsquerdaStr]);
-
-  const mudarDataDireita = useCallback((deltaDias) => {
-    const next = somarDiasDataBr(dataDireitaStr, deltaDias);
-    if (!next) return;
-    setDiaDireita(next.dd);
-    setMesDireita(next.mm);
-    setAnoDireita(next.yyyy);
-  }, [dataDireitaStr]);
-
   // Recalcula ao mudar `agendaStatusNonce` (salvando statusCurto no localStorage).
   const eventosPersistidosEsquerda = getEventosAgendaPersistidosPorData(dataEsquerdaStr);
   const eventosPersistidosDireita = getEventosAgendaPersistidosPorData(dataDireitaStr);
@@ -994,22 +929,6 @@ export function Agenda({ focoDataBr = null, focoRevision = 0, modoFlutuante = fa
     [relatorioAgendaMensal]
   );
 
-  const proximosDiasResumo = useMemo(() => {
-    const base = parseDataBrCompleta(dataEsquerdaStr);
-    if (!base) return [];
-    const mapa = new Map((relatorioAgendaMensal.diasComEventos || []).map((d) => [d.dataBr, d.eventos.length]));
-    const out = [];
-    for (let i = 0; i < 7; i++) {
-      const br = somarDiasDataBr(dataEsquerdaStr, i);
-      if (!br) continue;
-      const p = parseDataBrCompleta(br);
-      if (!p || p.mm !== mesEsquerda || p.yyyy !== anoEsquerda) continue;
-      const qtd = mapa.get(br) ?? 0;
-      out.push({ dataBr: br, dia: p.dd, qtd, ehHoje: i === 0 });
-    }
-    return out;
-  }, [dataEsquerdaStr, relatorioAgendaMensal, mesEsquerda, anoEsquerda]);
-
   const indicadoresPorDiaEsquerda = useMemo(() => {
     const map = {};
     for (const { dataBr, eventos } of relatorioAgendaMensal.diasComEventos || []) {
@@ -1023,10 +942,10 @@ export function Agenda({ focoDataBr = null, focoRevision = 0, modoFlutuante = fa
 
   const rootAgendaClass = modoFlutuante
     ? 'relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-slate-100 dark:bg-[#0a0d12]'
-    : 'relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-slate-100 dark:bg-[#0a0d12]';
+    : 'relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-slate-100 dark:bg-[#0a0d12]';
   const innerAgendaClass = modoFlutuante
-    ? 'mx-auto flex w-full max-w-none flex-1 min-h-0 flex-col gap-2 overflow-y-auto overflow-x-hidden p-2 pb-2 sm:p-2 md:pb-2 lg:flex-row lg:gap-2 lg:overflow-hidden lg:pb-2'
-    : 'mx-auto flex w-full max-w-[1800px] flex-1 min-h-0 flex-col gap-4 overflow-y-auto overflow-x-hidden p-2 pb-28 sm:p-3 md:pb-24 lg:flex-row lg:gap-3 lg:overflow-hidden lg:pb-4';
+    ? 'mx-auto flex h-full w-full max-w-none flex-1 min-h-0 flex-col gap-2 overflow-y-auto overflow-x-hidden p-2 pb-2 sm:p-2 md:pb-2 lg:flex-row lg:gap-2 lg:overflow-hidden lg:pb-2'
+    : 'mx-auto flex h-full w-full max-w-[1800px] flex-1 min-h-0 flex-col gap-4 overflow-y-auto overflow-x-hidden p-2 pb-28 sm:p-3 md:pb-24 lg:flex-row lg:gap-3 lg:overflow-hidden lg:pb-3';
 
   return (
     <div className={rootAgendaClass}>
@@ -1047,9 +966,9 @@ export function Agenda({ focoDataBr = null, focoRevision = 0, modoFlutuante = fa
         indicadoresPorDia={indicadoresPorDiaEsquerda}
       />
 
-      {/* Área central: −20% (scale 0.8), proporcional como zoom */}
-      <div className="flex w-full min-w-0 shrink-0 flex-col items-center justify-center overflow-hidden lg:min-h-0 lg:flex-1">
-        <div className="flex w-full min-w-0 flex-col overflow-hidden rounded-2xl border border-slate-200/90 bg-white/95 shadow-md ring-1 ring-indigo-500/5 backdrop-blur-sm origin-center scale-[0.8] lg:min-h-0 lg:h-full lg:max-h-full">
+      {/* Área central: compromissos do dia — ocupa a altura livre entre os calendários */}
+      <div className="flex w-full min-w-0 flex-1 flex-col overflow-hidden lg:min-h-0">
+        <div className="flex h-full w-full min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200/90 bg-white/95 shadow-md ring-1 ring-indigo-500/5 backdrop-blur-sm lg:min-h-0">
         <div className="flex shrink-0 flex-col gap-2 border-b border-slate-200/80 bg-white/90 px-3 py-2.5 shadow-sm rounded-t-2xl sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
           <div className="flex min-w-0 items-center gap-2.5">
             <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-sky-500 to-indigo-600 text-white shadow-md ring-1 ring-sky-400/40 md:h-9 md:w-9">
@@ -1072,46 +991,9 @@ export function Agenda({ focoDataBr = null, focoRevision = 0, modoFlutuante = fa
             Agenda mensal
           </button>
         </div>
-        {proximosDiasResumo.length > 0 ? (
-          <div className="border-b border-slate-200/80 bg-white/95 px-2 py-2">
-            <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">Próximos 7 dias</p>
-            <div className="flex gap-1.5 overflow-x-auto pb-0.5">
-              {proximosDiasResumo.map(({ dataBr, dia, qtd, ehHoje }) => (
-                <button
-                  key={dataBr}
-                  type="button"
-                  onClick={() => {
-                    const p = parseDataBrCompleta(dataBr);
-                    if (!p) return;
-                    setAnoEsquerda(p.yyyy);
-                    setMesEsquerda(p.mm);
-                    setDiaEsquerda(p.dd);
-                    const dir = somarDiasDataBr(dataBr, 1);
-                    if (dir) {
-                      setAnoDireita(dir.yyyy);
-                      setMesDireita(dir.mm);
-                      setDiaDireita(dir.dd);
-                    }
-                  }}
-                  className={`flex min-w-[3.25rem] shrink-0 flex-col items-center rounded-lg border px-2 py-1.5 text-center transition-colors ${
-                    ehHoje
-                      ? 'border-violet-400 bg-violet-100 text-violet-900 ring-1 ring-violet-300'
-                      : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-violet-50'
-                  }`}
-                  title={rotuloDataComDiaSemana(dataBr)}
-                >
-                  <span className="text-[10px] font-semibold uppercase">{String(dia).padStart(2, '0')}</span>
-                  <span className="text-xs font-bold tabular-nums">{qtd}</span>
-                  <span className="text-[9px] text-slate-500">{qtd === 1 ? 'evt' : 'evts'}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        ) : null}
-        <div className="flex w-full min-h-0 flex-col gap-4 bg-slate-100/80 p-2 lg:flex-1 lg:flex-row lg:gap-2 lg:overflow-hidden">
+        <div className="flex min-h-0 w-full flex-1 flex-col gap-4 overflow-hidden bg-slate-100/80 p-2 lg:flex-row lg:gap-2">
           <ColunaDia
             variantColuna="esquerda"
-            onMudarDia={mudarDataEsquerda}
             dataLabel={`${dataEsquerdaStr} — Compromissos do dia`}
             eventos={eventosEsquerda}
             onStatusAlterado={aoStatusAlteradoAgenda}
@@ -1148,7 +1030,6 @@ export function Agenda({ focoDataBr = null, focoRevision = 0, modoFlutuante = fa
           />
           <ColunaDia
             variantColuna="direita"
-            onMudarDia={mudarDataDireita}
             dataLabel={`${dataDireitaStr} — Próximo dia`}
             eventos={eventosDireita}
             onStatusAlterado={aoStatusAlteradoAgenda}
@@ -1187,6 +1068,21 @@ export function Agenda({ focoDataBr = null, focoRevision = 0, modoFlutuante = fa
         </div>
       </div>
 
+      {/* Painel direito: só em lg (em mobile o 2.º dia aparece empilhado na área central). */}
+      <PainelCalendario
+        mesAtual={mesDireita}
+        anoAtual={anoDireita}
+        setMesAtual={setMesDireita}
+        setAnoAtual={setAnoDireita}
+        diaSelecionado={diaDireita}
+        setDiaSelecionado={setDiaDireita}
+        usuarioSelecionado={usuarioDireita}
+        setUsuarioSelecionado={setUsuarioDireita}
+        nomeGrupo="direita"
+        usuariosSistema={usuariosAtivos}
+        onAbrirUsuariosSistema={() => navigate('/usuarios')}
+        panelClassName="hidden lg:flex"
+      />
       </div>
 
       <button
