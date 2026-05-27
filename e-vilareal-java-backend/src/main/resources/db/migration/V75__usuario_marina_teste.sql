@@ -13,7 +13,7 @@ SELECT
     TRUE,
     FALSE
 FROM DUAL
-WHERE NOT EXISTS (SELECT 1 FROM usuarios WHERE LOWER(login) = @login_marina);
+WHERE NOT EXISTS (SELECT 1 FROM usuarios WHERE LOWER(login) = @login_marina COLLATE utf8mb4_unicode_ci);
 
 SET @pessoa_marina_id := LAST_INSERT_ID();
 
@@ -28,4 +28,4 @@ SELECT
     2
 FROM DUAL
 WHERE @pessoa_marina_id > 0
-  AND NOT EXISTS (SELECT 1 FROM usuarios WHERE LOWER(login) = @login_marina);
+  AND NOT EXISTS (SELECT 1 FROM usuarios WHERE LOWER(login) = @login_marina COLLATE utf8mb4_unicode_ci);
