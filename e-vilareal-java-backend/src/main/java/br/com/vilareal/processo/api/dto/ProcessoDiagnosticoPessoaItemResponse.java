@@ -7,6 +7,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
  */
 public class ProcessoDiagnosticoPessoaItemResponse {
 
+    private Long processoId;
     private String codigoCliente;
     private Integer numeroInterno;
     private String cliente;
@@ -14,6 +15,15 @@ public class ProcessoDiagnosticoPessoaItemResponse {
     private String parteOposta;
     private String numeroProcessoNovo;
     private String papeis;
+
+    @Schema(description = "PK do processo na tabela processo")
+    public Long getProcessoId() {
+        return processoId;
+    }
+
+    public void setProcessoId(Long processoId) {
+        this.processoId = processoId;
+    }
 
     @Schema(description = "Código do cliente dono do processo (8 dígitos)")
     public String getCodigoCliente() {

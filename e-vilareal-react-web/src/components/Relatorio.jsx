@@ -13,7 +13,7 @@ import {
 } from '../data/relatorioProcessosColunaDinamica.js';
 import { normalizarFiltroProcessoAtivo } from '../data/relatorioPresets.js';
 import { obterLinhasBaseRelatorioProcessos } from '../data/relatorioProcessosDados.js';
-import { preaquecerCamposRelatorioApiFirst } from '../data/processosDadosRelatorio.js';
+import { preaquecerCamposRelatorioApiFirst, resolverStatusAtivoRelatorioProcesso } from '../data/processosDadosRelatorio.js';
 import { featureFlags } from '../config/featureFlags.js';
 import { EVENT_RELATORIO_PERSISTENCIA_EXTERNA } from '../services/crossTabLocalStorageSync.js';
 import { buildRouterStateChaveClienteProcesso } from '../domain/camposProcessoCliente.js';
@@ -92,7 +92,9 @@ function carregarFiltroProcessoAtivoSalvo() {
 function linhaPassaFiltroAtivo(row, filtro) {
   const f = normalizarFiltroProcessoAtivo(filtro);
   if (f === 'todos') return true;
-  const ativo = row.processoCadastroAtivo === true;
+  const cod = row.codCliente ?? row.codigoClienteProcesso;
+  const proc = row.proc ?? row.numeroProcessoInterno;
+  const ativo = resolverStatusAtivoRelatorioProcesso(cod, proc, row.processoCadastroAtivo !== false);
   if (f === 'ativos') return ativo;
   return !ativo;
 }

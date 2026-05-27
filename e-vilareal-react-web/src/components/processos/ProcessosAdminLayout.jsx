@@ -249,11 +249,22 @@ export function ProcessosAccordionSection({
  *   cliente: string,
  *   statusAtivo: boolean,
  *   faseSelecionada: string,
+ *   edicaoDesabilitada?: boolean,
+ *   onEdicaoDesabilitadaChange?: (checked: boolean) => void,
  *   actions?: import('react').ReactNode,
  *   onFechar: () => void,
  * }} props
  */
-export function ProcessosStickyHeader({ numeroCnj, cliente, statusAtivo, faseSelecionada, actions, onFechar }) {
+export function ProcessosStickyHeader({
+  numeroCnj,
+  cliente,
+  statusAtivo,
+  faseSelecionada,
+  edicaoDesabilitada,
+  onEdicaoDesabilitadaChange,
+  actions,
+  onFechar,
+}) {
   const { headerRef, scrolled } = useHeaderScrollShadow();
   const cnj = String(numeroCnj ?? '').trim() || '—';
   const fase = String(faseSelecionada ?? '').trim();
@@ -271,11 +282,24 @@ export function ProcessosStickyHeader({ numeroCnj, cliente, statusAtivo, faseSel
           <p className="font-mono text-2xl font-bold text-indigo-900 break-all leading-tight" title={cnj !== '—' ? cnj : undefined}>
             {cnj}
           </p>
-          <p className="text-lg text-slate-600 truncate" title={cliente || undefined}>
-            {cliente || '—'}
-          </p>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 min-w-0">
+            <p className="min-w-0 text-lg text-slate-600 truncate" title={cliente || undefined}>
+              {cliente || '—'}
+            </p>
+            {onEdicaoDesabilitadaChange ? (
+              <label className="flex shrink-0 cursor-pointer items-center gap-2 text-sm text-slate-600">
+                <input
+                  type="checkbox"
+                  checked={Boolean(edicaoDesabilitada)}
+                  onChange={(e) => onEdicaoDesabilitadaChange(e.target.checked)}
+                  className="rounded border-slate-300 accent-indigo-600"
+                />
+                Edição Desabilitada
+              </label>
+            ) : null}
+          </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-2 shrink-0 self-start">
           <span
             className={`inline-flex px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide border ${
               statusAtivo ? 'bg-emerald-100 text-emerald-700 border-emerald-300' : 'bg-gray-100 text-gray-500 border-gray-300'

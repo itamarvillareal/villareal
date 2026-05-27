@@ -1,0 +1,17 @@
+{
+  "name": "marina-qa-agent",
+  "version": "1.0.0",
+  "description": "Agente de QA com IA — usuária fictícia que testa o portal Villa Real",
+  "main": "src/marina.js",
+  "scripts": {
+    "audit": "node src/marina.js",
+    "audit:visible": "HEADLESS=false node src/marina.js",
+    "audit:flow": "node src/marina.js --flow",
+    "setup": "npx playwright install chromium"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "playwright": "^1.49.0",
+    "dotenv": "^16.4.7"
+  }
+}

@@ -194,6 +194,82 @@ class ApiIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void agendaUpsertAudienciaProcessoNaoDuplica() {
+        String token = login();
+        long usuarioAgenda = usuarioIdParaLoginItamar(token);
+        HttpHeaders h = new HttpHeaders();
+        h.setBearerAuth(token);
+        h.setContentType(MediaType.APPLICATION_JSON);
+
+        var body = Map.of(
+                "usuarioId", usuarioAgenda,
+                "dataEvento", "2026-04-15",
+                "horaEvento", "09:00",
+                "descricao", "Audiência inicial",
+                "statusCurto", "",
+                "processoRef", "00000001|1",
+                "origem", "processos-audiencia");
+
+        ResponseEntity<Map<String, Object>> first = rest.exchange(
+                "/api/agenda/eventos/upsert-audiencia",
+                HttpMethod.PUT,
+                new HttpEntity<>(body, h),
+                new ParameterizedTypeReference<>() {});
+
+        assertThat(first.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(first.getBody()).isNotNull();
+        Long eventoId = ((Number) first.getBody().get("id")).longValue();
+
+        var bodyAlterado = Map.of(
+                "usuarioId", usuarioAgenda,
+                "dataEvento", "2026-04-20",
+                "horaEvento", "14:00",
+                "descricao", "Audiência remarcada",
+                "statusCurto", "",
+                "processoRef", "00000001|1",
+                "origem", "processos-audiencia");
+
+        ResponseEntity<Map<String, Object>> second = rest.exchange(
+                "/api/agenda/eventos/upsert-audiencia",
+                HttpMethod.PUT,
+                new HttpEntity<>(bodyAlterado, h),
+                new ParameterizedTypeReference<>() {});
+
+        assertThat(second.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(second.getBody()).isNotNull();
+        assertThat(((Number) second.getBody().get("id")).longValue()).isEqualTo(eventoId);
+        assertThat(second.getBody().get("dataEvento")).isEqualTo("2026-04-20");
+        assertThat(second.getBody().get("horaEvento")).isEqualTo("14:00");
+
+        ResponseEntity<List<Map<String, Object>>> lista = rest.exchange(
+                "/api/agenda/eventos?usuarioId="
+                        + usuarioAgenda
+                        + "&dataInicio=2026-04-01&dataFim=2026-04-30",
+                HttpMethod.GET,
+                new HttpEntity<>(h),
+                new ParameterizedTypeReference<>() {});
+
+        assertThat(lista.getBody()).hasSize(1);
+        assertThat(lista.getBody().get(0).get("descricao")).isEqualTo("Audiência remarcada");
+
+        rest.exchange(
+                "/api/agenda/eventos/por-processo?processoRef=00000001|1&origem=processos-audiencia",
+                HttpMethod.DELETE,
+                new HttpEntity<>(h),
+                Void.class);
+
+        ResponseEntity<List<Map<String, Object>>> vazio = rest.exchange(
+                "/api/agenda/eventos?usuarioId="
+                        + usuarioAgenda
+                        + "&dataInicio=2026-04-01&dataFim=2026-04-30",
+                HttpMethod.GET,
+                new HttpEntity<>(h),
+                new ParameterizedTypeReference<>() {});
+
+        assertThat(vazio.getBody()).isEmpty();
+    }
+
+    @Test
     void topicosHierarchyRetornaRaizMinima() {
         String token = login();
         HttpHeaders h = new HttpHeaders();

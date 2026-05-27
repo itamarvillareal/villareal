@@ -73,6 +73,13 @@ public class AgendaController {
         return ResponseEntity.created(uri).body(body);
     }
 
+    @PutMapping("/upsert-audiencia")
+    @Operation(description = "Cria ou atualiza audiência de processo na agenda (1 registro por usuário + processo_ref).")
+    public ResponseEntity<AgendaEventoResponse> upsertAudiencia(@Valid @RequestBody AgendaEventoWriteRequest request) {
+        AgendaEventoResponse body = agendaService.upsertAudiencia(request);
+        return ResponseEntity.ok(body);
+    }
+
     @PutMapping("/{id}")
     public AgendaEventoResponse atualizar(@PathVariable Long id, @Valid @RequestBody AgendaEventoWriteRequest request) {
         return agendaService.atualizar(id, request);
@@ -84,6 +91,15 @@ public class AgendaController {
     public ResponseEntity<Map<String, Integer>> excluirTodos() {
         int removidos = agendaService.excluirTodosEventos();
         return ResponseEntity.ok(Map.of("removidos", removidos));
+    }
+
+    @DeleteMapping("/por-processo")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Operation(description = "Remove compromissos da agenda vinculados a um processo (ex.: audiência apagada no formulário).")
+    public void excluirPorProcesso(
+            @RequestParam String processoRef,
+            @RequestParam(defaultValue = "processos-audiencia") String origem) {
+        agendaService.excluirPorProcessoRefEOrigem(processoRef, origem);
     }
 
     @DeleteMapping("/{id}")

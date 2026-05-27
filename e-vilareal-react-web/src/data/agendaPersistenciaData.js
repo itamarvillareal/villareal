@@ -630,6 +630,35 @@ export function agendarAudienciaParaTodosUsuarios({
   return { ok: true, inseridos, atualizados };
 }
 
+/**
+ * Remove da agenda (localStorage) os compromissos de audiência de um processo.
+ */
+export function removerAudienciaProcessoDaAgenda({ codigoCliente, numeroInterno }) {
+  const codPad = padCliente(codigoCliente ?? '1');
+  const procNorm = Math.max(1, Math.floor(Number(normalizarProcesso(numeroInterno ?? 1))));
+  const processoRef = montarProcessoRefAgenda(codPad, procNorm);
+  if (!processoRef) return { ok: false, reason: 'processo-ref-invalido' };
+
+  const store = loadStore();
+  let removidos = 0;
+  for (const data of Object.keys(store)) {
+    const lista = Array.isArray(store[data]) ? store[data] : [];
+    const filtrada = lista.filter((ev) => {
+      const match =
+        String(ev?.origem ?? '') === 'processos-audiencia' &&
+        String(ev?.processoRef ?? '').trim() === processoRef;
+      if (match) removidos += 1;
+      return !match;
+    });
+    if (filtrada.length !== lista.length) {
+      if (filtrada.length === 0) delete store[data];
+      else store[data] = ordenarListaEventosAgenda(filtrada);
+    }
+  }
+  if (removidos > 0) saveStore(store);
+  return { ok: true, removidos };
+}
+
 /** Coluna Status da Agenda: apenas vazio ou "OK". Qualquer outro valor vira em branco. */
 export function normalizarStatusCurtoAgenda(valor) {
   const t = String(valor ?? '').trim();

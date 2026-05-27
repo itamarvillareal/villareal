@@ -448,6 +448,7 @@ public class ProcessoApplicationService {
 
             String cnj = trimToNull(e.getNumeroCnj());
             ProcessoDiagnosticoPessoaItemResponse r = new ProcessoDiagnosticoPessoaItemResponse();
+            r.setProcessoId(e.getId());
             r.setCodigoCliente(cod8);
             r.setNumeroInterno(e.getNumeroInterno());
             r.setCliente(nomeCliente);
@@ -618,6 +619,7 @@ public class ProcessoApplicationService {
             String parteOpostaTxt = montarTextoParteOpostaListagem(partes);
             String cnj = trimToNull(e.getNumeroCnj());
             ProcessoDiagnosticoPessoaItemResponse r = new ProcessoDiagnosticoPessoaItemResponse();
+            r.setProcessoId(e.getId());
             r.setCodigoCliente(cod8);
             r.setNumeroInterno(e.getNumeroInterno());
             r.setCliente(nomeCliente);

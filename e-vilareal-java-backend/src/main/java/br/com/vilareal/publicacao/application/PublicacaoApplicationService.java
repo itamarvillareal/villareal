@@ -7,7 +7,10 @@ import br.com.vilareal.processo.application.ClienteCodigoPessoaResolver;
 import br.com.vilareal.processo.application.ProcessoApplicationService;
 import br.com.vilareal.processo.application.ProcessoDiagnosticoNumeroBuscaUtil;
 import br.com.vilareal.processo.api.dto.ProcessoPartesVinculoTexto;
+import br.com.vilareal.common.text.Utf8MojibakeUtil;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
+import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoParteEntity;
+import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoParteRepository;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
 import br.com.vilareal.publicacao.api.dto.*;
 import br.com.vilareal.publicacao.infrastructure.persistence.PublicacaoSpecifications;
@@ -22,6 +25,7 @@ import java.math.BigInteger;
 import java.time.LocalDate;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -32,6 +36,7 @@ public class PublicacaoApplicationService {
 
     private final PublicacaoRepository publicacaoRepository;
     private final ProcessoRepository processoRepository;
+    private final ProcessoParteRepository processoParteRepository;
     private final ClienteCodigoPessoaResolver clienteCodigoPessoaResolver;
     private final ProcessoApplicationService processoApplicationService;
     private final ClienteResolverService clienteResolverService;
@@ -39,11 +44,13 @@ public class PublicacaoApplicationService {
     public PublicacaoApplicationService(
             PublicacaoRepository publicacaoRepository,
             ProcessoRepository processoRepository,
+            ProcessoParteRepository processoParteRepository,
             ClienteCodigoPessoaResolver clienteCodigoPessoaResolver,
             ProcessoApplicationService processoApplicationService,
             ClienteResolverService clienteResolverService) {
         this.publicacaoRepository = publicacaoRepository;
         this.processoRepository = processoRepository;
+        this.processoParteRepository = processoParteRepository;
         this.clienteCodigoPessoaResolver = clienteCodigoPessoaResolver;
         this.processoApplicationService = processoApplicationService;
         this.clienteResolverService = clienteResolverService;
@@ -189,11 +196,96 @@ public class PublicacaoApplicationService {
     @Transactional
     public boolean tentarVinculoAutomaticoPorCnj(Long publicacaoId) {
         try {
-            patchVinculoPorCnj(publicacaoId, "Vínculo automático por CNJ na importação.");
+            PublicacaoEntity pub = requirePublicacao(publicacaoId);
+            String cnj = pub.getNumeroProcessoEncontrado();
+            if (!StringUtils.hasText(cnj)) {
+                return false;
+            }
+            String norm = ProcessoDiagnosticoNumeroBuscaUtil.normalizarSomenteDigitos(cnj);
+            if (norm.length() < 20) {
+                return false;
+            }
+            List<BigInteger> ids = processoRepository.findIdsByNumeroCnjNormalizadoDiagnostico(norm);
+            if (ids.size() != 1) {
+                return false;
+            }
+            long processoId = ids.getFirst().longValue();
+            ProcessoEntity proc = processoRepository
+                    .findById(processoId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Processo não encontrado: " + processoId));
+            proc.getPessoa().getNome();
+            String observacao = montarObservacaoVinculoAutomaticoPorCnj(pub, proc);
+            PublicacaoVinculoPatchRequest req = new PublicacaoVinculoPatchRequest();
+            req.setProcessoId(processoId);
+            req.setObservacao(observacao);
+            patchVinculoProcesso(publicacaoId, req);
             return true;
         } catch (Exception ex) {
             return false;
         }
+    }
+
+    private String montarObservacaoVinculoAutomaticoPorCnj(PublicacaoEntity pub, ProcessoEntity proc) {
+        String base = "Vínculo automático por CNJ na importação.";
+        if (textoPublicacaoContemNomeTitularOuParte(pub, proc)) {
+            return base;
+        }
+        String titular = Utf8MojibakeUtil.corrigir(proc.getPessoa().getNome());
+        return base
+                + " ATENÇÃO: titular do processo ("
+                + titular
+                + ") e partes cadastradas não encontrados no texto da publicação. Conferir.";
+    }
+
+    private boolean textoPublicacaoContemNomeTitularOuParte(PublicacaoEntity pub, ProcessoEntity proc) {
+        String texto = montarTextoBuscaNomesPublicacao(pub);
+        if (!StringUtils.hasText(texto)) {
+            return false;
+        }
+        String up = texto.toUpperCase(Locale.ROOT);
+        String titular = Utf8MojibakeUtil.corrigir(proc.getPessoa().getNome());
+        if (fragmentoNomeEncontradoNoTexto(up, titular)) {
+            return true;
+        }
+        for (ProcessoParteEntity parte : processoParteRepository.findByProcesso_IdOrderByOrdemAscIdAsc(proc.getId())) {
+            String nome = null;
+            if (parte.getPessoa() != null && StringUtils.hasText(parte.getPessoa().getNome())) {
+                nome = Utf8MojibakeUtil.corrigir(parte.getPessoa().getNome());
+            } else if (StringUtils.hasText(parte.getNomeLivre())) {
+                nome = Utf8MojibakeUtil.corrigir(parte.getNomeLivre());
+            }
+            if (fragmentoNomeEncontradoNoTexto(up, nome)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static String montarTextoBuscaNomesPublicacao(PublicacaoEntity pub) {
+        StringBuilder sb = new StringBuilder();
+        if (StringUtils.hasText(pub.getTitulo())) {
+            sb.append(pub.getTitulo().trim()).append(' ');
+        }
+        if (StringUtils.hasText(pub.getResumo())) {
+            sb.append(pub.getResumo().trim()).append(' ');
+        }
+        if (StringUtils.hasText(pub.getTeor())) {
+            sb.append(pub.getTeor().trim());
+        }
+        return sb.toString().trim();
+    }
+
+    /** Fragmento inicial do nome (mín. 4, máx. 15 caracteres) para busca tolerante no texto. */
+    private static boolean fragmentoNomeEncontradoNoTexto(String textoUpper, String nome) {
+        if (!StringUtils.hasText(nome) || !StringUtils.hasText(textoUpper)) {
+            return false;
+        }
+        String n = nome.trim().toUpperCase(Locale.ROOT);
+        if (n.length() < 4) {
+            return false;
+        }
+        int len = Math.min(15, n.length());
+        return textoUpper.contains(n.substring(0, len));
     }
 
     @Transactional
@@ -254,18 +346,22 @@ public class PublicacaoApplicationService {
                     partesPorProcessoIdOrNull != null
                             ? partesPorProcessoIdOrNull
                             : processoApplicationService.resolverTextosPartesVinculoEmLote(Set.of(proc.getId()));
+            String titularNome = Utf8MojibakeUtil.corrigir(proc.getPessoa().getNome());
+            r.setTitularNome(trimToNull(titularNome));
             ProcessoPartesVinculoTexto pt = map.get(proc.getId());
             if (pt != null) {
-                r.setParteCliente(trimToNull(pt.getParteCliente()));
+                String pc = StringUtils.hasText(titularNome) ? titularNome.trim() : trimToNull(pt.getParteCliente());
+                r.setParteCliente(pc);
                 r.setParteOposta(trimToNull(pt.getParteOposta()));
             } else {
-                r.setParteCliente(null);
+                r.setParteCliente(trimToNull(titularNome));
                 r.setParteOposta(null);
             }
         } else {
             r.setProcessoId(null);
             r.setNumeroInternoProcesso(null);
             r.setCodigoClienteProcesso(null);
+            r.setTitularNome(null);
             r.setParteCliente(null);
             r.setParteOposta(null);
         }

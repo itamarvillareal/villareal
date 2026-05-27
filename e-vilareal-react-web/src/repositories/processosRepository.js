@@ -137,6 +137,28 @@ function toBrFromIsoDate(dateIso) {
   return dataApiParaDataBr(dateIso);
 }
 
+function parseBooleanApi(value) {
+  if (value === true || value === false) return value;
+  if (typeof value === 'number') {
+    if (value === 1) return true;
+    if (value === 0) return false;
+  }
+  if (typeof value === 'string') {
+    const v = value.trim().toLowerCase();
+    if (v === 'true' || v === '1' || v === 'sim' || v === 's') return true;
+    if (v === 'false' || v === '0' || v === 'nao' || v === 'não' || v === 'n') return false;
+  }
+  return null;
+}
+
+function resolverStatusAtivoApi(p) {
+  const ativoDireto = parseBooleanApi(p?.ativo);
+  if (ativoDireto != null) return ativoDireto;
+  const inativoDireto = parseBooleanApi(p?.inativo);
+  if (inativoDireto != null) return !inativoDireto;
+  return true;
+}
+
 /** Exibe valor da causa (API numérica) no formato de campo BR (1.234,56). */
 function formatarValorCausaApiParaCampoBr(val) {
   if (val == null || val === '') return '';
@@ -1177,6 +1199,7 @@ export async function obterCamposProcessoApiFirst({ processoId, codigoCliente, n
 export function mapApiProcessoToUiShape(p) {
   const clientePk = clientePkFromApiDto(p);
   const titularId = pessoaIdFromApiDto(p);
+  const statusAtivo = resolverStatusAtivoApi(p);
   return {
     processoId: p.id,
     clienteId: clientePk,
@@ -1192,7 +1215,7 @@ export function mapApiProcessoToUiShape(p) {
     competencia: corrigirMojibakeUtf8(String(p.competencia ?? '').trim()),
     faseSelecionada: corrigirMojibakeUtf8(String(p.fase ?? '').trim()),
     observacaoFase: corrigirMojibakeUtf8(String(p.observacaoFase ?? '').trim()),
-    statusAtivo: p.ativo !== false,
+    statusAtivo,
     prazoFatal: toBrFromIsoDate(p.prazoFatal),
     proximaConsultaData: toBrFromIsoDate(p.proximaConsulta),
     observacao: corrigirMojibakeUtf8(String(p.observacao ?? '').trim()),

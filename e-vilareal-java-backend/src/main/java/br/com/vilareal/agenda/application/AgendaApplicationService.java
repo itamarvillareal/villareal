@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
 
@@ -145,6 +146,49 @@ public class AgendaApplicationService {
         aplicarCampos(e, req);
         e = agendaEventoRepository.save(e);
         return toResponse(e);
+    }
+
+    @Transactional
+    public AgendaEventoResponse upsertAudiencia(AgendaEventoWriteRequest req) {
+        if (req.getUsuarioId() == null || req.getUsuarioId() < 1) {
+            throw new BusinessRuleException("usuarioId inválido.");
+        }
+        if (req.getDataEvento() == null) {
+            throw new BusinessRuleException("dataEvento é obrigatória.");
+        }
+        String processoRef = trimToNull(Utf8MojibakeUtil.corrigir(req.getProcessoRef()));
+        if (!StringUtils.hasText(processoRef)) {
+            throw new BusinessRuleException("processoRef é obrigatório para upsert de audiência.");
+        }
+
+        String origem = "processos-audiencia";
+        Optional<AgendaEventoEntity> existente = agendaEventoRepository.findFirstByUsuario_IdAndProcessoRefAndOrigem(
+                req.getUsuarioId(), processoRef, origem);
+        if (existente.isPresent()) {
+            AgendaEventoEntity e = existente.get();
+            aplicarCampos(e, req);
+            e = agendaEventoRepository.save(e);
+            return toResponse(e);
+        }
+
+        UsuarioEntity usuario = usuarioRepository.findById(req.getUsuarioId())
+                .orElseThrow(() -> new ResourceNotFoundException("Usuário não encontrado: " + req.getUsuarioId()));
+        AgendaEventoEntity e = new AgendaEventoEntity();
+        e.setUsuario(usuario);
+        aplicarCampos(e, req);
+        e = agendaEventoRepository.save(e);
+        return toResponse(e);
+    }
+
+    @Transactional
+    public int excluirPorProcessoRefEOrigem(String processoRef, String origem) {
+        String ref = trimToNull(Utf8MojibakeUtil.corrigir(processoRef));
+        if (!StringUtils.hasText(ref)) {
+            throw new BusinessRuleException("processoRef é obrigatório.");
+        }
+        String origRaw = StringUtils.hasText(origem) ? origem.trim() : "processos-audiencia";
+        String orig = Utf8MojibakeUtil.corrigir(origRaw);
+        return agendaEventoRepository.deleteByProcessoRefAndOrigem(ref, orig);
     }
 
     @Transactional

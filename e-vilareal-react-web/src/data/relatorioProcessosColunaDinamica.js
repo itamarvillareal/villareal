@@ -243,7 +243,8 @@ export function normalizarCampoColunaDinamica(fieldKey) {
 export function enriquecerCamposRelatorioProcessos(row, idx) {
   const cod = row.codCliente != null && String(row.codCliente).trim() !== '' ? row.codCliente : String(idx + 1).padStart(8, '0');
   const proc = row.proc != null && String(row.proc).trim() !== '' ? row.proc : '1';
-  const extras = getCamposExtrasRelatorioPorProcesso(padCliente(cod), proc);
+  const fallbackApi = row.processoCadastroAtivo !== false;
+  const extras = getCamposExtrasRelatorioPorProcesso(padCliente(cod), proc, fallbackApi);
   const merged = { ...row, ...extras };
   const infoUlt = String(extras.ultimoHistoricoInfo ?? '').trim();
   const dataUlt = String(extras.ultimoHistoricoData ?? '').trim();

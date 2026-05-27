@@ -44,7 +44,13 @@ public class PublicacaoResponse {
     private boolean lida;
     private String observacao;
 
-    /** Nome da pessoa titular (cliente da pasta), quando {@link #processoId} preenchido. */
+    /**
+     * Nome do titular do processo ({@code processo.pessoa}), quando {@link #processoId} preenchido.
+     * Preferir este campo para rótulos de vínculo; {@link #parteCliente} repete o mesmo valor por compatibilidade.
+     */
+    private String titularNome;
+
+    /** Nome do titular (legado / compatível com front antigo). */
     private String parteCliente;
 
     /** Parte(s) oposta(s) agregada(s), critério alinhado a {@code ProcessoResponse#getParteOposta()}. */
