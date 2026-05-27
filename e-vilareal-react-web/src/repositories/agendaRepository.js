@@ -199,13 +199,13 @@ export async function replicarAudienciaProcessoTodosColaboradoresApi({
     return { ok: false, reason: 'usuarios-falha' };
   }
   const ativos = (Array.isArray(lista) ? lista : []).filter((u) => u && u.ativo !== false);
-  let criados = 0;
+  let sincronizados = 0;
   for (const u of ativos) {
     const idNum = Number(u.id);
     if (!Number.isFinite(idNum) || idNum < 1) continue;
     try {
-      await request('/api/agenda/eventos', {
-        method: 'POST',
+      await request('/api/agenda/eventos/upsert-audiencia', {
+        method: 'PUT',
         body: {
           usuarioId: idNum,
           dataEvento,
@@ -216,13 +216,35 @@ export async function replicarAudienciaProcessoTodosColaboradoresApi({
           origem: 'processos-audiencia',
         },
       });
-      criados += 1;
+      sincronizados += 1;
     } catch {
       /* continua demais usuários */
     }
   }
   dispararAgendaAtualizada();
-  return { ok: true, criados };
+  return { ok: true, criados: sincronizados, sincronizados };
+}
+
+/**
+ * Remove da API os compromissos de audiência vinculados a um processo
+ * (quando a data de audiência é apagada no formulário Processos).
+ */
+export async function removerAudienciaProcessoAgendaApi({ codigoCliente, numeroInterno }) {
+  if (!featureFlags.useApiAgenda) return { ok: false, reason: 'api-off' };
+  const codPad = padCliente(codigoCliente ?? '1');
+  const procNorm = Math.max(1, Math.floor(Number(normalizarProcesso(numeroInterno ?? 1))));
+  const processoRef = montarProcessoRefAgenda(codPad, procNorm);
+  if (!processoRef) return { ok: false, reason: 'processo-ref-invalido' };
+  try {
+    await request('/api/agenda/eventos/por-processo', {
+      method: 'DELETE',
+      query: { processoRef, origem: 'processos-audiencia' },
+    });
+  } catch {
+    return { ok: false, reason: 'delete-falha' };
+  }
+  dispararAgendaAtualizada();
+  return { ok: true };
 }
 
 /**

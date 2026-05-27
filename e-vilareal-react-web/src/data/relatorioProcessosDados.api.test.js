@@ -20,10 +20,12 @@ vi.mock('../repositories/processosRepository.js', async () => {
 });
 
 import { obterLinhasBaseRelatorioProcessos } from './relatorioProcessosDados.js';
+import * as dadosRelatorio from './processosDadosRelatorio.js';
 
 beforeEach(() => {
   mockListarClientes.mockReset();
   mockListarProcessos.mockReset();
+  vi.restoreAllMocks();
 });
 
 describe('obterLinhasBaseRelatorioProcessos', () => {
@@ -53,6 +55,23 @@ describe('obterLinhasBaseRelatorioProcessos', () => {
     expect(rows[0].descricaoAcao).toBe('Cobrança');
     expect(rows[0].processoCadastroAtivo).toBe(true);
     expect(rows[0].statusAtivoTexto).toBe('Ativo');
+  });
+
+  it('com API: histórico local inativo prevalece sobre listagem ativa', async () => {
+    mockListarClientes.mockResolvedValue([{ codigo: '00000001', nomeRazao: 'Alexandra', clienteInativo: false }]);
+    mockListarProcessos.mockResolvedValue([
+      {
+        id: 2,
+        codigoCliente: '00000001',
+        numeroInterno: 4,
+        numeroCnj: '0000000-00.0000.0.00.0000',
+        ativo: true,
+      },
+    ]);
+    vi.spyOn(dadosRelatorio, 'resolverStatusAtivoRelatorioProcesso').mockReturnValue(false);
+    const rows = await obterLinhasBaseRelatorioProcessos();
+    expect(rows[0].processoCadastroAtivo).toBe(false);
+    expect(rows[0].statusAtivoTexto).toBe('Inativo');
   });
 
   it('com API: marca processo inativo na linha base', async () => {

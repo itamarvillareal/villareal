@@ -82,9 +82,11 @@ export function mapApiPublicacaoToUi(r) {
   const procInt = r.numeroInternoProcesso ?? r.numero_interno_processo;
   const procInterno =
     procInt != null && Number.isFinite(Number(procInt)) && Number(procInt) >= 1 ? String(Math.floor(Number(procInt))) : '';
+  const titularNomeApi = String(r.titularNome ?? r.titular_nome ?? '').trim();
   const parteClienteApi = String(r.parteCliente ?? r.parte_cliente ?? '').trim();
   const parteOpostaApi = String(r.parteOposta ?? r.parte_oposta ?? '').trim();
-  const cliente = parteClienteApi || (r.clienteId != null ? `Cliente #${r.clienteId}` : '');
+  const titularNome = titularNomeApi || parteClienteApi;
+  const cliente = titularNome || (r.clienteId != null ? `Cliente #${r.clienteId}` : '');
   const reu = parteOpostaApi;
 
   return {
@@ -99,6 +101,9 @@ export function mapApiPublicacaoToUi(r) {
     procInterno,
     codCliente,
     cliente,
+    titularNome,
+    parteCliente: titularNome,
+    parteOposta: reu,
     reu,
     diario: r.diario || r.fonte || '',
     tribunalPdf: '',
@@ -520,9 +525,11 @@ export async function buscarSugestaoVinculoPorCnjDiagnostico(cnj) {
     if (lista.length === 0) return null;
     const h = lista[0];
     return {
+      processoId: h.processoId != null ? String(h.processoId) : '',
       codCliente: h.codigoCliente ?? '',
       procInterno: h.numeroInterno != null ? String(h.numeroInterno) : '',
       cliente: h.cliente || h.parteCliente || '',
+      titularNome: h.cliente || h.parteCliente || '',
       reu: h.parteOposta || '',
       ambiguo: lista.length > 1,
     };

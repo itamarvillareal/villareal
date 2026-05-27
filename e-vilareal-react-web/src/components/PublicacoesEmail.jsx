@@ -16,7 +16,11 @@ import {
 } from 'lucide-react';
 import { buscarPublicacoesEmail, processarEmailsAgora } from '../api/publicacoesEmailApi.js';
 import { buildRouterStateChaveClienteProcesso } from '../domain/camposProcessoCliente.js';
-import { formatarRotuloVinculoPartes } from '../data/publicacoesDisplayHelpers.js';
+import {
+  formatarChaveProcessoVinculo,
+  formatarRotuloVinculoPartes,
+  obterTitularNomeLinha,
+} from '../data/publicacoesDisplayHelpers.js';
 import {
   buscarHitIndiceCnjPorCnj,
   montarIndiceCnjClienteProcAsync,
@@ -283,8 +287,9 @@ function ModalVinculo({ onClose, vincForm, setVincForm, vinculoFormErro, onConfi
           </button>
         </div>
         <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-400">
-          Informe o <strong>código do cliente</strong> e o <strong>proc. interno</strong>, como na tela de publicações
-          por PDF.
+          Informe o <strong>código do titular</strong> e o <strong>nº interno</strong> (pasta do cliente). O mesmo nº
+          interno pode existir em vários clientes — confira o <strong>id do processo</strong> na sugestão ou na coluna de
+          vínculo após salvar.
         </p>
         <div className="grid gap-3">
           <label className="grid gap-1 text-xs font-medium text-slate-700 dark:text-slate-300">
@@ -347,61 +352,66 @@ function ModalVinculo({ onClose, vincForm, setVincForm, vinculoFormErro, onConfi
 }
 
 function CelulaClienteProc({ row, indiceCnj, sugestoesApi }) {
-  if (row.statusVinculo === 'vinculado' && row.codCliente) {
+  const linha = (r, destaque) => {
+    const chave = formatarChaveProcessoVinculo(r);
+    const titular = obterTitularNomeLinha(r);
+    const cls = destaque
+      ? 'font-medium text-sky-800 dark:text-sky-200'
+      : 'text-slate-700 dark:text-slate-300';
+    const subCls = destaque
+      ? 'text-sky-700/90 dark:text-sky-300/90'
+      : 'text-slate-500 dark:text-slate-400';
     return (
       <>
-        <div>{row.codCliente}</div>
-        <div className="text-slate-500">proc {row.procInterno || '—'}</div>
-        <div className="truncate text-[10px] text-slate-500" title={row.cliente}>
-          {row.cliente || '—'}
+        <div className={cls} title={chave}>
+          {chave}
+        </div>
+        <div className={`truncate text-[10px] ${subCls}`} title={titular}>
+          {titular || '—'}
         </div>
       </>
     );
+  };
+  if (row.statusVinculo === 'vinculado' && (row.codCliente || row._processoId)) {
+    return linha(row, false);
   }
   const sug = resolverSugestaoVinculoLinha(row, indiceCnj, sugestoesApi);
   if (sug) {
-    return (
-      <>
-        <div className="font-medium text-sky-800 dark:text-sky-200">{sug.codCliente}</div>
-        <div className="text-sky-700 dark:text-sky-300">proc {sug.procInterno}</div>
-        <div className="truncate text-[10px] text-sky-700/90 dark:text-sky-300/90" title={sug.cliente}>
-          {sug.cliente || '—'}
-        </div>
-      </>
+    return linha(
+      {
+        codCliente: sug.codCliente,
+        procInterno: sug.procInterno,
+        processoId: sug.processoId,
+        titularNome: sug.titularNome || sug.cliente,
+        cliente: sug.cliente,
+      },
+      true
     );
   }
-  return (
-    <>
-      <div>{row.codCliente || '—'}</div>
-      <div className="text-slate-500">proc {row.procInterno || '—'}</div>
-      <div className="truncate text-[10px] text-slate-500" title={row.cliente}>
-        {row.cliente || '—'}
-      </div>
-    </>
-  );
+  return linha(row, false);
 }
 
 function CelulaVinculo({ row, indiceCnj, sugestoesApi, carregandoSugestoes, onAbrirProcesso, onAplicarSugestao }) {
   const sug = resolverSugestaoVinculoLinha(row, indiceCnj, sugestoesApi);
   if (row.statusVinculo === 'vinculado') {
+    const rotulo = formatarRotuloVinculoPartes(row);
     return (
       <div
-        className="cursor-pointer"
-        title="Duplo clique: abrir Processos"
+        className="min-w-0 cursor-pointer overflow-hidden"
+        title={`${rotulo}\nDuplo clique: abrir Processos`}
         onDoubleClick={onAbrirProcesso}
       >
         <Badge tone="green">Vinculado</Badge>
-        <div className="mt-0.5 truncate text-[10px] text-slate-600 dark:text-slate-400" title={formatarRotuloVinculoPartes(row)}>
-          {formatarRotuloVinculoPartes(row)}
-        </div>
-        <div className="text-[10px] text-slate-500">
-          {row.codCliente || '—'} / proc {row.procInterno || '—'}
-        </div>
+        <div className="mt-0.5 truncate text-[10px] text-slate-600 dark:text-slate-400">{rotulo}</div>
       </div>
     );
   }
   return (
-    <div className="cursor-pointer" onDoubleClick={onAbrirProcesso} title="Duplo clique: abrir Processos (se houver sugestão)">
+    <div
+      className="min-w-0 cursor-pointer overflow-hidden"
+      onDoubleClick={onAbrirProcesso}
+      title="Duplo clique: abrir Processos (se houver sugestão)"
+    >
       <Badge tone="amber">{row.statusVinculo === 'nao_vinculado' ? 'Não vinculado' : 'Pendente'}</Badge>
       {carregandoSugestoes && !sug ? (
         <div className="mt-1 flex items-center gap-1 text-[10px] text-slate-500">
@@ -410,17 +420,15 @@ function CelulaVinculo({ row, indiceCnj, sugestoesApi, carregandoSugestoes, onAb
         </div>
       ) : null}
       {sug ? (
-        <div className="mt-1 space-y-1 text-[10px] text-slate-600 dark:text-slate-400">
+        <div
+          className="mt-1 space-y-0.5 text-[10px] text-slate-600 dark:text-slate-400"
+          title={[sug.cliente, formatarChaveProcessoVinculo(sug)].filter(Boolean).join(' · ')}
+        >
           <Badge tone="slate">
-            Sugestão{sug.fonte === 'api' ? ' (API)' : ' (cadastro)'}
-            {sug.ambiguo ? ' · ambíguo' : ''}
+            Sugestão{sug.fonte === 'api' ? ' (API)' : ''}
+            {sug.ambiguo ? ' · amb.' : ''}
           </Badge>
-          <div className="font-medium text-sky-800 dark:text-sky-200">
-            {sug.cliente || '—'}
-          </div>
-          <div>
-            {sug.codCliente} / proc {sug.procInterno}
-          </div>
+          <div className="truncate font-medium text-sky-800 dark:text-sky-200">{sug.cliente || '—'}</div>
           {onAplicarSugestao ? (
             <button
               type="button"
@@ -428,9 +436,9 @@ function CelulaVinculo({ row, indiceCnj, sugestoesApi, carregandoSugestoes, onAb
                 e.stopPropagation();
                 onAplicarSugestao();
               }}
-              className="mt-0.5 rounded border border-sky-300 px-1.5 py-0.5 text-[10px] font-medium text-sky-800 hover:bg-sky-50 dark:border-sky-500/40 dark:text-sky-200 dark:hover:bg-sky-950/30"
+              className="mt-0.5 w-full truncate rounded border border-sky-300 px-1 py-0.5 text-[10px] font-medium text-sky-800 hover:bg-sky-50 dark:border-sky-500/40 dark:text-sky-200 dark:hover:bg-sky-950/30"
             >
-              Aplicar sugestão
+              Aplicar
             </button>
           ) : null}
         </div>
@@ -967,7 +975,7 @@ export function PublicacoesEmail() {
               ))}
             </div>
             <div className="hidden overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-white/10 dark:bg-[#141922] md:block">
-              <table className="w-full min-w-[1280px] text-xs">
+              <table className="w-full min-w-[1180px] text-xs">
                 <thead className="bg-slate-50 text-left text-slate-600 dark:bg-white/5 dark:text-slate-400">
                   <tr>
                     <th
@@ -979,10 +987,10 @@ export function PublicacoesEmail() {
                         <span className="ml-1 text-[10px] opacity-70">{ordemDataAsc ? '↑' : '↓'}</span>
                       ) : null}
                     </th>
-                    <th className="px-3 py-2.5 font-medium">Nº processo</th>
+                    <th className="w-[108px] max-w-[108px] px-2 py-2.5 font-medium">Nº processo</th>
                     <th className="min-w-[140px] px-3 py-2.5 font-medium">Cliente / proc.</th>
                     <th className="min-w-[220px] px-3 py-2.5 font-medium">Teor</th>
-                    <th className="min-w-[160px] px-3 py-2.5 font-medium">Vínculo</th>
+                    <th className="w-[96px] max-w-[96px] px-2 py-2.5 font-medium">Vínculo</th>
                     <th className="min-w-[160px] px-3 py-2.5 font-medium">Origem / Email</th>
                     <th className="whitespace-nowrap px-3 py-2.5 font-medium">Recebimento</th>
                     <th className="px-3 py-2.5 font-medium">Status</th>
@@ -1009,8 +1017,9 @@ export function PublicacoesEmail() {
                           {fmtDataBr(row.dataPublicacao)}
                         </td>
                         <td
-                          className="cursor-pointer whitespace-nowrap px-3 py-2.5 font-mono text-sky-800 dark:text-sky-300"
+                          className="max-w-[108px] cursor-pointer truncate px-2 py-2.5 font-mono text-[10px] text-sky-800 dark:text-sky-300"
                           onClick={() => toggleLinha(row)}
+                          title={cnjLinha(row)}
                         >
                           {cnjLinha(row)}
                         </td>
@@ -1024,7 +1033,7 @@ export function PublicacoesEmail() {
                         >
                           {truncarTeor(teorLinha(row), 120)}
                         </td>
-                        <td className="px-3 py-2.5">
+                        <td className="max-w-[96px] px-2 py-2.5">
                           <CelulaVinculo
                             row={row}
                             indiceCnj={indiceCnj}

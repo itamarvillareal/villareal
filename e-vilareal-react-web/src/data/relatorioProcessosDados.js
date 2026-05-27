@@ -4,6 +4,7 @@
 import { featureFlags } from '../config/featureFlags.js';
 import { listarClientesCadastro } from '../repositories/clientesRepository.js';
 import { listarProcessosPorCodigoCliente, mapApiProcessoToUiShape } from '../repositories/processosRepository.js';
+import { resolverStatusAtivoRelatorioProcesso } from './processosDadosRelatorio.js';
 
 const CONSULTORES = ['Karla Almeida', 'ITAMAR', 'DAAE', 'Ana Luisa'];
 
@@ -113,13 +114,14 @@ export async function obterLinhasBaseRelatorioProcessos() {
       const descricao = String(u.descricaoAcao ?? u.naturezaAcao ?? '').trim() || '—';
       const parteSlice = '';
 
+      const ativo = resolverStatusAtivoRelatorioProcesso(codPad, p, u.statusAtivo !== false);
       out.push({
         cliente: nomeCliente,
         codCliente: codPad,
         proc: String(p),
         processoApiId: raw.id != null ? Number(raw.id) : null,
-        processoCadastroAtivo: u.statusAtivo !== false,
-        statusAtivoTexto: u.statusAtivo === false ? 'Inativo' : 'Ativo',
+        processoCadastroAtivo: ativo,
+        statusAtivoTexto: ativo ? 'Ativo' : 'Inativo',
         numeroProcesso: String(u.numeroProcessoNovo ?? '').trim(),
         inRequerente: (cHash + p + idx) % 4 === 1 ? 'REQUERIDO' : '',
         ultimoAndamento: `ANDAMENTO — ${descricao.slice(0, 80)}`,

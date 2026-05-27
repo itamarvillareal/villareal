@@ -1,7 +1,7 @@
 /**
  * Dados alinhados à tela Processos (API + localStorage) para enriquecer linhas do Relatório Processos.
  */
-import { getRegistroProcesso } from './processosHistoricoData.js';
+import { getRegistroProcesso, obterStatusAtivoUnificado } from './processosHistoricoData.js';
 import { featureFlags } from '../config/featureFlags.js';
 import {
   listarAndamentosProcesso,
@@ -254,6 +254,25 @@ export function padCliente(val) {
 }
 
 /**
+ * Mesmo critério da grade Clientes / tela Processos: histórico local (`statusAtivo`) prevalece sobre a API.
+ */
+export function resolverStatusAtivoRelatorioProcesso(codClienteRaw, procRaw, fallbackApiAtivo = true) {
+  return obterStatusAtivoUnificado(
+    padCliente(codClienteRaw),
+    normalizarProcesso(procRaw),
+    fallbackApiAtivo !== false
+  );
+}
+
+export function camposStatusAtivoRelatorio(codClienteRaw, procRaw, fallbackApiAtivo = true) {
+  const ativo = resolverStatusAtivoRelatorioProcesso(codClienteRaw, procRaw, fallbackApiAtivo);
+  return {
+    processoCadastroAtivo: ativo,
+    statusAtivoTexto: ativo ? 'Ativo' : 'Inativo',
+  };
+}
+
+/**
  * Nome da pessoa vinculada ao código de cliente — preenchido pela API/tela Clientes; sem cache local estático.
  */
 export function getNomePessoaCadastroPorCodigoCliente() {
@@ -384,6 +403,8 @@ async function preaquecerUmProcessoRelatorio({ codCliente: codRaw, proc: procRaw
   ]);
   const { parteCliente, parteOposta } = textosPartesFromListaPartesApi(partes);
   const ultimo = extrairUltimoAndamento(andamentos || []);
+  const statusApi = cabecalho?.statusAtivo !== false;
+  const statusCampos = camposStatusAtivoRelatorio(cod, proc, statusApi);
   _cacheCamposApi.set(key, {
     processoId,
     numeroProcessoNovo: cabecalho?.numeroProcessoNovo || '',
@@ -391,8 +412,7 @@ async function preaquecerUmProcessoRelatorio({ codCliente: codRaw, proc: procRaw
     naturezaAcaoProcesso: cabecalho?.naturezaAcao || '',
     competenciaCadastroProcesso: cabecalho?.competencia || '',
     faseCadastroProcesso: cabecalho?.faseSelecionada || '',
-    statusAtivoTexto: cabecalho?.statusAtivo === false ? 'Inativo' : 'Ativo',
-    processoCadastroAtivo: cabecalho?.statusAtivo !== false,
+    ...statusCampos,
     prazoFatalCadastroProcesso: cabecalho?.prazoFatal || '',
     observacaoCadastroProcesso: cabecalho?.observacao || '',
     parteCliente,
@@ -438,7 +458,7 @@ export async function preaquecerCamposRelatorioApiFirst(paresClienteProc = [], o
  * Campos extras por codCliente + proc (alinhados à tela Processos + persistência).
  * Usado na coluna dinâmica do Relatório Processos.
  */
-export function getCamposExtrasRelatorioPorProcesso(codClienteRaw, procRaw) {
+export function getCamposExtrasRelatorioPorProcesso(codClienteRaw, procRaw, fallbackApiAtivo = true) {
   const mock = gerarMockProcesso(codClienteRaw, procRaw);
   const reg = getRegistroProcesso(mock.codigoCliente, mock.processo);
   const hist = Array.isArray(reg?.historico) ? reg.historico : [];
@@ -465,9 +485,6 @@ export function getCamposExtrasRelatorioPorProcesso(codClienteRaw, procRaw) {
 
   const papel = String(reg?.papelParte ?? '').toLowerCase();
   const temRegistro = !!reg;
-  /** Só o cadastro local define status aqui; sem registro, não sobrescrever o valor da listagem API na linha. */
-  const processoCadastroAtivo = temRegistro ? reg.statusAtivo !== false : undefined;
-  const statusAtivoTexto = temRegistro ? (reg.statusAtivo === false ? 'Inativo' : 'Ativo') : undefined;
 
   const base = {
     codigoClienteProcesso: mock.codigoCliente,
@@ -493,7 +510,6 @@ export function getCamposExtrasRelatorioPorProcesso(codClienteRaw, procRaw) {
       reg?.numeroProcessoNovo != null && String(reg.numeroProcessoNovo).trim() !== ''
         ? String(reg.numeroProcessoNovo)
         : mock.numeroProcessoNovo ?? '',
-    ...(processoCadastroAtivo !== undefined ? { processoCadastroAtivo, statusAtivoTexto } : {}),
     parteRequerenteTexto: temRegistro ? simNao(papel === 'requerente') : '',
     parteRevelTexto: '',
     parteRequeridoTexto: temRegistro ? simNao(papel === 'requerido') : '',
@@ -544,5 +560,6 @@ export function getCamposExtrasRelatorioPorProcesso(codClienteRaw, procRaw) {
     tipoAudiencia: String(reg?.audienciaTipo ?? '').trim(),
   };
   const cacheApi = _cacheCamposApi.get(keyClienteProc(codClienteRaw, procRaw));
-  return cacheApi ? { ...base, ...cacheApi } : base;
+  const merged = cacheApi ? { ...base, ...cacheApi } : base;
+  return { ...merged, ...camposStatusAtivoRelatorio(codClienteRaw, procRaw, fallbackApiAtivo) };
 }

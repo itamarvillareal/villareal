@@ -59,20 +59,28 @@ describe('buscarHitIndiceCnjPorCnj', () => {
     expect(r?.chaveUsada).toBe('56280-15.2016.8.09.0006');
   });
 
-  it('associa por tolerância de 1 dígito no 1.º segmento (OCR vs cadastro)', () => {
+  it('associa por tolerância de 1 dígito no 1.º segmento (busca parcial < 20 dígitos)', () => {
     const map = new Map();
     const cadastro = { codCliente: '00000766', proc: '3', cliente: 'X', reu: 'Y' };
     map.set('5402633-78.2017.8.09.0006', cadastro);
-    const r = buscarHitIndiceCnjPorCnj(map, '5482633-78.2017.8.09.0006');
+    const r = buscarHitIndiceCnjPorCnj(map, '5482633');
     expect(r?.hit).toEqual(cadastro);
     expect(r?.chaveUsada).toBe('5402633-78.2017.8.09.0006');
   });
 
-  it('fuzzy: índice com chave só em 20 dígitos (como algumas APIs gravam)', () => {
+  it('CNJ completo (20 dígitos): não usa fuzzy de 1 dígito no índice', () => {
     const map = new Map();
     const cadastro = { codCliente: '00000100', proc: '15', cliente: 'Cliente', reu: 'Réu' };
     map.set('54026337820178090006', cadastro);
     const r = buscarHitIndiceCnjPorCnj(map, '5482633-78.2017.8.09.0006');
+    expect(r).toBeNull();
+  });
+
+  it('CNJ completo: igualdade exata no índice', () => {
+    const map = new Map();
+    const cadastro = { codCliente: '00000100', proc: '15', processoId: '99', cliente: 'Cliente', reu: 'Réu' };
+    map.set('5402633-78.2017.8.09.0006', cadastro);
+    const r = buscarHitIndiceCnjPorCnj(map, '5402633-78.2017.8.09.0006');
     expect(r?.hit).toEqual(cadastro);
   });
 
@@ -97,7 +105,7 @@ ARQUIVOS DIGITAIS INDISPONÍVEIS (NÃO SÃO DO TIPO PÚBLICO)
     const { itens: ded } = deduplicarParseados(parseados);
     const fund = fundirParesComplementaresPublicacoes(ded);
     const map = new Map();
-    map.set('5402633-78.2017.8.09.0006', {
+    map.set('5482633-78.2017.8.09.0006', {
       codCliente: '00000100',
       proc: '15',
       cliente: 'Cliente Teste',

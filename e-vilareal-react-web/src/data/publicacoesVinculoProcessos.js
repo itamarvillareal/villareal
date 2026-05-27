@@ -62,10 +62,14 @@ export async function montarIndiceCnjClienteProcAsync() {
       const key = normalizarCnjParaChave(cnj);
       if (!key || map.has(key)) continue;
       const reu = String(u.parteOposta ?? '').trim();
+      const titularNome =
+        String(raw?.titularNome ?? raw?.titular_nome ?? raw?.nomeTitular ?? '').trim() || nomeCliente;
       map.set(key, {
+        processoId: u.processoId != null ? String(u.processoId) : '',
         codCliente: codPad,
         proc: String(p),
-        cliente: nomeCliente,
+        cliente: titularNome,
+        titularNome,
         reu,
       });
     }
@@ -109,9 +113,9 @@ export function buscarHitIndiceCnjPorCnj(indiceMap, cnjRaw) {
     }
   }
 
-  // OCR / PDF: um dígito trocado no 1.º segmento (ex.: 5482633… vs cadastro 5402633…).
+  // OCR / PDF: tolerância de 1 dígito só para CNJ incompleto (< 20 dígitos).
   const digBusca = digitosCnjNormalizados(s0);
-  if (digBusca.length >= 7) {
+  if (digBusca.length >= 7 && digBusca.length < 20) {
     for (const [k, hit] of indiceMap) {
       if (termoDigitosCorrespondeCnjCampo(digBusca, k)) {
         return { hit, chaveUsada: k };
@@ -136,9 +140,11 @@ export function lookupSugestaoVinculoCadastro(item, indiceMap) {
   if (!res) return null;
   const { hit } = res;
   return {
+    processoId: hit.processoId || '',
     codCliente: hit.codCliente,
     procInterno: hit.proc,
-    cliente: hit.cliente,
+    cliente: hit.titularNome || hit.cliente,
+    titularNome: hit.titularNome || hit.cliente,
     reu: hit.reu || '',
   };
 }
@@ -159,7 +165,13 @@ export function resolverSugestaoVinculoLinha(row, indiceMap, sugestoesApiMap) {
     numeroProcessoEncontrado: cnjBase,
   };
   const sugIdx = lookupSugestaoVinculoCadastro(itemLookup, indiceMap);
-  if (sugIdx) return { ...sugIdx, fonte: 'cadastro' };
+  if (sugIdx) {
+    return {
+      ...sugIdx,
+      fonte: 'cadastro',
+      cliente: sugIdx.titularNome || sugIdx.cliente,
+    };
+  }
   const key = normalizarCnjParaChave(cnjBase);
   if (key && sugestoesApiMap instanceof Map) {
     const sugApi = sugestoesApiMap.get(key);

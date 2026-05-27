@@ -8,6 +8,7 @@ import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 public interface AgendaEventoRepository extends JpaRepository<AgendaEventoEntity, Long> {
 
@@ -36,4 +37,14 @@ public interface AgendaEventoRepository extends JpaRepository<AgendaEventoEntity
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query(value = "DELETE FROM agenda_evento", nativeQuery = true)
     int deleteAllInBulk();
+
+    Optional<AgendaEventoEntity> findFirstByUsuario_IdAndProcessoRefAndOrigem(
+            Long usuarioId, String processoRef, String origem);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            DELETE FROM AgendaEventoEntity e
+            WHERE e.processoRef = :processoRef AND e.origem = :origem
+            """)
+    int deleteByProcessoRefAndOrigem(@Param("processoRef") String processoRef, @Param("origem") String origem);
 }

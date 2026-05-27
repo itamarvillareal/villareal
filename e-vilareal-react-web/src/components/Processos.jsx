@@ -60,10 +60,12 @@ import {
   agendarEmLoteParaUsuarios,
   calcularPrimeiraOcorrenciaAgendaLote,
   getUsuariosAtivos,
+  removerAudienciaProcessoDaAgenda,
 } from '../data/agendaPersistenciaData';
 import {
   replicarAudienciaProcessoTodosColaboradoresApi,
   replicarCompromissoLoteTodosColaboradoresApi,
+  removerAudienciaProcessoAgendaApi,
 } from '../repositories/agendaRepository.js';
 import { getApiUsuarioSessao, getPerfilAtivoParaPermissoes } from '../data/usuarioPermissoesStorage.js';
 import { getNomeExibicaoUsuario } from '../data/usuarioDisplayHelpers.js';
@@ -2757,19 +2759,9 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
 
   // Agenda: replica a audiência para todos os colaboradores ao haver data válida (formulário Processos).
   useEffect(() => {
-    if (!audienciaData) return;
-    if (!/^\d{2}\/\d{2}\/\d{4}$/.test(audienciaData)) return;
-
-    const payload = {
-      audienciaData,
-      audienciaHora,
-      audienciaTipo,
-      numeroProcessoNovo,
+    const payloadBase = {
       codigoCliente,
       numeroInterno: processo,
-      parteCliente: textoParteCliente || parteCliente,
-      parteOposta: textoParteOposta || parteOposta,
-      competencia,
     };
 
     if (featureFlags.useApiAgenda) {
@@ -2778,7 +2770,22 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       }
       agendarAudienciaApiDebounceRef.current = window.setTimeout(() => {
         agendarAudienciaApiDebounceRef.current = null;
-        void replicarAudienciaProcessoTodosColaboradoresApi(payload);
+        if (!audienciaData) {
+          void removerAudienciaProcessoAgendaApi(payloadBase);
+          return;
+        }
+        if (!/^\d{2}\/\d{2}\/\d{4}$/.test(audienciaData)) return;
+        void replicarAudienciaProcessoTodosColaboradoresApi({
+          audienciaData,
+          audienciaHora,
+          audienciaTipo,
+          numeroProcessoNovo,
+          codigoCliente,
+          numeroInterno: processo,
+          parteCliente: textoParteCliente || parteCliente,
+          parteOposta: textoParteOposta || parteOposta,
+          competencia,
+        });
       }, 600);
       return () => {
         if (agendarAudienciaApiDebounceRef.current != null) {
@@ -2788,7 +2795,23 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       };
     }
 
-    agendarAudienciaParaTodosUsuarios(payload);
+    if (!audienciaData) {
+      removerAudienciaProcessoDaAgenda(payloadBase);
+      return undefined;
+    }
+    if (!/^\d{2}\/\d{2}\/\d{4}$/.test(audienciaData)) return undefined;
+
+    agendarAudienciaParaTodosUsuarios({
+      audienciaData,
+      audienciaHora,
+      audienciaTipo,
+      numeroProcessoNovo,
+      codigoCliente,
+      numeroInterno: processo,
+      parteCliente: textoParteCliente || parteCliente,
+      parteOposta: textoParteOposta || parteOposta,
+      competencia,
+    });
     return undefined;
   }, [
     audienciaData,
@@ -2919,6 +2942,8 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
           cliente={cliente}
           statusAtivo={statusAtivo}
           faseSelecionada={faseSelecionada}
+          edicaoDesabilitada={edicaoDesabilitada}
+          onEdicaoDesabilitadaChange={setEdicaoDesabilitada}
           onFechar={() => {
             if (isEmbedded && typeof onFecharEmbed === 'function') onFecharEmbed();
             else window.history.back();
@@ -3217,7 +3242,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
 
             {/* Seção superior: 3 colunas - Identificação | Partes/Local | Papel/Fase/Status */}
             <section className="grid grid-cols-1 md:grid-cols-3 gap-2.5 md:gap-3">
-              {/* Coluna esquerda: Código + Processo na mesma linha, Cliente, Edição, Nº velho/novo */}
+              {/* Coluna esquerda: Código + Processo na mesma linha, Cliente, Nº velho/novo */}
               <div className="space-y-2 rounded-xl border border-slate-200/90 bg-white/95 p-3 shadow-sm text-slate-900">
                 <div className="flex flex-wrap items-end gap-3">
                   <Field
@@ -3247,10 +3272,6 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                       inputClassName="text-center min-w-[3ch]"
                     />
                   </Field>
-                  <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer shrink-0">
-                    <input type="checkbox" checked={edicaoDesabilitada} onChange={(e) => setEdicaoDesabilitada(e.target.checked)} className="rounded border-slate-300" />
-                    Edição Desabilitada
-                  </label>
                 </div>
                 <Field
                   label="Cliente"
