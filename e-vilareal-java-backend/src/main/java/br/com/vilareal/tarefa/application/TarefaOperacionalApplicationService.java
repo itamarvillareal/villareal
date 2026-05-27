@@ -53,7 +53,7 @@ public class TarefaOperacionalApplicationService {
             Long processoId,
             LocalDate dataLimiteDe,
             LocalDate dataLimiteAte) {
-        Long clientePk = clienteResolverService.buscarPorId(clienteId).getId();
+        Long clientePk = clienteId != null ? clienteResolverService.buscarPorId(clienteId).getId() : null;
         var spec = TarefaOperacionalSpecifications.comFiltros(
                 responsavelId, status, prioridade, clientePk, processoId, dataLimiteDe, dataLimiteAte);
         return tarefaRepository.findAll(spec, ORDEM_RECENTES).stream()
@@ -71,7 +71,7 @@ public class TarefaOperacionalApplicationService {
             LocalDate dataLimiteDe,
             LocalDate dataLimiteAte,
             Pageable pageable) {
-        Long clientePk = clienteResolverService.buscarPorId(clienteId).getId();
+        Long clientePk = clienteId != null ? clienteResolverService.buscarPorId(clienteId).getId() : null;
         var spec = TarefaOperacionalSpecifications.comFiltros(
                 responsavelId, status, prioridade, clientePk, processoId, dataLimiteDe, dataLimiteAte);
         return tarefaRepository.findAll(spec, pageable).map(this::toResponse);

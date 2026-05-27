@@ -35,7 +35,7 @@ export function AuthProvider({ children }) {
       try {
         const u = await fetchAuthMe();
         if (cancelled || u?.id == null) return;
-        setApiUsuarioSessao({ id: u.id, nome: u.nome, login: u.login });
+        setApiUsuarioSessao({ id: u.id, nome: u.nome, login: u.login, perfilId: u.perfilId });
         setUsuarioSessaoAtualId(String(u.id));
         if (featureFlags.useApiUsuarios) {
           try {
@@ -120,6 +120,7 @@ export function AuthProvider({ children }) {
         id: u.id,
         nome: u.nome,
         login: u.login,
+        perfilId: u.perfilId,
       });
     }
     if (featureFlags.useApiUsuarios) {

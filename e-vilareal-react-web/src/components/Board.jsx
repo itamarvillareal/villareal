@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, HelpCircle, X } from 'lucide-react';
+import { getApiUsuarioSessao } from '../data/usuarioPermissoesStorage.js';
 import { Column } from './Column';
 import { columns, getBoardData, tasksByColumn } from '../data/mockData';
 import { getUsuariosAtivos } from '../data/agendaPersistenciaData';
@@ -21,6 +22,7 @@ import {
   patchStatusTarefaOperacional,
 } from '../repositories/tarefasOperacionaisRepository.js';
 import { buildRouterStateChaveClienteProcesso } from '../domain/camposProcessoCliente.js';
+import { mensagemErroAmigavel } from '../utils/mensagemErroAmigavel.js';
 
 /**
  * IDs antigos da tela Pendências (mock) → mesmo cadastro de Usuários (ex.: kari ↔ karla no storage).
@@ -240,6 +242,17 @@ export function Board() {
   const [filtroApiPrioridade, setFiltroApiPrioridade] = useState('');
   const boardData = getBoardData();
   const usarApiPendencias = emPendencias && featureFlags.useApiTarefas;
+  const minhaColunaId = getApiUsuarioSessao()?.id ?? null;
+
+  const totalPendenciasVisiveis = useMemo(() => {
+    if (!emPendencias) return 0;
+    let n = 0;
+    for (const col of columnsParaPendencias) {
+      const lista = pendenciasDraftPorUsuario[col.id] || [];
+      n += lista.filter((p) => String(p?.texto ?? '').trim()).length;
+    }
+    return n;
+  }, [emPendencias, columnsParaPendencias, pendenciasDraftPorUsuario]);
 
   const refreshTarefasApi = useCallback(() => {
     setRefreshTickTarefasApi((t) => t + 1);
@@ -285,7 +298,7 @@ export function Board() {
         setPendenciasDraftPorUsuario(JSON.parse(JSON.stringify(grouped)));
       })
       .catch((e) => {
-        if (ativo) setApiErrorTarefas(e?.message || 'Falha ao carregar tarefas.');
+        if (ativo) setApiErrorTarefas(mensagemErroAmigavel(e, 'carregar as pendências'));
       })
       .finally(() => {
         if (ativo) setApiLoadingTarefas(false);
@@ -557,7 +570,7 @@ export function Board() {
       }
       refreshTarefasApi();
     } catch (e) {
-      setApiErrorTarefas(e?.message || 'Falha ao salvar a tarefa.');
+      setApiErrorTarefas(mensagemErroAmigavel(e, 'salvar a pendência'));
     } finally {
       setApiMutationBusy(false);
     }
@@ -676,7 +689,7 @@ export function Board() {
           fecharModalAcoesPendencia();
           refreshTarefasApi();
         } catch (e) {
-          setApiErrorTarefas(e?.message || 'Falha ao finalizar a tarefa.');
+          setApiErrorTarefas(mensagemErroAmigavel(e, 'finalizar a pendência'));
         } finally {
           setApiMutationBusy(false);
         }
@@ -718,6 +731,17 @@ export function Board() {
   if (emPendencias) {
     return (
       <div className="flex-1 overflow-auto p-4 min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/30 to-emerald-50/40 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d]">
+        <header className="mb-4 max-w-4xl">
+          <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Pendências</h1>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+            Quadro de tarefas por responsável. Digite na caixa em branco para criar uma nova pendência.
+          </p>
+          {usarApiPendencias && !apiLoadingTarefas && !apiErrorTarefas ? (
+            <p className="mt-2 text-xs font-medium text-slate-500">
+              Total: {totalPendenciasVisiveis} pendência{totalPendenciasVisiveis === 1 ? '' : 's'}
+            </p>
+          ) : null}
+        </header>
         {featureFlags.useApiTarefas && (
           <div className="flex flex-wrap items-end gap-3 mb-3 text-sm">
             <label className="flex flex-col gap-0.5 min-w-[10rem]">
@@ -779,15 +803,24 @@ export function Board() {
               </div>
             )}
             {apiErrorTarefas && (
-              <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900 flex justify-between gap-2 items-start">
+              <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900 flex flex-wrap justify-between gap-2 items-start">
                 <span>{apiErrorTarefas}</span>
-                <button
-                  type="button"
-                  className="shrink-0 text-red-800 underline hover:no-underline"
-                  onClick={() => setApiErrorTarefas('')}
-                >
-                  Fechar
-                </button>
+                <div className="flex shrink-0 gap-2">
+                  <button
+                    type="button"
+                    className="text-red-800 font-medium underline hover:no-underline"
+                    onClick={refreshTarefasApi}
+                  >
+                    Tentar novamente
+                  </button>
+                  <button
+                    type="button"
+                    className="text-red-800 underline hover:no-underline"
+                    onClick={() => setApiErrorTarefas('')}
+                  >
+                    Fechar
+                  </button>
+                </div>
               </div>
             )}
             {apiSuccessTarefas && (
@@ -804,26 +837,54 @@ export function Board() {
             )}
           </div>
         )}
-        <div className="flex gap-4 overflow-x-auto pb-2 min-h-0">
+        <p className="text-xs text-slate-500 mb-2 md:hidden">Deslize para ver todos os responsáveis →</p>
+        <div className="flex gap-4 overflow-x-auto pb-2 min-h-0 scroll-smooth">
           {columnsParaPendencias.map((col) => {
             const pendencias = pendenciasDraftPorUsuario[col.id] || [pendenciaVazia()];
+            const qtdComTexto = pendencias.filter((p) => String(p?.texto ?? '').trim()).length;
+            const colunaVazia = qtdComTexto === 0 && !apiLoadingTarefas && !apiErrorTarefas;
+            const ehMinhaColuna = minhaColunaId != null && String(col.id) === String(minhaColunaId);
             return (
               <div
                 key={col.id}
-                className="flex flex-col w-56 shrink-0 bg-white/90 rounded-xl border border-slate-200/90 shadow-md ring-1 ring-indigo-500/10 overflow-hidden"
+                className={`flex flex-col w-56 shrink-0 bg-white/90 rounded-xl border shadow-md overflow-hidden ${
+                  ehMinhaColuna
+                    ? 'border-amber-400 ring-2 ring-amber-300/60'
+                    : 'border-slate-200/90 ring-1 ring-indigo-500/10'
+                }`}
               >
                 <div className="flex items-center justify-between px-3 py-2.5 bg-gradient-to-r from-indigo-600 to-violet-700 border-b border-white/15 text-white">
-                  <span className="font-semibold text-sm">{col.name}</span>
-                  <div className="flex gap-0.5">
-                    <button type="button" className="p-1 rounded hover:bg-white/15 text-white/90" aria-label="Anterior">
+                  <span className="font-semibold text-sm truncate" title={col.name}>
+                    {col.name}
+                    {usarApiPendencias ? ` (${qtdComTexto})` : ''}
+                    {ehMinhaColuna ? ' · você' : ''}
+                  </span>
+                  <div className="flex gap-0.5 shrink-0">
+                    <button
+                      type="button"
+                      className="p-1 rounded hover:bg-white/15 text-white/90"
+                      title="Rolar tarefas para cima (em breve)"
+                      aria-label="Rolar tarefas para cima"
+                    >
                       <ChevronLeft className="w-4 h-4" />
                     </button>
-                    <button type="button" className="p-1 rounded hover:bg-white/15 text-white/90" aria-label="Próximo">
+                    <button
+                      type="button"
+                      className="p-1 rounded hover:bg-white/15 text-white/90"
+                      title="Rolar tarefas para baixo (em breve)"
+                      aria-label="Rolar tarefas para baixo"
+                    >
                       <ChevronRight className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
                 <div className="flex flex-col gap-2 p-2 flex-1 min-h-0 overflow-y-auto">
+                  {colunaVazia ? (
+                    <div className="text-center text-xs text-slate-500 py-6 px-2 leading-relaxed space-y-2">
+                      <p>Nenhuma pendência aqui.</p>
+                      <p className="text-slate-400">Use o campo abaixo para adicionar.</p>
+                    </div>
+                  ) : null}
                   {pendencias.map((item, idx) => (
                     <textarea
                       key={`${col.id}-${item?.id ?? idx}`}
@@ -834,7 +895,7 @@ export function Board() {
                         abrirModalConfirmacao(col.id, idx);
                       }}
                       onDoubleClick={() => abrirModalAcoesPendencia(col.id, idx)}
-                      placeholder="Nova tarefa..."
+                      placeholder={ehMinhaColuna ? 'Nova pendência…' : 'Nova tarefa…'}
                       rows={3}
                       className="min-h-[72px] rounded-md border-2 p-3 text-sm bg-white border-gray-200 hover:border-gray-300 text-gray-700 resize-none focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-400"
                     />

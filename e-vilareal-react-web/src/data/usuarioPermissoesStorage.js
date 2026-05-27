@@ -33,7 +33,7 @@ export function isUsuarioMasterEstacao() {
 }
 
 /**
- * @returns {{ id: string, nome: string, login: string } | null}
+ * @returns {{ id: string, nome: string, login: string, perfilId?: number } | null}
  */
 export function getApiUsuarioSessao() {
   if (typeof window === 'undefined') return null;
@@ -42,10 +42,13 @@ export function getApiUsuarioSessao() {
     if (!raw) return null;
     const o = JSON.parse(raw);
     if (!o || typeof o.id !== 'string' || !o.id) return null;
+    const perfilId =
+      o.perfilId != null && Number.isFinite(Number(o.perfilId)) ? Number(o.perfilId) : undefined;
     return {
       id: o.id,
       nome: typeof o.nome === 'string' ? o.nome : '',
       login: typeof o.login === 'string' ? o.login : '',
+      perfilId,
     };
   } catch {
     return null;
@@ -53,12 +56,16 @@ export function getApiUsuarioSessao() {
 }
 
 /**
- * @param {{ id: number|string, nome?: string, login?: string } | null | undefined} usuario
+ * @param {{ id: number|string, nome?: string, login?: string, perfilId?: number } | null | undefined} usuario
  */
 export function setApiUsuarioSessao(usuario) {
   if (typeof window === 'undefined' || usuario == null || usuario.id == null) return;
   const id = String(usuario.id).trim();
   if (!id) return;
+  const perfilId =
+    usuario.perfilId != null && Number.isFinite(Number(usuario.perfilId))
+      ? Number(usuario.perfilId)
+      : undefined;
   try {
     sessionStorage.setItem(
       STORAGE_API_USUARIO_SESSAO,
@@ -66,6 +73,7 @@ export function setApiUsuarioSessao(usuario) {
         id,
         nome: String(usuario.nome ?? ''),
         login: String(usuario.login ?? ''),
+        ...(perfilId != null ? { perfilId } : {}),
       }),
     );
     dispatchOperadorEstacao();

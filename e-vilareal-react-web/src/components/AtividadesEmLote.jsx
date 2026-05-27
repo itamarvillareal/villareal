@@ -11,6 +11,8 @@ import {
   extrairUnidadesPessoasPlanilha,
   importarUnidadesPessoasPlanilha,
 } from '../repositories/condominioUnidadesPessoasRepository.js';
+import { useUsuarioPerfil } from '../hooks/useUsuarioPerfil.js';
+import { Upload } from 'lucide-react';
 
 const inputClass =
   'w-full px-2 py-1.5 border border-slate-300 dark:border-slate-600 rounded text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100';
@@ -248,6 +250,7 @@ function somaCentavosUnidade(u) {
  * Tela «Atividades em Lote» — ponto de entrada pelo menu lateral.
  */
 export function AtividadesEmLote() {
+  const { isAdmin } = useUsuarioPerfil();
   const apiOk =
     featureFlags.useApiClientes &&
     featureFlags.useApiProcessos &&
@@ -472,18 +475,24 @@ export function AtividadesEmLote() {
       <header>
         <h1 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Atividades em Lote</h1>
         <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-          Operações em massa com confirmação antes de gravar no servidor.
+          Importação de dados em grande quantidade, com confirmação antes de concluir.
         </p>
-        <div className="mt-3 max-w-3xl rounded-lg border border-slate-200 bg-slate-50/90 px-3 py-2 text-xs text-slate-700 dark:border-slate-600 dark:bg-slate-900/60 dark:text-slate-300">
-          <span className="font-semibold text-slate-800 dark:text-slate-200">Histórico de processos (Excel, grandes volumes):</span>{' '}
-          use o script Python <code className="rounded bg-white px-1 dark:bg-slate-800">~/Downloads/migrar_historico_processos.py</code> para
-          gerar o SQL e aplicar no MySQL. O script imprime o <code className="rounded bg-white px-1 dark:bg-slate-800">importacao_id</code>{' '}
-          (UUID) da sessão. Para reverter só esses andamentos importados:{' '}
-          <code className="rounded bg-white px-1 dark:bg-slate-800">
-            {`DELETE /api/condominio/inadimplencia/reverter/{importacaoId}`}
-          </code>{' '}
-          (mesmo endpoint da reversão de importações em lote).
-        </div>
+        {isAdmin ? (
+          <div className="mt-3 max-w-3xl rounded-lg border border-slate-200 bg-slate-50/90 px-3 py-2 text-xs text-slate-700 dark:border-slate-600 dark:bg-slate-900/60 dark:text-slate-300">
+            <span className="font-semibold text-slate-800 dark:text-slate-200">
+              Histórico de processos (Excel, grandes volumes) — administrador:
+            </span>{' '}
+            use o script Python{' '}
+            <code className="rounded bg-white px-1 dark:bg-slate-800">~/Downloads/migrar_historico_processos.py</code> para gerar o SQL e
+            aplicar no MySQL. O script imprime o{' '}
+            <code className="rounded bg-white px-1 dark:bg-slate-800">importacao_id</code> (UUID) da sessão. Para reverter só esses
+            andamentos importados:{' '}
+            <code className="rounded bg-white px-1 dark:bg-slate-800">
+              {`DELETE /api/condominio/inadimplencia/reverter/{importacaoId}`}
+            </code>{' '}
+            (mesmo endpoint da reversão de importações em lote).
+          </div>
+        ) : null}
       </header>
 
       {!apiOk && (
@@ -494,21 +503,38 @@ export function AtividadesEmLote() {
       )}
 
       {apiOk && !fluxoTipo && (
-        <div className="max-w-2xl">
+        <div className={`max-w-2xl ${isAdmin ? '' : 'mx-auto w-full'}`}>
+          {!isAdmin ? (
+            <p className="mb-4 text-sm text-slate-600 dark:text-slate-400 text-center">
+              Siga os passos abaixo para importar a inadimplência do condomínio a partir de um PDF.
+            </p>
+          ) : null}
           <button
             type="button"
             onClick={() => {
               resetFluxoInadimplencia();
               setFluxoTipo('pdf');
             }}
-            className="flex w-full flex-col items-start gap-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 text-left shadow-sm hover:border-slate-300 dark:hover:border-slate-600 transition-colors"
+            className={`flex w-full flex-col items-start gap-2 rounded-xl border-2 border-emerald-600/40 bg-white dark:bg-slate-900 p-5 text-left shadow-md hover:border-emerald-500 hover:shadow-lg transition-all cursor-pointer ${
+              isAdmin ? '' : 'ring-2 ring-emerald-500/20'
+            }`}
           >
-            <span className="font-medium text-slate-800 dark:text-slate-100">
+            <span className="inline-flex items-center gap-2 font-semibold text-emerald-800 dark:text-emerald-200">
+              <Upload className="h-5 w-5 shrink-0" aria-hidden />
               Importar inadimplência condominial (PDF)
             </span>
-            <span className="text-xs text-slate-600 dark:text-slate-400">
-              Analisa o PDF, grava processos e débitos (cálculo dim. 0), depois importa proprietários pela planilha XLS
-              no mesmo fluxo — uma única referência de importação para reverter tudo junto (ou pode adiar a planilha).
+            <span className="text-sm text-slate-600 dark:text-slate-400">
+              {!isAdmin ? (
+                <>
+                  <strong>1.</strong> Selecione o PDF do condomínio · <strong>2.</strong> Confira os dados na tela ·{' '}
+                  <strong>3.</strong> Confirme a importação
+                </>
+              ) : (
+                <>
+                  Analisa o PDF, grava processos e débitos, depois importa proprietários pela planilha XLS no mesmo fluxo
+                  — uma única referência para reverter tudo junto (ou pode adiar a planilha).
+                </>
+              )}
             </span>
           </button>
         </div>

@@ -73,11 +73,11 @@ export const navItems = [
     label: 'Tópicos',
     icon: 'Layers',
     children: [
-      { id: 'topicos', label: 'Tópicos', icon: 'Layers' },
+      { id: 'topicos', label: 'Catálogo', icon: 'Layers' },
       { id: 'topicos/gerente', label: 'Gerente de Tópicos', icon: 'LayoutDashboard' },
     ],
   },
-  { id: 'diagnosticos', label: 'Diagnósticos', icon: 'Activity' },
+  { id: 'diagnosticos', label: 'Relatórios e Consultas', icon: 'Activity' },
   {
     id: 'whatsapp-grupo',
     label: 'WhatsApp',
@@ -91,9 +91,9 @@ export const navItems = [
   },
   {
     id: 'integracoes-grupo',
-    label: 'Integrações (lab)',
+    label: 'Integrações',
     icon: 'Plug',
-    children: [{ id: 'integracoes/scraper-lab', label: 'DataJud — lab de buscas', icon: 'Link' }],
+    children: [{ id: 'integracoes/scraper-lab', label: 'Consulta DataJud', icon: 'Link' }],
   },
   { id: 'usuarios', label: 'Usuários', icon: 'UserCog' },
   { id: 'configuracoes', label: 'Configurações', icon: 'Settings' },

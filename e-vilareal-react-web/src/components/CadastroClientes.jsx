@@ -10,6 +10,10 @@ import {
   PlusCircle,
   X,
   Users,
+  Lock,
+  Unlock,
+  Loader2,
+  Check,
 } from 'lucide-react';
 import { ModalConfiguracoesCalculoCliente } from './ModalConfiguracoesCalculoCliente.jsx';
 import { getDadosProcessoClienteUnificado } from '../data/processoClienteProcUnificado.js';
@@ -68,6 +72,23 @@ const DEFAULT_CLIENTE_VAZIO = {
   clienteInativo: false,
   observacao: '',
 };
+
+/** Estado inicial da tela sem cliente escolhido (só busca visível). */
+const ESTADO_TELA_SEM_CLIENTE = {
+  codigo: '',
+  pessoa: '',
+  nomeRazao: '',
+  cnpjCpf: '',
+  edicaoDesabilitada: true,
+  clienteInativo: false,
+  observacao: '',
+  processos: [],
+};
+
+const btnAcaoSecundario =
+  'px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-800 text-sm font-medium shadow-sm hover:bg-slate-50 hover:border-slate-400 transition-colors';
+const btnAcaoPrimario =
+  'px-3 py-2 rounded-lg border border-indigo-600 bg-indigo-600 text-white text-sm font-semibold shadow-sm hover:bg-indigo-700';
 
 function formatDocBR(digits) {
   const d = String(digits || '').replace(/\D/g, '');
@@ -281,7 +302,12 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
       ? String(navClientes.procRaw)
       : '';
 
-  const ini = getInitialEstadoCliente(codClienteFromState || undefined);
+  const temClienteNaRota = Boolean(codClienteFromState) || (isEmbedded && navClientes?.hasCod);
+  const ini = temClienteNaRota
+    ? getInitialEstadoCliente(codClienteFromState || undefined)
+    : ESTADO_TELA_SEM_CLIENTE;
+  const [formularioClienteAberto, setFormularioClienteAberto] = useState(temClienteNaRota);
+  const [statusSalvamento, setStatusSalvamento] = useState('idle');
   const [codigo, setCodigo] = useState(ini.codigo);
   const [pessoa, setPessoa] = useState(ini.pessoa);
   const [nomeRazao, setNomeRazao] = useState(ini.nomeRazao);
@@ -336,8 +362,6 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
   const resolucaoCodigoReqIdRef = useRef(0);
   /** Evita auto-save com snapshot vazio enquanto há GET /resolucao em voo (vários pedidos = contador). */
   const resolucaoClientePendingRef = useRef(0);
-  /** Com API: primeira visita sem último salvo — aplica o maior código da lista uma vez por entrada em /pessoas. */
-  const aplicouUltimoClienteApiSemPersistRef = useRef(false);
   /** Evita aplicar GET /api/processos antigo ao trocar de cliente rápido. */
   const processosApiReqIdRef = useRef(0);
   const codigoRef = useRef(codigo);
@@ -401,7 +425,6 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
 
   useEffect(() => {
     if (!emTelaClientes) return undefined;
-    aplicarDadosClienteRef.current(padCliente8(codigoRef.current));
     let cancelado = false;
     void (async () => {
       if (featureFlags.useApiClientes) {
@@ -569,45 +592,25 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
   /** Após o índice leve carregar, revalida só se o cabeçalho ainda não veio do índice. */
   useEffect(() => {
     if (!featureFlags.useApiClientes || !clientesApiCarregados) return;
+    if (!formularioClienteAberto) return;
     const padded = padCliente8(codigoRef.current);
     const noIndice = (clientesApiIndexRef.current || []).some((c) => c.codigo === padded);
     if (!noIndice) aplicarDadosClienteRef.current(padded);
-  }, [clientesApiCarregados]);
-
-  useEffect(() => {
-    if (!emTelaClientes) return;
-    aplicouUltimoClienteApiSemPersistRef.current = false;
-  }, [emTelaClientes, location.pathname]);
+  }, [clientesApiCarregados, formularioClienteAberto]);
 
   useEffect(() => {
     if (!featureFlags.useApiClientes) return;
     if (!clientesApiCarregados) return;
-    if (codClienteFromState) return;
-    if (loadUltimoCodigoCliente()) return;
-    if (aplicouUltimoClienteApiSemPersistRef.current) return;
-    const codes = coletarCodigosClienteConhecidos(clientesApiIndexRef.current);
-    if (codes.length === 0) return;
-    aplicouUltimoClienteApiSemPersistRef.current = true;
-    const ultimo = codes[codes.length - 1];
-    if (padCliente8(codigoRef.current) !== padCliente8(ultimo)) {
-      aplicarDadosClienteRef.current(ultimo);
-    }
-  }, [
-    clientesApiCarregados,
-    codClienteFromState,
-  ]);
-
-  useEffect(() => {
-    if (!featureFlags.useApiClientes) return;
-    if (!clientesApiCarregados) return;
+    if (!formularioClienteAberto) return;
     const id = window.setTimeout(() => {
       saveUltimoCodigoCliente(padCliente8(codigo));
     }, 150);
     return () => window.clearTimeout(id);
-  }, [codigo, clientesApiCarregados]);
+  }, [codigo, clientesApiCarregados, formularioClienteAberto]);
 
   useEffect(() => {
     if (codClienteFromState) {
+      setFormularioClienteAberto(true);
       aplicarDadosClienteRef.current(padCliente8(codClienteFromState));
     }
     if (procFromState) setPesquisaProcesso(procFromState);
@@ -680,7 +683,9 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
     const t = setTimeout(() => {
       const s = persistSnapshotRef.current;
       if (!s) return;
+      if (!formularioClienteAberto) return;
       if (resolucaoClientePendingRef.current > 0) return;
+      setStatusSalvamento('saving');
       void salvarClienteCadastro(
         {
           codigo: s.codigo,
@@ -691,10 +696,15 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
           clienteInativo: s.clienteInativo,
         },
         { suppressEmit: true }
-      ).catch(() => {});
+      )
+        .then(() => {
+          setStatusSalvamento('saved');
+          window.setTimeout(() => setStatusSalvamento('idle'), 2500);
+        })
+        .catch(() => setStatusSalvamento('idle'));
     }, 250);
     return () => clearTimeout(t);
-  }, [codigo, pessoa, nomeRazao, cnpjCpf, observacao, clienteInativo, edicaoDesabilitada]);
+  }, [codigo, pessoa, nomeRazao, cnpjCpf, observacao, clienteInativo, edicaoDesabilitada, formularioClienteAberto]);
 
   useEffect(() => {
     if (featureFlags.useApiClientes) return;
@@ -705,6 +715,8 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
     const t = setTimeout(() => {
       const s = persistSnapshotRef.current;
       if (!s) return;
+      if (!formularioClienteAberto) return;
+      setStatusSalvamento('saving');
       saveCadastroClienteDados(s.codigo, {
         pessoa: s.pessoa,
         nomeRazao: s.nomeRazao,
@@ -714,9 +726,11 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
         edicaoDesabilitada: s.edicaoDesabilitada,
         processos: s.processos,
       });
+      setStatusSalvamento('saved');
+      window.setTimeout(() => setStatusSalvamento('idle'), 2500);
     }, 250);
     return () => clearTimeout(t);
-  }, [codigo, pessoa, nomeRazao, cnpjCpf, observacao, clienteInativo, edicaoDesabilitada, processos]);
+  }, [codigo, pessoa, nomeRazao, cnpjCpf, observacao, clienteInativo, edicaoDesabilitada, processos, formularioClienteAberto]);
 
   useEffect(() => {
     return () => {
@@ -736,8 +750,17 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
   }, []);
 
   function aplicarCodigoCliente(value) {
+    setFormularioClienteAberto(true);
     const padded = padCliente8(value);
     aplicarDadosCliente(padded);
+  }
+
+  function iniciarNovoCliente() {
+    const codNovo = proximoCliente || padCliente8('1');
+    setFormularioClienteAberto(true);
+    setEdicaoDesabilitada(false);
+    setBuscaClienteNome('');
+    aplicarCodigoCliente(codNovo);
   }
 
   const atualizarCampoProcesso = useCallback(
@@ -1100,6 +1123,7 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
   );
 
   function selecionarClienteDaBuscaNome(row) {
+    setFormularioClienteAberto(true);
     aplicarCodigoCliente(row.codigoPadded);
     setBuscaClienteNome('');
   }
@@ -1132,6 +1156,21 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
                 Cadastro de Clientes
               </h1>
               <p className="text-xs text-slate-500 truncate">Pessoas, vínculos e processos em um só lugar</p>
+              {formularioClienteAberto && statusSalvamento !== 'idle' ? (
+                <p className="mt-1 flex items-center gap-1.5 text-xs font-medium text-slate-600">
+                  {statusSalvamento === 'saving' ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin text-indigo-600" aria-hidden />
+                      Salvando…
+                    </>
+                  ) : (
+                    <>
+                      <Check className="h-3.5 w-3.5 text-emerald-600" aria-hidden />
+                      Salvo
+                    </>
+                  )}
+                </p>
+              ) : null}
             </div>
           </div>
           <button
@@ -1159,19 +1198,29 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
               </p>
             </div>
             <div className="p-4">
-              <div className="flex flex-wrap items-center gap-2 mb-2">
+              <div className="flex flex-wrap items-end gap-2 mb-2">
+              <div className="flex min-w-0 flex-1 flex-col gap-1 sm:max-w-md">
               <label className="text-sm font-medium text-slate-700 whitespace-nowrap" htmlFor="busca-cliente-nome">
-                Pesquisar
+                Pesquisar cliente
               </label>
               <input
                 id="busca-cliente-nome"
                 type="text"
                 value={buscaClienteNome}
                 onChange={(e) => setBuscaClienteNome(e.target.value)}
-                className={`${inputClass} w-full min-w-0 text-base max-w-none sm:max-w-md md:text-sm`}
+                className={`${inputClass} w-full min-w-0 text-base md:text-sm`}
                 placeholder="Nome ou código do cliente (ex.: 491 ou 00000491)…"
                 autoComplete="off"
               />
+              </div>
+              <button
+                type="button"
+                onClick={iniciarNovoCliente}
+                className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md hover:from-indigo-500 hover:to-violet-500"
+              >
+                <PlusCircle className="h-4 w-4" aria-hidden />
+                Novo Cliente
+              </button>
               </div>
             {(() => {
               const rawBusca = String(buscaClienteNome ?? '').trim();
@@ -1319,34 +1368,52 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
             </div>
           </section>
 
+          {!formularioClienteAberto ? (
+            <section className="rounded-2xl border border-dashed border-slate-300 bg-white/80 px-6 py-14 text-center shadow-sm">
+              <Users className="mx-auto h-12 w-12 text-slate-300" aria-hidden />
+              <p className="mt-3 text-base font-medium text-slate-700">Nenhum cliente selecionado</p>
+              <p className="mt-1 text-sm text-slate-500 max-w-md mx-auto">
+                Use a busca acima para localizar um cliente ou clique em <strong>Novo Cliente</strong> para cadastrar.
+              </p>
+            </section>
+          ) : (
+          <>
           <section className="rounded-2xl border border-slate-200/90 bg-white shadow-md overflow-hidden ring-1 ring-indigo-500/5">
             <div className="border-b border-indigo-400/30 bg-gradient-to-br from-indigo-950 via-violet-950 to-slate-900 px-4 py-3 text-white shadow-md ring-1 ring-indigo-500/25">
-              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-indigo-200/90 mb-0.5">Cliente selecionado</p>
-              <p className="text-lg font-semibold tracking-tight truncate" title={nomeRazao || undefined}>
-                {String(nomeRazao || '').trim() || '— Sem nome / razão social —'}
-              </p>
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <span className="rounded-full bg-white/12 px-2.5 py-0.5 text-xs font-mono font-semibold text-indigo-50 ring-1 ring-white/20">
-                  Cód. {padCliente8(codigo)}
-                </span>
-                {clienteInativo ? (
-                  <span className="rounded-full bg-amber-400/25 px-2 py-0.5 text-[10px] font-bold uppercase text-amber-100 ring-1 ring-amber-300/40">
-                    Inativo
-                  </span>
-                ) : (
-                  <span className="rounded-full bg-emerald-400/20 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-100 ring-1 ring-emerald-400/35">
-                    Ativo
-                  </span>
-                )}
-                {edicaoDesabilitada ? (
-                  <span className="rounded-full bg-slate-600/50 px-2 py-0.5 text-[10px] font-semibold text-slate-200">
-                    Edição bloqueada
-                  </span>
-                ) : (
-                  <span className="rounded-full bg-sky-400/25 px-2 py-0.5 text-[10px] font-bold uppercase text-sky-100 ring-1 ring-sky-300/40">
-                    Editável
-                  </span>
-                )}
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-indigo-200/90 mb-0.5">Cliente selecionado</p>
+                  <p className="text-lg font-semibold tracking-tight truncate" title={nomeRazao || undefined}>
+                    {String(nomeRazao || '').trim() || '— Sem nome / razão social —'}
+                  </p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <span className="rounded-full bg-white/12 px-2.5 py-0.5 text-xs font-mono font-semibold text-indigo-50 ring-1 ring-white/20">
+                      Cód. {padCliente8(codigo)}
+                    </span>
+                    {clienteInativo ? (
+                      <span className="rounded-full bg-amber-400/25 px-2 py-0.5 text-[10px] font-bold uppercase text-amber-100 ring-1 ring-amber-300/40">
+                        Inativo
+                      </span>
+                    ) : (
+                      <span className="rounded-full bg-emerald-400/20 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-100 ring-1 ring-emerald-400/35">
+                        Ativo
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEdicaoDesabilitada((v) => !v)}
+                  className={`inline-flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${
+                    edicaoDesabilitada
+                      ? 'border-amber-300/60 bg-amber-500/20 text-amber-50 hover:bg-amber-500/30'
+                      : 'border-emerald-300/60 bg-emerald-500/20 text-emerald-50 hover:bg-emerald-500/30'
+                  }`}
+                  title={edicaoDesabilitada ? 'Permitir alterações no cadastro' : 'Bloquear alterações no cadastro'}
+                >
+                  {edicaoDesabilitada ? <Lock className="h-4 w-4" aria-hidden /> : <Unlock className="h-4 w-4" aria-hidden />}
+                  {edicaoDesabilitada ? 'Habilitar edição' : 'Edição ativa'}
+                </button>
               </div>
             </div>
             <div className="p-4 space-y-4 bg-gradient-to-b from-violet-50/30 via-white to-sky-50/20">
@@ -1423,34 +1490,42 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-0.5">Pessoa:</label>
-              <div className="flex gap-1">
-                <input type="text" value={pessoa} onChange={(e) => setPessoa(e.target.value)} disabled={edicaoDesabilitada} className={`${inputClass} w-24 bg-slate-50`} />
+              <label className="block text-sm font-medium text-slate-700 mb-0.5">Pessoa vinculada</label>
+              <div className="flex flex-wrap items-center gap-2">
+                {String(pessoa ?? '').trim() ? (
+                  <span
+                    className="text-sm text-slate-600"
+                    title={`Ficha interna nº ${pessoa}`}
+                  >
+                    Cadastro de pessoas vinculado
+                  </span>
+                ) : (
+                  <span className="text-sm text-amber-700">Nenhuma pessoa vinculada</span>
+                )}
                 <button
                   type="button"
                   disabled={edicaoDesabilitada}
-                  className={`p-2 rounded-lg border shadow-sm ${
+                  className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-sm font-medium shadow-sm ${
                     edicaoDesabilitada
-                      ? 'border-slate-200 bg-slate-100 cursor-not-allowed opacity-60'
+                      ? 'border-slate-200 bg-slate-100 cursor-not-allowed opacity-60 text-slate-500'
                       : 'border-indigo-200 bg-indigo-50 text-indigo-900 hover:bg-indigo-100'
                   }`}
                   title={
                     edicaoDesabilitada
-                      ? 'Habilite a edição para escolher outra pessoa'
-                      : 'Buscar pessoa no cadastro'
+                      ? 'Habilite a edição para escolher a pessoa'
+                      : 'Buscar e vincular pessoa no cadastro'
                   }
                   onClick={() => {
                     if (edicaoDesabilitada) {
-                      window.alert(
-                        'Desmarque "Edição Desabilitada" para escolher a pessoa do cliente pelo cadastro.'
-                      );
+                      window.alert('Clique em "Habilitar edição" para vincular uma pessoa ao cliente.');
                       return;
                     }
                     setBuscaPessoaModal('');
                     setModalEscolherPessoa(true);
                   }}
                 >
-                  <Search className="w-4 h-4 text-slate-600" />
+                  <Search className="w-4 h-4" aria-hidden />
+                  {String(pessoa ?? '').trim() ? 'Alterar pessoa' : 'Vincular pessoa'}
                 </button>
               </div>
             </div>
@@ -1514,14 +1589,14 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
                   }
                   navigate(`/clientes/editar/${idPessoa}`);
                 }}
-                className="px-3 py-2 rounded-lg border border-slate-200 bg-white text-slate-800 text-sm font-medium shadow-sm hover:bg-slate-50 hover:border-slate-300 transition-colors"
+                className={btnAcaoSecundario}
               >
                 Cadastro de Pessoas
               </button>
               <button
                 type="button"
                 onClick={abrirContaCorrenteProcZero}
-                className="px-3 py-2 rounded-lg border border-sky-300 bg-gradient-to-r from-sky-50 to-cyan-50 text-sky-950 text-sm font-medium shadow-sm hover:from-sky-100 hover:to-cyan-100"
+                className={btnAcaoSecundario}
                 title="Lançamentos do Financeiro com este Cod. Cliente e Proc. 0 (mensalistas / não vinculados a um processo específico). Abre a tela Processos com a janela da conta corrente."
               >
                 Conta Corrente (Proc. 0)
@@ -1541,32 +1616,28 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
                   });
                   setModalQualificacaoAberto(true);
                 }}
-                className="px-3 py-2 rounded-lg border border-violet-200 bg-violet-50 text-violet-950 text-sm font-medium shadow-sm hover:bg-violet-100"
+                className={btnAcaoSecundario}
               >
                 Qualificação
               </button>
               <button
                 type="button"
-                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-amber-200 bg-gradient-to-r from-amber-50 to-yellow-50 text-amber-950 text-sm font-medium shadow-sm hover:from-amber-100 hover:to-yellow-100"
+                className={`inline-flex items-center gap-2 ${btnAcaoSecundario}`}
                 title="Documentos do cliente"
               >
-                <FolderOpen className="w-4 h-4 shrink-0 text-amber-600" aria-hidden />
+                <FolderOpen className="w-4 h-4 shrink-0 text-slate-600" aria-hidden />
                 Documentos
               </button>
               <button
                 type="button"
                 onClick={() => setModalConfigCalculoAberto(true)}
-                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-indigo-300 bg-indigo-600 text-white text-sm font-semibold shadow-sm hover:bg-indigo-700"
+                className={`inline-flex items-center gap-2 ${btnAcaoPrimario}`}
                 title="Padrões de juros, multa, honorários, índice e periodicidade para os cálculos deste cliente"
               >
                 <SlidersHorizontal className="w-4 h-4 shrink-0" aria-hidden />
                 Configurações de cálculo
               </button>
             </div>
-            <label className="flex items-center gap-2 text-sm cursor-pointer text-slate-700">
-              <input type="checkbox" checked={edicaoDesabilitada} onChange={(e) => setEdicaoDesabilitada(e.target.checked)} className="rounded border-slate-300 accent-indigo-600" />
-              Edição Desabilitada
-            </label>
             <label className="flex items-center gap-2 text-sm cursor-pointer">
               <input
                 type="checkbox"
@@ -1595,13 +1666,26 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
 
           <div className="rounded-xl border border-slate-200/80 bg-white/70 p-3 shadow-sm ring-1 ring-slate-100/80">
             <label className="block text-sm font-semibold text-slate-800 mb-1">Observação</label>
-            <textarea value={observacao} onChange={(e) => setObservacao(e.target.value)} rows={3} className={`${inputClass} resize-y`} />
+            <textarea
+              value={observacao}
+              onChange={(e) => setObservacao(e.target.value)}
+              rows={3}
+              disabled={edicaoDesabilitada}
+              placeholder="Ex.: Cliente indicado por Dr. João. Prefere contato por WhatsApp."
+              className={`${inputClass} resize-y ${edicaoDesabilitada ? 'bg-slate-50' : ''}`}
+            />
           </div>
 
           <div className="rounded-xl border border-sky-200/80 bg-gradient-to-br from-sky-50/50 via-white to-indigo-50/30 overflow-hidden shadow-sm ring-1 ring-sky-500/10">
             <div className="border-b border-sky-200/70 bg-gradient-to-r from-sky-600 via-cyan-600 to-indigo-600 px-4 py-2.5">
               <p className="text-sm font-bold uppercase tracking-wide text-white">Processos do cliente</p>
-              <p className="text-xs text-sky-100/95 mt-0.5">Grade alinhada à tela Processos — duplo clique na linha para abrir</p>
+              <p className="text-xs text-sky-100/95 mt-0.5">
+                {processosGradeCarregando
+                  ? 'Carregando processos…'
+                  : processos.length === 0
+                    ? 'Nenhum processo cadastrado para este cliente — use Incluir processo abaixo'
+                    : `${processos.length} processo(s) — duplo clique na linha para abrir`}
+              </p>
             </div>
             <div className="p-3 sm:p-4">
             <div className="mb-3 md:hidden">
@@ -1882,6 +1966,9 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
               Fechar
             </button>
           </div>
+          </>
+          )}
+
         </div>
       </div>
 

@@ -1,5 +1,6 @@
 package br.com.vilareal.whatsapp.api;
 
+import br.com.vilareal.config.WhatsAppConfig;
 import br.com.vilareal.whatsapp.ScheduledMessageStatus;
 import br.com.vilareal.whatsapp.WhatsAppApiException;
 import br.com.vilareal.whatsapp.WhatsAppMessageDirection;
@@ -61,18 +62,21 @@ public class WhatsAppController {
     private final WhatsAppMessageRepository whatsAppMessageRepository;
     private final ScheduledWhatsAppMessageRepository scheduledWhatsAppMessageRepository;
     private final ObjectMapper objectMapper;
+    private final WhatsAppConfig whatsAppConfig;
 
     public WhatsAppController(
             WhatsAppService whatsAppService,
             WhatsAppSchedulerService whatsAppSchedulerService,
             WhatsAppMessageRepository whatsAppMessageRepository,
             ScheduledWhatsAppMessageRepository scheduledWhatsAppMessageRepository,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            WhatsAppConfig whatsAppConfig) {
         this.whatsAppService = whatsAppService;
         this.whatsAppSchedulerService = whatsAppSchedulerService;
         this.whatsAppMessageRepository = whatsAppMessageRepository;
         this.scheduledWhatsAppMessageRepository = scheduledWhatsAppMessageRepository;
         this.objectMapper = objectMapper;
+        this.whatsAppConfig = whatsAppConfig;
     }
 
     @PostMapping("/send")
@@ -204,7 +208,26 @@ public class WhatsAppController {
         long failedToday = whatsAppMessageRepository.countByStatusAndCreatedAtAfter(
                 WhatsAppMessageStatus.FAILED, startOfToday);
 
-        return ResponseEntity.ok(new WhatsAppStatsDTO(sentToday, receivedToday, scheduledPending, failedToday));
+        return ResponseEntity.ok(new WhatsAppStatsDTO(
+                sentToday,
+                receivedToday,
+                scheduledPending,
+                failedToday,
+                integracaoWhatsAppConfigurada(),
+                Instant.now()));
+    }
+
+    private boolean integracaoWhatsAppConfigurada() {
+        String token = whatsAppConfig.getAccessToken();
+        String phoneId = whatsAppConfig.getPhoneNumberId();
+        if (!StringUtils.hasText(token) || !StringUtils.hasText(phoneId)) {
+            return false;
+        }
+        String tokenLower = token.toLowerCase(Locale.ROOT);
+        if (tokenLower.contains("placeholder") || tokenLower.contains("token-placeholder")) {
+            return false;
+        }
+        return !"123456789".equals(phoneId.trim());
     }
 
     private WhatsAppMessageDTO toMessageDto(WhatsAppMessageEntity entity) {

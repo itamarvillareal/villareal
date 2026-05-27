@@ -21,8 +21,7 @@ export function GerenteTopicos() {
             Gerente de Tópicos
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            Visualização da hierarquia compartilhada; com <code className="text-xs">VITE_USE_API_TOPICOS</code> os dados
-            vêm do backend; caso contrário use <code className="text-xs">topicosHierarchy.js</code>.
+            Visualização e organização da hierarquia de tópicos usada em documentos e processos.
           </p>
         </div>
       </header>
