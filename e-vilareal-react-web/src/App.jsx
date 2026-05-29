@@ -9,6 +9,7 @@ import {
   LazyAgenda,
   LazyAnaLuisa,
   LazyAtividade,
+  LazyPatrimonio,
   LazyAtividadesEmLote,
   LazyBoard,
   LazyCadastroClientes,
@@ -73,6 +74,7 @@ import {
   getOperadorEstacaoId,
   setUsuarioSessaoAtualId,
   isUsuarioMasterEstacao,
+  perfilAtivoEhMasterEstacao,
 } from './data/usuarioPermissoesStorage.js';
 import { getUsuariosAtivos } from './data/agendaPersistenciaData';
 import { getNomeExibicaoUsuario } from './data/usuarioDisplayHelpers.js';
@@ -156,6 +158,10 @@ function Layout() {
     const pathNorm = (location.pathname || '/').replace(/\/+$/, '') || '/';
     const uid = getPerfilAtivoParaPermissoes();
     if (pathNorm === '/atividade' && !isUsuarioMasterEstacao()) {
+      navigate(getPrimeiraRotaPermitida(uid), { replace: true });
+      return;
+    }
+    if (pathNorm === '/patrimonio' && !perfilAtivoEhMasterEstacao()) {
       navigate(getPrimeiraRotaPermitida(uid), { replace: true });
       return;
     }
@@ -362,6 +368,7 @@ function App() {
               <Route path="/agenda" element={<LazyAgenda />} />
               <Route path="/ana-luisa" element={<LazyAnaLuisa />} />
               <Route path="/atividade" element={<LazyAtividade />} />
+              <Route path="/patrimonio" element={<LazyPatrimonio />} />
               <Route path="/atividades-em-lote" element={<LazyAtividadesEmLote />} />
               <Route path="/processos" element={<LazyProcessos />} />
               <Route path="/processos/publicacoes" element={<LazyPublicacoesProcessos />} />

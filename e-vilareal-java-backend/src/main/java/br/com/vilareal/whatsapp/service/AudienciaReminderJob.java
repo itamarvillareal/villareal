@@ -4,6 +4,8 @@ import br.com.vilareal.config.WhatsAppConfig;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaContatoEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
+import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteWhatsAppEntity;
+import br.com.vilareal.pessoa.infrastructure.persistence.repository.ClienteWhatsAppRepository;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaContatoRepository;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
@@ -44,6 +46,7 @@ public class AudienciaReminderJob {
     private final WhatsAppConfig whatsAppConfig;
     private final ProcessoRepository processoRepository;
     private final PessoaContatoRepository pessoaContatoRepository;
+    private final ClienteWhatsAppRepository clienteWhatsAppRepository;
     private final ScheduledWhatsAppMessageRepository scheduledRepository;
     private final WhatsAppSchedulerService whatsAppSchedulerService;
 
@@ -51,11 +54,13 @@ public class AudienciaReminderJob {
             WhatsAppConfig whatsAppConfig,
             ProcessoRepository processoRepository,
             PessoaContatoRepository pessoaContatoRepository,
+            ClienteWhatsAppRepository clienteWhatsAppRepository,
             ScheduledWhatsAppMessageRepository scheduledRepository,
             WhatsAppSchedulerService whatsAppSchedulerService) {
         this.whatsAppConfig = whatsAppConfig;
         this.processoRepository = processoRepository;
         this.pessoaContatoRepository = pessoaContatoRepository;
+        this.clienteWhatsAppRepository = clienteWhatsAppRepository;
         this.scheduledRepository = scheduledRepository;
         this.whatsAppSchedulerService = whatsAppSchedulerService;
     }
@@ -332,6 +337,14 @@ public class AudienciaReminderJob {
     }
 
     private String resolverTelefoneCliente(ClienteEntity cliente) {
+        List<ClienteWhatsAppEntity> whatsappCadastro =
+                clienteWhatsAppRepository.findByCliente_IdAndAtivoTrueOrderByPrincipalDescIdAsc(cliente.getId());
+        for (ClienteWhatsAppEntity w : whatsappCadastro) {
+            if (StringUtils.hasText(w.getNumero())) {
+                return w.getNumero().trim();
+            }
+        }
+
         PessoaEntity pessoa = cliente.getPessoa();
         if (pessoa == null) {
             return null;

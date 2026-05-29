@@ -24,24 +24,24 @@ import java.util.stream.Collectors;
 public class GmailPublicacaoService {
 
     private static final Logger log = LoggerFactory.getLogger(GmailPublicacaoService.class);
-    /** Scheduler automático: só não lidos. */
-    private static final String QUERY_NAO_LIDOS = "from:publicacoes-diarios@jusbrasil.com.br is:unread";
-    /** Disparo manual (API / botão): últimos 7 dias, inclusive já lidos no Gmail. */
-    private static final String QUERY_RECENTES_7D = "from:publicacoes-diarios@jusbrasil.com.br newer_than:7d";
+    private static final String REMETENTE = "publicacoes-diarios@jusbrasil.com.br";
 
     private final Gmail gmail;
     private final PublicacaoEmailImportacaoTransacionalService importacaoTransacional;
     private final PublicacaoRepository publicacaoRepository;
+    private final EmailImportacaoSyncService syncService;
     private final String gmailUser;
 
     public GmailPublicacaoService(
             @Autowired(required = false) Gmail gmail,
             PublicacaoEmailImportacaoTransacionalService importacaoTransacional,
             PublicacaoRepository publicacaoRepository,
+            EmailImportacaoSyncService syncService,
             @Value("${gmail.user:me}") String gmailUser) {
         this.gmail = gmail;
         this.importacaoTransacional = importacaoTransacional;
         this.publicacaoRepository = publicacaoRepository;
+        this.syncService = syncService;
         this.gmailUser = gmailUser;
     }
 
@@ -49,41 +49,58 @@ public class GmailPublicacaoService {
         return gmail != null;
     }
 
-    /** Scheduler (a cada 3 h): apenas emails ainda não lidos no Gmail. */
     public PublicacaoEmailProcessamentoResumo buscarEProcessarPublicacoes() throws IOException {
-        return buscarEProcessar(QUERY_NAO_LIDOS, false, false);
+        Instant desde = syncService.obterCursorParaBuscaIncremental(EmailImportacaoSyncTipo.JUSBRASIL);
+        String query = EmailImportacaoSyncService.montarQueryIncremental(REMETENTE, desde);
+        return buscarEProcessar(query, false, true, true);
     }
 
-    /**
-     * API / botão «Buscar Emails Agora»: últimos 7 dias, inclusive lidos;
-     * reprocessa emails já importados (remove publicações anteriores do mesmo messageId).
-     */
-    public PublicacaoEmailProcessamentoResumo buscarEProcessarPublicacoesManual() throws IOException {
-        return buscarEProcessar(QUERY_RECENTES_7D, false, true);
+    public PublicacaoEmailProcessamentoResumo buscarEProcessarPublicacoesManual(boolean forcarAtualizacaoCompleta)
+            throws IOException {
+        if (forcarAtualizacaoCompleta) {
+            String query = EmailImportacaoSyncService.montarQueryCaixaCompleta(REMETENTE);
+            return buscarEProcessar(query, true, true, false);
+        }
+        Instant desde = syncService.obterCursorParaBuscaIncremental(EmailImportacaoSyncTipo.JUSBRASIL);
+        String query = EmailImportacaoSyncService.montarQueryIncremental(REMETENTE, desde);
+        return buscarEProcessar(query, false, true, true);
     }
 
     private PublicacaoEmailProcessamentoResumo buscarEProcessar(
-            String query, boolean pularEmailsJaImportados, boolean reprocessarEmailsExistentes) throws IOException {
+            String query,
+            boolean reprocessarEmailsExistentes,
+            boolean atualizarCursor,
+            boolean sincronizacaoIncremental)
+            throws IOException {
         PublicacaoEmailProcessamentoResumo resumo = new PublicacaoEmailProcessamentoResumo();
         if (gmail == null) {
             resumo.getErros().add("Gmail API não configurada.");
             return resumo;
         }
 
+        Instant cursorAnterior =
+                syncService.obterUltimaSincronizacao(EmailImportacaoSyncTipo.JUSBRASIL).orElse(null);
+        resumo.setUltimaSincronizacaoAnterior(cursorAnterior);
+        resumo.setForcarAtualizacao(!sincronizacaoIncremental);
+        resumo.setSincronizacaoIncremental(sincronizacaoIncremental);
+        resumo.setQueryGmail(query);
+
         log.info(
-                "Iniciando busca de publicações Jusbrasil no Gmail (query={}, reprocessar={})",
+                "Iniciando busca de publicações Jusbrasil no Gmail (query={}, reprocessar={}, incremental={})",
                 query,
-                reprocessarEmailsExistentes);
+                reprocessarEmailsExistentes,
+                sincronizacaoIncremental);
         List<Message> mensagens = listarMensagens(query);
         log.info("Emails Jusbrasil encontrados: {}", mensagens.size());
 
         Set<String> processosUnicosLote = new LinkedHashSet<>();
+        Instant emailMaisRecente = cursorAnterior;
 
         for (Message ref : mensagens) {
             String messageId = ref.getId();
             boolean jaImportado = emailJaImportado(messageId);
 
-            if (pularEmailsJaImportados && jaImportado) {
+            if (!reprocessarEmailsExistentes && jaImportado) {
                 log.debug("Email {} já importado anteriormente; ignorado.", messageId);
                 continue;
             }
@@ -110,6 +127,7 @@ public class GmailPublicacaoService {
 
                 String arquivoOrigem = montarArquivoOrigem(assunto, messageId);
                 Instant emailRecebidoEm = extrairDataRecebimentoEmail(completa);
+                emailMaisRecente = maisRecente(emailMaisRecente, emailRecebidoEm);
 
                 log.info(
                         "Extraindo publicações do email messageId={} assunto={} arquivoOrigem={}",
@@ -198,15 +216,36 @@ public class GmailPublicacaoService {
 
         resumo.setProcessosUnicos(processosUnicosLote.size());
 
+        if (atualizarCursor) {
+            Instant cursorGravar = emailMaisRecente != null ? emailMaisRecente : Instant.now();
+            if (!mensagens.isEmpty()
+                    && (cursorAnterior == null || !cursorGravar.isAfter(cursorAnterior))) {
+                cursorGravar = Instant.now();
+            }
+            Instant gravado = syncService.registrarSincronizacao(EmailImportacaoSyncTipo.JUSBRASIL, cursorGravar);
+            resumo.setUltimaSincronizacaoGravada(gravado);
+        }
+
         log.info(
-                "Busca Gmail concluída: emailsLidos={}, publicacoesEncontradas={}, processosUnicos={}, publicacoesProcessadas={}, duplicadasIgnoradas={}, erros={}",
+                "Busca Gmail concluída: emailsLidos={}, publicacoesEncontradas={}, processosUnicos={}, publicacoesProcessadas={}, duplicadasIgnoradas={}, erros={}, cursorGravado={}",
                 resumo.getEmailsLidos(),
                 resumo.getPublicacoesEncontradas(),
                 resumo.getProcessosUnicos(),
                 resumo.getPublicacoesProcessadas(),
                 resumo.getPublicacoesDuplicadasIgnoradas(),
-                resumo.getErros().size());
+                resumo.getErros().size(),
+                resumo.getUltimaSincronizacaoGravada());
         return resumo;
+    }
+
+    private static Instant maisRecente(Instant atual, Instant candidato) {
+        if (candidato == null) {
+            return atual;
+        }
+        if (atual == null || candidato.isAfter(atual)) {
+            return candidato;
+        }
+        return atual;
     }
 
     private boolean emailJaImportado(String messageId) {

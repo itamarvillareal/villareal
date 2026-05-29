@@ -15,6 +15,7 @@ export const TIPOS_PECA = [
   'Contrarrazões de Recurso',
   'Manifestação nos Autos',
   'Embargos de Declaração',
+  'Interlocutória',
 ];
 
 export const CIDADE_ESTADO_PADRAO = 'Anápolis, estado de Goiás';

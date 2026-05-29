@@ -13,7 +13,13 @@ export async function buscarManifestacoesProjudi({ texto, status, filtroVinculo 
   });
 }
 
-/** Dispara importação manual (últimos 7 dias, inclusive já lidos). */
-export async function processarEmailsProjudiAgora() {
-  return request('/api/email/projudi/processar', { method: 'POST' });
+/** Status da última busca incremental no Gmail. */
+export async function obterSyncProjudi() {
+  return request('/api/email/projudi/sync');
+}
+
+/** Busca incremental (desde última sincronização) ou caixa completa com `forcar: true`. */
+export async function processarEmailsProjudiAgora({ forcar = false } = {}) {
+  const qs = forcar ? '?forcar=true' : '';
+  return request(`/api/email/projudi/processar${qs}`, { method: 'POST' });
 }

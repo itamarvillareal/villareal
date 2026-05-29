@@ -330,6 +330,14 @@ export function getPerfilAtivoParaPermissoes() {
   return getOperadorEstacaoId();
 }
 
+/**
+ * Patrimônio é exclusivo do master (Itamar): considera o perfil ativo, de modo que,
+ * ao personificar outro usuário no seletor de teste, a tela fique oculta.
+ */
+export function perfilAtivoEhMasterEstacao() {
+  return idEhUsuarioMasterEstacao(getPerfilAtivoParaPermissoes());
+}
+
 /** Primeira rota permitida para o perfil (evita loop ao negar o módulo atual). A raiz `/` redireciona à agenda. */
 export function getPrimeiraRotaPermitida(userId) {
   for (const m of MODULOS_PERMISSAO) {

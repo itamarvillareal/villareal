@@ -7,6 +7,7 @@ import {
   ChevronRight,
   ChevronsRight,
   SlidersHorizontal,
+  MessageCircle,
   PlusCircle,
   X,
   Users,
@@ -16,6 +17,8 @@ import {
   Check,
 } from 'lucide-react';
 import { ModalConfiguracoesCalculoCliente } from './ModalConfiguracoesCalculoCliente.jsx';
+import { ModalWhatsAppCliente } from './ModalWhatsAppCliente.jsx';
+import { importarWhatsAppDaPessoa } from '../repositories/clienteWhatsAppRepository.js';
 import { getDadosProcessoClienteUnificado } from '../data/processoClienteProcUnificado.js';
 import { buscarCliente, pesquisarCadastroPessoasPorNomeOuCpf } from '../api/clientesService.js';
 import { corrigirNomePessoaExibicao } from '../utils/utf8MojibakeUtil.js';
@@ -323,6 +326,7 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
   const [filtrosGradeProcessosAberto, setFiltrosGradeProcessosAberto] = useState(false);
   const [modalQualificacaoAberto, setModalQualificacaoAberto] = useState(false);
   const [modalConfigCalculoAberto, setModalConfigCalculoAberto] = useState(false);
+  const [modalWhatsAppAberto, setModalWhatsAppAberto] = useState(false);
   const [modalEscolherPessoa, setModalEscolherPessoa] = useState(false);
   const [buscaPessoaModal, setBuscaPessoaModal] = useState('');
   const [pessoasModalApiLista, setPessoasModalApiLista] = useState([]);
@@ -1055,20 +1059,39 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
 
   function aplicarPessoaSelecionada(p) {
     pularSincPorCargaClienteRef.current = true;
-    setPessoa(String(p.id));
+    const pessoaIdStr = String(p.id);
+    setPessoa(pessoaIdStr);
     setNomeRazao(corrigirNomePessoaExibicao(p.nome));
     setCnpjCpf(formatDocBR(p.cpf));
     setModalEscolherPessoa(false);
     setBuscaPessoaModal('');
     const { usuarioNome } = getContextoAuditoriaUsuario();
+    const cod = padCliente8(codigo);
     registrarAuditoria({
       modulo: 'Clientes',
       tela: '/pessoas',
       tipoAcao: 'VINCULACAO',
-      descricao: `Usuário ${usuarioNome} vinculou a pessoa ${p.nome} (id ${p.id}) ao cliente em edição (código ${padCliente8(codigo)}).`,
+      descricao: `Usuário ${usuarioNome} vinculou a pessoa ${p.nome} (id ${p.id}) ao cliente em edição (código ${cod}).`,
       registroAfetadoId: String(p.id),
       registroAfetadoNome: p.nome,
     });
+    if (featureFlags.useApiClientes) {
+      void (async () => {
+        try {
+          const fromList = (clientesApiIndexRef.current || []).find((c) => c.codigo === cod);
+          let clientePk = fromList?.clienteId ?? null;
+          if (!clientePk) {
+            const resolved = await resolverClienteCadastroPorCodigo(cod);
+            clientePk = resolved?.clienteId ?? null;
+          }
+          if (clientePk) {
+            await importarWhatsAppDaPessoa(clientePk, Number(p.id), cod);
+          }
+        } catch {
+          /* importação WhatsApp é auxiliar; não bloqueia vínculo */
+        }
+      })();
+    }
   }
 
   useEffect(() => {
@@ -1637,6 +1660,15 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
                 <SlidersHorizontal className="w-4 h-4 shrink-0" aria-hidden />
                 Configurações de cálculo
               </button>
+              <button
+                type="button"
+                onClick={() => setModalWhatsAppAberto(true)}
+                className={`inline-flex items-center gap-2 ${btnAcaoSecundario}`}
+                title="Números WhatsApp que recebem comunicações automáticas do escritório"
+              >
+                <MessageCircle className="w-4 h-4 shrink-0 text-emerald-600" aria-hidden />
+                WhatsApp
+              </button>
             </div>
             <label className="flex items-center gap-2 text-sm cursor-pointer">
               <input
@@ -1977,6 +2009,14 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
         codigoCliente={codigo}
         nomeCliente={nomeRazao}
         onClose={() => setModalConfigCalculoAberto(false)}
+      />
+
+      <ModalWhatsAppCliente
+        open={modalWhatsAppAberto}
+        codigoCliente={codigo}
+        nomeCliente={nomeRazao}
+        pessoaId={pessoa}
+        onClose={() => setModalWhatsAppAberto(false)}
       />
 
       {modalEscolherPessoa && (

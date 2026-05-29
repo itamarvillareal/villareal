@@ -10,6 +10,41 @@ final class GmailMimeUtil {
 
     private GmailMimeUtil() {}
 
+    /**
+     * Concatena todas as partes text/plain e text/html (ordem de aparição no MIME).
+     * Necessário para emails Projudi em que o CNJ está no texto plano e o HTML é só casca.
+     */
+    static String extrairConteudoTextoCompleto(MessagePart payload) {
+        if (payload == null) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        anexarPartesTexto(payload, sb);
+        return sb.toString().trim();
+    }
+
+    private static void anexarPartesTexto(MessagePart parte, StringBuilder sb) {
+        if (parte == null) {
+            return;
+        }
+        String mime = parte.getMimeType() == null ? "" : parte.getMimeType().toLowerCase();
+        if ("text/plain".equals(mime) || "text/html".equals(mime)) {
+            String corpo = decodificarCorpo(parte);
+            if (corpo != null && !corpo.isBlank()) {
+                if (sb.length() > 0) {
+                    sb.append("\n\n");
+                }
+                sb.append(corpo.trim());
+            }
+        }
+        List<MessagePart> filhas = parte.getParts();
+        if (filhas != null) {
+            for (MessagePart filha : filhas) {
+                anexarPartesTexto(filha, sb);
+            }
+        }
+    }
+
     static String extrairHtml(MessagePart payload) {
         if (payload == null) {
             return null;

@@ -46,37 +46,21 @@ export function poloEhLadoCliente(polo) {
 
 export function inferirEnderecamento(competencia, cidade, uf) {
   const cid = String(cidade || 'Anápolis').trim() || 'Anápolis';
+  const cidUpper = cid.toUpperCase();
   const sigla = String(uf || 'GO').trim().toUpperCase() || 'GO';
-  const competenciaUpper = String(competencia || '').toUpperCase();
+  const competenciaUpper = String(competencia || '').trim().toUpperCase();
 
-  const mapa = [
-    ['JUIZADO ESPECIAL', `MERITÍSSIMO JUÍZO DO JUIZADO ESPECIAL CÍVEL DA COMARCA DE ${cid.toUpperCase()} - ${sigla}`],
-    ['VARA CÍVEL', `MERITÍSSIMO JUÍZO DA VARA CÍVEL DA COMARCA DE ${cid.toUpperCase()} - ${sigla}`],
-    ['VARA DE FAMÍLIA', `MERITÍSSIMO JUÍZO DA VARA DE FAMÍLIA E SUCESSÕES DA COMARCA DE ${cid.toUpperCase()} - ${sigla}`],
-    ['VARA DO TRABALHO', `MERITÍSSIMO JUÍZO DA VARA DO TRABALHO DE ${cid.toUpperCase()} - ${sigla}`],
-    ['VARA CRIMINAL', `MERITÍSSIMO JUÍZO DA VARA CRIMINAL DA COMARCA DE ${cid.toUpperCase()} - ${sigla}`],
-  ];
-
-  for (const [chave, valor] of mapa) {
-    if (competenciaUpper.includes(chave)) {
-      const matchLista = ENDERECAMENTOS.find((e) => e.toUpperCase().includes(chave.replace('VARA ', '')));
-      if (matchLista && cid.toUpperCase() === 'ANÁPOLIS' && sigla === 'GO') {
-        return matchLista;
-      }
-      return valor;
-    }
+  if (!competenciaUpper) {
+    return `MERITÍSSIMO JUÍZO DA COMARCA DE ${cidUpper} - ${sigla}`;
   }
 
-  if (competenciaUpper.trim()) {
-    return `MERITÍSSIMO JUÍZO ${competenciaUpper} DA COMARCA DE ${cid.toUpperCase()} - ${sigla}`;
-  }
-
-  const padraoAnapolis = ENDERECAMENTOS.find((e) => e.includes('JUIZADO ESPECIAL'));
-  if (padraoAnapolis && cid.toUpperCase() === 'ANÁPOLIS' && sigla === 'GO') {
-    return padraoAnapolis;
-  }
-
-  return `MERITÍSSIMO JUÍZO DA COMARCA DE ${cid.toUpperCase()} - ${sigla}`;
+  // Constrói o endereçamento preservando EXATAMENTE a competência do processo
+  // (incluindo o número/ordinal, ex.: "1º JUIZADO ESPECIAL CÍVEL").
+  const ehJuizado = competenciaUpper.includes('JUIZADO');
+  const ehTrabalho = competenciaUpper.includes('TRABALHO');
+  const artigo = ehJuizado ? 'DO' : 'DA';
+  const local = ehTrabalho ? `DE ${cidUpper}` : `DA COMARCA DE ${cidUpper}`;
+  return `MERITÍSSIMO JUÍZO ${artigo} ${competenciaUpper} ${local} - ${sigla}`;
 }
 
 export function formatarCidadeEstado(cidade, uf) {
@@ -93,6 +77,20 @@ export function resolveSelectInicial(valor, opcoes) {
   if (match) return { select: match, outro: '' };
   const parcial = opcoes.find((o) => v.toLowerCase().includes(o.toLowerCase().slice(0, 20)));
   if (parcial) return { select: parcial, outro: '' };
+  return { select: '__outro__', outro: v };
+}
+
+/**
+ * Resolve o valor inicial de um select aceitando apenas correspondência EXATA com
+ * uma das opções pré-definidas; caso contrário usa o campo "Outro" com o texto original.
+ * Usado no endereçamento, onde várias opções compartilham o mesmo prefixo e o match
+ * parcial levaria à sugestão de uma comarca/juízo errados.
+ */
+export function resolveSelectExato(valor, opcoes) {
+  const v = String(valor ?? '').trim();
+  if (!v) return { select: '', outro: '' };
+  const match = opcoes.find((o) => o.toLowerCase() === v.toLowerCase());
+  if (match) return { select: match, outro: '' };
   return { select: '__outro__', outro: v };
 }
 
@@ -214,7 +212,7 @@ export async function montarDadosParaDocumentoFromProcesso(ctx) {
 export function mapearDadosProcessoParaFormIA(dadosProcesso) {
   if (!dadosProcesso) return estadoInicialFormVazio();
 
-  const end = resolveSelectInicial(dadosProcesso.enderecamento, ENDERECAMENTOS);
+  const end = resolveSelectExato(dadosProcesso.enderecamento, ENDERECAMENTOS);
   const tipo = resolveSelectInicial(dadosProcesso.tipoPeca, TIPOS_PECA);
 
   return {

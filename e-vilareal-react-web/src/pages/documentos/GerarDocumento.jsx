@@ -561,7 +561,10 @@ export function GerarDocumento() {
         open={previewOpen}
         preview={previewData}
         loading={loadingPreview}
+        gerando={loading}
+        erro={mensagemErro}
         onClose={() => setPreviewOpen(false)}
+        onPreviewChange={setPreviewData}
         onGerarPdf={() => void handleGerarPdfFromPreview()}
       />
     </div>

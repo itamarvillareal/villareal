@@ -2,6 +2,7 @@ package br.com.vilareal.whatsapp.service;
 
 import br.com.vilareal.config.WhatsAppConfig;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.ClienteRepository;
+import br.com.vilareal.pessoa.infrastructure.persistence.repository.ClienteWhatsAppRepository;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaContatoRepository;
 import br.com.vilareal.whatsapp.WhatsAppApiException;
 import br.com.vilareal.whatsapp.WhatsAppMessageDirection;
@@ -50,6 +51,7 @@ public class WhatsAppService {
     private final WhatsAppMessageRepository whatsAppMessageRepository;
     private final PessoaContatoRepository pessoaContatoRepository;
     private final ClienteRepository clienteRepository;
+    private final ClienteWhatsAppRepository clienteWhatsAppRepository;
     private final WhatsAppAIService whatsAppAIService;
 
     public WhatsAppService(
@@ -59,12 +61,14 @@ public class WhatsAppService {
             WhatsAppMessageRepository whatsAppMessageRepository,
             PessoaContatoRepository pessoaContatoRepository,
             ClienteRepository clienteRepository,
+            ClienteWhatsAppRepository clienteWhatsAppRepository,
             @Lazy WhatsAppAIService whatsAppAIService) {
         this.whatsAppConfig = whatsAppConfig;
         this.objectMapper = objectMapper;
         this.whatsAppMessageRepository = whatsAppMessageRepository;
         this.pessoaContatoRepository = pessoaContatoRepository;
         this.clienteRepository = clienteRepository;
+        this.clienteWhatsAppRepository = clienteWhatsAppRepository;
         this.whatsAppAIService = whatsAppAIService;
 
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
@@ -278,8 +282,8 @@ public class WhatsAppService {
     }
 
     /**
-     * Vincula telefone inbound a {@code cliente.id} via {@code pessoa_contato} (tipo telefone).
-     * TODO: revisar normalização quando o cadastro padronizar formato de telefone.
+     * Vincula telefone inbound a {@code cliente.id}: primeiro {@code cliente_whatsapp}, depois
+     * {@code pessoa_contato} (tipo telefone).
      */
     private Long resolveClienteId(String phoneFrom) {
         if (!StringUtils.hasText(phoneFrom)) {
@@ -289,6 +293,11 @@ public class WhatsAppService {
         String digits = phoneFrom.replaceAll("\\D", "");
         if (digits.isEmpty()) {
             return null;
+        }
+
+        Optional<Long> viaClienteWhatsapp = clienteWhatsAppRepository.findClienteIdByTelefoneNormalizado(digits);
+        if (viaClienteWhatsapp.isPresent()) {
+            return viaClienteWhatsapp.get();
         }
 
         return pessoaContatoRepository
