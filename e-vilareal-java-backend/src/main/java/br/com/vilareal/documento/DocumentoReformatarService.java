@@ -91,7 +91,7 @@ public class DocumentoReformatarService {
             String dataIso) {
         String enderecamento = StringUtils.hasText(enderecamentoOverride)
                 ? enderecamentoOverride.trim()
-                : (StringUtils.hasText(parseado.enderecoJuizo()) ? parseado.enderecoJuizo().trim() : "MERITÍSSIMO JUÍZO");
+                : (StringUtils.hasText(parseado.enderecoJuizo()) ? parseado.enderecoJuizo().trim() : "");
 
         String numeroProcesso = StringUtils.hasText(numeroProcessoOverride)
                 ? numeroProcessoOverride.trim()

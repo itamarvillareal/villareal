@@ -1,43 +1,37 @@
-#!/usr/bin/env bash
-# Verificação rápida da integração WhatsApp após deploy.
-set -euo pipefail
-
+#!/bin/bash
+# Verificação da integração WhatsApp após deploy
 BASE_URL="${WHATSAPP_VERIFY_BASE_URL:-https://portal.villarealadvocacia.adv.br}"
 
 echo "=== Verificando WhatsApp Integration ==="
-echo "Base URL: $BASE_URL"
+echo "URL: $BASE_URL"
 echo ""
 
-# 1. Testar webhook GET (rejeita token inválido)
-echo -n "1. Webhook verification... "
-RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" \
-  "$BASE_URL/api/webhook/whatsapp?hub.mode=subscribe&hub.verify_token=TOKEN_ERRADO&hub.challenge=test")
-if [ "$RESPONSE" = "403" ]; then
-  echo "OK (rejeita token inválido)"
-else
-  echo "FALHA (esperava 403, recebeu $RESPONSE)"
-fi
+# 1. Webhook rejeita token inválido
+echo -n "1. Webhook rejeita token inválido... "
+HTTP=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/api/webhook/whatsapp?hub.mode=subscribe&hub.verify_token=INVALIDO&hub.challenge=test")
+[ "$HTTP" = "403" ] && echo "OK" || echo "FALHA (esperava 403, recebeu $HTTP)"
 
-# 2. Testar que REST API exige autenticação
-echo -n "2. REST API auth... "
-RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/api/whatsapp/stats")
-if [ "$RESPONSE" = "401" ] || [ "$RESPONSE" = "403" ]; then
-  echo "OK (exige autenticação)"
-else
-  echo "FALHA (esperava 401/403, recebeu $RESPONSE)"
-fi
+# 2. REST API exige autenticação
+echo -n "2. REST API exige autenticação... "
+HTTP=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/api/whatsapp/stats")
+[ "$HTTP" = "401" ] || [ "$HTTP" = "403" ] && echo "OK" || echo "FALHA (esperava 401/403, recebeu $HTTP)"
 
-# 3. Testar que webhook POST aceita (retorna 200)
-echo -n "3. Webhook POST... "
-RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
-  -H "Content-Type: application/json" \
-  -d '{"object":"whatsapp_business_account","entry":[]}' \
-  "$BASE_URL/api/webhook/whatsapp")
-if [ "$RESPONSE" = "200" ]; then
-  echo "OK (aceita POST)"
-else
-  echo "FALHA (esperava 200, recebeu $RESPONSE)"
-fi
+# 3. Webhook aceita POST
+echo -n "3. Webhook aceita POST... "
+HTTP=$(curl -s -o /dev/null -w "%{http_code}" -X POST -H "Content-Type: application/json" -d '{"object":"whatsapp_business_account","entry":[]}' "$BASE_URL/api/webhook/whatsapp")
+[ "$HTTP" = "200" ] && echo "OK" || echo "FALHA (esperava 200, recebeu $HTTP)"
+
+# 4. Página de privacidade acessível
+echo -n "4. Página de privacidade... "
+HTTP=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/privacidade")
+[ "$HTTP" = "200" ] && echo "OK" || echo "FALHA (esperava 200, recebeu $HTTP)"
 
 echo ""
 echo "=== Verificação completa ==="
+echo ""
+echo "Dados de produção:"
+echo "  Phone Number ID: 1144756872051746"
+echo "  WABA ID:         1272311911765478"
+echo "  Número:          +55 62 9404-5077"
+echo "  App ID:          845762438095329"
+echo "  API Version:     v25.0"

@@ -214,6 +214,45 @@ function linhaVazia(row) {
   return !row.some((c) => c != null && String(c).trim() !== '');
 }
 
+/**
+ * Linha de título com dado útil (paridade `tituloFromCamposTaxa` / grade UI).
+ * Evita importar linhas só com Cód./Proc./Dim. repetidos (fill-down Excel) entre blocos da exportação.
+ * @param {Record<string, unknown>} tit
+ */
+export function tituloLinhaTemDadosUtil(tit) {
+  if (!tit || typeof tit !== 'object') return false;
+  const venc = String(tit.dataVencimento ?? '').trim();
+  const vi = String(tit.valorInicial ?? '').trim();
+  return Boolean(venc || vi);
+}
+
+/** @param {Record<string, unknown>} tit */
+function chaveConteudoTituloImport(tit) {
+  const venc = String(tit.dataVencimento ?? '').trim();
+  const vi = String(tit.valorInicial ?? '').trim();
+  const desc = String(tit.descricaoValor ?? '').trim();
+  return `${venc}\0${vi}\0${desc}`;
+}
+
+/**
+ * Remove linhas vazias e títulos repetidos (exportação Excel repete o mesmo bloco a cada ~20 linhas).
+ * Mantém a primeira ocorrência de cada par vencimento+valor.
+ * @param {unknown[]} titulos
+ */
+export function compactarTitulosImport(titulos) {
+  if (!Array.isArray(titulos)) return [];
+  const seen = new Set();
+  const out = [];
+  for (const raw of titulos) {
+    if (!tituloLinhaTemDadosUtil(raw)) continue;
+    const k = chaveConteudoTituloImport(raw);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(raw);
+  }
+  return out;
+}
+
 function cel(row, idx) {
   if (!Array.isArray(row) || idx < 0) return null;
   return idx < row.length ? row[idx] : null;
@@ -472,6 +511,14 @@ export function parseLayout2026FromWorkbook(wb, opts = {}) {
         titulosPorChave[key] = { titulos: [], linhas: [], parcelasRef: [] };
       }
       const tit = linhaParaTitulo(row, headerRow, colTituloMap);
+      if (!tituloLinhaTemDadosUtil(tit)) {
+        pushAvisoCap(
+          avisos,
+          `Aba débitos linha ${i + 1}: chave ${key} sem vencimento/valor — ignorada (evita duplicar blocos vazios da planilha).`,
+          capInvalidRows
+        );
+        continue;
+      }
       titulosPorChave[key].titulos.push({ ...tit, _planilhaLinha: i + 1, _parcelaPlanilha: parc });
       titulosPorChave[key].linhas.push(i + 1);
       if (parc != null) titulosPorChave[key].parcelasRef.push(parc);

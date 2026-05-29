@@ -1,23 +1,38 @@
 # Configuração WhatsApp Business Cloud API
 
+## Dados de produção (Villa Real Advocacia)
+
+| Campo | Valor |
+|-------|-------|
+| **Phone Number ID** | `1144756872051746` |
+| **WABA ID** | `1272311911765478` |
+| **Número** | +55 62 9404-5077 |
+| **Nome de exibição** | Villa Real Advocacia |
+| **App ID** | `845762438095329` |
+| **Graph API** | v25.0 |
+| **Webhook URL** | `https://portal.villarealadvocacia.adv.br/api/webhook/whatsapp` |
+| **Página de privacidade** | `https://portal.villarealadvocacia.adv.br/privacidade` |
+
+> Tokens, App Secret e Verify Token **não** devem ser versionados — apenas em `.env.docker` na VPS.
+
 ## Pré-requisitos
 
 1. Conta Meta Business Manager verificada
-2. App criado em [developers.facebook.com](https://developers.facebook.com) com produto WhatsApp
-3. Número de telefone verificado e registrado no WhatsApp Business
+2. App criado em [developers.facebook.com](https://developers.facebook.com) com produto WhatsApp (App ID `845762438095329`)
+3. Número de telefone verificado e registrado no WhatsApp Business (+55 62 9404-5077)
 4. Templates de mensagem aprovados
 
 ## Variáveis de ambiente
 
 Defina em `.env.docker` na VPS (copiar de `.env.docker.example`) e repasse ao serviço `backend` no `docker-compose.yml`.
 
-| Variável | Onde obter | Exemplo |
-|----------|-----------|---------|
-| `WHATSAPP_PHONE_NUMBER_ID` | Meta Developers > App > WhatsApp > Configuração da API | `123456789012345` |
-| `WHATSAPP_ACCESS_TOKEN` | Business Manager > Usuários do Sistema > Gerar Token (permissões: `whatsapp_business_management`, `whatsapp_business_messaging`) | `EAAxxxxxxx...` |
-| `WHATSAPP_VERIFY_TOKEN` | Definido por você (string secreta para verificação do webhook) | `villareal_whatsapp_prod_xK9mP3qR7` |
-| `WHATSAPP_WABA_ID` | Meta Developers > App > WhatsApp > Configuração | `109876543210` |
-| `WHATSAPP_APP_SECRET` | Meta Developers > App > Configurações > Básico > Chave Secreta do App | `abc123def456...` |
+| Variável | Onde obter | Produção (referência) |
+|----------|-----------|------------------------|
+| `WHATSAPP_PHONE_NUMBER_ID` | Meta Developers > App > WhatsApp > API Setup | `1144756872051746` |
+| `WHATSAPP_ACCESS_TOKEN` | Business Manager > Usuários do Sistema > Gerar Token (permissões: `whatsapp_business_management`, `whatsapp_business_messaging`) | *(não versionar)* |
+| `WHATSAPP_VERIFY_TOKEN` | Definido por você (string secreta para verificação do webhook) | *(não versionar)* |
+| `WHATSAPP_WABA_ID` | Business Manager > Contas do WhatsApp | `1272311911765478` |
+| `WHATSAPP_APP_SECRET` | Meta Developers > App > Configurações > Básico > Chave Secreta do App | *(não versionar)* |
 | `WHATSAPP_VALIDATE_SIGNATURE` | `true` em produção, `false` em dev | `true` |
 
 Em produção, use também `SPRING_PROFILES_ACTIVE=prod` no container do backend (profile carrega `application-prod.properties`).
@@ -26,7 +41,7 @@ Em produção, use também `SPRING_PROFILES_ACTIVE=prod` no container do backend
 
 ## Deploy na VPS (Docker Compose)
 
-1. Copiar/atualizar `.env.docker` com as variáveis acima.
+1. Copiar/atualizar `.env.docker` com as variáveis acima (IDs de produção na tabela acima).
 2. Rebuild e subir o stack:
    ```bash
    docker compose build backend
@@ -66,13 +81,15 @@ Isso cobre o webhook (`/api/webhook/whatsapp`) e a API REST (`/api/whatsapp/**`)
 
 Opcional para webhooks Meta (body completo): `proxy_request_buffering off;` na location `/api/webhook/whatsapp`.
 
+A página de privacidade exigida pela Meta está em `/privacidade` no portal público.
+
 ## Templates configurados
 
-| Nome | Categoria | Parâmetros |
-|------|-----------|------------|
-| `lembrete_audiencia` | Utility | `{{1}}`=nome, `{{2}}`=nº processo, `{{3}}`=data/hora |
-| `atualizacao_processo` | Utility | `{{1}}`=nome, `{{2}}`=nº processo, `{{3}}`=movimentação |
-| `boas_vindas_cliente` | Utility | `{{1}}`=nome |
+| Nome | Categoria | Status | Parâmetros |
+|------|-----------|--------|------------|
+| `lembrete_audiencia` | Utility | **APPROVED** (pt_BR, ID `2589903884760478`) | `{{1}}`=nome, `{{2}}`=nº processo, `{{3}}`=data/hora |
+| `atualizacao_processo` | Utility | Não criado ainda | `{{1}}`=nome, `{{2}}`=nº processo, `{{3}}`=movimentação |
+| `boas_vindas_cliente` | Utility | Não criado ainda | `{{1}}`=nome |
 
 ## Endpoints REST (autenticados — JWT)
 
@@ -92,10 +109,19 @@ Opcional para webhooks Meta (body completo): `proxy_request_buffering off;` na l
 
 A rota do webhook está em `permitAll()` no Spring Security; `/api/whatsapp/**` exige autenticação.
 
+## Lembretes automáticos (produção)
+
+Configurados em `application-prod.properties`:
+
+- Envio principal: seg–sex às 07:00 (`whatsapp.reminder.cron`)
+- Reforço: seg–sex às 18:00 (`whatsapp.reminder.reforco-cron`)
+- Antecedência: 3 dias úteis antes da audiência
+- Template: `lembrete_audiencia`
+
 ## Troubleshooting
 
 - **Webhook não verifica:** conferir `WHATSAPP_VERIFY_TOKEN`, nginx proxy para `/api/`, logs do backend (`Webhook verification`).
-- **Mensagens não enviam:** token expirado? conferir `WHATSAPP_ACCESS_TOKEN` e `WHATSAPP_PHONE_NUMBER_ID`.
+- **Mensagens não enviam:** token expirado? conferir `WHATSAPP_ACCESS_TOKEN` e `WHATSAPP_PHONE_NUMBER_ID` (`1144756872051746`).
 - **Assinatura inválida (401 no POST):** conferir `WHATSAPP_APP_SECRET`; em produção `WHATSAPP_VALIDATE_SIGNATURE=true`.
 - **Templates rejeitados:** aprovar no Meta Business Manager.
 - **Rate limit da Meta:** Cloud API suporta até ~80 msgs/s por número (tier depende da conta).

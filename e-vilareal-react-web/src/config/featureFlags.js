@@ -23,6 +23,8 @@ export const featureFlags = {
   useApiFinanceiro: import.meta.env.VITE_USE_API_FINANCEIRO === 'true',
   useApiPublicacoes: import.meta.env.VITE_USE_API_PUBLICACOES === 'true',
   useApiImoveis: import.meta.env.VITE_USE_API_IMOVEIS === 'true',
+  /** Cards de demandas — `GET/POST /api/demandas`. */
+  useApiDemandas: import.meta.env.VITE_USE_API_DEMANDAS !== 'false',
   useApiTarefas: import.meta.env.VITE_USE_API_TAREFAS === 'true',
   /** Hierarquia da tela Tópicos — `GET /api/topicos/hierarchy`. */
   useApiTopicos: import.meta.env.VITE_USE_API_TOPICOS === 'true',

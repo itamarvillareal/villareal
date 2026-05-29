@@ -406,7 +406,7 @@
 </div>
 
 <div class="corpo-documento">
-    <p class="enderecamento" th:text="${enderecamento}">Endereçamento</p>
+    <p class="enderecamento" th:if="${enderecamento != null and !enderecamento.isEmpty()}" th:text="${enderecamento}">Endereçamento</p>
 
     <p class="numero-processo" th:if="${numeroProcesso != null and !numeroProcesso.isEmpty()}">
         Processo nº <span th:text="${numeroProcesso}">0000000-00.0000.0.00.0000</span>

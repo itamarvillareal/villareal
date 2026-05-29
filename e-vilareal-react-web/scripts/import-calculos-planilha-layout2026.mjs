@@ -5,6 +5,7 @@
  * Fluxo por chave `codigo8|proc|dim`:
  * 1) Garante `processoId` (GET /api/processos por cliente; se não existir e não for `--sem-criar-processos`, POST mínimo).
  * 2) GET rodada existente; funde com títulos (aba débitos) e parcelas (aba relatório, só linhas com «Cálculo Aceito» = SIM na col L).
+ *    Títulos: só linhas com vencimento ou valor inicial; substitui `titulos[]` da rodada (não funde com grade antiga).
  * 3) PUT /api/calculos/rodadas/{cod8}/{proc}/{dim}
  * 4) Se `--skip-pagamentos` não estiver ativo: para cada parcela com data em H, POST /api/pagamentos
  *    (`PAGO_SEM_COMPROVANTE` + `dataPagamentoEfetivo`; demais campos opcionais no servidor).
@@ -27,7 +28,10 @@ import './lib/load-vilareal-import-env.mjs';
 
 import process from 'node:process';
 import XLSX from 'xlsx';
-import { parseLayout2026FromWorkbook } from './lib/import-calculo-layout2026-parse.mjs';
+import {
+  compactarTitulosImport,
+  parseLayout2026FromWorkbook,
+} from './lib/import-calculo-layout2026-parse.mjs';
 import { candidatosImportCalculoXlsParaLog, resolveImportCalculoXlsPath } from './lib/resolve-import-calculo-xls.mjs';
 import {
   garantirProcessoNaApi,
@@ -164,10 +168,13 @@ function mergeRodadaPayload(existing, titulosEntry, parcEntry) {
     existing && typeof existing === 'object' && !Array.isArray(existing)
       ? structuredClone(existing)
       : {};
-  const merged = { ...defaultRodadaPayload(), ...base };
+  const { titulos: _titulosExistentes, ...baseSemTitulos } = base;
+  const merged = { ...defaultRodadaPayload(), ...baseSemTitulos };
 
   if (titulosEntry?.titulos?.length) {
-    merged.titulos = sanitizarTitulosParaApi(titulosEntry.titulos);
+    merged.titulos = sanitizarTitulosParaApi(compactarTitulosImport(titulosEntry.titulos));
+  } else if (Array.isArray(_titulosExistentes)) {
+    merged.titulos = _titulosExistentes;
   }
 
   if (parcEntry?.parcelas?.length) {
