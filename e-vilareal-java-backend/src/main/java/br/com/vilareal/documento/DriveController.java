@@ -27,12 +27,15 @@ public class DriveController {
 
     private final GoogleDriveService googleDriveService;
     private final DocumentoDrivePastaService documentoDrivePastaService;
+    private final DriveManutencaoService driveManutencaoService;
 
     public DriveController(
             GoogleDriveService googleDriveService,
-            DocumentoDrivePastaService documentoDrivePastaService) {
+            DocumentoDrivePastaService documentoDrivePastaService,
+            DriveManutencaoService driveManutencaoService) {
         this.googleDriveService = googleDriveService;
         this.documentoDrivePastaService = documentoDrivePastaService;
+        this.driveManutencaoService = driveManutencaoService;
     }
 
     @GetMapping("/status")
@@ -115,6 +118,39 @@ public class DriveController {
             log.warn("Erro ao obter pasta do processo no Drive: {}", e.getMessage());
             return ResponseEntity.internalServerError().build();
         }
+    }
+
+    @GetMapping("/pasta-info")
+    @Operation(summary = "Retorna a pasta e seu pai imediato (para navegar/subir de nível no painel)")
+    public ResponseEntity<DrivePastaInfoDto> obterInfoPasta(@RequestParam String pastaId) {
+        if (!googleDriveService.isConfigurado()) {
+            return ResponseEntity.status(503).build();
+        }
+        try {
+            DrivePastaInfoDto info = googleDriveService.obterInfoPasta(pastaId);
+            if (info == null) {
+                return ResponseEntity.notFound().build();
+            }
+            return ResponseEntity.ok()
+                    .cacheControl(CacheControl.noStore())
+                    .body(info);
+        } catch (Exception e) {
+            log.warn("Erro ao obter info da pasta no Drive: {}", e.getMessage());
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    @PostMapping("/admin/limpar-duplicatas-vazias")
+    @Operation(summary = "Remove (lixeira) pastas vazias duplicadas. dryRun=true apenas relata.")
+    public ResponseEntity<DriveManutencaoService.Relatorio> limparDuplicatasVazias(
+            @RequestParam(defaultValue = "true") boolean dryRun,
+            @RequestParam(required = false) String codigoCliente) throws Exception {
+        if (!googleDriveService.isConfigurado()) {
+            return ResponseEntity.status(503).build();
+        }
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .body(driveManutencaoService.limparDuplicatasVazias(dryRun, codigoCliente));
     }
 
     private String resolverPastaId(String codigoCliente, Integer numeroInterno, String pastaId)

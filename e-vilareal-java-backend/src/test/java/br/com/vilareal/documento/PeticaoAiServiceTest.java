@@ -28,4 +28,12 @@ class PeticaoAiServiceTest {
         assertThat(PeticaoAiService.removerTagsHtml("<strong>Danos morais</strong>"))
                 .isEqualTo("Danos morais");
     }
+
+    @Test
+    void isPeticaoInterlocutoria_detectaVariacoes() {
+        assertThat(PeticaoAiService.isPeticaoInterlocutoria("Petição Interlocutória")).isTrue();
+        assertThat(PeticaoAiService.isPeticaoInterlocutoria("INTERLOCUTÓRIA")).isTrue();
+        assertThat(PeticaoAiService.isPeticaoInterlocutoria("Contestação")).isFalse();
+        assertThat(PeticaoAiService.isPeticaoInterlocutoria(null)).isFalse();
+    }
 }

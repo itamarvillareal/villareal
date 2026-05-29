@@ -50,8 +50,15 @@ public class PeticaoAiService {
         return t.contains("procura") || t.contains("mandato") || t.contains("substabelecimento");
     }
 
+    static boolean isPeticaoInterlocutoria(String tipoPeca) {
+        if (tipoPeca == null) {
+            return false;
+        }
+        return tipoPeca.trim().toLowerCase().contains("interlocut");
+    }
+
     private String montarSystemPrompt(String tipoPeca) {
-        return """
+        String base = """
                 Você é um advogado brasileiro experiente, especializado em Direito do Consumidor,
                 Direito Civil e Direito Processual Civil. Você trabalha no escritório Villa Real
                 e Advogados Associados, em Anápolis-GO.
@@ -93,23 +100,42 @@ public class PeticaoAiService {
                     automaticamente pelo sistema.
                 11. Os pedidos devem ser texto PURO, sem tags HTML (<strong>, <em>, etc.).
                 """.formatted(tipoPeca);
+
+        if (isPeticaoInterlocutoria(tipoPeca)) {
+            base += """
+
+                    QUALIFICAÇÃO REDUZIDA (peça interlocutória):
+                    12. Esta é uma petição interlocutória, apresentada em processo já em curso. NÃO faça a
+                        qualificação completa das partes (não inclua nacionalidade, estado civil, profissão,
+                        CPF/CNPJ, endereço, etc.).
+                    13. No preâmbulo, cite cada parte apenas pelo nome completo em negrito
+                        (<strong>NOME DA PARTE</strong>), seguido de:
+                        - "já devidamente qualificada nos autos" quando a parte for do gênero feminino;
+                        - "já devidamente qualificado nos autos" quando a parte for do gênero masculino.
+                    14. Determine o gênero de cada parte a partir do nome. Para pessoa jurídica
+                        (empresa, instituição, etc.), use "já devidamente qualificada nos autos".
+                    """;
+        }
+
+        return base;
     }
 
     private String montarUserMessage(PeticaoAiRequest request) {
         StringBuilder sb = new StringBuilder();
+        boolean interlocutoria = isPeticaoInterlocutoria(request.tipoPeca());
 
         sb.append("TIPO DE PEÇA: ").append(request.tipoPeca()).append("\n\n");
 
         if (request.nomeAutor() != null) {
             sb.append("AUTOR/REQUERENTE: ").append(request.nomeAutor()).append("\n");
-            if (request.qualificacaoAutor() != null) {
+            if (!interlocutoria && request.qualificacaoAutor() != null) {
                 sb.append("QUALIFICAÇÃO DO AUTOR: ").append(request.qualificacaoAutor()).append("\n");
             }
         }
 
         if (request.nomeReu() != null) {
             sb.append("RÉU/REQUERIDO: ").append(request.nomeReu()).append("\n");
-            if (request.qualificacaoReu() != null) {
+            if (!interlocutoria && request.qualificacaoReu() != null) {
                 sb.append("QUALIFICAÇÃO DO RÉU: ").append(request.qualificacaoReu()).append("\n");
             }
         }

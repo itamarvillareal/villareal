@@ -13,7 +13,13 @@ export async function buscarPublicacoesEmail({ texto, status, filtroVinculo } = 
   });
 }
 
-/** Dispara importação manual (mesmo fluxo do scheduler). */
-export async function processarEmailsAgora() {
-  return request('/api/email/publicacoes/processar', { method: 'POST' });
+/** Status da última busca incremental no Gmail. */
+export async function obterSyncPublicacoesEmail() {
+  return request('/api/email/publicacoes/sync');
+}
+
+/** Busca incremental (desde última sincronização) ou caixa completa com `forcar: true`. */
+export async function processarEmailsAgora({ forcar = false } = {}) {
+  const qs = forcar ? '?forcar=true' : '';
+  return request(`/api/email/publicacoes/processar${qs}`, { method: 'POST' });
 }

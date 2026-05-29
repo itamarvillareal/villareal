@@ -3,6 +3,7 @@ package br.com.vilareal.email;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -20,4 +21,12 @@ public class PublicacaoEmailProcessamentoResumo {
     /** Publicações vinculadas automaticamente ao processo cadastrado (CNJ). */
     private int vinculosAutomaticos;
     private List<String> erros = new ArrayList<>();
+
+    /** Cursor usado no início desta execução (null na primeira vez ou em forçar completo). */
+    private Instant ultimaSincronizacaoAnterior;
+    /** Novo cursor gravado ao final (data/hora do email mais recente visto). */
+    private Instant ultimaSincronizacaoGravada;
+    private boolean forcarAtualizacao;
+    private boolean sincronizacaoIncremental;
+    private String queryGmail;
 }

@@ -38,7 +38,7 @@ export async function uploadArquivo(codigoCliente, numeroInterno, arquivo, pasta
 /**
  * @param {string} codigoCliente
  * @param {number} numeroInterno
- * @returns {Promise<{ pastaId: string, webViewLink: string, nomePasta: string }>}
+ * @returns {Promise<{ pastaId: string, webViewLink: string, nomePasta: string, caminho: string }>}
  */
 export async function obterLinkPasta(codigoCliente, numeroInterno) {
   return request('/api/drive/pasta-processo', {
@@ -46,5 +46,16 @@ export async function obterLinkPasta(codigoCliente, numeroInterno) {
       codigoCliente: String(codigoCliente ?? '').trim(),
       numeroInterno: Number(numeroInterno),
     },
+  });
+}
+
+/**
+ * Retorna a pasta e seu pai imediato (para subir de nível no painel).
+ * @param {string} pastaId
+ * @returns {Promise<{ id: string, nome: string, paiId: string|null, paiNome: string|null }>}
+ */
+export async function obterInfoPasta(pastaId) {
+  return request('/api/drive/pasta-info', {
+    query: { pastaId: String(pastaId ?? '').trim() },
   });
 }

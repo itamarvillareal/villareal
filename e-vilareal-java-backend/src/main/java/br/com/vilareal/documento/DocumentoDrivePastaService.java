@@ -108,22 +108,25 @@ public class DocumentoDrivePastaService {
             return null;
         }
         ContextoDrive contexto = resolverContextoDrive(codigoCliente, numeroInterno, null);
+        String nomePastaCliente = formatarNomePastaCliente(contexto.codigoCliente(), contexto.nomeCliente());
         String pastaClienteId = driveService.encontrarOuCriarPastaPublic(
-                formatarNomePastaCliente(contexto.codigoCliente(), contexto.nomeCliente()),
-                driveService.getRootFolderId());
+                nomePastaCliente, driveService.getClientesFolderId());
 
+        String nomePastaProcesso = formatarNomePastaProcesso(contexto.numeroInterno());
         String pastaProcessoId = driveService.encontrarOuCriarPastaPublic(
-                formatarNomePastaProcesso(contexto.numeroInterno()), pastaClienteId);
+                nomePastaProcesso, pastaClienteId);
 
         String pastaRaizId = pastaProcessoId;
-        String nomePasta = formatarNomePastaProcesso(contexto.numeroInterno());
+        String nomePasta = nomePastaProcesso;
+        StringBuilder caminho = new StringBuilder(nomePastaCliente).append(" / ").append(nomePastaProcesso);
         if (StringUtils.hasText(contexto.parteOposta())) {
             nomePasta = formatarNomePastaParteOposta(contexto.parteOposta());
             pastaRaizId = driveService.encontrarOuCriarPastaPublic(nomePasta, pastaProcessoId);
+            caminho.append(" / ").append(nomePasta);
         }
 
         String webViewLink = driveService.obterWebViewLink(pastaRaizId);
-        return new DrivePastaProcessoDto(pastaRaizId, webViewLink, nomePasta);
+        return new DrivePastaProcessoDto(pastaRaizId, webViewLink, nomePasta, caminho.toString());
     }
 
     public String obterPastaDestino(
@@ -135,7 +138,7 @@ public class DocumentoDrivePastaService {
             TipoDocumento tipoDocumento) throws Exception {
         String nomeClientes = formatarNomePastaCliente(codigoCliente, nomeCliente);
         String pastaClienteId = driveService.encontrarOuCriarPastaPublic(
-                nomeClientes, driveService.getRootFolderId());
+                nomeClientes, driveService.getClientesFolderId());
 
         String nomeProcesso = formatarNomePastaProcesso(numeroInterno);
         String pastaProcessoId = driveService.encontrarOuCriarPastaPublic(
@@ -187,7 +190,7 @@ public class DocumentoDrivePastaService {
 
             String pastaClienteId = googleDriveService.encontrarPastaExistente(
                     formatarNomePastaCliente(cliente.codigoCliente(), cliente.nomeCliente()),
-                    googleDriveService.getRootFolderId());
+                    googleDriveService.getClientesFolderId());
             if (pastaClienteId == null) {
                 return;
             }

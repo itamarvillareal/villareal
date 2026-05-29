@@ -533,6 +533,25 @@ function IconPagamentosMenu({ className }) {
   );
 }
 
+function IconPatrimonio({ className }) {
+  const uid = useId().replace(/:/g, '');
+  const g = `pat-${uid}`;
+  return (
+    <svg className={`block shrink-0 ${className ?? ''}`} viewBox="0 0 24 24" fill="none" style={shadow} aria-hidden>
+      <defs>
+        <linearGradient id={g} x1="3" y1="6" x2="21" y2="20" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#fcd34d" />
+          <stop offset="1" stopColor="#d97706" />
+        </linearGradient>
+      </defs>
+      <rect x="3" y="6.5" width="18" height="13" rx="2.2" fill={`url(#${g})`} stroke="#92400e" strokeWidth="0.5" />
+      <path d="M3 9.5h18" stroke="#fff7ed" strokeWidth="0.8" opacity="0.7" />
+      <rect x="14.5" y="11.5" width="6.5" height="4.5" rx="1.2" fill="#78350f" />
+      <circle cx="17" cy="13.75" r="1.15" fill="#fde68a" />
+    </svg>
+  );
+}
+
 function IconPublicacoesEmail({ className }) {
   return (
     <Mail className={`block shrink-0 ${className ?? ''}`} strokeWidth={1.75} style={shadow} aria-hidden />
@@ -599,6 +618,7 @@ const MENU_ICONS = {
   'relatorio-imoveis': IconSpreadsheet,
   'documentos/gerar': IconGerarDocumento,
   agenda: IconAgenda,
+  patrimonio: IconPatrimonio,
   'ana-luisa': IconClientes,
   atividade: IconAtividade,
   'atividades-em-lote': IconTopicos,

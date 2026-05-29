@@ -45,8 +45,14 @@ export function downloadPdfBlob(blob, filename) {
   const a = document.createElement('a');
   a.href = url;
   a.download = filename;
+  a.rel = 'noopener';
+  a.style.display = 'none';
+  document.body.appendChild(a);
   a.click();
-  window.URL.revokeObjectURL(url);
+  setTimeout(() => {
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+  }, 1000);
 }
 
 export function nomeArquivoPeticaoPdf(sufixo) {

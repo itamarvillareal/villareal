@@ -12,6 +12,7 @@ import {
   operadorPodeAlternarPerfil,
   getOperadorEstacaoId,
   isUsuarioMasterEstacao,
+  perfilAtivoEhMasterEstacao,
   getApiUsuarioSessao,
 } from '../data/usuarioPermissoesStorage.js';
 import { getNomeExibicaoUsuario } from '../data/usuarioDisplayHelpers.js';
@@ -63,7 +64,8 @@ export function Sidebar({ mobileDrawerOpen = false, onMobileDrawerChange } = {})
   const navFiltrado = navItems
     .filter((item) => item.id !== 'integracoes-grupo' || featureFlags.showTribunalScraperLab)
     .filter((item) => itemMenuPermitido(item, pode))
-    .filter((item) => item.id !== 'atividade' || isUsuarioMasterEstacao());
+    .filter((item) => item.id !== 'atividade' || isUsuarioMasterEstacao())
+    .filter((item) => item.id !== 'patrimonio' || perfilAtivoEhMasterEstacao());
 
   useEffect(() => {
     const p = location.pathname.replace(/\/+$/, '') || '/';

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   AlertTriangle,
@@ -14,12 +14,18 @@ import {
   Search,
   X,
 } from 'lucide-react';
-import { buscarPublicacoesEmail, processarEmailsAgora } from '../api/publicacoesEmailApi.js';
+import {
+  buscarPublicacoesEmail,
+  obterSyncPublicacoesEmail,
+  processarEmailsAgora,
+} from '../api/publicacoesEmailApi.js';
 import {
   buscarManifestacoesProjudi,
+  obterSyncProjudi,
   processarEmailsProjudiAgora,
 } from '../api/manifestacoesProjudiApi.js';
 import {
+  deduplicarTeorExibicao,
   formatarPartesLinha,
   parseProjudiMeta,
   tipoMovimentoLinha,
@@ -68,6 +74,7 @@ const VARIANT_CONFIG = {
     voltarLabel: 'Publicações (PDF)',
     buscar: buscarPublicacoesEmail,
     processar: processarEmailsAgora,
+    syncObter: obterSyncPublicacoesEmail,
     vazio: 'Nenhuma publicação importada por email encontrada.',
     resumoTipo: 'publicação',
     placeholderBusca: 'Buscar no teor, CNJ, cliente…',
@@ -79,9 +86,11 @@ const VARIANT_CONFIG = {
     voltarLabel: 'Processos',
     buscar: buscarManifestacoesProjudi,
     processar: processarEmailsProjudiAgora,
+    syncObter: obterSyncProjudi,
     vazio: 'Nenhuma manifestação Projudi importada por email encontrada.',
     resumoTipo: 'manifestação',
     placeholderBusca: 'Buscar movimento, CNJ, partes, código…',
+    autoAplicarSugestoes: true,
   },
 };
 
@@ -125,6 +134,16 @@ function parseDataPublicacaoMs(isoDate) {
     return Number.isNaN(t) ? Number.NEGATIVE_INFINITY : t;
   }
   return Number.NEGATIVE_INFINITY;
+}
+
+/** Ordenação: recebimento do email (se houver), senão data de publicação. */
+function parseLinhaTempoMs(row) {
+  const recebido = row?.emailRecebidoEm;
+  if (recebido) {
+    const t = new Date(recebido).getTime();
+    if (!Number.isNaN(t)) return t;
+  }
+  return parseDataPublicacaoMs(row?.dataPublicacao);
 }
 
 function fmtInstant(iso) {
@@ -281,7 +300,7 @@ function ModalTeor({ publicacao, onClose, onAbrirProcesso, isProjudi = false }) 
             </div>
           ) : null}
           <pre className="max-h-[50vh] overflow-auto whitespace-pre-wrap rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs leading-relaxed dark:border-white/10 dark:bg-white/5">
-            {teorLinha(publicacao) || '—'}
+            {(isProjudi ? deduplicarTeorExibicao(teorLinha(publicacao)) : teorLinha(publicacao)) || '—'}
           </pre>
         </div>
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 px-4 py-3 dark:border-white/10">
@@ -560,6 +579,7 @@ function CardMobileRow({
   onIgnorar,
   onMarcarVinculada,
   isProjudi = false,
+  teorDaLinha,
 }) {
   const status = row._statusTratamento || 'PENDENTE';
   return (
@@ -589,7 +609,9 @@ function CardMobileRow({
             </p>
           </>
         ) : (
-          <p className="mt-1 line-clamp-3 text-xs text-slate-700 dark:text-slate-300">{truncarTeor(teorLinha(row), 150)}</p>
+          <p className="mt-1 line-clamp-3 text-xs text-slate-700 dark:text-slate-300">
+            {truncarTeor(teorDaLinha(row), 150)}
+          </p>
         )}
       </button>
       <div className="mt-2 border-t border-slate-100 pt-2 dark:border-white/10">
@@ -613,7 +635,7 @@ function CardMobileRow({
       </div>
       {expandido ? (
         <pre className="mt-3 max-h-48 overflow-auto whitespace-pre-wrap rounded border border-slate-200 bg-slate-50 p-2 text-xs dark:border-white/10 dark:bg-white/5">
-          {teorLinha(row) || '—'}
+          {teorDaLinha(row) || '—'}
         </pre>
       ) : null}
     </article>
@@ -624,6 +646,14 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
   const cfg = VARIANT_CONFIG[variant] ?? VARIANT_CONFIG.jusbrasil;
   const isProjudi = variant === 'projudi';
   const navigate = useNavigate();
+
+  const teorDaLinha = useCallback(
+    (row) => {
+      const t = row?.teor || row?.teorIntegral || '';
+      return isProjudi ? deduplicarTeorExibicao(t) : t;
+    },
+    [isProjudi]
+  );
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [processando, setProcessando] = useState(false);
@@ -634,6 +664,8 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
   const [filtroVinculo, setFiltroVinculo] = useState('todos');
   const [buscaDebounced, setBuscaDebounced] = useState('');
   const [resultadoProcessamento, setResultadoProcessamento] = useState(null);
+  const [ultimaSyncGmail, setUltimaSyncGmail] = useState(null);
+  const [processandoCompleto, setProcessandoCompleto] = useState(false);
   const [expandidoId, setExpandidoId] = useState(null);
   const [modalPublicacao, setModalPublicacao] = useState(null);
   const [processoEmbed, setProcessoEmbed] = useState(null);
@@ -643,8 +675,9 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
   const [vinculoModal, setVinculoModal] = useState(null);
   const [vincForm, setVincForm] = useState({ codCliente: '', procInterno: '', cliente: '' });
   const [vinculoFormErro, setVinculoFormErro] = useState('');
-  const [ordemDataAsc, setOrdemDataAsc] = useState(true);
-  const [ordenacaoDataAtiva, setOrdenacaoDataAtiva] = useState(false);
+  const [ordemDataAsc, setOrdemDataAsc] = useState(false);
+  const [aplicandoSugestoes, setAplicandoSugestoes] = useState(false);
+  const sugestoesAutoTentadasRef = useRef(new Set());
 
   useEffect(() => {
     void montarIndiceCnjClienteProcAsync().then((m) => setIndiceCnj(m));
@@ -704,15 +737,27 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
     carregar();
   }, [carregar]);
 
+  const carregarSyncGmail = useCallback(async () => {
+    try {
+      const s = await cfg.syncObter();
+      setUltimaSyncGmail(s?.ultimaSincronizacaoEm ?? null);
+    } catch {
+      setUltimaSyncGmail(null);
+    }
+  }, [cfg]);
+
+  useEffect(() => {
+    void carregarSyncGmail();
+  }, [carregarSyncGmail]);
+
   const rowsExibidas = useMemo(() => {
-    if (!ordenacaoDataAtiva) return rows;
     return [...rows].sort((a, b) => {
-      const da = parseDataPublicacaoMs(a.dataPublicacao);
-      const db = parseDataPublicacaoMs(b.dataPublicacao);
+      const da = parseLinhaTempoMs(a);
+      const db = parseLinhaTempoMs(b);
       if (da !== db) return ordemDataAsc ? da - db : db - da;
       return Number(b.id ?? 0) - Number(a.id ?? 0);
     });
-  }, [rows, ordenacaoDataAtiva, ordemDataAsc]);
+  }, [rows, ordemDataAsc]);
 
   const totalLabel = useMemo(() => {
     const n = rows.length;
@@ -737,19 +782,29 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
     return `${n} ${tipoPlural} · ${processosUnicos} processo${processosUnicos === 1 ? '' : 's'} único${processosUnicos === 1 ? '' : 's'} por email${sugestaoTxt}`;
   }, [rows, buscaDebounced, filtroStatus, filtroVinculo, indiceCnj, sugestoesApi, carregandoSugestoes, cfg]);
 
-  const handleProcessar = async () => {
-    setProcessando(true);
+  const handleProcessar = async (forcarAtualizacaoCompleta = false) => {
+    if (forcarAtualizacaoCompleta) {
+      setProcessandoCompleto(true);
+    } else {
+      setProcessando(true);
+    }
     setErr('');
     setMsgOk('');
     setResultadoProcessamento(null);
     try {
-      const res = await cfg.processar();
+      const res = await cfg.processar({ forcar: forcarAtualizacaoCompleta });
       setResultadoProcessamento(res);
+      if (res?.ultimaSincronizacaoGravada) {
+        setUltimaSyncGmail(res.ultimaSincronizacaoGravada);
+      } else {
+        await carregarSyncGmail();
+      }
       await carregar();
     } catch (e) {
       setErr(e?.message || 'Falha ao processar emails.');
     } finally {
       setProcessando(false);
+      setProcessandoCompleto(false);
     }
   };
 
@@ -813,6 +868,72 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
       setErr(e?.message || 'Falha ao aplicar sugestão de vínculo.');
     }
   };
+
+  const coletarSugestoesAplicaveis = useCallback(
+    (somenteNaoTentadas) => {
+      const pendentes = [];
+      for (const row of rows) {
+        if (row.statusVinculo === 'vinculado') continue;
+        const sug = resolverSugestaoVinculoLinha(row, indiceCnj, sugestoesApi);
+        if (!sug || sug.ambiguo === true || !sug.codCliente || !sug.procInterno) continue;
+        const id = row._apiId ?? row.id;
+        if (somenteNaoTentadas && sugestoesAutoTentadasRef.current.has(String(id))) continue;
+        pendentes.push({ id, sug });
+      }
+      return pendentes;
+    },
+    [rows, indiceCnj, sugestoesApi]
+  );
+
+  const aplicarTodasSugestoes = useCallback(
+    async ({ auto = false } = {}) => {
+      const pendentes = coletarSugestoesAplicaveis(auto);
+      if (pendentes.length === 0) {
+        if (!auto) setMsgOk('Nenhuma sugestão de vínculo aplicável no momento.');
+        return;
+      }
+      setAplicandoSugestoes(true);
+      if (!auto) {
+        setErr('');
+        setMsgOk('');
+      }
+      let aplicadas = 0;
+      let falhas = 0;
+      for (const { id, sug } of pendentes) {
+        sugestoesAutoTentadasRef.current.add(String(id));
+        try {
+          const v = await vincularPublicacaoProcessoPorChaveNatural(
+            id,
+            sug.codCliente,
+            sug.procInterno,
+            'Vínculo automático pela sugestão de cadastro (CNJ).'
+          );
+          if (v == null) falhas += 1;
+          else aplicadas += 1;
+        } catch {
+          falhas += 1;
+        }
+      }
+      if (aplicadas > 0) {
+        await carregar();
+      }
+      setAplicandoSugestoes(false);
+      if (aplicadas > 0 || !auto) {
+        const partes = [];
+        if (aplicadas > 0) partes.push(`${aplicadas} vínculo(s) aplicado(s) automaticamente`);
+        if (falhas > 0) partes.push(`${falhas} não aplicável(is) (confira manualmente)`);
+        setMsgOk(partes.join(' · ') || 'Nenhuma sugestão aplicável.');
+      }
+    },
+    [coletarSugestoesAplicaveis, carregar]
+  );
+
+  useEffect(() => {
+    if (!cfg.autoAplicarSugestoes || carregandoSugestoes || aplicandoSugestoes || !rows.length) {
+      return;
+    }
+    void aplicarTodasSugestoes({ auto: true });
+  }, [cfg.autoAplicarSugestoes, carregandoSugestoes, aplicandoSugestoes, rows, indiceCnj, sugestoesApi, aplicarTodasSugestoes]);
 
   const confirmarVinculoModal = async () => {
     const row = rows.find((x) => x.id === vinculoModal?.id);
@@ -902,7 +1023,6 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
 
   const toggleOrdemDataPublicacao = (e) => {
     e.preventDefault();
-    setOrdenacaoDataAtiva(true);
     setOrdemDataAsc((v) => !v);
   };
 
@@ -939,12 +1059,26 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
         <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-[#141922]">
           <button
             type="button"
-            onClick={handleProcessar}
-            disabled={processando}
+            onClick={() => void handleProcessar(false)}
+            disabled={processando || processandoCompleto}
             className="inline-flex items-center gap-2 rounded-lg bg-sky-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-60"
           >
             {processando ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-            Buscar Emails Agora
+            Buscar emails novos
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleProcessar(true)}
+            disabled={processando || processandoCompleto}
+            title="Varre toda a caixa do remetente e reprocessa emails já importados"
+            className="inline-flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm font-medium text-amber-950 hover:bg-amber-100 disabled:opacity-60 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-100 dark:hover:bg-amber-950/50"
+          >
+            {processandoCompleto ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RotateCcw className="h-4 w-4" />
+            )}
+            Forçar atualização completa
           </button>
           <button
             type="button"
@@ -955,12 +1089,29 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
             Atualizar lista
           </button>
+          <p className="w-full text-xs text-slate-500 dark:text-slate-400">
+            Última busca no Gmail: {fmtInstant(ultimaSyncGmail)}
+            {ultimaSyncGmail
+              ? ' — buscas normais consideram apenas emails recebidos após esse momento.'
+              : ' — na primeira busca incremental, o sistema usa os últimos 30 dias.'}
+          </p>
         </div>
 
         {resultadoProcessamento ? (
           <div className="rounded-xl border border-emerald-200 bg-emerald-50/80 p-4 text-sm dark:border-emerald-900/50 dark:bg-emerald-950/30">
             <p className="font-medium text-emerald-900 dark:text-emerald-100">Processamento concluído</p>
             <ul className="mt-2 space-y-1 text-emerald-800 dark:text-emerald-200">
+              <li>
+                Modo:{' '}
+                {resultadoProcessamento.forcarAtualizacao
+                  ? 'atualização completa (toda a caixa)'
+                  : 'incremental (desde última busca)'}
+              </li>
+              {resultadoProcessamento.ultimaSincronizacaoGravada ? (
+                <li>
+                  Cursor Gmail gravado: {fmtInstant(resultadoProcessamento.ultimaSincronizacaoGravada)}
+                </li>
+              ) : null}
               <li>Emails lidos: {resultadoProcessamento.emailsLidos ?? 0}</li>
               <li>Publicações encontradas: {resultadoProcessamento.publicacoesEncontradas ?? 0}</li>
               <li>Processos únicos: {resultadoProcessamento.processosUnicos ?? 0}</li>
@@ -1043,6 +1194,7 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
                   onAbrirProcesso={() => abrirProcesso(row)}
                   onAplicarSugestao={() => void aplicarSugestaoVinculo(row)}
                   isProjudi={isProjudi}
+                  teorDaLinha={teorDaLinha}
                   {...acoesProps(row)}
                 />
               ))}
@@ -1056,9 +1208,9 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
                       onDoubleClick={toggleOrdemDataPublicacao}
                     >
                       Data
-                      {ordenacaoDataAtiva ? (
-                        <span className="ml-1 text-[10px] opacity-70">{ordemDataAsc ? '↑' : '↓'}</span>
-                      ) : null}
+                      <span className="ml-1 text-[10px] opacity-70" title="Duplo clique para inverter ordem">
+                        {ordemDataAsc ? '↑' : '↓'}
+                      </span>
                     </th>
                     {isProjudi ? (
                       <th className="min-w-[140px] px-3 py-2.5 font-medium">Tipo movimento</th>
@@ -1075,13 +1227,11 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
                       <th className="min-w-[160px] px-3 py-2.5 font-medium">Origem / Email</th>
                     ) : null}
                     <th className="whitespace-nowrap px-3 py-2.5 font-medium">Recebimento</th>
-                    <th className="px-3 py-2.5 font-medium">Status</th>
                     <th className="w-[120px] px-3 py-2.5 font-medium">Ações</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-white/10">
                   {rowsExibidas.map((row) => {
-                    const status = row._statusTratamento || 'PENDENTE';
                     const destaque =
                       row.statusVinculo === 'nao_vinculado' || row.statusVinculo === 'sem_cnj'
                         ? 'border-l-2 border-l-amber-400/80'
@@ -1129,9 +1279,9 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
                           <td
                             className="cursor-pointer px-3 py-2.5 text-slate-700 dark:text-slate-300"
                             onClick={() => toggleLinha(row)}
-                            title={teorLinha(row)}
+                            title={teorDaLinha(row)}
                           >
-                            {truncarTeor(teorLinha(row), 120)}
+                            {truncarTeor(teorDaLinha(row), 120)}
                           </td>
                         )}
                         <td className="max-w-[96px] px-2 py-2.5">
@@ -1154,13 +1304,6 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
                         ) : null}
                         <td className="whitespace-nowrap px-3 py-2.5 text-slate-600 dark:text-slate-400">
                           {fmtInstant(row.emailRecebidoEm)}
-                        </td>
-                        <td className="px-3 py-2.5">
-                          <span
-                            className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium ${badgeStatusClass(status)}`}
-                          >
-                            {STATUS_LABEL[status] || status}
-                          </span>
                         </td>
                         <td className="px-3 py-2.5">
                           <AcoesLinha {...acoesProps(row)} />

@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import {
   listarArquivos,
+  obterInfoPasta,
   obterLinkPasta,
   uploadArquivo,
 } from '../repositories/driveRepository.js';
@@ -68,8 +69,10 @@ export default function DriveExplorer({ codigoCliente, numeroInterno, onClose })
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState('');
   const [pastaAtual, setPastaAtual] = useState(null);
-  /** Pastas abertas após a raiz do processo: [{ id, nome }, …] */
-  const [pilhaPastas, setPilhaPastas] = useState([]);
+  /** Caminho navegado (do ancestral mais alto conhecido até a pasta atual): [{ id, nome }, …] */
+  const [trilha, setTrilha] = useState([]);
+  /** Pai imediato da pasta atual (para subir de nível); nulo na fronteira (pasta de clientes). */
+  const [paiInfo, setPaiInfo] = useState({ paiId: null, paiNome: null });
   const [uploading, setUploading] = useState(false);
   const [pastaRaiz, setPastaRaiz] = useState(null);
   const [dragOver, setDragOver] = useState(false);
@@ -89,12 +92,25 @@ export default function DriveExplorer({ codigoCliente, numeroInterno, onClose })
     }
   }, [codigoCliente, numeroInterno, pastaAtual]);
 
+  const nomeRaiz =
+    pastaRaiz?.nomePasta || `Proc. ${String(numeroInterno).padStart(2, '0')}`;
+
   useEffect(() => {
     let cancelado = false;
+    setPastaAtual(null);
+    setTrilha([]);
+    setPaiInfo({ paiId: null, paiNome: null });
     (async () => {
       try {
         const pasta = await obterLinkPasta(codigoCliente, numeroInterno);
-        if (!cancelado) setPastaRaiz(pasta);
+        if (cancelado) return;
+        setPastaRaiz(pasta);
+        if (pasta?.pastaId) {
+          setPastaAtual(pasta.pastaId);
+          setTrilha([
+            { id: pasta.pastaId, nome: pasta.nomePasta || `Proc. ${String(numeroInterno).padStart(2, '0')}` },
+          ]);
+        }
       } catch {
         if (!cancelado) setPastaRaiz(null);
       }
@@ -105,30 +121,51 @@ export default function DriveExplorer({ codigoCliente, numeroInterno, onClose })
   }, [codigoCliente, numeroInterno]);
 
   useEffect(() => {
-    setPilhaPastas([]);
-    setPastaAtual(null);
-  }, [codigoCliente, numeroInterno]);
-
-  useEffect(() => {
     void carregarArquivos();
   }, [carregarArquivos]);
 
+  useEffect(() => {
+    if (!pastaAtual) {
+      setPaiInfo({ paiId: null, paiNome: null });
+      return undefined;
+    }
+    let cancelado = false;
+    (async () => {
+      try {
+        const info = await obterInfoPasta(pastaAtual);
+        if (!cancelado) {
+          setPaiInfo({ paiId: info?.paiId ?? null, paiNome: info?.paiNome ?? null });
+        }
+      } catch {
+        if (!cancelado) setPaiInfo({ paiId: null, paiNome: null });
+      }
+    })();
+    return () => {
+      cancelado = true;
+    };
+  }, [pastaAtual]);
+
   function abrirPasta(pasta) {
-    setPilhaPastas((prev) => [...prev, { id: pasta.id, nome: pasta.nome }]);
+    setTrilha((prev) => [...prev, { id: pasta.id, nome: pasta.nome }]);
     setPastaAtual(pasta.id);
   }
 
   function irParaRaiz() {
-    setPilhaPastas([]);
-    setPastaAtual(null);
+    if (!pastaRaiz?.pastaId) return;
+    setTrilha([{ id: pastaRaiz.pastaId, nome: nomeRaiz }]);
+    setPastaAtual(pastaRaiz.pastaId);
   }
 
-  function voltarPasta() {
-    setPilhaPastas((prev) => {
-      const nova = prev.slice(0, -1);
-      setPastaAtual(nova.length > 0 ? nova[nova.length - 1].id : null);
-      return nova;
+  function subirNivel() {
+    const { paiId, paiNome } = paiInfo;
+    if (!paiId) return;
+    setTrilha((prev) => {
+      if (prev.length > 1 && prev[prev.length - 2].id === paiId) {
+        return prev.slice(0, -1);
+      }
+      return [{ id: paiId, nome: paiNome || '…' }];
     });
+    setPastaAtual(paiId);
   }
 
   async function enviarArquivos(fileList) {
@@ -164,8 +201,9 @@ export default function DriveExplorer({ codigoCliente, numeroInterno, onClose })
     if (url) window.open(url, '_blank', 'noopener,noreferrer');
   }
 
-  const labelRaiz = pastaRaiz?.nomePasta || `Proc. ${String(numeroInterno).padStart(2, '0')}`;
-  const caminho = [labelRaiz, ...pilhaPastas.map((p) => p.nome)].join(' › ');
+  const caminhoRaiz =
+    pastaRaiz?.caminho || pastaRaiz?.nomePasta || `Proc. ${String(numeroInterno).padStart(2, '0')}`;
+  const caminho = [caminhoRaiz, ...pilhaPastas.map((p) => p.nome)].join(' / ');
 
   return (
     <>
@@ -194,8 +232,9 @@ export default function DriveExplorer({ codigoCliente, numeroInterno, onClose })
                 <Folder className="w-5 h-5 text-amber-500 shrink-0" aria-hidden />
                 Arquivos do Processo
               </h2>
-              <p className="mt-1 truncate text-xs text-slate-500" title={caminho}>
-                {caminho}
+              <p className="mt-1 flex items-start gap-1 text-xs text-slate-500" title={caminho}>
+                <Folder className="mt-0.5 h-3 w-3 shrink-0 text-slate-400" aria-hidden />
+                <span className="break-words">{caminho}</span>
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-1">

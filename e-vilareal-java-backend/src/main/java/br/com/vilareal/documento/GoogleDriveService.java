@@ -29,15 +29,22 @@ public class GoogleDriveService {
 
     private final String credentialsFile;
     private final String rootFolderName;
+    private final String rootFolderIdConfig;
+    private final String clientesPath;
 
     private Drive driveService;
     private String rootFolderId;
+    private String clientesFolderId;
 
     public GoogleDriveService(
             @Value("${google.drive.credentials-file}") String credentialsFile,
-            @Value("${google.drive.root-folder-name}") String rootFolderName) {
+            @Value("${google.drive.root-folder-name}") String rootFolderName,
+            @Value("${google.drive.root-folder-id:}") String rootFolderIdConfig,
+            @Value("${google.drive.clientes-path:}") String clientesPath) {
         this.credentialsFile = credentialsFile;
         this.rootFolderName = rootFolderName;
+        this.rootFolderIdConfig = rootFolderIdConfig;
+        this.clientesPath = clientesPath;
     }
 
     @PostConstruct
@@ -63,17 +70,38 @@ public class GoogleDriveService {
                         .build();
             }
 
-            DriveList driveList = driveService.drives()
-                    .list()
-                    .setQ("name = '" + escaparQueryDrive(rootFolderName) + "'")
-                    .execute();
-
-            if (driveList.getDrives() != null && !driveList.getDrives().isEmpty()) {
-                rootFolderId = driveList.getDrives().get(0).getId();
-                log.info("Google Drive configurado. Shared Drive: {} ({})", rootFolderName, rootFolderId);
+            if (StringUtils.hasText(rootFolderIdConfig)) {
+                rootFolderId = rootFolderIdConfig.trim();
+                String nomeRaiz = obterNomeArquivo(rootFolderId);
+                log.info("Google Drive configurado. Pasta raiz fixada por ID: {} ({})",
+                        nomeRaiz != null ? nomeRaiz : rootFolderName, rootFolderId);
             } else {
-                rootFolderId = encontrarOuCriarPastaPublic(rootFolderName, null);
-                log.info("Google Drive configurado. Pasta raiz: {} ({})", rootFolderName, rootFolderId);
+                DriveList driveList = driveService.drives()
+                        .list()
+                        .setQ("name = '" + escaparQueryDrive(rootFolderName) + "'")
+                        .execute();
+
+                if (driveList.getDrives() != null && !driveList.getDrives().isEmpty()) {
+                    rootFolderId = driveList.getDrives().get(0).getId();
+                    log.info("Google Drive configurado. Shared Drive: {} ({})", rootFolderName, rootFolderId);
+                } else {
+                    rootFolderId = encontrarOuCriarPastaPublic(rootFolderName, null);
+                    log.info("Google Drive configurado. Pasta raiz: {} ({})", rootFolderName, rootFolderId);
+                }
+            }
+
+            // Resolver subpasta base de clientes (ex.: clientes / 01 - Ativos) dentro da raiz.
+            if (StringUtils.hasText(clientesPath)) {
+                String pastaAtual = rootFolderId;
+                for (String parte : clientesPath.split("/")) {
+                    if (StringUtils.hasText(parte)) {
+                        pastaAtual = encontrarOuCriarPastaPublic(parte.trim(), pastaAtual);
+                    }
+                }
+                clientesFolderId = pastaAtual;
+                log.info("Google Drive pasta de clientes: {} ({})", clientesPath, clientesFolderId);
+            } else {
+                clientesFolderId = rootFolderId;
             }
         } catch (Exception e) {
             log.warn("Google Drive não configurado: {}", e.getMessage());
@@ -86,6 +114,10 @@ public class GoogleDriveService {
 
     public String getRootFolderId() {
         return rootFolderId;
+    }
+
+    public String getClientesFolderId() {
+        return clientesFolderId != null ? clientesFolderId : rootFolderId;
     }
 
     public String salvarPdfEmPasta(byte[] pdfBytes, String nomeArquivo, String pastaId) {
@@ -143,7 +175,55 @@ public class GoogleDriveService {
         if (result.getFiles() != null && !result.getFiles().isEmpty()) {
             return result.getFiles().get(0).getId();
         }
+
+        // Fallback: a busca exata do Drive (name =) só casa maiúsc./minúsc. para ASCII e falha
+        // com acentos (ex.: "CONDOMÍNIO" x "Condomínio"). As pastas migradas usam MAIÚSCULAS,
+        // enquanto o app normaliza para Title Case. Para reaproveitar a pasta existente (e não
+        // criar duplicatas vazias), comparamos os filhos do parent de forma insensível a
+        // caixa e acentos.
+        if (parentId != null) {
+            return encontrarPastaPorNomeNormalizado(nomeSanitizado, parentId);
+        }
         return null;
+    }
+
+    private String encontrarPastaPorNomeNormalizado(String nomeSanitizado, String parentId)
+            throws Exception {
+        String alvo = normalizarChaveNome(nomeSanitizado);
+        String pageToken = null;
+        do {
+            FileList result = driveService.files()
+                    .list()
+                    .setQ("'" + parentId + "' in parents "
+                            + "and mimeType = 'application/vnd.google-apps.folder' "
+                            + "and trashed = false")
+                    .setSpaces("drive")
+                    .setFields("nextPageToken, files(id, name)")
+                    .setPageSize(1000)
+                    .setSupportsAllDrives(true)
+                    .setIncludeItemsFromAllDrives(true)
+                    .setPageToken(pageToken)
+                    .execute();
+            if (result.getFiles() != null) {
+                for (File f : result.getFiles()) {
+                    if (alvo.equals(normalizarChaveNome(f.getName()))) {
+                        return f.getId();
+                    }
+                }
+            }
+            pageToken = result.getNextPageToken();
+        } while (pageToken != null);
+        return null;
+    }
+
+    static String normalizarChaveNome(String nome) {
+        if (nome == null) {
+            return "";
+        }
+        String nfd = java.text.Normalizer.normalize(nome.trim(), java.text.Normalizer.Form.NFD);
+        return nfd.replaceAll("\\p{M}+", "")
+                .replaceAll("\\s+", " ")
+                .toUpperCase(java.util.Locale.ROOT);
     }
 
     public List<File> listarSubpastas(String parentId) throws Exception {
@@ -172,6 +252,53 @@ public class GoogleDriveService {
         fileMetadata.setName(sanitizarNomePasta(novoNome));
         driveService.files()
                 .update(fileId, fileMetadata)
+                .setSupportsAllDrives(true)
+                .execute();
+    }
+
+    /** Lista todos os filhos (pastas e arquivos) de uma pasta, com paginação. */
+    public List<File> listarFilhos(String parentId) throws Exception {
+        if (!isConfigurado() || !StringUtils.hasText(parentId)) {
+            return List.of();
+        }
+        List<File> todos = new java.util.ArrayList<>();
+        String pageToken = null;
+        do {
+            FileList result = driveService.files()
+                    .list()
+                    .setQ("'" + parentId + "' in parents and trashed = false")
+                    .setSpaces("drive")
+                    .setFields("nextPageToken, files(id, name, mimeType, parents)")
+                    .setPageSize(1000)
+                    .setSupportsAllDrives(true)
+                    .setIncludeItemsFromAllDrives(true)
+                    .setPageToken(pageToken)
+                    .execute();
+            if (result.getFiles() != null) {
+                todos.addAll(result.getFiles());
+            }
+            pageToken = result.getNextPageToken();
+        } while (pageToken != null);
+        return todos;
+    }
+
+    public boolean isPasta(File f) {
+        return f != null && "application/vnd.google-apps.folder".equals(f.getMimeType());
+    }
+
+    public int contarFilhos(String parentId) throws Exception {
+        return listarFilhos(parentId).size();
+    }
+
+    /** Envia a pasta/arquivo para a lixeira (reversível). */
+    public void enviarParaLixeira(String fileId) throws Exception {
+        if (!isConfigurado() || !StringUtils.hasText(fileId)) {
+            return;
+        }
+        File metadata = new File();
+        metadata.setTrashed(true);
+        driveService.files()
+                .update(fileId, metadata)
                 .setSupportsAllDrives(true)
                 .execute();
     }
@@ -255,6 +382,39 @@ public class GoogleDriveService {
             log.warn("Erro ao obter link do Drive: {}", e.getMessage());
             return null;
         }
+    }
+
+    /**
+     * Retorna a pasta e seu pai imediato para navegação no painel. O pai é nulo quando a pasta
+     * é a raiz de clientes ou a raiz do sistema (fronteira de navegação) — evita subir para fora
+     * da árvore do escritório.
+     */
+    public DrivePastaInfoDto obterInfoPasta(String pastaId) throws Exception {
+        if (!isConfigurado() || !StringUtils.hasText(pastaId)) {
+            return null;
+        }
+        File f = driveService.files()
+                .get(pastaId)
+                .setFields("id, name, parents")
+                .setSupportsAllDrives(true)
+                .execute();
+        String paiId = null;
+        String paiNome = null;
+        boolean naFronteira = pastaId.equals(getClientesFolderId()) || pastaId.equals(rootFolderId);
+        if (!naFronteira && f.getParents() != null && !f.getParents().isEmpty()) {
+            try {
+                File pai = driveService.files()
+                        .get(f.getParents().get(0))
+                        .setFields("id, name")
+                        .setSupportsAllDrives(true)
+                        .execute();
+                paiId = pai.getId();
+                paiNome = pai.getName();
+            } catch (Exception ignore) {
+                // pai inacessível: trata como fronteira
+            }
+        }
+        return new DrivePastaInfoDto(f.getId(), f.getName(), paiId, paiNome);
     }
 
     public String obterNomeArquivo(String fileId) {

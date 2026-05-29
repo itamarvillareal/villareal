@@ -26,22 +26,23 @@ public class GmailProjudiManifestacaoService {
     private static final Logger log = LoggerFactory.getLogger(GmailProjudiManifestacaoService.class);
 
     private static final String REMETENTE = "sistema-projudi@tjgo.jus.br";
-    private static final String QUERY_NAO_LIDOS = "from:" + REMETENTE + " is:unread";
-    private static final String QUERY_RECENTES_7D = "from:" + REMETENTE + " newer_than:7d";
 
     private final Gmail gmail;
     private final PublicacaoEmailImportacaoTransacionalService importacaoTransacional;
     private final PublicacaoRepository publicacaoRepository;
+    private final EmailImportacaoSyncService syncService;
     private final String gmailUser;
 
     public GmailProjudiManifestacaoService(
             @Autowired(required = false) Gmail gmail,
             PublicacaoEmailImportacaoTransacionalService importacaoTransacional,
             PublicacaoRepository publicacaoRepository,
+            EmailImportacaoSyncService syncService,
             @Value("${gmail.user:me}") String gmailUser) {
         this.gmail = gmail;
         this.importacaoTransacional = importacaoTransacional;
         this.publicacaoRepository = publicacaoRepository;
+        this.syncService = syncService;
         this.gmailUser = gmailUser;
     }
 
@@ -50,14 +51,27 @@ public class GmailProjudiManifestacaoService {
     }
 
     public PublicacaoEmailProcessamentoResumo buscarEProcessarManifestacoes() throws IOException {
-        return buscarEProcessar(QUERY_NAO_LIDOS, false);
+        Instant desde = syncService.obterCursorParaBuscaIncremental(EmailImportacaoSyncTipo.PROJUDI);
+        String query = EmailImportacaoSyncService.montarQueryIncremental(REMETENTE, desde);
+        return buscarEProcessar(query, false, true, true);
     }
 
-    public PublicacaoEmailProcessamentoResumo buscarEProcessarManifestacoesManual() throws IOException {
-        return buscarEProcessar(QUERY_RECENTES_7D, true);
+    public PublicacaoEmailProcessamentoResumo buscarEProcessarManifestacoesManual(boolean forcarAtualizacaoCompleta)
+            throws IOException {
+        if (forcarAtualizacaoCompleta) {
+            String query = EmailImportacaoSyncService.montarQueryCaixaCompleta(REMETENTE);
+            return buscarEProcessar(query, true, true, false);
+        }
+        Instant desde = syncService.obterCursorParaBuscaIncremental(EmailImportacaoSyncTipo.PROJUDI);
+        String query = EmailImportacaoSyncService.montarQueryIncremental(REMETENTE, desde);
+        return buscarEProcessar(query, false, true, true);
     }
 
-    private PublicacaoEmailProcessamentoResumo buscarEProcessar(String query, boolean reprocessarEmailsExistentes)
+    private PublicacaoEmailProcessamentoResumo buscarEProcessar(
+            String query,
+            boolean reprocessarEmailsExistentes,
+            boolean atualizarCursor,
+            boolean sincronizacaoIncremental)
             throws IOException {
         PublicacaoEmailProcessamentoResumo resumo = new PublicacaoEmailProcessamentoResumo();
         if (gmail == null) {
@@ -65,15 +79,31 @@ public class GmailProjudiManifestacaoService {
             return resumo;
         }
 
-        log.info("Iniciando busca de manifestações Projudi no Gmail (query={}, reprocessar={})", query, reprocessarEmailsExistentes);
+        Instant cursorAnterior =
+                syncService.obterUltimaSincronizacao(EmailImportacaoSyncTipo.PROJUDI).orElse(null);
+        resumo.setUltimaSincronizacaoAnterior(cursorAnterior);
+        resumo.setForcarAtualizacao(!sincronizacaoIncremental);
+        resumo.setSincronizacaoIncremental(sincronizacaoIncremental);
+        resumo.setQueryGmail(query);
+
+        log.info(
+                "Iniciando busca de manifestações Projudi no Gmail (query={}, reprocessar={}, incremental={})",
+                query,
+                reprocessarEmailsExistentes,
+                sincronizacaoIncremental);
         List<Message> mensagens = listarMensagens(query);
         log.info("Emails Projudi encontrados: {}", mensagens.size());
 
         Set<String> processosUnicosLote = new LinkedHashSet<>();
+        Instant emailMaisRecente = cursorAnterior;
 
         for (Message ref : mensagens) {
             String messageId = ref.getId();
             boolean jaImportado = emailJaImportado(messageId);
+
+            if (!reprocessarEmailsExistentes && jaImportado) {
+                continue;
+            }
 
             if (reprocessarEmailsExistentes && jaImportado) {
                 int removidos = importacaoTransacional.removerPublicacoesDoEmail(messageId);
@@ -87,8 +117,8 @@ public class GmailProjudiManifestacaoService {
                 Message completa =
                         gmail.users().messages().get(gmailUser, messageId).setFormat("full").execute();
                 String assunto = extrairCabecalho(completa, "Subject");
-                String html = GmailMimeUtil.extrairHtml(completa.getPayload());
-                if (html == null || html.isBlank()) {
+                String conteudoEmail = GmailMimeUtil.extrairConteudoTextoCompleto(completa.getPayload());
+                if (conteudoEmail.isBlank()) {
                     log.warn("Email Projudi {} sem corpo utilizável (assunto={})", messageId, assunto);
                     marcarComoLido(messageId);
                     resumo.setEmailsLidos(resumo.getEmailsLidos() + 1);
@@ -97,9 +127,19 @@ public class GmailProjudiManifestacaoService {
 
                 String arquivoOrigem = montarArquivoOrigem(assunto, messageId);
                 Instant emailRecebidoEm = extrairDataRecebimentoEmail(completa);
+                emailMaisRecente = maisRecente(emailMaisRecente, emailRecebidoEm);
 
+                String snippet = completa.getSnippet();
                 List<PublicacaoWriteRequest> manifestacoes =
-                        ProjudiManifestacaoTextoImportacaoParser.parseHtmlProjudi(html, assunto, arquivoOrigem);
+                        ProjudiManifestacaoTextoImportacaoParser.parseHtmlProjudi(
+                                conteudoEmail, assunto, arquivoOrigem, snippet);
+                if (manifestacoes.isEmpty()) {
+                    log.warn(
+                            "Email Projudi {} sem manifestação extraída (assunto={}, snippet={})",
+                            messageId,
+                            assunto,
+                            snippet);
+                }
                 for (PublicacaoWriteRequest req : manifestacoes) {
                     req.setEmailRecebidoEm(emailRecebidoEm);
                 }
@@ -166,14 +206,36 @@ public class GmailProjudiManifestacaoService {
         }
 
         resumo.setProcessosUnicos(processosUnicosLote.size());
+
+        if (atualizarCursor) {
+            Instant cursorGravar = emailMaisRecente != null ? emailMaisRecente : Instant.now();
+            if (!mensagens.isEmpty()
+                    && (cursorAnterior == null || !cursorGravar.isAfter(cursorAnterior))) {
+                cursorGravar = Instant.now();
+            }
+            Instant gravado = syncService.registrarSincronizacao(EmailImportacaoSyncTipo.PROJUDI, cursorGravar);
+            resumo.setUltimaSincronizacaoGravada(gravado);
+        }
+
         log.info(
-                "Busca Gmail Projudi concluída: emailsLidos={}, manifestacoesEncontradas={}, processosUnicos={}, gravadas={}, erros={}",
+                "Busca Gmail Projudi concluída: emailsLidos={}, manifestacoesEncontradas={}, processosUnicos={}, gravadas={}, erros={}, cursorGravado={}",
                 resumo.getEmailsLidos(),
                 resumo.getPublicacoesEncontradas(),
                 resumo.getProcessosUnicos(),
                 resumo.getPublicacoesProcessadas(),
-                resumo.getErros().size());
+                resumo.getErros().size(),
+                resumo.getUltimaSincronizacaoGravada());
         return resumo;
+    }
+
+    private static Instant maisRecente(Instant atual, Instant candidato) {
+        if (candidato == null) {
+            return atual;
+        }
+        if (atual == null || candidato.isAfter(atual)) {
+            return candidato;
+        }
+        return atual;
     }
 
     private boolean emailJaImportado(String messageId) {
