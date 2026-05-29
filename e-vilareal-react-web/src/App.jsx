@@ -32,6 +32,7 @@ import {
   LazyGerarDocumento,
   LazyIntegracoesTribunalScraperLab,
   LazyImoveis,
+  LazyDemandas,
   LazyIptu,
   LazyIptuDashboard,
   LazyImoveisAdministracaoFinanceiro,
@@ -43,6 +44,7 @@ import {
   LazyProcessos,
   LazyPublicacoesProcessos,
   LazyPublicacoesEmail,
+  LazyManifestacoesProjudi,
   LazyRelatorio,
   LazyRelatorioResultadoProcessos,
   LazyRelatorioCalculos,
@@ -364,8 +366,13 @@ function App() {
               <Route path="/processos" element={<LazyProcessos />} />
               <Route path="/processos/publicacoes" element={<LazyPublicacoesProcessos />} />
               <Route path="/publicacoes-email" element={<LazyPublicacoesEmail />} />
+              <Route
+                path="/processos/manifestacoes-projudi"
+                element={<LazyManifestacoesProjudi />}
+              />
               <Route path="/processos/monitoramento" element={<LazyMonitoringPeoplePage />} />
               <Route path="/imoveis" element={<LazyImoveis />} />
+              <Route path="/imoveis/demandas" element={<LazyDemandas />} />
               <Route path="/iptu/:imovelId" element={<LazyIptu />} />
               <Route path="/iptu" element={<LazyIptuDashboard />} />
               <Route path="/imoveis/financeiro" element={<LazyImoveisAdministracaoFinanceiro />} />

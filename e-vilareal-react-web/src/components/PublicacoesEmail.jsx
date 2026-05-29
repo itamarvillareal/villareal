@@ -15,6 +15,15 @@ import {
   X,
 } from 'lucide-react';
 import { buscarPublicacoesEmail, processarEmailsAgora } from '../api/publicacoesEmailApi.js';
+import {
+  buscarManifestacoesProjudi,
+  processarEmailsProjudiAgora,
+} from '../api/manifestacoesProjudiApi.js';
+import {
+  formatarPartesLinha,
+  parseProjudiMeta,
+  tipoMovimentoLinha,
+} from '../data/manifestacoesProjudiDisplay.js';
 import { buildRouterStateChaveClienteProcesso } from '../domain/camposProcessoCliente.js';
 import {
   formatarChaveProcessoVinculo,
@@ -50,6 +59,31 @@ const VINCULO_FILTRO_OPCOES = [
   { value: 'todos', label: 'Todos os vínculos' },
   { value: 'nao_vinculados', label: 'Não vinculados' },
 ];
+
+const VARIANT_CONFIG = {
+  jusbrasil: {
+    titulo: 'Publicações por Email',
+    remetente: 'publicacoes-diarios@jusbrasil.com.br',
+    voltarPara: '/processos/publicacoes',
+    voltarLabel: 'Publicações (PDF)',
+    buscar: buscarPublicacoesEmail,
+    processar: processarEmailsAgora,
+    vazio: 'Nenhuma publicação importada por email encontrada.',
+    resumoTipo: 'publicação',
+    placeholderBusca: 'Buscar no teor, CNJ, cliente…',
+  },
+  projudi: {
+    titulo: 'Manifestações Projudi',
+    remetente: 'sistema-projudi@tjgo.jus.br',
+    voltarPara: '/processos',
+    voltarLabel: 'Processos',
+    buscar: buscarManifestacoesProjudi,
+    processar: processarEmailsProjudiAgora,
+    vazio: 'Nenhuma manifestação Projudi importada por email encontrada.',
+    resumoTipo: 'manifestação',
+    placeholderBusca: 'Buscar movimento, CNJ, partes, código…',
+  },
+};
 
 const STATUS_LABEL = {
   PENDENTE: 'Pendente',
@@ -161,9 +195,10 @@ function construirStateProcessosDesdeLinha(row, indiceCnj, sugestoesApi) {
   return buildRouterStateChaveClienteProcesso(cod, procNum);
 }
 
-function ModalTeor({ publicacao, onClose, onAbrirProcesso }) {
+function ModalTeor({ publicacao, onClose, onAbrirProcesso, isProjudi = false }) {
   if (!publicacao) return null;
   const citados = parseProcessosCitadosNoTeor(publicacao.jsonCnjBruto || publicacao.jsonReferencia);
+  const projudiMeta = isProjudi ? parseProjudiMeta(publicacao) : {};
   const vinculoLabel = formatarRotuloVinculoPartes(publicacao);
   const temVinculoInterno =
     (publicacao.codCliente && publicacao.procInterno) || publicacao.statusVinculo === 'vinculado';
@@ -198,6 +233,24 @@ function ModalTeor({ publicacao, onClose, onAbrirProcesso }) {
               <span className="font-medium text-slate-600 dark:text-slate-400">Processo:</span>{' '}
               {cnjLinha(publicacao)}
             </p>
+            {isProjudi ? (
+              <>
+                <p>
+                  <span className="font-medium text-slate-600 dark:text-slate-400">Tipo movimento:</span>{' '}
+                  {tipoMovimentoLinha(publicacao)}
+                </p>
+                <p className="sm:col-span-2">
+                  <span className="font-medium text-slate-600 dark:text-slate-400">Partes:</span>{' '}
+                  {formatarPartesLinha(publicacao)}
+                </p>
+                {projudiMeta.assuntoEmail ? (
+                  <p className="sm:col-span-2">
+                    <span className="font-medium text-slate-600 dark:text-slate-400">Assunto do email:</span>{' '}
+                    {projudiMeta.assuntoEmail}
+                  </p>
+                ) : null}
+              </>
+            ) : null}
             <p>
               <span className="font-medium text-slate-600 dark:text-slate-400">Data publicação:</span>{' '}
               {fmtDataBr(publicacao.dataPublicacao)}
@@ -506,6 +559,7 @@ function CardMobileRow({
   onTratar,
   onIgnorar,
   onMarcarVinculada,
+  isProjudi = false,
 }) {
   const status = row._statusTratamento || 'PENDENTE';
   return (
@@ -525,7 +579,18 @@ function CardMobileRow({
           )}
         </div>
         <p className="mt-2 font-mono text-xs text-sky-800 dark:text-sky-300">{cnjLinha(row)}</p>
-        <p className="mt-1 line-clamp-3 text-xs text-slate-700 dark:text-slate-300">{truncarTeor(teorLinha(row), 150)}</p>
+        {isProjudi ? (
+          <>
+            <p className="mt-1 text-xs font-medium text-violet-900 dark:text-violet-200">
+              {tipoMovimentoLinha(row)}
+            </p>
+            <p className="mt-1 line-clamp-2 text-xs text-slate-700 dark:text-slate-300">
+              {formatarPartesLinha(row)}
+            </p>
+          </>
+        ) : (
+          <p className="mt-1 line-clamp-3 text-xs text-slate-700 dark:text-slate-300">{truncarTeor(teorLinha(row), 150)}</p>
+        )}
       </button>
       <div className="mt-2 border-t border-slate-100 pt-2 dark:border-white/10">
         <CelulaVinculo
@@ -555,7 +620,9 @@ function CardMobileRow({
   );
 }
 
-export function PublicacoesEmail() {
+export function PublicacoesEmail({ variant = 'jusbrasil' }) {
+  const cfg = VARIANT_CONFIG[variant] ?? VARIANT_CONFIG.jusbrasil;
+  const isProjudi = variant === 'projudi';
   const navigate = useNavigate();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -619,7 +686,7 @@ export function PublicacoesEmail() {
     setLoading(true);
     setErr('');
     try {
-      const data = await buscarPublicacoesEmail({
+      const data = await cfg.buscar({
         texto: buscaDebounced || undefined,
         status: filtroStatus || undefined,
         filtroVinculo,
@@ -631,7 +698,7 @@ export function PublicacoesEmail() {
     } finally {
       setLoading(false);
     }
-  }, [buscaDebounced, filtroStatus, filtroVinculo]);
+  }, [buscaDebounced, filtroStatus, filtroVinculo, cfg]);
 
   useEffect(() => {
     carregar();
@@ -662,11 +729,13 @@ export function PublicacoesEmail() {
         : carregandoSugestoes
           ? ' · buscando sugestões de vínculo…'
           : '';
+    const tipo = cfg.resumoTipo;
+    const tipoPlural = tipo === 'manifestação' ? 'manifestações' : 'publicações';
     if (temFiltro) {
-      return `${n} publicação${n === 1 ? '' : 'ões'} · ${processosUnicos} processo${processosUnicos === 1 ? '' : 's'} único${processosUnicos === 1 ? '' : 's'} (filtro ativo)${sugestaoTxt}`;
+      return `${n} ${tipoPlural} · ${processosUnicos} processo${processosUnicos === 1 ? '' : 's'} único${processosUnicos === 1 ? '' : 's'} (filtro ativo)${sugestaoTxt}`;
     }
-    return `${n} publicação${n === 1 ? '' : 'ões'} · ${processosUnicos} processo${processosUnicos === 1 ? '' : 's'} único${processosUnicos === 1 ? '' : 's'} por email${sugestaoTxt}`;
-  }, [rows, buscaDebounced, filtroStatus, filtroVinculo, indiceCnj, sugestoesApi, carregandoSugestoes]);
+    return `${n} ${tipoPlural} · ${processosUnicos} processo${processosUnicos === 1 ? '' : 's'} único${processosUnicos === 1 ? '' : 's'} por email${sugestaoTxt}`;
+  }, [rows, buscaDebounced, filtroStatus, filtroVinculo, indiceCnj, sugestoesApi, carregandoSugestoes, cfg]);
 
   const handleProcessar = async () => {
     setProcessando(true);
@@ -674,7 +743,7 @@ export function PublicacoesEmail() {
     setMsgOk('');
     setResultadoProcessamento(null);
     try {
-      const res = await processarEmailsAgora();
+      const res = await cfg.processar();
       setResultadoProcessamento(res);
       await carregar();
     } catch (e) {
@@ -851,16 +920,19 @@ export function PublicacoesEmail() {
         <div className="flex flex-wrap items-center gap-4">
           <button
             type="button"
-            onClick={() => navigate('/processos/publicacoes')}
+            onClick={() => navigate(cfg.voltarPara)}
             className="inline-flex items-center gap-2 text-sm text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
           >
             <ArrowLeft className="h-4 w-4" />
-            Publicações (PDF)
+            {cfg.voltarLabel}
           </button>
           <div className="flex items-center gap-2">
             <Mail className="h-6 w-6 text-sky-600 dark:text-sky-400" />
-            <h1 className="text-xl font-bold">Publicações por Email</h1>
+            <h1 className="text-xl font-bold">{cfg.titulo}</h1>
           </div>
+          <span className="hidden text-xs text-slate-500 dark:text-slate-400 sm:inline">
+            {cfg.remetente}
+          </span>
           <span className="text-sm font-medium text-slate-600 dark:text-slate-400">{totalLabel}</span>
         </div>
 
@@ -919,7 +991,7 @@ export function PublicacoesEmail() {
               type="search"
               value={buscaTexto}
               onChange={(e) => setBuscaTexto(e.target.value)}
-              placeholder="Buscar no teor, CNJ, cliente…"
+              placeholder={cfg.placeholderBusca}
               className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-3 text-sm dark:border-white/15 dark:bg-white/5"
             />
           </div>
@@ -954,7 +1026,7 @@ export function PublicacoesEmail() {
           </div>
         ) : rows.length === 0 ? (
           <div className="rounded-xl border border-dashed border-slate-300 bg-white/60 px-6 py-16 text-center text-sm text-slate-500 dark:border-white/15 dark:bg-white/5">
-            Nenhuma publicação importada por email encontrada.
+            {cfg.vazio}
           </div>
         ) : (
           <>
@@ -970,6 +1042,7 @@ export function PublicacoesEmail() {
                   onToggle={() => toggleLinha(row)}
                   onAbrirProcesso={() => abrirProcesso(row)}
                   onAplicarSugestao={() => void aplicarSugestaoVinculo(row)}
+                  isProjudi={isProjudi}
                   {...acoesProps(row)}
                 />
               ))}
@@ -982,16 +1055,25 @@ export function PublicacoesEmail() {
                       className="cursor-pointer select-none whitespace-nowrap px-3 py-2.5 font-medium hover:bg-slate-100/80 dark:hover:bg-white/10"
                       onDoubleClick={toggleOrdemDataPublicacao}
                     >
-                      Data publicação
+                      Data
                       {ordenacaoDataAtiva ? (
                         <span className="ml-1 text-[10px] opacity-70">{ordemDataAsc ? '↑' : '↓'}</span>
                       ) : null}
                     </th>
+                    {isProjudi ? (
+                      <th className="min-w-[140px] px-3 py-2.5 font-medium">Tipo movimento</th>
+                    ) : null}
                     <th className="w-[108px] max-w-[108px] px-2 py-2.5 font-medium">Nº processo</th>
-                    <th className="min-w-[140px] px-3 py-2.5 font-medium">Cliente / proc.</th>
-                    <th className="min-w-[220px] px-3 py-2.5 font-medium">Teor</th>
+                    <th className="min-w-[140px] px-3 py-2.5 font-medium">Código / proc.</th>
+                    {isProjudi ? (
+                      <th className="min-w-[200px] px-3 py-2.5 font-medium">Partes (cliente × réu)</th>
+                    ) : (
+                      <th className="min-w-[220px] px-3 py-2.5 font-medium">Teor</th>
+                    )}
                     <th className="w-[96px] max-w-[96px] px-2 py-2.5 font-medium">Vínculo</th>
-                    <th className="min-w-[160px] px-3 py-2.5 font-medium">Origem / Email</th>
+                    {!isProjudi ? (
+                      <th className="min-w-[160px] px-3 py-2.5 font-medium">Origem / Email</th>
+                    ) : null}
                     <th className="whitespace-nowrap px-3 py-2.5 font-medium">Recebimento</th>
                     <th className="px-3 py-2.5 font-medium">Status</th>
                     <th className="w-[120px] px-3 py-2.5 font-medium">Ações</th>
@@ -1012,10 +1094,19 @@ export function PublicacoesEmail() {
                         <td
                           className="cursor-pointer whitespace-nowrap px-3 py-2.5"
                           onClick={() => toggleLinha(row)}
-                          title="Ver teor completo"
+                          title="Ver detalhes"
                         >
                           {fmtDataBr(row.dataPublicacao)}
                         </td>
+                        {isProjudi ? (
+                          <td
+                            className="max-w-[180px] cursor-pointer px-3 py-2.5 font-medium text-violet-900 dark:text-violet-200"
+                            onClick={() => toggleLinha(row)}
+                            title={tipoMovimentoLinha(row)}
+                          >
+                            {truncarTeor(tipoMovimentoLinha(row), 80)}
+                          </td>
+                        ) : null}
                         <td
                           className="max-w-[108px] cursor-pointer truncate px-2 py-2.5 font-mono text-[10px] text-sky-800 dark:text-sky-300"
                           onClick={() => toggleLinha(row)}
@@ -1026,13 +1117,23 @@ export function PublicacoesEmail() {
                         <td className="max-w-[160px] px-3 py-2.5">
                           <CelulaClienteProc row={row} indiceCnj={indiceCnj} sugestoesApi={sugestoesApi} />
                         </td>
-                        <td
-                          className="cursor-pointer px-3 py-2.5 text-slate-700 dark:text-slate-300"
-                          onClick={() => toggleLinha(row)}
-                          title={teorLinha(row)}
-                        >
-                          {truncarTeor(teorLinha(row), 120)}
-                        </td>
+                        {isProjudi ? (
+                          <td
+                            className="max-w-[240px] cursor-pointer px-3 py-2.5 text-slate-700 dark:text-slate-300"
+                            onClick={() => toggleLinha(row)}
+                            title={formatarPartesLinha(row)}
+                          >
+                            {truncarTeor(formatarPartesLinha(row), 100)}
+                          </td>
+                        ) : (
+                          <td
+                            className="cursor-pointer px-3 py-2.5 text-slate-700 dark:text-slate-300"
+                            onClick={() => toggleLinha(row)}
+                            title={teorLinha(row)}
+                          >
+                            {truncarTeor(teorLinha(row), 120)}
+                          </td>
+                        )}
                         <td className="max-w-[96px] px-2 py-2.5">
                           <CelulaVinculo
                             row={row}
@@ -1043,12 +1144,14 @@ export function PublicacoesEmail() {
                             onAplicarSugestao={() => void aplicarSugestaoVinculo(row)}
                           />
                         </td>
-                        <td
-                          className="max-w-[200px] truncate px-3 py-2.5 text-slate-600 dark:text-slate-400"
-                          title={row.arquivoOrigem}
-                        >
-                          {row.arquivoOrigem || '—'}
-                        </td>
+                        {!isProjudi ? (
+                          <td
+                            className="max-w-[200px] truncate px-3 py-2.5 text-slate-600 dark:text-slate-400"
+                            title={row.arquivoOrigem}
+                          >
+                            {row.arquivoOrigem || '—'}
+                          </td>
+                        ) : null}
                         <td className="whitespace-nowrap px-3 py-2.5 text-slate-600 dark:text-slate-400">
                           {fmtInstant(row.emailRecebidoEm)}
                         </td>
@@ -1077,6 +1180,7 @@ export function PublicacoesEmail() {
           publicacao={modalPublicacao}
           onClose={() => setModalPublicacao(null)}
           onAbrirProcesso={() => abrirFormularioProcessoFlutuante(modalPublicacao)}
+          isProjudi={isProjudi}
         />
       ) : null}
       {processoEmbed ? (

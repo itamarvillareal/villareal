@@ -156,6 +156,7 @@ final class DocumentoParseadoHeuristics {
                 || u.contains("IMPUGNACAO")
                 || u.contains("MANIFESTAÇÃO")
                 || u.contains("MANIFESTACAO")
+                || u.contains("JUSTIFICATIVA")
                 || u.contains("RECURSO");
     }
 

@@ -315,7 +315,7 @@ public class PublicacaoApplicationService {
         }
         String u = o.trim().toUpperCase();
         return switch (u) {
-            case "MANUAL", "PDF", "DATAJUD", "MONITORAMENTO" -> u;
+            case "MANUAL", "PDF", "DATAJUD", "MONITORAMENTO", "PROJUDI" -> u;
             default -> "PDF";
         };
     }

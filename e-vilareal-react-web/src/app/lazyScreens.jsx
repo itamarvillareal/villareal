@@ -33,11 +33,16 @@ export const LazyPublicacoesEmail = fromNamed(
   () => import('../components/PublicacoesEmail.jsx'),
   'PublicacoesEmail'
 );
+export const LazyManifestacoesProjudi = fromNamed(
+  () => import('../components/ManifestacoesProjudi.jsx'),
+  'ManifestacoesProjudi'
+);
 export const LazyMonitoringPeoplePage = fromNamed(
   () => import('../components/monitoring/MonitoringPeoplePage.jsx'),
   'MonitoringPeoplePage'
 );
 export const LazyImoveis = fromNamed(() => import('../components/Imoveis.jsx'), 'Imoveis');
+export const LazyDemandas = fromNamed(() => import('../components/Demandas.jsx'), 'Demandas');
 export const LazyIptu = fromNamed(() => import('../components/Iptu.jsx'), 'Iptu');
 export const LazyIptuDashboard = fromNamed(() => import('../components/IptuDashboard.jsx'), 'IptuDashboard');
 export const LazyImoveisAdministracaoFinanceiro = fromNamed(

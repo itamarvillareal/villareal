@@ -5,6 +5,7 @@ import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.apache.poi.xwpf.usermodel.XWPFParagraph;
 import org.apache.poi.xwpf.usermodel.XWPFRun;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -59,7 +60,7 @@ public class DocumentoDocxParser {
                     if (props.cabecalhoEscritorio()) {
                         continue;
                     }
-                    if (props.bold() && props.center() && DocumentoParseadoHeuristics.pareceEnderecamentoJuizo(props.texto())) {
+                    if (DocumentoParseadoHeuristics.pareceEnderecamentoJuizo(props.texto())) {
                         enderecoJuizo = props.texto().trim();
                         estado = Estado.ENDERECAMENTO;
                         continue;
@@ -74,9 +75,7 @@ public class DocumentoDocxParser {
                     if (DocumentoParseadoHeuristics.contemNumeroProcesso(props.texto())) {
                         numeroProcesso = DocumentoParseadoHeuristics.extrairNumeroProcesso(props.texto());
                         estado = Estado.PRE_CORPO;
-                        if (props.texto().trim().equalsIgnoreCase(numeroProcesso)
-                                || props.texto().toLowerCase(Locale.ROOT).startsWith("processo")
-                                || props.texto().toLowerCase(Locale.ROOT).startsWith("autos")) {
+                        if (ehLinhaSomenteProcesso(props.texto(), numeroProcesso)) {
                             continue;
                         }
                     } else {
@@ -125,6 +124,16 @@ public class DocumentoDocxParser {
             }
 
             if (estado == Estado.PRE_CORPO) {
+                if (enderecoJuizo == null && DocumentoParseadoHeuristics.pareceEnderecamentoJuizo(props.texto())) {
+                    enderecoJuizo = props.texto().trim();
+                    continue;
+                }
+                if (numeroProcesso == null && DocumentoParseadoHeuristics.contemNumeroProcesso(props.texto())) {
+                    numeroProcesso = DocumentoParseadoHeuristics.extrairNumeroProcesso(props.texto());
+                    if (ehLinhaSomenteProcesso(props.texto(), numeroProcesso)) {
+                        continue;
+                    }
+                }
                 if (DocumentoParseadoHeuristics.ehTituloPrincipal(props.texto(), props.center(), props.bold())) {
                     estado = Estado.CORPO;
                     finalizarSecao(secoes, secaoAtual);
@@ -195,6 +204,18 @@ public class DocumentoDocxParser {
 
     private static ParagrafoDocumento criarParagrafo(Props props, TipoParagrafo tipo) {
         return new ParagrafoDocumento(tipo, props.runs());
+    }
+
+    private static boolean ehLinhaSomenteProcesso(String texto, String numeroProcesso) {
+        if (!StringUtils.hasText(texto) || !StringUtils.hasText(numeroProcesso)) {
+            return false;
+        }
+        String t = texto.trim();
+        if (t.equalsIgnoreCase(numeroProcesso)) {
+            return true;
+        }
+        String lower = t.toLowerCase(Locale.ROOT);
+        return lower.startsWith("processo") || lower.startsWith("autos");
     }
 
     private Props extrairPropriedades(XWPFParagraph paragrafo) {
