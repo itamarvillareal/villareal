@@ -136,6 +136,10 @@ export function mapApiPublicacaoToUi(r) {
     _clienteId: r.clienteId ?? null,
     _pessoaRefId: r.pessoaRefId ?? null,
     emailRecebidoEm: r.emailRecebidoEm || null,
+    andamentosNoDrive: Boolean(r.andamentosNoDrive),
+    driveFolderUrl: r.driveFolderUrl || null,
+    andamentosNoDriveEm: r.andamentosNoDriveEm || null,
+    qtdArquivosDrive: r.qtdArquivosDrive ?? null,
     teor: r.teor || '',
   };
 }

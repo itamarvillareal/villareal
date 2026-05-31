@@ -3,10 +3,12 @@ package br.com.vilareal.projudi;
 import br.com.vilareal.documento.DocumentoDrivePastaService;
 import br.com.vilareal.documento.DrivePastaProcessoDto;
 import br.com.vilareal.documento.GoogleDriveService;
+import br.com.vilareal.documento.OcrService;
 import br.com.vilareal.processo.application.ProcessoDiagnosticoNumeroBuscaUtil;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
 import br.com.vilareal.publicacao.api.dto.PublicacaoWriteRequest;
+import br.com.vilareal.publicacao.application.PublicacaoDriveAndamentosService;
 import br.com.vilareal.publicacao.infrastructure.persistence.repository.PublicacaoRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -52,7 +54,10 @@ public class ProjudiOrquestradorService {
     private final PublicacaoRepository publicacaoRepository;
     private final DocumentoDrivePastaService documentoDrivePastaService;
     private final GoogleDriveService googleDriveService;
+    private final OcrService ocrService;
     private final ProjudiOrquestradorPersistenciaService persistenciaService;
+    private final ProjudiOrquestradorGate orquestradorGate;
+    private final PublicacaoDriveAndamentosService publicacaoDriveAndamentosService;
     private final int intervaloHorasProximaConsulta;
     private final int passoBackfill;
     private final long delayMsDownload;
@@ -62,7 +67,10 @@ public class ProjudiOrquestradorService {
                                        PublicacaoRepository publicacaoRepository,
                                        DocumentoDrivePastaService documentoDrivePastaService,
                                        GoogleDriveService googleDriveService,
+                                       OcrService ocrService,
                                        ProjudiOrquestradorPersistenciaService persistenciaService,
+                                       ProjudiOrquestradorGate orquestradorGate,
+                                       PublicacaoDriveAndamentosService publicacaoDriveAndamentosService,
                                        @Value("${projudi.orquestrador.intervalo-horas:12}") int intervaloHorasProximaConsulta,
                                        @Value("${projudi.orquestrador.passo-backfill:10}") int passoBackfill,
                                        @Value("${projudi.orquestrador.delay-ms-download:2000}") long delayMsDownload) {
@@ -71,7 +79,10 @@ public class ProjudiOrquestradorService {
         this.publicacaoRepository = publicacaoRepository;
         this.documentoDrivePastaService = documentoDrivePastaService;
         this.googleDriveService = googleDriveService;
+        this.ocrService = ocrService;
         this.persistenciaService = persistenciaService;
+        this.orquestradorGate = orquestradorGate;
+        this.publicacaoDriveAndamentosService = publicacaoDriveAndamentosService;
         this.intervaloHorasProximaConsulta = intervaloHorasProximaConsulta > 0
                 ? intervaloHorasProximaConsulta
                 : 12;
@@ -82,6 +93,20 @@ public class ProjudiOrquestradorService {
     public ResultadoOrquestracao executar(Long credencialId, boolean dryRun,
                                           String numeroEspecifico, Integer limite,
                                           Integer maxMovimentacoesComDoc) {
+        Optional<ResultadoOrquestracao> resultado = orquestradorGate.tryExecutarComRetorno(
+                "orquestrador/run",
+                () -> executarInterno(credencialId, dryRun, numeroEspecifico, limite, maxMovimentacoesComDoc));
+        if (resultado.isEmpty()) {
+            return new ResultadoOrquestracao(
+                    0, 0, 0, 0, 0, 0, 1,
+                    List.of("robô PROJUDI ocupado; tente novamente em alguns minutos."));
+        }
+        return resultado.get();
+    }
+
+    private ResultadoOrquestracao executarInterno(Long credencialId, boolean dryRun,
+                                                  String numeroEspecifico, Integer limite,
+                                                  Integer maxMovimentacoesComDoc) {
         int processos = 0;
         int movimentacoesLidas = 0;
         int movimentacoesComDoc = 0;
@@ -247,6 +272,20 @@ public class ProjudiOrquestradorService {
     }
 
     /**
+     * Modo somente Drive por CNJ (processo já cadastrado). Usado pelo disparo automático por e-mail.
+     */
+    public ResultadoSomenteDriveProcesso executarSomenteDrivePorCnj(
+            Long credencialId, String cnj, List<String> detalhes) {
+        Optional<ProcessoEntity> processo = buscarProcessoPorCnj(cnj);
+        if (processo.isEmpty()) {
+            List<String> logDetalhes = detalhes != null ? detalhes : new ArrayList<>();
+            logDetalhes.add(cnj + " | AVISO: ProcessoEntity não encontrado por CNJ.");
+            return ResultadoSomenteDriveProcesso.erro(cnj, 0L, "Processo não encontrado por CNJ.", logDetalhes);
+        }
+        return executarSomenteDriveProgressivo(credencialId, processo.get(), detalhes);
+    }
+
+    /**
      * Modo somente Drive: regra progressiva (NOVAS_TOPO + BACKFILL) sem gravar {@code publicacoes}.
      */
     public ResultadoSomenteDriveProcesso executarSomenteDriveProgressivo(
@@ -310,6 +349,9 @@ public class ProjudiOrquestradorService {
                         processo, numeroCnj, mov, arquivos, nomes, pastaMovimentacoesId, logDetalhes);
                 idxMov++;
             }
+
+            publicacaoDriveAndamentosService.tentarMarcarAndamentosNoDrivePorCnj(
+                    numeroCnj, pastaMovimentacoesId, arquivosEnviados);
 
             return new ResultadoSomenteDriveProcesso(
                     numeroCnj, arquivosEnviados, jaArquivados,
@@ -462,8 +504,30 @@ public class ProjudiOrquestradorService {
                 if (prep.avisoDetalhe() != null) {
                     detalhes.add(prep.avisoDetalhe());
                 }
+                byte[] conteudoUpload = prep.conteudo();
+                String mimeUpload = prep.mimeType();
+                boolean ehPdf = (mimeUpload != null && mimeUpload.toLowerCase(Locale.ROOT).contains("pdf"))
+                        || prep.nomeDrive().toLowerCase(Locale.ROOT).endsWith(".pdf");
+                if (ehPdf) {
+                    try {
+                        OcrService.ResultadoOcr ocr = ocrService.processarPdfSeNecessario(conteudoUpload);
+                        if (ocr.ocrAplicado()) {
+                            conteudoUpload = ocr.pdfPesquisavel();
+                            mimeUpload = "application/pdf";
+                            detalhes.add("OCR aplicado antes do upload: " + prep.nomeDrive());
+                        } else if (ocr.erro() != null) {
+                            log.warn(
+                                    "OCR ignorado, upload do PDF original (cnj={}, arquivo={}): {}",
+                                    numeroCnj, prep.nomeDrive(), ocr.erro());
+                        }
+                    } catch (Exception ocrEx) {
+                        log.warn(
+                                "OCR falhou, upload do PDF original (cnj={}, arquivo={}): {}",
+                                numeroCnj, prep.nomeDrive(), ocrEx.getMessage());
+                    }
+                }
                 var uploadDto = googleDriveService.uploadArquivo(
-                        prep.conteudo(), prep.nomeDrive(), prep.mimeType(), pastaMovimentacoesId);
+                        conteudoUpload, prep.nomeDrive(), mimeUpload, pastaMovimentacoesId);
                 if (uploadDto != null) {
                     uploads.add(prep.nomeDrive());
                 }

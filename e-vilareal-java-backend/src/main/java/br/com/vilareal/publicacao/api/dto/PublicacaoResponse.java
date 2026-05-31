@@ -44,6 +44,11 @@ public class PublicacaoResponse {
     private boolean lida;
     private String observacao;
 
+    private boolean andamentosNoDrive;
+    private String driveFolderUrl;
+    private java.time.LocalDateTime andamentosNoDriveEm;
+    private Integer qtdArquivosDrive;
+
     /**
      * Nome do titular do processo ({@code processo.pessoa}), quando {@link #processoId} preenchido.
      * Preferir este campo para rótulos de vínculo; {@link #parteCliente} repete o mesmo valor por compatibilidade.

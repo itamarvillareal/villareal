@@ -13,6 +13,8 @@ public class UsuarioResponse {
     private String apelido;
     private String login;
     private Boolean ativo;
+    private String tipo;
+    private Boolean permiteLogin;
     private Long perfilId;
 
     public Long getId() {
@@ -69,6 +71,22 @@ public class UsuarioResponse {
 
     public void setAtivo(Boolean ativo) {
         this.ativo = ativo;
+    }
+
+    public String getTipo() {
+        return tipo;
+    }
+
+    public void setTipo(String tipo) {
+        this.tipo = tipo;
+    }
+
+    public Boolean getPermiteLogin() {
+        return permiteLogin;
+    }
+
+    public void setPermiteLogin(Boolean permiteLogin) {
+        this.permiteLogin = permiteLogin;
     }
 
     public Long getPerfilId() {

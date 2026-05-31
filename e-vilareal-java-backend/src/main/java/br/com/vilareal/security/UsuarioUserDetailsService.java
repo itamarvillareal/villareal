@@ -30,6 +30,9 @@ public class UsuarioUserDetailsService implements UserDetailsService {
         if (!Boolean.TRUE.equals(u.getAtivo())) {
             throw new UsernameNotFoundException("Usuário inativo.");
         }
+        if (!Boolean.TRUE.equals(u.getPermiteLogin())) {
+            throw new UsernameNotFoundException("Usuário sem login permitido.");
+        }
         if (u.getPerfil() == null) {
             throw new UsernameNotFoundException("Usuário sem perfil.");
         }

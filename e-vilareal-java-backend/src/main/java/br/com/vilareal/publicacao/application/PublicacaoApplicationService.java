@@ -399,6 +399,10 @@ public class PublicacaoApplicationService {
         r.setStatusTratamento(e.getStatusTratamento());
         r.setLida(e.isLida());
         r.setObservacao(e.getObservacao());
+        r.setAndamentosNoDrive(e.isAndamentosNoDrive());
+        r.setDriveFolderUrl(e.getDriveFolderUrl());
+        r.setAndamentosNoDriveEm(e.getAndamentosNoDriveEm());
+        r.setQtdArquivosDrive(e.getQtdArquivosDrive());
         return r;
     }
 }

@@ -63,6 +63,11 @@ public class ApiExceptionHandler {
         return body(HttpStatus.UNPROCESSABLE_ENTITY, ex.getMessage(), req);
     }
 
+    @ExceptionHandler(InvalidAssigneeException.class)
+    public ResponseEntity<Map<String, Object>> invalidAssignee(InvalidAssigneeException ex, HttpServletRequest req) {
+        return body(HttpStatus.BAD_REQUEST, ex.getMessage(), req);
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, Object>> illegalArgument(IllegalArgumentException ex, HttpServletRequest req) {
         return body(HttpStatus.UNPROCESSABLE_ENTITY, ex.getMessage(), req);

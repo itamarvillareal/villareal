@@ -1,6 +1,7 @@
 package br.com.vilareal.usuario.infrastructure.persistence.entity;
 
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
+import br.com.vilareal.usuario.model.TipoUsuario;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -35,6 +36,13 @@ public class UsuarioEntity {
 
     @Column(nullable = false)
     private Boolean ativo = true;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private TipoUsuario tipo = TipoUsuario.HUMANO;
+
+    @Column(name = "permite_login", nullable = false)
+    private Boolean permiteLogin = true;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "perfil_id", nullable = false)

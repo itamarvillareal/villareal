@@ -1,5 +1,6 @@
 package br.com.vilareal.email;
 
+import br.com.vilareal.projudi.ProjudiEmailTriggerService;
 import br.com.vilareal.publicacao.api.dto.PublicacaoWriteRequest;
 import br.com.vilareal.publicacao.infrastructure.persistence.repository.PublicacaoRepository;
 import com.google.api.services.gmail.Gmail;
@@ -37,6 +38,7 @@ public class GmailMovimentacaoEmailEngine {
     private final PublicacaoEmailImportacaoTransacionalService importacaoTransacional;
     private final PublicacaoRepository publicacaoRepository;
     private final EmailImportacaoSyncService syncService;
+    private final ProjudiEmailTriggerService projudiEmailTriggerService;
     private final String gmailUser;
 
     public GmailMovimentacaoEmailEngine(
@@ -44,11 +46,13 @@ public class GmailMovimentacaoEmailEngine {
             PublicacaoEmailImportacaoTransacionalService importacaoTransacional,
             PublicacaoRepository publicacaoRepository,
             EmailImportacaoSyncService syncService,
+            ProjudiEmailTriggerService projudiEmailTriggerService,
             @Value("${gmail.user:me}") String gmailUser) {
         this.gmail = gmail;
         this.importacaoTransacional = importacaoTransacional;
         this.publicacaoRepository = publicacaoRepository;
         this.syncService = syncService;
+        this.projudiEmailTriggerService = projudiEmailTriggerService;
         this.gmailUser = gmailUser;
     }
 
@@ -102,6 +106,7 @@ public class GmailMovimentacaoEmailEngine {
         log.info("Emails {} encontrados: {}", fonte.rotulo(), mensagens.size());
 
         Set<String> processosUnicosLote = new LinkedHashSet<>();
+        Set<String> cnjsDisparoProjudi = new LinkedHashSet<>();
         Instant emailMaisRecente = cursorAnterior;
 
         for (Message ref : mensagens) {
@@ -176,6 +181,10 @@ public class GmailMovimentacaoEmailEngine {
                         resumo.setPublicacoesProcessadas(resumo.getPublicacoesProcessadas() + 1);
                         if (importacaoTransacional.tentarVinculoAutomaticoPorCnj(pubId)) {
                             vinculosAutomaticos++;
+                            if (fonte.tipo() == EmailImportacaoSyncTipo.PROJUDI) {
+                                projudiEmailTriggerService.registrarCnjParaDisparo(
+                                        cnjsDisparoProjudi, req.getNumeroProcessoEncontrado());
+                            }
                         }
                     } catch (Exception ex) {
                         String msg = mensagemRaiz(ex);
@@ -225,6 +234,10 @@ public class GmailMovimentacaoEmailEngine {
             }
             Instant gravado = syncService.registrarSincronizacao(fonte.tipo(), cursorGravar);
             resumo.setUltimaSincronizacaoGravada(gravado);
+        }
+
+        if (fonte.tipo() == EmailImportacaoSyncTipo.PROJUDI) {
+            projudiEmailTriggerService.agendarDisparoAssincrono(cnjsDisparoProjudi);
         }
 
         log.info(

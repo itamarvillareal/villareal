@@ -20,6 +20,7 @@ import br.com.vilareal.processo.api.dto.*;
 import br.com.vilareal.processo.domain.HistoricoTituloLegadoSistema;
 import br.com.vilareal.processo.infrastructure.persistence.entity.*;
 import br.com.vilareal.processo.infrastructure.persistence.repository.*;
+import br.com.vilareal.usuario.application.UsuarioDestinatarioGuard;
 import br.com.vilareal.usuario.infrastructure.persistence.entity.UsuarioEntity;
 import br.com.vilareal.usuario.infrastructure.persistence.repository.UsuarioRepository;
 import org.springframework.data.domain.Page;
@@ -61,6 +62,7 @@ public class ProcessoApplicationService {
     private final ProcessoPrazoRepository prazoRepository;
     private final PessoaRepository pessoaRepository;
     private final UsuarioRepository usuarioRepository;
+    private final UsuarioDestinatarioGuard usuarioDestinatarioGuard;
     private final PlanilhaPasta1ClienteRepository planilhaPasta1ClienteRepository;
     private final ClienteCodigoPessoaResolver clienteCodigoPessoaResolver;
     private final ClienteRepository clienteRepository;
@@ -75,6 +77,7 @@ public class ProcessoApplicationService {
             ProcessoPrazoRepository prazoRepository,
             PessoaRepository pessoaRepository,
             UsuarioRepository usuarioRepository,
+            UsuarioDestinatarioGuard usuarioDestinatarioGuard,
             PlanilhaPasta1ClienteRepository planilhaPasta1ClienteRepository,
             ClienteCodigoPessoaResolver clienteCodigoPessoaResolver,
             ClienteRepository clienteRepository,
@@ -87,6 +90,7 @@ public class ProcessoApplicationService {
         this.prazoRepository = prazoRepository;
         this.pessoaRepository = pessoaRepository;
         this.usuarioRepository = usuarioRepository;
+        this.usuarioDestinatarioGuard = usuarioDestinatarioGuard;
         this.planilhaPasta1ClienteRepository = planilhaPasta1ClienteRepository;
         this.clienteCodigoPessoaResolver = clienteCodigoPessoaResolver;
         this.clienteRepository = clienteRepository;
@@ -1076,10 +1080,7 @@ public class ProcessoApplicationService {
         }
         e.setConsultor(trimToNull(req.getConsultor()));
         if (req.getUsuarioResponsavelId() != null) {
-            UsuarioEntity u = usuarioRepository
-                    .findById(req.getUsuarioResponsavelId())
-                    .orElseThrow(() -> new ResourceNotFoundException(
-                            "Usuário não encontrado: " + req.getUsuarioResponsavelId()));
+            UsuarioEntity u = usuarioDestinatarioGuard.carregarHumanoDestinatario(req.getUsuarioResponsavelId());
             e.setUsuarioResponsavel(u);
         } else {
             e.setUsuarioResponsavel(null);

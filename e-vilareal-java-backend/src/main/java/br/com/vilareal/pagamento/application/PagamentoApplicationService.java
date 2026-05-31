@@ -17,6 +17,7 @@ import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.ClienteRepository;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
+import br.com.vilareal.usuario.application.UsuarioDestinatarioGuard;
 import br.com.vilareal.usuario.infrastructure.persistence.entity.UsuarioEntity;
 import br.com.vilareal.usuario.infrastructure.persistence.repository.UsuarioRepository;
 import org.springframework.beans.factory.annotation.Value;
@@ -50,6 +51,7 @@ public class PagamentoApplicationService {
     private final PagamentoRepository pagamentoRepository;
     private final PagamentoHistoricoRepository historicoRepository;
     private final UsuarioRepository usuarioRepository;
+    private final UsuarioDestinatarioGuard usuarioDestinatarioGuard;
     private final ClienteRepository clienteRepository;
     private final ProcessoRepository processoRepository;
     private final ImovelRepository imovelRepository;
@@ -61,6 +63,7 @@ public class PagamentoApplicationService {
             PagamentoRepository pagamentoRepository,
             PagamentoHistoricoRepository historicoRepository,
             UsuarioRepository usuarioRepository,
+            UsuarioDestinatarioGuard usuarioDestinatarioGuard,
             ClienteRepository clienteRepository,
             ProcessoRepository processoRepository,
             ImovelRepository imovelRepository,
@@ -70,6 +73,7 @@ public class PagamentoApplicationService {
         this.pagamentoRepository = pagamentoRepository;
         this.historicoRepository = historicoRepository;
         this.usuarioRepository = usuarioRepository;
+        this.usuarioDestinatarioGuard = usuarioDestinatarioGuard;
         this.clienteRepository = clienteRepository;
         this.processoRepository = processoRepository;
         this.imovelRepository = imovelRepository;
@@ -558,8 +562,7 @@ public class PagamentoApplicationService {
     }
 
     private UsuarioEntity resolveUsuario(Long id) {
-        if (id == null) return null;
-        return usuarioRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Usuário não encontrado."));
+        return usuarioDestinatarioGuard.carregarHumanoDestinatario(id);
     }
 
     private PagamentoEntity requirePagamento(Long id) {
