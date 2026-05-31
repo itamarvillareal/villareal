@@ -109,8 +109,8 @@ public class PublicacaoApplicationService {
         e.setDataPublicacao(req.getDataPublicacao());
         e.setFonte(trimToNull(req.getFonte()));
         e.setDiario(trimToNull(req.getDiario()));
-        e.setTitulo(trimToNull(req.getTitulo()));
-        e.setTipoPublicacao(trimToNull(req.getTipoPublicacao()));
+        e.setTitulo(capLen(trimToNull(req.getTitulo()), 255));
+        e.setTipoPublicacao(capLen(trimToNull(req.getTipoPublicacao()), 80));
         e.setResumo(trimToNull(req.getResumo()));
         e.setTeor(teor);
         e.setStatusValidacaoCnj(trimToNull(req.getStatusValidacaoCnj()));
@@ -309,13 +309,21 @@ public class PublicacaoApplicationService {
         return s.trim();
     }
 
+    /** Limita o tamanho ao da coluna, evitando "Data too long" (perda da publicação inteira). */
+    private static String capLen(String s, int max) {
+        if (s == null || s.length() <= max) {
+            return s;
+        }
+        return s.substring(0, max);
+    }
+
     private static String normalizarOrigem(String o) {
         if (!StringUtils.hasText(o)) {
             return "PDF";
         }
         String u = o.trim().toUpperCase();
         return switch (u) {
-            case "MANUAL", "PDF", "DATAJUD", "MONITORAMENTO", "PROJUDI" -> u;
+            case "MANUAL", "PDF", "DATAJUD", "MONITORAMENTO", "PROJUDI", "TRT" -> u;
             default -> "PDF";
         };
     }

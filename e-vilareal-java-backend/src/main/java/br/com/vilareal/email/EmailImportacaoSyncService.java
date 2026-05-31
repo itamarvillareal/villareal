@@ -48,13 +48,20 @@ public class EmailImportacaoSyncService {
         return gravar;
     }
 
-    public static String montarQueryIncremental(String remetente, Instant cursorDesde) {
+    /**
+     * Monta a query incremental do Gmail. {@code queryBase} é a query COMPLETA da fonte
+     * (ex.: {@code "from:trt18.jus.br OR subject:[TRT18]"} ou {@code "subject:[PROJUDI]"});
+     * o filtro temporal {@code after:} é acrescentado agrupando a base entre parênteses
+     * para preservar a precedência do {@code OR}.
+     */
+    public static String montarQueryIncremental(String queryBase, Instant cursorDesde) {
         Instant desde = cursorDesde != null ? cursorDesde.minus(MARGEM_SEGUNDOS, ChronoUnit.SECONDS) : Instant.now();
         long epoch = Math.max(0L, desde.getEpochSecond());
-        return "from:" + remetente + " after:" + epoch;
+        return "(" + queryBase + ") after:" + epoch;
     }
 
-    public static String montarQueryCaixaCompleta(String remetente) {
-        return "from:" + remetente;
+    /** Query da caixa completa: a própria base da fonte, sem filtro temporal. */
+    public static String montarQueryCaixaCompleta(String queryBase) {
+        return queryBase;
     }
 }

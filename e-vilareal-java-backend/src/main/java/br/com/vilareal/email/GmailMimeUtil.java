@@ -6,7 +6,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.List;
 
-final class GmailMimeUtil {
+public final class GmailMimeUtil {
 
     private GmailMimeUtil() {}
 
@@ -45,7 +45,7 @@ final class GmailMimeUtil {
         }
     }
 
-    static String extrairHtml(MessagePart payload) {
+    public static String extrairHtml(MessagePart payload) {
         if (payload == null) {
             return null;
         }

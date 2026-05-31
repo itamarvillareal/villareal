@@ -1,0 +1,14 @@
+CREATE TABLE desconto_cheque (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  descricao VARCHAR(255) NULL,
+  valor_face DECIMAL(15,2) NOT NULL,
+  data_base DATE NOT NULL,
+  data_deposito DATE NOT NULL,
+  taxa_mensal_percentual DECIMAL(9,4) NOT NULL,
+  dias INT NOT NULL,
+  taxa_diaria DECIMAL(15,10) NOT NULL,
+  valor_liquido DECIMAL(15,2) NOT NULL,
+  valor_desconto DECIMAL(15,2) NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

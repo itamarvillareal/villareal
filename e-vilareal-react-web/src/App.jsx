@@ -29,6 +29,7 @@ import {
   LazyFinanceiroLayout,
   LazyFinanceiroRelatorios,
   LazyPagamentos,
+  LazyDescontoCheques,
   LazyGerenteTopicos,
   LazyGerarDocumento,
   LazyIntegracoesTribunalScraperLab,
@@ -423,6 +424,7 @@ function App() {
                 <Route path="legado" element={<LazyFinanceiro />} />
               </Route>
               <Route path="/pagamentos" element={<LazyPagamentos />} />
+              <Route path="/descontos-cheque" element={<LazyDescontoCheques />} />
               <Route path="/usuarios" element={<LazyUsuarios />} />
               <Route path="/configuracoes" element={<LazyConfiguracoes />} />
               <Route path="/diligencias" element={<Navigate to="/pendencias" replace />} />

@@ -17,7 +17,7 @@ import {
   enriquecerLinhaProcessoVinculoFinanceiro,
   prepararIndiceBuscaProcessoVinculo,
 } from './buscaClienteProcFinanceiro.js';
-import { obterParteOpostaUnificada } from './processosHistoricoData.js';
+import { obterParteOpostaUnificada, obterParteClienteUnificada } from './processosHistoricoData.js';
 
 function apenasDigitos(val) {
   return String(val ?? '').replace(/\D/g, '');
@@ -35,6 +35,23 @@ function enriquecerParteOpostaNaGrade(row, codigoPadded8) {
   const po = obterParteOpostaUnificada(codigoPadded8, n, atual);
   if (!po) return row;
   return { ...row, parteOposta: po, reu: po };
+}
+
+function enriquecerParteClienteNaGrade(row, codigoPadded8) {
+  const n = Number(row.procNumero);
+  if (!Number.isFinite(n) || n < 1) return row;
+  const atual = String(row.parteCliente ?? row.autor ?? row.titularNome ?? '').trim();
+  if (atual && atual !== '—') {
+    if (!String(row.parteCliente ?? '').trim() && atual) {
+      return { ...row, parteCliente: atual, autor: atual };
+    }
+    return row;
+  }
+  const pc = obterParteClienteUnificada(codigoPadded8, n, atual);
+  if (pc) return { ...row, parteCliente: pc, autor: pc };
+  const titular = String(row.titularNome ?? '').trim();
+  if (titular) return { ...row, parteCliente: titular, autor: titular };
+  return row;
 }
 
 /**
@@ -68,7 +85,7 @@ export function filtrarProcessosGradeCliente(processos, termoRaw) {
       );
     })();
 
-    const autorStr = normalizarTextoBusca(proc.autor ?? '');
+    const autorStr = normalizarTextoBusca(proc.parteCliente ?? proc.autor ?? '');
     const reuStr = normalizarTextoBusca(proc.reu ?? proc.parteOposta ?? '');
     const tipoAcaoStr = normalizarTextoBusca(proc.tipoAcao ?? proc.descricao ?? '');
     const unidadeStr = normalizarTextoBusca(textoUnidadeProcessoGrade(proc));
@@ -93,7 +110,7 @@ export function carregarProcessosGradeClienteLocal(codigoPadded8) {
     codigoPadded8,
     enriquecerListaProcessosComHistoricoLocal(codigoPadded8, base)
   );
-  return alinhado.map((row) => enriquecerParteOpostaNaGrade(row, codigoPadded8));
+  return alinhado.map((row) => enriquecerParteClienteNaGrade(enriquecerParteOpostaNaGrade(row, codigoPadded8), codigoPadded8));
 }
 
 /**
@@ -122,7 +139,7 @@ export async function mesclarProcessosGradeClienteComApi(codigoPadded8, listaLoc
     apiList
   );
   const alinhado = alinharListaProcessosDescricaoComHistorico(codigoPadded8, merged);
-  return alinhado.map((row) => enriquecerParteOpostaNaGrade(row, codigoPadded8));
+  return alinhado.map((row) => enriquecerParteClienteNaGrade(enriquecerParteOpostaNaGrade(row, codigoPadded8), codigoPadded8));
 }
 
 /**
@@ -140,7 +157,7 @@ export function mapearGradeParaLinhasVinculoModal(gradeRows, nomeCliente, codigo
         numeroProcessoNovo: proc.processoNovo ?? '',
         numeroProcessoVelho: proc.processoVelho ?? '',
         parteOposta: proc.parteOposta ?? proc.reu ?? '',
-        parteClienteAutor: String(proc.autor ?? '').trim() || nome,
+        parteClienteAutor: String(proc.parteCliente ?? proc.autor ?? '').trim() || nome,
         observacao: proc.descricao ?? proc.tipoAcao ?? '',
         codigoCliente: cod,
       },

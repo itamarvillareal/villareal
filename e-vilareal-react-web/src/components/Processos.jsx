@@ -97,6 +97,7 @@ import {
   Trash2,
   FileText,
   FileSignature,
+  Download,
 } from 'lucide-react';
 import { ContaCorrenteVinculoAssist } from './processos/ContaCorrenteVinculoAssist.jsx';
 import {
@@ -149,6 +150,7 @@ import {
   entradaHistoricoPertenceAoUsuarioAtivo,
   upsertPrazoFatalProcesso,
   alterarAtivoProcesso,
+  baixarAutosIntegralProcesso,
 } from '../repositories/processosRepository.js';
 import {
   buscarNumeroImovelPorVinculo,
@@ -551,6 +553,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   const [gerandoProcuracao, setGerandoProcuracao] = useState(false);
   const [driveExplorerAberto, setDriveExplorerAberto] = useState(false);
   const [driveConfigurado, setDriveConfigurado] = useState(false);
+  const [baixandoAutosIntegral, setBaixandoAutosIntegral] = useState(false);
   const [apiError, setApiError] = useState('');
   const [historicoExternoTick, setHistoricoExternoTick] = useState(0);
   /** Evita aplicar resposta antiga se o usuário trocar de processo antes do GET terminar. */
@@ -1925,6 +1928,24 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     textoParteCliente,
   ]);
 
+  const handleBaixarAutosIntegral = useCallback(async () => {
+    const cnj = String(numeroProcessoNovo ?? '').trim();
+    if (!cnj || baixandoAutosIntegral) return;
+    setBaixandoAutosIntegral(true);
+    setApiError('');
+    try {
+      const { blob, filename, avisos } = await baixarAutosIntegralProcesso(cnj);
+      downloadPdfBlob(blob, filename);
+      if (avisos) {
+        setHistoricoToast(`Autos integral baixado com avisos: ${avisos}`);
+      }
+    } catch (e) {
+      setApiError(e?.message || 'Falha ao baixar autos integral.');
+    } finally {
+      setBaixandoAutosIntegral(false);
+    }
+  }, [numeroProcessoNovo, baixandoAutosIntegral]);
+
   /** Snapshot completo do formulário para `localStorage` (processo × cliente). */
   function montarPayloadRegistroProcesso(overrides = {}) {
     const pf = String(prazoFatal ?? '').trim();
@@ -3002,16 +3023,32 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                     {gerandoProcuracao ? 'Gerando…' : 'Procuração'}
                   </button>
                   {driveConfigurado ? (
-                    <button
-                      type="button"
-                      className={processosBtnGhost}
-                      disabled={apiSaving}
-                      onClick={() => setDriveExplorerAberto(true)}
-                      title="Arquivos do processo no Google Drive"
-                    >
-                      <FolderOpen className="w-4 h-4" aria-hidden />
-                      Arquivos
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        className={processosBtnGhost}
+                        disabled={apiSaving}
+                        onClick={() => setDriveExplorerAberto(true)}
+                        title="Arquivos do processo no Google Drive"
+                      >
+                        <FolderOpen className="w-4 h-4" aria-hidden />
+                        Arquivos
+                      </button>
+                      <button
+                        type="button"
+                        className={processosBtnGhost}
+                        disabled={
+                          apiSaving ||
+                          baixandoAutosIntegral ||
+                          !String(numeroProcessoNovo ?? '').trim()
+                        }
+                        onClick={() => void handleBaixarAutosIntegral()}
+                        title="Baixa PDF único juntando os documentos da pasta Movimentações no Drive"
+                      >
+                        <Download className="w-4 h-4" aria-hidden />
+                        {baixandoAutosIntegral ? 'Gerando PDF…' : 'Baixar processo integral'}
+                      </button>
+                    </>
                   ) : null}
                 </>
               ) : null}

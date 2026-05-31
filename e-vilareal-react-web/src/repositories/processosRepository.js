@@ -1,4 +1,8 @@
 import { request } from '../api/httpClient.js';
+import { API_BASE_URL } from '../api/config.js';
+import { buildAuditoriaHeaders } from '../services/auditoriaCliente.js';
+import { getAccessToken } from '../api/authTokenStorage.js';
+import { emitApiUnauthorized } from '../api/apiAuthHeaders.js';
 import { featureFlags } from '../config/featureFlags.js';
 import {
   listarHistoricoPorData,
@@ -708,7 +712,9 @@ export function mergeCadastroClientesProcessosComApi(codigoClientePadded8, lista
     const velhoApi = String(api.numeroProcessoVelho ?? '').trim();
     const descApi = String(api.descricaoAcao ?? api.naturezaAcao ?? '').trim();
     const poApi = String(api.parteOposta ?? api.parte_oposta ?? '').trim();
+    const pcApi = String(api.parteCliente ?? api.parte_cliente ?? api.titularNome ?? '').trim();
     const poRow = String(row.parteOposta ?? row.reu ?? '').trim();
+    const pcRow = String(row.parteCliente ?? row.autor ?? '').trim();
 
     const unidadeApi = String(api.unidade ?? '').trim();
     return {
@@ -718,6 +724,9 @@ export function mergeCadastroClientesProcessosComApi(codigoClientePadded8, lista
       descricao: descApi || String(row.descricao ?? '').trim() || row.descricao,
       parteOposta: poApi || poRow || row.parteOposta,
       reu: poApi || poRow || row.reu,
+      parteCliente: pcApi || pcRow || row.parteCliente,
+      autor: pcApi || pcRow || row.autor,
+      titularNome: String(api.titularNome ?? '').trim() || row.titularNome,
       unidade: unidadeApi || String(row.unidade ?? '').trim() || row.unidade,
       unidadeEndereco: unidadeApi || String(row.unidadeEndereco ?? row.unidade ?? '').trim(),
       statusAtivo: api.statusAtivo !== false,
@@ -728,15 +737,18 @@ export function mergeCadastroClientesProcessosComApi(codigoClientePadded8, lista
     if (seen.has(n)) continue;
     seen.add(n);
     const poNovo = String(api.parteOposta ?? api.parte_oposta ?? '').trim();
+    const pcNovo = String(api.parteCliente ?? api.parte_cliente ?? api.titularNome ?? '').trim();
     const unidadeNovo = String(api.unidade ?? '').trim();
     out.push({
       id: `${codN}-${n}`,
       procNumero: n,
       processoVelho: String(api.numeroProcessoVelho ?? '').trim() || '-',
       processoNovo: String(api.numeroProcessoNovo ?? '').trim(),
-      autor: '',
+      autor: pcNovo || '—',
       reu: poNovo || '—',
       parteOposta: poNovo || '—',
+      parteCliente: pcNovo || '—',
+      titularNome: String(api.titularNome ?? '').trim(),
       tipoAcao: '',
       descricao: String(api.descricaoAcao ?? api.naturezaAcao ?? '').trim(),
       unidade: unidadeNovo,
@@ -1196,16 +1208,25 @@ export async function obterCamposProcessoApiFirst({ processoId, codigoCliente, n
   return mapApiProcessoToUiShape(p);
 }
 
+function resolverParteClienteApiShape(p) {
+  const pc = corrigirMojibakeUtf8(String(p.parteCliente ?? p.parte_cliente ?? '').trim());
+  if (pc) return pc;
+  return corrigirMojibakeUtf8(String(p.titularNome ?? p.titular_nome ?? '').trim());
+}
+
 export function mapApiProcessoToUiShape(p) {
   const clientePk = clientePkFromApiDto(p);
   const titularId = pessoaIdFromApiDto(p);
   const statusAtivo = resolverStatusAtivoApi(p);
+  const titularNome = corrigirMojibakeUtf8(String(p.titularNome ?? p.titular_nome ?? '').trim());
+  const parteCliente = resolverParteClienteApiShape(p);
   return {
     processoId: p.id,
     clienteId: clientePk,
     clienteIdNativo: clientePk,
     pessoaTitularId: titularId,
     pessoaId: titularId,
+    titularNome,
     codigoCliente: p.codigoCliente,
     numeroInterno: p.numeroInterno,
     numeroProcessoNovo: String(p.numeroCnj ?? p.numero_cnj ?? '').trim(),
@@ -1227,6 +1248,8 @@ export function mapApiProcessoToUiShape(p) {
     procedimento: corrigirMojibakeUtf8(String(p.tramitacao ?? '').trim()),
     dataProtocolo: toBrFromIsoDate(p.dataProtocolo),
     responsavel: corrigirMojibakeUtf8(String(p.consultor ?? '').trim()),
+    /** Só na listagem por cliente; mesma regra que partes «Autor/Requerente» na tela Processos. */
+    parteCliente,
     /** Só na listagem por cliente; mesma regra que partes «Réu» na tela Processos. */
     parteOposta: corrigirMojibakeUtf8(String(p.parteOposta ?? p.parte_oposta ?? '').trim()),
     unidade: corrigirMojibakeUtf8(String(p.unidade ?? '').trim()),
@@ -1238,4 +1261,39 @@ export function mapApiProcessoToUiShape(p) {
     audienciaTipo: corrigirMojibakeUtf8(String(p.audienciaTipo ?? '').trim()),
     avisoAudiencia: avisoAudienciaApiParaUi(p.avisoAudiencia ?? p.aviso_audiencia),
   };
+}
+
+/**
+ * Baixa PDF único mesclando os arquivos da pasta Movimentações no Drive (sem consultar PROJUDI).
+ * @param {string} numeroCnj
+ * @returns {Promise<{ blob: Blob, filename: string, avisos: string|null }>}
+ */
+export async function baixarAutosIntegralProcesso(numeroCnj) {
+  const numero = String(numeroCnj ?? '').trim();
+  if (!numero) {
+    throw new Error('Informe o número CNJ do processo.');
+  }
+  const qs = new URLSearchParams({ numero });
+  const headers = { ...buildAuditoriaHeaders() };
+  const token = getAccessToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(`${API_BASE_URL}/api/processos/autos-integral?${qs}`, { headers });
+  if (res.status === 401) emitApiUnauthorized();
+  if (!res.ok) {
+    const text = await res.text();
+    if (!text) throw new Error(`Erro ${res.status}`);
+    try {
+      const data = JSON.parse(text);
+      throw new Error(data.message || data.error || text);
+    } catch (e) {
+      if (e instanceof Error && e.message && !e.message.startsWith('Erro ')) throw e;
+      throw new Error(text.length > 300 ? `${text.slice(0, 300)}…` : text);
+    }
+  }
+  const blob = await res.blob();
+  const disposition = res.headers.get('Content-Disposition') || '';
+  const match = /filename="([^"]+)"/i.exec(disposition);
+  const filename = match?.[1] || `${numero} - Autos.pdf`;
+  const avisos = res.headers.get('X-Autos-Integral-Avisos');
+  return { blob, filename, avisos };
 }

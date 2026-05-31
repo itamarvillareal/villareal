@@ -26,6 +26,15 @@ describe('filtrarProcessosGradeCliente', () => {
     expect(filtrarProcessosGradeCliente(grade, 'tavar')[0].procNumero).toBe(12);
   });
 
+  it('filtra por trecho da parte cliente', () => {
+    const comCliente = [
+      ...grade,
+      { procNumero: 20, parteCliente: 'ANGELIM REPRESENTAÇÕES LTDA', descricao: 'TESTE' },
+    ];
+    expect(filtrarProcessosGradeCliente(comCliente, 'angelim')).toHaveLength(1);
+    expect(filtrarProcessosGradeCliente(comCliente, 'angelim')[0].procNumero).toBe(20);
+  });
+
   it('sem parte oposta na grade o filtro por nome da ré não encontra (modal usa filtro vinculo após enriquecer)', () => {
     const semReu = [{ procNumero: 12, parteOposta: '', descricao: 'ADMINISTRAÇÃO DE IMÓVEL' }];
     expect(filtrarProcessosGradeCliente(semReu, 'tavares')).toHaveLength(0);

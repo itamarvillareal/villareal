@@ -14,13 +14,18 @@
 
 body {
   margin: 0;
+  /* iOS Safari: `dvh` acompanha a barra de endereço; evita que o body fique
+     mais alto que a área visível e crie scroll no documento (que escondia o
+     cabeçalho mobile atrás da barra do Safari após o login). `vh` é fallback. */
   min-height: 100vh;
+  min-height: 100dvh;
   background-color: var(--vl-bg-page, #f0f0f0);
   color: var(--vl-text, #1a1a1a);
 }
 
 #root {
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 @media (prefers-reduced-motion: reduce) {

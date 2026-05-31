@@ -243,8 +243,9 @@ async function loginApi(baseUrl, login, senha) {
     throw new Error(`Login falhou (${res.status}): ${await res.text()}`);
   }
   const body = await res.json();
-  if (!body?.token) throw new Error('Login sem token.');
-  return body.token;
+  const token = body?.accessToken ?? body?.token;
+  if (!token) throw new Error('Login sem token (esperado accessToken na resposta).');
+  return token;
 }
 
 async function aplicarNaApi(baseUrl, token, raiz) {

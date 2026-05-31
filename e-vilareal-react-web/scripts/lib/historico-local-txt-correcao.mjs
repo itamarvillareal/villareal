@@ -41,6 +41,13 @@ import { entradaHistoricoValida, lerConteudoEntradaHistorico } from './historico
 const TIPOS_ENTRADA = [TIPO_DATA, TIPO_INFO, TIPO_USUARIO];
 /** Sufixo temporário na 1.ª passagem de rename (evita colisões). */
 const TEMP_INDICE_BASE = 900000;
+/**
+ * Teto absoluto de índices a avaliar por processo. O índice é gravado com 4 dígitos
+ * (0001..9999), logo nenhum processo legítimo passa disto. Acima deste valor o
+ * `maxAvaliar` só pode vir de um nome de ficheiro corrompido (ex.: data no lugar do
+ * índice) — abortamos com erro claro em vez de girar num laço efectivamente infinito.
+ */
+const LIMITE_INDICES_POR_PROCESSO = 10000;
 
 /**
  * @param {string} base
@@ -346,6 +353,21 @@ export function analisarProcessoHistorico(base, codNum, procNum, opts = {}) {
   if (maxDeclarado > 0 && maxDeclarado <= tetoFicheiros + 100) {
     maxAvaliar = Math.max(maxAvaliar, maxDeclarado);
   }
+
+  // Teto de segurança proporcional aos ficheiros realmente presentes no disco.
+  // Avaliar cada índice faz uma varredura completa da árvore Ano/aaaa/mm, então um
+  // maxAvaliar corrompido (ex.: sufixo de índice inválido) travaria o processo.
+  // Preferimos abortar apontando o registo problemático a girar para sempre.
+  const tetoSeguranca = Math.max(LIMITE_INDICES_POR_PROCESSO, tetoFicheiros + 100);
+  if (maxAvaliar > tetoSeguranca) {
+    throw new Error(
+      `[corrigir] índice fora do intervalo esperado para cliente ${cod8} proc ${procStr}: ` +
+        `maxAvaliar=${maxAvaliar} (índice 14 declarado=${maxDeclarado}, maxMil=${maxMil}, ` +
+        `inferido16=${inferido16}). Provável nome de ficheiro corrompido (sufixo de índice ` +
+        `que não segue o formato 0001..9999). Verifique a pasta deste processo no Dropbox.`
+    );
+  }
+
   /** @type {number[]} */
   const indicesParaAvaliar = [];
   for (let i = 1; i <= maxAvaliar; i += 1) indicesParaAvaliar.push(i);

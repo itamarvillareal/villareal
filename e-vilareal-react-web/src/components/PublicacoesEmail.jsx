@@ -31,6 +31,7 @@ import {
   tipoMovimentoLinha,
 } from '../data/manifestacoesProjudiDisplay.js';
 import { buildRouterStateChaveClienteProcesso } from '../domain/camposProcessoCliente.js';
+import { mensagemErroAmigavel } from '../utils/mensagemErroAmigavel.js';
 import {
   formatarChaveProcessoVinculo,
   formatarRotuloVinculoPartes,
@@ -80,14 +81,14 @@ const VARIANT_CONFIG = {
     placeholderBusca: 'Buscar no teor, CNJ, cliente…',
   },
   projudi: {
-    titulo: 'Manifestações Projudi',
-    remetente: 'sistema-projudi@tjgo.jus.br',
+    titulo: 'Movimentações Email',
+    remetente: 'Projudi TJGO + TRT (PUSH)',
     voltarPara: '/processos',
     voltarLabel: 'Processos',
     buscar: buscarManifestacoesProjudi,
     processar: processarEmailsProjudiAgora,
     syncObter: obterSyncProjudi,
-    vazio: 'Nenhuma manifestação Projudi importada por email encontrada.',
+    vazio: 'Nenhuma movimentação por email (Projudi / TRT) encontrada.',
     resumoTipo: 'manifestação',
     placeholderBusca: 'Buscar movimento, CNJ, partes, código…',
     autoAplicarSugestoes: true,
@@ -726,7 +727,7 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
       });
       setRows(data);
     } catch (e) {
-      setErr(e?.message || 'Falha ao carregar publicações por email.');
+      setErr(mensagemErroAmigavel(e, 'carregar as publicações por email'));
       setRows([]);
     } finally {
       setLoading(false);
@@ -801,7 +802,7 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
       }
       await carregar();
     } catch (e) {
-      setErr(e?.message || 'Falha ao processar emails.');
+      setErr(mensagemErroAmigavel(e, 'processar os emails'));
     } finally {
       setProcessando(false);
       setProcessandoCompleto(false);
@@ -816,7 +817,7 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
       setMsgOk(`Status atualizado para ${STATUS_LABEL[status] || status}.`);
       await carregar();
     } catch (e) {
-      setErr(e?.message || 'Falha ao atualizar status.');
+      setErr(mensagemErroAmigavel(e, 'atualizar o status'));
     }
   };
 
@@ -865,7 +866,7 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
       setMsgOk('Sugestão de vínculo aplicada com sucesso.');
       await carregar();
     } catch (e) {
-      setErr(e?.message || 'Falha ao aplicar sugestão de vínculo.');
+      setErr(mensagemErroAmigavel(e, 'aplicar a sugestão de vínculo'));
     }
   };
 
@@ -994,7 +995,7 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
         setMsgOk('Vínculo automático aplicado.');
         await carregar();
       } catch (e2) {
-        setErr(e2?.message || 'Falha ao reaplicar vínculo automático.');
+        setErr(mensagemErroAmigavel(e2, 'reaplicar o vínculo automático'));
       }
     }
   };

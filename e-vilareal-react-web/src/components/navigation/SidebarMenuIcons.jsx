@@ -8,6 +8,7 @@
 
 import { useId } from 'react';
 import {
+  Banknote,
   Calculator as LucideCalculator,
   CalendarClock,
   FileCheck,
@@ -626,6 +627,7 @@ const MENU_ICONS = {
   financeiro: IconFinanceiro,
   'financeiro/relatorios': IconFinanceiro,
   pagamentos: IconPagamentosMenu,
+  'descontos-cheque': Banknote,
   pendencias: IconPendencias,
   'topicos-grupo': IconTopicos,
   topicos: IconTopicos,

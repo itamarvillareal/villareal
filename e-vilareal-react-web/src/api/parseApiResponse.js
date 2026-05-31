@@ -17,6 +17,12 @@ import { getAccessToken } from './authTokenStorage.js';
  *   em 401 só se chama `emitApiUnauthorized` se o token atual ainda for o mesmo — evita apagar um JWT **novo**
  *   quando um pedido antigo (ex.: `GET /api/auth/me` ao abrir a app) completa 401 depois do login.
  */
+/** Heurística simples para detectar corpo HTML (páginas de erro de proxy/gateway). */
+function isHtmlBody(text) {
+  const inicio = String(text).trimStart().slice(0, 200).toLowerCase();
+  return inicio.startsWith('<!doctype html') || inicio.startsWith('<html') || /<html[\s>]/.test(inicio);
+}
+
 export async function parseApiJsonResponse(response, options = {}) {
   const { authTokenSnapshotAtRequest } = options;
   if (response.status === 401) {
@@ -33,7 +39,9 @@ export async function parseApiJsonResponse(response, options = {}) {
     try {
       data = JSON.parse(text);
     } catch {
-      data = { message: text };
+      // Corpo não-JSON (ex.: página HTML de erro de proxy/gateway como nginx 502/504).
+      // Não expor o HTML cru na UI; manter apenas o status.
+      data = isHtmlBody(text) ? null : { message: text };
     }
   }
   if (!response.ok) {

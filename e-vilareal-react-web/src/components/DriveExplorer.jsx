@@ -92,8 +92,10 @@ export default function DriveExplorer({ codigoCliente, numeroInterno, onClose })
     }
   }, [codigoCliente, numeroInterno, pastaAtual]);
 
-  const nomeRaiz =
-    pastaRaiz?.nomePasta || `Proc. ${String(numeroInterno).padStart(2, '0')}`;
+  const caminhoRaiz =
+    pastaRaiz?.caminho ||
+    pastaRaiz?.nomePasta ||
+    `Proc. ${String(numeroInterno).padStart(2, '0')}`;
 
   useEffect(() => {
     let cancelado = false;
@@ -108,7 +110,13 @@ export default function DriveExplorer({ codigoCliente, numeroInterno, onClose })
         if (pasta?.pastaId) {
           setPastaAtual(pasta.pastaId);
           setTrilha([
-            { id: pasta.pastaId, nome: pasta.nomePasta || `Proc. ${String(numeroInterno).padStart(2, '0')}` },
+            {
+              id: pasta.pastaId,
+              nome:
+                pasta.caminho ||
+                pasta.nomePasta ||
+                `Proc. ${String(numeroInterno).padStart(2, '0')}`,
+            },
           ]);
         }
       } catch {
@@ -152,7 +160,7 @@ export default function DriveExplorer({ codigoCliente, numeroInterno, onClose })
 
   function irParaRaiz() {
     if (!pastaRaiz?.pastaId) return;
-    setTrilha([{ id: pastaRaiz.pastaId, nome: nomeRaiz }]);
+    setTrilha([{ id: pastaRaiz.pastaId, nome: caminhoRaiz }]);
     setPastaAtual(pastaRaiz.pastaId);
   }
 
@@ -201,9 +209,11 @@ export default function DriveExplorer({ codigoCliente, numeroInterno, onClose })
     if (url) window.open(url, '_blank', 'noopener,noreferrer');
   }
 
-  const caminhoRaiz =
-    pastaRaiz?.caminho || pastaRaiz?.nomePasta || `Proc. ${String(numeroInterno).padStart(2, '0')}`;
-  const caminho = [caminhoRaiz, ...pilhaPastas.map((p) => p.nome)].join(' / ');
+  const caminho = trilha.map((t) => t.nome).join(' / ') || caminhoRaiz;
+  const naRaizProcesso = pastaAtual && pastaRaiz?.pastaId === pastaAtual;
+  const linkAbrirDrive = pastaAtual
+    ? `https://drive.google.com/drive/folders/${pastaAtual}`
+    : pastaRaiz?.webViewLink;
 
   return (
     <>
@@ -238,9 +248,9 @@ export default function DriveExplorer({ codigoCliente, numeroInterno, onClose })
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-1">
-              {pastaRaiz?.webViewLink ? (
+              {linkAbrirDrive ? (
                 <a
-                  href={pastaRaiz.webViewLink}
+                  href={linkAbrirDrive}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-indigo-700 hover:bg-indigo-50 dark:text-indigo-300 dark:hover:bg-indigo-950"
@@ -261,23 +271,23 @@ export default function DriveExplorer({ codigoCliente, numeroInterno, onClose })
           </div>
 
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            {pilhaPastas.length > 0 ? (
-              <button
-                type="button"
-                onClick={voltarPasta}
-                className="inline-flex items-center gap-1 rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
-              >
-                <ChevronLeft className="w-3.5 h-3.5" aria-hidden />
-                Voltar
-              </button>
-            ) : null}
-            {pilhaPastas.length > 0 ? (
+            <button
+              type="button"
+              onClick={subirNivel}
+              disabled={!paiInfo.paiId}
+              title={paiInfo.paiNome ? `Subir para "${paiInfo.paiNome}"` : 'Sem pasta acima'}
+              className="inline-flex items-center gap-1 rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
+            >
+              <ChevronLeft className="w-3.5 h-3.5" aria-hidden />
+              {paiInfo.paiNome ? `Voltar (${paiInfo.paiNome})` : 'Voltar'}
+            </button>
+            {!naRaizProcesso && pastaRaiz?.pastaId ? (
               <button
                 type="button"
                 onClick={irParaRaiz}
                 className="rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
               >
-                Raiz
+                Raiz do processo
               </button>
             ) : null}
             <div className="ml-auto">

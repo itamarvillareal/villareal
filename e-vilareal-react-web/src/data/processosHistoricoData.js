@@ -575,6 +575,30 @@ export function obterParteOpostaUnificada(codCliente, procNumero, fallbackParteO
   return fb && fb !== '—' ? fb : '';
 }
 
+/**
+ * Mesmo texto que «Parte Cliente» na tela Processos (`parteCliente` no histórico) e na grade do cadastro.
+ */
+export function obterParteClienteUnificada(codCliente, procNumero, fallbackParteCliente = '') {
+  const reg = getRegistroProcesso(codCliente, procNumero);
+  const pc = String(reg?.parteCliente ?? '').trim();
+  if (pc) return pc;
+  const cli = String(reg?.cliente ?? '').trim();
+  if (cli) return cli;
+  try {
+    const cad = loadCadastroClienteDados(codCliente);
+    const rows = cad?.processos;
+    if (Array.isArray(rows)) {
+      const row = rows.find((p) => Number(p?.procNumero) === Number(procNumero));
+      const t = String(row?.parteCliente ?? row?.autor ?? '').trim();
+      if (t && t !== '—') return t;
+    }
+  } catch {
+    /* ignore */
+  }
+  const fb = String(fallbackParteCliente ?? '').trim();
+  return fb && fb !== '—' ? fb : '';
+}
+
 /** Mesmo critério que «Ativo/Inativo» na tela Processos (`statusAtivo` no histórico). */
 export function obterStatusAtivoUnificado(codCliente, procNumero, fallbackAtivo = true) {
   const reg = getRegistroProcesso(codCliente, procNumero);
@@ -704,13 +728,15 @@ export function alinharListaProcessosDescricaoComHistorico(codClientePadded8, li
     const velhoUnif = obterNumeroProcessoVelhoUnificado(cod, n, p.processoVelho ?? '');
     const novoUnif = obterNumeroProcessoNovoUnificado(cod, n, p.processoNovo ?? '');
     const opostaUnif = obterParteOpostaUnificada(cod, n, p.parteOposta ?? '');
+    const clienteUnif = obterParteClienteUnificada(cod, n, p.parteCliente ?? p.autor ?? '');
     const statusAtivoUnif = obterStatusAtivoUnificado(cod, n, p.statusAtivo !== false);
     const sameDesc = (p.descricao ?? '') === descUnif;
     const sameVelho = (p.processoVelho ?? '') === velhoUnif;
     const sameNovo = (p.processoNovo ?? '') === novoUnif;
     const sameOposta = (p.parteOposta ?? '') === opostaUnif;
+    const sameCliente = (p.parteCliente ?? p.autor ?? '') === clienteUnif;
     const sameStatus = (p.statusAtivo !== false) === statusAtivoUnif;
-    if (sameDesc && sameVelho && sameNovo && sameOposta && sameStatus) return p;
+    if (sameDesc && sameVelho && sameNovo && sameOposta && sameCliente && sameStatus) return p;
     changed = true;
     return {
       ...p,
@@ -718,6 +744,8 @@ export function alinharListaProcessosDescricaoComHistorico(codClientePadded8, li
       processoVelho: velhoUnif,
       processoNovo: novoUnif,
       parteOposta: opostaUnif,
+      parteCliente: clienteUnif,
+      autor: clienteUnif,
       statusAtivo: statusAtivoUnif,
     };
   });

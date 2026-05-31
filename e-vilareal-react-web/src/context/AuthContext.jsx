@@ -17,7 +17,7 @@ const AuthContext = createContext(null);
 /** Chave em sessionStorage: mensagem exibida na tela de login após encerrar sessão por inatividade. */
 export const IDLE_SESSION_MESSAGE_STORAGE_KEY = 'vilareal.logoutMessageIdle.v1';
 
-const SESSION_IDLE_MS = 60 * 60 * 1000;
+const SESSION_IDLE_MS = 18 * 60 * 60 * 1000;
 const SESSION_IDLE_CHECK_MS = 30_000;
 
 export function AuthProvider({ children }) {
@@ -64,7 +64,7 @@ export function AuthProvider({ children }) {
     return () => window.removeEventListener('vilareal:api-unauthorized', on401);
   }, []);
 
-  /** Encerra sessão após 1 h sem interação (apenas com login JWT obrigatório). */
+  /** Encerra sessão após 18 h sem interação (apenas com login JWT obrigatório). */
   useEffect(() => {
     if (!featureFlags.requiresApiAuth || !token) return;
     lastActivityRef.current = Date.now();
@@ -84,7 +84,7 @@ export function AuthProvider({ children }) {
         try {
           sessionStorage.setItem(
             IDLE_SESSION_MESSAGE_STORAGE_KEY,
-            'Sua sessão foi encerrada por 1 hora sem atividade. Faça login novamente.',
+            'Sua sessão foi encerrada por 18 horas sem atividade. Faça login novamente.',
           );
         } catch {
           /* ignore */

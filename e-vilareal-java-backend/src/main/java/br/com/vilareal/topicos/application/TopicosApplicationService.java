@@ -37,4 +37,25 @@ public class TopicosApplicationService {
             throw new IllegalStateException("JSON da hierarquia de tópicos inválido.", e);
         }
     }
+
+    @Transactional
+    public TopicoNoDto salvarRaiz(TopicoNoDto raiz) {
+        if (raiz == null) {
+            throw new IllegalArgumentException("Hierarquia de tópicos não informada.");
+        }
+        final String json;
+        try {
+            json = objectMapper.writeValueAsString(raiz);
+        } catch (Exception e) {
+            throw new IllegalStateException("Falha ao serializar a hierarquia de tópicos.", e);
+        }
+        TopicoHierarquiaEntity row = repository.findById(CONFIG_ID).orElseGet(() -> {
+            TopicoHierarquiaEntity novo = new TopicoHierarquiaEntity();
+            novo.setId(CONFIG_ID);
+            return novo;
+        });
+        row.setRaizJson(json);
+        repository.save(row);
+        return raiz;
+    }
 }

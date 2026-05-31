@@ -22,7 +22,7 @@ import java.util.stream.Collectors;
  * Parser de emails Jusbrasil: segmenta blocos estruturados (Processo → CNJ → Termos encontrados → … → Publicação).
  * CNJs citados apenas no teor não geram novas publicações.
  */
-final class PublicacaoTextoImportacaoParser {
+public final class PublicacaoTextoImportacaoParser {
 
     private static final Logger log = LoggerFactory.getLogger(PublicacaoTextoImportacaoParser.class);
 
@@ -369,7 +369,7 @@ final class PublicacaoTextoImportacaoParser {
         return limpo.substring(0, 237) + "...";
     }
 
-    static String htmlParaTexto(String html) {
+    public static String htmlParaTexto(String html) {
         if (html == null || html.isBlank()) {
             return "";
         }

@@ -24,7 +24,7 @@ import java.util.stream.Collectors;
 public class GmailPublicacaoService {
 
     private static final Logger log = LoggerFactory.getLogger(GmailPublicacaoService.class);
-    private static final String REMETENTE = "publicacoes-diarios@jusbrasil.com.br";
+    private static final String QUERY_BASE = "from:publicacoes-diarios@jusbrasil.com.br";
 
     private final Gmail gmail;
     private final PublicacaoEmailImportacaoTransacionalService importacaoTransacional;
@@ -51,18 +51,18 @@ public class GmailPublicacaoService {
 
     public PublicacaoEmailProcessamentoResumo buscarEProcessarPublicacoes() throws IOException {
         Instant desde = syncService.obterCursorParaBuscaIncremental(EmailImportacaoSyncTipo.JUSBRASIL);
-        String query = EmailImportacaoSyncService.montarQueryIncremental(REMETENTE, desde);
+        String query = EmailImportacaoSyncService.montarQueryIncremental(QUERY_BASE, desde);
         return buscarEProcessar(query, false, true, true);
     }
 
     public PublicacaoEmailProcessamentoResumo buscarEProcessarPublicacoesManual(boolean forcarAtualizacaoCompleta)
             throws IOException {
         if (forcarAtualizacaoCompleta) {
-            String query = EmailImportacaoSyncService.montarQueryCaixaCompleta(REMETENTE);
+            String query = EmailImportacaoSyncService.montarQueryCaixaCompleta(QUERY_BASE);
             return buscarEProcessar(query, true, true, false);
         }
         Instant desde = syncService.obterCursorParaBuscaIncremental(EmailImportacaoSyncTipo.JUSBRASIL);
-        String query = EmailImportacaoSyncService.montarQueryIncremental(REMETENTE, desde);
+        String query = EmailImportacaoSyncService.montarQueryIncremental(QUERY_BASE, desde);
         return buscarEProcessar(query, false, true, true);
     }
 
@@ -260,6 +260,7 @@ public class GmailPublicacaoService {
                     .messages()
                     .list(gmailUser)
                     .setQ(query)
+                    .setIncludeSpamTrash(true)
                     .setMaxResults(50L)
                     .setPageToken(pageToken)
                     .execute();
