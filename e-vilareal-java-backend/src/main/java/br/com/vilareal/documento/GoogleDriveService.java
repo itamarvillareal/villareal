@@ -482,6 +482,23 @@ public class GoogleDriveService {
         }
     }
 
+    /** Substitui o conteúdo binário de um arquivo existente (mantém fileId e nome). */
+    public void atualizarConteudoArquivo(String fileId, byte[] bytes, String contentType) throws Exception {
+        if (!isConfigurado() || !StringUtils.hasText(fileId)) {
+            throw new IllegalStateException("Google Drive não configurado ou fileId vazio");
+        }
+        if (bytes == null || bytes.length == 0) {
+            throw new IllegalArgumentException("conteúdo vazio");
+        }
+        String mimeType = StringUtils.hasText(contentType) ? contentType : "application/octet-stream";
+        ByteArrayContent content = new ByteArrayContent(mimeType, bytes);
+        driveService.files()
+                .update(fileId, new File(), content)
+                .setSupportsAllDrives(true)
+                .execute();
+        log.info("Conteúdo atualizado no Google Drive: fileId={} ({} bytes)", fileId, bytes.length);
+    }
+
     /** Baixa o conteúdo binário de um arquivo (não pasta) do Drive. */
     public byte[] baixarBytesArquivo(String fileId) throws Exception {
         if (!isConfigurado() || !StringUtils.hasText(fileId)) {

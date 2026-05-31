@@ -50,6 +50,14 @@ public class UsuarioApplicationService {
         return usuarioRepository.findAllForListing().stream().map(this::toResponse).collect(Collectors.toList());
     }
 
+    /** Colaboradores humanos ativos — fan-outs de agenda e seletores de equipe (Fase 1). */
+    @Transactional(readOnly = true)
+    public List<UsuarioResponse> listarColaboradoresHumanosAtivos() {
+        return usuarioRepository.findColaboradoresHumanosAtivos().stream()
+                .map(this::toResponse)
+                .collect(Collectors.toList());
+    }
+
     @Transactional(readOnly = true)
     public Page<UsuarioResponse> listarPaginado(
             boolean apenasAtivos,
@@ -226,6 +234,8 @@ public class UsuarioApplicationService {
         r.setApelido(Utf8MojibakeUtil.corrigir(u.getApelido()));
         r.setLogin(u.getLogin());
         r.setAtivo(u.getAtivo());
+        r.setTipo(u.getTipo() != null ? u.getTipo().name() : null);
+        r.setPermiteLogin(u.getPermiteLogin());
         r.setPerfilId(u.getPerfil() != null ? u.getPerfil().getId() : null);
         return r;
     }

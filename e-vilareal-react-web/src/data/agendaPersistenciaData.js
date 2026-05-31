@@ -585,7 +585,7 @@ export function agendarAudienciaParaTodosUsuarios({
   let inseridos = 0;
   let atualizados = 0;
 
-  const usuarios = getUsuariosAtivos();
+  const usuarios = getColaboradoresHumanosAtivos();
   const criadoIso = new Date().toISOString();
   const novos = usuarios.map((u) => {
     const usuarioId = u?.id ? String(u.id) : '';
@@ -1203,6 +1203,15 @@ export function getUsuariosAtivos() {
   }
   agendarMigracaoPermissoesPendenciasIdsLegados();
   return out;
+}
+
+/** Colaboradores humanos ativos — fan-outs de agenda (exclui assistentes IA). */
+export function getColaboradoresHumanosAtivos() {
+  return (getUsuariosAtivos() || []).filter((u) => {
+    if (!u || u.ativo === false) return false;
+    const tipo = String(u.tipo ?? 'HUMANO').trim().toUpperCase();
+    return tipo !== 'ASSISTENTE_IA';
+  });
 }
 
 /**

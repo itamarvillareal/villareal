@@ -12,6 +12,7 @@ import br.com.vilareal.tarefa.infrastructure.persistence.repository.TarefaOperac
 import br.com.vilareal.pessoa.application.ClienteResolverService;
 import br.com.vilareal.tarefa.model.TarefaPrioridade;
 import br.com.vilareal.tarefa.model.TarefaStatus;
+import br.com.vilareal.usuario.application.UsuarioDestinatarioGuard;
 import br.com.vilareal.usuario.infrastructure.persistence.entity.UsuarioEntity;
 import br.com.vilareal.usuario.infrastructure.persistence.repository.UsuarioRepository;
 import org.springframework.data.domain.Page;
@@ -33,14 +34,17 @@ public class TarefaOperacionalApplicationService {
 
     private final TarefaOperacionalRepository tarefaRepository;
     private final UsuarioRepository usuarioRepository;
+    private final UsuarioDestinatarioGuard usuarioDestinatarioGuard;
     private final ClienteResolverService clienteResolverService;
 
     public TarefaOperacionalApplicationService(
             TarefaOperacionalRepository tarefaRepository,
             UsuarioRepository usuarioRepository,
+            UsuarioDestinatarioGuard usuarioDestinatarioGuard,
             ClienteResolverService clienteResolverService) {
         this.tarefaRepository = tarefaRepository;
         this.usuarioRepository = usuarioRepository;
+        this.usuarioDestinatarioGuard = usuarioDestinatarioGuard;
         this.clienteResolverService = clienteResolverService;
     }
 
@@ -136,9 +140,7 @@ public class TarefaOperacionalApplicationService {
         }
 
         if (req.getResponsavelUsuarioId() != null) {
-            UsuarioEntity u = usuarioRepository.findById(req.getResponsavelUsuarioId())
-                    .orElseThrow(() -> new ResourceNotFoundException(
-                            "Usuário não encontrado: " + req.getResponsavelUsuarioId()));
+            UsuarioEntity u = usuarioDestinatarioGuard.carregarHumanoDestinatario(req.getResponsavelUsuarioId());
             e.setResponsavel(u);
         } else {
             e.setResponsavel(null);

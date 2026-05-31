@@ -10,6 +10,7 @@ import br.com.vilareal.agenda.infrastructure.persistence.repository.AgendaEvento
 import br.com.vilareal.common.exception.BusinessRuleException;
 import br.com.vilareal.common.exception.ResourceNotFoundException;
 import br.com.vilareal.common.text.Utf8MojibakeUtil;
+import br.com.vilareal.usuario.application.UsuarioDestinatarioGuard;
 import br.com.vilareal.usuario.infrastructure.persistence.entity.UsuarioEntity;
 import br.com.vilareal.usuario.infrastructure.persistence.repository.UsuarioRepository;
 import org.springframework.stereotype.Service;
@@ -42,10 +43,15 @@ public class AgendaApplicationService {
 
     private final AgendaEventoRepository agendaEventoRepository;
     private final UsuarioRepository usuarioRepository;
+    private final UsuarioDestinatarioGuard usuarioDestinatarioGuard;
 
-    public AgendaApplicationService(AgendaEventoRepository agendaEventoRepository, UsuarioRepository usuarioRepository) {
+    public AgendaApplicationService(
+            AgendaEventoRepository agendaEventoRepository,
+            UsuarioRepository usuarioRepository,
+            UsuarioDestinatarioGuard usuarioDestinatarioGuard) {
         this.agendaEventoRepository = agendaEventoRepository;
         this.usuarioRepository = usuarioRepository;
+        this.usuarioDestinatarioGuard = usuarioDestinatarioGuard;
     }
 
     @Transactional(readOnly = true)
@@ -139,8 +145,7 @@ public class AgendaApplicationService {
 
     @Transactional
     public AgendaEventoResponse criar(AgendaEventoWriteRequest req) {
-        UsuarioEntity usuario = usuarioRepository.findById(req.getUsuarioId())
-                .orElseThrow(() -> new ResourceNotFoundException("Usuário não encontrado: " + req.getUsuarioId()));
+        UsuarioEntity usuario = usuarioDestinatarioGuard.carregarHumanoDestinatario(req.getUsuarioId());
         AgendaEventoEntity e = new AgendaEventoEntity();
         e.setUsuario(usuario);
         aplicarCampos(e, req);
@@ -171,8 +176,7 @@ public class AgendaApplicationService {
             return toResponse(e);
         }
 
-        UsuarioEntity usuario = usuarioRepository.findById(req.getUsuarioId())
-                .orElseThrow(() -> new ResourceNotFoundException("Usuário não encontrado: " + req.getUsuarioId()));
+        UsuarioEntity usuario = usuarioDestinatarioGuard.carregarHumanoDestinatario(req.getUsuarioId());
         AgendaEventoEntity e = new AgendaEventoEntity();
         e.setUsuario(usuario);
         aplicarCampos(e, req);
@@ -195,8 +199,7 @@ public class AgendaApplicationService {
     public AgendaEventoResponse atualizar(Long id, AgendaEventoWriteRequest req) {
         AgendaEventoEntity e = agendaEventoRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Compromisso não encontrado: " + id));
-        UsuarioEntity usuario = usuarioRepository.findById(req.getUsuarioId())
-                .orElseThrow(() -> new ResourceNotFoundException("Usuário não encontrado: " + req.getUsuarioId()));
+        UsuarioEntity usuario = usuarioDestinatarioGuard.carregarHumanoDestinatario(req.getUsuarioId());
         e.setUsuario(usuario);
         aplicarCampos(e, req);
         e = agendaEventoRepository.save(e);

@@ -14,7 +14,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** TEMP — avalia backfill progressivo Drive para processos do submenu Movimentações Email (PROJUDI). */
+/** TEMP — backfill progressivo Drive: Movimentações Email (PROJUDI) e Publicações Email TJGO (MONITORAMENTO). */
 @Service
 public class ProjudiBackfillSubmenuDiagnosticoService {
 
@@ -22,6 +22,7 @@ public class ProjudiBackfillSubmenuDiagnosticoService {
     private static final int ERROS_CONSECUTIVOS_LIMITE = 3;
 
     private final ProjudiOrquestradorService orquestradorService;
+    private final ProjudiOrquestradorGate orquestradorGate;
     private final ProjudiSessionService sessionService;
     private final PublicacaoRepository publicacaoRepository;
     private final ProcessoRepository processoRepository;
@@ -29,25 +30,47 @@ public class ProjudiBackfillSubmenuDiagnosticoService {
 
     public ProjudiBackfillSubmenuDiagnosticoService(
             ProjudiOrquestradorService orquestradorService,
+            ProjudiOrquestradorGate orquestradorGate,
             ProjudiSessionService sessionService,
             PublicacaoRepository publicacaoRepository,
             ProcessoRepository processoRepository,
             @Value("${projudi.orquestrador.credencial-id-padrao:1}") Long credencialIdPadrao) {
         this.orquestradorService = orquestradorService;
+        this.orquestradorGate = orquestradorGate;
         this.sessionService = sessionService;
         this.publicacaoRepository = publicacaoRepository;
         this.processoRepository = processoRepository;
         this.credencialIdPadrao = credencialIdPadrao;
     }
 
-    public Map<String, Object> executarBackfillSubmenu(int limiteProcessos, int delaySegundos) {
+    public Map<String, Object> executarBackfillSubmenu(
+            int limiteProcessos, int delaySegundos, boolean incluirMonitoramentoTjgo) {
+        return orquestradorGate
+                .tryExecutarComRetorno(
+                        "backfill-submenu",
+                        () -> executarBackfillSubmenuInterno(limiteProcessos, delaySegundos, incluirMonitoramentoTjgo))
+                .orElseGet(() -> {
+                    Map<String, Object> out = new LinkedHashMap<>();
+                    out.put("erro", "robô PROJUDI ocupado; tente novamente.");
+                    return out;
+                });
+    }
+
+    private Map<String, Object> executarBackfillSubmenuInterno(
+            int limiteProcessos, int delaySegundos, boolean incluirMonitoramentoTjgo) {
         Instant inicio = Instant.now();
         long inicioMs = System.currentTimeMillis();
 
         int limite = limiteProcessos > 0 ? limiteProcessos : 3;
         int delay = delaySegundos >= 0 ? delaySegundos : 30;
 
-        List<Long> todosIds = publicacaoRepository.findDistinctProcessoIdsComPublicacaoProjudiCnjCompleto();
+        List<Long> idsProjudi = publicacaoRepository.findDistinctProcessoIdsComPublicacaoProjudiCnjCompleto();
+        List<Long> idsMonitoramentoTjgo = incluirMonitoramentoTjgo
+                ? publicacaoRepository.findDistinctProcessoIdsComPublicacaoMonitoramentoTjgoCnjCompleto()
+                : List.of();
+        List<Long> todosIds = incluirMonitoramentoTjgo
+                ? publicacaoRepository.findDistinctProcessoIdsElegiveisRoboProjudi()
+                : idsProjudi;
         List<Long> processoIds = todosIds.stream().limit(limite).toList();
 
         Map<String, Object> out = new LinkedHashMap<>();
@@ -55,8 +78,14 @@ public class ProjudiBackfillSubmenuDiagnosticoService {
         out.put("credencialId", credencialIdPadrao);
         out.put("limiteProcessos", limite);
         out.put("delaySegundos", delay);
+        out.put("incluirMonitoramentoTjgo", incluirMonitoramentoTjgo);
         out.put("processosElegiveisTotal", todosIds.size());
         out.put("processosNestRodada", processoIds.size());
+        Map<String, Object> elegiveisPorOrigem = new LinkedHashMap<>();
+        elegiveisPorOrigem.put("projudi", idsProjudi.size());
+        elegiveisPorOrigem.put("monitoramentoTjgo", idsMonitoramentoTjgo.size());
+        elegiveisPorOrigem.put("totalDistinto", todosIds.size());
+        out.put("elegiveisPorOrigem", elegiveisPorOrigem);
 
         List<Map<String, Object>> porProcesso = new ArrayList<>();
         List<String> detalhesGlobais = new ArrayList<>();

@@ -15,6 +15,7 @@ import br.com.vilareal.pagamento.infrastructure.persistence.repository.Pagamento
 import br.com.vilareal.pagamento.infrastructure.persistence.repository.PagamentoRepository;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.ClienteRepository;
+import br.com.vilareal.usuario.application.UsuarioDestinatarioGuard;
 import br.com.vilareal.usuario.infrastructure.persistence.entity.UsuarioEntity;
 import br.com.vilareal.usuario.infrastructure.persistence.repository.UsuarioRepository;
 import org.springframework.data.domain.Page;
@@ -48,6 +49,7 @@ public class PagamentoRecorrenciaService {
     private final ClienteRepository clienteRepository;
     private final ContratoLocacaoRepository contratoLocacaoRepository;
     private final UsuarioRepository usuarioRepository;
+    private final UsuarioDestinatarioGuard usuarioDestinatarioGuard;
     private final PagamentoApplicationService pagamentoApplicationService;
     private final Clock clock;
 
@@ -58,6 +60,7 @@ public class PagamentoRecorrenciaService {
             ClienteRepository clienteRepository,
             ContratoLocacaoRepository contratoLocacaoRepository,
             UsuarioRepository usuarioRepository,
+            UsuarioDestinatarioGuard usuarioDestinatarioGuard,
             PagamentoApplicationService pagamentoApplicationService,
             Clock clock) {
         this.configRepository = configRepository;
@@ -66,6 +69,7 @@ public class PagamentoRecorrenciaService {
         this.clienteRepository = clienteRepository;
         this.contratoLocacaoRepository = contratoLocacaoRepository;
         this.usuarioRepository = usuarioRepository;
+        this.usuarioDestinatarioGuard = usuarioDestinatarioGuard;
         this.pagamentoApplicationService = pagamentoApplicationService;
         this.clock = clock;
     }
@@ -286,7 +290,7 @@ public class PagamentoRecorrenciaService {
     }
 
     private UsuarioEntity resolveUsuario(Long id) {
-        return usuarioRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Usuário não encontrado."));
+        return usuarioDestinatarioGuard.carregarHumanoDestinatario(id);
     }
 
     private UsuarioEntity usuarioAtual() {

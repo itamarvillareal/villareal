@@ -91,6 +91,18 @@ public class PublicacaoEntity {
     @Column(columnDefinition = "TEXT")
     private String observacao;
 
+    @Column(name = "andamentos_no_drive", nullable = false)
+    private boolean andamentosNoDrive;
+
+    @Column(name = "drive_folder_url", length = 512)
+    private String driveFolderUrl;
+
+    @Column(name = "andamentos_no_drive_em")
+    private java.time.LocalDateTime andamentosNoDriveEm;
+
+    @Column(name = "qtd_arquivos_drive")
+    private Integer qtdArquivosDrive;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Instant createdAt;
 

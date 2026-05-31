@@ -1,7 +1,7 @@
 import { request } from '../api/httpClient.js';
 import { featureFlags } from '../config/featureFlags.js';
 import { clampCadastroPessoasPageSize } from '../api/clientesService.js';
-import { getUsuariosAtivos, setUsuariosAtivos } from '../data/agendaPersistenciaData.js';
+import { getUsuariosAtivos, getColaboradoresHumanosAtivos, setUsuariosAtivos } from '../data/agendaPersistenciaData.js';
 
 export function mapApiUsuarioToView(u) {
   return {
@@ -13,9 +13,18 @@ export function mapApiUsuarioToView(u) {
     login: String(u.login ?? ''),
     senhaHash: '',
     ativo: u.ativo !== false,
+    tipo: u.tipo != null && String(u.tipo).trim() !== '' ? String(u.tipo).trim() : 'HUMANO',
+    permiteLogin: u.permiteLogin !== false,
     perfilId:
       u.perfilId != null && Number.isFinite(Number(u.perfilId)) ? Number(u.perfilId) : null,
   };
+}
+
+/** Exclui assistentes IA (fan-out agenda / equipe). */
+export function isColaboradorHumanoAtivo(u) {
+  if (!u || u.ativo === false) return false;
+  const tipo = String(u.tipo ?? 'HUMANO').trim().toUpperCase();
+  return tipo !== 'ASSISTENTE_IA';
 }
 
 function mapViewUsuarioToApi(u) {
@@ -39,6 +48,15 @@ function mapViewUsuarioToApi(u) {
 export async function listarUsuarios() {
   if (!featureFlags.useApiUsuarios) return getUsuariosAtivos();
   const data = await request('/api/usuarios');
+  return Array.isArray(data) ? data.map(mapApiUsuarioToView) : [];
+}
+
+/** Colaboradores humanos ativos — fan-outs de agenda (exclui assistentes IA). */
+export async function listarColaboradoresHumanos() {
+  if (!featureFlags.useApiUsuarios) {
+    return getColaboradoresHumanosAtivos();
+  }
+  const data = await request('/api/usuarios/colaboradores');
   return Array.isArray(data) ? data.map(mapApiUsuarioToView) : [];
 }
 

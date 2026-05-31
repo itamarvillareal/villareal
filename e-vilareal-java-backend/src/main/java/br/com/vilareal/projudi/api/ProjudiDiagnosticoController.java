@@ -5,6 +5,9 @@ package br.com.vilareal.projudi.api;
 import br.com.vilareal.documento.GoogleDriveService;
 import br.com.vilareal.projudi.ProjudiOrquestradorService;
 import br.com.vilareal.projudi.ProjudiBackfillSubmenuDiagnosticoService;
+import br.com.vilareal.projudi.ProjudiDrivePdfOcrBackfillService;
+import br.com.vilareal.projudi.ProjudiDrivePdfTextoDiagnosticoService;
+import br.com.vilareal.projudi.ProjudiDrivePdfTextoDiagnosticoService.ItemDrivePdfTexto;
 import br.com.vilareal.projudi.ProjudiOrquestradorService.ResultadoOrquestracao;
 import br.com.vilareal.projudi.ProjudiPublicacaoLimpezaDiagnosticoService;
 import br.com.vilareal.projudi.ProjudiSelecaoAutomaticaDiagnosticoService;
@@ -61,6 +64,8 @@ public class ProjudiDiagnosticoController {
     private final ProjudiSelecaoAutomaticaDiagnosticoService selecaoAutomaticaDiagnosticoService;
     private final ProjudiPublicacaoLimpezaDiagnosticoService publicacaoLimpezaDiagnosticoService;
     private final ProjudiBackfillSubmenuDiagnosticoService backfillSubmenuDiagnosticoService;
+    private final ProjudiDrivePdfTextoDiagnosticoService drivePdfTextoDiagnosticoService;
+    private final ProjudiDrivePdfOcrBackfillService drivePdfOcrBackfillService;
 
     @Value("${gmail.credentials.path:}")
     private String gmailCredentialsPath;
@@ -79,7 +84,9 @@ public class ProjudiDiagnosticoController {
                                         GoogleDriveService googleDriveService,
                                         ProjudiSelecaoAutomaticaDiagnosticoService selecaoAutomaticaDiagnosticoService,
                                         ProjudiPublicacaoLimpezaDiagnosticoService publicacaoLimpezaDiagnosticoService,
-                                        ProjudiBackfillSubmenuDiagnosticoService backfillSubmenuDiagnosticoService) {
+                                        ProjudiBackfillSubmenuDiagnosticoService backfillSubmenuDiagnosticoService,
+                                        ProjudiDrivePdfTextoDiagnosticoService drivePdfTextoDiagnosticoService,
+                                        ProjudiDrivePdfOcrBackfillService drivePdfOcrBackfillService) {
         this.credencialService = credencialService;
         this.teorService = teorService;
         this.sessionService = sessionService;
@@ -89,6 +96,8 @@ public class ProjudiDiagnosticoController {
         this.selecaoAutomaticaDiagnosticoService = selecaoAutomaticaDiagnosticoService;
         this.publicacaoLimpezaDiagnosticoService = publicacaoLimpezaDiagnosticoService;
         this.backfillSubmenuDiagnosticoService = backfillSubmenuDiagnosticoService;
+        this.drivePdfTextoDiagnosticoService = drivePdfTextoDiagnosticoService;
+        this.drivePdfOcrBackfillService = drivePdfOcrBackfillService;
     }
 
     /** Cadastra/atualiza a credencial real no cofre (senha cifrada; resposta sem segredos). */
@@ -250,8 +259,30 @@ public class ProjudiDiagnosticoController {
     @PostMapping("/backfill-submenu")
     public Map<String, Object> backfillSubmenu(
             @RequestParam(defaultValue = "3") int limite,
-            @RequestParam(defaultValue = "30") int delaySegundos) {
-        return backfillSubmenuDiagnosticoService.executarBackfillSubmenu(limite, delaySegundos);
+            @RequestParam(defaultValue = "30") int delaySegundos,
+            @RequestParam(defaultValue = "true") boolean incluirMonitoramentoTjgo) {
+        return backfillSubmenuDiagnosticoService.executarBackfillSubmenu(
+                limite, delaySegundos, incluirMonitoramentoTjgo);
+    }
+
+    /** TEMP — extrai texto dos PDFs na pasta Movimentações do Drive (read-only). Remover após prototipar triagem. */
+    @GetMapping("/drive-pdf-texto")
+    public List<ItemDrivePdfTexto> drivePdfTexto(@RequestParam List<String> cnj) throws Exception {
+        return drivePdfTextoDiagnosticoService.extrairTextos(cnj);
+    }
+
+    /**
+     * TEMP — backfill OCR em todos os PDFs da pasta Movimentações (Drive only).
+     * Padrão: {@code --skip-text}. {@code redoOcr=true}: {@code --redo-ocr} (reprocessa OCR antigo).
+     * {@code cnj=…} repetível ou {@code todos=true} (opcional {@code limite}).
+     */
+    @PostMapping("/ocr-backfill")
+    public Map<String, Object> ocrBackfill(
+            @RequestParam(required = false) List<String> cnj,
+            @RequestParam(defaultValue = "false") boolean todos,
+            @RequestParam(defaultValue = "50") int limite,
+            @RequestParam(defaultValue = "false") boolean redoOcr) throws Exception {
+        return drivePdfOcrBackfillService.executar(cnj, todos, limite, redoOcr);
     }
 
     /** TEMP — diagnóstico Google Drive (credencial, metadados de pastas, Shared Drives). Remover após validação. */

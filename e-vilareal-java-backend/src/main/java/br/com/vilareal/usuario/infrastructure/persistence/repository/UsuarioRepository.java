@@ -1,6 +1,7 @@
 package br.com.vilareal.usuario.infrastructure.persistence.repository;
 
 import br.com.vilareal.usuario.infrastructure.persistence.entity.UsuarioEntity;
+import br.com.vilareal.usuario.model.TipoUsuario;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -35,4 +36,13 @@ public interface UsuarioRepository extends JpaRepository<UsuarioEntity, Long>, J
 
     @EntityGraph(attributePaths = {"perfil", "pessoa"})
     Optional<UsuarioEntity> findWithPerfilById(Long id);
+
+    @EntityGraph(attributePaths = {"perfil", "pessoa"})
+    @Query("""
+            SELECT u FROM UsuarioEntity u
+            WHERE u.tipo = br.com.vilareal.usuario.model.TipoUsuario.HUMANO
+              AND u.ativo = true
+            ORDER BY u.id ASC
+            """)
+    List<UsuarioEntity> findColaboradoresHumanosAtivos();
 }

@@ -12,7 +12,7 @@ import {
 } from '../data/agendaPersistenciaData.js';
 import { montarProcessoRefAgenda } from '../domain/agendaProcessoRef.js';
 import { normalizarProcesso, padCliente } from '../data/processosDadosRelatorio.js';
-import { listarUsuarios } from './usuariosRepository.js';
+import { listarColaboradoresHumanos, isColaboradorHumanoAtivo } from './usuariosRepository.js';
 
 function parseBrDate(dateBr) {
   const [dd, mm, yyyy] = String(dateBr).split('/');
@@ -194,11 +194,11 @@ export async function replicarAudienciaProcessoTodosColaboradoresApi({
 
   let lista = [];
   try {
-    lista = await listarUsuarios();
+    lista = await listarColaboradoresHumanos();
   } catch {
     return { ok: false, reason: 'usuarios-falha' };
   }
-  const ativos = (Array.isArray(lista) ? lista : []).filter((u) => u && u.ativo !== false);
+  const ativos = (Array.isArray(lista) ? lista : []).filter((u) => u && isColaboradorHumanoAtivo(u));
   let sincronizados = 0;
   for (const u of ativos) {
     const idNum = Number(u.id);
@@ -281,11 +281,11 @@ export async function replicarCompromissoLoteTodosColaboradoresApi({
 
   let lista = [];
   try {
-    lista = await listarUsuarios();
+    lista = await listarColaboradoresHumanos();
   } catch {
     return { ok: false, reason: 'usuarios-falha' };
   }
-  const ativos = (Array.isArray(lista) ? lista : []).filter((u) => u && u.ativo !== false);
+  const ativos = (Array.isArray(lista) ? lista : []).filter((u) => u && isColaboradorHumanoAtivo(u));
 
   let criados = 0;
   for (const dataKey of datas) {

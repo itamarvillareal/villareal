@@ -1,5 +1,6 @@
 package br.com.vilareal.auth.application;
 
+import br.com.vilareal.common.exception.BusinessRuleException;
 import br.com.vilareal.common.text.Utf8MojibakeUtil;
 import br.com.vilareal.auth.api.dto.LoginRequest;
 import br.com.vilareal.auth.api.dto.LoginResponse;
@@ -42,6 +43,9 @@ public class AuthApplicationService {
         UserDetails ud = (UserDetails) auth.getPrincipal();
         UsuarioEntity u = usuarioRepository.findWithPerfilByLoginIgnoreCase(ud.getUsername())
                 .orElseThrow();
+        if (!Boolean.TRUE.equals(u.getPermiteLogin())) {
+            throw new BusinessRuleException("Este usuário não pode fazer login pelo navegador.");
+        }
 
         LoginResponse res = new LoginResponse();
         res.setAccessToken(jwtService.generateToken(u.getId(), u.getLogin()));

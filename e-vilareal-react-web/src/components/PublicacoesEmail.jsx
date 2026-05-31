@@ -112,6 +112,22 @@ function Badge({ children, tone = 'slate' }) {
   return <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-semibold ${cls}`}>{children}</span>;
 }
 
+function BadgeNoDrive({ row }) {
+  if (!row?.andamentosNoDrive || !row?.driveFolderUrl) return null;
+  return (
+    <a
+      href={row.driveFolderUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      title="Abrir pasta Movimentações no Drive"
+      className="ml-1.5 inline-flex shrink-0 items-center gap-0.5"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <Badge tone="green">No Drive</Badge>
+    </a>
+  );
+}
+
 function fmtDataBr(isoDate) {
   if (!isoDate) return '—';
   const s = String(isoDate);
@@ -599,7 +615,10 @@ function CardMobileRow({
             <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
           )}
         </div>
-        <p className="mt-2 font-mono text-xs text-sky-800 dark:text-sky-300">{cnjLinha(row)}</p>
+        <p className="mt-2 font-mono text-xs text-sky-800 dark:text-sky-300">
+          {cnjLinha(row)}
+          <BadgeNoDrive row={row} />
+        </p>
         {isProjudi ? (
           <>
             <p className="mt-1 text-xs font-medium text-violet-900 dark:text-violet-200">
@@ -1263,7 +1282,10 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
                           onClick={() => toggleLinha(row)}
                           title={cnjLinha(row)}
                         >
-                          {cnjLinha(row)}
+                          <span className="inline-flex max-w-full items-center">
+                            <span className="truncate">{cnjLinha(row)}</span>
+                            <BadgeNoDrive row={row} />
+                          </span>
                         </td>
                         <td className="max-w-[160px] px-3 py-2.5">
                           <CelulaClienteProc row={row} indiceCnj={indiceCnj} sugestoesApi={sugestoesApi} />

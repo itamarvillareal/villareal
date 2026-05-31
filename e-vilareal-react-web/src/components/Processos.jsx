@@ -60,6 +60,7 @@ import {
   agendarEmLoteParaUsuarios,
   calcularPrimeiraOcorrenciaAgendaLote,
   getUsuariosAtivos,
+  getColaboradoresHumanosAtivos,
   removerAudienciaProcessoDaAgenda,
 } from '../data/agendaPersistenciaData';
 import {
@@ -1295,7 +1296,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       return;
     }
 
-    const usuariosAlvo = (getUsuariosAtivos() || []).map((u) => ({
+    const usuariosAlvo = (getColaboradoresHumanosAtivos() || []).map((u) => ({
       id: u.id,
       nome: String(getNomeExibicaoUsuario(u) || u.id || '').trim() || String(u.id),
     }));

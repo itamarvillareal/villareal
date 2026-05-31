@@ -33,6 +33,12 @@ public class UsuarioController {
         return usuarioService.listar();
     }
 
+    @GetMapping("/colaboradores")
+    @Operation(summary = "Colaboradores humanos ativos (exclui assistentes IA — fan-out agenda/equipe)")
+    public List<UsuarioResponse> listarColaboradores() {
+        return usuarioService.listarColaboradoresHumanosAtivos();
+    }
+
     @GetMapping("/paginada")
     @Operation(summary = "Listar com paginação (filtros alinhados ao relatório de pessoas)")
     public Page<UsuarioResponse> listarPaginada(

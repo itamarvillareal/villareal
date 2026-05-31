@@ -74,7 +74,70 @@ public interface PublicacaoRepository extends JpaRepository<PublicacaoEntity, Lo
             """)
     List<Long> findDistinctProcessoIdsComPublicacaoProjudiCnjCompleto();
 
+    /**
+     * Processos distintos com publicação MONITORAMENTO (Publicações Email / Jusbrasil), CNJ completo
+     * e segmento TJGO ({@code .8.09.} — Justiça Estadual Goiás).
+     */
+    @Query(
+            """
+            SELECT DISTINCT p.processo.id FROM PublicacaoEntity p
+            WHERE p.origemImportacao = 'MONITORAMENTO'
+              AND p.processo.id IS NOT NULL
+              AND UPPER(p.numeroProcessoEncontrado) LIKE '%.8.09.%'
+              AND LENGTH(
+                    REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                        UPPER(TRIM(p.numeroProcessoEncontrado)), '.', ''), '-', ''), ' ', ''), '/', ''), CHAR(9), '')
+                  ) >= 20
+            ORDER BY p.processo.id ASC
+            """)
+    List<Long> findDistinctProcessoIdsComPublicacaoMonitoramentoTjgoCnjCompleto();
+
+    /**
+     * Processos elegíveis ao robô PROJUDI (backfill): PROJUDI (Movimentações Email) ou
+     * MONITORAMENTO TJGO (Publicações Email). TRT e demais tribunais ficam de fora.
+     */
+    @Query(
+            """
+            SELECT DISTINCT p.processo.id FROM PublicacaoEntity p
+            WHERE p.processo.id IS NOT NULL
+              AND LENGTH(
+                    REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                        UPPER(TRIM(p.numeroProcessoEncontrado)), '.', ''), '-', ''), ' ', ''), '/', ''), CHAR(9), '')
+                  ) >= 20
+              AND (
+                    p.origemImportacao = 'PROJUDI'
+                 OR (
+                        p.origemImportacao = 'MONITORAMENTO'
+                    AND UPPER(p.numeroProcessoEncontrado) LIKE '%.8.09.%'
+                    )
+              )
+            ORDER BY p.processo.id ASC
+            """)
+    List<Long> findDistinctProcessoIdsElegiveisRoboProjudi();
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("DELETE FROM PublicacaoEntity p WHERE p.id IN :ids AND p.origemImportacao = 'PROJUDI'")
     int deleteByIdInAndOrigemImportacaoProjudi(@Param("ids") Collection<Long> ids);
+
+    /**
+     * Publicações importadas por e-mail (Gmail) para um CNJ normalizado — exclui linhas criadas
+     * pelo robô PROJUDI ({@code arquivo_origem_nome} {@code PROJUDI mov …}).
+     */
+    @Query(
+            """
+            SELECT p FROM PublicacaoEntity p
+            LEFT JOIN p.processo proc
+            WHERE p.emailRecebidoEm IS NOT NULL
+              AND (p.arquivoOrigemNome IS NULL OR p.arquivoOrigemNome NOT LIKE 'PROJUDI mov %')
+              AND (
+                    REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                        UPPER(TRIM(p.numeroProcessoEncontrado)), '.', ''), '-', ''), ' ', ''), '/', ''), CHAR(9), '') = :cnjNorm
+                 OR (
+                        proc.numeroCnj IS NOT NULL
+                    AND REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                        UPPER(TRIM(proc.numeroCnj)), '.', ''), '-', ''), ' ', ''), '/', ''), CHAR(9), '') = :cnjNorm
+                    )
+              )
+            """)
+    List<PublicacaoEntity> findImportadasPorEmailPorCnjNormalizado(@Param("cnjNorm") String cnjNorm);
 }
