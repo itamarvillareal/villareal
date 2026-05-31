@@ -643,7 +643,11 @@ export function inferirMaxIndicePorFicheirosTipo16(base, cod8, codNum, procStr) 
   const cent = formatCentenaPasta(centenaPastaClienteHistorico(codNum));
   const pastaCliente = pastaNumeroClienteHistorico(codNum);
   const relDir = path.join(SEGMENTO_MIL, cent, pastaCliente);
-  const prefix = `${cod8}.${TIPO_DATA}.${MEIO_FIXO}.${procStr}.`;
+  // O índice é sempre gravado com 4 dígitos (0001..9999). Casar SÓ esse formato
+  // evita que um nome corrompido (ex.: data no lugar do índice) produza um N gigante
+  // e trave a fase de análise/renumeração num laço efectivamente infinito.
+  const esc = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const re = new RegExp(`^${esc(cod8)}\\.${TIPO_DATA}\\.${MEIO_FIXO}\\.${esc(procStr)}\\.(\\d{4})\\.txt$`);
   let max = 0;
   for (const pre of PREFIXOS) {
     const dirAbs = path.join(base, pre, relDir);
@@ -655,9 +659,9 @@ export function inferirMaxIndicePorFicheirosTipo16(base, cod8, codNum, procStr) 
       continue;
     }
     for (const f of ents) {
-      if (!f.startsWith(prefix) || !f.endsWith('.txt')) continue;
-      const rest = f.slice(prefix.length, -4);
-      const n = parseIntStrict(rest);
+      const m = f.match(re);
+      if (!m) continue;
+      const n = parseIntStrict(m[1]);
       if (Number.isFinite(n) && n > max) max = n;
     }
   }

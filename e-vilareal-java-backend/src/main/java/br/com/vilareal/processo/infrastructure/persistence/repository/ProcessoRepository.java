@@ -3,6 +3,7 @@ package br.com.vilareal.processo.infrastructure.persistence.repository;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -154,4 +155,26 @@ public interface ProcessoRepository extends JpaRepository<ProcessoEntity, Long> 
             ORDER BY p.audienciaData ASC, p.audienciaHora ASC, p.id ASC
             """)
     List<ProcessoEntity> findAudienciasEntre(@Param("inicio") LocalDate inicio, @Param("fim") LocalDate fim);
+
+    /** Processos elegíveis à consulta automática PROJUDI-GO (TJGO). */
+    @Query("""
+            SELECT p FROM ProcessoEntity p
+            LEFT JOIN FETCH p.cliente
+            LEFT JOIN FETCH p.pessoa
+            WHERE p.consultaAutomatica = true
+              AND p.ativo = true
+              AND p.numeroCnj IS NOT NULL
+              AND TRIM(p.numeroCnj) <> ''
+              AND UPPER(TRIM(p.uf)) = 'GO'
+            ORDER BY p.proximaConsulta ASC, p.id ASC
+            """)
+    List<ProcessoEntity> findParaConsultaAutomaticaProjudi(Pageable pageable);
+
+    @Query("""
+            SELECT p FROM ProcessoEntity p
+            LEFT JOIN FETCH p.cliente
+            LEFT JOIN FETCH p.pessoa
+            WHERE p.id = :id
+            """)
+    Optional<ProcessoEntity> findByIdWithClienteAndPessoa(@Param("id") Long id);
 }

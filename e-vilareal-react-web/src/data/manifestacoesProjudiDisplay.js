@@ -12,7 +12,9 @@ export function parseProjudiMeta(row) {
   if (!raw) return {};
   try {
     const o = typeof raw === 'string' ? JSON.parse(raw) : raw;
-    return o?.projudi && typeof o.projudi === 'object' ? o.projudi : {};
+    if (o?.projudi && typeof o.projudi === 'object') return o.projudi;
+    if (o?.trt && typeof o.trt === 'object') return o.trt;
+    return {};
   } catch {
     return {};
   }

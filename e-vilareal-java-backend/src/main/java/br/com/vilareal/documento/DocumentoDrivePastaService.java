@@ -129,6 +129,36 @@ public class DocumentoDrivePastaService {
         return new DrivePastaProcessoDto(pastaRaizId, webViewLink, nomePasta, caminho.toString());
     }
 
+    /**
+     * Resolve o ID da pasta {@code Proc. NN} do processo no Drive (Clientes → cliente → Proc.).
+     * Reutiliza a mesma lógica de {@link #resolverPastaRaizProcesso} até o nível do processo,
+     * sem descer à pasta de parte oposta.
+     */
+    @Transactional(readOnly = true)
+    public Optional<String> resolverIdPastaProcesso(ProcessoEntity processo) {
+        if (!googleDriveService.isConfigurado() || processo == null) {
+            return Optional.empty();
+        }
+        try {
+            String codigoCliente = resolverCodigoClienteDoProcesso(processo);
+            Integer numeroInterno = processo.getNumeroInterno();
+            if (!StringUtils.hasText(codigoCliente) || numeroInterno == null) {
+                return Optional.empty();
+            }
+            DadosClienteDrive cliente = resolverDadosCliente(null, codigoCliente.trim());
+            String pastaClienteId = googleDriveService.encontrarOuCriarPastaPublic(
+                    formatarNomePastaCliente(cliente.codigoCliente(), cliente.nomeCliente()),
+                    googleDriveService.getClientesFolderId());
+            String pastaProcessoId = googleDriveService.encontrarOuCriarPastaPublic(
+                    formatarNomePastaProcesso(numeroInterno), pastaClienteId);
+            return Optional.of(pastaProcessoId);
+        } catch (Exception e) {
+            log.warn("Erro ao resolver pasta do processo no Drive (processoId={}): {}",
+                    processo.getId(), e.getMessage());
+            return Optional.empty();
+        }
+    }
+
     public String obterPastaDestino(
             GoogleDriveService driveService,
             String codigoCliente,
@@ -340,7 +370,7 @@ public class DocumentoDrivePastaService {
                 "Peticao - " + tipo + " - " + dataArquivo);
     }
 
-    private String resolverCodigoClienteDoProcesso(ProcessoEntity processo) {
+    public String resolverCodigoClienteDoProcesso(ProcessoEntity processo) {
         ClienteEntity cliente = processo.getCliente();
         if (cliente != null && StringUtils.hasText(cliente.getCodigoCliente())) {
             return cliente.getCodigoCliente().trim();

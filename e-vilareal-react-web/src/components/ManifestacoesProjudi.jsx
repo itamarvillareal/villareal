@@ -1,6 +1,9 @@
 import { PublicacoesEmail } from './PublicacoesEmail.jsx';
 
-/** Tela de manifestações Projudi TJGO (emails sistema-projudi@tjgo.jus.br). */
+/**
+ * Tela «Movimentações Email»: movimentações importadas por email do Projudi TJGO
+ * (sistema-projudi@tjgo.jus.br) e do PUSH dos TRTs/PJe (ex.: nao-responda@trt18.jus.br).
+ */
 export function ManifestacoesProjudi() {
   return <PublicacoesEmail variant="projudi" />;
 }

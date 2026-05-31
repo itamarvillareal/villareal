@@ -34,7 +34,6 @@ import {
 } from '../data/cadastroClientesStorage.js';
 import {
   salvarNaturezaAcaoDoProcesso,
-  salvarNumeroProcessoVelhoDoProcesso,
   salvarNumeroProcessoNovoDaGradeCadastro,
   salvarParteOpostaDaGradeCadastro,
   alinharListaProcessosDescricaoComHistorico,
@@ -98,6 +97,11 @@ function formatDocBR(digits) {
   if (d.length === 11) return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
   if (d.length === 14) return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`;
   return d || '—';
+}
+
+function textoParteClienteGrade(proc) {
+  const t = String(proc?.parteCliente ?? proc?.autor ?? proc?.titularNome ?? '').trim();
+  return t && t !== '—' ? t : '—';
 }
 
 function classeGradeProcessoCliente(proc, idxAlternado) {
@@ -791,7 +795,7 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
                 codigoCliente: padCliente8(codigo),
                 numeroInterno: procNum,
                 numeroProcessoNovo: campo === 'processoNovo' ? valor : row.processoNovo,
-                numeroProcessoVelho: campo === 'processoVelho' ? valor : row.processoVelho,
+                numeroProcessoVelho: row.processoVelho,
                 naturezaAcao: campo === 'descricao' ? valor : row.descricao,
                 competencia: null,
                 faseSelecionada: null,
@@ -819,12 +823,6 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
           const n = Number(row?.procNumero);
           if (Number.isFinite(n) && n >= 1) {
             salvarNaturezaAcaoDoProcesso(padCliente8(codigo), n, valor);
-          }
-        }
-        if (campo === 'processoVelho') {
-          const n = Number(row?.procNumero);
-          if (Number.isFinite(n) && n >= 1) {
-            salvarNumeroProcessoVelhoDoProcesso(padCliente8(codigo), n, valor);
           }
         }
         if (campo === 'parteOposta') {
@@ -1520,7 +1518,8 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
                     className="text-sm text-slate-600"
                     title={`Ficha interna nº ${pessoa}`}
                   >
-                    Cadastro de pessoas vinculado
+                    Cadastro de pessoas vinculado — nº{' '}
+                    <span className="font-semibold text-slate-800">{String(pessoa).trim()}</span>
                   </span>
                 ) : (
                   <span className="text-sm text-amber-700">Nenhuma pessoa vinculada</span>
@@ -1817,6 +1816,7 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
                 const n = proc.procNumero ?? idx + 1 + (paginaProcessos - 1) * PROCESSOS_POR_PAGINA;
                 const procLabel = String(n).padStart(2, '0');
                 const cnj = String(proc.processoNovo ?? '').trim();
+                const parteCliente = textoParteClienteGrade(proc);
                 return (
                   <button
                     key={proc.id}
@@ -1835,7 +1835,10 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
                     <p className="mt-2 line-clamp-2 break-all text-xs text-slate-600" title={cnj || undefined}>
                       {cnj || '— sem CNJ'}
                     </p>
-                    <p className="mt-1 line-clamp-2 text-sm text-slate-800">
+                    <p className="mt-1 line-clamp-2 text-sm text-slate-800" title={parteCliente !== '—' ? parteCliente : undefined}>
+                      {parteCliente}
+                    </p>
+                    <p className="mt-1 line-clamp-2 text-sm text-slate-600">
                       {String(proc.descricao ?? '').trim() || '—'}
                     </p>
                   </button>
@@ -1847,7 +1850,7 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
                 <thead>
                   <tr className="bg-gradient-to-r from-indigo-800 via-slate-800 to-violet-900 text-white [&_th]:border-b [&_th]:border-white/10">
                     <th className="px-3 py-2.5 text-left font-semibold w-24 whitespace-nowrap">Proc.</th>
-                    <th className="px-3 py-2.5 text-left font-semibold min-w-[100px]">N.º Processo Velho</th>
+                    <th className="px-3 py-2.5 text-left font-semibold min-w-[180px]">Parte Cliente</th>
                     <th className="px-3 py-2.5 text-left font-semibold min-w-[180px]">N.º Processo Novo</th>
                     <th className="px-3 py-2.5 text-left font-semibold min-w-[180px]">Parte Oposta</th>
                     <th className="px-3 py-2.5 text-left font-semibold min-w-[180px]">Descrição da Ação</th>
@@ -1862,7 +1865,11 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
                       </td>
                     </tr>
                   ) : null}
-                  {processosPagina.map((proc, idx) => (
+                  {processosPagina.map((proc, idx) => {
+                    const parteClienteTxt = textoParteClienteGrade(proc);
+                    const procLabelNum =
+                      proc.procNumero ?? idx + 1 + (paginaProcessos - 1) * PROCESSOS_POR_PAGINA;
+                    return (
                     <tr
                       key={proc.id}
                       className={classeGradeProcessoCliente(proc, idx)}
@@ -1873,22 +1880,20 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
                       }
                       onDoubleClick={(e) => {
                         if (e.target.closest('input, textarea, button')) return;
-                        abrirProcessos(proc.procNumero ?? idx + 1 + (paginaProcessos - 1) * PROCESSOS_POR_PAGINA);
+                        abrirProcessos(procLabelNum);
                       }}
                     >
                       <td className="border border-slate-200 px-2 py-1 text-slate-700 whitespace-nowrap tabular-nums">
                         Proc.{' '}
-                        {String(proc.procNumero ?? idx + 1 + (paginaProcessos - 1) * PROCESSOS_POR_PAGINA).padStart(2, '0')}:
+                        {String(procLabelNum).padStart(2, '0')}:
                       </td>
-                      <td className="border border-slate-200 px-1 py-0.5" onClick={(e) => e.stopPropagation()}>
-                        <input
-                          type="text"
-                          value={proc.processoVelho ?? ''}
-                          onChange={(e) => atualizarCampoProcesso(proc.id, 'processoVelho', e.target.value)}
-                          disabled={edicaoDesabilitada}
-                          title="Mesmo dado que «Nº Processo Velho» na tela Processos (localStorage)."
-                          className={`w-full min-w-[4rem] px-1 py-0.5 text-sm border border-slate-200 rounded bg-white ${edicaoDesabilitada ? 'bg-slate-50 text-slate-600 cursor-not-allowed' : ''}`}
-                        />
+                      <td className="border border-slate-200 px-3 py-1.5 text-slate-800">
+                        <span
+                          className="block line-clamp-3 break-words"
+                          title={parteClienteTxt !== '—' ? parteClienteTxt : undefined}
+                        >
+                          {parteClienteTxt}
+                        </span>
                       </td>
                       <td className="border border-slate-200 px-1 py-0.5" onClick={(e) => e.stopPropagation()}>
                         <input
@@ -1927,14 +1932,15 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
                           title="Abrir processo"
                           onClick={(e) => {
                             e.stopPropagation();
-                            abrirProcessos(proc.procNumero ?? idx + 1 + (paginaProcessos - 1) * PROCESSOS_POR_PAGINA);
+                            abrirProcessos(procLabelNum);
                           }}
                         >
                           <FolderOpen className="w-4 h-4 text-slate-600" />
                         </button>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

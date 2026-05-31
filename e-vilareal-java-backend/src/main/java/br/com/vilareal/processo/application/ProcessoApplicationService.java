@@ -326,7 +326,11 @@ public class ProcessoApplicationService {
             page = processoRepository.findByPessoa_Id(resolved.get(), pageable);
         }
         if (resumo) {
-            return page.map(this::toResponse);
+            return page.map(e -> {
+                ProcessoResponse r = toResponse(e);
+                r.setParteCliente(nomeTitularProcesso(e));
+                return r;
+            });
         }
         List<Long> procIds = page.getContent().stream().map(ProcessoEntity::getId).collect(Collectors.toList());
         Map<Long, List<ProcessoParteEntity>> partesPorProcesso = new LinkedHashMap<>();
@@ -340,8 +344,9 @@ public class ProcessoApplicationService {
         return page.map(
                 e -> {
                     ProcessoResponse r = toResponse(e);
-                    r.setParteOposta(montarTextoParteOpostaListagem(
-                            partesPorProcesso.getOrDefault(e.getId(), List.of())));
+                    List<ProcessoParteEntity> partes = partesPorProcesso.getOrDefault(e.getId(), List.of());
+                    r.setParteCliente(montarTextoParteClienteListagem(e, partes));
+                    r.setParteOposta(montarTextoParteOpostaListagem(partes));
                     return r;
                 });
     }
@@ -364,8 +369,9 @@ public class ProcessoApplicationService {
         }
         return page.map(e -> {
             ProcessoResponse r = toResponse(e);
-            r.setParteOposta(montarTextoParteOpostaListagem(
-                    partesPorProcesso.getOrDefault(e.getId(), List.of())));
+            List<ProcessoParteEntity> partes = partesPorProcesso.getOrDefault(e.getId(), List.of());
+            r.setParteCliente(montarTextoParteClienteListagem(e, partes));
+            r.setParteOposta(montarTextoParteOpostaListagem(partes));
             return r;
         });
     }
@@ -389,8 +395,9 @@ public class ProcessoApplicationService {
         return lista.stream()
                 .map(e -> {
                     ProcessoResponse r = toResponse(e);
-                    r.setParteOposta(montarTextoParteOpostaListagem(
-                            partesPorProcesso.getOrDefault(e.getId(), List.of())));
+                    List<ProcessoParteEntity> partes = partesPorProcesso.getOrDefault(e.getId(), List.of());
+                    r.setParteCliente(montarTextoParteClienteListagem(e, partes));
+                    r.setParteOposta(montarTextoParteOpostaListagem(partes));
                     return r;
                 })
                 .collect(Collectors.toList());
@@ -1177,9 +1184,11 @@ public class ProcessoApplicationService {
 
     private ProcessoResponse toResponse(ProcessoEntity e) {
         Long titularId = e.getPessoa().getId();
+        String titularNome = nomeTitularProcesso(e);
         ProcessoResponse r = new ProcessoResponse();
         r.setId(e.getId());
         r.setPessoaTitularId(titularId);
+        r.setTitularNome(titularNome);
         if (e.getCliente() != null) {
             r.setClienteId(e.getCliente().getId());
             r.setCodigoCliente(codigoClienteNormalizadoParaMapa(e.getCliente().getCodigoCliente()));
@@ -1370,18 +1379,52 @@ public class ProcessoApplicationService {
      * só entradas com {@code pessoa} vinculada para o texto agregado).
      */
     private static String montarTextoParteOpostaListagem(List<ProcessoParteEntity> partes) {
-        if (partes == null || partes.isEmpty()) {
+        return montarTextoPartesListagem(partes, false);
+    }
+
+    /** Mesma regra da tela Processos / grade Clientes: partes do polo cliente; senão titular do processo. */
+    private static String montarTextoParteClienteListagem(ProcessoEntity processo, List<ProcessoParteEntity> partes) {
+        LinkedHashSet<String> nomes = new LinkedHashSet<>();
+        if (partes != null) {
+            for (ProcessoParteEntity p : partes) {
+                String poloNorm = normalizarPoloParaComparacao(p.getPolo());
+                boolean alvoCliente = poloNorm.contains("AUTOR")
+                        || poloNorm.contains("REQUERENTE")
+                        || poloNorm.contains("CLIENTE");
+                if (!alvoCliente) {
+                    continue;
+                }
+                String rotulo = rotuloParteListagem(p);
+                if (StringUtils.hasText(rotulo)) {
+                    nomes.add(rotulo);
+                }
+            }
+        }
+        if (nomes.isEmpty()) {
+            String titular = nomeTitularProcesso(processo);
+            if (StringUtils.hasText(titular)) {
+                nomes.add(titular);
+            }
+        }
+        return formatarListaComConjuncaoE(new ArrayList<>(nomes));
+    }
+
+    private static String nomeTitularProcesso(ProcessoEntity processo) {
+        if (processo == null || processo.getPessoa() == null) {
             return "";
         }
-        List<String> nomesOposta = new ArrayList<>();
-        for (ProcessoParteEntity p : partes) {
-            String poloNorm = normalizarPoloParaComparacao(p.getPolo());
-            boolean alvoCliente = poloNorm.contains("AUTOR")
-                    || poloNorm.contains("REQUERENTE")
-                    || poloNorm.contains("CLIENTE");
-            if (alvoCliente || p.getPessoa() == null) {
-                continue;
-            }
+        String nome = processo.getPessoa().getNome();
+        if (!StringUtils.hasText(nome)) {
+            return "";
+        }
+        return Utf8MojibakeUtil.corrigir(nome.trim());
+    }
+
+    private static String rotuloParteListagem(ProcessoParteEntity p) {
+        if (p == null) {
+            return "";
+        }
+        if (p.getPessoa() != null) {
             PessoaEntity pes = p.getPessoa();
             String nomeApi = "";
             if (StringUtils.hasText(pes.getNome())) {
@@ -1390,15 +1433,36 @@ public class ProcessoApplicationService {
             if (!StringUtils.hasText(nomeApi) && StringUtils.hasText(p.getNomeLivre())) {
                 nomeApi = Utf8MojibakeUtil.corrigir(p.getNomeLivre().trim());
             }
-            long pessoaNum = pes.getId();
-            String rotulo = StringUtils.hasText(nomeApi)
-                    ? nomeApi
-                    : ("Pessoa nº " + pessoaNum);
+            if (StringUtils.hasText(nomeApi)) {
+                return nomeApi;
+            }
+            return "Pessoa nº " + pes.getId();
+        }
+        if (StringUtils.hasText(p.getNomeLivre())) {
+            return Utf8MojibakeUtil.corrigir(p.getNomeLivre().trim());
+        }
+        return "";
+    }
+
+    private static String montarTextoPartesListagem(List<ProcessoParteEntity> partes, boolean ladoCliente) {
+        if (partes == null || partes.isEmpty()) {
+            return "";
+        }
+        List<String> nomes = new ArrayList<>();
+        for (ProcessoParteEntity p : partes) {
+            String poloNorm = normalizarPoloParaComparacao(p.getPolo());
+            boolean alvoCliente = poloNorm.contains("AUTOR")
+                    || poloNorm.contains("REQUERENTE")
+                    || poloNorm.contains("CLIENTE");
+            if (ladoCliente != alvoCliente) {
+                continue;
+            }
+            String rotulo = rotuloParteListagem(p);
             if (StringUtils.hasText(rotulo)) {
-                nomesOposta.add(rotulo);
+                nomes.add(rotulo);
             }
         }
-        return formatarListaComConjuncaoE(nomesOposta);
+        return formatarListaComConjuncaoE(nomes);
     }
 
     private static String normalizarPoloParaComparacao(String polo) {

@@ -42,6 +42,12 @@ public class TopicosController {
         return topicosApplicationService.obterRaiz();
     }
 
+    @PutMapping("/hierarchy")
+    @Operation(description = "Substitui (upsert) a árvore raiz da tela Tópicos. Corpo = mesmo contrato do GET.")
+    public TopicoNoDto salvarHierarchy(@RequestBody TopicoNoDto raiz) {
+        return topicosApplicationService.salvarRaiz(raiz);
+    }
+
     @GetMapping
     @Operation(description = "Lista tópicos ativos (paginado).")
     public Page<TopicoResumoResponse> listar(

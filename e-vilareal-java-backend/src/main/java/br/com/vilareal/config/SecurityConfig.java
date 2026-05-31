@@ -64,6 +64,8 @@ public class SecurityConfig {
                         auth.requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
                                 .requestMatchers("/actuator/health", "/actuator/info").permitAll()
                                 .requestMatchers("/api/webhook/whatsapp").permitAll()
+                                // TEMPORÁRIO - liberar diagnóstico PROJUDI - remover junto com ProjudiDiagnosticoController
+                                .requestMatchers("/api/projudi/admin/**").permitAll()
                                 .requestMatchers(
                                         "/v3/api-docs/**",
                                         "/swagger-ui/**",

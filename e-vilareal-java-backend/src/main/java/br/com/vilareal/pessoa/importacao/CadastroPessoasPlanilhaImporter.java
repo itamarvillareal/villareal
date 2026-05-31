@@ -444,6 +444,7 @@ public class CadastroPessoasPlanilhaImporter {
                                     USUARIO_IMPORT);
                         }
 
+                        writeLine(rep, excelRow, String.valueOf(pessoaId), "INSERT", "OK");
                         stats.inserted++;
                     } catch (DataAccessException ex) {
                         log.warn("Falha na linha Excel {} pessoa id {}: {}", excelRow, pessoaId, ex.getMessage());

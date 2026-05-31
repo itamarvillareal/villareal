@@ -2,6 +2,7 @@ package br.com.vilareal.processo.api;
 
 import br.com.vilareal.processo.api.dto.*;
 import br.com.vilareal.processo.application.ProcessoApplicationService;
+import br.com.vilareal.processo.application.ProcessoAutosIntegralService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
@@ -10,6 +11,9 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
@@ -26,9 +30,13 @@ import java.util.stream.Collectors;
 public class ProcessosController {
 
     private final ProcessoApplicationService processoApplicationService;
+    private final ProcessoAutosIntegralService processoAutosIntegralService;
 
-    public ProcessosController(ProcessoApplicationService processoApplicationService) {
+    public ProcessosController(
+            ProcessoApplicationService processoApplicationService,
+            ProcessoAutosIntegralService processoAutosIntegralService) {
         this.processoApplicationService = processoApplicationService;
+        this.processoAutosIntegralService = processoAutosIntegralService;
     }
 
     @GetMapping
@@ -170,6 +178,26 @@ public class ProcessosController {
     public ResponseEntity<java.util.Map<String, Object>> excluirAndamentosPorOrigem(@PathVariable String origem) {
         int removidos = processoApplicationService.excluirAndamentosPorOrigem(origem);
         return ResponseEntity.ok(java.util.Map.of("origem", origem, "removidos", removidos));
+    }
+
+    @GetMapping("/autos-integral")
+    @Operation(
+            summary = "Baixar autos integral (PDF único)",
+            description =
+                    "Mescla os PDFs já existentes na pasta Movimentações do processo no Google Drive, "
+                            + "ordenados por número de movimentação e índice de arquivo. Não consulta o PROJUDI.")
+    public ResponseEntity<byte[]> baixarAutosIntegral(@RequestParam String numero) throws Exception {
+        ProcessoAutosIntegralService.ResultadoAutosIntegral resultado =
+                processoAutosIntegralService.gerarPdf(numero);
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentDisposition(ContentDisposition.attachment()
+                .filename(resultado.nomeArquivo())
+                .build());
+        headers.setContentType(MediaType.APPLICATION_PDF);
+        if (!resultado.avisos().isEmpty()) {
+            headers.add("X-Autos-Integral-Avisos", String.join(" | ", resultado.avisos()));
+        }
+        return ResponseEntity.ok().headers(headers).body(resultado.pdf());
     }
 
     @GetMapping("/{id}")

@@ -124,7 +124,11 @@ export async function zerarDadosClienteImportReal(opts) {
     );
     const pessoaId = Number(pesRows[0]?.pessoa_id);
     if (!Number.isFinite(pessoaId) || pessoaId < 1) {
-      stats.erro = 'cliente_nao_encontrado_na_base';
+      // Base limpa: a linha `cliente` ainda não existe (será criada logo a seguir
+      // pelo passo «pessoa do cliente 151.1.0» do import-real). Não há nada a zerar
+      // nem realinhar; tratamos como passo idempotente em vez de erro fatal.
+      stats.clienteAusente = true;
+      stats.status = 'cliente_ausente_nada_a_zerar';
       return stats;
     }
     stats.pessoaIdZerar = pessoaId;
@@ -269,6 +273,11 @@ export function imprimirResumoZerarCliente(stats) {
   if (pessoaZerar) console.log(`  Pessoa id (processos zerados): ${pessoaZerar}`);
   if (stats.erro) {
     console.log(`  Erro: ${stats.erro}`);
+    return;
+  }
+  if (stats.clienteAusente) {
+    console.log('  Cliente ainda não existe na base — nada a zerar (será criado a seguir via 151.1.0).');
+    console.log('');
     return;
   }
   console.log(`  Processos Dropbox (txt): ${stats.processosDropbox ?? '?'}`);

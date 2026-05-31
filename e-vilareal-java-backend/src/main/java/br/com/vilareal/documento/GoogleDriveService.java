@@ -8,8 +8,12 @@ import com.google.api.services.drive.Drive;
 import com.google.api.services.drive.model.DriveList;
 import com.google.api.services.drive.model.File;
 import com.google.api.services.drive.model.FileList;
+import com.google.api.services.drive.model.User;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.google.auth.http.HttpCredentialsAdapter;
 import com.google.auth.oauth2.GoogleCredentials;
+import com.google.auth.oauth2.ServiceAccountCredentials;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,17 +24,25 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class GoogleDriveService {
 
     private static final Logger log = LoggerFactory.getLogger(GoogleDriveService.class);
 
+    private static final List<String> DRIVE_SCOPES = List.of("https://www.googleapis.com/auth/drive");
+
     private final String credentialsFile;
     private final String rootFolderName;
     private final String rootFolderIdConfig;
     private final String clientesPath;
+    private final String impersonateUser;
 
     private Drive driveService;
     private String rootFolderId;
@@ -40,11 +52,13 @@ public class GoogleDriveService {
             @Value("${google.drive.credentials-file}") String credentialsFile,
             @Value("${google.drive.root-folder-name}") String rootFolderName,
             @Value("${google.drive.root-folder-id:}") String rootFolderIdConfig,
-            @Value("${google.drive.clientes-path:}") String clientesPath) {
+            @Value("${google.drive.clientes-path:}") String clientesPath,
+            @Value("${google.drive.impersonate-user:}") String impersonateUser) {
         this.credentialsFile = credentialsFile;
         this.rootFolderName = rootFolderName;
         this.rootFolderIdConfig = rootFolderIdConfig;
         this.clientesPath = clientesPath;
+        this.impersonateUser = impersonateUser;
     }
 
     @PostConstruct
@@ -59,7 +73,19 @@ public class GoogleDriveService {
 
             try (InputStream inputStream = resource.getInputStream()) {
                 GoogleCredentials credentials = GoogleCredentials.fromStream(inputStream)
-                        .createScoped(List.of("https://www.googleapis.com/auth/drive"));
+                        .createScoped(DRIVE_SCOPES);
+                if (StringUtils.hasText(impersonateUser)) {
+                    if (credentials instanceof ServiceAccountCredentials serviceAccount) {
+                        credentials = serviceAccount.createDelegated(impersonateUser.trim());
+                        log.info("Google Drive: impersonando {}", impersonateUser.trim());
+                    } else {
+                        log.warn(
+                                "Google Drive: google.drive.impersonate-user definido, mas credencial não é "
+                                        + "service account — impersonação ignorada.");
+                    }
+                } else {
+                    log.info("Google Drive: sem impersonação (service account direta)");
+                }
                 HttpRequestInitializer requestInitializer = new HttpCredentialsAdapter(credentials);
 
                 driveService = new Drive.Builder(
@@ -331,6 +357,28 @@ public class GoogleDriveService {
         }
     }
 
+    /** Verifica se já existe arquivo (não pasta) com o mesmo nome na pasta de destino. */
+    public boolean existeArquivoComNomeNaPasta(String pastaId, String nomeArquivo) throws Exception {
+        if (!isConfigurado() || !StringUtils.hasText(pastaId) || !StringUtils.hasText(nomeArquivo)) {
+            return false;
+        }
+        String nome = sanitizarNomeArquivoGenerico(nomeArquivo);
+        String query = "'" + pastaId + "' in parents "
+                + "and name = '" + escaparQueryDrive(nome) + "' "
+                + "and mimeType != 'application/vnd.google-apps.folder' "
+                + "and trashed = false";
+        FileList result = driveService.files()
+                .list()
+                .setQ(query)
+                .setSpaces("drive")
+                .setFields("files(id)")
+                .setPageSize(1)
+                .setSupportsAllDrives(true)
+                .setIncludeItemsFromAllDrives(true)
+                .execute();
+        return result.getFiles() != null && !result.getFiles().isEmpty();
+    }
+
     public DriveArquivoDto uploadArquivo(
             byte[] bytes, String nomeOriginal, String contentType, String pastaId) {
         if (!isConfigurado() || pastaId == null || pastaId.isBlank()) {
@@ -434,6 +482,20 @@ public class GoogleDriveService {
         }
     }
 
+    /** Baixa o conteúdo binário de um arquivo (não pasta) do Drive. */
+    public byte[] baixarBytesArquivo(String fileId) throws Exception {
+        if (!isConfigurado() || !StringUtils.hasText(fileId)) {
+            throw new IllegalStateException("Google Drive não configurado ou fileId vazio");
+        }
+        try (java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream()) {
+            driveService.files()
+                    .get(fileId)
+                    .setSupportsAllDrives(true)
+                    .executeMediaAndDownloadTo(out);
+            return out.toByteArray();
+        }
+    }
+
     public String encontrarOuCriarPastaPublic(String nomePasta, String parentId) throws Exception {
         String existente = encontrarPastaExistente(nomePasta, parentId);
         if (existente != null) {
@@ -483,6 +545,14 @@ public class GoogleDriveService {
         return nome.trim().replaceAll("[\\\\/:*?\"<>|]", " ").replaceAll("\\s+", " ");
     }
 
+    private static final String DRIVE_FILE_DIAG_FIELDS =
+            "id,name,driveId,teamDriveId,ownedByMe,owners(emailAddress,displayName),parents,"
+                    + "capabilities(canAddChildren,canDelete,canEdit)";
+
+    /** IDs fixos para diagnóstico TEMP (endpoint /api/projudi/admin/drive-diag). */
+    private static final String DIAG_RAIZ_SISTEMA_VILAREAL_ID = "1TE5a0t0ur5EWRszj_IBjS0eXSNPHF_F-";
+    private static final String DIAG_PASTA_FOLHA_PROCESSO_TESTE_ID = "1CxHD2MwxdT3i7zPWA65dRI4EOf6Nm144";
+
     private DriveArquivoDto toDriveArquivoDto(File f) {
         boolean pasta = "application/vnd.google-apps.folder".equals(f.getMimeType());
         return new DriveArquivoDto(
@@ -495,5 +565,172 @@ public class GoogleDriveService {
                 f.getWebViewLink(),
                 f.getWebContentLink(),
                 f.getIconLink());
+    }
+
+    /**
+     * TEMP — diagnóstico Drive API com a mesma credencial/cliente HTTP deste serviço.
+     * Não altera fluxo de produção.
+     */
+    public Map<String, Object> executarDiagnosticoDriveApi() {
+        Map<String, Object> out = new LinkedHashMap<>();
+        Map<String, Object> auth = montarAutenticacaoDrive();
+        out.put("autenticacaoDrive", auth);
+        out.put("configurado", isConfigurado());
+
+        if (!isConfigurado()) {
+            out.put("erro", "Google Drive não configurado (driveService ou rootFolderId ausente).");
+            out.put("interpretacao", "Drive indisponível — não foi possível consultar a API.");
+            return out;
+        }
+
+        Map<String, Object> pastas = new LinkedHashMap<>();
+        pastas.put("raizSistemaVilaReal", obterMetadadosArquivoDiagnostico(DIAG_RAIZ_SISTEMA_VILAREAL_ID));
+        pastas.put("pastaFolhaProcessoTeste", obterMetadadosArquivoDiagnostico(DIAG_PASTA_FOLHA_PROCESSO_TESTE_ID));
+        out.put("pastas", pastas);
+        out.put("sharedDrives", listarSharedDrivesDiagnostico());
+        out.put("interpretacao", interpretarDiagnosticoDrive(pastas, auth));
+        return out;
+    }
+
+    private Map<String, Object> montarAutenticacaoDrive() {
+        Map<String, Object> auth = new LinkedHashMap<>();
+        auth.put("tipoCredencial", "service_account");
+        auth.put("credentialsFileConfig", credentialsFile);
+        auth.put("escoposDrive", DRIVE_SCOPES);
+        auth.put("domainWideDelegation", StringUtils.hasText(impersonateUser));
+        auth.put("subjectImpersonacao", StringUtils.hasText(impersonateUser) ? impersonateUser.trim() : null);
+
+        try {
+            String classpathPath = credentialsFile.replace("classpath:", "");
+            Resource resource = new ClassPathResource(classpathPath);
+            auth.put("credentialsFileResolvido", resource.getURI().toString());
+            if (!resource.exists()) {
+                auth.put("erroLeitura", "Arquivo de credenciais não encontrado: " + classpathPath);
+                return auth;
+            }
+            try (InputStream inputStream = resource.getInputStream();
+                 InputStreamReader reader = new InputStreamReader(inputStream, StandardCharsets.UTF_8)) {
+                JsonObject json = JsonParser.parseReader(reader).getAsJsonObject();
+                auth.put("clientEmail", json.has("client_email") ? json.get("client_email").getAsString() : null);
+                auth.put("clientId", json.has("client_id") ? json.get("client_id").getAsString() : null);
+                auth.put("projectId", json.has("project_id") ? json.get("project_id").getAsString() : null);
+            }
+        } catch (Exception e) {
+            auth.put("erroLeitura", e.getClass().getSimpleName() + ": " + e.getMessage());
+        }
+        return auth;
+    }
+
+    private Map<String, Object> obterMetadadosArquivoDiagnostico(String fileId) {
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("idConsultado", fileId);
+        try {
+            File f = driveService.files()
+                    .get(fileId)
+                    .setSupportsAllDrives(true)
+                    .setFields(DRIVE_FILE_DIAG_FIELDS)
+                    .execute();
+            item.putAll(mapearFileDiagnostico(f));
+        } catch (Exception e) {
+            item.put("erro", e.getClass().getSimpleName() + ": " + e.getMessage());
+        }
+        return item;
+    }
+
+    private static Map<String, Object> mapearFileDiagnostico(File f) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("id", f.getId());
+        m.put("name", f.getName());
+        m.put("driveId", f.getDriveId());
+        m.put("teamDriveId", f.getTeamDriveId());
+        m.put("ownedByMe", f.getOwnedByMe());
+        m.put("owners", mapearOwners(f.getOwners()));
+        m.put("parents", f.getParents());
+        m.put("capabilities", mapearCapabilities(f.getCapabilities()));
+        return m;
+    }
+
+    private static List<Map<String, String>> mapearOwners(List<User> owners) {
+        if (owners == null || owners.isEmpty()) {
+            return List.of();
+        }
+        List<Map<String, String>> out = new ArrayList<>();
+        for (User owner : owners) {
+            Map<String, String> o = new LinkedHashMap<>();
+            o.put("email", owner.getEmailAddress());
+            o.put("displayName", owner.getDisplayName());
+            out.add(o);
+        }
+        return out;
+    }
+
+    private static Map<String, Boolean> mapearCapabilities(File.Capabilities capabilities) {
+        if (capabilities == null) {
+            return Map.of();
+        }
+        Map<String, Boolean> caps = new LinkedHashMap<>();
+        caps.put("canAddChildren", capabilities.getCanAddChildren());
+        caps.put("canDelete", capabilities.getCanDelete());
+        caps.put("canEdit", capabilities.getCanEdit());
+        return caps;
+    }
+
+    private List<Map<String, String>> listarSharedDrivesDiagnostico() {
+        try {
+            DriveList driveList = driveService.drives()
+                    .list()
+                    .setPageSize(100)
+                    .setFields("drives(id,name)")
+                    .execute();
+            if (driveList.getDrives() == null || driveList.getDrives().isEmpty()) {
+                return List.of();
+            }
+            List<Map<String, String>> drives = new ArrayList<>();
+            for (com.google.api.services.drive.model.Drive shared : driveList.getDrives()) {
+                Map<String, String> d = new LinkedHashMap<>();
+                d.put("id", shared.getId());
+                d.put("name", shared.getName());
+                drives.add(d);
+            }
+            return drives;
+        } catch (Exception e) {
+            Map<String, String> err = new LinkedHashMap<>();
+            err.put("erro", e.getClass().getSimpleName() + ": " + e.getMessage());
+            return List.of(err);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static String interpretarDiagnosticoDrive(Map<String, Object> pastas, Map<String, Object> auth) {
+        Map<String, Object> raiz = (Map<String, Object>) pastas.get("raizSistemaVilaReal");
+        if (raiz == null || raiz.containsKey("erro")) {
+            return "Não foi possível ler a raiz — ver campo pastas.raizSistemaVilaReal.erro.";
+        }
+
+        String clientEmail = auth.get("clientEmail") != null ? String.valueOf(auth.get("clientEmail")) : "(desconhecido)";
+        String driveId = raiz.get("driveId") != null ? String.valueOf(raiz.get("driveId")) : null;
+        List<Map<String, String>> owners = (List<Map<String, String>>) raiz.get("owners");
+        String ownerEmails = owners == null || owners.isEmpty()
+                ? "(sem owners na resposta)"
+                : owners.stream()
+                        .map(o -> o.getOrDefault("email", "?"))
+                        .reduce((a, b) -> a + ", " + b)
+                        .orElse("(vazio)");
+
+        if (StringUtils.hasText(driveId)) {
+            return "Raiz em Drive compartilhado (Shared Drive): driveId="
+                    + driveId
+                    + ". A credencial ("
+                    + clientEmail
+                    + ") opera com permissões nesse Shared Drive; owners="
+                    + ownerEmails
+                    + ".";
+        }
+        return "Raiz no Meu Drive de usuário (sem driveId): dono(s)="
+                + ownerEmails
+                + ". Upload via service account ("
+                + clientEmail
+                + ") consome cota do dono da pasta — storageQuotaExceeded indica limite desse usuário, "
+                + "não da service account.";
     }
 }

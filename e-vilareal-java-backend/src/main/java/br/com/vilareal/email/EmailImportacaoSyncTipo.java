@@ -2,6 +2,7 @@ package br.com.vilareal.email;
 
 public enum EmailImportacaoSyncTipo {
     PROJUDI("PROJUDI"),
+    TRT("TRT"),
     JUSBRASIL("JUSBRASIL");
 
     private final String id;

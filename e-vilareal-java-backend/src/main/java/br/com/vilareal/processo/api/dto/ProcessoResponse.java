@@ -41,6 +41,10 @@ public class ProcessoResponse {
     private String consultor;
     private Long usuarioResponsavelId;
     private String parteOposta;
+    /** Nomes das partes do lado cliente (polo autor/requerente), agregados para listagens. */
+    private String parteCliente;
+    /** Nome do titular/sujeito do processo (processo.pessoa_id). */
+    private String titularNome;
 
     public Long getId() {
         return id;
@@ -296,5 +300,21 @@ public class ProcessoResponse {
 
     public void setParteOposta(String parteOposta) {
         this.parteOposta = parteOposta;
+    }
+
+    public String getParteCliente() {
+        return parteCliente;
+    }
+
+    public void setParteCliente(String parteCliente) {
+        this.parteCliente = parteCliente;
+    }
+
+    public String getTitularNome() {
+        return titularNome;
+    }
+
+    public void setTitularNome(String titularNome) {
+        this.titularNome = titularNome;
     }
 }
