@@ -140,4 +140,9 @@ public interface PublicacaoRepository extends JpaRepository<PublicacaoEntity, Lo
               )
             """)
     List<PublicacaoEntity> findImportadasPorEmailPorCnjNormalizado(@Param("cnjNorm") String cnjNorm);
+
+    @Query("SELECT p.processo.id FROM PublicacaoEntity p WHERE p.id = :publicacaoId")
+    java.util.Optional<Long> findProcessoIdByPublicacaoId(@Param("publicacaoId") Long publicacaoId);
+
+    java.util.Optional<PublicacaoEntity> findTop1ByProcesso_IdOrderByCreatedAtDescIdDesc(Long processoId);
 }

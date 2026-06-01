@@ -135,6 +135,7 @@ public class ProjudiDrivePdfOcrBackfillService {
             item.put("paginasOcr", 0);
             item.put("regravado", false);
             item.put("erro", null);
+            item.put("aviso", null);
             arquivos.add(item);
 
             try {
@@ -148,6 +149,13 @@ public class ProjudiDrivePdfOcrBackfillService {
                     item.put("erro", resultado.erro());
                     log.warn("OCR backfill falhou (cnj={}, arquivo={}): {}",
                             cnj, pdf.nome(), resultado.erro());
+                    continue;
+                }
+                if (resultado.avisoValidacao() != null) {
+                    semMudanca++;
+                    item.put("aviso", resultado.avisoValidacao());
+                    log.warn("OCR backfill saída rejeitada (cnj={}, arquivo={}): {}",
+                            cnj, pdf.nome(), resultado.avisoValidacao());
                     continue;
                 }
                 if (!resultado.deveRegravar()) {

@@ -15,7 +15,7 @@ import {
 } from '../data/mockData';
 import {
   getEventosAgendaPersistidosPorData,
-  getUsuariosAtivos,
+  getColaboradoresHumanosAtivos,
   setUsuariosAtivos,
   criarNovoCompromissoAgendaPersistido,
   normalizarStatusCurtoAgenda,
@@ -28,7 +28,7 @@ import { getNomeExibicaoUsuario } from '../data/usuarioDisplayHelpers.js';
 import { featureFlags } from '../config/featureFlags.js';
 import { buildRouterStateChaveClienteProcesso } from '../domain/camposProcessoCliente.js';
 import { extrairChaveProcessoEventoAgenda, montarProcessoRefAgenda } from '../domain/agendaProcessoRef.js';
-import { listarUsuarios } from '../repositories/usuariosRepository.js';
+import { listarColaboradoresHumanos } from '../repositories/usuariosRepository.js';
 import { getApiUsuarioSessao } from '../data/usuarioPermissoesStorage.js';
 import {
   listarEventosPorDataUsuario,
@@ -550,7 +550,7 @@ export function Agenda({ focoDataBr = null, focoRevision = 0, modoFlutuante = fa
   const [eventoModal, setEventoModal] = useState(null);
   const [modalAgendaMensal, setModalAgendaMensal] = useState(false);
   const [agendaStatusNonce, setAgendaStatusNonce] = useState(0);
-  const [usuariosAtivos, setUsuariosAtivosState] = useState(() => getUsuariosAtivos());
+  const [usuariosAtivos, setUsuariosAtivosState] = useState(() => getColaboradoresHumanosAtivos());
   const [eventosApiEsquerda, setEventosApiEsquerda] = useState([]);
   const [eventosApiDireita, setEventosApiDireita] = useState([]);
   /** Evita flash de empty state antes do 1.º GET da API concluir. */
@@ -592,9 +592,9 @@ export function Agenda({ focoDataBr = null, focoRevision = 0, modoFlutuante = fa
       let cancelado = false;
       (async () => {
         try {
-          const lista = await listarUsuarios();
+          const lista = await listarColaboradoresHumanos();
           if (!cancelado) {
-            const ativos = (lista || []).filter((u) => u.ativo !== false);
+            const ativos = lista || [];
             setUsuariosAtivosState(ativos);
             if (ativos[0]?.id && !usuarioEsquerda) setUsuarioEsquerda(String(ativos[0].id));
             if (ativos[0]?.id && !usuarioDireita) setUsuarioDireita(String(ativos[0].id));
@@ -607,7 +607,7 @@ export function Agenda({ focoDataBr = null, focoRevision = 0, modoFlutuante = fa
         cancelado = true;
       };
     }
-    const sync = () => setUsuariosAtivosState(getUsuariosAtivos());
+    const sync = () => setUsuariosAtivosState(getColaboradoresHumanosAtivos());
     const bumpAgenda = () => setAgendaStatusNonce((n) => n + 1);
     sync();
     window.addEventListener('vilareal:usuarios-agenda-atualizados', sync);
@@ -620,7 +620,7 @@ export function Agenda({ focoDataBr = null, focoRevision = 0, modoFlutuante = fa
 
   useEffect(() => {
     if (location.pathname === '/agenda') {
-      setUsuariosAtivosState(getUsuariosAtivos());
+      setUsuariosAtivosState(getColaboradoresHumanosAtivos());
     }
   }, [location.pathname]);
 
@@ -647,7 +647,7 @@ export function Agenda({ focoDataBr = null, focoRevision = 0, modoFlutuante = fa
       window.alert(r.error || 'Não foi possível salvar a lista de usuários.');
       return false;
     }
-    setUsuariosAtivosState(getUsuariosAtivos());
+    setUsuariosAtivosState(getColaboradoresHumanosAtivos());
     return true;
   }
 

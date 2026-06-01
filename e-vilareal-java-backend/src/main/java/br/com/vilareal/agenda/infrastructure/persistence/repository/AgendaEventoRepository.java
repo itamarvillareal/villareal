@@ -41,6 +41,8 @@ public interface AgendaEventoRepository extends JpaRepository<AgendaEventoEntity
     Optional<AgendaEventoEntity> findFirstByUsuario_IdAndProcessoRefAndOrigem(
             Long usuarioId, String processoRef, String origem);
 
+    Optional<AgendaEventoEntity> findFirstByConteudoKey(String conteudoKey);
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""
             DELETE FROM AgendaEventoEntity e

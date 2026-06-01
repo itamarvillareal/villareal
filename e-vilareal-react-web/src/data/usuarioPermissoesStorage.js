@@ -3,7 +3,7 @@
  */
 
 import { navItems } from './navConfig.js';
-import { getUsuariosAtivos } from './agendaPersistenciaData.js';
+import { getUsuariosAtivos, getColaboradoresHumanosAtivos } from './agendaPersistenciaData.js';
 import { featureFlags } from '../config/featureFlags.js';
 
 export const STORAGE_PERMISSOES_USUARIOS = 'vilareal.usuarios.permissoes.v1';
@@ -150,7 +150,7 @@ export function getOperadorEstacaoId() {
     if (raw) {
       const id = JSON.parse(raw);
       if (typeof id === 'string' && id) {
-        const ativos = getUsuariosAtivos();
+        const ativos = getColaboradoresHumanosAtivos();
         if (Array.isArray(ativos) && ativos.some((u) => String(u.id) === id)) {
           return id;
         }
@@ -296,7 +296,7 @@ export function getUsuarioSessaoAtualId() {
     if (raw) {
       const id = JSON.parse(raw);
       if (typeof id === 'string' && id) {
-        const ativos = getUsuariosAtivos();
+        const ativos = getColaboradoresHumanosAtivos();
         if (Array.isArray(ativos) && ativos.some((u) => String(u.id) === id)) {
           return id;
         }
@@ -305,7 +305,7 @@ export function getUsuarioSessaoAtualId() {
   } catch {
     /* ignore */
   }
-  const primeiro = getUsuariosAtivos()?.[0];
+  const primeiro = getColaboradoresHumanosAtivos()?.[0];
   return primeiro?.id || 'itamar';
 }
 

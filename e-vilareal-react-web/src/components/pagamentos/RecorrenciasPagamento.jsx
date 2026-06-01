@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { formatBRL } from '../../data/relatorioCalculosData.js';
 import { listarImoveisApi } from '../../repositories/imoveisRepository.js';
-import { listarUsuarios } from '../../repositories/usuariosRepository.js';
+import { listarColaboradoresHumanos } from '../../repositories/usuariosRepository.js';
 import {
   ativarRecorrencia,
   buscarPagamentosGerados,
@@ -140,7 +140,7 @@ export function RecorrenciasPagamento({ onGeracaoConcluida }) {
   }, [carregar]);
 
   useEffect(() => {
-    Promise.all([listarImoveisApi(), listarUsuarios()])
+    Promise.all([listarImoveisApi(), listarColaboradoresHumanos()])
       .then(([im, us]) => {
         setImoveis(Array.isArray(im) ? im : []);
         setUsuarios(Array.isArray(us) ? us : []);

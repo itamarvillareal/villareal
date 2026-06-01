@@ -3,7 +3,8 @@ import { Search, Shield, UserPlus, UserRoundCog } from 'lucide-react';
 import { TablePaginationBar } from '../ui/TablePaginationBar.jsx';
 import { clampCadastroPessoasPageSize } from '../../api/clientesService.js';
 import { listarUsuariosPaginados, alternarUsuarioAtivo } from '../../repositories/usuariosRepository.js';
-import { getNomeExibicaoUsuario } from '../../data/usuarioDisplayHelpers.js';
+import { getNomeExibicaoUsuario, isAssistenteIaUsuario } from '../../data/usuarioDisplayHelpers.js';
+import { SeloAssistenteIa } from '../ui/AutorUsuarioExibicao.jsx';
 import { getApiUsuarioSessao } from '../../data/usuarioPermissoesStorage.js';
 import { mensagemErroAmigavel } from '../../utils/mensagemErroAmigavel.js';
 
@@ -216,6 +217,7 @@ export function UsuariosListaApiPaginada({
                 <th className="px-3 py-2.5 w-24" title="Número da ficha no Cadastro de Pessoas">
                   Cód. cadastro
                 </th>
+                <th className="px-3 py-2.5 w-20">Tipo</th>
                 <th className="px-3 py-2.5 w-16">Ativo</th>
                 <th className="px-3 py-2.5 text-right w-[11rem]">Ações</th>
               </tr>
@@ -223,13 +225,13 @@ export function UsuariosListaApiPaginada({
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="px-3 py-8 text-center text-slate-500">
+                  <td colSpan={8} className="px-3 py-8 text-center text-slate-500">
                     Carregando…
                   </td>
                 </tr>
               ) : content.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-3 py-8 text-center text-slate-500">
+                  <td colSpan={8} className="px-3 py-8 text-center text-slate-500">
                     Nenhum usuário nesta página.
                   </td>
                 </tr>
@@ -259,6 +261,16 @@ export function UsuariosListaApiPaginada({
                     </td>
                     <td className="px-3 py-2 font-mono text-xs text-slate-700">{u.login || '—'}</td>
                     <td className="px-3 py-2 font-mono text-xs">{u.numeroPessoa ?? '—'}</td>
+                    <td className="px-3 py-2 text-xs">
+                      {isAssistenteIaUsuario(u) ? (
+                        <span className="inline-flex items-center gap-1 text-violet-900">
+                          <SeloAssistenteIa />
+                          <span className="sr-only">Assistente IA</span>
+                        </span>
+                      ) : (
+                        'Humano'
+                      )}
+                    </td>
                     <td className="px-3 py-2 text-xs">{u.ativo === false ? 'Não' : 'Sim'}</td>
                     <td className="px-3 py-2 text-right whitespace-nowrap">
                       <div className="inline-flex flex-wrap gap-1 justify-end">

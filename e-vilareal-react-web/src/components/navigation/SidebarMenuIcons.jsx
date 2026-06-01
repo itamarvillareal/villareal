@@ -619,6 +619,7 @@ const MENU_ICONS = {
   'relatorio-imoveis': IconSpreadsheet,
   'documentos/gerar': IconGerarDocumento,
   agenda: IconAgenda,
+  'julia/caixa': Sparkles,
   patrimonio: IconPatrimonio,
   'ana-luisa': IconClientes,
   atividade: IconAtividade,

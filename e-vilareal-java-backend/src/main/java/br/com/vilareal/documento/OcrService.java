@@ -17,11 +17,14 @@ import java.util.concurrent.TimeUnit;
 /**
  * OCR sob demanda via {@code ocrmypdf} (CLI).
  *
- * <p>Modos permitidos: {@code --skip-text} (padrão) e {@code --redo-ocr} (backfill).
+ * <p>Modos permitidos: {@code --skip-text} (padrão/robô) e {@code --redo-ocr} (backfill redo).
  * Nunca {@code --force-ocr}.</p>
  *
- * <p>Pré-processamento em ambos: {@code --deskew --clean --rotate-pages}
- * ({@code --clean} requer {@code unpaper} no host).</p>
+ * <p>Flags por modo:</p>
+ * <ul>
+ *   <li>SKIP_TEXT: {@code --skip-text --deskew --clean --rotate-pages}</li>
+ *   <li>REDO_OCR: {@code --redo-ocr --clean --rotate-pages} (sem {@code --deskew})</li>
+ * </ul>
  *
  * <p>Dependências no host (não Maven):</p>
  * <ul>
@@ -77,9 +80,9 @@ public class OcrService {
     }
 
     /**
-     * Backfill: roda ocrmypdf em todo PDF da pasta Movimentações.
+     * Backfill: roda ocrmypdf em todo PDF da pasta Movimentações (sem gate precisaOcr).
      * {@code redoOcr=false}: {@code --skip-text}; {@code redoOcr=true}: {@code --redo-ocr}.
-     * Regrava só se {@code paginasOcr >= 1}.
+     * Regrava só se {@code paginasOcr >= 1} e validação de saída OK.
      */
     public ResultadoBackfill processarPdfBackfill(byte[] pdfBytes, boolean redoOcr) {
         if (!PdfTextoExtracaoUtil.parecePdf(pdfBytes)) {
@@ -94,8 +97,16 @@ public class OcrService {
             int paginasOcr = contarPaginasProcessadas(pdfBytes, pesquisavel, modo);
             String textoPos = PdfTextoExtracaoUtil.extrairTexto(pesquisavel);
             if (paginasOcr >= 1) {
+                PdfTextoExtracaoUtil.ValidacaoPdfSaida validacao =
+                        PdfTextoExtracaoUtil.validarPdfSaida(pdfBytes, pesquisavel, modo == ModoOcr.REDO_OCR,
+                                minCaracteres);
+                if (!validacao.aceito()) {
+                    log.warn("OCR backfill ({}): saída rejeitada, mantendo original — {}", modo,
+                            validacao.motivoRejeicao());
+                    return ResultadoBackfill.rejeitadoValidacao(pdfBytes, paginasOcr, validacao.motivoRejeicao());
+                }
                 log.info("OCR backfill ({}): {} página(s) processada(s)", modo, paginasOcr);
-                return new ResultadoBackfill(pesquisavel, paginasOcr, textoPos, null);
+                return new ResultadoBackfill(pesquisavel, paginasOcr, textoPos, null, null);
             }
             return ResultadoBackfill.semMudanca(pdfBytes, 0);
         } catch (Exception e) {
@@ -115,6 +126,14 @@ public class OcrService {
             int paginasOcr = contarPaginasProcessadas(pdfBytes, pesquisavel, modo);
             String textoPos = PdfTextoExtracaoUtil.extrairTexto(pesquisavel);
             if (paginasOcr >= 1) {
+                PdfTextoExtracaoUtil.ValidacaoPdfSaida validacao =
+                        PdfTextoExtracaoUtil.validarPdfSaida(pdfBytes, pesquisavel, false, minCaracteres);
+                if (!validacao.aceito()) {
+                    log.warn("OCR ({}): saída rejeitada, mantendo original — {}", modo,
+                            validacao.motivoRejeicao());
+                    String textoOriginal = PdfTextoExtracaoUtil.extrairTexto(pdfBytes);
+                    return ResultadoOcr.rejeitadoValidacao(pdfBytes, textoOriginal, validacao.motivoRejeicao());
+                }
                 log.info("OCR ({}) aplicado em {} página(s)", modo, paginasOcr);
                 return new ResultadoOcr(pesquisavel, textoPos, true, false, null);
             }
@@ -129,12 +148,16 @@ public class OcrService {
 
     private static int contarPaginasProcessadas(byte[] pdfAntes, byte[] pdfDepois, ModoOcr modo) {
         if (modo == ModoOcr.REDO_OCR) {
-            return PdfTextoExtracaoUtil.contarPaginasComTextoAlterado(pdfAntes, pdfDepois);
+            int alteradas = PdfTextoExtracaoUtil.contarPaginasComTextoAlterado(pdfAntes, pdfDepois);
+            if (alteradas == 0 && !java.util.Arrays.equals(pdfAntes, pdfDepois)) {
+                return 1;
+            }
+            return alteradas;
         }
         return PdfTextoExtracaoUtil.contarPaginasComOcrAdicionado(pdfAntes, pdfDepois);
     }
 
-    /** Nunca {@code --force-ocr}. */
+    /** Nunca {@code --force-ocr}. Flags incompatíveis com {@code --redo-ocr} ficam fora do modo REDO. */
     private byte[] executarOcrmypdf(byte[] pdfBytes, ModoOcr modo) throws Exception {
         Path input = Files.createTempFile("vilareal-ocr-in-", ".pdf");
         Path output = Files.createTempFile("vilareal-ocr-out-", ".pdf");
@@ -144,14 +167,7 @@ public class OcrService {
             cmd.add(ocrmypdfCommand);
             cmd.add("--language");
             cmd.add(language);
-            cmd.add("--deskew");
-            cmd.add("--clean");
-            cmd.add("--rotate-pages");
-            if (modo == ModoOcr.REDO_OCR) {
-                cmd.add("--redo-ocr");
-            } else {
-                cmd.add("--skip-text");
-            }
+            adicionarFlagsOcrmypdf(cmd, modo);
             cmd.add("--optimize");
             cmd.add("0");
             cmd.add(input.toString());
@@ -189,6 +205,19 @@ public class OcrService {
         }
     }
 
+    private static void adicionarFlagsOcrmypdf(List<String> cmd, ModoOcr modo) {
+        if (modo == ModoOcr.REDO_OCR) {
+            cmd.add("--redo-ocr");
+            cmd.add("--clean");
+            cmd.add("--rotate-pages");
+        } else {
+            cmd.add("--skip-text");
+            cmd.add("--deskew");
+            cmd.add("--clean");
+            cmd.add("--rotate-pages");
+        }
+    }
+
     private enum ModoOcr {
         SKIP_TEXT,
         REDO_OCR
@@ -208,24 +237,33 @@ public class OcrService {
         static ResultadoOcr falha(byte[] pdf, String texto, String erro) {
             return new ResultadoOcr(pdf, texto, false, true, erro);
         }
+
+        static ResultadoOcr rejeitadoValidacao(byte[] pdf, String texto, String motivo) {
+            return new ResultadoOcr(pdf, texto, false, false, motivo);
+        }
     }
 
     public record ResultadoBackfill(
             byte[] pdfPesquisavel,
             int paginasOcr,
             String textoExtraido,
-            String erro) {
+            String erro,
+            String avisoValidacao) {
 
         public boolean deveRegravar() {
-            return erro == null && paginasOcr >= 1;
+            return erro == null && avisoValidacao == null && paginasOcr >= 1;
         }
 
         static ResultadoBackfill semMudanca(byte[] pdf, int paginasOcr) {
-            return new ResultadoBackfill(pdf, paginasOcr, PdfTextoExtracaoUtil.extrairTexto(pdf), null);
+            return new ResultadoBackfill(pdf, paginasOcr, PdfTextoExtracaoUtil.extrairTexto(pdf), null, null);
+        }
+
+        static ResultadoBackfill rejeitadoValidacao(byte[] pdf, int paginasOcr, String aviso) {
+            return new ResultadoBackfill(pdf, paginasOcr, PdfTextoExtracaoUtil.extrairTexto(pdf), null, aviso);
         }
 
         static ResultadoBackfill erro(byte[] pdf, String erro) {
-            return new ResultadoBackfill(pdf, 0, PdfTextoExtracaoUtil.extrairTexto(pdf), erro);
+            return new ResultadoBackfill(pdf, 0, PdfTextoExtracaoUtil.extrairTexto(pdf), erro, null);
         }
     }
 }

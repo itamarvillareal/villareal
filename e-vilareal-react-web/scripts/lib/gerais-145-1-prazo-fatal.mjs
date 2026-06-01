@@ -1,7 +1,6 @@
 /**
- * Leitura dos ficheiros tipo 145.1 (prazo fatal por processo).
- * Estrutura: `<base>/<aaaa>/<mm>/00000NNN.145.1.<proc>.txt`
- * Conteúdo: uma linha com a data do prazo fatal (dd/mm/aaaa).
+ * Parsers e leitura do histórico mensal `Gerais/145.1/<aaaa>/<mm>/` (arquivo VB, não canónico).
+ * Sincronização para API: usar `gerais-145-1-prazo-fatal-mil.mjs` (`Gerais/{Milhar}/{Centena}/{Unidade}/`).
  */
 
 import fs from 'node:fs';

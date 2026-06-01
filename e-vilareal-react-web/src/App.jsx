@@ -7,6 +7,7 @@ import { featureFlags } from './config/featureFlags.js';
 import { Sidebar } from './components/Sidebar';
 import {
   LazyAgenda,
+  LazyJuliaCaixa,
   LazyAnaLuisa,
   LazyAtividade,
   LazyPatrimonio,
@@ -367,6 +368,7 @@ function App() {
               <Route path="/clientes/nova" element={<LazyCadastroPessoas />} />
               <Route path="/pessoas" element={<LazyCadastroClientes />} />
               <Route path="/agenda" element={<LazyAgenda />} />
+              <Route path="/julia/caixa" element={<LazyJuliaCaixa />} />
               <Route path="/ana-luisa" element={<LazyAnaLuisa />} />
               <Route path="/atividade" element={<LazyAtividade />} />
               <Route path="/patrimonio" element={<LazyPatrimonio />} />

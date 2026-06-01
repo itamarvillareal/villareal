@@ -15,6 +15,7 @@ import {
   listarUsuarios,
   salvarUsuario,
   alternarUsuarioAtivo,
+  isColaboradorHumanoAtivo,
 } from '../repositories/usuariosRepository.js';
 import { UsuariosListaApiPaginada } from './usuarios/UsuariosListaApiPaginada.jsx';
 import { featureFlags } from '../config/featureFlags.js';
@@ -905,6 +906,7 @@ export function Usuarios() {
                 >
                   <option value="">— Não copiar agenda —</option>
                   {(usuariosAtivos || [])
+                    .filter((u) => isColaboradorHumanoAtivo(u))
                     .filter((u) => String(u.id) !== String(modalIncluir.ag.id))
                     .map((u) => (
                       <option key={u.id} value={u.id}>
@@ -912,7 +914,7 @@ export function Usuarios() {
                       </option>
                     ))}
                 </select>
-                {(usuariosAtivos || []).filter((u) => String(u.id) !== String(modalIncluir.ag.id)).length === 0 ? (
+                {(usuariosAtivos || []).filter((u) => isColaboradorHumanoAtivo(u) && String(u.id) !== String(modalIncluir.ag.id)).length === 0 ? (
                   <p className="mt-2 text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded px-2 py-1.5">
                     Não há outro usuário ativo para servir de origem. Inclua primeiro ou copie a agenda depois pela
                     tela Agenda.

@@ -177,4 +177,35 @@ public interface ProcessoRepository extends JpaRepository<ProcessoEntity, Long> 
             WHERE p.id = :id
             """)
     Optional<ProcessoEntity> findByIdWithClienteAndPessoa(@Param("id") Long id);
+
+    @Query("""
+            SELECT p FROM ProcessoEntity p
+            LEFT JOIN FETCH p.cliente
+            LEFT JOIN FETCH p.pessoa
+            LEFT JOIN FETCH p.usuarioResponsavel
+            WHERE p.id = :id
+            """)
+    Optional<ProcessoEntity> findByIdForJuliaEnactment(@Param("id") Long id);
+
+    @Query(
+            """
+            SELECT p.id FROM ProcessoEntity p
+            WHERE p.prazoFatal IS NOT NULL
+              AND p.prazoFatal < :hoje
+              AND p.ativo = true
+              AND EXISTS (SELECT 1 FROM PublicacaoEntity pub WHERE pub.processo.id = p.id)
+            ORDER BY p.prazoFatal ASC, p.id ASC
+            """)
+    List<Long> findIdsComPrazoFatalVencidoComPublicacao(@Param("hoje") LocalDate hoje);
+
+    @Query(
+            """
+            SELECT p.id FROM ProcessoEntity p
+            WHERE p.prazoFatal IS NOT NULL
+              AND p.prazoFatal >= :inicio
+              AND p.prazoFatal <= :fim
+            ORDER BY p.prazoFatal ASC, p.id ASC
+            """)
+    List<Long> findIdsComPrazoFatalNaJanela(
+            @Param("inicio") LocalDate inicio, @Param("fim") LocalDate fim);
 }

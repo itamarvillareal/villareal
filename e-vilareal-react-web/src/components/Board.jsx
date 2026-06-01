@@ -4,8 +4,9 @@ import { ChevronLeft, ChevronRight, HelpCircle, X } from 'lucide-react';
 import { getApiUsuarioSessao } from '../data/usuarioPermissoesStorage.js';
 import { Column } from './Column';
 import { columns, getBoardData, tasksByColumn } from '../data/mockData';
-import { getUsuariosAtivos } from '../data/agendaPersistenciaData';
+import { getColaboradoresHumanosAtivos } from '../data/agendaPersistenciaData';
 import { getNomeExibicaoUsuario } from '../data/usuarioDisplayHelpers.js';
+import { listarColaboradoresHumanos } from '../repositories/usuariosRepository.js';
 import { featureFlags } from '../config/featureFlags.js';
 import {
   agruparTarefasPorColunas,
@@ -33,14 +34,9 @@ const PENDENCIAS_STORAGE_ID_FALLBACK = {
   ana: 'thalita',
 };
 
-function getColumnsPendencias() {
-  try {
-    const u = getUsuariosAtivos();
-    if (Array.isArray(u) && u.length > 0) {
-      return u.map((x) => ({ id: String(x.id), name: String(getNomeExibicaoUsuario(x)) }));
-    }
-  } catch {
-    /* ignore */
+function getColumnsPendenciasFromLista(lista) {
+  if (Array.isArray(lista) && lista.length > 0) {
+    return lista.map((x) => ({ id: String(x.id), name: String(getNomeExibicaoUsuario(x)) }));
   }
   return columns.map((c) => ({ ...c }));
 }
@@ -168,10 +164,24 @@ function getPendenciasIniciais() {
 export function Board() {
   const location = useLocation();
   const navigate = useNavigate();
-  const [usuariosColunas, setUsuariosColunas] = useState(() => getUsuariosAtivos());
+  const [usuariosColunas, setUsuariosColunas] = useState(() => getColaboradoresHumanosAtivos());
 
   useEffect(() => {
-    const sync = () => setUsuariosColunas(getUsuariosAtivos());
+    if (featureFlags.useApiUsuarios) {
+      let cancelado = false;
+      (async () => {
+        try {
+          const lista = await listarColaboradoresHumanos();
+          if (!cancelado) setUsuariosColunas(lista || []);
+        } catch {
+          /* fallback local */
+        }
+      })();
+      return () => {
+        cancelado = true;
+      };
+    }
+    const sync = () => setUsuariosColunas(getColaboradoresHumanosAtivos());
     sync();
     window.addEventListener('vilareal:usuarios-agenda-atualizados', sync);
     return () => window.removeEventListener('vilareal:usuarios-agenda-atualizados', sync);
@@ -179,7 +189,13 @@ export function Board() {
 
   useEffect(() => {
     if (location.pathname === '/pendencias') {
-      setUsuariosColunas(getUsuariosAtivos());
+      if (featureFlags.useApiUsuarios) {
+        listarColaboradoresHumanos()
+          .then((lista) => setUsuariosColunas(lista || []))
+          .catch(() => setUsuariosColunas(getColaboradoresHumanosAtivos()));
+      } else {
+        setUsuariosColunas(getColaboradoresHumanosAtivos());
+      }
     }
   }, [location.pathname]);
 

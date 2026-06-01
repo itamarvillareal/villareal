@@ -1,13 +1,17 @@
 /**
- * Sincronização fidedigna: Gerais/145.1 (Dropbox) → API (MySQL via backend).
+ * Sincronização: Gerais/{Milhar}/{Centena}/{Unidade} (VB) → API (MySQL via backend).
  *
- * Regra de deduplicação (legado): um par cliente+processo; vence o ficheiro na pasta ano/mês mais recente.
+ * Fonte canónica: `00000NNN.145.1.<proc>.txt` sob `Gerais/1000` ou `Gerais/2000`.
+ * Não usa `Gerais/145.1/aaaa/mm/` (histórico mensal) — evita inflar a base com cópias antigas.
  */
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { DEFAULT_BASE_GERAIS_145_1 } from './gerais-145-1-prazo-fatal.mjs';
-import { levantarPrazosFatais145_1 } from './levantar-prazos-fatais-145-1.mjs';
+import {
+  DEFAULT_BASE_GERAIS,
+  resolverBaseGeraisPrazoFatal,
+} from './gerais-145-1-prazo-fatal-mil.mjs';
+import { levantarPrazosFataisGeraisMil } from './levantar-prazos-fatais-gerais-mil.mjs';
 import {
   aplicarPrazoFatalNaApi,
   loginImportApi,
@@ -15,21 +19,17 @@ import {
 } from './prazo-fatal-api.mjs';
 import { buscarProcesso } from './vilareal-import-processo-api.mjs';
 
-const ANO_ATUAL = new Date().getFullYear();
-
 /**
  * @param {string[]} argv
  */
 export function parsePrazoFatalDropboxArgs(argv) {
   const out = {
-    base: DEFAULT_BASE_GERAIS_145_1,
+    base: DEFAULT_BASE_GERAIS,
     dryRun: true,
     aplicar: false,
     login: process.env.VILAREAL_IMPORT_LOGIN || 'itamar',
     senha: process.env.VILAREAL_IMPORT_SENHA || '',
     clienteFiltro: null,
-    anoMin: 2017,
-    anoMax: ANO_ATUAL + 1,
     apenasDiferentes: false,
     relatorio: null,
     baseUrl: (process.env.VILAREAL_API_BASE || 'http://localhost:8081').replace(/\/$/, ''),
@@ -44,7 +44,7 @@ export function parsePrazoFatalDropboxArgs(argv) {
       out.dryRun = false;
     } else if (a === '--apenas-diferentes') out.apenasDiferentes = true;
     else if (a === '--sem-verificar-api') out.verificarApi = false;
-    else if (a.startsWith('--base=')) out.base = a.slice(7);
+    else if (a.startsWith('--base=')) out.base = resolverBaseGeraisPrazoFatal(a.slice(7));
     else if (a.startsWith('--login=')) out.login = a.slice(8);
     else if (a.startsWith('--senha=')) out.senha = a.slice(8);
     else if (a.startsWith('--relatorio=')) out.relatorio = a.slice(12);
@@ -52,10 +52,16 @@ export function parsePrazoFatalDropboxArgs(argv) {
     else if (a.startsWith('--cliente=')) {
       const n = Number(a.slice(10));
       if (Number.isFinite(n) && n >= 1) out.clienteFiltro = Math.trunc(n);
-    } else if (a.startsWith('--ano-min=')) out.anoMin = Number(a.slice(10)) || 2017;
-    else if (a.startsWith('--ano-max=')) out.anoMax = Number(a.slice(10)) || ANO_ATUAL + 1;
-    else if (a.startsWith('--concurrency=')) out.concurrency = Math.max(1, Number(a.slice(14)) || 5);
+    } else if (a.startsWith('--concurrency=')) {
+      out.concurrency = Math.max(1, Number(a.slice(14)) || 5);
+    } else if (a === '--ano-min' || a.startsWith('--ano-min=') || a === '--ano-max' || a.startsWith('--ano-max=')) {
+      console.warn(
+        'Aviso: --ano-min/--ano-max ignorados; a sincronização usa Gerais/{Milhar}/{Centena}/{Unidade}, não 145.1/aaaa/mm.'
+      );
+    }
   }
+
+  out.base = resolverBaseGeraisPrazoFatal(out.base);
 
   if (!out.relatorio) {
     const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
@@ -93,16 +99,21 @@ async function runPool(items, concurrency, fn) {
  */
 export async function sincronizarPrazosFataisDropbox(opts) {
   if (!fs.existsSync(opts.base)) {
-    throw new Error(`Pasta Dropbox não encontrada: ${opts.base}`);
+    throw new Error(`Pasta Gerais não encontrada: ${opts.base}`);
+  }
+
+  const arvoreMensal = path.join(opts.base, '145.1');
+  if (path.basename(path.resolve(opts.base)) === '145.1') {
+    throw new Error(
+      'Use --base apontando para a pasta Gerais (ex.: …/Banco de Dados/Gerais), não para Gerais/145.1 (histórico mensal).'
+    );
   }
 
   if (opts.verificarApi && !opts.dryRun) {
     await verificarApiDisponivel(opts.baseUrl);
   }
 
-  const { registos, stats: levantamento } = levantarPrazosFatais145_1(opts.base, {
-    anoMin: opts.anoMin,
-    anoMax: opts.anoMax,
+  const { registos, stats: levantamento } = levantarPrazosFataisGeraisMil(opts.base, {
     clienteFiltro: opts.clienteFiltro,
   });
 
@@ -112,6 +123,7 @@ export async function sincronizarPrazosFataisDropbox(opts) {
     puladosIguais: 0,
     semProcesso: 0,
     falhas: 0,
+    avisoArvoreMensalIgnorada: fs.existsSync(arvoreMensal),
   };
 
   /** @type {object[]} */
@@ -134,6 +146,7 @@ export async function sincronizarPrazosFataisDropbox(opts) {
       numeroInterno: reg.numeroInterno,
       prazoFatal: reg.prazoFatalIso,
       arquivo: reg.relPath,
+      subpasta: `${reg.milhar}/${reg.centena}/${reg.unidade}`,
     };
 
     if (opts.dryRun) {
@@ -184,7 +197,7 @@ export async function sincronizarPrazosFataisDropbox(opts) {
   const payload = {
     geradoEm: new Date().toISOString(),
     modo: opts.dryRun ? 'dry-run' : 'aplicar',
-    baseDropbox: opts.base,
+    baseGerais: opts.base,
     baseApi: opts.baseUrl,
     stats,
     amostra,
@@ -202,17 +215,20 @@ export async function sincronizarPrazosFataisDropbox(opts) {
  */
 export function imprimirResumoPrazoFatalSync({ payload, opts }) {
   const { stats } = payload;
-  console.log('\n=== Sincronização prazos fatais (Dropbox Gerais/145.1 → API) ===');
-  console.log(`Dropbox: ${opts.base}`);
+  console.log('\n=== Sincronização prazos fatais (Gerais Milhar/Centena/Unidade → API) ===');
+  console.log(`Gerais:  ${opts.base}`);
   console.log(`API:     ${opts.baseUrl}`);
   console.log(`Modo:    ${opts.dryRun ? 'pré-visualização (dry-run)' : 'aplicar na base'}`);
+  console.log(`Fonte:   ${stats.fonte ?? 'Gerais/{Milhar}/{Centena}/{Unidade}'}`);
+  if (stats.avisoArvoreMensalIgnorada) {
+    console.log('Nota:    Gerais/145.1/aaaa/mm existe no disco mas não é usada nesta sincronização.');
+  }
   console.log('');
-  console.log(`Ficheiros .txt na árvore:     ${stats.ficheirosTxt}`);
-  console.log(`Com data válida:            ${stats.dataValida}`);
-  console.log(`Registos únicos (cli+proc): ${stats.registosUnicos}`);
-  console.log(`Duplicados (pasta recente): ${stats.duplicadosDescartados}`);
-  console.log(`Nomes inválidos:            ${stats.nomeInvalido}`);
-  console.log(`Datas inválidas/vazias:     ${stats.dataInvalida}`);
+  console.log(`Ficheiros 145.1 na árvore canónica: ${stats.ficheirosTxt}`);
+  console.log(`Com data válida:                   ${stats.dataValida}`);
+  console.log(`Sem data / texto inválido:         ${stats.dataInvalida}`);
+  console.log(`Registos únicos (cli+proc):        ${stats.registosUnicos}`);
+  console.log(`Pastas fora da regra VB:           ${stats.pastasIgnoradasSubpasta ?? 0}`);
   console.log('');
   console.log('--- Resultado ---');
   if (opts.dryRun) {
@@ -223,9 +239,11 @@ export function imprimirResumoPrazoFatalSync({ payload, opts }) {
     console.log(`  Sem processo na API:            ${stats.semProcesso}`);
     console.log(`  Falhas:                         ${stats.falhas}`);
   }
-  console.log('\nAmostra (15 primeiros no Dropbox):');
+  console.log('\nAmostra (15 primeiros):');
   for (const a of payload.amostra) {
-    console.log(`  ${a.cod8} proc ${a.numeroInterno} → ${a.prazoFatalIso}  (${a.relPath})`);
+    console.log(
+      `  ${a.cod8} proc ${a.numeroInterno} → ${a.prazoFatalIso}  (${a.milhar}/${a.centena}/${a.unidade})`
+    );
   }
   console.log(`\nRelatório completo: ${opts.relatorio}\n`);
 }

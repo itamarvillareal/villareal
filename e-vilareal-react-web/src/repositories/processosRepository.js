@@ -13,7 +13,7 @@ import {
   agruparConsultasRealizadasPorProcesso,
   ehTituloHistoricoSistemaLegado,
 } from '../domain/historicoTituloLegadoSistema.js';
-import { getNomeExibicaoUsuario } from '../data/usuarioDisplayHelpers.js';
+import { getNomeExibicaoUsuario, isAssistenteIaUsuario } from '../data/usuarioDisplayHelpers.js';
 
 function padCliente8(value) {
   const d = String(value ?? '').replace(/\D/g, '');
@@ -1090,15 +1090,33 @@ export function formatarUsuarioHistoricoExibicao(s) {
  * @param {Array<{ id?: string|number, apelido?: string, login?: string, nome?: string }>} [usuariosAtivos]
  */
 export function usuarioHistoricoParaExibicao(entrada, usuariosAtivos = []) {
+  return usuarioHistoricoAutorMeta(entrada, usuariosAtivos).rotulo;
+}
+
+/**
+ * Metadados do autor no histórico/andamento — inclui flag para selo IA.
+ * @returns {{ rotulo: string, usuario: object|null, isAssistenteIa: boolean }}
+ */
+export function usuarioHistoricoAutorMeta(entrada, usuariosAtivos = []) {
   const uid = entrada?.usuarioId;
   if (uid != null) {
     const u = (usuariosAtivos || []).find((x) => Number(x.id) === Number(uid));
     if (u) {
       const rotulo = getNomeExibicaoUsuario(u);
-      if (rotulo && rotulo !== '—') return formatarUsuarioHistoricoExibicao(rotulo);
+      if (rotulo && rotulo !== '—') {
+        return {
+          rotulo: formatarUsuarioHistoricoExibicao(rotulo),
+          usuario: u,
+          isAssistenteIa: isAssistenteIaUsuario(u),
+        };
+      }
     }
   }
-  return formatarUsuarioHistoricoExibicao(entrada?.usuario ?? '');
+  return {
+    rotulo: formatarUsuarioHistoricoExibicao(entrada?.usuario ?? ''),
+    usuario: null,
+    isAssistenteIa: false,
+  };
 }
 
 export function mapApiAndamentoToHistoricoItem(a, idx = 0, total = 1) {

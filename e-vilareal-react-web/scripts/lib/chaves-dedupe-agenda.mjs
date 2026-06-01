@@ -1,18 +1,20 @@
 import {
-  compromissosEquivalentes,
+  clusterDedupavelConservador,
+  compromissosEquivalentesAgenda,
   descricaoComoNaApi,
-  normalizarHoraAgendaTxt,
-  normalizarStatusAgendaTxt,
-} from './agenda-local-txt.mjs';
+  explicarEquivalenciaAgenda,
+} from './agenda-equivalencia-conservadora.mjs';
+import { normalizarHoraParaChave } from './agenda-conteudo-key.mjs';
 
 /**
- * @param {{ hora_evento?: string | null, descricao?: string | null, status_curto?: string | null }} row
+ * @param {{ hora_evento?: string | null, descricao?: string | null, status_curto?: string | null, processo_ref?: string | null, processoRef?: string | null }} row
  */
 export function rowParaEventoAgenda(row) {
   return {
     horaEvento: row.hora_evento ?? row.horaEvento,
     descricao: row.descricao,
     statusCurto: row.status_curto ?? row.statusCurto,
+    processoRef: row.processo_ref ?? row.processoRef ?? null,
   };
 }
 
@@ -21,8 +23,9 @@ export function rowParaEventoAgenda(row) {
  */
 export function pontuarKeeperAgenda(row) {
   let score = 0;
-  if (normalizarStatusAgendaTxt(row.status_curto) === 'OK') score += 20;
-  if (normalizarHoraAgendaTxt(row.hora_evento)) score += 10;
+  const st = String(row.status_curto ?? row.statusCurto ?? '').trim().toUpperCase();
+  if (st === 'OK') score += 20;
+  if (normalizarHoraParaChave(row.hora_evento ?? row.horaEvento)) score += 10;
   const origem = String(row.origem ?? '').toLowerCase();
   if (origem.includes('import-txt') || origem.includes('txt')) score += 5;
   if (origem.includes('planilha') || origem.includes('xls')) score += 1;
@@ -32,7 +35,27 @@ export function pontuarKeeperAgenda(row) {
 }
 
 /**
- * Agrupa compromissos equivalentes no mesmo dia/utilizador.
+ * @param {object} keeper
+ * @param {object[]} cluster
+ */
+export function explicarKeeperAgenda(keeper, cluster) {
+  const score = pontuarKeeperAgenda(keeper);
+  const parts = [`score=${score}`];
+  const origem = String(keeper.origem ?? '');
+  if (origem) parts.push(`origem=${origem}`);
+  if (keeper.processo_ref ?? keeper.processoRef) {
+    parts.push(`processo_ref=${keeper.processo_ref ?? keeper.processoRef}`);
+  }
+  const outros = cluster.filter((r) => r.id !== keeper.id);
+  if (outros.length) {
+    const motivos = outros.map((o) => explicarEquivalenciaAgenda(rowParaEventoAgenda(keeper), rowParaEventoAgenda(o)));
+    parts.push(`equiv=${[...new Set(motivos)].join('; ')}`);
+  }
+  return parts.join(', ');
+}
+
+/**
+ * Agrupa compromissos equivalentes no mesmo dia/utilizador (conservador: todos os pares).
  * @param {object[]} rows
  */
 export function agruparEquivalentesAgenda(rows) {
@@ -42,7 +65,10 @@ export function agruparEquivalentesAgenda(rows) {
     const ev = rowParaEventoAgenda(row);
     let cluster = null;
     for (const c of clusters) {
-      if (compromissosEquivalentes(ev, rowParaEventoAgenda(c[0]))) {
+      const todosEquivalentes = c.every((other) =>
+        compromissosEquivalentesAgenda(ev, rowParaEventoAgenda(other))
+      );
+      if (todosEquivalentes) {
         cluster = c;
         break;
       }
@@ -50,7 +76,9 @@ export function agruparEquivalentesAgenda(rows) {
     if (cluster) cluster.push(row);
     else clusters.push([row]);
   }
-  return clusters.filter((c) => c.length >= 2);
+  return clusters
+    .filter((c) => c.length >= 2)
+    .filter((c) => clusterDedupavelConservador(c, rowParaEventoAgenda));
 }
 
 /**
@@ -64,6 +92,28 @@ export function escolherKeeperAgenda(cluster) {
     return Number(a.id) - Number(b.id);
   });
   return sorted[0];
+}
+
+/**
+ * Clusters potenciais ignorados por ambiguidade (não deduplicáveis).
+ * @param {object[]} rows
+ */
+export function agruparAmbiguosAgenda(rows) {
+  /** @type {object[][]} */
+  const clusters = [];
+  for (const row of rows) {
+    const ev = rowParaEventoAgenda(row);
+    let cluster = null;
+    for (const c of clusters) {
+      if (compromissosEquivalentesAgenda(ev, rowParaEventoAgenda(c[0]))) {
+        cluster = c;
+        break;
+      }
+    }
+    if (cluster) cluster.push(row);
+    else clusters.push([row]);
+  }
+  return clusters.filter((c) => c.length >= 2 && !clusterDedupavelConservador(c, rowParaEventoAgenda));
 }
 
 /**

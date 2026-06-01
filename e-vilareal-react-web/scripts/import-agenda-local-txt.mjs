@@ -44,6 +44,7 @@ import {
   chaveConteudoEvento,
   compararEventoComReferenciaDia,
   compromissosEquivalentes,
+  compromissosEquivalentesAgenda,
   descricaoComoNaApi,
   indexarReferenciaDiaLegado,
   levantarEventosAgenda,
@@ -275,7 +276,7 @@ function encontrarCorrespondencia(txt, eventosApi) {
   const candidatos = [];
 
   for (const api of eventosApi) {
-    if (!compromissosEquivalentes(txt, api)) continue;
+    if (!compromissosEquivalentesAgenda(txt, api)) continue;
 
     const descApi = descricaoComoNaApi(api.descricao);
     const normDescApi = normalizarStrAgenda(descApi);
@@ -677,7 +678,7 @@ async function main() {
         (L) =>
           L.usuarioId === e.usuarioId &&
           L.dataEvento === e.dataEvento &&
-          compromissosEquivalentes(e, L)
+          compromissosEquivalentesAgenda(e, L)
       )
     ) {
       puladosDupTxt += 1;
@@ -746,7 +747,7 @@ async function main() {
     }
 
     if (match.tipo === 'faltando_na_api') {
-      const dupApi = listaDia.some((api) => compromissosEquivalentes(L, api));
+      const dupApi = listaDia.some((api) => compromissosEquivalentesAgenda(L, api));
       if (dupApi) {
         puladosIgual += 1;
         return 'skip';

@@ -66,6 +66,7 @@ public class SecurityConfig {
                                 .requestMatchers("/api/webhook/whatsapp").permitAll()
                                 // TEMPORÁRIO - liberar diagnóstico PROJUDI - remover junto com ProjudiDiagnosticoController
                                 .requestMatchers("/api/projudi/admin/**").permitAll()
+                                .requestMatchers("/api/julia/admin/**").permitAll()
                                 .requestMatchers(
                                         "/v3/api-docs/**",
                                         "/swagger-ui/**",

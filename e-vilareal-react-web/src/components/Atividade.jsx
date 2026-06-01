@@ -5,6 +5,8 @@ import { TablePaginationBar } from './ui/TablePaginationBar.jsx';
 import { MODULOS_PERMISSAO } from '../data/usuarioPermissoesStorage.js';
 import { TIPOS_ACAO_AUDITORIA } from '../services/auditoriaCliente.js';
 import { getUsuariosAtivos } from '../data/agendaPersistenciaData.js';
+import { rotuloUsuarioSelectComTipo } from '../data/usuarioDisplayHelpers.js';
+import { AutorUsuarioExibicao } from './ui/AutorUsuarioExibicao.jsx';
 
 function isoDateDiasAtras(dias) {
   const d = new Date();
@@ -238,7 +240,7 @@ export function Atividade() {
               <option value="">Todos</option>
               {usuarios.map((u) => (
                 <option key={u.id} value={u.id}>
-                  {u.apelido || u.nome || u.id}
+                  {rotuloUsuarioSelectComTipo(u)}
                 </option>
               ))}
             </select>
@@ -365,7 +367,12 @@ export function Atividade() {
                     >
                       <td className="px-3 py-2 text-slate-800 whitespace-nowrap">{row.dataBr}</td>
                       <td className="px-3 py-2 text-slate-600 font-mono text-xs whitespace-nowrap">{row.horaBr}</td>
-                      <td className="px-3 py-2 text-slate-800">{row.usuarioNome}</td>
+                      <td className="px-3 py-2 text-slate-800">
+                        <AutorUsuarioExibicao
+                          rotulo={row.usuarioNome || '—'}
+                          usuario={(usuarios || []).find((u) => String(u.id) === String(row.usuarioId))}
+                        />
+                      </td>
                       <td className="px-3 py-2 text-slate-700">{row.modulo}</td>
                       <td className="px-3 py-2 text-slate-600 text-xs">{row.tipoAcao}</td>
                       <td className="px-3 py-2 text-slate-700 max-w-md truncate" title={row.descricao}>
@@ -428,7 +435,11 @@ export function Atividade() {
               <div>
                 <dt className="text-xs font-medium text-slate-500">Usuário</dt>
                 <dd className="text-slate-800">
-                  {detalhe.usuarioNome} <span className="text-slate-500 font-mono text-xs">({detalhe.usuarioId})</span>
+                  <AutorUsuarioExibicao
+                    rotulo={detalhe.usuarioNome || '—'}
+                    usuario={(usuarios || []).find((u) => String(u.id) === String(detalhe.usuarioId))}
+                  />{' '}
+                  <span className="text-slate-500 font-mono text-xs">({detalhe.usuarioId})</span>
                 </dd>
               </div>
               <div>

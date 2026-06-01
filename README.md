@@ -77,3 +77,13 @@ docker compose -f docker-compose.yml -f docker-compose.local-db.yml up --build -
 
 O cálculo de atualização monetária busca índices mensais via APIs públicas (por exemplo, Banco Central do Brasil) para algumas opções. Isso não depende do backend Java.
 
+## Documentação
+
+Documentação técnica e operacional fica em [`docs/`](docs/). Destaques:
+
+### Júlia (triagem por IA)
+
+- [**Retrato da Júlia**](docs/julia/retrato-da-julia.md) — design da assistente-IA de triagem processual, princípios de autonomia, motor de triagem e plano faseado de implementação (documento vivo).
+
+Outros tópicos (homologação, fases de banco, frontend): ver arquivos em [`docs/`](docs/) (ex.: [`homologation-quick-start.md`](docs/homologation-quick-start.md), [`database-phases.md`](docs/database-phases.md)).
+
