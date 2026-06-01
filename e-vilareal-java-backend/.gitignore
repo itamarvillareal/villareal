@@ -3,6 +3,8 @@ HELP.md
 src/main/resources/application-local.properties
 # Config local da importação de pessoas (caminho da planilha — não commitar)
 scripts/import-pessoas.local.env
+.projudi-cred-key.local
+.google-drive-impersonate.local
 target/
 .mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/

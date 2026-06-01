@@ -34,5 +34,26 @@ DEV_JVM_ARGS="$DEV_JVM_ARGS -Dvilareal.import.imoveis-planilha.job.enabled=false
 echo "JAVA_HOME=$JAVA_HOME"
 java -version
 echo "Import jobs desativados (servidor web permanece ativo)."
+
+# Chave AES do cofre PROJUDI — deve ser estável entre restarts (senhas cifradas no MySQL).
+KEY_FILE="$ROOT/.projudi-cred-key.local"
+if [[ -z "${PROJUDI_CRED_KEY:-}" ]]; then
+  if [[ -f "$KEY_FILE" ]]; then
+    export PROJUDI_CRED_KEY="$(tr -d '[:space:]' < "$KEY_FILE")"
+    echo "PROJUDI_CRED_KEY carregada de $KEY_FILE"
+  else
+    export PROJUDI_CRED_KEY="$(openssl rand -base64 32)"
+    printf '%s\n' "$PROJUDI_CRED_KEY" > "$KEY_FILE"
+    chmod 600 "$KEY_FILE"
+    echo "PROJUDI_CRED_KEY nova gravada em $KEY_FILE (recadastre credencial PROJUDI se decrypt falhar)."
+  fi
+fi
+
+DRIVE_IMPERSONATE_FILE="$ROOT/.google-drive-impersonate.local"
+if [[ -z "${GOOGLE_DRIVE_IMPERSONATE_USER:-}" && -f "$DRIVE_IMPERSONATE_FILE" ]]; then
+  export GOOGLE_DRIVE_IMPERSONATE_USER="$(tr -d '[:space:]' < "$DRIVE_IMPERSONATE_FILE")"
+  echo "GOOGLE_DRIVE_IMPERSONATE_USER carregada de $DRIVE_IMPERSONATE_FILE"
+fi
+
 exec ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev \
   -Dspring-boot.run.jvmArguments="$DEV_JVM_ARGS" "$@"

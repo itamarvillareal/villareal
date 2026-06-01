@@ -99,6 +99,7 @@ import {
   FileText,
   FileSignature,
   Download,
+  CloudDownload,
 } from 'lucide-react';
 import { ContaCorrenteVinculoAssist } from './processos/ContaCorrenteVinculoAssist.jsx';
 import {
@@ -154,6 +155,7 @@ import {
   upsertPrazoFatalProcesso,
   alterarAtivoProcesso,
   baixarAutosIntegralProcesso,
+  obterMovimentacoesProjudiDrive,
 } from '../repositories/processosRepository.js';
 import {
   buscarNumeroImovelPorVinculo,
@@ -561,6 +563,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   const [driveExplorerAberto, setDriveExplorerAberto] = useState(false);
   const [driveConfigurado, setDriveConfigurado] = useState(false);
   const [baixandoAutosIntegral, setBaixandoAutosIntegral] = useState(false);
+  const [buscandoMovimentacoesProjudi, setBuscandoMovimentacoesProjudi] = useState(false);
   const [apiError, setApiError] = useState('');
   const [historicoExternoTick, setHistoricoExternoTick] = useState(0);
   /** Evita aplicar resposta antiga se o usuário trocar de processo antes do GET terminar. */
@@ -1953,6 +1956,38 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     }
   }, [numeroProcessoNovo, baixandoAutosIntegral]);
 
+  const handleObterMovimentacoesProjudi = useCallback(async () => {
+    const id = Number(processoApiId);
+    if (!id || buscandoMovimentacoesProjudi) return;
+    const cnj = String(numeroProcessoNovo ?? '').trim();
+    if (!cnj) {
+      setApiError('Informe o número CNJ do processo.');
+      return;
+    }
+    setBuscandoMovimentacoesProjudi(true);
+    setApiError('');
+    try {
+      const r = await obterMovimentacoesProjudiDrive(id);
+      if (r?.erro) {
+        setApiError(String(r.erro));
+        return;
+      }
+      const baixados = Number(r?.arquivosBaixados ?? 0);
+      const msg = String(r?.mensagem ?? '').trim();
+      if (msg) {
+        setHistoricoToast(msg);
+      } else if (baixados > 0) {
+        setHistoricoToast(`${baixados} arquivo(s) enviado(s) ao Drive.`);
+      } else {
+        setHistoricoToast('Consulta concluída; nenhum arquivo novo enviado.');
+      }
+    } catch (e) {
+      setApiError(e?.message || 'Falha ao obter movimentações do PROJUDI.');
+    } finally {
+      setBuscandoMovimentacoesProjudi(false);
+    }
+  }, [processoApiId, numeroProcessoNovo, buscandoMovimentacoesProjudi]);
+
   /** Snapshot completo do formulário para `localStorage` (processo × cliente). */
   function montarPayloadRegistroProcesso(overrides = {}) {
     const pf = String(prazoFatal ?? '').trim();
@@ -3031,6 +3066,21 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                   </button>
                   {driveConfigurado ? (
                     <>
+                      <button
+                        type="button"
+                        className={processosBtnGhost}
+                        disabled={
+                          apiSaving ||
+                          buscandoMovimentacoesProjudi ||
+                          !processoApiId ||
+                          !String(numeroProcessoNovo ?? '').trim()
+                        }
+                        onClick={() => void handleObterMovimentacoesProjudi()}
+                        title="Consulta o PROJUDI e arquiva movimentações no Drive (novas primeiro; cliques seguintes buscam mais 10 até acabar)"
+                      >
+                        <CloudDownload className="w-4 h-4" aria-hidden />
+                        {buscandoMovimentacoesProjudi ? 'Consultando PROJUDI…' : 'Obter movimentações'}
+                      </button>
                       <button
                         type="button"
                         className={processosBtnGhost}

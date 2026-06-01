@@ -18,6 +18,7 @@ import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.env.Environment;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
@@ -41,10 +42,13 @@ public class GoogleDriveService {
     private final String credentialsFile;
     private final String rootFolderName;
     private final String rootFolderIdConfig;
+    private final String sharedDriveIdConfig;
     private final String clientesPath;
     private final String impersonateUser;
+    private final Environment environment;
 
     private Drive driveService;
+    private String sharedDriveId;
     private String rootFolderId;
     private String clientesFolderId;
 
@@ -52,13 +56,17 @@ public class GoogleDriveService {
             @Value("${google.drive.credentials-file}") String credentialsFile,
             @Value("${google.drive.root-folder-name}") String rootFolderName,
             @Value("${google.drive.root-folder-id:}") String rootFolderIdConfig,
+            @Value("${google.drive.shared-drive-id:}") String sharedDriveIdConfig,
             @Value("${google.drive.clientes-path:}") String clientesPath,
-            @Value("${google.drive.impersonate-user:}") String impersonateUser) {
+            @Value("${google.drive.impersonate-user:}") String impersonateUser,
+            Environment environment) {
         this.credentialsFile = credentialsFile;
         this.rootFolderName = rootFolderName;
         this.rootFolderIdConfig = rootFolderIdConfig;
+        this.sharedDriveIdConfig = sharedDriveIdConfig;
         this.clientesPath = clientesPath;
         this.impersonateUser = impersonateUser;
+        this.environment = environment;
     }
 
     @PostConstruct
@@ -74,7 +82,12 @@ public class GoogleDriveService {
             try (InputStream inputStream = resource.getInputStream()) {
                 GoogleCredentials credentials = GoogleCredentials.fromStream(inputStream)
                         .createScoped(DRIVE_SCOPES);
-                if (StringUtils.hasText(impersonateUser)) {
+                sharedDriveId = StringUtils.hasText(sharedDriveIdConfig) ? sharedDriveIdConfig.trim() : null;
+                boolean modoSharedDrive = StringUtils.hasText(sharedDriveId);
+
+                if (modoSharedDrive) {
+                    log.info("Google Drive: SHARED DRIVE {}", sharedDriveId);
+                } else if (StringUtils.hasText(impersonateUser)) {
                     if (credentials instanceof ServiceAccountCredentials serviceAccount) {
                         credentials = serviceAccount.createDelegated(impersonateUser.trim());
                         log.info("Google Drive: impersonando {}", impersonateUser.trim());
@@ -84,8 +97,11 @@ public class GoogleDriveService {
                                         + "service account — impersonação ignorada.");
                     }
                 } else {
-                    log.info("Google Drive: sem impersonação (service account direta)");
+                    log.warn(
+                            "Google Drive: SA direta (SEM cota — uploads vão falhar). "
+                                    + "Configure GOOGLE_DRIVE_SHARED_DRIVE_ID ou GOOGLE_DRIVE_IMPERSONATE_USER.");
                 }
+                validarConfiguracaoDriveProducao(modoSharedDrive);
                 HttpRequestInitializer requestInitializer = new HttpCredentialsAdapter(credentials);
 
                 driveService = new Drive.Builder(
@@ -96,7 +112,13 @@ public class GoogleDriveService {
                         .build();
             }
 
-            if (StringUtils.hasText(rootFolderIdConfig)) {
+            if (StringUtils.hasText(sharedDriveId)) {
+                rootFolderId = encontrarOuCriarPastaPublic(rootFolderName, sharedDriveId);
+                log.info(
+                        "Google Drive: pasta raiz do sistema dentro do Shared Drive: {} ({})",
+                        rootFolderName,
+                        rootFolderId);
+            } else if (StringUtils.hasText(rootFolderIdConfig)) {
                 rootFolderId = rootFolderIdConfig.trim();
                 String nomeRaiz = obterNomeArquivo(rootFolderId);
                 log.info("Google Drive configurado. Pasta raiz fixada por ID: {} ({})",
@@ -129,9 +151,65 @@ public class GoogleDriveService {
             } else {
                 clientesFolderId = rootFolderId;
             }
+        } catch (IllegalStateException e) {
+            throw e;
         } catch (Exception e) {
             log.warn("Google Drive não configurado: {}", e.getMessage());
         }
+    }
+
+    /**
+     * Em produção falha somente se shared-drive-id VAZIO <b>e</b> impersonate-user VAZIO.
+     * Com o default 0ANU_… em application.properties / compose, prod sobe em modo Shared Drive.
+     */
+    private void validarConfiguracaoDriveProducao(boolean modoSharedDrive) {
+        if (!isPerfilProducao()) {
+            return;
+        }
+        if (modoSharedDrive || StringUtils.hasText(impersonateUser)) {
+            return;
+        }
+        throw new IllegalStateException(
+                "Google Drive mal configurado em produção: defina GOOGLE_DRIVE_SHARED_DRIVE_ID "
+                        + "(recomendado: 0ANU_zUd2tFQ7Uk9PVA) ou GOOGLE_DRIVE_IMPERSONATE_USER no .env.docker da VPS. "
+                        + "Service account sem Shared Drive nem impersonação não tem quota de armazenamento.");
+    }
+
+    private boolean usaSharedDrive() {
+        return StringUtils.hasText(sharedDriveId);
+    }
+
+    /** Aplica flags obrigatórias para Shared Drives em listagens (evita pastas duplicadas). */
+    private Drive.Files.List prepararListagem(Drive.Files.List request, String parentIdEscopo) {
+        request.setSupportsAllDrives(true).setIncludeItemsFromAllDrives(true);
+        if (usaSharedDrive()) {
+            request.setCorpora("drive").setDriveId(sharedDriveId);
+        }
+        return request;
+    }
+
+    private Drive.Files.Get prepararGet(Drive.Files.Get request) {
+        return request.setSupportsAllDrives(true);
+    }
+
+    private Drive.Files.Create prepararCreate(Drive.Files.Create request) {
+        return request.setSupportsAllDrives(true);
+    }
+
+    private Drive.Files.Update prepararUpdate(Drive.Files.Update request) {
+        return request.setSupportsAllDrives(true);
+    }
+
+    private boolean isPerfilProducao() {
+        if (environment == null) {
+            return false;
+        }
+        for (String perfil : environment.getActiveProfiles()) {
+            if ("prod".equalsIgnoreCase(perfil)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public boolean isConfigurado() {
@@ -144,6 +222,10 @@ public class GoogleDriveService {
 
     public String getClientesFolderId() {
         return clientesFolderId != null ? clientesFolderId : rootFolderId;
+    }
+
+    public String getSharedDriveId() {
+        return sharedDriveId;
     }
 
     public String salvarPdfEmPasta(byte[] pdfBytes, String nomeArquivo, String pastaId) {
@@ -162,10 +244,9 @@ public class GoogleDriveService {
 
             ByteArrayContent content = new ByteArrayContent("application/pdf", pdfBytes);
 
-            File uploadedFile = driveService.files()
+            File uploadedFile = prepararCreate(driveService.files()
                     .create(fileMetadata, content)
-                    .setFields("id, name, webViewLink, webContentLink")
-                    .setSupportsAllDrives(true)
+                    .setFields("id, name, webViewLink, webContentLink"))
                     .execute();
 
             log.info("PDF salvo no Google Drive: {} → {}", nomeArquivo, uploadedFile.getWebViewLink());
@@ -188,14 +269,14 @@ public class GoogleDriveService {
             query += " and '" + parentId + "' in parents";
         }
 
-        FileList result = driveService.files()
-                .list()
-                .setQ(query)
-                .setSpaces("drive")
-                .setFields("files(id, name)")
-                .setPageSize(1)
-                .setSupportsAllDrives(true)
-                .setIncludeItemsFromAllDrives(true)
+        FileList result = prepararListagem(
+                        driveService.files()
+                                .list()
+                                .setQ(query)
+                                .setSpaces("drive")
+                                .setFields("files(id, name)")
+                                .setPageSize(1),
+                        parentId)
                 .execute();
 
         if (result.getFiles() != null && !result.getFiles().isEmpty()) {
@@ -218,17 +299,17 @@ public class GoogleDriveService {
         String alvo = normalizarChaveNome(nomeSanitizado);
         String pageToken = null;
         do {
-            FileList result = driveService.files()
-                    .list()
-                    .setQ("'" + parentId + "' in parents "
-                            + "and mimeType = 'application/vnd.google-apps.folder' "
-                            + "and trashed = false")
-                    .setSpaces("drive")
-                    .setFields("nextPageToken, files(id, name)")
-                    .setPageSize(1000)
-                    .setSupportsAllDrives(true)
-                    .setIncludeItemsFromAllDrives(true)
-                    .setPageToken(pageToken)
+            FileList result = prepararListagem(
+                            driveService.files()
+                                    .list()
+                                    .setQ("'" + parentId + "' in parents "
+                                            + "and mimeType = 'application/vnd.google-apps.folder' "
+                                            + "and trashed = false")
+                                    .setSpaces("drive")
+                                    .setFields("nextPageToken, files(id, name)")
+                                    .setPageSize(1000)
+                                    .setPageToken(pageToken),
+                            parentId)
                     .execute();
             if (result.getFiles() != null) {
                 for (File f : result.getFiles()) {
@@ -259,13 +340,13 @@ public class GoogleDriveService {
         String query = "'" + parentId + "' in parents "
                 + "and mimeType = 'application/vnd.google-apps.folder' "
                 + "and trashed = false";
-        FileList result = driveService.files()
-                .list()
-                .setQ(query)
-                .setSpaces("drive")
-                .setFields("files(id, name)")
-                .setSupportsAllDrives(true)
-                .setIncludeItemsFromAllDrives(true)
+        FileList result = prepararListagem(
+                        driveService.files()
+                                .list()
+                                .setQ(query)
+                                .setSpaces("drive")
+                                .setFields("files(id, name)"),
+                        parentId)
                 .execute();
         return result.getFiles() != null ? result.getFiles() : List.of();
     }
@@ -276,10 +357,7 @@ public class GoogleDriveService {
         }
         File fileMetadata = new File();
         fileMetadata.setName(sanitizarNomePasta(novoNome));
-        driveService.files()
-                .update(fileId, fileMetadata)
-                .setSupportsAllDrives(true)
-                .execute();
+        prepararUpdate(driveService.files().update(fileId, fileMetadata)).execute();
     }
 
     /** Lista todos os filhos (pastas e arquivos) de uma pasta, com paginação. */
@@ -290,15 +368,15 @@ public class GoogleDriveService {
         List<File> todos = new java.util.ArrayList<>();
         String pageToken = null;
         do {
-            FileList result = driveService.files()
-                    .list()
-                    .setQ("'" + parentId + "' in parents and trashed = false")
-                    .setSpaces("drive")
-                    .setFields("nextPageToken, files(id, name, mimeType, parents)")
-                    .setPageSize(1000)
-                    .setSupportsAllDrives(true)
-                    .setIncludeItemsFromAllDrives(true)
-                    .setPageToken(pageToken)
+            FileList result = prepararListagem(
+                            driveService.files()
+                                    .list()
+                                    .setQ("'" + parentId + "' in parents and trashed = false")
+                                    .setSpaces("drive")
+                                    .setFields("nextPageToken, files(id, name, mimeType, parents)")
+                                    .setPageSize(1000)
+                                    .setPageToken(pageToken),
+                            parentId)
                     .execute();
             if (result.getFiles() != null) {
                 todos.addAll(result.getFiles());
@@ -323,10 +401,7 @@ public class GoogleDriveService {
         }
         File metadata = new File();
         metadata.setTrashed(true);
-        driveService.files()
-                .update(fileId, metadata)
-                .setSupportsAllDrives(true)
-                .execute();
+        prepararUpdate(driveService.files().update(fileId, metadata)).execute();
     }
 
     public List<DriveArquivoDto> listarConteudo(String pastaId) {
@@ -335,16 +410,16 @@ public class GoogleDriveService {
         }
         try {
             String query = "'" + pastaId + "' in parents and trashed = false";
-            FileList result = driveService.files()
-                    .list()
-                    .setQ(query)
-                    .setSpaces("drive")
-                    .setFields(
-                            "files(id, name, mimeType, size, modifiedTime, webViewLink, webContentLink, iconLink)")
-                    .setOrderBy("folder,name")
-                    .setSupportsAllDrives(true)
-                    .setIncludeItemsFromAllDrives(true)
-                    .setPageSize(100)
+            FileList result = prepararListagem(
+                            driveService.files()
+                                    .list()
+                                    .setQ(query)
+                                    .setSpaces("drive")
+                                    .setFields(
+                                            "files(id, name, mimeType, size, modifiedTime, webViewLink, webContentLink, iconLink)")
+                                    .setOrderBy("folder,name")
+                                    .setPageSize(100),
+                            pastaId)
                     .execute();
 
             if (result.getFiles() == null || result.getFiles().isEmpty()) {
@@ -367,14 +442,14 @@ public class GoogleDriveService {
                 + "and name = '" + escaparQueryDrive(nome) + "' "
                 + "and mimeType != 'application/vnd.google-apps.folder' "
                 + "and trashed = false";
-        FileList result = driveService.files()
-                .list()
-                .setQ(query)
-                .setSpaces("drive")
-                .setFields("files(id)")
-                .setPageSize(1)
-                .setSupportsAllDrives(true)
-                .setIncludeItemsFromAllDrives(true)
+        FileList result = prepararListagem(
+                        driveService.files()
+                                .list()
+                                .setQ(query)
+                                .setSpaces("drive")
+                                .setFields("files(id)")
+                                .setPageSize(1),
+                        pastaId)
                 .execute();
         return result.getFiles() != null && !result.getFiles().isEmpty();
     }
@@ -401,16 +476,25 @@ public class GoogleDriveService {
 
             ByteArrayContent content = new ByteArrayContent(mimeType, bytes);
 
-            File uploadedFile = driveService.files()
+            File uploadedFile = prepararCreate(driveService.files()
                     .create(fileMetadata, content)
-                    .setFields("id, name, mimeType, size, modifiedTime, webViewLink, webContentLink, iconLink")
-                    .setSupportsAllDrives(true)
+                    .setFields("id, name, mimeType, size, modifiedTime, webViewLink, webContentLink, iconLink"))
                     .execute();
 
             log.info("Arquivo salvo no Google Drive: {} → {}", nome, uploadedFile.getWebViewLink());
             return toDriveArquivoDto(uploadedFile);
         } catch (Exception e) {
-            log.warn("Erro ao enviar arquivo ao Google Drive: {}", e.getMessage());
+            String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+            if (msg.toLowerCase().contains("storagequotaexceeded")
+                    || msg.toLowerCase().contains("storage quota")) {
+                log.error(
+                        "Google Drive sem quota para upload (arquivo={}, pasta={}): {}",
+                        nomeOriginal,
+                        pastaId,
+                        msg);
+            } else {
+                log.warn("Erro ao enviar arquivo ao Google Drive ({}): {}", nomeOriginal, msg);
+            }
             return null;
         }
     }
@@ -420,11 +504,7 @@ public class GoogleDriveService {
             return null;
         }
         try {
-            File file = driveService.files()
-                    .get(fileId)
-                    .setFields("webViewLink")
-                    .setSupportsAllDrives(true)
-                    .execute();
+            File file = prepararGet(driveService.files().get(fileId).setFields("webViewLink")).execute();
             return file.getWebViewLink();
         } catch (Exception e) {
             log.warn("Erro ao obter link do Drive: {}", e.getMessage());
@@ -441,20 +521,15 @@ public class GoogleDriveService {
         if (!isConfigurado() || !StringUtils.hasText(pastaId)) {
             return null;
         }
-        File f = driveService.files()
-                .get(pastaId)
-                .setFields("id, name, parents")
-                .setSupportsAllDrives(true)
-                .execute();
+        File f = prepararGet(driveService.files().get(pastaId).setFields("id, name, parents")).execute();
         String paiId = null;
         String paiNome = null;
         boolean naFronteira = pastaId.equals(getClientesFolderId()) || pastaId.equals(rootFolderId);
         if (!naFronteira && f.getParents() != null && !f.getParents().isEmpty()) {
             try {
-                File pai = driveService.files()
-                        .get(f.getParents().get(0))
-                        .setFields("id, name")
-                        .setSupportsAllDrives(true)
+                File pai = prepararGet(driveService.files()
+                                .get(f.getParents().get(0))
+                                .setFields("id, name"))
                         .execute();
                 paiId = pai.getId();
                 paiNome = pai.getName();
@@ -470,11 +545,7 @@ public class GoogleDriveService {
             return null;
         }
         try {
-            File file = driveService.files()
-                    .get(fileId)
-                    .setFields("name")
-                    .setSupportsAllDrives(true)
-                    .execute();
+            File file = prepararGet(driveService.files().get(fileId).setFields("name")).execute();
             return file.getName();
         } catch (Exception e) {
             log.warn("Erro ao obter nome no Drive: {}", e.getMessage());
@@ -492,10 +563,7 @@ public class GoogleDriveService {
         }
         String mimeType = StringUtils.hasText(contentType) ? contentType : "application/octet-stream";
         ByteArrayContent content = new ByteArrayContent(mimeType, bytes);
-        driveService.files()
-                .update(fileId, new File(), content)
-                .setSupportsAllDrives(true)
-                .execute();
+        prepararUpdate(driveService.files().update(fileId, new File(), content)).execute();
         log.info("Conteúdo atualizado no Google Drive: fileId={} ({} bytes)", fileId, bytes.length);
     }
 
@@ -505,10 +573,7 @@ public class GoogleDriveService {
             throw new IllegalStateException("Google Drive não configurado ou fileId vazio");
         }
         try (java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream()) {
-            driveService.files()
-                    .get(fileId)
-                    .setSupportsAllDrives(true)
-                    .executeMediaAndDownloadTo(out);
+            prepararGet(driveService.files().get(fileId)).executeMediaAndDownloadTo(out);
             return out.toByteArray();
         }
     }
@@ -521,10 +586,9 @@ public class GoogleDriveService {
         if (!isConfigurado() || !StringUtils.hasText(fileId)) {
             throw new IllegalStateException("Google Drive não configurado ou fileId vazio");
         }
-        File f = driveService.files()
-                .get(fileId)
-                .setFields("id, name, mimeType, size, modifiedTime, md5Checksum")
-                .setSupportsAllDrives(true)
+        File f = prepararGet(driveService.files()
+                        .get(fileId)
+                        .setFields("id, name, mimeType, size, modifiedTime, md5Checksum"))
                 .execute();
         if (isPasta(f)) {
             throw new IllegalArgumentException("fileId aponta para pasta, não arquivo");
@@ -546,15 +610,15 @@ public class GoogleDriveService {
         List<File> todos = new ArrayList<>();
         String pageToken = null;
         do {
-            FileList result = driveService.files()
-                    .list()
-                    .setQ("'" + parentId + "' in parents and trashed = false")
-                    .setSpaces("drive")
-                    .setFields(DRIVE_CHILDREN_FIELDS)
-                    .setPageSize(1000)
-                    .setSupportsAllDrives(true)
-                    .setIncludeItemsFromAllDrives(true)
-                    .setPageToken(pageToken)
+            FileList result = prepararListagem(
+                            driveService.files()
+                                    .list()
+                                    .setQ("'" + parentId + "' in parents and trashed = false")
+                                    .setSpaces("drive")
+                                    .setFields(DRIVE_CHILDREN_FIELDS)
+                                    .setPageSize(1000)
+                                    .setPageToken(pageToken),
+                            parentId)
                     .execute();
             if (result.getFiles() != null) {
                 todos.addAll(result.getFiles());
@@ -581,11 +645,7 @@ public class GoogleDriveService {
             folderMetadata.setParents(List.of(parentId));
         }
 
-        File folder = driveService.files()
-                .create(folderMetadata)
-                .setFields("id")
-                .setSupportsAllDrives(true)
-                .execute();
+        File folder = prepararCreate(driveService.files().create(folderMetadata).setFields("id")).execute();
 
         return folder.getId();
     }
@@ -647,6 +707,10 @@ public class GoogleDriveService {
         Map<String, Object> auth = montarAutenticacaoDrive();
         out.put("autenticacaoDrive", auth);
         out.put("configurado", isConfigurado());
+        out.put("modoDrive", resolverModoDrive());
+        out.put("sharedDriveId", sharedDriveId);
+        out.put("rootFolderId", rootFolderId);
+        out.putAll(montarDiagnosticoPermissaoSharedDriveRaiz());
 
         if (!isConfigurado()) {
             out.put("erro", "Google Drive não configurado (driveService ou rootFolderId ausente).");
@@ -657,10 +721,55 @@ public class GoogleDriveService {
         Map<String, Object> pastas = new LinkedHashMap<>();
         pastas.put("raizSistemaVilaReal", obterMetadadosArquivoDiagnostico(DIAG_RAIZ_SISTEMA_VILAREAL_ID));
         pastas.put("pastaFolhaProcessoTeste", obterMetadadosArquivoDiagnostico(DIAG_PASTA_FOLHA_PROCESSO_TESTE_ID));
+        if (usaSharedDrive() && StringUtils.hasText(rootFolderId)) {
+            pastas.put("raizSistemaNoSharedDrive", obterMetadadosArquivoDiagnostico(rootFolderId));
+        }
         out.put("pastas", pastas);
         out.put("sharedDrives", listarSharedDrivesDiagnostico());
         out.put("interpretacao", interpretarDiagnosticoDrive(pastas, auth));
         return out;
+    }
+
+    /** Modo resolvido para logs e diagnóstico. */
+    public String resolverModoDrive() {
+        if (usaSharedDrive()) {
+            return "SHARED_DRIVE";
+        }
+        if (StringUtils.hasText(impersonateUser)) {
+            return "IMPERSONATION";
+        }
+        return "SERVICE_ACCOUNT_DIRECT";
+    }
+
+    /**
+     * Consulta permissões da SA no Shared Drive raiz (validação humana sem abrir o Drive UI).
+     */
+    private Map<String, Object> montarDiagnosticoPermissaoSharedDriveRaiz() {
+        Map<String, Object> perm = new LinkedHashMap<>();
+        perm.put("canAddChildren", null);
+        perm.put("canEdit", null);
+        if (!usaSharedDrive()) {
+            perm.put("permissaoSharedDriveErro", "Modo atual não usa Shared Drive como destino primário.");
+            return perm;
+        }
+        if (!isConfigurado()) {
+            perm.put("permissaoSharedDriveErro", "Drive não configurado.");
+            return perm;
+        }
+        try {
+            File driveRaiz = prepararGet(driveService.files()
+                            .get(sharedDriveId)
+                            .setFields("id,name,capabilities/canAddChildren,capabilities/canEdit"))
+                    .execute();
+            perm.put("sharedDriveRaizNome", driveRaiz.getName());
+            if (driveRaiz.getCapabilities() != null) {
+                perm.put("canAddChildren", driveRaiz.getCapabilities().getCanAddChildren());
+                perm.put("canEdit", driveRaiz.getCapabilities().getCanEdit());
+            }
+        } catch (Exception e) {
+            perm.put("permissaoSharedDriveErro", e.getClass().getSimpleName() + ": " + e.getMessage());
+        }
+        return perm;
     }
 
     private Map<String, Object> montarAutenticacaoDrive() {
@@ -670,6 +779,8 @@ public class GoogleDriveService {
         auth.put("escoposDrive", DRIVE_SCOPES);
         auth.put("domainWideDelegation", StringUtils.hasText(impersonateUser));
         auth.put("subjectImpersonacao", StringUtils.hasText(impersonateUser) ? impersonateUser.trim() : null);
+        auth.put("sharedDriveId", sharedDriveId);
+        auth.put("modoSharedDrive", usaSharedDrive());
 
         try {
             String classpathPath = credentialsFile.replace("classpath:", "");
@@ -696,10 +807,9 @@ public class GoogleDriveService {
         Map<String, Object> item = new LinkedHashMap<>();
         item.put("idConsultado", fileId);
         try {
-            File f = driveService.files()
-                    .get(fileId)
-                    .setSupportsAllDrives(true)
-                    .setFields(DRIVE_FILE_DIAG_FIELDS)
+            File f = prepararGet(driveService.files()
+                            .get(fileId)
+                            .setFields(DRIVE_FILE_DIAG_FIELDS))
                     .execute();
             item.putAll(mapearFileDiagnostico(f));
         } catch (Exception e) {

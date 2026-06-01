@@ -29,6 +29,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
@@ -324,6 +325,7 @@ public class ProjudiDiagnosticoController {
 
     /** TEMP — diagnóstico Google Drive (credencial, metadados de pastas, Shared Drives). Remover após validação. */
     @GetMapping("/drive-diag")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public Map<String, Object> driveDiagnostico() {
         Map<String, Object> out = new LinkedHashMap<>(googleDriveService.executarDiagnosticoDriveApi());
         out.put("autenticacaoGmail", montarAutenticacaoGmailDiagnostico());

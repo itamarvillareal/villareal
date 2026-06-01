@@ -1315,3 +1315,16 @@ export async function baixarAutosIntegralProcesso(numeroCnj) {
   const avisos = res.headers.get('X-Autos-Integral-Avisos');
   return { blob, filename, avisos };
 }
+
+/**
+ * Consulta PROJUDI e arquiva movimentações no Drive (regra progressiva: novas + backfill de 10).
+ * @param {number|string} processoId
+ * @returns {Promise<{ arquivosBaixados: number, totalComDocumento: number, totalArquivadasDrive: number, temMais: boolean, mensagem: string|null, selecaoResumo: string|null, erro: string|null }>}
+ */
+export async function obterMovimentacoesProjudiDrive(processoId) {
+  const id = Number(processoId);
+  if (!Number.isFinite(id) || id < 1) {
+    throw new Error('Processo sem id na API — salve o cadastro antes de consultar o PROJUDI.');
+  }
+  return request(`/api/processos/${id}/projudi/movimentacoes-drive`, { method: 'POST' });
+}

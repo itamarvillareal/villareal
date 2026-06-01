@@ -2,11 +2,10 @@ package br.com.vilareal.processo.application;
 
 import br.com.vilareal.common.exception.BusinessRuleException;
 import br.com.vilareal.common.exception.ResourceNotFoundException;
-import br.com.vilareal.documento.DocumentoDrivePastaService;
-import br.com.vilareal.documento.DrivePastaProcessoDto;
 import br.com.vilareal.documento.GoogleDriveService;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
+import br.com.vilareal.projudi.ProjudiDriveMovimentacoesPdfSupport;
 import com.google.api.services.drive.model.File;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.io.IOUtils;
@@ -42,24 +41,22 @@ public class ProcessoAutosIntegralService {
 
     private static final Logger log = LoggerFactory.getLogger(ProcessoAutosIntegralService.class);
 
-    private static final String PASTA_MOVIMENTACOES = "Movimentações";
-
     /** {@code 0003 Movimentação - Arquivo 01 - Despacho.pdf} */
     private static final Pattern PADRAO_NOME_ARQUIVO = Pattern.compile(
             "^(\\d{1,4})\\s+Movimenta[çc][ãa]o\\s+-\\s+Arquivo\\s+(\\d{1,2})(?:\\s+-\\s+(.+?))?(?:\\.[^.]+)?$",
             Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
 
     private final ProcessoRepository processoRepository;
-    private final DocumentoDrivePastaService documentoDrivePastaService;
     private final GoogleDriveService googleDriveService;
+    private final ProjudiDriveMovimentacoesPdfSupport movimentacoesPdfSupport;
 
     public ProcessoAutosIntegralService(
             ProcessoRepository processoRepository,
-            DocumentoDrivePastaService documentoDrivePastaService,
-            GoogleDriveService googleDriveService) {
+            GoogleDriveService googleDriveService,
+            ProjudiDriveMovimentacoesPdfSupport movimentacoesPdfSupport) {
         this.processoRepository = processoRepository;
-        this.documentoDrivePastaService = documentoDrivePastaService;
         this.googleDriveService = googleDriveService;
+        this.movimentacoesPdfSupport = movimentacoesPdfSupport;
     }
 
     public record ResultadoAutosIntegral(byte[] pdf, String nomeArquivo, List<String> avisos) {}
@@ -78,10 +75,10 @@ public class ProcessoAutosIntegralService {
                 ? processo.getNumeroCnj().trim()
                 : numeroCnjInformado.trim();
 
-        String pastaMovimentacoesId = resolverPastaMovimentacoesId(processo);
+        String pastaMovimentacoesId = movimentacoesPdfSupport.resolverOuCriarPastaMovimentacoesId(processo);
         if (!StringUtils.hasText(pastaMovimentacoesId)) {
             throw new ResourceNotFoundException(
-                    "Pasta Movimentações não encontrada no Drive para o processo " + numeroCnj + ".");
+                    "Não foi possível localizar a pasta do processo no Drive para " + numeroCnj + ".");
         }
 
         List<ArquivoPdfOrdenado> arquivos = listarPdfsOrdenados(pastaMovimentacoesId);
@@ -158,31 +155,8 @@ public class ProcessoAutosIntegralService {
                     "Mais de um processo cadastrado com o mesmo CNJ; use o código cliente e proc. interno.");
         }
         return processoRepository
-                .findById(ids.getFirst().longValue())
+                .findByIdWithClienteAndPessoa(ids.getFirst().longValue())
                 .orElseThrow(() -> new ResourceNotFoundException("Processo não encontrado."));
-    }
-
-    private String resolverPastaMovimentacoesId(ProcessoEntity processo) throws Exception {
-        Integer numeroInterno = processo.getNumeroInterno();
-        if (numeroInterno == null) {
-            return null;
-        }
-        String codigoCliente = documentoDrivePastaService.resolverCodigoClienteDoProcesso(processo);
-        if (!StringUtils.hasText(codigoCliente)) {
-            return null;
-        }
-        DrivePastaProcessoDto pastaDto = documentoDrivePastaService.resolverPastaRaizProcesso(
-                googleDriveService, codigoCliente.trim(), numeroInterno);
-        if (pastaDto == null || !StringUtils.hasText(pastaDto.pastaId())) {
-            return null;
-        }
-        for (File filho : googleDriveService.listarFilhos(pastaDto.pastaId())) {
-            if (googleDriveService.isPasta(filho)
-                    && PASTA_MOVIMENTACOES.equalsIgnoreCase(filho.getName().trim())) {
-                return filho.getId();
-            }
-        }
-        return null;
     }
 
     private List<ArquivoPdfOrdenado> listarPdfsOrdenados(String pastaMovimentacoesId) throws Exception {

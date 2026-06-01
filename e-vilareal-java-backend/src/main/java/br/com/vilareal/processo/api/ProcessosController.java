@@ -3,6 +3,7 @@ package br.com.vilareal.processo.api;
 import br.com.vilareal.processo.api.dto.*;
 import br.com.vilareal.processo.application.ProcessoApplicationService;
 import br.com.vilareal.processo.application.ProcessoAutosIntegralService;
+import br.com.vilareal.processo.application.ProcessoProjudiMovimentacoesDriveService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
@@ -31,12 +32,15 @@ public class ProcessosController {
 
     private final ProcessoApplicationService processoApplicationService;
     private final ProcessoAutosIntegralService processoAutosIntegralService;
+    private final ProcessoProjudiMovimentacoesDriveService processoProjudiMovimentacoesDriveService;
 
     public ProcessosController(
             ProcessoApplicationService processoApplicationService,
-            ProcessoAutosIntegralService processoAutosIntegralService) {
+            ProcessoAutosIntegralService processoAutosIntegralService,
+            ProcessoProjudiMovimentacoesDriveService processoProjudiMovimentacoesDriveService) {
         this.processoApplicationService = processoApplicationService;
         this.processoAutosIntegralService = processoAutosIntegralService;
+        this.processoProjudiMovimentacoesDriveService = processoProjudiMovimentacoesDriveService;
     }
 
     @GetMapping
@@ -203,6 +207,17 @@ public class ProcessosController {
     @GetMapping("/{id}")
     public ProcessoResponse buscar(@PathVariable Long id) {
         return processoApplicationService.buscar(id);
+    }
+
+    @PostMapping("/{id}/projudi/movimentacoes-drive")
+    @Operation(
+            summary = "Obter movimentações PROJUDI (progressivo → Drive)",
+            description =
+                    "Consulta o PROJUDI e arquiva no Drive movimentações com documento: primeiro as novas "
+                            + "no topo; a cada clique seguinte, até 10 movimentações mais antigas ainda não arquivadas "
+                            + "(regra progressiva). Repita até `temMais=false`.")
+    public ProcessoProjudiMovimentacoesDriveResponse obterMovimentacoesProjudiDrive(@PathVariable Long id) {
+        return processoProjudiMovimentacoesDriveService.executar(id);
     }
 
     @PostMapping
