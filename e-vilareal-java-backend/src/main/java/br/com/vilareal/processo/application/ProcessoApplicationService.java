@@ -704,6 +704,38 @@ public class ProcessoApplicationService {
         return out;
     }
 
+    /**
+     * Nomes agregados dos polos autor e réu (rótulos «Parte autora» / «Parte oposta» na caixa da Júlia e similares).
+     */
+    @Transactional(readOnly = true)
+    public Map<Long, ProcessoPartesVinculoTexto> resolverPartesAutoraOpostaEmLote(Set<Long> processoIds) {
+        if (processoIds == null || processoIds.isEmpty()) {
+            return Map.of();
+        }
+        List<Long> idList = processoIds.stream().filter(id -> id != null && id > 0).distinct().toList();
+        if (idList.isEmpty()) {
+            return Map.of();
+        }
+        List<ProcessoEntity> processos = processoRepository.findAllById(idList);
+        Map<Long, List<ProcessoParteEntity>> partesPorProcesso = new LinkedHashMap<>();
+        for (ProcessoParteEntity parte : parteRepository.findAllByProcessoIdInWithPessoaEProcesso(idList)) {
+            Long pid = parte.getProcesso().getId();
+            partesPorProcesso.computeIfAbsent(pid, k -> new ArrayList<>()).add(parte);
+        }
+        Map<Long, ProcessoPartesVinculoTexto> out = new LinkedHashMap<>();
+        for (ProcessoEntity e : processos) {
+            List<ProcessoParteEntity> partes = partesPorProcesso.getOrDefault(e.getId(), List.of());
+            String autora = montarTextoParteClienteListagem(e, partes);
+            String oposta = montarTextoParteOpostaListagem(partes);
+            out.put(
+                    e.getId(),
+                    new ProcessoPartesVinculoTexto(
+                            StringUtils.hasText(autora) ? autora.trim() : "",
+                            StringUtils.hasText(oposta) ? oposta.trim() : ""));
+        }
+        return out;
+    }
+
     @Transactional(readOnly = true)
     public ProcessoResponse buscar(Long id) {
         ProcessoEntity e = requireProcesso(id);

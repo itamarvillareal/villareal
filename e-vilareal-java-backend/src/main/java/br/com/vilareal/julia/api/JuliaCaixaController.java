@@ -24,7 +24,7 @@ public class JuliaCaixaController {
     @Operation(
             summary = "Listar cards da caixa",
             description =
-                    "Default AGUARDANDO_VOCE inclui também POSTERGADO com postergarAte <= hoje. Ordenação: prioridade desc, prazo mais próximo.")
+                    "Default AGUARDANDO_VOCE inclui também POSTERGADO com postergarAte <= hoje. Ordenação no cliente.")
     public List<JuliaCaixaCardResponse> listar(
             @RequestParam(value = "status", defaultValue = "AGUARDANDO_VOCE") String status) {
         return juliaCaixaApplicationService.listarCaixa(status);

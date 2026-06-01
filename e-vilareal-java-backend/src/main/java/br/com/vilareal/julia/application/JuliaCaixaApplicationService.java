@@ -9,6 +9,8 @@ import br.com.vilareal.julia.infrastructure.persistence.entity.JuliaTriagemEntit
 import br.com.vilareal.julia.infrastructure.persistence.repository.JuliaTriagemRepository;
 import br.com.vilareal.julia.triagem.TriagemResultado;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
+import br.com.vilareal.processo.api.dto.ProcessoPartesVinculoTexto;
+import br.com.vilareal.processo.application.ProcessoApplicationService;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.publicacao.infrastructure.persistence.entity.PublicacaoEntity;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -18,8 +20,11 @@ import org.springframework.util.StringUtils;
 
 import java.time.LocalDate;
 import java.time.ZoneId;
-import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 public class JuliaCaixaApplicationService {
@@ -27,10 +32,15 @@ public class JuliaCaixaApplicationService {
     private static final ZoneId ZONA_BR = ZoneId.of("America/Sao_Paulo");
 
     private final JuliaTriagemRepository juliaTriagemRepository;
+    private final ProcessoApplicationService processoApplicationService;
     private final ObjectMapper objectMapper;
 
-    public JuliaCaixaApplicationService(JuliaTriagemRepository juliaTriagemRepository, ObjectMapper objectMapper) {
+    public JuliaCaixaApplicationService(
+            JuliaTriagemRepository juliaTriagemRepository,
+            ProcessoApplicationService processoApplicationService,
+            ObjectMapper objectMapper) {
         this.juliaTriagemRepository = juliaTriagemRepository;
+        this.processoApplicationService = processoApplicationService;
         this.objectMapper = objectMapper;
     }
 
@@ -38,9 +48,16 @@ public class JuliaCaixaApplicationService {
     public List<JuliaCaixaCardResponse> listarCaixa(String status) {
         JuliaStatusCaixa filtro = JuliaStatusCaixa.parse(status != null ? status : "AGUARDANDO_VOCE");
         LocalDate hoje = LocalDate.now(ZONA_BR);
-        return juliaTriagemRepository.findForCaixa(filtro.name(), hoje).stream()
-                .map(this::toCard)
-                .sorted(ordenacaoCaixa())
+        List<JuliaTriagemEntity> entidades = juliaTriagemRepository.findForCaixa(filtro.name(), hoje);
+        Set<Long> processoIds = entidades.stream()
+                .map(JuliaTriagemEntity::getProcesso)
+                .filter(Objects::nonNull)
+                .map(ProcessoEntity::getId)
+                .collect(Collectors.toSet());
+        Map<Long, ProcessoPartesVinculoTexto> partesPorProcesso =
+                processoApplicationService.resolverPartesAutoraOpostaEmLote(processoIds);
+        return entidades.stream()
+                .map(e -> toCard(e, partesPorProcesso))
                 .toList();
     }
 
@@ -77,10 +94,16 @@ public class JuliaCaixaApplicationService {
             throw new BusinessRuleException("POSTERGADO exige postergarAte.");
         }
 
-        return toCard(juliaTriagemRepository.save(entity));
+        JuliaTriagemEntity saved = juliaTriagemRepository.save(entity);
+        Map<Long, ProcessoPartesVinculoTexto> partes = Map.of();
+        if (saved.getProcesso() != null && saved.getProcesso().getId() != null) {
+            partes = processoApplicationService.resolverPartesAutoraOpostaEmLote(Set.of(saved.getProcesso().getId()));
+        }
+        return toCard(saved, partes);
     }
 
-    private JuliaCaixaCardResponse toCard(JuliaTriagemEntity entity) {
+    private JuliaCaixaCardResponse toCard(
+            JuliaTriagemEntity entity, Map<Long, ProcessoPartesVinculoTexto> partesPorProcesso) {
         TriagemResultado payload = lerPayload(entity);
         ProcessoEntity processo = entity.getProcesso();
         PublicacaoEntity publicacao = entity.getPublicacao();
@@ -90,6 +113,16 @@ public class JuliaCaixaApplicationService {
         String numeroCnj = processo != null ? processo.getNumeroCnj() : null;
         if (!StringUtils.hasText(numeroCnj) && publicacao != null) {
             numeroCnj = publicacao.getNumeroProcessoEncontrado();
+        }
+
+        String parteAutora = null;
+        String parteOposta = null;
+        if (processoId != null && partesPorProcesso != null) {
+            ProcessoPartesVinculoTexto pt = partesPorProcesso.get(processoId);
+            if (pt != null) {
+                parteAutora = trimToNull(pt.getParteCliente());
+                parteOposta = trimToNull(pt.getParteOposta());
+            }
         }
 
         LocalDate prazoDataFim = null;
@@ -107,6 +140,8 @@ public class JuliaCaixaApplicationService {
                 processoId,
                 numeroCnj,
                 resolverNomeCliente(processo),
+                parteAutora,
+                parteOposta,
                 entity.getClassificacao(),
                 entity.getImpactoCliente(),
                 entity.getPrioridade(),
@@ -153,23 +188,10 @@ public class JuliaCaixaApplicationService {
         return null;
     }
 
-    private static Comparator<JuliaCaixaCardResponse> ordenacaoCaixa() {
-        return Comparator.<JuliaCaixaCardResponse>comparingInt(c -> rankPrioridade(c.prioridade()))
-                .reversed()
-                .thenComparing(c -> c.prazoDataFim() == null ? LocalDate.MAX : c.prazoDataFim())
-                .thenComparing(JuliaCaixaCardResponse::criadoEm, Comparator.nullsLast(Comparator.naturalOrder()));
-    }
-
-    private static int rankPrioridade(String prioridade) {
-        if (!StringUtils.hasText(prioridade)) {
-            return 0;
+    private static String trimToNull(String s) {
+        if (!StringUtils.hasText(s)) {
+            return null;
         }
-        return switch (prioridade.trim().toUpperCase()) {
-            case "URGENTE" -> 4;
-            case "ALTA" -> 3;
-            case "MEDIA", "MÉDIA" -> 2;
-            case "BAIXA" -> 1;
-            default -> 0;
-        };
+        return s.trim();
     }
 }

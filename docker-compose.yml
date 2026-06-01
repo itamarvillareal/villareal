@@ -15,7 +15,7 @@ services:
     container_name: vilareal-backend
     environment:
       SPRING_PROFILES_ACTIVE: dev
-      # Variáveis VILLAREAL_COMPOSE_* vêm de `.env.docker` (evita colidir com um `.env` genérico na raiz).
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?defina ANTHROPIC_API_KEY no .env.docker}      # Variáveis VILLAREAL_COMPOSE_* vêm de `.env.docker` (evita colidir com um `.env` genérico na raiz).
       SPRING_DATASOURCE_URL: ${VILLAREAL_COMPOSE_JDBC_URL:-jdbc:mysql://host.docker.internal:3308/vilareal?createDatabaseIfNotExist=false&useSSL=false&allowPublicKeyRetrieval=true&characterEncoding=utf8&serverTimezone=UTC}
       SPRING_DATASOURCE_USERNAME: ${VILLAREAL_COMPOSE_JDBC_USER:-villareal_remote}
       SPRING_DATASOURCE_PASSWORD: ${VILLAREAL_COMPOSE_JDBC_PASSWORD:?Crie .env.docker a partir de .env.docker.example e defina VILLAREAL_COMPOSE_JDBC_PASSWORD}
