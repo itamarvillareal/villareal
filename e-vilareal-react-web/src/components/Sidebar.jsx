@@ -3,7 +3,7 @@ import { NavLink, useLocation, Link, useNavigate } from 'react-router-dom';
 import { ChevronDown, ChevronRight, X } from 'lucide-react';
 import { navItems } from '../data/navConfig.js';
 import { SidebarMenuIcon } from './navigation/SidebarMenuIcons.jsx';
-import { getUsuariosAtivos } from '../data/agendaPersistenciaData';
+import { getColaboradoresHumanosAtivos } from '../data/agendaPersistenciaData';
 import {
   getUsuarioSessaoAtualId,
   setUsuarioSessaoAtualId,
@@ -16,6 +16,7 @@ import {
   getApiUsuarioSessao,
 } from '../data/usuarioPermissoesStorage.js';
 import { getNomeExibicaoUsuario } from '../data/usuarioDisplayHelpers.js';
+import { SeloAssistenteIa } from './ui/AutorUsuarioExibicao.jsx';
 import { registrarAuditoria } from '../services/auditoriaCliente.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { featureFlags } from '../config/featureFlags.js';
@@ -54,7 +55,7 @@ export function Sidebar({ mobileDrawerOpen = false, onMobileDrawerChange } = {})
   }, []);
 
   const perfilId = getPerfilAtivoParaPermissoes();
-  const usuariosLista = getUsuariosAtivos();
+  const usuariosLista = getColaboradoresHumanosAtivos();
   const podeAlternar = operadorPodeAlternarPerfil();
   const operadorId = getOperadorEstacaoId();
   const apiSessao = getApiUsuarioSessao();
@@ -314,7 +315,10 @@ export function Sidebar({ mobileDrawerOpen = false, onMobileDrawerChange } = {})
               }
             >
               <SidebarMenuIcon id={item.id} className="w-4 h-4 shrink-0" />
-              <span className="leading-snug">{item.label}</span>
+              <span className="leading-snug flex items-center gap-1.5 min-w-0 flex-1">
+                {item.label}
+                {item.badgeIa ? <SeloAssistenteIa /> : null}
+              </span>
             </NavLink>
           );
         })}
@@ -331,7 +335,7 @@ export function Sidebar({ mobileDrawerOpen = false, onMobileDrawerChange } = {})
                 const novo = e.target.value;
                 const anterior = getUsuarioSessaoAtualId();
                 if (novo === anterior) return;
-                const ul = getUsuariosAtivos();
+                const ul = getColaboradoresHumanosAtivos();
                 const na = getNomeExibicaoUsuario(ul.find((u) => u.id === anterior)) ?? anterior;
                 const nn = getNomeExibicaoUsuario(ul.find((u) => u.id === novo)) ?? novo;
                 const nomeOp = nomeOperador;

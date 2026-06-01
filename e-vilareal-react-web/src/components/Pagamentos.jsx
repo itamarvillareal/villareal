@@ -25,7 +25,7 @@ import {
   Wallet,
   X,
 } from 'lucide-react';
-import { listarUsuarios } from '../repositories/usuariosRepository.js';
+import { listarColaboradoresHumanos } from '../repositories/usuariosRepository.js';
 import {
   acertarPagamento,
   anexarBoletoPagamento,
@@ -469,7 +469,7 @@ export function Pagamentos({ ocultarCabecalho = false } = {}) {
         listarPagamentos(q),
         carregarDashboardPagamentos(mesRefDashboard.ano, mesRefDashboard.mes),
         carregarAlertasPagamentos(),
-        listarUsuarios(),
+        listarColaboradoresHumanos(),
       ]);
       setLista(Array.isArray(rows) ? rows : []);
       setDashboard(dash || null);

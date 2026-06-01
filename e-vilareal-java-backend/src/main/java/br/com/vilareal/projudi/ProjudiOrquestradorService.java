@@ -520,6 +520,7 @@ public class ProjudiOrquestradorService {
                                     "OCR ignorado, upload do PDF original (cnj={}, arquivo={}): {}",
                                     numeroCnj, prep.nomeDrive(), ocr.erro());
                         }
+                        // ocrAplicado=false quando validação rejeita saída; original já está em conteudoUpload
                     } catch (Exception ocrEx) {
                         log.warn(
                                 "OCR falhou, upload do PDF original (cnj={}, arquivo={}): {}",

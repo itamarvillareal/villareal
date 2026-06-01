@@ -57,6 +57,7 @@ export const navItems = [
     ],
   },
   { id: 'agenda', label: 'Agenda', icon: 'Calendar' },
+  { id: 'julia/caixa', label: 'Caixa da Júlia', icon: 'Sparkles', badgeIa: true },
   { id: 'patrimonio', label: 'Patrimônio', icon: 'Wallet' },
   { id: 'atividade', label: 'Atividade', icon: 'ClipboardList' },
   { id: 'atividades-em-lote', label: 'Atividades em Lote', icon: 'Layers' },

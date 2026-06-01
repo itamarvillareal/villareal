@@ -18,6 +18,7 @@ export const LazyRelatorioPessoas = fromNamed(
 );
 export const LazyCadastroClientes = fromNamed(() => import('../components/CadastroClientes.jsx'), 'CadastroClientes');
 export const LazyAgenda = fromNamed(() => import('../components/Agenda.jsx'), 'Agenda');
+export const LazyJuliaCaixa = fromNamed(() => import('../components/JuliaCaixa.jsx'), 'JuliaCaixa');
 export const LazyAnaLuisa = fromNamed(() => import('../components/AnaLuisa.jsx'), 'AnaLuisa');
 export const LazyAtividade = fromNamed(() => import('../components/Atividade.jsx'), 'Atividade');
 export const LazyPatrimonio = fromNamed(() => import('../components/Patrimonio.jsx'), 'Patrimonio');

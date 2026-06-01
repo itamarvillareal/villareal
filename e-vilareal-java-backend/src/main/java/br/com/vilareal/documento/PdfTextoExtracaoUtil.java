@@ -132,6 +132,77 @@ public final class PdfTextoExtracaoUtil {
         return t.substring(0, lim) + "…";
     }
 
+    /**
+     * Gate de segurança antes de substituir PDF no Drive ou no upload do robô.
+     * Primeiro passe: rejeita saída inválida ou com menos texto que o original.
+     * Redo: PDF válido, texto acima do limiar e não drasticamente menor (&lt; 50% do original).
+     */
+    public static ValidacaoPdfSaida validarPdfSaida(
+            byte[] pdfOriginal, byte[] pdfCandidato, boolean modoRedo, int minCaracteres) {
+        ValidacaoPdfSaida estrutural = validarEstruturaPdfSaida(pdfCandidato);
+        if (!estrutural.aceito()) {
+            return estrutural;
+        }
+        int charsOriginal = tamanhoTextoSignificativo(extrairTexto(pdfOriginal));
+        int charsSaida = tamanhoTextoSignificativo(extrairTexto(pdfCandidato));
+        return validarContagemTextoPosOcr(charsOriginal, charsSaida, minCaracteres, modoRedo);
+    }
+
+    /** Testável: regras de texto pós-OCR (primeiro passe vs redo). */
+    static ValidacaoPdfSaida validarContagemTextoPosOcr(
+            int charsOriginal, int charsSaida, int minCaracteres, boolean modoRedo) {
+        int limiar = Math.max(1, minCaracteres);
+        if (modoRedo) {
+            if (charsSaida < limiar) {
+                return ValidacaoPdfSaida.rejeitar(
+                        "texto abaixo do limiar após redo (" + charsSaida + " < " + limiar + " chars)");
+            }
+            if (charsOriginal > 0 && charsSaida * 2 < charsOriginal) {
+                return ValidacaoPdfSaida.rejeitar(
+                        "texto drasticamente menor que o original ("
+                                + charsSaida + " < 50% de " + charsOriginal + " chars)");
+            }
+            return ValidacaoPdfSaida.ok();
+        }
+        if (charsSaida < charsOriginal) {
+            return ValidacaoPdfSaida.rejeitar(
+                    "texto extraído menor que o original (" + charsSaida + " < " + charsOriginal + " chars)");
+        }
+        return ValidacaoPdfSaida.ok();
+    }
+
+    /** Compat: primeiro passe (robô/backfill skip-text). */
+    public static ValidacaoPdfSaida validarPdfSaida(byte[] pdfOriginal, byte[] pdfCandidato) {
+        return validarPdfSaida(pdfOriginal, pdfCandidato, false, 32);
+    }
+
+    private static ValidacaoPdfSaida validarEstruturaPdfSaida(byte[] pdfCandidato) {
+        if (pdfCandidato == null || pdfCandidato.length == 0) {
+            return ValidacaoPdfSaida.rejeitar("PDF de saída vazio");
+        }
+        if (!parecePdf(pdfCandidato)) {
+            return ValidacaoPdfSaida.rejeitar("saída não parece PDF");
+        }
+        try (PDDocument doc = Loader.loadPDF(pdfCandidato)) {
+            if (doc.getNumberOfPages() <= 0) {
+                return ValidacaoPdfSaida.rejeitar("PDF de saída sem páginas");
+            }
+        } catch (Exception e) {
+            return ValidacaoPdfSaida.rejeitar("PDF de saída inválido: " + e.getMessage());
+        }
+        return ValidacaoPdfSaida.ok();
+    }
+
+    public record ValidacaoPdfSaida(boolean aceito, String motivoRejeicao) {
+        public static ValidacaoPdfSaida ok() {
+            return new ValidacaoPdfSaida(true, null);
+        }
+
+        public static ValidacaoPdfSaida rejeitar(String motivo) {
+            return new ValidacaoPdfSaida(false, motivo);
+        }
+    }
+
     private static int tamanhoTextoSignificativo(String texto) {
         if (texto == null) {
             return 0;

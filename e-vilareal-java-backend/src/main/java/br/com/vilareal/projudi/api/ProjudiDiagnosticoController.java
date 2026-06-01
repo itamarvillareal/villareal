@@ -3,12 +3,15 @@ package br.com.vilareal.projudi.api;
 // TEMPORÁRIO - remover após validação
 
 import br.com.vilareal.documento.GoogleDriveService;
+import br.com.vilareal.julia.application.JuliaTriagemService;
+import br.com.vilareal.julia.triagem.TriagemRunResponse;
 import br.com.vilareal.projudi.ProjudiOrquestradorService;
 import br.com.vilareal.projudi.ProjudiBackfillSubmenuDiagnosticoService;
 import br.com.vilareal.projudi.ProjudiDrivePdfOcrBackfillService;
 import br.com.vilareal.projudi.ProjudiDrivePdfTextoDiagnosticoService;
 import br.com.vilareal.projudi.ProjudiDrivePdfTextoDiagnosticoService.ItemDrivePdfTexto;
 import br.com.vilareal.projudi.ProjudiOrquestradorService.ResultadoOrquestracao;
+import br.com.vilareal.projudi.ProjudiProcessoArquivosDiagnosticoService;
 import br.com.vilareal.projudi.ProjudiPublicacaoLimpezaDiagnosticoService;
 import br.com.vilareal.projudi.ProjudiSelecaoAutomaticaDiagnosticoService;
 import br.com.vilareal.projudi.ProjudiSessionService;
@@ -26,6 +29,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Duration;
@@ -66,6 +70,8 @@ public class ProjudiDiagnosticoController {
     private final ProjudiBackfillSubmenuDiagnosticoService backfillSubmenuDiagnosticoService;
     private final ProjudiDrivePdfTextoDiagnosticoService drivePdfTextoDiagnosticoService;
     private final ProjudiDrivePdfOcrBackfillService drivePdfOcrBackfillService;
+    private final ProjudiProcessoArquivosDiagnosticoService processoArquivosDiagnosticoService;
+    private final JuliaTriagemService juliaTriagemService;
 
     @Value("${gmail.credentials.path:}")
     private String gmailCredentialsPath;
@@ -86,7 +92,9 @@ public class ProjudiDiagnosticoController {
                                         ProjudiPublicacaoLimpezaDiagnosticoService publicacaoLimpezaDiagnosticoService,
                                         ProjudiBackfillSubmenuDiagnosticoService backfillSubmenuDiagnosticoService,
                                         ProjudiDrivePdfTextoDiagnosticoService drivePdfTextoDiagnosticoService,
-                                        ProjudiDrivePdfOcrBackfillService drivePdfOcrBackfillService) {
+                                        ProjudiDrivePdfOcrBackfillService drivePdfOcrBackfillService,
+                                        ProjudiProcessoArquivosDiagnosticoService processoArquivosDiagnosticoService,
+                                        JuliaTriagemService juliaTriagemService) {
         this.credencialService = credencialService;
         this.teorService = teorService;
         this.sessionService = sessionService;
@@ -98,6 +106,8 @@ public class ProjudiDiagnosticoController {
         this.backfillSubmenuDiagnosticoService = backfillSubmenuDiagnosticoService;
         this.drivePdfTextoDiagnosticoService = drivePdfTextoDiagnosticoService;
         this.drivePdfOcrBackfillService = drivePdfOcrBackfillService;
+        this.processoArquivosDiagnosticoService = processoArquivosDiagnosticoService;
+        this.juliaTriagemService = juliaTriagemService;
     }
 
     /** Cadastra/atualiza a credencial real no cofre (senha cifrada; resposta sem segredos). */
@@ -226,6 +236,21 @@ public class ProjudiDiagnosticoController {
                 .body(corpo);
     }
 
+    /** TEMP — triagem da Júlia (raciocínio; enact opcional). Remover antes de produção. */
+    @PostMapping("/triagem/run")
+    public TriagemRunResponse runTriagem(
+            @RequestParam(required = false) Long publicacaoId,
+            @RequestParam(required = false) String cnj,
+            @RequestParam(required = false) String teor,
+            @RequestParam(defaultValue = "false") boolean persistir,
+            @RequestParam(defaultValue = "false") boolean enact) {
+        if (publicacaoId == null && (!StringUtils.hasText(cnj) || !StringUtils.hasText(teor))) {
+            throw new IllegalArgumentException(
+                    "Informe publicacaoId ou o par cnj + teor (texto livre da movimentação).");
+        }
+        return juliaTriagemService.triarComOpcoes(teor, cnj, publicacaoId, null, persistir, enact);
+    }
+
     /** Execução manual do orquestrador PROJUDI (PASSO A — dry-run por default). */
     @PostMapping("/orquestrador/run")
     public ResultadoOrquestracao runOrquestrador(
@@ -269,6 +294,18 @@ public class ProjudiDiagnosticoController {
     @GetMapping("/drive-pdf-texto")
     public List<ItemDrivePdfTexto> drivePdfTexto(@RequestParam List<String> cnj) throws Exception {
         return drivePdfTextoDiagnosticoService.extrairTextos(cnj);
+    }
+
+    /** TEMP — lista recursiva de arquivos a partir de Proc. {n} no Drive (incl. fora de Movimentações). */
+    @GetMapping("/processo-arquivos")
+    public Map<String, Object> processoArquivos(@RequestParam String cnj) throws Exception {
+        return processoArquivosDiagnosticoService.listarArquivosProcesso(cnj);
+    }
+
+    /** TEMP — extrai texto nativo de PDF/DOCX/DOC por fileId (read-only). */
+    @GetMapping("/processo-arquivo-texto")
+    public Map<String, Object> processoArquivoTexto(@RequestParam String fileId) throws Exception {
+        return processoArquivosDiagnosticoService.extrairTextoArquivo(fileId);
     }
 
     /**

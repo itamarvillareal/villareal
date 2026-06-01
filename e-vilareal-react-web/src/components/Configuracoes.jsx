@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Settings, Moon } from 'lucide-react';
 import { useTheme } from '../theme/ThemeProvider.jsx';
 import { isUsuarioMaster, setUsuarioMaster } from '../data/consultasVinculoHistoricoStorage.js';
-import { getUsuariosAtivos } from '../data/agendaPersistenciaData.js';
+import { getColaboradoresHumanosAtivos } from '../data/agendaPersistenciaData.js';
 import {
   getOperadorEstacaoId,
   setOperadorEstacaoId,
@@ -34,7 +34,7 @@ export function Configuracoes() {
     setUsuarioSessaoAtualId(novoId);
   }
 
-  const listaUsuarios = getUsuariosAtivos() || [];
+  const listaUsuarios = getColaboradoresHumanosAtivos() || [];
 
   return (
     <div className="flex-1 flex flex-col min-h-0 p-4 md:p-6 min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/35 to-emerald-50/45 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d]">

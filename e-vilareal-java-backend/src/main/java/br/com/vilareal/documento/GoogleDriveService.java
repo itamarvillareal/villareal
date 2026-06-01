@@ -513,6 +513,60 @@ public class GoogleDriveService {
         }
     }
 
+    private static final String DRIVE_CHILDREN_FIELDS =
+            "nextPageToken, files(id, name, mimeType, size, modifiedTime, md5Checksum, parents)";
+
+    /** Metadados de um arquivo (não pasta) — endpoints TEMP de extração de texto. */
+    public DriveArquivoMetadados obterMetadadosArquivo(String fileId) throws Exception {
+        if (!isConfigurado() || !StringUtils.hasText(fileId)) {
+            throw new IllegalStateException("Google Drive não configurado ou fileId vazio");
+        }
+        File f = driveService.files()
+                .get(fileId)
+                .setFields("id, name, mimeType, size, modifiedTime, md5Checksum")
+                .setSupportsAllDrives(true)
+                .execute();
+        if (isPasta(f)) {
+            throw new IllegalArgumentException("fileId aponta para pasta, não arquivo");
+        }
+        return new DriveArquivoMetadados(
+                f.getId(),
+                f.getName(),
+                f.getMimeType(),
+                f.getSize(),
+                f.getModifiedTime() != null ? f.getModifiedTime().toString() : null,
+                f.getMd5Checksum());
+    }
+
+    /** Filhos com metadados completos (incl. md5Checksum) — listagem recursiva TEMP. */
+    public List<File> listarFilhosComMetadados(String parentId) throws Exception {
+        if (!isConfigurado() || !StringUtils.hasText(parentId)) {
+            return List.of();
+        }
+        List<File> todos = new ArrayList<>();
+        String pageToken = null;
+        do {
+            FileList result = driveService.files()
+                    .list()
+                    .setQ("'" + parentId + "' in parents and trashed = false")
+                    .setSpaces("drive")
+                    .setFields(DRIVE_CHILDREN_FIELDS)
+                    .setPageSize(1000)
+                    .setSupportsAllDrives(true)
+                    .setIncludeItemsFromAllDrives(true)
+                    .setPageToken(pageToken)
+                    .execute();
+            if (result.getFiles() != null) {
+                todos.addAll(result.getFiles());
+            }
+            pageToken = result.getNextPageToken();
+        } while (pageToken != null);
+        return todos;
+    }
+
+    public record DriveArquivoMetadados(
+            String fileId, String nome, String mimeType, Long tamanho, String modifiedTime, String md5Checksum) {}
+
     public String encontrarOuCriarPastaPublic(String nomePasta, String parentId) throws Exception {
         String existente = encontrarPastaExistente(nomePasta, parentId);
         if (existente != null) {

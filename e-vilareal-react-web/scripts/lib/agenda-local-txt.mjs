@@ -12,6 +12,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { decodeHistoricoTextBuffer, readOneLineFile } from './historico-local-txt-paths.mjs';
 import { normalizarTextoPlanilha } from './normalizar-texto-planilha.mjs';
+import {
+  compromissosEquivalentes,
+  compromissosEquivalentesAgenda,
+  descricaoComoNaApi,
+} from './agenda-equivalencia-conservadora.mjs';
+
+export { compromissosEquivalentes, compromissosEquivalentesAgenda, descricaoComoNaApi };
 
 export const USUARIOS_AGENDA_PASTA = ['Dr. Itamar', 'KARLA', 'Ana Luisa'];
 
@@ -35,12 +42,6 @@ export function normalizarStrAgenda(s) {
     .toLowerCase();
 }
 
-/** Alinhado ao backend: descrição vazia vira «Compromisso». */
-export function descricaoComoNaApi(descricao) {
-  const d = normalizarTextoPlanilha(descricao);
-  return d || 'Compromisso';
-}
-
 /**
  * Compromisso com texto (tarefa do dia). Hora e status podem vir vazios:
  * - sem hora: cumprimento no dia, sem horário fixo;
@@ -58,34 +59,6 @@ export function chaveConteudoEvento(ev) {
   const desc = normalizarStrAgenda(descricaoComoNaApi(ev.descricao));
   const st = normalizarStatusAgendaTxt(ev.statusCurto) ?? '';
   return `${hora}|${desc}|${st}`;
-}
-
-/**
- * Mesmo compromisso para validação/importação (descrição manda; hora/status flexíveis).
- * @param {{ horaEvento?: string | null, descricao?: string | null, statusCurto?: string | null }} a
- * @param {{ horaEvento?: string | null, descricao?: string | null, statusCurto?: string | null }} b
- */
-export function compromissosEquivalentes(a, b) {
-  const descA = normalizarStrAgenda(descricaoComoNaApi(a.descricao));
-  const descB = normalizarStrAgenda(descricaoComoNaApi(b.descricao));
-
-  if (!descA && !descB) {
-    const stA = normalizarStatusAgendaTxt(a.statusCurto);
-    const stB = normalizarStatusAgendaTxt(b.statusCurto);
-    return stA === stB;
-  }
-  if (!descA || !descB) return false;
-
-  if (descA !== descB) {
-    if (descA.length < 8 || descB.length < 8) return false;
-    if (!descA.includes(descB) && !descB.includes(descA)) return false;
-  }
-
-  const horaA = normalizarHoraAgendaTxt(a.horaEvento);
-  const horaB = normalizarHoraAgendaTxt(b.horaEvento);
-  if (horaA && horaB && horaA !== horaB) return false;
-
-  return true;
 }
 
 export function chaveDiaUsuario(usuarioPasta, dataIso) {

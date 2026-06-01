@@ -40,6 +40,10 @@ public class AgendaEventoEntity {
     @Column(nullable = false, length = 80)
     private String origem = "frontend-agenda";
 
+    /** Chave natural: usuario|data|hora|sha256(desc)|status (dedup/UNIQUE). */
+    @Column(name = "conteudo_key", nullable = false, length = 200)
+    private String conteudoKey;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Instant createdAt;
 

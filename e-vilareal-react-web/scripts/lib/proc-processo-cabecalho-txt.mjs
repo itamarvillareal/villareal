@@ -11,6 +11,7 @@ import {
   pastaNumeroClienteHistorico,
   readOneLineFile,
   SEGMENTO_MIL,
+  milharPastaClienteGerais,
 } from './historico-local-txt-paths.mjs';
 import { parseDataCabecalhoProcessoIso } from './datas-legado-vb.mjs';
 import { parseDataPrazoFatalTxt } from './gerais-145-1-prazo-fatal.mjs';
@@ -113,11 +114,8 @@ export function caminhoArquivoTipoNumerico(baseMil, codNum, numeroInterno, tipoM
  * @param {PastaTipo} pastaTipo
  */
 function lerTextoTipo(baseBanco, codNum, numeroInterno, tipoMeio, pastaTipo) {
-  const baseMil = path.join(
-    baseBanco,
-    pastaTipo === 'proc' ? 'Proc' : 'Gerais',
-    SEGMENTO_MIL
-  );
+  const milhar = milharPastaClienteGerais(codNum);
+  const baseMil = path.join(baseBanco, pastaTipo === 'proc' ? 'Proc' : 'Gerais', milhar);
   const abs = caminhoArquivoTipoNumerico(baseMil, codNum, numeroInterno, tipoMeio);
   if (!abs || !fs.existsSync(abs)) return { texto: null, arquivo: null };
   return { texto: readOneLineFile(abs), arquivo: abs };

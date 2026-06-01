@@ -123,6 +123,7 @@ import {
 import { ModalRelatorioPublicacoesProcesso, PublicacoesRelatorioConteudo } from './ModalRelatorioPublicacoesProcesso.jsx';
 import { listarPublicacoesRelatorioPorProcesso } from '../repositories/publicacoesRepository.js';
 import { ModalCriarTarefaContextual } from './ModalCriarTarefaContextual.jsx';
+import { AutorUsuarioExibicao } from './ui/AutorUsuarioExibicao.jsx';
 import { buildContextFromProcesso, buildContextFromProcessoComPrazoFatal } from '../data/tarefasContextualPayload.js';
 import { montarDadosParaDocumentoFromProcesso } from '../helpers/documentoHelper.js';
 import {
@@ -139,6 +140,7 @@ import {
   buscarClientePorCodigo,
   formatarUsuarioHistoricoExibicao,
   usuarioHistoricoParaExibicao,
+  usuarioHistoricoAutorMeta,
   buscarProcessoPorChaveNatural,
   resolverProcessoId,
   mapApiProcessoToUiShape,
@@ -296,6 +298,10 @@ function nomeUsuarioAtivoParaHistorico() {
 
 function rotuloUsuarioHistoricoLinha(h) {
   return usuarioHistoricoParaExibicao(h, getUsuariosAtivos());
+}
+
+function autorHistoricoLinha(h) {
+  return usuarioHistoricoAutorMeta(h, getUsuariosAtivos());
 }
 
 function usuarioAtivoIdParaHistorico() {
@@ -3881,7 +3887,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                             {h.info}
                           </p>
                           <p className="mt-1 truncate text-xs text-slate-500" title={rotuloUsuarioHistoricoLinha(h)}>
-                            {rotuloUsuarioHistoricoLinha(h)}
+                            <AutorUsuarioExibicao {...autorHistoricoLinha(h)} />
                           </p>
                         </button>
                       ))
@@ -3944,7 +3950,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                                 <td className="whitespace-nowrap px-2 py-1.5 align-top text-slate-600">{h.data}</td>
                                 <td className="max-w-[11ch] min-w-0 py-1.5 pl-2 pr-2 align-top text-slate-700">
                                   <div className="truncate" title={rotuloUsuarioHistoricoLinha(h)}>
-                                    {rotuloUsuarioHistoricoLinha(h)}
+                                    <AutorUsuarioExibicao {...autorHistoricoLinha(h)} />
                                   </div>
                                 </td>
                               </tr>
@@ -5117,7 +5123,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                 className="min-w-0 flex-1 text-sm font-semibold leading-snug text-slate-800"
               >
                 Inf.: {informacaoModal.inf} — {informacaoModal.data} —{' '}
-                {usuarioHistoricoParaExibicao(informacaoModal, getUsuariosAtivos())}
+                <AutorUsuarioExibicao {...usuarioHistoricoAutorMeta(informacaoModal, getUsuariosAtivos())} />
               </h2>
               <button
                 type="button"

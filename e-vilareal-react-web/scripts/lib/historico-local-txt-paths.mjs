@@ -60,6 +60,28 @@ export function centenaPastaClienteHistorico(codNum) {
   return centenaPorRegraVB(n);
 }
 
+/**
+ * Milhar da pasta no disco (legado VB `subpasta()`): 1000 se Numero &lt; 2000, senão 2000.
+ * @param {number} codNum
+ */
+export function milharPastaClienteGerais(codNum) {
+  const n = Math.trunc(Number(codNum));
+  if (!Number.isFinite(n) || n < 1) return SEGMENTO_MIL;
+  return n < 2000 ? SEGMENTO_MIL : '2000';
+}
+
+/**
+ * Segmentos Milhar / Centena / Unidade (VB) para `Banco de Dados/Gerais/{milhar}/{centena}/{unidade}/`.
+ * @param {number} codNum
+ */
+export function subpastaClienteVb(codNum) {
+  return {
+    milhar: milharPastaClienteGerais(codNum),
+    centena: String(centenaPastaClienteHistorico(codNum)),
+    unidade: pastaNumeroClienteHistorico(codNum),
+  };
+}
+
 export function formatCod8(codNum) {
   return String(Math.trunc(Number(codNum))).padStart(8, '0');
 }

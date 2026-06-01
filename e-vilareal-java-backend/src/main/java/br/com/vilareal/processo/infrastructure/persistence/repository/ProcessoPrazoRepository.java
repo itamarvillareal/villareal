@@ -16,4 +16,13 @@ public interface ProcessoPrazoRepository extends JpaRepository<ProcessoPrazoEnti
     @Query(
             "SELECT DISTINCT z.processo.id FROM ProcessoPrazoEntity z WHERE z.prazoFatal = true AND z.dataFim = :data")
     List<Long> findDistinctProcessoIdsComPrazoFatalTrueAndDataFim(@Param("data") LocalDate data);
+
+    /** Dedup A2b: prazo fatal da Júlia (via {@code andamento.origem}) já registrado na data. */
+    @Query(
+            "SELECT COUNT(z) FROM ProcessoPrazoEntity z WHERE z.processo.id = :processoId "
+                    + "AND z.dataFim = :dataFim AND z.prazoFatal = true AND z.andamento.origem = :origem")
+    long countPrazoFatalDaJuliaNaData(
+            @Param("processoId") Long processoId,
+            @Param("dataFim") LocalDate dataFim,
+            @Param("origem") String origem);
 }

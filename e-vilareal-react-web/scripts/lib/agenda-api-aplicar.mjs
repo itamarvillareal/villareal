@@ -4,6 +4,7 @@
 
 import {
   compromissosEquivalentes,
+  compromissosEquivalentesAgenda,
   descricaoComoNaApi,
   normalizarHoraAgendaTxt,
   normalizarStatusAgendaTxt,
@@ -96,7 +97,7 @@ export function jaTemEquivalenteNoLote(linhas, ev) {
     (L) =>
       L.usuarioId === ev.usuarioId &&
       L.dataEvento === ev.dataEvento &&
-      compromissosEquivalentes(ev, L)
+      compromissosEquivalentesAgenda(ev, L)
   );
 }
 
@@ -171,7 +172,7 @@ export function encontrarCorrespondencia(txt, eventosApi) {
   const candidatos = [];
 
   for (const api of eventosApi) {
-    if (!compromissosEquivalentes(txt, api)) continue;
+    if (!compromissosEquivalentesAgenda(txt, api)) continue;
 
     const descApi = descricaoComoNaApi(api.descricao);
     const normDescApi = normalizarStrAgenda(descApi);
@@ -303,7 +304,7 @@ export async function aplicarEventosAgenda(opts, linhas, token, aplicar, verbose
     }
 
     if (match.tipo === 'faltando_na_api') {
-      const dupApi = listaDia.some((api) => compromissosEquivalentes(L, api));
+      const dupApi = listaDia.some((api) => compromissosEquivalentesAgenda(L, api));
       if (dupApi) {
         stats.puladosIgual += 1;
         return 'skip';

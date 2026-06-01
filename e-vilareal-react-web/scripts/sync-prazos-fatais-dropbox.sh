@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
-# Sincroniza prazos fatais: Dropbox «Gerais/145.1» → API (MySQL).
+# Sincroniza prazos fatais: Dropbox Gerais/{Milhar}/{Centena}/{Unidade} → API (MySQL).
+# Não usa Gerais/145.1/aaaa/mm (histórico mensal).
 #
 # Pré-visualização (não grava):
 #   ./scripts/sync-prazos-fatais-dropbox.sh
 #
-# Aplicar na base (fidedigno ao Dropbox):
+# Aplicar na base:
 #   ./scripts/sync-prazos-fatais-dropbox.sh --aplicar
 #
 # Um cliente:
-#   ./scripts/sync-prazos-fatais-dropbox.sh --aplicar --cliente=728
+#   ./scripts/sync-prazos-fatais-dropbox.sh --aplicar --cliente=149
 #
 # Variáveis: VILAREAL_API_BASE (defeito http://localhost:8081), VILAREAL_IMPORT_SENHA
 set -euo pipefail
@@ -48,7 +49,7 @@ if ((${#ARGS[@]} > 0)); then
 fi
 if [[ "$APLICAR" -eq 1 ]]; then
   CMD+=(--aplicar)
-  echo "→ Aplicando prazos fatais do Dropbox na API (${BASE_API})…"
+  echo "→ Aplicando prazos fatais (Gerais Milhar/Centena/Unidade) na API (${BASE_API})…"
 else
   echo "→ Pré-visualização (dry-run). Para gravar: $0 --aplicar $*"
 fi

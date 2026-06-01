@@ -13,9 +13,11 @@ import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoParteE
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoParteRepository;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
 import br.com.vilareal.publicacao.api.dto.*;
+import br.com.vilareal.publicacao.application.event.PublicacaoVinculadaEvent;
 import br.com.vilareal.publicacao.infrastructure.persistence.PublicacaoSpecifications;
 import br.com.vilareal.publicacao.infrastructure.persistence.entity.PublicacaoEntity;
 import br.com.vilareal.publicacao.infrastructure.persistence.repository.PublicacaoRepository;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -40,6 +42,7 @@ public class PublicacaoApplicationService {
     private final ClienteCodigoPessoaResolver clienteCodigoPessoaResolver;
     private final ProcessoApplicationService processoApplicationService;
     private final ClienteResolverService clienteResolverService;
+    private final ApplicationEventPublisher applicationEventPublisher;
 
     public PublicacaoApplicationService(
             PublicacaoRepository publicacaoRepository,
@@ -47,13 +50,15 @@ public class PublicacaoApplicationService {
             ProcessoParteRepository processoParteRepository,
             ClienteCodigoPessoaResolver clienteCodigoPessoaResolver,
             ProcessoApplicationService processoApplicationService,
-            ClienteResolverService clienteResolverService) {
+            ClienteResolverService clienteResolverService,
+            ApplicationEventPublisher applicationEventPublisher) {
         this.publicacaoRepository = publicacaoRepository;
         this.processoRepository = processoRepository;
         this.processoParteRepository = processoParteRepository;
         this.clienteCodigoPessoaResolver = clienteCodigoPessoaResolver;
         this.processoApplicationService = processoApplicationService;
         this.clienteResolverService = clienteResolverService;
+        this.applicationEventPublisher = applicationEventPublisher;
     }
 
     @Transactional(readOnly = true)
@@ -158,7 +163,9 @@ public class PublicacaoApplicationService {
         if (StringUtils.hasText(req.getObservacao())) {
             e.setObservacao(req.getObservacao().trim());
         }
-        return toResponse(publicacaoRepository.save(e), null);
+        e = publicacaoRepository.save(e);
+        applicationEventPublisher.publishEvent(new PublicacaoVinculadaEvent(e.getId(), p.getId()));
+        return toResponse(e, null);
     }
 
     /**

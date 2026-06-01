@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { X, Loader2, ListTodo } from 'lucide-react';
 import { featureFlags } from '../config/featureFlags.js';
-import { getUsuariosAtivos } from '../data/agendaPersistenciaData.js';
+import { getColaboradoresHumanosAtivos } from '../data/agendaPersistenciaData.js';
 import { getNomeExibicaoUsuario } from '../data/usuarioDisplayHelpers.js';
 import { buscarClientePorCodigo } from '../repositories/processosRepository.js';
 import { criarTarefaOperacional } from '../repositories/tarefasOperacionaisRepository.js';
@@ -166,7 +166,7 @@ export function ModalCriarTarefaContextual({ open, onClose, context, onCreated }
 
   if (!open || !context) return null;
 
-  const usuarios = getUsuariosAtivos() || [];
+  const usuarios = getColaboradoresHumanosAtivos() || [];
   const origem = context.sourceLabel || 'Contexto';
   const ehPrazoFatal = context.kind === 'processo_prazo';
   const legadoTexto = context.apenasTextoContextual === true;

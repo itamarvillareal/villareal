@@ -146,6 +146,13 @@ public class AgendaApplicationService {
     @Transactional
     public AgendaEventoResponse criar(AgendaEventoWriteRequest req) {
         UsuarioEntity usuario = usuarioDestinatarioGuard.carregarHumanoDestinatario(req.getUsuarioId());
+        Optional<AgendaEventoEntity> existente = buscarExistentePorConteudoOuEquivalencia(req);
+        if (existente.isPresent()) {
+            AgendaEventoEntity e = existente.get();
+            aplicarCampos(e, req);
+            e = agendaEventoRepository.save(e);
+            return toResponse(e);
+        }
         AgendaEventoEntity e = new AgendaEventoEntity();
         e.setUsuario(usuario);
         aplicarCampos(e, req);
@@ -176,12 +183,39 @@ public class AgendaApplicationService {
             return toResponse(e);
         }
 
+        Optional<AgendaEventoEntity> porConteudoOuFuzzy = buscarExistentePorConteudoOuEquivalencia(req);
+        if (porConteudoOuFuzzy.isPresent()) {
+            AgendaEventoEntity e = porConteudoOuFuzzy.get();
+            aplicarCampos(e, req);
+            e = agendaEventoRepository.save(e);
+            return toResponse(e);
+        }
+
         UsuarioEntity usuario = usuarioDestinatarioGuard.carregarHumanoDestinatario(req.getUsuarioId());
         AgendaEventoEntity e = new AgendaEventoEntity();
         e.setUsuario(usuario);
         aplicarCampos(e, req);
         e = agendaEventoRepository.save(e);
         return toResponse(e);
+    }
+
+    private Optional<AgendaEventoEntity> buscarExistentePorConteudoOuEquivalencia(AgendaEventoWriteRequest req) {
+        String conteudoKey = conteudoKeyFromRequest(req);
+        Optional<AgendaEventoEntity> porChave = agendaEventoRepository.findFirstByConteudoKey(conteudoKey);
+        if (porChave.isPresent()) {
+            return porChave;
+        }
+        if (req.getDataEvento() == null || req.getUsuarioId() == null) {
+            return Optional.empty();
+        }
+        List<AgendaEventoEntity> noDia = agendaEventoRepository.findByUsuarioAndPeriodo(
+                req.getUsuarioId(), req.getDataEvento(), req.getDataEvento());
+        for (AgendaEventoEntity candidato : noDia) {
+            if (AgendaEventoEquivalenciaUtil.equivalentes(candidato, req)) {
+                return Optional.of(candidato);
+            }
+        }
+        return Optional.empty();
     }
 
     @Transactional
@@ -248,6 +282,29 @@ public class AgendaApplicationService {
         String origRaw = StringUtils.hasText(req.getOrigem()) ? req.getOrigem().trim() : "";
         String orig = Utf8MojibakeUtil.corrigir(origRaw);
         e.setOrigem(StringUtils.hasText(orig) ? orig : "frontend-agenda");
+
+        refreshConteudoKey(e);
+    }
+
+    private static void refreshConteudoKey(AgendaEventoEntity e) {
+        if (e.getUsuario() == null || e.getDataEvento() == null) {
+            return;
+        }
+        e.setConteudoKey(AgendaConteudoKeyService.calcular(
+                e.getUsuario().getId(),
+                e.getDataEvento(),
+                e.getHoraEvento(),
+                e.getDescricao(),
+                e.getStatusCurto()));
+    }
+
+    private static String conteudoKeyFromRequest(AgendaEventoWriteRequest req) {
+        return AgendaConteudoKeyService.calcular(
+                req.getUsuarioId(),
+                req.getDataEvento(),
+                req.getHoraEvento(),
+                req.getDescricao(),
+                req.getStatusCurto());
     }
 
     private static String normalizarStatusCurto(String raw) {
