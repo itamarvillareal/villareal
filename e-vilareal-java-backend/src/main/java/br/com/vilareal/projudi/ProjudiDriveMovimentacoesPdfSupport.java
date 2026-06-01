@@ -7,6 +7,8 @@ import br.com.vilareal.processo.application.ProcessoDiagnosticoNumeroBuscaUtil;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
 import com.google.api.services.drive.model.File;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -19,9 +21,11 @@ import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** Catálogo read-only de PDFs na pasta Movimentações do Drive (compartilhado por diagnóstico e OCR backfill). */
+/** Catálogo de PDFs na pasta Movimentações do Drive (diagnóstico, OCR, autos integral). */
 @Component
 public class ProjudiDriveMovimentacoesPdfSupport {
+
+    private static final Logger log = LoggerFactory.getLogger(ProjudiDriveMovimentacoesPdfSupport.class);
 
     public static final String PASTA_MOVIMENTACOES = "Movimentações";
 
@@ -58,6 +62,15 @@ public class ProjudiDriveMovimentacoesPdfSupport {
     }
 
     public String resolverPastaMovimentacoesId(ProcessoEntity processo) throws Exception {
+        return resolverPastaMovimentacoesId(processo, false);
+    }
+
+    /** Resolve a pasta {@value #PASTA_MOVIMENTACOES}, criando-a no Drive se ainda não existir. */
+    public String resolverOuCriarPastaMovimentacoesId(ProcessoEntity processo) throws Exception {
+        return resolverPastaMovimentacoesId(processo, true);
+    }
+
+    private String resolverPastaMovimentacoesId(ProcessoEntity processo, boolean criarSeAusente) throws Exception {
         Integer numeroInterno = processo.getNumeroInterno();
         if (numeroInterno == null) {
             return null;
@@ -70,6 +83,20 @@ public class ProjudiDriveMovimentacoesPdfSupport {
                 googleDriveService, codigoCliente.trim(), numeroInterno);
         if (pastaDto == null || !StringUtils.hasText(pastaDto.pastaId())) {
             return null;
+        }
+        if (criarSeAusente) {
+            String existente =
+                    googleDriveService.encontrarPastaExistente(PASTA_MOVIMENTACOES, pastaDto.pastaId());
+            if (StringUtils.hasText(existente)) {
+                return existente;
+            }
+            String criada = googleDriveService.encontrarOuCriarPastaPublic(PASTA_MOVIMENTACOES, pastaDto.pastaId());
+            log.info(
+                    "Pasta {} criada no Drive (processoId={}, parent={})",
+                    PASTA_MOVIMENTACOES,
+                    processo.getId(),
+                    pastaDto.pastaId());
+            return criada;
         }
         return googleDriveService.encontrarPastaExistente(PASTA_MOVIMENTACOES, pastaDto.pastaId());
     }

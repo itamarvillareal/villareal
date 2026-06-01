@@ -10,14 +10,17 @@ services:
       dockerfile: Dockerfile
     container_name: vilareal-backend
     environment:
-      SPRING_PROFILES_ACTIVE: dev
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?defina ANTHROPIC_API_KEY no .env.docker}
       # Variáveis VILLAREAL_COMPOSE_* vêm de `.env.docker` (evita colidir com um `.env` genérico na raiz).
       SPRING_DATASOURCE_URL: ${VILLAREAL_COMPOSE_JDBC_URL:-jdbc:mysql://host.docker.internal:3308/vilareal?createDatabaseIfNotExist=false&useSSL=false&allowPublicKeyRetrieval=true&characterEncoding=utf8&serverTimezone=UTC}
       SPRING_DATASOURCE_USERNAME: ${VILLAREAL_COMPOSE_JDBC_USER:-villareal_remote}
       SPRING_DATASOURCE_PASSWORD: ${VILLAREAL_COMPOSE_JDBC_PASSWORD:?Crie .env.docker a partir de .env.docker.example e defina VILLAREAL_COMPOSE_JDBC_PASSWORD}
-      JWT_SECRET: dev-secret-change-me-min-32-chars-long!!
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me-min-32-chars-long!!}
       GMAIL_TOKENS_DIRECTORY: /home/vilareal/gmail-tokens
+      GOOGLE_DRIVE_SHARED_DRIVE_ID: ${GOOGLE_DRIVE_SHARED_DRIVE_ID:-0ANU_zUd2tFQ7Uk9PVA}
+      GOOGLE_DRIVE_IMPERSONATE_USER: ${GOOGLE_DRIVE_IMPERSONATE_USER:-}
+      PROJUDI_CRED_KEY: ${PROJUDI_CRED_KEY:-}
       # WhatsApp Cloud API — valores reais em `.env.docker` na VPS (ver WHATSAPP_SETUP.md)
       WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID:-}
       WHATSAPP_ACCESS_TOKEN: ${WHATSAPP_ACCESS_TOKEN:-}

@@ -313,6 +313,18 @@ public class ProjudiOrquestradorService {
                 movs = teorService.listarMovimentacoes(credencialId, numeroCnj);
             }
 
+            if (movs.isEmpty()) {
+                logDetalhes.add(numeroCnj + " | PROJUDI retornou 0 movimentações.");
+                return ResultadoSomenteDriveProcesso.erro(
+                        numeroCnj,
+                        System.currentTimeMillis() - inicioMs,
+                        "PROJUDI não retornou movimentações para este processo. "
+                                + "Verifique número CNJ e credenciais. "
+                                + "O código OTP é lido automaticamente da conta Gmail configurada no servidor "
+                                + "(projudi.token.remetente), não da sua caixa pessoal.",
+                        logDetalhes);
+            }
+
             List<ProjudiTeorService.MovimentacaoProjudi> comDoc =
                     ProjudiDriveProgressivoUtil.filtrarComDocDesc(movs);
             String pastaMovimentacoesId = resolverPastaMovimentacoesId(processo, numeroCnj, logDetalhes);
@@ -353,9 +365,38 @@ public class ProjudiOrquestradorService {
             publicacaoDriveAndamentosService.tentarMarcarAndamentosNoDrivePorCnj(
                     numeroCnj, pastaMovimentacoesId, arquivosEnviados);
 
+            List<String> nomesDriveApos = googleDriveService.listarFilhos(pastaMovimentacoesId).stream()
+                    .map(com.google.api.services.drive.model.File::getName)
+                    .toList();
+            Set<Integer> arquivadasApos = ProjudiDriveProgressivoUtil.extrairNumerosArquivados(nomesDriveApos);
+            int totalArquivadasDrive = arquivadasApos.size();
+            boolean temMais = totalArquivadasDrive < comDoc.size();
+
+            int movimentacoesTentadas = selecao.baixar().size();
+            if (movimentacoesTentadas > 0 && arquivosEnviados == 0) {
+                return ResultadoSomenteDriveProcesso.erroComEstado(
+                        numeroCnj,
+                        jaArquivados,
+                        comDoc.size(),
+                        totalArquivadasDrive,
+                        temMais,
+                        System.currentTimeMillis() - inicioMs,
+                        ProjudiOrquestradorErroUtil.resumirFalhaUploadDrive(logDetalhes),
+                        logDetalhes,
+                        selecao);
+            }
+
             return new ResultadoSomenteDriveProcesso(
-                    numeroCnj, arquivosEnviados, jaArquivados,
-                    System.currentTimeMillis() - inicioMs, null, logDetalhes, selecao);
+                    numeroCnj,
+                    arquivosEnviados,
+                    jaArquivados,
+                    comDoc.size(),
+                    totalArquivadasDrive,
+                    temMais,
+                    System.currentTimeMillis() - inicioMs,
+                    null,
+                    logDetalhes,
+                    selecao);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return ResultadoSomenteDriveProcesso.erro(
@@ -531,6 +572,9 @@ public class ProjudiOrquestradorService {
                         conteudoUpload, prep.nomeDrive(), mimeUpload, pastaMovimentacoesId);
                 if (uploadDto != null) {
                     uploads.add(prep.nomeDrive());
+                } else {
+                    detalhes.add(prefixo + " | ERRO Drive: falha ao enviar " + prep.nomeDrive()
+                            + " (verifique permissões/quota do Google Drive).");
                 }
             }
             detalhes.add(prefixo + " -> " + uploads.size() + " arquivo(s) em "
@@ -629,6 +673,9 @@ public class ProjudiOrquestradorService {
             String cnj,
             int arquivosBaixados,
             int jaArquivados,
+            int totalComDocumento,
+            int totalArquivadasDrive,
+            boolean temMais,
             long duracaoMs,
             String erro,
             List<String> detalhes,
@@ -636,7 +683,31 @@ public class ProjudiOrquestradorService {
 
         static ResultadoSomenteDriveProcesso erro(
                 String cnj, long duracaoMs, String erro, List<String> detalhes) {
-            return new ResultadoSomenteDriveProcesso(cnj, 0, 0, duracaoMs, erro, detalhes, null);
+            return new ResultadoSomenteDriveProcesso(
+                    cnj, 0, 0, 0, 0, false, duracaoMs, erro, detalhes, null);
+        }
+
+        static ResultadoSomenteDriveProcesso erroComEstado(
+                String cnj,
+                int jaArquivados,
+                int totalComDocumento,
+                int totalArquivadasDrive,
+                boolean temMais,
+                long duracaoMs,
+                String erro,
+                List<String> detalhes,
+                ProjudiDriveProgressivoUtil.SelecaoProgressiva selecao) {
+            return new ResultadoSomenteDriveProcesso(
+                    cnj,
+                    0,
+                    jaArquivados,
+                    totalComDocumento,
+                    totalArquivadasDrive,
+                    temMais,
+                    duracaoMs,
+                    erro,
+                    detalhes,
+                    selecao);
         }
 
         public Map<String, Object> toRelatorioMap() {
@@ -644,6 +715,9 @@ public class ProjudiOrquestradorService {
             m.put("cnj", cnj);
             m.put("arquivosBaixados", arquivosBaixados);
             m.put("jaArquivados", jaArquivados);
+            m.put("totalComDocumento", totalComDocumento);
+            m.put("totalArquivadasDrive", totalArquivadasDrive);
+            m.put("temMais", temMais);
             m.put("duracaoMs", duracaoMs);
             if (erro != null) {
                 m.put("erro", erro);

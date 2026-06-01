@@ -2,6 +2,7 @@ package br.com.vilareal.projudi;
 
 import org.springframework.util.StringUtils;
 
+import java.util.List;
 import java.util.Locale;
 
 /** Detecta erros graves / bloqueio do tribunal no fluxo PROJUDI. */
@@ -60,6 +61,56 @@ final class ProjudiOrquestradorErroUtil {
                 || lower.contains("status code: 429")
                 || lower.contains("http 403")
                 || lower.contains("http 429");
+    }
+
+    static boolean detalhesIndicamFalhaUploadDrive(List<String> detalhes) {
+        if (detalhes == null || detalhes.isEmpty()) {
+            return false;
+        }
+        for (String linha : detalhes) {
+            if (!StringUtils.hasText(linha)) {
+                continue;
+            }
+            String lower = linha.toLowerCase(Locale.ROOT);
+            if (lower.contains("erro drive")
+                    || lower.contains("falha ao enviar")
+                    || lower.contains("storagequotaexceeded")
+                    || lower.contains("storage quota")
+                    || lower.contains("service accounts do not have storage quota")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    static String resumirFalhaUploadDrive(List<String> detalhes) {
+        if (detalhes != null) {
+            for (int i = detalhes.size() - 1; i >= 0; i--) {
+                String linha = detalhes.get(i);
+                if (!StringUtils.hasText(linha)) {
+                    continue;
+                }
+                String lower = linha.toLowerCase(Locale.ROOT);
+                if (lower.contains("storagequotaexceeded")
+                        || lower.contains("service accounts do not have storage quota")) {
+                    return "Falha ao enviar arquivos ao Google Drive: a conta de serviço não tem quota "
+                            + "própria. Configure google.drive.impersonate-user (delegação de domínio) "
+                            + "ou garanta que a service account tenha permissão de escrita no Shared Drive.";
+                }
+                if (lower.contains("erro drive") || lower.contains("falha ao enviar")) {
+                    int sep = linha.indexOf("ERRO Drive:");
+                    if (sep >= 0) {
+                        String msg = linha.substring(sep + "ERRO Drive:".length()).trim();
+                        if (msg.length() > 400) {
+                            msg = msg.substring(0, 400) + "…";
+                        }
+                        return "Falha ao enviar arquivos ao Google Drive: " + msg;
+                    }
+                }
+            }
+        }
+        return "Arquivos obtidos do PROJUDI, mas nenhum foi enviado ao Google Drive. "
+                + "Verifique permissões da pasta Movimentações e a configuração do Drive.";
     }
 
     static String mensagemResumida(Throwable ex) {
