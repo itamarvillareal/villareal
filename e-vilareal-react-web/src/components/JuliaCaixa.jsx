@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   CalendarClock,
@@ -22,6 +22,12 @@ const CAIXA_TABS = [
   { value: 'AGUARDANDO_VOCE', label: 'Aguardando você' },
   { value: 'POSTERGADO', label: 'Postergados' },
   { value: 'CONCLUIDO', label: 'Concluídos' },
+];
+
+const ORDENACAO_OPCOES = [
+  { value: 'URGENCIA', label: 'Urgência' },
+  { value: 'PRAZO', label: 'Prazo fatal' },
+  { value: 'CONFIANCA', label: 'Confiança' },
 ];
 
 const IMPACTO_ESTILO = {
@@ -80,6 +86,63 @@ function estiloPrioridade(v) {
   return PRIORIDADE_ESTILO[String(v ?? '').toUpperCase()] ?? PRIORIDADE_ESTILO.BAIXA;
 }
 
+function rankPrioridade(v) {
+  const p = String(v ?? '').toUpperCase();
+  if (p === 'URGENTE') return 4;
+  if (p === 'ALTA') return 3;
+  if (p === 'MEDIA' || p === 'MÉDIA') return 2;
+  if (p === 'BAIXA') return 1;
+  return 0;
+}
+
+function parseDataIso(iso) {
+  if (!iso) return null;
+  const s = String(iso).slice(0, 10);
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (!m) return null;
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+}
+
+function ordenarCards(cards, criterio) {
+  const copy = [...cards];
+  switch (criterio) {
+    case 'PRAZO':
+      return copy.sort((a, b) => {
+        const pa = parseDataIso(a.prazoDataFim);
+        const pb = parseDataIso(b.prazoDataFim);
+        if (pa && pb) {
+          const d = pa.getTime() - pb.getTime();
+          if (d !== 0) return d;
+        } else if (pa) return -1;
+        else if (pb) return 1;
+        return (a.triagemId ?? 0) - (b.triagemId ?? 0);
+      });
+    case 'CONFIANCA':
+      return copy.sort((a, b) => {
+        const ca = Number(a.confianca);
+        const cb = Number(b.confianca);
+        const va = Number.isFinite(ca) ? ca : -1;
+        const vb = Number.isFinite(cb) ? cb : -1;
+        if (vb !== va) return vb - va;
+        return rankPrioridade(b.prioridade) - rankPrioridade(a.prioridade);
+      });
+    case 'URGENCIA':
+    default:
+      return copy.sort((a, b) => {
+        const d = rankPrioridade(b.prioridade) - rankPrioridade(a.prioridade);
+        if (d !== 0) return d;
+        const pa = parseDataIso(a.prazoDataFim);
+        const pb = parseDataIso(b.prazoDataFim);
+        if (pa && pb) {
+          const t = pa.getTime() - pb.getTime();
+          if (t !== 0) return t;
+        } else if (pa) return -1;
+        else if (pb) return 1;
+        return (a.triagemId ?? 0) - (b.triagemId ?? 0);
+      });
+  }
+}
+
 function JuliaCaixaCard({ card, acaoLoading, onConcluir, onPostergar, onCategorizar, onAbrirProcesso }) {
   const [verMais, setVerMais] = useState(false);
   const [postergarAberto, setPostergarAberto] = useState(false);
@@ -122,9 +185,28 @@ function JuliaCaixaCard({ card, acaoLoading, onConcluir, onPostergar, onCategori
       </div>
 
       {card.cliente ? (
-        <p className="text-sm text-slate-700 dark:text-slate-300 truncate" title={card.cliente}>
-          {card.cliente}
+        <p className="text-xs text-slate-500 dark:text-slate-400 truncate" title={card.cliente}>
+          Cliente: {card.cliente}
         </p>
+      ) : null}
+
+      {card.parteAutora || card.parteOposta ? (
+        <dl className="text-sm space-y-1 rounded-lg bg-slate-50/80 dark:bg-white/[0.04] px-3 py-2 border border-slate-100 dark:border-white/5">
+          <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 items-baseline">
+            <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 shrink-0">
+              Parte autora
+            </dt>
+            <dd className="text-slate-800 dark:text-slate-100 font-medium leading-snug">
+              {card.parteAutora || '—'}
+            </dd>
+            <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 shrink-0">
+              Parte oposta
+            </dt>
+            <dd className="text-slate-800 dark:text-slate-100 font-medium leading-snug">
+              {card.parteOposta || '—'}
+            </dd>
+          </div>
+        </dl>
       ) : null}
 
       {card.numeroCnj ? (
@@ -282,6 +364,7 @@ function JuliaCaixaCard({ card, acaoLoading, onConcluir, onPostergar, onCategori
 export function JuliaCaixa() {
   const navigate = useNavigate();
   const [aba, setAba] = useState('AGUARDANDO_VOCE');
+  const [ordenacao, setOrdenacao] = useState('URGENCIA');
   const [cards, setCards] = useState([]);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState('');
@@ -305,6 +388,8 @@ export function JuliaCaixa() {
   useEffect(() => {
     carregar();
   }, [carregar]);
+
+  const cardsOrdenados = useMemo(() => ordenarCards(cards, ordenacao), [cards, ordenacao]);
 
   const executarPatch = async (triagemId, body) => {
     setAcaoLoading(triagemId);
@@ -365,24 +450,40 @@ export function JuliaCaixa() {
             Atualizar
           </button>
         </div>
-        <div className="max-w-[1400px] mx-auto px-4 sm:px-6 pb-0 flex gap-1 overflow-x-auto">
-          {CAIXA_TABS.map((tab) => {
-            const ativo = aba === tab.value;
-            return (
-              <button
-                key={tab.value}
-                type="button"
-                onClick={() => setAba(tab.value)}
-                className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap ${
-                  ativo
-                    ? 'border-violet-600 text-violet-800 dark:border-violet-400 dark:text-violet-200'
-                    : 'border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
-                }`}
-              >
-                {tab.label}
-              </button>
-            );
-          })}
+        <div className="max-w-[1400px] mx-auto px-4 sm:px-6 pb-3 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 dark:border-white/5 pt-3">
+          <div className="flex gap-1 overflow-x-auto">
+            {CAIXA_TABS.map((tab) => {
+              const ativo = aba === tab.value;
+              return (
+                <button
+                  key={tab.value}
+                  type="button"
+                  onClick={() => setAba(tab.value)}
+                  className={`px-4 py-2 text-sm font-semibold rounded-lg transition-colors whitespace-nowrap ${
+                    ativo
+                      ? 'bg-violet-100 text-violet-900 dark:bg-violet-950/50 dark:text-violet-100'
+                      : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-white/5'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
+          <label className="inline-flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300 shrink-0">
+            <span className="font-medium whitespace-nowrap">Ordenar por</span>
+            <select
+              value={ordenacao}
+              onChange={(e) => setOrdenacao(e.target.value)}
+              className="rounded-lg border border-slate-300 dark:border-white/15 bg-white dark:bg-[#0f141c] px-2.5 py-1.5 text-sm font-medium min-w-[9rem]"
+            >
+              {ORDENACAO_OPCOES.map((op) => (
+                <option key={op.value} value={op.value}>
+                  {op.label}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
       </header>
 
@@ -404,7 +505,7 @@ export function JuliaCaixa() {
           </p>
         ) : (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {cards.map((card) => (
+            {cardsOrdenados.map((card) => (
               <JuliaCaixaCard
                 key={card.triagemId}
                 card={card}

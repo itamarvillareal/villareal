@@ -10,6 +10,8 @@ public record JuliaCaixaCardResponse(
         Long processoId,
         String numeroCnj,
         String cliente,
+        String parteAutora,
+        String parteOposta,
         String classificacao,
         String impactoCliente,
         String prioridade,
