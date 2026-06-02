@@ -113,16 +113,12 @@ public class GoogleDriveService {
             }
 
             if (StringUtils.hasText(sharedDriveId)) {
-                rootFolderId = encontrarOuCriarPastaPublic(rootFolderName, sharedDriveId);
-                log.info(
-                        "Google Drive: pasta raiz do sistema dentro do Shared Drive: {} ({})",
-                        rootFolderName,
-                        rootFolderId);
+                rootFolderId = resolverPastaRaizNoSharedDrive();
             } else if (StringUtils.hasText(rootFolderIdConfig)) {
                 rootFolderId = rootFolderIdConfig.trim();
                 String nomeRaiz = obterNomeArquivo(rootFolderId);
-                log.info("Google Drive configurado. Pasta raiz fixada por ID: {} ({})",
-                        nomeRaiz != null ? nomeRaiz : rootFolderName, rootFolderId);
+                log.info("Google Drive: raiz fixada em {} ({})",
+                        rootFolderId, nomeRaiz != null ? nomeRaiz : rootFolderName);
             } else {
                 DriveList driveList = driveService.drives()
                         .list()
@@ -210,6 +206,76 @@ public class GoogleDriveService {
             }
         }
         return false;
+    }
+
+    /**
+     * Shared Drive: usa {@code google.drive.root-folder-id} quando definido (sem buscar/criar por nome).
+     * Caso contrário, busca escopada no driveId antes de criar.
+     */
+    private String resolverPastaRaizNoSharedDrive() throws Exception {
+        if (StringUtils.hasText(rootFolderIdConfig)) {
+            String id = rootFolderIdConfig.trim();
+            log.info("Google Drive: raiz fixada em {}", id);
+            return id;
+        }
+        String existente = encontrarPastaRaizPorNomeNoSharedDrive(rootFolderName, sharedDriveId);
+        if (StringUtils.hasText(existente)) {
+            log.info(
+                    "Google Drive: pasta raiz reutilizada no Shared Drive: {} ({})",
+                    rootFolderName,
+                    existente);
+            return existente;
+        }
+        String criada = criarPasta(rootFolderName, sharedDriveId);
+        log.warn(
+                "Google Drive: pasta raiz criada no Shared Drive (não havia match por nome): {} ({})",
+                rootFolderName,
+                criada);
+        return criada;
+    }
+
+    /**
+     * Busca a pasta raiz por nome dentro do Shared Drive (corpora=drive, driveId escopado).
+     * Evita recriar "Sistema VilaReal" a cada boot quando o ID fixo não está configurado.
+     */
+    private String encontrarPastaRaizPorNomeNoSharedDrive(String nomePasta, String driveId) throws Exception {
+        if (!StringUtils.hasText(driveId)) {
+            return null;
+        }
+        String nomeSanitizado = sanitizarNomePasta(nomePasta);
+        String query = "'" + escaparQueryDrive(driveId) + "' in parents "
+                + "and name = '" + escaparQueryDrive(nomeSanitizado) + "' "
+                + "and mimeType = 'application/vnd.google-apps.folder' "
+                + "and trashed = false";
+
+        FileList result = driveService.files()
+                .list()
+                .setQ(query)
+                .setSpaces("drive")
+                .setCorpora("drive")
+                .setDriveId(driveId)
+                .setIncludeItemsFromAllDrives(true)
+                .setSupportsAllDrives(true)
+                .setFields("files(id, name)")
+                .setPageSize(10)
+                .execute();
+
+        if (result.getFiles() != null && !result.getFiles().isEmpty()) {
+            return result.getFiles().get(0).getId();
+        }
+        return encontrarPastaPorNomeNormalizado(nomeSanitizado, driveId);
+    }
+
+    private String criarPasta(String nomePasta, String parentId) throws Exception {
+        String nomeSanitizado = sanitizarNomePasta(nomePasta);
+        File folderMetadata = new File();
+        folderMetadata.setName(nomeSanitizado);
+        folderMetadata.setMimeType("application/vnd.google-apps.folder");
+        if (parentId != null) {
+            folderMetadata.setParents(List.of(parentId));
+        }
+        File folder = prepararCreate(driveService.files().create(folderMetadata).setFields("id")).execute();
+        return folder.getId();
     }
 
     public boolean isConfigurado() {
@@ -636,18 +702,7 @@ public class GoogleDriveService {
         if (existente != null) {
             return existente;
         }
-
-        String nomeSanitizado = sanitizarNomePasta(nomePasta);
-        File folderMetadata = new File();
-        folderMetadata.setName(nomeSanitizado);
-        folderMetadata.setMimeType("application/vnd.google-apps.folder");
-        if (parentId != null) {
-            folderMetadata.setParents(List.of(parentId));
-        }
-
-        File folder = prepararCreate(driveService.files().create(folderMetadata).setFields("id")).execute();
-
-        return folder.getId();
+        return criarPasta(nomePasta, parentId);
     }
 
     private static String escaparQueryDrive(String valor) {
