@@ -72,6 +72,46 @@ public interface ProcessoRepository extends JpaRepository<ProcessoEntity, Long> 
 
     List<ProcessoEntity> findAllByCliente_IdAndNumeroInternoOrderByIdDesc(Long clienteId, Integer numeroInterno);
 
+    List<ProcessoEntity> findByCliente_IdOrderByNumeroInternoAscIdAsc(Long clienteId);
+
+    @Query(
+            """
+            SELECT p FROM ProcessoEntity p
+            WHERE p.cliente.id = :clienteId
+              AND LOWER(TRIM(p.unidade)) = LOWER(TRIM(:unidade))
+              AND p.unidade IS NOT NULL
+              AND TRIM(p.unidade) <> ''
+            """)
+    Optional<ProcessoEntity> findByCliente_IdAndUnidade(
+            @Param("clienteId") Long clienteId, @Param("unidade") String unidade);
+
+    /**
+     * Primeiro processo «vazio» do cliente: sem unidade, sem RÉU, sem cálculo dim. 0, sem andamento.
+     */
+    @Query(
+            """
+            SELECT p FROM ProcessoEntity p
+            WHERE p.cliente.id = :clienteId
+              AND (p.unidade IS NULL OR TRIM(p.unidade) = '')
+              AND NOT EXISTS (
+                  SELECT 1 FROM ProcessoParteEntity pp
+                  WHERE pp.processo.id = p.id AND UPPER(TRIM(pp.polo)) = 'REU'
+              )
+              AND NOT EXISTS (
+                  SELECT 1 FROM CalculoRodadaEntity cr
+                  WHERE cr.codigoCliente = :codigoCliente8
+                    AND cr.numeroProcesso = p.numeroInterno
+                    AND cr.dimensao = 0
+              )
+              AND NOT EXISTS (
+                  SELECT 1 FROM ProcessoAndamentoEntity pa
+                  WHERE pa.processo.id = p.id
+              )
+            ORDER BY p.numeroInterno ASC, p.id ASC
+            """)
+    List<ProcessoEntity> findProcessosVaziosPorCliente(
+            @Param("clienteId") Long clienteId, @Param("codigoCliente8") String codigoCliente8, Pageable pageable);
+
     Page<ProcessoEntity> findByCliente_Id(Long clienteId, Pageable pageable);
 
     /** Todos os processos com esse nº interno (há um por cliente titular). */

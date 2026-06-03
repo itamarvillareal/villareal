@@ -4,6 +4,7 @@ import br.com.vilareal.calculo.infrastructure.persistence.entity.CalculoRodadaEn
 import br.com.vilareal.calculo.infrastructure.persistence.projection.CalculoRodadaResumoProjection;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 import java.util.Optional;
@@ -26,6 +27,18 @@ public interface CalculoRodadaRepository extends JpaRepository<CalculoRodadaEnti
               AND r.dimensao IS NOT NULL
             """)
     List<CalculoRodadaResumoProjection> findAllResumo();
+
+    @Query(
+            """
+            SELECT new br.com.vilareal.calculo.infrastructure.persistence.projection.CalculoRodadaResumoProjection(
+                r.codigoCliente, r.numeroProcesso, r.dimensao, r.parcelamentoAceito)
+            FROM CalculoRodadaEntity r
+            WHERE r.codigoCliente = :codigoCliente
+              AND r.numeroProcesso = :numeroProcesso
+            ORDER BY r.dimensao ASC
+            """)
+    List<CalculoRodadaResumoProjection> findResumoByCodigoClienteAndNumeroProcessoOrderByDimensaoAsc(
+            @Param("codigoCliente") String codigoCliente, @Param("numeroProcesso") Integer numeroProcesso);
 
     long countByImportacaoId(String importacaoId);
 

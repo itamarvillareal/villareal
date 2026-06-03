@@ -13,6 +13,19 @@ public interface ProcessoParteRepository extends JpaRepository<ProcessoParteEnti
 
     List<ProcessoParteEntity> findByProcesso_IdOrderByOrdemAscIdAsc(Long processoId);
 
+    @Query(
+            """
+            SELECT pp FROM ProcessoParteEntity pp
+            LEFT JOIN FETCH pp.pessoa
+            WHERE pp.processo.id = :processoId
+              AND UPPER(TRIM(pp.polo)) = 'REU'
+            ORDER BY pp.ordem ASC, pp.id ASC
+            """)
+    List<ProcessoParteEntity> findByProcesso_IdAndPoloReuOrderByOrdemAscIdAsc(@Param("processoId") Long processoId);
+
+    Optional<ProcessoParteEntity> findFirstByProcesso_IdAndPoloIgnoreCaseAndPessoa_Id(
+            Long processoId, String polo, Long pessoaId);
+
     Optional<ProcessoParteEntity> findFirstByProcesso_IdAndPoloIgnoreCaseAndQualificacaoIgnoreCaseOrderByIdAsc(
             Long processoId, String polo, String qualificacao);
 
