@@ -39,6 +39,7 @@ public class GmailMovimentacaoEmailEngine {
     private final PublicacaoRepository publicacaoRepository;
     private final EmailImportacaoSyncService syncService;
     private final ProjudiEmailTriggerService projudiEmailTriggerService;
+    private final ProjudiMovimentacoesEmailPipelineProperties pipelineProperties;
     private final String gmailUser;
 
     public GmailMovimentacaoEmailEngine(
@@ -47,12 +48,14 @@ public class GmailMovimentacaoEmailEngine {
             PublicacaoRepository publicacaoRepository,
             EmailImportacaoSyncService syncService,
             ProjudiEmailTriggerService projudiEmailTriggerService,
+            ProjudiMovimentacoesEmailPipelineProperties pipelineProperties,
             @Value("${gmail.user:me}") String gmailUser) {
         this.gmail = gmail;
         this.importacaoTransacional = importacaoTransacional;
         this.publicacaoRepository = publicacaoRepository;
         this.syncService = syncService;
         this.projudiEmailTriggerService = projudiEmailTriggerService;
+        this.pipelineProperties = pipelineProperties;
         this.gmailUser = gmailUser;
     }
 
@@ -181,7 +184,7 @@ public class GmailMovimentacaoEmailEngine {
                         resumo.setPublicacoesProcessadas(resumo.getPublicacoesProcessadas() + 1);
                         if (importacaoTransacional.tentarVinculoAutomaticoPorCnj(pubId)) {
                             vinculosAutomaticos++;
-                            if (fonte.tipo() == EmailImportacaoSyncTipo.PROJUDI) {
+                            if (fonte.tipo() == EmailImportacaoSyncTipo.PROJUDI && !pipelineProperties.isEnabled()) {
                                 projudiEmailTriggerService.registrarCnjParaDisparo(
                                         cnjsDisparoProjudi, req.getNumeroProcessoEncontrado());
                             }
@@ -236,7 +239,7 @@ public class GmailMovimentacaoEmailEngine {
             resumo.setUltimaSincronizacaoGravada(gravado);
         }
 
-        if (fonte.tipo() == EmailImportacaoSyncTipo.PROJUDI) {
+        if (fonte.tipo() == EmailImportacaoSyncTipo.PROJUDI && !pipelineProperties.isEnabled()) {
             projudiEmailTriggerService.agendarDisparoAssincrono(cnjsDisparoProjudi);
         }
 
