@@ -158,7 +158,7 @@ export function dirCalculosCliente(codNum, baseBanco) {
 export function parseNomeArquivoCalculo(fileName) {
   const base = path.basename(fileName, path.extname(fileName));
   const parts = base.split('.');
-  if (parts.length < 5) return null;
+  if (parts.length < 4) return null;
   if (!/^\d{8}$/.test(parts[0])) return null;
   if (parts[3] !== MEIO_FIXO_CALCULO) return null;
 
@@ -166,8 +166,16 @@ export function parseNomeArquivoCalculo(fileName) {
   const codNum = Number(cod8);
   const dimensao = Number(parts[1]);
   const tipo = Number(parts[2]);
-  const numeroProcesso = Number(parts[4]);
   if (!Number.isFinite(codNum) || !Number.isFinite(dimensao) || !Number.isFinite(tipo)) return null;
+
+  /** Config geral da dimensão: `{cod8}.{dim}.{tipo}.1.txt` (129 honorários %, 130 FIXO/VAR, …). */
+  if (parts.length === 4) {
+    return { cod8, codNum, dimensao, tipo, numeroProcesso: null, linha: null, sufixoParcela: null };
+  }
+
+  if (parts.length < 5) return null;
+
+  const numeroProcesso = Number(parts[4]);
   if (!Number.isFinite(numeroProcesso) || numeroProcesso < 1) return null;
 
   let linha = null;
@@ -220,6 +228,8 @@ export function carregarBundleCalculosCliente(codNum, opts = {}) {
     dir,
     existe: false,
     porRodada: new Map(),
+    /** `{dim} → Map<tipo, entrada>` — ficheiros `{cod8}.{dim}.{tipo}.1.txt` */
+    configDimensao: new Map(),
     ficheirosIgnorados: [],
   };
 
@@ -240,8 +250,26 @@ export function carregarBundleCalculosCliente(codNum, opts = {}) {
       bundle.ficheirosIgnorados.push(ent.name);
       continue;
     }
-    if (opts.processoMin != null && meta.numeroProcesso < opts.processoMin) continue;
-    if (opts.processoMax != null && meta.numeroProcesso > opts.processoMax) continue;
+    if (meta.numeroProcesso != null) {
+      if (opts.processoMin != null && meta.numeroProcesso < opts.processoMin) continue;
+      if (opts.processoMax != null && meta.numeroProcesso > opts.processoMax) continue;
+    }
+
+    let valor = '';
+    try {
+      valor = readOneLineFile(path.join(dir, ent.name));
+    } catch {
+      valor = '';
+    }
+    const entrada = { ...meta, path: path.join(dir, ent.name), valor };
+
+    if (meta.numeroProcesso == null) {
+      if (!bundle.configDimensao.has(meta.dimensao)) {
+        bundle.configDimensao.set(meta.dimensao, new Map());
+      }
+      bundle.configDimensao.get(meta.dimensao).set(String(meta.tipo), entrada);
+      continue;
+    }
 
     const key = chaveRodadaCalculo(codNum, meta.numeroProcesso, meta.dimensao);
     if (!bundle.porRodada.has(key)) {
@@ -256,17 +284,8 @@ export function carregarBundleCalculosCliente(codNum, opts = {}) {
       });
     }
     const rodada = bundle.porRodada.get(key);
-    const fullPath = path.join(dir, ent.name);
-    rodada.paths.push(fullPath);
+    rodada.paths.push(entrada.path);
 
-    let valor = '';
-    try {
-      valor = readOneLineFile(fullPath);
-    } catch {
-      valor = '';
-    }
-
-    const entrada = { ...meta, path: fullPath, valor };
     const categoria = classificarEntradaCalculo(meta);
 
     if (categoria === 'linha' && meta.linha != null) {
@@ -280,11 +299,25 @@ export function carregarBundleCalculosCliente(codNum, opts = {}) {
     }
   }
 
+  enriquecerRodadasCalculoBundle(bundle);
   return bundle;
 }
 
+/** Anexa config da dimensão e taxas do processo gravadas noutra dimensão (ex.: `.95` em dim 1, títulos em dim 0). */
+export function enriquecerRodadasCalculoBundle(bundle) {
+  for (const rodada of bundle.porRodada.values()) {
+    rodada.configDimensao = bundle.configDimensao.get(rodada.dimensao) ?? new Map();
+    if (rodada.dimensao === 0) {
+      const irma = bundle.porRodada.get(
+        chaveRodadaCalculo(bundle.codNum, rodada.numeroProcesso, 1),
+      );
+      if (irma) rodada.processConfigIrmao = irma;
+    }
+  }
+}
+
 /**
- * Lê flag de aceite (105.1.{proc}).
+ * Lê flag de aceite (105.1.{proc} = SIM, sem sufixo .NNN).
  * @param {ReturnType<typeof carregarBundleCalculosCliente>['porRodada'] extends Map<string, infer R> ? R : never} rodada
  */
 export function rodadaCalculoAceito(rodada) {
@@ -293,6 +326,124 @@ export function rodadaCalculoAceito(rodada) {
     .trim()
     .toUpperCase() === 'SIM';
 }
+
+/**
+ * Usar valores gravados nos txt (104–108, totais 119+) em vez de recalcular.
+ * No legado, `.105.1.{proc}.{NNN}` guarda dias de atraso — não confundir com aceite global.
+ */
+export function rodadaTemSnapshotGravadoTxt(rodada) {
+  if (rodadaCalculoAceito(rodada)) return true;
+  for (const tipo of [
+    TIPOS_CALCULO.TOTAL_TAXAS,
+    TIPOS_CALCULO.TOTAL_A_PAGAR,
+    TIPOS_CALCULO.VALOR_FINAL_PARCELA,
+  ]) {
+    const v = rodada.porTipo.get(String(tipo))?.valor;
+    if (v && String(v).trim()) return true;
+  }
+  for (const row of rodada.linhas.values()) {
+    const j = row.campos.get(TIPOS_CALCULO.JUROS_TAXA)?.valor;
+    if (j != null && String(j).trim() !== '') return true;
+  }
+  return false;
+}
+
+/** Tipos de config geral da dimensão (`{cod8}.{dim}.{tipo}.1.txt`). */
+export const TIPOS_CONFIG_DIMENSAO = [
+  TIPOS_CALCULO.TAXA_HONORARIOS_GERAL,
+  TIPOS_CALCULO.HONORARIOS_FIXO_VAR,
+  TIPOS_CALCULO.TAXA_JUROS_GERAL,
+  TIPOS_CALCULO.TAXA_MULTA_GERAL,
+  TIPOS_CALCULO.PERIODICIDADE,
+];
+
+/**
+ * Resumo das configs `{cod8}.{dim}.{tipo}.1.txt` carregadas para o cliente.
+ * @param {ReturnType<typeof carregarBundleCalculosCliente>} bundle
+ */
+export function resumirConfigDimensaoBundle(bundle) {
+  const porDim = {};
+  for (const [dim, mapa] of bundle.configDimensao.entries()) {
+    porDim[dim] = [...mapa.keys()].sort((a, b) => Number(a) - Number(b));
+  }
+  return porDim;
+}
+
+/**
+ * Diagnóstico de fidelidade ao txt — usado pelo import antes do PUT.
+ * @param {ReturnType<typeof carregarBundleCalculosCliente>['porRodada'] extends Map<string, infer R> ? R : never} rodada
+ * @param {Awaited<ReturnType<typeof montarPayloadRodadaComRecalculo>>} payload
+ */
+export function diagnosticarRodadaImport(rodada, payload) {
+  const aceito = rodadaCalculoAceito(rodada);
+  const temSnapshotGravado = rodadaTemSnapshotGravadoTxt(rodada);
+  const recalculado = Boolean(payload?.meta?.recalculado);
+  const cfgDim = rodada.configDimensao ?? new Map();
+  const avisos = [];
+
+  if (temSnapshotGravado && recalculado) {
+    avisos.push(
+      'txt tem totais/juros gravados mas o payload foi recalculado — import não fiel ao legado',
+    );
+  }
+
+  const honDim = cfgDim.get(String(TIPOS_CALCULO.TAXA_HONORARIOS_GERAL))?.valor;
+  const honProc =
+    rodada.porTipo.get(String(TIPOS_CALCULO.TAXA_HONORARIOS_PROC))?.valor ??
+    rodada.processConfigIrmao?.porTipo.get(String(TIPOS_CALCULO.TAXA_HONORARIOS_PROC))?.valor;
+  const honPainel = payload?.panelConfig?.honorariosValor ?? '';
+
+  if (
+    honDim != null &&
+    String(honDim).trim() !== '' &&
+    !honProc &&
+    payload?.panelConfig?.honorariosTipo === 'fixos' &&
+    String(honDim).trim() === '0' &&
+    honPainel !== '0 %'
+  ) {
+    avisos.push(
+      `honorários da dimensão são ${String(honDim).trim()}% mas o painel ficou «${honPainel}»`,
+    );
+  }
+
+  const totalTxt = rodada.porTipo.get(String(TIPOS_CALCULO.TOTAL_TAXAS))?.valor;
+  const totalPayload = payload?.totaisImportados?.valorFinalTaxas;
+  if (
+    !recalculado &&
+    totalTxt &&
+    String(totalTxt).trim() &&
+    totalPayload &&
+    String(totalTxt).trim() !== String(totalPayload).trim()
+  ) {
+    avisos.push('total taxas do payload difere do txt tipo 119');
+  }
+
+  if (rodada.dimensao === 0 && !cfgDim.size) {
+    const irma = rodada.processConfigIrmao;
+    const temTaxaIrma =
+      irma &&
+      (irma.porTipo.get(String(TIPOS_CALCULO.TAXA_HONORARIOS_PROC)) ||
+        irma.porTipo.get(String(TIPOS_CALCULO.TAXA_JUROS_PROC)));
+    if (temTaxaIrma && honPainel === '10 %') {
+      avisos.push('taxas do processo na dim 1 não herdadas pela dim 0');
+    }
+  }
+
+  return {
+    aceito,
+    temSnapshotGravado,
+    recalculado,
+    modo: recalculado ? 'recalcular' : 'snapshot',
+    honorariosPainel: honPainel || null,
+    dataCalculo: payload?.dataCalculoRodada ?? null,
+    totalTaxas: totalPayload ?? null,
+    configDimensaoTipos: [...cfgDim.keys()].sort(),
+    avisos,
+  };
+}
+
+/** @deprecated Use diagnosticarRodadaImport */
+export const analisarRodadaImportCalculo = diagnosticarRodadaImport;
 
 export function valorPorTipoLinha(rodada, tipo, linha) {
   const row = rodada.linhas.get(linha);
@@ -325,7 +476,8 @@ export function montarPayloadRodadaPlanilha(rodada, opts = {}) {
  */
 export async function montarPayloadRodadaComRecalculo(rodada, opts = {}) {
   const aceito = rodadaCalculoAceito(rodada);
-  const recalcular = opts.recalcularSeNaoAceito !== false && !aceito;
+  const snapshot = aceito || rodadaTemSnapshotGravadoTxt(rodada);
+  const recalcular = opts.recalcularSeNaoAceito !== false && !snapshot;
 
   if (!recalcular) {
     return montarPayloadRodadaPlanilhaSnapshot(rodada, { aceito });

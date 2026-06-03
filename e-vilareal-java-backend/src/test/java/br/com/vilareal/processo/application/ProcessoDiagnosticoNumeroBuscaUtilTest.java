@@ -1,0 +1,76 @@
+package br.com.vilareal.processo.application;
+
+import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.math.BigInteger;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
+import static org.mockito.Mockito.when;
+
+@ExtendWith(MockitoExtension.class)
+class ProcessoDiagnosticoNumeroBuscaUtilTest {
+
+    @Mock
+    private ProcessoRepository processoRepository;
+
+    @Test
+    void normalizarSomenteDigitos_numeroProjudiInterno() {
+        assertEquals("578042564", ProcessoDiagnosticoNumeroBuscaUtil.normalizarSomenteDigitos("5780425.64"));
+    }
+
+    @Test
+    void ehNumeroProjudiInternoEmail_reconheceFormatoEmail() {
+        assertTrue(ProcessoDiagnosticoNumeroBuscaUtil.ehNumeroProjudiInternoEmail("5780425.64"));
+        assertTrue(ProcessoDiagnosticoNumeroBuscaUtil.ehNumeroProjudiInternoEmail("175134.85"));
+        assertFalse(ProcessoDiagnosticoNumeroBuscaUtil.ehNumeroProjudiInternoEmail("5780425-64.2024.8.09.0007"));
+    }
+
+    @Test
+    void buscarIdsProcessoPorNumero_projudiInternoUsaPrefixo() {
+        when(processoRepository.findIdsByNumeroCnjDigitosIniciandoCom("578042564"))
+                .thenReturn(List.of(BigInteger.valueOf(12499L)));
+
+        List<BigInteger> ids =
+                ProcessoDiagnosticoNumeroBuscaUtil.buscarIdsProcessoPorNumero("5780425.64", processoRepository);
+
+        assertEquals(List.of(BigInteger.valueOf(12499L)), ids);
+        verify(processoRepository).findIdsByNumeroCnjDigitosIniciandoCom("578042564");
+        verifyNoMoreInteractions(processoRepository);
+    }
+
+    @Test
+    void buscarIdsProcessoPorNumero_projudiInternoSemPrefixoCaiParaContendo() {
+        when(processoRepository.findIdsByNumeroCnjDigitosIniciandoCom("578042564")).thenReturn(List.of());
+        when(processoRepository.findIdsByNumeroCnjDigitosContendo("578042564"))
+                .thenReturn(List.of(BigInteger.valueOf(12499L)));
+
+        List<BigInteger> ids =
+                ProcessoDiagnosticoNumeroBuscaUtil.buscarIdsProcessoPorNumero("5780425.64", processoRepository);
+
+        assertEquals(List.of(BigInteger.valueOf(12499L)), ids);
+        verify(processoRepository).findIdsByNumeroCnjDigitosIniciandoCom("578042564");
+        verify(processoRepository).findIdsByNumeroCnjDigitosContendo("578042564");
+    }
+
+    @Test
+    void buscarIdsProcessoPorNumero_cnjCompletoUsaIgualdade() {
+        String cnj20 = "57804256420248090007";
+        when(processoRepository.findIdsByNumeroCnjNormalizadoDiagnostico(cnj20))
+                .thenReturn(List.of(BigInteger.valueOf(1L)));
+
+        List<BigInteger> ids = ProcessoDiagnosticoNumeroBuscaUtil.buscarIdsProcessoPorNumero(
+                "5780425-64.2024.8.09.0007", processoRepository);
+
+        assertEquals(List.of(BigInteger.valueOf(1L)), ids);
+        verify(processoRepository).findIdsByNumeroCnjNormalizadoDiagnostico(cnj20);
+    }
+}

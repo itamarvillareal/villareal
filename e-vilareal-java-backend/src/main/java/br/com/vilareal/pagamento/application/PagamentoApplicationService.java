@@ -135,8 +135,13 @@ public class PagamentoApplicationService {
     @Transactional
     public PagamentoResponse cancelar(Long id, PagamentoCancelarRequest req) {
         PagamentoEntity e = requirePagamento(id);
-        if (PagamentoDominio.STATUS_FINAIS_PAGO.contains(e.getStatus())) {
-            throw new BusinessRuleException("Cannot cancel an already paid payment.");
+        if (PagamentoDominio.isTipoPagar(e.getTipo())) {
+            if (PagamentoDominio.STATUS_FINAIS_PAGO.contains(e.getStatus())) {
+                throw new BusinessRuleException("Cannot cancel an already paid payment.");
+            }
+        } else if (PagamentoDominio.ST_RECEBIDO.equals(e.getStatus())
+                || PagamentoDominio.ST_CONCILIADO.equals(e.getStatus())) {
+            throw new BusinessRuleException("Não é possível cancelar recebível já recebido ou conciliado.");
         }
         UsuarioEntity u = usuarioAtual();
         String ant = e.getStatus();
@@ -155,6 +160,7 @@ public class PagamentoApplicationService {
             throw new BusinessRuleException("Imóvel não encontrado.");
         }
         PagamentoEntity e = new PagamentoEntity();
+        e.setTipo(PagamentoDominio.TIPO_PAGAR);
         e.setDataCadastro(LocalDate.now(clock));
         e.setDataVencimento(dataVencimento);
         e.setValor(config.getValorEstimado());
@@ -190,6 +196,7 @@ public class PagamentoApplicationService {
     @Transactional
     public PagamentoResponse marcarAgendado(Long id) {
         PagamentoEntity e = requirePagamento(id);
+        assertTipoPagar(e);
         if (e.getValor() == null) {
             throw new BusinessRuleException("Não é possível agendar pagamento sem valor definido.");
         }
@@ -211,6 +218,7 @@ public class PagamentoApplicationService {
             throw new BusinessRuleException("Provide the effective payment date.");
         }
         PagamentoEntity e = requirePagamento(id);
+        assertTipoPagar(e);
         UsuarioEntity u = usuarioAtual();
         String ant = e.getStatus();
         e.setDataPagamentoEfetivo(req.getDataPagamentoEfetivo());
@@ -227,8 +235,35 @@ public class PagamentoApplicationService {
     }
 
     @Transactional
+    public PagamentoResponse marcarRecebido(Long id, PagamentoMarcarRecebidoRequest req) {
+        if (req.getDataRecebimento() == null) {
+            throw new BusinessRuleException("Informe a data de recebimento.");
+        }
+        PagamentoEntity e = requirePagamento(id);
+        assertTipoReceber(e);
+        if (!PagamentoDominio.transicaoReceberPermitida(e.getStatus(), PagamentoDominio.ST_RECEBIDO)) {
+            throw new BusinessRuleException(
+                    "Recebível com status " + e.getStatus() + " não pode ser marcado como recebido.");
+        }
+        UsuarioEntity u = usuarioAtual();
+        String ant = e.getStatus();
+        e.setDataRecebimento(req.getDataRecebimento());
+        if (req.getValorRecebido() != null) {
+            e.setValorRecebido(req.getValorRecebido());
+        } else if (e.getValorRecebido() == null) {
+            e.setValorRecebido(e.getValor());
+        }
+        e.setStatus(PagamentoDominio.ST_RECEBIDO);
+        e.setAtualizadoPorUsuario(u);
+        e = pagamentoRepository.save(e);
+        registrarHistorico(e, u, "RECEBIDO", ant, e.getStatus(), null, null);
+        return toResponse(e);
+    }
+
+    @Transactional
     public PagamentoResponse substituir(Long id, Long novoPagamentoId) {
         PagamentoEntity e = requirePagamento(id);
+        assertTipoPagar(e);
         PagamentoEntity novo = requirePagamento(novoPagamentoId);
         UsuarioEntity u = usuarioAtual();
         String ant = e.getStatus();
@@ -274,8 +309,52 @@ public class PagamentoApplicationService {
         Map<String, BigDecimal> porCat = new LinkedHashMap<>();
         Map<String, BigDecimal> porResp = new LinkedHashMap<>();
 
+        PagamentoReceberResumoResponse receber = new PagamentoReceberResumoResponse();
+        long countEmitido = 0;
+        BigDecimal totalEmitido = BigDecimal.ZERO;
+        long countRecebido = 0;
+        BigDecimal totalRecebido = BigDecimal.ZERO;
+        long countAReceber = 0;
+        BigDecimal totalAReceber = BigDecimal.ZERO;
+        long countVencidoReceber = 0;
+        BigDecimal totalVencidoReceber = BigDecimal.ZERO;
+
         for (PagamentoEntity p : todos) {
             BigDecimal v = valorOuZero(p.getValor());
+            if (PagamentoDominio.isTipoReceber(p.getTipo())) {
+                switch (p.getStatus()) {
+                    case PagamentoDominio.ST_EMITIDO -> {
+                        countEmitido++;
+                        totalEmitido = totalEmitido.add(v);
+                        countAReceber++;
+                        totalAReceber = totalAReceber.add(v);
+                    }
+                    case PagamentoDominio.ST_VENCIDO -> {
+                        countEmitido++;
+                        totalEmitido = totalEmitido.add(v);
+                        countAReceber++;
+                        totalAReceber = totalAReceber.add(v);
+                        countVencidoReceber++;
+                        totalVencidoReceber = totalVencidoReceber.add(v);
+                    }
+                    case PagamentoDominio.ST_RECEBIDO -> {
+                        countEmitido++;
+                        totalEmitido = totalEmitido.add(v);
+                        countRecebido++;
+                        totalRecebido = totalRecebido.add(valorOuZero(p.getValorRecebido()).max(v));
+                    }
+                    case PagamentoDominio.ST_CONCILIADO -> {
+                        countEmitido++;
+                        totalEmitido = totalEmitido.add(v);
+                        countRecebido++;
+                        totalRecebido = totalRecebido.add(valorOuZero(p.getValorRecebido()).max(v));
+                    }
+                    default -> {
+                    }
+                }
+                continue;
+            }
+
             if (entreVencimento(p, ini, fim)) {
                 String st = p.getStatus();
                 if (List.of(
@@ -345,6 +424,15 @@ public class PagamentoApplicationService {
         d.setTotalAcertado(totalAcertado.setScale(2, RoundingMode.HALF_UP));
         d.setConferenciasPendentes(conferenciasPendentes);
         d.setAcertosPendentes(acertosPendentes);
+        receber.setCountEmitido(countEmitido);
+        receber.setTotalEmitido(totalEmitido.setScale(2, RoundingMode.HALF_UP));
+        receber.setCountRecebido(countRecebido);
+        receber.setTotalRecebido(totalRecebido.setScale(2, RoundingMode.HALF_UP));
+        receber.setCountAReceber(countAReceber);
+        receber.setTotalAReceber(totalAReceber.setScale(2, RoundingMode.HALF_UP));
+        receber.setCountVencido(countVencidoReceber);
+        receber.setTotalVencido(totalVencidoReceber.setScale(2, RoundingMode.HALF_UP));
+        d.setaReceber(receber);
         return d;
     }
 
@@ -360,6 +448,18 @@ public class PagamentoApplicationService {
         int n = 0;
         for (PagamentoEntity p : pagamentoRepository.findAll()) {
             String st = p.getStatus();
+            if (PagamentoDominio.isTipoReceber(p.getTipo())) {
+                if (PagamentoDominio.ST_CANCELADO.equals(st)
+                        || PagamentoDominio.ST_RECEBIDO.equals(st)
+                        || PagamentoDominio.ST_CONCILIADO.equals(st)) {
+                    continue;
+                }
+                if (PagamentoDominio.ST_EMITIDO.equals(st) && hoje.isAfter(p.getDataVencimento())) {
+                    aplicarTransicaoRotina(p, PagamentoDominio.ST_VENCIDO);
+                    n++;
+                }
+                continue;
+            }
             if (PagamentoDominio.ST_CANCELADO.equals(st)
                     || PagamentoDominio.ST_SUBSTITUIDO.equals(st)
                     || PagamentoDominio.ST_PAGO_CONFIRMADO.equals(st)
@@ -375,18 +475,22 @@ public class PagamentoApplicationService {
                 novo = PagamentoDominio.ST_CONFERENCIA_PENDENTE;
             }
             if (novo != null) {
-                UsuarioEntity sistema = usuarioRepository
-                        .findById(1L)
-                        .orElseThrow(() -> new IllegalStateException("Usuário id=1 necessário para auditoria da rotina."));
-                String ant = p.getStatus();
-                p.setStatus(novo);
-                p.setAtualizadoPorUsuario(sistema);
-                pagamentoRepository.save(p);
-                registrarHistorico(p, sistema, "ROTINA_DIARIA", ant, novo, null, null);
+                aplicarTransicaoRotina(p, novo);
                 n++;
             }
         }
         return n;
+    }
+
+    private void aplicarTransicaoRotina(PagamentoEntity p, String novo) {
+        UsuarioEntity sistema = usuarioRepository
+                .findById(1L)
+                .orElseThrow(() -> new IllegalStateException("Usuário id=1 necessário para auditoria da rotina."));
+        String ant = p.getStatus();
+        p.setStatus(novo);
+        p.setAtualizadoPorUsuario(sistema);
+        pagamentoRepository.save(p);
+        registrarHistorico(p, sistema, "ROTINA_DIARIA", ant, novo, null, null);
     }
 
     @Transactional
@@ -452,9 +556,20 @@ public class PagamentoApplicationService {
     }
 
     private void validarDominio(PagamentoWriteRequest req, PagamentoEntity e, boolean criacao) {
-        String statusEfetivo = resolverStatusPagamento(req, e, criacao);
-        if (!PagamentoDominio.STATUS_VALIDOS.contains(statusEfetivo)) {
+        String tipo = resolverTipo(req, e, criacao);
+        if (!PagamentoDominio.TIPOS_VALIDOS.contains(tipo)) {
+            throw new BusinessRuleException("Tipo inválido.");
+        }
+        String statusEfetivo = resolverStatusPagamento(req, e, criacao, tipo);
+        if (!PagamentoDominio.statusValidoPara(tipo, statusEfetivo)) {
             throw new BusinessRuleException("Status inválido.");
+        }
+        if (PagamentoDominio.isTipoReceber(tipo)
+                && !criacao
+                && req.getStatus() != null
+                && StringUtils.hasText(req.getStatus())
+                && !PagamentoDominio.transicaoReceberPermitida(e.getStatus(), statusEfetivo)) {
+            throw new BusinessRuleException("Transição de status inválida para recebível.");
         }
         if (req.getDataAgendamento() != null
                 && req.getDataVencimento() != null
@@ -463,14 +578,22 @@ public class PagamentoApplicationService {
         }
     }
 
+    private static String resolverTipo(PagamentoWriteRequest req, PagamentoEntity e, boolean criacao) {
+        if (req.getTipo() == null || req.getTipo().isBlank()) {
+            return criacao ? PagamentoDominio.TIPO_PAGAR : PagamentoDominio.normalizarTipo(e.getTipo());
+        }
+        return PagamentoDominio.normalizarTipo(req.getTipo());
+    }
+
     /**
-     * Na criação, status ausente → {@link PagamentoDominio#ST_PENDENTE}; texto opcional ausente → {@code ""}.
+     * Na criação, status ausente → inicial conforme o tipo; texto opcional ausente → {@code ""}.
      * Na atualização, campo omitido (null) ou só espaços mantém o valor já gravado na entidade.
      */
-    private static String resolverStatusPagamento(PagamentoWriteRequest req, PagamentoEntity e, boolean criacao) {
+    private static String resolverStatusPagamento(
+            PagamentoWriteRequest req, PagamentoEntity e, boolean criacao, String tipo) {
         String incoming = req.getStatus();
         if (!StringUtils.hasText(incoming)) {
-            return criacao ? PagamentoDominio.ST_PENDENTE : e.getStatus();
+            return criacao ? PagamentoDominio.statusInicialPara(tipo) : e.getStatus();
         }
         return incoming.trim();
     }
@@ -496,7 +619,16 @@ public class PagamentoApplicationService {
     }
 
     private void aplicarCampos(PagamentoEntity e, PagamentoWriteRequest req, UsuarioEntity u, boolean criacao) {
-        String statusFinal = resolverStatusPagamento(req, e, criacao);
+        String tipo = resolverTipo(req, e, criacao);
+        String statusFinal = resolverStatusPagamento(req, e, criacao, tipo);
+
+        if (criacao) {
+            e.setTipo(tipo);
+        } else if (req.getTipo() != null
+                && !req.getTipo().isBlank()
+                && !PagamentoDominio.normalizarTipo(req.getTipo()).equals(PagamentoDominio.normalizarTipo(e.getTipo()))) {
+            throw new BusinessRuleException("Não é permitido alterar o tipo do registro.");
+        }
 
         e.setDataAgendamento(req.getDataAgendamento());
         e.setDataVencimento(req.getDataVencimento());
@@ -510,6 +642,17 @@ public class PagamentoApplicationService {
         e.setPrioridade(req.getPrioridade() != null ? req.getPrioridade() : "NORMAL");
         e.setOrigem(req.getOrigem());
         e.setDataPagamentoEfetivo(req.getDataPagamentoEfetivo());
+        e.setDataRecebimento(req.getDataRecebimento());
+        e.setValorRecebido(req.getValorRecebido());
+        if (PagamentoDominio.isTipoReceber(tipo)) {
+            if (req.getDataEmissao() != null) {
+                e.setDataEmissao(req.getDataEmissao());
+            } else if (criacao && e.getDataEmissao() == null) {
+                e.setDataEmissao(LocalDate.now(clock));
+            }
+        } else if (req.getDataEmissao() != null) {
+            e.setDataEmissao(req.getDataEmissao());
+        }
         e.setObservacoes(req.getObservacoes());
         e.setRecorrente(Boolean.TRUE.equals(req.getRecorrente()));
         e.setRecorrenciaTipo(req.getRecorrenciaTipo());
@@ -535,9 +678,21 @@ public class PagamentoApplicationService {
             e.setRecorrenciaPagamentoOrigem(requirePagamento(req.getRecorrenciaPagamentoOrigemId()));
         }
 
-        if (criacao && PagamentoDominio.ST_PAGO_CONFIRMADO.equals(statusFinal)
+        if (criacao && PagamentoDominio.isTipoPagar(tipo) && PagamentoDominio.ST_PAGO_CONFIRMADO.equals(statusFinal)
                 && req.getDataPagamentoEfetivo() == null) {
             throw new BusinessRuleException("Informe a data do pagamento para status Pago confirmado.");
+        }
+    }
+
+    private static void assertTipoPagar(PagamentoEntity e) {
+        if (!PagamentoDominio.isTipoPagar(e.getTipo())) {
+            throw new BusinessRuleException("Operação válida apenas para contas a pagar.");
+        }
+    }
+
+    private static void assertTipoReceber(PagamentoEntity e) {
+        if (!PagamentoDominio.isTipoReceber(e.getTipo())) {
+            throw new BusinessRuleException("Operação válida apenas para recebíveis.");
         }
     }
 
@@ -576,7 +731,9 @@ public class PagamentoApplicationService {
     private PagamentoResponse toResponse(PagamentoEntity e) {
         PagamentoResponse r = new PagamentoResponse();
         r.setId(e.getId());
+        r.setTipo(e.getTipo());
         r.setDataCadastro(e.getDataCadastro());
+        r.setDataEmissao(e.getDataEmissao());
         r.setDataAgendamento(e.getDataAgendamento());
         r.setDataVencimento(e.getDataVencimento());
         r.setCodigoBarras(e.getCodigoBarras());
@@ -592,6 +749,7 @@ public class PagamentoApplicationService {
         r.setPrioridade(e.getPrioridade());
         r.setOrigem(e.getOrigem());
         r.setDataPagamentoEfetivo(e.getDataPagamentoEfetivo());
+        r.setDataRecebimento(e.getDataRecebimento());
         r.setObservacoes(e.getObservacoes());
         r.setTemBoletoAnexo(e.getBoletoArquivoPath() != null && !e.getBoletoArquivoPath().isBlank());
         r.setTemComprovanteAnexo(e.getComprovanteArquivoPath() != null && !e.getComprovanteArquivoPath().isBlank());
@@ -639,6 +797,7 @@ public class PagamentoApplicationService {
         r.setDataConferencia(e.getDataConferencia());
         r.setDataAcerto(e.getDataAcerto());
         r.setValorPagoBanco(e.getValorPagoBanco());
+        r.setValorRecebido(e.getValorRecebido());
         r.setValorDiferenca(e.getValorDiferenca());
         if (e.getConferidoPorUsuario() != null) {
             r.setConferidoPorUsuarioId(e.getConferidoPorUsuario().getId());
@@ -708,8 +867,11 @@ public class PagamentoApplicationService {
     public PagamentoAlertasResponse contagemAlertas() {
         LocalDate hoje = LocalDate.now(clock);
         List<PagamentoEntity> todos = pagamentoRepository.findAll();
+        List<PagamentoEntity> pagar = todos.stream()
+                .filter(p -> PagamentoDominio.isTipoPagar(p.getTipo()))
+                .toList();
         PagamentoAlertasResponse r = new PagamentoAlertasResponse();
-        r.setVencidos(todos.stream()
+        r.setVencidos(pagar.stream()
                 .filter(p -> hoje.isAfter(p.getDataVencimento()))
                 .filter(p -> !List.of(
                                 PagamentoDominio.ST_PAGO_CONFIRMADO,
@@ -720,27 +882,27 @@ public class PagamentoApplicationService {
                                 PagamentoDominio.ST_SUBSTITUIDO)
                         .contains(p.getStatus()))
                 .count());
-        r.setVencendoHoje(todos.stream().filter(p -> hoje.equals(p.getDataVencimento())).count());
-        r.setProximos3Dias(todos.stream()
+        r.setVencendoHoje(pagar.stream().filter(p -> hoje.equals(p.getDataVencimento())).count());
+        r.setProximos3Dias(pagar.stream()
                 .filter(p -> !p.getDataVencimento().isBefore(hoje) && !p.getDataVencimento().isAfter(hoje.plusDays(3)))
                 .count());
-        r.setProximos7Dias(todos.stream()
+        r.setProximos7Dias(pagar.stream()
                 .filter(p -> !p.getDataVencimento().isBefore(hoje) && !p.getDataVencimento().isAfter(hoje.plusDays(7)))
                 .count());
         r.setAgendadosAguardandoConfirmacao(
-                todos.stream().filter(p -> PagamentoDominio.ST_AGENDADO.equals(p.getStatus())).count());
-        r.setConferenciaPendente(todos.stream()
+                pagar.stream().filter(p -> PagamentoDominio.ST_AGENDADO.equals(p.getStatus())).count());
+        r.setConferenciaPendente(pagar.stream()
                 .filter(p -> PagamentoDominio.ST_CONFERENCIA_PENDENTE.equals(p.getStatus()))
                 .count());
-        r.setPagoSemComprovante(todos.stream()
+        r.setPagoSemComprovante(pagar.stream()
                 .filter(p -> PagamentoDominio.ST_PAGO_SEM_COMPROVANTE.equals(p.getStatus()))
                 .count());
-        r.setAltoValor(todos.stream()
+        r.setAltoValor(pagar.stream()
                 .filter(p -> p.getValor() != null && p.getValor().compareTo(new BigDecimal("10000")) >= 0)
                 .count());
-        r.setUrgentes(todos.stream().filter(p -> "URGENTE".equalsIgnoreCase(p.getPrioridade())).count());
+        r.setUrgentes(pagar.stream().filter(p -> "URGENTE".equalsIgnoreCase(p.getPrioridade())).count());
 
-        List<PagamentoEntity> pagosNaoConc = todos.stream()
+        List<PagamentoEntity> pagosNaoConc = pagar.stream()
                 .filter(p -> PagamentoDominio.ST_PAGO_CONFIRMADO.equals(p.getStatus())
                         || PagamentoDominio.ST_PAGO_SEM_COMPROVANTE.equals(p.getStatus()))
                 .filter(p -> p.getFinanceiroLancamento() == null)
@@ -752,7 +914,7 @@ public class PagamentoApplicationService {
                         .reduce(BigDecimal.ZERO, BigDecimal::add)
                         .setScale(2, RoundingMode.HALF_UP)));
 
-        List<PagamentoEntity> confSemAcerto = todos.stream()
+        List<PagamentoEntity> confSemAcerto = pagar.stream()
                 .filter(p -> PagamentoDominio.ST_CONFERIDO.equals(p.getStatus()))
                 .filter(p -> p.getPrestacaoContas() == null)
                 .toList();

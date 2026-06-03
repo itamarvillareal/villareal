@@ -1,11 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   CalendarClock,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
-  ExternalLink,
   FolderOpen,
   Loader2,
   RefreshCw,
@@ -16,6 +14,7 @@ import { buildRouterStateChaveClienteProcesso } from '../domain/camposProcessoCl
 import { buscarProcessoPorId } from '../repositories/processosRepository.js';
 import { fetchJuliaCaixa, patchJuliaCaixa } from '../repositories/juliaCaixaRepository.js';
 import { mensagemErroAmigavel } from '../utils/mensagemErroAmigavel.js';
+import { ProcessoEmbedModal } from './ProcessoEmbedModal.jsx';
 import { SeloAssistenteIa } from './ui/AutorUsuarioExibicao.jsx';
 
 const CAIXA_TABS = [
@@ -190,6 +189,53 @@ function JuliaCaixaCard({ card, acaoLoading, onConcluir, onPostergar, onCategori
         </p>
       ) : null}
 
+      {card.codigoCliente || card.numeroInterno != null ? (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <dl className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-xs text-slate-600 dark:text-slate-300">
+            {card.codigoCliente ? (
+              <div className="inline-flex items-baseline gap-1.5">
+                <dt className="font-semibold text-slate-500 dark:text-slate-400">Cód. cliente</dt>
+                <dd className="font-mono font-semibold text-slate-800 dark:text-slate-100">{card.codigoCliente}</dd>
+              </div>
+            ) : null}
+            {card.numeroInterno != null ? (
+              <div className="inline-flex items-baseline gap-1.5">
+                <dt className="font-semibold text-slate-500 dark:text-slate-400">Proc.</dt>
+                <dd className="font-semibold text-slate-800 dark:text-slate-100">{card.numeroInterno}</dd>
+              </div>
+            ) : null}
+          </dl>
+          {card.processoId ? (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onAbrirProcesso(card)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 dark:border-indigo-800/60 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-900 dark:text-indigo-200 text-xs font-semibold px-2.5 py-1.5 hover:bg-indigo-100 dark:hover:bg-indigo-950/60 disabled:opacity-50"
+              title="Abrir cadastro do processo em janela flutuante"
+            >
+              <FolderOpen className="w-3.5 h-3.5 shrink-0" aria-hidden />
+              Abrir processo
+            </button>
+          ) : null}
+        </div>
+      ) : card.processoId ? (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => onAbrirProcesso(card)}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 dark:border-indigo-800/60 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-900 dark:text-indigo-200 text-xs font-semibold px-2.5 py-1.5 hover:bg-indigo-100 dark:hover:bg-indigo-950/60 disabled:opacity-50 w-fit"
+        >
+          <FolderOpen className="w-3.5 h-3.5 shrink-0" aria-hidden />
+          Abrir processo
+        </button>
+      ) : null}
+
+      {card.numeroCnj ? (
+        <p className="text-xs text-slate-500 dark:text-slate-400 font-mono truncate" title={card.numeroCnj}>
+          CNJ: {card.numeroCnj}
+        </p>
+      ) : null}
+
       {card.parteAutora || card.parteOposta ? (
         <dl className="text-sm space-y-1 rounded-lg bg-slate-50/80 dark:bg-white/[0.04] px-3 py-2 border border-slate-100 dark:border-white/5">
           <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 items-baseline">
@@ -207,20 +253,6 @@ function JuliaCaixaCard({ card, acaoLoading, onConcluir, onPostergar, onCategori
             </dd>
           </div>
         </dl>
-      ) : null}
-
-      {card.numeroCnj ? (
-        <button
-          type="button"
-          disabled={!card.processoId || busy}
-          onClick={() => onAbrirProcesso(card)}
-          className="inline-flex items-center gap-1.5 text-sm font-medium text-indigo-700 dark:text-cyan-300 hover:underline disabled:opacity-50 disabled:no-underline w-fit"
-          title={card.processoId ? 'Abrir processo' : 'Processo indisponível'}
-        >
-          <FolderOpen className="w-4 h-4 shrink-0" aria-hidden />
-          {card.numeroCnj}
-          <ExternalLink className="w-3.5 h-3.5 opacity-70" aria-hidden />
-        </button>
       ) : null}
 
       {card.prazoDataFim ? (
@@ -362,13 +394,13 @@ function JuliaCaixaCard({ card, acaoLoading, onConcluir, onPostergar, onCategori
 }
 
 export function JuliaCaixa() {
-  const navigate = useNavigate();
   const [aba, setAba] = useState('AGUARDANDO_VOCE');
   const [ordenacao, setOrdenacao] = useState('URGENCIA');
   const [cards, setCards] = useState([]);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState('');
   const [acaoLoading, setAcaoLoading] = useState(null);
+  const [processoEmbed, setProcessoEmbed] = useState(null);
 
   const carregar = useCallback(async () => {
     setLoading(true);
@@ -404,19 +436,26 @@ export function JuliaCaixa() {
     }
   };
 
+  const abrirProcessoEmJanela = useCallback((codigoCliente, numeroInterno) => {
+    if (!codigoCliente) {
+      setErro('Processo sem código de cliente para abrir o cadastro.');
+      return;
+    }
+    setProcessoEmbed({
+      revision: Date.now(),
+      routerState: buildRouterStateChaveClienteProcesso(codigoCliente, numeroInterno),
+    });
+  }, []);
+
   const abrirProcesso = async (card) => {
     if (!card?.processoId) return;
+    if (card.codigoCliente) {
+      abrirProcessoEmJanela(card.codigoCliente, card.numeroInterno);
+      return;
+    }
     try {
       const p = await buscarProcessoPorId(card.processoId);
-      const cod = p?.codigoCliente;
-      const num = p?.numeroInterno;
-      if (!cod) {
-        setErro('Processo sem código de cliente para abrir o cadastro.');
-        return;
-      }
-      navigate('/processos', {
-        state: buildRouterStateChaveClienteProcesso(cod, num),
-      });
+      abrirProcessoEmJanela(p?.codigoCliente, p?.numeroInterno);
     } catch (e) {
       setErro(mensagemErroAmigavel(e, 'abrir o processo'));
     }
@@ -521,6 +560,20 @@ export function JuliaCaixa() {
           </div>
         )}
       </main>
+
+      <ProcessoEmbedModal
+        embed={processoEmbed}
+        onFechar={() => setProcessoEmbed(null)}
+        titulo={
+          processoEmbed?.routerState?.codigoCliente
+            ? `Processo ${processoEmbed.routerState.codigoCliente}${
+                processoEmbed.routerState.numeroInterno != null
+                  ? ` · Proc. ${processoEmbed.routerState.numeroInterno}`
+                  : ''
+              }`
+            : 'Processo (cadastro)'
+        }
+      />
     </div>
   );
 }

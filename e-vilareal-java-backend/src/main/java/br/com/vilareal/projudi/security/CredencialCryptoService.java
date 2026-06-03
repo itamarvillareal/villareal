@@ -1,15 +1,19 @@
 package br.com.vilareal.projudi.security;
 
+import br.com.vilareal.common.exception.BusinessRuleException;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import javax.crypto.Cipher;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.util.Base64;
 
@@ -20,8 +24,8 @@ import java.util.Base64;
  * IV (nonce) de 12 bytes gerado aleatoriamente <b>a cada gravação</b>. O IV é
  * público e deve ser persistido junto do ciphertext (coluna {@code iv}).</p>
  *
- * <p>A chave (256 bits) vem da env var {@code PROJUDI_CRED_KEY} em Base64 de
- * 32 bytes, exposta como {@code projudi.cred.key}. O plaintext (senha) NUNCA é
+ * <p>A chave (256 bits) vem de {@code projudi.cred.key} / env {@code PROJUDI_CRED_KEY},
+ * ou do arquivo {@code projudi.cred.key-file} (dev local). O plaintext (senha) NUNCA é
  * logado nem aparece em mensagens de erro.</p>
  */
 @Service
@@ -42,8 +46,33 @@ public class CredencialCryptoService {
 
     private SecretKey chave;
 
-    public CredencialCryptoService(@Value("${projudi.cred.key:}") String chaveBase64) {
-        this.chaveBase64 = chaveBase64;
+    public CredencialCryptoService(
+            @Value("${projudi.cred.key:}") String chaveBase64,
+            @Value("${projudi.cred.key-file:}") String keyFilePath) {
+        this.chaveBase64 = resolverChaveBase64(chaveBase64, keyFilePath);
+    }
+
+    static String resolverChaveBase64(String chaveBase64, String keyFilePath) {
+        if (StringUtils.hasText(chaveBase64)) {
+            return chaveBase64.trim();
+        }
+        if (!StringUtils.hasText(keyFilePath)) {
+            return "";
+        }
+        Path path = Path.of(keyFilePath.trim());
+        if (!path.isAbsolute()) {
+            path = Path.of(System.getProperty("user.dir")).resolve(path);
+        }
+        if (!Files.isRegularFile(path)) {
+            return "";
+        }
+        try {
+            String raw = Files.readString(path).trim();
+            return raw.replaceAll("\\s+", "");
+        } catch (Exception e) {
+            throw new IllegalStateException(
+                    "Não foi possível ler projudi.cred.key-file (" + path + "): " + e.getMessage());
+        }
     }
 
     @PostConstruct
@@ -101,6 +130,12 @@ public class CredencialCryptoService {
             byte[] claro = cipher.doFinal(cifrado);
             return new String(claro, java.nio.charset.StandardCharsets.UTF_8);
         } catch (Exception e) {
+            if (causaEhChaveErrada(e)) {
+                throw new BusinessRuleException(
+                        "Não foi possível ler a senha PROJUDI salva: a chave PROJUDI_CRED_KEY "
+                                + "não corresponde à usada no cadastro. "
+                                + "Use a mesma chave de antes ou recadastre a credencial PROJUDI.");
+            }
             throw new IllegalStateException("Falha ao decifrar credencial.", sanitizar(e));
         }
     }
@@ -134,6 +169,19 @@ public class CredencialCryptoService {
      */
     private static Throwable sanitizar(Exception e) {
         return new RuntimeException(e.getClass().getSimpleName());
+    }
+
+    private static boolean causaEhChaveErrada(Throwable e) {
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            if (t instanceof javax.crypto.AEADBadTagException) {
+                return true;
+            }
+            String nome = t.getClass().getSimpleName();
+            if ("AEADBadTagException".equals(nome)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** Resultado da cifragem: ciphertext autenticado + IV usado. */

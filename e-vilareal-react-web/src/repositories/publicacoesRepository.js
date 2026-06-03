@@ -484,7 +484,7 @@ export async function vincularPublicacaoProcessoAutomatico(id, observacao = '') 
  * para linhas ainda não vinculadas (consulta `/api/processos/diagnostico/busca-numero`).
  */
 export async function carregarSugestoesVinculoPorPublicacoes(rows) {
-  const { normalizarCnjParaChave } = await import('../data/publicacoesPdfParser.js');
+  const { chaveSugestaoVinculoPublicacao } = await import('../domain/normalizarNumeroProcessoBuscaDiagnostico.js');
   const map = new Map();
   if (!featureFlags.useApiProcessos || !Array.isArray(rows)) {
     return map;
@@ -495,11 +495,16 @@ export async function carregarSugestoesVinculoPorPublicacoes(rows) {
     if (row?.statusVinculo === 'vinculado' && row?._processoId) {
       continue;
     }
-    const raw = row?.processoCnjNormalizado || row?.numero_processo_cnj || '';
-    const key = normalizarCnjParaChave(String(raw).trim());
+    const raw =
+      row?.processoCnjNormalizado ||
+      row?.numero_processo_cnj ||
+      row?.numeroProcessoEncontrado ||
+      '';
+    const trimmed = String(raw).trim();
+    const key = chaveSugestaoVinculoPublicacao(trimmed);
     if (!key || vistos.has(key)) continue;
     vistos.add(key);
-    chaves.push({ key, raw: String(raw).trim() });
+    chaves.push({ key, raw: trimmed });
   }
   const LOTE = 6;
   for (let i = 0; i < chaves.length; i += LOTE) {

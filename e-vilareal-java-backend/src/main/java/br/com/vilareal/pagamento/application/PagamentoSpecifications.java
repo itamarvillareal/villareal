@@ -16,6 +16,7 @@ public final class PagamentoSpecifications {
     private PagamentoSpecifications() {}
 
     public record FiltroLista(
+            String tipo,
             String descricaoContains,
             String codigoBarrasContains,
             BigDecimal valorIgual,
@@ -46,7 +47,8 @@ public final class PagamentoSpecifications {
             Boolean somenteNaoConciliado) {
 
         public boolean temAlgum() {
-            return descricaoContains != null
+            return tipo != null
+                    || descricaoContains != null
                     || codigoBarrasContains != null
                     || valorIgual != null
                     || status != null
@@ -80,6 +82,9 @@ public final class PagamentoSpecifications {
     public static Specification<PagamentoEntity> comFiltros(FiltroLista f, LocalDate hoje) {
         return (root, query, cb) -> {
             List<Predicate> p = new ArrayList<>();
+            if (f.tipo() != null && !f.tipo().isBlank()) {
+                p.add(cb.equal(root.get("tipo"), PagamentoDominio.normalizarTipo(f.tipo())));
+            }
             if (f.descricaoContains() != null && !f.descricaoContains().isBlank()) {
                 String d = "%" + f.descricaoContains().trim().toLowerCase() + "%";
                 p.add(cb.like(cb.lower(root.get("descricao")), d));
@@ -137,13 +142,22 @@ public final class PagamentoSpecifications {
             }
             if (Boolean.TRUE.equals(f.somenteVencidos())) {
                 p.add(cb.lessThan(root.get("dataVencimento"), hoje));
-                p.add(cb.not(root.get("status").in(
-                        PagamentoDominio.ST_PAGO_CONFIRMADO,
-                        PagamentoDominio.ST_PAGO_SEM_COMPROVANTE,
-                        PagamentoDominio.ST_CANCELADO,
-                        PagamentoDominio.ST_SUBSTITUIDO)));
+                if (PagamentoDominio.isTipoReceber(f.tipo())) {
+                    p.add(cb.not(root.get("status").in(
+                            PagamentoDominio.ST_RECEBIDO,
+                            PagamentoDominio.ST_CONCILIADO,
+                            PagamentoDominio.ST_CANCELADO)));
+                } else {
+                    p.add(cb.equal(root.get("tipo"), PagamentoDominio.TIPO_PAGAR));
+                    p.add(cb.not(root.get("status").in(
+                            PagamentoDominio.ST_PAGO_CONFIRMADO,
+                            PagamentoDominio.ST_PAGO_SEM_COMPROVANTE,
+                            PagamentoDominio.ST_CANCELADO,
+                            PagamentoDominio.ST_SUBSTITUIDO)));
+                }
             }
             if (Boolean.TRUE.equals(f.somenteConferenciaPendente())) {
+                p.add(cb.equal(root.get("tipo"), PagamentoDominio.TIPO_PAGAR));
                 p.add(cb.equal(root.get("status"), PagamentoDominio.ST_CONFERENCIA_PENDENTE));
             }
             if (Boolean.TRUE.equals(f.proximos7Dias())) {
@@ -156,6 +170,7 @@ public final class PagamentoSpecifications {
                 p.add(cb.between(root.get("dataVencimento"), ini, fim));
             }
             if (Boolean.TRUE.equals(f.somenteSemComprovante())) {
+                p.add(cb.equal(root.get("tipo"), PagamentoDominio.TIPO_PAGAR));
                 p.add(cb.equal(root.get("status"), PagamentoDominio.ST_PAGO_SEM_COMPROVANTE));
             }
             if (Boolean.TRUE.equals(f.altoValorMin())) {
@@ -179,8 +194,13 @@ public final class PagamentoSpecifications {
                 }
             }
             if (Boolean.TRUE.equals(f.somenteNaoConciliado())) {
-                p.add(root.get("status").in(
-                        PagamentoDominio.ST_PAGO_CONFIRMADO, PagamentoDominio.ST_PAGO_SEM_COMPROVANTE));
+                if (PagamentoDominio.isTipoReceber(f.tipo())) {
+                    p.add(cb.equal(root.get("status"), PagamentoDominio.ST_RECEBIDO));
+                } else {
+                    p.add(cb.equal(root.get("tipo"), PagamentoDominio.TIPO_PAGAR));
+                    p.add(root.get("status").in(
+                            PagamentoDominio.ST_PAGO_CONFIRMADO, PagamentoDominio.ST_PAGO_SEM_COMPROVANTE));
+                }
                 p.add(cb.isNull(root.get("financeiroLancamento")));
             }
 

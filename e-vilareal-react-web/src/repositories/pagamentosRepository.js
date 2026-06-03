@@ -56,6 +56,10 @@ export async function marcarPagamentoPago(id, payload, opts = {}) {
   return request(`/api/pagamentos/${Number(id)}/marcar-pago`, { method: 'POST', body: payload, signal: opts.signal });
 }
 
+export async function marcarPagamentoRecebido(id, payload, opts = {}) {
+  return request(`/api/pagamentos/${Number(id)}/marcar-recebido`, { method: 'POST', body: payload, signal: opts.signal });
+}
+
 export async function substituirPagamento(id, novoPagamentoId, opts = {}) {
   return request(`/api/pagamentos/${Number(id)}/substituir`, {
     method: 'POST',

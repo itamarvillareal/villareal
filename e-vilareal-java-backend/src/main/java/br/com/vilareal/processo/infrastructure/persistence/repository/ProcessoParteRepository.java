@@ -28,6 +28,19 @@ public interface ProcessoParteRepository extends JpaRepository<ProcessoParteEnti
             """)
     List<ProcessoParteEntity> findAllByProcessoIdInWithPessoaEProcesso(@Param("ids") Collection<Long> ids);
 
+    @Query(
+            """
+            SELECT DISTINCT pp.processo.id FROM ProcessoParteEntity pp
+            WHERE pp.pessoa IS NULL
+              AND pp.nomeLivre IS NOT NULL
+              AND TRIM(pp.nomeLivre) <> ''
+              AND (
+                UPPER(TRIM(pp.nomeLivre)) = UPPER(TRIM(:nome))
+                OR (LENGTH(TRIM(:nome)) >= 10 AND UPPER(TRIM(pp.nomeLivre)) LIKE CONCAT('%', UPPER(TRIM(:nome)), '%'))
+              )
+            """)
+    List<Long> findDistinctProcessoIdsByNomeLivreSemPessoa(@Param("nome") String nome);
+
     long countByImportacaoId(String importacaoId);
 
     long deleteByImportacaoId(String importacaoId);

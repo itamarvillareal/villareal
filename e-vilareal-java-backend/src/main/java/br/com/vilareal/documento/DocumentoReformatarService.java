@@ -1,8 +1,10 @@
 package br.com.vilareal.documento;
 
 import br.com.vilareal.documento.parse.DocumentoDocxParser;
+import br.com.vilareal.documento.parse.DocumentoLocalDataResolver;
 import br.com.vilareal.documento.parse.DocumentoParseado;
 import br.com.vilareal.documento.parse.DocumentoReformatarPdfParser;
+import br.com.vilareal.documento.parse.ParagrafoDocumento;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
@@ -101,7 +103,8 @@ public class DocumentoReformatarService {
         LocalDate data = parseData(dataIso);
 
         boolean temFecho = !parseado.fecho().isEmpty();
-        String localData = StringUtils.hasText(parseado.localData()) ? parseado.localData().trim() : null;
+        String localData = DocumentoLocalDataResolver.resolver(cidadeEstado, dataIso, parseado.localData(), pdfService);
+        List<ParagrafoDocumento> fecho = filtrarFechoSemLocalData(parseado.fecho(), localData);
 
         return new DocumentoRenderContext(
                 enderecamento,
@@ -115,9 +118,31 @@ public class DocumentoReformatarService {
                 List.of(),
                 parseado.preambulo(),
                 parseado.secoes(),
-                parseado.fecho(),
+                fecho,
                 localData,
                 temFecho);
+    }
+
+    private static List<ParagrafoDocumento> filtrarFechoSemLocalData(List<ParagrafoDocumento> fecho, String localDataFinal) {
+        if (fecho == null || fecho.isEmpty()) {
+            return List.of();
+        }
+        String ref = localDataFinal != null ? localDataFinal.replaceAll("\\.$", "").trim() : "";
+        return fecho.stream()
+                .filter(p -> {
+                    String t = p.textoPlano();
+                    if (!StringUtils.hasText(t)) {
+                        return false;
+                    }
+                    if (DocumentoLocalDataResolver.ehLinhaLocalDataParaRemover(t)) {
+                        return false;
+                    }
+                    if (StringUtils.hasText(ref) && t.trim().equalsIgnoreCase(ref)) {
+                        return false;
+                    }
+                    return true;
+                })
+                .toList();
     }
 
     private static LocalDate parseData(String dataIso) {

@@ -9,7 +9,7 @@ import {
 import { featureFlags } from '../config/featureFlags.js';
 import { listarPessoasComDocumento } from './pessoaDocumentoService.js';
 import { listarCodigosClientePorIdPessoa } from '../data/clienteCodigoHelpers.js';
-import { listarProcessosPorIdPessoa } from '../data/processosHistoricoData.js';
+import { carregarProcessosVinculoPessoa } from '../data/pessoaVinculosProcessos.js';
 
 const PAGE_SIZE = 100;
 
@@ -182,7 +182,7 @@ async function montarLinhaExportacao(id, clientesCodigosLista, idsComDocumentoSe
 
   const nome = String(base.nome ?? '').trim();
   const codigosCliente = listarCodigosClientePorIdPessoa(id, clientesCodigosLista || []);
-  const processos = listarProcessosPorIdPessoa(id, nome);
+  const processos = await carregarProcessosVinculoPessoa(id, nome);
   const comDoc = idsComDocumentoSet?.has(String(id)) ?? false;
 
   const resp = base.responsavel;

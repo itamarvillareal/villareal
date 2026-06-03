@@ -110,6 +110,15 @@ public class JuliaCaixaApplicationService {
 
         Long publicacaoId = publicacao != null ? publicacao.getId() : null;
         Long processoId = processo != null ? processo.getId() : null;
+        String codigoCliente = null;
+        Integer numeroInterno = null;
+        if (processo != null) {
+            numeroInterno = processo.getNumeroInterno();
+            ClienteEntity clienteEnt = processo.getCliente();
+            if (clienteEnt != null && StringUtils.hasText(clienteEnt.getCodigoCliente())) {
+                codigoCliente = clienteEnt.getCodigoCliente().trim();
+            }
+        }
         String numeroCnj = processo != null ? processo.getNumeroCnj() : null;
         if (!StringUtils.hasText(numeroCnj) && publicacao != null) {
             numeroCnj = publicacao.getNumeroProcessoEncontrado();
@@ -138,6 +147,8 @@ public class JuliaCaixaApplicationService {
                 entity.getId(),
                 publicacaoId,
                 processoId,
+                codigoCliente,
+                numeroInterno,
                 numeroCnj,
                 resolverNomeCliente(processo),
                 parteAutora,

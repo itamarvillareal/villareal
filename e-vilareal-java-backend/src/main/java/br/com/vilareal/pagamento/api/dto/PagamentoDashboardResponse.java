@@ -17,6 +17,7 @@ public class PagamentoDashboardResponse {
     private BigDecimal totalAcertado;
     private long conferenciasPendentes;
     private long acertosPendentes;
+    private PagamentoReceberResumoResponse aReceber;
     private Map<String, BigDecimal> porCategoria = new LinkedHashMap<>();
     private Map<String, BigDecimal> porResponsavel = new LinkedHashMap<>();
 
@@ -122,5 +123,13 @@ public class PagamentoDashboardResponse {
 
     public void setAcertosPendentes(long acertosPendentes) {
         this.acertosPendentes = acertosPendentes;
+    }
+
+    public PagamentoReceberResumoResponse getaReceber() {
+        return aReceber;
+    }
+
+    public void setaReceber(PagamentoReceberResumoResponse aReceber) {
+        this.aReceber = aReceber;
     }
 }

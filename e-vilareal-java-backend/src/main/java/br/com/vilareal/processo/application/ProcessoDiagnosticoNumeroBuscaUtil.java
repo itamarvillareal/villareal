@@ -1,5 +1,9 @@
 package br.com.vilareal.processo.application;
 
+import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
+
+import java.math.BigInteger;
+import java.util.List;
 import java.util.Locale;
 
 /**
@@ -9,6 +13,36 @@ import java.util.Locale;
 public final class ProcessoDiagnosticoNumeroBuscaUtil {
 
     private ProcessoDiagnosticoNumeroBuscaUtil() {}
+
+    /** Número interno Projudi nos emails de intimação (ex.: {@code 5780425.64}). */
+    public static boolean ehNumeroProjudiInternoEmail(String raw) {
+        if (raw == null) {
+            return false;
+        }
+        return raw.trim().matches("(?i)\\d{4,9}\\.\\d{2}");
+    }
+
+    /**
+     * Mesma regra usada em diagnósticos e vínculo automático de publicações:
+     * CNJ completo (≥20 dígitos) por igualdade; fragmento (7–19 dígitos) por substring;
+     * número interno Projudi ({@code NNNNNNN.DD}) por prefixo no CNJ cadastrado.
+     */
+    public static List<BigInteger> buscarIdsProcessoPorNumero(String numeroBruto, ProcessoRepository processoRepository) {
+        String norm = normalizarSomenteDigitos(numeroBruto);
+        if (norm.length() < 7) {
+            return List.of();
+        }
+        if (norm.length() >= 20) {
+            return processoRepository.findIdsByNumeroCnjNormalizadoDiagnostico(norm);
+        }
+        if (ehNumeroProjudiInternoEmail(numeroBruto)) {
+            List<BigInteger> prefixo = processoRepository.findIdsByNumeroCnjDigitosIniciandoCom(norm);
+            if (!prefixo.isEmpty()) {
+                return prefixo;
+            }
+        }
+        return processoRepository.findIdsByNumeroCnjDigitosContendo(norm);
+    }
 
     public static String normalizarSomenteDigitos(String raw) {
         if (raw == null) {

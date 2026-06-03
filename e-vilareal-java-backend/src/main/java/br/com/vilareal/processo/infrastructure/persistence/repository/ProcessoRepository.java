@@ -140,6 +140,33 @@ public interface ProcessoRepository extends JpaRepository<ProcessoEntity, Long> 
     List<BigInteger> findIdsByNumeroCnjDigitosContendo(@Param("norm") String norm);
 
     /**
+     * Diagnósticos / vínculo Projudi: CNJ normalizado (só dígitos) começa com {@code norm}
+     * — para emails com número interno {@code NNNNNNN.DD} (9 dígitos após normalizar).
+     */
+    @Query(
+            value =
+                    """
+                    SELECT id FROM processo
+                    WHERE numero_cnj IS NOT NULL
+                      AND LENGTH(TRIM(numero_cnj)) > 0
+                      AND REPLACE(
+                          REPLACE(
+                          REPLACE(
+                          REPLACE(
+                          REPLACE(
+                          REPLACE(UPPER(TRIM(numero_cnj)), '.', ''),
+                          '-', ''),
+                          ' ', ''),
+                          '/', ''),
+                          CHAR(0x2013 USING utf8mb4), ''),
+                          CHAR(0x2014 USING utf8mb4), '') LIKE CONCAT(:norm, '%')
+                    ORDER BY id ASC
+                    LIMIT 50
+                    """,
+            nativeQuery = true)
+    List<BigInteger> findIdsByNumeroCnjDigitosIniciandoCom(@Param("norm") String norm);
+
+    /**
      * Audiências agendadas em {@code processo.audiencia_data} (fonte canônica; agenda espelha via front).
      * Inclusive nas datas {@code inicio} e {@code fim}.
      */

@@ -33,6 +33,16 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
 
     Optional<LancamentoFinanceiroEntity> findByNumeroLancamento(String numeroLancamento);
 
+    boolean existsByNumeroBancoAndNumeroLancamento(Integer numeroBanco, String numeroLancamento);
+
+    @Query("""
+            SELECT l.numeroLancamento FROM LancamentoFinanceiroEntity l
+            WHERE l.numeroBanco = :numeroBanco AND l.numeroLancamento IN :numerosLancamento
+            """)
+    List<String> findNumeroLancamentoExistentesPorBanco(
+            @Param("numeroBanco") Integer numeroBanco,
+            @Param("numerosLancamento") Collection<String> numerosLancamento);
+
     List<LancamentoFinanceiroEntity> findByNumeroLancamentoIn(Collection<String> numerosLancamento);
 
     @EntityGraph(attributePaths = {"contaContabil", "pessoaRef", "clienteEntidade", "processo"})

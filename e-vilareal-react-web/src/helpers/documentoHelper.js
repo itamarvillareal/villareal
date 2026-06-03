@@ -70,6 +70,33 @@ export function formatarCidadeEstado(cidade, uf) {
   return `${cid}, estado de ${nomeEstado}`;
 }
 
+const MESES_PT = {
+  janeiro: 1,
+  fevereiro: 2,
+  marco: 3,
+  março: 3,
+  abril: 4,
+  maio: 5,
+  junho: 6,
+  julho: 7,
+  agosto: 8,
+  setembro: 9,
+  outubro: 10,
+  novembro: 11,
+  dezembro: 12,
+};
+
+/** Extrai YYYY-MM-DD de «Anápolis, estado de Goiás, 01 de junho de 2026». */
+export function extrairDataIsoDeLocalData(texto) {
+  const m = String(texto ?? '').match(/(\d{1,2})\s+de\s+([a-zç]+)\s+de\s+(\d{4})/i);
+  if (!m) return null;
+  const dia = Number.parseInt(m[1], 10);
+  const mes = MESES_PT[m[2].toLowerCase()];
+  const ano = Number.parseInt(m[3], 10);
+  if (!mes || !Number.isFinite(dia) || !Number.isFinite(ano) || dia < 1 || dia > 31) return null;
+  return `${ano}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
+}
+
 export function resolveSelectInicial(valor, opcoes) {
   const v = String(valor ?? '').trim();
   if (!v) return { select: '', outro: '' };

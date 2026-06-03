@@ -30,12 +30,19 @@ services:
       WHATSAPP_WABA_ID: ${WHATSAPP_WABA_ID:-}
       WHATSAPP_APP_SECRET: ${WHATSAPP_APP_SECRET:-}
       WHATSAPP_VALIDATE_SIGNATURE: ${WHATSAPP_VALIDATE_SIGNATURE:-false}
+      # Cora Integração Direta (mTLS) — certificados em volume; desligado por padrão
+      CORA_ENABLED: ${CORA_ENABLED:-false}
+      CORA_CLIENT_ID: ${CORA_CLIENT_ID:-}
+      CORA_CERT_PATH: ${CORA_CERT_PATH:-/home/vilareal/cora-certs/certificate.pem}
+      CORA_KEY_PATH: ${CORA_KEY_PATH:-/home/vilareal/cora-certs/private-key.pem}
+      CORA_BASE_URL: ${CORA_BASE_URL:-https://matls-clients.api.stage.cora.com.br}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
       - "8081:8080"
     volumes:
       - /home/vilareal/gmail-tokens:/home/vilareal/gmail-tokens
+      - /home/vilareal/cora-certs:/home/vilareal/cora-certs:ro
 
   frontend:
     build:

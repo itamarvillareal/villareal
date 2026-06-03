@@ -1,6 +1,7 @@
 package br.com.vilareal.pagamento.infrastructure.persistence.entity;
 
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.LancamentoFinanceiroEntity;
+import br.com.vilareal.pagamento.domain.PagamentoDominio;
 import br.com.vilareal.imovel.infrastructure.persistence.entity.ContratoLocacaoEntity;
 import br.com.vilareal.imovel.infrastructure.persistence.entity.ImovelEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
@@ -24,8 +25,14 @@ public class PagamentoEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(nullable = false, length = 10)
+    private String tipo = PagamentoDominio.TIPO_PAGAR;
+
     @Column(name = "data_cadastro", nullable = false)
     private LocalDate dataCadastro;
+
+    @Column(name = "data_emissao")
+    private LocalDate dataEmissao;
 
     @Column(name = "data_agendamento")
     private LocalDate dataAgendamento;
@@ -64,6 +71,9 @@ public class PagamentoEntity {
     @Column(name = "data_pagamento_efetivo")
     private LocalDate dataPagamentoEfetivo;
 
+    @Column(name = "data_recebimento")
+    private LocalDate dataRecebimento;
+
     @Column(columnDefinition = "TEXT")
     private String observacoes;
 
@@ -85,6 +95,9 @@ public class PagamentoEntity {
 
     @Column(name = "valor_pago_banco", precision = 19, scale = 2)
     private BigDecimal valorPagoBanco;
+
+    @Column(name = "valor_recebido", precision = 19, scale = 2)
+    private BigDecimal valorRecebido;
 
     @Column(name = "valor_diferenca", precision = 19, scale = 2)
     private BigDecimal valorDiferenca;

@@ -14,7 +14,7 @@ import {
 } from '../../services/pessoaDocumentoService.js';
 import { listarCodigosClientePorIdPessoa } from '../../data/clienteCodigoHelpers.js';
 import { listarClientesCadastro } from '../../repositories/clientesRepository.js';
-import { listarProcessosPorIdPessoa } from '../../data/processosHistoricoData.js';
+import { carregarProcessosVinculoPessoa } from '../../data/pessoaVinculosProcessos.js';
 import { padCliente8Nav } from './cadastroPessoasNavUtils.js';
 import { buildRouterStateChaveClienteProcesso } from '../../domain/camposProcessoCliente.js';
 import {
@@ -225,15 +225,44 @@ export function RelatorioPessoas() {
     [pessoaAtual]
   );
 
+  const [processosVinculo, setProcessosVinculo] = useState([]);
+  const [carregandoProcessosVinculo, setCarregandoProcessosVinculo] = useState(false);
+
+  useEffect(() => {
+    if (idPessoaParaVinculos == null || !Number.isFinite(idPessoaParaVinculos)) {
+      setProcessosVinculo([]);
+      setCarregandoProcessosVinculo(false);
+      return undefined;
+    }
+    let cancelled = false;
+    setCarregandoProcessosVinculo(true);
+    void carregarProcessosVinculoPessoa(idPessoaParaVinculos, nomeParaVinculos)
+      .then((rows) => {
+        if (!cancelled) {
+          setProcessosVinculo(Array.isArray(rows) ? rows : []);
+          setCarregandoProcessosVinculo(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setProcessosVinculo([]);
+          setCarregandoProcessosVinculo(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [idPessoaParaVinculos, nomeParaVinculos]);
+
   const vinculosClienteProc = useMemo(() => {
     if (idPessoaParaVinculos == null || !Number.isFinite(idPessoaParaVinculos)) {
       return { codigosCliente: [], processos: [] };
     }
     return {
       codigosCliente: listarCodigosClientePorIdPessoa(idPessoaParaVinculos, clientesCodigosLista),
-      processos: listarProcessosPorIdPessoa(idPessoaParaVinculos, nomeParaVinculos),
+      processos: processosVinculo,
     };
-  }, [idPessoaParaVinculos, nomeParaVinculos, clientesCodigosLista]);
+  }, [idPessoaParaVinculos, clientesCodigosLista, processosVinculo]);
 
   const persistPageSize = (n) => {
     const v = clampCadastroPessoasPageSize(n);
@@ -746,7 +775,7 @@ export function RelatorioPessoas() {
                   ) : null}
                 </p>
                 <p className="text-xs text-slate-500 mt-2">
-                  Códigos de cliente vêm da API de clientes; processos do histórico local (tela Processos).
+                  Códigos de cliente vêm da API de clientes; processos da API (partes/advogado) e do histórico local.
                 </p>
               </div>
               <button
@@ -783,7 +812,12 @@ export function RelatorioPessoas() {
               </div>
               <div>
                 <h3 className="text-sm font-semibold text-slate-800 mb-2">Processos (parte cliente / oposta)</h3>
-                {vinculosClienteProc.processos.length === 0 ? (
+                {carregandoProcessosVinculo ? (
+                  <div className="flex items-center gap-2 text-sm text-slate-500">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Buscando processos…
+                  </div>
+                ) : vinculosClienteProc.processos.length === 0 ? (
                   <p className="text-sm text-slate-500">
                     Nenhum processo encontrado com esta pessoa nas partes vinculadas ou nos nomes.
                   </p>

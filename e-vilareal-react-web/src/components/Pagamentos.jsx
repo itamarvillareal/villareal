@@ -53,6 +53,9 @@ import {
   badgeStatusStyle,
   extrairAlertasLegados,
   ROTULO_ALERTA,
+  ROTULO_STATUS,
+  statusListForTipo,
+  TIPO_OPCOES,
   tooltipConciliado,
 } from './pagamentos/pagamentosUiUtils.js';
 import { featureFlags } from '../config/featureFlags.js';
@@ -96,33 +99,7 @@ const FORMAS_PAGAMENTO = [
   'OUTRO',
 ];
 
-const STATUS_LIST = [
-  'PENDENTE',
-  'AGENDADO',
-  'PAGO_CONFIRMADO',
-  'PAGO_SEM_COMPROVANTE',
-  'CONFERENCIA_PENDENTE',
-  'CONFERIDO',
-  'ACERTADO',
-  'VENCIDO',
-  'CANCELADO',
-  'SUBSTITUIDO',
-];
-
 const PRIORIDADES = ['BAIXA', 'NORMAL', 'ALTA', 'URGENTE'];
-
-const ROTULO_STATUS = {
-  PENDENTE: 'Pendente',
-  AGENDADO: 'Agendado',
-  PAGO_CONFIRMADO: 'Pago confirmado',
-  PAGO_SEM_COMPROVANTE: 'Pago sem comprovante',
-  CONFERENCIA_PENDENTE: 'Aguard. confirmação',
-  CONFERIDO: 'Conferido',
-  ACERTADO: 'Acertado',
-  VENCIDO: 'Vencido',
-  CANCELADO: 'Cancelado',
-  SUBSTITUIDO: 'Substituído',
-};
 
 function fmtData(iso) {
   if (iso == null || iso === '') return '—';
@@ -317,6 +294,7 @@ export function Pagamentos({ ocultarCabecalho = false } = {}) {
   const [mensagemOk, setMensagemOk] = useState('');
 
   const [filtros, setFiltros] = useState(() => ({
+    tipo: 'PAGAR',
     descricao: '',
     codigoBarras: '',
     valor: '',
@@ -424,6 +402,7 @@ export function Pagamentos({ ocultarCabecalho = false } = {}) {
   const montarQueryLista = useCallback(() => {
     const q = {};
     const trim = (s) => String(s ?? '').trim();
+    if (trim(filtros.tipo)) q.tipo = trim(filtros.tipo);
     if (trim(filtros.descricao)) q.descricao = trim(filtros.descricao);
     if (trim(filtros.codigoBarras)) q.codigoBarras = trim(filtros.codigoBarras);
     const vv = valorNum(filtros.valor);
@@ -906,6 +885,8 @@ export function Pagamentos({ ocultarCabecalho = false } = {}) {
     return v != null && Number.isFinite(Number(v)) ? Number(v) : null;
   };
 
+  const statusListaAtual = useMemo(() => statusListForTipo(filtros.tipo), [filtros.tipo]);
+
   const cartoesDash = dashboard
     ? [
         { k: 'totalAPagarMes', label: 'Total a pagar no mês', v: dashboard.totalAPagarMes },
@@ -935,6 +916,15 @@ export function Pagamentos({ ocultarCabecalho = false } = {}) {
           cardClass:
             'border-violet-200/90 bg-violet-50/90 dark:border-violet-900/60 dark:bg-violet-950/35 cursor-pointer hover:ring-2 hover:ring-violet-300/80',
         },
+      ]
+    : [];
+
+  const cartoesReceber = dashboard?.aReceber
+    ? [
+        { k: 'totalEmitido', label: 'Total emitido', v: dashboard.aReceber.totalEmitido, count: dashboard.aReceber.countEmitido },
+        { k: 'totalRecebido', label: 'Total recebido', v: dashboard.aReceber.totalRecebido, count: dashboard.aReceber.countRecebido },
+        { k: 'totalAReceber', label: 'Total a receber', v: dashboard.aReceber.totalAReceber, count: dashboard.aReceber.countAReceber },
+        { k: 'vencidoReceber', label: 'Vencido a receber', v: dashboard.aReceber.totalVencido, count: dashboard.aReceber.countVencido },
       ]
     : [];
 
@@ -1105,6 +1095,24 @@ export function Pagamentos({ ocultarCabecalho = false } = {}) {
         </section>
       ) : null}
 
+      {secaoAtiva === 'lista' && cartoesReceber.length > 0 ? (
+        <section className="mb-4">
+          <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">Resumo a receber</h2>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            {cartoesReceber.map((c) => (
+              <div
+                key={c.k}
+                className="rounded-xl border border-blue-200/80 bg-blue-50/90 px-3 py-2 shadow-sm dark:border-blue-900/60 dark:bg-blue-950/35"
+              >
+                <div className="text-[11px] font-medium text-slate-600 dark:text-slate-300 leading-tight">{c.label}</div>
+                <div className="text-lg font-bold text-slate-900 dark:text-slate-50 tabular-nums">{formatBRL(Number(c.v ?? 0))}</div>
+                <div className="text-[11px] text-slate-500 dark:text-slate-400">{c.count} registro(s)</div>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
       {secaoAtiva === 'lista' ? (
         <>
       {dashboard?.porCategoria && Object.keys(dashboard.porCategoria).length > 0 ? (
@@ -1211,6 +1219,27 @@ export function Pagamentos({ ocultarCabecalho = false } = {}) {
             />
           </label>
           <label className="flex flex-col gap-0.5">
+            <span className="text-slate-500">Tipo</span>
+            <select
+              className="rounded border border-slate-300 px-2 py-1 dark:bg-slate-950 dark:border-slate-600"
+              value={filtros.tipo}
+              onChange={(e) => {
+                const tipo = e.target.value;
+                setFiltros((f) => {
+                  const lista = statusListForTipo(tipo);
+                  const status = lista.includes(f.status) ? f.status : '';
+                  return { ...f, tipo, status };
+                });
+              }}
+            >
+              {TIPO_OPCOES.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-0.5">
             <span className="text-slate-500">Status</span>
             <select
               className="rounded border border-slate-300 px-2 py-1 dark:bg-slate-950 dark:border-slate-600"
@@ -1218,7 +1247,7 @@ export function Pagamentos({ ocultarCabecalho = false } = {}) {
               onChange={(e) => setFiltros((f) => ({ ...f, status: e.target.value }))}
             >
               <option value="">Todos</option>
-              {STATUS_LIST.map((s) => (
+              {statusListaAtual.map((s) => (
                 <option key={s} value={s}>
                   {ROTULO_STATUS[s] || s}
                 </option>
@@ -1818,7 +1847,7 @@ export function Pagamentos({ ocultarCabecalho = false } = {}) {
                   value={form.status}
                   onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}
                 >
-                  {STATUS_LIST.map((c) => (
+                  {statusListForTipo(form.tipo || 'PAGAR').map((c) => (
                     <option key={c} value={c}>
                       {ROTULO_STATUS[c] || c}
                     </option>

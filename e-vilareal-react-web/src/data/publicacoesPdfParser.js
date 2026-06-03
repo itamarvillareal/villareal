@@ -20,6 +20,10 @@ import { extrairTribunalTextualDoDiario } from './publicacoesCnjTribunal.js';
 export const RE_CNJ_GLOBAL =
   /\b(\d{7})\s*[-–]\s*(\d{2})\s*\.\s*(\d{4})\s*\.\s*(\d)\s*\.\s*(\d{2})\s*\.\s*(\d{4})\b/g;
 
+/** TJGO/Projudi: sequencial.DV.ano… (ponto entre sequencial e DV, comum no cadastro legado). */
+const RE_CNJ_PROJUDI_PONTO =
+  /\b(\d{4,7})\.(\d{2})\.(\d{4})\.(\d)\.(\d{2})\.(\d{4})\b/i;
+
 const RE_CNJ_LINHA = new RegExp(RE_CNJ_GLOBAL.source, 'i');
 
 const MARCADORES_INDISPONIVEL =
@@ -76,6 +80,8 @@ export function normalizarCnjParaChave(cnj) {
   const s = String(cnj ?? '').trim();
   const m = s.match(RE_CNJ_LINHA);
   if (m) return `${m[1]}-${m[2]}.${m[3]}.${m[4]}.${m[5]}.${m[6]}`.toUpperCase();
+  const mp = s.match(RE_CNJ_PROJUDI_PONTO);
+  if (mp) return `${mp[1]}-${mp[2]}.${mp[3]}.${mp[4]}.${mp[5]}.${mp[6]}`.toUpperCase();
   /** API / MySQL por vezes gravam só os 20 dígitos — sem isso o índice de Publicações ignora o processo. */
   const d = s.replace(/\D/g, '');
   if (d.length === 20) {

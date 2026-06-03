@@ -22,7 +22,15 @@ import {
 function valorPorTipo(rodada, tipo, linha = null) {
   if (linha != null) return valorPorTipoLinhaDropbox(rodada, tipo, linha);
   const ent = rodada.porTipo.get(String(tipo));
-  return ent?.valor != null ? String(ent.valor).trim() : '';
+  if (ent?.valor != null && String(ent.valor).trim() !== '') return String(ent.valor).trim();
+  const cfgDim = rodada.configDimensao?.get(String(tipo));
+  if (cfgDim?.valor != null && String(cfgDim.valor).trim() !== '') return String(cfgDim.valor).trim();
+  const irma = rodada.processConfigIrmao;
+  if (irma) {
+    const entIrma = irma.porTipo.get(String(tipo));
+    if (entIrma?.valor != null && String(entIrma.valor).trim() !== '') return String(entIrma.valor).trim();
+  }
+  return '';
 }
 
 function parseNumeroConfig(v, fallback) {

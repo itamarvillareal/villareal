@@ -74,6 +74,15 @@ public class DocumentoPdfService {
         return gerarPdfDeTemplate(TEMPLATE_PETICAO, variables);
     }
 
+    /** Usado por {@link DocumentoLocalDataResolver} e testes. */
+    public String montarLocalData(String cidadeEstado, LocalDate data) {
+        LocalDate d = data != null ? data : LocalDate.now();
+        String local = cidadeEstado != null && !cidadeEstado.isBlank()
+                ? cidadeEstado
+                : "Anápolis, estado de Goiás";
+        return local + ", " + formatarDataExtenso(d) + ".";
+    }
+
     public byte[] gerarPdfDeTemplate(String templateName, Map<String, Object> variables) {
         Context context = new Context(LOCALE_PT_BR);
         if (variables != null) {
@@ -84,14 +93,6 @@ public class DocumentoPdfService {
 
         String htmlRenderizado = templateEngine.process(templateName, context);
         return converterHtmlParaPdf(htmlRenderizado);
-    }
-
-    public String montarLocalData(String cidadeEstado, LocalDate data) {
-        LocalDate d = data != null ? data : LocalDate.now();
-        String local = cidadeEstado != null && !cidadeEstado.isBlank()
-                ? cidadeEstado
-                : "Anápolis, estado de Goiás";
-        return local + ", " + formatarDataExtenso(d) + ".";
     }
 
     private byte[] converterHtmlParaPdf(String htmlRenderizado) {

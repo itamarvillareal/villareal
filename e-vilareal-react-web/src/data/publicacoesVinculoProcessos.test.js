@@ -3,6 +3,7 @@ import * as hist from './processosHistoricoData.js';
 import {
   buscarHitIndiceCnjPorCnj,
   montarIndiceCnjClienteProcAsync,
+  resolverSugestaoVinculoLinha,
   vincularPublicacaoAoCadastro,
 } from './publicacoesVinculoProcessos.js';
 import {
@@ -152,5 +153,77 @@ describe('montarIndiceCnjClienteProcAsync', () => {
     const map = await montarIndiceCnjClienteProcAsync();
     expect(spy).toHaveBeenCalled();
     expect(buscarHitIndiceCnjPorCnj(map, '5393953-78.2021.8.09.0006')?.hit?.proc).toBe('9');
+  });
+});
+
+describe('resolverSugestaoVinculoLinha', () => {
+  it('resolve sugestão da API com número Projudi parcial', () => {
+    const sugestoesApi = new Map([
+      [
+        '17513485',
+        {
+          codCliente: '00000473',
+          procInterno: '36',
+          cliente: 'ITAMAR',
+          reu: 'RIDANI',
+        },
+      ],
+    ]);
+    const sug = resolverSugestaoVinculoLinha(
+      {
+        statusVinculo: 'nao_vinculado',
+        processoCnjNormalizado: '175134.85',
+      },
+      new Map(),
+      sugestoesApi
+    );
+    expect(sug?.codCliente).toBe('00000473');
+    expect(sug?.procInterno).toBe('36');
+    expect(sug?.fonte).toBe('api');
+  });
+
+  it('resolve sugestão pelo índice quando cadastro usa CNJ Projudi com ponto', () => {
+    const map = new Map();
+    map.set('5780425-64.2024.8.09.0007', {
+      codCliente: '00000752',
+      proc: '293',
+      cliente: 'M&S ANÁPOLIS',
+      reu: 'RÉU TESTE',
+    });
+    const sug = resolverSugestaoVinculoLinha(
+      {
+        statusVinculo: 'nao_vinculado',
+        processoCnjNormalizado: '5780425.64',
+      },
+      map,
+      new Map()
+    );
+    expect(sug?.codCliente).toBe('00000752');
+    expect(sug?.procInterno).toBe('293');
+    expect(sug?.fonte).toBe('cadastro');
+  });
+});
+
+describe('montarIndiceCnjClienteProcAsync cnj projudi ponto', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    listarClientesIndiceCadastro.mockReset();
+    listarProcessosResumoPorCodigoCliente.mockReset();
+  });
+
+  it('indexa CNJ gravado como 5780425.64.2024… (formato Projudi legado)', async () => {
+    listarClientesIndiceCadastro.mockResolvedValue([{ codigo: '00000752', nomeRazao: 'Cliente 752' }]);
+    listarProcessosResumoPorCodigoCliente.mockResolvedValue([
+      {
+        id: 12499,
+        codigoCliente: '00000752',
+        numeroInterno: 293,
+        numeroCnj: '5780425.64.2024.8.09.0007',
+      },
+    ]);
+    const map = await montarIndiceCnjClienteProcAsync();
+    const r = buscarHitIndiceCnjPorCnj(map, '5780425.64');
+    expect(r?.hit?.codCliente).toBe('00000752');
+    expect(r?.hit?.proc).toBe('293');
   });
 });
