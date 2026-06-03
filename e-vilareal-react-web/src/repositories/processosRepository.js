@@ -365,6 +365,22 @@ const PAGE_SIZE_LISTAGEM_CLIENTE = 100;
 /** Evita loop infinito se a resposta paginada vier sem {@code last} ou com anomalia. */
 const MAX_PAGES_LISTAGEM_PROCESSOS_CLIENTE = 500;
 
+/**
+ * Critério de parada da paginação Spring (`Page` JSON).
+ * Não usar {@code chunk.length < pageSize} sozinho: backends com page size menor (ex.: 20)
+ * devolvem {@code last=false} e o cliente pararia na 1ª página.
+ */
+export function devePararPaginacaoProcessosCliente(body, chunkLength, pageIndex, pageSize) {
+  if (chunkLength === 0) return true;
+  if (body?.last === true) return true;
+  if (body?.last === false) return false;
+  const totalPages = Number(body?.totalPages);
+  if (Number.isFinite(totalPages) && totalPages > 0) {
+    return pageIndex >= totalPages - 1;
+  }
+  return chunkLength < pageSize;
+}
+
 async function listarProcessosPorCodigoClientePaginado(codigoCliente, { resumo = false } = {}) {
   if (!featureFlags.useApiProcessos) return [];
   const cod = padCliente8(codigoCliente);
@@ -394,7 +410,7 @@ async function listarProcessosPorCodigoClientePaginado(codigoCliente, { resumo =
       );
     }
     out.push(...chunk);
-    if (chunk.length === 0 || body.last === true || chunk.length < PAGE_SIZE_LISTAGEM_CLIENTE) {
+    if (devePararPaginacaoProcessosCliente(body, chunk.length, page, PAGE_SIZE_LISTAGEM_CLIENTE)) {
       break;
     }
   }
@@ -1365,6 +1381,64 @@ async function baixarPdfApiGet(path, fallbackFilename) {
   const match = /filename="([^"]+)"/i.exec(disposition);
   const filename = match?.[1] || fallbackFilename;
   return { blob, filename };
+}
+
+async function baixarPdfApiPost(path, body, fallbackFilename) {
+  const res = await fetch(`${API_BASE_URL}${path}`, {
+    method: 'POST',
+    headers: {
+      ...buildDefaultApiHeaders(),
+      'Content-Type': 'application/json',
+      Accept: 'application/pdf',
+    },
+    body: JSON.stringify(body ?? {}),
+  });
+  if (res.status === 401) emitApiUnauthorized();
+  if (!res.ok) {
+    const text = await res.text();
+    throw erroRespostaPdf(res, text);
+  }
+  const blob = await res.blob();
+  const disposition = res.headers.get('Content-Disposition') || '';
+  const match = /filename="([^"]+)"/i.exec(disposition);
+  const filename = match?.[1] || fallbackFilename;
+  return { blob, filename };
+}
+
+/**
+ * Lista PDFs da pasta Movimentações do processo no Drive (ordenados por nome).
+ * @param {number|string} processoId
+ * @returns {Promise<Array<{ id: string, nome: string, tipo: string, mimeType?: string, tamanho?: number, dataModificacao?: string }>>}
+ */
+export async function listarPdfsMovimentacoes(processoId) {
+  const id = Number(processoId);
+  if (!Number.isFinite(id) || id <= 0) {
+    throw new Error('Processo não identificado.');
+  }
+  return request(`/api/processos/${id}/movimentacoes/arquivos`);
+}
+
+/**
+ * Consolida apenas os PDFs selecionados (ordem de fileIds preservada).
+ * @param {number|string} processoId
+ * @param {string[]} fileIds
+ * @param {{ numeroCnj?: string }} [_options] reservado (sem fallback autos-integral)
+ * @returns {Promise<{ blob: Blob, filename: string }>}
+ */
+export async function consolidarMovimentacoesPdfSelecionados(processoId, fileIds, _options = {}) {
+  const id = Number(processoId);
+  if (!Number.isFinite(id) || id <= 0) {
+    throw new Error('Processo não identificado.');
+  }
+  const ids = Array.isArray(fileIds) ? fileIds.filter(Boolean) : [];
+  if (!ids.length) {
+    throw new Error('Nenhum arquivo selecionado.');
+  }
+  return baixarPdfApiPost(
+    `/api/processos/${id}/movimentacoes/consolidar-pdf`,
+    { fileIds: ids },
+    `Movimentacoes_Consolidado_${id}.pdf`
+  );
 }
 
 /**

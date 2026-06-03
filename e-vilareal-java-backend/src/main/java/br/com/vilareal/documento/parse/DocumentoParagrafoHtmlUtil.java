@@ -1,0 +1,136 @@
+package br.com.vilareal.documento.parse;
+
+import org.jsoup.Jsoup;
+import org.jsoup.nodes.Element;
+import org.jsoup.nodes.Node;
+import org.jsoup.nodes.TextNode;
+import org.springframework.util.StringUtils;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.stream.Collectors;
+
+/** Converte parágrafos formatados ↔ HTML simples para edição na prévia. */
+public final class DocumentoParagrafoHtmlUtil {
+
+    private DocumentoParagrafoHtmlUtil() {}
+
+    public static String paragrafosToHtml(List<ParagrafoDocumento> paragrafos) {
+        if (paragrafos == null || paragrafos.isEmpty()) {
+            return "";
+        }
+        return paragrafos.stream().map(DocumentoParagrafoHtmlUtil::paragrafoToHtml).collect(Collectors.joining());
+    }
+
+    public static String paragrafoToHtml(ParagrafoDocumento paragrafo) {
+        if (paragrafo == null) {
+            return "";
+        }
+        String cls =
+                switch (paragrafo.tipo()) {
+                    case ENUMERACAO -> "enumeracao";
+                    case FECHO -> "fecho";
+                    default -> "corpo";
+                };
+        return "<p class=\"" + cls + "\">" + runsToHtml(paragrafo.conteudo()) + "</p>";
+    }
+
+    public static List<ParagrafoDocumento> htmlToParagrafos(String html, TipoParagrafo tipoPadrao) {
+        if (!StringUtils.hasText(html)) {
+            return List.of();
+        }
+        var doc = Jsoup.parseBodyFragment(html.trim());
+        List<ParagrafoDocumento> resultado = new ArrayList<>();
+        if (doc.body().children().isEmpty()) {
+            String texto = doc.body().text();
+            if (StringUtils.hasText(texto)) {
+                resultado.add(new ParagrafoDocumento(tipoPadrao, List.of(new TextoFormatado(texto.trim(), false, false, false))));
+            }
+            return resultado;
+        }
+        for (Element el : doc.body().children()) {
+            TipoParagrafo tipo = tipoFromClass(el.className(), tipoPadrao);
+            List<TextoFormatado> runs = parseRuns(el);
+            if (!runs.isEmpty()) {
+                resultado.add(new ParagrafoDocumento(tipo, runs));
+            }
+        }
+        return resultado;
+    }
+
+    private static String runsToHtml(List<TextoFormatado> runs) {
+        if (runs == null || runs.isEmpty()) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        for (TextoFormatado r : runs) {
+            String t = escapeHtml(r.texto());
+            if (!StringUtils.hasText(t)) {
+                continue;
+            }
+            if (r.negrito() && r.italico()) {
+                sb.append("<strong><em>").append(t).append("</em></strong>");
+            } else if (r.negrito()) {
+                sb.append("<strong>").append(t).append("</strong>");
+            } else if (r.italico()) {
+                sb.append("<em>").append(t).append("</em>");
+            } else {
+                sb.append(t);
+            }
+        }
+        return sb.toString();
+    }
+
+    private static List<TextoFormatado> parseRuns(Element el) {
+        List<TextoFormatado> runs = new ArrayList<>();
+        parseRunsRec(el, runs, false, false);
+        if (runs.isEmpty()) {
+            String texto = el.text();
+            if (StringUtils.hasText(texto)) {
+                runs.add(new TextoFormatado(texto.trim(), false, false, false));
+            }
+        }
+        return runs;
+    }
+
+    private static void parseRunsRec(Node node, List<TextoFormatado> runs, boolean negrito, boolean italico) {
+        if (node instanceof TextNode tn) {
+            String t = tn.text();
+            if (StringUtils.hasText(t)) {
+                runs.add(new TextoFormatado(t, negrito, italico, false));
+            }
+            return;
+        }
+        if (!(node instanceof Element el)) {
+            return;
+        }
+        String tag = el.tagName().toLowerCase(Locale.ROOT);
+        boolean n = negrito || tag.equals("strong") || tag.equals("b");
+        boolean i = italico || tag.equals("em") || tag.equals("i");
+        for (Node child : el.childNodes()) {
+            parseRunsRec(child, runs, n, i);
+        }
+    }
+
+    private static TipoParagrafo tipoFromClass(String className, TipoParagrafo padrao) {
+        if (!StringUtils.hasText(className)) {
+            return padrao;
+        }
+        String c = className.toLowerCase(Locale.ROOT);
+        if (c.contains("enumeracao")) {
+            return TipoParagrafo.ENUMERACAO;
+        }
+        if (c.contains("fecho")) {
+            return TipoParagrafo.FECHO;
+        }
+        return padrao;
+    }
+
+    private static String escapeHtml(String texto) {
+        if (texto == null) {
+            return "";
+        }
+        return texto.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+    }
+}

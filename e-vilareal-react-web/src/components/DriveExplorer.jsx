@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ChevronLeft,
   Download,
@@ -14,7 +14,10 @@ import {
   X,
 } from 'lucide-react';
 import { downloadPdfBlob } from '../repositories/documentosRepository.js';
-import { consolidarMovimentacoesPdf } from '../repositories/processosRepository.js';
+import {
+  consolidarMovimentacoesPdfSelecionados,
+  listarPdfsMovimentacoes,
+} from '../repositories/processosRepository.js';
 import {
   listarArquivos,
   obterInfoPasta,
@@ -80,6 +83,11 @@ export default function DriveExplorer({ codigoCliente, numeroInterno, processoId
   const [pastaRaiz, setPastaRaiz] = useState(null);
   const [dragOver, setDragOver] = useState(false);
   const [consolidando, setConsolidando] = useState(false);
+  const [modalSelecaoAberto, setModalSelecaoAberto] = useState(false);
+  const [candidatos, setCandidatos] = useState([]);
+  const [carregandoCandidatos, setCarregandoCandidatos] = useState(false);
+  const [selecionados, setSelecionados] = useState(() => new Set());
+  const [filtroNome, setFiltroNome] = useState('');
   const [toastMsg, setToastMsg] = useState('');
   const inputRef = useRef(null);
 
@@ -220,22 +228,73 @@ export default function DriveExplorer({ codigoCliente, numeroInterno, processoId
     if (url) window.open(url, '_blank', 'noopener,noreferrer');
   }
 
-  const temPdfNaLista = arquivos.some(
-    (a) =>
-      a.tipo !== 'pasta' &&
-      (String(a.mimeType ?? '').toLowerCase().includes('pdf') ||
-        String(a.nome ?? '').toLowerCase().endsWith('.pdf'))
-  );
+  const candidatosFiltrados = useMemo(() => {
+    const q = filtroNome.trim().toLowerCase();
+    if (!q) return candidatos;
+    return candidatos.filter((c) => String(c.nome ?? '').toLowerCase().includes(q));
+  }, [candidatos, filtroNome]);
 
-  async function handleConsolidarPdfs() {
+  const qtdSelecionados = selecionados.size;
+  const podeConsolidarProcesso =
+    Number.isFinite(Number(processoId)) && Number(processoId) > 0 && !consolidando;
+
+  function fecharModalSelecao() {
+    if (consolidando) return;
+    setModalSelecaoAberto(false);
+    setFiltroNome('');
+  }
+
+  function alternarSelecao(id) {
+    setSelecionados((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function selecionarTodos() {
+    setSelecionados(new Set(candidatos.map((c) => c.id).filter(Boolean)));
+  }
+
+  function limparSelecao() {
+    setSelecionados(new Set());
+  }
+
+  async function abrirModalConsolidacao() {
     const id = Number(processoId);
     if (!Number.isFinite(id) || id <= 0 || consolidando) return;
+    setModalSelecaoAberto(true);
+    setCarregandoCandidatos(true);
+    setFiltroNome('');
+    setCandidatos([]);
+    setSelecionados(new Set());
+    try {
+      const lista = await listarPdfsMovimentacoes(id);
+      const arr = Array.isArray(lista) ? lista : [];
+      setCandidatos(arr);
+      setSelecionados(new Set(arr.map((c) => c.id).filter(Boolean)));
+    } catch (e) {
+      setToastMsg(e?.message || 'Não foi possível carregar os PDFs da pasta Movimentações.');
+      setModalSelecaoAberto(false);
+    } finally {
+      setCarregandoCandidatos(false);
+    }
+  }
+
+  async function handleConfirmarConsolidacao() {
+    const id = Number(processoId);
+    if (!Number.isFinite(id) || id <= 0 || consolidando || qtdSelecionados === 0) return;
+    const fileIds = candidatos.filter((c) => selecionados.has(c.id)).map((c) => c.id);
+    if (!fileIds.length) return;
     setConsolidando(true);
     setErro('');
     try {
       const cnj = String(numeroCnj ?? '').trim();
-      const { blob, filename } = await consolidarMovimentacoesPdf(id, { numeroCnj: cnj });
+      const { blob, filename } = await consolidarMovimentacoesPdfSelecionados(id, fileIds, { numeroCnj: cnj });
       downloadPdfBlob(blob, filename);
+      setModalSelecaoAberto(false);
+      setFiltroNome('');
       setToastMsg('PDF consolidado baixado com sucesso.');
     } catch (e) {
       setToastMsg(e?.message || 'Não foi possível consolidar os PDFs.');
@@ -328,14 +387,9 @@ export default function DriveExplorer({ codigoCliente, numeroInterno, processoId
             <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
               <button
                 type="button"
-                disabled={
-                  consolidando ||
-                  !temPdfNaLista ||
-                  !Number.isFinite(Number(processoId)) ||
-                  Number(processoId) <= 0
-                }
-                onClick={() => void handleConsolidarPdfs()}
-                title="Mescla todos os PDFs da pasta Movimentações em um único arquivo"
+                disabled={!podeConsolidarProcesso}
+                onClick={() => void abrirModalConsolidacao()}
+                title="Escolha quais PDFs da pasta Movimentações entram no arquivo consolidado"
                 className="inline-flex items-center gap-1.5 rounded bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
               >
                 {consolidando ? (
@@ -459,6 +513,135 @@ export default function DriveExplorer({ codigoCliente, numeroInterno, processoId
           )}
         </div>
       </aside>
+
+      {modalSelecaoAberto ? (
+        <div
+          className="fixed inset-0 z-[1001] flex items-center justify-center bg-black/40 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="drive-consolidar-modal-title"
+          onClick={fecharModalSelecao}
+        >
+          <div
+            className="flex max-h-[min(90vh,640px)] w-full max-w-lg flex-col rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="shrink-0 border-b border-slate-200 px-5 py-4 dark:border-slate-700">
+              <h3
+                id="drive-consolidar-modal-title"
+                className="text-base font-semibold text-slate-900 dark:text-slate-100"
+              >
+                Selecionar PDFs para consolidar
+              </h3>
+              <p className="mt-1 text-xs text-slate-500">
+                Pasta Movimentações — ordem da lista = ordem no PDF final
+              </p>
+            </div>
+
+            <div className="shrink-0 space-y-2 border-b border-slate-200 px-5 py-3 dark:border-slate-700">
+              <input
+                type="search"
+                value={filtroNome}
+                onChange={(e) => setFiltroNome(e.target.value)}
+                placeholder="Filtrar por nome…"
+                className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+              />
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <button
+                  type="button"
+                  onClick={selecionarTodos}
+                  disabled={carregandoCandidatos || candidatos.length === 0}
+                  className="rounded border border-slate-300 px-2 py-1 font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
+                >
+                  Selecionar todos
+                </button>
+                <button
+                  type="button"
+                  onClick={limparSelecao}
+                  disabled={carregandoCandidatos || qtdSelecionados === 0}
+                  className="rounded border border-slate-300 px-2 py-1 font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
+                >
+                  Limpar seleção
+                </button>
+                <span className="ml-auto text-slate-500">
+                  ({qtdSelecionados} de {candidatos.length} selecionados)
+                </span>
+              </div>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-3">
+              {carregandoCandidatos ? (
+                <div className="flex items-center justify-center gap-2 py-10 text-sm text-slate-600">
+                  <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+                  Carregando arquivos…
+                </div>
+              ) : candidatos.length === 0 ? (
+                <p className="py-8 text-center text-sm text-slate-500">
+                  Nenhum PDF na pasta Movimentações.
+                </p>
+              ) : candidatosFiltrados.length === 0 ? (
+                <p className="py-8 text-center text-sm text-slate-500">
+                  Nenhum arquivo corresponde ao filtro.
+                </p>
+              ) : (
+                <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {candidatosFiltrados.map((arquivo) => (
+                    <li key={arquivo.id}>
+                      <label className="flex cursor-pointer items-start gap-2 rounded px-1 py-2 hover:bg-slate-50 dark:hover:bg-slate-800/60">
+                        <input
+                          type="checkbox"
+                          className="mt-1 shrink-0"
+                          checked={selecionados.has(arquivo.id)}
+                          onChange={() => alternarSelecao(arquivo.id)}
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-medium text-slate-900 dark:text-slate-100">
+                            {arquivo.nome}
+                          </span>
+                          <span className="text-[11px] text-slate-500">
+                            {formatarTamanho(arquivo.tamanho)}
+                          </span>
+                        </span>
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div className="flex shrink-0 justify-end gap-2 border-t border-slate-200 px-5 py-4 dark:border-slate-700">
+              <button
+                type="button"
+                onClick={fecharModalSelecao}
+                disabled={consolidando}
+                className="rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50 disabled:opacity-60 dark:border-slate-600 dark:hover:bg-slate-800"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleConfirmarConsolidacao()}
+                disabled={
+                  consolidando ||
+                  carregandoCandidatos ||
+                  qtdSelecionados === 0 ||
+                  candidatos.length === 0
+                }
+                className="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
+              >
+                {consolidando ? (
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                ) : (
+                  <Files className="h-4 w-4" aria-hidden />
+                )}
+                {consolidando
+                  ? 'Gerando…'
+                  : `Gerar PDF consolidado (${qtdSelecionados})`}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }

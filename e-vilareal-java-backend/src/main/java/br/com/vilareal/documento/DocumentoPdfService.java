@@ -71,6 +71,14 @@ public class DocumentoPdfService {
         variables.put("omitirFechoPadrao", ctx.omitirFechoPadrao());
         variables.put("pedidos", ctx.pedidos());
         variables.put("localData", localData);
+        variables.put(
+                "advogadoNome",
+                StringUtils.hasText(ctx.advogadoNome()) ? ctx.advogadoNome() : DocumentoReformatarCorpoUnicoHtml.ADVOGADO_NOME_PADRAO);
+        variables.put(
+                "advogadoOab",
+                StringUtils.hasText(ctx.advogadoOab()) ? ctx.advogadoOab() : DocumentoReformatarCorpoUnicoHtml.ADVOGADO_OAB_PADRAO);
+        variables.put("modoCorpoUnico", ctx.modoCorpoUnico());
+        variables.put("corpoUnicoHtml", ctx.corpoUnicoHtml());
         return gerarPdfDeTemplate(TEMPLATE_PETICAO, variables);
     }
 

@@ -88,11 +88,63 @@ export async function formatarArquivoPdf(arquivo, opts = {}) {
   if (opts.numeroInterno != null && opts.numeroInterno !== '') {
     fd.append('numeroInterno', String(opts.numeroInterno));
   }
+  if (opts.preview) fd.append('preview', 'true');
 
   const res = await fetch(`${API_BASE_URL}/api/documentos/reformatar`, {
     method: 'POST',
     headers: headersMultipart(),
     body: fd,
+    signal: opts.signal,
+  });
+  if (res.status === 401) emitApiUnauthorized();
+  if (!res.ok) {
+    throw new Error(await parseErrorResponse(res));
+  }
+  return res.blob();
+}
+
+/**
+ * Extrai conteúdo editável de Word/PDF para prévia antes do PDF final.
+ */
+export async function extrairConteudoArquivo(arquivo, opts = {}) {
+  const fd = new FormData();
+  fd.append('arquivo', arquivo);
+  if (opts.enderecamento) fd.append('enderecamento', opts.enderecamento);
+  if (opts.numeroProcesso) fd.append('numeroProcesso', opts.numeroProcesso);
+  if (opts.cidadeEstado) fd.append('cidadeEstado', opts.cidadeEstado);
+  if (opts.data) fd.append('data', opts.data);
+
+  const res = await fetch(`${API_BASE_URL}/api/documentos/reformatar/conteudo`, {
+    method: 'POST',
+    headers: headersMultipart(),
+    body: fd,
+    signal: opts.signal,
+  });
+  if (res.status === 401) emitApiUnauthorized();
+  if (!res.ok) {
+    throw new Error(await parseErrorResponse(res));
+  }
+  return res.json();
+}
+
+/**
+ * Gera PDF a partir do conteúdo editado na prévia (modo reformatado).
+ */
+export async function gerarPdfReformatado(conteudo, opts = {}) {
+  const params = new URLSearchParams();
+  if (opts.preview) params.set('preview', 'true');
+  if (opts.nomeArquivo) params.set('nomeArquivo', opts.nomeArquivo);
+  if (opts.codigoCliente) params.set('codigoCliente', String(opts.codigoCliente));
+  if (opts.numeroInterno != null && opts.numeroInterno !== '') {
+    params.set('numeroInterno', String(opts.numeroInterno));
+  }
+  const qs = params.toString();
+  const url = `${API_BASE_URL}/api/documentos/reformatar/gerar-pdf${qs ? `?${qs}` : ''}`;
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: headersJson(),
+    body: JSON.stringify(conteudo),
     signal: opts.signal,
   });
   if (res.status === 401) emitApiUnauthorized();

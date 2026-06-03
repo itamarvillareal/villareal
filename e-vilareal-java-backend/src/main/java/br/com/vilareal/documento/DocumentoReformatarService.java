@@ -3,14 +3,19 @@ package br.com.vilareal.documento;
 import br.com.vilareal.documento.parse.DocumentoDocxParser;
 import br.com.vilareal.documento.parse.DocumentoLocalDataResolver;
 import br.com.vilareal.documento.parse.DocumentoParseado;
+import br.com.vilareal.documento.parse.DocumentoParagrafoHtmlUtil;
 import br.com.vilareal.documento.parse.DocumentoReformatarPdfParser;
 import br.com.vilareal.documento.parse.ParagrafoDocumento;
+import br.com.vilareal.documento.parse.SecaoDocumento;
+import br.com.vilareal.documento.parse.TipoParagrafo;
+import br.com.vilareal.documento.parse.TipoTitulo;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.time.format.DateTimeParseException;
 import java.util.Locale;
@@ -47,6 +52,147 @@ public class DocumentoReformatarService {
         validarArquivo(arquivo);
         DocumentoParseado parseado = parsear(arquivo);
         DocumentoRenderContext ctx = converterParaContext(parseado, enderecamentoOverride, numeroProcessoOverride, cidadeEstado, dataIso);
+        return pdfService.gerarPdf(ctx);
+    }
+
+    public DocumentoReformatarConteudoRequest extrairConteudo(
+            MultipartFile arquivo,
+            String enderecamentoOverride,
+            String numeroProcessoOverride,
+            String cidadeEstado,
+            String dataIso)
+            throws IOException {
+        validarArquivo(arquivo);
+        DocumentoParseado parseado = parsear(arquivo);
+        DocumentoRenderContext ctx =
+                converterParaContext(parseado, enderecamentoOverride, numeroProcessoOverride, cidadeEstado, dataIso);
+        LocalDate data = ctx.data() != null ? ctx.data() : LocalDate.now();
+
+        List<DocumentoReformatarConteudoRequest.SecaoConteudo> secoes = parseado.secoes().stream()
+                .map(s -> new DocumentoReformatarConteudoRequest.SecaoConteudo(
+                        s.titulo(),
+                        s.tipoTitulo().name(),
+                        DocumentoParagrafoHtmlUtil.paragrafosToHtml(s.paragrafos())))
+                .toList();
+
+        return new DocumentoReformatarConteudoRequest(
+                ctx.enderecamento(),
+                ctx.numeroProcesso(),
+                ctx.cidadeEstado(),
+                data.toString(),
+                parseado.nomePeca(),
+                DocumentoParagrafoHtmlUtil.paragrafosToHtml(parseado.preambulo()),
+                secoes,
+                DocumentoParagrafoHtmlUtil.paragrafosToHtml(ctx.fechoParagrafos()),
+                DocumentoReformatarCorpoUnicoHtml.ADVOGADO_NOME_PADRAO,
+                DocumentoReformatarCorpoUnicoHtml.ADVOGADO_OAB_PADRAO,
+                null);
+    }
+
+    public DocumentoReformatarConteudoRequest enriquecerComCorpoUnico(DocumentoReformatarConteudoRequest request) {
+        if (request == null) {
+            return null;
+        }
+        if (StringUtils.hasText(request.corpoUnico())) {
+            return request;
+        }
+        String corpoUnico = DocumentoReformatarCorpoUnicoHtml.montar(request);
+        return new DocumentoReformatarConteudoRequest(
+                request.enderecamento(),
+                request.numeroProcesso(),
+                request.cidadeEstado(),
+                request.data(),
+                request.nomePeca(),
+                request.preambulo(),
+                request.secoes(),
+                request.fecho(),
+                request.advogadoNome(),
+                request.advogadoOab(),
+                corpoUnico);
+    }
+
+    public byte[] gerarPdfFromConteudo(DocumentoReformatarConteudoRequest request) {
+        if (request == null) {
+            throw new IllegalArgumentException("Conteúdo do documento é obrigatório.");
+        }
+        if (StringUtils.hasText(request.corpoUnico())) {
+            DocumentoReformatarConteudoRequest parsed =
+                    DocumentoReformatarCorpoUnicoHtml.aplicarCorpoUnico(request, request.corpoUnico());
+            String corpoHtml = DocumentoReformatarCorpoUnicoHtml.extrairHtmlParaPdf(request.corpoUnico());
+            LocalDate data = parseData(parsed.data());
+            DocumentoRenderContext ctx = new DocumentoRenderContext(
+                    "",
+                    "",
+                    parsed.cidadeEstado() != null && !parsed.cidadeEstado().isBlank()
+                            ? parsed.cidadeEstado().trim()
+                            : "Anápolis, estado de Goiás",
+                    data,
+                    true,
+                    null,
+                    null,
+                    List.of(),
+                    List.of(),
+                    List.of(),
+                    List.of(),
+                    List.of(),
+                    null,
+                    true,
+                    parsed.advogadoNome(),
+                    parsed.advogadoOab(),
+                    true,
+                    corpoHtml);
+            return pdfService.gerarPdf(ctx);
+        }
+
+        LocalDate data = parseData(request.data());
+        String localData = DocumentoLocalDataResolver.resolver(request.cidadeEstado(), request.data(), null, pdfService);
+
+        List<ParagrafoDocumento> preambulo =
+                DocumentoParagrafoHtmlUtil.htmlToParagrafos(request.preambulo(), TipoParagrafo.CORPO);
+        List<SecaoDocumento> secoes = new ArrayList<>();
+        if (request.secoes() != null) {
+            for (DocumentoReformatarConteudoRequest.SecaoConteudo s : request.secoes()) {
+                if (s == null || !StringUtils.hasText(s.titulo())) {
+                    continue;
+                }
+                TipoTitulo tipoTitulo = TipoTitulo.SUB;
+                if (StringUtils.hasText(s.tipoTitulo())) {
+                    try {
+                        tipoTitulo = TipoTitulo.valueOf(s.tipoTitulo().trim().toUpperCase(Locale.ROOT));
+                    } catch (IllegalArgumentException ignored) {
+                        // mantém SUB
+                    }
+                }
+                List<ParagrafoDocumento> paragrafos =
+                        DocumentoParagrafoHtmlUtil.htmlToParagrafos(s.conteudo(), TipoParagrafo.CORPO);
+                secoes.add(new SecaoDocumento(s.titulo().trim(), tipoTitulo, paragrafos));
+            }
+        }
+        List<ParagrafoDocumento> fecho =
+                DocumentoParagrafoHtmlUtil.htmlToParagrafos(request.fecho(), TipoParagrafo.FECHO);
+        boolean temFecho = !fecho.isEmpty();
+
+        DocumentoRenderContext ctx = new DocumentoRenderContext(
+                request.enderecamento() != null ? request.enderecamento().trim() : "",
+                request.numeroProcesso(),
+                request.cidadeEstado() != null && !request.cidadeEstado().isBlank()
+                        ? request.cidadeEstado().trim()
+                        : "Anápolis, estado de Goiás",
+                data,
+                true,
+                request.nomePeca(),
+                null,
+                List.of(),
+                List.of(),
+                preambulo,
+                secoes,
+                fecho,
+                localData,
+                temFecho,
+                null,
+                null,
+                false,
+                null);
         return pdfService.gerarPdf(ctx);
     }
 
@@ -120,7 +266,11 @@ public class DocumentoReformatarService {
                 parseado.secoes(),
                 fecho,
                 localData,
-                temFecho);
+                temFecho,
+                null,
+                null,
+                false,
+                null);
     }
 
     private static List<ParagrafoDocumento> filtrarFechoSemLocalData(List<ParagrafoDocumento> fecho, String localDataFinal) {

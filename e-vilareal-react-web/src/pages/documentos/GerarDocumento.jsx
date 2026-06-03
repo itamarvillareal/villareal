@@ -290,7 +290,7 @@ export function GerarDocumento() {
   const ocupado = loading || loadingPreview;
 
   return (
-    <div className={`mx-auto px-4 py-6 lg:px-6 ${modoModelo || modoArquivo ? 'max-w-4xl pb-8' : 'max-w-4xl pb-32'}`}>
+    <div className={`mx-auto px-4 py-6 lg:px-6 ${modoArquivo ? 'max-w-7xl pb-8' : modoModelo ? 'max-w-4xl pb-8' : 'max-w-4xl pb-32'}`}>
       <header className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-100 text-cyan-700 dark:bg-cyan-500/15 dark:text-cyan-300">

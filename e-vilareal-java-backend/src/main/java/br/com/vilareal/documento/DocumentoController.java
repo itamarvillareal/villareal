@@ -87,10 +87,56 @@ public class DocumentoController {
             @RequestParam(value = "cidadeEstado", required = false) String cidadeEstado,
             @RequestParam(value = "data", required = false) String data,
             @RequestParam(value = "codigoCliente", required = false) String codigoCliente,
-            @RequestParam(value = "numeroInterno", required = false) Integer numeroInterno)
+            @RequestParam(value = "numeroInterno", required = false) Integer numeroInterno,
+            @RequestParam(value = "preview", required = false, defaultValue = "false") boolean preview)
             throws Exception {
         return responderReformatacao(
-                arquivo, enderecamento, numeroProcesso, cidadeEstado, data, codigoCliente, numeroInterno);
+                arquivo,
+                enderecamento,
+                numeroProcesso,
+                cidadeEstado,
+                data,
+                codigoCliente,
+                numeroInterno,
+                preview);
+    }
+
+    @PostMapping("/reformatar/conteudo")
+    public ResponseEntity<DocumentoReformatarConteudoRequest> extrairConteudoReformatar(
+            @RequestParam("arquivo") MultipartFile arquivo,
+            @RequestParam(value = "enderecamento", required = false) String enderecamento,
+            @RequestParam(value = "numeroProcesso", required = false) String numeroProcesso,
+            @RequestParam(value = "cidadeEstado", required = false) String cidadeEstado,
+            @RequestParam(value = "data", required = false) String data)
+            throws Exception {
+        DocumentoReformatarConteudoRequest conteudo =
+                reformatarService.extrairConteudo(arquivo, enderecamento, numeroProcesso, cidadeEstado, data);
+        return ResponseEntity.ok(reformatarService.enriquecerComCorpoUnico(conteudo));
+    }
+
+    @PostMapping("/reformatar/gerar-pdf")
+    public ResponseEntity<byte[]> gerarPdfReformatado(
+            @RequestBody DocumentoReformatarConteudoRequest conteudo,
+            @RequestParam(value = "nomeArquivo", required = false) String nomeArquivo,
+            @RequestParam(value = "codigoCliente", required = false) String codigoCliente,
+            @RequestParam(value = "numeroInterno", required = false) Integer numeroInterno,
+            @RequestParam(value = "preview", required = false, defaultValue = "false") boolean preview) {
+        byte[] pdf = reformatarService.gerarPdfFromConteudo(conteudo);
+        LocalDate dataDoc = LocalDate.now();
+        if (conteudo.data() != null && !conteudo.data().isBlank()) {
+            try {
+                dataDoc = LocalDate.parse(conteudo.data().trim());
+            } catch (Exception ignored) {
+                // mantém hoje
+            }
+        }
+        String nomeSaida = nomeArquivo != null && !nomeArquivo.isBlank()
+                ? nomeArquivo.replaceAll("[^a-zA-Z0-9._\\- ]", "_")
+                : DocumentoDrivePastaService.formatarNomeArquivoPeticao("Documento_Formatado", dataDoc);
+        if (!preview) {
+            salvarPdfNoDriveAsync(pdf, nomeSaida, codigoCliente, numeroInterno, null, TipoDocumento.PETICAO);
+        }
+        return respostaPdf(nomeSaida, pdf, preview);
     }
 
     @PostMapping("/formatar-arquivo")
@@ -101,10 +147,18 @@ public class DocumentoController {
             @RequestParam(value = "cidadeEstado", required = false) String cidadeEstado,
             @RequestParam(value = "data", required = false) String data,
             @RequestParam(value = "codigoCliente", required = false) String codigoCliente,
-            @RequestParam(value = "numeroInterno", required = false) Integer numeroInterno)
+            @RequestParam(value = "numeroInterno", required = false) Integer numeroInterno,
+            @RequestParam(value = "preview", required = false, defaultValue = "false") boolean preview)
             throws Exception {
         return responderReformatacao(
-                arquivo, enderecamento, numeroProcesso, cidadeEstado, data, codigoCliente, numeroInterno);
+                arquivo,
+                enderecamento,
+                numeroProcesso,
+                cidadeEstado,
+                data,
+                codigoCliente,
+                numeroInterno,
+                preview);
     }
 
     private ResponseEntity<byte[]> responderReformatacao(
@@ -114,7 +168,8 @@ public class DocumentoController {
             String cidadeEstado,
             String data,
             String codigoCliente,
-            Integer numeroInterno)
+            Integer numeroInterno,
+            boolean preview)
             throws Exception {
         byte[] pdf = reformatarService.reformatar(arquivo, enderecamento, numeroProcesso, cidadeEstado, data);
         LocalDate dataDoc = LocalDate.now();
@@ -126,8 +181,10 @@ public class DocumentoController {
             }
         }
         String nomeSaida = nomePdfReformatado(arquivo.getOriginalFilename(), dataDoc);
-        salvarPdfNoDriveAsync(pdf, nomeSaida, codigoCliente, numeroInterno, null, TipoDocumento.PETICAO);
-        return respostaPdf(nomeSaida, pdf);
+        if (!preview) {
+            salvarPdfNoDriveAsync(pdf, nomeSaida, codigoCliente, numeroInterno, null, TipoDocumento.PETICAO);
+        }
+        return respostaPdf(nomeSaida, pdf, preview);
     }
 
     private static String nomePdfReformatado(String nomeOriginal, LocalDate data) {
@@ -192,8 +249,13 @@ public class DocumentoController {
     }
 
     private static ResponseEntity<byte[]> respostaPdf(String nomeArquivo, byte[] pdf) {
+        return respostaPdf(nomeArquivo, pdf, false);
+    }
+
+    private static ResponseEntity<byte[]> respostaPdf(String nomeArquivo, byte[] pdf, boolean inline) {
+        String disposition = inline ? "inline" : "attachment";
         return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + nomeArquivo + "\"")
+                .header(HttpHeaders.CONTENT_DISPOSITION, disposition + "; filename=\"" + nomeArquivo + "\"")
                 .contentType(MediaType.APPLICATION_PDF)
                 .body(pdf);
     }
