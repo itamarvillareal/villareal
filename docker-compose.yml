@@ -23,8 +23,8 @@ services:
       GOOGLE_DRIVE_IMPERSONATE_USER: ${GOOGLE_DRIVE_IMPERSONATE_USER:-}
       PROJUDI_CRED_KEY: ${PROJUDI_CRED_KEY:-}
       PROJUDI_ORQUESTRADOR_CREDENCIAL_ID: ${PROJUDI_ORQUESTRADOR_CREDENCIAL_ID:-1}
-      # Pipeline Movimentações Email (Gmail + Drive progressivo); desligado por padrão
-      VILAREAL_EMAIL_PROJUDI_PIPELINE_ENABLED: ${VILAREAL_EMAIL_PROJUDI_PIPELINE_ENABLED:-false}
+      # Pipeline Movimentações Email (Gmail + Drive progressivo; perfis noturno/comercial/fim de semana)
+      VILAREAL_EMAIL_PROJUDI_PIPELINE_ENABLED: ${VILAREAL_EMAIL_PROJUDI_PIPELINE_ENABLED:-true}
       # WhatsApp Cloud API — valores reais em `.env.docker` na VPS (ver WHATSAPP_SETUP.md)
       WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID:-}
       WHATSAPP_ACCESS_TOKEN: ${WHATSAPP_ACCESS_TOKEN:-}
