@@ -12,6 +12,8 @@ import { postFormData, request } from '../api/httpClient.js';
  *     proprietarioDocDigitos: string,
  *     cobrancas: unknown[],
  *   }>,
+ *   condominioNome?: string,
+ *   dataReferencia?: string,
  *   resumo?: {
  *     quantidadeUnidades?: number,
  *     quantidadeDebitos?: number,

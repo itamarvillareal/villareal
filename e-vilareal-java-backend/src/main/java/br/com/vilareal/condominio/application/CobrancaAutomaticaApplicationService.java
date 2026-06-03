@@ -60,14 +60,19 @@ public class CobrancaAutomaticaApplicationService {
             }
         }
 
-        List<CobrancaUnidadeParsed> unidades;
+        CobrancaRelatorioParseResult parse;
         try {
-            unidades = xlsParser.parse(arquivo.getInputStream());
+            parse = xlsParser.parseRelatorio(arquivo.getInputStream());
         } catch (IOException e) {
             throw new BusinessRuleException("Não foi possível ler o arquivo: " + e.getMessage());
         }
 
-        return new CobrancaExtracaoResponse(unidades, calcularTotais(unidades));
+        List<CobrancaUnidadeParsed> unidades = parse.unidades();
+        return new CobrancaExtracaoResponse(
+                unidades,
+                calcularTotais(unidades),
+                Utf8MojibakeUtil.corrigir(parse.condominioNome()),
+                parse.dataReferencia());
     }
 
     public RelatorioExecucaoCobranca processar(CobrancaProcessarRequest request) {

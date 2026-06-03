@@ -34,6 +34,8 @@ public class CobrancaRelatorioXlsParser {
             Pattern.compile("Proprietário:\\s*(.*?)\\s*\\(([\\d./-]+)\\)", Pattern.CASE_INSENSITIVE);
     private static final Pattern PAT_SUBTOTAL =
             Pattern.compile("^.+:\\s*\\d+\\s+cobrança", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+    private static final Pattern PAT_DATA_REFERENCIA =
+            Pattern.compile("Data de referência:\\s*(.+)", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
     private static final Pattern PAT_CODIGO_LETRA_4DIG = Pattern.compile("^[A-Z]\\d{4}$");
 
     private static final String HDR_TIPO = "tipo";
@@ -45,7 +47,7 @@ public class CobrancaRelatorioXlsParser {
 
     private final DataFormatter formatter = new DataFormatter(Locale.forLanguageTag("pt-BR"));
 
-    public List<CobrancaUnidadeParsed> parse(InputStream xls) throws IOException {
+    public CobrancaRelatorioParseResult parseRelatorio(InputStream xls) throws IOException {
         try (Workbook wb = WorkbookFactory.create(xls)) {
             if (wb.getNumberOfSheets() < 1) {
                 throw new BusinessRuleException("Planilha sem abas.");
@@ -55,7 +57,12 @@ public class CobrancaRelatorioXlsParser {
         }
     }
 
-    private List<CobrancaUnidadeParsed> parseSheet(Sheet sheet) {
+    public List<CobrancaUnidadeParsed> parse(InputStream xls) throws IOException {
+        return parseRelatorio(xls).unidades();
+    }
+
+    private CobrancaRelatorioParseResult parseSheet(Sheet sheet) {
+        CabecalhoPlanilha cab = lerCabecalhoPlanilha(sheet);
         List<CobrancaUnidadeParsed> resultado = new ArrayList<>();
         BlocoAtual bloco = null;
         Map<String, Integer> colunas = null;
@@ -107,7 +114,32 @@ public class CobrancaRelatorioXlsParser {
         if (bloco != null) {
             resultado.add(bloco.build());
         }
-        return resultado;
+        return new CobrancaRelatorioParseResult(resultado, cab.condominioNome(), cab.dataReferencia());
+    }
+
+    private CabecalhoPlanilha lerCabecalhoPlanilha(Sheet sheet) {
+        String condominioNome = "";
+        String dataReferencia = "";
+        int limite = Math.min(sheet.getLastRowNum(), 20);
+        for (int r = 0; r <= limite; r++) {
+            Row row = sheet.getRow(r);
+            if (row == null) {
+                continue;
+            }
+            String col0 = cell(row, 0);
+            if (!StringUtils.hasText(col0)) {
+                continue;
+            }
+            Matcher data = PAT_DATA_REFERENCIA.matcher(col0.trim());
+            if (data.find()) {
+                dataReferencia = data.group(1).trim();
+                continue;
+            }
+            if (r == 0) {
+                condominioNome = col0.trim();
+            }
+        }
+        return new CabecalhoPlanilha(condominioNome, dataReferencia);
     }
 
     private BlocoAtual parseInicioBloco(String col0) {
@@ -243,6 +275,8 @@ public class CobrancaRelatorioXlsParser {
         }
         return raw.replaceAll("\\D", "");
     }
+
+    private record CabecalhoPlanilha(String condominioNome, String dataReferencia) {}
 
     private static final class BlocoAtual {
         final String codigo;

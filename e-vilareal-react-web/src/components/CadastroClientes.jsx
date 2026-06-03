@@ -18,6 +18,8 @@ import {
 } from 'lucide-react';
 import { ModalConfiguracoesCalculoCliente } from './ModalConfiguracoesCalculoCliente.jsx';
 import { ModalWhatsAppCliente } from './ModalWhatsAppCliente.jsx';
+import { CobrancaAutomaticaPanel } from './cobranca/CobrancaAutomaticaPanel.jsx';
+import { estadoPediuFocoCobranca } from './cobranca/cobrancaClienteNav.js';
 import { importarWhatsAppDaPessoa } from '../repositories/clienteWhatsAppRepository.js';
 import { getDadosProcessoClienteUnificado } from '../data/processoClienteProcUnificado.js';
 import { buscarCliente, pesquisarCadastroPessoasPorNomeOuCpf } from '../api/clientesService.js';
@@ -304,6 +306,8 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
   const navClientes = extrairIntentNavegacaoProcessos(stateFromFinanceiro);
   const emTelaClientes = location.pathname === '/pessoas' || isEmbedded;
   const codClienteFromState = navClientes?.hasCod ? String(navClientes.codRaw ?? '').trim() : '';
+  const focoCobrancaFromState = estadoPediuFocoCobranca(stateFromFinanceiro);
+  const cobrancaSectionRef = useRef(null);
   const procFromState =
     navClientes?.hasProcKey && navClientes.procRaw !== undefined && navClientes.procRaw !== null
       ? String(navClientes.procRaw)
@@ -623,6 +627,14 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
     }
     if (procFromState) setPesquisaProcesso(procFromState);
   }, [codClienteFromState, procFromState, intentRevisionForHydration]);
+
+  useEffect(() => {
+    if (!focoCobrancaFromState || !formularioClienteAberto) return undefined;
+    const t = window.setTimeout(() => {
+      cobrancaSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 450);
+    return () => window.clearTimeout(t);
+  }, [focoCobrancaFromState, formularioClienteAberto, codigo, intentRevisionForHydration]);
 
   useEffect(() => {
     const h = () => aplicarDadosClienteRef.current(padCliente8(codigoRef.current));
@@ -1991,6 +2003,29 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
           </div>
           </div>
           </section>
+
+          {featureFlags.useApiClientes &&
+            featureFlags.useApiProcessos &&
+            featureFlags.useApiCalculos &&
+            formularioClienteAberto && (
+              <section
+                ref={cobrancaSectionRef}
+                id="cobranca-automatica"
+                className="rounded-xl border border-sky-200/80 bg-gradient-to-br from-sky-50/50 via-white to-indigo-50/30 overflow-hidden shadow-sm ring-1 ring-sky-500/10 scroll-mt-4"
+              >
+                <div className="border-b border-sky-200/70 bg-gradient-to-r from-sky-600 via-cyan-600 to-indigo-600 px-4 py-2.5">
+                  <p className="text-sm font-bold uppercase tracking-wide text-white">Cobrança automática</p>
+                  <p className="text-xs text-sky-100/95 mt-0.5">
+                    Relatório .xls de inadimplência — cliente{' '}
+                    <span className="font-mono">{padCliente8(codigo)}</span>
+                    {nomeRazao ? ` · ${nomeRazao}` : ''}
+                  </p>
+                </div>
+                <div className="p-3 sm:p-4">
+                  <CobrancaAutomaticaPanel clienteCodigo={padCliente8(codigo)} clienteNome={nomeRazao} />
+                </div>
+              </section>
+            )}
 
           <div className="flex justify-center pt-2">
             <button
