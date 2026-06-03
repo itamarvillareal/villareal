@@ -28,6 +28,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -449,6 +450,37 @@ public class GoogleDriveService {
             }
             pageToken = result.getNextPageToken();
         } while (pageToken != null);
+        return todos;
+    }
+
+    /**
+     * Lista PDFs diretos de uma pasta (não recursivo), ordenados por nome crescente, com paginação.
+     */
+    public List<File> listarPdfsNaPastaOrdenadosPorNome(String pastaId) throws Exception {
+        if (!isConfigurado() || !StringUtils.hasText(pastaId)) {
+            return List.of();
+        }
+        List<File> todos = new ArrayList<>();
+        String pageToken = null;
+        String query = "'" + pastaId + "' in parents and mimeType='application/pdf' and trashed=false";
+        do {
+            FileList result = prepararListagem(
+                            driveService.files()
+                                    .list()
+                                    .setQ(query)
+                                    .setSpaces("drive")
+                                    .setFields("nextPageToken, files(id, name, mimeType)")
+                                    .setOrderBy("name")
+                                    .setPageSize(1000)
+                                    .setPageToken(pageToken),
+                            pastaId)
+                    .execute();
+            if (result.getFiles() != null) {
+                todos.addAll(result.getFiles());
+            }
+            pageToken = result.getNextPageToken();
+        } while (pageToken != null);
+        todos.sort(Comparator.comparing(f -> f.getName() == null ? "" : f.getName(), String.CASE_INSENSITIVE_ORDER));
         return todos;
     }
 

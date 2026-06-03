@@ -25,19 +25,28 @@ export function digitosCnjNormalizados(cnjRaw) {
   return chaveNumeroProcessoBuscaDiagnostico(cnjRaw);
 }
 
+/** Número interno Projudi em email de intimação (ex.: {@code 5500622.97}). */
+export function ehNumeroProjudiInternoEmail(raw) {
+  return /^\d{4,9}\.\d{2}$/i.test(String(raw ?? '').trim());
+}
+
 /**
  * Diz se o termo de busca (só dígitos) corresponde ao CNJ gravado, com tolerância a 1 dígito trocado
  * no primeiro segmento (OCR/PDF) e substring exacta como antes.
  *
  * @param {string} termDigits — já sem não-dígitos (ex. `normalizarNumeroBusca` do campo Pesquisar).
  * @param {string} campoCnjRaw — valor do campo «Nº Processo Novo» / CNJ no cadastro.
+ * @param {{ projudiInternoExato?: boolean }} [opts] — sem fuzzy: prefixo exato (emails Projudi {@code N.DV}).
  * @returns {boolean}
  */
-export function termoDigitosCorrespondeCnjCampo(termDigits, campoCnjRaw) {
+export function termoDigitosCorrespondeCnjCampo(termDigits, campoCnjRaw, opts = {}) {
   const t = String(termDigits ?? '').replace(/\D/g, '');
   if (!t) return false;
   const c = digitosCnjNormalizados(campoCnjRaw);
   if (!c) return false;
+  if (opts.projudiInternoExato && t.length >= 8 && t.length <= 10) {
+    return c.length >= t.length && c.slice(0, t.length) === t;
+  }
   if (c.includes(t)) return true;
 
   // Primeiro segmento do CNJ (7 dígitos do número + 2 do DV) — erros de leitura costumam estar aqui.

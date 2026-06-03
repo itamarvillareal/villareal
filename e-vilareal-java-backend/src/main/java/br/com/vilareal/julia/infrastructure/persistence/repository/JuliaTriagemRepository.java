@@ -16,6 +16,17 @@ public interface JuliaTriagemRepository extends JpaRepository<JuliaTriagemEntity
 
     List<JuliaTriagemEntity> findByProcesso_IdOrderByCriadoEmDescIdDesc(Long processoId);
 
+    @Query(
+            """
+            SELECT t FROM JuliaTriagemEntity t
+            LEFT JOIN FETCH t.publicacao
+            WHERE t.processo.id = :processoId
+              AND t.criadoEm >= :desde
+            ORDER BY t.criadoEm DESC, t.id DESC
+            """)
+    List<JuliaTriagemEntity> findRecentesPorProcesso(
+            @Param("processoId") Long processoId, @Param("desde") java.time.Instant desde);
+
     @EntityGraph(attributePaths = {"publicacao", "processo", "processo.cliente", "processo.cliente.pessoa"})
     @Query(
             """

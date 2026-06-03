@@ -1,8 +1,11 @@
 package br.com.vilareal.processo.api;
 
+import br.com.vilareal.julia.application.JuliaTriagemService;
+import br.com.vilareal.julia.triagem.TriagemRunResponse;
 import br.com.vilareal.processo.api.dto.*;
 import br.com.vilareal.processo.application.ProcessoApplicationService;
 import br.com.vilareal.processo.application.ProcessoAutosIntegralService;
+import br.com.vilareal.processo.application.ProcessoMovimentacoesConsolidarPdfService;
 import br.com.vilareal.processo.application.ProcessoProjudiMovimentacoesDriveService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -32,15 +35,21 @@ public class ProcessosController {
 
     private final ProcessoApplicationService processoApplicationService;
     private final ProcessoAutosIntegralService processoAutosIntegralService;
+    private final ProcessoMovimentacoesConsolidarPdfService processoMovimentacoesConsolidarPdfService;
     private final ProcessoProjudiMovimentacoesDriveService processoProjudiMovimentacoesDriveService;
+    private final JuliaTriagemService juliaTriagemService;
 
     public ProcessosController(
             ProcessoApplicationService processoApplicationService,
             ProcessoAutosIntegralService processoAutosIntegralService,
-            ProcessoProjudiMovimentacoesDriveService processoProjudiMovimentacoesDriveService) {
+            ProcessoMovimentacoesConsolidarPdfService processoMovimentacoesConsolidarPdfService,
+            ProcessoProjudiMovimentacoesDriveService processoProjudiMovimentacoesDriveService,
+            JuliaTriagemService juliaTriagemService) {
         this.processoApplicationService = processoApplicationService;
         this.processoAutosIntegralService = processoAutosIntegralService;
+        this.processoMovimentacoesConsolidarPdfService = processoMovimentacoesConsolidarPdfService;
         this.processoProjudiMovimentacoesDriveService = processoProjudiMovimentacoesDriveService;
+        this.juliaTriagemService = juliaTriagemService;
     }
 
     @GetMapping
@@ -209,6 +218,23 @@ public class ProcessosController {
         return processoApplicationService.buscar(id);
     }
 
+    @GetMapping("/{id}/movimentacoes/consolidar-pdf")
+    @Operation(
+            summary = "Consolidar PDFs da pasta Movimentações",
+            description =
+                    "Mescla todos os PDFs da pasta Movimentações do processo no Google Drive, "
+                            + "ordenados por nome (crescente), e retorna um único arquivo para download.")
+    public ResponseEntity<byte[]> consolidarMovimentacoesPdf(@PathVariable Long id) throws Exception {
+        ProcessoMovimentacoesConsolidarPdfService.ResultadoConsolidado resultado =
+                processoMovimentacoesConsolidarPdfService.gerarPdf(id);
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentDisposition(ContentDisposition.attachment()
+                .filename(resultado.nomeArquivo())
+                .build());
+        headers.setContentType(MediaType.APPLICATION_PDF);
+        return ResponseEntity.ok().headers(headers).body(resultado.pdf());
+    }
+
     @PostMapping("/{id}/projudi/movimentacoes-drive")
     @Operation(
             summary = "Obter movimentações PROJUDI (progressivo → Drive)",
@@ -218,6 +244,24 @@ public class ProcessosController {
                             + "(regra progressiva). Repita até `temMais=false`.")
     public ProcessoProjudiMovimentacoesDriveResponse obterMovimentacoesProjudiDrive(@PathVariable Long id) {
         return processoProjudiMovimentacoesDriveService.executar(id);
+    }
+
+    @PostMapping("/{id}/julia/triagem")
+    @Operation(
+            summary = "Disparar triagem manual da Júlia",
+            description =
+                    "Executa a triagem da Júlia para uma publicação vinculada ao processo. "
+                            + "Sem `publicacaoId`, usa a publicação mais recente. "
+                            + "`dryRun=true`: só raciocínio (sem persistir nem enactment). "
+                            + "`forcar=true`: apaga `julia_triagem` existente da publicação e reexecuta "
+                            + "(útil quando PDFs chegaram ao Drive após a triagem automática). "
+                            + "Não depende de `julia.triagem.auto.enabled`.")
+    public TriagemRunResponse dispararTriagemJulia(
+            @PathVariable Long id,
+            @RequestParam(required = false) Long publicacaoId,
+            @RequestParam(defaultValue = "false") boolean dryRun,
+            @RequestParam(defaultValue = "false") boolean forcar) {
+        return juliaTriagemService.triarPublicacaoNoProcesso(id, publicacaoId, dryRun, forcar);
     }
 
     @PostMapping

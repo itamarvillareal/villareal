@@ -15,7 +15,8 @@ public record TriagemResultado(
         String providenciaCliente,
         String prioridade,
         String acaoSugerida,
-        Double confianca) {
+        Double confianca,
+        Audiencia audiencia) {
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record Prazo(
@@ -27,14 +28,26 @@ public record TriagemResultado(
             String dataReal,
             String dataTrabalho) {
 
-        /** Data fatal parseada (ISO ou dd/MM/yyyy na resposta da IA). */
         public LocalDate dataRealAsLocalDate() {
             return JuliaTriagemDateParseUtil.parseDataResposta(dataReal);
         }
 
-        /** Data de trabalho parseada (geralmente recalculada no backend). */
         public LocalDate dataTrabalhoAsLocalDate() {
             return JuliaTriagemDateParseUtil.parseDataResposta(dataTrabalho);
+        }
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record Audiencia(
+            Boolean existe,
+            String data,
+            String hora,
+            String tipo,
+            String meio,
+            Double confianca) {
+
+        public LocalDate dataAsLocalDate() {
+            return JuliaTriagemDateParseUtil.parseDataResposta(data);
         }
     }
 }

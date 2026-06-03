@@ -143,6 +143,23 @@ describe('mapApiAndamentoToHistoricoItem', () => {
     );
     expect(h.usuarioId).toBe(3);
   });
+
+  it('guarda usuarioLogin para resolução de apelido na exibição', () => {
+    const h = mapApiAndamentoToHistoricoItem(
+      {
+        id: 10,
+        movimentoEm: '2026-01-01T00:00:00Z',
+        titulo: 'X',
+        usuarioNome: 'Karla',
+        usuarioLogin: 'karla.pedro',
+        usuarioId: 2,
+      },
+      0,
+      1
+    );
+    expect(h.usuario).toBe('KARLA');
+    expect(h.usuarioLogin).toBe('karla.pedro');
+  });
 });
 
 describe('entradaHistoricoPertenceAoUsuarioAtivo', () => {
@@ -208,12 +225,27 @@ describe('usuarioHistoricoParaExibicao', () => {
     ).toBe('ITAMAR');
   });
 
-  it('usa login do catálogo quando apelido está vazio', () => {
+  it('mantém apelido da API quando o catálogo local só tem login', () => {
     expect(
       usuarioHistoricoParaExibicao(
-        { usuario: 'MARIA SILVA COMPLETA', usuarioId: 3 },
-        [{ id: 3, apelido: '', login: 'maria.silva' }]
+        { usuario: 'KARLA', usuarioId: 2, usuarioLogin: 'karla.pedro' },
+        [{ id: 2, apelido: '', login: 'karla.pedro' }]
       )
+    ).toBe('KARLA');
+  });
+
+  it('resolve apelido pelo login da API quando não há usuarioId', () => {
+    expect(
+      usuarioHistoricoParaExibicao(
+        { usuario: 'KARLA.PEDRO', usuarioLogin: 'karla.pedro' },
+        [{ id: 2, apelido: 'Karla', login: 'karla.pedro' }]
+      )
+    ).toBe('KARLA');
+  });
+
+  it('usa login do catálogo quando apelido está vazio e a linha não tem rótulo', () => {
+    expect(
+      usuarioHistoricoParaExibicao({ usuario: '', usuarioId: 3 }, [{ id: 3, apelido: '', login: 'maria.silva' }])
     ).toBe('MARIA.SILVA');
   });
 

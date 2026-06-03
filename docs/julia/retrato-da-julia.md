@@ -2,7 +2,7 @@
 
 Assistente-IA de triagem processual — design e plano faseado de implementação.
 
-**Status:** documento vivo · **Atualizado:** 2026-06-01
+**Status:** documento vivo · **Atualizado:** 2026-06-03
 
 ---
 
@@ -315,14 +315,19 @@ Cada fase é um prompt próprio pro Cursor, validada no caso real (Proc. 100 / C
     (flag `julia.triagem.auto.enabled`, default OFF; porta "tem processo?" + idempotência por
     `publicacao_id`). Validado de ponta a ponta numa decisão TRT real (pub 1846 / proc 8562),
     idempotente no re-disparo.
-  - **A2b parte 2 — Dedup cross-pipeline (em andamento).** O `projudiEmailTrigger` faz a mesma
-    movimentação física entrar 2× (email + web PROJUDI), com hashes diferentes → 2 publicações
-    triadas; a idempotência por `publicacao_id` não pega. Princípio: nunca suprimir movimentação que
-    pode ser real — só impedir o artefato perigoso. Guard exato no artefato: não criar 2º prazo fatal
-    da Júlia no mesmo `(processo, dataFim)` (origem da Júlia detectada via `andamento.origem =
-    JULIA_TRIAGEM`); andamento duplicado é **marcado**, não suprimido. Sem migration.
-- **Fase B — Documentos na triagem.** Ligar o acesso a documentos e a reconciliação (§7) ao motor:
-  preferir versão limpa, reconciliar, sinalizar divergência.
+  - **A2b parte 2 — Dedup cross-pipeline (✅ núcleo).** Fingerprint semântico (`JuliaTriagemDedupUtil`,
+    janela 72h) evita segunda triagem do mesmo fato (email + web PROJUDI). Prazo fatal: não duplica no
+    mesmo `(processo, dataFim)`. Andamento: omitido se título equivalente recente (168h, origem
+    `JULIA_TRIAGEM`). Classificações genéricas do PROJUDI não viram título de andamento — usa o
+    resumo jurídico quando a classificação é rotulo de aviso.
+  - **A3 — Audiência (✅).** Campo `audiencia` no JSON da triagem; enactment em
+    `audiencia_data/hora/tipo` do processo + réplica na agenda dos colaboradores humanos (confiança
+    mínima configurável: `julia.triagem.audiencia.confianca-minima`).
+- **Fase B — Documentos na triagem (parcial ✅).** `JuliaTriagemContextoDriveService` lê PDFs da pasta
+  Movimentações (últimas 3 + match por termos do e-mail, até 12 arquivos / limites de chars) e injeta
+  o bloco `=== DOCUMENTOS MOVIMENTAÇÕES ===` no prompt. Prompt proíbe classificação superficial
+  copiada do aviso PROJUDI. Pendente: versão limpa fora de Movimentações, reconciliação OCR vs limpo,
+  re-triagem automática quando o PDF chega após o vínculo.
 - **Fase C — Caixa de entrada.** Entidade + tela (§6): eixo status estável + categoria solta.
   Destino das saídas.
 - **Fase D — Camada de diálogo.** Pergunta → resposta livre interpretada pela IA → ramos, com o eco

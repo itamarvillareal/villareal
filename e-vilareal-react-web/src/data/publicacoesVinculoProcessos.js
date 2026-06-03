@@ -9,7 +9,11 @@ import { calcularScoreConfianca, datajudStubFromStatusValidacao } from './public
 import { featureFlags } from '../config/featureFlags.js';
 import { listarClientesIndiceCadastro } from '../repositories/clientesRepository.js';
 import { listarProcessosResumoPorCodigoCliente, mapApiProcessoToUiShape } from '../repositories/processosRepository.js';
-import { digitosCnjNormalizados, termoDigitosCorrespondeCnjCampo } from '../domain/cnjFuzzyBusca.js';
+import {
+  digitosCnjNormalizados,
+  ehNumeroProjudiInternoEmail,
+  termoDigitosCorrespondeCnjCampo,
+} from '../domain/cnjFuzzyBusca.js';
 import { chaveSugestaoVinculoPublicacao } from '../domain/normalizarNumeroProcessoBuscaDiagnostico.js';
 
 /**
@@ -63,14 +67,16 @@ export async function montarIndiceCnjClienteProcAsync() {
       const key = normalizarCnjParaChave(cnj);
       if (!key || map.has(key)) continue;
       const reu = String(u.parteOposta ?? '').trim();
-      const titularNome =
-        String(raw?.titularNome ?? raw?.titular_nome ?? raw?.nomeTitular ?? '').trim() || nomeCliente;
+      const titularNome = String(raw?.titularNome ?? raw?.titular_nome ?? raw?.nomeTitular ?? '').trim();
+      const parteCliente = String(u.parteCliente ?? '').trim();
       map.set(key, {
         processoId: u.processoId != null ? String(u.processoId) : '',
         codCliente: codPad,
         proc: String(p),
-        cliente: titularNome,
+        nomeCliente,
+        cliente: nomeCliente,
         titularNome,
+        parteCliente,
         reu,
       });
     }
@@ -115,10 +121,12 @@ export function buscarHitIndiceCnjPorCnj(indiceMap, cnjRaw) {
   }
 
   // OCR / PDF: tolerância de 1 dígito só para CNJ incompleto (< 20 dígitos).
+  // Email Projudi (5500622.97): exige prefixo exato — 1 dígito a mais/menos é outro processo.
   const digBusca = digitosCnjNormalizados(s0);
   if (digBusca.length >= 7 && digBusca.length < 20) {
+    const projudiInternoExato = ehNumeroProjudiInternoEmail(s0);
     for (const [k, hit] of indiceMap) {
-      if (termoDigitosCorrespondeCnjCampo(digBusca, k)) {
+      if (termoDigitosCorrespondeCnjCampo(digBusca, k, { projudiInternoExato })) {
         return { hit, chaveUsada: k };
       }
     }
@@ -144,8 +152,9 @@ export function lookupSugestaoVinculoCadastro(item, indiceMap) {
     processoId: hit.processoId || '',
     codCliente: hit.codCliente,
     procInterno: hit.proc,
-    cliente: hit.titularNome || hit.cliente,
-    titularNome: hit.titularNome || hit.cliente,
+    cliente: hit.nomeCliente || hit.cliente,
+    titularNome: hit.titularNome || '',
+    parteCliente: hit.parteCliente || '',
     reu: hit.reu || '',
   };
 }
@@ -170,7 +179,7 @@ export function resolverSugestaoVinculoLinha(row, indiceMap, sugestoesApiMap) {
     return {
       ...sugIdx,
       fonte: 'cadastro',
-      cliente: sugIdx.titularNome || sugIdx.cliente,
+      cliente: sugIdx.nomeCliente || sugIdx.cliente,
     };
   }
   const key = chaveSugestaoVinculoPublicacao(cnjBase);
@@ -213,7 +222,9 @@ export function vincularPublicacaoAoCadastro(parseado, indiceMap) {
     statusVinculo: 'vinculado',
     codCliente: hit.codCliente,
     procInterno: hit.proc,
-    cliente: hit.cliente,
+    cliente: hit.nomeCliente || hit.cliente,
+    titularNome: hit.titularNome || '',
+    parteCliente: hit.parteCliente || '',
     reu,
     vinculoOrigem: 'cadastro',
   };

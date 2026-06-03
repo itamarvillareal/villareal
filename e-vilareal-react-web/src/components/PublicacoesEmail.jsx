@@ -396,7 +396,8 @@ function CelulaClienteProc({ row, indiceCnj, sugestoesApi }) {
         codCliente: sug.codCliente,
         procInterno: sug.procInterno,
         processoId: sug.processoId,
-        titularNome: sug.titularNome || sug.cliente,
+        titularNome: sug.titularNome || sug.parteCliente,
+        parteCliente: sug.parteCliente,
         cliente: sug.cliente,
       },
       true
@@ -461,11 +462,25 @@ function CelulaVinculo({ row, indiceCnj, sugestoesApi, carregandoSugestoes, onAb
   );
 }
 
+const TOOLTIP_ACOES_LINHA = {
+  vincular:
+    'Associar esta movimentação a um processo do cadastro (escolher cliente e nº interno).',
+  auto:
+    'Vincular automaticamente pelo CNJ ao processo já cadastrado no sistema.',
+  vinculada:
+    'Marcar como vinculada na fila (controle de triagem), sem abrir o cadastro do processo.',
+  tratar:
+    'Marcar como tratada — movimentação revisada e concluída na sua fila.',
+  ignorar:
+    'Marcar como ignorada — sem providência (aviso duplicado, irrelevante, etc.).',
+};
+
 function AcoesLinha({ onVincular, onAuto, onTratar, onIgnorar, onMarcarVinculada }) {
   return (
     <div className="flex flex-col gap-1" onClick={(e) => e.stopPropagation()}>
       <button
         type="button"
+        title={TOOLTIP_ACOES_LINHA.vincular}
         onClick={onVincular}
         className="inline-flex items-center gap-1 rounded border border-slate-200 px-2 py-1 text-[10px] font-medium hover:bg-slate-100 dark:border-white/15 dark:hover:bg-white/5"
       >
@@ -474,7 +489,7 @@ function AcoesLinha({ onVincular, onAuto, onTratar, onIgnorar, onMarcarVinculada
       </button>
       <button
         type="button"
-        title="Reaplica o cruzamento automático pelo CNJ no cadastro"
+        title={TOOLTIP_ACOES_LINHA.auto}
         onClick={onAuto}
         className="inline-flex items-center gap-1 rounded border border-slate-200 px-2 py-1 text-[10px] font-medium hover:bg-slate-100 dark:border-white/15 dark:hover:bg-white/5"
       >
@@ -483,6 +498,7 @@ function AcoesLinha({ onVincular, onAuto, onTratar, onIgnorar, onMarcarVinculada
       </button>
       <button
         type="button"
+        title={TOOLTIP_ACOES_LINHA.vinculada}
         onClick={onMarcarVinculada}
         className="inline-flex items-center gap-1 rounded border border-sky-200 px-2 py-1 text-[10px] font-medium text-sky-800 hover:bg-sky-50 dark:border-sky-500/40 dark:text-sky-200 dark:hover:bg-sky-950/30"
       >
@@ -490,6 +506,7 @@ function AcoesLinha({ onVincular, onAuto, onTratar, onIgnorar, onMarcarVinculada
       </button>
       <button
         type="button"
+        title={TOOLTIP_ACOES_LINHA.tratar}
         onClick={onTratar}
         className="inline-flex items-center gap-1 rounded border border-emerald-200 px-2 py-1 text-[10px] font-medium text-emerald-800 hover:bg-emerald-50 dark:border-emerald-500/40 dark:text-emerald-200 dark:hover:bg-emerald-950/30"
       >
@@ -497,6 +514,7 @@ function AcoesLinha({ onVincular, onAuto, onTratar, onIgnorar, onMarcarVinculada
       </button>
       <button
         type="button"
+        title={TOOLTIP_ACOES_LINHA.ignorar}
         onClick={onIgnorar}
         className="inline-flex items-center gap-1 rounded border border-amber-200 px-2 py-1 text-[10px] font-medium text-amber-800 hover:bg-amber-50 dark:border-amber-500/40 dark:text-amber-200 dark:hover:bg-amber-950/30"
       >
@@ -657,6 +675,25 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
     const t = setTimeout(() => setBuscaDebounced(buscaTexto.trim()), 400);
     return () => clearTimeout(t);
   }, [buscaTexto]);
+
+  /** Esc fecha janelas suspensas (teor, vínculo); processo flutuante é tratado em Processos.jsx. */
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== 'Escape') return;
+      if (processoEmbed) return;
+      if (vinculoModal) {
+        e.preventDefault();
+        setVinculoModal(null);
+        return;
+      }
+      if (modalPublicacao) {
+        e.preventDefault();
+        setModalPublicacao(null);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [processoEmbed, vinculoModal, modalPublicacao]);
 
   const carregar = useCallback(async () => {
     setLoading(true);

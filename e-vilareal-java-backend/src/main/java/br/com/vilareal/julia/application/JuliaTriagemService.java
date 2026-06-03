@@ -47,9 +47,11 @@ import org.springframework.util.StringUtils;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.math.RoundingMode;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -69,34 +71,37 @@ public class JuliaTriagemService {
 
     static final String ORIGEM_ANDAMENTO_TRIAGEM = "JULIA_TRIAGEM";
     static final String ORIGEM_AGENDA_PRAZO_TRIAGEM = "julia-triagem-prazo";
+    static final String ORIGEM_AGENDA_AUDIENCIA_TRIAGEM = "processos-audiencia";
     static final String OBS_CAIXA_SEM_RESPONSAVEL_AGENDA = "Sem responsável — agenda não criada";
     static final int MAX_CLASSIFICACAO_COL = 255;
+    static final int DEDUP_TRIAGEM_HORAS = 72;
+    static final int DEDUP_ANDAMENTO_HORAS = 168;
 
     static final String SYSTEM_PROMPT_TRIAGEM =
             """
-            Você é Júlia, assistente jurídica do escritório Villa Real, fazendo a triagem de uma \
-            movimentação processual. Responda SOMENTE com um JSON puro (sem markdown, sem cercas), no \
-            schema abaixo. Regras:
-            - impactoCliente: FAVORAVEL | DESFAVORAVEL | NEUTRO | INDEFINIDO, sempre do ponto de vista do \
-            CLIENTE do escritório (atente ao papelCliente: autor/réu/exequente/executado).
-            - prazo.natureza: ATIVO se o prazo já corre; CONDICIONAL se só passa a correr SE algo acontecer \
-            (ex.: '15 dias para pagar EM CASO DE descumprimento' é CONDICIONAL — registre a condição em \
-            gatilho e NÃO trate como fatal). Sentença favorável transitada em julgado não tem prazo ativo.
-            - Se a movimentação for homologação de acordo, observe se é à vista (quitado, encerra) ou \
-            parcelado (gera fiscalização futura) e diga isso em resumo/acaoSugerida — sem inventar prazo.
-            - providenciaCliente: TEXTO descritivo da providência perante o cliente (ex.: "Informar o cliente \
-            que o acordo foi homologado e a execução extinta"); se não houver providência imediata, use \
-            "Nenhuma providência imediata". NUNCA booleano (true/false).
-            - confianca: 0..1; seja baixo quando o teor for ambíguo, ilegível ou faltar contexto.
-            - prioridade: URGENTE | ALTA | MEDIA | BAIXA (use URGENTE só para risco iminente de prejuízo/prazo).
-            - prazo.dataReal e prazo.dataTrabalho no JSON: datas SEMPRE em AAAA-MM-DD (ISO), \
-            independentemente do formato dd/MM/aaaa usado no histórico do processo.
-            - Leia todo o HISTÓRICO DO PROCESSO antes de avaliar. Considere a trajetória: se o processo \
-            já foi resolvido, extinto, acordado/pago ou arquivado, movimentações antigas estão SUPERADAS — \
-            não geram providência nem urgência. Andamentos da própria Júlia são análises anteriores, não fatos.
+            Você é Júlia, advogada assistente do escritório Villa Real. Faça triagem PROFISSIONAL de uma \
+            movimentação: leia o e-mail, cruze com os PDFs da pasta Movimentações (quando fornecidos) e o \
+            histórico do processo. Responda SOMENTE com JSON puro (sem markdown).
+            PROIBIDO entregar classificação genérica copiada do aviso do PROJUDI (ex.: apenas \
+            "Intimação/citação" ou "Informação de intimação/citação"). O resumo deve explicar o ATO \
+            concreto (despacho, certidão, designação de audiência, sentença, etc.) com fatos extraídos dos \
+            documentos.
+            - classificacao: rótulo jurídico específico do ato (ex.: "Designação de audiência de instrução \
+            e julgamento — videoconferência Zoom").
+            - resumo: 2–4 frases objetivas; cite partes, datas, horas, prazos e consequências práticas para \
+            o cliente do escritório (papelCliente no contexto).
+            - impactoCliente: FAVORAVEL | DESFAVORAVEL | NEUTRO | INDEFINIDO + baseImpacto fundamentada.
+            - prazo.natureza: ATIVO só se o prazo já corre; CONDICIONAL se depende de evento futuro. \
+            Sentença/acordo extintivo sem prazo novo → prazo.existe=false.
+            - audiencia: preencha quando houver designação/agendamento de audiência nos PDFs ou no teor; \
+            data/hora em ISO (AAAA-MM-DD e HH:mm). Se o e-mail só avisa e o PDF confirma a audiência, use \
+            os dados do PDF. confianca 0..1 para audiência.
+            - providenciaCliente: texto (nunca boolean). acaoSugerida: próximo passo do escritório.
+            - confianca geral: baixa se faltar PDF citado no e-mail ou texto ilegível.
+            - Não repita análise idêntica já feita pela Júlia no histórico recente (mesmo fato).
             Schema: {classificacao, resumo, impactoCliente, baseImpacto, prazo:{existe, natureza, tipo, \
             gatilho, diasUteis, dataReal, dataTrabalho}, providenciaCliente, prioridade, acaoSugerida, \
-            confianca}""";
+            confianca, audiencia:{existe, data, hora, tipo, meio, confianca}}""";
 
     private final ClaudeApiService claudeApiService;
     private final ObjectMapper objectMapper;
@@ -109,8 +114,10 @@ public class JuliaTriagemService {
     private final JuliaAssistenteContextService juliaAssistenteContextService;
     private final AgendaApplicationService agendaApplicationService;
     private final UsuarioRepository usuarioRepository;
+    private final JuliaTriagemContextoDriveService contextoDriveService;
     private final String modelo;
     private final boolean triagemAutoEnabled;
+    private final double audienciaConfiancaMinima;
     private final ObjectProvider<JuliaTriagemService> self;
 
     public JuliaTriagemService(
@@ -125,9 +132,11 @@ public class JuliaTriagemService {
             JuliaAssistenteContextService juliaAssistenteContextService,
             AgendaApplicationService agendaApplicationService,
             UsuarioRepository usuarioRepository,
+            JuliaTriagemContextoDriveService contextoDriveService,
             ObjectProvider<JuliaTriagemService> self,
             @Value("${anthropic.api.model}") String modelo,
-            @Value("${julia.triagem.auto.enabled:false}") boolean triagemAutoEnabled) {
+            @Value("${julia.triagem.auto.enabled:false}") boolean triagemAutoEnabled,
+            @Value("${julia.triagem.audiencia.confianca-minima:0.72}") double audienciaConfiancaMinima) {
         this.claudeApiService = claudeApiService;
         this.objectMapper = objectMapper;
         this.publicacaoRepository = publicacaoRepository;
@@ -139,9 +148,74 @@ public class JuliaTriagemService {
         this.juliaAssistenteContextService = juliaAssistenteContextService;
         this.agendaApplicationService = agendaApplicationService;
         this.usuarioRepository = usuarioRepository;
+        this.contextoDriveService = contextoDriveService;
         this.self = self;
         this.modelo = modelo;
         this.triagemAutoEnabled = triagemAutoEnabled;
+        this.audienciaConfiancaMinima = audienciaConfiancaMinima;
+    }
+
+    /**
+     * Triagem manual a partir de um processo (UI ou API). Exige publicação vinculada ao processo;
+     * com {@code publicacaoId} omitido, usa a publicação mais recente do processo.
+     *
+     * @param forcar remove {@code julia_triagem} existente da publicação antes de reexecutar (ex.: PDFs
+     *     novos no Drive após a triagem automática).
+     */
+    @Transactional
+    public TriagemRunResponse triarPublicacaoNoProcesso(
+            Long processoId, Long publicacaoId, boolean dryRun, boolean forcar) {
+        if (processoId == null || processoId < 1) {
+            throw new BusinessRuleException("processoId inválido.");
+        }
+        ProcessoEntity processo = processoRepository
+                .findById(processoId)
+                .orElseThrow(() -> new ResourceNotFoundException("Processo não encontrado: " + processoId));
+        if (!ProcessoAtivoUtil.processoEstaAtivo(processo)) {
+            throw new BusinessRuleException("Processo inativo — triagem manual não permitida.");
+        }
+
+        final PublicacaoEntity publicacao;
+        if (publicacaoId != null) {
+            publicacao = publicacaoRepository
+                    .findById(publicacaoId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Publicação não encontrada: " + publicacaoId));
+            Long processoDaPublicacao =
+                    publicacao.getProcesso() != null ? publicacao.getProcesso().getId() : null;
+            if (!processoId.equals(processoDaPublicacao)) {
+                throw new BusinessRuleException(
+                        "Publicação id=" + publicacaoId + " não está vinculada ao processo id=" + processoId + ".");
+            }
+        } else {
+            publicacao = publicacaoRepository
+                    .findTop1ByProcesso_IdOrderByCreatedAtDescIdDesc(processoId)
+                    .orElseThrow(() -> new BusinessRuleException(
+                            "Processo id=" + processoId + " não possui publicação vinculada para triagem."));
+        }
+        final Long publicacaoIdEfetivo = publicacao.getId();
+
+        if (!StringUtils.hasText(publicacao.getTeor())) {
+            throw new BusinessRuleException(
+                    "Publicação id=" + publicacaoIdEfetivo + " sem teor — não é possível triar.");
+        }
+
+        if (forcar) {
+            juliaTriagemRepository.findByPublicacao_Id(publicacaoIdEfetivo).ifPresent(existing -> {
+                juliaTriagemRepository.delete(existing);
+                log.info(
+                        "Julia triagem manual: registro anterior removido (triagemId={}, publicacaoId={})",
+                        existing.getId(),
+                        publicacaoIdEfetivo);
+            });
+        }
+
+        log.info(
+                "Julia triagem manual processoId={} publicacaoId={} dryRun={} forcar={}",
+                processoId,
+                publicacaoIdEfetivo,
+                dryRun,
+                forcar);
+        return triarComOpcoes(null, null, publicacaoIdEfetivo, processoId, !dryRun, !dryRun);
     }
 
     /**
@@ -296,6 +370,16 @@ public class JuliaTriagemService {
                     "Enactment exige processo vinculado (publicação com processo_id ou CNJ unívoco).");
         }
 
+        Optional<TriagemResultado> dupSemantica =
+                buscarTriagemSemanticaRecente(processoId, publicacaoId, publicacao, resultado);
+        if (dupSemantica.isPresent()) {
+            log.info(
+                    "Julia triagem semântica duplicada ignorada (processoId={}, publicacaoId={})",
+                    processoId,
+                    publicacaoId);
+            return TriagemRunResponse.idempotenteSemantica(dupSemantica.get());
+        }
+
         JuliaTriagemEntity triagem = persistirTriagem(publicacao, processoId, resultado);
 
         return juliaAssistenteContextService.executarComoJulia(() -> {
@@ -308,7 +392,11 @@ public class JuliaTriagemService {
                     ids.prazoId(),
                     ids.agendaEventoId(),
                     ids.prazoFatalCabecalhoAtualizado(),
-                    ids.duplicataPrazo());
+                    ids.duplicataPrazo(),
+                    false,
+                    ids.duplicataAndamento(),
+                    ids.audienciaProcessoAtualizada(),
+                    ids.agendaAudienciaReplicada());
         });
     }
 
@@ -501,7 +589,11 @@ public class JuliaTriagemService {
                     ids.prazoId(),
                     ids.agendaEventoId(),
                     ids.prazoFatalCabecalhoAtualizado(),
-                    ids.duplicataPrazo());
+                    ids.duplicataPrazo(),
+                    false,
+                    ids.duplicataAndamento(),
+                    ids.audienciaProcessoAtualizada(),
+                    ids.agendaAudienciaReplicada());
         });
     }
 
@@ -636,6 +728,38 @@ public class JuliaTriagemService {
         return normalizarPrazo(parseado);
     }
 
+    Optional<TriagemResultado> buscarTriagemSemanticaRecente(
+            Long processoId, Long publicacaoIdAtual, PublicacaoEntity publicacao, TriagemResultado candidato) {
+        if (processoId == null) {
+            return Optional.empty();
+        }
+        Instant desde = Instant.now().minus(DEDUP_TRIAGEM_HORAS, ChronoUnit.HOURS);
+        String fpNovo =
+                JuliaTriagemDedupUtil.fingerprintMovimentacao(publicacao, candidato.classificacao(), candidato.resumo());
+        for (JuliaTriagemEntity t : juliaTriagemRepository.findRecentesPorProcesso(processoId, desde)) {
+            if (publicacaoIdAtual != null
+                    && t.getPublicacao() != null
+                    && publicacaoIdAtual.equals(t.getPublicacao().getId())) {
+                continue;
+            }
+            try {
+                TriagemResultado prev = carregarResultadoPersistido(t);
+                String fpPrev = JuliaTriagemDedupUtil.fingerprintMovimentacao(
+                        t.getPublicacao(), prev.classificacao(), prev.resumo());
+                if (fpNovo.equals(fpPrev)) {
+                    return Optional.of(prev);
+                }
+                if (JuliaTriagemDedupUtil.classificacaoEhGenerica(candidato.classificacao())
+                        && JuliaTriagemDedupUtil.classificacaoEhGenerica(prev.classificacao())) {
+                    return Optional.of(prev);
+                }
+            } catch (Exception ignore) {
+                /* payload legado */
+            }
+        }
+        return Optional.empty();
+    }
+
     EnactmentIds aplicarTriagem(Long processoId, TriagemResultado resultado, Long publicacaoId) {
         return aplicarTriagem(processoId, resultado, publicacaoId, false);
     }
@@ -678,26 +802,35 @@ public class JuliaTriagemService {
             }
         }
 
-        ProcessoAndamentoWriteRequest andamentoReq = new ProcessoAndamentoWriteRequest();
-        andamentoReq.setUsuarioId(juliaId);
-        andamentoReq.setOrigem(ORIGEM_ANDAMENTO_TRIAGEM);
-        andamentoReq.setOrigemAutomatica(true);
-        andamentoReq.setTitulo(tituloAndamento(resultado));
-        String detalhe = montarDetalheAndamento(resultado);
-        if (duplicataPrazo) {
-            detalhe = appendNotaDuplicataPrazo(detalhe, dataReal);
+        String titulo = tituloAndamento(resultado);
+        boolean duplicataAndamento = existeAndamentoJuliaSimilarRecente(processoId, titulo);
+        Long andamentoId = null;
+        if (!duplicataAndamento) {
+            ProcessoAndamentoWriteRequest andamentoReq = new ProcessoAndamentoWriteRequest();
+            andamentoReq.setUsuarioId(juliaId);
+            andamentoReq.setOrigem(ORIGEM_ANDAMENTO_TRIAGEM);
+            andamentoReq.setOrigemAutomatica(true);
+            andamentoReq.setTitulo(titulo);
+            String detalhe = montarDetalheAndamento(resultado);
+            if (duplicataPrazo) {
+                detalhe = appendNotaDuplicataPrazo(detalhe, dataReal);
+            }
+            if (agendaOmitidaSemResponsavel) {
+                detalhe = appendNotaSemResponsavelAgenda(detalhe);
+            }
+            andamentoReq.setDetalhe(detalhe);
+            andamentoId = processoApplicationService.criarAndamento(processoId, andamentoReq).getId();
+        } else {
+            log.info(
+                    "dedup: andamento Júlia omitido (processoId={}, título similar recente)",
+                    processoId);
         }
-        if (agendaOmitidaSemResponsavel) {
-            detalhe = appendNotaSemResponsavelAgenda(detalhe);
-        }
-        andamentoReq.setDetalhe(detalhe);
-
-        Long andamentoId =
-                processoApplicationService.criarAndamento(processoId, andamentoReq).getId();
 
         Long prazoId = null;
         Long agendaEventoId = null;
         boolean prazoFatalCabecalhoAtualizado = false;
+        boolean audienciaProcessoAtualizada = false;
+        Integer agendaAudienciaReplicada = null;
 
         if (!analiseSemPrazo && prazoAtivoComData && !duplicataPrazo) {
             ProcessoPrazoWriteRequest prazoReq = new ProcessoPrazoWriteRequest();
@@ -728,13 +861,130 @@ public class JuliaTriagemService {
             }
         }
 
+        AudienciaEnactment audienciaEnact = aplicarAudienciaSeElegivel(processo, resultado);
+        audienciaProcessoAtualizada = audienciaEnact.processoAtualizado();
+        agendaAudienciaReplicada = audienciaEnact.agendaReplicada();
+
         return new EnactmentIds(
                 andamentoId,
                 prazoId,
                 agendaEventoId,
                 prazoFatalCabecalhoAtualizado,
                 duplicataPrazo,
-                agendaOmitidaSemResponsavel);
+                agendaOmitidaSemResponsavel,
+                duplicataAndamento,
+                audienciaProcessoAtualizada,
+                agendaAudienciaReplicada);
+    }
+
+    boolean existeAndamentoJuliaSimilarRecente(Long processoId, String titulo) {
+        Instant desde = Instant.now().minus(DEDUP_ANDAMENTO_HORAS, ChronoUnit.HOURS);
+        for (ProcessoAndamentoEntity a :
+                andamentoRepository.findRecentesPorOrigem(processoId, ORIGEM_ANDAMENTO_TRIAGEM, desde)) {
+            if (JuliaTriagemDedupUtil.titulosAndamentoEquivalentes(a.getTitulo(), titulo)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    record AudienciaEnactment(boolean processoAtualizado, Integer agendaReplicada) {}
+
+    AudienciaEnactment aplicarAudienciaSeElegivel(ProcessoEntity processo, TriagemResultado resultado) {
+        TriagemResultado.Audiencia aud = resultado.audiencia();
+        if (aud == null || !Boolean.TRUE.equals(aud.existe())) {
+            return new AudienciaEnactment(false, null);
+        }
+        LocalDate data = aud.dataAsLocalDate();
+        if (data == null) {
+            log.warn("Julia enact: audiência indicada sem data parseável (processoId={})", processo.getId());
+            return new AudienciaEnactment(false, null);
+        }
+        double conf = aud.confianca() != null ? aud.confianca() : resultado.confianca() != null ? resultado.confianca() : 0;
+        if (conf < audienciaConfiancaMinima) {
+            log.info(
+                    "Julia enact: audiência não aplicada por confiança {} < {} (processoId={})",
+                    conf,
+                    audienciaConfiancaMinima,
+                    processo.getId());
+            return new AudienciaEnactment(false, null);
+        }
+        String hora = normalizarHoraTriagem(aud.hora());
+        String tipo = StringUtils.hasText(aud.tipo()) ? aud.tipo().trim() : "Audiência";
+        processoApplicationService.aplicarAudienciaIdentificadaAssistente(
+                processo.getId(), data, hora, tipo);
+        int replicados = replicarAudienciaAgendaColaboradores(processo, data, hora, tipo, aud.meio());
+        log.info(
+                "Julia enact: audiência aplicada processoId={} data={} hora={} agendaReplicada={}",
+                processo.getId(),
+                data,
+                hora,
+                replicados);
+        return new AudienciaEnactment(true, replicados > 0 ? replicados : null);
+    }
+
+    static String normalizarHoraTriagem(String raw) {
+        if (!StringUtils.hasText(raw)) {
+            return null;
+        }
+        String t = raw.trim().replace('.', ':');
+        if (t.matches("^\\d{1,2}:\\d{2}$")) {
+            String[] p = t.split(":");
+            int h = Integer.parseInt(p[0]);
+            int m = Integer.parseInt(p[1]);
+            if (h >= 0 && h <= 23 && m >= 0 && m <= 59) {
+                return String.format(java.util.Locale.ROOT, "%02d:%02d", h, m);
+            }
+        }
+        if (t.matches("^\\d{3,4}$")) {
+            String d = t.length() == 3 ? "0" + t : t;
+            return d.substring(0, 2) + ":" + d.substring(2);
+        }
+        return null;
+    }
+
+    int replicarAudienciaAgendaColaboradores(
+            ProcessoEntity processo, LocalDate data, String hora, String tipo, String meio) {
+        String processoRef = montarProcessoRef(processo);
+        if (!StringUtils.hasText(processoRef)) {
+            return 0;
+        }
+        String descricao = montarDescricaoAgendaAudiencia(processo, tipo, meio);
+        int ok = 0;
+        for (UsuarioEntity u : usuarioRepository.findColaboradoresHumanosAtivos()) {
+            if (u == null || u.getId() == null) {
+                continue;
+            }
+            try {
+                AgendaEventoWriteRequest req = new AgendaEventoWriteRequest();
+                req.setUsuarioId(u.getId());
+                req.setDataEvento(data);
+                req.setHoraEvento(hora);
+                req.setDescricao(descricao);
+                req.setProcessoRef(processoRef);
+                req.setOrigem(ORIGEM_AGENDA_AUDIENCIA_TRIAGEM);
+                agendaApplicationService.upsertAudiencia(req);
+                ok++;
+            } catch (Exception e) {
+                log.warn(
+                        "Julia enact: falha upsert audiência agenda usuarioId={}: {}",
+                        u.getId(),
+                        e.getMessage());
+            }
+        }
+        return ok;
+    }
+
+    private static String montarDescricaoAgendaAudiencia(ProcessoEntity processo, String tipo, String meio) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(StringUtils.hasText(tipo) ? tipo.trim() : "Audiência");
+        if (processo.getNumeroCnj() != null && StringUtils.hasText(processo.getNumeroCnj())) {
+            sb.append(" — ").append(processo.getNumeroCnj().trim());
+        }
+        if (StringUtils.hasText(meio)) {
+            sb.append(" (").append(meio.trim()).append(')');
+        }
+        return sb.toString();
     }
 
     Optional<UsuarioEntity> resolverDestinatarioHumanoAgenda(ProcessoEntity processo) {
@@ -883,6 +1133,16 @@ public class JuliaTriagemService {
         appendSecaoDetalhe(sb, "Resumo", resultado.resumo());
         appendSecaoDetalhe(sb, "Impacto para o cliente", resultado.impactoCliente());
         appendSecaoDetalhe(sb, "Base do impacto", resultado.baseImpacto());
+        if (resultado.audiencia() != null && Boolean.TRUE.equals(resultado.audiencia().existe())) {
+            TriagemResultado.Audiencia aud = resultado.audiencia();
+            String audTxt = String.join(
+                    " ",
+                    aud.data() != null ? aud.data() : "",
+                    aud.hora() != null ? aud.hora() : "",
+                    aud.tipo() != null ? aud.tipo() : "",
+                    aud.meio() != null ? "(" + aud.meio() + ")" : "");
+            appendSecaoDetalhe(sb, "Audiência identificada", audTxt.trim());
+        }
         appendSecaoDetalhe(sb, "Ação sugerida", resultado.acaoSugerida());
         return sb.toString().trim();
     }
@@ -924,7 +1184,21 @@ public class JuliaTriagemService {
         sb.append(rotulo).append(": ").append(valor.trim());
     }
 
-    private static String tituloAndamento(TriagemResultado resultado) {
+    static String tituloAndamento(TriagemResultado resultado) {
+        if (StringUtils.hasText(resultado.resumo())) {
+            String resumo = resultado.resumo().trim().replaceAll("\\s+", " ");
+            if (resumo.length() > 220) {
+                int corte = resumo.lastIndexOf(' ', 200);
+                resumo = (corte > 80 ? resumo.substring(0, corte) : resumo.substring(0, 200)) + "…";
+            }
+            if (JuliaTriagemDedupUtil.classificacaoEhGenerica(resultado.classificacao())) {
+                return resumo;
+            }
+            if (StringUtils.hasText(resultado.classificacao())) {
+                return resultado.classificacao().trim() + " — " + resumo;
+            }
+            return resumo;
+        }
         if (StringUtils.hasText(resultado.classificacao())) {
             return resultado.classificacao().trim();
         }
@@ -950,7 +1224,10 @@ public class JuliaTriagemService {
             Long agendaEventoId,
             boolean prazoFatalCabecalhoAtualizado,
             boolean duplicataPrazo,
-            boolean agendaOmitidaSemResponsavel) {}
+            boolean agendaOmitidaSemResponsavel,
+            boolean duplicataAndamento,
+            boolean audienciaProcessoAtualizada,
+            Integer agendaAudienciaReplicada) {}
 
     private Long resolverProcessoId(PublicacaoEntity publicacao, Long processoIdHint, String cnj) {
         if (processoIdHint != null && processoIdHint > 0) {
@@ -1001,6 +1278,13 @@ public class JuliaTriagemService {
         sb.append("\nTeor:\n").append(teor.trim()).append("\n\n");
 
         if (processoId != null) {
+            ProcessoEntity processo =
+                    processoRepository.findById(processoId).orElse(null);
+            if (processo != null) {
+                JuliaTriagemContextoDriveService.ContextoDriveDocumentos driveCtx =
+                        contextoDriveService.montarContexto(processo, publicacao, teor);
+                sb.append(driveCtx.blocoContexto()).append('\n');
+            }
             appendContextoProcesso(sb, processoId);
         } else {
             sb.append("=== PROCESSO ===\n");
@@ -1254,7 +1538,8 @@ public class JuliaTriagemService {
                 resultado.providenciaCliente(),
                 prioridade,
                 resultado.acaoSugerida(),
-                resultado.confianca());
+                resultado.confianca(),
+                resultado.audiencia());
     }
 
     private JuliaTriagemEntity persistirTriagem(PublicacaoEntity publicacao, Long processoId, TriagemResultado resultado) {

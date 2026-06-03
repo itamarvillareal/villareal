@@ -1,7 +1,7 @@
 /**
  * Metadados extraídos do email Projudi (jsonReferencia.projudi).
  */
-import { obterParteOpostaLinha, obterTitularNomeLinha } from './publicacoesDisplayHelpers.js';
+import { obterParteClienteNomeLinha, obterParteOpostaLinha } from './publicacoesDisplayHelpers.js';
 
 function str(v) {
   return String(v ?? '').trim();
@@ -122,10 +122,10 @@ export function deduplicarTeorExibicao(teor) {
 
 export function formatarPartesLinha(row) {
   if (row?.statusVinculo === 'vinculado') {
-    const titular = obterTitularNomeLinha(row);
+    const parteCliente = obterParteClienteNomeLinha(row);
     const oposta = obterParteOpostaLinha(row);
-    if (titular && oposta) return `${titular} × ${oposta}`;
-    return titular || oposta || '—';
+    if (parteCliente && oposta) return `${parteCliente} × ${oposta}`;
+    return parteCliente || oposta || '—';
   }
   const doEmail = partesEmailLinha(row);
   return doEmail || '—';

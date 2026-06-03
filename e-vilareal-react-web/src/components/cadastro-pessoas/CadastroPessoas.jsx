@@ -136,11 +136,18 @@ const emptyPessoa = {
   responsavel: null,
 };
 
-export function CadastroPessoas() {
+/**
+ * @param {import('react-router-dom').Location['state'] | { pessoaId?: number|string } | null} [props.embedIntent]
+ * @param {number|string} [props.embedIntentRevision]
+ * @param {() => void} [props.onFecharEmbed]
+ */
+export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFecharEmbed } = {}) {
   const location = useLocation();
   const navigate = useNavigate();
+  const isEmbedded = embedIntent !== undefined && embedIntent !== null;
+  const intentRevisionForHydration = isEmbedded ? String(embedIntentRevision) : location.key;
   const pathPessoasNorm = (location.pathname || '').replace(/\/+$/, '') || '/';
-  const isRotaListaTodasPessoas = pathPessoasNorm === '/clientes/lista';
+  const isRotaListaTodasPessoas = !isEmbedded && pathPessoasNorm === '/clientes/lista';
   const [lista, setLista] = useState([]);
   /** Carregamento da ficha em /clientes/editar/:id quando a lista ainda não foi trazida (evita carregar o relatório completo). */
   const [carregandoFicha, setCarregandoFicha] = useState(false);
@@ -529,8 +536,91 @@ export function CadastroPessoas() {
     });
   }, [loading, modo, pessoaAtual?.id, pessoaAtual?.nome]);
 
+  /** Modo embed: abre ficha pelo id sem mudar de rota (ex.: duplo clique em Partes do processo). */
+  useEffect(() => {
+    if (!isEmbedded) return undefined;
+    const raw = embedIntent?.pessoaId ?? embedIntent?.idPessoa ?? embedIntent?.id;
+    const id = Number(raw);
+    if (!Number.isFinite(id) || id < 1) return undefined;
+    if (modo === 'editar' && Number(editId) === id) return undefined;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        setCarregandoFicha(true);
+        const c = await buscarCliente(id);
+        if (cancelled) return;
+        if (!c) {
+          setError(`Pessoa nº ${id} não encontrada.`);
+          return;
+        }
+        aplicarEdicaoPessoa({
+          id: c.id,
+          nome: c.nome,
+          nacionalidade: c.nacionalidade,
+          cpf: c.cpf,
+          email: c.email,
+          telefone: c.telefone,
+          dataNascimento: c.dataNascimento,
+          ativo: c.ativo,
+          marcadoMonitoramento: c.marcadoMonitoramento,
+          responsavelId: c.responsavelId,
+          responsavel: c.responsavel,
+        });
+      } catch (err) {
+        if (!cancelled) setError(err.message || 'Erro ao abrir cadastro.');
+      } finally {
+        if (!cancelled) setCarregandoFicha(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- recarrega ao trocar pessoa no embed
+  }, [isEmbedded, intentRevisionForHydration, embedIntent]);
+
+  /** Esc no embed: fecha modais internos e depois o painel. */
+  useEffect(() => {
+    if (!isEmbedded || typeof onFecharEmbed !== 'function') return undefined;
+    const onKey = (e) => {
+      if (e.key !== 'Escape') return;
+      if (modalEnderecos) {
+        e.preventDefault();
+        setModalEnderecos(false);
+        return;
+      }
+      if (modalContatos) {
+        e.preventDefault();
+        setModalContatos(false);
+        return;
+      }
+      if (modalVinculosSistema) {
+        e.preventDefault();
+        setModalVinculosSistema(false);
+        return;
+      }
+      if (modalCpfDuplicado) {
+        e.preventDefault();
+        setModalCpfDuplicado(null);
+        return;
+      }
+      e.preventDefault();
+      onFecharEmbed();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [
+    isEmbedded,
+    onFecharEmbed,
+    modalEnderecos,
+    modalContatos,
+    modalVinculosSistema,
+    modalCpfDuplicado,
+  ]);
+
   /** Links antigos com state (pessoaId): passa para a rota de edição. */
   useEffect(() => {
+    if (isEmbedded) return;
     const s = location.state;
     if (!s || typeof s !== 'object') return;
     const raw = s.pessoaId ?? s.idPessoa;
@@ -709,6 +799,10 @@ export function CadastroPessoas() {
   }
 
   const cancelarForm = () => {
+    if (isEmbedded && typeof onFecharEmbed === 'function') {
+      onFecharEmbed();
+      return;
+    }
     setModo('listar');
     setForm(
       pathPessoasNorm === '/clientes/lista'
@@ -729,6 +823,7 @@ export function CadastroPessoas() {
   };
 
   useEffect(() => {
+    if (isEmbedded) return;
     const p = (location.pathname || '').replace(/\/+$/, '') || '/';
     if (p === '/clientes/nova') {
       if (modo === 'listar') {
@@ -748,8 +843,9 @@ export function CadastroPessoas() {
   }, [isRotaListaTodasPessoas, modo]);
 
   useEffect(() => {
+    if (isEmbedded) return undefined;
     const m = /^\/clientes\/editar\/(\d+)$/.exec(pathPessoasNorm);
-    if (!m) return;
+    if (!m) return undefined;
     const id = Number(m[1]);
     if (!Number.isFinite(id) || id < 1) return;
     if (modo === 'editar' && Number(editId) === id) return;
@@ -1179,13 +1275,19 @@ export function CadastroPessoas() {
 
   /** Em listagem: só mostra o formulário completo se "Edição desabilitada" estiver desmarcada (exceto em /clientes/lista, onde edição é só na rota /clientes/editar/:id). */
   const mostrarFormularioEdicao =
+    isEmbedded ||
     modo === 'criar' ||
     modo === 'editar' ||
     (modo === 'listar' && !form.edicaoDesabilitada && !isRotaListaTodasPessoas);
 
   return (
-    <div className="min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/35 to-emerald-50/45 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d]">
-      <div className="max-w-6xl mx-auto px-4 py-6">
+    <div
+      className={`bg-gradient-to-br from-slate-100 via-indigo-50/35 to-emerald-50/45 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d] ${
+        isEmbedded ? 'min-h-0 w-full min-w-0' : 'min-h-full'
+      }`}
+    >
+      <div className={`max-w-6xl mx-auto px-4 py-6 ${isEmbedded ? 'min-w-0 py-4' : ''}`}>
+        {!isEmbedded ? (
         <header className="mb-6">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
@@ -1206,6 +1308,7 @@ export function CadastroPessoas() {
             )}
           </div>
         </header>
+        ) : null}
 
         {isRotaListaTodasPessoas && modo === 'listar' && (
           <section className="bg-white rounded-xl shadow-sm border border-slate-200/80 p-4 mb-6">
@@ -1282,7 +1385,7 @@ export function CadastroPessoas() {
           </div>
         )}
 
-        {carregandoFicha && /^\/clientes\/editar\/\d+$/.test(pathPessoasNorm) && (
+        {carregandoFicha && (isEmbedded || /^\/clientes\/editar\/\d+$/.test(pathPessoasNorm)) && (
           <p className="mb-4 text-sm text-slate-600">Carregando ficha…</p>
         )}
 
@@ -1899,7 +2002,7 @@ export function CadastroPessoas() {
                     disabled={salvando}
                     className="px-5 py-2.5 rounded-lg border border-slate-300 bg-white text-slate-700 font-medium text-sm hover:bg-slate-50"
                   >
-                    Cancelar
+                    {isEmbedded ? 'Fechar' : 'Cancelar'}
                   </button>
                 </div>
               </>

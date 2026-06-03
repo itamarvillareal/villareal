@@ -124,6 +124,7 @@ import {
 import { ModalRelatorioPublicacoesProcesso, PublicacoesRelatorioConteudo } from './ModalRelatorioPublicacoesProcesso.jsx';
 import { listarPublicacoesRelatorioPorProcesso } from '../repositories/publicacoesRepository.js';
 import { ModalCriarTarefaContextual } from './ModalCriarTarefaContextual.jsx';
+import { PessoaEmbedModal } from './PessoaEmbedModal.jsx';
 import { AutorUsuarioExibicao } from './ui/AutorUsuarioExibicao.jsx';
 import { buildContextFromProcesso, buildContextFromProcessoComPrazoFatal } from '../data/tarefasContextualPayload.js';
 import { montarDadosParaDocumentoFromProcesso } from '../helpers/documentoHelper.js';
@@ -431,6 +432,8 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   const [modalRelatorioPublicacoes, setModalRelatorioPublicacoes] = useState(false);
   /** Modal com cadastro de clientes (mesmo formulário de /pessoas) para o cliente e proc. atuais. */
   const [clientesEmbed, setClientesEmbed] = useState(null);
+  /** Cadastro de Pessoas em janela suspensa (duplo clique na lista «Nesta parte»). */
+  const [pessoaEmbed, setPessoaEmbed] = useState(null);
   const [modalTarefaContextual, setModalTarefaContextual] = useState(null);
 
   useLayoutEffect(() => {
@@ -854,6 +857,106 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     });
     return () => window.cancelAnimationFrame(id);
   }, [modalAcoesRedacaoAberto, indiceAcaoRedacaoFocada]);
+
+  /** Formulário suspenso (embed): Esc fecha modais internos primeiro, depois o painel. */
+  useEffect(() => {
+    if (!isEmbedded || typeof onFecharEmbed !== 'function') return undefined;
+    const onKey = (e) => {
+      if (e.key !== 'Escape') return;
+      if (driveExplorerAberto) {
+        e.preventDefault();
+        setDriveExplorerAberto(false);
+        return;
+      }
+      if (pessoaEmbed) {
+        e.preventDefault();
+        setPessoaEmbed(null);
+        return;
+      }
+      if (clientesEmbed) {
+        e.preventDefault();
+        setClientesEmbed(null);
+        return;
+      }
+      if (modalAgendaAudiencia.aberto) {
+        e.preventDefault();
+        setModalAgendaAudiencia({ aberto: false, dataBr: null, revision: 0 });
+        return;
+      }
+      if (modalVinculoPartes) {
+        e.preventDefault();
+        setModalVinculoPartes(null);
+        return;
+      }
+      if (informacaoModal) {
+        e.preventDefault();
+        setInformacaoModal(null);
+        return;
+      }
+      if (modalContaCorrente) {
+        e.preventDefault();
+        setModalContaCorrente(false);
+        return;
+      }
+      if (modalRelatorioPublicacoes) {
+        e.preventDefault();
+        setModalRelatorioPublicacoes(false);
+        return;
+      }
+      if (modalTarefaContextual != null) {
+        e.preventDefault();
+        setModalTarefaContextual(null);
+        return;
+      }
+      if (modalTramitacaoAberto) {
+        e.preventDefault();
+        setModalTramitacaoAberto(false);
+        return;
+      }
+      if (modalAcoesRedacaoAberto) {
+        e.preventDefault();
+        setModalAcoesRedacaoAberto(false);
+        return;
+      }
+      if (modalAgendaLoteAberto) {
+        e.preventDefault();
+        setModalAgendaLoteAberto(false);
+        return;
+      }
+      e.preventDefault();
+      onFecharEmbed();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [
+    isEmbedded,
+    onFecharEmbed,
+    driveExplorerAberto,
+    pessoaEmbed,
+    clientesEmbed,
+    modalAgendaAudiencia.aberto,
+    modalVinculoPartes,
+    informacaoModal,
+    modalContaCorrente,
+    modalRelatorioPublicacoes,
+    modalTarefaContextual,
+    modalTramitacaoAberto,
+    modalAcoesRedacaoAberto,
+    modalAgendaLoteAberto,
+  ]);
+
+  /** Esc fecha o cadastro de pessoa flutuante (acima do modal de partes). */
+  useEffect(() => {
+    if (!pessoaEmbed) return undefined;
+    const onKey = (e) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      e.stopPropagation();
+      setPessoaEmbed(null);
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [pessoaEmbed]);
 
   useEffect(() => {
     return () => {
@@ -2481,6 +2584,15 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     }
     edicaoDesabilitadaAnteriorRef.current = edicaoDesabilitada;
   }, [edicaoDesabilitada]);
+
+  function abrirPessoaFlutuanteNoModalPartes(pessoaId) {
+    const id = Number(pessoaId);
+    if (!Number.isFinite(id) || id < 1) return;
+    setPessoaEmbed((prev) => ({
+      revision: (prev?.revision ?? 0) + 1,
+      pessoaId: id,
+    }));
+  }
 
   function abrirModalDetalhesPartes() {
     draftParteClienteLinhasRef.current = clonarLinhasParteProcesso(parteClienteEntradas);
@@ -4641,7 +4753,14 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                               className="text-xs border border-slate-100 rounded p-2 bg-slate-50/80"
                             >
                               <div className="flex items-start justify-between gap-2">
-                                <span className="font-medium text-slate-800 min-w-0">
+                                <span
+                                  className="font-medium text-slate-800 min-w-0 cursor-pointer rounded px-0.5 -mx-0.5 hover:bg-slate-100/90"
+                                  title="Duplo clique para abrir o cadastro da pessoa"
+                                  onDoubleClick={(e) => {
+                                    e.stopPropagation();
+                                    abrirPessoaFlutuanteNoModalPartes(codigoPessoa);
+                                  }}
+                                >
                                   <span className="text-slate-500 font-normal tabular-nums mr-2 shrink-0">
                                     Cód. {codigoPessoa}
                                   </span>
@@ -5216,6 +5335,8 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
         context={modalTarefaContextual}
       />
 
+      <PessoaEmbedModal embed={pessoaEmbed} onFechar={() => setPessoaEmbed(null)} />
+
       {clientesEmbed ? (
         <div
           className="fixed inset-0 z-[75] flex items-stretch justify-center bg-black/55 p-0 md:items-center md:p-4"
@@ -5278,6 +5399,8 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
         <DriveExplorer
           codigoCliente={String(codigoCliente ?? '').trim()}
           numeroInterno={Number(processo)}
+          processoId={processoApiId}
+          numeroCnj={String(numeroProcessoNovo ?? '').trim()}
           onClose={() => setDriveExplorerAberto(false)}
         />
       ) : null}

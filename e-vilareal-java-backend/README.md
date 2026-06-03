@@ -196,6 +196,7 @@ Lista todas as pessoas com `id`, `nome` e **`codigoCliente`** (id formatado em 8
 | PUT/DELETE | `/api/processos/{id}/andamentos/{andamentoId}` | Atualizar / excluir |
 | GET/POST | `/api/processos/{id}/prazos` | Prazos |
 | PUT | `/api/processos/{id}/prazos/{prazoId}` | Atualizar prazo |
+| POST | `/api/processos/{id}/julia/triagem` | Triagem manual Júlia (`?publicacaoId=`, `dryRun`, `forcar`) |
 
 **Corpo do processo (resumo):** `clienteId`, `numeroInterno`, `numeroCnj`, `numeroProcessoAntigo`, `naturezaAcao`, `descricaoAcao`, `competencia`, `fase`, `status`, `tramitacao`, datas (`dataProtocolo`, `prazoFatal`, `proximaConsulta`), `observacao`, `valorCausa`, `uf`, `cidade`, `consultaAutomatica`, `ativo`, `consultor`, `usuarioResponsavelId`.
 

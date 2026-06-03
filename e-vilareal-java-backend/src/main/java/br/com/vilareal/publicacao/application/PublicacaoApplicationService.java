@@ -362,12 +362,8 @@ public class PublicacaoApplicationService {
             r.setTitularNome(trimToNull(titularNome));
             ProcessoPartesVinculoTexto pt = map.get(proc.getId());
             if (pt != null) {
-                String pc = StringUtils.hasText(titularNome) ? titularNome.trim() : trimToNull(pt.getParteCliente());
-                r.setParteCliente(pc);
+                r.setParteCliente(trimToNull(pt.getParteCliente()));
                 r.setParteOposta(trimToNull(pt.getParteOposta()));
-            } else {
-                r.setParteCliente(trimToNull(titularNome));
-                r.setParteOposta(null);
             }
         } else {
             r.setProcessoId(null);

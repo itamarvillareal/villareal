@@ -48,17 +48,15 @@ class ProcessoDiagnosticoNumeroBuscaUtilTest {
     }
 
     @Test
-    void buscarIdsProcessoPorNumero_projudiInternoSemPrefixoCaiParaContendo() {
-        when(processoRepository.findIdsByNumeroCnjDigitosIniciandoCom("578042564")).thenReturn(List.of());
-        when(processoRepository.findIdsByNumeroCnjDigitosContendo("578042564"))
-                .thenReturn(List.of(BigInteger.valueOf(12499L)));
+    void buscarIdsProcessoPorNumero_projudiInternoSemPrefixoNaoUsaContendo() {
+        when(processoRepository.findIdsByNumeroCnjDigitosIniciandoCom("550062297")).thenReturn(List.of());
 
         List<BigInteger> ids =
-                ProcessoDiagnosticoNumeroBuscaUtil.buscarIdsProcessoPorNumero("5780425.64", processoRepository);
+                ProcessoDiagnosticoNumeroBuscaUtil.buscarIdsProcessoPorNumero("5500622.97", processoRepository);
 
-        assertEquals(List.of(BigInteger.valueOf(12499L)), ids);
-        verify(processoRepository).findIdsByNumeroCnjDigitosIniciandoCom("578042564");
-        verify(processoRepository).findIdsByNumeroCnjDigitosContendo("578042564");
+        assertTrue(ids.isEmpty());
+        verify(processoRepository).findIdsByNumeroCnjDigitosIniciandoCom("550062297");
+        verifyNoMoreInteractions(processoRepository);
     }
 
     @Test

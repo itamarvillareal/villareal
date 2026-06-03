@@ -1,5 +1,7 @@
 package br.com.vilareal.pagamento.job;
 
+import br.com.vilareal.jobrun.application.JobRunTracker;
+import br.com.vilareal.jobrun.domain.JobNames;
 import br.com.vilareal.pagamento.api.dto.recorrencia.PagamentoRecorrenciaGerarMesResponse;
 import br.com.vilareal.pagamento.application.PagamentoRecorrenciaService;
 import org.slf4j.Logger;
@@ -19,31 +21,40 @@ public class PagamentoRecorrenciaJob {
     private static final DateTimeFormatter FMT_MES_ANO = DateTimeFormatter.ofPattern("MM/yyyy", Locale.ROOT);
 
     private final PagamentoRecorrenciaService pagamentoRecorrenciaService;
+    private final JobRunTracker jobRunTracker;
 
-    public PagamentoRecorrenciaJob(PagamentoRecorrenciaService pagamentoRecorrenciaService) {
+    public PagamentoRecorrenciaJob(
+            PagamentoRecorrenciaService pagamentoRecorrenciaService, JobRunTracker jobRunTracker) {
         this.pagamentoRecorrenciaService = pagamentoRecorrenciaService;
+        this.jobRunTracker = jobRunTracker;
     }
 
     @Scheduled(cron = "0 0 6 1 * ?", zone = "America/Sao_Paulo")
     public void gerarPagamentosRecorrentesMensal() {
-        String mesAno = LocalDate.now().format(FMT_MES_ANO);
-        log.info("Iniciando geração automática de pagamentos recorrentes para {}", mesAno);
+        jobRunTracker.runTrackedJobVoid(JobNames.PAGAMENTO_RECORRENCIA, ctx -> {
+            String mesAno = LocalDate.now().format(FMT_MES_ANO);
+            log.info("Iniciando geração automática de pagamentos recorrentes para {}", mesAno);
+            ctx.putMetadata("mesAno", mesAno);
 
-        PagamentoRecorrenciaGerarMesResponse resultado = pagamentoRecorrenciaService.gerarMes(mesAno);
+            PagamentoRecorrenciaGerarMesResponse resultado = pagamentoRecorrenciaService.gerarMes(mesAno);
+            ctx.setItemsProcessed(resultado.getGerados());
+            ctx.setItemsFailed(resultado.getErros());
+            ctx.putMetadata("jaExistiam", resultado.getJaExistiam());
 
-        log.info(
-                "Geração concluída: {} gerados, {} já existiam, {} erros",
-                resultado.getGerados(),
-                resultado.getJaExistiam(),
-                resultado.getErros());
+            log.info(
+                    "Geração concluída: {} gerados, {} já existiam, {} erros",
+                    resultado.getGerados(),
+                    resultado.getJaExistiam(),
+                    resultado.getErros());
 
-        if (resultado.getErros() > 0) {
-            log.warn(
-                    "Erros na geração: {}",
-                    resultado.getDetalhes().stream()
-                            .filter(d -> "ERRO".equals(d.getResultado()))
-                            .map(d -> d.getDescricao() + ": " + d.getMensagemErro())
-                            .collect(Collectors.joining(", ")));
-        }
+            if (resultado.getErros() > 0) {
+                log.warn(
+                        "Erros na geração: {}",
+                        resultado.getDetalhes().stream()
+                                .filter(d -> "ERRO".equals(d.getResultado()))
+                                .map(d -> d.getDescricao() + ": " + d.getMensagemErro())
+                                .collect(Collectors.joining(", ")));
+            }
+        });
     }
 }

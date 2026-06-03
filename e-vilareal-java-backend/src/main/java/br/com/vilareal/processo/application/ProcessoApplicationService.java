@@ -350,7 +350,7 @@ public class ProcessoApplicationService {
                     ProcessoResponse r = toResponse(e);
                     List<ProcessoParteEntity> partes = partesPorProcesso.getOrDefault(e.getId(), List.of());
                     r.setParteCliente(montarTextoParteClienteListagem(e, partes));
-                    r.setParteOposta(montarTextoParteOpostaListagem(partes));
+                    r.setParteOposta(montarTextoParteOpostaListagem(e, partes));
                     return r;
                 });
     }
@@ -375,7 +375,7 @@ public class ProcessoApplicationService {
             ProcessoResponse r = toResponse(e);
             List<ProcessoParteEntity> partes = partesPorProcesso.getOrDefault(e.getId(), List.of());
             r.setParteCliente(montarTextoParteClienteListagem(e, partes));
-            r.setParteOposta(montarTextoParteOpostaListagem(partes));
+            r.setParteOposta(montarTextoParteOpostaListagem(e, partes));
             return r;
         });
     }
@@ -401,7 +401,7 @@ public class ProcessoApplicationService {
                     ProcessoResponse r = toResponse(e);
                     List<ProcessoParteEntity> partes = partesPorProcesso.getOrDefault(e.getId(), List.of());
                     r.setParteCliente(montarTextoParteClienteListagem(e, partes));
-                    r.setParteOposta(montarTextoParteOpostaListagem(partes));
+                    r.setParteOposta(montarTextoParteOpostaListagem(e, partes));
                     return r;
                 })
                 .collect(Collectors.toList());
@@ -443,7 +443,7 @@ public class ProcessoApplicationService {
             Long titularId = e.getPessoa().getId();
             String cod8 = resolverCodigoClienteExibicaoProcesso(e);
             String parteClienteTxt = montarTextoParteClienteListagem(e, partes);
-            String parteOpostaTxt = montarTextoParteOpostaListagem(partes);
+            String parteOpostaTxt = montarTextoParteOpostaListagem(e, partes);
 
             LinkedHashSet<String> papeis = new LinkedHashSet<>();
             if (titularId.equals(pessoaId)) {
@@ -594,7 +594,7 @@ public class ProcessoApplicationService {
             Long ownerId = p.getPessoa().getId();
             String cod8 = resolverCodigoClienteExibicaoParaPessoa(ownerId);
             String nomeCliente = Utf8MojibakeUtil.corrigir(p.getPessoa().getNome());
-            String parteOpostaTxt = montarTextoParteOpostaListagem(partes);
+            String parteOpostaTxt = montarTextoParteOpostaListagem(p, partes);
             String cnj = trimToNull(p.getNumeroCnj());
             String titulo = Utf8MojibakeUtil.corrigir(StringUtils.hasText(a.getTitulo()) ? a.getTitulo() : "Andamento");
             if (HistoricoTituloLegadoSistema.ehTituloSistemaLegado(titulo)) {
@@ -669,7 +669,7 @@ public class ProcessoApplicationService {
             Long ownerId = e.getPessoa().getId();
             String cod8 = resolverCodigoClienteExibicaoParaPessoa(ownerId);
             String nomeCliente = Utf8MojibakeUtil.corrigir(e.getPessoa().getNome());
-            String parteOpostaTxt = montarTextoParteOpostaListagem(partes);
+            String parteOpostaTxt = montarTextoParteOpostaListagem(e, partes);
             String cnj = trimToNull(e.getNumeroCnj());
             ProcessoDiagnosticoPessoaItemResponse r = new ProcessoDiagnosticoPessoaItemResponse();
             r.setProcessoId(e.getId());
@@ -737,11 +737,13 @@ public class ProcessoApplicationService {
         for (ProcessoEntity e : processos) {
             e.getPessoa().getNome();
             List<ProcessoParteEntity> partes = partesPorProcesso.getOrDefault(e.getId(), List.of());
-            String pc = Utf8MojibakeUtil.corrigir(e.getPessoa().getNome());
-            String parteCliente = StringUtils.hasText(pc) ? pc.trim() : "";
-            String po = montarTextoParteOpostaListagem(partes);
-            String parteOposta = StringUtils.hasText(po) ? po.trim() : "";
-            out.put(e.getId(), new ProcessoPartesVinculoTexto(parteCliente, parteOposta));
+            String autora = montarTextoParteClienteListagem(e, partes);
+            String oposta = montarTextoParteOpostaListagem(e, partes);
+            out.put(
+                    e.getId(),
+                    new ProcessoPartesVinculoTexto(
+                            StringUtils.hasText(autora) ? autora.trim() : "",
+                            StringUtils.hasText(oposta) ? oposta.trim() : ""));
         }
         return out;
     }
@@ -768,7 +770,7 @@ public class ProcessoApplicationService {
         for (ProcessoEntity e : processos) {
             List<ProcessoParteEntity> partes = partesPorProcesso.getOrDefault(e.getId(), List.of());
             String autora = montarTextoParteClienteListagem(e, partes);
-            String oposta = montarTextoParteOpostaListagem(partes);
+            String oposta = montarTextoParteOpostaListagem(e, partes);
             out.put(
                     e.getId(),
                     new ProcessoPartesVinculoTexto(
@@ -834,6 +836,23 @@ public class ProcessoApplicationService {
     public void patchAtivo(Long id, boolean ativo) {
         ProcessoEntity e = requireProcesso(id);
         e.setAtivo(ativo);
+        processoRepository.save(e);
+    }
+
+    /** Atualização pontual dos campos de audiência (ex.: triagem Júlia após leitura de certidão no Drive). */
+    @Transactional
+    public void aplicarAudienciaIdentificadaAssistente(
+            Long processoId, java.time.LocalDate data, String hora, String tipo) {
+        ProcessoEntity e = requireProcesso(processoId);
+        if (data != null) {
+            e.setAudienciaData(data);
+        }
+        if (StringUtils.hasText(hora)) {
+            e.setAudienciaHora(normalizarHoraAudiencia(hora));
+        }
+        if (StringUtils.hasText(tipo)) {
+            e.setAudienciaTipo(trimToNull(tipo));
+        }
         processoRepository.save(e);
     }
 
@@ -1453,35 +1472,22 @@ public class ProcessoApplicationService {
      * Mesmo critério de {@code aplicarListaPartesApiNaUi} no front (polo não-autor/requerente/cliente;
      * só entradas com {@code pessoa} vinculada para o texto agregado).
      */
-    private static String montarTextoParteOpostaListagem(List<ProcessoParteEntity> partes) {
-        return montarTextoPartesListagem(partes, false);
+    private static String montarTextoParteOpostaListagem(ProcessoEntity processo, List<ProcessoParteEntity> partes) {
+        return montarTextoPartesListagem(processo, partes, !clienteLadoAutor(processo));
     }
 
-    /** Mesma regra da tela Processos / grade Clientes: partes do polo cliente; senão titular do processo. */
+    /**
+     * Parte do lado do escritório em {@code processo_parte} (não o titular {@code processo.pessoa_id}
+     * nem o cliente contratante {@code processo.cliente_id}).
+     */
     private static String montarTextoParteClienteListagem(ProcessoEntity processo, List<ProcessoParteEntity> partes) {
-        LinkedHashSet<String> nomes = new LinkedHashSet<>();
-        if (partes != null) {
-            for (ProcessoParteEntity p : partes) {
-                String poloNorm = normalizarPoloParaComparacao(p.getPolo());
-                boolean alvoCliente = poloNorm.contains("AUTOR")
-                        || poloNorm.contains("REQUERENTE")
-                        || poloNorm.contains("CLIENTE");
-                if (!alvoCliente) {
-                    continue;
-                }
-                String rotulo = rotuloParteListagem(p);
-                if (StringUtils.hasText(rotulo)) {
-                    nomes.add(rotulo);
-                }
-            }
-        }
-        if (nomes.isEmpty()) {
-            String titular = nomeTitularProcesso(processo);
-            if (StringUtils.hasText(titular)) {
-                nomes.add(titular);
-            }
-        }
-        return formatarListaComConjuncaoE(new ArrayList<>(nomes));
+        return montarTextoPartesListagem(processo, partes, clienteLadoAutor(processo));
+    }
+
+    /** {@code true} quando o escritório atua no polo autor/requerente (padrão se {@code papel_cliente} ausente). */
+    private static boolean clienteLadoAutor(ProcessoEntity processo) {
+        String papel = normalizarPapelCliente(processo != null ? processo.getPapelCliente() : null);
+        return !"REQUERIDO".equals(papel);
     }
 
     private static String nomeTitularProcesso(ProcessoEntity processo) {
@@ -1519,17 +1525,15 @@ public class ProcessoApplicationService {
         return "";
     }
 
-    private static String montarTextoPartesListagem(List<ProcessoParteEntity> partes, boolean ladoCliente) {
+    private static String montarTextoPartesListagem(
+            ProcessoEntity processo, List<ProcessoParteEntity> partes, boolean ladoCliente) {
         if (partes == null || partes.isEmpty()) {
             return "";
         }
         List<String> nomes = new ArrayList<>();
         for (ProcessoParteEntity p : partes) {
             String poloNorm = normalizarPoloParaComparacao(p.getPolo());
-            boolean alvoCliente = poloNorm.contains("AUTOR")
-                    || poloNorm.contains("REQUERENTE")
-                    || poloNorm.contains("CLIENTE");
-            if (ladoCliente != alvoCliente) {
+            if (!poloEhLadoEscritorio(poloNorm, ladoCliente)) {
                 continue;
             }
             String rotulo = rotuloParteListagem(p);
@@ -1538,6 +1542,20 @@ public class ProcessoApplicationService {
             }
         }
         return formatarListaComConjuncaoE(nomes);
+    }
+
+    private static boolean poloEhLadoEscritorio(String poloNorm, boolean ladoClienteAutor) {
+        if (!StringUtils.hasText(poloNorm)) {
+            return false;
+        }
+        boolean poloAutor = poloNorm.contains("AUTOR")
+                || poloNorm.contains("REQUERENTE")
+                || poloNorm.contains("CLIENTE");
+        boolean poloReu = poloNorm.contains("REU") || poloNorm.contains("REQUERIDO");
+        if (ladoClienteAutor) {
+            return poloAutor && !poloReu;
+        }
+        return poloReu;
     }
 
     private static String normalizarPoloParaComparacao(String polo) {
