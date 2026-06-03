@@ -73,7 +73,7 @@ public class CalculoCobrancaMergeService {
                 for (DimResumo dim : dims) {
                     Set<String> chaves = chavesPorDim.get(dim.dimensao());
                     if (chaves.contains(chave)) {
-                        ignorados.add(new ResultadoMerge.DebitoIgnorado(debito, dim.dimensao()));
+                        ignorados.add(ResultadoMerge.DebitoIgnorado.of(debito, dim.dimensao()));
                         resolvido = true;
                         break;
                     }
@@ -178,7 +178,7 @@ public class CalculoCobrancaMergeService {
 
         List<ResultadoMerge.InsercaoDebito> insercoes = new ArrayList<>();
         for (int i = 0; i < debitos.size(); i++) {
-            insercoes.add(new ResultadoMerge.InsercaoDebito(posicaoInicial + i, debitos.get(i)));
+            insercoes.add(new ResultadoMerge.InsercaoDebito(dimensao, posicaoInicial + i, debitos.get(i)));
         }
         return insercoes;
     }

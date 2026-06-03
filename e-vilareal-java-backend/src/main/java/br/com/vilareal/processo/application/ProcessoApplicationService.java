@@ -1472,22 +1472,149 @@ public class ProcessoApplicationService {
      * Mesmo critério de {@code aplicarListaPartesApiNaUi} no front (polo não-autor/requerente/cliente;
      * só entradas com {@code pessoa} vinculada para o texto agregado).
      */
+    /**
+     * Parte cliente × parte oposta para listagens (Publicações, etc.).
+     * O polo jurídico (AUTOR/RÉU) vem de {@code processo.papel_cliente} — não confundir com «parte cliente».
+     */
+    private static ProcessoPartesVinculoTexto montarTextosPartesVinculoProcesso(
+            ProcessoEntity processo, List<ProcessoParteEntity> partes) {
+        List<String> porQualificacaoCliente = new ArrayList<>();
+        List<String> porQualificacaoOposta = new ArrayList<>();
+        if (partes != null) {
+            for (ProcessoParteEntity p : partes) {
+                String q = normalizarQualificacaoParte(p.getQualificacao());
+                String rotulo = rotuloParteListagem(p);
+                if (!StringUtils.hasText(rotulo)) {
+                    continue;
+                }
+                if (q.contains("PARTE CLIENTE")) {
+                    porQualificacaoCliente.add(rotulo);
+                } else if (q.contains("PARTE OPOSTA")) {
+                    porQualificacaoOposta.add(rotulo);
+                }
+            }
+        }
+        if (!porQualificacaoCliente.isEmpty()) {
+            String pc = formatarListaComConjuncaoE(porQualificacaoCliente);
+            String po = !porQualificacaoOposta.isEmpty()
+                    ? formatarListaComConjuncaoE(porQualificacaoOposta)
+                    : montarTextoParteOpostaListagemPorPapelJuridico(processo, partes);
+            return new ProcessoPartesVinculoTexto(pc, po);
+        }
+        if (importPoloJuridicoInvertidoParteCliente(processo, partes)) {
+            return montarTextosPorMarcadorParteCliente(partes);
+        }
+        return new ProcessoPartesVinculoTexto(
+                montarTextoParteClienteListagemPorPapelJuridico(processo, partes),
+                montarTextoParteOpostaListagemPorPapelJuridico(processo, partes));
+    }
+
     private static String montarTextoParteOpostaListagem(ProcessoEntity processo, List<ProcessoParteEntity> partes) {
-        return montarTextoPartesListagem(processo, partes, !clienteLadoAutor(processo));
+        return montarTextosPartesVinculoProcesso(processo, partes).getParteOposta();
+    }
+
+    private static String montarTextoParteClienteListagem(ProcessoEntity processo, List<ProcessoParteEntity> partes) {
+        return montarTextosPartesVinculoProcesso(processo, partes).getParteCliente();
+    }
+
+    private static String montarTextoParteClienteListagemPorPapelJuridico(
+            ProcessoEntity processo, List<ProcessoParteEntity> partes) {
+        return montarTextoPartesListagem(processo, partes, poloJuridicoEscritorioEhAutor(processo, partes));
+    }
+
+    private static String montarTextoParteOpostaListagemPorPapelJuridico(
+            ProcessoEntity processo, List<ProcessoParteEntity> partes) {
+        return montarTextoPartesListagem(processo, partes, !poloJuridicoEscritorioEhAutor(processo, partes));
     }
 
     /**
-     * Parte do lado do escritório em {@code processo_parte} (não o titular {@code processo.pessoa_id}
-     * nem o cliente contratante {@code processo.cliente_id}).
+     * {@code true} = escritório no polo jurídico autor/requerente; {@code false} = réu/requerido.
+     * REQUERIDO → parte cliente no polo REU; REQUERENTE → parte cliente no polo AUTOR.
      */
-    private static String montarTextoParteClienteListagem(ProcessoEntity processo, List<ProcessoParteEntity> partes) {
-        return montarTextoPartesListagem(processo, partes, clienteLadoAutor(processo));
+    private static boolean poloJuridicoEscritorioEhAutor(ProcessoEntity processo, List<ProcessoParteEntity> partes) {
+        String papel = normalizarPapelCliente(processo != null ? processo.getPapelCliente() : null);
+        if ("REQUERIDO".equals(papel)) {
+            return false;
+        }
+        if ("REQUERENTE".equals(papel)) {
+            return true;
+        }
+        if (partes != null) {
+            for (ProcessoParteEntity p : partes) {
+                String q = normalizarQualificacaoParte(p.getQualificacao());
+                if (!q.contains("PARTE CLIENTE")) {
+                    continue;
+                }
+                String polo = normalizarPoloParaComparacao(p.getPolo());
+                if (polo.contains("REU") || polo.contains("REQUERIDO")) {
+                    return false;
+                }
+                if (polo.contains("AUTOR") || polo.contains("REQUERENTE") || polo.contains("CLIENTE")) {
+                    return true;
+                }
+            }
+        }
+        return true;
     }
 
-    /** {@code true} quando o escritório atua no polo autor/requerente (padrão se {@code papel_cliente} ausente). */
-    private static boolean clienteLadoAutor(ProcessoEntity processo) {
-        String papel = normalizarPapelCliente(processo != null ? processo.getPapelCliente() : null);
-        return !"REQUERIDO".equals(papel);
+    /**
+     * Import legado: {@code papel_cliente=REQUERIDO} (parte cliente no REU), mas marcador da parte
+     * representada ficou no polo jurídico oposto (ex.: qualificação «endereco» no AUTOR).
+     */
+    private static boolean importPoloJuridicoInvertidoParteCliente(
+            ProcessoEntity processo, List<ProcessoParteEntity> partes) {
+        if (!"REQUERIDO".equals(normalizarPapelCliente(processo != null ? processo.getPapelCliente() : null))) {
+            return false;
+        }
+        if (partes == null || partes.isEmpty()) {
+            return false;
+        }
+        boolean marcadorNoAutor = false;
+        boolean marcadorNoReu = false;
+        for (ProcessoParteEntity p : partes) {
+            if (!temMarcadorParteClienteImport(p)) {
+                continue;
+            }
+            String polo = normalizarPoloParaComparacao(p.getPolo());
+            if (polo.contains("REU") || polo.contains("REQUERIDO")) {
+                marcadorNoReu = true;
+            }
+            if (polo.contains("AUTOR") || polo.contains("REQUERENTE") || polo.contains("CLIENTE")) {
+                marcadorNoAutor = true;
+            }
+        }
+        return marcadorNoAutor && !marcadorNoReu;
+    }
+
+    private static ProcessoPartesVinculoTexto montarTextosPorMarcadorParteCliente(List<ProcessoParteEntity> partes) {
+        List<String> nomesCliente = new ArrayList<>();
+        List<String> nomesOposta = new ArrayList<>();
+        for (ProcessoParteEntity p : partes) {
+            String rotulo = rotuloParteListagem(p);
+            if (!StringUtils.hasText(rotulo)) {
+                continue;
+            }
+            if (temMarcadorParteClienteImport(p)) {
+                nomesCliente.add(rotulo);
+            } else {
+                nomesOposta.add(rotulo);
+            }
+        }
+        return new ProcessoPartesVinculoTexto(
+                formatarListaComConjuncaoE(nomesCliente), formatarListaComConjuncaoE(nomesOposta));
+    }
+
+    private static boolean temMarcadorParteClienteImport(ProcessoParteEntity p) {
+        String q = normalizarQualificacaoParte(p.getQualificacao());
+        return q.contains("ENDERECO") || q.contains("PARTE CLIENTE");
+    }
+
+    private static String normalizarQualificacaoParte(String raw) {
+        if (!StringUtils.hasText(raw)) {
+            return "";
+        }
+        String nfd = Normalizer.normalize(raw.trim(), Normalizer.Form.NFD);
+        return nfd.replaceAll("\\p{M}+", "").toUpperCase(Locale.ROOT);
     }
 
     private static String nomeTitularProcesso(ProcessoEntity processo) {
@@ -1544,6 +1671,7 @@ public class ProcessoApplicationService {
         return formatarListaComConjuncaoE(nomes);
     }
 
+    /** {@code ladoClienteAutor}: polo jurídico autor/requerente é o lado do escritório. */
     private static boolean poloEhLadoEscritorio(String poloNorm, boolean ladoClienteAutor) {
         if (!StringUtils.hasText(poloNorm)) {
             return false;

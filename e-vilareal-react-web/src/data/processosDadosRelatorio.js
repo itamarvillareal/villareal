@@ -11,6 +11,9 @@ import {
   obterCamposProcessoApiFirst,
   resolverProcessoId,
 } from '../repositories/processosRepository.js';
+import { textosPartesFromListaPartesApi } from './partesLadoEscritorio.js';
+
+export { textosPartesFromListaPartesApi };
 
 /** Todos os estados brasileiros (UF) + Distrito Federal — ordem alfabética por sigla. */
 export const UFS = [
@@ -155,29 +158,6 @@ function formatarListaComConjuncaoE(itens) {
   return `${lista.slice(0, -1).join(', ')} e ${lista[lista.length - 1]}`;
 }
 
-/** Mesma regra da tela Processos / relatório: polos autor-requerente-cliente vs oposta. */
-export function textosPartesFromListaPartesApi(partes) {
-  const nomesCliente = [];
-  const nomesOposta = [];
-  for (const p of partes || []) {
-    const polo = String(p.polo || '')
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .toUpperCase();
-    const nome = String(p.nomeExibicao || p.nomeLivre || '').trim();
-    if (!nome) continue;
-    if (polo.includes('AUTOR') || polo.includes('REQUERENTE') || polo.includes('CLIENTE')) {
-      nomesCliente.push(nome);
-    } else {
-      nomesOposta.push(nome);
-    }
-  }
-  return {
-    parteCliente: formatarListaComConjuncaoE(nomesCliente),
-    parteOposta: formatarListaComConjuncaoE(nomesOposta),
-  };
-}
-
 function textosPartesFromRegistroLocal(cod, proc) {
   const reg = getRegistroProcesso(cod, proc);
   return {
@@ -204,7 +184,11 @@ export async function resolverTextosPartesCabecalhoCalculo(codigoClienteRaw, pro
   if (processoId) {
     try {
       const partes = await listarPartesProcesso(processoId);
-      const { parteCliente, parteOposta } = textosPartesFromListaPartesApi(partes);
+      const reg = getRegistroProcesso(cod, proc);
+      const { parteCliente, parteOposta } = textosPartesFromListaPartesApi(
+        partes,
+        reg?.papelParte ?? 'requerente'
+      );
       if (parteCliente || parteOposta) {
         return { parteCliente, parteOposta };
       }
@@ -401,7 +385,11 @@ async function preaquecerUmProcessoRelatorio({ codCliente: codRaw, proc: procRaw
     listarPartesProcesso(processoId),
     listarAndamentosProcesso(processoId),
   ]);
-  const { parteCliente, parteOposta } = textosPartesFromListaPartesApi(partes);
+  const reg = getRegistroProcesso(cod, proc);
+  const { parteCliente, parteOposta } = textosPartesFromListaPartesApi(
+    partes,
+    cabecalho?.papelParte ?? reg?.papelParte ?? 'requerente'
+  );
   const ultimo = extrairUltimoAndamento(andamentos || []);
   const statusApi = cabecalho?.statusAtivo !== false;
   const statusCampos = camposStatusAtivoRelatorio(cod, proc, statusApi);

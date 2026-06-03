@@ -57,12 +57,16 @@ class CalculoCobrancaMergeServiceTest {
         ResultadoMerge r = service.mesclarDebitos(COD8, PROC, List.of(existente, novo), "imp-1");
 
         assertThat(r.debitosIgnorados()).hasSize(1);
-        assertThat(r.debitosIgnorados().getFirst().debito()).isEqualTo(existente);
+        assertThat(r.debitosIgnorados().getFirst().vencimento()).isEqualTo(existente.vencimento());
+        assertThat(r.debitosIgnorados().getFirst().valorCentavos()).isEqualTo(10_000L);
+        assertThat(r.debitosIgnorados().getFirst().descricao()).isEqualTo("Taxa A");
         assertThat(r.debitosIgnorados().getFirst().dimensaoExistente()).isZero();
+        assertThat(r.debitosIgnorados().getFirst().motivo()).isEqualTo(ResultadoMerge.MOTIVO_DEBITO_JA_EXISTE);
         assertThat(r.dimensoesTocadas()).hasSize(1);
         assertThat(r.dimensoesTocadas().getFirst().dimensao()).isZero();
         assertThat(r.dimensoesTocadas().getFirst().dimensaoCriada()).isFalse();
         assertThat(r.dimensoesTocadas().getFirst().insercoes()).hasSize(1);
+        assertThat(r.dimensoesTocadas().getFirst().insercoes().getFirst().dimensao()).isZero();
         assertThat(r.dimensoesTocadas().getFirst().insercoes().getFirst().posicao()).isEqualTo(1);
         assertThat(r.dimensoesTocadas().getFirst().insercoes().getFirst().debito()).isEqualTo(novo);
 

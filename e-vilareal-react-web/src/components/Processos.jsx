@@ -2141,7 +2141,8 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   }
 
   /** Aplica resposta de GET /partes: entradas, rótulos e cache de nomes (mantém UI alinhada ao servidor). */
-  function aplicarListaPartesApiNaUi(partes) {
+  function aplicarListaPartesApiNaUi(partes, papelParteAtual = papelParte) {
+    const ladoClienteAutor = papelParteAtual !== 'requerido';
     const entradasCliente = [];
     const entradasOposta = [];
     const nomesCliente = [];
@@ -2152,10 +2153,12 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '')
         .toUpperCase();
-      const alvoCliente =
+      const poloAutor =
         poloNorm.includes('AUTOR') ||
         poloNorm.includes('REQUERENTE') ||
         poloNorm.includes('CLIENTE');
+      const poloReu = poloNorm.includes('REU') || poloNorm.includes('REQUERIDO');
+      const alvoCliente = ladoClienteAutor ? poloAutor && !poloReu : poloReu;
       const alvoOposta = !alvoCliente;
       const nomeApi = String(p.nomeExibicao || p.nomeLivre || '').trim();
       const adv = Array.isArray(p.advogadoPessoaIds)
@@ -2334,7 +2337,8 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       setUnidadeEnderecoManual(String(mapped.unidade ?? '').trim() !== '');
       setPasta(mapped.pasta ?? '');
       setValorCausa(mapped.valorCausa ?? '');
-      setPapelParte(mapped.papelParte ?? 'requerente');
+      const papelCarregado = mapped.papelParte ?? 'requerente';
+      setPapelParte(papelCarregado);
       setAudienciaData(mapped.audienciaData ?? '');
       setAudienciaHora(mapped.audienciaHora ?? '');
       setAudienciaTipo(mapped.audienciaTipo ?? '');
@@ -2342,7 +2346,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
 
       const partes = await listarPartesProcesso(procApi.id);
       if (seq !== carregarProcessoApiSeqRef.current) return;
-      aplicarListaPartesApiNaUi(partes);
+      aplicarListaPartesApiNaUi(partes, papelCarregado);
       await carregarHistoricoApi(procApi.id, seq);
 
       if (featureFlags.useApiImoveis) {
