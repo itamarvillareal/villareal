@@ -276,6 +276,33 @@ public class CalculoApplicationService {
         return n.asText("").trim();
     }
 
+    /**
+     * Valor monetário de título de rodada ({@code valorInicial}, etc.) em centavos inteiros.
+     * Mesma regra de {@link #parseBrlMonetario(String)}.
+     */
+    public static long parseValorInicialParaCentavos(String raw) {
+        return Math.round(parseBrlMonetario(raw) * 100.0);
+    }
+
+    /** Normaliza data de vencimento {@code dd/MM/yyyy} para deduplicação (zero à esquerda em dia/mês). */
+    public static String normalizaDataVencimento(String vencimento) {
+        if (vencimento == null || vencimento.isBlank()) {
+            return "";
+        }
+        String t = vencimento.trim();
+        java.util.regex.Matcher m =
+                java.util.regex.Pattern.compile("^(\\d{1,2})/(\\d{1,2})/(\\d{4})$").matcher(t);
+        if (!m.matches()) {
+            return t;
+        }
+        return String.format(
+                java.util.Locale.ROOT,
+                "%02d/%02d/%04d",
+                Integer.parseInt(m.group(1)),
+                Integer.parseInt(m.group(2)),
+                Integer.parseInt(m.group(3)));
+    }
+
     private static double parseBrlMonetario(String raw) {
         if (raw == null || raw.isBlank()) {
             return 0;
