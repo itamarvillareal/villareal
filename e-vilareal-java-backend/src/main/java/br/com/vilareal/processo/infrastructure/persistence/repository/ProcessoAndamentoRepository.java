@@ -31,6 +31,19 @@ public interface ProcessoAndamentoRepository extends JpaRepository<ProcessoAndam
     List<ProcessoAndamentoEntity> findByProcesso_IdAndUsuario_IdOrderByMovimentoEmDescIdDesc(
             Long processoId, Long usuarioId);
 
+    @Query(
+            """
+            SELECT a FROM ProcessoAndamentoEntity a
+            WHERE a.processo.id = :processoId
+              AND a.origem = :origem
+              AND a.movimentoEm >= :desde
+            ORDER BY a.movimentoEm DESC, a.id DESC
+            """)
+    List<ProcessoAndamentoEntity> findRecentesPorOrigem(
+            @Param("processoId") Long processoId,
+            @Param("origem") String origem,
+            @Param("desde") Instant desde);
+
     /**
      * Pares (andamento_id, id do usuário) via join — evita SQL nativo (tipos JDBC variam) e
      * funciona quando a FK existe mas a associação na entidade carregada não foi hidratada.

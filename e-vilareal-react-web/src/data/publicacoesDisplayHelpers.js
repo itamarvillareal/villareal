@@ -1,15 +1,20 @@
 /**
  * Helpers de exibição para vínculo publicação ↔ processo.
- * Prioriza titular real (`titularNome` / `cliente`) e desambigua com `processo.id`.
+ * Partes na grade: `parteCliente` × `parteOposta` (não o nome do cliente contratante).
  */
 
 function str(v) {
   return String(v ?? '').trim();
 }
 
-/** Nome do titular do processo vinculado (não confundir com parte autora em `processo_parte`). */
+/** Nome do titular/sujeito do processo (`processo.pessoa_id`). */
 export function obterTitularNomeLinha(row) {
-  return str(row?.titularNome ?? row?.cliente ?? row?.parteCliente);
+  return str(row?.titularNome ?? row?.parteCliente);
+}
+
+/** Nome agregado da parte do lado do escritório (polo autor/requerente em `processo_parte`). */
+export function obterParteClienteNomeLinha(row) {
+  return str(row?.parteCliente);
 }
 
 /** Parte(s) oposta(s) agregada(s) do processo vinculado. */
@@ -40,10 +45,10 @@ export function formatarChaveProcessoVinculo(row) {
  * Ex.: `00000600 / id 8536 (nº 192) — MEGA ELITE × GLEISMAR`
  */
 export function formatarRotuloVinculoPartes(row) {
-  const titular = obterTitularNomeLinha(row);
+  const parteCliente = obterParteClienteNomeLinha(row);
   const oposta = obterParteOpostaLinha(row);
   const partesNomes =
-    titular && oposta ? `${titular} × ${oposta}` : titular || oposta || '—';
+    parteCliente && oposta ? `${parteCliente} × ${oposta}` : parteCliente || oposta || '—';
   const temProcesso = row?._processoId != null || row?.processoId != null || str(row?.codCliente);
   if (!temProcesso && row?.statusVinculo !== 'vinculado') {
     return partesNomes;

@@ -24,4 +24,11 @@ describe('termoDigitosCorrespondeCnjCampo', () => {
   it('não casa quando o primeiro segmento difere em mais de um dígito', () => {
     expect(termoDigitosCorrespondeCnjCampo('0000000', '5402633-78.2017.8.09.0006')).toBe(false);
   });
+
+  it('Projudi interno (email): exige prefixo exato — 5500622.97 ≠ 5505622-97 (Vânia)', () => {
+    const vania = '5505622-97.2025.8.09.0006';
+    expect(termoDigitosCorrespondeCnjCampo('550062297', vania)).toBe(true); // fuzzy legado (busca manual)
+    expect(termoDigitosCorrespondeCnjCampo('550062297', vania, { projudiInternoExato: true })).toBe(false);
+    expect(termoDigitosCorrespondeCnjCampo('550562297', vania, { projudiInternoExato: true })).toBe(true);
+  });
 });

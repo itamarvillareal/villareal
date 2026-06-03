@@ -2,6 +2,8 @@ package br.com.vilareal.whatsapp.service;
 
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
+import br.com.vilareal.jobrun.application.JobRunTracker;
+import br.com.vilareal.jobrun.domain.JobNames;
 import br.com.vilareal.whatsapp.ScheduledMessageStatus;
 import br.com.vilareal.whatsapp.infrastructure.persistence.entity.ScheduledWhatsAppMessageEntity;
 import br.com.vilareal.whatsapp.infrastructure.persistence.repository.ScheduledWhatsAppMessageRepository;
@@ -38,16 +40,19 @@ public class WhatsAppSchedulerService {
     private final WhatsAppService whatsAppService;
     private final ProcessoRepository processoRepository;
     private final ObjectMapper objectMapper;
+    private final JobRunTracker jobRunTracker;
 
     public WhatsAppSchedulerService(
             ScheduledWhatsAppMessageRepository scheduledRepository,
             WhatsAppService whatsAppService,
             ProcessoRepository processoRepository,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            JobRunTracker jobRunTracker) {
         this.scheduledRepository = scheduledRepository;
         this.whatsAppService = whatsAppService;
         this.processoRepository = processoRepository;
         this.objectMapper = objectMapper;
+        this.jobRunTracker = jobRunTracker;
     }
 
     @Transactional
@@ -169,18 +174,35 @@ public class WhatsAppSchedulerService {
 
     @Scheduled(fixedRate = 60_000)
     public void processarAgendamentos() {
-        List<ScheduledWhatsAppMessageEntity> pendentes = scheduledRepository.findByStatusAndScheduledAtBeforeOrderByScheduledAtAsc(
-                ScheduledMessageStatus.PENDING, Instant.now());
+        jobRunTracker.runTrackedJobVoid(JobNames.WHATSAPP_AGENDAMENTOS, ctx -> {
+            List<ScheduledWhatsAppMessageEntity> pendentes =
+                    scheduledRepository.findByStatusAndScheduledAtBeforeOrderByScheduledAtAsc(
+                            ScheduledMessageStatus.PENDING, Instant.now());
 
-        if (pendentes.isEmpty()) {
-            return;
-        }
+            if (pendentes.isEmpty()) {
+                ctx.putMetadata("skipped", "nenhum_pendente");
+                return;
+            }
 
-        log.info("Processando {} agendamento(s) pendente(s)", pendentes.size());
-
-        for (ScheduledWhatsAppMessageEntity agendamento : pendentes) {
-            processarAgendamento(agendamento);
-        }
+            log.info("Processando {} agendamento(s) pendente(s)", pendentes.size());
+            int enviados = 0;
+            int falhas = 0;
+            for (int i = 0; i < pendentes.size(); i++) {
+                ctx.heartbeatACadaItens(i + 1, 3);
+                ScheduledWhatsAppMessageEntity antes = pendentes.get(i);
+                processarAgendamento(antes);
+                ScheduledWhatsAppMessageEntity depois =
+                        scheduledRepository.findById(antes.getId()).orElse(antes);
+                if (depois.getStatus() == ScheduledMessageStatus.SENT) {
+                    enviados++;
+                } else if (depois.getStatus() == ScheduledMessageStatus.FAILED) {
+                    falhas++;
+                }
+            }
+            ctx.setItemsProcessed(enviados);
+            ctx.setItemsFailed(falhas);
+            ctx.putMetadata("pendentesNoCiclo", pendentes.size());
+        });
     }
 
     private void processarAgendamento(ScheduledWhatsAppMessageEntity agendamento) {

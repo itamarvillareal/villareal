@@ -36,10 +36,9 @@ public final class ProcessoDiagnosticoNumeroBuscaUtil {
             return processoRepository.findIdsByNumeroCnjNormalizadoDiagnostico(norm);
         }
         if (ehNumeroProjudiInternoEmail(numeroBruto)) {
-            List<BigInteger> prefixo = processoRepository.findIdsByNumeroCnjDigitosIniciandoCom(norm);
-            if (!prefixo.isEmpty()) {
-                return prefixo;
-            }
+            // Só prefixo exato (9 dígitos = sequencial + DV). Sem fallback «contém» nem fuzzy —
+            // ex.: 5500622.97 ≠ 5505622-97 (Vânia vs Asfarol).
+            return processoRepository.findIdsByNumeroCnjDigitosIniciandoCom(norm);
         }
         return processoRepository.findIdsByNumeroCnjDigitosContendo(norm);
     }

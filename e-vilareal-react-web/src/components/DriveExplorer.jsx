@@ -4,6 +4,7 @@ import {
   Download,
   ExternalLink,
   File,
+  Files,
   FileText,
   Folder,
   Image,
@@ -12,6 +13,8 @@ import {
   Upload,
   X,
 } from 'lucide-react';
+import { downloadPdfBlob } from '../repositories/documentosRepository.js';
+import { consolidarMovimentacoesPdf } from '../repositories/processosRepository.js';
 import {
   listarArquivos,
   obterInfoPasta,
@@ -62,9 +65,9 @@ function IconeArquivo({ mimeType, tipo }) {
 /**
  * Navegador de arquivos do Google Drive vinculado a um processo.
  *
- * @param {{ codigoCliente: string, numeroInterno: number, onClose: () => void }} props
+ * @param {{ codigoCliente: string, numeroInterno: number, processoId?: number|null, numeroCnj?: string, onClose: () => void }} props
  */
-export default function DriveExplorer({ codigoCliente, numeroInterno, onClose }) {
+export default function DriveExplorer({ codigoCliente, numeroInterno, processoId, numeroCnj, onClose }) {
   const [arquivos, setArquivos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState('');
@@ -76,7 +79,15 @@ export default function DriveExplorer({ codigoCliente, numeroInterno, onClose })
   const [uploading, setUploading] = useState(false);
   const [pastaRaiz, setPastaRaiz] = useState(null);
   const [dragOver, setDragOver] = useState(false);
+  const [consolidando, setConsolidando] = useState(false);
+  const [toastMsg, setToastMsg] = useState('');
   const inputRef = useRef(null);
+
+  useEffect(() => {
+    if (!toastMsg) return undefined;
+    const t = setTimeout(() => setToastMsg(''), 5000);
+    return () => clearTimeout(t);
+  }, [toastMsg]);
 
   const carregarArquivos = useCallback(async () => {
     setLoading(true);
@@ -209,6 +220,30 @@ export default function DriveExplorer({ codigoCliente, numeroInterno, onClose })
     if (url) window.open(url, '_blank', 'noopener,noreferrer');
   }
 
+  const temPdfNaLista = arquivos.some(
+    (a) =>
+      a.tipo !== 'pasta' &&
+      (String(a.mimeType ?? '').toLowerCase().includes('pdf') ||
+        String(a.nome ?? '').toLowerCase().endsWith('.pdf'))
+  );
+
+  async function handleConsolidarPdfs() {
+    const id = Number(processoId);
+    if (!Number.isFinite(id) || id <= 0 || consolidando) return;
+    setConsolidando(true);
+    setErro('');
+    try {
+      const cnj = String(numeroCnj ?? '').trim();
+      const { blob, filename } = await consolidarMovimentacoesPdf(id, { numeroCnj: cnj });
+      downloadPdfBlob(blob, filename);
+      setToastMsg('PDF consolidado baixado com sucesso.');
+    } catch (e) {
+      setToastMsg(e?.message || 'Não foi possível consolidar os PDFs.');
+    } finally {
+      setConsolidando(false);
+    }
+  }
+
   const caminho = trilha.map((t) => t.nome).join(' / ') || caminhoRaiz;
   const naRaizProcesso = pastaAtual && pastaRaiz?.pastaId === pastaAtual;
   const linkAbrirDrive = pastaAtual
@@ -290,7 +325,26 @@ export default function DriveExplorer({ codigoCliente, numeroInterno, onClose })
                 Raiz do processo
               </button>
             ) : null}
-            <div className="ml-auto">
+            <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+              <button
+                type="button"
+                disabled={
+                  consolidando ||
+                  !temPdfNaLista ||
+                  !Number.isFinite(Number(processoId)) ||
+                  Number(processoId) <= 0
+                }
+                onClick={() => void handleConsolidarPdfs()}
+                title="Mescla todos os PDFs da pasta Movimentações em um único arquivo"
+                className="inline-flex items-center gap-1.5 rounded bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
+              >
+                {consolidando ? (
+                  <Loader2 className="w-4 h-4 animate-spin" aria-hidden />
+                ) : (
+                  <Files className="w-4 h-4" aria-hidden />
+                )}
+                {consolidando ? 'Consolidando…' : 'Consolidar PDFs'}
+              </button>
               <input
                 ref={inputRef}
                 type="file"
@@ -341,6 +395,15 @@ export default function DriveExplorer({ codigoCliente, numeroInterno, onClose })
         {erro ? (
           <div className="mx-4 mb-2 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
             {erro}
+          </div>
+        ) : null}
+
+        {toastMsg ? (
+          <div
+            role="status"
+            className="mx-4 mb-2 rounded border border-slate-200 bg-slate-800 px-3 py-2 text-sm text-white shadow dark:border-slate-600"
+          >
+            {toastMsg}
           </div>
         ) : null}
 

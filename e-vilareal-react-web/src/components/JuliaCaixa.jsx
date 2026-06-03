@@ -102,6 +102,21 @@ function parseDataIso(iso) {
   return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
 }
 
+function rotuloQuantidadeCaixa(aba, qtd) {
+  const n = Number(qtd) || 0;
+  const item = n === 1 ? 'triagem' : 'triagens';
+  if (aba === 'POSTERGADO') {
+    if (n === 0) return 'Nenhuma triagem postergada';
+    return `${n} ${item} postergada${n === 1 ? '' : 's'}`;
+  }
+  if (aba === 'CONCLUIDO') {
+    if (n === 0) return 'Nenhuma triagem concluída';
+    return `${n} ${item} concluída${n === 1 ? '' : 's'}`;
+  }
+  if (n === 0) return 'Nenhuma triagem aguardando revisão';
+  return `${n} ${item} aguardando sua revisão`;
+}
+
 function ordenarCards(cards, criterio) {
   const copy = [...cards];
   switch (criterio) {
@@ -473,9 +488,17 @@ export function JuliaCaixa() {
               <div className="flex items-center gap-2 flex-wrap">
                 <h1 className="text-lg font-bold">Caixa da Júlia</h1>
                 <SeloAssistenteIa />
+                {!loading ? (
+                  <span
+                    className="inline-flex min-w-[1.5rem] items-center justify-center rounded-full bg-violet-100 px-2 py-0.5 text-xs font-bold tabular-nums text-violet-900 dark:bg-violet-950/60 dark:text-violet-100"
+                    aria-label={`${cards.length} cards na aba atual`}
+                  >
+                    {cards.length}
+                  </span>
+                ) : null}
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Triagens pendentes de revisão humana
+                {loading ? 'Carregando triagens…' : rotuloQuantidadeCaixa(aba, cards.length)}
               </p>
             </div>
           </div>

@@ -1,5 +1,7 @@
 package br.com.vilareal.email;
 
+import br.com.vilareal.jobrun.application.JobRunTracker;
+import br.com.vilareal.jobrun.domain.JobNames;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
 import br.com.vilareal.projudi.ProjudiOrquestradorGate;
@@ -15,6 +17,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -50,6 +54,7 @@ public class ProjudiMovimentacoesEmailPipelineService {
     private final ProjudiSessionService sessionService;
     private final Long credencialIdPadrao;
     private final ExecutorService executor;
+    private final JobRunTracker jobRunTracker;
     private final AtomicBoolean running = new AtomicBoolean(true);
     private final AtomicBoolean loopIniciado = new AtomicBoolean(false);
 
@@ -63,7 +68,8 @@ public class ProjudiMovimentacoesEmailPipelineService {
             ProjudiOrquestradorService orquestradorService,
             ProjudiSessionService sessionService,
             @Value("${projudi.orquestrador.credencial-id-padrao:1}") Long credencialIdPadrao,
-            @Qualifier("projudiEmailPipelineExecutor") ExecutorService executor) {
+            @Qualifier("projudiEmailPipelineExecutor") ExecutorService executor,
+            JobRunTracker jobRunTracker) {
         this.properties = properties;
         this.schedulePolicy = schedulePolicy;
         this.gmailProjudiManifestacaoService = gmailProjudiManifestacaoService;
@@ -74,6 +80,7 @@ public class ProjudiMovimentacoesEmailPipelineService {
         this.sessionService = sessionService;
         this.credencialIdPadrao = credencialIdPadrao;
         this.executor = executor;
+        this.jobRunTracker = jobRunTracker;
     }
 
     public void iniciarLoopEmBackground() {
@@ -97,7 +104,13 @@ public class ProjudiMovimentacoesEmailPipelineService {
             Instant inicioCiclo = Instant.now();
             ProjudiMovimentacoesEmailSchedulePolicy.PerfilAtivo perfil = schedulePolicy.resolverPerfilAtual();
             try {
-                executarCiclo(perfil);
+                jobRunTracker.runTrackedJobVoid(JobNames.PIPELINE_PROJUDI, ctx -> {
+                    ctx.putMetadata("perfil", perfil.nome().name());
+                    ctx.comHeartbeatPeriodico(() -> {
+                        executarCiclo(perfil, ctx);
+                        return null;
+                    });
+                });
             } catch (Exception e) {
                 log.error("Pipeline PROJUDI: falha no ciclo (perfil={}): {}", perfil.nome(), e.getMessage(), e);
             }
@@ -120,7 +133,7 @@ public class ProjudiMovimentacoesEmailPipelineService {
         return Math.max(0, intervaloMs - decorrido);
     }
 
-    void executarCiclo(ProjudiMovimentacoesEmailSchedulePolicy.PerfilAtivo perfil) {
+    void executarCiclo(ProjudiMovimentacoesEmailSchedulePolicy.PerfilAtivo perfil, br.com.vilareal.jobrun.application.JobRunContext jobCtx) {
         Instant inicio = Instant.now();
         Map<String, Object> resumo = new LinkedHashMap<>();
         resumo.put("perfil", perfil.nome().name());
@@ -128,8 +141,12 @@ public class ProjudiMovimentacoesEmailPipelineService {
 
         if (gmailProjudiManifestacaoService != null && gmailProjudiManifestacaoService.isDisponivel()) {
             try {
-                PublicacaoEmailProcessamentoResumo gmailResumo =
-                        gmailProjudiManifestacaoService.buscarEProcessarManifestacoes();
+                PublicacaoEmailProcessamentoResumo gmailResumo;
+                try {
+                    gmailResumo = gmailProjudiManifestacaoService.buscarEProcessarManifestacoes();
+                } catch (IOException e) {
+                    throw new UncheckedIOException(e);
+                }
                 resumo.put("gmailEmailsLidos", gmailResumo.getEmailsLidos());
                 resumo.put("gmailPublicacoesGravadas", gmailResumo.getPublicacoesProcessadas());
                 resumo.put("gmailErros", gmailResumo.getErros().size());
@@ -152,20 +169,38 @@ public class ProjudiMovimentacoesEmailPipelineService {
         boolean driveExecutado =
                 orquestradorGate.tryExecutar(
                         "pipeline-movimentacoes-email",
-                        () -> executarFilaDrive(nestaRodada, perfil, resumo));
+                        () -> executarFilaDrive(nestaRodada, perfil, resumo, jobCtx));
         if (!driveExecutado) {
             resumo.put("drive", "robô ocupado — fila adiada");
             log.info("Pipeline PROJUDI: robô ocupado, fila Drive não executada neste ciclo");
         }
 
         resumo.put("duracaoMs", Duration.between(inicio, Instant.now()).toMillis());
+        if (jobCtx != null) {
+            jobCtx.putMetadata(resumo);
+            Object driveProc = resumo.get("driveProcessados");
+            Object gmailPub = resumo.get("gmailPublicacoesGravadas");
+            int processados = 0;
+            if (driveProc instanceof Number n) {
+                processados += n.intValue();
+            }
+            if (gmailPub instanceof Number n) {
+                processados += n.intValue();
+            }
+            jobCtx.setItemsProcessed(processados);
+            Object gmailErros = resumo.get("gmailErros");
+            if (gmailErros instanceof Number n) {
+                jobCtx.setItemsFailed(n.intValue());
+            }
+        }
         log.info("Pipeline PROJUDI ciclo concluído: {}", formatarResumo(resumo));
     }
 
     private void executarFilaDrive(
             List<Long> processoIds,
             ProjudiMovimentacoesEmailSchedulePolicy.PerfilAtivo perfil,
-            Map<String, Object> resumo) {
+            Map<String, Object> resumo,
+            br.com.vilareal.jobrun.application.JobRunContext jobCtx) {
         if (processoIds.isEmpty()) {
             resumo.put("driveProcessados", 0);
             return;
@@ -183,6 +218,9 @@ public class ProjudiMovimentacoesEmailPipelineService {
         String motivoParada = null;
 
         for (int i = 0; i < processoIds.size() && running.get(); i++) {
+            if (jobCtx != null) {
+                jobCtx.heartbeatACadaItens(i + 1, 1);
+            }
             Long processoId = processoIds.get(i);
             ProcessoEntity processo =
                     processoRepository.findByIdWithClienteAndPessoa(processoId).orElse(null);

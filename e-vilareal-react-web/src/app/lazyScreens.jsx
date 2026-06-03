@@ -72,6 +72,7 @@ export const LazyRelatorioResultadoProcessos = fromNamed(
 export const LazyRelatorioCalculos = fromNamed(() => import('../components/RelatorioCalculos.jsx'), 'RelatorioCalculos');
 export const LazyCalculos = fromNamed(() => import('../components/Calculos.jsx'), 'Calculos');
 export const LazyDiagnosticos = fromNamed(() => import('../components/Diagnosticos.jsx'), 'Diagnosticos');
+export const LazyRelatorioTarefas = fromNamed(() => import('../components/RelatorioTarefas.jsx'), 'RelatorioTarefas');
 export const LazyFinanceiroLayout = fromNamed(
   () => import('../components/financeiro/FinanceiroLayout.jsx'),
   'FinanceiroLayout',

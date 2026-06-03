@@ -82,6 +82,7 @@ export const navItems = [
       { id: 'topicos/gerente', label: 'Gerente de Tópicos', icon: 'LayoutDashboard' },
     ],
   },
+  { id: 'relatorio-tarefas', label: 'Relatório de Tarefas', icon: 'Server' },
   { id: 'diagnosticos', label: 'Relatórios e Consultas', icon: 'Activity' },
   {
     id: 'whatsapp-grupo',

@@ -18,6 +18,7 @@ import {
   LazyCalculos,
   LazyConfiguracoes,
   LazyDiagnosticos,
+  LazyRelatorioTarefas,
   LazyFinanceiro,
   LazyFinanceiroCartao,
   LazyFinanceiroCompensacao,
@@ -399,6 +400,7 @@ function App() {
               <Route path="/calculos" element={<LazyCalculos />} />
               <Route path="/topicos" element={<LazyTopicos />} />
               <Route path="/topicos/gerente" element={<LazyGerenteTopicos />} />
+              <Route path="/relatorio-tarefas" element={<LazyRelatorioTarefas />} />
               <Route path="/diagnosticos" element={<LazyDiagnosticos />} />
               <Route path="/whatsapp" element={<LazyWhatsAppLayout />}>
                 <Route index element={<Navigate to="dashboard" replace />} />

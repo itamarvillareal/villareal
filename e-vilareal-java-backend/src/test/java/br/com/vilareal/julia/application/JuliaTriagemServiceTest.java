@@ -19,9 +19,10 @@ class JuliaTriagemServiceTest {
                 null,
                 "ALTA",
                 null,
-                0.9);
+                0.9,
+                null);
 
-        JuliaTriagemService svc = new JuliaTriagemService(null, null, null, null, null, null, null, null, null, null, null, null, "test-model", false);
+        JuliaTriagemService svc = new JuliaTriagemService(null, null, null, null, null, null, null, null, null, null, null, null, null, "test-model", false, 0.72);
         TriagemResultado out = svc.normalizarPrazo(entrada);
 
         assertThat(out.prazo().dataTrabalhoAsLocalDate()).isEqualTo(java.time.LocalDate.of(2026, 6, 3));
@@ -38,9 +39,10 @@ class JuliaTriagemServiceTest {
                 null,
                 "URGENTE",
                 null,
-                0.9);
+                0.9,
+                null);
 
-        JuliaTriagemService svc = new JuliaTriagemService(null, null, null, null, null, null, null, null, null, null, null, null, "test-model", false);
+        JuliaTriagemService svc = new JuliaTriagemService(null, null, null, null, null, null, null, null, null, null, null, null, null, "test-model", false, 0.72);
         TriagemResultado out = svc.normalizarPrazo(entrada);
 
         assertThat(out.prioridade()).isEqualTo("URGENTE");
@@ -59,9 +61,10 @@ class JuliaTriagemServiceTest {
                 null,
                 "ALTA",
                 null,
-                0.8);
+                0.8,
+                null);
 
-        JuliaTriagemService svc = new JuliaTriagemService(null, null, null, null, null, null, null, null, null, null, null, null, "test-model", false);
+        JuliaTriagemService svc = new JuliaTriagemService(null, null, null, null, null, null, null, null, null, null, null, null, null, "test-model", false, 0.72);
         TriagemResultado out = svc.normalizarPrazo(entrada);
 
         assertThat(out.prazo().dataRealAsLocalDate()).isNull();
@@ -80,9 +83,10 @@ class JuliaTriagemServiceTest {
                 null,
                 "MEDIA",
                 null,
-                0.7);
+                0.7,
+                null);
 
-        JuliaTriagemService svc = new JuliaTriagemService(null, null, null, null, null, null, null, null, null, null, null, null, "test-model", false);
+        JuliaTriagemService svc = new JuliaTriagemService(null, null, null, null, null, null, null, null, null, null, null, null, null, "test-model", false, 0.72);
         TriagemResultado out = svc.normalizarPrazo(entrada);
 
         assertThat(out.prazo().dataTrabalhoAsLocalDate()).isNull();
@@ -99,9 +103,10 @@ class JuliaTriagemServiceTest {
                 null,
                 "MEDIA",
                 null,
-                0.8);
+                0.8,
+                null);
 
-        JuliaTriagemService svc = new JuliaTriagemService(null, null, null, null, null, null, null, null, null, null, null, null, "test-model", false);
+        JuliaTriagemService svc = new JuliaTriagemService(null, null, null, null, null, null, null, null, null, null, null, null, null, "test-model", false, 0.72);
         TriagemResultado out = svc.normalizarPrazo(entrada);
 
         assertThat(out.prazo().dataRealAsLocalDate()).isEqualTo(java.time.LocalDate.of(2026, 6, 22));
@@ -131,7 +136,8 @@ class JuliaTriagemServiceTest {
                 "Nenhuma providência imediata",
                 "MEDIA",
                 "Acompanhar cumprimento.",
-                0.8);
+                0.8,
+                null);
 
         String detalhe = JuliaTriagemService.montarDetalheAndamento(r);
 
@@ -146,6 +152,26 @@ class JuliaTriagemServiceTest {
     void normalizarPrioridade_aceitaUrgenteENormalizaMedia() {
         assertThat(JuliaTriagemService.normalizarPrioridade("urgente")).isEqualTo("URGENTE");
         assertThat(JuliaTriagemService.normalizarPrioridade("Média")).isEqualTo("MEDIA");
+    }
+
+    @Test
+    void tituloAndamento_prefereResumoQuandoClassificacaoGenerica() {
+        TriagemResultado r = new TriagemResultado(
+                "Informação de intimação/citação",
+                "Designada audiência de instrução e julgamento para 13/07/2026 às 13:30, por Zoom.",
+                "NEUTRO",
+                "Base",
+                null,
+                null,
+                "MEDIA",
+                null,
+                0.9,
+                null);
+
+        String titulo = JuliaTriagemService.tituloAndamento(r);
+
+        assertThat(titulo).contains("Designada audiência");
+        assertThat(titulo).doesNotContain("Informação de intimação/citação — Informação");
     }
 
     @Test

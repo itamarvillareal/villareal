@@ -1,8 +1,6 @@
 import { request } from '../api/httpClient.js';
 import { API_BASE_URL } from '../api/config.js';
-import { buildAuditoriaHeaders } from '../services/auditoriaCliente.js';
-import { getAccessToken } from '../api/authTokenStorage.js';
-import { emitApiUnauthorized } from '../api/apiAuthHeaders.js';
+import { buildDefaultApiHeaders, emitApiUnauthorized } from '../api/apiAuthHeaders.js';
 import { featureFlags } from '../config/featureFlags.js';
 import {
   listarHistoricoPorData,
@@ -1093,27 +1091,67 @@ export function usuarioHistoricoParaExibicao(entrada, usuariosAtivos = []) {
   return usuarioHistoricoAutorMeta(entrada, usuariosAtivos).rotulo;
 }
 
+/** Localiza utilizador no catálogo por id, login da API ou rótulo já gravado na linha. */
+function localizarUsuarioHistoricoNoCatalogo(entrada, usuariosAtivos) {
+  const lista = Array.isArray(usuariosAtivos) ? usuariosAtivos : [];
+  const uid = entrada?.usuarioId;
+  if (uid != null) {
+    const porId = lista.find((x) => Number(x.id) === Number(uid));
+    if (porId) return porId;
+  }
+  const loginApi = String(entrada?.usuarioLogin ?? '').trim();
+  if (loginApi) {
+    const lg = normalizarRotuloUsuarioHistorico(loginApi);
+    const porLogin = lista.find((x) => normalizarRotuloUsuarioHistorico(x.login) === lg);
+    if (porLogin) return porLogin;
+  }
+  const linhaNorm = normalizarRotuloUsuarioHistorico(entrada?.usuario);
+  if (!linhaNorm) return null;
+  return (
+    lista.find((x) => {
+      const candidatos = [x.apelido, x.login]
+        .map((c) => normalizarRotuloUsuarioHistorico(c))
+        .filter(Boolean);
+      return candidatos.some((c) => c === linhaNorm);
+    }) ?? null
+  );
+}
+
 /**
  * Metadados do autor no histórico/andamento — inclui flag para selo IA.
+ * Prioridade: apelido no catálogo → rótulo da API/linha (já é apelido no servidor) → login do catálogo.
  * @returns {{ rotulo: string, usuario: object|null, isAssistenteIa: boolean }}
  */
 export function usuarioHistoricoAutorMeta(entrada, usuariosAtivos = []) {
-  const uid = entrada?.usuarioId;
-  if (uid != null) {
-    const u = (usuariosAtivos || []).find((x) => Number(x.id) === Number(uid));
-    if (u) {
-      const rotulo = getNomeExibicaoUsuario(u);
-      if (rotulo && rotulo !== '—') {
-        return {
-          rotulo: formatarUsuarioHistoricoExibicao(rotulo),
-          usuario: u,
-          isAssistenteIa: isAssistenteIaUsuario(u),
-        };
-      }
+  const u = localizarUsuarioHistoricoNoCatalogo(entrada, usuariosAtivos);
+  const apelidoCat = u ? String(u.apelido ?? '').trim() : '';
+  if (apelidoCat) {
+    return {
+      rotulo: formatarUsuarioHistoricoExibicao(apelidoCat),
+      usuario: u,
+      isAssistenteIa: isAssistenteIaUsuario(u),
+    };
+  }
+  const linha = formatarUsuarioHistoricoExibicao(entrada?.usuario ?? '');
+  if (linha) {
+    return {
+      rotulo: linha,
+      usuario: u,
+      isAssistenteIa: isAssistenteIaUsuario(u),
+    };
+  }
+  if (u) {
+    const rotulo = getNomeExibicaoUsuario(u);
+    if (rotulo && rotulo !== '—') {
+      return {
+        rotulo: formatarUsuarioHistoricoExibicao(rotulo),
+        usuario: u,
+        isAssistenteIa: isAssistenteIaUsuario(u),
+      };
     }
   }
   return {
-    rotulo: formatarUsuarioHistoricoExibicao(entrada?.usuario ?? ''),
+    rotulo: '',
     usuario: null,
     isAssistenteIa: false,
   };
@@ -1147,6 +1185,7 @@ export function mapApiAndamentoToHistoricoItem(a, idx = 0, total = 1) {
     info: infoTxt.length > 500 ? infoTxt.slice(0, 500) : infoTxt,
     data: toBrFromIsoDate(movRaw),
     usuario,
+    usuarioLogin: login || null,
     usuarioId: Number.isFinite(usuarioIdNum) && usuarioIdNum >= 1 ? usuarioIdNum : null,
     numero: String(total - idx).padStart(4, '0'),
   };
@@ -1286,27 +1325,93 @@ export function mapApiProcessoToUiShape(p) {
  * @param {string} numeroCnj
  * @returns {Promise<{ blob: Blob, filename: string, avisos: string|null }>}
  */
+function erroRespostaPdf(res, text) {
+  let message = `Erro ${res.status}`;
+  if (text) {
+    try {
+      const data = JSON.parse(text);
+      message = data.message || data.error || text;
+    } catch {
+      message = text.length > 300 ? `${text.slice(0, 300)}…` : text;
+    }
+  }
+  const err = new Error(message);
+  err.status = res.status;
+  return err;
+}
+
+function endpointConsolidarPdfAusente(err) {
+  const status = Number(err?.status);
+  const msg = String(err?.message ?? '');
+  return (
+    status === 404 ||
+    msg.includes('static resource') ||
+    msg.includes('No static resource') ||
+    /not\s*found/i.test(msg)
+  );
+}
+
+async function baixarPdfApiGet(path, fallbackFilename) {
+  const res = await fetch(`${API_BASE_URL}${path}`, {
+    headers: buildDefaultApiHeaders(),
+  });
+  if (res.status === 401) emitApiUnauthorized();
+  if (!res.ok) {
+    const text = await res.text();
+    throw erroRespostaPdf(res, text);
+  }
+  const blob = await res.blob();
+  const disposition = res.headers.get('Content-Disposition') || '';
+  const match = /filename="([^"]+)"/i.exec(disposition);
+  const filename = match?.[1] || fallbackFilename;
+  return { blob, filename };
+}
+
+/**
+ * Consolida PDFs da pasta Movimentações no Drive e retorna blob para download.
+ * Usa {@code GET /movimentacoes/consolidar-pdf}; se o backend ainda não expõe a rota,
+ * faz fallback para {@code GET /autos-integral} (mesma pasta no Drive, ordem por movimentação).
+ * @param {number|string} processoId
+ * @param {{ numeroCnj?: string }} [options]
+ * @returns {Promise<{ blob: Blob, filename: string }>}
+ */
+export async function consolidarMovimentacoesPdf(processoId, options = {}) {
+  const id = Number(processoId);
+  const numeroCnj = String(options?.numeroCnj ?? '').trim();
+  if (!Number.isFinite(id) || id <= 0) {
+    if (numeroCnj) {
+      const { blob, filename } = await baixarAutosIntegralProcesso(numeroCnj);
+      return { blob, filename };
+    }
+    throw new Error('Processo não identificado.');
+  }
+  try {
+    return await baixarPdfApiGet(
+      `/api/processos/${id}/movimentacoes/consolidar-pdf`,
+      `Movimentacoes_Consolidado_${id}.pdf`
+    );
+  } catch (e) {
+    if (endpointConsolidarPdfAusente(e) && numeroCnj) {
+      const { blob, filename } = await baixarAutosIntegralProcesso(numeroCnj);
+      return { blob, filename };
+    }
+    throw e;
+  }
+}
+
 export async function baixarAutosIntegralProcesso(numeroCnj) {
   const numero = String(numeroCnj ?? '').trim();
   if (!numero) {
     throw new Error('Informe o número CNJ do processo.');
   }
   const qs = new URLSearchParams({ numero });
-  const headers = { ...buildAuditoriaHeaders() };
-  const token = getAccessToken();
-  if (token) headers.Authorization = `Bearer ${token}`;
-  const res = await fetch(`${API_BASE_URL}/api/processos/autos-integral?${qs}`, { headers });
+  const res = await fetch(`${API_BASE_URL}/api/processos/autos-integral?${qs}`, {
+    headers: buildDefaultApiHeaders(),
+  });
   if (res.status === 401) emitApiUnauthorized();
   if (!res.ok) {
     const text = await res.text();
-    if (!text) throw new Error(`Erro ${res.status}`);
-    try {
-      const data = JSON.parse(text);
-      throw new Error(data.message || data.error || text);
-    } catch (e) {
-      if (e instanceof Error && e.message && !e.message.startsWith('Erro ')) throw e;
-      throw new Error(text.length > 300 ? `${text.slice(0, 300)}…` : text);
-    }
+    throw erroRespostaPdf(res, text);
   }
   const blob = await res.blob();
   const disposition = res.headers.get('Content-Disposition') || '';
@@ -1327,4 +1432,22 @@ export async function obterMovimentacoesProjudiDrive(processoId) {
     throw new Error('Processo sem id na API — salve o cadastro antes de consultar o PROJUDI.');
   }
   return request(`/api/processos/${id}/projudi/movimentacoes-drive`, { method: 'POST' });
+}
+
+/**
+ * Dispara triagem manual da Júlia (andamento, prazo, audiência conforme resultado).
+ * @param {number|string} processoId
+ * @param {{ publicacaoId?: number, dryRun?: boolean, forcar?: boolean }} [opts]
+ */
+export async function dispararTriagemJulia(processoId, opts = {}) {
+  const id = Number(processoId);
+  if (!Number.isFinite(id) || id < 1) {
+    throw new Error('Processo sem id na API.');
+  }
+  const params = new URLSearchParams();
+  if (opts.publicacaoId != null) params.set('publicacaoId', String(opts.publicacaoId));
+  if (opts.dryRun) params.set('dryRun', 'true');
+  if (opts.forcar) params.set('forcar', 'true');
+  const qs = params.toString();
+  return request(`/api/processos/${id}/julia/triagem${qs ? `?${qs}` : ''}`, { method: 'POST' });
 }

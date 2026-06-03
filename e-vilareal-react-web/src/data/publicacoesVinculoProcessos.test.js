@@ -182,6 +182,24 @@ describe('resolverSugestaoVinculoLinha', () => {
     expect(sug?.fonte).toBe('api');
   });
 
+  it('não vincula 5500622.97 (Asfarol) ao CNJ 5505622-97 (Vânia) — 1 dígito não é fuzzy', () => {
+    const map = new Map();
+    map.set('5505622-97.2025.8.09.0006', {
+      codCliente: '00000993',
+      proc: '3',
+      cliente: 'VÂNIA CORREA HELOU',
+      reu: 'BANCO SANTANDER',
+    });
+    map.set('5500622-97.2025.8.09.0006', {
+      codCliente: '00000100',
+      proc: '1',
+      cliente: 'ASFAROL',
+      reu: 'CARLOS BESSA',
+    });
+    expect(buscarHitIndiceCnjPorCnj(map, '5500622.97')?.hit?.codCliente).toBe('00000100');
+    expect(buscarHitIndiceCnjPorCnj(map, '5500622.97')?.hit?.cliente).toBe('ASFAROL');
+  });
+
   it('resolve sugestão pelo índice quando cadastro usa CNJ Projudi com ponto', () => {
     const map = new Map();
     map.set('5780425-64.2024.8.09.0007', {

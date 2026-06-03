@@ -8,6 +8,7 @@
 
 import { useId } from 'react';
 import {
+  Activity,
   Banknote,
   Calculator as LucideCalculator,
   CalendarClock,
@@ -633,6 +634,7 @@ const MENU_ICONS = {
   'topicos-grupo': IconTopicos,
   topicos: IconTopicos,
   'topicos/gerente': IconGerenteTopicos,
+  'relatorio-tarefas': Activity,
   diagnosticos: IconRelatorioProcessos,
   'whatsapp-grupo': IconWhatsApp,
   'whatsapp/dashboard': IconWhatsAppDashboard,

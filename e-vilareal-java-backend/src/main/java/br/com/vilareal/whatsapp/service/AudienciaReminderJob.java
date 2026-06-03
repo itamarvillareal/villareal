@@ -1,6 +1,8 @@
 package br.com.vilareal.whatsapp.service;
 
 import br.com.vilareal.config.WhatsAppConfig;
+import br.com.vilareal.jobrun.application.JobRunTracker;
+import br.com.vilareal.jobrun.domain.JobNames;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaContatoEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
@@ -49,6 +51,7 @@ public class AudienciaReminderJob {
     private final ClienteWhatsAppRepository clienteWhatsAppRepository;
     private final ScheduledWhatsAppMessageRepository scheduledRepository;
     private final WhatsAppSchedulerService whatsAppSchedulerService;
+    private final JobRunTracker jobRunTracker;
 
     public AudienciaReminderJob(
             WhatsAppConfig whatsAppConfig,
@@ -56,23 +59,32 @@ public class AudienciaReminderJob {
             PessoaContatoRepository pessoaContatoRepository,
             ClienteWhatsAppRepository clienteWhatsAppRepository,
             ScheduledWhatsAppMessageRepository scheduledRepository,
-            WhatsAppSchedulerService whatsAppSchedulerService) {
+            WhatsAppSchedulerService whatsAppSchedulerService,
+            JobRunTracker jobRunTracker) {
         this.whatsAppConfig = whatsAppConfig;
         this.processoRepository = processoRepository;
         this.pessoaContatoRepository = pessoaContatoRepository;
         this.clienteWhatsAppRepository = clienteWhatsAppRepository;
         this.scheduledRepository = scheduledRepository;
         this.whatsAppSchedulerService = whatsAppSchedulerService;
+        this.jobRunTracker = jobRunTracker;
     }
+
+    public record ExecucaoStats(int agendados, int pulados) {}
 
     @Scheduled(cron = "${whatsapp.reminder.cron:0 0 7 * * MON-FRI}", zone = "America/Sao_Paulo")
     public void verificarAudienciasProximas() {
-        if (!whatsAppConfig.isReminderEnabled()) {
-            log.debug("Job de lembretes de audiência desabilitado via configuração");
-            return;
-        }
         try {
-            executarVerificacaoAudienciasProximas();
+            jobRunTracker.runTrackedJobVoid(JobNames.WHATSAPP_LEMBRETE_AUDIENCIA, ctx -> {
+                if (!whatsAppConfig.isReminderEnabled()) {
+                    log.debug("Job de lembretes de audiência desabilitado via configuração");
+                    ctx.putMetadata("skipped", "disabled");
+                    return;
+                }
+                ExecucaoStats stats = executarVerificacaoAudienciasProximas();
+                ctx.setItemsProcessed(stats.agendados());
+                ctx.setItemsFailed(stats.pulados());
+            });
         } catch (Exception e) {
             log.error("Erro fatal no job de lembretes de audiência: {}", e.getMessage(), e);
         }
@@ -80,19 +92,24 @@ public class AudienciaReminderJob {
 
     @Scheduled(cron = "${whatsapp.reminder.reforco-cron:0 0 18 * * MON-FRI}", zone = "America/Sao_Paulo")
     public void reforcoVesperaAudiencia() {
-        if (!whatsAppConfig.isReminderEnabled() || !whatsAppConfig.isReminderReforcoEnabled()) {
-            log.debug("Job de reforço véspera desabilitado via configuração");
-            return;
-        }
         try {
-            executarReforcoVespera();
+            jobRunTracker.runTrackedJobVoid(JobNames.WHATSAPP_REFORCO_AUDIENCIA, ctx -> {
+                if (!whatsAppConfig.isReminderEnabled() || !whatsAppConfig.isReminderReforcoEnabled()) {
+                    log.debug("Job de reforço véspera desabilitado via configuração");
+                    ctx.putMetadata("skipped", "disabled");
+                    return;
+                }
+                ExecucaoStats stats = executarReforcoVespera();
+                ctx.setItemsProcessed(stats.agendados());
+                ctx.setItemsFailed(stats.pulados());
+            });
         } catch (Exception e) {
             log.error("Erro fatal no job de reforço véspera de audiência: {}", e.getMessage(), e);
         }
     }
 
     @Transactional
-    public void executarVerificacaoAudienciasProximas() {
+    public ExecucaoStats executarVerificacaoAudienciasProximas() {
         LocalDate hoje = LocalDate.now(ZONE_BRASILIA);
         int dias = Math.max(1, whatsAppConfig.getReminderDaysAhead());
         LocalDate limite = hoje.plusDays(dias);
@@ -121,10 +138,11 @@ public class AudienciaReminderJob {
                 "Job de lembretes concluído. {} lembretes criados, {} pulados (duplicatas/sem vínculo/erro)",
                 agendados,
                 pulados);
+        return new ExecucaoStats(agendados, pulados);
     }
 
     @Transactional
-    public void executarReforcoVespera() {
+    public ExecucaoStats executarReforcoVespera() {
         LocalDate hoje = LocalDate.now(ZONE_BRASILIA);
         LocalDate diaAlvo = proximoDiaUtilComAudiencia(hoje);
 
@@ -152,6 +170,7 @@ public class AudienciaReminderJob {
         }
 
         log.info("Job reforço véspera concluído. {} agendados, {} pulados", agendados, pulados);
+        return new ExecucaoStats(agendados, pulados);
     }
 
     private ResultadoItem processarAudienciaParaLembrete(ProcessoEntity processo) {
