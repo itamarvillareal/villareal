@@ -392,8 +392,8 @@
                      th:src="${logoCabecalhoBase64}" alt="Villa Real e Advogados"/>
             </td>
             <td class="cabecalho-advogado">
-                <p class="advogado-nome">Dr. Itamar Alexandre Felix Villa Real Junior</p>
-                <p class="advogado-oab">OAB/GO 33.329</p>
+                <p class="advogado-nome" th:text="${advogadoNome}">Dr. Itamar Alexandre Felix Villa Real Junior</p>
+                <p class="advogado-oab" th:text="${advogadoOab}">OAB/GO 33.329</p>
             </td>
         </tr>
     </table>
@@ -410,8 +410,8 @@
                      th:src="${logoCabecalhoBase64}" alt="Villa Real e Advogados"/>
             </td>
             <td class="cabecalho-advogado">
-                <p class="advogado-nome">Dr. Itamar Alexandre Felix Villa Real Junior</p>
-                <p class="advogado-oab">OAB/GO 33.329</p>
+                <p class="advogado-nome" th:text="${advogadoNome}">Dr. Itamar Alexandre Felix Villa Real Junior</p>
+                <p class="advogado-oab" th:text="${advogadoOab}">OAB/GO 33.329</p>
             </td>
         </tr>
     </table>
@@ -431,6 +431,11 @@
 </div>
 
 <div class="corpo-documento">
+    <th:block th:if="${modoCorpoUnico}">
+        <div class="corpo-unico-editado" th:utext="${corpoUnicoHtml}"></div>
+    </th:block>
+
+    <th:block th:unless="${modoCorpoUnico}">
     <p class="enderecamento" th:if="${enderecamento != null and !enderecamento.isEmpty()}" th:text="${enderecamento}">Endereçamento</p>
 
     <p class="numero-processo" th:if="${numeroProcesso != null and !numeroProcesso.isEmpty()}">
@@ -506,6 +511,7 @@
                 <p class="assinatura-oab">OAB/GO n° 33.329</p>
             </div>
         </div>
+    </th:block>
     </th:block>
 </div>
 

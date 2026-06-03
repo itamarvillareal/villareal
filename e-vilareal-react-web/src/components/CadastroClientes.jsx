@@ -59,7 +59,7 @@ import { getIdPessoaPorCodCliente } from '../data/clienteCodigoHelpers.js';
 import {
   buscarClientePorCodigo,
   buscarProcessoPorChaveNatural,
-  listarProcessosPorCodigoCliente,
+  listarProcessosResumoPorCodigoCliente,
   mergeCadastroClientesProcessosComApi,
   salvarCabecalhoProcesso,
 } from '../repositories/processosRepository.js';
@@ -389,6 +389,8 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
     return () => window.clearTimeout(t);
   }, [toastDocCliente]);
 
+  const processosGradeCodigoRef = useRef('');
+
   const refreshProcessosGrade = useCallback((padded, baseLista) => {
     const enriched = alinharListaProcessosDescricaoComHistorico(
       padded,
@@ -397,14 +399,19 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
     if (!featureFlags.useApiProcessos) {
       setErroApiProcessosGrade('');
       setProcessosGradeCarregando(false);
+      processosGradeCodigoRef.current = padded;
       setProcessos(enriched);
       return;
     }
     const myId = ++processosApiReqIdRef.current;
+    const mesmoCliente = processosGradeCodigoRef.current === padded;
+    processosGradeCodigoRef.current = padded;
     setErroApiProcessosGrade('');
-    setProcessos(enriched);
+    if (!mesmoCliente) {
+      setProcessos(enriched);
+    }
     setProcessosGradeCarregando(true);
-    void listarProcessosPorCodigoCliente(padded)
+    void listarProcessosResumoPorCodigoCliente(padded)
       .then((apiList) => {
         if (processosApiReqIdRef.current !== myId) return;
         setErroApiProcessosGrade('');
@@ -563,7 +570,7 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
           const api = resolved ?? fromList;
           if (!api) return;
           aplicarCabecalhoApi(api);
-          refreshProcessosGrade(api.codigo, baseListaProcessos());
+          /** Grade já disparada no branch acima; 2º refresh resetava para mock+histórico e podia perder o merge da API. */
         })
         .finally(() => {
           resolucaoClientePendingRef.current = Math.max(0, resolucaoClientePendingRef.current - 1);

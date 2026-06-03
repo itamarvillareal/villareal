@@ -1,5 +1,6 @@
 package br.com.vilareal.processo.api;
 
+import br.com.vilareal.documento.DriveArquivoDto;
 import br.com.vilareal.julia.application.JuliaTriagemService;
 import br.com.vilareal.julia.triagem.TriagemRunResponse;
 import br.com.vilareal.processo.api.dto.*;
@@ -218,6 +219,16 @@ public class ProcessosController {
         return processoApplicationService.buscar(id);
     }
 
+    @GetMapping("/{id}/movimentacoes/arquivos")
+    @Operation(
+            summary = "Listar PDFs da pasta Movimentações",
+            description =
+                    "Retorna os PDFs diretos da pasta Movimentações do processo no Drive, "
+                            + "ordenados por nome (crescente). Lista vazia se a pasta não existir.")
+    public ResponseEntity<List<DriveArquivoDto>> listarPdfsMovimentacoes(@PathVariable Long id) throws Exception {
+        return ResponseEntity.ok(processoMovimentacoesConsolidarPdfService.listarPdfsMovimentacoes(id));
+    }
+
     @GetMapping("/{id}/movimentacoes/consolidar-pdf")
     @Operation(
             summary = "Consolidar PDFs da pasta Movimentações",
@@ -225,8 +236,23 @@ public class ProcessosController {
                     "Mescla todos os PDFs da pasta Movimentações do processo no Google Drive, "
                             + "ordenados por nome (crescente), e retorna um único arquivo para download.")
     public ResponseEntity<byte[]> consolidarMovimentacoesPdf(@PathVariable Long id) throws Exception {
-        ProcessoMovimentacoesConsolidarPdfService.ResultadoConsolidado resultado =
-                processoMovimentacoesConsolidarPdfService.gerarPdf(id);
+        return respostaPdfConsolidado(processoMovimentacoesConsolidarPdfService.gerarPdf(id));
+    }
+
+    @PostMapping("/{id}/movimentacoes/consolidar-pdf")
+    @Operation(
+            summary = "Consolidar PDFs selecionados da pasta Movimentações",
+            description =
+                    "Mescla apenas os PDFs indicados (fileIds do Drive), na ordem enviada no corpo. "
+                            + "Cada id deve pertencer à pasta Movimentações do processo.")
+    public ResponseEntity<byte[]> consolidarMovimentacoesPdfSelecionados(
+            @PathVariable Long id, @RequestBody ConsolidarPdfRequest body) throws Exception {
+        List<String> fileIds = body != null && body.fileIds() != null ? body.fileIds() : List.of();
+        return respostaPdfConsolidado(processoMovimentacoesConsolidarPdfService.gerarPdf(id, fileIds));
+    }
+
+    private static ResponseEntity<byte[]> respostaPdfConsolidado(
+            ProcessoMovimentacoesConsolidarPdfService.ResultadoConsolidado resultado) {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentDisposition(ContentDisposition.attachment()
                 .filename(resultado.nomeArquivo())

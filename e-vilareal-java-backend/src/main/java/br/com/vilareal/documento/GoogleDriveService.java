@@ -469,7 +469,7 @@ public class GoogleDriveService {
                                     .list()
                                     .setQ(query)
                                     .setSpaces("drive")
-                                    .setFields("nextPageToken, files(id, name, mimeType)")
+                                    .setFields("nextPageToken, files(id, name, mimeType, size, modifiedTime)")
                                     .setOrderBy("name")
                                     .setPageSize(1000)
                                     .setPageToken(pageToken),

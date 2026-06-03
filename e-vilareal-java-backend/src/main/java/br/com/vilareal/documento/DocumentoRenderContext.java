@@ -21,7 +21,11 @@ public record DocumentoRenderContext(
         List<SecaoDocumento> secoesDocumento,
         List<ParagrafoDocumento> fechoParagrafos,
         String localDataCustom,
-        boolean omitirFechoPadrao) {
+        boolean omitirFechoPadrao,
+        String advogadoNome,
+        String advogadoOab,
+        boolean modoCorpoUnico,
+        String corpoUnicoHtml) {
 
     public DocumentoRenderContext {
         secoesLegado = secoesLegado != null ? List.copyOf(secoesLegado) : List.of();
@@ -46,6 +50,10 @@ public record DocumentoRenderContext(
                 List.of(),
                 List.of(),
                 null,
-                false);
+                false,
+                null,
+                null,
+                false,
+                null);
     }
 }
