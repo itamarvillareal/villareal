@@ -28,6 +28,7 @@
     "reimport:agenda-karla-total": "bash ../e-vilareal-java-backend/scripts/reimportar_agenda_karla_total.sh",
     "reimport:agenda-ana-luisa-total": "bash ../e-vilareal-java-backend/scripts/reimportar_agenda_ana_luisa_total.sh",
     "import:calculos-layout2026": "node scripts/import-calculos-planilha-layout2026.mjs",
+    "test:import-calculos": "node --test scripts/lib/calculos-dropbox-payload.test.mjs",
     "import:extrato-99pay-pdf": "node scripts/import-extrato-99pay-pdf.mjs",
     "import:extrato-99pay-xlsx": "node scripts/import-extrato-99pay-xlsx.mjs",
     "import:extrato-bancos-itau": "node scripts/import-extrato-bancos-planilha.mjs --sheet=Itaú --banco=Itaú --layout=itau-pf --substituir --login=itamar",

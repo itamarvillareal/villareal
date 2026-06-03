@@ -18,3 +18,10 @@ export function chaveNumeroProcessoBuscaDiagnostico(raw) {
     .replace(/[.\-\s/\u00AD\u2013\u2014]/g, '')
     .replace(/\D/g, '');
 }
+
+/** Chave para deduplicar sugestões de vínculo (CNJ formatado ou só dígitos para nº Projudi parcial). */
+export function chaveSugestaoVinculoPublicacao(raw) {
+  const s = String(raw ?? '').trim();
+  if (!s) return '';
+  return normalizarCnjParaChave(s) || chaveNumeroProcessoBuscaDiagnostico(s);
+}

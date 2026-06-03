@@ -7,7 +7,9 @@ import java.time.LocalDate;
 public class PagamentoResponse {
 
     private Long id;
+    private String tipo;
     private LocalDate dataCadastro;
+    private LocalDate dataEmissao;
     private LocalDate dataAgendamento;
     private LocalDate dataVencimento;
     private String codigoBarras;
@@ -21,6 +23,7 @@ public class PagamentoResponse {
     private String prioridade;
     private String origem;
     private LocalDate dataPagamentoEfetivo;
+    private LocalDate dataRecebimento;
     private String observacoes;
     private boolean temBoletoAnexo;
     private boolean temComprovanteAnexo;
@@ -50,6 +53,7 @@ public class PagamentoResponse {
     private LocalDate dataConferencia;
     private LocalDate dataAcerto;
     private BigDecimal valorPagoBanco;
+    private BigDecimal valorRecebido;
     private BigDecimal valorDiferenca;
     private Long conferidoPorUsuarioId;
     private Long prestacaoContasId;
@@ -67,12 +71,28 @@ public class PagamentoResponse {
         this.id = id;
     }
 
+    public String getTipo() {
+        return tipo;
+    }
+
+    public void setTipo(String tipo) {
+        this.tipo = tipo;
+    }
+
     public LocalDate getDataCadastro() {
         return dataCadastro;
     }
 
     public void setDataCadastro(LocalDate dataCadastro) {
         this.dataCadastro = dataCadastro;
+    }
+
+    public LocalDate getDataEmissao() {
+        return dataEmissao;
+    }
+
+    public void setDataEmissao(LocalDate dataEmissao) {
+        this.dataEmissao = dataEmissao;
     }
 
     public LocalDate getDataAgendamento() {
@@ -177,6 +197,14 @@ public class PagamentoResponse {
 
     public void setDataPagamentoEfetivo(LocalDate dataPagamentoEfetivo) {
         this.dataPagamentoEfetivo = dataPagamentoEfetivo;
+    }
+
+    public LocalDate getDataRecebimento() {
+        return dataRecebimento;
+    }
+
+    public void setDataRecebimento(LocalDate dataRecebimento) {
+        this.dataRecebimento = dataRecebimento;
     }
 
     public String getObservacoes() {
@@ -409,6 +437,14 @@ public class PagamentoResponse {
 
     public void setValorPagoBanco(BigDecimal valorPagoBanco) {
         this.valorPagoBanco = valorPagoBanco;
+    }
+
+    public BigDecimal getValorRecebido() {
+        return valorRecebido;
+    }
+
+    public void setValorRecebido(BigDecimal valorRecebido) {
+        this.valorRecebido = valorRecebido;
     }
 
     public BigDecimal getValorDiferenca() {

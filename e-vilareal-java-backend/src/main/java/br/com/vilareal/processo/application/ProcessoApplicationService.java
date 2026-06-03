@@ -412,42 +412,48 @@ public class ProcessoApplicationService {
         if (pessoaId == null || pessoaId < 1 || !pessoaRepository.existsById(pessoaId)) {
             return List.of();
         }
-        List<ProcessoEntity> lista = new ArrayList<>(processoRepository.findAllDistinctVinculadosPessoa(pessoaId));
+        String nomePessoa =
+                pessoaRepository.findById(pessoaId).map(p -> Utf8MojibakeUtil.corrigir(p.getNome())).orElse("");
+
+        LinkedHashSet<Long> procIds = new LinkedHashSet<>();
+        for (ProcessoEntity e : processoRepository.findAllDistinctVinculadosPessoa(pessoaId)) {
+            procIds.add(e.getId());
+        }
+        if (StringUtils.hasText(nomePessoa)) {
+            procIds.addAll(parteRepository.findDistinctProcessoIdsByNomeLivreSemPessoa(nomePessoa.trim()));
+        }
+        if (procIds.isEmpty()) {
+            return List.of();
+        }
+
+        List<ProcessoEntity> lista = new ArrayList<>(processoRepository.findAllById(procIds));
         lista.sort(Comparator.comparing((ProcessoEntity e) -> e.getPessoa().getId())
                 .thenComparing(ProcessoEntity::getNumeroInterno));
 
-        List<Long> procIds = lista.stream().map(ProcessoEntity::getId).collect(Collectors.toList());
         Map<Long, List<ProcessoParteEntity>> partesPorProcesso = new LinkedHashMap<>();
-        if (!procIds.isEmpty()) {
-            for (ProcessoParteEntity parte :
-                    parteRepository.findAllByProcessoIdInWithPessoaEProcesso(procIds)) {
-                Long pid = parte.getProcesso().getId();
-                partesPorProcesso.computeIfAbsent(pid, k -> new ArrayList<>()).add(parte);
-            }
+        for (ProcessoParteEntity parte :
+                parteRepository.findAllByProcessoIdInWithPessoaEProcesso(procIds)) {
+            Long pid = parte.getProcesso().getId();
+            partesPorProcesso.computeIfAbsent(pid, k -> new ArrayList<>()).add(parte);
         }
 
         List<ProcessoDiagnosticoPessoaItemResponse> out = new ArrayList<>();
         for (ProcessoEntity e : lista) {
             List<ProcessoParteEntity> partes = partesPorProcesso.getOrDefault(e.getId(), List.of());
-            Long ownerId = e.getPessoa().getId();
-            String cod8 = resolverCodigoClienteExibicaoParaPessoa(ownerId);
-            String nomeCliente = Utf8MojibakeUtil.corrigir(e.getPessoa().getNome());
+            Long titularId = e.getPessoa().getId();
+            String cod8 = resolverCodigoClienteExibicaoProcesso(e);
+            String parteClienteTxt = montarTextoParteClienteListagem(e, partes);
             String parteOpostaTxt = montarTextoParteOpostaListagem(partes);
 
             LinkedHashSet<String> papeis = new LinkedHashSet<>();
-            if (ownerId.equals(pessoaId)) {
+            if (titularId.equals(pessoaId)) {
                 papeis.add("Cliente do processo");
             }
             for (ProcessoParteEntity parte : partes) {
                 if (parte.getPessoa() != null && parte.getPessoa().getId().equals(pessoaId)) {
-                    String poloNorm = normalizarPoloParaComparacao(parte.getPolo());
-                    if (poloNorm.contains("AUTOR")
-                            || poloNorm.contains("REQUERENTE")
-                            || poloNorm.contains("CLIENTE")) {
-                        papeis.add("Parte Cliente");
-                    } else {
-                        papeis.add("Parte Oposta");
-                    }
+                    papeis.add(papelPartePorPolo(parte.getPolo()));
+                } else if (parte.getPessoa() == null && nomePessoaCorrespondeParteSemPessoa(parte, nomePessoa)) {
+                    papeis.add(papelPartePorPolo(parte.getPolo()));
                 }
                 for (ProcessoParteAdvogadoEntity adv :
                         parteAdvogadoRepository.findByProcessoParte_IdOrderByOrdemAscIdAsc(parte.getId())) {
@@ -462,8 +468,8 @@ public class ProcessoApplicationService {
             r.setProcessoId(e.getId());
             r.setCodigoCliente(cod8);
             r.setNumeroInterno(e.getNumeroInterno());
-            r.setCliente(nomeCliente);
-            r.setParteCliente(nomeCliente);
+            r.setCliente(parteClienteTxt);
+            r.setParteCliente(parteClienteTxt);
             r.setParteOposta(parteOpostaTxt);
             r.setNumeroProcessoNovo(cnj == null ? "" : Utf8MojibakeUtil.corrigir(cnj));
             r.setPapeis(String.join(" · ", papeis));
@@ -472,19 +478,55 @@ public class ProcessoApplicationService {
         return out;
     }
 
+    private static String papelPartePorPolo(String polo) {
+        String poloNorm = normalizarPoloParaComparacao(polo);
+        if (poloNorm.contains("AUTOR") || poloNorm.contains("REQUERENTE") || poloNorm.contains("CLIENTE")) {
+            return "Parte Cliente";
+        }
+        return "Parte Oposta";
+    }
+
+    private static boolean nomePessoaCorrespondeParteSemPessoa(ProcessoParteEntity parte, String nomePessoa) {
+        if (parte == null || !StringUtils.hasText(nomePessoa) || !StringUtils.hasText(parte.getNomeLivre())) {
+            return false;
+        }
+        String alvo = normalizarNomeComparacaoVinculo(nomePessoa);
+        String candidato = normalizarNomeComparacaoVinculo(parte.getNomeLivre());
+        if (alvo.isEmpty() || candidato.isEmpty()) {
+            return false;
+        }
+        return candidato.equals(alvo) || (alvo.length() >= 10 && candidato.contains(alvo));
+    }
+
+    private static String normalizarNomeComparacaoVinculo(String raw) {
+        if (!StringUtils.hasText(raw)) {
+            return "";
+        }
+        String nfd = Normalizer.normalize(raw.trim(), Normalizer.Form.NFD);
+        return nfd.replaceAll("\\p{M}+", "")
+                .toUpperCase(Locale.ROOT)
+                .replaceAll("[^A-Z0-9 ]", "")
+                .replaceAll("\\s+", " ")
+                .trim();
+    }
+
+    private String resolverCodigoClienteExibicaoProcesso(ProcessoEntity e) {
+        if (e.getCliente() != null && StringUtils.hasText(e.getCliente().getCodigoCliente())) {
+            return codigoClienteNormalizadoParaMapa(e.getCliente().getCodigoCliente());
+        }
+        if (e.getPessoa() != null) {
+            return resolverCodigoClienteExibicaoParaPessoa(e.getPessoa().getId());
+        }
+        return CodigoClienteUtil.formatar(1L);
+    }
+
     /**
      * Diagnósticos: localiza processos pelo número CNJ (entrada com ou sem pontuação).
      */
     @Transactional(readOnly = true)
     public List<ProcessoDiagnosticoPessoaItemResponse> buscarDiagnosticoPorNumeroProcesso(String numeroBruto) {
-        String norm = ProcessoDiagnosticoNumeroBuscaUtil.normalizarSomenteDigitos(numeroBruto);
-        if (norm.length() < 7) {
-            return List.of();
-        }
         List<BigInteger> rawIds =
-                norm.length() < 20
-                        ? processoRepository.findIdsByNumeroCnjDigitosContendo(norm)
-                        : processoRepository.findIdsByNumeroCnjNormalizadoDiagnostico(norm);
+                ProcessoDiagnosticoNumeroBuscaUtil.buscarIdsProcessoPorNumero(numeroBruto, processoRepository);
         if (rawIds.isEmpty()) {
             return List.of();
         }

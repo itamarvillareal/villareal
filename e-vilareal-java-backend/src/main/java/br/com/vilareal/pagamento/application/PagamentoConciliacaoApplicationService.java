@@ -38,13 +38,20 @@ public class PagamentoConciliacaoApplicationService {
     private static final Set<String> STATUS_ORIGEM_CONFERIR = Set.of(
             PagamentoDominio.ST_PAGO_CONFIRMADO, PagamentoDominio.ST_PAGO_SEM_COMPROVANTE);
 
-    private static final Set<String> STATUS_CANDIDATOS_CONCILIACAO = Set.of(
+    private static final Set<String> STATUS_CANDIDATOS_CONCILIACAO_PAGAR = Set.of(
             PagamentoDominio.ST_AGENDADO,
             PagamentoDominio.ST_PAGO_CONFIRMADO,
             PagamentoDominio.ST_PAGO_SEM_COMPROVANTE,
             PagamentoDominio.ST_CONFERENCIA_PENDENTE);
 
-    private static final Set<String> STATUS_VINCULAR = STATUS_CANDIDATOS_CONCILIACAO;
+    private static final Set<String> STATUS_CANDIDATOS_CONCILIACAO_RECEBER = Set.of(
+            PagamentoDominio.ST_EMITIDO,
+            PagamentoDominio.ST_VENCIDO,
+            PagamentoDominio.ST_RECEBIDO);
+
+    private static final Set<String> STATUS_VINCULAR_PAGAR = STATUS_CANDIDATOS_CONCILIACAO_PAGAR;
+
+    private static final Set<String> STATUS_VINCULAR_RECEBER = Set.of(PagamentoDominio.ST_RECEBIDO);
 
     private final PagamentoRepository pagamentoRepository;
     private final PagamentoHistoricoRepository historicoRepository;
@@ -71,6 +78,7 @@ public class PagamentoConciliacaoApplicationService {
     @Transactional
     public PagamentoResponse conferir(Long id, PagamentoConferirRequest req) {
         PagamentoEntity e = requirePagamento(id);
+        assertTipoPagar(e);
         if (!STATUS_ORIGEM_CONFERIR.contains(e.getStatus())) {
             throw new BusinessRuleException(
                     "Pagamento com status "
@@ -100,6 +108,7 @@ public class PagamentoConciliacaoApplicationService {
     @Transactional
     public PagamentoResponse acertar(Long id, PagamentoAcertarRequest req) {
         PagamentoEntity e = requirePagamento(id);
+        assertTipoPagar(e);
         if (!PagamentoDominio.ST_CONFERIDO.equals(e.getStatus())) {
             throw new BusinessRuleException(
                     "Pagamento com status " + e.getStatus() + " não pode ser acertado. Status aceito: CONFERIDO.");
@@ -117,6 +126,23 @@ public class PagamentoConciliacaoApplicationService {
     @Transactional
     public PagamentoResponse reabrir(Long id, PagamentoReabrirRequest req) {
         PagamentoEntity e = requirePagamento(id);
+        if (PagamentoDominio.isTipoReceber(e.getTipo())) {
+            if (!List.of(PagamentoDominio.ST_CANCELADO, PagamentoDominio.ST_VENCIDO).contains(e.getStatus())) {
+                throw new BusinessRuleException(
+                        "Recebível com status "
+                                + e.getStatus()
+                                + " não pode ser reaberto. Status aceitos: CANCELADO, VENCIDO.");
+            }
+            UsuarioEntity u = usuarioAtual();
+            String ant = e.getStatus();
+            limparPosRecebimento(e);
+            e.setStatus(PagamentoDominio.ST_EMITIDO);
+            e.setCanceladoEm(null);
+            e.setAtualizadoPorUsuario(u);
+            e = pagamentoRepository.save(e);
+            registrarHistorico(e, u, "REABERTO", ant, e.getStatus(), null, req.getObservacao());
+            return pagamentoApplicationService.toResponsePublic(e);
+        }
         if (!List.of(PagamentoDominio.ST_CANCELADO, PagamentoDominio.ST_VENCIDO).contains(e.getStatus())) {
             throw new BusinessRuleException(
                     "Pagamento com status "
@@ -143,10 +169,43 @@ public class PagamentoConciliacaoApplicationService {
         Integer nb = parseNumeroBanco(numeroBanco);
         LocalDate fimLanc = periodoFim.plusDays(MAX_DIAS_DATA);
 
+        List<ConciliacaoSugestaoPagamentoResponse> resultado = new ArrayList<>();
+        resultado.addAll(montarSugestoesPorTipo(
+                PagamentoDominio.TIPO_PAGAR,
+                STATUS_CANDIDATOS_CONCILIACAO_PAGAR,
+                NaturezaLancamento.DEBITO,
+                periodoInicio,
+                periodoFim,
+                fimLanc,
+                nb));
+        resultado.addAll(montarSugestoesPorTipo(
+                PagamentoDominio.TIPO_RECEBER,
+                STATUS_CANDIDATOS_CONCILIACAO_RECEBER,
+                NaturezaLancamento.CREDITO,
+                periodoInicio,
+                periodoFim,
+                fimLanc,
+                nb));
+
+        resultado.sort(Comparator.comparingInt(
+                        (ConciliacaoSugestaoPagamentoResponse r) ->
+                                r.getSugestoes().isEmpty() ? 0 : r.getSugestoes().get(0).getScore())
+                .reversed());
+        return resultado;
+    }
+
+    private List<ConciliacaoSugestaoPagamentoResponse> montarSugestoesPorTipo(
+            String tipo,
+            Set<String> statuses,
+            NaturezaLancamento natureza,
+            LocalDate periodoInicio,
+            LocalDate periodoFim,
+            LocalDate fimLanc,
+            Integer numeroBanco) {
         List<PagamentoEntity> pagamentos =
-                pagamentoRepository.findCandidatosConciliacao(STATUS_CANDIDATOS_CONCILIACAO, periodoInicio, periodoFim);
+                pagamentoRepository.findCandidatosConciliacao(tipo, statuses, periodoInicio, periodoFim);
         List<LancamentoFinanceiroEntity> lancamentos = lancamentoFinanceiroRepository.findDebitosNaoVinculadosPagamento(
-                NaturezaLancamento.DEBITO, periodoInicio, fimLanc, nb);
+                natureza, periodoInicio, fimLanc, numeroBanco);
 
         List<ConciliacaoSugestaoPagamentoResponse> resultado = new ArrayList<>();
         for (PagamentoEntity p : pagamentos) {
@@ -166,17 +225,16 @@ public class PagamentoConciliacaoApplicationService {
                 resultado.add(item);
             }
         }
-        resultado.sort(Comparator.comparingInt(
-                        (ConciliacaoSugestaoPagamentoResponse r) ->
-                                r.getSugestoes().isEmpty() ? 0 : r.getSugestoes().get(0).getScore())
-                .reversed());
         return resultado;
     }
 
     @Transactional
     public PagamentoResponse vincularConciliacao(PagamentoConciliacaoVincularRequest req) {
         PagamentoEntity e = requirePagamento(req.getPagamentoId());
-        if (!STATUS_VINCULAR.contains(e.getStatus())) {
+        if (PagamentoDominio.isTipoReceber(e.getTipo())) {
+            return vincularRecebivel(e, req);
+        }
+        if (!STATUS_VINCULAR_PAGAR.contains(e.getStatus())) {
             throw new BusinessRuleException(
                     "Pagamento com status "
                             + e.getStatus()
@@ -220,6 +278,41 @@ public class PagamentoConciliacaoApplicationService {
         return pagamentoApplicationService.toResponsePublic(e);
     }
 
+    private PagamentoResponse vincularRecebivel(PagamentoEntity e, PagamentoConciliacaoVincularRequest req) {
+        if (!STATUS_VINCULAR_RECEBER.contains(e.getStatus())) {
+            throw new BusinessRuleException(
+                    "Recebível com status "
+                            + e.getStatus()
+                            + " não pode ser vinculado. Status aceito: RECEBIDO.");
+        }
+        LancamentoFinanceiroEntity lanc = requireLancamento(req.getFinanceiroLancamentoId());
+        if (lanc.getNatureza() != NaturezaLancamento.CREDITO) {
+            throw new BusinessRuleException("Recebível deve ser conciliado com lançamento de crédito.");
+        }
+        validarLancamentoDisponivel(lanc.getId(), e.getId());
+
+        UsuarioEntity u = usuarioAtual();
+        String ant = e.getStatus();
+        BigDecimal valorBanco = lanc.getValor().abs();
+        e.setFinanceiroLancamento(lanc);
+        if (e.getDataRecebimento() == null) {
+            e.setDataRecebimento(lanc.getDataLancamento());
+        }
+        e.setValorRecebido(valorBanco);
+        e.setStatus(PagamentoDominio.ST_CONCILIADO);
+        e.setAtualizadoPorUsuario(u);
+        e = pagamentoRepository.save(e);
+        registrarHistorico(
+                e,
+                u,
+                "CONCILIADO",
+                ant,
+                e.getStatus(),
+                "{\"financeiroLancamentoId\":" + lanc.getId() + "}",
+                null);
+        return pagamentoApplicationService.toResponsePublic(e);
+    }
+
     @Transactional
     public PagamentoResponse desvincularConciliacao(PagamentoConciliacaoDesvincularRequest req) {
         PagamentoEntity e = requirePagamento(req.getPagamentoId());
@@ -232,12 +325,19 @@ public class PagamentoConciliacaoApplicationService {
         UsuarioEntity u = usuarioAtual();
         String ant = e.getStatus();
         e.setFinanceiroLancamento(null);
-        e.setValorPagoBanco(null);
-        e.setValorDiferenca(null);
-        e.setDataConferencia(null);
-        e.setConferidoPorUsuario(null);
-        if (PagamentoDominio.ST_CONFERIDO.equals(e.getStatus())) {
-            e.setStatus(PagamentoDominio.ST_PAGO_CONFIRMADO);
+        if (PagamentoDominio.isTipoReceber(e.getTipo())) {
+            e.setValorRecebido(null);
+            if (PagamentoDominio.ST_CONCILIADO.equals(e.getStatus())) {
+                e.setStatus(PagamentoDominio.ST_RECEBIDO);
+            }
+        } else {
+            e.setValorPagoBanco(null);
+            e.setValorDiferenca(null);
+            e.setDataConferencia(null);
+            e.setConferidoPorUsuario(null);
+            if (PagamentoDominio.ST_CONFERIDO.equals(e.getStatus())) {
+                e.setStatus(PagamentoDominio.ST_PAGO_CONFIRMADO);
+            }
         }
         e.setAtualizadoPorUsuario(u);
         e = pagamentoRepository.save(e);
@@ -264,18 +364,36 @@ public class PagamentoConciliacaoApplicationService {
         e.setPrestacaoContas(null);
     }
 
+    private static void limparPosRecebimento(PagamentoEntity e) {
+        e.setDataRecebimento(null);
+        e.setValorRecebido(null);
+        e.setFinanceiroLancamento(null);
+    }
+
+    private static void assertTipoPagar(PagamentoEntity e) {
+        if (!PagamentoDominio.isTipoPagar(e.getTipo())) {
+            throw new BusinessRuleException("Operação válida apenas para contas a pagar.");
+        }
+    }
+
     private Optional<ConciliacaoSugestaoItem> avaliarMatch(PagamentoEntity p, LancamentoFinanceiroEntity l) {
         BigDecimal valorPag = p.getValor();
         BigDecimal valorLanc = l.getValor().abs();
         BigDecimal diffValor = valorLanc.subtract(valorPag).abs();
 
-        LocalDate refPag = p.getDataAgendamento() != null ? p.getDataAgendamento() : p.getDataVencimento();
+        LocalDate refPag;
+        if (PagamentoDominio.isTipoReceber(p.getTipo())) {
+            refPag = p.getDataRecebimento() != null ? p.getDataRecebimento() : p.getDataVencimento();
+        } else {
+            refPag = p.getDataAgendamento() != null ? p.getDataAgendamento() : p.getDataVencimento();
+        }
         long dias = Math.abs(ChronoUnit.DAYS.between(refPag, l.getDataLancamento()));
 
         boolean valorExato = diffValor.compareTo(BigDecimal.ZERO) == 0;
         boolean valorProximo = diffValor.compareTo(TOLERANCIA_VALOR) <= 0;
         boolean dataProxima = dias <= MAX_DIAS_DATA;
-        boolean matchCodigo = matchCodigoBarras(p.getCodigoBarras(), l.getDescricao(), l.getDescricaoDetalhada());
+        boolean matchCodigo = matchCodigoBarras(
+                p.getTipo(), p.getCodigoBarras(), l.getDescricao(), l.getDescricaoDetalhada());
 
         if (!valorProximo && !dataProxima && !matchCodigo) {
             return Optional.empty();
@@ -309,7 +427,8 @@ public class PagamentoConciliacaoApplicationService {
         return Optional.of(item);
     }
 
-    private static boolean matchCodigoBarras(String codigoBarras, String descricao, String descricaoDetalhada) {
+    private static boolean matchCodigoBarras(
+            String tipo, String codigoBarras, String descricao, String descricaoDetalhada) {
         if (!StringUtils.hasText(codigoBarras)) {
             return false;
         }
@@ -320,7 +439,14 @@ public class PagamentoConciliacaoApplicationService {
         String trecho = digits.substring(Math.max(0, digits.length() - 12));
         String texto = ((descricao != null ? descricao : "") + " " + (descricaoDetalhada != null ? descricaoDetalhada : ""))
                 .replaceAll("\\D", "");
-        return texto.contains(trecho) || texto.contains(digits.substring(0, Math.min(20, digits.length())));
+        boolean match = texto.contains(trecho) || texto.contains(digits.substring(0, Math.min(20, digits.length())));
+        if (match || PagamentoDominio.isTipoPagar(tipo)) {
+            return match;
+        }
+        String textoAlfa = ((descricao != null ? descricao : "") + " "
+                        + (descricaoDetalhada != null ? descricaoDetalhada : ""))
+                .toLowerCase(Locale.ROOT);
+        return textoAlfa.contains("boleto") || textoAlfa.contains("cobranca") || textoAlfa.contains("cobrança");
     }
 
     private static String formatMoeda(BigDecimal v) {

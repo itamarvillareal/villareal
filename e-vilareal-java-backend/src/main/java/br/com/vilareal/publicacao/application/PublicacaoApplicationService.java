@@ -179,19 +179,16 @@ public class PublicacaoApplicationService {
         if (!StringUtils.hasText(cnj)) {
             throw new BusinessRuleException("Publicação sem número de processo para vincular.");
         }
-        String norm = ProcessoDiagnosticoNumeroBuscaUtil.normalizarSomenteDigitos(cnj);
-        if (norm.length() < 20) {
-            throw new BusinessRuleException(
-                    "CNJ da publicação incompleto para vínculo automático (mínimo 20 dígitos).");
-        }
-        List<BigInteger> ids = processoRepository.findIdsByNumeroCnjNormalizadoDiagnostico(norm);
+        List<BigInteger> ids = buscarIdsProcessoPorNumeroPublicacao(cnj);
         if (ids.isEmpty()) {
             throw new BusinessRuleException(
-                    "Nenhum processo cadastrado com o CNJ " + cnj.trim() + ". Cadastre o processo ou vincule manualmente.");
+                    "Nenhum processo cadastrado com o número "
+                            + cnj.trim()
+                            + ". Cadastre o processo ou vincule manualmente.");
         }
         if (ids.size() > 1) {
             throw new BusinessRuleException(
-                    "Mais de um processo cadastrado com o mesmo CNJ; use vínculo manual por código cliente e proc. interno.");
+                    "Mais de um processo cadastrado com número semelhante; use vínculo manual por código cliente e proc. interno.");
         }
         PublicacaoVinculoPatchRequest req = new PublicacaoVinculoPatchRequest();
         req.setProcessoId(ids.getFirst().longValue());
@@ -208,11 +205,7 @@ public class PublicacaoApplicationService {
             if (!StringUtils.hasText(cnj)) {
                 return false;
             }
-            String norm = ProcessoDiagnosticoNumeroBuscaUtil.normalizarSomenteDigitos(cnj);
-            if (norm.length() < 20) {
-                return false;
-            }
-            List<BigInteger> ids = processoRepository.findIdsByNumeroCnjNormalizadoDiagnostico(norm);
+            List<BigInteger> ids = buscarIdsProcessoPorNumeroPublicacao(cnj);
             if (ids.size() != 1) {
                 return false;
             }
@@ -230,6 +223,10 @@ public class PublicacaoApplicationService {
         } catch (Exception ex) {
             return false;
         }
+    }
+
+    private List<BigInteger> buscarIdsProcessoPorNumeroPublicacao(String numeroBruto) {
+        return ProcessoDiagnosticoNumeroBuscaUtil.buscarIdsProcessoPorNumero(numeroBruto, processoRepository);
     }
 
     private String montarObservacaoVinculoAutomaticoPorCnj(PublicacaoEntity pub, ProcessoEntity proc) {

@@ -10,6 +10,7 @@ import { featureFlags } from '../config/featureFlags.js';
 import { listarClientesIndiceCadastro } from '../repositories/clientesRepository.js';
 import { listarProcessosResumoPorCodigoCliente, mapApiProcessoToUiShape } from '../repositories/processosRepository.js';
 import { digitosCnjNormalizados, termoDigitosCorrespondeCnjCampo } from '../domain/cnjFuzzyBusca.js';
+import { chaveSugestaoVinculoPublicacao } from '../domain/normalizarNumeroProcessoBuscaDiagnostico.js';
 
 /**
  * Índice vazio até {@link montarIndiceCnjClienteProcAsync} concluir (evita dados fictícios).
@@ -172,7 +173,7 @@ export function resolverSugestaoVinculoLinha(row, indiceMap, sugestoesApiMap) {
       cliente: sugIdx.titularNome || sugIdx.cliente,
     };
   }
-  const key = normalizarCnjParaChave(cnjBase);
+  const key = chaveSugestaoVinculoPublicacao(cnjBase);
   if (key && sugestoesApiMap instanceof Map) {
     const sugApi = sugestoesApiMap.get(key);
     if (sugApi) return { ...sugApi, fonte: 'api' };

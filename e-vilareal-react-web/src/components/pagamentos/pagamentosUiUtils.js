@@ -37,7 +37,34 @@ export const ROTULO_STATUS = {
   VENCIDO: 'Vencido',
   CANCELADO: 'Cancelado',
   SUBSTITUIDO: 'Substituído',
+  EMITIDO: 'Emitido',
+  RECEBIDO: 'Recebido',
+  CONCILIADO: 'Conciliado',
 };
+
+export const STATUS_LIST_PAGAR = [
+  'PENDENTE',
+  'AGENDADO',
+  'PAGO_CONFIRMADO',
+  'PAGO_SEM_COMPROVANTE',
+  'CONFERENCIA_PENDENTE',
+  'CONFERIDO',
+  'ACERTADO',
+  'VENCIDO',
+  'CANCELADO',
+  'SUBSTITUIDO',
+];
+
+export const STATUS_LIST_RECEBER = ['EMITIDO', 'RECEBIDO', 'CONCILIADO', 'VENCIDO', 'CANCELADO'];
+
+export const TIPO_OPCOES = [
+  { value: 'PAGAR', label: 'Contas a pagar' },
+  { value: 'RECEBER', label: 'A receber (cobranças)' },
+];
+
+export function statusListForTipo(tipo) {
+  return String(tipo || 'PAGAR').toUpperCase() === 'RECEBER' ? STATUS_LIST_RECEBER : STATUS_LIST_PAGAR;
+}
 
 export function extrairAlertasLegados(raw) {
   if (!raw || typeof raw !== 'object') return {};
@@ -74,6 +101,12 @@ export function badgeStatusClass(st) {
       return 'inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200';
     case 'SUBSTITUIDO':
       return 'inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold bg-violet-100 text-violet-900 dark:bg-violet-950/50 dark:text-violet-100';
+    case 'EMITIDO':
+      return 'inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold bg-blue-100 text-blue-900 dark:bg-blue-950/50 dark:text-blue-100';
+    case 'RECEBIDO':
+      return 'inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-100';
+    case 'CONCILIADO':
+      return 'inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold bg-teal-100 text-teal-900 dark:bg-teal-950/50 dark:text-teal-100';
     default:
       return 'inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium bg-slate-100 text-slate-700';
   }

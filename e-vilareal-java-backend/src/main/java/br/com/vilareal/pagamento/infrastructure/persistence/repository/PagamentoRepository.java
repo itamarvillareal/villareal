@@ -21,15 +21,18 @@ public interface PagamentoRepository extends JpaRepository<PagamentoEntity, Long
 
     @Query("""
             SELECT p FROM PagamentoEntity p
-            WHERE p.status IN :statuses
+            WHERE p.tipo = :tipo
+              AND p.status IN :statuses
               AND p.financeiroLancamento IS NULL
               AND (
                   p.dataVencimento BETWEEN :inicio AND :fim
                   OR (p.dataAgendamento IS NOT NULL AND p.dataAgendamento BETWEEN :inicio AND :fim)
+                  OR (p.dataRecebimento IS NOT NULL AND p.dataRecebimento BETWEEN :inicio AND :fim)
               )
             ORDER BY p.dataVencimento ASC, p.id ASC
             """)
     List<PagamentoEntity> findCandidatosConciliacao(
+            @Param("tipo") String tipo,
             @Param("statuses") Collection<String> statuses,
             @Param("inicio") LocalDate inicio,
             @Param("fim") LocalDate fim);

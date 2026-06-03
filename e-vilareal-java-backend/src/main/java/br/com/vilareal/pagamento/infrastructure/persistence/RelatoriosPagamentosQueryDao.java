@@ -14,6 +14,8 @@ public class RelatoriosPagamentosQueryDao {
     private static final String STATUS_PAGOS =
             "'PAGO_CONFIRMADO','PAGO_SEM_COMPROVANTE','CONFERIDO','ACERTADO'";
 
+    private static final String FILTRO_TIPO_PAGAR = " AND p.tipo = 'PAGAR' ";
+
     @PersistenceContext
     private EntityManager em;
 
@@ -31,7 +33,7 @@ public class RelatoriosPagamentosQueryDao {
                   AND p.data_pagamento_efetivo BETWEEN :inicio AND :fim
                   AND p.imovel_id IS NOT NULL
                 """
-                        .formatted(STATUS_PAGOS));
+                        .formatted(STATUS_PAGOS) + FILTRO_TIPO_PAGAR);
         if (clienteId != null) {
             sql.append(" AND (p.cliente_id = :clienteId OR i.cliente_id = :clienteId)");
         }
@@ -62,7 +64,7 @@ public class RelatoriosPagamentosQueryDao {
                   AND p.data_pagamento_efetivo IS NOT NULL
                   AND YEAR(p.data_pagamento_efetivo) = :ano
                 """
-                        .formatted(STATUS_PAGOS));
+                        .formatted(STATUS_PAGOS) + FILTRO_TIPO_PAGAR);
         if (imovelId != null) {
             sql.append(" AND p.imovel_id = :imovelId");
         }
@@ -86,7 +88,7 @@ public class RelatoriosPagamentosQueryDao {
                 WHERE p.status = 'ACERTADO'
                   AND p.data_acerto BETWEEN :inicio AND :fim
                   AND p.imovel_id IS NOT NULL
-                """;
+                """ + FILTRO_TIPO_PAGAR;
         Query q = em.createNativeQuery(sql);
         q.setParameter("inicio", inicio);
         q.setParameter("fim", fim);
@@ -124,7 +126,7 @@ public class RelatoriosPagamentosQueryDao {
                 FROM pagamento p
                 WHERE p.data_agendamento IS NOT NULL
                   AND p.data_agendamento BETWEEN :inicio AND :fim
-                """,
+                """ + FILTRO_TIPO_PAGAR,
                 inicio,
                 fim);
     }
@@ -137,7 +139,7 @@ public class RelatoriosPagamentosQueryDao {
                 WHERE p.data_pagamento_efetivo IS NOT NULL
                   AND p.data_agendamento IS NOT NULL
                   AND p.data_pagamento_efetivo BETWEEN :inicio AND :fim
-                """,
+                """ + FILTRO_TIPO_PAGAR,
                 inicio,
                 fim);
     }
@@ -149,7 +151,7 @@ public class RelatoriosPagamentosQueryDao {
                                 SELECT COUNT(*) FROM pagamento p
                                 WHERE p.data_agendamento IS NOT NULL
                                   AND p.data_agendamento BETWEEN :inicio AND :fim
-                                """)
+                                """ + FILTRO_TIPO_PAGAR)
                         .setParameter("inicio", inicio)
                         .setParameter("fim", fim)
                         .getSingleResult();
@@ -164,7 +166,7 @@ public class RelatoriosPagamentosQueryDao {
                                 WHERE p.status IN ('PAGO_SEM_COMPROVANTE', 'CONFERENCIA_PENDENTE')
                                   AND p.data_agendamento IS NOT NULL
                                   AND p.data_agendamento BETWEEN :inicio AND :fim
-                                """)
+                                """ + FILTRO_TIPO_PAGAR)
                         .setParameter("inicio", inicio)
                         .setParameter("fim", fim)
                         .getSingleResult();
@@ -178,7 +180,7 @@ public class RelatoriosPagamentosQueryDao {
                                 SELECT COUNT(*) FROM pagamento p
                                 WHERE p.data_conferencia IS NOT NULL
                                   AND p.data_conferencia BETWEEN :inicio AND :fim
-                                """)
+                                """ + FILTRO_TIPO_PAGAR)
                         .setParameter("inicio", inicio)
                         .setParameter("fim", fim)
                         .getSingleResult();
@@ -195,7 +197,7 @@ public class RelatoriosPagamentosQueryDao {
                                   AND p.valor_pago_banco IS NOT NULL
                                   AND p.valor_diferenca IS NOT NULL
                                   AND p.valor_diferenca != 0
-                                """)
+                                """ + FILTRO_TIPO_PAGAR)
                         .setParameter("inicio", inicio)
                         .setParameter("fim", fim)
                         .getSingleResult();
@@ -208,7 +210,7 @@ public class RelatoriosPagamentosQueryDao {
                                 """
                                 SELECT COUNT(*) FROM pagamento p
                                 WHERE p.data_cadastro BETWEEN :inicio AND :fim
-                                """)
+                                """ + FILTRO_TIPO_PAGAR)
                         .setParameter("inicio", inicio)
                         .setParameter("fim", fim)
                         .getSingleResult();
@@ -238,6 +240,7 @@ public class RelatoriosPagamentosQueryDao {
                                SUM(COALESCE(p.valor_pago_banco, p.valor)) AS valor_total
                         FROM pagamento p
                         WHERE p.status NOT IN ('ACERTADO', 'CANCELADO', 'SUBSTITUIDO')
+                        """ + FILTRO_TIPO_PAGAR + """
                         GROUP BY p.imovel_id, p.status
                         ORDER BY p.imovel_id, p.status
                         """)

@@ -36,6 +36,7 @@ public class PagamentosController {
     @GetMapping
     @Operation(summary = "Listar pagamentos com filtros opcionais")
     public List<PagamentoResponse> listar(
+            @RequestParam(required = false) String tipo,
             @RequestParam(required = false) String descricao,
             @RequestParam(required = false) String codigoBarras,
             @RequestParam(required = false) BigDecimal valor,
@@ -65,6 +66,7 @@ public class PagamentosController {
             @RequestParam(required = false) Boolean conciliado,
             @RequestParam(required = false) Boolean somenteNaoConciliado) {
         var filtro = new PagamentoSpecifications.FiltroLista(
+                tipo,
                 descricao,
                 codigoBarras,
                 valor,
@@ -160,6 +162,12 @@ public class PagamentosController {
     @PostMapping("/{id}/marcar-pago")
     public PagamentoResponse marcarPago(@PathVariable Long id, @Valid @RequestBody PagamentoMarcarPagoRequest req) {
         return pagamentoApplicationService.marcarPago(id, req);
+    }
+
+    @PostMapping("/{id}/marcar-recebido")
+    public PagamentoResponse marcarRecebido(
+            @PathVariable Long id, @Valid @RequestBody PagamentoMarcarRecebidoRequest req) {
+        return pagamentoApplicationService.marcarRecebido(id, req);
     }
 
     @PostMapping("/{id}/substituir")

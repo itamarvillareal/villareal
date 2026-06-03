@@ -11,7 +11,13 @@ import java.time.LocalDate;
 @Schema(description = "Criar ou atualizar pagamento")
 public class PagamentoWriteRequest {
 
+    /** {@code PAGAR} (default) ou {@code RECEBER}. */
+    @Size(max = 10)
+    private String tipo;
+
     private LocalDate dataCadastro;
+
+    private LocalDate dataEmissao;
 
     private LocalDate dataAgendamento;
 
@@ -49,6 +55,10 @@ public class PagamentoWriteRequest {
 
     private LocalDate dataPagamentoEfetivo;
 
+    private LocalDate dataRecebimento;
+
+    private BigDecimal valorRecebido;
+
     private String observacoes;
 
     private Long clienteId;
@@ -83,8 +93,24 @@ public class PagamentoWriteRequest {
     @Size(max = 50)
     private String contaReferencia;
 
+    public String getTipo() {
+        return tipo;
+    }
+
+    public void setTipo(String tipo) {
+        this.tipo = tipo;
+    }
+
     public LocalDate getDataCadastro() {
         return dataCadastro;
+    }
+
+    public LocalDate getDataEmissao() {
+        return dataEmissao;
+    }
+
+    public void setDataEmissao(LocalDate dataEmissao) {
+        this.dataEmissao = dataEmissao;
     }
 
     public void setDataCadastro(LocalDate dataCadastro) {
@@ -185,6 +211,22 @@ public class PagamentoWriteRequest {
 
     public void setDataPagamentoEfetivo(LocalDate dataPagamentoEfetivo) {
         this.dataPagamentoEfetivo = dataPagamentoEfetivo;
+    }
+
+    public LocalDate getDataRecebimento() {
+        return dataRecebimento;
+    }
+
+    public void setDataRecebimento(LocalDate dataRecebimento) {
+        this.dataRecebimento = dataRecebimento;
+    }
+
+    public BigDecimal getValorRecebido() {
+        return valorRecebido;
+    }
+
+    public void setValorRecebido(BigDecimal valorRecebido) {
+        this.valorRecebido = valorRecebido;
     }
 
     public String getObservacoes() {

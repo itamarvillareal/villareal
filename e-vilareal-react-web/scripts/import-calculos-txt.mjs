@@ -20,6 +20,12 @@
  *   --base=PATH           Raiz «Banco de Dados»
  *   --relatorio=JSON      Grava resumo JSON
  *   --limite-rodadas=N    Em dry-run, máximo de rodadas detalhadas (defeito 30)
+ *   --strict              Aborta se alguma rodada falhar validação de fidelidade ao txt
+ *
+ * Fidelidade ao legado:
+ *   - Lê config da dimensão `{cod8}.{dim}.129.1.txt` (honorários %), 130, 131, 132, 149
+ *   - Usa snapshot dos txt quando há juros por linha (106) ou totais (119+), mesmo sem `.105.1.{proc}=SIM`
+ *   - `.105.1.{proc}.{NNN}` guarda dias de atraso — não confundir com aceite global
  */
 
 import './lib/load-vilareal-import-env.mjs';
@@ -32,9 +38,10 @@ import { resolverBaseBancoDados } from './lib/gerais-fase-processo-txt.mjs';
 import { formatCod8 } from './lib/historico-local-txt-paths.mjs';
 import {
   carregarBundleCalculosCliente,
+  diagnosticarRodadaImport,
   dirCalculosCliente,
   montarPayloadRodadaComRecalculo,
-  rodadaCalculoAceito,
+  resumirConfigDimensaoBundle,
 } from './lib/calculos-dropbox-txt.mjs';
 
 function parseArgs(argv) {
@@ -52,6 +59,7 @@ function parseArgs(argv) {
     baseUrl: (process.env.VILAREAL_API_BASE || 'http://localhost:8080').replace(/\/$/, ''),
     relatorio: null,
     limiteRodadas: 30,
+    strict: false,
   };
   for (const a of argv) {
     if (a === '--dry-run') out.dryRun = true;
@@ -69,6 +77,7 @@ function parseArgs(argv) {
     else if (a.startsWith('--base-url=')) out.baseUrl = a.slice(11).replace(/\/$/, '');
     else if (a.startsWith('--relatorio=')) out.relatorio = a.slice(12);
     else if (a.startsWith('--limite-rodadas=')) out.limiteRodadas = Math.max(0, Number(a.slice(17)) || 0);
+    else if (a === '--strict') out.strict = true;
   }
   return out;
 }
@@ -109,13 +118,19 @@ async function filtrarRodadas(bundle, opts) {
     if (opts.processoMax != null && rodada.numeroProcesso > opts.processoMax) continue;
     if (opts.dimensao != null && rodada.dimensao !== opts.dimensao) continue;
     const payload = await montarPayloadRodadaComRecalculo(rodada, { baseBanco: opts.base });
+    const diagnostico = diagnosticarRodadaImport(rodada, payload);
     items.push({
       key: rodada.key,
       cod8: rodada.cod8,
       numeroProcesso: rodada.numeroProcesso,
       dimensao: rodada.dimensao,
-      aceito: rodadaCalculoAceito(rodada),
-      recalculado: Boolean(payload.meta?.recalculado),
+      aceito: diagnostico.aceito,
+      recalculado: diagnostico.recalculado,
+      modo: diagnostico.modo,
+      honorariosPainel: diagnostico.honorariosPainel,
+      dataCalculo: diagnostico.dataCalculo,
+      totalTaxas: diagnostico.totalTaxas,
+      avisos: diagnostico.avisos,
       ficheiros: rodada.paths.length,
       debitos: payload.debitos?.length ?? 0,
       titulos: payload.titulos?.length ?? 0,
@@ -161,18 +176,38 @@ async function main() {
   const items = await filtrarRodadas(bundle, opts);
   const aceitos = items.filter((i) => i.aceito);
   const comDebitos = items.filter((i) => i.debitos > 0);
+  const snapshots = items.filter((i) => i.modo === 'snapshot');
+  const recalculados = items.filter((i) => i.recalculado);
+  const comAvisos = items.filter((i) => i.avisos.length > 0);
 
-  console.log(`[import-calculos-txt] rodadas=${items.length} aceitas=${aceitos.length} com_debitos=${comDebitos.length}`);
+  const configDim = resumirConfigDimensaoBundle(bundle);
+  if (Object.keys(configDim).length) {
+    console.log(`[import-calculos-txt] config dimensão: ${JSON.stringify(configDim)}`);
+  }
+
+  console.log(
+    `[import-calculos-txt] rodadas=${items.length} aceitas=${aceitos.length} snapshot=${snapshots.length} recalc=${recalculados.length} com_debitos=${comDebitos.length} avisos=${comAvisos.length}`,
+  );
   if (bundle.ficheirosIgnorados.length) {
     console.log(`[import-calculos-txt] ficheiros ignorados (nome inválido): ${bundle.ficheirosIgnorados.length}`);
   }
 
   const detalhe = items.slice(0, opts.limiteRodadas);
   for (const it of detalhe) {
-    const rec = it.recalculado ? ' recalc=sim' : '';
+    const extras = [
+      `modo=${it.modo}`,
+      it.honorariosPainel ? `hon=${it.honorariosPainel}` : null,
+      it.dataCalculo ? `data=${it.dataCalculo}` : null,
+      it.totalTaxas ? `tot=${it.totalTaxas}` : null,
+    ]
+      .filter(Boolean)
+      .join(' ');
     console.log(
-      `  ${it.key} aceito=${it.aceito ? 'SIM' : 'nao'}${rec} ficheiros=${it.ficheiros} titulos=${it.titulos} debitos=${it.debitos} parcelas=${it.parcelas}`
+      `  ${it.key} aceito=${it.aceito ? 'SIM' : 'nao'} ${extras} ficheiros=${it.ficheiros} titulos=${it.titulos} debitos=${it.debitos} parcelas=${it.parcelas}`,
     );
+    for (const av of it.avisos) {
+      console.warn(`    [AVISO] ${av}`);
+    }
   }
   if (items.length > detalhe.length) {
     console.log(`  ... +${items.length - detalhe.length} rodadas (use --limite-rodadas=0 para listar todas)`);
@@ -187,14 +222,31 @@ async function main() {
     aceitas: aceitos.length,
     comDebitos: comDebitos.length,
     ignorados: bundle.ficheirosIgnorados.length,
+    configDimensao: configDim,
+    snapshot: snapshots.length,
+    recalculados: recalculados.length,
+    avisos: comAvisos.length,
     amostra: detalhe.map((it) => ({
       key: it.key,
       aceito: it.aceito,
+      modo: it.modo,
+      honorariosPainel: it.honorariosPainel,
+      dataCalculo: it.dataCalculo,
+      totalTaxas: it.totalTaxas,
+      avisos: it.avisos,
       ficheiros: it.ficheiros,
       debitos: it.debitos,
       parcelas: it.parcelas,
     })),
   };
+
+  if (comAvisos.length) {
+    console.warn(`[import-calculos-txt] ${comAvisos.length} rodada(s) com aviso de fidelidade`);
+    if (opts.strict) {
+      console.error('[import-calculos-txt] abortado (--strict)');
+      process.exit(1);
+    }
+  }
 
   if (opts.dryRun) {
     if (opts.relatorio) {

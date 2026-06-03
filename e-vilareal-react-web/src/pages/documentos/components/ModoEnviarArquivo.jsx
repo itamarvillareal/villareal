@@ -5,7 +5,7 @@ import {
   formatarArquivoPdf,
   nomeArquivoPeticaoPdf,
 } from '../../../repositories/documentosRepository.js';
-import { resolveSelectInicial } from '../../../helpers/documentoHelper.js';
+import { resolveSelectInicial, extrairDataIsoDeLocalData } from '../../../helpers/documentoHelper.js';
 import { CIDADE_ESTADO_PADRAO, ENDERECAMENTOS } from '../constants.js';
 import { btnPrimary, btnSecondary, fieldErrorClass, inputClass } from '../documentosStyles.js';
 import { CollapsibleSection } from './CollapsibleSection.jsx';
@@ -76,14 +76,16 @@ export function ModoEnviarArquivo({ dadosProcesso, onErro, onLoadingChange }) {
     if (Object.keys(errs).length) return;
 
     const enderecamento = resolveEnderecamento(form);
+    const localData = form.cidadeEstado?.trim() || CIDADE_ESTADO_PADRAO;
+    const dataIso = extrairDataIsoDeLocalData(localData) || hojeIso();
     setLoading(true);
     onLoadingChange?.(true);
     try {
       const blob = await formatarArquivoPdf(arquivo, {
         enderecamento: enderecamento || undefined,
         numeroProcesso: form.numeroProcesso?.trim() || undefined,
-        cidadeEstado: form.cidadeEstado?.trim() || CIDADE_ESTADO_PADRAO,
-        data: hojeIso(),
+        cidadeEstado: localData,
+        data: dataIso,
         codigoCliente: dadosProcesso?.codigoCliente,
         numeroInterno: dadosProcesso?.numeroInterno,
       });
@@ -159,14 +161,18 @@ export function ModoEnviarArquivo({ dadosProcesso, onErro, onLoadingChange }) {
         <DadosProcesso values={form} onChange={patch} errors={errors} />
         <label className="mt-4 block text-sm">
           <span className="mb-1 block font-medium text-slate-700 dark:text-slate-300">
-            Local e data (cidade/estado)
+            Local e data
           </span>
           <input
             type="text"
             className={inputClass}
             value={form.cidadeEstado}
             onChange={(e) => patch({ cidadeEstado: e.target.value })}
+            placeholder="Anápolis, estado de Goiás, 01 de junho de 2026"
           />
+          <span className="mt-1 block text-xs text-slate-500">
+            Informe cidade, estado e data do peticionamento. Sobrescreve a linha em branco do Word.
+          </span>
         </label>
       </CollapsibleSection>
 

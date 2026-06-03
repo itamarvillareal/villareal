@@ -42,6 +42,10 @@ Publicação: Intimação para manifestação.
     expect(normalizarCnjParaChave('54026337820178090006')).toBe('5402633-78.2017.8.09.0006');
   });
 
+  it('normaliza CNJ Projudi legado com ponto entre sequencial e DV', () => {
+    expect(normalizarCnjParaChave('5780425.64.2024.8.09.0007')).toBe('5780425-64.2024.8.09.0007');
+  });
+
   it('não trata 19 dígitos como CNJ completo', () => {
     expect(normalizarCnjParaChave('5402633782017809000')).toBe('');
   });

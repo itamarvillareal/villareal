@@ -355,6 +355,31 @@
             text-indent: 2.0cm;
             margin-left: 2.0cm;
         }
+
+        /* Espaçamento entre linhas do texto da peça (um pouco acima do simples) */
+        .corpo-documento {
+            line-height: 1.15;
+        }
+
+        .corpo-documento .enderecamento,
+        .corpo-documento .numero-processo,
+        .corpo-documento .preambulo,
+        .corpo-documento .corpo,
+        .corpo-documento p.corpo,
+        .corpo-documento .secao-conteudo p,
+        .corpo-documento .citacao,
+        .corpo-documento .citacao p,
+        .corpo-documento .enumeracao,
+        .corpo-documento .fecho,
+        .corpo-documento .pedido-layout td,
+        .corpo-documento .data,
+        .corpo-documento .titulo-secao,
+        .corpo-documento .nome-peca,
+        .corpo-documento .titulo-principal,
+        .corpo-documento .subtitulo,
+        .corpo-documento .preambulo-rich p {
+            line-height: 1.15;
+        }
     </style>
 </head>
 <body>
@@ -437,8 +462,8 @@
                 </th:block>
             </th:block>
             <th:block th:unless="${omitirFechoPadrao}">
-                <p style="margin-top: 42pt; margin-bottom: 0; text-align: left; font-family: 'Arial Unicode MS', Arial, sans-serif; font-size: 12pt; line-height: 1.0; padding-left: 2.5cm;">Nestes termos,</p>
-                <p style="margin-top: 4pt; margin-bottom: 18pt; text-align: left; font-family: 'Arial Unicode MS', Arial, sans-serif; font-size: 12pt; line-height: 1.0; padding-left: 2.5cm;">pede deferimento.</p>
+                <p style="margin-top: 42pt; margin-bottom: 0; text-align: left; font-family: 'Arial Unicode MS', Arial, sans-serif; font-size: 12pt; line-height: 1.15; padding-left: 2.5cm;">Nestes termos,</p>
+                <p style="margin-top: 4pt; margin-bottom: 18pt; text-align: left; font-family: 'Arial Unicode MS', Arial, sans-serif; font-size: 12pt; line-height: 1.15; padding-left: 2.5cm;">pede deferimento.</p>
             </th:block>
             <p class="data" th:text="${localData}">Anápolis, estado de Goiás, data.</p>
             <div class="assinatura">
@@ -473,8 +498,8 @@
         </th:block>
 
         <div class="bloco-fecho">
-            <p style="margin-top: 42pt; margin-bottom: 0; text-align: left; font-family: 'Arial Unicode MS', Arial, sans-serif; font-size: 12pt; line-height: 1.0; padding-left: 2.5cm;">Nestes termos,</p>
-            <p style="margin-top: 4pt; margin-bottom: 18pt; text-align: left; font-family: 'Arial Unicode MS', Arial, sans-serif; font-size: 12pt; line-height: 1.0; padding-left: 2.5cm;">pede deferimento.</p>
+            <p style="margin-top: 42pt; margin-bottom: 0; text-align: left; font-family: 'Arial Unicode MS', Arial, sans-serif; font-size: 12pt; line-height: 1.15; padding-left: 2.5cm;">Nestes termos,</p>
+            <p style="margin-top: 4pt; margin-bottom: 18pt; text-align: left; font-family: 'Arial Unicode MS', Arial, sans-serif; font-size: 12pt; line-height: 1.15; padding-left: 2.5cm;">pede deferimento.</p>
             <p class="data" th:text="${localData}">Anápolis, estado de Goiás, data.</p>
             <div class="assinatura">
                 <p class="assinatura-nome">Dr. ITAMAR ALEXANDRE FÉLIX VILLA REAL JÚNIOR</p>

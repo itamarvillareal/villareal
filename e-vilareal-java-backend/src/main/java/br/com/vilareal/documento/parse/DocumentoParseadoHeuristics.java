@@ -182,6 +182,29 @@ final class DocumentoParseadoHeuristics {
         return StringUtils.hasText(texto) && LOCAL_DATA.matcher(texto.trim()).find();
     }
 
+    /** Linha com cidade/mês mas dia em branco (ex.: «____ de junho de 2026»). */
+    static boolean temPlaceholderDia(String texto) {
+        if (!StringUtils.hasText(texto)) {
+            return false;
+        }
+        String t = texto.trim();
+        if (t.contains("____") || t.contains("___") || t.contains("__ de")) {
+            return true;
+        }
+        return LOCAL_DATA.matcher(t).find()
+                && !Pattern.compile("(?i)\\d{1,2}\\s+de\\s+(?:janeiro|fevereiro|março|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)")
+                        .matcher(t)
+                        .find();
+    }
+
+    static String normalizarLocalDataFinal(String localData) {
+        if (!StringUtils.hasText(localData)) {
+            return localData;
+        }
+        String t = localData.trim();
+        return t.endsWith(".") ? t : t + ".";
+    }
+
     static boolean ehAssinatura(String texto, boolean center, boolean bold) {
         if (!StringUtils.hasText(texto)) {
             return false;

@@ -64,6 +64,7 @@ public class SecurityConfig {
                         auth.requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
                                 .requestMatchers("/actuator/health", "/actuator/info").permitAll()
                                 .requestMatchers("/api/webhook/whatsapp").permitAll()
+                                .requestMatchers(HttpMethod.POST, "/api/cora-sandbox/webhook").permitAll()
                                 // Diagnóstico Drive exige admin autenticado (demais /admin PROJUDI ainda TEMP público)
                                 .requestMatchers("/api/projudi/admin/drive-diag").hasAuthority("ROLE_ADMIN")
                                 // TEMPORÁRIO - liberar diagnóstico PROJUDI - remover junto com ProjudiDiagnosticoController
