@@ -64,7 +64,8 @@ class CobrancaAutomaticaApplicationServiceTest {
                 "Maria",
                 "12345678901",
                 List.of(new InadimplenciaCobrancaDto("Ordinária", "1", "04/2026", "10/04/2026", "100,00", 10000L, ""))));
-        when(xlsParser.parse(any())).thenReturn(parsed);
+        when(xlsParser.parseRelatorio(any()))
+                .thenReturn(new CobrancaRelatorioParseResult(parsed, "Condomínio Exemplo", "10/04/2026"));
 
         MockMultipartFile file = new MockMultipartFile("arquivo", "rel.xls", "application/vnd.ms-excel", new byte[] {1});
         CobrancaExtracaoResponse r = service.extrair(file);
@@ -72,6 +73,8 @@ class CobrancaAutomaticaApplicationServiceTest {
         assertThat(r.unidades()).hasSize(1);
         assertThat(r.totais().unidades()).isEqualTo(1);
         assertThat(r.totais().debitos()).isEqualTo(1);
+        assertThat(r.condominioNome()).isEqualTo("Condomínio Exemplo");
+        assertThat(r.dataReferencia()).isEqualTo("10/04/2026");
     }
 
     @Test

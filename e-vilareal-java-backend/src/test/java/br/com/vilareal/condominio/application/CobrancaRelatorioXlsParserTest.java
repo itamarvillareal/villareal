@@ -17,6 +17,15 @@ class CobrancaRelatorioXlsParserTest {
     private final CobrancaRelatorioXlsParser parser = new CobrancaRelatorioXlsParser();
 
     @Test
+    void parseRelatorio_extraiCabecalhoCondominioEDataReferencia() throws Exception {
+        try (XSSFWorkbook wb = workbookBase()) {
+            CobrancaRelatorioParseResult r = parseResult(wb);
+            assertThat(r.condominioNome()).isEqualTo("Condomínio Exemplo");
+            assertThat(r.dataReferencia()).isEqualTo("10/04/2026");
+        }
+    }
+
+    @Test
     void parse_unidadePfA0402_umDebito_valorNominal() throws Exception {
         try (XSSFWorkbook wb = workbookBase()) {
             Sheet sh = wb.getSheetAt(0);
@@ -170,10 +179,14 @@ class CobrancaRelatorioXlsParserTest {
     }
 
     private List<CobrancaUnidadeParsed> parse(XSSFWorkbook wb) throws Exception {
+        return parseResult(wb).unidades();
+    }
+
+    private CobrancaRelatorioParseResult parseResult(XSSFWorkbook wb) throws Exception {
         ByteArrayOutputStream bos = new ByteArrayOutputStream();
         wb.write(bos);
         try (ByteArrayInputStream in = new ByteArrayInputStream(bos.toByteArray())) {
-            return parser.parse(in);
+            return parser.parseRelatorio(in);
         }
     }
 }
