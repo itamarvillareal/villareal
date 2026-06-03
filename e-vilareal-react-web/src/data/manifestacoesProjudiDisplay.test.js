@@ -22,4 +22,17 @@ describe('formatarPartesLinha', () => {
     };
     expect(formatarPartesLinha(row)).toBe('MARÍLIA GABRIELA × RANDERSON AGUIAR PEREIRA');
   });
+
+  it('vinculado requerido: réu primeiro (parte cliente do escritório)', () => {
+    const row = {
+      statusVinculo: 'vinculado',
+      papelParte: 'requerido',
+      parteCliente: 'ROBERTO SOARES DAS CHAGAS e ROBERTO SOARES DAS CHAGAS I ME',
+      reu: 'FRANCISCO CESAR DA SILVA',
+      parteOposta: 'FRANCISCO CESAR DA SILVA',
+    };
+    expect(formatarPartesLinha(row)).toBe(
+      'ROBERTO SOARES DAS CHAGAS e ROBERTO SOARES DAS CHAGAS I ME × FRANCISCO CESAR DA SILVA'
+    );
+  });
 });

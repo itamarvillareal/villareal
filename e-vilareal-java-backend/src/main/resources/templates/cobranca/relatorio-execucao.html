@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="pt-BR" xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="UTF-8"/>
+  <style>
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 10pt; color: #1e293b; margin: 24px; }
+    h1 { font-size: 16pt; margin: 0 0 4px; }
+    h2 { font-size: 12pt; margin: 20px 0 8px; border-bottom: 1px solid #cbd5e1; padding-bottom: 4px; }
+    .meta { font-size: 9pt; color: #64748b; margin-bottom: 16px; }
+    .resumo { background: #f8fafc; border: 1px solid #e2e8f0; padding: 12px; margin: 12px 0; }
+    .reconcilia-ok { color: #166534; font-weight: bold; }
+    .reconcilia-erro { color: #b91c1c; font-weight: bold; }
+    .atencao { background: #fef2f2; border: 1px solid #fecaca; padding: 10px; margin: 12px 0; }
+    .atencao ul { margin: 4px 0 0 18px; padding: 0; }
+    table { width: 100%; border-collapse: collapse; margin: 8px 0 16px; font-size: 9pt; }
+    th, td { border: 1px solid #e2e8f0; padding: 5px 6px; text-align: left; }
+    th { background: #f1f5f9; font-weight: 600; }
+    .num { text-align: right; }
+    .sec-troca { background: #fffbeb; }
+  </style>
+</head>
+<body>
+  <h1>Relatório — Cobrança automática (inadimplência)</h1>
+  <div class="meta">
+    Cliente: <span th:text="${clienteCodigo}">—</span>
+    <span th:if="${clienteNome != null and !clienteNome.isEmpty()}"> — <span th:text="${clienteNome}">—</span></span><br/>
+    importacaoId: <span th:text="${importacaoId}">—</span><br/>
+    Data: <span th:text="${criadoEmIso}">—</span>
+    <span th:if="${arquivoNome != null and !arquivoNome.isEmpty()}"><br/>Arquivo: <span th:text="${arquivoNome}">—</span></span>
+    <span th:if="${usuario != null and !usuario.isEmpty()}"><br/>Usuário: <span th:text="${usuario}">—</span></span>
+  </div>
+
+  <h2>Resumo</h2>
+  <div class="resumo">
+    <p>Documento: <strong th:text="${titulosDocumento}">0</strong> títulos em
+      <strong th:text="${unidadesDocumento}">0</strong> unidades</p>
+    <p>Inseridos: <strong th:text="${titulosInseridos}">0</strong> ·
+      Ignorados: <strong th:text="${titulosIgnorados}">0</strong> ·
+      Falhados: <strong th:text="${titulosFalhados}">0</strong></p>
+    <p th:class="${reconciliacaoOk} ? 'reconcilia-ok' : 'reconcilia-erro'">
+      Documento <span th:text="${titulosDocumento}">0</span> =
+      Inseridos <span th:text="${titulosInseridos}">0</span> +
+      Ignorados <span th:text="${titulosIgnorados}">0</span> +
+      Falhados <span th:text="${titulosFalhados}">0</span>
+    </p>
+    <p>Processos criados: <span th:text="${processosCriados}">0</span> ·
+      Reutilizados: <span th:text="${processosReutilizados}">0</span> ·
+      Pessoas criadas: <span th:text="${pessoasCriadas}">0</span> ·
+      Revisões troca de dono: <span th:text="${revisoesTrocaDono}">0</span></p>
+  </div>
+
+  <div class="atencao" th:if="${!pontosAtencao.isEmpty()}">
+    <strong>Pontos de atenção</strong>
+    <ul>
+      <li th:each="p : ${pontosAtencao}" th:text="${p}">—</li>
+    </ul>
+  </div>
+
+  <h2>Por unidade</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Unidade</th><th>Proprietário</th><th>Doc</th><th>Proc.</th>
+        <th class="num">Ins.</th><th class="num">Ign.</th><th>Troca</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr th:each="it : ${itens}">
+        <td th:text="${it.codigoUnidade}">—</td>
+        <td th:text="${it.proprietarioNome}">—</td>
+        <td th:text="${it.doc}">—</td>
+        <td><span th:text="${it.numeroInterno}">—</span><span th:if="${it.processoCriado}"> (novo)</span></td>
+        <td class="num" th:text="${it.debitosInseridos}">0</td>
+        <td class="num" th:text="${it.debitosIgnorados}">0</td>
+        <td th:text="${it.revisaoTrocaDono} ? 'Sim' : '—'">—</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2 th:if="${!ignoradosFlat.isEmpty()}">Títulos ignorados</h2>
+  <table th:if="${!ignoradosFlat.isEmpty()}">
+    <thead>
+      <tr><th>Unidade</th><th>Vencimento</th><th>Valor</th><th>Dim.</th><th>Motivo</th></tr>
+    </thead>
+    <tbody>
+      <tr th:each="ig : ${ignoradosFlat}">
+        <td th:text="${ig.codigoUnidade}">—</td>
+        <td th:text="${ig.vencimento}">—</td>
+        <td th:text="${ig.valor}">—</td>
+        <td class="num" th:text="${ig.dimensaoExistente}">0</td>
+        <td th:text="${ig.motivo}">—</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2 th:if="${!processosCriadosLista.isEmpty()}">Processos criados</h2>
+  <table th:if="${!processosCriadosLista.isEmpty()}">
+    <thead><tr><th>Unidade</th><th>Proc. nº</th><th>processoId</th></tr></thead>
+    <tbody>
+      <tr th:each="p : ${processosCriadosLista}">
+        <td th:text="${p.codigoUnidade}">—</td>
+        <td th:text="${p.numeroInterno}">—</td>
+        <td th:text="${p.processoId}">—</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2 th:if="${!trocaDonoLista.isEmpty()}">Troca de dono</h2>
+  <table th:if="${!trocaDonoLista.isEmpty()}" class="sec-troca">
+    <thead><tr><th>Unidade</th><th>Novo proc.</th><th>RÉU anterior (pessoa id)</th></tr></thead>
+    <tbody>
+      <tr th:each="t : ${trocaDonoLista}">
+        <td th:text="${t.codigoUnidade}">—</td>
+        <td th:text="${t.numeroInterno}">—</td>
+        <td th:text="${t.pessoaIdReuAnterior}">—</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2 th:if="${!erros.isEmpty()}">Erros</h2>
+  <table th:if="${!erros.isEmpty()}">
+    <thead><tr><th>Unidade</th><th>Mensagem</th></tr></thead>
+    <tbody>
+      <tr th:each="e : ${erros}">
+        <td th:text="${e.codigoUnidade}">—</td>
+        <td th:text="${e.mensagem}">—</td>
+      </tr>
+    </tbody>
+  </table>
+</body>
+</html>

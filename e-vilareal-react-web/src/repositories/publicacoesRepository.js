@@ -8,7 +8,9 @@ import {
 } from '../data/publicacoesStorage.js';
 import { listarPublicacoesDoProcesso } from '../data/publicacoesPorProcesso.js';
 import { normalizarCnjParaChave } from '../data/publicacoesPdfParser.js';
+import { ajustarPartesPublicacaoUi } from '../data/partesLadoEscritorio.js';
 import { buscarProcessoPorChaveNatural, resolverProcessoId } from './processosRepository.js';
+import { papelParteApiParaUi } from './processosRepository.js';
 
 /**
  * Camadas deste módulo:
@@ -87,10 +89,11 @@ export function mapApiPublicacaoToUi(r) {
   const parteOpostaApi = String(r.parteOposta ?? r.parte_oposta ?? '').trim();
   const titularNome = titularNomeApi;
   const parteCliente = parteClienteApi;
+  const papelParte = papelParteApiParaUi(r.papelCliente ?? r.papel_cliente);
   const cliente = titularNome || parteCliente || (r.clienteId != null ? `Cliente #${r.clienteId}` : '');
   const reu = parteOpostaApi;
 
-  return {
+  return ajustarPartesPublicacaoUi({
     id: String(r.id),
     _apiId: r.id,
     dataImportacao: r.createdAt || '',
@@ -103,6 +106,8 @@ export function mapApiPublicacaoToUi(r) {
     codCliente,
     cliente,
     titularNome,
+    papelCliente: String(r.papelCliente ?? r.papel_cliente ?? '').trim() || null,
+    papelParte,
     parteCliente,
     parteOposta: reu,
     reu,
@@ -142,7 +147,7 @@ export function mapApiPublicacaoToUi(r) {
     andamentosNoDriveEm: r.andamentosNoDriveEm || null,
     qtdArquivosDrive: r.qtdArquivosDrive ?? null,
     teor: r.teor || '',
-  };
+  });
 }
 
 /** Usado na importação (prévia PDF) e na migração assistida do legado — formato de item gravado localmente. */

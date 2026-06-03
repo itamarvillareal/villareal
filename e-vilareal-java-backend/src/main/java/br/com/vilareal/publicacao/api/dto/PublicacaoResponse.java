@@ -55,7 +55,10 @@ public class PublicacaoResponse {
      */
     private String titularNome;
 
-    /** Nome do titular (legado / compatível com front antigo). */
+    /** REQUERENTE ou REQUERIDO — define qual polo é «parte cliente» do escritório. */
+    private String papelCliente;
+
+    /** Parte(s) do lado do escritório ({@code processo_parte} + {@link #papelCliente}). */
     private String parteCliente;
 
     /** Parte(s) oposta(s) agregada(s), critério alinhado a {@code ProcessoResponse#getParteOposta()}. */

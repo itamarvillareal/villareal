@@ -9,6 +9,7 @@ import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.ss.usermodel.WorkbookFactory;
+import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 import java.io.IOException;
@@ -26,6 +27,7 @@ import java.util.regex.Pattern;
  * Parser do relatório de inadimplência condominial exportado em .xls (OOXML).
  * Cabeçalhos de coluna são detectados por rótulo literal em cada bloco de unidade.
  */
+@Component
 public class CobrancaRelatorioXlsParser {
 
     private static final Pattern PAT_PROPRIETARIO =

@@ -360,6 +360,7 @@ public class PublicacaoApplicationService {
                             : processoApplicationService.resolverTextosPartesVinculoEmLote(Set.of(proc.getId()));
             String titularNome = Utf8MojibakeUtil.corrigir(proc.getPessoa().getNome());
             r.setTitularNome(trimToNull(titularNome));
+            r.setPapelCliente(trimToNull(proc.getPapelCliente()));
             ProcessoPartesVinculoTexto pt = map.get(proc.getId());
             if (pt != null) {
                 r.setParteCliente(trimToNull(pt.getParteCliente()));
