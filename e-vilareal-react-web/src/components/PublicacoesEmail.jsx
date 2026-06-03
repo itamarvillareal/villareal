@@ -33,6 +33,11 @@ import {
 import { buildRouterStateChaveClienteProcesso } from '../domain/camposProcessoCliente.js';
 import { mensagemErroAmigavel } from '../utils/mensagemErroAmigavel.js';
 import {
+  normalizarCodigoClienteFinanceiro,
+  normalizarProcFinanceiro,
+} from '../data/financeiroData.js';
+import { ModalVinculoClienteProcFinanceiro } from './ModalVinculoClienteProcFinanceiro.jsx';
+import {
   formatarChaveProcessoVinculo,
   formatarRotuloVinculoPartes,
   obterTitularNomeLinha,
@@ -44,7 +49,6 @@ import {
 } from '../data/publicacoesVinculoProcessos.js';
 import {
   alterarStatusPublicacao,
-  buscarSugestaoVinculoPorCnjDiagnostico,
   carregarSugestoesVinculoPorPublicacoes,
   vincularPublicacaoProcessoAutomatico,
   vincularPublicacaoProcessoPorChaveNatural,
@@ -349,95 +353,16 @@ function ModalTeor({ publicacao, onClose, onAbrirProcesso, isProjudi = false }) 
   );
 }
 
-function ModalVinculo({ onClose, vincForm, setVincForm, vinculoFormErro, onConfirmar }) {
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="vinculo-modal-title"
-    >
-      <div className="w-full max-w-md space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-xl dark:border-white/10 dark:bg-[#141c2c]">
-        <div className="flex items-start justify-between gap-2">
-          <h3
-            id="vinculo-modal-title"
-            className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-white"
-          >
-            <Link2 className="h-4 w-4 shrink-0" />
-            Vincular ao cadastro interno
-          </h3>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg p-1 text-slate-500 hover:bg-slate-100 dark:hover:bg-white/10"
-            aria-label="Fechar"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-        <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-400">
-          Informe o <strong>código do titular</strong> e o <strong>nº interno</strong> (pasta do cliente). O mesmo nº
-          interno pode existir em vários clientes — confira o <strong>id do processo</strong> na sugestão ou na coluna de
-          vínculo após salvar.
-        </p>
-        <div className="grid gap-3">
-          <label className="grid gap-1 text-xs font-medium text-slate-700 dark:text-slate-300">
-            Código do cliente
-            <input
-              type="text"
-              inputMode="numeric"
-              value={vincForm.codCliente}
-              onChange={(e) => setVincForm((f) => ({ ...f, codCliente: e.target.value }))}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm dark:border-white/10 dark:bg-[#0d1018]"
-              placeholder="ex.: 00000001"
-            />
-          </label>
-          <label className="grid gap-1 text-xs font-medium text-slate-700 dark:text-slate-300">
-            Proc. interno
-            <input
-              type="text"
-              value={vincForm.procInterno}
-              onChange={(e) => setVincForm((f) => ({ ...f, procInterno: e.target.value }))}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm dark:border-white/10 dark:bg-[#0d1018]"
-              placeholder="número do processo interno"
-            />
-          </label>
-          <label className="grid gap-1 text-xs font-medium text-slate-700 dark:text-slate-300">
-            Cliente (opcional)
-            <input
-              type="text"
-              value={vincForm.cliente}
-              onChange={(e) => setVincForm((f) => ({ ...f, cliente: e.target.value }))}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm dark:border-white/10 dark:bg-[#0d1018]"
-              placeholder="Nome para exibição"
-            />
-          </label>
-        </div>
-        {vinculoFormErro ? (
-          <p className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400">
-            <AlertTriangle className="h-4 w-4 shrink-0" />
-            {vinculoFormErro}
-          </p>
-        ) : null}
-        <div className="flex flex-wrap justify-end gap-2 pt-1">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg border border-slate-300 px-4 py-2 text-sm dark:border-white/15"
-          >
-            Cancelar
-          </button>
-          <button
-            type="button"
-            onClick={() => void onConfirmar()}
-            className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700"
-          >
-            Salvar vínculo
-          </button>
-        </div>
-      </div>
-    </div>
-  );
+function montarResumoVinculoPublicacao(row, isProjudi) {
+  const partes = [];
+  const cnj = cnjLinha(row);
+  if (cnj && cnj !== '—') partes.push(cnj);
+  if (isProjudi) {
+    const tipo = tipoMovimentoLinha(row);
+    if (tipo) partes.push(tipo);
+  }
+  if (row.emailRecebidoEm) partes.push(fmtInstant(row.emailRecebidoEm));
+  return partes.join(' · ') || 'Movimentação por email';
 }
 
 function CelulaClienteProc({ row, indiceCnj, sugestoesApi }) {
@@ -693,8 +618,6 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
   const [sugestoesApi, setSugestoesApi] = useState(() => new Map());
   const [carregandoSugestoes, setCarregandoSugestoes] = useState(false);
   const [vinculoModal, setVinculoModal] = useState(null);
-  const [vincForm, setVincForm] = useState({ codCliente: '', procInterno: '', cliente: '' });
-  const [vinculoFormErro, setVinculoFormErro] = useState('');
   const [ordemDataAsc, setOrdemDataAsc] = useState(false);
   const [aplicandoSugestoes, setAplicandoSugestoes] = useState(false);
   const sugestoesAutoTentadasRef = useRef(new Set());
@@ -842,25 +765,11 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
 
   const abrirVinculoModal = (row) => {
     const sug = resolverSugestaoVinculoLinha(row, indiceCnj, sugestoesApi);
-    setVinculoModal({ id: row.id });
-    setVincForm({
-      codCliente: row.codCliente || sug?.codCliente || '',
-      procInterno: row.procInterno || sug?.procInterno || '',
-      cliente: row.cliente || sug?.cliente || '',
-    });
-    setVinculoFormErro(sug?.ambiguo ? 'Há mais de um processo com CNJ semelhante; confira código e proc. interno.' : '');
-    if (sug) return;
-    void buscarSugestaoVinculoPorCnjDiagnostico(cnjLinha(row)).then((sugApi) => {
-      if (!sugApi) return;
-      setVincForm((f) => ({
-        codCliente: f.codCliente || sugApi.codCliente || '',
-        procInterno: f.procInterno || sugApi.procInterno || '',
-        cliente: f.cliente || sugApi.cliente || '',
-      }));
-      if (sugApi.ambiguo) {
-        setVinculoFormErro('Há mais de um processo com CNJ semelhante; confira código e proc. interno.');
-      }
-    });
+    let resumo = montarResumoVinculoPublicacao(row, isProjudi);
+    if (sug?.ambiguo) {
+      resumo += ' · Atenção: mais de um processo com CNJ semelhante — escolha o cliente e o proc. na lista';
+    }
+    setVinculoModal({ id: row.id, resumo });
   };
 
   const aplicarSugestaoVinculo = async (row) => {
@@ -955,26 +864,37 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
     void aplicarTodasSugestoes({ auto: true });
   }, [cfg.autoAplicarSugestoes, carregandoSugestoes, aplicandoSugestoes, rows, indiceCnj, sugestoesApi, aplicarTodasSugestoes]);
 
-  const confirmarVinculoModal = async () => {
+  const handleAplicarVinculoPublicacao = async ({ codCliente, proc }) => {
     const row = rows.find((x) => x.id === vinculoModal?.id);
     if (!row) return;
+    const cod = normalizarCodigoClienteFinanceiro(codCliente);
+    const procNorm = normalizarProcFinanceiro(proc);
+    if (!cod) {
+      setErr('Selecione um cliente com código válido.');
+      return;
+    }
+    if (!procNorm) {
+      setErr('Selecione um processo com número interno válido.');
+      return;
+    }
+    setVinculoModal(null);
+    setErr('');
+    setMsgOk('');
     try {
       const vinculado = await vincularPublicacaoProcessoPorChaveNatural(
         row._apiId ?? row.id,
-        vincForm.codCliente,
-        vincForm.procInterno,
+        cod,
+        procNorm,
         'Vínculo manual via tela de publicações por email.'
       );
       if (vinculado == null) {
-        setVinculoFormErro('Não foi possível resolver processo por código/proc. interno.');
+        setErr('Não foi possível resolver processo por código/proc. interno.');
         return;
       }
-      setVinculoModal(null);
-      setVinculoFormErro('');
       setMsgOk('Vínculo salvo com sucesso.');
       await carregar();
     } catch (e) {
-      setVinculoFormErro(e?.message || 'Falha ao vincular publicação na API.');
+      setErr(mensagemErroAmigavel(e, 'vincular a publicação'));
     }
   };
 
@@ -1398,18 +1318,14 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
           </div>
         </div>
       ) : null}
-      {vinculoModal ? (
-        <ModalVinculo
-          vincForm={vincForm}
-          setVincForm={setVincForm}
-          vinculoFormErro={vinculoFormErro}
-          onClose={() => {
-            setVinculoModal(null);
-            setVinculoFormErro('');
-          }}
-          onConfirmar={confirmarVinculoModal}
-        />
-      ) : null}
+      <ModalVinculoClienteProcFinanceiro
+        aberto={Boolean(vinculoModal)}
+        onFechar={() => setVinculoModal(null)}
+        resumoLancamento={vinculoModal?.resumo ?? ''}
+        onAplicar={handleAplicarVinculoPublicacao}
+        modoContaEscritorio
+        titulo="Vincular ao cadastro interno"
+      />
     </div>
   );
 }

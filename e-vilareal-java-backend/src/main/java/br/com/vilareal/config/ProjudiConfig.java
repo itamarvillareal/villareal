@@ -17,4 +17,13 @@ public class ProjudiConfig {
             return t;
         });
     }
+
+    @Bean(name = "projudiEmailPipelineExecutor", destroyMethod = "shutdown")
+    public ExecutorService projudiEmailPipelineExecutor() {
+        return Executors.newSingleThreadExecutor(r -> {
+            Thread t = new Thread(r, "projudi-email-pipeline");
+            t.setDaemon(true);
+            return t;
+        });
+    }
 }

@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
@@ -73,6 +74,22 @@ public interface PublicacaoRepository extends JpaRepository<PublicacaoEntity, Lo
             ORDER BY p.processo.id ASC
             """)
     List<Long> findDistinctProcessoIdsComPublicacaoProjudiCnjCompleto();
+
+    /**
+     * Processos com movimentação PROJUDI vinculada ({@code processo_id}) e e-mail recebido desde
+     * {@code emailRecebidoDesde} — janela do pipeline automático (ex.: últimos 7 dias).
+     */
+    @Query(
+            """
+            SELECT DISTINCT p.processo.id FROM PublicacaoEntity p
+            WHERE p.origemImportacao = 'PROJUDI'
+              AND p.processo.id IS NOT NULL
+              AND p.emailRecebidoEm IS NOT NULL
+              AND p.emailRecebidoEm >= :emailRecebidoDesde
+            ORDER BY p.processo.id ASC
+            """)
+    List<Long> findDistinctProcessoIdsProjudiVinculadosComEmailRecebidoDesde(
+            @Param("emailRecebidoDesde") Instant emailRecebidoDesde);
 
     /**
      * Processos distintos com publicação MONITORAMENTO (Publicações Email / Jusbrasil), CNJ completo
