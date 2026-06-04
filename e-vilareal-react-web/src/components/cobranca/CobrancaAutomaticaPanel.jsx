@@ -1,6 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { padCliente8Cadastro } from '../../data/cadastroClientesStorage.js';
 import {
+  loadConfigCalculoCliente,
+  refreshConfigCalculoClienteFromApi,
+} from '../../data/clienteConfigCalculoStorage.js';
+import { featureFlags } from '../../config/featureFlags.js';
+import {
+  labelRegraInicio,
+  maiorDiasAtrasoUnidade,
+  normalizarRegraInicioCobrancaDias,
+  resumoPreviasRegraInicio,
+  unidadeAcionadaPelaRegra,
+} from '../../domain/cobrancaRegraInicio.js';
+import {
   baixarRelatorioPdf,
   extrairCobranca,
   processarCobranca,
@@ -162,7 +174,33 @@ export function CobrancaAutomaticaPanel({ clienteCodigo, clienteNome }) {
   const [loadingProcessar, setLoadingProcessar] = useState(false);
   const [erro, setErro] = useState(null);
   const [copiado, setCopiado] = useState(false);
+  const [regraInicioDias, setRegraInicioDias] = useState(1);
   const xlsInputRef = useRef(null);
+
+  const recarregarRegraCliente = useCallback(async () => {
+    if (featureFlags.useApiCalculos) {
+      await refreshConfigCalculoClienteFromApi(codigoCliente);
+    }
+    const c = loadConfigCalculoCliente(codigoCliente);
+    setRegraInicioDias(normalizarRegraInicioCobrancaDias(c.regraInicioCobrancaDias));
+  }, [codigoCliente]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      await recarregarRegraCliente();
+      if (cancelled) return;
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [recarregarRegraCliente]);
+
+  useEffect(() => {
+    const onAtualizado = () => void recarregarRegraCliente();
+    window.addEventListener('vilareal:cliente-config-calculo-atualizado', onAtualizado);
+    return () => window.removeEventListener('vilareal:cliente-config-calculo-atualizado', onAtualizado);
+  }, [recarregarRegraCliente]);
 
   const resetFluxo = useCallback(() => {
     setStep(1);
@@ -262,6 +300,13 @@ export function CobrancaAutomaticaPanel({ clienteCodigo, clienteNome }) {
     [processResult],
   );
 
+  const regraLabel = useMemo(() => labelRegraInicio(regraInicioDias), [regraInicioDias]);
+
+  const previaRegra = useMemo(() => {
+    if (!extracao?.unidades?.length) return null;
+    return resumoPreviasRegraInicio(extracao.unidades, regraInicioDias);
+  }, [extracao, regraInicioDias]);
+
   const copiarResumo = useCallback(async () => {
     if (!textoResumo) return;
     try {
@@ -322,6 +367,18 @@ export function CobrancaAutomaticaPanel({ clienteCodigo, clienteNome }) {
           {rotuloRelatorio && (
             <p className="text-sm font-medium text-slate-800">{rotuloRelatorio}</p>
           )}
+          <p className="text-sm text-slate-700">
+            <span className="font-medium text-slate-800">Regra:</span> {regraLabel}
+            <span className="text-slate-500 text-xs ml-1">
+              (prévia com base na data de hoje; a decisão oficial é no processamento)
+            </span>
+          </p>
+          {previaRegra && previaRegra.descartados > 0 && (
+            <p className="text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              Prévia: {previaRegra.descartados} devedor(es) / {previaRegra.titulosDescartados} taxa(s) seriam
+              descartados pela regra {previaRegra.regraLabel}.
+            </p>
+          )}
           {avisoCondominio && (
             <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950">
               O nome do condomínio no relatório (
@@ -359,12 +416,16 @@ export function CobrancaAutomaticaPanel({ clienteCodigo, clienteNome }) {
                   <th className="text-left px-3 py-2 font-medium">Proprietário</th>
                   <th className="text-left px-3 py-2 font-medium">CPF/CNPJ</th>
                   <th className="text-right px-3 py-2 font-medium">Cobranças</th>
+                  <th className="text-right px-3 py-2 font-medium">Maior atraso</th>
+                  <th className="text-center px-3 py-2 font-medium">Regra</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {(extracao.unidades || []).map((u) => {
                   const cod = u.codigoUnidadeNormalizada || u.codigoUnidade || '—';
                   const n = Array.isArray(u.cobrancas) ? u.cobrancas.length : 0;
+                  const maiorDias = maiorDiasAtrasoUnidade(u);
+                  const acionado = unidadeAcionadaPelaRegra(u, regraInicioDias);
                   return (
                     <tr key={cod} className="text-slate-800">
                       <td className="px-3 py-2 font-mono text-xs">{cod}</td>
@@ -375,6 +436,20 @@ export function CobrancaAutomaticaPanel({ clienteCodigo, clienteNome }) {
                         {formatDocDigitos(u.proprietarioDocDigitos)}
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums">{n}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-slate-600">
+                        {maiorDias != null ? `${maiorDias} d` : '—'}
+                      </td>
+                      <td className="px-3 py-2 text-center">
+                        {acionado ? (
+                          <span className="inline-block rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">
+                            acionado
+                          </span>
+                        ) : (
+                          <span className="inline-block rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+                            descartado
+                          </span>
+                        )}
+                      </td>
                     </tr>
                   );
                 })}
@@ -408,6 +483,26 @@ export function CobrancaAutomaticaPanel({ clienteCodigo, clienteNome }) {
       {step === 3 && processResult && (
         <div className="space-y-3">
           <p className="text-sm font-medium text-slate-800">Processamento concluído</p>
+          {processResult.regraInicio && (
+            <p className="text-sm text-slate-700">
+              Regra aplicada:{' '}
+              <span className="font-medium">{processResult.regraInicio.regraAplicada ?? regraLabel}</span>
+              {processResult.regraInicio.dataImportacao ? (
+                <span className="text-slate-500 text-xs ml-1">
+                  (importação {processResult.regraInicio.dataImportacao})
+                </span>
+              ) : null}
+            </p>
+          )}
+          {processResult.regraInicio &&
+            (processResult.regraInicio.devedoresDescartados > 0 ||
+              processResult.regraInicio.titulosDescartados > 0) && (
+              <p className="text-sm text-amber-950 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                Descartados pela regra {processResult.regraInicio.regraAplicada ?? regraLabel}:{' '}
+                {processResult.regraInicio.devedoresDescartados ?? 0} devedor(es) /{' '}
+                {processResult.regraInicio.titulosDescartados ?? 0} taxa(s)
+              </p>
+            )}
           {reconc && (
             <p
               className={`text-sm tabular-nums ${

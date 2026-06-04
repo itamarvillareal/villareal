@@ -5,7 +5,9 @@ import lombok.Setter;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 @Getter
 @Setter
@@ -21,6 +23,11 @@ public class PublicacaoEmailProcessamentoResumo {
     /** Publicações vinculadas automaticamente ao processo cadastrado (CNJ). */
     private int vinculosAutomaticos;
     private List<String> erros = new ArrayList<>();
+    /**
+     * Processos que receberam publicação nova neste ciclo Gmail — o pipeline PROJUDI prioriza
+     * apenas estes quando o acervo integral já está desarmado.
+     */
+    private Set<Long> processosAtivadosDrive = new LinkedHashSet<>();
 
     /** Cursor usado no início desta execução (null na primeira vez ou em forçar completo). */
     private Instant ultimaSincronizacaoAnterior;
@@ -29,4 +36,10 @@ public class PublicacaoEmailProcessamentoResumo {
     private boolean forcarAtualizacao;
     private boolean sincronizacaoIncremental;
     private String queryGmail;
+
+    public void registrarProcessoAtivadoDrive(Long processoId) {
+        if (processoId != null) {
+            processosAtivadosDrive.add(processoId);
+        }
+    }
 }

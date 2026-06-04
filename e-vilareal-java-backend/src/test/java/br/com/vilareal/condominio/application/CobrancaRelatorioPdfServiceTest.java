@@ -7,6 +7,7 @@ import br.com.vilareal.condominio.api.dto.RelatorioDebitoInseridoDto;
 import br.com.vilareal.condominio.api.dto.RelatorioExecucaoCobranca;
 import br.com.vilareal.condominio.api.dto.RelatorioItemUnidadeDto;
 import br.com.vilareal.condominio.api.dto.RelatorioTotaisDocumentoDto;
+import br.com.vilareal.condominio.api.dto.RelatorioRegraInicioDto;
 import br.com.vilareal.condominio.api.dto.RelatorioTotaisExecucaoDto;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -48,6 +49,7 @@ class CobrancaRelatorioPdfServiceTest {
                         "tester"),
                 new RelatorioTotaisDocumentoDto(1, 2),
                 new RelatorioTotaisExecucaoDto(1, 0, 1, 1, 0, 0, 1, 0, 0),
+                new RelatorioRegraInicioDto("D+60", "2026-06-03", 1, 2),
                 List.of(new RelatorioItemUnidadeDto(
                         "A-0402",
                         "Maria",
@@ -66,7 +68,8 @@ class CobrancaRelatorioPdfServiceTest {
                         List.of(new RelatorioDebitoIgnoradoDto(
                                 "11/05/2026", "200,00", 0, ResultadoMerge.MOTIVO_DEBITO_JA_EXISTE)))),
                 List.of(),
-                List.of());
+                List.of(
+                        "1 devedor(es) não atingiram a regra D+60 e foram descartados (não importados)."));
 
         byte[] pdf = pdfService.gerarPdf(rel);
         assertThat(pdf).isNotEmpty();

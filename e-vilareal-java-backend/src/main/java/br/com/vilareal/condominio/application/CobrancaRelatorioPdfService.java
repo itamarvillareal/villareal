@@ -72,6 +72,7 @@ public class CobrancaRelatorioPdfService {
         m.put("processosReutilizados", exec.processosReutilizados());
         m.put("pessoasCriadas", exec.pessoasCriadas());
         m.put("revisoesTrocaDono", exec.revisoesTrocaDono());
+        m.put("regraInicio", r.regraInicio());
 
         boolean ok = CobrancaRelatorioMontador.reconciliacaoFecha(doc, exec);
         m.put("reconciliacaoOk", ok);

@@ -13,8 +13,11 @@ import {
   Users,
   Lock,
   Unlock,
+  UserX,
   Loader2,
   Check,
+  Wallet,
+  ClipboardList,
 } from 'lucide-react';
 import { ModalConfiguracoesCalculoCliente } from './ModalConfiguracoesCalculoCliente.jsx';
 import { ModalWhatsAppCliente } from './ModalWhatsAppCliente.jsx';
@@ -89,10 +92,112 @@ const ESTADO_TELA_SEM_CLIENTE = {
   processos: [],
 };
 
-const btnAcaoSecundario =
-  'px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-800 text-sm font-medium shadow-sm hover:bg-slate-50 hover:border-slate-400 transition-colors';
-const btnAcaoPrimario =
-  'px-3 py-2 rounded-lg border border-indigo-600 bg-indigo-600 text-white text-sm font-semibold shadow-sm hover:bg-indigo-700';
+/** Transição uniforme em botões da ficha do cliente */
+const BTN_TRANSICAO = 'transition-all duration-150 ease-out';
+
+/** Primárias: roxo cheio + elevação no hover */
+const btnPrimarioForte = [
+  'inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-md',
+  'bg-gradient-to-r from-indigo-600 to-violet-600',
+  'hover:from-indigo-500 hover:to-violet-500 hover:shadow-lg hover:-translate-y-px',
+  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-1',
+  'disabled:pointer-events-none disabled:opacity-50 disabled:saturate-50 disabled:hover:translate-y-0',
+  BTN_TRANSICAO,
+].join(' ');
+
+/** Utilitárias: discretas, não competem com primárias */
+const btnUtilDiscreto = [
+  'inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm font-medium text-slate-600 shadow-sm',
+  'hover:bg-slate-50 hover:border-slate-300',
+  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-1',
+  'disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400 disabled:opacity-60 disabled:saturate-50',
+  BTN_TRANSICAO,
+].join(' ');
+
+const btnNavCodigoSeta = [
+  'flex w-9 items-center justify-center border-indigo-100 text-indigo-700',
+  'hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-400',
+  BTN_TRANSICAO,
+].join(' ');
+
+/** Acentos semânticos da fileira de seções (ícone colorido em repouso) */
+const SECAO_BTN_BASE = [
+  'inline-flex min-h-10 items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium shadow-sm',
+  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1',
+  BTN_TRANSICAO,
+].join(' ');
+
+const SECAO_ACENTOS = {
+  indigo: {
+    icon: 'text-indigo-600',
+    iconAtivo: 'text-white',
+    repouso: 'border-slate-200 bg-white text-slate-800',
+    hover: 'hover:border-indigo-200 hover:bg-indigo-50 hover:shadow-md hover:-translate-y-px',
+    ativo: 'border-indigo-600 bg-indigo-600 text-white shadow-md',
+    focus: 'focus-visible:ring-indigo-500',
+  },
+  emerald: {
+    icon: 'text-emerald-600',
+    iconAtivo: 'text-white',
+    repouso: 'border-slate-200 bg-white text-slate-800',
+    hover: 'hover:border-emerald-200 hover:bg-emerald-50 hover:shadow-md hover:-translate-y-px',
+    ativo: 'border-emerald-600 bg-emerald-600 text-white shadow-md',
+    focus: 'focus-visible:ring-emerald-500',
+  },
+  amber: {
+    icon: 'text-amber-600',
+    iconAtivo: 'text-white',
+    repouso: 'border-slate-200 bg-white text-slate-800',
+    hover: 'hover:border-amber-200 hover:bg-amber-50 hover:shadow-md hover:-translate-y-px',
+    ativo: 'border-amber-600 bg-amber-600 text-white shadow-md',
+    focus: 'focus-visible:ring-amber-500',
+  },
+  cyan: {
+    icon: 'text-cyan-600',
+    iconAtivo: 'text-white',
+    repouso: 'border-slate-200 bg-white text-slate-800',
+    hover: 'hover:border-cyan-200 hover:bg-cyan-50 hover:shadow-md hover:-translate-y-px',
+    ativo: 'border-cyan-700 bg-cyan-700 text-white shadow-md',
+    focus: 'focus-visible:ring-cyan-600',
+  },
+  violet: {
+    icon: 'text-violet-600',
+    iconAtivo: 'text-white',
+    repouso: 'border-slate-200 bg-white text-slate-800',
+    hover: 'hover:border-violet-200 hover:bg-violet-50 hover:shadow-md hover:-translate-y-px',
+    ativo: 'border-violet-600 bg-violet-600 text-white shadow-md',
+    focus: 'focus-visible:ring-violet-500',
+  },
+  whatsapp: {
+    icon: 'text-[#25D366]',
+    iconAtivo: 'text-white',
+    repouso: 'border-slate-200 bg-white text-slate-800',
+    hover: 'hover:border-[#25D366]/50 hover:bg-[#25D366]/10 hover:shadow-md hover:-translate-y-px',
+    ativo: 'border-[#25D366] bg-[#25D366] text-white shadow-md',
+    focus: 'focus-visible:ring-[#25D366]',
+  },
+};
+
+/**
+ * @param {keyof typeof SECAO_ACENTOS} accent
+ * @param {{ ativo?: boolean, disabled?: boolean }} [opts]
+ */
+function classesBotaoSecao(accent, { ativo = false, disabled = false } = {}) {
+  const a = SECAO_ACENTOS[accent];
+  if (disabled) {
+    return `${SECAO_BTN_BASE} cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400 opacity-60 saturate-50`;
+  }
+  if (ativo) {
+    return `${SECAO_BTN_BASE} ${a.ativo} ${a.focus}`;
+  }
+  return `${SECAO_BTN_BASE} ${a.repouso} ${a.hover} ${a.focus}`;
+}
+
+/** @param {keyof typeof SECAO_ACENTOS} accent @param {boolean} ativo */
+function classesIconeSecao(accent, ativo) {
+  const a = SECAO_ACENTOS[accent];
+  return `h-4 w-4 shrink-0 ${ativo ? a.iconAtivo : a.icon}`;
+}
 
 function formatDocBR(digits) {
   const d = String(digits || '').replace(/\D/g, '');
@@ -1186,113 +1291,128 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
             {erroApiProcessosGrade}
           </div>
         ) : null}
-        <header className="mb-3 flex shrink-0 flex-col gap-2 rounded-xl border border-slate-200/80 bg-white/90 px-3 py-2.5 shadow-sm backdrop-blur-sm sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex min-w-0 items-center gap-2.5">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-md ring-1 ring-emerald-400/40">
-              <Users className="w-5 h-5" aria-hidden />
-            </span>
-            <div className="min-w-0">
-              <h1 className="text-xl font-bold bg-gradient-to-r from-slate-900 via-indigo-900 to-emerald-900 dark:from-slate-100 dark:via-indigo-200 dark:to-emerald-200 bg-clip-text text-transparent">
-                Cadastro de Clientes
-              </h1>
-              <p className="text-xs text-slate-500 truncate">Pessoas, vínculos e processos em um só lugar</p>
-              {formularioClienteAberto && statusSalvamento !== 'idle' ? (
-                <p className="mt-1 flex items-center gap-1.5 text-xs font-medium text-slate-600">
-                  {statusSalvamento === 'saving' ? (
-                    <>
-                      <Loader2 className="h-3.5 w-3.5 animate-spin text-indigo-600" aria-hidden />
-                      Salvando…
-                    </>
-                  ) : (
-                    <>
-                      <Check className="h-3.5 w-3.5 text-emerald-600" aria-hidden />
-                      Salvo
-                    </>
-                  )}
-                </p>
-              ) : null}
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              if (isEmbedded && typeof onFecharEmbed === 'function') onFecharEmbed();
-              else window.history.back();
-            }}
-            className="p-2 rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-slate-50 shrink-0 shadow-sm"
-            aria-label="Fechar"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </header>
-
-        <div className="flex-1 min-w-0 min-h-0 overflow-auto space-y-4 pb-6">
-          <section className="rounded-2xl border border-emerald-200/70 bg-white/95 shadow-md overflow-hidden ring-1 ring-emerald-500/10">
-            <div className="border-b border-emerald-100/80 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 px-4 py-3">
-              <h2 className="text-sm font-bold uppercase tracking-wide text-white flex items-center gap-2">
-                <Search className="w-4 h-4 opacity-95" aria-hidden />
-                Buscar cliente
-              </h2>
-              <p className="text-xs text-emerald-50/95 mt-1 font-medium">
-                Por nome ou código do cliente (8 dígitos ou parcial, ex.: 491)
-              </p>
-            </div>
-            <div className="p-4">
-              <div className="flex flex-wrap items-end gap-2 mb-2">
-              <div className="flex min-w-0 flex-1 flex-col gap-1 sm:max-w-md">
-              <label className="text-sm font-medium text-slate-700 whitespace-nowrap" htmlFor="busca-cliente-nome">
-                Pesquisar cliente
-              </label>
-              <input
-                id="busca-cliente-nome"
-                type="text"
-                value={buscaClienteNome}
-                onChange={(e) => setBuscaClienteNome(e.target.value)}
-                className={`${inputClass} w-full min-w-0 text-base md:text-sm`}
-                placeholder="Nome ou código do cliente (ex.: 491 ou 00000491)…"
-                autoComplete="off"
-              />
-              </div>
-              <button
-                type="button"
-                onClick={iniciarNovoCliente}
-                className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md hover:from-indigo-500 hover:to-violet-500"
+        <div className="flex-1 min-w-0 min-h-0 overflow-auto pb-6">
+          {/* Banner único fixo: título da tela + busca + novo cliente */}
+          <div className="sticky top-0 z-30 -mx-3 mb-3 px-3 sm:-mx-0 sm:px-0">
+            <div className="relative">
+              <section
+                className="overflow-hidden rounded-xl border border-emerald-400/50 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 shadow-lg ring-1 ring-emerald-500/30"
+                aria-label="Cadastro de Clientes — busca"
               >
-                <PlusCircle className="h-4 w-4" aria-hidden />
-                Novo Cliente
-              </button>
-              </div>
-            {(() => {
-              const rawBusca = String(buscaClienteNome ?? '').trim();
-              const soDigitos = rawBusca.length > 0 && /^\d+$/.test(rawBusca);
-              const codigo8 = /^\d{8}$/.test(rawBusca);
-              return (
-                <>
-                  {rawBusca && !soDigitos && normalizarTextoBusca(buscaClienteNome).length < 2 && (
-                    <p className="text-xs text-slate-500 mb-2">
-                      Digite pelo menos 2 letras para buscar pelo nome (razão social ou nome da pessoa vinculada).
-                    </p>
-                  )}
-                  {soDigitos && (
-                    <p className="text-xs text-slate-500 mb-2">
-                      Busca pelo <strong>código do cliente</strong>
-                      {codigo8 ? ' (8 dígitos)' : ` (ex.: ${rawBusca} → ${padCliente8(rawBusca)})`}.
-                    </p>
-                  )}
-                  {soDigitos &&
+                <div className="flex items-start justify-between gap-2 border-b border-white/20 px-3 py-2 sm:px-4">
+                  <div className="flex min-w-0 flex-1 items-center gap-2">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/15 ring-1 ring-white/25">
+                      <Users className="h-4 w-4 text-white" aria-hidden />
+                    </span>
+                    <div className="min-w-0">
+                      <h1 className="text-base font-bold leading-tight text-white sm:text-lg">
+                        Cadastro de Clientes
+                      </h1>
+                      <p className="truncate text-[11px] text-emerald-50/95">
+                        Pessoas, vínculos e processos
+                        {formularioClienteAberto && statusSalvamento !== 'idle' ? (
+                          <span className="ml-1.5 inline-flex items-center gap-1 font-medium text-white">
+                            ·{' '}
+                            {statusSalvamento === 'saving' ? (
+                              <>
+                                <Loader2 className="inline h-3 w-3 animate-spin" aria-hidden />
+                                Salvando…
+                              </>
+                            ) : (
+                              <>
+                                <Check className="inline h-3 w-3" aria-hidden />
+                                Salvo
+                              </>
+                            )}
+                          </span>
+                        ) : null}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (isEmbedded && typeof onFecharEmbed === 'function') onFecharEmbed();
+                      else window.history.back();
+                    }}
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/15 text-white ring-1 ring-white/25 hover:bg-white/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+                    aria-label="Fechar"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+
+                <div className="flex flex-col gap-2 px-3 py-2.5 sm:flex-row sm:items-center sm:gap-2 sm:px-4 sm:py-3">
+                  <label htmlFor="busca-cliente-nome" className="sr-only">
+                    Pesquisar cliente por nome ou código
+                  </label>
+                  <div className="relative min-w-0 flex-1">
+                    <Search
+                      className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+                      aria-hidden
+                    />
+                    <input
+                      id="busca-cliente-nome"
+                      type="text"
+                      value={buscaClienteNome}
+                      onChange={(e) => setBuscaClienteNome(e.target.value)}
+                      className="w-full min-w-0 rounded-lg border-0 bg-white py-2 pl-9 pr-3 text-base text-slate-900 shadow-sm placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white md:text-sm"
+                      placeholder="Buscar por nome ou código (ex.: 491 ou 00000491)…"
+                      autoComplete="off"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={iniciarNovoCliente}
+                    className={`${btnPrimarioForte} min-h-10 w-full shrink-0 shadow-md ring-1 ring-white/30 sm:w-auto`}
+                  >
+                    <PlusCircle className="h-4 w-4" aria-hidden />
+                    Novo Cliente
+                  </button>
+                </div>
+              </section>
+
+              {(() => {
+                const rawBusca = String(buscaClienteNome ?? '').trim();
+                const soDigitos = rawBusca.length > 0 && /^\d+$/.test(rawBusca);
+                const codigo8 = /^\d{8}$/.test(rawBusca);
+                const temPainelInferior =
+                  (rawBusca && !soDigitos && normalizarTextoBusca(buscaClienteNome).length < 2) ||
+                  soDigitos ||
+                  (soDigitos &&
                     clientesFiltradosPorCodigo.length === 0 &&
                     featureFlags.useApiClientes &&
-                    clientesApiCarregados && (
-                      <p className="text-sm text-slate-600 mb-2">Nenhum cliente encontrado com esse código.</p>
-                    )}
-                  {!soDigitos &&
+                    clientesApiCarregados) ||
+                  (!soDigitos &&
                     normalizarTextoBusca(buscaClienteNome).length >= 2 &&
-                    clientesFiltradosPorNome.length === 0 && (
-                      <p className="text-sm text-slate-600 mb-2">Nenhum cliente encontrado com esse nome.</p>
+                    clientesFiltradosPorNome.length === 0) ||
+                  clientesFiltradosPorCodigo.length > 0 ||
+                  clientesFiltradosPorNome.length > 0;
+                if (!temPainelInferior) return null;
+                return (
+                  <div className="absolute left-0 right-0 top-full z-40 mt-1 max-h-[min(18rem,50vh)] overflow-y-auto rounded-xl border border-slate-200/90 bg-white px-3 py-2 shadow-xl ring-1 ring-slate-200/80 sm:px-4">
+                    {rawBusca && !soDigitos && normalizarTextoBusca(buscaClienteNome).length < 2 && (
+                      <p className="mb-2 text-xs text-slate-500">
+                        Digite pelo menos 2 letras para buscar pelo nome (razão social ou nome da pessoa vinculada).
+                      </p>
                     )}
-                </>
-              );
-            })()}
+                    {soDigitos && (
+                      <p className="mb-2 text-xs text-slate-500">
+                        Busca pelo <strong>código do cliente</strong>
+                        {codigo8 ? ' (8 dígitos)' : ` (ex.: ${rawBusca} → ${padCliente8(rawBusca)})`}.
+                      </p>
+                    )}
+                    {soDigitos &&
+                      clientesFiltradosPorCodigo.length === 0 &&
+                      featureFlags.useApiClientes &&
+                      clientesApiCarregados && (
+                        <p className="mb-2 text-sm text-slate-600">Nenhum cliente encontrado com esse código.</p>
+                      )}
+                    {!soDigitos &&
+                      normalizarTextoBusca(buscaClienteNome).length >= 2 &&
+                      clientesFiltradosPorNome.length === 0 && (
+                        <p className="mb-2 text-sm text-slate-600">Nenhum cliente encontrado com esse nome.</p>
+                      )}
             {clientesFiltradosPorCodigo.length > 0 && (
               <div className="mb-2 max-h-56 overflow-y-auto rounded-xl border border-slate-200/90 bg-white shadow-inner ring-1 ring-slate-100">
                 <div className="space-y-2 p-2 md:hidden">
@@ -1405,9 +1525,13 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
                 )}
               </div>
             )}
+                  </div>
+                );
+              })()}
             </div>
-          </section>
+          </div>
 
+          <div className="space-y-4">
           {!formularioClienteAberto ? (
             <section className="rounded-2xl border border-dashed border-slate-300 bg-white/80 px-6 py-14 text-center shadow-sm">
               <Users className="mx-auto h-12 w-12 text-slate-300" aria-hidden />
@@ -1419,41 +1543,84 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
           ) : (
           <>
           <section className="rounded-2xl border border-slate-200/90 bg-white shadow-md overflow-hidden ring-1 ring-indigo-500/5">
-            <div className="border-b border-indigo-400/30 bg-gradient-to-br from-indigo-950 via-violet-950 to-slate-900 px-4 py-3 text-white shadow-md ring-1 ring-indigo-500/25">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-indigo-200/90 mb-0.5">Cliente selecionado</p>
-                  <p className="text-lg font-semibold tracking-tight truncate" title={nomeRazao || undefined}>
-                    {String(nomeRazao || '').trim() || '— Sem nome / razão social —'}
+            <div className="border-b border-indigo-400/30 bg-gradient-to-br from-indigo-950 via-violet-950 to-slate-900 px-3 py-2 text-white shadow-md ring-1 ring-indigo-500/25 sm:px-4">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
+                  <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-indigo-200/90">
+                    Cliente
+                  </span>
+                  <span className="hidden h-3.5 w-px shrink-0 bg-white/25 sm:block" aria-hidden />
+                  <p
+                    className="min-w-0 truncate text-sm font-semibold tracking-tight sm:text-base"
+                    title={nomeRazao || undefined}
+                  >
+                    {String(nomeRazao || '').trim() || '— Sem nome —'}
                   </p>
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <span className="rounded-full bg-white/12 px-2.5 py-0.5 text-xs font-mono font-semibold text-indigo-50 ring-1 ring-white/20">
-                      Cód. {padCliente8(codigo)}
+                  <span className="shrink-0 rounded-full bg-white/12 px-2 py-0.5 text-[11px] font-mono font-semibold text-indigo-50 ring-1 ring-white/20">
+                    {padCliente8(codigo)}
+                  </span>
+                  {clienteInativo ? (
+                    <span className="shrink-0 rounded-full bg-amber-400/25 px-2 py-0.5 text-[10px] font-bold uppercase text-amber-100 ring-1 ring-amber-300/40">
+                      Inativo
                     </span>
-                    {clienteInativo ? (
-                      <span className="rounded-full bg-amber-400/25 px-2 py-0.5 text-[10px] font-bold uppercase text-amber-100 ring-1 ring-amber-300/40">
-                        Inativo
-                      </span>
-                    ) : (
-                      <span className="rounded-full bg-emerald-400/20 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-100 ring-1 ring-emerald-400/35">
-                        Ativo
-                      </span>
-                    )}
-                  </div>
+                  ) : (
+                    <span className="shrink-0 rounded-full bg-emerald-400/20 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-100 ring-1 ring-emerald-400/35">
+                      Ativo
+                    </span>
+                  )}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setEdicaoDesabilitada((v) => !v)}
-                  className={`inline-flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${
-                    edicaoDesabilitada
-                      ? 'border-amber-300/60 bg-amber-500/20 text-amber-50 hover:bg-amber-500/30'
-                      : 'border-emerald-300/60 bg-emerald-500/20 text-emerald-50 hover:bg-emerald-500/30'
-                  }`}
-                  title={edicaoDesabilitada ? 'Permitir alterações no cadastro' : 'Bloquear alterações no cadastro'}
-                >
-                  {edicaoDesabilitada ? <Lock className="h-4 w-4" aria-hidden /> : <Unlock className="h-4 w-4" aria-hidden />}
-                  {edicaoDesabilitada ? 'Habilitar edição' : 'Edição ativa'}
-                </button>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const v = !clienteInativo;
+                      setClienteInativo(v);
+                      const { usuarioNome } = getContextoAuditoriaUsuario();
+                      const cod = padCliente8(codigo);
+                      registrarAuditoria({
+                        modulo: 'Clientes',
+                        tela: '/pessoas',
+                        tipoAcao: 'EDICAO',
+                        descricao: v
+                          ? `Usuário ${usuarioNome} marcou o cliente ${nomeRazao} (código ${cod}) como inativo.`
+                          : `Usuário ${usuarioNome} reativou o cliente ${nomeRazao} (código ${cod}).`,
+                        registroAfetadoId: cod,
+                        registroAfetadoNome: nomeRazao,
+                      });
+                    }}
+                    aria-pressed={clienteInativo}
+                    className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold ${BTN_TRANSICAO} hover:-translate-y-px hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-offset-transparent ${
+                      clienteInativo
+                        ? 'border-amber-300/80 bg-amber-500/40 text-amber-50 shadow-sm ring-1 ring-amber-300/50 hover:bg-amber-500/50 focus-visible:ring-amber-300'
+                        : 'border-white/20 bg-white/10 text-indigo-100 hover:bg-white/15 focus-visible:ring-white/80'
+                    }`}
+                    title={
+                      clienteInativo
+                        ? 'Cliente marcado como inativo — clique para reativar'
+                        : 'Marcar cliente como inativo'
+                    }
+                  >
+                    <UserX className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                    <span className="hidden sm:inline">
+                      {clienteInativo ? 'Cliente inativo' : 'Marcar inativo'}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEdicaoDesabilitada((v) => !v)}
+                    className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold ${BTN_TRANSICAO} hover:-translate-y-px hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-offset-transparent ${
+                      edicaoDesabilitada
+                        ? 'border-amber-300/60 bg-amber-500/20 text-amber-50 hover:bg-amber-500/30 focus-visible:ring-amber-300'
+                        : 'border-emerald-300/60 bg-emerald-500/20 text-emerald-50 hover:bg-emerald-500/30 focus-visible:ring-emerald-300'
+                    }`}
+                    title={edicaoDesabilitada ? 'Permitir alterações no cadastro' : 'Bloquear alterações no cadastro'}
+                  >
+                    {edicaoDesabilitada ? <Lock className="h-3.5 w-3.5" aria-hidden /> : <Unlock className="h-3.5 w-3.5" aria-hidden />}
+                    <span className="hidden sm:inline">
+                      {edicaoDesabilitada ? 'Habilitar edição' : 'Edição ativa'}
+                    </span>
+                  </button>
+                </div>
               </div>
             </div>
             <div className="p-4 space-y-4 bg-gradient-to-b from-violet-50/30 via-white to-sky-50/20">
@@ -1497,7 +1664,7 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
               <div className="flex border-2 border-indigo-200/80 rounded-xl overflow-hidden bg-white w-56 shadow-sm ring-1 ring-indigo-500/10">
                 <button
                   type="button"
-                  className="w-9 py-2 border-r border-indigo-100 hover:bg-indigo-50 text-indigo-800 flex items-center justify-center transition-colors"
+                  className={`${btnNavCodigoSeta} border-r py-2`}
                   onClick={() => {
                     const n = Number(normalizarCodigoCliente(codigo));
                     const next = Math.max(1, n - 1);
@@ -1517,7 +1684,7 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
                 />
                 <button
                   type="button"
-                  className="w-9 py-2 border-l border-indigo-100 hover:bg-indigo-50 text-indigo-800 flex items-center justify-center transition-colors"
+                  className={`${btnNavCodigoSeta} border-l py-2`}
                   onClick={() => {
                     const n = Number(normalizarCodigoCliente(codigo));
                     const next = n + 1;
@@ -1529,32 +1696,27 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
                 </button>
               </div>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-0.5">Pessoa vinculada</label>
-              <div className="flex flex-wrap items-center gap-2">
+            <div className="shrink-0" role="group" aria-label="Pessoa vinculada">
+              <div className="mb-0.5 h-5" aria-hidden />
+              <div className="flex items-center gap-1.5">
                 {String(pessoa ?? '').trim() ? (
-                  <span
-                    className="text-sm text-slate-600"
-                    title={`Ficha interna nº ${pessoa}`}
-                  >
-                    Cadastro de pessoas vinculado — nº{' '}
-                    <span className="font-semibold text-slate-800">{String(pessoa).trim()}</span>
+                  <span className="whitespace-nowrap text-sm font-medium text-slate-800" title={`Ficha nº ${pessoa}`}>
+                    Pessoa nº {String(pessoa).trim()}
                   </span>
                 ) : (
-                  <span className="text-sm text-amber-700">Nenhuma pessoa vinculada</span>
+                  <span className="whitespace-nowrap text-sm text-amber-700">Sem pessoa</span>
                 )}
                 <button
+                  id="pessoa-vinculada-acao"
                   type="button"
                   disabled={edicaoDesabilitada}
-                  className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-sm font-medium shadow-sm ${
-                    edicaoDesabilitada
-                      ? 'border-slate-200 bg-slate-100 cursor-not-allowed opacity-60 text-slate-500'
-                      : 'border-indigo-200 bg-indigo-50 text-indigo-900 hover:bg-indigo-100'
-                  }`}
+                  className={`${btnUtilDiscreto} !min-h-9 !px-2`}
                   title={
                     edicaoDesabilitada
                       ? 'Habilite a edição para escolher a pessoa'
-                      : 'Buscar e vincular pessoa no cadastro'
+                      : String(pessoa ?? '').trim()
+                        ? 'Alterar pessoa vinculada'
+                        : 'Vincular pessoa no cadastro'
                   }
                   onClick={() => {
                     if (edicaoDesabilitada) {
@@ -1565,8 +1727,8 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
                     setModalEscolherPessoa(true);
                   }}
                 >
-                  <Search className="w-4 h-4" aria-hidden />
-                  {String(pessoa ?? '').trim() ? 'Alterar pessoa' : 'Vincular pessoa'}
+                  <Search className="h-4 w-4 shrink-0" aria-hidden />
+                  {String(pessoa ?? '').trim() ? 'Alterar' : 'Vincular'}
                 </button>
               </div>
             </div>
@@ -1595,7 +1757,11 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
                 className={`${inputClass} ${edicaoDesabilitada ? 'bg-slate-50' : ''}`}
               />
             </div>
-            <div className="flex gap-2 items-end">
+            <div
+              className="flex w-full min-w-0 flex-wrap items-center gap-2"
+              role="group"
+              aria-label="Seções e atalhos do cliente"
+            >
               <button
                 type="button"
                 onClick={() => {
@@ -1630,16 +1796,18 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
                   }
                   navigate(`/clientes/editar/${idPessoa}`);
                 }}
-                className={btnAcaoSecundario}
+                className={classesBotaoSecao('indigo')}
               >
+                <Users className={classesIconeSecao('indigo', false)} aria-hidden />
                 Cadastro de Pessoas
               </button>
               <button
                 type="button"
                 onClick={abrirContaCorrenteProcZero}
-                className={btnAcaoSecundario}
+                className={classesBotaoSecao('emerald')}
                 title="Lançamentos do Financeiro com este Cod. Cliente e Proc. 0 (mensalistas / não vinculados a um processo específico). Abre a tela Processos com a janela da conta corrente."
               >
+                <Wallet className={classesIconeSecao('emerald', false)} aria-hidden />
                 Conta Corrente (Proc. 0)
               </button>
               <button
@@ -1657,61 +1825,41 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
                   });
                   setModalQualificacaoAberto(true);
                 }}
-                className={btnAcaoSecundario}
+                className={classesBotaoSecao('amber', { ativo: modalQualificacaoAberto })}
+                aria-pressed={modalQualificacaoAberto}
               >
+                <ClipboardList className={classesIconeSecao('amber', modalQualificacaoAberto)} aria-hidden />
                 Qualificação
               </button>
               <button
                 type="button"
-                className={`inline-flex items-center gap-2 ${btnAcaoSecundario}`}
+                className={classesBotaoSecao('cyan')}
                 title="Documentos do cliente"
               >
-                <FolderOpen className="w-4 h-4 shrink-0 text-slate-600" aria-hidden />
+                <FolderOpen className={classesIconeSecao('cyan', false)} aria-hidden />
                 Documentos
               </button>
               <button
                 type="button"
                 onClick={() => setModalConfigCalculoAberto(true)}
-                className={`inline-flex items-center gap-2 ${btnAcaoPrimario}`}
+                className={classesBotaoSecao('violet', { ativo: modalConfigCalculoAberto })}
+                aria-pressed={modalConfigCalculoAberto}
                 title="Padrões de juros, multa, honorários, índice e periodicidade para os cálculos deste cliente"
               >
-                <SlidersHorizontal className="w-4 h-4 shrink-0" aria-hidden />
+                <SlidersHorizontal className={classesIconeSecao('violet', modalConfigCalculoAberto)} aria-hidden />
                 Configurações de cálculo
               </button>
               <button
                 type="button"
                 onClick={() => setModalWhatsAppAberto(true)}
-                className={`inline-flex items-center gap-2 ${btnAcaoSecundario}`}
+                className={classesBotaoSecao('whatsapp', { ativo: modalWhatsAppAberto })}
+                aria-pressed={modalWhatsAppAberto}
                 title="Números WhatsApp que recebem comunicações automáticas do escritório"
               >
-                <MessageCircle className="w-4 h-4 shrink-0 text-emerald-600" aria-hidden />
+                <MessageCircle className={classesIconeSecao('whatsapp', modalWhatsAppAberto)} aria-hidden />
                 WhatsApp
               </button>
             </div>
-            <label className="flex items-center gap-2 text-sm cursor-pointer">
-              <input
-                type="checkbox"
-                checked={clienteInativo}
-                onChange={(e) => {
-                  const v = e.target.checked;
-                  setClienteInativo(v);
-                  const { usuarioNome } = getContextoAuditoriaUsuario();
-                  const cod = padCliente8(codigo);
-                  registrarAuditoria({
-                    modulo: 'Clientes',
-                    tela: '/pessoas',
-                    tipoAcao: 'EDICAO',
-                    descricao: v
-                      ? `Usuário ${usuarioNome} marcou o cliente ${nomeRazao} (código ${cod}) como inativo.`
-                      : `Usuário ${usuarioNome} reativou o cliente ${nomeRazao} (código ${cod}).`,
-                    registroAfetadoId: cod,
-                    registroAfetadoNome: nomeRazao,
-                  });
-                }}
-                className="rounded border-slate-300 accent-indigo-600"
-              />
-              Cliente Inativo
-            </label>
           </div>
 
           <div className="rounded-xl border border-slate-200/80 bg-white/70 p-3 shadow-sm ring-1 ring-slate-100/80">
@@ -1778,11 +1926,7 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
                     type="button"
                     onClick={handleIncluirNovoProcesso}
                     disabled={edicaoDesabilitada}
-                    className={`inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold shadow-sm ${
-                      edicaoDesabilitada
-                        ? 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400'
-                        : 'border-emerald-500 bg-gradient-to-r from-emerald-500 to-teal-600 text-white hover:from-emerald-600 hover:to-teal-700'
-                    }`}
+                    className={`${btnPrimarioForte} min-h-11 w-full`}
                     title={
                       edicaoDesabilitada
                         ? 'Habilite a edição para incluir um novo processo'
@@ -1805,21 +1949,17 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
                 className={`${inputClass} w-64`}
                 placeholder="Proc., CNJ, partes, descrição ou unidade…"
               />
-              <button type="button" className="p-2 rounded-lg border border-sky-200 bg-white hover:bg-sky-50 shadow-sm" title="Buscar">
-                <Search className="w-4 h-4 text-sky-700" />
+              <button type="button" className={`${btnUtilDiscreto} !min-h-9 !px-2`} title="Buscar">
+                <Search className="h-4 w-4 text-slate-500" aria-hidden />
               </button>
-              <button type="button" className="px-3 py-2 rounded-lg border border-slate-200 bg-white text-slate-800 text-sm font-medium hover:bg-slate-50 shadow-sm">
+              <button type="button" className={`${btnUtilDiscreto} !min-h-9`}>
                 Pesquisa
               </button>
               <button
                 type="button"
                 onClick={handleIncluirNovoProcesso}
                 disabled={edicaoDesabilitada}
-                className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-semibold shadow-sm ${
-                  edicaoDesabilitada
-                    ? 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed'
-                    : 'border-emerald-500 bg-gradient-to-r from-emerald-500 to-teal-600 text-white hover:from-emerald-600 hover:to-teal-700'
-                }`}
+                className={btnPrimarioForte}
                 title={
                   edicaoDesabilitada
                     ? 'Habilite a edição para incluir um novo processo'
@@ -2049,6 +2189,7 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
           </>
           )}
 
+          </div>
         </div>
       </div>
 
@@ -2056,6 +2197,7 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
         open={modalConfigCalculoAberto}
         codigoCliente={codigo}
         nomeCliente={nomeRazao}
+        somenteLeitura={edicaoDesabilitada}
         onClose={() => setModalConfigCalculoAberto(false)}
       />
 

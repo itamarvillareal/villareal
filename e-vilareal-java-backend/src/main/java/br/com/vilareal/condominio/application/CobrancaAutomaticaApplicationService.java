@@ -8,6 +8,9 @@ import br.com.vilareal.condominio.api.dto.CobrancaProcessarRequest;
 import br.com.vilareal.condominio.api.dto.CobrancaTotaisDto;
 import br.com.vilareal.condominio.api.dto.InadimplenciaCobrancaDto;
 import br.com.vilareal.condominio.api.dto.RelatorioExecucaoCobranca;
+import br.com.vilareal.condominio.api.dto.RelatorioRegraInicioDto;
+import br.com.vilareal.calculo.application.CalculoApplicationService;
+import br.com.vilareal.calculo.application.RegraInicioCobrancaDiasValidator;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.ClienteRepository;
 import br.com.vilareal.processo.application.CodigoClienteUtil;
@@ -18,6 +21,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -32,6 +36,8 @@ public class CobrancaAutomaticaApplicationService {
     private final CobrancaRelatorioMontador relatorioMontador;
     private final CobrancaExecucaoPersistenciaService persistenciaService;
     private final CobrancaRelatorioPdfService pdfService;
+    private final CalculoApplicationService calculoApplicationService;
+    private final CobrancaRegraInicioCobrancaService regraInicioCobrancaService;
 
     public CobrancaAutomaticaApplicationService(
             CobrancaRelatorioXlsParser xlsParser,
@@ -39,13 +45,17 @@ public class CobrancaAutomaticaApplicationService {
             CobrancaAutomaticaUnidadeTransactionalService unidadeTransactionalService,
             CobrancaRelatorioMontador relatorioMontador,
             CobrancaExecucaoPersistenciaService persistenciaService,
-            CobrancaRelatorioPdfService pdfService) {
+            CobrancaRelatorioPdfService pdfService,
+            CalculoApplicationService calculoApplicationService,
+            CobrancaRegraInicioCobrancaService regraInicioCobrancaService) {
         this.xlsParser = xlsParser;
         this.clienteRepository = clienteRepository;
         this.unidadeTransactionalService = unidadeTransactionalService;
         this.relatorioMontador = relatorioMontador;
         this.persistenciaService = persistenciaService;
         this.pdfService = pdfService;
+        this.calculoApplicationService = calculoApplicationService;
+        this.regraInicioCobrancaService = regraInicioCobrancaService;
     }
 
     public CobrancaExtracaoResponse extrair(MultipartFile arquivo) {
@@ -85,11 +95,20 @@ public class CobrancaAutomaticaApplicationService {
         long clientePessoaId = cliente.getPessoa().getId();
         String importacaoId = UUID.randomUUID().toString();
         Instant criadoEm = Instant.now();
+        LocalDate dataImportacao = LocalDate.now();
+        int regraDias = lerRegraInicioCobrancaDias(cod8);
+        CobrancaRegraInicioCobrancaService.FiltragemRegraInicio filtragem = regraInicioCobrancaService.filtrarUnidadesAcionadas(
+                request.unidades(), dataImportacao, regraDias);
+        RelatorioRegraInicioDto regraInicio = new RelatorioRegraInicioDto(
+                "D+" + regraDias,
+                dataImportacao.toString(),
+                filtragem.devedoresDescartados(),
+                filtragem.titulosDescartados());
 
         List<UnidadeProcessamentoResult> sucessos = new ArrayList<>();
         List<CobrancaProcessarErroDto> erros = new ArrayList<>();
 
-        for (var unidade : request.unidades()) {
+        for (var unidade : filtragem.acionadas()) {
             String cod = unidade.codigoUnidadeNormalizada() != null
                     ? unidade.codigoUnidadeNormalizada().trim()
                     : "?";
@@ -109,7 +128,8 @@ public class CobrancaAutomaticaApplicationService {
                 Utf8MojibakeUtil.corrigir(cliente.getPessoa().getNome()),
                 request.arquivoNome(),
                 usuarioAtual(),
-                request.unidades(),
+                filtragem.acionadas(),
+                regraInicio,
                 sucessos,
                 erros);
 
@@ -131,6 +151,11 @@ public class CobrancaAutomaticaApplicationService {
             return null;
         }
         return a.getName();
+    }
+
+    private int lerRegraInicioCobrancaDias(String codigoCliente8) {
+        var cfg = calculoApplicationService.obterConfigCliente(codigoCliente8);
+        return RegraInicioCobrancaDiasValidator.parse(cfg.config().get("regraInicioCobrancaDias"));
     }
 
     static CobrancaTotaisDto calcularTotais(List<CobrancaUnidadeParsed> unidades) {

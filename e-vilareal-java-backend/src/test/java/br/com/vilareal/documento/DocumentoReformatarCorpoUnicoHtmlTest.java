@@ -64,9 +64,29 @@ class DocumentoReformatarCorpoUnicoHtmlTest {
         String pdfHtml = DocumentoReformatarCorpoUnicoHtml.extrairHtmlParaPdf(html);
 
         assertThat(pdfHtml).doesNotContain("data-doc-part=\"cabecalho\"");
+        assertThat(pdfHtml).doesNotContain("data-doc-part=\"assinatura\"");
+        assertThat(pdfHtml).doesNotContain("data-doc-part=\"local-data\"");
+        assertThat(pdfHtml).doesNotContain("OAB/GO");
         assertThat(pdfHtml).contains("IMPUGNAÇÃO À CONTESTAÇÃO (RÉPLICA)");
         assertThat(pdfHtml).doesNotContain("data-doc-part=\"nome-peca\"");
         assertThat(pdfHtml.split("IMPUGNAÇÃO À CONTESTAÇÃO \\(RÉPLICA\\)", -1)).hasSize(2);
+
+        String local = DocumentoReformatarCorpoUnicoHtml.extrairLocalData(html);
+        assertThat(local).contains("Anápolis");
+    }
+
+    @Test
+    void extrairLocalData_encontraLinhaSemDataDocPart() {
+        String html =
+                """
+                <div class="doc-edicao-preview">
+                <div data-doc-part="fecho"><p>pede deferimento.</p></div>
+                <p style="text-align:center">ANÁPOLIS, estado de Goiás.</p>
+                <div data-doc-part="assinatura"><p>Dr. ITAMAR</p><p>OAB/GO 33.329</p></div>
+                </div>
+                """;
+        assertThat(DocumentoReformatarCorpoUnicoHtml.extrairLocalData(html))
+                .containsIgnoringCase("anápolis");
     }
 
     @Test

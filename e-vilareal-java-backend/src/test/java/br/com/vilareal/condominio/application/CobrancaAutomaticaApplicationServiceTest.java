@@ -4,8 +4,11 @@ import br.com.vilareal.condominio.api.dto.CobrancaExtracaoResponse;
 import br.com.vilareal.condominio.api.dto.CobrancaProcessarRequest;
 import br.com.vilareal.condominio.api.dto.CobrancaUnidadeRequestDto;
 import br.com.vilareal.condominio.api.dto.InadimplenciaCobrancaDto;
+import br.com.vilareal.calculo.api.dto.CalculoClienteConfigResponse;
+import br.com.vilareal.calculo.application.CalculoApplicationService;
 import br.com.vilareal.condominio.api.dto.RelatorioExecucaoCobranca;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -14,12 +17,14 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mock.web.MockMultipartFile;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -44,6 +49,11 @@ class CobrancaAutomaticaApplicationServiceTest {
     @Mock
     private CobrancaRelatorioPdfService pdfService;
 
+    @Mock
+    private CalculoApplicationService calculoApplicationService;
+
+    private final CobrancaRegraInicioCobrancaService regraInicioCobrancaService = new CobrancaRegraInicioCobrancaService();
+
     private CobrancaAutomaticaApplicationService service;
 
     @BeforeEach
@@ -54,7 +64,9 @@ class CobrancaAutomaticaApplicationServiceTest {
                 unidadeTransactionalService,
                 relatorioMontador,
                 persistenciaService,
-                pdfService);
+                pdfService,
+                calculoApplicationService,
+                regraInicioCobrancaService);
     }
 
     @Test
@@ -85,9 +97,16 @@ class CobrancaAutomaticaApplicationServiceTest {
         pessoa.setId(100L);
         cliente.setPessoa(pessoa);
         when(clienteRepository.findByCodigoClienteFetchPessoa("00000299")).thenReturn(Optional.of(cliente));
+        ObjectMapper om = new ObjectMapper();
+        when(calculoApplicationService.obterConfigCliente("00000299"))
+                .thenReturn(new CalculoClienteConfigResponse(om.createObjectNode().put("regraInicioCobrancaDias", 1)));
 
+        String venc = LocalDate.now().minusDays(10).format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy"));
         CobrancaUnidadeRequestDto u = new CobrancaUnidadeRequestDto(
-                "A-0402", "Maria", "12345678901", List.of());
+                "A-0402",
+                "Maria",
+                "12345678901",
+                List.of(new InadimplenciaCobrancaDto("Ord", "1", "04/2026", venc, "10", 1000L, "")));
         UnidadeProcessamentoResult proc = new UnidadeProcessamentoResult(
                 u,
                 new ResolucaoUnidade(1L, false, null, 10L, 3, true, true, false, null),
@@ -101,10 +120,11 @@ class CobrancaAutomaticaApplicationServiceTest {
                 null,
                 null,
                 null,
+                null,
                 List.of(),
                 List.of(),
                 List.of());
-        when(relatorioMontador.montar(any(), any(), any(), any(), any(), any(), any(), any(), any()))
+        when(relatorioMontador.montar(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(relMock);
 
         RelatorioExecucaoCobranca res =
@@ -112,5 +132,56 @@ class CobrancaAutomaticaApplicationServiceTest {
 
         assertThat(res).isSameAs(relMock);
         verify(persistenciaService).salvar(relMock);
+    }
+
+    @Test
+    void processar_D60_naoProcessaDevedorDescartado() {
+        ClienteEntity cliente = new ClienteEntity();
+        cliente.setId(50L);
+        PessoaEntity pessoa = new PessoaEntity();
+        pessoa.setId(100L);
+        cliente.setPessoa(pessoa);
+        when(clienteRepository.findByCodigoClienteFetchPessoa("00000299")).thenReturn(Optional.of(cliente));
+        ObjectMapper om = new ObjectMapper();
+        when(calculoApplicationService.obterConfigCliente("00000299"))
+                .thenReturn(new CalculoClienteConfigResponse(om.createObjectNode().put("regraInicioCobrancaDias", 60)));
+
+        LocalDate hoje = LocalDate.now();
+        java.time.format.DateTimeFormatter fmt = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy");
+        CobrancaUnidadeRequestDto acionado = new CobrancaUnidadeRequestDto(
+                "A-01",
+                "A",
+                "11111111111",
+                List.of(new InadimplenciaCobrancaDto(
+                        "Ord",
+                        "1",
+                        "04/2026",
+                        hoje.minusDays(75).format(fmt),
+                        "10",
+                        1000L,
+                        "")));
+        CobrancaUnidadeRequestDto descartado = new CobrancaUnidadeRequestDto(
+                "B-02",
+                "B",
+                "22222222222",
+                List.of(new InadimplenciaCobrancaDto(
+                        "Ord",
+                        "1",
+                        "04/2026",
+                        hoje.minusDays(30).format(fmt),
+                        "10",
+                        1000L,
+                        "")));
+
+        when(relatorioMontador.montar(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(new RelatorioExecucaoCobranca(
+                        "imp-2", null, null, null, null, List.of(), List.of(), List.of()));
+
+        service.processar(new CobrancaProcessarRequest("299", List.of(acionado, descartado), "rel.xls"));
+
+        verify(unidadeTransactionalService)
+                .processarUnidade(eq(50L), eq(100L), eq("00000299"), eq(acionado), any());
+        verify(unidadeTransactionalService, never())
+                .processarUnidade(eq(50L), eq(100L), eq("00000299"), eq(descartado), any());
     }
 }

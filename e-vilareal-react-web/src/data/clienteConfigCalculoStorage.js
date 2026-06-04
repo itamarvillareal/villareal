@@ -27,6 +27,8 @@ export const DEFAULT_CONFIG_CALCULO_CLIENTE = {
   indice: 'INPC',
   periodicidade: 'mensal',
   modeloListaDebitos: '01',
+  /** 1, 30 ou 60 — regra de início de cobrança automática (D+T) */
+  regraInicioCobrancaDias: 1,
 };
 
 function dispatchAtualizado() {
@@ -52,6 +54,10 @@ function rowFromApiConfig(raw) {
   pick('indice');
   pick('periodicidade');
   pick('modeloListaDebitos');
+  if (raw.regraInicioCobrancaDias !== undefined && raw.regraInicioCobrancaDias !== null) {
+    const n = Number(raw.regraInicioCobrancaDias);
+    if (n === 1 || n === 30 || n === 60) base.regraInicioCobrancaDias = n;
+  }
   return base;
 }
 
@@ -107,7 +113,7 @@ export function loadConfigCalculoCliente(codCliente) {
  */
 export function saveConfigCalculoCliente(codCliente, config) {
   const key = padCliente8Config(codCliente);
-  if (typeof window === 'undefined') return;
+  if (typeof window === 'undefined') return Promise.resolve();
   try {
     const raw = window.localStorage.getItem(STORAGE_CLIENTE_CONFIG_CALCULO);
     const parsed = raw ? JSON.parse(raw) : {};
@@ -120,16 +126,19 @@ export function saveConfigCalculoCliente(codCliente, config) {
     window.localStorage.setItem(STORAGE_CLIENTE_CONFIG_CALCULO, JSON.stringify(bag));
     dispatchAtualizado();
     if (featureFlags.useApiCalculos) {
-      void putCalculoConfigCliente(key, config)
+      return putCalculoConfigCliente(key, config)
         .then((res) => {
           if (res?.config) gravarRowNoBag(key, rowFromApiConfig(res.config));
         })
         .catch((err) => {
           console.error('[vilareal] Falha ao gravar config de cálculo na API:', err);
+          throw err;
         });
     }
+    return Promise.resolve();
   } catch {
     /* quota */
+    return Promise.resolve();
   }
 }
 

@@ -12,6 +12,11 @@ public class ProjudiMovimentacoesEmailPipelineProperties {
     private int janelaDias = 7;
     private String timezone = "America/Sao_Paulo";
     private boolean scheduleEnabled = true;
+    /**
+     * Quando true, processos com cópia integral no Drive deixam de ser reconsultados no PROJUDI
+     * até chegar publicação nova por e-mail.
+     */
+    private boolean desarmeAcervoIntegralEnabled = true;
     private PerfilConfig noturno = new PerfilConfig(8, 15, 60);
     private PerfilConfig comercial = new PerfilConfig(30, 60, 20);
     /** Binding: {@code vilareal.email.projudi.pipeline.perfil.fim-de-semana.*} */
@@ -47,6 +52,14 @@ public class ProjudiMovimentacoesEmailPipelineProperties {
 
     public void setScheduleEnabled(boolean scheduleEnabled) {
         this.scheduleEnabled = scheduleEnabled;
+    }
+
+    public boolean isDesarmeAcervoIntegralEnabled() {
+        return desarmeAcervoIntegralEnabled;
+    }
+
+    public void setDesarmeAcervoIntegralEnabled(boolean desarmeAcervoIntegralEnabled) {
+        this.desarmeAcervoIntegralEnabled = desarmeAcervoIntegralEnabled;
     }
 
     public PerfilConfig getNoturno() {

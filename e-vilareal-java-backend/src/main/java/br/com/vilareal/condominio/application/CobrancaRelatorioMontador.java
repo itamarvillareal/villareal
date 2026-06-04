@@ -9,6 +9,7 @@ import br.com.vilareal.condominio.api.dto.RelatorioCabecalhoDto;
 import br.com.vilareal.condominio.api.dto.RelatorioDebitoIgnoradoDto;
 import br.com.vilareal.condominio.api.dto.RelatorioDebitoInseridoDto;
 import br.com.vilareal.condominio.api.dto.RelatorioExecucaoCobranca;
+import br.com.vilareal.condominio.api.dto.RelatorioRegraInicioDto;
 import br.com.vilareal.condominio.api.dto.RelatorioItemUnidadeDto;
 import br.com.vilareal.condominio.api.dto.RelatorioTotaisDocumentoDto;
 import br.com.vilareal.condominio.api.dto.RelatorioTotaisExecucaoDto;
@@ -32,7 +33,8 @@ public class CobrancaRelatorioMontador {
             String clienteNome,
             String arquivoNome,
             String usuario,
-            List<CobrancaUnidadeRequestDto> unidadesDocumento,
+            List<CobrancaUnidadeRequestDto> unidadesAcionadas,
+            RelatorioRegraInicioDto regraInicio,
             List<UnidadeProcessamentoResult> sucessos,
             List<CobrancaProcessarErroDto> erros) {
 
@@ -44,9 +46,9 @@ public class CobrancaRelatorioMontador {
                 arquivoNome,
                 usuario);
 
-        int titulosDocumento = contarTitulosDocumento(unidadesDocumento);
+        int titulosDocumento = contarTitulosDocumento(unidadesAcionadas);
         RelatorioTotaisDocumentoDto totaisDocumento =
-                new RelatorioTotaisDocumentoDto(unidadesDocumento.size(), titulosDocumento);
+                new RelatorioTotaisDocumentoDto(unidadesAcionadas.size(), titulosDocumento);
 
         List<RelatorioItemUnidadeDto> itens = new ArrayList<>();
         int titulosInseridos = 0;
@@ -74,7 +76,7 @@ public class CobrancaRelatorioMontador {
             }
         }
 
-        int titulosFalhados = contarTitulosUnidadesComErro(unidadesDocumento, erros);
+        int titulosFalhados = contarTitulosUnidadesComErro(unidadesAcionadas, erros);
         int unidadesComErro = erros.size();
 
         RelatorioTotaisExecucaoDto totaisExecucao = new RelatorioTotaisExecucaoDto(
@@ -88,15 +90,23 @@ public class CobrancaRelatorioMontador {
                 pessoasCriadas,
                 revisoes);
 
-        List<String> pontos = derivarPontosAtencao(totaisDocumento, totaisExecucao);
+        List<String> pontos = derivarPontosAtencao(totaisDocumento, totaisExecucao, regraInicio);
 
         return new RelatorioExecucaoCobranca(
-                importacaoId, cabecalho, totaisDocumento, totaisExecucao, itens, erros, pontos);
+                importacaoId, cabecalho, totaisDocumento, totaisExecucao, regraInicio, itens, erros, pontos);
     }
 
     static List<String> derivarPontosAtencao(
-            RelatorioTotaisDocumentoDto doc, RelatorioTotaisExecucaoDto exec) {
+            RelatorioTotaisDocumentoDto doc,
+            RelatorioTotaisExecucaoDto exec,
+            RelatorioRegraInicioDto regraInicio) {
         List<String> out = new ArrayList<>();
+        if (regraInicio != null && regraInicio.devedoresDescartados() > 0) {
+            out.add(regraInicio.devedoresDescartados()
+                    + " devedor(es) não atingiram a regra "
+                    + regraInicio.regraAplicada()
+                    + " e foram descartados (não importados).");
+        }
         int soma = exec.titulosInseridos() + exec.titulosIgnorados() + exec.titulosFalhados();
         if (doc.titulos() != soma) {
             out.add("DIVERGÊNCIA: soma de títulos não fecha.");

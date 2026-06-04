@@ -57,6 +57,9 @@ public class DocumentoPdfService {
         String localData = StringUtils.hasText(ctx.localDataCustom())
                 ? ctx.localDataCustom()
                 : montarLocalData(cidadeEstado, data);
+        if (!StringUtils.hasText(localData)) {
+            localData = montarLocalData("Anápolis, estado de Goiás", data);
+        }
 
         Map<String, Object> variables = new HashMap<>();
         variables.put("enderecamento", ctx.enderecamento());

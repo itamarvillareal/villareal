@@ -28,6 +28,7 @@ import java.time.LocalDate;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.Map;
 import java.util.Set;
 
@@ -199,15 +200,23 @@ public class PublicacaoApplicationService {
     /** Tenta vínculo por CNJ sem falhar o lote de importação (ex.: email Jusbrasil). */
     @Transactional
     public boolean tentarVinculoAutomaticoPorCnj(Long publicacaoId) {
+        return tentarVinculoAutomaticoPorCnjDevolvendoProcessoId(publicacaoId).isPresent();
+    }
+
+    /**
+     * Vínculo automático por CNJ; retorna o {@code processo.id} quando o vínculo foi aplicado.
+     */
+    @Transactional
+    public Optional<Long> tentarVinculoAutomaticoPorCnjDevolvendoProcessoId(Long publicacaoId) {
         try {
             PublicacaoEntity pub = requirePublicacao(publicacaoId);
             String cnj = pub.getNumeroProcessoEncontrado();
             if (!StringUtils.hasText(cnj)) {
-                return false;
+                return Optional.empty();
             }
             List<BigInteger> ids = buscarIdsProcessoPorNumeroPublicacao(cnj);
             if (ids.size() != 1) {
-                return false;
+                return Optional.empty();
             }
             long processoId = ids.getFirst().longValue();
             ProcessoEntity proc = processoRepository
@@ -219,9 +228,9 @@ public class PublicacaoApplicationService {
             req.setProcessoId(processoId);
             req.setObservacao(observacao);
             patchVinculoProcesso(publicacaoId, req);
-            return true;
+            return Optional.of(processoId);
         } catch (Exception ex) {
-            return false;
+            return Optional.empty();
         }
     }
 

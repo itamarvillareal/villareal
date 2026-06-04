@@ -25,6 +25,9 @@ public final class DocumentoReformatarCorpoUnicoHtml {
     private static final Pattern PREFIXO_PROCESSO =
             Pattern.compile("^\\s*processo\\s*n[º°o\\.\\s]*", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
 
+    private static final Pattern LINHA_LOCAL_DATA_CURTA = Pattern.compile(
+            "(?iu)(?:anápolis|goiânia).{0,120}(?:estado\\s+de\\s+)?goiás");
+
     private DocumentoReformatarCorpoUnicoHtml() {}
 
     public static String montar(DocumentoReformatarConteudoRequest req) {
@@ -182,13 +185,47 @@ public final class DocumentoReformatarCorpoUnicoHtml {
                 corpoUnicoHtml.trim());
     }
 
-    /** HTML do corpo editado, sem cabeçalho/assinatura duplicados do template PDF. */
+    /** Local e data editados no corpo único (linha acima da assinatura). */
+    public static String extrairLocalData(String corpoUnicoHtml) {
+        if (!StringUtils.hasText(corpoUnicoHtml)) {
+            return "";
+        }
+        Document doc = Jsoup.parseBodyFragment(corpoUnicoHtml.trim());
+        String marcado = textoDe(doc, "[data-doc-part=local-data]", "");
+        if (StringUtils.hasText(marcado)) {
+            return marcado;
+        }
+        return extrairLocalDataHeuristico(doc);
+    }
+
+    /** Fallback quando o editor remove {@code data-doc-part} (contentEditable). */
+    static String extrairLocalDataHeuristico(Document doc) {
+        Element assinatura = doc.selectFirst("[data-doc-part=assinatura]");
+        List<Element> candidatos = new ArrayList<>(doc.select("p, div[data-doc-part=fecho] p"));
+        for (int i = candidatos.size() - 1; i >= 0; i--) {
+            Element el = candidatos.get(i);
+            if (assinatura != null && el.parents().contains(assinatura)) {
+                continue;
+            }
+            if (el.selectFirst("[data-doc-part=assinatura]") != null) {
+                continue;
+            }
+            String t = el.text().trim();
+            if (pareceLinhaLocalData(t)) {
+                return t;
+            }
+        }
+        return "";
+    }
+
+    /** HTML do corpo editado, sem cabeçalho/local-data/assinatura duplicados do template PDF. */
     public static String extrairHtmlParaPdf(String corpoUnicoHtml) {
         if (!StringUtils.hasText(corpoUnicoHtml)) {
             return "";
         }
         Document doc = Jsoup.parseBodyFragment(corpoUnicoHtml.trim());
         doc.select("[data-doc-part=cabecalho]").remove();
+        doc.select("[data-doc-part=local-data]").remove();
         doc.select("[data-doc-part=assinatura]").remove();
         Element root = doc.selectFirst(".doc-edicao-preview");
         if (root == null) {
@@ -253,6 +290,20 @@ public final class DocumentoReformatarCorpoUnicoHtml {
         }
         String html = el.html().trim();
         return StringUtils.hasText(html) ? html : (fallback != null ? fallback : "");
+    }
+
+    static boolean pareceLinhaLocalData(String texto) {
+        if (!StringUtils.hasText(texto)) {
+            return false;
+        }
+        String t = texto.trim();
+        if (LINHA_LOCAL_DATA_CURTA.matcher(t).find()) {
+            return true;
+        }
+        return Pattern.compile(
+                        "(?iu).+(?:de\\s+)?(?:janeiro|fevereiro|março|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro).+\\d{4}")
+                .matcher(t)
+                .find();
     }
 
     private static String valorOuPadrao(String valor, String padrao) {

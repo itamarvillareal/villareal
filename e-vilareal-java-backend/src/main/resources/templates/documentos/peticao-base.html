@@ -433,6 +433,13 @@
 <div class="corpo-documento">
     <th:block th:if="${modoCorpoUnico}">
         <div class="corpo-unico-editado" th:utext="${corpoUnicoHtml}"></div>
+        <div class="bloco-fecho">
+            <p class="data" th:text="${localData}">Anápolis, estado de Goiás, data.</p>
+            <div class="assinatura">
+                <p class="assinatura-nome" th:text="${advogadoNome}">Dr. Itamar Alexandre Felix Villa Real Junior</p>
+                <p class="assinatura-oab" th:text="${advogadoOab}">OAB/GO 33.329</p>
+            </div>
+        </div>
     </th:block>
 
     <th:block th:unless="${modoCorpoUnico}">
