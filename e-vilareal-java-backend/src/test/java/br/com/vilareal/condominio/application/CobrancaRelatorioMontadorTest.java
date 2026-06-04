@@ -6,6 +6,7 @@ import br.com.vilareal.condominio.api.dto.CobrancaProcessarErroDto;
 import br.com.vilareal.condominio.api.dto.CobrancaUnidadeRequestDto;
 import br.com.vilareal.condominio.api.dto.InadimplenciaCobrancaDto;
 import br.com.vilareal.condominio.api.dto.RelatorioExecucaoCobranca;
+import br.com.vilareal.condominio.api.dto.RelatorioRegraInicioDto;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
@@ -47,6 +48,7 @@ class CobrancaRelatorioMontadorTest {
                 "inadimplencia.xls",
                 "admin",
                 List.of(uOk, uErro),
+                new RelatorioRegraInicioDto("D+1", "2026-06-03", 0, 0),
                 List.of(sucesso),
                 List.of(new CobrancaProcessarErroDto("B-9999", "Falha simulada")));
 
@@ -80,6 +82,7 @@ class CobrancaRelatorioMontadorTest {
                 null,
                 null,
                 List.of(unidade("A-01", "X", "12345678901", List.of(cob("10/10/2026", 100L)))),
+                new RelatorioRegraInicioDto("D+1", "2026-06-03", 0, 0),
                 List.of(),
                 List.of());
 
@@ -95,5 +98,25 @@ class CobrancaRelatorioMontadorTest {
 
     private static InadimplenciaCobrancaDto cob(String venc, long centavos) {
         return new InadimplenciaCobrancaDto("Ordinária", "1", "04/2026", venc, "100,00", centavos, "");
+    }
+
+    @Test
+    void montar_comDevedoresDescartados_pontoAtencaoRegraD() {
+        RelatorioExecucaoCobranca r = montador.montar(
+                "x",
+                Instant.now(),
+                "00000299",
+                "C",
+                null,
+                null,
+                List.of(),
+                new RelatorioRegraInicioDto("D+60", "2026-06-03", 1, 1),
+                List.of(),
+                List.of());
+
+        assertThat(r.regraInicio().regraAplicada()).isEqualTo("D+60");
+        assertThat(r.regraInicio().devedoresDescartados()).isEqualTo(1);
+        assertThat(r.pontosAtencao())
+                .anyMatch(p -> p.contains("não atingiram a regra D+60") && p.contains("descartados"));
     }
 }

@@ -3192,7 +3192,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                           !String(numeroProcessoNovo ?? '').trim()
                         }
                         onClick={() => void handleObterMovimentacoesProjudi()}
-                        title="Consulta o PROJUDI e arquiva movimentações no Drive (novas primeiro; cliques seguintes buscam mais 10 até acabar)"
+                        title="Consulta o PROJUDI agora (mesmo com acervo integral no pipeline automático; pode não trazer arquivos novos)"
                       >
                         <CloudDownload className="w-4 h-4" aria-hidden />
                         {buscandoMovimentacoesProjudi ? 'Consultando PROJUDI…' : 'Obter movimentações'}

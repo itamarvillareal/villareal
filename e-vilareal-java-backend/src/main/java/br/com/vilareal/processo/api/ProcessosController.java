@@ -265,9 +265,10 @@ public class ProcessosController {
     @Operation(
             summary = "Obter movimentações PROJUDI (progressivo → Drive)",
             description =
-                    "Consulta o PROJUDI e arquiva no Drive movimentações com documento: primeiro as novas "
-                            + "no topo; a cada clique seguinte, até 10 movimentações mais antigas ainda não arquivadas "
-                            + "(regra progressiva). Repita até `temMais=false`.")
+                    "Consulta manual pelo usuário — sempre executa, independente do desarme do pipeline "
+                            + "automático (pode retornar zero arquivos se o acervo já estiver integral). "
+                            + "Arquiva no Drive: novas no topo; a cada clique, até 10 movimentações antigas "
+                            + "ainda não arquivadas. Repita até `temMais=false`.")
     public ProcessoProjudiMovimentacoesDriveResponse obterMovimentacoesProjudiDrive(@PathVariable Long id) {
         return processoProjudiMovimentacoesDriveService.executar(id);
     }

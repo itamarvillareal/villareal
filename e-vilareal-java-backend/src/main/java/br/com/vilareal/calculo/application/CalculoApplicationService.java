@@ -388,7 +388,7 @@ public class CalculoApplicationService {
     public CalculoClienteConfigResponse obterConfigCliente(String codigoCliente) {
         String cod8 = formatarCodigoCliente(codigoCliente);
         ObjectNode merged = defaultsConfigCliente();
-        clienteConfigRepository.findById(cod8).ifPresent(e -> shallowMerge(merged, e.getPayloadJson()));
+        clienteConfigRepository.findById(cod8).ifPresent(e -> aplicarEntityConfigCliente(merged, e));
         return new CalculoClienteConfigResponse(merged);
     }
 
@@ -405,21 +405,23 @@ public class CalculoApplicationService {
             throw new BusinessRuleException("Configuração deve ser um objeto JSON");
         }
         ObjectNode merged = defaultsConfigCliente();
-        clienteConfigRepository
-                .findById(cod8)
-                .ifPresent(e -> shallowMerge(merged, corrigirPayloadJson(e.getPayloadJson())));
+        Optional<CalculoClienteConfigEntity> existente = clienteConfigRepository.findById(cod8);
+        existente.ifPresent(e -> aplicarEntityConfigCliente(merged, e));
         if (patch != null) {
             shallowMerge(merged, patch);
         }
-        CalculoClienteConfigEntity entity = clienteConfigRepository
-                .findById(cod8)
-                .orElseGet(() -> {
-                    CalculoClienteConfigEntity n = new CalculoClienteConfigEntity();
-                    n.setCodigoCliente(cod8);
-                    return n;
-                });
-        entity.setPayloadJson(merged);
+        int regraDias = RegraInicioCobrancaDiasValidator.parse(merged.get("regraInicioCobrancaDias"));
+        CalculoClienteConfigEntity entity = existente.orElseGet(() -> {
+            CalculoClienteConfigEntity n = new CalculoClienteConfigEntity();
+            n.setCodigoCliente(cod8);
+            return n;
+        });
+        ObjectNode payload = merged.deepCopy();
+        payload.remove("regraInicioCobrancaDias");
+        entity.setPayloadJson(payload);
+        entity.setRegraInicioCobrancaDias(regraDias);
         clienteConfigRepository.save(entity);
+        merged.put("regraInicioCobrancaDias", regraDias);
         return new CalculoClienteConfigResponse(merged);
     }
 
@@ -439,7 +441,13 @@ public class CalculoApplicationService {
         n.put("indice", "INPC");
         n.put("periodicidade", "mensal");
         n.put("modeloListaDebitos", "01");
+        n.put("regraInicioCobrancaDias", RegraInicioCobrancaDiasValidator.DEFAULT);
         return n;
+    }
+
+    private void aplicarEntityConfigCliente(ObjectNode merged, CalculoClienteConfigEntity entity) {
+        shallowMerge(merged, corrigirPayloadJson(entity.getPayloadJson()));
+        merged.put("regraInicioCobrancaDias", entity.getRegraInicioCobrancaDias());
     }
 
     private void shallowMerge(ObjectNode target, JsonNode overlay) {

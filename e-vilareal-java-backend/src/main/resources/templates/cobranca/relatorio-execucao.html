@@ -47,6 +47,13 @@
       Reutilizados: <span th:text="${processosReutilizados}">0</span> ·
       Pessoas criadas: <span th:text="${pessoasCriadas}">0</span> ·
       Revisões troca de dono: <span th:text="${revisoesTrocaDono}">0</span></p>
+    <p th:if="${regraInicio != null}" style="margin-top: 10px; padding-top: 8px; border-top: 1px solid #e2e8f0;">
+      Regra aplicada: <strong th:text="${regraInicio.regraAplicada}">—</strong><br/>
+      Data de importação: <strong th:text="${regraInicio.dataImportacao}">—</strong><br/>
+      Descartados pela regra:
+      <strong th:text="${regraInicio.devedoresDescartados}">0</strong> devedor(es) /
+      <strong th:text="${regraInicio.titulosDescartados}">0</strong> taxa(s)
+    </p>
   </div>
 
   <div class="atencao" th:if="${!pontosAtencao.isEmpty()}">

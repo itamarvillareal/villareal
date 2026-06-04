@@ -26,6 +26,10 @@ public class CalculoClienteConfigEntity {
     @Column(name = "payload_json", nullable = false, columnDefinition = "json")
     private JsonNode payloadJson;
 
+    /** Dias para início de cobrança: 1, 30 ou 60. */
+    @Column(name = "regra_inicio_cobranca_dias", nullable = false)
+    private int regraInicioCobrancaDias = 1;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Instant createdAt;
 

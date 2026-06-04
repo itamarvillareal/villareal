@@ -1,5 +1,7 @@
 package br.com.vilareal.email;
 
+import br.com.vilareal.processo.application.ProcessoDiagnosticoNumeroBuscaUtil;
+import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
 import br.com.vilareal.projudi.ProjudiEmailTriggerService;
 import br.com.vilareal.publicacao.api.dto.PublicacaoWriteRequest;
 import br.com.vilareal.publicacao.infrastructure.persistence.repository.PublicacaoRepository;
@@ -14,10 +16,12 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
+import java.math.BigInteger;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -37,6 +41,7 @@ public class GmailMovimentacaoEmailEngine {
     private final Gmail gmail;
     private final PublicacaoEmailImportacaoTransacionalService importacaoTransacional;
     private final PublicacaoRepository publicacaoRepository;
+    private final ProcessoRepository processoRepository;
     private final EmailImportacaoSyncService syncService;
     private final ProjudiEmailTriggerService projudiEmailTriggerService;
     private final ProjudiMovimentacoesEmailPipelineProperties pipelineProperties;
@@ -46,6 +51,7 @@ public class GmailMovimentacaoEmailEngine {
             @Autowired(required = false) Gmail gmail,
             PublicacaoEmailImportacaoTransacionalService importacaoTransacional,
             PublicacaoRepository publicacaoRepository,
+            ProcessoRepository processoRepository,
             EmailImportacaoSyncService syncService,
             ProjudiEmailTriggerService projudiEmailTriggerService,
             ProjudiMovimentacoesEmailPipelineProperties pipelineProperties,
@@ -53,6 +59,7 @@ public class GmailMovimentacaoEmailEngine {
         this.gmail = gmail;
         this.importacaoTransacional = importacaoTransacional;
         this.publicacaoRepository = publicacaoRepository;
+        this.processoRepository = processoRepository;
         this.syncService = syncService;
         this.projudiEmailTriggerService = projudiEmailTriggerService;
         this.pipelineProperties = pipelineProperties;
@@ -182,12 +189,18 @@ public class GmailMovimentacaoEmailEngine {
                         }
                         gravadas++;
                         resumo.setPublicacoesProcessadas(resumo.getPublicacoesProcessadas() + 1);
-                        if (importacaoTransacional.tentarVinculoAutomaticoPorCnj(pubId)) {
+                        Optional<Long> processoVinculado =
+                                importacaoTransacional.tentarVinculoAutomaticoPorCnjDevolvendoProcessoId(pubId);
+                        if (processoVinculado.isPresent()) {
                             vinculosAutomaticos++;
+                            resumo.registrarProcessoAtivadoDrive(processoVinculado.get());
                             if (fonte.tipo() == EmailImportacaoSyncTipo.PROJUDI && !pipelineProperties.isEnabled()) {
                                 projudiEmailTriggerService.registrarCnjParaDisparo(
                                         cnjsDisparoProjudi, req.getNumeroProcessoEncontrado());
                             }
+                        } else if (fonte.tipo() == EmailImportacaoSyncTipo.PROJUDI && pipelineProperties.isEnabled()) {
+                            resolverProcessoIdUnicoPorCnj(req.getNumeroProcessoEncontrado())
+                                    .ifPresent(resumo::registrarProcessoAtivadoDrive);
                         }
                     } catch (Exception ex) {
                         String msg = mensagemRaiz(ex);
@@ -322,6 +335,18 @@ public class GmailMovimentacaoEmailEngine {
             a = a.substring(0, 200);
         }
         return a + " [" + messageId + "]";
+    }
+
+    private Optional<Long> resolverProcessoIdUnicoPorCnj(String numeroCnj) {
+        if (numeroCnj == null || numeroCnj.isBlank()) {
+            return Optional.empty();
+        }
+        List<BigInteger> ids =
+                ProcessoDiagnosticoNumeroBuscaUtil.buscarIdsProcessoPorNumero(numeroCnj, processoRepository);
+        if (ids.size() != 1) {
+            return Optional.empty();
+        }
+        return Optional.of(ids.getFirst().longValue());
     }
 
     private static String mensagemRaiz(Throwable ex) {

@@ -8,6 +8,7 @@ public record RelatorioExecucaoCobranca(
         RelatorioCabecalhoDto cabecalho,
         RelatorioTotaisDocumentoDto totaisDocumento,
         RelatorioTotaisExecucaoDto totaisExecucao,
+        RelatorioRegraInicioDto regraInicio,
         List<RelatorioItemUnidadeDto> itens,
         List<CobrancaProcessarErroDto> erros,
         List<String> pontosAtencao) {}

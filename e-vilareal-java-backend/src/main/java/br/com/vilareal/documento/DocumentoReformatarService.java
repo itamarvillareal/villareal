@@ -19,6 +19,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.time.format.DateTimeParseException;
 import java.util.Locale;
+import java.util.regex.Pattern;
 
 @Service
 public class DocumentoReformatarService {
@@ -120,12 +121,15 @@ public class DocumentoReformatarService {
                     DocumentoReformatarCorpoUnicoHtml.aplicarCorpoUnico(request, request.corpoUnico());
             String corpoHtml = DocumentoReformatarCorpoUnicoHtml.extrairHtmlParaPdf(request.corpoUnico());
             LocalDate data = parseData(parsed.data());
+            String localDataCustom = resolverLocalDataCorpoUnico(
+                    request.corpoUnico(), request.cidadeEstado(), data, parsed);
+            String cidadeEstado = request.cidadeEstado() != null && !request.cidadeEstado().isBlank()
+                    ? request.cidadeEstado().trim()
+                    : "Anápolis, estado de Goiás";
             DocumentoRenderContext ctx = new DocumentoRenderContext(
                     "",
                     "",
-                    parsed.cidadeEstado() != null && !parsed.cidadeEstado().isBlank()
-                            ? parsed.cidadeEstado().trim()
-                            : "Anápolis, estado de Goiás",
+                    cidadeEstado,
                     data,
                     true,
                     null,
@@ -135,7 +139,7 @@ public class DocumentoReformatarService {
                     List.of(),
                     List.of(),
                     List.of(),
-                    null,
+                    localDataCustom,
                     true,
                     parsed.advogadoNome(),
                     parsed.advogadoOab(),
@@ -293,6 +297,39 @@ public class DocumentoReformatarService {
                     return true;
                 })
                 .toList();
+    }
+
+    private String resolverLocalDataCorpoUnico(
+            String corpoUnicoHtml,
+            String cidadeEstadoForm,
+            LocalDate data,
+            DocumentoReformatarConteudoRequest parsed) {
+        String fromCorpo = normalizarLocalDataCustom(
+                DocumentoReformatarCorpoUnicoHtml.extrairLocalData(corpoUnicoHtml));
+        if (StringUtils.hasText(fromCorpo)) {
+            return fromCorpo;
+        }
+        if (StringUtils.hasText(parsed.cidadeEstado())
+                && DocumentoReformatarCorpoUnicoHtml.pareceLinhaLocalData(parsed.cidadeEstado())) {
+            String linha = parsed.cidadeEstado().trim();
+            if (linha.toLowerCase(Locale.ROOT).contains(" de ")
+                    && Pattern.compile("(?i)\\d{1,2}\\s+de\\s+").matcher(linha).find()) {
+                return normalizarLocalDataCustom(linha);
+            }
+            return normalizarLocalDataCustom(pdfService.montarLocalData(linha.replaceAll("\\.$", ""), data));
+        }
+        String cidade = StringUtils.hasText(cidadeEstadoForm)
+                ? cidadeEstadoForm.trim()
+                : "Anápolis, estado de Goiás";
+        return normalizarLocalDataCustom(pdfService.montarLocalData(cidade, data));
+    }
+
+    private static String normalizarLocalDataCustom(String localData) {
+        if (!StringUtils.hasText(localData)) {
+            return null;
+        }
+        String t = localData.trim();
+        return t.endsWith(".") ? t : t + ".";
     }
 
     private static LocalDate parseData(String dataIso) {

@@ -25,9 +25,11 @@ import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -55,6 +57,7 @@ public class ProjudiMovimentacoesEmailPipelineService {
     private final Long credencialIdPadrao;
     private final ExecutorService executor;
     private final JobRunTracker jobRunTracker;
+    private final ProjudiMovimentacoesAcervoIntegralEstado acervoIntegralEstado;
     private final AtomicBoolean running = new AtomicBoolean(true);
     private final AtomicBoolean loopIniciado = new AtomicBoolean(false);
 
@@ -69,7 +72,8 @@ public class ProjudiMovimentacoesEmailPipelineService {
             ProjudiSessionService sessionService,
             @Value("${projudi.orquestrador.credencial-id-padrao:1}") Long credencialIdPadrao,
             @Qualifier("projudiEmailPipelineExecutor") ExecutorService executor,
-            JobRunTracker jobRunTracker) {
+            JobRunTracker jobRunTracker,
+            ProjudiMovimentacoesAcervoIntegralEstado acervoIntegralEstado) {
         this.properties = properties;
         this.schedulePolicy = schedulePolicy;
         this.gmailProjudiManifestacaoService = gmailProjudiManifestacaoService;
@@ -81,6 +85,7 @@ public class ProjudiMovimentacoesEmailPipelineService {
         this.credencialIdPadrao = credencialIdPadrao;
         this.executor = executor;
         this.jobRunTracker = jobRunTracker;
+        this.acervoIntegralEstado = acervoIntegralEstado;
     }
 
     public void iniciarLoopEmBackground() {
@@ -138,7 +143,10 @@ public class ProjudiMovimentacoesEmailPipelineService {
         Map<String, Object> resumo = new LinkedHashMap<>();
         resumo.put("perfil", perfil.nome().name());
         resumo.put("inicio", inicio.toString());
+        boolean desarme = properties.isDesarmeAcervoIntegralEnabled();
+        resumo.put("desarmeAcervoIntegral", desarme);
 
+        Set<Long> processosAtivadosEmail = new LinkedHashSet<>();
         if (gmailProjudiManifestacaoService != null && gmailProjudiManifestacaoService.isDisponivel()) {
             try {
                 PublicacaoEmailProcessamentoResumo gmailResumo;
@@ -150,6 +158,10 @@ public class ProjudiMovimentacoesEmailPipelineService {
                 resumo.put("gmailEmailsLidos", gmailResumo.getEmailsLidos());
                 resumo.put("gmailPublicacoesGravadas", gmailResumo.getPublicacoesProcessadas());
                 resumo.put("gmailErros", gmailResumo.getErros().size());
+                if (gmailResumo.getProcessosAtivadosDrive() != null) {
+                    processosAtivadosEmail.addAll(gmailResumo.getProcessosAtivadosDrive());
+                }
+                resumo.put("gmailProcessosAtivados", processosAtivadosEmail.size());
             } catch (Exception e) {
                 log.warn("Pipeline PROJUDI: falha na sincronização Gmail: {}", e.getMessage());
                 resumo.put("gmailErro", e.getMessage());
@@ -163,16 +175,35 @@ public class ProjudiMovimentacoesEmailPipelineService {
                 publicacaoRepository.findDistinctProcessoIdsProjudiVinculadosComEmailRecebidoDesde(desde);
         resumo.put("processosElegiveisTotal", elegiveis.size());
 
-        List<Long> nestaRodada = limitarProcessos(elegiveis, perfil.maxProcessosPorCiclo());
+        List<Long> filaDrive;
+        if (desarme) {
+            filaDrive = ProjudiMovimentacoesAcervoIntegralEstado.montarFilaDrive(
+                    elegiveis, processosAtivadosEmail, acervoIntegralEstado);
+            int ignorados = elegiveis.size() - (int) elegiveis.stream().filter(id -> !acervoIntegralEstado.estaCompleto(id)).count();
+            resumo.put("driveAcervoCompletoIgnorados", Math.max(0, ignorados));
+            resumo.put("acervoIntegralMarcados", acervoIntegralEstado.quantidadeCompletos());
+            if (filaDrive.isEmpty() && acervoIntegralEstado.todosElegiveisCompletos(elegiveis)) {
+                resumo.put("drive", "desarmado — acervo integral completo na janela");
+                log.info(
+                        "Pipeline PROJUDI: Drive desarmado ({} processos na janela com cópia integral; aguardando e-mail novo)",
+                        elegiveis.size());
+            }
+        } else {
+            filaDrive = elegiveis;
+        }
+
+        List<Long> nestaRodada = limitarProcessos(filaDrive, perfil.maxProcessosPorCiclo());
         resumo.put("processosNestRodada", nestaRodada.size());
 
-        boolean driveExecutado =
-                orquestradorGate.tryExecutar(
-                        "pipeline-movimentacoes-email",
-                        () -> executarFilaDrive(nestaRodada, perfil, resumo, jobCtx));
-        if (!driveExecutado) {
-            resumo.put("drive", "robô ocupado — fila adiada");
-            log.info("Pipeline PROJUDI: robô ocupado, fila Drive não executada neste ciclo");
+        if (!nestaRodada.isEmpty()) {
+            boolean driveExecutado =
+                    orquestradorGate.tryExecutar(
+                            "pipeline-movimentacoes-email",
+                            () -> executarFilaDrive(nestaRodada, perfil, resumo, jobCtx, desarme));
+            if (!driveExecutado) {
+                resumo.put("drive", "robô ocupado — fila adiada");
+                log.info("Pipeline PROJUDI: robô ocupado, fila Drive não executada neste ciclo");
+            }
         }
 
         resumo.put("duracaoMs", Duration.between(inicio, Instant.now()).toMillis());
@@ -200,7 +231,8 @@ public class ProjudiMovimentacoesEmailPipelineService {
             List<Long> processoIds,
             ProjudiMovimentacoesEmailSchedulePolicy.PerfilAtivo perfil,
             Map<String, Object> resumo,
-            br.com.vilareal.jobrun.application.JobRunContext jobCtx) {
+            br.com.vilareal.jobrun.application.JobRunContext jobCtx,
+            boolean desarme) {
         if (processoIds.isEmpty()) {
             resumo.put("driveProcessados", 0);
             return;
@@ -214,6 +246,7 @@ public class ProjudiMovimentacoesEmailPipelineService {
         int processados = 0;
         int arquivosTotal = 0;
         int comTemMais = 0;
+        int acervoMarcadosNesteCiclo = 0;
         int errosConsecutivos = 0;
         String motivoParada = null;
 
@@ -269,6 +302,19 @@ public class ProjudiMovimentacoesEmailPipelineService {
                         resultado.temMais());
             }
 
+            if (desarme) {
+                boolean marcou =
+                        ProjudiMovimentacoesAcervoIntegralEstado.indicaAcervoIntegralCompleto(resultado);
+                acervoIntegralEstado.atualizarAposExecucaoDrive(processoId, resultado);
+                if (marcou) {
+                    acervoMarcadosNesteCiclo++;
+                    log.info(
+                            "Pipeline PROJUDI processoId={}: acervo integral completo ({} movimentações com documento no Drive)",
+                            processoId,
+                            resultado.totalComDocumento());
+                }
+            }
+
             if (motivoParada != null) {
                 break;
             }
@@ -280,6 +326,9 @@ public class ProjudiMovimentacoesEmailPipelineService {
         resumo.put("driveProcessados", processados);
         resumo.put("driveArquivosBaixados", arquivosTotal);
         resumo.put("driveComTemMais", comTemMais);
+        if (desarme) {
+            resumo.put("driveAcervoMarcadosNesteCiclo", acervoMarcadosNesteCiclo);
+        }
         if (motivoParada != null) {
             resumo.put("driveParadaAntecipada", motivoParada);
         }

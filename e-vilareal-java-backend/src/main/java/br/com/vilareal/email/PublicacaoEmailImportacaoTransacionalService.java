@@ -8,6 +8,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Optional;
+
 /**
  * Uma transação por publicação na importação Gmail — evita corromper a sessão Hibernate
  * quando um INSERT falha (ex.: schema desatualizado) e o lote continua.
@@ -49,5 +51,9 @@ public class PublicacaoEmailImportacaoTransacionalService {
     @Transactional(propagation = Propagation.REQUIRES_NEW, rollbackFor = Exception.class)
     public boolean tentarVinculoAutomaticoPorCnj(Long publicacaoId) {
         return publicacaoApplicationService.tentarVinculoAutomaticoPorCnj(publicacaoId);
+    }
+
+    public Optional<Long> tentarVinculoAutomaticoPorCnjDevolvendoProcessoId(Long publicacaoId) {
+        return publicacaoApplicationService.tentarVinculoAutomaticoPorCnjDevolvendoProcessoId(publicacaoId);
     }
 }
