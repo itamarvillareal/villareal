@@ -54,14 +54,34 @@ class AgendamentoProximaExecucaoCalculoTest {
     }
 
     @Test
-    void semearPeriodico_hojeNoHorarioSeFuturo() {
+    void semearPeriodico_diario_horarioFuturoHoje_naoPulaParaAmanha() {
+        LocalDateTime ref = LocalDateTime.of(2026, 6, 5, 11, 24);
+        LocalTime meioDiaQuinze = LocalTime.of(12, 15);
+
+        assertThat(AgendamentoProximaExecucaoCalculo.semearPeriodico(ref, PeriodoCadencia.DIARIO, meioDiaQuinze))
+                .isEqualTo(LocalDateTime.of(2026, 6, 5, 12, 15));
+        assertThat(AgendamentoProximaExecucaoCalculo.calcularProxima(periodico(PeriodoCadencia.DIARIO, meioDiaQuinze), ref))
+                .isEqualTo(LocalDateTime.of(2026, 6, 5, 12, 15));
+    }
+
+    @Test
+    void semearPeriodico_diario_horarioJaPassouHoje_avancaUmDia() {
+        LocalDateTime ref = LocalDateTime.of(2026, 6, 5, 13, 0);
+        LocalTime meioDiaQuinze = LocalTime.of(12, 15);
+
+        assertThat(AgendamentoProximaExecucaoCalculo.semearPeriodico(ref, PeriodoCadencia.DIARIO, meioDiaQuinze))
+                .isEqualTo(LocalDateTime.of(2026, 6, 6, 12, 15));
+    }
+
+    @Test
+    void semearPeriodico_semanal_horarioFuturoHoje() {
         LocalDateTime ref = LocalDateTime.of(2026, 6, 4, 7, 30);
         assertThat(AgendamentoProximaExecucaoCalculo.semearPeriodico(ref, PeriodoCadencia.SEMANAL, OITO))
                 .isEqualTo(LocalDateTime.of(2026, 6, 4, 8, 0));
     }
 
     @Test
-    void semearPeriodico_proximaOcorrenciaSeHorarioPassou() {
+    void semearPeriodico_semanal_horarioJaPassouHoje_avancaSeteDias() {
         LocalDateTime ref = LocalDateTime.of(2026, 6, 4, 10, 0);
         assertThat(AgendamentoProximaExecucaoCalculo.semearPeriodico(ref, PeriodoCadencia.SEMANAL, OITO))
                 .isEqualTo(LocalDateTime.of(2026, 6, 11, 8, 0));
@@ -135,10 +155,14 @@ class AgendamentoProximaExecucaoCalculoTest {
     }
 
     private static AgendamentoConsultaEntity periodico(PeriodoCadencia periodo) {
+        return periodico(periodo, OITO);
+    }
+
+    private static AgendamentoConsultaEntity periodico(PeriodoCadencia periodo, LocalTime horario) {
         AgendamentoConsultaEntity a = new AgendamentoConsultaEntity();
         a.setTipoCadencia(TipoCadencia.PERIODICO);
         a.setPeriodo(periodo);
-        a.setPeriodoHorario(OITO);
+        a.setPeriodoHorario(horario);
         return a;
     }
 }

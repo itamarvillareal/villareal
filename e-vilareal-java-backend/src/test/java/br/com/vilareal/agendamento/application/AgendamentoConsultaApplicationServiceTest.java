@@ -12,6 +12,7 @@ import br.com.vilareal.agendamento.infrastructure.persistence.repository.Consult
 import br.com.vilareal.common.exception.BusinessRuleException;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -19,8 +20,11 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
 
@@ -28,6 +32,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -44,8 +49,19 @@ class AgendamentoConsultaApplicationServiceTest {
     @Mock
     private ProcessoRepository processoRepository;
 
+    @Mock
+    private Clock clock;
+
     @InjectMocks
     private AgendamentoConsultaApplicationService service;
+
+    private static final ZoneId ZONA_BR = ZoneId.of("America/Sao_Paulo");
+
+    @BeforeEach
+    void configurarClockPadrao() {
+        lenient().when(clock.getZone()).thenReturn(ZONA_BR);
+        lenient().when(clock.instant()).thenAnswer(inv -> Instant.now());
+    }
 
     @Test
     void criar_intervalo_semeiaProximaExecucao() {
@@ -92,6 +108,30 @@ class AgendamentoConsultaApplicationServiceTest {
         verify(agendamentoConsultaRepository).save(cap.capture());
         assertThat(cap.getValue().getHorariosFixos()).isEqualTo("08:00,14:00");
         assertThat(cap.getValue().getProximaExecucao()).isAfter(LocalDateTime.now().minusSeconds(5));
+    }
+
+    @Test
+    void criar_periodicoDiario_horarioFuturoHoje_semeiaHojeNoHorario() {
+        ProcessoEntity processo = processo(1076L, "5059346-36.2026.8.09.0007");
+        when(processoRepository.findByIdWithClienteAndPessoa(1076L)).thenReturn(Optional.of(processo));
+        when(agendamentoConsultaRepository.save(any())).thenAnswer(inv -> {
+            AgendamentoConsultaEntity e = inv.getArgument(0);
+            e.setId(12L);
+            return e;
+        });
+        LocalDateTime ref = LocalDateTime.of(2026, 6, 5, 11, 24);
+        when(clock.instant()).thenReturn(ref.atZone(ZONA_BR).toInstant());
+
+        AgendamentoRequest req = new AgendamentoRequest();
+        req.setTipoCadencia(TipoCadencia.PERIODICO);
+        req.setPeriodo(PeriodoCadencia.DIARIO);
+        req.setPeriodoHorario(LocalTime.of(12, 15));
+
+        service.criar(1076L, req);
+
+        ArgumentCaptor<AgendamentoConsultaEntity> cap = ArgumentCaptor.forClass(AgendamentoConsultaEntity.class);
+        verify(agendamentoConsultaRepository).save(cap.capture());
+        assertThat(cap.getValue().getProximaExecucao()).isEqualTo(LocalDateTime.of(2026, 6, 5, 12, 15));
     }
 
     @Test
