@@ -24,6 +24,7 @@ import { ModalConfiguracoesCalculoCliente } from './ModalConfiguracoesCalculoCli
 import { ModalWhatsAppCliente } from './ModalWhatsAppCliente.jsx';
 import { ModalCobrancaAutomaticaCliente } from './cobranca/ModalCobrancaAutomaticaCliente.jsx';
 import { estadoPediuFocoCobranca } from './cobranca/cobrancaClienteNav.js';
+import { useCloseOnEscape } from '../hooks/useCloseOnEscape.js';
 import { importarWhatsAppDaPessoa } from '../repositories/clienteWhatsAppRepository.js';
 import { getDadosProcessoClienteUnificado } from '../data/processoClienteProcUnificado.js';
 import { buscarCliente, pesquisarCadastroPessoasPorNomeOuCpf } from '../api/clientesService.js';
@@ -1288,14 +1289,13 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
     }
   }
 
-  useEffect(() => {
-    if (!modalEscolherPessoa) return;
-    const h = (e) => {
-      if (e.key === 'Escape') setModalEscolherPessoa(false);
-    };
-    window.addEventListener('keydown', h);
-    return () => window.removeEventListener('keydown', h);
-  }, [modalEscolherPessoa]);
+  const fecharModalEscolherPessoa = useCallback(() => {
+    setModalEscolherPessoa(false);
+    setBuscaPessoaModal('');
+  }, []);
+
+  useCloseOnEscape(modalEscolherPessoa, fecharModalEscolherPessoa);
+  useCloseOnEscape(modalQualificacaoAberto, () => setModalQualificacaoAberto(false));
 
   const indiceClientesPorNome = useMemo(() => {
     const out = [];

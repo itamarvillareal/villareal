@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useCloseOnEscape } from '../../../hooks/useCloseOnEscape.js';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Plus, Pencil, Trash2 } from 'lucide-react';
 import { featureFlags } from '../../../config/featureFlags.js';
@@ -42,6 +43,8 @@ const EMPTY_MAPEAMENTO = {
 
 function MapeamentoModal({ open, initial, cartoes, onClose, onSave }) {
   const [form, setForm] = useState(EMPTY_MAPEAMENTO);
+
+  useCloseOnEscape(open, onClose);
 
   useEffect(() => {
     if (open) {

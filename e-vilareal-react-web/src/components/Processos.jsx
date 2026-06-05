@@ -127,6 +127,7 @@ import { listarPublicacoesRelatorioPorProcesso } from '../repositories/publicaco
 import { ModalCriarTarefaContextual } from './ModalCriarTarefaContextual.jsx';
 import { ModalConsultaPeriodicaProcesso } from './consultas-periodicas/ModalConsultaPeriodicaProcesso.jsx';
 import { PessoaEmbedModal } from './PessoaEmbedModal.jsx';
+import { useCloseOnEscape } from '../hooks/useCloseOnEscape.js';
 import { AutorUsuarioExibicao } from './ui/AutorUsuarioExibicao.jsx';
 import { buildContextFromProcesso, buildContextFromProcessoComPrazoFatal } from '../data/tarefasContextualPayload.js';
 import { montarDadosParaDocumentoFromProcesso } from '../helpers/documentoHelper.js';
@@ -590,6 +591,37 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   const [publicacoesRelatorioErro, setPublicacoesRelatorioErro] = useState('');
   const [publicacoesRelatorioTick, setPublicacoesRelatorioTick] = useState(0);
 
+  const fecharModalAgendaAudiencia = useCallback(
+    () => setModalAgendaAudiencia({ aberto: false, dataBr: null, revision: 0 }),
+    [],
+  );
+
+  useCloseOnEscape(driveExplorerAberto, () => setDriveExplorerAberto(false));
+  useCloseOnEscape(!!clientesEmbed, () => setClientesEmbed(null));
+  useCloseOnEscape(modalAgendaAudiencia.aberto, fecharModalAgendaAudiencia);
+  useCloseOnEscape(!!modalVinculoPartes, () => setModalVinculoPartes(null));
+  useCloseOnEscape(!!informacaoModal, () => setInformacaoModal(null));
+  useCloseOnEscape(modalContaCorrente, () => setModalContaCorrente(false));
+  useCloseOnEscape(modalTramitacaoAberto, () => setModalTramitacaoAberto(false));
+  useCloseOnEscape(modalAcoesRedacaoAberto, () => setModalAcoesRedacaoAberto(false));
+  useCloseOnEscape(modalAgendaLoteAberto, () => setModalAgendaLoteAberto(false));
+  useCloseOnEscape(
+    isEmbedded &&
+      !driveExplorerAberto &&
+      !pessoaEmbed &&
+      !clientesEmbed &&
+      !modalAgendaAudiencia.aberto &&
+      !modalVinculoPartes &&
+      !informacaoModal &&
+      !modalContaCorrente &&
+      !modalRelatorioPublicacoes &&
+      !modalTarefaContextual &&
+      !modalTramitacaoAberto &&
+      !modalAcoesRedacaoAberto &&
+      !modalAgendaLoteAberto,
+    onFecharEmbed,
+  );
+
   /** Evita página vazia quando o nº de linhas do histórico diminui (ex.: troca de processo ou carga API). */
   useEffect(() => {
     const totalP = Math.max(1, Math.ceil(historico.length / HISTORICO_POR_PAGINA));
@@ -817,11 +849,6 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     if (!modalAcoesRedacaoAberto) return undefined;
     const n = ACOES_REDACAO_PROCESSO.length;
     const onKey = (e) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        setModalAcoesRedacaoAberto(false);
-        return;
-      }
       if (e.key === 'ArrowDown') {
         e.preventDefault();
         setIndiceAcaoRedacaoFocada((i) => (i + 1) % n);
@@ -860,106 +887,6 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     });
     return () => window.cancelAnimationFrame(id);
   }, [modalAcoesRedacaoAberto, indiceAcaoRedacaoFocada]);
-
-  /** Formulário suspenso (embed): Esc fecha modais internos primeiro, depois o painel. */
-  useEffect(() => {
-    if (!isEmbedded || typeof onFecharEmbed !== 'function') return undefined;
-    const onKey = (e) => {
-      if (e.key !== 'Escape') return;
-      if (driveExplorerAberto) {
-        e.preventDefault();
-        setDriveExplorerAberto(false);
-        return;
-      }
-      if (pessoaEmbed) {
-        e.preventDefault();
-        setPessoaEmbed(null);
-        return;
-      }
-      if (clientesEmbed) {
-        e.preventDefault();
-        setClientesEmbed(null);
-        return;
-      }
-      if (modalAgendaAudiencia.aberto) {
-        e.preventDefault();
-        setModalAgendaAudiencia({ aberto: false, dataBr: null, revision: 0 });
-        return;
-      }
-      if (modalVinculoPartes) {
-        e.preventDefault();
-        setModalVinculoPartes(null);
-        return;
-      }
-      if (informacaoModal) {
-        e.preventDefault();
-        setInformacaoModal(null);
-        return;
-      }
-      if (modalContaCorrente) {
-        e.preventDefault();
-        setModalContaCorrente(false);
-        return;
-      }
-      if (modalRelatorioPublicacoes) {
-        e.preventDefault();
-        setModalRelatorioPublicacoes(false);
-        return;
-      }
-      if (modalTarefaContextual != null) {
-        e.preventDefault();
-        setModalTarefaContextual(null);
-        return;
-      }
-      if (modalTramitacaoAberto) {
-        e.preventDefault();
-        setModalTramitacaoAberto(false);
-        return;
-      }
-      if (modalAcoesRedacaoAberto) {
-        e.preventDefault();
-        setModalAcoesRedacaoAberto(false);
-        return;
-      }
-      if (modalAgendaLoteAberto) {
-        e.preventDefault();
-        setModalAgendaLoteAberto(false);
-        return;
-      }
-      e.preventDefault();
-      onFecharEmbed();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [
-    isEmbedded,
-    onFecharEmbed,
-    driveExplorerAberto,
-    pessoaEmbed,
-    clientesEmbed,
-    modalAgendaAudiencia.aberto,
-    modalVinculoPartes,
-    informacaoModal,
-    modalContaCorrente,
-    modalRelatorioPublicacoes,
-    modalTarefaContextual,
-    modalTramitacaoAberto,
-    modalAcoesRedacaoAberto,
-    modalAgendaLoteAberto,
-  ]);
-
-  /** Esc fecha o cadastro de pessoa flutuante (acima do modal de partes). */
-  useEffect(() => {
-    if (!pessoaEmbed) return undefined;
-    const onKey = (e) => {
-      if (e.key !== 'Escape') return;
-      e.preventDefault();
-      e.stopPropagation();
-      setPessoaEmbed(null);
-    };
-    window.addEventListener('keydown', onKey, true);
-    return () => window.removeEventListener('keydown', onKey, true);
-  }, [pessoaEmbed]);
 
   useEffect(() => {
     return () => {

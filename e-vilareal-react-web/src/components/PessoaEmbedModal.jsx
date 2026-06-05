@@ -1,4 +1,5 @@
 import { Suspense } from 'react';
+import { useCloseOnEscape } from '../hooks/useCloseOnEscape.js';
 import { X } from 'lucide-react';
 import { LazyCadastroPessoas } from '../app/lazyScreens.jsx';
 
@@ -7,6 +8,7 @@ import { LazyCadastroPessoas } from '../app/lazyScreens.jsx';
  * @param {{ embed: { revision: number, pessoaId: number } | null, onFechar: () => void, titulo?: string }} props
  */
 export function PessoaEmbedModal({ embed, onFechar, titulo }) {
+  useCloseOnEscape(!!embed, onFechar);
   if (!embed) return null;
 
   const tituloExibicao =

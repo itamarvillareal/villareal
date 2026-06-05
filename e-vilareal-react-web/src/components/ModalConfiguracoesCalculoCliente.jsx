@@ -8,6 +8,7 @@ import {
 } from '../data/clienteConfigCalculoStorage.js';
 import { featureFlags } from '../config/featureFlags.js';
 import { INDICES_CALCULO, PERIODICIDADE_OPCOES, MODELOS_LISTA_DEBITOS } from '../data/calculosIndices.js';
+import { useCloseOnEscape } from '../hooks/useCloseOnEscape.js';
 
 const CARD =
   'flex h-full min-h-0 flex-col rounded-lg border border-slate-200 bg-slate-50/80 p-2.5 shadow-sm';
@@ -70,6 +71,8 @@ export function ModalConfiguracoesCalculoCliente({
   const [regraInicioCobrancaDias, setRegraInicioCobrancaDias] = useState(1);
   const [salvando, setSalvando] = useState(false);
   const [erroSalvar, setErroSalvar] = useState('');
+
+  useCloseOnEscape(open, onClose, { enabled: !salvando });
 
   const inputsDesabilitados = somenteLeitura || salvando;
   const inputCls = classeInput(somenteLeitura, salvando);

@@ -8,6 +8,7 @@ import {
   saveImoveisSugestaoIgnorados,
 } from '../data/patrimonioStorage.js';
 import { listarImoveisApi } from '../repositories/imoveisRepository.js';
+import { useCloseOnEscape } from '../hooks/useCloseOnEscape.js';
 
 /**
  * Códigos de cliente (8 dígitos, sem zeros à esquerda) cujos imóveis devem ser
@@ -551,18 +552,7 @@ function FormularioPatrimonio({ config, cores, form, onChange, onSubmit, onCance
   const [numeroImovel, setNumeroImovel] = useState('');
   const [buscaMsg, setBuscaMsg] = useState(null);
 
-  useEffect(() => {
-    const onKey = (e) => {
-      if (e.key === 'Escape') onCancel();
-    };
-    document.addEventListener('keydown', onKey);
-    const anterior = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = anterior;
-    };
-  }, [onCancel]);
+  useCloseOnEscape(true, onCancel, { lockScroll: true });
 
   const handleBuscarImovel = () => {
     const candidato = buscaImovel?.(numeroImovel);

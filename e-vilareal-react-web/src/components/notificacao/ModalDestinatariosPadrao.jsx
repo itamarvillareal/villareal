@@ -15,6 +15,7 @@ import {
   processosBtnSecondary,
 } from '../processos/ProcessosAdminLayout.jsx';
 import { DestinatariosEditor } from './DestinatariosEditor.jsx';
+import { useCloseOnEscape } from '../../hooks/useCloseOnEscape.js';
 
 /**
  * Modal de destinatários padrão global (consultas periódicas).
@@ -25,6 +26,8 @@ export function ModalDestinatariosPadrao({ open, onClose, onSaved }) {
   const [carregando, setCarregando] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState('');
+
+  useCloseOnEscape(open, onClose, { enabled: !salvando });
 
   useEffect(() => {
     if (!open) return;

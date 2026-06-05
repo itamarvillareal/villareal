@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Copy, Search, X } from 'lucide-react';
+import { useCloseOnEscape } from '../../hooks/useCloseOnEscape.js';
 
 function normalizarBusca(s) {
   return String(s ?? '')
@@ -111,6 +112,8 @@ function PrazoFatalCard({ item, indice, onDoubleClick }) {
 export function ModalResultadoPrazoFatal({ open, onClose, dataPrazoFatal, itens, onOpenProcesso }) {
   const [busca, setBusca] = useState('');
   const [copiado, setCopiado] = useState(false);
+
+  useCloseOnEscape(open, onClose);
 
   useEffect(() => {
     if (open) {

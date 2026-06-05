@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { ExternalLink, X } from 'lucide-react';
 import { padCliente } from '../../data/processosDadosRelatorio.js';
 import { listarVinculosProcessoImovel } from '../../repositories/imoveisRepository.js';
+import { useCloseOnEscape } from '../../hooks/useCloseOnEscape.js';
 import { imoveisBtnPrimary, imoveisBtnSecondary, imoveisBtnIconGhost } from './ImoveisAdminLayout.jsx';
 
 export function ModalVinculosProcessoImovel({
@@ -16,6 +17,8 @@ export function ModalVinculosProcessoImovel({
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState('');
   const [vinculos, setVinculos] = useState([]);
+
+  useCloseOnEscape(open, onClose);
 
   useEffect(() => {
     if (!open) return undefined;

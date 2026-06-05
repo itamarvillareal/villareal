@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { fetchJobRuns, fetchJobsHealth } from '../repositories/jobRunsRepository.js';
 import { mensagemErroAmigavel } from '../utils/mensagemErroAmigavel.js';
+import { useCloseOnEscape } from '../hooks/useCloseOnEscape.js';
 
 const REFRESH_MS = 30_000;
 
@@ -138,6 +139,7 @@ function JobCard({ job }) {
 }
 
 function ModalErro({ run, onFechar }) {
+  useCloseOnEscape(!!run, onFechar);
   if (!run) return null;
   return (
     <div

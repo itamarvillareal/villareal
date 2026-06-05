@@ -14,6 +14,7 @@ import {
   Search,
   X,
 } from 'lucide-react';
+import { useCloseOnEscape } from '../hooks/useCloseOnEscape.js';
 import {
   buscarPublicacoesEmail,
   obterSyncPublicacoesEmail,
@@ -676,24 +677,8 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
     return () => clearTimeout(t);
   }, [buscaTexto]);
 
-  /** Esc fecha janelas suspensas (teor, vínculo); processo flutuante é tratado em Processos.jsx. */
-  useEffect(() => {
-    const onKey = (e) => {
-      if (e.key !== 'Escape') return;
-      if (processoEmbed) return;
-      if (vinculoModal) {
-        e.preventDefault();
-        setVinculoModal(null);
-        return;
-      }
-      if (modalPublicacao) {
-        e.preventDefault();
-        setModalPublicacao(null);
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [processoEmbed, vinculoModal, modalPublicacao]);
+  useCloseOnEscape(!!vinculoModal && !processoEmbed, () => setVinculoModal(null));
+  useCloseOnEscape(!!modalPublicacao && !processoEmbed && !vinculoModal, () => setModalPublicacao(null));
 
   const carregar = useCallback(async () => {
     setLoading(true);

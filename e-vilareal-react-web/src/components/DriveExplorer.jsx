@@ -24,6 +24,7 @@ import {
   obterLinkPasta,
   uploadArquivo,
 } from '../repositories/driveRepository.js';
+import { useCloseOnEscape } from '../hooks/useCloseOnEscape.js';
 
 function formatarTamanho(bytes) {
   if (bytes == null || bytes <= 0) return '';
@@ -90,6 +91,9 @@ export default function DriveExplorer({ codigoCliente, numeroInterno, processoId
   const [filtroNome, setFiltroNome] = useState('');
   const [toastMsg, setToastMsg] = useState('');
   const inputRef = useRef(null);
+
+  useCloseOnEscape(true, onClose);
+  useCloseOnEscape(modalSelecaoAberto, () => setModalSelecaoAberto(false));
 
   useEffect(() => {
     if (!toastMsg) return undefined;

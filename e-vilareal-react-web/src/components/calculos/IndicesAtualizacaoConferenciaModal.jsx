@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCloseOnEscape } from '../../hooks/useCloseOnEscape.js';
 import { X } from 'lucide-react';
 import { obterIndicesMensaisINPC, obterIndicesMensaisIPCA } from '../../services/monetaryIndicesService.js';
 import {
@@ -74,17 +75,14 @@ export function IndicesAtualizacaoConferenciaModal({
     }
   }, [indice, titulos, intervalo, indicesMensaisINPC, indicesMensaisIPCA]);
 
+  useCloseOnEscape(open, onClose);
+
   useEffect(() => {
     if (!open) return undefined;
     setMapInpc(indicesMensaisINPC);
     setMapIpca(indicesMensaisIPCA);
     carregarSeries();
-    const onKey = (e) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, carregarSeries, indicesMensaisINPC, indicesMensaisIPCA, onClose]);
+  }, [open, carregarSeries, indicesMensaisINPC, indicesMensaisIPCA]);
 
   const tabela = useMemo(() => {
     if (!open) return null;

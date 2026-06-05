@@ -19,6 +19,7 @@ import {
 import {
   listarClientesIndiceCadastro,
 } from '../repositories/clientesRepository.js';
+import { useCloseOnEscape } from '../hooks/useCloseOnEscape.js';
 
 /**
  * Modal para vincular cod. cliente + proc. no lançamento do Financeiro.
@@ -52,6 +53,8 @@ export function ModalVinculoClienteProcFinanceiro({
   const refPrimeiroProcesso = useRef(null);
   const refBuscaLivre = useRef(null);
   const refPrimeiroLivre = useRef(null);
+
+  useCloseOnEscape(aberto, onFechar);
 
   const focarPrimeiroDaLista = useCallback((refPrimeiro) => {
     refPrimeiro.current?.focus();

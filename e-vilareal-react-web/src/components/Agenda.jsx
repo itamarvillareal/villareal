@@ -242,17 +242,17 @@ function ColunaDia({
   const idNovoFoco = `agenda-novo-foco-${dataBrStr}-${usuarioAgendaId}`;
 
   return (
-    <div className="flex w-full min-w-0 flex-col overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-md ring-1 ring-slate-200/60 lg:min-h-0 lg:min-w-0 lg:flex-1">
+    <div className="flex w-full min-w-0 flex-col overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-md ring-1 ring-slate-200/60 max-lg:shrink-0 lg:min-h-0 lg:min-w-0 lg:flex-1">
       <div className={`shrink-0 px-3 py-2.5 text-sm font-semibold text-white shadow-sm ${headerClass}`}>
         {titulo}
       </div>
-      <div className="flex min-h-0 flex-1 flex-col bg-slate-50/50 p-2">
+      <div className="flex flex-col bg-slate-50/50 p-2 max-lg:shrink-0 lg:min-h-0 lg:flex-1">
         {apiAgendaVazio ? (
           <div className="mb-3 shrink-0">
             <AgendaPainelSemEventosApi nomeUsuario={apiAgendaVazio.nomeUsuario} dataFormatada={apiAgendaVazio.dataFormatada} />
           </div>
         ) : null}
-        <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto scroll-smooth pr-1 pb-2 [scrollbar-width:thin] [scrollbar-color:rgb(203_213_225)_transparent] max-lg:max-h-[min(70vh,100%)] lg:max-h-none">
+        <div className="min-h-[min(12rem,40vh)] space-y-2.5 overflow-y-auto scroll-smooth pr-1 pb-2 [scrollbar-width:thin] [scrollbar-color:rgb(203_213_225)_transparent] max-lg:max-h-none lg:min-h-0 lg:flex-1 lg:max-h-none">
           {eventos.map((ev) => (
             <CompromissoCard
               key={ev._chaveUnicaAgenda ?? ev.id}
@@ -941,16 +941,16 @@ export function Agenda({ focoDataBr = null, focoRevision = 0, modoFlutuante = fa
   }, [relatorioAgendaMensal, mesEsquerda, anoEsquerda]);
 
   const rootAgendaClass = modoFlutuante
-    ? 'relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-slate-100 dark:bg-[#0a0d12]'
-    : 'relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-slate-100 dark:bg-[#0a0d12]';
+    ? 'relative flex min-h-0 min-w-0 flex-1 flex-col bg-slate-100 max-lg:overflow-visible lg:h-full lg:overflow-hidden dark:bg-[#0a0d12]'
+    : 'relative flex min-h-0 min-w-0 flex-1 flex-col bg-slate-100 max-lg:overflow-visible lg:h-full lg:overflow-hidden dark:bg-[#0a0d12]';
   const innerAgendaClass = modoFlutuante
-    ? 'mx-auto flex h-full w-full max-w-none flex-1 min-h-0 flex-col gap-2 overflow-y-auto overflow-x-hidden p-2 pb-2 sm:p-2 md:pb-2 lg:flex-row lg:gap-2 lg:overflow-hidden lg:pb-2'
-    : 'mx-auto flex h-full w-full max-w-[1800px] flex-1 min-h-0 flex-col gap-4 overflow-y-auto overflow-x-hidden p-2 pb-28 sm:p-3 md:pb-24 lg:flex-row lg:gap-3 lg:overflow-hidden lg:pb-3';
+    ? 'mx-auto flex w-full max-w-none flex-1 min-h-0 flex-col gap-2 overflow-x-hidden p-2 pb-2 sm:p-2 max-lg:h-auto max-lg:overflow-visible lg:h-full lg:flex-row lg:gap-2 lg:overflow-hidden lg:pb-2'
+    : 'mx-auto flex w-full max-w-[1800px] flex-1 min-h-0 flex-col gap-4 overflow-x-hidden p-2 pb-28 sm:p-3 md:pb-24 max-lg:h-auto max-lg:overflow-visible lg:h-full lg:flex-row lg:gap-3 lg:overflow-hidden lg:pb-3';
 
   return (
     <div className={rootAgendaClass}>
       <div className={innerAgendaClass}>
-      {/* Painel esquerdo: calendário (em mobile fica no topo; em lg à esquerda). */}
+      {/* Painel esquerdo: calendário (em mobile fica abaixo dos compromissos; em lg à esquerda). */}
       <PainelCalendario
         mesAtual={mesEsquerda}
         anoAtual={anoEsquerda}
@@ -964,11 +964,12 @@ export function Agenda({ focoDataBr = null, focoRevision = 0, modoFlutuante = fa
         usuariosSistema={usuariosAtivos}
         onAbrirUsuariosSistema={() => navigate('/usuarios')}
         indicadoresPorDia={indicadoresPorDiaEsquerda}
+        panelClassName="max-lg:order-2"
       />
 
-      {/* Área central: compromissos do dia — ocupa a altura livre entre os calendários */}
-      <div className="flex w-full min-w-0 flex-1 flex-col overflow-hidden lg:min-h-0">
-        <div className="flex h-full w-full min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200/90 bg-white/95 shadow-md ring-1 ring-indigo-500/5 backdrop-blur-sm lg:min-h-0">
+      {/* Área central: compromissos do dia — em mobile aparece primeiro (order-1). */}
+      <div className="flex w-full min-w-0 flex-col max-lg:order-1 max-lg:shrink-0 lg:min-h-0 lg:flex-1 lg:overflow-hidden">
+        <div className="flex w-full min-w-0 flex-col overflow-hidden rounded-2xl border border-slate-200/90 bg-white/95 shadow-md ring-1 ring-indigo-500/5 backdrop-blur-sm max-lg:shrink-0 lg:h-full lg:min-h-0 lg:flex-1">
         <div className="flex shrink-0 flex-col gap-2 border-b border-slate-200/80 bg-white/90 px-3 py-2.5 shadow-sm rounded-t-2xl sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
           <div className="flex min-w-0 items-center gap-2.5">
             <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-sky-500 to-indigo-600 text-white shadow-md ring-1 ring-sky-400/40 md:h-9 md:w-9">
@@ -991,7 +992,7 @@ export function Agenda({ focoDataBr = null, focoRevision = 0, modoFlutuante = fa
             Agenda mensal
           </button>
         </div>
-        <div className="flex min-h-0 w-full flex-1 flex-col gap-4 overflow-hidden bg-slate-100/80 p-2 lg:flex-row lg:gap-2">
+        <div className="flex w-full flex-col gap-4 bg-slate-100/80 p-2 max-lg:shrink-0 lg:min-h-0 lg:flex-1 lg:flex-row lg:gap-2 lg:overflow-hidden">
           <ColunaDia
             variantColuna="esquerda"
             dataLabel={`${dataEsquerdaStr} — Compromissos do dia`}
@@ -1028,6 +1029,7 @@ export function Agenda({ focoDataBr = null, focoRevision = 0, modoFlutuante = fa
               })();
             }}
           />
+          <div className="hidden w-full min-w-0 lg:flex lg:min-h-0 lg:flex-1">
           <ColunaDia
             variantColuna="direita"
             dataLabel={`${dataDireitaStr} — Próximo dia`}
@@ -1064,11 +1066,12 @@ export function Agenda({ focoDataBr = null, focoRevision = 0, modoFlutuante = fa
               })();
             }}
           />
+          </div>
         </div>
         </div>
       </div>
 
-      {/* Painel direito: só em lg (em mobile o 2.º dia aparece empilhado na área central). */}
+      {/* Painel direito: só em lg. */}
       <PainelCalendario
         mesAtual={mesDireita}
         anoAtual={anoDireita}

@@ -5,6 +5,7 @@ import { getColaboradoresHumanosAtivos } from '../data/agendaPersistenciaData.js
 import { getNomeExibicaoUsuario } from '../data/usuarioDisplayHelpers.js';
 import { buscarClientePorCodigo } from '../repositories/processosRepository.js';
 import { criarTarefaOperacional } from '../repositories/tarefasOperacionaisRepository.js';
+import { useCloseOnEscape } from '../hooks/useCloseOnEscape.js';
 
 const MSG_SUCESSO =
   'Tarefa criada com sucesso. Ela aparecerá no board de Pendências após atualizar a lista (ou ao abrir a tela).';
@@ -27,6 +28,8 @@ export function ModalCriarTarefaContextual({ open, onClose, context, onCreated }
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState('');
   const [sucesso, setSucesso] = useState(false);
+
+  useCloseOnEscape(open && !!context, onClose, { enabled: !salvando });
 
   useEffect(() => {
     if (!open || !context) return;

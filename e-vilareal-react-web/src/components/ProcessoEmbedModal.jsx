@@ -1,4 +1,5 @@
 import { Suspense } from 'react';
+import { useCloseOnEscape } from '../hooks/useCloseOnEscape.js';
 import { X } from 'lucide-react';
 import { LazyProcessos } from '../app/lazyScreens.jsx';
 
@@ -7,6 +8,7 @@ import { LazyProcessos } from '../app/lazyScreens.jsx';
  * @param {{ embed: { revision: number, routerState: object } | null, onFechar: () => void, titulo?: string }} props
  */
 export function ProcessoEmbedModal({ embed, onFechar, titulo = 'Processo (cadastro)' }) {
+  useCloseOnEscape(!!embed, onFechar);
   if (!embed) return null;
 
   return (
