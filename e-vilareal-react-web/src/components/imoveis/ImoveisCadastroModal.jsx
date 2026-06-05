@@ -1,5 +1,5 @@
-import { useEffect } from 'react';
 import { X } from 'lucide-react';
+import { useCloseOnEscape } from '../../hooks/useCloseOnEscape.js';
 import { Imoveis } from '../Imoveis.jsx';
 import { imoveisBtnIconGhost } from './ImoveisAdminLayout.jsx';
 
@@ -7,19 +7,7 @@ import { imoveisBtnIconGhost } from './ImoveisAdminLayout.jsx';
  * Formulário flutuante com o mesmo cadastro da tela Imóveis.
  */
 export function ImoveisCadastroModal({ open, imovelId, onClose, onCadastroSalvo }) {
-  useEffect(() => {
-    if (!open) return undefined;
-    function onKeyDown(e) {
-      if (e.key === 'Escape') onClose?.();
-    }
-    document.addEventListener('keydown', onKeyDown);
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.removeEventListener('keydown', onKeyDown);
-      document.body.style.overflow = prev;
-    };
-  }, [open, onClose]);
+  useCloseOnEscape(open, onClose, { lockScroll: true });
 
   if (!open || imovelId == null) return null;
 

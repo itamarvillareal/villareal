@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { obterPessoaParaVinculoUsuario } from '../services/pessoaVinculoUsuarioService.js';
 import { hashSenha } from '../data/usuarioSenhaHash.js';
 import { featureFlags } from '../config/featureFlags.js';
+import { useCloseOnEscape } from '../hooks/useCloseOnEscape.js';
 
 /**
  * @param {{
@@ -27,6 +28,8 @@ export function ModalDadosUsuario({ open, usuario, listaTodos, podeEditarIdUsuar
   const [pessoaPreview, setPessoaPreview] = useState(null);
   const [carregandoPessoa, setCarregandoPessoa] = useState(false);
   const erroRef = useRef(null);
+
+  useCloseOnEscape(open && !!usuario, onClose, { enabled: !salvando });
 
   const temVinculoPessoa =
     usuario &&

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import { imoveisBtnPrimary, imoveisBtnSecondary, imoveisInputClass } from '../imoveis/ImoveisAdminLayout.jsx';
 import { DEMANDA_CATEGORIAS_OPTS, DEMANDA_STATUS_OPTS } from './demandasConstants.js';
+import { useCloseOnEscape } from '../../hooks/useCloseOnEscape.js';
 
 const emptyForm = () => ({
   imovelId: '',
@@ -24,6 +25,8 @@ export function DemandaFormModal({ open, onClose, onSave, imoveis, initial }) {
   const [form, setForm] = useState(emptyForm);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState('');
+
+  useCloseOnEscape(open, onClose, { enabled: !salvando });
 
   useEffect(() => {
     if (!open) return;

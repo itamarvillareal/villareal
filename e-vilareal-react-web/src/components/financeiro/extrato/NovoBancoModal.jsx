@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useCloseOnEscape } from '../../../hooks/useCloseOnEscape.js';
 import { X } from 'lucide-react';
 import {
   loadPersistedContasExtrasFinanceiro,
@@ -12,6 +13,8 @@ export function NovoBancoModal({ open, onClose, onCreated }) {
   const [numeroManual, setNumeroManual] = useState('');
   const [tipo, setTipo] = useState('banco');
   const [erro, setErro] = useState('');
+
+  useCloseOnEscape(open, onClose);
 
   if (!open) return null;
 

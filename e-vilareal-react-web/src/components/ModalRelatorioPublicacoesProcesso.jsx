@@ -6,6 +6,7 @@ import {
 } from '../repositories/publicacoesRepository.js';
 import { featureFlags } from '../config/featureFlags.js';
 import { formatarRotuloVinculoPartes } from '../data/publicacoesDisplayHelpers.js';
+import { useCloseOnEscape } from '../hooks/useCloseOnEscape.js';
 
 const STATUS_LABEL = {
   PENDENTE: 'Pendente',
@@ -307,6 +308,8 @@ export function ModalRelatorioPublicacoesProcesso({
   const [erro, setErro] = useState('');
   const [relatorioMeta, setRelatorioMeta] = useState(null);
   const [refreshTick, setRefreshTick] = useState(0);
+
+  useCloseOnEscape(open, onClose);
 
   useEffect(() => {
     const h = () => setRefreshTick((t) => t + 1);

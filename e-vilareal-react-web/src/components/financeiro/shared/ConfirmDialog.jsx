@@ -1,3 +1,5 @@
+import { useCloseOnEscape } from '../../../hooks/useCloseOnEscape.js';
+
 export function ConfirmDialog({
   open,
   title,
@@ -8,6 +10,7 @@ export function ConfirmDialog({
   onCancel,
   danger,
 }) {
+  useCloseOnEscape(open, onCancel);
   if (!open) return null;
 
   return (

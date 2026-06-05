@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { Plus, Trash2, X } from 'lucide-react';
 import { btnGhost, btnPrimary, btnSecondary, inputClass, textareaClass } from '../documentosStyles.js';
+import { useCloseOnEscape } from '../../../hooks/useCloseOnEscape.js';
 
 const editableHtmlClass =
   'prose prose-sm max-w-none min-h-[88px] rounded-lg border border-slate-300/90 bg-white px-3 py-2 text-slate-800 shadow-sm transition focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/25 dark:prose-invert dark:border-slate-600 dark:bg-slate-900/60 dark:text-slate-200';
@@ -32,6 +33,8 @@ function HtmlEditable({ html, onChange, className, ariaLabel }) {
 }
 
 export function PreviewPeticao({ open, preview, loading, erro, gerando, onClose, onGerarPdf, onPreviewChange }) {
+  useCloseOnEscape(open, onClose, { enabled: !gerando });
+
   if (!open) return null;
 
   const patch = (campo, valor) => {

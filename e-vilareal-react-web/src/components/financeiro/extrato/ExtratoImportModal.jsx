@@ -11,6 +11,7 @@ import {
   parseArquivoExtrato,
   resumirNovosImportacaoMesclar,
 } from './importUtils.js';
+import { useCloseOnEscape } from '../../../hooks/useCloseOnEscape.js';
 
 export function ExtratoImportModal({ open, onClose, bancoInicial = null, onSuccess }) {
   const { bancos, refreshBancos } = useFinanceiro();
@@ -34,6 +35,8 @@ export function ExtratoImportModal({ open, onClose, bancoInicial = null, onSucce
   }, [bancos, bancoNome]);
 
   const wasOpenRef = useRef(false);
+
+  useCloseOnEscape(open, onClose, { enabled: !busy });
 
   const resolverBancoInicial = useCallback(() => {
     if (bancoInicial != null) {

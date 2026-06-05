@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useCloseOnEscape } from '../../hooks/useCloseOnEscape.js';
 import { X, Plus, Trash2 } from 'lucide-react';
 
 const WHATSAPP_GREEN = '#25D366';
@@ -43,6 +44,8 @@ export function ModalContatos({ open, onClose, contatos, onChange }) {
   const [tipo, setTipo] = useState('email');
   const [valor, setValor] = useState('');
   const [usuario, setUsuario] = useState('Usuário');
+
+  useCloseOnEscape(open, onClose);
 
   if (!open) return null;
 

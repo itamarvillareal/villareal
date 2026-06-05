@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useCloseOnEscape } from '../../../hooks/useCloseOnEscape.js';
 import { Loader2, X } from 'lucide-react';
 import { processosBtnPrimary, processosInputClass } from '../../processos/ProcessosAdminLayout.jsx';
 import { useWhatsApp } from '../hooks/useWhatsApp.js';
@@ -11,6 +12,8 @@ export function SendMessageModal({ open, onClose, defaultPhone = '' }) {
   const [phone, setPhone] = useState(defaultPhone);
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
+
+  useCloseOnEscape(open, onClose, { enabled: !sending });
 
   if (!open) return null;
 

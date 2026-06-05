@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useCloseOnEscape } from '../../hooks/useCloseOnEscape.js';
 import { CalendarClock, ChevronLeft, Loader2, X } from 'lucide-react';
 import {
   apiDateTimeParaBr,
@@ -89,6 +90,8 @@ export function ModalAgendamentoCadencia({
   const [carregando, setCarregando] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState('');
+
+  useCloseOnEscape(open, onClose, { enabled: !salvando });
 
   const isCriar = modo === 'criar' || !agendamentoId;
 

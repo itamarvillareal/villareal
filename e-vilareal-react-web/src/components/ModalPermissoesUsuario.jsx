@@ -7,6 +7,7 @@ import {
   carregarPermissoesUsuario,
   salvarPermissoesUsuarioApi,
 } from '../repositories/perfisPermissoesRepository.js';
+import { useCloseOnEscape } from '../hooks/useCloseOnEscape.js';
 
 /**
  * @param {{ open: boolean, usuario: { id: string, nome: string } | null, onClose: () => void }} props
@@ -17,6 +18,8 @@ export function ModalPermissoesUsuario({ open, usuario, onClose }) {
   const [checks, setChecks] = useState(() =>
     Object.fromEntries(MODULOS_PERMISSAO.map((m) => [m.id, true]))
   );
+
+  useCloseOnEscape(open && !!usuario, onClose, { enabled: !carregando });
 
   useEffect(() => {
     if (!open || !usuario?.id) return;

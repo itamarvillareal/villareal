@@ -9,6 +9,7 @@ import {
 } from '../repositories/clienteWhatsAppRepository.js';
 import { resolverClienteCadastroPorCodigo } from '../repositories/clientesRepository.js';
 import { formatPhoneDisplay, isValidBrazilPhone, normalizePhoneForApi } from '../utils/whatsappFormat.js';
+import { useCloseOnEscape } from '../hooks/useCloseOnEscape.js';
 
 const WHATSAPP_GREEN = '#25D366';
 
@@ -43,6 +44,8 @@ export function ModalWhatsAppCliente({
   const [erro, setErro] = useState('');
   const [novoNumero, setNovoNumero] = useState('');
   const [novoLabel, setNovoLabel] = useState('');
+
+  useCloseOnEscape(open, onClose, { enabled: !salvando });
 
   useEffect(() => {
     if (!open || !codigoCliente) return undefined;

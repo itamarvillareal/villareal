@@ -1,5 +1,6 @@
 import { CalendarClock, ChevronLeft, X } from 'lucide-react';
 import { ConsultaPeriodicaProcessoSecao } from './ConsultaPeriodicaProcessoSecao.jsx';
+import { useCloseOnEscape } from '../../hooks/useCloseOnEscape.js';
 
 /**
  * Modal flutuante com agendamentos, monitor manual e destinatários do processo.
@@ -20,6 +21,8 @@ export function ModalConsultaPeriodicaProcesso({
   numeroCnj,
   clienteNome,
 }) {
+  useCloseOnEscape(open, onClose);
+
   if (!open) return null;
 
   const cnj = String(numeroCnj ?? '').trim();

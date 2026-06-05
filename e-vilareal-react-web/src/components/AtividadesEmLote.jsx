@@ -16,6 +16,7 @@ import {
   importarUnidadesPessoasPlanilha,
 } from '../repositories/condominioUnidadesPessoasRepository.js';
 import { useUsuarioPerfil } from '../hooks/useUsuarioPerfil.js';
+import { useCloseOnEscape } from '../hooks/useCloseOnEscape.js';
 import { Upload } from 'lucide-react';
 
 const inputClass =
@@ -44,6 +45,8 @@ function ReverterDebitosPrePlanilha({ importacaoId, disabled, onSucesso }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [erroLocal, setErroLocal] = useState(null);
+
+  useCloseOnEscape(modalOpen, () => setModalOpen(false), { enabled: !loading });
 
   if (!id) return null;
 

@@ -1,4 +1,5 @@
 import { ChevronLeft, FileSpreadsheet, X } from 'lucide-react';
+import { useCloseOnEscape } from '../../hooks/useCloseOnEscape.js';
 import { CobrancaAutomaticaPanel } from './CobrancaAutomaticaPanel.jsx';
 import { padCliente8Cadastro } from '../../data/cadastroClientesStorage.js';
 
@@ -7,6 +8,7 @@ import { padCliente8Cadastro } from '../../data/cadastroClientesStorage.js';
  * @param {{ open: boolean, codigoCliente: string, nomeCliente?: string, onClose?: () => void }} props
  */
 export function ModalCobrancaAutomaticaCliente({ open, codigoCliente, nomeCliente, onClose }) {
+  useCloseOnEscape(open, onClose);
   if (!open) return null;
 
   const codPad = padCliente8Cadastro(codigoCliente);

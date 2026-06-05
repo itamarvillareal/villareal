@@ -18,6 +18,7 @@ import {
   labelCategoria,
   labelStatus,
 } from './demandasConstants.js';
+import { useCloseOnEscape } from '../../hooks/useCloseOnEscape.js';
 
 function fmtData(iso) {
   if (!iso) return '—';
@@ -35,6 +36,8 @@ export function DemandaDetailModal({ demandaId, open, onClose, onEdit, onRefresh
   const [pagamentosImovel, setPagamentosImovel] = useState([]);
   const [pagForm, setPagForm] = useState({ dataVencimento: '', codigoBarras: '', observacao: '' });
   const [histOpen, setHistOpen] = useState(true);
+
+  useCloseOnEscape(open, onClose);
 
   useEffect(() => {
     if (!open || !demandaId) return;

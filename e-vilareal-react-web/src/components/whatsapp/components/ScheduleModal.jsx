@@ -11,6 +11,7 @@ import {
   normalizePhoneForApi,
 } from '../../../utils/whatsappFormat.js';
 import { findWhatsAppTemplate } from '../../../data/whatsappTemplates.js';
+import { useCloseOnEscape } from '../../../hooks/useCloseOnEscape.js';
 
 export function ScheduleModal({ open, onClose, onSuccess }) {
   const { createSchedule } = useWhatsApp();
@@ -23,6 +24,8 @@ export function ScheduleModal({ open, onClose, onSuccess }) {
   const [clienteId, setClienteId] = useState('');
   const [processoId, setProcessoId] = useState('');
   const [saving, setSaving] = useState(false);
+
+  useCloseOnEscape(open, onClose, { enabled: !saving });
 
   useEffect(() => {
     if (!open) return;

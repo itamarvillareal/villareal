@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { X, Search } from 'lucide-react';
+import { useCloseOnEscape } from '../../hooks/useCloseOnEscape.js';
 
 export function ModalEnderecos({
   open,
@@ -18,6 +19,8 @@ export function ModalEnderecos({
   const [cep, setCep] = useState('');
   const [buscandoCep, setBuscandoCep] = useState(false);
   const sessaoAbertaRef = useRef(false);
+
+  useCloseOnEscape(open, onClose);
 
   useEffect(() => {
     if (!open) {

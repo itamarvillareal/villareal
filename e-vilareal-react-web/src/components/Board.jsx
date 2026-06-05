@@ -8,6 +8,7 @@ import { getColaboradoresHumanosAtivos } from '../data/agendaPersistenciaData';
 import { getNomeExibicaoUsuario } from '../data/usuarioDisplayHelpers.js';
 import { listarColaboradoresHumanos } from '../repositories/usuariosRepository.js';
 import { featureFlags } from '../config/featureFlags.js';
+import { useCloseOnEscape } from '../hooks/useCloseOnEscape.js';
 import {
   agruparTarefasPorColunas,
   buildAtualizarTarefaBody,
@@ -603,6 +604,11 @@ export function Board() {
   function fecharModalAcoesPendencia() {
     setModalAcoesPendencia(null);
   }
+
+  useCloseOnEscape(!!modalPendencias, reverterAlteracaoModal);
+  useCloseOnEscape(!!modalAcoesPendencia, fecharModalAcoesPendencia);
+  useCloseOnEscape(!!modalConsultaPendencia, () => setModalConsultaPendencia(null));
+  useCloseOnEscape(!!erroLocalizarPendencia, () => setErroLocalizarPendencia(''));
 
   function apenasDigitos(v) {
     return String(v ?? '').replace(/\D/g, '');

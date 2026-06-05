@@ -3,10 +3,13 @@ import { Loader2, X } from 'lucide-react';
 import { formatBRL } from '../../data/relatorioCalculosData.js';
 import { fetchAcertoImovel } from '../../repositories/demandasRepository.js';
 import { badgeStatus, labelStatus } from './demandasConstants.js';
+import { useCloseOnEscape } from '../../hooks/useCloseOnEscape.js';
 
 export function DemandaAcertoModal({ imovelId, open, onClose }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
+
+  useCloseOnEscape(open, onClose);
 
   useEffect(() => {
     if (!open || !imovelId) return;

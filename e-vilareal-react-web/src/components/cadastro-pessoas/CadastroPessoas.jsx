@@ -24,6 +24,7 @@ import { analisarDocumentoPessoa } from '../../services/personAutoFillService.js
 import { listarPessoasComDocumento, salvarDocumentoPessoa } from '../../services/pessoaDocumentoService.js';
 import { ModalEnderecos } from './ModalEnderecos';
 import { ModalContatos } from './ModalContatos';
+import { useCloseOnEscape } from '../../hooks/useCloseOnEscape.js';
 import { extrairDadosDeTextoLivre } from '../../services/personTextAutofillService.js';
 import { validateCPF, validarFormatarCpfCnpjAoSair } from '../../services/cpfValidatorService.js';
 import { listarCodigosClientePorIdPessoa } from '../../data/clienteCodigoHelpers.js';
@@ -409,6 +410,20 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
     return String(pessoaAtual?.nome || form.nome || '').trim();
   }, [modo, form.nome, pessoaAtual]);
 
+  useCloseOnEscape(
+    modalVinculosSistema && idPessoaParaVinculos != null,
+    () => setModalVinculosSistema(false),
+  );
+  useCloseOnEscape(!!modalCpfDuplicado, () => setModalCpfDuplicado(null));
+  useCloseOnEscape(
+    isEmbedded &&
+      !modalEnderecos &&
+      !modalContatos &&
+      !modalVinculosSistema &&
+      !modalCpfDuplicado,
+    onFecharEmbed,
+  );
+
   const [processosVinculo, setProcessosVinculo] = useState([]);
   const [carregandoProcessosVinculo, setCarregandoProcessosVinculo] = useState(false);
 
@@ -578,45 +593,6 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- recarrega ao trocar pessoa no embed
   }, [isEmbedded, intentRevisionForHydration, embedIntent]);
-
-  /** Esc no embed: fecha modais internos e depois o painel. */
-  useEffect(() => {
-    if (!isEmbedded || typeof onFecharEmbed !== 'function') return undefined;
-    const onKey = (e) => {
-      if (e.key !== 'Escape') return;
-      if (modalEnderecos) {
-        e.preventDefault();
-        setModalEnderecos(false);
-        return;
-      }
-      if (modalContatos) {
-        e.preventDefault();
-        setModalContatos(false);
-        return;
-      }
-      if (modalVinculosSistema) {
-        e.preventDefault();
-        setModalVinculosSistema(false);
-        return;
-      }
-      if (modalCpfDuplicado) {
-        e.preventDefault();
-        setModalCpfDuplicado(null);
-        return;
-      }
-      e.preventDefault();
-      onFecharEmbed();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [
-    isEmbedded,
-    onFecharEmbed,
-    modalEnderecos,
-    modalContatos,
-    modalVinculosSistema,
-    modalCpfDuplicado,
-  ]);
 
   /** Links antigos com state (pessoaId): passa para a rota de edição. */
   useEffect(() => {

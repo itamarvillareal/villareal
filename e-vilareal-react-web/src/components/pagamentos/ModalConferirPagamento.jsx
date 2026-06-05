@@ -3,6 +3,7 @@ import { Loader2, X } from 'lucide-react';
 import { buscarSugestoesConciliacao, conferirPagamento } from '../../repositories/pagamentosRepository.js';
 import { formatBRL } from '../../data/relatorioCalculosData.js';
 import { isoAddDays } from './pagamentosUiUtils.js';
+import { useCloseOnEscape } from '../../hooks/useCloseOnEscape.js';
 
 function fmtData(iso) {
   if (iso == null || iso === '') return '—';
@@ -26,6 +27,8 @@ export function ModalConferirPagamento({ pagamento, onClose, onSuccess }) {
   const valorOriginal = Number(pagamento?.valor ?? 0);
   const valorDigitado = Number(String(valorPago).replace(',', '.'));
   const diferenca = Number.isFinite(valorDigitado) ? valorDigitado - valorOriginal : null;
+
+  useCloseOnEscape(!!pagamento, onClose, { enabled: !salvando });
 
   useEffect(() => {
     if (!pagamento?.dataVencimento) return;
