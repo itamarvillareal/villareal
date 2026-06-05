@@ -297,6 +297,10 @@ public class AgendamentoConsultaApplicationService {
                 .arquivosBaixados(entity.getArquivosBaixados())
                 .erro(entity.getErro())
                 .detalhes(entity.getDetalhes())
+                .notificacaoStatus(entity.getNotificacaoStatus())
+                .notificacaoDestinatarios(entity.getNotificacaoDestinatarios())
+                .notificacaoErro(entity.getNotificacaoErro())
+                .notificacaoEm(entity.getNotificacaoEm())
                 .build();
     }
 

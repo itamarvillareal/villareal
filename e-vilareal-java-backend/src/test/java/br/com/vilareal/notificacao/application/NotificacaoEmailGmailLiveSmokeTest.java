@@ -1,11 +1,11 @@
 package br.com.vilareal.notificacao.application;
 
 import br.com.vilareal.agendamento.infrastructure.persistence.entity.MovimentacaoMonitoradaEntity;
+import br.com.vilareal.email.GmailApiProvider;
 import com.google.api.services.gmail.Gmail;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -30,7 +30,7 @@ class NotificacaoEmailGmailLiveSmokeTest {
     private NotificacaoMovimentacaoEmailRenderer emailRenderer;
 
     @Autowired
-    private ObjectProvider<Gmail> gmailProvider;
+    private GmailApiProvider gmailApiProvider;
 
     @Value("${gmail.user:me}")
     private String gmailUser;
@@ -41,7 +41,7 @@ class NotificacaoEmailGmailLiveSmokeTest {
                 notificacaoEmailService.isDisponivel(),
                 "Gmail API indisponível (credentials/tokens)");
 
-        Gmail gmail = gmailProvider.getIfAvailable();
+        Gmail gmail = gmailApiProvider.resolver().orElseThrow();
         String remetente =
                 gmail.users().getProfile(gmailUser).execute().getEmailAddress();
 

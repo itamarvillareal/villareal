@@ -18,10 +18,11 @@ import {
   Check,
   Wallet,
   ClipboardList,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { ModalConfiguracoesCalculoCliente } from './ModalConfiguracoesCalculoCliente.jsx';
 import { ModalWhatsAppCliente } from './ModalWhatsAppCliente.jsx';
-import { CobrancaAutomaticaPanel } from './cobranca/CobrancaAutomaticaPanel.jsx';
+import { ModalCobrancaAutomaticaCliente } from './cobranca/ModalCobrancaAutomaticaCliente.jsx';
 import { estadoPediuFocoCobranca } from './cobranca/cobrancaClienteNav.js';
 import { importarWhatsAppDaPessoa } from '../repositories/clienteWhatsAppRepository.js';
 import { getDadosProcessoClienteUnificado } from '../data/processoClienteProcUnificado.js';
@@ -175,6 +176,14 @@ const SECAO_ACENTOS = {
     hover: 'hover:border-[#25D366]/50 hover:bg-[#25D366]/10 hover:shadow-md hover:-translate-y-px',
     ativo: 'border-[#25D366] bg-[#25D366] text-white shadow-md',
     focus: 'focus-visible:ring-[#25D366]',
+  },
+  sky: {
+    icon: 'text-sky-600',
+    iconAtivo: 'text-white',
+    repouso: 'border-slate-200 bg-white text-slate-800',
+    hover: 'hover:border-sky-200 hover:bg-sky-50 hover:shadow-md hover:-translate-y-px',
+    ativo: 'border-sky-600 bg-sky-600 text-white shadow-md',
+    focus: 'focus-visible:ring-sky-500',
   },
 };
 
@@ -412,7 +421,8 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
   const emTelaClientes = location.pathname === '/pessoas' || isEmbedded;
   const codClienteFromState = navClientes?.hasCod ? String(navClientes.codRaw ?? '').trim() : '';
   const focoCobrancaFromState = estadoPediuFocoCobranca(stateFromFinanceiro);
-  const cobrancaSectionRef = useRef(null);
+  const cobrancaAutomaticaHabilitada =
+    featureFlags.useApiClientes && featureFlags.useApiProcessos && featureFlags.useApiCalculos;
   const procFromState =
     navClientes?.hasProcKey && navClientes.procRaw !== undefined && navClientes.procRaw !== null
       ? String(navClientes.procRaw)
@@ -439,6 +449,7 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
   const [filtrosGradeProcessosAberto, setFiltrosGradeProcessosAberto] = useState(false);
   const [modalQualificacaoAberto, setModalQualificacaoAberto] = useState(false);
   const [modalConfigCalculoAberto, setModalConfigCalculoAberto] = useState(false);
+  const [modalCobrancaAutomaticaAberto, setModalCobrancaAutomaticaAberto] = useState(false);
   const [modalWhatsAppAberto, setModalWhatsAppAberto] = useState(false);
   const [modalEscolherPessoa, setModalEscolherPessoa] = useState(false);
   const [buscaPessoaModal, setBuscaPessoaModal] = useState('');
@@ -546,6 +557,56 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
     edicaoDesabilitada,
     processos,
   };
+
+  const atualizarIndiceClienteApi = useCallback((apiRow) => {
+    if (!apiRow?.codigo) return;
+    setClientesApiIndex((prev) => {
+      const list = Array.isArray(prev) ? [...prev] : [];
+      const i = list.findIndex((c) => c.codigo === apiRow.codigo);
+      if (i >= 0) list[i] = { ...list[i], ...apiRow };
+      else list.push(apiRow);
+      return list.sort(
+        (a, b) =>
+          Number(String(a.codigo).replace(/\D/g, '')) - Number(String(b.codigo).replace(/\D/g, ''))
+      );
+    });
+  }, []);
+
+  const persistirClienteAtual = useCallback(
+    async (override = {}, options = {}) => {
+      const s = persistSnapshotRef.current;
+      if (!s?.codigo) return null;
+      const payload = {
+        codigo: s.codigo,
+        pessoa: override.pessoa ?? s.pessoa,
+        nomeRazao: override.nomeRazao ?? s.nomeRazao,
+        cnpjCpf: override.cnpjCpf ?? s.cnpjCpf,
+        observacao: override.observacao ?? s.observacao,
+        clienteInativo: override.clienteInativo ?? s.clienteInativo,
+      };
+      if (!String(payload.pessoa ?? '').trim()) {
+        throw new Error('Informe uma pessoa vinculada ao cliente.');
+      }
+      setStatusSalvamento('saving');
+      try {
+        const saved = await salvarClienteCadastro(payload, {
+          suppressEmit: options.suppressEmit !== false,
+        });
+        if (saved) atualizarIndiceClienteApi(saved);
+        setStatusSalvamento('saved');
+        window.setTimeout(() => setStatusSalvamento('idle'), 2500);
+        setErroApiCliente('');
+        return saved;
+      } catch (e) {
+        setStatusSalvamento('idle');
+        setErroApiCliente(
+          String(e?.message ?? '').trim() || 'Não foi possível salvar o cadastro do cliente.'
+        );
+        throw e;
+      }
+    },
+    [atualizarIndiceClienteApi]
+  );
 
   useEffect(() => {
     if (!emTelaClientes) return undefined;
@@ -741,12 +802,16 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
   }, [codClienteFromState, procFromState, intentRevisionForHydration]);
 
   useEffect(() => {
-    if (!focoCobrancaFromState || !formularioClienteAberto) return undefined;
-    const t = window.setTimeout(() => {
-      cobrancaSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 450);
+    if (!focoCobrancaFromState || !formularioClienteAberto || !cobrancaAutomaticaHabilitada) return undefined;
+    const t = window.setTimeout(() => setModalCobrancaAutomaticaAberto(true), 450);
     return () => window.clearTimeout(t);
-  }, [focoCobrancaFromState, formularioClienteAberto, codigo, intentRevisionForHydration]);
+  }, [
+    focoCobrancaFromState,
+    formularioClienteAberto,
+    cobrancaAutomaticaHabilitada,
+    codigo,
+    intentRevisionForHydration,
+  ]);
 
   useEffect(() => {
     const h = () => aplicarDadosClienteRef.current(padCliente8(codigoRef.current));
@@ -813,30 +878,23 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
       return;
     }
     const t = setTimeout(() => {
-      const s = persistSnapshotRef.current;
-      if (!s) return;
       if (!formularioClienteAberto) return;
       if (resolucaoClientePendingRef.current > 0) return;
-      setStatusSalvamento('saving');
-      void salvarClienteCadastro(
-        {
-          codigo: s.codigo,
-          pessoa: s.pessoa,
-          nomeRazao: s.nomeRazao,
-          cnpjCpf: s.cnpjCpf,
-          observacao: s.observacao,
-          clienteInativo: s.clienteInativo,
-        },
-        { suppressEmit: true }
-      )
-        .then(() => {
-          setStatusSalvamento('saved');
-          window.setTimeout(() => setStatusSalvamento('idle'), 2500);
-        })
-        .catch(() => setStatusSalvamento('idle'));
+      if (edicaoDesabilitada) return;
+      void persistirClienteAtual({}, { suppressEmit: true }).catch(() => {});
     }, 250);
     return () => clearTimeout(t);
-  }, [codigo, pessoa, nomeRazao, cnpjCpf, observacao, clienteInativo, edicaoDesabilitada, formularioClienteAberto]);
+  }, [
+    codigo,
+    pessoa,
+    nomeRazao,
+    cnpjCpf,
+    observacao,
+    clienteInativo,
+    edicaoDesabilitada,
+    formularioClienteAberto,
+    persistirClienteAtual,
+  ]);
 
   useEffect(() => {
     if (featureFlags.useApiClientes) return;
@@ -882,9 +940,16 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
   }, []);
 
   function aplicarCodigoCliente(value) {
-    setFormularioClienteAberto(true);
     const padded = padCliente8(value);
-    aplicarDadosCliente(padded);
+    const trocar = () => {
+      setFormularioClienteAberto(true);
+      aplicarDadosCliente(padded);
+    };
+    if (featureFlags.useApiClientes && formularioClienteAberto && !edicaoDesabilitada) {
+      void persistirClienteAtual({}, { suppressEmit: true }).finally(trocar);
+      return;
+    }
+    trocar();
   }
 
   function iniciarNovoCliente() {
@@ -1182,9 +1247,11 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
   function aplicarPessoaSelecionada(p) {
     pularSincPorCargaClienteRef.current = true;
     const pessoaIdStr = String(p.id);
+    const nomeNovo = corrigirNomePessoaExibicao(p.nome);
+    const cpfNovo = formatDocBR(p.cpf);
     setPessoa(pessoaIdStr);
-    setNomeRazao(corrigirNomePessoaExibicao(p.nome));
-    setCnpjCpf(formatDocBR(p.cpf));
+    setNomeRazao(nomeNovo);
+    setCnpjCpf(cpfNovo);
     setModalEscolherPessoa(false);
     setBuscaPessoaModal('');
     const { usuarioNome } = getContextoAuditoriaUsuario();
@@ -1198,6 +1265,11 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
       registroAfetadoNome: p.nome,
     });
     if (featureFlags.useApiClientes) {
+      void persistirClienteAtual({
+        pessoa: pessoaIdStr,
+        nomeRazao: nomeNovo,
+        cnpjCpf: cpfNovo,
+      }).catch(() => {});
       void (async () => {
         try {
           const fromList = (clientesApiIndexRef.current || []).find((c) => c.codigo === cod);
@@ -1859,6 +1931,21 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
                 <MessageCircle className={classesIconeSecao('whatsapp', modalWhatsAppAberto)} aria-hidden />
                 WhatsApp
               </button>
+              {cobrancaAutomaticaHabilitada ? (
+                <button
+                  type="button"
+                  onClick={() => setModalCobrancaAutomaticaAberto(true)}
+                  className={classesBotaoSecao('sky', { ativo: modalCobrancaAutomaticaAberto })}
+                  aria-pressed={modalCobrancaAutomaticaAberto}
+                  title="Importar relatório .xls de inadimplência e processar cobrança automática"
+                >
+                  <FileSpreadsheet
+                    className={classesIconeSecao('sky', modalCobrancaAutomaticaAberto)}
+                    aria-hidden
+                  />
+                  Cobrança automática
+                </button>
+              ) : null}
             </div>
           </div>
 
@@ -2151,29 +2238,6 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
           </div>
           </section>
 
-          {featureFlags.useApiClientes &&
-            featureFlags.useApiProcessos &&
-            featureFlags.useApiCalculos &&
-            formularioClienteAberto && (
-              <section
-                ref={cobrancaSectionRef}
-                id="cobranca-automatica"
-                className="rounded-xl border border-sky-200/80 bg-gradient-to-br from-sky-50/50 via-white to-indigo-50/30 overflow-hidden shadow-sm ring-1 ring-sky-500/10 scroll-mt-4"
-              >
-                <div className="border-b border-sky-200/70 bg-gradient-to-r from-sky-600 via-cyan-600 to-indigo-600 px-4 py-2.5">
-                  <p className="text-sm font-bold uppercase tracking-wide text-white">Cobrança automática</p>
-                  <p className="text-xs text-sky-100/95 mt-0.5">
-                    Relatório .xls de inadimplência — cliente{' '}
-                    <span className="font-mono">{padCliente8(codigo)}</span>
-                    {nomeRazao ? ` · ${nomeRazao}` : ''}
-                  </p>
-                </div>
-                <div className="p-3 sm:p-4">
-                  <CobrancaAutomaticaPanel clienteCodigo={padCliente8(codigo)} clienteNome={nomeRazao} />
-                </div>
-              </section>
-            )}
-
           <div className="flex justify-center pt-2">
             <button
               type="button"
@@ -2207,6 +2271,13 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
         nomeCliente={nomeRazao}
         pessoaId={pessoa}
         onClose={() => setModalWhatsAppAberto(false)}
+      />
+
+      <ModalCobrancaAutomaticaCliente
+        open={modalCobrancaAutomaticaAberto}
+        codigoCliente={codigo}
+        nomeCliente={nomeRazao}
+        onClose={() => setModalCobrancaAutomaticaAberto(false)}
       />
 
       {modalEscolherPessoa && (

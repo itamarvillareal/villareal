@@ -15,7 +15,9 @@ import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
 import br.com.vilareal.projudi.ProjudiOrquestradorGate;
 import br.com.vilareal.projudi.ProjudiTeorService.MovimentacaoProjudi;
+import br.com.vilareal.notificacao.api.dto.NotificacaoResultado;
 import br.com.vilareal.notificacao.application.NotificacaoMovimentacaoService;
+import br.com.vilareal.notificacao.domain.NotificacaoEnvioStatus;
 import br.com.vilareal.projudi.pipeline.ProjudiMovimentacoesListagemService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -154,6 +156,13 @@ public class MonitoramentoMovimentacoesService {
         LocalDateTime finalizada = agora();
         String detalhes = montarDetalhes(totalListadas, novasReais, baseline);
 
+        NotificacaoResultado notificacao = NotificacaoResultado.naoAplicavel();
+        LocalDateTime notificacaoEm = null;
+        if (!baseline && novasReais > 0) {
+            notificacao = notificacaoMovimentacaoService.notificarNovidade(processo, novasPersistidas);
+            notificacaoEm = agora();
+        }
+
         ConsultaProcessoExecucaoEntity execucao = gravarExecucao(
                 processo,
                 iniciada,
@@ -164,18 +173,9 @@ public class MonitoramentoMovimentacoesService {
                 null,
                 detalhes,
                 origem,
-                agendamentoId);
-
-        if (!baseline && !novasPersistidas.isEmpty()) {
-            try {
-                notificacaoMovimentacaoService.notificarNovidade(processo, novasPersistidas);
-            } catch (Exception e) {
-                log.warn(
-                        "Falha ao acionar notificação de novidade (processo {}): {}",
-                        processoId,
-                        e.getMessage());
-            }
-        }
+                agendamentoId,
+                notificacao,
+                notificacaoEm);
 
         return ResultadoMonitoramentoResponse.builder()
                 .processoId(processoId)
@@ -210,7 +210,9 @@ public class MonitoramentoMovimentacoesService {
                 msg,
                 detalhes,
                 OrigemConsulta.AGENDADA,
-                agendamentoId);
+                agendamentoId,
+                NotificacaoResultado.naoAplicavel(),
+                null);
         return ResultadoMonitoramentoResponse.builder()
                 .processoId(processo.getId())
                 .numeroCnj(processo.getNumeroCnj().trim())
@@ -240,7 +242,9 @@ public class MonitoramentoMovimentacoesService {
                 null,
                 "Monitor: robô PROJUDI ocupado (single-flight).",
                 origem,
-                agendamentoId);
+                agendamentoId,
+                NotificacaoResultado.naoAplicavel(),
+                null);
 
         return ResultadoMonitoramentoResponse.builder()
                 .processoId(processo.getId())
@@ -273,7 +277,9 @@ public class MonitoramentoMovimentacoesService {
                 mensagem,
                 "Monitor: falha na listagem PROJUDI (baseline=" + baseline + ").",
                 origem,
-                agendamentoId);
+                agendamentoId,
+                NotificacaoResultado.naoAplicavel(),
+                null);
 
         return ResultadoMonitoramentoResponse.builder()
                 .processoId(processo.getId())
@@ -298,7 +304,9 @@ public class MonitoramentoMovimentacoesService {
             String erro,
             String detalhes,
             OrigemConsulta origem,
-            Long agendamentoId) {
+            Long agendamentoId,
+            NotificacaoResultado notificacao,
+            LocalDateTime notificacaoEm) {
         ConsultaProcessoExecucaoEntity execucao = new ConsultaProcessoExecucaoEntity();
         execucao.setProcesso(processo);
         if (agendamentoId != null) {
@@ -318,6 +326,14 @@ public class MonitoramentoMovimentacoesService {
         execucao.setArquivosBaixados(0);
         execucao.setErro(erro);
         execucao.setDetalhes(detalhes);
+        if (notificacao != null) {
+            execucao.setNotificacaoStatus(notificacao.status());
+            execucao.setNotificacaoDestinatarios(notificacao.destinatarios());
+            execucao.setNotificacaoErro(notificacao.erro());
+            if (notificacao.status() != NotificacaoEnvioStatus.NAO_APLICAVEL) {
+                execucao.setNotificacaoEm(notificacaoEm);
+            }
+        }
         return consultaProcessoExecucaoRepository.save(execucao);
     }
 

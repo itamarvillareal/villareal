@@ -18,16 +18,33 @@ public class ClienteListItemResponse {
     /** CPF/CNPJ só dígitos — paridade com {@code clientesRepository.mapApiToFront}. */
     private String documentoReferencia;
 
+    private String observacao;
+
+    private Boolean inativo;
+
     public ClienteListItemResponse() {}
 
     /** Item canónico (tabela {@code cliente} + pessoa). */
     public ClienteListItemResponse(
             Long clienteId, Long pessoaId, String codigoCliente, String nome, String documentoReferencia) {
+        this(clienteId, pessoaId, codigoCliente, nome, documentoReferencia, null, null);
+    }
+
+    public ClienteListItemResponse(
+            Long clienteId,
+            Long pessoaId,
+            String codigoCliente,
+            String nome,
+            String documentoReferencia,
+            String observacao,
+            Boolean inativo) {
         this.clienteId = clienteId;
         this.pessoaId = pessoaId;
         this.codigoCliente = codigoCliente;
         this.nome = nome;
         this.documentoReferencia = documentoReferencia;
+        this.observacao = observacao;
+        this.inativo = inativo;
     }
 
     @Schema(description = "PK da tabela cliente; igual a clienteId quando houver registro em cliente")
@@ -77,6 +94,22 @@ public class ClienteListItemResponse {
 
     public void setDocumentoReferencia(String documentoReferencia) {
         this.documentoReferencia = documentoReferencia;
+    }
+
+    public String getObservacao() {
+        return observacao;
+    }
+
+    public void setObservacao(String observacao) {
+        this.observacao = observacao;
+    }
+
+    public Boolean getInativo() {
+        return inativo;
+    }
+
+    public void setInativo(Boolean inativo) {
+        this.inativo = inativo;
     }
 
     /** Alias JSON para o front. */

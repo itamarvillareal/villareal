@@ -2,6 +2,7 @@ package br.com.vilareal.notificacao.application;
 
 import br.com.vilareal.agendamento.infrastructure.persistence.entity.MovimentacaoMonitoradaEntity;
 import br.com.vilareal.notificacao.api.dto.DestinatariosCanaisDto;
+import br.com.vilareal.notificacao.api.dto.NotificacaoResultado;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
@@ -12,9 +13,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
- * Disparo best-effort de notificações ao detectar novidade no monitor PROJUDI (sem bloquear o monitor).
+ * Disparo de notificações ao detectar novidade no monitor PROJUDI.
+ * E-mail síncrono (resultado gravado na execução); WhatsApp assíncrono.
  */
 @Service
 public class NotificacaoMovimentacaoService {
@@ -38,59 +41,82 @@ public class NotificacaoMovimentacaoService {
     }
 
     /**
-     * Enfileira WhatsApp e envia e-mail (Gmail API) em virtual thread. Não bloqueia a thread do monitor.
+     * Envia e-mail de novidade de forma síncrona e enfileira WhatsApp em virtual thread.
+     * Nunca lança — retorna {@link NotificacaoResultado} do e-mail.
      */
-    public void notificarNovidade(ProcessoEntity processo, List<MovimentacaoMonitoradaEntity> novas) {
-        if (novas == null || novas.isEmpty() || processo == null || processo.getId() == null) {
-            return;
-        }
-
-        Long processoId = processo.getId();
-        Long clienteId = processo.getCliente() != null ? processo.getCliente().getId() : null;
-        String numeroCnj = StringUtils.hasText(processo.getNumeroCnj()) ? processo.getNumeroCnj().trim() : "—";
-        String nomeCliente = resolverNomeCliente(processo);
-        String resumo = NotificacaoMovimentacaoResumoBuilder.montarResumo(novas);
-        String descricao = "Monitor PROJUDI — " + numeroCnj;
-        List<MovimentacaoMonitoradaEntity> copiaNovas = List.copyOf(novas);
-
-        Thread.startVirtualThread(() -> {
-            try {
-                dispararNotificacoes(
-                        processoId, clienteId, numeroCnj, nomeCliente, resumo, descricao, copiaNovas);
-            } catch (Exception e) {
-                log.warn(
-                        "Falha ao disparar notificação de novidade (processo {}): {}",
-                        processoId,
-                        e.getMessage());
+    public NotificacaoResultado notificarNovidade(ProcessoEntity processo, List<MovimentacaoMonitoradaEntity> novas) {
+        try {
+            if (novas == null || novas.isEmpty() || processo == null || processo.getId() == null) {
+                return NotificacaoResultado.naoAplicavel();
             }
-        });
+
+            Long processoId = processo.getId();
+            Long clienteId = processo.getCliente() != null ? processo.getCliente().getId() : null;
+            String numeroCnj = StringUtils.hasText(processo.getNumeroCnj()) ? processo.getNumeroCnj().trim() : "—";
+            String nomeCliente = resolverNomeCliente(processo);
+            String resumo = NotificacaoMovimentacaoResumoBuilder.montarResumo(novas);
+            String descricao = "Monitor PROJUDI — " + numeroCnj;
+            List<MovimentacaoMonitoradaEntity> copiaNovas = List.copyOf(novas);
+
+            NotificacaoResultado resultadoEmail =
+                    enviarEmailNovidade(processoId, numeroCnj, nomeCliente, copiaNovas);
+
+            Thread.startVirtualThread(() -> {
+                try {
+                    dispararWhatsapp(processoId, clienteId, numeroCnj, nomeCliente, resumo, descricao);
+                } catch (Exception e) {
+                    log.warn(
+                            "Falha ao disparar WhatsApp de novidade (processo {}): {}",
+                            processoId,
+                            e.getMessage());
+                }
+            });
+
+            return resultadoEmail;
+        } catch (Exception e) {
+            log.warn(
+                    "Falha ao notificar novidade (processo {}): {}",
+                    processo != null ? processo.getId() : null,
+                    e.getMessage());
+            return NotificacaoResultado.falha(null, resumirErro(e));
+        }
     }
 
-    void dispararNotificacoes(
+    NotificacaoResultado enviarEmailNovidade(
+            Long processoId,
+            String numeroCnj,
+            String nomeCliente,
+            List<MovimentacaoMonitoradaEntity> novas) {
+        DestinatariosCanaisDto destinatarios = notificacaoDestinatarioService.resolver(processoId);
+        List<String> emails = destinatarios.email();
+        if (emails.isEmpty()) {
+            log.info("sem destinatários e-mail configurados para processo {} (notificação de novidade)", processoId);
+            return NotificacaoResultado.semDestinatario();
+        }
+
+        String destinatariosCsv = emails.stream().collect(Collectors.joining(", "));
+        try {
+            String assunto = emailRenderer.montarAssunto(numeroCnj, nomeCliente);
+            String corpoHtml = emailRenderer.renderCorpoHtml(numeroCnj, nomeCliente, novas);
+            notificacaoEmailService.enviar(emails, assunto, corpoHtml);
+            return NotificacaoResultado.enviado(destinatariosCsv);
+        } catch (Exception e) {
+            log.warn(
+                    "Falha ao enviar e-mail de novidade (processo {}): {}",
+                    processoId,
+                    e.getMessage());
+            return NotificacaoResultado.falha(destinatariosCsv, resumirErro(e));
+        }
+    }
+
+    void dispararWhatsapp(
             Long processoId,
             Long clienteId,
             String numeroCnj,
             String nomeCliente,
             String resumo,
-            String descricao,
-            List<MovimentacaoMonitoradaEntity> novas) {
+            String descricao) {
         DestinatariosCanaisDto destinatarios = notificacaoDestinatarioService.resolver(processoId);
-        List<String> emails = destinatarios.email();
-        if (!emails.isEmpty()) {
-            try {
-                String assunto = emailRenderer.montarAssunto(numeroCnj, nomeCliente);
-                String corpoHtml = emailRenderer.renderCorpoHtml(numeroCnj, nomeCliente, novas);
-                notificacaoEmailService.enviar(emails, assunto, corpoHtml);
-            } catch (Exception e) {
-                log.warn(
-                        "Falha ao enviar e-mail de novidade (processo {}): {}",
-                        processoId,
-                        e.getMessage());
-            }
-        } else {
-            log.info("sem destinatários e-mail configurados para processo {} (notificação de novidade)", processoId);
-        }
-
         List<String> whatsapp = destinatarios.whatsapp();
         if (whatsapp.isEmpty()) {
             log.info(
@@ -131,6 +157,14 @@ public class NotificacaoMovimentacaoService {
             return pessoa.getNome().trim();
         }
         return "Cliente";
+    }
+
+    private static String resumirErro(Exception e) {
+        String msg = e.getMessage();
+        if (StringUtils.hasText(msg)) {
+            return msg.trim();
+        }
+        return e.getClass().getSimpleName();
     }
 
     private static String maskTelefone(String telefone) {

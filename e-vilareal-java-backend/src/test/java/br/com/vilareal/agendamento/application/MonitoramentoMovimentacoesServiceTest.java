@@ -11,7 +11,9 @@ import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
 import br.com.vilareal.projudi.ProjudiOrquestradorGate;
 import br.com.vilareal.projudi.ProjudiTeorService.MovimentacaoProjudi;
+import br.com.vilareal.notificacao.api.dto.NotificacaoResultado;
 import br.com.vilareal.notificacao.application.NotificacaoMovimentacaoService;
+import br.com.vilareal.notificacao.domain.NotificacaoEnvioStatus;
 import br.com.vilareal.projudi.pipeline.ProjudiMovimentacoesListagemService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -125,6 +127,7 @@ class MonitoramentoMovimentacoesServiceTest {
         assertThat(cap.getValue().getOrigem()).isEqualTo(OrigemConsulta.MANUAL);
         assertThat(cap.getValue().getTeoresNovos()).isZero();
         assertThat(cap.getValue().getArquivosBaixados()).isZero();
+        assertThat(cap.getValue().getNotificacaoStatus()).isEqualTo(NotificacaoEnvioStatus.NAO_APLICAVEL);
         verify(notificacaoMovimentacaoService, org.mockito.Mockito.never())
                 .notificarNovidade(any(), any());
     }
@@ -174,6 +177,8 @@ class MonitoramentoMovimentacoesServiceTest {
             e.setId(2L);
             return e;
         });
+        when(notificacaoMovimentacaoService.notificarNovidade(eq(processo), any()))
+                .thenReturn(NotificacaoResultado.enviado("jr.villareal@gmail.com"));
 
         ResultadoMonitoramentoResponse r = service.monitorarProcesso(1076L);
 
@@ -184,10 +189,64 @@ class MonitoramentoMovimentacoesServiceTest {
         assertThat(r.getStatus()).isEqualTo(StatusExecucao.SUCESSO_COM_NOVIDADE);
         verify(movimentacaoMonitoradaRepository).save(any());
 
+        ArgumentCaptor<ConsultaProcessoExecucaoEntity> execCaptor =
+                ArgumentCaptor.forClass(ConsultaProcessoExecucaoEntity.class);
+        verify(consultaProcessoExecucaoRepository).save(execCaptor.capture());
+        assertThat(execCaptor.getValue().getNotificacaoStatus()).isEqualTo(NotificacaoEnvioStatus.ENVIADO);
+        assertThat(execCaptor.getValue().getNotificacaoDestinatarios()).isEqualTo("jr.villareal@gmail.com");
+        assertThat(execCaptor.getValue().getNotificacaoEm()).isNotNull();
+
         ArgumentCaptor<List<MovimentacaoMonitoradaEntity>> novasCaptor = ArgumentCaptor.forClass(List.class);
         verify(notificacaoMovimentacaoService).notificarNovidade(eq(processo), novasCaptor.capture());
         assertThat(novasCaptor.getValue()).hasSize(1);
         assertThat(novasCaptor.getValue().getFirst().getIdMovi()).isEqualTo("481112538");
+    }
+
+    @Test
+    void executarMonitoramento_falhaEmail_gravaFalhaESalvaExecucao() {
+        ProcessoEntity processo = processo(1076L);
+        when(movimentacaoMonitoradaRepository.countByProcessoId(1076L)).thenReturn(1L);
+        when(movimentacaoMonitoradaRepository.findByProcessoId(1076L)).thenReturn(List.of());
+        when(listagemService.listarComFallbackReduzido(1L, processo.getNumeroCnj()))
+                .thenReturn(List.of(mov("2", "481112538")));
+        when(notificacaoMovimentacaoService.notificarNovidade(eq(processo), any()))
+                .thenReturn(NotificacaoResultado.falha("a@b.com", "gmail down"));
+        when(consultaProcessoExecucaoRepository.save(any())).thenAnswer(inv -> {
+            ConsultaProcessoExecucaoEntity e = inv.getArgument(0);
+            e.setId(6L);
+            return e;
+        });
+
+        ResultadoMonitoramentoResponse r =
+                service.executarMonitoramento(processo, OrigemConsulta.MANUAL, null);
+
+        assertThat(r.getStatus()).isEqualTo(StatusExecucao.SUCESSO_COM_NOVIDADE);
+        ArgumentCaptor<ConsultaProcessoExecucaoEntity> cap = ArgumentCaptor.forClass(ConsultaProcessoExecucaoEntity.class);
+        verify(consultaProcessoExecucaoRepository).save(cap.capture());
+        assertThat(cap.getValue().getNotificacaoStatus()).isEqualTo(NotificacaoEnvioStatus.FALHA);
+        assertThat(cap.getValue().getNotificacaoErro()).contains("gmail down");
+    }
+
+    @Test
+    void executarMonitoramento_semDestinatarioEmail_gravaSemDestinatario() {
+        ProcessoEntity processo = processo(1076L);
+        when(movimentacaoMonitoradaRepository.countByProcessoId(1076L)).thenReturn(1L);
+        when(movimentacaoMonitoradaRepository.findByProcessoId(1076L)).thenReturn(List.of());
+        when(listagemService.listarComFallbackReduzido(1L, processo.getNumeroCnj()))
+                .thenReturn(List.of(mov("2", "481112538")));
+        when(notificacaoMovimentacaoService.notificarNovidade(eq(processo), any()))
+                .thenReturn(NotificacaoResultado.semDestinatario());
+        when(consultaProcessoExecucaoRepository.save(any())).thenAnswer(inv -> {
+            ConsultaProcessoExecucaoEntity e = inv.getArgument(0);
+            e.setId(7L);
+            return e;
+        });
+
+        service.executarMonitoramento(processo, OrigemConsulta.MANUAL, null);
+
+        ArgumentCaptor<ConsultaProcessoExecucaoEntity> cap = ArgumentCaptor.forClass(ConsultaProcessoExecucaoEntity.class);
+        verify(consultaProcessoExecucaoRepository).save(cap.capture());
+        assertThat(cap.getValue().getNotificacaoStatus()).isEqualTo(NotificacaoEnvioStatus.SEM_DESTINATARIO);
     }
 
     @Test
@@ -215,29 +274,9 @@ class MonitoramentoMovimentacoesServiceTest {
         assertThat(r.getNovas()).isZero();
         verify(notificacaoMovimentacaoService, org.mockito.Mockito.never())
                 .notificarNovidade(any(), any());
-    }
-
-    @Test
-    void executarMonitoramento_falhaNotificacao_naoQuebraMonitor() {
-        ProcessoEntity processo = processo(1076L);
-        when(movimentacaoMonitoradaRepository.countByProcessoId(1076L)).thenReturn(1L);
-        when(movimentacaoMonitoradaRepository.findByProcessoId(1076L)).thenReturn(List.of());
-        when(listagemService.listarComFallbackReduzido(1L, processo.getNumeroCnj()))
-                .thenReturn(List.of(mov("2", "481112538")));
-        when(consultaProcessoExecucaoRepository.save(any())).thenAnswer(inv -> {
-            ConsultaProcessoExecucaoEntity e = inv.getArgument(0);
-            e.setId(4L);
-            return e;
-        });
-        org.mockito.Mockito.doThrow(new RuntimeException("notif down"))
-                .when(notificacaoMovimentacaoService)
-                .notificarNovidade(any(), any());
-
-        ResultadoMonitoramentoResponse r =
-                service.executarMonitoramento(processo, OrigemConsulta.MANUAL, null);
-
-        assertThat(r.getStatus()).isEqualTo(StatusExecucao.SUCESSO_COM_NOVIDADE);
-        assertThat(r.getNovas()).isEqualTo(1);
+        ArgumentCaptor<ConsultaProcessoExecucaoEntity> cap = ArgumentCaptor.forClass(ConsultaProcessoExecucaoEntity.class);
+        verify(consultaProcessoExecucaoRepository).save(cap.capture());
+        assertThat(cap.getValue().getNotificacaoStatus()).isEqualTo(NotificacaoEnvioStatus.NAO_APLICAVEL);
     }
 
     private static ProcessoEntity processo(long id) {
