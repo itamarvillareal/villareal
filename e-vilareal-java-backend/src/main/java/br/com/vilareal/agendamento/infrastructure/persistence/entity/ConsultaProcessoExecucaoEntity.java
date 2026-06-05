@@ -2,6 +2,7 @@ package br.com.vilareal.agendamento.infrastructure.persistence.entity;
 
 import br.com.vilareal.agendamento.domain.OrigemConsulta;
 import br.com.vilareal.agendamento.domain.StatusExecucao;
+import br.com.vilareal.notificacao.domain.NotificacaoEnvioStatus;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import jakarta.persistence.*;
 import lombok.Getter;
@@ -58,6 +59,19 @@ public class ConsultaProcessoExecucaoEntity {
 
     @Column(columnDefinition = "TEXT")
     private String detalhes;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "notificacao_status", length = 20)
+    private NotificacaoEnvioStatus notificacaoStatus;
+
+    @Column(name = "notificacao_destinatarios", columnDefinition = "TEXT")
+    private String notificacaoDestinatarios;
+
+    @Column(name = "notificacao_erro", columnDefinition = "TEXT")
+    private String notificacaoErro;
+
+    @Column(name = "notificacao_em")
+    private LocalDateTime notificacaoEm;
 
     @PrePersist
     protected void onCreate() {

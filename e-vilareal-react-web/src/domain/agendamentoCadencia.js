@@ -426,3 +426,28 @@ export function labelStatusUltimaExecucao(status) {
   const k = String(status ?? '').trim();
   return STATUS_LABEL[k] || (k ? k : '');
 }
+
+/**
+ * Linha curta do resultado do e-mail de novidade na execução.
+ * @param {{ notificacaoStatus?: string, notificacaoDestinatarios?: string, notificacaoErro?: string }} ex
+ * @returns {{ texto: string, tom: 'sucesso'|'erro'|'aviso' }|null}
+ */
+export function labelNotificacaoExecucao(ex) {
+  const status = String(ex?.notificacaoStatus ?? '').trim();
+  if (!status || status === 'NAO_APLICAVEL') return null;
+  if (status === 'ENVIADO') {
+    const dest = String(ex?.notificacaoDestinatarios ?? '').trim();
+    return {
+      texto: dest ? `E-mail enviado para ${dest}` : 'E-mail enviado',
+      tom: 'sucesso',
+    };
+  }
+  if (status === 'FALHA') {
+    const erro = String(ex?.notificacaoErro ?? '').trim() || 'erro desconhecido';
+    return { texto: `E-mail falhou: ${erro}`, tom: 'erro' };
+  }
+  if (status === 'SEM_DESTINATARIO') {
+    return { texto: 'Nenhum destinatário de e-mail configurado', tom: 'aviso' };
+  }
+  return null;
+}

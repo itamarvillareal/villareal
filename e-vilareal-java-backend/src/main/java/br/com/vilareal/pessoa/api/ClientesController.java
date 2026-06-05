@@ -49,7 +49,10 @@ public class ClientesController {
     }
 
     @PostMapping
-    @Operation(summary = "Criar cliente (código → pessoa)", description = "Idempotente: mesmo codigoCliente + pessoaId devolve 200.")
+    @Operation(
+            summary = "Criar ou atualizar cliente (código → pessoa)",
+            description =
+                    "Upsert por codigoCliente: cria linha nova ou atualiza pessoa, nome, documento, observação e inativo.")
     public ResponseEntity<ClienteListItemResponse> criar(@Valid @RequestBody ClienteCreateRequest request) {
         ClienteCreateResult r = processoApplicationService.criarClienteMinimo(request);
         return r.criadoNovo()

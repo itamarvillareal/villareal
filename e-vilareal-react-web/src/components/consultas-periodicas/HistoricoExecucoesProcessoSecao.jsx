@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ChevronDown, ChevronRight, History, Loader2 } from 'lucide-react';
-import { formatarDateTimePainel, labelStatusUltimaExecucao } from '../../domain/agendamentoCadencia.js';
+import {
+  formatarDateTimePainel,
+  labelNotificacaoExecucao,
+  labelStatusUltimaExecucao,
+} from '../../domain/agendamentoCadencia.js';
 import { listarExecucoesProcesso } from '../../repositories/agendamentoRepository.js';
 
 /**
@@ -84,36 +88,53 @@ export function HistoricoExecucoesProcessoSecao({ processoApiId }) {
             </p>
           ) : (
             <ul className="space-y-1.5 max-h-48 overflow-y-auto">
-              {itens.map((ex) => (
-                <li
-                  key={ex.id}
-                  className="rounded border border-slate-100 dark:border-white/10 bg-slate-50/80 dark:bg-[#0d1018]/60 px-2 py-1.5 text-[11px]"
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-1">
-                    <span className="tabular-nums text-slate-700 dark:text-slate-200">
-                      {formatarDateTimePainel(ex.iniciadaEm)}
-                    </span>
-                    <span className="font-medium text-slate-800 dark:text-slate-100">
-                      {labelStatusUltimaExecucao(ex.status) || ex.status || '—'}
-                    </span>
-                  </div>
-                  {ex.teoresNovos > 0 ? (
-                    <p className="text-slate-600 dark:text-slate-400 mt-0.5">
-                      {ex.teoresNovos} novidade(s)
-                      {ex.origem ? ` · ${ex.origem}` : ''}
-                    </p>
-                  ) : (
-                    <p className="text-slate-500 dark:text-slate-500 mt-0.5">
-                      Sem novidades{ex.origem ? ` · ${ex.origem}` : ''}
-                    </p>
-                  )}
-                  {ex.erro ? (
-                    <p className="text-red-700/90 dark:text-red-300/90 mt-0.5 line-clamp-2" title={ex.erro}>
-                      {ex.erro}
-                    </p>
-                  ) : null}
-                </li>
-              ))}
+              {itens.map((ex) => {
+                const comNovidade =
+                  ex.status === 'SUCESSO_COM_NOVIDADE' || Number(ex.teoresNovos) > 0;
+                const notif = comNovidade ? labelNotificacaoExecucao(ex) : null;
+                const notifClass =
+                  notif?.tom === 'sucesso'
+                    ? 'text-emerald-700/90 dark:text-emerald-300/90'
+                    : notif?.tom === 'erro'
+                      ? 'text-red-700/90 dark:text-red-300/90'
+                      : 'text-amber-800/90 dark:text-amber-200/90';
+
+                return (
+                  <li
+                    key={ex.id}
+                    className="rounded border border-slate-100 dark:border-white/10 bg-slate-50/80 dark:bg-[#0d1018]/60 px-2 py-1.5 text-[11px]"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-1">
+                      <span className="tabular-nums text-slate-700 dark:text-slate-200">
+                        {formatarDateTimePainel(ex.iniciadaEm)}
+                      </span>
+                      <span className="font-medium text-slate-800 dark:text-slate-100">
+                        {labelStatusUltimaExecucao(ex.status) || ex.status || '—'}
+                      </span>
+                    </div>
+                    {ex.teoresNovos > 0 ? (
+                      <p className="text-slate-600 dark:text-slate-400 mt-0.5">
+                        {ex.teoresNovos} novidade(s)
+                        {ex.origem ? ` · ${ex.origem}` : ''}
+                      </p>
+                    ) : (
+                      <p className="text-slate-500 dark:text-slate-500 mt-0.5">
+                        Sem novidades{ex.origem ? ` · ${ex.origem}` : ''}
+                      </p>
+                    )}
+                    {notif ? (
+                      <p className={`mt-0.5 line-clamp-2 ${notifClass}`} title={notif.texto}>
+                        {notif.texto}
+                      </p>
+                    ) : null}
+                    {ex.erro ? (
+                      <p className="text-red-700/90 dark:text-red-300/90 mt-0.5 line-clamp-2" title={ex.erro}>
+                        {ex.erro}
+                      </p>
+                    ) : null}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>

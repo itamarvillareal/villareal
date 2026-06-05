@@ -195,26 +195,25 @@ public class ProcessoApplicationService {
         } catch (BusinessRuleException e) {
             return Optional.empty();
         }
+        Optional<ClienteEntity> linhaCliente = clienteRepository.findByCodigoClienteFetchPessoa(cod8);
+        if (linhaCliente.isEmpty()) {
+            linhaCliente = clienteRepository.findByCodigoClienteFetchPessoaTrim(cod8);
+        }
+        if (linhaCliente.isPresent()) {
+            return Optional.of(clienteEntityParaResumo(linhaCliente.get()));
+        }
+
         Optional<Long> pessoaOpt = clienteCodigoPessoaResolver.resolverPessoaIdComFallbackCliente(trimmed);
         return pessoaOpt.flatMap(
                 pid -> pessoaRepository
                         .findById(pid)
                         .map(
-                                p -> {
-                                    Optional<ClienteEntity> linhaCliente =
-                                            clienteRepository.findByCodigoClienteFetchPessoa(cod8);
-                                    if (linhaCliente.isEmpty()) {
-                                        linhaCliente =
-                                                clienteRepository.findByCodigoClienteFetchPessoaTrim(cod8);
-                                    }
-                                    Long clientePk = linhaCliente.map(ClienteEntity::getId).orElse(null);
-                                    return new ClienteListItemResponse(
-                                            clientePk,
-                                            p.getId(),
-                                            cod8,
-                                            Utf8MojibakeUtil.corrigir(p.getNome()),
-                                            somenteDigitosDocumento(p.getCpf()));
-                                }));
+                                p -> new ClienteListItemResponse(
+                                        null,
+                                        p.getId(),
+                                        cod8,
+                                        Utf8MojibakeUtil.corrigir(p.getNome()),
+                                        somenteDigitosDocumento(p.getCpf()))));
     }
 
     /**
@@ -237,11 +236,14 @@ public class ProcessoApplicationService {
                 .orElseThrow(() -> new ResourceNotFoundException("Pessoa não encontrada: " + req.getPessoaId()));
 
         Optional<ClienteEntity> existente = clienteRepository.findByCodigoClienteFetchPessoa(cod8);
+        if (existente.isEmpty()) {
+            existente = clienteRepository.findByCodigoClienteFetchPessoaTrim(cod8);
+        }
         if (existente.isPresent()) {
             ClienteEntity c = existente.get();
-            if (!c.getPessoa().getId().equals(req.getPessoaId())) {
-                throw new BusinessRuleException("Código de cliente já existe para outra pessoa.");
-            }
+            c.setPessoa(pessoa);
+            aplicarCamposCadastroCliente(c, req);
+            c = clienteRepository.save(c);
             return new ClienteCreateResult(clienteEntityParaResumo(c), false);
         }
 
@@ -249,8 +251,26 @@ public class ProcessoApplicationService {
         novo.setCodigoCliente(cod8);
         novo.setPessoa(pessoa);
         novo.setInativo(false);
+        aplicarCamposCadastroCliente(novo, req);
         novo = clienteRepository.save(novo);
         return new ClienteCreateResult(clienteEntityParaResumo(novo), true);
+    }
+
+    private void aplicarCamposCadastroCliente(ClienteEntity c, ClienteCreateRequest req) {
+        if (req.getNomeReferencia() != null) {
+            String nome = req.getNomeReferencia().trim();
+            c.setNomeReferencia(StringUtils.hasText(nome) ? Utf8MojibakeUtil.corrigir(nome) : null);
+        }
+        if (req.getDocumentoReferencia() != null) {
+            c.setDocumentoReferencia(somenteDigitosDocumento(req.getDocumentoReferencia()));
+        }
+        if (req.getObservacao() != null) {
+            String obs = req.getObservacao().trim();
+            c.setObservacao(StringUtils.hasText(obs) ? Utf8MojibakeUtil.corrigir(obs) : null);
+        }
+        if (req.getInativo() != null) {
+            c.setInativo(req.getInativo());
+        }
     }
 
     private ClienteListItemResponse clienteEntityParaResumo(ClienteEntity c) {
@@ -263,7 +283,13 @@ public class ProcessoApplicationService {
                         ? somenteDigitosDocumento(c.getDocumentoReferencia())
                         : somenteDigitosDocumento(p.getCpf());
         return new ClienteListItemResponse(
-                c.getId(), p.getId(), codigoExibicao, Utf8MojibakeUtil.corrigir(nome), doc);
+                c.getId(),
+                p.getId(),
+                codigoExibicao,
+                Utf8MojibakeUtil.corrigir(nome),
+                doc,
+                c.getObservacao() != null ? Utf8MojibakeUtil.corrigir(c.getObservacao()) : null,
+                Boolean.TRUE.equals(c.getInativo()));
     }
 
     /** Alinha CHAR(8) / espaços do MySQL ao mesmo formato que o front usa na busca (8 dígitos). */

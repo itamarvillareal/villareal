@@ -1,11 +1,11 @@
 package br.com.vilareal.notificacao.application;
 
+import br.com.vilareal.email.GmailApiProvider;
 import br.com.vilareal.notificacao.config.NotificacaoEmailProperties;
 import com.google.api.services.gmail.Gmail;
 import com.google.api.services.gmail.model.Message;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -13,72 +13,59 @@ import org.springframework.util.StringUtils;
 import java.util.List;
 
 /**
- * Envio best-effort de HTML via Gmail API (conta OAuth; destinatários em BCC).
+ * Envio de HTML via Gmail API (conta OAuth; destinatários em BCC).
  */
 @Service
 public class NotificacaoEmailService {
 
     private static final Logger log = LoggerFactory.getLogger(NotificacaoEmailService.class);
 
-    private final ObjectProvider<Gmail> gmailProvider;
+    private final GmailApiProvider gmailApiProvider;
     private final NotificacaoEmailProperties properties;
     private final String gmailUser;
 
     public NotificacaoEmailService(
-            ObjectProvider<Gmail> gmailProvider,
+            GmailApiProvider gmailApiProvider,
             NotificacaoEmailProperties properties,
             @Value("${gmail.user:me}") String gmailUser) {
-        this.gmailProvider = gmailProvider;
+        this.gmailApiProvider = gmailApiProvider;
         this.properties = properties;
         this.gmailUser = StringUtils.hasText(gmailUser) ? gmailUser.trim() : "me";
     }
 
     public boolean isDisponivel() {
-        return gmailProvider.getIfAvailable() != null;
+        return gmailApiProvider.isDisponivel();
     }
 
     /**
-     * Envia um único e-mail em BCC (não expõe destinatários entre si). Falhas só logam.
+     * Envia um único e-mail em BCC. Lança exceção em falha para o chamador registrar o resultado.
      */
-    public void enviar(List<String> destinatarios, String assunto, String corpoHtml) {
+    public void enviar(List<String> destinatarios, String assunto, String corpoHtml) throws Exception {
         if (!properties.isAtivo()) {
-            log.debug("Envio de e-mail do monitor desativado (vilareal.notificacao.email.ativo=false)");
-            return;
+            throw new IllegalStateException("Envio de e-mail do monitor desativado (vilareal.notificacao.email.ativo=false)");
         }
         if (destinatarios == null || destinatarios.isEmpty()) {
-            log.debug("Envio de e-mail do monitor ignorado: lista de destinatários vazia");
-            return;
+            throw new IllegalArgumentException("Lista de destinatários vazia");
         }
-        Gmail gmail = gmailProvider.getIfAvailable();
-        if (gmail == null) {
-            log.warn("Gmail API indisponível — e-mail do monitor não enviado");
-            return;
-        }
+        Gmail gmail = gmailApiProvider
+                .resolver()
+                .orElseThrow(() -> new IllegalStateException("Gmail API indisponível"));
         if (!StringUtils.hasText(assunto)) {
-            log.warn("Assunto vazio — e-mail do monitor não enviado");
-            return;
+            throw new IllegalArgumentException("Assunto vazio");
         }
 
-        try {
-            String remetenteEmail = obterEmailRemetenteOAuth(gmail);
-            byte[] mime =
-                    NotificacaoEmailMimeBuilder.buildMime(
-                            remetenteEmail,
-                            properties.getFromNome(),
-                            destinatarios,
-                            assunto,
-                            corpoHtml);
-            String raw = NotificacaoEmailMimeBuilder.encodeRawUrlSafe(mime);
-            Message message = new Message();
-            message.setRaw(raw);
-            gmail.users().messages().send(gmailUser, message).execute();
-            log.info(
-                    "E-mail do monitor enviado via Gmail (BCC {} destinatário(s), assunto={})",
-                    destinatarios.size(),
-                    assunto);
-        } catch (Exception e) {
-            log.warn("Falha ao enviar e-mail do monitor via Gmail: {}", e.getMessage());
-        }
+        String remetenteEmail = obterEmailRemetenteOAuth(gmail);
+        byte[] mime =
+                NotificacaoEmailMimeBuilder.buildMime(
+                        remetenteEmail, properties.getFromNome(), destinatarios, assunto, corpoHtml);
+        String raw = NotificacaoEmailMimeBuilder.encodeRawUrlSafe(mime);
+        Message message = new Message();
+        message.setRaw(raw);
+        gmail.users().messages().send(gmailUser, message).execute();
+        log.info(
+                "E-mail do monitor enviado via Gmail (BCC {} destinatário(s), assunto={})",
+                destinatarios.size(),
+                assunto);
     }
 
     private String obterEmailRemetenteOAuth(Gmail gmail) throws Exception {

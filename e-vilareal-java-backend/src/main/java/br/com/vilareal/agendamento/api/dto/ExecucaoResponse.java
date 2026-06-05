@@ -2,6 +2,7 @@ package br.com.vilareal.agendamento.api.dto;
 
 import br.com.vilareal.agendamento.domain.OrigemConsulta;
 import br.com.vilareal.agendamento.domain.StatusExecucao;
+import br.com.vilareal.notificacao.domain.NotificacaoEnvioStatus;
 import lombok.Builder;
 import lombok.Value;
 
@@ -24,4 +25,8 @@ public class ExecucaoResponse {
     int arquivosBaixados;
     String erro;
     String detalhes;
+    NotificacaoEnvioStatus notificacaoStatus;
+    String notificacaoDestinatarios;
+    String notificacaoErro;
+    LocalDateTime notificacaoEm;
 }

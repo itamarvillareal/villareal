@@ -46,11 +46,12 @@ function mapApiToFront(c) {
 }
 
 function mapFrontToApi(d) {
+  const doc = String(d.cnpjCpf ?? '').replace(/\D/g, '').slice(0, 20);
   return {
     codigoCliente: padCliente8Cadastro(d.codigo),
     pessoaId: d.pessoa ? Number(String(d.pessoa).replace(/\D/g, '')) || null : null,
-    nomeReferencia: corrigirNomePessoaExibicao(String(d.nomeRazao ?? '').trim()),
-    documentoReferencia: String(d.cnpjCpf ?? '').replace(/\D/g, '').slice(0, 20) || null,
+    nomeReferencia: corrigirNomePessoaExibicao(String(d.nomeRazao ?? '').trim()) || null,
+    documentoReferencia: doc || null,
     observacao: String(d.observacao ?? ''),
     inativo: d.clienteInativo === true,
   };
@@ -127,7 +128,7 @@ export async function salvarClienteCadastro(dados, options = {}) {
   }
   const body = mapFrontToApi(dados);
   if (body.pessoaId == null || body.pessoaId < 1) {
-    return null;
+    throw new Error('Salvar cliente exige uma pessoa vinculada.');
   }
   /** Backend só expõe POST idempotente (codigoCliente+pessoaId); não há PUT /api/clientes/{id}. */
   const created = await request('/api/clientes', {

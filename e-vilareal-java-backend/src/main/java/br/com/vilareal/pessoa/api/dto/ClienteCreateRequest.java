@@ -13,6 +13,14 @@ public class ClienteCreateRequest {
     @NotNull
     private Long pessoaId;
 
+    private String nomeReferencia;
+
+    private String documentoReferencia;
+
+    private String observacao;
+
+    private Boolean inativo;
+
     public String getCodigoCliente() {
         return codigoCliente;
     }
@@ -27,5 +35,37 @@ public class ClienteCreateRequest {
 
     public void setPessoaId(Long pessoaId) {
         this.pessoaId = pessoaId;
+    }
+
+    public String getNomeReferencia() {
+        return nomeReferencia;
+    }
+
+    public void setNomeReferencia(String nomeReferencia) {
+        this.nomeReferencia = nomeReferencia;
+    }
+
+    public String getDocumentoReferencia() {
+        return documentoReferencia;
+    }
+
+    public void setDocumentoReferencia(String documentoReferencia) {
+        this.documentoReferencia = documentoReferencia;
+    }
+
+    public String getObservacao() {
+        return observacao;
+    }
+
+    public void setObservacao(String observacao) {
+        this.observacao = observacao;
+    }
+
+    public Boolean getInativo() {
+        return inativo;
+    }
+
+    public void setInativo(Boolean inativo) {
+        this.inativo = inativo;
     }
 }
