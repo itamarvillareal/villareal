@@ -94,7 +94,8 @@ public class WhatsAppService {
                 "text",
                 new TextBody(false, message));
 
-        WhatsAppSendResponse response = executeSend(request, formattedPhone, "mensagem de texto");
+        WhatsAppSendResponse response =
+                executeSend(request, formattedPhone, "mensagem de texto", SendContext.texto(message));
         persistOutboundMessage(response, formattedPhone, WhatsAppMessageType.TEXT, message, null);
         return response;
     }
@@ -118,7 +119,11 @@ public class WhatsAppService {
                 "template",
                 new Template(templateName, new Language(languageCode), components));
 
-        WhatsAppSendResponse response = executeSend(request, formattedPhone, "mensagem de template");
+        WhatsAppSendResponse response = executeSend(
+                request,
+                formattedPhone,
+                "mensagem de template",
+                SendContext.template(templateName, parameters));
         String content =
                 parameters != null && !parameters.isEmpty() ? String.join(", ", parameters) : null;
         persistOutboundMessage(response, formattedPhone, WhatsAppMessageType.TEMPLATE, content, templateName);
@@ -224,7 +229,22 @@ public class WhatsAppService {
         }
     }
 
-    private WhatsAppSendResponse executeSend(Object requestBody, String formattedPhone, String messageKind) {
+    private record SendContext(boolean isCopia, String tipo, String resumo) {
+        static SendContext texto(String corpo) {
+            return new SendContext(false, "texto", corpo != null ? corpo : "");
+        }
+
+        static SendContext template(String templateName, List<String> parameters) {
+            return new SendContext(false, "template", resumoTemplate(templateName, parameters));
+        }
+
+        static SendContext copiaMonitoramento() {
+            return new SendContext(true, "texto", "");
+        }
+    }
+
+    private WhatsAppSendResponse executeSend(
+            Object requestBody, String formattedPhone, String messageKind, SendContext context) {
         try {
             WhatsAppSendResponse response = restClient
                     .post()
@@ -242,6 +262,9 @@ public class WhatsAppService {
             String waMessageId = extractMessageId(response);
             log.info("Mensagem enviada com sucesso. ID: {}", waMessageId);
             log.debug("{} entregue para {}", messageKind, formattedPhone);
+            if (!context.isCopia()) {
+                agendarCopiaMonitoramento(formattedPhone, context);
+            }
             return response;
         } catch (RestClientResponseException e) {
             throw traduzirErroHttp(e);
@@ -252,6 +275,53 @@ public class WhatsAppService {
             throw new WhatsAppApiException(
                     "Falha de conexão com WhatsApp API: " + e.getMessage(), 0, null, 0, e);
         }
+    }
+
+    private void agendarCopiaMonitoramento(String telefoneDestino, SendContext context) {
+        WhatsAppConfig.CopiaMonitoramento cfg = whatsAppConfig.getCopiaMonitoramento();
+        if (cfg == null || !cfg.isAtivo() || !StringUtils.hasText(cfg.getNumero())) {
+            return;
+        }
+        try {
+            String monitorPhone = formatPhoneNumber(cfg.getNumero());
+            if (telefoneDestino.equals(monitorPhone)) {
+                return;
+            }
+            String corpoCopia = montarTextoCopiaMonitoramento(context.tipo(), telefoneDestino, context.resumo());
+            Thread.startVirtualThread(() -> enviarCopiaMonitoramento(monitorPhone, corpoCopia));
+        } catch (Exception e) {
+            log.warn("Não foi possível agendar cópia de monitoramento WhatsApp: {}", e.getMessage());
+        }
+    }
+
+    private void enviarCopiaMonitoramento(String monitorPhone, String corpoCopia) {
+        try {
+            WhatsAppTextMessageRequest request = new WhatsAppTextMessageRequest(
+                    "whatsapp",
+                    "individual",
+                    monitorPhone,
+                    "text",
+                    new TextBody(false, corpoCopia));
+            WhatsAppSendResponse response =
+                    executeSend(request, monitorPhone, "cópia monitoramento", SendContext.copiaMonitoramento());
+            persistOutboundMessage(response, monitorPhone, WhatsAppMessageType.TEXT, corpoCopia, null);
+        } catch (Exception e) {
+            log.warn("Falha ao enviar cópia de monitoramento WhatsApp: {}", e.getMessage());
+        }
+    }
+
+    static String montarTextoCopiaMonitoramento(String tipo, String telefoneDestino, String resumo) {
+        return "[cópia] %s para %s: %s".formatted(tipo, telefoneDestino, resumo != null ? resumo : "");
+    }
+
+    static String resumoTemplate(String templateName, List<String> parameters) {
+        if (!StringUtils.hasText(templateName)) {
+            return "";
+        }
+        if (parameters == null || parameters.isEmpty()) {
+            return templateName;
+        }
+        return templateName + " (" + String.join(", ", parameters) + ")";
     }
 
     private void persistOutboundMessage(

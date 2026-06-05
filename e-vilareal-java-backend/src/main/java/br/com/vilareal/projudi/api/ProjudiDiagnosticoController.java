@@ -36,6 +36,7 @@ import org.springframework.web.bind.annotation.*;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -129,6 +130,28 @@ public class ProjudiDiagnosticoController {
     public List<MovimentacaoProjudi> movimentacoes(@RequestParam Long credencialId,
                                                    @RequestParam String numero) {
         return teorService.listarMovimentacoes(credencialId, numero);
+    }
+
+    /**
+     * TEMP — diagnóstico da listagem completa ({@link ProjudiTeorService#listarMovimentacoes}):
+     * confirma totais com/sem documento e amostra de campos. Somente leitura PROJUDI.
+     */
+    @GetMapping("/movimentacoes-listagem-diag")
+    public Map<String, Object> movimentacoesListagemDiagnostico(
+            @RequestParam(defaultValue = "1") Long credencialId,
+            @RequestParam(defaultValue = "5059346-36.2026.8.09.0007") String numeroCnj) {
+        List<MovimentacaoProjudi> todas = teorService.listarMovimentacoes(credencialId, numeroCnj);
+        long comDocumento = todas.stream().filter(MovimentacaoProjudi::temDocumento).count();
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("credencialId", credencialId);
+        out.put("numeroCnj", numeroCnj);
+        out.put("total", todas.size());
+        out.put("comDocumento", comDocumento);
+        out.put("semDocumento", todas.size() - comDocumento);
+        out.put("amostra", montarAmostraListagemMovimentacoes(todas, 8));
+        out.put("somenteLeitura", true);
+        out.put("nota", "Apenas listarMovimentacoes — sem download, Drive, publicações ou intimações.");
+        return out;
     }
 
     /** Captura o JSON BRUTO da listagem de arquivos de uma movimentação (AJAX, PaginaAtual=8). */
@@ -366,6 +389,72 @@ public class ProjudiDiagnosticoController {
 
     /** Resumo de arquivo baixado (sem conteúdo binário). */
     public record ArquivoBaixadoResumo(String nomeArquivo, String arquivoTipo, int tamanho, String magic) {
+    }
+
+    private static List<Map<String, Object>> montarAmostraListagemMovimentacoes(
+            List<MovimentacaoProjudi> todas, int max) {
+        List<MovimentacaoProjudi> comDoc = new ArrayList<>();
+        List<MovimentacaoProjudi> semDoc = new ArrayList<>();
+        for (MovimentacaoProjudi m : todas) {
+            if (m.temDocumento()) {
+                comDoc.add(m);
+            } else {
+                semDoc.add(m);
+            }
+        }
+        int alvoCada = Math.max(1, max / 2);
+        List<MovimentacaoProjudi> escolhidas = new ArrayList<>();
+        int ic = 0;
+        int is = 0;
+        while (escolhidas.size() < max && (ic < comDoc.size() || is < semDoc.size())) {
+            if (ic < comDoc.size() && escolhidas.size() < max) {
+                int ate = Math.min(ic + alvoCada, comDoc.size());
+                while (ic < ate && escolhidas.size() < max) {
+                    escolhidas.add(comDoc.get(ic++));
+                }
+            }
+            if (is < semDoc.size() && escolhidas.size() < max) {
+                int ate = Math.min(is + alvoCada, semDoc.size());
+                while (is < ate && escolhidas.size() < max) {
+                    escolhidas.add(semDoc.get(is++));
+                }
+            }
+            if (ic >= comDoc.size() && is >= semDoc.size()) {
+                break;
+            }
+            if (escolhidas.size() >= max) {
+                break;
+            }
+            alvoCada = 1;
+        }
+        for (MovimentacaoProjudi m : comDoc) {
+            if (escolhidas.size() >= max) {
+                break;
+            }
+            if (!escolhidas.contains(m)) {
+                escolhidas.add(m);
+            }
+        }
+        for (MovimentacaoProjudi m : semDoc) {
+            if (escolhidas.size() >= max) {
+                break;
+            }
+            if (!escolhidas.contains(m)) {
+                escolhidas.add(m);
+            }
+        }
+        return escolhidas.stream().limit(max).map(ProjudiDiagnosticoController::itemAmostraListagem).toList();
+    }
+
+    private static Map<String, Object> itemAmostraListagem(MovimentacaoProjudi m) {
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("numero", m.numero());
+        item.put("tipo", m.tipo());
+        item.put("descricao", m.descricao());
+        item.put("dataHora", m.dataHora());
+        item.put("idMovi", m.idMovi());
+        item.put("temDocumento", m.temDocumento());
+        return item;
     }
 
     private static String magicHex(byte[] bytes) {

@@ -6,15 +6,15 @@ import java.util.List;
 import java.util.Locale;
 
 /** Detecta erros graves / bloqueio do tribunal no fluxo PROJUDI. */
-final class ProjudiOrquestradorErroUtil {
+public final class ProjudiOrquestradorErroUtil {
 
     private ProjudiOrquestradorErroUtil() {}
 
-    static boolean indicaBloqueioHttp(int statusCode) {
+    public static boolean indicaBloqueioHttp(int statusCode) {
         return statusCode == 403 || statusCode == 429;
     }
 
-    static boolean indicaBloqueioOuErroGrave(Throwable ex) {
+    public static boolean indicaBloqueioOuErroGrave(Throwable ex) {
         if (ex == null) {
             return false;
         }
@@ -63,7 +63,7 @@ final class ProjudiOrquestradorErroUtil {
                 || lower.contains("http 429");
     }
 
-    static boolean detalhesIndicamFalhaUploadDrive(List<String> detalhes) {
+    public static boolean detalhesIndicamFalhaUploadDrive(List<String> detalhes) {
         if (detalhes == null || detalhes.isEmpty()) {
             return false;
         }
@@ -83,7 +83,7 @@ final class ProjudiOrquestradorErroUtil {
         return false;
     }
 
-    static String resumirFalhaUploadDrive(List<String> detalhes) {
+    public static String resumirFalhaUploadDrive(List<String> detalhes) {
         if (detalhes != null) {
             for (int i = detalhes.size() - 1; i >= 0; i--) {
                 String linha = detalhes.get(i);
@@ -113,7 +113,7 @@ final class ProjudiOrquestradorErroUtil {
                 + "Verifique permissões da pasta Movimentações e a configuração do Drive.";
     }
 
-    static String mensagemResumida(Throwable ex) {
+    public static String mensagemResumida(Throwable ex) {
         if (ex == null) {
             return null;
         }

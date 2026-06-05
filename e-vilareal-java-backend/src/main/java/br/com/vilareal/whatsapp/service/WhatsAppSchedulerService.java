@@ -93,6 +93,28 @@ public class WhatsAppSchedulerService {
         return saved;
     }
 
+    /**
+     * Enfileira envio imediato de {@code atualizacao_processo} (fila com retry/histórico do scheduler).
+     */
+    @Transactional
+    public void enfileirarAtualizacaoProcesso(
+            String phoneNumber,
+            List<String> templateParams,
+            Long clienteId,
+            Long processoId,
+            String descricao) {
+        Instant scheduledAt = Instant.now().plusSeconds(2);
+        agendarMensagem(
+                phoneNumber,
+                "atualizacao_processo",
+                templateParams,
+                scheduledAt,
+                clienteId,
+                processoId,
+                "monitor-movimentacao",
+                descricao != null ? descricao : "Atualização de processo");
+    }
+
     @Transactional
     public void agendarLembreteAudiencia(
             Long clienteId,

@@ -24,6 +24,8 @@ public class WhatsAppConfig {
     private boolean reminderReforcoEnabled = true;
     private String reminderReforcoCron = "0 0 18 * * MON-FRI";
 
+    private CopiaMonitoramento copiaMonitoramento = new CopiaMonitoramento();
+
     public String getApiUrl() {
         return apiUrl;
     }
@@ -118,5 +120,35 @@ public class WhatsAppConfig {
 
     public void setReminderReforcoCron(String reminderReforcoCron) {
         this.reminderReforcoCron = reminderReforcoCron;
+    }
+
+    public CopiaMonitoramento getCopiaMonitoramento() {
+        return copiaMonitoramento;
+    }
+
+    public void setCopiaMonitoramento(CopiaMonitoramento copiaMonitoramento) {
+        this.copiaMonitoramento = copiaMonitoramento != null ? copiaMonitoramento : new CopiaMonitoramento();
+    }
+
+    /** Cópia best-effort de cada envio outbound para número de monitoramento. */
+    public static class CopiaMonitoramento {
+        private String numero = "+5562982345000";
+        private boolean ativo = true;
+
+        public String getNumero() {
+            return numero;
+        }
+
+        public void setNumero(String numero) {
+            this.numero = numero;
+        }
+
+        public boolean isAtivo() {
+            return ativo;
+        }
+
+        public void setAtivo(boolean ativo) {
+            this.ativo = ativo;
+        }
     }
 }

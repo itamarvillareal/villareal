@@ -40,6 +40,7 @@ export const navItems = [
       { id: 'processos', label: 'Processos', icon: 'Folder' },
       { id: 'documentos/gerar', label: 'Gerar Documento', icon: 'FileText' },
       { id: 'processos/publicacoes', label: 'Publicações', icon: 'Newspaper' },
+      { id: 'processos/consultas-periodicas', label: 'Consultas periódicas', icon: 'CalendarClock' },
       { id: 'publicacoes-email', label: 'Publicações Email', icon: 'Mail' },
       { id: 'processos/manifestacoes-projudi', label: 'Movimentações Email', icon: 'Gavel' },
       { id: 'processos/monitoramento', label: 'Monitoramento de Pessoas', icon: 'Radar' },

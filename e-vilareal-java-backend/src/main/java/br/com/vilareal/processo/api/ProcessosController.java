@@ -7,6 +7,8 @@ import br.com.vilareal.processo.api.dto.*;
 import br.com.vilareal.processo.application.ProcessoApplicationService;
 import br.com.vilareal.processo.application.ProcessoAutosIntegralService;
 import br.com.vilareal.processo.application.ProcessoMovimentacoesConsolidarPdfService;
+import br.com.vilareal.agendamento.api.dto.ResultadoMonitoramentoResponse;
+import br.com.vilareal.agendamento.application.MonitoramentoMovimentacoesService;
 import br.com.vilareal.processo.application.ProcessoProjudiMovimentacoesDriveService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -38,6 +40,7 @@ public class ProcessosController {
     private final ProcessoAutosIntegralService processoAutosIntegralService;
     private final ProcessoMovimentacoesConsolidarPdfService processoMovimentacoesConsolidarPdfService;
     private final ProcessoProjudiMovimentacoesDriveService processoProjudiMovimentacoesDriveService;
+    private final MonitoramentoMovimentacoesService monitoramentoMovimentacoesService;
     private final JuliaTriagemService juliaTriagemService;
 
     public ProcessosController(
@@ -45,11 +48,13 @@ public class ProcessosController {
             ProcessoAutosIntegralService processoAutosIntegralService,
             ProcessoMovimentacoesConsolidarPdfService processoMovimentacoesConsolidarPdfService,
             ProcessoProjudiMovimentacoesDriveService processoProjudiMovimentacoesDriveService,
+            MonitoramentoMovimentacoesService monitoramentoMovimentacoesService,
             JuliaTriagemService juliaTriagemService) {
         this.processoApplicationService = processoApplicationService;
         this.processoAutosIntegralService = processoAutosIntegralService;
         this.processoMovimentacoesConsolidarPdfService = processoMovimentacoesConsolidarPdfService;
         this.processoProjudiMovimentacoesDriveService = processoProjudiMovimentacoesDriveService;
+        this.monitoramentoMovimentacoesService = monitoramentoMovimentacoesService;
         this.juliaTriagemService = juliaTriagemService;
     }
 
@@ -259,6 +264,16 @@ public class ProcessosController {
                 .build());
         headers.setContentType(MediaType.APPLICATION_PDF);
         return ResponseEntity.ok().headers(headers).body(resultado.pdf());
+    }
+
+    @PostMapping("/{id}/projudi/monitorar")
+    @Operation(
+            summary = "Monitorar movimentações PROJUDI (somente listagem)",
+            description =
+                    "Lista movimentações via consulta inócua (F3), grava baseline em "
+                            + "movimentacao_monitorada e registra execução. Sem download, Drive ou publicações.")
+    public ResultadoMonitoramentoResponse monitorarMovimentacoesProjudi(@PathVariable Long id) {
+        return monitoramentoMovimentacoesService.monitorarProcesso(id);
     }
 
     @PostMapping("/{id}/projudi/movimentacoes-drive")
