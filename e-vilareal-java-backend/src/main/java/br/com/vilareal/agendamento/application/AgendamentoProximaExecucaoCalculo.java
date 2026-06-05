@@ -93,12 +93,18 @@ public final class AgendamentoProximaExecucaoCalculo {
         return LocalDateTime.of(dia.plusDays(1), horarios.getFirst());
     }
 
+    /**
+     * Seed na criação/edição/retomada: candidato = hoje no {@code periodoHorario};
+     * se ainda no futuro → hoje; senão → candidato + 1 período no mesmo horário.
+     */
     static LocalDateTime semearPeriodico(LocalDateTime referencia, PeriodoCadencia periodo, LocalTime horario) {
-        LocalDateTime hojeNoHorario = LocalDateTime.of(referencia.toLocalDate(), horario);
-        if (hojeNoHorario.isAfter(referencia)) {
-            return hojeNoHorario;
+        LocalDate dia = referencia.toLocalDate();
+        LocalTime agora = referencia.toLocalTime();
+        LocalDateTime candidato = LocalDateTime.of(dia, horario);
+        if (horario.isAfter(agora)) {
+            return candidato;
         }
-        return avancarPeriodo(hojeNoHorario, periodo, horario);
+        return avancarPeriodo(candidato, periodo, horario);
     }
 
     static LocalDateTime avancarPeriodo(LocalDateTime base, PeriodoCadencia periodo, LocalTime horario) {

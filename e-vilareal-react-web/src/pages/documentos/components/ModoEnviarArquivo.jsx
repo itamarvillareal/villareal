@@ -6,7 +6,7 @@ import {
   gerarPdfReformatado,
   nomeArquivoPeticaoPdf,
 } from '../../../repositories/documentosRepository.js';
-import { resolveSelectInicial, extrairDataIsoDeLocalData } from '../../../helpers/documentoHelper.js';
+import { resolveSelectExato, extrairDataIsoDeLocalData } from '../../../helpers/documentoHelper.js';
 import { CIDADE_ESTADO_PADRAO, ENDERECAMENTOS } from '../constants.js';
 import { btnPrimary, btnSecondary, fieldErrorClass, inputClass } from '../documentosStyles.js';
 import { CollapsibleSection } from './CollapsibleSection.jsx';
@@ -30,7 +30,7 @@ export function ModoEnviarArquivo({ dadosProcesso, onErro, onLoadingChange }) {
   const [form, setForm] = useState(() => {
     const base = estadoInicial();
     if (!dadosProcesso) return base;
-    const end = resolveSelectInicial(dadosProcesso.enderecamento, ENDERECAMENTOS);
+    const end = resolveSelectExato(dadosProcesso.enderecamento, ENDERECAMENTOS);
     return {
       ...base,
       numeroProcesso: dadosProcesso.numeroProcesso || '',

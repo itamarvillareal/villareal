@@ -21,6 +21,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
@@ -34,14 +35,21 @@ public class AgendamentoConsultaApplicationService {
     private final AgendamentoConsultaRepository agendamentoConsultaRepository;
     private final ConsultaProcessoExecucaoRepository consultaProcessoExecucaoRepository;
     private final ProcessoRepository processoRepository;
+    private final Clock clock;
 
     public AgendamentoConsultaApplicationService(
             AgendamentoConsultaRepository agendamentoConsultaRepository,
             ConsultaProcessoExecucaoRepository consultaProcessoExecucaoRepository,
-            ProcessoRepository processoRepository) {
+            ProcessoRepository processoRepository,
+            Clock clock) {
         this.agendamentoConsultaRepository = agendamentoConsultaRepository;
         this.consultaProcessoExecucaoRepository = consultaProcessoExecucaoRepository;
         this.processoRepository = processoRepository;
+        this.clock = clock;
+    }
+
+    private LocalDateTime agora() {
+        return clock.instant().atZone(clock.getZone()).toLocalDateTime();
     }
 
     @Transactional
@@ -58,7 +66,7 @@ public class AgendamentoConsultaApplicationService {
         entity.setProcesso(processo);
         aplicarRequest(entity, request);
         entity.setAtivo(true);
-        entity.setProximaExecucao(AgendamentoProximaExecucaoCalculo.calcularProxima(entity, LocalDateTime.now()));
+        entity.setProximaExecucao(AgendamentoProximaExecucaoCalculo.calcularProxima(entity, agora()));
         entity = agendamentoConsultaRepository.save(entity);
         return toResponse(entity);
     }
@@ -83,7 +91,7 @@ public class AgendamentoConsultaApplicationService {
                 request.getPeriodo(),
                 request.getPeriodoHorario());
         aplicarRequest(entity, request);
-        entity.setProximaExecucao(AgendamentoProximaExecucaoCalculo.calcularProxima(entity, LocalDateTime.now()));
+        entity.setProximaExecucao(AgendamentoProximaExecucaoCalculo.calcularProxima(entity, agora()));
         return toResponse(agendamentoConsultaRepository.save(entity));
     }
 
@@ -98,7 +106,7 @@ public class AgendamentoConsultaApplicationService {
     public AgendamentoResponse retomar(Long id) {
         AgendamentoConsultaEntity entity = carregarAgendamento(id);
         entity.setAtivo(true);
-        entity.setProximaExecucao(AgendamentoProximaExecucaoCalculo.calcularProxima(entity, LocalDateTime.now()));
+        entity.setProximaExecucao(AgendamentoProximaExecucaoCalculo.calcularProxima(entity, agora()));
         return toResponse(agendamentoConsultaRepository.save(entity));
     }
 
@@ -145,7 +153,7 @@ public class AgendamentoConsultaApplicationService {
 
     @Transactional(readOnly = true)
     public List<PainelItemResponse> montarPainel() {
-        LocalDateTime agora = LocalDateTime.now();
+        LocalDateTime agora = agora();
         return agendamentoConsultaRepository.findByAtivoTrueComProcesso().stream()
                 .map(a -> toPainelItem(a, agora))
                 .sorted(AgendamentoConsultaApplicationService::compararPainelItens)
