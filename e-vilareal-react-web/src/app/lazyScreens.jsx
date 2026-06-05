@@ -31,6 +31,10 @@ export const LazyPublicacoesProcessos = fromNamed(
   () => import('../components/PublicacoesProcessos.jsx'),
   'PublicacoesProcessos'
 );
+export const LazyConsultasPeriodicas = fromNamed(
+  () => import('../components/consultas-periodicas/ConsultasPeriodicasPainel.jsx'),
+  'ConsultasPeriodicasPainel'
+);
 export const LazyPublicacoesEmail = fromNamed(
   () => import('../components/PublicacoesEmail.jsx'),
   'PublicacoesEmail'

@@ -47,6 +47,7 @@ import {
   LazyMonitoringPeoplePage,
   LazyProcessos,
   LazyPublicacoesProcessos,
+  LazyConsultasPeriodicas,
   LazyPublicacoesEmail,
   LazyManifestacoesProjudi,
   LazyRelatorio,
@@ -376,6 +377,10 @@ function App() {
               <Route path="/atividades-em-lote" element={<LazyAtividadesEmLote />} />
               <Route path="/processos" element={<LazyProcessos />} />
               <Route path="/processos/publicacoes" element={<LazyPublicacoesProcessos />} />
+              <Route
+                path="/processos/consultas-periodicas"
+                element={<LazyConsultasPeriodicas />}
+              />
               <Route path="/publicacoes-email" element={<LazyPublicacoesEmail />} />
               <Route
                 path="/processos/manifestacoes-projudi"

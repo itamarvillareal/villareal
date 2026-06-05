@@ -7,6 +7,7 @@ import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport;
 import com.google.api.client.http.javanet.NetHttpTransport;
 import com.google.api.client.json.gson.GsonFactory;
 import com.google.api.client.util.store.FileDataStoreFactory;
+import br.com.vilareal.email.GmailApiProvider;
 import com.google.api.services.gmail.Gmail;
 import com.google.api.services.gmail.GmailScopes;
 import jakarta.annotation.PostConstruct;
@@ -32,6 +33,11 @@ import java.nio.file.Files;
 import java.security.GeneralSecurityException;
 import java.util.List;
 
+/**
+ * Registra o singleton {@code gmail} em {@link #registrarGmailSePossivel()} após o contexto subir.
+ * OTP e demais leituras pontuais devem usar {@link br.com.vilareal.email.GmailApiProvider} no momento
+ * do uso — injeção direta de {@link Gmail} no construtor fica {@code null} (bean ainda não existe).
+ */
 @Configuration
 public class GmailConfig implements ApplicationContextAware {
 
@@ -73,7 +79,7 @@ public class GmailConfig implements ApplicationContextAware {
             Gmail gmail = criarGmail(credentialsPath, tokensDirectory, gmailUser);
             ConfigurableListableBeanFactory beanFactory =
                     ((ConfigurableApplicationContext) applicationContext).getBeanFactory();
-            beanFactory.registerSingleton("gmail", gmail);
+            beanFactory.registerSingleton(GmailApiProvider.BEAN_NAME, gmail);
             log.info("Gmail API configurada (usuário={}, tokens={})", gmailUser, tokensDirectory);
         } catch (Exception e) {
             log.warn("Gmail API não configurada: {}", e.getMessage());

@@ -108,6 +108,10 @@ public class ProcessoEntity {
     @Column(name = "consulta_automatica", nullable = false)
     private Boolean consultaAutomatica = false;
 
+    /** Interruptor mestre: consultas periódicas automáticas e entrada no painel global. */
+    @Column(name = "consulta_periodica_habilitada", nullable = false)
+    private Boolean consultaPeriodicaHabilitada = true;
+
     @Column(nullable = false)
     private Boolean ativo = true;
 

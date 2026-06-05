@@ -1509,6 +1509,29 @@ export async function obterMovimentacoesProjudiDrive(processoId) {
 }
 
 /**
+ * Monitora movimentações PROJUDI (somente listagem F3; sem download/Drive/publicações).
+ * @param {number|string} processoId
+ * @returns {Promise<{
+ *   processoId: number,
+ *   numeroCnj: string,
+ *   totalListadas: number,
+ *   baseline: boolean,
+ *   novas: number,
+ *   novasMovimentacoes: Array,
+ *   status: string,
+ *   execucaoId: number,
+ *   erro?: string|null,
+ * }>}
+ */
+export async function monitorarProcesso(processoId) {
+  const id = Number(processoId);
+  if (!Number.isFinite(id) || id < 1) {
+    throw new Error('Processo sem id na API — salve o cadastro antes de consultar o PROJUDI.');
+  }
+  return request(`/api/processos/${id}/projudi/monitorar`, { method: 'POST' });
+}
+
+/**
  * Dispara triagem manual da Júlia (andamento, prazo, audiência conforme resultado).
  * @param {number|string} processoId
  * @param {{ publicacaoId?: number, dryRun?: boolean, forcar?: boolean }} [opts]

@@ -100,6 +100,7 @@ import {
   FileSignature,
   Download,
   CloudDownload,
+  CalendarClock,
 } from 'lucide-react';
 import { ContaCorrenteVinculoAssist } from './processos/ContaCorrenteVinculoAssist.jsx';
 import {
@@ -124,6 +125,7 @@ import {
 import { ModalRelatorioPublicacoesProcesso, PublicacoesRelatorioConteudo } from './ModalRelatorioPublicacoesProcesso.jsx';
 import { listarPublicacoesRelatorioPorProcesso } from '../repositories/publicacoesRepository.js';
 import { ModalCriarTarefaContextual } from './ModalCriarTarefaContextual.jsx';
+import { ModalConsultaPeriodicaProcesso } from './consultas-periodicas/ModalConsultaPeriodicaProcesso.jsx';
 import { PessoaEmbedModal } from './PessoaEmbedModal.jsx';
 import { AutorUsuarioExibicao } from './ui/AutorUsuarioExibicao.jsx';
 import { buildContextFromProcesso, buildContextFromProcessoComPrazoFatal } from '../data/tarefasContextualPayload.js';
@@ -430,6 +432,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   const [ccFiltroSemVinculo, setCcFiltroSemVinculo] = useState(false);
   const [ccMensagem, setCcMensagem] = useState('');
   const [modalRelatorioPublicacoes, setModalRelatorioPublicacoes] = useState(false);
+  const [modalConsultaPeriodica, setModalConsultaPeriodica] = useState(false);
   /** Modal com cadastro de clientes (mesmo formulário de /pessoas) para o cliente e proc. atuais. */
   const [clientesEmbed, setClientesEmbed] = useState(null);
   /** Cadastro de Pessoas em janela suspensa (duplo clique na lista «Nesta parte»). */
@@ -3149,6 +3152,15 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
               <button
                 type="button"
                 className={processosBtnGhost}
+                onClick={() => setModalConsultaPeriodica(true)}
+                title="Agendamentos automáticos ao PROJUDI, monitor manual e destinatários de notificação"
+              >
+                <CalendarClock className="w-4 h-4" aria-hidden />
+                Consulta periódica
+              </button>
+              <button
+                type="button"
+                className={processosBtnGhost}
                 onClick={() => {
                   setContaCorrenteModo('processo');
                   setModalContaCorrente(true);
@@ -5331,6 +5343,14 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
         processo={processo}
         numeroProcessoNovo={numeroProcessoNovo}
         nomeCliente={cliente}
+      />
+
+      <ModalConsultaPeriodicaProcesso
+        open={modalConsultaPeriodica}
+        onClose={() => setModalConsultaPeriodica(false)}
+        processoApiId={processoApiId}
+        numeroCnj={numeroProcessoNovo}
+        clienteNome={cliente}
       />
 
       <ModalCriarTarefaContextual

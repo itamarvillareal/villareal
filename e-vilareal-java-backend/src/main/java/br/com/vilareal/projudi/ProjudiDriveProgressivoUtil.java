@@ -14,7 +14,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /** Seleção progressiva de movimentações a arquivar no Drive (modo somente Drive). */
-final class ProjudiDriveProgressivoUtil {
+public final class ProjudiDriveProgressivoUtil {
 
     /** Extrai o número da movimentação só do prefixo do nome (compatível com nomes antigos e enriquecidos). */
     private static final Pattern PADRAO_NUMERO_ARQUIVO_DRIVE =
@@ -22,7 +22,7 @@ final class ProjudiDriveProgressivoUtil {
 
     private ProjudiDriveProgressivoUtil() {}
 
-    static List<ProjudiTeorService.MovimentacaoProjudi> filtrarComDocDesc(
+    public static List<ProjudiTeorService.MovimentacaoProjudi> filtrarComDocDesc(
             List<ProjudiTeorService.MovimentacaoProjudi> movimentacoes) {
         if (movimentacoes == null || movimentacoes.isEmpty()) {
             return List.of();
@@ -35,7 +35,7 @@ final class ProjudiDriveProgressivoUtil {
                 .toList();
     }
 
-    static Set<Integer> extrairNumerosArquivados(List<String> nomesArquivosDrive) {
+    public static Set<Integer> extrairNumerosArquivados(List<String> nomesArquivosDrive) {
         if (nomesArquivosDrive == null || nomesArquivosDrive.isEmpty()) {
             return Set.of();
         }
@@ -52,7 +52,7 @@ final class ProjudiDriveProgressivoUtil {
         return numeros;
     }
 
-    static SelecaoProgressiva selecionarMovimentacoes(
+    public static SelecaoProgressiva selecionarMovimentacoes(
             List<ProjudiTeorService.MovimentacaoProjudi> comDocDesc,
             Set<Integer> arquivadas,
             int passoBackfill) {
@@ -118,7 +118,7 @@ final class ProjudiDriveProgressivoUtil {
                 maxOuNull(arquivadasSeguras));
     }
 
-    static int contarJaArquivadasEmComDoc(
+    public static int contarJaArquivadasEmComDoc(
             List<ProjudiTeorService.MovimentacaoProjudi> comDocDesc, Set<Integer> arquivadas) {
         if (comDocDesc.isEmpty() || arquivadas == null || arquivadas.isEmpty()) {
             return 0;
@@ -149,7 +149,7 @@ final class ProjudiDriveProgressivoUtil {
         return valores == null || valores.isEmpty() ? null : Collections.max(valores);
     }
 
-    record SelecaoProgressiva(
+    public record SelecaoProgressiva(
             List<ProjudiTeorService.MovimentacaoProjudi> novasTopo,
             List<ProjudiTeorService.MovimentacaoProjudi> backfill,
             List<ProjudiTeorService.MovimentacaoProjudi> baixar,
@@ -157,7 +157,7 @@ final class ProjudiDriveProgressivoUtil {
             Integer minArquivado,
             Integer maxArquivado) {
 
-        String resumo() {
+        public String resumo() {
             String numsBaixar = baixar.stream()
                     .map(m -> String.valueOf(parseNumeroMov(m.numero())))
                     .collect(Collectors.joining(", "));

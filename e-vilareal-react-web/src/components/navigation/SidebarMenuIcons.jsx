@@ -600,6 +600,7 @@ const MENU_ICONS = {
   'processos-grupo': IconFolderProcessos,
   processos: IconFolderProcessos,
   'processos/publicacoes': IconPublicacoes,
+  'processos/consultas-periodicas': IconWhatsAppSchedule,
   'publicacoes-email': IconPublicacoesEmail,
   'processos/manifestacoes-projudi': Gavel,
   'processos/monitoramento': IconMonitoramento,
