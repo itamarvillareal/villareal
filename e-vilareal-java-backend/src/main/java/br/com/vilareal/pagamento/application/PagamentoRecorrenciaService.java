@@ -198,9 +198,9 @@ public class PagamentoRecorrenciaService {
         return ym.atDay(diaEfetivo);
     }
 
-    static String resolverMesAno(String mesAnoParam) {
+    String resolverMesAno(String mesAnoParam) {
         if (!StringUtils.hasText(mesAnoParam)) {
-            return LocalDate.now().format(FMT_MES_ANO);
+            return LocalDate.now(clock).format(FMT_MES_ANO);
         }
         return mesAnoParam.trim();
     }

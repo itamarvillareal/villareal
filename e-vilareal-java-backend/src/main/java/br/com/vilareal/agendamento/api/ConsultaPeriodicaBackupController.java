@@ -29,12 +29,14 @@ public class ConsultaPeriodicaBackupController {
     @Operation(summary = "Exportar CSV com toda a configuração de monitoramento por CNJ")
     public ResponseEntity<byte[]> exportar() {
         ConsultaPeriodicaBackupService.ExportacaoCsv exportacao = consultaPeriodicaBackupService.exportar();
+        byte[] bytes = exportacao.conteudo();
         return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType("text/csv; charset=UTF-8"))
                 .header(
                         HttpHeaders.CONTENT_DISPOSITION,
                         "attachment; filename=\"" + exportacao.nomeArquivo() + "\"")
-                .contentType(MediaType.parseMediaType("text/csv;charset=UTF-8"))
-                .body(exportacao.conteudo());
+                .contentLength(bytes.length)
+                .body(bytes);
     }
 
     @PostMapping(value = "/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)

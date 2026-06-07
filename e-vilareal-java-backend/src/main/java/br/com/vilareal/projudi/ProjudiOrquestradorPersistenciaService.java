@@ -7,20 +7,23 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 
 @Service
 public class ProjudiOrquestradorPersistenciaService {
 
     private final ProjudiPublicacaoTransacaoService publicacaoTransacaoService;
     private final ProcessoRepository processoRepository;
+    private final Clock clock;
 
     public ProjudiOrquestradorPersistenciaService(
             ProjudiPublicacaoTransacaoService publicacaoTransacaoService,
-            ProcessoRepository processoRepository) {
+            ProcessoRepository processoRepository,
+            Clock clock) {
         this.publicacaoTransacaoService = publicacaoTransacaoService;
         this.processoRepository = processoRepository;
+        this.clock = clock;
     }
 
     /**
@@ -50,7 +53,9 @@ public class ProjudiOrquestradorPersistenciaService {
         if (processo == null) {
             return;
         }
-        processo.setProximaConsulta(LocalDateTime.now().plusHours(intervaloHoras).toLocalDate());
+        LocalDate proxima =
+                clock.instant().atZone(clock.getZone()).toLocalDateTime().plusHours(intervaloHoras).toLocalDate();
+        processo.setProximaConsulta(proxima);
         processoRepository.save(processo);
     }
 }

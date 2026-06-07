@@ -15,6 +15,8 @@ import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.CSVPrinter;
 import org.apache.commons.csv.CSVRecord;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -37,6 +39,8 @@ import java.util.stream.Collectors;
 
 @Service
 public class ConsultaPeriodicaBackupService {
+
+    private static final Logger log = LoggerFactory.getLogger(ConsultaPeriodicaBackupService.class);
 
     private static final int MAX_BYTES = 5 * 1024 * 1024;
     private static final byte[] UTF8_BOM = new byte[] {(byte) 0xEF, (byte) 0xBB, (byte) 0xBF};
@@ -64,6 +68,9 @@ public class ConsultaPeriodicaBackupService {
 
     @Transactional(readOnly = true)
     public ExportacaoCsv exportar() {
+        long inicioMs = System.currentTimeMillis();
+        log.info("[export-consultas] início");
+
         List<Long> ids = processoRepository.findIdsComConfigConsultaPeriodica();
         List<ProcessoExportacao> processos = new ArrayList<>();
         for (Long id : ids) {
@@ -82,25 +89,36 @@ public class ConsultaPeriodicaBackupService {
                         String.CASE_INSENSITIVE_ORDER)
                 .thenComparing(p -> p.processo().getId()));
 
+        int linhasCsv = 0;
         try {
             ByteArrayOutputStream buffer = new ByteArrayOutputStream();
             buffer.write(UTF8_BOM);
-            OutputStreamWriter writer = new OutputStreamWriter(buffer, StandardCharsets.UTF_8);
             CSVFormat format = CSVFormat.DEFAULT.builder()
                     .setDelimiter(ConsultaPeriodicaBackupCsv.DELIMITADOR)
                     .setRecordSeparator("\r\n")
                     .setHeader(ConsultaPeriodicaBackupCsv.HEADER)
                     .build();
-            try (CSVPrinter printer = new CSVPrinter(writer, format)) {
+            try (OutputStreamWriter writer = new OutputStreamWriter(buffer, StandardCharsets.UTF_8);
+                    CSVPrinter printer = new CSVPrinter(writer, format)) {
                 for (ProcessoExportacao pe : processos) {
-                    escreverProcesso(printer, pe);
+                    linhasCsv += escreverProcesso(printer, pe);
                 }
+                printer.flush();
             }
+            byte[] bytes = buffer.toByteArray();
             String nomeArquivo = "consultas-periodicas-"
                     + clock.instant().atZone(clock.getZone()).format(NOME_ARQUIVO)
                     + ".csv";
-            return new ExportacaoCsv(buffer.toByteArray(), nomeArquivo);
+            long duracaoMs = System.currentTimeMillis() - inicioMs;
+            log.info(
+                    "[export-consultas] fim: {} processos, {} linhas, {} bytes, {} ms",
+                    processos.size(),
+                    linhasCsv,
+                    bytes.length,
+                    duracaoMs);
+            return new ExportacaoCsv(bytes, nomeArquivo);
         } catch (IOException e) {
+            log.warn("[export-consultas] falha após {} ms: {}", System.currentTimeMillis() - inicioMs, e.getMessage());
             throw new BusinessRuleException("Falha ao gerar CSV de consultas periódicas: " + e.getMessage());
         }
     }
@@ -253,7 +271,7 @@ public class ConsultaPeriodicaBackupService {
         return v != null ? v : "";
     }
 
-    private void escreverProcesso(CSVPrinter printer, ProcessoExportacao pe) throws IOException {
+    private int escreverProcesso(CSVPrinter printer, ProcessoExportacao pe) throws IOException {
         ProcessoEntity processo = pe.processo();
         String numeroCnj = processo.getNumeroCnj() != null ? processo.getNumeroCnj() : "";
         String cliente = resolverNomeCliente(processo);
@@ -280,7 +298,7 @@ public class ConsultaPeriodicaBackupService {
                     "",
                     "",
                     destinatarios);
-            return;
+            return 1;
         }
 
         for (AgendamentoConsultaEntity ag : agendamentos) {
@@ -303,6 +321,7 @@ public class ConsultaPeriodicaBackupService {
                     ConsultaPeriodicaCsvUtil.formatBoolean(Boolean.TRUE.equals(ag.getAtivo())),
                     destinatarios);
         }
+        return agendamentos.size();
     }
 
     private static String resolverNomeCliente(ProcessoEntity processo) {
