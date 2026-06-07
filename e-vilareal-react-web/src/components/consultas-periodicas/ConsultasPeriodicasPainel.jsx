@@ -1,14 +1,16 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   AlertTriangle,
   ArrowLeft,
   CalendarClock,
   ExternalLink,
+  Download,
   Loader2,
   RefreshCw,
   Search,
   Settings,
+  Upload,
 } from 'lucide-react';
 import { buildRouterStateChaveClienteProcesso } from '../../domain/camposProcessoCliente.js';
 import {
@@ -20,10 +22,15 @@ import {
   ordenarPainelItens,
   textoBuscaProcessoPainel,
 } from '../../domain/agendamentoCadencia.js';
-import { listarPainel } from '../../repositories/agendamentoRepository.js';
+import {
+  exportarConsultasPeriodicasCsv,
+  importarConsultasPeriodicasCsv,
+  listarPainel,
+} from '../../repositories/agendamentoRepository.js';
 import { buscarProcessoPorId } from '../../repositories/processosRepository.js';
 import { ProcessosToast } from '../processos/ProcessosAdminLayout.jsx';
 import { ModalDestinatariosPadrao } from '../notificacao/ModalDestinatariosPadrao.jsx';
+import { ModalImportacaoConsultasPeriodicas } from './ModalImportacaoConsultasPeriodicas.jsx';
 
 /**
  * Painel global de consultas periódicas ativas (processos com interruptor mestre ligado).
@@ -37,6 +44,9 @@ export function ConsultasPeriodicasPainel() {
   const [busca, setBusca] = useState('');
   const [operacaoChave, setOperacaoChave] = useState(null);
   const [modalConfiguracoes, setModalConfiguracoes] = useState(false);
+  const [modalImportacao, setModalImportacao] = useState(false);
+  const [relatorioImportacao, setRelatorioImportacao] = useState(null);
+  const inputImportarRef = useRef(null);
 
   const recarregarPainel = useCallback(async () => {
     setCarregando(true);
@@ -98,6 +108,51 @@ export function ConsultasPeriodicasPainel() {
     [navigate],
   );
 
+  const exportarCsv = useCallback(async () => {
+    setOperacaoChave('exportar-csv');
+    setApiError('');
+    try {
+      const { blob, nomeArquivo } = await exportarConsultasPeriodicasCsv();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = nomeArquivo;
+      a.click();
+      URL.revokeObjectURL(url);
+      setToast('CSV exportado com sucesso.');
+    } catch (e) {
+      setApiError(e?.message || 'Falha ao exportar CSV.');
+    } finally {
+      setOperacaoChave(null);
+    }
+  }, []);
+
+  const abrirSeletorImportar = useCallback(() => {
+    inputImportarRef.current?.click();
+  }, []);
+
+  const aoEscolherArquivoImportar = useCallback(
+    async (event) => {
+      const file = event.target.files?.[0];
+      event.target.value = '';
+      if (!file) return;
+
+      setOperacaoChave('importar-csv');
+      setApiError('');
+      try {
+        const relatorio = await importarConsultasPeriodicasCsv(file);
+        setRelatorioImportacao(relatorio);
+        setModalImportacao(true);
+        await recarregarPainel();
+      } catch (e) {
+        setApiError(e?.message || 'Falha ao importar CSV.');
+      } finally {
+        setOperacaoChave(null);
+      }
+    },
+    [recarregarPainel],
+  );
+
   return (
     <div className="min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/35 to-emerald-50/45 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d] text-slate-900 dark:text-slate-100">
       <ProcessosToast message={toast} onClose={() => setToast('')} />
@@ -125,6 +180,39 @@ export function ConsultasPeriodicasPainel() {
             <Settings className="w-4 h-4" aria-hidden />
             Configurações
           </button>
+          <button
+            type="button"
+            onClick={() => void exportarCsv()}
+            disabled={carregando || operacaoChave != null}
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 dark:border-white/10 text-sm hover:bg-white/80 dark:hover:bg-white/5 disabled:opacity-50"
+          >
+            {operacaoChave === 'exportar-csv' ? (
+              <Loader2 className="w-4 h-4 animate-spin" aria-hidden />
+            ) : (
+              <Download className="w-4 h-4" aria-hidden />
+            )}
+            Exportar CSV
+          </button>
+          <button
+            type="button"
+            onClick={abrirSeletorImportar}
+            disabled={carregando || operacaoChave != null}
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 dark:border-white/10 text-sm hover:bg-white/80 dark:hover:bg-white/5 disabled:opacity-50"
+          >
+            {operacaoChave === 'importar-csv' ? (
+              <Loader2 className="w-4 h-4 animate-spin" aria-hidden />
+            ) : (
+              <Upload className="w-4 h-4" aria-hidden />
+            )}
+            Importar CSV
+          </button>
+          <input
+            ref={inputImportarRef}
+            type="file"
+            accept=".csv,text/csv"
+            className="hidden"
+            onChange={(e) => void aoEscolherArquivoImportar(e)}
+          />
           <button
             type="button"
             onClick={() => void recarregarPainel()}
@@ -289,6 +377,15 @@ export function ConsultasPeriodicasPainel() {
         open={modalConfiguracoes}
         onClose={() => setModalConfiguracoes(false)}
         onSaved={() => setToast('Destinatários padrão salvos.')}
+      />
+
+      <ModalImportacaoConsultasPeriodicas
+        open={modalImportacao}
+        relatorio={relatorioImportacao}
+        onClose={() => {
+          setModalImportacao(false);
+          setRelatorioImportacao(null);
+        }}
       />
     </div>
   );

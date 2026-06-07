@@ -1,5 +1,6 @@
 package br.com.vilareal.notificacao.infrastructure.persistence.repository;
 
+import br.com.vilareal.notificacao.domain.CanalNotificacao;
 import br.com.vilareal.notificacao.infrastructure.persistence.entity.NotificacaoDestinatarioEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
 
@@ -18,4 +19,6 @@ public interface NotificacaoDestinatarioRepository extends JpaRepository<Notific
     void deleteByProcessoId(Long processoId);
 
     void deleteByProcessoIdIsNull();
+
+    boolean existsByProcesso_IdAndCanalAndValor(Long processoId, CanalNotificacao canal, String valor);
 }

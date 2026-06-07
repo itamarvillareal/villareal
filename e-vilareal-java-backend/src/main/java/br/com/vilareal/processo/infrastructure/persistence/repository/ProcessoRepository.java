@@ -275,4 +275,35 @@ public interface ProcessoRepository extends JpaRepository<ProcessoEntity, Long> 
             """)
     List<Long> findIdsComPrazoFatalNaJanela(
             @Param("inicio") LocalDate inicio, @Param("fim") LocalDate fim);
+
+    /** Processos com qualquer configuração de monitoramento de consulta periódica (backup CSV). */
+    @Query(
+            """
+            SELECT DISTINCT p.id FROM ProcessoEntity p
+            WHERE p.consultaPeriodicaHabilitada = true
+               OR EXISTS (SELECT 1 FROM AgendamentoConsultaEntity a WHERE a.processo.id = p.id)
+               OR EXISTS (SELECT 1 FROM NotificacaoDestinatarioEntity d WHERE d.processo.id = p.id)
+            ORDER BY p.id ASC
+            """)
+    List<Long> findIdsComConfigConsultaPeriodica();
+
+    /**
+     * Localiza processo pelo número CNJ após remover espaços nas extremidades e normalizar para só dígitos.
+     * Retorna vazio se não houver exatamente um processo correspondente.
+     */
+    default Optional<ProcessoEntity> findByNumeroCnj(String numeroCnj) {
+        if (numeroCnj == null || numeroCnj.trim().isEmpty()) {
+            return Optional.empty();
+        }
+        String norm = br.com.vilareal.processo.application.ProcessoDiagnosticoNumeroBuscaUtil.normalizarSomenteDigitos(
+                numeroCnj.trim());
+        if (norm.length() < 7) {
+            return Optional.empty();
+        }
+        List<BigInteger> ids = findIdsByNumeroCnjNormalizadoDiagnostico(norm);
+        if (ids.size() != 1) {
+            return Optional.empty();
+        }
+        return findById(ids.getFirst().longValue());
+    }
 }

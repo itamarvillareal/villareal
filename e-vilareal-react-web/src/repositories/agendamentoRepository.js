@@ -1,4 +1,21 @@
-import { request } from '../api/httpClient.js';
+import { API_BASE_URL } from '../api/config.js';
+import { getAccessToken } from '../api/authTokenStorage.js';
+import { emitApiUnauthorized } from '../api/apiAuthHeaders.js';
+import { buildAuditoriaHeaders } from '../services/auditoriaCliente.js';
+import { request, postFormData } from '../api/httpClient.js';
+
+function headersDownload() {
+  const h = { ...buildAuditoriaHeaders() };
+  const t = getAccessToken();
+  if (t) h.Authorization = `Bearer ${t}`;
+  return h;
+}
+
+function extrairNomeArquivo(contentDisposition) {
+  if (!contentDisposition) return 'consultas-periodicas.csv';
+  const match = /filename="?([^";\n]+)"?/i.exec(contentDisposition);
+  return match?.[1]?.trim() || 'consultas-periodicas.csv';
+}
 
 function exigirIdPositivo(valor, mensagem) {
   const id = Number(valor);
@@ -85,6 +102,33 @@ export async function putConsultaPeriodicaHabilitada(processoId, habilitada) {
     method: 'PUT',
     body: { habilitada: Boolean(habilitada) },
   });
+}
+
+/** @returns {Promise<{ blob: Blob, nomeArquivo: string }>} */
+export async function exportarConsultasPeriodicasCsv(opts = {}) {
+  const url = `${API_BASE_URL}/api/processos/consultas-periodicas/export`;
+  const res = await fetch(url, { method: 'GET', headers: headersDownload(), signal: opts.signal });
+  if (res.status === 401) emitApiUnauthorized();
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || `Erro ${res.status} ao exportar CSV.`);
+  }
+  const blob = await res.blob();
+  const nomeArquivo = extrairNomeArquivo(res.headers.get('Content-Disposition'));
+  return { blob, nomeArquivo };
+}
+
+/**
+ * @param {File} file
+ * @returns {Promise<object>} RelatorioImportacao
+ */
+export async function importarConsultasPeriodicasCsv(file, opts = {}) {
+  if (!(file instanceof File)) {
+    throw new Error('Selecione um arquivo CSV válido.');
+  }
+  const fd = new FormData();
+  fd.append('file', file);
+  return postFormData('/api/processos/consultas-periodicas/import', fd, { signal: opts.signal });
 }
 
 export async function listarExecucoesProcesso(processoId, page = 0, size = 20) {
