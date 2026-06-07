@@ -44,7 +44,7 @@ export function ConsultaPeriodicaProcessoSecao({ processoApiId, numeroCnj, clien
   const procId = Number(processoApiId);
   const habilitado = Number.isFinite(procId) && procId > 0;
 
-  const [consultaAtiva, setConsultaAtiva] = useState(true);
+  const [consultaAtiva, setConsultaAtiva] = useState(false);
   const [carregandoMestre, setCarregandoMestre] = useState(false);
   const [salvandoMestre, setSalvandoMestre] = useState(false);
   const [itens, setItens] = useState([]);

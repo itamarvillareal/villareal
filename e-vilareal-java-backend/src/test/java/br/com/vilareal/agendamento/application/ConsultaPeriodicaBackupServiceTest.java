@@ -16,6 +16,7 @@ import org.apache.commons.csv.CSVParser;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -35,6 +36,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -60,6 +62,8 @@ class ConsultaPeriodicaBackupServiceTest {
     private Clock clock;
 
     @InjectMocks
+    private ConsultaPeriodicaBackupExportLeitura exportLeitura;
+
     private ConsultaPeriodicaBackupService service;
 
     @BeforeEach
@@ -68,6 +72,7 @@ class ConsultaPeriodicaBackupServiceTest {
         lenient()
                 .when(clock.instant())
                 .thenReturn(Instant.parse("2026-06-03T15:30:00-03:00"));
+        service = new ConsultaPeriodicaBackupService(exportLeitura, importador, clock);
     }
 
     @Test
@@ -81,12 +86,12 @@ class ConsultaPeriodicaBackupServiceTest {
         NotificacaoDestinatarioEntity dest = new NotificacaoDestinatarioEntity();
         dest.setCanal(CanalNotificacao.EMAIL);
         dest.setValor("jr@teste.com");
+        dest.setProcesso(processo);
 
         when(processoRepository.findIdsComConfigConsultaPeriodica()).thenReturn(List.of(99L));
-        when(processoRepository.findByIdWithClienteAndPessoa(99L)).thenReturn(Optional.of(processo));
-        when(agendamentoConsultaRepository.findByProcessoId(99L)).thenReturn(List.of(ag1, ag2));
-        when(notificacaoDestinatarioRepository.findByProcessoIdOrderByCanalAscIdAsc(99L))
-                .thenReturn(List.of(dest));
+        when(processoRepository.findByIdInWithClienteAndPessoa(List.of(99L))).thenReturn(List.of(processo));
+        when(agendamentoConsultaRepository.findByProcessoIdIn(List.of(99L))).thenReturn(List.of(ag1, ag2));
+        when(notificacaoDestinatarioRepository.findByProcessoIdIn(List.of(99L))).thenReturn(List.of(dest));
 
         var exportacao = service.exportar();
         assertThat(exportacao.nomeArquivo()).isEqualTo("consultas-periodicas-20260603-1530.csv");
@@ -117,6 +122,11 @@ class ConsultaPeriodicaBackupServiceTest {
             assertThat(records.get(1).get("periodo")).isEqualTo("SEMANAL");
             assertThat(records.get(1).get("periodo_horario")).isEqualTo("08:00");
         }
+
+        verify(agendamentoConsultaRepository, times(1)).findByProcessoIdIn(anyList());
+        verify(notificacaoDestinatarioRepository, times(1)).findByProcessoIdIn(anyList());
+        verify(processoRepository, times(0)).findByIdWithClienteAndPessoa(any());
+        verify(agendamentoConsultaRepository, times(0)).findByProcessoId(any());
     }
 
     @Test
@@ -125,10 +135,9 @@ class ConsultaPeriodicaBackupServiceTest {
         processo.setConsultaPeriodicaHabilitada(true);
 
         when(processoRepository.findIdsComConfigConsultaPeriodica()).thenReturn(List.of(1L));
-        when(processoRepository.findByIdWithClienteAndPessoa(1L)).thenReturn(Optional.of(processo));
-        when(agendamentoConsultaRepository.findByProcessoId(1L)).thenReturn(List.of());
-        when(notificacaoDestinatarioRepository.findByProcessoIdOrderByCanalAscIdAsc(1L))
-                .thenReturn(List.of());
+        when(processoRepository.findByIdInWithClienteAndPessoa(List.of(1L))).thenReturn(List.of(processo));
+        when(agendamentoConsultaRepository.findByProcessoIdIn(List.of(1L))).thenReturn(List.of());
+        when(notificacaoDestinatarioRepository.findByProcessoIdIn(List.of(1L))).thenReturn(List.of());
 
         byte[] csv = service.exportar().conteudo();
         String texto = new String(csv, StandardCharsets.UTF_8).substring(1);
@@ -150,6 +159,27 @@ class ConsultaPeriodicaBackupServiceTest {
             assertThat(rec.get("tipo_cadencia")).isEmpty();
             assertThat(rec.get("intervalo_minutos")).isEmpty();
         }
+    }
+
+    @Test
+    void exportar_carregaAgendamentosEDestinatariosEmLote() {
+        ProcessoEntity p1 = processoComCliente(1L, CNJ, "A");
+        ProcessoEntity p2 = processoComCliente(2L, "0000999-00.2026.8.09.0099", "B");
+        p1.setConsultaPeriodicaHabilitada(true);
+        p2.setConsultaPeriodicaHabilitada(true);
+
+        when(processoRepository.findIdsComConfigConsultaPeriodica()).thenReturn(List.of(1L, 2L));
+        when(processoRepository.findByIdInWithClienteAndPessoa(List.of(1L, 2L))).thenReturn(List.of(p1, p2));
+        when(agendamentoConsultaRepository.findByProcessoIdIn(anyList())).thenReturn(List.of());
+        when(notificacaoDestinatarioRepository.findByProcessoIdIn(anyList())).thenReturn(List.of());
+
+        service.exportar();
+
+        ArgumentCaptor<List<Long>> idsCaptor = ArgumentCaptor.forClass(List.class);
+        verify(agendamentoConsultaRepository).findByProcessoIdIn(idsCaptor.capture());
+        assertThat(idsCaptor.getValue()).containsExactly(1L, 2L);
+        verify(notificacaoDestinatarioRepository).findByProcessoIdIn(idsCaptor.capture());
+        assertThat(idsCaptor.getValue()).containsExactly(1L, 2L);
     }
 
     @Test
