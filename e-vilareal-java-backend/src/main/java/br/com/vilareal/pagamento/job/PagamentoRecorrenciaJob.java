@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+import java.time.Clock;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
@@ -22,17 +23,21 @@ public class PagamentoRecorrenciaJob {
 
     private final PagamentoRecorrenciaService pagamentoRecorrenciaService;
     private final JobRunTracker jobRunTracker;
+    private final Clock clock;
 
     public PagamentoRecorrenciaJob(
-            PagamentoRecorrenciaService pagamentoRecorrenciaService, JobRunTracker jobRunTracker) {
+            PagamentoRecorrenciaService pagamentoRecorrenciaService,
+            JobRunTracker jobRunTracker,
+            Clock clock) {
         this.pagamentoRecorrenciaService = pagamentoRecorrenciaService;
         this.jobRunTracker = jobRunTracker;
+        this.clock = clock;
     }
 
     @Scheduled(cron = "0 0 6 1 * ?", zone = "America/Sao_Paulo")
     public void gerarPagamentosRecorrentesMensal() {
         jobRunTracker.runTrackedJobVoid(JobNames.PAGAMENTO_RECORRENCIA, ctx -> {
-            String mesAno = LocalDate.now().format(FMT_MES_ANO);
+            String mesAno = LocalDate.now(clock).format(FMT_MES_ANO);
             log.info("Iniciando geração automática de pagamentos recorrentes para {}", mesAno);
             ctx.putMetadata("mesAno", mesAno);
 

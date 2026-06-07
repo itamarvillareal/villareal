@@ -27,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -64,6 +65,7 @@ public class IptuApplicationService {
     private final ContratoLocacaoRepository contratoLocacaoRepository;
     private final PagamentoRepository pagamentoRepository;
     private final UsuarioRepository usuarioRepository;
+    private final Clock clock;
 
     public IptuApplicationService(
             IptuAnualRepository iptuAnualRepository,
@@ -72,7 +74,8 @@ public class IptuApplicationService {
             ImovelRepository imovelRepository,
             ContratoLocacaoRepository contratoLocacaoRepository,
             PagamentoRepository pagamentoRepository,
-            UsuarioRepository usuarioRepository) {
+            UsuarioRepository usuarioRepository,
+            Clock clock) {
         this.iptuAnualRepository = iptuAnualRepository;
         this.iptuParcelaRepository = iptuParcelaRepository;
         this.iptuConsultaDebitoRepository = iptuConsultaDebitoRepository;
@@ -80,6 +83,7 @@ public class IptuApplicationService {
         this.contratoLocacaoRepository = contratoLocacaoRepository;
         this.pagamentoRepository = pagamentoRepository;
         this.usuarioRepository = usuarioRepository;
+        this.clock = clock;
     }
 
     @Transactional
@@ -193,7 +197,7 @@ public class IptuApplicationService {
 
     @Transactional
     public IptuConsultaDebitoResponse registrarConsulta(IptuConsultaDebitoWriteRequest req) {
-        if (req.getDataConsulta().isAfter(LocalDate.now())) {
+        if (req.getDataConsulta().isAfter(LocalDate.now(clock))) {
             throw new BusinessRuleException("data_consulta cannot be in the future.");
         }
         ImovelEntity im = requireImovel(req.getImovelId());
