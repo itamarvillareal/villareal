@@ -1,6 +1,5 @@
 package br.com.vilareal.db.migration;
 
-import br.com.vilareal.AbstractIntegrationTest;
 import br.com.vilareal.agendamento.domain.TipoCadencia;
 import br.com.vilareal.agendamento.infrastructure.persistence.entity.AgendamentoConsultaEntity;
 import br.com.vilareal.agendamento.infrastructure.persistence.repository.AgendamentoConsultaRepository;
@@ -9,12 +8,21 @@ import br.com.vilareal.notificacao.infrastructure.persistence.entity.Notificacao
 import br.com.vilareal.notificacao.infrastructure.persistence.repository.NotificacaoDestinatarioRepository;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
+import br.com.vilareal.support.DockerCiGateExtension;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.transaction.annotation.Transactional;
+import org.testcontainers.containers.MySQLContainer;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -24,9 +32,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Exercita o UPDATE do V100 em MySQL real (Testcontainers). H2 não cobre o bug NOT IN + NULL.
- * agendamento_consulta.processo_id é NOT NULL (V93); o caso NULL é simulado em notificacao_destinatario.
+ * {@code agendamento_consulta.processo_id} é NOT NULL (V93); o ramo NULL usa
+ * {@code notificacao_destinatario.processo_id} (nullable, V96).
  */
-class V100ConsultaPeriodicaHabilitadaBackfillIntegrationTest extends AbstractIntegrationTest {
+@ExtendWith(DockerCiGateExtension.class)
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@Testcontainers
+@ActiveProfiles("test")
+class V100ConsultaPeriodicaHabilitadaBackfillIntegrationTest {
 
     private static final String V100_UPDATE =
             """
@@ -49,6 +62,16 @@ class V100ConsultaPeriodicaHabilitadaBackfillIntegrationTest extends AbstractInt
               AND id NOT IN (SELECT DISTINCT processo_id FROM agendamento_consulta)
               AND id NOT IN (SELECT DISTINCT processo_id FROM notificacao_destinatario)
             """;
+
+    @Container
+    static final MySQLContainer<?> MYSQL = new MySQLContainer<>("mysql:8.0.36");
+
+    @DynamicPropertySource
+    static void registerProps(DynamicPropertyRegistry r) {
+        r.add("spring.datasource.url", MYSQL::getJdbcUrl);
+        r.add("spring.datasource.username", MYSQL::getUsername);
+        r.add("spring.datasource.password", MYSQL::getPassword);
+    }
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -106,12 +129,18 @@ class V100ConsultaPeriodicaHabilitadaBackfillIntegrationTest extends AbstractInt
         destB.setAtivo(true);
         notificacaoDestinatarioRepository.saveAndFlush(destB);
 
+        // Destinatário global: processo_id NULL em notificacao_destinatario (coluna nullable — V96).
         NotificacaoDestinatarioEntity destGlobalNull = new NotificacaoDestinatarioEntity();
         destGlobalNull.setProcesso(null);
         destGlobalNull.setCanal(CanalNotificacao.EMAIL);
         destGlobalNull.setValor("global-v100@teste.com");
         destGlobalNull.setAtivo(true);
         notificacaoDestinatarioRepository.saveAndFlush(destGlobalNull);
+
+        assertThat(jdbcTemplate.queryForObject(
+                        "SELECT COUNT(*) FROM notificacao_destinatario WHERE processo_id IS NULL",
+                        Integer.class))
+                .isGreaterThanOrEqualTo(1);
     }
 
     @Test
@@ -125,7 +154,11 @@ class V100ConsultaPeriodicaHabilitadaBackfillIntegrationTest extends AbstractInt
         assertThat(flag(processoC.getId())).isFalse();
 
         Integer mantidos = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM processo WHERE consulta_periodica_habilitada = 1", Integer.class);
+                "SELECT COUNT(*) FROM processo WHERE id IN (?,?,?) AND consulta_periodica_habilitada = 1",
+                Integer.class,
+                processoA.getId(),
+                processoB.getId(),
+                processoC.getId());
         assertThat(mantidos).isEqualTo(2);
     }
 
