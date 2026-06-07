@@ -2,15 +2,7 @@ package br.com.vilareal.agendamento.application;
 
 import br.com.vilareal.agendamento.api.dto.RelatorioImportacaoConsultaPeriodica;
 import br.com.vilareal.agendamento.domain.TipoCadencia;
-import br.com.vilareal.agendamento.infrastructure.persistence.entity.AgendamentoConsultaEntity;
-import br.com.vilareal.agendamento.infrastructure.persistence.repository.AgendamentoConsultaRepository;
 import br.com.vilareal.common.exception.BusinessRuleException;
-import br.com.vilareal.notificacao.infrastructure.persistence.entity.NotificacaoDestinatarioEntity;
-import br.com.vilareal.notificacao.infrastructure.persistence.repository.NotificacaoDestinatarioRepository;
-import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
-import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
-import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
-import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.CSVPrinter;
@@ -18,7 +10,6 @@ import org.apache.commons.csv.CSVRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -30,12 +21,10 @@ import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 @Service
 public class ConsultaPeriodicaBackupService {
@@ -47,47 +36,28 @@ public class ConsultaPeriodicaBackupService {
     private static final DateTimeFormatter NOME_ARQUIVO =
             DateTimeFormatter.ofPattern("yyyyMMdd-HHmm", Locale.ROOT);
 
-    private final ProcessoRepository processoRepository;
-    private final AgendamentoConsultaRepository agendamentoConsultaRepository;
-    private final NotificacaoDestinatarioRepository notificacaoDestinatarioRepository;
+    private final ConsultaPeriodicaBackupExportLeitura exportLeitura;
     private final ConsultaPeriodicaBackupImportador importador;
     private final Clock clock;
 
     public ConsultaPeriodicaBackupService(
-            ProcessoRepository processoRepository,
-            AgendamentoConsultaRepository agendamentoConsultaRepository,
-            NotificacaoDestinatarioRepository notificacaoDestinatarioRepository,
+            ConsultaPeriodicaBackupExportLeitura exportLeitura,
             ConsultaPeriodicaBackupImportador importador,
             Clock clock) {
-        this.processoRepository = processoRepository;
-        this.agendamentoConsultaRepository = agendamentoConsultaRepository;
-        this.notificacaoDestinatarioRepository = notificacaoDestinatarioRepository;
+        this.exportLeitura = exportLeitura;
         this.importador = importador;
         this.clock = clock;
     }
 
-    @Transactional(readOnly = true)
     public ExportacaoCsv exportar() {
         long inicioMs = System.currentTimeMillis();
-        log.info("[export-consultas] início");
 
-        List<Long> ids = processoRepository.findIdsComConfigConsultaPeriodica();
-        List<ProcessoExportacao> processos = new ArrayList<>();
-        for (Long id : ids) {
-            ProcessoEntity processo = processoRepository.findByIdWithClienteAndPessoa(id).orElse(null);
-            if (processo == null) {
-                continue;
-            }
-            List<AgendamentoConsultaEntity> agendamentos = agendamentoConsultaRepository.findByProcessoId(id);
-            List<NotificacaoDestinatarioEntity> destinatarios =
-                    notificacaoDestinatarioRepository.findByProcessoIdOrderByCanalAscIdAsc(id);
-            processos.add(new ProcessoExportacao(processo, agendamentos, destinatarios));
-        }
-        processos.sort(Comparator.comparing(
-                        (ProcessoExportacao p) ->
-                                p.processo().getNumeroCnj() != null ? p.processo().getNumeroCnj() : "",
-                        String.CASE_INSENSITIVE_ORDER)
-                .thenComparing(p -> p.processo().getId()));
+        List<Long> ids = exportLeitura.listarIdsComConfig();
+        log.info("[export-consultas] início: {} processos a exportar", ids.size());
+
+        List<ConsultaPeriodicaBackupExportLeitura.DadosProcessoExport> processos = exportLeitura.carregarPorIds(ids);
+        long aposLeituraMs = System.currentTimeMillis();
+        log.info("[export-consultas] dados carregados em {} ms", aposLeituraMs - inicioMs);
 
         int linhasCsv = 0;
         try {
@@ -100,7 +70,7 @@ public class ConsultaPeriodicaBackupService {
                     .build();
             try (OutputStreamWriter writer = new OutputStreamWriter(buffer, StandardCharsets.UTF_8);
                     CSVPrinter printer = new CSVPrinter(writer, format)) {
-                for (ProcessoExportacao pe : processos) {
+                for (ConsultaPeriodicaBackupExportLeitura.DadosProcessoExport pe : processos) {
                     linhasCsv += escreverProcesso(printer, pe);
                 }
                 printer.flush();
@@ -111,7 +81,7 @@ public class ConsultaPeriodicaBackupService {
                     + ".csv";
             long duracaoMs = System.currentTimeMillis() - inicioMs;
             log.info(
-                    "[export-consultas] fim: {} processos, {} linhas, {} bytes, {} ms",
+                    "[export-consultas] fim: {} processos, {} linhas, {} bytes, {} ms total",
                     processos.size(),
                     linhasCsv,
                     bytes.length,
@@ -271,19 +241,16 @@ public class ConsultaPeriodicaBackupService {
         return v != null ? v : "";
     }
 
-    private int escreverProcesso(CSVPrinter printer, ProcessoExportacao pe) throws IOException {
-        ProcessoEntity processo = pe.processo();
-        String numeroCnj = processo.getNumeroCnj() != null ? processo.getNumeroCnj() : "";
-        String cliente = resolverNomeCliente(processo);
-        boolean habilitada = Boolean.TRUE.equals(processo.getConsultaPeriodicaHabilitada());
-        String destinatarios = ConsultaPeriodicaCsvUtil.formatDestinatarios(pe.destinatarios());
+    private int escreverProcesso(
+            CSVPrinter printer, ConsultaPeriodicaBackupExportLeitura.DadosProcessoExport pe) throws IOException {
+        String destinatarios = formatDestinatarios(pe.destinatarios());
 
-        List<AgendamentoConsultaEntity> agendamentos = pe.agendamentos();
+        List<ConsultaPeriodicaBackupExportLeitura.DadosAgendamentoExport> agendamentos = pe.agendamentos();
         if (agendamentos.isEmpty()) {
             printer.printRecord(
-                    numeroCnj,
-                    cliente,
-                    ConsultaPeriodicaCsvUtil.formatBoolean(habilitada),
+                    pe.numeroCnj(),
+                    pe.clienteNome(),
+                    ConsultaPeriodicaCsvUtil.formatBoolean(pe.consultaPeriodicaHabilitada()),
                     "",
                     "",
                     "",
@@ -301,45 +268,38 @@ public class ConsultaPeriodicaBackupService {
             return 1;
         }
 
-        for (AgendamentoConsultaEntity ag : agendamentos) {
+        for (ConsultaPeriodicaBackupExportLeitura.DadosAgendamentoExport ag : agendamentos) {
             printer.printRecord(
-                    numeroCnj,
-                    cliente,
-                    ConsultaPeriodicaCsvUtil.formatBoolean(habilitada),
-                    ag.getTipoCadencia() != null ? ag.getTipoCadencia().name() : "",
-                    ag.getIntervaloMinutos() != null ? ag.getIntervaloMinutos().toString() : "",
-                    ConsultaPeriodicaCsvUtil.formatHorariosFixosExport(ag.getHorariosFixos()),
-                    ag.getPeriodo() != null ? ag.getPeriodo().name() : "",
-                    ConsultaPeriodicaCsvUtil.formatHora(ag.getPeriodoHorario()),
-                    ConsultaPeriodicaCsvUtil.formatHora(ag.getJanelaInicio()),
-                    ConsultaPeriodicaCsvUtil.formatHora(ag.getJanelaFim()),
-                    ConsultaPeriodicaCsvUtil.formatBoolean(Boolean.TRUE.equals(ag.getApenasDiasUteis())),
-                    ConsultaPeriodicaCsvUtil.formatBoolean(Boolean.TRUE.equals(ag.getConsiderarFeriados())),
-                    ag.getPrioridade() != null ? ag.getPrioridade().toString() : "0",
-                    ag.getMotivo() != null ? ag.getMotivo() : "",
-                    ConsultaPeriodicaCsvUtil.formatValidoAte(ag.getValidoAte()),
-                    ConsultaPeriodicaCsvUtil.formatBoolean(Boolean.TRUE.equals(ag.getAtivo())),
+                    pe.numeroCnj(),
+                    pe.clienteNome(),
+                    ConsultaPeriodicaCsvUtil.formatBoolean(pe.consultaPeriodicaHabilitada()),
+                    ag.tipoCadencia() != null ? ag.tipoCadencia().name() : "",
+                    ag.intervaloMinutos() != null ? ag.intervaloMinutos().toString() : "",
+                    ConsultaPeriodicaCsvUtil.formatHorariosFixosExport(ag.horariosFixos()),
+                    ag.periodo() != null ? ag.periodo().name() : "",
+                    ConsultaPeriodicaCsvUtil.formatHora(ag.periodoHorario()),
+                    ConsultaPeriodicaCsvUtil.formatHora(ag.janelaInicio()),
+                    ConsultaPeriodicaCsvUtil.formatHora(ag.janelaFim()),
+                    ConsultaPeriodicaCsvUtil.formatBoolean(ag.apenasDiasUteis()),
+                    ConsultaPeriodicaCsvUtil.formatBoolean(ag.considerarFeriados()),
+                    Integer.toString(ag.prioridade()),
+                    ag.motivo(),
+                    ConsultaPeriodicaCsvUtil.formatValidoAte(ag.validoAte()),
+                    ConsultaPeriodicaCsvUtil.formatBoolean(ag.ativo()),
                     destinatarios);
         }
         return agendamentos.size();
     }
 
-    private static String resolverNomeCliente(ProcessoEntity processo) {
-        ClienteEntity cliente = processo.getCliente();
-        if (cliente == null) {
+    private static String formatDestinatarios(
+            List<ConsultaPeriodicaBackupExportLeitura.DadosDestinatarioExport> destinatarios) {
+        if (destinatarios == null || destinatarios.isEmpty()) {
             return "";
         }
-        if (StringUtils.hasText(cliente.getNomeReferencia())) {
-            return cliente.getNomeReferencia();
-        }
-        PessoaEntity pessoa = cliente.getPessoa();
-        return pessoa != null && pessoa.getNome() != null ? pessoa.getNome() : "";
+        return destinatarios.stream()
+                .map(d -> d.canal().name() + ":" + d.valor())
+                .collect(java.util.stream.Collectors.joining("|"));
     }
 
     public record ExportacaoCsv(byte[] conteudo, String nomeArquivo) {}
-
-    private record ProcessoExportacao(
-            ProcessoEntity processo,
-            List<AgendamentoConsultaEntity> agendamentos,
-            List<NotificacaoDestinatarioEntity> destinatarios) {}
 }

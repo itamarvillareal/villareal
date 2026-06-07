@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -28,6 +29,14 @@ public interface AgendamentoConsultaRepository extends JpaRepository<Agendamento
             ORDER BY a.prioridade DESC, a.id DESC
             """)
     List<AgendamentoConsultaEntity> findByProcessoId(@Param("processoId") Long processoId);
+
+    @Query("""
+            SELECT a FROM AgendamentoConsultaEntity a
+            JOIN FETCH a.processo p
+            WHERE p.id IN :processoIds
+            ORDER BY p.id ASC, a.prioridade DESC, a.id DESC
+            """)
+    List<AgendamentoConsultaEntity> findByProcessoIdIn(@Param("processoIds") Collection<Long> processoIds);
 
     @Query("""
             SELECT a FROM AgendamentoConsultaEntity a

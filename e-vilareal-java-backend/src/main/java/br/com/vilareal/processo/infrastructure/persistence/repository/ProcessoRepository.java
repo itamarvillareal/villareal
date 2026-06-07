@@ -10,6 +10,7 @@ import org.springframework.data.repository.query.Param;
 
 import java.math.BigInteger;
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -276,16 +277,39 @@ public interface ProcessoRepository extends JpaRepository<ProcessoEntity, Long> 
     List<Long> findIdsComPrazoFatalNaJanela(
             @Param("inicio") LocalDate inicio, @Param("fim") LocalDate fim);
 
-    /** Processos com qualquer configuração de monitoramento de consulta periódica (backup CSV). */
+    /**
+     * Processos com config exportável de monitoramento (backup CSV).
+     * Usa EXISTS / UNION indexável — não varre a tabela processo inteira.
+     */
+    @Query(
+            value =
+                    """
+                    SELECT DISTINCT id FROM (
+                        SELECT a.processo_id AS id
+                        FROM agendamento_consulta a
+                        UNION
+                        SELECT d.processo_id AS id
+                        FROM notificacao_destinatario d
+                        WHERE d.processo_id IS NOT NULL
+                        UNION
+                        SELECT p.id
+                        FROM processo p
+                        WHERE p.consulta_periodica_habilitada = 1
+                    ) cfg
+                    ORDER BY id
+                    """,
+            nativeQuery = true)
+    List<Long> findIdsComConfigConsultaPeriodica();
+
     @Query(
             """
-            SELECT DISTINCT p.id FROM ProcessoEntity p
-            WHERE p.consultaPeriodicaHabilitada = true
-               OR EXISTS (SELECT 1 FROM AgendamentoConsultaEntity a WHERE a.processo.id = p.id)
-               OR EXISTS (SELECT 1 FROM NotificacaoDestinatarioEntity d WHERE d.processo.id = p.id)
+            SELECT p FROM ProcessoEntity p
+            LEFT JOIN FETCH p.cliente c
+            LEFT JOIN FETCH c.pessoa
+            WHERE p.id IN :ids
             ORDER BY p.id ASC
             """)
-    List<Long> findIdsComConfigConsultaPeriodica();
+    List<ProcessoEntity> findByIdInWithClienteAndPessoa(@Param("ids") Collection<Long> ids);
 
     /**
      * Localiza processo pelo número CNJ após remover espaços nas extremidades e normalizar para só dígitos.
