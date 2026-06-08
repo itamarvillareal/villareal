@@ -131,6 +131,8 @@ async function main() {
     falhas: 0,
     orfaos: 0,
     semPartesTxt: 0,
+    semPessoa: 0,
+    verificacaoFalhas: 0,
   };
 
   /** @type {object[]} */
@@ -172,6 +174,12 @@ async function main() {
     totais.atualizados += stats.atualizados + stats.dryRunAtualizar;
     totais.iguais += stats.iguais;
     totais.falhas += stats.falhas;
+    if (stats.puladosSemPessoa > 0) {
+      totais.semPessoa += stats.puladosSemPessoa;
+    }
+    if (stats.verificacaoFalhas > 0) {
+      totais.verificacaoFalhas += stats.verificacaoFalhas;
+    }
 
     if (!opts.verbose) {
       const act =
@@ -207,10 +215,12 @@ async function main() {
 
   console.log('\n=== concluído ===');
   console.log(
-    `Processos: ${totais.processos} | criar: ${totais.criados} | actualizar: ${totais.atualizados} | iguais: ${totais.iguais} | falhas: ${totais.falhas} | órfãos: ${totais.orfaos}\n`
+    `Processos: ${totais.processos} | criar: ${totais.criados} | actualizar: ${totais.atualizados} | iguais: ${totais.iguais} | falhas: ${totais.falhas} | sem pessoa: ${totais.semPessoa} | verificação: ${totais.verificacaoFalhas} | órfãos: ${totais.orfaos}\n`
   );
 
-  process.exit(totais.falhas > 0 ? 2 : totais.orfaos > 0 && opts.aplicar ? 3 : 0);
+  if (totais.falhas > 0 || totais.verificacaoFalhas > 0) process.exit(2);
+  if (totais.orfaos > 0 && opts.aplicar) process.exit(3);
+  process.exit(0);
 }
 
 main().catch((e) => {

@@ -36,6 +36,7 @@
  *   --base=PATH              Raiz «Banco de Dados»
  *   --relatorio=JSON         Relatório final da execução
  *   --amostra-processos=N    Em --dry-run, quantos processos pré-visualizar (defeito: 3; 0 = nenhum)
+ *   --sem-verificacao        Não executa verificação txt↔API/MySQL após --aplicar (não recomendado)
  */
 
 import './lib/load-vilareal-import-env.mjs';

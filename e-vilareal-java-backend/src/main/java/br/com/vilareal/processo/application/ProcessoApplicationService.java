@@ -315,11 +315,11 @@ public class ProcessoApplicationService {
             Optional<ProcessoEntity> porCliente = resolverProcessoCanonicoPorCliente(
                     cliente.getId(), cliente.getPessoa().getId(), numeroInterno);
             if (porCliente.isPresent()) {
-                return porCliente.map(this::toResponse);
+                return porCliente.map(this::toResponseComTextosPartes);
             }
             return processoRepository
                     .findByPessoa_IdAndNumeroInterno(cliente.getPessoa().getId(), numeroInterno)
-                    .map(this::toResponse);
+                    .map(this::toResponseComTextosPartes);
         }
         Optional<Long> resolved = clienteCodigoPessoaResolver.resolverPessoaIdComFallbackCliente(codigoCliente);
         if (resolved.isEmpty()) {
@@ -327,7 +327,7 @@ public class ProcessoApplicationService {
         }
         return processoRepository
                 .findByPessoa_IdAndNumeroInterno(resolved.get(), numeroInterno)
-                .map(this::toResponse);
+                .map(this::toResponseComTextosPartes);
     }
 
     @Transactional(readOnly = true)
@@ -336,7 +336,8 @@ public class ProcessoApplicationService {
     }
 
     /**
-     * @param resumo se {@code true}, não carrega partes (grade Clientes / combos); {@code parteOposta} fica vazia na API.
+     * @param resumo parâmetro legado da API ({@code ?resumo=true}); textos de partes vêm sempre de
+     *               {@code processo_parte} (grade Clientes, combos, relatórios).
      */
     @Transactional(readOnly = true)
     public Page<ProcessoResponse> listarPorCodigoCliente(String codigoCliente, Pageable pageable, boolean resumo) {
@@ -355,13 +356,10 @@ public class ProcessoApplicationService {
             }
             page = processoRepository.findByPessoa_Id(resolved.get(), pageable);
         }
-        if (resumo) {
-            return page.map(e -> {
-                ProcessoResponse r = toResponse(e);
-                r.setParteCliente(nomeTitularProcesso(e));
-                return r;
-            });
-        }
+        return mapPageComTextosPartesListagem(page);
+    }
+
+    private Page<ProcessoResponse> mapPageComTextosPartesListagem(Page<ProcessoEntity> page) {
         List<Long> procIds = page.getContent().stream().map(ProcessoEntity::getId).collect(Collectors.toList());
         Map<Long, List<ProcessoParteEntity>> partesPorProcesso = new LinkedHashMap<>();
         if (!procIds.isEmpty()) {
@@ -373,12 +371,22 @@ public class ProcessoApplicationService {
         }
         return page.map(
                 e -> {
-                    ProcessoResponse r = toResponse(e);
                     List<ProcessoParteEntity> partes = partesPorProcesso.getOrDefault(e.getId(), List.of());
-                    r.setParteCliente(montarTextoParteClienteListagem(e, partes));
-                    r.setParteOposta(montarTextoParteOpostaListagem(e, partes));
-                    return r;
+                    return toResponseComTextosPartes(e, partes);
                 });
+    }
+
+    private ProcessoResponse toResponseComTextosPartes(ProcessoEntity e) {
+        List<ProcessoParteEntity> partes =
+                parteRepository.findAllByProcessoIdInWithPessoaEProcesso(List.of(e.getId()));
+        return toResponseComTextosPartes(e, partes);
+    }
+
+    private ProcessoResponse toResponseComTextosPartes(ProcessoEntity e, List<ProcessoParteEntity> partes) {
+        ProcessoResponse r = toResponse(e);
+        r.setParteCliente(montarTextoParteClienteListagem(e, partes));
+        r.setParteOposta(montarTextoParteOpostaListagem(e, partes));
+        return r;
     }
 
     /**
@@ -810,7 +818,7 @@ public class ProcessoApplicationService {
     public ProcessoResponse buscar(Long id) {
         ProcessoEntity e = requireProcesso(id);
         e.getPessoa().getNome();
-        return toResponse(e);
+        return toResponseComTextosPartes(e);
     }
 
     private Optional<ProcessoEntity> resolverProcessoCanonicoPorCliente(

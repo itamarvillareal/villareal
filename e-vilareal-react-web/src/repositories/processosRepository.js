@@ -423,8 +423,8 @@ export async function listarProcessosPorCodigoCliente(codigoCliente) {
 }
 
 /**
- * Grade Clientes / combos: sem join de partes no servidor (`?resumo=true`).
- * Se a API ainda não expõe `resumo` (Docker antigo) ou o proxy falha, repete sem o parâmetro.
+ * Grade Clientes / combos (`?resumo=true`): listagem leve; textos parte cliente/oposta vêm de `processo_parte` na API.
+ * Se a API antiga falhar com `resumo`, repete sem o parâmetro.
  */
 export async function listarProcessosResumoPorCodigoCliente(codigoCliente) {
   try {
