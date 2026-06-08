@@ -143,6 +143,25 @@ export function dirCalculosCliente(codNum, baseBanco) {
 }
 
 /**
+ * Nº internos com ficheiros txt em Calculos/ (qualquer dimensão).
+ * @param {string} baseBanco
+ * @param {number} codNum
+ * @returns {number[]}
+ */
+export function listarProcessosComCalculosTxt(baseBanco, codNum) {
+  const dir = dirCalculosCliente(codNum, baseBanco);
+  if (!fs.existsSync(dir)) return [];
+  const bundle = carregarBundleCalculosCliente(codNum, { baseBanco });
+  const set = new Set();
+  for (const [, rodada] of bundle.porRodada) {
+    if (Number.isFinite(rodada.numeroProcesso) && rodada.numeroProcesso >= 1) {
+      set.add(rodada.numeroProcesso);
+    }
+  }
+  return [...set].sort((a, b) => a - b);
+}
+
+/**
  * Analisa nome de ficheiro em Calculos.
  * @param {string} fileName
  * @returns {{

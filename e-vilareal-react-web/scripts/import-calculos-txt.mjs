@@ -43,6 +43,7 @@ import {
   montarPayloadRodadaComRecalculo,
   resumirConfigDimensaoBundle,
 } from './lib/calculos-dropbox-txt.mjs';
+import { resolverBaseUrlImport } from './lib/vilareal-import-api-base.mjs';
 
 function parseArgs(argv) {
   const out = {
@@ -56,7 +57,7 @@ function parseArgs(argv) {
     base: resolverBaseBancoDados(),
     login: process.env.VILAREAL_IMPORT_LOGIN || 'itamar',
     senha: process.env.VILAREAL_IMPORT_SENHA || '',
-    baseUrl: (process.env.VILAREAL_API_BASE || 'http://localhost:8080').replace(/\/$/, ''),
+    baseUrl: resolverBaseUrlImport(),
     relatorio: null,
     limiteRodadas: 30,
     strict: false,
@@ -94,6 +95,14 @@ async function loginApi(baseUrl, login, senha) {
   const token = data.accessToken ?? data.token;
   if (!token) throw new Error('Resposta login sem accessToken');
   return token;
+}
+
+async function getRodada(baseUrl, token, cod8, proc, dim) {
+  const url = `${baseUrl}/api/calculos/rodadas/${cod8}/${proc}/${dim}`;
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+  });
+  return { ok: res.ok, status: res.status };
 }
 
 async function putRodada(baseUrl, token, item) {
@@ -259,11 +268,18 @@ async function main() {
   const token = await loginApi(opts.baseUrl, opts.login, opts.senha);
   let ok = 0;
   let falhas = 0;
+  let persistenciaFalhas = 0;
   for (const it of items) {
     const r = await putRodada(opts.baseUrl, token, it);
     if (r.ok) {
-      ok++;
-      console.log(`[OK] ${it.key}`);
+      const ver = await getRodada(opts.baseUrl, token, it.cod8, it.numeroProcesso, it.dimensao);
+      if (ver.ok) {
+        ok++;
+        console.log(`[OK] ${it.key}`);
+      } else {
+        persistenciaFalhas++;
+        console.warn(`[FALHA] ${it.key} PUT ok mas GET ${ver.status} — rodada ausente na API`);
+      }
     } else {
       falhas++;
       console.warn(`[FALHA] ${it.key} HTTP ${r.status} ${r.body}`);
@@ -271,11 +287,16 @@ async function main() {
   }
   resumo.putOk = ok;
   resumo.putFalhas = falhas;
-  console.log(`[import-calculos-txt] PUT ok=${ok} falhas=${falhas}`);
+  resumo.persistenciaFalhas = persistenciaFalhas;
+  console.log(
+    `[import-calculos-txt] PUT ok=${ok} falhas=${falhas} persistencia=${persistenciaFalhas}`,
+  );
 
   if (opts.relatorio) {
     fs.writeFileSync(opts.relatorio, `${JSON.stringify(resumo, null, 2)}\n`);
   }
+
+  if (falhas > 0 || persistenciaFalhas > 0) process.exit(1);
 }
 
 main().catch((e) => {

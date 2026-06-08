@@ -23,6 +23,7 @@ import { formatCod8 } from './lib/historico-local-txt-paths.mjs';
 import { TXT_PESSOA_CLIENTE_CADASTRO } from './lib/legado-pessoa-cliente-vs-partes-processo.mjs';
 import { conectarMysqlVilareal } from './lib/mysql-vilareal.mjs';
 import { loginImportApi } from './lib/vilareal-import-processo-api.mjs';
+import { resolverBaseUrlImport } from './lib/vilareal-import-api-base.mjs';
 
 function parseArgs(argv) {
   const out = {
@@ -34,7 +35,7 @@ function parseArgs(argv) {
     base: resolverBaseBancoDados(),
     login: process.env.VILAREAL_IMPORT_LOGIN || 'itamar',
     senha: process.env.VILAREAL_IMPORT_SENHA || '',
-    baseUrl: (process.env.VILAREAL_API_BASE || 'http://localhost:8080').replace(/\/$/, ''),
+    baseUrl: resolverBaseUrlImport(),
   };
   for (const a of argv) {
     if (a === '--aplicar') out.aplicar = true;
@@ -52,6 +53,7 @@ function parseArgs(argv) {
     } else if (a.startsWith('--base=')) out.base = a.slice(7);
     else if (a.startsWith('--login=')) out.login = a.slice(8);
     else if (a.startsWith('--senha=')) out.senha = a.slice(8);
+    else if (a.startsWith('--base-url=')) out.baseUrl = a.slice(11).replace(/\/$/, '');
   }
   return out;
 }
