@@ -1,0 +1,527 @@
+<!DOCTYPE>
+
+<html>
+	<head>
+		<title>Busca de Processo</title>
+	
+    	<meta content="text/html; charset=LATIN1" http-equiv="CONTENT-TYPE">
+		<style type="text/css">
+			@import url("./css/Principal.css?v=20231017");
+			@import url('./css/menusimples.css');
+		</style>
+      	
+      	
+      	<script type='text/javascript' src='./js/Funcoes.js'></script>
+      	<script type='text/javascript' src='./js/jquery.js'></script>
+		<script type='text/javascript' src='./js/ui/jquery-ui.min.js'></script>  
+      	<script type='text/javascript' src='./js/Digitacao/AutoTab.js'></script>
+      	<script type="text/javascript" src="./js/Digitacao/DigitarNumeroProcesso.js" ></script>
+      	<script type="text/javascript" type="text/javascript">
+		   	function VerificarCampos() {
+	     		with(document.Formulario) {
+	     			if(Serventia.value=="" || Serventia.value=="null"){
+		     			if ( (Inquerito.value=="") && (ProcessoNumero.value=="") && (NomeParte.value=="") && (CpfCnpjParte.value=="") && (!Proprio.checked)){
+		     				mostrarMensagemErro("Verifique os campos", "Preencha no mínimo um dos Critérios para a Consulta (Número do Processo, Inquérito, Nome da Parte ou CPF/CNPJ da Parte ou a Serventia).");
+				         	ProcessoNumero.focus();
+				         	return false; 
+			     		}
+	     			} 
+		     	submit();
+	      		}
+	    	}
+		   	
+		   	function ocultarMosrarDiv(){
+		   		if($('input[type=checkbox][name=pesqProcSigiloso]').is(':checked')){
+		   			Ocultar('divItensProcComum');
+		   			Ocultar('divTextoProcComum');
+		   			Ocultar('id_proprios');
+		   			Mostrar('divTextoProcSig');
+		   			document.getElementById("TipoConsultaProcesso").value = "19";
+		   		} else {
+		   			Mostrar('divItensProcComum');
+		   			Mostrar('divTextoProcComum');
+		   			Mostrar('id_proprios');
+		   			Ocultar('divTextoProcSig');
+		   			document.getElementById("TipoConsultaProcesso").value = "";
+		   			
+		   		}
+		   	}
+
+		</script>
+	</head>
+	
+<body>
+<div id="divCorpo" class="divCorpo">
+  			<div class="area"><h2>&raquo; Consulta Todos Processos</h2></div>
+			<form action="BuscaProcesso" method="post" name="Formulario" id="Formulario">
+					
+				<input id="PaginaAtual" 		name="PaginaAtual" 				type="hidden" value="-1" />
+				<input id="PaginaAnterior" 		name="PaginaAnterior" 			type="hidden" value="4">
+				<input id="TipoConsultaProcesso" name="TipoConsultaProcesso" 	type="hidden"  value="null">
+				<input id="BuscaPublica" name="BuscaPublica" 	type="hidden"  value="null">
+				<input id="ServletRedirect" name="ServletRedirect" type="hidden" value="null">
+
+				<input id="QuantidadeRegistrosPagina" name="QuantidadeRegistrosPagina" type="hidden" value="" />
+				
+				<div id="divEditar" class="divEditar">
+					<fieldset class="formEdicao"> 
+					    <legend class="formEdicaoLegenda">Busca de Processos </legend>					    
+                        <div id="divTextoProcComum">
+	                        <p>
+						   	<small> <strong>Nova Numeração</strong>:  Digite o Número do Processo "ponto" (ou "traço") e o Dígito Ex. <b>148032-91</b>.2009.8.09.002, ou seja, <strong>148032.91</strong> ou <strong>148032-91</strong><br />
+	   						<strong>Antiga Numeração</strong>:  Digite somente o Número do Processo Ex. 039.2006.<b>248.174</b>-5, ou seja, <strong>248174</strong><br />
+	   						</small>
+	                        </p>
+                        </div>
+						<div id='id_proprios' class='col100'>						
+								<input type="checkbox" name="Proprio" id="Proprio" value="true" /> Próprios 
+							</div>			    						
+						<div id="divTextoProcSig" style="display: none">
+	                        <p>
+						   	<small> <strong>Numeração</strong>:  Digite o Número do Processo Completo Ex. <b>148032-91.2009.8.09.002</b><br /></small>
+	                        </p>
+                        </div>
+					    <div class="col20 float_label">
+						    <input class="formEdicaoInput" name="ProcessoNumero" id="ProcessoNumero" placeholder="Número do Processo" type="text" size="25" maxlength="25" value="" onkeyup=" autoTab(this,60)" onkeypress="return DigitarNumeroProcesso(this, event)"/>
+						    <label class="formEdicaoLabel" for="ProcessoNumero">Número do Processo</label> 
+					    </div>												
+					    <div id="divItensProcComum">
+					    	<br >-- ou --<br />	
+					    	<div class="col20 float_label">
+								<input class="formEdicaoInput"   name="Inquerito" id="Inquerito" placeholder="Número do Inquérito/TCO" type="text" size="20" maxlength="20" value=""/>						
+						    	<label class="formEdicaoLabel" for="Inquerito">Número do Inquérito/TCO</label>
+							</div>
+						    <br >-- ou --<br />					    
+							<div class="col30 float_label">
+							    <input class="formEdicaoInput" name="NomeParte" id="NomeParte"  type="text" placeholder="Nome da Parte" size="70" maxlength="60" value="" onkeyup=" autoTab(this,60)" title="Digite o nome do promovente ou promovido"/>
+								<label class="formEdicaoLabel" for="NomeParte">Nome da Parte  <input type="checkbox" name="cbPesquisarNomeExato" id="cbPesquisarNomeExato" onchange="av('PesquisarNomeExato', this.checked)" />Pesquisar nome exato
+								 </label>
+							    <input type="hidden" id="PesquisarNomeExato" name="PesquisarNomeExato"  value="false" />
+							</div>
+						    <br>-- ou --<br />					    					       	    
+			    			<div class="col20 float_label">
+							    <input class="formEdicaoInput" name="CpfCnpjParte" id="CpfCnpjParte"  type="text" placeholder="CPF/CNPJ da Parte" size="30" maxlength="18" value="" onkeyup=" autoTab(this,60)" title="Digite o CPF/CNPJ do promovente ou promovido"/>
+				    			<label class="formEdicaoLabel" for="CpfCnpjParte">CPF/CNPJ da Parte</label>
+							</div>
+							<br /> <fieldset class="formEdicao" id='fieldsetDadosProcesso'> <legend> filtros</legend>			
+	                        	
+	                        	<div class="col40 float_label_fixo">				    
+									<input class="formEdicaoInput AutoComplete"  placeholder="Digite o Processo Status" name="ProcessoStatus" id="ProcessoStatus" type="text" size="67" maxlength="100" value="Ativo"
+										onkeyup="BuscaPadraoCombo(event, 'fieldsetDadosProcesso','ProcessoStatus', 'Id_ProcessoStatus', 'ProcessoStatus',  ['ProcessoStatusCodigo'], '2');"
+									/>
+								    <label for="Id_ProcessoStatus">Status do Processo
+									    <button class="imgIcons" id="imaLocalizarProcessoStatus" name="imaLocalizarProcessoStatus" title="Localizar"  type="submit"   
+									    	onclick="MostrarBuscaPadrao('fieldsetDadosProcesso', 'ProcessoStatus', 'Consulta de Status de Processo', 'Digite o Status e clique em consultar.', 'Id_ProcessoStatus', 'ProcessoStatus', ['Processo Status'], ['ProcessoStatusCodigo'], '2', '15'); return false;" > <i class="fa-solid fa-magnifying-glass"></i> 
+									    </button>
+										<button class="imgIcons" name="imaLimparProcessoStatus"  title="Limpar Processo Status"  type="submit"  onclick="LimparChaveEstrangeira('Id_ProcessoStatus','ProcessoStatus');LimparChaveEstrangeira('ProcessoStatusCodigo','ProcessoStatus'); return false;" ><i class="fa-regular fa-circle-xmark"></i> </button>
+									</label>								  					    
+			                        <input type="hidden" name="Id_ProcessoStatus" id="Id_ProcessoStatus" value="">
+								    <input type="hidden" name="ProcessoStatusCodigo" id="ProcessoStatusCodigo" value="0">
+								</div>					    
+		                        <div class="col40 float_label_fixo">
+								    <input class="formEdicaoInput AutoComplete"  placeholder="Digite o Processo Tipo" name="ProcessoTipo" id="ProcessoTipo" type="text" size="67" maxlength="100" value=""
+								    	onkeyup="BuscaPadraoCombo(event, 'fieldsetDadosProcesso','ProcessoTipo', 'Id_ProcessoTipo', 'ProcessoTipo',  ['ProcessoTipoCodigo','Publico'], '2');"
+								    />
+								    <label for="Id_ProcessoTipo">Tipo do Processo
+									    <button class="imgIcons" id="imaLocalizarProcessoStatus" name="imaLocalizarProcessoTipo" title="Localizar"  type="submit"   
+									    	onclick="MostrarBuscaPadrao('fieldsetDadosProcesso','ProcessoTipo','Consulta de Tipos de Processo', 'Digite o Tipo do Processo e clique em consultar.', 'Id_ProcessoTipo', 'ProcessoTipo', ['ProcessoTipo'], ['ProcessoTipoCodigo','Publico'], '2', '15'); return false;" > 
+								    		<i class="fa-solid fa-magnifying-glass"></i> 
+								    	</button>
+										<button class="imgIcons" name="imaLimparProcessoTipoCodigo"  title="Limpar Processo Tipo"  type="submit"  onclick="LimparChaveEstrangeira('Id_ProcessoTipo','ProcessoTipo'); return false;" >
+											<i class="fa-regular fa-circle-xmark"></i> 
+										</button>
+									</label>								 
+		   					    	<input type="hidden" name="Id_ProcessoTipo" id="Id_ProcessoTipo" value="">
+							    	<input type="hidden" name="ProcessoTipoCodigo" id="ProcessoTipoCodigo" value="">
+							    </div>
+							    <div class="col40 float_label_fixo">				
+								    <input class="formEdicaoInput AutoComplete"  placeholder="Digite o Nome da Serventia" name="Serventia" id="Serventia" type="text" size="64" maxlength="100" value=""
+								    	onkeyup="BuscaPadraoCombo(event, 'fieldsetDadosProcesso','BuscaProcesso', 'Id_Serventia', 'Serventia',  ['Estado'], '1682');"
+								    />
+								    <label class="formEdicaoLabel" for="Id_Serventia">Serventia								    
+								    	<button class="imgIcons" id="imaLocalizarServentia" name="imaLocalizarServentia" title="Localizar"  type="submit"   
+									    	onclick="MostrarBuscaPadrao('fieldsetDadosProcesso', 'BuscaProcesso', 'Consulta de Serventia', 'Digite a Serventia e clique em consultar.', 'Id_Serventia', 'Serventia', ['Serventia'], ['Estado'], '1682', '15'); return false;"> <i class="fa-solid fa-magnifying-glass"></i> 
+									    </button>
+										<button class="imgIcons" name="imaLimparServentia"  title="Limpar Serventia"  type="submit"  onclick="LimparChaveEstrangeira('Id_Serventia','Serventia'); return false;" ><i class="fa-regular fa-circle-xmark"></i> </button>
+									</label>														    
+									<input type="hidden" name="Id_Serventia" id="Id_Serventia" value="" >
+							    </div>
+							    </fieldset>
+							</div>
+				    	<div id="divBotoesCentralizados" class="divBotoesCentralizados">
+							<input id="btnBuscar" name="imgSubmeter" type="submit"  value="Buscar" onclick="AlterarValue('PaginaAtual','2');return VerificarCampos();">
+							<input name="imgLimpar" type="submit" value="Limpar" onclick="AlterarValue('PaginaAtual','4');"> </br>							
+						</div>			
+					</fieldset>		
+				</div>
+			</form>
+			<div id="dialog" style="display:none">&nbsp;</div>
+	
+<div id="busca_padrao" class="modalBusca">
+	<div id='modalBusca-content' class="modalBusca-content1 ___Movimentavel">
+		<div id='modalBusca-content-titulo' class="modalTitulo"><p id='modalTitulo'></p><span class="modal_close" onclick='fecharBuscaPadrao()'>&times;</span></div> 
+		<div class="modalBusca-content2">
+			<fieldset id="formLocalizar" > 
+				<legend id="legenda" ></legend>
+				<div class='float_label_form' id='busca_padrao_campos'></div>
+				<br />
+				<div class="Centralizado">
+					<input type="submit" id="busca_padraoLocalizar" name="busca_padraoLocalizar" value="Consultar" onclick="javascript:buscaDadosModal(_stTempRetorno, _paginaAtual, _numeroFiltros , '0', _tamanho, _id, _descricao, _colunasTabela, _fieldName,_filtro,_filtro2); return false;"/>
+				</div>
+			</fieldset>	
+			<div id='divTabelaBuscaPadrao' class="divTabela"></div>
+			<div id="PaginacaoBuscaPadrao" class="Paginacao"></div>
+		</div>
+	</div> 
+</div>
+
+<div id="infoPasso" style="display:none" class="modalBusca">
+	<div class="modalBusca-content1 ___Movimentavel">
+		<div class="modalTitulo"><p id='modalTitulo'></p><span class="modal_close" onclick='$("#infoPasso").hide();'>&times;</span></div> 
+		<div class="modalBusca-content2">
+			<div id="divInfoPasso" class="divEditar"> 
+				
+			</div>
+		</div>
+	</div> 
+</div>
+
+<div id="infoFoto" style="display:none" class="modalBusca">
+	<div class="modalBusca-content1 ___Movimentavel">
+		<div class="modalTitulo"><p id='modalTitulo'></p><span class="modal_close" onclick='$("#infoFoto").hide();'>&times;</span></div> 
+		<div class="modalBusca-content2">
+			<div id="divInfoPasso" class="divEditar Centralizado"> 
+				<img id='img_infoFoto'>
+			</div>
+		</div>
+	</div> 
+</div>
+
+<div id="infoFormulario" style="display:none" class="modalBusca">
+	<div class="modalBusca-content1 ___Movimentavel">
+		<div class="modalTitulo"><p id='modalTitulo'></p><span class="modal_close" onclick='$("#infoFormulario").hide();'>&times;</span></div> 
+		<div class="modalBusca-content2">
+			<div id="divinfoFormulario" class="divEditar Centralizado"> 				
+			</div>
+		</div>
+	</div> 
+</div>
+
+<div id="divPortaTabela" style="display:none" class="divPortaTabela ___Movimentavel">
+	<div class="divPortaTabelaTitulo"><p id='divPortaTabelaTitulo'></p><span class="modal_close" onclick='$("#divPortaTabela").hide();'>&times;</span></div>
+	<div class='tableview'> 
+		<div id="divPortaTabelaConteudo" class="Centralizado divPortaTabelaConteudo tableview-holder"> 
+		
+		</div>
+	</div>
+</div> 
+
+<input type="text" style="display:none">
+<input type="password" style="display:none">
+<div id='divLerSenha'  class='divFundoEscuro' style = "display:none">
+	<div id='divPortaSenha' class='divCentroTela' >
+		<h1>Digite a senha do certificado digital</h1>
+		<hr/>
+		<input type='password' name='senhaCertificado' id='senhaCertificado' autocomplete='off' ><br />
+		<div  style="text-align: left;">
+			<input type="checkbox" name='salvarSenhaCertificado' id='salvarSenhaCertificado' >Memorizar a senha do certificado
+		</div>
+		<hr/>
+		<div id="divBotoesCentralizadosAssinador" style="text-align: right; margin-top: 8px;">
+			<button id='but_senhaDigita' type="button">
+				Assinar
+	 		</button>
+	 		<button id='but_cancelar' type="button" onclick="javascript:$('#divLerSenha').hide(); $('#senhaCertificado').val(''); return false;">
+				Cancelar
+	 		</button>
+	 	</div>		
+	</div>
+</div>
+ 
+<script type="text/javascript" src="./js/fonte_contraste.js"></script>    
+<script type="text/javascript" >
+  
+	var _stTempRetorno;
+	var _boMostrarExcluir;
+	var _paginaAtual;
+	var _nomeBusca;
+	var _tamanhoRetornoConsulta;	
+	var _numeroFiltros;
+	var _tamanho;
+	var _id;
+	var _descricao;
+	var _colunasTabela;
+	var _fieldName;
+	var _filtro;
+	var _filtro2;
+	
+	var mousePosition;
+	var offset = [0,0];	
+	var isDown = false;
+	
+		
+	function acionarBotao(event,id_botao){
+		if (event.keyCode==13){
+			$("#" + id_botao ).trigger('click');
+		}
+	}
+
+	function fecharBuscaPadrao() {
+		$("#busca_padrao").hide();
+		$("#busca_padrao_campos").html('');
+	}
+	
+	function MostrarBuscaPadrao(field, ct, titulo, legenda, id, descricao, campos, colunasTabela, paginaAtual, tamanhoConsulta, filtro, filtro2, params){
+
+		_paginaAtual = paginaAtual;
+		_numeroFiltros = campos.length;
+		_tamanho = tamanhoConsulta;
+		_stTempRetorno = ct;
+		_descricao = descricao;
+		_colunasTabela=colunasTabela;
+		_filtro=$("#" + field + " #"+ filtro).val();
+		_filtro2=$("#" + field + " #"+ filtro2).val();
+
+        _filtro = ['null', 'undefined', '', null, undefined].includes(_filtro) ? '' : _filtro;
+        _filtro2 = ['null', 'undefined', '', null, undefined].includes(_filtro2) ? '' : _filtro2;
+
+		$("#modalTitulo").html(titulo) ;
+		$("#legenda").html(legenda);		
+		
+		var descricaoCabecalho = _descricao;
+		var st_campos ="";
+		var stTabela = "";		
+
+		if (params) {
+			if (params['cabecalhoDescricao']) {
+				descricaoCabecalho = params['cabecalhoDescricao'];
+			}
+		}
+		
+		for (var i = 0; i < campos.length; i++) {
+			st_campos += '<div class="col90 float_label">';			
+			st_campos += '<input id="nomeBusca'+(i+1)+'" class="float_label_input" onkeypress="acionarBotao(event,\'busca_padraoLocalizar\');" placeholder="'+campos[i]+'" name="nomeBusca'+(i+1)+'" value="" type="text">';
+			st_campos += '<label for="nomeBusca'+(i+1)+'">'+campos[i]+'</label>'; 
+			st_campos += '</div>';
+		}
+		
+		if (_id!=id || field!=_fieldName){
+			_id = id;
+			_fieldName= field;
+			stTabela += '	<table id="tabelaLocalizar" class="Tabela">';
+			stTabela += '		<thead>';
+			stTabela += '			<tr>';
+			stTabela += '				<th align="Center" style="width: 50px;"></th>';
+			if (descricaoCabecalho === 'FontePagadora') {
+				stTabela += '				<th align="Center" style="width: 120px;">CNPJ</th>';
+				stTabela += '				<th align="left">Fonte Pagadora</th>';
+			} else {
+				stTabela += '				<th align="Center" style="width: 120px;">Id</th>';
+				stTabela += '				<th align="left">'+descricaoCabecalho+'</th>';
+			}
+			for (var i = 0; i < colunasTabela.length; i++) {
+				stTabela += '			<th align="left">'+ colunasTabela[i] +'</th>';
+			}
+			//stTabela += '				<th class="colunaMinima" title="Seleciona o registro para edição">Selecionar</th>';	
+			stTabela += '			</tr>';
+			stTabela += '		</thead>';
+			stTabela += '		<tbody id="CorpoTabela">&nbsp;</tbody>';
+			stTabela += '	</table>';	  		
+			$("#divTabelaBuscaPadrao").html(stTabela) ;
+			$("#PaginacaoBuscaPadrao").html("") ;
+		}
+		
+		$("#busca_padrao_campos").html(st_campos) ;
+		$("#busca_padrao").show();
+		/*$("#busca_padrao").css({'visibility':'visible','opacity':'1'});*/
+		//var doc = document.documentElement.clientHeight ? document.documentElement : document.body;
+// 		var posicao   = ((this.height() - $("#modalBusca-content1").outerHeight()) / 2) + "px";
+// 		alert(posicao);
+// 		alert(this.top + " " + this.left);
+		
+		//posição do objeto na tela
+// 		event = event || window.event;
+// 		var source = event.target || event.srcElement;
+		 				
+// 		var topRelativo = (($(document).height() - $("#modalBusca-content").height() )/2) - ($("#modalBusca-content").height() /3);
+		
+// 		//$("#modalBusca-content").css({'top':topRelativo});
+// 		var posicaoY = source.y || source.offsetTop; 														
+// 		//var posicaoX = source.x || source.offsetLeft;
+		
+//  		if(posicaoY>120){
+//  			$("#modalBusca-content").css({'top':posicaoY-100}); 			
+//  		}else{
+//  			$("#modalBusca-content").css({'top':posicaoY});
+//  		}
+		//var leftRelativo = ($(document).width() - $("#modalBusca-content").width() )/2;
+		
+		//$("#modalBusca-content").css({'left':leftRelativo});
+		
+	}
+		
+	
+	//window.toggleContrast=function(){Contrast.toogle()};
+	
+	window.addEventListener("keydown", function(event ){parent.postMessage({'origem':'corpo','comando':'keydown','key':event.key,'keycode':event.keyCode}); });
+	window.addEventListener("keyup", function(event ){parent.postMessage({'origem':'corpo','comando':'keyup','key':event.key,'keycode':event.keyCode}); });
+		
+	//guardo aqui as teclas apertadas e não soltadas
+	var mapTeclas = new Map();
+	
+	function teclaApertada ( codigo){
+		mapTeclas.set(codigo, true);
+		//console.log(codigo + '  1');
+		//ativar menu quando apertar ctrl+alt+m
+		// ctrl =17    alt = 18    m = 77  shift = 16 173 = menos  61 = mais 67 = c  89 = y
+		if(mapTeclas.get(17) && mapTeclas.get(18) && mapTeclas.get(77) ){
+			
+			//console.log($('#menu > #0'));
+			$('#0').show();
+			$('#0').focus();
+		}else if(mapTeclas.get(17) && mapTeclas.get(18) && mapTeclas.get(173) ){
+			$("#FonteDiminuir").trigger('click');
+			//fonte('d');
+		}else if(mapTeclas.get(17) && mapTeclas.get(18) && mapTeclas.get(61) ){
+			$("#FonteAumentar").trigger('click');
+			//fonte('a');
+		}else if(mapTeclas.get(17) && mapTeclas.get(18) && mapTeclas.get(89) ){
+			$("#ContrasteAlterar").trigger('click');
+			//window.toggle();
+		}
+	}
+	
+	function teclaLiberada (codigo){
+		//mapTeclas.clear();
+		mapTeclas.delete(codigo);
+	}
+	
+	var eventMethod = window.addEventListener ? "addEventListener" : "attachEvent";
+	var eventer = window[eventMethod];
+	var messageEvent = eventMethod == "attachEvent" ? "onmessage" : "message";
+	
+	// Listen to message from child window
+	eventer(messageEvent,function(event) {
+		 if (!event.origin.includes( "localhost:8080") && !event.origin.includes("projudi.tjgo.jus.br") && !event.origin.includes("projudi-teste.tjgo.jus.br") ){
+			  return;
+		  }
+		  
+		  var origem = event.data.origem;
+		  if(origem=='corpo'){				
+				if(event.data.comando){
+					//console.log("header " + event.data.comando + " " + event.data.key + " " +  event.data.keycode  );										
+				    									    
+					if ( event.data.comando=="keydown"){						
+						teclaApertada(event.data.keycode);
+					}else if (event.data.comando=="keyup"){
+						teclaLiberada(event.data.keycode);
+					}					
+				}
+		  }else if(origem=='menu'){
+			 //var stComando = ; 
+			 //alert(stComando);
+			 
+			 //alert(window[toogle];
+			  var comando = window[event.data.comando];
+			  //alert(comando);
+			  if(comando){
+			  	//console.log("body " + event.data.comando);
+			    comando();
+			   	//window.Contrast[event.data.comando]();
+			  }
+		  }				  
+	});	
+  
+	function infoPasso( id_form, id, titulo){
+		var campos = $('table#tb_'+id_form+ ' tr#tr_'+ id ).attr("campos");
+		var obJson = JSON.parse(campos);
+		//console.log(campos);
+		var ids = Object.keys(obJson);
+		var valores = Object.values(obJson);
+		var stFormulario ='<fieldset class="formEdicao">'
+		stFormulario+='<legend class="formEdicaoLegenda">'+titulo+'</legend>';
+		for(var i=0; i<ids.length;i++){
+			if (Array.isArray(valores[i])){
+				var stValor = JSON.stringify(valores[i]);
+				stFormulario+='<div class="col100"><label class="formEdicaoLabel">' + ids[i] + '</label> <Text rows="6" cols="150" class="formEdicaoInputSomenteLeitura" readonly="true">' + stValor + '</Text></div>';
+			}else{
+				var tamanhoColuna= 15;
+				var qtdCaracteresColl = ids[i].length;
+				if (valores[i].length>ids[i].length){
+					qtdCaracteresColl= valores[i].length;
+				}
+				if( qtdCaracteresColl<=10){									tamanhoColuna = 10;}
+				else if( qtdCaracteresColl>10 && qtdCaracteresColl<=20){	tamanhoColuna = 15; }
+				else if( qtdCaracteresColl>20 && qtdCaracteresColl<=30){	tamanhoColuna = 20; }
+				else if( qtdCaracteresColl>30 && qtdCaracteresColl<=40){	tamanhoColuna = 25; }
+				else if( qtdCaracteresColl>40 && qtdCaracteresColl<=50){	tamanhoColuna = 30; }
+				else if( qtdCaracteresColl>50 && qtdCaracteresColl<=60){	tamanhoColuna = 35; }
+				else if( qtdCaracteresColl>60 && qtdCaracteresColl<=70){	tamanhoColuna = 40; }
+				else if( qtdCaracteresColl>70 && qtdCaracteresColl<=80){	tamanhoColuna = 45; }
+				else if( qtdCaracteresColl>80 && qtdCaracteresColl<=90){	tamanhoColuna = 50 }
+				else if( qtdCaracteresColl>90 && qtdCaracteresColl<=100){	tamanhoColuna = 55; }
+				else if( qtdCaracteresColl>100 && qtdCaracteresColl<=110){	tamanhoColuna = 60; }
+				else if( qtdCaracteresColl>110 && qtdCaracteresColl<=120){	tamanhoColuna = 65; }
+				else if( qtdCaracteresColl>120 && qtdCaracteresColl<=130){	tamanhoColuna = 70; }
+				else if( qtdCaracteresColl>130 && qtdCaracteresColl<=140){	tamanhoColuna = 75; }
+				else if( qtdCaracteresColl>140 && qtdCaracteresColl<=150){	tamanhoColuna = 80; }
+				else if( qtdCaracteresColl>150 && qtdCaracteresColl<=160){	tamanhoColuna = 85; }
+				else if( qtdCaracteresColl>160 && qtdCaracteresColl<=170){	tamanhoColuna = 90; }
+				else if( qtdCaracteresColl>170){							tamanhoColuna = 100; }
+				
+				stFormulario+='<div class="col' + tamanhoColuna + '"><label>' + ids[i] + '</label> <input class="formEdicaoInputSomenteLeitura" type="text" readonly="true" size="' + valores[i].length + '" value="' + valores[i] + '"/></div>';
+			}
+		}
+		$('div#divInfoPasso').html(stFormulario);
+		$("#infoPasso").show();
+	}
+	function infoFoto(id){		
+		$('img#img_infoFoto').attr('src', $('img#foto'+id).attr('src'));
+		$("#infoFoto").show();
+	}
+	
+	$(document).ready(function() {
+		
+		var mensagemErro = '';		 
+		var mensagemOk = '';
+		var titulo ='Processo Judicial';						
+		var availableTags;
+		
+// 		$( function() {
+// 		   $( ".___Movimentavel" ).draggable();
+// 		});
+		  
+		if (((mensagemErro!='') && (mensagemErro!='null')) || ((mensagemOk!='') && (mensagemOk!='null'))){
+			
+			if ((mensagemErro!='') && (mensagemErro!='null')) {
+				//titulo+=" Erro";
+				mostrarMensagemErro(titulo, mensagemErro);												
+			}else{
+				//titulo+=" Ok";					
+				mostrarMensagemOk(titulo, mensagemOk);
+			}
+			
+			$('#divCorpo').focus();	
+						
+			$('html, body',window.parent.document).animate({scrollTop:0}, 'slow');
+		}
+		
+		
+		
+		window.Contrast.check();
+		
+    }); 
+</script>
+
+	<script type="text/javascript">
+			function AjusteQuantidadeDeProcessoPorPagina(componente) {
+					if (componente.checked) {
+						av('QuantidadeRegistrosPagina', 500);					
+					} else {
+						av('QuantidadeRegistrosPagina', '');					
+					}				
+				}
+			</script>
+		</div>
+	</body>
+</html>

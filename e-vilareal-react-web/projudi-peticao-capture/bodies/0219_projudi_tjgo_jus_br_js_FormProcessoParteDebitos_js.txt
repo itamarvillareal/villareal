@@ -1,0 +1,35 @@
+function mostrarDebitoParte(id_parte, id_processo){
+	MostrarOcultar('sub_proc_parte_debito'+id_parte);
+	if($('#sub_proc_parte_debito'+id_parte).is(":visible")){
+		$('#sub_proc_parte_debito'+id_parte).html(gerarHtmlPorcParteDebido(id_parte,id_processo));
+		atualizarTabelaPasso('ProcessoParteDebito','sub_proc_parte_debito'+id_parte,'Info DÃ©bitos da Parte',undefined,undefined);			
+	}else{
+		console.info('teste');
+	}
+}
+
+function gerarHtmlPorcParteDebido(id_parte, id_processo){		
+	var stHtml = "";
+	stHtml +=" <fieldset class='VisualizaDados' ><legend>  D&eacute;bitos</legend>";						
+	stHtml+="	<input type='hidden' id='Id_Processo' name='Id_Processo' value='"+id_processo+"' />";
+	stHtml+="	<input type='hidden' id='Id_ProcessoParte' name='Id_ProcessoParte' value='"+id_parte+"'/>";
+	stHtml+="	<div class='col100'>";
+	stHtml+="		<table  id='tb_sub_proc_parte_debito"+id_parte+"' class='Tabela' >";
+	stHtml+="		    <thead>";
+	stHtml+="		      <tr>";
+	stHtml+="		      	<th class='colunaMinima' >Id</th>";
+	stHtml+="		        <th width='120px' >D&eacute;bito</th>";
+	stHtml+="		        <th width='40px' >N.Guia</th>";
+	stHtml+="		        <th width='30px' >Dt.Vencimento</th>";
+	stHtml+="		        <th width='30px' >Valor</th>";
+	stHtml+="		        <th width='30px' >Status</th>";	 
+	stHtml+="		        <th width='1px' ></th>";
+	stHtml+="		      </tr>";
+	stHtml+="		    </thead>";
+	stHtml+="		    <tbody>";
+	stHtml+="		    </tbody>";
+	stHtml+="		 </table>";
+	stHtml+="	</div>";								
+	stHtml +=" </fieldset>";
+	return stHtml;
+}

@@ -17,11 +17,13 @@ import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -54,6 +56,9 @@ public class ProjudiSessionService {
     /** ÚNICO path autorizado para POST de consulta (barreira anti-ciência). */
     private static final String BUSCA_PROCESSO_PATH = "BuscaProcesso";
     private static final String BUSCA_PROCESSO_REFERER = "https://projudi.tjgo.jus.br/BuscaProcesso";
+    /** Paths autorizados para POST de escrita (peticionamento). */
+    public static final Set<String> PETICIONAMENTO_PATHS = Set.of("Peticionamento", "InsercaoArquivo");
+    private static final String INSERCAO_ARQUIVO_PATH = "InsercaoArquivo";
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(15);
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(30);
     private static final Duration OTP_TIMEOUT = Duration.ofMinutes(2);
@@ -252,6 +257,112 @@ public class ProjudiSessionService {
     }
 
     /**
+     * GET autenticado com {@code Referer} customizado (read-only).
+     */
+    public RespostaProjudi getAutenticadoComReferer(Long credencialId, String caminhoRelativo, String referer) {
+        ProjudiSession sessao = getSessao(credencialId);
+        URI uri = resolver(caminhoRelativo);
+
+        RespostaProjudi resp = toResposta(getRawComReferer(sessao.client(), uri, referer));
+        if (pareceNaoLogado(resp.body())) {
+            log.info("PROJUDI sessão inválida/ausente -> novo login (cpf={}).", mascararCpf(sessao.cpf()));
+            invalidar(credencialId);
+            sessao = reautenticar(credencialId);
+            resp = toResposta(getRawComReferer(sessao.client(), uri, referer));
+            if (pareceNaoLogado(resp.body())) {
+                throw new IllegalStateException(
+                        "Acesso PROJUDI continuou na tela de login após reautenticação.");
+            }
+        } else {
+            registrarReaproveitamentoSeAplicavel(credencialId, sessao);
+        }
+        log.info("GET autenticado PROJUDI ok (cpf={}, status={}, url={}).",
+                mascararCpf(sessao.cpf()), resp.statusCode(), uri);
+        return resp;
+    }
+
+    /**
+     * GET autenticado AJAX com {@code Referer} customizado (read-only).
+     */
+    public RespostaProjudi getAutenticadoAjaxComReferer(Long credencialId, String caminhoRelativo, String referer) {
+        ProjudiSession sessao = getSessao(credencialId);
+        URI uri = resolver(caminhoRelativo);
+
+        RespostaProjudi resp = toResposta(getAjaxRawComReferer(sessao.client(), uri, referer));
+        if (pareceNaoLogado(resp.body())) {
+            log.info("PROJUDI sessão inválida/ausente -> novo login (cpf={}).", mascararCpf(sessao.cpf()));
+            invalidar(credencialId);
+            sessao = reautenticar(credencialId);
+            resp = toResposta(getAjaxRawComReferer(sessao.client(), uri, referer));
+            if (pareceNaoLogado(resp.body())) {
+                throw new IllegalStateException(
+                        "Acesso AJAX PROJUDI continuou na tela de login após reautenticação.");
+            }
+        } else {
+            registrarReaproveitamentoSeAplicavel(credencialId, sessao);
+        }
+        log.info("GET AJAX autenticado PROJUDI ok (cpf={}, status={}, url={}).",
+                mascararCpf(sessao.cpf()), resp.statusCode(), uri);
+        return resp;
+    }
+
+    /**
+     * POST de escrita gateado para peticionamento ({@value #INSERCAO_ARQUIVO_PATH} /
+     * Peticionamento). Não segue redirect automaticamente — o caller lê {@code Location}.
+     */
+    public HttpResponse<String> postPeticionamento(
+            Long credencialId,
+            String path,
+            String query,
+            String corpoFormUrlEncoded,
+            Charset charset,
+            String referer) {
+        if (!PETICIONAMENTO_PATHS.contains(path)) {
+            throw new IllegalArgumentException(
+                    "POST de escrita PROJUDI permitido apenas para peticionamento. Path recusado: " + path);
+        }
+        ProjudiSession sessao = getSessao(credencialId);
+        String caminho = path;
+        if (query != null && !query.isBlank()) {
+            caminho = path + "?" + query.trim();
+        }
+        URI uri = resolver(caminho);
+        boolean ajax = query != null && query.contains("AJAX=ajax");
+
+        String contentType = "application/x-www-form-urlencoded";
+        if (INSERCAO_ARQUIVO_PATH.equals(path)) {
+            contentType += "; charset=UTF-8";
+        }
+
+        HttpClient clientSemRedirect = HttpClient.newBuilder()
+                .cookieHandler(sessao.cookieManager())
+                .connectTimeout(CONNECT_TIMEOUT)
+                .followRedirects(HttpClient.Redirect.NEVER)
+                .build();
+
+        HttpRequest.Builder reqBuilder = HttpRequest.newBuilder(uri)
+                .timeout(REQUEST_TIMEOUT)
+                .header("Content-Type", contentType)
+                .header("Origin", ORIGIN)
+                .header("Referer", referer)
+                .header("User-Agent", USER_AGENT)
+                .POST(HttpRequest.BodyPublishers.ofString(corpoFormUrlEncoded, charset));
+
+        if (ajax) {
+            reqBuilder.header("X-Requested-With", "XMLHttpRequest")
+                    .header("Accept", "*/*");
+        } else {
+            reqBuilder.header("Accept", "text/html,application/xhtml+xml,application/json,*/*;q=0.8");
+        }
+
+        HttpResponse<String> resp = enviar(clientSemRedirect, reqBuilder.build());
+        log.info("POST peticionamento PROJUDI (cpf={}, path={}, status={}, location={}).",
+                mascararCpf(sessao.cpf()), path, resp.statusCode(),
+                resp.headers().firstValue("Location").orElse(""));
+        return resp;
+    }
+
+    /**
      * Consulta de processo (SOMENTE LEITURA): POST de busca para {@value #BUSCA_PROCESSO_PATH}.
      *
      * <p><b>Barreira anti-ciência:</b> este é o único POST de consulta permitido. O POST é
@@ -442,14 +553,32 @@ public class ProjudiSessionService {
 
     /** GET AJAX: headers de XHR + Accept JSON; corpo lido como bytes crus. */
     private HttpResponse<byte[]> getAjaxRaw(HttpClient client, URI uri) {
-        HttpRequest req = HttpRequest.newBuilder(uri)
+        return getAjaxRawComReferer(client, uri, null);
+    }
+
+    private HttpResponse<byte[]> getRawComReferer(HttpClient client, URI uri, String referer) {
+        HttpRequest.Builder builder = HttpRequest.newBuilder(uri)
+                .GET()
+                .timeout(REQUEST_TIMEOUT)
+                .header("User-Agent", USER_AGENT)
+                .header("Accept", "text/html,application/xhtml+xml,application/json,*/*;q=0.8");
+        if (referer != null && !referer.isBlank()) {
+            builder.header("Referer", referer);
+        }
+        return enviarBytes(client, builder.build());
+    }
+
+    private HttpResponse<byte[]> getAjaxRawComReferer(HttpClient client, URI uri, String referer) {
+        HttpRequest.Builder builder = HttpRequest.newBuilder(uri)
                 .GET()
                 .timeout(REQUEST_TIMEOUT)
                 .header("User-Agent", USER_AGENT)
                 .header("X-Requested-With", "XMLHttpRequest")
-                .header("Accept", "application/json, text/javascript, */*")
-                .build();
-        return enviarBytes(client, req);
+                .header("Accept", "application/json, text/javascript, */*");
+        if (referer != null && !referer.isBlank()) {
+            builder.header("Referer", referer);
+        }
+        return enviarBytes(client, builder.build());
     }
 
     private HttpResponse<byte[]> getBytes(HttpClient client, URI uri) {

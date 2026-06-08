@@ -1,0 +1,2324 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+
+<html>
+	<head>
+		<title>Dados Processo</title>
+	
+    	<meta content="text/html; charset=LATIN1" http-equiv="CONTENT-TYPE">
+		<style type="text/css">
+			@import url("./css/Principal.css?v=20231017");
+			@import url('./css/menusimples.css');
+			@import url('./css/menuSimplesImagens.css');
+			@import url('./css/jquery.tabs.css');
+			@import url('./css/rastreamentoCorreios.css');
+			#span_proc_numero {
+				display: inline-block;
+				width: 185px;
+				white-space: nowrap;
+			}
+
+			#span_proc_numero.destacar_01 {
+				width: 250px;
+			}
+
+            .aviso-proposta {
+                padding: 20px 15px;
+                font-size: 14px;
+                color: #333;
+                margin-top: 20px;
+                width: 75%;
+                
+                    background-color: #fff7e6;
+                    border-left: 4px solid #ff9900;
+                
+            }
+
+			.aviso-proposta strong {
+				font-weight: bold;
+			}
+
+			.aviso-proposta span {
+				cursor: pointer;
+				text-decoration: underline;
+			}
+
+            #DadosConciliacao .mensagemContainer,
+            #DadosConciliacao .divCorpo {
+                max-width: 100%;
+                padding: 1rem;
+                box-sizing: border-box;
+            }
+
+            #the_notes .dtNotaCriacaoAlteracao {
+                position: absolute;
+                font-size: 10px;
+                bottom: 0;
+                right: 18px;
+                padding-bottom: 3px;
+            }
+        </style>
+		      	
+		<link type="text/css" rel="stylesheet" href="css/jquery.postitall.css?v=11082020">
+		<link type="text/css" rel="stylesheet" href="js/jscalendar/dhtmlgoodies_calendar.css?random=20051112" media="screen"></link>
+		<link type="text/css" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.2.0/css/all.min.css"/>
+
+		<script type='text/javascript' src='./js/buscarArquivos.js'></script>
+
+		<script type='text/javascript' src='./js/Funcoes.js'></script>
+      	<script type='text/javascript' src='./js/jquery.js?v=11082020'></script>
+		<script type='text/javascript' src='./js/ui/jquery-ui.min.js?v=11082020'></script>
+		<script type="text/javascript" src="./js/acessibilidadeMenu.js?v=11082020"></script>
+		<script type="text/javascript" src="./js/filtro_movimentacoes.js?v=11082020"></script>
+		<script type='text/javascript' src='./js/jquery.postitall.js?v=11082020'></script>
+		<script type="text/javascript" src="./js/jscalendar/dhtmlgoodies_calendar.js?random=20060118"></script>
+      	<script type='text/javascript' src='./js/Digitacao/AutoTab.js?v=11082020'></script>
+		<script type="text/javascript" src="./js/Digitacao/DigitarSoNumero.js" ></script>
+		<script type="text/javascript" src="./js/Digitacao/DigitarNumeroNegativoPonto.js" ></script>		
+		<script type="text/javascript" src="./js/Digitacao/DigitarData.js"></script>
+		<script type="text/javascript" src="./js/rastreamentoCorreios.js" charset="utf-8"></script>
+		
+		<script type="text/javascript" src="./js/FormProcessoObjetos.js"></script>		
+		<script type="text/javascript" src="./js/FormProcessoCoordenadas.js"></script>
+		<script type="text/javascript" src="./js/FormProcessoContas.js"></script>
+		<script type='text/javascript' src='./js/toastr/toastr.min.js'></script>
+		<script>
+
+    const processoId = 10063179;
+    const isProcessoCivel = true;
+    const isProcessoAtivo = true;
+    const isAdvogadoLogado = true;
+    const isPromotor = false;
+
+    const idUsuarioServentia = "35693";
+
+    const processoPossuiConciliacao = false;
+
+    const processoPossuiConciliacaoEmAndamento = false;
+
+    const polosAtivos = [
+        { id: 27542933, nomeParte: "Clinica Ssma Ltda" }
+    ];
+
+    const polosPassivos = [
+        { id: 27542934, nomeParte: "Adms Construcoes E Empreendimentos Ltda" },{ id: 27542935, nomeParte: "Antonio Das Dores Mendes Da Silva" }
+    ];
+
+    const advogadosProcesso = [
+        {id: "21486955", idUsuarioServentia: "35693", nomeAdvogado: "ITAMAR ALEXANDRE FELIX VILLA REAL JUNIOR", oabNumero: "33329", usuarioAdvogado: "00733235190", oabComplemento: "N", idProcParte: "27542933", principal: false}, {id: "21837272", idUsuarioServentia: "607477", nomeAdvogado: "TIAGO DO CARMO OLIVEIRA", oabNumero: "67827", usuarioAdvogado: "02825569232", oabComplemento: "A", idProcParte: "27542934", principal: false}, {id: "21837274", idUsuarioServentia: "713234", nomeAdvogado: "LUIZ WAGNER FRANCISCO DA COSTA", oabNumero: "70692", usuarioAdvogado: "72689080168", oabComplemento: "A", idProcParte: "27542934", principal: false}, {id: "21837273", idUsuarioServentia: "607477", nomeAdvogado: "TIAGO DO CARMO OLIVEIRA", oabNumero: "67827", usuarioAdvogado: "02825569232", oabComplemento: "A", idProcParte: "27542935", principal: false}, {id: "21837275", idUsuarioServentia: "713234", nomeAdvogado: "LUIZ WAGNER FRANCISCO DA COSTA", oabNumero: "70692", usuarioAdvogado: "72689080168", oabComplemento: "A", idProcParte: "27542935", principal: false}
+    ];
+
+    const isAdvogadoProcesso = advogadosProcesso.some(a => a.idUsuarioServentia === idUsuarioServentia)
+
+    const hasAdvogadoEmCadaPolo = new Set(
+        advogadosProcesso.map(({ idProcParte }) => idProcParte)
+    ).size >= 2;
+
+    const customMenuItems = [
+        {
+            nome: "Quero Concilicar",
+            url: "Conciliacao?PaginaAtual=1",
+            shouldShow: () => {
+                const b = {
+                    isProcessoAtivo,
+                    isProcessoCivel,
+                    isAdvogadoLogado,
+                    naoEPromotor: !isPromotor,
+                    isAdvogadoProcesso,
+                    hasAdvogadoEmCadaPolo,
+                    semConciliacao: !processoPossuiConciliacao,
+                    umPoloAtivo: polosAtivos?.length === 1,
+                    umPoloPassivo: polosPassivos?.length === 1,
+                };
+                return Object.values(b).every(Boolean);
+            },
+            onAfterRender: function (itemMenuAdicionado) {
+                if (itemMenuAdicionado) {
+                    $("#btnQueroConciliar").show();
+                } else {
+                    $("#btnQueroConciliar").remove();
+                }
+                if(processoPossuiConciliacao) {
+                    $("#abaConsultaConciliacao").show();
+                    $("#DadosConciliacao").show();
+                } else {
+                    $("#abaConsultaConciliacao").remove();
+                    $("#DadosConciliacao").remove();
+                }
+                if (processoPossuiConciliacaoEmAndamento) {
+                    $('#divAvisoPresencaConciliacao').show();
+                } else {
+                    $('#divAvisoPresencaConciliacao').remove();
+                }
+            }
+        }
+    ];
+
+    function criarMenuItem({ nome, url, target = 'userMainFrame' }) {
+
+        const $li = $('<li>').css('z-index', 1000);
+        const $a = $('<a>')
+            .attr('href', url)
+            .attr('target', target)
+            .text(nome);
+
+        $li.append($a);
+        return $li;
+    }
+
+    function inserirOrdenado($menuEspecial, $liNovo) {
+        const nomeNovo = $liNovo.find("a").text().toLowerCase();
+        const $itensExistentes = $menuEspecial.children();
+
+        let inserido = false;
+
+        $itensExistentes.each(function () {
+            const $a = $(this).find("a");
+            const nomeExistente = $a.text().toLowerCase();
+
+            if (nomeExistente && nomeNovo.localeCompare(nomeExistente, 'pt', { sensitivity: 'base' }) < 0) {
+                $(this).before($liNovo);
+                inserido = true;
+                return false;
+            }
+        });
+
+        if (!inserido) {
+            $menuEspecial.append($liNovo);
+        }
+    }
+
+    $(function () {
+        const $menuEspecial = $("#menuEspecial0 > ul > li > ul");
+
+        customMenuItems.forEach(({ shouldShow, onAfterRender, ...itemMenu }) => {
+            try {
+                const deveMostrar = typeof shouldShow === 'function'
+                    ? shouldShow()
+                    : typeof shouldShow === 'boolean'
+                        ? shouldShow
+                        : true;
+
+                let foiAdicionado = false;
+
+                if (deveMostrar) {
+                    const $li = criarMenuItem(itemMenu);
+                    inserirOrdenado($menuEspecial, $li);
+                    foiAdicionado = true;
+                }
+
+                if (typeof onAfterRender === 'function') {
+                    onAfterRender(foiAdicionado);
+                }
+            } catch (e) {
+                console.warn(`Erro ao processar item '':`, e);
+            }
+        });
+
+    });
+</script>
+
+<script type="text/javascript">
+			
+			
+			var UrlServicoIA = 'https://projudi-ia-servico.tjgo.jus.br';
+			var MostrarDegravacao = false;
+			
+			//variavel para limitar a busca pelos dados da navegação
+			//se for diferente de null, mosta a navegação
+			//caso contrario faz a busca	
+			var id_processo_acompanhamento = "";
+			
+			function alterarAcompanharProcesso(){
+				$("#imgAcompanhar").hide();
+				if(id_processo_acompanhamento==""){
+					//incluir o acompanhamento , não é necessário passas os id, serão pegos na session
+					salvarItemSelecaoMultipla('Processo','','',7, consultarAcompanhamento);				
+				}else{
+					//exlcuir o acompanhamento
+					excluirItemSelecaoMultipla('Processo',id_processo_acompanhamento,7, consultarAcompanhamento);					
+				}				
+			}
+			
+			function atribuirAcompanhamento(){
+				$("#imgAcompanhar").show();
+				if(id_processo_acompanhamento==""){							
+					$("#imgAcompanhar").attr("src","imagens/acompanhar_nao.png");
+					$("#imgAcompanhar").attr("title","Receber email de Acompanhamento das Movimentações do Processo");
+					$("#imgAcompanhar").attr("alt","Receber email de Acompanhamento das Movimentações do Processo");
+				}else{
+					$("#imgAcompanhar").attr("src","imagens/acompanhar_sim.png");
+					$("#imgAcompanhar").attr("title","Cancelar o Recebimento de email de Acompanhamento das Movimentações do Processo");
+					$("#imgAcompanhar").attr("alt","Cancelar o Recebimento de email de Acompanhamento das Movimentações do Processo");
+				}					
+			}
+			
+			function consultarAcompanhamento() {
+				var url = 'Processo?AJAX=ajax&PaginaAtual=7&Passo=Consultar' ;						
+				
+				id_processo_acompanhamento = "";
+				$.ajax({
+					type: "POST",
+					data: {Passo: "Consultar"},
+					url: encodeURI(url),
+					context: document.body,
+					timeout: 300000, async: true,
+					success: function(retorno){										
+						if(retorno!=null){
+							if(retorno.id!=null){
+								id_processo_acompanhamento = retorno.id; 
+							}
+						}
+					},			
+					complete: function(data ){
+						atribuirAcompanhamento();
+					}
+				}); // fim do .ajax*/				
+			}
+
+			function carregarAbaConciliacaoProposta() {
+				const destino = $('#DadosConciliacao');
+
+				destino.html(`
+					<div style="padding: 10px; text-align: center;">
+						<i class="fa fa-spinner fa-spin fa-2x"></i>
+					</div>
+				`);
+
+				$.get('Conciliacao?PaginaAtual=3', function (conteudo) {
+					destino.html(conteudo);
+					$('html, body').animate({
+						scrollTop: $(document).height()
+					}, 500);
+				}).fail(function () {
+					destino.html('<div style="color: red; padding: 10px;">Erro ao carregar a conciliação.</div>');
+				});
+			}
+			
+			var Anotacoes;
+			
+			$(document).ready(function() {	
+				
+				
+				
+				//pego todos objetos que foram marcados com a class nomes
+				//e verifico se tem número no nome
+				$(".nomes").each(function( index ) {
+				 	var texto =  $( this ).text();
+					for(var numero=0; numero<=9; numero++){
+						texto= texto.replace(numero,'<p class="destacarNumero" tag="Foi utilizado número no Nome, favor conferir com os dados da petição" title="Foi utilizado número no Nome, favor conferir com os dados da petição">'+ numero +'</p>');
+					}
+
+					$( this ).html(texto);
+				});	
+											    	
+				$(".filtro_coluna_movimentacao").each(function( index ) {
+					const regex1 = /\w{2}\d{9}BR/;
+					const regex2 = /idPendenciaCorreios(.*?)idPendenciaCorreios/;
+					var texto =  $(this).html();
+					var match1 = regex1.exec(texto);
+					if (match1!=null){
+					  	texto= texto.replace(match1[0],'<span style="display:inline-block"><a href="RastreamentoCorreios?PaginaAtual=9&codigo='+match1[0]+'" onclick="verInfoRC(event);" style="display:inline">'+match1[0] +'</a>');
+					  	var match2 = regex2.exec(texto);
+					  	if(match2!=null) {
+						  	texto = texto.replace(match2[0],'<a target="_blank" href="BuscaProcesso?PaginaAtual=6&Id_MovimentacaoArquivo='+match2[1]+'&eCarta=true" style="display:inline-block"><img id="idVisualizarECarta1" src="imagens/16x16/btn_endereco.png" alt="e-Carta" title="e-Carta"/></a>');
+						}
+						texto += '</span>';
+						$(this).html(texto);
+					}
+				});
+				
+				if ($('#span_prioridade').html().includes('Réu Preso')){
+					$('#span_prioridade').addClass('destacar_01');
+					$('#span_proc_numero').addClass('destacar_01');
+				}
+				
+				$( "#abas" ).tabs({ active: 0 });
+
+				$("#abas").tabs({
+					beforeActivate: function(event, ui) {
+						const novaAba = ui.newPanel;
+						const abaId = novaAba.attr('id');
+						if (abaId === 'IndiceProcesso') {
+							const dadosIndice = $('#dadosIndice');
+							const id1 = dadosIndice.attr("buscaDados");
+							if (id1 === 'sim') gerarIndice();
+						} else if (abaId === 'DadosConciliacao') {
+							carregarAbaConciliacaoProposta();
+						}
+					}
+				});
+
+				
+					buscaNotasProcesso();
+				
+				
+				criarMenu('menuEspecial0','corpo_dados_processo','menuA','menuAHover');
+				criarMenu('menuEspecial1','corpo_dados_processo','menuA','menuAHover');
+				criarMenu('menuEspecial2','corpo_dados_processo','menuA','menuAHover');
+				criarMenu('menuEspecial3','corpo_dados_processo','menuA','menuAHover');
+				criarMenu('menuEspecial4','corpo_dados_processo','menuA','menuAHover');
+				criarMenu('menu_outras','corpo_dados_processo','menuA','menuAHover');
+				
+				$('#corpo_dados_processo').focus(function(evt) {
+					$(this).css("overflow", "auto");	
+				  });
+
+				const focarAbaConciliacao = false;
+				if (focarAbaConciliacao) {
+					focarAbaConciliacaoProposta();
+				}
+				destacarMovimentacao('tabListaProcesso');
+			});
+
+			function focarAbaConciliacaoProposta(tempoEspera = 200) {
+				setTimeout(function () {
+					$('html, body').stop().animate({
+						scrollTop: $(document).height()
+					}, 300, function () {
+						$("#abas").tabs("option", "active", 3);
+					});
+				}, tempoEspera);
+			}
+
+			function mudarStatusMovimentacao(id_Movimentacao, descricao, novoStatus, paginaAtual) {
+				if(confirm('Confirma a mudança do status da movimentacao '+ descricao +' para '+ novoStatus +'  ?')) {
+					AlterarValue('PaginaAtual', paginaAtual);
+					AlterarValue('Id_Movimentacao', id_Movimentacao);
+					AlterarValue("TipoBloqueio", novoStatus);
+					AlterarAction('Formulario','Movimentacao');
+					document.Formulario.submit();
+				}
+			}
+
+			function atualizarDatasetStatusPublicacao(item, status) {
+				var imgClasse;
+				var acao;
+				var publicado;
+				if (status === 'publicado') {
+					imgClasse= 'fa-eye';
+					acao = 'Despublicar';
+					publicado = true;
+				} else if (status === 'nao-publicado') {
+					imgClasse = 'fa-eye-slash';
+					acao = 'Publicar';
+					publicado = false;
+				} else {
+					imgClasse = 'fa-hourglass';
+					acao = '';
+					publicado = '';
+				}
+				item.dataset.publicado = publicado;
+				$(item).find('i').attr('class','fa-regular ' + imgClasse + ' fa-2x');
+				item.dataset.acaoPublicar = acao;
+				$(item).find('button').attr('title', acao);
+			}
+
+			function atualizarStatusPublicacao(item) {
+				
+				var idMovimentacaoArquivo = item.dataset.idMovimentacaoArquivo;
+				$.ajax({
+					url: 'MovimentacaoArquivo?AJAX=ajax&PaginaAtual='+-4+'&Id_MovimentacaoArquivo=' + idMovimentacaoArquivo,
+					context: document.body,
+					timeout: 300000, async: true,
+					success: function(retorno){
+						var publicado = (retorno && retorno.publicado) ? 'publicado' : 'nao-publicado';
+						atualizarDatasetStatusPublicacao(item, publicado);
+					}
+				});
+			}
+
+			function alterarStatusPublicacao(item, descricao) {
+				if (!item.dataset.acaoPublicar) {
+					
+					return;
+				}
+				
+				var idMovimentacaoArquivo = item.dataset.idMovimentacaoArquivo;
+
+				
+				var novoStatus = item.dataset.acaoPublicar;
+
+				if (!novoStatus) {
+					
+					return;
+				}
+				var msg = 'Confirma a ação de ' + novoStatus + ' o documento ' + descricao + '?';
+				if(confirm(msg)) {
+					$.ajax({
+						type: "POST",
+						data: {
+							'PaginaAtual': 1,
+							'Id_MovimentacaoArquivo': idMovimentacaoArquivo,
+							"TipoBloqueio": novoStatus
+						},
+						url: encodeURI('MovimentacaoArquivo'),
+						context: document.body,
+						timeout: 300000, async: true,
+						success: function(retorno) {
+							console.log(retorno);
+							if (retorno.status && retorno.status === 'sucesso') {
+								mostrarMensagemOk(novoStatus, 'Documento alterado: ' + novoStatus);
+								
+								setTimeout(function() { atualizarStatusPublicacao(item); }, 2000);
+							} else {
+								mostrarMensagemErro('Erro Desconhecido', retorno);
+							}
+						},
+						error: function(request, status, error) {
+							mostrarMensagemErro('Erro desconhecido', 'Erro desconhecido:' + {'status': status, 'error':error});
+						}
+					});
+					atualizarDatasetStatusPublicacao(item, '');
+				}
+			}
+
+			function invalidarArquivo(id_MovimentacaoArquivo, descricao, tipo) {
+				if(confirm("Confirma a mudança do status do arquivo "+ descricao + " ?")) {
+					AlterarValue('PaginaAtual', '7');
+					AlterarValue('Id_MovimentacaoArquivo', id_MovimentacaoArquivo);
+					AlterarValue('TipoBloqueio', tipo);
+					AlterarAction('Formulario','MovimentacaoArquivo');
+					document.Formulario.submit();
+				}
+			}
+			
+			function validarArquivo(id_MovimentacaoArquivo, descricao) {
+				if(confirm("Confirma a Validação do arquivo "+ descricao + " ?")) {
+					AlterarValue('PaginaAtual', '6');
+					AlterarValue('Id_MovimentacaoArquivo', id_MovimentacaoArquivo);
+					AlterarAction('Formulario','MovimentacaoArquivo');
+					document.Formulario.submit();
+				}
+			}
+			
+			function gerarPendencias(id_Movimentacao) {
+				AlterarValue('PaginaAtual', '4');
+				AlterarValue('Id_Movimentacao', id_Movimentacao);
+				AlterarAction('Formulario','PendenciaMovimentacao');
+				document.Formulario.submit();
+			}
+
+			function manterEventos(descricaoMovimentacao, id_Movimentacao, paginaAtual) {
+				AlterarValue('PaginaAtual', paginaAtual);
+				AlterarValue('MovimentacaoDataRealizacaoTipo', descricaoMovimentacao);
+				AlterarValue('Id_Movimentacao', id_Movimentacao);
+				AlterarAction('Formulario','ProcessoEventoExecucao');
+				document.Formulario.submit();
+			}
+			
+			function MostrarOpcoes(){
+				if (window.isPodePublicarDespublicar && ($('#chkVer').is(':checked') || $('#chkPub').is(':checked'))) {
+					$('.alterarStatusPublicacao').show();
+					$('.alterarStatusPublicacao').each(function(){
+						atualizarStatusPublicacao(this);
+					});
+				} else {
+					$('.alterarStatusPublicacao').hide();
+				}
+
+				if ($('#chkVer').is(':checked')){
+					//$('#chkVer').val('true');					
+					$('.dropMovimentacao').each(function( ) {		
+						var jtag = $(this);
+						jtag.css("display","block");
+						var id_movi = jtag.attr('id_movi');
+						var movi_tipo = jtag.attr('movi_tipo');
+						var codigoTemp = jtag.attr('codigo_temp');
+						
+						var resposta = MensagemImagemBloqueio(codigoTemp );
+						
+						var img_bloqueio = resposta[0];
+						var txt_bloqueio = resposta[1];
+						
+						var divsBloquear =" <div class='dropdown coluna5'>";
+						divsBloquear += "  		<button onclick='MostrarOcultar(\"myDropdown1"+id_movi+"\"); return false;' class='dropbtn'> <img id='imgValidar' src='" + img_bloqueio + "' alt='"+ txt_bloqueio + "' title='"+ txt_bloqueio + "'  /> </button>";
+						divsBloquear += "  		<div id='myDropdown1"+id_movi+"' class='dropdown-content'>";						
+						divsBloquear += "  			<a class='ImagemGlobal'    alt='Visualização Bloqueada para todos os Usuários' title='Visualização Bloqueada para todos os Usuários' href='#' onclick=\"javascript: mudarStatusMovimentacao("+id_movi+",'"+movi_tipo+"','Global',7)\"> Bloquear</a>";
+						divsBloquear += "  			<a class='ImagemAdv' 	   alt='Visível aos Advs, Delegacia, MP, Cartório e Magistrado' title='Visível aos Advs, Delegacia, MP, Cartório e Magistrado' href='#' onclick=\"javascript: mudarStatusMovimentacao("+id_movi+",'"+movi_tipo+"','Adv',7)\"> Adv</a>";
+						divsBloquear += "  			<a class='ImagemDelegacia' alt='Visível à Delegacia, MP, Cartório e Magistrado' title='Visível à Delegacia, ao MP, Cartório e Magistrado' href='#' onclick=\"javascript: mudarStatusMovimentacao("+id_movi+",'"+movi_tipo+"','Delegacia',7)\"> Delegacia</a>";
+						divsBloquear += "  			<a class='ImagemMP'        alt='Visível ao MP, Cartório e Magistrado' title='Visível ao Ministério Público, Cartório e Magistrado' href='#' onclick=\"javascript: mudarStatusMovimentacao("+id_movi+",'"+movi_tipo+"','Mp',7)\">   MP</a>";
+						divsBloquear += "  			<a class='ImagemCartorio'  alt='Visível ao Cartório e Magistrado' title='Visível ao Cartório e Magistrado' href='#' onclick=\"javascript: mudarStatusMovimentacao("+id_movi+",'"+movi_tipo+"','Cartorio',7)\">   Cartório</a>";
+						divsBloquear += "  			<a class='ImagemJuiz'      alt='Visível somente ao Magistrado' title='Visível somente ao Magistrado' href='#' onclick=\"javascript: mudarStatusMovimentacao("+id_movi+",'"+ movi_tipo+"','Juiz',7)\">   Magistrado</a>";
+						divsBloquear += "  			<a class='imgValidar'      alt='Visível Normal (Partes, Advogados, MP, Cartório e Magistrado)' title='Visível Normal (Partes, Advogados, MP, Cartório e Magistrado)' href='#' onclick=\"javascript: mudarStatusMovimentacao('" + id_movi + "','" + movi_tipo+ "','" +'VÁLIDA'+  "','" +'6'+ "')\">      Normal </a>";
+						divsBloquear += "  </div>";
+						divsBloquear += "</div>";
+						
+						jtag.html( divsBloquear);
+	                   	
+					});
+					$('.dropArquivos').each(function( ) {		
+						var jtag = $(this);
+						jtag.css("display","block");
+						var id_arquivo = jtag.attr('id_arquivo');
+						var nome_arquivo = jtag.attr('nome_arquivo');
+						var bloqueavel = jtag.attr('bloqueavel');
+						var img_bloqueio = jtag.attr('img_bloqueio');
+						var txt_bloqueio = jtag.attr('txt_bloqueio');
+											
+						if (bloqueavel){
+							var divsBloquear = "  	<button onclick='MostrarOcultar(\"myDropdown"+id_arquivo+"\"); return false;' class='dropbtn'> <img id='imgValidar' src='" + img_bloqueio + "' alt='"+ txt_bloqueio + "' title='"+ txt_bloqueio + "'  /> </button>";
+							divsBloquear += "  		<div id='myDropdown"+id_arquivo+"' class='dropdown-content'>";
+							divsBloquear += "  			<a class='ImagemPublico'  alt='Visível a todos os Usuários' title='Visível a todos os Usuários' href='#' onclick=\"javascript: invalidarArquivo('" + id_arquivo + "','" + nome_arquivo+ "','Publico')\">   Público</a>";
+							divsBloquear += "  			<a class='ImagemGlobal'   alt='Visualização Bloqueada para todos os Usuários' title='Visualização Bloqueada para todos os Usuários' href='#' onclick=\"javascript: invalidarArquivo('" + id_arquivo + "','" + nome_arquivo+ "','Global')\">   Bloquear</a>";
+							divsBloquear += "  			<a class='ImagemAdv'      alt='Visível aos Advs, Delegacia, MP, Cartório e Magistrado' title='Visível aos Advs, Delegacia, MP, Cartório e Magistrado' href='#' onclick=\"javascript: invalidarArquivo('" + id_arquivo + "','" + nome_arquivo+ "','Adv')\"> Advs </a>";
+							divsBloquear += "  			<a class='ImagemDelegacia' alt='Visível à Delegacia, ao MP, Cartório e Magistrado' title='Visível à Delegacia, ao Ministério Público, Cartório e Magistrado' href='#' onclick=\"javascript: invalidarArquivo('" + id_arquivo + "','" + nome_arquivo+ "','Delegacia')\"> Delegacia </a>";
+							divsBloquear += "  			<a class='ImagemMP'       alt='Visível ao MP, Cartório e Magistrado' title='Visível ao Ministério Público, Cartório e Magistrado' href='#' onclick=\"javascript: invalidarArquivo('" + id_arquivo + "','" + nome_arquivo+ "','Mp')\"> MP </a>";
+							divsBloquear += "  			<a class='ImagemCartorio' alt='Visível ao Cartório e Magistrado' title='Visível ao Cartório e Magistrado' href='#' onclick=\"javascript: invalidarArquivo('" + id_arquivo + "','" + nome_arquivo+ "','Cartorio')\"> Cartório </a>";
+							divsBloquear += "  			<a class='ImagemJuiz'     alt='Visível somente ao Magistrado' title='Visível somente ao Magistrado' href='#' onclick=\"javascript: invalidarArquivo('" + id_arquivo + "','" + nome_arquivo+ "','Juiz')\">      Magistrado </a>";
+							divsBloquear += "  			<a class='imgValidar'     alt='Visível Normal (Partes, Advogados, MP, Cartório e Magistrado)' title='Visível Normal (Partes, Advogados, MP, Cartório e Magistrado)' href='#' onclick=\"javascript: validarArquivo('" + id_arquivo + "','" + nome_arquivo+ "')\">      Normal </a>";
+							divsBloquear += "        </div>";
+							jtag.html( divsBloquear);	
+						}else{
+							var divsDesBloquear = "<img id='imgValidar' class='imgValidar' src='imagens/22x22/ico_liberar.png' alt='Desbloquear Arquivo' title='Desbloquear Arquivo' onclick=\"javascript: validarArquivo('" + id_arquivo + "','" + nome_arquivo + "')\" />";
+							jtag.html( divsDesBloquear);
+						}												
+					});
+				} else {
+					//retiro os dopbdown de arquivos e movimentacoes					
+					$('.dropMovimentacao').each(function( ) {		
+						var jtag = $(this);
+						jtag.html( "");
+						jtag.css("display","none");
+					});						
+					$('.dropArquivos').each(function( ) {								
+						var jtag = $(this);
+						var img_bloqueio = jtag.attr('img_bloqueio');
+						var txt_bloqueio = jtag.attr('txt_bloqueio');
+						jtag.html( " <img id='imgValidar' src='" + img_bloqueio + "' alt='"+ txt_bloqueio + "' title='"+ txt_bloqueio + "'  /> ");
+					});					
+				}
+				//calcularTamanhoIframe();--retirado 
+			}
+
+			function mostrarTodasPartes() {
+				AlterarValue('PaginaAtual', '-1');
+				AlterarValue('PassoEditar', '11');								
+				document.Formulario.submit();
+			}
+							
+			function relatorioIA(){
+				user = btoa('00733235190');
+				caminho = encodeURIComponent('https://projudi-pdf.tjgo.jus.br/PdfServico/GerarPDF?usu=00733235190&chave=R1qkPRaKwxF/dmzhThdhIA==&token=NeyecKSba09HjY_GIJQWcqSOvHnIKUhc0TmYHDM8eUYYzM74PjpjfTD2eylNlN1kdflWJzkacyMoyXv9gQST6yq7fALdJNgEBqNG_GIh3w52HYL7uioWLG58knW_FaTmR4HhHsx2BShflhNnhh6y_g&CodigoIA=3');
+				window.open(UrlServicoIA + '/relatorio?usuario=***&caminho=' + caminho, '_blank');
+			}
+			
+			function copiarNumeroProcessoAreaTransferencia(formatar) {
+				const textoOriginal = document.getElementById('span_proc_numero').innerText;
+				const textoFinal = formatar ? textoOriginal : textoOriginal.replace(/\D/g, '');
+
+				navigator.clipboard.writeText(textoFinal)
+					.then(() => {
+						toastr.options = {
+							"timeOut": 1500
+						};
+						toastr.info('Número de processo copiado para a área de transferência');
+					})
+					.catch(err => {
+						console.error('Erro ao copiar para a área de transferência:', err);
+						alert('Não foi possível copiar o número. Tente novamente.');
+					});
+			}
+
+			$(document).ready(function() {
+				$('#menuEspecial4').on('click', 'a', function() {
+					var titulo = $(this).attr('title');
+					var texto = $(this).text().trim();
+
+					if (titulo === "Enviar para proad" || texto === "Enviar para proad") {
+						mostrarMensagemConsultando('Projudi - PROAD', 'Verificando processo, aguarde alguns instantes...');
+						$(this).css({
+							'pointer-events': 'none',
+							'opacity': '0.5'
+						});
+					}
+				});
+			});
+		</script>
+		
+	</head>
+		    			  	
+	<body id='corpo_dados_processo'>
+	<div id="divCorpo" class="divCorpo
+            
+            ">
+
+  			<form action="BuscaProcesso" method="post" name="Formulario" id="Formulario" style="opacity: .85;">
+
+				<div id="divAvisoPresencaConciliacao" class="divEditar" style="margin-bottom: 15px; display: none">
+					<div class="aviso-proposta">
+						Este Processo possui uma <strong>Proposta de Conciliação</strong>.
+						Visualize na aba &quot;Conciliação Proposta&quot; no final da tela,
+						ou <span onclick="focarAbaConciliacaoProposta(300)">Clique Aqui</span>.
+					</div>
+				</div>
+
+				<input id="PaginaAtual" name="PaginaAtual" type="hidden" value="" />
+  				<input id="Id_Movimentacao" name="Id_Movimentacao" type="hidden" value="" />
+  				<input id="Id_MovimentacaoArquivo" name="Id_MovimentacaoArquivo" type="hidden" value="" />
+  				<input id="TipoBloqueio" name="TipoBloqueio" type="hidden" value="" />
+  				<input id="PassoBusca" name="PassoBusca" type="hidden" value="0">
+  				<input id="PassoEditar" name="PassoEditar" type="hidden" value="-1">
+  				<input id="MovimentacaoDataRealizacaoTipo" name="MovimentacaoDataRealizacaoTipo" type="hidden" value="" />
+  				
+  				<!--  Aqui Normal -->
+  				
+  				<div id="divEditar" class="divEditar">
+
+				<fieldset id="VisualizaDados" class="VisualizaDados">
+					<legend style="font-size: 13px;"> Autos </legend>
+					<div class="divBotoesDireita">
+						<button
+							id="btnQueroConciliar"
+							type="button"
+							onclick="window.open('Conciliacao?PaginaAtual=1', 'userMainFrame')"
+							title="Criar Proposta Conciliação"
+							style="display: none; border: none; background: none; cursor: pointer;">
+							<i class="fa-solid fa-handshake fa-3x" style="color:#51D451;"></i>
+						</button>
+
+						<button type="button" alt = "Criar Anotação para o Processo (Particular)" title="Criar Anotação para o Processo (Particular)" class="notaProcesso" onclick='criarNota(null,null,null,1);'><i style="transform: rotate(45deg);color:#85c1e9 " class="fa-solid fa-thumbtack fa-3x"></i> </button>							 
+		  					</div>
+					<div class='aEsquerda' style="margin-bottom: 5px">
+			  			<div> N&uacute;mero </div>
+						<span style="margin-left: -5px; display: inline-block;white-space: nowrap;">
+							<span id="span_proc_numero" class="bold">
+								6030290-72.2025.8.09.0007</span>
+							<img src="./imagens/copy-solid.svg"
+								 alt="Copiar"
+								 title="Copiar número do processo"
+								 width="17px"
+								 height="17px"
+								 style="margin-left: 6px;"
+								 onclick="copiarNumeroProcessoAreaTransferencia(true)" />
+							<img src="./imagens/copy-regular.svg"
+								 alt="Copiar"
+								 title="Copiar número do processo sem formatação"
+								 width="17px"
+								 height="17px"
+								 style="margin-left: 6px;"
+								 onclick="copiarNumeroProcessoAreaTransferencia(false)" />
+						</span>
+						<br/>
+						<div> Área</div> <span class="bold">
+						Cível</span>
+						<br/>
+	  				</div>
+					<div id="sub_objetos" class="DivInvisivel">
+						<!-- Aqui será inserido o formulario/tabela -->
+					</div>
+					<div id="sub_coordenadas" class="DivInvisivel">
+						<!-- Aqui será inserido o formulario/tabela -->
+					</div>		
+					<div id="sub_contas" class="DivInvisivel">
+						<!-- Aqui será inserido o formulario/tabela -->
+					</div>
+	  				<br />
+					<blockquote id="menuEspecial0" class="menuEspecial">
+						<ul><li><a href='#' onclick='return false;'>Opções Processo</a><ul><li><a class='TemFilho'  href='#' title='Guias do Processo' onclick='return false;'>Guias</a><ul><li><a class='TemFilho'  href='#' title='Guias da Justiça Comum' onclick='return false;'>Guias da Justiça Comum</a><ul><li><a href='GuiaComplementar?PaginaAtual=4'  title='Guia Complementar' target='userMainFrame'>Guia Complementar</a></li><li><a href='GuiaLocomocao?PaginaAtual=4'  title='Guia Locomoção' target='userMainFrame'>Guia Locomoção</a></li><li><a href='GuiaLocomocaoComplementar?PaginaAtual=4'  title='Guia Locomoção Complementar' target='userMainFrame'>Guia Locomoção Complementar</a></li><li><a href='GuiaRecurso?PaginaAtual=4'  title='Guia Recurso de Apelação' target='userMainFrame'>Guia Recurso de Apelação</a></li></ul></li><li><a class='TemFilho'  href='#' onclick='return false;'>Vincular Guias</a><ul><li><a href='VincularGuiaInicialProcesso?PaginaAtual=4'  title='Vincular Guia' target='userMainFrame'>Vincular Guia</a></li><li><a href='VincularGuiaComplementarProcesso?PaginaAtual=4'  title='Vincular Guia Complementar ao Processo' target='userMainFrame'>Vincular Guia Complementar</a></li></ul></li><li><a href='GuiaEmissao?PaginaAtual=6'  title='Consultar Guias' target='userMainFrame'>Consultar Guias</a></li><li><a href='GuiaEmissaoPrevia?PaginaAtual=2&Id_GuiaModelo=22547'  title='Guia de Certidão Narrativa' target='userMainFrame'>Guia de Certidão Narrativa</a></li><li><a href='GuiaEmissaoPrevia?PaginaAtual=2&Id_GuiaModelo=22616'  title='Guias do Postagem' target='userMainFrame'>Guia de postagem</a></li><li><a href='GuiaRepasseFundesp?PaginaAtual=4'  title='Guia de Repasse ao Fundesp' target='userMainFrame'>Guia de Repasse ao Fundesp</a></li><li><a href='GuiaServicos?PaginaAtual=4'  title='Guia de Serviço' target='userMainFrame'>Guia de Serviço</a></li></ul></li><li><a href='ProcessoParteAdvogado?PaginaAtual=4'  target='userMainFrame'>Definir Advogado Principal</a></li><li><a href='DescartarPendenciaProcesso?PaginaAtual=8&Peticionamento=true'  title=' Gerar Pendência Aguardando Peticionamento' target='userMainFrame'>Gerar Petição</a></li><li><a href='ProcessoParteAdvogado?PaginaAtual=8'  title=' ' target='userMainFrame'>Habilitar no Processo</a></li><li><a href='Peticionamento?PaginaAtual=4'  target='userMainFrame'>Peticionar</a></li><li><a href='SolicitarCargaProcesso?PaginaAtual=8'  title='Solicitar Carga de Processo' target='userMainFrame'>Solicitar Carga de Processo</a></li><li><a href='ProcessoParteAdvogado?PaginaAtual=7'  target='userMainFrame'>Ver Advogados</a></li></ul></li></ul></blockquote>
+					<blockquote id="menu_outras" class="menuEspecial">
+						<ul><li><a href='#' onclick='return false;'>Outras</a><ul><li><a href='DescartarPendenciaProcesso?PaginaAtual=8'  title='Criar pendência que libera acesso ao processo' target='userMainFrame'>Solicitar Acesso</a></li></ul></li></ul></blockquote>
+					<br />
+		  			<fieldset id="VisualizaDados" class="VisualizaDados field_processo"><legend style="font-size: 13px;"> Dados do Processo </legend>
+						<script type="text/javascript" src="./js/FormProcessoParteTipificacao.js"></script>
+	<script type="text/javascript" src="./js/FormProcessoPartePrisoes.js"></script>
+	<script type="text/javascript" src="./js/FormProcessoParteBeneficios.js"></script>
+	<script type="text/javascript" src="./js/FormProcessoParteDebitos.js"></script>
+
+
+	<div id="divApletImprimrEtiqueta" class="divApletImprimrEtiqueta" ></div>
+	
+	<input id="CodigoHashEOutros" name="CodigoHashEOutros" type="hidden" value="207548081448730749456549939659195428291"></input>
+	
+	<!-- PROMOVENTES -->
+	
+ 	<fieldset id="VisualizaDados" class="VisualizaDados field_processo" >
+		<legend> Polo Ativo | Exequente</legend>
+   	<fieldset  class="VisualizaDados">   			
+	       	<div><b><font color="blue">Nome Social</font></b></div>		
+	       		<font color="blue">
+	       			<span class="span1 nomes destaque-nome" title="Nome Social da Parte" alt="Nome Social da Parte">GRUPO SSMA</span>    
+	       		</font> <br />
+	       	<div>Nome</div>	<span class="span1 nomes destaque-nome" title="Nome da Parte" alt="Nome da Parte"> CLINICA SSMA LTDA</span>
+   			<div class="divBotoesDireita">
+		 			<button type="button"  alt="Excluir" class="imgexcluir" title="Mostrar/Ocultar Endereço"   onClick="MostrarOcultar('sub27542933');return false;" >
+						<i class="fa-solid fa-envelope fa-2x"></i>
+					 </button>	
+				 	<button type="button" title="Mostrar/Ocultar Débitos Parte" alt="Mostrar/Ocultar Débitos Parte" onClick="mostrarDebitoParte('27542933','10063179')" >
+		 				<i class="fa-solid fa-d fa-2x"></i>					 										 					 			
+		 			</button>	 			 			
+				</div>   		       			       	
+		 		<div> CPF/CNPJ </div> 
+		       	<span class="span2">52.601.134/0001-61</span>
+		       	
+		       	<div> Dt. Nascimento </div> 
+		       	<span class="span3">20/10/2023 (2 anos)</span>
+		       	<br />
+		 		<div> Filia&ccedil;&atilde;o </div>	<span class="span1 nomes fonte-normal italico"> </span>
+		       			       			       
+		       	<div id="sub27542933"  class="DivInvisivel">
+			  		<fieldset class="fieldsetEndereco">
+			  			<legend> Endereço </legend>		  			
+							DESEMBARGADOR JAIME nº 260 <br />
+				    		CENTRO ANAPOLIS GO<br />
+				    		75020-040<br />
+					    	 00000000000</fieldset>
+					</div>
+				<div id="sub_proc_parte_debito27542933" class="DivInvisivel">
+					<!-- Aqui será inserido o formulario/tabela -->
+				</div>
+				<br />	
+				</fieldset>
+     </fieldset>
+	
+	<!-- PROMOVIDOS -->
+	
+	<fieldset id="VisualizaDados" class="VisualizaDados field_processo" >
+   		<legend> Polo Passivo | Executado</legend>
+   	<fieldset  class="VisualizaDados">
+	       		<div><b><font color="blue">Nome Social</font></b></div>		
+		       		<font color="blue">	<span class="span1 nomes destaque-nome" title="Nome Social da Parte" alt="Nome Social da Parte">ADMS CONSTRUCOES E EMPREENDIMENTOS</span>  </font>		       	
+		       		<br />
+		       	<div>Nome</div>		<span class="span1 nomes destaque-nome" title="Nome da Parte" alt="Nome da Parte"> ADMS CONSTRUCOES E EMPREENDIMENTOS LTDA</span>
+		       	<div class="divBotoesDireita">
+			 			<button type="button" alt="Mostrar/Ocultar Endereço" title="Mostrar/Ocultar Endereço"   onClick="MostrarOcultar('sub27542934');return false;" >
+							<i class="fa-solid fa-envelope fa-2x"></i>
+					 	</button>
+					 	<button type="button" title="Mostrar/Ocultar Débitos Parte" alt="Mostrar/Ocultar Débitos Parte" onClick="mostrarDebitoParte('27542934','10063179')" >
+			 				<i class="fa-solid fa-d fa-2x"></i>					 										 					 			
+			 			</button>	 						 			
+			 			<button type="button" title="Mostrar/Ocultar Prisão" alt="Mostrar/Ocultar Prisão"  onClick="mostrarPrisoes('27542934','10063179')" >
+							<i class="fa-solid fa-table-cells fa-2x"></i>
+				 		</button>
+				 		</div>	       	      		    	
+					<div> CPF/CNPJ </div><span class="span2">57.244.054/0001-10</span>
+		       		<div> Dt. Nascimento </div>	<span class="span3">11/09/2024 (1 ano)</span>
+			       	<br />   
+		       		<div> Filia&ccedil;&atilde;o </div>   	<span class="span1 nomes fonte-normal italico"></span>
+                    <br>
+		       		<br />
+                    <wrapper
+                        id="reu-preso-wrapper-27542934"
+                        style="display: none;">
+                        <div>&#32;</div>
+                        <span class="span1">
+                            <b><font color="red"></font></b>
+                            </span>
+                        <br />
+                    </wrapper>
+
+					<div id="sub27542934" class="DivInvisivel">
+				  		<fieldset class="fieldsetEndereco">
+				  			<legend> Endereço </legend>
+							Rua VN 19 nº 1470 Qd 25, Lt. 29, casa 2<br />
+				    		Residencial Vida Nova ANAPOLIS GO<br />
+				    		75097-334<br />
+					    	NOVOBRALL27@GMAIL.COM 6281120752</fieldset>
+						</div>
+					<div id="sub_proc_parte_debito27542934" class="DivInvisivel">
+						<!-- Aqui será inserido o formulario/tabela -->
+					</div>
+					<br />
+                    <blockquote  id="sub_pri27542934" class="DivInvisivel col100">
+                        <!-- Aqui será inserido o formulario/tabela -->
+                    </blockquote >
+
+                </fieldset>
+										
+    <fieldset  class="VisualizaDados">
+	       		<div>Nome</div>		<span class="span1 nomes destaque-nome" title="Nome da Parte" alt="Nome da Parte"> ANTONIO DAS DORES MENDES DA SILVA</span>
+		       	<div class="divBotoesDireita">
+			 			<button type="button" alt="Mostrar/Ocultar Endereço" title="Mostrar/Ocultar Endereço"   onClick="MostrarOcultar('sub27542935');return false;" >
+							<i class="fa-solid fa-envelope fa-2x"></i>
+					 	</button>
+					 	<button type="button" title="Mostrar/Ocultar Débitos Parte" alt="Mostrar/Ocultar Débitos Parte" onClick="mostrarDebitoParte('27542935','10063179')" >
+			 				<i class="fa-solid fa-d fa-2x"></i>					 										 					 			
+			 			</button>	 						 			
+			 			<button type="button" title="Mostrar/Ocultar Prisão" alt="Mostrar/Ocultar Prisão"  onClick="mostrarPrisoes('27542935','10063179')" >
+							<i class="fa-solid fa-table-cells fa-2x"></i>
+				 		</button>
+				 		</div>	       	      		    	
+					<div> CPF/CNPJ </div><span class="span2">010.013.473-40</span>
+		       		<div> Dt. Nascimento </div>	<span class="span3">14/04/1983 (43 anos)</span>
+			       	<br />   
+		       		<div> Filia&ccedil;&atilde;o </div>   	<span class="span1 nomes fonte-normal italico">Vitoria Mendes Da Silva</span>
+                    <br>
+		       		<br />
+                    <wrapper
+                        id="reu-preso-wrapper-27542935"
+                        style="display: none;">
+                        <div>&#32;</div>
+                        <span class="span1">
+                            <b><font color="red"></font></b>
+                            </span>
+                        <br />
+                    </wrapper>
+
+					<div id="sub27542935" class="DivInvisivel">
+				  		<fieldset class="fieldsetEndereco">
+				  			<legend> Endereço </legend>
+							DIVINO PAI ETERNO nº S N QD 17 LT 08 casa 2<br />
+				    		Jardim Esperança II ANAPOLIS GO<br />
+				    		75133-882<br />
+					    	 9836533272</fieldset>
+						</div>
+					<div id="sub_proc_parte_debito27542935" class="DivInvisivel">
+						<!-- Aqui será inserido o formulario/tabela -->
+					</div>
+					<br />
+                    <blockquote  id="sub_pri27542935" class="DivInvisivel col100">
+                        <!-- Aqui será inserido o formulario/tabela -->
+                    </blockquote >
+
+                </fieldset>
+										
+    </fieldset> 
+
+	<a href="ProcessoParte?PaginaAtual=6">
+		<input name="btOutrasPartes" id="btOutrasPartes" type="button" value="Visualizar Todas as Partes do Processo" title="Visualizar Todas as Partes do Processo" />
+	</a>
+<fieldset id="VisualizaDados" class="VisualizaDados field_processo">
+				    		<legend> Outras Informações</legend>
+				    		
+				    		<div> Serventia </div>
+								<span class="span1">Anápolis - 2º Juizado Especial Cível</span>
+				    		<br />
+					   		<div> Classe </div>
+					   		<span style="width: 750px; height: auto;">156 - PROCESSO CÍVEL E DO TRABALHO -> Processo de Conhecimento -> Procedimento de Cumprimento de Sentença/Decisão -> Cumprimento de sentença</span>
+				    	  	<br />
+				    	  	<div> Assunto(s) </div>
+	<span style="width: 750px; height: auto;">
+		<table border="0" cellpadding="0" cellspacing="0" style="font-size: 10px !important;">
+			<tbody>
+			<tr>
+							<td>
+							9596 - DIREITO CIVIL -> Obrigações -> Espécies de Contratos -> Prestação de Serviços - Lei nº 10.406/02 (Código Civil)</td>
+						</tr>
+				</tbody>
+   		</table>
+   	</span>
+   	<br /><div> Valor da Causa</div>
+								<span class="span1">10.351,84</span>
+							<div> Valor Condenação</div>
+							<span class="span2"></span>
+							<br />
+				    	  	<div> Processo Originário </div>
+							<span class="span1"><a href="BuscaProcesso?ProcessoOutraServentia=true&Id_Processo=613281776229290873962449258"></a></span/><br />	
+							
+							<br />
+							<div> Fase Processual</div>	
+							<span class="span1">Execução</span>
+							
+							<br />
+							<div> Dt. Distribui&ccedil;&atilde;o</div>
+							<span class="span3">12/12/2025 09:10:39</span>
+							<br />
+							
+							<div> Segredo de Justi&ccedil;a</div>
+							<span class="span2">Não</span>
+				    	  	<div style="width:200px;margin-left:40px;">Dt. Tr&acirc;nsito em Julgado</div>
+							<span class="span3" title="Data Tr&acirc;nsito em Julgado"  alt="Data Tr&acirc;nsito em Julgado" >15/12/2025</span>
+							<br />
+							
+							<div> Status </div>
+							
+							<span class="span1">Ativo</span>
+								<div> Prioridade</div>							
+							<span id='span_prioridade' class="span3"> Normal 
+							 	/ Normal</span>							
+							<br />
+							<div> Efeito Suspensivo </div>
+							<span class="span1">Não</span>
+													
+							<div> Julgado 2º Grau </div>
+							<span class="span2">Não</span>
+							<br />
+							<div> Custas </div>
+							<span class="span1">
+								Isento</span>
+																					
+							<div>Penhora no Rosto</div>
+							<span class="span2">Não</span>
+				    	  	<div class="divBotoesDireita">
+	 							<button id='id_consultaPrazos' campos='{"id_proc":"10063179"}' type="button" title="Visualizar Prazos Suspensos/Feriados do Processo" alt="Visualizar Prazos Suspensos/Feriados do Processo" 
+			 							onclick="consultaGerarTabela('PrazoSuspenso','id_consultaPrazos','6','Prazos Suspensos/Feriados do Processo');">
+						 					<i class="fa-solid fa-calendar fa-2x"></i>
+						 				</button>										
+									<button name="inputPendenciasProcesso" type="submit" title="Visualizar Pendências no Processo" alt="Visualizar Pendências no Processo" onclick="AlterarValue('PaginaAtual','1');"	>
+					 					<i class="fa-solid fa-circle-exclamation fa-2x"></i>
+					 				</button>
+					 				<button name="inputResponsaveis" type="submit" title="Consultar Responsáveis pelo Processo"  alt="Consultar Responsáveis pelo Processo" onclick="AlterarValue('PaginaAtual','-4');"	>
+					 					<i class="fa-solid fa-user-group fa-2x"></i>
+					 				</button>																																																										
+									<button  type="button" alt="Gerar PDF de Processo Completo" title="Gerar PDF de Processo Completo" 
+						        		onclick="window.open('https://projudi-pdf.tjgo.jus.br/PdfServico/GerarPDF?usu=00733235190&chave=R1qkPRaKwxF/dmzhThdhIA==&token=NeyecKSba09HjY_GIJQWcqSOvHnIKUhc0TmYHDM8eUYYzM74PjpjfTD2eylNlN1kdflWJzkacyMoyXv9gQST62KoFubqQFuvPN0HKMYJTgZ2HYL7uioWLG58knW_FaTmR4HhHsx2BShflhNnhh6y_g','Processo Completo','toolbar=no,location=no,directories=no,status=no,menubar=no,scrollbars=yes,copyhistory=no,resizable=yes,fullscreen=yes')"	>
+						        			<i class="fa-solid fa-file-pdf fa-2x"></i>
+						 				</button>																												
+									</div>
+						</fieldset>
+						</fieldset>						
+					</fieldset>	
+					<!-- MOVIMENTAÇÕES -->
+					<div id="abas">		
+						<ul>
+							<li>
+								<a href="#EventosProcesso">
+									<span>Eventos do Processo</span>
+								</a>
+							</li>
+							<li>
+								<a href="#IndiceProcesso" >
+									<span>Índice Processo</span>
+								</a>
+							</li>
+							<li>
+								<a href="#EventosProcesso" onclick="javascript:window.open('BuscaProcesso?PaginaAtual=9&PassoBusca=4', '_blank'); false;" >
+									<span>Navegação de Arquivo</span>
+								</a>
+							</li>
+							<li id="abaConsultaConciliacao" style="display: none;">
+								<a href="#DadosConciliacao" onclick="event.preventDefault()">
+									<span>Conciliação Proposta</span>
+								</a>
+							</li>
+							</ul>
+							
+							<div id="EventosProcesso">
+				    			<div style="width: 100%;height: 46px; clear: both;">
+						    		<div style="text-align: left; float:left;width: 84%; font-size: 10px;" id="lista-agregadores"></div>
+						    		<div align="right" style="float: right; width: 16%;">
+				    					</div>
+					    		</div>
+				    			<table id="TabelaArquivos" class="Tabela" >
+				        			<thead>
+				            			<tr class="TituloColuna">
+				                			<td>Nº</td>
+				                   			<td width="45%">Movimentação</td>
+				                  			<td width="10%">Data</td>
+				                  			<td width="15%">Usuário</td>
+				                  			<td>Arquivo(s)</td>
+				                  			<td width="20%" title="Opções">Opções</td>
+				               			</tr>
+				               			<tr>
+				               			    <td colspan="6"></td>
+				               			</tr>
+				           			</thead>
+				    				<tbody id="tabListaProcesso">
+						    		<tr movi_codigo ="178" class='filtro-entrada TabelaLinha2'>
+					                   			<td class="colunaMinima"> 41</td>
+					                    		<td class="filtro_coluna_movimentacao" width="55%">
+					                    			<span class="filtro_tipo_movimentacao">
+                                                        Intimação Efetivada</span><br />
+                                                    Disponibilizada no primeiro e publicada no segundo dia útil (Lei 11.419/2006, art. 4º, §§ 3º e 4º) - Adv(s). de Clinica Ssma Ltda (Referente à Mov. Juntada de Documento (05/06/2026 21:01:05))</td>
+						                   		<td width="100" align="center">05/06/2026 21:10:05</td>
+						                   		
+						                   		<td width="25%"> 	SISTEMA CNJ</td>
+						                   		<td class="colunaMinima">
+													</td>
+			  									<td class="colunaMinima">	
+			  										<div class="btAcoes">	
+													<div class="dropMovimentacao" id_movi = '482940372' movi_tipo ='Intimação Efetivada' codigo_temp ='2' ></div>
+													 </div>
+			  									</td>
+					    					
+										</tr>
+										<tr id="linha_613881786229290873705029161" carregado='não' style="display: none;">
+											<td colspan="6" id="pai_613881786229290873705029161" class="Linha"></td>
+										</tr>
+										
+									<tr movi_codigo ="5" class='filtro-entrada TabelaLinha1'>
+					                   			<td class="colunaMinima"> 40</td>
+					                    		<td class="filtro_coluna_movimentacao" width="55%">
+					                    			<span class="filtro_tipo_movimentacao">
+                                                        Intimação Expedida</span><br />
+                                                    Aguardando processamento de envio para o DJEN - Adv(s). de CSL - Polo Ativo (Referente à Mov. Juntada de Documento (CNJ:581) - )</td>
+						                   		<td width="100" align="center">05/06/2026 21:01:05</td>
+						                   		
+						                   		<td width="25%"> 	MARIO DE SOUSA LÔBO JÚNIOR</td>
+						                   		<td class="colunaMinima">
+													</td>
+			  									<td class="colunaMinima">	
+			  										<div class="btAcoes">	
+													<div class="dropMovimentacao" id_movi = '482940161' movi_tipo ='Intimação Expedida' codigo_temp ='2' ></div>
+													 </div>
+			  									</td>
+					    					
+										</tr>
+										<tr id="linha_613381796229290873705029723" carregado='não' style="display: none;">
+											<td colspan="6" id="pai_613381796229290873705029723" class="Linha"></td>
+										</tr>
+										
+									<tr movi_codigo ="339" class='filtro-entrada TabelaLinha2'>
+					                   			<td class="colunaMinima"> 39</td>
+					                    		<td class="filtro_coluna_movimentacao" width="55%">
+					                    			<span class="filtro_tipo_movimentacao">
+                                                        Juntada de Documento</span><br />
+                                                    CONSULTA SISTEMAS TJGO</td>
+						                   		<td width="100" align="center">05/06/2026 21:01:05</td>
+						                   		
+						                   		<td width="25%"> 	MARIO DE SOUSA LÔBO JÚNIOR</td>
+						                   		<td class="colunaMinima">
+													<a href="javascript:buscarArquivosMovimentacaoJSON('613481736229290873705029728', 'BuscaProcesso', 'Id_MovimentacaoArquivo', 6, 'false')">
+															<img id='MostrarArquivos_482940160' src="imagens/22x22/go-bottom.png" alt="Mostrar ou ocultar arquivos" title="Mostrar ou ocultar arquivos" />
+														</a>
+													</td>
+			  									<td class="colunaMinima">	
+			  										<div class="btAcoes">	
+													<div class="dropMovimentacao" id_movi = '482940160' movi_tipo ='Juntada de Documento' codigo_temp ='2' ></div>
+													 </div>
+			  									</td>
+					    					
+										</tr>
+										<tr id="linha_613481736229290873705029728" carregado='não' style="display: none;">
+											<td colspan="6" id="pai_613481736229290873705029728" class="Linha"></td>
+										</tr>
+										
+									<tr movi_codigo ="178" class='filtro-entrada TabelaLinha1'>
+					                   			<td class="colunaMinima"> 38</td>
+					                    		<td class="filtro_coluna_movimentacao" width="55%">
+					                    			<span class="filtro_tipo_movimentacao">
+                                                        Intimação Efetivada</span><br />
+                                                    Disponibilizada no primeiro e publicada no segundo dia útil (Lei 11.419/2006, art. 4º, §§ 3º e 4º) - Adv(s). de Antonio Das Dores Mendes Da Silva (Referente à Mov. Penhora Parcialmente Realizada (01/06/2026 16:48:03))</td>
+						                   		<td width="100" align="center">01/06/2026 18:04:00</td>
+						                   		
+						                   		<td width="25%"> 	SISTEMA CNJ</td>
+						                   		<td class="colunaMinima">
+													</td>
+			  									<td class="colunaMinima">	
+			  										<div class="btAcoes">	
+													<div class="dropMovimentacao" id_movi = '482034551' movi_tipo ='Intimação Efetivada' codigo_temp ='2' ></div>
+													 </div>
+			  									</td>
+					    					
+										</tr>
+										<tr id="linha_613981796229290873705437473" carregado='não' style="display: none;">
+											<td colspan="6" id="pai_613981796229290873705437473" class="Linha"></td>
+										</tr>
+										
+									<tr movi_codigo ="178" class='filtro-entrada TabelaLinha2'>
+					                   			<td class="colunaMinima"> 37</td>
+					                    		<td class="filtro_coluna_movimentacao" width="55%">
+					                    			<span class="filtro_tipo_movimentacao">
+                                                        Intimação Efetivada</span><br />
+                                                    Disponibilizada no primeiro e publicada no segundo dia útil (Lei 11.419/2006, art. 4º, §§ 3º e 4º) - Adv(s). de Adms Construcoes E Empreendimentos Ltda (Referente à Mov. Penhora Parcialmente Realizada (01/06/2026 16:48:03))</td>
+						                   		<td width="100" align="center">01/06/2026 18:03:59</td>
+						                   		
+						                   		<td width="25%"> 	SISTEMA CNJ</td>
+						                   		<td class="colunaMinima">
+													</td>
+			  									<td class="colunaMinima">	
+			  										<div class="btAcoes">	
+													<div class="dropMovimentacao" id_movi = '482034543' movi_tipo ='Intimação Efetivada' codigo_temp ='2' ></div>
+													 </div>
+			  									</td>
+					    					
+										</tr>
+										<tr id="linha_613281756229290873705437437" carregado='não' style="display: none;">
+											<td colspan="6" id="pai_613281756229290873705437437" class="Linha"></td>
+										</tr>
+										
+									<tr movi_codigo ="5" class='filtro-entrada TabelaLinha1'>
+					                   			<td class="colunaMinima"> 36</td>
+					                    		<td class="filtro_coluna_movimentacao" width="55%">
+					                    			<span class="filtro_tipo_movimentacao">
+                                                        Intimação Expedida</span><br />
+                                                    Aguardando processamento de envio para o DJEN - Adv(s). de Antonio Das Dores Mendes Da Silva (Referente à Mov. Penhora Parcialmente Realizada - 01/06/2026 16:48:03)</td>
+						                   		<td width="100" align="center">01/06/2026 16:49:29</td>
+						                   		
+						                   		<td width="25%"> 	Andréa Pureza de Assis</td>
+						                   		<td class="colunaMinima">
+													</td>
+			  									<td class="colunaMinima">	
+			  										<div class="btAcoes">	
+													<div class="dropMovimentacao" id_movi = '481984577' movi_tipo ='Intimação Expedida' codigo_temp ='2' ></div>
+													 </div>
+			  									</td>
+					    					
+										</tr>
+										<tr id="linha_613481766229290873707087469" carregado='não' style="display: none;">
+											<td colspan="6" id="pai_613481766229290873707087469" class="Linha"></td>
+										</tr>
+										
+									<tr movi_codigo ="5" class='filtro-entrada TabelaLinha2'>
+					                   			<td class="colunaMinima"> 35</td>
+					                    		<td class="filtro_coluna_movimentacao" width="55%">
+					                    			<span class="filtro_tipo_movimentacao">
+                                                        Intimação Expedida</span><br />
+                                                    Aguardando processamento de envio para o DJEN - Adv(s). de ACEEL (Referente à Mov. Penhora Parcialmente Realizada - 01/06/2026 16:48:03)</td>
+						                   		<td width="100" align="center">01/06/2026 16:49:29</td>
+						                   		
+						                   		<td width="25%"> 	Andréa Pureza de Assis</td>
+						                   		<td class="colunaMinima">
+													</td>
+			  									<td class="colunaMinima">	
+			  										<div class="btAcoes">	
+													<div class="dropMovimentacao" id_movi = '481984575' movi_tipo ='Intimação Expedida' codigo_temp ='2' ></div>
+													 </div>
+			  									</td>
+					    					
+										</tr>
+										<tr id="linha_613081786229290873707087460" carregado='não' style="display: none;">
+											<td colspan="6" id="pai_613081786229290873707087460" class="Linha"></td>
+										</tr>
+										
+									<tr movi_codigo ="406" class='filtro-entrada TabelaLinha1'>
+					                   			<td class="colunaMinima"> 34</td>
+					                    		<td class="filtro_coluna_movimentacao" width="55%">
+					                    			<span class="filtro_tipo_movimentacao">
+                                                        Penhora Parcialmente Realizada</span><br />
+                                                    (Referente à Mov. Juntada -> Petição (10/03/2026 17:48:07))</td>
+						                   		<td width="100" align="center">01/06/2026 16:48:03</td>
+						                   		
+						                   		<td width="25%"> 	Andréa Pureza de Assis</td>
+						                   		<td class="colunaMinima">
+													<a href="javascript:buscarArquivosMovimentacaoJSON('613681786229290873707088300', 'BuscaProcesso', 'Id_MovimentacaoArquivo', 6, 'false')">
+															<img id='MostrarArquivos_481983715' src="imagens/22x22/go-bottom.png" alt="Mostrar ou ocultar arquivos" title="Mostrar ou ocultar arquivos" />
+														</a>
+													</td>
+			  									<td class="colunaMinima">	
+			  										<div class="btAcoes">	
+													<div class="dropMovimentacao" id_movi = '481983715' movi_tipo ='Penhora Parcialmente Realizada' codigo_temp ='2' ></div>
+													 </div>
+			  									</td>
+					    					
+										</tr>
+										<tr id="linha_613681786229290873707088300" carregado='não' style="display: none;">
+											<td colspan="6" id="pai_613681786229290873707088300" class="Linha"></td>
+										</tr>
+										
+									<tr movi_codigo ="395" class='filtro-entrada TabelaLinha2'>
+					                   			<td class="colunaMinima"> 33</td>
+					                    		<td class="filtro_coluna_movimentacao" width="55%">
+					                    			<span class="filtro_tipo_movimentacao">
+                                                        Documento Expedido</span><br />
+                                                    Sisbajud</td>
+						                   		<td width="100" align="center">17/04/2026 17:43:21</td>
+						                   		
+						                   		<td width="25%"> 	Andréa Pureza de Assis</td>
+						                   		<td class="colunaMinima">
+													<a href="javascript:buscarArquivosMovimentacaoJSON('613081776229290873772949101', 'BuscaProcesso', 'Id_MovimentacaoArquivo', 6, 'false')">
+															<img id='MostrarArquivos_470100312' src="imagens/22x22/go-bottom.png" alt="Mostrar ou ocultar arquivos" title="Mostrar ou ocultar arquivos" />
+														</a>
+													</td>
+			  									<td class="colunaMinima">	
+			  										<div class="btAcoes">	
+													<div class="dropMovimentacao" id_movi = '470100312' movi_tipo ='Documento Expedido' codigo_temp ='2' ></div>
+													 </div>
+			  									</td>
+					    					
+										</tr>
+										<tr id="linha_613081776229290873772949101" carregado='não' style="display: none;">
+											<td colspan="6" id="pai_613081776229290873772949101" class="Linha"></td>
+										</tr>
+										
+									<tr movi_codigo ="260" class='filtro-entrada TabelaLinha1'>
+					                   			<td class="colunaMinima"> 32</td>
+					                    		<td class="filtro_coluna_movimentacao" width="55%">
+					                    			<span class="filtro_tipo_movimentacao">
+                                                        Juntada -> Petição</span><br />
+                                                    </td>
+						                   		<td width="100" align="center">10/03/2026 17:48:07</td>
+						                   		
+						                   		<td width="25%"> 	ITAMAR ALEXANDRE FELIX VILLA REAL JUNIOR</td>
+						                   		<td class="colunaMinima">
+													<a href="javascript:buscarArquivosMovimentacaoJSON('613781766229290873788062003', 'BuscaProcesso', 'Id_MovimentacaoArquivo', 6, 'false')">
+															<img id='MostrarArquivos_459952411' src="imagens/22x22/go-bottom.png" alt="Mostrar ou ocultar arquivos" title="Mostrar ou ocultar arquivos" />
+														</a>
+													</td>
+			  									<td class="colunaMinima">	
+			  										<div class="btAcoes">	
+													<div class="dropMovimentacao" id_movi = '459952411' movi_tipo ='Juntada -> Petição' codigo_temp ='2' ></div>
+													 </div>
+			  									</td>
+					    					
+										</tr>
+										<tr id="linha_613781766229290873788062003" carregado='não' style="display: none;">
+											<td colspan="6" id="pai_613781766229290873788062003" class="Linha"></td>
+										</tr>
+										
+									<tr movi_codigo ="178" class='filtro-entrada TabelaLinha2'>
+					                   			<td class="colunaMinima"> 31</td>
+					                    		<td class="filtro_coluna_movimentacao" width="55%">
+					                    			<span class="filtro_tipo_movimentacao">
+                                                        Intimação Efetivada</span><br />
+                                                    Disponibilizada no primeiro e publicada no segundo dia útil (Lei 11.419/2006, art. 4º, §§ 3º e 4º) - Adv(s). de Clinica Ssma Ltda (Referente à Mov. Certidão Expedida (10/03/2026 16:40:28))</td>
+						                   		<td width="100" align="center">10/03/2026 17:25:58</td>
+						                   		
+						                   		<td width="25%"> 	SISTEMA CNJ</td>
+						                   		<td class="colunaMinima">
+													</td>
+			  									<td class="colunaMinima">	
+			  										<div class="btAcoes">	
+													<div class="dropMovimentacao" id_movi = '459938767' movi_tipo ='Intimação Efetivada' codigo_temp ='2' ></div>
+													 </div>
+			  									</td>
+					    					
+										</tr>
+										<tr id="linha_613181736229290873788033329" carregado='não' style="display: none;">
+											<td colspan="6" id="pai_613181736229290873788033329" class="Linha"></td>
+										</tr>
+										
+									<tr movi_codigo ="5" class='filtro-entrada TabelaLinha1'>
+					                   			<td class="colunaMinima"> 30</td>
+					                    		<td class="filtro_coluna_movimentacao" width="55%">
+					                    			<span class="filtro_tipo_movimentacao">
+                                                        Intimação Expedida</span><br />
+                                                    Aguardando processamento de envio para o DJEN - Adv(s). de CSL - Polo Ativo (Referente à Mov. Certidão Expedida (CNJ:60) - )</td>
+						                   		<td width="100" align="center">10/03/2026 16:40:28</td>
+						                   		
+						                   		<td width="25%"> 	MICHAELA ATHAYDE NEVES DE SENE</td>
+						                   		<td class="colunaMinima">
+													</td>
+			  									<td class="colunaMinima">	
+			  										<div class="btAcoes">	
+													<div class="dropMovimentacao" id_movi = '459906876' movi_tipo ='Intimação Expedida' codigo_temp ='2' ></div>
+													 </div>
+			  									</td>
+					    					
+										</tr>
+										<tr id="linha_613881706229290873788046665" carregado='não' style="display: none;">
+											<td colspan="6" id="pai_613881706229290873788046665" class="Linha"></td>
+										</tr>
+										
+									<tr movi_codigo ="222" class='filtro-entrada TabelaLinha2'>
+					                   			<td class="colunaMinima"> 29</td>
+					                    		<td class="filtro_coluna_movimentacao" width="55%">
+					                    			<span class="filtro_tipo_movimentacao">
+                                                        Certidão Expedida</span><br />
+                                                    Certidão - transcorrido prazo - apresentar planilha atualizada com multa 10%</td>
+						                   		<td width="100" align="center">10/03/2026 16:40:28</td>
+						                   		
+						                   		<td width="25%"> 	MICHAELA ATHAYDE NEVES DE SENE</td>
+						                   		<td class="colunaMinima">
+													<a href="javascript:buscarArquivosMovimentacaoJSON('613781766229290873788046660', 'BuscaProcesso', 'Id_MovimentacaoArquivo', 6, 'false')">
+															<img id='MostrarArquivos_459906875' src="imagens/22x22/go-bottom.png" alt="Mostrar ou ocultar arquivos" title="Mostrar ou ocultar arquivos" />
+														</a>
+													</td>
+			  									<td class="colunaMinima">	
+			  										<div class="btAcoes">	
+													<div class="dropMovimentacao" id_movi = '459906875' movi_tipo ='Certidão Expedida' codigo_temp ='2' ></div>
+													 </div>
+			  									</td>
+					    					
+										</tr>
+										<tr id="linha_613781766229290873788046660" carregado='não' style="display: none;">
+											<td colspan="6" id="pai_613781766229290873788046660" class="Linha"></td>
+										</tr>
+										
+									<tr movi_codigo ="383" class='filtro-entrada TabelaLinha1'>
+					                   			<td class="colunaMinima"> 28</td>
+					                    		<td class="filtro_coluna_movimentacao" width="55%">
+					                    			<span class="filtro_tipo_movimentacao">
+                                                        Decorrido Prazo</span><br />
+                                                    para Antonio Das Dores Mendes Da Silva em 09/03/2026 23:59:59 (Referente à Mov. Decisão -> Impugnação ao Cumprimento de Sentença -> Rejeição (19/02/2026 15:21:27))</td>
+						                   		<td width="100" align="center">10/03/2026 16:39:16</td>
+						                   		
+						                   		<td width="25%"> 	MICHAELA ATHAYDE NEVES DE SENE</td>
+						                   		<td class="colunaMinima">
+													</td>
+			  									<td class="colunaMinima">	
+			  										<div class="btAcoes">	
+													<div class="dropMovimentacao" id_movi = '459906178' movi_tipo ='Decorrido Prazo' codigo_temp ='2' ></div>
+													 </div>
+			  									</td>
+					    					
+										</tr>
+										<tr id="linha_613081796229290873788046762" carregado='não' style="display: none;">
+											<td colspan="6" id="pai_613081796229290873788046762" class="Linha"></td>
+										</tr>
+										
+									<tr movi_codigo ="383" class='filtro-entrada TabelaLinha2'>
+					                   			<td class="colunaMinima"> 27</td>
+					                    		<td class="filtro_coluna_movimentacao" width="55%">
+					                    			<span class="filtro_tipo_movimentacao">
+                                                        Decorrido Prazo</span><br />
+                                                    para Adms Construcoes E Empreendimentos Ltda em 09/03/2026 23:59:59 (Referente à Mov. Decisão -> Impugnação ao Cumprimento de Sentença -> Rejeição (19/02/2026 15:21:27))</td>
+						                   		<td width="100" align="center">10/03/2026 16:39:13</td>
+						                   		
+						                   		<td width="25%"> 	MICHAELA ATHAYDE NEVES DE SENE</td>
+						                   		<td class="colunaMinima">
+													</td>
+			  									<td class="colunaMinima">	
+			  										<div class="btAcoes">	
+													<div class="dropMovimentacao" id_movi = '459906154' movi_tipo ='Decorrido Prazo' codigo_temp ='2' ></div>
+													 </div>
+			  									</td>
+					    					
+										</tr>
+										<tr id="linha_613081746229290873788046776" carregado='não' style="display: none;">
+											<td colspan="6" id="pai_613081746229290873788046776" class="Linha"></td>
+										</tr>
+										
+									<tr movi_codigo ="383" class='filtro-entrada TabelaLinha1'>
+					                   			<td class="colunaMinima"> 26</td>
+					                    		<td class="filtro_coluna_movimentacao" width="55%">
+					                    			<span class="filtro_tipo_movimentacao">
+                                                        Decorrido Prazo</span><br />
+                                                    para Clinica Ssma Ltda em 09/03/2026 23:59:59 (Referente à Mov. Decisão -> Impugnação ao Cumprimento de Sentença -> Rejeição (19/02/2026 15:21:27))</td>
+						                   		<td width="100" align="center">10/03/2026 16:39:10</td>
+						                   		
+						                   		<td width="25%"> 	MICHAELA ATHAYDE NEVES DE SENE</td>
+						                   		<td class="colunaMinima">
+													</td>
+			  									<td class="colunaMinima">	
+			  										<div class="btAcoes">	
+													<div class="dropMovimentacao" id_movi = '459906132' movi_tipo ='Decorrido Prazo' codigo_temp ='2' ></div>
+													 </div>
+			  									</td>
+					    					
+										</tr>
+										<tr id="linha_613781766229290873788046741" carregado='não' style="display: none;">
+											<td colspan="6" id="pai_613781766229290873788046741" class="Linha"></td>
+										</tr>
+										
+									<tr movi_codigo ="178" class='filtro-entrada TabelaLinha2'>
+					                   			<td class="colunaMinima"> 25</td>
+					                    		<td class="filtro_coluna_movimentacao" width="55%">
+					                    			<span class="filtro_tipo_movimentacao">
+                                                        Intimação Efetivada</span><br />
+                                                    Disponibilizada no primeiro e publicada no segundo dia útil (Lei 11.419/2006, art. 4º, §§ 3º e 4º) - Adv(s). de Antonio Das Dores Mendes Da Silva (Referente à Mov. Decisão -> Impugnação ao Cumprimento de Sentença -> Rejeição (19/02/2026 15:21:27))</td>
+						                   		<td width="100" align="center">19/02/2026 15:45:48</td>
+						                   		
+						                   		<td width="25%"> 	SISTEMA CNJ</td>
+						                   		<td class="colunaMinima">
+													</td>
+			  									<td class="colunaMinima">	
+			  										<div class="btAcoes">	
+													<div class="dropMovimentacao" id_movi = '454462241' movi_tipo ='Intimação Efetivada' codigo_temp ='2' ></div>
+													 </div>
+			  									</td>
+					    					
+										</tr>
+										<tr id="linha_613381726229290873780212533" carregado='não' style="display: none;">
+											<td colspan="6" id="pai_613381726229290873780212533" class="Linha"></td>
+										</tr>
+										
+									<tr movi_codigo ="178" class='filtro-entrada TabelaLinha1'>
+					                   			<td class="colunaMinima"> 24</td>
+					                    		<td class="filtro_coluna_movimentacao" width="55%">
+					                    			<span class="filtro_tipo_movimentacao">
+                                                        Intimação Efetivada</span><br />
+                                                    Disponibilizada no primeiro e publicada no segundo dia útil (Lei 11.419/2006, art. 4º, §§ 3º e 4º) - Adv(s). de Adms Construcoes E Empreendimentos Ltda (Referente à Mov. Decisão -> Impugnação ao Cumprimento de Sentença -> Rejeição (19/02/2026 15:21:27))</td>
+						                   		<td width="100" align="center">19/02/2026 15:45:47</td>
+						                   		
+						                   		<td width="25%"> 	SISTEMA CNJ</td>
+						                   		<td class="colunaMinima">
+													</td>
+			  									<td class="colunaMinima">	
+			  										<div class="btAcoes">	
+													<div class="dropMovimentacao" id_movi = '454462239' movi_tipo ='Intimação Efetivada' codigo_temp ='2' ></div>
+													 </div>
+			  									</td>
+					    					
+										</tr>
+										<tr id="linha_613981756229290873780212544" carregado='não' style="display: none;">
+											<td colspan="6" id="pai_613981756229290873780212544" class="Linha"></td>
+										</tr>
+										
+									<tr movi_codigo ="178" class='filtro-entrada TabelaLinha2'>
+					                   			<td class="colunaMinima"> 23</td>
+					                    		<td class="filtro_coluna_movimentacao" width="55%">
+					                    			<span class="filtro_tipo_movimentacao">
+                                                        Intimação Efetivada</span><br />
+                                                    Disponibilizada no primeiro e publicada no segundo dia útil (Lei 11.419/2006, art. 4º, §§ 3º e 4º) - Adv(s). de Clinica Ssma Ltda (Referente à Mov. Decisão -> Impugnação ao Cumprimento de Sentença -> Rejeição (19/02/2026 15:21:27))</td>
+						                   		<td width="100" align="center">19/02/2026 15:45:47</td>
+						                   		
+						                   		<td width="25%"> 	SISTEMA CNJ</td>
+						                   		<td class="colunaMinima">
+													</td>
+			  									<td class="colunaMinima">	
+			  										<div class="btAcoes">	
+													<div class="dropMovimentacao" id_movi = '454462236' movi_tipo ='Intimação Efetivada' codigo_temp ='2' ></div>
+													 </div>
+			  									</td>
+					    					
+										</tr>
+										<tr id="linha_613781766229290873780212545" carregado='não' style="display: none;">
+											<td colspan="6" id="pai_613781766229290873780212545" class="Linha"></td>
+										</tr>
+										
+									<tr movi_codigo ="5" class='filtro-entrada TabelaLinha1'>
+					                   			<td class="colunaMinima"> 22</td>
+					                    		<td class="filtro_coluna_movimentacao" width="55%">
+					                    			<span class="filtro_tipo_movimentacao">
+                                                        Intimação Expedida</span><br />
+                                                    Aguardando processamento de envio para o DJEN - Adv(s). de Antonio Das Dores Mendes Da Silva (Referente à Mov. Decisão -> Impugnação ao Cumprimento de Sentença -> Rejeição (CNJ:14235) - )</td>
+						                   		<td width="100" align="center">19/02/2026 15:21:27</td>
+						                   		
+						                   		<td width="25%"> 	SILVIO JACINTO PEREIRA</td>
+						                   		<td class="colunaMinima">
+													</td>
+			  									<td class="colunaMinima">	
+			  										<div class="btAcoes">	
+													<div class="dropMovimentacao" id_movi = '454444020' movi_tipo ='Intimação Expedida' codigo_temp ='2' ></div>
+													 </div>
+			  									</td>
+					    					
+										</tr>
+										<tr id="linha_613381706229290873780227288" carregado='não' style="display: none;">
+											<td colspan="6" id="pai_613381706229290873780227288" class="Linha"></td>
+										</tr>
+										
+									<tr movi_codigo ="5" class='filtro-entrada TabelaLinha2'>
+					                   			<td class="colunaMinima"> 21</td>
+					                    		<td class="filtro_coluna_movimentacao" width="55%">
+					                    			<span class="filtro_tipo_movimentacao">
+                                                        Intimação Expedida</span><br />
+                                                    Aguardando processamento de envio para o DJEN - Adv(s). de ACEEL (Referente à Mov. Decisão -> Impugnação ao Cumprimento de Sentença -> Rejeição (CNJ:14235) - )</td>
+						                   		<td width="100" align="center">19/02/2026 15:21:27</td>
+						                   		
+						                   		<td width="25%"> 	SILVIO JACINTO PEREIRA</td>
+						                   		<td class="colunaMinima">
+													</td>
+			  									<td class="colunaMinima">	
+			  										<div class="btAcoes">	
+													<div class="dropMovimentacao" id_movi = '454444018' movi_tipo ='Intimação Expedida' codigo_temp ='2' ></div>
+													 </div>
+			  									</td>
+					    					
+										</tr>
+										<tr id="linha_613681706229290873780227202" carregado='não' style="display: none;">
+											<td colspan="6" id="pai_613681706229290873780227202" class="Linha"></td>
+										</tr>
+										
+									<tr movi_codigo ="5" class='filtro-entrada TabelaLinha1'>
+					                   			<td class="colunaMinima"> 20</td>
+					                    		<td class="filtro_coluna_movimentacao" width="55%">
+					                    			<span class="filtro_tipo_movimentacao">
+                                                        Intimação Expedida</span><br />
+                                                    Aguardando processamento de envio para o DJEN - Adv(s). de CSL (Referente à Mov. Decisão -> Impugnação ao Cumprimento de Sentença -> Rejeição (CNJ:14235) - )</td>
+						                   		<td width="100" align="center">19/02/2026 15:21:27</td>
+						                   		
+						                   		<td width="25%"> 	SILVIO JACINTO PEREIRA</td>
+						                   		<td class="colunaMinima">
+													</td>
+			  									<td class="colunaMinima">	
+			  										<div class="btAcoes">	
+													<div class="dropMovimentacao" id_movi = '454444017' movi_tipo ='Intimação Expedida' codigo_temp ='2' ></div>
+													 </div>
+			  									</td>
+					    					
+										</tr>
+										<tr id="linha_613381776229290873780227209" carregado='não' style="display: none;">
+											<td colspan="6" id="pai_613381776229290873780227209" class="Linha"></td>
+										</tr>
+										
+									<tr movi_codigo ="14235" class='filtro-entrada TabelaLinha2'>
+					                   			<td class="colunaMinima"> 19</td>
+					                    		<td class="filtro_coluna_movimentacao" width="55%">
+					                    			<span class="filtro_tipo_movimentacao">
+                                                        Decisão -> Impugnação ao Cumprimento de Sentença -> Rejeição</span><br />
+                                                    </td>
+						                   		<td width="100" align="center">19/02/2026 15:21:27</td>
+						                   		
+						                   		<td width="25%"> 	SILVIO JACINTO PEREIRA</td>
+						                   		<td class="colunaMinima">
+													<a href="javascript:buscarArquivosMovimentacaoJSON('613981746229290873780227206', 'BuscaProcesso', 'Id_MovimentacaoArquivo', 6, 'false')">
+															<img id='MostrarArquivos_454444014' src="imagens/22x22/go-bottom.png" alt="Mostrar ou ocultar arquivos" title="Mostrar ou ocultar arquivos" />
+														</a>
+													</td>
+			  									<td class="colunaMinima">	
+			  										<div class="btAcoes">	
+													<div class="dropMovimentacao" id_movi = '454444014' movi_tipo ='Decisão -> Impugnação ao Cumprimento de Sentença -> Rejeição' codigo_temp ='2' ></div>
+													 </div>
+			  									</td>
+					    					
+										</tr>
+										<tr id="linha_613981746229290873780227206" carregado='não' style="display: none;">
+											<td colspan="6" id="pai_613981746229290873780227206" class="Linha"></td>
+										</tr>
+										
+									<tr movi_codigo ="21" class='filtro-entrada TabelaLinha1'>
+					                   			<td class="colunaMinima"> 18</td>
+					                    		<td class="filtro_coluna_movimentacao" width="55%">
+					                    			<span class="filtro_tipo_movimentacao">
+                                                        Autos Conclusos</span><br />
+                                                    P/ DECISÃO</td>
+						                   		<td width="100" align="center">13/02/2026 18:43:35</td>
+						                   		
+						                   		<td width="25%"> 	MARIO DE SOUSA LÔBO JÚNIOR</td>
+						                   		<td class="colunaMinima">
+													</td>
+			  									<td class="colunaMinima">	
+			  										<div class="btAcoes">	
+													<div class="dropMovimentacao" id_movi = '453574890' movi_tipo ='Autos Conclusos' codigo_temp ='2' ></div>
+													 </div>
+			  									</td>
+					    					
+										</tr>
+										<tr id="linha_613981706229290873781657618" carregado='não' style="display: none;">
+											<td colspan="6" id="pai_613981706229290873781657618" class="Linha"></td>
+										</tr>
+										
+									<tr movi_codigo ="260" class='filtro-entrada TabelaLinha2'>
+					                   			<td class="colunaMinima"> 17</td>
+					                    		<td class="filtro_coluna_movimentacao" width="55%">
+					                    			<span class="filtro_tipo_movimentacao">
+                                                        Juntada -> Petição</span><br />
+                                                    MANIFESTAÇÃO PELA REJEIÇÃO DA IMPUGNAÇÃO DA DEVEDORA</td>
+						                   		<td width="100" align="center">11/02/2026 18:58:03</td>
+						                   		
+						                   		<td width="25%"> 	ITAMAR ALEXANDRE FELIX VILLA REAL JUNIOR</td>
+						                   		<td class="colunaMinima">
+													<a href="javascript:buscarArquivosMovimentacaoJSON('613581796229290873785564531', 'BuscaProcesso', 'Id_MovimentacaoArquivo', 6, 'false')">
+															<img id='MostrarArquivos_452751242' src="imagens/22x22/go-bottom.png" alt="Mostrar ou ocultar arquivos" title="Mostrar ou ocultar arquivos" />
+														</a>
+													</td>
+			  									<td class="colunaMinima">	
+			  										<div class="btAcoes">	
+													<div class="dropMovimentacao" id_movi = '452751242' movi_tipo ='Juntada -> Petição' codigo_temp ='2' ></div>
+													 </div>
+			  									</td>
+					    					
+										</tr>
+										<tr id="linha_613581796229290873785564531" carregado='não' style="display: none;">
+											<td colspan="6" id="pai_613581796229290873785564531" class="Linha"></td>
+										</tr>
+										
+									<tr movi_codigo ="178" class='filtro-entrada TabelaLinha1'>
+					                   			<td class="colunaMinima"> 16</td>
+					                    		<td class="filtro_coluna_movimentacao" width="55%">
+					                    			<span class="filtro_tipo_movimentacao">
+                                                        Intimação Efetivada</span><br />
+                                                    Disponibilizada no primeiro e publicada no segundo dia útil (Lei 11.419/2006, art. 4º, §§ 3º e 4º) - Adv(s). de Clinica Ssma Ltda (Referente à Mov. Juntada -> Petição -> Impugnação ao cumprimento de sentença (04/02/2026 14:02:25))</td>
+						                   		<td width="100" align="center">08/02/2026 17:30:16</td>
+						                   		
+						                   		<td width="25%"> 	SISTEMA CNJ</td>
+						                   		<td class="colunaMinima">
+													</td>
+			  									<td class="colunaMinima">	
+			  										<div class="btAcoes">	
+													<div class="dropMovimentacao" id_movi = '451573756' movi_tipo ='Intimação Efetivada' codigo_temp ='2' ></div>
+													 </div>
+			  									</td>
+					    					
+										</tr>
+										<tr id="linha_613081726229290873787658375" carregado='não' style="display: none;">
+											<td colspan="6" id="pai_613081726229290873787658375" class="Linha"></td>
+										</tr>
+										
+									<tr movi_codigo ="5" class='filtro-entrada TabelaLinha2'>
+					                   			<td class="colunaMinima"> 15</td>
+					                    		<td class="filtro_coluna_movimentacao" width="55%">
+					                    			<span class="filtro_tipo_movimentacao">
+                                                        Intimação Expedida</span><br />
+                                                    Aguardando processamento de envio para o DJEN - Adv(s). de CSL - Polo Ativo (Referente à Mov. Juntada -> Petição -> Impugnação ao cumprimento de sentença - 04/02/2026 14:02:25)</td>
+						                   		<td width="100" align="center">08/02/2026 17:29:55</td>
+						                   		
+						                   		<td width="25%"> 	MARIO DE SOUSA LÔBO JÚNIOR</td>
+						                   		<td class="colunaMinima">
+													</td>
+			  									<td class="colunaMinima">	
+			  										<div class="btAcoes">	
+													<div class="dropMovimentacao" id_movi = '451573700' movi_tipo ='Intimação Expedida' codigo_temp ='2' ></div>
+													 </div>
+			  									</td>
+					    					
+										</tr>
+										<tr id="linha_613081716229290873787658358" carregado='não' style="display: none;">
+											<td colspan="6" id="pai_613081716229290873787658358" class="Linha"></td>
+										</tr>
+										
+									<tr movi_codigo ="10014" class='filtro-entrada TabelaLinha1'>
+					                   			<td class="colunaMinima"> 14</td>
+					                    		<td class="filtro_coluna_movimentacao" width="55%">
+					                    			<span class="filtro_tipo_movimentacao">
+                                                        Juntada -> Petição -> Impugnação ao cumprimento de sentença</span><br />
+                                                    </td>
+						                   		<td width="100" align="center">04/02/2026 14:02:25</td>
+						                   		
+						                   		<td width="25%"> 	TIAGO DO CARMO OLIVEIRA</td>
+						                   		<td class="colunaMinima">
+													<a href="javascript:buscarArquivosMovimentacaoJSON('613281756229290873782286340', 'BuscaProcesso', 'Id_MovimentacaoArquivo', 6, 'false')">
+															<img id='MostrarArquivos_450486735' src="imagens/22x22/go-bottom.png" alt="Mostrar ou ocultar arquivos" title="Mostrar ou ocultar arquivos" />
+														</a>
+													</td>
+			  									<td class="colunaMinima">	
+			  										<div class="btAcoes">	
+													<div class="dropMovimentacao" id_movi = '450486735' movi_tipo ='Juntada -> Petição -> Impugnação ao cumprimento de sentença' codigo_temp ='2' ></div>
+													 </div>
+			  									</td>
+					    					
+										</tr>
+										<tr id="linha_613281756229290873782286340" carregado='não' style="display: none;">
+											<td colspan="6" id="pai_613281756229290873782286340" class="Linha"></td>
+										</tr>
+										
+									<tr movi_codigo ="222" class='filtro-entrada TabelaLinha2'>
+					                   			<td class="colunaMinima"> 13</td>
+					                    		<td class="filtro_coluna_movimentacao" width="55%">
+					                    			<span class="filtro_tipo_movimentacao">
+                                                        Certidão Expedida</span><br />
+                                                    CITAÇÃO ELETRONICA EFETIVADA. (ADMS CONSTRUCOES E EMPREENDIMENTOS - ANTONIO )</td>
+						                   		<td width="100" align="center">21/01/2026 17:14:39</td>
+						                   		
+						                   		<td width="25%"> 	LUIZ EDUARDO MAIA DE JESUS</td>
+						                   		<td class="colunaMinima">
+													<a href="javascript:buscarArquivosMovimentacaoJSON('613781776229290873749157911', 'BuscaProcesso', 'Id_MovimentacaoArquivo', 6, 'false')">
+															<img id='MostrarArquivos_446674692' src="imagens/22x22/go-bottom.png" alt="Mostrar ou ocultar arquivos" title="Mostrar ou ocultar arquivos" />
+														</a>
+													</td>
+			  									<td class="colunaMinima">	
+			  										<div class="btAcoes">	
+													<div class="dropMovimentacao" id_movi = '446674692' movi_tipo ='Certidão Expedida' codigo_temp ='2' ></div>
+													 </div>
+			  									</td>
+					    					
+										</tr>
+										<tr id="linha_613781776229290873749157911" carregado='não' style="display: none;">
+											<td colspan="6" id="pai_613781776229290873749157911" class="Linha"></td>
+										</tr>
+										
+									<tr movi_codigo ="222" class='filtro-entrada TabelaLinha1'>
+					                   			<td class="colunaMinima"> 12</td>
+					                    		<td class="filtro_coluna_movimentacao" width="55%">
+					                    			<span class="filtro_tipo_movimentacao">
+                                                        Certidão Expedida</span><br />
+                                                    ALTERAÇÃO: (VALOR CAUSA).</td>
+						                   		<td width="100" align="center">20/01/2026 13:47:54</td>
+						                   		
+						                   		<td width="25%"> 	LUIZ EDUARDO MAIA DE JESUS</td>
+						                   		<td class="colunaMinima">
+													<a href="javascript:buscarArquivosMovimentacaoJSON('613681726229290873749971193', 'BuscaProcesso', 'Id_MovimentacaoArquivo', 6, 'false')">
+															<img id='MostrarArquivos_446125381' src="imagens/22x22/go-bottom.png" alt="Mostrar ou ocultar arquivos" title="Mostrar ou ocultar arquivos" />
+														</a>
+													</td>
+			  									<td class="colunaMinima">	
+			  										<div class="btAcoes">	
+													<div class="dropMovimentacao" id_movi = '446125381' movi_tipo ='Certidão Expedida' codigo_temp ='2' ></div>
+													 </div>
+			  									</td>
+					    					
+										</tr>
+										<tr id="linha_613681726229290873749971193" carregado='não' style="display: none;">
+											<td colspan="6" id="pai_613681726229290873749971193" class="Linha"></td>
+										</tr>
+										
+									<tr movi_codigo ="7" class='filtro-entrada TabelaLinha2'>
+					                   			<td class="colunaMinima"> 11</td>
+					                    		<td class="filtro_coluna_movimentacao" width="55%">
+					                    			<span class="filtro_tipo_movimentacao">
+                                                        Término da Suspensão do Processo</span><br />
+                                                    </td>
+						                   		<td width="100" align="center">13/01/2026 15:24:32</td>
+						                   		
+						                   		<td width="25%"> 	MARIO DE SOUSA LÔBO JÚNIOR</td>
+						                   		<td class="colunaMinima">
+													</td>
+			  									<td class="colunaMinima">	
+			  										<div class="btAcoes">	
+													<div class="dropMovimentacao" id_movi = '444613100' movi_tipo ='Término da Suspensão do Processo' codigo_temp ='2' ></div>
+													 </div>
+			  									</td>
+					    					
+										</tr>
+										<tr id="linha_613081786229290873740198758" carregado='não' style="display: none;">
+											<td colspan="6" id="pai_613081786229290873740198758" class="Linha"></td>
+										</tr>
+										
+									<tr movi_codigo ="260" class='filtro-entrada TabelaLinha1'>
+					                   			<td class="colunaMinima"> 10</td>
+					                    		<td class="filtro_coluna_movimentacao" width="55%">
+					                    			<span class="filtro_tipo_movimentacao">
+                                                        Juntada -> Petição</span><br />
+                                                    </td>
+						                   		<td width="100" align="center">19/12/2025 18:03:39</td>
+						                   		
+						                   		<td width="25%"> 	ITAMAR ALEXANDRE FELIX VILLA REAL JUNIOR</td>
+						                   		<td class="colunaMinima">
+													<a href="javascript:buscarArquivosMovimentacaoJSON('613881706229290873745196559', 'BuscaProcesso', 'Id_MovimentacaoArquivo', 6, 'false')">
+															<img id='MostrarArquivos_442616207' src="imagens/22x22/go-bottom.png" alt="Mostrar ou ocultar arquivos" title="Mostrar ou ocultar arquivos" />
+														</a>
+													</td>
+			  									<td class="colunaMinima">	
+			  										<div class="btAcoes">	
+													<div class="dropMovimentacao" id_movi = '442616207' movi_tipo ='Juntada -> Petição' codigo_temp ='2' ></div>
+													 </div>
+			  									</td>
+					    					
+										</tr>
+										<tr id="linha_613881706229290873745196559" carregado='não' style="display: none;">
+											<td colspan="6" id="pai_613881706229290873745196559" class="Linha"></td>
+										</tr>
+										
+									<tr movi_codigo ="214" class='filtro-entrada TabelaLinha2'>
+					                   			<td class="colunaMinima"> 9</td>
+					                    		<td class="filtro_coluna_movimentacao" width="55%">
+					                    			<span class="filtro_tipo_movimentacao">
+                                                        Despacho -> Suspensão ou Sobrestamento</span><br />
+                                                    (Por dias)</td>
+						                   		<td width="100" align="center">15/12/2025 17:24:04</td>
+						                   		
+						                   		<td width="25%"> 	Andréa Pureza de Assis</td>
+						                   		<td class="colunaMinima">
+													</td>
+			  									<td class="colunaMinima">	
+			  										<div class="btAcoes">	
+													<div class="dropMovimentacao" id_movi = '441090658' movi_tipo ='Despacho -> Suspensão ou Sobrestamento' codigo_temp ='2' ></div>
+													 </div>
+			  									</td>
+					    					
+										</tr>
+										<tr id="linha_613281776229290873747409972" carregado='não' style="display: none;">
+											<td colspan="6" id="pai_613281776229290873747409972" class="Linha"></td>
+										</tr>
+										
+									<tr movi_codigo ="14739" class='filtro-entrada TabelaLinha1'>
+					                   			<td class="colunaMinima"> 8</td>
+					                    		<td class="filtro_coluna_movimentacao" width="55%">
+					                    			<span class="filtro_tipo_movimentacao">
+                                                        Evolução da Classe Processual</span><br />
+                                                    Houve uma mudança da classe "1402-PROCESSO CÍVEL E DO TRABALHO -> Processo de Conhecimento -> Procedimento de Conhecimento -> Procedimentos Especiais -> Procedimentos Especiais de Jurisdição Voluntária -> Homologação da Transação Extrajudicial" para a classe "112-PROCESSO CÍVEL E DO TRABALHO -> Processo de Conhecimento -> Procedimento de Cumprimento de Sentença/Decisão -> Cumprimento de sentença"</td>
+						                   		<td width="100" align="center">15/12/2025 17:23:17</td>
+						                   		
+						                   		<td width="25%"> 	Andréa Pureza de Assis</td>
+						                   		<td class="colunaMinima">
+													</td>
+			  									<td class="colunaMinima">	
+			  										<div class="btAcoes">	
+													<div class="dropMovimentacao" id_movi = '441090030' movi_tipo ='Evolução da Classe Processual' codigo_temp ='2' ></div>
+													 </div>
+			  									</td>
+					    					
+										</tr>
+										<tr id="linha_613581786229290873747409248" carregado='não' style="display: none;">
+											<td colspan="6" id="pai_613581786229290873747409248" class="Linha"></td>
+										</tr>
+										
+									<tr movi_codigo ="178" class='filtro-entrada TabelaLinha2'>
+					                   			<td class="colunaMinima"> 7</td>
+					                    		<td class="filtro_coluna_movimentacao" width="55%">
+					                    			<span class="filtro_tipo_movimentacao">
+                                                        Intimação Efetivada</span><br />
+                                                    Disponibilizada no primeiro e publicada no segundo dia útil (Lei 11.419/2006, art. 4º, §§ 3º e 4º) - Adv(s). de Clinica Ssma Ltda (Referente à Mov. Julgamento -> Com Resolução do Mérito -> Homologação de Transação (Acordo Homologado) (15/12/2025 06:47:00))</td>
+						                   		<td width="100" align="center">15/12/2025 06:50:14</td>
+						                   		
+						                   		<td width="25%"> 	SISTEMA CNJ</td>
+						                   		<td class="colunaMinima">
+													</td>
+			  									<td class="colunaMinima">	
+			  										<div class="btAcoes">	
+													<div class="dropMovimentacao" id_movi = '440816521' movi_tipo ='Intimação Efetivada' codigo_temp ='2' ></div>
+													 </div>
+			  									</td>
+					    					
+										</tr>
+										<tr id="linha_613181766229290873742896483" carregado='não' style="display: none;">
+											<td colspan="6" id="pai_613181766229290873742896483" class="Linha"></td>
+										</tr>
+										
+									<tr movi_codigo ="5" class='filtro-entrada TabelaLinha1'>
+					                   			<td class="colunaMinima"> 6</td>
+					                    		<td class="filtro_coluna_movimentacao" width="55%">
+					                    			<span class="filtro_tipo_movimentacao">
+                                                        Intimação Expedida</span><br />
+                                                    Aguardando processamento de envio para o DJEN - Adv(s). de CSL - Polo Ativo (Referente à Mov. Julgamento -> Com Resolução do Mérito -> Homologação de Transação (Acordo Homologado) (CNJ:466) - )</td>
+						                   		<td width="100" align="center">15/12/2025 06:47:00</td>
+						                   		
+						                   		<td width="25%"> 	SILVIO JACINTO PEREIRA</td>
+						                   		<td class="colunaMinima">
+													</td>
+			  									<td class="colunaMinima">	
+			  										<div class="btAcoes">	
+													<div class="dropMovimentacao" id_movi = '440816334' movi_tipo ='Intimação Expedida' codigo_temp ='2' ></div>
+													 </div>
+			  									</td>
+					    					
+										</tr>
+										<tr id="linha_613881736229290873742896146" carregado='não' style="display: none;">
+											<td colspan="6" id="pai_613881736229290873742896146" class="Linha"></td>
+										</tr>
+										
+									<tr movi_codigo ="19" class='filtro-entrada TabelaLinha2'>
+					                   			<td class="colunaMinima"> 5</td>
+					                    		<td class="filtro_coluna_movimentacao" width="55%">
+					                    			<span class="filtro_tipo_movimentacao">
+                                                        Julgamento -> Com Resolução do Mérito -> Homologação de Transação (Acordo Homologado)</span><br />
+                                                    </td>
+						                   		<td width="100" align="center">15/12/2025 06:47:00</td>
+						                   		
+						                   		<td width="25%"> 	SILVIO JACINTO PEREIRA</td>
+						                   		<td class="colunaMinima">
+													<a href="javascript:buscarArquivosMovimentacaoJSON('613681746229290873742896147', 'BuscaProcesso', 'Id_MovimentacaoArquivo', 6, 'false')">
+															<img id='MostrarArquivos_440816333' src="imagens/22x22/go-bottom.png" alt="Mostrar ou ocultar arquivos" title="Mostrar ou ocultar arquivos" />
+														</a>
+													</td>
+			  									<td class="colunaMinima">	
+			  										<div class="btAcoes">	
+													<div class="dropMovimentacao" id_movi = '440816333' movi_tipo ='Julgamento -> Com Resolução do Mérito -> Homologação de Transação (Acordo Homologado)' codigo_temp ='2' ></div>
+													 </div>
+			  									</td>
+					    					
+										</tr>
+										<tr id="linha_613681746229290873742896147" carregado='não' style="display: none;">
+											<td colspan="6" id="pai_613681746229290873742896147" class="Linha"></td>
+										</tr>
+										
+									<tr movi_codigo ="21" class='filtro-entrada TabelaLinha1'>
+					                   			<td class="colunaMinima"> 4</td>
+					                    		<td class="filtro_coluna_movimentacao" width="55%">
+					                    			<span class="filtro_tipo_movimentacao">
+                                                        Autos Conclusos</span><br />
+                                                    P/ SENTENÇA</td>
+						                   		<td width="100" align="center">12/12/2025 14:40:04</td>
+						                   		
+						                   		<td width="25%"> 	MICHAELA ATHAYDE NEVES DE SENE</td>
+						                   		<td class="colunaMinima">
+													</td>
+			  									<td class="colunaMinima">	
+			  										<div class="btAcoes">	
+													<div class="dropMovimentacao" id_movi = '440550788' movi_tipo ='Autos Conclusos' codigo_temp ='2' ></div>
+													 </div>
+			  									</td>
+					    					
+										</tr>
+										<tr id="linha_613081796229290873742669392" carregado='não' style="display: none;">
+											<td colspan="6" id="pai_613081796229290873742669392" class="Linha"></td>
+										</tr>
+										
+									<tr movi_codigo ="339" class='filtro-entrada TabelaLinha2'>
+					                   			<td class="colunaMinima"> 3</td>
+					                    		<td class="filtro_coluna_movimentacao" width="55%">
+					                    			<span class="filtro_tipo_movimentacao">
+                                                        Juntada de Documento</span><br />
+                                                    Informativo BERNA: A BERNA IA nao detectou, no sistema Projudi/PJD, outros processos envolvendo as mesmas partes.</td>
+						                   		<td width="100" align="center">12/12/2025 11:04:10</td>
+						                   		
+						                   		<td width="25%"> 	Sistema Berna</td>
+						                   		<td class="colunaMinima">
+													<a href="javascript:buscarArquivosMovimentacaoJSON('613681756229290873742269402', 'BuscaProcesso', 'Id_MovimentacaoArquivo', 6, 'false')">
+															<img id='MostrarArquivos_440450518' src="imagens/22x22/go-bottom.png" alt="Mostrar ou ocultar arquivos" title="Mostrar ou ocultar arquivos" />
+														</a>
+													</td>
+			  									<td class="colunaMinima">	
+			  										<div class="btAcoes">	
+													<div class="dropMovimentacao" id_movi = '440450518' movi_tipo ='Juntada de Documento' codigo_temp ='2' ></div>
+													 </div>
+			  									</td>
+					    					
+										</tr>
+										<tr id="linha_613681756229290873742269402" carregado='não' style="display: none;">
+											<td colspan="6" id="pai_613681756229290873742269402" class="Linha"></td>
+										</tr>
+										
+									<tr movi_codigo ="168" class='filtro-entrada TabelaLinha1'>
+					                   			<td class="colunaMinima"> 2</td>
+					                    		<td class="filtro_coluna_movimentacao" width="55%">
+					                    			<span class="filtro_tipo_movimentacao">
+                                                        Processo Distribuído</span><br />
+                                                    Anápolis - 2º Juizado Especial Cível (Normal) - Distribuído para: SILVIO JACINTO PEREIRA</td>
+						                   		<td width="100" align="center">12/12/2025 09:10:46</td>
+						                   		
+						                   		<td width="25%"> 	SISTEMA PROJUDI</td>
+						                   		<td class="colunaMinima">
+													</td>
+			  									<td class="colunaMinima">	
+			  										<div class="btAcoes">	
+													<div class="dropMovimentacao" id_movi = '440419128' movi_tipo ='Processo Distribuído' codigo_temp ='2' ></div>
+													 </div>
+			  									</td>
+					    					
+										</tr>
+										<tr id="linha_613581776229290873742295782" carregado='não' style="display: none;">
+											<td colspan="6" id="pai_613581776229290873742295782" class="Linha"></td>
+										</tr>
+										
+									<tr movi_codigo ="167" class='filtro-entrada TabelaLinha2'>
+					                   			<td class="colunaMinima"> 1</td>
+					                    		<td class="filtro_coluna_movimentacao" width="55%">
+					                    			<span class="filtro_tipo_movimentacao">
+                                                        Peticão Enviada</span><br />
+                                                    </td>
+						                   		<td width="100" align="center">12/12/2025 09:10:39</td>
+						                   		
+						                   		<td width="25%"> 	ITAMAR ALEXANDRE FELIX VILLA REAL JUNIOR</td>
+						                   		<td class="colunaMinima">
+													<a href="javascript:buscarArquivosMovimentacaoJSON('613481736229290873742295290', 'BuscaProcesso', 'Id_MovimentacaoArquivo', 6, 'false')">
+															<img id='MostrarArquivos_440419085' src="imagens/22x22/go-bottom.png" alt="Mostrar ou ocultar arquivos" title="Mostrar ou ocultar arquivos" />
+														</a>
+													</td>
+			  									<td class="colunaMinima">	
+			  										<div class="btAcoes">	
+													<div class="dropMovimentacao" id_movi = '440419085' movi_tipo ='Peticão Enviada' codigo_temp ='2' ></div>
+													 </div>
+			  									</td>
+					    					
+										</tr>
+										<tr id="linha_613481736229290873742295290" carregado='não' style="display: none;">
+											<td colspan="6" id="pai_613481736229290873742295290" class="Linha"></td>
+										</tr>
+										
+									</tbody>
+						    	</table>
+							</div>
+							<div id="IndiceProcesso">
+								<div id="dadosIndice" buscaDados="sim" class="dadosIndice"> </div>
+							</div>
+							<div id="DadosConciliacao" style="display: none;"></div>
+							
+							</div>
+				</div>
+								
+				<!--  Aqui Normal -->
+				<div id="dialog" style="display:none">&nbsp;</div>
+	
+<div id="busca_padrao" class="modalBusca">
+	<div id='modalBusca-content' class="modalBusca-content1 ___Movimentavel">
+		<div id='modalBusca-content-titulo' class="modalTitulo"><p id='modalTitulo'></p><span class="modal_close" onclick='fecharBuscaPadrao()'>&times;</span></div> 
+		<div class="modalBusca-content2">
+			<fieldset id="formLocalizar" > 
+				<legend id="legenda" ></legend>
+				<div class='float_label_form' id='busca_padrao_campos'></div>
+				<br />
+				<div class="Centralizado">
+					<input type="submit" id="busca_padraoLocalizar" name="busca_padraoLocalizar" value="Consultar" onclick="javascript:buscaDadosModal(_stTempRetorno, _paginaAtual, _numeroFiltros , '0', _tamanho, _id, _descricao, _colunasTabela, _fieldName,_filtro,_filtro2); return false;"/>
+				</div>
+			</fieldset>	
+			<div id='divTabelaBuscaPadrao' class="divTabela"></div>
+			<div id="PaginacaoBuscaPadrao" class="Paginacao"></div>
+		</div>
+	</div> 
+</div>
+
+<div id="infoPasso" style="display:none" class="modalBusca">
+	<div class="modalBusca-content1 ___Movimentavel">
+		<div class="modalTitulo"><p id='modalTitulo'></p><span class="modal_close" onclick='$("#infoPasso").hide();'>&times;</span></div> 
+		<div class="modalBusca-content2">
+			<div id="divInfoPasso" class="divEditar"> 
+				
+			</div>
+		</div>
+	</div> 
+</div>
+
+<div id="infoFoto" style="display:none" class="modalBusca">
+	<div class="modalBusca-content1 ___Movimentavel">
+		<div class="modalTitulo"><p id='modalTitulo'></p><span class="modal_close" onclick='$("#infoFoto").hide();'>&times;</span></div> 
+		<div class="modalBusca-content2">
+			<div id="divInfoPasso" class="divEditar Centralizado"> 
+				<img id='img_infoFoto'>
+			</div>
+		</div>
+	</div> 
+</div>
+
+<div id="infoFormulario" style="display:none" class="modalBusca">
+	<div class="modalBusca-content1 ___Movimentavel">
+		<div class="modalTitulo"><p id='modalTitulo'></p><span class="modal_close" onclick='$("#infoFormulario").hide();'>&times;</span></div> 
+		<div class="modalBusca-content2">
+			<div id="divinfoFormulario" class="divEditar Centralizado"> 				
+			</div>
+		</div>
+	</div> 
+</div>
+
+<div id="divPortaTabela" style="display:none" class="divPortaTabela ___Movimentavel">
+	<div class="divPortaTabelaTitulo"><p id='divPortaTabelaTitulo'></p><span class="modal_close" onclick='$("#divPortaTabela").hide();'>&times;</span></div>
+	<div class='tableview'> 
+		<div id="divPortaTabelaConteudo" class="Centralizado divPortaTabelaConteudo tableview-holder"> 
+		
+		</div>
+	</div>
+</div> 
+
+<input type="text" style="display:none">
+<input type="password" style="display:none">
+<div id='divLerSenha'  class='divFundoEscuro' style = "display:none">
+	<div id='divPortaSenha' class='divCentroTela' >
+		<h1>Digite a senha do certificado digital</h1>
+		<hr/>
+		<input type='password' name='senhaCertificado' id='senhaCertificado' autocomplete='off' ><br />
+		<div  style="text-align: left;">
+			<input type="checkbox" name='salvarSenhaCertificado' id='salvarSenhaCertificado' >Memorizar a senha do certificado
+		</div>
+		<hr/>
+		<div id="divBotoesCentralizadosAssinador" style="text-align: right; margin-top: 8px;">
+			<button id='but_senhaDigita' type="button">
+				Assinar
+	 		</button>
+	 		<button id='but_cancelar' type="button" onclick="javascript:$('#divLerSenha').hide(); $('#senhaCertificado').val(''); return false;">
+				Cancelar
+	 		</button>
+	 	</div>		
+	</div>
+</div>
+ 
+<script type="text/javascript" src="./js/fonte_contraste.js"></script>    
+<script type="text/javascript" >
+  
+	var _stTempRetorno;
+	var _boMostrarExcluir;
+	var _paginaAtual;
+	var _nomeBusca;
+	var _tamanhoRetornoConsulta;	
+	var _numeroFiltros;
+	var _tamanho;
+	var _id;
+	var _descricao;
+	var _colunasTabela;
+	var _fieldName;
+	var _filtro;
+	var _filtro2;
+	
+	var mousePosition;
+	var offset = [0,0];	
+	var isDown = false;
+	
+		
+	function acionarBotao(event,id_botao){
+		if (event.keyCode==13){
+			$("#" + id_botao ).trigger('click');
+		}
+	}
+
+	function fecharBuscaPadrao() {
+		$("#busca_padrao").hide();
+		$("#busca_padrao_campos").html('');
+	}
+	
+	function MostrarBuscaPadrao(field, ct, titulo, legenda, id, descricao, campos, colunasTabela, paginaAtual, tamanhoConsulta, filtro, filtro2, params){
+
+		_paginaAtual = paginaAtual;
+		_numeroFiltros = campos.length;
+		_tamanho = tamanhoConsulta;
+		_stTempRetorno = ct;
+		_descricao = descricao;
+		_colunasTabela=colunasTabela;
+		_filtro=$("#" + field + " #"+ filtro).val();
+		_filtro2=$("#" + field + " #"+ filtro2).val();
+
+        _filtro = ['null', 'undefined', '', null, undefined].includes(_filtro) ? '' : _filtro;
+        _filtro2 = ['null', 'undefined', '', null, undefined].includes(_filtro2) ? '' : _filtro2;
+
+		$("#modalTitulo").html(titulo) ;
+		$("#legenda").html(legenda);		
+		
+		var descricaoCabecalho = _descricao;
+		var st_campos ="";
+		var stTabela = "";		
+
+		if (params) {
+			if (params['cabecalhoDescricao']) {
+				descricaoCabecalho = params['cabecalhoDescricao'];
+			}
+		}
+		
+		for (var i = 0; i < campos.length; i++) {
+			st_campos += '<div class="col90 float_label">';			
+			st_campos += '<input id="nomeBusca'+(i+1)+'" class="float_label_input" onkeypress="acionarBotao(event,\'busca_padraoLocalizar\');" placeholder="'+campos[i]+'" name="nomeBusca'+(i+1)+'" value="" type="text">';
+			st_campos += '<label for="nomeBusca'+(i+1)+'">'+campos[i]+'</label>'; 
+			st_campos += '</div>';
+		}
+		
+		if (_id!=id || field!=_fieldName){
+			_id = id;
+			_fieldName= field;
+			stTabela += '	<table id="tabelaLocalizar" class="Tabela">';
+			stTabela += '		<thead>';
+			stTabela += '			<tr>';
+			stTabela += '				<th align="Center" style="width: 50px;"></th>';
+			if (descricaoCabecalho === 'FontePagadora') {
+				stTabela += '				<th align="Center" style="width: 120px;">CNPJ</th>';
+				stTabela += '				<th align="left">Fonte Pagadora</th>';
+			} else {
+				stTabela += '				<th align="Center" style="width: 120px;">Id</th>';
+				stTabela += '				<th align="left">'+descricaoCabecalho+'</th>';
+			}
+			for (var i = 0; i < colunasTabela.length; i++) {
+				stTabela += '			<th align="left">'+ colunasTabela[i] +'</th>';
+			}
+			//stTabela += '				<th class="colunaMinima" title="Seleciona o registro para edição">Selecionar</th>';	
+			stTabela += '			</tr>';
+			stTabela += '		</thead>';
+			stTabela += '		<tbody id="CorpoTabela">&nbsp;</tbody>';
+			stTabela += '	</table>';	  		
+			$("#divTabelaBuscaPadrao").html(stTabela) ;
+			$("#PaginacaoBuscaPadrao").html("") ;
+		}
+		
+		$("#busca_padrao_campos").html(st_campos) ;
+		$("#busca_padrao").show();
+		/*$("#busca_padrao").css({'visibility':'visible','opacity':'1'});*/
+		//var doc = document.documentElement.clientHeight ? document.documentElement : document.body;
+// 		var posicao   = ((this.height() - $("#modalBusca-content1").outerHeight()) / 2) + "px";
+// 		alert(posicao);
+// 		alert(this.top + " " + this.left);
+		
+		//posição do objeto na tela
+// 		event = event || window.event;
+// 		var source = event.target || event.srcElement;
+		 				
+// 		var topRelativo = (($(document).height() - $("#modalBusca-content").height() )/2) - ($("#modalBusca-content").height() /3);
+		
+// 		//$("#modalBusca-content").css({'top':topRelativo});
+// 		var posicaoY = source.y || source.offsetTop; 														
+// 		//var posicaoX = source.x || source.offsetLeft;
+		
+//  		if(posicaoY>120){
+//  			$("#modalBusca-content").css({'top':posicaoY-100}); 			
+//  		}else{
+//  			$("#modalBusca-content").css({'top':posicaoY});
+//  		}
+		//var leftRelativo = ($(document).width() - $("#modalBusca-content").width() )/2;
+		
+		//$("#modalBusca-content").css({'left':leftRelativo});
+		
+	}
+		
+	
+	//window.toggleContrast=function(){Contrast.toogle()};
+	
+	window.addEventListener("keydown", function(event ){parent.postMessage({'origem':'corpo','comando':'keydown','key':event.key,'keycode':event.keyCode}); });
+	window.addEventListener("keyup", function(event ){parent.postMessage({'origem':'corpo','comando':'keyup','key':event.key,'keycode':event.keyCode}); });
+		
+	//guardo aqui as teclas apertadas e não soltadas
+	var mapTeclas = new Map();
+	
+	function teclaApertada ( codigo){
+		mapTeclas.set(codigo, true);
+		//console.log(codigo + '  1');
+		//ativar menu quando apertar ctrl+alt+m
+		// ctrl =17    alt = 18    m = 77  shift = 16 173 = menos  61 = mais 67 = c  89 = y
+		if(mapTeclas.get(17) && mapTeclas.get(18) && mapTeclas.get(77) ){
+			
+			//console.log($('#menu > #0'));
+			$('#0').show();
+			$('#0').focus();
+		}else if(mapTeclas.get(17) && mapTeclas.get(18) && mapTeclas.get(173) ){
+			$("#FonteDiminuir").trigger('click');
+			//fonte('d');
+		}else if(mapTeclas.get(17) && mapTeclas.get(18) && mapTeclas.get(61) ){
+			$("#FonteAumentar").trigger('click');
+			//fonte('a');
+		}else if(mapTeclas.get(17) && mapTeclas.get(18) && mapTeclas.get(89) ){
+			$("#ContrasteAlterar").trigger('click');
+			//window.toggle();
+		}
+	}
+	
+	function teclaLiberada (codigo){
+		//mapTeclas.clear();
+		mapTeclas.delete(codigo);
+	}
+	
+	var eventMethod = window.addEventListener ? "addEventListener" : "attachEvent";
+	var eventer = window[eventMethod];
+	var messageEvent = eventMethod == "attachEvent" ? "onmessage" : "message";
+	
+	// Listen to message from child window
+	eventer(messageEvent,function(event) {
+		 if (!event.origin.includes( "localhost:8080") && !event.origin.includes("projudi.tjgo.jus.br") && !event.origin.includes("projudi-teste.tjgo.jus.br") ){
+			  return;
+		  }
+		  
+		  var origem = event.data.origem;
+		  if(origem=='corpo'){				
+				if(event.data.comando){
+					//console.log("header " + event.data.comando + " " + event.data.key + " " +  event.data.keycode  );										
+				    									    
+					if ( event.data.comando=="keydown"){						
+						teclaApertada(event.data.keycode);
+					}else if (event.data.comando=="keyup"){
+						teclaLiberada(event.data.keycode);
+					}					
+				}
+		  }else if(origem=='menu'){
+			 //var stComando = ; 
+			 //alert(stComando);
+			 
+			 //alert(window[toogle];
+			  var comando = window[event.data.comando];
+			  //alert(comando);
+			  if(comando){
+			  	//console.log("body " + event.data.comando);
+			    comando();
+			   	//window.Contrast[event.data.comando]();
+			  }
+		  }				  
+	});	
+  
+	function infoPasso( id_form, id, titulo){
+		var campos = $('table#tb_'+id_form+ ' tr#tr_'+ id ).attr("campos");
+		var obJson = JSON.parse(campos);
+		//console.log(campos);
+		var ids = Object.keys(obJson);
+		var valores = Object.values(obJson);
+		var stFormulario ='<fieldset class="formEdicao">'
+		stFormulario+='<legend class="formEdicaoLegenda">'+titulo+'</legend>';
+		for(var i=0; i<ids.length;i++){
+			if (Array.isArray(valores[i])){
+				var stValor = JSON.stringify(valores[i]);
+				stFormulario+='<div class="col100"><label class="formEdicaoLabel">' + ids[i] + '</label> <Text rows="6" cols="150" class="formEdicaoInputSomenteLeitura" readonly="true">' + stValor + '</Text></div>';
+			}else{
+				var tamanhoColuna= 15;
+				var qtdCaracteresColl = ids[i].length;
+				if (valores[i].length>ids[i].length){
+					qtdCaracteresColl= valores[i].length;
+				}
+				if( qtdCaracteresColl<=10){									tamanhoColuna = 10;}
+				else if( qtdCaracteresColl>10 && qtdCaracteresColl<=20){	tamanhoColuna = 15; }
+				else if( qtdCaracteresColl>20 && qtdCaracteresColl<=30){	tamanhoColuna = 20; }
+				else if( qtdCaracteresColl>30 && qtdCaracteresColl<=40){	tamanhoColuna = 25; }
+				else if( qtdCaracteresColl>40 && qtdCaracteresColl<=50){	tamanhoColuna = 30; }
+				else if( qtdCaracteresColl>50 && qtdCaracteresColl<=60){	tamanhoColuna = 35; }
+				else if( qtdCaracteresColl>60 && qtdCaracteresColl<=70){	tamanhoColuna = 40; }
+				else if( qtdCaracteresColl>70 && qtdCaracteresColl<=80){	tamanhoColuna = 45; }
+				else if( qtdCaracteresColl>80 && qtdCaracteresColl<=90){	tamanhoColuna = 50 }
+				else if( qtdCaracteresColl>90 && qtdCaracteresColl<=100){	tamanhoColuna = 55; }
+				else if( qtdCaracteresColl>100 && qtdCaracteresColl<=110){	tamanhoColuna = 60; }
+				else if( qtdCaracteresColl>110 && qtdCaracteresColl<=120){	tamanhoColuna = 65; }
+				else if( qtdCaracteresColl>120 && qtdCaracteresColl<=130){	tamanhoColuna = 70; }
+				else if( qtdCaracteresColl>130 && qtdCaracteresColl<=140){	tamanhoColuna = 75; }
+				else if( qtdCaracteresColl>140 && qtdCaracteresColl<=150){	tamanhoColuna = 80; }
+				else if( qtdCaracteresColl>150 && qtdCaracteresColl<=160){	tamanhoColuna = 85; }
+				else if( qtdCaracteresColl>160 && qtdCaracteresColl<=170){	tamanhoColuna = 90; }
+				else if( qtdCaracteresColl>170){							tamanhoColuna = 100; }
+				
+				stFormulario+='<div class="col' + tamanhoColuna + '"><label>' + ids[i] + '</label> <input class="formEdicaoInputSomenteLeitura" type="text" readonly="true" size="' + valores[i].length + '" value="' + valores[i] + '"/></div>';
+			}
+		}
+		$('div#divInfoPasso').html(stFormulario);
+		$("#infoPasso").show();
+	}
+	function infoFoto(id){		
+		$('img#img_infoFoto').attr('src', $('img#foto'+id).attr('src'));
+		$("#infoFoto").show();
+	}
+	
+	$(document).ready(function() {
+		
+		var mensagemErro = '';		 
+		var mensagemOk = '';
+		var titulo ='Processo Judicial';						
+		var availableTags;
+		
+// 		$( function() {
+// 		   $( ".___Movimentavel" ).draggable();
+// 		});
+		  
+		if (((mensagemErro!='') && (mensagemErro!='null')) || ((mensagemOk!='') && (mensagemOk!='null'))){
+			
+			if ((mensagemErro!='') && (mensagemErro!='null')) {
+				//titulo+=" Erro";
+				mostrarMensagemErro(titulo, mensagemErro);												
+			}else{
+				//titulo+=" Ok";					
+				mostrarMensagemOk(titulo, mensagemOk);
+			}
+			
+			$('#divCorpo').focus();	
+						
+			$('html, body',window.parent.document).animate({scrollTop:0}, 'slow');
+		}
+		
+		
+		
+		window.Contrast.check();
+		
+    }); 
+</script>
+
+	</form>			
+		</div>
+		
+	</body>
+</html>

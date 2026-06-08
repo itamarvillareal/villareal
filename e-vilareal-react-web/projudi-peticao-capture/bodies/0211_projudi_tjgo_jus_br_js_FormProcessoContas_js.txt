@@ -1,0 +1,42 @@
+function mostrarContasBancarias(id_proc, procNumero){
+  MostrarOcultar("sub_contas");
+  if($('#sub_contas').is(":visible")){
+    $('#sub_contas').html(gerarHtmlContas(id_proc, procNumero));
+    Ocultar("id_mostrar_contas_bancarias");
+    atualizarTabelaProcContaBancaria('ProcessoContaBancaria','sub_contas','Info Processos Contas',undefined,undefined,undefined,finalizadoConta);
+  }
+}
+
+function gerarHtmlContas(id_proc, procNumero){ 				  		
+	var stHtml ="<fieldset class='VisualizaDados' ><legend>Contas do Processo</legend>";
+	stHtml +="	<input type='hidden' id='sub_contas_Id_Proc' name='sub_contas_Id_Proc' value='"+id_proc+"' />";
+																										
+	stHtml +="	<blockquote class='col100'>";
+	stHtml +="		<table  id='tb_sub_contas' class='Tabela' >";
+	stHtml +="		    <thead>";
+	stHtml +="			<tr>";
+	stHtml +="		      	<th class='colunaMinima' >Id</th>";
+	stHtml +="		        <th width='60px' >Banco</th>";
+	stHtml +="		        <th width='30px' >Ag&ecirc;ncia</th>";
+	stHtml +="		        <th width='30px' >Conta</th>";
+	stHtml +="		        <th width='30px' >D&iacute;gito</th>";	
+	stHtml +="		        <th width='30px' >Dt.Abertura</th>";
+	stHtml +="		        <th width='30px' >Saldo</th>";
+	stHtml +="		        <th width='30px' >Dt.Consulta</th>";
+	stHtml +="		        <th class='colunaMinima'>info</th>";
+/*	stHtml +="	        	<th class='colunaMinima'>Editar</th>";*/
+/*	stHtml +="		        <th class='colunaMinima'>Excluir</th>"; */
+	stHtml +="		      </tr>";
+	stHtml +="		    </thead>";
+	stHtml +="		    <tbody>";
+	stHtml +="		    </tbody>";
+	stHtml +="		 </table>";
+	stHtml +="	</blockquote>";		
+	stHtml +=" </fieldset>";
+	
+	return stHtml;																		
+}
+
+function finalizadoConta() {
+	Mostrar("id_mostrar_contas_bancarias");
+}

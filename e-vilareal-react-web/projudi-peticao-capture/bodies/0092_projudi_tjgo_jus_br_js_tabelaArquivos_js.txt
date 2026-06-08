@@ -1,0 +1,221 @@
+/**
+ *  Javascript para manipulacao de tabelas de arquivos do projudi
+ * @author Ronneesley Moura Teles
+ * @since 23/09/2008 10:15
+ * Dependencias: jquery.js, conflitos.js e tabela.js
+ */
+var TabelaArquivos = function(id, pai, link, campo, pa, editavel, resposta, possivelMarcar, possivelBloquear, possivelCopiar){
+	if (editavel == null) editavel = false;
+
+	this.editavel = editavel;
+	this.id = id;
+	this.pai = pai;
+	this.link = link;
+	this.campo = campo;
+	this.paginaAtual = pa;
+	this.resposta = resposta;
+	this.possivelMarcar = possivelMarcar;
+	this.possivelBloquear = possivelBloquear;
+	this.possivelCopiar = possivelCopiar;
+};
+ 
+TabelaArquivos.prototype = {
+ 	/**
+ 	 * Id da tabela de arquivos
+ 	 */
+ 	id: null,
+ 	
+ 	/**
+ 	 * Objeto pai 
+ 	 */
+ 	pai: null,
+ 
+ 	/**
+ 	 * Tabela dos arquivos
+ 	 */
+	tabela: null,
+	
+	/**
+	 * Link para o arquivo a fazer upload
+	 */
+	link: null,
+	
+	/**
+	 * Pagina atual
+	 */
+	paginaAtual: null,
+	
+	/**
+	 * Campo
+	 */
+	campo: null,
+	
+	/**
+	 * 	Determina se nos casos de arquivos nao assinados
+	 * Aparecera a opcao de edicao do arquivo
+	 */
+	editavel: false,
+	
+	/**
+	 * Se o arquivo e uma resposta
+	 */
+	resposta: false,
+	
+	/**
+	 * Se e possivel marcar em um check box o arquivo
+	 */
+	possivelMarcar: false,
+
+	/**
+	 * Se ? poss?vel bloquear um arquivo
+	 */
+	possivelBloquear: false,
+	 
+	 /**
+	 * Se ? poss?vel copiar um arquivo
+	 */
+	possivelBloquear: false,
+
+	/**
+	 * Adicionar uma lista de arquivos na tabela
+	 * @author Ronneesley Moura Teles
+	 * @since 24/09/2008 10:29
+	 * @param Array() lista, lista de objetos para serem dicionados
+	 */
+	adicionar: function(lista){
+		var display = $('.imgValidar').css("display");
+	 	//Percorre todos elementos da lista
+	 	for (var i = 0; i < lista.length; i++){
+	 	 	var obj = lista[i]; //Objeto do laco
+	 	 	
+	 	 	var hash = "";
+			
+			if (obj.hash != null) hash = obj.hash;
+	 	 	
+	 	 	var linha = [];
+	 	 	
+	 	 	if (this.possivelMarcar) {
+	 	 		linha.push("<input type=\"checkbox\" name=\"arquivos[]\" value=\"" + obj.arquivoDt.id + "\" />");
+	 	 	}
+	 	 	
+ 	 		linha.push(obj.valido == true?obj.arquivoDt.arquivoTipo:"ARQUIVO BLOQUEADO");
+			linha.push(obj.arquivoDt.usuarioAssinadorFormatado == ""?"ARQUIVO N&Atilde;O ASSINADO":obj.arquivoDt.usuarioAssinadorFormatado);
+			  				
+			//Verifica se ira aparecera a resposta
+			if (this.resposta == true){
+				linha.push(obj.resposta == "true"?"Sim":"N?o");
+			}
+
+			//Quando um arquivo estiver v?lido mostra links 
+			//texto do title conforme ata de reuniao CGJ sobre provimento 10/2013 
+			if (obj.valido == true){
+				linha.push("<a target='_blank' title=\"Documento sem valor jurï¿½dico, pois nï¿½o possui cï¿½digo nos termos do provimento 10/2013 da CGJ\"  href=\"" + this.link + "?PaginaAtual=" + this.paginaAtual + "&" + this.campo + "=" + obj.id + "&hash=" + obj.hash + "\">" + 
+								(obj.arquivoDt.nomeArquivoFormatado == ""?"Arquivo sem nome":obj.arquivoDt.nomeArquivoFormatado) + "</a>");
+				
+				if (obj.arquivoDt.recibo == true) {
+					linha.push("<div title=\"Documento com selo eletrï¿½nico\" align=\"center\"><a target='_blank' href=\"" + this.link + "?PaginaAtual=" + this.paginaAtual + "&" + this.campo + "=" + obj.id + "&hash=" + obj.hash + "&CodigoVerificacao=true\"><img src=\"imagens/22x22/btn_pdf.png\"/></a></div>");
+//					linha.push("<div align=\"center\"><a href=\"" + this.link + "?PaginaAtual=" + this.paginaAtual + "&" + this.campo + "=" + obj.id + "&hash=" + obj.hash + "\"><img src=\"imagens/22x22/btn_pdf.png\"/></a></div>");
+					//linha[linha.length - 1] = linha[linha.length - 1] + "&nbsp;&nbsp;<a href=\"" + this.link + "?PaginaAtual=" + this.paginaAtual + "&" + this.campo + "=" + obj.id + "&hash=" + obj.hash + "&recibo=true\">Recibo</a>";
+					linha.push("<div align=\"center\"><a target='_blank' href=\"" + this.link + "?PaginaAtual=" + this.paginaAtual + "&" + this.campo + "=" + obj.id + "&hash=" + obj.hash + "&recibo=true\">Recibo</a></div>");
+				} else {
+					linha.push("<div align=\"center\">---</div>");
+				}			
+			} else {
+				//linha.push("<span class='bloqueado' title='Arquivo Bloqueado'>" + (obj.arquivoDt.nomeArquivoFormatado == ""?"Arquivo sem nome":obj.arquivoDt.nomeArquivoFormatado) + "</span>");
+				linha.push("<span class='bloqueado' title='Arquivo Bloqueado'>arquivoBloqueado</span>");
+			}
+								
+			//Se for editavel, aparece a opcao de editar
+			if (this.editavel == true){
+				if (obj.arquivoDt.usuarioAssinadorFormatado == ""){
+					if (obj.arquivoDt.codigoTemp != null && obj.arquivoDt.codigoTemp != "")
+						linha.push("<a href='#' onclick=\"editarPendencia(" + obj.id + ", \'" + hash + "\' , "+ obj.arquivoDt.id_ArquivoTipo + ", \'" + obj.arquivoDt.arquivoTipo + "\', \'" + obj.arquivoDt.codigoTemp + "\')\"><img src='imagens/22x22/ico_editar.png' alt='Editar' title='Editar o arquivo n?o assinado' />Editar</a>");
+					else				
+						linha.push("<a href='#' onclick=\"editarPendencia(" + obj.id + ", \'" + hash + "\' , "+ obj.arquivoDt.id_ArquivoTipo + ", \'" + obj.arquivoDt.arquivoTipo + "\', \'" + obj.arquivoDt.nomeArquivo + "\')\"><img src='imagens/22x22/ico_editar.png' alt='Editar' title='Editar o arquivo n?o assinado' />Editar</a>");
+				
+				} else {
+					linha.push("");
+				}
+			}
+			
+			//Se ? poss?vel copiar
+			if (this.possivelCopiar == true){
+				if (obj.valido){
+					linha.push("<img id='imgCopiar' class='imgCopiar' src='imagens/22x22/ico_solucionar.png' alt='Copiar Arquivo para Area de Transfer?ncia' title='Copiar Arquivo para Area de Transfer?ncia' " +
+					" onclick=\"javascript: incluirMovimentacaoArquivoAreaTransferencia('" + obj.id + "','" + obj.arquivoDt.nomeArquivoFormatado + "','" + hash + "');\" />");
+					linha.push("<img id='imgLimpar' class='imgLimpar' src='imagens/22x22/edit-clear.png' alt='Limpar Arquivos da Area de Transfer?ncia' title='Limpar Arquivos da Area de Transfer?ncia' " +
+							" onclick=\"javascript: limparArquivosAreaTransferencia();\" />");
+				} else {
+					linha.push("");
+					linha.push("");
+				}
+			}
+
+			//S? deve mostrar bot?es para validar ou invalidar arquivo se usu?rio tem permiss?o para bloquear
+			if (this.possivelBloquear == true){
+				if (obj.valido){
+					linha.push("<img id='imgValidar' class='imgValidar' src='imagens/22x22/ico_liberar.png' alt='Bloquear Arquivo' title='Bloquear Arquivo' " +
+					" onclick=\"javascript: invalidarArquivo('" + obj.id + "','" + obj.arquivoDt.nomeArquivoFormatado + "')\" />");
+				} else {
+					linha.push("<img id='imgValidar' class='imgValidar' src='imagens/22x22/ico_fechar.png' alt='Desbloquear Arquivo' title='Desbloquear Arquivo' " +
+					" onclick=\"javascript: validarArquivo('" + obj.id + "','" + obj.arquivoDt.nomeArquivoFormatado + "')\" />");
+				}
+			}		
+			
+			
+	 	 	this.tabela.addLinha( linha );
+	 	 	$('.imgValidar').css('display',display);
+		}	
+	},
+	
+	/**
+	 * Criar a tabela de arquivos
+	 * @author Ronneesley Moura Teles
+	 * @since 24/09/2008 09:11
+	 * @param Array() lista, lista de objetos caso queira adicionar no final
+	 */
+	criar: function(lista){
+	 	var fieldset = document.createElement("fieldset");
+	 	//var legend = document.createElement("legend");	 	
+	 	//$j(legend).html("Arquivos");	 	
+	 	//$j(fieldset).append(legend);
+		$(fieldset).attr("id", this.id);
+	 	$("#" + this.pai).append(fieldset);
+
+		var cabecalho = [];
+		
+		if (this.possivelMarcar){
+			cabecalho.push("Op.");
+		}
+		cabecalho.push("Tipo Arquivo");
+		cabecalho.push("Assinador");
+		
+		//Se e para aparecer a coluna resposta
+		if (this.resposta == true){
+			cabecalho.push("Resposta");
+		}
+		
+		cabecalho.push("Visualiza&ccedil;&atilde;o");
+		cabecalho.push("Impress&atilde;o");
+		cabecalho.push("Recibo");
+		
+		//Se e editavel, aparece a coluna de opcoes
+		if (this.editavel == true){
+			cabecalho.push("Op&ccedil;&otilde;es");
+		}
+		
+		//Se ? poss?vel copiar
+		if (this.possivelCopiar == true){
+			cabecalho.push("Copiar");
+			cabecalho.push("Limpar");
+		}
+
+		this.tabela = new Tabela(this.id + "_tabela", cabecalho, this.id, "Arquivos");	 
+		this.tabela.criar();
+		
+		//Verifica se passou a lista, caso tenha, adiciona os itens
+		if (lista != null)
+			this.adicionar(lista);
+	}	
+
+}

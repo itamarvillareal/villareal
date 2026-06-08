@@ -1,0 +1,1531 @@
+<!DOCTYPE html>
+
+<html>
+	<head>	
+		<title>Peticionar</title>
+		
+    	<meta content="text/html; charset=LATIN1" http-equiv="CONTENT-TYPE">
+		<style type="text/css">
+			@import url("./css/Principal.css?v=20231017");			
+		</style>      	
+      	<script type='text/javascript' src='./js/Funcoes.js'></script>
+      	<script type='text/javascript' src='./js/jquery.js'></script>
+   		<script type='text/javascript' src='./js/ui/jquery-ui.min.js'></script>   
+      	<script type='text/javascript' src='./js/Mensagens.js'></script>
+      	<script type='text/javascript' src='./js/DivFlutuante.js'> </script>
+		<script type='text/javascript' src='./js/tabelas.js'></script>
+		<script type='text/javascript' src='./js/tabelaArquivos.js'></script>
+		
+		<script type="text/javascript">
+			$(document).ready(function() {
+				CKEDITOR.on('instanceReady', function(e){
+					var cabecalhoTela = 75;
+					var objeto = window.parent.document.getElementById('Principal');															
+					var altura = objeto.contentDocument.body.offsetHeight + 680;
+					objeto.height = altura + cabecalhoTela;
+				});
+			});
+	</script>
+			
+	</head>
+
+	<body onload="fechar('sim');">
+		<div id="divCorpo" class="divCorpo">
+  			
+  			<div class="area"><h2>&raquo;Peticionamento</h2></div>
+  		    
+			<form action="Peticionamento" method="post" name="Formulario" id="Formulario">
+
+				<input id="PaginaAtual" name="PaginaAtual" type="hidden" value="-1" />
+				<input id="PaginaAnterior" name="PaginaAnterior" type="hidden" value="4" />			
+	  			<input name="TituloPagina" type="hidden" value="null" />
+	  			
+	  			<div id="divEditar" class="divEditar">
+					<fieldset class="formEdicao">
+						<legend>Peticionar em Processo</legend>
+					
+						<div class="destaque">
+	<button class="imgIcons" type="button" id="imagem1"
+		onclick="MostrarOcultarDiv('corpo1','imagem1',1)"
+		title="Mostrar/Ocultar Detalhes do Processo">
+		<i class="fa-solid fa-plus" style="color: #3181c3;"></i>
+	</button>
+	<a
+		href="BuscaProcesso?Id_Processo=613081756229290873912418764&PassoBusca=2">6030290-72</a>
+</div>
+
+<div id="corpo1" class="corpo" style="display: block;">
+	<fieldset id="VisualizaDados" class="VisualizaDados">
+		<legend> Dados Processo</legend>
+
+		<div>Classe</div>
+		<span style="width: 300px;"> PROCESSO CÍVEL E DO TRABALHO -> Processo de Conhecimento -> Procedimento de Cumprimento de Sentença/Decisão -> Cumprimento de sentença</span><br />
+
+		<div>Serventia</div>
+		<span> Anápolis - 2º Juizado Especial Cível</span> <br />
+
+		<div>Data Distribuição</div>
+		<span> 12/12/2025 09:10:39</span>
+
+		<div>Valor</div>
+		<span> 10.351,84</span> <br />
+
+		<script type="text/javascript">
+			function carregarApletImprimirEtiqueta(){
+				$( ".divApletImprimrEtiqueta" ).html("<object name='ImprimirEtiqueta'  id='ImprimirEtiqueta' type='application/x-java-applet' width='0' height='0' align='top'  style='z-index:-100'> <param name='code' value='ImprimirEtiqueta'> <param name='archive' value='./applet/ImprimirEtiqueta.jar'> <param name='mayscript' value='yes'> <param name='scriptable' value='true'> <param name='name' value='ImprimirEtiqueta'> <param name='java_arguments' value='-Djnlp.packEnabled=true'/> </object>"); 	
+			}
+		</script>
+		
+		<div id="divApletImprimrEtiqueta" class="divApletImprimrEtiqueta" ></div>
+	
+	
+	
+   	<fieldset id="VisualizaDados" class="VisualizaDados">
+			<legend> Polo Ativo </legend>
+		<div> Nome </div>
+		       	<span class="span1">Clinica Ssma Ltda</span>
+		   <div> CPF </div>		        
+	       		<span class="span2">52.601.134/0001-61</span>
+	       		
+		        
+		       	<div style="width:50px">
+		       		<button name="inputEndereco" type="button" class="imgIcons" onClick="MostrarOcultar('promovente0');return false;" title="Mostrar/Ocultar Endereço" ><i class="fa-solid fa-envelope"></i></button>
+		       	</div><br />
+		 		
+		 		<div id="promovente0" class="DivInvisivel">
+  					<fieldset class="fieldsetEndereco">
+			  			<legend> Endereço </legend>
+						DESEMBARGADOR JAIME CENTRO ANAPOLIS GO75020040  00000000000</fieldset>
+					</div>
+       	</fieldset>
+   	<fieldset id="VisualizaDados" class="VisualizaDados">
+   			<legend> Polo Passivo </legend>
+	   	<div> Nome </div>
+		       	<span class="span1">Adms Construcoes E Empreendimentos Ltda</span>
+		       	
+		  <div> CPF </div>		  
+	       		<span class="span2">57.244.054/0001-10</span>	       				           
+		       	<div style="width:50px">
+		       		<button name="inputEndereco" type="button" class="imgIcons" onClick="MostrarOcultar('promovido0');return false;" title="Mostrar/Ocultar Endereço"><i class="fa-solid fa-envelope"></i></button>
+		       	</div><br />		 		
+		 		<div id="promovido0" class="DivInvisivel">
+  					<fieldset class="fieldsetEndereco">
+			  			<legend> Endereço </legend>
+						Rua VN 19 Qd 25, Lt. 29, casa 2Residencial Vida Nova ANAPOLIS GO75097334 NOVOBRALL27@GMAIL.COM 6281120752</fieldset>
+		    		
+		    		</div>
+       	<div> Nome </div>
+		       	<span class="span1">Antonio Das Dores Mendes Da Silva</span>
+		       	
+		  <div> CPF </div>		  
+	       		<span class="span2">010.013.473-40</span>	       				           
+		       	<div style="width:50px">
+		       		<button name="inputEndereco" type="button" class="imgIcons" onClick="MostrarOcultar('promovido1');return false;" title="Mostrar/Ocultar Endereço"><i class="fa-solid fa-envelope"></i></button>
+		       	</div><br />		 		
+		 		<div id="promovido1" class="DivInvisivel">
+  					<fieldset class="fieldsetEndereco">
+			  			<legend> Endereço </legend>
+						DIVINO PAI ETERNO QD 17 LT 08 casa 2Jardim Esperança II ANAPOLIS GO75133882  9836533272</fieldset>
+		    		
+		    		</div>
+       	</fieldset> 
+	<script type="text/javascript" language="JavaScript1.2">
+		function DoPrintingApplet(numProcesso,nome,bairro,cidade,estado,logradouro,numero,cep,complemento){
+			bairroCidadeUF = bairro+'  ,'+cidade+'-'+estado;
+			ruaNumero = logradouro+'  N:'+numero;
+			document.ImprimirEtiqueta.imprimirEtiqueta(numProcesso,nome,bairroCidadeUF,cep,ruaNumero,complemento);
+			alert("Imprimindo Etiqueta em novo applet!");
+		}
+	</script></fieldset>
+</div>
+<br />
+						<label class="formEdicaoLabel" for="Id_MovimentacaoTipo">*Tipo Movimentação   
+						<button class="imgIcons" id="imaLocalizarMovimentacaoTipo" name="imaLocalizarMovimentacaoTipo" onclick="AlterarValue('PaginaAtual','1812')"> <i class="fa-solid fa-magnifying-glass"></i></button>
+						 
+						<font color="red">Preencher conforme TPU CNJ para alimentar estatística de produtividade da unidade</font>
+						</label><br>
+						<input id="MovimentacaoTipo" name="MovimentacaoTipo" type="hidden" value="" />					
+						<select name="Id_MovimentacaoTipo" id="Id_MovimentacaoTipo" size="1" onchange="AlterarValue('MovimentacaoTipo',this.options[this.selectedIndex].text)">
+							<option value="null">--Selecione o Tipo de Movimentação--</option>
+							</select><br>
+						
+						<label class="formEdicaoLabel" for="Descricao">Descrição Movimentação
+						<button class="imgIcons" onclick="AlterarValue('MovimentacaoComplemento', ''); return false;" title="Limpar descrição movimentação"><i class="fa-regular fa-circle-xmark"></i></button>
+						</label><br> 
+						<input name="MovimentacaoComplemento" id="MovimentacaoComplemento" type="text" size="30" maxlength="80" value=""/>
+						
+						<br />
+						<br />
+					
+						<!--  Inserção de Arquivos com opção de usar Editor de Modelos -->
+						<script type='text/javascript' src='js/ckeditor/ckeditor.js?v=20230518'></script>
+<script type='text/javascript' src='./js/checks.js'></script>
+<script type='text/javascript' src='js/toastr/toastr.min.js'></script>
+
+<script type='text/javascript'>
+	var lerSenha =  ***".p7s";
+
+	var SEIS_MEGABYTES = 6291456;
+	var VINTE_CINCO_MEGABYTES = 26214400;		
+	var arquivoCache = { };		
+	var opLimparArquivo = true;
+	var opOcultarEditor = true;
+	
+	var arraynome=[];
+	var arrayarquivo=[];
+	var arraytipo=[];
+	
+	var totalDeArquivosInsercaoArquivoDwr;
+   	var quantidadeAtualInsercaoArquivoDwr;
+	var flagAnexando = false;	
+	
+	var FINALIZAR_ALVARA = -1;
+
+	function ArquivoAssinado(nome, arquivo, id_tipo, tipo, chave, base64, assinado, gerar_assinatura, sernha_certificado, content_type, salvar_senha){
+		this.nome = nome;
+		this.arquivo = arquivo;
+		this.id_tipo = id_tipo;
+		this.tipo = tipo;
+		this.chave = chave;
+		this.base64 = base64;
+		this.assinado = assinado;
+		this.gerarAssinatura = gerar_assinatura;
+		this.sernhaCertificado = sernha_certificado;
+		this.contentType = content_type;
+		this.salvarSenha = ***}
+	
+	
+	function mostrarExt() {
+		$( "#abasInsercaoArquivos" ).tabs( "option", "active", 0 );
+		
+	    $("#tipo_assinador").text("Upload de arquivo assinado");
+        
+        $("#gerarAssinatura").val('false');
+        $("#assinado").val('true');
+                                
+	}
+			
+	function mostrarSer() {
+		$( "#abasInsercaoArquivos" ).tabs( "option", "active", 1 );
+		
+		$("#tipo_assinador").text("Assinatura do lado do Servidor");            		            
+        $("#gerarAssinatura").val('true');
+        $("#assinado").val('false');
+
+	}
+
+	function arquivoSelecionado(input, arquivos) {
+		if (!selecionaArquivoAssinado(arquivos)) {
+			if (input instanceof jQuery) {
+				input.val('');
+			} else if (input instanceof HTMLElement) {
+				input.value='';
+			}
+		}
+	}
+
+	$(document).ready(function() {
+		
+	    //CKEDITOR.replace('Editor');
+		$("#abasInsercaoArquivos").tabs();
+		
+		if (!lerSenha){
+			$("#salvarSenhaCertificado").prop( "checked", true );
+		}
+		if (adv_particular){
+			mostrarExt();
+		} else {
+			mostrarSer();
+		}
+						      		  
+		$("#botaoCancelar").click(function(){
+			  $("#inc_confirma").fadeOut();
+		});
+		  
+		$("#botaoAplicar").click(function(){
+			$("#inc_confirma").fadeOut();
+		});
+
+		$('#arquivo_assinado').on('dragover', function (e) {
+			e.stopPropagation();
+			e.preventDefault();
+			$('#arquivo_assinado').css('background-color','rgba(0,0,0,0.2)');
+		});
+
+		$('#arquivo_assinado').on('dragexit', function (e) {
+			e.stopPropagation();
+			e.preventDefault();
+			$('#arquivo_assinado').css('background-color', '');
+		});
+
+		$('#arquivo_assinado').on('drop', function (e) {
+			e.stopPropagation();
+			e.preventDefault();
+			$('#arquivo_assinado').css('background-color', '');
+			arquivoSelecionado($('#fileupload'), e.originalEvent.dataTransfer.files);
+		});
+	});	
+	
+	function iniciar() {
+		//deve ser retira quando for retirada de todas as jsps
+	}
+	
+	function gerarHTML() {
+	  const text = CKEDITOR.instances.editor1.getData();
+	  const file = new Blob([text], { type: 'text/html' });
+	  const url = URL.createObjectURL(file);
+      let a = document.createElement("a");
+	  a.href = URL.createObjectURL(file);
+	  let nomeArquivo = $("#nomeArquivo").val();
+	  if (!nomeArquivo) {
+	  	nomeArquivo = 'online.html';
+	  } else {
+		  nomeArquivo += '.html';
+	  }
+	  a.download = nomeArquivo ;	
+	  a.click();
+	}
+
+	function gerarPdfTesteAPartirHtml() {
+		const html = CKEDITOR.instances.editor1.getData();
+		const nomeArquivo = ($("#nomeArquivo").val() || "documento_exemplo") + ".pdf";
+
+		$.ajax({
+			url: "Bpn?PaginaAtual=27",
+			type: "POST",
+			data: html,
+			processData: false,
+			contentType: "text/html; charset=utf-8",
+			xhrFields: {
+				responseType: 'blob'
+			},
+			success: function (blob) {
+				const url = window.URL.createObjectURL(blob);
+				const a = document.createElement("a");
+				a.href = url;
+				a.download = nomeArquivo;
+				document.body.appendChild(a);
+				a.click();
+				a.remove();
+				window.URL.revokeObjectURL(url);
+			},
+			error: function (xhr, status, error) {
+				console.error("Erro ao gerar PDF:", status, error);
+				toastr.error("Erro ao gerar PDF.");
+			}
+		});
+	}
+
+	function incluirArquivoAssinatura(nome, arquivo){
+  		arraynome.push(nome);
+	  	arrayarquivo.push(arquivo);	  	
+	}
+	
+	function getNomeArquivo() {
+		return $("#nomeArquivo").val();
+	}
+	
+//  		function getTextoAssinar(){
+//  			var editor_data = CKEDITOR.instances.editor1.getData();  			
+//  			return editor_data;
+//  		}
+
+	function temEditor() {
+		return $('#Editor').length > 0;
+	}
+
+	function abreDialogoUploadArquivoAssinado() {
+		if (podeAssinar() == true) {
+			$('#fileupload').click();
+		}
+	}
+
+	function selecionaArquivoAssinado(arquivos) {
+		var id_arquivo_tipo = $('#id_ArquivoTipo').val();
+		var nome_arquivo_tipo = $('#arquivoTipo').val();						
+		var filesArr = Array.prototype.slice.call(arquivos);			
+		var tipo_arquivos = TIPO_ARQUIVO.split(',');
+		
+		for(var i=0;i<filesArr.length;i++){ 
+			var arquivo = filesArr[i];
+			var nome = arquivo.name;
+			var filesize = arquivo.size;
+			var TamanhoMaximo = SEIS_MEGABYTES;
+			
+			if(nome.search(".mp4")>=0){			
+				TamanhoMaximo = VINTE_CINCO_MEGABYTES;
+			}
+			
+		    if (filesize > TamanhoMaximo) { 
+				alert('Arquivo '+nome+' e maior que '+ (TamanhoMaximo/1048576)+'MB.');
+				return false;
+		    }
+		    
+		    if (filesize == 0) { 
+				alert('Arquivo '+nome+' esta vazio.');
+				return false;
+		    }
+		    var boArquivoNaoPermitido=true			    
+		    for (var x=0;x<tipo_arquivos.length;x++){
+		    	if(nome.search(tipo_arquivos[x])>=0){			    		 
+		    		boArquivoNaoPermitido=false;
+		    		break;
+		    	}
+		    }
+		    if (boArquivoNaoPermitido) {
+				alert('Arquivo '+nome+' nao e de um tipo valido (' + TIPO_ARQUIVO + ')');
+				return false;
+		    }
+		}
+		var totalArquivos = filesArr.length;						
+		adicionarUploadComSemAssinartura(filesArr,id_arquivo_tipo,nome_arquivo_tipo,1,totalArquivos);				
+		
+		return true;
+	}
+	  
+	function removeArquivoAssinado(arquivo){
+	    var nome = arquivo;
+	    arquivo = arquivo.substring(0,arquivo.length-TIPO_ARQUIVO.length);
+		dwr.util.setValue("nomeArquivo", arquivo);
+	   	dwr.util.setValue("id_ArquivoTipo", null);
+	   	dwr.util.setValue("arquivoTipo", null);	
+	   	var dados = { id:-1, id_ArquivoTipo:null, arquivoTipo:null, nomeArquivo:null, arquivo:null, assinado:true };
+  		dwr.util.getValues(dados);	 
+  		dwr.engine.beginBatch();
+  		InsercaoArquivo.removeArquivoAssinado(dados,{
+  			callback:function(){}, timeout:600000, errorHandler:function (error) { alert(error);}
+  			});
+  		dwr.engine.endBatch();
+	  	return true;
+	}
+
+	function podeAssinar() {
+	  	const pode = $('#id_ArquivoTipo').attr('value');
+	  	if (![null, '', 'null'].includes(pode)){
+	  		return true;	  			 
+  		} else {
+  			alert("Escolha o Tipo de Arquivo antes de assinar");
+  			return false;
+  		}		  	
+	}
+	  
+	function configuraAssinador() {
+		return "Adicionar=true;Limpar=true";
+	}
+  		
+	function iniciarAssinatura() {
+		arraynome=[];
+		arrayarquivo=[];
+		quantidadeAtualInsercaoArquivoDwr = 0;	
+		totalDeArquivosInsercaoArquivoDwr = 0;
+	}	
+
+	function inserirArquivoSession() {	
+		var arquivoHtml = "";
+		
+		if ($('#id_arquivo_session').length) {				
+			id_arquivo_session= $("#id_arquivo_session").val();
+		} else {
+			mostrarMensagemErro("Erro", 'NÃ£o foi possÃ­vel definir o texto a ser assinado'); 
+			return;
+		}
+		
+		var id_arquivo_tipo = $('#id_ArquivoTipo').val();
+		var nome_arquivo_tipo = $('#arquivoTipo').val();
+		var senhaCertificado =  $('#senhaCertificado').val();
+		var arquivoHtmlNome =  $('#nomeArquivo').val();
+
+		let salvarSenha = ***"#salvarSenhaCertificado").is(":checked");
+		let lerSenha = ***,
+			'id_ArquivoTipo':id_arquivo_tipo,
+			'arquivoTipo':nome_arquivo_tipo,
+			'nomeArquivo': arquivoHtmlNome,
+			'arquivo':id_arquivo_session,
+			'assinado':false,
+			'gerarAssinatura':true,
+			'senhaCertificado':senhaCertificado,
+			"contentType":"text/html",
+			'salvarSenha':salvarSenha
+		};
+		
+	    var url = 'InsercaoArquivo?AJAX=ajax&PaginaAtual=3&fluxo=11';
+		$.ajax({
+			url: encodeURI(url),
+			method: "POST",  				
+			data: dados,
+			context: document.body,
+			timeout: 300000,
+			success: function(retorno){	  				
+  				limparArquivo();
+  		  		atualizarArquivos();
+			},
+			beforeSend: function(data ){},
+			error: function(request, status, error){
+				mostrarMensagemErro("Erro", request.responseText); 
+  				lerSenha=***&& $("#AgenciaCaixa"+index).val().length>0) {
+			dados["AgenciaCaixa"+index] = $("#AgenciaCaixa"+index).val();
+			dados["OperacaoCaixa"+index] = $("#OperacaoCaixa"+index).val();
+			dados["ContaCaixa"+index] = $("#ContaCaixa"+index).val();
+			dados["ContaDvCaixa"+index] = $("#ContaDvCaixa"+index).val();
+			dados["SaldoTipo"+index] = $("#SaldoTipo"+index).val();
+			dados["Saldo"+index] = $("#Saldo"+index).val();
+			dados["CreditoTipo"+index] = $("#CreditoTipo"+index).val();
+			dados["CreditoBanco"+index] = $("#CreditoBanco"+index).val();
+			dados["CreditoAgencia"+index] = $("#CreditoAgencia"+index).val();
+			dados["CreditoAgenciaDV"+index] = $("#CreditoAgenciaDV"+index).val();
+			dados["CreditoOperacao"+index] = $("#CreditoOperacao"+index).val();
+			dados["CreditoConta"+index] = $("#CreditoConta"+index).val();
+			dados["CreditoContaDV"+index] = $("#CreditoContaDV"+index).val();
+			dados["DataValidade"+index] = $("#DataValidade"+index).val();
+			dados["SacadorTipo"+index] = $("#SacadorTipo"+index).val();
+			dados["SacadorAdvogado"+index] = $("#SacadorAdvogado"+index).val();
+			dados["SacadorNome"+index] = $("#SacadorNome"+index).val();
+			dados["SacadorDocumento"+index] = $("#SacadorDocumento"+index).val();
+			dados["SacadorOAB"+index] = $("#SacadorOAB"+index).val();
+			index++;
+		}
+		const baseUrl = 'InsercaoArquivo?AJAX=ajax&PaginaAtual=3&fluxo=';
+		const url = baseUrl + (![null, undefined].includes(fluxo) ? fluxo : 4);
+		$.ajax({
+			url: encodeURI(url),
+			method: 'POST',
+			data: dados,
+			context: document.body,
+			timeout: 300000,
+			success: function(retorno){
+  				CKEDITOR.instances.editor1.setData("");
+  				if (CKEDITOR.instances.editorEmenta!=undefined) {
+  					CKEDITOR.instances.editorEmenta.setData("");
+  				}
+  				limparArquivo();
+				atualizarArquivos();
+				if(fluxo) {
+					finalizarAlvara();
+				}
+			},
+			beforeSend: function(data ){},
+			error: function(request, status, error){
+				mostrarMensagemErro("Erro", request.responseText);
+  				lerSenha=***&PaginaAtual=3&fluxo=2';
+
+		$.ajax({
+			url: url,
+			context: document.body,
+			timeout: 25000,
+			success: (retorno) => {
+				alert("Arquivo(s) colado(s)");
+				atualizarArquivos();
+			},
+			error: (request, status, error) => {
+				mostrarMensagemErro("Projudi - Erro", request.responseText);
+			},
+		});
+	}
+	
+	/**
+	 * Remove todos os arquivos da area de transferencia do servidor
+	 * @author MÃ¡rcio MendonÃ§a Gomes
+	 * @since 13/09/2012
+	 */
+	function limparArquivosAreaTransferencia(){
+
+		let url = "InsercaoArquivo?AJAX=ajax&PaginaAtual=3&fluxo=1";
+		$.ajax({
+			url: url,
+			context: document.body,
+			timeout: 25000,
+			success: (retorno) => {
+				alert("Arquivo(s) colado(s)");
+			},
+			error: (request, status, error) => {
+				mostrarMensagemErro("Projudi - Erro", request.responseText);
+			},
+		});
+	}
+
+	function onAssinarExpedirClick() {
+
+		if (!isCamposAssinarExpedirValidos()) return;
+		digitarSenhaCertificado(inserirArquivo, '12', 'but_assinar_expedir');
+	}
+
+	function isCamposAssinarExpedirValidos() {
+		const hoje = new Date();
+		hoje.setHours(0, 0, 0, 0);
+
+		let index = 0;
+		while($('#AgenciaCaixa' + index).val()) {
+			const contaSelecionada = $('#SaldoTipo' + index).val();
+			if(contaSelecionada === 'total' || contaSelecionada === 'parcial') {
+				const numeroConta = $('#AgenciaCaixa' + index).val()+'.'+$('#OperacaoCaixa' + index).val()+'.'+$('#ContaCaixa' + index).val()+'-'+$('#ContaDvCaixa' + index).val();				
+
+				if (contaSelecionada === 'parcial') {
+					const saldoParcial = valorMonetarioParaNumero($('#Saldo' + index).val());
+					if (!saldoParcial) {
+						toastr.error('<b>Saldo</b> inv\u00E1lido para a conta ' + numeroConta);
+						return;
+					} else {
+						const saldoDisponivel = valorMonetarioParaNumero($('#SaldoDisponivelCaixa' + index).val());
+						if (saldoParcial > saldoDisponivel) {
+							toastr.error('<b>Saldo</b> inserido para a conta ' + numeroConta + ' excede o saldo dispon\u00EDvel');
+							return;
+						}
+					}
+				}
+
+				const sacadorTipo = $('#SacadorTipo' + index).val();
+				if (sacadorTipo === 'selecione') {
+					toastr.error('<b>Tipo de Sacador</b> n\u00E3o encontrado para a conta ' + numeroConta);
+					return;
+				} else if (sacadorTipo === 'advogado') {
+					const sacadorAdvogado = $('#SacadorAdvogado' + index).val();
+					if (sacadorAdvogado === 'selecione') {
+						toastr.error('<b>Advogado</b> n\u00E3o encontrado para a conta ' + numeroConta);
+						return;
+					}
+					const sacadorAdvogadoNome = $('#SacadorNome' + index).val();
+					if (!sacadorAdvogadoNome) {
+						toastr.error('<b>Nome Advogado</b> n\u00E3o encontrado para a conta ' + numeroConta);
+						return;
+					}
+					const sacadorAdvogadoDocumento = $('#SacadorDocumento' + index).val();
+					if (!sacadorAdvogadoDocumento) {
+						toastr.error('<b>CPF Advogado</b> n\u00E3o encontrado para a conta ' + numeroConta);
+						return;
+					}
+					const sacadorAdvogadoOAB = $('#SacadorOAB' + index).val();
+					if (!sacadorAdvogadoOAB) {
+						toastr.error('<b>OAB Advogado</b> n\u00E3o encontrado para a conta ' + numeroConta);
+						return;
+					}
+				} else {
+					const nomeParte = $('#SacadorNome' + index).val();
+					if (!nomeParte) {
+						toastr.error('<b>Nome Sacador</b> n\u00E3o encontrado para a conta ' + numeroConta);
+						return;
+					}
+					const documentoParte = $('#SacadorDocumento' + index).val();
+					if (!documentoParte) {
+						toastr.error('<b>CPF/CNPJ Sacador</b> n\u00E3o encontrado para a conta ' + numeroConta);
+						return;
+					}
+				}
+				
+				const creditoTipo = $('#CreditoTipo' + index).val();
+				if (creditoTipo === 'selecione') {
+					toastr.error('<b>Tipo de Cr&eacute;dito</b> n\u00E3o encontrado para a conta ' + numeroConta);
+					return;
+				} else {
+					if (creditoTipo === 'creditoConta') {
+						if (!$('#CreditoBanco' + index).val()) {
+							toastr.error('<b>Banco</b> Cr&eacute;dito n\u00E3o encontrado para a conta ' + numeroConta);
+							return;
+						}
+						if (!$('#CreditoAgencia' + index).val()) {
+							toastr.error('<b>Ag&ecirc;ncia</b> Cr&eacute;dito n\u00E3o encontrada para a conta ' + numeroConta);
+							return;
+						}
+						if (!$('#CreditoOperacao' + index).val() && $('#CreditoBanco' + index).val() === '104') {
+							toastr.error('<b>Opera\u00E7\u00E3o</b> Cr\u00E9dito n\u00E3o encontrada para a conta ' + numeroConta);
+							return;
+						}
+						if (!$('#CreditoConta' + index).val()) {
+							toastr.error('<b>Conta</b> Cr&eacute;dito n\u00E3o encontrada para a conta ' + numeroConta);
+							return;
+						}
+						if (!$('#CreditoContaDV' + index).val()) {
+							toastr.error('<b>ContaDV</b> Cr&eacute;dito n\u00E3o encontrado para a conta ' + numeroConta);
+							return;
+						}
+					}
+				}
+				
+				const dataValidade = $('#DataValidade' + index).val();
+				if (!dataValidade) {
+					toastr.error('<b>Data de Validade</b> n\u00E3o encontrada para a conta ' + numeroConta);
+					return;
+				}
+
+				const [dia, mes, ano] = dataValidade.split('/');
+				const dataValidadeDate = new Date(ano, mes - 1, dia);
+				if (dataValidadeDate < hoje) {
+					toastr.error('<b>Data de Validade</b> para a conta ' + numeroConta + ' \u00E9 anterior a hoje');
+					return;
+				}
+			}
+			index++;
+		}
+		return true;
+	}
+
+	function valorMonetarioParaNumero(valorFormatado) {
+		return +valorFormatado.replace(/\./g, '').replace(',', '.');
+	}
+
+	/**
+	 * Enviar o arquivo do editor para o servidor para ser assinado e adicionado na lista de arquivo
+	 * @author Jesus Rodrigo CorrÃªa
+	 * @since 12/03/2020
+	 */
+	function digitarSenhaCertificado(retornar, fluxo, idBtnOrigem = '') {
+		if(podeAssinar() !== true) return false;
+		if (adv_particular) {
+			iniciarAssinaturaA3();
+		} else {
+			const senhaCertificado = $('#senhaCertificado').val()?.trim();
+			if (lerSenha && ['', undefined].includes(senhaCertificado)) {
+				$("#divLerSenha").show();
+				$("#senhaCertificado").focus();
+				$("#senhaCertificado").val('');
+				$("#but_senhaDigita").off('click').on('click', function() {
+					digitarSenhaCertificado(retornar, fluxo, idBtnOrigem);
+				});
+				$("#senhaCertificado").off('keypress').on('keypress', function(event) {
+					if (event.keyCode === 13) {
+						$("#but_senhaDigita").click();
+					}
+				});
+			} else {
+				if(fluxo=='12')
+					mostrarMensagemConsultando("Alvar\u00E1 Caixa Econ\u00F4mica Federal", "Aguarde, processando");
+				Ocultar(idBtnOrigem);
+				$("#divLerSenha").hide();
+				retornar('', fluxo);
+			}
+		}
+	}
+
+	/**
+	 * Enviar o upload para o servidor para ser assinado e adicionado na lista de arquivo
+	 * @author Jesus Rodrigo CorrÃªa
+	 * @since 18/03/2020
+	 */		
+	function adicionarUploadComSemAssinartura(ArquivosUpload, id_arquivo_tipo, nome_arquivo_tipo, atual, quantidadeTotal ){
+		var salvarSenha=***&& lerSenha=***&& (senhaCertificado==undefined || senhaCertificado=="")){
+				//incluo o arquivo novamente no array
+				ArquivosUpload.push(arquivo);
+				digitarSenhaCertificado(function(){ adicionarUploadComSemAssinartura(ArquivosUpload, id_arquivo_tipo, nome_arquivo_tipo, atual, quantidadeTotal); });					
+			}else{
+				mostrarMensagemConsultando("Envio de Arquivos", "Processando " + atual  + " de " + quantidadeTotal );//				    
+				var reader = new FileReader();					
+				reader.onloadend = function () {
+					var contentType = arquivo.type;
+					if (contentType==undefined || contentType==null || contentType==""){
+						if (boAssinado){
+							contentType='application/pkcs7-signature'; 
+						}else if (arquivo.name.includes('.pdf')){
+							contentType='application/pdf';
+						}else if (arquivo.name.includes('.mp3')){
+							contentType='audio/mpeg';
+						}else if (arquivo.name.includes('.mp4')){
+							contentType='video/mp4';
+						}
+					}					    	
+				    var dados = { 'id':-1, 'id_ArquivoTipo':id_arquivo_tipo, 'arquivoTipo':nome_arquivo_tipo, 'nomeArquivo': arquivo.name, 'arquivo':reader.result, 'assinado':boAssinado, 'gerarAssinatura':!boAssinado, 'senhaCertificado':senhaCertificado, "contentType":contentType ,'salvarSenha':salvarSenha };
+				    var url = 'InsercaoArquivo?AJAX=ajax&PaginaAtual=3&fluxo=4';
+					$.ajax({
+						url: encodeURI(url),
+						method: "POST",  				
+						data: dados,
+						context: document.body,
+						timeout: 300000,
+						success: function(retorno){	
+						adicionarUploadComSemAssinartura(ArquivosUpload, id_arquivo_tipo, nome_arquivo_tipo, (atual+1), quantidadeTotal);
+						},
+						beforeSend: function(data ){},
+						error: function(request, status, error){
+							mostrarMensagemErro("Erro", request.responseText);
+				    		lerSenha=***&PaginaAtual=3&fluxo=9';
+		$.ajax({
+			url: encodeURI(url),		
+			context: document.body,
+			timeout: 300000, 
+			async: true,
+			success: function(retorno){		
+				var tabela =  $('#corpoTabelaArquivo');
+				tabela.html('');
+				var corpoTabela = "";
+				$.each(retorno, function(i,item){
+						corpoTabela +='<tr  id="idArquivo' +  i  + '" style="display: table-row;">';	     			
+						if (editavel == null){
+							corpoTabela +='<td  class="colunaMinima" ><input id="chk_idArquivo' + i  + '" name="arquivos" value="' +  (item.id == "" ? i : item.id)  + '" type="checkbox"></td>';
+						}					
+					corpoTabela +='<td><span id="tableDescricao' + i + '">' + item.arquivo_tipo + '</span></td>';
+					corpoTabela +='<td><span id="tableNome' + i + '">' + item.arquivo_nome + '</span></td>';   					
+					if (editavel == null){
+						corpoTabela +='<td class="colunaMinima"><button class="imgIcons" id="button2' + i  + '" name="button2" title="Retirar este arquivo da lista"  onclick="excluirArquivo(\'' + item.eleid + '\',\''+ item.arquivo_nome +'\',\'true\'); return false;" ><i class="fa-solid fa-trash-can"></i></button></td>';
+					}					
+					corpoTabela +='</tr>';						
+				});
+				tabela.append(corpoTabela);		
+				
+				if(typeof arquivoRecebidoAssinador === "function"){
+				  arquivoRecebidoAssinador();
+				}		
+			},
+			beforeSend: function(data){},
+			error: function(request, status, error){
+				if (error=='timeout'){
+					mostrarMensagemErro('Tempo Excedido', "A aÃ§Ã£o demorou tempo demais, tente novamente mais tarde.");
+				}else{
+					mostrarMensagemErro("Projudi - Erro", request.responseText);
+				}
+			},
+			complete: function(data ){
+			}
+		});
+	}
+
+	function iniciarAssinaturaA3(){
+		var arquivosLote = [];
+		var botaoSalvar = false;
+		var pode = $('#id_ArquivoTipo');
+		
+		arrayarquivo=[];
+		inMsg = 0;
+		
+		if(!parent.isWebSocketConnect()) {
+			mostrarMensagemErro('Erro ao conectar', 'N&atilde;o foi poss&iacute;vel encontrar o sistema de assinatura. Habilite-o e tente novamente.');
+			return;
+		}
+
+		if (pode.length >0){
+		   if (pode.attr('value') == null || pode.attr('value') == 'null' || pode.attr('value') == '' ){
+			   mostrarMensagemErro('Erro ao iniciar a assinatura', 'Escolha o Tipo de Arquivo antes de tentar assinar');
+			   return;
+		   }
+		}
+	   
+		parent.websocket.onmessage = function (sadiMsg) {	
+			
+			if (typeof sadiMsg == "undefined" ) {return;}
+			
+			var resposta = sadiMsg.data.split(';_@-;');
+			
+			if (resposta!= null && resposta.length>0){
+				if (resposta[0]=='iniciar_assinatura'){
+					arquivosLote = montarArquivosParaAssinar();
+					botaoSalvar = arquivosLote.length > 2;
+					if (arquivosLote.length > 0){
+						var tempArq = arquivosLote.shift();
+						enviarMensagemSADI('enviar_texto', tempArq.arquivo, tempArq.nome, tempArq.id_tipo, tempArq.tipo, tempArq.chave, tempArq.base64);
+					} else {
+						//TODO: ou abre o assinador ou mostra mensagem de aviso que nÃ£o tem texto no editor
+						//se nÃ£o tiver texto no editor mas o usuario pode fazer upload de arquivos
+						enviarMensagemSADI('abrir_assinador');
+						Mostrar('divBotoesCentralizadosAssinador');
+					}				
+				}else if (resposta[0]=='enviar_texto'){
+					var tempArq = arquivosLote.shift();
+					if(tempArq != null) {//(comando, arquivo, nome, id_tipo, tipo, chave, base64)
+						enviarMensagemSADI('enviar_texto',tempArq.arquivo, tempArq.nome, tempArq.id_tipo, tempArq.tipo, tempArq.chave, tempArq.base64);
+					} else {
+						enviarMensagemSADI('abrir_assinador');
+					}
+				} else if (resposta[0]=='abrir_assinador') {
+				} else if (resposta[0]=='arquivo_assinado') {//(nome, arquivo, id_tipo, tipo, chave, base64, assinado)
+					mostrarMensagemConsultando("Anexando Arquivos...", "Aguarde, os arquivos estÃ£o sendo anexados.");
+					arrayarquivo.push(new ArquivoAssinado(resposta[1], resposta[2], $('#id_ArquivoTipo').val(), $('#arquivoTipo').val(), resposta[4],    '',   'true'));
+					enviarMensagemSADI('proximo_arquivo');
+				} else if (resposta[0]=='assinatura_cancelada') {
+					fecharDialogsAbertos();
+					Mostrar('divBotoesCentralizadosAssinador');
+				} else if (resposta[0]=='concluido') {
+					finalizarAssinaturaA3();
+					Ocultar("Editor");
+					Mostrar('divBotoesCentralizadosAssinador');
+					if(botaoSalvar) {
+						Ocultar("divBotoesCentralizados");
+						Mostrar("divBotaoSalvar");
+						botaoSalvar = false;
+					}
+				} else if (resposta[0]=='erro'){
+					fecharDialogsAbertos();
+					alert('erro');
+				}
+			}else{		
+				log(" erro " + data.data);				
+			}
+		};
+	  	
+		enviarMensagemSADI('iniciar_assinatura');		
+		Ocultar('divBotoesCentralizadosAssinador');
+	}
+	
+	function finalizarAssinaturaA3(){
+		if (arrayarquivo.length>=1){
+			inserirArquivoA3(arrayarquivo.shift());
+		} else {
+		  	var editor = document.getElementById('editor1');
+		  	if (editor != null) limparEditor();
+			if (opLimparArquivo) limparArquivo();
+			atualizarArquivos();
+			fecharDialogsAbertos();
+		}
+	}
+	
+	function enviarMensagemSADI(comando, arquivo, nome, id_tipo, tipo, chave, base64) {
+		if (parent.websocket == undefined || parent.websocket== null) {
+			mostrarMensagemErro("Erro ao acessar o SADI","NÃ£o Conectado ao ServiÃ§o de Assinatura Digital. Tente Conectar Primeiro");
+			return;
+		}
+		if (comando=='iniciar_assinatura') {
+			parent.websocket.send('iniciar_assinatura;_@-;adicionar;limpar');
+			arquivos=[];
+			nomeArquivos=[];
+			$("#mostraArquivos").html("");			
+		} else if (comando=='enviar_texto') {
+			parent.websocket.send('enviar_texto;_@-;' + arquivo + ';_@-;' + nome + ';_@-;' + tipo + ';_@-;' + chave + ';_@-;' + id_tipo + ';_@-;' + base64);
+		} else if (comando=='abrir_assinador'){
+			parent.websocket.send("abrir_assinador");
+		} else if (comando=='proximo_arquivo'){
+			parent.websocket.send("proximo_arquivo");
+		}
+	}
+	
+	function inserirArquivoA3(arquivo){
+
+		var contentType='application/pkcs7-signature'; 
+						
+		var dados = { 'id':-1, 'id_ArquivoTipo':arquivo.id_tipo, 'arquivoTipo':arquivo.tipo, 'nomeArquivo': arquivo.nome, 'arquivo':arquivo.arquivo, 'assinado':true, 'gerarAssinatura':false, 'senhaCertificado':'', 'contentType':contentType ,'salvarSenha':''};
+		
+		var url = 'InsercaoArquivo?AJAX=ajax&PaginaAtual=3&fluxo=4';
+		$.ajax({
+			url: encodeURI(url),
+			method: "POST",  				
+			data: dados,
+			context: document.body,
+			timeout: 300000,
+			success: function(retorno){	
+				finalizarAssinaturaA3();
+			},
+			beforeSend: function(data ){},
+			error: function(request, status, error){
+				mostrarMensagemErro("Erro", request.responseText);
+			},
+			complete: function(data ){
+				
+			}
+		});	
+	}
+
+	function limparArquivo(){
+		$('#id').val(-1);
+		if(typeof manterArquivoTipo === "function"){
+	  		if (!manterArquivoTipo()) {
+				$('#id_ArquivoTipo').val('null');
+				$('#arquivoTipo').val('');
+			}
+		} else {
+			$('#id_ArquivoTipo').val('null');
+			$('#arquivoTipo').val('');	
+		}
+		
+		$('#arquivo').val('null');
+		if(typeof manterNomeArquivo === "function"){
+	  		if (!manterNomeArquivo()) {
+				$('#nomeArquivo').val('');
+			}
+		} else {
+			$('#nomeArquivo').val('');	
+		}
+				
+		$('#id_Modelo').val('null');
+		$('#modelo').val('');
+		
+		if (CKEDITOR.instances.editorEmenta!=undefined) {
+			if(typeof manterArquivoTipo === "function"){
+		  		if (!manterArquivoTipo()) {
+					$('#id_ArquivoTipoEmenta').val('null');
+					$('#arquivoTipoEmenta').val('');
+				}
+			} else {
+				$('#id_ArquivoTipoEmenta').val('null');
+				$('#arquivoTipoEmenta').val('');	
+			}			
+			
+			$('#arquivoEmenta').val('null');
+			if(typeof manterNomeArquivo === "function"){
+		  		if (!manterNomeArquivo()) {
+					$('#nomeArquivoEmenta').val('');
+				}
+			} else {
+				$('#nomeArquivoEmenta').val('');	
+			}			
+			
+			$('#id_ModeloEmenta').val('null');
+			$('#modeloEmenta').val('');
+		}
+		
+//		let index = 0;
+//		while($("#AgenciaCaixa"+index).val()!=null && $("#AgenciaCaixa"+index).val().length>0) {
+//			limparContasCaixa(index);
+//			index++;
+//		}
+	}
+
+	function limparEditor(){
+		CKEDITOR.instances.editor1.setData("");
+		Ocultar("Editor");
+	}
+	
+	function montarArquivosParaAssinar(){
+		var arquivosLote = [];
+		var idTipo = $('#id_ArquivoTipo').val();
+		var tipo = $('#arquivoTipo').val();	
+		if (temEditor()){		
+			var texto = CKEDITOR.instances.editor1.getData();
+			if (texto != ""){
+				var nomeArquivo = $("#nomeArquivo").val() != null || $("#nomeArquivo").val() != "" ? $("#nomeArquivo").val() : "online.html";			
+				arquivosLote.push(new ArquivoAssinado(nomeArquivo, texto, idTipo, tipo, '', 'false', false));
+			}
+		}
+		return arquivosLote;
+	}
+
+	function excluirArquivo(eleid, nomeArquivo, confirmar) {
+		if (confirmar == "true"){
+			if (!confirm("Deseja retirar o item: " +nomeArquivo + "?")) return false;
+		}
+		var ok = true;
+		var url = 'InsercaoArquivo?AJAX=ajax&PaginaAtual=3&fluxo=8&id_list='+eleid;
+		$.ajax({
+			url: encodeURI(url),		  						
+			context: document.body,
+			timeout: 300000, 
+			async: true,		
+			error: function(request, status, error){
+				ok = false;
+				if (error=='timeout'){
+					mostrarMensagemErro('Tempo Excedido', "A aÃ§Ã£o demorou tempo demais, tente novamente mais tarde.");				
+				}else{
+					mostrarMensagemErro('Projudi - Erro','NÃ£o foi possÃ­vel excluir o arquivo ' + request.responseText);				
+				}			
+			},
+			complete: function(data ){
+				atualizarArquivos();			
+			}
+		});	
+		return ok;
+	}	
+
+	function excluirSelecionados(tabela){
+		if (!confirm("Deseja realmente excluir os arquivos selecionados?")) return false;
+		var qtdExcluidos = 0;
+		$("#" + tabela + " td > input:checked").each(function (i,a) {											
+			if (a.value != null && a.value != ""){			
+				if (excluirArquivo("button2" + a.value, false)) qtdExcluidos++;					
+			}
+		});							
+		alterarEstadoSelTodos(false);	
+		if (qtdExcluidos == 0) alert("Nenhum arquivo foi excluido");
+	}
+	
+	function finalizarAlvara(){
+		AlterarValue('PaginaAtual', FINALIZAR_ALVARA);
+		FormSubmit('Formulario');
+	}
+	
+	function limparContasCaixa(i) {
+		$('#SaldoNenhumCaixa' + i).prop('checked', true);
+		if ($('#SaldoParcialCaixa' + i).length) {
+			$('#SaldoParcialCaixa' + i).prop('readonly', true).val('');
+		}
+		if ($('#SaldoTotalCaixa' + i).length) {
+			$('#SaldoTotalCaixa' + i).prop('readonly', true).val('');
+			$('#SaldoTotalCaixa' + i).val('');
+		}
+		if ($('#divDataValidade' + i).length) {
+			Ocultar('divDataValidade' + i);
+		}
+		if ($('#divCreditoTipo' + i).length) {
+			Ocultar('divCreditoTipo' + i);
+		}
+	}
+		
+</script><input type="hidden" id="assinado" name="assinado" value="true" />
+<input type="hidden" id="gerarAssinatura" name="gerarAssinatura" value="false" />
+		
+<!-- <script type='text/javascript' src='js/InsercaoArquivoA3.js' charset="UTF-8"></script> -->	
+
+<fieldset class="formEdicao" id='AssinarArquivosProcesso'>
+    <legend id="tipo_assinador">Inserir Arquivo(s)</legend>
+    <div class="col30 float_label_fixo" >
+    	<input class="formEdicaoInput AutoComplete" id="arquivoTipo" name="ArquivoTipo" placeholder="Digite o Tipo de Arquivo" type="text" size="50" maxlength="50"  value=""
+    		onkeyup="BuscaPadraoCombo(event, 'AssinarArquivosProcesso','Pendencia', 'id_ArquivoTipo', 'arquivoTipo',  '', '1802');"/>
+		<label > *Tipo de Arquivos
+	       	<button class="imgIcons" type="button" name="imaLocalizarArquivoTipo" onclick="MostrarBuscaPadrao('AssinarArquivosProcesso','Pendencia','Consulta de Arquivo Tipo', 'Digite o nome do Arquivo tipo.', 'id_ArquivoTipo', 'arquivoTipo', ['Arquivo Tipo'], [], '1802', '15'); return false;"><i class="fa-solid fa-magnifying-glass"></i></button>
+	    	<button class="imgIcons" type="button" name="imaLimparArquivoTipo" onclick="LimparChaveEstrangeira('id_ArquivoTipo', 'arquivoTipo'); return false;" title="Limpar Tipo de Arquivo"><i class="fa-regular fa-circle-xmark"></i></button>
+	    </label>	    	
+     	<input type="hidden" id="id_ArquivoTipo" name="Id_ArquivoTipo" value="" />
+    </div>       
+    <br /><br>
+   	<div id="abasInsercaoArquivos" >
+			<ul>
+			<li><a href="#upload"><span>Upload de Arquivos</span></a></li>
+			<li><a href="#editor_html"><span>Modelos, Editor on-line</span></a></li>
+		</ul>	   			  
+	    <!-- Externo -->		    
+        <div id="upload" >
+			<div id="arquivo_assinado">					   
+				<span class="btn btn-success fileinput-button" style="display:none">
+				    <i class="glyphicon glyphicon-plus"></i>
+			    	<span>Selecionar arquivos...</span>
+					<input type="file" id="fileupload" name="files[]" multiple accept=".p7s" onchange="arquivoSelecionado(this, this.files)"/>
+				</span>	        
+	        	<button type="button" title="Clique para adicionar o arquivo" onclick="submeteArquivoAssinado();LimparChaveEstrangeira('id_ArquivoTipo', 'arquivoTipo'); return false;" id="botaoAplicar" style="display:none">Confirmar</button>
+	        	<button type="button" title="Clique para carregar o arquivo" onclick="abreDialogoUploadArquivoAssinado();"  id="botaoUpload">Anexar Arquivos</button>
+	        	<br />
+	        	(<a href="https://docs.tjgo.jus.br/projudi/jar/sai.jar"><i class="fa fa-download"></i> Assinador Externo</a>)
+        	</div>
+    	</div>		    	
+	    	    
+		<!-- Interno -->
+	    <div id='editor_html' >   
+		    <input type="hidden" id="id_Modelo" name="Id_Modelo" value="null" />
+	        <div class="col30 float_label_fixo" id="mod_arquivo">
+		        <input class="formEdicaoInputSomenteLeitura" placeholder="Modelo" name="Modelo" readonly type="text" size="50" maxlength="50" id="modelo" value="" />       
+		        <label > Modelo
+		        	<button class="imgIcons" type="submit" name="imaLocalizarModelo" onclick="AlterarValue('PaginaAtual', '1662');" title="Selecionar Modelo de Arquivo"><i class="fa-solid fa-magnifying-glass"></i></button>
+		        	<button class="imgIcons" type="button" name="imaLimparModelo" onclick="LimparChaveEstrangeira('id_Modelo', 'modelo'); return false;" title="Limpar Modelo"><i class="fa-regular fa-circle-xmark"></i></button>
+		        </label> 
+	        </div>
+	   <br>
+	        <div class="col30 float_label" id="nome_arquivo">
+	        	<input id="nomeArquivo" name="nomeArquivo" type="text" size="54" placeholder="Digite o nome do arquivo" maxlength="255" value="" />
+		        <label for="nomeArquivo"> Nome do Arquivo
+		        	<button class="imgIcons" type="button" onclick="AlterarValue('nomeArquivo', ''); return false;" title="Limpar nome do arquivo"><i class="fa-regular fa-circle-xmark"></i></button>
+		        </label>
+	        </div>
+	        <div class="clear"> </div>  
+	        <div id="editor_texto">
+	        	<label class="formEdicaoLabel"> Editor Texto
+					<button class="imgIconsTabela" type="button" name="imaLocalizarArquivoTipo" 
+						onclick="MostrarOcultar('Editor'); return false;" title="Abrir Editor de Texto"><i class="fa-solid fa-file-pen"></i></button>
+				</label>
+				        		
+				<div id="Editor" class="Editor" >        			
+					<textarea class="ckeditor" cols="80" id="editor1" name="TextoEditor" rows="20"></textarea>														
+					<script type="text/javascript">			   		
+						</script>
+				</div>					
+				<input type="hidden" name="arquivo" id="arquivo" value="" />										           		  
+	   		</div>
+			<div id="divBotoesCentralizadosAssinador" class="divBotoesCentralizadosAssinador">							
+				 <!-- servidor -->
+				<button id="but_assinar" type="button"  onclick="javascript:digitarSenhaCertificado(inserirArquivo); return false;">
+						Assinar
+				 </button>				 
+				<button id="but_salvarHtml" type="button"  onclick="javascript:gerarHTML(); return false;">
+						Salvar Html
+				 </button>				   
+			     <button type="button" hidden  onclick="javascript:incluirArquivosAreaTransferencia();">
+						Colar
+				 </button>  					 
+				 <button type="button" hidden  onclick="javascript:limparArquivosAreaTransferencia();">
+						Limpar
+				 </button>				 		              			
+        	</div>
+	   	</div>   
+  </div>
+</fieldset>
+
+<div id="divListaArquivos" class="divLocalizar" >		
+	<fieldset>
+		<legend>Lista de Arquivos</legend>
+		<button class="imgIcons" type="button" onclick="atualizarArquivos(); return false;" style="float: none;" title="Atualizar os arquivos da lista" ><i class="fa-solid fa-arrows-rotate"></i></button>
+		<button class="imgIcons" type="button" onclick="excluirSelecionados('divTabela'); return false;" style="float: none;" title="Apagar os arquivos selecionados da lista" ><i class="fa-solid fa-trash-can"></i></button>
+		<button class="imgIcons" type="button" onclick="alterarEstadoChecks('divTabela', true, 'arquivos'); return false;"	style="float: none;" title="Selecionar todos os arquivos da lista" ><i class="fa-solid fa-arrow-pointer"></i></button>
+		<button class="imgIcons" type="button" onclick="alterarEstadoChecks('divTabela', false, 'arquivos'); return false;" style="float: none;" title="Retirar seleção de arquivos da lista" ><i class="fa-solid fa-file-circle-xmark"></i></button>
+		<div id="divTabelaArquivos" class="divTabela" >
+			<table class="Tabela">
+				<thead>
+			    	<tr>
+			    		<th class="colunaMinima"><input type="checkbox" id="chkSelTodos" value="" onclick="atualizarChecksFiltro(this, 'divTabelaArquivos', 'arquivos')" title="Alterar os estados de todos os itens da lista" /></th>
+			      		<th width="50%">Descri&ccedil;&atilde;o</th>
+			      		<th>Nome do Arquivo</th>
+			      		<th class="colunaMinima">Op&ccedil;&otilde;es</th>
+			    	</tr>
+			  	</thead>
+			  	<tbody id="corpoTabelaArquivo"></tbody>
+			</table>
+		</div>	
+	</fieldset>
+</div><div id="divBotoesCentralizados" class="divBotoesCentralizados">
+							<input name="imgConcluir" type="submit" value="Avançar" onclick="AlterarValue('PaginaAtual',-2);"> 
+						</div>
+						
+					</fieldset>
+				</div>
+			</form>
+		    <div id="dialog" style="display:none">&nbsp;</div>
+	
+<div id="busca_padrao" class="modalBusca">
+	<div id='modalBusca-content' class="modalBusca-content1 ___Movimentavel">
+		<div id='modalBusca-content-titulo' class="modalTitulo"><p id='modalTitulo'></p><span class="modal_close" onclick='fecharBuscaPadrao()'>&times;</span></div> 
+		<div class="modalBusca-content2">
+			<fieldset id="formLocalizar" > 
+				<legend id="legenda" ></legend>
+				<div class='float_label_form' id='busca_padrao_campos'></div>
+				<br />
+				<div class="Centralizado">
+					<input type="submit" id="busca_padraoLocalizar" name="busca_padraoLocalizar" value="Consultar" onclick="javascript:buscaDadosModal(_stTempRetorno, _paginaAtual, _numeroFiltros , '0', _tamanho, _id, _descricao, _colunasTabela, _fieldName,_filtro,_filtro2); return false;"/>
+				</div>
+			</fieldset>	
+			<div id='divTabelaBuscaPadrao' class="divTabela"></div>
+			<div id="PaginacaoBuscaPadrao" class="Paginacao"></div>
+		</div>
+	</div> 
+</div>
+
+<div id="infoPasso" style="display:none" class="modalBusca">
+	<div class="modalBusca-content1 ___Movimentavel">
+		<div class="modalTitulo"><p id='modalTitulo'></p><span class="modal_close" onclick='$("#infoPasso").hide();'>&times;</span></div> 
+		<div class="modalBusca-content2">
+			<div id="divInfoPasso" class="divEditar"> 
+				
+			</div>
+		</div>
+	</div> 
+</div>
+
+<div id="infoFoto" style="display:none" class="modalBusca">
+	<div class="modalBusca-content1 ___Movimentavel">
+		<div class="modalTitulo"><p id='modalTitulo'></p><span class="modal_close" onclick='$("#infoFoto").hide();'>&times;</span></div> 
+		<div class="modalBusca-content2">
+			<div id="divInfoPasso" class="divEditar Centralizado"> 
+				<img id='img_infoFoto'>
+			</div>
+		</div>
+	</div> 
+</div>
+
+<div id="infoFormulario" style="display:none" class="modalBusca">
+	<div class="modalBusca-content1 ___Movimentavel">
+		<div class="modalTitulo"><p id='modalTitulo'></p><span class="modal_close" onclick='$("#infoFormulario").hide();'>&times;</span></div> 
+		<div class="modalBusca-content2">
+			<div id="divinfoFormulario" class="divEditar Centralizado"> 				
+			</div>
+		</div>
+	</div> 
+</div>
+
+<div id="divPortaTabela" style="display:none" class="divPortaTabela ___Movimentavel">
+	<div class="divPortaTabelaTitulo"><p id='divPortaTabelaTitulo'></p><span class="modal_close" onclick='$("#divPortaTabela").hide();'>&times;</span></div>
+	<div class='tableview'> 
+		<div id="divPortaTabelaConteudo" class="Centralizado divPortaTabelaConteudo tableview-holder"> 
+		
+		</div>
+	</div>
+</div> 
+
+<input type="text" style="display:none">
+<input type="password" style="display:none">
+<div id='divLerSenha'  class='divFundoEscuro' style = "display:none">
+	<div id='divPortaSenha' class='divCentroTela' >
+		<h1>Digite a senha do certificado digital</h1>
+		<hr/>
+		<input type='password' name='senhaCertificado' id='senhaCertificado' autocomplete='off' ><br />
+		<div  style="text-align: left;">
+			<input type="checkbox" name='salvarSenhaCertificado' id='salvarSenhaCertificado' >Memorizar a senha do certificado
+		</div>
+		<hr/>
+		<div id="divBotoesCentralizadosAssinador" style="text-align: right; margin-top: 8px;">
+			<button id='but_senhaDigita' type="button">
+				Assinar
+	 		</button>
+	 		<button id='but_cancelar' type="button" onclick="javascript:$('#divLerSenha').hide(); $('#senhaCertificado').val(''); return false;">
+				Cancelar
+	 		</button>
+	 	</div>		
+	</div>
+</div>
+ 
+<script type="text/javascript" src="./js/fonte_contraste.js"></script>    
+<script type="text/javascript" >
+  
+	var _stTempRetorno;
+	var _boMostrarExcluir;
+	var _paginaAtual;
+	var _nomeBusca;
+	var _tamanhoRetornoConsulta;	
+	var _numeroFiltros;
+	var _tamanho;
+	var _id;
+	var _descricao;
+	var _colunasTabela;
+	var _fieldName;
+	var _filtro;
+	var _filtro2;
+	
+	var mousePosition;
+	var offset = [0,0];	
+	var isDown = false;
+	
+		
+	function acionarBotao(event,id_botao){
+		if (event.keyCode==13){
+			$("#" + id_botao ).trigger('click');
+		}
+	}
+
+	function fecharBuscaPadrao() {
+		$("#busca_padrao").hide();
+		$("#busca_padrao_campos").html('');
+	}
+	
+	function MostrarBuscaPadrao(field, ct, titulo, legenda, id, descricao, campos, colunasTabela, paginaAtual, tamanhoConsulta, filtro, filtro2, params){
+
+		_paginaAtual = paginaAtual;
+		_numeroFiltros = campos.length;
+		_tamanho = tamanhoConsulta;
+		_stTempRetorno = ct;
+		_descricao = descricao;
+		_colunasTabela=colunasTabela;
+		_filtro=$("#" + field + " #"+ filtro).val();
+		_filtro2=$("#" + field + " #"+ filtro2).val();
+
+        _filtro = ['null', 'undefined', '', null, undefined].includes(_filtro) ? '' : _filtro;
+        _filtro2 = ['null', 'undefined', '', null, undefined].includes(_filtro2) ? '' : _filtro2;
+
+		$("#modalTitulo").html(titulo) ;
+		$("#legenda").html(legenda);		
+		
+		var descricaoCabecalho = _descricao;
+		var st_campos ="";
+		var stTabela = "";		
+
+		if (params) {
+			if (params['cabecalhoDescricao']) {
+				descricaoCabecalho = params['cabecalhoDescricao'];
+			}
+		}
+		
+		for (var i = 0; i < campos.length; i++) {
+			st_campos += '<div class="col90 float_label">';			
+			st_campos += '<input id="nomeBusca'+(i+1)+'" class="float_label_input" onkeypress="acionarBotao(event,\'busca_padraoLocalizar\');" placeholder="'+campos[i]+'" name="nomeBusca'+(i+1)+'" value="" type="text">';
+			st_campos += '<label for="nomeBusca'+(i+1)+'">'+campos[i]+'</label>'; 
+			st_campos += '</div>';
+		}
+		
+		if (_id!=id || field!=_fieldName){
+			_id = id;
+			_fieldName= field;
+			stTabela += '	<table id="tabelaLocalizar" class="Tabela">';
+			stTabela += '		<thead>';
+			stTabela += '			<tr>';
+			stTabela += '				<th align="Center" style="width: 50px;"></th>';
+			if (descricaoCabecalho === 'FontePagadora') {
+				stTabela += '				<th align="Center" style="width: 120px;">CNPJ</th>';
+				stTabela += '				<th align="left">Fonte Pagadora</th>';
+			} else {
+				stTabela += '				<th align="Center" style="width: 120px;">Id</th>';
+				stTabela += '				<th align="left">'+descricaoCabecalho+'</th>';
+			}
+			for (var i = 0; i < colunasTabela.length; i++) {
+				stTabela += '			<th align="left">'+ colunasTabela[i] +'</th>';
+			}
+			//stTabela += '				<th class="colunaMinima" title="Seleciona o registro para edição">Selecionar</th>';	
+			stTabela += '			</tr>';
+			stTabela += '		</thead>';
+			stTabela += '		<tbody id="CorpoTabela">&nbsp;</tbody>';
+			stTabela += '	</table>';	  		
+			$("#divTabelaBuscaPadrao").html(stTabela) ;
+			$("#PaginacaoBuscaPadrao").html("") ;
+		}
+		
+		$("#busca_padrao_campos").html(st_campos) ;
+		$("#busca_padrao").show();
+		/*$("#busca_padrao").css({'visibility':'visible','opacity':'1'});*/
+		//var doc = document.documentElement.clientHeight ? document.documentElement : document.body;
+// 		var posicao   = ((this.height() - $("#modalBusca-content1").outerHeight()) / 2) + "px";
+// 		alert(posicao);
+// 		alert(this.top + " " + this.left);
+		
+		//posição do objeto na tela
+// 		event = event || window.event;
+// 		var source = event.target || event.srcElement;
+		 				
+// 		var topRelativo = (($(document).height() - $("#modalBusca-content").height() )/2) - ($("#modalBusca-content").height() /3);
+		
+// 		//$("#modalBusca-content").css({'top':topRelativo});
+// 		var posicaoY = source.y || source.offsetTop; 														
+// 		//var posicaoX = source.x || source.offsetLeft;
+		
+//  		if(posicaoY>120){
+//  			$("#modalBusca-content").css({'top':posicaoY-100}); 			
+//  		}else{
+//  			$("#modalBusca-content").css({'top':posicaoY});
+//  		}
+		//var leftRelativo = ($(document).width() - $("#modalBusca-content").width() )/2;
+		
+		//$("#modalBusca-content").css({'left':leftRelativo});
+		
+	}
+		
+	
+	//window.toggleContrast=function(){Contrast.toogle()};
+	
+	window.addEventListener("keydown", function(event ){parent.postMessage({'origem':'corpo','comando':'keydown','key':event.key,'keycode':event.keyCode}); });
+	window.addEventListener("keyup", function(event ){parent.postMessage({'origem':'corpo','comando':'keyup','key':event.key,'keycode':event.keyCode}); });
+		
+	//guardo aqui as teclas apertadas e não soltadas
+	var mapTeclas = new Map();
+	
+	function teclaApertada ( codigo){
+		mapTeclas.set(codigo, true);
+		//console.log(codigo + '  1');
+		//ativar menu quando apertar ctrl+alt+m
+		// ctrl =17    alt = 18    m = 77  shift = 16 173 = menos  61 = mais 67 = c  89 = y
+		if(mapTeclas.get(17) && mapTeclas.get(18) && mapTeclas.get(77) ){
+			
+			//console.log($('#menu > #0'));
+			$('#0').show();
+			$('#0').focus();
+		}else if(mapTeclas.get(17) && mapTeclas.get(18) && mapTeclas.get(173) ){
+			$("#FonteDiminuir").trigger('click');
+			//fonte('d');
+		}else if(mapTeclas.get(17) && mapTeclas.get(18) && mapTeclas.get(61) ){
+			$("#FonteAumentar").trigger('click');
+			//fonte('a');
+		}else if(mapTeclas.get(17) && mapTeclas.get(18) && mapTeclas.get(89) ){
+			$("#ContrasteAlterar").trigger('click');
+			//window.toggle();
+		}
+	}
+	
+	function teclaLiberada (codigo){
+		//mapTeclas.clear();
+		mapTeclas.delete(codigo);
+	}
+	
+	var eventMethod = window.addEventListener ? "addEventListener" : "attachEvent";
+	var eventer = window[eventMethod];
+	var messageEvent = eventMethod == "attachEvent" ? "onmessage" : "message";
+	
+	// Listen to message from child window
+	eventer(messageEvent,function(event) {
+		 if (!event.origin.includes( "localhost:8080") && !event.origin.includes("projudi.tjgo.jus.br") && !event.origin.includes("projudi-teste.tjgo.jus.br") ){
+			  return;
+		  }
+		  
+		  var origem = event.data.origem;
+		  if(origem=='corpo'){				
+				if(event.data.comando){
+					//console.log("header " + event.data.comando + " " + event.data.key + " " +  event.data.keycode  );										
+				    									    
+					if ( event.data.comando=="keydown"){						
+						teclaApertada(event.data.keycode);
+					}else if (event.data.comando=="keyup"){
+						teclaLiberada(event.data.keycode);
+					}					
+				}
+		  }else if(origem=='menu'){
+			 //var stComando = ; 
+			 //alert(stComando);
+			 
+			 //alert(window[toogle];
+			  var comando = window[event.data.comando];
+			  //alert(comando);
+			  if(comando){
+			  	//console.log("body " + event.data.comando);
+			    comando();
+			   	//window.Contrast[event.data.comando]();
+			  }
+		  }				  
+	});	
+  
+	function infoPasso( id_form, id, titulo){
+		var campos = $('table#tb_'+id_form+ ' tr#tr_'+ id ).attr("campos");
+		var obJson = JSON.parse(campos);
+		//console.log(campos);
+		var ids = Object.keys(obJson);
+		var valores = Object.values(obJson);
+		var stFormulario ='<fieldset class="formEdicao">'
+		stFormulario+='<legend class="formEdicaoLegenda">'+titulo+'</legend>';
+		for(var i=0; i<ids.length;i++){
+			if (Array.isArray(valores[i])){
+				var stValor = JSON.stringify(valores[i]);
+				stFormulario+='<div class="col100"><label class="formEdicaoLabel">' + ids[i] + '</label> <Text rows="6" cols="150" class="formEdicaoInputSomenteLeitura" readonly="true">' + stValor + '</Text></div>';
+			}else{
+				var tamanhoColuna= 15;
+				var qtdCaracteresColl = ids[i].length;
+				if (valores[i].length>ids[i].length){
+					qtdCaracteresColl= valores[i].length;
+				}
+				if( qtdCaracteresColl<=10){									tamanhoColuna = 10;}
+				else if( qtdCaracteresColl>10 && qtdCaracteresColl<=20){	tamanhoColuna = 15; }
+				else if( qtdCaracteresColl>20 && qtdCaracteresColl<=30){	tamanhoColuna = 20; }
+				else if( qtdCaracteresColl>30 && qtdCaracteresColl<=40){	tamanhoColuna = 25; }
+				else if( qtdCaracteresColl>40 && qtdCaracteresColl<=50){	tamanhoColuna = 30; }
+				else if( qtdCaracteresColl>50 && qtdCaracteresColl<=60){	tamanhoColuna = 35; }
+				else if( qtdCaracteresColl>60 && qtdCaracteresColl<=70){	tamanhoColuna = 40; }
+				else if( qtdCaracteresColl>70 && qtdCaracteresColl<=80){	tamanhoColuna = 45; }
+				else if( qtdCaracteresColl>80 && qtdCaracteresColl<=90){	tamanhoColuna = 50 }
+				else if( qtdCaracteresColl>90 && qtdCaracteresColl<=100){	tamanhoColuna = 55; }
+				else if( qtdCaracteresColl>100 && qtdCaracteresColl<=110){	tamanhoColuna = 60; }
+				else if( qtdCaracteresColl>110 && qtdCaracteresColl<=120){	tamanhoColuna = 65; }
+				else if( qtdCaracteresColl>120 && qtdCaracteresColl<=130){	tamanhoColuna = 70; }
+				else if( qtdCaracteresColl>130 && qtdCaracteresColl<=140){	tamanhoColuna = 75; }
+				else if( qtdCaracteresColl>140 && qtdCaracteresColl<=150){	tamanhoColuna = 80; }
+				else if( qtdCaracteresColl>150 && qtdCaracteresColl<=160){	tamanhoColuna = 85; }
+				else if( qtdCaracteresColl>160 && qtdCaracteresColl<=170){	tamanhoColuna = 90; }
+				else if( qtdCaracteresColl>170){							tamanhoColuna = 100; }
+				
+				stFormulario+='<div class="col' + tamanhoColuna + '"><label>' + ids[i] + '</label> <input class="formEdicaoInputSomenteLeitura" type="text" readonly="true" size="' + valores[i].length + '" value="' + valores[i] + '"/></div>';
+			}
+		}
+		$('div#divInfoPasso').html(stFormulario);
+		$("#infoPasso").show();
+	}
+	function infoFoto(id){		
+		$('img#img_infoFoto').attr('src', $('img#foto'+id).attr('src'));
+		$("#infoFoto").show();
+	}
+	
+	$(document).ready(function() {
+		
+		var mensagemErro = '';		 
+		var mensagemOk = '';
+		var titulo ='Processo Judicial';						
+		var availableTags;
+		
+// 		$( function() {
+// 		   $( ".___Movimentavel" ).draggable();
+// 		});
+		  
+		if (((mensagemErro!='') && (mensagemErro!='null')) || ((mensagemOk!='') && (mensagemOk!='null'))){
+			
+			if ((mensagemErro!='') && (mensagemErro!='null')) {
+				//titulo+=" Erro";
+				mostrarMensagemErro(titulo, mensagemErro);												
+			}else{
+				//titulo+=" Ok";					
+				mostrarMensagemOk(titulo, mensagemOk);
+			}
+			
+			$('#divCorpo').focus();	
+						
+			$('html, body',window.parent.document).animate({scrollTop:0}, 'slow');
+		}
+		
+		
+		
+		window.Contrast.check();
+		
+    }); 
+</script>
+
+	</div>
+		 		
+	</body>
+	<script type="text/javascript">
+		function fechar(valor){
+			if (valor!=null){
+				$('.corpo').hide();
+				$('#divEditor').hide();
+			}
+		}
+       	//setTimeout("fechar('sim')", 1000);
+	</script>
+</html>
