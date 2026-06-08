@@ -11,6 +11,8 @@ import br.com.vilareal.projudi.ProjudiDrivePdfOcrBackfillService;
 import br.com.vilareal.projudi.ProjudiDrivePdfTextoDiagnosticoService;
 import br.com.vilareal.projudi.ProjudiDrivePdfTextoDiagnosticoService.ItemDrivePdfTexto;
 import br.com.vilareal.projudi.ProjudiOrquestradorService.ResultadoOrquestracao;
+import br.com.vilareal.projudi.ProjudiPeticaoService;
+import br.com.vilareal.projudi.ProjudiPeticaoService.ResultadoProtocoloPeticao;
 import br.com.vilareal.projudi.ProjudiProcessoArquivosDiagnosticoService;
 import br.com.vilareal.projudi.ProjudiPublicacaoLimpezaDiagnosticoService;
 import br.com.vilareal.projudi.ProjudiSelecaoAutomaticaDiagnosticoService;
@@ -32,7 +34,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -74,6 +78,7 @@ public class ProjudiDiagnosticoController {
     private final ProjudiDrivePdfOcrBackfillService drivePdfOcrBackfillService;
     private final ProjudiProcessoArquivosDiagnosticoService processoArquivosDiagnosticoService;
     private final JuliaTriagemService juliaTriagemService;
+    private final ProjudiPeticaoService peticaoService;
 
     @Value("${gmail.credentials.path:}")
     private String gmailCredentialsPath;
@@ -96,7 +101,8 @@ public class ProjudiDiagnosticoController {
                                         ProjudiDrivePdfTextoDiagnosticoService drivePdfTextoDiagnosticoService,
                                         ProjudiDrivePdfOcrBackfillService drivePdfOcrBackfillService,
                                         ProjudiProcessoArquivosDiagnosticoService processoArquivosDiagnosticoService,
-                                        JuliaTriagemService juliaTriagemService) {
+                                        JuliaTriagemService juliaTriagemService,
+                                        ProjudiPeticaoService peticaoService) {
         this.credencialService = credencialService;
         this.teorService = teorService;
         this.sessionService = sessionService;
@@ -110,6 +116,7 @@ public class ProjudiDiagnosticoController {
         this.drivePdfOcrBackfillService = drivePdfOcrBackfillService;
         this.processoArquivosDiagnosticoService = processoArquivosDiagnosticoService;
         this.juliaTriagemService = juliaTriagemService;
+        this.peticaoService = peticaoService;
     }
 
     /** Cadastra/atualiza a credencial real no cofre (senha cifrada; resposta sem segredos). */
@@ -344,6 +351,26 @@ public class ProjudiDiagnosticoController {
             @RequestParam(defaultValue = "50") int limite,
             @RequestParam(defaultValue = "false") boolean redoOcr) throws Exception {
         return drivePdfOcrBackfillService.executar(cnj, todos, limite, redoOcr);
+    }
+
+    /**
+     * TEMP — PROTOCOLA DE VERDADE no PROJUDI (passo Concluir é IRREVERSÍVEL).
+     * Testar somente com processo de baixo risco.
+     */
+    @PostMapping(value = "/peticionar-teste", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public Map<String, Object> peticionarTeste(
+            @RequestParam Long credencialId,
+            @RequestParam String numeroProcesso,
+            @RequestParam String complemento,
+            @RequestParam("arquivoP7s") MultipartFile arquivoP7s) throws IOException {
+        byte[] bytes = arquivoP7s.getBytes();
+        ResultadoProtocoloPeticao resultado = peticaoService.protocolarPeticao(
+                credencialId, numeroProcesso, complemento, bytes);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("sucesso", resultado.sucesso());
+        out.put("mensagem", resultado.mensagem());
+        out.put("respostaBruta", resultado.respostaBruta());
+        return out;
     }
 
     /** TEMP — diagnóstico Google Drive (credencial, metadados de pastas, Shared Drives). Remover após validação. */

@@ -1,5 +1,6 @@
 package br.com.vilareal.db.migration;
 
+import br.com.vilareal.AbstractIntegrationTest;
 import br.com.vilareal.agendamento.domain.TipoCadencia;
 import br.com.vilareal.agendamento.infrastructure.persistence.entity.AgendamentoConsultaEntity;
 import br.com.vilareal.agendamento.infrastructure.persistence.repository.AgendamentoConsultaRepository;
@@ -8,21 +9,12 @@ import br.com.vilareal.notificacao.infrastructure.persistence.entity.Notificacao
 import br.com.vilareal.notificacao.infrastructure.persistence.repository.NotificacaoDestinatarioRepository;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
-import br.com.vilareal.support.DockerCiGateExtension;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.transaction.annotation.Transactional;
-import org.testcontainers.containers.MySQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -35,11 +27,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * {@code agendamento_consulta.processo_id} é NOT NULL (V93); o ramo NULL usa
  * {@code notificacao_destinatario.processo_id} (nullable, V96).
  */
-@ExtendWith(DockerCiGateExtension.class)
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@Testcontainers
-@ActiveProfiles("test")
-class V100ConsultaPeriodicaHabilitadaBackfillIntegrationTest {
+class V100ConsultaPeriodicaHabilitadaBackfillIntegrationTest extends AbstractIntegrationTest {
 
     private static final String V100_UPDATE =
             """
@@ -62,16 +50,6 @@ class V100ConsultaPeriodicaHabilitadaBackfillIntegrationTest {
               AND id NOT IN (SELECT DISTINCT processo_id FROM agendamento_consulta)
               AND id NOT IN (SELECT DISTINCT processo_id FROM notificacao_destinatario)
             """;
-
-    @Container
-    static final MySQLContainer<?> MYSQL = new MySQLContainer<>("mysql:8.0.36");
-
-    @DynamicPropertySource
-    static void registerProps(DynamicPropertyRegistry r) {
-        r.add("spring.datasource.url", MYSQL::getJdbcUrl);
-        r.add("spring.datasource.username", MYSQL::getUsername);
-        r.add("spring.datasource.password", MYSQL::getPassword);
-    }
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
