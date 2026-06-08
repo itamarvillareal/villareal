@@ -1,16 +1,21 @@
 /**
  * POST/PUT de eventos de agenda na API — partilhado por import e sync incremental.
+ *
+ * Garantias ao aplicar:
+ *   - Eventos do **mesmo dia/utilizador** correm em série (evita corrida no cache e upsert fuzzy da API).
+ *   - Paralelismo (`concurrency`) só entre **dias** diferentes.
+ *   - Após cada dia, verifica que cada linha txt tem par **estrito** na API (hora + descrição + status).
+ *   - Ambíguo ou verificação falha → conta como falha e exit ≠ 0.
  */
 
 import {
-  compromissosEquivalentes,
+  chaveConteudoEvento,
   compromissosEquivalentesAgenda,
   descricaoComoNaApi,
   normalizarHoraAgendaTxt,
   normalizarStatusAgendaTxt,
   normalizarStrAgenda,
   temDescricaoUtil,
-  chaveConteudoEvento,
 } from './agenda-local-txt.mjs';
 
 export const ORIGEM_AGENDA_TXT = 'import-txt-agenda-local';
@@ -87,18 +92,66 @@ export function chaveDedupImport(usuarioId, ev) {
   return `${usuarioId}|${ev.dataEvento}|${chaveConteudoEvento(ev)}`;
 }
 
+/** @param {number | string} usuarioId @param {string} dataEvento */
+export function chaveDiaAgenda(usuarioId, dataEvento) {
+  return `${usuarioId}|${dataEvento}`;
+}
+
 /**
- * Evita duplicar no mesmo lote txt eventos equivalentes (descrição/hora flexível).
+ * @param {object[]} linhas
+ * @returns {Map<string, object[]>}
+ */
+export function agruparLinhasPorDia(linhas) {
+  /** @type {Map<string, object[]>} */
+  const grupos = new Map();
+  for (const L of linhas) {
+    const k = chaveDiaAgenda(L.usuarioId, L.dataEvento);
+    if (!grupos.has(k)) grupos.set(k, []);
+    grupos.get(k).push(L);
+  }
+  for (const arr of grupos.values()) {
+    arr.sort(
+      (a, b) =>
+        (a.linhaLegado ?? 0) - (b.linhaLegado ?? 0) ||
+        String(a.horaEvento ?? '').localeCompare(String(b.horaEvento ?? '')) ||
+        String(a.descricao ?? '').localeCompare(String(b.descricao ?? ''))
+    );
+  }
+  return grupos;
+}
+
+/**
+ * Correspondência **estrita** txt ↔ API (hora + descrição normalizada + status).
+ * @param {object} L
+ * @param {object} api
+ */
+export function eventoApiAlinhadoComTxt(L, api) {
+  return (
+    chaveConteudoEvento(L) ===
+    chaveConteudoEvento({
+      horaEvento: api.horaEvento,
+      descricao: api.descricao,
+      statusCurto: api.statusCurto,
+    })
+  );
+}
+
+/**
+ * @param {object} L
+ * @param {object[]} listaDia
+ */
+export function encontrarParEstritoNaApi(L, listaDia) {
+  return listaDia.find((api) => eventoApiAlinhadoComTxt(L, api)) ?? null;
+}
+
+/**
+ * Evita duplicar no mesmo lote txt eventos com o mesmo conteúdo (chave estrita).
  * @param {object[]} linhas
  * @param {object} ev
  */
 export function jaTemEquivalenteNoLote(linhas, ev) {
-  return linhas.some(
-    (L) =>
-      L.usuarioId === ev.usuarioId &&
-      L.dataEvento === ev.dataEvento &&
-      compromissosEquivalentesAgenda(ev, L)
-  );
+  const ck = chaveDedupImport(ev.usuarioId, ev);
+  return linhas.some((L) => chaveDedupImport(L.usuarioId, L) === ck);
 }
 
 export function buildBodyAgenda(L, origem, processoRef = null) {
@@ -204,6 +257,10 @@ export function encontrarCorrespondencia(txt, eventosApi) {
   }
 
   const api = melhor.api;
+  if (eventoApiAlinhadoComTxt(txt, api)) {
+    return { tipo: 'igual', api, candidatos: candidatos.length, diffs: [] };
+  }
+
   const diffs = [];
   const descApi = descricaoComoNaApi(api.descricao);
   if (normalizarStrAgenda(descTxt) !== normalizarStrAgenda(descApi)) diffs.push('descricao');
@@ -214,17 +271,69 @@ export function encontrarCorrespondencia(txt, eventosApi) {
     diffs.push('status');
   }
 
-  if (diffs.length === 0) {
-    return { tipo: 'igual', api, candidatos: candidatos.length, diffs: [] };
-  }
   if (diffs.length === 1 && diffs[0] === 'status') {
-    return { tipo: 'igual', api, candidatos: candidatos.length, diffs, nota: 'status_pendente_vs_ok' };
+    return { tipo: 'atualizar', api, candidatos: candidatos.length, diffs, nota: 'status_pendente_vs_ok' };
   }
   return { tipo: 'atualizar', api, candidatos: candidatos.length, diffs };
 }
 
 /**
- * @param {object} opts — baseUrl, concurrency, origem?
+ * @param {object} L
+ * @param {object} api
+ * @param {object[]} listaDia
+ */
+function substituirNaListaDia(listaDia, api) {
+  const idx = listaDia.findIndex((x) => x.id === api.id);
+  if (idx >= 0) listaDia[idx] = api;
+  else listaDia.push(api);
+}
+
+/**
+ * @param {object} opts
+ * @param {object} L
+ * @param {object} body
+ * @param {object[]} listaDia
+ * @param {boolean} verbose
+ */
+async function putEventoAgenda(opts, token, L, body, listaDia, apiId, verbose) {
+  const r = await fetch(`${opts.baseUrl}/api/agenda/eventos/${apiId}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) {
+    const t = await r.text();
+    console.error(
+      `Erro PUT ${L.usuarioPasta} ${L.dataEvento} L${L.linhaLegado} id=${apiId}:`,
+      r.status,
+      t.slice(0, 200)
+    );
+    return null;
+  }
+  const atualizado = await r.json();
+  substituirNaListaDia(listaDia, atualizado);
+  if (verbose) {
+    console.log(
+      `  [actualizado] ${L.usuarioPasta} ${L.dataEvento} L${L.linhaLegado} id=${apiId} | ${descricaoComoNaApi(L.descricao).slice(0, 60)}`
+    );
+  }
+  return atualizado;
+}
+
+/**
+ * @param {object[]} eventosDia
+ * @param {object[]} listaDia
+ * @returns {object[]}
+ */
+export function listarLinhasSemParEstritoNaApi(eventosDia, listaDia) {
+  return eventosDia.filter((L) => !encontrarParEstritoNaApi(L, listaDia));
+}
+
+/**
+ * @param {object} opts — baseUrl, concurrency (dias em paralelo), origem?
  * @param {object[]} linhas — eventos com usuarioId
  * @param {string} token
  * @param {boolean} aplicar — false = dry-run
@@ -238,6 +347,8 @@ export async function aplicarEventosAgenda(opts, linhas, token, aplicar, verbose
     fail: 0,
     puladosIgual: 0,
     puladosAmbiguo: 0,
+    verificacaoFalhas: 0,
+    diasVerificados: 0,
     dryRunCriar: 0,
     dryRunAtualizar: 0,
   };
@@ -245,13 +356,14 @@ export async function aplicarEventosAgenda(opts, linhas, token, aplicar, verbose
   /** @type {Map<string, object[]>} */
   const cacheDia = new Map();
 
-  async function aplicarUm(L) {
-    const chaveDia = `${L.usuarioId}|${L.dataEvento}`;
-    if (!cacheDia.has(chaveDia)) {
-      const lista = await fetchEventosDia(opts.baseUrl, token, L.usuarioId, L.dataEvento);
-      cacheDia.set(chaveDia, Array.isArray(lista) ? lista : []);
-    }
-    const listaDia = cacheDia.get(chaveDia) ?? [];
+  async function recarregarDia(chaveDia, usuarioId, dataEvento) {
+    const lista = await fetchEventosDia(opts.baseUrl, token, usuarioId, dataEvento);
+    const arr = Array.isArray(lista) ? lista : [];
+    cacheDia.set(chaveDia, arr);
+    return arr;
+  }
+
+  async function aplicarUm(L, listaDia) {
     const match = encontrarCorrespondencia(L, listaDia);
 
     if (match.tipo === 'igual') {
@@ -260,7 +372,10 @@ export async function aplicarEventosAgenda(opts, linhas, token, aplicar, verbose
     }
     if (match.tipo === 'ambiguo') {
       stats.puladosAmbiguo += 1;
-      return 'skip';
+      console.error(
+        `[ambiguo] ${L.usuarioPasta} ${L.dataEvento} L${L.linhaLegado} — ${match.candidatos} candidatos (score ${match.topScore}) | ${descricaoComoNaApi(L.descricao).slice(0, 60)}`
+      );
+      return aplicar ? false : 'skip';
     }
 
     if (match.tipo === 'atualizar' && match.api?.id) {
@@ -274,41 +389,25 @@ export async function aplicarEventosAgenda(opts, linhas, token, aplicar, verbose
         return 'dry-put';
       }
       const body = buildBodyAgenda(L, origem, match.api.processoRef ?? null);
-      const r = await fetch(`${opts.baseUrl}/api/agenda/eventos/${match.api.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(body),
-      });
-      if (!r.ok) {
-        const t = await r.text();
+      const atualizado = await putEventoAgenda(opts, token, L, body, listaDia, match.api.id, verbose);
+      if (!atualizado) return false;
+      if (!eventoApiAlinhadoComTxt(L, atualizado)) {
         console.error(
-          `Erro PUT ${L.usuarioPasta} ${L.dataEvento} L${L.linhaLegado} id=${match.api.id}:`,
-          r.status,
-          t.slice(0, 200)
+          `[verificação PUT] ${L.usuarioPasta} ${L.dataEvento} L${L.linhaLegado} id=${match.api.id} — resposta não alinha com txt`
         );
         return false;
       }
-      const atualizado = await r.json();
-      const idx = listaDia.findIndex((x) => x.id === match.api.id);
-      if (idx >= 0) listaDia[idx] = atualizado;
       stats.puts += 1;
-      if (verbose) {
-        console.log(
-          `  [actualizado] ${L.usuarioPasta} ${L.dataEvento} L${L.linhaLegado} id=${match.api.id} | ${descricaoComoNaApi(L.descricao).slice(0, 60)}`
-        );
-      }
       return true;
     }
 
     if (match.tipo === 'faltando_na_api') {
-      const dupApi = listaDia.some((api) => compromissosEquivalentesAgenda(L, api));
-      if (dupApi) {
+      const parEstrito = encontrarParEstritoNaApi(L, listaDia);
+      if (parEstrito) {
         stats.puladosIgual += 1;
         return 'skip';
       }
+
       if (!aplicar) {
         stats.dryRunCriar += 1;
         if (verbose) {
@@ -318,6 +417,7 @@ export async function aplicarEventosAgenda(opts, linhas, token, aplicar, verbose
         }
         return 'dry-post';
       }
+
       const body = buildBodyAgenda(L, origem, null);
       const r = await fetch(`${opts.baseUrl}/api/agenda/eventos`, {
         method: 'POST',
@@ -336,8 +436,19 @@ export async function aplicarEventosAgenda(opts, linhas, token, aplicar, verbose
         );
         return false;
       }
-      const criado = await r.json();
-      listaDia.push(criado);
+      let criado = await r.json();
+      if (!eventoApiAlinhadoComTxt(L, criado)) {
+        const parPos = encontrarParEstritoNaApi(L, [...listaDia, criado]);
+        if (parPos) {
+          criado = parPos;
+        } else {
+          console.error(
+            `[verificação POST] ${L.usuarioPasta} ${L.dataEvento} L${L.linhaLegado} id=${criado.id} — upsert não reflete txt (hora=${criado.horaEvento ?? '—'})`
+          );
+          return false;
+        }
+      }
+      substituirNaListaDia(listaDia, criado);
       stats.criados += 1;
       if (verbose) {
         console.log(
@@ -350,13 +461,49 @@ export async function aplicarEventosAgenda(opts, linhas, token, aplicar, verbose
     return false;
   }
 
-  const concurrency = opts.concurrency ?? 8;
-  for (let i = 0; i < linhas.length; i += concurrency) {
-    const batch = linhas.slice(i, i + concurrency);
-    const results = await Promise.all(batch.map((L) => aplicarUm(L)));
-    for (const rr of results) {
+  async function verificarDia(chaveDia, eventosDia, usuarioId, dataEvento) {
+    const listaFresca = await recarregarDia(chaveDia, usuarioId, dataEvento);
+    stats.diasVerificados += 1;
+    const faltas = listarLinhasSemParEstritoNaApi(eventosDia, listaFresca);
+    for (const L of faltas) {
+      stats.verificacaoFalhas += 1;
+      console.error(
+        `[verificação dia] ${L.usuarioPasta} ${L.dataEvento} L${L.linhaLegado} ${L.horaEvento ?? '—'} | ${descricaoComoNaApi(L.descricao).slice(0, 70)} — ausente na API após import`
+      );
+    }
+    return faltas.length === 0;
+  }
+
+  const grupos = agruparLinhasPorDia(linhas);
+  const chavesDia = [...grupos.keys()];
+  const concurrency = Math.max(1, opts.concurrency ?? 8);
+
+  async function aplicarDiaCompleto(chaveDia) {
+    const eventosDia = grupos.get(chaveDia) ?? [];
+    if (eventosDia.length === 0) return;
+
+    const usuarioId = eventosDia[0].usuarioId;
+    const dataEvento = eventosDia[0].dataEvento;
+    const listaDia = await recarregarDia(chaveDia, usuarioId, dataEvento);
+
+    for (const L of eventosDia) {
+      const rr = await aplicarUm(L, listaDia);
       if (rr === true || rr === 'skip' || rr === 'dry-post' || rr === 'dry-put') continue;
       stats.fail += 1;
+    }
+
+    if (aplicar) {
+      const ok = await verificarDia(chaveDia, eventosDia, usuarioId, dataEvento);
+      if (!ok) stats.fail += 1;
+    }
+  }
+
+  for (let i = 0; i < chavesDia.length; i += concurrency) {
+    const batch = chavesDia.slice(i, i + concurrency);
+    await Promise.all(batch.map((chave) => aplicarDiaCompleto(chave)));
+    const done = Math.min(i + concurrency, chavesDia.length);
+    if (chavesDia.length > 200 && (done % 500 < concurrency || done === chavesDia.length)) {
+      console.log(`… dias ${done}/${chavesDia.length}`);
     }
   }
 

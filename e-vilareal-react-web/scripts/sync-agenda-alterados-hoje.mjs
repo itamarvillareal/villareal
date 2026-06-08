@@ -227,7 +227,7 @@ async function main() {
   console.log('\n=== concluído ===');
   if (opts.aplicar) {
     console.log(
-      `Criados: ${stats.criados} | Actualizados: ${stats.puts} | Falhas: ${stats.fail} | Iguais/ambíguos: ${stats.puladosIgual + stats.puladosAmbiguo}\n`
+      `Criados: ${stats.criados} | Actualizados: ${stats.puts} | Falhas: ${stats.fail} | Verificação: ${stats.verificacaoFalhas} | Iguais: ${stats.puladosIgual} | Ambíguos: ${stats.puladosAmbiguo}\n`
     );
   } else {
     console.log(
@@ -235,7 +235,9 @@ async function main() {
     );
   }
 
-  process.exit(stats.fail > 0 ? 2 : 0);
+  process.exit(
+    stats.fail > 0 || stats.verificacaoFalhas > 0 || stats.puladosAmbiguo > 0 ? 2 : 0
+  );
 }
 
 main().catch((e) => {

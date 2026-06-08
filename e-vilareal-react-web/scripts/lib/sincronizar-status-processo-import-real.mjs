@@ -14,6 +14,7 @@ import {
   buscarProcesso,
   loginImportApi,
 } from './vilareal-import-processo-api.mjs';
+import { resolverBaseUrlImport } from './vilareal-import-api-base.mjs';
 
 /**
  * @param {object} statusReg
@@ -61,10 +62,7 @@ function precisaAplicarStatus(proc, patch) {
  * @param {{ baseUrl?: string }} [ctx]
  */
 export async function sincronizarStatusProcessoImportReal(opts, ctx = {}) {
-  const baseUrl = (ctx.baseUrl ?? process.env.VILAREAL_API_BASE ?? 'http://localhost:8081').replace(
-    /\/$/,
-    ''
-  );
+  const baseUrl = (ctx.baseUrl ?? resolverBaseUrlImport()).replace(/\/$/, '');
   const baseGeraisMil = path.join(opts.base, 'Gerais', '1000');
   const registos = filtrarRegistos(
     listarStatusProcessoPorCliente(baseGeraisMil, opts.cliente),

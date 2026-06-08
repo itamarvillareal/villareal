@@ -54,7 +54,19 @@ import {
   pastaNumeroClienteHistorico,
   SEGMENTO_MIL,
 } from './lib/historico-local-txt-paths.mjs';
-import { dirCalculosCliente } from './lib/calculos-dropbox-txt.mjs';
+import {
+  dirCalculosCliente,
+  listarProcessosComCalculosTxt,
+} from './lib/calculos-dropbox-txt.mjs';
+import { listarProcessosComPartesTxt } from './lib/proc-processo-partes-txt.mjs';
+import {
+  resolverBaseUrlImport,
+  verificarApiImportDisponivel,
+} from './lib/vilareal-import-api-base.mjs';
+import {
+  imprimirVerificacaoImportReal,
+  verificarImportRealPosAplicar,
+} from './lib/verificar-import-real-pos-aplicar.mjs';
 import {
   listarProcessosComCabecalhoTxt,
   listarProcessosComDadosCabecalhoTxt,
@@ -95,6 +107,8 @@ export function parseArgs(argv) {
     senha: process.env.VILAREAL_IMPORT_SENHA || '',
     relatorio: null,
     amostraProcessosDryRun: 3,
+    baseUrl: resolverBaseUrlImport(),
+    semVerificacao: false,
   };
 
   for (const a of argv) {
@@ -133,7 +147,8 @@ export function parseArgs(argv) {
     else if (a.startsWith('--amostra-processos=')) {
       const n = Number(a.slice(20));
       if (Number.isFinite(n) && n >= 0) out.amostraProcessosDryRun = Math.trunc(n);
-    }
+    } else if (a.startsWith('--base-url=')) out.baseUrl = a.slice(11).replace(/\/$/, '');
+    else if (a === '--sem-verificacao') out.semVerificacao = true;
   }
 
   return out;
@@ -160,6 +175,23 @@ function filtrarProcessos(procs, opts) {
   });
 }
 
+/** União Dropbox + partes 90/95 + Calculos — stubs antes de partes/cálculos. */
+export function unirProcessosGarantirImportReal(base, cliente, procsDropbox, opts) {
+  /** @type {Set<number>} */
+  const set = new Set(procsDropbox);
+  if (!opts.semPartes) {
+    for (const p of filtrarProcessos(listarProcessosComPartesTxt(base, cliente), opts)) set.add(p);
+  }
+  if (!opts.semCalculos) {
+    for (const p of filtrarProcessos(listarProcessosComCalculosTxt(base, cliente), opts)) set.add(p);
+  }
+  return [...set].sort((a, b) => a - b);
+}
+
+function argsBaseUrl(opts) {
+  return [`--base-url=${opts.baseUrl}`];
+}
+
 /**
  * @param {string} script
  * @param {string[]} args
@@ -180,6 +212,7 @@ function argsComunsProcesso(opts, processo, extras = []) {
     `--processo=${processo}`,
     `--base=${opts.base}`,
     `--login=${opts.login}`,
+    ...argsBaseUrl(opts),
   ];
   if (opts.senha) args.push(`--senha=${opts.senha}`);
   if (opts.dryRun) args.push('--dry-run');
@@ -189,7 +222,12 @@ function argsComunsProcesso(opts, processo, extras = []) {
 }
 
 function argsPartesCliente(opts) {
-  const args = [`--cliente=${opts.cliente}`, `--base=${opts.base}`, `--login=${opts.login}`];
+  const args = [
+    `--cliente=${opts.cliente}`,
+    `--base=${opts.base}`,
+    `--login=${opts.login}`,
+    ...argsBaseUrl(opts),
+  ];
   if (opts.senha) args.push(`--senha=${opts.senha}`);
   if (opts.dryRun) args.push('--dry-run');
   else args.push('--aplicar');
@@ -205,7 +243,12 @@ function executarImportPartes(opts) {
 
 /** Gerais/…/{cod8}.151.1.0.txt → POST /api/clientes (antes de stubs de processo). */
 function executarImportClientePessoa151(opts) {
-  const args = [`--cliente=${opts.cliente}`, `--base=${opts.base}`, `--login=${opts.login}`];
+  const args = [
+    `--cliente=${opts.cliente}`,
+    `--base=${opts.base}`,
+    `--login=${opts.login}`,
+    ...argsBaseUrl(opts),
+  ];
   if (opts.senha) args.push(`--senha=${opts.senha}`);
   if (opts.dryRun) args.push('--dry-run');
   else args.push('--aplicar');
@@ -214,7 +257,12 @@ function executarImportClientePessoa151(opts) {
 }
 
 function argsCalculosCliente(opts) {
-  const args = [`--cliente=${opts.cliente}`, `--base=${opts.base}`, `--login=${opts.login}`];
+  const args = [
+    `--cliente=${opts.cliente}`,
+    `--base=${opts.base}`,
+    `--login=${opts.login}`,
+    ...argsBaseUrl(opts),
+  ];
   if (opts.senha) args.push(`--senha=${opts.senha}`);
   if (opts.dryRun) args.push('--dry-run');
   else args.push('--aplicar');
@@ -243,10 +291,9 @@ function executarImportCalculos(opts) {
  * @param {object} relatorio
  */
 async function executarSincronizarStatusProcesso(opts, relatorio) {
-  const baseUrl = (process.env.VILAREAL_API_BASE || 'http://localhost:8081').replace(/\/$/, '');
   console.log('\n[status] txt `Status.Processo*.Processos` — INATIVO → inativo; demais → ativo…\n');
   try {
-    const st = await sincronizarStatusProcessoImportReal(opts, { baseUrl });
+    const st = await sincronizarStatusProcessoImportReal(opts, { baseUrl: opts.baseUrl });
     relatorio.etapas.statusProcesso = st;
     console.log(
       `\n[status] concluído: txt=${st.txtStatus} inativos=${st.inativos} ativos=${st.ativos} aplicados=${st.aplicados} pulados=${st.pulados_igual} sem_api=${st.sem_processo_api} falhas=${st.falhas}\n`
@@ -268,7 +315,12 @@ function executarImportProcesso(opts, processo, extras = []) {
  * @param {number[]} [processosAlvo] Processos do lote atual (garantidos mesmo sem 3.1)
  */
 function executarGarantirProcessos(opts, processosAlvo = []) {
-  const args = [`--cliente=${opts.cliente}`, `--base=${opts.base}`, `--login=${opts.login}`];
+  const args = [
+    `--cliente=${opts.cliente}`,
+    `--base=${opts.base}`,
+    `--login=${opts.login}`,
+    ...argsBaseUrl(opts),
+  ];
   if (opts.senha) args.push(`--senha=${opts.senha}`);
   if (opts.dryRun) args.push('--dry-run');
   if (opts.processo != null) {
@@ -285,6 +337,7 @@ function executarImportHistoricoCliente(opts) {
     `--base=${opts.base}`,
     `--login=${opts.login}`,
     '--sem-corrigir',
+    ...argsBaseUrl(opts),
   ];
   if (opts.processo != null) args.push(`--processo=${opts.processo}`);
   if (opts.aplicarCorrecaoHistorico) {
@@ -293,7 +346,8 @@ function executarImportHistoricoCliente(opts) {
       `--cliente=${opts.cliente}`,
       `--base=${opts.base}`,
       `--login=${opts.login}`,
-      '--aplicar-correcao'
+      '--aplicar-correcao',
+      ...argsBaseUrl(opts),
     );
   }
   if (opts.substituirHistorico) {
@@ -313,6 +367,7 @@ function imprimirResumoCliente(opts, procs, fonteProcs = '3.1') {
   console.log('\n=== import-real ===\n');
   console.log(`Cliente: ${opts.cliente} (${formatCod8(opts.cliente)})`);
   console.log(`Base: ${opts.base}`);
+  console.log(`API: ${opts.baseUrl}`);
   console.log(`Pasta Proc: Proc/${SEGMENTO_MIL}/${cent}/${pasta}/`);
   console.log(`Modo: ${opts.dryRun ? 'dry-run' : 'aplicar'}`);
   console.log(
@@ -358,6 +413,15 @@ async function main() {
   if (opts.aplicar && !opts.senha) {
     console.error('Defina VILAREAL_IMPORT_SENHA em .env.import.local ou use --senha= para --aplicar');
     process.exit(1);
+  }
+
+  if (opts.aplicar) {
+    try {
+      await verificarApiImportDisponivel(opts.baseUrl);
+    } catch (e) {
+      console.error(`[import-real] ${e?.message || e}`);
+      process.exit(2);
+    }
   }
 
   const procs31 = listarProcessosComCabecalhoTxt(opts.base, opts.cliente);
@@ -410,6 +474,21 @@ async function main() {
     );
     procs.push(opts.processo);
   }
+
+  const procsGarantir = unirProcessosGarantirImportReal(opts.base, opts.cliente, procs, opts);
+  if (opts.processo != null && !procsGarantir.includes(opts.processo)) {
+    procsGarantir.push(opts.processo);
+    procsGarantir.sort((a, b) => a - b);
+  }
+
+  if (procsGarantir.length > procs.length) {
+    console.log(
+      `[garantir] ${procsGarantir.length} processo(s) a garantir na API (Dropbox ${procs.length} + partes/cálculos)\n`
+    );
+  }
+
+  relatorio.processosGarantir = procsGarantir.length;
+  relatorio.baseUrl = opts.baseUrl;
 
   if (procs.length === 0 && opts.processo == null) {
     console.log('\n[1/1] Pessoa do cliente (151.1.0)…\n');
@@ -469,7 +548,7 @@ async function main() {
     }
     if (!opts.dryRun) {
       console.log('\n[2/5] Garantir processos na API (stubs em falta)…\n');
-      const codeGarantir = executarGarantirProcessos(opts);
+      const codeGarantir = executarGarantirProcessos(opts, procsGarantir);
       relatorio.etapas.garantirProcessos = codeGarantir === 0 ? 'ok' : 'falhou';
       if (codeGarantir !== 0) process.exit(codeGarantir);
     } else {
@@ -510,6 +589,20 @@ async function main() {
       relatorio.duracaoMs = Date.now() - inicio;
       fs.writeFileSync(opts.relatorio, JSON.stringify(relatorio, null, 2), 'utf8');
     }
+    if (opts.aplicar && !opts.semVerificacao) {
+      console.log('\n[verificação] Conferindo API e MySQL após import…\n');
+      const ver = await verificarImportRealPosAplicar({ ...opts, procsGarantir });
+      relatorio.verificacaoPosImport = ver;
+      imprimirVerificacaoImportReal(ver);
+      if (!ver.ok) {
+        relatorio.falhas.push({ etapa: 'verificacaoPosImport', issues: ver.issues.length });
+        if (opts.relatorio) {
+          fs.writeFileSync(opts.relatorio, JSON.stringify(relatorio, null, 2), 'utf8');
+        }
+        console.error('[import-real] Verificação pós-import falhou — abortando.');
+        process.exit(ver.exitCode ?? 3);
+      }
+    }
     console.log(`\n=== import-real concluído (${((Date.now() - inicio) / 1000).toFixed(1)}s) ===\n`);
     return;
   }
@@ -524,16 +617,16 @@ async function main() {
     process.exit(codePessoa);
   }
 
-  if (!opts.dryRun && procs.length > 0) {
+  if (!opts.dryRun && procsGarantir.length > 0) {
     console.log('\n[2/5] Garantir processos na API (stubs em falta)…\n');
-    const codeGarantir = executarGarantirProcessos(opts, procs);
+    const codeGarantir = executarGarantirProcessos(opts, procsGarantir);
     relatorio.etapas.garantirProcessos = codeGarantir === 0 ? 'ok' : 'falhou';
     if (codeGarantir !== 0) {
       relatorio.falhas.push({ etapa: 'garantirProcessos', code: codeGarantir });
       console.error('[import-real] Falha ao garantir processos na API — abortando.');
       process.exit(codeGarantir);
     }
-  } else if (opts.dryRun && procs.length > 0) {
+  } else if (opts.dryRun && procsGarantir.length > 0) {
     relatorio.etapas.garantirProcessos = 'dry-run_omitido';
   }
 
@@ -694,6 +787,21 @@ async function main() {
   }
 
   relatorio.duracaoMs = Date.now() - inicio;
+
+  if (opts.aplicar && !opts.semVerificacao) {
+    console.log('\n[verificação] Conferindo API e MySQL após import…\n');
+    const ver = await verificarImportRealPosAplicar({ ...opts, procsGarantir });
+    relatorio.verificacaoPosImport = ver;
+    imprimirVerificacaoImportReal(ver);
+    if (!ver.ok) {
+      relatorio.falhas.push({ etapa: 'verificacaoPosImport', issues: ver.issues.length });
+      if (opts.relatorio) {
+        fs.writeFileSync(opts.relatorio, JSON.stringify(relatorio, null, 2), 'utf8');
+      }
+      console.error('[import-real] Verificação pós-import falhou — abortando.');
+      process.exit(ver.exitCode ?? 3);
+    }
+  }
 
   if (opts.relatorio) {
     fs.writeFileSync(opts.relatorio, JSON.stringify(relatorio, null, 2), 'utf8');

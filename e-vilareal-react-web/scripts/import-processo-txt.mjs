@@ -63,6 +63,7 @@ import {
   sincronizarVinculoClientePessoaApi,
 } from './lib/cliente-pessoa-151-txt.mjs';
 import { conectarMysqlVilareal } from './lib/mysql-vilareal.mjs';
+import { resolverBaseUrlImport } from './lib/vilareal-import-api-base.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SCRIPT_HISTORICO = path.join(__dirname, 'import-historico-local-txt.mjs');
@@ -85,7 +86,7 @@ function parseArgs(argv) {
     baseHistorico: DEFAULT_BASE_HISTORICO_LOCAL,
     login: process.env.VILAREAL_IMPORT_LOGIN || 'itamar',
     senha: process.env.VILAREAL_IMPORT_SENHA || '',
-    baseUrl: (process.env.VILAREAL_API_BASE || 'http://localhost:8081').replace(/\/$/, ''),
+    baseUrl: resolverBaseUrlImport(),
     relatorio: null,
   };
 

@@ -12,6 +12,7 @@ import path from 'node:path';
 import { resolverBaseBancoDados } from './lib/gerais-fase-processo-txt.mjs';
 import { formatCod8 } from './lib/historico-local-txt-paths.mjs';
 import { garantirProcessoNaApi, loginImportApi } from './lib/vilareal-import-processo-api.mjs';
+import { resolverBaseUrlImport } from './lib/vilareal-import-api-base.mjs';
 import { listarProcessosDropboxCliente } from './lib/processos-dropbox-cliente.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -26,7 +27,7 @@ function parseArgs(argv) {
     base: resolverBaseBancoDados(),
     login: process.env.VILAREAL_IMPORT_LOGIN || 'itamar',
     senha: process.env.VILAREAL_IMPORT_SENHA || '',
-    baseUrl: (process.env.VILAREAL_API_BASE || 'http://localhost:8081').replace(/\/$/, ''),
+    baseUrl: resolverBaseUrlImport(),
     dryRun: false,
   };
   for (const a of argv) {

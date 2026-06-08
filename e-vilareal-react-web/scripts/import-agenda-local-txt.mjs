@@ -12,7 +12,7 @@
  * Regra de negócio (legado): compromisso pode ter só descrição — hora em branco (tarefa do dia
  * sem horário fixo) e status em branco (ainda não cumprido; `OK` = cumprido).
  *
- * `--aplicar`: POST se não existir na API, PUT se existir e diferir; ignora duplicados (txt e API).
+ * `--aplicar`: POST se não existir na API, PUT se existir e diferir; verifica par estrito por dia.
  *
  * Uso:
  *   node scripts/import-agenda-local-txt.mjs --dry-run
@@ -28,7 +28,7 @@
  *   --usuario-pasta=         Repetível; ex. --usuario-pasta="Dr. Itamar"
  *   --relatorio=JSON
  *   --exportar-xls=PATH      Gera planilha (colunas D/F/H/J/X como na macro)
- *   --concurrency=N
+ *   --concurrency=N          Dias distintos em paralelo (eventos do mesmo dia são sempre em série)
  *   --login= --senha= --base-url=
  */
 
@@ -54,88 +54,17 @@ import {
   resolverBaseAgenda,
   temDescricaoUtil,
 } from './lib/agenda-local-txt.mjs';
-
-/** Pastas Dropbox → chaves extra para casar com GET /api/usuarios */
-const ALIASES_PASTA_AGENDA = {
-  'Dr. Itamar': ['dr itamar', 'dr. itamar', 'itamar', 'dr itamar villareal'],
-  KARLA: ['karla', 'karla pedroza'],
-  'Ana Luisa': ['ana luisa', 'ana luísa', 'ana.luisa'],
-};
-
-function normChave(s) {
-  return String(s ?? '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, ' ');
-}
-
-function construirMapaUsuariosPorChave(usuarios) {
-  const map = new Map();
-  const conflitos = [];
-
-  function add(rawKey, id) {
-    if (rawKey == null || rawKey === '') return;
-    const k = normChave(rawKey);
-    if (!k) return;
-    const prev = map.get(k);
-    if (prev != null && prev !== id) {
-      conflitos.push({ chave: k, id1: prev, id2: id });
-      return;
-    }
-    map.set(k, id);
-  }
-
-  for (const u of usuarios) {
-    if (!u || u.ativo === false) continue;
-    const id = u.id;
-    add(u.login, id);
-    add(String(u.login ?? '').replace(/[._-]+/g, ' '), id);
-    add(u.nome, id);
-    add(u.nomePessoa, id);
-    add(u.apelido, id);
-    if (u.nome) {
-      const tokens = String(u.nome).trim().split(/\s+/).filter(Boolean);
-      add(tokens[0], id);
-      if (tokens.length >= 2) add(`${tokens[0]} ${tokens[1]}`, id);
-    }
-    if (u.nomePessoa) {
-      const tokens = String(u.nomePessoa).trim().split(/\s+/).filter(Boolean);
-      add(tokens[0], id);
-      if (tokens.length >= 2) add(`${tokens[0]} ${tokens[1]}`, id);
-    }
-  }
-  return { map, conflitos };
-}
-
-/** Evita importar só status OK sem texto (viraria «Compromisso» duplicado na API). */
-function eventoImportavel(ev) {
-  if (temDescricaoUtil(ev.descricao)) return true;
-  if (normalizarHoraAgendaTxt(ev.horaEvento)) return true;
-  return false;
-}
-
-function buildBodyAgenda(L, origem, processoRef = null) {
-  return {
-    usuarioId: L.usuarioId,
-    dataEvento: L.dataEvento,
-    horaEvento: L.horaEvento ?? null,
-    descricao: temDescricaoUtil(L.descricao) ? String(L.descricao).trim().slice(0, 2000) : '',
-    statusCurto: L.statusCurto ?? null,
-    processoRef,
-    origem,
-  };
-}
-
-function resolverUsuarioIdPasta(usuarioPasta, mapa) {
-  const aliases = [usuarioPasta, ...(ALIASES_PASTA_AGENDA[usuarioPasta] ?? [])];
-  for (const a of aliases) {
-    const id = mapa.get(normChave(a));
-    if (id != null) return id;
-  }
-  return null;
-}
+import {
+  aplicarEventosAgenda,
+  chaveDedupImport,
+  construirMapaUsuariosPorChave,
+  encontrarCorrespondencia,
+  eventoImportavel,
+  fetchEventosDia,
+  fetchUsuariosApi,
+  loginObterToken,
+  resolverUsuarioIdPasta,
+} from './lib/agenda-api-aplicar.mjs';
 
 function parseArgs(argv) {
   const out = {
@@ -207,124 +136,6 @@ function amostraAleatoria(arr, n, seed) {
     [idx[i], idx[j]] = [idx[j], idx[i]];
   }
   return idx.slice(0, n).map((i) => arr[i]);
-}
-
-async function loginObterToken(opts) {
-  const loginRes = await fetch(`${opts.baseUrl}/api/auth/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      login: String(opts.login).trim().toLowerCase(),
-      senha: opts.senha,
-    }),
-  });
-  if (!loginRes.ok) {
-    const t = await loginRes.text();
-    throw new Error(`Login falhou: ${loginRes.status} ${t.slice(0, 300)}`);
-  }
-  const json = await loginRes.json();
-  if (!json.accessToken) throw new Error('Login sem accessToken');
-  return json.accessToken;
-}
-
-async function fetchUsuariosApi(baseUrl, token) {
-  const r = await fetch(`${baseUrl}/api/usuarios`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!r.ok) {
-    const t = await r.text();
-    throw new Error(`GET /api/usuarios: ${r.status} ${t.slice(0, 300)}`);
-  }
-  return r.json();
-}
-
-function normalizarHoraComparar(h) {
-  return normalizarHoraAgendaTxt(h);
-}
-
-function normalizarStatusComparar(s) {
-  return normalizarStatusAgendaTxt(s);
-}
-
-async function fetchEventosDia(baseUrl, token, usuarioId, dataIso) {
-  const q = new URLSearchParams({
-    usuarioId: String(usuarioId),
-    dataInicio: dataIso,
-    dataFim: dataIso,
-  });
-  const r = await fetch(`${baseUrl}/api/agenda/eventos?${q}`, {
-    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-  });
-  if (!r.ok) {
-    const t = await r.text();
-    throw new Error(`GET agenda ${usuarioId} ${dataIso}: ${r.status} ${t.slice(0, 200)}`);
-  }
-  return r.json();
-}
-
-/**
- * @param {object} txt
- * @param {object[]} eventosApi
- */
-function encontrarCorrespondencia(txt, eventosApi) {
-  const descTxt = descricaoComoNaApi(txt.descricao);
-  const normDescTxt = normalizarStrAgenda(descTxt);
-  const horaTxt = normalizarHoraComparar(txt.horaEvento);
-  const statusTxt = normalizarStatusComparar(txt.statusCurto);
-
-  /** @type {{ api: object, score: number }[]} */
-  const candidatos = [];
-
-  for (const api of eventosApi) {
-    if (!compromissosEquivalentesAgenda(txt, api)) continue;
-
-    const descApi = descricaoComoNaApi(api.descricao);
-    const normDescApi = normalizarStrAgenda(descApi);
-    let score = 100;
-    if (normDescTxt === normDescApi) score += 20;
-    else score += 10;
-
-    const horaApi = normalizarHoraComparar(api.horaEvento);
-    if (horaTxt === horaApi) score += 15;
-    else if (!horaTxt || !horaApi) score += 10;
-
-    const statusApi = normalizarStatusComparar(api.statusCurto);
-    if (statusTxt === statusApi) score += 5;
-
-    candidatos.push({ api, score });
-  }
-
-  if (candidatos.length === 0) return { tipo: 'faltando_na_api', api: null, candidatos: 0 };
-
-  candidatos.sort((a, b) => b.score - a.score);
-  const melhor = candidatos[0];
-  const empate =
-    candidatos.length > 1 &&
-    candidatos[1].score === melhor.score &&
-    melhor.score >= 100;
-
-  if (empate) {
-    return { tipo: 'ambiguo', api: null, candidatos: candidatos.length, topScore: melhor.score };
-  }
-
-  const api = melhor.api;
-  const diffs = [];
-  const descApi = descricaoComoNaApi(api.descricao);
-  if (normalizarStrAgenda(descTxt) !== normalizarStrAgenda(descApi)) diffs.push('descricao');
-  const horaTxtN = normalizarHoraComparar(txt.horaEvento);
-  const horaApiN = normalizarHoraComparar(api.horaEvento);
-  if (horaTxtN && horaApiN && horaTxtN !== horaApiN) diffs.push('hora');
-  if (normalizarStatusComparar(txt.statusCurto) !== normalizarStatusComparar(api.statusCurto)) {
-    diffs.push('status');
-  }
-
-  if (diffs.length === 0) {
-    return { tipo: 'igual', api, candidatos: candidatos.length, diffs: [] };
-  }
-  if (diffs.length === 1 && diffs[0] === 'status') {
-    return { tipo: 'igual', api, candidatos: candidatos.length, diffs, nota: 'status_pendente_vs_ok' };
-  }
-  return { tipo: 'atualizar', api, candidatos: candidatos.length, diffs };
 }
 
 async function validarAmostraComRelatorio(eventosEstruturados, opts, ctx) {
@@ -665,6 +476,8 @@ async function main() {
   const token = await loginObterToken(opts);
 
   const linhas = [];
+  /** @type {Set<string>} */
+  const chavesDedup = new Set();
   let puladosDupTxt = 0;
   let puladosSemConteudo = 0;
 
@@ -673,135 +486,26 @@ async function main() {
       puladosSemConteudo += 1;
       continue;
     }
-    if (
-      linhas.some(
-        (L) =>
-          L.usuarioId === e.usuarioId &&
-          L.dataEvento === e.dataEvento &&
-          compromissosEquivalentesAgenda(e, L)
-      )
-    ) {
+    const ck = chaveDedupImport(e.usuarioId, e);
+    if (chavesDedup.has(ck)) {
       puladosDupTxt += 1;
       continue;
     }
+    chavesDedup.add(ck);
     linhas.push(e);
   }
 
   console.log(
-    `Importação: ${linhas.length} eventos únicos (${puladosDupTxt} dup txt, ${puladosSemConteudo} só status sem texto, concurrency=${opts.concurrency})`
+    `Importação: ${linhas.length} eventos únicos (${puladosDupTxt} dup txt, ${puladosSemConteudo} só status sem texto, concurrency=${opts.concurrency} dias)`
   );
   console.log(`API: ${opts.baseUrl}\n`);
 
-  const origem = 'import-txt-agenda-local';
-  let criados = 0;
-  let puts = 0;
-  let fail = 0;
-  let puladosIgual = 0;
-  let puladosAmbiguo = 0;
-
-  /** @type {Map<string, object[]>} */
-  const cacheDia = new Map();
-
-  async function aplicarUm(L) {
-    const chaveDia = `${L.usuarioId}|${L.dataEvento}`;
-    if (!cacheDia.has(chaveDia)) {
-      const lista = await fetchEventosDia(opts.baseUrl, token, L.usuarioId, L.dataEvento);
-      cacheDia.set(chaveDia, Array.isArray(lista) ? lista : []);
-    }
-    const listaDia = cacheDia.get(chaveDia) ?? [];
-    const match = encontrarCorrespondencia(L, listaDia);
-
-    if (match.tipo === 'igual') {
-      puladosIgual += 1;
-      return 'skip';
-    }
-    if (match.tipo === 'ambiguo') {
-      puladosAmbiguo += 1;
-      return 'skip';
-    }
-
-    if (match.tipo === 'atualizar' && match.api?.id) {
-      const body = buildBodyAgenda(L, origem, match.api.processoRef ?? null);
-      const r = await fetch(`${opts.baseUrl}/api/agenda/eventos/${match.api.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(body),
-      });
-      if (!r.ok) {
-        const t = await r.text();
-        console.error(
-          `Erro PUT ${L.usuarioPasta} ${L.dataEvento} id=${match.api.id}:`,
-          r.status,
-          t.slice(0, 200)
-        );
-        return false;
-      }
-      const atualizado = await r.json();
-      const idx = listaDia.findIndex((x) => x.id === match.api.id);
-      if (idx >= 0) listaDia[idx] = atualizado;
-      puts += 1;
-      return true;
-    }
-
-    if (match.tipo === 'faltando_na_api') {
-      const dupApi = listaDia.some((api) => compromissosEquivalentesAgenda(L, api));
-      if (dupApi) {
-        puladosIgual += 1;
-        return 'skip';
-      }
-
-      const body = buildBodyAgenda(L, origem, null);
-      const r = await fetch(`${opts.baseUrl}/api/agenda/eventos`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(body),
-      });
-      if (!r.ok) {
-        const t = await r.text();
-        console.error(
-          `Erro POST ${L.usuarioPasta} ${L.dataEvento} L${L.linhaLegado}:`,
-          r.status,
-          t.slice(0, 200)
-        );
-        return false;
-      }
-      const criado = await r.json();
-      listaDia.push(criado);
-      criados += 1;
-      return true;
-    }
-
-    return false;
-  }
-
-  for (let i = 0; i < linhas.length; i += opts.concurrency) {
-    const batch = linhas.slice(i, i + opts.concurrency);
-    const results = await Promise.all(batch.map((L) => aplicarUm(L)));
-    for (const rr of results) {
-      if (rr === true) continue;
-      if (rr === 'skip') continue;
-      fail += 1;
-    }
-    const done = Math.min(i + opts.concurrency, linhas.length);
-    if (linhas.length > 500 && (done % 2000 < opts.concurrency || done === linhas.length)) {
-      console.log(`… ${done}/${linhas.length}`);
-    }
-  }
+  const stats = await aplicarEventosAgenda(opts, linhas, token, true, false);
 
   relatorio.aplicar = {
-    criados,
-    puts,
-    fail,
+    ...stats,
     puladosDupTxt,
     puladosSemConteudo,
-    puladosIgual,
-    puladosAmbiguo,
     enviadosUnicos: linhas.length,
   };
   const absRel = opts.relatorio || 'tmp/relatorio-import-agenda-txt.json';
@@ -809,10 +513,13 @@ async function main() {
   fs.writeFileSync(path.resolve(absRel), JSON.stringify(relatorio, null, 2), 'utf8');
 
   console.log(
-    `Concluído: ${criados} criados, ${puts} actualizados, ${fail} falhas | dup txt=${puladosDupTxt} iguais/ambíguos=${puladosIgual + puladosAmbiguo} sem texto=${puladosSemConteudo}`
+    `Concluído: ${stats.criados} criados, ${stats.puts} actualizados, ${stats.fail} falhas | verificação=${stats.verificacaoFalhas} | dup txt=${puladosDupTxt} iguais=${stats.puladosIgual} ambíguos=${stats.puladosAmbiguo} sem texto=${puladosSemConteudo}`
   );
   console.log('Relatório:', path.resolve(absRel));
-  process.exit(fail > 0 ? 2 : 0);
+
+  const exitCode =
+    stats.fail > 0 || stats.verificacaoFalhas > 0 || stats.puladosAmbiguo > 0 ? 2 : 0;
+  process.exit(exitCode);
 }
 
 main().catch((e) => {

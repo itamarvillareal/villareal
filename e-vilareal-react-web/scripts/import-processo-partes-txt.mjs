@@ -35,6 +35,7 @@ import {
   buscarProcesso,
   loginImportApi,
 } from './lib/vilareal-import-processo-api.mjs';
+import { resolverBaseUrlImport } from './lib/vilareal-import-api-base.mjs';
 
 function parseArgs(argv) {
   const out = {
@@ -47,7 +48,7 @@ function parseArgs(argv) {
     base: resolverBaseBancoDados(),
     login: process.env.VILAREAL_IMPORT_LOGIN || 'itamar',
     senha: process.env.VILAREAL_IMPORT_SENHA || '',
-    baseUrl: (process.env.VILAREAL_API_BASE || 'http://localhost:8080').replace(/\/$/, ''),
+    baseUrl: resolverBaseUrlImport(),
     relatorio: null,
   };
   for (const a of argv) {
@@ -70,6 +71,7 @@ function parseArgs(argv) {
     else if (a.startsWith('--login=')) out.login = a.slice(8);
     else if (a.startsWith('--senha=')) out.senha = a.slice(8);
     else if (a.startsWith('--relatorio=')) out.relatorio = path.resolve(a.slice(12));
+    else if (a.startsWith('--base-url=')) out.baseUrl = a.slice(11).replace(/\/$/, '');
   }
   return out;
 }
@@ -105,6 +107,7 @@ async function main() {
   console.log(`Cliente: ${opts.cliente} (${cod8})`);
   console.log(`Base: ${opts.base}`);
   console.log(`Modo: ${opts.aplicar ? 'aplicar' : 'dry-run'}`);
+  console.log(`API: ${opts.baseUrl}`);
   console.log(
     `Pessoa cadastro Clientes (${TXT_PESSOA_CLIENTE_CADASTRO}): ${
       pessoaCadastro.pessoaId ?? '—'
@@ -207,7 +210,7 @@ async function main() {
     `Processos: ${totais.processos} | criar: ${totais.criados} | actualizar: ${totais.atualizados} | iguais: ${totais.iguais} | falhas: ${totais.falhas} | órfãos: ${totais.orfaos}\n`
   );
 
-  process.exit(totais.falhas > 0 ? 2 : 0);
+  process.exit(totais.falhas > 0 ? 2 : totais.orfaos > 0 && opts.aplicar ? 3 : 0);
 }
 
 main().catch((e) => {
