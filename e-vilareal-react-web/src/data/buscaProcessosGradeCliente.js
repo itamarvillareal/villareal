@@ -114,7 +114,7 @@ export function carregarProcessosGradeClienteLocal(codigoPadded8) {
 }
 
 /**
- * Completa a grade com GET /api/processos?resumo=true (rápido) + merge como em Clientes.
+ * Completa a grade com GET /api/processos?resumo=true (parte oposta/cliente via processo_parte) + merge como em Clientes.
  * @param {string} codigoPadded8
  * @param {Array<Record<string, unknown>>} listaLocal
  */

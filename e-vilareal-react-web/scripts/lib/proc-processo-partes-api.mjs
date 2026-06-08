@@ -7,6 +7,7 @@ import {
   assinaturaParteApi,
   parteTxtParaApiBody,
 } from './proc-processo-partes-txt.mjs';
+import { verificarPartesTxtContraApi } from './verificar-partes-processo-pos-import.mjs';
 
 export const ORIGEM_IMPORT_PARTES = 'import-txt-partes-local';
 
@@ -89,6 +90,7 @@ export async function sincronizarPartesProcesso(opts, token, processoId, partesT
     puladosSemPessoa: 0,
     puladosSemConteudo: 0,
     falhas: 0,
+    verificacaoFalhas: 0,
     dryRunCriar: 0,
     dryRunAtualizar: 0,
   };
@@ -112,11 +114,10 @@ export async function sincronizarPartesProcesso(opts, token, processoId, partesT
       const val = await validarPessoaCadastro(opts.baseUrl, token, pt.pessoaId);
       if (!val.ok) {
         stats.puladosSemPessoa += 1;
-        if (opts.verbose) {
-          console.warn(
-            `  [sem pessoa] lado ${pt.ladoVba} ordem ${pt.ordem} — id ${pt.pessoaId} não existe na API (${val.status})`
-          );
-        }
+        stats.falhas += 1;
+        console.warn(
+          `  [sem pessoa] ${pt.ladoVba} ordem ${pt.ordem} — id ${pt.pessoaId} não existe na API (${val.status})`
+        );
         continue;
       }
     }
@@ -173,6 +174,23 @@ export async function sincronizarPartesProcesso(opts, token, processoId, partesT
     } else {
       stats.falhas += 1;
       console.warn(`  [falha POST] ${body.polo} ordem ${body.ordem}: ${r.status} ${(r.text || '').slice(0, 120)}`);
+    }
+  }
+
+  if (aplicar && partesTxt.length > 0) {
+    const apiPos = await listarPartes(opts.baseUrl, token, processoId);
+    const ver = verificarPartesTxtContraApi(partesTxt, apiPos);
+    if (!ver.ok) {
+      stats.verificacaoFalhas = ver.faltas.length;
+      stats.falhas += ver.faltas.length;
+      for (const f of ver.faltas.slice(0, 5)) {
+        console.error(
+          `  [verificação parte] ausente na API: ${f.chave} (fontes: ${(f.fontes || []).join(', ')})`
+        );
+      }
+      if (ver.faltas.length > 5) {
+        console.error(`  [verificação parte] … +${ver.faltas.length - 5} ausente(s)`);
+      }
     }
   }
 

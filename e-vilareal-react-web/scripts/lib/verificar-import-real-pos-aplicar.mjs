@@ -10,10 +10,15 @@ import {
 } from './calculos-dropbox-txt.mjs';
 import { formatCod8 } from './historico-local-txt-paths.mjs';
 import { conectarMysqlVilareal } from './mysql-vilareal.mjs';
+import { listarPartes } from './proc-processo-partes-api.mjs';
 import {
   lerPartesProcessoTxt,
   listarProcessosComPartesTxt,
 } from './proc-processo-partes-txt.mjs';
+import {
+  verificarParteOpostaListagem,
+  verificarPartesTxtContraApi,
+} from './verificar-partes-processo-pos-import.mjs';
 import { buscarProcesso, loginImportApi } from './vilareal-import-processo-api.mjs';
 
 /**
@@ -78,13 +83,42 @@ export async function verificarImportRealPosAplicar(opts) {
           continue;
         }
 
+        const partesApi = await listarPartes(opts.baseUrl, token, proc.id);
+        const verPartes = verificarPartesTxtContraApi(partesTxt, partesApi);
+        if (!verPartes.ok) {
+          for (const f of verPartes.faltas) {
+            issues.push({
+              tipo: 'parte_ausente_api',
+              numeroInterno: ni,
+              processoId: proc.id,
+              chave: f.chave,
+              pessoaId: f.pessoaId,
+              ladoVba: f.ladoVba,
+              ordem: f.ordem,
+              fontes: f.fontes,
+            });
+          }
+        }
+
+        const verPo = verificarParteOpostaListagem(partesTxt, proc.parteOposta, partesApi);
+        if (!verPo.ok) {
+          issues.push({
+            tipo: 'parte_oposta_listagem_vazia',
+            numeroInterno: ni,
+            processoId: proc.id,
+            partesTxt: partesTxt.length,
+            partesApi: partesApi.length,
+            motivo: verPo.motivo,
+          });
+        }
+
         const [rows] = await conn.query(`SELECT COUNT(*) AS n FROM processo_parte WHERE processo_id = ?`, [
           proc.id,
         ]);
         const nPartes = Number(rows[0]?.n ?? 0);
-        if (nPartes < 1) {
+        if (nPartes < partesTxt.length) {
           issues.push({
-            tipo: 'partes_ausentes_mysql',
+            tipo: 'partes_mysql_insuficientes',
             numeroInterno: ni,
             processoId: proc.id,
             partesTxt: partesTxt.length,
@@ -136,7 +170,7 @@ export async function verificarImportRealPosAplicar(opts) {
  */
 export function imprimirVerificacaoImportReal(ver) {
   if (ver.ok) {
-    console.log('\n[verificação] OK — processos, partes e cálculos conferidos na API/MySQL.\n');
+    console.log('\n[verificação] OK — processos, partes (txt↔API), listagem e cálculos conferidos.\n');
     return;
   }
   console.error(`\n[verificação] ${ver.issues.length} problema(s) pós-import:`);
