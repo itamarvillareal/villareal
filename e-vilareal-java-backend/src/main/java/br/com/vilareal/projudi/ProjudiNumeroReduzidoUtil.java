@@ -38,4 +38,12 @@ public final class ProjudiNumeroReduzidoUtil {
         }
         return s.substring(i);
     }
+
+    /** Apenas dígitos — para casar CNJ completo vs número reduzido. */
+    public static String somenteDigitos(String numero) {
+        if (numero == null) {
+            return "";
+        }
+        return numero.replaceAll("\\D", "");
+    }
 }

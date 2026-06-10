@@ -1,9 +1,10 @@
 /**
- * Cabeçalho do processo — tipos numéricos VB em `Proc/1000/…` e `Gerais/1000/…`.
+ * Cabeçalho do processo — tipos numéricos VB em `Proc/1000/…`, `Gerais/1000/…` e `Calculos/{milhar}/{centena}/{unidade}/`.
  */
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { dirCalculosCliente } from './calculos-dropbox-txt.mjs';
 import {
   centenaPastaClienteHistorico,
   formatCod8,
@@ -18,7 +19,7 @@ import { parseDataPrazoFatalTxt } from './gerais-145-1-prazo-fatal.mjs';
 import { resolverBaseBancoDados } from './gerais-fase-processo-txt.mjs';
 import { normalizarTramitacaoTxt } from './gerais-tramitacao-147-1.mjs';
 
-/** @typedef {'proc' | 'gerais'} PastaTipo */
+/** @typedef {'proc' | 'gerais' | 'calculos'} PastaTipo */
 
 /**
  * @type {Record<string, { campo: string, pasta: PastaTipo, truncar?: number }>}
@@ -39,7 +40,8 @@ export const MAPA_TIPO_NUMERICO_VB = {
   '13.1': { campo: 'competencia', pasta: 'proc', truncar: 120 },
   '19.1': { campo: 'observacao', pasta: 'gerais' },
   '20.1': { campo: '_responsavelNome', pasta: 'gerais' },
-  '0.88.1': { campo: 'unidade', pasta: 'gerais', truncar: 32 },
+  /** Legado VB: `Calculos/{milhar}/{centena}/{nº_cliente}/{cod8}.0.88.1.{proc}.txt` */
+  '0.88.1': { campo: 'unidade', pasta: 'calculos', truncar: 32 },
   '145.1': { campo: 'prazoFatal', pasta: 'gerais' },
   '147.1': { campo: 'tramitacao', pasta: 'gerais' },
   '148.1': { campo: 'proximaConsulta', pasta: 'gerais' },
@@ -107,6 +109,22 @@ export function caminhoArquivoTipoNumerico(baseMil, codNum, numeroInterno, tipoM
 }
 
 /**
+ * Unidade do processo — `Calculos/{milhar}/{centena}/{unidade}/{cod8}.0.88.1.{proc}.txt`.
+ * @param {string} baseBanco
+ * @param {number} codNum
+ * @param {number} numeroInterno
+ * @param {string} [tipoMeio='0.88.1']
+ * @returns {string | null}
+ */
+export function caminhoArquivoUnidadeCalculos(baseBanco, codNum, numeroInterno, tipoMeio = '0.88.1') {
+  const cod8 = formatCod8(codNum);
+  const procSeg = formatProcNomeArquivo(numeroInterno);
+  if (!procSeg) return null;
+  const nome = `${cod8}.${tipoMeio}.${procSeg}.txt`;
+  return path.join(dirCalculosCliente(codNum, baseBanco), nome);
+}
+
+/**
  * @param {string} baseBanco
  * @param {number} codNum
  * @param {number} numeroInterno
@@ -114,9 +132,14 @@ export function caminhoArquivoTipoNumerico(baseMil, codNum, numeroInterno, tipoM
  * @param {PastaTipo} pastaTipo
  */
 function lerTextoTipo(baseBanco, codNum, numeroInterno, tipoMeio, pastaTipo) {
-  const milhar = milharPastaClienteGerais(codNum);
-  const baseMil = path.join(baseBanco, pastaTipo === 'proc' ? 'Proc' : 'Gerais', milhar);
-  const abs = caminhoArquivoTipoNumerico(baseMil, codNum, numeroInterno, tipoMeio);
+  let abs = null;
+  if (pastaTipo === 'calculos') {
+    abs = caminhoArquivoUnidadeCalculos(baseBanco, codNum, numeroInterno, tipoMeio);
+  } else {
+    const milhar = milharPastaClienteGerais(codNum);
+    const baseMil = path.join(baseBanco, pastaTipo === 'proc' ? 'Proc' : 'Gerais', milhar);
+    abs = caminhoArquivoTipoNumerico(baseMil, codNum, numeroInterno, tipoMeio);
+  }
   if (!abs || !fs.existsSync(abs)) return { texto: null, arquivo: null };
   return { texto: readOneLineFile(abs), arquivo: abs };
 }

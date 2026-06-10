@@ -13,6 +13,8 @@ import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+
 /**
  * Cofre de credenciais PROJUDI: orquestra cifragem/decifragem e persistência.
  *
@@ -84,6 +86,13 @@ public class ProjudiCredencialService {
     @Transactional(readOnly = true)
     public ProjudiCredencialResponse obter(Long credencialId) {
         return ProjudiCredencialResponse.de(buscar(credencialId));
+    }
+
+    @Transactional(readOnly = true)
+    public List<ProjudiCredencialResponse> listarAtivas() {
+        return repository.findByAtivoTrueOrderByIdAsc().stream()
+                .map(ProjudiCredencialResponse::de)
+                .toList();
     }
 
     /** Remove a credencial do cofre. */

@@ -7,6 +7,7 @@ import br.com.vilareal.topicos.application.TopicoProcessadorService;
 import br.com.vilareal.topicos.application.TopicosApplicationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.context.annotation.Profile;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
@@ -98,5 +99,18 @@ public class TopicosController {
     @Operation(description = "Importa tópicos de arquivos .txt (multipart). Cada arquivo pode conter múltiplos blocos.")
     public TopicoImportResultDto importar(@RequestParam("files") List<MultipartFile> files) {
         return topicoImportService.importar(files);
+    }
+
+    @PostMapping("/admin/converter-html")
+    @Profile("dev")
+    @Operation(
+            description =
+                    "Manutenção (dev/admin): converte o conteúdo legado para HTML + tokens nos tópicos cujo"
+                            + " subcategoria/chave contém 'filtro'. dryRun=true (default) não grava. Idempotente."
+                            + " Nunca altera conteudo_template.")
+    public TopicoConverterHtmlResponse converterHtml(
+            @RequestParam("filtro") String filtro,
+            @RequestParam(value = "dryRun", defaultValue = "true") boolean dryRun) {
+        return topicoConteudoApplicationService.converterParaHtml(filtro, dryRun);
     }
 }

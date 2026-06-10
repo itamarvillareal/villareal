@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.io.IOException;
 import java.net.CookieManager;
 import java.net.CookiePolicy;
 import java.net.HttpCookie;
@@ -62,6 +63,7 @@ public class ProjudiSessionService {
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(15);
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(30);
     private static final Duration OTP_TIMEOUT = Duration.ofMinutes(2);
+    private static final int MAX_TENTATIVAS_HTTP = 3;
 
     private final ProjudiCredencialService credencialService;
     private final ProjudiTokenReaderService tokenReader;
@@ -155,6 +157,14 @@ public class ProjudiSessionService {
     private void invalidar(Long credencialId) {
         cache.remove(credencialId);
         sessionStore.apagar(credencialId);
+    }
+
+    /** Descarta cookies persistidos — use antes/depois de validação ou protocolo para evitar rascunho sujo. */
+    public void invalidarSessao(Long credencialId) {
+        if (credencialId == null) {
+            return;
+        }
+        invalidar(credencialId);
     }
 
     private ProjudiSession reautenticar(Long credencialId) {
@@ -338,6 +348,7 @@ public class ProjudiSessionService {
                 .cookieHandler(sessao.cookieManager())
                 .connectTimeout(CONNECT_TIMEOUT)
                 .followRedirects(HttpClient.Redirect.NEVER)
+                .version(HttpClient.Version.HTTP_1_1)
                 .build();
 
         HttpRequest.Builder reqBuilder = HttpRequest.newBuilder(uri)
@@ -356,6 +367,14 @@ public class ProjudiSessionService {
         }
 
         HttpResponse<String> resp = enviar(clientSemRedirect, reqBuilder.build());
+        if (resp.statusCode() >= 400) {
+            log.warn(
+                    "POST peticionamento PROJUDI resposta erro (cpf={}, path={}, status={}, corpo={}).",
+                    mascararCpf(sessao.cpf()),
+                    path,
+                    resp.statusCode(),
+                    truncar(resp.body(), 500));
+        }
         log.info("POST peticionamento PROJUDI (cpf={}, path={}, status={}, location={}).",
                 mascararCpf(sessao.cpf()), path, resp.statusCode(),
                 resp.headers().firstValue("Location").orElse(""));
@@ -538,6 +557,7 @@ public class ProjudiSessionService {
                 .cookieHandler(cookieManager)
                 .connectTimeout(CONNECT_TIMEOUT)
                 .followRedirects(HttpClient.Redirect.NORMAL)
+                .version(HttpClient.Version.HTTP_1_1)
                 .build();
     }
 
@@ -625,25 +645,54 @@ public class ProjudiSessionService {
 
     /** Envia lendo o corpo como ISO-8859-1 (charset declarado pelo PROJUDI), independente do status. */
     private HttpResponse<String> enviar(HttpClient client, HttpRequest req) {
-        try {
-            return client.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.ISO_8859_1));
-        } catch (java.io.IOException e) {
-            throw new IllegalStateException("Falha de comunicação com o PROJUDI: " + e.getMessage(), e);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("Comunicação com o PROJUDI interrompida.", e);
-        }
+        return enviarComRetry(client, req, HttpResponse.BodyHandlers.ofString(StandardCharsets.ISO_8859_1));
     }
 
     /** Envia lendo o corpo como bytes crus (sem decodificar). */
     private HttpResponse<byte[]> enviarBytes(HttpClient client, HttpRequest req) {
+        return enviarComRetry(client, req, HttpResponse.BodyHandlers.ofByteArray());
+    }
+
+    private <T> HttpResponse<T> enviarComRetry(HttpClient client, HttpRequest req, HttpResponse.BodyHandler<T> handler) {
+        IOException ultima = null;
+        for (int tentativa = 1; tentativa <= MAX_TENTATIVAS_HTTP; tentativa++) {
+            try {
+                return client.send(req, handler);
+            } catch (IOException e) {
+                ultima = e;
+                if (tentativa < MAX_TENTATIVAS_HTTP && comunicacaoRecuperavel(e)) {
+                    log.warn(
+                            "PROJUDI comunicação falhou (tentativa {}/{}): {} — {}",
+                            tentativa,
+                            MAX_TENTATIVAS_HTTP,
+                            req.uri(),
+                            e.getMessage());
+                    pausaRetry(tentativa);
+                    continue;
+                }
+                throw new IllegalStateException("Falha de comunicação com o PROJUDI: " + e.getMessage(), e);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("Comunicação com o PROJUDI interrompida.", e);
+            }
+        }
+        throw new IllegalStateException("Falha de comunicação com o PROJUDI: " + ultima.getMessage(), ultima);
+    }
+
+    private static boolean comunicacaoRecuperavel(IOException e) {
+        String msg = e.getMessage() == null ? "" : e.getMessage().toLowerCase(Locale.ROOT);
+        return msg.contains("header parser received no bytes")
+                || msg.contains("connection reset")
+                || msg.contains("broken pipe")
+                || msg.contains("eof reached")
+                || msg.contains("timed out");
+    }
+
+    private static void pausaRetry(int tentativa) {
         try {
-            return client.send(req, HttpResponse.BodyHandlers.ofByteArray());
-        } catch (java.io.IOException e) {
-            throw new IllegalStateException("Falha de comunicação com o PROJUDI: " + e.getMessage(), e);
-        } catch (InterruptedException e) {
+            Thread.sleep(500L * tentativa);
+        } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();
-            throw new IllegalStateException("Comunicação com o PROJUDI interrompida.", e);
         }
     }
 

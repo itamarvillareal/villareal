@@ -12,6 +12,7 @@ import br.com.vilareal.projudi.ProjudiDrivePdfTextoDiagnosticoService;
 import br.com.vilareal.projudi.ProjudiDrivePdfTextoDiagnosticoService.ItemDrivePdfTexto;
 import br.com.vilareal.projudi.ProjudiOrquestradorService.ResultadoOrquestracao;
 import br.com.vilareal.projudi.ProjudiPeticaoService;
+import br.com.vilareal.projudi.ProjudiPeticaoService.ArquivoPeticao;
 import br.com.vilareal.projudi.ProjudiPeticaoService.ResultadoProtocoloPeticao;
 import br.com.vilareal.projudi.ProjudiProcessoArquivosDiagnosticoService;
 import br.com.vilareal.projudi.ProjudiPublicacaoLimpezaDiagnosticoService;
@@ -22,6 +23,10 @@ import br.com.vilareal.projudi.ProjudiTeorService.MovimentacaoProjudi;
 import br.com.vilareal.projudi.ProjudiTokenReaderService;
 import br.com.vilareal.projudi.api.dto.ProjudiCredencialResponse;
 import br.com.vilareal.projudi.application.ProjudiCredencialService;
+import br.com.vilareal.projudi.application.ProjudiPeticaoRegistroService;
+import br.com.vilareal.projudi.application.ProjudiPeticaoRegistroService.ArquivoParaAssinar;
+import br.com.vilareal.projudi.infrastructure.persistence.entity.ProjudiPeticaoArquivoEntity;
+import br.com.vilareal.projudi.infrastructure.persistence.entity.ProjudiPeticaoEntity;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
@@ -79,6 +84,7 @@ public class ProjudiDiagnosticoController {
     private final ProjudiProcessoArquivosDiagnosticoService processoArquivosDiagnosticoService;
     private final JuliaTriagemService juliaTriagemService;
     private final ProjudiPeticaoService peticaoService;
+    private final ProjudiPeticaoRegistroService peticaoRegistroService;
 
     @Value("${gmail.credentials.path:}")
     private String gmailCredentialsPath;
@@ -102,7 +108,8 @@ public class ProjudiDiagnosticoController {
                                         ProjudiDrivePdfOcrBackfillService drivePdfOcrBackfillService,
                                         ProjudiProcessoArquivosDiagnosticoService processoArquivosDiagnosticoService,
                                         JuliaTriagemService juliaTriagemService,
-                                        ProjudiPeticaoService peticaoService) {
+                                        ProjudiPeticaoService peticaoService,
+                                        ProjudiPeticaoRegistroService peticaoRegistroService) {
         this.credencialService = credencialService;
         this.teorService = teorService;
         this.sessionService = sessionService;
@@ -117,6 +124,7 @@ public class ProjudiDiagnosticoController {
         this.processoArquivosDiagnosticoService = processoArquivosDiagnosticoService;
         this.juliaTriagemService = juliaTriagemService;
         this.peticaoService = peticaoService;
+        this.peticaoRegistroService = peticaoRegistroService;
     }
 
     /** Cadastra/atualiza a credencial real no cofre (senha cifrada; resposta sem segredos). */
@@ -362,14 +370,103 @@ public class ProjudiDiagnosticoController {
             @RequestParam Long credencialId,
             @RequestParam String numeroProcesso,
             @RequestParam String complemento,
-            @RequestParam("arquivoP7s") MultipartFile arquivoP7s) throws IOException {
-        byte[] bytes = arquivoP7s.getBytes();
-        ResultadoProtocoloPeticao resultado = peticaoService.protocolarPeticao(
-                credencialId, numeroProcesso, complemento, bytes);
+            @RequestParam("arquivoP7s") List<MultipartFile> arquivosP7s,
+            @RequestParam(value = "idArquivoTipos", required = false) List<Integer> idArquivoTipos)
+            throws IOException {
+        if (arquivosP7s == null || arquivosP7s.isEmpty()) {
+            throw new IllegalArgumentException("arquivoP7s é obrigatório (ao menos um arquivo).");
+        }
+        if (idArquivoTipos != null
+                && !idArquivoTipos.isEmpty()
+                && idArquivoTipos.size() != arquivosP7s.size()) {
+            throw new IllegalArgumentException(
+                    "idArquivoTipos deve ter o mesmo tamanho de arquivoP7s (ou ficar vazio).");
+        }
+        List<ArquivoPeticao> arquivos = new java.util.ArrayList<>(arquivosP7s.size());
+        for (int i = 0; i < arquivosP7s.size(); i++) {
+            int idTipo = resolverIdArquivoTipo(i, idArquivoTipos);
+            arquivos.add(new ArquivoPeticao(
+                    arquivosP7s.get(i).getBytes(),
+                    idTipo,
+                    arquivosP7s.get(i).getOriginalFilename()));
+        }
+        ResultadoProtocoloPeticao resultado =
+                peticaoService.protocolarPeticao(credencialId, numeroProcesso, complemento, arquivos);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("sucesso", resultado.sucesso());
         out.put("mensagem", resultado.mensagem());
         out.put("respostaBruta", resultado.respostaBruta());
+        out.put("quantidadeArquivos", arquivos.size());
+        return out;
+    }
+
+    private static int resolverIdArquivoTipo(int indice, List<Integer> idArquivoTipos) {
+        if (idArquivoTipos != null && !idArquivoTipos.isEmpty()) {
+            return idArquivoTipos.get(indice);
+        }
+        return indice == 0 ? 16 : 1;
+    }
+
+    /** TEMP — registra petição para assinatura (staging local + Drive «Assinar»). */
+    @PostMapping(value = "/peticao-registrar", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public Map<String, Object> peticaoRegistrar(
+            @RequestParam Long credencialId,
+            @RequestParam String numeroProcesso,
+            @RequestParam(required = false) String complemento,
+            @RequestParam("pdfs") List<MultipartFile> pdfs,
+            @RequestParam(value = "idArquivoTipos", required = false) List<Integer> idArquivoTipos)
+            throws IOException {
+        if (pdfs == null || pdfs.isEmpty()) {
+            throw new IllegalArgumentException("pdfs é obrigatório (ao menos um PDF).");
+        }
+        if (idArquivoTipos != null && !idArquivoTipos.isEmpty() && idArquivoTipos.size() != pdfs.size()) {
+            throw new IllegalArgumentException(
+                    "idArquivoTipos deve ter o mesmo tamanho de pdfs (ou ficar vazio).");
+        }
+        List<ArquivoParaAssinar> arquivos = new ArrayList<>(pdfs.size());
+        for (int i = 0; i < pdfs.size(); i++) {
+            MultipartFile mf = pdfs.get(i);
+            int idTipo = resolverIdArquivoTipo(i, idArquivoTipos);
+            String nomeOriginal = mf.getOriginalFilename();
+            arquivos.add(new ArquivoParaAssinar(mf.getBytes(), idTipo, nomeOriginal));
+        }
+        ProjudiPeticaoEntity peticao =
+                peticaoRegistroService.registrarPeticao(credencialId, numeroProcesso, complemento, arquivos);
+
+        List<Map<String, Object>> arquivosOut = new ArrayList<>();
+        for (ProjudiPeticaoArquivoEntity arq : peticao.getArquivos()) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("ordem", arq.getOrdem());
+            item.put("idArquivoTipo", arq.getIdArquivoTipo());
+            item.put("pdfSha256", arq.getPdfSha256());
+            item.put("pdfRef", arq.getPdfRef());
+            item.put("driveFileId", arq.getDriveFileId());
+            arquivosOut.add(item);
+        }
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("peticaoId", peticao.getId());
+        out.put("status", peticao.getStatus());
+        out.put("arquivos", arquivosOut);
+        return out;
+    }
+
+    /** TEMP — lista petições por status (resumo). */
+    @GetMapping("/peticoes")
+    public List<Map<String, Object>> listarPeticoes(@RequestParam(defaultValue = "PENDENTE_ASSINATURA") String status) {
+        return peticaoRegistroService.listarPorStatus(status).stream()
+                .map(this::resumoPeticao)
+                .toList();
+    }
+
+    private Map<String, Object> resumoPeticao(ProjudiPeticaoEntity peticao) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("peticaoId", peticao.getId());
+        out.put("credencialId", peticao.getCredencialId());
+        out.put("numeroProcesso", peticao.getNumeroProcesso());
+        out.put("status", peticao.getStatus());
+        out.put("quantidadeArquivos", peticao.getArquivos().size());
+        out.put("criadoEm", peticao.getCriadoEm());
         return out;
     }
 

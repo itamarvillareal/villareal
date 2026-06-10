@@ -46,7 +46,10 @@ import { calcularTotalTituloGrade, titulosGradeTemValor } from '../data/calculos
 import TitulosGrid from './calculos/TitulosGrid.jsx';
 import { IndicesAtualizacaoConferenciaModal } from './calculos/IndicesAtualizacaoConferenciaModal.jsx';
 import { parseValorMonetarioBr } from '../utils/parseValorMonetarioBr.js';
-import { enriquecerTitulosAPartirDeParcelasNaRodada } from '../data/calculosTitulosParcelasSync.js';
+import {
+  enriquecerTitulosAPartirDeParcelasNaRodada,
+  linhaTituloVaziaCalculos,
+} from '../data/calculosTitulosParcelasSync.js';
 
 const ProcessosLazy = lazy(() =>
   import('./Processos.jsx').then((module) => ({ default: module.Processos }))
@@ -1962,8 +1965,12 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     setRodadasState((prev) => {
       const cur = prev[rodadaKey];
       if (!cur) return prev;
-      if (indexGlobal < 0 || indexGlobal >= cur.titulos.length) return prev;
-      const titulosAtualizados = cur.titulos.map((r, i) => {
+      if (indexGlobal < 0) return prev;
+      const titulosBase = Array.isArray(cur.titulos) ? [...cur.titulos] : [];
+      while (indexGlobal >= titulosBase.length) {
+        titulosBase.push(linhaTituloVaziaCalculos());
+      }
+      const titulosAtualizados = titulosBase.map((r, i) => {
         if (i !== indexGlobal) return r;
         return { ...r, ...patch };
       });

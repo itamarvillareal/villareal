@@ -74,38 +74,7 @@ function codBaixaContaCorrentePorParcela(lancamentos, dataRef, valorStr) {
   return '';
 }
 
-/**
- * @param {Array<Record<string, unknown>> | undefined} lista — grade «Títulos» da rodada
- */
-export function calcularResumoTitulosCalculos(lista) {
-  const valid = (lista || []).filter((r) => String(r?.valorInicial ?? '').trim() !== '');
-  const qtd = valid.length;
-
-  const sumValorInicial = valid.reduce((acc, r) => acc + parseBRL(r.valorInicial), 0);
-  const sumAtualizacao = valid.reduce((acc, r) => acc + parseBRL(r.atualizacaoMonetaria), 0);
-  const sumJuros = valid.reduce((acc, r) => acc + parseBRL(r.juros), 0);
-  const sumMulta = valid.reduce((acc, r) => acc + parseBRL(r.multa), 0);
-  const sumHonorarios = valid.reduce((acc, r) => acc + parseBRL(r.honorarios), 0);
-  const sumTotal = valid.reduce((acc, r) => acc + parseBRL(r.total), 0);
-
-  const diasNums = valid
-    .map((r) => Number(String(r?.diasAtraso ?? '').trim()))
-    .filter((n) => Number.isFinite(n));
-  const sumDias = diasNums.reduce((a, b) => a + b, 0);
-
-  const qtdLabel = `${String(qtd).padStart(2, '0')} título${qtd === 1 ? '' : 's'}`;
-
-  return {
-    qtd: qtdLabel,
-    valorInicial: formatBRL(trunc2(sumValorInicial)),
-    atualizacao: formatBRL(trunc2(sumAtualizacao)),
-    diasAtraso: `${Math.floor(sumDias)} dias de atraso`,
-    juros: formatBRL(trunc2(sumJuros)),
-    multa: formatBRL(trunc2(sumMulta)),
-    honorarios: formatBRL(trunc2(sumHonorarios)),
-    total: formatBRL(trunc2(sumTotal)),
-  };
-}
+export { calcularResumoTitulosGrade as calcularResumoTitulosCalculos } from './calculosRodadaTitulosPaginacao.js';
 
 /**
  * Interpreta chave `codCliente8:proc:dimensao` usada em {@link Calculos}.

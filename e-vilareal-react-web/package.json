@@ -19,6 +19,7 @@
     "test:agenda-local-txt": "node --test scripts/lib/agenda-local-txt.test.mjs",
     "import:historico": "node scripts/import-historico-planilha.mjs",
     "import:historico-local-txt": "node scripts/import-historico-local-txt.mjs",
+    "listar:processos-consultados-txt": "node scripts/listar-processos-consultados-txt.mjs",
     "import:real": "node scripts/import-real.mjs",
     "zerar:historico-mysql": "node scripts/zerar-historico-andamentos-mysql.mjs",
     "sync:prazos-fatais": "node scripts/sync-prazos-fatais-dropbox.mjs",

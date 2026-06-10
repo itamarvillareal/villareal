@@ -101,6 +101,24 @@ class QualificacaoPessoaUtilTest {
     }
 
     @Test
+    void deveExpandirAbreviacoesApenasComoTokenInteiro() {
+        // Palavras já por extenso NÃO devem ser tocadas (bug: "APARTAMENTO"→"Apartamento Artamento").
+        assertThat(QualificacaoPessoaUtil.normalizarEndereco("APARTAMENTO 502 BLOCO B"))
+                .isEqualTo("Apartamento 502 Bloco B");
+        // Abreviações reais continuam expandindo.
+        assertThat(QualificacaoPessoaUtil.normalizarEndereco("AP 502 BL B"))
+                .isEqualTo("Apartamento 502 Bloco B");
+        assertThat(QualificacaoPessoaUtil.normalizarEndereco("QD 06 LT 01"))
+                .isEqualTo("Quadra 06 Lote 01");
+        // Já por extenso permanece sem duplicar.
+        assertThat(QualificacaoPessoaUtil.normalizarEndereco("QUADRA 06 LOTE 01"))
+                .isEqualTo("Quadra 06 Lote 01");
+        // Abreviação como prefixo de outra palavra não deve expandir.
+        assertThat(QualificacaoPessoaUtil.normalizarEndereco("RUA APARECIDA 10"))
+                .isEqualTo("Rua Aparecida 10");
+    }
+
+    @Test
     void deveInferirGeneroFemininoPorNome() {
         assertThat(QualificacaoPessoaUtil.inferirFemininoPorNome("MARIA")).isTrue();
         assertThat(QualificacaoPessoaUtil.inferirFemininoPorNome("EDINEIDE")).isTrue();

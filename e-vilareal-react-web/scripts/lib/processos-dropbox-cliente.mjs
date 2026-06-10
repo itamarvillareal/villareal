@@ -6,6 +6,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { dirCalculosCliente } from './calculos-dropbox-txt.mjs';
 import { resolverBaseBancoDados } from './gerais-fase-processo-txt.mjs';
 import { MAPA_TIPO_NUMERICO_VB } from './proc-processo-cabecalho-txt.mjs';
 import { listarProcessosHistoricoCliente } from './historico-local-txt-correcao.mjs';
@@ -54,9 +55,8 @@ export function listarProcessosComDadosCabecalhoTxt(baseBanco, codNum) {
     'i'
   );
   const procs = new Set();
-  for (const sub of ['Proc', 'Gerais']) {
-    const dir = path.join(baseBanco, sub, SEGMENTO_MIL, String(cent), pastaCli);
-    if (!fs.existsSync(dir)) continue;
+  const registrarArquivos = (dir) => {
+    if (!fs.existsSync(dir)) return;
     for (const f of fs.readdirSync(dir)) {
       const m = re.exec(f);
       if (!m) continue;
@@ -64,7 +64,13 @@ export function listarProcessosComDadosCabecalhoTxt(baseBanco, codNum) {
       const proc = Number.parseInt(m[2], 10);
       if (Number.isFinite(proc) && proc >= 0) procs.add(proc);
     }
+  };
+
+  for (const sub of ['Proc', 'Gerais']) {
+    registrarArquivos(path.join(baseBanco, sub, SEGMENTO_MIL, String(cent), pastaCli));
   }
+  registrarArquivos(dirCalculosCliente(codNum, baseBanco));
+
   return [...procs].sort((a, b) => a - b);
 }
 

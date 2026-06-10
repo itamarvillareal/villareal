@@ -417,12 +417,14 @@ public class QualificacaoPessoaUtil {
         texto = texto.replaceAll("(?i)^Tv\\.?\\s+", "Travessa ");
         texto = texto.replaceAll("(?i)^Al\\.?\\s+", "Alameda ");
         texto = texto.replaceAll("(?i)^Pç\\.?\\s+", "Praça ");
-        texto = texto.replaceAll("(?i)\\bQd\\.?\\s*", "Quadra ");
-        texto = texto.replaceAll("(?i)\\bLt\\.?\\s*", "Lote ");
-        texto = texto.replaceAll("(?i)\\bConj\\.?\\s*", "Conjunto ");
-        texto = texto.replaceAll("(?i)\\bApt?\\.?\\s*", "Apartamento ");
-        texto = texto.replaceAll("(?i)\\bEd\\.?\\s*", "Edifício ");
-        texto = texto.replaceAll("(?i)\\bBl\\.?\\s*", "Bloco ");
+        // Cada abreviação só expande como TOKEN COMPLETO (fronteira \b no fim), para não casar o
+        // prefixo de palavras já escritas por extenso (ex.: "APARTAMENTO" → "AP" + "ARTAMENTO").
+        texto = texto.replaceAll("(?i)\\bQd\\b\\.?\\s*", "Quadra ");
+        texto = texto.replaceAll("(?i)\\bLt\\b\\.?\\s*", "Lote ");
+        texto = texto.replaceAll("(?i)\\bConj\\b\\.?\\s*", "Conjunto ");
+        texto = texto.replaceAll("(?i)\\b(?:Apto|Apt|Ap)\\b\\.?\\s*", "Apartamento ");
+        texto = texto.replaceAll("(?i)\\bEd\\b\\.?\\s*", "Edifício ");
+        texto = texto.replaceAll("(?i)\\bBl\\b\\.?\\s*", "Bloco ");
         return normalizarNome(texto);
     }
 
