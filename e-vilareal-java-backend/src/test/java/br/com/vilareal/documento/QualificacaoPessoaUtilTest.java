@@ -73,6 +73,14 @@ class QualificacaoPessoaUtilTest {
     }
 
     @Test
+    void flexionaNacionalidadeBrasileiraAoGenero() {
+        assertThat(QualificacaoPessoaUtil.flexionarNacionalidade("Brasileira", false))
+                .isEqualTo("brasileiro");
+        assertThat(QualificacaoPessoaUtil.flexionarNacionalidade("brasileiro", true))
+                .isEqualTo("brasileira");
+    }
+
+    @Test
     void deveNormalizarNomes() {
         assertThat(QualificacaoPessoaUtil.normalizarNome("MARIA DA SILVA SANTOS"))
                 .isEqualTo("Maria da Silva Santos");

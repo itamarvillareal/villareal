@@ -127,7 +127,7 @@ public final class DebitosTextoBuilder {
         return esc("O crédito Executado é composto pela soma dos valores dos títulos, acrescentados pela "
                         + "atualização monetária do índice " + indice + ", seguindo as diretrizes idênticas ao "
                         + "cálculo disponível no site do TJDFT (")
-                + "<u>" + esc(url) + "</u>"
+                + "<span class=\"url-ref\"><u>" + esc(url) + "</u></span>"
                 + esc("), multa legal de " + multa + "%, juros de " + juros + "% ao " + periodo
                         + " e honorários, tudo conforme abaixo discriminados:");
     }
@@ -165,11 +165,7 @@ public final class DebitosTextoBuilder {
 
         VocabuloItem voc = resolverVocabulos(t.descricao(), params.modalidade(), diversos);
 
-        String valorPrincipalFmt = formatBRL(nz(t.valorPrincipal()));
-        String valorPrincipalExtenso = ValorExtensoUtil.reaisPorExtenso(nz(t.valorPrincipal()));
         String diasAtrasoExtenso = ValorExtensoUtil.numeroPorExtenso(t.diasAtraso());
-        String totalItemFmt = formatBRL(totalItem);
-        String totalItemExtenso = ValorExtensoUtil.reaisPorExtenso(totalItem);
 
         String prefix = voc.inicial()
                 + nullToEmpty(t.vencimento())
@@ -177,26 +173,26 @@ public final class DebitosTextoBuilder {
 
         String html;
         if (params.modo() == ModoDebito.RESUMIDO) {
-            String valorSeg = "no valor principal de " + valorPrincipalFmt + " (" + valorPrincipalExtenso + ")";
+            String valorSeg = "no valor principal de " + valorComExtenso(nz(t.valorPrincipal()));
             String totalSeg = "Com os encargos incidentes, tudo perfaz o montante de "
-                    + totalItemFmt + " (" + totalItemExtenso + ")";
+                    + valorComExtenso(totalItem);
             html = esc(prefix)
-                    + "<u>" + esc(valorSeg) + "</u>"
+                    + "<u>" + valorSeg + "</u>"
                     + esc(". ")
-                    + "<strong><u>" + esc(totalSeg) + "</u></strong>"
+                    + "<strong><u>" + totalSeg + "</u></strong>"
                     + esc(voc.fim());
         } else {
-            String valorSeg = "no valor de " + valorPrincipalFmt + " (" + valorPrincipalExtenso + ")";
+            String valorSeg = "no valor de " + valorComExtenso(nz(t.valorPrincipal()));
             String midBlock = ". "
                     + montarAtualHonorarios(t, params)
                     + montarMulta(t)
                     + montarJuros(t)
                     + ". ";
-            String totalSeg = "Tudo perfaz o montante de " + totalItemFmt + " (" + totalItemExtenso + ")";
+            String totalSeg = "Tudo perfaz o montante de " + valorComExtenso(totalItem);
             html = esc(prefix)
-                    + "<u>" + esc(valorSeg) + "</u>"
-                    + esc(midBlock)
-                    + "<strong><u>" + esc(totalSeg) + "</u></strong>"
+                    + "<u>" + valorSeg + "</u>"
+                    + midBlock
+                    + "<strong><u>" + totalSeg + "</u></strong>"
                     + esc(voc.fim());
         }
 
@@ -215,21 +211,18 @@ public final class DebitosTextoBuilder {
         StringBuilder sb = new StringBuilder();
         if (temValor(t.atualizacaoMonetaria())) {
             sb.append("O valor da atualização monetária para a data de hoje (").append(data)
-                    .append("), corresponde a ").append(formatBRL(nz(t.atualizacaoMonetaria())))
-                    .append(" (").append(ValorExtensoUtil.reaisPorExtenso(nz(t.atualizacaoMonetaria())))
-                    .append("). ");
+                    .append("), corresponde a ").append(valorComExtenso(nz(t.atualizacaoMonetaria())))
+                    .append(". ");
         }
         if (temValor(t.honorarios())) {
-            sb.append(". Pelos honorários ").append(formatBRL(nz(t.honorarios())))
-                    .append(" (").append(ValorExtensoUtil.reaisPorExtenso(nz(t.honorarios()))).append("). ");
+            sb.append(". Pelos honorários ").append(valorComExtenso(nz(t.honorarios()))).append(". ");
         }
         return sb.toString();
     }
 
     private static String montarMulta(TituloDebitoInput t) {
         if (temValor(t.multa())) {
-            return ". O valor da multa é " + formatBRL(nz(t.multa()))
-                    + " (" + ValorExtensoUtil.reaisPorExtenso(nz(t.multa())) + ")";
+            return ". O valor da multa é " + valorComExtenso(nz(t.multa()));
         }
         return "";
     }
@@ -238,9 +231,15 @@ public final class DebitosTextoBuilder {
     private static String montarJuros(TituloDebitoInput t) {
         if (temValor(t.juros())) {
             return ". Os juros legais na proporção de 1% (um por cento) ao mês perfazem o total de "
-                    + formatBRL(nz(t.juros())) + " (" + ValorExtensoUtil.reaisPorExtenso(nz(t.juros())) + "). ";
+                    + valorComExtenso(nz(t.juros())) + ". ";
         }
         return "";
+    }
+
+    /** Evita quebra de linha entre «R$ …» e «(por extenso)» na geração do PDF. */
+    private static String valorComExtenso(BigDecimal valor) {
+        return "<span class=\"valor-monetario\">" + esc(formatBRL(nz(valor)))
+                + " (" + esc(ValorExtensoUtil.reaisPorExtenso(nz(valor))) + ")</span>";
     }
 
     /** Encargo presente = valor não nulo e diferente de zero (comparação numérica, não de string). */

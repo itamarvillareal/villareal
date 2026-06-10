@@ -304,7 +304,7 @@ public class QualificacaoPessoaUtil {
         }
 
         if (nacionalidade != null && !nacionalidade.isBlank() && !contemDesconhecido(nacionalidade)) {
-            sb.append(", ").append(escapeHtml(nacionalidade.trim().toLowerCase(Locale.ROOT)));
+            sb.append(", ").append(escapeHtml(flexionarNacionalidade(nacionalidade, feminino)));
         } else {
             sb.append(", ").append(escapeHtml(g.brasileiro()));
         }
@@ -363,6 +363,21 @@ public class QualificacaoPessoaUtil {
         }
 
         return sb.toString();
+    }
+
+    /**
+     * Ajusta «brasileiro/brasileira» ao gênero da pessoa; demais nacionalidades permanecem em minúsculas
+     * como cadastradas (ex.: «portuguesa»).
+     */
+    static String flexionarNacionalidade(String nacionalidade, boolean feminino) {
+        if (nacionalidade == null || nacionalidade.isBlank()) {
+            return feminino ? "brasileira" : "brasileiro";
+        }
+        String norm = nacionalidade.trim().toLowerCase(Locale.ROOT);
+        if (norm.equals("brasileira") || norm.equals("brasileiro") || norm.equals("brasil")) {
+            return feminino ? "brasileira" : "brasileiro";
+        }
+        return norm;
     }
 
     public static boolean determinarFeminino(String nomeCompleto, String sexoOuGenero) {

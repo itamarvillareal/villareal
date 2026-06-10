@@ -201,6 +201,12 @@
             text-indent: 0;
         }
 
+        /* Valores monetários e URLs: não quebrar linha no meio de «R$ X (extenso)» */
+        .valor-monetario,
+        .url-ref {
+            white-space: nowrap;
+        }
+
         /* Realce de texto */
         .txt-vermelho { color: #c00; }
 
