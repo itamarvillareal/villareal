@@ -100,11 +100,14 @@ topico_tail = (
 )
 hier_tail = " ON DUPLICATE KEY UPDATE raiz_json=VALUES(raiz_json);"
 inserts = 0
-for line in raw.splitlines():
+# splitlines() quebra em \\v (tab vertical) presente no conteudo_template legado — usar só \\n.
+for line in raw.split("\n"):
     s = line.strip()
     if not s.startswith("INSERT INTO"):
         continue
-    body = s[:-1] if s.endswith(";") else s
+    if not s.endswith(";"):
+        continue
+    body = s[:-1]
     if body.startswith("INSERT INTO `topico`"):
         out.append(body + topico_tail)
         inserts += 1
@@ -141,7 +144,7 @@ ssh "$VPS_HOST" "mysqldump -u $DB_USER -p$DB_PASS --no-create-info --complete-in
 
 echo "Enviando e aplicando SQL na VPS..."
 scp -q "$UPSERT_SQL" "$VPS_HOST:/tmp/topico-upsert.sql"
-ssh "$VPS_HOST" "mysql -u $DB_USER -p$DB_PASS $DB_NAME < /tmp/topico-upsert.sql && rm -f /tmp/topico-upsert.sql"
+ssh "$VPS_HOST" "mysql --binary-mode -u $DB_USER -p$DB_PASS $DB_NAME < /tmp/topico-upsert.sql && rm -f /tmp/topico-upsert.sql"
 
 VPS_ROWS="$(ssh "$VPS_HOST" "mysql -u $DB_USER -p$DB_PASS -N -e \"SELECT COUNT(*) FROM $DB_NAME.topico WHERE conteudo_html IS NOT NULL AND TRIM(conteudo_html) <> '';\"")"
 echo "Sync concluído. VPS: $VPS_ROWS blocos com conteudo_html."
