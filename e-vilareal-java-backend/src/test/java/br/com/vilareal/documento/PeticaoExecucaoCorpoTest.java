@@ -95,8 +95,14 @@ class PeticaoExecucaoCorpoTest {
         assertThat(PeticaoExecucaoService.montarCapituloValorCausa(cap)).isEqualTo(
                 "<p class=\"titulo\">DO VALOR DA CAUSA:</p>"
                         + "<p class=\"paragrafo\">Dá-se ao presente pleito, o valor defeso e cabível de "
-                        + "<strong>R$ 5.912,88</strong> (<strong>cinco mil, novecentos e doze reais e oitenta e oito"
-                        + " centavos</strong>).</p>");
+                        + "<span class=\"valor-monetario\"><strong>R$ 5.912,88 (cinco mil, novecentos e doze reais"
+                        + " e oitenta e oito centavos)</strong></span>.</p>");
+    }
+
+    @Test
+    void normalizaNaturezaAcaoSemTil() {
+        assertThat(PeticaoExecucaoService.normalizarNaturezaAcao("AÇAO DE EXECUÇÃO DE TAXA CONDOMINIAL"))
+                .isEqualTo("AÇÃO DE EXECUÇÃO DE TAXA CONDOMINIAL");
     }
 
     @Test

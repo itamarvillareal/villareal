@@ -43,8 +43,10 @@ class DebitosTextoBuilderTest {
         assertThat(html).contains("Pelos honorários");
         assertThat(html).contains("O valor da multa é");
         assertThat(html).contains("Os juros legais na proporção de 1% (um por cento) ao mês perfazem o total de");
-        assertThat(html).contains("<u>no valor de R$ 1.000,00 (mil reais)</u>");
-        assertThat(html).contains("<strong><u>Tudo perfaz o montante de R$ 1.290,00");
+        assertThat(html).contains(
+                "<u>no valor de <span class=\"valor-monetario\">R$ 1.000,00 (mil reais)</span></u>");
+        assertThat(html).contains(
+                "<strong><u>Tudo perfaz o montante de <span class=\"valor-monetario\">R$ 1.290,00");
         assertThat(html).endsWith(", por este título;");
     }
 
@@ -136,7 +138,8 @@ class DebitosTextoBuilderTest {
                 List.of(t), params(ModoDebito.COMPLETO, MODALIDADE_TAXA), bd("1290.01"));
 
         String html = cap.itensHtml().get(0);
-        assertThat(html).contains("<strong><u>Tudo perfaz o montante de R$ 1.290,01");
+        assertThat(html).contains(
+                "<strong><u>Tudo perfaz o montante de <span class=\"valor-monetario\">R$ 1.290,01");
         assertThat(html).doesNotContain("R$ 1.290,00");
         assertThat(cap.totalGeral()).isEqualByComparingTo("1290.01");
         assertThat(cap.totalGeralFormatado()).isEqualTo("R$ 1.290,01");
@@ -163,8 +166,11 @@ class DebitosTextoBuilderTest {
                 params(ModoDebito.RESUMIDO, MODALIDADE_TAXA));
 
         String html = cap.itensHtml().get(0);
-        assertThat(html).contains("<u>no valor principal de R$ 1.000,00 (mil reais)</u>");
-        assertThat(html).contains("<strong><u>Com os encargos incidentes, tudo perfaz o montante de R$ 1.290,00");
+        assertThat(html).contains(
+                "<u>no valor principal de <span class=\"valor-monetario\">R$ 1.000,00 (mil reais)</span></u>");
+        assertThat(html).contains(
+                "<strong><u>Com os encargos incidentes, tudo perfaz o montante de "
+                        + "<span class=\"valor-monetario\">R$ 1.290,00");
         // Resumido não traz o detalhamento de encargos.
         assertThat(html).doesNotContain("Os juros legais na proporção");
     }

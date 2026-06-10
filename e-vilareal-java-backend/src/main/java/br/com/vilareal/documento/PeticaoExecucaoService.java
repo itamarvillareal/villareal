@@ -218,9 +218,18 @@ public class PeticaoExecucaoService {
     static String montarQualificacaoCabecalhoHtml(String qualAutoresHtml, String qualReusHtml, String naturezaAcao) {
         return "<p class=\"qualificacao-parte\">" + qualAutoresHtml + TRANSICAO + "</p>"
                 + "<p class=\"natureza-acao\"><strong><u>"
-                + esc(naturezaAcao.toUpperCase(Locale.ROOT))
+                + esc(normalizarNaturezaAcao(naturezaAcao).toUpperCase(Locale.ROOT))
                 + "</u></strong></p>"
                 + "<p class=\"qualificacao-parte\">em face de " + qualReusHtml + FECHO_QUALIF + "</p>";
+    }
+
+    /** Corrige grafia comum no cadastro do processo (ex.: «AÇAO» → «AÇÃO»). */
+    static String normalizarNaturezaAcao(String naturezaAcao) {
+        String n = nz(naturezaAcao).trim();
+        if (n.isEmpty()) {
+            return n;
+        }
+        return n.replace("AÇAO", "AÇÃO").replace("ACAO", "AÇÃO").replace("Acao", "Ação").replace("açao", "ação");
     }
 
     // ----- corpo dos débitos -----
@@ -247,9 +256,11 @@ public class PeticaoExecucaoService {
 
     private List<BlocoTopico> coletarBlocosPedidos(List<BlocoTopico> blocosDireito) {
         List<BlocoTopico> doTopico = buscarBlocos(CHAVE_PEDIDOS);
-        if (!doTopico.isEmpty()) {
-            return extrairItensPedidos(doTopico);
+        List<BlocoTopico> itens = extrairItensPedidos(doTopico);
+        if (!itens.isEmpty()) {
+            return itens;
         }
+        // Fallback: pedidos ainda embutidos no capítulo DO DIREITO (tópico 006 vazio ou só com título).
         return MontadorCorpoPeca.extrairBlocosPorClasse(blocosDireito, "pedido");
     }
 
@@ -287,7 +298,8 @@ public class PeticaoExecucaoService {
             extenso = "zero reais";
         }
         String paragrafo = esc(TEXTO_CAPITULO_VALOR_CAUSA_PREFIXO)
-                + "<strong>" + esc(formatado) + "</strong> (<strong>" + esc(extenso) + "</strong>).";
+                + "<span class=\"valor-monetario\"><strong>"
+                + esc(formatado) + " (" + esc(extenso) + ")</strong></span>.";
         return "<p class=\"titulo\">" + TITULO_CAPITULO_VALOR_CAUSA + "</p>"
                 + "<p class=\"paragrafo\">" + paragrafo + "</p>";
     }
