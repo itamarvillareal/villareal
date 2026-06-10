@@ -101,6 +101,7 @@ import {
   Download,
   CloudDownload,
   CalendarClock,
+  Send,
 } from 'lucide-react';
 import { ContaCorrenteVinculoAssist } from './processos/ContaCorrenteVinculoAssist.jsx';
 import {
@@ -126,6 +127,7 @@ import { ModalRelatorioPublicacoesProcesso, PublicacoesRelatorioConteudo } from 
 import { listarPublicacoesRelatorioPorProcesso } from '../repositories/publicacoesRepository.js';
 import { ModalCriarTarefaContextual } from './ModalCriarTarefaContextual.jsx';
 import { ModalConsultaPeriodicaProcesso } from './consultas-periodicas/ModalConsultaPeriodicaProcesso.jsx';
+import { ModalPeticionamentoProcesso } from './projudi/ModalPeticionamentoProcesso.jsx';
 import { PessoaEmbedModal } from './PessoaEmbedModal.jsx';
 import { useCloseOnEscape } from '../hooks/useCloseOnEscape.js';
 import { AutorUsuarioExibicao } from './ui/AutorUsuarioExibicao.jsx';
@@ -434,6 +436,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   const [ccMensagem, setCcMensagem] = useState('');
   const [modalRelatorioPublicacoes, setModalRelatorioPublicacoes] = useState(false);
   const [modalConsultaPeriodica, setModalConsultaPeriodica] = useState(false);
+  const [modalPeticionamentoProjudi, setModalPeticionamentoProjudi] = useState(false);
   /** Modal com cadastro de clientes (mesmo formulário de /pessoas) para o cliente e proc. atuais. */
   const [clientesEmbed, setClientesEmbed] = useState(null);
   /** Cadastro de Pessoas em janela suspensa (duplo clique na lista «Nesta parte»). */
@@ -3162,6 +3165,16 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                       </button>
                     </>
                   ) : null}
+                  <button
+                    type="button"
+                    className={processosBtnGhost}
+                    disabled={apiSaving || !String(numeroProcessoNovo ?? '').trim()}
+                    onClick={() => setModalPeticionamentoProjudi(true)}
+                    title="Petições registradas para protocolo no PROJUDI (deste processo)"
+                  >
+                    <Send className="w-4 h-4" aria-hidden />
+                    Peticionamento PROJUDI
+                  </button>
                 </>
               ) : null}
               <button
@@ -5276,6 +5289,13 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
         open={modalConsultaPeriodica}
         onClose={() => setModalConsultaPeriodica(false)}
         processoApiId={processoApiId}
+        numeroCnj={numeroProcessoNovo}
+        clienteNome={cliente}
+      />
+
+      <ModalPeticionamentoProcesso
+        open={modalPeticionamentoProjudi}
+        onClose={() => setModalPeticionamentoProjudi(false)}
         numeroCnj={numeroProcessoNovo}
         clienteNome={cliente}
       />

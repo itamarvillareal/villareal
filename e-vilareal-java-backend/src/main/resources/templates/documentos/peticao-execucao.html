@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:th="http://www.thymeleaf.org" lang="pt-BR">
+<head>
+    <meta charset="UTF-8"/>
+    <title>Petição de Execução</title>
+
+    <!-- Estilo base (A4, margens, fonte, cabeçalho/rodapé, numeração) — idêntico ao peticao-base -->
+    <th:block th:replace="~{documentos/fragments-peca :: estiloBase}"/>
+
+    <!-- Classes do corpo desta peça (parágrafos já chegam com class="...") -->
+    <style type="text/css">
+        .corpo-documento {
+            line-height: 1.15;
+            margin-left: 15mm;
+            /* Contadores: capítulos (1.,2.,3.), subtítulos (3.1.,3.2.…),
+               alíneas dos débitos (a),b)…) e pedidos (a),b)…). */
+            counter-reset: cap sub alinead pedido-counter;
+        }
+
+        /* Endereçamento: justificado, negrito, caixa alta */
+        .enderecamento {
+            font-family: "Arial Unicode MS", Arial, sans-serif;
+            font-size: 12pt;
+            text-align: justify;
+            text-transform: uppercase;
+            font-weight: bold;
+            text-indent: 0;
+            line-height: 1.15;
+            margin: 16pt 0 0 0;
+        }
+
+        /* Qualificação (cabeçalho da peça) — padrão Word: Arial 13, entrelinha simples */
+        .qualificacao {
+            font-family: Arial, sans-serif;
+            font-size: 13pt;
+            line-height: 1.0;
+            /* ~15 parágrafos em branco após o endereçamento (15 × 13pt) */
+            margin: 195pt 0 18pt 0;
+        }
+
+        /* Partes antes/depois da natureza da ação: justificadas, recuo de 1ª linha */
+        .qualificacao .qualificacao-parte,
+        p.qualificacao-parte {
+            font-family: Arial, sans-serif;
+            font-size: 13pt;
+            text-align: justify;
+            text-indent: 4.0cm;
+            line-height: 1.0;
+            margin: 0;
+        }
+
+        /* Natureza da ação: linha isolada, centralizada, negrito e sublinhado (ex. Word) */
+        .qualificacao .natureza-acao,
+        p.natureza-acao {
+            font-family: Arial, sans-serif;
+            font-size: 13pt;
+            text-align: center;
+            text-indent: 0;
+            text-transform: uppercase;
+            font-weight: bold;
+            text-decoration: underline;
+            line-height: 1.0;
+            margin: 13pt 0;
+        }
+
+        /* Corpo geral */
+        .corpo {
+            font-family: "Arial Unicode MS", Arial, sans-serif;
+            font-size: 12pt;
+            line-height: 1.15;
+        }
+
+        /* Título de capítulo: caixa alta, negrito, à esquerda, sem recuo.
+           Numerado automaticamente ("1. ", "2. ", …) e reinicia subtítulos/alíneas. */
+        .corpo .titulo,
+        p.titulo {
+            font-family: "Arial Unicode MS", Arial, sans-serif;
+            font-size: 12pt;
+            font-weight: bold;
+            text-transform: uppercase;
+            text-align: left;
+            text-indent: 0;
+            line-height: 1.15;
+            margin-top: 24pt;
+            margin-bottom: 12pt;
+            counter-increment: cap;
+            counter-reset: sub alinead pedido-counter;
+        }
+
+        .corpo .titulo::before,
+        p.titulo::before {
+            content: counter(cap) ". ";
+            font-weight: bold;
+        }
+
+        /* Subtítulo: negrito, à esquerda, numerado hierarquicamente ("3.1. ", "3.2. "…). */
+        .corpo .subtitulo,
+        p.subtitulo {
+            font-family: "Arial Unicode MS", Arial, sans-serif;
+            font-size: 12pt;
+            font-weight: bold;
+            text-align: justify;
+            text-indent: 0;
+            line-height: 1.15;
+            margin-top: 15pt;
+            margin-bottom: 10pt;
+            counter-increment: sub;
+        }
+
+        .corpo .subtitulo::before,
+        p.subtitulo::before {
+            content: counter(cap) "." counter(sub) ". ";
+            font-weight: bold;
+        }
+
+        /* Alínea de item de débito (capítulo DOS TÍTULOS): "a) ", "b) "…
+           Counter próprio (alinead), independente do counter dos pedidos.
+           Hanging indent: marcador na margem, texto recuado alinhado. */
+        .corpo .alinea-debito,
+        p.alinea-debito {
+            font-family: "Arial Unicode MS", Arial, sans-serif;
+            font-size: 12pt;
+            text-align: justify;
+            text-indent: 0;
+            line-height: 1.15;
+            margin-top: 6pt;
+            margin-bottom: 6pt;
+            margin-left: 1.0cm;
+            counter-increment: alinead;
+        }
+
+        .corpo .alinea-debito::before,
+        p.alinea-debito::before {
+            content: counter(alinead, lower-alpha) ") ";
+            font-weight: bold;
+            margin-left: -1.0cm;
+        }
+
+        /* Parágrafo: justificado, recuo de 1ª linha (mesmo padrão do corpo do peticao-base) */
+        .corpo .paragrafo,
+        p.paragrafo {
+            font-family: "Arial Unicode MS", Arial, sans-serif;
+            font-size: 12pt;
+            text-align: justify;
+            text-indent: 4.0cm;
+            line-height: 1.15;
+            margin-top: 12pt;
+            margin-bottom: 12pt;
+        }
+
+        /* Citação/transcrição legal: recuo à esquerda, sem recuo de 1ª linha */
+        .corpo .recuado,
+        p.recuado {
+            font-family: Arial, sans-serif;
+            font-size: 11pt;
+            text-align: justify;
+            margin-left: 4.5cm;
+            text-indent: 0;
+            line-height: 1.0;
+            margin-top: 6pt;
+            margin-bottom: 6pt;
+        }
+
+        /* Pedidos: largura total, formato de parágrafo (mesmo alinhamento do .paragrafo),
+           com alínea automática a), b), … no início (recuo de 1ª linha igual ao parágrafo). */
+        .corpo .pedido,
+        p.pedido {
+            font-family: "Arial Unicode MS", Arial, sans-serif;
+            font-size: 12pt;
+            text-align: justify;
+            text-indent: 4.0cm;
+            line-height: 1.15;
+            margin-top: 9pt;
+            margin-bottom: 9pt;
+            counter-increment: pedido-counter;
+        }
+
+        .corpo .pedido::before,
+        p.pedido::before {
+            content: counter(pedido-counter, lower-alpha) ") ";
+            font-weight: normal;
+        }
+
+        /* Fecho: "Nestes termos, pede deferimento.", local/data e assinatura */
+        .fecho {
+            font-family: "Arial Unicode MS", Arial, sans-serif;
+            font-size: 12pt;
+            text-align: justify;
+            line-height: 1.15;
+            margin-top: 24pt;
+            page-break-inside: avoid;
+            break-inside: avoid;
+        }
+
+        /* "Nestes termos," e "Pede deferimento." — sem espaço entre as linhas */
+        .fecho .fecho-termos,
+        p.fecho-termos {
+            margin: 0;
+            padding: 0;
+            line-height: 1.0;
+            text-indent: 0;
+        }
+
+        /* Realce de texto */
+        .txt-vermelho { color: #c00; }
+
+        /* Fundos de realce */
+        .fundo-amarelo { background-color: #fff3a0; }
+        .fundo-azul-claro { background-color: #cfe8ff; }
+        .fundo-azul-escuro { background-color: #9db8e0; }
+        .fundo-laranja { background-color: #ffd59e; }
+
+        /* Ênfases no padrão */
+        .corpo em, .qualificacao em, .fecho em { font-style: italic; }
+        .corpo strong, .qualificacao strong, .fecho strong { font-weight: bold; }
+        .corpo u, .qualificacao u, .fecho u { text-decoration: underline; }
+    </style>
+</head>
+<body>
+
+<!-- Cabeçalho institucional (1ª página + cabeçalho corrido a partir da 2ª) -->
+<th:block th:replace="~{documentos/fragments-peca :: cabecalho}"/>
+
+<!-- Rodapé (1ª página e demais) -->
+<th:block th:replace="~{documentos/fragments-peca :: rodape}"/>
+
+<div class="corpo-documento">
+
+    <p class="enderecamento" th:utext="${enderecamentoHtml}">ENDEREÇAMENTO</p>
+
+    <div class="qualificacao" th:utext="${qualificacaoCabecalhoHtml}">Qualificação</div>
+
+    <div class="corpo" th:utext="${corpoHtml}">Corpo</div>
+
+    <div class="fecho" th:utext="${fechoHtml}">Fecho</div>
+
+</div>
+
+</body>
+</html>

@@ -24,6 +24,7 @@ import { analisarDocumentoPessoa } from '../../services/personAutoFillService.js
 import { listarPessoasComDocumento, salvarDocumentoPessoa } from '../../services/pessoaDocumentoService.js';
 import { ModalEnderecos } from './ModalEnderecos';
 import { ModalContatos } from './ModalContatos';
+import { buscarQualificacaoCompleta } from '../../helpers/documentoHelper.js';
 import { useCloseOnEscape } from '../../hooks/useCloseOnEscape.js';
 import { extrairDadosDeTextoLivre } from '../../services/personTextAutofillService.js';
 import { validateCPF, validarFormatarCpfCnpjAoSair } from '../../services/cpfValidatorService.js';
@@ -31,7 +32,7 @@ import { listarCodigosClientePorIdPessoa } from '../../data/clienteCodigoHelpers
 import { listarClientesCadastro } from '../../repositories/clientesRepository.js';
 import { carregarProcessosVinculoPessoa } from '../../data/pessoaVinculosProcessos.js';
 import { resolverAliasHojeEmTexto } from '../../services/hjDateAliasService.js';
-import { esbocoQualificacaoComResponsavel } from '../../services/qualificacaoContratualHelper.js';
+import { esbocoQualificacaoComResponsavel, stripSuffixAdministradorPj } from '../../services/qualificacaoContratualHelper.js';
 import { SeletorResponsavelPessoa } from './SeletorResponsavelPessoa.jsx';
 import { getContextoAuditoriaUsuario, registrarAuditoria } from '../../services/auditoriaCliente.js';
 import { padCliente8Nav } from './cadastroPessoasNavUtils.js';
@@ -166,6 +167,8 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
   const [modalEnderecos, setModalEnderecos] = useState(false);
   const [modalContatos, setModalContatos] = useState(false);
   const [modalVinculosSistema, setModalVinculosSistema] = useState(false);
+  const [qualificacaoPreviewCompleta, setQualificacaoPreviewCompleta] = useState('');
+  const [qualificacaoPreviewCarregando, setQualificacaoPreviewCarregando] = useState(false);
   /** Evita que o GET de complementares sobrescreva alterações já digitadas na ficha. */
   const complementaresAplicadosParaIdRef = useRef(null);
   /** Autosave: baseline após carga; pausa até complementares da ficha. */
@@ -423,6 +426,78 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
       !modalCpfDuplicado,
     onFecharEmbed,
   );
+
+  const ehPessoaJuridica = useMemo(
+    () => normalizarDigitosCpfCnpj(form.cpf).length === 14,
+    [form.cpf],
+  );
+
+  useEffect(() => {
+    if (!form.responsavel || !ehPessoaJuridica) {
+      setQualificacaoPreviewCompleta('');
+      setQualificacaoPreviewCarregando(false);
+      return undefined;
+    }
+
+    let cancelled = false;
+    setQualificacaoPreviewCarregando(true);
+
+    void (async () => {
+      let qualPrincipal = '';
+      let qualAdmin = '';
+      if (editId != null) {
+        qualPrincipal = stripSuffixAdministradorPj(await buscarQualificacaoCompleta(editId));
+      }
+      if (form.responsavelId != null) {
+        qualAdmin = await buscarQualificacaoCompleta(form.responsavelId);
+      }
+      if (cancelled) return;
+
+      const preview = esbocoQualificacaoComResponsavel(
+        { nome: form.nome, cpf: form.cpf },
+        form.responsavel,
+        {
+          isPj: true,
+          qualificacaoPrincipal: qualPrincipal,
+          qualificacaoResponsavel: qualAdmin,
+        },
+      );
+      setQualificacaoPreviewCompleta(preview || '');
+      setQualificacaoPreviewCarregando(false);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [editId, ehPessoaJuridica, form.cpf, form.nome, form.responsavel, form.responsavelId]);
+
+  const copiarQualificacaoContratual = useCallback(async () => {
+    if (editId != null && !(ehPessoaJuridica && form.responsavel)) {
+      return (await buscarQualificacaoCompleta(editId)) || '';
+    }
+    if (ehPessoaJuridica && form.responsavel) {
+      let qualPrincipal = '';
+      if (editId != null) {
+        qualPrincipal = stripSuffixAdministradorPj(await buscarQualificacaoCompleta(editId));
+      }
+      let qualAdmin = '';
+      if (form.responsavelId != null) {
+        qualAdmin = await buscarQualificacaoCompleta(form.responsavelId);
+      }
+      return (
+        esbocoQualificacaoComResponsavel(
+          { nome: form.nome, cpf: form.cpf },
+          form.responsavel,
+          {
+            isPj: true,
+            qualificacaoPrincipal: qualPrincipal,
+            qualificacaoResponsavel: qualAdmin,
+          },
+        ) || ''
+      );
+    }
+    return esbocoQualificacaoComResponsavel({ nome: form.nome, cpf: form.cpf }, form.responsavel) || '';
+  }, [editId, ehPessoaJuridica, form.cpf, form.nome, form.responsavel, form.responsavelId]);
 
   const [processosVinculo, setProcessosVinculo] = useState([]);
   const [carregandoProcessosVinculo, setCarregandoProcessosVinculo] = useState(false);
@@ -1704,14 +1779,6 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
                         </button>
                       </div>
                     </div>
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        className="px-3 py-2 text-sm border border-slate-300 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200"
-                      >
-                        Adm. PJ
-                      </button>
-                    </div>
                     <div>
                       <label className="block text-sm font-medium text-slate-700 mb-1">RG</label>
                       <input
@@ -1775,20 +1842,22 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
                           type="button"
                           className="px-3 py-2 text-sm border border-slate-300 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 whitespace-nowrap"
                           onClick={() => {
-                            const texto = esbocoQualificacaoComResponsavel({ nome: form.nome }, form.responsavel);
-                            const { usuarioNome } = getContextoAuditoriaUsuario();
-                            const nome = String(form.nome ?? '').trim() || 'cadastro sem nome';
-                            registrarAuditoria({
-                              modulo: 'Pessoas',
-                              tela: pathPessoasNorm,
-                              tipoAcao: 'DOCUMENTO',
-                              descricao: `Usuário ${usuarioNome} gerou qualificação contratual de ${nome}.`,
-                              registroAfetadoId: editId != null ? String(editId) : null,
-                              registroAfetadoNome: nome,
-                            });
-                            if (navigator.clipboard?.writeText) {
-                              navigator.clipboard.writeText(texto).catch(() => {});
-                            }
+                            void (async () => {
+                              const texto = await copiarQualificacaoContratual();
+                              const { usuarioNome } = getContextoAuditoriaUsuario();
+                              const nome = String(form.nome ?? '').trim() || 'cadastro sem nome';
+                              registrarAuditoria({
+                                modulo: 'Pessoas',
+                                tela: pathPessoasNorm,
+                                tipoAcao: 'DOCUMENTO',
+                                descricao: `Usuário ${usuarioNome} gerou qualificação contratual de ${nome}.`,
+                                registroAfetadoId: editId != null ? String(editId) : null,
+                                registroAfetadoNome: nome,
+                              });
+                              if (texto && navigator.clipboard?.writeText) {
+                                navigator.clipboard.writeText(texto).catch(() => {});
+                              }
+                            })();
                           }}
                         >
                           Qualificação
@@ -1935,11 +2004,19 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
                       }
                       excluirId={editId}
                       disabled={form.edicaoDesabilitada}
+                      ehPessoaJuridica={ehPessoaJuridica}
                     />
                     {form.responsavel && String(form.nome ?? '').trim() ? (
                       <p className="text-xs text-slate-600 border border-dashed border-slate-200 rounded-lg p-3 bg-slate-50/90 leading-relaxed">
                         <span className="font-medium text-slate-700">Esboço para documentos: </span>
-                        {esbocoQualificacaoComResponsavel({ nome: form.nome }, form.responsavel)}
+                        {qualificacaoPreviewCarregando
+                          ? 'Carregando qualificação…'
+                          : qualificacaoPreviewCompleta
+                            || esbocoQualificacaoComResponsavel(
+                              { nome: form.nome, cpf: form.cpf },
+                              form.responsavel,
+                              { isPj: ehPessoaJuridica },
+                            )}
                       </p>
                     ) : null}
                   </div>

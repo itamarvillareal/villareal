@@ -38,15 +38,55 @@ export function rotuloPessoaComDocumento(p) {
 }
 
 /**
+ * Sufixo padrão para PJ com administrador vinculado.
+ * @param {string} qualificacaoAdministrador — qualificação completa (sem HTML ou com, conforme origem)
+ */
+export function suffixAdministradorPj(qualificacaoAdministrador) {
+  const q = String(qualificacaoAdministrador ?? '').trim();
+  if (!q) return '';
+  return `, neste ato representada por seu administrador ${q}`;
+}
+
+/**
+ * Remove trecho de administrador PJ já concatenado (ex.: resposta anterior da API).
+ * Tolerante a gênero: o backend flexiona "representad{o|a}", "seu/sua" e "administrador(a)"
+ * conforme o gênero da PJ e do representante.
+ */
+export function stripSuffixAdministradorPj(texto) {
+  const t = String(texto ?? '');
+  const re = /, neste ato representad[oa] por (?:seu|sua) administrador(?:a)? /;
+  const m = t.match(re);
+  if (m && m.index >= 0) return t.slice(0, m.index).trim();
+  return t.trim();
+}
+
+/**
  * Esboço de trecho para documentos quando houver responsável vinculado.
- * Ajuste fino (endereços, qualificação completa) virá com templates futuros.
  *
- * @param {{ nome?: string }} principal
+ * @param {{ nome?: string, cpf?: string, tipoPessoa?: string }} principal
  * @param {{ nome?: string, cpf?: string, tipoPessoa?: string } | null | undefined} responsavel
+ * @param {{ isPj?: boolean, qualificacaoPrincipal?: string, qualificacaoResponsavel?: string }} [options]
  * @returns {string|null}
  */
-export function esbocoQualificacaoComResponsavel(principal, responsavel) {
+export function esbocoQualificacaoComResponsavel(principal, responsavel, options = {}) {
   if (!responsavel || !String(responsavel.nome ?? '').trim()) return null;
+
+  const docPrincipal = String(principal?.cpf ?? '').replace(/\D/g, '');
+  const isPj =
+    options.isPj === true
+    || principal?.tipoPessoa === 'JURIDICA'
+    || docPrincipal.length === 14;
+
+  if (isPj) {
+    const base =
+      String(options.qualificacaoPrincipal ?? '').trim()
+      || `${String(principal?.nome ?? '').trim() || 'A parte'}, pessoa jurídica de direito privado`;
+    const adminQual =
+      String(options.qualificacaoResponsavel ?? '').trim()
+      || `${String(responsavel.nome).trim()}, documento ${formatarDocumentoBr(responsavel.cpf)}`;
+    return `${base}${suffixAdministradorPj(adminQual)}`;
+  }
+
   const p = String(principal?.nome ?? '').trim() || 'A parte';
   const r = String(responsavel.nome).trim();
   const doc = formatarDocumentoBr(responsavel.cpf);

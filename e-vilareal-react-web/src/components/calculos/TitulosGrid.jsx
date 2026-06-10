@@ -112,7 +112,7 @@ const TitulosGrid = memo(function TitulosGrid({
             {linhas.map((row, idx) => {
               const globalIdx = inicio + idx;
               const podeEditarLinha =
-                globalIdx < rodadaTitulosLength && (!aceitarPagamento || modoAlteracao);
+                (!aceitarPagamento || modoAlteracao) && globalIdx <= rodadaTitulosLength;
               return (
                 <tr key={`titulo-${globalIdx}`} className={globalIdx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
                   <td

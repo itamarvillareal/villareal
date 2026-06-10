@@ -1,6 +1,9 @@
 package br.com.vilareal.topicos.application;
 
 import br.com.vilareal.common.exception.ResourceNotFoundException;
+import br.com.vilareal.documento.TopicoLegadoConversor;
+import br.com.vilareal.documento.TopicoLegadoConversor.TopicoConvertido;
+import br.com.vilareal.topicos.api.dto.TopicoConverterHtmlResponse;
 import br.com.vilareal.topicos.api.dto.TopicoResumoResponse;
 import br.com.vilareal.topicos.api.dto.TopicoResponse;
 import br.com.vilareal.topicos.infrastructure.persistence.entity.TopicoEntity;
@@ -10,7 +13,10 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.http.HttpStatus;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -61,6 +67,41 @@ public class TopicoConteudoApplicationService {
                 .filter(TopicoEntity::getAtivo)
                 .orElseThrow(() -> new ResourceNotFoundException("Tópico não encontrado: " + id));
         return toDetalhe(entity);
+    }
+
+    /**
+     * Converte o conteúdo legado ({@code conteudo_template}) dos tópicos cujo {@code subcategoria}
+     * ou {@code chave_navegacao} contém {@code filtro} para o formato novo (HTML + tokens), gravando
+     * em {@code conteudo_html}/{@code classe_html}. Idempotente: repetir apenas sobrescreve. Nunca
+     * altera {@code conteudo_template}. Com {@code dryRun=true} (default) não grava — só conta e
+     * devolve amostra.
+     */
+    @Transactional
+    public TopicoConverterHtmlResponse converterParaHtml(String filtro, boolean dryRun) {
+        if (!StringUtils.hasText(filtro)) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "Informe 'filtro' (ex.: 'EXECUÇÃO › TAXA CONDOMINIAL').");
+        }
+        List<TopicoEntity> topicos = topicoRepository.findByFiltroSubcategoriaOuChave(filtro.trim());
+        List<TopicoConverterHtmlResponse.Amostra> amostra = new ArrayList<>();
+        int convertidos = 0;
+        for (TopicoEntity t : topicos) {
+            TopicoConvertido c = TopicoLegadoConversor.converter(t.getConteudoTemplate());
+            convertidos++;
+            if (!dryRun) {
+                t.setConteudoHtml(c.html());
+                t.setClasseHtml(c.classe());
+            }
+            if (amostra.size() < 10) {
+                String html = c.html() == null ? "" : c.html();
+                amostra.add(new TopicoConverterHtmlResponse.Amostra(
+                        t.getChaveNavegacao(),
+                        t.getBlocoIndice(),
+                        c.classe(),
+                        html.length() > 200 ? html.substring(0, 200) : html));
+            }
+        }
+        return new TopicoConverterHtmlResponse(filtro, topicos.size(), convertidos, dryRun, amostra);
     }
 
     private TopicoResumoResponse toResumo(TopicoEntity entity) {

@@ -1,6 +1,13 @@
 /** Utilitários para merge de páginas de títulos (GET paginado) no estado completo da rodada. */
 
+import { formatBRL, parseBRL } from '../components/calculos/calculosTitulosGridUtils.js';
 import { linhaTituloVaziaCalculos } from './calculosTitulosParcelasSync.js';
+
+function trunc2(n) {
+  const v = Number(n);
+  if (!Number.isFinite(v)) return 0;
+  return Math.trunc(v * 100) / 100;
+}
 
 export const TITULOS_POR_PAGINA_API = 20;
 
@@ -52,7 +59,67 @@ export function mesclarTitulosPaginaNoArray(titulosBase, titulosPagina, page, li
 }
 
 /**
- * Converte {@code titulosResumo} da API para o formato de {@code calcularResumo} na UI.
+ * Soma colunas da grade de títulos (paridade Excel Somar_Taxas / {@code Calculos.jsx}).
+ * Considera apenas linhas com {@code valorInicial} preenchido.
+ * @param {Array<Record<string, unknown>> | undefined} lista
+ */
+export function calcularResumoTitulosGrade(lista) {
+  const valid = (lista || []).filter((r) => String(r?.valorInicial ?? '').trim() !== '');
+  const qtd = valid.length;
+
+  const sumValorInicial = valid.reduce((acc, r) => acc + parseBRL(r.valorInicial), 0);
+  const sumAtualizacao = valid.reduce((acc, r) => acc + parseBRL(r.atualizacaoMonetaria), 0);
+  const sumJuros = valid.reduce((acc, r) => acc + parseBRL(r.juros), 0);
+  const sumMulta = valid.reduce((acc, r) => acc + parseBRL(r.multa), 0);
+  const sumHonorarios = valid.reduce((acc, r) => acc + parseBRL(r.honorarios), 0);
+  const sumTotal = trunc2(sumValorInicial + sumAtualizacao + sumJuros + sumMulta + sumHonorarios);
+
+  const diasNums = valid
+    .map((r) => Number(String(r?.diasAtraso ?? '').trim()))
+    .filter((n) => Number.isFinite(n));
+  const sumDias = diasNums.reduce((a, b) => a + b, 0);
+
+  const qtdLabel = `${String(qtd).padStart(2, '0')} título${qtd === 1 ? '' : 's'}`;
+
+  return {
+    qtd: qtdLabel,
+    valorInicial: formatBRL(trunc2(sumValorInicial)),
+    atualizacao: formatBRL(trunc2(sumAtualizacao)),
+    diasAtraso: `${Math.floor(sumDias)} dias de atraso`,
+    juros: formatBRL(trunc2(sumJuros)),
+    multa: formatBRL(trunc2(sumMulta)),
+    honorarios: formatBRL(trunc2(sumHonorarios)),
+    total: formatBRL(trunc2(sumTotal)),
+  };
+}
+
+/**
+ * Monta array com todos os slots da dimensão, mesclando estado local e páginas em cache da API.
+ * @param {unknown[]} titulosAtual
+ * @param {number | null | undefined} totalEsperado
+ * @param {Iterable<[string, { titulos?: unknown[] } | undefined]> | null | undefined} paginasCache
+ * @param {string} rodadaKey
+ */
+export function montarTitulosDimensaoParaResumo(titulosAtual, totalEsperado, paginasCache, rodadaKey) {
+  const total =
+    totalEsperado != null && Number(totalEsperado) > 0
+      ? Math.floor(Number(totalEsperado))
+      : (Array.isArray(titulosAtual) ? titulosAtual.length : 0);
+  let base = garantirArrayTitulosTamanho(titulosAtual, total);
+  const prefix = `${rodadaKey}:page:`;
+  if (paginasCache) {
+    for (const [key, cached] of paginasCache) {
+      if (!String(key).startsWith(prefix) || !cached?.titulos) continue;
+      const pg = Number(String(key).slice(prefix.length));
+      if (!Number.isFinite(pg) || pg < 1) continue;
+      base = mesclarTitulosPaginaNoArray(base, cached.titulos, pg, TITULOS_POR_PAGINA_API);
+    }
+  }
+  return base;
+}
+
+/**
+ * Converte {@code titulosResumo} da API para o formato de {@code calcularResumoTitulosGrade} na UI.
  * @param {Record<string, unknown> | null | undefined} apiResumo
  */
 export function resumoTitulosFromApi(apiResumo) {

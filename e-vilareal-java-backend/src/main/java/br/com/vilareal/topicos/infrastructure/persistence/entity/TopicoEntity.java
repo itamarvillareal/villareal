@@ -40,6 +40,12 @@ public class TopicoEntity {
     @Column(name = "tipo_formatacao", length = 50)
     private String tipoFormatacao;
 
+    @Column(name = "conteudo_html", columnDefinition = "LONGTEXT")
+    private String conteudoHtml;
+
+    @Column(name = "classe_html", length = 40)
+    private String classeHtml;
+
     @Column(nullable = false)
     private Integer ordem = 0;
 

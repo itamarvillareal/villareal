@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  calcularResumoTitulosGrade,
   garantirArrayTitulosTamanho,
   mesclarTitulosPaginaNoArray,
+  montarTitulosDimensaoParaResumo,
   resumoTitulosFromApi,
 } from './calculosRodadaTitulosPaginacao.js';
 
@@ -16,6 +18,44 @@ describe('calculosRodadaTitulosPaginacao', () => {
     );
     expect(merged[20].valorInicial).toBe('R$ 1,00');
     expect(merged[0].valorInicial).toBe('');
+  });
+
+  it('calcularResumoTitulosGrade soma componentes (Somar_Taxas) e ignora linhas vazias', () => {
+    const r = calcularResumoTitulosGrade([
+      {
+        valorInicial: 'R$ 12.230,00',
+        atualizacaoMonetaria: 'R$ 4.004,12',
+        diasAtraso: '1697',
+        juros: 'R$ 9.091,10',
+        multa: 'R$ 0,00',
+        honorarios: 'R$ 6.149,02',
+        total: 'R$ 31.474,24',
+      },
+      { valorInicial: 'R$ -1.000,00', juros: 'R$ -739,96', honorarios: 'R$ -400,00', diasAtraso: '1527' },
+      { valorInicial: '', juros: 'R$ 99,00' },
+    ]);
+    expect(r.qtd).toContain('02');
+    expect(r.valorInicial).toBe('R$ 11.230,00');
+    expect(r.juros).toBe('R$ 8.351,14');
+    expect(r.total).toBe('R$ 29.334,28');
+  });
+
+  it('resumo página vs dimensão: página é subconjunto', () => {
+    const dimensao = [
+      { valorInicial: 'R$ 100,00', juros: 'R$ 10,00' },
+      { valorInicial: 'R$ 200,00', juros: 'R$ 20,00' },
+    ];
+    const pagina = dimensao.slice(0, 1);
+    expect(calcularResumoTitulosGrade(pagina).valorInicial).toBe('R$ 100,00');
+    expect(calcularResumoTitulosGrade(dimensao).valorInicial).toBe('R$ 300,00');
+  });
+
+  it('montarTitulosDimensaoParaResumo mescla páginas em cache', () => {
+    const cache = new Map([
+      ['cli:1:1:page:2', { titulos: [{ valorInicial: 'R$ 50,00' }] }],
+    ]);
+    const merged = montarTitulosDimensaoParaResumo([], 25, cache.entries(), 'cli:1:1');
+    expect(merged[20].valorInicial).toBe('R$ 50,00');
   });
 
   it('resumoTitulosFromApi formata totais', () => {
