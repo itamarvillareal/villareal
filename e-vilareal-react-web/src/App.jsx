@@ -50,6 +50,7 @@ import {
   LazyConsultasPeriodicas,
   LazyPublicacoesEmail,
   LazyManifestacoesProjudi,
+  LazyPeticionamentoProjudi,
   LazyRelatorio,
   LazyRelatorioResultadoProcessos,
   LazyRelatorioCalculos,
@@ -385,6 +386,10 @@ function App() {
               <Route
                 path="/processos/manifestacoes-projudi"
                 element={<LazyManifestacoesProjudi />}
+              />
+              <Route
+                path="/processos/peticionamento-projudi"
+                element={<LazyPeticionamentoProjudi />}
               />
               <Route path="/processos/monitoramento" element={<LazyMonitoringPeoplePage />} />
               <Route path="/imoveis" element={<LazyImoveis />} />

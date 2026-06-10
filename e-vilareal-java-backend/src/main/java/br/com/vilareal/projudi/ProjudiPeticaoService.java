@@ -11,7 +11,10 @@ import java.net.URLEncoder;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 /**
  * Protocolo de petição no PROJUDI-GO (Fase 1 — núcleo, sem persistência).
@@ -42,6 +45,11 @@ public class ProjudiPeticaoService {
 
     private static final int RESPOSTA_BRUTA_MAX = 4000;
 
+    /** Id PROJUDI → rótulo do tipo de arquivo (extensível). */
+    private static final Map<Integer, String> NOMES_TIPO_ARQUIVO = Map.of(
+            16, "Petição",
+            1, "Outros");
+
     private final ProjudiSessionService sessionService;
     private final ObjectMapper objectMapper;
 
@@ -50,31 +58,61 @@ public class ProjudiPeticaoService {
         this.objectMapper = objectMapper;
     }
 
+    /** Arquivo P7S a juntar na mesma petição. {@code nomeArquivo} é o nome enviado ao PROJUDI (ex.: {@code doc.pdf.p7s}). */
+    public record ArquivoPeticao(byte[] bytesP7s, int idArquivoTipo, String nomeArquivo) {}
+
     /**
      * Executa a sequência completa de peticionamento na mesma sessão autenticada.
-     * O passo 11 (Concluir) é irreversível — não há retry automático.
+     * O passo Concluir é irreversível — não há retry automático.
      */
+    /** Executa passos 1–10 no PROJUDI (upload incluído) sem o passo 11 (Concluir). */
+    public ResultadoProtocoloPeticao validarProtocoloSemConcluir(
+            Long credencialId,
+            String numeroProcesso,
+            String complemento,
+            List<ArquivoPeticao> arquivos) {
+        return executarFluxoProtocolo(credencialId, numeroProcesso, complemento, arquivos, false);
+    }
+
     public ResultadoProtocoloPeticao protocolarPeticao(
             Long credencialId,
             String numeroProcesso,
             String complemento,
-            byte[] bytesP7s) {
+            List<ArquivoPeticao> arquivos) {
+        return executarFluxoProtocolo(credencialId, numeroProcesso, complemento, arquivos, true);
+    }
+
+    private ResultadoProtocoloPeticao executarFluxoProtocolo(
+            Long credencialId,
+            String numeroProcesso,
+            String complemento,
+            List<ArquivoPeticao> arquivos,
+            boolean executarConcluir) {
         if (credencialId == null) {
             return falha("credencialId é obrigatório.", "");
         }
         if (!StringUtils.hasText(numeroProcesso)) {
             return falha("numeroProcesso é obrigatório.", "");
         }
-        if (bytesP7s == null || bytesP7s.length == 0) {
-            return falha("bytesP7s é obrigatório.", "");
+        if (arquivos == null || arquivos.isEmpty()) {
+            return falha("arquivos é obrigatório (ao menos um P7S).", "");
+        }
+        for (int i = 0; i < arquivos.size(); i++) {
+            ArquivoPeticao arq = arquivos.get(i);
+            if (arq == null || arq.bytesP7s() == null || arq.bytesP7s().length == 0) {
+                return falha("arquivos[" + i + "].bytesP7s é obrigatório.", "");
+            }
         }
 
-        String nomeP7s = gerarNomeP7s(numeroProcesso.trim());
+        String processo = numeroProcesso.trim();
         String complementoIso = encIso8859(complemento == null ? "" : complemento);
+        long epochMillis = System.currentTimeMillis();
+
+        sessionService.invalidarSessao(credencialId);
 
         try {
             // 1) busca — estabelece processo na sessão
-            var busca = sessionService.buscarProcessoConsulta(credencialId, numeroProcesso.trim());
+            var busca = sessionService.buscarProcessoConsulta(credencialId, processo);
             if (pareceFalhaLeitura(busca.statusCode(), busca.body())) {
                 return falha("Passo 1 (busca processo) falhou.", busca.body());
             }
@@ -136,44 +174,83 @@ public class ProjudiPeticaoService {
                 return falha("Passo 7 (tipo movimentação) falhou.", corpoResposta(p7));
             }
 
-            // 8)
-            String corpoPasso8 = montarCorpoInsercaoArquivo(nomeP7s, bytesP7s);
-            HttpResponse<String> p8 = sessionService.postPeticionamento(
-                    credencialId,
-                    "InsercaoArquivo",
-                    "AJAX=ajax&PaginaAtual=3&fluxo=4",
-                    corpoPasso8,
-                    StandardCharsets.UTF_8,
-                    REF_PETICIONAMENTO);
-            String corpoP8 = corpoResposta(p8);
-            if (pareceFalhaPost(p8)) {
-                return falha("Passo 8 (InsercaoArquivo) falhou.", corpoP8);
-            }
-            String erroInsercao = validarRespostaInsercaoArquivo(corpoP8);
-            if (erroInsercao != null) {
-                return falha(erroInsercao, corpoP8);
-            }
-
-            // 9)
-            var p9 = sessionService.getAutenticadoAjaxComReferer(
+            // 8) upload de cada arquivo + GET fluxo=9 por arquivo
+            var initInsercao = sessionService.getAutenticadoAjaxComReferer(
                     credencialId,
                     "InsercaoArquivo?AJAX=ajax&PaginaAtual=3&fluxo=9",
                     REF_PETICIONAMENTO);
-            if (pareceFalhaLeitura(p9.statusCode(), p9.body())) {
-                return falha("Passo 9 (InsercaoArquivo fluxo 9) falhou.", p9.body());
+            if (pareceFalhaLeitura(initInsercao.statusCode(), initInsercao.body())) {
+                return falha("Passo 8 (InsercaoArquivo fluxo=9 inicial) falhou.", initInsercao.body());
             }
 
-            // 10)
-            String corpoPasso10 = montarCorpoPasso10(complementoIso, nomeP7s);
-            HttpResponse<String> p10 = sessionService.postPeticionamento(
+            Map<Integer, String> nomesGerados = new HashMap<>();
+            for (int i = 0; i < arquivos.size(); i++) {
+                ArquivoPeticao arquivo = arquivos.get(i);
+                String nomeP7s = resolverNomeArquivoUpload(arquivo.nomeArquivo(), processo, epochMillis, i);
+                nomesGerados.put(i, nomeP7s);
+
+                String corpoInsercao = montarCorpoInsercaoArquivo(nomeP7s, arquivo);
+                HttpResponse<String> p8a = sessionService.postPeticionamento(
+                        credencialId,
+                        "InsercaoArquivo",
+                        "AJAX=ajax&PaginaAtual=3&fluxo=4",
+                        corpoInsercao,
+                        StandardCharsets.UTF_8,
+                        REF_PETICIONAMENTO);
+                String corpoP8a = corpoResposta(p8a);
+                if (pareceFalhaPost(p8a)) {
+                    return falha("Passo 8a (InsercaoArquivo, arquivo " + i + ") falhou.", corpoP8a);
+                }
+                String erroInsercao = validarRespostaInsercaoArquivo(corpoP8a);
+                if (erroInsercao != null) {
+                    return falha(erroInsercao, corpoP8a);
+                }
+
+                var p8b = sessionService.getAutenticadoAjaxComReferer(
+                        credencialId,
+                        "InsercaoArquivo?AJAX=ajax&PaginaAtual=3&fluxo=9",
+                        REF_PETICIONAMENTO);
+                if (pareceFalhaLeitura(p8b.statusCode(), p8b.body())) {
+                    return falha("Passo 8b (InsercaoArquivo fluxo 9, arquivo " + i + ") falhou.", p8b.body());
+                }
+            }
+
+            // 9) Avançar — espelha o último arquivo
+            int ultimoIdx = arquivos.size() - 1;
+            ArquivoPeticao ultimo = arquivos.get(ultimoIdx);
+            String nomeUltimo = nomesGerados.get(ultimoIdx);
+            String corpoAvancar = montarCorpoAvancar(complementoIso, nomeUltimo, ultimo);
+            HttpResponse<String> p9 = sessionService.postPeticionamento(
                     credencialId,
                     "Peticionamento",
                     null,
-                    corpoPasso10,
+                    corpoAvancar,
                     StandardCharsets.ISO_8859_1,
                     REF_PETICIONAMENTO);
-            if (pareceFalhaPost(p10)) {
-                return falha("Passo 10 (Avançar) falhou.", corpoResposta(p10));
+            if (pareceFalhaPost(p9)) {
+                return falha("Passo 9 (Avançar) falhou.", corpoResposta(p9));
+            }
+
+            // 10)
+            var p10 = sessionService.getAutenticadoAjaxComReferer(
+                    credencialId,
+                    "InsercaoArquivo?AJAX=ajax&PaginaAtual=3&fluxo=9",
+                    REF_PETICIONAMENTO);
+            if (pareceFalhaLeitura(p10.statusCode(), p10.body())) {
+                return falha("Passo 10 (InsercaoArquivo fluxo 9 pós-Avançar) falhou.", p10.body());
+            }
+
+            if (!executarConcluir) {
+                log.info(
+                        "Validação PROJUDI OK até passo 10 (processo={}, arquivos={}, nomes={}) — Concluir não executado.",
+                        processo,
+                        arquivos.size(),
+                        nomesGerados.values());
+                sessionService.invalidarSessao(credencialId);
+                return new ResultadoProtocoloPeticao(
+                        true,
+                        "Passos 1–10 concluídos com sucesso (Concluir não executado).",
+                        truncarRespostaBruta("nomesUpload=" + nomesGerados.values()));
             }
 
             // 11) irreversível
@@ -187,8 +264,11 @@ public class ProjudiPeticaoService {
             String corpoP11 = corpoResposta(p11);
             String location = p11.headers().firstValue("Location").orElse("");
             if (protocoloConfirmado(location, corpoP11)) {
-                log.info("Petição protocolada no PROJUDI (processo={}, nomeP7s={}).",
-                        numeroProcesso.trim(), nomeP7s);
+                log.info(
+                        "Petição protocolada no PROJUDI (processo={}, arquivos={}, nomes={}).",
+                        processo,
+                        arquivos.size(),
+                        nomesGerados.values());
                 return new ResultadoProtocoloPeticao(
                         true,
                         "Petição enviada com sucesso.",
@@ -204,38 +284,108 @@ public class ProjudiPeticaoService {
         }
     }
 
-    static String gerarNomeP7s(String numeroProcesso) {
+    /** Atalho single-file (tipo 16 = Petição). */
+    public ResultadoProtocoloPeticao protocolarPeticao(
+            Long credencialId,
+            String numeroProcesso,
+            String complemento,
+            byte[] bytesP7s) {
+        return protocolarPeticao(
+                credencialId, numeroProcesso, complemento, List.of(new ArquivoPeticao(bytesP7s, 16, null)));
+    }
+
+    static String resolverNomeArquivoUpload(
+            String nomeOriginal, String numeroProcesso, long epochMillis, int indice) {
+        if (StringUtils.hasText(nomeOriginal)) {
+            String nome = nomeOriginal.trim();
+            int barra = Math.max(nome.lastIndexOf('/'), nome.lastIndexOf('\\'));
+            if (barra >= 0 && barra + 1 < nome.length()) {
+                nome = nome.substring(barra + 1);
+            }
+            if (!nome.isBlank()) {
+                return nome;
+            }
+        }
+        return gerarNomeP7s(numeroProcesso, epochMillis, indice);
+    }
+
+    static String gerarNomeP7s(String numeroProcesso, long epochMillis, int indice) {
         String digitos = numeroProcesso.replaceAll("\\D", "");
         if (digitos.isEmpty()) {
             digitos = "0";
         }
-        return "peticao_" + digitos + "_" + System.currentTimeMillis() + ".pdf.p7s";
+        return "peticao_" + digitos + "_" + epochMillis + "_" + indice + ".pdf.p7s";
     }
 
-    private static String montarCorpoInsercaoArquivo(String nomeP7s, byte[] bytesP7s) {
-        String base64 = Base64.getEncoder().encodeToString(bytesP7s);
+    public static String nomeTipoArquivo(int idArquivoTipo) {
+        return NOMES_TIPO_ARQUIVO.getOrDefault(idArquivoTipo, idArquivoTipo == 16 ? "Petição" : "Outros");
+    }
+
+    private static String montarCorpoInsercaoArquivo(String nomeP7s, ArquivoPeticao arquivo) {
+        String base64 = Base64.getEncoder().encodeToString(arquivo.bytesP7s());
         String dataUri = "data:application/pkcs7-signature;base64," + base64;
-        String arquivoEncoded = URLEncoder.encode(dataUri, StandardCharsets.UTF_8);
-        return "id=-1&id_ArquivoTipo=16&arquivoTipo=Peti%C3%A7%C3%A3o&nomeArquivo="
+        String arquivoEncoded = encFormComponent(dataUri);
+        String nomeTipoUtf8 = encUtf8(nomeTipoArquivo(arquivo.idArquivoTipo()));
+        return "id=-1&id_ArquivoTipo="
+                + arquivo.idArquivoTipo()
+                + "&arquivoTipo="
+                + nomeTipoUtf8
+                + "&nomeArquivo="
                 + nomeP7s
                 + "&arquivo="
-                + arquivoEncoded;
+                + arquivoEncoded
+                + "&assinado=true&gerarAssinatura=false&senhaCertificado=&salvarSenha="
+                + "&contentType="
+                + encFormComponent("application/pkcs7-signature");
     }
 
-    private static String montarCorpoPasso10(String complementoIso, String nomeP7s) {
+    /** Equivalente ao {@code encodeURIComponent} do jQuery (campo {@code arquivo} do PROJUDI). */
+    static String encFormComponent(String valor) {
+        if (valor == null) {
+            return "";
+        }
+        StringBuilder out = new StringBuilder(valor.length() + 16);
+        for (int i = 0; i < valor.length(); ) {
+            int cp = valor.codePointAt(i);
+            if ((cp >= '0' && cp <= '9')
+                    || (cp >= 'A' && cp <= 'Z')
+                    || (cp >= 'a' && cp <= 'z')
+                    || "-_.!~*'()".indexOf(cp) >= 0) {
+                out.appendCodePoint(cp);
+            } else if (cp == ' ') {
+                out.append("%20");
+            } else if (cp < 128) {
+                out.append(String.format("%%%02X", cp));
+            } else {
+                byte[] bytes = new String(Character.toChars(cp)).getBytes(StandardCharsets.UTF_8);
+                for (byte b : bytes) {
+                    out.append(String.format("%%%02X", b & 0xff));
+                }
+            }
+            i += Character.charCount(cp);
+        }
+        return out.toString();
+    }
+
+    private static String montarCorpoAvancar(String complementoIso, String nomeP7s, ArquivoPeticao ultimo) {
+        String nomeTipoIso = encIso8859(nomeTipoArquivo(ultimo.idArquivoTipo()));
         return "PaginaAtual=-2&PaginaAnterior=-1&TituloPagina=null"
                 + "&MovimentacaoTipo=Juntada+-%3E+Peti%E7%E3o+%28CNJ%3A85%29"
                 + "&Id_MovimentacaoTipo=260&MovimentacaoComplemento="
                 + complementoIso
-                + "&assinado=true&gerarAssinatura=false&ArquivoTipo=Peti%E7%E3o&Id_ArquivoTipo=16"
+                + "&assinado=true&gerarAssinatura=false&ArquivoTipo="
+                + nomeTipoIso
+                + "&Id_ArquivoTipo="
+                + ultimo.idArquivoTipo()
                 + "&files%5B%5D="
-                + nomeP7s
+                + encIso8859(nomeP7s)
                 + "&Id_Modelo=null&Modelo=&nomeArquivo=&TextoEditor=&arquivo=&imgConcluir=Avan%E7ar";
     }
 
     private String validarRespostaInsercaoArquivo(String corpo) {
         if (!StringUtils.hasText(corpo)) {
-            return "InsercaoArquivo retornou corpo vazio.";
+            // Fluxo=4 bem-sucedido costuma responder 200 com corpo vazio (captura real PROJUDI).
+            return null;
         }
         try {
             JsonNode root = objectMapper.readTree(corpo);
@@ -258,14 +408,19 @@ public class ProjudiPeticaoService {
     }
 
     private static boolean protocoloConfirmado(String location, String corpo) {
+        return protocoloConfirmadoParaTeste(location, corpo);
+    }
+
+    static boolean protocoloConfirmadoParaTeste(String location, String corpo) {
         String loc = location == null ? "" : location.toLowerCase(Locale.ROOT);
-        if (loc.contains("enviada com sucesso")) {
+        if (loc.contains("enviada com sucesso") || loc.contains("enviada+com+sucesso")) {
             return true;
         }
         if (corpo == null || corpo.isBlank()) {
             return false;
         }
-        return corpo.toLowerCase(Locale.ROOT).contains("enviada com sucesso");
+        String corpoLower = corpo.toLowerCase(Locale.ROOT);
+        return corpoLower.contains("enviada com sucesso") || corpoLower.contains("enviada+com+sucesso");
     }
 
     private static boolean pareceFalhaLeitura(int status, String body) {
@@ -294,6 +449,10 @@ public class ProjudiPeticaoService {
         return URLEncoder.encode(valor, StandardCharsets.ISO_8859_1);
     }
 
+    private static String encUtf8(String valor) {
+        return URLEncoder.encode(valor, StandardCharsets.UTF_8);
+    }
+
     private static ResultadoProtocoloPeticao falha(String mensagem, String bruta) {
         return new ResultadoProtocoloPeticao(false, mensagem, truncarRespostaBruta(bruta));
     }
@@ -307,6 +466,5 @@ public class ProjudiPeticaoService {
                 : bruta.substring(0, RESPOSTA_BRUTA_MAX) + "...[truncado]";
     }
 
-    public record ResultadoProtocoloPeticao(boolean sucesso, String mensagem, String respostaBruta) {
-    }
+    public record ResultadoProtocoloPeticao(boolean sucesso, String mensagem, String respostaBruta) {}
 }

@@ -1,0 +1,99 @@
+function mostrarObjetos(id_proc){
+  MostrarOcultar("sub_objetos");
+  if($('#sub_objetos').is(":visible")){
+    $('#sub_objetos').html(gerarHtmlObjetos(id_proc));
+
+    atualizarTabelaPasso(
+      'ProcessoObjetoArquivo',
+      'sub_objetos',
+      'Info Objetos Processos',
+      undefined,
+      undefined
+    );
+
+    injetarColunaLeilaoQuandoCarregar('sub_objetos');
+  }
+}
+
+function injetarColunaLeilaoQuandoCarregar(id_form){
+  var tentativas = 0;
+  var maxTentativas = 80;
+
+  var timer = setInterval(function(){
+    tentativas++;
+
+    var $rows = $("#tb_" + id_form + " tbody tr");
+
+    if ($rows.length > 0){
+      injetarColunaLeilao(id_form);
+
+      var total = $rows.length;
+      var injetadas = $rows.filter(function(){ return $(this).data("leilao_injetado") === true; }).length;
+
+      if (total > 0 && injetadas === total){
+        clearInterval(timer);
+      }
+      return;
+    }
+
+    if (tentativas >= maxTentativas){
+      clearInterval(timer);
+    }
+  }, 100);
+}
+
+function injetarColunaLeilao(id_form){
+  var $rows = $("#tb_" + id_form + " tbody tr");
+  if ($rows.length === 0) return;
+
+  $rows.each(function(){
+    var $tr = $(this);
+
+    // evita duplicar por linha
+    if ($tr.data("leilao_injetado") === true) return;
+
+    // pega o JSON
+    var camposStr = $tr.attr("campos") || "{}";
+    var item = {};
+    try {
+      item = JSON.parse(camposStr);
+    } catch(e) {
+      item = {};
+    }
+
+	var st = (item.StatusLeilao != null ? String(item.StatusLeilao) : "");
+	var txt = (st === "1") ? "Sim" : "N&atilde;o";
+
+	var $tdInfo = $tr.find("td:last");
+	if ($tdInfo.length === 0) return;
+
+	$("<td/>").html(txt).insertBefore($tdInfo);
+	$tr.data("leilao_injetado", true);
+
+  });
+}
+
+function gerarHtmlObjetos(id_proc){
+  var stHtml ="<fieldset class='VisualizaDados' ><legend>Objetos do Processo</legend>";
+  stHtml +="  <input type='hidden' id='sub_objetos_Id_Proc' name='sub_objetos_Id_Proc' value='"+id_proc+"' />";
+  stHtml +="  <blockquote class='col100'>";
+  stHtml +="    <table id='tb_sub_objetos' class='Tabela'>";
+  stHtml +="      <thead>";
+  stHtml +="        <tr>";
+  stHtml +="          <th class='colunaMinima'>Id</th>";
+  stHtml +="          <th width='60px'>Objeto</th>";
+  stHtml +="          <th width='30px'>Objeto SubTipo</th>";
+  stHtml +="          <th width='30px'>Dt. Entrada</th>";
+  stHtml +="          <th width='30px'>Dt. Baixa</th>";
+  stHtml +="          <th width='30px'>Delegacia</th>";
+  stHtml +="          <th width='30px'>Arquivo</th>";
+  stHtml +=" <th width='40px'>Encaminhado para Leil&atilde;o?</th>";
+  stHtml +="          <th class='colunaMinima'>info</th>";
+  stHtml +="        </tr>";
+  stHtml +="      </thead>";
+  stHtml +="      <tbody></tbody>";
+  stHtml +="    </table>";
+  stHtml +="  </blockquote>";
+  stHtml +="</fieldset>";
+  return stHtml;
+}

@@ -43,6 +43,7 @@ export const navItems = [
       { id: 'processos/consultas-periodicas', label: 'Consultas periódicas', icon: 'CalendarClock' },
       { id: 'publicacoes-email', label: 'Publicações Email', icon: 'Mail' },
       { id: 'processos/manifestacoes-projudi', label: 'Movimentações Email', icon: 'Gavel' },
+      { id: 'processos/peticionamento-projudi', label: 'Peticionamento PROJUDI', icon: 'FileSignature' },
       { id: 'processos/monitoramento', label: 'Monitoramento de Pessoas', icon: 'Radar' },
       { id: 'relatorio', label: 'Relatório de Processos', icon: 'FileSpreadsheet' },
       { id: 'relatorio-resultado-processos', label: 'Resultado financeiro (proc.)', icon: 'CircleDollarSign' },

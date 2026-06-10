@@ -43,6 +43,10 @@ export const LazyManifestacoesProjudi = fromNamed(
   () => import('../components/ManifestacoesProjudi.jsx'),
   'ManifestacoesProjudi'
 );
+export const LazyPeticionamentoProjudi = fromNamed(
+  () => import('../components/projudi/PeticionamentoProjudi.jsx'),
+  'PeticionamentoProjudi'
+);
 export const LazyMonitoringPeoplePage = fromNamed(
   () => import('../components/monitoring/MonitoringPeoplePage.jsx'),
   'MonitoringPeoplePage'

@@ -1,0 +1,682 @@
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useLocation } from 'react-router-dom';
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ChevronDown,
+  FileSignature,
+  History,
+  Loader2,
+  RefreshCw,
+  Send,
+  Trash2,
+} from 'lucide-react';
+import {
+  baixarZip,
+  enviarAssinados,
+  listar,
+  listarCredenciais,
+  previaProtocoloLote,
+  protocolarLote,
+  reabrirProtocolo,
+  registrarAssinados,
+  validarProtocoloLote,
+} from '../../api/peticoesProjudiApi.js';
+import { isArquivoP7s, separarArquivosP7s } from '../../domain/peticaoArquivo.js';
+import { downloadPdfBlob } from '../../repositories/documentosRepository.js';
+import { labelTipoArquivoPeticao } from './PeticaoArquivosTabela.jsx';
+import { PeticaoHistoricoLista } from './PeticaoHistoricoLista.jsx';
+import { PeticaoProtocoloConfirmModal } from './PeticaoProtocoloConfirmModal.jsx';
+import { ProcessosToast, processosBtnPrimary } from '../processos/ProcessosAdminLayout.jsx';
+
+const inputClass =
+  'w-full px-2 py-1.5 border border-slate-300 rounded text-sm bg-white text-slate-900';
+
+const TIPOS_ARQUIVO = [
+  { id: 16, label: 'Petição' },
+  { id: 1, label: 'Outros' },
+];
+
+function resolverNumeroProcessoOrigem(state) {
+  if (!state || typeof state !== 'object') return '';
+  return String(state.numeroProcesso ?? state.numeroProcessoNovo ?? state.numeroCnj ?? '').trim();
+}
+
+function formatCpfExibicao(cpf) {
+  const d = String(cpf ?? '').replace(/\D/g, '');
+  if (d.length !== 11) return cpf || '—';
+  return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
+}
+
+function labelCredencial(c) {
+  if (!c) return '';
+  const rotulo = c.rotulo ? ` · ${c.rotulo}` : '';
+  return `#${c.id} · ${formatCpfExibicao(c.cpfUsuario)}${rotulo}`;
+}
+
+function inferirTipoArquivo(nome) {
+  const n = String(nome || '').toLowerCase();
+  if (n.includes('calculo') || n.includes('cálculo')) return 1;
+  return 16;
+}
+
+function linhaP7sComArquivo(file) {
+  return { key: crypto.randomUUID(), file, idArquivoTipo: inferirTipoArquivo(file?.name) };
+}
+
+function classeResultadoProtocolo(resultado) {
+  switch (resultado) {
+    case 'PROTOCOLADA':
+      return 'text-emerald-700 bg-emerald-50 border-emerald-200';
+    case 'IGNORADA':
+      return 'text-slate-600 bg-slate-50 border-slate-200';
+    default:
+      return 'text-rose-700 bg-rose-50 border-rose-200';
+  }
+}
+
+export function PeticionamentoProjudi() {
+  const location = useLocation();
+  const numeroProcessoOrigem = useMemo(
+    () => resolverNumeroProcessoOrigem(location.state),
+    [location.state],
+  );
+
+  const [aba, setAba] = useState('protocolar');
+  const [peticoes, setPeticoes] = useState([]);
+  const [carregando, setCarregando] = useState(true);
+  const [apiError, setApiError] = useState('');
+  const [toast, setToast] = useState('');
+  const [operacao, setOperacao] = useState(null);
+
+  const [credencialId, setCredencialId] = useState('');
+  const [credenciais, setCredenciais] = useState([]);
+  const [numeroProcesso, setNumeroProcesso] = useState('');
+  const [complemento, setComplemento] = useState('');
+  const [linhasP7s, setLinhasP7s] = useState([]);
+
+  const [selecionadas, setSelecionadas] = useState(() => new Set());
+  const [modalProtocolo, setModalProtocolo] = useState(false);
+  const [previa, setPrevia] = useState(null);
+  const [validacao, setValidacao] = useState(null);
+  const [carregandoPrevia, setCarregandoPrevia] = useState(false);
+  const [validando, setValidando] = useState(false);
+  const [resultadoProtocolo, setResultadoProtocolo] = useState([]);
+
+  useEffect(() => {
+    if (numeroProcessoOrigem) setNumeroProcesso(numeroProcessoOrigem);
+  }, [numeroProcessoOrigem]);
+
+  const recarregar = useCallback(async () => {
+    setCarregando(true);
+    setApiError('');
+    try {
+      const rows = await listar();
+      setPeticoes(Array.isArray(rows) ? rows : []);
+    } catch (e) {
+      setApiError(e?.message || 'Falha ao carregar petições.');
+      setPeticoes([]);
+    } finally {
+      setCarregando(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void recarregar();
+  }, [recarregar]);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const rows = await listarCredenciais();
+        const lista = Array.isArray(rows) ? rows : [];
+        setCredenciais(lista);
+        setCredencialId((atual) => {
+          if (atual) return atual;
+          const preferida = lista.find((c) => String(c.cpfUsuario || '').endsWith('5190')) || lista[0];
+          return preferida ? String(preferida.id) : '';
+        });
+      } catch {
+        setCredenciais([]);
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (!toast) return undefined;
+    const t = window.setTimeout(() => setToast(''), 4000);
+    return () => window.clearTimeout(t);
+  }, [toast]);
+
+  const processoFiltro = useMemo(() => {
+    return (numeroProcesso.trim() || numeroProcessoOrigem || '').replace(/\D/g, '');
+  }, [numeroProcesso, numeroProcessoOrigem]);
+
+  const peticoesFiltradas = useMemo(() => {
+    if (!processoFiltro) return peticoes;
+    return peticoes.filter((p) => String(p.numeroProcesso || '').replace(/\D/g, '') === processoFiltro);
+  }, [peticoes, processoFiltro]);
+
+  const assinadas = useMemo(
+    () => peticoesFiltradas.filter((p) => p.status === 'ASSINADA'),
+    [peticoesFiltradas],
+  );
+
+  const historico = useMemo(
+    () =>
+      peticoesFiltradas.filter((p) =>
+        ['PROTOCOLADA', 'ERRO', 'PENDENTE_ASSINATURA'].includes(p.status),
+      ),
+    [peticoesFiltradas],
+  );
+
+  const toggleSelecionada = (id) => {
+    setSelecionadas((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selecionarTodasAssinadas = () => {
+    setSelecionadas(new Set(assinadas.map((p) => p.id)));
+  };
+
+  const registrarP7s = async (e) => {
+    e.preventDefault();
+    const arquivos = linhasP7s.map((l) => l.file).filter(Boolean);
+    if (!numeroProcesso.trim()) {
+      setApiError('Informe o número do processo.');
+      return;
+    }
+    if (arquivos.length === 0) {
+      setApiError('Selecione ao menos um arquivo .p7s.');
+      return;
+    }
+    setOperacao('registrar');
+    setApiError('');
+    try {
+      const fd = new FormData();
+      fd.append('credencialId', String(credencialId).trim() || String(credenciais[0]?.id ?? '1'));
+      fd.append('numeroProcesso', numeroProcesso.trim());
+      if (complemento.trim()) fd.append('complemento', complemento.trim());
+      for (const linha of linhasP7s) {
+        if (linha.file) {
+          fd.append('arquivosP7s', linha.file);
+          fd.append('idArquivoTipos', String(linha.idArquivoTipo));
+        }
+      }
+      await registrarAssinados(fd);
+      setToast(`${arquivos.length} .p7s registrado(s).`);
+      setComplemento('');
+      setLinhasP7s([]);
+      await recarregar();
+    } catch (err) {
+      setApiError(err?.message || 'Falha ao registrar.');
+    } finally {
+      setOperacao(null);
+    }
+  };
+
+  const abrirModalProtocolo = async () => {
+    const ids = [...selecionadas];
+    if (!ids.length) return;
+    setModalProtocolo(true);
+    setPrevia(null);
+    setValidacao(null);
+    setCarregandoPrevia(true);
+    setApiError('');
+    try {
+      setPrevia(await previaProtocoloLote(ids));
+    } catch (err) {
+      setApiError(err?.message || 'Falha na prévia.');
+      setModalProtocolo(false);
+    } finally {
+      setCarregandoPrevia(false);
+    }
+  };
+
+  const executarValidacao = async () => {
+    const ids = [...selecionadas];
+    setValidando(true);
+    setValidacao(null);
+    try {
+      setValidacao(await validarProtocoloLote(ids));
+    } catch (err) {
+      setApiError(err?.message || 'Falha na validação.');
+    } finally {
+      setValidando(false);
+    }
+  };
+
+  const confirmarProtocolo = async () => {
+    const ids = [...selecionadas];
+    setModalProtocolo(false);
+    setPrevia(null);
+    setValidacao(null);
+    if (!ids.length) return;
+    setOperacao('protocolo');
+    setApiError('');
+    setResultadoProtocolo([]);
+    try {
+      const res = await protocolarLote(ids);
+      setResultadoProtocolo(Array.isArray(res) ? res : []);
+      setSelecionadas(new Set());
+      setToast('Protocolo concluído.');
+      await recarregar();
+    } catch (err) {
+      setApiError(err?.message || 'Falha no protocolo.');
+    } finally {
+      setOperacao(null);
+    }
+  };
+
+  const onReabrirProtocolo = async (peticaoId) => {
+    setOperacao(`reabrir-${peticaoId}`);
+    setApiError('');
+    try {
+      await reabrirProtocolo(peticaoId);
+      setToast(`Petição #${peticaoId} reaberta.`);
+      setAba('protocolar');
+      await recarregar();
+    } catch (err) {
+      setApiError(err?.message || 'Falha ao reabrir.');
+    } finally {
+      setOperacao(null);
+    }
+  };
+
+  const baixarLote = async () => {
+    setOperacao('zip');
+    try {
+      const { blob, filename } = await baixarZip();
+      downloadPdfBlob(blob, filename);
+      setToast('ZIP baixado.');
+    } catch (err) {
+      setApiError(err?.message || 'Falha ao baixar ZIP.');
+    } finally {
+      setOperacao(null);
+    }
+  };
+
+  const onEnviarAssinados = async (e) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = '';
+    if (!files.length) return;
+    const { validos, invalidos } = separarArquivosP7s(files);
+    if (invalidos.length) {
+      setApiError('Envie apenas arquivos .p7s.');
+      return;
+    }
+    setOperacao('assinados');
+    try {
+      const fd = new FormData();
+      for (const f of validos) fd.append('arquivosP7s', f);
+      await enviarAssinados(fd);
+      setToast(`${validos.length} .p7s pareado(s).`);
+      await recarregar();
+    } catch (err) {
+      setApiError(err?.message || 'Falha ao enviar .p7s.');
+    } finally {
+      setOperacao(null);
+    }
+  };
+
+  const processoExibicao = numeroProcesso.trim() || numeroProcessoOrigem;
+
+  return (
+    <div className="min-h-full bg-slate-50 text-slate-900">
+      <div className="max-w-3xl mx-auto px-4 py-6 space-y-5">
+        <header className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="text-xl font-semibold text-slate-900 flex items-center gap-2">
+              <FileSignature className="w-5 h-5 text-sky-700" aria-hidden />
+              Peticionamento PROJUDI
+            </h1>
+            <p className="text-sm text-slate-600 mt-1">
+              Registre arquivos <strong>.p7s</strong> assinados e protocolize no TJGO.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm hover:bg-slate-50 disabled:opacity-50"
+            onClick={() => void recarregar()}
+            disabled={carregando}
+          >
+            {carregando ? (
+              <Loader2 className="w-4 h-4 animate-spin" aria-hidden />
+            ) : (
+              <RefreshCw className="w-4 h-4" aria-hidden />
+            )}
+            Atualizar
+          </button>
+        </header>
+
+        <div className="flex gap-1 rounded-lg border border-slate-200 bg-white p-1">
+          <button
+            type="button"
+            className={`flex-1 rounded-md px-3 py-2 text-sm font-medium ${
+              aba === 'protocolar' ? 'bg-sky-700 text-white' : 'text-slate-600 hover:bg-slate-50'
+            }`}
+            onClick={() => setAba('protocolar')}
+          >
+            Protocolar
+            {assinadas.length > 0 ? (
+              <span className="ml-1.5 rounded-full bg-white/20 px-1.5 text-xs">{assinadas.length}</span>
+            ) : null}
+          </button>
+          <button
+            type="button"
+            className={`flex-1 rounded-md px-3 py-2 text-sm font-medium inline-flex items-center justify-center gap-1 ${
+              aba === 'historico' ? 'bg-slate-700 text-white' : 'text-slate-600 hover:bg-slate-50'
+            }`}
+            onClick={() => setAba('historico')}
+          >
+            <History className="w-4 h-4" aria-hidden />
+            Histórico
+            {historico.length > 0 ? (
+              <span className="rounded-full bg-white/20 px-1.5 text-xs">{historico.length}</span>
+            ) : null}
+          </button>
+        </div>
+
+        {apiError ? (
+          <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800 flex gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" aria-hidden />
+            {apiError}
+          </div>
+        ) : null}
+
+        {resultadoProtocolo.length > 0 ? (
+          <div className="space-y-1">
+            {resultadoProtocolo.map((item) => (
+              <div
+                key={item.peticaoId}
+                className={`rounded border px-2 py-1.5 text-sm ${classeResultadoProtocolo(item.resultado)}`}
+              >
+                <strong>#{item.peticaoId}</strong> — <strong>{item.resultado}</strong>
+                {item.mensagem ? `: ${item.mensagem}` : ''}
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        {aba === 'protocolar' ? (
+          <div className="space-y-5">
+            {/* 1 — Registrar .p7s */}
+            <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
+              <h2 className="text-sm font-semibold text-slate-800">1. Registrar .p7s</h2>
+              <p className="text-xs text-slate-500">
+                Somente arquivos já assinados (<span className="font-mono">.p7s</span>). Cada arquivo vira uma
+                petição na fila; no protocolo, arquivos do mesmo processo entram em uma única juntada.
+              </p>
+              <form onSubmit={(e) => void registrarP7s(e)} className="space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <label className="block sm:col-span-2">
+                    <span className="text-xs text-slate-600">Processo (CNJ)</span>
+                    <input
+                      className={inputClass}
+                      value={numeroProcesso}
+                      onChange={(ev) => setNumeroProcesso(ev.target.value)}
+                      placeholder="0000000-00.0000.0.00.0000"
+                    />
+                  </label>
+                  <label className="block sm:col-span-2">
+                    <span className="text-xs text-slate-600">Credencial PROJUDI</span>
+                    {credenciais.length > 0 ? (
+                      <select
+                        className={inputClass}
+                        value={credencialId}
+                        onChange={(ev) => setCredencialId(ev.target.value)}
+                      >
+                        {credenciais.map((c) => (
+                          <option key={c.id} value={String(c.id)}>
+                            {labelCredencial(c)}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        className={inputClass}
+                        value={credencialId}
+                        onChange={(ev) => setCredencialId(ev.target.value)}
+                      />
+                    )}
+                  </label>
+                  <label className="block sm:col-span-2">
+                    <span className="text-xs text-slate-600">Complemento (opcional)</span>
+                    <input
+                      className={inputClass}
+                      value={complemento}
+                      onChange={(ev) => setComplemento(ev.target.value)}
+                    />
+                  </label>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    id="registrar-p7s"
+                    type="file"
+                    accept=".p7s,.pdf.p7s,application/pkcs7-signature"
+                    multiple
+                    className="sr-only"
+                    onChange={(ev) => {
+                      const files = Array.from(ev.target.files || []);
+                      ev.target.value = '';
+                      const invalidos = files.filter((f) => !isArquivoP7s(f));
+                      if (invalidos.length) {
+                        setApiError('Selecione apenas .p7s.');
+                        return;
+                      }
+                      setLinhasP7s((rows) => [...rows, ...files.map((f) => linhaP7sComArquivo(f))]);
+                    }}
+                  />
+                  <label htmlFor="registrar-p7s" className={`${processosBtnPrimary} cursor-pointer text-sm`}>
+                    Escolher .p7s…
+                  </label>
+                  {linhasP7s.length > 0 ? (
+                    <span className="text-sm text-slate-600">{linhasP7s.length} arquivo(s)</span>
+                  ) : null}
+                </div>
+
+                {linhasP7s.length > 0 ? (
+                  <ul className="space-y-1 border border-slate-100 rounded-lg p-2 bg-slate-50/50">
+                    {linhasP7s.map((linha, idx) => (
+                      <li key={linha.key} className="flex flex-wrap items-center gap-2 text-sm">
+                        <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" aria-hidden />
+                        <span className="truncate flex-1 min-w-0 font-medium">{linha.file?.name}</span>
+                        <select
+                          className={`${inputClass} w-auto text-xs py-1`}
+                          value={linha.idArquivoTipo}
+                          onChange={(ev) => {
+                            const v = Number(ev.target.value);
+                            setLinhasP7s((rows) =>
+                              rows.map((r, i) => (i === idx ? { ...r, idArquivoTipo: v } : r)),
+                            );
+                          }}
+                        >
+                          {TIPOS_ARQUIVO.map((t) => (
+                            <option key={t.id} value={t.id}>
+                              {t.label}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          className="text-slate-400 hover:text-rose-600"
+                          onClick={() => setLinhasP7s((rows) => rows.filter((_, i) => i !== idx))}
+                        >
+                          <Trash2 className="h-4 w-4" aria-hidden />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+
+                <button
+                  type="submit"
+                  className={processosBtnPrimary}
+                  disabled={operacao === 'registrar' || !numeroProcesso.trim() || linhasP7s.length === 0}
+                >
+                  {operacao === 'registrar' ? (
+                    <Loader2 className="w-4 h-4 animate-spin inline mr-1" aria-hidden />
+                  ) : null}
+                  Registrar na fila
+                </button>
+              </form>
+            </section>
+
+            {/* 2 — Fila + protocolar */}
+            <section className="rounded-xl border border-amber-200 bg-amber-50/30 p-4 shadow-sm space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-sm font-semibold text-slate-800">2. Protocolar</h2>
+                {processoExibicao ? (
+                  <span className="text-xs font-mono text-sky-800 bg-sky-50 px-2 py-0.5 rounded">
+                    {processoExibicao}
+                  </span>
+                ) : (
+                  <span className="text-xs text-slate-500">Todos os processos</span>
+                )}
+              </div>
+
+              {carregando ? (
+                <div className="flex items-center gap-2 text-sm text-slate-600">
+                  <Loader2 className="w-4 h-4 animate-spin" aria-hidden />
+                  Carregando…
+                </div>
+              ) : assinadas.length === 0 ? (
+                <p className="text-sm text-slate-600">
+                  Nenhuma petição assinada na fila
+                  {processoFiltro ? ' para este processo' : ''}. Registre .p7s acima.
+                </p>
+              ) : (
+                <>
+                  <p className="text-xs text-slate-600">
+                    Selecione as petições do <strong>mesmo processo</strong> para uma juntada. O robô envia todos os
+                    arquivos e dá um único Concluir.
+                  </p>
+                  <ul className="rounded-lg border border-slate-200 bg-white divide-y divide-slate-100">
+                    {assinadas.map((p) => (
+                      <li key={p.id} className="flex items-start gap-2 px-3 py-2 text-sm">
+                        <input
+                          type="checkbox"
+                          className="mt-1"
+                          checked={selecionadas.has(p.id)}
+                          onChange={() => toggleSelecionada(p.id)}
+                          aria-label={`Selecionar petição ${p.id}`}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="font-medium">
+                            #{p.id} · <span className="font-mono text-xs">{p.numeroProcesso}</span>
+                          </div>
+                          {(p.arquivos || []).map((a) => (
+                            <div key={a.id ?? a.ordem} className="text-xs text-slate-600 truncate">
+                              {a.nomeOriginal} ({labelTipoArquivoPeticao(a.idArquivoTipo)})
+                            </div>
+                          ))}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className="text-xs text-sky-700 hover:underline"
+                      onClick={selecionarTodasAssinadas}
+                    >
+                      Selecionar todas ({assinadas.length})
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    className={`${processosBtnPrimary} bg-amber-700 hover:bg-amber-800 w-full sm:w-auto`}
+                    disabled={selecionadas.size === 0 || operacao === 'protocolo'}
+                    onClick={() => void abrirModalProtocolo()}
+                  >
+                    {operacao === 'protocolo' ? (
+                      <Loader2 className="w-4 h-4 animate-spin inline mr-1" aria-hidden />
+                    ) : (
+                      <Send className="w-4 h-4 inline mr-1" aria-hidden />
+                    )}
+                    Protocolar selecionadas ({selecionadas.size})
+                  </button>
+                </>
+              )}
+            </section>
+          </div>
+        ) : (
+          <section className="space-y-3">
+            <h2 className="text-sm font-semibold text-slate-800">Histórico</h2>
+            {processoExibicao ? (
+              <p className="text-xs text-slate-500">
+                Processo <span className="font-mono">{processoExibicao}</span>
+                {processoFiltro ? '' : ' — exibindo todos'}
+              </p>
+            ) : null}
+            {carregando ? (
+              <div className="flex items-center gap-2 text-sm text-slate-600">
+                <Loader2 className="w-4 h-4 animate-spin" aria-hidden />
+                Carregando…
+              </div>
+            ) : (
+              <PeticaoHistoricoLista
+                peticoes={historico}
+                onReabrir={onReabrirProtocolo}
+                operacao={operacao}
+              />
+            )}
+
+            <details className="rounded-lg border border-slate-200 bg-white p-3 text-sm">
+              <summary className="cursor-pointer font-medium text-slate-700 flex items-center gap-1">
+                <ChevronDown className="w-4 h-4" aria-hidden />
+                Fluxo alternativo: assinar PDFs no sistema
+              </summary>
+              <p className="text-xs text-slate-500 mt-2 mb-3">
+                Se ainda não tem .p7s, registre PDFs em outro fluxo, baixe o ZIP, assine externamente e devolva os
+                .p7s — ou registre .p7s direto na aba Protocolar.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className={`${processosBtnPrimary} text-xs`}
+                  disabled={operacao === 'zip'}
+                  onClick={() => void baixarLote()}
+                >
+                  Baixar lote PDF
+                </button>
+                <label className={`${processosBtnPrimary} text-xs cursor-pointer inline-flex items-center gap-1`}>
+                  Devolver .p7s pareados
+                  <input
+                    type="file"
+                    accept=".p7s,.pdf.p7s"
+                    multiple
+                    className="sr-only"
+                    onChange={(ev) => void onEnviarAssinados(ev)}
+                  />
+                </label>
+              </div>
+            </details>
+          </section>
+        )}
+      </div>
+
+      <PeticaoProtocoloConfirmModal
+        open={modalProtocolo}
+        previa={previa}
+        validacao={validacao}
+        carregandoPrevia={carregandoPrevia}
+        validando={validando}
+        onCancel={() => {
+          setModalProtocolo(false);
+          setPrevia(null);
+          setValidacao(null);
+        }}
+        onValidar={() => void executarValidacao()}
+        onConfirmar={() => void confirmarProtocolo()}
+      />
+
+      <ProcessosToast message={toast} onClose={() => setToast('')} />
+    </div>
+  );
+}

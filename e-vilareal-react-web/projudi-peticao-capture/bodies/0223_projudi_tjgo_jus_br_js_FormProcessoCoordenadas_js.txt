@@ -1,0 +1,254 @@
+var idProcesso;
+
+function mostrarCoordenadas(id_proc){
+	idProcesso = id_proc;
+	CoordenadasProcesso= [];
+	MostrarOcultar("sub_coordenadas");
+	if($('#sub_coordenadas').is(":visible")){
+		$('#sub_coordenadas').html(gerarHtmlCoordenadas(id_proc));
+		atualizarTabelaPasso('ProcessoCoordenada','sub_coordenadas','Info Coordenadas dos Processos','podeEditar','podeExcluir', 'podeBaixar');
+	}
+}
+
+function adicionarCoordenada(){
+	var objLatitude = document.getElementById('Latitude');
+	var objLongitude = document.getElementById('Longitude');
+	var objPonto = document.getElementById('Ponto');
+	
+	if(objPonto.value=="" || objPonto.value ==undefined){
+		alert('Informe o Numero do Ponto da Coordenada');
+		return;
+	}
+	
+	if(isLatitudeValida(objLatitude) && isLongitudeValida(objLongitude)){
+		var Ponto = parseInt($('#Ponto').val());
+		var Latitude = $('#Latitude').val();
+		var Longitude = $('#Longitude').val();
+		CoordenadasProcesso[Ponto-1]= {"lat":Latitude,"lon":Longitude};
+		prepararCoordenadas(CoordenadasProcesso);
+			
+		$('#Ponto').val("");
+		$('#Latitude').val("");
+		$('#Longitude').val("");
+	}
+}
+
+function prepararCoordenadas(objCoordenadasProcesso){
+	var stCoordenadas="";
+	for(var i = 0; i<objCoordenadasProcesso.length; i++){		
+		if (objCoordenadasProcesso[i]!=undefined){
+			stCoordenadas+= (i+1) + " [" + objCoordenadasProcesso[i].lat + ", " + objCoordenadasProcesso[i].lon + "]"
+			if (i < (objCoordenadasProcesso.length-1)){
+				stCoordenadas+=", "
+			}
+		}		
+	}	
+	if (objCoordenadasProcesso.length>=3){
+		calcularPerimetro( objCoordenadasProcesso);
+	}
+	//console.log(JSON.stringify(objCoordenadasProcesso));
+	$('#Coordenada1').html(stCoordenadas);
+	$('#Coordenada').val(JSON.stringify(objCoordenadasProcesso));
+}
+
+function editarPassoSelecionar(){
+	var objCoordenada = $('#Coordenada').val();
+    const CoordenadasProcesso = ['undefined', 'null', ''].includes(objCoordenada)
+        ? []
+        : JSON.parse(objCoordenada);
+	prepararCoordenadas(CoordenadasProcesso);	
+}
+
+function isLongitudeValida(obj) {
+	var longitude = obj.value;
+    if (!longitude.match(/^[-]?\d+[\.]?\d*$/)) {
+        alert('Longitude invalida');		
+        return false;
+    }    
+    
+    if(!( longitude>-180 && longitude<180)){
+		alert('Longitude invalida');		
+        return false;
+	}
+	return true;
+}
+
+function isLatitudeValida(obj) {
+	
+	latitude = obj.value;
+    if (!latitude.match(/^[-]?\d+[\.]?\d*d*$/)) {
+		alert('Latitude invalida');				
+        return false;
+    }    
+    if(!(latitude>-90 && latitude<90)){
+		alert('Latitude invalida');		 
+        return false;
+	}
+	return true;
+}
+
+function calcularPerimetro(objCoordenadasProcesso){
+	var valPerimetro = 0.0;
+	
+	for (var i = 0; i<(objCoordenadasProcesso.length-1); i++){
+		valPerimetro+= distanceCoordenda(objCoordenadasProcesso[i].lat, objCoordenadasProcesso[i].lon,  objCoordenadasProcesso[i+1].lat, objCoordenadasProcesso[i+1].lon, "k");
+	}
+	valPerimetro+= distanceCoordenda(objCoordenadasProcesso[objCoordenadasProcesso.length-1].lat, objCoordenadasProcesso[objCoordenadasProcesso.length-1].lon,  objCoordenadasProcesso[0].lat, objCoordenadasProcesso[0].lon, "k");
+	
+	$('#Perimetro').val(valPerimetro.toFixed(2) + " km");
+}
+
+function distanceCoordenda(lat1, lon1, lat2, lon2, unit) {
+  const radlat1 = Math.PI * lat1/180;
+  const radlat2 = Math.PI * lat2/180;
+  const radlon1 = Math.PI * lon1/180;
+  const radlon2 = Math.PI * lon2/180;
+  const theta = lon1-lon2;
+  const radtheta = Math.PI * theta/180;
+  let dist = Math.sin(radlat1) * Math.sin(radlat2) + Math.cos(radlat1) * Math.cos(radlat2) * Math.cos(radtheta);
+  dist = Math.acos(dist);
+  dist = dist * 180/Math.PI;
+  dist = dist * 60 * 1.1515;
+  if (unit === "K") { dist = dist * 1.609344 }
+  if (unit === "N") { dist = dist * 0.8684 }
+  return dist;
+}
+
+function gerarHtmlCoordenadas(id_proc){
+	var stHtml ='<fieldset class="formEdicao" >';
+		stHtml +='	<legend class="formEdicaoLegenda">Edita os dados das Coordenada do Processo </legend>';
+		stHtml +='	<div class="col100" style="display: flex; align-items: center; justify-content: space-between">';
+		stHtml +='		<div class="col55" >';
+		stHtml +="			<input type='hidden' id='Id_Processo' name='Id_Processo' value='"+id_proc+"' />";
+		stHtml +="			<blockquote class='col15'>";
+		stHtml +="				<label  for='id'>Identificador</label>";
+		stHtml +="				<input class='formEdicaoInputSomenteLeitura' name='Id'  id='Id' size='10' type='text'  readonly value=''>";
+		stHtml +="			</blockquote>";
+		stHtml +='			<div class="col80">';
+		stHtml +='				<label  for="Descricao">*Descri&ccedil;&atilde;o</label> <input class="formEdicaoInput" name="Descricao" id="Descricao"  type="text" size="60" maxlength="60" value="" onkeyup=" autoTab(this,60)">';
+		stHtml +='			</div>';
+		stHtml +='		</div>';
+		stHtml +='		<div class="col40" style="display: flex; justify-content: flex-end">';
+		stHtml +='			<fieldset class="formEdicao" >';
+		stHtml +='				<legend class="formEdicaoLegenda">Arquivo KML </legend>';
+		stHtml +="				<input type=\"file\" id=\"fileupload\" name=\"files[]\" multiple accept=\".kml\" onchange=\"carregarArquivo()\" style=\"display: none;\"/>";
+		stHtml +="				<button type=\"button\" title=\"Clique para carregar o arquivo\" onclick=\"abreDialogoUploadArquivoAssinado();\"  id=\"botaoUpload\">Anexar</button>";
+		stHtml +=`				<input type='button' value='Baixar' onclick='baixarKml()'>`;
+		stHtml +='			</fieldset>';
+		stHtml +='		</div>';
+		stHtml +='	</div>';
+
+		stHtml +='<fieldset class="formEdicao" >'; 
+		stHtml +='	<legend class="formEdicaoLegenda">Coordenadas </legend>';
+		stHtml +='	<div class="col25">';
+		stHtml +='		<label  for="Ponto">*Ponto N&uacute;m.</label> <input class="formEdicaoInput" name="Ponto" id="Ponto"  type="text" onkeypress="return DigitarSoNumero(this, event) ">';
+		stHtml +='	</div>';
+		stHtml +='	<div class="col25">';
+		stHtml +='		<label  for="Ponto">*Latitude</label> <input class="formEdicaoInput" name="Latitude" id="Latitude"  type="text" onfocusout="isLatitudeValida(this)" onkeypress="return DigitarNumeroNegativoPonto(this, event) ">';
+		stHtml +='	</div>';
+		stHtml +='	<div class="col25">';
+		stHtml +='		<label  for="Ponto">*Longitude</label> <input class="formEdicaoInput" name="Longitude" id="Longitude"  type="text" onfocusout="isLongitudeValida(this)" onkeypress="return DigitarNumeroNegativoPonto(this, event) ">';
+		stHtml +='	</div>';
+		stHtml +="	<center class='col100'>";
+		stHtml +="		<input id='adicionar' type='button' value='Adicionar' onclick=\"adicionarCoordenada()\">";
+		stHtml +="	</center>";
+		stHtml +='	<div class="col100">';
+		stHtml +='		<label for="Coordenada">Coordenadas</label> <textarea name="Coordenada1" id="Coordenada1" class="formEdicaoInputSomenteLeitura" readonly=""  cols="150"  rows="6" onkeyup=" autoTab(this,4000)"> </textarea>';
+		stHtml +='      <input type="hidden" name="Coordenada" id="Coordenada" onchange="prepararCoordenadas()"/> ';
+		stHtml +='	</div>';
+		stHtml +='	<div class="col25">';
+		stHtml +='		<label  for="Ponto">Per&iacute;metro</label> <input name="Perimetro" id="Perimetro"  type="text" class="formEdicaoInputSomenteLeitura" readonly="" >';
+		stHtml +='	</div>';
+		stHtml +='	<div class="col25">';
+		stHtml +='		<label  for="Ponto">&Aacute;rea</label> <input  name="Area" id="Area"  type="text" class="formEdicaoInputSomenteLeitura" readonly="" >';
+		stHtml +='	</div>';
+		stHtml +=" </fieldset>";
+		stHtml +="	<center class='col100'>";
+		stHtml +="		<input id='salvar' type='button' value='Salvar' onclick=\"salvarPasso('ProcessoCoordenada','sub_coordenadas','Info Coordenadas dos Processos','podeEditar','podeExcluir', 'podeBaixar')\">";
+		stHtml +="	</center>";
+		stHtml +='</fieldset>';
+		stHtml +="	<blockquote class='col100'>";
+		stHtml +="		<table  id='tb_sub_coordenadas' class='Tabela' >";
+		stHtml +="		    <thead>";
+		stHtml +="			<tr>";
+		stHtml +="		      	<th class='colunaMinima' >Id</th>";
+		stHtml +="		        <th width='100px' >Descri&ccedil;&atilde;o</th>";
+		stHtml +="		        <th width='100px' >Coordenadas</th>";
+		stHtml +="		        <th width='35px' >N&uacute;mero Processo</th>";
+		stHtml +="		        <th width='1px'></th>";
+		stHtml +="		        <th class='colunaMinima'>Baixar</th>";
+		stHtml +="		        <th class='colunaMinima'>info</th>";
+		stHtml +="	        	<th class='colunaMinima'>Editar</th>";
+		stHtml +="		        <th class='colunaMinima'>Excluir</th>"; 
+		stHtml +="		      </tr>";
+		stHtml +="		    </thead>";
+		stHtml +="		    <tbody>";
+		stHtml +="		    </tbody>";
+		stHtml +="		 </table>";
+		stHtml +="	</blockquote>";		
+		stHtml +=" </fieldset>";
+	
+	return stHtml;																		
+}
+
+function abreDialogoUploadArquivoAssinado() {
+	$('#fileupload').click();
+}
+
+function carregarArquivo() {
+	const fileInput = document.getElementById('fileupload');
+
+	if (fileInput.files.length > 0) {
+		const file = fileInput.files[0];
+		const reader = new FileReader();
+
+		reader.onload = function(event) {
+			const conteudo = event.target.result;
+			let xml = stringToXml(conteudo.replace(/[\t\n]/g, ''));
+			let placemarks = xml.getElementsByTagName("Placemark");
+			for(let i=0; placemarks.length > i; i++){
+				let coordenadasArea = placemarks[i].getElementsByTagName("coordinates");
+				let name = placemarks[i].getElementsByTagName("name");
+				for(let j=0; coordenadasArea.length > j; j++){
+					let descricao = name[j] ? name[j].textContent : name[0].textContent;
+					preencheCoordenadas(coordenadasArea[j]);
+					$("#Descricao").val(descricao);
+					$("#salvar").click()
+				}
+			}
+			$("#Coordenada1").val("");
+		};
+
+		// Lê o conteúdo do arquivo como texto
+		reader.readAsText(file);
+	}
+}
+
+function stringToXml(conteudo){
+	let parser = new DOMParser();
+	return parser.parseFromString(conteudo, "text/xml");
+}
+
+function preencheCoordenadas(coordenadaArea){
+	let pontos = coordenadaArea.textContent.split(" ");
+	let coordenadasProcesso =[];
+	for(let i=0; pontos.length > i; i++){
+		if(pontos[i] != ""){
+			let coordenadas = pontos[i].split(',');
+			let longitude = coordenadas[0];
+			let latitude = coordenadas[1];
+
+			coordenadasProcesso[i]= {"lat":latitude,"lon":longitude};
+			prepararCoordenadas(coordenadasProcesso);
+		}
+	}
+}
+
+function baixarKml(){
+	let tabelaPossuiRegistro = $('#tb_sub_coordenadas tbody tr').length != 0;
+	if(tabelaPossuiRegistro) {
+		window.open('ProcessoCoordenada?PaginaAtual=6&Id_Processo=' + idProcesso);
+	} else {
+		alert("Não possui coordenadas para baixar");
+	}
+}

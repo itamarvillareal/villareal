@@ -58,15 +58,85 @@ public class QualificacaoPessoaUtil {
 
     @Transactional(readOnly = true)
     public QualificacaoJuridicaResponse gerarQualificacaoJuridicaResponse(Long pessoaId) {
-        DadosQualificacao dados = carregarDadosQualificacao(pessoaId);
         return new QualificacaoJuridicaResponse(
-                montarQualificacao(dados, false),
-                montarQualificacao(dados, true));
+                montarQualificacaoParaPessoa(pessoaId, false),
+                montarQualificacaoParaPessoa(pessoaId, true));
     }
 
     @Transactional(readOnly = true)
     public String gerarQualificacaoPorPessoaId(Long pessoaId, boolean nomeEmNegrito) {
-        return montarQualificacao(carregarDadosQualificacao(pessoaId), nomeEmNegrito);
+        return montarQualificacaoParaPessoa(pessoaId, nomeEmNegrito);
+    }
+
+    private String montarQualificacaoParaPessoa(Long pessoaId, boolean nomeEmNegrito) {
+        DadosQualificacao dados = carregarDadosQualificacao(pessoaId);
+        String base = montarQualificacao(dados, nomeEmNegrito);
+        if (!ehPessoaJuridica(dados)) {
+            return base;
+        }
+        return base + montarSufixoRepresentantePj(pessoaId, dados, nomeEmNegrito);
+    }
+
+    /**
+     * Sufixo "..., neste ato representad{o|a} por seu/sua {cargo} {QUALIFICAÇÃO DO REPRESENTANTE}".
+     *
+     * <ul>
+     *   <li>{@code representad{o|a}} concorda com o gênero da <strong>PJ</strong>.</li>
+     *   <li>{@code seu/sua} e o cargo concordam com o gênero do <strong>representante</strong>.</li>
+     *   <li>Cargo fixo "administrador"/"administradora" — não há campo de cargo no cadastro; o vínculo
+     *       é o {@code pessoa.responsavel_id} (rotulado na UI como "Administrador / representante").</li>
+     *   <li>O representante é qualificado pelo mesmo núcleo ({@link #montarQualificacao}), sem
+     *       reexpandir o vínculo dele (evita recursão) e <strong>sem negrito no nome</strong> — só as
+     *       partes principais da ação usam {@code &lt;strong&gt;}. O modelo tem um único responsável,
+     *       logo no máximo um representante.</li>
+     * </ul>
+     */
+    private String montarSufixoRepresentantePj(Long pjId, DadosQualificacao dadosPj, boolean nomeEmNegrito) {
+        PessoaEntity pj = pessoaRepository.findById(pjId).orElse(null);
+        if (pj == null || pj.getResponsavel() == null) {
+            return "";
+        }
+        Long repId = pj.getResponsavel().getId();
+        if (repId == null || repId.equals(pjId)) {
+            return "";
+        }
+
+        DadosQualificacao dadosRep = carregarDadosQualificacao(repId);
+        String qualificacaoRepresentante = montarQualificacao(dadosRep, false);
+
+        boolean pjFeminino = determinarFeminino(dadosPj.nome(), dadosPj.sexo());
+        boolean repFeminino = determinarFeminino(dadosRep.nome(), dadosRep.sexo());
+        String representado = pjFeminino ? "representada" : "representado";
+        String possessivo = repFeminino ? "sua" : "seu";
+        String cargo = repFeminino ? "administradora" : "administrador";
+
+        return ", neste ato " + representado + " por " + possessivo + " " + cargo + " "
+                + qualificacaoRepresentante;
+    }
+
+    private static boolean ehPessoaJuridica(DadosQualificacao dados) {
+        return dados.cnpj() != null && !dados.cnpj().isBlank();
+    }
+
+    /**
+     * Verdadeiro se a pessoa tem ao menos um endereço com logradouro (rua) preenchido — requisito
+     * mínimo para qualificar a parte numa petição (não existe inicial sem endereço).
+     */
+    @Transactional(readOnly = true)
+    public boolean possuiEnderecoCadastrado(Long pessoaId) {
+        if (pessoaId == null) {
+            return false;
+        }
+        List<PessoaEnderecoItemResponse> enderecos = pessoaApplicationService.listarEnderecos(pessoaId);
+        if (enderecos == null) {
+            return false;
+        }
+        for (PessoaEnderecoItemResponse e : enderecos) {
+            if (e != null && e.getRua() != null && !e.getRua().isBlank()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private DadosQualificacao carregarDadosQualificacao(Long pessoaId) {
@@ -417,12 +487,14 @@ public class QualificacaoPessoaUtil {
         texto = texto.replaceAll("(?i)^Tv\\.?\\s+", "Travessa ");
         texto = texto.replaceAll("(?i)^Al\\.?\\s+", "Alameda ");
         texto = texto.replaceAll("(?i)^Pç\\.?\\s+", "Praça ");
-        texto = texto.replaceAll("(?i)\\bQd\\.?\\s*", "Quadra ");
-        texto = texto.replaceAll("(?i)\\bLt\\.?\\s*", "Lote ");
-        texto = texto.replaceAll("(?i)\\bConj\\.?\\s*", "Conjunto ");
-        texto = texto.replaceAll("(?i)\\bApt?\\.?\\s*", "Apartamento ");
-        texto = texto.replaceAll("(?i)\\bEd\\.?\\s*", "Edifício ");
-        texto = texto.replaceAll("(?i)\\bBl\\.?\\s*", "Bloco ");
+        // Cada abreviação só expande como TOKEN COMPLETO (fronteira \b no fim), para não casar o
+        // prefixo de palavras já escritas por extenso (ex.: "APARTAMENTO" → "AP" + "ARTAMENTO").
+        texto = texto.replaceAll("(?i)\\bQd\\b\\.?\\s*", "Quadra ");
+        texto = texto.replaceAll("(?i)\\bLt\\b\\.?\\s*", "Lote ");
+        texto = texto.replaceAll("(?i)\\bConj\\b\\.?\\s*", "Conjunto ");
+        texto = texto.replaceAll("(?i)\\b(?:Apto|Apt|Ap)\\b\\.?\\s*", "Apartamento ");
+        texto = texto.replaceAll("(?i)\\bEd\\b\\.?\\s*", "Edifício ");
+        texto = texto.replaceAll("(?i)\\bBl\\b\\.?\\s*", "Bloco ");
         return normalizarNome(texto);
     }
 

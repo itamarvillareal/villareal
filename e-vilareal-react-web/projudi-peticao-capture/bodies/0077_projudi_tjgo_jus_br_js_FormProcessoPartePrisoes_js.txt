@@ -1,0 +1,791 @@
+function atualizarInformacaoReuPreso(idForm) {
+    const idProcParte = idForm?.replaceAll('sub_pri', '') || '';
+    const $wrapper = $("#reu-preso-wrapper-" + idProcParte);
+    if (!idProcParte || !$wrapper.length) return;
+
+    const url = 'ProcessoPartePrisao';
+    const params = {
+        PaginaAtual: -27,
+        verificarPossuiReuPreso: true,
+        idProcParte
+    };
+
+    $.ajax({
+        type: "GET",
+        url: url,
+        data: params,
+		success: function ({ possuiReuPreso, isPrisaoDomiciliar }) {
+		    const $span = $wrapper.find(".span1");
+
+		    if (possuiReuPreso) {
+		        $wrapper.show();
+
+		        if (isPrisaoDomiciliar) {
+		            $span.html("<b><font color='red'>R&Eacute;U EM PRIS&Atilde;O DOMICILIAR</font></b>");
+		        } else {
+		            $span.html("<b><font color='red'>R&Eacute;U PRESO</font></b>");
+		        }
+
+		    } else {
+		        $wrapper.hide();
+		    }
+		},
+        error: function (xhr) {
+            console.error("Erro:", xhr.responseText);
+        }
+    });
+}
+
+function mostrarToastrOk(titulo, mensagem) {
+    // Substitui quebras de linha por <br>
+    mensagem = mensagem.replace(/\n/g, "<br>");
+
+    toastr.success(mensagem, titulo);
+}
+
+function mostrarToastrAlerta(mensagem) {
+    // Substitui quebras de linha por <br>
+    mensagem = mensagem.replace(/\n/g, "<br>");
+
+    toastr.warning(mensagem);
+}
+
+
+function buscarContainer(id_form) {
+    return $("#" + id_form);
+}
+
+function setLabelDataInstancia($container, texto) {
+    const id_form = $container.attr('id');
+
+    $container.find("#lblCampoData").html(
+        texto +
+        " <button class='imgIcons' title='CalendÃ¡rio' type='button' " +
+        "onclick=\"document.getElementById('" + id_form + "')"
+        + ".querySelector('.DataEvento').focus();\">" +
+        "<i class='fa-solid fa-calendar-days'></i>&nbsp;</button>"
+    );
+}
+
+function limparCamposInstancia($container) {
+    const campos = ["Id_PrisaoTipo", "DataEvento", "Id_EventoTipo", "EventoTipo", "Id_LocalCumpPena", "LocalCumpPena", "Id_MoviEvento", "MoviEvento", "Observacao", "PrazoPrisao","PrazoPadrao"];
+    campos.forEach(id => $container.find("#" + id).val(""));
+}
+
+function atualizarGrupoPrazoInstancia($container) {
+    const possuiPrazo = $container.find("#PossuiPrazo").val();
+    let prazoPadrao = $container.find("#PrazoPadrao").val(); 
+    const $inputPrazo = $container.find("#PrazoPrisao");
+    const $grupoPrazo = $container.find("#grupoPrazo");
+
+    if (prazoPadrao === "null") prazoPadrao = "";
+
+    if (possuiPrazo && possuiPrazo.toLowerCase() === "sim") {
+        $grupoPrazo.show();
+    } else {
+        $grupoPrazo.hide();
+        $inputPrazo.val("").prop("readonly", false);
+        return; 
+    }
+
+    if (prazoPadrao && !isNaN(prazoPadrao) && prazoPadrao !== "") {
+        $inputPrazo.val(prazoPadrao).prop("readonly", true);
+    } else {
+
+        $inputPrazo.prop("readonly", false);
+    }
+}
+
+// --- LOGICA DINÃ‚MICA DE INTERFACE ---
+function tratarMudancaSubTipo($container, valor) {
+    const editando = $container.data("editando");
+    const $blocoDinamico = $container.find("#blocoDinamico");
+    const $blocoMovi = $container.find("#blocoMovimentacao");
+	const $blocoLocalPena = $container.find("#blocoLocal");
+	const $blocoEventoSubTipo = $container.find("#blocoEventoSubTipo");
+    const $inputEventoTipo = $container.find("#EventoTipo");
+
+    if (!valor) {
+        $blocoDinamico.hide();
+        return;
+    }
+
+    $blocoDinamico.show();
+//    $container.find("#PrazoPadrao").val("");
+    
+    if (!editando) { limparCamposInstancia($container); }
+    
+    atualizarGrupoPrazoInstancia($container);
+    $container.find("#blocoData").show();
+
+    // Reset de visibilidade interno
+    $container.find("#grupoMotivo, #grupoEventoTipo, #blocoLocal").hide();
+    $container.find("#lblEventoTipo, #lblMovimentacao, #lblEncerramento").hide();
+
+    switch (valor) {
+        case "1": // PrisÃ£o
+            setLabelDataInstancia($container, "*Dt. Pris&atilde;o");
+            $container.find("#grupoMotivo, #grupoEventoTipo, #blocoLocal, #lblEventoTipo").show();
+            $inputEventoTipo.attr("placeholder", "Pris\u00E3o");
+            $blocoMovi.removeClass().addClass("col30 col32-extra");
+			$blocoLocalPena.removeClass().addClass("col30");
+			$blocoEventoSubTipo.removeClass().addClass("col30");
+
+            break;
+        case "2": // MovimentaÃ§Ã£o
+            setLabelDataInstancia($container, "*Dt. Movimenta&ccedil;&atilde;o");
+            $container.find("#grupoEventoTipo, #blocoLocal, #lblMovimentacao").show();
+            $inputEventoTipo.attr("placeholder", "Digite o tipo de Movimenta\u00E7\u00E3o");
+            $blocoMovi.removeClass().addClass("col55");
+			$blocoLocalPena.removeClass().addClass("col40 col42-extra");
+			$blocoEventoSubTipo.removeClass().addClass("col40 col42-extra");
+            break;
+        case "3": // Encerramento
+            setLabelDataInstancia($container, "*Dt. Encerramento");
+            $container.find("#grupoEventoTipo, #lblEncerramento").show();
+            $inputEventoTipo.attr("placeholder", "Digite o tipo de Encerramento");
+            $blocoMovi.removeClass().addClass("col90 col90-extra");
+			$blocoEventoSubTipo.removeClass().addClass("col30");
+
+            break;
+        case "4": // RevisÃ£o
+            setLabelDataInstancia($container, "*Dt. Revis&atilde;o da Pris&atilde;o");
+            $container.find("#grupoEventoTipo, #grupoMotivo, #blocoLocal, #lblEventoTipo").show();
+            $inputEventoTipo.attr("placeholder", "Revis\u00E3o (art. 316, \u00A7 \u00FAnico, do CPP)");
+            $blocoMovi.removeClass().addClass("col30 col32-extra");
+			$blocoLocalPena.removeClass().addClass("col30");
+			$blocoEventoSubTipo.removeClass().addClass("col30");
+            break;
+        case "5": // ConversÃ£o
+            setLabelDataInstancia($container, "*Dt. Convers&atilde;o");
+            $container.find("#grupoMotivo, #blocoLocal, #grupoEventoTipo, #lblEventoTipo").show();
+            $inputEventoTipo.attr("placeholder", "Convers\u00E3o da Pris\u00E3o");
+            $blocoMovi.removeClass().addClass("col30 col32-extra");
+			$blocoLocalPena.removeClass().addClass("col30");
+			$blocoEventoSubTipo.removeClass().addClass("col30");
+            break;
+    }
+}
+
+
+// --- FUNÃ‡ÃƒO PRINCIPAL DE INICIALIZAÃ‡ÃƒO ---
+function mostrarPrisoes(id_parte, Id_Processo) {
+    const id_form = "sub_pri" + id_parte;
+    const $container = buscarContainer(id_form);
+
+	$("[id^='sub_pri']").not($container).hide();
+
+    if (typeof MostrarOcultar === "function") MostrarOcultar(id_form);
+
+    if ($container.is(":visible")) {
+        $container.html(gerarHtmlPrisao(id_form, id_parte, Id_Processo));
+        $container.data("editando", false);
+
+        atualizarTabelaPassoPrisao('ProcessoPartePrisao', id_form, 'Info da Pris&atilde;o', 'podeEditar', 'podeExcuir');
+
+		const getValLimpo = (selector) => {
+		            let v = $container.find(selector).val();
+		            return (v === "null" || v === null || v === undefined) ? "" : v;
+		        };
+
+        let lastSubTipo = getValLimpo("#Id_EventoSubTipo");
+        let lastPossuiPrazo = getValLimpo("#PossuiPrazo");
+        let lastPrazoPadrao = getValLimpo("#PrazoPadrao");
+
+		const monitor = setInterval(function() {
+	        if (!$container.length || !$container.is(":visible")) {
+	            clearInterval(monitor);
+	            return;
+	        }
+	
+	        let currentSubTipo = getValLimpo("#Id_EventoSubTipo");
+	        let currentPossui = getValLimpo("#PossuiPrazo");
+	        let currentPadrao = getValLimpo("#PrazoPadrao");
+	
+	        if (currentSubTipo !== lastSubTipo) {
+	            lastSubTipo = currentSubTipo;
+	            tratarMudancaSubTipo($container, currentSubTipo);
+	        }
+	
+	        if (currentPossui !== lastPossuiPrazo || currentPadrao !== lastPrazoPadrao) {
+
+	            if (currentPadrao === "" && lastPrazoPadrao !== "") {
+	                 $container.find("#PrazoPrisao").val("");
+	            }
+	            lastPossuiPrazo = currentPossui;
+	            lastPrazoPadrao = currentPadrao;
+	
+	            atualizarGrupoPrazoInstancia($container);
+	        }
+	    }, 150);
+
+        if (typeof configurarData === "function") configurarData();
+    }
+}
+
+let DataEventoAtivo = null;
+
+// quando o usuÃ¡rio clicar ou focar um campo de data
+$(document).on("focus click", "input.DataEvento", function () {
+    DataEventoAtivo = this;
+});
+
+// sobrescreve o foco global do DataEvento
+(function () {
+    const originalGetElementById = document.getElementById;
+
+    document.getElementById = function (id) {
+        if (id === "DataEvento" && DataEventoAtivo) {
+            return DataEventoAtivo;
+        }
+        return originalGetElementById.call(document, id);
+    };
+})();
+
+
+function gerarHtmlPrisao(id_form, id_parte, Id_Processo) {
+    return `
+	<style>
+	        #${id_form} #blocoDinamico blockquote input { width: 100% !important; box-sizing: border-box; }
+	        
+	        /* Classes auxiliares de largura */
+	        .col90-extra { width: 98% !important; } 
+	        .col32-extra { width: 33% !important; } 
+	        .col34-extra { width: 34% !important; }
+			.col42-extra { width: 42% !important; }
+
+	        #${id_form} blockquote label {
+	            display: flex; 
+	            align-items: center;
+	            height: 24px; 
+	            margin-bottom: 2px;
+	            white-space: nowrap;
+	        }
+
+	        #${id_form} blockquote label button.imgIcons {
+	            margin-left: 5px;
+	            padding: 0;
+	            border: none;
+	            background: transparent;
+	            display: flex;
+	            align-items: center;
+	            justify-content: center;
+	            height: 20px;
+	            width: 20px;
+	        }
+	        #${id_form} blockquote {
+	            vertical-align: bottom;
+	        }
+	    </style>
+    <script type='text/javascript' src='./js/Digitacao/DigitarData.js'></script>
+    <link href='./css/toastr/toastr.min.css' rel='stylesheet' type='text/css' />
+    <script type='text/javascript' src='./js/toastr/toastr.min.js'></script>
+
+    <fieldset class='VisualizaDados'><legend>Controle de Pris&atilde;o</legend>
+        <input type='hidden' id='Id_ProcessoParte' name='Id_ProcessoParte' value='${id_parte}' />
+        <input type='hidden' id='Id_EventoSubTipo' name='Id_EventoSubTipo' value='' />
+        <input type='hidden' id='Id_EventoTipo' name='Id_EventoTipo' value='' />
+        <input type='hidden' id='Id_PrisaoTipo' name='Id_PrisaoTipo' value='' />
+        <input type='hidden' id='Id_LocalCumpPena' name='Id_LocalCumpPena' value='' />
+        <input type='hidden' id='Id_MoviEvento' name='Id_MoviEvento' value='' />
+        <input type='hidden' id='Id_Processo' name='Id_Processo' value='${Id_Processo}' />
+        <input type='hidden' id='PossuiPrazo' name='PossuiPrazo' value='' />
+        <input type='hidden' id='PrazoPadrao' name='PrazoPadrao' value='' />
+        <input type='hidden' id='Id' name='Id' value='' />
+
+        <blockquote class='col100'>
+            <blockquote class='col30' id='blocoEventoSubTipo'>
+                <label>*Tipo de Registro <button class='imgIcons' type='button' onclick="MostrarBuscaPadrao('${id_form}','EventoSubtipo','Consulta de Tipo de Registro','Digite o Tipo de Registro e clique em consultar.','Id_EventoSubTipo','EventoSubTipo',['Registro de Evento'],['PossuiPrazo', 'Situa&ccedil;&atilde;o'],'1592','15')"><i class='fa-solid fa-magnifying-glass'></i></button></label>
+                <input class='formEdicaoInputSomenteLeitura' name='EventoSubTipo' id='EventoSubTipo' type='text' readonly placeholder='Tipo de Registro'>
+            </blockquote>
+            <blockquote class='col35 col34-extra' id='grupoEventoTipo' style='display:none;'>
+                <label id='lblMovimentacao' style='display:none;'>*Movimenta&ccedil;&atilde;o Tipo <button class='imgIcons' type='button' onclick="MostrarBuscaPadrao('${id_form}','EventoTipo','Consulta de Movimenta&ccedil;&atilde;o', 'Digite o Tipo de Movimenta&ccedil;&atilde;o e clique em consultar.','Id_EventoTipo','EventoTipo',['Movimenta&ccedil;&atilde;o Tipo'],['PrazoPadrao', 'Situa&ccedil;&atilde;o'],'2','15','Id_EventoSubTipo')"><i class='fa-solid fa-magnifying-glass'></i></button></label>
+                <label id='lblEncerramento' style='display:none;'>*Encerramento Tipo <button class='imgIcons' type='button' onclick="MostrarBuscaPadrao('${id_form}','EventoTipo','Consulta de Encerramento','Digite o Tipo de Encerramento e clique em consultar.','Id_EventoTipo','EventoTipo',['Encerramento'],['PrazoPadrao', 'Situa&ccedil;&atilde;o'],'2','15','Id_EventoSubTipo')"><i class='fa-solid fa-magnifying-glass'></i></button></label>
+                <label id='lblEventoTipo'>*Evento Tipo </label>
+                <input class='formEdicaoInputSomenteLeitura' name='EventoTipo' id='EventoTipo' type='text' readonly placeholder='Selecione um tipo'>
+            </blockquote>
+			<blockquote id='blocoData' class='col20 datepicker' style='display:none;'>
+			    <label id='lblCampoData'>*Data</label>
+			    <input class='formEdicaoInput DataEvento'
+			           name='DataEvento'
+			           id='DataEvento'
+			           type='text'
+			           maxlength='10'
+			           placeholder='Data'
+			           onkeyup='mascara_data(this); autoTab(this,10)'
+			           onkeypress='return DigitarSoNumero(this, event)'
+			           onblur='verifica_data(this)'>
+			</blockquote>
+            <blockquote class='col10' id='grupoPrazo' style='display:none;'>
+                <label>*Prazo</label>
+                <input class='formEdicaoInput' name='PrazoPrisao' id='PrazoPrisao' maxlength='5' type='text' placeholder='Dias' onkeypress='return DigitarSoNumero(this, event)'>
+            </blockquote>
+        </blockquote>
+
+        <div id='blocoDinamico' class='col100' style='display:none;'>
+            <blockquote id='blocoLocal' class='col30'>
+                <label>*Local da Pris&atilde;o <button class='imgIcons' type='button' onclick="MostrarBuscaPadrao('${id_form}','LocalCumprimentoPena','Consulta de Local de Cumprimento de Pena','Digite o nome do Local.','Id_LocalCumpPena','LocalCumpPena',['Local'],[],'2','15')"><i class='fa-solid fa-magnifying-glass'></i></button></label>
+                <input class='formEdicaoInputSomenteLeitura' name='LocalCumpPena' id='LocalCumpPena' type='text' readonly placeholder='Local de Cumprimento'>
+            </blockquote>
+            <blockquote class='col30 col32-extra' id='grupoMotivo' style='display:none;'>
+                <label>*Tipo Pris&atilde;o <button class='imgIcons' type='button' onclick="MostrarBuscaPadrao('${id_form}','PrisaoTipo','Consulta de Tipo de Pris&atilde;o','Digite o Tipo de Pris&atilde;o e clique em consultar.','Id_PrisaoTipo','PrisaoTipo',['Pris&atilde;o'],[],'2','15')"><i class='fa-solid fa-magnifying-glass'></i></button></label>
+                <input class='formEdicaoInputSomenteLeitura' name='PrisaoTipo' id='PrisaoTipo' type='text' readonly placeholder='Tipo Pris&atilde;o'>
+            </blockquote>
+            <blockquote class='col30 col34-extra' id='blocoMovimentacao'>
+                <label>*Movimenta&ccedil;&atilde;o Processo <button class='imgIcons' type='button' onclick="MostrarBuscaPadrao('${id_form}','Movimentacao','Consulta de Movimenta&ccedil;&atilde;o do Processo','Digite a movimenta&ccedil;&atilde;o do Processo','Id_MoviEvento','MoviEvento',['Movimenta&ccedil;&atilde;o'],[],'2','15','Id_Processo')"><i class='fa-solid fa-magnifying-glass'></i></button></label>
+                <input class='formEdicaoInputSomenteLeitura' name='MoviEvento' id='MoviEvento' type='text' readonly placeholder='Vincular Movimenta&ccedil;&atilde;o'>
+            </blockquote>
+            <blockquote class='col90 col90-extra'>
+                <label>Observa&ccedil;&atilde;o</label>
+                <input class='formEdicaoInput' name='Observacao' id='Observacao' type='text' maxlength='255' placeholder='Observa&ccedil;&atilde;o'>
+            </blockquote>
+			
+            <center class='col100' style='text-align:center !important;'>
+                <input type='button' value='Salvar' onclick="salvarPassoPrisao('ProcessoPartePrisao','${id_form}','Info Pris&atilde;o','sim','sim')">
+            </center>
+        </div>
+    </fieldset>
+
+	<fieldset class='VisualizaDados'><legend>Hist&oacute;rico Prisional</legend>
+	        <blockquote class='col100'>
+	            <table id='tb_${id_form}' class='Tabela' style='width:100%'>
+	                <thead>
+	                    <tr>
+	                        <th class='colunaMinima'>ID</th>
+	                        <th width='30px'>Tipo de Registro</th>
+	                        <th width='60px'>Tipo de Evento</th>
+	                        <th width='60px'>Tipo de Pris&atilde;o</th>
+	                        <th width='20px'>Data</th>
+	                        <th width='20px'>Prazo</th>
+	                        <th width='60px'>Local</th>
+	                        <th width='50px'>Mov. Pris&atilde;o</th>
+	                        <th width='30px'>Usuario</th>
+	                        <th class='colunaMinima'>A&ccedil;&otilde;es</th>	
+	                    </tr>
+	                </thead>
+	                <tbody></tbody>
+	            </table>
+	        </blockquote>
+	    </fieldset>`;
+}
+
+
+function atualizarTabelaPassoPrisao(controle, id_form, titulo_func_info, titulo_func_editar, podeExcluir, podeBaixar, callback, params) {
+    var url = controle + '?AJAX=ajax&Passo=' + id_form + '&PaginaAtual=2';
+
+    var dados = {};
+    $("#" + id_form + " input").each(function() {    
+        if ($(this).attr("name") != undefined){
+            dados[$(this).attr("name")] = $(this).val();
+        }
+    });
+
+    $.ajax({
+        type: "POST",
+        data: dados,
+        url: encodeURI(url),
+        context: document.body,
+        timeout: 300000,
+        async: true,
+        success: function(retorno) {                            
+            var stLinha = "";
+            $.each(retorno, function(idLinha, item) {
+                stLinha += "<tr id='tr_" + item.Id + "' campos='" + JSON.stringify(item) + "' idLinha='" + idLinha + "'>";
+                stLinha += "<td class=\"colunaMinima\">" + item.Id + "</td>";
+
+                var nomes = Object.keys(item);
+                var valores = Object.values(item);
+				for (var i = 0; i < valores.length && i <= 8; i++) {
+				    if (nomes[i] !== "Id" && nomes[i].toLowerCase().indexOf('id_') < 0) {
+				        var nomeCampo = nomes[i];
+				        var valorCelula = valores[i] || "";
+
+				        if (nomeCampo === "EventoSubTipo") {
+				            var icone = "";
+				            var idSubEvento = item["Id_EventoSubTipo"];
+
+				            if (idSubEvento === "1") {
+				                // Prisï¿½o ? seta pra cima vermelha
+				                icone = "<i class='fa-solid fa-arrow-up' style='color:red;margin-right:5px;'></i>";
+				            } else if (idSubEvento === "3") {
+				                icone = "<i class='fa-solid fa-arrow-down' style='color:green;margin-right:5px;'></i>";
+				            }
+
+				            stLinha += "<td>" + icone + valorCelula + "</td>";
+				        } else {
+				            if (Array.isArray(valorCelula)) {
+				                stLinha += "<td>" + JSON.stringify(valorCelula) + "</td>";
+				            } else {
+				                stLinha += "<td>" + valorCelula + "</td>";
+				            }
+				        }
+				    }
+				}
+
+				stLinha += "<td class='colunaMinima' title='Aï¿½ï¿½es'>";
+
+				// Botï¿½o Baixar
+                if (podeBaixar !== undefined) {
+                    stLinha += `
+                        <button class='imgIcons' type='button'
+                                onclick="window.open('${controle}?Passo=${id_form}&PaginaAtual=-14&Id=${item.Id}')"
+                                title='Baixar'>
+                            <i class='fa-solid fa-file-arrow-down'></i>
+                        </button>
+                    `;
+                }
+
+                // Botï¿½o Info
+                if (titulo_func_info !== undefined) {
+                    stLinha += `
+                        <button class='imgIcons' type='button'
+                                onclick="infoPassoPrisao('${id_form}', '${item.Id}', '${titulo_func_info}')"
+                                title='Detalhes'>
+                            <i class='fa-solid fa-circle-info'></i>
+                        </button>
+                    `;
+                }
+
+                // Botï¿½o Editar
+				if (titulo_func_editar !== undefined) {
+				    stLinha += `
+				        <button class='imgIcons' type='button'
+				            onclick="editarPassoPrisao('${id_form}', '${item.Id}', '${idLinha}', () => atualizarInformacaoReuPreso('${id_form}'))"
+				            title='Editar'>
+				            <i class='fa-solid fa-pen-to-square'></i>
+				        </button>
+				    `;
+				}
+
+                // Botï¿½o Excluir
+                if (podeExcluir !== undefined) {
+                    stLinha += `
+                      <button class='imgIcons' type='button'
+                          onclick="excluirPasso('${controle}', '${id_form}', '${item.Id}', '${idLinha}', () => atualizarInformacaoReuPreso('${id_form}'))"
+                          title='Excluir'>
+                          <i class='fa-solid fa-trash-can'></i>
+                      </button>`;
+                }
+
+                stLinha += "</td>";
+            });
+
+            $("table#tb_" + id_form + " tbody").html(stLinha);
+
+            atualizarInformacaoReuPreso(id_form);
+        },
+        beforeSend: function(data){},
+        error: function(request, status, error){
+            if (error == 'timeout'){
+                mostrarMensagemErro('Tempo Excedido', "A aï¿½ï¿½o demorou tempo demais, tente novamente mais tarde.");
+            } else {
+                mostrarMensagemErro("Projudi - Erro", request.responseText);
+            }
+        },
+        complete: function(data){
+            if(callback){ callback(); }
+        }
+    });
+}
+function infoPassoPrisao(id_form, id, titulo) {
+    var campos = $('table#tb_' + id_form + ' tr#tr_' + id).attr("campos");
+    var obJson = JSON.parse(campos);
+
+    // valores
+    var idPrisao    = obJson["Id"] || "";
+    var dataPrisao  = obJson["DataEvento"] || "";
+    var tipoPrisao  = obJson["PrisaoTipo"] || "";
+    var prazo       = obJson["PrazoPrisao"] || "";
+    var movProcesso = obJson["MoviEvento"] || "";
+    var localPrisao = obJson["LocalCumpPena"] || "";
+    var usuario     = obJson["Usuario"] || "";
+    var observacao  = obJson["Observacao"] || "";
+
+    var eventoSubTipo = obJson["EventoSubTipo"] || "";
+	var IdEventoSubTipo = obJson["Id_EventoSubTipo"] || "";
+
+    var eventoTipo    = obJson["EventoTipo"] || "";
+
+    // Definir o tï¿½tulo dinï¿½mico
+	var tituloEvento = (IdEventoSubTipo == 3 ? "do " : "da ") + eventoSubTipo;
+
+    // Definir o label da data
+    var labelData = "Data da Pris&atilde;o";
+    if (IdEventoSubTipo == "1") {
+        labelData = "Data da Pris&atilde;o";
+    } else if (IdEventoSubTipo == "2") {
+        labelData = "Data da Movimenta&ccedil;&atilde;o";
+    } else if (IdEventoSubTipo == "3") {
+        labelData = "Data de Encerramento";
+    }
+
+    // helper para linha (label ï¿½ direita, valor ï¿½ esquerda)
+    function linha(labelHtml, valor) {
+        return '' +
+        '<div style="display:flex; align-items:baseline; margin:2px 0;">' +
+            '<div style="width:160px; text-align:right; color:#666; font-size:12px; line-height:1.2;">' + labelHtml + '</div>' +
+            '<div style="padding-left:10px; font-weight:bold; color:#222;">' + (valor || '') + '</div>' +
+        '</div>';
+    }
+
+    var st  = '<fieldset style="border:1px solid #ccc; padding:15px; border-radius:6px; background:#fff; font-family:Arial, sans-serif;">';
+        st += '  <legend style="font-weight:bold; color:#003366; font-size:15px; text-transform:uppercase; text-align:left; padding:0 8px;">Informa&ccedil;&atilde;o ' + tituloEvento + '</legend>';
+        st += '  <div style="display:flex; flex-wrap:wrap; font-size:14px; color:#222; line-height:1.6;">';
+
+        // Coluna esquerda
+        st += '    <div style="width:50%;">';
+        st += linha('ID', idPrisao);
+        st += linha(labelData, dataPrisao);
+        if (IdEventoSubTipo == "1") {
+            st += linha('Pris&atilde;o Tipo', tipoPrisao);
+        }
+        st += '    </div>';
+
+        // Coluna direita
+        st += '    <div style="width:50%;">';
+        if (IdEventoSubTipo == "1") {
+            st += linha('Prazo', prazo);
+        }
+        st += linha('Mov. Processo', movProcesso);
+        if (IdEventoSubTipo == "1") {
+            st += linha('Local Pris&atilde;o', localPrisao);
+        }
+        st += linha('Usu&aacute;rio', usuario);
+        st += '    </div>';
+
+        // Observaï¿½ï¿½o (abaixo, 100%)
+		st += '    <div style="width:100%; margin-top:12px;">';
+		st += '      <div style="color:#666; font-size:12px; margin-bottom:4px;">Observa&ccedil;&atilde;o</div>';
+		st += '      <div style="font-size:13px; line-height:1.6; font-weight:bold; color:#222;">' + (observacao || '') + '</div>';
+		st += '    </div>';
+
+		st += '  </div>';
+        st += '</fieldset>';
+
+	$('#infoPasso').find('#modalTitulo').text('Dados do Registro');
+    $('div#divInfoPasso').html(st);
+    $("#infoPasso").show();
+}
+
+function salvarPassoPrisao(controle, id_form, titulo_func_info, titulo_func_editar, podeExcluir, podeBaixar){
+
+    var url = controle + '?AJAX=ajax&Passo=' + id_form + '&PaginaAtual=-2';
+
+    // Coleta os dados do formulï¿½rio
+    var dados = {};
+    $("#" + id_form + " input").each(function() {
+        if ($(this).attr("name") != undefined) {
+            if ($(this).attr("type") === "checkbox") {
+                dados[$(this).attr("name")] = $(this).is(':checked');
+            } else {
+                dados[$(this).attr("name")] = $(this).val();
+            }
+        }
+    });
+
+    $("#" + id_form + " select").each(function() {
+        if ($(this).attr("name") != undefined) {
+            dados[$(this).attr("name")] = $(this).val();
+        }
+    });
+
+    $.ajax({
+        type: "POST",
+        data: dados,
+        url: encodeURI(url),
+        context: document.body,
+        timeout: 300000,
+        async: true,
+        success: function(retorno) {
+			mostrarToastrOk('', 'Registro de ' + retorno.EventoSubTipo  + ' salvo com sucesso.');
+            const corpoTabela = $("table#tb_" + id_form + " tbody");
+
+            // Limpa inputs e selects visï¿½veis
+            $("#" + id_form + " input, #" + id_form + " select").each(function() {
+                if ($(this).attr("name") != undefined && $(this).attr("type") !== "hidden") {
+                    $(this).val("");
+                    if ($(this).attr("type") === "checkbox") $(this).prop("checked", false);
+					
+					$("#" + id_form + " #Id").val("");
+					$("#" + id_form + " #Id_EventoSubTipo").val("");
+					$("#" + id_form + " #Id_EventoTipo").val("");
+					$("#" + id_form + " #Id_PrisaoTipo").val("");
+					$("#" + id_form + " #Id_LocalCumpPena").val("");
+					$("#" + id_form + " #Id_MoviEvento").val("");
+					$("#" + id_form + " #PossuiPrazo").val("");
+					$("#" + id_form + " #PrazoPadrao").val("");
+
+					$("#" + id_form).data("editando", false);
+					$("#" + id_form + " #EventoSubTipo")
+					    .closest('blockquote')
+					    .find("button.imgIcons")
+					    .prop("disabled", false);
+                }
+            });
+
+            // Cria o HTML da nova linha
+            var stLinhaConteudo = "<td class='colunaMinima'>" + retorno.Id + "</td>";
+
+            var nomes = Object.keys(retorno);
+            var valores = Object.values(retorno);
+			for (var i = 0; i < valores.length && i <= 8; i++) {
+			    if (nomes[i] !== "Id" && nomes[i].toLowerCase().indexOf('id_') < 0) {
+			        var valorCelula = valores[i] || "";
+
+			        // Verifica se ï¿½ a coluna EventoSubTipo para colocar ï¿½cone
+			        if (nomes[i] === "EventoSubTipo") {
+			            var icone = "";
+			            var idSubEvento = retorno["Id_EventoSubTipo"]; // pega o id do subevento do retorno
+
+			            if (idSubEvento == "1") {
+			                icone = "<i class='fa-solid fa-arrow-up' style='color:red;margin-right:5px;'></i>";
+			            } else if (idSubEvento == "3") {
+			                icone = "<i class='fa-solid fa-arrow-down' style='color:green;margin-right:5px;'></i>";
+			            }
+
+			            stLinhaConteudo += "<td>" + icone + valorCelula + "</td>";
+			        } else {
+			            if (Array.isArray(valorCelula)) {
+			                stLinhaConteudo += "<td>" + JSON.stringify(valorCelula) + "</td>";
+			            } else {
+			                stLinhaConteudo += "<td>" + valorCelula + "</td>";
+			            }
+			        }
+			    }
+			}
+
+            // Botï¿½es de aï¿½ï¿½o
+            stLinhaConteudo += "<td class='colunaMinima' title='Aï¿½ï¿½es'>";
+            if (podeBaixar !== undefined) {
+                stLinhaConteudo += `
+                    <button class='imgIcons' type='button'
+                            onclick="window.open('${controle}?Passo=${id_form}&PaginaAtual=-14&Id=${retorno.Id}')"
+                            title='Baixar'>
+                        <i class='fa-solid fa-file-arrow-down'></i>
+                    </button>
+                `;
+            }
+            if (titulo_func_info !== undefined) {
+                stLinhaConteudo += `
+                    <button class='imgIcons' type='button'
+                            onclick="infoPassoPrisao('${id_form}', '${retorno.Id}', '${titulo_func_info}')"
+                            title='Detalhes'>
+                        <i class='fa-solid fa-circle-info'></i>
+                    </button>
+                `;
+            }
+            if (titulo_func_editar !== undefined) {
+                stLinhaConteudo += `
+                    <button class='imgIcons' type='button'
+                            onclick="editarPassoPrisao('${id_form}', '${retorno.Id}')"
+                            title='Editar'>
+                        <i class='fa-solid fa-pen-to-square'></i>
+                    </button>
+                `;
+            }
+            if (podeExcluir !== undefined) {
+                stLinhaConteudo += `
+                    <button class='imgIcons' type='button'
+                            onclick="excluirPasso('${controle}', '${id_form}', '${retorno.Id}', '${retorno.Id}', () => atualizarInformacaoReuPreso('${id_form}'))"
+                            title='Excluir'>
+                        <i class='fa-solid fa-trash-can'></i>
+                    </button>`;
+            }
+
+            stLinhaConteudo += "</td>";
+
+            // Cria a linha completa
+            var novaLinha = $("<tr id='tr_" + retorno.Id + "' campos='" + JSON.stringify(retorno) + "' idLinha='" + retorno.Id + "'>" + stLinhaConteudo + "</tr>");
+
+            // Insere na posiï¿½ï¿½o correta (ordem decrescente por Id)
+			var inserido = false;
+			var dataNova = parseDataBR(retorno.DataEvento);
+			var idNovo = parseInt(retorno.Id);
+
+
+			corpoTabela.find("tr[idLinha]").each(function() {
+			    var dadosLinha = JSON.parse($(this).attr("campos"));
+			    var dataLinha = parseDataBR(dadosLinha.DataEvento);
+			    var idLinha = parseInt(dadosLinha.Id);
+
+			    var deveVirAntes = false;
+
+			    if (dataNova && dataLinha) {
+			        if (dataNova > dataLinha) {
+			            deveVirAntes = true; 
+			        } else if (dataNova.getTime() === dataLinha.getTime() && idNovo > idLinha) {
+			            deveVirAntes = true; 
+			        }
+			    }
+
+			    if (deveVirAntes) {
+			        $(this).before(novaLinha);
+			        inserido = true;
+			        return false;
+			    }
+			});
+
+			if (!inserido) {
+			    corpoTabela.append(novaLinha);
+			}
+
+            atualizarInformacaoReuPreso(id_form)
+        },
+        beforeSend: function(data) {},
+        error: function(request, status, error) {
+            if (error == 'timeout') {
+                mostrarMensagemErro('Tempo Excedido', "A aï¿½ï¿½o demorou tempo demais, tente novamente mais tarde.");
+            } else {
+                mostrarToastrAlerta(request.responseText);
+            }
+        },
+        complete: function(data) {}
+    });
+
+}
+
+function parseDataBR(dataStr) {
+    if (!dataStr) return null;
+    var partes = dataStr.split("/");
+    return new Date(partes[2], partes[1] - 1, partes[0]);
+}
+
+function editarPassoPrisao(id_form, id){
+    if ($("#"+id_form).data("editando")) {
+		alert("J\u00E1 existe um item sendo editado. Finalize a edi\u00E7\u00E3o antes de abrir outro.");
+        return; // bloqueia nova ediï¿½ï¿½o
+    }
+
+    // Seta flag de ediï¿½ï¿½o
+    $("#"+id_form).data("editando", true);
+
+    var campos = $('table#tb_'+id_form+ ' tr#tr_'+ id ).attr("campos");
+    var obJson = JSON.parse(campos);
+    var ids = Object.keys(obJson);
+    var valores = Object.values(obJson);
+
+    for(var i=0; i<ids.length;i++){
+        var obj = $("#"+id_form+ " #"+ids[i]);
+        if(obj.attr('type')=='checkbox'){
+            if (valores[i]=='1' || valores[i].toLowerCase()=='sim' || valores[i].toLowerCase()=='true'){
+                obj.prop("checked", true);
+            }else{
+                obj.prop("checked", false);
+            }
+        }else{
+            if (Array.isArray(valores[i])){
+                obj.val(JSON.stringify(valores[i]));
+            }else{
+                obj.val(valores[i]);
+            }
+            obj.change();
+        }
+    }
+	$("#EventoSubTipo").closest('blockquote').find("button.imgIcons").prop("disabled", true);
+    $('table#tb_'+id_form+ ' tr#tr_'+ id).remove();
+
+    if ($.isFunction(window.editarPassoSelecionar)) {
+        editarPassoSelecionar();
+    }
+//		stHtml += "           <th class='colunaMinima'></th>";
+}

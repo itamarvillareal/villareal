@@ -21,6 +21,9 @@ public interface TopicoRepository extends JpaRepository<TopicoEntity, Long> {
 
     Optional<TopicoEntity> findByChaveNavegacaoAndBlocoIndice(String chaveNavegacao, Integer blocoIndice);
 
+    List<TopicoEntity> findByChaveNavegacaoAndAtivoTrueAndConteudoHtmlIsNotNullOrderByBlocoIndiceAsc(
+            String chaveNavegacao);
+
     @Query(
             """
             SELECT DISTINCT t.categoria FROM TopicoEntity t
@@ -52,4 +55,13 @@ public interface TopicoRepository extends JpaRepository<TopicoEntity, Long> {
     List<TopicoEntity> searchAtivos(@Param("q") String q);
 
     List<TopicoEntity> findByIdInAndAtivoTrue(Collection<Long> ids);
+
+    @Query(
+            """
+            SELECT t FROM TopicoEntity t
+            WHERE LOWER(COALESCE(t.subcategoria, '')) LIKE LOWER(CONCAT('%', :filtro, '%'))
+               OR LOWER(t.chaveNavegacao) LIKE LOWER(CONCAT('%', :filtro, '%'))
+            ORDER BY t.chaveNavegacao ASC, t.blocoIndice ASC
+            """)
+    List<TopicoEntity> findByFiltroSubcategoriaOuChave(@Param("filtro") String filtro);
 }

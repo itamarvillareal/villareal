@@ -1,0 +1,472 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html>
+<head>
+  <meta content="text/html; charset=LATIN1" http-equiv="CONTENT-TYPE"/>
+  <title> |Peticionamento| Busca de MovimentacaoTipo</title>
+  <script type="text/javascript" src="/ruxitagentjs_ICA7NVfqrux_10337260504112723.js" data-dtconfig="app=bc5a3be3c6a535b2|owasp=1|featureHash=ICA7NVfqrux|rdnt=1|uxrgce=1|cuc=nncenbbl|mel=100000|expw=1|dpvc=1|lastModification=1780945583223|postfix=nncenbbl|tp=500,50,0|srbbv=2|agentUri=/ruxitagentjs_ICA7NVfqrux_10337260504112723.js|reportUrl=/rb_bf56388ccc|rid=RID_591572706|rpid=-335099515|domain=tjgo.jus.br"></script><link href="./css/Principal.css?v=20231017"  type="text/css"  rel="stylesheet" />
+  <script type='text/javascript' src='./js/jquery.js'></script>
+  <script type='text/javascript' src='./js/ui/jquery-ui.min.js'></script>
+  <script type='text/javascript' src='./js/Funcoes.js'></script>	
+  <script type='text/javascript'>		
+    var _PaginaEditar = -1;
+    var _PaginaExcluir = -3;
+    var _Acao = "Editar";
+  </script>
+  </head>
+<body>
+  <div id="divCorpo" class="divCorpo" >
+  <div class="area"><h2>&raquo;|Peticionamento| Busca de MovimentacaoTipo</h2></div>
+    <div id="divLocalizar" class="divLocalizar"> 
+      <form action="Peticionamento" method="post" name="Formulario" id="Formulario">
+        <input type="hidden" id="tempBuscaId" name="Id_MovimentacaoTipo"/>
+        <input type="hidden" id="tempBuscaDescricao" name="MovimentacaoTipo"/>
+        <input type="hidden" id="PaginaAtual" name="PaginaAtual"  value="1812"/>
+        <input type="hidden" id="PaginaAnterior" name="PaginaAnterior"  value="1812"/>        				
+		<input type="hidden" id="tempFluxo1" name="tempFluxo1"  value="null"/>
+		<input type="hidden" id="tempFluxo2" name="tempFluxo2"  value="null"/>
+		<input type="hidden" id="PassoEditar" name="PassoEditar"  value="null"/>
+		<input type="hidden" id="ParteTipo" name="ParteTipo"  value="null"/>
+		<input type="hidden" id="Viewstate" name="Viewstate"  value="null"/>
+		
+		<fieldset id="formLocalizar" class="formLocalizar"> 
+          
+          <legend id="formLocalizarLegenda" class="formLocalizarLegenda">Consulta de MovimentacaoTipo</legend>
+          <div class="col90 float_label">			
+	          	<input id="nomeBusca1" class="formEdicaoInput"  placeholder="MovimentacaoTipo" name="nomeBusca1" type="text" value="" style="width : 700px;"/>
+    	      	<label id="formEdicaoLabel0" for="nomeBusca1">MovimentacaoTipo</label>
+    	    </div>           
+		  <br/> 
+		  <br />
+		  <br />
+          <div class="Centralizado">
+          	<input id="formLocalizarBotao" class="formLocalizarBotao" type="submit" name="Localizar" value="Consultar" onclick="javascript:buscaDadosJSON('Peticionamento', false,  1812, '1' , '0', 15); setarCursorPrimeiroCampo(); return false;"/>
+          </div>
+        </fieldset>
+        <br/>
+        <div id="divTabela" class="divTabela"> 
+          <table id="tabelaLocalizar" class="Tabela">
+            <thead>
+              <tr>
+                <th width='20px' align="center"></th>
+                <th width='40px' align="center">Id</th>                
+                <th width=tamColuna>MovimentacaoTipo</th><th class="colunaMinima" title="Seleciona o registro para edição">Selecionar</th>
+                </tr>
+            </thead>
+          	<tbody id="CorpoTabela">&nbsp;</tbody>
+          </table>
+          </div> 
+      </form> 
+    </div> 
+    <div id="Paginacao" class="Paginacao"></div></div> 
+    <div id="dialog" style="display:none">&nbsp;</div>
+	
+<div id="busca_padrao" class="modalBusca">
+	<div id='modalBusca-content' class="modalBusca-content1 ___Movimentavel">
+		<div id='modalBusca-content-titulo' class="modalTitulo"><p id='modalTitulo'></p><span class="modal_close" onclick='fecharBuscaPadrao()'>&times;</span></div> 
+		<div class="modalBusca-content2">
+			<fieldset id="formLocalizar" > 
+				<legend id="legenda" ></legend>
+				<div class='float_label_form' id='busca_padrao_campos'></div>
+				<br />
+				<div class="Centralizado">
+					<input type="submit" id="busca_padraoLocalizar" name="busca_padraoLocalizar" value="Consultar" onclick="javascript:buscaDadosModal(_stTempRetorno, _paginaAtual, _numeroFiltros , '0', _tamanho, _id, _descricao, _colunasTabela, _fieldName,_filtro,_filtro2); return false;"/>
+				</div>
+			</fieldset>	
+			<div id='divTabelaBuscaPadrao' class="divTabela"></div>
+			<div id="PaginacaoBuscaPadrao" class="Paginacao"></div>
+		</div>
+	</div> 
+</div>
+
+<div id="infoPasso" style="display:none" class="modalBusca">
+	<div class="modalBusca-content1 ___Movimentavel">
+		<div class="modalTitulo"><p id='modalTitulo'></p><span class="modal_close" onclick='$("#infoPasso").hide();'>&times;</span></div> 
+		<div class="modalBusca-content2">
+			<div id="divInfoPasso" class="divEditar"> 
+				
+			</div>
+		</div>
+	</div> 
+</div>
+
+<div id="infoFoto" style="display:none" class="modalBusca">
+	<div class="modalBusca-content1 ___Movimentavel">
+		<div class="modalTitulo"><p id='modalTitulo'></p><span class="modal_close" onclick='$("#infoFoto").hide();'>&times;</span></div> 
+		<div class="modalBusca-content2">
+			<div id="divInfoPasso" class="divEditar Centralizado"> 
+				<img id='img_infoFoto'>
+			</div>
+		</div>
+	</div> 
+</div>
+
+<div id="infoFormulario" style="display:none" class="modalBusca">
+	<div class="modalBusca-content1 ___Movimentavel">
+		<div class="modalTitulo"><p id='modalTitulo'></p><span class="modal_close" onclick='$("#infoFormulario").hide();'>&times;</span></div> 
+		<div class="modalBusca-content2">
+			<div id="divinfoFormulario" class="divEditar Centralizado"> 				
+			</div>
+		</div>
+	</div> 
+</div>
+
+<div id="divPortaTabela" style="display:none" class="divPortaTabela ___Movimentavel">
+	<div class="divPortaTabelaTitulo"><p id='divPortaTabelaTitulo'></p><span class="modal_close" onclick='$("#divPortaTabela").hide();'>&times;</span></div>
+	<div class='tableview'> 
+		<div id="divPortaTabelaConteudo" class="Centralizado divPortaTabelaConteudo tableview-holder"> 
+		
+		</div>
+	</div>
+</div> 
+
+<input type="text" style="display:none">
+<input type="password" style="display:none">
+<div id='divLerSenha'  class='divFundoEscuro' style = "display:none">
+	<div id='divPortaSenha' class='divCentroTela' >
+		<h1>Digite a senha do certificado digital</h1>
+		<hr/>
+		<input type='password' name='senhaCertificado' id='senhaCertificado' autocomplete='off' ><br />
+		<div  style="text-align: left;">
+			<input type="checkbox" name='salvarSenhaCertificado' id='salvarSenhaCertificado' >Memorizar a senha do certificado
+		</div>
+		<hr/>
+		<div id="divBotoesCentralizadosAssinador" style="text-align: right; margin-top: 8px;">
+			<button id='but_senhaDigita' type="button">
+				Assinar
+	 		</button>
+	 		<button id='but_cancelar' type="button" onclick="javascript:$('#divLerSenha').hide(); $('#senhaCertificado').val(''); return false;">
+				Cancelar
+	 		</button>
+	 	</div>		
+	</div>
+</div>
+ 
+<script type="text/javascript" src="./js/fonte_contraste.js"></script>    
+<script type="text/javascript" >
+  
+	var _stTempRetorno;
+	var _boMostrarExcluir;
+	var _paginaAtual;
+	var _nomeBusca;
+	var _tamanhoRetornoConsulta;	
+	var _numeroFiltros;
+	var _tamanho;
+	var _id;
+	var _descricao;
+	var _colunasTabela;
+	var _fieldName;
+	var _filtro;
+	var _filtro2;
+	
+	var mousePosition;
+	var offset = [0,0];	
+	var isDown = false;
+	
+		
+	function acionarBotao(event,id_botao){
+		if (event.keyCode==13){
+			$("#" + id_botao ).trigger('click');
+		}
+	}
+
+	function fecharBuscaPadrao() {
+		$("#busca_padrao").hide();
+		$("#busca_padrao_campos").html('');
+	}
+	
+	function MostrarBuscaPadrao(field, ct, titulo, legenda, id, descricao, campos, colunasTabela, paginaAtual, tamanhoConsulta, filtro, filtro2, params){
+
+		_paginaAtual = paginaAtual;
+		_numeroFiltros = campos.length;
+		_tamanho = tamanhoConsulta;
+		_stTempRetorno = ct;
+		_descricao = descricao;
+		_colunasTabela=colunasTabela;
+		_filtro=$("#" + field + " #"+ filtro).val();
+		_filtro2=$("#" + field + " #"+ filtro2).val();
+
+        _filtro = ['null', 'undefined', '', null, undefined].includes(_filtro) ? '' : _filtro;
+        _filtro2 = ['null', 'undefined', '', null, undefined].includes(_filtro2) ? '' : _filtro2;
+
+		$("#modalTitulo").html(titulo) ;
+		$("#legenda").html(legenda);		
+		
+		var descricaoCabecalho = _descricao;
+		var st_campos ="";
+		var stTabela = "";		
+
+		if (params) {
+			if (params['cabecalhoDescricao']) {
+				descricaoCabecalho = params['cabecalhoDescricao'];
+			}
+		}
+		
+		for (var i = 0; i < campos.length; i++) {
+			st_campos += '<div class="col90 float_label">';			
+			st_campos += '<input id="nomeBusca'+(i+1)+'" class="float_label_input" onkeypress="acionarBotao(event,\'busca_padraoLocalizar\');" placeholder="'+campos[i]+'" name="nomeBusca'+(i+1)+'" value="" type="text">';
+			st_campos += '<label for="nomeBusca'+(i+1)+'">'+campos[i]+'</label>'; 
+			st_campos += '</div>';
+		}
+		
+		if (_id!=id || field!=_fieldName){
+			_id = id;
+			_fieldName= field;
+			stTabela += '	<table id="tabelaLocalizar" class="Tabela">';
+			stTabela += '		<thead>';
+			stTabela += '			<tr>';
+			stTabela += '				<th align="Center" style="width: 50px;"></th>';
+			if (descricaoCabecalho === 'FontePagadora') {
+				stTabela += '				<th align="Center" style="width: 120px;">CNPJ</th>';
+				stTabela += '				<th align="left">Fonte Pagadora</th>';
+			} else {
+				stTabela += '				<th align="Center" style="width: 120px;">Id</th>';
+				stTabela += '				<th align="left">'+descricaoCabecalho+'</th>';
+			}
+			for (var i = 0; i < colunasTabela.length; i++) {
+				stTabela += '			<th align="left">'+ colunasTabela[i] +'</th>';
+			}
+			//stTabela += '				<th class="colunaMinima" title="Seleciona o registro para edição">Selecionar</th>';	
+			stTabela += '			</tr>';
+			stTabela += '		</thead>';
+			stTabela += '		<tbody id="CorpoTabela">&nbsp;</tbody>';
+			stTabela += '	</table>';	  		
+			$("#divTabelaBuscaPadrao").html(stTabela) ;
+			$("#PaginacaoBuscaPadrao").html("") ;
+		}
+		
+		$("#busca_padrao_campos").html(st_campos) ;
+		$("#busca_padrao").show();
+		/*$("#busca_padrao").css({'visibility':'visible','opacity':'1'});*/
+		//var doc = document.documentElement.clientHeight ? document.documentElement : document.body;
+// 		var posicao   = ((this.height() - $("#modalBusca-content1").outerHeight()) / 2) + "px";
+// 		alert(posicao);
+// 		alert(this.top + " " + this.left);
+		
+		//posição do objeto na tela
+// 		event = event || window.event;
+// 		var source = event.target || event.srcElement;
+		 				
+// 		var topRelativo = (($(document).height() - $("#modalBusca-content").height() )/2) - ($("#modalBusca-content").height() /3);
+		
+// 		//$("#modalBusca-content").css({'top':topRelativo});
+// 		var posicaoY = source.y || source.offsetTop; 														
+// 		//var posicaoX = source.x || source.offsetLeft;
+		
+//  		if(posicaoY>120){
+//  			$("#modalBusca-content").css({'top':posicaoY-100}); 			
+//  		}else{
+//  			$("#modalBusca-content").css({'top':posicaoY});
+//  		}
+		//var leftRelativo = ($(document).width() - $("#modalBusca-content").width() )/2;
+		
+		//$("#modalBusca-content").css({'left':leftRelativo});
+		
+	}
+		
+	
+	//window.toggleContrast=function(){Contrast.toogle()};
+	
+	window.addEventListener("keydown", function(event ){parent.postMessage({'origem':'corpo','comando':'keydown','key':event.key,'keycode':event.keyCode}); });
+	window.addEventListener("keyup", function(event ){parent.postMessage({'origem':'corpo','comando':'keyup','key':event.key,'keycode':event.keyCode}); });
+		
+	//guardo aqui as teclas apertadas e não soltadas
+	var mapTeclas = new Map();
+	
+	function teclaApertada ( codigo){
+		mapTeclas.set(codigo, true);
+		//console.log(codigo + '  1');
+		//ativar menu quando apertar ctrl+alt+m
+		// ctrl =17    alt = 18    m = 77  shift = 16 173 = menos  61 = mais 67 = c  89 = y
+		if(mapTeclas.get(17) && mapTeclas.get(18) && mapTeclas.get(77) ){
+			
+			//console.log($('#menu > #0'));
+			$('#0').show();
+			$('#0').focus();
+		}else if(mapTeclas.get(17) && mapTeclas.get(18) && mapTeclas.get(173) ){
+			$("#FonteDiminuir").trigger('click');
+			//fonte('d');
+		}else if(mapTeclas.get(17) && mapTeclas.get(18) && mapTeclas.get(61) ){
+			$("#FonteAumentar").trigger('click');
+			//fonte('a');
+		}else if(mapTeclas.get(17) && mapTeclas.get(18) && mapTeclas.get(89) ){
+			$("#ContrasteAlterar").trigger('click');
+			//window.toggle();
+		}
+	}
+	
+	function teclaLiberada (codigo){
+		//mapTeclas.clear();
+		mapTeclas.delete(codigo);
+	}
+	
+	var eventMethod = window.addEventListener ? "addEventListener" : "attachEvent";
+	var eventer = window[eventMethod];
+	var messageEvent = eventMethod == "attachEvent" ? "onmessage" : "message";
+	
+	// Listen to message from child window
+	eventer(messageEvent,function(event) {
+		 if (!event.origin.includes( "localhost:8080") && !event.origin.includes("projudi.tjgo.jus.br") && !event.origin.includes("projudi-teste.tjgo.jus.br") ){
+			  return;
+		  }
+		  
+		  var origem = event.data.origem;
+		  if(origem=='corpo'){				
+				if(event.data.comando){
+					//console.log("header " + event.data.comando + " " + event.data.key + " " +  event.data.keycode  );										
+				    									    
+					if ( event.data.comando=="keydown"){						
+						teclaApertada(event.data.keycode);
+					}else if (event.data.comando=="keyup"){
+						teclaLiberada(event.data.keycode);
+					}					
+				}
+		  }else if(origem=='menu'){
+			 //var stComando = ; 
+			 //alert(stComando);
+			 
+			 //alert(window[toogle];
+			  var comando = window[event.data.comando];
+			  //alert(comando);
+			  if(comando){
+			  	//console.log("body " + event.data.comando);
+			    comando();
+			   	//window.Contrast[event.data.comando]();
+			  }
+		  }				  
+	});	
+  
+	function infoPasso( id_form, id, titulo){
+		var campos = $('table#tb_'+id_form+ ' tr#tr_'+ id ).attr("campos");
+		var obJson = JSON.parse(campos);
+		//console.log(campos);
+		var ids = Object.keys(obJson);
+		var valores = Object.values(obJson);
+		var stFormulario ='<fieldset class="formEdicao">'
+		stFormulario+='<legend class="formEdicaoLegenda">'+titulo+'</legend>';
+		for(var i=0; i<ids.length;i++){
+			if (Array.isArray(valores[i])){
+				var stValor = JSON.stringify(valores[i]);
+				stFormulario+='<div class="col100"><label class="formEdicaoLabel">' + ids[i] + '</label> <Text rows="6" cols="150" class="formEdicaoInputSomenteLeitura" readonly="true">' + stValor + '</Text></div>';
+			}else{
+				var tamanhoColuna= 15;
+				var qtdCaracteresColl = ids[i].length;
+				if (valores[i].length>ids[i].length){
+					qtdCaracteresColl= valores[i].length;
+				}
+				if( qtdCaracteresColl<=10){									tamanhoColuna = 10;}
+				else if( qtdCaracteresColl>10 && qtdCaracteresColl<=20){	tamanhoColuna = 15; }
+				else if( qtdCaracteresColl>20 && qtdCaracteresColl<=30){	tamanhoColuna = 20; }
+				else if( qtdCaracteresColl>30 && qtdCaracteresColl<=40){	tamanhoColuna = 25; }
+				else if( qtdCaracteresColl>40 && qtdCaracteresColl<=50){	tamanhoColuna = 30; }
+				else if( qtdCaracteresColl>50 && qtdCaracteresColl<=60){	tamanhoColuna = 35; }
+				else if( qtdCaracteresColl>60 && qtdCaracteresColl<=70){	tamanhoColuna = 40; }
+				else if( qtdCaracteresColl>70 && qtdCaracteresColl<=80){	tamanhoColuna = 45; }
+				else if( qtdCaracteresColl>80 && qtdCaracteresColl<=90){	tamanhoColuna = 50 }
+				else if( qtdCaracteresColl>90 && qtdCaracteresColl<=100){	tamanhoColuna = 55; }
+				else if( qtdCaracteresColl>100 && qtdCaracteresColl<=110){	tamanhoColuna = 60; }
+				else if( qtdCaracteresColl>110 && qtdCaracteresColl<=120){	tamanhoColuna = 65; }
+				else if( qtdCaracteresColl>120 && qtdCaracteresColl<=130){	tamanhoColuna = 70; }
+				else if( qtdCaracteresColl>130 && qtdCaracteresColl<=140){	tamanhoColuna = 75; }
+				else if( qtdCaracteresColl>140 && qtdCaracteresColl<=150){	tamanhoColuna = 80; }
+				else if( qtdCaracteresColl>150 && qtdCaracteresColl<=160){	tamanhoColuna = 85; }
+				else if( qtdCaracteresColl>160 && qtdCaracteresColl<=170){	tamanhoColuna = 90; }
+				else if( qtdCaracteresColl>170){							tamanhoColuna = 100; }
+				
+				stFormulario+='<div class="col' + tamanhoColuna + '"><label>' + ids[i] + '</label> <input class="formEdicaoInputSomenteLeitura" type="text" readonly="true" size="' + valores[i].length + '" value="' + valores[i] + '"/></div>';
+			}
+		}
+		$('div#divInfoPasso').html(stFormulario);
+		$("#infoPasso").show();
+	}
+	function infoFoto(id){		
+		$('img#img_infoFoto').attr('src', $('img#foto'+id).attr('src'));
+		$("#infoFoto").show();
+	}
+	
+	$(document).ready(function() {
+		
+		var mensagemErro = '';		 
+		var mensagemOk = '';
+		var titulo ='Processo Judicial';						
+		var availableTags;
+		
+// 		$( function() {
+// 		   $( ".___Movimentavel" ).draggable();
+// 		});
+		  
+		if (((mensagemErro!='') && (mensagemErro!='null')) || ((mensagemOk!='') && (mensagemOk!='null'))){
+			
+			if ((mensagemErro!='') && (mensagemErro!='null')) {
+				//titulo+=" Erro";
+				mostrarMensagemErro(titulo, mensagemErro);												
+			}else{
+				//titulo+=" Ok";					
+				mostrarMensagemOk(titulo, mensagemOk);
+			}
+			
+			$('#divCorpo').focus();	
+						
+			$('html, body',window.parent.document).animate({scrollTop:0}, 'slow');
+		}
+		
+		
+		
+		window.Contrast.check();
+		
+    }); 
+</script>
+
+	<script type="text/javascript">
+    	function setarCursorPrimeiroCampo() {
+	    	if( document.getElementById("nomeBusca1") ) {
+	    		document.getElementById("nomeBusca1").focus();
+	    	}
+    	}
+    	setarCursorPrimeiroCampo();
+	</script>
+	<script>
+  function centralizarColunaSeForAtivo() {
+    const tabela = document.getElementById('tabelaLocalizar');
+    if (!tabela) return;
+
+    const cabecalhos = tabela.querySelectorAll('thead th');
+    let indiceAtivo = -1;
+
+    // Procura a coluna com texto "Ativo"
+    cabecalhos.forEach((th, index) => {
+      if (th.textContent.trim().toLowerCase() === 'ativo') {
+        indiceAtivo = index;
+      }
+    });
+
+    // Se encontrou a coluna "Ativo"
+    if (indiceAtivo !== -1) {
+      const linhas = tabela.querySelectorAll('tr');
+      linhas.forEach((linha) => {
+        const celula = linha.children[indiceAtivo];
+        if (celula) {
+          celula.style.textAlign = 'center';
+        }
+      });
+    }
+  }
+
+  // Chamada inicial
+  centralizarColunaSeForAtivo();
+
+  // Reaplica ao alterar a tabela
+  const alvo = document.getElementById('CorpoTabela');
+  if (alvo) {
+    const observador = new MutationObserver(() => {
+      centralizarColunaSeForAtivo();
+    });
+
+    observador.observe(alvo, {
+      childList: true,
+      subtree: true,
+    });
+  }
+</script>
+	
+</body>
+</html>

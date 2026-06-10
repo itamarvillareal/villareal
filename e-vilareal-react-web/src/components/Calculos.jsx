@@ -1241,8 +1241,10 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     return `Calculo_Processo_${codigoClienteNorm}_${yyyy}${mm}${dd}.pdf`;
   }
 
-  async function gerarPdfCalculo() {
-    if (!aceitarPagamento) {
+  async function gerarPdfCalculo({ forcar = false } = {}) {
+    // `forcar` é usado quando o PDF de cálculos acompanha a petição de execução,
+    // onde o cálculo pode não estar "aceito" (ex.: gerado para hoje).
+    if (!forcar && !aceitarPagamento) {
       window.alert('Para salvar em PDF, é necessário aceitar o pagamento.');
       return;
     }
@@ -1826,15 +1828,15 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
           juros: t?.juros ?? '',
           multa: t?.multa ?? '',
           honorarios: t?.honorarios ?? '',
+          // INV1: envia o total do título exatamente como exibido na grade (sem recompor no backend).
+          total: String(t?.total ?? '').trim() !== '' ? t.total : calcularTotalTituloGrade(t),
         };
       });
   }
 
   function abrirFluxoPeticaoExecucao() {
     if (!peticaoEnderecamento || peticaoEnderecamento.trim() === '') {
-      setPeticaoEnderecamento(
-        'EXCELENTÍSSIMO(A) SENHOR(A) DOUTOR(A) JUIZ(A) DE DIREITO DA ___ VARA ___ DA COMARCA DE ___ - ___'
-      );
+      setPeticaoEnderecamento('MERITÍSSIMO JUÍZO DO JUIZADO ESPECIAL CÍVEL DA COMARCA DE ANÁPOLIS - GO');
     }
     setPeticaoData(aceitarPagamento ? dataCalculo : hojeBR());
     if (calculoTravadoAceito) {
@@ -1885,7 +1887,8 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
         );
         return;
       }
-      const titulosReq = montarTitulosRequestPeticao(peticaoTitulosParaGerar ?? titulos);
+      const listaParaGerar = peticaoTitulosParaGerar ?? titulos;
+      const titulosReq = montarTitulosRequestPeticao(listaParaGerar);
       if (titulosReq.length === 0) {
         window.alert('Não há títulos com valor para gerar a petição.');
         return;
@@ -1902,10 +1905,18 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
           periodicidade: String(periodicidade ?? 'mensal'),
         },
         titulos: titulosReq,
+        // INV1: total geral exatamente como o resumo da tela calcula para a mesma lista enviada.
+        totalGeral: calcularResumoTitulosGrade(listaParaGerar).total,
       };
       const blob = await gerarPeticaoExecucao(body);
       const sufixo = procNorm ? `${codigoClienteNorm}-${procNorm}` : String(codigoClienteNorm);
       downloadPdfBlob(blob, `peticao-execucao-${sufixo}.pdf`);
+      // Junto com a petição, entrega também o PDF do relatório de cálculos (memória de cálculo).
+      try {
+        await gerarPdfCalculo({ forcar: true });
+      } catch (e) {
+        console.warn('[vilareal] Petição gerada, mas falhou o PDF de cálculos:', e);
+      }
       setModalPeticaoOpcoes(false);
     } catch (e) {
       window.alert(`Não foi possível gerar a petição de execução: ${e?.message ?? e}`);
@@ -3465,7 +3476,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
             )}
             <button
               type="button"
-              onClick={gerarPdfCalculo}
+              onClick={() => void gerarPdfCalculo()}
               className="w-full px-2 py-1.5 rounded border border-slate-200 bg-white text-slate-700 text-xs hover:bg-slate-50 text-left"
             >
               Salvar Formulário em PDF

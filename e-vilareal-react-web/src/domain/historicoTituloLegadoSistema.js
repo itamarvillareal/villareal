@@ -1,6 +1,9 @@
 /**
  * Títulos gerados automaticamente pelo sistema legado (VB) ao gravar histórico na pasta.
- * O relatório «Consultas Realizadas» do legado não os inclui na listagem do dia.
+ *
+ * - «Consultas Realizadas» (diagnóstico): exclui estes títulos na listagem do dia.
+ * - «Processos Consultados» (popup Excel ao abrir): inclui o processo mesmo quando
+ *   o único movimento do dia é automático (consulta PROJUDI gravou só JUNTAR PETIÇÃO…).
  */
 
 function normalizarTituloLegado(titulo) {
@@ -53,30 +56,48 @@ export function chaveProcessoConsultasRealizadas(item) {
   return `${cod}:${proc}`;
 }
 
-function idAndamentoConsultas(item) {
-  return Number(item?.id ?? item?.andamentoId) || 0;
+function ordemEntradaHistorico(item) {
+  return Number(item?.indice ?? item?.id ?? item?.andamentoId) || 0;
 }
 
 /**
- * Mantém só o andamento mais recente (maior id) por par código cliente + processo na mesma data.
+ * Mantém só a entrada mais recente (maior id/índice) por par código cliente + processo na mesma data.
  * @param {Array<Record<string, unknown>>} itens
  */
-export function agruparConsultasRealizadasPorProcesso(itens) {
+function agruparUmaLinhaPorProcesso(itens) {
   if (!Array.isArray(itens) || itens.length === 0) return [];
   const melhor = new Map();
   for (const item of itens) {
     const k = chaveProcessoConsultasRealizadas(item);
     const prev = melhor.get(k);
-    if (!prev || idAndamentoConsultas(item) >= idAndamentoConsultas(prev)) {
+    if (!prev || ordemEntradaHistorico(item) >= ordemEntradaHistorico(prev)) {
       melhor.set(k, item);
     }
   }
   const out = [...melhor.values()];
   out.sort((a, b) => {
-    const na = Number(a.numero) || idAndamentoConsultas(a);
-    const nb = Number(b.numero) || idAndamentoConsultas(b);
+    const na = Number(a.numero) || ordemEntradaHistorico(a);
+    const nb = Number(b.numero) || ordemEntradaHistorico(b);
     if (nb !== na) return nb - na;
     return chaveProcessoConsultasRealizadas(a).localeCompare(chaveProcessoConsultasRealizadas(b));
   });
   return out;
+}
+
+/**
+ * «Consultas Realizadas» — após excluir títulos automáticos do VB.
+ * @param {Array<Record<string, unknown>>} itens
+ */
+export function agruparConsultasRealizadasPorProcesso(itens) {
+  return agruparUmaLinhaPorProcesso(filtrarItensHistoricoConsultasRealizadas(itens));
+}
+
+/**
+ * «Processos Consultados» (popup Excel) — inclui movimentos automáticos do dia.
+ * @param {Array<Record<string, unknown>>} itens
+ */
+export function agruparProcessosConsultadosPorProcesso(itens) {
+  if (!Array.isArray(itens)) return [];
+  const comInfo = itens.filter((item) => String(item?.info ?? item?.titulo ?? '').trim());
+  return agruparUmaLinhaPorProcesso(comInfo);
 }

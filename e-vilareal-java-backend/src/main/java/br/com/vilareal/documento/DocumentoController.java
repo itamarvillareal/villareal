@@ -30,6 +30,7 @@ public class DocumentoController {
     private final DocumentoDrivePastaService documentoDrivePastaService;
     private final DocumentoArquivoImportacaoService arquivoImportacaoService;
     private final DocumentoReformatarService reformatarService;
+    private final PeticaoExecucaoService peticaoExecucaoService;
 
     public DocumentoController(
             DocumentoPdfService pdfService,
@@ -38,7 +39,8 @@ public class DocumentoController {
             GoogleDriveService googleDriveService,
             DocumentoDrivePastaService documentoDrivePastaService,
             DocumentoArquivoImportacaoService arquivoImportacaoService,
-            DocumentoReformatarService reformatarService) {
+            DocumentoReformatarService reformatarService,
+            PeticaoExecucaoService peticaoExecucaoService) {
         this.pdfService = pdfService;
         this.peticaoAiService = peticaoAiService;
         this.procuracaoService = procuracaoService;
@@ -46,6 +48,7 @@ public class DocumentoController {
         this.documentoDrivePastaService = documentoDrivePastaService;
         this.arquivoImportacaoService = arquivoImportacaoService;
         this.reformatarService = reformatarService;
+        this.peticaoExecucaoService = peticaoExecucaoService;
     }
 
     @PostMapping("/gerar-pdf")
@@ -221,6 +224,85 @@ public class DocumentoController {
     @Profile("dev")
     public ResponseEntity<byte[]> gerarPdfIATeste() {
         return gerarPdfComIA(criarExemploIA());
+    }
+
+    @PostMapping("/peticao-execucao")
+    public ResponseEntity<byte[]> peticaoExecucao(@RequestBody PeticaoExecucaoRequest request) {
+        byte[] pdf = peticaoExecucaoService.gerar(request);
+        LocalDate data = request != null && request.data() != null ? request.data() : LocalDate.now();
+        String nomeArquivo = DocumentoDrivePastaService.formatarNomeArquivoPeticao("Execucao", data);
+        salvarPdfNoDriveAsync(pdf, nomeArquivo, null, null, null, TipoDocumento.PETICAO);
+        return respostaPdf(nomeArquivo, pdf, false);
+    }
+
+    /**
+     * Exemplo visual (dev) da petição de execução de taxa condominial: monta variáveis fake cobrindo
+     * todas as classes do corpo e realces, gera o PDF pelo template novo e salva em
+     * {@code /tmp/peticao_execucao_exemplo.pdf}.
+     */
+    @PostMapping("/peticao-execucao-exemplo")
+    @Profile("dev")
+    public ResponseEntity<byte[]> peticaoExecucaoExemplo() {
+        java.util.Map<String, Object> vars = new java.util.HashMap<>();
+        vars.put("advogadoNome", "Dr. Itamar Alexandre Felix Villa Real Junior");
+        vars.put("advogadoOab", "OAB/GO 33.329");
+        vars.put(
+                "enderecamentoHtml",
+                "Excelentíssimo Senhor Doutor Juiz de Direito da ___ Vara Cível da Comarca de Anápolis - GO");
+        vars.put(
+                "qualificacaoCabecalhoHtml",
+                "<strong>CONDOMÍNIO RESIDENCIAL EXEMPLO</strong>, pessoa jurídica de direito privado, "
+                        + "inscrito no CNPJ sob o nº 00.000.000/0001-00, com sede na Av. Exemplo, nº 100, "
+                        + "Anápolis-GO, vem, respeitosamente, à presença de Vossa Excelência, por seu advogado "
+                        + "que esta subscreve, propor a presente <strong>AÇÃO DE EXECUÇÃO DE TÍTULO EXECUTIVO "
+                        + "EXTRAJUDICIAL</strong> em face de <strong>FULANO DE TAL</strong>, brasileiro, solteiro, "
+                        + "inscrito no CPF sob o nº 000.000.000-00, residente e domiciliado na Rua Exemplo, nº 200, "
+                        + "Anápolis-GO, pelos fatos e fundamentos a seguir expostos:");
+        vars.put(
+                "corpoHtml",
+                "<p class=\"titulo\">DOS FATOS:</p>"
+                        + "<p class=\"subtitulo\">Da obrigação <em>propter rem</em> do condômino</p>"
+                        + "<p class=\"paragrafo\">O Executado é <strong>proprietário</strong> da unidade autônoma "
+                        + "constituída pelo <span class=\"fundo-amarelo\">Apto 101, Bloco A</span>, integrante do "
+                        + "condomínio Exequente, e encontra-se <u>inadimplente</u> quanto às taxas condominiais "
+                        + "vencidas e não pagas.</p>"
+                        + "<p class=\"paragrafo\">A importância total do débito perfaz "
+                        + "<strong><u>R$ 12.345,67</u></strong> (doze mil, trezentos e quarenta e cinco reais e "
+                        + "sessenta e sete centavos), conforme planilha anexa.</p>"
+                        + "<p class=\"subtitulo\">Do título executivo extrajudicial</p>"
+                        + "<p class=\"paragrafo\">Os títulos encontram-se devidamente <span class=\"txt-vermelho\">"
+                        + "acostados</span> aos autos, revestindo-se de certeza, liquidez e exigibilidade.</p>"
+                        + "<p class=\"recuado\">Art. 1.336. São deveres do condômino: I - contribuir para as despesas "
+                        + "do condomínio na proporção das suas frações ideais, salvo disposição em contrário na "
+                        + "convenção.</p>"
+                        + "<p class=\"titulo\">DO DIREITO:</p>"
+                        + "<p class=\"paragrafo\">A cobrança encontra amparo no art. 784, X, do CPC, que confere "
+                        + "natureza de título executivo extrajudicial ao crédito referente às contribuições "
+                        + "condominiais, <span class=\"fundo-azul-claro\">conforme previsto na convenção</span>.</p>"
+                        + "<p class=\"titulo\">DOS PEDIDOS:</p>"
+                        + "<p class=\"pedido\">Seja o Executado citado para, no prazo de 3 (três) dias, efetuar o "
+                        + "pagamento da dívida, sob pena de penhora (art. 829 do CPC);</p>"
+                        + "<p class=\"pedido\">A condenação do Executado ao pagamento das custas processuais e "
+                        + "honorários advocatícios, ora fixados em <span class=\"fundo-laranja\">10% sobre o valor "
+                        + "da execução</span>.</p>");
+        vars.put(
+                "fechoHtml",
+                "<p style=\"text-indent:0;margin:0;\">Nestes termos,</p>"
+                        + "<p style=\"text-indent:0;margin:0 0 18pt 0;\">pede deferimento.</p>"
+                        + "<p style=\"text-align:center;margin:0 0 36pt 0;\">Anápolis, estado de Goiás, "
+                        + "9 de junho de 2026.</p>"
+                        + "<p style=\"text-align:center;margin:0;font-weight:bold;\">Dr. ITAMAR ALEXANDRE FÉLIX "
+                        + "VILLA REAL JÚNIOR</p>"
+                        + "<p style=\"text-align:center;margin:0;font-weight:bold;\">OAB/GO n° 33.329</p>");
+
+        byte[] pdf = pdfService.gerarPdfDeTemplate("documentos/peticao-execucao", vars);
+        try {
+            java.nio.file.Files.write(java.nio.file.Path.of("/tmp/peticao_execucao_exemplo.pdf"), pdf);
+            log.info("PDF de exemplo salvo em /tmp/peticao_execucao_exemplo.pdf ({} bytes)", pdf.length);
+        } catch (java.io.IOException e) {
+            log.warn("Não foi possível salvar o PDF de exemplo em /tmp", e);
+        }
+        return respostaPdf("peticao_execucao_exemplo.pdf", pdf, true);
     }
 
     private void salvarPdfNoDriveAsync(

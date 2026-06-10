@@ -1,0 +1,994 @@
+<!DOCTYPE html>
+
+<html>
+    <head>
+    	<title>Processo Judicial</title>
+    	<link rel="shortcut icon" href="./imagens/favicon.svg">
+   
+       	<base target="userMainFrame"/>
+                
+        <script type="text/javascript" src="/ruxitagentjs_ICA7NVfqrux_10337260504112723.js" data-dtconfig="app=bc5a3be3c6a535b2|owasp=1|featureHash=ICA7NVfqrux|rdnt=1|uxrgce=1|cuc=nncenbbl|mel=100000|expw=1|dpvc=1|lastModification=1780945583223|postfix=nncenbbl|tp=500,50,0|srbbv=2|agentUri=/ruxitagentjs_ICA7NVfqrux_10337260504112723.js|reportUrl=/rb_bf56388ccc|rid=RID_295944807|rpid=979281496|domain=tjgo.jus.br"></script><style type="text/css" media="screen">
+
+.menu a, .menuA {
+	color: #484848;
+	z-index: 1000;
+}
+/*cor quando passar o mouse
+/*menu hover*/
+.menu a:hover, .menuAHover {
+	background-color: #eee !important;
+	color: #333 !important;
+}
+.menu {
+	margin-top: -28px;	
+	float: left;
+	text-align: left;
+	font-size: 12px;
+	font-style: normal;
+	padding: 4px 8px 4px 8px;
+	background-color:#ccc;
+}
+.menu a, .menuA {
+	text-decoration: none;
+	display: block;
+	margin-left: 3px;
+	margin-right: 3px;
+	padding: 1px 3px 1px 3px;
+	font-weight:bold;
+}
+.menu ul {
+	list-style: none;
+	margin: 0;
+	padding: 0 0 0 0;
+	width: auto;
+	float: left;
+	z-index: 1000;
+}
+.menu ul li {
+	position: relative;
+	white-space: nowrap;
+	height: 18px !important;
+	padding: 0px;
+	margin: 0 0 0 0;
+}
+.menu ul ul {
+	position: absolute;
+	width:auto;
+	min-width: 250px;
+	font-weight: normal;
+	background-color: #ddd;
+	background-image: none;
+	margin: 0;
+	box-shadow: 2px 2px 2px rgba(100,100,100,0.7);
+	border-radius: 3px;/*box-shadow:5px 5px rgba(200,200,200,0.7);*/
+	
+}
+.menu ul ul li {
+	padding: 8px 5px;
+	
+}
+.TemFilho {
+	background-image: url(./imagens/expand3.gif);
+	background-repeat: no-repeat;
+	background-position: 100% 50%;
+}
+.menu ul ul ul, .menu ul ul ul ul {
+	position: absolute;
+	top: 0;
+	left: 100%;
+	width: auto;
+
+}
+
+.menu ul ul {
+	display: none;
+}
+
+</style><link href="css/Principal.css" rel="stylesheet" type="text/css">
+         
+	   <style type="text/css"> #bkg_projudi{ display:none } </style>
+        
+        <script type='text/javascript' src='./js/Funcoes.js'></script>
+        <script type='text/javascript' src='./js/jquery.js'></script>
+		<script type='text/javascript' src='./js/ui/jquery-ui.min.js'></script>     
+		<script type="text/javascript" src="./js/projudi.js"></script>
+		<script type="text/javascript" src="./js/acessibilidadeMenu.js"></script>   		
+		<script type="text/javascript" src="./js/fonte_contraste.js"></script>
+		<script type="text/javascript" src="./js/comando_de_voz.js"></script>
+
+		<script type='text/javascript'>
+			var tempoMaximo = 1800;
+			var tempoAtual = tempoMaximo;					       
+        	var navegacao_arquivos;
+        	        	
+        	websocket = null;		
+			var conectado = false;	
+			var tentativas = 0;
+			const WEBSOCKET_CLOSE_STATE = 3
+			
+
+			
+			function isWebSocketConnect(){
+				if (websocket==null){
+					conectar();					
+				}
+				
+				if (websocket.readyState == WEBSOCKET_CLOSE_STATE){				   
+				   return false;
+				}	
+				return true;
+			}
+			
+			function conectar(){
+
+				if ('WebSocket' in window) {
+					websocket = new WebSocket("wss://127.0.0.1:8443/events/");
+				} else if ('MozWebSocket' in window) {
+					websocket = new WebSocket("wss://127.0.0.1:8443/events/");
+				} else {
+					alert("Browser não suporta WebSocket");
+				}
+		
+				if (websocket == undefined || websocket== null) {
+					alert("Não foi possivel conectar no Serviço de Assinatura Digital e Impressão.\n Verifique se o Serviço de Assinatura Digital e Impressão S.A.I., está rodando e com o serviço iniciado.");
+					return;
+				}
+				
+				websocket.onopen = function() {
+					conectado = true;
+					//console.log("Conectou com sucesso");
+				};
+		
+				websocket.onclose = function() {
+					//console.log("Desconectou com sucesso");
+					websocket==null;
+					conectado = false;
+				};
+		
+				websocket.onerror = function(evt) {
+					//console.log("Aconteceu um erro " + evt.data);
+					if (!conectado){
+						tentativas++
+						if (tentativas>=2){
+							window.open('./certificado_sai.html','_blank');
+						}else{
+							window.open('https://docs.tjgo.jus.br/projudi/jar/sai.jnlp','_blank');
+							//console.log("Baixando o Assinador " + evt.data);
+							setTimeout(function() { conectar();	}, 10000);
+						}
+					}else{
+						mostrarMensagemErro("Erro ",  evt.data);
+					}
+				};		
+			}
+        	
+        	$(document).ready(function() {
+        		criarMenu('menuPrinciapl','Principal','menuA','menuAHover');
+				contadorSessao('cronometro');		
+				Contrast.check();
+// 				if (isAdvogado){
+// 					conectar();
+// 				}
+				atualizarTamanhoIframe();
+        	});
+                
+			function Posicionar(){
+				var $elementoCabecalho = $("div#Cabecalho");
+				var $elementoWindow = $( window );
+				$elementoCabecalho.css( 'left', ( ( $elementoWindow.width() / 2 ) - ( $elementoCabecalho.outerWidth( true ) / 2 ) ) + 'px' );
+			}
+
+			function tratarEventoLoadIframe(){
+				tempoAtual = tempoMaximo;
+				
+				//Acessibilidade - Alt+9 = Comando de voz (mesmo com o foco no iframe)
+				const iframePrincipal = document.getElementById('Principal');
+				if (iframePrincipal){
+					iframePrincipal.contentWindow.addEventListener('keydown', function(event) {
+					  if (event.key === '9' && event.altKey) {
+						  const btnComandoVoz = document.getElementById('btn-voz-pesquisa');
+						  if(btnComandoVoz) btnComandoVoz.click();
+							event.preventDefault();
+					  }
+					});	
+				}
+			}
+			function atualizarTamanhoIframe(){
+				var cabecalhoTela = 65;
+				//var altura = window.screen.height - cabecalhoTela ;
+				var altura1 = window.innerHeight - cabecalhoTela;
+				//var altura2 = document.documentElement.clientHeight;
+				//var altura3 = document.body.clientHeight;
+				//this.height = window.screen.height -cabecalhoTela;
+				$('#Principal').attr('height', altura1);
+			}	
+		</script>
+
+    </head>
+    
+    <body class="fundo" onresize="atualizarTamanhoIframe()">
+		<div id="dialog" style="display:none">&nbsp;</div>
+	
+<div id="busca_padrao" class="modalBusca">
+	<div id='modalBusca-content' class="modalBusca-content1 ___Movimentavel">
+		<div id='modalBusca-content-titulo' class="modalTitulo"><p id='modalTitulo'></p><span class="modal_close" onclick='fecharBuscaPadrao()'>&times;</span></div> 
+		<div class="modalBusca-content2">
+			<fieldset id="formLocalizar" > 
+				<legend id="legenda" ></legend>
+				<div class='float_label_form' id='busca_padrao_campos'></div>
+				<br />
+				<div class="Centralizado">
+					<input type="submit" id="busca_padraoLocalizar" name="busca_padraoLocalizar" value="Consultar" onclick="javascript:buscaDadosModal(_stTempRetorno, _paginaAtual, _numeroFiltros , '0', _tamanho, _id, _descricao, _colunasTabela, _fieldName,_filtro,_filtro2); return false;"/>
+				</div>
+			</fieldset>	
+			<div id='divTabelaBuscaPadrao' class="divTabela"></div>
+			<div id="PaginacaoBuscaPadrao" class="Paginacao"></div>
+		</div>
+	</div> 
+</div>
+
+<div id="infoPasso" style="display:none" class="modalBusca">
+	<div class="modalBusca-content1 ___Movimentavel">
+		<div class="modalTitulo"><p id='modalTitulo'></p><span class="modal_close" onclick='$("#infoPasso").hide();'>&times;</span></div> 
+		<div class="modalBusca-content2">
+			<div id="divInfoPasso" class="divEditar"> 
+				
+			</div>
+		</div>
+	</div> 
+</div>
+
+<div id="infoFoto" style="display:none" class="modalBusca">
+	<div class="modalBusca-content1 ___Movimentavel">
+		<div class="modalTitulo"><p id='modalTitulo'></p><span class="modal_close" onclick='$("#infoFoto").hide();'>&times;</span></div> 
+		<div class="modalBusca-content2">
+			<div id="divInfoPasso" class="divEditar Centralizado"> 
+				<img id='img_infoFoto'>
+			</div>
+		</div>
+	</div> 
+</div>
+
+<div id="infoFormulario" style="display:none" class="modalBusca">
+	<div class="modalBusca-content1 ___Movimentavel">
+		<div class="modalTitulo"><p id='modalTitulo'></p><span class="modal_close" onclick='$("#infoFormulario").hide();'>&times;</span></div> 
+		<div class="modalBusca-content2">
+			<div id="divinfoFormulario" class="divEditar Centralizado"> 				
+			</div>
+		</div>
+	</div> 
+</div>
+
+<div id="divPortaTabela" style="display:none" class="divPortaTabela ___Movimentavel">
+	<div class="divPortaTabelaTitulo"><p id='divPortaTabelaTitulo'></p><span class="modal_close" onclick='$("#divPortaTabela").hide();'>&times;</span></div>
+	<div class='tableview'> 
+		<div id="divPortaTabelaConteudo" class="Centralizado divPortaTabelaConteudo tableview-holder"> 
+		
+		</div>
+	</div>
+</div> 
+
+<input type="text" style="display:none">
+<input type="password" style="display:none">
+<div id='divLerSenha'  class='divFundoEscuro' style = "display:none">
+	<div id='divPortaSenha' class='divCentroTela' >
+		<h1>Digite a senha do certificado digital</h1>
+		<hr/>
+		<input type='password' name='senhaCertificado' id='senhaCertificado' autocomplete='off' ><br />
+		<div  style="text-align: left;">
+			<input type="checkbox" name='salvarSenhaCertificado' id='salvarSenhaCertificado' >Memorizar a senha do certificado
+		</div>
+		<hr/>
+		<div id="divBotoesCentralizadosAssinador" style="text-align: right; margin-top: 8px;">
+			<button id='but_senhaDigita' type="button">
+				Assinar
+	 		</button>
+	 		<button id='but_cancelar' type="button" onclick="javascript:$('#divLerSenha').hide(); $('#senhaCertificado').val(''); return false;">
+				Cancelar
+	 		</button>
+	 	</div>		
+	</div>
+</div>
+ 
+<script type="text/javascript" src="./js/fonte_contraste.js"></script>    
+<script type="text/javascript" >
+  
+	var _stTempRetorno;
+	var _boMostrarExcluir;
+	var _paginaAtual;
+	var _nomeBusca;
+	var _tamanhoRetornoConsulta;	
+	var _numeroFiltros;
+	var _tamanho;
+	var _id;
+	var _descricao;
+	var _colunasTabela;
+	var _fieldName;
+	var _filtro;
+	var _filtro2;
+	
+	var mousePosition;
+	var offset = [0,0];	
+	var isDown = false;
+	
+		
+	function acionarBotao(event,id_botao){
+		if (event.keyCode==13){
+			$("#" + id_botao ).trigger('click');
+		}
+	}
+
+	function fecharBuscaPadrao() {
+		$("#busca_padrao").hide();
+		$("#busca_padrao_campos").html('');
+	}
+	
+	function MostrarBuscaPadrao(field, ct, titulo, legenda, id, descricao, campos, colunasTabela, paginaAtual, tamanhoConsulta, filtro, filtro2, params){
+
+		_paginaAtual = paginaAtual;
+		_numeroFiltros = campos.length;
+		_tamanho = tamanhoConsulta;
+		_stTempRetorno = ct;
+		_descricao = descricao;
+		_colunasTabela=colunasTabela;
+		_filtro=$("#" + field + " #"+ filtro).val();
+		_filtro2=$("#" + field + " #"+ filtro2).val();
+
+        _filtro = ['null', 'undefined', '', null, undefined].includes(_filtro) ? '' : _filtro;
+        _filtro2 = ['null', 'undefined', '', null, undefined].includes(_filtro2) ? '' : _filtro2;
+
+		$("#modalTitulo").html(titulo) ;
+		$("#legenda").html(legenda);		
+		
+		var descricaoCabecalho = _descricao;
+		var st_campos ="";
+		var stTabela = "";		
+
+		if (params) {
+			if (params['cabecalhoDescricao']) {
+				descricaoCabecalho = params['cabecalhoDescricao'];
+			}
+		}
+		
+		for (var i = 0; i < campos.length; i++) {
+			st_campos += '<div class="col90 float_label">';			
+			st_campos += '<input id="nomeBusca'+(i+1)+'" class="float_label_input" onkeypress="acionarBotao(event,\'busca_padraoLocalizar\');" placeholder="'+campos[i]+'" name="nomeBusca'+(i+1)+'" value="" type="text">';
+			st_campos += '<label for="nomeBusca'+(i+1)+'">'+campos[i]+'</label>'; 
+			st_campos += '</div>';
+		}
+		
+		if (_id!=id || field!=_fieldName){
+			_id = id;
+			_fieldName= field;
+			stTabela += '	<table id="tabelaLocalizar" class="Tabela">';
+			stTabela += '		<thead>';
+			stTabela += '			<tr>';
+			stTabela += '				<th align="Center" style="width: 50px;"></th>';
+			if (descricaoCabecalho === 'FontePagadora') {
+				stTabela += '				<th align="Center" style="width: 120px;">CNPJ</th>';
+				stTabela += '				<th align="left">Fonte Pagadora</th>';
+			} else {
+				stTabela += '				<th align="Center" style="width: 120px;">Id</th>';
+				stTabela += '				<th align="left">'+descricaoCabecalho+'</th>';
+			}
+			for (var i = 0; i < colunasTabela.length; i++) {
+				stTabela += '			<th align="left">'+ colunasTabela[i] +'</th>';
+			}
+			//stTabela += '				<th class="colunaMinima" title="Seleciona o registro para edição">Selecionar</th>';	
+			stTabela += '			</tr>';
+			stTabela += '		</thead>';
+			stTabela += '		<tbody id="CorpoTabela">&nbsp;</tbody>';
+			stTabela += '	</table>';	  		
+			$("#divTabelaBuscaPadrao").html(stTabela) ;
+			$("#PaginacaoBuscaPadrao").html("") ;
+		}
+		
+		$("#busca_padrao_campos").html(st_campos) ;
+		$("#busca_padrao").show();
+		/*$("#busca_padrao").css({'visibility':'visible','opacity':'1'});*/
+		//var doc = document.documentElement.clientHeight ? document.documentElement : document.body;
+// 		var posicao   = ((this.height() - $("#modalBusca-content1").outerHeight()) / 2) + "px";
+// 		alert(posicao);
+// 		alert(this.top + " " + this.left);
+		
+		//posição do objeto na tela
+// 		event = event || window.event;
+// 		var source = event.target || event.srcElement;
+		 				
+// 		var topRelativo = (($(document).height() - $("#modalBusca-content").height() )/2) - ($("#modalBusca-content").height() /3);
+		
+// 		//$("#modalBusca-content").css({'top':topRelativo});
+// 		var posicaoY = source.y || source.offsetTop; 														
+// 		//var posicaoX = source.x || source.offsetLeft;
+		
+//  		if(posicaoY>120){
+//  			$("#modalBusca-content").css({'top':posicaoY-100}); 			
+//  		}else{
+//  			$("#modalBusca-content").css({'top':posicaoY});
+//  		}
+		//var leftRelativo = ($(document).width() - $("#modalBusca-content").width() )/2;
+		
+		//$("#modalBusca-content").css({'left':leftRelativo});
+		
+	}
+		
+	
+	//window.toggleContrast=function(){Contrast.toogle()};
+	
+	window.addEventListener("keydown", function(event ){parent.postMessage({'origem':'corpo','comando':'keydown','key':event.key,'keycode':event.keyCode}); });
+	window.addEventListener("keyup", function(event ){parent.postMessage({'origem':'corpo','comando':'keyup','key':event.key,'keycode':event.keyCode}); });
+		
+	//guardo aqui as teclas apertadas e não soltadas
+	var mapTeclas = new Map();
+	
+	function teclaApertada ( codigo){
+		mapTeclas.set(codigo, true);
+		//console.log(codigo + '  1');
+		//ativar menu quando apertar ctrl+alt+m
+		// ctrl =17    alt = 18    m = 77  shift = 16 173 = menos  61 = mais 67 = c  89 = y
+		if(mapTeclas.get(17) && mapTeclas.get(18) && mapTeclas.get(77) ){
+			
+			//console.log($('#menu > #0'));
+			$('#0').show();
+			$('#0').focus();
+		}else if(mapTeclas.get(17) && mapTeclas.get(18) && mapTeclas.get(173) ){
+			$("#FonteDiminuir").trigger('click');
+			//fonte('d');
+		}else if(mapTeclas.get(17) && mapTeclas.get(18) && mapTeclas.get(61) ){
+			$("#FonteAumentar").trigger('click');
+			//fonte('a');
+		}else if(mapTeclas.get(17) && mapTeclas.get(18) && mapTeclas.get(89) ){
+			$("#ContrasteAlterar").trigger('click');
+			//window.toggle();
+		}
+	}
+	
+	function teclaLiberada (codigo){
+		//mapTeclas.clear();
+		mapTeclas.delete(codigo);
+	}
+	
+	var eventMethod = window.addEventListener ? "addEventListener" : "attachEvent";
+	var eventer = window[eventMethod];
+	var messageEvent = eventMethod == "attachEvent" ? "onmessage" : "message";
+	
+	// Listen to message from child window
+	eventer(messageEvent,function(event) {
+		 if (!event.origin.includes( "localhost:8080") && !event.origin.includes("projudi.tjgo.jus.br") && !event.origin.includes("projudi-teste.tjgo.jus.br") ){
+			  return;
+		  }
+		  
+		  var origem = event.data.origem;
+		  if(origem=='corpo'){				
+				if(event.data.comando){
+					//console.log("header " + event.data.comando + " " + event.data.key + " " +  event.data.keycode  );										
+				    									    
+					if ( event.data.comando=="keydown"){						
+						teclaApertada(event.data.keycode);
+					}else if (event.data.comando=="keyup"){
+						teclaLiberada(event.data.keycode);
+					}					
+				}
+		  }else if(origem=='menu'){
+			 //var stComando = ; 
+			 //alert(stComando);
+			 
+			 //alert(window[toogle];
+			  var comando = window[event.data.comando];
+			  //alert(comando);
+			  if(comando){
+			  	//console.log("body " + event.data.comando);
+			    comando();
+			   	//window.Contrast[event.data.comando]();
+			  }
+		  }				  
+	});	
+  
+	function infoPasso( id_form, id, titulo){
+		var campos = $('table#tb_'+id_form+ ' tr#tr_'+ id ).attr("campos");
+		var obJson = JSON.parse(campos);
+		//console.log(campos);
+		var ids = Object.keys(obJson);
+		var valores = Object.values(obJson);
+		var stFormulario ='<fieldset class="formEdicao">'
+		stFormulario+='<legend class="formEdicaoLegenda">'+titulo+'</legend>';
+		for(var i=0; i<ids.length;i++){
+			if (Array.isArray(valores[i])){
+				var stValor = JSON.stringify(valores[i]);
+				stFormulario+='<div class="col100"><label class="formEdicaoLabel">' + ids[i] + '</label> <Text rows="6" cols="150" class="formEdicaoInputSomenteLeitura" readonly="true">' + stValor + '</Text></div>';
+			}else{
+				var tamanhoColuna= 15;
+				var qtdCaracteresColl = ids[i].length;
+				if (valores[i].length>ids[i].length){
+					qtdCaracteresColl= valores[i].length;
+				}
+				if( qtdCaracteresColl<=10){									tamanhoColuna = 10;}
+				else if( qtdCaracteresColl>10 && qtdCaracteresColl<=20){	tamanhoColuna = 15; }
+				else if( qtdCaracteresColl>20 && qtdCaracteresColl<=30){	tamanhoColuna = 20; }
+				else if( qtdCaracteresColl>30 && qtdCaracteresColl<=40){	tamanhoColuna = 25; }
+				else if( qtdCaracteresColl>40 && qtdCaracteresColl<=50){	tamanhoColuna = 30; }
+				else if( qtdCaracteresColl>50 && qtdCaracteresColl<=60){	tamanhoColuna = 35; }
+				else if( qtdCaracteresColl>60 && qtdCaracteresColl<=70){	tamanhoColuna = 40; }
+				else if( qtdCaracteresColl>70 && qtdCaracteresColl<=80){	tamanhoColuna = 45; }
+				else if( qtdCaracteresColl>80 && qtdCaracteresColl<=90){	tamanhoColuna = 50 }
+				else if( qtdCaracteresColl>90 && qtdCaracteresColl<=100){	tamanhoColuna = 55; }
+				else if( qtdCaracteresColl>100 && qtdCaracteresColl<=110){	tamanhoColuna = 60; }
+				else if( qtdCaracteresColl>110 && qtdCaracteresColl<=120){	tamanhoColuna = 65; }
+				else if( qtdCaracteresColl>120 && qtdCaracteresColl<=130){	tamanhoColuna = 70; }
+				else if( qtdCaracteresColl>130 && qtdCaracteresColl<=140){	tamanhoColuna = 75; }
+				else if( qtdCaracteresColl>140 && qtdCaracteresColl<=150){	tamanhoColuna = 80; }
+				else if( qtdCaracteresColl>150 && qtdCaracteresColl<=160){	tamanhoColuna = 85; }
+				else if( qtdCaracteresColl>160 && qtdCaracteresColl<=170){	tamanhoColuna = 90; }
+				else if( qtdCaracteresColl>170){							tamanhoColuna = 100; }
+				
+				stFormulario+='<div class="col' + tamanhoColuna + '"><label>' + ids[i] + '</label> <input class="formEdicaoInputSomenteLeitura" type="text" readonly="true" size="' + valores[i].length + '" value="' + valores[i] + '"/></div>';
+			}
+		}
+		$('div#divInfoPasso').html(stFormulario);
+		$("#infoPasso").show();
+	}
+	function infoFoto(id){		
+		$('img#img_infoFoto').attr('src', $('img#foto'+id).attr('src'));
+		$("#infoFoto").show();
+	}
+	
+	$(document).ready(function() {
+		
+		var mensagemErro = '';		 
+		var mensagemOk = '';
+		var titulo ='Processo Judicial';						
+		var availableTags;
+		
+// 		$( function() {
+// 		   $( ".___Movimentavel" ).draggable();
+// 		});
+		  
+		if (((mensagemErro!='') && (mensagemErro!='null')) || ((mensagemOk!='') && (mensagemOk!='null'))){
+			
+			if ((mensagemErro!='') && (mensagemErro!='null')) {
+				//titulo+=" Erro";
+				mostrarMensagemErro(titulo, mensagemErro);												
+			}else{
+				//titulo+=" Ok";					
+				mostrarMensagemOk(titulo, mensagemOk);
+			}
+			
+			$('#divCorpo').focus();	
+						
+			$('html, body',window.parent.document).animate({scrollTop:0}, 'slow');
+		}
+		
+		
+		
+		window.Contrast.check();
+		
+    }); 
+</script>
+
+	<div class="Cabecalho" id="Cabecalho">	    
+            <script type="text/javascript">
+		$(document).ready(function() {
+				
+				var msn_servidor;
+				msn_servidor = window.location.origin;
+				if(msn_servidor != 'https://projudi.tjgo.jus.br'){
+					$('#servidor').html("&nbsp;<i class='fa fa-quote-left'></i> Servidor de Homologação <i class='fa fa-quote-right'></i> ");
+				}
+		});
+		function enviarMensagem(msg){
+			var wd_iframeWin = document.getElementById("Principal").contentWindow;			
+			wd_iframeWin.postMessage(msg, "*");
+			
+			var comando = window[msg.comando]||msg.comando;
+			  //alert(comando);
+			  if(comando){
+			  	//console.log("body " + event.data.comando);
+			    comando();
+			   	//window.Contrast[event.data.comando]();
+			  }
+//			var comando = Contrast[msg.comando];
+//			if(comando){
+//		  		//console.log("body " + comando);		   		
+//		   		Contrast[msg.comando]();
+//		  	}
+		}
+	</script>
+	<div id="pgn_cabecalho">        
+        <div class="logoTJ" id="img_logotj" title='Vers&atilde;o 3.106.0 - 08/06/2026|cp10:server-cp10-2]'><h1>Processo Judicial</h1><div id="servidor"></div></div>
+	
+<div style="float: right;">
+			<div id="cssmenu" >
+				<ul>
+					<li><i id='btn-voz-pesquisa' title="Ações por voz"  onclick="enviarMensagem({'origem':'menu','comando':'comandoVoz'});" aria-label="Ações por voz" data-original-title="Ações por voz" accesskey="9"         class="fas fa-microphone"></i></li>
+					<li><i id='ContrasteAlterar' title="Alto Contraste"  onclick="enviarMensagem({'origem':'menu','comando':'toggle'});" aria-label="Alto Contraste" data-original-title="Alto Contraste" accesskey="ctrl+alt+c" class="fa-solid fa-circle-half-stroke"></i>  </li>
+	    			<li><i id='FonteAumentar' title="Aumentar Fonte"  onclick="enviarMensagem({'origem':'menu','comando':'fonte_a'});" aria-label="Aumentar Fonte" data-original-title="Aumentar Fonte" accesskey="ctrl+alt++" style="display:block;cursor: pointer;">A+</i>    </li>
+	    			<li><i id='FonteDiminuir' title="Diminuir Fonte"  onclick="enviarMensagem({'origem':'menu','comando':'fonte_d'});" aria-label="Diminuir Fonte" data-original-title="Diminuir Fonte" accesskey="ctrl+alt+-" style="display:block;cursor: pointer;"> A- </i>   </li>
+					<li class="has-sub">
+	<a href="#" title="Ajuda"><span><i class="fa fa-question-circle"></i></span></a> 
+    <ul>    	
+    	<li><a href="./videos.html" title="Vídeos para aprender a trabalhar com o Processo Judicial" target="_blank" id="videos"> V&iacute;deos &nbsp;<i class="fa fa-question-circle"></i></a></li>									
+ 		<li><a href="./Pdfvideos.html" title="PDF dos Vídeos para aprender a trabalhar com o Processo Judicial" target="_blank" id="Pdfvideos"> Manuais &nbsp;<i class="fa fa-question-circle"></i></a></li> 		 		
+ 		<li class="has-sub">  
+			<a href="#" title="Legislação"> Legislação &nbsp;<i class="fa fa-balance-scale"></i></a>
+            <ul>
+            <!-- Não é para colocar dentro do war, arquivos estaticos use o servidor http://docs.tjgo.jus.br/projudi/pdf/
+            	veja com o massa como ter acesso.
+            	máquina 10.0.10.27\pubinternet\Sistemas_de_Informacao\legislacao
+             -->
+            	<li><a href="http://www.planalto.gov.br/ccivil_03/_ato2004-2006/2006/lei/l11419.htm" target="_blank" title="Lei 11.419"> Lei n.&ordm; 11.419 de 19/12/2006 &nbsp;<i class="fa fa-balance-scale"></i></a></li>			
+				<li><a href="http://docs.tjgo.jus.br/projudi/legislacao/Resolucao0207.pdf" target="_blank" title="Resolução nº 02 de 14/03/2007 TJ-GO"> Resolu&ccedil;&atilde;o n.&ordm; 02 de 14/03/2007 TJ-GO &nbsp;<i class="fa fa-balance-scale"></i></a></li>			
+				<li><a href="http://docs.tjgo.jus.br/projudi/legislacao/Resolucao0210.pdf" target="_blank" title="Resolução nº 02 de 24/03/2010 TJ-GO"> Resolu&ccedil;&atilde;o n.&ordm; 02 de 24/03/2010 TJ-GO &nbsp;<i class="fa fa-balance-scale"></i></a></li>
+				<li><a href="http://docs.tjgo.jus.br/projudi/legislacao/Resolução_59_2016_ProcessoDigital.pdf" target="_blank" title="Resolução nº 59 de 04/07/2016 TJ-GO"> Resolu&ccedil;&atilde;o n.&ordm; 59 de 04/07/2016 TJ-GO &nbsp;<i class="fa fa-balance-scale"></i></a></li>
+				<li><a href="http://docs.tjgo.jus.br/projudi/legislacao/Resolução_61_2016.pdf" target="_blank" title="Resolução nº 61 de 27/07/2016 TJ-GO"> Resolu&ccedil;&atilde;o n.&ordm; 61 de 27/07/2016 TJ-GO &nbsp;<i class="fa fa-balance-scale"></i></a></li>
+				<li><a href="http://docs.tjgo.jus.br/projudi/legislacao/portaria_046_2016.pdf" target="_blank" title="Portaria nº 46 de 29/11/2016 TJ-GO"> Portaria n.&ordm; 46 de 29/11/2016 TJ-GO &nbsp;<i class="fa fa-balance-scale"></i></a></li>
+				<li><a href="http://docs.tjgo.jus.br/projudi/legislacao/portaria_844_2017.pdf" target="_blank" title="Portaria nº 844 de 07/12/2017 TJ-GO"> Portaria n.&ordm; 844 de 07/12/2017 TJ-GO &nbsp;<i class="fa fa-balance-scale"></i></a></li>
+	    		<li><a href="./decretos.html" title="Decretos" target="_blank" id="Decretos"> Decretos &nbsp;<i class="fa fa-balance-scale"></i></a></li>                
+			</ul>
+		</li>
+		<li><a href="./ajudaSuporteAdvogado.html" title="Suporte ao Advogado" target="_blank" id="ajd_SuporteAdvogado"> Suporte ao Advogado &nbsp;<i class="fa fa-comment"></i></a></li>
+		<li><a href="http://www.cnj.jus.br/tecnologia-da-informacao/comite-nacional-da-tecnologia-da-informacao-e-comunicacao-do-poder-judiciario/modelo-nacional-de-interoperabilidade" title="Compatível com o Modelo Nacional de Interoperabilidade do CNJ" target="_blank" id="MNI CNJ"> MNI CNJ &nbsp;<i class="fa fa-balance-scale"></i></a></li>
+		<li><a href="https://projudi.tjgo.jus.br/IntercomunicacaoService?WSDL" title="Modelo Nacional de Interoperabilidade do TJGO" target="_blank" id="MNITJGO"> MNI TJGO &nbsp;<i class="fa fa-balance-scale"></i></a></li>
+	</ul>
+</li><li class="has-sub">  
+	<a href="#" title="Download"><i class="fa fa-download"></i> </a>
+    <ul>
+    	<li><a href="https://docs.tjgo.jus.br/projudi/jar/VisualizadoReciboProjudi.jar" target="_blank" title="Programa para visualizar o recibo do Projudi e retirar o arquivo assinado e o conte&uacute;do">Leitor de Recibo &nbsp;<i class="fa fa-download"></i> </a></li>
+    	<li><a href="https://docs.tjgo.jus.br/projudi/jar/AssinadorExterno.jar" target="_blank" title="Programa para fazer assinatura digital dos arquivos no seu computador e-TCESP">(e-TCESP) Assinador Externo &nbsp;<i class="fa fa-download"></i></a></li>
+    	<li><a href="https://www.registradores.org.br/assinador/AssinadorDigital-ARISP-Instalador-1.7.0.exe" target="_blank" title="Programa para fazer assinatura digital dos arquivos no seu computador Arisp">(Arisp) Assinador Externo (.exe - Windows)&nbsp;<i class="fa fa-download"></i></a><a href="https://www.registradores.org.br/AssinadorDigital/" target="_blank" title="Site Registradores">Site Registradores</a>a</li>
+		<li><a href="https://docs.tjgo.jus.br/projudi/jar/sai.jar" target="_blank" title="Programa para fazer assinatura digital dos arquivos no seu computador">(NOVO) Assinador Externo &nbsp;<i class="fa fa-download"></i></a></li>		
+		<li class="has-sub">  
+			<a href="#" title="Download">Mozilla Firefox<i class="fa fa-download"></i> </a>
+		    <ul>
+		    	<li><a href="https://releases.mozilla.org/pub/firefox/releases/50.0.2/linux-i686/pt-BR/firefox-50.0.2.tar.bz2" target="_blank" title="Versão para Windows">Linux &nbsp;<i class="fa fa-download"></i> </a></li>
+		    	<li><a href="https://releases.mozilla.org/pub/firefox/releases/51.0.1/mac/pt-BR/Firefox%2051.0.1.dmg" target="_blank" title="Versão para Windows">Mac OS X &nbsp;<i class="fa fa-download"></i> </a></li>
+		    	<li><a href="https://releases.mozilla.org/pub/firefox/releases/51.0.1/win32/pt-BR/Firefox%20Setup%2051.0.1.exe" target="_blank" title="Versão para Windows">Windows 32bits &nbsp;<i class="fa fa-download"></i> </a></li>
+			</ul>
+		</li>
+		<li><a href="http://www.java.com/pt_BR/download/" target="_blank" title="Clique aqui para baixar o JAVA"> JAVA - Download &nbsp;<i class="fa fa-download"></i></a></li>
+	</ul>
+</li> <li>   
+	<a href="Usuario?PaginaAtual=9" title="Trocar Serventia" target="_self"><i class="fa fa-arrow-circle-o-left" aria-hidden="true"></i></a>
+</li><li>  
+	<a id="linkSair" href="LogOn?PaginaAtual=-200" title="Sair" target="_self"><i class="fa fa-sign-out"></i> </a>  
+</li></ul>
+			</div>
+		</div>	
+	</div>
+	
+	<!-- Modal Comando de Voz-->
+<div id="modalMicro" class="modal">
+  <div class="modal-content">
+    <span class="close closeMicro">&times;</span>
+    
+    <div class="row">
+        <div class="offset-md-3 col-md-6">
+            <div id="microphoneDiv" class="microphone"><i class="fa-solid fa-microphone"></i></div>
+            &nbsp; &nbsp; &nbsp;
+            <p id="listeningText">...</p>
+        </div>
+
+    	<div class="offset-md-3 col-md-6" style=" margin-top: 30px; "> <p style=" font-size: 18px; color: #70757bc8; ">Diga um comando, por exemplo "Cadastrar processo", "Consultar processo número ...", "Trocar serventia", "Gerar PDF Completo" e muito mais...</p> </div>
+    </div>
+  </div>
+</div>
+
+<script>
+
+const btnVoz = document.getElementById('btn-voz-pesquisa');
+const modal = document.getElementById("modalMicro");
+const closeBtn = document.getElementsByClassName("closeMicro")[0];
+
+var gravando = false;
+
+//Links do arquivo de texto
+var linksArquivoDeTexto = "";
+
+//Evento de clique no botão de voz
+if ("speechRecognition" in window || "webkitSpeechRecognition" in window) {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const recognition = new SpeechRecognition();
+  recognition.lang = 'pt-BR';
+  recognition.continuous = false;
+
+  btnVoz.addEventListener('click', () => {
+	  gravando = true;
+	modal.style.display = "block";
+	document.getElementById("microphoneDiv").style = "animation: none; color: #70757a;";
+    listeningText.innerHTML = "Aguarde...";
+	
+    //Chama a gravação
+    recognition.start();
+    
+	// Carregar os links do arquivo de texto
+	obterlinksArquivoDeTextoDoTexto(function (erro, linksArquivoDeTexto_) {
+	  linksArquivoDeTexto = linksArquivoDeTexto_;
+	});
+  });
+	
+  //Inicia a gravação, exibe o modal e ajusta as animações
+  recognition.onaudiostart = function() {
+
+    document.getElementById("microphoneDiv").style = "";
+    
+    var listeningText = document.getElementById("listeningText");
+    
+    //Verifica se não é o chrome, manda a mensagem Aguarde primeiro
+    if (navigator.userAgent.indexOf('Chrome') == -1) {
+      document.getElementById("microphoneDiv").style = "animation: none; color: #70757a;";
+      listeningText.innerHTML = "Aguarde";
+      setTimeout(() => {
+        document.getElementById("microphoneDiv").style = "";
+        listeningText.innerHTML = "Fale agora";
+        setTimeout(function(){
+          listeningText.style.opacity = '0';
+          setTimeout(function() {
+        if (listeningText.innerHTML == "Fale agora") listeningText.innerHTML = "Ouvindo...";
+            listeningText.style.opacity = '1';
+          }, 500);
+        }, 2000);
+      }, 1000);
+    } else {
+      listeningText.innerHTML = "Fale agora";
+      setTimeout(function(){
+        listeningText.style.opacity = '0';
+        setTimeout(function() {
+      if (listeningText.innerHTML == "Fale agora") listeningText.innerHTML = "Ouvindo...";
+          listeningText.style.opacity = '1';
+        }, 500);
+      }, 2000);
+    }
+  };
+  
+  recognition.onspeechend = () => {
+	  recognition.stop();
+	  console.log("Speech recognition has stopped.");
+	};
+  
+  recognition.addEventListener("result", (event) => {
+    const texto = event.results[event.resultIndex][0].transcript;
+    recognition.stop();
+    
+    // Processar a busca com o texto falado
+    if (gravando) processaBusca(texto, linksArquivoDeTexto);
+	  gravando = false;
+  });
+
+  recognition.addEventListener('error', (event) => {
+    if(event.error == "no-speech"){
+      var listeningText = document.getElementById("listeningText");
+      listeningText.style.opacity = '0';
+      setTimeout(function() {
+        listeningText.innerHTML = "Não consegui ouvir";
+        listeningText.style.opacity = '1';
+      }, 500);
+      setTimeout(function() {
+        modal.style.display = "none";
+      }, 3000);
+    } else console.error('Erro no reconhecimento de voz:', event.error);
+  });
+
+  recognition.addEventListener("audioend", (event) => {
+    document.getElementById("microphoneDiv").style = "animation: none; color: #70757a;";
+    setTimeout(function() {
+      var listeningText = document.getElementById("listeningText");
+      if(listeningText.innerHTML == "Ouvindo..." || listeningText.innerHTML == "Aguarde..."){
+        listeningText.style.opacity = '0';
+        setTimeout(function() {
+          listeningText.innerHTML = "Não consegui entender";
+          listeningText.style.opacity = '1';
+        }, 500);
+        setTimeout(function() {
+          modal.style.display = "none";
+        }, 3000);
+      }
+    }, 1000);
+  });
+
+} else {
+  btnVoz.firstChild.src="/images/img/ico_micro_off.png";
+  btnVoz.firstChild.style.width="18px";
+  btnVoz.addEventListener('click', () => {
+    const newParagraph = document.createElement('p');
+    newParagraph.textContent = "Comando de voz não suportado neste navegador";
+    newParagraph.style = "background-color: #000000c4; color: #fff; text-align: center; border-radius: 6px; padding: 2px 5px; position: absolute; z-index: 1; top: 70%; right: 0%; font-size: 12px;"
+    btnVoz.after(newParagraph);
+    setTimeout(function() {
+      newParagraph.style.display = "none";
+    }, 5000);
+  });
+}
+
+//Função para processar a busca e redirecionar para a URL adequada
+function processaBusca(texto,linksArquivoDeTexto) {
+	
+	var listeningText = document.getElementById("listeningText");
+	listeningText.innerHTML = texto;
+	
+	var textoNormalizado = texto.toLowerCase().trim().replace(/(\/|-)/g, ' $1 '); //Cria um espaço entre os caracteres / e - Ex: Reservados/Pré-Analisados -> Reservados / Pré - Analisados 	
+	
+	//Se  Troca de serventia
+	if(textoNormalizado.includes("trocar") && (textoNormalizado.includes("serventia") || textoNormalizado.includes("serve em dia"))) {
+		window.location.href = "./Usuario?PaginaAtual=9";
+		return;
+	}
+	
+	//Se é consulta de processo
+	if(textoNormalizado.includes("processo")
+			&& (textoNormalizado.includes("consultar")
+			|| textoNormalizado.includes("buscar")
+			|| textoNormalizado.includes("busque")
+			|| textoNormalizado.includes("acessar")
+			|| textoNormalizado.includes("acesse")
+			|| textoNormalizado.includes("pesquisar")
+			|| textoNormalizado.includes("pesquise"))
+			) {
+	    var numeros = textoNormalizado.replace(/[^0-9]/g, '');
+	    if (numeros.length > 0){
+			var urlConsultaProcesso;
+		    if (numeros.length >= 14) urlConsultaProcesso = "./BuscaProcesso?PaginaAtual=2&TipoConsultaProcesso=24&ProcessoNumero=" +numeros.slice(0, -13)+"-"+numeros.slice(-13);
+		    else urlConsultaProcesso = "./BuscaProcesso?PaginaAtual=2&TipoConsultaProcesso=24&ProcessoNumero=" + (numeros.length>=2?numeros.slice(0, -2)+"-"+numeros.slice(-2):numeros);
+		    abreUrl(urlConsultaProcesso);
+		    return;
+	    }
+	}
+	
+	//Gerar PDF completo
+	if(textoNormalizado.includes("pdf")){
+		var iframePrincipal = document.getElementById("Principal");
+		if (iframePrincipal){
+			var botaoPDFCompleto = iframePrincipal.contentDocument.querySelector("button[title*='Gerar PDF']");
+			if (botaoPDFCompleto){
+				modal.style.display = "none";
+				botaoPDFCompleto.click();
+			} else {
+				listeningText.innerHTML = "Necessário estar na capa do processo!";
+				setTimeout(function(){modal.style.display = "none";}, 4000);
+			}
+			return;
+		}
+	}
+
+	const urlEncontrada = encontrarUrlMaisAdequada(textoNormalizado, linksArquivoDeTexto);
+	
+	if (urlEncontrada) {
+		abreUrl(urlEncontrada);
+	} else {
+		setTimeout(function(){listeningText.innerHTML = "Não encontrei!"}, 2000);
+		setTimeout(function(){modal.style.display = "none";}, 4000);
+	}
+}
+
+//Se existe o iframe abre nele, se não abre no window.location.href
+function abreUrl(url){
+	var iframePrincipal = document.getElementById('Principal');
+	if (iframePrincipal !== undefined) {
+		iframePrincipal.contentWindow.location.href = url;
+		//Hide no modal
+		setTimeout(function(){modal.style.display = "none";}, 1500);
+	} else window.location.href = url;
+}
+
+// Função para encontrar a URL mais adequada com base no texto inserido
+function encontrarUrlMaisAdequada(texto, linksArquivoDeTexto) {
+  let urlEncontrada = null;
+  let menorSimilaridade = 0;
+
+  // Verificar em linksArquivoDeTexto
+  for (const url in linksArquivoDeTexto) {
+    for (const termo of linksArquivoDeTexto[url]) {
+      const similaridade = calcularSimilaridadeEntreStrings(texto,termo);
+      if (similaridade > menorSimilaridade) {
+        //alert("1. Distância: "+similaridade+" // Texto: "+texto+ " // Termo: "+termo);
+        menorSimilaridade = similaridade;
+        urlEncontrada = url;
+      }
+    }
+  }
+  return urlEncontrada;
+}
+
+function calcularSimilaridadeEntreStrings(str1, str2) {
+	// Converte as strings em arrays de palavras
+    const words1 = str1.toLowerCase().replaceAll("s","").match(/\w+/g).filter(word => word.length > 2) || [];
+    const words2 = str2.toLowerCase().replaceAll("s","").match(/\w+/g).filter(word => word.length > 2) || [];
+	
+	// Calcula a similaridade de Jaccard entre as palavras
+	const intersection = new Set(words1.filter(word => words2.includes(word)));
+	const jaccardSimilarity = intersection.size;
+	
+	return jaccardSimilarity;
+}
+
+function calcularSimilaridadeEntreStrings4(str1, str2) {
+  words1 = str1.toLowerCase().trim().split(/\s+/).filter(word => word.length > 2);
+  words2 = str2.toLowerCase().trim().split(/\s+/).filter(word => word.length > 2);
+  return new Set(words1.filter(word => words2.includes(word))).size;
+}
+
+//Função para obter os links do main menu e
+//converter em dados para o comando de voz
+function obtemlinksMenu(){
+	var menuprincipal = document.getElementById("menuPrinciapl");
+	var links = menuprincipal.querySelectorAll('a:not([href="#"])');
+	var resultado="";
+
+	for(var i=0; i<links.length; i++){
+	  var linkIdSplit = (links[i].id) ? links[i].id.split("m") : "";
+	  var linkTexto="";
+	  var linkIdAuxiliar="";
+	  for(var j=0; j<linkIdSplit.length; j++){
+		var linkPai = document.getElementById(linkIdAuxiliar+linkIdSplit[j]);
+		if (linkPai)linkTexto += linkPai.textContent + " >> ";
+		linkIdAuxiliar += linkIdSplit[j] + "m";
+	  }
+	  if (linkTexto.endsWith(" >> ")) linkTexto = linkTexto.slice(0, -3); //Remove o último " >> "
+	  linkTexto = linkTexto.replace(/(\/|-)/g, ' $1 '); //Cria um espaço entre os caracteres / e - Ex: Reservados/Pré-Analisados -> Reservados / Pré - Analisados 
+	  var linha = "";
+	  if (linkTexto.includes("Cadastros")) var linha = links[i].href + "; " + linkTexto + "; " + linkTexto.replace("Cadastros", "Cadastrar") + " \n";
+	  else if (linkTexto.includes("Trocar")) var linha = links[i].href + "; " + linkTexto + "; " + linkTexto.replace("Trocar", "Alterar") + " \n";
+	  else if (linkTexto.includes("Alterar")) var linha = links[i].href + "; " + linkTexto + "; " + linkTexto.replace("Alterar", "Trocar") + " \n";
+	  else if (linkTexto.includes("Buscas")) var linha = links[i].href + "; " + linkTexto + "; " + linkTexto.replace("Buscas", "Buscar") + "; " + linkTexto.replace("Buscas", "Pesquisar") + "; " + linkTexto.replace("Buscas", "Pesquisa") + " \n";
+	  else linha = links[i].href + "; " + linkTexto + "\n";
+	  resultado += linha;
+	}
+
+	return "\n"+resultado;
+}
+
+
+// Função para obter o conteúdo a partir do arquivo de texto
+function obterlinksArquivoDeTextoDoTexto(callback) {
+  jQuery.ajax({
+    type: "GET",
+    url: "./comando_voz.txt",
+    dataType: "text",
+    success: function (data) {
+      data += obtemlinksMenu(); //pega os dados do main menu
+      //console.log(data);
+      const linksArquivoDeTexto = {};
+
+      // Dividindo o texto em linhas
+      const linhas = data.split("\n");
+
+      // Iterando sobre cada linha do arquivo
+      for (let i = 0; i < linhas.length; i++) {
+        const partes = linhas[i].split(/[;,]/); // Usando expressão regular para dividir por ',' ou ';'
+        const urlMenu = partes.shift().trim(); // Removendo e armazenando a primeira parte como URL
+        const termosMenu = partes.map((termo) => termo.trim()); // Mapeando os termos
+
+        if (urlMenu && termosMenu.length > 0) {
+          // Adicionando a URL e os termos ao objeto linksArquivoDeTexto
+          linksArquivoDeTexto[urlMenu] = termosMenu;
+        }
+      }
+
+      callback(null, linksArquivoDeTexto);
+    },
+    error: function () {
+      callback("Erro ao carregar o arquivo de texto.", null);
+    },
+  });
+}
+
+// When the user clicks on the close button, close the modal
+closeBtn.onclick = function() {
+  modal.style.display = "none";
+};
+
+// When the user clicks anywhere outside of the modal, close it
+window.onclick = function(event) {
+  if (event.target == modal) {
+    modal.style.display = "none";
+  }
+};
+</script><div style="clear:both;width:100%;height:28px;background-color:#ccc; margin: 0 auto;"></div>
+
+<div id="menuPrinciapl" class="menu">
+	                   <ul><li><a href='Usuario?PaginaAtual=-10'  target='userMainFrame'>Página Inicial</a></li></ul><ul><li><a href='#' onclick='return false;'>Processos</a><ul><li><a href='ProcessoCivel?PaginaAtual=4&dependente=false&fisico=false'  target='userMainFrame'>Cadastrar Processos</a></li><li><a href='BuscaProcesso?PaginaAtual=4'  title='Consultar Todos os Processo' target='userMainFrame'>Consultar Todos</a></li><li><a class='TemFilho'  href='#' title='Emissão de Certidão' onclick='return false;'>Certidão</a><ul><li><a href='CertidaoGuia?PaginaAtual=4'  title='Certidões com Guia' target='userMainFrame'>Certidões com Guia</a></li><li><a href='GuiaCertidao?PaginaAtual=4'  title='Guias de Certidão' target='userMainFrame'>Guias de Certidão</a></li></ul></li><li><a href='/ConsultaJurisprudencia'  title='Consultar Jurisprudência' target='#'>Consultar Jurisprudência</a></li><li><a href='ProcessoFisico?PaginaAtual=4'  title='Consultar Processos Sigilosos Físicos' target='userMainFrame'>Físicos </a></li><li><a class='TemFilho'  href='#' onclick='return false;'>Guias</a><ul><li><a href='GuiaInicial1Grau?PaginaAtual=4'  title='Guia Inicial 1º Grau' target='userMainFrame'>Guia Inicial 1º Grau</a></li><li><a href='GuiaEmissao?PaginaAtual=2&PassoEditar=6'  title='Guias Iniciais Emitidas' target='userMainFrame'>Guias Iniciais Emitidas</a></li></ul></li></ul></li></ul><ul><li><a href='#' onclick='return false;'>Audiências</a><ul><li><a class='TemFilho'  href='#' onclick='return false;'>Conciliação</a><ul><li><a href='Audiencia?PaginaAtual=2&amp;AudienciaTipoCodigo=2&amp;fluxo=2'  title='Consultar Audiências de Conciliação Pendentes' target='userMainFrame'>Pendentes</a></li><li><a href='Audiencia?PaginaAtual=2&amp;AudienciaTipoCodigo=2'  title='Consultar Audiências de Conciliação Utilizando Filtro(s)' target='userMainFrame'>Filtro</a></li></ul></li><li><a class='TemFilho'  href='#' onclick='return false;'>Instrução</a><ul><li><a href='Audiencia?PaginaAtual=2&amp;AudienciaTipoCodigo=7&amp;fluxo=2'  title='Consultar as Audiências de Instrução Pendentes' target='userMainFrame'>Pendentes</a></li><li><a href='Audiencia?PaginaAtual=2&amp;AudienciaTipoCodigo=7'  title='Consultar as Audiências de Instrução Utilizando Filtro(s)' target='userMainFrame'>Filtro</a></li></ul></li><li><a class='TemFilho'  href='#' onclick='return false;'>Preliminar</a><ul><li><a href='Audiencia?PaginaAtual=2&amp;AudienciaTipoCodigo=10&amp;fluxo=2'  title='Consultar as Audiências Preliminares Pendentes' target='userMainFrame'>Pendentes</a></li><li><a href='Audiencia?PaginaAtual=2&amp;AudienciaTipoCodigo=10'  title='Consultar as Audiências Preliminares Utilizando Filtro(s)' target='userMainFrame'>Filtro</a></li></ul></li><li><a class='TemFilho'  href='#' onclick='return false;'>Una</a><ul><li><a href='Audiencia?PaginaAtual=2&amp;AudienciaTipoCodigo=11&amp;fluxo=2'  title='Consultar as Audiências Unas Pendentes' target='userMainFrame'>Pendentes</a></li><li><a href='Audiencia?PaginaAtual=2&amp;AudienciaTipoCodigo=11'  title='Consultar as Audiências Unas Utilizando Filtro(s)' target='userMainFrame'>Filtro</a></li></ul></li><li><a class='TemFilho'  href='#' title='Sessões de 2º Grau' onclick='return false;'>Sessões</a><ul><li><a href='AudienciaSegundoGrau?PaginaAtual=7'  title='Consultar Sessôes Advogado Pendentes' target='userMainFrame'>Pendentes</a></li><li><a href='AudienciaSegundoGrau?PaginaAtual=2'  title='Consultar Sessôes Advogado' target='userMainFrame'>Consultar</a></li></ul></li><li><a class='TemFilho'  href='#' onclick='return false;'>Todas</a><ul><li><a href='Audiencia?PaginaAtual=2&amp;AudienciaTipoCodigo=&amp;fluxo=2'  title='Consultar Todos os Tipos de Audiências Pendentes' target='userMainFrame'>Pendentes</a></li><li><a href='Audiencia?PaginaAtual=2&amp;AudienciaTipoCodigo='  title='Consultar Todos os Tipos de Audiências Utilizando Filtro(s)' target='userMainFrame'>Filtro</a></li></ul></li></ul></li></ul><ul><li><a href='#' onclick='return false;'>Cadastros</a><ul><li><a class='TemFilho'  href='#' title='Outras tabelas de cadastros processuais' onclick='return false;'>Processuais</a><ul><li><a href='Classificador'  target='userMainFrame'>Classificador</a></li></ul></li><li><a href='Assessor'  target='userMainFrame'>Assessor</a></li><li><a class='TemFilho'  href='#' title='Configurações do Usuário' onclick='return false;'>Configurações     	</a><ul><li><a href='UsuarioMovimentacaoTipo'  target='userMainFrame'>Movimentação Tipo</a></li></ul></li><li><a href='Modelo'  target='userMainFrame'>Modelo</a></li><li><a href='NaturezaSPG?PaginaAtual=4'  title='Cadastro de Naturezas SPG' target='userMainFrame'>Natureza SPG</a></li></ul></li></ul><ul><li><a href='#' onclick='return false;'>Cumprimentos</a><ul><li><a href='AnalisarPendencia?PaginaAtual=2&tipo=todas'  title='Consultar Pendências Não Analisadas' target='userMainFrame'>Pendentes</a></li><li><a class='TemFilho'  href='#' title=' ' onclick='return false;'>Pré-Análises</a><ul><li><a href='PreAnalisarPendencia?PaginaAtual=6&tipo=todas'  title='Consultar Pré-Análises Simples' target='userMainFrame'>Simples</a></li><li><a href='PreAnalisarPendencia?PaginaAtual=7&tipo=todas'  title='Consultar Pré-Análises Múltiplas' target='userMainFrame'>Múltiplas</a></li><li><a href='PreAnalisarPendencia?PaginaAtual=9'  title='Consultar Pré-Análises Finalizadas' target='userMainFrame'>Finalizadas</a></li></ul></li><li><a href='AnalisarPendencia?PaginaAtual=7'  title='Consultar Pendências Analisadas' target='userMainFrame'>Análises Efetuadas</a></li><li><a href='Pendencia?PaginaAtual=7&amp;fluxo=12'  title='Citações lidas' target='userMainFrame'>Citações lidas</a></li><li><a href='Pendencia?PaginaAtual=7&amp;fluxo=7'  title='Intimações lidas' target='userMainFrame'>Intimações lidas</a></li></ul></li></ul><ul><li><a href='#' onclick='return false;'>Segurança</a><ul><li><a href='DadosUsuario?PaginaAtual=6'  title='Alterar Senha' target='userMainFrame'>Alterar Senha</a></li><li><a href='DadosUsuario?PaginaAtual=7'  title=' ' target='userMainFrame'>Alterar E-mail</a></li><li><a href='UsuarioFone'  title='Liberação de Celulares do Usuário' target='userMainFrame'>Celular</a></li><li><a href='Usuario?PaginaAtual=9'  title=' ' target='_self'>Trocar Serventia</a></li></ul></li></ul><ul><li><a href='#' onclick='return false;'>Certificados</a><ul><li><a href='CertificadoUsuario'  target='userMainFrame'>Usuário</a></li></ul></li></ul><span id="cronometro" class='cronometro' title="Tempo para encerramento da sessão"></span> 
+	            </div>
+          	
+        </div>
+        <iframe id="Principal"  class="Tela" name="userMainFrame"  scrolling="yes" align="top" frameborder="0" src="Usuario?PaginaAtual=-10" onload='tratarEventoLoadIframe();' ></iframe>
+        				                 
+    </body>
+</html>
