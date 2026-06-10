@@ -13,9 +13,10 @@ import {
   saveRodadasCalculos,
 } from '../data/calculosRodadasStorage';
 import {
+  calcularResumoTitulosGrade,
   garantirArrayTitulosTamanho,
   mesclarTitulosPaginaNoArray,
-  resumoTitulosFromApi,
+  montarTitulosDimensaoParaResumo,
   TITULOS_POR_PAGINA_API,
 } from '../data/calculosRodadaTitulosPaginacao.js';
 import { fetchCalculoRodada } from '../repositories/calculosRepository.js';
@@ -46,7 +47,12 @@ import { calcularTotalTituloGrade, titulosGradeTemValor } from '../data/calculos
 import TitulosGrid from './calculos/TitulosGrid.jsx';
 import { IndicesAtualizacaoConferenciaModal } from './calculos/IndicesAtualizacaoConferenciaModal.jsx';
 import { parseValorMonetarioBr } from '../utils/parseValorMonetarioBr.js';
-import { enriquecerTitulosAPartirDeParcelasNaRodada } from '../data/calculosTitulosParcelasSync.js';
+import {
+  enriquecerTitulosAPartirDeParcelasNaRodada,
+  linhaTituloVaziaCalculos,
+} from '../data/calculosTitulosParcelasSync.js';
+import { gerarPeticaoExecucao, downloadPdfBlob } from '../repositories/documentosRepository.js';
+import { resolverProcessoId } from '../repositories/processosRepository.js';
 
 const ProcessosLazy = lazy(() =>
   import('./Processos.jsx').then((module) => ({ default: module.Processos }))
@@ -366,7 +372,6 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
   /** `${rodadaKey}:page:${n}` → payload normalizado da página */
   const paginasRodadaCacheRef = useRef(new Map());
   const isDirtyRodadaRef = useRef(false);
-  const [titulosResumoApi, setTitulosResumoApi] = useState(null);
   const [carregandoRodadaApi, setCarregandoRodadaApi] = useState(false);
   const debitosPlanilhaInputRef = useRef(null);
   const [sincronizandoRodadasApi, setSincronizandoRodadasApi] = useState(false);
@@ -501,6 +506,15 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
 
   const [confirmarLimpeza, setConfirmarLimpeza] = useState(false);
   const [processoEmbed, setProcessoEmbed] = useState(null);
+
+  // Petição de Execução (F10)
+  const [gerandoPeticao, setGerandoPeticao] = useState(false);
+  const [modalPeticaoAceito, setModalPeticaoAceito] = useState(false);
+  const [modalPeticaoOpcoes, setModalPeticaoOpcoes] = useState(false);
+  const [peticaoEnderecamento, setPeticaoEnderecamento] = useState('');
+  const [peticaoModo, setPeticaoModo] = useState('Completo');
+  const [peticaoData, setPeticaoData] = useState('');
+  const [peticaoTitulosParaGerar, setPeticaoTitulosParaGerar] = useState(null);
 
   function confirmarAlternarAceitarPagamento(next) {
     const isLock = Boolean(next);
@@ -821,9 +835,6 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
             },
           };
         });
-        if (cached.titulosResumo) {
-          setTitulosResumoApi(cached.titulosResumo);
-        }
       }
       return () => controller.abort();
     }
@@ -874,10 +885,6 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
             rawFinal = rawFull;
             one = normalizarRodadaRecebidaApi(key, rawFull) ?? one;
           }
-        }
-
-        if (rawFinal.titulosResumo && typeof rawFinal.titulosResumo === 'object') {
-          setTitulosResumoApi(rawFinal.titulosResumo);
         }
 
         const paginationFinal = rawFinal.titulosPagination;
@@ -936,10 +943,6 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
       setCarregandoRodadaApi(false);
     };
   }, [rodadaKey, hidratacaoConcluida, codigoClienteNorm, procNorm, dimensaoNorm, pagina]);
-
-  useEffect(() => {
-    setTitulosResumoApi(null);
-  }, [rodadaKey]);
 
   const rodadaAtual = rodadasState[rodadaKey] || {
     pagina: 1,
@@ -1134,6 +1137,19 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
   const inicio = (pagina - 1) * TITULOS_POR_PAGINA;
   const fim = inicio + TITULOS_POR_PAGINA;
 
+  const titulosPaginaVisiveis = useMemo(() => titulos.slice(inicio, fim), [titulos, inicio, fim]);
+
+  const titulosDimensao = useMemo(
+    () =>
+      montarTitulosDimensaoParaResumo(
+        titulos,
+        titulosPaginationMeta?.total,
+        paginasRodadaCacheRef.current.entries(),
+        rodadaKey
+      ),
+    [titulos, titulosPaginationMeta?.total, rodadaKey, pagina]
+  );
+
   const titulosPaginaCompletos = useMemo(() => {
     const titulosPagina = titulos.slice(inicio, fim);
     if (titulosPagina.length < TITULOS_POR_PAGINA) {
@@ -1172,47 +1188,15 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
       ]
       : parcelasPagina;
 
-  function calcularResumo(lista) {
-    const valid = (lista || []).filter((r) => String(r?.valorInicial ?? '').trim() !== '');
-    const qtd = valid.length;
-
-    const sumValorInicial = valid.reduce((acc, r) => acc + parseBRL(r.valorInicial), 0);
-    const sumAtualizacao = valid.reduce((acc, r) => acc + parseBRL(r.atualizacaoMonetaria), 0);
-    const sumJuros = valid.reduce((acc, r) => acc + parseBRL(r.juros), 0);
-    const sumMulta = valid.reduce((acc, r) => acc + parseBRL(r.multa), 0);
-    const sumHonorarios = valid.reduce((acc, r) => acc + parseBRL(r.honorarios), 0);
-    // Total geral: soma algébrica (créditos negativos subtraem, como Excel Somar_Taxas).
-    const sumTotal = trunc2(
-      sumValorInicial + sumAtualizacao + sumJuros + sumMulta + sumHonorarios
-    );
-
-    const diasNums = valid
-      .map((r) => Number(String(r?.diasAtraso ?? '').trim()))
-      .filter((n) => Number.isFinite(n));
-    const sumDias = diasNums.reduce((a, b) => a + b, 0);
-
-    const qtdLabel = `${String(qtd).padStart(2, '0')} título${qtd === 1 ? '' : 's'}`;
-
-    return {
-      qtd: qtdLabel,
-      valorInicial: formatBRL(trunc2(sumValorInicial)),
-      atualizacao: formatBRL(trunc2(sumAtualizacao)),
-      diasAtraso: `${Math.floor(sumDias)} dias de atraso`,
-      juros: formatBRL(trunc2(sumJuros)),
-      multa: formatBRL(trunc2(sumMulta)),
-      honorarios: formatBRL(trunc2(sumHonorarios)),
-      total: formatBRL(trunc2(sumTotal)),
-    };
-  }
-
-  // Resumo da página atual vs resumo geral (todas páginas).
+  // 1ª linha do rodapé: soma só os títulos visíveis na página atual.
   const resumoPagina = useMemo(
-    () => calcularResumo(titulosPaginaCompletos),
-    [titulosPaginaCompletos]
+    () => calcularResumoTitulosGrade(titulosPaginaVisiveis),
+    [titulosPaginaVisiveis]
   );
+  // 2ª linha: soma todos os títulos da dimensão (todas as páginas), a partir do estado + cache de páginas.
   const resumoGeral = useMemo(
-    () => resumoTitulosFromApi(titulosResumoApi ?? rodadaAtual.titulosResumo) ?? calcularResumo(titulos),
-    [titulosResumoApi, rodadaAtual.titulosResumo, titulos]
+    () => calcularResumoTitulosGrade(titulosDimensao),
+    [titulosDimensao]
   );
 
   const showAvisoParcelasTitulosVazios = useMemo(
@@ -1257,10 +1241,31 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     return `Calculo_Processo_${codigoClienteNorm}_${yyyy}${mm}${dd}.pdf`;
   }
 
-  function gerarPdfCalculo() {
+  async function gerarPdfCalculo() {
     if (!aceitarPagamento) {
       window.alert('Para salvar em PDF, é necessário aceitar o pagamento.');
       return;
+    }
+
+    let titulosPdf = titulosDimensao;
+    let resumoPdf = resumoGeral;
+
+    const totalEsperado = titulosPaginationMeta?.total;
+    const qtdCarregada = titulosDimensao.filter((t) => String(t?.valorInicial ?? '').trim() !== '').length;
+    if (
+      featureFlags.useApiCalculos &&
+      totalEsperado != null &&
+      Number(totalEsperado) > qtdCarregada
+    ) {
+      try {
+        const rawFull = await fetchCalculoRodada(codigoClienteNorm, procNorm, dimensaoNorm);
+        if (rawFull?.titulos && Array.isArray(rawFull.titulos)) {
+          titulosPdf = rawFull.titulos;
+          resumoPdf = calcularResumoTitulosGrade(titulosPdf);
+        }
+      } catch (e) {
+        console.warn('[vilareal] PDF: não foi possível carregar todos os títulos; usando estado local.', e);
+      }
     }
 
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
@@ -1286,7 +1291,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     doc.text(`Juros: ${juros}   |   Multa: ${multa}`, margemX, 53);
     doc.text(`Honorários: ${honorariosTipo} (${honorariosValor})   |   Índice: ${indice}`, margemX, 58);
 
-    const linhasTitulos = (rodadaAtual?.titulos || [])
+    const linhasTitulos = titulosPdf
       .map((t, idx) => ({
         n: String(idx + 1).padStart(3, '0'),
         dataVencimento: t?.dataVencimento || '',
@@ -1296,12 +1301,9 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
         juros: t?.juros || '',
         multa: t?.multa || '',
         honorarios: t?.honorarios || '',
-        total: t?.total || '',
+        total: t?.total || calcularTotalTituloGrade(t),
       }))
-      .filter((t) =>
-        [t.dataVencimento, t.valorInicial, t.atualizacaoMonetaria, t.diasAtraso, t.juros, t.multa, t.honorarios, t.total]
-          .some((v) => String(v).trim() !== '')
-      );
+      .filter((t) => String(t?.valorInicial ?? '').trim() !== '');
 
     autoTable(doc, {
       startY: 63,
@@ -1347,17 +1349,17 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     const yResumo = (doc.lastAutoTable?.finalY || 63) + 6;
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(11);
-    doc.text('Resumo financeiro', margemX, yResumo);
+    doc.text('Resumo financeiro (todos os títulos da dimensão)', margemX, yResumo);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
-    doc.text(`Quantidade de títulos: ${resumoGeral.qtd}`, margemX, yResumo + 5);
-    doc.text(`Valor inicial total: ${resumoGeral.valorInicial}`, margemX, yResumo + 10);
-    doc.text(`Atualização monetária: ${resumoGeral.atualizacao}`, margemX, yResumo + 15);
-    doc.text(`Dias de atraso (soma): ${resumoGeral.diasAtraso}`, margemX, yResumo + 20);
-    doc.text(`Juros: ${resumoGeral.juros}`, margemX, yResumo + 25);
-    doc.text(`Multa: ${resumoGeral.multa}`, margemX, yResumo + 30);
-    doc.text(`Honorários: ${resumoGeral.honorarios}`, margemX, yResumo + 35);
-    doc.text(`Total geral: ${resumoGeral.total}`, margemX, yResumo + 40);
+    doc.text(`Quantidade de títulos: ${resumoPdf.qtd}`, margemX, yResumo + 5);
+    doc.text(`Valor inicial total: ${resumoPdf.valorInicial}`, margemX, yResumo + 10);
+    doc.text(`Atualização monetária: ${resumoPdf.atualizacao}`, margemX, yResumo + 15);
+    doc.text(`Dias de atraso (soma): ${resumoPdf.diasAtraso}`, margemX, yResumo + 20);
+    doc.text(`Juros: ${resumoPdf.juros}`, margemX, yResumo + 25);
+    doc.text(`Multa: ${resumoPdf.multa}`, margemX, yResumo + 30);
+    doc.text(`Honorários: ${resumoPdf.honorarios}`, margemX, yResumo + 35);
+    doc.text(`Total geral: ${resumoPdf.total}`, margemX, yResumo + 40);
 
     doc.save(gerarNomeArquivoPdf());
   }
@@ -1634,11 +1636,12 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     return map[String(nomeIndice ?? 'NENHUM').toUpperCase()] ?? 1.0;
   }
 
-  function recalcularTitulos(lista, indicesMensaisINPCMap, indicesMensaisIPCAMap) {
+  function recalcularTitulos(lista, indicesMensaisINPCMap, indicesMensaisIPCAMap, dataOverride) {
     const jurosPct = parsePercent(juros);
     const multaPct = parsePercent(multa);
-    // Travado: usa a data do painel; liberado: sempre a data corrente (regra de negócio).
-    const dataCalcGlobal = aceitarPagamento ? parseDateBR(dataCalculo) : parseDateBR(hojeBR());
+    // dataOverride (quando informada) força a data do cálculo sem mexer no estado do aceite.
+    // Sem override: travado usa a data do painel; liberado usa a data corrente (regra de negócio).
+    const dataCalcGlobal = dataOverride ?? (aceitarPagamento ? parseDateBR(dataCalculo) : parseDateBR(hojeBR()));
     const honorPctFixo = parsePercent(honorariosValor);
 
     let changed = false;
@@ -1742,6 +1745,175 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     return { next, changed };
   }
 
+  // ===== Petição de Execução (F10): recálculo imperativo + montagem do request =====
+
+  /** Carrega os mapas de índices (INPC/IPCA) necessários para `lista` em `dataDate`, de forma aguardável. */
+  async function carregarMapasIndicesParaData(lista, dataDate) {
+    const arr = Array.isArray(lista) ? lista : [];
+    const idxUpperGeral = String(indice).toUpperCase();
+    const precisaINPC =
+      idxUpperGeral === 'INPC' ||
+      arr.some((t) => String(t?.datasEspeciais?.indiceEspecial ?? '').toUpperCase() === 'INPC');
+    const precisaIPCA =
+      idxUpperGeral === 'IPCA-E' ||
+      idxUpperGeral === 'IPCA' ||
+      arr.some((t) => {
+        const v = String(t?.datasEspeciais?.indiceEspecial ?? '').toUpperCase();
+        return v === 'IPCA-E' || v === 'IPCA';
+      });
+
+    let inpcMap = null;
+    let ipcaMap = null;
+    if (!precisaINPC && !precisaIPCA) return { inpcMap, ipcaMap };
+
+    let minDataInicialAtual = null;
+    let maxDataFinalAtual = dataDate;
+    for (const t of arr) {
+      const venc = parseDateBR(t.dataVencimento);
+      if (!venc) continue;
+      const esp = t.datasEspeciais && typeof t.datasEspeciais === 'object' ? t.datasEspeciais : {};
+      const diAtual = parseDateBR(esp.dataInicialAtual) ?? venc;
+      const dfAtual = parseDateBR(esp.dataFinalAtual) ?? dataDate;
+      if (diAtual && (!minDataInicialAtual || diAtual < minDataInicialAtual)) minDataInicialAtual = diAtual;
+      if (dfAtual && dfAtual > maxDataFinalAtual) maxDataFinalAtual = dfAtual;
+    }
+    const inicio = minDataInicialAtual || dataDate;
+    const fim = maxDataFinalAtual || dataDate;
+
+    if (precisaINPC) {
+      try {
+        inpcMap = await obterIndicesMensaisINPC(inicio, fim);
+      } catch {
+        inpcMap = {};
+      }
+    }
+    if (precisaIPCA) {
+      const endPrevMonth = new Date(fim.getFullYear(), fim.getMonth() - 1, 1);
+      try {
+        ipcaMap = await obterIndicesMensaisIPCA(inicio, endPrevMonth);
+      } catch {
+        ipcaMap = {};
+      }
+    }
+    return { inpcMap, ipcaMap };
+  }
+
+  function normalizarPercentParaEnvio(v) {
+    return String(v ?? '').replace(/%/g, '').replace(/\s/g, '').trim();
+  }
+
+  function dataBRparaISO(br) {
+    const d = parseDateBR(br);
+    const base = d ?? new Date();
+    const yyyy = base.getFullYear();
+    const mm = String(base.getMonth() + 1).padStart(2, '0');
+    const dd = String(base.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  function montarTitulosRequestPeticao(lista) {
+    const arr = Array.isArray(lista) ? lista : [];
+    return arr
+      .filter((t) => String(t?.valorInicial ?? '').trim() !== '')
+      .map((t) => {
+        const diasNum = parseInt(String(t?.diasAtraso ?? '').replace(/\D/g, ''), 10);
+        return {
+          descricao: t?.descricaoValor ?? '',
+          vencimento: t?.dataVencimento ?? '',
+          diasAtraso: Number.isFinite(diasNum) ? diasNum : null,
+          valorPrincipal: t?.valorInicial ?? '',
+          atualizacaoMonetaria: t?.atualizacaoMonetaria ?? '',
+          juros: t?.juros ?? '',
+          multa: t?.multa ?? '',
+          honorarios: t?.honorarios ?? '',
+        };
+      });
+  }
+
+  function abrirFluxoPeticaoExecucao() {
+    if (!peticaoEnderecamento || peticaoEnderecamento.trim() === '') {
+      setPeticaoEnderecamento(
+        'EXCELENTÍSSIMO(A) SENHOR(A) DOUTOR(A) JUIZ(A) DE DIREITO DA ___ VARA ___ DA COMARCA DE ___ - ___'
+      );
+    }
+    setPeticaoData(aceitarPagamento ? dataCalculo : hojeBR());
+    if (calculoTravadoAceito) {
+      setModalPeticaoAceito(true);
+    } else {
+      setPeticaoTitulosParaGerar(titulos);
+      setModalPeticaoOpcoes(true);
+    }
+  }
+
+  async function peticaoRecalcularParaHojeEGerar() {
+    if (gerandoPeticao) return;
+    setGerandoPeticao(true);
+    try {
+      const hoje = parseDateBR(hojeBR());
+      const lista = Array.isArray(titulos) ? titulos : [];
+      const { inpcMap, ipcaMap } = await carregarMapasIndicesParaData(lista, hoje);
+      const { next } = recalcularTitulos(lista, inpcMap, ipcaMap, hoje);
+      setPeticaoTitulosParaGerar(next);
+      setPeticaoData(hojeBR());
+      setModalPeticaoAceito(false);
+      setModalPeticaoOpcoes(true);
+    } catch (e) {
+      window.alert(`Não foi possível recalcular para hoje: ${e?.message ?? e}`);
+    } finally {
+      setGerandoPeticao(false);
+    }
+  }
+
+  function peticaoGerarComValoresAtuais() {
+    setPeticaoTitulosParaGerar(titulos);
+    setPeticaoData(aceitarPagamento ? dataCalculo : hojeBR());
+    setModalPeticaoAceito(false);
+    setModalPeticaoOpcoes(true);
+  }
+
+  async function confirmarGerarPeticaoExecucao() {
+    if (gerandoPeticao) return;
+    setGerandoPeticao(true);
+    try {
+      const processoId = await resolverProcessoId({
+        codigoCliente: codigoClienteNorm,
+        numeroInterno: procNorm,
+      });
+      if (!processoId) {
+        window.alert(
+          `Não foi possível localizar o processo (cliente ${codigoClienteNorm}, proc. ${procNorm}) no banco. Verifique se o processo está cadastrado.`
+        );
+        return;
+      }
+      const titulosReq = montarTitulosRequestPeticao(peticaoTitulosParaGerar ?? titulos);
+      if (titulosReq.length === 0) {
+        window.alert('Não há títulos com valor para gerar a petição.');
+        return;
+      }
+      const body = {
+        processoId: Number(processoId),
+        enderecamento: peticaoEnderecamento,
+        modo: peticaoModo === 'Resumido' ? 'Resumido' : 'Completo',
+        data: dataBRparaISO(peticaoData),
+        config: {
+          indice: String(indice ?? ''),
+          multa: normalizarPercentParaEnvio(multa),
+          juros: normalizarPercentParaEnvio(juros),
+          periodicidade: String(periodicidade ?? 'mensal'),
+        },
+        titulos: titulosReq,
+      };
+      const blob = await gerarPeticaoExecucao(body);
+      const sufixo = procNorm ? `${codigoClienteNorm}-${procNorm}` : String(codigoClienteNorm);
+      downloadPdfBlob(blob, `peticao-execucao-${sufixo}.pdf`);
+      setModalPeticaoOpcoes(false);
+    } catch (e) {
+      window.alert(`Não foi possível gerar a petição de execução: ${e?.message ?? e}`);
+    } finally {
+      setGerandoPeticao(false);
+    }
+  }
+
   // Recalcula ao abrir e a cada mudança, exceto quando a rodada está aceita (travada como no Excel).
   // Usa `parcelamentoAceito` da rodada, não só o checkbox — evita corrida antes do sync do checkbox.
   useEffect(() => {
@@ -1763,30 +1935,22 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
 
     if (precisaINPC && indicesMensaisINPC == null) return;
     if (precisaIPCA && indicesMensaisIPCA == null) return;
-    const inicioRec = (pagina - 1) * TITULOS_POR_PAGINA;
-    const fimRec = inicioRec + TITULOS_POR_PAGINA;
     setRodadasState((prev) => {
       const cur = prev[rodadaKey] || { ...rodadaAtual };
       const listaFull = Array.isArray(cur.titulos) ? cur.titulos : [];
-      const slice = listaFull.slice(inicioRec, fimRec);
-      const { next, changed } = recalcularTitulos(slice, indicesMensaisINPC, indicesMensaisIPCA);
+      const { next, changed } = recalcularTitulos(listaFull, indicesMensaisINPC, indicesMensaisIPCA);
       if (!changed) return prev;
-      const titulosFull = [...listaFull];
-      for (let i = 0; i < next.length; i++) {
-        const idx = inicioRec + i;
-        if (idx < titulosFull.length) {
-          titulosFull[idx] = next[i];
-        } else {
-          titulosFull.push(next[i]);
+      isDirtyRodadaRef.current = true;
+      for (const k of paginasRodadaCacheRef.current.keys()) {
+        if (String(k).startsWith(`${rodadaKey}:page:`)) {
+          paginasRodadaCacheRef.current.delete(k);
         }
       }
-      isDirtyRodadaRef.current = true;
-      paginasRodadaCacheRef.current.delete(`${rodadaKey}:page:${pagina}`);
       return {
         ...prev,
         [rodadaKey]: {
           ...cur,
-          titulos: titulosFull,
+          titulos: next,
         },
       };
     });
@@ -1962,8 +2126,12 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     setRodadasState((prev) => {
       const cur = prev[rodadaKey];
       if (!cur) return prev;
-      if (indexGlobal < 0 || indexGlobal >= cur.titulos.length) return prev;
-      const titulosAtualizados = cur.titulos.map((r, i) => {
+      if (indexGlobal < 0) return prev;
+      const titulosBase = Array.isArray(cur.titulos) ? [...cur.titulos] : [];
+      while (indexGlobal >= titulosBase.length) {
+        titulosBase.push(linhaTituloVaziaCalculos());
+      }
+      const titulosAtualizados = titulosBase.map((r, i) => {
         if (i !== indexGlobal) return r;
         return { ...r, ...patch };
       });
@@ -3311,10 +3479,137 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
             >
               Gerar no Word
             </button>
+            <button
+              type="button"
+              disabled={gerandoPeticao}
+              onClick={abrirFluxoPeticaoExecucao}
+              className="w-full px-2 py-1.5 rounded border border-emerald-300 bg-emerald-50 text-emerald-900 text-xs font-medium hover:bg-emerald-100 disabled:opacity-60 text-left"
+            >
+              {gerandoPeticao ? 'Gerando…' : 'Gerar Petição de Execução'}
+            </button>
             <button type="button" className="w-full px-2 py-1.5 rounded border border-slate-200 bg-white text-slate-700 text-xs hover:bg-slate-50">Email Automático</button>
           </div>
         </aside>
       </div>
+
+      {modalPeticaoAceito && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true">
+          <div className="bg-white rounded-lg shadow-xl border border-slate-200 w-full max-w-md">
+            <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between gap-3">
+              <h2 className="text-sm font-semibold text-slate-800">Gerar Petição de Execução</h2>
+              <button
+                type="button"
+                className="p-1 rounded hover:bg-slate-100"
+                onClick={() => setModalPeticaoAceito(false)}
+                aria-label="Fechar"
+              >
+                <X className="w-5 h-5 text-slate-600" />
+              </button>
+            </div>
+            <div className="p-4 space-y-4">
+              <p className="text-sm text-slate-700">
+                O cálculo está aceito (valores congelados). Como deseja gerar a petição?
+              </p>
+              <div className="flex flex-col gap-2">
+                <button
+                  type="button"
+                  disabled={gerandoPeticao}
+                  onClick={() => void peticaoRecalcularParaHojeEGerar()}
+                  className="w-full px-3 py-2 rounded border border-emerald-300 bg-emerald-50 text-emerald-900 text-sm font-medium hover:bg-emerald-100 disabled:opacity-60"
+                >
+                  {gerandoPeticao ? 'Recalculando…' : 'Recalcular para hoje e gerar'}
+                </button>
+                <button
+                  type="button"
+                  disabled={gerandoPeticao}
+                  onClick={peticaoGerarComValoresAtuais}
+                  className="w-full px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50 disabled:opacity-60"
+                >
+                  Gerar com os valores atuais
+                </button>
+                <button
+                  type="button"
+                  disabled={gerandoPeticao}
+                  onClick={() => setModalPeticaoAceito(false)}
+                  className="w-full px-3 py-2 rounded text-slate-500 text-sm hover:bg-slate-50 disabled:opacity-60"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {modalPeticaoOpcoes && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true">
+          <div className="bg-white rounded-lg shadow-xl border border-slate-200 w-full max-w-lg">
+            <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between gap-3">
+              <h2 className="text-sm font-semibold text-slate-800">Opções da Petição de Execução</h2>
+              <button
+                type="button"
+                className="p-1 rounded hover:bg-slate-100"
+                onClick={() => setModalPeticaoOpcoes(false)}
+                aria-label="Fechar"
+              >
+                <X className="w-5 h-5 text-slate-600" />
+              </button>
+            </div>
+            <div className="p-4 space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Endereçamento</label>
+                <textarea
+                  rows={3}
+                  value={peticaoEnderecamento}
+                  onChange={(e) => setPeticaoEnderecamento(e.target.value)}
+                  className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm bg-white"
+                />
+              </div>
+              <div className="flex items-end gap-3">
+                <div className="flex-1">
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Modo</label>
+                  <select
+                    value={peticaoModo}
+                    onChange={(e) => setPeticaoModo(e.target.value)}
+                    className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm bg-white"
+                  >
+                    <option value="Completo">Completo</option>
+                    <option value="Resumido">Resumido</option>
+                  </select>
+                </div>
+                <div className="flex-1">
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Data</label>
+                  <input
+                    type="text"
+                    value={peticaoData}
+                    onChange={(e) => setPeticaoData(e.target.value)}
+                    placeholder="dd/mm/aaaa"
+                    className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm bg-white"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="px-4 py-3 border-t border-slate-200 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                disabled={gerandoPeticao}
+                onClick={() => setModalPeticaoOpcoes(false)}
+                className="px-3 py-1.5 rounded text-slate-500 text-sm hover:bg-slate-50 disabled:opacity-60"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={gerandoPeticao}
+                onClick={() => void confirmarGerarPeticaoExecucao()}
+                className="px-3 py-1.5 rounded border border-emerald-300 bg-emerald-50 text-emerald-900 text-sm font-medium hover:bg-emerald-100 disabled:opacity-60"
+              >
+                {gerandoPeticao ? 'Gerando…' : 'Gerar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {modalDatasEspeciais && linhaModalIdx != null && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true">

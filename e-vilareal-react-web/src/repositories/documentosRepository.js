@@ -179,6 +179,11 @@ export async function gerarProcuracao({ pessoaId, cidadeEstado, data }, opts = {
   return postPdf('/api/documentos/procuracao', body, opts);
 }
 
+/** Gera a petição de Execução de Taxa Condominial (PDF). Retorna Blob. */
+export function gerarPeticaoExecucao(body, opts = {}) {
+  return postPdf('/api/documentos/peticao-execucao', body, opts);
+}
+
 export function nomeArquivoProcuracaoPdf(nomeOutorgante) {
   const base = (nomeOutorgante || 'cliente')
     .normalize('NFD')
