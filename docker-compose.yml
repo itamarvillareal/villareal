@@ -38,6 +38,13 @@ services:
       CORA_CERT_PATH: ${CORA_CERT_PATH:-/home/vilareal/cora-certs/certificate.pem}
       CORA_KEY_PATH: ${CORA_KEY_PATH:-/home/vilareal/cora-certs/private-key.pem}
       CORA_BASE_URL: ${CORA_BASE_URL:-https://matls-clients.api.stage.cora.com.br}
+      TOTP_ENCRYPTION_KEY: ${TOTP_ENCRYPTION_KEY:?defina TOTP_ENCRYPTION_KEY no .env.docker}
+      PJE_BROWSER_ENABLED: ${PJE_BROWSER_ENABLED:-true}
+      PJE_BROWSER_HEADLESS: ${PJE_BROWSER_HEADLESS:-true}
+      PJE_TRT18_LOGIN_PADRAO: ${PJE_TRT18_LOGIN_PADRAO:-00733235190}
+      PJE_EMAIL_TRIGGER_ENABLED: ${PJE_EMAIL_TRIGGER_ENABLED:-false}
+    
+    
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:

@@ -10,6 +10,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.time.Instant;
+import java.time.YearMonth;
+import java.time.ZoneOffset;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -42,7 +45,14 @@ public class ProcessoTramitacaoBackfillService {
 
     @Transactional(readOnly = true)
     public ProcessoTramitacaoBackfillResponse executar(boolean dryRun) {
-        List<Long> processoIds = processoRepository.findIdsComTramitacaoVazia();
+        return executar(dryRun, null);
+    }
+
+    @Transactional(readOnly = true)
+    public ProcessoTramitacaoBackfillResponse executar(boolean dryRun, Instant modificadosDesde) {
+        List<Long> processoIds = modificadosDesde != null
+                ? processoRepository.findIdsComTramitacaoVaziaModificadosDesde(modificadosDesde)
+                : processoRepository.findIdsComTramitacaoVazia();
         int total = processoIds.size();
         if (total == 0) {
             return new ProcessoTramitacaoBackfillResponse(0, 0, 0, 0, dryRun);
@@ -89,14 +99,20 @@ public class ProcessoTramitacaoBackfillService {
         }
 
         log.info(
-                "Backfill tramitação concluído (dryRun={}): total={}, projudi={}, pje={}, inalterados={}",
+                "Backfill tramitação concluído (dryRun={}, modificadosDesde={}): total={}, projudi={}, pje={}, inalterados={}",
                 dryRun,
+                modificadosDesde,
                 total,
                 atualizadosProjudi,
                 atualizadosPje,
                 inalterados);
         return new ProcessoTramitacaoBackfillResponse(
                 atualizadosProjudi, atualizadosPje, inalterados, total, dryRun);
+    }
+
+    public static Instant inicioMesAtualUtc() {
+        YearMonth mes = YearMonth.now(ZoneOffset.UTC);
+        return mes.atDay(1).atStartOfDay().toInstant(ZoneOffset.UTC);
     }
 
     static String resolverAlvoBackfill(
