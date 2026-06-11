@@ -8,6 +8,7 @@ COPY src ./src
 RUN mvn -q -DskipTests package
 
 FROM mcr.microsoft.com/playwright/java:v1.52.0-noble
+ENV LANG=C.UTF-8 LC_ALL=C.UTF-8
 WORKDIR /app
 
 COPY --from=builder /app/target/*.jar app.jar
