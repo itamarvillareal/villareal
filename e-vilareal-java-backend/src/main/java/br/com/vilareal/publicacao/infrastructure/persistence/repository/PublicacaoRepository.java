@@ -158,6 +158,52 @@ public interface PublicacaoRepository extends JpaRepository<PublicacaoEntity, Lo
             """)
     List<PublicacaoEntity> findImportadasPorEmailPorCnjNormalizado(@Param("cnjNorm") String cnjNorm);
 
+    @Query(
+            """
+            SELECT p FROM PublicacaoEntity p
+            WHERE p.origemImportacao = 'TRT'
+              AND REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                    UPPER(TRIM(p.numeroProcessoEncontrado)), '.', ''), '-', ''), ' ', ''), '/', ''), CHAR(9), '') = :cnjNorm
+            ORDER BY p.createdAt DESC, p.id DESC
+            """)
+    List<PublicacaoEntity> findPublicacoesTrtPorCnjNormalizado(
+            @Param("cnjNorm") String cnjNorm, org.springframework.data.domain.Pageable pageable);
+
+    @Query(
+            """
+            SELECT DISTINCT p.processo.id FROM PublicacaoEntity p
+            WHERE p.processo.id IN :processoIds
+              AND p.origemImportacao = 'PROJUDI'
+            """)
+    List<Long> findDistinctProcessoIdsComOrigemProjudi(@Param("processoIds") Collection<Long> processoIds);
+
+    @Query(
+            """
+            SELECT DISTINCT p.processo.id FROM PublicacaoEntity p
+            WHERE p.processo.id IN :processoIds
+              AND p.origemImportacao = 'TRT'
+              AND UPPER(p.numeroProcessoEncontrado) LIKE '%.5.18.%'
+            """)
+    List<Long> findDistinctProcessoIdsComOrigemTrt18(@Param("processoIds") Collection<Long> processoIds);
+
+    @Query(
+            """
+            SELECT DISTINCT p.processo.id FROM PublicacaoEntity p
+            WHERE p.processo.id IN :processoIds
+              AND p.origemImportacao = 'MONITORAMENTO'
+            """)
+    List<Long> findDistinctProcessoIdsComOrigemMonitoramento(@Param("processoIds") Collection<Long> processoIds);
+
+    @Query(
+            """
+            SELECT p.processo.id, p.numeroProcessoEncontrado FROM PublicacaoEntity p
+            WHERE p.processo.id IN :processoIds
+              AND p.origemImportacao = 'MONITORAMENTO'
+              AND p.numeroProcessoEncontrado IS NOT NULL
+              AND TRIM(p.numeroProcessoEncontrado) <> ''
+            """)
+    List<Object[]> findMonitoramentoCnjPorProcessoIds(@Param("processoIds") Collection<Long> processoIds);
+
     @Query("SELECT p.processo.id FROM PublicacaoEntity p WHERE p.id = :publicacaoId")
     java.util.Optional<Long> findProcessoIdByPublicacaoId(@Param("publicacaoId") Long publicacaoId);
 

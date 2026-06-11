@@ -67,6 +67,9 @@ public class SecurityConfig {
                                 .requestMatchers(HttpMethod.POST, "/api/cora-sandbox/webhook").permitAll()
                                 // Diagnóstico Drive exige admin autenticado (demais /admin PROJUDI ainda TEMP público)
                                 .requestMatchers("/api/projudi/admin/drive-diag").hasAuthority("ROLE_ADMIN")
+                                .requestMatchers("/api/admin/totp/**").hasAuthority("ROLE_ADMIN")
+                                .requestMatchers("/api/admin/pje/**").hasAuthority("ROLE_ADMIN")
+                                .requestMatchers("/api/admin/processos/**").hasAuthority("ROLE_ADMIN")
                                 // TEMPORÁRIO - liberar diagnóstico PROJUDI - remover junto com ProjudiDiagnosticoController
                                 .requestMatchers("/api/projudi/admin/**").permitAll()
                                 .requestMatchers("/api/julia/admin/**").permitAll()

@@ -26,7 +26,7 @@
         }
 
         @page :first {
-            margin: 0 15mm 15mm 15mm;
+            margin: 0 15mm 22mm 15mm;
             @top-center {
                 content: none;
             }
@@ -47,6 +47,11 @@
             font-size: 12pt;
             line-height: 1.0;
             color: #000;
+        }
+
+        p {
+            margin: 0;
+            padding: 0;
         }
 
         .cabecalho-primeira {
@@ -261,42 +266,7 @@
 <div class="corpo-documento">
     <p class="titulo-procuracao">PROCURAÇÃO AD JUDICIA</p>
 
-    <p class="corpo-procuracao">
-        <span th:utext="${qualificacaoOutorgante}">NOME DO OUTORGANTE, qualificação...</span>,
-        pelo presente instrumento particular de mandado, constitui e nomeia
-        seu bastante procurador o advogado <strong>Dr. ITAMAR ALEXANDRE FELIX VILLA REAL JUNIOR</strong>,
-        brasileiro, casado, advogado, inscrito na OAB/GO sob o nº 33.329 e CPF nº 007.332.351-90,
-        com escritório profissional na Avenida Pinheiro Chagas, nº 232, Bairro Jundiaí,
-        CEP nº 75.110-580, Anápolis, Estado de Goiás, onde recebe as intimações de praxe,
-        a quem confere amplos, gerais e ilimitados poderes para o foro em geral, a fim de que possa,
-        isolada ou conjuntamente e independente da ordem de nomeação, em todas Comarcas,
-        em qualquer Juízo ou Tribunal, Estaduais e Federais, Secretaria da Fazenda de Goiás
-        (Conselho Administrativo Tributário e Gerência de Processos de Cobrança e Especiais), INSS,
-        onde se tomar necessário e com esta se apresentar, defender os direitos, interesses e obrigações
-        do outorgante, podendo propor contra quem de direito requerimentos, impugnações, recursos,
-        revisões, ações competentes e defesa nas contrárias, seguindo umas e outras, até decisão final,
-        usando dos recursos legais e acompanhar, para o fim disposto nos artigos 447 e 448 do Código
-        de Processo Civil, podendo praticar todos os poderes constantes do artigo 38 do Código de
-        Processo Civil e demais poderes 'et extra', até final decisão e execução, variar de ações, apelar,
-        agravar de retido ou de instrumento, recorrer ordinária e extraordinariamente para Superior
-        Instância, assinar e conciliar, apresentar arguição de relevância, embargar de infringente,
-        apresentar embargo de terceiro, declaração regimental, medidas preparatórias, cautelares, ou
-        preventivas, promover penhora, praça, leilão, adjudicar, remir e licitar bens, ceder a quem lhe
-        convier os direitos respectivos, chamar terceiros à ação de litisconsórcio, habilitar-se como tais,
-        ou opoentes propor ações sumárias ou sumaríssimas, acompanhá-las; ou procedimento especial
-        ou ordinário, de execução, impetrar mandado de segurança, despejos, conferindo ainda, poderes
-        especiais para transigir, desistir, receber e dar quitação, assinar recibos, renunciar, renunciar à
-        valor de crédito que exceder alçada de juizado ou RPV, reconhecer a procedência do pedido,
-        firmar compromisso judicial ou extrajudicial, confessar e, ainda, representar perante os Poderes
-        Federais, Estaduais e Municipais, por seus órgãos de Administração Direta ou Indireta, inclusive
-        Autarquias, Empresas Públicas e Sociedades de Economia Mista, servindo também para
-        representação em processos administrativos de qualquer natureza junto a órgãos policiais,
-        podendo assinar declaração de isenção de imposto de renda junto à Receita Federal, oferecer
-        representação e queixa-crime, habilitar como assistente de acusação, requerer gratuidade de
-        justiça para os fins do art. 5º, LXXIV da Constituição Federal, c/c Artigos 1º e seguintes da
-        Lei nº 1.060/50, com suas modificações, além de substabelecer esta a outrem, com ou sem
-        reserva de iguais poderes, dando tudo por fiel, firme e valioso.
-    </p>
+    <p class="corpo-procuracao"><span th:utext="${qualificacaoOutorgante}">NOME DO OUTORGANTE, qualificação...</span>, pelo presente instrumento particular de mandado, constitui e nomeia seu bastante procurador o advogado Dr. ITAMAR ALEXANDRE FELIX VILLA REAL JUNIOR, brasileiro, casado, advogado, inscrito na OAB/GO sob o nº 33.329 e CPF nº 007.332.351-90, com escritório profissional na Avenida Pinheiro Chagas, nº 232, Bairro Jundiaí, CEP nº 75.110-580, Anápolis, Estado de Goiás, onde recebe as intimações de praxe, a quem confere amplos, gerais e ilimitados poderes para o foro em geral, a fim de que possa, isolada ou conjuntamente e independente da ordem de nomeação, em todas Comarcas, em qualquer Juízo ou Tribunal, Estaduais e Federais, Secretaria da Fazenda de Goiás (Conselho Administrativo Tributário e Gerência de Processos de Cobrança e Especiais), INSS, onde se tomar necessário e com esta se apresentar, defender os direitos, interesses e obrigações do outorgante, podendo propor contra quem de direito requerimentos, impugnações, recursos, revisões, ações competentes e defesa nas contrárias, seguindo umas e outras, até decisão final, usando dos recursos legais e acompanhar, para o fim disposto nos artigos 447 e 448 do Código de Processo Civil, podendo praticar todos os poderes constantes do artigo 38 do Código de Processo Civil e demais poderes 'et extra', até final decisão e execução, variar de ações, apelar, agravar de retido ou de instrumento, recorrer ordinária e extraordinariamente para Superior Instância, assinar e conciliar, apresentar arguição de relevância, embargar de infringente, apresentar embargo de terceiro, declaração regimental, medidas preparatórias, cautelares, ou preventivas, promover penhora, praça, leilão, adjudicar, remir e licitar bens, ceder a quem lhe convier os direitos respectivos, chamar terceiros à ação de litisconsórcio, habilitar-se como tais, ou opoentes propor ações sumárias ou sumaríssimas, acompanhá-las; ou procedimento especial ou ordinário, de execução, impetrar mandado de segurança, despejos, conferindo ainda, poderes especiais para transigir, desistir, receber e dar quitação, assinar recibos, renunciar, renunciar à valor de crédito que exceder alçada de juizado ou RPV, reconhecer a procedência do pedido, firmar compromisso judicial ou extrajudicial, confessar e, ainda, representar perante os Poderes Federais, Estaduais e Municipais, por seus órgãos de Administração Direta ou Indireta, inclusive Autarquias, Empresas Públicas e Sociedades de Economia Mista, servindo também para representação em processos administrativos de qualquer natureza junto a órgãos policiais, podendo assinar declaração de isenção de imposto de renda junto à Receita Federal, oferecer representação e queixa-crime, habilitar como assistente de acusação, requerer gratuidade de justiça para os fins do art. 5º, LXXIV da Constituição Federal, c/c Artigos 1º e seguintes da Lei nº 1.060/50, com suas modificações, além de substabelecer esta a outrem, com ou sem reserva de iguais poderes, dando tudo por fiel, firme e valioso.</p>
 
     <p class="data-procuracao" th:text="${localData}">Anápolis, estado de Goiás, data.</p>
 

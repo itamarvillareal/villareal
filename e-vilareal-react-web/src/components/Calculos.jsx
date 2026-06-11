@@ -29,8 +29,7 @@ import {
   linhaVaziaParcela,
 } from '../data/calculosRodadasMockGeracao.js';
 import { obterIndicesMensaisINPC, obterIndicesMensaisIPCA } from '../services/monetaryIndicesService.js';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import { construirRelatorioCalculoPdf } from '../data/relatorioCalculoPdf.js';
 import { baixarBlobDocx, gerarDocumentoListaDebitosWord } from '../utils/gerarDocumentoListaDebitosWord';
 import { INDICES_CALCULO, PERIODICIDADE_OPCOES } from '../data/calculosIndices.js';
 import {
@@ -51,8 +50,6 @@ import {
   enriquecerTitulosAPartirDeParcelasNaRodada,
   linhaTituloVaziaCalculos,
 } from '../data/calculosTitulosParcelasSync.js';
-import { gerarPeticaoExecucao, downloadPdfBlob } from '../repositories/documentosRepository.js';
-import { resolverProcessoId } from '../repositories/processosRepository.js';
 
 const ProcessosLazy = lazy(() =>
   import('./Processos.jsx').then((module) => ({ default: module.Processos }))
@@ -506,15 +503,6 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
 
   const [confirmarLimpeza, setConfirmarLimpeza] = useState(false);
   const [processoEmbed, setProcessoEmbed] = useState(null);
-
-  // Petição de Execução (F10)
-  const [gerandoPeticao, setGerandoPeticao] = useState(false);
-  const [modalPeticaoAceito, setModalPeticaoAceito] = useState(false);
-  const [modalPeticaoOpcoes, setModalPeticaoOpcoes] = useState(false);
-  const [peticaoEnderecamento, setPeticaoEnderecamento] = useState('');
-  const [peticaoModo, setPeticaoModo] = useState('Completo');
-  const [peticaoData, setPeticaoData] = useState('');
-  const [peticaoTitulosParaGerar, setPeticaoTitulosParaGerar] = useState(null);
 
   function confirmarAlternarAceitarPagamento(next) {
     const isLock = Boolean(next);
@@ -1270,98 +1258,19 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
       }
     }
 
-    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-    const margemX = 12;
-    const dataGeracao = new Date().toLocaleString('pt-BR');
-    const cabecalho = rodadaAtual?.cabecalho || {};
-
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(14);
-    doc.text('Relatório de Cálculo', margemX, 14);
-
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10);
-    doc.text(`Cliente (código): ${codigoClienteNorm}`, margemX, 20);
-    doc.text(`Processo: ${procNorm}`, margemX, 25);
-    doc.text(`Parte Cliente: ${cabecalho?.autor || '—'}`, margemX, 30);
-    doc.text(`Parte Oposta: ${cabecalho?.reu || '—'}`, margemX, 35);
-    doc.text(`Data do cálculo: ${dataCalculo}`, margemX, 40);
-
-    doc.setFont('helvetica', 'bold');
-    doc.text('Parâmetros do cálculo', margemX, 48);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`Juros: ${juros}   |   Multa: ${multa}`, margemX, 53);
-    doc.text(`Honorários: ${honorariosTipo} (${honorariosValor})   |   Índice: ${indice}`, margemX, 58);
-
-    const linhasTitulos = titulosPdf
-      .map((t, idx) => ({
-        n: String(idx + 1).padStart(3, '0'),
-        dataVencimento: t?.dataVencimento || '',
-        valorInicial: t?.valorInicial || '',
-        atualizacaoMonetaria: t?.atualizacaoMonetaria || '',
-        diasAtraso: t?.diasAtraso || '',
-        juros: t?.juros || '',
-        multa: t?.multa || '',
-        honorarios: t?.honorarios || '',
-        total: t?.total || calcularTotalTituloGrade(t),
-      }))
-      .filter((t) => String(t?.valorInicial ?? '').trim() !== '');
-
-    autoTable(doc, {
-      startY: 63,
-      head: [[
-        'Nº',
-        'Vencimento',
-        'Valor Inicial',
-        'Atualização',
-        'Dias',
-        'Juros',
-        'Multa',
-        'Honorários',
-        'Total',
-      ]],
-      body: linhasTitulos.map((l) => [
-        l.n,
-        l.dataVencimento,
-        l.valorInicial,
-        l.atualizacaoMonetaria,
-        l.diasAtraso,
-        l.juros,
-        l.multa,
-        l.honorarios,
-        l.total,
-      ]),
-      styles: { fontSize: 8, cellPadding: 1.5, overflow: 'linebreak' },
-      headStyles: { fillColor: [30, 41, 59], textColor: 255 },
-      columnStyles: {
-        0: { halign: 'center', cellWidth: 10 },
-        1: { halign: 'center', cellWidth: 20 },
-      },
-      margin: { left: margemX, right: margemX },
-      didDrawPage: () => {
-        const totalPaginasDoc = doc.getNumberOfPages();
-        const largura = doc.internal.pageSize.getWidth();
-        const altura = doc.internal.pageSize.getHeight();
-        doc.setFontSize(8);
-        doc.text(`Gerado em: ${dataGeracao}`, margemX, altura - 5);
-        doc.text(`Página ${doc.getCurrentPageInfo().pageNumber}/${totalPaginasDoc}`, largura - 28, altura - 5);
-      },
+    const doc = construirRelatorioCalculoPdf({
+      titulos: titulosPdf,
+      resumo: resumoPdf,
+      cabecalho: rodadaAtual?.cabecalho || {},
+      codigoCliente: codigoClienteNorm,
+      proc: procNorm,
+      dataCalculo,
+      juros,
+      multa,
+      honorariosTipo,
+      honorariosValor,
+      indice,
     });
-
-    const yResumo = (doc.lastAutoTable?.finalY || 63) + 6;
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(11);
-    doc.text('Resumo financeiro (todos os títulos da dimensão)', margemX, yResumo);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9);
-    doc.text(`Quantidade de títulos: ${resumoPdf.qtd}`, margemX, yResumo + 5);
-    doc.text(`Valor inicial total: ${resumoPdf.valorInicial}`, margemX, yResumo + 10);
-    doc.text(`Atualização monetária: ${resumoPdf.atualizacao}`, margemX, yResumo + 15);
-    doc.text(`Dias de atraso (soma): ${resumoPdf.diasAtraso}`, margemX, yResumo + 20);
-    doc.text(`Juros: ${resumoPdf.juros}`, margemX, yResumo + 25);
-    doc.text(`Multa: ${resumoPdf.multa}`, margemX, yResumo + 30);
-    doc.text(`Honorários: ${resumoPdf.honorarios}`, margemX, yResumo + 35);
-    doc.text(`Total geral: ${resumoPdf.total}`, margemX, yResumo + 40);
 
     doc.save(gerarNomeArquivoPdf());
   }
@@ -1745,184 +1654,6 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
       return nextRow;
     });
     return { next, changed };
-  }
-
-  // ===== Petição de Execução (F10): recálculo imperativo + montagem do request =====
-
-  /** Carrega os mapas de índices (INPC/IPCA) necessários para `lista` em `dataDate`, de forma aguardável. */
-  async function carregarMapasIndicesParaData(lista, dataDate) {
-    const arr = Array.isArray(lista) ? lista : [];
-    const idxUpperGeral = String(indice).toUpperCase();
-    const precisaINPC =
-      idxUpperGeral === 'INPC' ||
-      arr.some((t) => String(t?.datasEspeciais?.indiceEspecial ?? '').toUpperCase() === 'INPC');
-    const precisaIPCA =
-      idxUpperGeral === 'IPCA-E' ||
-      idxUpperGeral === 'IPCA' ||
-      arr.some((t) => {
-        const v = String(t?.datasEspeciais?.indiceEspecial ?? '').toUpperCase();
-        return v === 'IPCA-E' || v === 'IPCA';
-      });
-
-    let inpcMap = null;
-    let ipcaMap = null;
-    if (!precisaINPC && !precisaIPCA) return { inpcMap, ipcaMap };
-
-    let minDataInicialAtual = null;
-    let maxDataFinalAtual = dataDate;
-    for (const t of arr) {
-      const venc = parseDateBR(t.dataVencimento);
-      if (!venc) continue;
-      const esp = t.datasEspeciais && typeof t.datasEspeciais === 'object' ? t.datasEspeciais : {};
-      const diAtual = parseDateBR(esp.dataInicialAtual) ?? venc;
-      const dfAtual = parseDateBR(esp.dataFinalAtual) ?? dataDate;
-      if (diAtual && (!minDataInicialAtual || diAtual < minDataInicialAtual)) minDataInicialAtual = diAtual;
-      if (dfAtual && dfAtual > maxDataFinalAtual) maxDataFinalAtual = dfAtual;
-    }
-    const inicio = minDataInicialAtual || dataDate;
-    const fim = maxDataFinalAtual || dataDate;
-
-    if (precisaINPC) {
-      try {
-        inpcMap = await obterIndicesMensaisINPC(inicio, fim);
-      } catch {
-        inpcMap = {};
-      }
-    }
-    if (precisaIPCA) {
-      const endPrevMonth = new Date(fim.getFullYear(), fim.getMonth() - 1, 1);
-      try {
-        ipcaMap = await obterIndicesMensaisIPCA(inicio, endPrevMonth);
-      } catch {
-        ipcaMap = {};
-      }
-    }
-    return { inpcMap, ipcaMap };
-  }
-
-  function normalizarPercentParaEnvio(v) {
-    return String(v ?? '').replace(/%/g, '').replace(/\s/g, '').trim();
-  }
-
-  function dataBRparaISO(br) {
-    const d = parseDateBR(br);
-    const base = d ?? new Date();
-    const yyyy = base.getFullYear();
-    const mm = String(base.getMonth() + 1).padStart(2, '0');
-    const dd = String(base.getDate()).padStart(2, '0');
-    return `${yyyy}-${mm}-${dd}`;
-  }
-
-  function montarTitulosRequestPeticao(lista) {
-    const arr = Array.isArray(lista) ? lista : [];
-    return arr
-      .filter((t) => String(t?.valorInicial ?? '').trim() !== '')
-      .map((t) => {
-        const diasNum = parseInt(String(t?.diasAtraso ?? '').replace(/\D/g, ''), 10);
-        return {
-          descricao: t?.descricaoValor ?? '',
-          vencimento: t?.dataVencimento ?? '',
-          diasAtraso: Number.isFinite(diasNum) ? diasNum : null,
-          valorPrincipal: t?.valorInicial ?? '',
-          atualizacaoMonetaria: t?.atualizacaoMonetaria ?? '',
-          juros: t?.juros ?? '',
-          multa: t?.multa ?? '',
-          honorarios: t?.honorarios ?? '',
-          // INV1: envia o total do título exatamente como exibido na grade (sem recompor no backend).
-          total: String(t?.total ?? '').trim() !== '' ? t.total : calcularTotalTituloGrade(t),
-        };
-      });
-  }
-
-  function abrirFluxoPeticaoExecucao() {
-    if (!peticaoEnderecamento || peticaoEnderecamento.trim() === '') {
-      setPeticaoEnderecamento('MERITÍSSIMO JUÍZO DO JUIZADO ESPECIAL CÍVEL DA COMARCA DE ANÁPOLIS - GO');
-    }
-    setPeticaoData(aceitarPagamento ? dataCalculo : hojeBR());
-    if (calculoTravadoAceito) {
-      setModalPeticaoAceito(true);
-    } else {
-      setPeticaoTitulosParaGerar(titulos);
-      setModalPeticaoOpcoes(true);
-    }
-  }
-
-  async function peticaoRecalcularParaHojeEGerar() {
-    if (gerandoPeticao) return;
-    setGerandoPeticao(true);
-    try {
-      const hoje = parseDateBR(hojeBR());
-      const lista = Array.isArray(titulos) ? titulos : [];
-      const { inpcMap, ipcaMap } = await carregarMapasIndicesParaData(lista, hoje);
-      const { next } = recalcularTitulos(lista, inpcMap, ipcaMap, hoje);
-      setPeticaoTitulosParaGerar(next);
-      setPeticaoData(hojeBR());
-      setModalPeticaoAceito(false);
-      setModalPeticaoOpcoes(true);
-    } catch (e) {
-      window.alert(`Não foi possível recalcular para hoje: ${e?.message ?? e}`);
-    } finally {
-      setGerandoPeticao(false);
-    }
-  }
-
-  function peticaoGerarComValoresAtuais() {
-    setPeticaoTitulosParaGerar(titulos);
-    setPeticaoData(aceitarPagamento ? dataCalculo : hojeBR());
-    setModalPeticaoAceito(false);
-    setModalPeticaoOpcoes(true);
-  }
-
-  async function confirmarGerarPeticaoExecucao() {
-    if (gerandoPeticao) return;
-    setGerandoPeticao(true);
-    try {
-      const processoId = await resolverProcessoId({
-        codigoCliente: codigoClienteNorm,
-        numeroInterno: procNorm,
-      });
-      if (!processoId) {
-        window.alert(
-          `Não foi possível localizar o processo (cliente ${codigoClienteNorm}, proc. ${procNorm}) no banco. Verifique se o processo está cadastrado.`
-        );
-        return;
-      }
-      const listaParaGerar = peticaoTitulosParaGerar ?? titulos;
-      const titulosReq = montarTitulosRequestPeticao(listaParaGerar);
-      if (titulosReq.length === 0) {
-        window.alert('Não há títulos com valor para gerar a petição.');
-        return;
-      }
-      const body = {
-        processoId: Number(processoId),
-        enderecamento: peticaoEnderecamento,
-        modo: peticaoModo === 'Resumido' ? 'Resumido' : 'Completo',
-        data: dataBRparaISO(peticaoData),
-        config: {
-          indice: String(indice ?? ''),
-          multa: normalizarPercentParaEnvio(multa),
-          juros: normalizarPercentParaEnvio(juros),
-          periodicidade: String(periodicidade ?? 'mensal'),
-        },
-        titulos: titulosReq,
-        // INV1: total geral exatamente como o resumo da tela calcula para a mesma lista enviada.
-        totalGeral: calcularResumoTitulosGrade(listaParaGerar).total,
-      };
-      const blob = await gerarPeticaoExecucao(body);
-      const sufixo = procNorm ? `${codigoClienteNorm}-${procNorm}` : String(codigoClienteNorm);
-      downloadPdfBlob(blob, `peticao-execucao-${sufixo}.pdf`);
-      // Junto com a petição, entrega também o PDF do relatório de cálculos (memória de cálculo).
-      try {
-        await gerarPdfCalculo({ forcar: true });
-      } catch (e) {
-        console.warn('[vilareal] Petição gerada, mas falhou o PDF de cálculos:', e);
-      }
-      setModalPeticaoOpcoes(false);
-    } catch (e) {
-      window.alert(`Não foi possível gerar a petição de execução: ${e?.message ?? e}`);
-    } finally {
-      setGerandoPeticao(false);
-    }
   }
 
   // Recalcula ao abrir e a cada mudança, exceto quando a rodada está aceita (travada como no Excel).
@@ -3490,137 +3221,10 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
             >
               Gerar no Word
             </button>
-            <button
-              type="button"
-              disabled={gerandoPeticao}
-              onClick={abrirFluxoPeticaoExecucao}
-              className="w-full px-2 py-1.5 rounded border border-emerald-300 bg-emerald-50 text-emerald-900 text-xs font-medium hover:bg-emerald-100 disabled:opacity-60 text-left"
-            >
-              {gerandoPeticao ? 'Gerando…' : 'Gerar Petição de Execução'}
-            </button>
             <button type="button" className="w-full px-2 py-1.5 rounded border border-slate-200 bg-white text-slate-700 text-xs hover:bg-slate-50">Email Automático</button>
           </div>
         </aside>
       </div>
-
-      {modalPeticaoAceito && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true">
-          <div className="bg-white rounded-lg shadow-xl border border-slate-200 w-full max-w-md">
-            <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between gap-3">
-              <h2 className="text-sm font-semibold text-slate-800">Gerar Petição de Execução</h2>
-              <button
-                type="button"
-                className="p-1 rounded hover:bg-slate-100"
-                onClick={() => setModalPeticaoAceito(false)}
-                aria-label="Fechar"
-              >
-                <X className="w-5 h-5 text-slate-600" />
-              </button>
-            </div>
-            <div className="p-4 space-y-4">
-              <p className="text-sm text-slate-700">
-                O cálculo está aceito (valores congelados). Como deseja gerar a petição?
-              </p>
-              <div className="flex flex-col gap-2">
-                <button
-                  type="button"
-                  disabled={gerandoPeticao}
-                  onClick={() => void peticaoRecalcularParaHojeEGerar()}
-                  className="w-full px-3 py-2 rounded border border-emerald-300 bg-emerald-50 text-emerald-900 text-sm font-medium hover:bg-emerald-100 disabled:opacity-60"
-                >
-                  {gerandoPeticao ? 'Recalculando…' : 'Recalcular para hoje e gerar'}
-                </button>
-                <button
-                  type="button"
-                  disabled={gerandoPeticao}
-                  onClick={peticaoGerarComValoresAtuais}
-                  className="w-full px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50 disabled:opacity-60"
-                >
-                  Gerar com os valores atuais
-                </button>
-                <button
-                  type="button"
-                  disabled={gerandoPeticao}
-                  onClick={() => setModalPeticaoAceito(false)}
-                  className="w-full px-3 py-2 rounded text-slate-500 text-sm hover:bg-slate-50 disabled:opacity-60"
-                >
-                  Cancelar
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {modalPeticaoOpcoes && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true">
-          <div className="bg-white rounded-lg shadow-xl border border-slate-200 w-full max-w-lg">
-            <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between gap-3">
-              <h2 className="text-sm font-semibold text-slate-800">Opções da Petição de Execução</h2>
-              <button
-                type="button"
-                className="p-1 rounded hover:bg-slate-100"
-                onClick={() => setModalPeticaoOpcoes(false)}
-                aria-label="Fechar"
-              >
-                <X className="w-5 h-5 text-slate-600" />
-              </button>
-            </div>
-            <div className="p-4 space-y-4">
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Endereçamento</label>
-                <textarea
-                  rows={3}
-                  value={peticaoEnderecamento}
-                  onChange={(e) => setPeticaoEnderecamento(e.target.value)}
-                  className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm bg-white"
-                />
-              </div>
-              <div className="flex items-end gap-3">
-                <div className="flex-1">
-                  <label className="block text-xs font-medium text-slate-600 mb-1">Modo</label>
-                  <select
-                    value={peticaoModo}
-                    onChange={(e) => setPeticaoModo(e.target.value)}
-                    className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm bg-white"
-                  >
-                    <option value="Completo">Completo</option>
-                    <option value="Resumido">Resumido</option>
-                  </select>
-                </div>
-                <div className="flex-1">
-                  <label className="block text-xs font-medium text-slate-600 mb-1">Data</label>
-                  <input
-                    type="text"
-                    value={peticaoData}
-                    onChange={(e) => setPeticaoData(e.target.value)}
-                    placeholder="dd/mm/aaaa"
-                    className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm bg-white"
-                  />
-                </div>
-              </div>
-            </div>
-            <div className="px-4 py-3 border-t border-slate-200 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                disabled={gerandoPeticao}
-                onClick={() => setModalPeticaoOpcoes(false)}
-                className="px-3 py-1.5 rounded text-slate-500 text-sm hover:bg-slate-50 disabled:opacity-60"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                disabled={gerandoPeticao}
-                onClick={() => void confirmarGerarPeticaoExecucao()}
-                className="px-3 py-1.5 rounded border border-emerald-300 bg-emerald-50 text-emerald-900 text-sm font-medium hover:bg-emerald-100 disabled:opacity-60"
-              >
-                {gerandoPeticao ? 'Gerando…' : 'Gerar'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {modalDatasEspeciais && linhaModalIdx != null && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true">

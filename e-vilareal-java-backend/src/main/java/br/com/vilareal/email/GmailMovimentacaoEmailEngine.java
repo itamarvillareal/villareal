@@ -1,7 +1,11 @@
 package br.com.vilareal.email;
 
 import br.com.vilareal.processo.application.ProcessoDiagnosticoNumeroBuscaUtil;
+import br.com.vilareal.processo.application.ProcessoTramitacaoService;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
+import br.com.vilareal.pje.application.PjeEmailTriggerService;
+import br.com.vilareal.pje.config.PjeEmailTriggerProperties;
+import br.com.vilareal.pje.infrastructure.browser.PjeTrt18CnjUtil;
 import br.com.vilareal.projudi.ProjudiEmailTriggerService;
 import br.com.vilareal.publicacao.api.dto.PublicacaoWriteRequest;
 import br.com.vilareal.publicacao.infrastructure.persistence.repository.PublicacaoRepository;
@@ -44,7 +48,10 @@ public class GmailMovimentacaoEmailEngine {
     private final ProcessoRepository processoRepository;
     private final EmailImportacaoSyncService syncService;
     private final ProjudiEmailTriggerService projudiEmailTriggerService;
+    private final PjeEmailTriggerService pjeEmailTriggerService;
+    private final PjeEmailTriggerProperties pjeEmailTriggerProperties;
     private final ProjudiMovimentacoesEmailPipelineProperties pipelineProperties;
+    private final ProcessoTramitacaoService processoTramitacaoService;
     private final String gmailUser;
 
     public GmailMovimentacaoEmailEngine(
@@ -54,7 +61,10 @@ public class GmailMovimentacaoEmailEngine {
             ProcessoRepository processoRepository,
             EmailImportacaoSyncService syncService,
             ProjudiEmailTriggerService projudiEmailTriggerService,
+            PjeEmailTriggerService pjeEmailTriggerService,
+            PjeEmailTriggerProperties pjeEmailTriggerProperties,
             ProjudiMovimentacoesEmailPipelineProperties pipelineProperties,
+            ProcessoTramitacaoService processoTramitacaoService,
             @Value("${gmail.user:me}") String gmailUser) {
         this.gmail = gmail;
         this.importacaoTransacional = importacaoTransacional;
@@ -62,7 +72,10 @@ public class GmailMovimentacaoEmailEngine {
         this.processoRepository = processoRepository;
         this.syncService = syncService;
         this.projudiEmailTriggerService = projudiEmailTriggerService;
+        this.pjeEmailTriggerService = pjeEmailTriggerService;
+        this.pjeEmailTriggerProperties = pjeEmailTriggerProperties;
         this.pipelineProperties = pipelineProperties;
+        this.processoTramitacaoService = processoTramitacaoService;
         this.gmailUser = gmailUser;
     }
 
@@ -117,6 +130,7 @@ public class GmailMovimentacaoEmailEngine {
 
         Set<String> processosUnicosLote = new LinkedHashSet<>();
         Set<String> cnjsDisparoProjudi = new LinkedHashSet<>();
+        Set<String> cnjsDisparoPje = new LinkedHashSet<>();
         Instant emailMaisRecente = cursorAnterior;
 
         for (Message ref : mensagens) {
@@ -194,9 +208,19 @@ public class GmailMovimentacaoEmailEngine {
                         if (processoVinculado.isPresent()) {
                             vinculosAutomaticos++;
                             resumo.registrarProcessoAtivadoDrive(processoVinculado.get());
+                            processoTramitacaoService.definirPorFonteEmail(
+                                    processoVinculado.get(),
+                                    fonte.tipo(),
+                                    req.getNumeroProcessoEncontrado());
                             if (fonte.tipo() == EmailImportacaoSyncTipo.PROJUDI && !pipelineProperties.isEnabled()) {
                                 projudiEmailTriggerService.registrarCnjParaDisparo(
                                         cnjsDisparoProjudi, req.getNumeroProcessoEncontrado());
+                            }
+                            if (fonte.tipo() == EmailImportacaoSyncTipo.TRT
+                                    && pjeEmailTriggerProperties.isEnabled()
+                                    && PjeTrt18CnjUtil.cnjEhTrt18(req.getNumeroProcessoEncontrado())) {
+                                pjeEmailTriggerService.registrarCnjParaDisparo(
+                                        cnjsDisparoPje, req.getNumeroProcessoEncontrado());
                             }
                         } else if (fonte.tipo() == EmailImportacaoSyncTipo.PROJUDI && pipelineProperties.isEnabled()) {
                             resolverProcessoIdUnicoPorCnj(req.getNumeroProcessoEncontrado())
@@ -254,6 +278,9 @@ public class GmailMovimentacaoEmailEngine {
 
         if (fonte.tipo() == EmailImportacaoSyncTipo.PROJUDI && !pipelineProperties.isEnabled()) {
             projudiEmailTriggerService.agendarDisparoAssincrono(cnjsDisparoProjudi);
+        }
+        if (fonte.tipo() == EmailImportacaoSyncTipo.TRT && pjeEmailTriggerProperties.isEnabled()) {
+            pjeEmailTriggerService.agendarDisparoAssincrono(cnjsDisparoPje);
         }
 
         log.info(

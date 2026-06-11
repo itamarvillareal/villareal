@@ -161,7 +161,7 @@ import {
   upsertPrazoFatalProcesso,
   alterarAtivoProcesso,
   baixarAutosIntegralProcesso,
-  obterMovimentacoesProjudiDrive,
+  obterMovimentacoesDrive,
 } from '../repositories/processosRepository.js';
 import {
   buscarNumeroImovelPorVinculo,
@@ -535,6 +535,9 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   const [unidadeEnderecoManual, setUnidadeEnderecoManual] = useState(false);
   const [tramitacao, setTramitacao] = useState('');
   const [modalTramitacaoAberto, setModalTramitacaoAberto] = useState(false);
+  /** Modal aberto pelo botão «Obter movimentações» com tramitação vazia — confirmação dispara consulta. */
+  const [tramitacaoConfirmarDepoisObterMovimentacoes, setTramitacaoConfirmarDepoisObterMovimentacoes] =
+    useState(false);
   const [tramitacaoDraft, setTramitacaoDraft] = useState('');
   const [tabAtiva, setTabAtiva] = useState('historico');
   const [historicoToast, setHistoricoToast] = useState('');
@@ -573,7 +576,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   const [driveExplorerAberto, setDriveExplorerAberto] = useState(false);
   const [driveConfigurado, setDriveConfigurado] = useState(false);
   const [baixandoAutosIntegral, setBaixandoAutosIntegral] = useState(false);
-  const [buscandoMovimentacoesProjudi, setBuscandoMovimentacoesProjudi] = useState(false);
+  const [buscandoMovimentacoes, setBuscandoMovimentacoes] = useState(false);
   const [apiError, setApiError] = useState('');
   const [historicoExternoTick, setHistoricoExternoTick] = useState(0);
   /** Evita aplicar resposta antiga se o usuário trocar de processo antes do GET terminar. */
@@ -605,7 +608,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   useCloseOnEscape(!!modalVinculoPartes, () => setModalVinculoPartes(null));
   useCloseOnEscape(!!informacaoModal, () => setInformacaoModal(null));
   useCloseOnEscape(modalContaCorrente, () => setModalContaCorrente(false));
-  useCloseOnEscape(modalTramitacaoAberto, () => setModalTramitacaoAberto(false));
+  useCloseOnEscape(modalTramitacaoAberto, fecharModalTramitacao);
   useCloseOnEscape(modalAcoesRedacaoAberto, () => setModalAcoesRedacaoAberto(false));
   useCloseOnEscape(modalAgendaLoteAberto, () => setModalAgendaLoteAberto(false));
   useCloseOnEscape(
@@ -1444,21 +1447,47 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     setModalTarefaContextual(ctx);
   }
 
-  function abrirModalTramitacao() {
+  function abrirModalTramitacao(opcoes = {}) {
+    const { aposObterMovimentacoes = false } = opcoes;
     setTramitacaoDraft(tramitacao || '');
+    setTramitacaoConfirmarDepoisObterMovimentacoes(aposObterMovimentacoes);
     setModalTramitacaoAberto(true);
   }
 
-  function confirmarTramitacao() {
+  function fecharModalTramitacao() {
+    setModalTramitacaoAberto(false);
+    setTramitacaoConfirmarDepoisObterMovimentacoes(false);
+  }
+
+  async function confirmarTramitacao() {
     const valor = String(tramitacaoDraft ?? '').trim();
+    const aposObter = tramitacaoConfirmarDepoisObterMovimentacoes;
     setTramitacao(valor);
     setProcedimento(valor);
+    setModalTramitacaoAberto(false);
+    setTramitacaoConfirmarDepoisObterMovimentacoes(false);
+
+    if (aposObter) {
+      if (featureFlags.useApiProcessos) {
+        await sincronizarApiProcessoAtual({ tramitacao: valor });
+      } else {
+        salvarHistoricoDoProcesso(montarPayloadRegistroProcesso({ tramitacao: valor }));
+      }
+      if (valor === 'TJ Go - Autos Físicos') {
+        setHistoricoToast('Processo em autos físicos — sem consulta automática.');
+        return;
+      }
+      if (valor === 'Projudi' || valor === 'PJe') {
+        await executarObterMovimentacoesDrive();
+      }
+      return;
+    }
+
     if (featureFlags.useApiProcessos) {
       void sincronizarApiProcessoAtual({ tramitacao: valor });
     } else {
       salvarHistoricoDoProcesso(montarPayloadRegistroProcesso({ tramitacao: valor }));
     }
-    setModalTramitacaoAberto(false);
   }
 
   function dataParaOrdenarContaCorrente(data) {
@@ -1992,20 +2021,42 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     }
   }, [numeroProcessoNovo, baixandoAutosIntegral]);
 
-  const handleObterMovimentacoesProjudi = useCallback(async () => {
+  const tramitacaoNorm = useMemo(() => {
+    const t = String(tramitacao ?? '').trim();
+    if (!t) return null;
+    const lower = t.toLowerCase();
+    if (t === 'Projudi' || lower === 'projudi') return 'Projudi';
+    if (t === 'PJe' || lower === 'pje') return 'PJe';
+    if (t === 'TJ Go - Autos Físicos' || lower === 'tj go - autos fisicos') return 'TJ Go - Autos Físicos';
+    return t;
+  }, [tramitacao]);
+
+  const tramitacaoBloqueiaObterMovimentacoes = tramitacaoNorm === 'TJ Go - Autos Físicos';
+
+  const executarObterMovimentacoesDrive = useCallback(async () => {
     const id = Number(processoApiId);
-    if (!id || buscandoMovimentacoesProjudi) return;
-    const cnj = String(numeroProcessoNovo ?? '').trim();
-    if (!cnj) {
-      setApiError('Informe o número CNJ do processo.');
-      return;
-    }
-    setBuscandoMovimentacoesProjudi(true);
+    if (!id || buscandoMovimentacoes) return;
+    setBuscandoMovimentacoes(true);
     setApiError('');
     try {
-      const r = await obterMovimentacoesProjudiDrive(id);
+      const r = await obterMovimentacoesDrive(id);
       if (r?.erro) {
         setApiError(String(r.erro));
+        return;
+      }
+      const status = String(r?.status ?? '').toUpperCase();
+      if (status === 'SEM_SISTEMA') {
+        setApiError(
+          String(r?.mensagem ?? '').trim()
+            || 'Sem sistema digital para consulta automática; defina a tramitação (Projudi ou PJe).'
+        );
+        return;
+      }
+      if (status === 'INICIADO') {
+        setHistoricoToast(
+          String(r?.mensagem ?? '').trim()
+            || 'PJe iniciado — acompanhe o badge No Drive na publicação por e-mail.'
+        );
         return;
       }
       const baixados = Number(r?.arquivosBaixados ?? 0);
@@ -2018,11 +2069,36 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
         setHistoricoToast('Consulta concluída; nenhum arquivo novo enviado.');
       }
     } catch (e) {
-      setApiError(e?.message || 'Falha ao obter movimentações do PROJUDI.');
+      setApiError(e?.message || 'Falha ao obter movimentações.');
     } finally {
-      setBuscandoMovimentacoesProjudi(false);
+      setBuscandoMovimentacoes(false);
     }
-  }, [processoApiId, numeroProcessoNovo, buscandoMovimentacoesProjudi]);
+  }, [processoApiId, buscandoMovimentacoes]);
+
+  const handleObterMovimentacoes = useCallback(async () => {
+    const id = Number(processoApiId);
+    if (!id || buscandoMovimentacoes) return;
+    const cnj = String(numeroProcessoNovo ?? '').trim();
+    if (!cnj) {
+      setApiError('Informe o número CNJ do processo.');
+      return;
+    }
+    if (tramitacaoBloqueiaObterMovimentacoes) {
+      return;
+    }
+    if (!tramitacaoNorm) {
+      abrirModalTramitacao({ aposObterMovimentacoes: true });
+      return;
+    }
+    await executarObterMovimentacoesDrive();
+  }, [
+    processoApiId,
+    numeroProcessoNovo,
+    buscandoMovimentacoes,
+    tramitacaoNorm,
+    tramitacaoBloqueiaObterMovimentacoes,
+    executarObterMovimentacoesDrive,
+  ]);
 
   /** Snapshot completo do formulário para `localStorage` (processo × cliente). */
   function montarPayloadRegistroProcesso(overrides = {}) {
@@ -3129,15 +3205,28 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                         className={processosBtnGhost}
                         disabled={
                           apiSaving ||
-                          buscandoMovimentacoesProjudi ||
+                          buscandoMovimentacoes ||
                           !processoApiId ||
-                          !String(numeroProcessoNovo ?? '').trim()
+                          !String(numeroProcessoNovo ?? '').trim() ||
+                          tramitacaoBloqueiaObterMovimentacoes
                         }
-                        onClick={() => void handleObterMovimentacoesProjudi()}
-                        title="Consulta o PROJUDI agora (mesmo com acervo integral no pipeline automático; pode não trazer arquivos novos)"
+                        onClick={() => void handleObterMovimentacoes()}
+                        title={
+                          tramitacaoBloqueiaObterMovimentacoes
+                            ? 'Processo em autos físicos — sem consulta automática.'
+                            : !tramitacaoNorm
+                              ? 'Defina a tramitação dos autos para consultar movimentações'
+                              : tramitacaoNorm === 'PJe'
+                                ? 'Dispara cópia integral PJe TRT18 — acompanhe o badge No Drive'
+                                : 'Consulta o PROJUDI agora (mesmo com acervo integral no pipeline automático; pode não trazer arquivos novos)'
+                        }
                       >
                         <CloudDownload className="w-4 h-4" aria-hidden />
-                        {buscandoMovimentacoesProjudi ? 'Consultando PROJUDI…' : 'Obter movimentações'}
+                        {buscandoMovimentacoes
+                          ? tramitacaoNorm === 'PJe'
+                            ? 'Consultando PJe…'
+                            : 'Consultando PROJUDI…'
+                          : 'Obter movimentações'}
                       </button>
                       <button
                         type="button"
@@ -4156,7 +4245,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
           aria-modal="true"
           aria-labelledby="modal-tramitacao-titulo"
           onMouseDown={onModalOverlayMouseDown}
-          onClick={criarModalOverlayClickFechar(() => setModalTramitacaoAberto(false))}
+          onClick={criarModalOverlayClickFechar(fecharModalTramitacao)}
         >
           <div
             className="flex h-full w-full max-w-none flex-col rounded-none border border-slate-200 bg-white shadow-xl md:h-auto md:max-h-[min(90vh,36rem)] md:max-w-md md:rounded-lg"
@@ -4168,7 +4257,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                 type="button"
                 className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 md:hidden"
                 aria-label="Voltar"
-                onClick={() => setModalTramitacaoAberto(false)}
+                onClick={fecharModalTramitacao}
               >
                 <ChevronLeft className="h-6 w-6" aria-hidden />
               </button>
@@ -4177,7 +4266,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
               </h2>
               <button
                 type="button"
-                onClick={() => setModalTramitacaoAberto(false)}
+                onClick={fecharModalTramitacao}
                 className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100"
                 aria-label="Fechar"
               >
@@ -4201,14 +4290,14 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
             <div className="px-4 py-3 border-t border-slate-200 flex justify-end gap-2">
               <button
                 type="button"
-                onClick={() => setModalTramitacaoAberto(false)}
+                onClick={fecharModalTramitacao}
                 className="px-4 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
               >
                 Fechar
               </button>
               <button
                 type="button"
-                onClick={confirmarTramitacao}
+                onClick={() => void confirmarTramitacao()}
                 className="px-4 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
               >
                 OK
