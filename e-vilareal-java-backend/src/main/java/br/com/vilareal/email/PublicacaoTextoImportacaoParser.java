@@ -374,6 +374,8 @@ public final class PublicacaoTextoImportacaoParser {
             return "";
         }
         String t = html;
+        t = t.replaceAll("(?is)<style[^>]*>.*?</style>", "\n");
+        t = t.replaceAll("(?is)<script[^>]*>.*?</script>", "\n");
         t = t.replaceAll("(?i)<br\\s*/?>", "\n");
         t = t.replaceAll("(?i)</p>", "\n");
         t = t.replaceAll("(?i)</div>", "\n");
@@ -383,7 +385,88 @@ public final class PublicacaoTextoImportacaoParser {
         t = t.replace("&lt;", "<");
         t = t.replace("&gt;", ">");
         t = t.replace("&quot;", "\"");
+        t = removerCssSoltoDoTexto(t);
         return normalizarTexto(t);
+    }
+
+    /** Remove blocos CSS órfãos (ex.: conteúdo de {@code <style>} após remoção das tags). */
+    public static String removerCssSoltoDoTexto(String texto) {
+        if (texto == null || texto.isBlank()) {
+            return "";
+        }
+        String[] linhas = texto.split("\n", -1);
+        StringBuilder sb = new StringBuilder();
+        int i = 0;
+        while (i < linhas.length) {
+            if (blocoCssComecaEm(linhas, i)) {
+                i = pularBlocoCss(linhas, i);
+                continue;
+            }
+            String linha = linhas[i];
+            if (linhaPareceCssIsolada(linha)) {
+                i++;
+                continue;
+            }
+            sb.append(linha);
+            if (i < linhas.length - 1) {
+                sb.append('\n');
+            }
+            i++;
+        }
+        return sb.toString();
+    }
+
+    private static boolean blocoCssComecaEm(String[] linhas, int idx) {
+        if (idx >= linhas.length) {
+            return false;
+        }
+        String t = linhas[idx].trim();
+        if (t.matches("(?i)^[.#@*a-z0-9_-]+\\s*\\{\\s*$")) {
+            return true;
+        }
+        if (t.matches("(?i)^[.#@*a-z0-9_,\\s-]+\\{.*")) {
+            return t.contains("{");
+        }
+        return false;
+    }
+
+    private static int pularBlocoCss(String[] linhas, int start) {
+        int depth = 0;
+        for (int i = start; i < linhas.length; i++) {
+            String linha = linhas[i];
+            for (int j = 0; j < linha.length(); j++) {
+                char c = linha.charAt(j);
+                if (c == '{') {
+                    depth++;
+                } else if (c == '}') {
+                    depth--;
+                }
+            }
+            if (depth <= 0 && linha.contains("}")) {
+                return i + 1;
+            }
+        }
+        return linhas.length;
+    }
+
+    private static boolean linhaPareceCssIsolada(String linha) {
+        String t = linha == null ? "" : linha.trim();
+        if (t.isEmpty()) {
+            return false;
+        }
+        if (t.matches("^[{}]$")) {
+            return true;
+        }
+        if (t.matches("(?i)^\\}\\s*$")) {
+            return true;
+        }
+        if (t.matches("(?i)^[.#@*a-z0-9_-]+\\s*\\{\\s*$")) {
+            return true;
+        }
+        if (t.matches("(?i)^[a-z-]+\\s*:\\s*[^;{]+;\\s*$")) {
+            return true;
+        }
+        return false;
     }
 
     private static String normalizarTexto(String texto) {

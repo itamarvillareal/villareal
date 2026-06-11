@@ -7,7 +7,7 @@ RUN mvn -q -DskipTests dependency:go-offline
 COPY src ./src
 RUN mvn -q -DskipTests package
 
-FROM eclipse-temurin:21-jre
+FROM mcr.microsoft.com/playwright/java:v1.52.0-noble
 WORKDIR /app
 
 COPY --from=builder /app/target/*.jar app.jar

@@ -86,7 +86,7 @@ final class TrtPushManifestacaoTextoImportacaoParser {
             data = LocalDate.now();
         }
 
-        String teor = deduplicarLinhas(corpo != null && !corpo.isBlank() ? corpo : texto);
+        String teor = montarTeorLegivel(numero, classe, orgao, autor, reu, movimento, corpo, texto);
         String hash = hashDedup(numero, tipoPublicacao, teor);
 
         PublicacaoWriteRequest req = new PublicacaoWriteRequest();
@@ -313,8 +313,59 @@ final class TrtPushManifestacaoTextoImportacaoParser {
         String texto = conteudoEmail;
         if (texto.contains("<") && texto.contains(">")) {
             texto = PublicacaoTextoImportacaoParser.htmlParaTexto(texto);
+        } else {
+            texto = PublicacaoTextoImportacaoParser.removerCssSoltoDoTexto(texto);
         }
         return deduplicarLinhas(normalizarTexto(texto));
+    }
+
+    private static String montarTeorLegivel(
+            String numero,
+            String classe,
+            String orgao,
+            String autor,
+            String reu,
+            String movimento,
+            String corpo,
+            String textoCompleto) {
+        StringBuilder sb = new StringBuilder();
+        appendCampoTeor(sb, "Número do Processo", numero);
+        appendCampoTeor(sb, "Classe Judicial", classe);
+        appendCampoTeor(sb, "Órgão Julgador", orgao);
+        appendCampoTeor(sb, "Autor", autor);
+        appendCampoTeor(sb, "Réu", reu);
+        appendCampoTeor(sb, "Movimentação", movimento);
+        String corpoUtil = corpo != null && !corpo.isBlank() ? corpo : textoCompleto;
+        corpoUtil = PublicacaoTextoImportacaoParser.removerCssSoltoDoTexto(corpoUtil);
+        corpoUtil = deduplicarLinhas(normalizarTexto(corpoUtil));
+        if (!corpoUtil.isBlank() && !corpoUtilEhSoCabecalhoTrt(corpoUtil, numero)) {
+            if (sb.length() > 0) {
+                sb.append('\n');
+            }
+            sb.append(corpoUtil);
+        }
+        return sb.toString().trim();
+    }
+
+    private static void appendCampoTeor(StringBuilder sb, String rotulo, String valor) {
+        if (valor == null || valor.isBlank()) {
+            return;
+        }
+        if (sb.length() > 0) {
+            sb.append('\n');
+        }
+        sb.append(rotulo).append(": ").append(valor.trim());
+    }
+
+    private static boolean corpoUtilEhSoCabecalhoTrt(String corpo, String numero) {
+        String norm = corpo.toLowerCase().replaceAll("\\s+", " ");
+        if (numero != null && norm.contains(numero.toLowerCase())) {
+            norm = norm.replace(numero.toLowerCase(), "");
+        }
+        return norm.contains("processo judicial eletrônico")
+                && !norm.contains("classe judicial")
+                && !norm.contains("órgão julgador")
+                && !norm.contains("orgao julgador");
     }
 
     private static String normalizarTexto(String texto) {

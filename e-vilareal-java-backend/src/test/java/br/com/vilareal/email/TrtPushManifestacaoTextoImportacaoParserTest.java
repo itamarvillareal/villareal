@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -62,6 +63,40 @@ class TrtPushManifestacaoTextoImportacaoParserTest {
 
         assertEquals(1, itens.size());
         assertEquals("Atualização processual (PUSH)", itens.get(0).getTipoPublicacao());
+    }
+
+    @Test
+    void parse_htmlComStyle_naoGravaCssNoTeor() {
+        String html =
+                """
+                <html><head><style>
+                * { margin: 0; padding: 0; }
+                body { background: #fff; font-size: 100%; }
+                table { color: #000; font-size: 10px; }
+                </style></head><body>
+                <p>Número do Processo: 0000545-17.2025.5.18.0051</p>
+                <p>Classe Judicial: Ação Trabalhista - Rito Sumaríssimo</p>
+                <p>Órgão Julgador: 1ª VARA DO TRABALHO DE GOIÂNIA</p>
+                <p>Autor: EZEQUIEL DOS SANTOS FERREIRA</p>
+                <p>Réu: MEGA ELITE VIGILANCIA E SEGURANÇA ESPECIALIZADA LTDA</p>
+                <p>Última Movimentação: Intimação</p>
+                </body></html>
+                """;
+
+        List<PublicacaoWriteRequest> itens =
+                TrtPushManifestacaoTextoImportacaoParser.parse(
+                        html,
+                        "[TRT18] [PUSH] Atualizações de Informações Processuais do Processo 0000545-17.2025.5.18.0051",
+                        "assunto [msg-trt-html]",
+                        null);
+
+        assertEquals(1, itens.size());
+        String teor = itens.get(0).getTeor();
+        assertNotNull(teor);
+        assertTrue(teor.contains("Número do Processo: 0000545-17.2025.5.18.0051"));
+        assertTrue(teor.contains("MEGA ELITE VIGILANCIA"));
+        assertFalse(teor.contains("margin: 0"));
+        assertFalse(teor.contains("font-size: 10px"));
     }
 
     @Test

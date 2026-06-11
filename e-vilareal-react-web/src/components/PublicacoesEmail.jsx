@@ -26,9 +26,9 @@ import {
   processarEmailsProjudiAgora,
 } from '../api/manifestacoesProjudiApi.js';
 import {
-  deduplicarTeorExibicao,
   formatarPartesLinha,
   parseProjudiMeta,
+  teorParaExibicao,
   tipoMovimentoLinha,
 } from '../data/manifestacoesProjudiDisplay.js';
 import { buildRouterStateChaveClienteProcesso } from '../domain/camposProcessoCliente.js';
@@ -201,7 +201,8 @@ function cnjLinha(row) {
   return row.numeroProcessoEncontrado || row.numero_processo_cnj || row.processoCnjNormalizado || '—';
 }
 
-function teorLinha(row) {
+function teorLinha(row, isProjudi = false) {
+  if (isProjudi) return teorParaExibicao(row);
   return row.teor || row.teorIntegral || '';
 }
 
@@ -322,7 +323,7 @@ function ModalTeor({ publicacao, onClose, onAbrirProcesso, isProjudi = false }) 
             </div>
           ) : null}
           <pre className="max-h-[50vh] overflow-auto whitespace-pre-wrap rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs leading-relaxed dark:border-white/10 dark:bg-white/5">
-            {(isProjudi ? deduplicarTeorExibicao(teorLinha(publicacao)) : teorLinha(publicacao)) || '—'}
+            {teorLinha(publicacao, isProjudi) || '—'}
           </pre>
         </div>
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 px-4 py-3 dark:border-white/10">
@@ -611,13 +612,7 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
   const isProjudi = variant === 'projudi';
   const navigate = useNavigate();
 
-  const teorDaLinha = useCallback(
-    (row) => {
-      const t = row?.teor || row?.teorIntegral || '';
-      return isProjudi ? deduplicarTeorExibicao(t) : t;
-    },
-    [isProjudi]
-  );
+  const teorDaLinha = useCallback((row) => teorLinha(row, isProjudi), [isProjudi]);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [processando, setProcessando] = useState(false);

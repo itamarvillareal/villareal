@@ -243,8 +243,10 @@ public class PjeTrt18PlaywrightEngine {
 
         playwright = Playwright.create();
         browser = playwright.chromium()
-                .launch(new BrowserType.LaunchOptions().setHeadless(browserProperties.isHeadless()));
-
+                .launch(new BrowserType.LaunchOptions()
+                        .setHeadless(browserProperties.isHeadless())
+                        .setArgs(java.util.List.of("--no-sandbox", "--disable-dev-shm-usage")));
+                        
         Browser.NewContextOptions opts = new Browser.NewContextOptions()
                 .setUserAgent(USER_AGENT)
                 .setAcceptDownloads(true);

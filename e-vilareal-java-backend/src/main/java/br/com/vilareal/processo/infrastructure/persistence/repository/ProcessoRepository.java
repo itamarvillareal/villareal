@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.math.BigInteger;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
@@ -23,6 +24,15 @@ public interface ProcessoRepository extends JpaRepository<ProcessoEntity, Long> 
             ORDER BY p.id ASC
             """)
     List<Long> findIdsComTramitacaoVazia();
+
+    @Query(
+            """
+            SELECT p.id FROM ProcessoEntity p
+            WHERE (p.tramitacao IS NULL OR TRIM(p.tramitacao) = '')
+              AND p.updatedAt >= :desde
+            ORDER BY p.id ASC
+            """)
+    List<Long> findIdsComTramitacaoVaziaModificadosDesde(@Param("desde") Instant desde);
 
     @Query(
             """

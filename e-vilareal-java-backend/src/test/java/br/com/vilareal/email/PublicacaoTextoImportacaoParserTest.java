@@ -15,6 +15,18 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PublicacaoTextoImportacaoParserTest {
 
+    @Test
+    void htmlParaTexto_removeStyleScriptECssSolto() {
+        String html =
+                """
+                <style>* { margin: 0; padding: 0; }</style>
+                <p>Número do Processo: 0000545-17.2025.5.18.0051</p>
+                """;
+        String texto = PublicacaoTextoImportacaoParser.htmlParaTexto(html);
+        assertTrue(texto.contains("Número do Processo"));
+        assertTrue(!texto.contains("margin: 0"));
+    }
+
     private static String bloco(
             String processo,
             String dataDisp,
