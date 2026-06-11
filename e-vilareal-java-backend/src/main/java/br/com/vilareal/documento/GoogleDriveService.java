@@ -552,6 +552,43 @@ public class GoogleDriveService {
         return result.getFiles() != null && !result.getFiles().isEmpty();
     }
 
+    /**
+     * IDs de arquivos (não pastas) com nome exato na pasta — usado para deduplicar cópia integral PJe.
+     */
+    public List<String> buscarFileIdsPorNomeNaPasta(String pastaId, String nomeArquivo) throws Exception {
+        if (!isConfigurado() || !StringUtils.hasText(pastaId) || !StringUtils.hasText(nomeArquivo)) {
+            return List.of();
+        }
+        String nome = sanitizarNomeArquivoGenerico(nomeArquivo);
+        String query = "'" + pastaId + "' in parents "
+                + "and name = '" + escaparQueryDrive(nome) + "' "
+                + "and mimeType != 'application/vnd.google-apps.folder' "
+                + "and trashed = false";
+        List<String> ids = new ArrayList<>();
+        String pageToken = null;
+        do {
+            FileList result = prepararListagem(
+                            driveService.files()
+                                    .list()
+                                    .setQ(query)
+                                    .setSpaces("drive")
+                                    .setFields("nextPageToken, files(id)")
+                                    .setPageSize(100)
+                                    .setPageToken(pageToken),
+                            pastaId)
+                    .execute();
+            if (result.getFiles() != null) {
+                for (File f : result.getFiles()) {
+                    if (f.getId() != null) {
+                        ids.add(f.getId());
+                    }
+                }
+            }
+            pageToken = result.getNextPageToken();
+        } while (pageToken != null);
+        return ids;
+    }
+
     public DriveArquivoDto uploadArquivo(
             byte[] bytes, String nomeOriginal, String contentType, String pastaId) {
         if (!isConfigurado() || pastaId == null || pastaId.isBlank()) {

@@ -168,4 +168,41 @@ class QualificacaoPessoaUtilTest {
         assertThat(QualificacaoPessoaUtil.formatarCidadeEstadoParaQualificacao("Brasília", "DF"))
                 .isEqualTo("cidade de Brasília, Distrito Federal");
     }
+
+    @Test
+    void deveGerarQualificacaoProcuracaoNoFormatoLegado() {
+        String resultado = QualificacaoPessoaUtil.gerarQualificacaoProcuracao(
+                "CARLOS HENRIQUE DE OLIVEIRA SAMPAIO",
+                "M",
+                null,
+                null,
+                "motorista",
+                null,
+                "GO",
+                "017.908.731-26",
+                null,
+                "Rua Geni Ribeiro",
+                "710",
+                "Qd 35 Lt 04",
+                "Maracanã",
+                "Anápolis",
+                "GO",
+                "75040060",
+                null);
+
+        assertThat(resultado).startsWith("CARLOS HENRIQUE DE OLIVEIRA SAMPAIO, brasileiro, motorista");
+        assertThat(resultado).doesNotContain("estado civil desconhecido");
+        assertThat(resultado).doesNotContain("<strong>");
+        assertThat(resultado).contains("Rua Geni Ribeiro nº 710 Qd 35 Lt 04");
+        assertThat(resultado).contains("Bairro Maracanã");
+        assertThat(resultado).contains("CEP n° 75040060");
+        assertThat(resultado).contains("não utiliza endereço eletrônico");
+        assertThat(resultado).doesNotContain("Quadra");
+        assertThat(resultado).doesNotContain("75.040-060");
+    }
+
+    @Test
+    void formatarCepLegadoProcuracao_mantemApenasDigitos() {
+        assertThat(QualificacaoPessoaUtil.formatarCepLegadoProcuracao("75.040-060")).isEqualTo("75040060");
+    }
 }

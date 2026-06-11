@@ -135,6 +135,48 @@ class CobrancaRelatorioXlsParserTest {
     }
 
     @Test
+    void parse_unidadeSomenteCodigoCol0_semProprietario() throws Exception {
+        try (XSSFWorkbook wb = workbookBase()) {
+            Sheet sh = wb.getSheetAt(0);
+            int r = 3;
+            sh.createRow(r++).createCell(0).setCellValue("A0402");
+            criarCabecalhoGradeNovoExport(sh.createRow(r++));
+            Row debito = sh.createRow(r++);
+            debito.createCell(0).setCellValue("Ordinária");
+            debito.createCell(3).setCellValue("14189");
+            debito.createCell(6).setCellValue("05/2026");
+            debito.createCell(7).setCellValue("10/05/2026");
+            debito.createCell(10).setCellValue("607,46");
+            sh.createRow(r).createCell(0).setCellValue("A0402: 1 cobrança(s)");
+
+            List<CobrancaUnidadeParsed> out = parse(wb);
+            assertThat(out).hasSize(1);
+            CobrancaUnidadeParsed u = out.getFirst();
+            assertThat(u.codigoUnidadeNormalizada()).isEqualTo("A-0402");
+            assertThat(u.proprietarioNome()).isEmpty();
+            assertThat(u.proprietarioDocDigitos()).isEmpty();
+            assertThat(u.cobrancas()).hasSize(1);
+            assertThat(u.cobrancas().getFirst().valorCentavos()).isEqualTo(60746L);
+        }
+    }
+
+    @Test
+    void parse_arquivoRealInadimplencia20260610() throws Exception {
+        java.nio.file.Path path = java.nio.file.Paths.get(
+                System.getProperty("user.home"), "Downloads", "inadimplencia-20260610-132920.xls");
+        org.junit.jupiter.api.Assumptions.assumeTrue(
+                java.nio.file.Files.isRegularFile(path), "Planilha de teste ausente em Downloads");
+        try (var in = java.nio.file.Files.newInputStream(path)) {
+            CobrancaRelatorioParseResult r = parser.parseRelatorio(in);
+            assertThat(r.condominioNome()).contains("Terra Mundi");
+            assertThat(r.dataReferencia()).contains("10/06/2026");
+            assertThat(r.unidades()).hasSizeGreaterThanOrEqualTo(50);
+            assertThat(r.unidades().stream().mapToInt(u -> u.cobrancas().size()).sum())
+                    .isGreaterThanOrEqualTo(180);
+        }
+    }
+
+    @Test
     void normalizarCodigoUnidade_variacoes() {
         assertThat(CobrancaRelatorioXlsParser.normalizarCodigoUnidade("A0402")).isEqualTo("A-0402");
         assertThat(CobrancaRelatorioXlsParser.normalizarCodigoUnidade("ADM")).isEqualTo("ADM");
@@ -150,6 +192,23 @@ class CobrancaRelatorioXlsParserTest {
         d.createCell(0).setCellValue(tipo);
         d.createCell(10).setCellValue(valor);
         sh.createRow(r).createCell(0).setCellValue("X: 1 cobrança");
+    }
+
+    /** Layout export 2026+: Doc col 3, Período 6, Vencimento 7, Valor 10 (sem col Pagador). */
+    private static void criarCabecalhoGradeNovoExport(Row h) {
+        h.createCell(0).setCellValue("Tipo");
+        h.createCell(2).setCellValue("Parc");
+        h.createCell(3).setCellValue("Doc");
+        h.createCell(4).setCellValue("N. Número");
+        h.createCell(6).setCellValue("Período");
+        h.createCell(7).setCellValue("Vencimento");
+        h.createCell(9).setCellValue("Dias");
+        h.createCell(10).setCellValue("Valor");
+        h.createCell(11).setCellValue("Multa");
+        h.createCell(12).setCellValue("Juros");
+        h.createCell(13).setCellValue("Atual.");
+        h.createCell(14).setCellValue("Hon.");
+        h.createCell(16).setCellValue("Vl.Atual.");
     }
 
     /** Pagador na col 8; Valor nominal na 10; Vl.Atual. na 13. */

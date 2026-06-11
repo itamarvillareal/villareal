@@ -68,6 +68,21 @@ public class QualificacaoPessoaUtil {
         return montarQualificacaoParaPessoa(pessoaId, nomeEmNegrito);
     }
 
+    /**
+     * Qualificação do outorgante no formato do sistema legado (Access/VB) para procuração:
+     * nome em maiúsculas sem negrito, profissão sem «estado civil desconhecido», endereço com
+     * abreviações Qd/Lt, CEP só com dígitos e «não utiliza endereço eletrônico» quando não há e-mail.
+     */
+    @Transactional(readOnly = true)
+    public String gerarQualificacaoProcuracaoPorPessoaId(Long pessoaId) {
+        DadosQualificacao dados = carregarDadosQualificacao(pessoaId);
+        String base = gerarQualificacaoProcuracao(dados);
+        if (!ehPessoaJuridica(dados)) {
+            return base;
+        }
+        return base + montarSufixoRepresentantePj(pessoaId, dados, false);
+    }
+
     private String montarQualificacaoParaPessoa(Long pessoaId, boolean nomeEmNegrito) {
         DadosQualificacao dados = carregarDadosQualificacao(pessoaId);
         String base = montarQualificacao(dados, nomeEmNegrito);
@@ -363,6 +378,204 @@ public class QualificacaoPessoaUtil {
         }
 
         return sb.toString();
+    }
+
+    /**
+     * Qualificação do outorgante em procuração — espelha o texto gerado pelo sistema legado (Access/VB).
+     */
+    static String gerarQualificacaoProcuracao(DadosQualificacao dados) {
+        return gerarQualificacaoProcuracao(
+                dados.nome(),
+                dados.sexo(),
+                dados.nacionalidade(),
+                dados.estadoCivil(),
+                dados.profissao(),
+                dados.rg(),
+                dados.ufRg(),
+                dados.cpf(),
+                dados.cnpj(),
+                dados.logradouro(),
+                dados.numero(),
+                dados.complemento(),
+                dados.bairro(),
+                dados.cidade(),
+                dados.uf(),
+                dados.cep(),
+                dados.email());
+    }
+
+    public static String gerarQualificacaoProcuracao(
+            String nome,
+            String sexo,
+            String nacionalidade,
+            String estadoCivil,
+            String profissao,
+            String rg,
+            String ufRg,
+            String cpf,
+            String cnpj,
+            String logradouro,
+            String numero,
+            String complemento,
+            String bairro,
+            String cidade,
+            String uf,
+            String cep,
+            String email) {
+
+        boolean feminino = determinarFeminino(nome, sexo);
+        FlexaoGenero g = feminino ? FlexaoGenero.feminino() : FlexaoGenero.masculino();
+
+        StringBuilder sb = new StringBuilder();
+        String nomeExibicao = nome != null ? nome.trim().toUpperCase(Locale.ROOT) : "OUTORGANTE";
+        sb.append(escapeHtml(nomeExibicao));
+
+        if (cnpj != null && !cnpj.isBlank()) {
+            sb.append(", pessoa jurídica de direito privado");
+            sb.append(", inscrita no CNPJ sob o nº ").append(escapeHtml(cnpj));
+            if (logradouro != null && !logradouro.isBlank()) {
+                sb.append(", com sede na ").append(escapeHtml(montarLinhaEnderecoLegadoProcuracao(
+                        logradouro, numero, complemento)));
+                if (bairro != null && !bairro.isBlank()) {
+                    sb.append(", ").append(escapeHtml(formatarBairroLegadoProcuracao(bairro)));
+                }
+                if ((cidade != null && !cidade.isBlank()) || (uf != null && !uf.isBlank())) {
+                    sb.append(", ").append(escapeHtml(formatarCidadeEstadoParaQualificacao(cidade, uf)));
+                }
+                if (cep != null && !cep.isBlank()) {
+                    sb.append(", CEP n° ").append(escapeHtml(formatarCepLegadoProcuracao(cep)));
+                }
+            }
+            return sb.toString();
+        }
+
+        if (nacionalidade != null && !nacionalidade.isBlank() && !contemDesconhecido(nacionalidade)) {
+            sb.append(", ").append(escapeHtml(flexionarNacionalidade(nacionalidade, feminino)));
+        } else {
+            sb.append(", ").append(escapeHtml(g.brasileiro()));
+        }
+
+        String ecFlexionado = flexionarEstadoCivil(estadoCivil, feminino);
+        String profNormalizada = profissao != null && !profissao.isBlank() && !contemDesconhecido(profissao)
+                ? profissao.trim().toLowerCase(Locale.ROOT)
+                : null;
+
+        if (ecFlexionado != null && profNormalizada != null) {
+            sb.append(", ").append(escapeHtml(ecFlexionado)).append(", ").append(escapeHtml(profNormalizada));
+        } else if (ecFlexionado != null) {
+            sb.append(", ").append(escapeHtml(ecFlexionado));
+        } else if (profNormalizada != null) {
+            sb.append(", ").append(escapeHtml(profNormalizada));
+        }
+
+        if (rg != null && !rg.isBlank()) {
+            sb.append(", ").append(escapeHtml(g.portador())).append(" da carteira de identidade ");
+            if (ufRg != null && !ufRg.isBlank()) {
+                sb.append(escapeHtml(ufRg.toUpperCase(Locale.ROOT))).append(" ");
+            }
+            sb.append("nº ").append(escapeHtml(rg.trim()));
+        }
+
+        if (cpf != null && !cpf.isBlank()) {
+            sb.append(", regularmente ").append(escapeHtml(g.inscrito()));
+            sb.append(" no CPF/MF sob o nº ").append(escapeHtml(cpf));
+        }
+
+        if (logradouro != null && !logradouro.isBlank()) {
+            sb.append(", ").append(escapeHtml(g.residenteDomiciliado())).append(" na ");
+            sb.append(escapeHtml(montarLinhaEnderecoLegadoProcuracao(logradouro, numero, complemento)));
+            if (bairro != null && !bairro.isBlank()) {
+                sb.append(", ").append(escapeHtml(formatarBairroLegadoProcuracao(bairro)));
+            }
+            sb.append(", ").append(escapeHtml(formatarCidadeEstadoParaQualificacao(cidade, uf)));
+            if (cep != null && !cep.isBlank()) {
+                sb.append(", CEP n° ").append(escapeHtml(formatarCepLegadoProcuracao(cep)));
+            }
+        }
+
+        if (email != null && !email.isBlank()) {
+            sb.append(", utiliza endereço eletrônico: ").append(escapeHtml(email.toLowerCase(Locale.ROOT).trim()));
+        } else {
+            sb.append(", não utiliza endereço eletrônico");
+        }
+
+        return sb.toString();
+    }
+
+    static String montarLinhaEnderecoLegadoProcuracao(String logradouro, String numero, String complemento) {
+        StringBuilder end = new StringBuilder(normalizarLogradouroLegadoProcuracao(logradouro));
+        if (numero != null && !numero.isBlank() && !numeroJaPresenteNoLogradouro(logradouro, numero)) {
+            end.append(" nº ").append(numero.trim());
+        }
+        if (complemento != null && !complemento.isBlank()) {
+            end.append(" ").append(normalizarComplementoLegadoProcuracao(complemento));
+        }
+        return compactarEnderecoLegadoProcuracao(end.toString().trim());
+    }
+
+    static String normalizarLogradouroLegadoProcuracao(String logradouro) {
+        if (logradouro == null || logradouro.isBlank()) {
+            return "";
+        }
+        String texto = logradouro.trim();
+        texto = texto.replaceAll("(?i)^Av\\.?\\s+", "Avenida ");
+        texto = texto.replaceAll("(?i)^R\\.?\\s+", "Rua ");
+        texto = texto.replaceAll("(?i)^Tv\\.?\\s+", "Travessa ");
+        texto = texto.replaceAll("(?i)^Al\\.?\\s+", "Alameda ");
+        texto = texto.replaceAll("(?i)^Pç\\.?\\s+", "Praça ");
+        return normalizarNome(texto);
+    }
+
+    static String normalizarComplementoLegadoProcuracao(String complemento) {
+        if (complemento == null || complemento.isBlank()) {
+            return "";
+        }
+        return compactarEnderecoLegadoProcuracao(complemento.trim());
+    }
+
+    static String compactarEnderecoLegadoProcuracao(String texto) {
+        if (texto == null || texto.isBlank()) {
+            return "";
+        }
+        String out = texto.trim();
+        out = out.replaceAll("(?i)\\bQuadra\\b", "Qd");
+        out = out.replaceAll("(?i)\\bLote\\b", "Lt");
+        out = out.replaceAll("(?i)\\bQd\\b\\.?\\s*", "Qd ");
+        out = out.replaceAll("(?i)\\bLt\\b\\.?\\s*", "Lt ");
+        out = out.replaceAll("(?i)\\bApartamento\\b", "Ap");
+        out = out.replaceAll("(?i)\\bEdifício\\b", "Ed");
+        out = out.replaceAll("(?i)\\bEdificio\\b", "Ed");
+        out = out.replaceAll("(?i)\\bN[ºo°]\\.?\\s*", "nº ");
+        out = out.replaceAll(",\\s*,", ",");
+        out = out.replaceAll("\\s+", " ").trim();
+        return out;
+    }
+
+    static String formatarBairroLegadoProcuracao(String bairro) {
+        if (bairro == null || bairro.isBlank()) {
+            return "";
+        }
+        String norm = normalizarBairro(bairro);
+        if (norm.toLowerCase(Locale.ROOT).startsWith("bairro ")) {
+            return norm;
+        }
+        return "Bairro " + norm;
+    }
+
+    static String formatarCepLegadoProcuracao(String cep) {
+        String digitos = apenasDigitos(cep);
+        return digitos != null ? digitos : cep.trim();
+    }
+
+    private static boolean numeroJaPresenteNoLogradouro(String logradouro, String numero) {
+        if (logradouro == null || numero == null || numero.isBlank()) {
+            return false;
+        }
+        String n = numero.trim();
+        String lower = logradouro.toLowerCase(Locale.ROOT);
+        return lower.contains(" nº " + n.toLowerCase(Locale.ROOT))
+                || lower.contains(" n° " + n.toLowerCase(Locale.ROOT))
+                || lower.endsWith(" " + n);
     }
 
     /**

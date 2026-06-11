@@ -1509,6 +1509,18 @@ export async function obterMovimentacoesProjudiDrive(processoId) {
 }
 
 /**
+ * Obter movimentações roteado por tramitação (Projudi síncrono / PJe assíncrono).
+ * @returns {Promise<{ tramitacao, status, arquivosBaixados, mensagem, erro, ... }>}
+ */
+export async function obterMovimentacoesDrive(processoId) {
+  const id = Number(processoId);
+  if (!Number.isFinite(id) || id < 1) {
+    throw new Error('Processo sem id na API — salve o cadastro antes de obter movimentações.');
+  }
+  return request(`/api/processos/${id}/movimentacoes-drive`, { method: 'POST' });
+}
+
+/**
  * Monitora movimentações PROJUDI (somente listagem F3; sem download/Drive/publicações).
  * @param {number|string} processoId
  * @returns {Promise<{

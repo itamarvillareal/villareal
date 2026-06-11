@@ -39,3 +39,6 @@ build/
 .vscode/
 google-drive-credentials.json
 **/google-drive-credentials.json
+.totp-encryption-key.local
+pje-capture.cjs
+pje-state.json

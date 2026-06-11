@@ -31,7 +31,7 @@ import { validateCPF, validarFormatarCpfCnpjAoSair } from '../../services/cpfVal
 import { listarCodigosClientePorIdPessoa } from '../../data/clienteCodigoHelpers.js';
 import { listarClientesCadastro } from '../../repositories/clientesRepository.js';
 import { carregarProcessosVinculoPessoa } from '../../data/pessoaVinculosProcessos.js';
-import { resolverAliasHojeEmTexto } from '../../services/hjDateAliasService.js';
+import { resolverAliasHojeEmTexto, dataNascimentoTextoParaIso } from '../../services/hjDateAliasService.js';
 import { esbocoQualificacaoComResponsavel, stripSuffixAdministradorPj } from '../../services/qualificacaoContratualHelper.js';
 import { SeletorResponsavelPessoa } from './SeletorResponsavelPessoa.jsx';
 import { getContextoAuditoriaUsuario, registrarAuditoria } from '../../services/auditoriaCliente.js';
@@ -76,13 +76,9 @@ function normalizarDigitosCpfCnpj(s) {
   return String(s ?? '').replace(/\D/g, '');
 }
 
-/** Converte data de nascimento da API (string ISO ou LocalDate serializado) para yyyy-mm-dd no PUT. */
+/** Converte data de nascimento do formulário para yyyy-mm-dd (API Java LocalDate). */
 function dataNascimentoParaPayloadApi(val) {
-  if (val == null || val === '') return null;
-  if (typeof val === 'string') {
-    return val.includes('T') ? val.split('T')[0] : val;
-  }
-  return null;
+  return dataNascimentoTextoParaIso(val);
 }
 
 /** Primeira pessoa na lista com o mesmo documento; ignora excluirId (edição da própria ficha). */
@@ -194,6 +190,8 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
   const [docProcessando, setDocProcessando] = useState(false);
   const [docErroDetalhe, setDocErroDetalhe] = useState('');
   const [erroComplementar, setErroComplementar] = useState('');
+  /** Dispara autosave quando complementares/endereços terminam de carregar da API. */
+  const [fichaProntaAutosave, setFichaProntaAutosave] = useState(false);
   const inputDocRef = useRef(null);
   /** Evita reabrir o modal de contatos logo ao fechar, quando o foco volta ao campo Contato. */
   const ignorarProximoFocusContatoRef = useRef(false);
@@ -738,6 +736,7 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
       codigoProximo = '1';
     }
     autosaveAtivoRef.current = true;
+    setFichaProntaAutosave(true);
     ultimoSnapshotSalvoRef.current = null;
     setForm({
       ...emptyPessoa,
@@ -789,6 +788,7 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
     setEditId(item.id);
     complementaresAplicadosParaIdRef.current = null;
     autosaveAtivoRef.current = false;
+    setFichaProntaAutosave(false);
     ultimoSnapshotSalvoRef.current = null;
     const nacSalva = String(item.nacionalidade ?? '').trim();
     setForm({
@@ -974,13 +974,18 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
           }
           if (featureFlags.useApiPessoasComplementares && ec) {
             const [ends, conts] = ec;
-            if (ends != null) setEnderecos(enderecosApiParaUi(ends));
-            if (conts != null) setContatos(contatosApiParaUi(conts));
+            if (ends != null && enderecosRef.current.length === 0) {
+              setEnderecos(enderecosApiParaUi(ends));
+            }
+            if (conts != null && contatosRef.current.length === 0) {
+              setContatos(contatosApiParaUi(conts));
+            }
           }
           complementaresAplicadosParaIdRef.current = idNum;
         }
         if (!cancelado) {
           autosaveAtivoRef.current = true;
+          setFichaProntaAutosave(true);
         }
       } catch (e) {
         if (!cancelado) {
@@ -988,6 +993,7 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
             e?.message || 'Erro ao carregar dados complementares, endereços ou contatos.'
           );
           autosaveAtivoRef.current = true;
+          setFichaProntaAutosave(true);
         }
       }
     })();
@@ -1083,7 +1089,7 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
           email: formAtual.email?.trim() ? formAtual.email.trim() : null,
           cpf: docFmt.valor.replace(/\D/g, ''),
           telefone: formAtual.contato?.trim() || null,
-          dataNascimento: formAtual.dataNascimento || null,
+          dataNascimento: dataNascimentoParaPayloadApi(formAtual.dataNascimento),
           ativo: formAtual.ativo,
           marcadoMonitoramento: formAtual.marcadoMonitoramento === true,
           responsavelId:
@@ -1139,7 +1145,7 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
           cpf: docFmt.valor.replace(/\D/g, ''),
           email: formAtual.email?.trim() ? formAtual.email.trim() : null,
           telefone: formAtual.contato?.trim() || null,
-          dataNascimento: formAtual.dataNascimento || null,
+          dataNascimento: dataNascimentoParaPayloadApi(formAtual.dataNascimento),
           ativo: formAtual.ativo,
           marcadoMonitoramento: formAtual.marcadoMonitoramento === true,
           responsavelId:
@@ -1215,7 +1221,7 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
   useEffect(() => {
     if (form.edicaoDesabilitada) return undefined;
     if (modo !== 'criar' && modo !== 'editar') return undefined;
-    if (modo === 'editar' && !autosaveAtivoRef.current) return undefined;
+    if (modo === 'editar' && !fichaProntaAutosave) return undefined;
 
     const snap = buildSnapshotCadastro(form, enderecos, contatos);
     if (ultimoSnapshotSalvoRef.current === snap) return undefined;
@@ -1255,14 +1261,27 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
         autosaveTimerRef.current = null;
       }
     };
-  }, [form, enderecos, contatos, modo, persistirCadastro]);
+  }, [form, enderecos, contatos, modo, fichaProntaAutosave, persistirCadastro]);
+
+  const agendarPersistenciaCadastro = useCallback(() => {
+    if (formRef.current.edicaoDesabilitada) return;
+    if (modoRef.current !== 'criar' && modoRef.current !== 'editar') return;
+    if (modoRef.current === 'editar' && !autosaveAtivoRef.current) return;
+    if (autosaveTimerRef.current) {
+      clearTimeout(autosaveTimerRef.current);
+      autosaveTimerRef.current = null;
+    }
+    const snap = buildSnapshotCadastro(formRef.current, enderecosRef.current, contatosRef.current);
+    if (ultimoSnapshotSalvoRef.current === snap) return;
+    void persistirCadastro({ snapshotEsperado: snap });
+  }, [persistirCadastro]);
 
   useEffect(() => {
     if (ultimoSnapshotSalvoRef.current !== null) return;
     if (modo !== 'editar' && modo !== 'criar') return;
-    if (modo === 'editar' && !autosaveAtivoRef.current) return;
+    if (modo === 'editar' && !fichaProntaAutosave) return;
     ultimoSnapshotSalvoRef.current = buildSnapshotCadastro(form, enderecos, contatos);
-  }, [form, enderecos, contatos, modo, editId]);
+  }, [form, enderecos, contatos, modo, editId, fichaProntaAutosave]);
 
   function confirmarAbrirCadastroPessoaExistente() {
     if (!modalCpfDuplicado) return;
@@ -1869,7 +1888,7 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
                       <input
                         type="text"
                         inputMode="text"
-                        placeholder="aaaa-mm-dd ou hj"
+                        placeholder="aaaa-mm-dd, dd/mm/aaaa ou hj"
                         value={form.dataNascimento}
                         onChange={(e) => {
                           setCamposPreenchidosPorTexto((c) => ({ ...c, dataNascimento: false }));
@@ -1877,7 +1896,16 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
                           const r = resolverAliasHojeEmTexto(v, 'iso');
                           setForm((f) => ({ ...f, dataNascimento: r ?? v }));
                         }}
-                        onBlur={() => marcarAutofillRevisado('dataNascimento')}
+                        onBlur={() => {
+                          marcarAutofillRevisado('dataNascimento');
+                          setForm((f) => {
+                            const iso = dataNascimentoParaPayloadApi(f.dataNascimento);
+                            if (iso && iso !== f.dataNascimento) {
+                              return { ...f, dataNascimento: iso };
+                            }
+                            return f;
+                          });
+                        }}
                         disabled={form.edicaoDesabilitada}
                         className={inputClassComAutofill('dataNascimento')}
                       />
@@ -2092,7 +2120,10 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
 
       <ModalEnderecos
         open={modalEnderecos}
-        onClose={() => setModalEnderecos(false)}
+        onClose={() => {
+          setModalEnderecos(false);
+          agendarPersistenciaCadastro();
+        }}
         nomePessoa={form.nome}
         codigoPessoa={form.codigo}
         enderecos={enderecos}

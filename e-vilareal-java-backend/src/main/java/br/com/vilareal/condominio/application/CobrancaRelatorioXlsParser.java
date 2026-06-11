@@ -37,6 +37,9 @@ public class CobrancaRelatorioXlsParser {
     private static final Pattern PAT_DATA_REFERENCIA =
             Pattern.compile("Data de referência:\\s*(.+)", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
     private static final Pattern PAT_CODIGO_LETRA_4DIG = Pattern.compile("^[A-Z]\\d{4}$");
+    /** Col0 isolado: {@code A0402}, {@code A0501*} ou {@code ADM} (export sem bloco Proprietário). */
+    private static final Pattern PAT_CODIGO_UNIDADE_COL0 =
+            Pattern.compile("^(?:ADM|[A-Z]\\d{4}\\*?)$", Pattern.CASE_INSENSITIVE);
 
     private static final String HDR_TIPO = "tipo";
     private static final String HDR_DOC = "doc";
@@ -91,7 +94,16 @@ public class CobrancaRelatorioXlsParser {
                 if (bloco != null) {
                     resultado.add(bloco.build());
                 }
-                bloco = parseInicioBloco(col0);
+                bloco = parseInicioBlocoComProprietario(col0);
+                colunas = null;
+                continue;
+            }
+
+            if (isLinhaCodigoUnidade(col0)) {
+                if (bloco != null) {
+                    resultado.add(bloco.build());
+                }
+                bloco = parseInicioBlocoSomenteCodigo(col0);
                 colunas = null;
                 continue;
             }
@@ -142,7 +154,7 @@ public class CobrancaRelatorioXlsParser {
         return new CabecalhoPlanilha(condominioNome, dataReferencia);
     }
 
-    private BlocoAtual parseInicioBloco(String col0) {
+    private BlocoAtual parseInicioBlocoComProprietario(String col0) {
         Matcher m = PAT_PROPRIETARIO.matcher(col0);
         if (!m.find()) {
             throw new BusinessRuleException("Bloco de unidade sem Proprietário reconhecível.");
@@ -151,6 +163,18 @@ public class CobrancaRelatorioXlsParser {
         String nome = m.group(1).trim();
         String doc = somenteDigitos(m.group(2));
         return new BlocoAtual(normalizarCodigoUnidade(codigoRaw), nome, doc);
+    }
+
+    private BlocoAtual parseInicioBlocoSomenteCodigo(String col0) {
+        String codigoRaw = extrairCodigoBruto(col0);
+        return new BlocoAtual(normalizarCodigoUnidade(codigoRaw), "", "");
+    }
+
+    private static boolean isLinhaCodigoUnidade(String col0) {
+        if (!StringUtils.hasText(col0) || col0.contains("\n") || col0.contains(":")) {
+            return false;
+        }
+        return PAT_CODIGO_UNIDADE_COL0.matcher(col0.trim()).matches();
     }
 
     static String extrairCodigoBruto(String col0) {

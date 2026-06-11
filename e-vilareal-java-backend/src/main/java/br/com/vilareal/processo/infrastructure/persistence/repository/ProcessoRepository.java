@@ -18,6 +18,14 @@ public interface ProcessoRepository extends JpaRepository<ProcessoEntity, Long> 
 
     @Query(
             """
+            SELECT p.id FROM ProcessoEntity p
+            WHERE p.tramitacao IS NULL OR TRIM(p.tramitacao) = ''
+            ORDER BY p.id ASC
+            """)
+    List<Long> findIdsComTramitacaoVazia();
+
+    @Query(
+            """
             SELECT p FROM ProcessoEntity p
             WHERE p.pessoa.id = :pessoaId
               AND LOWER(TRIM(p.unidade)) = LOWER(TRIM(:unidade))

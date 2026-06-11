@@ -1,5 +1,7 @@
 package br.com.vilareal.email;
 
+import br.com.vilareal.processo.application.ProcessoTramitacaoService;
+import br.com.vilareal.processo.config.ProcessoTramitacaoProperties;
 import br.com.vilareal.publicacao.api.dto.PublicacaoWriteRequest;
 import br.com.vilareal.publicacao.infrastructure.persistence.repository.PublicacaoRepository;
 import com.google.api.services.gmail.Gmail;
@@ -17,6 +19,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -30,6 +33,8 @@ public class GmailPublicacaoService {
     private final PublicacaoEmailImportacaoTransacionalService importacaoTransacional;
     private final PublicacaoRepository publicacaoRepository;
     private final EmailImportacaoSyncService syncService;
+    private final ProcessoTramitacaoService processoTramitacaoService;
+    private final ProcessoTramitacaoProperties processoTramitacaoProperties;
     private final String gmailUser;
 
     public GmailPublicacaoService(
@@ -37,11 +42,15 @@ public class GmailPublicacaoService {
             PublicacaoEmailImportacaoTransacionalService importacaoTransacional,
             PublicacaoRepository publicacaoRepository,
             EmailImportacaoSyncService syncService,
+            ProcessoTramitacaoService processoTramitacaoService,
+            ProcessoTramitacaoProperties processoTramitacaoProperties,
             @Value("${gmail.user:me}") String gmailUser) {
         this.gmail = gmail;
         this.importacaoTransacional = importacaoTransacional;
         this.publicacaoRepository = publicacaoRepository;
         this.syncService = syncService;
+        this.processoTramitacaoService = processoTramitacaoService;
+        this.processoTramitacaoProperties = processoTramitacaoProperties;
         this.gmailUser = gmailUser;
     }
 
@@ -175,8 +184,14 @@ public class GmailPublicacaoService {
                         }
                         gravadas++;
                         resumo.setPublicacoesProcessadas(resumo.getPublicacoesProcessadas() + 1);
-                        if (importacaoTransacional.tentarVinculoAutomaticoPorCnj(pubId)) {
+                        Optional<Long> processoVinculado =
+                                importacaoTransacional.tentarVinculoAutomaticoPorCnjDevolvendoProcessoId(pubId);
+                        if (processoVinculado.isPresent()) {
                             vinculosAutomaticos++;
+                            if (processoTramitacaoProperties.isInferirMonitoramentoEnabled()) {
+                                processoTramitacaoService.preencherSeVazioPorCnj(
+                                        processoVinculado.get(), req.getNumeroProcessoEncontrado());
+                            }
                         }
                     } catch (Exception ex) {
                         String msg = mensagemRaiz(ex);

@@ -39,7 +39,7 @@ public class ProcuracaoService {
         PessoaEntity pessoa = pessoaRepository.findById(pessoaId)
                 .orElseThrow(() -> new ResourceNotFoundException("Pessoa não encontrada: " + pessoaId));
 
-        String qualificacao = qualificacaoPessoaUtil.gerarQualificacaoPorPessoaId(pessoaId, true);
+        String qualificacao = qualificacaoPessoaUtil.gerarQualificacaoProcuracaoPorPessoaId(pessoaId);
         String nomeOutorgante = pessoa.getNome() != null ? pessoa.getNome().trim().toUpperCase(Locale.ROOT) : "";
         String cpfOutorgante = QualificacaoPessoaUtil.formatarCpf(pessoa.getCpf());
 

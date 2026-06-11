@@ -220,6 +220,87 @@ Lista todas as pessoas com `id`, `nome` e **`codigoCliente`** (id formatado em 8
 **Regras:** `pessoaId` obrigatório na criação; `login` único; uma pessoa → no máximo um usuário; senha **nunca** na resposta.  
 **Senha:** preferir campo `senha` (texto, mín. 4 caracteres). Campo legado `senhaHash` aceito se for BCrypt (`$2a$`/`$2b$`) ou placeholder `sem-hash-definido` (gera hash aleatório interno).
 
+## PJe TRT18 — login automatizado + TOTP
+
+O PJe do TRT18 exige 2FA por **app autenticador** (TOTP, 6 dígitos) desde 03/11/2025. O módulo `br.com.vilareal.pje` orquestra login (usuário + senha + código TOTP) sem acoplar ao Projudi.
+
+### Stack de automação (diagnóstico)
+
+| Sistema | Tecnologia | Browser |
+|---------|------------|---------|
+| **Projudi** | `java.net.http.HttpClient` + `CookieManager` + Jsoup 1.18.3 | **Nenhum** — HTTP puro, cookies em disco (`ProjudiSessionService`) |
+| **PJe TRT18** | **Playwright-Java** 1.52.0 (`com.microsoft.playwright:playwright`) | Chromium headless (configurável) |
+
+O Projudi **não** usa Playwright/Selenium no backend. O PJe exige SSO jus.br/Keycloak + anti-bot, então o driver real é **Playwright** (mesma família já usada no monorepo: e2e React `@playwright/test` 1.58.x, `marina-qa-agent`). O stub (`StubPjeBrowserDriver`) permanece quando `app.pje.browser.enabled=false` (padrão em CI).
+
+Instalar Chromium para o driver Java:
+
+```bash
+cd e-vilareal-java-backend
+./mvnw exec:java -e -Dexec.mainClass=com.microsoft.playwright.CLI -Dexec.args="install chromium"
+```
+
+Habilitar Playwright: `PJE_BROWSER_ENABLED=true` (ou `app.pje.browser.enabled=true`). Depuração local com janela visível: `PJE_BROWSER_HEADLESS=false` (em falha, pausa `PJE_BROWSER_HEADED_FAILURE_PAUSE_MS` antes de fechar). Traces/PNG/HTML de falha em `PJE_BROWSER_TRACE_DIR` (padrão `${java.io.tmpdir}/pje-traces`, nome `timestamp-hash8-*.zip|png|html` — sem login/senha/OTP em claro).
+
+### Cadastro do segredo TOTP (uma vez, manual)
+
+1. No primeiro acesso ao PJe TRT18, escolha **app autenticador** como 2FA (**não** gov.br — nesse modo não há segredo extraível).
+2. Na tela do QR Code, use **“não consegue ler o QR?”** e copie a chave Base32 (secret).
+3. Cadastre via API admin (JWT `ROLE_ADMIN`):
+
+```bash
+curl -X POST http://localhost:8080/api/admin/totp/credenciais \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tribunal": "PJE_TRT18",
+    "login": "SEU_CPF_OU_LOGIN_PJE",
+    "otpauthUriOuSecret": "JBSWY3DPEHPK3PXP",
+    "ativo": true
+  }'
+```
+
+4. Confira o código com `POST /api/admin/totp/credenciais/{id}/teste` antes de rodar o robô.
+
+**1º e 2º grau:** no ecossistema PDPJ/jus.br o mesmo segredo costuma valer para ambos os graus do TRT18 (e eventualmente outros tribunais via conta única). A chave no cofre é `(tribunal, login)` — se um tribunal exigir segredo distinto, cadastre outra entrada com o `tribunal` adequado.
+
+Variáveis: `TOTP_ENCRYPTION_KEY` (ou `app.totp.encryption-key-file` em dev). URLs: `PJE_TRT18_URL_PRIMEIRO_GRAU`, `PJE_TRT18_URL_SEGUNDO_GRAU`.
+
+### Teste de login
+
+Com o backend no ar e TOTP cadastrado:
+
+```bash
+curl -X POST http://localhost:8080/api/admin/pje/trt18/teste-login \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "grau": "PRIMEIRO_GRAU",
+    "login": "SEU_CPF_OU_LOGIN_PJE",
+    "senha": "SUA_SENHA_PJE"
+  }'
+```
+
+Com `app.pje.browser.enabled=false` (padrão), usa `StubPjeBrowserDriver`. Com `true`, usa `PlaywrightPjeBrowserDriver` (fluxo real TRT18 1º grau).
+
+**Login confirmado:** `login.seam` → **Entrar com PDPJ** → Keycloak (`#username`, `#password`, `#kc-login`) → TOTP (`#otp`, mesmo `#kc-login`) → `/pjekz/painel/usuario-externo`.
+
+**Cópia integral:** `#inputNumeroProcesso` + Enter → `/acervo-geral/{CNJ}` → botão configurável (`app.pje.trt18.copia-integral-button-selector`, ajustar com `pje-clicks.json`) → popup `/pjekz/processo/*/detalhe` + download blob (até 3 tentativas) → upload pasta **Movimentações** no Drive via `PjeDriveArquivamentoService`.
+
+**Smoke ao vivo** (não roda no `./mvnw test` padrão):
+
+```bash
+./mvnw exec:java -e -Dexec.mainClass=com.microsoft.playwright.CLI -Dexec.args="install chromium"
+./mvnw test -Dtest=PjeTrt18LoginLiveSmokeTest \
+  -Dvilareal.smoke.pje=true \
+  -DPJE_SMOKE_LOGIN=SEU_LOGIN \
+  -DPJE_SMOKE_SENHA=SUA_SENHA
+```
+
+Requer segredo TOTP cadastrado (`PJE_TRT18`) e backend com `TOTP_ENCRYPTION_KEY`.
+
+Salvaguardas em `br.com.vilareal.robot` (`RobotGlobalLock`, `RobotAutoFreio`, `RobotLoteContext`); o gate legado do Projudi **não foi alterado**.
+
 ## Testes
 
 ```bash

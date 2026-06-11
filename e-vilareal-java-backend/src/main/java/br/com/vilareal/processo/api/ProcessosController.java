@@ -9,6 +9,7 @@ import br.com.vilareal.processo.application.ProcessoAutosIntegralService;
 import br.com.vilareal.processo.application.ProcessoMovimentacoesConsolidarPdfService;
 import br.com.vilareal.agendamento.api.dto.ResultadoMonitoramentoResponse;
 import br.com.vilareal.agendamento.application.MonitoramentoMovimentacoesService;
+import br.com.vilareal.processo.application.ProcessoMovimentacoesDriveService;
 import br.com.vilareal.processo.application.ProcessoProjudiMovimentacoesDriveService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -40,6 +41,7 @@ public class ProcessosController {
     private final ProcessoAutosIntegralService processoAutosIntegralService;
     private final ProcessoMovimentacoesConsolidarPdfService processoMovimentacoesConsolidarPdfService;
     private final ProcessoProjudiMovimentacoesDriveService processoProjudiMovimentacoesDriveService;
+    private final ProcessoMovimentacoesDriveService processoMovimentacoesDriveService;
     private final MonitoramentoMovimentacoesService monitoramentoMovimentacoesService;
     private final JuliaTriagemService juliaTriagemService;
 
@@ -48,12 +50,14 @@ public class ProcessosController {
             ProcessoAutosIntegralService processoAutosIntegralService,
             ProcessoMovimentacoesConsolidarPdfService processoMovimentacoesConsolidarPdfService,
             ProcessoProjudiMovimentacoesDriveService processoProjudiMovimentacoesDriveService,
+            ProcessoMovimentacoesDriveService processoMovimentacoesDriveService,
             MonitoramentoMovimentacoesService monitoramentoMovimentacoesService,
             JuliaTriagemService juliaTriagemService) {
         this.processoApplicationService = processoApplicationService;
         this.processoAutosIntegralService = processoAutosIntegralService;
         this.processoMovimentacoesConsolidarPdfService = processoMovimentacoesConsolidarPdfService;
         this.processoProjudiMovimentacoesDriveService = processoProjudiMovimentacoesDriveService;
+        this.processoMovimentacoesDriveService = processoMovimentacoesDriveService;
         this.monitoramentoMovimentacoesService = monitoramentoMovimentacoesService;
         this.juliaTriagemService = juliaTriagemService;
     }
@@ -274,6 +278,16 @@ public class ProcessosController {
                             + "movimentacao_monitorada e registra execução. Sem download, Drive ou publicações.")
     public ResultadoMonitoramentoResponse monitorarMovimentacoesProjudi(@PathVariable Long id) {
         return monitoramentoMovimentacoesService.monitorarProcesso(id);
+    }
+
+    @PostMapping("/{id}/movimentacoes-drive")
+    @Operation(
+            summary = "Obter movimentações (roteado por tramitação)",
+            description =
+                    "Projudi: consulta síncrona progressiva. PJe: dispara cópia integral assíncrona. "
+                            + "Autos físicos / tramitação vazia: sem robô.")
+    public ProcessoMovimentacoesDriveResponse obterMovimentacoesDrive(@PathVariable Long id) {
+        return processoMovimentacoesDriveService.executar(id);
     }
 
     @PostMapping("/{id}/projudi/movimentacoes-drive")
