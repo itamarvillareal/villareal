@@ -4,7 +4,7 @@
 
 import { extrairTextoPdfDeArquivo } from '../data/publicacoesPdfExtract.js';
 import { rodarOcrPdfTodasPaginas } from '../services/documentOcrService.js';
-import { isInstituicaoBtgExtratoPdf, parseBtgPdfExtratoText } from './btgPdfExtrato.js';
+import { isInstituicaoBtgExtratoPdf, parseBtgPdfExtratoText, textoPareceTerLancamentosBtgApp } from './btgPdfExtrato.js';
 import { isInstituicaoPay99ExtratoPdf, parsePay99PdfExtratoText } from './pay99PdfExtrato.js';
 import { isInstituicaoSicoobExtratoPdf, parseSicoobPdfExtratoText } from './sicoobPdfExtrato.js';
 
@@ -57,7 +57,7 @@ export function mensagemFalhaExtratoPdf(textoBruto, nomeInstituicao) {
     const periodo = texto.match(/(\d{2}\/\d{2}\/\d{4})\s+a\s+(\d{2}\/\d{2}\/\d{4})/i);
     const saldoZero = /saldo\s+final\s*R?\$?\s*0,00/i.test(texto.replace(/\s+/g, ' '));
     const temSecaoLancamentos = /lan[cç]amentos/i.test(texto);
-    if (periodo && temSecaoLancamentos && saldoZero) {
+    if (periodo && temSecaoLancamentos && saldoZero && !textoPareceTerLancamentosBtgApp(texto)) {
       return (
         `O PDF do BTG não traz lançamentos no período ${periodo[1]} a ${periodo[2]} ` +
         `(saldo final R$ 0,00). Exporte no app BTG um extrato mensal ou anual com movimentação.`
