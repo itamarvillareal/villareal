@@ -9,21 +9,26 @@ import {
   listarContasFinanceiro,
   listarLancamentosExtratoPaginados,
   obterSaldoBancoFinanceiro,
+  removerLancamentosFinanceiroApiEmLote,
 } from '../../../repositories/financeiroRepository.js';
 import { useFinanceiro } from '../FinanceiroContext.jsx';
 import { isSortDataAsc } from '../hooks/useExtratoFilters.js';
 import { useExtratoMesAoSelecionarBanco } from '../hooks/useExtratoMesAoSelecionarBanco.js';
-import { FINANCEIRO_REFRESH_PENDENTES } from '../hooks/useKeyboardShortcuts.js';
+import { FINANCEIRO_REFRESH_PENDENTES, dispatchRefreshPendentes } from '../hooks/useKeyboardShortcuts.js';
 import { Pagination } from '../shared/Pagination.jsx';
+import { ConfirmDialog } from '../shared/ConfirmDialog.jsx';
+import { useFinanceiroToast } from '../shared/Toast.jsx';
 import { ExtratoFilters } from './ExtratoFilters.jsx';
 import { ExtratoTable } from './ExtratoTable.jsx';
 import { ExtratoDetailPanel } from './ExtratoDetailPanel.jsx';
+import { ExtratoBatchBar } from './ExtratoBatchBar.jsx';
 import { mesAnoFromDataLancamento } from './extratoMesUtils.js';
 import { scrollExtratoParaLancamento } from './extratoDeepLink.js';
 import { mapApiLancamentoToExtratoRow } from './extratoMappers.js';
 
 export function ExtratoPage() {
   const { apiQuery, filters, setPage, setSize, setMes, setBanco, bancoAtivo, toggleSortData } = useFinanceiro();
+  const toast = useFinanceiroToast();
 
   useExtratoMesAoSelecionarBanco(bancoAtivo, filters.mes, setMes);
   const scrollRef = useRef(null);
@@ -46,6 +51,8 @@ export function ExtratoPage() {
   const [saldoBanco, setSaldoBanco] = useState(null);
   const [saldoBancoLoading, setSaldoBancoLoading] = useState(false);
   const [extratoRefreshKey, setExtratoRefreshKey] = useState(0);
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   const contaToLetra = useMemo(
     () => buildContaToLetraMerge(loadPersistedContasContabeisExtrasFinanceiro()),
@@ -299,6 +306,58 @@ export function ExtratoPage() {
     setExtratoRefreshKey((n) => n + 1);
   };
 
+  const aplicarExclusoesLocais = useCallback(
+    (removidos) => {
+      if (!removidos?.length) return;
+      const removedSet = new Set(removidos.map((id) => Number(id)));
+      limparCachePaginas();
+      setRows((prev) => prev.filter((r) => !removedSet.has(Number(r.id))));
+      setTotalElements((n) => Math.max(0, Number(n) - removidos.length));
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        for (const id of removidos) next.delete(id);
+        return next;
+      });
+      setDetailItem((prev) => (prev && removedSet.has(Number(prev.id)) ? null : prev));
+      setExtratoRefreshKey((k) => k + 1);
+      dispatchRefreshPendentes();
+    },
+    [limparCachePaginas],
+  );
+
+  const handleConfirmBulkDelete = async () => {
+    const ids = [...selectedIds];
+    if (!ids.length) {
+      setConfirmBulkDelete(false);
+      return;
+    }
+    setBulkDeleting(true);
+    try {
+      const { removidos, erros } = await removerLancamentosFinanceiroApiEmLote(ids);
+      if (removidos.length) {
+        aplicarExclusoesLocais(removidos);
+        toast.success(
+          removidos.length === 1
+            ? '1 lançamento excluído do extrato.'
+            : `${removidos.length.toLocaleString('pt-BR')} lançamentos excluídos do extrato.`,
+        );
+      }
+      if (erros.length) {
+        toast.warn(
+          `${erros.length.toLocaleString('pt-BR')} falha(s) ao excluir. ${erros
+            .slice(0, 2)
+            .map((e) => e.message)
+            .join(' · ')}`,
+        );
+      }
+    } catch (e) {
+      toast.error(e?.message || 'Falha ao excluir lançamentos.');
+    } finally {
+      setBulkDeleting(false);
+      setConfirmBulkDelete(false);
+    }
+  };
+
   if (!featureFlags.useApiFinanceiro) {
     return (
       <div className="p-6 text-sm text-slate-600 dark:text-slate-400">
@@ -317,6 +376,13 @@ export function ExtratoPage() {
         totalGeral={totalElements}
         saldoBanco={saldoBanco}
         saldoBancoLoading={saldoBancoLoading}
+      />
+
+      <ExtratoBatchBar
+        count={selectedIds.size}
+        busy={bulkDeleting}
+        onExcluir={() => setConfirmBulkDelete(true)}
+        onLimparSelecao={() => setSelectedIds(new Set())}
       />
 
       {erro ? (
@@ -363,6 +429,20 @@ export function ExtratoPage() {
           />
         </>
       ) : null}
+
+      <ConfirmDialog
+        open={confirmBulkDelete}
+        title="Excluir lançamentos selecionados?"
+        message={`${selectedIds.size.toLocaleString('pt-BR')} lançamento(s) será(ão) removido(s) do extrato. Esta ação não pode ser desfeita.`}
+        confirmLabel={bulkDeleting ? 'Excluindo…' : 'Excluir'}
+        danger
+        onCancel={() => {
+          if (!bulkDeleting) setConfirmBulkDelete(false);
+        }}
+        onConfirm={() => {
+          if (!bulkDeleting) void handleConfirmBulkDelete();
+        }}
+      />
     </div>
   );
 }

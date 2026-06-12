@@ -226,7 +226,7 @@ export function Sidebar({ mobileDrawerOpen = false, onMobileDrawerChange } = {})
                     }
                     if (item.id === 'financeiro-grupo') {
                       setGruposAbertos((prev) => new Set(prev).add(item.id));
-                      navigate('/financeiro');
+                      navigate('/financeiro/extrato');
                       closeMobileDrawer();
                       return;
                     }
@@ -270,7 +270,7 @@ export function Sidebar({ mobileDrawerOpen = false, onMobileDrawerChange } = {})
                     {subs.map((ch) => (
                         <NavLink
                           key={ch.id}
-                          to={`/${ch.id}`}
+                          to={ch.id === 'financeiro' ? '/financeiro/extrato' : `/${ch.id}`}
                           end={ch.id !== 'clientes/lista'}
                           onClick={closeMobileDrawer}
                           className={({ isActive }) => {
@@ -284,6 +284,8 @@ export function Sidebar({ mobileDrawerOpen = false, onMobileDrawerChange } = {})
                               ativo = path === '/relatorio-imoveis';
                             } else if (ch.id === 'iptu') {
                               ativo = path === '/iptu' || path.startsWith('/iptu/');
+                            } else if (ch.id === 'financeiro') {
+                              ativo = path === '/financeiro' || path.startsWith('/financeiro/');
                             }
                             return `flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-medium transition-all duration-200 ${
                               ativo

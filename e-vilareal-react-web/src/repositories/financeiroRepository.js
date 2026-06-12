@@ -707,6 +707,32 @@ export async function removerLancamentoFinanceiroApi(apiId) {
 }
 
 /**
+ * Exclui vários lançamentos (sequencial — evita sobrecarga na API).
+ * @param {Iterable<number|string>} apiIds
+ * @returns {Promise<{ removidos: number[], erros: { id: number, message: string }[] }>}
+ */
+export async function removerLancamentosFinanceiroApiEmLote(apiIds) {
+  const ids = [
+    ...new Set(
+      [...(apiIds || [])]
+        .map((x) => Number(x))
+        .filter((n) => Number.isFinite(n) && n > 0),
+    ),
+  ];
+  const removidos = [];
+  const erros = [];
+  for (const id of ids) {
+    try {
+      await removerLancamentoFinanceiroApi(id);
+      removidos.push(id);
+    } catch (e) {
+      erros.push({ id, message: e?.message || String(e) });
+    }
+  }
+  return { removidos, erros };
+}
+
+/**
  * Retira o lançamento da Conta Corrente do processo: zera Cod. cliente e Proc. (API ou só local).
  * O registro permanece no extrato/consolidado.
  */
