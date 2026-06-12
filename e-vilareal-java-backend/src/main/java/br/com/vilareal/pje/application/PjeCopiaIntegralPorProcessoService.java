@@ -64,9 +64,7 @@ public class PjeCopiaIntegralPorProcessoService {
             log.warn("PJe cópia integral CNJ {}: login não resolvido", cnjNorm);
             return Optional.empty();
         }
-        PjeGrau grau = resolverGrau(cnjNorm);
-        Optional<PjeCopiaIntegralResult> resultado =
-                copiaIntegralOrchestrator.executar(grau, login.get(), null, cnjNorm);
+        Optional<PjeCopiaIntegralResult> resultado = executarComFallbackGrau(cnjNorm, login.get());
         if (resultado.isEmpty()) {
             log.warn("PJe cópia integral CNJ {}: robô global ocupado", cnjNorm);
             return Optional.empty();
@@ -113,6 +111,25 @@ public class PjeCopiaIntegralPorProcessoService {
             return Optional.empty();
         }
         return Optional.of(ativas.getFirst().getLogin());
+    }
+
+    private Optional<PjeCopiaIntegralResult> executarComFallbackGrau(String cnjNorm, String login) {
+        PjeGrau grau = resolverGrau(cnjNorm);
+        Optional<PjeCopiaIntegralResult> resultado =
+                copiaIntegralOrchestrator.executar(grau, login, null, cnjNorm);
+        if (resultado.isEmpty()) {
+            return Optional.empty();
+        }
+        PjeCopiaIntegralResult r = resultado.get();
+        if (!r.sucesso() && grau == PjeGrau.PRIMEIRO_GRAU) {
+            log.info("PJe cópia integral CNJ {}: falha em 1º grau ({}), tentando 2º grau", cnjNorm, r.mensagem());
+            Optional<PjeCopiaIntegralResult> segundo =
+                    copiaIntegralOrchestrator.executar(PjeGrau.SEGUNDO_GRAU, login, null, cnjNorm);
+            if (segundo.isPresent()) {
+                return segundo;
+            }
+        }
+        return resultado;
     }
 
     PjeGrau resolverGrau(String cnj) {

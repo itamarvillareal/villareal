@@ -66,3 +66,9 @@ export function termoDigitosCorrespondeCnjCampo(termDigits, campoCnjRaw, opts = 
 
   return false;
 }
+
+/** TRT18: Justiça do Trabalho (J=5), tribunal 18 — padrão CNJ {@code ...AAAA.5.18.OOOO}. */
+export function cnjEhTrt18(cnjRaw) {
+  const cnj = String(cnjRaw ?? '').trim().toUpperCase();
+  return cnj.includes('.5.18.');
+}
