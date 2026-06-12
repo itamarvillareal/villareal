@@ -217,11 +217,23 @@ function parseProcessosCitadosNoTeor(jsonReferencia) {
   }
 }
 
-function construirStateProcessosDesdeLinha(row, indiceCnj, sugestoesApi) {
+function resolverStateProcessosDesdeLinha(row, indiceCnj, sugestoesApi) {
   const sug = resolverSugestaoVinculoLinha(row, indiceCnj, sugestoesApi);
   const codRaw = row?.codCliente || sug?.codCliente;
   const procRaw =
     row?.procInterno != null && String(row.procInterno).trim() !== '' ? row.procInterno : sug?.procInterno;
+  const cod = codRaw != null && String(codRaw).trim() !== '' ? String(codRaw).trim() : '';
+  if (!cod) return null;
+  const procNum = Number(procRaw);
+  if (!Number.isFinite(procNum) || procNum < 1) return null;
+  return buildRouterStateChaveClienteProcesso(cod, procNum);
+}
+
+function construirStateProcessosDesdeLinha(row, indiceCnj, sugestoesApi) {
+  const state = resolverStateProcessosDesdeLinha(row, indiceCnj, sugestoesApi);
+  if (state) return state;
+  const sug = resolverSugestaoVinculoLinha(row, indiceCnj, sugestoesApi);
+  const codRaw = row?.codCliente || sug?.codCliente;
   const cod = codRaw != null && String(codRaw).trim() !== '' ? String(codRaw).trim() : '';
   if (!cod) {
     window.alert(
@@ -229,12 +241,8 @@ function construirStateProcessosDesdeLinha(row, indiceCnj, sugestoesApi) {
     );
     return null;
   }
-  const procNum = Number(procRaw);
-  if (!Number.isFinite(procNum) || procNum < 1) {
-    window.alert('Não há número de processo interno (proc.) sugerido ou vinculado para abrir o cadastro.');
-    return null;
-  }
-  return buildRouterStateChaveClienteProcesso(cod, procNum);
+  window.alert('Não há número de processo interno (proc.) sugerido ou vinculado para abrir o cadastro.');
+  return null;
 }
 
 function ModalTeor({ publicacao, onClose, onAbrirProcesso, isProjudi = false }) {
@@ -465,6 +473,7 @@ function CelulaVinculo({ row, indiceCnj, sugestoesApi, carregandoSugestoes, onAb
 }
 
 const TOOLTIP_ACOES_LINHA = {
+  abrirProcesso: 'Abrir o cadastro do processo vinculado ou sugerido.',
   vincular:
     'Associar esta movimentação a um processo do cadastro (escolher cliente e nº interno).',
   auto:
@@ -477,9 +486,29 @@ const TOOLTIP_ACOES_LINHA = {
     'Marcar como ignorada — sem providência (aviso duplicado, irrelevante, etc.).',
 };
 
-function AcoesLinha({ onVincular, onAuto, onTratar, onIgnorar, onMarcarVinculada }) {
+function AcoesLinha({
+  onAbrirProcesso,
+  podeAbrirProcesso = false,
+  onVincular,
+  onAuto,
+  onTratar,
+  onIgnorar,
+  onMarcarVinculada,
+}) {
   return (
     <div className="flex flex-col gap-1" onClick={(e) => e.stopPropagation()}>
+      {onAbrirProcesso ? (
+        <button
+          type="button"
+          title={TOOLTIP_ACOES_LINHA.abrirProcesso}
+          onClick={onAbrirProcesso}
+          disabled={!podeAbrirProcesso}
+          className="inline-flex items-center justify-center gap-1 rounded border border-sky-600 bg-sky-600 px-2 py-1.5 text-[10px] font-medium text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400 dark:disabled:border-white/10 dark:disabled:bg-white/5 dark:disabled:text-slate-500"
+        >
+          <FolderOpen className="h-3 w-3" />
+          Abrir processo
+        </button>
+      ) : null}
       <button
         type="button"
         title={TOOLTIP_ACOES_LINHA.vincular}
@@ -544,6 +573,7 @@ function CardMobileRow({
   teorDaLinha,
 }) {
   const status = row._statusTratamento || 'PENDENTE';
+  const podeAbrirProcesso = !!resolverStateProcessosDesdeLinha(row, indiceCnj, sugestoesApi);
   return (
     <article className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:border-white/10 dark:bg-[#141922]">
       <button type="button" onClick={onToggle} className="w-full text-left">
@@ -590,6 +620,8 @@ function CardMobileRow({
         />
         <div className="mt-2">
           <AcoesLinha
+            onAbrirProcesso={onAbrirProcesso}
+            podeAbrirProcesso={podeAbrirProcesso}
             onVincular={onVincular}
             onAuto={onAuto}
             onTratar={onTratar}
@@ -984,6 +1016,8 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
   };
 
   const acoesProps = (row) => ({
+    onAbrirProcesso: () => abrirProcesso(row),
+    podeAbrirProcesso: !!resolverStateProcessosDesdeLinha(row, indiceCnj, sugestoesApi),
     onVincular: () => abrirVinculoModal(row),
     onAuto: () => void reaplicarVinculoAuto(row),
     onTratar: () => void alterarStatus(row, 'TRATADA'),

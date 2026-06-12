@@ -66,6 +66,8 @@ export function parseSicoobPdfExtratoText(textoBruto) {
   const transacoes = [];
   let emResumo = false;
   let ultimo = null;
+  /** Ordem no PDF — distingue linhas iguais (ex.: dois SAQ de 2.000 no mesmo dia). */
+  let seqExtrato = 0;
 
   const flushUltimo = () => {
     if (!ultimo) return;
@@ -84,7 +86,8 @@ export function parseSicoobPdfExtratoText(textoBruto) {
       ultimo = null;
       return;
     }
-    const numero = `SICOOB-PDF-${fnv1aHex(`${data}|${valor}|${desc}|${ultimo.extra || ''}`)}`;
+    seqExtrato += 1;
+    const numero = `SICOOB-PDF-${String(seqExtrato).padStart(5, '0')}-${fnv1aHex(`${data}|${valor}|${desc}|${ultimo.extra || ''}`)}`;
     transacoes.push({
       letra: 'N',
       numero,

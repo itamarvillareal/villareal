@@ -156,6 +156,8 @@ export function parseBtgPdfExtratoText(textoBruto) {
   const linhas = mesclarLinhasContinuacaoAposData(linhasBrutas);
 
   const transacoes = [];
+  /** Ordem no PDF — distingue linhas iguais (mesma data/valor/descrição). */
+  let seqExtrato = 0;
 
   for (const raw of linhas) {
     const line = raw.trim();
@@ -174,7 +176,8 @@ export function parseBtgPdfExtratoText(textoBruto) {
     if (!parsed) continue;
 
     const { descricao, valor } = parsed;
-    const numero = `BTG-PDF-${fnv1aHex(`${data}|${valor}|${descricao}`)}`;
+    seqExtrato += 1;
+    const numero = `BTG-PDF-${String(seqExtrato).padStart(5, '0')}-${fnv1aHex(`${data}|${valor}|${descricao}`)}`;
     transacoes.push({
       letra: 'N',
       numero,

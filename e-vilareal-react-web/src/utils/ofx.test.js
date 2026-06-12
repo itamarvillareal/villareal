@@ -128,6 +128,57 @@ describe('mergeExtratoBancario (mesclar OFX/PDF com extrato)', () => {
     expect(listarLancamentosNovosDedupe(existente, ofxTarde)[0].numero).toBe('fit-2');
   });
 
+  it('PDF com dois saques iguais inclui ambos quando banco vazio', () => {
+    const novo = [
+      {
+        numero: 'SICOOB-PDF-00002-abc',
+        data: '24/04/2026',
+        valor: -2000,
+        descricao: 'SAQ S/ CARTÃO (DOC.: 0003ATM)',
+        origemImportacao: 'PDF',
+      },
+      {
+        numero: 'SICOOB-PDF-00003-def',
+        data: '24/04/2026',
+        valor: -2000,
+        descricao: 'SAQ S/ CARTÃO (DOC.: 0003ATM)',
+        origemImportacao: 'PDF',
+      },
+    ];
+    expect(listarLancamentosNovosDedupe([], novo)).toHaveLength(2);
+  });
+
+  it('PDF com dois saques iguais inclui o segundo quando banco tem só um', () => {
+    const existente = [
+      {
+        numero: 'SICOOB-PDF-00002-abc',
+        data: '24/04/2026',
+        valor: -2000,
+        descricao: 'SAQ S/ CARTÃO (DOC.: 0003ATM)',
+        origemImportacao: 'PDF',
+      },
+    ];
+    const novo = [
+      {
+        numero: 'SICOOB-PDF-00002-abc',
+        data: '24/04/2026',
+        valor: -2000,
+        descricao: 'SAQ S/ CARTÃO (DOC.: 0003ATM)',
+        origemImportacao: 'PDF',
+      },
+      {
+        numero: 'SICOOB-PDF-00003-def',
+        data: '24/04/2026',
+        valor: -2000,
+        descricao: 'SAQ S/ CARTÃO (DOC.: 0003ATM)',
+        origemImportacao: 'PDF',
+      },
+    ];
+    const r = listarLancamentosNovosDedupe(existente, novo, { respeitarExtratoComoMestre: true });
+    expect(r).toHaveLength(1);
+    expect(r[0].numero).toBe('SICOOB-PDF-00003-def');
+  });
+
   it('ignora OFX quando planilha já tem mesmo data+valor+descrição (formato diferente)', () => {
     const existente = [
       {
