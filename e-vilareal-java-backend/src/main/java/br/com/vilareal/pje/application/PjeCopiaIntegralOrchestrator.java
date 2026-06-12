@@ -105,9 +105,8 @@ public class PjeCopiaIntegralOrchestrator {
             driver.buscarProcessoPorCnj(cnj);
             byte[] pdf = driver.baixarCopiaIntegralPdf(cnj);
 
-            var processo = driveArquivamentoService.resolverProcessoPorCnj(cnj);
             String nomeArquivo = PjeTrt18CnjUtil.nomeArquivoPdf(cnj);
-            var upload = driveArquivamentoService.enviarCopiaIntegral(processo, cnj, pdf, nomeArquivo);
+            var upload = driveArquivamentoService.enviarCopiaIntegral(cnj, pdf, nomeArquivo);
 
             autoFreio.registrarSucesso();
             return PjeCopiaIntegralResult.sucesso(

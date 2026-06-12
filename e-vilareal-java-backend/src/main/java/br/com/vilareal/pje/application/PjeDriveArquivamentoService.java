@@ -10,6 +10,7 @@ import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRe
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.math.BigInteger;
@@ -40,6 +41,12 @@ public class PjeDriveArquivamentoService {
     }
 
     public record ResultadoUpload(String driveFileId, String nomeArquivo, String pastaMovimentacoesId) {}
+
+    @Transactional(readOnly = true)
+    public ResultadoUpload enviarCopiaIntegral(String numeroCnj, byte[] pdf, String nomeArquivo) {
+        ProcessoEntity processo = carregarProcessoPorCnj(numeroCnj);
+        return enviarCopiaIntegral(processo, numeroCnj, pdf, nomeArquivo);
+    }
 
     public ResultadoUpload enviarCopiaIntegral(ProcessoEntity processo, String numeroCnj, byte[] pdf, String nomeArquivo) {
         if (!googleDriveService.isConfigurado()) {
@@ -114,7 +121,12 @@ public class PjeDriveArquivamentoService {
         }
     }
 
+    @Transactional(readOnly = true)
     public ProcessoEntity resolverProcessoPorCnj(String numeroCnj) {
+        return carregarProcessoPorCnj(numeroCnj);
+    }
+
+    private ProcessoEntity carregarProcessoPorCnj(String numeroCnj) {
         String norm = ProcessoDiagnosticoNumeroBuscaUtil.normalizarSomenteDigitos(numeroCnj);
         if (norm.isEmpty()) {
             throw new IllegalArgumentException("CNJ inválido.");
@@ -123,7 +135,10 @@ public class PjeDriveArquivamentoService {
         if (ids.isEmpty()) {
             throw new IllegalArgumentException("Processo não cadastrado localmente para CNJ " + numeroCnj);
         }
-        return processoRepository.findById(ids.getFirst().longValue()).orElseThrow();
+        return processoRepository
+                .findByIdWithClienteAndPessoa(ids.getFirst().longValue())
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Processo não cadastrado localmente para CNJ " + numeroCnj));
     }
 
     private String resolverPastaMovimentacoesId(ProcessoEntity processo, String numeroCnj) {
