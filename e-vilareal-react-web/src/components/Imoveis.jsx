@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { FileSpreadsheet, X } from 'lucide-react';
 import {
@@ -24,31 +24,12 @@ import { buscarCliente } from '../api/clientesService.js';
 import { featureFlags, FEATURE_IPTU_NOVO } from '../config/featureFlags.js';
 import { buildRouterStateChaveClienteProcesso } from '../domain/camposProcessoCliente.js';
 import { Field } from './ui/Field.jsx';
+import { imovelCorrespondeBusca } from './imoveis/imovelBusca.js';
 const inputClass = imoveisInputClass;
 const inputReadOnlyClass = imoveisInputReadOnlyClass;
 const btnPrimary = imoveisBtnPrimary;
 const btnSecondary = imoveisBtnSecondary;
 const btnIconGhost = imoveisBtnIconGhost;
-
-
-function textoSemAcentoMin(s) {
-  return String(s ?? '')
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
-}
-
-/** Pesquisa nos campos condomínio e unidade: cada palavra deve aparecer em qualquer um dos dois (E entre tokens). */
-function imovelCondUnidadeCorresponde(imovelApi, queryBruta) {
-  const q = String(queryBruta ?? '').trim();
-  if (!q) return false;
-  const hay = `${textoSemAcentoMin(imovelApi?.condominio)} ${textoSemAcentoMin(imovelApi?.unidade)}`.trim();
-  const tokens = textoSemAcentoMin(q)
-    .split(/\s+/)
-    .filter(Boolean);
-  if (tokens.length === 0) return false;
-  return tokens.every((t) => hay.includes(t));
-}
 
 export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onCadastroSalvo } = {}) {
   const location = useLocation();
@@ -142,20 +123,21 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
   const [pesquisaCondUnidade, setPesquisaCondUnidade] = useState('');
   const [listaImoveisPesquisa, setListaImoveisPesquisa] = useState([]);
 
+  const recarregarListaImoveisPesquisa = useCallback(() => {
+    if (!featureFlags.useApiImoveis) return;
+    void listarImoveisApi().then((list) => {
+      setListaImoveisPesquisa(Array.isArray(list) ? list : []);
+    });
+  }, []);
+
   useEffect(() => {
     if (!featureFlags.useApiImoveis) return undefined;
-    let ativo = true;
-    void listarImoveisApi().then((list) => {
-      if (ativo) setListaImoveisPesquisa(Array.isArray(list) ? list : []);
-    });
-    return () => {
-      ativo = false;
-    };
-  }, []);
+    recarregarListaImoveisPesquisa();
+  }, [recarregarListaImoveisPesquisa]);
 
   const resultadosPesquisaCondUnidade = useMemo(() => {
     if (!featureFlags.useApiImoveis || !pesquisaCondUnidade.trim()) return [];
-    return listaImoveisPesquisa.filter((im) => imovelCondUnidadeCorresponde(im, pesquisaCondUnidade));
+    return listaImoveisPesquisa.filter((im) => imovelCorrespondeBusca(im, pesquisaCondUnidade));
   }, [listaImoveisPesquisa, pesquisaCondUnidade]);
 
   function popularFormulario(data) {
@@ -589,6 +571,7 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
       }
       if (featureFlags.useApiImoveis) {
         setApiSuccess('Cadastro do imóvel salvo na API.');
+        recarregarListaImoveisPesquisa();
       } else {
         setApiSuccess('Fluxo em fallback legado/mock (sem persistência real).');
       }

@@ -5,6 +5,7 @@ import br.com.vilareal.imovel.infrastructure.persistence.entity.ImovelEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import org.springframework.util.StringUtils;
 
+import java.text.Normalizer;
 import java.util.Locale;
 
 final class DemandaBuscaSupport {
@@ -15,23 +16,70 @@ final class DemandaBuscaSupport {
         if (d == null || !StringUtils.hasText(buscaNorm)) {
             return true;
         }
-        ImovelEntity im = d.getImovel();
-        ClienteEntity cl = d.getCliente();
-        return contains(d.getDescricao(), buscaNorm)
-                || contains(d.getFornecedorTexto(), buscaNorm)
-                || contains(d.getCategoria(), buscaNorm)
-                || (im != null
-                        && (contains(im.getTitulo(), buscaNorm)
-                                || contains(im.getCondominio(), buscaNorm)
-                                || contains(im.getUnidade(), buscaNorm)
-                                || contains(im.getEnderecoCompleto(), buscaNorm)))
-                || (cl != null
-                        && (contains(cl.getNomeReferencia(), buscaNorm)
-                                || contains(cl.getCodigoCliente(), buscaNorm)
-                                || (cl.getPessoa() != null && contains(cl.getPessoa().getNome(), buscaNorm))));
+        String haystack = buildHaystack(d);
+        return tokensMatch(haystack, buscaNorm);
     }
 
-    private static boolean contains(String s, String busca) {
-        return s != null && s.toLowerCase(Locale.ROOT).contains(busca);
+    private static String buildHaystack(DemandaEntity d) {
+        StringBuilder sb = new StringBuilder();
+        append(sb, d.getDescricao());
+        append(sb, d.getFornecedorTexto());
+        append(sb, d.getCategoria());
+
+        ImovelEntity im = d.getImovel();
+        if (im != null) {
+            append(sb, im.getTitulo());
+            append(sb, im.getCondominio());
+            append(sb, im.getUnidade());
+            append(sb, im.getEnderecoCompleto());
+            if (im.getNumeroPlanilha() != null) {
+                append(sb, String.valueOf(im.getNumeroPlanilha()));
+            }
+            if (im.getId() != null) {
+                append(sb, String.valueOf(im.getId()));
+            }
+        }
+
+        ClienteEntity cl = d.getCliente();
+        if (cl != null) {
+            append(sb, cl.getNomeReferencia());
+            append(sb, cl.getCodigoCliente());
+            if (cl.getPessoa() != null) {
+                append(sb, cl.getPessoa().getNome());
+            }
+        }
+        return normalize(sb.toString());
+    }
+
+    private static void append(StringBuilder sb, String value) {
+        if (!StringUtils.hasText(value)) {
+            return;
+        }
+        if (!sb.isEmpty()) {
+            sb.append(' ');
+        }
+        sb.append(value.trim());
+    }
+
+    /** Cada token da busca deve aparecer no haystack (E entre palavras). */
+    private static boolean tokensMatch(String haystackNorm, String buscaNorm) {
+        String[] tokens = normalize(buscaNorm).split("\\s+");
+        for (String token : tokens) {
+            if (token.isEmpty()) {
+                continue;
+            }
+            if (!haystackNorm.contains(token)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static String normalize(String s) {
+        if (s == null) {
+            return "";
+        }
+        String nfd = Normalizer.normalize(s, Normalizer.Form.NFD);
+        return nfd.replaceAll("\\p{M}+", "").toLowerCase(Locale.ROOT).trim();
     }
 }

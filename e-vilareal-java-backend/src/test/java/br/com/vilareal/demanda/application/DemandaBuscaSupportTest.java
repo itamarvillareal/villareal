@@ -21,6 +21,33 @@ class DemandaBuscaSupportTest {
 
         assertTrue(DemandaBuscaSupport.matches(demanda, "ana paula"));
         assertTrue(DemandaBuscaSupport.matches(demanda, "jardim"));
+        assertTrue(DemandaBuscaSupport.matches(demanda, "Ana  Paula"));
         assertFalse(DemandaBuscaSupport.matches(demanda, "outro bairro"));
+    }
+
+    @Test
+    void buscaEncontraPeloEnderecoQuandoCondominioVazio() {
+        ImovelEntity imovel = new ImovelEntity();
+        imovel.setEnderecoCompleto("Rua Pérola, loteamento Jardim Ana Paula, Anápolis");
+
+        DemandaEntity demanda = new DemandaEntity();
+        demanda.setDescricao("Vistoria");
+        demanda.setImovel(imovel);
+
+        assertTrue(DemandaBuscaSupport.matches(demanda, "ana paula"));
+        assertTrue(DemandaBuscaSupport.matches(demanda, "anapolis"));
+    }
+
+    @Test
+    void buscaEncontraPeloNumeroPlanilha() {
+        ImovelEntity imovel = new ImovelEntity();
+        imovel.setNumeroPlanilha(56);
+        imovel.setCondominio("Outro nome");
+
+        DemandaEntity demanda = new DemandaEntity();
+        demanda.setDescricao("Item");
+        demanda.setImovel(imovel);
+
+        assertTrue(DemandaBuscaSupport.matches(demanda, "56"));
     }
 }
