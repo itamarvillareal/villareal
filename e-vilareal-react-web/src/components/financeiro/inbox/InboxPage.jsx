@@ -13,6 +13,7 @@ import {
   listarSugestoesPagamentoFaturaApi,
   obterSaudeFinanceiroApi,
   parearCompensacaoApi,
+  sugestoesClassificacaoLoteApi,
 } from '../../../repositories/financeiroRepository.js';
 import { ETAPAS, INBOX_TIPOS } from '../constants/financeiroConstants.js';
 import { useFinanceiro } from '../FinanceiroContext.jsx';
@@ -118,6 +119,7 @@ export function InboxPage() {
 
   const [reloadNonce, setReloadNonce] = useState(0);
   const [refazendoRelatorio, setRefazendoRelatorio] = useState(false);
+  const [refatorandoIds, setRefatorandoIds] = useState(() => new Set());
 
   const periodo = useMemo(() => periodoParaQueryApi(filters.mes), [filters.mes]);
   const periodoAnoMes = useMemo(() => periodoParaAnoMesApi(filters.mes), [filters.mes]);
@@ -576,6 +578,45 @@ export function InboxPage() {
     setSkipped((prev) => new Set([...prev, ...ids]));
   }, []);
 
+  const handleRefatorarSugestao = useCallback(
+    async (lancamentoIds) => {
+      const ids = [...new Set(lancamentoIds ?? [])]
+        .map((id) => Number(id))
+        .filter((id) => Number.isFinite(id) && id > 0);
+      if (!ids.length) return;
+
+      setRefatorandoIds((prev) => new Set([...prev, ...ids]));
+      try {
+        const res = await sugestoesClassificacaoLoteApi(ids);
+        const novas = normalizeSugestoesMap(res?.sugestoes);
+        const anteriores = Object.fromEntries(
+          ids.map((id) => [id, melhorSugestao(sugestoesMap[id])?.contaCodigo ?? null]),
+        );
+
+        setSugestoesMap((prev) => ({ ...prev, ...novas }));
+
+        const mudou = ids.some((id) => {
+          const depois = melhorSugestao(novas[id])?.contaCodigo ?? null;
+          return anteriores[id] !== depois;
+        });
+        if (mudou) {
+          toast.success('Sugestão atualizada com as regras atuais.');
+        } else {
+          toast.info('Sugestão recalculada — sem alteração.');
+        }
+      } catch (e) {
+        toast.error(`Falha ao refatorar sugestão: ${e?.message || 'erro desconhecido'}`);
+      } finally {
+        setRefatorandoIds((prev) => {
+          const next = new Set(prev);
+          ids.forEach((id) => next.delete(id));
+          return next;
+        });
+      }
+    },
+    [sugestoesMap, toast],
+  );
+
   const paresVisiveis = useMemo(() => {
     const filtros = {
       tipoPar: filtroTipoPar,
@@ -812,6 +853,8 @@ export function InboxPage() {
                     onAprovarGrupo={handleAprovarGrupo}
                     onAprovar={handleAprovarClassificacao}
                     onPularGrupo={handlePularIds}
+                    onRefatorar={handleRefatorarSugestao}
+                    refatorando={ids.some((id) => refatorandoIds.has(id))}
                     isSelected={ids.length > 0 && ids.every((id) => selected.has(id))}
                     onSelectGrupo={(lancIds, on) => {
                       setSelected((prev) => {
@@ -839,6 +882,8 @@ export function InboxPage() {
                       contas={contas}
                       onAprovar={handleAprovarClassificacao}
                       onPular={(id) => setSkipped((s) => new Set([...s, id]))}
+                      onRefatorar={() => handleRefatorarSugestao([l.id])}
+                      refatorando={refatorandoIds.has(l.id)}
                       isSelected={selected.has(l.id)}
                       focused={cardIdx === focusedIndex}
                       onSelect={(id, on) => {
@@ -867,6 +912,8 @@ export function InboxPage() {
                     contas={contas}
                     onAprovar={handleAprovarClassificacao}
                     onPular={(id) => setSkipped((s) => new Set([...s, id]))}
+                    onRefatorar={() => handleRefatorarSugestao([l.id])}
+                    refatorando={refatorandoIds.has(l.id)}
                     isSelected={selected.has(l.id)}
                     focused={cardIdx === focusedIndex}
                     onSelect={(id, on) => {

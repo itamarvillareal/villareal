@@ -79,11 +79,16 @@ public class FinanceiroSugestaoService {
     public List<SugestaoClassificacaoResponse> sugerir(LancamentoFinanceiroEntity lancamento) {
         List<SugestaoClassificacaoResponse> todas = new ArrayList<>();
         todas.addAll(camadaRendimentosAplicacoes(lancamento));
+        boolean compensacaoInterna = FinanceiroDescricaoIndicaContaE.indica(
+                lancamento.getDescricao(), lancamento.getDescricaoDetalhada());
+        todas.addAll(camadaCompensacaoItamarVrv(lancamento));
         todas.addAll(camadaRegras(lancamento));
-        List<SugestaoClassificacaoResponse> deposito = camadaDepositoIdentificado(lancamento);
-        todas.addAll(deposito);
-        if (deposito.isEmpty()) {
-            todas.addAll(camadaPessoaProcessos(lancamento));
+        if (!compensacaoInterna) {
+            List<SugestaoClassificacaoResponse> deposito = camadaDepositoIdentificado(lancamento);
+            todas.addAll(deposito);
+            if (deposito.isEmpty()) {
+                todas.addAll(camadaPessoaProcessos(lancamento));
+            }
         }
         todas.addAll(camadaHistorico(lancamento));
         todas.addAll(camadaRecorrencia(lancamento));
@@ -148,6 +153,21 @@ public class FinanceiroSugestaoService {
         SugestaoClassificacaoResponse s =
                 baseSugestao(contaF, ConfiancaSugestao.ALTA, OrigemSugestao.REGRA);
         s.setDescricaoRegra("rendimentos/aplicações (COR JURS, JUROS, CRI, LCA, CDB) → F");
+        return List.of(s);
+    }
+
+    private List<SugestaoClassificacaoResponse> camadaCompensacaoItamarVrv(LancamentoFinanceiroEntity lancamento) {
+        if (!FinanceiroDescricaoIndicaContaE.indica(lancamento.getDescricao(), lancamento.getDescricaoDetalhada())) {
+            return List.of();
+        }
+        ContaContabilEntity contaE =
+                contaContabilRepository.findFirstByCodigoIgnoreCase("E").orElse(null);
+        if (contaE == null) {
+            return List.of();
+        }
+        SugestaoClassificacaoResponse s =
+                baseSugestao(contaE, ConfiancaSugestao.ALTA, OrigemSugestao.REGRA);
+        s.setDescricaoRegra("transferência interna Itamar/VRV → E");
         return List.of(s);
     }
 

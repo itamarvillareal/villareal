@@ -316,4 +316,39 @@ class FinanceiroSugestaoServiceTest {
                         && s.getProcessoId().equals(50L)
                         && "COD-728 · proc 3 - Itamar Villa Real x Ana Luisa".equals(s.getRotuloVinculo()));
     }
+
+    @Test
+    void sugerir_transfPixItamarCora_sugereContaENaoCliente() {
+        lancamento.setDescricao(
+                "Transf Pix recebida - ITAMAR ALEXANDRE F V R JUNIOR - 007.332.351-90");
+        lancamento.setNatureza(NaturezaLancamento.CREDITO);
+        lancamento.setNumeroBanco(29);
+
+        PessoaEntity itamar = new PessoaEntity();
+        itamar.setId(1L);
+        itamar.setNome("Itamar Alexandre F V R Junior");
+        itamar.setCpf("00733235190");
+
+        ProcessoEntity processo = new ProcessoEntity();
+        processo.setId(50L);
+        processo.setPessoa(itamar);
+        processo.setNumeroInterno(1);
+
+        when(regraRepository.findByAtivoTrueOrderByPrioridadeAscIdAsc()).thenReturn(List.of());
+        when(contaContabilRepository.findFirstByCodigoIgnoreCase("E")).thenReturn(Optional.of(contaE));
+        when(pessoaRepository.findByCpf("00733235190")).thenReturn(Optional.of(itamar));
+        when(processoRepository.findAllDistinctVinculadosPessoa(1L)).thenReturn(List.of(processo));
+        when(lancamentoRepository.findDepositosIdentificadosPorCpfNoTexto(any(), any(), any(), any()))
+                .thenReturn(List.of());
+        when(lancamentoRepository.contarContaPorDescricaoHistorico(any(), any())).thenReturn(List.of());
+        when(lancamentoRepository.findRecorrenciaCandidatos(any(), any(), any(), any(), anyInt()))
+                .thenReturn(List.of());
+
+        List<SugestaoClassificacaoResponse> sugestoes = service.sugerir(lancamento);
+
+        assertThat(sugestoes).isNotEmpty();
+        assertThat(sugestoes.get(0).getContaCodigo()).isEqualTo("E");
+        assertThat(sugestoes.get(0).getOrigem()).isEqualTo(OrigemSugestao.REGRA);
+        assertThat(sugestoes).noneMatch(s -> "A".equals(s.getContaCodigo()));
+    }
 }
