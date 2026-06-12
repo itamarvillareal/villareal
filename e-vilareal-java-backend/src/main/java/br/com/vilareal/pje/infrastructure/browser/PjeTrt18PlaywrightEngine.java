@@ -9,7 +9,9 @@ import com.microsoft.playwright.BrowserContext;
 import com.microsoft.playwright.BrowserType;
 import com.microsoft.playwright.Page;
 import com.microsoft.playwright.Playwright;
+import com.microsoft.playwright.options.Proxy;
 import com.microsoft.playwright.options.WaitForSelectorState;
+import org.springframework.util.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -242,10 +244,15 @@ public class PjeTrt18PlaywrightEngine {
         }
 
         playwright = Playwright.create();
-        browser = playwright.chromium()
-                .launch(new BrowserType.LaunchOptions()
-                        .setHeadless(browserProperties.isHeadless())
-                        .setArgs(java.util.List.of("--no-sandbox", "--disable-dev-shm-usage")));
+        BrowserType.LaunchOptions launchOpts = new BrowserType.LaunchOptions()
+                .setHeadless(browserProperties.isHeadless())
+                .setArgs(java.util.List.of("--no-sandbox", "--disable-dev-shm-usage"));
+        if (StringUtils.hasText(browserProperties.getProxy())) {
+            String proxyServer = browserProperties.getProxy().trim();
+            launchOpts.setProxy(new Proxy(proxyServer));
+            log.info("PJe Playwright: proxy de saída configurado ({})", mascaraProxy(proxyServer));
+        }
+        browser = playwright.chromium().launch(launchOpts);
                         
         Browser.NewContextOptions opts = new Browser.NewContextOptions()
                 .setUserAgent(USER_AGENT)
@@ -367,5 +374,18 @@ public class PjeTrt18PlaywrightEngine {
         }
         grauAtual = null;
         loginAtual = null;
+    }
+
+    private static String mascaraProxy(String proxyServer) {
+        if (!StringUtils.hasText(proxyServer)) {
+            return "(vazio)";
+        }
+        int at = proxyServer.lastIndexOf('@');
+        String hostPort = at >= 0 ? proxyServer.substring(at + 1) : proxyServer;
+        int scheme = hostPort.indexOf("://");
+        if (scheme >= 0) {
+            return proxyServer.substring(0, scheme + 3) + hostPort.substring(scheme + 3);
+        }
+        return hostPort;
     }
 }
