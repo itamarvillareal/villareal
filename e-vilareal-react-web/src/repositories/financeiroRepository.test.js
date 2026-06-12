@@ -1,9 +1,23 @@
 import { describe, expect, it } from 'vitest';
+import { clampFinanceiroPageSize } from '../components/financeiro/constants/financeiroConstants.js';
 import {
   lancamentoBateContaCorrenteProcesso,
   mergeUiLancamentoComRespostaApi,
   pessoaIdDesdeCodigoClienteFinanceiro,
 } from './financeiroRepository.js';
+
+describe('clampFinanceiroPageSize', () => {
+  it('preserva opções válidas do extrato', () => {
+    expect(clampFinanceiroPageSize(200)).toBe(200);
+    expect(clampFinanceiroPageSize(500)).toBe(500);
+    expect(clampFinanceiroPageSize(1000)).toBe(1000);
+  });
+
+  it('limita valores inválidos entre 50 e 1000', () => {
+    expect(clampFinanceiroPageSize(9999)).toBe(1000);
+    expect(clampFinanceiroPageSize(10)).toBe(50);
+  });
+});
 
 describe('pessoaIdDesdeCodigoClienteFinanceiro', () => {
   it('extrai pessoa id dos dígitos do código', () => {
