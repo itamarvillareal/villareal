@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
   BarChart3,
@@ -18,6 +18,7 @@ import { listarContadoresEtapaApi } from '../../repositories/financeiroRepositor
 import { ETAPAS } from './constants/financeiroConstants.js';
 import { FinanceiroProvider, useFinanceiroChrome } from './FinanceiroContext.jsx';
 import { FinanceiroToastProvider } from './shared/Toast.jsx';
+import { DashboardSkeleton } from './shared/LoadingSkeleton.jsx';
 import { BancoItem } from './shared/BancoItem.jsx';
 import { ExtratoImportModal } from './extrato/ExtratoImportModal.jsx';
 import {
@@ -85,7 +86,7 @@ function FinanceiroShell({ importOpen, onOpenImport, onCloseImport, onImportSucc
   );
 
   return (
-    <div className="flex flex-1 flex-col min-h-0 h-full overflow-hidden bg-slate-50 dark:bg-slate-950">
+    <div className="flex w-full flex-1 flex-col min-h-[60dvh] lg:min-h-0 lg:h-full overflow-hidden bg-slate-50 dark:bg-slate-950">
       <header className="h-11 shrink-0 flex items-center justify-between px-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
         <div className="flex items-center gap-2 min-w-0">
           <h1 className="text-base font-medium text-slate-900 dark:text-slate-100">Financeiro</h1>
@@ -227,7 +228,9 @@ function FinanceiroShell({ importOpen, onOpenImport, onCloseImport, onImportSucc
         </aside>
 
         <main className="flex flex-1 flex-col min-h-0 min-w-0 overflow-hidden">
-          <Outlet />
+          <Suspense fallback={<DashboardSkeleton />}>
+            <Outlet />
+          </Suspense>
         </main>
       </div>
 

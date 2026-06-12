@@ -18,16 +18,16 @@ function ExtratoTableInner({
   onSortDataDoubleClick,
   highlightLancamentoId = null,
 }) {
-  if (isLoading) {
-    return <ExtratoSkeleton />;
-  }
-
   const ids = useMemo(() => data.map((r) => r.id).filter((id) => id != null), [data]);
   const allSelected = useMemo(
     () => ids.length > 0 && ids.every((id) => selectedIds.has(id)),
     [ids, selectedIds],
   );
   const someSelected = useMemo(() => ids.some((id) => selectedIds.has(id)), [ids, selectedIds]);
+
+  if (isLoading) {
+    return <ExtratoSkeleton />;
+  }
 
   return (
     <div className="overflow-x-auto min-w-0">
