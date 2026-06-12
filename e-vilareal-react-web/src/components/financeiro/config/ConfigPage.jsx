@@ -2,17 +2,21 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Plus, Pencil, Trash2, ExternalLink } from 'lucide-react';
 import { featureFlags } from '../../../config/featureFlags.js';
+import { getBancoNumeroMapMerged } from '../../../data/financeiroData.js';
 import {
   atualizarRegraClassificacaoApi,
   criarRegraClassificacaoApi,
   listarContasFinanceiro,
+  listarCartoesFinanceiro,
   listarRegrasClassificacaoApi,
   obterSaudeFinanceiroApi,
   removerRegraClassificacaoApi,
 } from '../../../repositories/financeiroRepository.js';
 import { ContaBadge } from '../shared/ContaBadge.jsx';
 import { ExtratoSkeleton } from '../shared/LoadingSkeleton.jsx';
+import { LimparContaDialog } from '../shared/LimparContaDialog.jsx';
 import { useFinanceiroToast } from '../shared/Toast.jsx';
+import { FINANCEIRO_CONTA_LIMPA } from '../extrato/limparContaFinanceiro.js';
 
 const EMPTY_REGRA = {
   padraoDescricao: '',
@@ -151,16 +155,24 @@ export function ConfigPage() {
   const [saude, setSaude] = useState(null);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState({ open: false, item: null });
+  const [cartoes, setCartoes] = useState([]);
+  const [limparDialog, setLimparDialog] = useState(null);
+
+  const bancos = Object.entries(getBancoNumeroMapMerged())
+    .map(([nome, numero]) => ({ nome, numero }))
+    .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
 
   const load = useCallback(async (signal) => {
-    const [r, c, s] = await Promise.all([
+    const [r, c, s, cart] = await Promise.all([
       listarRegrasClassificacaoApi({ signal }),
       listarContasFinanceiro({ signal }),
       obterSaudeFinanceiroApi({ signal }),
+      listarCartoesFinanceiro({ signal }),
     ]);
     setRegras(Array.isArray(r) ? r : []);
     setContas(Array.isArray(c) ? c : []);
     setSaude(s);
+    setCartoes(Array.isArray(cart) ? cart : []);
   }, []);
 
   useEffect(() => {
@@ -176,6 +188,15 @@ export function ConfigPage() {
       .finally(() => setLoading(false));
     return () => ac.abort();
   }, [load, toast]);
+
+  useEffect(() => {
+    const onContaLimpa = () => {
+      const ac = new AbortController();
+      load(ac.signal).catch(() => {});
+    };
+    window.addEventListener(FINANCEIRO_CONTA_LIMPA, onContaLimpa);
+    return () => window.removeEventListener(FINANCEIRO_CONTA_LIMPA, onContaLimpa);
+  }, [load]);
 
   const handleSave = async (body) => {
     try {
@@ -291,6 +312,81 @@ export function ConfigPage() {
       </section>
 
       <section>
+        <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100 mb-1">
+          Limpar contas correntes e cartões
+        </h2>
+        <p className="text-sm text-slate-600 dark:text-slate-400 mb-3">
+          Apaga todos os lançamentos de uma conta no servidor (e a cópia local legada, no caso de
+          contas correntes). Use antes de reimportar um extrato do zero.
+        </p>
+        <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">
+          <table className="w-full border-collapse text-sm">
+            <thead>
+              <tr className="text-xs text-slate-500 bg-slate-50 dark:bg-slate-800/80">
+                <th className="px-2 py-2 text-left">Tipo</th>
+                <th className="px-2 py-2 text-left">Conta</th>
+                <th className="px-2 py-2 text-right">Nº</th>
+                <th className="px-2 py-2 text-right">Ação</th>
+              </tr>
+            </thead>
+            <tbody>
+              {bancos.map((b) => (
+                <tr key={`banco-${b.numero}`} className="border-t border-slate-100 dark:border-slate-800">
+                  <td className="px-2 py-1.5 text-xs text-slate-500">Conta corrente</td>
+                  <td className="px-2 py-1.5">{b.nome}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums text-slate-500">{b.numero}</td>
+                  <td className="px-2 py-1.5 text-right">
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-md border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-950/40 dark:border-red-900 dark:text-red-300"
+                      onClick={() =>
+                        setLimparDialog({ tipo: 'banco', nome: b.nome, numero: b.numero })
+                      }
+                    >
+                      <Trash2 className="w-3 h-3" aria-hidden />
+                      Limpar
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {cartoes.map((c) => (
+                <tr key={`cartao-${c.id ?? c.nome}`} className="border-t border-slate-100 dark:border-slate-800">
+                  <td className="px-2 py-1.5 text-xs text-slate-500">Cartão</td>
+                  <td className="px-2 py-1.5">{c.nome}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums text-slate-500">
+                    {c.numeroCartao ?? '—'}
+                  </td>
+                  <td className="px-2 py-1.5 text-right">
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-md border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-950/40 dark:border-red-900 dark:text-red-300"
+                      onClick={() =>
+                        setLimparDialog({
+                          tipo: 'cartao',
+                          nome: c.nome,
+                          numero: c.numeroCartao ?? null,
+                        })
+                      }
+                    >
+                      <Trash2 className="w-3 h-3" aria-hidden />
+                      Limpar
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {bancos.length === 0 && cartoes.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="px-2 py-4 text-center text-slate-500 text-sm">
+                    Nenhuma conta cadastrada.
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section>
         <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100 mb-2">Sobre</h2>
         {saude ? (
           <dl className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-slate-700 dark:text-slate-300">
@@ -334,6 +430,17 @@ export function ConfigPage() {
         onClose={() => setModal({ open: false, item: null })}
         onSave={handleSave}
       />
+
+      {limparDialog ? (
+        <LimparContaDialog
+          open
+          tipo={limparDialog.tipo}
+          nome={limparDialog.nome}
+          numero={limparDialog.numero}
+          onClose={() => setLimparDialog(null)}
+          onSuccess={() => load()}
+        />
+      ) : null}
     </div>
   );
 }

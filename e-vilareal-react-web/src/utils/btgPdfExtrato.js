@@ -1,11 +1,10 @@
 /**
  * Parser do extrato em PDF da conta corrente BTG Pactual (texto extraído via pdf.js).
  *
- * Modelo atual (tabela 5 colunas): Data | Descrição | Débito | Crédito | Saldo
- * — usa os dois valores monetários antes do saldo (crédito − débito) e ignora o saldo do PDF
- * (a aplicação recalcula o saldo em ordem cronológica).
- *
- * Modelo antigo / texto colapsado: só dois valores (movimento + saldo) — heurística por descrição.
+ * Modelos suportados:
+ * 1) Conta corrente clássica: Data | Descrição | Débito | Crédito | Saldo
+ * 2) App BTG (Data e hora | Categoria | Transação | Descrição | Valor) — um valor com R$ / -R$
+ * 3) Texto colapsado: movimento + saldo — heurística por descrição
  */
 
 import { sanitizarLancamentoImportacaoExtrato } from './ofx.js';
@@ -18,19 +17,26 @@ export function isInstituicaoBtgExtratoPdf(nome) {
 export function parseValorBtgPdfBr(s) {
   let t = String(s ?? '')
     .trim()
-    .replace(/^R\$\s*/i, '')
     .replace(/[\u2212\u2013\u2014]/g, '-')
     .replace(/\s+/g, '');
   if (!t) return NaN;
-  const neg = t.startsWith('-');
-  const core = neg ? t.slice(1) : t;
-  const lastDot = core.lastIndexOf('.');
-  const lastComma = core.lastIndexOf(',');
+  let neg = false;
+  if (/^-R\$/i.test(t)) {
+    neg = true;
+    t = t.replace(/^-R\$/i, '');
+  } else if (t.startsWith('-')) {
+    neg = true;
+    t = t.slice(1).replace(/^R\$/i, '');
+  } else {
+    t = t.replace(/^R\$/i, '');
+  }
+  const lastDot = t.lastIndexOf('.');
+  const lastComma = t.lastIndexOf(',');
   let cleaned;
   if (lastDot > lastComma) {
-    cleaned = core.replace(/,/g, '');
+    cleaned = t.replace(/,/g, '');
   } else {
-    cleaned = core.replace(/\./g, '').replace(',', '.');
+    cleaned = t.replace(/\./g, '').replace(',', '.');
   }
   const n = Number(cleaned);
   if (!Number.isFinite(n)) return NaN;
@@ -42,9 +48,17 @@ export function parseValorBtgPdfBr(s) {
  * Evita casar `49.99` dentro de `49.999,99` (padrão “US” parcial) e `9,99` como sufixo.
  */
 const RE_VALOR_BR =
-  /(?:R\$\s*)?-?\d+(?:\.\d{3})*,\d{2}|(?:R\$\s*)?-?\d{1,3}(?:\s\d{3})+,\d{2}/g;
+  /-R\$\s*\d+(?:\.\d{3})*,\d{2}|R\$\s*\d+(?:\.\d{3})*,\d{2}|-?\d+(?:\.\d{3})*,\d{2}|-?\d{1,3}(?:\s\d{3})+,\d{2}/g;
 
 const RE_LINHA_DATA = /^(\d{2}\/\d{2}\/\d{4})\s+(.+)$/;
+const RE_HORA_BTG = /^\d{1,2}h\d{2}\s+/i;
+
+/** Extrato do app BTG: `21/07/2023 23h32 Investimentos Transferência recebida … R$ 683,22` */
+export function textoPareceTerLancamentosBtgApp(textoBruto) {
+  return /\d{2}\/\d{2}\/\d{4}\s+\d{1,2}h\d{2}\s+(Investimentos|Transfer[eê]ncia|Pagamento|Tarifa|Pix|Recebimento|Envio)/i.test(
+    String(textoBruto ?? ''),
+  );
+}
 
 const RE_EXCLUIR_LINHA =
   /^(Extrato de|Conta Corrente:|Período de|Emitido em|ITAMAR |Conta Corrente:|CPF:|Informações de Conta|Agência:|Banco:|^\d+ de \d+$|^--\s*\d+)/i;
@@ -102,7 +116,7 @@ function mesclarLinhasContinuacaoAposData(linhas) {
 
 function extrairDescricaoEValorBtg(rest) {
   const matches = [...rest.matchAll(RE_VALOR_BR)];
-  if (matches.length < 2) return null;
+  if (matches.length < 1) return null;
 
   const nums = matches.map((m) => parseValorBtgPdfBr(m[0]));
   if (nums.some((n) => !Number.isFinite(n))) return null;
@@ -110,7 +124,10 @@ function extrairDescricaoEValorBtg(rest) {
   let valor;
   let firstAmtIdx;
 
-  if (nums.length >= 3) {
+  if (matches.length === 1) {
+    firstAmtIdx = matches[0].index ?? 0;
+    valor = nums[0];
+  } else if (nums.length >= 3) {
     const deb = nums[nums.length - 3];
     const cred = nums[nums.length - 2];
     firstAmtIdx = matches[nums.length - 3].index;
@@ -135,10 +152,11 @@ function extrairDescricaoEValorBtg(rest) {
     }
   }
 
-  const descricao = rest.slice(0, firstAmtIdx).trim().replace(/\s+/g, ' ');
+  let descricao = rest.slice(0, firstAmtIdx).trim().replace(RE_HORA_BTG, '').replace(/\s+/g, ' ');
   if (!descricao || descricao.length < 3) return null;
-  if (/^saldo\s+inicial/i.test(descricao)) return null;
+  if (/^saldo\s+(inicial|di[aá]rio)/i.test(descricao)) return null;
   if (/^total\s+de\s+/i.test(descricao)) return null;
+  if (/^data\s+e\s+hora\s+categoria/i.test(descricao)) return null;
 
   if (Math.abs(valor) < 1e-9) return null;
 
@@ -168,7 +186,7 @@ export function parseBtgPdfExtratoText(textoBruto) {
     const line = raw.trim();
     if (!line) continue;
     if (RE_EXCLUIR_LINHA.test(line)) continue;
-    if (/^Movimentação|^Data\s+Descrição|^Saldo Inicial|^Total de |^SAC\s|^Ouvidoria|^sac@|^ouvidoria@/i.test(line)) {
+    if (/^Movimentação|^Data\s+Descrição|^Data\s+e\s+hora|^Saldo Inicial|^Total de |^SAC\s|^Ouvidoria|^sac@|^ouvidoria@/i.test(line)) {
       continue;
     }
     const m = line.match(RE_LINHA_DATA);

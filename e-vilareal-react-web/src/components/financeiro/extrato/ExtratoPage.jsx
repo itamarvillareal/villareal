@@ -15,6 +15,7 @@ import { useFinanceiro } from '../FinanceiroContext.jsx';
 import { isSortDataAsc } from '../hooks/useExtratoFilters.js';
 import { useExtratoMesAoSelecionarBanco } from '../hooks/useExtratoMesAoSelecionarBanco.js';
 import { FINANCEIRO_REFRESH_PENDENTES, dispatchRefreshPendentes } from '../hooks/useKeyboardShortcuts.js';
+import { FINANCEIRO_CONTA_LIMPA } from './limparContaFinanceiro.js';
 import { Pagination } from '../shared/Pagination.jsx';
 import { ConfirmDialog } from '../shared/ConfirmDialog.jsx';
 import { useFinanceiroToast } from '../shared/Toast.jsx';
@@ -189,6 +190,25 @@ export function ExtratoPage() {
     window.addEventListener(FINANCEIRO_REFRESH_PENDENTES, onRefresh);
     return () => window.removeEventListener(FINANCEIRO_REFRESH_PENDENTES, onRefresh);
   }, [limparCachePaginas]);
+
+  useEffect(() => {
+    const onContaLimpa = (event) => {
+      const detail = event?.detail ?? {};
+      if (detail.tipo !== 'banco') return;
+      const nb = detail.numeroBanco;
+      if (nb != null && Number(filters.banco) !== Number(nb)) return;
+      limparCachePaginas();
+      setRows([]);
+      setTotalElements(0);
+      setTotalPages(0);
+      setSelectedIds(new Set());
+      setDetailItem(null);
+      setSaldoBanco(null);
+      setExtratoRefreshKey((n) => n + 1);
+    };
+    window.addEventListener(FINANCEIRO_CONTA_LIMPA, onContaLimpa);
+    return () => window.removeEventListener(FINANCEIRO_CONTA_LIMPA, onContaLimpa);
+  }, [filters.banco, limparCachePaginas]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });

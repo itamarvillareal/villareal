@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { CreditCard } from 'lucide-react';
+import { CreditCard, Trash2 } from 'lucide-react';
 import { featureFlags } from '../../../config/featureFlags.js';
 import {
   listarCartoesFinanceiro,
@@ -11,6 +11,8 @@ import { ValorText } from '../shared/ValorText.jsx';
 import { ExtratoSkeleton } from '../shared/LoadingSkeleton.jsx';
 import { formatDataCurta } from '../shared/financeiroFormat.js';
 import { ContaBadge } from '../shared/ContaBadge.jsx';
+import { LimparContaDialog } from '../shared/LimparContaDialog.jsx';
+import { FINANCEIRO_CONTA_LIMPA } from '../extrato/limparContaFinanceiro.js';
 import { buildContaToLetraMerge, loadPersistedContasContabeisExtrasFinanceiro } from '../../../data/financeiroData.js';
 
 function contaLetra(nome, map) {
@@ -27,6 +29,8 @@ export function CartaoPage() {
   const [erro, setErro] = useState('');
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(50);
+  const [limparOpen, setLimparOpen] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
   const contaToLetra = useMemo(
     () => buildContaToLetraMerge(loadPersistedContasContabeisExtrasFinanceiro()),
@@ -62,7 +66,25 @@ export function CartaoPage() {
       })
       .finally(() => setLoading(false));
     return () => ac.abort();
-  }, [cartaoAtivo?.id]);
+  }, [cartaoAtivo?.id, reloadKey]);
+
+  useEffect(() => {
+    const onContaLimpa = (event) => {
+      const detail = event?.detail ?? {};
+      if (detail.tipo !== 'cartao') return;
+      if (
+        detail.numeroCartao != null &&
+        cartaoAtivo?.numeroCartao != null &&
+        Number(detail.numeroCartao) !== Number(cartaoAtivo.numeroCartao)
+      ) {
+        return;
+      }
+      setRows([]);
+      setReloadKey((n) => n + 1);
+    };
+    window.addEventListener(FINANCEIRO_CONTA_LIMPA, onContaLimpa);
+    return () => window.removeEventListener(FINANCEIRO_CONTA_LIMPA, onContaLimpa);
+  }, [cartaoAtivo?.numeroCartao]);
 
   useEffect(() => {
     setPage(0);
@@ -117,10 +139,29 @@ export function CartaoPage() {
         <h2 className="text-sm font-medium text-slate-900 dark:text-slate-100">
           {cartaoAtivo.nome}
         </h2>
-        <Link to="/financeiro/cartao" className="text-xs text-blue-600 hover:underline shrink-0">
-          Todos os cartões
-        </Link>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => setLimparOpen(true)}
+            className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-md border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-950/40 dark:border-red-900 dark:text-red-300"
+          >
+            <Trash2 className="w-3 h-3" aria-hidden />
+            Limpar cartão
+          </button>
+          <Link to="/financeiro/cartao" className="text-xs text-blue-600 hover:underline">
+            Todos os cartões
+          </Link>
+        </div>
       </header>
+
+      <LimparContaDialog
+        open={limparOpen}
+        tipo="cartao"
+        nome={cartaoAtivo.nome}
+        numero={cartaoAtivo.numeroCartao}
+        onClose={() => setLimparOpen(false)}
+        onSuccess={() => setReloadKey((n) => n + 1)}
+      />
 
       {erro ? (
         <p className="px-3 py-2 text-sm text-red-600 dark:text-red-400">{erro}</p>

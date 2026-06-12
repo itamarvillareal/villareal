@@ -19,6 +19,7 @@ describe('parseValorBtgPdfBr', () => {
     expect(parseValorBtgPdfBr('1 234 567,89')).toBe(1234567.89);
     expect(parseValorBtgPdfBr('1,234.56')).toBe(1234.56);
     expect(parseValorBtgPdfBr('R$ 2.500,00')).toBe(2500);
+    expect(parseValorBtgPdfBr('-R$ 683,22')).toBe(-683.22);
   });
 });
 
@@ -76,6 +77,22 @@ Saldo Inicial 0,00
     expect(rows.length).toBe(1);
     expect(rows[0].valor).toBeCloseTo(-100, 2);
     expect(rows[0].saldo).toBeCloseTo(-100, 2);
+  });
+
+  it('interpreta extrato do app BTG (data+hora, valor único R$ / -R$)', () => {
+    const bloco = `
+21/07/2023 23h32 Investimentos Transferência recebida Itamar Alexandre Felix Villa Real Junior R$ 683,22
+21/07/2023 23h33 Transferência Pix enviado Itamar Alexandre F V Real Jr -R$ 683,22
+21/07/2023 23h59 Saldo Diário R$ 0,00
+25/07/2023 18h00 Investimentos Transferência recebida Itamar Alexandre Felix Villa Real Junior R$ 1.599,95
+25/07/2023 18h02 Transferência Pix enviado Itamar Alexandre Felix Villa Real Junior -R$ 1.599,95
+`;
+    const rows = parseBtgPdfExtratoText(bloco);
+    expect(rows.length).toBe(4);
+    expect(rows[0].valor).toBeCloseTo(683.22, 2);
+    expect(rows[1].valor).toBeCloseTo(-683.22, 2);
+    expect(rows[0].descricao).toContain('Transferência recebida');
+    expect(rows[1].descricao).toContain('Pix enviado');
   });
 
   it('mescla linha seguinte quando o pdf.js coloca só os valores na linha de baixo', () => {
