@@ -83,7 +83,7 @@ public class DemandaApplicationService {
                         || (d.getPrazoFinalizacao() != null
                                 && d.getPrazoFinalizacao().isBefore(hoje)
                                 && DemandaDominio.STATUS_ATIVOS.contains(d.getStatus())))
-                .filter(d -> !StringUtils.hasText(buscaNorm) || matchesBusca(d, buscaNorm))
+                .filter(d -> !StringUtils.hasText(buscaNorm) || DemandaBuscaSupport.matches(d, buscaNorm))
                 .sorted(Comparator.comparing(DemandaEntity::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder())))
                 .map(d -> toResponse(d, false))
                 .collect(Collectors.toList());
@@ -323,17 +323,6 @@ public class DemandaApplicationService {
             return false;
         }
         return clienteId == null || d.getCliente().getId().equals(clienteId);
-    }
-
-    private boolean matchesBusca(DemandaEntity d, String buscaNorm) {
-        return contains(d.getDescricao(), buscaNorm)
-                || contains(d.getFornecedorTexto(), buscaNorm)
-                || contains(d.getCategoria(), buscaNorm)
-                || contains(d.getImovel().getTitulo(), buscaNorm);
-    }
-
-    private static boolean contains(String s, String busca) {
-        return s != null && s.toLowerCase(Locale.ROOT).contains(busca);
     }
 
     private void aplicarCampos(DemandaEntity e, DemandaWriteRequest req) {

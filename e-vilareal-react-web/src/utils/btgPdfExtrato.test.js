@@ -18,6 +18,7 @@ describe('parseValorBtgPdfBr', () => {
     expect(parseValorBtgPdfBr('0,00')).toBe(0);
     expect(parseValorBtgPdfBr('1 234 567,89')).toBe(1234567.89);
     expect(parseValorBtgPdfBr('1,234.56')).toBe(1234.56);
+    expect(parseValorBtgPdfBr('R$ 2.500,00')).toBe(2500);
   });
 });
 

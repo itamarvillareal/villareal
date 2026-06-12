@@ -82,11 +82,11 @@ import {
 import {
   arquivoExtratoEhOfx,
   arquivoExtratoEhPdf,
+  carregarLancamentosDeExtratoPdf,
   isInstituicaoExtratoPdfImport,
-  parseExtratoPdfText,
+  mensagemFalhaExtratoPdf,
   rotuloInstituicaoExtratoPdf,
 } from '../utils/extratoPdfImport';
-import { extrairTextoPdfDeArquivo } from '../data/publicacoesPdfExtract.js';
 import { OFX_ITAU_REAL_EXEMPLO, OFX_CORA_REAL_EXEMPLO } from '../data/ofxItauCoraReal';
 import {
   CheckSquare,
@@ -2629,12 +2629,11 @@ export function Financeiro({ paineisRelatorios: paineisRelatoriosProp, instituic
       }
       const modeloPdf = rotuloInstituicaoExtratoPdf(instituicaoSelecionada);
       setOfxStatus({ kind: 'loading', message: `Lendo PDF do extrato ${instituicaoSelecionada}...` });
-      const texto = await extrairTextoPdfDeArquivo(file, { ordenarItensPorPosicao: true });
-      const extrato = parseExtratoPdfText(texto, instituicaoSelecionada);
+      const { rows: extrato, texto } = await carregarLancamentosDeExtratoPdf(file, instituicaoSelecionada);
       if (!extrato.length) {
         setOfxStatus({
           kind: 'error',
-          message: `Não foi possível extrair lançamentos do PDF. Use o extrato oficial ${modeloPdf} (texto selecionável), como no app ou PDF do banco.`,
+          message: mensagemFalhaExtratoPdf(texto, instituicaoSelecionada),
         });
         return;
       }

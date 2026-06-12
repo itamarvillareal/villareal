@@ -2,12 +2,12 @@ import {
   buildContaToLetraMerge,
   loadPersistedContasContabeisExtrasFinanceiro,
 } from '../../../data/financeiroData.js';
-import { extrairTextoPdfDeArquivo } from '../../../data/publicacoesPdfExtract.js';
 import {
   arquivoExtratoEhOfx,
   arquivoExtratoEhPdf,
+  carregarLancamentosDeExtratoPdf,
   isInstituicaoExtratoPdfImport,
-  parseExtratoPdfText,
+  mensagemFalhaExtratoPdf,
   rotuloInstituicaoExtratoPdf,
 } from '../../../utils/extratoPdfImport.js';
 import {
@@ -45,12 +45,11 @@ export async function parseArquivoExtrato(file, nomeBanco) {
           message: `Para ${nome}, use OFX. PDF disponível para BTG, Sicoob e 99 Pay.`,
         };
       }
-      const texto = await extrairTextoPdfDeArquivo(file, { ordenarItensPorPosicao: true });
-      const rows = parseExtratoPdfText(texto, nome);
+      const { rows, texto } = await carregarLancamentosDeExtratoPdf(file, nome);
       if (!rows.length) {
         return {
           ok: false,
-          message: `Não foi possível extrair lançamentos do PDF (${rotuloInstituicaoExtratoPdf(nome)}).`,
+          message: mensagemFalhaExtratoPdf(texto, nome),
         };
       }
       return {
