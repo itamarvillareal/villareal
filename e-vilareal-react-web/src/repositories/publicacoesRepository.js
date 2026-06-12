@@ -9,6 +9,7 @@ import {
 import { listarPublicacoesDoProcesso } from '../data/publicacoesPorProcesso.js';
 import { normalizarCnjParaChave } from '../data/publicacoesPdfParser.js';
 import { ajustarPartesPublicacaoUi } from '../data/partesLadoEscritorio.js';
+import { formatarPartesLinha } from '../data/manifestacoesProjudiDisplay.js';
 import { buscarProcessoPorChaveNatural, resolverProcessoId } from './processosRepository.js';
 import { papelParteApiParaUi } from './processosRepository.js';
 
@@ -295,6 +296,39 @@ export async function listarPublicacoesRelatorioPorProcesso({
 
 // --- Leitura principal (módulo Publicações) ---
 
+/** Texto indexável para busca local (inclui partes do email e do cadastro vinculado). */
+export function haystackBuscaPublicacaoUi(r) {
+  const json =
+    typeof r?.jsonCnjBruto === 'string'
+      ? r.jsonCnjBruto
+      : r?.jsonCnjBruto != null
+        ? JSON.stringify(r.jsonCnjBruto)
+        : '';
+  return [
+    r?.numero_processo_cnj,
+    r?.numeroProcessoEncontrado,
+    r?.codCliente,
+    r?.procInterno,
+    r?.cliente,
+    r?.titularNome,
+    r?.parteCliente,
+    r?.parteOposta,
+    r?.reu,
+    r?.tipoPublicacao,
+    r?.teorIntegral,
+    r?.teor,
+    r?.resumoPublicacao,
+    r?.statusValidacaoCnj,
+    r?.scoreConfianca,
+    r?.diario,
+    formatarPartesLinha(r),
+    json,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+}
+
 export async function listarPublicacoesModulo({
   dataInicio,
   dataFim,
@@ -312,22 +346,7 @@ export async function listarPublicacoesModulo({
     }
     const q = String(texto || '').trim().toLowerCase();
     if (q) {
-      rows = rows.filter((r) =>
-        [
-          r.numero_processo_cnj,
-          r.codCliente,
-          r.procInterno,
-          r.cliente,
-          r.tipoPublicacao,
-          r.teorIntegral,
-          r.statusValidacaoCnj,
-          r.scoreConfianca,
-          r.diario,
-        ]
-          .join(' ')
-          .toLowerCase()
-          .includes(q)
-      );
+      rows = rows.filter((r) => haystackBuscaPublicacaoUi(r).includes(q));
     }
     return rows;
   }

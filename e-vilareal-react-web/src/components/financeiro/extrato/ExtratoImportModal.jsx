@@ -92,7 +92,7 @@ export function ExtratoImportModal({ open, onClose, bancoInicial = null, onSucce
     let resumoMesclar = null;
     if (modo === 'mesclar' && featureFlags.useApiFinanceiro && numeroBanco != null) {
       try {
-        resumoMesclar = await resumirNovosImportacaoMesclar(parsed.rows, numeroBanco);
+        resumoMesclar = await resumirNovosImportacaoMesclar(parsed.rows, numeroBanco, undefined, parsed.origem);
       } catch {
         resumoMesclar = null;
       }

@@ -56,6 +56,7 @@ export function parsePay99PdfExtratoText(textoBruto) {
     .split('\n');
 
   const transacoes = [];
+  let seqExtrato = 0;
 
   for (const raw of linhas) {
     const line = String(raw ?? '').trim();
@@ -72,7 +73,7 @@ export function parsePay99PdfExtratoText(textoBruto) {
     const desc = String(descricao ?? '').trim().replace(/\s+/g, ' ');
     if (!desc) continue;
 
-    const numero = `99PAY-PDF-${fnv1aHex(`${data}|${hora}|${valor}|${desc}`)}`;
+    const numero = `99PAY-PDF-${String(++seqExtrato).padStart(5, '0')}-${fnv1aHex(`${data}|${hora}|${valor}|${desc}`)}`;
 
     transacoes.push({
       letra: 'N',

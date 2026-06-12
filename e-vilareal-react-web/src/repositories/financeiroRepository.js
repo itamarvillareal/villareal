@@ -659,7 +659,9 @@ export async function persistirImportacaoOfxFinanceiroApi({
           ignorados: 0,
           porDia: new Map(),
         }
-      : analisarLancamentosNovosDedupe(transacoesAntesNoBanco, transacoesOfx);
+      : analisarLancamentosNovosDedupe(transacoesAntesNoBanco, transacoesOfx, {
+          respeitarExtratoComoMestre: /^PDF$/i.test(String(origemImportacao ?? '').trim()),
+        });
   const paraCriar = analiseDedupe.novos;
 
   const nb =

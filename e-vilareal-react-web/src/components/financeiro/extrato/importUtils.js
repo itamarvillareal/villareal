@@ -112,9 +112,11 @@ async function carregarLancamentosExistentesBanco(numeroBanco, signal) {
  * @param {number|null} numeroBanco
  * @param {AbortSignal} [signal]
  */
-export async function resumirNovosImportacaoMesclar(rows, numeroBanco, signal) {
+export async function resumirNovosImportacaoMesclar(rows, numeroBanco, signal, origemImportacao = '') {
   const existente = await carregarLancamentosExistentesBanco(numeroBanco, signal);
-  const { novos, ignorados } = analisarLancamentosNovosDedupe(existente, rows);
+  const { novos, ignorados } = analisarLancamentosNovosDedupe(existente, rows, {
+    respeitarExtratoComoMestre: /^PDF$/i.test(String(origemImportacao ?? '').trim()),
+  });
   return {
     totalArquivo: rows?.length ?? 0,
     noBanco: existente.length,

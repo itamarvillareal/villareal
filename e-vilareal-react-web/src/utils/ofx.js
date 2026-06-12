@@ -326,11 +326,15 @@ export function diasIgnorarPorContagemIgual(existente, novo) {
 /**
  * @param {object[]} existente
  * @param {object[]} novo
+ * @param {{ respeitarExtratoComoMestre?: boolean }} [opts]
+ *   Quando true (PDF), não ignora dias inteiros só porque a contagem coincide com o banco.
  * @returns {{ novos: object[], ignorados: number, porDia: Map<string, { existentes: number, ofx: number, novos: number, ignorados: number, ignoradosContagemDia: number }>, diasIgnoradosPorContagem: string[] }}
  */
-export function analisarLancamentosNovosDedupe(existente, novo) {
+export function analisarLancamentosNovosDedupe(existente, novo, opts = {}) {
   const { estritas, semanticas } = construirContagens(existente);
-  const diasIgnorarContagem = diasIgnorarPorContagemIgual(existente, novo);
+  const diasIgnorarContagem = opts.respeitarExtratoComoMestre
+    ? new Set()
+    : diasIgnorarPorContagemIgual(existente, novo);
   const porDia = new Map();
   const novos = [];
   let ignorados = 0;
@@ -357,7 +361,15 @@ export function analisarLancamentosNovosDedupe(existente, novo) {
       continue;
     }
     const ke = chaveDedupeLancamento(t);
-    if (consumirDoMapa(estritas, ke) || tentarConsumirSemantico(semanticas, t)) {
+    if (consumirDoMapa(estritas, ke)) {
+      ignorados += 1;
+      bumpDia(dataIso, 'ignorados');
+      // Linha já gravada (mesmo FITID/nº): consome também o par semântico para não
+      // bloquear outra linha idêntica do extrato (ex.: 2× SAQ 2.000 no mesmo dia).
+      tentarConsumirSemantico(semanticas, t);
+      continue;
+    }
+    if (tentarConsumirSemantico(semanticas, t)) {
       ignorados += 1;
       bumpDia(dataIso, 'ignorados');
       continue;
@@ -415,8 +427,8 @@ export function sanitizarLancamentoImportacaoExtrato(t) {
  * Ignora só os que já constam no extrato/base (mesma chave: nº + data + valor em centavos).
  * Várias linhas idênticas no próprio arquivo `novo` contam todas, exceto as que batem com `existente`.
  */
-export function contarLancamentosNovos(existente, novo) {
-  return analisarLancamentosNovosDedupe(existente, novo).novos.length;
+export function contarLancamentosNovos(existente, novo, opts) {
+  return analisarLancamentosNovosDedupe(existente, novo, opts).novos.length;
 }
 
 /**
@@ -424,8 +436,8 @@ export function contarLancamentosNovos(existente, novo) {
  * Compara FITID/nº (chave estrita) e data+valor+descrição normalizada (planilha vs OFX).
  * Duplicatas **dentro** de `novo` mantêm-se quando não há par em `existente`.
  */
-export function listarLancamentosNovosDedupe(existente, novo) {
-  return analisarLancamentosNovosDedupe(existente, novo).novos;
+export function listarLancamentosNovosDedupe(existente, novo, opts) {
+  return analisarLancamentosNovosDedupe(existente, novo, opts).novos;
 }
 
 /**
