@@ -8,7 +8,7 @@ import {
   fetchDemandas,
   fetchMetricasDemandas,
 } from '../repositories/demandasRepository.js';
-import { imoveisBtnPrimary, imoveisInputClass } from './imoveis/ImoveisAdminLayout.jsx';
+import { imoveisBtnPrimary, imoveisInputClass, unidadeResumoCabecalho } from './imoveis/ImoveisAdminLayout.jsx';
 import { DemandaAcertoModal } from './demandas/DemandaAcertoModal.jsx';
 import { DemandaDetailModal } from './demandas/DemandaDetailModal.jsx';
 import { DemandaFormModal } from './demandas/DemandaFormModal.jsx';
@@ -20,6 +20,14 @@ import {
   labelCategoria,
   labelStatus,
 } from './demandas/demandasConstants.js';
+
+function labelImovelDemanda(im) {
+  const titulo = String(im?.titulo ?? '').trim();
+  if (titulo) return titulo;
+  const resumo = unidadeResumoCabecalho(im?.unidade, im?.condominio);
+  if (resumo !== 'Unidade não informada') return resumo;
+  return `Imóvel ${im?.id ?? '—'}`;
+}
 
 function fmtData(iso) {
   if (!iso) return '—';
@@ -107,7 +115,7 @@ export function Demandas() {
               <option value="">Todos os imóveis</option>
               {imoveis.map((im) => (
                 <option key={im.id} value={im.id}>
-                  {im.titulo || `Imóvel ${im.id}`}
+                  {labelImovelDemanda(im)}
                 </option>
               ))}
             </select>
@@ -134,7 +142,7 @@ export function Demandas() {
             <span className="text-slate-500 block mb-1">Busca</span>
             <div className="relative">
               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input className={`${imoveisInputClass} pl-9`} placeholder="Descrição, fornecedor…" value={busca} onChange={(e) => setBusca(e.target.value)} />
+              <input className={`${imoveisInputClass} pl-9`} placeholder="Descrição, condomínio, fornecedor…" value={busca} onChange={(e) => setBusca(e.target.value)} />
             </div>
           </label>
           {filtroImovel ? (

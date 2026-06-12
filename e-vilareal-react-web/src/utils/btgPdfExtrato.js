@@ -18,6 +18,7 @@ export function isInstituicaoBtgExtratoPdf(nome) {
 export function parseValorBtgPdfBr(s) {
   let t = String(s ?? '')
     .trim()
+    .replace(/^R\$\s*/i, '')
     .replace(/[\u2212\u2013\u2014]/g, '-')
     .replace(/\s+/g, '');
   if (!t) return NaN;
@@ -41,7 +42,7 @@ export function parseValorBtgPdfBr(s) {
  * Evita casar `49.99` dentro de `49.999,99` (padrão “US” parcial) e `9,99` como sufixo.
  */
 const RE_VALOR_BR =
-  /-?\d+(?:\.\d{3})*,\d{2}|-?\d{1,3}(?:\s\d{3})+,\d{2}/g;
+  /(?:R\$\s*)?-?\d+(?:\.\d{3})*,\d{2}|(?:R\$\s*)?-?\d{1,3}(?:\s\d{3})+,\d{2}/g;
 
 const RE_LINHA_DATA = /^(\d{2}\/\d{2}\/\d{4})\s+(.+)$/;
 
@@ -144,15 +145,19 @@ function extrairDescricaoEValorBtg(rest) {
   return { descricao, valor, firstAmtIdx };
 }
 
+function normalizarTextoBtgPdf(textoBruto) {
+  return String(textoBruto ?? '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .replace(/(\d{2})\s*\/\s*(\d{2})\s*\/\s*(\d{4})/g, '$1/$2/$3');
+}
+
 /**
  * @param {string} textoBruto
  * @returns {Array<Record<string, unknown>>}
  */
 export function parseBtgPdfExtratoText(textoBruto) {
-  const linhasBrutas = String(textoBruto ?? '')
-    .replace(/\r\n/g, '\n')
-    .replace(/\r/g, '\n')
-    .split('\n');
+  const linhasBrutas = normalizarTextoBtgPdf(textoBruto).split('\n');
   const linhas = mesclarLinhasContinuacaoAposData(linhasBrutas);
 
   const transacoes = [];
