@@ -1,5 +1,7 @@
 package br.com.vilareal.processo.infrastructure.persistence.entity;
 
+import br.com.vilareal.pje.domain.PjeGrau;
+import br.com.vilareal.pje.domain.PjeTribunal;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.usuario.infrastructure.persistence.entity.UsuarioEntity;
@@ -83,6 +85,14 @@ public class ProcessoEntity {
 
     @Column(length = 120)
     private String tramitacao;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "pje_tribunal", length = 32)
+    private PjeTribunal pjeTribunal;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "pje_grau", length = 20)
+    private PjeGrau pjeGrau;
 
     @Column(name = "data_protocolo")
     private LocalDate dataProtocolo;

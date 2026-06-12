@@ -1,7 +1,7 @@
 package br.com.vilareal.processo.application;
 
 import br.com.vilareal.email.EmailImportacaoSyncTipo;
-import br.com.vilareal.pje.infrastructure.browser.PjeTrt18CnjUtil;
+import br.com.vilareal.pje.application.PjeTribunalCnjResolver;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
 import org.slf4j.Logger;
@@ -151,7 +151,7 @@ public class ProcessoTramitacaoService {
     }
 
     static boolean cnjEhTrt18(String cnj) {
-        return PjeTrt18CnjUtil.cnjEhTrt18(cnj);
+        return PjeTribunalCnjResolver.cnjEhTrt18(cnj);
     }
 
     static boolean cnjEhTjgo(String cnj) {

@@ -175,6 +175,13 @@ import {
   lerUltimaSelecaoProcessosArmazenamento,
 } from '../domain/camposProcessoCliente.js';
 import { cnjEhTrt18 } from '../domain/cnjFuzzyBusca.js';
+import {
+  PJE_GRAU_OPCOES,
+  PJE_TRIBUNAL_OPCOES,
+  detectarPjeTribunalPorCnj,
+  rotuloPjeTribunal,
+  tribunalPjeAutomacaoDisponivel,
+} from '../domain/pjeTribunalCnj.js';
 
 const CadastroClientesLazy = lazy(() =>
   import('./CadastroClientes.jsx').then((module) => ({ default: module.CadastroClientes }))
@@ -540,6 +547,10 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   const [tramitacaoConfirmarDepoisObterMovimentacoes, setTramitacaoConfirmarDepoisObterMovimentacoes] =
     useState(false);
   const [tramitacaoDraft, setTramitacaoDraft] = useState('');
+  const [pjeTribunal, setPjeTribunal] = useState('');
+  const [pjeGrau, setPjeGrau] = useState('');
+  const [pjeTribunalDraft, setPjeTribunalDraft] = useState('');
+  const [pjeGrauDraft, setPjeGrauDraft] = useState('PRIMEIRO_GRAU');
   const [tabAtiva, setTabAtiva] = useState('historico');
   const [historicoToast, setHistoricoToast] = useState('');
   const abasProcessoRef = useRef(null);
@@ -1024,6 +1035,8 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       setConsultaAutomatica(pickCampoBoolSalvo(r, 'consultaAutomatica', mock.consultaAutomatica));
       setPeriodicidadeConsulta(registroPersistido?.periodicidadeConsulta ?? '');
       setTramitacao(registroPersistido?.tramitacao ?? '');
+      setPjeTribunal(registroPersistido?.pjeTribunal ?? '');
+      setPjeGrau(registroPersistido?.pjeGrau ?? '');
       setDataProtocolo(pickCampoStrSalvo(r, 'dataProtocolo', mock.dataProtocolo));
       setNaturezaAcao(naturezaPersistida);
       setValorCausa(pickCampoStrSalvo(r, 'valorCausa', mock.valorCausa));
@@ -1450,7 +1463,13 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
 
   function abrirModalTramitacao(opcoes = {}) {
     const { aposObterMovimentacoes = false } = opcoes;
-    setTramitacaoDraft(tramitacao || '');
+    const sistema = tramitacao || '';
+    setTramitacaoDraft(sistema);
+    const det = detectarPjeTribunalPorCnj(numeroProcessoNovo);
+    setPjeTribunalDraft(
+      pjeTribunal || (sistema === 'PJe' ? det.codigo || '' : '')
+    );
+    setPjeGrauDraft(pjeGrau || 'PRIMEIRO_GRAU');
     setTramitacaoConfirmarDepoisObterMovimentacoes(aposObterMovimentacoes);
     setModalTramitacaoAberto(true);
   }
@@ -1463,16 +1482,27 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   async function confirmarTramitacao() {
     const valor = String(tramitacaoDraft ?? '').trim();
     const aposObter = tramitacaoConfirmarDepoisObterMovimentacoes;
+    const tribunalSalvar = valor === 'PJe' ? String(pjeTribunalDraft ?? '').trim() || null : null;
+    const grauSalvar = valor === 'PJe' ? String(pjeGrauDraft ?? '').trim() || 'PRIMEIRO_GRAU' : null;
     setTramitacao(valor);
     setProcedimento(valor);
+    setPjeTribunal(tribunalSalvar || '');
+    setPjeGrau(grauSalvar || '');
     setModalTramitacaoAberto(false);
     setTramitacaoConfirmarDepoisObterMovimentacoes(false);
 
+    const overridesPje = {
+      tramitacao: valor,
+      procedimento: valor,
+      pjeTribunal: tribunalSalvar,
+      pjeGrau: grauSalvar,
+    };
+
     if (aposObter) {
       if (featureFlags.useApiProcessos) {
-        await sincronizarApiProcessoAtual({ tramitacao: valor });
+        await sincronizarApiProcessoAtual(overridesPje);
       } else {
-        salvarHistoricoDoProcesso(montarPayloadRegistroProcesso({ tramitacao: valor }));
+        salvarHistoricoDoProcesso(montarPayloadRegistroProcesso(overridesPje));
       }
       if (valor === 'TJ Go - Autos Físicos') {
         setHistoricoToast('Processo em autos físicos — sem consulta automática.');
@@ -1485,9 +1515,9 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     }
 
     if (featureFlags.useApiProcessos) {
-      void sincronizarApiProcessoAtual({ tramitacao: valor });
+      void sincronizarApiProcessoAtual(overridesPje);
     } else {
-      salvarHistoricoDoProcesso(montarPayloadRegistroProcesso({ tramitacao: valor }));
+      salvarHistoricoDoProcesso(montarPayloadRegistroProcesso(overridesPje));
     }
   }
 
@@ -2039,6 +2069,10 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     [numeroProcessoNovo]
   );
   const processoCnjTrt18 = useMemo(() => cnjEhTrt18(cnjProcessoAtual), [cnjProcessoAtual]);
+  const pjeTribunalNorm = String(pjeTribunal ?? '').trim();
+  const pjeAutomacaoTrt18 =
+    tribunalPjeAutomacaoDisponivel(pjeTribunalNorm) ||
+    (!pjeTribunalNorm && processoCnjTrt18);
   const obterMovimentacoesViaPje =
     tramitacaoNorm === 'PJe' || (!tramitacaoNorm && processoCnjTrt18);
 
@@ -2065,6 +2099,13 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
         setHistoricoToast(
           String(r?.mensagem ?? '').trim()
             || 'PJe iniciado — acompanhe o badge No Drive na publicação por e-mail.'
+        );
+        return;
+      }
+      if (status === 'PJE_AUTOMACAO_INDISPONIVEL') {
+        setApiError(
+          String(r?.mensagem ?? r?.erro ?? '').trim()
+            || 'Automação de cópia integral indisponível para este tribunal.'
         );
         return;
       }
@@ -2131,6 +2172,8 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       faseSelecionada,
       periodicidadeConsulta,
       tramitacao,
+      pjeTribunal: pjeTribunal || null,
+      pjeGrau: pjeGrau || null,
       naturezaAcao,
       consultaAutomatica,
       estado,
@@ -2237,6 +2280,8 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     setCidade('');
     setConsultaAutomatica(false);
     setTramitacao('');
+    setPjeTribunal('');
+    setPjeGrau('');
     setResponsavel('');
     setValorCausa('');
     setHistorico([]);
@@ -2350,6 +2395,8 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       setConsultaAutomatica(mapped.consultaAutomatica);
       setTramitacao(mapped.tramitacao ?? '');
       setProcedimento(mapped.procedimento ?? mapped.tramitacao ?? '');
+      setPjeTribunal(mapped.pjeTribunal ?? '');
+      setPjeGrau(mapped.pjeGrau ?? '');
       setFaseCampo(mapped.observacaoFase ?? '');
       setResponsavel(mapped.responsavel ?? '');
       setUnidadeEndereco(mapped.unidade ?? '');
@@ -3225,7 +3272,9 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                           tramitacaoBloqueiaObterMovimentacoes
                             ? 'Processo em autos físicos — sem consulta automática.'
                             : obterMovimentacoesViaPje
-                              ? 'Dispara cópia integral PJe TRT18 (assíncrono) — acompanhe o badge No Drive'
+                              ? pjeAutomacaoTrt18
+                                ? 'Dispara cópia integral PJe TRT18 (assíncrono) — acompanhe o badge No Drive'
+                                : `PJe (${rotuloPjeTribunal(pjeTribunalNorm)}) — automação indisponível; registro salvo no cadastro`
                               : !tramitacaoNorm
                                 ? 'Defina a tramitação dos autos para consultar movimentações'
                                 : 'Consulta o PROJUDI agora (mesmo com acervo integral no pipeline automático; pode não trazer arquivos novos)'
@@ -4283,19 +4332,71 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <div className="p-4 space-y-2">
-              {TRAMITACAO_OPCOES.map((op) => (
-                <label key={op} className="flex items-center gap-2 text-sm cursor-pointer">
-                  <input
-                    type="radio"
-                    name="tramitacao-autos"
-                    checked={tramitacaoDraft === op}
-                    onChange={() => setTramitacaoDraft(op)}
-                    className="text-slate-600"
-                  />
-                  {op}
-                </label>
-              ))}
+            <div className="p-4 space-y-4">
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Sistema</p>
+                {TRAMITACAO_OPCOES.map((op) => (
+                  <label key={op} className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input
+                      type="radio"
+                      name="tramitacao-autos"
+                      checked={tramitacaoDraft === op}
+                      onChange={() => {
+                        setTramitacaoDraft(op);
+                        if (op === 'PJe' && !pjeTribunalDraft) {
+                          const det = detectarPjeTribunalPorCnj(numeroProcessoNovo);
+                          if (det.codigo) setPjeTribunalDraft(det.codigo);
+                        }
+                      }}
+                      className="text-slate-600"
+                    />
+                    {op === 'TJ Go - Autos Físicos' ? 'Autos físicos' : op}
+                  </label>
+                ))}
+              </div>
+
+              {tramitacaoDraft === 'PJe' && (
+                <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <div>
+                    <label htmlFor="pje-tribunal-select" className="mb-1 block text-xs font-semibold text-slate-600">
+                      Tribunal
+                    </label>
+                    <select
+                      id="pje-tribunal-select"
+                      className={processosInputClass}
+                      value={pjeTribunalDraft}
+                      onChange={(e) => setPjeTribunalDraft(e.target.value)}
+                    >
+                      <option value="">PJe (tribunal não mapeado)</option>
+                      {PJE_TRIBUNAL_OPCOES.map((t) => (
+                        <option key={t.codigo} value={t.codigo}>
+                          {t.rotulo}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <p className="mb-1 text-xs font-semibold text-slate-600">Grau</p>
+                    <div className="flex flex-wrap gap-4">
+                      {PJE_GRAU_OPCOES.map((g) => (
+                        <label key={g.codigo} className="flex items-center gap-2 text-sm cursor-pointer">
+                          <input
+                            type="radio"
+                            name="pje-grau-autos"
+                            checked={pjeGrauDraft === g.codigo}
+                            onChange={() => setPjeGrauDraft(g.codigo)}
+                            className="text-slate-600"
+                          />
+                          {g.rotulo}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                  <p className="text-xs text-slate-500 leading-relaxed">
+                    Automação de cópia integral disponível hoje só para TRT18; outros tribunais ficam registrados.
+                  </p>
+                </div>
+              )}
             </div>
             <div className="px-4 py-3 border-t border-slate-200 flex justify-end gap-2">
               <button

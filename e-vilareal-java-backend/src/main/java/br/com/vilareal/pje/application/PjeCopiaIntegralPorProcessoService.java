@@ -54,6 +54,11 @@ public class PjeCopiaIntegralPorProcessoService {
 
     /** Síncrono: login do cofre, cópia integral, selo No Drive. */
     public Optional<PjeCopiaIntegralResult> executarPorCnj(String cnj) {
+        return executarPorCnj(cnj, null);
+    }
+
+    /** Síncrono com grau explícito do processo (prioridade sobre inferência automática). */
+    public Optional<PjeCopiaIntegralResult> executarPorCnj(String cnj, PjeGrau grauSalvo) {
         if (!StringUtils.hasText(cnj)) {
             log.warn("PJe cópia integral: CNJ vazio");
             return Optional.empty();
@@ -64,7 +69,7 @@ public class PjeCopiaIntegralPorProcessoService {
             log.warn("PJe cópia integral CNJ {}: login não resolvido", cnjNorm);
             return Optional.empty();
         }
-        Optional<PjeCopiaIntegralResult> resultado = executarComFallbackGrau(cnjNorm, login.get());
+        Optional<PjeCopiaIntegralResult> resultado = executarComFallbackGrau(cnjNorm, login.get(), grauSalvo);
         if (resultado.isEmpty()) {
             log.warn("PJe cópia integral CNJ {}: robô global ocupado", cnjNorm);
             return Optional.empty();
@@ -88,13 +93,19 @@ public class PjeCopiaIntegralPorProcessoService {
 
     /** Enfileira na thread única PJe; não-fatal. */
     public void dispararAssincrono(String cnj) {
+        dispararAssincrono(cnj, null);
+    }
+
+    /** Enfileira com grau salvo no processo (sem fallback 1º→2º quando explícito). */
+    public void dispararAssincrono(String cnj, PjeGrau grauSalvo) {
         if (!StringUtils.hasText(cnj)) {
             return;
         }
         String cnjNorm = cnj.trim();
+        PjeGrau grau = grauSalvo;
         executor.execute(() -> {
             try {
-                executarPorCnj(cnjNorm);
+                executarPorCnj(cnjNorm, grau);
             } catch (Exception e) {
                 log.warn("PJe cópia integral assíncrona falhou (cnj={}): {}", cnjNorm, e.getMessage());
             }
@@ -113,15 +124,16 @@ public class PjeCopiaIntegralPorProcessoService {
         return Optional.of(ativas.getFirst().getLogin());
     }
 
-    private Optional<PjeCopiaIntegralResult> executarComFallbackGrau(String cnjNorm, String login) {
-        PjeGrau grau = resolverGrau(cnjNorm);
+    private Optional<PjeCopiaIntegralResult> executarComFallbackGrau(
+            String cnjNorm, String login, PjeGrau grauSalvo) {
+        PjeGrau grau = grauSalvo != null ? grauSalvo : resolverGrau(cnjNorm);
         Optional<PjeCopiaIntegralResult> resultado =
                 copiaIntegralOrchestrator.executar(grau, login, null, cnjNorm);
         if (resultado.isEmpty()) {
             return Optional.empty();
         }
         PjeCopiaIntegralResult r = resultado.get();
-        if (!r.sucesso() && grau == PjeGrau.PRIMEIRO_GRAU) {
+        if (grauSalvo == null && !r.sucesso() && grau == PjeGrau.PRIMEIRO_GRAU) {
             log.info("PJe cópia integral CNJ {}: falha em 1º grau ({}), tentando 2º grau", cnjNorm, r.mensagem());
             Optional<PjeCopiaIntegralResult> segundo =
                     copiaIntegralOrchestrator.executar(PjeGrau.SEGUNDO_GRAU, login, null, cnjNorm);

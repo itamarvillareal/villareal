@@ -46,6 +46,10 @@ public class ProcessoWriteRequest {
     private String fase;
     private String observacaoFase;
     private String tramitacao;
+    /** Código {@link br.com.vilareal.pje.domain.PjeTribunal}; só quando tramitação = PJe. */
+    private String pjeTribunal;
+    /** PRIMEIRO_GRAU ou SEGUNDO_GRAU; só quando tramitação = PJe. */
+    private String pjeGrau;
     private LocalDate dataProtocolo;
     private LocalDate prazoFatal;
     private LocalDate proximaConsulta;
@@ -203,6 +207,22 @@ public class ProcessoWriteRequest {
 
     public void setTramitacao(String tramitacao) {
         this.tramitacao = tramitacao;
+    }
+
+    public String getPjeTribunal() {
+        return pjeTribunal;
+    }
+
+    public void setPjeTribunal(String pjeTribunal) {
+        this.pjeTribunal = pjeTribunal;
+    }
+
+    public String getPjeGrau() {
+        return pjeGrau;
+    }
+
+    public void setPjeGrau(String pjeGrau) {
+        this.pjeGrau = pjeGrau;
     }
 
     public LocalDate getDataProtocolo() {
