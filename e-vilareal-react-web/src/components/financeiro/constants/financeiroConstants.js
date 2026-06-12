@@ -42,7 +42,16 @@ export const INBOX_PRIORIDADE = {
   inconsistentes: 8,
 };
 
-export const PAGE_SIZE_OPTIONS = [50, 100, 200];
+export const PAGE_SIZE_OPTIONS = [50, 100, 200, 500, 1000];
+
+const PAGE_SIZE_MIN = PAGE_SIZE_OPTIONS[0];
+const PAGE_SIZE_MAX = PAGE_SIZE_OPTIONS[PAGE_SIZE_OPTIONS.length - 1];
+
+export function clampFinanceiroPageSize(size) {
+  const n = Number(size);
+  if (!Number.isFinite(n)) return 100;
+  return PAGE_SIZE_OPTIONS.includes(n) ? n : Math.min(PAGE_SIZE_MAX, Math.max(PAGE_SIZE_MIN, Math.round(n)));
+}
 
 export const CONTAS_LETRAS = ORDEM_LETRA_CONTA_BASE;
 

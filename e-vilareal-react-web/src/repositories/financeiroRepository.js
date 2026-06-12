@@ -1,4 +1,4 @@
-import { clampCadastroPessoasPageSize } from '../api/clientesService.js';
+import { clampFinanceiroPageSize } from '../components/financeiro/constants/financeiroConstants.js';
 import { request } from '../api/httpClient.js';
 import { featureFlags } from '../config/featureFlags.js';
 import {
@@ -293,7 +293,7 @@ export async function obterSaldoBancoMensalFinanceiro(numeroBanco, ano, mes, opt
 function queryLancamentosPaginados(filtros = {}) {
   return {
     page: filtros.page != null ? Math.max(0, Number(filtros.page) || 0) : 0,
-    size: clampCadastroPessoasPageSize(filtros.size ?? 100),
+    size: clampFinanceiroPageSize(filtros.size ?? 100),
     sort: filtros.sort ?? 'dataLancamento,desc',
     clienteId: filtros.clienteId ?? undefined,
     processoId: filtros.processoId ?? undefined,
@@ -381,7 +381,7 @@ export async function listarInboxClassificarPaginaApi(filtros = {}, opts = {}) {
   }
   const query = {
     page: filtros.page != null ? Math.max(0, Number(filtros.page) || 0) : 0,
-    size: clampCadastroPessoasPageSize(filtros.size ?? 50),
+    size: clampFinanceiroPageSize(filtros.size ?? 50),
     sort: filtros.sort ?? 'dataLancamento,desc',
     numeroBanco: filtros.numeroBanco ?? undefined,
     ano: filtros.ano ?? undefined,
