@@ -120,6 +120,7 @@ export function InboxPage() {
   const [reloadNonce, setReloadNonce] = useState(0);
   const [refazendoRelatorio, setRefazendoRelatorio] = useState(false);
   const [refatorandoIds, setRefatorandoIds] = useState(() => new Set());
+  const [contaLoteId, setContaLoteId] = useState('');
 
   const periodo = useMemo(() => periodoParaQueryApi(filters.mes), [filters.mes]);
   const periodoAnoMes = useMemo(() => periodoParaAnoMesApi(filters.mes), [filters.mes]);
@@ -236,11 +237,20 @@ export function InboxPage() {
     setPage(0);
     setSelected(new Set());
     setFocusedIndex(-1);
+    setContaLoteId('');
     if (tipo === INBOX_TIPOS.compensar) {
       setPares([]);
       setPageSize((s) => (s > COMPENSAR_PAGE_SIZE ? COMPENSAR_PAGE_SIZE : s));
     }
   }, [tipo, filters.mes, bancoAtivo, filtroTipoPar, filtroTipoDia]);
+
+  const contasClassificacao = useMemo(
+    () =>
+      contas
+        .filter((c) => String(c.codigo ?? '').trim().toUpperCase() !== 'N')
+        .sort((a, b) => String(a.codigo).localeCompare(String(b.codigo), 'pt-BR')),
+    [contas],
+  );
 
   useEffect(() => {
     if (!featureFlags.useApiFinanceiro) return undefined;
@@ -525,7 +535,50 @@ export function InboxPage() {
     if (!keys.length) return;
     setSkipped((prev) => new Set([...prev, ...keys]));
     setSelected(new Set());
+    setContaLoteId('');
   }, [selected]);
+
+  const handleBatchClassificarComConta = useCallback(async () => {
+    if (selected.size === 0 || !contaLoteId) return;
+    const conta = contasClassificacao.find((c) => String(c.id) === String(contaLoteId));
+    if (!conta) return;
+
+    setBusy(true);
+    try {
+      const ids = [...selected];
+      const aplicacoes = ids.map((id) => ({
+        lancamentoId: id,
+        contaContabilId: conta.id,
+        clienteId: null,
+        processoId: null,
+      }));
+      const res = await aplicarSugestoesLoteApi(aplicacoes);
+      const ok = Number(res?.aplicados ?? aplicacoes.length);
+      const cod = String(conta.codigo ?? '').toUpperCase();
+      toast.success(`${ok} lançamento${ok !== 1 ? 's' : ''} classificados como ${cod}`);
+      removeComFade(ids, () => {
+        setLancamentos((prev) => prev.filter((l) => !ids.includes(l.id)));
+        setTotalElements((t) => Math.max(0, t - ids.length));
+      });
+      patchCount(INBOX_TIPOS.classificar, -ids.length);
+      scheduleLoadCounts();
+      dispatchRefreshPendentes();
+      setSelected(new Set());
+      setContaLoteId('');
+    } catch (e) {
+      toast.error(e?.message || 'Erro ao classificar seleção.');
+    } finally {
+      setBusy(false);
+    }
+  }, [
+    selected,
+    contaLoteId,
+    contasClassificacao,
+    toast,
+    removeComFade,
+    patchCount,
+    scheduleLoadCounts,
+  ]);
 
   const lancamentosVisiveis = useMemo(
     () => lancamentos.filter((l) => !skipped.has(l.id) && !fading.has(l.id)),
@@ -827,8 +880,14 @@ export function InboxPage() {
           count={selected.size}
           onAprovarTodos={handleBatchAprovar}
           onPular={handleBatchPular}
-          aprovarLabel={tipo === INBOX_TIPOS.compensar ? 'Parear todos' : 'Aprovar todos'}
+          aprovarLabel={tipo === INBOX_TIPOS.compensar ? 'Parear todos' : 'Aprovar sugestão'}
           busy={busy}
+          contas={tipo === INBOX_TIPOS.classificar ? contasClassificacao : []}
+          contaLoteId={contaLoteId}
+          onContaLoteChange={setContaLoteId}
+          onClassificarComConta={
+            tipo === INBOX_TIPOS.classificar ? handleBatchClassificarComConta : undefined
+          }
         />
       ) : null}
 
