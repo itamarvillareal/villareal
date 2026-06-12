@@ -5,7 +5,7 @@ package br.com.vilareal.processo.api.dto;
  */
 public record ProcessoMovimentacoesDriveResponse(
         String tramitacao,
-        /** CONCLUIDO (Projudi síncrono), INICIADO (PJe assíncrono), SEM_SISTEMA */
+        /** CONCLUIDO, INICIADO, PJE_AUTOMACAO_INDISPONIVEL, SEM_SISTEMA */
         String status,
         Integer arquivosBaixados,
         Integer totalComDocumento,
@@ -45,5 +45,19 @@ public record ProcessoMovimentacoesDriveResponse(
     public static ProcessoMovimentacoesDriveResponse semSistema(String tramitacao, String mensagem) {
         return new ProcessoMovimentacoesDriveResponse(
                 tramitacao, "SEM_SISTEMA", null, null, null, null, mensagem, null, mensagem);
+    }
+
+    public static ProcessoMovimentacoesDriveResponse pjeAutomacaoIndisponivel(
+            String tramitacao, String mensagem) {
+        return new ProcessoMovimentacoesDriveResponse(
+                tramitacao,
+                "PJE_AUTOMACAO_INDISPONIVEL",
+                null,
+                null,
+                null,
+                null,
+                mensagem,
+                null,
+                mensagem);
     }
 }

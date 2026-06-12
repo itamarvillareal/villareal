@@ -22,6 +22,8 @@ public class ProcessoResponse {
     private String fase;
     private String observacaoFase;
     private String tramitacao;
+    private String pjeTribunal;
+    private String pjeGrau;
     private LocalDate dataProtocolo;
     private LocalDate prazoFatal;
     private LocalDate proximaConsulta;
@@ -148,6 +150,22 @@ public class ProcessoResponse {
 
     public void setTramitacao(String tramitacao) {
         this.tramitacao = tramitacao;
+    }
+
+    public String getPjeTribunal() {
+        return pjeTribunal;
+    }
+
+    public void setPjeTribunal(String pjeTribunal) {
+        this.pjeTribunal = pjeTribunal;
+    }
+
+    public String getPjeGrau() {
+        return pjeGrau;
+    }
+
+    public void setPjeGrau(String pjeGrau) {
+        this.pjeGrau = pjeGrau;
     }
 
     public LocalDate getDataProtocolo() {

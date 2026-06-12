@@ -818,6 +818,8 @@ export async function salvarCabecalhoProcesso(payload) {
     fase: payload.faseSelecionada || null,
     observacaoFase: payload.faseCampo || null,
     tramitacao: (payload.procedimento || payload.tramitacao || '').trim() || null,
+    pjeTribunal: String(payload.pjeTribunal ?? '').trim() || null,
+    pjeGrau: String(payload.pjeGrau ?? '').trim() || null,
     dataProtocolo: toIsoFromBrDate(payload.dataProtocolo),
     prazoFatal: toIsoFromBrDate(payload.prazoFatal),
     proximaConsulta: toIsoFromBrDate(payload.proximaConsultaData),
@@ -1319,6 +1321,8 @@ export function mapApiProcessoToUiShape(p) {
     tramitacao: corrigirMojibakeUtf8(String(p.tramitacao ?? '').trim()),
     /** Mesmo valor que `tramitacao` na API (campo «Procedimento» no formulário). */
     procedimento: corrigirMojibakeUtf8(String(p.tramitacao ?? '').trim()),
+    pjeTribunal: String(p.pjeTribunal ?? p.pje_tribunal ?? '').trim(),
+    pjeGrau: String(p.pjeGrau ?? p.pje_grau ?? '').trim(),
     dataProtocolo: toBrFromIsoDate(p.dataProtocolo),
     responsavel: corrigirMojibakeUtf8(String(p.consultor ?? '').trim()),
     /** Só na listagem por cliente; mesma regra que partes «Autor/Requerente» na tela Processos. */

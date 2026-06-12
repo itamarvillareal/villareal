@@ -16,6 +16,8 @@ import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.pessoa.application.ClienteResolverService;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.ClienteRepository;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
+import br.com.vilareal.pje.domain.PjeGrau;
+import br.com.vilareal.pje.domain.PjeTribunal;
 import br.com.vilareal.processo.api.dto.*;
 import br.com.vilareal.processo.domain.HistoricoTituloLegadoSistema;
 import br.com.vilareal.processo.infrastructure.persistence.entity.*;
@@ -1182,6 +1184,7 @@ public class ProcessoApplicationService {
         e.setFase(trimToNull(req.getFase()));
         e.setObservacaoFase(trimToNull(req.getObservacaoFase()));
         e.setTramitacao(trimToNull(req.getTramitacao()));
+        aplicarPjeTribunalGrau(e, req);
         e.setDataProtocolo(req.getDataProtocolo());
         e.setPrazoFatal(req.getPrazoFatal());
         e.setProximaConsulta(req.getProximaConsulta());
@@ -1214,6 +1217,28 @@ public class ProcessoApplicationService {
         }
         if (StringUtils.hasText(req.getImportacaoId())) {
             e.setImportacaoId(req.getImportacaoId().trim());
+        }
+    }
+
+    private void aplicarPjeTribunalGrau(ProcessoEntity e, ProcessoWriteRequest req) {
+        String tramitacaoNorm = ProcessoTramitacaoService.normalizarTramitacao(req.getTramitacao());
+        if (!ProcessoTramitacaoService.ehPje(tramitacaoNorm)) {
+            e.setPjeTribunal(null);
+            e.setPjeGrau(null);
+            return;
+        }
+        e.setPjeTribunal(PjeTribunal.fromCodigo(req.getPjeTribunal()).orElse(null));
+        e.setPjeGrau(parsePjeGrau(req.getPjeGrau()));
+    }
+
+    private static PjeGrau parsePjeGrau(String valor) {
+        if (!StringUtils.hasText(valor)) {
+            return null;
+        }
+        try {
+            return PjeGrau.valueOf(valor.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            return null;
         }
     }
 
@@ -1335,6 +1360,8 @@ public class ProcessoApplicationService {
         r.setFase(Utf8MojibakeUtil.corrigir(faseExibir));
         r.setObservacaoFase(Utf8MojibakeUtil.corrigir(e.getObservacaoFase()));
         r.setTramitacao(Utf8MojibakeUtil.corrigir(e.getTramitacao()));
+        r.setPjeTribunal(e.getPjeTribunal() != null ? e.getPjeTribunal().name() : null);
+        r.setPjeGrau(e.getPjeGrau() != null ? e.getPjeGrau().name() : null);
         r.setDataProtocolo(e.getDataProtocolo());
         r.setPrazoFatal(e.getPrazoFatal());
         r.setProximaConsulta(e.getProximaConsulta());
