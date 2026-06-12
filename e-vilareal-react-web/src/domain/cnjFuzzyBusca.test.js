@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { levenshtein, termoDigitosCorrespondeCnjCampo } from './cnjFuzzyBusca.js';
+import { cnjEhTrt18, levenshtein, termoDigitosCorrespondeCnjCampo } from './cnjFuzzyBusca.js';
 
 describe('levenshtein', () => {
   it('distância 1 entre 5482633 e 5402633', () => {
@@ -30,5 +30,15 @@ describe('termoDigitosCorrespondeCnjCampo', () => {
     expect(termoDigitosCorrespondeCnjCampo('550062297', vania)).toBe(true); // fuzzy legado (busca manual)
     expect(termoDigitosCorrespondeCnjCampo('550062297', vania, { projudiInternoExato: true })).toBe(false);
     expect(termoDigitosCorrespondeCnjCampo('550562297', vania, { projudiInternoExato: true })).toBe(true);
+  });
+});
+
+describe('cnjEhTrt18', () => {
+  it('reconhece segmento .5.18. do TRT18', () => {
+    expect(cnjEhTrt18('0000105-21.2025.5.18.0051')).toBe(true);
+  });
+
+  it('rejeita CNJ TJGO', () => {
+    expect(cnjEhTrt18('5402633-78.2017.8.09.0006')).toBe(false);
   });
 });

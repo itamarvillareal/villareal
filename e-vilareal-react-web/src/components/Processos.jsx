@@ -174,6 +174,7 @@ import {
   gravarUltimaSelecaoProcessosArmazenamento,
   lerUltimaSelecaoProcessosArmazenamento,
 } from '../domain/camposProcessoCliente.js';
+import { cnjEhTrt18 } from '../domain/cnjFuzzyBusca.js';
 
 const CadastroClientesLazy = lazy(() =>
   import('./CadastroClientes.jsx').then((module) => ({ default: module.CadastroClientes }))
@@ -2033,6 +2034,14 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
 
   const tramitacaoBloqueiaObterMovimentacoes = tramitacaoNorm === 'TJ Go - Autos Físicos';
 
+  const cnjProcessoAtual = useMemo(
+    () => String(numeroProcessoNovo ?? '').trim(),
+    [numeroProcessoNovo]
+  );
+  const processoCnjTrt18 = useMemo(() => cnjEhTrt18(cnjProcessoAtual), [cnjProcessoAtual]);
+  const obterMovimentacoesViaPje =
+    tramitacaoNorm === 'PJe' || (!tramitacaoNorm && processoCnjTrt18);
+
   const executarObterMovimentacoesDrive = useCallback(async () => {
     const id = Number(processoApiId);
     if (!id || buscandoMovimentacoes) return;
@@ -2086,7 +2095,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     if (tramitacaoBloqueiaObterMovimentacoes) {
       return;
     }
-    if (!tramitacaoNorm) {
+    if (!tramitacaoNorm && !processoCnjTrt18) {
       abrirModalTramitacao({ aposObterMovimentacoes: true });
       return;
     }
@@ -2096,6 +2105,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     numeroProcessoNovo,
     buscandoMovimentacoes,
     tramitacaoNorm,
+    processoCnjTrt18,
     tramitacaoBloqueiaObterMovimentacoes,
     executarObterMovimentacoesDrive,
   ]);
@@ -3214,17 +3224,17 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                         title={
                           tramitacaoBloqueiaObterMovimentacoes
                             ? 'Processo em autos físicos — sem consulta automática.'
-                            : !tramitacaoNorm
-                              ? 'Defina a tramitação dos autos para consultar movimentações'
-                              : tramitacaoNorm === 'PJe'
-                                ? 'Dispara cópia integral PJe TRT18 — acompanhe o badge No Drive'
+                            : obterMovimentacoesViaPje
+                              ? 'Dispara cópia integral PJe TRT18 (assíncrono) — acompanhe o badge No Drive'
+                              : !tramitacaoNorm
+                                ? 'Defina a tramitação dos autos para consultar movimentações'
                                 : 'Consulta o PROJUDI agora (mesmo com acervo integral no pipeline automático; pode não trazer arquivos novos)'
                         }
                       >
                         <CloudDownload className="w-4 h-4" aria-hidden />
                         {buscandoMovimentacoes
-                          ? tramitacaoNorm === 'PJe'
-                            ? 'Consultando PJe…'
+                          ? obterMovimentacoesViaPje
+                            ? 'Iniciando PJe…'
                             : 'Consultando PROJUDI…'
                           : 'Obter movimentações'}
                       </button>

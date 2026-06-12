@@ -10,7 +10,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 /**
- * Roteia «Obter movimentações» conforme {@code processo.tramitacao}.
+ * Roteia «Obter movimentações» conforme {@code processo.tramitacao} e, para CNJ TRT18
+ * ({@code .5.18.}), dispara cópia integral PJe mesmo com tramitação vazia.
  */
 @Service
 public class ProcessoMovimentacoesDriveService {
@@ -18,14 +19,17 @@ public class ProcessoMovimentacoesDriveService {
     private final ProcessoRepository processoRepository;
     private final ProcessoProjudiMovimentacoesDriveService projudiMovimentacoesDriveService;
     private final PjeCopiaIntegralPorProcessoService pjeCopiaIntegralPorProcessoService;
+    private final ProcessoTramitacaoService processoTramitacaoService;
 
     public ProcessoMovimentacoesDriveService(
             ProcessoRepository processoRepository,
             ProcessoProjudiMovimentacoesDriveService projudiMovimentacoesDriveService,
-            PjeCopiaIntegralPorProcessoService pjeCopiaIntegralPorProcessoService) {
+            PjeCopiaIntegralPorProcessoService pjeCopiaIntegralPorProcessoService,
+            ProcessoTramitacaoService processoTramitacaoService) {
         this.processoRepository = processoRepository;
         this.projudiMovimentacoesDriveService = projudiMovimentacoesDriveService;
         this.pjeCopiaIntegralPorProcessoService = pjeCopiaIntegralPorProcessoService;
+        this.processoTramitacaoService = processoTramitacaoService;
     }
 
     public ProcessoMovimentacoesDriveResponse executar(Long processoId) {
@@ -41,13 +45,21 @@ public class ProcessoMovimentacoesDriveService {
                     tramitacaoExibicao, projudiMovimentacoesDriveService.executar(processoId));
         }
 
-        if (ProcessoTramitacaoService.ehPje(tramitacaoNorm)) {
-            String cnj = processo.getNumeroCnj();
-            if (!StringUtils.hasText(cnj)) {
+        String cnj = StringUtils.hasText(processo.getNumeroCnj()) ? processo.getNumeroCnj().trim() : null;
+        boolean cnjTrt18 = cnj != null && ProcessoTramitacaoService.cnjEhTrt18(cnj);
+
+        if (ProcessoTramitacaoService.ehPje(tramitacaoNorm) || cnjTrt18) {
+            if (cnj == null) {
                 throw new BusinessRuleException("Processo sem número CNJ — não é possível consultar o PJe.");
             }
-            pjeCopiaIntegralPorProcessoService.dispararAssincrono(cnj.trim());
-            return ProcessoMovimentacoesDriveResponse.pjeIniciado(tramitacaoExibicao);
+            if (cnjTrt18 && tramitacaoNorm == null) {
+                processoTramitacaoService.preencherSeVazioPorCnj(processoId, cnj);
+            }
+            pjeCopiaIntegralPorProcessoService.dispararAssincrono(cnj);
+            String tramitacaoResposta = tramitacaoExibicao != null
+                    ? tramitacaoExibicao
+                    : ProcessoTramitacaoService.TRAMITACAO_PJE;
+            return ProcessoMovimentacoesDriveResponse.pjeIniciado(tramitacaoResposta);
         }
 
         String msg =
