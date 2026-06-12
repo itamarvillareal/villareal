@@ -11,8 +11,10 @@ import java.time.LocalDate;
 public class SaldoBancoResponse {
 
     private Integer numeroBanco;
-    /** Soma assinada (crédito − débito) de todos os lançamentos do banco. */
+    /** Soma assinada (crédito − débito) dos lançamentos do banco MAIS o saldo de abertura. */
     private BigDecimal saldo;
+    /** Saldo de abertura informado pelo usuário aplicado ao cálculo (0 quando não há). */
+    private BigDecimal saldoInicial;
     private LocalDate dataUltimoLancamento;
     private long totalLancamentos;
     /** Quando informada em GET saldo-banco?data=, data de referência do cálculo. */

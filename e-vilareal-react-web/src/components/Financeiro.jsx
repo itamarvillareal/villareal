@@ -2600,7 +2600,7 @@ export function Financeiro({ paineisRelatorios: paineisRelatoriosProp, instituic
       if (!isInstituicaoExtratoPdfImport(instituicaoSelecionada)) {
         setOfxStatus({
           kind: 'error',
-          message: `Para ${instituicaoSelecionada}, use arquivo OFX. Importação em PDF está disponível para BTG e Sicoob.`,
+          message: `Para ${instituicaoSelecionada}, use arquivo OFX. Importação em PDF está disponível para BTG, Bradesco e Sicoob.`,
         });
         return;
       }
@@ -3532,7 +3532,7 @@ export function Financeiro({ paineisRelatorios: paineisRelatoriosProp, instituic
           <div className="p-4 md:p-5 space-y-3">
           <p className="text-xs text-slate-600 mb-1 leading-relaxed">
             O botão <strong>Importar extrato</strong> aceita <strong>.ofx</strong> e <strong>.pdf</strong> no mesmo seletor;
-            o sistema valida conforme o banco selecionado. <strong>BTG</strong> e <strong>Sicoob</strong> usam PDF (modelos
+            o sistema valida conforme o banco selecionado. <strong>BTG</strong>, <strong>Bradesco</strong> e <strong>Sicoob</strong> usam PDF (modelos
             oficiais de conta corrente, texto selecionável); os demais bancos usam OFX. Por padrão, cada importação{' '}
             <strong>acrescenta</strong> lançamentos (sem apagar mock nem extrato já importados). Duplicatas (mesma chave
             data + valor + identificador) são ignoradas.{' '}

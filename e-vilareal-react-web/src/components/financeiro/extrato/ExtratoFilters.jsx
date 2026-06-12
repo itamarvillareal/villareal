@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
-import { Search, Trash2 } from 'lucide-react';
+import { Pencil, Search, Trash2 } from 'lucide-react';
 import { useFinanceiroChrome, useFinanceiroFilters } from '../FinanceiroContext.jsx';
 import { PeriodoSelector } from '../shared/PeriodoSelector.jsx';
 import { FilterTag } from '../shared/FilterTag.jsx';
 import { LimparContaDialog } from '../shared/LimparContaDialog.jsx';
+import { SaldoInicialDialog } from '../shared/SaldoInicialDialog.jsx';
 import { formatDataCurta, formatMoeda } from '../shared/financeiroFormat.js';
 import { ETAPAS, nomeContaPorLetra } from '../constants/financeiroConstants.js';
+import { FINANCEIRO_REFRESH_PENDENTES } from '../hooks/useKeyboardShortcuts.js';
 
 export function ExtratoFilters({
   totalNaPagina = 0,
@@ -27,6 +29,7 @@ export function ExtratoFilters({
 
   const [buscaLocal, setBuscaLocal] = useState(filters.busca ?? '');
   const [limparOpen, setLimparOpen] = useState(false);
+  const [saldoInicialOpen, setSaldoInicialOpen] = useState(false);
 
   useEffect(() => {
     setBuscaLocal(filters.busca ?? '');
@@ -122,9 +125,29 @@ export function ExtratoFilters({
                   em {formatDataCurta(saldoBanco.dataUltimoLancamento)}
                 </span>
               ) : null}
+              {Number(saldoBanco?.saldoInicial) ? (
+                <span
+                  className="text-[10px] text-slate-400 tabular-nums"
+                  title="Inclui o saldo de abertura informado para esta conta."
+                >
+                  (inclui abertura {formatMoeda(saldoBanco.saldoInicial)})
+                </span>
+              ) : null}
             </>
           )}
         </div>
+      ) : null}
+
+      {bancoAtivo && bancoNome ? (
+        <button
+          type="button"
+          onClick={() => setSaldoInicialOpen(true)}
+          className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-md border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 shrink-0"
+          title="Definir o saldo de abertura desta conta (somado ao saldo do banco)"
+        >
+          <Pencil className="w-3 h-3" aria-hidden />
+          Saldo inicial
+        </button>
       ) : null}
 
       {bancoAtivo && bancoNome ? (
@@ -181,6 +204,16 @@ export function ExtratoFilters({
         nome={bancoNome}
         numero={bancoAtivo}
         onClose={() => setLimparOpen(false)}
+      />
+    ) : null}
+
+    {bancoAtivo && bancoNome ? (
+      <SaldoInicialDialog
+        open={saldoInicialOpen}
+        numeroBanco={bancoAtivo}
+        bancoNome={bancoNome}
+        onClose={() => setSaldoInicialOpen(false)}
+        onSaved={() => window.dispatchEvent(new CustomEvent(FINANCEIRO_REFRESH_PENDENTES))}
       />
     ) : null}
     </>

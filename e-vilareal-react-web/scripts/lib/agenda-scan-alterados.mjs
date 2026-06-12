@@ -9,9 +9,11 @@ import {
   USUARIOS_AGENDA_PASTA,
   chaveConteudoEvento,
   dataIsoAgenda,
+  descricaoComoNaApi,
   lerEventosArquivoDiaLegado,
   normalizarHoraAgendaTxt,
   normalizarStatusAgendaTxt,
+  normalizarStrAgenda,
   parseNomeArquivoAgenda,
   parseNomeArquivoAgendaDia,
 } from './agenda-local-txt.mjs';
@@ -174,6 +176,37 @@ export function scanAgendaAlteradosNoDia(baseAgenda, inicioDia, fimDia, usuarios
 }
 
 /**
+ * O mesmo compromisso (utilizador + dia + hora + descrição) pode vir das duas fontes legado —
+ * estruturado (ficheiros por-campo) e consolidado (`dd.mm.yyyy.txt`) — com status divergente,
+ * tipicamente o por-campo em branco e o consolidado "OK". O consolidado é a referência, logo um
+ * status preenchido vence o vazio. Sem isto o sync importaria as duas variantes (mesma hora+descrição,
+ * status diferente) e ficaria a oscilar em PUTs sem nunca reconhecer o par estrito.
+ * @param {object[]} eventos
+ * @returns {object[]}
+ */
+export function colapsarEventosConflitoStatus(eventos) {
+  /** @type {Map<string, object>} */
+  const porChave = new Map();
+  const ordem = [];
+  for (const ev of eventos) {
+    const usuario = normalizarStrAgenda(ev.usuarioPasta);
+    const hora = normalizarHoraAgendaTxt(ev.horaEvento) ?? '';
+    const desc = normalizarStrAgenda(descricaoComoNaApi(ev.descricao));
+    const key = `${usuario}|${ev.dataEvento}|${hora}|${desc}`;
+    const existente = porChave.get(key);
+    if (!existente) {
+      porChave.set(key, ev);
+      ordem.push(key);
+      continue;
+    }
+    const stExist = normalizarStatusAgendaTxt(existente.statusCurto);
+    const stNovo = normalizarStatusAgendaTxt(ev.statusCurto);
+    if (!stExist && stNovo) existente.statusCurto = ev.statusCurto;
+  }
+  return ordem.map((k) => porChave.get(k));
+}
+
+/**
  * Eventos a sincronizar a partir do resultado do scan (só o que mudou hoje).
  * @param {ScanAgendaAlterados} scan
  * @returns {object[]}
@@ -215,11 +248,12 @@ export function eventosFromScanAgenda(scan) {
     }
   }
 
-  eventos.sort(
+  const colapsados = colapsarEventosConflitoStatus(eventos);
+  colapsados.sort(
     (a, b) =>
       a.usuarioPasta.localeCompare(b.usuarioPasta) ||
       a.dataEvento.localeCompare(b.dataEvento) ||
       a.linhaLegado - b.linhaLegado
   );
-  return eventos;
+  return colapsados;
 }

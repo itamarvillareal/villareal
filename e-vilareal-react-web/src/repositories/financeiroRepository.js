@@ -290,6 +290,41 @@ export async function obterSaldoBancoMensalFinanceiro(numeroBanco, ano, mes, opt
   });
 }
 
+/** Saldo de abertura informado para a conta (ou null se não houver). */
+export async function obterSaldoInicialBanco(numeroBanco, opts = {}) {
+  const { signal } = opts;
+  if (!featureFlags.useApiFinanceiro || numeroBanco == null) return null;
+  return request('/api/financeiro/lancamentos/saldo-inicial', {
+    signal,
+    query: { numeroBanco: Number(numeroBanco) },
+  });
+}
+
+/** Cria/atualiza o saldo de abertura da conta. `valor` é o saldo assinado (pode ser negativo). */
+export async function salvarSaldoInicialBanco({ numeroBanco, bancoNome, dataReferencia, valor }, opts = {}) {
+  const { signal } = opts;
+  return request('/api/financeiro/lancamentos/saldo-inicial', {
+    signal,
+    method: 'PUT',
+    body: {
+      numeroBanco: Number(numeroBanco),
+      bancoNome: bancoNome ?? null,
+      dataReferencia: String(dataReferencia),
+      valor: Number(valor),
+    },
+  });
+}
+
+/** Remove o saldo de abertura da conta. */
+export async function removerSaldoInicialBanco(numeroBanco, opts = {}) {
+  const { signal } = opts;
+  return request('/api/financeiro/lancamentos/saldo-inicial', {
+    signal,
+    method: 'DELETE',
+    query: { numeroBanco: Number(numeroBanco) },
+  });
+}
+
 function queryLancamentosPaginados(filtros = {}) {
   return {
     page: filtros.page != null ? Math.max(0, Number(filtros.page) || 0) : 0,
