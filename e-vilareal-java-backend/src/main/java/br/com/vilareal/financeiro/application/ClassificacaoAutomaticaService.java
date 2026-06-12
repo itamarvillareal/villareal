@@ -4,6 +4,7 @@ import br.com.vilareal.common.exception.ResourceNotFoundException;
 import br.com.vilareal.common.text.Utf8MojibakeUtil;
 import br.com.vilareal.financeiro.api.dto.*;
 import br.com.vilareal.financeiro.domain.EtapaLancamento;
+import br.com.vilareal.financeiro.domain.FinanceiroDescricaoIndicaContaE;
 import br.com.vilareal.financeiro.domain.FinanceiroDescricaoIndicaContaF;
 import br.com.vilareal.financeiro.domain.TipoMatch;
 import br.com.vilareal.financeiro.infrastructure.persistence.LancamentoFinanceiroSpecifications;
@@ -144,6 +145,14 @@ public class ClassificacaoAutomaticaService {
                 return regraF;
             }
         }
+        if (FinanceiroDescricaoIndicaContaE.indica(lancamento.getDescricao(), lancamento.getDescricaoDetalhada())) {
+            Optional<RegraClassificacaoEntity> regraE = contaContabilRepository
+                    .findFirstByCodigoIgnoreCase("E")
+                    .map(this::regraSinteticaCompensacaoItamarVrv);
+            if (regraE.isPresent()) {
+                return regraE;
+            }
+        }
         String texto = textoParaMatch(lancamento);
         for (RegraClassificacaoEntity regra : regras) {
             if (regra.getConfianca() == null
@@ -184,6 +193,19 @@ public class ClassificacaoAutomaticaService {
         regra.setTipoMatch(TipoMatch.CONTAINS);
         regra.setContaContabil(contaF);
         regra.setLetraDestino("F");
+        regra.setPrioridade(1);
+        regra.setConfianca(new BigDecimal("0.9900"));
+        regra.setAtivo(true);
+        return regra;
+    }
+
+    private RegraClassificacaoEntity regraSinteticaCompensacaoItamarVrv(ContaContabilEntity contaE) {
+        RegraClassificacaoEntity regra = new RegraClassificacaoEntity();
+        regra.setId(0L);
+        regra.setPadraoDescricao("Itamar/VRV compensação");
+        regra.setTipoMatch(TipoMatch.CONTAINS);
+        regra.setContaContabil(contaE);
+        regra.setLetraDestino("E");
         regra.setPrioridade(1);
         regra.setConfianca(new BigDecimal("0.9900"));
         regra.setAtivo(true);

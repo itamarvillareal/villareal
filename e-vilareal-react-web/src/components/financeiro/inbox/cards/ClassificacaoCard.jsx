@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Check, Pencil, SkipForward } from 'lucide-react';
+import { Check, Pencil, RefreshCw, SkipForward } from 'lucide-react';
 import { ContaBadge } from '../../shared/ContaBadge.jsx';
 import { ConfiancaDots } from '../../shared/ConfiancaDots.jsx';
 import { ValorText } from '../../shared/ValorText.jsx';
@@ -13,6 +13,8 @@ export function ClassificacaoCard({
   contas = [],
   onAprovar,
   onPular,
+  onRefatorar,
+  refatorando = false,
   isSelected,
   onSelect,
   fading,
@@ -227,6 +229,18 @@ export function ClassificacaoCard({
           <Pencil className="w-3.5 h-3.5" />
           Editar
         </button>
+        {onRefatorar ? (
+          <button
+            type="button"
+            disabled={busy || refatorando}
+            onClick={onRefatorar}
+            title="Recalcula a sugestão com as regras de classificação atuais"
+            className="inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-md border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${refatorando ? 'animate-spin' : ''}`} />
+            {refatorando ? 'Refatorando…' : 'Refatorar'}
+          </button>
+        ) : null}
         <button
           type="button"
           disabled={busy}

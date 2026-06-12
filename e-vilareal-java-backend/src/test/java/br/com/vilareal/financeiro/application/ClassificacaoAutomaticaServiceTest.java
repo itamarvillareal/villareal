@@ -120,6 +120,32 @@ class ClassificacaoAutomaticaServiceTest {
         assertThat(cap.getValue().getEtapa()).isEqualTo(EtapaLancamento.CLASSIFICADO);
     }
 
+    @Test
+    void autoClassificar_itamarVrv_sugereContaE() {
+        ContaContabilEntity contaE = new ContaContabilEntity();
+        contaE.setId(6L);
+        contaE.setCodigo("E");
+        LancamentoFinanceiroEntity l = lancamentoN(
+                "Transf Pix recebida - ITAMAR ALEXANDRE F V R JUNIOR - 007.332.351-90");
+
+        when(contaContabilRepository.findFirstByCodigoIgnoreCase("N")).thenReturn(Optional.of(contaN));
+        when(contaContabilRepository.findFirstByCodigoIgnoreCase("E")).thenReturn(Optional.of(contaE));
+        when(lancamentoRepository.findAll(any(Specification.class))).thenReturn(List.of(l));
+        when(regraRepository.findByAtivoTrueOrderByConfiancaDescPrioridadeAscIdAsc())
+                .thenReturn(List.of());
+        when(lancamentoRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        AutoClassificarRequest req = new AutoClassificarRequest();
+        req.setConfiancaMinima(new BigDecimal("0.85"));
+        req.setDryRun(false);
+
+        service.autoClassificar(req);
+
+        ArgumentCaptor<LancamentoFinanceiroEntity> cap = ArgumentCaptor.forClass(LancamentoFinanceiroEntity.class);
+        verify(lancamentoRepository).save(cap.capture());
+        assertThat(cap.getValue().getContaContabil().getCodigo()).isEqualTo("E");
+    }
+
     private static LancamentoFinanceiroEntity lancamentoN(String descricao) {
         ContaContabilEntity n = new ContaContabilEntity();
         n.setId(5L);

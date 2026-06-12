@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Check, ChevronDown, ChevronUp, Pencil, SkipForward } from 'lucide-react';
+import { Check, ChevronDown, ChevronUp, Pencil, RefreshCw, SkipForward } from 'lucide-react';
 import { ContaBadge } from '../../shared/ContaBadge.jsx';
 import { ConfiancaDots } from '../../shared/ConfiancaDots.jsx';
 import { ValorText } from '../../shared/ValorText.jsx';
@@ -20,6 +20,8 @@ export function ClassificacaoGroupCard({
   onAprovarGrupo,
   onAprovar,
   onPularGrupo,
+  onRefatorar,
+  refatorando = false,
   isSelected,
   onSelectGrupo,
   fading,
@@ -52,6 +54,10 @@ export function ClassificacaoGroupCard({
     onPularGrupo?.(lancamentos.map((l) => l.id));
   };
 
+  const handleRefatorar = () => {
+    onRefatorar?.(lancamentos.map((l) => l.id));
+  };
+
   if (modoRevisar) {
     return (
       <article
@@ -79,6 +85,8 @@ export function ClassificacaoGroupCard({
             contas={contas}
             onAprovar={onAprovar}
             onPular={(id) => onPularGrupo?.([id])}
+            onRefatorar={() => onRefatorar?.([l.id])}
+            refatorando={refatorando}
             isSelected={false}
             onSelect={() => {}}
             busy={busy}
@@ -186,6 +194,16 @@ export function ClassificacaoGroupCard({
         >
           <Pencil className="w-3.5 h-3.5" />
           Revisar
+        </button>
+        <button
+          type="button"
+          disabled={busy || refatorando}
+          onClick={handleRefatorar}
+          title="Recalcula a sugestão com as regras de classificação atuais"
+          className="inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-md border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${refatorando ? 'animate-spin' : ''}`} />
+          {refatorando ? 'Refatorando…' : 'Refatorar'}
         </button>
         <button
           type="button"
