@@ -144,6 +144,27 @@ public class FinanceiroController {
         return financeiroService.saldoMensalPorDia(numeroBanco, ano, mes);
     }
 
+    @GetMapping("/lancamentos/saldo-inicial")
+    @Operation(description = "Saldo de abertura informado para a conta bancária (ou vazio se não houver).")
+    public ResponseEntity<SaldoInicialBancoResponse> obterSaldoInicial(
+            @RequestParam("numeroBanco") Integer numeroBanco) {
+        var resp = financeiroService.obterSaldoInicial(numeroBanco);
+        return resp != null ? ResponseEntity.ok(resp) : ResponseEntity.noContent().build();
+    }
+
+    @PutMapping("/lancamentos/saldo-inicial")
+    @Operation(description = "Cria/atualiza o saldo de abertura da conta bancária (somado ao cálculo de saldo).")
+    public SaldoInicialBancoResponse salvarSaldoInicial(@RequestBody @Valid SaldoInicialBancoWriteRequest req) {
+        return financeiroService.salvarSaldoInicial(req);
+    }
+
+    @DeleteMapping("/lancamentos/saldo-inicial")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Operation(description = "Remove o saldo de abertura da conta bancária.")
+    public void removerSaldoInicial(@RequestParam("numeroBanco") Integer numeroBanco) {
+        financeiroService.removerSaldoInicial(numeroBanco);
+    }
+
     @GetMapping("/lancamentos/resumo-consolidado")
     @Operation(description = "Totais por conta e saldo mensal agregado (últimos N meses) para a tela Consolidado.")
     public ResumoConsolidadoContasResponse resumoConsolidado(

@@ -34,7 +34,7 @@ export async function parseArquivoExtrato(file, nomeBanco) {
   const pdf = arquivoExtratoEhPdf(file);
   const ofx = arquivoExtratoEhOfx(file);
   if (!pdf && !ofx) {
-    return { ok: false, message: 'Use arquivo .ofx (ou .qfx) ou .pdf (BTG, Sicoob, 99 Pay).' };
+    return { ok: false, message: 'Use arquivo .ofx (ou .qfx) ou .pdf (BTG, Bradesco, Sicoob, 99 Pay).' };
   }
 
   try {
@@ -42,7 +42,7 @@ export async function parseArquivoExtrato(file, nomeBanco) {
       if (!isInstituicaoExtratoPdfImport(nome)) {
         return {
           ok: false,
-          message: `Para ${nome}, use OFX. PDF disponível para BTG, Sicoob e 99 Pay.`,
+          message: `Para ${nome}, use OFX. PDF disponível para BTG, Bradesco, Sicoob e 99 Pay.`,
         };
       }
       const { rows, texto } = await carregarLancamentosDeExtratoPdf(file, nome);

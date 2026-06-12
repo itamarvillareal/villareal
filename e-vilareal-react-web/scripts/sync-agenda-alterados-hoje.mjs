@@ -62,6 +62,7 @@ function parseArgs(argv) {
     aplicar: false,
     verbose: false,
     dia: inicioDiaLocal(),
+    desdeDias: null,
     usuariosPasta: [...USUARIOS_AGENDA_PASTA],
     relatorio: null,
     login: process.env.VILAREAL_IMPORT_LOGIN || 'itamar',
@@ -72,13 +73,24 @@ function parseArgs(argv) {
       Math.max(1, Number(process.env.VILAREAL_IMPORT_CONCURRENCY || 8) || 8)
     ),
   };
+  let somenteUsuarioUsado = false;
   for (const a of argv) {
     if (a === '--aplicar') out.aplicar = true;
     else if (a === '--dry-run') out.aplicar = false;
     else if (a === '--verbose' || a === '-v') out.verbose = true;
     else if (a.startsWith('--base-agenda=')) out.baseAgenda = a.slice(14);
     else if (a.startsWith('--data=')) out.dia = parseDiaArg(a.slice(7));
-    else if (a.startsWith('--usuario-pasta=')) out.usuariosPasta.push(a.slice(16).trim());
+    else if (a.startsWith('--desde-dias=') || a.startsWith('--dias=')) {
+      const n = Number(a.slice(a.indexOf('=') + 1));
+      if (Number.isFinite(n) && n >= 1) out.desdeDias = Math.floor(n);
+    } else if (a.startsWith('--somente-usuario=')) {
+      // Substitui a lista padrão (que inclui as 3 pastas) na primeira ocorrência.
+      if (!somenteUsuarioUsado) {
+        out.usuariosPasta = [];
+        somenteUsuarioUsado = true;
+      }
+      out.usuariosPasta.push(a.slice(18).trim());
+    } else if (a.startsWith('--usuario-pasta=')) out.usuariosPasta.push(a.slice(16).trim());
     else if (a.startsWith('--relatorio=')) out.relatorio = a.slice(12);
     else if (a.startsWith('--login=')) out.login = a.slice(8);
     else if (a.startsWith('--senha=')) out.senha = a.slice(8);
@@ -101,15 +113,22 @@ async function main() {
 
   const fimDia = new Date(opts.dia);
   fimDia.setDate(fimDia.getDate() + 1);
-  const diaLabel = `${opts.dia.getFullYear()}-${String(opts.dia.getMonth() + 1).padStart(2, '0')}-${String(opts.dia.getDate()).padStart(2, '0')}`;
+  // Por defeito a janela é só o dia indicado; com --desde-dias=N abrange os N dias até hoje (inclusive).
+  const inicioDia = new Date(opts.dia);
+  if (opts.desdeDias && opts.desdeDias > 1) {
+    inicioDia.setDate(inicioDia.getDate() - (opts.desdeDias - 1));
+  }
+  const fmtDia = (dt) =>
+    `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+  const diaLabel = opts.desdeDias && opts.desdeDias > 1 ? `${fmtDia(inicioDia)} → ${fmtDia(opts.dia)}` : fmtDia(opts.dia);
 
   console.log('\n=== sync-agenda-alterados-hoje ===\n');
   console.log(`Base Agenda: ${opts.baseAgenda}`);
-  console.log(`Dia:         ${diaLabel} (fuso local)`);
+  console.log(`Janela:      ${diaLabel} (fuso local)`);
   console.log(`Modo:        ${opts.aplicar ? 'aplicar (POST/PUT)' : 'dry-run'}`);
   console.log(`Utilizadores: ${opts.usuariosPasta.join(', ')}\n`);
 
-  const scan = scanAgendaAlteradosNoDia(opts.baseAgenda, opts.dia, fimDia, opts.usuariosPasta);
+  const scan = scanAgendaAlteradosNoDia(opts.baseAgenda, inicioDia, fimDia, opts.usuariosPasta);
   const eventos = eventosFromScanAgenda(scan);
 
   console.log(`Ficheiros txt alterados: ${scan.todos.length}`);

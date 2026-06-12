@@ -5,15 +5,26 @@
 import { extrairTextoPdfDeArquivo } from '../data/publicacoesPdfExtract.js';
 import { rodarOcrPdfTodasPaginas } from '../services/documentOcrService.js';
 import { isInstituicaoBtgExtratoPdf, parseBtgPdfExtratoText, textoPareceTerLancamentosBtgApp } from './btgPdfExtrato.js';
+import {
+  isInstituicaoBradescoExtratoPdf,
+  parseBradescoPdfExtratoText,
+  textoPareceExtratoBradescoCelular,
+} from './bradescoPdfExtrato.js';
 import { isInstituicaoPay99ExtratoPdf, parsePay99PdfExtratoText } from './pay99PdfExtrato.js';
 import { isInstituicaoSicoobExtratoPdf, parseSicoobPdfExtratoText } from './sicoobPdfExtrato.js';
 
-export { isInstituicaoBtgExtratoPdf, isInstituicaoPay99ExtratoPdf, isInstituicaoSicoobExtratoPdf };
+export {
+  isInstituicaoBtgExtratoPdf,
+  isInstituicaoBradescoExtratoPdf,
+  isInstituicaoPay99ExtratoPdf,
+  isInstituicaoSicoobExtratoPdf,
+};
 
 /** Instituições cujo extrato oficial é importado por PDF (não OFX). */
 export function isInstituicaoExtratoPdfImport(nome) {
   return (
     isInstituicaoBtgExtratoPdf(nome) ||
+    isInstituicaoBradescoExtratoPdf(nome) ||
     isInstituicaoSicoobExtratoPdf(nome) ||
     isInstituicaoPay99ExtratoPdf(nome)
   );
@@ -21,6 +32,7 @@ export function isInstituicaoExtratoPdfImport(nome) {
 
 export function rotuloInstituicaoExtratoPdf(nome) {
   if (isInstituicaoBtgExtratoPdf(nome)) return 'BTG Pactual';
+  if (isInstituicaoBradescoExtratoPdf(nome)) return 'Bradesco Celular';
   if (isInstituicaoSicoobExtratoPdf(nome)) return 'Sicoob (SISBR)';
   if (isInstituicaoPay99ExtratoPdf(nome)) return '99 Pay';
   return 'PDF';
@@ -34,6 +46,9 @@ export function rotuloInstituicaoExtratoPdf(nome) {
 export function parseExtratoPdfText(textoBruto, nomeInstituicao) {
   if (isInstituicaoSicoobExtratoPdf(nomeInstituicao)) {
     return parseSicoobPdfExtratoText(textoBruto);
+  }
+  if (isInstituicaoBradescoExtratoPdf(nomeInstituicao)) {
+    return parseBradescoPdfExtratoText(textoBruto);
   }
   if (isInstituicaoBtgExtratoPdf(nomeInstituicao)) {
     return parseBtgPdfExtratoText(textoBruto);
@@ -63,6 +78,13 @@ export function mensagemFalhaExtratoPdf(textoBruto, nomeInstituicao) {
         `(saldo final R$ 0,00). Exporte no app BTG um extrato mensal ou anual com movimentação.`
       );
     }
+  }
+
+  if (isInstituicaoBradescoExtratoPdf(nomeInstituicao) && textoPareceExtratoBradescoCelular(texto)) {
+    return (
+      'Não foi possível extrair lançamentos do PDF Bradesco Celular. ' +
+      'Confira se o extrato tem movimentação no período (evite a folha «Extrato inexistente»).'
+    );
   }
 
   return `Não foi possível extrair lançamentos do PDF (${rotulo}).`;

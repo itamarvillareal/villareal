@@ -272,7 +272,7 @@ export function ExtratoImportModal({ open, onClose, bancoInicial = null, onSucce
                   </p>
                   <p className="text-xs text-slate-500 mt-1">ou clique para selecionar</p>
                   <p className="text-[11px] text-slate-400 mt-3">
-                    Formatos: .ofx (bancos em geral) · .pdf (BTG, Sicoob, 99 Pay)
+                    Formatos: .ofx (bancos em geral) · .pdf (BTG, Bradesco, Sicoob, 99 Pay)
                   </p>
                   {file ? (
                     <p className="mt-2 text-xs font-medium text-blue-700 dark:text-blue-300">{file.name}</p>

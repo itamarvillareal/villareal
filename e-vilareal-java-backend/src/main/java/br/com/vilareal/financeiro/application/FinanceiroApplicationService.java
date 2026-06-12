@@ -9,8 +9,10 @@ import br.com.vilareal.financeiro.domain.NaturezaLancamento;
 import br.com.vilareal.financeiro.infrastructure.persistence.LancamentoFinanceiroSpecifications;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.ContaContabilEntity;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.LancamentoFinanceiroEntity;
+import br.com.vilareal.financeiro.infrastructure.persistence.entity.SaldoInicialBancoEntity;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.ContaContabilRepository;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.LancamentoFinanceiroRepository;
+import br.com.vilareal.financeiro.infrastructure.persistence.repository.SaldoInicialBancoRepository;
 import br.com.vilareal.pessoa.application.ClienteResolverService;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
@@ -49,6 +51,7 @@ public class FinanceiroApplicationService {
 
     private final ContaContabilRepository contaContabilRepository;
     private final LancamentoFinanceiroRepository lancamentoRepository;
+    private final SaldoInicialBancoRepository saldoInicialRepository;
     private final PessoaRepository pessoaRepository;
     private final ProcessoRepository processoRepository;
     private final ClienteCodigoPessoaResolver clienteCodigoPessoaResolver;
@@ -58,6 +61,7 @@ public class FinanceiroApplicationService {
     public FinanceiroApplicationService(
             ContaContabilRepository contaContabilRepository,
             LancamentoFinanceiroRepository lancamentoRepository,
+            SaldoInicialBancoRepository saldoInicialRepository,
             PessoaRepository pessoaRepository,
             ProcessoRepository processoRepository,
             ClienteCodigoPessoaResolver clienteCodigoPessoaResolver,
@@ -65,6 +69,7 @@ public class FinanceiroApplicationService {
             @Lazy FinanceiroSaudeService financeiroSaudeService) {
         this.contaContabilRepository = contaContabilRepository;
         this.lancamentoRepository = lancamentoRepository;
+        this.saldoInicialRepository = saldoInicialRepository;
         this.pessoaRepository = pessoaRepository;
         this.processoRepository = processoRepository;
         this.clienteCodigoPessoaResolver = clienteCodigoPessoaResolver;
@@ -218,18 +223,37 @@ public class FinanceiroApplicationService {
         if (dataReferencia != null) {
             var saldoAte = lancamentoRepository.sumSaldoAssinadoPorNumeroBancoAteData(numeroBanco, dataReferencia);
             var movDia = lancamentoRepository.sumSaldoAssinadoPorNumeroBancoNoDia(numeroBanco, dataReferencia);
+            var abertura = saldoAberturaAplicavel(numeroBanco, dataReferencia);
             r.setDataReferencia(dataReferencia);
-            r.setSaldo(saldoAte != null ? saldoAte : java.math.BigDecimal.ZERO);
+            r.setSaldoInicial(abertura);
+            r.setSaldo((saldoAte != null ? saldoAte : java.math.BigDecimal.ZERO).add(abertura));
             r.setLancamentosAteData(lancamentoRepository.countByNumeroBancoAteData(numeroBanco, dataReferencia));
             r.setMovimentoNoDia(movDia != null ? movDia : java.math.BigDecimal.ZERO);
             r.setLancamentosNoDia(lancamentoRepository.countByNumeroBancoNoDia(numeroBanco, dataReferencia));
             r.setTotalLancamentos(lancamentoRepository.countByNumeroBanco(numeroBanco));
         } else {
             var saldo = lancamentoRepository.sumSaldoAssinadoPorNumeroBanco(numeroBanco);
-            r.setSaldo(saldo != null ? saldo : java.math.BigDecimal.ZERO);
+            var abertura = saldoAberturaAplicavel(numeroBanco, null);
+            r.setSaldoInicial(abertura);
+            r.setSaldo((saldo != null ? saldo : java.math.BigDecimal.ZERO).add(abertura));
             r.setTotalLancamentos(lancamentoRepository.countByNumeroBanco(numeroBanco));
         }
         return r;
+    }
+
+    /**
+     * Saldo de abertura aplicável ao cálculo: o valor informado para o banco quando a data de
+     * referência do cálculo for {@code null} (saldo total) ou não anterior à
+     * {@code dataReferencia} do saldo inicial. Caso contrário, zero.
+     */
+    private java.math.BigDecimal saldoAberturaAplicavel(Integer numeroBanco, LocalDate dataAte) {
+        if (numeroBanco == null) {
+            return java.math.BigDecimal.ZERO;
+        }
+        return saldoInicialRepository.findById(numeroBanco)
+                .filter(s -> dataAte == null || !dataAte.isBefore(s.getDataReferencia()))
+                .map(SaldoInicialBancoEntity::getValor)
+                .orElse(java.math.BigDecimal.ZERO);
     }
 
     @Transactional(readOnly = true)
@@ -243,11 +267,13 @@ public class FinanceiroApplicationService {
         var inicioMes = java.time.LocalDate.of(ano, mes, 1);
         var fimMes = inicioMes.withDayOfMonth(inicioMes.lengthOfMonth());
 
+        var inicioMesVespera = inicioMes.minusDays(1);
         var saldoInicial = lancamentoRepository.sumSaldoAssinadoPorNumeroBancoAteData(
-                numeroBanco, inicioMes.minusDays(1));
+                numeroBanco, inicioMesVespera);
         if (saldoInicial == null) {
             saldoInicial = java.math.BigDecimal.ZERO;
         }
+        saldoInicial = saldoInicial.add(saldoAberturaAplicavel(numeroBanco, inicioMesVespera));
 
         var movPorDia = new java.util.HashMap<java.time.LocalDate, java.math.BigDecimal>();
         var countPorDia = new java.util.HashMap<java.time.LocalDate, Long>();
@@ -281,6 +307,58 @@ public class FinanceiroApplicationService {
         resp.setSaldoInicial(saldoInicial);
         resp.setDias(dias);
         return resp;
+    }
+
+    @Transactional(readOnly = true)
+    public SaldoInicialBancoResponse obterSaldoInicial(Integer numeroBanco) {
+        if (numeroBanco == null) {
+            throw new BusinessRuleException("numeroBanco é obrigatório.");
+        }
+        return saldoInicialRepository.findById(numeroBanco)
+                .map(this::toSaldoInicialResponse)
+                .orElse(null);
+    }
+
+    @Transactional
+    public SaldoInicialBancoResponse salvarSaldoInicial(SaldoInicialBancoWriteRequest req) {
+        if (req == null || req.getNumeroBanco() == null) {
+            throw new BusinessRuleException("numeroBanco é obrigatório.");
+        }
+        if (req.getDataReferencia() == null) {
+            throw new BusinessRuleException("dataReferencia é obrigatória.");
+        }
+        if (req.getValor() == null) {
+            throw new BusinessRuleException("valor é obrigatório.");
+        }
+        var entity = saldoInicialRepository.findById(req.getNumeroBanco())
+                .orElseGet(SaldoInicialBancoEntity::new);
+        entity.setNumeroBanco(req.getNumeroBanco());
+        entity.setBancoNome(StringUtils.hasText(req.getBancoNome()) ? req.getBancoNome().trim() : null);
+        entity.setDataReferencia(req.getDataReferencia());
+        entity.setValor(req.getValor());
+        var salvo = saldoInicialRepository.save(entity);
+        invalidarCacheSaude();
+        return toSaldoInicialResponse(salvo);
+    }
+
+    @Transactional
+    public void removerSaldoInicial(Integer numeroBanco) {
+        if (numeroBanco == null) {
+            throw new BusinessRuleException("numeroBanco é obrigatório.");
+        }
+        saldoInicialRepository.findById(numeroBanco).ifPresent(s -> {
+            saldoInicialRepository.delete(s);
+            invalidarCacheSaude();
+        });
+    }
+
+    private SaldoInicialBancoResponse toSaldoInicialResponse(SaldoInicialBancoEntity e) {
+        var r = new SaldoInicialBancoResponse();
+        r.setNumeroBanco(e.getNumeroBanco());
+        r.setBancoNome(e.getBancoNome());
+        r.setDataReferencia(e.getDataReferencia());
+        r.setValor(e.getValor());
+        return r;
     }
 
     private static java.time.LocalDate toLocalDate(Object raw) {
