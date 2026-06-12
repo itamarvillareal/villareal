@@ -36,6 +36,12 @@ public class PjeBrowserProperties {
     /** Persistência opcional de sessão Playwright (storageState JSON por grau+login). */
     private String storageStateDir = System.getProperty("java.io.tmpdir") + "/pje-storage-state";
 
+    /**
+     * Proxy SOCKS5/HTTP do Chromium (ex.: {@code socks5://100.x.x.x:1080}).
+     * Vazio = tráfego direto do host do container.
+     */
+    private String proxy = "";
+
     public boolean isEnabled() {
         return enabled;
     }
@@ -110,5 +116,13 @@ public class PjeBrowserProperties {
 
     public Path storageStateDirPath() {
         return Path.of(storageStateDir);
+    }
+
+    public String getProxy() {
+        return proxy;
+    }
+
+    public void setProxy(String proxy) {
+        this.proxy = proxy;
     }
 }
