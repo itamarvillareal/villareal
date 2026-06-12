@@ -154,7 +154,9 @@ function extrairDescricaoEValorBtg(rest) {
 
   let descricao = rest.slice(0, firstAmtIdx).trim().replace(RE_HORA_BTG, '').replace(/\s+/g, ' ');
   if (!descricao || descricao.length < 3) return null;
-  if (/^saldo\s+(inicial|di[aá]rio)/i.test(descricao)) return null;
+  // Linhas de saldo (Inicial, Final, Diário, Anterior…) não são movimentos: descartar.
+  // Caso contrário o "Saldo Final" do extrato vira um lançamento com o valor do saldo de fechamento.
+  if (/^saldo\b/i.test(descricao)) return null;
   if (/^total\s+de\s+/i.test(descricao)) return null;
   if (/^data\s+e\s+hora\s+categoria/i.test(descricao)) return null;
 
@@ -186,7 +188,7 @@ export function parseBtgPdfExtratoText(textoBruto) {
     const line = raw.trim();
     if (!line) continue;
     if (RE_EXCLUIR_LINHA.test(line)) continue;
-    if (/^Movimentação|^Data\s+Descrição|^Data\s+e\s+hora|^Saldo Inicial|^Total de |^SAC\s|^Ouvidoria|^sac@|^ouvidoria@/i.test(line)) {
+    if (/^Movimentação|^Data\s+Descrição|^Data\s+e\s+hora|^Saldo\b|^Total de |^SAC\s|^Ouvidoria|^sac@|^ouvidoria@/i.test(line)) {
       continue;
     }
     const m = line.match(RE_LINHA_DATA);

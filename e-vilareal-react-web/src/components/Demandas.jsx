@@ -20,13 +20,32 @@ import {
   labelCategoria,
   labelStatus,
 } from './demandas/demandasConstants.js';
+import { imovelCorrespondeBusca, textoCorrespondeBusca } from './imoveis/imovelBusca.js';
 
 function labelImovelDemanda(im) {
   const titulo = String(im?.titulo ?? '').trim();
   if (titulo) return titulo;
+  const cond = String(im?.condominio ?? '').trim();
+  if (cond) return cond;
   const resumo = unidadeResumoCabecalho(im?.unidade, im?.condominio);
   if (resumo !== 'Unidade não informada') return resumo;
+  const np = im?.numeroPlanilha;
+  if (np != null && Number.isFinite(Number(np))) return `Imóvel #${np}`;
   return `Imóvel ${im?.id ?? '—'}`;
+}
+
+function demandaCorrespondeBuscaLocal(d, busca, imovelById) {
+  const q = String(busca ?? '').trim();
+  if (!q) return true;
+  const im = imovelById.get(Number(d?.imovelId));
+  return (
+    textoCorrespondeBusca(d?.descricao, q) ||
+    textoCorrespondeBusca(d?.fornecedorTexto, q) ||
+    textoCorrespondeBusca(d?.categoria, q) ||
+    textoCorrespondeBusca(d?.imovelTitulo, q) ||
+    textoCorrespondeBusca(d?.imovelEndereco, q) ||
+    (im != null && imovelCorrespondeBusca(im, q))
+  );
 }
 
 function fmtData(iso) {
@@ -64,9 +83,18 @@ export function Demandas() {
         fetchMetricasDemandas({ imovelId: filtroImovel || undefined }),
         listarImoveisApi(),
       ]);
-      setDemandas(Array.isArray(list) ? list : []);
+      const imoveisLista = Array.isArray(imv) ? imv : [];
+      const imovelById = new Map(imoveisLista.map((im) => [Number(im.id), im]));
+      const buscaTrim = busca.trim();
+      const listFiltrada =
+        buscaTrim && Array.isArray(list)
+          ? list.filter((d) => demandaCorrespondeBuscaLocal(d, buscaTrim, imovelById))
+          : Array.isArray(list)
+            ? list
+            : [];
+      setDemandas(listFiltrada);
       setMetricas(met);
-      setImoveis(Array.isArray(imv) ? imv : []);
+      setImoveis(imoveisLista);
     } catch (e) {
       console.error(e);
       setDemandas([]);
@@ -78,6 +106,18 @@ export function Demandas() {
   useEffect(() => {
     carregar();
   }, [carregar]);
+
+  const imoveisFiltradosDropdown = useMemo(() => {
+    const q = busca.trim();
+    if (!q) return imoveis;
+    return imoveis.filter((im) => imovelCorrespondeBusca(im, q));
+  }, [imoveis, busca]);
+
+  const imoveisSugeridosBusca = useMemo(() => {
+    const q = busca.trim();
+    if (!q) return [];
+    return imoveis.filter((im) => imovelCorrespondeBusca(im, q)).slice(0, 8);
+  }, [imoveis, busca]);
 
   const cardsFiltrados = useMemo(() => demandas, [demandas]);
 
@@ -113,7 +153,7 @@ export function Demandas() {
             <span className="text-slate-500 block mb-1">Imóvel</span>
             <select className={imoveisInputClass} value={filtroImovel} onChange={(e) => setFiltroImovel(e.target.value)}>
               <option value="">Todos os imóveis</option>
-              {imoveis.map((im) => (
+              {imoveisFiltradosDropdown.map((im) => (
                 <option key={im.id} value={im.id}>
                   {labelImovelDemanda(im)}
                 </option>
@@ -155,7 +195,35 @@ export function Demandas() {
         {loading ? (
           <p className="text-center text-slate-500 py-12">Carregando…</p>
         ) : cardsFiltrados.length === 0 ? (
-          <p className="text-center text-slate-500 py-12">Nenhuma demanda encontrada.</p>
+          <div className="text-center py-12 space-y-3">
+            <p className="text-slate-500">Nenhuma demanda encontrada.</p>
+            {busca.trim() && imoveisSugeridosBusca.length > 0 ? (
+              <div className="max-w-lg mx-auto text-left rounded-xl border border-slate-200 dark:border-white/10 bg-white/80 dark:bg-[#141c2c]/80 p-4">
+                <p className="text-sm text-slate-600 dark:text-slate-400 mb-2">
+                  Imóveis com «{busca.trim()}» no condomínio, unidade ou endereço:
+                </p>
+                <ul className="space-y-1">
+                  {imoveisSugeridosBusca.map((im) => (
+                    <li key={im.id}>
+                      <button
+                        type="button"
+                        className="text-sm text-violet-700 dark:text-violet-300 hover:underline"
+                        onClick={() => {
+                          setFiltroImovel(String(im.id));
+                          setBusca('');
+                        }}
+                      >
+                        {labelImovelDemanda(im)}
+                        {im.condominio?.trim() && im.unidade?.trim()
+                          ? ` — ${im.unidade}`
+                          : null}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </div>
         ) : (
           <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
             {cardsFiltrados.map((d) => (

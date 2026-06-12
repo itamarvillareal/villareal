@@ -95,6 +95,34 @@ Saldo Inicial 0,00
     expect(rows[1].descricao).toContain('Pix enviado');
   });
 
+  it('ignora "Saldo Final" e não cria lançamento com o saldo de fechamento', () => {
+    const bloco = `
+Movimentação - Conta Corrente
+Saldo Inicial 0,00
+30/12/2025 ENVIO TRANSFERÊNCIA - Itamar Alexandre Felix Villa 605.700,00 0,00 15.044.745,73
+01/01/2026 Saldo Final 15.044.745,73
+Total de Créditos 4.877.944,33
+`;
+    const rows = parseBtgPdfExtratoText(bloco);
+    expect(rows.length).toBe(1);
+    expect(rows[0].data).toBe('30/12/2025');
+    expect(rows[0].valor).toBeCloseTo(-605700, 2);
+    // O saldo de fechamento (~15 mi) não pode virar um lançamento.
+    expect(rows.some((r) => /saldo\s+final/i.test(String(r.descricao)))).toBe(false);
+    expect(rows.some((r) => Math.abs(Number(r.valor) - 15044745.73) < 0.01)).toBe(false);
+  });
+
+  it('descarta linha de Saldo Final mesmo com prefixo de data (vira movimento fantasma)', () => {
+    const bloco = `
+05/01/2026 TED ENVIADA - Itamar 1.234,56 0,00 8.765,44
+06/01/2026 Saldo Final 8.765,44
+`;
+    const rows = parseBtgPdfExtratoText(bloco);
+    expect(rows.length).toBe(1);
+    expect(rows[0].descricao).toContain('TED ENVIADA');
+    expect(rows.some((r) => /saldo/i.test(String(r.descricao)))).toBe(false);
+  });
+
   it('mescla linha seguinte quando o pdf.js coloca só os valores na linha de baixo', () => {
     const bloco = `
 05/01/2026 TED ENVIADA - Itamar Alexandre Felix Villa Real
