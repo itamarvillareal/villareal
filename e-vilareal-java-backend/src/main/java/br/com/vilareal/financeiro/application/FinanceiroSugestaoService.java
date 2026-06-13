@@ -308,7 +308,7 @@ public class FinanceiroSugestaoService {
             return List.of();
         }
         List<Object[]> rows = lancamentoRepository.contarContaPorDescricaoHistorico(
-                lancamento.getNumeroBanco(), descricao.trim());
+                lancamento.getNumeroBanco(), DescricaoNormalizer.normalizar(descricao));
         List<SugestaoClassificacaoResponse> out = new ArrayList<>();
         for (Object[] row : rows) {
             Long contaId = ((Number) row[0]).longValue();
@@ -340,7 +340,7 @@ public class FinanceiroSugestaoService {
 
         List<LancamentoFinanceiroEntity> candidatos = lancamentoRepository.findRecorrenciaCandidatos(
                 lancamento.getNumeroBanco(),
-                lancamento.getDescricao().trim(),
+                DescricaoNormalizer.normalizar(lancamento.getDescricao()),
                 valorMin,
                 valorMax,
                 anoMes);

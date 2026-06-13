@@ -136,14 +136,14 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
             FROM financeiro_lancamento
             WHERE etapa != 'IMPORTADO'
               AND (:numeroBanco IS NULL OR numero_banco = :numeroBanco)
-              AND UPPER(descricao) = UPPER(:descricao)
+              AND descricao_norm = :descricaoNorm
             GROUP BY conta_contabil_id
             ORDER BY total DESC
             LIMIT 3
             """, nativeQuery = true)
     List<Object[]> contarContaPorDescricaoHistorico(
             @Param("numeroBanco") Integer numeroBanco,
-            @Param("descricao") String descricao);
+            @Param("descricaoNorm") String descricaoNorm);
 
     @Query("""
             SELECT l FROM LancamentoFinanceiroEntity l
@@ -153,14 +153,14 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
             LEFT JOIN FETCH l.processo
             WHERE l.etapa <> br.com.vilareal.financeiro.domain.EtapaLancamento.IMPORTADO
               AND l.numeroBanco = :numeroBanco
-              AND UPPER(l.descricao) = UPPER(:descricao)
+              AND l.descricaoNorm = :descricaoNorm
               AND l.valor BETWEEN :valorMin AND :valorMax
               AND (YEAR(l.dataLancamento) * 100 + MONTH(l.dataLancamento)) <> :anoMes
             ORDER BY l.dataLancamento DESC
             """)
     List<LancamentoFinanceiroEntity> findRecorrenciaCandidatos(
             @Param("numeroBanco") Integer numeroBanco,
-            @Param("descricao") String descricao,
+            @Param("descricaoNorm") String descricaoNorm,
             @Param("valorMin") java.math.BigDecimal valorMin,
             @Param("valorMax") java.math.BigDecimal valorMax,
             @Param("anoMes") int anoMes);
@@ -389,5 +389,21 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
             @Param("debito") NaturezaLancamento debito,
             @Param("inicio") LocalDate inicio,
             @Param("fim") LocalDate fim,
+            @Param("numeroBanco") Integer numeroBanco);
+
+    List<LancamentoFinanceiroEntity> findByDescricaoNormIsNull(Pageable pageable);
+
+    long countByDescricaoNormIsNull();
+
+    @Query("""
+            SELECT l FROM LancamentoFinanceiroEntity l
+            WHERE l.etapa = br.com.vilareal.financeiro.domain.EtapaLancamento.IMPORTADO
+              AND l.status = 'ATIVO'
+              AND l.descricaoNorm = :descricaoNorm
+              AND l.numeroBanco = :numeroBanco
+            ORDER BY l.id
+            """)
+    List<LancamentoFinanceiroEntity> findPendentesPorPadrao(
+            @Param("descricaoNorm") String descricaoNorm,
             @Param("numeroBanco") Integer numeroBanco);
 }
