@@ -1,6 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { mesAtualIso, periodoParaQueryApi } from '../shared/periodoFinanceiro.js';
+import {
+  LETRAS_MODO_INCLUIR,
+  letrasParaQueryApi,
+  normalizarLetrasFiltro,
+  parseLetrasFiltroParam,
+} from '../extrato/extratoLetrasFiltro.js';
+import {
+  CADASTRO_TODOS,
+  cadastroParaQueryApi,
+  parseCadastroFiltroParam,
+} from '../extrato/extratoCadastroFiltro.js';
 
 const DEBOUNCE_MS = 300;
 
@@ -52,6 +63,7 @@ function readTipoDiaParam(params) {
 }
 
 function readFilters(params) {
+  const { letras, letrasModo } = parseLetrasFiltroParam(params);
   return {
     banco: parseBancoParam(params),
     lancamento: parseLancamentoParam(params),
@@ -59,8 +71,11 @@ function readFilters(params) {
     tipoPar: readTipoParParam(params),
     tipoDia: readTipoDiaParam(params),
     letraSugestao: readLetraSugestaoParam(params),
+    letras,
+    letrasModo,
+    cadastro: parseCadastroFiltroParam(params),
     etapa: params.get('etapa') || null,
-    contaCodigo: params.get('conta') || null,
+    contaCodigo: null,
     busca: params.get('busca') || '',
     semClienteId: params.get('semCliente') === '1',
     semGrupoCompensacao: params.get('semGrupo') === '1',
@@ -91,8 +106,20 @@ function writeFilters(params, f) {
     'letraSugestao',
     f.letraSugestao && f.letraSugestao !== LETRA_SUGESTAO_TODAS ? f.letraSugestao : null,
   );
+  setOrDel(
+    'letras',
+    f.letras?.length ? f.letras.join(',') : null,
+  );
+  setOrDel(
+    'letrasModo',
+    f.letrasModo && f.letrasModo !== LETRAS_MODO_INCLUIR && f.letras?.length ? f.letrasModo : null,
+  );
+  next.delete('conta');
+  setOrDel(
+    'cadastro',
+    f.cadastro && f.cadastro !== CADASTRO_TODOS ? f.cadastro : null,
+  );
   setOrDel('etapa', f.etapa);
-  setOrDel('conta', f.contaCodigo);
   setOrDel('busca', f.busca);
   setOrDel('semCliente', f.semClienteId ? '1' : null);
   setOrDel('semGrupo', f.semGrupoCompensacao ? '1' : null);
@@ -167,6 +194,8 @@ export function useExtratoFilters() {
     const periodo = periodoParaQueryApi(filters.mes);
     const busca = String(debouncedBusca ?? '').trim();
     const buscaPendente = busca !== String(filters.busca ?? '').trim();
+    const letrasQuery = letrasParaQueryApi(filters);
+    const cadastroQuery = cadastroParaQueryApi(filters.cadastro);
     return {
       numeroBanco: Number.isFinite(filters.banco) ? filters.banco : undefined,
       ...periodo,
@@ -174,6 +203,8 @@ export function useExtratoFilters() {
       busca: busca || undefined,
       semClienteId: filters.semClienteId || undefined,
       semGrupoCompensacao: filters.semGrupoCompensacao || undefined,
+      ...letrasQuery,
+      ...cadastroQuery,
       page: buscaPendente ? 0 : filters.page,
       size: filters.size,
       sort: filters.sort,
@@ -183,6 +214,9 @@ export function useExtratoFilters() {
     filters.mes,
     filters.etapa,
     filters.busca,
+    filters.letras,
+    filters.letrasModo,
+    filters.cadastro,
     debouncedBusca,
     filters.semClienteId,
     filters.semGrupoCompensacao,
@@ -207,7 +241,28 @@ export function useExtratoFilters() {
     [syncUrl],
   );
   const setEtapa = useCallback((etapa) => syncUrl({ etapa, resetPage: true }), [syncUrl]);
-  const setContaCodigo = useCallback((contaCodigo) => syncUrl({ contaCodigo, resetPage: true }), [syncUrl]);
+  const setCadastroFiltro = useCallback(
+    (cadastro) => syncUrl({ cadastro: cadastro || CADASTRO_TODOS, resetPage: true }),
+    [syncUrl],
+  );
+  const setContaCodigo = useCallback(
+    (contaCodigo) =>
+      syncUrl({
+        letras: contaCodigo ? normalizarLetrasFiltro([contaCodigo]) : [],
+        letrasModo: LETRAS_MODO_INCLUIR,
+        resetPage: true,
+      }),
+    [syncUrl],
+  );
+  const setLetrasFiltro = useCallback(
+    (letras, letrasModo = LETRAS_MODO_INCLUIR) =>
+      syncUrl({
+        letras: normalizarLetrasFiltro(letras),
+        letrasModo: letrasModo || LETRAS_MODO_INCLUIR,
+        resetPage: true,
+      }),
+    [syncUrl],
+  );
   const setBusca = useCallback((busca) => setBuscaDraft(busca ?? ''), []);
   const setSemClienteId = useCallback(
     (semClienteId) => syncUrl({ semClienteId, resetPage: true }),
@@ -237,6 +292,8 @@ export function useExtratoFilters() {
     setLetraSugestao,
     setEtapa,
     setContaCodigo,
+    setLetrasFiltro,
+    setCadastroFiltro,
     setBusca,
     setSemClienteId,
     setSemGrupoCompensacao,

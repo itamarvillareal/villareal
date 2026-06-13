@@ -1,6 +1,7 @@
 package br.com.vilareal.financeiro.infrastructure.persistence;
 
 import br.com.vilareal.financeiro.domain.EtapaLancamento;
+import br.com.vilareal.financeiro.domain.FinanceiroCadastroPlenitude;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.LancamentoFinanceiroEntity;
 import jakarta.persistence.criteria.JoinType;
 import org.springframework.data.jpa.domain.Specification;
@@ -9,7 +10,9 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 
 public final class LancamentoFinanceiroSpecifications {
@@ -51,8 +54,78 @@ public final class LancamentoFinanceiroSpecifications {
             Boolean semGrupoCompensacao,
             Integer ano,
             Integer mes) {
+        return comFiltros(
+                clienteId,
+                processoId,
+                contaContabilId,
+                dataInicio,
+                dataFim,
+                etapa,
+                numeroBanco,
+                busca,
+                semClienteId,
+                semGrupoCompensacao,
+                ano,
+                mes,
+                List.of(),
+                false,
+                null);
+    }
+
+    public static Specification<LancamentoFinanceiroEntity> comFiltros(
+            Long clienteId,
+            Long processoId,
+            Long contaContabilId,
+            LocalDate dataInicio,
+            LocalDate dataFim,
+            EtapaLancamento etapa,
+            Integer numeroBanco,
+            String busca,
+            Boolean semClienteId,
+            Boolean semGrupoCompensacao,
+            Integer ano,
+            Integer mes,
+            List<String> contaCodigos,
+            boolean excluirContaCodigos) {
+        return comFiltros(
+                clienteId,
+                processoId,
+                contaContabilId,
+                dataInicio,
+                dataFim,
+                etapa,
+                numeroBanco,
+                busca,
+                semClienteId,
+                semGrupoCompensacao,
+                ano,
+                mes,
+                contaCodigos,
+                excluirContaCodigos,
+                null);
+    }
+
+    public static Specification<LancamentoFinanceiroEntity> comFiltros(
+            Long clienteId,
+            Long processoId,
+            Long contaContabilId,
+            LocalDate dataInicio,
+            LocalDate dataFim,
+            EtapaLancamento etapa,
+            Integer numeroBanco,
+            String busca,
+            Boolean semClienteId,
+            Boolean semGrupoCompensacao,
+            Integer ano,
+            Integer mes,
+            List<String> contaCodigos,
+            boolean excluirContaCodigos,
+            String cadastroPlenitude) {
         Specification<LancamentoFinanceiroEntity> spec = comFiltrosBase(
                 clienteId, processoId, contaContabilId, dataInicio, dataFim);
+        if (contaCodigos != null && !contaCodigos.isEmpty()) {
+            spec = spec.and(comContaCodigos(contaCodigos, excluirContaCodigos));
+        }
         if (etapa != null) {
             spec = spec.and(comEtapa(etapa));
         }
@@ -73,7 +146,98 @@ public final class LancamentoFinanceiroSpecifications {
         } else if (ano != null) {
             spec = spec.and(comAno(ano));
         }
+        spec = spec.and(comCadastroPlenitude(cadastroPlenitude));
         return spec;
+    }
+
+    /** Ex.: {@code A,E,F} — letras de conta contábil para filtro do extrato. */
+    public static List<String> parseContaCodigosParam(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return List.of();
+        }
+        return Arrays.stream(raw.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .map(s -> s.toUpperCase(Locale.ROOT))
+                .distinct()
+                .toList();
+    }
+
+    public static Specification<LancamentoFinanceiroEntity> comContaCodigos(
+            List<String> contaCodigos, boolean excluir) {
+        return (root, query, cb) -> {
+            if (contaCodigos == null || contaCodigos.isEmpty()) {
+                return null;
+            }
+            var j = root.join("contaContabil", JoinType.INNER);
+            var upperCodigos = contaCodigos.stream()
+                    .map(s -> s.toUpperCase(Locale.ROOT))
+                    .toList();
+            var inPred = cb.upper(j.get("codigo")).in(upperCodigos);
+            return excluir ? cb.not(inPred) : inPred;
+        };
+    }
+
+    /**
+     * Cadastro pleno: conta definida (≠ N) e vínculos secundários exigidos preenchidos.
+     * A → cliente + processo; E → grupo de compensação; demais contas → só a letra.
+     */
+    public static Specification<LancamentoFinanceiroEntity> comCadastroPleno() {
+        return (root, query, cb) -> {
+            var conta = root.join("contaContabil", JoinType.INNER);
+            var codigo = cb.upper(conta.get("codigo"));
+            var notN = cb.notEqual(codigo, "N");
+
+            var aPleno = cb.and(
+                    cb.equal(codigo, "A"),
+                    cb.isNotNull(root.get("clienteEntidade")),
+                    cb.isNotNull(root.get("processo")));
+
+            var ePleno = cb.and(
+                    cb.equal(codigo, "E"),
+                    cb.isNotNull(root.get("grupoCompensacao")),
+                    cb.notEqual(root.get("grupoCompensacao"), ""));
+
+            var demaisPleno = cb.and(
+                    cb.notEqual(codigo, "N"),
+                    cb.notEqual(codigo, "A"),
+                    cb.notEqual(codigo, "E"));
+
+            return cb.and(notN, cb.or(aPleno, ePleno, demaisPleno));
+        };
+    }
+
+    /** Cadastro parcial: conta A ou E (ou outra com exigência) sem vínculo secundário completo. */
+    public static Specification<LancamentoFinanceiroEntity> comCadastroParcial() {
+        return (root, query, cb) -> {
+            var conta = root.join("contaContabil", JoinType.INNER);
+            var codigo = cb.upper(conta.get("codigo"));
+
+            var aParcial = cb.and(
+                    cb.equal(codigo, "A"),
+                    cb.or(
+                            cb.isNull(root.get("clienteEntidade")),
+                            cb.isNull(root.get("processo"))));
+
+            var eParcial = cb.and(
+                    cb.equal(codigo, "E"),
+                    cb.or(
+                            cb.isNull(root.get("grupoCompensacao")),
+                            cb.equal(root.get("grupoCompensacao"), "")));
+
+            return cb.or(aParcial, eParcial);
+        };
+    }
+
+    public static Specification<LancamentoFinanceiroEntity> comCadastroPlenitude(String plenitude) {
+        String modo = FinanceiroCadastroPlenitude.normalizarFiltro(plenitude);
+        if (FinanceiroCadastroPlenitude.PLENO.equals(modo)) {
+            return comCadastroPleno();
+        }
+        if (FinanceiroCadastroPlenitude.PARCIAL.equals(modo)) {
+            return comCadastroParcial();
+        }
+        return (root, query, cb) -> null;
     }
 
     private static Specification<LancamentoFinanceiroEntity> comFiltrosBase(

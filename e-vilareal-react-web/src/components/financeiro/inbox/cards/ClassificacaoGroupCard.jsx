@@ -1,4 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { navegarExtratoLancamento } from '../../extrato/extratoDeepLink.js';
 import { Check, ChevronDown, ChevronUp, Pencil, RefreshCw, SkipForward } from 'lucide-react';
 import { ContaBadge } from '../../shared/ContaBadge.jsx';
 import {
@@ -58,6 +60,14 @@ export function ClassificacaoGroupCard({
   const handleRefatorar = () => {
     onRefatorar?.(lancamentos.map((l) => l.id));
   };
+
+  const navigate = useNavigate();
+  const abrirExtrato = useCallback(
+    (l) => {
+      navegarExtratoLancamento(navigate, l);
+    },
+    [navigate],
+  );
 
   if (modoRevisar) {
     return (
@@ -149,7 +159,9 @@ export function ClassificacaoGroupCard({
               {listaExibida.map((l) => (
                 <tr
                   key={l.id}
-                  className="border-b border-slate-100 dark:border-slate-800 last:border-0"
+                  className="border-b border-slate-100 dark:border-slate-800 last:border-0 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                  onDoubleClick={() => abrirExtrato(l)}
+                  title="Duplo clique: abrir extrato do banco neste lançamento"
                 >
                   <td className="px-2 py-1.5 text-slate-600 dark:text-slate-300 tabular-nums whitespace-nowrap">
                     {l.dataExibicao}

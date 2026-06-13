@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { navegarExtratoLancamento } from '../../extrato/extratoDeepLink.js';
 import { Check, Pencil, RefreshCw, SkipForward } from 'lucide-react';
 import { ContaBadge } from '../../shared/ContaBadge.jsx';
 import {
@@ -76,6 +77,10 @@ export function ClassificacaoCard({
     });
   };
 
+  const abrirExtrato = useCallback(() => {
+    navegarExtratoLancamento(navigate, lancamento);
+  }, [navigate, lancamento]);
+
   return (
     <article
       className={`rounded-lg border border-[var(--color-border-tertiary,#e2e8f0)] dark:border-slate-700 px-4 py-3 mb-2 bg-white dark:bg-slate-900 hover:shadow-sm transition-all duration-300 ${borderLeft} ${
@@ -92,7 +97,11 @@ export function ClassificacaoCard({
             className="rounded border-slate-300"
           />
         </label>
-        <div className="flex-1 min-w-0">
+        <div
+          className="flex-1 min-w-0 cursor-pointer rounded-md -mx-1 px-1 hover:bg-slate-50 dark:hover:bg-slate-800/50"
+          onDoubleClick={abrirExtrato}
+          title="Duplo clique: abrir extrato do banco neste lançamento"
+        >
           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
             <span className="text-sm text-slate-700 dark:text-slate-200 tabular-nums">
               {lancamento.dataExibicao}

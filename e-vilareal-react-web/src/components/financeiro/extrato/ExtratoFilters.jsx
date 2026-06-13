@@ -6,8 +6,15 @@ import { FilterTag } from '../shared/FilterTag.jsx';
 import { LimparContaDialog } from '../shared/LimparContaDialog.jsx';
 import { SaldoInicialDialog } from '../shared/SaldoInicialDialog.jsx';
 import { formatDataCurta, formatMoeda } from '../shared/financeiroFormat.js';
-import { ETAPAS, nomeContaPorLetra } from '../constants/financeiroConstants.js';
+import { ETAPAS } from '../constants/financeiroConstants.js';
 import { FINANCEIRO_REFRESH_PENDENTES } from '../hooks/useKeyboardShortcuts.js';
+import { LetrasFiltroExtrato } from './LetrasFiltroExtrato.jsx';
+import {
+  CADASTRO_PARCIAL,
+  CADASTRO_PLENO,
+  CADASTRO_TODOS,
+  rotuloCadastroFiltro,
+} from './extratoCadastroFiltro.js';
 
 export function ExtratoFilters({
   totalNaPagina = 0,
@@ -19,7 +26,8 @@ export function ExtratoFilters({
     filters,
     setMes,
     setEtapa,
-    setContaCodigo,
+    setLetrasFiltro,
+    setCadastroFiltro,
     setBusca,
     setSemClienteId,
     setSemGrupoCompensacao,
@@ -72,14 +80,27 @@ export function ExtratoFilters({
         </button>
       )}
 
-      {filters.contaCodigo ? (
-        <FilterTag
-          label={`Conta: ${filters.contaCodigo}`}
-          contaCodigo={filters.contaCodigo}
-          onRemove={() => setContaCodigo(null)}
-          title={nomeContaPorLetra(filters.contaCodigo)}
-        />
-      ) : null}
+      <LetrasFiltroExtrato
+        letras={filters.letras ?? []}
+        letrasModo={filters.letrasModo ?? 'incluir'}
+        onChange={setLetrasFiltro}
+      />
+
+      <select
+        value={filters.cadastro ?? CADASTRO_TODOS}
+        onChange={(e) => setCadastroFiltro(e.target.value)}
+        className={`text-xs px-2 py-0.5 rounded-md border shrink-0 ${
+          filters.cadastro && filters.cadastro !== CADASTRO_TODOS
+            ? 'border-violet-300 bg-violet-50 text-violet-900 dark:bg-violet-950/50 dark:border-violet-700 dark:text-violet-200'
+            : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 bg-white dark:bg-slate-900'
+        }`}
+        aria-label="Filtrar cadastro pleno ou parcial"
+        title="Pleno = classificação completa; parcial = falta Cód./Proc. (A) ou grupo (E)"
+      >
+        <option value={CADASTRO_TODOS}>{rotuloCadastroFiltro(CADASTRO_TODOS)}: todos</option>
+        <option value={CADASTRO_PLENO}>{rotuloCadastroFiltro(CADASTRO_PLENO)}</option>
+        <option value={CADASTRO_PARCIAL}>{rotuloCadastroFiltro(CADASTRO_PARCIAL)}</option>
+      </select>
 
       {filters.semClienteId ? (
         <FilterTag label="Sem cliente" onRemove={() => setSemClienteId(false)} />

@@ -60,20 +60,7 @@ export function ExtratoPage() {
     [],
   );
 
-  const contaContabilIdFiltro = useMemo(() => {
-    if (!filters.contaCodigo) return undefined;
-    const cod = String(filters.contaCodigo).toUpperCase();
-    const hit = contasApi.find((c) => String(c.codigo ?? '').toUpperCase() === cod);
-    return hit?.id ?? undefined;
-  }, [filters.contaCodigo, contasApi]);
-
-  const fetchParams = useMemo(
-    () => ({
-      ...apiQuery,
-      contaContabilId: contaContabilIdFiltro,
-    }),
-    [apiQuery, contaContabilIdFiltro],
-  );
+  const fetchParams = useMemo(() => ({ ...apiQuery }), [apiQuery]);
 
   const fetchKey = useMemo(() => JSON.stringify(fetchParams), [fetchParams]);
 
@@ -212,7 +199,7 @@ export function ExtratoPage() {
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
-  }, [filters.page, filters.size, filters.banco, filters.mes, filters.etapa, filters.contaCodigo, filters.busca, filters.sort]);
+  }, [filters.page, filters.size, filters.banco, filters.mes, filters.etapa, filters.letras, filters.letrasModo, filters.cadastro, filters.busca, filters.sort]);
 
   useEffect(() => {
     limparCachePaginas();

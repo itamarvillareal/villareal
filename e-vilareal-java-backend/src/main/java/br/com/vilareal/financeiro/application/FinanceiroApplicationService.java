@@ -135,6 +135,9 @@ public class FinanceiroApplicationService {
                 null,
                 null,
                 null,
+                null,
+                null,
+                null,
                 PageRequest.of(0, LISTAGEM_SEM_PAGINACAO_MAX, ORDEM_LANCAMENTOS));
         if (page.getTotalElements() > LISTAGEM_SEM_PAGINACAO_MAX) {
             log.warn(
@@ -159,11 +162,16 @@ public class FinanceiroApplicationService {
             Boolean semGrupoCompensacao,
             Integer ano,
             Integer mes,
+            String contaCodigos,
+            Boolean contaCodigosExcluir,
+            String cadastroPlenitude,
             Pageable pageable) {
+        var codigos = LancamentoFinanceiroSpecifications.parseContaCodigosParam(contaCodigos);
+        boolean excluir = Boolean.TRUE.equals(contaCodigosExcluir);
         var spec = LancamentoFinanceiroSpecifications.comFiltros(
                 resolverClientePkFiltro(clienteId),
                 processoId,
-                contaContabilId,
+                codigos.isEmpty() ? contaContabilId : null,
                 dataInicio,
                 dataFim,
                 etapa,
@@ -172,7 +180,10 @@ public class FinanceiroApplicationService {
                 semClienteId,
                 semGrupoCompensacao,
                 ano,
-                mes);
+                mes,
+                codigos,
+                excluir,
+                cadastroPlenitude);
         return lancamentoRepository.findAll(spec, pageable).map(this::toLancamentoResponse);
     }
 
@@ -190,11 +201,16 @@ public class FinanceiroApplicationService {
             Boolean semGrupoCompensacao,
             Integer ano,
             Integer mes,
+            String contaCodigos,
+            Boolean contaCodigosExcluir,
+            String cadastroPlenitude,
             Pageable pageable) {
+        var codigos = LancamentoFinanceiroSpecifications.parseContaCodigosParam(contaCodigos);
+        boolean excluir = Boolean.TRUE.equals(contaCodigosExcluir);
         var spec = LancamentoFinanceiroSpecifications.comFiltros(
                 resolverClientePkFiltro(clienteId),
                 processoId,
-                contaContabilId,
+                codigos.isEmpty() ? contaContabilId : null,
                 dataInicio,
                 dataFim,
                 etapa,
@@ -203,7 +219,10 @@ public class FinanceiroApplicationService {
                 semClienteId,
                 semGrupoCompensacao,
                 ano,
-                mes);
+                mes,
+                codigos,
+                excluir,
+                cadastroPlenitude);
         return lancamentoRepository.findAll(spec, pageable).map(this::toExtratoListItem);
     }
 

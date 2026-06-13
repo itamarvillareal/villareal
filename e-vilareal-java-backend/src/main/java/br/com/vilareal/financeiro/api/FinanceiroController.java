@@ -187,6 +187,9 @@ public class FinanceiroController {
             @RequestParam(value = "semGrupoCompensacao", required = false) Boolean semGrupoCompensacao,
             @RequestParam(value = "ano", required = false) Integer ano,
             @RequestParam(value = "mes", required = false) Integer mes,
+            @RequestParam(value = "contaCodigos", required = false) String contaCodigos,
+            @RequestParam(value = "contaCodigosExcluir", required = false) Boolean contaCodigosExcluir,
+            @RequestParam(value = "cadastroPlenitude", required = false) String cadastroPlenitude,
             @PageableDefault(size = 20, sort = "dataLancamento", direction = Sort.Direction.ASC) Pageable pageable) {
         EtapaLancamento etapaEnum = null;
         if (etapa != null && !etapa.isBlank()) {
@@ -205,6 +208,9 @@ public class FinanceiroController {
                 semGrupoCompensacao,
                 ano,
                 mes,
+                contaCodigos,
+                contaCodigosExcluir,
+                cadastroPlenitude,
                 pageable);
     }
 
@@ -232,6 +238,9 @@ public class FinanceiroController {
             @RequestParam(value = "semGrupoCompensacao", required = false) Boolean semGrupoCompensacao,
             @RequestParam(value = "ano", required = false) Integer ano,
             @RequestParam(value = "mes", required = false) Integer mes,
+            @RequestParam(value = "contaCodigos", required = false) String contaCodigos,
+            @RequestParam(value = "contaCodigosExcluir", required = false) Boolean contaCodigosExcluir,
+            @RequestParam(value = "cadastroPlenitude", required = false) String cadastroPlenitude,
             @PageableDefault(size = 20, sort = "dataLancamento", direction = Sort.Direction.ASC) Pageable pageable) {
         EtapaLancamento etapaEnum = null;
         if (etapa != null && !etapa.isBlank()) {
@@ -250,6 +259,9 @@ public class FinanceiroController {
                 semGrupoCompensacao,
                 ano,
                 mes,
+                contaCodigos,
+                contaCodigosExcluir,
+                cadastroPlenitude,
                 pageable);
     }
 

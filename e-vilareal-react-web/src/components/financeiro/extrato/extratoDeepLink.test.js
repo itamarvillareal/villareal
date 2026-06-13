@@ -12,4 +12,14 @@ describe('extratoDeepLink', () => {
       }),
     ).toBe('/financeiro/extrato?lancamento=69421&banco=26&mes=2024-05');
   });
+
+  it('aceita data ISO para o mês', () => {
+    expect(
+      buildExtratoUrlParaLancamento({
+        lancamentoId: 100,
+        numeroBanco: 30,
+        data: '2024-11-22',
+      }),
+    ).toBe('/financeiro/extrato?lancamento=100&banco=30&mes=2024-11');
+  });
 });

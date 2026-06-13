@@ -1,18 +1,24 @@
-import { memo } from 'react';
+import { memo, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Check, SkipForward, X } from 'lucide-react';
+import { navegarExtratoLancamento } from '../../extrato/extratoDeepLink.js';
 import { ConfiancaDots } from '../../shared/ConfiancaDots.jsx';
 import { ValorText } from '../../shared/ValorText.jsx';
 
 const fmt = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-const LinhaLancamento = memo(function LinhaLancamento({ row, tone }) {
+const LinhaLancamento = memo(function LinhaLancamento({ row, tone, onAbrirExtrato }) {
   const box =
     tone === 'debito'
       ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
       : 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800';
 
   return (
-    <div className={`rounded-md border px-3 py-2 text-sm ${box}`}>
+    <div
+      className={`rounded-md border px-3 py-2 text-sm cursor-pointer ${box}`}
+      onDoubleClick={() => onAbrirExtrato?.(row)}
+      title="Duplo clique: abrir extrato do banco neste lançamento"
+    >
       <div className="flex flex-wrap items-center gap-2">
         <span className="tabular-nums text-slate-600 dark:text-slate-300">{row.dataExibicao}</span>
         <span className="text-xs text-slate-500">{row.bancoNome || '—'}</span>
@@ -36,7 +42,15 @@ function CompensacaoCardInner({
   busy,
   focused = false,
 }) {
+  const navigate = useNavigate();
   const { par, debRow, credRow, soma, zero, dentroTolerancia, tipoLabel, diaLabel } = ui;
+
+  const abrirExtrato = useCallback(
+    (row) => {
+      navegarExtratoLancamento(navigate, row);
+    },
+    [navigate],
+  );
 
   return (
     <article
@@ -63,11 +77,11 @@ function CompensacaoCardInner({
       <div className="space-y-2">
         <div>
           <p className="text-[10px] font-medium uppercase text-red-600 dark:text-red-400 mb-0.5">Débito</p>
-          <LinhaLancamento row={debRow} tone="debito" />
+          <LinhaLancamento row={debRow} tone="debito" onAbrirExtrato={abrirExtrato} />
         </div>
         <div>
           <p className="text-[10px] font-medium uppercase text-green-600 dark:text-green-400 mb-0.5">Crédito</p>
-          <LinhaLancamento row={credRow} tone="credito" />
+          <LinhaLancamento row={credRow} tone="credito" onAbrirExtrato={abrirExtrato} />
         </div>
       </div>
 
