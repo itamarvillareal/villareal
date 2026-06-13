@@ -1125,3 +1125,45 @@ export async function buscarLancamentosNaoVinculados(params = {}, opts = {}) {
   }
   return request('/api/financeiro/lancamentos/nao-vinculados-pagamento', { query: q, signal });
 }
+
+/** Padrões recorrentes agregados (painel Análises). */
+export async function listarRecorrenciasApi(
+  {
+    confiancaMinima = 'MEDIA',
+    numeroBanco = null,
+    apenasComPendentes = true,
+    contaContabilId = null,
+    page = 0,
+    size = 50,
+  } = {},
+  opts = {},
+) {
+  if (!featureFlags.useApiFinanceiro) {
+    return { content: [], totalElements: 0, totalPages: 0, number: 0, size };
+  }
+  const query = {
+    confiancaMinima,
+    apenasComPendentes,
+    page,
+    size: clampFinanceiroPageSize(size),
+  };
+  if (numeroBanco != null && Number.isFinite(Number(numeroBanco))) {
+    query.numeroBanco = Number(numeroBanco);
+  }
+  if (contaContabilId != null && Number.isFinite(Number(contaContabilId))) {
+    query.contaContabilId = Number(contaContabilId);
+  }
+  return request('/api/financeiro/analises/recorrencias', { query, signal: opts.signal });
+}
+
+/** Classifica todos os pendentes de um padrão recorrente. */
+export async function aplicarRecorrenciaApi(body, opts = {}) {
+  if (!featureFlags.useApiFinanceiro) {
+    throw new Error('API financeiro desativada');
+  }
+  return request('/api/financeiro/analises/recorrencias/aplicar', {
+    method: 'POST',
+    body,
+    signal: opts.signal,
+  });
+}

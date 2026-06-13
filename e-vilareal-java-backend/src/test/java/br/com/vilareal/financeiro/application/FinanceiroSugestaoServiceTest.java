@@ -1,6 +1,7 @@
 package br.com.vilareal.financeiro.application;
 
 import br.com.vilareal.financeiro.api.dto.SugestaoClassificacaoResponse;
+import br.com.vilareal.financeiro.domain.DescricaoNormalizer;
 import br.com.vilareal.financeiro.domain.ConfiancaSugestao;
 import br.com.vilareal.financeiro.domain.EtapaLancamento;
 import br.com.vilareal.financeiro.domain.NaturezaLancamento;
@@ -39,7 +40,11 @@ import java.util.Optional;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anySet;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
@@ -180,7 +185,7 @@ class FinanceiroSugestaoServiceTest {
         when(regraRepository.findByAtivoTrueOrderByPrioridadeAscIdAsc()).thenReturn(List.of());
         when(lancamentoRepository.findDepositosIdentificadosPorCpfNoTexto(any(), any(), any(), any()))
                 .thenReturn(List.of());
-        when(lancamentoRepository.contarContaPorDescricaoHistorico(1, lancamento.getDescricao()))
+        when(lancamentoRepository.contarContaPorDescricaoHistorico(1, DescricaoNormalizer.normalizar(lancamento.getDescricao())))
                 .thenReturn(List.<Object[]>of(new Object[] {5L, 10L}));
         when(contaContabilRepository.findById(5L)).thenReturn(Optional.of(contaN));
         when(lancamentoRepository.findRecorrenciaCandidatos(any(), any(), any(), any(), anyInt()))
@@ -196,7 +201,7 @@ class FinanceiroSugestaoServiceTest {
         when(regraRepository.findByAtivoTrueOrderByPrioridadeAscIdAsc()).thenReturn(List.of());
         when(lancamentoRepository.findDepositosIdentificadosPorCpfNoTexto(any(), any(), any(), any()))
                 .thenReturn(List.of());
-        when(lancamentoRepository.contarContaPorDescricaoHistorico(1, lancamento.getDescricao()))
+        when(lancamentoRepository.contarContaPorDescricaoHistorico(1, DescricaoNormalizer.normalizar(lancamento.getDescricao())))
                 .thenReturn(List.<Object[]>of(new Object[] {6L, 5L}));
         when(contaContabilRepository.findById(6L)).thenReturn(Optional.of(contaE));
         when(lancamentoRepository.findRecorrenciaCandidatos(any(), any(), any(), any(), anyInt()))
@@ -378,5 +383,67 @@ class FinanceiroSugestaoServiceTest {
         assertThat(sugestoes.get(0).getContaCodigo()).isEqualTo("I");
         assertThat(sugestoes.get(0).getConfianca()).isEqualTo(ConfiancaSugestao.ALTA);
         assertThat(sugestoes.get(0).getOrigem()).isEqualTo(OrigemSugestao.REGRA);
+    }
+
+    @Test
+    void sugerir_historicoUsaDescricaoNorm_variacaoDataColada() {
+        lancamento.setDescricao("PIX TRANSF BANCO I09/06");
+        String norm = DescricaoNormalizer.normalizar("PIX TRANSF BANCO I10/06");
+
+        when(regraRepository.findByAtivoTrueOrderByPrioridadeAscIdAsc()).thenReturn(List.of());
+        when(lancamentoRepository.findDepositosIdentificadosPorCpfNoTexto(any(), any(), any(), any()))
+                .thenReturn(List.of());
+        when(lancamentoRepository.contarContaPorDescricaoHistorico(1, norm))
+                .thenReturn(List.<Object[]>of(new Object[] {6L, 4L}));
+        when(contaContabilRepository.findById(6L)).thenReturn(Optional.of(contaE));
+        when(lancamentoRepository.findRecorrenciaCandidatos(eq(1), eq(norm), any(), any(), anyInt()))
+                .thenReturn(List.of());
+
+        List<SugestaoClassificacaoResponse> sugestoes = service.sugerir(lancamento);
+
+        assertThat(sugestoes).anyMatch(s ->
+                s.getOrigem() == OrigemSugestao.HISTORICO && s.getContaCodigo().equals("E"));
+    }
+
+    @Test
+    void sugerir_recorrenciaUsaDescricaoNorm_mesmaChaveComDatasDiferentes() {
+        lancamento.setDescricao("PIX TRANSF BANCO I09/06");
+        String norm = DescricaoNormalizer.normalizar(lancamento.getDescricao());
+
+        LancamentoFinanceiroEntity anterior = new LancamentoFinanceiroEntity();
+        anterior.setContaContabil(contaE);
+        anterior.setDataLancamento(LocalDate.of(2026, 5, 10));
+
+        when(regraRepository.findByAtivoTrueOrderByPrioridadeAscIdAsc()).thenReturn(List.of());
+        when(lancamentoRepository.findDepositosIdentificadosPorCpfNoTexto(any(), any(), any(), any()))
+                .thenReturn(List.of());
+        when(lancamentoRepository.contarContaPorDescricaoHistorico(1, norm)).thenReturn(List.of());
+        when(lancamentoRepository.findRecorrenciaCandidatos(eq(1), eq(norm), any(), any(), anyInt()))
+                .thenReturn(List.of(anterior));
+        when(contaContabilRepository.findById(6L)).thenReturn(Optional.of(contaE));
+
+        List<SugestaoClassificacaoResponse> sugestoes = service.sugerir(lancamento);
+
+        assertThat(sugestoes).anyMatch(s ->
+                s.getOrigem() == OrigemSugestao.RECORRENCIA && s.getContaCodigo().equals("E"));
+    }
+
+    @Test
+    void sugerir_descricaoSemData_continuaCasandoHistorico() {
+        lancamento.setDescricao("PAGTO CARTAO PERSONNALITE");
+        String norm = DescricaoNormalizer.normalizar(lancamento.getDescricao());
+
+        when(regraRepository.findByAtivoTrueOrderByPrioridadeAscIdAsc()).thenReturn(List.of());
+        when(lancamentoRepository.findDepositosIdentificadosPorCpfNoTexto(any(), any(), any(), any()))
+                .thenReturn(List.of());
+        when(lancamentoRepository.contarContaPorDescricaoHistorico(1, norm))
+                .thenReturn(List.<Object[]>of(new Object[] {6L, 3L}));
+        when(contaContabilRepository.findById(6L)).thenReturn(Optional.of(contaE));
+        when(lancamentoRepository.findRecorrenciaCandidatos(eq(1), eq(norm), any(), any(), anyInt()))
+                .thenReturn(List.of());
+
+        List<SugestaoClassificacaoResponse> sugestoes = service.sugerir(lancamento);
+
+        assertThat(sugestoes).anyMatch(s -> s.getOrigem() == OrigemSugestao.HISTORICO);
     }
 }

@@ -11,6 +11,7 @@ import {
   PanelLeftOpen,
   Receipt,
   Settings,
+  Sparkles,
   Upload,
 } from 'lucide-react';
 import { featureFlags } from '../../config/featureFlags.js';
@@ -163,6 +164,10 @@ function FinanceiroShell({ importOpen, onOpenImport, onCloseImport, onImportSucc
                 <NavLink to="/financeiro/consolidado" className={navClass}>
                   <BarChart3 className="w-[15px] h-[15px] shrink-0" />
                   Consolidado
+                </NavLink>
+                <NavLink to="/financeiro/analises" className={navClass}>
+                  <Sparkles className="w-[15px] h-[15px] shrink-0" />
+                  Análises
                 </NavLink>
                 <NavLink to="/financeiro/compensacao" className={navClass}>
                   <Link2 className="w-[15px] h-[15px] shrink-0" />

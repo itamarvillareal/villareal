@@ -70,6 +70,7 @@ public class SecurityConfig {
                                 .requestMatchers("/api/admin/totp/**").hasAuthority("ROLE_ADMIN")
                                 .requestMatchers("/api/admin/pje/**").hasAuthority("ROLE_ADMIN")
                                 .requestMatchers("/api/admin/processos/**").hasAuthority("ROLE_ADMIN")
+                                .requestMatchers("/api/financeiro/admin/**").hasAuthority("ROLE_ADMIN")
                                 // TEMPORÁRIO - liberar diagnóstico PROJUDI - remover junto com ProjudiDiagnosticoController
                                 .requestMatchers("/api/projudi/admin/**").permitAll()
                                 .requestMatchers("/api/julia/admin/**").permitAll()

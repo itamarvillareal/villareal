@@ -1,5 +1,6 @@
 package br.com.vilareal.financeiro.infrastructure.persistence.entity;
 
+import br.com.vilareal.financeiro.domain.DescricaoNormalizer;
 import br.com.vilareal.financeiro.domain.EtapaLancamento;
 import br.com.vilareal.financeiro.domain.NaturezaLancamento;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
@@ -64,6 +65,9 @@ public class LancamentoFinanceiroEntity {
     @Column(name = "descricao_detalhada", length = 2000)
     private String descricaoDetalhada;
 
+    @Column(name = "descricao_norm", length = 255)
+    private String descricaoNorm;
+
     @Column(nullable = false, precision = 19, scale = 2)
     private BigDecimal valor;
 
@@ -93,4 +97,10 @@ public class LancamentoFinanceiroEntity {
 
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Instant updatedAt;
+
+    @PrePersist
+    @PreUpdate
+    void preencherDescricaoNorm() {
+        this.descricaoNorm = DescricaoNormalizer.normalizar(this.descricao);
+    }
 }
