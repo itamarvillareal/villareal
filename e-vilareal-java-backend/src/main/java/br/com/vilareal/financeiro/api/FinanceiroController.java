@@ -286,6 +286,9 @@ public class FinanceiroController {
                 null,
                 ano,
                 mes,
+                null,
+                null,
+                null,
                 pageable);
         List<Long> ids = page.getContent().stream().map(LancamentoFinanceiroResponse::getId).toList();
         Map<Long, List<SugestaoClassificacaoResponse>> sugestoes =
