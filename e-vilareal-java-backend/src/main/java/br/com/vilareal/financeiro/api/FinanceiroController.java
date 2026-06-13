@@ -330,7 +330,7 @@ public class FinanceiroController {
     }
 
     @PostMapping("/lancamentos/sugestoes-classificacao/lote")
-    @Operation(description = "Sugestões em lote (máx. 50 lançamentos).")
+    @Operation(description = "Sugestões em lote (máx. 1000 lançamentos).")
     public SugestaoClassificacaoLoteResponse sugestoesClassificacaoLote(
             @Valid @RequestBody SugestaoClassificacaoLoteRequest request) {
         SugestaoClassificacaoLoteResponse response = new SugestaoClassificacaoLoteResponse();

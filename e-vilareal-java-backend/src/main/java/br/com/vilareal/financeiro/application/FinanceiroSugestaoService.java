@@ -38,6 +38,9 @@ import java.util.stream.Collectors;
 @Service
 public class FinanceiroSugestaoService {
 
+    /** Alinhado a PAGE_SIZE_OPTIONS do frontend e spring.data.web.pageable.max-page-size. */
+    public static final int MAX_SUGESTAO_CLASSIFICACAO_LOTE = 1000;
+
     private final RegraClassificacaoRepository regraRepository;
     private final LancamentoFinanceiroRepository lancamentoRepository;
     private final ContaContabilRepository contaContabilRepository;
@@ -101,8 +104,9 @@ public class FinanceiroSugestaoService {
         if (lancamentoIds == null || lancamentoIds.isEmpty()) {
             return Map.of();
         }
-        if (lancamentoIds.size() > 50) {
-            throw new BusinessRuleException("Máximo de 50 lançamentos por lote.");
+        if (lancamentoIds.size() > MAX_SUGESTAO_CLASSIFICACAO_LOTE) {
+            throw new BusinessRuleException(
+                    "Máximo de " + MAX_SUGESTAO_CLASSIFICACAO_LOTE + " lançamentos por lote.");
         }
         Map<Long, List<SugestaoClassificacaoResponse>> out = new LinkedHashMap<>();
         for (Long id : lancamentoIds) {
