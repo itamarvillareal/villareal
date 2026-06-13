@@ -374,7 +374,7 @@ async function listarInboxClassificarPaginaLegada(filtros = {}, opts = {}) {
   const content = pageRes?.content ?? [];
   const ids = content.map((l) => Number(l?.id)).filter((id) => Number.isFinite(id) && id > 0);
   let sugestoes = {};
-  const LOTE = 50;
+  const LOTE = 1000;
   for (let i = 0; i < ids.length; i += LOTE) {
     const chunk = ids.slice(i, i + LOTE);
     const sugRes = await sugestoesClassificacaoLoteApi(chunk, { signal });

@@ -12,6 +12,6 @@ import java.util.List;
 public class SugestaoClassificacaoLoteRequest {
 
     @NotEmpty
-    @Size(max = 50)
+    @Size(max = 1000)
     private List<Long> lancamentoIds;
 }
