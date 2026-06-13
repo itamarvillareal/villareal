@@ -1,5 +1,5 @@
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { RefreshCw } from 'lucide-react';
+import { Check, RefreshCw } from 'lucide-react';
 import { useParams } from 'react-router-dom';
 import { featureFlags } from '../../../config/featureFlags.js';
 import {
@@ -683,6 +683,56 @@ export function InboxPage() {
 
   const paresUi = useMemo(() => paresVisiveis.map(mapParCompensacaoParaUi), [paresVisiveis]);
 
+  const handleParearTodosNaTela = useCallback(async () => {
+    if (busy || loading || paresVisiveis.length === 0) return;
+
+    const paresBody = paresVisiveis
+      .map((par) => ({
+        lancamentoIdA: par.lancamentoA?.id,
+        lancamentoIdB: par.lancamentoB?.id,
+      }))
+      .filter((p) => p.lancamentoIdA && p.lancamentoIdB);
+    if (!paresBody.length) return;
+
+    setBusy(true);
+    try {
+      const res = await parearCompensacaoApi({ pares: paresBody });
+      const ok = Number(res?.pareados ?? 0);
+      const errosList = Array.isArray(res?.erros) ? res.erros : [];
+      const failedKeys = new Set(
+        errosList.map((e) => `${e.lancamentoIdA}-${e.lancamentoIdB}`),
+      );
+      const keysRemover = paresVisiveis
+        .filter((p) => !failedKeys.has(parKey(p)))
+        .map(parKey);
+
+      if (ok > 0) {
+        removeComFade(keysRemover, () => {
+          setPares((prev) => prev.filter((p) => !keysRemover.includes(parKey(p))));
+          setTotalElements((t) => Math.max(0, t - ok));
+        });
+        patchCount(INBOX_TIPOS.compensar, -ok);
+        scheduleLoadCounts();
+        dispatchRefreshPendentes();
+        setSelected(new Set());
+      }
+
+      if (errosList.length > 0) {
+        toast.warn(
+          ok > 0
+            ? `${ok} par${ok !== 1 ? 'es' : ''} compensado${ok !== 1 ? 's' : ''}; ${errosList.length} com erro.`
+            : `Nenhum par compensado — ${errosList.length} erro${errosList.length !== 1 ? 's' : ''}.`,
+        );
+      } else if (ok > 0) {
+        toast.success(`${ok} par${ok !== 1 ? 'es' : ''} compensado${ok !== 1 ? 's' : ''} com sucesso`);
+      }
+    } catch (e) {
+      toast.error(`Falha ao parear: ${e?.message || 'erro desconhecido'}`);
+    } finally {
+      setBusy(false);
+    }
+  }, [busy, loading, paresVisiveis, toast, removeComFade, patchCount, scheduleLoadCounts]);
+
   const gruposVisiveis = useMemo(
     () =>
       grupos.filter(
@@ -857,6 +907,19 @@ export function InboxPage() {
             <option value="MESMO_DIA">Mesmo dia (exato)</option>
             <option value="DIVERGENTE">Dia divergente</option>
           </select>
+        ) : null}
+        {tipo === INBOX_TIPOS.compensar ? (
+          <button
+            type="button"
+            onClick={handleParearTodosNaTela}
+            disabled={busy || loading || paresVisiveis.length === 0}
+            className="inline-flex items-center gap-1.5 text-sm px-2.5 py-1 rounded-md bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 font-medium"
+            title="Pareia todos os pares sugeridos visíveis nesta página"
+          >
+            <Check className="w-3.5 h-3.5" aria-hidden />
+            Parear todos na tela
+            {paresVisiveis.length > 0 ? ` (${paresVisiveis.length})` : ''}
+          </button>
         ) : null}
         {tipo === INBOX_TIPOS.classificar ? (
           <button

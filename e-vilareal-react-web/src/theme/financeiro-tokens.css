@@ -73,6 +73,26 @@
   --fin-progress-alto: #10b981;
 }
 
+.fin-borda-conta {
+  border-left-width: 3px;
+  border-left-style: solid;
+  border-left-color: var(--fin-borda-conta, var(--fin-conta-n));
+}
+
+.fin-btn-aprov-conta {
+  color: #fff;
+  background-color: var(--fin-btn-conta-bg, var(--fin-conta-n));
+  border: 1px solid color-mix(in srgb, var(--fin-btn-conta-bg, var(--fin-conta-n)) 75%, #000);
+}
+
+.fin-btn-aprov-conta:hover:not(:disabled) {
+  filter: brightness(0.9);
+}
+
+.fin-select-conta {
+  border-color: var(--fin-borda-conta, var(--fin-conta-n-border));
+}
+
 [data-theme='dark'],
 .dark {
   --fin-conta-a: #60a5fa;

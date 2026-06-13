@@ -82,6 +82,7 @@ public class FinanceiroSugestaoService {
         boolean compensacaoInterna = FinanceiroDescricaoIndicaContaE.indica(
                 lancamento.getDescricao(), lancamento.getDescricaoDetalhada());
         todas.addAll(camadaCompensacaoItamarVrv(lancamento));
+        todas.addAll(camadaFinanciamentoImobiliario(lancamento));
         todas.addAll(camadaRegras(lancamento));
         if (!compensacaoInterna) {
             List<SugestaoClassificacaoResponse> deposito = camadaDepositoIdentificado(lancamento);
@@ -168,6 +169,21 @@ public class FinanceiroSugestaoService {
         SugestaoClassificacaoResponse s =
                 baseSugestao(contaE, ConfiancaSugestao.ALTA, OrigemSugestao.REGRA);
         s.setDescricaoRegra("transferência interna Itamar/VRV → E");
+        return List.of(s);
+    }
+
+    private List<SugestaoClassificacaoResponse> camadaFinanciamentoImobiliario(LancamentoFinanceiroEntity lancamento) {
+        if (!FinanceiroDescricaoIndicaContaI.indica(lancamento.getDescricao(), lancamento.getDescricaoDetalhada())) {
+            return List.of();
+        }
+        ContaContabilEntity contaI =
+                contaContabilRepository.findFirstByCodigoIgnoreCase("I").orElse(null);
+        if (contaI == null) {
+            return List.of();
+        }
+        SugestaoClassificacaoResponse s =
+                baseSugestao(contaI, ConfiancaSugestao.ALTA, OrigemSugestao.REGRA);
+        s.setDescricaoRegra("financiamento imobiliário → I");
         return List.of(s);
     }
 

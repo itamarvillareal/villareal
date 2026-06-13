@@ -1,6 +1,11 @@
 import { useMemo, useState } from 'react';
 import { Check, ChevronDown, ChevronUp, Pencil, RefreshCw, SkipForward } from 'lucide-react';
 import { ContaBadge } from '../../shared/ContaBadge.jsx';
+import {
+  CLASSE_BORDA_CONTA,
+  CLASSE_BOTAO_APROVAR_CONTA,
+  varsCorConta,
+} from '../../shared/contaCores.js';
 import { ConfiancaDots } from '../../shared/ConfiancaDots.jsx';
 import { ValorText } from '../../shared/ValorText.jsx';
 import { textoOrigemSugestao } from '../inboxMappers.js';
@@ -34,17 +39,13 @@ export function ClassificacaoGroupCard({
 
   const conf = String(sugestao?.confianca ?? '').toUpperCase();
   const codigo = sugestao?.contaCodigo ?? '—';
+  const estiloConta = codigo !== '—' ? varsCorConta(codigo) : undefined;
+  const borderLeft =
+    codigo !== '—' ? CLASSE_BORDA_CONTA : 'border-l-[3px] border-l-slate-300 dark:border-l-slate-600';
   const periodo = useMemo(() => resumoPeriodoGrupo(lancamentos), [lancamentos]);
   const valores = useMemo(() => resumoValoresGrupo(lancamentos), [lancamentos]);
   const amostra = lancamentos.slice(0, AMOSTRA);
   const listaExibida = expandido || modoRevisar ? lancamentos : amostra;
-
-  const borderLeft =
-    conf === 'ALTA'
-      ? 'border-l-[3px] border-l-green-500'
-      : conf === 'MEDIA'
-        ? 'border-l-[3px] border-l-amber-500'
-        : 'border-l-[3px] border-l-slate-300 dark:border-l-slate-600';
 
   const handleAprovarGrupo = () => {
     onAprovarGrupo?.(grupo);
@@ -64,6 +65,7 @@ export function ClassificacaoGroupCard({
         className={`rounded-lg border border-slate-200 dark:border-slate-700 px-4 py-3 mb-3 bg-white dark:bg-slate-900 ${borderLeft} ${
           fading ? 'opacity-0 scale-[0.98]' : 'opacity-100'
         } transition-all duration-300`}
+        style={estiloConta}
       >
         <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
           <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
@@ -101,6 +103,7 @@ export function ClassificacaoGroupCard({
       className={`rounded-lg border border-slate-200 dark:border-slate-700 px-4 py-3 mb-3 bg-white dark:bg-slate-900 hover:shadow-sm transition-all duration-300 ${borderLeft} ${
         fading ? 'opacity-0 scale-[0.98]' : 'opacity-100'
       }`}
+      style={estiloConta}
     >
       <div className="flex flex-wrap items-start gap-2">
         <label className="flex items-center pt-0.5 shrink-0 cursor-pointer">
@@ -181,7 +184,10 @@ export function ClassificacaoGroupCard({
           type="button"
           disabled={busy}
           onClick={handleAprovarGrupo}
-          className="inline-flex items-center gap-1.5 rounded-md bg-green-600 hover:bg-green-700 text-white font-medium text-sm px-4 py-2 disabled:opacity-50"
+          style={codigo !== '—' ? varsCorConta(codigo) : undefined}
+          className={`inline-flex items-center gap-1.5 rounded-md font-medium text-sm px-4 py-2 disabled:opacity-50 ${
+            codigo !== '—' ? CLASSE_BOTAO_APROVAR_CONTA : 'bg-slate-500 text-white'
+          }`}
         >
           <Check className="w-4 h-4" />
           Aprovar {codigo} para os {n}

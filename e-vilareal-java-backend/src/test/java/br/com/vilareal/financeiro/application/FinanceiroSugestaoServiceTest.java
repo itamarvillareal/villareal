@@ -71,6 +71,7 @@ class FinanceiroSugestaoServiceTest {
 
     private ContaContabilEntity contaA;
     private ContaContabilEntity contaE;
+    private ContaContabilEntity contaI;
     private ContaContabilEntity contaN;
     private LancamentoFinanceiroEntity lancamento;
 
@@ -90,6 +91,11 @@ class FinanceiroSugestaoServiceTest {
         contaA.setId(7L);
         contaA.setCodigo("A");
         contaA.setNome("Conta Cliente");
+
+        contaI = new ContaContabilEntity();
+        contaI.setId(8L);
+        contaI.setCodigo("I");
+        contaI.setNome("Conta Imóveis");
 
         lancamento = new LancamentoFinanceiroEntity();
         lancamento.setId(99L);
@@ -350,5 +356,27 @@ class FinanceiroSugestaoServiceTest {
         assertThat(sugestoes.get(0).getContaCodigo()).isEqualTo("E");
         assertThat(sugestoes.get(0).getOrigem()).isEqualTo(OrigemSugestao.REGRA);
         assertThat(sugestoes).noneMatch(s -> "A".equals(s.getContaCodigo()));
+    }
+
+    @Test
+    void sugerir_financImobiliario_sugereContaI() {
+        lancamento.setDescricao("FINANC IMOBILIARIO 022 420");
+        lancamento.setNatureza(NaturezaLancamento.DEBITO);
+        lancamento.setValor(new BigDecimal("6815.13"));
+
+        when(regraRepository.findByAtivoTrueOrderByPrioridadeAscIdAsc()).thenReturn(List.of());
+        when(contaContabilRepository.findFirstByCodigoIgnoreCase("I")).thenReturn(Optional.of(contaI));
+        when(lancamentoRepository.findDepositosIdentificadosPorCpfNoTexto(any(), any(), any(), any()))
+                .thenReturn(List.of());
+        when(lancamentoRepository.contarContaPorDescricaoHistorico(any(), any())).thenReturn(List.of());
+        when(lancamentoRepository.findRecorrenciaCandidatos(any(), any(), any(), any(), anyInt()))
+                .thenReturn(List.of());
+
+        List<SugestaoClassificacaoResponse> sugestoes = service.sugerir(lancamento);
+
+        assertThat(sugestoes).isNotEmpty();
+        assertThat(sugestoes.get(0).getContaCodigo()).isEqualTo("I");
+        assertThat(sugestoes.get(0).getConfianca()).isEqualTo(ConfiancaSugestao.ALTA);
+        assertThat(sugestoes.get(0).getOrigem()).isEqualTo(OrigemSugestao.REGRA);
     }
 }

@@ -6,6 +6,7 @@ import br.com.vilareal.financeiro.api.dto.*;
 import br.com.vilareal.financeiro.domain.EtapaLancamento;
 import br.com.vilareal.financeiro.domain.FinanceiroDescricaoIndicaContaE;
 import br.com.vilareal.financeiro.domain.FinanceiroDescricaoIndicaContaF;
+import br.com.vilareal.financeiro.domain.FinanceiroDescricaoIndicaContaI;
 import br.com.vilareal.financeiro.domain.TipoMatch;
 import br.com.vilareal.financeiro.infrastructure.persistence.LancamentoFinanceiroSpecifications;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.ContaContabilEntity;
@@ -153,6 +154,14 @@ public class ClassificacaoAutomaticaService {
                 return regraE;
             }
         }
+        if (FinanceiroDescricaoIndicaContaI.indica(lancamento.getDescricao(), lancamento.getDescricaoDetalhada())) {
+            Optional<RegraClassificacaoEntity> regraI = contaContabilRepository
+                    .findFirstByCodigoIgnoreCase("I")
+                    .map(this::regraSinteticaFinanciamentoImobiliario);
+            if (regraI.isPresent()) {
+                return regraI;
+            }
+        }
         String texto = textoParaMatch(lancamento);
         for (RegraClassificacaoEntity regra : regras) {
             if (regra.getConfianca() == null
@@ -206,6 +215,19 @@ public class ClassificacaoAutomaticaService {
         regra.setTipoMatch(TipoMatch.CONTAINS);
         regra.setContaContabil(contaE);
         regra.setLetraDestino("E");
+        regra.setPrioridade(1);
+        regra.setConfianca(new BigDecimal("0.9900"));
+        regra.setAtivo(true);
+        return regra;
+    }
+
+    private RegraClassificacaoEntity regraSinteticaFinanciamentoImobiliario(ContaContabilEntity contaI) {
+        RegraClassificacaoEntity regra = new RegraClassificacaoEntity();
+        regra.setId(0L);
+        regra.setPadraoDescricao("FINANC IMOBILIARIO");
+        regra.setTipoMatch(TipoMatch.CONTAINS);
+        regra.setContaContabil(contaI);
+        regra.setLetraDestino("I");
         regra.setPrioridade(1);
         regra.setConfianca(new BigDecimal("0.9900"));
         regra.setAtivo(true);
