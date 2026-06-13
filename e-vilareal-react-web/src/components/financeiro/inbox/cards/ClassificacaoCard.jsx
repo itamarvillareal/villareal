@@ -2,6 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Check, Pencil, RefreshCw, SkipForward } from 'lucide-react';
 import { ContaBadge } from '../../shared/ContaBadge.jsx';
+import {
+  CLASSE_BORDA_CONTA,
+  CLASSE_BOTAO_APROVAR_CONTA,
+  varsCorConta,
+} from '../../shared/contaCores.js';
 import { ConfiancaDots } from '../../shared/ConfiancaDots.jsx';
 import { ValorText } from '../../shared/ValorText.jsx';
 import { filtrarSugestoesClassificacao, melhorSugestao } from '../inboxClassificacaoGrupos.js';
@@ -50,14 +55,12 @@ export function ClassificacaoCard({
 
   const contaAtiva = contaEscolhida ?? principal;
 
-  const conf = String(principal?.confianca ?? '').toUpperCase();
   const semSugestao = !principal;
-  const borderLeft =
-    conf === 'ALTA'
-      ? 'border-l-[3px] border-l-green-500'
-      : conf === 'MEDIA'
-        ? 'border-l-[3px] border-l-amber-500'
-        : 'border-l-[3px] border-l-slate-300 dark:border-l-slate-600';
+  const codigoBorda = contaAtiva?.contaCodigo ?? null;
+  const borderLeft = codigoBorda
+    ? CLASSE_BORDA_CONTA
+    : 'border-l-[3px] border-l-slate-300 dark:border-l-slate-600';
+  const estiloBorda = codigoBorda ? varsCorConta(codigoBorda) : undefined;
 
   const codigoAprovar = contaAtiva?.contaCodigo ?? '';
 
@@ -78,6 +81,7 @@ export function ClassificacaoCard({
       className={`rounded-lg border border-[var(--color-border-tertiary,#e2e8f0)] dark:border-slate-700 px-4 py-3 mb-2 bg-white dark:bg-slate-900 hover:shadow-sm transition-all duration-300 ${borderLeft} ${
         focused ? 'ring-2 ring-blue-500 ring-offset-2 dark:ring-offset-slate-950' : ''
       } ${fading ? 'opacity-0 scale-[0.98]' : 'opacity-100'}`}
+      style={estiloBorda}
     >
       <div className="flex flex-wrap items-start gap-2">
         <label className="flex items-center pt-0.5 shrink-0 cursor-pointer">
@@ -208,11 +212,8 @@ export function ClassificacaoCard({
             type="button"
             disabled={busy || !codigoAprovar}
             onClick={() => handleAprovar()}
-            className={`inline-flex items-center gap-1 rounded-md text-white font-medium disabled:opacity-50 ${
-              conf === 'ALTA' && !contaEscolhida
-                ? 'bg-green-600 hover:bg-green-700 text-sm px-4 py-2'
-                : 'bg-blue-600 hover:bg-blue-700 text-sm px-3 py-1.5'
-            }`}
+            style={varsCorConta(codigoAprovar)}
+            className={`inline-flex items-center gap-1 rounded-md font-medium disabled:opacity-50 ${CLASSE_BOTAO_APROVAR_CONTA} text-sm px-4 py-2`}
           >
             <Check className="w-4 h-4" />
             Aprovar {codigoAprovar}

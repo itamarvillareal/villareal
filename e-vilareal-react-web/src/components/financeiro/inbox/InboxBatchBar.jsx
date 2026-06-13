@@ -1,4 +1,8 @@
 import { Check, Tag, X } from 'lucide-react';
+import {
+  CLASSE_BOTAO_APROVAR_CONTA,
+  varsCorConta,
+} from '../shared/contaCores.js';
 
 export function InboxBatchBar({
   count,
@@ -35,7 +39,10 @@ export function InboxBatchBar({
             value={contaLoteId}
             onChange={(e) => onContaLoteChange?.(e.target.value)}
             disabled={busy}
-            className="text-sm rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1.5 min-w-[10rem]"
+            style={codigoEscolhido ? varsCorConta(codigoEscolhido) : undefined}
+            className={`text-sm rounded-md border-2 bg-white dark:bg-slate-800 px-2 py-1.5 min-w-[10rem] ${
+              codigoEscolhido ? 'fin-select-conta' : 'border-slate-300 dark:border-slate-600'
+            }`}
             aria-label="Conta para classificar seleção"
           >
             <option value="">Classificar como…</option>
@@ -49,7 +56,10 @@ export function InboxBatchBar({
             type="button"
             disabled={busy || !contaLoteId}
             onClick={onClassificarComConta}
-            className="inline-flex items-center gap-1 px-3 py-1.5 text-sm font-medium rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+            style={codigoEscolhido ? varsCorConta(codigoEscolhido) : undefined}
+            className={`inline-flex items-center gap-1 px-3 py-1.5 text-sm font-medium rounded-md disabled:opacity-50 ${
+              codigoEscolhido ? CLASSE_BOTAO_APROVAR_CONTA : 'bg-blue-600 text-white hover:bg-blue-700'
+            }`}
           >
             <Tag className="w-3.5 h-3.5" />
             {codigoEscolhido ? `Classificar como ${codigoEscolhido}` : 'Classificar'}
