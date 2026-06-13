@@ -29,6 +29,15 @@ function parseLancamentoParam(params) {
 
 const TIPO_PAR_COMPENSAR_TODOS = 'TODOS';
 const TIPO_DIA_COMPENSAR_TODOS = 'TODOS';
+const LETRA_SUGESTAO_TODAS = 'TODAS';
+
+function readLetraSugestaoParam(params) {
+  const raw = String(params.get('letraSugestao') ?? '').trim().toUpperCase();
+  if (!raw || raw === LETRA_SUGESTAO_TODAS) return LETRA_SUGESTAO_TODAS;
+  if (raw === 'SEM') return 'SEM';
+  if (/^[A-Z]$/.test(raw)) return raw;
+  return LETRA_SUGESTAO_TODAS;
+}
 
 function readTipoParParam(params) {
   const raw = params.get('tipoPar');
@@ -49,6 +58,7 @@ function readFilters(params) {
     mes: params.get('mes') || mesAtualIso(),
     tipoPar: readTipoParParam(params),
     tipoDia: readTipoDiaParam(params),
+    letraSugestao: readLetraSugestaoParam(params),
     etapa: params.get('etapa') || null,
     contaCodigo: params.get('conta') || null,
     busca: params.get('busca') || '',
@@ -76,6 +86,10 @@ function writeFilters(params, f) {
   setOrDel(
     'tipoDia',
     f.tipoDia && f.tipoDia !== TIPO_DIA_COMPENSAR_TODOS ? f.tipoDia : null,
+  );
+  setOrDel(
+    'letraSugestao',
+    f.letraSugestao && f.letraSugestao !== LETRA_SUGESTAO_TODAS ? f.letraSugestao : null,
   );
   setOrDel('etapa', f.etapa);
   setOrDel('conta', f.contaCodigo);
@@ -187,6 +201,11 @@ export function useExtratoFilters() {
     (tipoDia) => syncUrl({ tipoDia: tipoDia || TIPO_DIA_COMPENSAR_TODOS, resetPage: true }),
     [syncUrl],
   );
+  const setLetraSugestao = useCallback(
+    (letraSugestao) =>
+      syncUrl({ letraSugestao: letraSugestao || LETRA_SUGESTAO_TODAS, resetPage: true }),
+    [syncUrl],
+  );
   const setEtapa = useCallback((etapa) => syncUrl({ etapa, resetPage: true }), [syncUrl]);
   const setContaCodigo = useCallback((contaCodigo) => syncUrl({ contaCodigo, resetPage: true }), [syncUrl]);
   const setBusca = useCallback((busca) => setBuscaDraft(busca ?? ''), []);
@@ -215,6 +234,7 @@ export function useExtratoFilters() {
     setMes,
     setTipoPar,
     setTipoDia,
+    setLetraSugestao,
     setEtapa,
     setContaCodigo,
     setBusca,

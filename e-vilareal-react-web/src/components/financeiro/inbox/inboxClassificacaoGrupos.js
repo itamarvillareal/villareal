@@ -1,5 +1,8 @@
 const ORDEM_CONFIANCA = { ALTA: 0, MEDIA: 1, BAIXA: 2 };
 
+export const LETRA_SUGESTAO_TODAS = 'TODAS';
+export const LETRA_SUGESTAO_SEM = 'SEM';
+
 /** Conta N = ainda sem classificação conhecida — não deve ser sugerida para aprovação. */
 export function contaContabilDesconhecida(codigo) {
   return String(codigo ?? '').trim().toUpperCase() === 'N';
@@ -75,6 +78,66 @@ export function agruparLancamentosClassificacao(lancamentos, sugestoesMap) {
   semSugestao.sort(sortPorDataDesc);
 
   return { grupos, individuais, semSugestao };
+}
+
+export function codigoLetraSugestaoLancamento(lanc, sugestoesMap) {
+  const sug = melhorSugestao(sugestoesMap[lanc?.id]);
+  if (!sug?.contaCodigo || contaContabilDesconhecida(sug.contaCodigo)) {
+    return null;
+  }
+  return String(sug.contaCodigo).trim().toUpperCase();
+}
+
+/**
+ * Filtra grupos/individuais/semSugestao pela letra da melhor sugestão.
+ * @param {string} letraFiltro LETRA_SUGESTAO_TODAS | LETRA_SUGESTAO_SEM | A..Z
+ */
+export function filtrarClassificacaoPorLetra(agrupada, letraFiltro, sugestoesMap) {
+  const filtro = String(letraFiltro ?? LETRA_SUGESTAO_TODAS).trim().toUpperCase();
+  if (filtro === LETRA_SUGESTAO_TODAS) {
+    return agrupada;
+  }
+  if (filtro === LETRA_SUGESTAO_SEM) {
+    return { grupos: [], individuais: [], semSugestao: agrupada.semSugestao ?? [] };
+  }
+
+  const grupos = (agrupada.grupos ?? []).filter(
+    (g) => String(g.sugestao?.contaCodigo ?? '').trim().toUpperCase() === filtro,
+  );
+  const individuais = (agrupada.individuais ?? []).filter(
+    (l) => codigoLetraSugestaoLancamento(l, sugestoesMap) === filtro,
+  );
+  return { grupos, individuais, semSugestao: [] };
+}
+
+export function contagemPorLetraSugestao(lancamentos, sugestoesMap) {
+  const porLetra = {};
+  let sem = 0;
+  for (const l of lancamentos ?? []) {
+    const cod = codigoLetraSugestaoLancamento(l, sugestoesMap);
+    if (!cod) {
+      sem += 1;
+      continue;
+    }
+    porLetra[cod] = (porLetra[cod] ?? 0) + 1;
+  }
+  return { porLetra, sem };
+}
+
+export function coletarIdsClassificacaoVisivel(agrupada) {
+  const ids = [];
+  for (const g of agrupada.grupos ?? []) {
+    for (const l of g.lancamentos ?? []) {
+      ids.push(l.id);
+    }
+  }
+  for (const l of agrupada.individuais ?? []) {
+    ids.push(l.id);
+  }
+  for (const l of agrupada.semSugestao ?? []) {
+    ids.push(l.id);
+  }
+  return ids;
 }
 
 function formatDataBr(iso) {

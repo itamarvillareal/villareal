@@ -33,7 +33,12 @@ import { ClassificacaoCard } from './cards/ClassificacaoCard.jsx';
 import { ClassificacaoGroupCard } from './cards/ClassificacaoGroupCard.jsx';
 import {
   agruparLancamentosClassificacao,
+  coletarIdsClassificacaoVisivel,
+  contagemPorLetraSugestao,
+  filtrarClassificacaoPorLetra,
   filtrarSugestoesClassificacao,
+  LETRA_SUGESTAO_SEM,
+  LETRA_SUGESTAO_TODAS,
   melhorSugestao,
 } from './inboxClassificacaoGrupos.js';
 import { CompensacaoCard } from './cards/CompensacaoCard.jsx';
@@ -88,7 +93,8 @@ function normalizeSugestoesMap(raw) {
 export function InboxPage() {
   const { tipo: tipoParam } = useParams();
   const tipo = TIPOS_VALIDOS.has(tipoParam) ? tipoParam : INBOX_TIPOS.classificar;
-  const { bancos, bancoAtivo, filters, setBanco, setMes, setTipoPar, setTipoDia } = useFinanceiro();
+  const { bancos, bancoAtivo, filters, setBanco, setMes, setTipoPar, setTipoDia, setLetraSugestao } =
+    useFinanceiro();
   const toast = useFinanceiroToast();
 
   const [page, setPage] = useState(0);
@@ -130,6 +136,7 @@ export function InboxPage() {
 
   const filtroTipoPar = filters.tipoPar ?? TIPO_PAR_TODOS;
   const filtroTipoDia = filters.tipoDia ?? TIPO_DIA_TODOS;
+  const filtroLetraSugestao = filters.letraSugestao ?? LETRA_SUGESTAO_TODAS;
   const queryTipoPar = useMemo(() => queryFiltroTipoPar(filtroTipoPar), [filtroTipoPar]);
   const queryTipoDia = useMemo(() => queryFiltroTipoDia(filtroTipoDia), [filtroTipoDia]);
   const queryCompensar = useMemo(
@@ -237,7 +244,7 @@ export function InboxPage() {
     if (tipo === INBOX_TIPOS.compensar) {
       setPares([]);
     }
-  }, [tipo, filters.mes, bancoAtivo, filtroTipoPar, filtroTipoDia]);
+  }, [tipo, filters.mes, bancoAtivo, filtroTipoPar, filtroTipoDia, filtroLetraSugestao]);
 
   const contasClassificacao = useMemo(
     () =>
@@ -583,6 +590,105 @@ export function InboxPage() {
     [lancamentosVisiveis, sugestoesMap],
   );
 
+  const contagemLetrasSugestao = useMemo(
+    () => contagemPorLetraSugestao(lancamentosVisiveis, sugestoesMap),
+    [lancamentosVisiveis, sugestoesMap],
+  );
+
+  const classificacaoFiltrada = useMemo(
+    () =>
+      filtrarClassificacaoPorLetra(classificacaoAgrupada, filtroLetraSugestao, sugestoesMap),
+    [classificacaoAgrupada, filtroLetraSugestao, sugestoesMap],
+  );
+
+  const idsClassificacaoFiltrados = useMemo(
+    () => coletarIdsClassificacaoVisivel(classificacaoFiltrada),
+    [classificacaoFiltrada],
+  );
+
+  const totalClassificacaoFiltrada = idsClassificacaoFiltrados.length;
+  const filtroLetraAtivo = filtroLetraSugestao !== LETRA_SUGESTAO_TODAS;
+
+  const opcoesLetraSugestao = useMemo(() => {
+    const letras = new Set(contasClassificacao.map((c) => String(c.codigo).trim().toUpperCase()));
+    for (const cod of Object.keys(contagemLetrasSugestao.porLetra)) {
+      letras.add(cod);
+    }
+    return [...letras].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [contasClassificacao, contagemLetrasSugestao.porLetra]);
+
+  const handleAprovarTodosFiltradosClassificar = useCallback(async () => {
+    if (busy || totalClassificacaoFiltrada === 0 || filtroLetraSugestao === LETRA_SUGESTAO_SEM) {
+      return;
+    }
+
+    const aplicacoes = [];
+    for (const g of classificacaoFiltrada.grupos) {
+      const sug = g.sugestao;
+      if (!sug?.contaContabilId) continue;
+      for (const l of g.lancamentos) {
+        aplicacoes.push({
+          lancamentoId: l.id,
+          contaContabilId: sug.contaContabilId,
+          clienteId: sug.clienteId ?? null,
+          processoId: sug.processoId ?? null,
+        });
+      }
+    }
+    for (const l of classificacaoFiltrada.individuais) {
+      const sug = melhorSugestao(sugestoesMap[l.id]);
+      if (!sug?.contaContabilId) continue;
+      aplicacoes.push({
+        lancamentoId: l.id,
+        contaContabilId: sug.contaContabilId,
+        clienteId: sug.clienteId ?? null,
+        processoId: sug.processoId ?? null,
+      });
+    }
+    if (!aplicacoes.length) {
+      toast.warn('Nenhum lançamento filtrado tem sugestão para aplicar.');
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const res = await aplicarSugestoesLoteApi(aplicacoes);
+      const ok = Number(res?.aplicados ?? aplicacoes.length);
+      toast.success(
+        `${ok} lançamento${ok !== 1 ? 's' : ''} classificados como ${filtroLetraSugestao}`,
+      );
+      const ids = aplicacoes.map((a) => a.lancamentoId);
+      removeComFade(ids, () => {
+        setLancamentos((prev) => prev.filter((l) => !ids.includes(l.id)));
+        setTotalElements((t) => Math.max(0, t - ids.length));
+      });
+      patchCount(INBOX_TIPOS.classificar, -ids.length);
+      scheduleLoadCounts();
+      dispatchRefreshPendentes();
+      setSelected(new Set());
+    } catch (e) {
+      toast.error(e?.message || 'Erro ao aprovar lançamentos filtrados.');
+    } finally {
+      setBusy(false);
+    }
+  }, [
+    busy,
+    totalClassificacaoFiltrada,
+    filtroLetraSugestao,
+    classificacaoFiltrada,
+    sugestoesMap,
+    toast,
+    removeComFade,
+    patchCount,
+    scheduleLoadCounts,
+  ]);
+
+  const handlePularTodosFiltradosClassificar = useCallback(() => {
+    if (totalClassificacaoFiltrada === 0) return;
+    setSkipped((prev) => new Set([...prev, ...idsClassificacaoFiltrados]));
+    setSelected(new Set());
+  }, [totalClassificacaoFiltrada, idsClassificacaoFiltrados]);
+
   const handleAprovarGrupo = useCallback(
     async (grupo) => {
       const sug = grupo.sugestao;
@@ -736,13 +842,16 @@ export function InboxPage() {
 
   const itensNavegaveis = useMemo(() => {
     if (tipo === INBOX_TIPOS.classificar) {
+      if (filtroLetraAtivo) {
+        return lancamentosVisiveis.filter((l) => idsClassificacaoFiltrados.includes(l.id));
+      }
       return lancamentosVisiveis;
     }
     if (tipo === INBOX_TIPOS.compensar) {
       return pares.filter((p) => !skipped.has(parKey(p)));
     }
     return [];
-  }, [tipo, lancamentosVisiveis, pares, skipped]);
+  }, [tipo, lancamentosVisiveis, filtroLetraAtivo, idsClassificacaoFiltrados, pares, skipped]);
 
   const onAprovarFocado = useCallback(() => {
     const item = itensNavegaveis[focusedIndex];
@@ -845,9 +954,9 @@ export function InboxPage() {
     !loading &&
     !erro &&
     (tipo === INBOX_TIPOS.classificar
-      ? classificacaoAgrupada.grupos.length === 0 &&
-        classificacaoAgrupada.individuais.length === 0 &&
-        classificacaoAgrupada.semSugestao.length === 0
+      ? classificacaoFiltrada.grupos.length === 0 &&
+        classificacaoFiltrada.individuais.length === 0 &&
+        classificacaoFiltrada.semSugestao.length === 0
       : tipo === INBOX_TIPOS.compensar
         ? paresVisiveis.length === 0
         : tipo === INBOX_TIPOS.inconsistentes
@@ -915,19 +1024,71 @@ export function InboxPage() {
           </button>
         ) : null}
         {tipo === INBOX_TIPOS.classificar ? (
-          <button
-            type="button"
-            onClick={handleRefazerRelatorio}
-            disabled={refazendoRelatorio || busy}
-            className="inline-flex items-center gap-1.5 text-sm px-2.5 py-1 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50"
-            title="Recarrega grupos e sugestões de classificação para o período e banco selecionados"
-          >
-            <RefreshCw
-              className={`w-3.5 h-3.5 ${refazendoRelatorio ? 'animate-spin' : ''}`}
-              aria-hidden
-            />
-            {refazendoRelatorio ? 'Atualizando…' : 'Refazer relatório'}
-          </button>
+          <>
+            <select
+              value={filtroLetraSugestao}
+              onChange={(e) => setLetraSugestao(e.target.value)}
+              className="text-sm rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1 min-w-[11rem]"
+              aria-label="Filtrar por letra da sugestão"
+            >
+              <option value={LETRA_SUGESTAO_TODAS}>
+                Sugestão: todas ({lancamentosVisiveis.length})
+              </option>
+              {opcoesLetraSugestao.map((cod) => {
+                const n = contagemLetrasSugestao.porLetra[cod] ?? 0;
+                if (n <= 0) return null;
+                const nome = contasClassificacao.find((c) => c.codigo === cod)?.nome ?? cod;
+                return (
+                  <option key={cod} value={cod}>
+                    Sugestão {cod} — {nome} ({n})
+                  </option>
+                );
+              })}
+              {contagemLetrasSugestao.sem > 0 ? (
+                <option value={LETRA_SUGESTAO_SEM}>
+                  Sem sugestão ({contagemLetrasSugestao.sem})
+                </option>
+              ) : null}
+            </select>
+            {filtroLetraAtivo && totalClassificacaoFiltrada > 0 ? (
+              <>
+                {filtroLetraSugestao !== LETRA_SUGESTAO_SEM ? (
+                  <button
+                    type="button"
+                    onClick={handleAprovarTodosFiltradosClassificar}
+                    disabled={busy || loading}
+                    className="inline-flex items-center gap-1.5 text-sm px-2.5 py-1 rounded-md bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 font-medium"
+                    title={`Aprova todas as sugestões ${filtroLetraSugestao} visíveis nesta página`}
+                  >
+                    <Check className="w-3.5 h-3.5" aria-hidden />
+                    Aprovar todos {filtroLetraSugestao} ({totalClassificacaoFiltrada})
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={handlePularTodosFiltradosClassificar}
+                  disabled={busy || loading}
+                  className="inline-flex items-center gap-1.5 text-sm px-2.5 py-1 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50"
+                  title="Remove da lista os lançamentos filtrados (pular)"
+                >
+                  Pular filtrados ({totalClassificacaoFiltrada})
+                </button>
+              </>
+            ) : null}
+            <button
+              type="button"
+              onClick={handleRefazerRelatorio}
+              disabled={refazendoRelatorio || busy}
+              className="inline-flex items-center gap-1.5 text-sm px-2.5 py-1 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50"
+              title="Recarrega grupos e sugestões de classificação para o período e banco selecionados"
+            >
+              <RefreshCw
+                className={`w-3.5 h-3.5 ${refazendoRelatorio ? 'animate-spin' : ''}`}
+                aria-hidden
+              />
+              {refazendoRelatorio ? 'Atualizando…' : 'Refazer relatório'}
+            </button>
+          </>
         ) : null}
       </div>
 
@@ -953,10 +1114,18 @@ export function InboxPage() {
         ) : erro ? (
           <p className="text-sm text-red-600 dark:text-red-400 p-4">{erro}</p>
         ) : empty ? (
-          <InboxEmptyState tipo={tipo} />
+          filtroLetraAtivo && lancamentosVisiveis.length > 0 ? (
+            <p className="text-sm text-slate-500 dark:text-slate-400 p-4">
+              Nenhum lançamento com sugestão{' '}
+              {filtroLetraSugestao === LETRA_SUGESTAO_SEM ? 'pendente' : filtroLetraSugestao} nesta
+              página. Tente outra letra ou aumente itens por página.
+            </p>
+          ) : (
+            <InboxEmptyState tipo={tipo} />
+          )
         ) : tipo === INBOX_TIPOS.classificar ? (
           <>
-            {classificacaoAgrupada.grupos.map((grupo, idx) => {
+            {classificacaoFiltrada.grupos.map((grupo, idx) => {
               const ids = grupo.lancamentos.map((l) => l.id);
               const grupoFading = ids.some((id) => fading.has(id));
               return (
@@ -987,8 +1156,8 @@ export function InboxPage() {
                 </div>
               );
             })}
-            {classificacaoAgrupada.individuais.map((l, idx) => {
-                const cardIdx = classificacaoAgrupada.grupos.length + idx;
+            {classificacaoFiltrada.individuais.map((l, idx) => {
+                const cardIdx = classificacaoFiltrada.grupos.length + idx;
                 return (
                   <div key={l.id} data-inbox-card-index={cardIdx}>
                     <ClassificacaoCard
@@ -1016,9 +1185,9 @@ export function InboxPage() {
                 );
               },
             )}
-            {classificacaoAgrupada.semSugestao.map((l, idx) => {
+            {classificacaoFiltrada.semSugestao.map((l, idx) => {
               const cardIdx =
-                classificacaoAgrupada.grupos.length + classificacaoAgrupada.individuais.length + idx;
+                classificacaoFiltrada.grupos.length + classificacaoFiltrada.individuais.length + idx;
               return (
                 <div key={l.id} data-inbox-card-index={cardIdx}>
                   <ClassificacaoCard
