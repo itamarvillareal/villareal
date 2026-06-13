@@ -2,7 +2,12 @@ import { describe, expect, it } from 'vitest';
 import {
   agruparLancamentosClassificacao,
   chaveGrupoClassificacao,
+  coletarIdsClassificacaoVisivel,
+  contagemPorLetraSugestao,
+  filtrarClassificacaoPorLetra,
   filtrarSugestoesClassificacao,
+  LETRA_SUGESTAO_SEM,
+  LETRA_SUGESTAO_TODAS,
   melhorSugestao,
 } from './inboxClassificacaoGrupos.js';
 
@@ -90,5 +95,70 @@ describe('chaveGrupoClassificacao', () => {
     const k1 = chaveGrupoClassificacao({ descricao: 'Lucro', numeroBanco: 30 }, { contaContabilId: 6 });
     const k2 = chaveGrupoClassificacao({ descricao: 'lucro', numeroBanco: 30 }, { contaContabilId: 6 });
     expect(k1).toBe(k2);
+  });
+});
+
+describe('filtrarClassificacaoPorLetra', () => {
+  const sugF = { contaContabilId: 6, contaCodigo: 'F', confianca: 'ALTA' };
+  const sugE = { contaContabilId: 5, contaCodigo: 'E', confianca: 'ALTA' };
+  const lancF1 = { id: 1, descricao: 'Lucro', numeroBanco: 30, dataLancamento: '2026-05-17' };
+  const lancF2 = { id: 2, descricao: 'Lucro', numeroBanco: 30, dataLancamento: '2026-05-16' };
+  const lancE = { id: 3, descricao: 'Pix', numeroBanco: 30, dataLancamento: '2026-05-15' };
+  const lancSem = { id: 4, descricao: 'X', numeroBanco: 1, dataLancamento: '2026-05-14' };
+  const sugestoes = { 1: [sugF], 2: [sugF], 3: [sugE] };
+
+  it('retorna tudo quando filtro é TODAS', () => {
+    const agrupada = agruparLancamentosClassificacao([lancF1, lancF2, lancE, lancSem], sugestoes);
+    const out = filtrarClassificacaoPorLetra(agrupada, LETRA_SUGESTAO_TODAS, sugestoes);
+    expect(out.grupos).toHaveLength(agrupada.grupos.length);
+    expect(out.individuais).toHaveLength(agrupada.individuais.length);
+    expect(out.semSugestao).toHaveLength(agrupada.semSugestao.length);
+  });
+
+  it('filtra apenas sugestão F', () => {
+    const agrupada = agruparLancamentosClassificacao([lancF1, lancF2, lancE], sugestoes);
+    const out = filtrarClassificacaoPorLetra(agrupada, 'F', sugestoes);
+    expect(out.grupos).toHaveLength(1);
+    expect(out.grupos[0].lancamentos).toHaveLength(2);
+    expect(out.individuais).toHaveLength(0);
+    expect(out.semSugestao).toHaveLength(0);
+  });
+
+  it('filtra apenas sem sugestão', () => {
+    const agrupada = agruparLancamentosClassificacao([lancF1, lancSem], sugestoes);
+    const out = filtrarClassificacaoPorLetra(agrupada, LETRA_SUGESTAO_SEM, sugestoes);
+    expect(out.grupos).toHaveLength(0);
+    expect(out.individuais).toHaveLength(0);
+    expect(out.semSugestao).toHaveLength(1);
+  });
+});
+
+describe('contagemPorLetraSugestao', () => {
+  it('conta por letra e sem sugestão', () => {
+    const lancamentos = [
+      { id: 1, descricao: 'A' },
+      { id: 2, descricao: 'B' },
+      { id: 3, descricao: 'C' },
+    ];
+    const sugestoes = {
+      1: [{ contaContabilId: 1, contaCodigo: 'F' }],
+      2: [{ contaContabilId: 2, contaCodigo: 'F' }],
+      3: [{ contaContabilId: 3, contaCodigo: 'E' }],
+    };
+    expect(contagemPorLetraSugestao(lancamentos, sugestoes)).toEqual({
+      porLetra: { F: 2, E: 1 },
+      sem: 0,
+    });
+  });
+});
+
+describe('coletarIdsClassificacaoVisivel', () => {
+  it('reúne ids de grupos, individuais e sem sugestão', () => {
+    const agrupada = {
+      grupos: [{ lancamentos: [{ id: 1 }, { id: 2 }] }],
+      individuais: [{ id: 3 }],
+      semSugestao: [{ id: 4 }],
+    };
+    expect(coletarIdsClassificacaoVisivel(agrupada)).toEqual([1, 2, 3, 4]);
   });
 });
