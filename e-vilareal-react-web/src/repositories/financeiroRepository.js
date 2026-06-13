@@ -978,7 +978,7 @@ export async function listarParesSugeridosCompensacaoApi(opts = {}) {
   return request('/api/financeiro/lancamentos/pares-sugeridos', {
     query: {
       page,
-      size,
+      size: clampFinanceiroPageSize(size),
       numeroBanco,
       ano,
       mes,

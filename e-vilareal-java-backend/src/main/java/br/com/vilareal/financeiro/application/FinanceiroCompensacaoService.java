@@ -32,6 +32,8 @@ public class FinanceiroCompensacaoService {
     private static final int SQL_BATCH_SIZE = 1000;
     /** Limite de linhas SQL de candidatos por execução greedy (evita OOM com explosão de pares). */
     private static final long MAX_CANDIDATE_SQL_ROWS = 50_000;
+    /** Alinhado a spring.data.web.pageable.max-page-size e PAGE_SIZE_OPTIONS do frontend. */
+    private static final int MAX_PARES_POR_PAGINA = 1000;
     private static final int DESCRICAO_RESUMO_MAX = 120;
     private static final long CACHE_GREEDY_TTL_SECONDS = 45;
 
@@ -128,7 +130,7 @@ public class FinanceiroCompensacaoService {
             boolean apenasMesmoBanco,
             boolean apenasMesmoDiaCalendario,
             boolean apenasDiaDivergente) {
-        int limit = Math.max(1, Math.min(size, 200));
+        int limit = Math.max(1, Math.min(size, MAX_PARES_POR_PAGINA));
         int skip = Math.max(0, page) * limit;
         List<ParCompensacaoSugeridoResponse> todosFiltrados = filtrarParesPorDiaCalendario(
                 obterParesGreedyComCache(

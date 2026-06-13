@@ -15,7 +15,7 @@ import {
   parearCompensacaoApi,
   sugestoesClassificacaoLoteApi,
 } from '../../../repositories/financeiroRepository.js';
-import { ETAPAS, INBOX_TIPOS } from '../constants/financeiroConstants.js';
+import { ETAPAS, INBOX_TIPOS, clampFinanceiroPageSize } from '../constants/financeiroConstants.js';
 import { useFinanceiro } from '../FinanceiroContext.jsx';
 import { PeriodoSelector } from '../shared/PeriodoSelector.jsx';
 import {
@@ -49,7 +49,6 @@ import {
 
 const TIPOS_VALIDOS = new Set(Object.values(INBOX_TIPOS));
 const FADE_MS = 280;
-const COMPENSAR_PAGE_SIZE = 25;
 const COUNTS_DEBOUNCE_MS = 500;
 
 /** Valores de filters.tipoPar (URL ?tipoPar=) na aba Compensar. */
@@ -143,14 +142,11 @@ export function InboxPage() {
     [filters.mes, bancoFiltro, filtroTipoPar, filtroTipoDia],
   );
 
+  const pageSizeEfetivo = useMemo(() => clampFinanceiroPageSize(pageSize), [pageSize]);
+
   const chaveListaCompensar = useMemo(
-    () =>
-      [
-        chaveFiltrosCompensar,
-        page,
-        Math.min(pageSize, COMPENSAR_PAGE_SIZE),
-      ].join('|'),
-    [chaveFiltrosCompensar, page, pageSize],
+    () => [chaveFiltrosCompensar, page, pageSizeEfetivo].join('|'),
+    [chaveFiltrosCompensar, page, pageSizeEfetivo],
   );
 
   const cargaCompensarRef = useRef(null);
@@ -240,7 +236,6 @@ export function InboxPage() {
     setContaLoteId('');
     if (tipo === INBOX_TIPOS.compensar) {
       setPares([]);
-      setPageSize((s) => (s > COMPENSAR_PAGE_SIZE ? COMPENSAR_PAGE_SIZE : s));
     }
   }, [tipo, filters.mes, bancoAtivo, filtroTipoPar, filtroTipoDia]);
 
@@ -296,7 +291,7 @@ export function InboxPage() {
           cargaCompensarRef.current = token;
           const res = await listarParesSugeridosCompensacaoApi({
             page,
-            size: Math.min(pageSize, COMPENSAR_PAGE_SIZE),
+            size: pageSizeEfetivo,
             ...periodoAnoMes,
             numeroBanco: bancoFiltro,
             ...queryCompensar,
@@ -312,14 +307,11 @@ export function InboxPage() {
           startTransition(() => {
             if (cargaCompensarRef.current !== token) return;
             setPares(paresFiltrados);
-            setTotalElements(
-              paresFiltrados.length < (res?.pares?.length ?? 0) ? paresFiltrados.length : total,
-            );
+            setTotalElements(total);
             setTotalPages(Math.max(1, Number(res?.totalPages ?? 1)));
             setCounts((c) => ({
               ...c,
-              [INBOX_TIPOS.compensar]:
-                paresFiltrados.length < (res?.pares?.length ?? 0) ? paresFiltrados.length : total,
+              [INBOX_TIPOS.compensar]: total,
             }));
           });
           return;
@@ -395,6 +387,7 @@ export function InboxPage() {
     reloadNonce,
     loadCounts,
     toast,
+    pageSizeEfetivo,
   ]);
 
   const removeComFade = useCallback((keys, updater) => {
@@ -1102,14 +1095,10 @@ export function InboxPage() {
           totalPages={totalPages}
           onPageChange={setPage}
           pageSize={
-            tipo === INBOX_TIPOS.inconsistentes
-              ? Math.min(pageSize, 20)
-              : tipo === INBOX_TIPOS.compensar
-                ? Math.min(pageSize, COMPENSAR_PAGE_SIZE)
-                : pageSize
+            tipo === INBOX_TIPOS.inconsistentes ? Math.min(pageSizeEfetivo, 20) : pageSizeEfetivo
           }
           onPageSizeChange={(s) => {
-            setPageSize(s);
+            setPageSize(clampFinanceiroPageSize(s));
             setPage(0);
           }}
           totalItems={totalElements}
