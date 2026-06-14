@@ -37,6 +37,18 @@ export function formatDataCurta(isoOrBr) {
   return `${d}/${mo}/${y}`;
 }
 
+/** Sempre DD/MM/AAAA (com ano), para recorrências e confirmações. */
+export function formatDataBrCompleta(isoOrBr) {
+  const s = String(isoOrBr ?? '').trim();
+  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  if (iso) return `${iso[3]}/${iso[2]}/${iso[1]}`;
+  const brCurta = /^(\d{2})\/(\d{2})$/.exec(s);
+  if (brCurta) return s;
+  const br = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(s);
+  if (br) return `${br[1]}/${br[2]}/${br[3]}`;
+  return s;
+}
+
 export function grupoFechado(soma, tolerancia = 0.01) {
   return Math.abs(Number(soma) || 0) <= tolerancia;
 }

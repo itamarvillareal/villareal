@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -21,10 +21,27 @@ import {
 import { ImoveisSugestoesVinculoPanel } from './imoveis/ImoveisSugestoesVinculoPanel.jsx';
 import {
   carregarPainelAdministracaoImovel,
+  desvincularReconciliacaoApi,
+  obterResultadoImovelApi,
   recarregarSomentePainelFinanceiroImovel,
   salvarDespesaLocacao,
   salvarRepasseLocacao,
+  sugerirReconciliacaoApi,
+  vincularReconciliacaoApi,
 } from '../repositories/imoveisRepository.js';
+import {
+  agruparLinhasReconciliacao,
+  competenciaAtual,
+  competenciaValida,
+  confiancaInfo,
+  descricaoAdocao,
+  linhasReconciliacaoFromSugestoes,
+  montarPayloadVinculos,
+  PAPEIS_RECONCILIACAO,
+  repasseEsperado,
+  rotuloPapelReconciliacao,
+  statusRepasseInfo,
+} from '../data/imoveisReconciliacao.js';
 import { featureFlags } from '../config/featureFlags.js';
 import { buildRouterStateChaveClienteProcesso } from '../domain/camposProcessoCliente.js';
 
@@ -36,6 +53,24 @@ function formatBRL(n) {
 
 const th = 'px-3 py-2 text-left text-xs font-semibold text-slate-700 border-b border-slate-200 bg-slate-100 whitespace-nowrap';
 const td = 'px-3 py-2 text-sm text-slate-800 border-b border-slate-100 align-top';
+
+const KPI_TONS = {
+  emerald: 'text-emerald-800',
+  slate: 'text-slate-800',
+  orange: 'text-orange-800',
+  teal: 'text-teal-800',
+  indigo: 'text-indigo-800',
+};
+
+function KpiResultado({ titulo, valor, sub, tom = 'slate' }) {
+  return (
+    <div className="rounded-lg border border-slate-100 bg-slate-50/80 px-3 py-2">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{titulo}</p>
+      <p className={`mt-0.5 text-base font-bold tabular-nums ${KPI_TONS[tom] || KPI_TONS.slate}`}>{valor}</p>
+      {sub ? <p className="text-[11px] text-slate-500 mt-0.5">{sub}</p> : null}
+    </div>
+  );
+}
 
 export function ImoveisAdministracaoFinanceiro() {
   const navigate = useNavigate();
@@ -68,6 +103,24 @@ export function ImoveisAdministracaoFinanceiro() {
     valor: '',
     categoria: 'OUTROS',
   });
+
+  // Reconciliação (Fase B) — verdade vem do backend.
+  const [competencia, setCompetencia] = useState(() => competenciaAtual());
+  const [modoPeriodo, setModoPeriodo] = useState(false);
+  const [periodoInicio, setPeriodoInicio] = useState('');
+  const [periodoFim, setPeriodoFim] = useState('');
+  const [resultado, setResultado] = useState(null);
+  const [carregandoResultado, setCarregandoResultado] = useState(false);
+  const [sugestoes, setSugestoes] = useState([]);
+  const [carregandoSugestoes, setCarregandoSugestoes] = useState(false);
+  const [papeisEditados, setPapeisEditados] = useState({});
+  const [selecionadas, setSelecionadas] = useState(() => new Set());
+  const [salvandoReconc, setSalvandoReconc] = useState(false);
+  const [erroReconc, setErroReconc] = useState('');
+  const [reconcTick, setReconcTick] = useState(0);
+  // Competência editável por vínculo de ALUGUEL (chave = lancamentoFinanceiroId). O draft persiste
+  // entre recargas para refletir a competência movida (o backend não expõe a competência crua do vínculo).
+  const [competenciaVinculoDraft, setCompetenciaVinculoDraft] = useState({});
 
   /** Nº do imóvel na planilha (col. A) — mesmo valor exibido no cadastro e no relatório. */
   const imovelId = useMemo(() => {
@@ -114,6 +167,305 @@ export function ImoveisAdministracaoFinanceiro() {
       if (painel) setPainelApi(painel);
     });
   }, [imovelId, imovelIdApi, vinculoOk]);
+
+  const contratoId = useMemo(() => {
+    const n = Number(mock?._apiContratoId);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }, [mock]);
+
+  const recarregarReconciliacao = useCallback(() => setReconcTick((t) => t + 1), []);
+
+  // Range opcional (AAAA-MM) para o seletor de competência: período do contrato vigente.
+  const competenciaRange = useMemo(() => {
+    const min = contratoVigenteApi?.dataInicio ? String(contratoVigenteApi.dataInicio).slice(0, 7) : undefined;
+    const max = contratoVigenteApi?.dataFim ? String(contratoVigenteApi.dataFim).slice(0, 7) : undefined;
+    return { min, max };
+  }, [contratoVigenteApi]);
+
+  // Limpa os drafts ao trocar de contrato (evita carregar competências de outro imóvel).
+  useEffect(() => {
+    setCompetenciaVinculoDraft({});
+  }, [contratoId]);
+
+  useEffect(() => {
+    if (!featureFlags.useApiImoveis || !contratoId) {
+      setResultado(null);
+      setSugestoes([]);
+      return;
+    }
+    let ativo = true;
+    setErroReconc('');
+    setCarregandoResultado(true);
+    setCarregandoSugestoes(true);
+    const queryResultado =
+      modoPeriodo && periodoInicio && periodoFim
+        ? { inicio: periodoInicio, fim: periodoFim }
+        : { competencia };
+    Promise.all([
+      obterResultadoImovelApi(contratoId, queryResultado),
+      sugerirReconciliacaoApi(contratoId, competencia),
+    ])
+      .then(([res, sug]) => {
+        if (!ativo) return;
+        setResultado(res || null);
+        const linhas = linhasReconciliacaoFromSugestoes(sug);
+        setSugestoes(linhas);
+        setPapeisEditados((prev) => {
+          const next = {};
+          for (const l of linhas) {
+            const id = l.lancamentoFinanceiroId;
+            next[id] = prev[id] || l.papelVinculado || l.papelSugerido || 'ALUGUEL';
+          }
+          return next;
+        });
+        // Semeia a competência editável dos aluguéis vinculados; preserva o que já foi movido nesta sessão.
+        setCompetenciaVinculoDraft((prev) => {
+          const next = { ...prev };
+          for (const l of linhas) {
+            if (l.jaVinculado && l.papelVinculado === 'ALUGUEL') {
+              const id = l.lancamentoFinanceiroId;
+              if (next[id] == null) next[id] = l.competenciaSugerida || '';
+            }
+          }
+          return next;
+        });
+        setSelecionadas(new Set());
+      })
+      .catch((e) => {
+        if (!ativo) return;
+        setErroReconc(e?.message || 'Falha ao carregar a reconciliação.');
+      })
+      .finally(() => {
+        if (!ativo) return;
+        setCarregandoResultado(false);
+        setCarregandoSugestoes(false);
+      });
+    return () => {
+      ativo = false;
+    };
+  }, [contratoId, competencia, modoPeriodo, periodoInicio, periodoFim, reconcTick]);
+
+  function setPapelLinha(id, papel) {
+    setPapeisEditados((s) => ({ ...s, [id]: papel }));
+  }
+
+  function toggleSelecionada(id) {
+    setSelecionadas((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function aplicarVinculos(itens) {
+    const payload = montarPayloadVinculos(itens);
+    if (payload.length === 0 || !contratoId) return;
+    setSalvandoReconc(true);
+    setErroReconc('');
+    try {
+      await vincularReconciliacaoApi(contratoId, payload);
+      recarregarReconciliacao();
+    } catch (e) {
+      setErroReconc(e?.message || 'Falha ao confirmar vínculo.');
+    } finally {
+      setSalvandoReconc(false);
+    }
+  }
+
+  function confirmarLinha(linha) {
+    void aplicarVinculos([
+      {
+        lancamentoFinanceiroId: linha.lancamentoFinanceiroId,
+        papel: papeisEditados[linha.lancamentoFinanceiroId] || linha.papelSugerido,
+        competenciaMes: competencia,
+      },
+    ]);
+  }
+
+  function confirmarLote() {
+    const itens = sugestoes
+      .filter((l) => selecionadas.has(l.lancamentoFinanceiroId) && !l.jaVinculado)
+      .map((l) => ({
+        lancamentoFinanceiroId: l.lancamentoFinanceiroId,
+        papel: papeisEditados[l.lancamentoFinanceiroId] || l.papelSugerido,
+        competenciaMes: competencia,
+      }));
+    void aplicarVinculos(itens);
+  }
+
+  async function moverCompetenciaAluguel(linha, novaCompetencia) {
+    if (!contratoId || !linha?.lancamentoFinanceiroId) return;
+    const id = linha.lancamentoFinanceiroId;
+    const anterior = competenciaVinculoDraft[id] ?? linha.competenciaSugerida ?? '';
+    if (!competenciaValida(novaCompetencia)) {
+      setErroReconc('Informe uma competência válida (AAAA-MM).');
+      return;
+    }
+    if (novaCompetencia === anterior) return;
+    // Atualização otimista do campo; revertida em caso de erro.
+    setCompetenciaVinculoDraft((s) => ({ ...s, [id]: novaCompetencia }));
+    setSalvandoReconc(true);
+    setErroReconc('');
+    setSucesso('');
+    try {
+      // Upsert: mesmo lançamento + papel ALUGUEL com a nova competência. O backend atualiza o
+      // vínculo (não cria outro) e move o par de repasse interno junto (sincronizarCompetenciaDoPar).
+      await vincularReconciliacaoApi(contratoId, [
+        { lancamentoFinanceiroId: Number(id), papel: 'ALUGUEL', competenciaMes: novaCompetencia },
+      ]);
+      setSucesso(`Competência movida para ${novaCompetencia}`);
+      recarregarReconciliacao();
+    } catch (e) {
+      setCompetenciaVinculoDraft((s) => ({ ...s, [id]: anterior }));
+      setErroReconc(e?.message || 'Falha ao mover a competência.');
+    } finally {
+      setSalvandoReconc(false);
+    }
+  }
+
+  async function desvincularLinha(linha) {
+    if (!linha?.vinculoId || !contratoId) return;
+    setSalvandoReconc(true);
+    setErroReconc('');
+    try {
+      await desvincularReconciliacaoApi(contratoId, linha.vinculoId);
+      recarregarReconciliacao();
+    } catch (e) {
+      setErroReconc(e?.message || 'Falha ao desvincular.');
+    } finally {
+      setSalvandoReconc(false);
+    }
+  }
+
+  const gruposReconc = useMemo(() => agruparLinhasReconciliacao(sugestoes), [sugestoes]);
+
+  function renderLinhaReconc(l, adocao) {
+    const conf = confiancaInfo(l.confianca);
+    const papelAtual = papeisEditados[l.lancamentoFinanceiroId] || l.papelSugerido || 'ALUGUEL';
+    return (
+      <tr
+        key={l.lancamentoFinanceiroId}
+        className={l.jaVinculado ? 'bg-emerald-50/40' : adocao ? 'bg-amber-50/30' : ''}
+      >
+        <td className={td}>
+          <input
+            type="checkbox"
+            checked={selecionadas.has(l.lancamentoFinanceiroId)}
+            onChange={() => toggleSelecionada(l.lancamentoFinanceiroId)}
+            disabled={l.jaVinculado || salvandoReconc}
+            aria-label={`Selecionar lançamento ${l.lancamentoFinanceiroId}`}
+          />
+        </td>
+        <td className={`${td} tabular-nums whitespace-nowrap`}>
+          {l.data ? String(l.data).slice(0, 10) : '—'}
+        </td>
+        <td className={td}>
+          <div>{l.descricao || '—'}</div>
+          {adocao ? (
+            <div className="text-[11px] text-amber-800 mt-0.5">{descricaoAdocao(l, papelAtual)}</div>
+          ) : null}
+        </td>
+        <td className={`${td} text-right tabular-nums`}>{formatBRL(l.valor)}</td>
+        <td className={td}>
+          <select
+            value={papelAtual}
+            onChange={(e) => setPapelLinha(l.lancamentoFinanceiroId, e.target.value)}
+            disabled={l.jaVinculado || salvandoReconc}
+            className="rounded border border-slate-300 px-2 py-1 text-xs"
+          >
+            {PAPEIS_RECONCILIACAO.map((p) => (
+              <option key={p} value={p}>
+                {rotuloPapelReconciliacao(p)}
+              </option>
+            ))}
+          </select>
+        </td>
+        <td className={td}>
+          <span
+            className={`inline-flex items-center px-2 py-0.5 rounded border text-[11px] font-medium ${conf.cls}`}
+          >
+            {conf.label}
+          </span>
+        </td>
+        <td className={td}>
+          {l.jaVinculado ? (
+            <div className="flex flex-col gap-1">
+              <span className="text-[11px] text-emerald-800 font-medium">
+                Vinculado: {rotuloPapelReconciliacao(l.papelVinculado)}
+              </span>
+              {l.papelVinculado === 'ALUGUEL' ? (
+                <label className="flex items-center gap-1 text-[10px] font-medium text-slate-500">
+                  Competência
+                  <input
+                    type="month"
+                    value={competenciaVinculoDraft[l.lancamentoFinanceiroId] ?? l.competenciaSugerida ?? ''}
+                    min={competenciaRange.min}
+                    max={competenciaRange.max}
+                    disabled={salvandoReconc}
+                    onChange={(e) => void moverCompetenciaAluguel(l, e.target.value)}
+                    className="rounded border border-slate-300 px-1.5 py-0.5 text-[11px] tabular-nums disabled:opacity-50"
+                    aria-label={`Mover competência do aluguel ${l.lancamentoFinanceiroId}`}
+                  />
+                </label>
+              ) : null}
+            </div>
+          ) : adocao ? (
+            <span className="text-[11px] text-amber-800 font-medium">Adotar ao confirmar</span>
+          ) : (
+            <span className="text-[11px] text-slate-500">A vincular</span>
+          )}
+        </td>
+        <td className={td}>
+          {l.jaVinculado ? (
+            <button
+              type="button"
+              disabled={salvandoReconc}
+              onClick={() => void desvincularLinha(l)}
+              className="px-2 py-0.5 rounded border border-red-300 text-red-700 text-[11px] font-medium hover:bg-red-50 disabled:opacity-40"
+            >
+              Desvincular
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={salvandoReconc}
+              onClick={() => confirmarLinha(l)}
+              className={`px-2 py-0.5 rounded border text-[11px] font-medium disabled:opacity-40 ${
+                adocao
+                  ? 'border-amber-400 text-amber-900 hover:bg-amber-50'
+                  : 'border-indigo-300 text-indigo-800 hover:bg-indigo-50'
+              }`}
+            >
+              {adocao ? 'Adotar e confirmar' : 'Confirmar'}
+            </button>
+          )}
+        </td>
+      </tr>
+    );
+  }
+
+  function renderTabelaReconc(linhas, adocao) {
+    return (
+      <div className="overflow-x-auto rounded border border-slate-200">
+        <table className="w-full text-left border-collapse min-w-[920px]">
+          <thead>
+            <tr>
+              <th className={`${th} w-8`} aria-label="Selecionar" />
+              <th className={th}>Data</th>
+              <th className={th}>Descrição</th>
+              <th className={`${th} text-right`}>Valor</th>
+              <th className={th}>Papel</th>
+              <th className={th}>Confiança</th>
+              <th className={th}>Status</th>
+              <th className={th}>Ações</th>
+            </tr>
+          </thead>
+          <tbody>{linhas.map((l) => renderLinhaReconc(l, adocao))}</tbody>
+        </table>
+      </div>
+    );
+  }
 
   useEffect(() => {
     setRepasseEditandoId(null);
@@ -291,11 +643,16 @@ export function ImoveisAdministracaoFinanceiro() {
     }
   }
 
+  // Rola até o extrato apenas UMA vez, na chegada via âncora. Sem o guard, qualquer
+  // recarga do painel (aprovar/desvincular) re-disparava o scroll e a tela "pulava".
+  const jaRolouParaExtratoRef = useRef(false);
   useEffect(() => {
-    if (location.hash === '#extrato-imoveis') {
-      const el = document.getElementById('extrato-imoveis');
-      if (el) window.requestAnimationFrame(() => el.scrollIntoView({ behavior: 'smooth', block: 'start' }));
-    }
+    if (jaRolouParaExtratoRef.current) return;
+    if (location.hash !== '#extrato-imoveis') return;
+    const el = document.getElementById('extrato-imoveis');
+    if (!el) return;
+    jaRolouParaExtratoRef.current = true;
+    window.requestAnimationFrame(() => el.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   }, [location.hash, painel]);
 
   return (
@@ -525,65 +882,171 @@ export function ImoveisAdministracaoFinanceiro() {
                   </div>
                 )}
 
-                <div className="bg-white rounded-lg border border-slate-300 shadow-sm p-4">
-                  <h2 className="text-sm font-semibold text-slate-800 mb-3">Consolidação mensal</h2>
-                  <p className="text-xs text-slate-500 mb-3">
-                    Todos os créditos e débitos vinculados a este Cod. cliente + Proc. entram na lista abaixo.
-                    {painelFonteApi ? ' Fonte: API (banco e cartão).' : ' Fonte: extrato local.'}{' '}
-                    A coluna <strong>Papel</strong> é só sugestão (aluguel, repasse, despesa ou crédito/débito a classificar) — use as tags{' '}
-                    <code className="text-[10px]">[ADM_IMOVEL:…]</code> no Financeiro quando quiser fixar o tipo.
-                  </p>
-                  <div className="overflow-x-auto rounded border border-slate-200">
-                    <table className="w-full text-left border-collapse min-w-[880px]">
-                      <thead>
-                        <tr>
-                          <th className={th}>Mês</th>
-                          <th className={`${th} text-right`}>Créditos (total)</th>
-                          <th className={`${th} text-right`}>Débitos (total)</th>
-                          <th className={`${th} text-right`}>Aluguel (sug.)</th>
-                          <th className={`${th} text-right`}>Despesas (sug.)</th>
-                          <th className={`${th} text-right`}>Repasse (sug.)</th>
-                          <th className={`${th} text-right`}>Remuneração escritório</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {painel.mesesOrdenados.length === 0 ? (
-                          <tr>
-                            <td colSpan={7} className={`${td} text-slate-500 text-center py-6`}>
-                              Nenhum lançamento com este Cod. cliente e Proc. no extrato. Inclua ou vincule lançamentos no
-                              Financeiro.
-                            </td>
-                          </tr>
-                        ) : (
-                          painel.mesesOrdenados.map((chave) => {
-                            const row = painel.porMes.get(chave);
-                            return (
-                              <tr key={chave}>
-                                <td className={`${td} font-medium`}>{row.label}</td>
-                                <td className={`${td} text-right tabular-nums text-emerald-800`}>
-                                  {formatBRL(row.totalCreditos)}
-                                </td>
-                                <td className={`${td} text-right tabular-nums text-red-800`}>
-                                  {formatBRL(row.totalDebitos)}
-                                </td>
-                                <td className={`${td} text-right tabular-nums`}>{formatBRL(row.totalRecebido)}</td>
-                                <td className={`${td} text-right tabular-nums text-orange-800`}>
-                                  {formatBRL(row.totalDespesasRepassar)}
-                                </td>
-                                <td className={`${td} text-right tabular-nums text-slate-800`}>
-                                  {formatBRL(row.totalRepasse)}
-                                </td>
-                                <td className={`${td} text-right tabular-nums font-medium text-teal-800`}>
-                                  {formatBRL(row.remuneracaoEscritorio)}
-                                </td>
-                              </tr>
-                            );
-                          })
-                        )}
-                      </tbody>
-                    </table>
+                <div className="bg-white rounded-lg border border-slate-300 shadow-sm p-4 space-y-3">
+                  <div className="flex flex-wrap items-end gap-3">
+                    <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
+                      Competência
+                      <input
+                        type="month"
+                        value={competencia}
+                        onChange={(e) => setCompetencia(e.target.value)}
+                        className="rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+                      />
+                    </label>
+                    <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer pb-1">
+                      <input
+                        type="checkbox"
+                        checked={modoPeriodo}
+                        onChange={(e) => setModoPeriodo(e.target.checked)}
+                      />
+                      Resultado por período
+                    </label>
+                    {modoPeriodo ? (
+                      <>
+                        <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
+                          De
+                          <input
+                            type="month"
+                            value={periodoInicio}
+                            onChange={(e) => setPeriodoInicio(e.target.value)}
+                            className="rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+                          />
+                        </label>
+                        <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
+                          Até
+                          <input
+                            type="month"
+                            value={periodoFim}
+                            onChange={(e) => setPeriodoFim(e.target.value)}
+                            className="rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+                          />
+                        </label>
+                      </>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={recarregarReconciliacao}
+                      className="ml-auto inline-flex items-center gap-1.5 px-3 py-2 rounded-md border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
+                    >
+                      <RefreshCw
+                        className={`w-4 h-4 ${carregandoResultado || carregandoSugestoes ? 'animate-spin' : ''}`}
+                        aria-hidden
+                      />
+                      Atualizar
+                    </button>
                   </div>
+                  {erroReconc ? <p className="text-sm text-red-700">{erroReconc}</p> : null}
+                  {!contratoId ? (
+                    <p className="text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
+                      Sem contrato vigente na API para este imóvel — cadastre um contrato de locação para reconciliar o
+                      caixa real e calcular o resultado.
+                    </p>
+                  ) : null}
                 </div>
+
+                {contratoId && resultado ? (
+                  <div className="bg-white rounded-lg border border-slate-300 shadow-sm p-4 space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <h2 className="text-sm font-semibold text-slate-800">
+                        Resultado{' '}
+                        {modoPeriodo && periodoInicio && periodoFim
+                          ? `· ${periodoInicio} a ${periodoFim}`
+                          : `· ${competencia}`}
+                      </h2>
+                      {(() => {
+                        const info = statusRepasseInfo(resultado.statusRepasse);
+                        return (
+                          <span
+                            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-xs font-semibold ${info.cls}`}
+                          >
+                            {info.label}
+                          </span>
+                        );
+                      })()}
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                      <KpiResultado titulo="Aluguel recebido" valor={formatBRL(resultado.aluguelRecebido)} tom="emerald" />
+                      <KpiResultado titulo="Repassado" valor={formatBRL(resultado.repassado)} tom="slate" />
+                      <KpiResultado titulo="Despesas" valor={formatBRL(resultado.despesas)} tom="orange" />
+                      <KpiResultado
+                        titulo="Resultado escritório"
+                        valor={formatBRL(resultado.resultadoEscritorio)}
+                        tom="teal"
+                      />
+                      <KpiResultado
+                        titulo="Taxa efetiva × nominal"
+                        valor={`${resultado.taxaEfetivaPercent != null ? Number(resultado.taxaEfetivaPercent).toFixed(2) : '—'}%`}
+                        sub={`nominal ${resultado.taxaEsperadaPercent != null ? Number(resultado.taxaEsperadaPercent).toFixed(2) : '—'}%`}
+                        tom="indigo"
+                      />
+                    </div>
+                    {String(resultado.statusRepasse).toUpperCase() === 'DIVERGENTE' ? (
+                      <p className="text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
+                        Esperado <strong>{formatBRL(repasseEsperado(resultado))}</strong> · real{' '}
+                        <strong>{formatBRL(resultado.repassado)}</strong> (recebido − taxa nominal − despesas).
+                      </p>
+                    ) : null}
+                    <p className="text-[11px] text-slate-500">
+                      Números calculados <strong>somente do que foi reconciliado</strong> com o caixa — sem dedução por
+                      heurística.
+                    </p>
+                  </div>
+                ) : null}
+
+                {contratoId ? (
+                  <div className="bg-white rounded-lg border border-slate-300 shadow-sm p-4 space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <h2 className="text-sm font-semibold text-slate-800">Reconciliação · {competencia}</h2>
+                        <p className="text-xs text-slate-500">
+                          Confirme o papel sugerido (ou troque) para alimentar o resultado acima. Lançamentos
+                          sem processo aparecem em <strong>A adotar</strong> e são classificados (conta A + cliente +
+                          processo) ao confirmar.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={salvandoReconc || selecionadas.size === 0}
+                        onClick={confirmarLote}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 disabled:opacity-40"
+                      >
+                        Confirmar selecionados ({selecionadas.size})
+                      </button>
+                    </div>
+                    {carregandoSugestoes ? (
+                      <p className="text-xs text-slate-500 py-6 text-center">Carregando sugestões…</p>
+                    ) : sugestoes.length === 0 ? (
+                      <p className="text-xs text-slate-500 py-6 text-center">
+                        Nenhum lançamento candidato nesta competência.
+                      </p>
+                    ) : (
+                      <div className="space-y-4">
+                        <div className="space-y-1.5">
+                          <h3 className="text-xs font-semibold text-slate-700 uppercase tracking-wide">
+                            Lançamentos do imóvel ({gruposReconc.doImovel.length})
+                          </h3>
+                          {gruposReconc.doImovel.length === 0 ? (
+                            <p className="text-[11px] text-slate-400">Nenhum lançamento já no processo do imóvel.</p>
+                          ) : (
+                            renderTabelaReconc(gruposReconc.doImovel, false)
+                          )}
+                        </div>
+                        {gruposReconc.aAdotar.length > 0 ? (
+                          <div className="space-y-1.5">
+                            <h3 className="text-xs font-semibold text-amber-800 uppercase tracking-wide">
+                              A adotar · sem processo ({gruposReconc.aAdotar.length})
+                            </h3>
+                            <p className="text-[11px] text-amber-700">
+                              Pagamentos que existem no caixa mas estão sem processo. Confirmar é uma escrita: o
+                              lançamento será classificado em conta A com o cliente e o processo do imóvel.
+                            </p>
+                            {renderTabelaReconc(gruposReconc.aAdotar, true)}
+                          </div>
+                        ) : null}
+                      </div>
+                    )}
+                  </div>
+                ) : null}
 
                 <div id="extrato-imoveis" className="bg-white rounded-lg border border-slate-300 shadow-sm p-4 scroll-mt-4">
                   <h2 className="text-sm font-semibold text-slate-800 mb-1">Conta corrente do imóvel</h2>

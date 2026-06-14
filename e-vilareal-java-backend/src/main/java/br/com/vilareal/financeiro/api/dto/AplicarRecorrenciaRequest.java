@@ -1,5 +1,7 @@
 package br.com.vilareal.financeiro.api.dto;
 
+import br.com.vilareal.financeiro.domain.EscopoAplicarRecorrencia;
+import br.com.vilareal.financeiro.domain.PrecisaoValorRecorrencia;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -14,4 +16,6 @@ public class AplicarRecorrenciaRequest {
     private Long processoId;
     private boolean criarRegra;
     private boolean dryRun;
+    private EscopoAplicarRecorrencia escopo = EscopoAplicarRecorrencia.TODOS;
+    private PrecisaoValorRecorrencia precisaoValor = PrecisaoValorRecorrencia.EXATO;
 }

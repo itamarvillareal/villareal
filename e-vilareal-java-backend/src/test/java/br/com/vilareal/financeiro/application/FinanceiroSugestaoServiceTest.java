@@ -70,6 +70,8 @@ class FinanceiroSugestaoServiceTest {
     private FinanceiroSaudeService financeiroSaudeService;
     @Mock
     private ClienteResolverService clienteResolverService;
+    @Mock
+    private br.com.vilareal.imovel.application.LocacaoReconciliacaoService locacaoReconciliacaoService;
 
     @InjectMocks
     private FinanceiroSugestaoService service;
@@ -445,5 +447,30 @@ class FinanceiroSugestaoServiceTest {
         List<SugestaoClassificacaoResponse> sugestoes = service.sugerir(lancamento);
 
         assertThat(sugestoes).anyMatch(s -> s.getOrigem() == OrigemSugestao.HISTORICO);
+    }
+
+    @Test
+    void aplicarSugestaoConvergeParaReconciliacao() {
+        br.com.vilareal.financeiro.api.dto.AplicarSugestaoRequest req =
+                new br.com.vilareal.financeiro.api.dto.AplicarSugestaoRequest();
+        req.setLancamentoId(99L);
+        req.setContaContabilId(7L); // A
+        req.setProcessoId(16042L);
+
+        ProcessoEntity processo = new ProcessoEntity();
+        processo.setId(16042L);
+        lancamento.setNatureza(NaturezaLancamento.CREDITO);
+        lancamento.setValor(new BigDecimal("1700.00"));
+        when(lancamentoRepository.findById(99L)).thenReturn(Optional.of(lancamento));
+        when(contaContabilRepository.findById(7L)).thenReturn(Optional.of(contaA));
+        when(processoRepository.findById(16042L)).thenReturn(Optional.of(processo));
+        when(clienteResolverService.resolverVinculoOpcional(any(), eq(processo)))
+                .thenReturn(new ClienteResolverService.VinculoClientePessoa(null, null));
+        when(lancamentoRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        service.aplicarSugestao(req);
+
+        // O "Aprovar" delega ao mesmo motor da reconciliação com o lançamento já persistido.
+        org.mockito.Mockito.verify(locacaoReconciliacaoService).registrarAluguelClassificado(lancamento);
     }
 }

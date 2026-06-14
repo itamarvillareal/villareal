@@ -35,6 +35,14 @@ class DescricaoNormalizerTest {
     }
 
     @Test
+    void normalizar_removeDataSeparadaPorEspacoNoFim() {
+        assertThat(DescricaoNormalizer.normalizar("PIX TRANSF BANCO I28 05"))
+                .isEqualTo("PIX TRANSF BANCO I");
+        assertThat(DescricaoNormalizer.normalizar("PIX TRANSF BANCO I31 05"))
+                .isEqualTo("PIX TRANSF BANCO I");
+    }
+
+    @Test
     void normalizar_vazio() {
         assertThat(DescricaoNormalizer.normalizar(null)).isEmpty();
         assertThat(DescricaoNormalizer.normalizar("")).isEmpty();

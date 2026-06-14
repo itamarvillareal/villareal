@@ -14,6 +14,9 @@ public final class DescricaoNormalizer {
     private static final Pattern DATE_SLASH_END = Pattern.compile("\\d{2}/\\d{2}(/\\d{2,4})?$");
     private static final Pattern DATE_DASH_END = Pattern.compile("\\d{2}-\\d{2}(-\\d{2,4})?$");
     private static final Pattern DATE_DOT_END = Pattern.compile("\\d{2}\\.\\d{2}(\\.\\d{2,4})?$");
+    /** DD MM ou DD/MM no fim, com separador espaço, barra, ponto ou hífen. */
+    private static final Pattern DATE_SEPARATED_END =
+            Pattern.compile("\\d{1,2}[\\s/.\\-]\\d{1,2}([\\s/.\\-]\\d{2,4})?$");
     /** DDMMAAAA ou DDMMYY (6–8 dígitos) colados após letra no fim. */
     private static final Pattern DATE_GLUED_END = Pattern.compile("(?<=[A-Z])\\d{6,8}$");
     /** DDMM (4 dígitos) colados após letra no fim. */
@@ -45,6 +48,7 @@ public final class DescricaoNormalizer {
             s = stripEndIfMatches(s, DATE_SLASH_END);
             s = stripEndIfMatches(s, DATE_DASH_END);
             s = stripEndIfMatches(s, DATE_DOT_END);
+            s = stripEndIfMatches(s, DATE_SEPARATED_END);
             s = stripEndIfMatches(s, DATE_GLUED_END);
             s = stripEndIfMatches(s, DATE_GLUED_DDMM_END);
             s = stripEndIfMatches(s, TIME_END);

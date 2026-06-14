@@ -4,6 +4,10 @@ import br.com.vilareal.AbstractIntegrationTest;
 import br.com.vilareal.imovel.api.dto.ContratoLocacaoWriteRequest;
 import br.com.vilareal.imovel.api.dto.ImovelWriteRequest;
 import br.com.vilareal.imovel.application.ImovelApplicationService;
+import br.com.vilareal.imovel.infrastructure.persistence.entity.ContratoLocacaoEntity;
+import br.com.vilareal.imovel.infrastructure.persistence.entity.ImovelEntity;
+import br.com.vilareal.imovel.infrastructure.persistence.repository.ContratoLocacaoRepository;
+import br.com.vilareal.imovel.infrastructure.persistence.repository.ImovelRepository;
 import br.com.vilareal.iptu.api.dto.IptuAnualWriteRequest;
 import br.com.vilareal.iptu.api.dto.IptuParcelaMarcarPagaRequest;
 import br.com.vilareal.iptu.infrastructure.persistence.repository.IptuParcelaRepository;
@@ -27,6 +31,12 @@ class IptuApplicationServiceIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private IptuParcelaRepository iptuParcelaRepository;
+
+    @Autowired
+    private ImovelRepository imovelRepository;
+
+    @Autowired
+    private ContratoLocacaoRepository contratoLocacaoRepository;
 
     @Test
     void upsert_geraParcelas_marcarPaga_recalculoContrato_preservaPaga() {
@@ -74,5 +84,39 @@ class IptuApplicationServiceIntegrationTest extends AbstractIntegrationTest {
                 .hasSize(2);
         assertThat(iptuParcelaRepository.findAll()).filteredOn(p -> p.getIptuAnual().getId().equals(anualId))
                 .noneMatch(p -> "2025-10".equals(p.getCompetenciaMes()));
+    }
+
+    @Test
+    void contratoSemDataInicio_naoQuebraIptu_caiNoOwnerCharge() {
+        int planilha = 800_000 + ThreadLocalRandom.current().nextInt(1, 99_999);
+        var imReq = new ImovelWriteRequest();
+        imReq.setNumeroPlanilha(planilha);
+        imReq.setTitulo("IPTU sem data " + planilha);
+        long imovelId = imovelApplicationService.criarImovel(imReq).getId();
+
+        // Contrato sem data de início (NULL = ausente na fonte). A API rejeita via @NotNull, então
+        // persistimos direto na entidade para simular o estado importado da planilha.
+        ImovelEntity imovel = imovelRepository.findById(imovelId).orElseThrow();
+        ContratoLocacaoEntity contrato = new ContratoLocacaoEntity();
+        contrato.setImovel(imovel);
+        contrato.setDataInicio(null);
+        contrato.setDataFim(null);
+        contrato.setValorAluguel(new BigDecimal("1500.00"));
+        contrato.setStatus("VIGENTE");
+        contratoLocacaoRepository.saveAndFlush(contrato);
+
+        var iptuReq = new IptuAnualWriteRequest();
+        iptuReq.setImovelId(imovelId);
+        iptuReq.setAnoReferencia(2025);
+        iptuReq.setValorTotalAnual(new BigDecimal("1200.00"));
+        long anualId = iptuApplicationService.upsertValorAnual(iptuReq).getId();
+
+        // Não pode lançar NPE; sem período de contrato → cobrança do proprietário (12 meses, sem contrato).
+        var page = iptuApplicationService.listarParcelas(
+                imovelId, (short) 2025, null, null, null, null, PageRequest.of(0, 50));
+        assertThat(page.getContent()).hasSize(12);
+        assertThat(iptuParcelaRepository.findAll())
+                .filteredOn(p -> p.getIptuAnual().getId().equals(anualId))
+                .allMatch(p -> p.getContratoLocacao() == null);
     }
 }

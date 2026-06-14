@@ -19,6 +19,13 @@ class ImoveisPlanilhaImportSupportTest {
     }
 
     @Test
+    void parseValorRealBr_rejeitaStringDeData() {
+        // Defesa contra o bug do imóvel 43: nunca extrair "26" de uma data formatada.
+        assertThat(ImoveisPlanilhaImportSupport.parseValorRealBr("26/08/1904")).isNull();
+        assertThat(ImoveisPlanilhaImportSupport.parseValorRealBr("01/01/2024")).isNull();
+    }
+
+    @Test
     void normalizarSimNao() {
         assertThat(ImoveisPlanilhaImportSupport.normalizarSimNao("Sim")).isEqualTo("sim");
         assertThat(ImoveisPlanilhaImportSupport.normalizarSimNao("NÃO")).isEqualTo("nao");

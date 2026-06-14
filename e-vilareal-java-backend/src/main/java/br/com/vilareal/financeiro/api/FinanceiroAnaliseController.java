@@ -1,10 +1,12 @@
 package br.com.vilareal.financeiro.api;
 
+import br.com.vilareal.financeiro.api.dto.DescartarRecorrenciaRequest;
 import br.com.vilareal.financeiro.api.dto.AplicarRecorrenciaRequest;
 import br.com.vilareal.financeiro.api.dto.AplicarRecorrenciaResponse;
 import br.com.vilareal.financeiro.api.dto.RecorrenciaDetectadaResponse;
 import br.com.vilareal.financeiro.application.FinanceiroAnaliseService;
 import br.com.vilareal.financeiro.domain.ConfiancaSugestao;
+import br.com.vilareal.financeiro.domain.PrecisaoValorRecorrencia;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -30,15 +32,29 @@ public class FinanceiroAnaliseController {
     }
 
     @GetMapping("/recorrencias")
-    @Operation(description = "Padrões recorrentes agregados com contagem de pendentes.")
+    @Operation(description = "Padrões recorrentes agregados com contagem de pendentes e parciais a completar.")
     public Page<RecorrenciaDetectadaResponse> recorrencias(
             @RequestParam(value = "confiancaMinima", defaultValue = "MEDIA") ConfiancaSugestao confiancaMinima,
             @RequestParam(value = "numeroBanco", required = false) Integer numeroBanco,
-            @RequestParam(value = "apenasComPendentes", defaultValue = "true") boolean apenasComPendentes,
+            @RequestParam(value = "apenasAcionaveis", defaultValue = "true") boolean apenasAcionaveis,
             @RequestParam(value = "contaContabilId", required = false) Long contaContabilId,
+            @RequestParam(value = "precisaoValor", defaultValue = "EXATO") PrecisaoValorRecorrencia precisaoValor,
+            @RequestParam(value = "somenteConfiancaPerfeita", defaultValue = "false") boolean somenteConfiancaPerfeita,
             @PageableDefault(size = 50) Pageable pageable) {
         return analiseService.listarRecorrencias(
-                confiancaMinima, numeroBanco, apenasComPendentes, contaContabilId, pageable);
+                confiancaMinima,
+                numeroBanco,
+                apenasAcionaveis,
+                contaContabilId,
+                precisaoValor,
+                somenteConfiancaPerfeita,
+                pageable);
+    }
+
+    @PostMapping("/recorrencias/descartar")
+    @Operation(description = "Oculta padrão recorrente ou vínculo sugerido do painel de análises.")
+    public void descartarRecorrencia(@Valid @RequestBody DescartarRecorrenciaRequest request) {
+        analiseService.descartarRecorrencia(request);
     }
 
     @PostMapping("/recorrencias/aplicar")

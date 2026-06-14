@@ -66,6 +66,21 @@ def main() -> int:
             return "SIM" if v else "NÃO"
         return str(v).strip() if v is not None else ""
 
+    def num_cell(r: int, c: int) -> str:
+        """Valor monetário: usa o número bruto (serial) da célula, mesmo que esteja
+        formatada como data (ex.: 1700 exibido como "26/08/1904"). Nunca devolve a
+        string da data. Saída em pt-BR (decimal vírgula) para o parser Java."""
+        if c >= sh.ncols:
+            return ""
+        t = sh.cell_type(r, c)
+        v = sh.cell_value(r, c)
+        if t in (xlrd.XL_CELL_NUMBER, xlrd.XL_CELL_DATE) and v not in (None, ""):
+            f = float(v)
+            if f == int(f):
+                return str(int(f))
+            return ("%f" % f).rstrip("0").rstrip(".").replace(".", ",")
+        return fmt_cell(r, c)
+
     def map_row_strings(r: int) -> list[str]:
         u = [fmt_cell(r, c) for c in range(max(sh.ncols, 56))]
 
@@ -77,6 +92,10 @@ def main() -> int:
             j[jc] = g(1 + jc)
         for k in range(11):
             j[41 + k] = g(45 + k)
+        # Colunas de valor monetário: serial numérico, nunca a string formatada
+        # (canónico 30=valor da locação ← raw col 31; canónico 32=garantia ← raw col 33).
+        j[30] = num_cell(r, 31)
+        j[32] = num_cell(r, 33)
         return j
 
     def linha_sem_codigo(j: list[str]) -> bool:

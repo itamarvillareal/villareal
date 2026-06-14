@@ -134,6 +134,11 @@ final class ImoveisPlanilhaImportSupport {
         if (t.isEmpty()) {
             return null;
         }
+        // Defesa: um valor monetário nunca contém '/'. Se chegou uma data formatada (ex.: "26/08/1904",
+        // serial mal formatado), não extrair o prefixo "26" — devolver null em vez de um valor errado.
+        if (t.indexOf('/') >= 0) {
+            return null;
+        }
         try {
             DecimalFormatSymbols sym = DecimalFormatSymbols.getInstance(PT_BR);
             DecimalFormat df = new DecimalFormat("#,##0.###", sym);
@@ -187,6 +192,20 @@ final class ImoveisPlanilhaImportSupport {
         for (int k = 0; k < 11; k++) {
             j[41 + k] = u[45 + k];
         }
+        // Colunas de valor monetário: ler o serial numérico da célula, nunca a string formatada
+        // (canónico 30=valor da locação ← raw col 31; canónico 32=garantia ← raw col 33).
+        j[30] = trimToEmpty(PlanilhaExcelUtil.cellValorMonetarioString(row, 31));
+        j[32] = trimToEmpty(PlanilhaExcelUtil.cellValorMonetarioString(row, 33));
+        // Colunas de data: ler o serial da célula (corrige formato americano "m/d/yy").
+        // Mapa canónico<41 ← raw (canónico+1); canónico 49 ← raw 53.
+        j[8] = trimToEmpty(PlanilhaExcelUtil.cellDataString(row, 9));
+        j[13] = trimToEmpty(PlanilhaExcelUtil.cellDataString(row, 14));
+        j[17] = trimToEmpty(PlanilhaExcelUtil.cellDataString(row, 18));
+        j[21] = trimToEmpty(PlanilhaExcelUtil.cellDataString(row, 22));
+        j[23] = trimToEmpty(PlanilhaExcelUtil.cellDataString(row, 24));
+        j[26] = trimToEmpty(PlanilhaExcelUtil.cellDataString(row, 27));
+        j[27] = trimToEmpty(PlanilhaExcelUtil.cellDataString(row, 28));
+        j[49] = trimToEmpty(PlanilhaExcelUtil.cellDataString(row, 53));
         return j;
     }
 }

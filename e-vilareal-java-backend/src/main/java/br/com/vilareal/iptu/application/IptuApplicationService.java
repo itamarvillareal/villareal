@@ -434,6 +434,11 @@ public class IptuApplicationService {
     }
 
     private static boolean intersectaAno(ContratoLocacaoEntity c, short ano) {
+        // Contrato sem data de início (NULL = ausente na fonte) não define período no ano: não intersecta.
+        // Este gate protege os demais cálculos (vigência, ordenação, IptuCalculadora) de NPE com data nula.
+        if (c.getDataInicio() == null) {
+            return false;
+        }
         LocalDate y0 = LocalDate.of(ano, 1, 1);
         LocalDate y1 = LocalDate.of(ano, 12, 31);
         LocalDate fim = c.getDataFim() != null ? c.getDataFim() : y1;

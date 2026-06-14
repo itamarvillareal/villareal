@@ -15,6 +15,7 @@ public class ContratoLocacaoResponse {
     private BigDecimal valorRepassePactuado;
     private Integer diaVencimentoAluguel;
     private Integer diaRepasse;
+    private BigDecimal taxaAdministracaoPercent;
     private String garantiaTipo;
     private BigDecimal valorGarantia;
     private String dadosBancariosRepasseJson;
@@ -99,6 +100,14 @@ public class ContratoLocacaoResponse {
 
     public void setDiaRepasse(Integer diaRepasse) {
         this.diaRepasse = diaRepasse;
+    }
+
+    public BigDecimal getTaxaAdministracaoPercent() {
+        return taxaAdministracaoPercent;
+    }
+
+    public void setTaxaAdministracaoPercent(BigDecimal taxaAdministracaoPercent) {
+        this.taxaAdministracaoPercent = taxaAdministracaoPercent;
     }
 
     public String getGarantiaTipo() {

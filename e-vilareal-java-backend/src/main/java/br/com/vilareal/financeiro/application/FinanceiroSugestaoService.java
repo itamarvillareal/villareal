@@ -13,6 +13,7 @@ import br.com.vilareal.financeiro.infrastructure.persistence.entity.RegraClassif
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.ContaContabilRepository;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.LancamentoFinanceiroRepository;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.RegraClassificacaoRepository;
+import br.com.vilareal.imovel.application.LocacaoReconciliacaoService;
 import br.com.vilareal.pessoa.application.ClienteResolverService;
 import br.com.vilareal.pessoa.application.TitularPessoaRefHelper;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
@@ -50,6 +51,7 @@ public class FinanceiroSugestaoService {
     private final ProcessoApplicationService processoApplicationService;
     private final FinanceiroSaudeService financeiroSaudeService;
     private final ClienteResolverService clienteResolverService;
+    private final LocacaoReconciliacaoService locacaoReconciliacaoService;
 
     public FinanceiroSugestaoService(
             RegraClassificacaoRepository regraRepository,
@@ -60,7 +62,8 @@ public class FinanceiroSugestaoService {
             ClienteCodigoPessoaResolver clienteCodigoPessoaResolver,
             @Lazy ProcessoApplicationService processoApplicationService,
             ClienteResolverService clienteResolverService,
-            @Lazy FinanceiroSaudeService financeiroSaudeService) {
+            @Lazy FinanceiroSaudeService financeiroSaudeService,
+            @Lazy LocacaoReconciliacaoService locacaoReconciliacaoService) {
         this.regraRepository = regraRepository;
         this.lancamentoRepository = lancamentoRepository;
         this.contaContabilRepository = contaContabilRepository;
@@ -70,6 +73,7 @@ public class FinanceiroSugestaoService {
         this.processoApplicationService = processoApplicationService;
         this.clienteResolverService = clienteResolverService;
         this.financeiroSaudeService = financeiroSaudeService;
+        this.locacaoReconciliacaoService = locacaoReconciliacaoService;
     }
 
     @Transactional(readOnly = true)
@@ -119,7 +123,11 @@ public class FinanceiroSugestaoService {
     public LancamentoFinanceiroResponse aplicarSugestao(AplicarSugestaoRequest req) {
         LancamentoFinanceiroEntity e = carregarLancamento(req.getLancamentoId());
         aplicarClassificacaoEmEntity(e, req.getContaContabilId(), req.getClienteId(), req.getProcessoId());
-        LancamentoFinanceiroResponse saved = toLancamentoResponse(lancamentoRepository.save(e));
+        LancamentoFinanceiroEntity persistido = lancamentoRepository.save(e);
+        // Convergência: classificar um crédito ≈ aluguel num processo com contrato VIGENTE também
+        // cria o vínculo de reconciliação (papel=ALUGUEL) e dispara o repasse interno (idempotente).
+        locacaoReconciliacaoService.registrarAluguelClassificado(persistido);
+        LancamentoFinanceiroResponse saved = toLancamentoResponse(persistido);
         financeiroSaudeService.invalidarCacheSaude();
         return saved;
     }

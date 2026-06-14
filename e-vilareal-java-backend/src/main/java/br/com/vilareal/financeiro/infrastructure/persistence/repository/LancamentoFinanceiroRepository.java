@@ -406,4 +406,74 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
     List<LancamentoFinanceiroEntity> findPendentesPorPadrao(
             @Param("descricaoNorm") String descricaoNorm,
             @Param("numeroBanco") Integer numeroBanco);
+
+    @Query("""
+            SELECT COUNT(l) FROM LancamentoFinanceiroEntity l
+            WHERE l.etapa = br.com.vilareal.financeiro.domain.EtapaLancamento.CLASSIFICADO
+              AND l.status = 'ATIVO'
+              AND l.descricaoNorm = :descricaoNorm
+              AND l.numeroBanco = :numeroBanco
+              AND l.contaContabil.id = :contaContabilId
+              AND l.clienteEntidade IS NULL
+              AND l.processo IS NULL
+            """)
+    long countParciaisParaCompletarPorPadrao(
+            @Param("descricaoNorm") String descricaoNorm,
+            @Param("numeroBanco") Integer numeroBanco,
+            @Param("contaContabilId") Long contaContabilId);
+
+    @Query("""
+            SELECT l FROM LancamentoFinanceiroEntity l
+            WHERE l.etapa = br.com.vilareal.financeiro.domain.EtapaLancamento.CLASSIFICADO
+              AND l.status = 'ATIVO'
+              AND l.descricaoNorm = :descricaoNorm
+              AND l.numeroBanco = :numeroBanco
+              AND l.contaContabil.id = :contaContabilId
+              AND l.clienteEntidade IS NULL
+              AND l.processo IS NULL
+            ORDER BY l.id
+            """)
+    List<LancamentoFinanceiroEntity> findParciaisParaCompletarPorPadrao(
+            @Param("descricaoNorm") String descricaoNorm,
+            @Param("numeroBanco") Integer numeroBanco,
+            @Param("contaContabilId") Long contaContabilId);
+
+    @Query("""
+            SELECT l.valor FROM LancamentoFinanceiroEntity l
+            INNER JOIN l.contaContabil c
+            WHERE l.etapa <> br.com.vilareal.financeiro.domain.EtapaLancamento.IMPORTADO
+              AND l.status = 'ATIVO'
+              AND UPPER(TRIM(c.codigo)) <> 'N'
+              AND l.descricaoNorm = :descricaoNorm
+              AND l.numeroBanco = :numeroBanco
+              AND l.valor IS NOT NULL
+            """)
+    List<BigDecimal> listarValoresHistoricoPorPadrao(
+            @Param("descricaoNorm") String descricaoNorm,
+            @Param("numeroBanco") Integer numeroBanco);
+
+    /** Lançamentos ativos de um processo (caixa real do imóvel) — base da reconciliação de locação. */
+    @Query("""
+            SELECT l FROM LancamentoFinanceiroEntity l
+            JOIN FETCH l.contaContabil
+            WHERE l.processo.id = :processoId
+              AND l.status = 'ATIVO'
+            ORDER BY l.dataLancamento DESC, l.id DESC
+            """)
+    List<LancamentoFinanceiroEntity> findAtivosByProcessoId(@Param("processoId") Long processoId);
+
+    /**
+     * Lançamentos ÓRFÃOS (sem processo) ativos numa janela de datas — candidatos a adoção pela
+     * reconciliação de locação. NUNCA traz lançamento que já pertença a um processo.
+     */
+    @Query("""
+            SELECT l FROM LancamentoFinanceiroEntity l
+            JOIN FETCH l.contaContabil
+            WHERE l.processo IS NULL
+              AND l.status = 'ATIVO'
+              AND l.dataLancamento BETWEEN :inicio AND :fim
+            ORDER BY l.dataLancamento DESC, l.id DESC
+            """)
+    List<LancamentoFinanceiroEntity> findOrfaosAtivosNoIntervalo(
+            @Param("inicio") LocalDate inicio, @Param("fim") LocalDate fim);
 }

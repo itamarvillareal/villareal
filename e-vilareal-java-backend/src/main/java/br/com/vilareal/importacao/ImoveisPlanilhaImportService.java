@@ -57,11 +57,18 @@ public class ImoveisPlanilhaImportService {
 
     private static final Logger log = LoggerFactory.getLogger(ImoveisPlanilhaImportService.class);
     private static final int ULTIMA_COL_INCLUSIVE = 51;
-    private static final LocalDate DATA_INICIO_PADRAO = LocalDate.of(2000, 1, 1);
+    /**
+     * Índices canónicos (A–AZ) das colunas de data: I/N/R/V/X consultas (8,13,17,21,23),
+     * AA/AB início/fim de contrato (26,27) e AX 1.ª taxa de condomínio (49). Lidas pelo serial.
+     */
+    private static final int[] COLUNAS_DATA = {8, 13, 17, 21, 23, 26, 27, 49};
     /** Export «Villa Real - Administração de Imóveis - Itamar.xls»: dados a partir da linha Excel 9. */
     private static final int ADMIN_FIRST_ROW_0 = 8;
 
-    private static final int ADMIN_LAST_ROW_0 = 71;
+    /** Guarda de sanidade: nº de planilha plausível ao detectar a última linha de dados (1..este valor). */
+    private static final int ADMIN_MAX_NUMERO_PLANILHA = 999;
+    /** Guarda de sanidade: teto de linhas varridas a partir de {@link #ADMIN_FIRST_ROW_0}. */
+    private static final int ADMIN_MAX_LINHAS_SANIDADE = 5000;
     private static final Path PATH_PLANILHA_ADMIN_ITAMAR_PADRAO = Paths.get(
             System.getProperty("user.home"),
             "Dropbox",
@@ -287,13 +294,38 @@ public class ImoveisPlanilhaImportService {
         return np != null && np >= 1 && StringUtils.hasText(col0) && col0.contains("//");
     }
 
+    /**
+     * Última linha de dados do layout administração: maior linha (a partir de {@link #ADMIN_FIRST_ROW_0})
+     * com um nº de imóvel plausível na col. B (1..{@link #ADMIN_MAX_NUMERO_PLANILHA}). Substitui o antigo
+     * limite fixo de 71 linhas, com guardas de sanidade (teto de varredura e plausibilidade do nº).
+     * Linhas finais sem dados reais são descartadas depois pela lógica de "ignoradas".
+     */
+    private int detectarUltimaLinhaAdministracao(Sheet sheet) {
+        int maxScan = Math.min(sheet.getLastRowNum(), ADMIN_FIRST_ROW_0 + ADMIN_MAX_LINHAS_SANIDADE);
+        int ultima = ADMIN_FIRST_ROW_0 - 1;
+        for (int r = ADMIN_FIRST_ROW_0; r <= maxScan; r++) {
+            Row row = sheet.getRow(r);
+            if (row == null) {
+                continue;
+            }
+            Integer np = ImoveisPlanilhaImportSupport.parseInteiro(PlanilhaExcelUtil.cellString(row, 1));
+            if (np != null && np >= 1 && np <= ADMIN_MAX_NUMERO_PLANILHA) {
+                ultima = r;
+            }
+        }
+        return ultima;
+    }
+
     private ImportacaoInformacoesProcessosResponse importarLayoutAdministracao(
             Sheet sheet, Path path, ImportacaoInformacoesProcessosResponse resp) {
-        int last = Math.min(ADMIN_LAST_ROW_0, sheet.getLastRowNum());
+        int last = detectarUltimaLinhaAdministracao(sheet);
         int ok = 0;
         int erros = 0;
         int ignoradas = 0;
-        log.info("[import-imoveis-planilha] layout administracao Itamar: ficheiro={}", path.toAbsolutePath());
+        log.info(
+                "[import-imoveis-planilha] layout administracao Itamar: ficheiro={} (última linha de dados detectada={})",
+                path.toAbsolutePath(),
+                last + 1);
 
         for (int rowNum = ADMIN_FIRST_ROW_0; rowNum <= last; rowNum++) {
             Row row = sheet.getRow(rowNum);
@@ -340,6 +372,15 @@ public class ImoveisPlanilhaImportService {
         String[] c = new String[ULTIMA_COL_INCLUSIVE + 1];
         for (int i = 0; i < c.length; i++) {
             c[i] = PlanilhaExcelUtil.cellString(row, i);
+        }
+        // Colunas de valor monetário (AE=valor da locação, AG=garantia): usar o serial numérico da célula,
+        // nunca a string formatada (corrige célula com 1700 formatada como data "26/08/1904").
+        c[30] = PlanilhaExcelUtil.cellValorMonetarioString(row, 30);
+        c[32] = PlanilhaExcelUtil.cellValorMonetarioString(row, 32);
+        // Colunas de data: ler o serial da célula, nunca a string formatada (corrige formato americano
+        // "m/d/yy" que era lido como mês 15 inválido e caía no default 2000-01-01).
+        for (int idx : COLUNAS_DATA) {
+            c[idx] = PlanilhaExcelUtil.cellDataString(row, idx);
         }
         aplicarLinhaColunas(c, linhaExcel);
     }
@@ -496,8 +537,9 @@ public class ImoveisPlanilhaImportService {
         contrato.setLocadorPessoa(responsavel);
         contrato.setInquilinoPessoa(inquilino);
 
+        // Data ausente na planilha grava NULL (não o sentinela 2000-01-01): "sem data na fonte".
         LocalDate di = ImoveisPlanilhaImportSupport.parseDataFlex(c[26]);
-        contrato.setDataInicio(di != null ? di : DATA_INICIO_PADRAO);
+        contrato.setDataInicio(di);
         LocalDate df = ImoveisPlanilhaImportSupport.parseDataFlex(c[27]);
         contrato.setDataFim(df);
 

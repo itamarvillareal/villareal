@@ -559,6 +559,11 @@ public class ImovelApplicationService {
         c.setValorRepassePactuado(req.getValorRepassePactuado());
         c.setDiaVencimentoAluguel(req.getDiaVencimentoAluguel());
         c.setDiaRepasse(req.getDiaRepasse());
+        if (req.getTaxaAdministracaoPercent() != null) {
+            c.setTaxaAdministracaoPercent(req.getTaxaAdministracaoPercent());
+        } else if (c.getId() == null) {
+            c.setTaxaAdministracaoPercent(new java.math.BigDecimal("10.00"));
+        }
         c.setGarantiaTipo(trimToNull(req.getGarantiaTipo()));
         c.setValorGarantia(req.getValorGarantia());
         c.setDadosBancariosRepasseJson(trimToNull(req.getDadosBancariosRepasseJson()));
@@ -667,6 +672,7 @@ public class ImovelApplicationService {
         r.setValorRepassePactuado(c.getValorRepassePactuado());
         r.setDiaVencimentoAluguel(c.getDiaVencimentoAluguel());
         r.setDiaRepasse(c.getDiaRepasse());
+        r.setTaxaAdministracaoPercent(c.getTaxaAdministracaoPercent());
         r.setGarantiaTipo(c.getGarantiaTipo());
         r.setValorGarantia(c.getValorGarantia());
         r.setDadosBancariosRepasseJson(c.getDadosBancariosRepasseJson());

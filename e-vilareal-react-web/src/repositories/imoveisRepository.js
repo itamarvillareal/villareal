@@ -1094,6 +1094,65 @@ export async function salvarDespesaLocacao(payload) {
   return request('/api/locacoes/despesas', { method: 'POST', body });
 }
 
+// -----------------------------------------------------------------------------
+// Fase B — reconciliação do financeiro de imóveis (caixa real × ciclo de locação).
+// Tudo apoiado no backbone do backend; o front não calcula resultado por heurística.
+// -----------------------------------------------------------------------------
+
+/** Sugestões de papel para os lançamentos do imóvel na competência (AAAA-MM). */
+export async function sugerirReconciliacaoApi(contratoId, competencia) {
+  if (!featureFlags.useApiImoveis) return [];
+  const id = Number(contratoId);
+  if (!id) return [];
+  const rows = await request(`/api/locacoes/${id}/reconciliacao/sugestoes`, {
+    query: { competencia: competencia || undefined },
+  });
+  return Array.isArray(rows) ? rows : [];
+}
+
+/** Confirma vínculos (lote ou linha a linha). `vinculos`: [{lancamentoFinanceiroId, papel, competenciaMes}]. */
+export async function vincularReconciliacaoApi(contratoId, vinculos) {
+  if (!featureFlags.useApiImoveis) return [];
+  const id = Number(contratoId);
+  if (!id) throw new Error('Contrato inválido para reconciliação.');
+  const itens = (vinculos || [])
+    .filter((v) => v && v.lancamentoFinanceiroId != null && v.papel)
+    .map((v) => ({
+      lancamentoFinanceiroId: Number(v.lancamentoFinanceiroId),
+      papel: String(v.papel).toUpperCase(),
+      competenciaMes: v.competenciaMes || null,
+    }));
+  if (itens.length === 0) return [];
+  const rows = await request(`/api/locacoes/${id}/reconciliacao/vincular`, {
+    method: 'POST',
+    body: { vinculos: itens },
+  });
+  return Array.isArray(rows) ? rows : [];
+}
+
+/** Desfaz um vínculo de reconciliação. */
+export async function desvincularReconciliacaoApi(contratoId, vinculoId) {
+  if (!featureFlags.useApiImoveis) return;
+  const id = Number(contratoId);
+  const vid = Number(vinculoId);
+  if (!id || !vid) throw new Error('Parâmetros inválidos para desvincular.');
+  await request(`/api/locacoes/${id}/reconciliacao/vinculos/${vid}`, { method: 'DELETE' });
+}
+
+/** Resultado por competência (`{ competencia }`) ou período (`{ inicio, fim }`). */
+export async function obterResultadoImovelApi(contratoId, { competencia, inicio, fim } = {}) {
+  if (!featureFlags.useApiImoveis) return null;
+  const id = Number(contratoId);
+  if (!id) return null;
+  return request(`/api/locacoes/${id}/resultado`, {
+    query: {
+      competencia: competencia || undefined,
+      inicio: inicio || undefined,
+      fim: fim || undefined,
+    },
+  });
+}
+
 /** Cache em memória (sessão) para não repetir dezenas de GET ao aprovar/descartar. */
 let cacheCadastroSugestoesVinculo = null;
 let cacheCadastroSugestoesVinculoTs = 0;

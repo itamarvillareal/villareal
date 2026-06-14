@@ -31,7 +31,7 @@ public class ContratoLocacaoEntity {
     @JoinColumn(name = "inquilino_pessoa_id")
     private PessoaEntity inquilinoPessoa;
 
-    @Column(name = "data_inicio", nullable = false)
+    @Column(name = "data_inicio")
     private LocalDate dataInicio;
 
     @Column(name = "data_fim")
@@ -48,6 +48,10 @@ public class ContratoLocacaoEntity {
 
     @Column(name = "dia_repasse")
     private Integer diaRepasse;
+
+    /** Taxa de administração (% sobre o aluguel recebido) usada como EXPECTATIVA no resultado. */
+    @Column(name = "taxa_administracao_percent", precision = 5, scale = 2)
+    private BigDecimal taxaAdministracaoPercent = new BigDecimal("10.00");
 
     @Column(name = "garantia_tipo", length = 120)
     private String garantiaTipo;

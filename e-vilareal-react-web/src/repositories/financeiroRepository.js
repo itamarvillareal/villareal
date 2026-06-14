@@ -1131,7 +1131,9 @@ export async function listarRecorrenciasApi(
   {
     confiancaMinima = 'MEDIA',
     numeroBanco = null,
-    apenasComPendentes = true,
+    apenasAcionaveis = true,
+    precisaoValor = 'EXATO',
+    somenteConfiancaPerfeita = false,
     contaContabilId = null,
     page = 0,
     size = 50,
@@ -1143,10 +1145,14 @@ export async function listarRecorrenciasApi(
   }
   const query = {
     confiancaMinima,
-    apenasComPendentes,
+    apenasAcionaveis,
+    precisaoValor,
     page,
     size: clampFinanceiroPageSize(size),
   };
+  if (somenteConfiancaPerfeita) {
+    query.somenteConfiancaPerfeita = true;
+  }
   if (numeroBanco != null && Number.isFinite(Number(numeroBanco))) {
     query.numeroBanco = Number(numeroBanco);
   }
@@ -1162,6 +1168,18 @@ export async function aplicarRecorrenciaApi(body, opts = {}) {
     throw new Error('API financeiro desativada');
   }
   return request('/api/financeiro/analises/recorrencias/aplicar', {
+    method: 'POST',
+    body,
+    signal: opts.signal,
+  });
+}
+
+/** Oculta padrão ou vínculo sugerido do painel de recorrências. */
+export async function descartarRecorrenciaApi(body, opts = {}) {
+  if (!featureFlags.useApiFinanceiro) {
+    throw new Error('API financeiro desativada');
+  }
+  return request('/api/financeiro/analises/recorrencias/descartar', {
     method: 'POST',
     body,
     signal: opts.signal,
