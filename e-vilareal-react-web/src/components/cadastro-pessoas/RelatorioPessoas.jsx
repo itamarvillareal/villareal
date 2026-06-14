@@ -502,6 +502,8 @@ export function RelatorioPessoas() {
                         <tr
                           key={p.id}
                           onClick={() => setSelectedPessoa({ id: p.id, nome: p.nome })}
+                          onDoubleClick={() => navigate(`/clientes/editar/${p.id}`)}
+                          title="Duplo clique para abrir o cadastro"
                           className={`cursor-pointer hover:bg-slate-50/80 ${
                             Number(selectedPessoa?.id) === Number(p.id) ? 'bg-blue-50/80' : ''
                           }`}

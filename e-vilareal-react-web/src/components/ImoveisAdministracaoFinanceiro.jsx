@@ -51,6 +51,12 @@ function formatBRL(n) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 }
 
+/** Valores negativos em vermelho. */
+function corValorNegativo(n) {
+  // `important` (sufixo `!`, sintaxe Tailwind v4) garante prioridade sobre o `text-slate-800` da base `td`.
+  return Number(n) < 0 ? 'text-red-600!' : '';
+}
+
 const th = 'px-3 py-2 text-left text-xs font-semibold text-slate-700 border-b border-slate-200 bg-slate-100 whitespace-nowrap';
 const td = 'px-3 py-2 text-sm text-slate-800 border-b border-slate-100 align-top';
 
@@ -343,6 +349,12 @@ export function ImoveisAdministracaoFinanceiro() {
   function renderLinhaReconc(l, adocao) {
     const conf = confiancaInfo(l.confianca);
     const papelAtual = papeisEditados[l.lancamentoFinanceiroId] || l.papelSugerido || 'ALUGUEL';
+    // Exibe o valor com o sinal do lançamento (DÉBITO/saída = negativo), igual ao extrato.
+    // A sugestão traz o valor sempre positivo; o sinal real vem da natureza.
+    const valorExibicao =
+      String(l.natureza ?? '').toUpperCase() === 'DEBITO'
+        ? -Math.abs(Number(l.valor) || 0)
+        : Number(l.valor) || 0;
     return (
       <tr
         key={l.lancamentoFinanceiroId}
@@ -366,7 +378,7 @@ export function ImoveisAdministracaoFinanceiro() {
             <div className="text-[11px] text-amber-800 mt-0.5">{descricaoAdocao(l, papelAtual)}</div>
           ) : null}
         </td>
-        <td className={`${td} text-right tabular-nums`}>{formatBRL(l.valor)}</td>
+        <td className={`${td} text-right tabular-nums whitespace-nowrap ${corValorNegativo(valorExibicao)}`}>{formatBRL(valorExibicao)}</td>
         <td className={td}>
           <select
             value={papelAtual}
@@ -1101,7 +1113,7 @@ export function ImoveisAdministracaoFinanceiro() {
                                 <td className={`${td} text-xs max-w-[220px]`}>
                                   {t.descricaoDetalhada || t.categoria || '—'}
                                 </td>
-                                <td className={`${td} text-right tabular-nums font-medium`}>
+                                <td className={`${td} text-right tabular-nums font-medium whitespace-nowrap ${corValorNegativo(t.valor)}`}>
                                   {formatBRL(t.valor)}
                                 </td>
                                 <td className={td}>

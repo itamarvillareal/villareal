@@ -46,7 +46,11 @@ public class RepasseInternoBackfillRunner implements ApplicationListener<Applica
         log.info("backfill-repasse-interno: contrato={}", contratoId);
         try {
             int vinculados = reconciliacaoService.backfillRepasseInternoContrato(contratoId);
-            log.info("backfill-repasse-interno: sucesso — aluguéis vinculados/processados={}", vinculados);
+            log.info("backfill-repasse-interno: aluguéis vinculados/processados={}", vinculados);
+            // Correção dos dados gravados pelo modelo antigo (par débito/crédito em 01/MM):
+            // remove os AUTO e regenera SOMENTE o débito, datado na data do aluguel.
+            int regenerados = reconciliacaoService.corrigirRepasseInternoContrato(contratoId);
+            log.info("backfill-repasse-interno: sucesso — débitos de repasse regenerados={}", regenerados);
             SpringApplication.exit(context, () -> 0);
         } catch (Exception e) {
             log.error("backfill-repasse-interno: falha", e);
