@@ -2,6 +2,7 @@ package br.com.vilareal.financeiro.api;
 
 import br.com.vilareal.financeiro.api.dto.*;
 import br.com.vilareal.financeiro.application.CartaoBancoMapeamentoApplicationService;
+import br.com.vilareal.financeiro.application.ContaBancariaApplicationService;
 import br.com.vilareal.financeiro.application.FinanceiroApplicationService;
 import br.com.vilareal.financeiro.application.FinanceiroCompensacaoService;
 import br.com.vilareal.financeiro.application.FinanceiroFaturaSugestaoService;
@@ -49,6 +50,7 @@ public class FinanceiroController {
     private final FinanceiroFaturaSugestaoService financeiroFaturaSugestaoService;
     private final FinanceiroSaudeService financeiroSaudeService;
     private final FinanceiroMesApplicationService financeiroMesService;
+    private final ContaBancariaApplicationService contaBancariaService;
 
     public FinanceiroController(
             FinanceiroApplicationService financeiroService,
@@ -61,7 +63,8 @@ public class FinanceiroController {
             CartaoBancoMapeamentoApplicationService cartaoBancoMapeamentoService,
             FinanceiroFaturaSugestaoService financeiroFaturaSugestaoService,
             FinanceiroSaudeService financeiroSaudeService,
-            FinanceiroMesApplicationService financeiroMesService) {
+            FinanceiroMesApplicationService financeiroMesService,
+            ContaBancariaApplicationService contaBancariaService) {
         this.financeiroService = financeiroService;
         this.financeiroCartaoService = financeiroCartaoService;
         this.pagamentoFaturaService = pagamentoFaturaService;
@@ -73,6 +76,7 @@ public class FinanceiroController {
         this.financeiroFaturaSugestaoService = financeiroFaturaSugestaoService;
         this.financeiroSaudeService = financeiroSaudeService;
         this.financeiroMesService = financeiroMesService;
+        this.contaBancariaService = contaBancariaService;
     }
 
     @GetMapping("/saude")
@@ -100,6 +104,13 @@ public class FinanceiroController {
     @PutMapping("/contas/{id}")
     public ContaContabilResponse atualizarConta(@PathVariable Long id, @Valid @RequestBody ContaContabilWriteRequest request) {
         return financeiroService.atualizarConta(id, request);
+    }
+
+    @GetMapping("/contas-bancarias")
+    @Operation(description = "Classificação das contas bancárias (numero_banco, banco_nome, tipo REAL|MANUAL|VIRTUAL, "
+            + "tem_extrato, ativo). Fonte de verdade para o frontend substituir o mapa hardcoded.")
+    public List<ContaBancariaResponse> listarContasBancarias() {
+        return contaBancariaService.listar();
     }
 
     @GetMapping("/lancamentos/resumo-processo/{processoId}")

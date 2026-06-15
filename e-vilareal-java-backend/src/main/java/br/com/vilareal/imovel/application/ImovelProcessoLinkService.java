@@ -120,6 +120,20 @@ public class ImovelProcessoLinkService {
         vincular(imovel.getId(), req);
     }
 
+    /**
+     * Desativa TODAS as linhas N:N ativas do imóvel e ressincroniza o escalar (que fica NULL).
+     * Usado quando o imóvel é salvo sem processo: mantém escalar e N:N consistentes (fecha o bug
+     * "escalar NULL + N:N ativo" que cegava a reconciliação). NO-OP se já não houver linha ativa.
+     */
+    @Transactional
+    public void desativarTodosVinculos(ImovelEntity imovel) {
+        if (imovel.getId() == null) {
+            return;
+        }
+        desativarOutrosVinculosAtivos(imovel.getId(), null);
+        sincronizarProcessoAtivoNoImovel(imovel);
+    }
+
     private void validarClienteImovelProcesso(ImovelEntity imovel, ProcessoEntity processo) {
         ClienteEntity clienteImovel = imovel.getCliente();
         ClienteEntity clienteProcesso = processo.getCliente();

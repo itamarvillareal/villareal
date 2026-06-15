@@ -56,6 +56,7 @@ public class FinanceiroApplicationService {
     private final ProcessoRepository processoRepository;
     private final ClienteCodigoPessoaResolver clienteCodigoPessoaResolver;
     private final ClienteResolverService clienteResolverService;
+    private final ContaBancariaResolverService contaBancariaResolverService;
     private final FinanceiroSaudeService financeiroSaudeService;
 
     public FinanceiroApplicationService(
@@ -66,6 +67,7 @@ public class FinanceiroApplicationService {
             ProcessoRepository processoRepository,
             ClienteCodigoPessoaResolver clienteCodigoPessoaResolver,
             ClienteResolverService clienteResolverService,
+            ContaBancariaResolverService contaBancariaResolverService,
             @Lazy FinanceiroSaudeService financeiroSaudeService) {
         this.contaContabilRepository = contaContabilRepository;
         this.lancamentoRepository = lancamentoRepository;
@@ -74,6 +76,7 @@ public class FinanceiroApplicationService {
         this.processoRepository = processoRepository;
         this.clienteCodigoPessoaResolver = clienteCodigoPessoaResolver;
         this.clienteResolverService = clienteResolverService;
+        this.contaBancariaResolverService = contaBancariaResolverService;
         this.financeiroSaudeService = financeiroSaudeService;
     }
 
@@ -571,6 +574,9 @@ public class FinanceiroApplicationService {
 
         e.setBancoNome(req.getBancoNome() != null && !req.getBancoNome().isBlank() ? req.getBancoNome().trim() : null);
         e.setNumeroBanco(req.getNumeroBanco());
+        // B1: FK conta_bancaria sempre populada a partir do numero_banco (auto-provisiona se novo).
+        // Não dirige comportamento ainda (B2/B3); só garante a FK.
+        e.setContaBancaria(contaBancariaResolverService.resolver(req.getNumeroBanco(), e.getBancoNome()));
         e.setNumeroLancamento(req.getNumeroLancamento().trim());
         e.setDataLancamento(req.getDataLancamento());
         if (criacao) {

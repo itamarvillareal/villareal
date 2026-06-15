@@ -20,8 +20,7 @@ public class FinanceiroAnaliseRecorrenciaRepository {
                        UPPER(TRIM(c.codigo)) AS conta_codigo
                 FROM financeiro_lancamento l
                 INNER JOIN financeiro_conta_contabil c ON c.id = l.conta_contabil_id
-                WHERE l.status = 'ATIVO'
-                  AND UPPER(TRIM(c.codigo)) <> 'N'
+                WHERE UPPER(TRIM(c.codigo)) <> 'N'
                   AND l.descricao_norm IS NOT NULL
                   AND l.descricao_norm <> ''
                   AND (:numeroBanco IS NULL OR l.numero_banco = :numeroBanco)
@@ -64,7 +63,6 @@ public class FinanceiroAnaliseRecorrenciaRepository {
                 SELECT l.descricao_norm, l.numero_banco, COUNT(*) AS qtd_pendentes
                 FROM financeiro_lancamento l
                 WHERE l.etapa = 'IMPORTADO'
-                  AND l.status = 'ATIVO'
                   AND l.descricao_norm IS NOT NULL
                   AND l.descricao_norm <> ''
                   AND (:numeroBanco IS NULL OR l.numero_banco = :numeroBanco)
@@ -104,7 +102,6 @@ public class FinanceiroAnaliseRecorrenciaRepository {
             FROM financeiro_lancamento l
             INNER JOIN financeiro_conta_contabil c ON c.id = l.conta_contabil_id
             WHERE l.etapa <> 'IMPORTADO'
-              AND l.status = 'ATIVO'
               AND UPPER(TRIM(c.codigo)) = 'A'
               AND l.descricao_norm = :descricaoNorm
               AND l.numero_banco = :numeroBanco
@@ -120,7 +117,6 @@ public class FinanceiroAnaliseRecorrenciaRepository {
             FROM financeiro_lancamento l
             INNER JOIN financeiro_conta_contabil c ON c.id = l.conta_contabil_id
             WHERE l.etapa <> 'IMPORTADO'
-              AND l.status = 'ATIVO'
               AND UPPER(TRIM(c.codigo)) = 'A'
               AND l.descricao_norm = :descricaoNorm
               AND l.numero_banco = :numeroBanco

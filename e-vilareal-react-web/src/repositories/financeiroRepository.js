@@ -238,6 +238,16 @@ export async function listarContasFinanceiro(opts = {}) {
   return request('/api/financeiro/contas', { signal });
 }
 
+/**
+ * Classificação das contas bancárias (B4): numeroBanco, bancoNome, tipo (REAL|MANUAL|VIRTUAL),
+ * temExtrato, ativo. Fonte de verdade que substitui o hardcode de `financeiroData.js`.
+ */
+export async function listarContasBancariasClassificacaoApi(opts = {}) {
+  const { signal } = opts;
+  if (!featureFlags.useApiFinanceiro) return [];
+  return request('/api/financeiro/contas-bancarias', { signal });
+}
+
 /** Leitura API (fonte principal quando flag ativa). */
 export async function listarLancamentosFinanceiro(filtros = {}, opts = {}) {
   const { signal } = opts;

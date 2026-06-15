@@ -38,7 +38,6 @@ public interface LancamentoCartaoRepository
             LEFT JOIN FETCH l.processo
             WHERE l.cartao.id = :cartaoId
               AND l.dataLancamento BETWEEN :inicio AND :fim
-              AND l.status = 'ATIVO'
             ORDER BY l.dataLancamento DESC, l.id DESC
             """)
     List<LancamentoCartaoEntity> findByCartaoAndPeriodo(

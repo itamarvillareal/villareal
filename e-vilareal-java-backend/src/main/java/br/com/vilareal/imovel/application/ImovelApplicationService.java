@@ -34,8 +34,6 @@ public class ImovelApplicationService {
 
     private final ImovelRepository imovelRepository;
     private final ContratoLocacaoRepository contratoLocacaoRepository;
-    private final LocacaoRepasseRepository locacaoRepasseRepository;
-    private final LocacaoDespesaRepository locacaoDespesaRepository;
     private final PessoaRepository pessoaRepository;
     private final ClienteRepository clienteRepository;
     private final ProcessoRepository processoRepository;
@@ -48,8 +46,6 @@ public class ImovelApplicationService {
     public ImovelApplicationService(
             ImovelRepository imovelRepository,
             ContratoLocacaoRepository contratoLocacaoRepository,
-            LocacaoRepasseRepository locacaoRepasseRepository,
-            LocacaoDespesaRepository locacaoDespesaRepository,
             PessoaRepository pessoaRepository,
             ClienteRepository clienteRepository,
             ProcessoRepository processoRepository,
@@ -60,8 +56,6 @@ public class ImovelApplicationService {
             ImovelProcessoRepository imovelProcessoRepository) {
         this.imovelRepository = imovelRepository;
         this.contratoLocacaoRepository = contratoLocacaoRepository;
-        this.locacaoRepasseRepository = locacaoRepasseRepository;
-        this.locacaoDespesaRepository = locacaoDespesaRepository;
         this.pessoaRepository = pessoaRepository;
         this.clienteRepository = clienteRepository;
         this.processoRepository = processoRepository;
@@ -296,7 +290,7 @@ public class ImovelApplicationService {
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Processo não encontrado para cliente " + codNorm + " e proc " + numeroInternoProcesso));
         ImovelEntity imovel = imovelProcessoRepository
-                .findFirstByProcesso_IdOrderByIdAsc(processo.getId())
+                .findFirstByProcesso_IdAndAtivoTrueOrderByIdDesc(processo.getId())
                 .map(ip -> ip.getImovel())
                 .or(() -> imovelRepository.findFirstByProcesso_IdOrderByIdAsc(processo.getId()))
                 .orElseThrow(() -> new ResourceNotFoundException(
@@ -329,6 +323,9 @@ public class ImovelApplicationService {
         imovelRepository.save(e);
         if (processoId != null) {
             imovelProcessoLinkService.vincularSeProcessoInformado(e, processoId);
+        } else {
+            // Sem processo no payload: desativa o N:N ativo p/ não ficar "escalar NULL + N:N ativo".
+            imovelProcessoLinkService.desativarTodosVinculos(e);
         }
         return toImovelResponse(requireImovel(id));
     }
@@ -369,63 +366,8 @@ public class ImovelApplicationService {
         return toContratoResponse(requireContrato(id));
     }
 
-    @Transactional(readOnly = true)
-    public List<LocacaoRepasseResponse> listarRepasses(Long contratoId) {
-        requireContrato(contratoId);
-        return locacaoRepasseRepository.findByContratoLocacao_IdOrderByCompetenciaMesDescIdDesc(contratoId).stream()
-                .map(this::toRepasseResponse)
-                .collect(Collectors.toList());
-    }
-
-    @Transactional
-    public LocacaoRepasseResponse criarRepasse(LocacaoRepasseWriteRequest req) {
-        ContratoLocacaoEntity c = requireContrato(req.getContratoId());
-        LocacaoRepasseEntity r = new LocacaoRepasseEntity();
-        r.setContratoLocacao(c);
-        aplicarRepasse(r, req);
-        r = locacaoRepasseRepository.save(r);
-        return toRepasseResponse(requireRepasse(r.getId()));
-    }
-
-    @Transactional
-    public LocacaoRepasseResponse atualizarRepasse(Long id, LocacaoRepasseWriteRequest req) {
-        LocacaoRepasseEntity r = requireRepasse(id);
-        if (!r.getContratoLocacao().getId().equals(req.getContratoId())) {
-            throw new BusinessRuleException("Repasse não pertence ao contrato informado.");
-        }
-        aplicarRepasse(r, req);
-        locacaoRepasseRepository.save(r);
-        return toRepasseResponse(requireRepasse(id));
-    }
-
-    @Transactional(readOnly = true)
-    public List<LocacaoDespesaResponse> listarDespesas(Long contratoId) {
-        requireContrato(contratoId);
-        return locacaoDespesaRepository.findByContratoLocacao_IdOrderByCompetenciaMesDescIdDesc(contratoId).stream()
-                .map(this::toDespesaResponse)
-                .collect(Collectors.toList());
-    }
-
-    @Transactional
-    public LocacaoDespesaResponse criarDespesa(LocacaoDespesaWriteRequest req) {
-        ContratoLocacaoEntity c = requireContrato(req.getContratoId());
-        LocacaoDespesaEntity d = new LocacaoDespesaEntity();
-        d.setContratoLocacao(c);
-        aplicarDespesa(d, req);
-        d = locacaoDespesaRepository.save(d);
-        return toDespesaResponse(requireDespesa(d.getId()));
-    }
-
-    @Transactional
-    public LocacaoDespesaResponse atualizarDespesa(Long id, LocacaoDespesaWriteRequest req) {
-        LocacaoDespesaEntity d = requireDespesa(id);
-        if (!d.getContratoLocacao().getId().equals(req.getContratoId())) {
-            throw new BusinessRuleException("Despesa não pertence ao contrato informado.");
-        }
-        aplicarDespesa(d, req);
-        locacaoDespesaRepository.save(d);
-        return toDespesaResponse(requireDespesa(id));
-    }
+    // CRUD de repasse/despesa LEGADO (locacao_repasse/locacao_despesa) removido — C9/A8.
+    // O resultado/reconciliação usam apenas locacao_repasse_lancamento (LocacaoReconciliacaoService).
 
     private ImovelEntity requireImovel(Long id) {
         return imovelRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Imóvel não encontrado: " + id));
@@ -435,18 +377,6 @@ public class ImovelApplicationService {
         return contratoLocacaoRepository
                 .findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Contrato de locação não encontrado: " + id));
-    }
-
-    private LocacaoRepasseEntity requireRepasse(Long id) {
-        return locacaoRepasseRepository
-                .findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Repasse não encontrado: " + id));
-    }
-
-    private LocacaoDespesaEntity requireDespesa(Long id) {
-        return locacaoDespesaRepository
-                .findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Despesa não encontrada: " + id));
     }
 
     private ImovelEntity resolverImovelPorNumeroPlanilha(int numeroPlanilha, Long clienteId, String codigoCliente) {
@@ -593,31 +523,6 @@ public class ImovelApplicationService {
         }
     }
 
-    private void aplicarRepasse(LocacaoRepasseEntity r, LocacaoRepasseWriteRequest req) {
-        r.setCompetenciaMes(trimToNull(req.getCompetenciaMes()));
-        r.setValorRecebidoInquilino(req.getValorRecebidoInquilino());
-        r.setValorRepassadoLocador(req.getValorRepassadoLocador());
-        r.setValorDespesasRepassar(req.getValorDespesasRepassar());
-        r.setRemuneracaoEscritorio(req.getRemuneracaoEscritorio());
-        if (StringUtils.hasText(req.getStatus())) {
-            r.setStatus(req.getStatus().trim());
-        } else if (r.getId() == null) {
-            r.setStatus("PENDENTE");
-        }
-        r.setDataRepasseEfetiva(req.getDataRepasseEfetiva());
-        r.setObservacao(trimToNull(req.getObservacao()));
-        r.setLancamentoFinanceiroVinculoId(req.getLancamentoFinanceiroVinculoId());
-    }
-
-    private void aplicarDespesa(LocacaoDespesaEntity d, LocacaoDespesaWriteRequest req) {
-        d.setCompetenciaMes(trimToNull(req.getCompetenciaMes()));
-        d.setDescricao(req.getDescricao().trim());
-        d.setValor(req.getValor());
-        d.setCategoria(StringUtils.hasText(req.getCategoria()) ? req.getCategoria().trim() : "OUTROS");
-        d.setObservacao(trimToNull(req.getObservacao()));
-        d.setLancamentoFinanceiroId(req.getLancamentoFinanceiroId());
-    }
-
     private ImovelResponse toImovelResponse(ImovelEntity e) {
         ImovelResponse r = new ImovelResponse();
         r.setId(e.getId());
@@ -631,9 +536,16 @@ public class ImovelApplicationService {
         if (e.getPessoa() != null) {
             r.setPessoaRefId(e.getPessoa().getId());
         }
-        if (e.getProcesso() != null) {
-            r.setProcessoId(e.getProcesso().getId());
-            r.setNumeroInternoProcesso(e.getProcesso().getNumeroInterno());
+        // Fonte única (Fase 3, item 4): processo vem da linha ATIVA de imovel_processo; o escalar
+        // imovel.processo_id é só espelho (sai na FASE C). Após o backfill V118 dão o mesmo resultado.
+        ProcessoEntity procAtivo = e.getId() != null
+                ? imovelProcessoRepository.findFirstByImovel_IdAndAtivoTrueOrderByIdDesc(e.getId())
+                        .map(ip -> ip.getProcesso())
+                        .orElse(null)
+                : null;
+        if (procAtivo != null) {
+            r.setProcessoId(procAtivo.getId());
+            r.setNumeroInternoProcesso(procAtivo.getNumeroInterno());
         } else {
             r.setProcessoId(null);
             r.setNumeroInternoProcesso(null);
@@ -678,37 +590,6 @@ public class ImovelApplicationService {
         r.setDadosBancariosRepasseJson(c.getDadosBancariosRepasseJson());
         r.setStatus(c.getStatus());
         r.setObservacoes(c.getObservacoes());
-        return r;
-    }
-
-    private LocacaoRepasseResponse toRepasseResponse(LocacaoRepasseEntity x) {
-        x.getContratoLocacao().getId();
-        LocacaoRepasseResponse r = new LocacaoRepasseResponse();
-        r.setId(x.getId());
-        r.setContratoId(x.getContratoLocacao().getId());
-        r.setCompetenciaMes(x.getCompetenciaMes());
-        r.setValorRecebidoInquilino(x.getValorRecebidoInquilino());
-        r.setValorRepassadoLocador(x.getValorRepassadoLocador());
-        r.setValorDespesasRepassar(x.getValorDespesasRepassar());
-        r.setRemuneracaoEscritorio(x.getRemuneracaoEscritorio());
-        r.setStatus(x.getStatus());
-        r.setDataRepasseEfetiva(x.getDataRepasseEfetiva());
-        r.setObservacao(x.getObservacao());
-        r.setLancamentoFinanceiroVinculoId(x.getLancamentoFinanceiroVinculoId());
-        return r;
-    }
-
-    private LocacaoDespesaResponse toDespesaResponse(LocacaoDespesaEntity x) {
-        x.getContratoLocacao().getId();
-        LocacaoDespesaResponse r = new LocacaoDespesaResponse();
-        r.setId(x.getId());
-        r.setContratoId(x.getContratoLocacao().getId());
-        r.setCompetenciaMes(x.getCompetenciaMes());
-        r.setDescricao(x.getDescricao());
-        r.setValor(x.getValor());
-        r.setCategoria(x.getCategoria());
-        r.setObservacao(x.getObservacao());
-        r.setLancamentoFinanceiroId(x.getLancamentoFinanceiroId());
         return r;
     }
 

@@ -24,8 +24,6 @@ import {
   desvincularReconciliacaoApi,
   obterResultadoImovelApi,
   recarregarSomentePainelFinanceiroImovel,
-  salvarDespesaLocacao,
-  salvarRepasseLocacao,
   sugerirReconciliacaoApi,
   vincularReconciliacaoApi,
 } from '../repositories/imoveisRepository.js';
@@ -87,28 +85,7 @@ export function ImoveisAdministracaoFinanceiro() {
   const [sucesso, setSucesso] = useState('');
   const [imovelUi, setImovelUi] = useState(null);
   const [painelApi, setPainelApi] = useState(null);
-  const [repassesApi, setRepassesApi] = useState([]);
-  const [despesasApi, setDespesasApi] = useState([]);
   const [contratoVigenteApi, setContratoVigenteApi] = useState(null);
-  const [repasseEditandoId, setRepasseEditandoId] = useState(null);
-  const [repasseDraft, setRepasseDraft] = useState(null);
-  const [salvandoRepasse, setSalvandoRepasse] = useState(false);
-  const [despesaEditandoId, setDespesaEditandoId] = useState(null);
-  const [despesaDraft, setDespesaDraft] = useState(null);
-  const [salvandoDespesa, setSalvandoDespesa] = useState(false);
-  const [novoRepasse, setNovoRepasse] = useState({
-    competenciaMes: '',
-    valorRecebidoInquilino: '',
-    valorRepassadoLocador: '',
-    valorDespesasRepassar: '',
-    remuneracaoEscritorio: '',
-  });
-  const [novaDespesa, setNovaDespesa] = useState({
-    competenciaMes: '',
-    descricao: '',
-    valor: '',
-    categoria: 'OUTROS',
-  });
 
   // Reconciliação (Fase B) — verdade vem do backend.
   const [competencia, setCompetencia] = useState(() => competenciaAtual());
@@ -480,13 +457,6 @@ export function ImoveisAdministracaoFinanceiro() {
   }
 
   useEffect(() => {
-    setRepasseEditandoId(null);
-    setRepasseDraft(null);
-    setDespesaEditandoId(null);
-    setDespesaDraft(null);
-  }, [imovelId, refreshTick]);
-
-  useEffect(() => {
     let ativo = true;
     setCarregando(true);
     setErro('');
@@ -496,8 +466,6 @@ export function ImoveisAdministracaoFinanceiro() {
         if (!ativo) return;
         setImovelUi(r.imovel);
         setPainelApi(r.painelFinanceiro);
-        setRepassesApi(Array.isArray(r.repasses) ? r.repasses : []);
-        setDespesasApi(Array.isArray(r.despesas) ? r.despesas : []);
         setContratoVigenteApi(r.contratoVigente ?? null);
       })
       .catch((e) => {
@@ -512,148 +480,8 @@ export function ImoveisAdministracaoFinanceiro() {
     };
   }, [imovelId, imovelIdApi, refreshTick]);
 
-  async function criarRepasseMinimo() {
-    try {
-      setErro('');
-      setSucesso('');
-      if (!featureFlags.useApiImoveis) {
-        setSucesso('Fallback legado ativo: criação de repasse permanece somente como referência visual.');
-        return;
-      }
-      const contratoId = Number(mock?._apiContratoId);
-      if (!contratoId) throw new Error('Contrato não encontrado para este imóvel.');
-      await salvarRepasseLocacao({ ...novoRepasse, contratoId });
-      setSucesso('Repasse criado com sucesso na API.');
-      setNovoRepasse({
-        competenciaMes: '',
-        valorRecebidoInquilino: '',
-        valorRepassadoLocador: '',
-        valorDespesasRepassar: '',
-        remuneracaoEscritorio: '',
-      });
-      recarregar();
-    } catch (e) {
-      setErro(e?.message || 'Falha ao criar repasse.');
-    }
-  }
-
-  function iniciarEdicaoRepasse(r) {
-    setRepasseEditandoId(r.id);
-    setRepasseDraft({
-      competenciaMes: r.competenciaMes || '',
-      valorRecebidoInquilino: r.valorRecebidoInquilino != null ? String(r.valorRecebidoInquilino) : '',
-      valorRepassadoLocador: r.valorRepassadoLocador != null ? String(r.valorRepassadoLocador) : '',
-      valorDespesasRepassar: r.valorDespesasRepassar != null ? String(r.valorDespesasRepassar) : '',
-      remuneracaoEscritorio: r.remuneracaoEscritorio != null ? String(r.remuneracaoEscritorio) : '',
-      status: r.status || 'PENDENTE',
-    });
-  }
-
-  function cancelarEdicaoRepasse() {
-    setRepasseEditandoId(null);
-    setRepasseDraft(null);
-  }
-
-  async function salvarEdicaoRepasse() {
-    if (!repasseEditandoId || !repasseDraft) return;
-    setSalvandoRepasse(true);
-    setErro('');
-    setSucesso('');
-    try {
-      if (!featureFlags.useApiImoveis) {
-        setSucesso('Fallback legado ativo: edição de repasse não se aplica.');
-        return;
-      }
-      const contratoId = Number(mock?._apiContratoId);
-      if (!contratoId) throw new Error('Contrato não encontrado para este imóvel.');
-      await salvarRepasseLocacao({
-        id: repasseEditandoId,
-        contratoId,
-        competenciaMes: repasseDraft.competenciaMes,
-        valorRecebidoInquilino: repasseDraft.valorRecebidoInquilino,
-        valorRepassadoLocador: repasseDraft.valorRepassadoLocador,
-        valorDespesasRepassar: repasseDraft.valorDespesasRepassar,
-        remuneracaoEscritorio: repasseDraft.remuneracaoEscritorio,
-        status: repasseDraft.status,
-      });
-      setSucesso('Repasse atualizado com sucesso.');
-      cancelarEdicaoRepasse();
-      recarregar();
-    } catch (e) {
-      setErro(e?.message || 'Falha ao atualizar repasse.');
-    } finally {
-      setSalvandoRepasse(false);
-    }
-  }
-
-  async function criarDespesaMinima() {
-    try {
-      setErro('');
-      setSucesso('');
-      if (!featureFlags.useApiImoveis) {
-        setSucesso('Fallback legado ativo: criação de despesa permanece somente como referência visual.');
-        return;
-      }
-      const contratoId = Number(mock?._apiContratoId);
-      if (!contratoId) throw new Error('Contrato não encontrado para este imóvel.');
-      await salvarDespesaLocacao({ ...novaDespesa, contratoId });
-      setSucesso('Despesa criada com sucesso na API.');
-      setNovaDespesa({
-        competenciaMes: '',
-        descricao: '',
-        valor: '',
-        categoria: 'OUTROS',
-      });
-      recarregar();
-    } catch (e) {
-      setErro(e?.message || 'Falha ao criar despesa.');
-    }
-  }
-
-  function iniciarEdicaoDespesa(d) {
-    setDespesaEditandoId(d.id);
-    setDespesaDraft({
-      competenciaMes: d.competenciaMes || '',
-      descricao: d.descricao || '',
-      valor: d.valor != null ? String(d.valor) : '',
-      categoria: d.categoria || 'OUTROS',
-    });
-  }
-
-  function cancelarEdicaoDespesa() {
-    setDespesaEditandoId(null);
-    setDespesaDraft(null);
-  }
-
-  async function salvarEdicaoDespesa() {
-    if (!despesaEditandoId || !despesaDraft) return;
-    setSalvandoDespesa(true);
-    setErro('');
-    setSucesso('');
-    try {
-      if (!featureFlags.useApiImoveis) {
-        setSucesso('Fallback legado ativo: edição de despesa não se aplica.');
-        return;
-      }
-      const contratoId = Number(mock?._apiContratoId);
-      if (!contratoId) throw new Error('Contrato não encontrado para este imóvel.');
-      await salvarDespesaLocacao({
-        id: despesaEditandoId,
-        contratoId,
-        competenciaMes: despesaDraft.competenciaMes,
-        descricao: despesaDraft.descricao,
-        valor: despesaDraft.valor,
-        categoria: despesaDraft.categoria,
-      });
-      setSucesso('Despesa atualizada com sucesso.');
-      cancelarEdicaoDespesa();
-      recarregar();
-    } catch (e) {
-      setErro(e?.message || 'Falha ao atualizar despesa.');
-    } finally {
-      setSalvandoDespesa(false);
-    }
-  }
+  // CRUD de repasse/despesa LEGADO (locacao_repasse/locacao_despesa) removido — C9/A8.
+  // O caixa real é reconciliado via locacao_repasse_lancamento (sugestões/vínculos/resultado).
 
   // Rola até o extrato apenas UMA vez, na chegada via âncora. Sem o guard, qualquer
   // recarga do painel (aprovar/desvincular) re-disparava o scroll e a tela "pulava".
@@ -749,11 +577,9 @@ export function ImoveisAdministracaoFinanceiro() {
             </button>
           </div>
         </div>
-        {(carregando || erro || sucesso || salvandoRepasse || salvandoDespesa) && (
+        {(carregando || erro || sucesso) && (
           <div className="bg-white rounded-lg border border-slate-300 shadow-sm p-3 text-sm">
             {carregando ? <p className="text-indigo-700">Carregando painel de administração...</p> : null}
-            {salvandoRepasse ? <p className="text-indigo-700">Salvando repasse...</p> : null}
-            {salvandoDespesa ? <p className="text-indigo-700">Salvando despesa...</p> : null}
             {erro ? <p className="text-red-700">{erro}</p> : null}
             {sucesso ? <p className="text-emerald-700">{sucesso}</p> : null}
           </div>
@@ -1136,226 +962,6 @@ export function ImoveisAdministracaoFinanceiro() {
                         )}
                       </tbody>
                     </table>
-                  </div>
-                </div>
-                <div className="bg-white rounded-lg border border-slate-300 shadow-sm p-4 space-y-4">
-                  <h2 className="text-sm font-semibold text-slate-800">Operação mínima de repasses e despesas</h2>
-                  <p className="text-xs text-slate-500">
-                    Fonte operacional do módulo imobiliário (API de locações). O extrato financeiro acima
-                    {painelFonteApi ? ' segue a API financeira' : ' usa cópia local até a API financeira estar ativa'}.
-                  </p>
-                  <div className="grid md:grid-cols-2 gap-4">
-                    <div className="rounded border border-slate-200 p-3 space-y-2">
-                      <p className="text-xs font-semibold text-slate-700">Novo repasse</p>
-                      <input className="w-full border border-slate-300 rounded px-2 py-1.5 text-sm" placeholder="Competência YYYY-MM" value={novoRepasse.competenciaMes} onChange={(e) => setNovoRepasse((s) => ({ ...s, competenciaMes: e.target.value }))} />
-                      <input className="w-full border border-slate-300 rounded px-2 py-1.5 text-sm" placeholder="Valor recebido" value={novoRepasse.valorRecebidoInquilino} onChange={(e) => setNovoRepasse((s) => ({ ...s, valorRecebidoInquilino: e.target.value }))} />
-                      <input className="w-full border border-slate-300 rounded px-2 py-1.5 text-sm" placeholder="Valor repassado" value={novoRepasse.valorRepassadoLocador} onChange={(e) => setNovoRepasse((s) => ({ ...s, valorRepassadoLocador: e.target.value }))} />
-                      <button type="button" onClick={criarRepasseMinimo} className="px-3 py-2 rounded bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700">
-                        Criar repasse
-                      </button>
-                    </div>
-                    <div className="rounded border border-slate-200 p-3 space-y-2">
-                      <p className="text-xs font-semibold text-slate-700">Nova despesa</p>
-                      <input className="w-full border border-slate-300 rounded px-2 py-1.5 text-sm" placeholder="Competência YYYY-MM" value={novaDespesa.competenciaMes} onChange={(e) => setNovaDespesa((s) => ({ ...s, competenciaMes: e.target.value }))} />
-                      <input className="w-full border border-slate-300 rounded px-2 py-1.5 text-sm" placeholder="Descrição" value={novaDespesa.descricao} onChange={(e) => setNovaDespesa((s) => ({ ...s, descricao: e.target.value }))} />
-                      <input className="w-full border border-slate-300 rounded px-2 py-1.5 text-sm" placeholder="Valor" value={novaDespesa.valor} onChange={(e) => setNovaDespesa((s) => ({ ...s, valor: e.target.value }))} />
-                      <select
-                        className="w-full border border-slate-300 rounded px-2 py-1.5 text-sm"
-                        value={novaDespesa.categoria}
-                        onChange={(e) => setNovaDespesa((s) => ({ ...s, categoria: e.target.value }))}
-                      >
-                        <option value="OUTROS">OUTROS</option>
-                        <option value="REPASSE_ADMIN">REPASSE_ADMIN</option>
-                        <option value="ADMINISTRACAO">ADMINISTRACAO</option>
-                      </select>
-                      <button type="button" onClick={criarDespesaMinima} className="px-3 py-2 rounded bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700">
-                        Criar despesa
-                      </button>
-                    </div>
-                  </div>
-                  <div className="grid md:grid-cols-2 gap-4">
-                    <div className="rounded border border-slate-200 p-3">
-                      <p className="text-xs font-semibold text-slate-700 mb-2">Repasses (API)</p>
-                      {repassesApi.length === 0 ? (
-                        <p className="text-xs text-slate-500">Nenhum repasse registrado.</p>
-                      ) : (
-                        <ul className="space-y-2 text-xs text-slate-700 max-h-72 overflow-y-auto pr-1">
-                          {repassesApi.map((r) => (
-                            <li key={r.id} className="border border-slate-100 rounded p-2 bg-slate-50/80">
-                              {featureFlags.useApiImoveis && repasseEditandoId === r.id && repasseDraft ? (
-                                <div className="space-y-2">
-                                  <input
-                                    className="w-full border border-slate-300 rounded px-2 py-1 text-xs"
-                                    placeholder="Competência YYYY-MM"
-                                    value={repasseDraft.competenciaMes}
-                                    onChange={(e) => setRepasseDraft((s) => ({ ...s, competenciaMes: e.target.value }))}
-                                    disabled={salvandoRepasse || salvandoDespesa}
-                                  />
-                                  <input
-                                    className="w-full border border-slate-300 rounded px-2 py-1 text-xs"
-                                    placeholder="Valor recebido"
-                                    value={repasseDraft.valorRecebidoInquilino}
-                                    onChange={(e) => setRepasseDraft((s) => ({ ...s, valorRecebidoInquilino: e.target.value }))}
-                                    disabled={salvandoRepasse || salvandoDespesa}
-                                  />
-                                  <input
-                                    className="w-full border border-slate-300 rounded px-2 py-1 text-xs"
-                                    placeholder="Valor repassado ao locador"
-                                    value={repasseDraft.valorRepassadoLocador}
-                                    onChange={(e) => setRepasseDraft((s) => ({ ...s, valorRepassadoLocador: e.target.value }))}
-                                    disabled={salvandoRepasse || salvandoDespesa}
-                                  />
-                                  <input
-                                    className="w-full border border-slate-300 rounded px-2 py-1 text-xs"
-                                    placeholder="Despesas a repassar"
-                                    value={repasseDraft.valorDespesasRepassar}
-                                    onChange={(e) => setRepasseDraft((s) => ({ ...s, valorDespesasRepassar: e.target.value }))}
-                                    disabled={salvandoRepasse || salvandoDespesa}
-                                  />
-                                  <input
-                                    className="w-full border border-slate-300 rounded px-2 py-1 text-xs"
-                                    placeholder="Remuneração escritório"
-                                    value={repasseDraft.remuneracaoEscritorio}
-                                    onChange={(e) => setRepasseDraft((s) => ({ ...s, remuneracaoEscritorio: e.target.value }))}
-                                    disabled={salvandoRepasse || salvandoDespesa}
-                                  />
-                                  <select
-                                    className="w-full border border-slate-300 rounded px-2 py-1 text-xs"
-                                    value={repasseDraft.status}
-                                    onChange={(e) => setRepasseDraft((s) => ({ ...s, status: e.target.value }))}
-                                    disabled={salvandoRepasse || salvandoDespesa}
-                                  >
-                                    <option value="PENDENTE">PENDENTE</option>
-                                    <option value="CONFIRMADO">CONFIRMADO</option>
-                                    <option value="CANCELADO">CANCELADO</option>
-                                  </select>
-                                  <div className="flex flex-wrap gap-2">
-                                    <button
-                                      type="button"
-                                      onClick={() => void salvarEdicaoRepasse()}
-                                      disabled={salvandoRepasse || salvandoDespesa}
-                                      className="px-2 py-1 rounded bg-indigo-600 text-white text-[11px] font-semibold hover:bg-indigo-700 disabled:opacity-50"
-                                    >
-                                      Salvar
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={cancelarEdicaoRepasse}
-                                      disabled={salvandoRepasse || salvandoDespesa}
-                                      className="px-2 py-1 rounded border border-slate-300 text-[11px] text-slate-700 hover:bg-slate-100 disabled:opacity-50"
-                                    >
-                                      Cancelar
-                                    </button>
-                                  </div>
-                                </div>
-                              ) : (
-                                <div className="flex flex-wrap items-start justify-between gap-2">
-                                  <div>
-                                    <span className="font-medium">{r.competenciaMes}</span> · recebido {formatBRL(r.valorRecebidoInquilino)} ·
-                                    repasse {formatBRL(r.valorRepassadoLocador)} · status {r.status || '—'}
-                                  </div>
-                                  {featureFlags.useApiImoveis ? (
-                                    <button
-                                      type="button"
-                                      onClick={() => iniciarEdicaoRepasse(r)}
-                                      disabled={salvandoRepasse || salvandoDespesa || !!repasseEditandoId || !!despesaEditandoId}
-                                      className="shrink-0 px-2 py-0.5 rounded border border-indigo-300 text-indigo-800 text-[11px] font-medium hover:bg-indigo-50 disabled:opacity-40"
-                                    >
-                                      Editar
-                                    </button>
-                                  ) : null}
-                                </div>
-                              )}
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
-                    <div className="rounded border border-slate-200 p-3">
-                      <p className="text-xs font-semibold text-slate-700 mb-2">Despesas (API)</p>
-                      <p className="text-[10px] text-slate-500 mb-2">
-                        Edição via PUT (mesmo contrato). Lançamento financeiro vinculado não é editável neste formulário mínimo.
-                      </p>
-                      {despesasApi.length === 0 ? (
-                        <p className="text-xs text-slate-500">Nenhuma despesa registrada.</p>
-                      ) : (
-                        <ul className="space-y-2 text-xs text-slate-700 max-h-72 overflow-y-auto pr-1">
-                          {despesasApi.map((d) => (
-                            <li key={d.id} className="border border-slate-100 rounded p-2 bg-slate-50/80">
-                              {featureFlags.useApiImoveis && despesaEditandoId === d.id && despesaDraft ? (
-                                <div className="space-y-2">
-                                  <input
-                                    className="w-full border border-slate-300 rounded px-2 py-1 text-xs"
-                                    placeholder="Competência YYYY-MM"
-                                    value={despesaDraft.competenciaMes}
-                                    onChange={(e) => setDespesaDraft((s) => ({ ...s, competenciaMes: e.target.value }))}
-                                    disabled={salvandoDespesa || salvandoRepasse}
-                                  />
-                                  <input
-                                    className="w-full border border-slate-300 rounded px-2 py-1 text-xs"
-                                    placeholder="Descrição"
-                                    value={despesaDraft.descricao}
-                                    onChange={(e) => setDespesaDraft((s) => ({ ...s, descricao: e.target.value }))}
-                                    disabled={salvandoDespesa || salvandoRepasse}
-                                  />
-                                  <input
-                                    className="w-full border border-slate-300 rounded px-2 py-1 text-xs"
-                                    placeholder="Valor"
-                                    value={despesaDraft.valor}
-                                    onChange={(e) => setDespesaDraft((s) => ({ ...s, valor: e.target.value }))}
-                                    disabled={salvandoDespesa || salvandoRepasse}
-                                  />
-                                  <select
-                                    className="w-full border border-slate-300 rounded px-2 py-1 text-xs"
-                                    value={despesaDraft.categoria}
-                                    onChange={(e) => setDespesaDraft((s) => ({ ...s, categoria: e.target.value }))}
-                                    disabled={salvandoDespesa || salvandoRepasse}
-                                  >
-                                    <option value="OUTROS">OUTROS</option>
-                                    <option value="REPASSE_ADMIN">REPASSE_ADMIN</option>
-                                    <option value="ADMINISTRACAO">ADMINISTRACAO</option>
-                                  </select>
-                                  <div className="flex flex-wrap gap-2">
-                                    <button
-                                      type="button"
-                                      onClick={() => void salvarEdicaoDespesa()}
-                                      disabled={salvandoDespesa || salvandoRepasse}
-                                      className="px-2 py-1 rounded bg-emerald-600 text-white text-[11px] font-semibold hover:bg-emerald-700 disabled:opacity-50"
-                                    >
-                                      Salvar
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={cancelarEdicaoDespesa}
-                                      disabled={salvandoDespesa || salvandoRepasse}
-                                      className="px-2 py-1 rounded border border-slate-300 text-[11px] text-slate-700 hover:bg-slate-100 disabled:opacity-50"
-                                    >
-                                      Cancelar
-                                    </button>
-                                  </div>
-                                </div>
-                              ) : (
-                                <div className="flex flex-wrap items-start justify-between gap-2">
-                                  <div>
-                                    {d.competenciaMes || '—'} · {d.descricao} · {formatBRL(d.valor)} · {d.categoria || '—'}
-                                  </div>
-                                  {featureFlags.useApiImoveis ? (
-                                    <button
-                                      type="button"
-                                      onClick={() => iniciarEdicaoDespesa(d)}
-                                      disabled={salvandoRepasse || salvandoDespesa || !!repasseEditandoId || !!despesaEditandoId}
-                                      className="shrink-0 px-2 py-0.5 rounded border border-emerald-500 text-emerald-900 text-[11px] font-medium hover:bg-emerald-50 disabled:opacity-40"
-                                    >
-                                      Editar
-                                    </button>
-                                  ) : null}
-                                </div>
-                              )}
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
                   </div>
                 </div>
               </>

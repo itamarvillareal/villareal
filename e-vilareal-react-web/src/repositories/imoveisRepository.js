@@ -1029,16 +1029,12 @@ export async function carregarPainelAdministracaoImovel({ imovelId, imovelIdApi,
   }
 
   let contratos = [];
-  let repasses = [];
-  let despesas = [];
   let contratoVigente = null;
   if (featureFlags.useApiImoveis && imovel?._apiImovelId) {
     contratos = await request('/api/locacoes/contratos', { query: { imovelId: imovel._apiImovelId } });
     contratoVigente = selecionarContratoVigente(Array.isArray(contratos) ? contratos : []);
     if (contratoVigente?.id) {
       imovel = { ...imovel, _apiContratoId: contratoVigente.id };
-      repasses = await request('/api/locacoes/repasses', { query: { contratoId: contratoVigente.id } });
-      despesas = await request('/api/locacoes/despesas', { query: { contratoId: contratoVigente.id } });
     }
   }
 
@@ -1050,49 +1046,11 @@ export async function carregarPainelAdministracaoImovel({ imovelId, imovelIdApi,
     painelFinanceiro,
     contratos: contratos || [],
     contratoVigente,
-    repasses: repasses || [],
-    despesas: despesas || [],
   };
 }
 
-/** Cria (POST) ou atualiza (PUT) repasse; quando `payload.id` está definido, usa PUT. */
-export async function salvarRepasseLocacao(payload) {
-  if (!featureFlags.useApiImoveis) return null;
-  const body = {
-    contratoId: Number(payload.contratoId),
-    competenciaMes: String(payload.competenciaMes || '').trim(),
-    valorRecebidoInquilino: toNumberOrNull(payload.valorRecebidoInquilino),
-    valorRepassadoLocador: toNumberOrNull(payload.valorRepassadoLocador),
-    valorDespesasRepassar: toNumberOrNull(payload.valorDespesasRepassar),
-    remuneracaoEscritorio: toNumberOrNull(payload.remuneracaoEscritorio),
-    status: payload.status || 'PENDENTE',
-    dataRepasseEfetiva: payload.dataRepasseEfetiva || null,
-    observacao: payload.observacao || null,
-    lancamentoFinanceiroVinculoId: payload.lancamentoFinanceiroVinculoId || null,
-  };
-  if (payload.id) {
-    return request(`/api/locacoes/repasses/${payload.id}`, { method: 'PUT', body });
-  }
-  return request('/api/locacoes/repasses', { method: 'POST', body });
-}
-
-/** Cria (POST) ou atualiza (PUT) despesa; quando `payload.id` está definido, usa PUT. */
-export async function salvarDespesaLocacao(payload) {
-  if (!featureFlags.useApiImoveis) return null;
-  const body = {
-    contratoId: Number(payload.contratoId),
-    competenciaMes: String(payload.competenciaMes || '').trim() || null,
-    descricao: String(payload.descricao || '').trim(),
-    valor: toNumberOrNull(payload.valor),
-    categoria: payload.categoria || 'OUTROS',
-    lancamentoFinanceiroId: payload.lancamentoFinanceiroId || null,
-    observacao: payload.observacao || null,
-  };
-  if (payload.id) {
-    return request(`/api/locacoes/despesas/${payload.id}`, { method: 'PUT', body });
-  }
-  return request('/api/locacoes/despesas', { method: 'POST', body });
-}
+// Repasse/despesa LEGADO (locacao_repasse/locacao_despesa) removido — C9/A8.
+// O caixa real é reconciliado via locacao_repasse_lancamento (sugerir/vincular/resultado).
 
 // -----------------------------------------------------------------------------
 // Fase B — reconciliação do financeiro de imóveis (caixa real × ciclo de locação).

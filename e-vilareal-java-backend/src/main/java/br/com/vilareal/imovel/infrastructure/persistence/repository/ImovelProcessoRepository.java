@@ -10,13 +10,12 @@ public interface ImovelProcessoRepository extends JpaRepository<ImovelProcessoEn
 
     List<ImovelProcessoEntity> findByImovel_IdOrderByCreatedAtDescIdDesc(Long imovelId);
 
-    List<ImovelProcessoEntity> findByProcesso_IdOrderByIdAsc(Long processoId);
-
     Optional<ImovelProcessoEntity> findByImovel_IdAndProcesso_Id(Long imovelId, Long processoId);
 
     List<ImovelProcessoEntity> findByImovel_IdAndAtivoTrueOrderByIdDesc(Long imovelId);
 
     Optional<ImovelProcessoEntity> findFirstByImovel_IdAndAtivoTrueOrderByIdDesc(Long imovelId);
 
-    Optional<ImovelProcessoEntity> findFirstByProcesso_IdOrderByIdAsc(Long processoId);
+    /** Resolve o imóvel pelo vínculo ATIVO do processo — nunca por vínculo desativado. */
+    Optional<ImovelProcessoEntity> findFirstByProcesso_IdAndAtivoTrueOrderByIdDesc(Long processoId);
 }

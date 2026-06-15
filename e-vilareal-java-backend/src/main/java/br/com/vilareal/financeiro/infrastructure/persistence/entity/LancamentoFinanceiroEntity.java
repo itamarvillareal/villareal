@@ -50,6 +50,15 @@ public class LancamentoFinanceiroEntity {
     @Column(name = "numero_banco")
     private Integer numeroBanco;
 
+    /**
+     * Conta bancária materializada (V116, FASE A). Populada por backfill via {@code numero_banco};
+     * nullable e NÃO dirige comportamento ainda — a lógica segue lendo {@code numeroBanco}/
+     * {@code bancoNome} (a migração para esta FK é a FASE B).
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "conta_bancaria_id")
+    private ContaBancariaEntity contaBancaria;
+
     @Column(name = "numero_lancamento", nullable = false, length = 80)
     private String numeroLancamento;
 

@@ -1,7 +1,9 @@
 package br.com.vilareal.financeiro.domain;
 
 /**
- * Etapa do workflow de classificação do lançamento (distinto de {@code status} = soft-delete "ATIVO").
+ * Etapa do workflow de classificação do lançamento. (A coluna {@code status} default "ATIVO" é
+ * resíduo de um soft-delete que nunca foi implementado — a exclusão de lançamento é FÍSICA;
+ * a coluna sai no lote final de contract.)
  */
 public enum EtapaLancamento {
     IMPORTADO,

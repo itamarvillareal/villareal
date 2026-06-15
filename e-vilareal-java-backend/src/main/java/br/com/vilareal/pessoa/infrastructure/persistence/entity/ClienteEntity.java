@@ -36,6 +36,10 @@ public class ClienteEntity {
     @Column(nullable = false)
     private Boolean inativo = false;
 
+    /** "Imóvel próprio" (VRV/Itamar): repasse gerado internamente, não há repasse bancário real. Fonte da verdade (V114). */
+    @Column(nullable = false)
+    private Boolean proprio = false;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Instant createdAt;
 

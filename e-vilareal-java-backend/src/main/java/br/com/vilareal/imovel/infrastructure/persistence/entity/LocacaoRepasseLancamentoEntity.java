@@ -39,8 +39,18 @@ public class LocacaoRepasseLancamentoEntity {
     @Column(nullable = false, length = 20)
     private PapelReconciliacao papel;
 
-    @Column(precision = 19, scale = 2)
+    @Column(nullable = false, precision = 19, scale = 2)
     private BigDecimal valor;
+
+    /**
+     * FK real (self-ref) do repasse interno → vínculo de ALUGUEL que o originou (V115). Só populado
+     * em vínculos {@code papel=REPASSE} gerados automaticamente (imóvel próprio). É a fonte de
+     * idempotência/reversão do repasse interno; {@code numero_lancamento} vira apenas rótulo.
+     * {@code ON DELETE SET NULL} no banco: a remoção do par é feita no código, não em cascata.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "origem_aluguel_vinculo_id")
+    private LocacaoRepasseLancamentoEntity origemAluguelVinculo;
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private Instant createdAt;

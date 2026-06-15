@@ -1,6 +1,14 @@
-import { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { CARTAO_TO_NUMERO, getBancoNumeroMapMerged } from '../../data/financeiroData.js';
+import {
+  buildClassificacaoContasPorNumero,
+  classificacaoConta,
+  contaTemExtrato as contaTemExtratoFn,
+  isContaManual as isContaManualFn,
+  isContaVirtual as isContaVirtualFn,
+} from '../../data/contaBancariaClassificacao.js';
+import { listarContasBancariasClassificacaoApi } from '../../repositories/financeiroRepository.js';
 import { useExtratoFilters } from './hooks/useExtratoFilters.js';
 
 const FinanceiroFiltersContext = createContext(null);
@@ -20,17 +28,53 @@ export function FinanceiroProvider({
   const extratoFilters = useExtratoFilters();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [bancosExpandidos, setBancosExpandidos] = useState(false);
+  // B4: classificação (tipo/tem_extrato) vinda do endpoint, buscada uma vez e cacheada.
+  // Enquanto carrega/falha, os helpers caem no fallback hardcoded (transição; sai na Fase C).
+  const [contasClassificacaoApi, setContasClassificacaoApi] = useState(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    listarContasBancariasClassificacaoApi({ signal: controller.signal })
+      .then((lista) => setContasClassificacaoApi(Array.isArray(lista) ? lista : []))
+      .catch(() => {
+        // falha/abort: mantém null → helpers usam o fallback hardcoded; a tela não quebra.
+      });
+    return () => controller.abort();
+  }, [bancosRevision]);
+
+  const classificacaoPorNumero = useMemo(
+    () => buildClassificacaoContasPorNumero(contasClassificacaoApi),
+    [contasClassificacaoApi],
+  );
+
+  const isContaManual = useCallback(
+    (numero) => isContaManualFn(numero, classificacaoPorNumero),
+    [classificacaoPorNumero],
+  );
+  const isContaVirtual = useCallback(
+    (numero) => isContaVirtualFn(numero, classificacaoPorNumero),
+    [classificacaoPorNumero],
+  );
+  const contaTemExtrato = useCallback(
+    (numero) => contaTemExtratoFn(numero, classificacaoPorNumero),
+    [classificacaoPorNumero],
+  );
 
   const bancos = useMemo(() => {
     const map = getBancoNumeroMapMerged();
     return Object.entries(map)
-      .map(([nome, numero]) => ({
-        nome,
-        numero,
-        count: contadores[numero] ?? contadores[nome] ?? null,
-      }))
+      .map(([nome, numero]) => {
+        const cls = classificacaoConta(numero, classificacaoPorNumero);
+        return {
+          nome,
+          numero,
+          count: contadores[numero] ?? contadores[nome] ?? null,
+          tipo: cls.tipo,
+          temExtrato: cls.temExtrato,
+        };
+      })
       .sort((a, b) => (b.count ?? 0) - (a.count ?? 0));
-  }, [contadores, bancosRevision]);
+  }, [contadores, bancosRevision, classificacaoPorNumero]);
 
   const bancosVisiveis = useMemo(() => {
     if (bancosExpandidos || bancos.length <= TOP_BANCOS_VISIVEIS + 1) return bancos;
@@ -106,6 +150,10 @@ export function FinanceiroProvider({
       bancosVisiveis,
       bancosRestantes: Math.max(0, bancos.length - TOP_BANCOS_VISIVEIS),
       cartoes,
+      classificacaoPorNumero,
+      isContaManual,
+      isContaVirtual,
+      contaTemExtrato,
       bancoAtivo: Number.isFinite(extratoFilters.filters.banco) ? extratoFilters.filters.banco : null,
       mesAtivo: extratoFilters.filters.mes,
       sidebarCollapsed,
@@ -121,6 +169,10 @@ export function FinanceiroProvider({
       bancos,
       bancosVisiveis,
       cartoes,
+      classificacaoPorNumero,
+      isContaManual,
+      isContaVirtual,
+      contaTemExtrato,
       extratoFilters.filters.banco,
       extratoFilters.filters.mes,
       sidebarCollapsed,

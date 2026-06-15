@@ -8,8 +8,10 @@ import br.com.vilareal.financeiro.domain.EtapaLancamento;
 import br.com.vilareal.financeiro.domain.NaturezaLancamento;
 import br.com.vilareal.financeiro.domain.RecorrenciaValorPerfilUtil;
 import br.com.vilareal.financeiro.domain.RecorrenciaValorPerfilUtil.ClassePrecisao;
+import br.com.vilareal.financeiro.infrastructure.persistence.entity.ContaBancariaEntity;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.ContaContabilEntity;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.LancamentoFinanceiroEntity;
+import br.com.vilareal.financeiro.infrastructure.persistence.repository.ContaBancariaRepository;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.ContaContabilRepository;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.LancamentoFinanceiroRepository;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
@@ -25,6 +27,7 @@ import br.com.vilareal.imovel.infrastructure.persistence.entity.ContratoLocacaoE
 import br.com.vilareal.imovel.infrastructure.persistence.entity.ImovelEntity;
 import br.com.vilareal.imovel.infrastructure.persistence.entity.LocacaoRepasseLancamentoEntity;
 import br.com.vilareal.imovel.infrastructure.persistence.repository.ContratoLocacaoRepository;
+import br.com.vilareal.imovel.infrastructure.persistence.repository.ImovelProcessoRepository;
 import br.com.vilareal.imovel.infrastructure.persistence.repository.LocacaoRepasseLancamentoRepository;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import org.slf4j.Logger;
@@ -68,14 +71,9 @@ public class LocacaoReconciliacaoService {
     /** Conta contábil "A" (Escritório) — toda administração de imóvel flui aqui. */
     private static final String CODIGO_CONTA_ADMINISTRACAO = "A";
 
-    /**
-     * "Imóvel próprio" (VRV/Itamar): detecção por CÓDIGO de cliente, consistente com o resto do
-     * sistema (NÃO por pessoa/locador). 00000938 = VRV, 00000149 = Itamar (cliente.id 938 e 151).
-     */
-    private static final Set<String> CODIGOS_CLIENTE_PROPRIO = Set.of("00000938", "00000149");
     /** Banco virtual dos lançamentos automáticos de repasse interno — sem extrato, fora da conciliação. */
-    private static final int NUMERO_BANCO_REPASSE_INTERNO = 900;
-    private static final String BANCO_NOME_REPASSE_INTERNO = "REPASSE INTERNO";
+    /** Tipo da conta bancária virtual de repasse interno (sem extrato, fora da conciliação). */
+    private static final String TIPO_CONTA_REPASSE_INTERNO = "VIRTUAL";
     /** Origem dos lançamentos gerados automaticamente. */
     private static final String ORIGEM_AUTO = "AUTO";
     /** Prefixo do {@code numero_lancamento} do débito interno; embute o id do vínculo de ALUGUEL (idempotência). */
@@ -87,16 +85,22 @@ public class LocacaoReconciliacaoService {
     private final LocacaoRepasseLancamentoRepository vinculoRepository;
     private final LancamentoFinanceiroRepository lancamentoRepository;
     private final ContaContabilRepository contaContabilRepository;
+    private final ContaBancariaRepository contaBancariaRepository;
+    private final ImovelProcessoRepository imovelProcessoRepository;
 
     public LocacaoReconciliacaoService(
             ContratoLocacaoRepository contratoLocacaoRepository,
             LocacaoRepasseLancamentoRepository vinculoRepository,
             LancamentoFinanceiroRepository lancamentoRepository,
-            ContaContabilRepository contaContabilRepository) {
+            ContaContabilRepository contaContabilRepository,
+            ContaBancariaRepository contaBancariaRepository,
+            ImovelProcessoRepository imovelProcessoRepository) {
         this.contratoLocacaoRepository = contratoLocacaoRepository;
         this.vinculoRepository = vinculoRepository;
         this.lancamentoRepository = lancamentoRepository;
         this.contaContabilRepository = contaContabilRepository;
+        this.contaBancariaRepository = contaBancariaRepository;
+        this.imovelProcessoRepository = imovelProcessoRepository;
     }
 
     // ----------------------------------------------------------------------------------------- (B)
@@ -112,7 +116,7 @@ public class LocacaoReconciliacaoService {
             return List.of();
         }
 
-        List<LancamentoFinanceiroEntity> candidatos = lancamentoRepository.findAtivosByProcessoId(processoId);
+        List<LancamentoFinanceiroEntity> candidatos = lancamentoRepository.findByProcessoId(processoId);
         Map<String, PapelReconciliacao> historico = historicoPapelPorDescricao(contratoId);
         Map<Long, LocacaoRepasseLancamentoEntity> jaVinculados = vinculoPorLancamento(contratoId, candidatos);
 
@@ -162,7 +166,7 @@ public class LocacaoReconciliacaoService {
         LocalDate inicio = competencia.atDay(1);
         LocalDate fim = competencia.atEndOfMonth();
         List<LancamentoFinanceiroEntity> orfaos =
-                lancamentoRepository.findOrfaosAtivosNoIntervalo(inicio, fim);
+                lancamentoRepository.findOrfaosNoIntervalo(inicio, fim);
         if (orfaos.isEmpty()) {
             return List.of();
         }
@@ -279,7 +283,7 @@ public class LocacaoReconciliacaoService {
     /**
      * Sugestão de REPASSE para um DÉBITO (saída), ANCORADA EM VALOR. Regras:
      * <ol>
-     *   <li>Imóvel PRÓPRIO (codigo_cliente ∈ {00000938, 00000149}): nunca sugere — o repasse é
+     *   <li>Imóvel PRÓPRIO ({@code cliente.proprio = true}): nunca sugere — o repasse é
      *       gerado pelo par virtual automático.</li>
      *   <li>Terceiros: só sugere se {@code |valor| ∈ [repasseEsperado×0,85 ; repasseEsperado×1,05]}.
      *       Fora da banda → {@code null} (não sugere, nem MÉDIA/BAIXA).</li>
@@ -408,7 +412,12 @@ public class LocacaoReconciliacaoService {
         entity.setLancamentoFinanceiro(lancamento);
         entity.setPapel(papel);
         entity.setCompetenciaMes(trimToNull(competenciaMes));
-        entity.setValor(lancamento.getValor() != null ? lancamento.getValor().abs() : null);
+        // valor do vínculo é sempre não-nulo: financeiro_lancamento.valor é NOT NULL (DB + entity), e
+        // o repasse interno só grava após repasse.signum() > 0. Invariante garantido pelo app (V119).
+        if (lancamento.getValor() == null) {
+            throw new BusinessRuleException("Lançamento sem valor não pode ser vinculado.");
+        }
+        entity.setValor(lancamento.getValor().abs());
 
         entity = vinculoRepository.save(entity);
 
@@ -503,7 +512,7 @@ public class LocacaoReconciliacaoService {
         }
 
         List<ReconciliacaoVincularRequest.Item> itens = new ArrayList<>();
-        for (LancamentoFinanceiroEntity l : lancamentoRepository.findAtivosByProcessoId(processoId)) {
+        for (LancamentoFinanceiroEntity l : lancamentoRepository.findByProcessoId(processoId)) {
             if (l.getNatureza() != NaturezaLancamento.CREDITO || l.getValor() == null) {
                 continue;
             }
@@ -551,20 +560,25 @@ public class LocacaoReconciliacaoService {
                 vinculoRepository.findByContratoLocacao_IdOrderByCompetenciaMesAscIdAsc(contratoId).stream()
                         .filter(v -> v.getPapel() == PapelReconciliacao.ALUGUEL)
                         .toList();
-        Set<String> numerosEsperados = new java.util.HashSet<>();
+        // Débitos esperados = lançamento de cada vínculo REPASSE ligado por FK real (V115) a um
+        // ALUGUEL deste contrato. Sem parse de string.
+        Set<Long> debitosEsperados = new java.util.HashSet<>();
         for (LocacaoRepasseLancamentoEntity a : alugueis) {
-            numerosEsperados.add(numeroDebitoRepasseInterno(a.getId()));
+            vinculoRepository.findByOrigemAluguelVinculo_IdAndPapel(a.getId(), PapelReconciliacao.REPASSE)
+                    .map(LocacaoRepasseLancamentoEntity::getLancamentoFinanceiro)
+                    .map(LancamentoFinanceiroEntity::getId)
+                    .ifPresent(debitosEsperados::add);
         }
 
         // 1) Remove APENAS os lançamentos AUTO (banco virtual) indesejados: créditos na conta I,
-        //    débitos órfãos e qualquer AUTO cujo numero_lancamento não seja um débito esperado.
+        //    débitos órfãos e qualquer AUTO que não seja o débito atualmente ligado a um ALUGUEL.
         //    Os débitos esperados (corretos ou não) são tratados por vínculo no passo 2.
+        Integer numeroBancoVirtual = contaRepasseInterno().getNumeroBanco();
         List<LancamentoFinanceiroEntity> autosIndesejados =
-                lancamentoRepository.findAtivosByProcessoId(processoId).stream()
+                lancamentoRepository.findByProcessoId(processoId).stream()
                         .filter(l -> ORIGEM_AUTO.equals(l.getOrigem())
-                                && Integer.valueOf(NUMERO_BANCO_REPASSE_INTERNO).equals(l.getNumeroBanco()))
-                        .filter(l -> l.getNumeroLancamento() == null
-                                || !numerosEsperados.contains(l.getNumeroLancamento()))
+                                && numeroBancoVirtual.equals(l.getNumeroBanco()))
+                        .filter(l -> !debitosEsperados.contains(l.getId()))
                         .toList();
         int removidosIndesejados = removerLancamentosComVinculos(contratoId, autosIndesejados);
 
@@ -587,18 +601,19 @@ public class LocacaoReconciliacaoService {
      */
     private boolean garantirDebitoRepasseCorreto(
             ContratoLocacaoEntity contrato, Long contratoId, LocacaoRepasseLancamentoEntity aluguel) {
-        String numero = numeroDebitoRepasseInterno(aluguel.getId());
-        Optional<LancamentoFinanceiroEntity> existenteOpt = lancamentoRepository.findByNumeroLancamento(numero);
+        // Acha o REPASSE pela FK real (V115), não pela string numero_lancamento.
+        Optional<LocacaoRepasseLancamentoEntity> repasseOpt =
+                vinculoRepository.findByOrigemAluguelVinculo_IdAndPapel(aluguel.getId(), PapelReconciliacao.REPASSE);
         BigDecimal repasseEsperado = repasseEsperadoDoAluguel(contrato, aluguel);
         LocalDate dataEsperada = dataLancamentoDoAluguel(aluguel);
 
-        if (existenteOpt.isPresent()) {
-            LancamentoFinanceiroEntity debito = existenteOpt.get();
-            if (debitoRepasseCorreto(debito, repasseEsperado, dataEsperada)
-                    && temVinculoRepasse(contratoId, debito.getId())) {
+        if (repasseOpt.isPresent()) {
+            LancamentoFinanceiroEntity debito = repasseOpt.get().getLancamentoFinanceiro();
+            if (debito != null && debitoRepasseCorreto(debito, repasseEsperado, dataEsperada)) {
                 return false; // já correto → NO-OP, não troca id
             }
-            removerLancamentosComVinculos(contratoId, List.of(debito)); // errado → remove para regenerar
+            // errado → remove o par (vínculo REPASSE + débito) para regenerar
+            removerRepasseInterno(contratoId, aluguel.getId());
         }
         gerarRepasseInternoSeProprio(aluguel, contrato); // ausente/removido → gera o débito correto
         return true;
@@ -614,13 +629,6 @@ public class LocacaoReconciliacaoService {
                 && !StringUtils.hasText(debito.getGrupoCompensacao())
                 && debito.getEtapa() == EtapaLancamento.VINCULADO
                 && debito.getValor() != null && debito.getValor().compareTo(repasseEsperado) == 0;
-    }
-
-    /** Há vínculo papel=REPASSE para este lançamento no contrato? */
-    private boolean temVinculoRepasse(Long contratoId, Long lancamentoId) {
-        return vinculoRepository
-                .findByContratoLocacao_IdAndLancamentoFinanceiro_IdIn(contratoId, List.of(lancamentoId))
-                .stream().anyMatch(v -> v.getPapel() == PapelReconciliacao.REPASSE);
     }
 
     /** Remove lançamentos e seus vínculos no contrato; retorna a quantidade removida. */
@@ -665,7 +673,7 @@ public class LocacaoReconciliacaoService {
     private void adotarLancamento(LancamentoFinanceiroEntity lancamento, ContratoLocacaoEntity contrato) {
         ContaContabilEntity contaA = contaAdministracao();
         ClienteEntity cliente = clienteDoImovel(contrato);
-        ProcessoEntity processo = contrato.getImovel() != null ? contrato.getImovel().getProcesso() : null;
+        ProcessoEntity processo = processoAtivoDoContrato(contrato);
         if (cliente == null || processo == null) {
             throw new BusinessRuleException(
                     "Imóvel sem cliente/processo definidos: não é possível adotar o lançamento "
@@ -724,14 +732,16 @@ public class LocacaoReconciliacaoService {
         if (!isImovelProprio(contrato)) {
             return;
         }
-        String numeroDebito = numeroDebitoRepasseInterno(aluguelVinculo.getId());
-        Optional<LancamentoFinanceiroEntity> existente = lancamentoRepository.findByNumeroLancamento(numeroDebito);
-        if (existente.isPresent()) {
-            // Débito já existe (idempotência: 1 por vínculo de ALUGUEL). Se a competência do ALUGUEL
-            // mudou (reatribuição na tela), sincroniza o débito e o vínculo REPASSE.
-            sincronizarCompetenciaDoDebito(aluguelVinculo, existente.get());
+        // Idempotência por FK real: já existe vínculo REPASSE apontando para este ALUGUEL? (V115)
+        Optional<LocacaoRepasseLancamentoEntity> repasseExistente =
+                vinculoRepository.findByOrigemAluguelVinculo_IdAndPapel(aluguelVinculo.getId(), PapelReconciliacao.REPASSE);
+        if (repasseExistente.isPresent()) {
+            // Débito já existe (1 por vínculo de ALUGUEL). Se a competência do ALUGUEL mudou
+            // (reatribuição na tela), sincroniza o débito e o vínculo REPASSE.
+            sincronizarCompetenciaDoDebito(aluguelVinculo, repasseExistente.get().getLancamentoFinanceiro());
             return;
         }
+        String numeroDebito = numeroDebitoRepasseInterno(aluguelVinculo.getId());
 
         BigDecimal repasse = repasseEsperadoDoAluguel(contrato, aluguelVinculo);
         if (repasse.signum() <= 0) {
@@ -739,7 +749,7 @@ public class LocacaoReconciliacaoService {
         }
 
         ClienteEntity cliente = clienteDoImovel(contrato);
-        ProcessoEntity processo = contrato.getImovel() != null ? contrato.getImovel().getProcesso() : null;
+        ProcessoEntity processo = processoAtivoDoContrato(contrato);
         // data_lancamento = data real do recebimento do aluguel (nunca 01/MM, nunca antes do crédito).
         LocalDate dataLancamento = dataLancamentoDoAluguel(aluguelVinculo);
         // data_competencia acompanha a competência do ALUGUEL (move junto quando reatribuída).
@@ -757,29 +767,33 @@ public class LocacaoReconciliacaoService {
         repasseVinculo.setPapel(PapelReconciliacao.REPASSE);
         repasseVinculo.setCompetenciaMes(aluguelVinculo.getCompetenciaMes());
         repasseVinculo.setValor(repasse);
+        repasseVinculo.setOrigemAluguelVinculo(aluguelVinculo); // FK real -> ALUGUEL de origem (V115)
         vinculoRepository.save(repasseVinculo);
 
         log.info("[reconciliacao-imovel] REPASSE-INTERNO (débito) gerado contrato={} aluguelVinculo={} repasse={} debitoA={} data={}",
                 contrato.getId(), aluguelVinculo.getId(), repasse, debito.getId(), dataLancamento);
     }
 
-    /** Remove o débito de repasse interno (lançamento + vínculo REPASSE) gerado por um vínculo de ALUGUEL. */
+    /**
+     * Remove o débito de repasse interno (lançamento + vínculo REPASSE) gerado por um vínculo de
+     * ALUGUEL. Acha o REPASSE pela FK real {@code origem_aluguel_vinculo_id} (V115), segue o
+     * {@code lancamento_financeiro_id} e apaga débito + vínculo. Zero parse de string.
+     */
     private void removerRepasseInterno(Long contratoId, Long aluguelVinculoId) {
-        Optional<LancamentoFinanceiroEntity> debitoOpt =
-                lancamentoRepository.findByNumeroLancamento(numeroDebitoRepasseInterno(aluguelVinculoId));
-        if (debitoOpt.isEmpty()) {
+        Optional<LocacaoRepasseLancamentoEntity> repasseOpt =
+                vinculoRepository.findByOrigemAluguelVinculo_IdAndPapel(aluguelVinculoId, PapelReconciliacao.REPASSE);
+        if (repasseOpt.isEmpty()) {
             return;
         }
-        LancamentoFinanceiroEntity debito = debitoOpt.get();
-        List<LocacaoRepasseLancamentoEntity> vinculos =
-                vinculoRepository.findByContratoLocacao_IdAndLancamentoFinanceiro_IdIn(contratoId, List.of(debito.getId()));
-        if (!vinculos.isEmpty()) {
-            vinculoRepository.deleteAll(vinculos);
-            vinculoRepository.flush();
+        LocacaoRepasseLancamentoEntity repasse = repasseOpt.get();
+        LancamentoFinanceiroEntity debito = repasse.getLancamentoFinanceiro();
+        vinculoRepository.delete(repasse);
+        vinculoRepository.flush();
+        if (debito != null) {
+            lancamentoRepository.delete(debito);
         }
-        lancamentoRepository.delete(debito);
         log.info("[reconciliacao-imovel] REPASSE-INTERNO removido contrato={} aluguelVinculo={} debito={}",
-                contratoId, aluguelVinculoId, debito.getId());
+                contratoId, aluguelVinculoId, debito != null ? debito.getId() : null);
     }
 
     /**
@@ -817,25 +831,10 @@ public class LocacaoReconciliacaoService {
         }
     }
 
+    /** "Imóvel próprio" (repasse gerado internamente): fonte da verdade é o flag {@code cliente.proprio} (V114). */
     private boolean isImovelProprio(ContratoLocacaoEntity contrato) {
         ClienteEntity cliente = clienteDoImovel(contrato);
-        if (cliente == null) {
-            return false;
-        }
-        String codigo = normalizarCodigoCliente(cliente.getCodigoCliente());
-        return codigo != null && CODIGOS_CLIENTE_PROPRIO.contains(codigo);
-    }
-
-    /** Normaliza o código do cliente para o formato CHAR(8) ("938" → "00000938"). */
-    private static String normalizarCodigoCliente(String codigo) {
-        if (!StringUtils.hasText(codigo)) {
-            return null;
-        }
-        String digitos = codigo.trim().replaceAll("[^0-9]", "");
-        if (digitos.isEmpty()) {
-            return null;
-        }
-        return String.format("%08d", Long.parseLong(digitos));
+        return cliente != null && Boolean.TRUE.equals(cliente.getProprio());
     }
 
     private BigDecimal despesasDaCompetencia(Long contratoId, String competenciaMes) {
@@ -861,12 +860,15 @@ public class LocacaoReconciliacaoService {
             BigDecimal valor, ClienteEntity cliente, ProcessoEntity processo,
             LocalDate dataLancamento, LocalDate dataCompetencia,
             String descricao, String numeroLancamento) {
+        ContaBancariaEntity contaVirtual = contaRepasseInterno();
         LancamentoFinanceiroEntity l = new LancamentoFinanceiroEntity();
         l.setContaContabil(contaAdministracao());
         l.setClienteEntidade(cliente);
         l.setProcesso(processo);
-        l.setNumeroBanco(NUMERO_BANCO_REPASSE_INTERNO);
-        l.setBancoNome(BANCO_NOME_REPASSE_INTERNO);
+        // B2: numero_banco/banco_nome do débito vêm da conta VIRTUAL (não mais de constante 900).
+        l.setNumeroBanco(contaVirtual.getNumeroBanco());
+        l.setBancoNome(contaVirtual.getBancoNome());
+        l.setContaBancaria(contaVirtual);
         l.setNumeroLancamento(numeroLancamento);
         l.setDataLancamento(dataLancamento);
         l.setDataCompetencia(dataCompetencia);
@@ -878,6 +880,21 @@ public class LocacaoReconciliacaoService {
         l.setGrupoCompensacao(null);
         l.setEtapa(EtapaLancamento.VINCULADO);
         return l;
+    }
+
+    /**
+     * Conta bancária VIRTUAL do repasse interno (banco virtual sem extrato, fora da conciliação).
+     * Espera-se EXATAMENTE uma; caso contrário falha claro como erro de seed/config (não há mais
+     * fallback para o 900 hardcoded — V116 semeia a 900 como VIRTUAL).
+     */
+    private ContaBancariaEntity contaRepasseInterno() {
+        List<ContaBancariaEntity> virtuais = contaBancariaRepository.findByTipo(TIPO_CONTA_REPASSE_INTERNO);
+        if (virtuais.size() != 1) {
+            throw new IllegalStateException(
+                    "Esperada exatamente 1 conta bancária tipo VIRTUAL (repasse interno); encontradas: "
+                            + virtuais.size() + ". Verifique o seed/config de conta_bancaria.");
+        }
+        return virtuais.get(0);
     }
 
     private static LocalDate competenciaParaData(String competenciaMes, LocalDate fallback) {
@@ -1066,13 +1083,25 @@ public class LocacaoReconciliacaoService {
         return out;
     }
 
-    private static Long processoIdDoContrato(ContratoLocacaoEntity contrato) {
-        ImovelEntity imovel = contrato.getImovel();
-        if (imovel == null) {
+    private Long processoIdDoContrato(ContratoLocacaoEntity contrato) {
+        ProcessoEntity processo = processoAtivoDoContrato(contrato);
+        return processo != null ? processo.getId() : null;
+    }
+
+    /**
+     * Processo do imóvel pela FONTE ÚNICA: a linha ATIVA de {@code imovel_processo} (Fase 3, item 4).
+     * Após o backfill V118, escalar == N:N ativo, então isto dá o mesmo resultado do escalar. O escalar
+     * segue sendo escrito pelo sync (espelho) até a FASE C.
+     */
+    private ProcessoEntity processoAtivoDoContrato(ContratoLocacaoEntity contrato) {
+        ImovelEntity imovel = contrato != null ? contrato.getImovel() : null;
+        if (imovel == null || imovel.getId() == null) {
             return null;
         }
-        ProcessoEntity processo = imovel.getProcesso();
-        return processo != null ? processo.getId() : null;
+        return imovelProcessoRepository
+                .findFirstByImovel_IdAndAtivoTrueOrderByIdDesc(imovel.getId())
+                .map(ip -> ip.getProcesso())
+                .orElse(null);
     }
 
     private static ClienteEntity clienteDoImovel(ContratoLocacaoEntity contrato) {

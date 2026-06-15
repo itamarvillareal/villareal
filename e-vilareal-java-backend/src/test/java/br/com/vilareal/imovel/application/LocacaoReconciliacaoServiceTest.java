@@ -4,8 +4,10 @@ import br.com.vilareal.common.exception.BusinessRuleException;
 import br.com.vilareal.financeiro.domain.ConfiancaSugestao;
 import br.com.vilareal.financeiro.domain.EtapaLancamento;
 import br.com.vilareal.financeiro.domain.NaturezaLancamento;
+import br.com.vilareal.financeiro.infrastructure.persistence.entity.ContaBancariaEntity;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.ContaContabilEntity;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.LancamentoFinanceiroEntity;
+import br.com.vilareal.financeiro.infrastructure.persistence.repository.ContaBancariaRepository;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.ContaContabilRepository;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.LancamentoFinanceiroRepository;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
@@ -18,10 +20,13 @@ import br.com.vilareal.imovel.domain.PapelReconciliacao;
 import br.com.vilareal.imovel.domain.StatusRepasse;
 import br.com.vilareal.imovel.infrastructure.persistence.entity.ContratoLocacaoEntity;
 import br.com.vilareal.imovel.infrastructure.persistence.entity.ImovelEntity;
+import br.com.vilareal.imovel.infrastructure.persistence.entity.ImovelProcessoEntity;
 import br.com.vilareal.imovel.infrastructure.persistence.entity.LocacaoRepasseLancamentoEntity;
 import br.com.vilareal.imovel.infrastructure.persistence.repository.ContratoLocacaoRepository;
+import br.com.vilareal.imovel.infrastructure.persistence.repository.ImovelProcessoRepository;
 import br.com.vilareal.imovel.infrastructure.persistence.repository.LocacaoRepasseLancamentoRepository;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -34,12 +39,15 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -50,6 +58,7 @@ class LocacaoReconciliacaoServiceTest {
 
     private static final Long CONTRATO_ID = 1L;
     private static final Long PROCESSO_ID = 500L;
+    private static final Long IMOVEL_ID = 77L;
 
     @Mock
     private ContratoLocacaoRepository contratoLocacaoRepository;
@@ -59,9 +68,43 @@ class LocacaoReconciliacaoServiceTest {
     private LancamentoFinanceiroRepository lancamentoRepository;
     @Mock
     private ContaContabilRepository contaContabilRepository;
+    @Mock
+    private ContaBancariaRepository contaBancariaRepository;
+    @Mock
+    private ImovelProcessoRepository imovelProcessoRepository;
 
     @InjectMocks
     private LocacaoReconciliacaoService service;
+
+    @BeforeEach
+    void stubContaVirtual() {
+        // B2: o débito de repasse interno busca a conta VIRTUAL (numero_banco/banco_nome vêm dela).
+        // lenient: nem todo teste gera repasse interno.
+        lenient().when(contaBancariaRepository.findByTipo("VIRTUAL")).thenReturn(List.of(contaVirtual()));
+        // Item 4 (fonte única): o processo do contrato vem da linha ATIVA de imovel_processo.
+        lenient()
+                .when(imovelProcessoRepository.findFirstByImovel_IdAndAtivoTrueOrderByIdDesc(IMOVEL_ID))
+                .thenReturn(Optional.of(imovelProcessoAtivo(processoComId(PROCESSO_ID))));
+    }
+
+    private static ImovelProcessoEntity imovelProcessoAtivo(ProcessoEntity processo) {
+        ImovelProcessoEntity ip = new ImovelProcessoEntity();
+        ip.setId(1L);
+        ip.setProcesso(processo);
+        ip.setAtivo(true);
+        return ip;
+    }
+
+    private static ContaBancariaEntity contaVirtual() {
+        ContaBancariaEntity c = new ContaBancariaEntity();
+        c.setId(900L);
+        c.setNumeroBanco(900);
+        c.setBancoNome("REPASSE INTERNO");
+        c.setTipo("VIRTUAL");
+        c.setTemExtrato(false);
+        c.setAtivo(true);
+        return c;
+    }
 
     // ------------------------------------------------------------------ (C) vínculo grava / desfaz
 
@@ -226,7 +269,7 @@ class LocacaoReconciliacaoServiceTest {
         LancamentoFinanceiroEntity aluguel = lancamento(1L, NaturezaLancamento.CREDITO, "1000.00", LocalDate.of(2026, 3, 10), "ALUGUEL FULANO");
         LancamentoFinanceiroEntity repasse = lancamento(2L, NaturezaLancamento.DEBITO, "900.00", LocalDate.of(2026, 3, 15), "REPASSE LOCADOR");
         LancamentoFinanceiroEntity despesa = lancamento(3L, NaturezaLancamento.DEBITO, "50.00", LocalDate.of(2026, 3, 22), "TAXA CONDOMINIO");
-        when(lancamentoRepository.findAtivosByProcessoId(PROCESSO_ID))
+        when(lancamentoRepository.findByProcessoId(PROCESSO_ID))
                 .thenReturn(List.of(aluguel, repasse, despesa));
 
         List<ReconciliacaoSugestaoItemResponse> sug = service.sugerir(CONTRATO_ID, "2026-03");
@@ -253,7 +296,7 @@ class LocacaoReconciliacaoServiceTest {
                 .thenReturn(List.of());
         LancamentoFinanceiroEntity repasse = lancamento(
                 10L, NaturezaLancamento.DEBITO, "1800.00", LocalDate.of(2026, 5, 15), "REPASSE ALOISIO PEREIRA");
-        when(lancamentoRepository.findAtivosByProcessoId(PROCESSO_ID)).thenReturn(List.of(repasse));
+        when(lancamentoRepository.findByProcessoId(PROCESSO_ID)).thenReturn(List.of(repasse));
 
         List<ReconciliacaoSugestaoItemResponse> sug = service.sugerir(CONTRATO_ID, "2026-05");
 
@@ -276,7 +319,7 @@ class LocacaoReconciliacaoServiceTest {
                 11L, NaturezaLancamento.DEBITO, "12000.00", LocalDate.of(2026, 5, 3), "PAGTO DIVERSOS");
         LancamentoFinanceiroEntity gordo2 = lancamento(
                 12L, NaturezaLancamento.DEBITO, "69000.00", LocalDate.of(2026, 5, 20), "TRANSFERENCIA ALOISIO");
-        when(lancamentoRepository.findAtivosByProcessoId(PROCESSO_ID)).thenReturn(List.of(gordo1, gordo2));
+        when(lancamentoRepository.findByProcessoId(PROCESSO_ID)).thenReturn(List.of(gordo1, gordo2));
 
         List<ReconciliacaoSugestaoItemResponse> sug = service.sugerir(CONTRATO_ID, "2026-05");
 
@@ -297,7 +340,7 @@ class LocacaoReconciliacaoServiceTest {
         // Débito EXATAMENTE no repasse esperado (900) — ainda assim não vira REPASSE no próprio.
         LancamentoFinanceiroEntity debito = lancamento(
                 10L, NaturezaLancamento.DEBITO, "900.00", LocalDate.of(2026, 5, 15), "SAIDA");
-        when(lancamentoRepository.findAtivosByProcessoId(PROCESSO_ID)).thenReturn(List.of(debito));
+        when(lancamentoRepository.findByProcessoId(PROCESSO_ID)).thenReturn(List.of(debito));
 
         List<ReconciliacaoSugestaoItemResponse> sug = service.sugerir(CONTRATO_ID, "2026-05");
 
@@ -320,7 +363,7 @@ class LocacaoReconciliacaoServiceTest {
 
         // Candidato com a MESMA descrição normalizada, mas valor que sozinho não indicaria despesa.
         LancamentoFinanceiroEntity candidato = lancamento(7L, NaturezaLancamento.DEBITO, "900.00", LocalDate.of(2026, 3, 15), "TAXA CONDOMINIO");
-        when(lancamentoRepository.findAtivosByProcessoId(PROCESSO_ID)).thenReturn(List.of(candidato));
+        when(lancamentoRepository.findByProcessoId(PROCESSO_ID)).thenReturn(List.of(candidato));
 
         List<ReconciliacaoSugestaoItemResponse> sug = service.sugerir(CONTRATO_ID, "2026-03");
 
@@ -335,7 +378,7 @@ class LocacaoReconciliacaoServiceTest {
         when(vinculoRepository.findByContratoLocacao_IdOrderByCompetenciaMesAscIdAsc(CONTRATO_ID))
                 .thenReturn(List.of());
         LancamentoFinanceiroEntity aluguel = lancamento(1L, NaturezaLancamento.CREDITO, "1000.00", LocalDate.of(2026, 3, 10), "ALUGUEL");
-        when(lancamentoRepository.findAtivosByProcessoId(PROCESSO_ID)).thenReturn(List.of(aluguel));
+        when(lancamentoRepository.findByProcessoId(PROCESSO_ID)).thenReturn(List.of(aluguel));
         LocacaoRepasseLancamentoEntity vinc = new LocacaoRepasseLancamentoEntity();
         vinc.setId(321L);
         vinc.setLancamentoFinanceiro(aluguel);
@@ -354,10 +397,30 @@ class LocacaoReconciliacaoServiceTest {
     void sugestaoVaziaQuandoImovelSemProcesso() {
         ContratoLocacaoEntity contratoSemProcesso = contrato();
         contratoSemProcesso.getImovel().setProcesso(null);
+        // Fonte única: sem linha ATIVA em imovel_processo → reconciliação cega (esperado).
+        when(imovelProcessoRepository.findFirstByImovel_IdAndAtivoTrueOrderByIdDesc(IMOVEL_ID))
+                .thenReturn(Optional.empty());
         when(contratoLocacaoRepository.findById(CONTRATO_ID)).thenReturn(Optional.of(contratoSemProcesso));
 
         assertThat(service.sugerir(CONTRATO_ID, "2026-03")).isEmpty();
-        verify(lancamentoRepository, never()).findAtivosByProcessoId(any());
+        verify(lancamentoRepository, never()).findByProcessoId(any());
+    }
+
+    @Test
+    void resolveProcessoPelaLinhaAtivaDoNaN_mesmoComEscalarNulo() {
+        // Item 4 (fonte única): o escalar imovel.processo_id é IGNORADO; vale a linha ATIVA do N:N.
+        ContratoLocacaoEntity c = contrato();
+        c.getImovel().setProcesso(null); // escalar nulo de propósito: prova que a fonte é o N:N
+        when(contratoLocacaoRepository.findById(CONTRATO_ID)).thenReturn(Optional.of(c));
+        LancamentoFinanceiroEntity lanc = lancamento(
+                10L, NaturezaLancamento.CREDITO, "1000.00", LocalDate.of(2026, 3, 10), "ALUGUEL");
+        when(lancamentoRepository.findByProcessoId(PROCESSO_ID)).thenReturn(List.of(lanc));
+
+        List<ReconciliacaoSugestaoItemResponse> sug = service.sugerir(CONTRATO_ID, "2026-03");
+
+        assertThat(sug).hasSize(1);
+        // confirma que buscou os lançamentos do processo vindo do N:N ativo (PROCESSO_ID), não do escalar.
+        verify(lancamentoRepository).findByProcessoId(PROCESSO_ID);
     }
 
     // ------------------------------------------------------------------ (B.1) órfãos: sugestão + adoção
@@ -369,12 +432,12 @@ class LocacaoReconciliacaoServiceTest {
         c.setDiaVencimentoAluguel(5);
         c.setInquilinoPessoa(pessoa("ADELAIDE MARIA JERONIMO PEREIRA LOPES"));
         when(contratoLocacaoRepository.findById(CONTRATO_ID)).thenReturn(Optional.of(c));
-        when(lancamentoRepository.findAtivosByProcessoId(PROCESSO_ID)).thenReturn(List.of());
+        when(lancamentoRepository.findByProcessoId(PROCESSO_ID)).thenReturn(List.of());
 
         LancamentoFinanceiroEntity orfao = lancamento(
                 50L, NaturezaLancamento.CREDITO, "1700.00", LocalDate.of(2026, 5, 7),
                 "PIX RECEBIDO ADELAIDE MARIA JERONIMO");
-        when(lancamentoRepository.findOrfaosAtivosNoIntervalo(any(), any())).thenReturn(List.of(orfao));
+        when(lancamentoRepository.findOrfaosNoIntervalo(any(), any())).thenReturn(List.of(orfao));
 
         List<ReconciliacaoSugestaoItemResponse> sug = service.sugerir(CONTRATO_ID, "2026-05");
 
@@ -394,10 +457,10 @@ class LocacaoReconciliacaoServiceTest {
         ContratoLocacaoEntity c = contrato();
         c.setInquilinoPessoa(pessoa("ADELAIDE MARIA JERONIMO"));
         when(contratoLocacaoRepository.findById(CONTRATO_ID)).thenReturn(Optional.of(c));
-        when(lancamentoRepository.findAtivosByProcessoId(PROCESSO_ID)).thenReturn(List.of());
+        when(lancamentoRepository.findByProcessoId(PROCESSO_ID)).thenReturn(List.of());
         LancamentoFinanceiroEntity outroQualquer = lancamento(
                 51L, NaturezaLancamento.CREDITO, "37.50", LocalDate.of(2026, 5, 19), "TARIFA BANCARIA");
-        when(lancamentoRepository.findOrfaosAtivosNoIntervalo(any(), any())).thenReturn(List.of(outroQualquer));
+        when(lancamentoRepository.findOrfaosNoIntervalo(any(), any())).thenReturn(List.of(outroQualquer));
 
         assertThat(service.sugerir(CONTRATO_ID, "2026-05")).isEmpty();
     }
@@ -469,7 +532,6 @@ class LocacaoReconciliacaoServiceTest {
                         CONTRATO_ID, 10L, PapelReconciliacao.ALUGUEL))
                 .thenReturn(Optional.empty());
         when(vinculoRepository.save(any())).thenAnswer(inv -> withId(inv.getArgument(0), 77L));
-        when(lancamentoRepository.findByNumeroLancamento("AUTO-REP-77-D")).thenReturn(Optional.empty());
         when(contaContabilRepository.findFirstByCodigoIgnoreCase("A")).thenReturn(Optional.of(contaA()));
 
         ReconciliacaoVincularRequest req = new ReconciliacaoVincularRequest(
@@ -506,6 +568,10 @@ class LocacaoReconciliacaoServiceTest {
         assertThat(repasseVinc.getValor()).isEqualByComparingTo("1530.00");
         assertThat(repasseVinc.getCompetenciaMes()).isEqualTo("2026-05");
         assertThat(repasseVinc.getLancamentoFinanceiro()).isSameAs(debito);
+        // FK real (V115): o REPASSE aponta para o vínculo de ALUGUEL de origem.
+        LocacaoRepasseLancamentoEntity aluguelVinc = vinCaptor.getAllValues().stream()
+                .filter(v -> v.getPapel() == PapelReconciliacao.ALUGUEL).findFirst().orElseThrow();
+        assertThat(repasseVinc.getOrigemAluguelVinculo()).isSameAs(aluguelVinc);
     }
 
     @Test
@@ -536,11 +602,16 @@ class LocacaoReconciliacaoServiceTest {
                         CONTRATO_ID, 10L, PapelReconciliacao.ALUGUEL))
                 .thenReturn(Optional.empty());
         when(vinculoRepository.save(any())).thenAnswer(inv -> withId(inv.getArgument(0), 77L));
-        // débito já existe e já está na mesma competência (2026-05) — nada a gerar nem sincronizar
+        // débito já existe e já está na mesma competência (2026-05) — nada a gerar nem sincronizar.
+        // Idempotência por FK real (V115): já há vínculo REPASSE apontando para o ALUGUEL 77.
         LancamentoFinanceiroEntity debitoExistente = lancamento(201L, NaturezaLancamento.DEBITO, "1530.00", LocalDate.of(2026, 5, 7), "Repasse interno");
         debitoExistente.setDataCompetencia(LocalDate.of(2026, 5, 1));
-        when(lancamentoRepository.findByNumeroLancamento("AUTO-REP-77-D"))
-                .thenReturn(Optional.of(debitoExistente));
+        LocacaoRepasseLancamentoEntity repasseVinc = new LocacaoRepasseLancamentoEntity();
+        repasseVinc.setPapel(PapelReconciliacao.REPASSE);
+        repasseVinc.setCompetenciaMes("2026-05");
+        repasseVinc.setLancamentoFinanceiro(debitoExistente);
+        when(vinculoRepository.findByOrigemAluguelVinculo_IdAndPapel(77L, PapelReconciliacao.REPASSE))
+                .thenReturn(Optional.of(repasseVinc));
 
         service.vincular(CONTRATO_ID, new ReconciliacaoVincularRequest(
                 List.of(new ReconciliacaoVincularRequest.Item(10L, PapelReconciliacao.ALUGUEL, "2026-05"))));
@@ -562,13 +633,14 @@ class LocacaoReconciliacaoServiceTest {
         // débito já existe na competência ANTIGA (06), data_lancamento = data do aluguel (05/06)
         LancamentoFinanceiroEntity debitoExistente = lancamento(201L, NaturezaLancamento.DEBITO, "1530.00", LocalDate.of(2026, 6, 5), "Repasse interno (imóvel próprio) 2026-06");
         debitoExistente.setDataCompetencia(LocalDate.of(2026, 6, 1));
-        when(lancamentoRepository.findByNumeroLancamento("AUTO-REP-77-D"))
-                .thenReturn(Optional.of(debitoExistente));
         LocacaoRepasseLancamentoEntity repasseVinc = new LocacaoRepasseLancamentoEntity();
         repasseVinc.setId(78L);
         repasseVinc.setPapel(PapelReconciliacao.REPASSE);
         repasseVinc.setCompetenciaMes("2026-06");
         repasseVinc.setLancamentoFinanceiro(debitoExistente);
+        // idempotência por FK (V115): acha o REPASSE pela origem (ALUGUEL 77) e sincroniza a competência
+        when(vinculoRepository.findByOrigemAluguelVinculo_IdAndPapel(77L, PapelReconciliacao.REPASSE))
+                .thenReturn(Optional.of(repasseVinc));
         when(vinculoRepository.findByContratoLocacao_IdAndLancamentoFinanceiro_IdIn(CONTRATO_ID, List.of(201L)))
                 .thenReturn(List.of(repasseVinc));
 
@@ -592,19 +664,19 @@ class LocacaoReconciliacaoServiceTest {
         when(vinculoRepository.findById(77L)).thenReturn(Optional.of(aluguel));
 
         LancamentoFinanceiroEntity debito = lancamento(201L, NaturezaLancamento.DEBITO, "1530.00", LocalDate.of(2026, 5, 7), "Repasse interno");
-        when(lancamentoRepository.findByNumeroLancamento("AUTO-REP-77-D")).thenReturn(Optional.of(debito));
         LocacaoRepasseLancamentoEntity repasseVinc = new LocacaoRepasseLancamentoEntity();
         repasseVinc.setId(78L);
         repasseVinc.setPapel(PapelReconciliacao.REPASSE);
         repasseVinc.setLancamentoFinanceiro(debito);
-        when(vinculoRepository.findByContratoLocacao_IdAndLancamentoFinanceiro_IdIn(CONTRATO_ID, List.of(201L)))
-                .thenReturn(List.of(repasseVinc));
+        // reversão acha o REPASSE pela FK real (V115), não pela string
+        when(vinculoRepository.findByOrigemAluguelVinculo_IdAndPapel(77L, PapelReconciliacao.REPASSE))
+                .thenReturn(Optional.of(repasseVinc));
 
         service.desvincular(CONTRATO_ID, 77L);
 
-        verify(vinculoRepository).deleteAll(List.of(repasseVinc));
-        verify(lancamentoRepository).delete(debito);
-        verify(vinculoRepository).delete(aluguel);
+        verify(vinculoRepository).delete(repasseVinc); // remove o vínculo REPASSE achado pela FK
+        verify(lancamentoRepository).delete(debito);   // segue o lancamento_financeiro_id e apaga o débito
+        verify(vinculoRepository).delete(aluguel);     // por fim, o próprio ALUGUEL
     }
 
     @Test
@@ -618,13 +690,13 @@ class LocacaoReconciliacaoServiceTest {
 
         // débito já correto: conta A, DEBITO, data = data do aluguel (07/05), sem grupo, VINCULADO, valor 1530
         LancamentoFinanceiroEntity debito = debitoRepasseInterno(201L, "1530.00", LocalDate.of(2026, 5, 7), "AUTO-REP-5-D");
-        when(lancamentoRepository.findAtivosByProcessoId(PROCESSO_ID)).thenReturn(List.of(debito));
-        when(lancamentoRepository.findByNumeroLancamento("AUTO-REP-5-D")).thenReturn(Optional.of(debito));
+        when(lancamentoRepository.findByProcessoId(PROCESSO_ID)).thenReturn(List.of(debito));
+        // FK real (V115): o REPASSE do ALUGUEL 5 já existe e aponta para o débito correto.
         LocacaoRepasseLancamentoEntity repasseVinc = new LocacaoRepasseLancamentoEntity();
         repasseVinc.setPapel(PapelReconciliacao.REPASSE);
         repasseVinc.setLancamentoFinanceiro(debito);
-        when(vinculoRepository.findByContratoLocacao_IdAndLancamentoFinanceiro_IdIn(CONTRATO_ID, List.of(201L)))
-                .thenReturn(List.of(repasseVinc));
+        when(vinculoRepository.findByOrigemAluguelVinculo_IdAndPapel(5L, PapelReconciliacao.REPASSE))
+                .thenReturn(Optional.of(repasseVinc));
 
         int corrigidos = service.corrigirRepasseInternoContrato(CONTRATO_ID);
 
@@ -632,6 +704,7 @@ class LocacaoReconciliacaoServiceTest {
         verify(lancamentoRepository, never()).delete(any(LancamentoFinanceiroEntity.class));
         verify(lancamentoRepository, never()).deleteAll(anyList());
         verify(lancamentoRepository, never()).save(any());
+        verify(vinculoRepository, never()).delete(any(LocacaoRepasseLancamentoEntity.class));
         verify(vinculoRepository, never()).deleteAll(anyList());
         verify(vinculoRepository, never()).save(any());
     }
@@ -647,18 +720,24 @@ class LocacaoReconciliacaoServiceTest {
 
         // débito ERRADO: datado em 01/MM (antes do recebimento) — deve ser removido e regenerado.
         LancamentoFinanceiroEntity errado = debitoRepasseInterno(201L, "1530.00", LocalDate.of(2026, 5, 1), "AUTO-REP-5-D");
-        when(lancamentoRepository.findAtivosByProcessoId(PROCESSO_ID)).thenReturn(List.of(errado));
-        when(lancamentoRepository.findByNumeroLancamento("AUTO-REP-5-D"))
-                .thenReturn(Optional.of(errado))   // 1ª: existe e está errado
-                .thenReturn(Optional.empty());     // 2ª (após remoção): gera o novo
-        when(vinculoRepository.findByContratoLocacao_IdAndLancamentoFinanceiro_IdIn(CONTRATO_ID, List.of(201L)))
-                .thenReturn(List.of());
+        when(lancamentoRepository.findByProcessoId(PROCESSO_ID)).thenReturn(List.of(errado));
+        LocacaoRepasseLancamentoEntity repasseErrado = new LocacaoRepasseLancamentoEntity();
+        repasseErrado.setId(78L);
+        repasseErrado.setPapel(PapelReconciliacao.REPASSE);
+        repasseErrado.setLancamentoFinanceiro(errado);
+        // FK real (V115): o REPASSE existe e está errado; ao removê-lo, a FK deixa de existir e gera-se o novo.
+        AtomicReference<Optional<LocacaoRepasseLancamentoEntity>> repassePorFk =
+                new AtomicReference<>(Optional.of(repasseErrado));
+        when(vinculoRepository.findByOrigemAluguelVinculo_IdAndPapel(5L, PapelReconciliacao.REPASSE))
+                .thenAnswer(inv -> repassePorFk.get());
+        doAnswer(inv -> { repassePorFk.set(Optional.empty()); return null; })
+                .when(vinculoRepository).delete(repasseErrado);
         when(contaContabilRepository.findFirstByCodigoIgnoreCase("A")).thenReturn(Optional.of(contaA()));
 
         int corrigidos = service.corrigirRepasseInternoContrato(CONTRATO_ID);
 
         assertThat(corrigidos).isEqualTo(1);
-        verify(lancamentoRepository).deleteAll(List.of(errado)); // removeu o errado
+        verify(lancamentoRepository).delete(errado); // removeu o errado (pela FK)
         // regenerou o débito datado na data REAL do aluguel (07/05), valor inalterado.
         ArgumentCaptor<LancamentoFinanceiroEntity> cap = ArgumentCaptor.forClass(LancamentoFinanceiroEntity.class);
         verify(lancamentoRepository).save(cap.capture());
@@ -684,7 +763,6 @@ class LocacaoReconciliacaoServiceTest {
                         CONTRATO_ID, 180448L, PapelReconciliacao.ALUGUEL))
                 .thenReturn(Optional.empty());
         when(vinculoRepository.save(any())).thenAnswer(inv -> withId(inv.getArgument(0), 77L));
-        when(lancamentoRepository.findByNumeroLancamento("AUTO-REP-77-D")).thenReturn(Optional.empty());
         when(contaContabilRepository.findFirstByCodigoIgnoreCase("A")).thenReturn(Optional.of(contaA()));
 
         service.registrarAluguelClassificado(credito);
@@ -766,6 +844,68 @@ class LocacaoReconciliacaoServiceTest {
         verify(vinculoRepository, never()).save(any());
     }
 
+    // ------------------------------------------------------------------ B2: conta VIRTUAL (não 900 hardcoded)
+
+    @Test
+    void repasseInternoUsaNumeroBancoEBancoNomeDaContaVirtual() {
+        // conta VIRTUAL com numero_banco != 900 prova que o débito vem DELA, não de constante.
+        ContaBancariaEntity virtual = contaVirtual();
+        virtual.setNumeroBanco(950);
+        virtual.setBancoNome("REPASSE INTERNO (V2)");
+        when(contaBancariaRepository.findByTipo("VIRTUAL")).thenReturn(List.of(virtual));
+
+        LancamentoFinanceiroEntity credito = lancamento(
+                180448L, NaturezaLancamento.CREDITO, "1700.00", LocalDate.of(2026, 5, 7), "ADELAIDE");
+        credito.setProcesso(processoComId(PROCESSO_ID));
+        ContratoLocacaoEntity contrato = contrato();
+        contrato.setStatus("VIGENTE");
+        contrato.setValorAluguel(new BigDecimal("1700.00"));
+        when(contratoLocacaoRepository.findByImovelProcessoId(PROCESSO_ID)).thenReturn(List.of(contrato));
+        when(vinculoRepository.findByContratoLocacao_IdAndLancamentoFinanceiro_IdIn(CONTRATO_ID, List.of(180448L)))
+                .thenReturn(List.of());
+        when(vinculoRepository.findByContratoLocacao_IdAndLancamentoFinanceiro_IdAndPapel(
+                        CONTRATO_ID, 180448L, PapelReconciliacao.ALUGUEL))
+                .thenReturn(Optional.empty());
+        when(vinculoRepository.save(any())).thenAnswer(inv -> withId(inv.getArgument(0), 77L));
+        when(contaContabilRepository.findFirstByCodigoIgnoreCase("A")).thenReturn(Optional.of(contaA()));
+
+        service.registrarAluguelClassificado(credito);
+
+        ArgumentCaptor<LancamentoFinanceiroEntity> cap = ArgumentCaptor.forClass(LancamentoFinanceiroEntity.class);
+        verify(lancamentoRepository).save(cap.capture());
+        LancamentoFinanceiroEntity debito = cap.getValue();
+        assertThat(debito.getNumeroBanco()).isEqualTo(950);
+        assertThat(debito.getBancoNome()).isEqualTo("REPASSE INTERNO (V2)");
+        assertThat(debito.getContaBancaria()).isSameAs(virtual);
+        assertThat(debito.getNatureza()).isEqualTo(NaturezaLancamento.DEBITO);
+        assertThat(debito.getValor()).isEqualByComparingTo("1530.00"); // imóvel próprio: repasse = aluguel - taxa
+    }
+
+    @Test
+    void repasseInternoSemContaVirtualFalhaClaro() {
+        when(contaBancariaRepository.findByTipo("VIRTUAL")).thenReturn(List.of()); // seed ausente
+
+        LancamentoFinanceiroEntity credito = lancamento(
+                180448L, NaturezaLancamento.CREDITO, "1700.00", LocalDate.of(2026, 5, 7), "ADELAIDE");
+        credito.setProcesso(processoComId(PROCESSO_ID));
+        ContratoLocacaoEntity contrato = contrato();
+        contrato.setStatus("VIGENTE");
+        contrato.setValorAluguel(new BigDecimal("1700.00"));
+        when(contratoLocacaoRepository.findByImovelProcessoId(PROCESSO_ID)).thenReturn(List.of(contrato));
+        when(vinculoRepository.findByContratoLocacao_IdAndLancamentoFinanceiro_IdIn(CONTRATO_ID, List.of(180448L)))
+                .thenReturn(List.of());
+        when(vinculoRepository.findByContratoLocacao_IdAndLancamentoFinanceiro_IdAndPapel(
+                        CONTRATO_ID, 180448L, PapelReconciliacao.ALUGUEL))
+                .thenReturn(Optional.empty());
+        lenient().when(vinculoRepository.save(any())).thenAnswer(inv -> withId(inv.getArgument(0), 77L));
+
+        assertThatThrownBy(() -> service.registrarAluguelClassificado(credito))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("VIRTUAL");
+
+        verify(lancamentoRepository, never()).save(any(LancamentoFinanceiroEntity.class));
+    }
+
     // ------------------------------------------------------------------ helpers
 
     private static final AtomicLong SEQ = new AtomicLong(1000);
@@ -775,7 +915,9 @@ class LocacaoReconciliacaoServiceTest {
         ClienteEntity cliente = new ClienteEntity();
         cliente.setId(938L);
         cliente.setCodigoCliente("00000938");
+        cliente.setProprio(true); // fonte da verdade do "imóvel próprio" (V114)
         ImovelEntity imovel = new ImovelEntity();
+        imovel.setId(IMOVEL_ID);
         imovel.setProcesso(processo);
         imovel.setCliente(cliente);
         ContratoLocacaoEntity c = new ContratoLocacaoEntity();
@@ -815,6 +957,7 @@ class LocacaoReconciliacaoServiceTest {
         ClienteEntity cliente = new ClienteEntity();
         cliente.setId(123L);
         cliente.setCodigoCliente("00000123");
+        cliente.setProprio(false); // terceiro: repasse por banda, não interno
         c.getImovel().setCliente(cliente);
         return c;
     }

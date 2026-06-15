@@ -22,4 +22,9 @@ public interface LocacaoRepasseLancamentoRepository extends JpaRepository<Locaca
 
     Optional<LocacaoRepasseLancamentoEntity> findByContratoLocacao_IdAndLancamentoFinanceiro_IdAndPapel(
             Long contratoLocacaoId, Long lancamentoFinanceiroId, PapelReconciliacao papel);
+
+    /** Vínculo REPASSE (débito interno) ligado por FK real ao vínculo de ALUGUEL de origem (V115). */
+    @EntityGraph(attributePaths = {"lancamentoFinanceiro"})
+    Optional<LocacaoRepasseLancamentoEntity> findByOrigemAluguelVinculo_IdAndPapel(
+            Long origemAluguelVinculoId, PapelReconciliacao papel);
 }

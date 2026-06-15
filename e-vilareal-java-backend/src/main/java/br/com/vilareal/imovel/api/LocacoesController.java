@@ -15,7 +15,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/locacoes")
-@Tag(name = "Locações", description = "Contratos, repasses e despesas — paridade imoveisRepository.js")
+@Tag(name = "Locações", description = "Contratos e reconciliação (caixa real × ciclo de locação)")
 public class LocacoesController {
 
     private final ImovelApplicationService imovelApplicationService;
@@ -50,47 +50,8 @@ public class LocacoesController {
         return imovelApplicationService.atualizarContrato(id, request);
     }
 
-    @GetMapping("/repasses")
-    public List<LocacaoRepasseResponse> listarRepasses(@RequestParam Long contratoId) {
-        return imovelApplicationService.listarRepasses(contratoId);
-    }
-
-    @PostMapping("/repasses")
-    public ResponseEntity<LocacaoRepasseResponse> criarRepasse(@Valid @RequestBody LocacaoRepasseWriteRequest request) {
-        LocacaoRepasseResponse body = imovelApplicationService.criarRepasse(request);
-        URI location = ServletUriComponentsBuilder.fromCurrentRequest()
-                .path("/{id}")
-                .buildAndExpand(body.getId())
-                .toUri();
-        return ResponseEntity.created(location).body(body);
-    }
-
-    @PutMapping("/repasses/{id}")
-    public LocacaoRepasseResponse atualizarRepasse(
-            @PathVariable Long id, @Valid @RequestBody LocacaoRepasseWriteRequest request) {
-        return imovelApplicationService.atualizarRepasse(id, request);
-    }
-
-    @GetMapping("/despesas")
-    public List<LocacaoDespesaResponse> listarDespesas(@RequestParam Long contratoId) {
-        return imovelApplicationService.listarDespesas(contratoId);
-    }
-
-    @PostMapping("/despesas")
-    public ResponseEntity<LocacaoDespesaResponse> criarDespesa(@Valid @RequestBody LocacaoDespesaWriteRequest request) {
-        LocacaoDespesaResponse body = imovelApplicationService.criarDespesa(request);
-        URI location = ServletUriComponentsBuilder.fromCurrentRequest()
-                .path("/{id}")
-                .buildAndExpand(body.getId())
-                .toUri();
-        return ResponseEntity.created(location).body(body);
-    }
-
-    @PutMapping("/despesas/{id}")
-    public LocacaoDespesaResponse atualizarDespesa(
-            @PathVariable Long id, @Valid @RequestBody LocacaoDespesaWriteRequest request) {
-        return imovelApplicationService.atualizarDespesa(id, request);
-    }
+    // Repasse/despesa LEGADO (locacao_repasse/locacao_despesa) removido — C9/A8.
+    // /resultado e reconciliação derivam só de locacao_repasse_lancamento.
 
     // ----------------------------------------------------------------- Reconciliação (caixa real)
 

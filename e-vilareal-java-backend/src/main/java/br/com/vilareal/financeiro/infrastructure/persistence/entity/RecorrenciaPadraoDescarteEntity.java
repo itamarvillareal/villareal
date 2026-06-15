@@ -31,9 +31,16 @@ public class RecorrenciaPadraoDescarteEntity {
     @Column(name = "somente_vinculo", nullable = false)
     private boolean somenteVinculo;
 
+    /**
+     * Convenção de sentinela: {@code 0} = "sem vínculo de cliente" (não é FK). Mantido como
+     * {@code NOT NULL DEFAULT 0} por simplicidade — a tabela não tem FK para {@code cliente}/
+     * {@code processo} e nunca consulta por join. Auditado no Bloco C: migrar p/ {@code NULL}+FK
+     * seria churn sem ganho (tabela vazia, sem leitura por vínculo), então fica documentado aqui.
+     */
     @Column(name = "cliente_id", nullable = false)
     private Long clienteId = 0L;
 
+    /** Sentinela {@code 0} = "sem vínculo de processo" (não é FK). Ver nota em {@link #clienteId}. */
     @Column(name = "processo_id", nullable = false)
     private Long processoId = 0L;
 
