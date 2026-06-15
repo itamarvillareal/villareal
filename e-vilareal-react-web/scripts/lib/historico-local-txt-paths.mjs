@@ -658,22 +658,35 @@ export function parseIntStrict(s) {
 }
 
 /**
- * Quando o tipo **14** está vazio ou ilegível, infere N pelo maior sufixo numérico dos ficheiros
- * `COD.16.1.<proc>.<IIII>.txt` na pasta do cliente (HC / Inativos).
+ * Cache (por execução) do mapa `procStr → maior índice` dos ficheiros tipo 16 de uma pasta de cliente.
+ * Evita reler o diretório (que pode ter dezenas de milhares de ficheiros) uma vez por processo:
+ * a varredura passa de O(processos × ficheiros) para O(ficheiros) por cliente.
+ * @type {Map<string, Map<string, number>>}
  */
-export function inferirMaxIndicePorFicheirosTipo16(base, cod8, codNum, procStr) {
+const _cacheMapaMaxIndiceTipo16 = new Map();
+
+/**
+ * Constrói (uma vez por pasta de cliente) o mapa `procStr → maior sufixo de 4 dígitos` a partir dos
+ * ficheiros `COD.16.1.<proc>.<IIII>.txt` em HC / Inativos.
+ * @returns {Map<string, number>}
+ */
+function mapaMaxIndiceTipo16PorCliente(base, cod8, codNum) {
   const cent = formatCentenaPasta(centenaPastaClienteHistorico(codNum));
   const pastaCliente = pastaNumeroClienteHistorico(codNum);
   const relDir = path.join(SEGMENTO_MIL, cent, pastaCliente);
+  const cacheKey = `${base}|${cod8}|${relDir}`;
+  const cached = _cacheMapaMaxIndiceTipo16.get(cacheKey);
+  if (cached) return cached;
+
   // O índice é sempre gravado com 4 dígitos (0001..9999). Casar SÓ esse formato
   // evita que um nome corrompido (ex.: data no lugar do índice) produza um N gigante
   // e trave a fase de análise/renumeração num laço efectivamente infinito.
   const esc = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const re = new RegExp(`^${esc(cod8)}\\.${TIPO_DATA}\\.${MEIO_FIXO}\\.${esc(procStr)}\\.(\\d{4})\\.txt$`);
-  let max = 0;
+  const re = new RegExp(`^${esc(cod8)}\\.${TIPO_DATA}\\.${MEIO_FIXO}\\.(.+)\\.(\\d{4})\\.txt$`);
+  /** @type {Map<string, number>} */
+  const mapa = new Map();
   for (const pre of PREFIXOS) {
     const dirAbs = path.join(base, pre, relDir);
-    if (!fs.existsSync(dirAbs) || !fs.statSync(dirAbs).isDirectory()) continue;
     let ents;
     try {
       ents = fs.readdirSync(dirAbs);
@@ -683,11 +696,25 @@ export function inferirMaxIndicePorFicheirosTipo16(base, cod8, codNum, procStr) 
     for (const f of ents) {
       const m = f.match(re);
       if (!m) continue;
-      const n = parseIntStrict(m[1]);
-      if (Number.isFinite(n) && n > max) max = n;
+      const n = parseIntStrict(m[2]);
+      if (!Number.isFinite(n)) continue;
+      const proc = m[1];
+      const prev = mapa.get(proc) ?? 0;
+      if (n > prev) mapa.set(proc, n);
     }
   }
-  return max > 0 ? max : null;
+  _cacheMapaMaxIndiceTipo16.set(cacheKey, mapa);
+  return mapa;
+}
+
+/**
+ * Quando o tipo **14** está vazio ou ilegível, infere N pelo maior sufixo numérico dos ficheiros
+ * `COD.16.1.<proc>.<IIII>.txt` na pasta do cliente (HC / Inativos).
+ */
+export function inferirMaxIndicePorFicheirosTipo16(base, cod8, codNum, procStr) {
+  const mapa = mapaMaxIndiceTipo16PorCliente(base, cod8, codNum);
+  const n = mapa.get(procStr);
+  return Number.isFinite(n) && n > 0 ? Math.trunc(n) : null;
 }
 
 /** Lê N do ficheiro tipo 14 por processo; se inválido, infere pelos ficheiros tipo 16. */
