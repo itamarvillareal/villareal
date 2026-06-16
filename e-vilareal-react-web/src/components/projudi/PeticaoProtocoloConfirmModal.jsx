@@ -122,16 +122,16 @@ export function PeticaoProtocoloConfirmModal({
           <button
             type="button"
             className="rounded-lg px-3 py-1.5 text-sm font-medium text-white bg-amber-700 hover:bg-amber-800 disabled:opacity-50"
-            disabled={!validacao?.sucessoGeral}
+            disabled={carregandoPrevia || validando || !previa?.quantidadeArquivos}
             onClick={onConfirmar}
           >
             <CheckCircle2 className="w-4 h-4 inline mr-1" aria-hidden />
             Concluir e protocolar
           </button>
         </div>
-        {!validacao?.sucessoGeral ? (
-          <p className="text-xs text-slate-500">Valide no PROJUDI antes de protocolar.</p>
-        ) : null}
+        <p className="text-xs text-slate-500">
+          A validação no PROJUDI é opcional. Você pode concluir e protocolar diretamente.
+        </p>
       </div>
     </div>
   );
