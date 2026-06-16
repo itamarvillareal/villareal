@@ -6,12 +6,9 @@ import { AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react';
  *   titulo?: string,
  *   processoLabel?: string,
  *   previa: object | null,
- *   validacao: object | null,
  *   carregandoPrevia?: boolean,
- *   validando?: boolean,
  *   confirmando?: boolean,
  *   onCancel: () => void,
- *   onValidar: () => void,
  *   onConfirmar: () => void,
  * }} props
  */
@@ -20,12 +17,9 @@ export function PeticaoProtocoloConfirmModal({
   titulo = 'Confirmar protocolo',
   processoLabel,
   previa,
-  validacao,
   carregandoPrevia = false,
-  validando = false,
   confirmando = false,
   onCancel,
-  onValidar,
   onConfirmar,
 }) {
   if (!open) return null;
@@ -86,24 +80,6 @@ export function PeticaoProtocoloConfirmModal({
           </div>
         ) : null}
 
-        {validacao ? (
-          <div
-            className={`rounded border px-2 py-1.5 text-sm ${
-              validacao.sucessoGeral
-                ? 'text-emerald-800 bg-emerald-50 border-emerald-200'
-                : 'text-rose-800 bg-rose-50 border-rose-200'
-            }`}
-          >
-            <strong>Validação (sem Concluir):</strong>{' '}
-            {validacao.sucessoGeral ? 'passos 1–10 OK' : 'falhou'}
-            {(validacao.juntadas || []).map((j, idx) => (
-              <div key={idx} className="text-xs mt-1">
-                Juntada {idx + 1}: {j.sucesso ? 'OK' : j.mensagem}
-              </div>
-            ))}
-          </div>
-        ) : null}
-
         <div className="flex flex-wrap justify-end gap-2">
           <button
             type="button"
@@ -113,21 +89,10 @@ export function PeticaoProtocoloConfirmModal({
           >
             Cancelar
           </button>
-          {!confirmando ? (
-            <button
-              type="button"
-              className="rounded-lg px-3 py-1.5 text-sm border border-sky-300 bg-sky-50 text-sky-900 hover:bg-sky-100 disabled:opacity-50"
-              disabled={carregandoPrevia || validando || !previa?.quantidadeArquivos}
-              onClick={onValidar}
-            >
-              {validando ? <Loader2 className="w-4 h-4 inline animate-spin mr-1" aria-hidden /> : null}
-              Validar no PROJUDI
-            </button>
-          ) : null}
           <button
             type="button"
             className="rounded-lg px-3 py-1.5 text-sm font-medium text-white bg-amber-700 hover:bg-amber-800 disabled:opacity-50"
-            disabled={carregandoPrevia || validando || confirmando || !previa?.quantidadeArquivos}
+            disabled={confirmando}
             onClick={onConfirmar}
           >
             {confirmando ? (
@@ -138,11 +103,6 @@ export function PeticaoProtocoloConfirmModal({
             {confirmando ? 'Protocolando…' : 'Concluir e protocolar'}
           </button>
         </div>
-        {!confirmando ? (
-          <p className="text-xs text-slate-500">
-            A validação no PROJUDI é opcional. Você pode concluir e protocolar diretamente.
-          </p>
-        ) : null}
       </div>
     </div>
   );

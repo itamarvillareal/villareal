@@ -18,7 +18,6 @@ import {
   protocolarProcesso,
   reabrirProtocolo,
   registrarAssinados,
-  validarProtocolo,
 } from '../../api/peticoesProjudiApi.js';
 import { isArquivoP7s } from '../../domain/peticaoArquivo.js';
 import { useCloseOnEscape } from '../../hooks/useCloseOnEscape.js';
@@ -64,9 +63,7 @@ export function ModalPeticionamentoProcesso({ open, onClose, numeroCnj, clienteN
   const [operacao, setOperacao] = useState(null);
   const [modalConfirmar, setModalConfirmar] = useState(false);
   const [previa, setPrevia] = useState(null);
-  const [validacao, setValidacao] = useState(null);
   const [carregandoPrevia, setCarregandoPrevia] = useState(false);
-  const [validando, setValidando] = useState(false);
   const [resultadoProtocolo, setResultadoProtocolo] = useState([]);
 
   const [linhasP7s, setLinhasP7s] = useState([]);
@@ -151,7 +148,6 @@ export function ModalPeticionamentoProcesso({ open, onClose, numeroCnj, clienteN
   const abrirModalProtocolo = async () => {
     setModalConfirmar(true);
     setPrevia(null);
-    setValidacao(null);
     setCarregandoPrevia(true);
     setErro('');
     try {
@@ -161,18 +157,6 @@ export function ModalPeticionamentoProcesso({ open, onClose, numeroCnj, clienteN
       setModalConfirmar(false);
     } finally {
       setCarregandoPrevia(false);
-    }
-  };
-
-  const executarValidacao = async () => {
-    setValidando(true);
-    setValidacao(null);
-    try {
-      setValidacao(await validarProtocolo(cnj));
-    } catch (e) {
-      setErro(e?.message || 'Falha na validação.');
-    } finally {
-      setValidando(false);
     }
   };
 
@@ -476,17 +460,13 @@ export function ModalPeticionamentoProcesso({ open, onClose, numeroCnj, clienteN
         open={modalConfirmar}
         processoLabel={cnj}
         previa={previa}
-        validacao={validacao}
         carregandoPrevia={carregandoPrevia}
-        validando={validando}
         confirmando={operacao === 'protocolo'}
         onCancel={() => {
           if (operacao === 'protocolo') return;
           setModalConfirmar(false);
           setPrevia(null);
-          setValidacao(null);
         }}
-        onValidar={() => void executarValidacao()}
         onConfirmar={() => void confirmarProtocolo()}
       />
     </>

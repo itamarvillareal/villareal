@@ -21,7 +21,6 @@ import {
   protocolarLote,
   reabrirProtocolo,
   registrarAssinados,
-  validarProtocoloLote,
 } from '../../api/peticoesProjudiApi.js';
 import { isArquivoP7s, separarArquivosP7s } from '../../domain/peticaoArquivo.js';
 import { downloadPdfBlob } from '../../repositories/documentosRepository.js';
@@ -115,9 +114,7 @@ export function PeticionamentoProjudi() {
   const [selecionadas, setSelecionadas] = useState(() => new Set());
   const [modalProtocolo, setModalProtocolo] = useState(false);
   const [previa, setPrevia] = useState(null);
-  const [validacao, setValidacao] = useState(null);
   const [carregandoPrevia, setCarregandoPrevia] = useState(false);
-  const [validando, setValidando] = useState(false);
   const [resultadoProtocolo, setResultadoProtocolo] = useState([]);
 
   useEffect(() => {
@@ -306,7 +303,6 @@ export function PeticionamentoProjudi() {
     if (!ids.length) return;
     setModalProtocolo(true);
     setPrevia(null);
-    setValidacao(null);
     setCarregandoPrevia(true);
     setApiError('');
     try {
@@ -319,25 +315,11 @@ export function PeticionamentoProjudi() {
     }
   };
 
-  const executarValidacao = async () => {
-    const ids = [...selecionadas];
-    setValidando(true);
-    setValidacao(null);
-    try {
-      setValidacao(await validarProtocoloLote(ids));
-    } catch (err) {
-      setApiError(err?.message || 'Falha na validação.');
-    } finally {
-      setValidando(false);
-    }
-  };
-
   const confirmarProtocolo = async () => {
     const ids = [...selecionadas];
     if (!ids.length) {
       setModalProtocolo(false);
       setPrevia(null);
-      setValidacao(null);
       return;
     }
     setOperacao('protocolo');
@@ -355,7 +337,6 @@ export function PeticionamentoProjudi() {
       setOperacao(null);
       setModalProtocolo(false);
       setPrevia(null);
-      setValidacao(null);
     }
   };
 
@@ -859,17 +840,13 @@ export function PeticionamentoProjudi() {
       <PeticaoProtocoloConfirmModal
         open={modalProtocolo}
         previa={previa}
-        validacao={validacao}
         carregandoPrevia={carregandoPrevia}
-        validando={validando}
         confirmando={operacao === 'protocolo'}
         onCancel={() => {
           if (operacao === 'protocolo') return;
           setModalProtocolo(false);
           setPrevia(null);
-          setValidacao(null);
         }}
-        onValidar={() => void executarValidacao()}
         onConfirmar={() => void confirmarProtocolo()}
       />
 
