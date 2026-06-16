@@ -41,9 +41,13 @@ public class ProjudiPeticaoProtocoloEstadoService {
                 peticaoId, STATUS_PROTOCOLADA, truncarMensagem(mensagem), Instant.now());
     }
 
+    /**
+     * Em caso de falha no protocolo, devolve a petição para {@code ASSINADA} (frame "2. Protocolar"),
+     * preservando a mensagem do erro para diagnóstico. Permite reenvio imediato sem passar pelo Histórico.
+     */
     @Transactional
-    public void finalizarComErro(Long peticaoId, String mensagem) {
-        peticaoRepository.finalizarProtocolo(peticaoId, STATUS_ERRO, truncarMensagem(mensagem), null);
+    public void devolverParaProtocolar(Long peticaoId, String mensagem) {
+        peticaoRepository.finalizarProtocolo(peticaoId, STATUS_ASSINADA, truncarMensagem(mensagem), null);
     }
 
     @Transactional

@@ -231,7 +231,7 @@ public class ProjudiPeticaoController {
     }
 
     @DeleteMapping("/{peticaoId}")
-    @Operation(summary = "Exclui petição pendente de assinatura (e todos os arquivos)")
+    @Operation(summary = "Exclui petição não protocolada (pendente, assinada na fila ou em erro) e todos os arquivos")
     public ResponseEntity<Void> excluirPeticao(@PathVariable Long peticaoId) {
         registroService.excluirPeticao(peticaoId);
         return ResponseEntity.noContent().build();

@@ -9,6 +9,7 @@ import { AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react';
  *   validacao: object | null,
  *   carregandoPrevia?: boolean,
  *   validando?: boolean,
+ *   confirmando?: boolean,
  *   onCancel: () => void,
  *   onValidar: () => void,
  *   onConfirmar: () => void,
@@ -22,6 +23,7 @@ export function PeticaoProtocoloConfirmModal({
   validacao,
   carregandoPrevia = false,
   validando = false,
+  confirmando = false,
   onCancel,
   onValidar,
   onConfirmar,
@@ -105,33 +107,42 @@ export function PeticaoProtocoloConfirmModal({
         <div className="flex flex-wrap justify-end gap-2">
           <button
             type="button"
-            className="rounded-lg px-3 py-1.5 text-sm border border-slate-300 hover:bg-slate-50"
+            className="rounded-lg px-3 py-1.5 text-sm border border-slate-300 hover:bg-slate-50 disabled:opacity-50"
+            disabled={confirmando}
             onClick={onCancel}
           >
             Cancelar
           </button>
-          <button
-            type="button"
-            className="rounded-lg px-3 py-1.5 text-sm border border-sky-300 bg-sky-50 text-sky-900 hover:bg-sky-100 disabled:opacity-50"
-            disabled={carregandoPrevia || validando || !previa?.quantidadeArquivos}
-            onClick={onValidar}
-          >
-            {validando ? <Loader2 className="w-4 h-4 inline animate-spin mr-1" aria-hidden /> : null}
-            Validar no PROJUDI
-          </button>
+          {!confirmando ? (
+            <button
+              type="button"
+              className="rounded-lg px-3 py-1.5 text-sm border border-sky-300 bg-sky-50 text-sky-900 hover:bg-sky-100 disabled:opacity-50"
+              disabled={carregandoPrevia || validando || !previa?.quantidadeArquivos}
+              onClick={onValidar}
+            >
+              {validando ? <Loader2 className="w-4 h-4 inline animate-spin mr-1" aria-hidden /> : null}
+              Validar no PROJUDI
+            </button>
+          ) : null}
           <button
             type="button"
             className="rounded-lg px-3 py-1.5 text-sm font-medium text-white bg-amber-700 hover:bg-amber-800 disabled:opacity-50"
-            disabled={carregandoPrevia || validando || !previa?.quantidadeArquivos}
+            disabled={carregandoPrevia || validando || confirmando || !previa?.quantidadeArquivos}
             onClick={onConfirmar}
           >
-            <CheckCircle2 className="w-4 h-4 inline mr-1" aria-hidden />
-            Concluir e protocolar
+            {confirmando ? (
+              <Loader2 className="w-4 h-4 inline animate-spin mr-1" aria-hidden />
+            ) : (
+              <CheckCircle2 className="w-4 h-4 inline mr-1" aria-hidden />
+            )}
+            {confirmando ? 'Protocolando…' : 'Concluir e protocolar'}
           </button>
         </div>
-        <p className="text-xs text-slate-500">
-          A validação no PROJUDI é opcional. Você pode concluir e protocolar diretamente.
-        </p>
+        {!confirmando ? (
+          <p className="text-xs text-slate-500">
+            A validação no PROJUDI é opcional. Você pode concluir e protocolar diretamente.
+          </p>
+        ) : null}
       </div>
     </div>
   );

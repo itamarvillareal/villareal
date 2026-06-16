@@ -3316,9 +3316,13 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                   <button
                     type="button"
                     className={processosBtnGhost}
-                    disabled={apiSaving || !String(numeroProcessoNovo ?? '').trim()}
+                    disabled={apiSaving}
                     onClick={() => setModalPeticionamentoProjudi(true)}
-                    title="Petições registradas para protocolo no PROJUDI (deste processo)"
+                    title={
+                      String(numeroProcessoNovo ?? '').trim()
+                        ? 'Petições registradas para protocolo no PROJUDI (deste processo)'
+                        : 'Preencha o Nº Processo Novo (número CNJ) para peticionar no PROJUDI'
+                    }
                   >
                     <Send className="w-4 h-4" aria-hidden />
                     Peticionamento PROJUDI

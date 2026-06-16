@@ -11,6 +11,7 @@ import {
   X,
 } from 'lucide-react';
 import {
+  excluirPeticao,
   listarCredenciais,
   listarPorProcesso,
   previaProtocolo,
@@ -176,7 +177,6 @@ export function ModalPeticionamentoProcesso({ open, onClose, numeroCnj, clienteN
   };
 
   const confirmarProtocolo = async () => {
-    setModalConfirmar(false);
     setOperacao('protocolo');
     setErro('');
     setResultadoProtocolo([]);
@@ -188,6 +188,7 @@ export function ModalPeticionamentoProcesso({ open, onClose, numeroCnj, clienteN
       setErro(e?.message || 'Falha ao protocolar.');
     } finally {
       setOperacao(null);
+      setModalConfirmar(false);
     }
   };
 
@@ -200,6 +201,26 @@ export function ModalPeticionamentoProcesso({ open, onClose, numeroCnj, clienteN
       await recarregar();
     } catch (e) {
       setErro(e?.message || 'Falha ao reabrir.');
+    } finally {
+      setOperacao(null);
+    }
+  };
+
+  const onExcluirPeticao = async (peticaoId) => {
+    if (
+      !window.confirm(
+        `Excluir a petição #${peticaoId} da fila de protocolo? Os arquivos serão removidos e esta ação não pode ser desfeita.`,
+      )
+    ) {
+      return;
+    }
+    setOperacao(`excluir-${peticaoId}`);
+    setErro('');
+    try {
+      await excluirPeticao(peticaoId);
+      await recarregar();
+    } catch (e) {
+      setErro(e?.message || 'Falha ao excluir petição.');
     } finally {
       setOperacao(null);
     }
@@ -268,6 +289,16 @@ export function ModalPeticionamentoProcesso({ open, onClose, numeroCnj, clienteN
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto p-3 space-y-3">
+            {!cnj ? (
+              <div className="rounded-lg border border-amber-300 bg-amber-50 px-2 py-1.5 text-sm text-amber-900 flex gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0" aria-hidden />
+                <span>
+                  Este processo não tem <strong>número CNJ</strong> (campo &quot;Nº Processo Novo&quot;).
+                  Preencha o número CNJ do processo para registrar e protocolar petições no PROJUDI.
+                </span>
+              </div>
+            ) : null}
+
             {erro ? (
               <div className="rounded-lg border border-rose-200 bg-rose-50 px-2 py-1.5 text-sm text-rose-800 flex gap-2">
                 <AlertTriangle className="w-4 h-4 shrink-0" aria-hidden />
@@ -385,13 +416,29 @@ export function ModalPeticionamentoProcesso({ open, onClose, numeroCnj, clienteN
                   ) : (
                     <ul className="rounded-lg border border-slate-200 divide-y divide-slate-100 text-sm">
                       {assinadas.map((p) => (
-                        <li key={p.id} className="px-2 py-2">
-                          <div className="font-medium">#{p.id}</div>
-                          {(p.arquivos || []).map((a) => (
-                            <div key={a.id ?? a.ordem} className="text-xs text-slate-600 truncate">
-                              {a.nomeOriginal} ({labelTipoArquivoPeticao(a.idArquivoTipo)})
-                            </div>
-                          ))}
+                        <li key={p.id} className="flex items-start gap-2 px-2 py-2">
+                          <div className="min-w-0 flex-1">
+                            <div className="font-medium">#{p.id}</div>
+                            {(p.arquivos || []).map((a) => (
+                              <div key={a.id ?? a.ordem} className="text-xs text-slate-600 truncate">
+                                {a.nomeOriginal} ({labelTipoArquivoPeticao(a.idArquivoTipo)})
+                              </div>
+                            ))}
+                          </div>
+                          <button
+                            type="button"
+                            className="shrink-0 p-1 text-rose-600 hover:text-rose-800 disabled:opacity-50"
+                            disabled={operacao === `excluir-${p.id}` || operacao === 'protocolo'}
+                            onClick={() => void onExcluirPeticao(p.id)}
+                            title="Excluir petição da fila"
+                            aria-label={`Excluir petição ${p.id}`}
+                          >
+                            {operacao === `excluir-${p.id}` ? (
+                              <Loader2 className="w-4 h-4 animate-spin" aria-hidden />
+                            ) : (
+                              <Trash2 className="w-4 h-4" aria-hidden />
+                            )}
+                          </button>
                         </li>
                       ))}
                     </ul>
@@ -432,7 +479,9 @@ export function ModalPeticionamentoProcesso({ open, onClose, numeroCnj, clienteN
         validacao={validacao}
         carregandoPrevia={carregandoPrevia}
         validando={validando}
+        confirmando={operacao === 'protocolo'}
         onCancel={() => {
+          if (operacao === 'protocolo') return;
           setModalConfirmar(false);
           setPrevia(null);
           setValidacao(null);

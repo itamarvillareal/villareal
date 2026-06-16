@@ -14,6 +14,7 @@ import {
 import {
   baixarZip,
   enviarAssinados,
+  excluirPeticao,
   listar,
   listarCredenciais,
   previaProtocoloLote,
@@ -24,6 +25,11 @@ import {
 } from '../../api/peticoesProjudiApi.js';
 import { isArquivoP7s, separarArquivosP7s } from '../../domain/peticaoArquivo.js';
 import { downloadPdfBlob } from '../../repositories/documentosRepository.js';
+import {
+  buscarProcessoPorChaveNatural,
+  buscarProcessoPorId,
+  listarProcessosPorNumeroProcessoDiagnostico,
+} from '../../repositories/processosRepository.js';
 import { labelTipoArquivoPeticao } from './PeticaoArquivosTabela.jsx';
 import { PeticaoHistoricoLista } from './PeticaoHistoricoLista.jsx';
 import { PeticaoProtocoloConfirmModal } from './PeticaoProtocoloConfirmModal.jsx';
@@ -64,6 +70,13 @@ function linhaP7sComArquivo(file) {
   return { key: crypto.randomUUID(), file, idArquivoTipo: inferirTipoArquivo(file?.name) };
 }
 
+function rotuloParteOposta(papelCliente) {
+  const p = String(papelCliente || '').toUpperCase();
+  if (p === 'REQUERIDO') return 'Autora';
+  if (p === 'REQUERENTE') return 'Ré';
+  return 'Parte oposta';
+}
+
 function classeResultadoProtocolo(resultado) {
   switch (resultado) {
     case 'PROTOCOLADA':
@@ -92,9 +105,13 @@ export function PeticionamentoProjudi() {
   const [credencialId, setCredencialId] = useState('');
   const [credenciais, setCredenciais] = useState([]);
   const [numeroProcesso, setNumeroProcesso] = useState('');
+  const [modoRegistro, setModoRegistro] = useState('cnj');
+  const [codigoClienteReg, setCodigoClienteReg] = useState('');
+  const [numeroInternoReg, setNumeroInternoReg] = useState('');
   const [complemento, setComplemento] = useState('');
   const [linhasP7s, setLinhasP7s] = useState([]);
 
+  const [partesPorProcesso, setPartesPorProcesso] = useState({});
   const [selecionadas, setSelecionadas] = useState(() => new Set());
   const [modalProtocolo, setModalProtocolo] = useState(false);
   const [previa, setPrevia] = useState(null);
@@ -170,6 +187,43 @@ export function PeticionamentoProjudi() {
     [peticoesFiltradas],
   );
 
+  useEffect(() => {
+    const digitosUnicos = [
+      ...new Set(
+        assinadas
+          .map((p) => String(p.numeroProcesso || '').replace(/\D/g, ''))
+          .filter((d) => d.length >= 18),
+      ),
+    ];
+    const faltantes = digitosUnicos.filter((d) => !(d in partesPorProcesso));
+    if (faltantes.length === 0) return undefined;
+    let cancelado = false;
+    void (async () => {
+      const novos = {};
+      for (const d of faltantes) {
+        try {
+          const rows = await listarProcessosPorNumeroProcessoDiagnostico(d);
+          const match =
+            (Array.isArray(rows) ? rows : []).find(
+              (r) => String(r.numeroProcessoNovo || '').replace(/\D/g, '') === d,
+            ) || (Array.isArray(rows) ? rows[0] : null);
+          const processo = match?.processoId ? await buscarProcessoPorId(match.processoId) : null;
+          novos[d] = {
+            papelCliente: String(processo?.papelCliente || '').toUpperCase(),
+            parteCliente: String(processo?.parteCliente || match?.parteCliente || '').trim(),
+            parteOposta: String(processo?.parteOposta || match?.parteOposta || '').trim(),
+          };
+        } catch {
+          novos[d] = { papelCliente: '', parteCliente: '', parteOposta: '' };
+        }
+      }
+      if (!cancelado) setPartesPorProcesso((prev) => ({ ...prev, ...novos }));
+    })();
+    return () => {
+      cancelado = true;
+    };
+  }, [assinadas, partesPorProcesso]);
+
   const toggleSelecionada = (id) => {
     setSelecionadas((prev) => {
       const next = new Set(prev);
@@ -183,11 +237,34 @@ export function PeticionamentoProjudi() {
     setSelecionadas(new Set(assinadas.map((p) => p.id)));
   };
 
+  const resolverCnjPorCodigoProc = async () => {
+    const cod = codigoClienteReg.trim();
+    const proc = numeroInternoReg.trim();
+    if (!cod || !proc) {
+      throw new Error('Informe o código do cliente e o nº do processo (Proc).');
+    }
+    const processo = await buscarProcessoPorChaveNatural(cod, proc);
+    if (!processo) {
+      throw new Error(`Processo não encontrado para código ${cod} · proc ${proc}.`);
+    }
+    const cnj = String(processo.numeroProcessoNovo ?? '').trim();
+    if (!cnj) {
+      throw new Error(
+        `O processo ${cod} · proc ${proc} não tem número CNJ (Nº Processo Novo) cadastrado.`,
+      );
+    }
+    return cnj;
+  };
+
   const registrarP7s = async (e) => {
     e.preventDefault();
     const arquivos = linhasP7s.map((l) => l.file).filter(Boolean);
-    if (!numeroProcesso.trim()) {
+    if (modoRegistro === 'cnj' && !numeroProcesso.trim()) {
       setApiError('Informe o número do processo.');
+      return;
+    }
+    if (modoRegistro === 'codigo' && (!codigoClienteReg.trim() || !numeroInternoReg.trim())) {
+      setApiError('Informe o código do cliente e o nº do processo (Proc).');
       return;
     }
     if (arquivos.length === 0) {
@@ -197,9 +274,14 @@ export function PeticionamentoProjudi() {
     setOperacao('registrar');
     setApiError('');
     try {
+      let numeroProcessoFinal = numeroProcesso.trim();
+      if (modoRegistro === 'codigo') {
+        numeroProcessoFinal = await resolverCnjPorCodigoProc();
+        setNumeroProcesso(numeroProcessoFinal);
+      }
       const fd = new FormData();
       fd.append('credencialId', String(credencialId).trim() || String(credenciais[0]?.id ?? '1'));
-      fd.append('numeroProcesso', numeroProcesso.trim());
+      fd.append('numeroProcesso', numeroProcessoFinal);
       if (complemento.trim()) fd.append('complemento', complemento.trim());
       for (const linha of linhasP7s) {
         if (linha.file) {
@@ -252,10 +334,12 @@ export function PeticionamentoProjudi() {
 
   const confirmarProtocolo = async () => {
     const ids = [...selecionadas];
-    setModalProtocolo(false);
-    setPrevia(null);
-    setValidacao(null);
-    if (!ids.length) return;
+    if (!ids.length) {
+      setModalProtocolo(false);
+      setPrevia(null);
+      setValidacao(null);
+      return;
+    }
     setOperacao('protocolo');
     setApiError('');
     setResultadoProtocolo([]);
@@ -269,6 +353,9 @@ export function PeticionamentoProjudi() {
       setApiError(err?.message || 'Falha no protocolo.');
     } finally {
       setOperacao(null);
+      setModalProtocolo(false);
+      setPrevia(null);
+      setValidacao(null);
     }
   };
 
@@ -282,6 +369,32 @@ export function PeticionamentoProjudi() {
       await recarregar();
     } catch (err) {
       setApiError(err?.message || 'Falha ao reabrir.');
+    } finally {
+      setOperacao(null);
+    }
+  };
+
+  const onExcluirPeticao = async (peticaoId) => {
+    if (
+      !window.confirm(
+        `Excluir a petição #${peticaoId} da fila de protocolo? Os arquivos serão removidos e esta ação não pode ser desfeita.`,
+      )
+    ) {
+      return;
+    }
+    setOperacao(`excluir-${peticaoId}`);
+    setApiError('');
+    try {
+      await excluirPeticao(peticaoId);
+      setSelecionadas((prev) => {
+        const next = new Set(prev);
+        next.delete(peticaoId);
+        return next;
+      });
+      setToast(`Petição #${peticaoId} excluída.`);
+      await recarregar();
+    } catch (err) {
+      setApiError(err?.message || 'Falha ao excluir petição.');
     } finally {
       setOperacao(null);
     }
@@ -413,15 +526,67 @@ export function PeticionamentoProjudi() {
               </p>
               <form onSubmit={(e) => void registrarP7s(e)} className="space-y-3">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <label className="block sm:col-span-2">
-                    <span className="text-xs text-slate-600">Processo (CNJ)</span>
-                    <input
-                      className={inputClass}
-                      value={numeroProcesso}
-                      onChange={(ev) => setNumeroProcesso(ev.target.value)}
-                      placeholder="0000000-00.0000.0.00.0000"
-                    />
-                  </label>
+                  <div className="sm:col-span-2 inline-flex rounded-lg border border-slate-200 bg-slate-50 p-0.5 text-xs">
+                    <button
+                      type="button"
+                      className={`rounded-md px-3 py-1 font-medium ${
+                        modoRegistro === 'cnj'
+                          ? 'bg-white text-slate-900 shadow-sm'
+                          : 'text-slate-500 hover:text-slate-700'
+                      }`}
+                      onClick={() => setModoRegistro('cnj')}
+                    >
+                      Por CNJ
+                    </button>
+                    <button
+                      type="button"
+                      className={`rounded-md px-3 py-1 font-medium ${
+                        modoRegistro === 'codigo'
+                          ? 'bg-white text-slate-900 shadow-sm'
+                          : 'text-slate-500 hover:text-slate-700'
+                      }`}
+                      onClick={() => setModoRegistro('codigo')}
+                    >
+                      Por código + Proc
+                    </button>
+                  </div>
+                  {modoRegistro === 'cnj' ? (
+                    <label className="block sm:col-span-2">
+                      <span className="text-xs text-slate-600">Processo (CNJ)</span>
+                      <input
+                        className={inputClass}
+                        value={numeroProcesso}
+                        onChange={(ev) => setNumeroProcesso(ev.target.value)}
+                        placeholder="0000000-00.0000.0.00.0000"
+                      />
+                    </label>
+                  ) : (
+                    <>
+                      <label className="block">
+                        <span className="text-xs text-slate-600">Código do cliente</span>
+                        <input
+                          className={inputClass}
+                          value={codigoClienteReg}
+                          onChange={(ev) => setCodigoClienteReg(ev.target.value)}
+                          placeholder="Ex.: 149"
+                          inputMode="numeric"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="text-xs text-slate-600">Proc (nº interno)</span>
+                        <input
+                          className={inputClass}
+                          value={numeroInternoReg}
+                          onChange={(ev) => setNumeroInternoReg(ev.target.value)}
+                          placeholder="Ex.: 195"
+                          inputMode="numeric"
+                        />
+                      </label>
+                      <p className="sm:col-span-2 text-xs text-slate-500">
+                        O CNJ será resolvido pelo cadastro do processo (código + Proc).
+                      </p>
+                    </>
+                  )}
                   <label className="block sm:col-span-2">
                     <span className="text-xs text-slate-600">Credencial PROJUDI</span>
                     {credenciais.length > 0 ? (
@@ -570,12 +735,42 @@ export function PeticionamentoProjudi() {
                           <div className="font-medium">
                             #{p.id} · <span className="font-mono text-xs">{p.numeroProcesso}</span>
                           </div>
+                          {(() => {
+                            const dig = String(p.numeroProcesso || '').replace(/\D/g, '');
+                            const partes = partesPorProcesso[dig];
+                            if (!partes || (!partes.parteCliente && !partes.parteOposta)) return null;
+                            return (
+                              <div className="text-xs text-slate-500 truncate">
+                                <span className="font-medium text-slate-600">
+                                  {rotuloParteOposta(partes.papelCliente)}:
+                                </span>{' '}
+                                {partes.parteOposta || '—'}
+                                <span className="mx-1 text-slate-400">×</span>
+                                <span className="font-medium text-emerald-700">Cliente:</span>{' '}
+                                {partes.parteCliente || '—'}
+                              </div>
+                            );
+                          })()}
                           {(p.arquivos || []).map((a) => (
                             <div key={a.id ?? a.ordem} className="text-xs text-slate-600 truncate">
                               {a.nomeOriginal} ({labelTipoArquivoPeticao(a.idArquivoTipo)})
                             </div>
                           ))}
                         </div>
+                        <button
+                          type="button"
+                          className="shrink-0 p-1 text-rose-600 hover:text-rose-800 disabled:opacity-50"
+                          disabled={operacao === `excluir-${p.id}` || operacao === 'protocolo'}
+                          onClick={() => void onExcluirPeticao(p.id)}
+                          title="Excluir petição da fila"
+                          aria-label={`Excluir petição ${p.id}`}
+                        >
+                          {operacao === `excluir-${p.id}` ? (
+                            <Loader2 className="w-4 h-4 animate-spin" aria-hidden />
+                          ) : (
+                            <Trash2 className="w-4 h-4" aria-hidden />
+                          )}
+                        </button>
                       </li>
                     ))}
                   </ul>
@@ -667,7 +862,9 @@ export function PeticionamentoProjudi() {
         validacao={validacao}
         carregandoPrevia={carregandoPrevia}
         validando={validando}
+        confirmando={operacao === 'protocolo'}
         onCancel={() => {
+          if (operacao === 'protocolo') return;
           setModalProtocolo(false);
           setPrevia(null);
           setValidacao(null);

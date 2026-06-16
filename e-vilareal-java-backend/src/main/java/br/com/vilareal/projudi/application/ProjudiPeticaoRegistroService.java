@@ -36,6 +36,8 @@ public class ProjudiPeticaoRegistroService {
     static final String STATUS_PENDENTE_ASSINATURA = "PENDENTE_ASSINATURA";
     static final String STATUS_ARQUIVO_ASSINADO = "ASSINADO";
     static final String STATUS_PETICAO_ASSINADA = "ASSINADA";
+    static final String STATUS_PETICAO_PROTOCOLANDO = "PROTOCOLANDO";
+    static final String STATUS_PETICAO_PROTOCOLADA = "PROTOCOLADA";
     static final String PASTA_ASSINAR = "Assinar";
     static final int ID_MOVIMENTACAO_TIPO_PADRAO = 260;
 
@@ -278,13 +280,12 @@ public class ProjudiPeticaoRegistroService {
         ProjudiPeticaoEntity peticao = peticaoRepository
                 .findByIdWithArquivos(peticaoId)
                 .orElseThrow(() -> new ResourceNotFoundException("Petição PROJUDI não encontrada: " + peticaoId));
-        validarExclusivel(peticao);
+        validarPeticaoExcluivel(peticao);
         for (ProjudiPeticaoArquivoEntity arquivo : List.copyOf(peticao.getArquivos())) {
-            validarArquivoExclusivel(arquivo);
             removerArquivoPersistido(arquivo);
         }
         peticaoRepository.delete(peticao);
-        log.info("Petição PROJUDI excluída (id={})", peticaoId);
+        log.info("Petição PROJUDI excluída (id={}, status={})", peticaoId, peticao.getStatus());
     }
 
     @Transactional
@@ -309,6 +310,19 @@ public class ProjudiPeticaoRegistroService {
         } else {
             peticaoRepository.save(peticao);
             log.info("Arquivo de petição excluído (peticaoId={}, arquivoId={})", peticaoId, arquivoId);
+        }
+    }
+
+    /**
+     * Exclusão da petição inteira (com seus arquivos). Permitida enquanto não foi para o PROJUDI:
+     * PENDENTE_ASSINATURA, ASSINADA (na fila de protocolo) ou ERRO. Bloqueada quando em protocolo
+     * (PROTOCOLANDO) ou já protocolada (PROTOCOLADA).
+     */
+    private static void validarPeticaoExcluivel(ProjudiPeticaoEntity peticao) {
+        String status = peticao.getStatus();
+        if (STATUS_PETICAO_PROTOCOLANDO.equals(status) || STATUS_PETICAO_PROTOCOLADA.equals(status)) {
+            throw new IllegalArgumentException(
+                    "Não é possível excluir petição em protocolo ou já protocolada (atual: " + status + ").");
         }
     }
 

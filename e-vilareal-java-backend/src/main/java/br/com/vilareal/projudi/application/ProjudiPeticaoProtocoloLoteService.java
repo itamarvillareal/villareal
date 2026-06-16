@@ -5,6 +5,9 @@ import br.com.vilareal.projudi.api.dto.PreviaProtocoloResponse.ArquivoPreviaDto;
 import br.com.vilareal.projudi.api.dto.PreviaProtocoloResponse.JuntadaPreviaDto;
 import br.com.vilareal.projudi.api.dto.ValidarProtocoloResponse;
 import br.com.vilareal.projudi.api.dto.ValidarProtocoloResponse.JuntadaValidacaoDto;
+import br.com.vilareal.processo.application.ProcessoMovimentacoesDriveService;
+import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
+import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
 import br.com.vilareal.projudi.ProjudiOrquestradorGate;
 import br.com.vilareal.projudi.ProjudiPeticaoService;
 import br.com.vilareal.projudi.ProjudiPeticaoService.ArquivoPeticao;
@@ -25,9 +28,11 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 @Service
 public class ProjudiPeticaoProtocoloLoteService {
@@ -45,6 +50,8 @@ public class ProjudiPeticaoProtocoloLoteService {
     private final ProjudiPeticaoService peticaoService;
     private final ProjudiPeticaoProtocoloEstadoService estadoService;
     private final ProjudiOrquestradorGate orquestradorGate;
+    private final ProcessoRepository processoRepository;
+    private final ProcessoMovimentacoesDriveService movimentacoesDriveService;
     private final Path storeDir;
 
     public ProjudiPeticaoProtocoloLoteService(
@@ -53,12 +60,16 @@ public class ProjudiPeticaoProtocoloLoteService {
             ProjudiPeticaoService peticaoService,
             ProjudiPeticaoProtocoloEstadoService estadoService,
             ProjudiOrquestradorGate orquestradorGate,
+            ProcessoRepository processoRepository,
+            ProcessoMovimentacoesDriveService movimentacoesDriveService,
             @Value("${projudi.peticao.store-dir:/Users/itamar/projudi-peticoes}") String storeDirConfig) {
         this.peticaoRepository = peticaoRepository;
         this.registroService = registroService;
         this.peticaoService = peticaoService;
         this.estadoService = estadoService;
         this.orquestradorGate = orquestradorGate;
+        this.processoRepository = processoRepository;
+        this.movimentacoesDriveService = movimentacoesDriveService;
         this.storeDir = Path.of(storeDirConfig.trim());
     }
 
@@ -76,7 +87,50 @@ public class ProjudiPeticaoProtocoloLoteService {
                     HttpStatus.CONFLICT,
                     "Robô PROJUDI ocupado (consulta automática em andamento). Aguarde alguns minutos e tente novamente.");
         }
-        return resultado.get();
+        List<ResultadoItemLote> resultados = resultado.get();
+        // Etapa final do protocolo: arquivar no Drive o que foi peticionado (rotina «Obter movimentações»),
+        // fora do lock do robô e sem afetar o resultado do protocolo em caso de falha.
+        obterMovimentacoesAposProtocolo(resultados);
+        return resultados;
+    }
+
+    /**
+     * Para cada processo com ao menos uma petição PROTOCOLADA, executa a rotina «Obter movimentações»
+     * (a mesma do botão), arquivando no Drive os documentos recém-peticionados. Best-effort: qualquer
+     * falha é apenas logada e não interfere no resultado do protocolo já concluído.
+     */
+    private void obterMovimentacoesAposProtocolo(List<ResultadoItemLote> resultados) {
+        Set<String> processosProtocolados = new LinkedHashSet<>();
+        for (ResultadoItemLote r : resultados) {
+            if (r != null && RESULTADO_PROTOCOLADA.equals(r.resultado()) && StringUtils.hasText(r.numeroProcesso())) {
+                processosProtocolados.add(r.numeroProcesso().trim());
+            }
+        }
+        for (String numeroProcesso : processosProtocolados) {
+            try {
+                Long processoId = processoRepository
+                        .findByNumeroCnj(numeroProcesso)
+                        .map(ProcessoEntity::getId)
+                        .orElse(null);
+                if (processoId == null) {
+                    log.warn(
+                            "Pós-protocolo: processo não encontrado por CNJ {} — movimentações não atualizadas no Drive.",
+                            numeroProcesso);
+                    continue;
+                }
+                log.info(
+                        "Pós-protocolo: obtendo movimentações do processo {} (id={}) para arquivar no Drive.",
+                        numeroProcesso,
+                        processoId);
+                movimentacoesDriveService.executar(processoId);
+            } catch (RuntimeException e) {
+                log.error(
+                        "Pós-protocolo: falha ao obter movimentações do processo {} (não bloqueia o protocolo): {}",
+                        numeroProcesso,
+                        e.getMessage(),
+                        e);
+            }
+        }
     }
 
     public List<ResultadoItemLote> protocolarProcesso(String numeroProcesso) {
@@ -416,7 +470,7 @@ public class ProjudiPeticaoProtocoloLoteService {
         if (erroCarregamento.isPresent()) {
             String msg = erroCarregamento.get();
             for (Long id : claimadas) {
-                estadoService.finalizarComErro(id, msg);
+                estadoService.devolverParaProtocolar(id, msg);
                 ProjudiPeticaoEntity p = peticaoRepository.findById(id).orElseThrow();
                 resultados.put(id, new ResultadoItemLote(id, p.getNumeroProcesso(), RESULTADO_ERRO, msg));
             }
@@ -433,11 +487,26 @@ public class ProjudiPeticaoProtocoloLoteService {
                 referencia.getNumeroProcesso(),
                 arquivosP7s.size());
 
-        ResultadoProtocoloPeticao protocolo = peticaoService.protocolarPeticao(
-                referencia.getCredencialId(),
-                referencia.getNumeroProcesso(),
-                referencia.getComplemento(),
-                arquivosP7s);
+        ResultadoProtocoloPeticao protocolo;
+        try {
+            protocolo = peticaoService.protocolarPeticao(
+                    referencia.getCredencialId(),
+                    referencia.getNumeroProcesso(),
+                    referencia.getComplemento(),
+                    arquivosP7s);
+        } catch (RuntimeException e) {
+            // Exceção (ex.: falha de OTP/sessão) não pode deixar a petição presa em PROTOCOLANDO:
+            // devolve para ASSINADA (frame "2. Protocolar") para reenvio imediato.
+            String msg = ProjudiPeticaoProtocoloEstadoService.truncarMensagem(
+                    e.getClass().getSimpleName() + ": " + e.getMessage());
+            log.error("Falha ao protocolar juntada {} (processo={}): {}", idsLabel, referencia.getNumeroProcesso(), msg, e);
+            for (Long peticaoId : claimadas) {
+                estadoService.devolverParaProtocolar(peticaoId, msg);
+                resultados.put(
+                        peticaoId, new ResultadoItemLote(peticaoId, referencia.getNumeroProcesso(), RESULTADO_ERRO, msg));
+            }
+            return resultados;
+        }
 
         if (protocolo.sucesso()) {
             for (Long peticaoId : claimadas) {
@@ -450,9 +519,11 @@ public class ProjudiPeticaoProtocoloLoteService {
             return resultados;
         }
 
+        // Falha retornada (sem sucesso): devolve para ASSINADA em vez de marcar ERRO/Histórico,
+        // garantindo que a petição volte para o frame "2. Protocolar".
         String msg = montarMensagemErro(protocolo);
         for (Long peticaoId : claimadas) {
-            estadoService.finalizarComErro(peticaoId, msg);
+            estadoService.devolverParaProtocolar(peticaoId, msg);
             resultados.put(
                     peticaoId, new ResultadoItemLote(peticaoId, referencia.getNumeroProcesso(), RESULTADO_ERRO, msg));
         }
