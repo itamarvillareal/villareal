@@ -63,6 +63,24 @@ public interface ProjudiPeticaoRepository extends JpaRepository<ProjudiPeticaoEn
             """)
     void atualizarEtapa(@Param("ids") List<Long> ids, @Param("etapa") String etapa);
 
+    /** Limpa mensagem/etapa de tentativas anteriores ao iniciar um novo protocolo (estado limpo). */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            UPDATE ProjudiPeticaoEntity p
+            SET p.protocoloMensagem = null, p.protocoloEtapa = null
+            WHERE p.id IN :ids AND p.status = 'ASSINADA'
+            """)
+    void limparEstadoFila(@Param("ids") List<Long> ids);
+
+    /** Grava uma mensagem na fila (ex.: "robô ocupado") sem mudar o status ASSINADA. */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            UPDATE ProjudiPeticaoEntity p
+            SET p.protocoloMensagem = :mensagem
+            WHERE p.id IN :ids AND p.status = 'ASSINADA'
+            """)
+    void registrarMensagemFila(@Param("ids") List<Long> ids, @Param("mensagem") String mensagem);
+
     @Override
     Optional<ProjudiPeticaoEntity> findById(Long id);
 }

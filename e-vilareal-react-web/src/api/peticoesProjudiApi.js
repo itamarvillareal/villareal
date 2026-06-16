@@ -178,7 +178,9 @@ export async function acompanharProtocolo(peticaoIds, onUpdate, opts = {}) {
         protocoladas.push(id);
         statusPorId[id] = 'PROTOCOLADA';
       } else if (status === 'ASSINADA') {
-        if (reivindicadas.has(id)) {
+        // Estado é limpo no disparo; mensagem aqui = esta tentativa falhou (claim→erro,
+        // ou robô ocupado/timeout) mesmo que o polling não tenha pego o PROTOCOLANDO.
+        if (reivindicadas.has(id) || p?.protocoloMensagem) {
           comErro.push(id);
           statusPorId[id] = 'ERRO';
         } else {

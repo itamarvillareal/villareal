@@ -51,6 +51,24 @@ public class ProjudiPeticaoProtocoloEstadoService {
         peticaoRepository.atualizarEtapa(peticaoIds, texto);
     }
 
+    /** Limpa mensagem/etapa de tentativa anterior, para um novo protocolo começar com estado limpo. */
+    @Transactional
+    public void limparEstadoFila(List<Long> peticaoIds) {
+        if (peticaoIds == null || peticaoIds.isEmpty()) {
+            return;
+        }
+        peticaoRepository.limparEstadoFila(peticaoIds);
+    }
+
+    /** Grava mensagem na fila (ASSINADA) sem mudar status — ex.: robô ocupado/timeout do lock. */
+    @Transactional
+    public void registrarMensagemFila(List<Long> peticaoIds, String mensagem) {
+        if (peticaoIds == null || peticaoIds.isEmpty()) {
+            return;
+        }
+        peticaoRepository.registrarMensagemFila(peticaoIds, truncarMensagem(mensagem));
+    }
+
     @Transactional
     public void finalizarProtocolada(Long peticaoId, String mensagem) {
         peticaoRepository.finalizarProtocolo(

@@ -41,7 +41,9 @@ public class ProjudiPeticaoProtocoloLoteService {
     static final String RESULTADO_ERRO = "ERRO";
     static final String RESULTADO_IGNORADA = "IGNORADA";
 
-    private static final Duration LOCK_PROTOCOLO_TIMEOUT = Duration.ofMinutes(5);
+    // Espera curta: com a preempção, o robô cede em segundos. Se exceder, falha rápido com mensagem
+    // visível na fila em vez de deixar a UI "presa" sem feedback.
+    private static final Duration LOCK_PROTOCOLO_TIMEOUT = Duration.ofMinutes(2);
 
     private final ProjudiPeticaoRepository peticaoRepository;
     private final ProjudiPeticaoRegistroService registroService;
@@ -111,6 +113,7 @@ public class ProjudiPeticaoProtocoloLoteService {
             throw new IllegalArgumentException("peticaoIds é obrigatório (ao menos um id).");
         }
         List<Long> ids = List.copyOf(peticaoIds);
+        estadoService.limparEstadoFila(ids);
         protocoloExecutor.submit(() -> executarLoteEmBackground(ids));
         return ids;
     }
@@ -121,6 +124,7 @@ public class ProjudiPeticaoProtocoloLoteService {
         if (ids.isEmpty()) {
             return List.of();
         }
+        estadoService.limparEstadoFila(ids);
         protocoloExecutor.submit(() -> executarLoteEmBackground(ids));
         return ids;
     }
@@ -130,10 +134,15 @@ public class ProjudiPeticaoProtocoloLoteService {
             List<ResultadoItemLote> resultado = protocolarLote(ids);
             log.info("Protocolo em segundo plano concluído {}: {}", ids, resultado);
         } catch (ResponseStatusException e) {
-            // Robô ocupado além do timeout: petições seguem ASSINADA para nova tentativa.
-            log.warn("Protocolo em segundo plano não executado {} — {}", ids, e.getReason());
+            // Robô ocupado além do timeout: petições seguem ASSINADA. Grava a mensagem na fila para
+            // a UI mostrar o motivo em vez de ficar "presa" sem feedback.
+            String motivo = e.getReason() != null ? e.getReason() : "Robô PROJUDI ocupado.";
+            log.warn("Protocolo em segundo plano não executado {} — {}", ids, motivo);
+            estadoService.registrarMensagemFila(ids, motivo);
         } catch (Exception e) {
-            log.error("Falha no protocolo em segundo plano {}: {}", ids, e.getMessage(), e);
+            String msg = ProjudiPeticaoProtocoloEstadoService.truncarMensagem(descreverErroParaDiagnostico(e));
+            log.error("Falha no protocolo em segundo plano {}: {}", ids, msg, e);
+            estadoService.registrarMensagemFila(ids, msg);
         }
     }
 
