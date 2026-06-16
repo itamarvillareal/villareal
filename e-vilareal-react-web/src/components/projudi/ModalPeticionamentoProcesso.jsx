@@ -193,7 +193,8 @@ export function ModalPeticionamentoProcesso({ open, onClose, numeroCnj, clienteN
         ...r.comErro.map((id) => ({
           peticaoId: id,
           resultado: 'ERRO',
-          mensagem: 'Voltou para a fila — verifique e tente novamente.',
+          mensagem:
+            r.mensagensPorId?.[id] || 'Voltou para a fila — verifique e tente novamente.',
         })),
         ...r.pendentes.map((id) => ({
           peticaoId: id,
@@ -330,8 +331,18 @@ export function ModalPeticionamentoProcesso({ open, onClose, numeroCnj, clienteN
                     key={item.peticaoId}
                     className={`rounded border px-2 py-1.5 text-sm ${classeResultadoProtocolo(item.resultado)}`}
                   >
-                    <strong>#{item.peticaoId}</strong> — {item.resultado}
-                    {item.mensagem ? `: ${item.mensagem}` : ''}
+                    <div>
+                      <strong>#{item.peticaoId}</strong> — {item.resultado}
+                    </div>
+                    {item.mensagem ? (
+                      item.resultado === 'ERRO' ? (
+                        <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words text-[11px] leading-snug">
+                          {item.mensagem}
+                        </pre>
+                      ) : (
+                        <span>: {item.mensagem}</span>
+                      )
+                    ) : null}
                   </div>
                 ))}
               </div>

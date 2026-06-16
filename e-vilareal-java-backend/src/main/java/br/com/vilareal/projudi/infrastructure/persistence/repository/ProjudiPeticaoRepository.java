@@ -45,7 +45,8 @@ public interface ProjudiPeticaoRepository extends JpaRepository<ProjudiPeticaoEn
             UPDATE ProjudiPeticaoEntity p
             SET p.status = :status,
                 p.protocoloMensagem = :mensagem,
-                p.protocoladoEm = :protocoladoEm
+                p.protocoladoEm = :protocoladoEm,
+                p.protocoloEtapa = null
             WHERE p.id = :id
             """)
     void finalizarProtocolo(
@@ -53,6 +54,14 @@ public interface ProjudiPeticaoRepository extends JpaRepository<ProjudiPeticaoEn
             @Param("status") String status,
             @Param("mensagem") String mensagem,
             @Param("protocoladoEm") Instant protocoladoEm);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            UPDATE ProjudiPeticaoEntity p
+            SET p.protocoloEtapa = :etapa
+            WHERE p.id IN :ids AND p.status = 'PROTOCOLANDO'
+            """)
+    void atualizarEtapa(@Param("ids") List<Long> ids, @Param("etapa") String etapa);
 
     @Override
     Optional<ProjudiPeticaoEntity> findById(Long id);

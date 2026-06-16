@@ -3,9 +3,11 @@ package br.com.vilareal.projudi.application;
 import br.com.vilareal.projudi.infrastructure.persistence.entity.ProjudiPeticaoEntity;
 import br.com.vilareal.projudi.infrastructure.persistence.repository.ProjudiPeticaoRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 @Service
@@ -33,6 +35,20 @@ public class ProjudiPeticaoProtocoloEstadoService {
             return Optional.of("status atual: " + statusAtual + " (esperado " + STATUS_ASSINADA + ")");
         }
         return Optional.empty();
+    }
+
+    /**
+     * Grava a etapa atual do robô (ex.: "Buscando o processo…", "Enviando arquivo 1 de 2…") em uma
+     * transação própria que commita de imediato, para que o polling da UI veja o progresso ao vivo.
+     * Só afeta petições em PROTOCOLANDO (evita sobrescrever estado final por chamada tardia).
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void registrarEtapa(List<Long> peticaoIds, String etapa) {
+        if (peticaoIds == null || peticaoIds.isEmpty()) {
+            return;
+        }
+        String texto = etapa == null ? null : etapa.length() <= 160 ? etapa : etapa.substring(0, 160);
+        peticaoRepository.atualizarEtapa(peticaoIds, texto);
     }
 
     @Transactional

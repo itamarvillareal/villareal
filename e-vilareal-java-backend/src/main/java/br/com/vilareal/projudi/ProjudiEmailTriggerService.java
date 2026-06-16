@@ -59,6 +59,12 @@ public class ProjudiEmailTriggerService {
 
     private void executarDisparo(Set<String> cnjs) {
         try {
+            if (gate.haPrioridadeAguardando()) {
+                log.info(
+                        "robô PROJUDI: cedendo a operação prioritária do utilizador, adiando disparo por e-mail de {} CNJ(s)",
+                        cnjs.size());
+                return;
+            }
             if (!gate.tryLock()) {
                 for (String cnj : cnjs) {
                     log.info("robô PROJUDI ocupado, pulando CNJ {}", cnj);
@@ -72,7 +78,19 @@ public class ProjudiEmailTriggerService {
                 } catch (Exception e) {
                     log.warn("Disparo PROJUDI por e-mail: falha ao obter sessão: {}", e.getMessage());
                 }
-                for (String cnj : cnjs) {
+                List<String> lista = new ArrayList<>(cnjs);
+                for (int idx = 0; idx < lista.size(); idx++) {
+                    String cnj = lista.get(idx);
+                    // Prioridade do utilizador (ex.: protocolo): cede o robô entre CNJs em vez de
+                    // segurar o lock pelo lote inteiro. Os CNJs restantes reentram no próximo ciclo.
+                    if (gate.haPrioridadeAguardando()) {
+                        List<String> pendentes = lista.subList(idx, lista.size());
+                        log.info(
+                                "Disparo PROJUDI por e-mail cedendo ao protocolo do utilizador; {} CNJ(s) reagendado(s): {}",
+                                pendentes.size(),
+                                pendentes);
+                        break;
+                    }
                     try {
                         List<String> detalhes = new ArrayList<>();
                         ProjudiOrquestradorService.ResultadoSomenteDriveProcesso resultado =

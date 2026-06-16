@@ -488,18 +488,20 @@ public class ProjudiPeticaoProtocoloLoteService {
                 referencia.getNumeroProcesso(),
                 arquivosP7s.size());
 
+        List<Long> idsGrupo = List.copyOf(claimadas);
         ResultadoProtocoloPeticao protocolo;
         try {
             protocolo = peticaoService.protocolarPeticao(
                     referencia.getCredencialId(),
                     referencia.getNumeroProcesso(),
                     referencia.getComplemento(),
-                    arquivosP7s);
+                    arquivosP7s,
+                    etapa -> estadoService.registrarEtapa(idsGrupo, etapa));
         } catch (RuntimeException e) {
             // Exceção (ex.: falha de OTP/sessão) não pode deixar a petição presa em PROTOCOLANDO:
             // devolve para ASSINADA (frame "2. Protocolar") para reenvio imediato.
             String msg = ProjudiPeticaoProtocoloEstadoService.truncarMensagem(
-                    e.getClass().getSimpleName() + ": " + e.getMessage());
+                    descreverErroParaDiagnostico(e));
             log.error("Falha ao protocolar juntada {} (processo={}): {}", idsLabel, referencia.getNumeroProcesso(), msg, e);
             for (Long peticaoId : claimadas) {
                 estadoService.devolverParaProtocolar(peticaoId, msg);
@@ -529,6 +531,45 @@ public class ProjudiPeticaoProtocoloLoteService {
                     peticaoId, new ResultadoItemLote(peticaoId, referencia.getNumeroProcesso(), RESULTADO_ERRO, msg));
         }
         return resultados;
+    }
+
+    /**
+     * Descrição rica do erro para diagnóstico: tipo + mensagem, cadeia de causas e um trecho do
+     * stack trace. Fica salvo em {@code protocolo_mensagem} (truncado) e aparece na UI para o
+     * utilizador copiar e reportar.
+     */
+    static String descreverErroParaDiagnostico(Throwable e) {
+        if (e == null) {
+            return "Erro desconhecido (sem exceção).";
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append(e.getClass().getName());
+        if (StringUtils.hasText(e.getMessage())) {
+            sb.append(": ").append(e.getMessage());
+        }
+        Throwable causa = e.getCause();
+        int profundidade = 0;
+        while (causa != null && causa != causa.getCause() && profundidade < 8) {
+            sb.append("\n  Causa: ").append(causa.getClass().getName());
+            if (StringUtils.hasText(causa.getMessage())) {
+                sb.append(": ").append(causa.getMessage());
+            }
+            causa = causa.getCause();
+            profundidade++;
+        }
+        // Raiz do problema costuma estar nas primeiras linhas do stack da exceção original.
+        StackTraceElement[] frames = e.getStackTrace();
+        if (frames != null && frames.length > 0) {
+            sb.append("\n  Em:");
+            int limite = Math.min(frames.length, 12);
+            for (int i = 0; i < limite; i++) {
+                sb.append("\n    ").append(frames[i].toString());
+            }
+            if (frames.length > limite) {
+                sb.append("\n    ... (+").append(frames.length - limite).append(" linhas)");
+            }
+        }
+        return sb.toString();
     }
 
     private static String montarMensagemErro(ResultadoProtocoloPeticao protocolo) {

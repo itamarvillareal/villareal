@@ -22,6 +22,7 @@ import { postFormData, request } from './httpClient.js';
  * @property {string|null} criadoEm
  * @property {string|null} protocoladoEm
  * @property {string|null} protocoloMensagem
+ * @property {string|null} protocoloEtapa
  * @property {ProjudiPeticaoArquivo[]} arquivos
  */
 
@@ -150,7 +151,8 @@ export async function protocolarProcesso(numeroProcesso) {
  */
 export async function acompanharProtocolo(peticaoIds, onUpdate, opts = {}) {
   const ids = Array.isArray(peticaoIds) ? [...peticaoIds] : [];
-  if (ids.length === 0) return { protocoladas: [], comErro: [], pendentes: [] };
+  if (ids.length === 0)
+    return { protocoladas: [], comErro: [], pendentes: [], statusPorId: {}, mensagensPorId: {} };
   const intervaloMs = opts.intervaloMs ?? 3000;
   const limiteMs = opts.limiteMs ?? 8 * 60 * 1000;
   const fetcher = typeof opts.fetcher === 'function' ? opts.fetcher : listar;
@@ -163,9 +165,11 @@ export async function acompanharProtocolo(peticaoIds, onUpdate, opts = {}) {
     const comErro = [];
     const pendentes = [];
     const statusPorId = {};
+    const mensagensPorId = {};
     for (const id of ids) {
       const p = porId.get(id);
       const status = p?.status;
+      if (p?.protocoloMensagem) mensagensPorId[id] = p.protocoloMensagem;
       if (status === 'PROTOCOLANDO') {
         reivindicadas.add(id);
         pendentes.push(id);
@@ -189,7 +193,7 @@ export async function acompanharProtocolo(peticaoIds, onUpdate, opts = {}) {
         statusPorId[id] = 'ERRO';
       }
     }
-    return { protocoladas, comErro, pendentes, statusPorId };
+    return { protocoladas, comErro, pendentes, statusPorId, mensagensPorId };
   };
 
   let resultado = {
@@ -197,6 +201,7 @@ export async function acompanharProtocolo(peticaoIds, onUpdate, opts = {}) {
     comErro: [],
     pendentes: ids,
     statusPorId: Object.fromEntries(ids.map((id) => [id, 'AGUARDANDO'])),
+    mensagensPorId: {},
   };
   while (Date.now() - inicio < limiteMs) {
     await new Promise((r) => setTimeout(r, intervaloMs));

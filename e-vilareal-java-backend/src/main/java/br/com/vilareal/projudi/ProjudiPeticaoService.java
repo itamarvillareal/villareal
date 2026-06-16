@@ -15,6 +15,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.function.Consumer;
 
 /**
  * Protocolo de petição no PROJUDI-GO (Fase 1 — núcleo, sem persistência).
@@ -79,7 +80,20 @@ public class ProjudiPeticaoService {
             String numeroProcesso,
             String complemento,
             List<ArquivoPeticao> arquivos) {
-        return executarFluxoProtocolo(credencialId, numeroProcesso, complemento, arquivos, true);
+        return protocolarPeticao(credencialId, numeroProcesso, complemento, arquivos, null);
+    }
+
+    /**
+     * Igual a {@link #protocolarPeticao(Long, String, String, List)}, mas reporta cada etapa do robô
+     * (login, busca, upload de cada arquivo, concluir...) via {@code progresso}, para exibição ao vivo.
+     */
+    public ResultadoProtocoloPeticao protocolarPeticao(
+            Long credencialId,
+            String numeroProcesso,
+            String complemento,
+            List<ArquivoPeticao> arquivos,
+            Consumer<String> progresso) {
+        return executarFluxoProtocolo(credencialId, numeroProcesso, complemento, arquivos, true, progresso);
     }
 
     private ResultadoProtocoloPeticao executarFluxoProtocolo(
@@ -88,6 +102,16 @@ public class ProjudiPeticaoService {
             String complemento,
             List<ArquivoPeticao> arquivos,
             boolean executarConcluir) {
+        return executarFluxoProtocolo(credencialId, numeroProcesso, complemento, arquivos, executarConcluir, null);
+    }
+
+    private ResultadoProtocoloPeticao executarFluxoProtocolo(
+            Long credencialId,
+            String numeroProcesso,
+            String complemento,
+            List<ArquivoPeticao> arquivos,
+            boolean executarConcluir,
+            Consumer<String> progresso) {
         if (credencialId == null) {
             return falha("credencialId é obrigatório.", "");
         }
@@ -108,10 +132,12 @@ public class ProjudiPeticaoService {
         String complementoIso = encIso8859(complemento == null ? "" : complemento);
         long epochMillis = System.currentTimeMillis();
 
+        emitir(progresso, "Conectando ao PROJUDI e autenticando…");
         sessionService.invalidarSessao(credencialId);
 
         try {
-            // 1) busca — estabelece processo na sessão
+            // 1) busca — estabelece processo na sessão (faz login + localiza o processo)
+            emitir(progresso, "Buscando o processo…");
             var busca = sessionService.buscarProcessoConsulta(credencialId, processo);
             if (pareceFalhaLeitura(busca.statusCode(), busca.body())) {
                 return falha("Passo 1 (busca processo) falhou.", busca.body());
@@ -134,6 +160,7 @@ public class ProjudiPeticaoService {
             }
 
             // 4)
+            emitir(progresso, "Processo localizado — preparando juntada…");
             var p4 = sessionService.getAutenticadoComReferer(
                     credencialId, "Peticionamento?PaginaAtual=4", REF_BUSCA);
             if (pareceFalhaLeitura(p4.statusCode(), p4.body())) {
@@ -184,11 +211,13 @@ public class ProjudiPeticaoService {
             }
 
             Map<Integer, String> nomesGerados = new HashMap<>();
+            int totalArquivos = arquivos.size();
             for (int i = 0; i < arquivos.size(); i++) {
                 ArquivoPeticao arquivo = arquivos.get(i);
                 String nomeP7s = resolverNomeArquivoUpload(arquivo.nomeArquivo(), processo, epochMillis, i);
                 nomesGerados.put(i, nomeP7s);
 
+                emitir(progresso, "Enviando arquivo " + (i + 1) + " de " + totalArquivos + ": " + nomeP7s);
                 String corpoInsercao = montarCorpoInsercaoArquivo(nomeP7s, arquivo);
                 HttpResponse<String> p8a = sessionService.postPeticionamento(
                         credencialId,
@@ -216,6 +245,7 @@ public class ProjudiPeticaoService {
             }
 
             // 9) Avançar — espelha o último arquivo
+            emitir(progresso, "Revisando a juntada…");
             int ultimoIdx = arquivos.size() - 1;
             ArquivoPeticao ultimo = arquivos.get(ultimoIdx);
             String nomeUltimo = nomesGerados.get(ultimoIdx);
@@ -254,6 +284,7 @@ public class ProjudiPeticaoService {
             }
 
             // 11) irreversível
+            emitir(progresso, "Concluindo o protocolo (irreversível)…");
             HttpResponse<String> p11 = sessionService.postPeticionamento(
                     credencialId,
                     "Peticionamento",
@@ -261,6 +292,7 @@ public class ProjudiPeticaoService {
                     CORPO_PASSO_11,
                     StandardCharsets.ISO_8859_1,
                     REF_PETICIONAMENTO);
+            emitir(progresso, "Confirmando o envio…");
             String corpoP11 = corpoResposta(p11);
             String location = p11.headers().firstValue("Location").orElse("");
             if (protocoloConfirmado(location, corpoP11)) {
@@ -281,6 +313,18 @@ public class ProjudiPeticaoService {
         } catch (Exception e) {
             log.warn("Falha no protocolo PROJUDI (processo={}): {}", numeroProcesso, e.getMessage());
             return falha(e.getClass().getSimpleName() + ": " + e.getMessage(), "");
+        }
+    }
+
+    /** Reporta a etapa atual sem deixar o protocolo falhar por erro de telemetria. */
+    private static void emitir(Consumer<String> progresso, String etapa) {
+        if (progresso == null) {
+            return;
+        }
+        try {
+            progresso.accept(etapa);
+        } catch (RuntimeException e) {
+            log.debug("Falha ao reportar etapa do protocolo ('{}'): {}", etapa, e.getMessage());
         }
     }
 

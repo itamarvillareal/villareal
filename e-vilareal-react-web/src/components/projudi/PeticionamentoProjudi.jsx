@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import {
   AlertTriangle,
@@ -106,7 +106,15 @@ const PROTOCOLO_STATUS_INFO = {
   },
 };
 
-function ProtocoloProgressoPainel({ progresso, onFechar }) {
+function formatarDuracao(ms) {
+  if (ms == null || ms < 0) return '0s';
+  const segTotal = Math.floor(ms / 1000);
+  const min = Math.floor(segTotal / 60);
+  const seg = segTotal % 60;
+  return min > 0 ? `${min}m ${String(seg).padStart(2, '0')}s` : `${seg}s`;
+}
+
+function ProtocoloProgressoPainel({ progresso, peticoes, onFechar }) {
   const { itens, statusPorId, finalizado } = progresso;
   const total = itens.length;
   const statusDe = (id) => statusPorId[id] || 'AGUARDANDO';
@@ -114,6 +122,82 @@ function ProtocoloProgressoPainel({ progresso, onFechar }) {
   const erro = itens.filter((i) => statusDe(i.peticaoId) === 'ERRO').length;
   const concluidas = ok + erro;
   const pct = total > 0 ? Math.round((concluidas / total) * 100) : 0;
+
+  const mensagemPorId = useMemo(() => {
+    const m = {};
+    for (const p of peticoes || []) {
+      if (p?.id != null && p.protocoloMensagem) m[p.id] = p.protocoloMensagem;
+    }
+    return m;
+  }, [peticoes]);
+
+  const etapaPorId = useMemo(() => {
+    const m = {};
+    for (const p of peticoes || []) {
+      if (p?.id != null && p.protocoloEtapa) m[p.id] = p.protocoloEtapa;
+    }
+    return m;
+  }, [peticoes]);
+
+  const itensComErro = itens.filter((i) => statusDe(i.peticaoId) === 'ERRO');
+
+  // Relógio que tica a cada segundo enquanto o protocolo está em andamento.
+  const [agora, setAgora] = useState(() => Date.now());
+  useEffect(() => {
+    if (finalizado) return undefined;
+    const t = setInterval(() => setAgora(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [finalizado]);
+
+  // Início de cada etapa (por petição) e do protocolo inteiro, para cronometrar.
+  const inicioEtapaRef = useRef({});
+  const inicioTotalRef = useRef(Date.now());
+  const fimTotalRef = useRef(null);
+
+  useEffect(() => {
+    const mapa = inicioEtapaRef.current;
+    for (const item of itens) {
+      const id = item.peticaoId;
+      const st = statusPorId[id] || 'AGUARDANDO';
+      const chave = `${st}::${etapaPorId[id] || ''}`;
+      if (!mapa[id] || mapa[id].chave !== chave) {
+        mapa[id] = { chave, inicio: Date.now() };
+      }
+    }
+  }, [itens, statusPorId, etapaPorId]);
+
+  useEffect(() => {
+    if (finalizado && fimTotalRef.current == null) {
+      fimTotalRef.current = Date.now();
+    }
+  }, [finalizado]);
+
+  const fimRef = finalizado ? fimTotalRef.current ?? agora : agora;
+  const totalDecorrido = fimRef - inicioTotalRef.current;
+  const decorridoEtapa = (id) => {
+    const reg = inicioEtapaRef.current[id];
+    if (!reg) return 0;
+    return fimRef - reg.inicio;
+  };
+
+  const etapaAtiva = (() => {
+    const emAndamento = itens.find((i) => statusDe(i.peticaoId) === 'PROTOCOLANDO' && etapaPorId[i.peticaoId]);
+    return emAndamento ? etapaPorId[emAndamento.peticaoId] : null;
+  })();
+
+  const copiarErros = () => {
+    const texto = itensComErro
+      .map(
+        (i) =>
+          `#${i.peticaoId} · ${i.numeroProcesso}\n${mensagemPorId[i.peticaoId] || '(sem detalhe — ver logs do servidor)'}`,
+      )
+      .join('\n\n----------------------------------------\n\n');
+    try {
+      void navigator.clipboard.writeText(texto);
+    } catch {
+      // sem clipboard: o utilizador pode selecionar o texto manualmente.
+    }
+  };
 
   return (
     <div className="rounded-lg border border-sky-200 bg-sky-50/60 p-3 space-y-3">
@@ -128,21 +212,43 @@ function ProtocoloProgressoPainel({ progresso, onFechar }) {
           ) : (
             <Loader2 className="w-4 h-4 animate-spin text-sky-700" aria-hidden />
           )}
-          {finalizado
-            ? `Protocolo finalizado — ${ok} de ${total} concluída(s)${erro > 0 ? `, ${erro} com erro` : ''}`
-            : `Protocolando… ${concluidas} de ${total}`}
+          <div className="flex flex-col">
+            <span>
+              {finalizado
+                ? `Protocolo finalizado — ${ok} de ${total} concluída(s)${erro > 0 ? `, ${erro} com erro` : ''}`
+                : `Protocolando… ${concluidas} de ${total}`}
+              <span className="ml-2 font-mono text-xs font-normal text-slate-500">
+                {formatarDuracao(totalDecorrido)}
+              </span>
+            </span>
+            {!finalizado && etapaAtiva ? (
+              <span className="text-xs font-normal text-sky-700">{etapaAtiva}</span>
+            ) : null}
+          </div>
         </div>
-        {finalizado ? (
-          <button
-            type="button"
-            className="shrink-0 p-1 text-slate-500 hover:text-slate-700"
-            onClick={onFechar}
-            title="Fechar"
-            aria-label="Fechar painel de protocolo"
-          >
-            <X className="w-4 h-4" aria-hidden />
-          </button>
-        ) : null}
+        <div className="flex items-center gap-1">
+          {itensComErro.length > 0 ? (
+            <button
+              type="button"
+              className="shrink-0 rounded border border-rose-300 bg-white px-2 py-0.5 text-xs font-medium text-rose-700 hover:bg-rose-50"
+              onClick={copiarErros}
+              title="Copiar os erros para a área de transferência"
+            >
+              Copiar erros
+            </button>
+          ) : null}
+          {finalizado ? (
+            <button
+              type="button"
+              className="shrink-0 p-1 text-slate-500 hover:text-slate-700"
+              onClick={onFechar}
+              title="Fechar"
+              aria-label="Fechar painel de protocolo"
+            >
+              <X className="w-4 h-4" aria-hidden />
+            </button>
+          ) : null}
+        </div>
       </div>
 
       <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200">
@@ -154,38 +260,59 @@ function ProtocoloProgressoPainel({ progresso, onFechar }) {
 
       <ul className="space-y-1">
         {itens.map((item) => {
-          const info = PROTOCOLO_STATUS_INFO[statusDe(item.peticaoId)] || PROTOCOLO_STATUS_INFO.AGUARDANDO;
+          const st = statusDe(item.peticaoId);
+          const info = PROTOCOLO_STATUS_INFO[st] || PROTOCOLO_STATUS_INFO.AGUARDANDO;
           const { Icone } = info;
+          const mensagem = st === 'ERRO' ? mensagemPorId[item.peticaoId] : null;
+          const etapa = st === 'PROTOCOLANDO' ? etapaPorId[item.peticaoId] : null;
           return (
             <li
               key={item.peticaoId}
-              className="flex items-center gap-2 rounded border border-slate-200 bg-white px-2 py-1.5 text-sm"
+              className="rounded border border-slate-200 bg-white px-2 py-1.5 text-sm"
             >
-              <Icone
-                className={`w-4 h-4 shrink-0 ${info.spin ? 'animate-spin' : ''}`}
-                aria-hidden
-              />
-              <div className="min-w-0 flex-1">
-                <div className="font-medium truncate">
-                  #{item.peticaoId} · <span className="font-mono text-xs">{item.numeroProcesso}</span>
-                </div>
-                {item.parteOposta || item.parteCliente ? (
-                  <div className="text-xs text-slate-500 truncate">
-                    <span className="font-medium text-slate-600">
-                      {rotuloParteOposta(item.papelCliente)}:
-                    </span>{' '}
-                    {item.parteOposta || '—'}
-                    <span className="mx-1 text-slate-400">×</span>
-                    <span className="font-medium text-emerald-700">Cliente:</span>{' '}
-                    {item.parteCliente || '—'}
+              <div className="flex items-center gap-2">
+                <Icone
+                  className={`w-4 h-4 shrink-0 ${info.spin ? 'animate-spin' : ''}`}
+                  aria-hidden
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="font-medium truncate">
+                    #{item.peticaoId} · <span className="font-mono text-xs">{item.numeroProcesso}</span>
                   </div>
-                ) : null}
+                  {item.parteOposta || item.parteCliente ? (
+                    <div className="text-xs text-slate-500 truncate">
+                      <span className="font-medium text-slate-600">
+                        {rotuloParteOposta(item.papelCliente)}:
+                      </span>{' '}
+                      {item.parteOposta || '—'}
+                      <span className="mx-1 text-slate-400">×</span>
+                      <span className="font-medium text-emerald-700">Cliente:</span>{' '}
+                      {item.parteCliente || '—'}
+                    </div>
+                  ) : null}
+                </div>
+                <span
+                  className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium ${info.classe}`}
+                >
+                  {info.rotulo}
+                </span>
               </div>
-              <span
-                className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium ${info.classe}`}
-              >
-                {info.rotulo}
-              </span>
+              {etapa ? (
+                <div className="mt-1.5 flex items-center gap-1.5 text-[11px] font-medium text-sky-700">
+                  <Loader2 className="w-3 h-3 animate-spin" aria-hidden />
+                  <span className="flex-1">{etapa}</span>
+                  <span className="font-mono text-slate-500">{formatarDuracao(decorridoEtapa(item.peticaoId))}</span>
+                </div>
+              ) : null}
+              {mensagem ? (
+                <pre className="mt-1.5 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-rose-50 border border-rose-200 p-2 text-[11px] leading-snug text-rose-800">
+                  {mensagem}
+                </pre>
+              ) : st === 'ERRO' ? (
+                <p className="mt-1.5 text-[11px] text-rose-700">
+                  Sem detalhe na fila — veja os logs do servidor (docker compose logs backend).
+                </p>
+              ) : null}
             </li>
           );
         })}
@@ -850,6 +977,7 @@ export function PeticionamentoProjudi() {
               {protocoloProgresso ? (
                 <ProtocoloProgressoPainel
                   progresso={protocoloProgresso}
+                  peticoes={peticoes}
                   onFechar={() => setProtocoloProgresso(null)}
                 />
               ) : null}
