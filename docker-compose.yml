@@ -55,6 +55,10 @@ services:
     volumes:
       - /home/vilareal/gmail-tokens:/home/vilareal/gmail-tokens
       - /home/vilareal/cora-certs:/home/vilareal/cora-certs:ro
+      # Persistência dos .p7s assinados e das sessões PROJUDI: SEM estes mounts, os arquivos vivem
+      # no filesystem efêmero do container e somem a cada recreate (causando ".p7s não encontrado").
+      - /home/vilareal/projudi-peticoes:/home/vilareal/projudi-peticoes
+      - /home/vilareal/projudi-sessions:/home/vilareal/projudi-sessions
 
   frontend:
     build:
