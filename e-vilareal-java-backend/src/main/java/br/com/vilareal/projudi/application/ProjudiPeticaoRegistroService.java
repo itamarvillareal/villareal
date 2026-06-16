@@ -217,7 +217,10 @@ public class ProjudiPeticaoRegistroService {
             arquivo.setStatus(STATUS_ARQUIVO_ASSINADO);
             peticao.adicionarArquivo(arquivo);
 
-            processoOpt.ifPresent(processo -> copiarPdfParaPastaAssinar(processo, nomeStore, pdfBytes, arquivo));
+            processoOpt.ifPresent(processo -> {
+                copiarPdfParaPastaAssinar(processo, nomeStore, pdfBytes, arquivo);
+                copiarP7sParaPastaAssinar(processo, p7sRef, item.p7sBytes(), arquivo);
+            });
         }
 
         peticao.setStatus(STATUS_PETICAO_ASSINADA);
@@ -375,6 +378,30 @@ public class ProjudiPeticaoRegistroService {
             String nomeArquivo,
             byte[] pdfBytes,
             ProjudiPeticaoArquivoEntity arquivoEntity) {
+        String id = enviarParaPastaAssinar(processo, nomeArquivo, pdfBytes, "application/pdf");
+        if (id != null) {
+            arquivoEntity.setDriveFileId(id);
+        }
+    }
+
+    /**
+     * Copia o .p7s assinado para a subpasta «Assinar» no Drive (best-effort). É a cópia DURÁVEL: se o
+     * arquivo local sumir (recreate de container), o protocolo baixa o .p7s do Drive por este id.
+     */
+    private void copiarP7sParaPastaAssinar(
+            ProcessoEntity processo,
+            String nomeP7s,
+            byte[] p7sBytes,
+            ProjudiPeticaoArquivoEntity arquivoEntity) {
+        String id = enviarParaPastaAssinar(processo, nomeP7s, p7sBytes, "application/pkcs7-signature");
+        if (id != null) {
+            arquivoEntity.setP7sDriveFileId(id);
+        }
+    }
+
+    /** Resolve a subpasta «Assinar» do processo e faz upload; devolve o fileId ou {@code null}. */
+    private String enviarParaPastaAssinar(
+            ProcessoEntity processo, String nomeArquivo, byte[] bytes, String mimeType) {
         try {
             Integer numeroInterno = processo.getNumeroInterno();
             String codigoCliente = documentoDrivePastaService.resolverCodigoClienteDoProcesso(processo);
@@ -383,32 +410,34 @@ public class ProjudiPeticaoRegistroService {
                         "Drive Assinar: processo sem pasta resolvível (cnj={}, id={})",
                         processo.getNumeroCnj(),
                         processo.getId());
-                return;
+                return null;
             }
             DrivePastaProcessoDto pastaDto = documentoDrivePastaService.resolverPastaRaizProcesso(
                     googleDriveService, codigoCliente.trim(), numeroInterno);
             if (pastaDto == null || !StringUtils.hasText(pastaDto.pastaId())) {
                 log.info("Drive Assinar: pasta raiz não resolvida (cnj={})", processo.getNumeroCnj());
-                return;
+                return null;
             }
             String pastaAssinarId =
                     googleDriveService.encontrarOuCriarPastaPublic(PASTA_ASSINAR, pastaDto.pastaId());
             DriveArquivoDto upload =
-                    googleDriveService.uploadArquivo(pdfBytes, nomeArquivo, "application/pdf", pastaAssinarId);
+                    googleDriveService.uploadArquivo(bytes, nomeArquivo, mimeType, pastaAssinarId);
             if (upload != null && StringUtils.hasText(upload.id())) {
-                arquivoEntity.setDriveFileId(upload.id());
                 log.info(
-                        "Drive Assinar: PDF enviado (cnj={}, arquivo={}, driveFileId={})",
+                        "Drive Assinar: arquivo enviado (cnj={}, arquivo={}, driveFileId={})",
                         processo.getNumeroCnj(),
                         nomeArquivo,
                         upload.id());
+                return upload.id();
             }
+            return null;
         } catch (Exception e) {
             log.warn(
-                    "Drive Assinar: falha ao copiar PDF (cnj={}, nome={}): {}",
+                    "Drive Assinar: falha ao enviar arquivo (cnj={}, nome={}): {}",
                     processo.getNumeroCnj(),
                     nomeArquivo,
                     e.getMessage());
+            return null;
         }
     }
 

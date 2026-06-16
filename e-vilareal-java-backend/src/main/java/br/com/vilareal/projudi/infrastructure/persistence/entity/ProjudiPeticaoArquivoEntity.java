@@ -38,6 +38,9 @@ public class ProjudiPeticaoArquivoEntity {
     @Column(name = "drive_file_id", length = 120)
     private String driveFileId;
 
+    @Column(name = "p7s_drive_file_id", length = 120)
+    private String p7sDriveFileId;
+
     @Column(name = "p7s_sha256", columnDefinition = "CHAR(64)")
     private String p7sSha256;
 

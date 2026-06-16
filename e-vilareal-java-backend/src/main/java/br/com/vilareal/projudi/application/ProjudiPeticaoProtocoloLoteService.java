@@ -5,6 +5,7 @@ import br.com.vilareal.projudi.api.dto.PreviaProtocoloResponse.ArquivoPreviaDto;
 import br.com.vilareal.projudi.api.dto.PreviaProtocoloResponse.JuntadaPreviaDto;
 import br.com.vilareal.projudi.api.dto.ValidarProtocoloResponse;
 import br.com.vilareal.projudi.api.dto.ValidarProtocoloResponse.JuntadaValidacaoDto;
+import br.com.vilareal.documento.GoogleDriveService;
 import br.com.vilareal.projudi.ProjudiOrquestradorGate;
 import br.com.vilareal.projudi.ProjudiPeticaoService;
 import br.com.vilareal.projudi.ProjudiPeticaoService.ArquivoPeticao;
@@ -50,6 +51,7 @@ public class ProjudiPeticaoProtocoloLoteService {
     private final ProjudiPeticaoService peticaoService;
     private final ProjudiPeticaoProtocoloEstadoService estadoService;
     private final ProjudiOrquestradorGate orquestradorGate;
+    private final GoogleDriveService googleDriveService;
     private final Path storeDir;
 
     /**
@@ -69,12 +71,14 @@ public class ProjudiPeticaoProtocoloLoteService {
             ProjudiPeticaoService peticaoService,
             ProjudiPeticaoProtocoloEstadoService estadoService,
             ProjudiOrquestradorGate orquestradorGate,
+            GoogleDriveService googleDriveService,
             @Value("${projudi.peticao.store-dir:/Users/itamar/projudi-peticoes}") String storeDirConfig) {
         this.peticaoRepository = peticaoRepository;
         this.registroService = registroService;
         this.peticaoService = peticaoService;
         this.estadoService = estadoService;
         this.orquestradorGate = orquestradorGate;
+        this.googleDriveService = googleDriveService;
         this.storeDir = Path.of(storeDirConfig.trim());
     }
 
@@ -602,7 +606,9 @@ public class ProjudiPeticaoProtocoloLoteService {
                 return Optional.of("arquivo ordem " + arquivo.getOrdem() + " sem p7s_ref");
             }
             Path p7sPath = storeDir.resolve(arquivo.getP7sRef());
-            if (!Files.isRegularFile(p7sPath)) {
+            boolean localOk = Files.isRegularFile(p7sPath);
+            boolean driveOk = StringUtils.hasText(arquivo.getP7sDriveFileId()) && googleDriveService.isConfigurado();
+            if (!localOk && !driveOk) {
                 return Optional.of(".p7s não encontrado: " + arquivo.getP7sRef());
             }
         }
@@ -612,14 +618,45 @@ public class ProjudiPeticaoProtocoloLoteService {
     private List<ArquivoPeticao> montarListaArquivosP7s(ProjudiPeticaoEntity peticao) {
         List<ArquivoPeticao> lista = new ArrayList<>(peticao.getArquivos().size());
         for (ProjudiPeticaoArquivoEntity arquivo : peticao.getArquivos()) {
-            Path p7sPath = storeDir.resolve(arquivo.getP7sRef());
+            byte[] bytes = carregarP7s(arquivo);
+            lista.add(new ArquivoPeticao(bytes, arquivo.getIdArquivoTipo(), arquivo.getNomeOriginal()));
+        }
+        return lista;
+    }
+
+    /**
+     * Lê o .p7s do disco local; se faltar (ex.: recreate de container), baixa do Drive pelo
+     * {@code p7sDriveFileId} e regrava no cache local. O Drive é a fonte durável.
+     */
+    private byte[] carregarP7s(ProjudiPeticaoArquivoEntity arquivo) {
+        Path p7sPath = storeDir.resolve(arquivo.getP7sRef());
+        if (Files.isRegularFile(p7sPath)) {
             try {
-                byte[] bytes = Files.readAllBytes(p7sPath);
-                lista.add(new ArquivoPeticao(bytes, arquivo.getIdArquivoTipo(), arquivo.getNomeOriginal()));
+                return Files.readAllBytes(p7sPath);
             } catch (Exception e) {
                 throw new IllegalStateException("Falha ao ler .p7s: " + p7sPath, e);
             }
         }
-        return lista;
+        if (StringUtils.hasText(arquivo.getP7sDriveFileId()) && googleDriveService.isConfigurado()) {
+            try {
+                byte[] bytes = googleDriveService.baixarBytesArquivo(arquivo.getP7sDriveFileId());
+                if (bytes == null || bytes.length == 0) {
+                    throw new IllegalStateException("Drive devolveu .p7s vazio (id=" + arquivo.getP7sDriveFileId() + ")");
+                }
+                try {
+                    Files.createDirectories(storeDir);
+                    Files.write(p7sPath, bytes);
+                } catch (Exception cacheEx) {
+                    log.warn("Falha ao regravar cache local do .p7s ({}): {}", p7sPath, cacheEx.getMessage());
+                }
+                log.info(".p7s recuperado do Drive (ref={}, driveFileId={})",
+                        arquivo.getP7sRef(), arquivo.getP7sDriveFileId());
+                return bytes;
+            } catch (Exception e) {
+                throw new IllegalStateException(
+                        "Falha ao baixar .p7s do Drive (id=" + arquivo.getP7sDriveFileId() + ")", e);
+            }
+        }
+        throw new IllegalStateException("Falha ao ler .p7s: " + p7sPath);
     }
 }
