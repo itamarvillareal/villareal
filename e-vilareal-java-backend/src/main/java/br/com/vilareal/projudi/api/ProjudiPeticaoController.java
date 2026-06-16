@@ -6,13 +6,13 @@ import br.com.vilareal.projudi.api.dto.PreviaProtocoloResponse;
 import br.com.vilareal.projudi.api.dto.PreviaValidarLoteRequest;
 import br.com.vilareal.projudi.api.dto.ProtocolarLoteRequest;
 import br.com.vilareal.projudi.api.dto.ProtocolarProcessoRequest;
+import br.com.vilareal.projudi.api.dto.ProtocoloAceitoResponse;
 import br.com.vilareal.projudi.api.dto.ValidarProtocoloRequest;
 import br.com.vilareal.projudi.api.dto.ValidarProtocoloResponse;
 import br.com.vilareal.projudi.application.ProjudiPeticaoAssinaturaService;
 import br.com.vilareal.projudi.application.ProjudiPeticaoAssinaturaService.ArquivoAssinadoRecebido;
 import br.com.vilareal.projudi.application.ProjudiPeticaoAssinaturaService.ItemAssinado;
 import br.com.vilareal.projudi.application.ProjudiPeticaoProtocoloLoteService;
-import br.com.vilareal.projudi.application.ProjudiPeticaoProtocoloLoteService.ResultadoItemLote;
 import br.com.vilareal.projudi.application.ProjudiCredencialService;
 import br.com.vilareal.projudi.api.dto.ProjudiCredencialResponse;
 import br.com.vilareal.projudi.application.ProjudiPeticaoRegistroService;
@@ -199,35 +199,37 @@ public class ProjudiPeticaoController {
 
     @PostMapping(value = "/protocolar-lote", consumes = MediaType.APPLICATION_JSON_VALUE)
     @Operation(
-            summary = "Protocola em lote petições ASSINADA (sequencial, irreversível)",
-            description = "Exige confirmar=true. Petições que não estejam ASSINADA retornam IGNORADA.")
-    public ResponseEntity<List<ResultadoItemLote>> protocolarLote(@Valid @RequestBody ProtocolarLoteRequest body) {
+            summary = "Protocola em lote petições ASSINADA (assíncrono, irreversível)",
+            description = "Exige confirmar=true. Dispara em segundo plano e responde 202 de imediato; "
+                    + "acompanhe o progresso pela fila (status). Evita timeout (504) em operações longas.")
+    public ResponseEntity<ProtocoloAceitoResponse> protocolarLote(@Valid @RequestBody ProtocolarLoteRequest body) {
         if (body.confirmar() == null || !body.confirmar()) {
             throw new IllegalArgumentException(
                     "confirmar=true é obrigatório — o passo Concluir no PROJUDI é irreversível.");
         }
-        List<ResultadoItemLote> resultado = protocoloLoteService.protocolarLote(body.peticaoIds());
-        return ResponseEntity.ok()
+        List<Long> aceitas = protocoloLoteService.protocolarLoteAssincrono(body.peticaoIds());
+        return ResponseEntity.accepted()
                 .contentType(MediaType.APPLICATION_JSON)
                 .cacheControl(CacheControl.noStore())
-                .body(resultado);
+                .body(ProtocoloAceitoResponse.de(aceitas));
     }
 
     @PostMapping(value = "/protocolar-processo", consumes = MediaType.APPLICATION_JSON_VALUE)
     @Operation(
-            summary = "Protocola petições ASSINADA de um processo (irreversível)",
-            description = "Exige confirmar=true. Casamento por dígitos do número do processo.")
-    public ResponseEntity<List<ResultadoItemLote>> protocolarProcesso(
+            summary = "Protocola petições ASSINADA de um processo (assíncrono, irreversível)",
+            description = "Exige confirmar=true. Dispara em segundo plano e responde 202 de imediato; "
+                    + "acompanhe o progresso pela fila. Casamento por dígitos do número do processo.")
+    public ResponseEntity<ProtocoloAceitoResponse> protocolarProcesso(
             @Valid @RequestBody ProtocolarProcessoRequest body) {
         if (body.confirmar() == null || !body.confirmar()) {
             throw new IllegalArgumentException(
                     "confirmar=true é obrigatório — o passo Concluir no PROJUDI é irreversível.");
         }
-        List<ResultadoItemLote> resultado = protocoloLoteService.protocolarProcesso(body.numeroProcesso());
-        return ResponseEntity.ok()
+        List<Long> aceitas = protocoloLoteService.protocolarProcessoAssincrono(body.numeroProcesso());
+        return ResponseEntity.accepted()
                 .contentType(MediaType.APPLICATION_JSON)
                 .cacheControl(CacheControl.noStore())
-                .body(resultado);
+                .body(ProtocoloAceitoResponse.de(aceitas));
     }
 
     @DeleteMapping("/{peticaoId}")

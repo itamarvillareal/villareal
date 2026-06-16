@@ -11,6 +11,7 @@ import {
   X,
 } from 'lucide-react';
 import {
+  acompanharProtocolo,
   excluirPeticao,
   listarCredenciais,
   listarPorProcesso,
@@ -45,6 +46,8 @@ function classeResultadoProtocolo(resultado) {
       return 'text-emerald-700 bg-emerald-50 border-emerald-200';
     case 'IGNORADA':
       return 'text-slate-600 bg-slate-50 border-slate-200';
+    case 'EM ANDAMENTO':
+      return 'text-amber-700 bg-amber-50 border-amber-200';
     default:
       return 'text-rose-700 bg-rose-50 border-rose-200';
   }
@@ -164,15 +167,45 @@ export function ModalPeticionamentoProcesso({ open, onClose, numeroCnj, clienteN
     setOperacao('protocolo');
     setErro('');
     setResultadoProtocolo([]);
+    let aceitas = [];
     try {
       const res = await protocolarProcesso(cnj);
-      setResultadoProtocolo(Array.isArray(res) ? res : []);
-      await recarregar();
+      aceitas = Array.isArray(res?.peticaoIds) ? res.peticaoIds : [];
     } catch (e) {
-      setErro(e?.message || 'Falha ao protocolar.');
-    } finally {
+      setErro(e?.message || 'Falha ao iniciar o protocolo.');
       setOperacao(null);
       setModalConfirmar(false);
+      return;
+    }
+    setModalConfirmar(false);
+    if (aceitas.length === 0) {
+      setErro('Nenhuma petição ASSINADA pronta para protocolo.');
+      setOperacao(null);
+      await recarregar();
+      return;
+    }
+    try {
+      const r = await acompanharProtocolo(aceitas, (rows) => setPeticoes(rows), {
+        fetcher: () => listarPorProcesso(cnj),
+      });
+      setResultadoProtocolo([
+        ...r.protocoladas.map((id) => ({ peticaoId: id, resultado: 'PROTOCOLADA', mensagem: '' })),
+        ...r.comErro.map((id) => ({
+          peticaoId: id,
+          resultado: 'ERRO',
+          mensagem: 'Voltou para a fila — verifique e tente novamente.',
+        })),
+        ...r.pendentes.map((id) => ({
+          peticaoId: id,
+          resultado: 'EM ANDAMENTO',
+          mensagem: 'Ainda processando em segundo plano.',
+        })),
+      ]);
+    } catch {
+      // A fila reflete o estado real; ignora erro de acompanhamento.
+    } finally {
+      await recarregar();
+      setOperacao(null);
     }
   };
 

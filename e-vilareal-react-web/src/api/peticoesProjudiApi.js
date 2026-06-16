@@ -70,8 +70,9 @@ export async function enviarAssinados(formData) {
 }
 
 /**
+ * Dispara o protocolo em segundo plano (responde 202 de imediato). Acompanhe pela fila (status).
  * @param {number[]} peticaoIds
- * @returns {Promise<Array<{ peticaoId: number, numeroProcesso: string, resultado: string, mensagem: string|null }>>}
+ * @returns {Promise<{ peticaoIds: number[], total: number, status: string }>}
  */
 export async function protocolarLote(peticaoIds) {
   return request('/api/projudi/peticoes/protocolar-lote', {
@@ -119,14 +120,81 @@ export async function validarProtocolo(numeroProcesso) {
 }
 
 /**
+ * Dispara o protocolo de um processo em segundo plano (responde 202 de imediato).
  * @param {string} numeroProcesso
- * @returns {Promise<Array<{ peticaoId: number, numeroProcesso: string, resultado: string, mensagem: string|null }>>}
+ * @returns {Promise<{ peticaoIds: number[], total: number, status: string }>}
  */
 export async function protocolarProcesso(numeroProcesso) {
   return request('/api/projudi/peticoes/protocolar-processo', {
     method: 'POST',
     body: { numeroProcesso, confirmar: true },
   });
+}
+
+/**
+ * Acompanha um protocolo disparado em segundo plano, consultando a fila periodicamente.
+ * Resolve quando nenhuma petição segue "em andamento" (reivindicada/aguardando) ou no tempo limite.
+ *
+ * Regras de estado por petição despachada (todas começam em ASSINADA):
+ * - PROTOCOLANDO → em andamento (marca como reivindicada);
+ * - PROTOCOLADA → concluída com sucesso;
+ * - ASSINADA já reivindicada antes → voltou por erro;
+ * - ASSINADA ainda não reivindicada → aguardando o robô;
+ * - sumiu da lista → tratada como concluída.
+ *
+ * @param {number[]} peticaoIds
+ * @param {(rows: ProjudiPeticao[]) => void} [onUpdate] chamado a cada atualização da lista
+ * @param {{ intervaloMs?: number, limiteMs?: number, fetcher?: () => Promise<ProjudiPeticao[]> }} [opts]
+ * @returns {Promise<{ protocoladas: number[], comErro: number[], pendentes: number[] }>}
+ */
+export async function acompanharProtocolo(peticaoIds, onUpdate, opts = {}) {
+  const ids = Array.isArray(peticaoIds) ? [...peticaoIds] : [];
+  if (ids.length === 0) return { protocoladas: [], comErro: [], pendentes: [] };
+  const intervaloMs = opts.intervaloMs ?? 3000;
+  const limiteMs = opts.limiteMs ?? 8 * 60 * 1000;
+  const fetcher = typeof opts.fetcher === 'function' ? opts.fetcher : listar;
+  const reivindicadas = new Set();
+  const inicio = Date.now();
+
+  const classificar = (rows) => {
+    const porId = new Map((rows || []).map((p) => [p.id, p]));
+    const protocoladas = [];
+    const comErro = [];
+    const pendentes = [];
+    for (const id of ids) {
+      const p = porId.get(id);
+      const status = p?.status;
+      if (status === 'PROTOCOLANDO') {
+        reivindicadas.add(id);
+        pendentes.push(id);
+      } else if (status === 'PROTOCOLADA') {
+        protocoladas.push(id);
+      } else if (status === 'ASSINADA') {
+        if (reivindicadas.has(id)) comErro.push(id);
+        else pendentes.push(id);
+      } else if (!p) {
+        protocoladas.push(id);
+      } else {
+        comErro.push(id);
+      }
+    }
+    return { protocoladas, comErro, pendentes };
+  };
+
+  let resultado = { protocoladas: [], comErro: [], pendentes: ids };
+  while (Date.now() - inicio < limiteMs) {
+    await new Promise((r) => setTimeout(r, intervaloMs));
+    let rows;
+    try {
+      rows = await fetcher();
+    } catch {
+      continue;
+    }
+    if (typeof onUpdate === 'function') onUpdate(Array.isArray(rows) ? rows : []);
+    resultado = classificar(rows);
+    if (resultado.pendentes.length === 0) break;
+  }
+  return resultado;
 }
 
 export async function listarCredenciais() {

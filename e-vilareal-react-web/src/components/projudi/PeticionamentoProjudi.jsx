@@ -12,6 +12,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import {
+  acompanharProtocolo,
   baixarZip,
   enviarAssinados,
   excluirPeticao,
@@ -328,17 +329,32 @@ export function PeticionamentoProjudi() {
     setApiError('');
     setResultadoProtocolo([]);
     try {
-      const res = await protocolarLote(ids);
-      setResultadoProtocolo(Array.isArray(res) ? res : []);
-      setSelecionadas(new Set());
-      setToast('Protocolo concluído.');
-      await recarregar();
+      await protocolarLote(ids);
     } catch (err) {
-      setApiError(err?.message || 'Falha no protocolo.');
-    } finally {
+      setApiError(err?.message || 'Falha ao iniciar o protocolo.');
       setOperacao(null);
       setModalProtocolo(false);
       setPrevia(null);
+      return;
+    }
+    setSelecionadas(new Set());
+    setModalProtocolo(false);
+    setPrevia(null);
+    setToast('Protocolo iniciado em segundo plano…');
+    try {
+      const r = await acompanharProtocolo(ids, (rows) => setPeticoes(rows));
+      const ok = r.protocoladas.length;
+      const erro = r.comErro.length;
+      const pend = r.pendentes.length;
+      if (erro === 0 && pend === 0) setToast(`Protocolo concluído (${ok}).`);
+      else if (ok > 0 && erro > 0) setToast(`Protocolo: ${ok} concluída(s), ${erro} com erro.`);
+      else if (erro > 0) setToast(`Protocolo: ${erro} com erro. Verifique a fila.`);
+      else setToast('Protocolo ainda em andamento. Acompanhe pela fila.');
+    } catch {
+      // A fila reflete o estado real; ignora erro de acompanhamento.
+    } finally {
+      await recarregar();
+      setOperacao(null);
     }
   };
 

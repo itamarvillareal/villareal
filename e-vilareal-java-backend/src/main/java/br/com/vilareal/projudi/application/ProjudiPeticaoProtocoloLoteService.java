@@ -12,6 +12,7 @@ import br.com.vilareal.projudi.ProjudiPeticaoService.ResultadoProtocoloPeticao;
 import br.com.vilareal.projudi.infrastructure.persistence.entity.ProjudiPeticaoArquivoEntity;
 import br.com.vilareal.projudi.infrastructure.persistence.entity.ProjudiPeticaoEntity;
 import br.com.vilareal.projudi.infrastructure.persistence.repository.ProjudiPeticaoRepository;
+import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -28,6 +29,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 @Service
 public class ProjudiPeticaoProtocoloLoteService {
@@ -46,6 +49,17 @@ public class ProjudiPeticaoProtocoloLoteService {
     private final ProjudiPeticaoProtocoloEstadoService estadoService;
     private final ProjudiOrquestradorGate orquestradorGate;
     private final Path storeDir;
+
+    /**
+     * Executor dedicado (1 thread) para protocolo em segundo plano. O acesso ao robô PROJUDI já é
+     * serializado pelo {@link ProjudiOrquestradorGate}; a fila aqui só evita acumular trabalho e
+     * libera a thread HTTP de imediato (evita 504 em proxies à frente).
+     */
+    private final ExecutorService protocoloExecutor = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "projudi-protocolo");
+        t.setDaemon(true);
+        return t;
+    });
 
     public ProjudiPeticaoProtocoloLoteService(
             ProjudiPeticaoRepository peticaoRepository,
@@ -85,6 +99,47 @@ public class ProjudiPeticaoProtocoloLoteService {
             return List.of();
         }
         return protocolarLote(ids);
+    }
+
+    /**
+     * Dispara o protocolo em segundo plano e retorna imediatamente os ids aceitos. A UI acompanha o
+     * progresso pela própria fila (status PROTOCOLANDO → PROTOCOLADA, ou volta a ASSINADA em erro),
+     * evitando que a requisição HTTP fique presa e estoure timeout de proxy (504).
+     */
+    public List<Long> protocolarLoteAssincrono(List<Long> peticaoIds) {
+        if (peticaoIds == null || peticaoIds.isEmpty()) {
+            throw new IllegalArgumentException("peticaoIds é obrigatório (ao menos um id).");
+        }
+        List<Long> ids = List.copyOf(peticaoIds);
+        protocoloExecutor.submit(() -> executarLoteEmBackground(ids));
+        return ids;
+    }
+
+    /** Variante por número de processo: resolve as ASSINADA e dispara em segundo plano. */
+    public List<Long> protocolarProcessoAssincrono(String numeroProcesso) {
+        List<Long> ids = idsAssinadasParaProtocolo(numeroProcesso);
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+        protocoloExecutor.submit(() -> executarLoteEmBackground(ids));
+        return ids;
+    }
+
+    private void executarLoteEmBackground(List<Long> ids) {
+        try {
+            List<ResultadoItemLote> resultado = protocolarLote(ids);
+            log.info("Protocolo em segundo plano concluído {}: {}", ids, resultado);
+        } catch (ResponseStatusException e) {
+            // Robô ocupado além do timeout: petições seguem ASSINADA para nova tentativa.
+            log.warn("Protocolo em segundo plano não executado {} — {}", ids, e.getReason());
+        } catch (Exception e) {
+            log.error("Falha no protocolo em segundo plano {}: {}", ids, e.getMessage(), e);
+        }
+    }
+
+    @PreDestroy
+    void encerrarExecutor() {
+        protocoloExecutor.shutdown();
     }
 
     public void reabrirParaRetentativa(Long peticaoId) {
