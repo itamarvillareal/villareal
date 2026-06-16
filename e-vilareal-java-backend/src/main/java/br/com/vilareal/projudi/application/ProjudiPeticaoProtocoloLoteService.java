@@ -128,7 +128,21 @@ public class ProjudiPeticaoProtocoloLoteService {
                             "Pós-protocolo (async): obtendo movimentações do processo {} (id={}) para arquivar no Drive.",
                             numeroProcesso,
                             processoId);
-                    movimentacoesDriveService.executar(processoId);
+                    // Respeita o single-flight do robô PROJUDI: aguarda o lock (até 2 min) em vez de abrir
+                    // uma sessão concorrente. Se o robô seguir ocupado, a consulta automática arquiva depois.
+                    Optional<Boolean> executado = orquestradorGate.executarComRetornoAguardando(
+                            "peticao/pos-protocolo-movimentacoes",
+                            Duration.ofMinutes(2),
+                            () -> {
+                                movimentacoesDriveService.executar(processoId);
+                                return Boolean.TRUE;
+                            });
+                    if (executado.isEmpty()) {
+                        log.info(
+                                "Pós-protocolo (async): robô PROJUDI ocupado — movimentações do processo {} ficarão para "
+                                        + "a consulta automática / botão manual.",
+                                numeroProcesso);
+                    }
                 } catch (RuntimeException e) {
                     log.error(
                             "Pós-protocolo (async): falha ao obter movimentações do processo {} (não bloqueia o protocolo): {}",
