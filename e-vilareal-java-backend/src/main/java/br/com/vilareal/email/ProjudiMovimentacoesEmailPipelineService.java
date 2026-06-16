@@ -251,6 +251,15 @@ public class ProjudiMovimentacoesEmailPipelineService {
         String motivoParada = null;
 
         for (int i = 0; i < processoIds.size() && running.get(); i++) {
+            // Prioridade do utilizador (ex.: protocolo): cede o robô entre processos em vez de
+            // segurar o lock pelo lote inteiro. O restante é arquivado no próximo ciclo.
+            if (orquestradorGate.haPrioridadeAguardando()) {
+                motivoParada = "cedido a protocolo do utilizador";
+                log.info(
+                        "Pipeline PROJUDI: cedendo o robô a um protocolo do utilizador; {} processo(s) restante(s) no próximo ciclo.",
+                        processoIds.size() - i);
+                break;
+            }
             if (jobCtx != null) {
                 jobCtx.heartbeatACadaItens(i + 1, 1);
             }
@@ -319,7 +328,7 @@ public class ProjudiMovimentacoesEmailPipelineService {
                 break;
             }
             if (i < processoIds.size() - 1 && perfil.delaySegundosEntreProcessos() > 0) {
-                dormir(perfil.delaySegundosEntreProcessos() * 1000L);
+                dormirCedendoPrioridade(perfil.delaySegundosEntreProcessos() * 1000L);
             }
         }
 
@@ -383,6 +392,24 @@ public class ProjudiMovimentacoesEmailPipelineService {
             Thread.sleep(ms);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+        }
+    }
+
+    /** Dorme em blocos curtos, abortando cedo se surgir operação prioritária do utilizador. */
+    private void dormirCedendoPrioridade(long ms) {
+        long restante = ms;
+        while (restante > 0 && running.get()) {
+            if (orquestradorGate.haPrioridadeAguardando()) {
+                return;
+            }
+            long bloco = Math.min(500L, restante);
+            try {
+                Thread.sleep(bloco);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+            restante -= bloco;
         }
     }
 }
