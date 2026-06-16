@@ -230,8 +230,10 @@ export function PeticionamentoProjudi() {
     });
   };
 
-  const selecionarTodasAssinadas = () => {
-    setSelecionadas(new Set(assinadas.map((p) => p.id)));
+  const todasSelecionadas = assinadas.length > 0 && assinadas.every((p) => selecionadas.has(p.id));
+
+  const alternarSelecionarTodas = () => {
+    setSelecionadas(todasSelecionadas ? new Set() : new Set(assinadas.map((p) => p.id)));
   };
 
   const resolverCnjPorCodigoProc = async () => {
@@ -702,6 +704,15 @@ export function PeticionamentoProjudi() {
                     Selecione as petições do <strong>mesmo processo</strong> para uma juntada. O robô envia todos os
                     arquivos e dá um único Concluir.
                   </p>
+                  <label className="flex items-center gap-2 text-xs font-medium text-slate-700 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={todasSelecionadas}
+                      onChange={alternarSelecionarTodas}
+                      aria-label="Selecionar todas as petições"
+                    />
+                    {todasSelecionadas ? 'Limpar seleção' : `Selecionar todas (${assinadas.length})`}
+                  </label>
                   <ul className="rounded-lg border border-slate-200 bg-white divide-y divide-slate-100">
                     {assinadas.map((p) => (
                       <li key={p.id} className="flex items-start gap-2 px-3 py-2 text-sm">
@@ -755,15 +766,6 @@ export function PeticionamentoProjudi() {
                       </li>
                     ))}
                   </ul>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      className="text-xs text-sky-700 hover:underline"
-                      onClick={selecionarTodasAssinadas}
-                    >
-                      Selecionar todas ({assinadas.length})
-                    </button>
-                  </div>
                   <button
                     type="button"
                     className={`${processosBtnPrimary} bg-amber-700 hover:bg-amber-800 w-full sm:w-auto`}

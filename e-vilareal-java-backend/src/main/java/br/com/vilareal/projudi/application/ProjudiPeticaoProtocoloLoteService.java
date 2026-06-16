@@ -33,6 +33,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 
 @Service
 public class ProjudiPeticaoProtocoloLoteService {
@@ -96,8 +97,9 @@ public class ProjudiPeticaoProtocoloLoteService {
 
     /**
      * Para cada processo com ao menos uma petição PROTOCOLADA, executa a rotina «Obter movimentações»
-     * (a mesma do botão), arquivando no Drive os documentos recém-peticionados. Best-effort: qualquer
-     * falha é apenas logada e não interfere no resultado do protocolo já concluído.
+     * (a mesma do botão), arquivando no Drive os documentos recém-peticionados. Roda de forma
+     * <strong>assíncrona</strong> para não bloquear a resposta do protocolo (evita timeout 504 no proxy).
+     * Best-effort: qualquer falha é apenas logada e não interfere no resultado do protocolo já concluído.
      */
     private void obterMovimentacoesAposProtocolo(List<ResultadoItemLote> resultados) {
         Set<String> processosProtocolados = new LinkedHashSet<>();
@@ -106,31 +108,36 @@ public class ProjudiPeticaoProtocoloLoteService {
                 processosProtocolados.add(r.numeroProcesso().trim());
             }
         }
-        for (String numeroProcesso : processosProtocolados) {
-            try {
-                Long processoId = processoRepository
-                        .findByNumeroCnj(numeroProcesso)
-                        .map(ProcessoEntity::getId)
-                        .orElse(null);
-                if (processoId == null) {
-                    log.warn(
-                            "Pós-protocolo: processo não encontrado por CNJ {} — movimentações não atualizadas no Drive.",
-                            numeroProcesso);
-                    continue;
-                }
-                log.info(
-                        "Pós-protocolo: obtendo movimentações do processo {} (id={}) para arquivar no Drive.",
-                        numeroProcesso,
-                        processoId);
-                movimentacoesDriveService.executar(processoId);
-            } catch (RuntimeException e) {
-                log.error(
-                        "Pós-protocolo: falha ao obter movimentações do processo {} (não bloqueia o protocolo): {}",
-                        numeroProcesso,
-                        e.getMessage(),
-                        e);
-            }
+        if (processosProtocolados.isEmpty()) {
+            return;
         }
+        CompletableFuture.runAsync(() -> {
+            for (String numeroProcesso : processosProtocolados) {
+                try {
+                    Long processoId = processoRepository
+                            .findByNumeroCnj(numeroProcesso)
+                            .map(ProcessoEntity::getId)
+                            .orElse(null);
+                    if (processoId == null) {
+                        log.warn(
+                                "Pós-protocolo: processo não encontrado por CNJ {} — movimentações não atualizadas no Drive.",
+                                numeroProcesso);
+                        continue;
+                    }
+                    log.info(
+                            "Pós-protocolo (async): obtendo movimentações do processo {} (id={}) para arquivar no Drive.",
+                            numeroProcesso,
+                            processoId);
+                    movimentacoesDriveService.executar(processoId);
+                } catch (RuntimeException e) {
+                    log.error(
+                            "Pós-protocolo (async): falha ao obter movimentações do processo {} (não bloqueia o protocolo): {}",
+                            numeroProcesso,
+                            e.getMessage(),
+                            e);
+                }
+            }
+        });
     }
 
     public List<ResultadoItemLote> protocolarProcesso(String numeroProcesso) {
