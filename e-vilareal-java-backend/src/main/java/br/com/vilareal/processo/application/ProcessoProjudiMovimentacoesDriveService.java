@@ -87,13 +87,12 @@ public class ProcessoProjudiMovimentacoesDriveService {
             if (resultado.totalComDocumento() <= 0) {
                 return "Nenhuma movimentação com documento encontrada no PROJUDI.";
             }
-            if (resultado.totalArquivadasDrive() >= resultado.totalComDocumento()) {
+            // Conclusão por conjunto (temMais já reflete se ainda faltam números no Drive),
+            // não por comparação de contagens.
+            if (!resultado.temMais()) {
                 return "Todas as movimentações com documento já estão no Drive.";
             }
-            if (resultado.temMais()) {
-                return "Nenhum arquivo novo enviado neste passo. Clique novamente para continuar o arquivamento.";
-            }
-            return "Nenhum arquivo enviado ao Drive nesta execução.";
+            return "Nenhum arquivo novo enviado neste passo. Clique novamente para continuar o arquivamento.";
         }
         String base = baixados + " arquivo(s) enviado(s) ao Drive.";
         if (resultado.temMais()) {

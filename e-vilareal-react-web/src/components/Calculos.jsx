@@ -1295,11 +1295,35 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     }
 
     const cab = rodadaAtual?.cabecalho || {};
-    const linhasTitulos = (rodadaAtual?.titulos || []).filter((t) =>
-      [t.dataVencimento, t.valorInicial, t.atualizacaoMonetaria, t.diasAtraso, t.juros, t.multa, t.honorarios, t.total].some(
-        (v) => String(v ?? '').trim() !== ''
-      )
-    );
+
+    // Word == PDF: linhas e totais devem vir do MESMO conjunto de títulos.
+    // Reaproveita a resolução do PDF (títulos da dimensão + busca do conjunto
+    // completo quando a paginação da API não carregou tudo), evitando que a
+    // tabela use `rodadaAtual.titulos` enquanto os totais usam `resumoGeral`.
+    let titulosDoc = titulosDimensao;
+    let resumoDoc = resumoGeral;
+    const totalEsperadoWord = titulosPaginationMeta?.total;
+    const qtdCarregadaWord = titulosDimensao.filter((t) => String(t?.valorInicial ?? '').trim() !== '').length;
+    if (
+      featureFlags.useApiCalculos &&
+      totalEsperadoWord != null &&
+      Number(totalEsperadoWord) > qtdCarregadaWord
+    ) {
+      try {
+        const rawFull = await fetchCalculoRodada(codigoClienteNorm, procNorm, dimensaoNorm);
+        if (rawFull?.titulos && Array.isArray(rawFull.titulos)) {
+          titulosDoc = rawFull.titulos;
+          resumoDoc = calcularResumoTitulosGrade(titulosDoc);
+        }
+      } catch (e) {
+        console.warn('[vilareal] Word: não foi possível carregar todos os títulos; usando estado local.', e);
+      }
+    }
+
+    // Mesmo critério do resumo (`calcularResumoTitulosGrade`): conta apenas
+    // títulos com `valorInicial` preenchido, garantindo que as linhas exibidas
+    // sejam exatamente as que entram na totalização.
+    const linhasTitulos = (titulosDoc || []).filter((t) => String(t?.valorInicial ?? '').trim() !== '');
 
     if (linhasTitulos.length === 0) {
       window.alert(
@@ -1329,7 +1353,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
         atualizacaoMonetaria: String(t.atualizacaoMonetaria || '').trim() || '—',
         dataAtualMonet: dataBaseStr,
         encargosContratuais: String(t.honorarios || '').trim() || '—',
-        total: String(t.total || '').trim() || '—',
+        total: String(t.total || '').trim() || calcularTotalTituloGrade(t),
       };
     });
 
@@ -1342,11 +1366,11 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
         colunaAtualizacaoTitulo: `Atualização Monetária\n(${indiceDoc})`,
         linhas: linhasWord,
         totais: {
-          principal: resumoGeral.valorInicial,
-          juros: resumoGeral.juros,
-          multa: resumoGeral.multa,
-          encargos: resumoGeral.honorarios,
-          geral: resumoGeral.total,
+          principal: resumoDoc.valorInicial,
+          juros: resumoDoc.juros,
+          multa: resumoDoc.multa,
+          encargos: resumoDoc.honorarios,
+          geral: resumoDoc.total,
         },
       });
       const safeData =

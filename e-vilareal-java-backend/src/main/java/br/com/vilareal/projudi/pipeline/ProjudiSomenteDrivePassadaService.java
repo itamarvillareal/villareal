@@ -130,7 +130,10 @@ public class ProjudiSomenteDrivePassadaService {
                     .toList();
             Set<Integer> arquivadasApos = ProjudiDriveProgressivoUtil.extrairNumerosArquivados(nomesDriveApos);
             int totalArquivadasDrive = arquivadasApos.size();
-            boolean temMais = totalArquivadasDrive < comDoc.size();
+            // Conclusão por CONJUNTO: ainda há movimentação com documento cujo número não está
+            // no Drive? (não comparar contagens — lacunas podem coincidir em total).
+            boolean temMais =
+                    ProjudiDriveProgressivoUtil.contarFaltantesEmComDoc(comDoc, arquivadasApos) > 0;
 
             int movimentacoesTentadas = selecao.baixar().size();
             if (movimentacoesTentadas > 0 && arquivosEnviados == 0) {

@@ -95,6 +95,35 @@ class ProjudiDriveProgressivoUtilTest {
         assertThat(ProjudiDriveProgressivoUtil.contarJaArquivadasEmComDoc(comDoc, Set.of())).isZero();
     }
 
+    /**
+     * Lacuna NO MEIO do intervalo já arquivado (entre o menor e o maior): o backfill antigo
+     * (que só olhava {@code num < minArquivado}) deixava essas faltantes presas para sempre.
+     * Agora o backfill cobre qualquer faltante {@code <= maxArquivado}.
+     */
+    @Test
+    void lacunaNoMeio_eSelecionadaNoBackfill() {
+        List<MovimentacaoProjudi> comDoc = List.of(mov("30"), mov("26"), mov("22"), mov("10"));
+        Set<Integer> arquivadas = Set.of(30, 10); // faltam 26 e 22, ambas entre min(10) e max(30)
+
+        SelecaoProgressiva sel = ProjudiDriveProgressivoUtil.selecionarMovimentacoes(comDoc, arquivadas, 10);
+
+        assertThat(sel.novasTopo()).isEmpty();
+        assertThat(sel.backfill()).containsExactly(mov("26"), mov("22"));
+        assertThat(sel.baixar()).containsExactly(mov("26"), mov("22"));
+    }
+
+    @Test
+    void contarFaltantesEmComDoc_porConjuntoIgnorandoNumerosForaDoComDoc() {
+        List<MovimentacaoProjudi> comDoc = List.of(mov("30"), mov("26"), mov("22"));
+        // Drive tem 30 e um número estranho (99) que não está no comDoc: faltam 26 e 22.
+        assertThat(ProjudiDriveProgressivoUtil.contarFaltantesEmComDoc(comDoc, Set.of(30, 99)))
+                .isEqualTo(2);
+        assertThat(ProjudiDriveProgressivoUtil.contarFaltantesEmComDoc(comDoc, Set.of(30, 26, 22)))
+                .isZero();
+        assertThat(ProjudiDriveProgressivoUtil.contarFaltantesEmComDoc(comDoc, Set.of())).isEqualTo(3);
+        assertThat(ProjudiDriveProgressivoUtil.contarFaltantesEmComDoc(List.of(), Set.of(1))).isZero();
+    }
+
     @Test
     void filtrarComDocDesc_ordemDescPorNumeroMov() {
         List<MovimentacaoProjudi> raw = List.of(

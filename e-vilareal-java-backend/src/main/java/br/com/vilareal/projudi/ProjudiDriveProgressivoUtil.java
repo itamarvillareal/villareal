@@ -59,30 +59,30 @@ public final class ProjudiDriveProgressivoUtil {
         Set<Integer> arquivadasSeguras = arquivadas != null ? arquivadas : Set.of();
         int passo = passoBackfill > 0 ? passoBackfill : 10;
 
-        List<ProjudiTeorService.MovimentacaoProjudi> novasTopo = new ArrayList<>();
-        if (!arquivadasSeguras.isEmpty()) {
-            int maxArquivado = Collections.max(arquivadasSeguras);
-            for (ProjudiTeorService.MovimentacaoProjudi mov : comDocDesc) {
-                int num = parseNumeroMov(mov.numero());
-                if (!arquivadasSeguras.contains(num) && num > maxArquivado) {
-                    novasTopo.add(mov);
-                }
+        // Movimentações com documento ainda não arquivadas no Drive (comDocDesc já vem
+        // ordenado por número decrescente — as mais novas primeiro). Considera somente
+        // números válidos (>0); número não parseável não é rastreável por nome de arquivo.
+        List<ProjudiTeorService.MovimentacaoProjudi> faltantes = new ArrayList<>();
+        for (ProjudiTeorService.MovimentacaoProjudi mov : comDocDesc) {
+            int num = parseNumeroMov(mov.numero());
+            if (num > 0 && !arquivadasSeguras.contains(num)) {
+                faltantes.add(mov);
             }
         }
 
+        // Novas no topo (acima do maior já arquivado): baixadas integralmente.
+        // Backfill: TODAS as faltantes restantes (inclusive lacunas no meio do intervalo
+        // já arquivado, não só abaixo do menor), as mais novas primeiro, até o passo.
+        List<ProjudiTeorService.MovimentacaoProjudi> novasTopo = new ArrayList<>();
         List<ProjudiTeorService.MovimentacaoProjudi> candidatosBackfill = new ArrayList<>();
         if (arquivadasSeguras.isEmpty()) {
-            for (ProjudiTeorService.MovimentacaoProjudi mov : comDocDesc) {
-                int num = parseNumeroMov(mov.numero());
-                if (!arquivadasSeguras.contains(num)) {
-                    candidatosBackfill.add(mov);
-                }
-            }
+            candidatosBackfill.addAll(faltantes);
         } else {
-            int minArquivado = Collections.min(arquivadasSeguras);
-            for (ProjudiTeorService.MovimentacaoProjudi mov : comDocDesc) {
-                int num = parseNumeroMov(mov.numero());
-                if (!arquivadasSeguras.contains(num) && num < minArquivado) {
+            int maxArquivado = Collections.max(arquivadasSeguras);
+            for (ProjudiTeorService.MovimentacaoProjudi mov : faltantes) {
+                if (parseNumeroMov(mov.numero()) > maxArquivado) {
+                    novasTopo.add(mov);
+                } else {
                     candidatosBackfill.add(mov);
                 }
             }
@@ -95,18 +95,14 @@ public final class ProjudiDriveProgressivoUtil {
         List<ProjudiTeorService.MovimentacaoProjudi> baixar = new ArrayList<>();
         LinkedHashSet<Integer> vistos = new LinkedHashSet<>();
         for (ProjudiTeorService.MovimentacaoProjudi mov : novasTopo) {
-            int num = parseNumeroMov(mov.numero());
-            if (arquivadasSeguras.contains(num) || !vistos.add(num)) {
-                continue;
+            if (vistos.add(parseNumeroMov(mov.numero()))) {
+                baixar.add(mov);
             }
-            baixar.add(mov);
         }
         for (ProjudiTeorService.MovimentacaoProjudi mov : backfill) {
-            int num = parseNumeroMov(mov.numero());
-            if (arquivadasSeguras.contains(num) || !vistos.add(num)) {
-                continue;
+            if (vistos.add(parseNumeroMov(mov.numero()))) {
+                baixar.add(mov);
             }
-            baixar.add(mov);
         }
 
         return new SelecaoProgressiva(
@@ -127,6 +123,27 @@ public final class ProjudiDriveProgressivoUtil {
                 .map(m -> parseNumeroMov(m.numero()))
                 .filter(arquivadas::contains)
                 .distinct()
+                .count();
+    }
+
+    /**
+     * Quantas movimentações com documento (por número distinto, >0) ainda NÃO estão no Drive.
+     *
+     * <p>Decide a conclusão do arquivamento por <b>conjunto</b> (quais números faltam), não por
+     * comparação de contagens — evita declarar "tudo arquivado" quando há lacunas mas o total
+     * coincide.</p>
+     */
+    public static int contarFaltantesEmComDoc(
+            List<ProjudiTeorService.MovimentacaoProjudi> comDocDesc, Set<Integer> arquivadas) {
+        if (comDocDesc == null || comDocDesc.isEmpty()) {
+            return 0;
+        }
+        Set<Integer> arquivadasSeguras = arquivadas != null ? arquivadas : Set.of();
+        return (int) comDocDesc.stream()
+                .map(m -> parseNumeroMov(m.numero()))
+                .filter(n -> n > 0)
+                .distinct()
+                .filter(n -> !arquivadasSeguras.contains(n))
                 .count();
     }
 
