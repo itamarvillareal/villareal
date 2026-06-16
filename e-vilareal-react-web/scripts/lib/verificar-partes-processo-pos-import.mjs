@@ -21,9 +21,10 @@ export function chaveParteImport(polo, ordem, pessoaId) {
 
 /**
  * @param {import('./proc-processo-partes-txt.mjs').ParteProcessoTxt} pt
+ * @param {string | null | undefined} [papelCliente]
  */
-export function chaveParteTxt(pt) {
-  const body = parteTxtParaApiBody(pt);
+export function chaveParteTxt(pt, papelCliente = null) {
+  const body = parteTxtParaApiBody(pt, papelCliente);
   return chaveParteImport(body.polo, body.ordem, body.pessoaId);
 }
 
@@ -37,8 +38,9 @@ export function chaveParteApi(apiParte) {
 /**
  * @param {import('./proc-processo-partes-txt.mjs').ParteProcessoTxt[]} partesTxt
  * @param {object[]} partesApi
+ * @param {string | null | undefined} [papelCliente]
  */
-export function verificarPartesTxtContraApi(partesTxt, partesApi) {
+export function verificarPartesTxtContraApi(partesTxt, partesApi, papelCliente = null) {
   const apiPorChave = new Map();
   for (const p of partesApi || []) {
     apiPorChave.set(chaveParteApi(p), p);
@@ -48,7 +50,7 @@ export function verificarPartesTxtContraApi(partesTxt, partesApi) {
   const faltas = [];
   for (const pt of partesTxt || []) {
     if (pt.pessoaId == null) continue;
-    const ck = chaveParteTxt(pt);
+    const ck = chaveParteTxt(pt, papelCliente);
     if (!apiPorChave.has(ck)) {
       faltas.push({
         chave: ck,

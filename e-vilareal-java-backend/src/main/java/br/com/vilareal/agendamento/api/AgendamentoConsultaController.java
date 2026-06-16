@@ -2,9 +2,11 @@ package br.com.vilareal.agendamento.api;
 
 import br.com.vilareal.agendamento.api.dto.AgendamentoRequest;
 import br.com.vilareal.agendamento.api.dto.AgendamentoResponse;
+import br.com.vilareal.agendamento.api.dto.ConsultaExtraPainelResponse;
 import br.com.vilareal.agendamento.api.dto.ExecucaoResponse;
 import br.com.vilareal.agendamento.api.dto.PainelItemResponse;
 import br.com.vilareal.agendamento.application.AgendamentoConsultaApplicationService;
+import br.com.vilareal.agendamento.application.ConsultaPeriodicaMonitorScheduler;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -23,15 +25,25 @@ import java.util.List;
 public class AgendamentoConsultaController {
 
     private final AgendamentoConsultaApplicationService agendamentoConsultaApplicationService;
+    private final ConsultaPeriodicaMonitorScheduler consultaPeriodicaMonitorScheduler;
 
-    public AgendamentoConsultaController(AgendamentoConsultaApplicationService agendamentoConsultaApplicationService) {
+    public AgendamentoConsultaController(
+            AgendamentoConsultaApplicationService agendamentoConsultaApplicationService,
+            ConsultaPeriodicaMonitorScheduler consultaPeriodicaMonitorScheduler) {
         this.agendamentoConsultaApplicationService = agendamentoConsultaApplicationService;
+        this.consultaPeriodicaMonitorScheduler = consultaPeriodicaMonitorScheduler;
     }
 
     @GetMapping("/painel")
     @Operation(summary = "Painel de bancada — agendamentos ativos com status resumido")
     public List<PainelItemResponse> painel() {
         return agendamentoConsultaApplicationService.montarPainel();
+    }
+
+    @PostMapping("/painel/consultar-agora")
+    @Operation(summary = "Consulta extra imediata de todos os processos do painel (PROJUDI)")
+    public ConsultaExtraPainelResponse consultarPainelAgora() {
+        return consultaPeriodicaMonitorScheduler.executarConsultaExtraPainel();
     }
 
     @PutMapping("/{id}")

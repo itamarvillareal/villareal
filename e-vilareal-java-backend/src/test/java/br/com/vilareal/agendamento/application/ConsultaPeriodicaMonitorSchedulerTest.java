@@ -70,6 +70,40 @@ class ConsultaPeriodicaMonitorSchedulerTest {
     }
 
     @Test
+    void executarConsultaExtraPainel_gateOcupado_retornaOcupado() {
+        when(orquestradorGate.tryExecutarComRetorno(eq("consulta-periodica-painel-extra"), any()))
+                .thenReturn(java.util.Optional.empty());
+
+        var r = scheduler.executarConsultaExtraPainel();
+
+        assertThat(r.isOcupado()).isTrue();
+        verify(agendamentoConsultaRepository, never()).findByAtivoTrueComProcesso();
+    }
+
+    @Test
+    void executarConsultaExtraPainel_consultaProcessosDistintos() {
+        AgendamentoConsultaEntity ag1 = agendamento(1L, 1076L);
+        AgendamentoConsultaEntity ag2 = agendamento(2L, 2000L);
+
+        when(orquestradorGate.tryExecutarComRetorno(eq("consulta-periodica-painel-extra"), any()))
+                .thenAnswer(inv -> {
+                    java.util.function.Supplier<?> supplier = inv.getArgument(1);
+                    return java.util.Optional.of(supplier.get());
+                });
+        when(agendamentoConsultaRepository.findByAtivoTrueComProcesso()).thenReturn(List.of(ag1, ag2));
+        when(monitoramentoMovimentacoesService.executarMonitoramento(any(), eq(OrigemConsulta.MANUAL), any()))
+                .thenReturn(resultado(StatusExecucao.SUCESSO_SEM_NOVIDADE));
+
+        var r = scheduler.executarConsultaExtraPainel();
+
+        assertThat(r.isOcupado()).isFalse();
+        assertThat(r.getProcessosConsultados()).isEqualTo(2);
+        assertThat(r.getAgendamentosAtualizados()).isEqualTo(2);
+        verify(monitoramentoMovimentacoesService, times(2)).executarMonitoramento(any(), eq(OrigemConsulta.MANUAL), any());
+        verify(agendamentoConsultaRepository, times(2)).save(any());
+    }
+
+    @Test
     void executarRodada_gateOcupado_naoChamaNucleo() {
         when(orquestradorGate.tryExecutar(eq("consulta-periodica-monitor"), any(Runnable.class)))
                 .thenReturn(false);

@@ -1,5 +1,6 @@
 package br.com.vilareal.agendamento.application;
 
+import br.com.vilareal.agendamento.api.dto.ConsultaExtraPainelResponse;
 import br.com.vilareal.agendamento.api.dto.ResultadoMonitoramentoResponse;
 import br.com.vilareal.agendamento.domain.OrigemConsulta;
 import br.com.vilareal.agendamento.domain.StatusExecucao;
@@ -19,7 +20,12 @@ import org.springframework.util.StringUtils;
 
 import java.time.Clock;
 import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 
 /**
  * Scheduler da consulta periódica (Fase 3 passo 4/4.1): gate + warm-up + N vencidos; falha → backoff curto.
@@ -71,6 +77,124 @@ public class ConsultaPeriodicaMonitorScheduler {
         if (!executou) {
             log.debug("Consulta periódica: robô PROJUDI ocupado; tick ignorado (vencidos permanecem).");
         }
+    }
+
+    /**
+     * Consulta imediata de todos os processos do painel (ação «Atualizar» na UI).
+     * Uma listagem PROJUDI por processo; todos os agendamentos ativos do processo são reagendados.
+     */
+    public ConsultaExtraPainelResponse executarConsultaExtraPainel() {
+        Optional<ConsultaExtraPainelResponse> resultado = orquestradorGate.tryExecutarComRetorno(
+                "consulta-periodica-painel-extra", this::processarConsultaExtraPainelComSessao);
+        return resultado.orElseGet(ConsultaExtraPainelResponse::ocupado);
+    }
+
+    private ConsultaExtraPainelResponse processarConsultaExtraPainelComSessao() {
+        LocalDateTime agora = agora();
+        List<AgendamentoConsultaEntity> agendamentos = agendamentoConsultaRepository.findByAtivoTrueComProcesso();
+        if (agendamentos.isEmpty()) {
+            return ConsultaExtraPainelResponse.vazio();
+        }
+
+        try {
+            sessionService.getSessao(credencialIdPadrao);
+        } catch (ProjudiOtpGmailIndisponivelException e) {
+            log.warn(
+                    "Consulta extra do painel: rodada pulada — Gmail indisponível para OTP PROJUDI (credencial={}): {}",
+                    credencialIdPadrao,
+                    e.getMessage());
+            return ConsultaExtraPainelResponse.vazio();
+        } catch (Exception e) {
+            tratarFalhaWarmUpRodada(agendamentos, agora, e);
+            return ConsultaExtraPainelResponse.builder()
+                    .ocupado(false)
+                    .processosConsultados(0)
+                    .agendamentosAtualizados(agendamentos.size())
+                    .comNovidade(0)
+                    .comErro(contarProcessosDistintos(agendamentos))
+                    .build();
+        }
+
+        Map<Long, ResultadoMonitoramentoResponse> resultadoPorProcesso = new HashMap<>();
+        Map<Long, String> erroPorProcesso = new HashMap<>();
+        Set<Long> processosConsultados = new LinkedHashSet<>();
+        int comNovidade = 0;
+        int comErro = 0;
+
+        for (AgendamentoConsultaEntity agendamento : agendamentos) {
+            ProcessoEntity processo = agendamento.getProcesso();
+            if (processo == null || processo.getId() == null) {
+                continue;
+            }
+            Long processoId = processo.getId();
+            if (processosConsultados.contains(processoId)) {
+                continue;
+            }
+            processosConsultados.add(processoId);
+
+            ResultadoMonitoramentoResponse resultado = null;
+            String erroExcecao = null;
+            try {
+                resultado = monitoramentoMovimentacoesService.executarMonitoramento(
+                        processo, OrigemConsulta.MANUAL, agendamento.getId());
+            } catch (Exception e) {
+                erroExcecao = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+                log.warn(
+                        "Consulta extra do painel: falha no monitor do processo {}: {}",
+                        processoId,
+                        erroExcecao);
+            }
+
+            if (resultado != null) {
+                resultadoPorProcesso.put(processoId, resultado);
+                if (resultado.getStatus() == StatusExecucao.SUCESSO_COM_NOVIDADE) {
+                    comNovidade++;
+                } else if (!AgendamentoConsultaReagendamento.isStatusSucesso(resultado.getStatus())) {
+                    comErro++;
+                }
+            } else {
+                erroPorProcesso.put(processoId, erroExcecao);
+                comErro++;
+            }
+        }
+
+        for (AgendamentoConsultaEntity agendamento : agendamentos) {
+            ProcessoEntity processo = agendamento.getProcesso();
+            if (processo == null || processo.getId() == null) {
+                continue;
+            }
+            Long processoId = processo.getId();
+            aplicarResultadoMonitorAoAgendamento(
+                    agendamento,
+                    agora,
+                    resultadoPorProcesso.get(processoId),
+                    erroPorProcesso.get(processoId));
+        }
+
+        log.info(
+                "Consulta extra do painel: {} processo(s), {} agendamento(s), {} com novidade, {} com erro.",
+                processosConsultados.size(),
+                agendamentos.size(),
+                comNovidade,
+                comErro);
+
+        return ConsultaExtraPainelResponse.builder()
+                .ocupado(false)
+                .processosConsultados(processosConsultados.size())
+                .agendamentosAtualizados(agendamentos.size())
+                .comNovidade(comNovidade)
+                .comErro(comErro)
+                .build();
+    }
+
+    private static int contarProcessosDistintos(List<AgendamentoConsultaEntity> agendamentos) {
+        Set<Long> ids = new LinkedHashSet<>();
+        for (AgendamentoConsultaEntity agendamento : agendamentos) {
+            if (agendamento.getProcesso() != null && agendamento.getProcesso().getId() != null) {
+                ids.add(agendamento.getProcesso().getId());
+            }
+        }
+        return ids.size();
     }
 
     private void processarVencidosComSessao() {
@@ -144,6 +268,14 @@ public class ConsultaPeriodicaMonitorScheduler {
                     erroExcecao);
         }
 
+        aplicarResultadoMonitorAoAgendamento(agendamento, agora, resultado, erroExcecao);
+    }
+
+    private void aplicarResultadoMonitorAoAgendamento(
+            AgendamentoConsultaEntity agendamento,
+            LocalDateTime agora,
+            ResultadoMonitoramentoResponse resultado,
+            String erroExcecao) {
         if (resultado != null && AgendamentoConsultaReagendamento.isStatusSucesso(resultado.getStatus())) {
             AgendamentoConsultaReagendamento.aplicarSucesso(agendamento, agora);
         } else {

@@ -8,7 +8,8 @@
  *   - Status ativo/inativo (`Gerais/…/Status.Processo<proc>.Processos.txt` — INATIVO → inativo; resto → ativo)
  *   - Histórico HC (`import-historico-local-txt.mjs`, em massa por cliente)
  *   - Vínculo imóvel `0.89.1` (por processo, via import-processo-txt: garantir imóvel por cliente+planilha + POST /api/imoveis/{id}/processos)
- *   - Partes do processo (`Proc/…/90` e `95` por proc) — `import-processo-partes-txt.mjs` (por defeito; `--sem-partes` omite)
+ *   - Partes do processo (`Proc/…/90` e `95` por proc) — `import-processo-partes-txt.mjs`
+ *     (90/95 = lado cliente/oposta no VBA; com `REQUERIDO` o polo jurídico é invertido na API)
  *   - Cálculos / débitos (`Calculos/…` → API rodadas) — `import-calculos-txt.mjs` (por defeito; `--sem-calculos` omite)
  *   - Processos em falta na API são criados automaticamente (stub) após pessoa/cliente existir na API
  *
@@ -753,7 +754,7 @@ async function main() {
   }
 
   if (!opts.semPartes) {
-    console.log('\n[5/6] Partes do processo (90/95 — não confundir com 151.1.0)…\n');
+    console.log('\n[5/6] Partes do processo (90/95 — slot VBA cliente/oposta; REQUERIDO inverte polo jurídico)…\n');
     const codePartes = executarImportPartes(opts);
     relatorio.etapas.partes = codePartes === 0 ? 'ok' : 'falhou';
     if (codePartes !== 0) {

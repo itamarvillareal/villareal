@@ -7,6 +7,7 @@ import {
   isNomeArquivoPessoaCliente151,
   POLO_PROCESSO_PARTE_CLIENTE,
   POLO_PROCESSO_PARTE_OPOSTA,
+  poloApiDesdeSlotVba,
   TXT_PESSOA_CLIENTE_CADASTRO,
 } from './legado-pessoa-cliente-vs-partes-processo.mjs';
 import {
@@ -53,6 +54,11 @@ function testLerPartesDir() {
   const body = parteTxtParaApiBody(autor);
   assert.equal(body.polo, POLO_PROCESSO_PARTE_CLIENTE);
   assert.equal(body.pessoaId, 1637);
+
+  const bodyRequerido = parteTxtParaApiBody(autor, 'REQUERIDO');
+  assert.equal(bodyRequerido.polo, POLO_PROCESSO_PARTE_OPOSTA);
+  assert.equal(poloApiDesdeSlotVba(POLO_PROCESSO_PARTE_CLIENTE, 'REQUERIDO'), 'REU');
+  assert.equal(poloApiDesdeSlotVba(POLO_PROCESSO_PARTE_OPOSTA, 'REQUERIDO'), 'AUTOR');
 }
 
 function main() {

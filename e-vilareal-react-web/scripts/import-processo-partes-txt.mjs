@@ -3,9 +3,10 @@
  * Importa **partes do processo** (várias pessoas por par cliente × proc) a partir de Proc/1000/…
  *
  * Fontes (VBA «Processos»):
- *   - {cod8}.90.{proc}.{NN} — Pessoa N Autor → polo AUTOR (parte cliente na UI)
- *   - {cod8}.95.{proc}.{NN} — Pessoa N Réu → polo REU (parte oposta)
+ *   - {cod8}.90.{proc}.{NN} — slot parte cliente no formulário VBA
+ *   - {cod8}.95.{proc}.{NN} — slot parte oposta
  *   - {cod8}.91.{proc}.{NN} — índice endereço (qualificação)
+ *   Polo jurídico na API: `REQUERENTE` → 90=AUTOR, 95=REU; `REQUERIDO` → 90=REU, 95=AUTOR
  *
  * **Não** importa:
  *   - `Gerais/…/{cod8}.151.1.0.txt` — pessoa do cadastro Clientes (`import-real` etapa 1)
@@ -28,6 +29,7 @@ import { formatCod8 } from './lib/historico-local-txt-paths.mjs';
 import { TXT_PESSOA_CLIENTE_CADASTRO } from './lib/legado-pessoa-cliente-vs-partes-processo.mjs';
 import {
   lerPartesProcessoTxt,
+  lerPapelClienteProcessoTxt,
   listarProcessosComPartesTxt,
 } from './lib/proc-processo-partes-txt.mjs';
 import { sincronizarPartesProcesso } from './lib/proc-processo-partes-api.mjs';
@@ -169,7 +171,14 @@ async function main() {
       continue;
     }
 
-    const stats = await sincronizarPartesProcesso(opts, token, proc.id, partes, opts.aplicar);
+    const stats = await sincronizarPartesProcesso(
+      opts,
+      token,
+      proc.id,
+      partes,
+      opts.aplicar,
+      lerPapelClienteProcessoTxt(opts.base, opts.cliente, procNum) ?? proc.papelCliente ?? null
+    );
     totais.criados += stats.criados + stats.dryRunCriar;
     totais.atualizados += stats.atualizados + stats.dryRunAtualizar;
     totais.iguais += stats.iguais;

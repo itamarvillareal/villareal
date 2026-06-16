@@ -7,6 +7,11 @@ import {
   assinaturaParteApi,
   parteTxtParaApiBody,
 } from './proc-processo-partes-txt.mjs';
+import { normalizarPapelClienteImport } from './legado-pessoa-cliente-vs-partes-processo.mjs';
+import {
+  analisarCorrecoesPartesRequerido,
+  aplicarCorrecoesPartesRequerido,
+} from './corrigir-partes-requerido-txt.mjs';
 import { verificarPartesTxtContraApi } from './verificar-partes-processo-pos-import.mjs';
 
 export const ORIGEM_IMPORT_PARTES = 'import-txt-partes-local';
@@ -81,8 +86,49 @@ async function putParte(baseUrl, token, processoId, parteId, body) {
  * @param {number} processoId
  * @param {import('./proc-processo-partes-txt.mjs').ParteProcessoTxt[]} partesTxt
  * @param {boolean} aplicar
+ * @param {string | null | undefined} [papelCliente]
  */
-export async function sincronizarPartesProcesso(opts, token, processoId, partesTxt, aplicar) {
+export async function sincronizarPartesProcesso(opts, token, processoId, partesTxt, aplicar, papelCliente = null) {
+  const papel = normalizarPapelClienteImport(papelCliente);
+  if (papel === 'REQUERIDO') {
+    const partesApi = await listarPartes(opts.baseUrl, token, processoId);
+    const { correcoes, ok } = analisarCorrecoesPartesRequerido(partesTxt, partesApi);
+    if (correcoes.length === 0) {
+      return {
+        criados: 0,
+        atualizados: 0,
+        iguais: ok,
+        puladosSemPessoa: 0,
+        puladosSemConteudo: 0,
+        falhas: 0,
+        verificacaoFalhas: 0,
+        dryRunCriar: 0,
+        dryRunAtualizar: 0,
+      };
+    }
+    const st = await aplicarCorrecoesPartesRequerido(
+      opts,
+      token,
+      processoId,
+      partesTxt,
+      correcoes,
+      aplicar
+    );
+    return {
+      criados: st.criados,
+      atualizados: st.invertidos,
+      iguais: ok,
+      puladosSemPessoa: 0,
+      puladosSemConteudo: 0,
+      falhas: st.falhas,
+      verificacaoFalhas: st.falhas > 0 ? 1 : 0,
+      dryRunCriar: st.dryRunCriar,
+      dryRunAtualizar: st.dryRunInvertir,
+      duplicadosRemovidos: st.duplicadosRemovidos,
+      dryRunRemover: st.dryRunRemover,
+    };
+  }
+
   const stats = {
     criados: 0,
     atualizados: 0,
@@ -122,7 +168,7 @@ export async function sincronizarPartesProcesso(opts, token, processoId, partesT
       }
     }
 
-    const body = parteTxtParaApiBody(pt);
+    const body = parteTxtParaApiBody(pt, papelCliente);
     const slotKey = `${body.polo}|${body.ordem}`;
     const atual = porSlot.get(slotKey);
 
@@ -179,7 +225,7 @@ export async function sincronizarPartesProcesso(opts, token, processoId, partesT
 
   if (aplicar && partesTxt.length > 0) {
     const apiPos = await listarPartes(opts.baseUrl, token, processoId);
-    const ver = verificarPartesTxtContraApi(partesTxt, apiPos);
+    const ver = verificarPartesTxtContraApi(partesTxt, apiPos, papelCliente);
     if (!ver.ok) {
       stats.verificacaoFalhas = ver.faltas.length;
       stats.falhas += ver.faltas.length;

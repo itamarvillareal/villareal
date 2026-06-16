@@ -6,9 +6,9 @@
  *
  * | Campo VBA              | Ficheiro                          | Polo API (UI)     |
  * |------------------------|-----------------------------------|-------------------|
- * | N Pessoa N Autor       | {cod8}.90.{proc}.{NN}             | AUTOR (= cliente) |
- * | N End Pessoa N Autor   | {cod8}.91.{proc}.{NN}             | (qualificação)    |
- * | N Pessoa N Réu         | {cod8}.95.{proc}.{NN}             | REU (= oposta)    |
+ * | N Pessoa N Autor (slot cliente VBA) | {cod8}.90.{proc}.{NN} | polo API via papel_cliente |
+ * | N End Pessoa N Autor                | {cod8}.91.{proc}.{NN} | (qualificação)             |
+ * | N Pessoa N Réu (slot oposta VBA)    | {cod8}.95.{proc}.{NN} | polo API via papel_cliente |
  *
  * Títulos `1.N` / `6.N` não são importados nesta fase.
  */
@@ -27,8 +27,12 @@ import { resolverBaseBancoDados } from './gerais-fase-processo-txt.mjs';
 import {
   POLO_PROCESSO_PARTE_CLIENTE,
   POLO_PROCESSO_PARTE_OPOSTA,
-  poloApiParaLadoVba,
+  poloApiDesdeSlotVba,
 } from './legado-pessoa-cliente-vs-partes-processo.mjs';
+import {
+  SEMANTIC_KEYS,
+  normalizarPapelClienteTxt,
+} from './proc-processo-semantic-txt.mjs';
 
 /** Remapeamentos legado planilha → id pessoa na API (igual import-processos-complementar). */
 export const REMAPEAR_PESSOA_PARTE = new Map([[9895, 1510]]);
@@ -195,9 +199,25 @@ export function listarProcessosComPartesTxt(baseBanco, codNum) {
 }
 
 /**
- * @param {ParteProcessoTxt} p
+ * @param {string} baseBanco
+ * @param {number} codNum
+ * @param {number} procNum
+ * @returns {'REQUERENTE' | 'REQUERIDO' | null}
  */
-export function parteTxtParaApiBody(p) {
+export function lerPapelClienteProcessoTxt(baseBanco, codNum, procNum) {
+  const cod8 = formatCod8(codNum);
+  const dir = dirProcCliente(baseBanco, codNum);
+  const nome = `${cod8}.${SEMANTIC_KEYS.PAPEL_CLIENTE}.Processo${procNum}.Processos.txt`;
+  const abs = path.join(dir, nome);
+  if (!fs.existsSync(abs)) return null;
+  return normalizarPapelClienteTxt(readOneLineFile(abs));
+}
+
+/**
+ * @param {ParteProcessoTxt} p
+ * @param {string | null | undefined} [papelCliente]
+ */
+export function parteTxtParaApiBody(p, papelCliente = null) {
   const qualificacao =
     p.enderecoRef != null && String(p.enderecoRef).trim()
       ? `endereco:${String(p.enderecoRef).trim()}`
@@ -205,7 +225,7 @@ export function parteTxtParaApiBody(p) {
   return {
     pessoaId: p.pessoaId ?? null,
     nomeLivre: null,
-    polo: poloApiParaLadoVba(p.ladoVba),
+    polo: poloApiDesdeSlotVba(p.ladoVba, papelCliente),
     qualificacao,
     ordem: p.ordem,
     advogadoPessoaIds: [],

@@ -25,6 +25,7 @@ import {
 import {
   exportarConsultasPeriodicasCsv,
   importarConsultasPeriodicasCsv,
+  consultarPainelAgora,
   listarPainel,
 } from '../../repositories/agendamentoRepository.js';
 import { buscarProcessoPorId } from '../../repositories/processosRepository.js';
@@ -61,6 +62,38 @@ export function ConsultasPeriodicasPainel() {
       setCarregando(false);
     }
   }, []);
+
+  const atualizarPainel = useCallback(async () => {
+    if (carregando || operacaoChave != null) return;
+    setOperacaoChave('atualizar-painel');
+    setApiError('');
+    try {
+      const resultado = await consultarPainelAgora();
+      if (resultado?.ocupado) {
+        setToast('Consulta em andamento no PROJUDI — tente em instantes.');
+      } else {
+        const processos = Number(resultado?.processosConsultados ?? 0);
+        const novidade = Number(resultado?.comNovidade ?? 0);
+        const erros = Number(resultado?.comErro ?? 0);
+        if (processos === 0) {
+          setToast('Nenhum processo monitorado para consultar.');
+        } else if (novidade > 0) {
+          setToast(
+            `Consulta concluída: ${processos} processo(s), ${novidade} com novidade${erros > 0 ? `, ${erros} com erro` : ''}.`,
+          );
+        } else if (erros > 0) {
+          setToast(`Consulta concluída: ${processos} processo(s), ${erros} com erro.`);
+        } else {
+          setToast(`Consulta concluída: ${processos} processo(s), sem novidade.`);
+        }
+      }
+      await recarregarPainel();
+    } catch (e) {
+      setApiError(e?.message || 'Falha ao atualizar painel de consultas periódicas.');
+    } finally {
+      setOperacaoChave(null);
+    }
+  }, [carregando, operacaoChave, recarregarPainel]);
 
   useEffect(() => {
     void recarregarPainel();
@@ -215,11 +248,12 @@ export function ConsultasPeriodicasPainel() {
           />
           <button
             type="button"
-            onClick={() => void recarregarPainel()}
+            onClick={() => void atualizarPainel()}
             disabled={carregando || operacaoChave != null}
             className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 dark:border-white/10 text-sm hover:bg-white/80 dark:hover:bg-white/5 disabled:opacity-50"
+            title="Consulta PROJUDI de todos os processos monitorados e atualiza o painel"
           >
-            {carregando ? (
+            {operacaoChave === 'atualizar-painel' || carregando ? (
               <Loader2 className="w-4 h-4 animate-spin" aria-hidden />
             ) : (
               <RefreshCw className="w-4 h-4" aria-hidden />

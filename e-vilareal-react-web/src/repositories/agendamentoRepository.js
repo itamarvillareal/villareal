@@ -38,6 +38,20 @@ export async function listarPainel() {
   return request('/api/agendamentos/painel');
 }
 
+/**
+ * Dispara consulta PROJUDI imediata de todos os processos monitorados no painel.
+ * @returns {Promise<{
+ *   ocupado?: boolean,
+ *   processosConsultados?: number,
+ *   agendamentosAtualizados?: number,
+ *   comNovidade?: number,
+ *   comErro?: number,
+ * }>}
+ */
+export async function consultarPainelAgora(opts = {}) {
+  return request('/api/agendamentos/painel/consultar-agora', { method: 'POST', signal: opts.signal });
+}
+
 /** @returns {Promise<object[]>} */
 export async function listarAgendamentosProcesso(processoId) {
   const id = exigirProcessoId(processoId);
