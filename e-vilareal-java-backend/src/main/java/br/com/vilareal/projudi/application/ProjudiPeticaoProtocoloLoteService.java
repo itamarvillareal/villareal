@@ -5,9 +5,6 @@ import br.com.vilareal.projudi.api.dto.PreviaProtocoloResponse.ArquivoPreviaDto;
 import br.com.vilareal.projudi.api.dto.PreviaProtocoloResponse.JuntadaPreviaDto;
 import br.com.vilareal.projudi.api.dto.ValidarProtocoloResponse;
 import br.com.vilareal.projudi.api.dto.ValidarProtocoloResponse.JuntadaValidacaoDto;
-import br.com.vilareal.processo.application.ProcessoMovimentacoesDriveService;
-import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
-import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
 import br.com.vilareal.projudi.ProjudiOrquestradorGate;
 import br.com.vilareal.projudi.ProjudiPeticaoService;
 import br.com.vilareal.projudi.ProjudiPeticaoService.ArquivoPeticao;
@@ -28,12 +25,9 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 
 @Service
 public class ProjudiPeticaoProtocoloLoteService {
@@ -51,8 +45,6 @@ public class ProjudiPeticaoProtocoloLoteService {
     private final ProjudiPeticaoService peticaoService;
     private final ProjudiPeticaoProtocoloEstadoService estadoService;
     private final ProjudiOrquestradorGate orquestradorGate;
-    private final ProcessoRepository processoRepository;
-    private final ProcessoMovimentacoesDriveService movimentacoesDriveService;
     private final Path storeDir;
 
     public ProjudiPeticaoProtocoloLoteService(
@@ -61,16 +53,12 @@ public class ProjudiPeticaoProtocoloLoteService {
             ProjudiPeticaoService peticaoService,
             ProjudiPeticaoProtocoloEstadoService estadoService,
             ProjudiOrquestradorGate orquestradorGate,
-            ProcessoRepository processoRepository,
-            ProcessoMovimentacoesDriveService movimentacoesDriveService,
             @Value("${projudi.peticao.store-dir:/Users/itamar/projudi-peticoes}") String storeDirConfig) {
         this.peticaoRepository = peticaoRepository;
         this.registroService = registroService;
         this.peticaoService = peticaoService;
         this.estadoService = estadoService;
         this.orquestradorGate = orquestradorGate;
-        this.processoRepository = processoRepository;
-        this.movimentacoesDriveService = movimentacoesDriveService;
         this.storeDir = Path.of(storeDirConfig.trim());
     }
 
@@ -88,70 +76,7 @@ public class ProjudiPeticaoProtocoloLoteService {
                     HttpStatus.CONFLICT,
                     "Robô PROJUDI ocupado (consulta automática em andamento). Aguarde alguns minutos e tente novamente.");
         }
-        List<ResultadoItemLote> resultados = resultado.get();
-        // Etapa final do protocolo: arquivar no Drive o que foi peticionado (rotina «Obter movimentações»),
-        // fora do lock do robô e sem afetar o resultado do protocolo em caso de falha.
-        obterMovimentacoesAposProtocolo(resultados);
-        return resultados;
-    }
-
-    /**
-     * Para cada processo com ao menos uma petição PROTOCOLADA, executa a rotina «Obter movimentações»
-     * (a mesma do botão), arquivando no Drive os documentos recém-peticionados. Roda de forma
-     * <strong>assíncrona</strong> para não bloquear a resposta do protocolo (evita timeout 504 no proxy).
-     * Best-effort: qualquer falha é apenas logada e não interfere no resultado do protocolo já concluído.
-     */
-    private void obterMovimentacoesAposProtocolo(List<ResultadoItemLote> resultados) {
-        Set<String> processosProtocolados = new LinkedHashSet<>();
-        for (ResultadoItemLote r : resultados) {
-            if (r != null && RESULTADO_PROTOCOLADA.equals(r.resultado()) && StringUtils.hasText(r.numeroProcesso())) {
-                processosProtocolados.add(r.numeroProcesso().trim());
-            }
-        }
-        if (processosProtocolados.isEmpty()) {
-            return;
-        }
-        CompletableFuture.runAsync(() -> {
-            for (String numeroProcesso : processosProtocolados) {
-                try {
-                    Long processoId = processoRepository
-                            .findByNumeroCnj(numeroProcesso)
-                            .map(ProcessoEntity::getId)
-                            .orElse(null);
-                    if (processoId == null) {
-                        log.warn(
-                                "Pós-protocolo: processo não encontrado por CNJ {} — movimentações não atualizadas no Drive.",
-                                numeroProcesso);
-                        continue;
-                    }
-                    log.info(
-                            "Pós-protocolo (async): obtendo movimentações do processo {} (id={}) para arquivar no Drive.",
-                            numeroProcesso,
-                            processoId);
-                    // Respeita o single-flight do robô PROJUDI: aguarda o lock (até 2 min) em vez de abrir
-                    // uma sessão concorrente. Se o robô seguir ocupado, a consulta automática arquiva depois.
-                    Optional<Boolean> executado = orquestradorGate.executarComRetornoAguardando(
-                            "peticao/pos-protocolo-movimentacoes",
-                            Duration.ofMinutes(2),
-                            () -> {
-                                movimentacoesDriveService.executar(processoId);
-                                return Boolean.TRUE;
-                            });
-                    if (executado.isEmpty()) {
-                        log.info(
-                                "Pós-protocolo (async): robô PROJUDI ocupado — movimentações do processo {} ficarão para "
-                                        + "a consulta automática / botão manual.",
-                                numeroProcesso);
-                    }
-                } catch (RuntimeException e) {
-                    log.error(
-                            "Pós-protocolo (async): falha ao obter movimentações do processo {} (não bloqueia o protocolo): {}",
-                            numeroProcesso,
-                            e.getMessage(),
-                            e);
-                }
-            }
-        });
+        return resultado.get();
     }
 
     public List<ResultadoItemLote> protocolarProcesso(String numeroProcesso) {
