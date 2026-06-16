@@ -4,6 +4,7 @@ import br.com.vilareal.documento.GoogleDriveService;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.projudi.ProjudiDriveProgressivoUtil;
 import br.com.vilareal.projudi.ProjudiOrquestradorErroUtil;
+import br.com.vilareal.projudi.ProjudiOrquestradorGate;
 import br.com.vilareal.projudi.ProjudiOrquestradorService;
 import br.com.vilareal.projudi.ProjudiTeorService;
 import br.com.vilareal.publicacao.application.PublicacaoDriveAndamentosService;
@@ -31,6 +32,7 @@ public class ProjudiSomenteDrivePassadaService {
     private final ProjudiTeorService teorService;
     private final GoogleDriveService googleDriveService;
     private final PublicacaoDriveAndamentosService publicacaoDriveAndamentosService;
+    private final ProjudiOrquestradorGate orquestradorGate;
     private final int passoBackfill;
     private final long delayMsDownload;
 
@@ -40,6 +42,7 @@ public class ProjudiSomenteDrivePassadaService {
             ProjudiTeorService teorService,
             GoogleDriveService googleDriveService,
             PublicacaoDriveAndamentosService publicacaoDriveAndamentosService,
+            ProjudiOrquestradorGate orquestradorGate,
             @Value("${projudi.orquestrador.passo-backfill:10}") int passoBackfill,
             @Value("${projudi.orquestrador.delay-ms-download:2000}") long delayMsDownload) {
         this.movimentacoesListagemService = movimentacoesListagemService;
@@ -47,6 +50,7 @@ public class ProjudiSomenteDrivePassadaService {
         this.teorService = teorService;
         this.googleDriveService = googleDriveService;
         this.publicacaoDriveAndamentosService = publicacaoDriveAndamentosService;
+        this.orquestradorGate = orquestradorGate;
         this.passoBackfill = passoBackfill > 0 ? passoBackfill : 10;
         this.delayMsDownload = delayMsDownload >= 0 ? delayMsDownload : 2000;
     }
@@ -109,6 +113,14 @@ public class ProjudiSomenteDrivePassadaService {
             int arquivosEnviados = 0;
             int idxMov = 0;
             for (ProjudiTeorService.MovimentacaoProjudi mov : selecao.baixar()) {
+                // Prioridade do utilizador (ex.: protocolo): cede o robô num ponto seguro. O restante
+                // é progressivo e será arquivado na próxima passada.
+                if (orquestradorGate.haPrioridadeAguardando()) {
+                    logDetalhes.add(numeroCnj + " | arquivamento cedeu o robô a um protocolo do "
+                            + "utilizador — restante será arquivado na próxima passada.");
+                    log.info("Arquivamento PROJUDI cedeu o robô (cnj={}) a operação prioritária.", numeroCnj);
+                    break;
+                }
                 if (idxMov > 0 && delayMsDownload > 0) {
                     Thread.sleep(delayMsDownload);
                 }

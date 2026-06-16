@@ -2,6 +2,7 @@ package br.com.vilareal.projudi.pipeline;
 
 import br.com.vilareal.documento.GoogleDriveService;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
+import br.com.vilareal.projudi.ProjudiOrquestradorGate;
 import br.com.vilareal.projudi.ProjudiOrquestradorPersistenciaService;
 import br.com.vilareal.projudi.ProjudiTeorService;
 import org.slf4j.Logger;
@@ -28,6 +29,7 @@ public class ProjudiModoCompletoPipeline {
     private final ProjudiPublicacaoMovimentacaoRegistrarService publicacaoRegistrarService;
     private final GoogleDriveService googleDriveService;
     private final ProjudiOrquestradorPersistenciaService persistenciaService;
+    private final ProjudiOrquestradorGate orquestradorGate;
     private final int intervaloHorasProximaConsulta;
 
     public ProjudiModoCompletoPipeline(
@@ -38,6 +40,7 @@ public class ProjudiModoCompletoPipeline {
             ProjudiPublicacaoMovimentacaoRegistrarService publicacaoRegistrarService,
             GoogleDriveService googleDriveService,
             ProjudiOrquestradorPersistenciaService persistenciaService,
+            ProjudiOrquestradorGate orquestradorGate,
             @Value("${projudi.orquestrador.intervalo-horas:12}") int intervaloHorasProximaConsulta) {
         this.teorService = teorService;
         this.movimentacoesListagemService = movimentacoesListagemService;
@@ -46,6 +49,7 @@ public class ProjudiModoCompletoPipeline {
         this.publicacaoRegistrarService = publicacaoRegistrarService;
         this.googleDriveService = googleDriveService;
         this.persistenciaService = persistenciaService;
+        this.orquestradorGate = orquestradorGate;
         this.intervaloHorasProximaConsulta = intervaloHorasProximaConsulta > 0
                 ? intervaloHorasProximaConsulta
                 : 12;
@@ -83,7 +87,17 @@ public class ProjudiModoCompletoPipeline {
         teoresNovos = classificacao.teoresNovos();
         teoresJaExistentes = classificacao.teoresJaExistentes();
 
+        boolean cedidoPorPrioridade = false;
         for (ProjudiTeorService.MovimentacaoProjudi mov : classificacao.novas()) {
+            // Prioridade do utilizador (ex.: protocolo): cede o robô num ponto seguro. O restante é
+            // progressivo e será arquivado na próxima passada da consulta automática.
+            if (orquestradorGate.haPrioridadeAguardando()) {
+                cedidoPorPrioridade = true;
+                detalhes.add(numeroCnj + " | consulta automática cedeu o robô a um protocolo do "
+                        + "utilizador — restante será arquivado na próxima passada.");
+                log.info("Consulta automática PROJUDI cedeu o robô (cnj={}) a operação prioritária.", numeroCnj);
+                break;
+            }
             String hashConteudo = ProjudiMovimentacaoHashUtil.hashConteudoMovimentacao(numeroCnj, mov.idMovi());
 
             List<ProjudiTeorService.ArquivoTeor> arquivos =
@@ -128,7 +142,9 @@ public class ProjudiModoCompletoPipeline {
             }
         }
 
-        if (!dryRun && processo != null) {
+        // Só reagenda a próxima consulta se a passada concluiu. Se cedeu por prioridade, mantém o
+        // processo elegível para ser retomado logo na próxima passada automática.
+        if (!dryRun && processo != null && !cedidoPorPrioridade) {
             persistenciaService.atualizarProximaConsulta(processo.getId(), intervaloHorasProximaConsulta);
         }
 
