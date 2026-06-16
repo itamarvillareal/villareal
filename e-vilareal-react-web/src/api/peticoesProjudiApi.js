@@ -144,8 +144,9 @@ export async function protocolarProcesso(numeroProcesso) {
  *
  * @param {number[]} peticaoIds
  * @param {(rows: ProjudiPeticao[]) => void} [onUpdate] chamado a cada atualização da lista
- * @param {{ intervaloMs?: number, limiteMs?: number, fetcher?: () => Promise<ProjudiPeticao[]> }} [opts]
- * @returns {Promise<{ protocoladas: number[], comErro: number[], pendentes: number[] }>}
+ * @param {{ intervaloMs?: number, limiteMs?: number, fetcher?: () => Promise<ProjudiPeticao[]>,
+ *           onProgress?: (statusPorId: Record<number,string>) => void }} [opts]
+ * @returns {Promise<{ protocoladas: number[], comErro: number[], pendentes: number[], statusPorId: Record<number,string> }>}
  */
 export async function acompanharProtocolo(peticaoIds, onUpdate, opts = {}) {
   const ids = Array.isArray(peticaoIds) ? [...peticaoIds] : [];
@@ -161,27 +162,42 @@ export async function acompanharProtocolo(peticaoIds, onUpdate, opts = {}) {
     const protocoladas = [];
     const comErro = [];
     const pendentes = [];
+    const statusPorId = {};
     for (const id of ids) {
       const p = porId.get(id);
       const status = p?.status;
       if (status === 'PROTOCOLANDO') {
         reivindicadas.add(id);
         pendentes.push(id);
+        statusPorId[id] = 'PROTOCOLANDO';
       } else if (status === 'PROTOCOLADA') {
         protocoladas.push(id);
+        statusPorId[id] = 'PROTOCOLADA';
       } else if (status === 'ASSINADA') {
-        if (reivindicadas.has(id)) comErro.push(id);
-        else pendentes.push(id);
+        if (reivindicadas.has(id)) {
+          comErro.push(id);
+          statusPorId[id] = 'ERRO';
+        } else {
+          pendentes.push(id);
+          statusPorId[id] = 'AGUARDANDO';
+        }
       } else if (!p) {
         protocoladas.push(id);
+        statusPorId[id] = 'PROTOCOLADA';
       } else {
         comErro.push(id);
+        statusPorId[id] = 'ERRO';
       }
     }
-    return { protocoladas, comErro, pendentes };
+    return { protocoladas, comErro, pendentes, statusPorId };
   };
 
-  let resultado = { protocoladas: [], comErro: [], pendentes: ids };
+  let resultado = {
+    protocoladas: [],
+    comErro: [],
+    pendentes: ids,
+    statusPorId: Object.fromEntries(ids.map((id) => [id, 'AGUARDANDO'])),
+  };
   while (Date.now() - inicio < limiteMs) {
     await new Promise((r) => setTimeout(r, intervaloMs));
     let rows;
@@ -192,6 +208,7 @@ export async function acompanharProtocolo(peticaoIds, onUpdate, opts = {}) {
     }
     if (typeof onUpdate === 'function') onUpdate(Array.isArray(rows) ? rows : []);
     resultado = classificar(rows);
+    if (typeof opts.onProgress === 'function') opts.onProgress(resultado.statusPorId);
     if (resultado.pendentes.length === 0) break;
   }
   return resultado;

@@ -4,12 +4,14 @@ import {
   AlertTriangle,
   CheckCircle2,
   ChevronDown,
+  Clock,
   FileSignature,
   History,
   Loader2,
   RefreshCw,
   Send,
   Trash2,
+  X,
 } from 'lucide-react';
 import {
   acompanharProtocolo,
@@ -77,6 +79,121 @@ function rotuloParteOposta(papelCliente) {
   return 'Parte oposta';
 }
 
+const PROTOCOLO_STATUS_INFO = {
+  AGUARDANDO: {
+    rotulo: 'Na fila',
+    classe: 'text-slate-500 bg-slate-50 border-slate-200',
+    Icone: Clock,
+    spin: false,
+  },
+  PROTOCOLANDO: {
+    rotulo: 'Protocolando…',
+    classe: 'text-amber-700 bg-amber-50 border-amber-200',
+    Icone: Loader2,
+    spin: true,
+  },
+  PROTOCOLADA: {
+    rotulo: 'Protocolada',
+    classe: 'text-emerald-700 bg-emerald-50 border-emerald-200',
+    Icone: CheckCircle2,
+    spin: false,
+  },
+  ERRO: {
+    rotulo: 'Erro — voltou à fila',
+    classe: 'text-rose-700 bg-rose-50 border-rose-200',
+    Icone: AlertTriangle,
+    spin: false,
+  },
+};
+
+function ProtocoloProgressoPainel({ progresso, onFechar }) {
+  const { itens, statusPorId, finalizado } = progresso;
+  const total = itens.length;
+  const statusDe = (id) => statusPorId[id] || 'AGUARDANDO';
+  const ok = itens.filter((i) => statusDe(i.peticaoId) === 'PROTOCOLADA').length;
+  const erro = itens.filter((i) => statusDe(i.peticaoId) === 'ERRO').length;
+  const concluidas = ok + erro;
+  const pct = total > 0 ? Math.round((concluidas / total) * 100) : 0;
+
+  return (
+    <div className="rounded-lg border border-sky-200 bg-sky-50/60 p-3 space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+          {finalizado ? (
+            erro > 0 ? (
+              <AlertTriangle className="w-4 h-4 text-amber-600" aria-hidden />
+            ) : (
+              <CheckCircle2 className="w-4 h-4 text-emerald-600" aria-hidden />
+            )
+          ) : (
+            <Loader2 className="w-4 h-4 animate-spin text-sky-700" aria-hidden />
+          )}
+          {finalizado
+            ? `Protocolo finalizado — ${ok} de ${total} concluída(s)${erro > 0 ? `, ${erro} com erro` : ''}`
+            : `Protocolando… ${concluidas} de ${total}`}
+        </div>
+        {finalizado ? (
+          <button
+            type="button"
+            className="shrink-0 p-1 text-slate-500 hover:text-slate-700"
+            onClick={onFechar}
+            title="Fechar"
+            aria-label="Fechar painel de protocolo"
+          >
+            <X className="w-4 h-4" aria-hidden />
+          </button>
+        ) : null}
+      </div>
+
+      <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200">
+        <div
+          className={`h-full transition-all duration-500 ${erro > 0 ? 'bg-amber-500' : 'bg-emerald-500'}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+
+      <ul className="space-y-1">
+        {itens.map((item) => {
+          const info = PROTOCOLO_STATUS_INFO[statusDe(item.peticaoId)] || PROTOCOLO_STATUS_INFO.AGUARDANDO;
+          const { Icone } = info;
+          return (
+            <li
+              key={item.peticaoId}
+              className="flex items-center gap-2 rounded border border-slate-200 bg-white px-2 py-1.5 text-sm"
+            >
+              <Icone
+                className={`w-4 h-4 shrink-0 ${info.spin ? 'animate-spin' : ''}`}
+                aria-hidden
+              />
+              <div className="min-w-0 flex-1">
+                <div className="font-medium truncate">
+                  #{item.peticaoId} · <span className="font-mono text-xs">{item.numeroProcesso}</span>
+                </div>
+                {item.parteOposta || item.parteCliente ? (
+                  <div className="text-xs text-slate-500 truncate">
+                    <span className="font-medium text-slate-600">
+                      {rotuloParteOposta(item.papelCliente)}:
+                    </span>{' '}
+                    {item.parteOposta || '—'}
+                    <span className="mx-1 text-slate-400">×</span>
+                    <span className="font-medium text-emerald-700">Cliente:</span>{' '}
+                    {item.parteCliente || '—'}
+                  </div>
+                ) : null}
+              </div>
+              <span
+                className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium ${info.classe}`}
+              >
+                {info.rotulo}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
 function classeResultadoProtocolo(resultado) {
   switch (resultado) {
     case 'PROTOCOLADA':
@@ -117,6 +234,7 @@ export function PeticionamentoProjudi() {
   const [previa, setPrevia] = useState(null);
   const [carregandoPrevia, setCarregandoPrevia] = useState(false);
   const [resultadoProtocolo, setResultadoProtocolo] = useState([]);
+  const [protocoloProgresso, setProtocoloProgresso] = useState(null);
 
   useEffect(() => {
     if (numeroProcessoOrigem) setNumeroProcesso(numeroProcessoOrigem);
@@ -325,9 +443,26 @@ export function PeticionamentoProjudi() {
       setPrevia(null);
       return;
     }
+    const itensSnapshot = ids.map((id) => {
+      const p = peticoes.find((x) => x.id === id);
+      const dig = String(p?.numeroProcesso || '').replace(/\D/g, '');
+      const partes = partesPorProcesso[dig] || {};
+      return {
+        peticaoId: id,
+        numeroProcesso: p?.numeroProcesso || '',
+        parteOposta: partes.parteOposta || '',
+        parteCliente: partes.parteCliente || '',
+        papelCliente: partes.papelCliente || '',
+      };
+    });
     setOperacao('protocolo');
     setApiError('');
     setResultadoProtocolo([]);
+    setProtocoloProgresso({
+      itens: itensSnapshot,
+      statusPorId: Object.fromEntries(ids.map((id) => [id, 'AGUARDANDO'])),
+      finalizado: false,
+    });
     try {
       await protocolarLote(ids);
     } catch (err) {
@@ -335,6 +470,7 @@ export function PeticionamentoProjudi() {
       setOperacao(null);
       setModalProtocolo(false);
       setPrevia(null);
+      setProtocoloProgresso(null);
       return;
     }
     setSelecionadas(new Set());
@@ -342,7 +478,13 @@ export function PeticionamentoProjudi() {
     setPrevia(null);
     setToast('Protocolo iniciado em segundo plano…');
     try {
-      const r = await acompanharProtocolo(ids, (rows) => setPeticoes(rows));
+      const r = await acompanharProtocolo(ids, (rows) => setPeticoes(rows), {
+        onProgress: (statusPorId) =>
+          setProtocoloProgresso((prev) => (prev ? { ...prev, statusPorId } : prev)),
+      });
+      setProtocoloProgresso((prev) =>
+        prev ? { ...prev, statusPorId: r.statusPorId, finalizado: true } : prev,
+      );
       const ok = r.protocoladas.length;
       const erro = r.comErro.length;
       const pend = r.pendentes.length;
@@ -352,6 +494,7 @@ export function PeticionamentoProjudi() {
       else setToast('Protocolo ainda em andamento. Acompanhe pela fila.');
     } catch {
       // A fila reflete o estado real; ignora erro de acompanhamento.
+      setProtocoloProgresso((prev) => (prev ? { ...prev, finalizado: true } : prev));
     } finally {
       await recarregar();
       setOperacao(null);
@@ -703,6 +846,13 @@ export function PeticionamentoProjudi() {
                   <span className="text-xs text-slate-500">Todos os processos</span>
                 )}
               </div>
+
+              {protocoloProgresso ? (
+                <ProtocoloProgressoPainel
+                  progresso={protocoloProgresso}
+                  onFechar={() => setProtocoloProgresso(null)}
+                />
+              ) : null}
 
               {carregando ? (
                 <div className="flex items-center gap-2 text-sm text-slate-600">
