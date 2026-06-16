@@ -97,6 +97,15 @@ public class MonitoramentoMovimentacoesService {
     public ResultadoMonitoramentoResponse executarMonitoramento(
             ProcessoEntity processo, OrigemConsulta origem, Long agendamentoId) {
         validarProcessoComCnj(processo);
+        // Recarrega o processo anexado à transação atual (com cliente+pessoa). No caminho agendado, o
+        // scheduler passa um proxy de outra sessão já fechada; sem isto, montar o e-mail de novidade
+        // estoura LazyInitializationException ("could not initialize proxy [Cliente#...] - no session")
+        // e a movimentação fica "Com novidade" mas o e-mail não sai.
+        if (processo.getId() != null) {
+            processo = processoRepository
+                    .findByIdWithClienteAndPessoa(processo.getId())
+                    .orElse(processo);
+        }
         LocalDateTime iniciada = agora();
         Long processoId = processo.getId();
         String numeroCnj = processo.getNumeroCnj().trim();

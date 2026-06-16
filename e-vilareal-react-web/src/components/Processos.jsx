@@ -124,7 +124,7 @@ import {
   processosLinkClass,
 } from './processos/ProcessosAdminLayout.jsx';
 import { ModalRelatorioPublicacoesProcesso, PublicacoesRelatorioConteudo } from './ModalRelatorioPublicacoesProcesso.jsx';
-import { listarPublicacoesRelatorioPorProcesso } from '../repositories/publicacoesRepository.js';
+import { listarPublicacoesRelatorioPorProcesso, listarMovimentacoesEmailPorProcesso } from '../repositories/publicacoesRepository.js';
 import { ModalCriarTarefaContextual } from './ModalCriarTarefaContextual.jsx';
 import { ModalConsultaPeriodicaProcesso } from './consultas-periodicas/ModalConsultaPeriodicaProcesso.jsx';
 import { ModalPeticionamentoProcesso } from './projudi/ModalPeticionamentoProcesso.jsx';
@@ -608,6 +608,10 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   const [publicacoesRelatorioCarregando, setPublicacoesRelatorioCarregando] = useState(false);
   const [publicacoesRelatorioErro, setPublicacoesRelatorioErro] = useState('');
   const [publicacoesRelatorioTick, setPublicacoesRelatorioTick] = useState(0);
+  const [movEmailItens, setMovEmailItens] = useState([]);
+  const [movEmailCarregando, setMovEmailCarregando] = useState(false);
+  const [movEmailErro, setMovEmailErro] = useState('');
+  const [movEmailMeta, setMovEmailMeta] = useState(null);
 
   const fecharModalAgendaAudiencia = useCallback(
     () => setModalAgendaAudiencia({ aberto: false, dataBr: null, revision: 0 }),
@@ -692,6 +696,36 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       cancelado = true;
     };
   }, [tabAtiva, processoApiId, codigoCliente, processo, numeroProcessoNovo, publicacoesRelatorioTick]);
+
+  useEffect(() => {
+    if (tabAtiva !== 'movemail') return undefined;
+    let cancelado = false;
+    setMovEmailCarregando(true);
+    setMovEmailErro('');
+    setMovEmailMeta(null);
+    void listarMovimentacoesEmailPorProcesso({
+      processoIdFromUi: processoApiId,
+      codigoCliente,
+      numeroInterno: processo,
+    })
+      .then((r) => {
+        if (cancelado) return;
+        setMovEmailItens(r.itens || []);
+        setMovEmailMeta(r);
+        setMovEmailErro(r.erro ? String(r.erro) : '');
+      })
+      .catch((e) => {
+        if (cancelado) return;
+        setMovEmailItens([]);
+        setMovEmailErro(e?.message || 'Não foi possível carregar as movimentações por e-mail.');
+      })
+      .finally(() => {
+        if (!cancelado) setMovEmailCarregando(false);
+      });
+    return () => {
+      cancelado = true;
+    };
+  }, [tabAtiva, processoApiId, codigoCliente, processo, publicacoesRelatorioTick]);
 
   useEffect(() => {
     const n = Number(processoApiId);
@@ -4076,6 +4110,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                             <div className="flex flex-wrap items-end gap-0.5 bg-white shadow-sm rounded-t-xl px-1 pt-1" role="tablist">
                 <ProcessosTabButton id="tab-historico" label="Histórico do Processo" active={tabAtiva === 'historico'} count={historico.length} onClick={() => setTabAtiva('historico')} />
                 <ProcessosTabButton id="tab-publicacoes" label="Publicações" active={tabAtiva === 'publicacoes'} count={publicacoesRelatorioItens?.length ?? 0} onClick={() => setTabAtiva('publicacoes')} />
+                <ProcessosTabButton id="tab-movemail" label="Mov. por Email" active={tabAtiva === 'movemail'} count={movEmailItens?.length ?? 0} onClick={() => setTabAtiva('movemail')} />
                 <ProcessosTabButton id="tab-observacoes" label="Observações" active={tabAtiva === 'observacoes'} onClick={() => setTabAtiva('observacoes')} />
                 <ProcessosTabButton id="tab-execucao" label="Execução" active={tabAtiva === 'execucao'} onClick={() => setTabAtiva('execucao')} />
               </div>
@@ -4275,6 +4310,33 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                       carregando={publicacoesRelatorioCarregando}
                       erro={publicacoesRelatorioErro}
                       relatorioMeta={publicacoesRelatorioMeta}
+                      compact
+                    />
+                  </div>
+                </div>
+              )}
+              {tabAtiva === 'movemail' && (
+                <div className="border border-slate-300 rounded-b-lg overflow-hidden bg-white shadow-sm -mt-px flex flex-col max-h-[min(72vh,56rem)]">
+                  <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2 shrink-0">
+                    <p className="text-sm text-slate-600">
+                      Movimentações importadas por e-mail (Projudi TJGO + PUSH dos TRTs/PJe) vinculadas a este processo, de{' '}
+                      <strong className="text-slate-800">Movimentações Email</strong>.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => navigate('/processos/manifestacoes-projudi')}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-sky-300 bg-white text-sky-900 text-sm font-medium hover:bg-sky-50 shadow-sm shrink-0"
+                    >
+                      <Newspaper className="w-4 h-4 shrink-0" aria-hidden />
+                      Abrir Movimentações Email
+                    </button>
+                  </div>
+                  <div className="flex flex-col flex-1 min-h-0 overflow-auto">
+                    <PublicacoesRelatorioConteudo
+                      itens={movEmailItens}
+                      carregando={movEmailCarregando}
+                      erro={movEmailErro}
+                      relatorioMeta={movEmailMeta}
                       compact
                     />
                   </div>

@@ -294,6 +294,68 @@ export async function listarPublicacoesRelatorioPorProcesso({
   }
 }
 
+/**
+ * Aba «Mov. por Email» (modal em Processos): lista as linhas importadas por e-mail
+ * (origens PROJUDI + TRT/PJe) vinculadas a este processo. Resolve o id do processo pela
+ * chave natural (código cliente × proc. interno) e cai no id da UI como fallback.
+ */
+export async function listarMovimentacoesEmailPorProcesso({
+  processoIdFromUi,
+  codigoCliente,
+  numeroInterno,
+}) {
+  if (!featureFlags.useApiPublicacoes) {
+    return { processoIdResolvido: null, itens: [], aviso: null, erro: null };
+  }
+
+  const pidNatural = await resolverProcessoId({
+    processoId: null,
+    codigoCliente,
+    numeroInterno,
+  });
+  const pidUi =
+    Number.isFinite(Number(processoIdFromUi)) && Number(processoIdFromUi) > 0 ? Number(processoIdFromUi) : null;
+  const pid = pidNatural ?? pidUi;
+
+  if (!pid) {
+    return {
+      processoIdResolvido: null,
+      itens: [],
+      aviso: 'Processo não identificado na API — não foi possível listar as movimentações por e-mail.',
+      erro: null,
+    };
+  }
+
+  const origens = ['PROJUDI', 'TRT'];
+  try {
+    const listas = await Promise.all(
+      origens.map((origemImportacao) =>
+        listarPublicacoesModulo({ processoId: pid, origemImportacao }).catch(() => [])
+      )
+    );
+    const vistos = new Set();
+    const itens = [];
+    for (const lista of listas) {
+      for (const row of lista) {
+        const k = row?.hashDedup ? `h:${row.hashDedup}` : `id:${row?.id}`;
+        if (vistos.has(k)) continue;
+        vistos.add(k);
+        itens.push(row);
+      }
+    }
+    itens.sort((a, b) => pesoDataPublicacaoBr(b.dataPublicacao) - pesoDataPublicacaoBr(a.dataPublicacao));
+    return { fonte: 'api', processoIdResolvido: pid, itens, aviso: null, erro: null };
+  } catch (e) {
+    return {
+      fonte: 'api',
+      processoIdResolvido: pid,
+      itens: [],
+      aviso: null,
+      erro: e?.message || 'Falha ao carregar movimentações por e-mail.',
+    };
+  }
+}
+
 // --- Leitura principal (módulo Publicações) ---
 
 /** Texto indexável para busca local (inclui partes do email e do cadastro vinculado). */

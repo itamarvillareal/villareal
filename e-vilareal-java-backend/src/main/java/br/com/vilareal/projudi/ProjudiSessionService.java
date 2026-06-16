@@ -71,6 +71,7 @@ public class ProjudiSessionService {
     private final ObjectMapper objectMapper;
     private final String baseUrl;
     private final long ttlMin;
+    private final int quantidadeRegistrosPagina;
 
     private final ConcurrentHashMap<Long, ProjudiSession> cache = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, Object> locks = new ConcurrentHashMap<>();
@@ -81,13 +82,15 @@ public class ProjudiSessionService {
             ProjudiSessionStore sessionStore,
             ObjectMapper objectMapper,
             @Value("${projudi.base-url:https://projudi.tjgo.jus.br/}") String baseUrl,
-            @Value("${projudi.session.ttl-min:25}") long ttlMin) {
+            @Value("${projudi.session.ttl-min:25}") long ttlMin,
+            @Value("${projudi.consulta.quantidade-registros-pagina:1000}") int quantidadeRegistrosPagina) {
         this.credencialService = credencialService;
         this.tokenReader = tokenReader;
         this.sessionStore = sessionStore;
         this.objectMapper = objectMapper;
         this.baseUrl = baseUrl.endsWith("/") ? baseUrl : baseUrl + "/";
         this.ttlMin = ttlMin;
+        this.quantidadeRegistrosPagina = quantidadeRegistrosPagina > 0 ? quantidadeRegistrosPagina : 1000;
     }
 
     // ------------------------------------------------------------------
@@ -394,6 +397,7 @@ public class ProjudiSessionService {
     public RespostaProjudi buscarProcessoConsulta(Long credencialId, String numeroProcesso) {
         ProjudiSession sessao = getSessao(credencialId);
         String corpo = montarCorpoBuscaProcesso(numeroProcesso);
+        // (corpo já inclui QuantidadeRegistrosPagina alto p/ trazer TODAS as movimentações)
         RespostaProjudi resp = toResposta(postBuscaProcessoRaw(sessao.client(), BUSCA_PROCESSO_PATH, corpo));
         if (pareceNaoLogado(resp.body())) {
             log.info("PROJUDI sessão inválida/ausente -> novo login (cpf={}).", mascararCpf(sessao.cpf()));
@@ -525,13 +529,16 @@ public class ProjudiSessionService {
         getRaw(client, destino);
     }
 
-    private static String montarCorpoBuscaProcesso(String numeroProcesso) {
+    private String montarCorpoBuscaProcesso(String numeroProcesso) {
+        // QuantidadeRegistrosPagina controla quantas movimentações a consulta devolve. Vazio = default
+        // do PROJUDI (~100, só as mais recentes), o que deixava processos grandes parando de arquivar
+        // movimentações novas/antigas além da janela. Enviamos um valor alto para listar TODAS.
         return "PaginaAtual=2"
                 + "&PaginaAnterior=2"
                 + "&TipoConsultaProcesso=null"
                 + "&BuscaPublica=null"
                 + "&ServletRedirect=null"
-                + "&QuantidadeRegistrosPagina="
+                + "&QuantidadeRegistrosPagina=" + quantidadeRegistrosPagina
                 + "&ProcessoNumero=" + enc(numeroProcesso)
                 + "&Inquerito="
                 + "&NomeParte="
