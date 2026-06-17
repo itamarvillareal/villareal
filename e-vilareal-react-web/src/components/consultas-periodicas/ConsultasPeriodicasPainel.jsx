@@ -308,6 +308,7 @@ export function ConsultasPeriodicasPainel() {
               <table className="w-full text-sm text-left min-w-[720px]">
                 <thead className="bg-slate-50 dark:bg-[#0d1018] text-xs uppercase text-slate-500 dark:text-slate-400">
                   <tr>
+                    <th className="p-2 font-semibold w-12 text-center">Nº</th>
                     <th className="p-2 font-semibold">Processo / cliente</th>
                     <th className="p-2 font-semibold">Cadência</th>
                     <th className="p-2 font-semibold">Próxima</th>
@@ -316,7 +317,7 @@ export function ConsultasPeriodicasPainel() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filtrados.map((row) => {
+                  {filtrados.map((row, idx) => {
                     const procId = row.processoId;
                     const statusLabel = row.ultimaExecucao
                       ? labelStatusUltimaExecucao(row.statusUltimaExecucao)
@@ -329,6 +330,9 @@ export function ConsultasPeriodicasPainel() {
                         key={procId}
                         className="border-t border-slate-100 dark:border-white/[0.06] hover:bg-slate-50/80 dark:hover:bg-white/[0.02]"
                       >
+                        <td className="p-2 align-top text-center tabular-nums text-xs font-medium text-slate-500 dark:text-slate-400">
+                          {String(idx + 1).padStart(3, '0')}
+                        </td>
                         <td className="p-2 align-top">
                           <div className="font-mono text-xs text-slate-800 dark:text-slate-100">
                             {row.numeroCnj || '—'}

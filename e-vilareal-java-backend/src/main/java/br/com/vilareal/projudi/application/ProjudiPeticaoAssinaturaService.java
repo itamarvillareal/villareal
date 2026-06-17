@@ -73,8 +73,17 @@ public class ProjudiPeticaoAssinaturaService {
 
     @Transactional(readOnly = true)
     public byte[] gerarZipLoteParaAssinar() {
-        List<ProjudiPeticaoArquivoEntity> pendentes =
-                arquivoRepository.findByStatus(STATUS_ARQUIVO_PENDENTE);
+        return gerarZipLoteParaAssinar(null);
+    }
+
+    @Transactional(readOnly = true)
+    public byte[] gerarZipLoteParaAssinar(List<Long> peticaoIds) {
+        List<ProjudiPeticaoArquivoEntity> pendentes;
+        if (peticaoIds == null || peticaoIds.isEmpty()) {
+            pendentes = arquivoRepository.findByStatus(STATUS_ARQUIVO_PENDENTE);
+        } else {
+            pendentes = arquivoRepository.findByStatusAndPeticaoIdIn(STATUS_ARQUIVO_PENDENTE, peticaoIds);
+        }
 
         try (ByteArrayOutputStream baos = new ByteArrayOutputStream();
                 ZipOutputStream zip = new ZipOutputStream(baos)) {

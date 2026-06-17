@@ -4,6 +4,7 @@ import br.com.vilareal.documento.DriveArquivoDto;
 import br.com.vilareal.julia.application.JuliaTriagemService;
 import br.com.vilareal.julia.triagem.TriagemRunResponse;
 import br.com.vilareal.processo.api.dto.*;
+import br.com.vilareal.processo.application.DiagnosticoAguardandoProtocoloAssinarService;
 import br.com.vilareal.processo.application.ProcessoApplicationService;
 import br.com.vilareal.processo.application.ProcessoAutosIntegralService;
 import br.com.vilareal.processo.application.ProcessoMovimentacoesConsolidarPdfService;
@@ -25,6 +26,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import java.net.URI;
@@ -44,6 +46,7 @@ public class ProcessosController {
     private final ProcessoMovimentacoesDriveService processoMovimentacoesDriveService;
     private final MonitoramentoMovimentacoesService monitoramentoMovimentacoesService;
     private final JuliaTriagemService juliaTriagemService;
+    private final DiagnosticoAguardandoProtocoloAssinarService diagnosticoAguardandoProtocoloAssinarService;
 
     public ProcessosController(
             ProcessoApplicationService processoApplicationService,
@@ -52,7 +55,8 @@ public class ProcessosController {
             ProcessoProjudiMovimentacoesDriveService processoProjudiMovimentacoesDriveService,
             ProcessoMovimentacoesDriveService processoMovimentacoesDriveService,
             MonitoramentoMovimentacoesService monitoramentoMovimentacoesService,
-            JuliaTriagemService juliaTriagemService) {
+            JuliaTriagemService juliaTriagemService,
+            DiagnosticoAguardandoProtocoloAssinarService diagnosticoAguardandoProtocoloAssinarService) {
         this.processoApplicationService = processoApplicationService;
         this.processoAutosIntegralService = processoAutosIntegralService;
         this.processoMovimentacoesConsolidarPdfService = processoMovimentacoesConsolidarPdfService;
@@ -60,6 +64,7 @@ public class ProcessosController {
         this.processoMovimentacoesDriveService = processoMovimentacoesDriveService;
         this.monitoramentoMovimentacoesService = monitoramentoMovimentacoesService;
         this.juliaTriagemService = juliaTriagemService;
+        this.diagnosticoAguardandoProtocoloAssinarService = diagnosticoAguardandoProtocoloAssinarService;
     }
 
     @GetMapping
@@ -187,6 +192,46 @@ public class ProcessosController {
                     "Lista processos cuja fase na API corresponde a «Protocolo / Movimentação» (ou sinónimos como «Aguardando Protocolo»).")
     public List<ProcessoDiagnosticoPessoaItemResponse> buscarDiagnosticoAguardandoProtocolo() {
         return processoApplicationService.buscarDiagnosticoAguardandoProtocolo();
+    }
+
+    @PostMapping("/diagnostico/aguardando-protocolo/preparar-assinar")
+    @Operation(
+            summary = "Pré-registra PDFs da pasta Assinar (PENDENTE_ASSINATURA)",
+            description =
+                    "Para cada processo, baixa PDFs do Drive, deduplica por hash+CNJ e registra petições "
+                            + "pendentes de assinatura (mesmo fluxo do POST /api/projudi/peticoes).")
+    public PrepararAssinarResultado prepararAssinarDiagnostico(
+            @RequestParam Long credencialId,
+            @RequestBody List<DiagnosticoAguardandoProtocoloItemRequest> processos) {
+        return diagnosticoAguardandoProtocoloAssinarService.prepararAssinatura(credencialId, processos);
+    }
+
+    @PostMapping("/diagnostico/aguardando-protocolo/lote-assinar-zip")
+    @Operation(
+            summary = "ZIP com PDFs pendentes do lote preparado",
+            description =
+                    "Gera ZIP plano com nomes canônicos {peticaoId}_{ordem}_{sha8}.pdf + manifest.json "
+                            + "informativo. Pareamento no retorno é por hash, não por nome.")
+    public ResponseEntity<byte[]> loteAssinarZipDiagnostico(@RequestBody LoteAssinarZipRequest body) {
+        byte[] zip = diagnosticoAguardandoProtocoloAssinarService.gerarZipDoLote(body.peticaoIds());
+        String filename = "assinar-aguardando-protocolo.zip";
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType("application/zip"))
+                .header(
+                        HttpHeaders.CONTENT_DISPOSITION,
+                        ContentDisposition.attachment().filename(filename).build().toString())
+                .body(zip);
+    }
+
+    @PostMapping(
+            value = "/diagnostico/aguardando-protocolo/upload-assinados",
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(
+            summary = "Pareia .p7s assinados por hash (wrapper do POST /api/projudi/peticoes/assinados)",
+            description = "Recebe apenas arquivos .p7s; o pareamento é pelo SHA-256 do PDF embutido.")
+    public DiagnosticoUploadAssinadosResponse uploadAssinadosDiagnostico(
+            @RequestParam("arquivosP7s") List<MultipartFile> arquivosP7s) {
+        return diagnosticoAguardandoProtocoloAssinarService.registrarAssinados(arquivosP7s);
     }
 
     @GetMapping("/diagnostico/historico-data")

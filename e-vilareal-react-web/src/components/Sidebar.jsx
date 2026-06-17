@@ -29,6 +29,24 @@ function itemMenuPermitido(item, podeFn) {
   return podeFn(item.id);
 }
 
+/** Rota padrão ao expandir um grupo do menu lateral. */
+function rotaPadraoGrupo(grupoId, subs) {
+  switch (grupoId) {
+    case 'processos-grupo':
+      return '/processos';
+    case 'financeiro-grupo':
+      return '/financeiro/extrato';
+    case 'whatsapp-grupo':
+      return '/whatsapp/dashboard';
+    case 'pessoas-grupo': {
+      const dest = subs.find((ch) => ch.id === 'clientes/lista')?.id || subs[0]?.id;
+      return dest ? `/${dest}` : null;
+    }
+    default:
+      return subs[0] ? `/${subs[0].id}` : null;
+  }
+}
+
 /**
  * @param {object} [props]
  * @param {boolean} [props.mobileDrawerOpen] — controlado pelo Layout (App) abaixo do breakpoint `lg`.
@@ -201,61 +219,15 @@ export function Sidebar({ mobileDrawerOpen = false, onMobileDrawerChange } = {})
                 <button
                   type="button"
                   onClick={() => {
-                    if (item.id === 'processos-grupo') {
-                      if (aberto) {
-                        toggleGrupo(item.id);
-                      } else {
-                        setGruposAbertos((prev) => new Set(prev).add(item.id));
-                        navigate('/processos');
-                      }
+                    if (aberto) {
+                      toggleGrupo(item.id);
                       closeMobileDrawer();
                       return;
                     }
-                    if (item.id === 'calcular-grupo') {
-                      setGruposAbertos((prev) => new Set(prev).add(item.id));
-                      if (subs[0]) navigate(`/${subs[0].id}`);
-                      closeMobileDrawer();
-                      return;
-                    }
-                    if (item.id === 'admin-imoveis-grupo') {
-                      setGruposAbertos((prev) => new Set(prev).add(item.id));
-                      if (subs[0]) navigate(`/${subs[0].id}`);
-                      closeMobileDrawer();
-                      return;
-                    }
-                    if (item.id === 'pessoas-grupo') {
-                      setGruposAbertos((prev) => new Set(prev).add(item.id));
-                      const dest =
-                        subs.find((ch) => ch.id === 'clientes/lista')?.id || subs[0]?.id;
-                      if (dest) navigate(`/${dest}`);
-                      closeMobileDrawer();
-                      return;
-                    }
-                    if (item.id === 'financeiro-grupo') {
-                      setGruposAbertos((prev) => new Set(prev).add(item.id));
-                      navigate('/financeiro/extrato');
-                      closeMobileDrawer();
-                      return;
-                    }
-                    if (item.id === 'topicos-grupo') {
-                      setGruposAbertos((prev) => new Set(prev).add(item.id));
-                      if (subs[0]) navigate(`/${subs[0].id}`);
-                      closeMobileDrawer();
-                      return;
-                    }
-                    if (item.id === 'integracoes-grupo') {
-                      setGruposAbertos((prev) => new Set(prev).add(item.id));
-                      if (subs[0]) navigate(`/${subs[0].id}`);
-                      closeMobileDrawer();
-                      return;
-                    }
-                    if (item.id === 'whatsapp-grupo') {
-                      setGruposAbertos((prev) => new Set(prev).add(item.id));
-                      navigate('/whatsapp/dashboard');
-                      closeMobileDrawer();
-                      return;
-                    }
-                    toggleGrupo(item.id);
+                    setGruposAbertos((prev) => new Set(prev).add(item.id));
+                    const dest = rotaPadraoGrupo(item.id, subs);
+                    if (dest) navigate(dest);
+                    closeMobileDrawer();
                   }}
                   className={`w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md text-gray-700 dark:text-slate-200 text-xs font-medium transition-all duration-200 text-left ${
                     algumFilhoAtivo

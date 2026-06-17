@@ -1,4 +1,4 @@
-import { request } from '../api/httpClient.js';
+import { request, postFormData } from '../api/httpClient.js';
 import { API_BASE_URL } from '../api/config.js';
 import { buildDefaultApiHeaders, emitApiUnauthorized } from '../api/apiAuthHeaders.js';
 import { featureFlags } from '../config/featureFlags.js';
@@ -546,6 +546,91 @@ export async function listarProcessosFaseAguardandoProtocoloDiagnostico() {
   } catch {
     return locais;
   }
+}
+
+function mapItemAguardandoProtocoloParaApi(item) {
+  const codCliente = padCliente8(item.codCliente ?? item.codigoCliente);
+  const procNum = Math.floor(Number(String(item.proc ?? item.numeroInterno ?? '').replace(/\D/g, '')) || 0);
+  return {
+    codigoCliente: codCliente,
+    numeroInterno: procNum,
+    numeroProcessoNovo: String(item.numeroProcessoNovo ?? '').trim(),
+  };
+}
+
+/**
+ * Pré-registra PDFs da pasta Assinar (PENDENTE_ASSINATURA) e retorna peticaoIds para o ZIP.
+ * @param {Array<{ codCliente: string, proc: string|number, numeroProcessoNovo?: string }>} processos
+ * @param {number|string} credencialId
+ */
+export async function prepararAssinarAguardandoProtocolo(processos, credencialId) {
+  const body = (Array.isArray(processos) ? processos : []).map(mapItemAguardandoProtocoloParaApi);
+  if (!body.length) {
+    throw new Error('Nenhum processo na lista.');
+  }
+  const cred = String(credencialId ?? '').trim();
+  if (!cred) {
+    throw new Error('Selecione a credencial PROJUDI.');
+  }
+  return request('/api/processos/diagnostico/aguardando-protocolo/preparar-assinar', {
+    method: 'POST',
+    query: { credencialId: cred },
+    body,
+  });
+}
+
+/**
+ * ZIP com PDFs pendentes do lote preparado (nomes canônicos + manifest informativo).
+ * @param {number[]} peticaoIds
+ * @returns {Promise<{ blob: Blob, filename: string }>}
+ */
+export async function baixarZipLoteAguardandoProtocolo(peticaoIds) {
+  const ids = (Array.isArray(peticaoIds) ? peticaoIds : []).filter((id) => id != null);
+  if (!ids.length) {
+    throw new Error('Nenhuma petição no lote para baixar.');
+  }
+  const url = `${API_BASE_URL}/api/processos/diagnostico/aguardando-protocolo/lote-assinar-zip`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      ...buildDefaultApiHeaders(),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ peticaoIds: ids }),
+  });
+  if (res.status === 401) emitApiUnauthorized();
+  if (!res.ok) {
+    let msg = `Erro ${res.status} ao gerar ZIP.`;
+    try {
+      const json = await res.json();
+      msg = json?.message || json?.error || msg;
+    } catch {
+      const text = await res.text();
+      if (text) msg = text;
+    }
+    throw new Error(msg);
+  }
+  const blob = await res.blob();
+  const disposition = res.headers.get('Content-Disposition') || '';
+  const match = /filename="([^"]+)"/i.exec(disposition);
+  const filename = match?.[1] || 'assinar-aguardando-protocolo.zip';
+  return { blob, filename };
+}
+
+/**
+ * Pareia .p7s assinados por hash (wrapper do POST /api/projudi/peticoes/assinados).
+ * @param {File[]} arquivosP7s
+ */
+export async function uploadAssinadosAguardandoProtocolo(arquivosP7s) {
+  const arquivos = (Array.isArray(arquivosP7s) ? arquivosP7s : []).filter(Boolean);
+  if (!arquivos.length) {
+    throw new Error('Selecione ao menos um arquivo .p7s.');
+  }
+  const fd = new FormData();
+  for (const f of arquivos) {
+    fd.append('arquivosP7s', f);
+  }
+  return postFormData('/api/processos/diagnostico/aguardando-protocolo/upload-assinados', fd);
 }
 
 function chaveClienteProcItemPrazoFatal(item) {

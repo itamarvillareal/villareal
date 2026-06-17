@@ -13,6 +13,7 @@ export const processosMenuSections = [
     tone: 'blue',
     items: [
       { id: 'documentos/gerar', label: 'Gerar documento', icon: 'FileText' },
+      { id: 'processos/peticionamento-projudi', label: 'Peticionamento PROJUDI', icon: 'Gavel' },
     ],
   },
   {

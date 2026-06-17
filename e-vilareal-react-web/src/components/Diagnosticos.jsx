@@ -32,8 +32,12 @@ import {
   erroEndpointHistoricoDataIndisponivel,
   listarProcessosPorPrazoFatalDiagnostico,
   listarProcessosFaseAguardandoProtocoloDiagnostico,
+  prepararAssinarAguardandoProtocolo,
+  baixarZipLoteAguardandoProtocolo,
+  uploadAssinadosAguardandoProtocolo,
   listarProcessosVinculoPessoaDiagnostico,
 } from '../repositories/processosRepository.js';
+import { listarCredenciais } from '../api/peticoesProjudiApi.js';
 import { padCliente8Nav } from './cadastro-pessoas/cadastroPessoasNavUtils.js';
 import { agruparConsultasRealizadasPorProcesso } from '../domain/historicoTituloLegadoSistema.js';
 import { featureFlags } from '../config/featureFlags.js';
@@ -338,6 +342,19 @@ export function Diagnosticos() {
   const [modalResultadoAguardandoProtocoloAberto, setModalResultadoAguardandoProtocoloAberto] =
     useState(false);
   const [resultadoAguardandoProtocolo, setResultadoAguardandoProtocolo] = useState([]);
+  const [aguardandoProtocoloBaixando, setAguardandoProtocoloBaixando] = useState(false);
+  const [aguardandoProtocoloBaixarErro, setAguardandoProtocoloBaixarErro] = useState('');
+  const [modalPrepararAssinarAberto, setModalPrepararAssinarAberto] = useState(false);
+  const [prepararAssinarCredencialId, setPrepararAssinarCredencialId] = useState('');
+  const [prepararAssinarCredenciais, setPrepararAssinarCredenciais] = useState([]);
+  const [prepararAssinarErro, setPrepararAssinarErro] = useState('');
+  const [prepararAssinarResultado, setPrepararAssinarResultado] = useState(null);
+  const [modalUploadAssinadosAberto, setModalUploadAssinadosAberto] = useState(false);
+  const [uploadAssinadosArquivos, setUploadAssinadosArquivos] = useState([]);
+  const [uploadAssinadosEnviando, setUploadAssinadosEnviando] = useState(false);
+  const [uploadAssinadosErro, setUploadAssinadosErro] = useState('');
+  const [uploadAssinadosResultado, setUploadAssinadosResultado] = useState(null);
+  const inputUploadAssinadosRef = useRef(null);
   const [modalResultadoAguardandoProvidenciaAberto, setModalResultadoAguardandoProvidenciaAberto] =
     useState(false);
   const [resultadoAguardandoProvidencia, setResultadoAguardandoProvidencia] = useState([]);
@@ -640,8 +657,88 @@ export function Diagnosticos() {
       } catch {
         setResultadoAguardandoProtocolo(listarProcessosFaseAguardandoProtocolo());
       }
+      setAguardandoProtocoloBaixarErro('');
       setModalResultadoAguardandoProtocoloAberto(true);
     })();
+  }
+
+  async function abrirModalPrepararAssinar() {
+    if (!resultadoAguardandoProtocolo.length) return;
+    setPrepararAssinarResultado(null);
+    setPrepararAssinarErro('');
+    setModalPrepararAssinarAberto(true);
+    try {
+      const rows = await listarCredenciais();
+      const lista = Array.isArray(rows) ? rows : [];
+      setPrepararAssinarCredenciais(lista);
+      if (!prepararAssinarCredencialId && lista[0]?.id != null) {
+        setPrepararAssinarCredencialId(String(lista[0].id));
+      }
+    } catch (e) {
+      setPrepararAssinarErro(mensagemErroAmigavel(e, 'carregar credenciais PROJUDI'));
+    }
+  }
+
+  async function confirmarPrepararEBaixar() {
+    if (!resultadoAguardandoProtocolo.length) return;
+    const credId = String(prepararAssinarCredencialId || '').trim();
+    if (!credId) {
+      setPrepararAssinarErro('Selecione a credencial PROJUDI.');
+      return;
+    }
+    setAguardandoProtocoloBaixando(true);
+    setPrepararAssinarErro('');
+    setAguardandoProtocoloBaixarErro('');
+    try {
+      const preparado = await prepararAssinarAguardandoProtocolo(resultadoAguardandoProtocolo, credId);
+      setPrepararAssinarResultado(preparado);
+      const ids = Array.isArray(preparado?.peticaoIds) ? preparado.peticaoIds : [];
+      const { blob, filename } = await baixarZipLoteAguardandoProtocolo(ids);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      const msg = mensagemErroAmigavel(e, 'preparar e baixar os arquivos para assinar');
+      setPrepararAssinarErro(msg);
+      setAguardandoProtocoloBaixarErro(msg);
+    } finally {
+      setAguardandoProtocoloBaixando(false);
+    }
+  }
+
+  async function abrirModalUploadAssinados() {
+    if (!resultadoAguardandoProtocolo.length) return;
+    setUploadAssinadosArquivos([]);
+    setUploadAssinadosErro('');
+    setUploadAssinadosResultado(null);
+    setModalUploadAssinadosAberto(true);
+  }
+
+  function onSelecionarArquivosAssinados(e) {
+    const files = [...(e.target.files || [])].filter((f) => f.name.toLowerCase().endsWith('.p7s'));
+    setUploadAssinadosArquivos(files);
+    setUploadAssinadosErro(files.length ? '' : 'Selecione arquivos .p7s assinados.');
+    e.target.value = '';
+  }
+
+  async function enviarArquivosAssinados() {
+    if (!uploadAssinadosArquivos.length) {
+      setUploadAssinadosErro('Selecione ao menos um arquivo .p7s.');
+      return;
+    }
+    setUploadAssinadosEnviando(true);
+    setUploadAssinadosErro('');
+    try {
+      const resp = await uploadAssinadosAguardandoProtocolo(uploadAssinadosArquivos);
+      setUploadAssinadosResultado(resp);
+    } catch (e) {
+      setUploadAssinadosErro(mensagemErroAmigavel(e, 'enviar os arquivos assinados'));
+    } finally {
+      setUploadAssinadosEnviando(false);
+    }
   }
 
   function abrirListaAguardandoProvidencia() {
@@ -1806,6 +1903,11 @@ export function Diagnosticos() {
               <p className="text-sm text-slate-700 mb-3">
                 {resultadoAguardandoProtocolo.length} processo(s). Duplo clique na linha para abrir em Processos. A lista combina o cadastro na API e o histórico local.
               </p>
+              {aguardandoProtocoloBaixarErro ? (
+                <p className="text-sm text-red-600 mb-2" role="alert">
+                  {aguardandoProtocoloBaixarErro}
+                </p>
+              ) : null}
               <div className="border border-slate-200 rounded-xl bg-white h-[430px] overflow-auto p-2 text-[13px] leading-relaxed font-mono ring-1 ring-slate-100">
                 {resultadoAguardandoProtocolo.length === 0 ? (
                   <p>
@@ -1829,13 +1931,259 @@ export function Diagnosticos() {
                 )}
               </div>
             </div>
-            <div className="px-4 py-3 border-t border-slate-200/80 flex justify-center bg-slate-50/90">
+            <div className="px-4 py-3 border-t border-slate-200/80 flex flex-wrap justify-center gap-2 bg-slate-50/90">
+              <button
+                type="button"
+                onClick={() => void abrirModalPrepararAssinar()}
+                disabled={!resultadoAguardandoProtocolo.length || aguardandoProtocoloBaixando}
+                className="min-w-[180px] px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
+              >
+                {aguardandoProtocoloBaixando ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                    Gerando ZIP…
+                  </>
+                ) : (
+                  'Baixar Arquivos para Assinar'
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => void abrirModalUploadAssinados()}
+                disabled={!resultadoAguardandoProtocolo.length}
+                className="min-w-[180px] px-4 py-2 rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 text-sm font-semibold text-white shadow-lg shadow-sky-500/20 hover:from-sky-500 hover:to-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Upload dos Arquivos Assinados
+              </button>
               <button
                 type="button"
                 onClick={() => setModalResultadoAguardandoProtocoloAberto(false)}
                 className="min-w-[120px] px-8 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 text-sm font-semibold text-white shadow-lg shadow-indigo-500/25 hover:from-indigo-500 hover:to-violet-500"
               >
                 OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {modalPrepararAssinarAberto && (
+        <div className="fixed inset-0 z-[66] flex items-center justify-center bg-black/45 backdrop-blur-[2px] p-4">
+          <div className="w-full max-w-lg bg-white border border-slate-200/90 shadow-2xl rounded-2xl overflow-hidden ring-1 ring-emerald-500/10 flex flex-col">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-white/20 bg-gradient-to-r from-emerald-700 to-teal-700 text-white shrink-0">
+              <p className="text-base font-semibold">Baixar Arquivos para Assinar</p>
+              <button
+                type="button"
+                onClick={() => setModalPrepararAssinarAberto(false)}
+                className="p-1 rounded-lg text-white/90 hover:bg-white/15"
+                aria-label="Fechar"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            <div className="px-4 py-4 space-y-3 text-sm text-slate-700">
+              <p>
+                Os PDFs da pasta <strong>Assinar</strong> serão pré-registrados na fila PROJUDI
+                (pendentes de assinatura). O ZIP usa nomes canônicos; o pareamento no retorno é por{' '}
+                <strong>hash do conteúdo</strong>, não por nome.
+              </p>
+              <label className="block">
+                <span className="text-xs font-medium text-slate-500">Credencial PROJUDI</span>
+                <select
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                  value={prepararAssinarCredencialId}
+                  onChange={(e) => setPrepararAssinarCredencialId(e.target.value)}
+                  disabled={aguardandoProtocoloBaixando || !!prepararAssinarResultado}
+                >
+                  {prepararAssinarCredenciais.length === 0 ? (
+                    <option value="">Carregando…</option>
+                  ) : (
+                    prepararAssinarCredenciais.map((c) => (
+                      <option key={c.id} value={String(c.id)}>
+                        {c.nome || c.login || `Credencial #${c.id}`}
+                      </option>
+                    ))
+                  )}
+                </select>
+              </label>
+              {prepararAssinarErro ? (
+                <p className="text-sm text-red-600" role="alert">
+                  {prepararAssinarErro}
+                </p>
+              ) : null}
+              {prepararAssinarResultado ? (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50/80 p-3 text-sm text-emerald-900 space-y-2">
+                  <p className="font-medium">
+                    {prepararAssinarResultado.totalArquivos ?? 0} PDF(s) no ZIP ·{' '}
+                    {(prepararAssinarResultado.peticaoIds || []).length} petição(ões)
+                  </p>
+                  {Array.isArray(prepararAssinarResultado.resumo) &&
+                    prepararAssinarResultado.resumo.map((r, i) => (
+                      <p key={i} className="text-xs font-mono leading-relaxed">
+                        {r.cnj || '—'}: {r.registradas ?? 0} registrada(s), {r.reutilizadas ?? 0}{' '}
+                        reaproveitada(s), {r.ignoradasJaAssinadas ?? 0} já assinada(s)
+                        {r.semArquivos ? ', sem arquivos' : ''}
+                      </p>
+                    ))}
+                </div>
+              ) : null}
+            </div>
+            <div className="px-4 py-3 border-t border-slate-200/80 flex flex-wrap justify-center gap-2 bg-slate-50/90">
+              {prepararAssinarResultado ? (
+                <button
+                  type="button"
+                  onClick={() => setModalPrepararAssinarAberto(false)}
+                  className="px-6 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-sm font-semibold text-white"
+                >
+                  Fechar
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => void confirmarPrepararEBaixar()}
+                  disabled={aguardandoProtocoloBaixando || !prepararAssinarCredencialId}
+                  className="px-6 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-sm font-semibold text-white disabled:opacity-50 inline-flex items-center gap-2"
+                >
+                  {aguardandoProtocoloBaixando ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                      Preparando e baixando…
+                    </>
+                  ) : (
+                    'Preparar e baixar ZIP'
+                  )}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setModalPrepararAssinarAberto(false)}
+                className="px-6 py-2 rounded-xl border border-slate-200 text-sm font-medium text-slate-700 hover:bg-slate-100"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {modalUploadAssinadosAberto && (
+        <div className="fixed inset-0 z-[65] flex items-center justify-center bg-black/45 backdrop-blur-[2px] p-4">
+          <div className="w-full max-w-lg bg-white border border-slate-200/90 shadow-2xl rounded-2xl overflow-hidden ring-1 ring-indigo-500/10 flex flex-col">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-white/20 bg-gradient-to-r from-sky-700 to-indigo-700 text-white shrink-0">
+              <p className="text-base font-semibold">Upload dos Arquivos Assinados</p>
+              <button
+                type="button"
+                onClick={() => setModalUploadAssinadosAberto(false)}
+                className="p-1 rounded-lg text-white/90 hover:bg-white/15"
+                aria-label="Fechar"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            <div className="px-4 py-4 space-y-3 text-sm text-slate-700">
+              <p>
+                O pareamento é por <strong>conteúdo (hash)</strong>. O nome dos .p7s pode mudar ao
+                assinar (vira .p7s, pode achatar pastas) — não é preciso preservar nome nem
+                estrutura.
+              </p>
+              <div>
+                <input
+                  ref={inputUploadAssinadosRef}
+                  type="file"
+                  accept=".p7s,application/pkcs7-signature"
+                  multiple
+                  className="hidden"
+                  onChange={onSelecionarArquivosAssinados}
+                />
+                <button
+                  type="button"
+                  onClick={() => inputUploadAssinadosRef.current?.click()}
+                  className="w-full rounded-lg border border-dashed border-slate-300 px-3 py-3 text-sm text-slate-600 hover:bg-slate-50"
+                >
+                  {uploadAssinadosArquivos.length
+                    ? `${uploadAssinadosArquivos.length} arquivo(s) .p7s selecionado(s)`
+                    : 'Clique para escolher arquivos .p7s'}
+                </button>
+              </div>
+              {uploadAssinadosErro ? (
+                <p className="text-sm text-red-600" role="alert">
+                  {uploadAssinadosErro}
+                </p>
+              ) : null}
+              {uploadAssinadosResultado ? (
+                <div className="rounded-lg border border-slate-200 bg-slate-50/90 p-3 text-sm text-slate-800 space-y-2">
+                  <p>
+                    <strong>Pareadas:</strong> {uploadAssinadosResultado.pareadas ?? 0}
+                  </p>
+                  <p>
+                    <strong>Já assinadas:</strong> {uploadAssinadosResultado.jaAssinadas ?? 0}
+                  </p>
+                  {(uploadAssinadosResultado.naoPareadas || []).length > 0 ? (
+                    <p className="text-xs">
+                      <strong>Não pareadas:</strong>{' '}
+                      {uploadAssinadosResultado.naoPareadas.join(', ')}
+                    </p>
+                  ) : null}
+                  {(uploadAssinadosResultado.ambiguas || []).length > 0 ? (
+                    <p className="text-xs text-amber-800">
+                      <strong>Ambíguas:</strong> {uploadAssinadosResultado.ambiguas.join(', ')}
+                    </p>
+                  ) : null}
+                  {(uploadAssinadosResultado.invalidas || []).length > 0 ? (
+                    <p className="text-xs text-red-700">
+                      <strong>Inválidas:</strong> {uploadAssinadosResultado.invalidas.join(', ')}
+                    </p>
+                  ) : null}
+                  {(uploadAssinadosResultado.semConteudo || []).length > 0 ? (
+                    <p className="text-xs text-red-700">
+                      <strong>Sem conteúdo embutido:</strong>{' '}
+                      {uploadAssinadosResultado.semConteudo.join(', ')}
+                    </p>
+                  ) : null}
+                  <p className="font-medium text-emerald-800">
+                    {uploadAssinadosResultado.peticoesQueViraramAssinadas ?? 0} petição(ões) com
+                    status ASSINADA (prontas para protocolar).
+                  </p>
+                </div>
+              ) : null}
+            </div>
+            <div className="px-4 py-3 border-t border-slate-200/80 flex flex-wrap justify-center gap-2 bg-slate-50/90">
+              {(uploadAssinadosResultado?.pareadas > 0 ||
+                uploadAssinadosResultado?.peticoesQueViraramAssinadas > 0) ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setModalUploadAssinadosAberto(false);
+                    setModalResultadoAguardandoProtocoloAberto(false);
+                    navigate('/processos/peticionamento-projudi');
+                  }}
+                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-sm font-semibold text-white"
+                >
+                  Abrir Peticionamento PROJUDI
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => void enviarArquivosAssinados()}
+                  disabled={uploadAssinadosEnviando || !uploadAssinadosArquivos.length}
+                  className="px-6 py-2 rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 text-sm font-semibold text-white disabled:opacity-50 inline-flex items-center gap-2"
+                >
+                  {uploadAssinadosEnviando ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                      Registrando…
+                    </>
+                  ) : (
+                    'Enviar .p7s assinados'
+                  )}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setModalUploadAssinadosAberto(false)}
+                className="px-6 py-2 rounded-xl border border-slate-200 text-sm font-medium text-slate-700 hover:bg-slate-100"
+              >
+                Fechar
               </button>
             </div>
           </div>

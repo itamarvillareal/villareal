@@ -3106,6 +3106,31 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     competencia,
   ]);
 
+  function eliminarAgendamentoAudiencia() {
+    if (camposBloqueados || !String(audienciaData ?? '').trim()) return;
+
+    const payloadBase = {
+      codigoCliente,
+      numeroInterno: processo,
+    };
+
+    if (agendarAudienciaApiDebounceRef.current != null) {
+      window.clearTimeout(agendarAudienciaApiDebounceRef.current);
+      agendarAudienciaApiDebounceRef.current = null;
+    }
+
+    if (featureFlags.useApiAgenda) {
+      void removerAudienciaProcessoAgendaApi(payloadBase);
+    } else {
+      removerAudienciaProcessoDaAgenda(payloadBase);
+    }
+
+    setAudienciaData('');
+    setAudienciaHora('');
+    setAudienciaTipo('');
+    setAvisoAudiencia('nao_avisado');
+  }
+
   function formatarDataAudienciaInput(valor) {
     const alias = resolverAliasHojeEmTexto(valor, 'br');
     if (alias) return alias;
@@ -3484,15 +3509,28 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                   >
                     <Calendar className="w-4 h-4 text-violet-600 shrink-0" aria-hidden />
                     <span className="text-[11px] font-bold uppercase tracking-wide text-violet-950">Audiência</span>
-                    {avisoAudiencia === 'avisado' ? (
-                      <span className="ml-auto rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-800 ring-1 ring-emerald-400/40">
-                        Avisado
-                      </span>
-                    ) : (
-                      <span className="ml-auto rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold text-amber-900 ring-1 ring-amber-400/35">
-                        Não avisado
-                      </span>
-                    )}
+                    <div className="ml-auto flex items-center gap-1.5 shrink-0">
+                      {!camposBloqueados && String(audienciaData ?? '').trim() ? (
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1 rounded-md border border-rose-300/80 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-rose-800 hover:bg-rose-50"
+                          onClick={eliminarAgendamentoAudiencia}
+                          title="Remove a audiência deste processo e apaga o compromisso nas agendas dos colaboradores"
+                        >
+                          <Trash2 className="w-3 h-3" aria-hidden />
+                          Eliminar agendamento
+                        </button>
+                      ) : null}
+                      {avisoAudiencia === 'avisado' ? (
+                        <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-800 ring-1 ring-emerald-400/40">
+                          Avisado
+                        </span>
+                      ) : (
+                        <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold text-amber-900 ring-1 ring-amber-400/35">
+                          Não avisado
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <div className="flex flex-wrap items-end gap-x-2 gap-y-1.5">
                     <Field label="Data" className="w-[7.25rem] shrink-0 min-w-0">
