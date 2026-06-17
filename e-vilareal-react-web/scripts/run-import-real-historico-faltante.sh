@@ -27,15 +27,11 @@ ok=0
 fail=0
 skip=0
 
-declare -A DONE_OK
+DONE_OK_FILE="${RESUMO}.ok-clients"
 if [[ "$RETOMAR" == "1" && -f "$RESUMO" ]]; then
-  while IFS= read -r line; do
-    if [[ "$line" == *'"status":"ok"'* ]]; then
-      c=$(printf '%s' "$line" | sed -n 's/.*"cliente":\([0-9]*\).*/\1/p')
-      [[ -n "$c" ]] && DONE_OK[$c]=1
-    fi
-  done <"$RESUMO"
+  grep '"status":"ok"' "$RESUMO" | sed -n 's/.*"cliente":\([0-9]*\).*/\1/p' | sort -nu >"$DONE_OK_FILE" 2>/dev/null || true
 fi
+touch "$DONE_OK_FILE"
 
 if [[ "$RETOMAR" == "1" ]]; then
   echo "Reinício $(date -u +%Y-%m-%dT%H:%M:%SZ) — $total clientes na lista — API=$VILAREAL_API_BASE" | tee -a "$LOG"
@@ -46,7 +42,7 @@ else
 fi
 
 for c in $clients; do
-  if [[ -n "${DONE_OK[$c]:-}" ]]; then
+  if grep -qx "$c" "$DONE_OK_FILE" 2>/dev/null; then
     skip=$((skip + 1))
     echo "[skip] cliente $c já ok no resumo" | tee -a "$LOG"
     continue
