@@ -30,14 +30,16 @@
  *   --sem-partes             Não importa partes do processo (90/95)
  *   --sem-calculos           Não importa rodadas de cálculo (Calculos/ txt)
  *   --importar-partes        (legado; partes já correm por defeito)
- *   --substituir-historico   (defeito com --aplicar) Apaga andamentos dos processos importados e reimporta do txt
- *   --apenas-novos-historico Só acrescenta andamentos novos (não apaga os já existentes na API)
- *   --sem-zerar              Não zera dados do cliente na base antes do import (por defeito zera com --aplicar; inclui vínculo 151.1.0)
+ *   --substituir-historico   Apaga andamentos dos processos importados e reimporta do txt
+ *   --apenas-novos-historico Só acrescenta andamentos novos (defeito com --aplicar)
+ *   --zerar                  Apaga dados do cliente na base antes do import (cuidado: remove histórico existente)
+ *   --sem-zerar              (legado) Igual ao defeito — mantido por compatibilidade
  *   --aplicar-correcao-historico  Corrige txt (índice 14) antes do histórico (lento; por defeito não)
  *   --base=PATH              Raiz «Banco de Dados»
  *   --relatorio=JSON         Relatório final da execução
  *   --amostra-processos=N    Em --dry-run, quantos processos pré-visualizar (defeito: 3; 0 = nenhum)
  *   --sem-verificacao        Não executa verificação txt↔API/MySQL após --aplicar (não recomendado)
+ *   --continuar-apesar-falhas  Não aborta em falhas de status/partes/cálculos/verificação (lotes)
  */
 
 import './lib/load-vilareal-import-env.mjs';
@@ -102,7 +104,7 @@ export function parseArgs(argv) {
     semPartes: false,
     semCalculos: false,
     substituirHistorico: false,
-    semZerar: false,
+    semZerar: true,
     aplicarCorrecaoHistorico: false,
     base: resolverBaseBancoDados(),
     login: process.env.VILAREAL_IMPORT_LOGIN || 'itamar',
@@ -111,6 +113,7 @@ export function parseArgs(argv) {
     amostraProcessosDryRun: 3,
     baseUrl: resolverBaseUrlImport(),
     semVerificacao: false,
+    continuarApesarFalhas: false,
   };
 
   for (const a of argv) {
@@ -118,8 +121,8 @@ export function parseArgs(argv) {
     else if (a === '--aplicar') {
       out.aplicar = true;
       out.dryRun = false;
-      out.substituirHistorico = true;
     } else if (a === '--apenas-novos-historico') out.substituirHistorico = false;
+    else if (a === '--zerar') out.semZerar = false;
     else if (a === '--sem-zerar') out.semZerar = true;
     else if (a === '--sem-historico') out.semHistorico = true;
     else if (a === '--sem-imovel') out.semImovel = true;
@@ -151,6 +154,7 @@ export function parseArgs(argv) {
       if (Number.isFinite(n) && n >= 0) out.amostraProcessosDryRun = Math.trunc(n);
     } else if (a.startsWith('--base-url=')) out.baseUrl = a.slice(11).replace(/\/$/, '');
     else if (a === '--sem-verificacao') out.semVerificacao = true;
+    else if (a === '--continuar-apesar-falhas') out.continuarApesarFalhas = true;
   }
 
   return out;
@@ -373,7 +377,7 @@ function imprimirResumoCliente(opts, procs, fonteProcs = '3.1') {
   console.log(`Pasta Proc: Proc/${SEGMENTO_MIL}/${cent}/${pasta}/`);
   console.log(`Modo: ${opts.dryRun ? 'dry-run' : 'aplicar'}`);
   console.log(
-    `Zerar base antes: ${opts.semZerar ? 'não (--sem-zerar)' : opts.dryRun ? 'simulação (contagens)' : 'sim'}`,
+    `Zerar base antes: ${opts.semZerar ? 'não (defeito; use --zerar para alinhar do zero)' : opts.dryRun ? 'simulação (contagens)' : 'sim (--zerar)'}`,
   );
   if (!opts.semHistorico) {
     console.log(
@@ -664,10 +668,16 @@ async function main() {
         falhas: histFalhas,
       };
       if (histFail > 0) {
-        console.error(
-          `[import-real] Histórico: ${histFail} falha(s) em ${procs.length} processo(s) — abortando.`
-        );
-        process.exit(1);
+        if (opts.continuarApesarFalhas) {
+          console.warn(
+            `[import-real] Histórico: ${histFail} falha(s) — continuando (--continuar-apesar-falhas).`
+          );
+        } else {
+          console.error(
+            `[import-real] Histórico: ${histFail} falha(s) em ${procs.length} processo(s) — abortando.`
+          );
+          process.exit(1);
+        }
       }
     } else {
       console.log('\n[3/5] Histórico (todos os processos do cliente)…\n');
@@ -675,8 +685,12 @@ async function main() {
       relatorio.etapas.historico = codeHist === 0 ? 'ok' : 'falhou';
       if (codeHist !== 0) {
         relatorio.falhas.push({ etapa: 'historico', code: codeHist });
-        console.error('[import-real] Falha na importação de histórico — abortando.');
-        process.exit(codeHist);
+        if (opts.continuarApesarFalhas) {
+          console.warn('[import-real] Falha na importação de histórico — continuando (--continuar-apesar-falhas).');
+        } else {
+          console.error('[import-real] Falha na importação de histórico — abortando.');
+          process.exit(codeHist);
+        }
       }
     }
   } else {
@@ -687,9 +701,12 @@ async function main() {
   const codeStatus = await executarSincronizarStatusProcesso(opts, relatorio);
   if (codeStatus !== 0) {
     relatorio.falhas.push({ etapa: 'statusProcesso', code: codeStatus });
-    if (!opts.dryRun) {
+    if (!opts.dryRun && !opts.continuarApesarFalhas) {
       console.error('[import-real] Falha na sincronização de status Processo — abortando.');
       process.exit(codeStatus);
+    }
+    if (!opts.dryRun && opts.continuarApesarFalhas) {
+      console.warn('[import-real] Falha na sincronização de status — continuando (--continuar-apesar-falhas).');
     }
   }
 
@@ -759,12 +776,16 @@ async function main() {
     relatorio.etapas.partes = codePartes === 0 ? 'ok' : 'falhou';
     if (codePartes !== 0) {
       relatorio.falhas.push({ etapa: 'partes', code: codePartes });
-      relatorio.duracaoMs = Date.now() - inicio;
-      if (opts.relatorio) {
-        fs.writeFileSync(opts.relatorio, JSON.stringify(relatorio, null, 2), 'utf8');
+      if (opts.continuarApesarFalhas) {
+        console.warn('[import-real] Falha na importação de partes — continuando (--continuar-apesar-falhas).');
+      } else {
+        relatorio.duracaoMs = Date.now() - inicio;
+        if (opts.relatorio) {
+          fs.writeFileSync(opts.relatorio, JSON.stringify(relatorio, null, 2), 'utf8');
+        }
+        console.error('[import-real] Falha na importação de partes — abortando.');
+        process.exit(codePartes);
       }
-      console.error('[import-real] Falha na importação de partes — abortando.');
-      process.exit(codePartes);
     }
   } else {
     relatorio.etapas.partes = 'ignorado';
@@ -776,12 +797,16 @@ async function main() {
     relatorio.etapas.calculos = stCalculos;
     if (codeCalculos !== 0) {
       relatorio.falhas.push({ etapa: 'calculos', code: codeCalculos });
-      relatorio.duracaoMs = Date.now() - inicio;
-      if (opts.relatorio) {
-        fs.writeFileSync(opts.relatorio, JSON.stringify(relatorio, null, 2), 'utf8');
+      if (opts.continuarApesarFalhas) {
+        console.warn('[import-real] Falha na importação de cálculos — continuando (--continuar-apesar-falhas).');
+      } else {
+        relatorio.duracaoMs = Date.now() - inicio;
+        if (opts.relatorio) {
+          fs.writeFileSync(opts.relatorio, JSON.stringify(relatorio, null, 2), 'utf8');
+        }
+        console.error('[import-real] Falha na importação de cálculos — abortando.');
+        process.exit(codeCalculos);
       }
-      console.error('[import-real] Falha na importação de cálculos — abortando.');
-      process.exit(codeCalculos);
     }
   } else {
     relatorio.etapas.calculos = 'ignorado';
@@ -800,8 +825,12 @@ async function main() {
       if (opts.relatorio) {
         fs.writeFileSync(opts.relatorio, JSON.stringify(relatorio, null, 2), 'utf8');
       }
-      console.error('[import-real] Verificação pós-import falhou — abortando.');
-      process.exit(ver.exitCode ?? 3);
+      if (opts.continuarApesarFalhas) {
+        console.warn('[import-real] Verificação pós-import com pendências — continuando (--continuar-apesar-falhas).');
+      } else {
+        console.error('[import-real] Verificação pós-import falhou — abortando.');
+        process.exit(ver.exitCode ?? 3);
+      }
     }
   }
 
@@ -813,9 +842,12 @@ async function main() {
   console.log(`\n=== import-real concluído (${(relatorio.duracaoMs / 1000).toFixed(1)}s) ===`);
   if (temCabecalhoTxt) {
     console.log(`Processos: ${ok} ok, ${fail} falha(s)\n`);
-    if (fail > 0) process.exit(1);
+    if (fail > 0 && !opts.continuarApesarFalhas) process.exit(1);
   } else {
     console.log('');
+  }
+  if (relatorio.falhas.length > 0 && opts.continuarApesarFalhas) {
+    process.exit(1);
   }
 }
 

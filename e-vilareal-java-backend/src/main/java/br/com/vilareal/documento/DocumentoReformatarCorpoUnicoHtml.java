@@ -182,7 +182,8 @@ public final class DocumentoReformatarCorpoUnicoHtml {
                 fecho,
                 advogadoNome,
                 advogadoOab,
-                corpoUnicoHtml.trim());
+                corpoUnicoHtml.trim(),
+                base.processoId());
     }
 
     /** Local e data editados no corpo único (linha acima da assinatura). */

@@ -7,6 +7,7 @@ import {
   Folder,
   Forward,
   Gavel,
+  Layers,
   Mail,
   Megaphone,
   UserSearch,
@@ -21,6 +22,7 @@ import {
 const LUCIDE_POR_ID = {
   processos: Folder,
   'documentos/gerar': FileText,
+  'documentos/modelos': Layers,
   'processos/peticionamento-projudi': Gavel,
   'processos/publicacoes': Megaphone,
   'publicacoes-email': Mail,

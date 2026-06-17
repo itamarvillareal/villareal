@@ -22,6 +22,7 @@ class DocumentoReformatarCorpoUnicoHtmlTest {
                 "",
                 DocumentoReformatarCorpoUnicoHtml.ADVOGADO_NOME_PADRAO,
                 "OAB/GO 33.329",
+                null,
                 null);
 
         String html = DocumentoReformatarCorpoUnicoHtml.montar(original);
@@ -56,6 +57,7 @@ class DocumentoReformatarCorpoUnicoHtmlTest {
                 List.of(new DocumentoReformatarConteudoRequest.SecaoConteudo(
                         "I - BREVE SÍNTESE", "SUB", "<p class=\"corpo\">Texto da seção.</p>")),
                 "",
+                null,
                 null,
                 null,
                 null);

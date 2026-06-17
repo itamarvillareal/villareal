@@ -958,7 +958,13 @@ export async function salvarCabecalhoProcesso(payload) {
     consultaAutomatica: payload.consultaAutomatica === true,
     ativo: payload.statusAtivo !== false,
     consultor: payload.responsavel || null,
-    usuarioResponsavelId: payload.usuarioResponsavelId || null,
+    usuarioResponsavelId:
+      payload.usuarioResponsavelId != null &&
+      String(payload.usuarioResponsavelId).trim() !== '' &&
+      Number.isFinite(Number(payload.usuarioResponsavelId)) &&
+      Number(payload.usuarioResponsavelId) > 0
+        ? Number(payload.usuarioResponsavelId)
+        : null,
     unidade: String(payload.unidade ?? '').trim() || null,
     pasta: String(payload.pasta ?? '').trim() || null,
     papelCliente: papelParteUiParaApi(payload.papelParte),
@@ -1453,6 +1459,12 @@ export function mapApiProcessoToUiShape(p) {
     pjeGrau: String(p.pjeGrau ?? p.pje_grau ?? '').trim(),
     dataProtocolo: toBrFromIsoDate(p.dataProtocolo),
     responsavel: corrigirMojibakeUtf8(String(p.consultor ?? '').trim()),
+    usuarioResponsavelId:
+      p.usuarioResponsavelId != null &&
+      Number.isFinite(Number(p.usuarioResponsavelId)) &&
+      Number(p.usuarioResponsavelId) > 0
+        ? Number(p.usuarioResponsavelId)
+        : null,
     /** Só na listagem por cliente; mesma regra que partes «Autor/Requerente» na tela Processos. */
     parteCliente,
     /** Só na listagem por cliente; mesma regra que partes «Réu» na tela Processos. */

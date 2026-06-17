@@ -35,6 +35,7 @@ import {
   LazyDescontoCheques,
   LazyGerenteTopicos,
   LazyGerarDocumento,
+  LazyModelosPeticao,
   LazyIntegracoesTribunalScraperLab,
   LazyImoveis,
   LazyDemandas,
@@ -81,6 +82,7 @@ import {
   setUsuarioSessaoAtualId,
   isUsuarioMasterEstacao,
   perfilAtivoEhMasterEstacao,
+  usuarioEhAdminApi,
 } from './data/usuarioPermissoesStorage.js';
 import { getUsuariosAtivos } from './data/agendaPersistenciaData';
 import { getNomeExibicaoUsuario } from './data/usuarioDisplayHelpers.js';
@@ -168,6 +170,10 @@ function Layout() {
       return;
     }
     if (pathNorm === '/patrimonio' && !perfilAtivoEhMasterEstacao()) {
+      navigate(getPrimeiraRotaPermitida(uid), { replace: true });
+      return;
+    }
+    if (pathNorm === '/documentos/modelos' && !usuarioEhAdminApi()) {
       navigate(getPrimeiraRotaPermitida(uid), { replace: true });
       return;
     }
@@ -422,6 +428,7 @@ function App() {
               </Route>
               <Route path="/integracoes/scraper-lab" element={<LazyIntegracoesTribunalScraperLab />} />
               <Route path="/documentos/gerar" element={<LazyGerarDocumento />} />
+              <Route path="/documentos/modelos" element={<LazyModelosPeticao />} />
               <Route path="/financeiro" element={<LazyFinanceiroLayout />}>
                 <Route index element={<LazyFinanceiroDashboard />} />
                 <Route path="extrato" element={<LazyFinanceiroExtrato />} />

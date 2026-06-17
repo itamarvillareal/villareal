@@ -1,10 +1,16 @@
 package br.com.vilareal.email;
 
+import com.google.api.services.gmail.Gmail;
+import com.google.api.services.gmail.model.Message;
 import com.google.api.services.gmail.model.MessagePart;
+import com.google.api.services.gmail.model.MessagePartBody;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
+import java.util.Locale;
 
 public final class GmailMimeUtil {
 
@@ -86,5 +92,72 @@ public final class GmailMimeUtil {
         }
         byte[] bytes = Base64.getUrlDecoder().decode(parte.getBody().getData());
         return new String(bytes, StandardCharsets.UTF_8);
+    }
+
+    /**
+     * Carrega a mensagem completa e baixa todos os anexos cujo nome termina em {@code .ofx}
+     * (case-insensitive), percorrendo recursivamente as partes MIME.
+     */
+    public static List<GmailAnexoArquivo> baixarAnexosOfx(Gmail gmail, String gmailUser, String messageId)
+            throws IOException {
+        Message completa = gmail.users().messages().get(gmailUser, messageId).setFormat("full").execute();
+        List<GmailAnexoArquivo> out = new ArrayList<>();
+        coletarAnexosOfxRecursivo(gmail, gmailUser, messageId, completa.getPayload(), out);
+        return out;
+    }
+
+    private static void coletarAnexosOfxRecursivo(
+            Gmail gmail,
+            String gmailUser,
+            String messageId,
+            MessagePart parte,
+            List<GmailAnexoArquivo> out)
+            throws IOException {
+        if (parte == null) {
+            return;
+        }
+        String filename = parte.getFilename();
+        if (filenameEhOfx(filename)) {
+            byte[] conteudo = baixarConteudoParte(gmail, gmailUser, messageId, parte);
+            if (conteudo != null && conteudo.length > 0) {
+                out.add(new GmailAnexoArquivo(filename, conteudo));
+            }
+        }
+        List<MessagePart> filhas = parte.getParts();
+        if (filhas != null) {
+            for (MessagePart filha : filhas) {
+                coletarAnexosOfxRecursivo(gmail, gmailUser, messageId, filha, out);
+            }
+        }
+    }
+
+    private static boolean filenameEhOfx(String filename) {
+        if (filename == null || filename.isBlank()) {
+            return false;
+        }
+        return filename.trim().toLowerCase(Locale.ROOT).endsWith(".ofx");
+    }
+
+    private static byte[] baixarConteudoParte(Gmail gmail, String gmailUser, String messageId, MessagePart parte)
+            throws IOException {
+        MessagePartBody body = parte.getBody();
+        if (body == null) {
+            return null;
+        }
+        if (body.getAttachmentId() != null && !body.getAttachmentId().isBlank()) {
+            MessagePartBody anexo = gmail.users()
+                    .messages()
+                    .attachments()
+                    .get(gmailUser, messageId, body.getAttachmentId())
+                    .execute();
+            if (anexo.getData() == null || anexo.getData().isBlank()) {
+                return null;
+            }
+            return Base64.getUrlDecoder().decode(anexo.getData());
+        }
+        if (body.getData() != null && !body.getData().isBlank()) {
+            return Base64.getUrlDecoder().decode(body.getData());
+        }
+        return null;
     }
 }

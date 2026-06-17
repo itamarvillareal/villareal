@@ -1,14 +1,23 @@
 #!/usr/bin/env bash
-# Reimporta histórico via import-real para clientes com processos sem andamentos na API/MySQL.
-# Por cliente: etapa [3/5] histórico em massa + cabeçalho (sem zerar, sem partes/cálculos).
+# Reimporta cadastro completo via import-real para clientes da lista de pares.
 #
 # Uso:
 #   ./scripts/run-import-real-historico-faltante.sh
-#   RETOMAR=1 ./scripts/run-import-real-historico-faltante.sh   # não zera log/resumo; pula clientes já ok
+#   RETOMAR=1 ./scripts/run-import-real-historico-faltante.sh
+#
+# Cadastro completo (recomendado):
+#   bash scripts/start-import-real-cadastro-completo.sh
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
-export VILAREAL_API_BASE="${VILAREAL_API_BASE:-http://localhost:8081}"
+if [[ -f .env.import.local ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source .env.import.local
+  set +a
+fi
+
+export VILAREAL_API_BASE="${VILAREAL_API_BASE:-http://localhost:8080}"
 
 PAIRS="${1:-tmp/processos-sem-historico.pairs}"
 LOG="${2:-tmp/import-real-historico-faltante.log}"
@@ -38,7 +47,7 @@ fi
 touch "$DONE_OK_FILE"
 
 if [[ "$RETOMAR" == "1" ]]; then
-  echo "Reinício $(date -u +%Y-%m-%dT%H:%M:%SZ) — $total clientes na lista — API=$VILAREAL_API_BASE" | tee -a "$LOG"
+  echo "Reinício $(date -u +%Y-%m-%dT%H:%M:%SZ) — $total clientes — API=$VILAREAL_API_BASE" | tee -a "$LOG"
 else
   : >"$LOG"
   : >"$RESUMO"
@@ -53,15 +62,13 @@ for c in $clients; do
   fi
   n=$((n + 1))
   t0=$(date +%s)
-  echo "########## [$n/$total] Cliente $c ##########" | tee -a "$LOG"
-  rel="tmp/import-real-historico-cliente-${c}.json"
+  echo "########## [$n/$total] Cliente $c — import-real ##########" | tee -a "$LOG"
   if node scripts/import-real.mjs \
     --cliente="$c" \
     --aplicar \
     --sem-zerar \
-    --sem-calculos \
-    --sem-partes \
-    --relatorio="$rel" >>"$LOG" 2>&1; then
+    --continuar-apesar-falhas \
+    --sem-verificacao >>"$LOG" 2>&1; then
     ok=$((ok + 1))
     st=ok
     code=0
@@ -75,9 +82,7 @@ for c in $clients; do
   dur=$(($(date +%s) - t0))
   line="{\"cliente\":$c,\"status\":\"$st\",\"code\":$code,\"duracaoS\":$dur,\"ts\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}"
   printf '%s\n' "$line" >>"$RESUMO"
-  if grep -qx "$c" "$DONE_OK_FILE" 2>/dev/null; then :; else
-    [[ "$st" == "ok" ]] && echo "$c" >>"$DONE_OK_FILE"
-  fi
+  if [[ "$st" == "ok" ]]; then echo "$c" >>"$DONE_OK_FILE"; fi
 done
 
 rm -f "$PIDFILE"

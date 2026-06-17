@@ -70,6 +70,7 @@ import {
 } from '../repositories/agendaRepository.js';
 import { getApiUsuarioSessao, getPerfilAtivoParaPermissoes } from '../data/usuarioPermissoesStorage.js';
 import { getNomeExibicaoUsuario } from '../data/usuarioDisplayHelpers.js';
+import { listarColaboradoresHumanos } from '../repositories/usuariosRepository.js';
 import { SidebarMenuIcon } from './navigation/SidebarMenuIcons.jsx';
 import {
   X,
@@ -300,6 +301,28 @@ function hojeBr() {
   return `${dd}/${mm}/${yyyy}`;
 }
 
+/** Texto legado `consultor` gravado junto com `usuarioResponsavelId` (login ou apelido). */
+function consultorLegadoDeUsuario(u) {
+  if (!u) return '';
+  const login = String(u.login ?? '').trim();
+  if (login) return login;
+  const apelido = String(u.apelido ?? '').trim();
+  if (apelido) return apelido;
+  return String(getNomeExibicaoUsuario(u) ?? '').trim();
+}
+
+/** Espelha `ConsultorUsuarioResolver`: match exato login/apelido, único. */
+function resolverUsuarioIdPorConsultorLegado(consultor, usuarios) {
+  const texto = String(consultor ?? '').trim();
+  if (!texto || !Array.isArray(usuarios) || usuarios.length === 0) return '';
+  const alvo = texto.toLowerCase();
+  const porLogin = usuarios.filter((u) => String(u.login ?? '').trim().toLowerCase() === alvo);
+  if (porLogin.length === 1) return String(porLogin[0].id);
+  const porApelido = usuarios.filter((u) => String(u.apelido ?? '').trim().toLowerCase() === alvo);
+  if (porApelido.length === 1) return String(porApelido[0].id);
+  return '';
+}
+
 /** Mesmo critério do seletor «Perfil ativo» no menu (apelido ou login). */
 function nomeUsuarioAtivoParaHistorico() {
   const perfilId = getPerfilAtivoParaPermissoes();
@@ -521,6 +544,8 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   const [valorCausa, setValorCausa] = useState('');
   const [procedimento, setProcedimento] = useState('');
   const [responsavel, setResponsavel] = useState('');
+  const [usuarioResponsavelId, setUsuarioResponsavelId] = useState('');
+  const [colaboradoresResponsavel, setColaboradoresResponsavel] = useState([]);
   const [competencia, setCompetencia] = useState('');
   const [observacao, setObservacao] = useState('');
   const [periodicidadeConsulta, setPeriodicidadeConsulta] = useState('');
@@ -1078,6 +1103,8 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       setEstado(pickCampoStrSalvo(r, 'estado', mock.estado));
       setCidade(pickCampoStrSalvo(r, 'cidade', mock.cidade));
       setResponsavel(pickCampoStrSalvo(r, 'responsavel', ''));
+      const fkSalvo = pickCampoStrSalvo(r, 'usuarioResponsavelId', '');
+      setUsuarioResponsavelId(fkSalvo.trim() !== '' ? fkSalvo : '');
     } else {
       // Com API: cabeçalho, partes e histórico vêm de GET /api/processos e sub-rotas (importação/planilha).
       setPeriodicidadeConsulta(registroPersistido?.periodicidadeConsulta ?? '');
@@ -1164,6 +1191,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
         valorCausa: pickCampoStrSalvo(r, 'valorCausa', mock.valorCausa),
         procedimento: pickCampoStrSalvo(r, 'procedimento', ''),
         responsavel: pickCampoStrSalvo(r, 'responsavel', ''),
+        usuarioResponsavelId: pickCampoStrSalvo(r, 'usuarioResponsavelId', ''),
         competencia: pickCampoStrSalvo(r, 'competencia', mock.competencia),
         observacao: pickCampoStrSalvo(r, 'observacao', mock.observacao),
         faseCampo: pickCampoStrSalvo(r, 'faseCampo', ''),
@@ -2218,6 +2246,10 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       valorCausa,
       procedimento,
       responsavel,
+      usuarioResponsavelId:
+        usuarioResponsavelId != null && String(usuarioResponsavelId).trim() !== ''
+          ? Number(usuarioResponsavelId)
+          : null,
       competencia,
       observacao,
       papelParte,
@@ -2317,6 +2349,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     setPjeTribunal('');
     setPjeGrau('');
     setResponsavel('');
+    setUsuarioResponsavelId('');
     setValorCausa('');
     setHistorico([]);
     setPeriodicidadeConsulta('');
@@ -2433,6 +2466,13 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       setPjeGrau(mapped.pjeGrau ?? '');
       setFaseCampo(mapped.observacaoFase ?? '');
       setResponsavel(mapped.responsavel ?? '');
+      const fkApi =
+        mapped.usuarioResponsavelId != null &&
+        Number.isFinite(Number(mapped.usuarioResponsavelId)) &&
+        Number(mapped.usuarioResponsavelId) > 0
+          ? String(mapped.usuarioResponsavelId)
+          : resolverUsuarioIdPorConsultorLegado(mapped.responsavel, colaboradoresResponsavel);
+      setUsuarioResponsavelId(fkApi);
       setUnidadeEndereco(mapped.unidade ?? '');
       setUnidadeEnderecoManual(String(mapped.unidade ?? '').trim() !== '');
       setPasta(mapped.pasta ?? '');
@@ -2663,6 +2703,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     valorCausa,
     procedimento,
     responsavel,
+    usuarioResponsavelId,
     competencia,
     observacao,
     papelParte,
@@ -2677,6 +2718,39 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     proximaInformacao,
     dataProximaInformacao,
   ]);
+
+  useEffect(() => {
+    let ativo = true;
+    void listarColaboradoresHumanos()
+      .then((lista) => {
+        if (!ativo) return;
+        setColaboradoresResponsavel(Array.isArray(lista) ? lista : []);
+      })
+      .catch(() => {
+        if (!ativo) return;
+        setColaboradoresResponsavel(getColaboradoresHumanosAtivos() || []);
+      });
+    return () => {
+      ativo = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (usuarioResponsavelId || !String(responsavel ?? '').trim()) return;
+    const inferido = resolverUsuarioIdPorConsultorLegado(responsavel, colaboradoresResponsavel);
+    if (inferido) setUsuarioResponsavelId(inferido);
+  }, [colaboradoresResponsavel, responsavel, usuarioResponsavelId]);
+
+  function alterarResponsavelProcesso(nextUsuarioId) {
+    const id = String(nextUsuarioId ?? '').trim();
+    setUsuarioResponsavelId(id);
+    if (!id) {
+      setResponsavel('');
+      return;
+    }
+    const u = colaboradoresResponsavel.find((x) => String(x.id) === id);
+    setResponsavel(consultorLegadoDeUsuario(u));
+  }
 
   useEffect(() => {
     if (edicaoDesabilitadaAnteriorRef.current === false && edicaoDesabilitada === true) {
@@ -3921,13 +3995,25 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                     />
                   </Field>
                   <Field label="Responsável" dense className="col-span-1 md:col-span-3 min-w-0">
-                    <input
-                      type="text"
-                      value={responsavel}
-                      readOnly={camposBloqueados}
-                      onChange={(e) => setResponsavel(e.target.value)}
+                    <select
+                      value={usuarioResponsavelId}
+                      disabled={camposBloqueados}
+                      onChange={(e) => alterarResponsavelProcesso(e.target.value)}
                       className={clsCampoDenso}
-                    />
+                    >
+                      <option value="">(nenhum)</option>
+                      {colaboradoresResponsavel.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {getNomeExibicaoUsuario(u)}
+                        </option>
+                      ))}
+                      {usuarioResponsavelId &&
+                      !colaboradoresResponsavel.some((u) => String(u.id) === String(usuarioResponsavelId)) ? (
+                        <option value={usuarioResponsavelId}>
+                          {String(responsavel || usuarioResponsavelId).trim() || usuarioResponsavelId}
+                        </option>
+                      ) : null}
+                    </select>
                   </Field>
                                     <div className="col-span-2 md:col-span-4 min-w-0 border-l-4 border-emerald-500 pl-3">
                     <Field label="Valor da Causa" dense>

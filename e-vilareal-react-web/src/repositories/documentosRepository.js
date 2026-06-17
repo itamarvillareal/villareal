@@ -88,6 +88,9 @@ export async function formatarArquivoPdf(arquivo, opts = {}) {
   if (opts.numeroInterno != null && opts.numeroInterno !== '') {
     fd.append('numeroInterno', String(opts.numeroInterno));
   }
+  if (opts.processoId != null && opts.processoId !== '') {
+    fd.append('processoId', String(opts.processoId));
+  }
   if (opts.preview) fd.append('preview', 'true');
 
   const res = await fetch(`${API_BASE_URL}/api/documentos/reformatar`, {
@@ -141,10 +144,15 @@ export async function gerarPdfReformatado(conteudo, opts = {}) {
   const qs = params.toString();
   const url = `${API_BASE_URL}/api/documentos/reformatar/gerar-pdf${qs ? `?${qs}` : ''}`;
 
+  const body = { ...conteudo };
+  if (opts.processoId != null && opts.processoId !== '') {
+    body.processoId = Number(opts.processoId);
+  }
+
   const res = await fetch(url, {
     method: 'POST',
     headers: headersJson(),
-    body: JSON.stringify(conteudo),
+    body: JSON.stringify(body),
     signal: opts.signal,
   });
   if (res.status === 401) emitApiUnauthorized();
@@ -201,10 +209,11 @@ export async function gerarPreviewIA(dados, opts = {}) {
   });
 }
 
-export async function gerarProcuracao({ pessoaId, cidadeEstado, data }, opts = {}) {
+export async function gerarProcuracao({ pessoaId, cidadeEstado, data, processoId }, opts = {}) {
   const body = { pessoaId: Number(pessoaId) };
   if (cidadeEstado) body.cidadeEstado = cidadeEstado;
   if (data) body.data = data;
+  if (processoId != null && processoId !== '') body.processoId = Number(processoId);
   return postPdf('/api/documentos/procuracao', body, opts);
 }
 

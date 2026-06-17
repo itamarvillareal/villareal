@@ -1,6 +1,8 @@
 package br.com.vilareal.documento;
 
 import br.com.vilareal.common.exception.ResourceNotFoundException;
+import br.com.vilareal.documento.tema.DocumentoTemaResolver;
+import br.com.vilareal.documento.tema.TemaDocumento;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
 import org.springframework.stereotype.Service;
@@ -20,14 +22,17 @@ public class ProcuracaoService {
     private final DocumentoPdfService pdfService;
     private final PessoaRepository pessoaRepository;
     private final QualificacaoPessoaUtil qualificacaoPessoaUtil;
+    private final DocumentoTemaResolver temaResolver;
 
     public ProcuracaoService(
             DocumentoPdfService pdfService,
             PessoaRepository pessoaRepository,
-            QualificacaoPessoaUtil qualificacaoPessoaUtil) {
+            QualificacaoPessoaUtil qualificacaoPessoaUtil,
+            DocumentoTemaResolver temaResolver) {
         this.pdfService = pdfService;
         this.pessoaRepository = pessoaRepository;
         this.qualificacaoPessoaUtil = qualificacaoPessoaUtil;
+        this.temaResolver = temaResolver;
     }
 
     @Transactional(readOnly = true)
@@ -55,6 +60,7 @@ public class ProcuracaoService {
         variables.put("cpfOutorgante", cpfOutorgante);
         variables.put("localData", localData);
 
-        return pdfService.gerarPdfDeTemplate(TEMPLATE_PROCURACAO, variables);
+        TemaDocumento tema = temaResolver.resolverPorProcessoId(request.processoId());
+        return pdfService.gerarPdfDeTemplate(TEMPLATE_PROCURACAO, variables, tema);
     }
 }

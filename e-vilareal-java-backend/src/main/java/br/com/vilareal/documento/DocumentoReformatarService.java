@@ -40,7 +40,7 @@ public class DocumentoReformatarService {
     }
 
     public byte[] reformatar(MultipartFile arquivo) throws IOException {
-        return reformatar(arquivo, null, null, null, null);
+        return reformatar(arquivo, null, null, null, null, null);
     }
 
     public byte[] reformatar(
@@ -50,9 +50,21 @@ public class DocumentoReformatarService {
             String cidadeEstado,
             String dataIso)
             throws IOException {
+        return reformatar(arquivo, enderecamentoOverride, numeroProcessoOverride, cidadeEstado, dataIso, null);
+    }
+
+    public byte[] reformatar(
+            MultipartFile arquivo,
+            String enderecamentoOverride,
+            String numeroProcessoOverride,
+            String cidadeEstado,
+            String dataIso,
+            Long processoId)
+            throws IOException {
         validarArquivo(arquivo);
         DocumentoParseado parseado = parsear(arquivo);
-        DocumentoRenderContext ctx = converterParaContext(parseado, enderecamentoOverride, numeroProcessoOverride, cidadeEstado, dataIso);
+        DocumentoRenderContext ctx =
+                converterParaContext(parseado, enderecamentoOverride, numeroProcessoOverride, cidadeEstado, dataIso, processoId);
         return pdfService.gerarPdf(ctx);
     }
 
@@ -63,10 +75,21 @@ public class DocumentoReformatarService {
             String cidadeEstado,
             String dataIso)
             throws IOException {
+        return extrairConteudo(arquivo, enderecamentoOverride, numeroProcessoOverride, cidadeEstado, dataIso, null);
+    }
+
+    public DocumentoReformatarConteudoRequest extrairConteudo(
+            MultipartFile arquivo,
+            String enderecamentoOverride,
+            String numeroProcessoOverride,
+            String cidadeEstado,
+            String dataIso,
+            Long processoId)
+            throws IOException {
         validarArquivo(arquivo);
         DocumentoParseado parseado = parsear(arquivo);
         DocumentoRenderContext ctx =
-                converterParaContext(parseado, enderecamentoOverride, numeroProcessoOverride, cidadeEstado, dataIso);
+                converterParaContext(parseado, enderecamentoOverride, numeroProcessoOverride, cidadeEstado, dataIso, processoId);
         LocalDate data = ctx.data() != null ? ctx.data() : LocalDate.now();
 
         List<DocumentoReformatarConteudoRequest.SecaoConteudo> secoes = parseado.secoes().stream()
@@ -85,9 +108,10 @@ public class DocumentoReformatarService {
                 DocumentoParagrafoHtmlUtil.paragrafosToHtml(parseado.preambulo()),
                 secoes,
                 DocumentoParagrafoHtmlUtil.paragrafosToHtml(ctx.fechoParagrafos()),
-                DocumentoReformatarCorpoUnicoHtml.ADVOGADO_NOME_PADRAO,
-                DocumentoReformatarCorpoUnicoHtml.ADVOGADO_OAB_PADRAO,
-                null);
+                null,
+                null,
+                null,
+                processoId);
     }
 
     public DocumentoReformatarConteudoRequest enriquecerComCorpoUnico(DocumentoReformatarConteudoRequest request) {
@@ -109,7 +133,8 @@ public class DocumentoReformatarService {
                 request.fecho(),
                 request.advogadoNome(),
                 request.advogadoOab(),
-                corpoUnico);
+                corpoUnico,
+                request.processoId());
     }
 
     public byte[] gerarPdfFromConteudo(DocumentoReformatarConteudoRequest request) {
@@ -141,10 +166,11 @@ public class DocumentoReformatarService {
                     List.of(),
                     localDataCustom,
                     true,
-                    parsed.advogadoNome(),
-                    parsed.advogadoOab(),
+                    advogadoManualOuNull(parsed.advogadoNome(), DocumentoReformatarCorpoUnicoHtml.ADVOGADO_NOME_PADRAO),
+                    advogadoManualOuNull(parsed.advogadoOab(), DocumentoReformatarCorpoUnicoHtml.ADVOGADO_OAB_PADRAO),
                     true,
-                    corpoHtml);
+                    corpoHtml,
+                    request.processoId());
             return pdfService.gerarPdf(ctx);
         }
 
@@ -196,7 +222,8 @@ public class DocumentoReformatarService {
                 null,
                 null,
                 false,
-                null);
+                null,
+                request.processoId());
         return pdfService.gerarPdf(ctx);
     }
 
@@ -240,7 +267,8 @@ public class DocumentoReformatarService {
             String enderecamentoOverride,
             String numeroProcessoOverride,
             String cidadeEstado,
-            String dataIso) {
+            String dataIso,
+            Long processoId) {
         String enderecamento = StringUtils.hasText(enderecamentoOverride)
                 ? enderecamentoOverride.trim()
                 : (StringUtils.hasText(parseado.enderecoJuizo()) ? parseado.enderecoJuizo().trim() : "");
@@ -274,7 +302,15 @@ public class DocumentoReformatarService {
                 null,
                 null,
                 false,
-                null);
+                null,
+                processoId);
+    }
+
+    private static String advogadoManualOuNull(String valor, String placeholderPadrao) {
+        if (!StringUtils.hasText(valor)) {
+            return null;
+        }
+        return valor.trim().equalsIgnoreCase(placeholderPadrao.trim()) ? null : valor.trim();
     }
 
     private static List<ParagrafoDocumento> filtrarFechoSemLocalData(List<ParagrafoDocumento> fecho, String localDataFinal) {

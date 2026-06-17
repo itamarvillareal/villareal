@@ -16,7 +16,7 @@ class DocumentoLocalDataResolverTest {
     private static final Path ARQUIVO_IMPUGNACAO = Path.of(
             System.getProperty("user.home"), "Downloads", "Impugnacao_Mov336_MariaEdna.docx");
 
-    private final DocumentoPdfService pdfService = new DocumentoPdfService(null);
+    private final DocumentoPdfService pdfService = new DocumentoPdfService(null, null);
 
     @Test
     void formularioComDataCompletaPrevaleceSobrePlaceholderDoDocx() {

@@ -7,5 +7,6 @@ public record ProcuracaoRequest(
         String codigoCliente,
         Integer numeroInterno,
         String cidadeEstado,
-        LocalDate data
+        LocalDate data,
+        Long processoId
 ) {}

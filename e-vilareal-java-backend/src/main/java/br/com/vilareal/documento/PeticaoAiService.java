@@ -196,7 +196,8 @@ public class PeticaoAiService {
                         .map(p -> removerTagsHtml(p.trim()))
                         .collect(Collectors.toList()),
                 cidadeEstado,
-                data);
+                data,
+                request.processoId());
     }
 
     private void validarConteudo(PeticaoAiConteudoJson conteudo) {

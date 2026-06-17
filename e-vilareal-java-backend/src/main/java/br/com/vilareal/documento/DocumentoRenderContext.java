@@ -25,7 +25,8 @@ public record DocumentoRenderContext(
         String advogadoNome,
         String advogadoOab,
         boolean modoCorpoUnico,
-        String corpoUnicoHtml) {
+        String corpoUnicoHtml,
+        Long processoId) {
 
     public DocumentoRenderContext {
         secoesLegado = secoesLegado != null ? List.copyOf(secoesLegado) : List.of();
@@ -54,6 +55,7 @@ public record DocumentoRenderContext(
                 null,
                 null,
                 false,
-                null);
+                null,
+                request.processoId());
     }
 }

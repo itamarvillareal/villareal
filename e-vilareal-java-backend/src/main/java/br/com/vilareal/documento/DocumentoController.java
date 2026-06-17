@@ -94,6 +94,7 @@ public class DocumentoController {
             @RequestParam(value = "data", required = false) String data,
             @RequestParam(value = "codigoCliente", required = false) String codigoCliente,
             @RequestParam(value = "numeroInterno", required = false) Integer numeroInterno,
+            @RequestParam(value = "processoId", required = false) Long processoId,
             @RequestParam(value = "preview", required = false, defaultValue = "false") boolean preview)
             throws Exception {
         return responderReformatacao(
@@ -104,6 +105,7 @@ public class DocumentoController {
                 data,
                 codigoCliente,
                 numeroInterno,
+                processoId,
                 preview);
     }
 
@@ -113,10 +115,11 @@ public class DocumentoController {
             @RequestParam(value = "enderecamento", required = false) String enderecamento,
             @RequestParam(value = "numeroProcesso", required = false) String numeroProcesso,
             @RequestParam(value = "cidadeEstado", required = false) String cidadeEstado,
-            @RequestParam(value = "data", required = false) String data)
+            @RequestParam(value = "data", required = false) String data,
+            @RequestParam(value = "processoId", required = false) Long processoId)
             throws Exception {
         DocumentoReformatarConteudoRequest conteudo =
-                reformatarService.extrairConteudo(arquivo, enderecamento, numeroProcesso, cidadeEstado, data);
+                reformatarService.extrairConteudo(arquivo, enderecamento, numeroProcesso, cidadeEstado, data, processoId);
         return ResponseEntity.ok(reformatarService.enriquecerComCorpoUnico(conteudo));
     }
 
@@ -178,6 +181,7 @@ public class DocumentoController {
             @RequestParam(value = "data", required = false) String data,
             @RequestParam(value = "codigoCliente", required = false) String codigoCliente,
             @RequestParam(value = "numeroInterno", required = false) Integer numeroInterno,
+            @RequestParam(value = "processoId", required = false) Long processoId,
             @RequestParam(value = "preview", required = false, defaultValue = "false") boolean preview)
             throws Exception {
         return responderReformatacao(
@@ -188,6 +192,7 @@ public class DocumentoController {
                 data,
                 codigoCliente,
                 numeroInterno,
+                processoId,
                 preview);
     }
 
@@ -199,9 +204,10 @@ public class DocumentoController {
             String data,
             String codigoCliente,
             Integer numeroInterno,
+            Long processoId,
             boolean preview)
             throws Exception {
-        byte[] pdf = reformatarService.reformatar(arquivo, enderecamento, numeroProcesso, cidadeEstado, data);
+        byte[] pdf = reformatarService.reformatar(arquivo, enderecamento, numeroProcesso, cidadeEstado, data, processoId);
         LocalDate dataDoc = LocalDate.now();
         if (data != null && !data.isBlank()) {
             try {
@@ -403,7 +409,8 @@ public class DocumentoController {
                         "A condenação da Ré ao pagamento de indenização por danos morais no valor de R$ 10.000,00 (dez mil reais);",
                         "A condenação da Ré ao pagamento das custas processuais e honorários advocatícios."),
                 "Anápolis, estado de Goiás",
-                LocalDate.now());
+                LocalDate.now(),
+                null);
     }
 
     private static PeticaoAiRequest criarExemploIA() {
@@ -443,6 +450,7 @@ public class DocumentoController {
                 "Anápolis, estado de Goiás",
                 LocalDate.now(),
                 "00000001",
-                1);
+                1,
+                null);
     }
 }

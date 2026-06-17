@@ -85,7 +85,7 @@ function validarConfig(config) {
   return errors;
 }
 
-function montarDocumentoRequest(config, itensProcessados) {
+function montarDocumentoRequest(config, itensProcessados, processoId) {
   const secoes = itensProcessados.map((item) => ({
     titulo: item.nome || 'Seção',
     conteudo: textoParaHtml(item.textoProcessado),
@@ -98,10 +98,11 @@ function montarDocumentoRequest(config, itensProcessados) {
     pedidos: [],
     cidadeEstado: config.cidadeEstado?.trim() || 'Anápolis, estado de Goiás',
     data: config.dataDocumento || new Date().toISOString().split('T')[0],
+    ...(processoId != null && processoId !== '' ? { processoId: Number(processoId) } : {}),
   };
 }
 
-function montarPeticaoIA(config, itensProcessados, processoApi, selecionados) {
+function montarPeticaoIA(config, itensProcessados, processoApi, selecionados, processoId) {
   const modeloBase = itensProcessados.map((i) => i.textoProcessado).join('\n\n');
   return {
     enderecamento: resolveEnderecamento(config),
@@ -121,6 +122,7 @@ function montarPeticaoIA(config, itensProcessados, processoApi, selecionados) {
     data: config.dataDocumento || new Date().toISOString().split('T')[0],
     codigoCliente: pad8(config.codigoCliente),
     numeroInterno: Number(config.numeroInterno),
+    ...(processoId != null && processoId !== '' ? { processoId: Number(processoId) } : {}),
   };
 }
 
@@ -348,7 +350,7 @@ export function ModoModeloTopicos({ onErro, onLoadingChange }) {
     setLoadingAcao(true);
     try {
       const itens = await processarSelecionados();
-      const payload = montarDocumentoRequest(config, itens);
+      const payload = montarDocumentoRequest(config, itens, processoId);
       const blob = await gerarPdfManual(payload);
       downloadPdfBlob(blob, nomeArquivoPeticaoPdf());
     } catch (e) {
@@ -376,7 +378,7 @@ export function ModoModeloTopicos({ onErro, onLoadingChange }) {
     setLoadingAcao(true);
     try {
       const itens = await processarSelecionados();
-      const payload = montarPeticaoIA(config, itens, processoApi, selecionados);
+      const payload = montarPeticaoIA(config, itens, processoApi, selecionados, processoId);
       const blob = await gerarPdfComIA(payload);
       downloadPdfBlob(blob, nomeArquivoPeticaoPdf());
     } catch (e) {

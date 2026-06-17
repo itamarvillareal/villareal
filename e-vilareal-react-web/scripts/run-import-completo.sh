@@ -2,10 +2,9 @@
 # run-import-completo.sh
 # Orquestra a importacao completa, NA ORDEM:
 #   1) Cadastro de Pessoas      (Java/Spring Boot - run-import-pessoas.sh)
-#   2) import-real de Processos (por cliente, 1..999)
-#   3) import de Calculos       (import-calculos-txt, por cliente, 1..999)
-#   4) Demais scripts de importacao de arquivos TXT
-#   5) Planilha «Extratos Bancos - Itamar.xls» (todos os bancos)
+#   2) import-real por cliente  (histórico + status + cabeçalho + partes + cálculos + pessoa 151)
+#   3) Demais scripts globais de TXT (agenda, fases, prazos, etc.)
+#   4) Planilha «Extratos Bancos - Itamar.xls» (todos os bancos)
 #
 # SEGURO POR PADRAO: roda em --dry-run (nao grava nada). Use --aplicar para valer.
 #
@@ -121,40 +120,29 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 2) IMPORT-REAL DE PROCESSOS (por cliente)
+# 2) IMPORT-REAL (cadastro completo por cliente: histórico + processos + partes + cálculos)
 # ---------------------------------------------------------------------------
-run_loop_clientes "2-import-real" "scripts/import-real.mjs"
+run_loop_clientes "2-import-real" "scripts/import-real.mjs" --zerar --substituir-historico --continuar-apesar-falhas
 
 # ---------------------------------------------------------------------------
-# 3) IMPORT DE CALCULOS (por cliente)
-# ---------------------------------------------------------------------------
-run_loop_clientes "3-calculos" "scripts/import-calculos-txt.mjs"
-
-# ---------------------------------------------------------------------------
-# 4) DEMAIS SCRIPTS DE IMPORTACAO DE ARQUIVOS TXT
+# 3) DEMAIS SCRIPTS GLOBAIS DE TXT (não cobertos pelo import-real)
 # ---------------------------------------------------------------------------
 log ""
-log "========== FASE 4: demais importacoes de arquivos TXT =========="
+log "========== FASE 3: demais importacoes globais de TXT =========="
 
-# 4a) Por cliente (exige --cliente=N)
-run_loop_clientes "4a-processo-partes" "scripts/import-processo-partes-txt.mjs"
-
-# 4b) Globais / por intervalo (rodam de uma vez para 1..999)
-run_fase "4b-historico-local"    node scripts/import-historico-local-txt.mjs   "$MODO" --cliente-min="$CLIENTE_MIN" --cliente-max="$CLIENTE_MAX"
-run_fase "4c-cliente-pessoa-151" node scripts/import-cliente-pessoa-151-txt.mjs "$MODO" --cliente-min="$CLIENTE_MIN" --cliente-max="$CLIENTE_MAX"
-run_fase "4d-fases-processos"    node scripts/import-fases-processos-txt.mjs    "$MODO"
-run_fase "4e-proc-imovel-vinculo" node scripts/import-proc-imovel-vinculo-txt.mjs "$MODO"
-run_fase "4f-processo-semantic"  node scripts/import-processo-semantic-txt.mjs  "$MODO"
-run_fase "4g-agenda-local"       node scripts/import-agenda-local-txt.mjs       "$MODO"
-run_fase "4h-topicos-hierarchy"  node scripts/import-topicos-hierarchy.mjs      "$MODO"
-run_fase "4i-prazos-fatais"      node scripts/sync-prazos-fatais-dropbox.mjs    "$MODO"
+run_fase "3a-fases-processos"    node scripts/import-fases-processos-txt.mjs    "$MODO"
+run_fase "3b-proc-imovel-vinculo" node scripts/import-proc-imovel-vinculo-txt.mjs "$MODO"
+run_fase "3c-processo-semantic"  node scripts/import-processo-semantic-txt.mjs  "$MODO"
+run_fase "3d-agenda-local"       node scripts/import-agenda-local-txt.mjs       "$MODO"
+run_fase "3e-topicos-hierarchy"  node scripts/import-topicos-hierarchy.mjs      "$MODO"
+run_fase "3f-prazos-fatais"      node scripts/sync-prazos-fatais-dropbox.mjs    "$MODO"
 
 # ---------------------------------------------------------------------------
-# 5) PLANILHA «Extratos Bancos - Itamar.xls» (todos os bancos)
+# 4) PLANILHA «Extratos Bancos - Itamar.xls» (todos os bancos)
 # ---------------------------------------------------------------------------
 log ""
-log "========== FASE 5: extratos bancarios (planilha) =========="
-run_fase "5-extrato-bancos" node scripts/import-extrato-bancos-planilha.mjs \
+log "========== FASE 4: extratos bancarios (planilha) =========="
+run_fase "4-extrato-bancos" node scripts/import-extrato-bancos-planilha.mjs \
   "$MODO" --todos-bancos --substituir --login=itamar
 
 # ---------------------------------------------------------------------------

@@ -24,9 +24,11 @@
  *   node scripts/import-historico-local-txt.mjs --somente-corrigir --dry-run --cliente=728 --processo=143
  *
  * Fase de correção:
- *   --sem-corrigir           Não altera ficheiros txt antes da importação
+ *   --sem-corrigir           Não altera ficheiros txt antes da importação (recomendado em reimportações)
  *   --somente-corrigir       Só análise/correção e termina (sem importar)
- *   --aplicar-correcao       Aplica correção nos txt (sem isto: só relatório em tela)
+ *   --aplicar-correcao       Aplica correção nos txt e continua para a importação
+ *
+ * Nota: sem --aplicar-correcao, a análise da fase 1 não bloqueia a importação (fase 2).
  *
  * Opções de leitura local:
  *   --base=PATH              Raiz «Banco de Dados» (defeito: Dropbox do utilizador)
@@ -222,18 +224,17 @@ function main() {
 
     if (!opts.aplicarCorrecao) {
       console.log(
-        '[txt] Nenhum ficheiro foi alterado. Para aplicar a correção e continuar a importação, use --aplicar-correcao'
+        '[txt] Análise concluída — ficheiros txt não alterados (use --aplicar-correcao para corrigir antes de importar).'
       );
       if (opts.somenteCorrigir) process.exit(0);
-      process.exit(0);
-    }
-
-    console.log('\n[txt] A aplicar correção nos ficheiros (--aplicar-correcao)…');
-    const { stats: corrStats } = executarCorrecaoHistoricoLocal({ ...analiseOpts, dryRun: false });
-    console.log('[txt] Correção aplicada:', JSON.stringify(corrStats));
-    if (opts.somenteCorrigir) {
-      console.log('[txt] --somente-corrigir: fim (sem importação).');
-      process.exit(0);
+    } else {
+      console.log('\n[txt] A aplicar correção nos ficheiros (--aplicar-correcao)…');
+      const { stats: corrStats } = executarCorrecaoHistoricoLocal({ ...analiseOpts, dryRun: false });
+      console.log('[txt] Correção aplicada:', JSON.stringify(corrStats));
+      if (opts.somenteCorrigir) {
+        console.log('[txt] --somente-corrigir: fim (sem importação).');
+        process.exit(0);
+      }
     }
   }
 

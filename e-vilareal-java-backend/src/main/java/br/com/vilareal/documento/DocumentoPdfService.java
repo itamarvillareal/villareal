@@ -1,5 +1,8 @@
 package br.com.vilareal.documento;
 
+import br.com.vilareal.common.exception.BusinessRuleException;
+import br.com.vilareal.documento.tema.DocumentoTemaResolver;
+import br.com.vilareal.documento.tema.TemaDocumento;
 import com.openhtmltopdf.extend.FSSupplier;
 import com.openhtmltopdf.pdfboxout.PdfRendererBuilder;
 import org.springframework.core.io.ClassPathResource;
@@ -8,11 +11,6 @@ import org.springframework.util.StringUtils;
 import org.thymeleaf.context.Context;
 import org.thymeleaf.spring6.SpringTemplateEngine;
 
-import javax.imageio.ImageIO;
-import java.awt.AlphaComposite;
-import java.awt.Graphics2D;
-import java.awt.image.BufferedImage;
-import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -29,7 +27,6 @@ public class DocumentoPdfService {
 
     private static final String TEMPLATE_PETICAO = "documentos/peticao-base";
     private static final Locale LOCALE_PT_BR = Locale.forLanguageTag("pt-BR");
-    private static final float OPACIDADE_MARCA_DAGUA = 0.05f;
     private static final String FONTE_LUCIDA_CALLIGRAPHY = "Lucida Calligraphy";
     private static final String[] CAMINHOS_FONTE_LUCIDA = {
             "fonts/documentos/LucidaCalligraphy.ttf",
@@ -40,13 +37,43 @@ public class DocumentoPdfService {
     };
 
     private final SpringTemplateEngine templateEngine;
+    private final DocumentoTemaResolver temaResolver;
 
-    public DocumentoPdfService(SpringTemplateEngine templateEngine) {
+    public DocumentoPdfService(SpringTemplateEngine templateEngine, DocumentoTemaResolver temaResolver) {
         this.templateEngine = templateEngine;
+        this.temaResolver = temaResolver;
     }
 
     public byte[] gerarPeticaoPdf(DocumentoGerarRequest request) {
         return gerarPdf(DocumentoRenderContext.legado(request));
+    }
+
+    /** PDF de demonstração com corpo fixo e timbrado explícito (pré-visualização de modelo). */
+    public byte[] gerarPeticaoDemonstracaoPdf(TemaDocumento tema) {
+        LocalDate data = LocalDate.now();
+        Map<String, Object> variables = new HashMap<>();
+        variables.put("enderecamento", "EXCELENTÍSSIMO SENHOR DOUTOR JUIZ DE DIREITO");
+        variables.put("numeroProcesso", "0000000-00.0000.0.00.0000");
+        variables.put("modoReformatado", false);
+        variables.put("nomePeca", null);
+        variables.put(
+                "preambulo",
+                "<p><strong>PRÉ-VISUALIZAÇÃO DO MODELO</strong>, documento de exemplo gerado a partir "
+                        + "das configurações desta tela.</p>");
+        variables.put("preambuloParagrafos", List.of());
+        variables.put(
+                "secoes",
+                List.of(new DocumentoGerarRequest.SecaoPeticao(
+                        "DO OBJETIVO",
+                        "<p>Validação visual do timbrado: cabeçalho, rodapé, nome e OAB do advogado.</p>")));
+        variables.put("secoesDocumento", List.of());
+        variables.put("fechoParagrafos", List.of());
+        variables.put("omitirFechoPadrao", false);
+        variables.put("pedidos", List.of("Deferimento."));
+        variables.put("localData", montarLocalData("Anápolis, estado de Goiás", data));
+        variables.put("modoCorpoUnico", false);
+        variables.put("corpoUnicoHtml", null);
+        return gerarPdfDeTemplate(TEMPLATE_PETICAO, variables, tema != null ? tema : TemaDocumento.padrao());
     }
 
     public byte[] gerarPdf(DocumentoRenderContext ctx) {
@@ -74,15 +101,18 @@ public class DocumentoPdfService {
         variables.put("omitirFechoPadrao", ctx.omitirFechoPadrao());
         variables.put("pedidos", ctx.pedidos());
         variables.put("localData", localData);
-        variables.put(
-                "advogadoNome",
-                StringUtils.hasText(ctx.advogadoNome()) ? ctx.advogadoNome() : DocumentoReformatarCorpoUnicoHtml.ADVOGADO_NOME_PADRAO);
-        variables.put(
-                "advogadoOab",
-                StringUtils.hasText(ctx.advogadoOab()) ? ctx.advogadoOab() : DocumentoReformatarCorpoUnicoHtml.ADVOGADO_OAB_PADRAO);
+        if (StringUtils.hasText(ctx.advogadoNome())) {
+            variables.put("advogadoNome", ctx.advogadoNome());
+        }
+        if (StringUtils.hasText(ctx.advogadoOab())) {
+            variables.put("advogadoOab", ctx.advogadoOab());
+        }
         variables.put("modoCorpoUnico", ctx.modoCorpoUnico());
         variables.put("corpoUnicoHtml", ctx.corpoUnicoHtml());
-        return gerarPdfDeTemplate(TEMPLATE_PETICAO, variables);
+        TemaDocumento tema = temaResolver == null
+                ? TemaDocumento.padrao()
+                : temaResolver.resolverPorProcessoId(ctx.processoId());
+        return gerarPdfDeTemplate(TEMPLATE_PETICAO, variables, tema);
     }
 
     /** Usado por {@link DocumentoLocalDataResolver} e testes. */
@@ -95,15 +125,38 @@ public class DocumentoPdfService {
     }
 
     public byte[] gerarPdfDeTemplate(String templateName, Map<String, Object> variables) {
+        return gerarPdfDeTemplate(templateName, variables, TemaDocumento.padrao());
+    }
+
+    public byte[] gerarPdfDeTemplate(String templateName, Map<String, Object> variables, TemaDocumento tema) {
         Context context = new Context(LOCALE_PT_BR);
         if (variables != null) {
             variables.forEach(context::setVariable);
         }
-        context.setVariable("logoCabecalhoBase64", carregarImagemBase64("static/documentos/logo_cabecalho.jpeg"));
-        context.setVariable("marcaDaguaBase64", carregarMarcaDaguaBase64());
+        aplicarTemaAoContext(context, tema != null ? tema : TemaDocumento.padrao());
 
         String htmlRenderizado = templateEngine.process(templateName, context);
         return converterHtmlParaPdf(htmlRenderizado);
+    }
+
+    /** Injeta logo, rodapé e advogado do timbrado no contexto Thymeleaf. */
+    void aplicarTemaAoContext(Context context, TemaDocumento tema) {
+        TemaDocumento t = tema != null ? tema : TemaDocumento.padrao();
+        String logoBase64 = t.logoCabecalhoBase64Efetivo();
+        if (!StringUtils.hasText(logoBase64)) {
+            logoBase64 = carregarImagemBase64Obrigatoria(t.logoCabecalhoPathEfetivo());
+        }
+        context.setVariable("logoCabecalhoBase64", logoBase64);
+        context.setVariable("rodapePrimeiraHtml", t.rodapePrimeiraHtmlEfetivo());
+        context.setVariable("rodapeCorridoHtml", t.rodapeCorridoHtmlEfetivo());
+        if (!context.containsVariable("advogadoNome") || context.getVariable("advogadoNome") == null
+                || !StringUtils.hasText(String.valueOf(context.getVariable("advogadoNome")))) {
+            context.setVariable("advogadoNome", t.advogadoNomeEfetivo());
+        }
+        if (!context.containsVariable("advogadoOab") || context.getVariable("advogadoOab") == null
+                || !StringUtils.hasText(String.valueOf(context.getVariable("advogadoOab")))) {
+            context.setVariable("advogadoOab", t.advogadoOabEfetivo());
+        }
     }
 
     private byte[] converterHtmlParaPdf(String htmlRenderizado) {
@@ -142,36 +195,30 @@ public class DocumentoPdfService {
         }
     }
 
-    private String carregarMarcaDaguaBase64() {
+    private String carregarImagemBase64Obrigatoria(String caminhoClasspath) {
         try {
-            ClassPathResource resource = new ClassPathResource("static/documentos/marca_dagua.jpeg");
+            ClassPathResource resource = new ClassPathResource(caminhoClasspath);
             if (!resource.exists()) {
-                return "";
+                throw new BusinessRuleException("Asset de timbrado não encontrado: " + caminhoClasspath);
             }
             byte[] bytes;
             try (InputStream in = resource.getInputStream()) {
                 bytes = in.readAllBytes();
             }
             if (bytes.length == 0) {
-                return "";
+                throw new BusinessRuleException("Asset de timbrado vazio: " + caminhoClasspath);
             }
-            BufferedImage original = ImageIO.read(new ByteArrayInputStream(bytes));
-            if (original == null) {
-                return carregarImagemBase64("static/documentos/marca_dagua.jpeg");
-            }
-            BufferedImage faded = new BufferedImage(original.getWidth(), original.getHeight(), BufferedImage.TYPE_INT_ARGB);
-            Graphics2D g = faded.createGraphics();
-            g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, OPACIDADE_MARCA_DAGUA));
-            g.drawImage(original, 0, 0, null);
-            g.dispose();
-            ByteArrayOutputStream out = new ByteArrayOutputStream();
-            ImageIO.write(faded, "png", out);
-            return "data:image/png;base64," + Base64.getEncoder().encodeToString(out.toByteArray());
+            String mime = detectarMimeImagem(bytes);
+            return "data:" + mime + ";base64," + Base64.getEncoder().encodeToString(bytes);
+        } catch (BusinessRuleException e) {
+            throw e;
         } catch (IOException e) {
-            return "";
+            throw new BusinessRuleException("Falha ao carregar asset de timbrado: " + caminhoClasspath + " — " + e.getMessage());
         }
     }
 
+    /** @deprecated uso interno legado; preferir {@link #carregarImagemBase64Obrigatoria(String)} */
+    @Deprecated
     private String carregarImagemBase64(String caminhoClasspath) {
         try {
             ClassPathResource resource = new ClassPathResource(caminhoClasspath);

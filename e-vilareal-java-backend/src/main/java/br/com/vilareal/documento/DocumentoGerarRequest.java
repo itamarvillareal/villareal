@@ -10,7 +10,8 @@ public record DocumentoGerarRequest(
         List<SecaoPeticao> secoes,
         List<String> pedidos,
         String cidadeEstado,
-        LocalDate data
+        LocalDate data,
+        Long processoId
 ) {
     public record SecaoPeticao(String titulo, String conteudo) {}
 }

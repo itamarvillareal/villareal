@@ -24,6 +24,7 @@ import { PreviewPeticao } from './components/PreviewPeticao.jsx';
 import { pedidosPreenchidos } from './components/PedidosEspecificos.jsx';
 import { ModoModeloTopicos } from './components/ModoModeloTopicos.jsx';
 import { ModoEnviarArquivo } from './components/ModoEnviarArquivo.jsx';
+import { DocumentosSubmenu } from './components/DocumentosSubmenu.jsx';
 import {
   carregarCalculoSalvo,
   gerarPeticaoExecucaoDeCalculoSalvo,
@@ -81,9 +82,9 @@ function opcional(val) {
   return t || null;
 }
 
-function montarPeticaoAiRequest(form) {
+function montarPeticaoAiRequest(form, processoId) {
   const pedidos = pedidosPreenchidos(form.pedidosEspecificos);
-  return {
+  const payload = {
     enderecamento: resolveEnderecamento(form),
     numeroProcesso: opcional(form.numeroProcesso),
     tipoPeca: resolveTipoPeca(form),
@@ -100,9 +101,11 @@ function montarPeticaoAiRequest(form) {
     cidadeEstado: form.cidadeEstado?.trim() || CIDADE_ESTADO_PADRAO,
     data: hojeIso(),
   };
+  if (processoId != null && processoId !== '') payload.processoId = Number(processoId);
+  return payload;
 }
 
-function montarDocumentoManualRequest(form) {
+function montarDocumentoManualRequest(form, processoId) {
   const secoes = (form.secoes || [])
     .map((s) => ({ titulo: s.titulo.trim(), conteudo: s.conteudo.trim() }))
     .filter((s) => s.titulo && s.conteudo);
@@ -116,6 +119,7 @@ function montarDocumentoManualRequest(form) {
     pedidos,
     cidadeEstado: form.cidadeEstado?.trim() || CIDADE_ESTADO_PADRAO,
     data: hojeIso(),
+    ...(processoId != null && processoId !== '' ? { processoId: Number(processoId) } : {}),
   };
 }
 
@@ -160,6 +164,7 @@ export function GerarDocumento() {
 
   const codigoClienteProcesso = dadosProcesso?.codigoCliente;
   const numeroInternoProcesso = dadosProcesso?.numeroInterno;
+  const processoApiId = dadosProcesso?.processoApiId ?? null;
   const temChaveProcesso =
     Boolean(codigoClienteProcesso) && String(numeroInternoProcesso ?? '').trim() !== '';
   const [formIA, setFormIA] = useState(formInicialIA);
@@ -299,6 +304,7 @@ export function GerarDocumento() {
         pessoaId,
         cidadeEstado: formProcuracao.cidadeEstado?.trim() || CIDADE_ESTADO_PADRAO,
         data: hojeIso(),
+        processoId: processoApiId,
       });
       downloadPdfBlob(blob, nomeArquivoProcuracaoPdf(formProcuracao.nomeOutorgante));
     } catch (e) {
@@ -320,7 +326,7 @@ export function GerarDocumento() {
         setErrors(errs);
         return;
       }
-      const payload = montarPeticaoAiRequest(formIA);
+      const payload = montarPeticaoAiRequest(formIA, processoApiId);
       setLoading(true);
       try {
         await baixarPdf(gerarPdfComIA, payload);
@@ -337,7 +343,7 @@ export function GerarDocumento() {
       setErrors(errs);
       return;
     }
-    const payload = montarDocumentoManualRequest(formManual);
+    const payload = montarDocumentoManualRequest(formManual, processoApiId);
     setLoading(true);
     try {
       await baixarPdf(gerarPdfManual, payload);
@@ -369,7 +375,7 @@ export function GerarDocumento() {
       setErrors(errs);
       return;
     }
-    const payload = montarPeticaoAiRequest(formIA);
+    const payload = montarPeticaoAiRequest(formIA, processoApiId);
     setPreviewOpen(true);
     setPreviewData(null);
     setLoadingPreview(true);
@@ -401,6 +407,7 @@ export function GerarDocumento() {
 
   return (
     <div className={`mx-auto px-4 py-6 lg:px-6 ${modoArquivo ? 'max-w-7xl pb-8' : modoModelo || modoExecucao ? 'max-w-4xl pb-8' : 'max-w-4xl pb-32'}`}>
+      <DocumentosSubmenu />
       <header className="mb-6 flex flex-col gap-4">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">

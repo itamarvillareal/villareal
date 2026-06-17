@@ -3,14 +3,6 @@
 <head>
     <meta charset="UTF-8"/>
     <title>Petição</title>
-    <style type="text/css" th:if="${marcaDaguaBase64 != null and !marcaDaguaBase64.isEmpty()}" th:inline="css">
-        @page {
-            background-image: url([(${marcaDaguaBase64})]);
-            background-repeat: no-repeat;
-            background-position: center center;
-            background-size: 15cm auto;
-        }
-    </style>
     <style type="text/css">
         @page {
             size: A4;
@@ -417,18 +409,9 @@
     </table>
 </div>
 
-<div class="rodape-primeira-running">
-    <p class="rodape-linha1">Av. Pinheiro Chagas, nº 232, Bairro Jundiaí, Anápolis-GO, CEP n 75.110-580.</p>
-    <p class="rodape-linha2">Telefones: 62-3321-2374 (fixo), 62-98129-6212 (tim)</p>
-    <p class="rodape-linha3">E-mail: villareal@villarealadvocacia.adv.br</p>
-    <p class="rodape-linha4">www.villarealadvocacia.adv.br</p>
-</div>
+<div class="rodape-primeira-running" th:utext="${rodapePrimeiraHtml}"></div>
 
-<div class="rodape-running">
-    <p class="rodape-linha1">Av. Pinheiro Chagas, nº 232, Bairro Jundiaí, Anápolis-GO, CEP n 75.110-580.</p>
-    <p class="rodape-linha3">E-mail: villareal@villarealadvocacia.adv.br</p>
-    <p class="rodape-linha4">www.villarealadvocacia.adv.br</p>
-</div>
+<div class="rodape-running" th:utext="${rodapeCorridoHtml}"></div>
 
 <div class="corpo-documento">
     <th:block th:if="${modoCorpoUnico}">
@@ -479,8 +462,8 @@
             </th:block>
             <p class="data" th:text="${localData}">Anápolis, estado de Goiás, data.</p>
             <div class="assinatura">
-                <p class="assinatura-nome">Dr. ITAMAR ALEXANDRE FÉLIX VILLA REAL JÚNIOR</p>
-                <p class="assinatura-oab">OAB/GO n° 33.329</p>
+                <p class="assinatura-nome" th:text="${advogadoNome}">Dr. Itamar Alexandre Felix Villa Real Junior</p>
+                <p class="assinatura-oab" th:text="${advogadoOab}">OAB/GO 33.329</p>
             </div>
         </div>
     </th:block>
@@ -514,8 +497,8 @@
             <p style="margin-top: 4pt; margin-bottom: 18pt; text-align: left; font-family: 'Arial Unicode MS', Arial, sans-serif; font-size: 12pt; line-height: 1.15; padding-left: 2.5cm;">pede deferimento.</p>
             <p class="data" th:text="${localData}">Anápolis, estado de Goiás, data.</p>
             <div class="assinatura">
-                <p class="assinatura-nome">Dr. ITAMAR ALEXANDRE FÉLIX VILLA REAL JÚNIOR</p>
-                <p class="assinatura-oab">OAB/GO n° 33.329</p>
+                <p class="assinatura-nome" th:text="${advogadoNome}">Dr. Itamar Alexandre Felix Villa Real Junior</p>
+                <p class="assinatura-oab" th:text="${advogadoOab}">OAB/GO 33.329</p>
             </div>
         </div>
     </th:block>

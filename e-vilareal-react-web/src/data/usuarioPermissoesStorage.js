@@ -32,6 +32,17 @@ export function isUsuarioMasterEstacao() {
   return idEhUsuarioMasterEstacao(getOperadorEstacaoId());
 }
 
+/** Perfil ADMIN no seed (V1__init) — mesma regra de {@link useUsuarioPerfil}. */
+const PERFIL_ADMIN_ID = 1;
+
+/** Admin da API (JWT perfilId=1). Sem API auth, mock libera telas admin. */
+export function usuarioEhAdminApi() {
+  if (!featureFlags.requiresApiAuth) return true;
+  const u = getApiUsuarioSessao();
+  const pid = u?.perfilId != null ? Number(u.perfilId) : null;
+  return pid == null || pid === PERFIL_ADMIN_ID;
+}
+
 /**
  * @returns {{ id: string, nome: string, login: string, perfilId?: number } | null}
  */
@@ -241,6 +252,10 @@ export function usuarioPodeAcessarModulo(userId, moduloId) {
   /** Gerar Documento herda permissão do módulo Processos. */
   if (moduloId === 'documentos/gerar') {
     return usuarioPodeAcessarModulo(userId, 'processos');
+  }
+  /** Modelos de petição: apenas perfil ADMIN (compartilhado — altera timbrado global). */
+  if (moduloId === 'documentos/modelos') {
+    return usuarioEhAdminApi();
   }
   if (moduloId === 'financeiro/relatorios') {
     const p = getPermissoesUsuario(userId);

@@ -14,7 +14,8 @@ public record DocumentoReformatarConteudoRequest(
         String fecho,
         String advogadoNome,
         String advogadoOab,
-        String corpoUnico) {
+        String corpoUnico,
+        Long processoId) {
 
     public DocumentoReformatarConteudoRequest {
         secoes = secoes != null ? List.copyOf(secoes) : List.of();

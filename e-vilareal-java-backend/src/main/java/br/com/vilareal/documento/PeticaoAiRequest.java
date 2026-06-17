@@ -20,6 +20,7 @@ public record PeticaoAiRequest(
         String cidadeEstado,
         LocalDate data,
         String codigoCliente,
-        Integer numeroInterno
+        Integer numeroInterno,
+        Long processoId
 ) {
 }

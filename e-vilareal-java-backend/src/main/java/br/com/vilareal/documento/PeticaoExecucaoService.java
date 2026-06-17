@@ -1,6 +1,8 @@
 package br.com.vilareal.documento;
 
 import br.com.vilareal.common.exception.ResourceNotFoundException;
+import br.com.vilareal.documento.tema.DocumentoTemaResolver;
+import br.com.vilareal.documento.tema.TemaDocumento;
 import br.com.vilareal.documento.DebitosTextoBuilder.CapituloDebitos;
 import br.com.vilareal.documento.DebitosTextoBuilder.DebitosParams;
 import br.com.vilareal.documento.DebitosTextoBuilder.ModoDebito;
@@ -35,9 +37,6 @@ import org.springframework.util.StringUtils;
 @Service
 public class PeticaoExecucaoService {
 
-    private static final String ADVOGADO_NOME = "Dr. Itamar Alexandre Felix Villa Real Junior";
-    private static final String ADVOGADO_OAB = "OAB/GO 33.329";
-
     private static final String CHAVE_BASE = "INICIAL=CIVIL=TÍTULOS=EXECUÇÃO=TAXA CONDOMINIAL=";
     private static final String CHAVE_FATOS = CHAVE_BASE + "003. DOS FATOS";
     private static final String CHAVE_TITULOS_COMPLETO = CHAVE_BASE + "004. DOS TÍTULOS (Completo)";
@@ -66,6 +65,7 @@ public class PeticaoExecucaoService {
     private final QualificacaoPessoaUtil qualificacaoPessoaUtil;
     private final PessoaApplicationService pessoaApplicationService;
     private final DocumentoPdfService pdfService;
+    private final DocumentoTemaResolver temaResolver;
 
     public PeticaoExecucaoService(
             ProcessoRepository processoRepository,
@@ -73,13 +73,15 @@ public class PeticaoExecucaoService {
             TopicoRepository topicoRepository,
             QualificacaoPessoaUtil qualificacaoPessoaUtil,
             PessoaApplicationService pessoaApplicationService,
-            DocumentoPdfService pdfService) {
+            DocumentoPdfService pdfService,
+            DocumentoTemaResolver temaResolver) {
         this.processoRepository = processoRepository;
         this.processoParteRepository = processoParteRepository;
         this.topicoRepository = topicoRepository;
         this.qualificacaoPessoaUtil = qualificacaoPessoaUtil;
         this.pessoaApplicationService = pessoaApplicationService;
         this.pdfService = pdfService;
+        this.temaResolver = temaResolver;
     }
 
     @Transactional(readOnly = true)
@@ -87,8 +89,10 @@ public class PeticaoExecucaoService {
         if (req == null || req.processoId() == null) {
             throw new IllegalArgumentException("processoId é obrigatório");
         }
-        ProcessoEntity processo = processoRepository.findById(req.processoId())
+        ProcessoEntity processo = processoRepository.findByIdForJuliaEnactment(req.processoId())
                 .orElseThrow(() -> new ResourceNotFoundException("Processo não encontrado: " + req.processoId()));
+
+        TemaDocumento tema = temaResolver.resolverPorProcesso(processo);
 
         List<ProcessoParteEntity> partes = processoParteRepository.findByProcesso_IdOrderByOrdemAscIdAsc(req.processoId());
         List<ProcessoParteEntity> autores = new ArrayList<>();
@@ -166,11 +170,13 @@ public class PeticaoExecucaoService {
 
         String cidadeEstado = montarCidadeEstado(processo);
         String localData = pdfService.montarLocalData(cidadeEstado, req.data());
+        String advogadoNome = tema.advogadoNomeEfetivo();
+        String advogadoOab = tema.advogadoOabEfetivo();
         String fechoHtml = "<p class=\"fecho-termos\">Nestes termos,<br/>Pede deferimento.</p>"
                 + "<p style=\"text-align:center;margin-top:18pt;\">" + esc(localData) + "</p>"
                 + "<p style=\"text-align:center;margin-top:36pt;font-weight:bold;margin-bottom:0;\">"
-                + esc(ADVOGADO_NOME) + "</p>"
-                + "<p style=\"text-align:center;font-weight:bold;margin:0;\">" + esc(ADVOGADO_OAB) + "</p>";
+                + esc(advogadoNome) + "</p>"
+                + "<p style=\"text-align:center;font-weight:bold;margin:0;\">" + esc(advogadoOab) + "</p>";
 
         // 2.8 PDF
         Map<String, Object> vars = new HashMap<>();
@@ -178,9 +184,9 @@ public class PeticaoExecucaoService {
         vars.put("qualificacaoCabecalhoHtml", qualificacaoCabecalhoHtml);
         vars.put("corpoHtml", corpoHtml);
         vars.put("fechoHtml", fechoHtml);
-        vars.put("advogadoNome", ADVOGADO_NOME);
-        vars.put("advogadoOab", ADVOGADO_OAB);
-        return pdfService.gerarPdfDeTemplate("documentos/peticao-execucao", vars);
+        vars.put("advogadoNome", advogadoNome);
+        vars.put("advogadoOab", advogadoOab);
+        return pdfService.gerarPdfDeTemplate("documentos/peticao-execucao", vars, tema);
     }
 
     /**
