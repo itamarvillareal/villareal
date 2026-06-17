@@ -671,8 +671,12 @@ export function Diagnosticos() {
       const rows = await listarCredenciais();
       const lista = Array.isArray(rows) ? rows : [];
       setPrepararAssinarCredenciais(lista);
-      if (!prepararAssinarCredencialId && lista[0]?.id != null) {
-        setPrepararAssinarCredencialId(String(lista[0].id));
+      if (!prepararAssinarCredencialId && lista.length > 0) {
+        const preferida =
+          lista.find((c) => String(c.cpfUsuario || '').endsWith('5190')) || lista[0];
+        if (preferida?.id != null) {
+          setPrepararAssinarCredencialId(String(preferida.id));
+        }
       }
     } catch (e) {
       setPrepararAssinarErro(mensagemErroAmigavel(e, 'carregar credenciais PROJUDI'));
@@ -2000,7 +2004,9 @@ export function Diagnosticos() {
                   ) : (
                     prepararAssinarCredenciais.map((c) => (
                       <option key={c.id} value={String(c.id)}>
-                        {c.nome || c.login || `Credencial #${c.id}`}
+                        {c.rotulo
+                          ? `#${c.id} — ${c.cpfUsuario || ''} — ${c.rotulo}`
+                          : c.nome || c.login || `Credencial #${c.id}`}
                       </option>
                     ))
                   )}

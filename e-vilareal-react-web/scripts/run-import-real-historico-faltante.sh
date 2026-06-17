@@ -13,10 +13,14 @@ export VILAREAL_API_BASE="${VILAREAL_API_BASE:-http://localhost:8081}"
 PAIRS="${1:-tmp/processos-sem-historico.pairs}"
 LOG="${2:-tmp/import-real-historico-faltante.log}"
 RESUMO="${3:-tmp/import-real-historico-faltante-summary.jsonl}"
+PIDFILE="${4:-tmp/import-real-historico-faltante.pid}"
 RETOMAR="${RETOMAR:-0}"
+
+echo $$ >"$PIDFILE"
 
 if [[ ! -f "$PAIRS" ]]; then
   echo "Lista não encontrada: $PAIRS — rode: node scripts/listar-processos-sem-historico.mjs"
+  rm -f "$PIDFILE"
   exit 1
 fi
 
@@ -69,9 +73,14 @@ for c in $clients; do
     echo "[$n/$total] cliente $c FALHA (code=$code)" | tee -a "$LOG"
   fi
   dur=$(($(date +%s) - t0))
-  printf '%s\n' "{\"cliente\":$c,\"status\":\"$st\",\"code\":$code,\"duracaoS\":$dur,\"ts\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" >>"$RESUMO"
+  line="{\"cliente\":$c,\"status\":\"$st\",\"code\":$code,\"duracaoS\":$dur,\"ts\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}"
+  printf '%s\n' "$line" >>"$RESUMO"
+  if grep -qx "$c" "$DONE_OK_FILE" 2>/dev/null; then :; else
+    [[ "$st" == "ok" ]] && echo "$c" >>"$DONE_OK_FILE"
+  fi
 done
 
+rm -f "$PIDFILE"
 echo "Concluído $(date -u +%Y-%m-%dT%H:%M:%SZ): ok=$ok falha=$fail skip=$skip total=$total" | tee -a "$LOG"
 echo "Log: $LOG"
 echo "Resumo: $RESUMO"
