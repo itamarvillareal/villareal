@@ -17,6 +17,7 @@ import br.com.vilareal.publicacao.application.event.PublicacaoVinculadaEvent;
 import br.com.vilareal.publicacao.infrastructure.persistence.PublicacaoSpecifications;
 import br.com.vilareal.publicacao.infrastructure.persistence.entity.PublicacaoEntity;
 import br.com.vilareal.publicacao.infrastructure.persistence.repository.PublicacaoRepository;
+import jakarta.persistence.EntityNotFoundException;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -28,9 +29,11 @@ import java.time.LocalDate;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Optional;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 public class PublicacaoApplicationService {
@@ -80,18 +83,53 @@ public class PublicacaoApplicationService {
         List<PublicacaoEntity> lista = publicacaoRepository.findAll(spec, Sort.by(Sort.Direction.DESC, "createdAt"));
         Set<Long> procIds = new LinkedHashSet<>();
         for (PublicacaoEntity e : lista) {
-            if (e.getProcesso() != null && e.getProcesso().getId() != null) {
-                procIds.add(e.getProcesso().getId());
+            Long pid = extrairProcessoIdSeguro(e);
+            if (pid != null) {
+                procIds.add(pid);
             }
         }
+        Map<Long, ProcessoEntity> processosPorId =
+                processoRepository.findAllById(procIds).stream()
+                        .collect(Collectors.toMap(ProcessoEntity::getId, Function.identity(), (a, b) -> a));
         Map<Long, ProcessoPartesVinculoTexto> partesPorProcesso =
                 procIds.isEmpty() ? Map.of() : processoApplicationService.resolverTextosPartesVinculoEmLote(procIds);
-        return lista.stream().map(e -> toResponse(e, partesPorProcesso)).toList();
+        return lista.stream()
+                .map(e -> {
+                    Long pid = extrairProcessoIdSeguro(e);
+                    ProcessoEntity proc = pid != null ? processosPorId.get(pid) : null;
+                    return toResponse(e, proc, partesPorProcesso);
+                })
+                .toList();
+    }
+
+    /**
+     * FK {@code processo_id} pode apontar para processo já removido; o proxy Hibernate lança
+     * {@link EntityNotFoundException} ao acessar o id — tratar como sem vínculo na listagem.
+     */
+    private static Long extrairProcessoIdSeguro(PublicacaoEntity e) {
+        ProcessoEntity ref = e.getProcesso();
+        if (ref == null) {
+            return null;
+        }
+        try {
+            return ref.getId();
+        } catch (EntityNotFoundException ex) {
+            return null;
+        }
+    }
+
+    private ProcessoEntity carregarProcessoParaPublicacao(PublicacaoEntity e) {
+        Long pid = extrairProcessoIdSeguro(e);
+        if (pid == null) {
+            return null;
+        }
+        return processoRepository.findById(pid).orElse(null);
     }
 
     @Transactional(readOnly = true)
     public PublicacaoResponse buscar(Long id) {
-        return toResponse(requirePublicacao(id), null);
+        PublicacaoEntity e = requirePublicacao(id);
+        return toResponse(e, carregarProcessoParaPublicacao(e), null);
     }
 
     @Transactional
@@ -352,24 +390,37 @@ public class PublicacaoApplicationService {
         return "PENDENTE";
     }
 
-    private PublicacaoResponse toResponse(PublicacaoEntity e, Map<Long, ProcessoPartesVinculoTexto> partesPorProcessoIdOrNull) {
+    private PublicacaoResponse toResponse(
+            PublicacaoEntity e, Map<Long, ProcessoPartesVinculoTexto> partesPorProcessoIdOrNull) {
+        return toResponse(e, carregarProcessoParaPublicacao(e), partesPorProcessoIdOrNull);
+    }
+
+    private PublicacaoResponse toResponse(
+            PublicacaoEntity e,
+            ProcessoEntity proc,
+            Map<Long, ProcessoPartesVinculoTexto> partesPorProcessoIdOrNull) {
         PublicacaoResponse r = new PublicacaoResponse();
         r.setId(e.getId());
         r.setCreatedAt(e.getCreatedAt());
         r.setNumeroProcessoEncontrado(e.getNumeroProcessoEncontrado());
-        ProcessoEntity proc = e.getProcesso();
         if (proc != null) {
             r.setProcessoId(proc.getId());
             r.setNumeroInternoProcesso(proc.getNumeroInterno());
-            long pessoaId = proc.getPessoa().getId();
-            r.setCodigoClienteProcesso(clienteCodigoPessoaResolver.codigoClienteExibicaoParaPessoaId(pessoaId));
+            if (proc.getPessoa() != null) {
+                long pessoaId = proc.getPessoa().getId();
+                r.setCodigoClienteProcesso(clienteCodigoPessoaResolver.codigoClienteExibicaoParaPessoaId(pessoaId));
+                String titularNome = Utf8MojibakeUtil.corrigir(proc.getPessoa().getNome());
+                r.setTitularNome(trimToNull(titularNome));
+                r.setPessoaRefId(pessoaId);
+            } else {
+                r.setCodigoClienteProcesso(null);
+                r.setTitularNome(null);
+            }
+            r.setPapelCliente(trimToNull(proc.getPapelCliente()));
             Map<Long, ProcessoPartesVinculoTexto> map =
                     partesPorProcessoIdOrNull != null
                             ? partesPorProcessoIdOrNull
                             : processoApplicationService.resolverTextosPartesVinculoEmLote(Set.of(proc.getId()));
-            String titularNome = Utf8MojibakeUtil.corrigir(proc.getPessoa().getNome());
-            r.setTitularNome(trimToNull(titularNome));
-            r.setPapelCliente(trimToNull(proc.getPapelCliente()));
             ProcessoPartesVinculoTexto pt = map.get(proc.getId());
             if (pt != null) {
                 r.setParteCliente(trimToNull(pt.getParteCliente()));
@@ -385,9 +436,6 @@ public class PublicacaoApplicationService {
         }
         if (e.getCliente() != null) {
             r.setClienteId(e.getCliente().getId());
-        }
-        if (proc != null && proc.getPessoa() != null) {
-            r.setPessoaRefId(proc.getPessoa().getId());
         }
         r.setDataDisponibilizacao(e.getDataDisponibilizacao());
         r.setDataPublicacao(e.getDataPublicacao());

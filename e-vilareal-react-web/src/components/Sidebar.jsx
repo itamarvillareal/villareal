@@ -3,6 +3,7 @@ import { NavLink, useLocation, Link, useNavigate } from 'react-router-dom';
 import { ChevronDown, ChevronRight, X } from 'lucide-react';
 import { navItems } from '../data/navConfig.js';
 import { SidebarMenuIcon } from './navigation/SidebarMenuIcons.jsx';
+import { ProcessosSidebarSubmenu } from './navigation/ProcessosSidebarSubmenu.jsx';
 import { getColaboradoresHumanosAtivos } from '../data/agendaPersistenciaData';
 import {
   getUsuarioSessaoAtualId,
@@ -75,6 +76,8 @@ export function Sidebar({ mobileDrawerOpen = false, onMobileDrawerChange } = {})
       p.startsWith('/processos/') ||
       p === '/documentos/gerar' ||
       p.startsWith('/documentos/') ||
+      p === '/publicacoes-email' ||
+      p.startsWith('/publicacoes-email/') ||
       p === '/relatorio' ||
       p.startsWith('/relatorio/')
     ) {
@@ -266,6 +269,14 @@ export function Sidebar({ mobileDrawerOpen = false, onMobileDrawerChange } = {})
                   )}
                 </button>
                 {aberto && (
+                  item.menuLayout === 'processos-sections' && Array.isArray(item.menuSections) ? (
+                    <ProcessosSidebarSubmenu
+                      sections={item.menuSections}
+                      pode={pode}
+                      pathname={location.pathname}
+                      onNavigate={closeMobileDrawer}
+                    />
+                  ) : (
                   <div className="mt-0.5 ml-1.5 pl-1.5 border-l border-gray-300 dark:border-white/10 space-y-0">
                     {subs.map((ch) => (
                         <NavLink
@@ -299,6 +310,7 @@ export function Sidebar({ mobileDrawerOpen = false, onMobileDrawerChange } = {})
                         </NavLink>
                       ))}
                   </div>
+                  )
                 )}
               </div>
             );
