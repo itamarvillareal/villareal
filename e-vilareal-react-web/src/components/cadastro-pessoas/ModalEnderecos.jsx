@@ -2,6 +2,19 @@ import { useState, useEffect, useRef } from 'react';
 import { X, Search } from 'lucide-react';
 import { useCloseOnEscape } from '../../hooks/useCloseOnEscape.js';
 
+function formatarCepExibicao(valor) {
+  const digitos = String(valor ?? '').replace(/\D/g, '').slice(0, 8);
+  if (digitos.length <= 5) return digitos;
+  return `${digitos.slice(0, 5)}-${digitos.slice(5)}`;
+}
+
+function cepSugestaoParaExibicao(sugestao) {
+  if (!sugestao) return '';
+  const fmt = String(sugestao.cepFormatado || '').trim();
+  if (fmt) return formatarCepExibicao(fmt);
+  return formatarCepExibicao(sugestao.cep);
+}
+
 export function ModalEnderecos({
   open,
   onClose,
@@ -11,8 +24,12 @@ export function ModalEnderecos({
   onChange,
   sugestaoEndereco = null,
 }) {
-  const [numero, setNumero] = useState(1);
+  /** Índice ordinal na lista de endereços (1, 2, 3…). */
+  const [numeroLista, setNumeroLista] = useState(1);
   const [rua, setRua] = useState('');
+  /** Número do imóvel / logradouro (distinto do índice da lista). */
+  const [numeroLogradouro, setNumeroLogradouro] = useState('');
+  const [complemento, setComplemento] = useState('');
   const [bairro, setBairro] = useState('');
   const [estado, setEstado] = useState('');
   const [cidade, setCidade] = useState('');
@@ -31,20 +48,23 @@ export function ModalEnderecos({
     sessaoAbertaRef.current = true;
 
     const lista = Array.isArray(enderecos) ? enderecos : [];
-    setNumero(lista.length + 1);
+    setNumeroLista(lista.length + 1);
 
     const s = sugestaoEndereco;
     const temSugestao =
       s &&
       (String(s.rua || '').trim() ||
         String(s.cep || '').replace(/\D/g, '') ||
+        String(s.cepFormatado || '').replace(/\D/g, '') ||
         String(s.cidade || '').trim());
     if (temSugestao) {
       setRua(String(s.rua || '').trim());
+      setNumeroLogradouro(String(s.numero || '').trim());
+      setComplemento(String(s.complemento || '').trim());
       setBairro(String(s.bairro || '').trim());
       setEstado(String(s.estado || '').trim());
       setCidade(String(s.cidade || '').trim());
-      setCep(String(s.cep || '').replace(/\D/g, '').slice(0, 8));
+      setCep(cepSugestaoParaExibicao(s));
     }
   }, [open, sugestaoEndereco, enderecos]);
 
@@ -75,11 +95,22 @@ export function ModalEnderecos({
     setBuscandoCep(false);
   };
 
+  const montarRuaCompleta = () => {
+    let ruaFinal = rua.trim();
+    if (numeroLogradouro.trim() && !/\bn[º°o]\b/i.test(ruaFinal)) {
+      ruaFinal = `${ruaFinal}, nº ${numeroLogradouro.trim()}`;
+    }
+    if (complemento.trim()) {
+      ruaFinal = `${ruaFinal}, ${complemento.trim()}`;
+    }
+    return ruaFinal;
+  };
+
   const incluir = () => {
     if (!rua.trim()) return;
     const novo = {
-      numero: numero,
-      rua: rua.trim(),
+      numero: numeroLista,
+      rua: montarRuaCompleta(),
       bairro: bairro.trim(),
       estado,
       cidade: cidade.trim(),
@@ -87,7 +118,14 @@ export function ModalEnderecos({
       autoPreenchido: false,
     };
     onChange([...lista, novo]);
-    setRua(''); setBairro(''); setEstado(''); setCidade(''); setCep(''); setNumero(lista.length + 2);
+    setRua('');
+    setNumeroLogradouro('');
+    setComplemento('');
+    setBairro('');
+    setEstado('');
+    setCidade('');
+    setCep('');
+    setNumeroLista(lista.length + 2);
   };
 
   const remover = (index) => {
@@ -124,7 +162,7 @@ export function ModalEnderecos({
               <div className="flex border border-gray-300 rounded-lg overflow-hidden">
                 <button
                   type="button"
-                  onClick={() => setNumero((n) => Math.max(1, n - 1))}
+                  onClick={() => setNumeroLista((n) => Math.max(1, n - 1))}
                   className="px-2 py-2 bg-gray-100 hover:bg-gray-200 text-gray-600"
                 >
                   −
@@ -132,13 +170,13 @@ export function ModalEnderecos({
                 <input
                   type="number"
                   min={1}
-                  value={numero}
-                  onChange={(e) => setNumero(parseInt(e.target.value, 10) || 1)}
+                  value={numeroLista}
+                  onChange={(e) => setNumeroLista(parseInt(e.target.value, 10) || 1)}
                   className="w-16 text-center border-x border-gray-300 py-2 text-sm"
                 />
                 <button
                   type="button"
-                  onClick={() => setNumero((n) => n + 1)}
+                  onClick={() => setNumeroLista((n) => n + 1)}
                   className="px-2 py-2 bg-gray-100 hover:bg-gray-200 text-gray-600"
                 >
                   +
@@ -154,6 +192,28 @@ export function ModalEnderecos({
                 placeholder="Logradouro"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nº</label>
+                <input
+                  type="text"
+                  value={numeroLogradouro}
+                  onChange={(e) => setNumeroLogradouro(e.target.value)}
+                  placeholder="Número do imóvel"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Complemento</label>
+                <input
+                  type="text"
+                  value={complemento}
+                  onChange={(e) => setComplemento(e.target.value)}
+                  placeholder="Sala, andar, bloco…"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Bairro</label>
@@ -195,7 +255,7 @@ export function ModalEnderecos({
                 <input
                   type="text"
                   value={cep}
-                  onChange={(e) => setCep(e.target.value.replace(/\D/g, '').slice(0, 8))}
+                  onChange={(e) => setCep(formatarCepExibicao(e.target.value))}
                   placeholder="00000-000"
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
@@ -233,10 +293,9 @@ export function ModalEnderecos({
                   >
                     <span className="text-gray-700">
                       {e.rua}
-                      {e.numero ? `, ${e.numero}` : ''}
                       {e.bairro ? ` – ${e.bairro}` : ''}
                       {e.cidade || e.estado ? ` – ${e.cidade || ''} ${e.estado || ''}`.trim() : ''}
-                      {e.cep ? ` – CEP ${e.cep.replace(/(\d{5})(\d{3})/, '$1-$2')}` : ''}
+                      {e.cep ? ` – CEP ${formatarCepExibicao(e.cep)}` : ''}
                     </span>
                     <button
                       type="button"

@@ -803,7 +803,86 @@ public class GoogleDriveService {
             return null;
         }
         excluirSubpastasComNome(nomePasta, parentId);
-        return encontrarOuCriarPastaPublic(nomePasta, parentId);
+
+        // Após enviar à lixeira, o índice do Drive pode demorar a refletir a exclusão.
+        // Tentamos criar uma pasta nova com backoff; se ainda existir cópia antiga, removemos de novo.
+        Exception ultimoErro = null;
+        for (int tentativa = 1; tentativa <= 4; tentativa++) {
+            try {
+                String existente = encontrarPastaExistente(nomePasta, parentId);
+                if (existente != null) {
+                    enviarParaLixeira(existente);
+                    aguardarPropagacaoDrive(tentativa);
+                    continue;
+                }
+                return criarPasta(nomePasta, parentId);
+            } catch (Exception e) {
+                ultimoErro = e;
+                log.warn(
+                        "Falha ao recriar subpasta «{}» (tentativa {}/4): {}",
+                        nomePasta,
+                        tentativa,
+                        e.getMessage());
+                aguardarPropagacaoDrive(tentativa);
+            }
+        }
+        if (ultimoErro != null) {
+            throw ultimoErro;
+        }
+        throw new IllegalStateException("Falha ao recriar subpasta «" + nomePasta + "» no Drive.");
+    }
+
+    private static void aguardarPropagacaoDrive(int tentativa) {
+        try {
+            Thread.sleep(400L * tentativa);
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    /**
+     * Garante subpasta filha direta do {@code parentId}, com retry para atraso de indexação do Drive.
+     * Usado quando «Petições» e «Assinar» devem coexistir no mesmo nível (mesma pasta raiz do processo).
+     */
+    public String garantirSubpastaComRetry(String nomePasta, String parentId) throws Exception {
+        if (!isConfigurado() || !StringUtils.hasText(parentId)) {
+            return null;
+        }
+        Exception ultimoErro = null;
+        for (int tentativa = 1; tentativa <= 4; tentativa++) {
+            try {
+                String id = encontrarOuCriarPastaPublic(nomePasta, parentId);
+                if (StringUtils.hasText(id) && validarSubpastaFilha(id, parentId)) {
+                    return id;
+                }
+                ultimoErro = new IllegalStateException(
+                        "Subpasta «" + nomePasta + "» não validada como filha imediata do destino");
+            } catch (Exception e) {
+                ultimoErro = e;
+                log.warn(
+                        "Falha ao garantir subpasta «{}» (tentativa {}/4): {}",
+                        nomePasta,
+                        tentativa,
+                        e.getMessage());
+            }
+            aguardarPropagacaoDrive(tentativa);
+        }
+        if (ultimoErro != null) {
+            throw ultimoErro;
+        }
+        throw new IllegalStateException("Falha ao garantir subpasta «" + nomePasta + "» no Drive.");
+    }
+
+    private boolean validarSubpastaFilha(String pastaId, String parentIdEsperado) throws Exception {
+        File f = prepararGet(driveService.files().get(pastaId).setFields("id, mimeType, parents, trashed"))
+                .execute();
+        if (Boolean.TRUE.equals(f.getTrashed())) {
+            return false;
+        }
+        if (!"application/vnd.google-apps.folder".equals(f.getMimeType())) {
+            return false;
+        }
+        return f.getParents() != null && f.getParents().contains(parentIdEsperado);
     }
 
     public String encontrarOuCriarPastaPublic(String nomePasta, String parentId) throws Exception {

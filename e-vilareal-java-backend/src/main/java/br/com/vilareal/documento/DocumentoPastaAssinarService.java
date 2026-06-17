@@ -11,11 +11,15 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantLock;
 
 @Service
 public class DocumentoPastaAssinarService {
 
     private static final Logger log = LoggerFactory.getLogger(DocumentoPastaAssinarService.class);
+    private static final ConcurrentHashMap<Long, ReentrantLock> LOCKS_POR_PROCESSO = new ConcurrentHashMap<>();
+    private static final int MAX_TENTATIVAS_UPLOAD = 3;
 
     /** Fase canónica equivalente a «Aguardando Protocolo» nos diagnósticos. */
     public static final String FASE_AGUARDANDO_PROTOCOLO = "Protocolo / Movimentação";
@@ -47,6 +51,17 @@ public class DocumentoPastaAssinarService {
         ProcessoEntity processo = resolverProcesso(processoId, codigoCliente, numeroInterno)
                 .orElseThrow(() -> new ResourceNotFoundException("Processo não encontrado para inserir na pasta Assinar."));
 
+        ReentrantLock lock = lockParaProcesso(processo.getId());
+        lock.lock();
+        try {
+            return inserirPdfNoDrive(processo, pdfBytes, nomeArquivo);
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    private DocumentoInserirPastaAssinarResponse inserirPdfNoDrive(
+            ProcessoEntity processo, byte[] pdfBytes, String nomeArquivo) {
         String codigo = documentoDrivePastaService.resolverCodigoClienteDoProcesso(processo);
         Integer numInterno = processo.getNumeroInterno();
         if (!StringUtils.hasText(codigo) || numInterno == null) {
@@ -61,34 +76,35 @@ public class DocumentoPastaAssinarService {
                 throw new BusinessRuleException("Pasta do processo não encontrada no Drive (cliente/proc.).");
             }
 
-            // Histórico em «Petições» (mesmo destino do «Gerar PDF final»).
-            String pastaPeticoesId = documentoDrivePastaService.resolverPastaDestino(
-                    googleDriveService, codigo.trim(), numInterno, null, TipoDocumento.PETICAO);
-            DriveArquivoDto uploadPeticoes =
-                    googleDriveService.uploadArquivo(pdfBytes, nome, "application/pdf", pastaPeticoesId);
-            if (uploadPeticoes == null || !StringUtils.hasText(uploadPeticoes.id())) {
-                throw new BusinessRuleException("Falha ao enviar PDF para a pasta Petições no Drive.");
+            String pastaRaizId = pastaDto.pastaId();
+
+            // «Petições» e «Assinar» são irmãs na mesma pasta raiz (parte oposta / proc.).
+            // Antes, resolverPastaDestino percorria a árvore de novo e, com requisições concorrentes,
+            // podia resolver um ramo duplicado diferente — Assinar num sítio, Petições noutro.
+            String pastaPeticoesId = googleDriveService.garantirSubpastaComRetry(
+                    TipoDocumento.PETICAO.getPasta(), pastaRaizId);
+            if (!StringUtils.hasText(pastaPeticoesId)) {
+                throw new BusinessRuleException("Falha ao garantir a subpasta Petições no Drive.");
             }
 
+            DriveArquivoDto uploadPeticoes = uploadComRetry(pdfBytes, nome, pastaPeticoesId, "Petições");
+
             // «Assinar»: recria pasta vazia para o trabalho imediato de assinatura/protocolo.
-            String pastaAssinarId = googleDriveService.recriarSubpasta(PASTA_ASSINAR, pastaDto.pastaId());
+            String pastaAssinarId = googleDriveService.recriarSubpasta(PASTA_ASSINAR, pastaRaizId);
             if (!StringUtils.hasText(pastaAssinarId)) {
                 throw new BusinessRuleException("Falha ao recriar a subpasta Assinar no Drive.");
             }
 
-            DriveArquivoDto uploadAssinar =
-                    googleDriveService.uploadArquivo(pdfBytes, nome, "application/pdf", pastaAssinarId);
-            if (uploadAssinar == null || !StringUtils.hasText(uploadAssinar.id())) {
-                throw new BusinessRuleException("Falha ao enviar PDF para a subpasta Assinar no Drive.");
-            }
+            DriveArquivoDto uploadAssinar = uploadComRetry(pdfBytes, nome, pastaAssinarId, "Assinar");
 
             processo.setFase(FASE_AGUARDANDO_PROTOCOLO);
             processoRepository.save(processo);
 
             log.info(
-                    "PDF inserido em Petições e Assinar (processoId={}, cnj={}, peticoes={}, assinar={})",
+                    "PDF inserido em Petições e Assinar (processoId={}, cnj={}, caminho={}, peticoes={}, assinar={})",
                     processo.getId(),
                     processo.getNumeroCnj(),
+                    pastaDto.caminho(),
                     uploadPeticoes.id(),
                     uploadAssinar.id());
 
@@ -107,6 +123,41 @@ public class DocumentoPastaAssinarService {
                     e.getMessage());
             throw new BusinessRuleException("Falha ao inserir PDF na pasta Assinar: " + e.getMessage());
         }
+    }
+
+    private DriveArquivoDto uploadComRetry(byte[] pdfBytes, String nome, String pastaId, String destino) {
+        Exception ultimoErro = null;
+        for (int tentativa = 1; tentativa <= MAX_TENTATIVAS_UPLOAD; tentativa++) {
+            DriveArquivoDto upload =
+                    googleDriveService.uploadArquivo(pdfBytes, nome, "application/pdf", pastaId);
+            if (upload != null && StringUtils.hasText(upload.id())) {
+                return upload;
+            }
+            ultimoErro = new IllegalStateException("Upload retornou vazio");
+            if (tentativa < MAX_TENTATIVAS_UPLOAD) {
+                log.warn(
+                        "Falha ao enviar PDF para pasta {} (tentativa {}/{}), repetindo…",
+                        destino,
+                        tentativa,
+                        MAX_TENTATIVAS_UPLOAD);
+                try {
+                    Thread.sleep(500L * tentativa);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+        }
+        String detalhe = ultimoErro != null && ultimoErro.getMessage() != null
+                ? ultimoErro.getMessage()
+                : "erro desconhecido";
+        throw new BusinessRuleException(
+                "Falha ao enviar PDF para a pasta " + destino + " no Drive após "
+                        + MAX_TENTATIVAS_UPLOAD + " tentativas (" + detalhe + ").");
+    }
+
+    private static ReentrantLock lockParaProcesso(Long processoId) {
+        return LOCKS_POR_PROCESSO.computeIfAbsent(processoId, id -> new ReentrantLock());
     }
 
     private Optional<ProcessoEntity> resolverProcesso(

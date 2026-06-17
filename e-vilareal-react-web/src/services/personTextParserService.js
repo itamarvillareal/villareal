@@ -1,10 +1,17 @@
-import { validateCPF } from './cpfValidatorService.js';
+import { validateCPF, validateCNPJ } from './cpfValidatorService.js';
 import { parseBrazilianDate, validateParsedDate } from './dateParserService.js';
-import { scorePossiblePersonName } from './nameCandidateScoringService.js';
+import { scorePossiblePersonName, scoreRazaoSocial } from './nameCandidateScoringService.js';
 import { parseQualificacaoPessoa } from './personQualificationParserService.js';
 import { parseEnderecoPessoa } from './personAddressParserService.js';
 
 const CPF_REGEX = /(\d{3}[.\s]?\d{3}[.\s]?\d{3}[-\s.]?\d{2}|\d{11})\b/g;
+const CNPJ_REGEX = /\b\d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2}\b/g;
+
+const PJ_CONTEXT =
+  /\b(pessoa\s+jur[ií]dica|CNPJ|sociedade|LTDA|EIRELI|EPP|S\/?A|com\s+sede|raz[ãa]o\s+social)\b/i;
+
+const RAZAO_SOCIAL_REGEX =
+  /(?:^|\n)\s*([A-Za-zÀ-ÿ0-9&.\-/' ]{4,120}?)\s*,\s*(?=pessoa\s+jur[ií]dica|inscrita\s+(?:na|no)\b|CNPJ\b|raz[ãa]o\s+social|com\s+sede)/i;
 const DATA_REGEX = /\b(\d{1,2})\s*[/\-.]\s*(\d{1,2})\s*[/\-.]\s*(\d{2,4})\b/g;
 
 const ROTULOS_CPF = [
@@ -47,7 +54,52 @@ function normalizarTextoLivre(bruto) {
   let t = original.replace(/\u00A0/g, ' ');
   t = t.replace(/\r\n|\r|\n|\u2028|\u2029/g, ' ');
   t = t.replace(/[ \t]+/g, ' ');
+  t = t.replace(/(\d)\s*([.\-/])\s*(\d)/g, '$1$2$3');
   return { original, normalizado: t.trim() };
+}
+
+function detectarTipoPessoa(texto) {
+  return PJ_CONTEXT.test(String(texto || '')) ? 'juridica' : 'fisica';
+}
+
+function mascararTrechosCnpj(texto, matches) {
+  let result = String(texto || '');
+  const sorted = [...matches].sort((a, b) => b.index - a.index);
+  for (const { index, length } of sorted) {
+    result = result.slice(0, index) + ' '.repeat(length) + result.slice(index + length);
+  }
+  return result;
+}
+
+function coletarMatchesCnpj(texto) {
+  const matches = [];
+  let m;
+  CNPJ_REGEX.lastIndex = 0;
+  while ((m = CNPJ_REGEX.exec(texto))) {
+    matches.push({ raw: m[0], index: m.index, length: m[0].length });
+  }
+  return matches;
+}
+
+function coletarCandidatosCnpj(texto) {
+  const candidatos = [];
+  for (const { raw, index, length } of coletarMatchesCnpj(texto)) {
+    const val = validateCNPJ(raw);
+    const janelaAntes = texto.slice(Math.max(0, index - 40), index).toLowerCase();
+    let bonus = 0;
+    if (/cnpj|inscrit[ao]\s+no\s+cnpj|inscrita no/i.test(janelaAntes)) bonus += 0.35;
+    const score = (val.valido ? 0.55 : 0.05) + bonus;
+    candidatos.push({
+      valor: val.valido ? val.normalizado : raw.replace(/\D/g, ''),
+      score: Math.min(0.99, score),
+      origem: val.valido ? 'cnpj_validado' : 'cnpj_invalido',
+      valido: val.valido,
+      index,
+      length,
+      motivos: val.valido ? [] : ['Dígitos verificadores inválidos'],
+    });
+  }
+  return dedupMelhor(candidatos, (c) => c.valor.replace(/\D/g, ''));
 }
 
 function indiceProximoRotulo(texto, idx, padroes) {
@@ -182,6 +234,20 @@ function coletarCandidatosNome(texto, idxCpfAprox) {
   const candidatos = [];
   const t = texto.trim();
 
+  const rRazao = t.match(RAZAO_SOCIAL_REGEX);
+  if (rRazao) {
+    const v = limparNome(rRazao[1]);
+    if (v) {
+      candidatos.push({
+        valor: v,
+        score: scoreRazaoSocial(v),
+        origem: 'razao_social_pj',
+        valido: true,
+        motivos: [],
+      });
+    }
+  }
+
   const r1 = t.match(/nome\s+completo\s*:\s*([^\n\r]+)/i);
   if (r1) {
     const v = limparNome(r1[1]);
@@ -230,7 +296,9 @@ function coletarCandidatosNome(texto, idxCpfAprox) {
 
   const primeiraLinha = t.split(/[\n;]/)[0];
   if (primeiraLinha && primeiraLinha.length > 8) {
-    let semRotulo = primeiraLinha.replace(/^[^:]+:\s*/i, '').trim();
+    let semRotulo = primeiraLinha
+      .replace(/^\s*(?:nome completo|nome|cliente)\s*:\s*/i, '')
+      .trim();
     semRotulo = semRotulo.split(',')[0];
     const v = limparNome(semRotulo);
     if (v && /^[A-Za-zÀ-ú]/.test(v) && v.split(/\s+/).length >= 2 && !/^\d/.test(v)) {
@@ -315,8 +383,10 @@ export function parsePersonFreeText(textoBruto, opts = {}) {
   const { original, normalizado } = normalizarTextoLivre(textoBruto);
   if (!normalizado) {
     return {
+      tipoPessoa: 'fisica',
       nomeCompleto: null,
       cpf: null,
+      cnpj: null,
       rg: null,
       dataNascimento: null,
       nacionalidade: null,
@@ -327,6 +397,7 @@ export function parsePersonFreeText(textoBruto, opts = {}) {
       candidatos: {
         nomeCompleto: [],
         cpf: [],
+        cnpj: [],
         rg: [],
         dataNascimento: [],
         nacionalidade: [],
@@ -341,8 +412,25 @@ export function parsePersonFreeText(textoBruto, opts = {}) {
     };
   }
 
-  const idxCpf = primeiroCpfValidoIndex(normalizado);
-  const cpfs = coletarCandidatosCpf(normalizado);
+  const tipoPessoa = detectarTipoPessoa(normalizado);
+
+  const cnpjs = coletarCandidatosCnpj(normalizado);
+  const validosCnpj = cnpjs.filter((c) => c.valido);
+  const melhorCnpj = validosCnpj[0] || null;
+  if (cnpjs.length && !validosCnpj.length) {
+    avisos.push('Foi encontrado número no formato CNPJ, mas não passou na validação; campo CNPJ não preenchido.');
+  }
+  if (cnpjs.length > 1 && validosCnpj.length > 1) {
+    avisos.push('Vários CNPJs válidos no texto; foi usado o de maior confiança contextual.');
+  }
+
+  const textoSemCnpj = mascararTrechosCnpj(
+    normalizado,
+    coletarMatchesCnpj(normalizado).map((m) => ({ index: m.index, length: m.length }))
+  );
+
+  const idxCpf = primeiroCpfValidoIndex(textoSemCnpj);
+  const cpfs = coletarCandidatosCpf(textoSemCnpj);
   const validosCpf = cpfs.filter((c) => c.valido);
   const melhorCpf = validosCpf[0] || null;
   if (cpfs.length && !validosCpf.length) {
@@ -377,15 +465,21 @@ export function parsePersonFreeText(textoBruto, opts = {}) {
   if (emails.length > 1) avisos.push('Vários e-mails no texto; foi usado o de maior confiança contextual.');
 
   const camposNaoEncontrados = [];
-  if (!melhorNome) camposNaoEncontrados.push('nome completo');
-  if (!melhorCpf) camposNaoEncontrados.push('CPF');
-  if (!melhorRg) camposNaoEncontrados.push('RG');
-  if (!melhorData) camposNaoEncontrados.push('data de nascimento');
-  if (!qualif.nacionalidade) camposNaoEncontrados.push('nacionalidade');
-  if (!qualif.estadoCivil) camposNaoEncontrados.push('estado civil');
-  if (!qualif.profissao) camposNaoEncontrados.push('profissão');
-  if (!end.endereco) camposNaoEncontrados.push('endereço');
-  if (!melhorEmail) camposNaoEncontrados.push('e-mail');
+  if (tipoPessoa === 'juridica') {
+    if (!melhorNome) camposNaoEncontrados.push('razão social');
+    if (!melhorCnpj) camposNaoEncontrados.push('CNPJ');
+    if (!end.endereco) camposNaoEncontrados.push('endereço');
+  } else {
+    if (!melhorNome) camposNaoEncontrados.push('nome completo');
+    if (!melhorCpf) camposNaoEncontrados.push('CPF');
+    if (!melhorRg) camposNaoEncontrados.push('RG');
+    if (!melhorData) camposNaoEncontrados.push('data de nascimento');
+    if (!qualif.nacionalidade) camposNaoEncontrados.push('nacionalidade');
+    if (!qualif.estadoCivil) camposNaoEncontrados.push('estado civil');
+    if (!qualif.profissao) camposNaoEncontrados.push('profissão');
+    if (!end.endereco) camposNaoEncontrados.push('endereço');
+    if (!melhorEmail) camposNaoEncontrados.push('e-mail');
+  }
   if (camposNaoEncontrados.length) {
     avisos.push(`Não identificado(s): ${camposNaoEncontrados.join(', ')}.`);
   }
@@ -398,6 +492,7 @@ export function parsePersonFreeText(textoBruto, opts = {}) {
           candidatos: {
             nomeCompleto: nomes,
             cpf: cpfs,
+            cnpj: cnpjs,
             rg: rgs,
             dataNascimento: datas,
             nacionalidade: qualif.candidatos.nacionalidade,
@@ -410,8 +505,10 @@ export function parsePersonFreeText(textoBruto, opts = {}) {
       : undefined;
 
   return {
+    tipoPessoa,
     nomeCompleto: melhorNome?.valor ?? null,
     cpf: melhorCpf?.valor ?? null,
+    cnpj: melhorCnpj?.valor ?? null,
     rg: melhorRg?.valor ?? null,
     dataNascimento: melhorData?.valor ?? null,
     nacionalidade: qualif.nacionalidade,
@@ -423,6 +520,7 @@ export function parsePersonFreeText(textoBruto, opts = {}) {
     candidatos: {
       nomeCompleto: nomes,
       cpf: cpfs,
+      cnpj: cnpjs,
       rg: rgs,
       dataNascimento: datas,
       nacionalidade: qualif.candidatos.nacionalidade,

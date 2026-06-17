@@ -26,9 +26,10 @@ const estadoInicial = () => ({
   cidadeEstado: CIDADE_ESTADO_PADRAO,
 });
 
-export function ModoEnviarArquivo({ dadosProcesso, onErro, onLoadingChange }) {
+export function ModoEnviarArquivo({ dadosProcesso, onErro, onSucesso, onLoadingChange }) {
   const inputRef = useRef(null);
   const previewUrlRef = useRef(null);
+  const inserindoPastaAssinarRef = useRef(false);
   const [form, setForm] = useState(() => {
     const base = estadoInicial();
     if (!dadosProcesso) return base;
@@ -199,16 +200,18 @@ export function ModoEnviarArquivo({ dadosProcesso, onErro, onLoadingChange }) {
   };
 
   const handleInserirPastaAssinar = async () => {
-    if (!conteudoEditavel) return;
+    if (!conteudoEditavel || inserindoPastaAssinarRef.current) return;
     if (!podeInserirPastaAssinar) {
       onErro?.('Abra esta tela a partir de um processo para inserir na pasta Assinar.');
       return;
     }
     onErro?.('');
+    onSucesso?.('');
+    inserindoPastaAssinarRef.current = true;
     setLoadingPastaAssinar(true);
     setOcupado(true);
     try {
-      await inserirPdfReformatadoNaPastaAssinar(conteudoEditavel, montarOpcoesGeracao(false));
+      const resp = await inserirPdfReformatadoNaPastaAssinar(conteudoEditavel, montarOpcoesGeracao(false));
       if (dadosProcesso?.codigoCliente && dadosProcesso?.numeroInterno != null) {
         salvarHistoricoDoProcesso({
           codCliente: dadosProcesso.codigoCliente,
@@ -216,9 +219,15 @@ export function ModoEnviarArquivo({ dadosProcesso, onErro, onLoadingChange }) {
           faseSelecionada: 'Protocolo / Movimentação',
         });
       }
+      const nomeArquivo = resp?.nomeArquivo ? ` «${resp.nomeArquivo}»` : '';
+      onSucesso?.(
+        `PDF${nomeArquivo} inserido nas pastas Petições e Assinar (mesmo nível no Drive). Fase atualizada para Protocolo / Movimentação.`,
+      );
     } catch (e) {
+      onSucesso?.('');
       onErro?.(e?.message || 'Falha ao inserir PDF na pasta Assinar.');
     } finally {
+      inserindoPastaAssinarRef.current = false;
       setLoadingPastaAssinar(false);
       setOcupado(false);
     }

@@ -60,3 +60,15 @@ export function scorePossiblePersonName(nome, contexto = {}) {
 
   return Math.max(0, Math.min(0.98, score));
 }
+
+/**
+ * Pontuação para razão social / nome empresarial (sem penalizar SOCIEDADE, ADVOCACIA, etc.).
+ * @param {string} nome
+ */
+export function scoreRazaoSocial(nome) {
+  if (!nome || typeof nome !== 'string') return 0;
+  const s = nome.replace(/\s+/g, ' ').trim();
+  if (s.length < 4) return 0;
+  const tokens = s.split(/\s+/).filter(Boolean);
+  return Math.min(0.98, 0.9 + Math.min(0.08, tokens.length * 0.01));
+}

@@ -5,6 +5,12 @@ const LOGRADOURO_RE =
 
 const ORGAOS_EMISSORES = /^(DGPC|SSP|PC|DETRAN)$/i;
 
+const COMPLEMENTO_KW =
+  /\b(edif[ií]cio|ed\.|sala|andar|bloco|apto\.?|apartamento|conjunto|loja|cobertura|quadra|qd\.|lote|lt\.)\b/i;
+
+const ADDRESS_TRIGGER_RE =
+  /\b(?:com\s+sede\s+(?:na|em)|com\s+sede|(?:residente\s+e\s+domiciliad[oa]|domiciliad[oa]|residente)\s+(?:na|em))\s+/i;
+
 function limparTrecho(s) {
   return String(s || '')
     .replace(/\s+/g, ' ')
@@ -30,12 +36,10 @@ function extrairCep(texto) {
 
 function extrairCidadeUf(texto) {
   const t = String(texto || '');
-  // Ex.: Anápolis/GO, Goiânia - GO, São Paulo/SP
   const re = /([A-ZÀ-Ú][A-Za-zÀ-ú'\s]{2,60}?)\s*(?:\/|-)\s*([A-Z]{2})\b/g;
   let m;
   while ((m = re.exec(t)) !== null) {
     const cidade = limparTrecho(m[1]);
-    // evita confundir "DGPC/GO" (órgão emissor do RG) com cidade/UF; segue para a próxima ocorrência
     if (ORGAOS_EMISSORES.test(cidade.replace(/\s+/g, ''))) continue;
     if (/^[A-Z]{2,8}$/.test(cidade) && cidade.length <= 6) continue;
     return { cidade, estado: m[2] };
@@ -43,22 +47,94 @@ function extrairCidadeUf(texto) {
   return null;
 }
 
-function extrairBairro(texto) {
+function extrairTrechoEndereco(texto) {
   const t = String(texto || '');
-  const m = t.match(/\bBairro\s+([^,;\n]{2,80})/i);
-  if (m) return limparTrecho(m[1]);
-  // variações comuns
-  const m2 = t.match(/\b(Setor|Jardim|Vila|Parque)\s+([^,;\n]{2,80})/i);
-  if (m2) return limparTrecho(`${m2[1]} ${m2[2]}`);
+  const idxTrigger = t.search(ADDRESS_TRIGGER_RE);
+  if (idxTrigger >= 0) {
+    const after = t.slice(idxTrigger).replace(ADDRESS_TRIGGER_RE, '');
+    const m = after.match(/^(.+?)(?=,\s*CEP\b|\bCEP\s*:|;\s|$)/i);
+    if (m) return limparTrecho(m[1]);
+  }
   return null;
 }
 
-function extrairLogradouro(texto) {
+function parseSegmentoEndereco(segmento) {
+  if (!segmento) return { rua: null, numero: null, complemento: null, bairro: null };
+
+  let parts = segmento
+    .split(',')
+    .map((p) => p.trim())
+    .filter(Boolean);
+
+  const last = parts[parts.length - 1];
+  if (last) {
+    const mCity = last.match(/^(.+?)\s*(?:\/|-)\s*([A-Z]{2})$/);
+    if (mCity && !ORGAOS_EMISSORES.test(mCity[1].replace(/\s+/g, ''))) {
+      parts.pop();
+    }
+  }
+
+  let bairro = null;
+  const bairroIdx = parts.findIndex((p) => /^bairro\s/i.test(p));
+  if (bairroIdx >= 0) {
+    bairro = limparTrecho(parts[bairroIdx].replace(/^bairro\s/i, ''));
+    parts.splice(bairroIdx, 1);
+  }
+
+  const centroIdx = parts.findIndex((p) => /^centro$/i.test(p));
+  if (centroIdx >= 0) {
+    bairro = 'Centro';
+    parts.splice(centroIdx, 1);
+  }
+
+  if (!bairro) {
+    const mDist = segmento.match(/\b(Distrito)\s+([^,;\n]{2,80})/i);
+    if (mDist) bairro = limparTrecho(`${mDist[1]} ${mDist[2]}`);
+  }
+
+  if (!bairro) {
+    const mSetor = segmento.match(/\b(Setor|Jardim|Vila|Parque)\s+([^,;\n]{2,80})/i);
+    if (mSetor) bairro = limparTrecho(`${mSetor[1]} ${mSetor[2]}`);
+  }
+
+  let numero = null;
+  for (let i = 0; i < parts.length; i += 1) {
+    const nm = parts[i].match(/\b(?:n[º°o]\.?|n\.?\s*)\s*(\d+)\b/i);
+    if (nm) {
+      numero = nm[1];
+      const soNumero = /^\s*(?:n[º°o]\.?|n\.?\s*)\s*\d+\s*$/i.test(parts[i]);
+      if (soNumero) {
+        parts.splice(i, 1);
+      } else {
+        parts[i] = parts[i].replace(/,?\s*(?:n[º°o]\.?|n\.?\s*)\s*\d+/i, '').trim();
+        if (!parts[i]) parts.splice(i, 1);
+      }
+      break;
+    }
+  }
+
+  const compParts = [];
+  const logradouroParts = [];
+  for (const p of parts) {
+    if (COMPLEMENTO_KW.test(p)) compParts.push(p);
+    else logradouroParts.push(p);
+  }
+
+  let rua = logradouroParts[0] ? limparTrecho(logradouroParts[0]) : null;
+  if (!rua && logradouroParts.length > 0) {
+    rua = limparTrecho(logradouroParts.join(', '));
+  }
+
+  const complemento = compParts.length ? compParts.map(limparTrecho).join(', ') : null;
+
+  return { rua, numero, complemento, bairro };
+}
+
+function extrairLogradouroLegado(texto) {
   const t = String(texto || '');
   const lower = t.toLowerCase();
   const idxBairro = lower.search(/\bbairro\b/);
   const idxCep = lower.search(/\bcep\b/);
-  // Último padrão "/ UF" (ex.: Anápolis/GO), não o primeiro (ex.: DGPC/GO no RG)
   let idxCidadeUf = -1;
   const reSlashUf = /\/\s*[a-z]{2}\b/g;
   let um;
@@ -66,14 +142,9 @@ function extrairLogradouro(texto) {
     idxCidadeUf = um.index;
   }
   const limit = [idxBairro, idxCep, idxCidadeUf].filter((x) => x >= 0).sort((a, b) => a - b)[0];
-
-  // Pega o trecho anterior ao bairro/cep/cidadeUF para formar a rua “completa”
   const janela = limit != null ? t.slice(0, limit) : t;
 
-  // Preferir trecho a partir de Avenida/Rua (evita pegar só “Lote …” quando há logradouro completo antes)
-  const mAvRua = janela.match(
-    /\b(Avenida|Av\.)\s+[^,;\n]+(?:,\s*[^,;\n]+)*/i,
-  );
+  const mAvRua = janela.match(/\b(Avenida|Av\.)\s+[^,;\n]+(?:,\s*[^,;\n]+)*/i);
   if (mAvRua) {
     const v = limparTrecho(mAvRua[0]);
     if (v.length >= 8) return v.replace(/\s*,\s*/g, ', ');
@@ -84,21 +155,20 @@ function extrairLogradouro(texto) {
     if (v.length >= 8) return v.replace(/\s*,\s*/g, ', ');
   }
 
-  // Tenta capturar a partir do ÚLTIMO token de logradouro conhecido (mais perto do CEP/bairro).
   LOGRADOURO_RE.lastIndex = 0;
   let m;
   let last = null;
   while ((m = LOGRADOURO_RE.exec(janela))) last = m;
   if (last) {
-    const start = last.index;
-    const bruto = janela.slice(start);
+    const bruto = janela.slice(last.index);
     const corte = bruto.split(/\n|;/)[0];
     const v = limparTrecho(corte);
     return v.length >= 8 ? v.replace(/\s*,\s*/g, ', ') : null;
   }
 
-  // fallback: se houver “residente e domiciliado na ...”
-  const m2 = janela.match(/\b(?:residente|domiciliado)\s+na\s+([^;\n]+?)(?=,?\s*(?:Bairro|CEP|[A-ZÀ-Ú][A-Za-zÀ-ú\s]{2,40}\s*\/\s*[A-Z]{2})|$)/i);
+  const m2 = janela.match(
+    /\b(?:com\s+sede\s+(?:na|em)|com\s+sede|(?:residente|domiciliado)\s+na)\s+([^;\n]+?)(?=,?\s*(?:Bairro|CEP|[A-ZÀ-Ú][A-Za-zÀ-ú\s]{2,40}\s*\/\s*[A-Z]{2})|$)/i
+  );
   if (m2) return limparTrecho(m2[1]);
 
   return null;
@@ -106,7 +176,7 @@ function extrairLogradouro(texto) {
 
 /**
  * @param {string} texto Normalizado
- * @returns {{ endereco: {rua:string,bairro:string,cidade:string,estado:string,cep:string}|null, candidatos: any[], avisos: string[] }}
+ * @returns {{ endereco: {rua:string,numero:string,complemento:string,bairro:string,cidade:string,estado:string,cep:string,cepFormatado:string}|null, candidatos: any[], avisos: string[] }}
  */
 export function parseEnderecoPessoa(texto) {
   const avisos = [];
@@ -114,29 +184,48 @@ export function parseEnderecoPessoa(texto) {
   if (!t) return { endereco: null, candidatos: [], avisos };
 
   const candidatos = [];
-  const cep = extrairCep(t);
+  const cepDigitos = extrairCep(t);
+  const cepFormatado =
+    cepDigitos && cepDigitos.length === 8
+      ? `${cepDigitos.slice(0, 5)}-${cepDigitos.slice(5)}`
+      : cepDigitos || '';
   const cidadeUf = extrairCidadeUf(t);
-  const bairro = extrairBairro(t);
-  const rua = extrairLogradouro(t);
+
+  const segmento = extrairTrechoEndereco(t);
+  let parsed = segmento ? parseSegmentoEndereco(segmento) : { rua: null, numero: null, complemento: null, bairro: null };
+
+  if (!parsed.rua) {
+    const legado = extrairLogradouroLegado(t);
+    if (legado) {
+      parsed = { ...parseSegmentoEndereco(legado), rua: parseSegmentoEndereco(legado).rua || legado };
+    }
+  }
+
+  const { rua, numero, complemento, bairro } = parsed;
 
   const score =
-    (rua ? 0.45 : 0) +
+    (rua ? 0.35 : 0) +
+    (numero ? 0.1 : 0) +
+    (complemento ? 0.1 : 0) +
     (bairro ? 0.15 : 0) +
     (cidadeUf ? 0.2 : 0) +
-    (cep ? 0.2 : 0);
+    (cepDigitos ? 0.2 : 0);
 
-  if (rua || bairro || cidadeUf || cep) {
+  if (rua || bairro || cidadeUf || cepDigitos) {
     candidatos.push({
       valor: {
         rua: rua || '',
+        numero: numero || '',
+        complemento: complemento || '',
         bairro: bairro || '',
         cidade: cidadeUf?.cidade || '',
         estado: cidadeUf?.estado || '',
-        cep: cep || '',
+        cep: cepDigitos || '',
+        cepFormatado,
       },
       score: Math.min(0.99, score),
-      origem: 'heuristica_endereco',
-      valido: !!rua || !!cep || !!cidadeUf,
+      origem: segmento ? 'segmento_endereco' : 'heuristica_endereco',
+      valido: !!rua || !!cepDigitos || !!cidadeUf,
       motivos: [],
     });
   }
@@ -158,4 +247,3 @@ export function parseEnderecoPessoa(texto) {
     avisos,
   };
 }
-

@@ -1,7 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { validateCPF } from './cpfValidatorService.js';
 import { parseBrazilianDate } from './dateParserService.js';
-import { extrairDadosDeTextoLivre } from './personTextAutofillService.js';
+import {
+  extrairDadosDeTextoLivre,
+  resolverDocumentoParaFormulario,
+} from './personTextAutofillService.js';
+
+const CNPJ_FIXTURE = '04.252.011/0001-10';
+const CPF_REPRESENTANTE = '390.533.447-05';
 
 describe('validateCPF', () => {
   it('aceita CPF válido', () => {
@@ -88,5 +94,80 @@ describe('extrairDadosDeTextoLivre — casos obrigatórios', () => {
     expect(r.nomeCompleto).toMatch(/ELIZEU SOUZA DE OLIVEIRA/i);
     expect(r.cpf).toBeTruthy();
     expect(r.textoNormalizado).toMatch(/ELIZEU SOUZA DE OLIVEIRA, CPF 390\.533\.447-05/);
+  });
+
+  it('caso PJ: sociedade de advocacia com CNPJ e sede', () => {
+    const t =
+      'VIVIAN GARCIA CARRIJO MATIAS SOCIEDADE INDIVIDUAL DE ADVOCACIA, pessoa jurídica de direito privado, inscrita na OAB/GO sob n.º 6434, CNPJ sob n.º 54.635.015/0001 -55, com sede na Avenida Senador José Lourenço Dias, nº 1440, Edifício London Eye Offices, Sala 1301, andar 13, Centro, Anápolis/GO, CEP: 75020 -010, neste ato representada por sua titular, advogada inscrita na OAB/GO sob n.º 71.086';
+    const r = extrairDadosDeTextoLivre(t);
+    expect(r.tipoPessoa).toBe('juridica');
+    expect(r.nomeCompleto).toBe(
+      'VIVIAN GARCIA CARRIJO MATIAS SOCIEDADE INDIVIDUAL DE ADVOCACIA'
+    );
+    expect(r.cnpj).toBe('54.635.015/0001-55');
+    expect(r.cpf).toBeNull();
+    expect(r.rg).toBeNull();
+    expect(r.dataNascimento).toBeNull();
+    expect(r.nacionalidade).toBeNull();
+    expect(r.estadoCivil).toBeNull();
+    expect(r.email).toBeNull();
+    expect(r.endereco).toBeTruthy();
+    expect(r.endereco.rua).toBe('Avenida Senador José Lourenço Dias');
+    expect(r.endereco.numero).toBe('1440');
+    expect(r.endereco.complemento).toBe(
+      'Edifício London Eye Offices, Sala 1301, andar 13'
+    );
+    expect(r.endereco.bairro).toBe('Centro');
+    expect(r.endereco.cidade).toBe('Anápolis');
+    expect(r.endereco.estado).toBe('GO');
+    expect(r.endereco.cepFormatado).toBe('75020-010');
+    expect(r.sucesso).toBe(true);
+    expect(r.avisos.join(' ')).not.toMatch(
+      /nome completo|CPF|RG|data de nascimento|nacionalidade|estado civil|profissão|e-mail/i
+    );
+  });
+
+  it('PJ com representante PF: Documento recebe CNPJ, não CPF do representante', () => {
+    const t = `CONSTRUTORA HORIZONTE LTDA, pessoa jurídica de direito privado, inscrita no CNPJ sob o n.º ${CNPJ_FIXTURE}, com sede na Rua Alpha, nº 100, São Paulo/SP, CEP 01310-100, neste ato representada por João Silva, CPF ${CPF_REPRESENTANTE}`;
+    const r = extrairDadosDeTextoLivre(t);
+    expect(r.tipoPessoa).toBe('juridica');
+    expect(r.cnpj).toBe(CNPJ_FIXTURE);
+    expect(r.cpf).toBeTruthy();
+    expect(validateCPF(r.cpf).valido).toBe(true);
+    const doc = resolverDocumentoParaFormulario(r);
+    expect(doc.documento).toBe(CNPJ_FIXTURE);
+    expect(doc.preferiuCnpj).toBe(true);
+    expect(doc.documento).not.toBe(doc.cpfSeguro);
+  });
+
+  it('PJ: razão social em Title Case', () => {
+    const t = `Construtora Horizonte Ltda, pessoa jurídica, CNPJ n.º ${CNPJ_FIXTURE}, com sede na Av. Paulista, nº 900, Bela Vista, São Paulo/SP, CEP 01310-100`;
+    const r = extrairDadosDeTextoLivre(t);
+    expect(r.tipoPessoa).toBe('juridica');
+    expect(r.nomeCompleto).toBe('Construtora Horizonte Ltda');
+    expect(r.cnpj).toBe(CNPJ_FIXTURE);
+  });
+
+  it('PJ: variações de rótulo CNPJ (inscrita no CNPJ e CNPJ n.º)', () => {
+    const tInscrita = `Alpha Serviços Ltda, pessoa jurídica, inscrita no CNPJ ${CNPJ_FIXTURE}, com sede na Rua Beta, nº 10, Curitiba/PR, CEP 80010-000`;
+    const r1 = extrairDadosDeTextoLivre(tInscrita);
+    expect(r1.cnpj).toBe(CNPJ_FIXTURE);
+
+    const tRotulo = `Beta Comércio EIRELI, pessoa jurídica, CNPJ n.º ${CNPJ_FIXTURE}, com sede na Rua Gama, nº 20, Belo Horizonte/MG, CEP 30130-000`;
+    const r2 = extrairDadosDeTextoLivre(tRotulo);
+    expect(r2.cnpj).toBe(CNPJ_FIXTURE);
+  });
+
+  it('PJ sem complemento: endereço só rua, número e cidade', () => {
+    const t = `Gamma Logística Ltda, pessoa jurídica, inscrita no CNPJ ${CNPJ_FIXTURE}, com sede na Rua das Flores, nº 50, Goiânia/GO, CEP 74000-000`;
+    const r = extrairDadosDeTextoLivre(t);
+    expect(r.tipoPessoa).toBe('juridica');
+    expect(r.endereco).toBeTruthy();
+    expect(r.endereco.rua).toBe('Rua das Flores');
+    expect(r.endereco.numero).toBe('50');
+    expect(r.endereco.complemento).toBeFalsy();
+    expect(r.endereco.cidade).toBe('Goiânia');
+    expect(r.endereco.estado).toBe('GO');
+    expect(r.endereco.cepFormatado).toBe('74000-000');
   });
 });

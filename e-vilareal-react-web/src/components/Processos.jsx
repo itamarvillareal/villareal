@@ -81,6 +81,7 @@ import {
   ArrowDown,
   ArrowUpDown,
   Search,
+  UserPlus,
   Newspaper,
   ListTodo,
   Hand,
@@ -2772,6 +2773,31 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     }));
   }
 
+  function abrirNovaPessoaNoModalPartes() {
+    setPessoaEmbed((prev) => ({
+      revision: (prev?.revision ?? 0) + 1,
+      modo: 'criar',
+    }));
+  }
+
+  function aoPessoaSalvaNoModalPartes(pessoa) {
+    const id = Number(pessoa?.id);
+    if (!Number.isFinite(id) || id < 1) return;
+    const row = {
+      id,
+      nome: String(pessoa?.nome ?? '').trim() || `Pessoa #${id}`,
+      cpf: String(pessoa?.cpf ?? ''),
+    };
+    mergeVinculoPessoasNoCache([row]);
+    setPessoasBuscaVinculoResultados([row]);
+    setLinhasModalPartes((prev) => {
+      if (prev.some((l) => l.pessoaId === id)) return prev;
+      return [...prev, { pessoaId: id, advogadoPessoaIds: [] }];
+    });
+    setBuscaPessoaVinculo(row.nome);
+    setPessoaEmbed(null);
+  }
+
   function abrirModalDetalhesPartes() {
     draftParteClienteLinhasRef.current = clonarLinhasParteProcesso(parteClienteEntradas);
     draftParteOpostaLinhasRef.current = clonarLinhasParteProcesso(parteOpostaEntradas);
@@ -4996,7 +5022,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                     Inclua quantas pessoas precisar (marque na lista abaixo). Para cada uma, cadastre um ou mais
                     advogados — também são pessoas do cadastro. Desmarque ou use Remover para excluir da parte.
                   </p>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <Search className="w-4 h-4 text-slate-500 shrink-0" />
                     <input
                       type="text"
@@ -5005,6 +5031,15 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                       placeholder="Nome (mín. 2 letras) ou documento (mín. 3 dígitos)"
                       className="flex-1 min-w-0 px-3 py-2 border border-slate-300 rounded text-sm bg-white"
                     />
+                    <button
+                      type="button"
+                      onClick={abrirNovaPessoaNoModalPartes}
+                      className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-blue-300 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-800 hover:bg-blue-100"
+                      title="Cadastrar nova pessoa sem sair deste formulário"
+                    >
+                      <UserPlus className="h-4 w-4" aria-hidden />
+                      Nova pessoa
+                    </button>
                   </div>
                   <div className="border border-slate-300 rounded overflow-auto max-h-[220px] min-h-[120px] bg-white">
                     <table className="w-full text-sm border-collapse">
@@ -5038,7 +5073,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                               <tr>
                                 <td colSpan={4} className="px-3 py-4 text-center text-slate-500">
                                   Digite para buscar no cadastro: pelo menos 2 letras no nome ou 3 dígitos do
-                                  CPF/CNPJ. Os resultados aparecem aqui; não é carregada a lista inteira.
+                                  CPF/CNPJ. Use «Nova pessoa» para incluir alguém que ainda não está cadastrado.
                                 </td>
                               </tr>
                             );
@@ -5047,7 +5082,15 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                             return (
                               <tr>
                                 <td colSpan={4} className="px-3 py-4 text-center text-slate-500">
-                                  Nenhuma pessoa encontrada para este termo.
+                                  <span className="block">Nenhuma pessoa encontrada para este termo.</span>
+                                  <button
+                                    type="button"
+                                    onClick={abrirNovaPessoaNoModalPartes}
+                                    className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-blue-700 hover:underline"
+                                  >
+                                    <UserPlus className="h-4 w-4" aria-hidden />
+                                    Cadastrar nova pessoa
+                                  </button>
                                 </td>
                               </tr>
                             );
@@ -5696,7 +5739,11 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
         context={modalTarefaContextual}
       />
 
-      <PessoaEmbedModal embed={pessoaEmbed} onFechar={() => setPessoaEmbed(null)} />
+      <PessoaEmbedModal
+        embed={pessoaEmbed}
+        onFechar={() => setPessoaEmbed(null)}
+        onPessoaSalva={aoPessoaSalvaNoModalPartes}
+      />
 
       {clientesEmbed ? (
         <div

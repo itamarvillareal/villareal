@@ -26,7 +26,7 @@ import { ModalEnderecos } from './ModalEnderecos';
 import { ModalContatos } from './ModalContatos';
 import { buscarQualificacaoCompleta } from '../../helpers/documentoHelper.js';
 import { useCloseOnEscape } from '../../hooks/useCloseOnEscape.js';
-import { extrairDadosDeTextoLivre } from '../../services/personTextAutofillService.js';
+import { extrairDadosDeTextoLivre, resolverDocumentoParaFormulario } from '../../services/personTextAutofillService.js';
 import { validateCPF, validarFormatarCpfCnpjAoSair } from '../../services/cpfValidatorService.js';
 import { listarCodigosClientePorIdPessoa } from '../../data/clienteCodigoHelpers.js';
 import { listarClientesCadastro } from '../../repositories/clientesRepository.js';
@@ -135,11 +135,12 @@ const emptyPessoa = {
 };
 
 /**
- * @param {import('react-router-dom').Location['state'] | { pessoaId?: number|string } | null} [props.embedIntent]
+ * @param {import('react-router-dom').Location['state'] | { pessoaId?: number|string, modo?: 'criar' } | null} [props.embedIntent]
  * @param {number|string} [props.embedIntentRevision]
  * @param {() => void} [props.onFecharEmbed]
+ * @param {(pessoa: { id: number, nome?: string, cpf?: string }) => void} [props.onPessoaSalva]
  */
-export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFecharEmbed } = {}) {
+export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFecharEmbed, onPessoaSalva } = {}) {
   const location = useLocation();
   const navigate = useNavigate();
   const isEmbedded = embedIntent !== undefined && embedIntent !== null;
@@ -315,12 +316,22 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
           );
           return;
         }
-        const cpfSeguro =
-          r.cpf && validateCPF(r.cpf).valido ? validateCPF(r.cpf).normalizado : null;
+        const { documento: docSeguro, cpfSeguro, cnpjSeguro, preferiuCnpj } =
+          resolverDocumentoParaFormulario(r);
         const avisosExtra = [];
         if (r.cpf && !cpfSeguro) {
           avisosExtra.push(
             'Número no formato CPF encontrado, mas inválido (dígitos verificadores); CPF não foi preenchido.'
+          );
+        }
+        if (r.cnpj && !cnpjSeguro && !docSeguro) {
+          avisosExtra.push(
+            'Número no formato CNPJ encontrado, mas inválido (dígitos verificadores); CNPJ não foi preenchido.'
+          );
+        }
+        if (r.tipoPessoa === 'juridica' && cpfSeguro && cnpjSeguro && preferiuCnpj) {
+          avisosExtra.push(
+            'CPF de representante identificado no texto; o campo Documento foi preenchido com o CNPJ da pessoa jurídica.'
           );
         }
         if (avisosExtra.length) {
@@ -328,7 +339,7 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
         }
         const marcados = {
           nome: !!r.nomeCompleto,
-          cpf: !!cpfSeguro,
+          cpf: !!docSeguro,
           rg: !!r.rg,
           dataNascimento: !!r.dataNascimento,
           nacionalidade: !!r.nacionalidade,
@@ -340,7 +351,7 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
         setForm((f) => ({
           ...f,
           ...(r.nomeCompleto ? { nome: r.nomeCompleto } : {}),
-          ...(cpfSeguro ? { cpf: cpfSeguro } : {}),
+          ...(docSeguro ? { cpf: docSeguro } : {}),
           ...(r.rg ? { rg: r.rg } : {}),
           ...(r.dataNascimento ? { dataNascimento: r.dataNascimento } : {}),
           ...(r.nacionalidade ? { nacionalidade: r.nacionalidade } : {}),
@@ -350,8 +361,10 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
         }));
 
         const ok = [];
-        if (r.nomeCompleto) ok.push('nome');
-        if (cpfSeguro) ok.push('CPF');
+        if (r.nomeCompleto) ok.push(r.tipoPessoa === 'juridica' ? 'razão social' : 'nome');
+        if (preferiuCnpj && cnpjSeguro) ok.push('CNPJ');
+        else if (cpfSeguro) ok.push('CPF');
+        else if (cnpjSeguro) ok.push('CNPJ');
         if (r.rg) ok.push('RG');
         if (r.dataNascimento) ok.push('data de nascimento');
         if (r.nacionalidade) ok.push('nacionalidade');
@@ -624,9 +637,14 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
     });
   }, [loading, modo, pessoaAtual?.id, pessoaAtual?.nome]);
 
-  /** Modo embed: abre ficha pelo id sem mudar de rota (ex.: duplo clique em Partes do processo). */
+  /** Modo embed: abre ficha pelo id ou formulário de inclusão sem mudar de rota. */
   useEffect(() => {
     if (!isEmbedded) return undefined;
+    if (embedIntent?.modo === 'criar') {
+      if (modo === 'criar' || modo === 'editar') return undefined;
+      void aplicarFormNovaPessoa();
+      return undefined;
+    }
     const raw = embedIntent?.pessoaId ?? embedIntent?.idPessoa ?? embedIntent?.id;
     const id = Number(raw);
     if (!Number.isFinite(id) || id < 1) return undefined;
@@ -1174,7 +1192,12 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
           setForm((f) => ({ ...f, codigo: String(idParaDocumento) }));
           editIdRef.current = idParaDocumento;
           modoRef.current = 'editar';
-          navigate(`/clientes/editar/${idParaDocumento}`, { replace: true });
+          if (!isEmbedded) {
+            navigate(`/clientes/editar/${idParaDocumento}`, { replace: true });
+          }
+          if (isEmbedded && typeof onPessoaSalva === 'function') {
+            onPessoaSalva(patchLista);
+          }
           setMensagemSucesso(`Pessoa cadastrada (nº ${idParaDocumento}). Continuando edição…`);
         } else {
           setMensagemSucesso(`Cadastro nº ${idParaDocumento} atualizado.`);

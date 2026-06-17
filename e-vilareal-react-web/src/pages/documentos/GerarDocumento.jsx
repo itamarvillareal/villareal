@@ -178,6 +178,7 @@ export function GerarDocumento() {
   const [loading, setLoading] = useState(false);
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [mensagemErro, setMensagemErro] = useState('');
+  const [mensagemSucesso, setMensagemSucesso] = useState('');
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewData, setPreviewData] = useState(null);
   const [formExecucao, setFormExecucao] = useState(() => ({
@@ -187,6 +188,12 @@ export function GerarDocumento() {
   }));
   // Cálculo salvo carregado para a petição de execução: { loading, dados, erro }.
   const [execCalc, setExecCalc] = useState({ loading: false, dados: null, erro: '' });
+
+  useEffect(() => {
+    if (!mensagemSucesso) return undefined;
+    const t = window.setTimeout(() => setMensagemSucesso(''), 8000);
+    return () => window.clearTimeout(t);
+  }, [mensagemSucesso]);
 
   const patchIA = useCallback((patch) => {
     setFormIA((f) => ({ ...f, ...patch }));
@@ -558,6 +565,15 @@ export function GerarDocumento() {
         </div>
       )}
 
+      {mensagemSucesso && (
+        <div
+          className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-100"
+          role="status"
+        >
+          {mensagemSucesso}
+        </div>
+      )}
+
       {vindoDoProcesso && (
         <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-100">
           Dados pré-preenchidos do processo
@@ -696,6 +712,7 @@ export function GerarDocumento() {
           <ModoEnviarArquivo
             dadosProcesso={dadosProcesso}
             onErro={setMensagemErro}
+            onSucesso={setMensagemSucesso}
             onLoadingChange={(v) => {
               if (v) setLoading(true);
               else setLoading(false);

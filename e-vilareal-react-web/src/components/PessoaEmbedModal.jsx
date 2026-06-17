@@ -1,21 +1,33 @@
-import { Suspense } from 'react';
+import { Suspense, useMemo } from 'react';
 import { useCloseOnEscape } from '../hooks/useCloseOnEscape.js';
 import { X } from 'lucide-react';
 import { LazyCadastroPessoas } from '../app/lazyScreens.jsx';
 
 /**
  * Janela suspensa com o formulário de Cadastro de Pessoas (embed), sem mudar de rota.
- * @param {{ embed: { revision: number, pessoaId: number } | null, onFechar: () => void, titulo?: string }} props
+ * @param {{
+ *   embed: { revision: number, pessoaId?: number, modo?: 'criar' | 'editar' } | null,
+ *   onFechar: () => void,
+ *   titulo?: string,
+ *   onPessoaSalva?: (pessoa: { id: number, nome?: string, cpf?: string }) => void,
+ * }} props
  */
-export function PessoaEmbedModal({ embed, onFechar, titulo }) {
+export function PessoaEmbedModal({ embed, onFechar, titulo, onPessoaSalva }) {
   useCloseOnEscape(!!embed, onFechar);
   if (!embed) return null;
 
   const tituloExibicao =
     titulo ??
-    (Number.isFinite(Number(embed.pessoaId)) && Number(embed.pessoaId) >= 1
-      ? `Pessoa (cadastro) — nº ${embed.pessoaId}`
-      : 'Pessoa (cadastro)');
+    (embed.modo === 'criar'
+      ? 'Nova pessoa'
+      : Number.isFinite(Number(embed.pessoaId)) && Number(embed.pessoaId) >= 1
+        ? `Pessoa (cadastro) — nº ${embed.pessoaId}`
+        : 'Pessoa (cadastro)');
+
+  const embedIntent = useMemo(
+    () => (embed.modo === 'criar' ? { modo: 'criar' } : { pessoaId: embed.pessoaId }),
+    [embed.modo, embed.pessoaId]
+  );
 
   return (
     <div
@@ -55,9 +67,10 @@ export function PessoaEmbedModal({ embed, onFechar, titulo }) {
           >
             <LazyCadastroPessoas
               key={embed.revision}
-              embedIntent={{ pessoaId: embed.pessoaId }}
+              embedIntent={embedIntent}
               embedIntentRevision={embed.revision}
               onFecharEmbed={onFechar}
+              onPessoaSalva={onPessoaSalva}
             />
           </Suspense>
         </div>
