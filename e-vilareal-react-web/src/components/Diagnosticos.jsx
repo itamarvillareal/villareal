@@ -31,6 +31,7 @@ import {
   listarHistoricoPorDataDiagnostico,
   erroEndpointHistoricoDataIndisponivel,
   listarProcessosPorPrazoFatalDiagnostico,
+  listarProcessosFaseAguardandoProtocoloDiagnostico,
   listarProcessosVinculoPessoaDiagnostico,
 } from '../repositories/processosRepository.js';
 import { padCliente8Nav } from './cadastro-pessoas/cadastroPessoasNavUtils.js';
@@ -42,6 +43,7 @@ import { getContextoAuditoriaUsuario, registrarAuditoria } from '../services/aud
 import { chaveNumeroProcessoBuscaDiagnostico } from '../domain/normalizarNumeroProcessoBuscaDiagnostico.js';
 import { ModalResultadoHistoricoLista } from './diagnosticos/ModalResultadoHistoricoLista.jsx';
 import { ModalResultadoPrazoFatal } from './diagnosticos/ModalResultadoPrazoFatal.jsx';
+import { ProcessoEmbedModal } from './ProcessoEmbedModal.jsx';
 
 /** Delay antes de chamar a API enquanto o usuário digita (ms). */
 const DEBOUNCE_BUSCA_PESSOA_API_MS = 320;
@@ -306,6 +308,7 @@ export function Diagnosticos() {
   const [modalPrazoFatalAberto, setModalPrazoFatalAberto] = useState(false);
   const [dataPrazoFatal, setDataPrazoFatal] = useState('');
   const [modalResultadoPrazoFatalAberto, setModalResultadoPrazoFatalAberto] = useState(false);
+  const [processoEmbed, setProcessoEmbed] = useState(null);
   const [resultadoPrazoFatal, setResultadoPrazoFatal] = useState([]);
   const [modalConsultasARealizarAberto, setModalConsultasARealizarAberto] = useState(false);
   const [modalPublicacoesAberto, setModalPublicacoesAberto] = useState(false);
@@ -630,9 +633,15 @@ export function Diagnosticos() {
   }
 
   function abrirListaAguardandoProtocolo() {
-    const itens = listarProcessosFaseAguardandoProtocolo();
-    setResultadoAguardandoProtocolo(itens);
-    setModalResultadoAguardandoProtocoloAberto(true);
+    void (async () => {
+      try {
+        const itens = await listarProcessosFaseAguardandoProtocoloDiagnostico();
+        setResultadoAguardandoProtocolo(itens);
+      } catch {
+        setResultadoAguardandoProtocolo(listarProcessosFaseAguardandoProtocolo());
+      }
+      setModalResultadoAguardandoProtocoloAberto(true);
+    })();
   }
 
   function abrirListaAguardandoProvidencia() {
@@ -763,24 +772,9 @@ export function Diagnosticos() {
 
   function abrirProcessoPorItem(item) {
     if (!item?.codCliente || item?.proc == null || item?.proc === '') return;
-    setModalResultadoAberto(false);
-    setModalResultadoPrazoFatalAberto(false);
-    setModalResultadoBuscaPessoaAberto(false);
-    setIdPessoaBuscaDiag(null);
-    setImoveisRelatorioBusca({ status: 'idle', itens: [] });
-    setModalBuscaNumeroProcessoAberto(false);
-    setModalResultadoAguardandoDocsAberto(false);
-    setModalResultadoAguardandoPeticionarAberto(false);
-    setModalResultadoAguardandoVerificacaoAberto(false);
-    setModalResultadoAguardandoProtocoloAberto(false);
-    setModalResultadoAguardandoProvidenciaAberto(false);
-    setModalResultadoProcAdministrativoAberto(false);
-    setModalResultadoAudienciasPendentesAberto(false);
-    setModalConsultasARealizarAberto(false);
-    setModalPublicacoesAberto(false);
-    navigate('/processos', {
-      replace: false,
-      state: buildRouterStateChaveClienteProcesso(item.codCliente, item.proc),
+    setProcessoEmbed({
+      revision: Date.now(),
+      routerState: buildRouterStateChaveClienteProcesso(item.codCliente, item.proc),
     });
   }
 
@@ -1810,13 +1804,12 @@ export function Diagnosticos() {
             </div>
             <div className="px-4 py-3">
               <p className="text-sm text-slate-700 mb-3">
-                {resultadoAguardandoProtocolo.length} processo(s). Duplo clique na linha para abrir em Processos. A fase é gravada ao marcar em Processos ou ao sincronizar com o histórico local.
+                {resultadoAguardandoProtocolo.length} processo(s). Duplo clique na linha para abrir em Processos. A lista combina o cadastro na API e o histórico local.
               </p>
               <div className="border border-slate-200 rounded-xl bg-white h-[430px] overflow-auto p-2 text-[13px] leading-relaxed font-mono ring-1 ring-slate-100">
                 {resultadoAguardandoProtocolo.length === 0 ? (
                   <p>
-                    Nenhum processo com essa fase no momento. Marque &quot;Protocolo / Movimentação&quot; em Processos
-                    ou abra processos para sincronizar a fase.
+                    Nenhum processo com essa fase no momento. Use «Inserir na Pasta Assinar», marque «Protocolo / Movimentação» em Processos ou aguarde a sincronização com a API.
                   </p>
                 ) : (
                   resultadoAguardandoProtocolo.map((item, idx) => (
@@ -2042,6 +2035,8 @@ export function Diagnosticos() {
         itens={resultadoPrazoFatal}
         onOpenProcesso={abrirProcessoPorItem}
       />
+
+      <ProcessoEmbedModal embed={processoEmbed} onFechar={() => setProcessoEmbed(null)} />
     </div>
   );
 }

@@ -31,6 +31,7 @@ public class DocumentoController {
     private final DocumentoArquivoImportacaoService arquivoImportacaoService;
     private final DocumentoReformatarService reformatarService;
     private final PeticaoExecucaoService peticaoExecucaoService;
+    private final DocumentoPastaAssinarService pastaAssinarService;
 
     public DocumentoController(
             DocumentoPdfService pdfService,
@@ -40,7 +41,8 @@ public class DocumentoController {
             DocumentoDrivePastaService documentoDrivePastaService,
             DocumentoArquivoImportacaoService arquivoImportacaoService,
             DocumentoReformatarService reformatarService,
-            PeticaoExecucaoService peticaoExecucaoService) {
+            PeticaoExecucaoService peticaoExecucaoService,
+            DocumentoPastaAssinarService pastaAssinarService) {
         this.pdfService = pdfService;
         this.peticaoAiService = peticaoAiService;
         this.procuracaoService = procuracaoService;
@@ -49,6 +51,7 @@ public class DocumentoController {
         this.arquivoImportacaoService = arquivoImportacaoService;
         this.reformatarService = reformatarService;
         this.peticaoExecucaoService = peticaoExecucaoService;
+        this.pastaAssinarService = pastaAssinarService;
     }
 
     @PostMapping("/gerar-pdf")
@@ -140,6 +143,30 @@ public class DocumentoController {
             salvarPdfNoDriveAsync(pdf, nomeSaida, codigoCliente, numeroInterno, null, TipoDocumento.PETICAO);
         }
         return respostaPdf(nomeSaida, pdf, preview);
+    }
+
+    @PostMapping("/reformatar/inserir-pasta-assinar")
+    public ResponseEntity<DocumentoInserirPastaAssinarResponse> inserirReformatadoNaPastaAssinar(
+            @RequestBody DocumentoReformatarConteudoRequest conteudo,
+            @RequestParam(value = "nomeArquivo", required = false) String nomeArquivo,
+            @RequestParam(value = "codigoCliente", required = false) String codigoCliente,
+            @RequestParam(value = "numeroInterno", required = false) Integer numeroInterno,
+            @RequestParam(value = "processoId", required = false) Long processoId) {
+        byte[] pdf = reformatarService.gerarPdfFromConteudo(conteudo);
+        LocalDate dataDoc = LocalDate.now();
+        if (conteudo.data() != null && !conteudo.data().isBlank()) {
+            try {
+                dataDoc = LocalDate.parse(conteudo.data().trim());
+            } catch (Exception ignored) {
+                // mantém hoje
+            }
+        }
+        String nomeSaida = nomeArquivo != null && !nomeArquivo.isBlank()
+                ? nomeArquivo.replaceAll("[^a-zA-Z0-9._\\- ]", "_")
+                : DocumentoDrivePastaService.formatarNomeArquivoPeticao("Documento_Formatado", dataDoc);
+        DocumentoInserirPastaAssinarResponse resp =
+                pastaAssinarService.inserirPdf(processoId, codigoCliente, numeroInterno, pdf, nomeSaida);
+        return ResponseEntity.ok(resp);
     }
 
     @PostMapping("/formatar-arquivo")

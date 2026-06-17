@@ -4,6 +4,7 @@ import { buildDefaultApiHeaders, emitApiUnauthorized } from '../api/apiAuthHeade
 import { featureFlags } from '../config/featureFlags.js';
 import {
   listarHistoricoPorData,
+  listarProcessosFaseAguardandoProtocolo,
   listarProcessosPorPrazoFatal,
   normalizarDataBr,
 } from '../data/processosHistoricoData.js';
@@ -503,6 +504,48 @@ export async function listarProcessosPorNumeroProcessoDiagnostico(numeroBruto) {
       papeis: String(row.papeis ?? ''),
     };
   });
+}
+
+function chaveClienteProcItemFase(item) {
+  const cod = padCliente8(item.codCliente ?? item.codigoCliente);
+  const pr = Math.floor(Number(String(item.proc ?? item.numeroInterno ?? '').replace(/\D/g, '')) || 0);
+  return `${cod}-${String(pr).padStart(4, '0')}`;
+}
+
+/**
+ * Diagnóstico «Aguardando Protocolo»: histórico local + processos na API com a mesma fase.
+ */
+export async function listarProcessosFaseAguardandoProtocoloDiagnostico() {
+  const locais = listarProcessosFaseAguardandoProtocolo();
+  if (!featureFlags.useApiProcessos) return locais;
+  try {
+    const arr = await request('/api/processos/diagnostico/aguardando-protocolo');
+    const fromApi = (Array.isArray(arr) ? arr : []).map((row) => {
+      const codCliente = padCliente8(row.codigoCliente ?? row.codigo_cliente ?? '1');
+      const procNum = Number(row.numeroInterno ?? row.numero_interno);
+      const proc = String(Number.isFinite(procNum) && procNum >= 0 ? procNum : 0);
+      return {
+        codCliente,
+        proc,
+        cliente: String(row.cliente ?? ''),
+        parteCliente: String(row.parteCliente ?? row.cliente ?? ''),
+        parteOposta: String(row.parteOposta ?? ''),
+        numeroProcessoNovo: String(row.numeroProcessoNovo ?? row.numero_processo_novo ?? '').trim(),
+        faseSelecionada: 'Protocolo / Movimentação',
+      };
+    });
+    const m = new Map();
+    for (const x of fromApi) m.set(chaveClienteProcItemFase(x), x);
+    for (const x of locais) {
+      const k = chaveClienteProcItemFase(x);
+      if (!m.has(k)) m.set(k, x);
+    }
+    const out = [...m.values()];
+    out.sort((a, b) => chaveClienteProcItemFase(a).localeCompare(chaveClienteProcItemFase(b)));
+    return out;
+  } catch {
+    return locais;
+  }
 }
 
 function chaveClienteProcItemPrazoFatal(item) {

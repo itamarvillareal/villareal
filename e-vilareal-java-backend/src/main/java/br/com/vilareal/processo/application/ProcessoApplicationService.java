@@ -600,6 +600,20 @@ public class ProcessoApplicationService {
     }
 
     /**
+     * Diagnósticos «Aguardando Protocolo»: processos na API com fase «Protocolo / Movimentação» (ou sinónimos).
+     */
+    @Transactional(readOnly = true)
+    public List<ProcessoDiagnosticoPessoaItemResponse> buscarDiagnosticoAguardandoProtocolo() {
+        List<ProcessoEntity> lista = processoRepository.findAllComFasePreenchidaOrderByIdAsc().stream()
+                .filter(e -> FaseProcessualDiagnosticoUtil.emFaseAguardandoProtocolo(e.getFase()))
+                .toList();
+        if (lista.isEmpty()) {
+            return List.of();
+        }
+        return montarDiagnosticoListaPorProcessos(lista, "Aguardando Protocolo (cadastro API)");
+    }
+
+    /**
      * Diagnósticos «Consultas Realizadas»: linhas de histórico cuja <strong>data do movimento</strong>
      * ({@code movimento_em}, fuso America/Sao_Paulo) coincide com o parâmetro — como o legado VB
      * (campo «data» de cada informação), não a data técnica de gravação na API.
@@ -703,7 +717,7 @@ public class ProcessoApplicationService {
         for (ProcessoEntity e : lista) {
             List<ProcessoParteEntity> partes = partesPorProcesso.getOrDefault(e.getId(), List.of());
             Long ownerId = e.getPessoa().getId();
-            String cod8 = resolverCodigoClienteExibicaoParaPessoa(ownerId);
+            String cod8 = resolverCodigoClienteExibicaoProcesso(e);
             String nomeCliente = Utf8MojibakeUtil.corrigir(e.getPessoa().getNome());
             String parteOpostaTxt = montarTextoParteOpostaListagem(e, partes);
             String cnj = trimToNull(e.getNumeroCnj());

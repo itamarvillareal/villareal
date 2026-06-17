@@ -180,6 +180,15 @@ public class ProcessosController {
         return processoApplicationService.buscarDiagnosticoPorPrazoFatal(data);
     }
 
+    @GetMapping("/diagnostico/aguardando-protocolo")
+    @Operation(
+            summary = "Diagnóstico: processos aguardando protocolo",
+            description =
+                    "Lista processos cuja fase na API corresponde a «Protocolo / Movimentação» (ou sinónimos como «Aguardando Protocolo»).")
+    public List<ProcessoDiagnosticoPessoaItemResponse> buscarDiagnosticoAguardandoProtocolo() {
+        return processoApplicationService.buscarDiagnosticoAguardandoProtocolo();
+    }
+
     @GetMapping("/diagnostico/historico-data")
     @Operation(
             summary = "Diagnóstico: andamentos (histórico) na data",

@@ -6,7 +6,6 @@ import {
   FileText,
   Folder,
   Forward,
-  Gavel,
   Mail,
   Megaphone,
   UserSearch,
@@ -21,7 +20,6 @@ import {
 const LUCIDE_POR_ID = {
   processos: Folder,
   'documentos/gerar': FileText,
-  'processos/peticionamento-projudi': Gavel,
   'processos/publicacoes': Megaphone,
   'publicacoes-email': Mail,
   'processos/manifestacoes-projudi': Forward,

@@ -34,11 +34,16 @@ export function PreviewArquivoDocumento({
   pdfUrl,
   loading,
   gerandoFinal,
+  inserindoPastaAssinar,
+  podeInserirPastaAssinar,
   onConteudoChange,
   onAtualizar,
   onGerarFinal,
+  onInserirPastaAssinar,
 }) {
   if (!conteudo) return null;
+
+  const ocupado = loading || gerandoFinal || inserindoPastaAssinar;
 
   return (
     <section
@@ -58,7 +63,7 @@ export function PreviewArquivoDocumento({
           <button
             type="button"
             className={btnSecondary}
-            disabled={loading || gerandoFinal}
+            disabled={ocupado}
             onClick={onAtualizar}
           >
             {loading ? (
@@ -70,10 +75,28 @@ export function PreviewArquivoDocumento({
               'Atualizar prévia'
             )}
           </button>
+          {podeInserirPastaAssinar ? (
+            <button
+              type="button"
+              className={btnSecondary}
+              disabled={ocupado}
+              onClick={onInserirPastaAssinar}
+              title="Envia o PDF para a subpasta Assinar no Drive (arquivo a assinar agora) e altera a fase para Protocolo / Movimentação"
+            >
+              {inserindoPastaAssinar ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                  Inserindo…
+                </>
+              ) : (
+                'Inserir na Pasta Assinar'
+              )}
+            </button>
+          ) : null}
           <button
             type="button"
             className={btnPrimary}
-            disabled={loading || gerandoFinal}
+            disabled={ocupado}
             onClick={onGerarFinal}
           >
             {gerandoFinal ? (

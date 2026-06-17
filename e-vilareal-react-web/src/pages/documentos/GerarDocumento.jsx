@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useLocation } from 'react-router-dom';
-import { FileSignature, FileText, FileUp, Layers, Loader2, Scale, Sparkles } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { FileSignature, FileText, FileUp, Layers, Loader2, Scale, Sparkles, X } from 'lucide-react';
 import { mapearDadosProcessoParaFormIA } from '../../helpers/documentoHelper.js';
+import { buildRouterStateChaveClienteProcesso } from '../../domain/camposProcessoCliente.js';
 import {
   downloadPdfBlob,
   gerarPdfComIA,
@@ -142,6 +143,7 @@ function validarModoManual(form) {
 
 export function GerarDocumento() {
   const location = useLocation();
+  const navigate = useNavigate();
   const dadosProcesso = location.state?.dadosProcesso;
   const formInicialIA = useMemo(
     () => (dadosProcesso ? mapearDadosProcessoParaFormIA(dadosProcesso) : estadoInicialIA()),
@@ -384,23 +386,49 @@ export function GerarDocumento() {
 
   const ocupado = loading || loadingPreview;
 
+  const fecharParaProcesso = useCallback(() => {
+    if (!dadosProcesso?.codigoCliente) {
+      navigate('/processos');
+      return;
+    }
+    navigate('/processos', {
+      state: buildRouterStateChaveClienteProcesso(
+        dadosProcesso.codigoCliente,
+        dadosProcesso.numeroInterno,
+      ),
+    });
+  }, [navigate, dadosProcesso]);
+
   return (
     <div className={`mx-auto px-4 py-6 lg:px-6 ${modoArquivo ? 'max-w-7xl pb-8' : modoModelo || modoExecucao ? 'max-w-4xl pb-8' : 'max-w-4xl pb-32'}`}>
-      <header className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-100 text-cyan-700 dark:bg-cyan-500/15 dark:text-cyan-300">
-            <FileText className="h-5 w-5" aria-hidden />
+      <header className="mb-6 flex flex-col gap-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-cyan-100 text-cyan-700 dark:bg-cyan-500/15 dark:text-cyan-300">
+              <FileText className="h-5 w-5" aria-hidden />
+            </div>
+            <div className="min-w-0">
+              <h1 className="text-xl font-bold text-slate-900 dark:text-slate-50">Gerar Documento</h1>
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                Petições e peças processuais em PDF — inclusive a partir de Word ou PDF enviado
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-xl font-bold text-slate-900 dark:text-slate-50">Gerar Documento</h1>
-            <p className="text-sm text-slate-500 dark:text-slate-400">
-              Petições e peças processuais em PDF — inclusive a partir de Word ou PDF enviado
-            </p>
-          </div>
+          {vindoDoProcesso ? (
+            <button
+              type="button"
+              onClick={fecharParaProcesso}
+              className="shrink-0 rounded-xl border border-slate-200 bg-white p-2.5 text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+              aria-label="Fechar e voltar ao processo"
+              title="Voltar ao processo"
+            >
+              <X className="h-5 w-5" aria-hidden />
+            </button>
+          ) : null}
         </div>
 
         <div
-          className="inline-flex rounded-lg border border-slate-200 bg-slate-100 p-1 dark:border-slate-700 dark:bg-slate-800"
+          className="inline-flex w-full flex-wrap rounded-lg border border-slate-200 bg-slate-100 p-1 dark:border-slate-700 dark:bg-slate-800 sm:w-auto"
           role="tablist"
           aria-label="Modo de geração"
         >

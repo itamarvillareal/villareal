@@ -502,6 +502,18 @@ public class GoogleDriveService {
         prepararUpdate(driveService.files().update(fileId, metadata)).execute();
     }
 
+    /** Remove todos os filhos imediatos da pasta (arquivos e subpastas) enviando-os à lixeira. */
+    public void esvaziarPasta(String pastaId) throws Exception {
+        if (!isConfigurado() || !StringUtils.hasText(pastaId)) {
+            return;
+        }
+        for (File filho : listarFilhos(pastaId)) {
+            if (filho.getId() != null) {
+                enviarParaLixeira(filho.getId());
+            }
+        }
+    }
+
     public List<DriveArquivoDto> listarConteudo(String pastaId) {
         if (!isConfigurado() || pastaId == null || pastaId.isBlank()) {
             return List.of();
@@ -765,6 +777,20 @@ public class GoogleDriveService {
 
     public record DriveArquivoMetadados(
             String fileId, String nome, String mimeType, Long tamanho, String modifiedTime, String md5Checksum) {}
+
+    /** Remove subpastas com o nome informado e cria uma pasta nova vazia com esse nome. */
+    public String recriarSubpasta(String nomePasta, String parentId) throws Exception {
+        if (!isConfigurado() || !StringUtils.hasText(parentId)) {
+            return null;
+        }
+        String alvo = normalizarChaveNome(sanitizarNomePasta(nomePasta));
+        for (File f : listarSubpastas(parentId)) {
+            if (f.getId() != null && normalizarChaveNome(f.getName()).equals(alvo)) {
+                enviarParaLixeira(f.getId());
+            }
+        }
+        return encontrarOuCriarPastaPublic(nomePasta, parentId);
+    }
 
     public String encontrarOuCriarPastaPublic(String nomePasta, String parentId) throws Exception {
         String existente = encontrarPastaExistente(nomePasta, parentId);

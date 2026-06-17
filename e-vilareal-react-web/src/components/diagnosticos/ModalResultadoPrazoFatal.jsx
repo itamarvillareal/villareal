@@ -76,7 +76,7 @@ function PrazoFatalCard({ item, indice, onDoubleClick }) {
         if (e.key === 'Enter') onDoubleClick();
       }}
       className="group rounded-xl border border-slate-200/90 bg-white shadow-sm border-l-4 border-l-orange-500 hover:border-orange-300 hover:shadow-md hover:bg-orange-50/30 transition-all cursor-pointer select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400/60 focus-visible:ring-offset-2"
-      title="Duplo clique: abrir em Processos"
+      title="Duplo clique: abrir processo em janela flutuante"
     >
       <div className="px-4 py-3.5 space-y-2.5">
         <div className="flex flex-wrap items-center gap-2">
@@ -216,7 +216,9 @@ export function ModalResultadoPrazoFatal({ open, onClose, dataPrazoFatal, itens,
         </div>
 
         <footer className="shrink-0 flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-t border-slate-200/80 bg-white">
-          <p className="text-xs text-slate-500 hidden sm:block">Duplo clique no card abre o processo</p>
+          <p className="text-xs text-slate-500 hidden sm:block">
+            Duplo clique no card abre o processo em janela flutuante
+          </p>
           <div className="flex flex-wrap items-center gap-2 ml-auto">
             <button
               type="button"

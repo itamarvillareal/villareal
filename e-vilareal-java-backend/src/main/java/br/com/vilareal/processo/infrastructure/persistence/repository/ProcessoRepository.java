@@ -348,4 +348,12 @@ public interface ProcessoRepository extends JpaRepository<ProcessoEntity, Long> 
         }
         return findById(ids.getFirst().longValue());
     }
+
+    @Query(
+            """
+            SELECT p FROM ProcessoEntity p
+            WHERE p.fase IS NOT NULL AND TRIM(p.fase) <> ''
+            ORDER BY p.id ASC
+            """)
+    List<ProcessoEntity> findAllComFasePreenchidaOrderByIdAsc();
 }

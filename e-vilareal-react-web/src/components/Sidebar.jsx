@@ -202,8 +202,12 @@ export function Sidebar({ mobileDrawerOpen = false, onMobileDrawerChange } = {})
                   type="button"
                   onClick={() => {
                     if (item.id === 'processos-grupo') {
-                      setGruposAbertos((prev) => new Set(prev).add(item.id));
-                      navigate('/processos');
+                      if (aberto) {
+                        toggleGrupo(item.id);
+                      } else {
+                        setGruposAbertos((prev) => new Set(prev).add(item.id));
+                        navigate('/processos');
+                      }
                       closeMobileDrawer();
                       return;
                     }

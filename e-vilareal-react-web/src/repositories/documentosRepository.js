@@ -154,6 +154,35 @@ export async function gerarPdfReformatado(conteudo, opts = {}) {
   return res.blob();
 }
 
+/**
+ * Gera o PDF final (mesmo de gerarPdfReformatado) e insere na pasta Assinar + cópia na pasta do processo.
+ */
+export async function inserirPdfReformatadoNaPastaAssinar(conteudo, opts = {}) {
+  const params = new URLSearchParams();
+  if (opts.nomeArquivo) params.set('nomeArquivo', opts.nomeArquivo);
+  if (opts.codigoCliente) params.set('codigoCliente', String(opts.codigoCliente));
+  if (opts.numeroInterno != null && opts.numeroInterno !== '') {
+    params.set('numeroInterno', String(opts.numeroInterno));
+  }
+  if (opts.processoId != null && opts.processoId !== '') {
+    params.set('processoId', String(opts.processoId));
+  }
+  const qs = params.toString();
+  const url = `${API_BASE_URL}/api/documentos/reformatar/inserir-pasta-assinar${qs ? `?${qs}` : ''}`;
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: headersJson(),
+    body: JSON.stringify(conteudo),
+    signal: opts.signal,
+  });
+  if (res.status === 401) emitApiUnauthorized();
+  if (!res.ok) {
+    throw new Error(await parseErrorResponse(res));
+  }
+  return res.json();
+}
+
 export async function gerarPdfComIA(dados, opts = {}) {
   const blob = await postPdf('/api/documentos/gerar-pdf-ia', dados, opts);
   return blob;

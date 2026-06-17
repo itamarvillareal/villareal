@@ -233,6 +233,7 @@ export async function montarDadosParaDocumentoFromProcesso(ctx) {
     nomeOutorgante: clienteEhRequerente ? nomeAutor : nomeReu,
     codigoCliente: ctx.codigoCliente,
     numeroInterno: ctx.numeroInterno ?? ctx.processo,
+    processoApiId: ctx.processoApiId ?? null,
   };
 }
 

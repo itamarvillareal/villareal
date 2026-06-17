@@ -4,9 +4,11 @@ import {
   downloadPdfBlob,
   extrairConteudoArquivo,
   gerarPdfReformatado,
+  inserirPdfReformatadoNaPastaAssinar,
   nomeArquivoPeticaoPdf,
 } from '../../../repositories/documentosRepository.js';
 import { resolveSelectExato, extrairDataIsoDeLocalData } from '../../../helpers/documentoHelper.js';
+import { salvarHistoricoDoProcesso } from '../../../data/processosHistoricoData.js';
 import { CIDADE_ESTADO_PADRAO, ENDERECAMENTOS } from '../constants.js';
 import { btnPrimary, btnSecondary, fieldErrorClass, inputClass } from '../documentosStyles.js';
 import { CollapsibleSection } from './CollapsibleSection.jsx';
@@ -43,6 +45,7 @@ export function ModoEnviarArquivo({ dadosProcesso, onErro, onLoadingChange }) {
   const [errors, setErrors] = useState({});
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [loadingFinal, setLoadingFinal] = useState(false);
+  const [loadingPastaAssinar, setLoadingPastaAssinar] = useState(false);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [previewVisivel, setPreviewVisivel] = useState(false);
   const [conteudoEditavel, setConteudoEditavel] = useState(null);
@@ -111,9 +114,15 @@ export function ModoEnviarArquivo({ dadosProcesso, onErro, onLoadingChange }) {
         nomeArquivo: `${baseNome}_formatado.pdf`,
         codigoCliente: dadosProcesso?.codigoCliente,
         numeroInterno: dadosProcesso?.numeroInterno,
+        processoId: dadosProcesso?.processoApiId,
       };
     },
     [arquivo, dadosProcesso],
+  );
+
+  const podeInserirPastaAssinar = Boolean(
+    dadosProcesso?.processoApiId
+      || (dadosProcesso?.codigoCliente && dadosProcesso?.numeroInterno != null),
   );
 
   const validarArquivo = () => {
@@ -189,7 +198,33 @@ export function ModoEnviarArquivo({ dadosProcesso, onErro, onLoadingChange }) {
     }
   };
 
-  const ocupado = loadingPreview || loadingFinal;
+  const handleInserirPastaAssinar = async () => {
+    if (!conteudoEditavel) return;
+    if (!podeInserirPastaAssinar) {
+      onErro?.('Abra esta tela a partir de um processo para inserir na pasta Assinar.');
+      return;
+    }
+    onErro?.('');
+    setLoadingPastaAssinar(true);
+    setOcupado(true);
+    try {
+      await inserirPdfReformatadoNaPastaAssinar(conteudoEditavel, montarOpcoesGeracao(false));
+      if (dadosProcesso?.codigoCliente && dadosProcesso?.numeroInterno != null) {
+        salvarHistoricoDoProcesso({
+          codCliente: dadosProcesso.codigoCliente,
+          proc: dadosProcesso.numeroInterno,
+          faseSelecionada: 'Protocolo / Movimentação',
+        });
+      }
+    } catch (e) {
+      onErro?.(e?.message || 'Falha ao inserir PDF na pasta Assinar.');
+    } finally {
+      setLoadingPastaAssinar(false);
+      setOcupado(false);
+    }
+  };
+
+  const ocupado = loadingPreview || loadingFinal || loadingPastaAssinar;
 
   return (
     <div className="space-y-4">
@@ -278,9 +313,12 @@ export function ModoEnviarArquivo({ dadosProcesso, onErro, onLoadingChange }) {
           pdfUrl={previewUrl}
           loading={loadingPreview}
           gerandoFinal={loadingFinal}
+          inserindoPastaAssinar={loadingPastaAssinar}
+          podeInserirPastaAssinar={podeInserirPastaAssinar}
           onConteudoChange={setConteudoEditavel}
           onAtualizar={() => void handleAtualizarPreview()}
           onGerarFinal={() => void handleGerarFinal()}
+          onInserirPastaAssinar={() => void handleInserirPastaAssinar()}
         />
       ) : null}
 
