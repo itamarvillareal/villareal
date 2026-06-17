@@ -15,8 +15,10 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
+import java.io.PushbackInputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.format.DateTimeFormatter;
@@ -106,7 +108,7 @@ public class ConsultaPeriodicaBackupService {
         int linhasLidas = 0;
 
         try (CSVParser parser = CSVParser.parse(
-                new InputStreamReader(arquivo.getInputStream(), StandardCharsets.UTF_8),
+                readerCsvUtf8SemBom(arquivo.getInputStream()),
                 CSVFormat.DEFAULT.builder()
                         .setDelimiter(ConsultaPeriodicaBackupCsv.DELIMITADOR)
                         .setHeader()
@@ -233,12 +235,45 @@ public class ConsultaPeriodicaBackupService {
                 ativo);
     }
 
+    private static InputStreamReader readerCsvUtf8SemBom(InputStream in) throws IOException {
+        PushbackInputStream pin = new PushbackInputStream(in, UTF8_BOM.length);
+        byte[] prefixo = new byte[UTF8_BOM.length];
+        int lidos = pin.read(prefixo);
+        if (lidos == UTF8_BOM.length
+                && prefixo[0] == UTF8_BOM[0]
+                && prefixo[1] == UTF8_BOM[1]
+                && prefixo[2] == UTF8_BOM[2]) {
+            // exportação grava BOM; ignorar para o cabeçalho mapear numero_cnj corretamente
+        } else if (lidos > 0) {
+            pin.unread(prefixo, 0, lidos);
+        }
+        return new InputStreamReader(pin, StandardCharsets.UTF_8);
+    }
+
     private static String valor(CSVRecord record, String coluna) {
-        if (!record.isMapped(coluna)) {
+        if (record.isMapped(coluna)) {
+            String v = record.get(coluna);
+            return v != null ? v : "";
+        }
+        String alvo = normalizarNomeColuna(coluna);
+        for (String header : record.getParser().getHeaderMap().keySet()) {
+            if (normalizarNomeColuna(header).equals(alvo)) {
+                String v = record.get(header);
+                return v != null ? v : "";
+            }
+        }
+        return "";
+    }
+
+    private static String normalizarNomeColuna(String nome) {
+        if (nome == null) {
             return "";
         }
-        String v = record.get(coluna);
-        return v != null ? v : "";
+        String n = nome.trim().toLowerCase(Locale.ROOT);
+        if (n.startsWith("\ufeff")) {
+            n = n.substring(1);
+        }
+        return n;
     }
 
     private int escreverProcesso(

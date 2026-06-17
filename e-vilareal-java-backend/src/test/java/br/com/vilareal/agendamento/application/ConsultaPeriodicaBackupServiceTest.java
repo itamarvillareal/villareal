@@ -183,6 +183,39 @@ class ConsultaPeriodicaBackupServiceTest {
     }
 
     @Test
+    void importar_csvComBomUtf8_leNumeroCnj() {
+        String csv = linhaCsv(
+                CNJ,
+                "true",
+                "INTERVALO",
+                "30",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "false",
+                "false",
+                "0",
+                "",
+                "",
+                "true",
+                "");
+        MockMultipartFile file = arquivoComBom(csv);
+
+        when(importador.importarProcesso(eq(CNJ), anyList()))
+                .thenReturn(ConsultaPeriodicaBackupImportador.ResultadoProcesso.atualizado(1, 0));
+
+        var rel = service.importar(file);
+
+        assertThat(rel.getLinhasInvalidas()).isEmpty();
+        assertThat(rel.getLinhasLidas()).isEqualTo(1);
+        verify(importador).importarProcesso(eq(CNJ), anyList());
+    }
+
+    private static final byte[] UTF8_BOM = new byte[] {(byte) 0xEF, (byte) 0xBB, (byte) 0xBF};
+
+    @Test
     void importar_cnjInexistente_vaiParaPulados() {
         String csv = linhaCsv(
                 CNJ,
@@ -298,6 +331,15 @@ class ConsultaPeriodicaBackupServiceTest {
     private static MockMultipartFile arquivo(String corpo) {
         String header = String.join(";", ConsultaPeriodicaBackupCsv.HEADER);
         byte[] bytes = (header + "\r\n" + corpo).getBytes(StandardCharsets.UTF_8);
+        return new MockMultipartFile("file", "backup.csv", "text/csv", bytes);
+    }
+
+    private static MockMultipartFile arquivoComBom(String corpo) {
+        String header = String.join(";", ConsultaPeriodicaBackupCsv.HEADER);
+        byte[] conteudo = (header + "\r\n" + corpo).getBytes(StandardCharsets.UTF_8);
+        byte[] bytes = new byte[UTF8_BOM.length + conteudo.length];
+        System.arraycopy(UTF8_BOM, 0, bytes, 0, UTF8_BOM.length);
+        System.arraycopy(conteudo, 0, bytes, UTF8_BOM.length, conteudo.length);
         return new MockMultipartFile("file", "backup.csv", "text/csv", bytes);
     }
 
