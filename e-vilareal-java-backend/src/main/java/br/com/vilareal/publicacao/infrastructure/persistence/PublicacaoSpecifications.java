@@ -9,18 +9,24 @@ import jakarta.persistence.criteria.Subquery;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.util.StringUtils;
 
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
 public final class PublicacaoSpecifications {
 
+    private static final ZoneId ZONA_BR = ZoneId.of("America/Sao_Paulo");
+
     private PublicacaoSpecifications() {}
 
     public static Specification<PublicacaoEntity> comFiltros(
             LocalDate dataInicio,
             LocalDate dataFim,
+            LocalDate recebimentoInicio,
+            LocalDate recebimentoFim,
             String statusTratamento,
             Long processoId,
             Long clientePk,
@@ -39,6 +45,14 @@ public final class PublicacaoSpecifications {
                         cb.lessThanOrEqualTo(
                                 cb.coalesce(root.get("dataPublicacao"), root.get("dataDisponibilizacao")),
                                 dataFim));
+            }
+            if (recebimentoInicio != null) {
+                Instant inicio = recebimentoInicio.atStartOfDay(ZONA_BR).toInstant();
+                preds.add(cb.greaterThanOrEqualTo(root.get("emailRecebidoEm"), inicio));
+            }
+            if (recebimentoFim != null) {
+                Instant fimExclusivo = recebimentoFim.plusDays(1).atStartOfDay(ZONA_BR).toInstant();
+                preds.add(cb.lessThan(root.get("emailRecebidoEm"), fimExclusivo));
             }
             if (StringUtils.hasText(statusTratamento)) {
                 preds.add(cb.equal(root.get("statusTratamento"), statusTratamento.trim()));

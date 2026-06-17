@@ -69,6 +69,8 @@ public class PublicacaoApplicationService {
     public List<PublicacaoResponse> listar(
             LocalDate dataInicio,
             LocalDate dataFim,
+            LocalDate recebimentoInicio,
+            LocalDate recebimentoFim,
             String statusTratamento,
             Long processoId,
             Long clienteId,
@@ -79,7 +81,15 @@ public class PublicacaoApplicationService {
             clientePk = clienteResolverService.buscarPorId(clienteId).getId();
         }
         var spec = PublicacaoSpecifications.comFiltros(
-                dataInicio, dataFim, statusTratamento, processoId, clientePk, texto, origemImportacao);
+                dataInicio,
+                dataFim,
+                recebimentoInicio,
+                recebimentoFim,
+                statusTratamento,
+                processoId,
+                clientePk,
+                texto,
+                origemImportacao);
         List<PublicacaoEntity> lista = publicacaoRepository.findAll(spec, Sort.by(Sort.Direction.DESC, "createdAt"));
         Set<Long> procIds = new LinkedHashSet<>();
         for (PublicacaoEntity e : lista) {

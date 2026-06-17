@@ -778,17 +778,31 @@ public class GoogleDriveService {
     public record DriveArquivoMetadados(
             String fileId, String nome, String mimeType, Long tamanho, String modifiedTime, String md5Checksum) {}
 
+    /**
+     * Envia para a lixeira todas as subpastas com o nome informado (conteúdo incluído).
+     * Não cria pasta substituta.
+     */
+    public int excluirSubpastasComNome(String nomePasta, String parentId) throws Exception {
+        if (!isConfigurado() || !StringUtils.hasText(parentId)) {
+            return 0;
+        }
+        String alvo = normalizarChaveNome(sanitizarNomePasta(nomePasta));
+        int removidas = 0;
+        for (File f : listarSubpastas(parentId)) {
+            if (f.getId() != null && normalizarChaveNome(f.getName()).equals(alvo)) {
+                enviarParaLixeira(f.getId());
+                removidas++;
+            }
+        }
+        return removidas;
+    }
+
     /** Remove subpastas com o nome informado e cria uma pasta nova vazia com esse nome. */
     public String recriarSubpasta(String nomePasta, String parentId) throws Exception {
         if (!isConfigurado() || !StringUtils.hasText(parentId)) {
             return null;
         }
-        String alvo = normalizarChaveNome(sanitizarNomePasta(nomePasta));
-        for (File f : listarSubpastas(parentId)) {
-            if (f.getId() != null && normalizarChaveNome(f.getName()).equals(alvo)) {
-                enviarParaLixeira(f.getId());
-            }
-        }
+        excluirSubpastasComNome(nomePasta, parentId);
         return encontrarOuCriarPastaPublic(nomePasta, parentId);
     }
 

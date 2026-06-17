@@ -193,6 +193,25 @@ function toIsoDate(dataBr) {
   return `${m[3]}-${m[2]}-${m[1]}`;
 }
 
+function dataRecebimentoEmailIso(row) {
+  if (!row?.emailRecebidoEm) return null;
+  try {
+    const d = new Date(row.emailRecebidoEm);
+    if (Number.isNaN(d.getTime())) return null;
+    return d.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+  } catch {
+    return null;
+  }
+}
+
+function emailRecebidoNoPeriodo(row, recebimentoInicio, recebimentoFim) {
+  const dia = dataRecebimentoEmailIso(row);
+  if (!dia) return false;
+  if (recebimentoInicio && dia < recebimentoInicio) return false;
+  if (recebimentoFim && dia > recebimentoFim) return false;
+  return true;
+}
+
 function pesoDataPublicacaoBr(s) {
   const t = String(s ?? '').trim();
   const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(t);
@@ -394,6 +413,8 @@ export function haystackBuscaPublicacaoUi(r) {
 export async function listarPublicacoesModulo({
   dataInicio,
   dataFim,
+  recebimentoInicio,
+  recebimentoFim,
   statusTratamento,
   processoId,
   clienteId,
@@ -406,6 +427,9 @@ export async function listarPublicacoesModulo({
     if (filtroVinculo === 'nao_vinculados') {
       rows = rows.filter((r) => r.statusVinculo === 'nao_vinculado' || r.statusVinculo === 'sem_cnj');
     }
+    if (recebimentoInicio || recebimentoFim) {
+      rows = rows.filter((r) => emailRecebidoNoPeriodo(r, recebimentoInicio, recebimentoFim));
+    }
     const q = String(texto || '').trim().toLowerCase();
     if (q) {
       rows = rows.filter((r) => haystackBuscaPublicacaoUi(r).includes(q));
@@ -416,6 +440,8 @@ export async function listarPublicacoesModulo({
     query: {
       dataInicio: dataInicio || undefined,
       dataFim: dataFim || undefined,
+      recebimentoInicio: recebimentoInicio || undefined,
+      recebimentoFim: recebimentoFim || undefined,
       status: statusTratamento || undefined,
       processoId: processoId || undefined,
       clienteId: clienteId || undefined,

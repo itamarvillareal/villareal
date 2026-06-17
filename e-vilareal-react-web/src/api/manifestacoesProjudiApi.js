@@ -8,7 +8,7 @@ import { request } from './httpClient.js';
  */
 const ORIGENS = ['PROJUDI', 'TRT'];
 
-export async function buscarManifestacoesProjudi({ texto, status, filtroVinculo } = {}) {
+export async function buscarManifestacoesProjudi({ texto, status, filtroVinculo, recebimentoInicio, recebimentoFim } = {}) {
   const listas = await Promise.all(
     ORIGENS.map((origemImportacao) =>
       listarPublicacoesModulo({
@@ -16,6 +16,8 @@ export async function buscarManifestacoesProjudi({ texto, status, filtroVinculo 
         texto: texto || undefined,
         statusTratamento: status || undefined,
         filtroVinculo: filtroVinculo || 'todos',
+        recebimentoInicio: recebimentoInicio || undefined,
+        recebimentoFim: recebimentoFim || undefined,
       }).catch(() => [])
     )
   );

@@ -1,12 +1,20 @@
 #!/usr/bin/env bash
-# Inicia o lote de histórico em background estável (caffeinate + nohup + PID file).
+# Inicia o lote de histórico em sessão screen (sobrevive ao fechar Cursor/terminal).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
+SESSION="vilareal-historico"
 PIDFILE="tmp/import-real-historico-faltante.pid"
 LOG="tmp/import-real-historico-faltante.log"
 NOHUP="tmp/import-real-historico-faltante.nohup.log"
+
+if screen -ls 2>/dev/null | grep -q "[.]${SESSION}[[:space:]]"; then
+  echo "Sessão screen '${SESSION}' já existe."
+  screen -ls | grep "$SESSION" || true
+  echo "Monitor: screen -r $SESSION   ou   tail -f $LOG"
+  exit 0
+fi
 
 if [[ -f "$PIDFILE" ]]; then
   old_pid=$(cat "$PIDFILE" 2>/dev/null || true)
@@ -23,20 +31,18 @@ node scripts/listar-processos-sem-historico.mjs
 export RETOMAR=1
 export VILAREAL_API_BASE="${VILAREAL_API_BASE:-http://localhost:8081}"
 
-# Desacopla do terminal do Cursor: subshell + nohup + caffeinate (evita sleep do macOS).
-nohup caffeinate -imsu bash "$ROOT/scripts/run-import-real-historico-faltante.sh" \
-  >>"$NOHUP" 2>&1 </dev/null &
-launcher_pid=$!
+screen -dmS "$SESSION" bash -c \
+  "cd '$ROOT' && export RETOMAR=1 VILAREAL_API_BASE='$VILAREAL_API_BASE' && exec bash ./scripts/run-import-real-historico-faltante.sh >> '$NOHUP' 2>&1"
 
 sleep 2
+echo "Lote iniciado na sessão screen: $SESSION"
+screen -ls | grep "$SESSION" || true
 if [[ -f "$PIDFILE" ]]; then
-  worker_pid=$(cat "$PIDFILE")
-  echo "Lote iniciado — worker PID $worker_pid (launcher $launcher_pid)"
-  echo "API: $VILAREAL_API_BASE"
-  echo "Log: $LOG"
-  echo "Resumo: tmp/import-real-historico-faltante-summary.jsonl"
-  echo "Monitor: tail -f $LOG"
-else
-  echo "Aviso: PID file não criado em 2s — ver $NOHUP"
-  tail -5 "$NOHUP" 2>/dev/null || true
+  echo "Worker PID: $(cat "$PIDFILE")"
 fi
+echo "API: $VILAREAL_API_BASE"
+echo ""
+echo "Monitorar:"
+echo "  tail -f $LOG"
+echo "  wc -l tmp/import-real-historico-faltante-summary.jsonl"
+echo "  screen -r $SESSION    # entrar na sessão (Ctrl+A D para sair sem parar)"

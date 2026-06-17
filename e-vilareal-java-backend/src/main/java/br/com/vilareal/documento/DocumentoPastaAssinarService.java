@@ -120,6 +120,66 @@ public class DocumentoPastaAssinarService {
         return Optional.empty();
     }
 
+    /**
+     * Após protocolo PROJUDI com sucesso: remove a subpasta «Assinar» no Drive do processo e
+     * devolve a fase processual para «Em Andamento». Operações no Drive são best-effort (falha
+     * não reverte o protocolo já concluído).
+     */
+    @Transactional
+    public void finalizarAposProtocoloSucesso(String numeroCnj) {
+        if (!StringUtils.hasText(numeroCnj)) {
+            return;
+        }
+        Optional<ProcessoEntity> processoOpt = processoRepository.findByNumeroCnj(numeroCnj.trim());
+        if (processoOpt.isEmpty()) {
+            log.info("Pós-protocolo: processo não encontrado no cadastro (cnj={})", numeroCnj);
+            return;
+        }
+        ProcessoEntity processo = processoOpt.get();
+        excluirPastaAssinarNoDrive(processo);
+        processo.setFase(ProcessoEntity.FASE_PADRAO_EM_ANDAMENTO);
+        processoRepository.save(processo);
+        log.info(
+                "Pós-protocolo: fase «{}» e pasta Assinar removida (processoId={}, cnj={})",
+                ProcessoEntity.FASE_PADRAO_EM_ANDAMENTO,
+                processo.getId(),
+                processo.getNumeroCnj());
+    }
+
+    private void excluirPastaAssinarNoDrive(ProcessoEntity processo) {
+        if (!googleDriveService.isConfigurado()) {
+            log.info("Pós-protocolo: Drive não configurado — pasta Assinar não removida (cnj={})", processo.getNumeroCnj());
+            return;
+        }
+        String codigo = documentoDrivePastaService.resolverCodigoClienteDoProcesso(processo);
+        Integer numInterno = processo.getNumeroInterno();
+        if (!StringUtils.hasText(codigo) || numInterno == null) {
+            log.info(
+                    "Pós-protocolo: processo sem pasta Drive resolvível (processoId={}, cnj={})",
+                    processo.getId(),
+                    processo.getNumeroCnj());
+            return;
+        }
+        try {
+            DrivePastaProcessoDto pastaDto = documentoDrivePastaService.resolverPastaRaizProcesso(
+                    googleDriveService, codigo.trim(), numInterno);
+            if (pastaDto == null || !StringUtils.hasText(pastaDto.pastaId())) {
+                log.info("Pós-protocolo: pasta raiz não encontrada (cnj={})", processo.getNumeroCnj());
+                return;
+            }
+            int removidas = googleDriveService.excluirSubpastasComNome(PASTA_ASSINAR, pastaDto.pastaId());
+            if (removidas == 0) {
+                log.info("Pós-protocolo: subpasta Assinar ausente (cnj={})", processo.getNumeroCnj());
+            }
+        } catch (Exception e) {
+            log.warn(
+                    "Pós-protocolo: falha ao remover pasta Assinar (processoId={}, cnj={}): {}",
+                    processo.getId(),
+                    processo.getNumeroCnj(),
+                    e.getMessage());
+        }
+    }
+
     private static String sanitizarNome(String nomeArquivo) {
         if (!StringUtils.hasText(nomeArquivo)) {
             return "documento_formatado.pdf";

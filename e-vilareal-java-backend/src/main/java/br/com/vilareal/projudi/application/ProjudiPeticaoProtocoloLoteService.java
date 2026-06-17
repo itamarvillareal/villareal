@@ -5,6 +5,7 @@ import br.com.vilareal.projudi.api.dto.PreviaProtocoloResponse.ArquivoPreviaDto;
 import br.com.vilareal.projudi.api.dto.PreviaProtocoloResponse.JuntadaPreviaDto;
 import br.com.vilareal.projudi.api.dto.ValidarProtocoloResponse;
 import br.com.vilareal.projudi.api.dto.ValidarProtocoloResponse.JuntadaValidacaoDto;
+import br.com.vilareal.documento.DocumentoPastaAssinarService;
 import br.com.vilareal.documento.GoogleDriveService;
 import br.com.vilareal.projudi.ProjudiOrquestradorGate;
 import br.com.vilareal.projudi.ProjudiPeticaoService;
@@ -52,6 +53,7 @@ public class ProjudiPeticaoProtocoloLoteService {
     private final ProjudiPeticaoProtocoloEstadoService estadoService;
     private final ProjudiOrquestradorGate orquestradorGate;
     private final GoogleDriveService googleDriveService;
+    private final DocumentoPastaAssinarService documentoPastaAssinarService;
     private final Path storeDir;
 
     /**
@@ -72,6 +74,7 @@ public class ProjudiPeticaoProtocoloLoteService {
             ProjudiPeticaoProtocoloEstadoService estadoService,
             ProjudiOrquestradorGate orquestradorGate,
             GoogleDriveService googleDriveService,
+            DocumentoPastaAssinarService documentoPastaAssinarService,
             @Value("${projudi.peticao.store-dir:/Users/itamar/projudi-peticoes}") String storeDirConfig) {
         this.peticaoRepository = peticaoRepository;
         this.registroService = registroService;
@@ -79,6 +82,7 @@ public class ProjudiPeticaoProtocoloLoteService {
         this.estadoService = estadoService;
         this.orquestradorGate = orquestradorGate;
         this.googleDriveService = googleDriveService;
+        this.documentoPastaAssinarService = documentoPastaAssinarService;
         this.storeDir = Path.of(storeDirConfig.trim());
     }
 
@@ -532,6 +536,7 @@ public class ProjudiPeticaoProtocoloLoteService {
                         new ResultadoItemLote(
                                 peticaoId, referencia.getNumeroProcesso(), RESULTADO_PROTOCOLADA, protocolo.mensagem()));
             }
+            finalizarProcessoAposProtocolo(referencia.getNumeroProcesso());
             return resultados;
         }
 
@@ -598,6 +603,17 @@ public class ProjudiPeticaoProtocoloLoteService {
             }
         }
         return ProjudiPeticaoProtocoloEstadoService.truncarMensagem(msg);
+    }
+
+    private void finalizarProcessoAposProtocolo(String numeroProcesso) {
+        try {
+            documentoPastaAssinarService.finalizarAposProtocoloSucesso(numeroProcesso);
+        } catch (Exception e) {
+            log.warn(
+                    "Pós-protocolo (pasta Assinar / fase) falhou para processo {}: {}",
+                    numeroProcesso,
+                    e.getMessage());
+        }
     }
 
     private Optional<String> validarECarregarArquivosP7s(ProjudiPeticaoEntity peticao) {

@@ -4,12 +4,14 @@ import { request } from './httpClient.js';
 /**
  * Publicações importadas automaticamente via Gmail/Jusbrasil (origem MONITORAMENTO).
  */
-export async function buscarPublicacoesEmail({ texto, status, filtroVinculo } = {}) {
+export async function buscarPublicacoesEmail({ texto, status, filtroVinculo, recebimentoInicio, recebimentoFim } = {}) {
   return listarPublicacoesModulo({
     origemImportacao: 'MONITORAMENTO',
     texto: texto || undefined,
     statusTratamento: status || undefined,
     filtroVinculo: filtroVinculo || 'todos',
+    recebimentoInicio: recebimentoInicio || undefined,
+    recebimentoFim: recebimentoFim || undefined,
   });
 }
 

@@ -653,6 +653,8 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
   const [buscaTexto, setBuscaTexto] = useState('');
   const [filtroStatus, setFiltroStatus] = useState('');
   const [filtroVinculo, setFiltroVinculo] = useState('todos');
+  const [filtroRecebimentoInicio, setFiltroRecebimentoInicio] = useState('');
+  const [filtroRecebimentoFim, setFiltroRecebimentoFim] = useState('');
   const [buscaDebounced, setBuscaDebounced] = useState('');
   const [resultadoProcessamento, setResultadoProcessamento] = useState(null);
   const [ultimaSyncGmail, setUltimaSyncGmail] = useState(null);
@@ -715,6 +717,8 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
         texto: buscaDebounced || undefined,
         status: filtroStatus || undefined,
         filtroVinculo,
+        recebimentoInicio: filtroRecebimentoInicio || undefined,
+        recebimentoFim: filtroRecebimentoFim || undefined,
       });
       setRows(data);
     } catch (e) {
@@ -723,7 +727,7 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
     } finally {
       setLoading(false);
     }
-  }, [buscaDebounced, filtroStatus, filtroVinculo, cfg]);
+  }, [buscaDebounced, filtroStatus, filtroVinculo, filtroRecebimentoInicio, filtroRecebimentoFim, cfg]);
 
   useEffect(() => {
     carregar();
@@ -1159,6 +1163,24 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
               </option>
             ))}
           </select>
+          <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-slate-400">
+            Recebimento de
+            <input
+              type="date"
+              value={filtroRecebimentoInicio}
+              onChange={(e) => setFiltroRecebimentoInicio(e.target.value)}
+              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-white/15 dark:bg-white/5"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-slate-400">
+            Recebimento até
+            <input
+              type="date"
+              value={filtroRecebimentoFim}
+              onChange={(e) => setFiltroRecebimentoFim(e.target.value)}
+              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-white/15 dark:bg-white/5"
+            />
+          </label>
         </div>
 
         {loading ? (

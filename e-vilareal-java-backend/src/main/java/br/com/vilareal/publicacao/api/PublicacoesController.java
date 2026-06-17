@@ -32,6 +32,11 @@ public class PublicacoesController {
             @RequestParam(value = "dataInicio", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
                     LocalDate dataInicio,
             @RequestParam(value = "dataFim", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataFim,
+            @RequestParam(value = "recebimentoInicio", required = false)
+                    @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+                    LocalDate recebimentoInicio,
+            @RequestParam(value = "recebimentoFim", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+                    LocalDate recebimentoFim,
             @RequestParam(value = "status", required = false) String statusTratamento,
             @RequestParam(value = "processoId", required = false) Long processoId,
             @Parameter(description = "PK da tabela cliente (aceita pessoa.id legado na resolução)")
@@ -40,7 +45,15 @@ public class PublicacoesController {
             @RequestParam(value = "texto", required = false) String texto,
             @RequestParam(value = "origemImportacao", required = false) String origemImportacao) {
         return publicacaoService.listar(
-                dataInicio, dataFim, statusTratamento, processoId, clienteId, texto, origemImportacao);
+                dataInicio,
+                dataFim,
+                recebimentoInicio,
+                recebimentoFim,
+                statusTratamento,
+                processoId,
+                clienteId,
+                texto,
+                origemImportacao);
     }
 
     @GetMapping("/{id}")
