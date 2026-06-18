@@ -1,6 +1,12 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  clearPublicacoesEmailFiltrosSession,
+  deveManterFiltrosPublicacoesEmail,
+  loadPublicacoesEmailFiltrosSession,
+  savePublicacoesEmailFiltrosSession,
+} from '../data/publicacoesEmailFiltrosSession.js';
+import {
   AlertTriangle,
   ArrowLeft,
   ChevronDown,
@@ -643,6 +649,7 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
   const cfg = VARIANT_CONFIG[variant] ?? VARIANT_CONFIG.jusbrasil;
   const isProjudi = variant === 'projudi';
   const navigate = useNavigate();
+  const filtrosIniciais = useMemo(() => loadPublicacoesEmailFiltrosSession(variant), [variant]);
 
   const teorDaLinha = useCallback((row) => teorLinha(row, isProjudi), [isProjudi]);
   const [rows, setRows] = useState([]);
@@ -650,12 +657,16 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
   const [processando, setProcessando] = useState(false);
   const [err, setErr] = useState('');
   const [msgOk, setMsgOk] = useState('');
-  const [buscaTexto, setBuscaTexto] = useState('');
-  const [filtroStatus, setFiltroStatus] = useState('');
-  const [filtroVinculo, setFiltroVinculo] = useState('todos');
-  const [filtroRecebimentoInicio, setFiltroRecebimentoInicio] = useState('');
-  const [filtroRecebimentoFim, setFiltroRecebimentoFim] = useState('');
-  const [buscaDebounced, setBuscaDebounced] = useState('');
+  const [buscaTexto, setBuscaTexto] = useState(() => filtrosIniciais?.buscaTexto ?? '');
+  const [filtroStatus, setFiltroStatus] = useState(() => filtrosIniciais?.filtroStatus ?? '');
+  const [filtroVinculo, setFiltroVinculo] = useState(() => filtrosIniciais?.filtroVinculo ?? 'todos');
+  const [filtroRecebimentoInicio, setFiltroRecebimentoInicio] = useState(
+    () => filtrosIniciais?.filtroRecebimentoInicio ?? ''
+  );
+  const [filtroRecebimentoFim, setFiltroRecebimentoFim] = useState(
+    () => filtrosIniciais?.filtroRecebimentoFim ?? ''
+  );
+  const [buscaDebounced, setBuscaDebounced] = useState(() => (filtrosIniciais?.buscaTexto ?? '').trim());
   const [resultadoProcessamento, setResultadoProcessamento] = useState(null);
   const [ultimaSyncGmail, setUltimaSyncGmail] = useState(null);
   const [processandoCompleto, setProcessandoCompleto] = useState(false);
@@ -666,9 +677,38 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
   const [sugestoesApi, setSugestoesApi] = useState(() => new Map());
   const [carregandoSugestoes, setCarregandoSugestoes] = useState(false);
   const [vinculoModal, setVinculoModal] = useState(null);
-  const [ordemDataAsc, setOrdemDataAsc] = useState(false);
+  const [ordemDataAsc, setOrdemDataAsc] = useState(() => filtrosIniciais?.ordemDataAsc ?? false);
   const [aplicandoSugestoes, setAplicandoSugestoes] = useState(false);
   const sugestoesAutoTentadasRef = useRef(new Set());
+
+  useEffect(() => {
+    savePublicacoesEmailFiltrosSession(variant, {
+      buscaTexto,
+      filtroStatus,
+      filtroVinculo,
+      filtroRecebimentoInicio,
+      filtroRecebimentoFim,
+      ordemDataAsc,
+    });
+  }, [
+    variant,
+    buscaTexto,
+    filtroStatus,
+    filtroVinculo,
+    filtroRecebimentoInicio,
+    filtroRecebimentoFim,
+    ordemDataAsc,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      queueMicrotask(() => {
+        if (!deveManterFiltrosPublicacoesEmail(window.location.pathname)) {
+          clearPublicacoesEmailFiltrosSession(variant);
+        }
+      });
+    };
+  }, [variant]);
 
   useEffect(() => {
     void montarIndiceCnjClienteProcAsync().then((m) => setIndiceCnj(m));
