@@ -38,6 +38,32 @@ class ProcessoPartesVinculoTextoResolverTest {
     }
 
     @Test
+    void parteOpostaParaNomePasta_multiplosReus_usaPrimeiroEOutros() {
+        ProcessoEntity processo = processoComPapel("REQUERENTE");
+        List<ProcessoParteEntity> partes = List.of(
+                parte("AUTOR", "MARIA SILVA", null),
+                parte("REU", "FERNANDO MACHADO GUIMARAES", null),
+                parte("REU", "VIRGILIO TOMAS GARCIA", null),
+                parte("REU", "JOAO VITOR DINIZ BORGES", null));
+
+        assertThat(ProcessoPartesVinculoTextoResolver.parteOposta(processo, partes))
+                .isEqualTo("FERNANDO MACHADO GUIMARAES, VIRGILIO TOMAS GARCIA e JOAO VITOR DINIZ BORGES");
+        assertThat(ProcessoPartesVinculoTextoResolver.parteOpostaParaNomePasta(processo, partes))
+                .isEqualTo("FERNANDO MACHADO GUIMARAES e outros");
+    }
+
+    @Test
+    void parteOpostaParaNomePasta_unicoReu_mantemNomeCompleto() {
+        ProcessoEntity processo = processoComPapel("REQUERENTE");
+        List<ProcessoParteEntity> partes = List.of(
+                parte("AUTOR", "MARIA SILVA", null),
+                parte("REU", "FERNANDO MACHADO GUIMARAES", null));
+
+        assertThat(ProcessoPartesVinculoTextoResolver.parteOpostaParaNomePasta(processo, partes))
+                .isEqualTo("FERNANDO MACHADO GUIMARAES");
+    }
+
+    @Test
     void parteOposta_qualificacaoExplicita_prevaleceSobrePolo() {
         ProcessoEntity processo = processoComPapel("REQUERIDO");
         List<ProcessoParteEntity> partes = List.of(

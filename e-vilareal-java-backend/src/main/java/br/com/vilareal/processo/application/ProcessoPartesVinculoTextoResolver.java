@@ -61,6 +61,60 @@ public final class ProcessoPartesVinculoTextoResolver {
         return resolverTextos(processo, partes).getParteOposta();
     }
 
+    /**
+     * Nome da subpasta Drive após {@code Proc. NN}: primeiro nome da parte oposta;
+     * se houver mais de um, sufixo {@code e outros} (evita nomes longos demais).
+     */
+    public static String parteOpostaParaNomePasta(ProcessoEntity processo, List<ProcessoParteEntity> partes) {
+        List<String> nomes = listarNomesParteOposta(processo, partes);
+        if (nomes.isEmpty()) {
+            return "";
+        }
+        if (nomes.size() == 1) {
+            return nomes.get(0);
+        }
+        return nomes.get(0) + " e outros";
+    }
+
+    static List<String> listarNomesParteOposta(ProcessoEntity processo, List<ProcessoParteEntity> partes) {
+        List<String> porQualificacaoCliente = new ArrayList<>();
+        List<String> porQualificacaoOposta = new ArrayList<>();
+        if (partes != null) {
+            for (ProcessoParteEntity p : partes) {
+                String q = normalizarQualificacaoParte(p.getQualificacao());
+                String rotulo = rotuloParteListagem(p);
+                if (!StringUtils.hasText(rotulo)) {
+                    continue;
+                }
+                if (q.contains("PARTE CLIENTE")) {
+                    porQualificacaoCliente.add(rotulo);
+                } else if (q.contains("PARTE OPOSTA")) {
+                    porQualificacaoOposta.add(rotulo);
+                }
+            }
+        }
+        if (!porQualificacaoCliente.isEmpty()) {
+            if (!porQualificacaoOposta.isEmpty()) {
+                return porQualificacaoOposta;
+            }
+            return coletarNomesPartesListagem(processo, partes, !poloJuridicoEscritorioEhAutor(processo, partes));
+        }
+        if (importPoloJuridicoInvertidoParteCliente(processo, partes)) {
+            List<String> nomesOposta = new ArrayList<>();
+            for (ProcessoParteEntity p : partes) {
+                String rotulo = rotuloParteListagem(p);
+                if (!StringUtils.hasText(rotulo)) {
+                    continue;
+                }
+                if (!temMarcadorParteClienteImport(p)) {
+                    nomesOposta.add(rotulo);
+                }
+            }
+            return nomesOposta;
+        }
+        return coletarNomesPartesListagem(processo, partes, !poloJuridicoEscritorioEhAutor(processo, partes));
+    }
+
     private static String montarTextoParteClienteListagemPorPapelJuridico(
             ProcessoEntity processo, List<ProcessoParteEntity> partes) {
         return montarTextoPartesListagem(processo, partes, poloJuridicoEscritorioEhAutor(processo, partes));
@@ -146,8 +200,13 @@ public final class ProcessoPartesVinculoTextoResolver {
 
     private static String montarTextoPartesListagem(
             ProcessoEntity processo, List<ProcessoParteEntity> partes, boolean ladoCliente) {
+        return formatarListaComConjuncaoE(coletarNomesPartesListagem(processo, partes, ladoCliente));
+    }
+
+    private static List<String> coletarNomesPartesListagem(
+            ProcessoEntity processo, List<ProcessoParteEntity> partes, boolean ladoCliente) {
         if (partes == null || partes.isEmpty()) {
-            return "";
+            return List.of();
         }
         List<String> nomes = new ArrayList<>();
         for (ProcessoParteEntity p : partes) {
@@ -160,7 +219,7 @@ public final class ProcessoPartesVinculoTextoResolver {
                 nomes.add(rotulo);
             }
         }
-        return formatarListaComConjuncaoE(nomes);
+        return nomes;
     }
 
     /** {@code ladoClienteAutor}: polo jurídico autor/requerente é o lado do escritório. */

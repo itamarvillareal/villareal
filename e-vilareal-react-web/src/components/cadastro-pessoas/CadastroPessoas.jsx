@@ -2131,15 +2131,17 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
             )}
           </div>
 
-          <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex flex-wrap gap-3">
-            <button
-              type="button"
-              onClick={() => window.history.back()}
-              className="px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-700 text-sm font-medium hover:bg-slate-50"
-            >
-              Fechar
-            </button>
-          </div>
+          {!isEmbedded && (
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={() => window.history.back()}
+                className="px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-700 text-sm font-medium hover:bg-slate-50"
+              >
+                Fechar
+              </button>
+            </div>
+          )}
         </section>
       </div>
 

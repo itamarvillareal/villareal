@@ -14,6 +14,13 @@ class DocumentoDrivePastaServiceTest {
     }
 
     @Test
+    void formatarNomePastaParteOposta_multiplosReus_normalizaPrimeiroEOutros() {
+        assertThat(DocumentoDrivePastaService.formatarNomePastaParteOposta(
+                        "FERNANDO MACHADO GUIMARAES e outros"))
+                .isEqualTo("Fernando Machado Guimaraes e Outros");
+    }
+
+    @Test
     void formatarNomePastaParteOposta_normalizaNome() {
         assertThat(DocumentoDrivePastaService.formatarNomePastaParteOposta("BEATRIZ MEDEIROS CINTRA"))
                 .isEqualTo("Beatriz Medeiros Cintra");

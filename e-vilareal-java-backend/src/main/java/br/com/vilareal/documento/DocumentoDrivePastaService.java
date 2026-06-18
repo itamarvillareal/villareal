@@ -260,7 +260,7 @@ public class DocumentoDrivePastaService {
         }
         List<ProcessoParteEntity> partes =
                 processoParteRepository.findByProcesso_IdOrderByOrdemAscIdAsc(processoId);
-        String texto = ProcessoPartesVinculoTextoResolver.parteOposta(processo, partes);
+        String texto = ProcessoPartesVinculoTextoResolver.parteOpostaParaNomePasta(processo, partes);
         if (!StringUtils.hasText(texto)) {
             return "Sem Parte Oposta";
         }

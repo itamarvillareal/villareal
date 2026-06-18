@@ -1345,6 +1345,15 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
     setBuscaClienteNome('');
   }
 
+  function selecionarPrimeiroClienteDaBusca() {
+    const raw = String(buscaClienteNome ?? '').trim();
+    if (!raw) return;
+    const soDigitos = /^\d+$/.test(raw);
+    const lista = soDigitos ? clientesFiltradosPorCodigo : clientesFiltradosPorNome;
+    if (lista.length === 0) return;
+    selecionarClienteDaBuscaNome(lista[0]);
+  }
+
   const theadBuscaClass =
     'bg-gradient-to-r from-slate-800 via-indigo-900 to-violet-900 text-white [&_th]:border-b [&_th]:border-white/10';
 
@@ -1428,6 +1437,12 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
                       type="text"
                       value={buscaClienteNome}
                       onChange={(e) => setBuscaClienteNome(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          selecionarPrimeiroClienteDaBusca();
+                        }
+                      }}
                       className="w-full min-w-0 rounded-lg border-0 bg-white py-2 pl-9 pr-3 text-base text-slate-900 shadow-sm placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white md:text-sm"
                       placeholder="Buscar por nome ou código (ex.: 491 ou 00000491)…"
                       autoComplete="off"
