@@ -29,7 +29,7 @@ public class ExtratoCoraEmailScheduler {
     public void importarExtratoCoraEmail() {
         try {
             if (gmailExtratoCoraService == null || !gmailExtratoCoraService.isDisponivel()) {
-                log.debug("Scheduler extrato Cora ignorado: Gmail indisponível.");
+                log.warn("Scheduler extrato Cora ignorado: Gmail indisponível (verifique credentials.json e tokens OAuth).");
                 return;
             }
             log.info("Scheduler extrato Cora: início da execução.");

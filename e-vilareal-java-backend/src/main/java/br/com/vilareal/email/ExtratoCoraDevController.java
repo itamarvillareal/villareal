@@ -6,6 +6,7 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.io.IOException;
@@ -28,14 +29,15 @@ public class ExtratoCoraDevController {
 
     @PostMapping("/rodar-agora")
     @Operation(summary = "Executa uma rodada de importação de extrato Cora via Gmail")
-    public ResponseEntity<ExtratoCoraEmailProcessamentoResumo> rodarAgora() {
+    public ResponseEntity<ExtratoCoraEmailProcessamentoResumo> rodarAgora(
+            @RequestParam(name = "incluirLidos", defaultValue = "false") boolean incluirLidos) {
         if (!gmailExtratoCoraService.isDisponivel()) {
             ExtratoCoraEmailProcessamentoResumo indisponivel = new ExtratoCoraEmailProcessamentoResumo();
             indisponivel.getErros().add("Gmail API não configurada.");
             return ResponseEntity.ok(indisponivel);
         }
         try {
-            return ResponseEntity.ok(gmailExtratoCoraService.buscarEImportarExtratos());
+            return ResponseEntity.ok(gmailExtratoCoraService.buscarEImportarExtratos(incluirLidos));
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }

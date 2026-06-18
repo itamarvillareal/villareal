@@ -43,6 +43,10 @@ import process from 'node:process';
 import XLSX from 'xlsx';
 
 import { normalizarTextoPlanilha } from './lib/normalizar-texto-planilha.mjs';
+import {
+  isHistoricoRowsJson,
+  lerMatrizHistoricoIntermedio,
+} from './lib/historico-planilha-intermedia.mjs';
 import { garantirProcessoNaApi } from './lib/vilareal-import-processo-api.mjs';
 
 const DEFAULT_FILE = String.raw`C:\Users\jrvill\Dropbox\sistema\historico_import.xls`;
@@ -868,22 +872,31 @@ async function main() {
     process.exit(1);
   }
 
-  const wb = XLSX.readFile(abs, { cellDates: true, dense: false });
-  let sheetNome;
-  try {
-    sheetNome = resolverNomeAbaHistorico(wb, opts);
-  } catch (e) {
-    console.error(e.message || e);
-    process.exit(1);
+  /** @type {unknown[][]} */
+  let mat;
+  /** @type {string} */
+  let sheetNome = '(JSON)';
+  if (isHistoricoRowsJson(abs)) {
+    console.log(`[planilha] Intermédio JSON (célula >32767): ${path.basename(abs)}`);
+    mat = lerMatrizHistoricoIntermedio(abs);
+  } else {
+    const wb = XLSX.readFile(abs, { cellDates: true, dense: false });
+    let sheetNome;
+    try {
+      sheetNome = resolverNomeAbaHistorico(wb, opts);
+    } catch (e) {
+      console.error(e.message || e);
+      process.exit(1);
+    }
+    const sh = wb.Sheets[sheetNome];
+    if (!sh) {
+      console.error(`Aba "${sheetNome}" inválida. Abas:`, wb.SheetNames.join(', '));
+      process.exit(1);
+    }
+    console.log(`[planilha] Aba: "${sheetNome}"`);
+    mat = XLSX.utils.sheet_to_json(sh, { header: 1, defval: null, raw: true });
   }
-  const sh = wb.Sheets[sheetNome];
-  if (!sh) {
-    console.error(`Aba "${sheetNome}" inválida. Abas:`, wb.SheetNames.join(', '));
-    process.exit(1);
-  }
-  console.log(`[planilha] Aba: "${sheetNome}"`);
 
-  const mat = XLSX.utils.sheet_to_json(sh, { header: 1, defval: null, raw: true });
   const brutas = buildLinhas(mat);
   const totalLinhas = contarLinhasUsadasAteF(mat);
 

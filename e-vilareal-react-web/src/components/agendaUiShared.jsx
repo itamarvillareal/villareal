@@ -521,8 +521,8 @@ export function NovoCompromissoCard({ idFoco, salvarLinhaVazia, suprimirAutoFoco
   const [hora, setHora] = useState('');
   const [descricao, setDescricao] = useState('');
   const horaInputRef = useRef(null);
-  const horaEnviadaRef = useRef('');
-  const descricaoEnviadaRef = useRef('');
+  const ultimoPatchEnviadoRef = useRef('');
+  const descricaoInputRef = useRef(null);
   const pedirFocoDescricaoRef = useRef(false);
 
   useEffect(() => {
@@ -539,20 +539,34 @@ export function NovoCompromissoCard({ idFoco, salvarLinhaVazia, suprimirAutoFoco
         ? 'bg-yellow-300 text-black border-yellow-600 focus:ring-yellow-600 placeholder:text-yellow-900/60'
         : 'bg-white text-gray-900 border-slate-300 focus:ring-indigo-400/50 focus:border-indigo-400';
 
+  async function persistirNovoCompromisso(opts = {}) {
+    const h = String(hora ?? '').trim();
+    const d = String(descricao ?? '').trim();
+    if (!h && !d) return;
+    const patch = {};
+    if (h) patch.hora = h;
+    if (d) patch.descricao = d;
+    const sig = JSON.stringify(patch);
+    if (sig === ultimoPatchEnviadoRef.current) return;
+    await salvarLinhaVazia(patch, opts);
+    ultimoPatchEnviadoRef.current = sig;
+  }
+
   async function gravarHora() {
     const focarDescricao = pedirFocoDescricaoRef.current;
     pedirFocoDescricaoRef.current = false;
     const v = String(hora ?? '').trim();
-    if (v === horaEnviadaRef.current) return;
-    horaEnviadaRef.current = v;
-    if (v) await salvarLinhaVazia({ hora: v }, { focarDescricao });
+    if (!v) return;
+    await persistirNovoCompromisso({ focarDescricao });
+    if (focarDescricao) {
+      requestAnimationFrame(() => descricaoInputRef.current?.focus());
+    }
   }
 
   async function gravarDescricao() {
-    const v = String(descricao ?? '').trim();
-    if (v === descricaoEnviadaRef.current) return;
-    descricaoEnviadaRef.current = v;
-    if (v) await salvarLinhaVazia({ descricao: v });
+    const d = String(descricao ?? '').trim();
+    if (!d) return;
+    await persistirNovoCompromisso();
   }
 
   return (
@@ -598,6 +612,7 @@ export function NovoCompromissoCard({ idFoco, salvarLinhaVazia, suprimirAutoFoco
           </label>
           <textarea
             id={`${idFoco}-desc`}
+            ref={descricaoInputRef}
             value={descricao}
             rows={3}
             maxLength={2000}

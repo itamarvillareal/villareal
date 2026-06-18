@@ -171,6 +171,7 @@ function ColunaDia({
 }) {
   /** Última linha (novo compromisso): id criado até liberar após salvar hora/descrição. */
   const pendingNovaLinhaIdRef = useRef(null);
+  const criarCompromissoEmVooRef = useRef(null);
   const [novaLinhaBump, setNovaLinhaBump] = useState(0);
   /** Após Tab na hora do card verde: focar descrição do compromisso criado na lista. */
   const [focoDescricaoEventoId, setFocoDescricaoEventoId] = useState(null);
@@ -198,10 +199,12 @@ function ColunaDia({
     if (!dataBrStr) return;
     const uid = String(usuarioAgendaId ?? '');
     const pendingId = pendingNovaLinhaIdRef.current;
-    const liberarNovoCard =
-      (patch.hora !== undefined && String(patch.hora ?? '').trim() !== '') ||
-      (patch.descricao !== undefined && String(patch.descricao ?? '').trim() !== '') ||
-      (patch.statusCurto !== undefined && normalizarStatusCurtoAgenda(patch.statusCurto) === 'OK');
+    const temHora = patch.hora !== undefined && String(patch.hora ?? '').trim() !== '';
+    const temDesc = patch.descricao !== undefined && String(patch.descricao ?? '').trim() !== '';
+    const temStatusOk =
+      patch.statusCurto !== undefined && normalizarStatusCurtoAgenda(patch.statusCurto) === 'OK';
+    /** Só libera o card verde quando o compromisso está completo — evita 2º POST (hora + «Compromisso»). */
+    const liberarNovoCard = temStatusOk || (temDesc && !temHora) || (temHora && temDesc);
 
     const deveFocarDescricao =
       opts.focarDescricao &&
@@ -224,10 +227,22 @@ function ColunaDia({
       ? () => onCriarNovoCompromisso(patch)
       : () => Promise.resolve(criarNovoCompromissoAgendaPersistido({ dataBr: dataBrStr, usuarioId: uid, patch }));
 
-    const r = await criar();
+    if (criarCompromissoEmVooRef.current) {
+      await criarCompromissoEmVooRef.current;
+    }
+    const promessaCriar = criar();
+    criarCompromissoEmVooRef.current = promessaCriar;
+    let r;
+    try {
+      r = await promessaCriar;
+    } finally {
+      if (criarCompromissoEmVooRef.current === promessaCriar) {
+        criarCompromissoEmVooRef.current = null;
+      }
+    }
     if (r?.ok && r.id) {
       const idStr = String(r.id);
-      if (deveFocarDescricao) setFocoDescricaoEventoId(idStr);
+      if (deveFocarDescricao && liberarNovoCard) setFocoDescricaoEventoId(idStr);
       pendingNovaLinhaIdRef.current = idStr;
       if (liberarNovoCard) {
         pendingNovaLinhaIdRef.current = null;

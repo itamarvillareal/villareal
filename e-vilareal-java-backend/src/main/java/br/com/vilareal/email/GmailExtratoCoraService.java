@@ -8,7 +8,6 @@ import com.google.api.services.gmail.model.Message;
 import com.google.api.services.gmail.model.ModifyMessageRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -24,34 +23,43 @@ public class GmailExtratoCoraService {
     static final String QUERY_BASE =
             "from:naoresponda@cora.com.br subject:\"Extrato da conta VRV SOLUCOES\" has:attachment is:unread";
 
-    private final Gmail gmail;
+    private final GmailApiProvider gmailApiProvider;
     private final ExtratoCoraImportService extratoCoraImportService;
     private final String gmailUser;
 
     public GmailExtratoCoraService(
-            @Autowired(required = false) Gmail gmail,
+            GmailApiProvider gmailApiProvider,
             ExtratoCoraImportService extratoCoraImportService,
             @Value("${gmail.user:me}") String gmailUser) {
-        this.gmail = gmail;
+        this.gmailApiProvider = gmailApiProvider;
         this.extratoCoraImportService = extratoCoraImportService;
         this.gmailUser = gmailUser;
     }
 
     public boolean isDisponivel() {
-        return gmail != null;
+        return gmailApiProvider.isDisponivel();
     }
 
     public ExtratoCoraEmailProcessamentoResumo buscarEImportarExtratos() throws IOException {
+        return buscarEImportarExtratos(false);
+    }
+
+    /**
+     * @param incluirLidos quando {@code true}, remove {@code is:unread} da query (útil para reprocessar e-mails já abertos)
+     */
+    public ExtratoCoraEmailProcessamentoResumo buscarEImportarExtratos(boolean incluirLidos) throws IOException {
         ExtratoCoraEmailProcessamentoResumo resumo = new ExtratoCoraEmailProcessamentoResumo();
+        Gmail gmail = gmailApiProvider.resolver().orElse(null);
         if (gmail == null) {
             resumo.getErros().add("Gmail API não configurada.");
             return resumo;
         }
 
-        log.info("Iniciando importação extrato Cora via Gmail (query={})", QUERY_BASE);
-        List<Message> mensagens = listarMensagens(QUERY_BASE);
+        String query = incluirLidos ? QUERY_BASE.replace(" is:unread", "") : QUERY_BASE;
+        log.info("Iniciando importação extrato Cora via Gmail (query={})", query);
+        List<Message> mensagens = listarMensagens(gmail, query);
         resumo.setEmailsEncontrados(mensagens.size());
-        log.info("Emails Cora encontrados (não lidos): {}", mensagens.size());
+        log.info("Emails Cora encontrados: {}", mensagens.size());
 
         for (Message ref : mensagens) {
             String messageId = ref.getId();
@@ -99,7 +107,7 @@ public class GmailExtratoCoraService {
                 }
 
                 if (algumAnexoProcessado) {
-                    marcarComoLido(messageId);
+                    marcarComoLido(gmail, messageId);
                     resumo.setEmailsMarcadosLidos(resumo.getEmailsMarcadosLidos() + 1);
                     log.info("Email {} processado e marcado como lido.", messageId);
                 } else {
@@ -123,7 +131,7 @@ public class GmailExtratoCoraService {
         return resumo;
     }
 
-    private List<Message> listarMensagens(String query) throws IOException {
+    private List<Message> listarMensagens(Gmail gmail, String query) throws IOException {
         List<Message> out = new ArrayList<>();
         String pageToken = null;
         do {
@@ -143,7 +151,7 @@ public class GmailExtratoCoraService {
         return out;
     }
 
-    private void marcarComoLido(String messageId) throws IOException {
+    private void marcarComoLido(Gmail gmail, String messageId) throws IOException {
         ModifyMessageRequest body = new ModifyMessageRequest().setRemoveLabelIds(List.of("UNREAD"));
         gmail.users().messages().modify(gmailUser, messageId, body).execute();
     }

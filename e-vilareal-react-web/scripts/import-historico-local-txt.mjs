@@ -67,6 +67,7 @@ import { coletarEntradasHistoricoLocal } from './lib/historico-local-txt-iterar.
 import { movimentoEmFromHistoricoLocal } from './lib/historico-movimento-em.mjs';
 import { normalizarResponsavelHistorico, resetAvisosResponsavel } from './lib/historico-responsavel-import.mjs';
 import { montarCamposAndamentoFromInformacaoBruta } from './lib/historico-informacao-import.mjs';
+import { gravarPlanilhaHistorico } from './lib/historico-planilha-intermedia.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const IMPORT_PLANILHA_SCRIPT = path.join(__dirname, 'import-historico-planilha.mjs');
@@ -195,29 +196,6 @@ function entradasParaLinhasPlanilha(entradas) {
     ]);
   }
   return { rows, linhaRef };
-}
-
-function gravarPlanilhaHistorico(outPath, rows) {
-  const ws = XLSX.utils.aoa_to_sheet(rows);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Planilha2');
-  const precisaXlsx = rows.some((row) =>
-    Array.isArray(row) && row.some((c) => c != null && String(c).length > 255)
-  );
-  if (precisaXlsx) {
-    const p = outPath.replace(/\.xls$/i, '.xlsx');
-    XLSX.writeFile(wb, p.endsWith('.xlsx') ? p : `${p}.xlsx`, { bookType: 'xlsx' });
-    return p.endsWith('.xlsx') ? p : `${p}.xlsx`;
-  }
-  const p = outPath.endsWith('.xls') ? outPath : outPath.replace(/\.xlsx?$/i, '') + '.xls';
-  try {
-    XLSX.writeFile(wb, p, { bookType: 'biff8' });
-    return p;
-  } catch {
-    const alt = p.replace(/\.xls$/i, '.xlsx');
-    XLSX.writeFile(wb, alt, { bookType: 'xlsx' });
-    return alt;
-  }
 }
 
 function main() {

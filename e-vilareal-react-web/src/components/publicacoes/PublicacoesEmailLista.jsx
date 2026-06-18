@@ -1,8 +1,4 @@
 import {
-  formatarPartesLinha,
-  tipoMovimentoLinha,
-} from '../../data/manifestacoesProjudiDisplay.js';
-import {
   AcoesLinhaCompacta,
   CelulaDataCompacta,
   CelulaStatusCompacta,
@@ -11,46 +7,28 @@ import {
   destaqueLinhaNaoVinculada,
   formatarCnjComProc,
   shellTabelaCompacta,
-} from '../publicacoes/PublicacoesEmailListaShared.jsx';
+  truncarTexto,
+} from './PublicacoesEmailListaShared.jsx';
 
-function resolverToneTipoMovimento(tipo) {
-  const t = String(tipo ?? '').toLowerCase();
-  if (t.includes('push')) {
-    return {
-      label: 'PUSH',
-      className:
-        'bg-sky-100 text-sky-800 dark:bg-sky-950/50 dark:text-sky-200',
-    };
-  }
-  if (t.includes('intima')) {
-    return {
-      label: 'Intimação',
-      className:
-        'bg-amber-100 text-amber-900 dark:bg-amber-950/40 dark:text-amber-100',
-    };
-  }
-  if (t.includes('despacho')) {
-    return {
-      label: 'Despacho',
-      className:
-        'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200',
-    };
-  }
-  const curto = String(tipo ?? '—').trim();
-  const label = curto.length > 14 ? `${curto.slice(0, 12).trim()}…` : curto || '—';
+function resolverBadgeOrigem(row) {
+  const origem = String(row.arquivoOrigem || row.arquivoOrigemNome || 'Email').trim();
+  const label = origem.length > 14 ? `${origem.slice(0, 12).trim()}…` : origem || 'Email';
   return {
     label,
+    title: origem || 'Email',
     className:
-      'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200',
+      'bg-violet-100 text-violet-900 dark:bg-violet-950/40 dark:text-violet-100',
   };
 }
 
-function LinhaManifestacaoProjudi({
+function LinhaPublicacaoEmail({
   row,
   indiceCnj,
   sugestoesApi,
   carregandoSugestoes,
   destaque,
+  teorDaLinha,
+  badgeNoDrive,
   onAbrirDetalhe,
   onAbrirProcesso,
   podeAbrirProcesso,
@@ -59,10 +37,9 @@ function LinhaManifestacaoProjudi({
   onTratar,
   onIgnorar,
 }) {
-  const tipo = tipoMovimentoLinha(row);
-  const tipoBadge = resolverToneTipoMovimento(tipo);
+  const origemBadge = resolverBadgeOrigem(row);
   const cnjProc = formatarCnjComProc(row, indiceCnj, sugestoesApi);
-  const partes = formatarPartesLinha(row);
+  const teor = truncarTexto(teorDaLinha(row), 160);
 
   return (
     <div
@@ -76,12 +53,12 @@ function LinhaManifestacaoProjudi({
         role="cell"
         className="min-w-0 cursor-pointer text-left"
         onClick={onAbrirDetalhe}
-        title={tipo}
+        title={origemBadge.title}
       >
         <span
-          className={`inline-flex max-w-full truncate rounded px-1.5 py-0.5 text-[10px] font-semibold ${tipoBadge.className}`}
+          className={`inline-flex max-w-full truncate rounded px-1.5 py-0.5 text-[10px] font-semibold ${origemBadge.className}`}
         >
-          {tipoBadge.label}
+          {origemBadge.label}
         </span>
       </button>
 
@@ -90,13 +67,16 @@ function LinhaManifestacaoProjudi({
         role="cell"
         className="min-w-0 cursor-pointer text-left"
         onClick={onAbrirDetalhe}
-        title={`${cnjProc}\n${partes}`}
+        title={`${cnjProc}\n${teorDaLinha(row)}`}
       >
-        <div className="truncate whitespace-nowrap font-mono text-[11px] text-sky-800 dark:text-sky-300">
-          {cnjProc}
+        <div className="flex min-w-0 items-center gap-1">
+          <span className="min-w-0 truncate whitespace-nowrap font-mono text-[11px] text-sky-800 dark:text-sky-300">
+            {cnjProc}
+          </span>
+          {badgeNoDrive ? badgeNoDrive(row) : null}
         </div>
         <div className="truncate whitespace-nowrap text-[11px] text-slate-600 dark:text-slate-400">
-          {partes}
+          {teor}
         </div>
       </button>
 
@@ -110,14 +90,14 @@ function LinhaManifestacaoProjudi({
           onAuto={onAuto}
           onTratar={onTratar}
           onIgnorar={onIgnorar}
-          menuAriaLabel="Mais ações da movimentação"
+          menuAriaLabel="Mais ações da publicação"
         />
       </div>
     </div>
   );
 }
 
-export function TabelaManifestacoesProjudi({
+export function TabelaPublicacoesEmail({
   rows,
   indiceCnj,
   sugestoesApi,
@@ -126,6 +106,8 @@ export function TabelaManifestacoesProjudi({
   onToggleOrdemData,
   onAbrirDetalhe,
   acoesProps,
+  teorDaLinha,
+  badgeNoDrive,
 }) {
   const cabecalho = (
     <div
@@ -141,26 +123,28 @@ export function TabelaManifestacoesProjudi({
         Data
         <span className="ml-0.5 text-[10px] opacity-70">{ordemDataAsc ? '↑' : '↓'}</span>
       </button>
-      <span>Tipo</span>
-      <span>Processo / Partes</span>
+      <span>Origem</span>
+      <span>Processo / Teor</span>
       <span>Status</span>
       <span className="text-right">Ações</span>
     </div>
   );
 
   return shellTabelaCompacta({
-    ariaLabel: 'Lista de movimentações por email',
+    ariaLabel: 'Lista de publicações por email',
     cabecalho,
     children: rows.map((row) => {
       const props = acoesProps(row);
       return (
-        <LinhaManifestacaoProjudi
+        <LinhaPublicacaoEmail
           key={row.id}
           row={row}
           indiceCnj={indiceCnj}
           sugestoesApi={sugestoesApi}
           carregandoSugestoes={carregandoSugestoes}
           destaque={destaqueLinhaNaoVinculada(row)}
+          teorDaLinha={teorDaLinha}
+          badgeNoDrive={badgeNoDrive}
           onAbrirDetalhe={() => onAbrirDetalhe(row)}
           onAbrirProcesso={props.onAbrirProcesso}
           podeAbrirProcesso={props.podeAbrirProcesso}
@@ -174,4 +158,4 @@ export function TabelaManifestacoesProjudi({
   });
 }
 
-export { AcoesLinhaCompacta, cnjLinha };
+export { cnjLinha };

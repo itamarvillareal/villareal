@@ -13,6 +13,7 @@ import br.com.vilareal.common.text.Utf8MojibakeUtil;
 import br.com.vilareal.usuario.application.UsuarioDestinatarioGuard;
 import br.com.vilareal.usuario.infrastructure.persistence.entity.UsuarioEntity;
 import br.com.vilareal.usuario.infrastructure.persistence.repository.UsuarioRepository;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -156,7 +157,23 @@ public class AgendaApplicationService {
         AgendaEventoEntity e = new AgendaEventoEntity();
         e.setUsuario(usuario);
         aplicarCampos(e, req);
-        e = agendaEventoRepository.save(e);
+        try {
+            e = agendaEventoRepository.save(e);
+        } catch (DataIntegrityViolationException ex) {
+            if (!violacaoUkConteudoKey(ex)) {
+                throw ex;
+            }
+            Optional<AgendaEventoEntity> corrida = buscarExistentePorConteudoOuEquivalencia(req);
+            if (corrida.isEmpty()) {
+                corrida = agendaEventoRepository.findFirstByConteudoKey(conteudoKeyFromRequest(req));
+            }
+            if (corrida.isEmpty()) {
+                throw ex;
+            }
+            AgendaEventoEntity existenteCorrida = corrida.get();
+            aplicarCampos(existenteCorrida, req);
+            e = agendaEventoRepository.save(existenteCorrida);
+        }
         return toResponse(e);
     }
 
@@ -236,6 +253,18 @@ public class AgendaApplicationService {
         UsuarioEntity usuario = usuarioDestinatarioGuard.carregarHumanoDestinatario(req.getUsuarioId());
         e.setUsuario(usuario);
         aplicarCampos(e, req);
+        String novaChave = e.getConteudoKey();
+        if (StringUtils.hasText(novaChave)) {
+            Optional<AgendaEventoEntity> conflito = agendaEventoRepository.findFirstByConteudoKey(novaChave);
+            if (conflito.isPresent() && !conflito.get().getId().equals(id)) {
+                AgendaEventoEntity alvo = conflito.get();
+                aplicarCampos(alvo, req);
+                alvo.setUsuario(usuario);
+                alvo = agendaEventoRepository.save(alvo);
+                agendaEventoRepository.deleteById(id);
+                return toResponse(alvo);
+            }
+        }
         e = agendaEventoRepository.save(e);
         return toResponse(e);
     }
@@ -390,5 +419,16 @@ public class AgendaApplicationService {
 
     private static String formatarDataBr(LocalDate d) {
         return String.format("%02d/%02d/%d", d.getDayOfMonth(), d.getMonthValue(), d.getYear());
+    }
+
+    private static boolean violacaoUkConteudoKey(DataIntegrityViolationException ex) {
+        String msg = ex.getMostSpecificCause() != null
+                ? ex.getMostSpecificCause().getMessage()
+                : ex.getMessage();
+        if (msg == null) {
+            return false;
+        }
+        String lower = msg.toLowerCase();
+        return lower.contains("uq_agenda_evento_conteudo") || lower.contains("conteudo_key");
     }
 }

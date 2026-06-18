@@ -12,7 +12,6 @@ import {
   ChevronDown,
   ChevronRight,
   FolderOpen,
-  Link2,
   Loader2,
   Mail,
   RefreshCw,
@@ -45,9 +44,7 @@ import {
 } from '../data/financeiroData.js';
 import { ModalVinculoClienteProcFinanceiro } from './ModalVinculoClienteProcFinanceiro.jsx';
 import {
-  formatarChaveProcessoVinculo,
   formatarRotuloVinculoPartes,
-  obterTitularNomeLinha,
 } from '../data/publicacoesDisplayHelpers.js';
 import {
   buscarHitIndiceCnjPorCnj,
@@ -62,8 +59,10 @@ import {
 } from '../repositories/publicacoesRepository.js';
 import {
   AcoesLinhaCompacta,
-  TabelaManifestacoesProjudi,
-} from './manifestacoes/ManifestacoesProjudiLista.jsx';
+  BadgeStatusVinculo,
+} from './publicacoes/PublicacoesEmailListaShared.jsx';
+import { TabelaPublicacoesEmail } from './publicacoes/PublicacoesEmailLista.jsx';
+import { TabelaManifestacoesProjudi } from './manifestacoes/ManifestacoesProjudiLista.jsx';
 
 const ProcessosLazy = lazy(() =>
   import('./Processos.jsx').then((module) => ({ default: module.Processos }))
@@ -385,200 +384,17 @@ function montarResumoVinculoPublicacao(row, isProjudi) {
   return partes.join(' · ') || 'Movimentação por email';
 }
 
-function CelulaClienteProc({ row, indiceCnj, sugestoesApi }) {
-  const linha = (r, destaque) => {
-    const chave = formatarChaveProcessoVinculo(r);
-    const titular = obterTitularNomeLinha(r);
-    const cls = destaque
-      ? 'font-medium text-sky-800 dark:text-sky-200'
-      : 'text-slate-700 dark:text-slate-300';
-    const subCls = destaque
-      ? 'text-sky-700/90 dark:text-sky-300/90'
-      : 'text-slate-500 dark:text-slate-400';
-    return (
-      <>
-        <div className={cls} title={chave}>
-          {chave}
-        </div>
-        <div className={`truncate text-[10px] ${subCls}`} title={titular}>
-          {titular || '—'}
-        </div>
-      </>
-    );
-  };
-  if (row.statusVinculo === 'vinculado' && (row.codCliente || row._processoId)) {
-    return linha(row, false);
-  }
-  const sug = resolverSugestaoVinculoLinha(row, indiceCnj, sugestoesApi);
-  if (sug) {
-    return linha(
-      {
-        codCliente: sug.codCliente,
-        procInterno: sug.procInterno,
-        processoId: sug.processoId,
-        titularNome: sug.titularNome || sug.parteCliente,
-        parteCliente: sug.parteCliente,
-        cliente: sug.cliente,
-      },
-      true
-    );
-  }
-  return linha(row, false);
-}
-
-function CelulaVinculo({ row, indiceCnj, sugestoesApi, carregandoSugestoes, onAbrirProcesso, onAplicarSugestao }) {
-  const sug = resolverSugestaoVinculoLinha(row, indiceCnj, sugestoesApi);
-  if (row.statusVinculo === 'vinculado') {
-    const rotulo = formatarRotuloVinculoPartes(row);
-    return (
-      <div
-        className="min-w-0 cursor-pointer overflow-hidden"
-        title={`${rotulo}\nDuplo clique: abrir Processos`}
-        onDoubleClick={onAbrirProcesso}
-      >
-        <Badge tone="green">Vinculado</Badge>
-        <div className="mt-0.5 truncate text-[10px] text-slate-600 dark:text-slate-400">{rotulo}</div>
-      </div>
-    );
-  }
-  return (
-    <div
-      className="min-w-0 cursor-pointer overflow-hidden"
-      onDoubleClick={onAbrirProcesso}
-      title="Duplo clique: abrir Processos (se houver sugestão)"
-    >
-      <Badge tone="amber">{row.statusVinculo === 'nao_vinculado' ? 'Não vinculado' : 'Pendente'}</Badge>
-      {carregandoSugestoes && !sug ? (
-        <div className="mt-1 flex items-center gap-1 text-[10px] text-slate-500">
-          <Loader2 className="h-3 w-3 animate-spin" />
-          Buscando sugestão…
-        </div>
-      ) : null}
-      {sug ? (
-        <div
-          className="mt-1 space-y-0.5 text-[10px] text-slate-600 dark:text-slate-400"
-          title={[sug.cliente, formatarChaveProcessoVinculo(sug)].filter(Boolean).join(' · ')}
-        >
-          <Badge tone="slate">
-            Sugestão{sug.fonte === 'api' ? ' (API)' : ''}
-            {sug.ambiguo ? ' · amb.' : ''}
-          </Badge>
-          <div className="truncate font-medium text-sky-800 dark:text-sky-200">{sug.cliente || '—'}</div>
-          {onAplicarSugestao ? (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onAplicarSugestao();
-              }}
-              className="mt-0.5 w-full truncate rounded border border-sky-300 px-1 py-0.5 text-[10px] font-medium text-sky-800 hover:bg-sky-50 dark:border-sky-500/40 dark:text-sky-200 dark:hover:bg-sky-950/30"
-            >
-              Aplicar
-            </button>
-          ) : null}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-const TOOLTIP_ACOES_LINHA = {
-  abrirProcesso: 'Abrir o cadastro do processo vinculado ou sugerido.',
-  vincular:
-    'Associar esta movimentação a um processo do cadastro (escolher cliente e nº interno).',
-  auto:
-    'Vincular automaticamente pelo CNJ ao processo já cadastrado no sistema.',
-  vinculada:
-    'Marcar como vinculada na fila (controle de triagem), sem abrir o cadastro do processo.',
-  tratar:
-    'Marcar como tratada — movimentação revisada e concluída na sua fila.',
-  ignorar:
-    'Marcar como ignorada — sem providência (aviso duplicado, irrelevante, etc.).',
-};
-
-function AcoesLinha({
-  onAbrirProcesso,
-  podeAbrirProcesso = false,
-  onVincular,
-  onAuto,
-  onTratar,
-  onIgnorar,
-  onMarcarVinculada,
-}) {
-  return (
-    <div className="flex flex-col gap-1" onClick={(e) => e.stopPropagation()}>
-      {onAbrirProcesso ? (
-        <button
-          type="button"
-          title={TOOLTIP_ACOES_LINHA.abrirProcesso}
-          onClick={onAbrirProcesso}
-          disabled={!podeAbrirProcesso}
-          className="inline-flex items-center justify-center gap-1 rounded border border-sky-600 bg-sky-600 px-2 py-1.5 text-[10px] font-medium text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400 dark:disabled:border-white/10 dark:disabled:bg-white/5 dark:disabled:text-slate-500"
-        >
-          <FolderOpen className="h-3 w-3" />
-          Abrir processo
-        </button>
-      ) : null}
-      <button
-        type="button"
-        title={TOOLTIP_ACOES_LINHA.vincular}
-        onClick={onVincular}
-        className="inline-flex items-center gap-1 rounded border border-slate-200 px-2 py-1 text-[10px] font-medium hover:bg-slate-100 dark:border-white/15 dark:hover:bg-white/5"
-      >
-        <Link2 className="h-3 w-3" />
-        Vincular
-      </button>
-      <button
-        type="button"
-        title={TOOLTIP_ACOES_LINHA.auto}
-        onClick={onAuto}
-        className="inline-flex items-center gap-1 rounded border border-slate-200 px-2 py-1 text-[10px] font-medium hover:bg-slate-100 dark:border-white/15 dark:hover:bg-white/5"
-      >
-        <RotateCcw className="h-3 w-3" />
-        Auto
-      </button>
-      <button
-        type="button"
-        title={TOOLTIP_ACOES_LINHA.vinculada}
-        onClick={onMarcarVinculada}
-        className="inline-flex items-center gap-1 rounded border border-sky-200 px-2 py-1 text-[10px] font-medium text-sky-800 hover:bg-sky-50 dark:border-sky-500/40 dark:text-sky-200 dark:hover:bg-sky-950/30"
-      >
-        Vinculada
-      </button>
-      <button
-        type="button"
-        title={TOOLTIP_ACOES_LINHA.tratar}
-        onClick={onTratar}
-        className="inline-flex items-center gap-1 rounded border border-emerald-200 px-2 py-1 text-[10px] font-medium text-emerald-800 hover:bg-emerald-50 dark:border-emerald-500/40 dark:text-emerald-200 dark:hover:bg-emerald-950/30"
-      >
-        Tratar
-      </button>
-      <button
-        type="button"
-        title={TOOLTIP_ACOES_LINHA.ignorar}
-        onClick={onIgnorar}
-        className="inline-flex items-center gap-1 rounded border border-amber-200 px-2 py-1 text-[10px] font-medium text-amber-800 hover:bg-amber-50 dark:border-amber-500/40 dark:text-amber-200 dark:hover:bg-amber-950/30"
-      >
-        Ignorar
-      </button>
-    </div>
-  );
-}
-
 function CardMobileRow({
   row,
   indiceCnj,
   sugestoesApi,
-  carregandoSugestoes,
   expandido,
   onToggle,
   onAbrirProcesso,
-  onAplicarSugestao,
   onVincular,
   onAuto,
   onTratar,
   onIgnorar,
-  onMarcarVinculada,
   isProjudi = false,
   teorDaLinha,
 }) {
@@ -620,49 +436,16 @@ function CardMobileRow({
         )}
       </button>
       <div className="mt-2 flex items-center justify-between gap-2 border-t border-slate-100 pt-2 dark:border-white/10">
-        {isProjudi ? (
-          <>
-            <span
-              className={`inline-flex rounded px-2 py-0.5 text-[10px] font-semibold ${
-                row.statusVinculo === 'vinculado'
-                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200'
-                  : 'bg-amber-100 text-amber-900 dark:bg-amber-950/40 dark:text-amber-100'
-              }`}
-            >
-              {row.statusVinculo === 'vinculado' ? 'Vinculado' : 'Pendente'}
-            </span>
-            <AcoesLinhaCompacta
-              onAbrirProcesso={onAbrirProcesso}
-              podeAbrirProcesso={podeAbrirProcesso}
-              onVincular={onVincular}
-              onAuto={onAuto}
-              onTratar={onTratar}
-              onIgnorar={onIgnorar}
-            />
-          </>
-        ) : (
-          <>
-            <CelulaVinculo
-              row={row}
-              indiceCnj={indiceCnj}
-              sugestoesApi={sugestoesApi}
-              carregandoSugestoes={carregandoSugestoes}
-              onAbrirProcesso={onAbrirProcesso}
-              onAplicarSugestao={onAplicarSugestao}
-            />
-            <div className="mt-2">
-              <AcoesLinha
-                onAbrirProcesso={onAbrirProcesso}
-                podeAbrirProcesso={podeAbrirProcesso}
-                onVincular={onVincular}
-                onAuto={onAuto}
-                onTratar={onTratar}
-                onIgnorar={onIgnorar}
-                onMarcarVinculada={onMarcarVinculada}
-              />
-            </div>
-          </>
-        )}
+        <BadgeStatusVinculo row={row} />
+        <AcoesLinhaCompacta
+          onAbrirProcesso={onAbrirProcesso}
+          podeAbrirProcesso={podeAbrirProcesso}
+          onVincular={onVincular}
+          onAuto={onAuto}
+          onTratar={onTratar}
+          onIgnorar={onIgnorar}
+          menuAriaLabel={isProjudi ? 'Mais ações da movimentação' : 'Mais ações da publicação'}
+        />
       </div>
       {expandido ? (
         <pre className="mt-3 max-h-48 overflow-auto whitespace-pre-wrap rounded border border-slate-200 bg-slate-50 p-2 text-xs dark:border-white/10 dark:bg-white/5">
@@ -1269,11 +1052,9 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
                   row={row}
                   indiceCnj={indiceCnj}
                   sugestoesApi={sugestoesApi}
-                  carregandoSugestoes={carregandoSugestoes}
                   expandido={expandidoId === row.id}
                   onToggle={() => toggleLinha(row)}
                   onAbrirProcesso={() => abrirProcesso(row)}
-                  onAplicarSugestao={() => void aplicarSugestaoVinculo(row)}
                   isProjudi={isProjudi}
                   teorDaLinha={teorDaLinha}
                   {...acoesProps(row)}
@@ -1292,94 +1073,18 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
                 acoesProps={acoesProps}
               />
             ) : (
-              <div className="hidden overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-white/10 dark:bg-[#141922] md:block">
-                <table className="w-full min-w-[1180px] text-xs">
-                  <thead className="bg-slate-50 text-left text-slate-600 dark:bg-white/5 dark:text-slate-400">
-                    <tr>
-                      <th
-                        className="cursor-pointer select-none whitespace-nowrap px-3 py-2.5 font-medium hover:bg-slate-100/80 dark:hover:bg-white/10"
-                        onDoubleClick={toggleOrdemDataPublicacao}
-                      >
-                        Data
-                        <span className="ml-1 text-[10px] opacity-70" title="Duplo clique para inverter ordem">
-                          {ordemDataAsc ? '↑' : '↓'}
-                        </span>
-                      </th>
-                      <th className="w-[108px] max-w-[108px] px-2 py-2.5 font-medium">Nº processo</th>
-                      <th className="min-w-[140px] px-3 py-2.5 font-medium">Código / proc.</th>
-                      <th className="min-w-[220px] px-3 py-2.5 font-medium">Teor</th>
-                      <th className="w-[96px] max-w-[96px] px-2 py-2.5 font-medium">Vínculo</th>
-                      <th className="min-w-[160px] px-3 py-2.5 font-medium">Origem / Email</th>
-                      <th className="whitespace-nowrap px-3 py-2.5 font-medium">Recebimento</th>
-                      <th className="w-[120px] px-3 py-2.5 font-medium">Ações</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-white/10">
-                    {rowsExibidas.map((row) => {
-                      const destaque =
-                        row.statusVinculo === 'nao_vinculado' || row.statusVinculo === 'sem_cnj'
-                          ? 'border-l-2 border-l-amber-400/80'
-                          : '';
-                      return (
-                        <tr
-                          key={row.id}
-                          className={`align-top hover:bg-slate-50/80 dark:hover:bg-white/5 ${destaque}`}
-                        >
-                          <td
-                            className="cursor-pointer whitespace-nowrap px-3 py-2.5"
-                            onClick={() => toggleLinha(row)}
-                            title="Ver detalhes"
-                          >
-                            {fmtDataBr(row.dataPublicacao)}
-                          </td>
-                          <td
-                            className="max-w-[108px] cursor-pointer truncate px-2 py-2.5 font-mono text-[10px] text-sky-800 dark:text-sky-300"
-                            onClick={() => toggleLinha(row)}
-                            title={cnjLinha(row)}
-                          >
-                            <span className="inline-flex max-w-full items-center">
-                              <span className="truncate">{cnjLinha(row)}</span>
-                              <BadgeNoDrive row={row} />
-                            </span>
-                          </td>
-                          <td className="max-w-[160px] px-3 py-2.5">
-                            <CelulaClienteProc row={row} indiceCnj={indiceCnj} sugestoesApi={sugestoesApi} />
-                          </td>
-                          <td
-                            className="cursor-pointer px-3 py-2.5 text-slate-700 dark:text-slate-300"
-                            onClick={() => toggleLinha(row)}
-                            title={teorDaLinha(row)}
-                          >
-                            {truncarTeor(teorDaLinha(row), 120)}
-                          </td>
-                          <td className="max-w-[96px] px-2 py-2.5">
-                            <CelulaVinculo
-                              row={row}
-                              indiceCnj={indiceCnj}
-                              sugestoesApi={sugestoesApi}
-                              carregandoSugestoes={carregandoSugestoes}
-                              onAbrirProcesso={() => abrirProcesso(row)}
-                              onAplicarSugestao={() => void aplicarSugestaoVinculo(row)}
-                            />
-                          </td>
-                          <td
-                            className="max-w-[200px] truncate px-3 py-2.5 text-slate-600 dark:text-slate-400"
-                            title={row.arquivoOrigem}
-                          >
-                            {row.arquivoOrigem || '—'}
-                          </td>
-                          <td className="whitespace-nowrap px-3 py-2.5 text-slate-600 dark:text-slate-400">
-                            {fmtInstant(row.emailRecebidoEm)}
-                          </td>
-                          <td className="px-3 py-2.5">
-                            <AcoesLinha {...acoesProps(row)} />
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+              <TabelaPublicacoesEmail
+                rows={rowsExibidas}
+                indiceCnj={indiceCnj}
+                sugestoesApi={sugestoesApi}
+                carregandoSugestoes={carregandoSugestoes}
+                ordemDataAsc={ordemDataAsc}
+                onToggleOrdemData={toggleOrdemDataPublicacao}
+                onAbrirDetalhe={toggleLinha}
+                acoesProps={acoesProps}
+                teorDaLinha={teorDaLinha}
+                badgeNoDrive={(row) => <BadgeNoDrive row={row} />}
+              />
             )}
           </>
         )}
