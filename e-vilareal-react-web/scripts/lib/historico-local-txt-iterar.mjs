@@ -71,8 +71,14 @@ export function* iterarEntradasHistoricoLocal(opts) {
     const cod8 = formatCod8(cod);
     const maxProc = maxProcParaCliente(cod, contagens);
 
-    for (let proc = 1; proc <= maxProc; proc += 1) {
-      if (opts.filtroProcesso != null && proc !== opts.filtroProcesso) continue;
+    /** Com --processo=N, não limitar ao maxProc padrão (999) — processos altos existem no Dropbox. */
+    const procs =
+      opts.filtroProcesso != null
+        ? [Math.trunc(opts.filtroProcesso)]
+        : Array.from({ length: maxProc }, (_, i) => i + 1);
+
+    for (const proc of procs) {
+      if (proc < 1) continue;
 
       const procStr = formatProcNomeArquivo(proc);
       if (!procStr) continue;

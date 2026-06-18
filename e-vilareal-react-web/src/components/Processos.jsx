@@ -627,6 +627,8 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   const [historicoExternoTick, setHistoricoExternoTick] = useState(0);
   /** Evita aplicar resposta antiga se o usuário trocar de processo antes do GET terminar. */
   const carregarProcessoApiSeqRef = useRef(0);
+  /** Bloqueia auto-save enquanto GET /api/processos (troca de código ou nº interno) está em andamento. */
+  const carregandoProcessoNavegacaoRef = useRef(false);
   /** Evita recarregar histórico da API para o mesmo processoId. */
   const historicoCarregadoParaProcessoRef = useRef(null);
   /**
@@ -1260,7 +1262,11 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
 
   useEffect(() => {
     if (!featureFlags.useApiProcessos) return;
-    void carregarProcessoApiAtual();
+    carregandoProcessoNavegacaoRef.current = true;
+    aplicarCabecalhoVazioProcessoNaoCadastradoApi();
+    void carregarProcessoApiAtual().finally(() => {
+      carregandoProcessoNavegacaoRef.current = false;
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [codigoCliente, processo]);
 
@@ -2345,6 +2351,13 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
 
   /** Processo sem linha na API: formulário como novo (sem reaproveitar cabeçalho/histórico do proc. anterior). */
   function aplicarCabecalhoVazioProcessoNaoCadastradoApi() {
+    setProcessoApiId(null);
+    processoApiIdRef.current = null;
+    setClienteProcessoApiId(null);
+    setParteClienteEntradas([]);
+    setParteOpostaEntradas([]);
+    setParteCliente('');
+    setParteOposta('');
     setNumeroProcessoNovo('');
     setNumeroProcessoVelho('');
     setNaturezaAcao('');
@@ -2516,6 +2529,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       }
     } catch (e) {
       if (seq !== carregarProcessoApiSeqRef.current) return;
+      aplicarCabecalhoVazioProcessoNaoCadastradoApi();
       setApiError(e?.message || 'Falha ao carregar processo da API.');
     }
   }
@@ -2682,6 +2696,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
 
   useEffect(() => {
     if (edicaoDesabilitada) return;
+    if (carregandoProcessoNavegacaoRef.current) return;
     if (featureFlags.useApiProcessos) {
       void sincronizarApiProcessoAtual();
       return;
@@ -2690,8 +2705,6 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     // eslint-disable-next-line react-hooks/exhaustive-deps -- snapshot completo; listar deps duplicaria montarPayload
   }, [
     edicaoDesabilitada,
-    codigoCliente,
-    processo,
     cliente,
     parteCliente,
     parteOposta,

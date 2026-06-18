@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Upload, X } from 'lucide-react';
+import { Loader2, Mail, Upload, X } from 'lucide-react';
+import { processarExtratoCoraEmail } from '../../../api/extratoCoraEmailApi.js';
 import { featureFlags } from '../../../config/featureFlags.js';
 import { useFinanceiro } from '../FinanceiroContext.jsx';
 import { useFinanceiroToast } from '../shared/Toast.jsx';
@@ -28,6 +29,10 @@ export function ExtratoImportModal({ open, onClose, bancoInicial = null, onSucce
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);
   const [confirmSubstituir, setConfirmSubstituir] = useState(false);
+  const [emailBusy, setEmailBusy] = useState(false);
+  const [emailResult, setEmailResult] = useState(null);
+
+  const isCora = useMemo(() => String(bancoNome ?? '').trim().toUpperCase() === 'CORA', [bancoNome]);
 
   const numeroBanco = useMemo(() => {
     const hit = bancos.find((b) => b.nome === bancoNome);
@@ -59,6 +64,8 @@ export function ExtratoImportModal({ open, onClose, bancoInicial = null, onSucce
     setFile(null);
     setModo('mesclar');
     setBancoNome(resolverBancoInicial());
+    setEmailResult(null);
+    setEmailBusy(false);
   }, [open, resolverBancoInicial]);
 
   /** Lista de bancos pode carregar após abrir o modal — preenche banco se ainda vazio. */
@@ -152,6 +159,41 @@ export function ExtratoImportModal({ open, onClose, bancoInicial = null, onSucce
 
   const onConfirmSubstituir = () => {
     runImport();
+  };
+
+  const runImportarEmailCora = async (incluirLidos = false) => {
+    if (!featureFlags.useApiFinanceiro) return;
+    setEmailBusy(true);
+    setEmailResult(null);
+    try {
+      const res = await processarExtratoCoraEmail({ incluirLidos });
+      setEmailResult(res);
+      const criados = Number(res?.lancamentosCriados ?? 0);
+      const erros = res?.erros?.length ?? 0;
+      if (criados > 0) {
+        toast.success(
+          `${criados} lançamento(s) importados via e-mail Cora.` +
+            (res?.lancamentosJaExistiam ? ` ${res.lancamentosJaExistiam} já existiam.` : ''),
+        );
+        refreshBancos?.();
+        onSuccess?.({ bancoNome: 'CORA', numeroBanco, importados: criados });
+      } else if (erros > 0) {
+        toast.warn(
+          `Nenhum lançamento novo. ${res.emailsEncontrados ?? 0} e-mail(s) encontrado(s). ` +
+            `${erros} aviso(s): ${res.erros.slice(0, 2).join(' · ')}`,
+        );
+      } else {
+        toast.info(
+          res?.emailsEncontrados
+            ? `${res.emailsEncontrados} e-mail(s) encontrado(s), sem lançamentos novos.`
+            : 'Nenhum e-mail Cora não lido com anexo OFX encontrado.',
+        );
+      }
+    } catch (e) {
+      toast.error(e?.message || 'Falha ao importar extrato Cora via e-mail.');
+    } finally {
+      setEmailBusy(false);
+    }
   };
 
   if (!open) return null;
@@ -285,6 +327,51 @@ export function ExtratoImportModal({ open, onClose, bancoInicial = null, onSucce
                     onChange={(e) => handleFile(e.target.files?.[0])}
                   />
                 </div>
+
+                {isCora && featureFlags.useApiFinanceiro ? (
+                  <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/40 p-3 space-y-2">
+                    <p className="text-xs text-slate-600 dark:text-slate-400">
+                      Importação automática via Gmail (remetente Cora, anexo OFX).
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        disabled={emailBusy || busy}
+                        onClick={() => void runImportarEmailCora(false)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
+                      >
+                        {emailBusy ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden />
+                        ) : (
+                          <Mail className="w-3.5 h-3.5" aria-hidden />
+                        )}
+                        Buscar e-mail Cora
+                      </button>
+                      <button
+                        type="button"
+                        disabled={emailBusy || busy}
+                        title="Reprocessa e-mails já lidos (útil para teste)"
+                        onClick={() => void runImportarEmailCora(true)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/30 text-amber-950 dark:text-amber-100 hover:bg-amber-100 dark:hover:bg-amber-950/50 disabled:opacity-50"
+                      >
+                        Incluir já lidos
+                      </button>
+                    </div>
+                    {emailResult ? (
+                      <ul className="text-[11px] text-slate-600 dark:text-slate-400 space-y-0.5">
+                        <li>E-mails encontrados: {emailResult.emailsEncontrados ?? 0}</li>
+                        <li>Processados: {emailResult.emailsProcessados ?? 0}</li>
+                        <li>Lançamentos criados: {emailResult.lancamentosCriados ?? 0}</li>
+                        <li>Já existiam: {emailResult.lancamentosJaExistiam ?? 0}</li>
+                        {(emailResult.erros?.length ?? 0) > 0 ? (
+                          <li className="text-amber-700 dark:text-amber-300">
+                            Avisos: {emailResult.erros.slice(0, 3).join(' · ')}
+                          </li>
+                        ) : null}
+                      </ul>
+                    ) : null}
+                  </div>
+                ) : null}
 
                 <fieldset className="text-sm text-slate-800 dark:text-slate-200">
                   <legend className="text-slate-600 dark:text-slate-400 mb-1">Modo</legend>
