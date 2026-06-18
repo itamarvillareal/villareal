@@ -3,6 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { X, ClipboardList, ChevronUp, ChevronDown, Loader2 } from 'lucide-react';
 import { useUsuarioPerfil } from '../hooks/useUsuarioPerfil.js';
 import { mensagemErroAmigavel } from '../utils/mensagemErroAmigavel.js';
+import {
+  formatBytesCompact,
+  somaBytesArquivos,
+  UPLOAD_P7S_LIMITE_BYTES,
+  validarTamanhoLoteP7s,
+} from '../domain/uploadP7sLimits.js';
 import { buscarCliente, pesquisarCadastroPessoasPorNomeOuCpf } from '../api/clientesService.js';
 import {
   listarConsultasARealizarPorData,
@@ -723,14 +729,26 @@ export function Diagnosticos() {
 
   function onSelecionarArquivosAssinados(e) {
     const files = [...(e.target.files || [])].filter((f) => f.name.toLowerCase().endsWith('.p7s'));
+    if (!files.length) {
+      setUploadAssinadosArquivos([]);
+      setUploadAssinadosErro('Selecione arquivos .p7s assinados.');
+      e.target.value = '';
+      return;
+    }
+    const erroTamanho = validarTamanhoLoteP7s(files);
     setUploadAssinadosArquivos(files);
-    setUploadAssinadosErro(files.length ? '' : 'Selecione arquivos .p7s assinados.');
+    setUploadAssinadosErro(erroTamanho);
     e.target.value = '';
   }
 
   async function enviarArquivosAssinados() {
     if (!uploadAssinadosArquivos.length) {
       setUploadAssinadosErro('Selecione ao menos um arquivo .p7s.');
+      return;
+    }
+    const erroTamanho = validarTamanhoLoteP7s(uploadAssinadosArquivos);
+    if (erroTamanho) {
+      setUploadAssinadosErro(erroTamanho);
       return;
     }
     setUploadAssinadosEnviando(true);
@@ -2092,6 +2110,10 @@ export function Diagnosticos() {
                 assinar (vira .p7s, pode achatar pastas) — não é preciso preservar nome nem
                 estrutura.
               </p>
+              <p className="text-xs text-slate-500">
+                Limite por envio: até {formatBytesCompact(UPLOAD_P7S_LIMITE_BYTES)} no total. Se
+                houver muitos arquivos ou PDFs grandes, envie em lotes menores.
+              </p>
               <div>
                 <input
                   ref={inputUploadAssinadosRef}
@@ -2107,7 +2129,7 @@ export function Diagnosticos() {
                   className="w-full rounded-lg border border-dashed border-slate-300 px-3 py-3 text-sm text-slate-600 hover:bg-slate-50"
                 >
                   {uploadAssinadosArquivos.length
-                    ? `${uploadAssinadosArquivos.length} arquivo(s) .p7s selecionado(s)`
+                    ? `${uploadAssinadosArquivos.length} arquivo(s) .p7s · ${formatBytesCompact(somaBytesArquivos(uploadAssinadosArquivos))}`
                     : 'Clique para escolher arquivos .p7s'}
                 </button>
               </div>

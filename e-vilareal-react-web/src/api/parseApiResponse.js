@@ -45,6 +45,13 @@ export async function parseApiJsonResponse(response, options = {}) {
     }
   }
   if (!response.ok) {
+    if (response.status === 413) {
+      throw new Error(
+        data?.message
+          || 'Os arquivos enviados são grandes demais (limite: 250 MB por lote). '
+            + 'Envie menos arquivos .p7s por vez ou divida em lotes menores.',
+      );
+    }
     let message = data?.message || data?.error || `Erro ${response.status}`;
     if (data?.path && typeof data.path === 'string') {
       message = `${message} — ${data.path}`;

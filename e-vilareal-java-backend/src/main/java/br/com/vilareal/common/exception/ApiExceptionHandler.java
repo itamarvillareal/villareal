@@ -45,7 +45,8 @@ public class ApiExceptionHandler {
         log.warn("Upload excedeu o limite: {} — {}", req.getRequestURI(), ex.getMessage());
         return body(
                 HttpStatus.PAYLOAD_TOO_LARGE,
-                "Ficheiro ou pedido multipart demasiado grande. Ajuste spring.servlet.multipart.max-file-size se necessário.",
+                "O envio excedeu o tamanho máximo permitido (250 MB por lote). "
+                        + "Envie menos arquivos .p7s por vez ou divida em lotes menores.",
                 req);
     }
 

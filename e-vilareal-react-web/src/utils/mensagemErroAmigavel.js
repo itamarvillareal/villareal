@@ -37,6 +37,18 @@ export function mensagemErroAmigavel(erro, contexto = '') {
       : 'Registro não encontrado.';
   }
 
+  if (
+    /\b413\b/.test(msg)
+    || /payload too large|entity too large|request entity too large|demasiado grande|excedeu o tamanho/i.test(
+      lower,
+    )
+  ) {
+    return contexto === 'enviar os arquivos assinados'
+      ? 'Os arquivos .p7s selecionados são grandes demais (limite: 250 MB por envio). '
+          + 'Divida em lotes menores e tente novamente.'
+      : 'O envio excedeu o tamanho máximo permitido (250 MB). Reduza o lote e tente novamente.';
+  }
+
   if (/\b(500|502|503|504)\b/.test(msg) || /internal server|erro no servidor/i.test(lower)) {
     return 'O servidor está indisponível no momento. Tente novamente em instantes.';
   }
