@@ -66,7 +66,7 @@ import { imprimirRelatorioAnaliseCorrecao } from './lib/historico-local-txt-rela
 import { coletarEntradasHistoricoLocal } from './lib/historico-local-txt-iterar.mjs';
 import { movimentoEmFromHistoricoLocal } from './lib/historico-movimento-em.mjs';
 import { normalizarResponsavelHistorico, resetAvisosResponsavel } from './lib/historico-responsavel-import.mjs';
-import { normalizarTextoPlanilha } from './lib/normalizar-texto-planilha.mjs';
+import { montarCamposAndamentoFromInformacaoBruta } from './lib/historico-informacao-import.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const IMPORT_PLANILHA_SCRIPT = path.join(__dirname, 'import-historico-planilha.mjs');
@@ -163,9 +163,14 @@ function entradasParaLinhasPlanilha(entradas) {
   let linhaRef = 0;
   for (const e of entradas) {
     linhaRef += 1;
-    let titulo = normalizarTextoPlanilha(e.informacao);
-    if (!titulo.trim()) titulo = 'Andamento';
-    if (titulo.length > 500) titulo = titulo.slice(0, 500);
+    const responsavel = normalizarResponsavelHistorico(
+      e.usuarioBruto,
+      `${e.codigoCliente8}/proc${e.numeroInterno}/idx${e.indice}`
+    );
+    const { titulo, detalhePlanilhaColG } = montarCamposAndamentoFromInformacaoBruta(
+      e.informacao,
+      responsavel
+    );
 
     const movimentoEm = movimentoEmFromHistoricoLocal(
       e.dataBruta,
@@ -179,12 +184,15 @@ function entradasParaLinhasPlanilha(entradas) {
       dataPlanilha = `${da}/${mo}/${y}`;
     }
 
-    const responsavel = normalizarResponsavelHistorico(
-      e.usuarioBruto,
-      `${e.codigoCliente8}/proc${e.numeroInterno}/idx${e.indice}`
-    );
-
-    rows.push([e.codigoCliente8, e.numeroInterno, '', titulo, dataPlanilha, responsavel ?? '']);
+    rows.push([
+      e.codigoCliente8,
+      e.numeroInterno,
+      '',
+      titulo,
+      dataPlanilha,
+      responsavel ?? '',
+      detalhePlanilhaColG ?? '',
+    ]);
   }
   return { rows, linhaRef };
 }
@@ -193,6 +201,14 @@ function gravarPlanilhaHistorico(outPath, rows) {
   const ws = XLSX.utils.aoa_to_sheet(rows);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Planilha2');
+  const precisaXlsx = rows.some((row) =>
+    Array.isArray(row) && row.some((c) => c != null && String(c).length > 255)
+  );
+  if (precisaXlsx) {
+    const p = outPath.replace(/\.xls$/i, '.xlsx');
+    XLSX.writeFile(wb, p.endsWith('.xlsx') ? p : `${p}.xlsx`, { bookType: 'xlsx' });
+    return p.endsWith('.xlsx') ? p : `${p}.xlsx`;
+  }
   const p = outPath.endsWith('.xls') ? outPath : outPath.replace(/\.xlsx?$/i, '') + '.xls';
   try {
     XLSX.writeFile(wb, p, { bookType: 'biff8' });
@@ -270,7 +286,7 @@ function main() {
   let xlsPath = opts.gerarXls;
   if (!xlsPath) {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vilareal-hist-txt-'));
-    xlsPath = path.join(tmpDir, 'historico-local-import.xls');
+    xlsPath = path.join(tmpDir, 'historico-local-import.xlsx');
   }
   const gravado = gravarPlanilhaHistorico(xlsPath, rows);
   console.log(`[txt] Planilha intermédia: ${gravado} (${rows.length} linhas)`);

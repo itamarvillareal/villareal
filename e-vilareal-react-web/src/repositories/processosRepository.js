@@ -1161,6 +1161,29 @@ function extrairNomeConsultorDeDetalhe(detalhe) {
 }
 
 /**
+ * Texto integral importado em `detalhe` (tipo 15 longo), com prefixo Consultor.
+ * @param {unknown} detalhe
+ * @param {unknown} tituloCampo
+ * @returns {string | null}
+ */
+function extrairInformacaoCompletaDeDetalhe(detalhe, tituloCampo) {
+  const s = String(detalhe ?? '').trim();
+  if (!s) return null;
+
+  const comConsultor = /^Consultor:\s*.+\n\n([\s\S]+)$/i.exec(s);
+  if (comConsultor && comConsultor[1].trim().length > 500) {
+    return comConsultor[1].trim();
+  }
+
+  const tit = String(tituloCampo ?? '').trim();
+  if (s.length > 500) {
+    if (tit && s.startsWith(tit)) return s;
+    if (!tit) return s;
+  }
+  return null;
+}
+
+/**
  * Import planilha grava responsável catalogado em `detalhe` (usuarioId null).
  * Só usa `detalhe` como nome quando o título já veio preenchido (evita duplicar texto da informação).
  */
@@ -1333,14 +1356,15 @@ export function mapApiAndamentoToHistoricoItem(a, idx = 0, total = 1) {
   const movRaw = a?.movimentoEm ?? a?.movimento_em;
   const tituloCampo = a?.titulo ?? a?.tituloAndamento ?? a?.titulo_andamento;
   const det = a?.detalhe != null ? String(a.detalhe) : '';
+  const infoCompleta = extrairInformacaoCompletaDeDetalhe(det, tituloCampo);
   const primeiraLinhaDet = det
     ? det
         .split(/\r?\n/)
         .map((x) => x.trim())
         .find((x) => x.length > 0) ?? ''
     : '';
-  const tituloRaw = String(tituloCampo ?? '').trim() || primeiraLinhaDet;
-  const tituloPreenchido = String(tituloCampo ?? '').trim().length > 0;
+  const tituloRaw = infoCompleta || String(tituloCampo ?? '').trim() || primeiraLinhaDet;
+  const tituloPreenchido = String(tituloCampo ?? '').trim().length > 0 || Boolean(infoCompleta);
   const idNum = Number(a?.id);
   const nome = String(a?.usuarioNome ?? a?.usuario_nome ?? '').trim();
   const login = String(a?.usuarioLogin ?? a?.usuario_login ?? '').trim();
@@ -1354,7 +1378,7 @@ export function mapApiAndamentoToHistoricoItem(a, idx = 0, total = 1) {
     id: persistidoServidor ? idNum : Date.now() + idx,
     fromApi: persistidoServidor,
     inf: String(total - idx).padStart(2, '0'),
-    info: infoTxt.length > 500 ? infoTxt.slice(0, 500) : infoTxt,
+    info: infoCompleta || (infoTxt.length > 500 ? infoTxt.slice(0, 500) : infoTxt),
     data: toBrFromIsoDate(movRaw),
     usuario,
     usuarioLogin: login || null,

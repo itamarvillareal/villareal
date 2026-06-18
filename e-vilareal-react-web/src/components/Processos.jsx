@@ -578,7 +578,15 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   const [pjeTribunalDraft, setPjeTribunalDraft] = useState('');
   const [pjeGrauDraft, setPjeGrauDraft] = useState('PRIMEIRO_GRAU');
   const [tabAtiva, setTabAtiva] = useState('historico');
-  const [historicoToast, setHistoricoToast] = useState('');
+  const [historicoToast, setHistoricoToast] = useState(null);
+  const showProcessoToast = useCallback((message, variant = 'success') => {
+    const msg = String(message ?? '').trim();
+    if (!msg) {
+      setHistoricoToast(null);
+      return;
+    }
+    setHistoricoToast({ message: msg, variant });
+  }, []);
   const abasProcessoRef = useRef(null);
   const [modalAcoesRedacaoAberto, setModalAcoesRedacaoAberto] = useState(false);
   const [indiceAcaoRedacaoFocada, setIndiceAcaoRedacaoFocada] = useState(0);
@@ -1568,7 +1576,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
         salvarHistoricoDoProcesso(montarPayloadRegistroProcesso(overridesPje));
       }
       if (valor === 'TJ Go - Autos Físicos') {
-        setHistoricoToast('Processo em autos físicos — sem consulta automática.');
+        showProcessoToast('Processo em autos físicos — sem consulta automática.', 'warning');
         return;
       }
       if (valor === 'Projudi' || valor === 'PJe') {
@@ -2106,14 +2114,14 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       const { blob, filename, avisos } = await baixarAutosIntegralProcesso(cnj);
       downloadPdfBlob(blob, filename);
       if (avisos) {
-        setHistoricoToast(`Autos integral baixado com avisos: ${avisos}`);
+        showProcessoToast(`Autos integral baixado com avisos: ${avisos}`, 'warning');
       }
     } catch (e) {
       setApiError(e?.message || 'Falha ao baixar autos integral.');
     } finally {
       setBaixandoAutosIntegral(false);
     }
-  }, [numeroProcessoNovo, baixandoAutosIntegral]);
+  }, [numeroProcessoNovo, baixandoAutosIntegral, showProcessoToast]);
 
   const tramitacaoNorm = useMemo(() => {
     const t = String(tramitacao ?? '').trim();
@@ -2147,53 +2155,55 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     try {
       const r = await obterMovimentacoesDrive(id);
       if (r?.erro) {
-        setApiError(String(r.erro));
+        showProcessoToast(String(r.erro), 'error');
         return;
       }
       const status = String(r?.status ?? '').toUpperCase();
       if (status === 'SEM_SISTEMA') {
-        setApiError(
+        showProcessoToast(
           String(r?.mensagem ?? '').trim()
-            || 'Sem sistema digital para consulta automática; defina a tramitação (Projudi ou PJe).'
+            || 'Sem sistema digital para consulta automática; defina a tramitação (Projudi ou PJe).',
+          'error',
         );
         return;
       }
       if (status === 'INICIADO') {
-        setHistoricoToast(
+        showProcessoToast(
           String(r?.mensagem ?? '').trim()
-            || 'PJe iniciado — acompanhe o badge No Drive na publicação por e-mail.'
+            || 'PJe iniciado — acompanhe o badge No Drive na publicação por e-mail.',
         );
         return;
       }
       if (status === 'PJE_AUTOMACAO_INDISPONIVEL') {
-        setApiError(
+        showProcessoToast(
           String(r?.mensagem ?? r?.erro ?? '').trim()
-            || 'Automação de cópia integral indisponível para este tribunal.'
+            || 'Automação de cópia integral indisponível para este tribunal.',
+          'error',
         );
         return;
       }
       const baixados = Number(r?.arquivosBaixados ?? 0);
       const msg = String(r?.mensagem ?? '').trim();
       if (msg) {
-        setHistoricoToast(msg);
+        showProcessoToast(msg);
       } else if (baixados > 0) {
-        setHistoricoToast(`${baixados} arquivo(s) enviado(s) ao Drive.`);
+        showProcessoToast(`${baixados} arquivo(s) enviado(s) ao Drive.`);
       } else {
-        setHistoricoToast('Consulta concluída; nenhum arquivo novo enviado.');
+        showProcessoToast('Consulta concluída; nenhum arquivo novo enviado.');
       }
     } catch (e) {
-      setApiError(e?.message || 'Falha ao obter movimentações.');
+      showProcessoToast(e?.message || 'Falha ao obter movimentações.', 'error');
     } finally {
       setBuscandoMovimentacoes(false);
     }
-  }, [processoApiId, buscandoMovimentacoes]);
+  }, [processoApiId, buscandoMovimentacoes, showProcessoToast]);
 
   const handleObterMovimentacoes = useCallback(async () => {
     const id = Number(processoApiId);
     if (!id || buscandoMovimentacoes) return;
     const cnj = String(numeroProcessoNovo ?? '').trim();
     if (!cnj) {
-      setApiError('Informe o número CNJ do processo.');
+      showProcessoToast('Informe o número CNJ do processo.', 'error');
       return;
     }
     if (tramitacaoBloqueiaObterMovimentacoes) {
@@ -2212,6 +2222,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     processoCnjTrt18,
     tramitacaoBloqueiaObterMovimentacoes,
     executarObterMovimentacoesDrive,
+    showProcessoToast,
   ]);
 
   /** Snapshot completo do formulário para `localStorage` (processo × cliente). */
@@ -2992,7 +3003,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
           permitirComEdicaoDesabilitada: true,
         });
       }
-      setHistoricoToast('Informação atualizada no histórico.');
+      showProcessoToast('Informação atualizada no histórico.');
       return;
     }
 
@@ -3034,7 +3045,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
         permitirComEdicaoDesabilitada: true,
       });
     }
-    setHistoricoToast('Informação adicionada ao histórico.');
+    showProcessoToast('Informação adicionada ao histórico.');
   }
 
   function desfazerUltimaInformacaoHistorico() {
@@ -3129,8 +3140,9 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   const valorCausaZerado = !String(valorCausa ?? '').trim() || valorCausaFmt === 'R$ 0,00';
 
   useEffect(() => {
-    if (!historicoToast) return undefined;
-    const t = window.setTimeout(() => setHistoricoToast(''), 3200);
+    if (!historicoToast?.message) return undefined;
+    const ms = historicoToast.variant === 'error' ? 6000 : 3200;
+    const t = window.setTimeout(() => setHistoricoToast(null), ms);
     return () => window.clearTimeout(t);
   }, [historicoToast]);
 
@@ -3340,7 +3352,11 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       className={`${isEmbedded ? 'min-h-0 w-full' : 'min-h-full'} bg-slate-100`}
     >
       <div className={`max-w-[1400px] mx-auto px-3 sm:px-4 py-4 ${isEmbedded ? 'min-w-0' : ''}`}>
-        <ProcessosToast message={historicoToast} onClose={() => setHistoricoToast('')} />
+        <ProcessosToast
+          message={historicoToast?.message}
+          variant={historicoToast?.variant ?? 'success'}
+          onClose={() => setHistoricoToast(null)}
+        />
         <ProcessosStickyHeader
           numeroCnj={numeroProcessoNovo}
           cliente={cliente}

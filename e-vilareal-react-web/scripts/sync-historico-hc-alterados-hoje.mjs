@@ -51,7 +51,7 @@ import {
 } from './lib/historico-hc-scan-alterados.mjs';
 import { movimentoEmFromHistoricoLocal } from './lib/historico-movimento-em.mjs';
 import { normalizarResponsavelHistorico, resetAvisosResponsavel } from './lib/historico-responsavel-import.mjs';
-import { normalizarTextoPlanilha } from './lib/normalizar-texto-planilha.mjs';
+import { montarCamposAndamentoFromInformacaoBruta } from './lib/historico-informacao-import.mjs';
 import { buscarProcesso } from './lib/vilareal-import-processo-api.mjs';
 
 const ORIGEM_PADRAO = 'IMPORT_TXT_LOCAL';
@@ -196,22 +196,20 @@ function buildWriteBody(api, txt, origemPadrao) {
 
 /** @param {import('./lib/historico-local-txt-iterar.mjs').EntradaHistoricoLocal} e */
 function payloadFromEntrada(e) {
-  let titulo = normalizarTextoPlanilha(e.informacao);
-  if (!titulo.trim()) titulo = 'Andamento';
-  const titulo500 = titulo.length > 500 ? titulo.slice(0, 500) : titulo;
+  const ref = `${e.codigoCliente8}/proc${e.numeroInterno}/idx${e.indice}`;
+  const responsavel = normalizarResponsavelHistorico(e.usuarioBruto, ref);
+  const { titulo, detalhe } = montarCamposAndamentoFromInformacaoBruta(e.informacao, responsavel);
   const movimentoEm = movimentoEmFromHistoricoLocal(
     e.dataBruta,
     e.yyyyPasta,
     e.mmPasta,
     e.infoArquivoAbs
   );
-  const ref = `${e.codigoCliente8}/proc${e.numeroInterno}/idx${e.indice}`;
-  const detalhe = normalizarResponsavelHistorico(e.usuarioBruto, ref);
-  const chave = chaveAndamentoEstrita(movimentoEm, titulo500);
+  const chave = chaveAndamentoEstrita(movimentoEm, titulo);
   return {
     indice: e.indice,
     movimentoEm,
-    titulo: titulo500,
+    titulo,
     detalhe,
     chave,
   };

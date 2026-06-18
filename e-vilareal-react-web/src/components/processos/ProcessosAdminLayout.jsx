@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ChevronDown, Check, X } from 'lucide-react';
+import { AlertCircle, ChevronDown, Check, X } from 'lucide-react';
 
 export const processosInputClass =
   'w-full px-3 py-2.5 text-sm rounded-xl border border-gray-200 bg-white text-gray-800 font-medium placeholder:text-gray-300 placeholder:italic focus:outline-none focus:ring-2 focus:ring-teal-400 focus:border-teal-400 transition-[box-shadow,border-color] duration-200';
@@ -130,15 +130,41 @@ export function formatValorCausaExibicao(valor) {
   return s.startsWith('R$') ? s : `R$ ${s}`;
 }
 
-/** @param {{ message: string, onClose?: () => void }} props */
-export function ProcessosToast({ message, onClose }) {
+const TOAST_VARIANTS = {
+  success: {
+    role: 'status',
+    className:
+      'bg-teal-600 text-white border-teal-500/50',
+    Icon: Check,
+    iconStroke: 2.5,
+  },
+  error: {
+    role: 'alert',
+    className:
+      'bg-red-600 text-white border-red-500/50',
+    Icon: AlertCircle,
+    iconStroke: 2,
+  },
+  warning: {
+    role: 'status',
+    className:
+      'bg-amber-600 text-white border-amber-500/50',
+    Icon: AlertCircle,
+    iconStroke: 2,
+  },
+};
+
+/** @param {{ message: string, variant?: 'success'|'error'|'warning', onClose?: () => void }} props */
+export function ProcessosToast({ message, variant = 'success', onClose }) {
   if (!message) return null;
+  const cfg = TOAST_VARIANTS[variant] ?? TOAST_VARIANTS.success;
+  const Icon = cfg.Icon;
   return (
     <div
-      role="status"
-      className="fixed bottom-6 right-6 z-[60] flex items-center gap-2.5 px-4 py-3 rounded-xl bg-teal-600 text-white text-sm font-medium shadow-lg border border-teal-500/50 max-w-[min(100%,22rem)]"
+      role={cfg.role}
+      className={`fixed bottom-6 right-6 z-[60] flex items-center gap-2.5 px-4 py-3 rounded-xl text-sm font-medium shadow-lg border max-w-[min(100%,22rem)] ${cfg.className}`}
     >
-      <Check className="w-5 h-5 shrink-0" strokeWidth={2.5} aria-hidden />
+      <Icon className="w-5 h-5 shrink-0" strokeWidth={cfg.iconStroke} aria-hidden />
       <span className="flex-1 leading-snug">{message}</span>
       {onClose ? (
         <button type="button" onClick={onClose} className="p-1 rounded-lg hover:bg-white/15 transition-colors" aria-label="Fechar">

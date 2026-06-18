@@ -135,6 +135,24 @@ describe('mapApiAndamentoToHistoricoItem', () => {
     expect(h.usuario).toBe('ANA LUISA');
   });
 
+  it('exibe informação integral em detalhe quando tipo 15 excede 500 caracteres', () => {
+    const corpo = `DESPACHO ${'X'.repeat(520)}`;
+    const detalhe = `Consultor: ITAMAR\n\n${corpo}`;
+    const h = mapApiAndamentoToHistoricoItem(
+      {
+        id: 6,
+        movimentoEm: '2017-10-10T00:00:00Z',
+        titulo: corpo.slice(0, 500),
+        detalhe,
+        usuarioId: null,
+      },
+      0,
+      1
+    );
+    expect(h.info).toBe(corpo);
+    expect(h.usuario).toBe('ITAMAR');
+  });
+
   it('inclui usuarioId quando a API envia', () => {
     const h = mapApiAndamentoToHistoricoItem(
       { id: 9, movimentoEm: '2026-01-01T00:00:00Z', titulo: 'X', usuarioId: 3 },

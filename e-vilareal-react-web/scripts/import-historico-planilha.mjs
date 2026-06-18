@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Importa histórico de andamentos multicliente (.xls/.xlsx).
- * Colunas: A = código cliente, B = nº interno do processo, D = título, E = data/hora, F = responsável (opcionais → null ou valor por defeito onde a API exija).
+ * Colunas: A = código cliente, B = nº interno do processo, D = título, E = data/hora, F = responsável, G = detalhe/informação integral (opcional; import txt local quando tipo 15 > 500 chars).
  *
  * Comportamento por defeito (importação completa):
  * - Antes de importar: DELETE em massa da `origem` escolhida (API; defeito IMPORT_PLANILHA). Desligar: `--nao-limpar-import`.
@@ -471,7 +471,7 @@ function contarLinhasUsadasAteF(mat) {
   for (let i = 0; i < mat.length; i += 1) {
     const row = mat[i];
     if (!Array.isArray(row)) continue;
-    for (let j = 0; j < 6; j += 1) {
+    for (let j = 0; j < 7; j += 1) {
       const v = row[j];
       if (v != null && String(v).trim() !== '') {
         max = Math.max(max, i + 1);
@@ -502,13 +502,15 @@ function buildLinhas(mat) {
     const d = row[3];
     const e = row[4];
     const f = row[5];
+    const g = row[6];
 
     const semConteudo =
       (a == null || String(a).trim() === '') &&
       (b == null || String(b).trim() === '') &&
       (d == null || String(d).trim() === '') &&
       (e == null || String(e).trim() === '') &&
-      (f == null || String(f).trim() === '');
+      (f == null || String(f).trim() === '') &&
+      (g == null || String(g).trim() === '');
     if (semConteudo) continue;
 
     let cod8 = normalizarCodigoCliente8(a);
@@ -547,6 +549,7 @@ function buildLinhas(mat) {
       titulo,
       movimentoEm,
       responsavelBruto: f,
+      detalheInformacaoBruto: g,
       totalLinhasSheet: totalLinhas,
     });
   }
@@ -555,7 +558,17 @@ function buildLinhas(mat) {
 
 function normalizarDetalheResponsavelLinhas(brutas) {
   for (const L of brutas) {
-    L.detalheNorm = normalizarResponsavel(L.responsavelBruto, L.linhaExcel);
+    const detalheG = L.detalheInformacaoBruto;
+    const detalheGTrim =
+      detalheG == null || detalheG === '' ? '' : normalizarTextoPlanilha(String(detalheG).trim());
+    if (detalheGTrim) {
+      L.detalheNorm =
+        detalheGTrim.length > DETALHE_RESPONSAVEL_MAX
+          ? detalheGTrim.slice(0, DETALHE_RESPONSAVEL_MAX)
+          : detalheGTrim;
+    } else {
+      L.detalheNorm = normalizarResponsavel(L.responsavelBruto, L.linhaExcel);
+    }
   }
 }
 
