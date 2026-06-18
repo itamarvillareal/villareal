@@ -60,6 +60,10 @@ import {
   vincularPublicacaoProcessoAutomatico,
   vincularPublicacaoProcessoPorChaveNatural,
 } from '../repositories/publicacoesRepository.js';
+import {
+  AcoesLinhaCompacta,
+  TabelaManifestacoesProjudi,
+} from './manifestacoes/ManifestacoesProjudiLista.jsx';
 
 const ProcessosLazy = lazy(() =>
   import('./Processos.jsx').then((module) => ({ default: module.Processos }))
@@ -615,26 +619,50 @@ function CardMobileRow({
           </p>
         )}
       </button>
-      <div className="mt-2 border-t border-slate-100 pt-2 dark:border-white/10">
-        <CelulaVinculo
-          row={row}
-          indiceCnj={indiceCnj}
-          sugestoesApi={sugestoesApi}
-          carregandoSugestoes={carregandoSugestoes}
-          onAbrirProcesso={onAbrirProcesso}
-          onAplicarSugestao={onAplicarSugestao}
-        />
-        <div className="mt-2">
-          <AcoesLinha
-            onAbrirProcesso={onAbrirProcesso}
-            podeAbrirProcesso={podeAbrirProcesso}
-            onVincular={onVincular}
-            onAuto={onAuto}
-            onTratar={onTratar}
-            onIgnorar={onIgnorar}
-            onMarcarVinculada={onMarcarVinculada}
-          />
-        </div>
+      <div className="mt-2 flex items-center justify-between gap-2 border-t border-slate-100 pt-2 dark:border-white/10">
+        {isProjudi ? (
+          <>
+            <span
+              className={`inline-flex rounded px-2 py-0.5 text-[10px] font-semibold ${
+                row.statusVinculo === 'vinculado'
+                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200'
+                  : 'bg-amber-100 text-amber-900 dark:bg-amber-950/40 dark:text-amber-100'
+              }`}
+            >
+              {row.statusVinculo === 'vinculado' ? 'Vinculado' : 'Pendente'}
+            </span>
+            <AcoesLinhaCompacta
+              onAbrirProcesso={onAbrirProcesso}
+              podeAbrirProcesso={podeAbrirProcesso}
+              onVincular={onVincular}
+              onAuto={onAuto}
+              onTratar={onTratar}
+              onIgnorar={onIgnorar}
+            />
+          </>
+        ) : (
+          <>
+            <CelulaVinculo
+              row={row}
+              indiceCnj={indiceCnj}
+              sugestoesApi={sugestoesApi}
+              carregandoSugestoes={carregandoSugestoes}
+              onAbrirProcesso={onAbrirProcesso}
+              onAplicarSugestao={onAplicarSugestao}
+            />
+            <div className="mt-2">
+              <AcoesLinha
+                onAbrirProcesso={onAbrirProcesso}
+                podeAbrirProcesso={podeAbrirProcesso}
+                onVincular={onVincular}
+                onAuto={onAuto}
+                onTratar={onTratar}
+                onIgnorar={onIgnorar}
+                onMarcarVinculada={onMarcarVinculada}
+              />
+            </div>
+          </>
+        )}
       </div>
       {expandido ? (
         <pre className="mt-3 max-h-48 overflow-auto whitespace-pre-wrap rounded border border-slate-200 bg-slate-50 p-2 text-xs dark:border-white/10 dark:bg-white/5">
@@ -1252,86 +1280,71 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
                 />
               ))}
             </div>
-            <div className="hidden overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-white/10 dark:bg-[#141922] md:block">
-              <table className="w-full min-w-[1180px] text-xs">
-                <thead className="bg-slate-50 text-left text-slate-600 dark:bg-white/5 dark:text-slate-400">
-                  <tr>
-                    <th
-                      className="cursor-pointer select-none whitespace-nowrap px-3 py-2.5 font-medium hover:bg-slate-100/80 dark:hover:bg-white/10"
-                      onDoubleClick={toggleOrdemDataPublicacao}
-                    >
-                      Data
-                      <span className="ml-1 text-[10px] opacity-70" title="Duplo clique para inverter ordem">
-                        {ordemDataAsc ? '↑' : '↓'}
-                      </span>
-                    </th>
-                    {isProjudi ? (
-                      <th className="min-w-[140px] px-3 py-2.5 font-medium">Tipo movimento</th>
-                    ) : null}
-                    <th className="w-[108px] max-w-[108px] px-2 py-2.5 font-medium">Nº processo</th>
-                    <th className="min-w-[140px] px-3 py-2.5 font-medium">Código / proc.</th>
-                    {isProjudi ? (
-                      <th className="min-w-[200px] px-3 py-2.5 font-medium">Partes (cliente × réu)</th>
-                    ) : (
-                      <th className="min-w-[220px] px-3 py-2.5 font-medium">Teor</th>
-                    )}
-                    <th className="w-[96px] max-w-[96px] px-2 py-2.5 font-medium">Vínculo</th>
-                    {!isProjudi ? (
-                      <th className="min-w-[160px] px-3 py-2.5 font-medium">Origem / Email</th>
-                    ) : null}
-                    <th className="whitespace-nowrap px-3 py-2.5 font-medium">Recebimento</th>
-                    <th className="w-[120px] px-3 py-2.5 font-medium">Ações</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-white/10">
-                  {rowsExibidas.map((row) => {
-                    const destaque =
-                      row.statusVinculo === 'nao_vinculado' || row.statusVinculo === 'sem_cnj'
-                        ? 'border-l-2 border-l-amber-400/80'
-                        : '';
-                    return (
-                      <tr
-                        key={row.id}
-                        className={`align-top hover:bg-slate-50/80 dark:hover:bg-white/5 ${destaque}`}
+            {isProjudi ? (
+              <TabelaManifestacoesProjudi
+                rows={rowsExibidas}
+                indiceCnj={indiceCnj}
+                sugestoesApi={sugestoesApi}
+                carregandoSugestoes={carregandoSugestoes}
+                ordemDataAsc={ordemDataAsc}
+                onToggleOrdemData={toggleOrdemDataPublicacao}
+                onAbrirDetalhe={toggleLinha}
+                acoesProps={acoesProps}
+              />
+            ) : (
+              <div className="hidden overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-white/10 dark:bg-[#141922] md:block">
+                <table className="w-full min-w-[1180px] text-xs">
+                  <thead className="bg-slate-50 text-left text-slate-600 dark:bg-white/5 dark:text-slate-400">
+                    <tr>
+                      <th
+                        className="cursor-pointer select-none whitespace-nowrap px-3 py-2.5 font-medium hover:bg-slate-100/80 dark:hover:bg-white/10"
+                        onDoubleClick={toggleOrdemDataPublicacao}
                       >
-                        <td
-                          className="cursor-pointer whitespace-nowrap px-3 py-2.5"
-                          onClick={() => toggleLinha(row)}
-                          title="Ver detalhes"
+                        Data
+                        <span className="ml-1 text-[10px] opacity-70" title="Duplo clique para inverter ordem">
+                          {ordemDataAsc ? '↑' : '↓'}
+                        </span>
+                      </th>
+                      <th className="w-[108px] max-w-[108px] px-2 py-2.5 font-medium">Nº processo</th>
+                      <th className="min-w-[140px] px-3 py-2.5 font-medium">Código / proc.</th>
+                      <th className="min-w-[220px] px-3 py-2.5 font-medium">Teor</th>
+                      <th className="w-[96px] max-w-[96px] px-2 py-2.5 font-medium">Vínculo</th>
+                      <th className="min-w-[160px] px-3 py-2.5 font-medium">Origem / Email</th>
+                      <th className="whitespace-nowrap px-3 py-2.5 font-medium">Recebimento</th>
+                      <th className="w-[120px] px-3 py-2.5 font-medium">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-white/10">
+                    {rowsExibidas.map((row) => {
+                      const destaque =
+                        row.statusVinculo === 'nao_vinculado' || row.statusVinculo === 'sem_cnj'
+                          ? 'border-l-2 border-l-amber-400/80'
+                          : '';
+                      return (
+                        <tr
+                          key={row.id}
+                          className={`align-top hover:bg-slate-50/80 dark:hover:bg-white/5 ${destaque}`}
                         >
-                          {fmtDataBr(row.dataPublicacao)}
-                        </td>
-                        {isProjudi ? (
                           <td
-                            className="max-w-[180px] cursor-pointer px-3 py-2.5 font-medium text-violet-900 dark:text-violet-200"
+                            className="cursor-pointer whitespace-nowrap px-3 py-2.5"
                             onClick={() => toggleLinha(row)}
-                            title={tipoMovimentoLinha(row)}
+                            title="Ver detalhes"
                           >
-                            {truncarTeor(tipoMovimentoLinha(row), 80)}
+                            {fmtDataBr(row.dataPublicacao)}
                           </td>
-                        ) : null}
-                        <td
-                          className="max-w-[108px] cursor-pointer truncate px-2 py-2.5 font-mono text-[10px] text-sky-800 dark:text-sky-300"
-                          onClick={() => toggleLinha(row)}
-                          title={cnjLinha(row)}
-                        >
-                          <span className="inline-flex max-w-full items-center">
-                            <span className="truncate">{cnjLinha(row)}</span>
-                            <BadgeNoDrive row={row} />
-                          </span>
-                        </td>
-                        <td className="max-w-[160px] px-3 py-2.5">
-                          <CelulaClienteProc row={row} indiceCnj={indiceCnj} sugestoesApi={sugestoesApi} />
-                        </td>
-                        {isProjudi ? (
                           <td
-                            className="max-w-[240px] cursor-pointer px-3 py-2.5 text-slate-700 dark:text-slate-300"
+                            className="max-w-[108px] cursor-pointer truncate px-2 py-2.5 font-mono text-[10px] text-sky-800 dark:text-sky-300"
                             onClick={() => toggleLinha(row)}
-                            title={formatarPartesLinha(row)}
+                            title={cnjLinha(row)}
                           >
-                            {truncarTeor(formatarPartesLinha(row), 100)}
+                            <span className="inline-flex max-w-full items-center">
+                              <span className="truncate">{cnjLinha(row)}</span>
+                              <BadgeNoDrive row={row} />
+                            </span>
                           </td>
-                        ) : (
+                          <td className="max-w-[160px] px-3 py-2.5">
+                            <CelulaClienteProc row={row} indiceCnj={indiceCnj} sugestoesApi={sugestoesApi} />
+                          </td>
                           <td
                             className="cursor-pointer px-3 py-2.5 text-slate-700 dark:text-slate-300"
                             onClick={() => toggleLinha(row)}
@@ -1339,37 +1352,35 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
                           >
                             {truncarTeor(teorDaLinha(row), 120)}
                           </td>
-                        )}
-                        <td className="max-w-[96px] px-2 py-2.5">
-                          <CelulaVinculo
-                            row={row}
-                            indiceCnj={indiceCnj}
-                            sugestoesApi={sugestoesApi}
-                            carregandoSugestoes={carregandoSugestoes}
-                            onAbrirProcesso={() => abrirProcesso(row)}
-                            onAplicarSugestao={() => void aplicarSugestaoVinculo(row)}
-                          />
-                        </td>
-                        {!isProjudi ? (
+                          <td className="max-w-[96px] px-2 py-2.5">
+                            <CelulaVinculo
+                              row={row}
+                              indiceCnj={indiceCnj}
+                              sugestoesApi={sugestoesApi}
+                              carregandoSugestoes={carregandoSugestoes}
+                              onAbrirProcesso={() => abrirProcesso(row)}
+                              onAplicarSugestao={() => void aplicarSugestaoVinculo(row)}
+                            />
+                          </td>
                           <td
                             className="max-w-[200px] truncate px-3 py-2.5 text-slate-600 dark:text-slate-400"
                             title={row.arquivoOrigem}
                           >
                             {row.arquivoOrigem || '—'}
                           </td>
-                        ) : null}
-                        <td className="whitespace-nowrap px-3 py-2.5 text-slate-600 dark:text-slate-400">
-                          {fmtInstant(row.emailRecebidoEm)}
-                        </td>
-                        <td className="px-3 py-2.5">
-                          <AcoesLinha {...acoesProps(row)} />
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                          <td className="whitespace-nowrap px-3 py-2.5 text-slate-600 dark:text-slate-400">
+                            {fmtInstant(row.emailRecebidoEm)}
+                          </td>
+                          <td className="px-3 py-2.5">
+                            <AcoesLinha {...acoesProps(row)} />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </>
         )}
       </div>
