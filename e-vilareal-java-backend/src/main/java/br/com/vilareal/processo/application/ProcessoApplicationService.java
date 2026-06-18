@@ -878,6 +878,9 @@ public class ProcessoApplicationService {
         aplicarClienteTitularDoRequest(e, cliente, req);
         e.setNumeroInterno(req.getNumeroInterno());
         aplicarCabecalho(e, req);
+        if (req.getPrazoFatal() == null) {
+            cancelarPrazosFataisNaTabela(e.getId());
+        }
         processoRepository.save(e);
         return toResponse(requireProcesso(id));
     }
@@ -1321,6 +1324,18 @@ public class ProcessoApplicationService {
         z.setPrazoFatal(Boolean.TRUE.equals(req.getPrazoFatal()));
         z.setStatus(trimToNull(req.getStatus()));
         z.setObservacao(trimToNull(req.getObservacao()));
+    }
+
+    /** Alinha tabela de prazos quando o cabeçalho perde {@code prazo_fatal} (relatório consulta ambos). */
+    private void cancelarPrazosFataisNaTabela(Long processoId) {
+        for (ProcessoPrazoEntity z : prazoRepository.findByProcesso_IdOrderByIdAsc(processoId)) {
+            if (!Boolean.TRUE.equals(z.getPrazoFatal())) {
+                continue;
+            }
+            z.setPrazoFatal(false);
+            z.setStatus("CANCELADO");
+            prazoRepository.save(z);
+        }
     }
 
     private void aplicarClienteTitularDoRequest(ProcessoEntity e, ClienteEntity cliente, ProcessoWriteRequest req) {

@@ -1,6 +1,72 @@
 /**
+ * Remove sufixo técnico `/api/...` que o backend envia no JSON (campo path).
+ */
+export function normalizarMensagemErroApi(raw) {
+  return String(raw || '')
+    .replace(/\s*—\s*\/api\/[^\s]+.*$/i, '')
+    .trim();
+}
+
+/** Mensagens do backend (422) em português — preservar texto original na UI. */
+function pareceMensagemNegocioApi(msg) {
+  if (!msg) return false;
+  return !/exception|stack trace|nullpointer|java\.|org\.springframework/i.test(msg)
+    && !/^error:/i.test(msg)
+    && !/^\s*at\s+/m.test(msg);
+}
+
+/**
+ * Enriquece erros conhecidos do fluxo «Baixar Arquivos para Assinar» (Diagnósticos).
+ */
+function enriquecerMensagemPrepararAssinar(msg, contexto) {
+  const lower = msg.toLowerCase();
+
+  if (/nenhum pdf disponível para nova assinatura|já constam como protocolados/i.test(lower)) {
+    return msg;
+  }
+
+  if (/nenhum pdf pendente|nenhum pdf encontrado|sem arquivos/i.test(lower)) {
+    if (/pasta.*assinar|google drive|drive/i.test(lower)) {
+      return msg;
+    }
+    return (
+      `${msg} Verifique se cada processo tem PDFs na subpasta «Assinar» no Google Drive ` +
+      '(não em Petição, Movimentações ou outras pastas). PDFs já assinados na fila PROJUDI são ignorados.'
+    );
+  }
+
+  if (/pdf.*n[aã]o encontrado|store-dir|n[aã]o est[aá] no servidor/i.test(lower)) {
+    return (
+      'O PDF foi registrado na fila, mas o arquivo sumiu do servidor (comum após reinício do sistema). ' +
+      'Clique em «Preparar e baixar ZIP» de novo para buscar os PDFs no Drive. ' +
+      'Se repetir, contacte o suporte.'
+    );
+  }
+
+  if (/google drive.*n[aã]o.*configurado/i.test(lower)) {
+    return 'Integração com Google Drive indisponível. Contacte o suporte técnico.';
+  }
+
+  if (/credencial.*obrigat/i.test(lower)) {
+    return 'Selecione a credencial PROJUDI antes de continuar.';
+  }
+
+  if (/falha ao gerar zip/i.test(lower)) {
+    return msg.replace(/^Falha ao gerar ZIP:\s*/i, 'Não foi possível montar o ZIP: ');
+  }
+
+  if (contexto === 'gerar o ZIP para assinar') {
+    return `Não foi possível gerar o ZIP: ${msg}`;
+  }
+  if (contexto === 'preparar os PDFs da pasta Assinar') {
+    return `Não foi possível preparar os PDFs: ${msg}`;
+  }
+
+  return msg;
+}
+
+/**
  * Converte erros técnicos (API/rede) em mensagens legíveis para o usuário final.
- * Nunca expõe stack trace, status HTTP cru ou endpoints na UI.
  */
 export function mensagemErroAmigavel(erro, contexto = '') {
   const raw =
@@ -8,7 +74,7 @@ export function mensagemErroAmigavel(erro, contexto = '') {
       ? erro
       : erro?.message || erro?.error || (erro != null ? String(erro) : '');
 
-  const msg = String(raw || '').trim();
+  let msg = normalizarMensagemErroApi(raw);
   const lower = msg.toLowerCase();
 
   if (!msg) {
@@ -51,6 +117,19 @@ export function mensagemErroAmigavel(erro, contexto = '') {
 
   if (/\b(500|502|503|504)\b/.test(msg) || /internal server|erro no servidor/i.test(lower)) {
     return 'O servidor está indisponível no momento. Tente novamente em instantes.';
+  }
+
+  const ctxPreparar =
+    contexto === 'preparar e baixar os arquivos para assinar'
+    || contexto === 'preparar os PDFs da pasta Assinar'
+    || contexto === 'gerar o ZIP para assinar';
+
+  if (ctxPreparar || pareceMensagemNegocioApi(msg)) {
+    const enriquecida = enriquecerMensagemPrepararAssinar(msg, contexto);
+    if (enriquecida.length <= 480) {
+      return enriquecida;
+    }
+    return `${enriquecida.slice(0, 477)}…`;
   }
 
   if (/^error:/i.test(msg) || /\/api\//i.test(msg) || /exception|stack trace/i.test(lower)) {

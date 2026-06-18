@@ -703,15 +703,21 @@ export function Diagnosticos() {
       const preparado = await prepararAssinarAguardandoProtocolo(resultadoAguardandoProtocolo, credId);
       setPrepararAssinarResultado(preparado);
       const ids = Array.isArray(preparado?.peticaoIds) ? preparado.peticaoIds : [];
-      const { blob, filename } = await baixarZipLoteAguardandoProtocolo(ids);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      const msg = mensagemErroAmigavel(e, 'preparar e baixar os arquivos para assinar');
+      try {
+        const { blob, filename } = await baixarZipLoteAguardandoProtocolo(ids);
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+      } catch (zipErr) {
+        const msg = mensagemErroAmigavel(zipErr, 'gerar o ZIP para assinar');
+        setPrepararAssinarErro(msg);
+        setAguardandoProtocoloBaixarErro(msg);
+      }
+    } catch (prepErr) {
+      const msg = mensagemErroAmigavel(prepErr, 'preparar os PDFs da pasta Assinar');
       setPrepararAssinarErro(msg);
       setAguardandoProtocoloBaixarErro(msg);
     } finally {
@@ -2009,6 +2015,11 @@ export function Diagnosticos() {
                 (pendentes de assinatura). O ZIP usa nomes canônicos; o pareamento no retorno é por{' '}
                 <strong>hash do conteúdo</strong>, não por nome.
               </p>
+              <p className="text-xs text-slate-500">
+                Cada «Preparar e baixar» busca os PDFs de novo na pasta <strong>Assinar</strong> do
+                Drive e descarta preparações anteriores (pendentes ou não concluídas). PDFs já
+                protocolados no PROJUDI não entram no lote.
+              </p>
               <label className="block">
                 <span className="text-xs font-medium text-slate-500">Credencial PROJUDI</span>
                 <select
@@ -2031,9 +2042,10 @@ export function Diagnosticos() {
                 </select>
               </label>
               {prepararAssinarErro ? (
-                <p className="text-sm text-red-600" role="alert">
-                  {prepararAssinarErro}
-                </p>
+                <div className="rounded-lg border border-red-200 bg-red-50/90 px-3 py-2 text-sm text-red-800" role="alert">
+                  <p className="font-medium">Não foi possível concluir o download</p>
+                  <p className="mt-1 leading-relaxed">{prepararAssinarErro}</p>
+                </div>
               ) : null}
               {prepararAssinarResultado ? (
                 <div className="rounded-lg border border-emerald-200 bg-emerald-50/80 p-3 text-sm text-emerald-900 space-y-2">

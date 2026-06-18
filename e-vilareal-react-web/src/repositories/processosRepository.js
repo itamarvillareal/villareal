@@ -602,11 +602,10 @@ export async function baixarZipLoteAguardandoProtocolo(peticaoIds) {
   if (!res.ok) {
     let msg = `Erro ${res.status} ao gerar ZIP.`;
     try {
-      const json = await res.json();
+      const json = JSON.parse(await res.text());
       msg = json?.message || json?.error || msg;
     } catch {
-      const text = await res.text();
-      if (text) msg = text;
+      // corpo não-JSON (proxy HTML)
     }
     throw new Error(msg);
   }
@@ -754,15 +753,7 @@ export async function listarProcessosPorPrazoFatalDiagnostico(dataBrParam) {
         papeis: String(row.papeis ?? ''),
       };
     });
-    const m = new Map();
-    for (const x of locais) {
-      m.set(chaveClienteProcItemPrazoFatal(x), x);
-    }
-    for (const x of fromApi) {
-      const k = chaveClienteProcItemPrazoFatal(x);
-      if (!m.has(k)) m.set(k, x);
-    }
-    const out = [...m.values()];
+    const out = [...fromApi];
     out.sort((a, b) => {
       const ka = `${padCliente8(a.codCliente)}-${String(a.proc).padStart(4, '0')}`;
       const kb = `${padCliente8(b.codCliente)}-${String(b.proc).padStart(4, '0')}`;
@@ -1200,10 +1191,37 @@ export async function upsertPrazoFatalProcesso(processoId, prazoFatalBr) {
   const n = Number(processoId);
   const pid = Number.isFinite(n) && n > 0 ? n : await resolverProcessoId({ processoId });
   if (!pid || !Number.isFinite(Number(pid)) || Number(pid) < 1) return null;
-  const dataFim = toIsoFromBrDate(prazoFatalBr);
-  if (!dataFim) return null;
+  const pidNum = Number(pid);
   const prazos = await listarPrazosProcesso(pid);
-  const prazoFatal = (prazos || []).find((p) => p.prazoFatal === true);
+  const prazosFatais = (prazos || []).filter((p) => p.prazoFatal === true);
+
+  const dataFim = toIsoFromBrDate(prazoFatalBr);
+  if (!dataFim) {
+    if (prazosFatais.length === 0) return null;
+    const cancelados = [];
+    for (const pf of prazosFatais) {
+      if (!pf?.id) continue;
+      const fim = pf.dataFim ?? pf.data_fim;
+      if (!fim) continue;
+      cancelados.push(
+        await request(`/api/processos/${pidNum}/prazos/${pf.id}`, {
+          method: 'PUT',
+          body: {
+            andamentoId: pf.andamentoId ?? pf.andamento_id ?? null,
+            descricao: pf.descricao ?? 'Prazo fatal do processo',
+            dataInicio: pf.dataInicio ?? pf.data_inicio ?? null,
+            dataFim: fim,
+            prazoFatal: false,
+            status: 'CANCELADO',
+            observacao: pf.observacao ?? null,
+          },
+        })
+      );
+    }
+    return cancelados.length === 1 ? cancelados[0] : cancelados.length ? cancelados : null;
+  }
+
+  const prazoFatal = prazosFatais[0];
   const body = {
     andamentoId: null,
     descricao: 'Prazo fatal do processo',
@@ -1213,7 +1231,6 @@ export async function upsertPrazoFatalProcesso(processoId, prazoFatalBr) {
     status: prazoFatal?.status || 'PENDENTE',
     observacao: null,
   };
-  const pidNum = Number(pid);
   if (prazoFatal?.id) {
     return request(`/api/processos/${pidNum}/prazos/${prazoFatal.id}`, {
       method: 'PUT',

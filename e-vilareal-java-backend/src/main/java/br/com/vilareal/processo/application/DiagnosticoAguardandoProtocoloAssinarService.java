@@ -36,6 +36,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.text.Normalizer;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -50,8 +51,6 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
     private static final Logger log = LoggerFactory.getLogger(DiagnosticoAguardandoProtocoloAssinarService.class);
     private static final String PASTA_ASSINAR = "Assinar";
     private static final String STATUS_ARQUIVO_PENDENTE = "PENDENTE_ASSINATURA";
-    private static final String STATUS_ARQUIVO_ASSINADO = "ASSINADO";
-    private static final String STATUS_PETICAO_PENDENTE = "PENDENTE_ASSINATURA";
     private static final String STATUS_PETICAO_ASSINADA = "ASSINADA";
     private static final String STATUS_PETICAO_PROTOCOLADA = "PROTOCOLADA";
     private static final String STATUS_PETICAO_PROTOCOLANDO = "PROTOCOLANDO";
@@ -187,12 +186,6 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
                     ignoradasJaAssinadas++;
                     continue;
                 }
-                if (dedup.shouldReuse()) {
-                    reutilizadas++;
-                    peticaoIds.add(dedup.peticaoId());
-                    totalArquivos++;
-                    continue;
-                }
                 paraRegistrar.add(new ArquivoParaAssinar(
                         pdf.bytes(), inferirIdArquivoTipo(pdf.nomeOriginal()), pdf.nomeOriginal()));
             }
@@ -210,7 +203,26 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
         }
 
         if (peticaoIds.isEmpty() || totalArquivos == 0) {
-            throw new BusinessRuleException("Nenhum PDF pendente para assinar.");
+            long semArquivosDrive =
+                    resumos.stream().filter(ResumoProcessoPrepararAssinar::semArquivos).count();
+            if (semArquivosDrive == resumos.size()) {
+                throw new BusinessRuleException(
+                        "Nenhum PDF na pasta «Assinar» do Google Drive nos "
+                                + resumos.size()
+                                + " processo(s) listados. Coloque os PDFs na subpasta «Assinar» de cada processo "
+                                + "(não use Petição, Movimentações ou outras pastas) e tente novamente.");
+            }
+            long ignoradas = resumos.stream().mapToLong(ResumoProcessoPrepararAssinar::ignoradasJaAssinadas).sum();
+            if (ignoradas > 0) {
+                throw new BusinessRuleException(
+                        "Nenhum PDF disponível para nova assinatura. "
+                                + ignoradas
+                                + " arquivo(s) já constam como protocolados no PROJUDI e não podem ser refeitos. "
+                                + "Substitua os PDFs na pasta «Assinar» por versões novas (conteúdo diferente) ou "
+                                + "retire os já protocolados do lote.");
+            }
+            throw new BusinessRuleException(
+                    "Nenhum PDF pendente para assinar. Verifique a pasta «Assinar» no Drive e tente novamente.");
         }
 
         return new PrepararAssinarResultado(new ArrayList<>(peticaoIds), resumos, totalArquivos);
@@ -225,7 +237,10 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
         List<ProjudiPeticaoArquivoEntity> pendentes =
                 arquivoRepository.findByStatusAndPeticaoIdIn(STATUS_ARQUIVO_PENDENTE, peticaoIds);
         if (pendentes.isEmpty()) {
-            throw new BusinessRuleException("Nenhum PDF pendente para assinar.");
+            throw new BusinessRuleException(
+                    "Nenhum PDF pendente na fila PROJUDI para este lote. "
+                            + "Os arquivos podem já ter sido assinados ou protocolados — use «Preparar e baixar ZIP» "
+                            + "de novo após colocar novos PDFs na pasta «Assinar».");
         }
 
         List<Map<String, Object>> manifestArquivos = new ArrayList<>();
@@ -236,7 +251,13 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
             for (ProjudiPeticaoArquivoEntity arquivo : pendentes) {
                 Path pdfPath = storeDir.resolve(arquivo.getPdfRef());
                 if (!Files.isRegularFile(pdfPath)) {
-                    throw new IllegalStateException("PDF não encontrado no store-dir: " + pdfPath);
+                    Long peticaoId =
+                            arquivo.getPeticao() != null ? arquivo.getPeticao().getId() : null;
+                    throw new BusinessRuleException(
+                            "PDF da petição"
+                                    + (peticaoId != null ? " #" + peticaoId : "")
+                                    + " não está no servidor. Clique em «Preparar e baixar ZIP» de novo "
+                                    + "para buscar os PDFs no Drive; se o erro repetir, contacte o suporte.");
                 }
                 byte[] pdfBytes = Files.readAllBytes(pdfPath);
                 String entryName = Path.of(arquivo.getPdfRef()).getFileName().toString();
@@ -348,7 +369,45 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
                 peticoesQueViraramAssinadas);
     }
 
+    /**
+     * Diagnóstico «Preparar Assinar»: descarta registros anteriores (pendentes ou assinados na fila)
+     * do mesmo PDF+processo para sempre re-baixar do Drive e gerar nomes canônicos novos.
+     * Só mantém bloqueio quando já protocolado no PROJUDI.
+     */
+    private void descartarRegistrosAnterioresMesmoPdf(String sha256, String cnjDigitos) {
+        List<ProjudiPeticaoArquivoEntity> existentes =
+                arquivoRepository.findAllByPdfSha256WithPeticao(sha256);
+        Set<Long> peticoesDescartadas = new HashSet<>();
+        for (ProjudiPeticaoArquivoEntity arq : existentes) {
+            ProjudiPeticaoEntity peticao = arq.getPeticao();
+            if (peticao == null || peticao.getId() == null || !cnjCoincide(peticao.getNumeroProcesso(), cnjDigitos)) {
+                continue;
+            }
+            String petStatus = peticao.getStatus();
+            if (STATUS_PETICAO_PROTOCOLANDO.equals(petStatus) || STATUS_PETICAO_PROTOCOLADA.equals(petStatus)) {
+                continue;
+            }
+            if (!peticoesDescartadas.add(peticao.getId())) {
+                continue;
+            }
+            try {
+                peticaoRegistroService.excluirPeticao(peticao.getId());
+                log.info(
+                        "Preparar Assinar: descartado registro anterior petição #{} (CNJ {}, hash {}…)",
+                        peticao.getId(),
+                        cnjDigitos,
+                        sha256.substring(0, 8));
+            } catch (Exception e) {
+                log.warn(
+                        "Preparar Assinar: falha ao descartar petição #{}: {}",
+                        peticao.getId(),
+                        e.getMessage());
+            }
+        }
+    }
+
     private DedupResultado classificarDedup(String sha256, String cnjDigitos) {
+        descartarRegistrosAnterioresMesmoPdf(sha256, cnjDigitos);
         List<ProjudiPeticaoArquivoEntity> existentes =
                 arquivoRepository.findAllByPdfSha256WithPeticao(sha256);
         for (ProjudiPeticaoArquivoEntity arq : existentes) {
@@ -357,17 +416,9 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
                 continue;
             }
             String petStatus = peticao.getStatus();
-            if (STATUS_PETICAO_ASSINADA.equals(petStatus)
-                    || STATUS_PETICAO_PROTOCOLADA.equals(petStatus)
-                    || STATUS_PETICAO_PROTOCOLANDO.equals(petStatus)) {
+            if (STATUS_PETICAO_PROTOCOLANDO.equals(petStatus)
+                    || STATUS_PETICAO_PROTOCOLADA.equals(petStatus)) {
                 return DedupResultado.ignorar();
-            }
-            if (STATUS_ARQUIVO_ASSINADO.equals(arq.getStatus())) {
-                return DedupResultado.ignorar();
-            }
-            if (STATUS_ARQUIVO_PENDENTE.equals(arq.getStatus())
-                    && STATUS_PETICAO_PENDENTE.equals(petStatus)) {
-                return DedupResultado.reutilizar(peticao.getId());
             }
         }
         return DedupResultado.novo();
@@ -429,17 +480,13 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
 
     private record PdfDriveItem(String nomeOriginal, byte[] bytes) {}
 
-    private record DedupResultado(boolean shouldIgnore, boolean shouldReuse, Long peticaoId) {
+    private record DedupResultado(boolean shouldIgnore) {
         static DedupResultado ignorar() {
-            return new DedupResultado(true, false, null);
-        }
-
-        static DedupResultado reutilizar(Long peticaoId) {
-            return new DedupResultado(false, true, peticaoId);
+            return new DedupResultado(true);
         }
 
         static DedupResultado novo() {
-            return new DedupResultado(false, false, null);
+            return new DedupResultado(false);
         }
     }
 }
