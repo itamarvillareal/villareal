@@ -9,4 +9,6 @@ public record DiagnosticoUploadAssinadosResponse(
         List<String> ambiguas,
         List<String> invalidas,
         List<String> semConteudo,
-        int peticoesQueViraramAssinadas) {}
+        int peticoesQueViraramAssinadas,
+        /** {@code true} quando há ambíguos ou «já assinados» — o front pode pedir confirmação de substituição. */
+        boolean requerConfirmacaoSubstituicao) {}

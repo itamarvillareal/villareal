@@ -297,6 +297,12 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
 
     @Transactional
     public DiagnosticoUploadAssinadosResponse registrarAssinados(List<MultipartFile> arquivosP7s) {
+        return registrarAssinados(arquivosP7s, false);
+    }
+
+    @Transactional
+    public DiagnosticoUploadAssinadosResponse registrarAssinados(
+            List<MultipartFile> arquivosP7s, boolean substituirConflitos) {
         if (arquivosP7s == null || arquivosP7s.isEmpty()) {
             throw new BusinessRuleException("Envie ao menos um arquivo .p7s assinado.");
         }
@@ -320,7 +326,7 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
             throw new BusinessRuleException("Nenhum .p7s válido para registrar.");
         }
 
-        List<ItemAssinado> resultados = peticaoAssinaturaService.receberAssinados(itens);
+        List<ItemAssinado> resultados = peticaoAssinaturaService.receberAssinados(itens, substituirConflitos);
 
         int pareadas = 0;
         int jaAssinadas = 0;
@@ -366,7 +372,8 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
                 ambiguas,
                 invalidas,
                 semConteudo,
-                peticoesQueViraramAssinadas);
+                peticoesQueViraramAssinadas,
+                !substituirConflitos && (!ambiguas.isEmpty() || jaAssinadas > 0));
     }
 
     /**

@@ -230,8 +230,9 @@ public class ProcessosController {
             summary = "Pareia .p7s assinados por hash (wrapper do POST /api/projudi/peticoes/assinados)",
             description = "Recebe apenas arquivos .p7s; o pareamento é pelo SHA-256 do PDF embutido.")
     public DiagnosticoUploadAssinadosResponse uploadAssinadosDiagnostico(
-            @RequestParam("arquivosP7s") List<MultipartFile> arquivosP7s) {
-        return diagnosticoAguardandoProtocoloAssinarService.registrarAssinados(arquivosP7s);
+            @RequestParam("arquivosP7s") List<MultipartFile> arquivosP7s,
+            @RequestParam(value = "substituir", defaultValue = "false") boolean substituir) {
+        return diagnosticoAguardandoProtocoloAssinarService.registrarAssinados(arquivosP7s, substituir);
     }
 
     @GetMapping("/diagnostico/historico-data")

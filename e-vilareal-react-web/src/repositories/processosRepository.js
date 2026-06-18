@@ -620,7 +620,7 @@ export async function baixarZipLoteAguardandoProtocolo(peticaoIds) {
  * Pareia .p7s assinados por hash (wrapper do POST /api/projudi/peticoes/assinados).
  * @param {File[]} arquivosP7s
  */
-export async function uploadAssinadosAguardandoProtocolo(arquivosP7s) {
+export async function uploadAssinadosAguardandoProtocolo(arquivosP7s, { substituir = false } = {}) {
   const arquivos = (Array.isArray(arquivosP7s) ? arquivosP7s : []).filter(Boolean);
   if (!arquivos.length) {
     throw new Error('Selecione ao menos um arquivo .p7s.');
@@ -628,6 +628,9 @@ export async function uploadAssinadosAguardandoProtocolo(arquivosP7s) {
   const fd = new FormData();
   for (const f of arquivos) {
     fd.append('arquivosP7s', f);
+  }
+  if (substituir) {
+    fd.append('substituir', 'true');
   }
   return postFormData('/api/processos/diagnostico/aguardando-protocolo/upload-assinados', fd);
 }

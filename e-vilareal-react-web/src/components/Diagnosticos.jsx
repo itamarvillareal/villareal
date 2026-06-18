@@ -747,7 +747,7 @@ export function Diagnosticos() {
     e.target.value = '';
   }
 
-  async function enviarArquivosAssinados() {
+  async function enviarArquivosAssinados(substituir = false) {
     if (!uploadAssinadosArquivos.length) {
       setUploadAssinadosErro('Selecione ao menos um arquivo .p7s.');
       return;
@@ -760,7 +760,7 @@ export function Diagnosticos() {
     setUploadAssinadosEnviando(true);
     setUploadAssinadosErro('');
     try {
-      const resp = await uploadAssinadosAguardandoProtocolo(uploadAssinadosArquivos);
+      const resp = await uploadAssinadosAguardandoProtocolo(uploadAssinadosArquivos, { substituir });
       setUploadAssinadosResultado(resp);
     } catch (e) {
       setUploadAssinadosErro(mensagemErroAmigavel(e, 'enviar os arquivos assinados'));
@@ -2167,7 +2167,27 @@ export function Diagnosticos() {
                   {(uploadAssinadosResultado.ambiguas || []).length > 0 ? (
                     <p className="text-xs text-amber-800">
                       <strong>Ambíguas:</strong> {uploadAssinadosResultado.ambiguas.join(', ')}
+                      <span className="block mt-1 text-amber-900/90">
+                        Há mais de um registro pendente com o mesmo conteúdo (preparações anteriores).
+                      </span>
                     </p>
+                  ) : null}
+                  {uploadAssinadosResultado.requerConfirmacaoSubstituicao ? (
+                    <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950 space-y-2">
+                      <p>
+                        Parte dos arquivos já consta na fila ou conflita com preparações anteriores.
+                        Deseja <strong>substituir</strong> as assinaturas/registros antigos pelos .p7s
+                        enviados agora?
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => void enviarArquivosAssinados(true)}
+                        disabled={uploadAssinadosEnviando}
+                        className="px-4 py-2 rounded-lg bg-amber-600 text-white text-sm font-semibold hover:bg-amber-700 disabled:opacity-50"
+                      >
+                        Substituir e enviar de novo
+                      </button>
+                    </div>
                   ) : null}
                   {(uploadAssinadosResultado.invalidas || []).length > 0 ? (
                     <p className="text-xs text-red-700">
@@ -2204,7 +2224,7 @@ export function Diagnosticos() {
               ) : (
                 <button
                   type="button"
-                  onClick={() => void enviarArquivosAssinados()}
+                  onClick={() => void enviarArquivosAssinados(false)}
                   disabled={uploadAssinadosEnviando || !uploadAssinadosArquivos.length}
                   className="px-6 py-2 rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 text-sm font-semibold text-white disabled:opacity-50 inline-flex items-center gap-2"
                 >
