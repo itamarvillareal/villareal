@@ -58,6 +58,8 @@ const GENEROS = [
   { value: 'M', label: 'Masculino' },
   { value: 'F', label: 'Feminino' },
   { value: 'O', label: 'Outro' },
+  { value: 'PJ_PUB', label: 'Pessoa Jurídica de Direito Público' },
+  { value: 'PJ_PRV', label: 'Pessoa Jurídica de Direito Privado' },
 ];
 
 const ESTADOS_CIVIS = [

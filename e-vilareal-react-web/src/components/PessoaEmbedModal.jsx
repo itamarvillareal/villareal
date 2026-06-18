@@ -14,6 +14,12 @@ import { LazyCadastroPessoas } from '../app/lazyScreens.jsx';
  */
 export function PessoaEmbedModal({ embed, onFechar, titulo, onPessoaSalva }) {
   useCloseOnEscape(!!embed, onFechar);
+
+  const embedIntent = useMemo(() => {
+    if (!embed) return null;
+    return embed.modo === 'criar' ? { modo: 'criar' } : { pessoaId: embed.pessoaId };
+  }, [embed]);
+
   if (!embed) return null;
 
   const tituloExibicao =
@@ -23,11 +29,6 @@ export function PessoaEmbedModal({ embed, onFechar, titulo, onPessoaSalva }) {
       : Number.isFinite(Number(embed.pessoaId)) && Number(embed.pessoaId) >= 1
         ? `Pessoa (cadastro) — nº ${embed.pessoaId}`
         : 'Pessoa (cadastro)');
-
-  const embedIntent = useMemo(
-    () => (embed.modo === 'criar' ? { modo: 'criar' } : { pessoaId: embed.pessoaId }),
-    [embed.modo, embed.pessoaId]
-  );
 
   return (
     <div

@@ -1,13 +1,13 @@
 package br.com.vilareal.documento;
 
 import br.com.vilareal.common.exception.ResourceNotFoundException;
-import br.com.vilareal.common.text.Utf8MojibakeUtil;
 import br.com.vilareal.pessoa.application.ClienteResolverService;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
 import br.com.vilareal.processo.application.ClienteCodigoPessoaResolver;
 import br.com.vilareal.processo.application.ProcessoCanonicalLookup;
+import br.com.vilareal.processo.application.ProcessoPartesVinculoTextoResolver;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoParteEntity;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoParteRepository;
@@ -18,11 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
-import java.text.Normalizer;
-import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 
@@ -258,22 +254,17 @@ public class DocumentoDrivePastaService {
         if (processoId == null) {
             return "Sem Parte Oposta";
         }
-        List<ProcessoParteEntity> partes =
-                processoParteRepository.findByProcesso_IdOrderByOrdemAscIdAsc(processoId);
-        List<String> nomes = new ArrayList<>();
-        for (ProcessoParteEntity parte : partes) {
-            if (isPoloCliente(parte.getPolo())) {
-                continue;
-            }
-            String nome = nomeExibicaoParte(parte);
-            if (StringUtils.hasText(nome)) {
-                nomes.add(QualificacaoPessoaUtil.normalizarNome(nome.trim()));
-            }
-        }
-        if (nomes.isEmpty()) {
+        ProcessoEntity processo = processoRepository.findById(processoId).orElse(null);
+        if (processo == null) {
             return "Sem Parte Oposta";
         }
-        return String.join(", ", new LinkedHashSet<>(nomes));
+        List<ProcessoParteEntity> partes =
+                processoParteRepository.findByProcesso_IdOrderByOrdemAscIdAsc(processoId);
+        String texto = ProcessoPartesVinculoTextoResolver.parteOposta(processo, partes);
+        if (!StringUtils.hasText(texto)) {
+            return "Sem Parte Oposta";
+        }
+        return QualificacaoPessoaUtil.normalizarNome(texto.trim());
     }
 
     @Transactional(readOnly = true)
@@ -377,35 +368,6 @@ public class DocumentoDrivePastaService {
         }
         if (processo.getPessoa() != null) {
             return clienteCodigoPessoaResolver.codigoClienteExibicaoParaPessoaId(processo.getPessoa().getId());
-        }
-        return null;
-    }
-
-    private static boolean isPoloCliente(String polo) {
-        String poloNorm = normalizarPolo(polo);
-        return poloNorm.contains("AUTOR")
-                || poloNorm.contains("REQUERENTE")
-                || poloNorm.contains("CLIENTE");
-    }
-
-    private static String normalizarPolo(String polo) {
-        if (!StringUtils.hasText(polo)) {
-            return "";
-        }
-        String nfd = Normalizer.normalize(polo.trim(), Normalizer.Form.NFD);
-        return nfd.replaceAll("\\p{M}+", "").toUpperCase(Locale.ROOT);
-    }
-
-    private String nomeExibicaoParte(ProcessoParteEntity parte) {
-        PessoaEntity pessoa = parte.getPessoa();
-        if (pessoa != null && StringUtils.hasText(pessoa.getNome())) {
-            return Utf8MojibakeUtil.corrigir(pessoa.getNome().trim());
-        }
-        if (StringUtils.hasText(parte.getNomeLivre())) {
-            return Utf8MojibakeUtil.corrigir(parte.getNomeLivre().trim());
-        }
-        if (pessoa != null) {
-            return "Pessoa nº " + pessoa.getId();
         }
         return null;
     }
