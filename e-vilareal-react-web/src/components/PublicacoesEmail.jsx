@@ -38,6 +38,7 @@ import {
 } from '../data/manifestacoesProjudiDisplay.js';
 import { buildRouterStateChaveClienteProcesso } from '../domain/camposProcessoCliente.js';
 import { mensagemErroAmigavel } from '../utils/mensagemErroAmigavel.js';
+import { featureFlags } from '../config/featureFlags.js';
 import {
   normalizarCodigoClienteFinanceiro,
   normalizarProcFinanceiro,
@@ -53,10 +54,14 @@ import {
 } from '../data/publicacoesVinculoProcessos.js';
 import {
   alterarStatusPublicacao,
+  aplicarStatusTratamentoNaLinhaPublicacao,
   carregarSugestoesVinculoPorPublicacoes,
+  idPublicacaoLinha,
+  notificarPublicacoesAtualizadas,
   vincularPublicacaoProcessoAutomatico,
   vincularPublicacaoProcessoPorChaveNatural,
 } from '../repositories/publicacoesRepository.js';
+import { ModalTratarPublicacao } from './publicacoes/ModalTratarPublicacao.jsx';
 import {
   AcoesLinhaCompacta,
   BadgeStatusVinculo,
@@ -484,6 +489,7 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
   const [processandoCompleto, setProcessandoCompleto] = useState(false);
   const [expandidoId, setExpandidoId] = useState(null);
   const [modalPublicacao, setModalPublicacao] = useState(null);
+  const [modalTratarRow, setModalTratarRow] = useState(null);
   const [processoEmbed, setProcessoEmbed] = useState(null);
   const [indiceCnj, setIndiceCnj] = useState(new Map());
   const [sugestoesApi, setSugestoesApi] = useState(() => new Map());
@@ -559,7 +565,7 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
   }, [buscaTexto]);
 
   useCloseOnEscape(!!vinculoModal && !processoEmbed, () => setVinculoModal(null));
-  useCloseOnEscape(!!modalPublicacao && !processoEmbed && !vinculoModal, () => setModalPublicacao(null));
+  useCloseOnEscape(!!modalPublicacao && !processoEmbed && !vinculoModal && !modalTratarRow, () => setModalPublicacao(null));
 
   const carregar = useCallback(async () => {
     setLoading(true);
@@ -667,6 +673,55 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
       setErr(mensagemErroAmigavel(e, 'atualizar o status'));
     }
   };
+
+  const aplicarStatusNaLista = useCallback((publicacaoId, status) => {
+    if (publicacaoId == null || !status) return;
+    const idStr = String(publicacaoId);
+    setRows((prev) =>
+      prev.map((r) =>
+        String(idPublicacaoLinha(r)) === idStr ? aplicarStatusTratamentoNaLinhaPublicacao(r, status) : r
+      )
+    );
+    setModalPublicacao((prev) =>
+      prev && String(idPublicacaoLinha(prev)) === idStr
+        ? aplicarStatusTratamentoNaLinhaPublicacao(prev, status)
+        : prev
+    );
+  }, []);
+
+  useEffect(() => {
+    const h = (ev) => {
+      const { publicacaoId, statusTratamento } = ev?.detail ?? {};
+      aplicarStatusNaLista(publicacaoId, statusTratamento);
+    };
+    window.addEventListener('vilareal:publicacoes-processo-relatorio-atualizado', h);
+    return () => window.removeEventListener('vilareal:publicacoes-processo-relatorio-atualizado', h);
+  }, [aplicarStatusNaLista]);
+
+  const abrirTratar = (row) => {
+    if (!featureFlags.useApiPublicacoes) {
+      void alterarStatus(row, 'TRATADA');
+      return;
+    }
+    setErr('');
+    setModalTratarRow(row);
+  };
+
+  const handlePublicacaoTratada = useCallback((result, row) => {
+    aplicarStatusNaLista(idPublicacaoLinha(row), 'TRATADA');
+    const aviso = String(result?.avisoDedup ?? '').trim();
+    if (aviso) {
+      setMsgOk(`Publicação tratada. ${aviso}`);
+    } else {
+      setMsgOk('Publicação tratada com sucesso.');
+    }
+    setErr('');
+    notificarPublicacoesAtualizadas({
+      publicacaoId: idPublicacaoLinha(row),
+      statusTratamento: 'TRATADA',
+    });
+    setModalTratarRow(null);
+  }, [aplicarStatusNaLista]);
 
   const abrirVinculoModal = (row) => {
     const sug = resolverSugestaoVinculoLinha(row, indiceCnj, sugestoesApi);
@@ -876,7 +931,7 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
     podeAbrirProcesso: !!resolverStateProcessosDesdeLinha(row, indiceCnj, sugestoesApi),
     onVincular: () => abrirVinculoModal(row),
     onAuto: () => void reaplicarVinculoAuto(row),
-    onTratar: () => void alterarStatus(row, 'TRATADA'),
+    onTratar: () => abrirTratar(row),
     onIgnorar: () => void alterarStatus(row, 'IGNORADA'),
     onMarcarVinculada: () => void alterarStatus(row, 'VINCULADA'),
   });
@@ -1099,6 +1154,11 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
           isProjudi={isProjudi}
         />
       ) : null}
+      <ModalTratarPublicacao
+        publicacao={modalTratarRow}
+        onClose={() => setModalTratarRow(null)}
+        onTratado={handlePublicacaoTratada}
+      />
       {processoEmbed ? (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center bg-black/55 p-2 sm:p-4"

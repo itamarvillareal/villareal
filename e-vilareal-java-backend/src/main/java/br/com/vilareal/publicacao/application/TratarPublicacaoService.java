@@ -186,6 +186,22 @@ public class TratarPublicacaoService {
 
         if (tipo == TratarPublicacaoTipo.CUMPRIR_AGORA) {
             processo.setFase(DocumentoPastaAssinarService.FASE_AGUARDANDO_PROTOCOLO);
+        }
+
+        boolean cabecalhoAlterado = tipo == TratarPublicacaoTipo.CUMPRIR_AGORA;
+        if (StringUtils.hasText(comando.observacaoFase())) {
+            processo.setObservacaoFase(comando.observacaoFase().trim());
+            cabecalhoAlterado = true;
+        }
+        if ((tipo == TratarPublicacaoTipo.TERCEIRO || tipo == TratarPublicacaoTipo.CUMPRIR_DEPOIS)
+                && comando.dataFatal() != null) {
+            LocalDate dataFatalCabecalho = JuliaPrazoDateUtil.avancarParaProximoDiaUtil(comando.dataFatal());
+            if (deveAtualizarPrazoFatalCabecalho(processo.getPrazoFatal(), dataFatalCabecalho)) {
+                processo.setPrazoFatal(dataFatalCabecalho);
+                cabecalhoAlterado = true;
+            }
+        }
+        if (cabecalhoAlterado) {
             processoRepository.save(processo);
         }
 
@@ -253,6 +269,13 @@ public class TratarPublicacaoService {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    private static boolean deveAtualizarPrazoFatalCabecalho(LocalDate atual, LocalDate nova) {
+        if (nova == null) {
+            return false;
+        }
+        return atual == null || nova.isBefore(atual);
     }
 
     private static String resolverDescricaoAndamento(String observacaoFase, PublicacaoEntity pub) {

@@ -77,6 +77,35 @@ function mapApiStatusToUiVinculo(statusTratamento, processoId) {
   return 'nao_vinculado';
 }
 
+export function idPublicacaoLinha(row) {
+  return row?._apiId ?? row?.id;
+}
+
+/** Atualiza `_statusTratamento` e `statusVinculo` na linha da listagem (email, processo, relatório). */
+export function aplicarStatusTratamentoNaLinhaPublicacao(row, status) {
+  const statusVinculo =
+    status === 'VINCULADA' || status === 'TRATADA'
+      ? 'vinculado'
+      : status === 'IGNORADA'
+        ? 'ignorada'
+        : 'nao_vinculado';
+  return { ...row, _statusTratamento: status, statusVinculo };
+}
+
+/** Sincroniza listagens de publicações (email, aba do processo, embed) após tratar/ignorar. */
+export function notificarPublicacoesAtualizadas({
+  recarregarProcesso = false,
+  publicacaoId = null,
+  statusTratamento = null,
+} = {}) {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(
+    new CustomEvent('vilareal:publicacoes-processo-relatorio-atualizado', {
+      detail: { recarregarProcesso, publicacaoId, statusTratamento },
+    })
+  );
+}
+
 export function mapApiPublicacaoToUi(r) {
   const codApi = r.codigoClienteProcesso ?? r.codigo_cliente_processo;
   let codCliente = '';

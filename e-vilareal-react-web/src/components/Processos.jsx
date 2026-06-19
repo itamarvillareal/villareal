@@ -708,7 +708,12 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   }, []);
 
   useEffect(() => {
-    const h = () => setPublicacoesRelatorioTick((t) => t + 1);
+    const h = (ev) => {
+      setPublicacoesRelatorioTick((t) => t + 1);
+      if (featureFlags.useApiProcessos && ev?.detail?.recarregarProcesso) {
+        void carregarProcessoApiAtual();
+      }
+    };
     window.addEventListener('vilareal:publicacoes-processo-relatorio-atualizado', h);
     return () => window.removeEventListener('vilareal:publicacoes-processo-relatorio-atualizado', h);
   }, []);

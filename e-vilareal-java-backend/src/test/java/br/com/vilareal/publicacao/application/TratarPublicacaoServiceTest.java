@@ -209,7 +209,9 @@ class TratarPublicacaoServiceTest {
                         any(UsuarioEntity.class),
                         any(String.class));
         verify(tarefaOperacionalApplicationService, never()).criar(any());
-        verify(processoRepository, never()).save(any());
+        ArgumentCaptor<ProcessoEntity> processoCap = ArgumentCaptor.forClass(ProcessoEntity.class);
+        verify(processoRepository).save(processoCap.capture());
+        assertThat(processoCap.getValue().getObservacaoFase()).isEqualTo("Apenas informativo.");
     }
 
     @Test
@@ -254,6 +256,11 @@ class TratarPublicacaoServiceTest {
 
         verify(juliaCaixaApplicationService, never()).atualizarCaixa(any(), any());
         verify(tarefaOperacionalApplicationService, never()).criar(any());
+
+        ArgumentCaptor<ProcessoEntity> processoCap = ArgumentCaptor.forClass(ProcessoEntity.class);
+        verify(processoRepository).save(processoCap.capture());
+        assertThat(processoCap.getValue().getPrazoFatal()).isEqualTo(dataFatalAjustada);
+        assertThat(processoCap.getValue().getObservacaoFase()).isEqualTo("Acompanhar perito.");
     }
 
     @Test
@@ -274,6 +281,7 @@ class TratarPublicacaoServiceTest {
         verify(processoRepository).save(processoCap.capture());
         assertThat(processoCap.getValue().getFase())
                 .isEqualTo(DocumentoPastaAssinarService.FASE_AGUARDANDO_PROTOCOLO);
+        assertThat(processoCap.getValue().getObservacaoFase()).isEqualTo("Protocolar petição.");
 
         verify(processoApplicationService, never()).criarPrazo(any(), any());
         verify(prazoAgendaLembreteService, never())
@@ -311,6 +319,11 @@ class TratarPublicacaoServiceTest {
         assertThat(tarefaCap.getValue().getProcessoPrazoId()).isEqualTo(PRAZO_ID);
         assertThat(tarefaCap.getValue().getOrigem()).isEqualTo(TratarPublicacaoService.ORIGEM_TAREFA);
         assertThat(tarefaCap.getValue().getTitulo()).isEqualTo("Contatar cliente sobre publicação");
+
+        ArgumentCaptor<ProcessoEntity> processoCap = ArgumentCaptor.forClass(ProcessoEntity.class);
+        verify(processoRepository).save(processoCap.capture());
+        assertThat(processoCap.getValue().getPrazoFatal()).isEqualTo(JuliaPrazoDateUtil.avancarParaProximoDiaUtil(DATA_FATAL));
+        assertThat(processoCap.getValue().getObservacaoFase()).isEqualTo("Manifestar no prazo.");
     }
 
     @Test
@@ -342,6 +355,11 @@ class TratarPublicacaoServiceTest {
                         any(LocalDate.class),
                         any(UsuarioEntity.class),
                         any(String.class));
+
+        ArgumentCaptor<ProcessoEntity> processoCap = ArgumentCaptor.forClass(ProcessoEntity.class);
+        verify(processoRepository).save(processoCap.capture());
+        assertThat(processoCap.getValue().getPrazoFatal()).isEqualTo(dataFatalAjustada);
+        assertThat(processoCap.getValue().getObservacaoFase()).isEqualTo("Prazo de terceiro.");
     }
 
     @Test

@@ -2,7 +2,10 @@ import { Fragment, useState, useEffect, useCallback } from 'react';
 import { X, Newspaper, Loader2 } from 'lucide-react';
 import {
   alterarStatusPublicacao,
+  aplicarStatusTratamentoNaLinhaPublicacao,
+  idPublicacaoLinha,
   listarPublicacoesRelatorioPorProcesso,
+  notificarPublicacoesAtualizadas,
 } from '../repositories/publicacoesRepository.js';
 import { featureFlags } from '../config/featureFlags.js';
 import { useCloseOnEscape } from '../hooks/useCloseOnEscape.js';
@@ -75,18 +78,11 @@ function badgeStatusTratamentoClass(status) {
 }
 
 function aplicarStatusNaLinha(row, status) {
-  const statusVinculo =
-    status === 'VINCULADA' || status === 'TRATADA'
-      ? 'vinculado'
-      : status === 'IGNORADA'
-        ? 'ignorada'
-        : 'nao_vinculado';
-  return { ...row, _statusTratamento: status, statusVinculo };
+  return aplicarStatusTratamentoNaLinhaPublicacao(row, status);
 }
 
-function notificarRelatorioAtualizado() {
-  if (typeof window === 'undefined') return;
-  window.dispatchEvent(new CustomEvent('vilareal:publicacoes-processo-relatorio-atualizado'));
+function notificarRelatorioAtualizado(options = {}) {
+  notificarPublicacoesAtualizadas(options);
 }
 
 /** Texto completo da publicação: prioriza o teor integral importado. */
@@ -161,7 +157,11 @@ export function PublicacoesRelatorioConteudo({
       setStatusOk('Publicação tratada com sucesso.');
     }
     setStatusErro('');
-    notificarRelatorioAtualizado();
+    notificarRelatorioAtualizado({
+      recarregarProcesso: true,
+      publicacaoId: idPublicacaoLinha(row),
+      statusTratamento: 'TRATADA',
+    });
     setModalTratarRow(null);
   }, []);
 
