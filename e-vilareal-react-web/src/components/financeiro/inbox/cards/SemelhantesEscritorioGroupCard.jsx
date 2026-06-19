@@ -35,7 +35,16 @@ function rotuloVinculo(item) {
   return '—';
 }
 
-export function SemelhantesEscritorioGroupCard({ grupo, onAprovarGrupo, onAprovarItem, onPularGrupo, fading, busy }) {
+export function SemelhantesEscritorioGroupCard({
+  grupo,
+  onAprovarGrupo,
+  onAprovarItem,
+  onRejeitarGrupo,
+  onRejeitarItem,
+  onPularGrupo,
+  fading,
+  busy,
+}) {
   const [expandido, setExpandido] = useState(false);
   const itens = grupo?.itens ?? [];
   const n = itens.length;
@@ -108,12 +117,22 @@ export function SemelhantesEscritorioGroupCard({ grupo, onAprovarGrupo, onAprova
           </button>
           <button
             type="button"
+            disabled={busy || n === 0}
+            onClick={() => onRejeitarGrupo?.(itens)}
+            className="text-xs px-3 py-1.5 rounded-md border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-950/40 dark:border-red-900 dark:text-red-300 dark:hover:bg-red-950/70 disabled:opacity-50 w-full"
+            title="Grava a rejeição — esta sugestão não volta a aparecer"
+          >
+            Rejeitar sugestão
+          </button>
+          <button
+            type="button"
             disabled={busy}
             onClick={() => onPularGrupo?.(itens.map((i) => i.lancamentoId))}
             className="text-xs px-3 py-1.5 rounded-md border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50 w-full inline-flex items-center justify-center gap-1"
+            title="Oculta só nesta sessão — reaparece ao recarregar"
           >
             <SkipForward className="w-3.5 h-3.5" />
-            Pular
+            Pular (temporário)
           </button>
         </div>
       </div>
@@ -128,7 +147,7 @@ export function SemelhantesEscritorioGroupCard({ grupo, onAprovarGrupo, onAprova
               <th className="py-1.5 pr-2 font-medium">Sugestão (cód. + proc.)</th>
               <th className="py-1.5 pr-2 font-medium">Origem</th>
               <th className="py-1.5 pr-2 font-medium">Ref.</th>
-              <th className="py-1.5 font-medium w-[5rem]" />
+              <th className="py-1.5 font-medium w-[6.5rem]" />
             </tr>
           </thead>
           <tbody>
@@ -170,14 +189,24 @@ export function SemelhantesEscritorioGroupCard({ grupo, onAprovarGrupo, onAprova
                       : '—'}
                 </td>
                 <td className="py-2">
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => onAprovarItem?.(item)}
-                    className="text-[11px] px-2 py-1 rounded border border-emerald-600 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 disabled:opacity-50"
-                  >
-                    Aprovar
-                  </button>
+                  <div className="flex flex-col gap-1">
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => onAprovarItem?.(item)}
+                      className="text-[11px] px-2 py-1 rounded border border-emerald-600 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 disabled:opacity-50"
+                    >
+                      Aprovar
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => onRejeitarItem?.(item)}
+                      className="text-[11px] px-2 py-1 rounded border border-red-200 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/40 disabled:opacity-50"
+                    >
+                      Rejeitar
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}

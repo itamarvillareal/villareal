@@ -15,6 +15,7 @@ import {
   obterSaudeFinanceiroApi,
   parearCompensacaoApi,
   descartarParesCompensacaoApi,
+  descartarSemelhantesEscritorioApi,
   sugestoesClassificacaoLoteApi,
 } from '../../../repositories/financeiroRepository.js';
 import { ETAPAS, INBOX_TIPOS, clampFinanceiroPageSize } from '../constants/financeiroConstants.js';
@@ -547,6 +548,72 @@ export function InboxPage() {
     if (!ids?.length) return;
     setSkipped((prev) => new Set([...prev, ...ids]));
   }, []);
+
+  const semelhanteItensParaDescarte = useCallback(
+    (itens) =>
+      (itens ?? [])
+        .filter((i) => i?.lancamentoId && i?.sugestaoClienteId && i?.sugestaoProcessoId)
+        .map((i) => ({
+          lancamentoId: i.lancamentoId,
+          clienteId: i.sugestaoClienteId,
+          processoId: i.sugestaoProcessoId,
+        })),
+    [],
+  );
+
+  const handleRejeitarSemelhantes = useCallback(
+    async (itens) => {
+      const payload = semelhanteItensParaDescarte(itens);
+      if (!payload.length || busy || loading) return;
+
+      setBusy(true);
+      try {
+        const res = await descartarSemelhantesEscritorioApi({ itens: payload });
+        const ok = Number(res?.descartados ?? 0);
+        const ja = Number(res?.jaDescartados ?? 0);
+        const ids = payload.map((i) => i.lancamentoId);
+
+        removeComFade(ids, () => {
+          setSemelhantesGrupos((prev) => {
+            const next = prev
+              .map((g) => ({
+                ...g,
+                itens: (g.itens ?? []).filter((i) => !ids.includes(i.lancamentoId)),
+              }))
+              .filter((g) => (g.itens ?? []).length > 0);
+            setTotalElements(next.length);
+            return next;
+          });
+        });
+
+        if (ok > 0) {
+          patchCount(INBOX_TIPOS.semelhantes, -ok);
+          scheduleLoadCounts();
+          dispatchRefreshPendentes();
+          toast.success(
+            ok === 1
+              ? '1 sugestão rejeitada — não será exibida novamente.'
+              : `${ok.toLocaleString('pt-BR')} sugestões rejeitadas — não serão exibidas novamente.`,
+          );
+        } else if (ja > 0) {
+          toast.info('Sugestão já estava rejeitada; lista atualizada.');
+        }
+      } catch (e) {
+        toast.error(`Falha ao rejeitar sugestão: ${e?.message || 'erro desconhecido'}`);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [
+      semelhanteItensParaDescarte,
+      busy,
+      loading,
+      toast,
+      removeComFade,
+      patchCount,
+      scheduleLoadCounts,
+    ],
+  );
 
   const handleParear = useCallback(
     async (par) => {
@@ -1455,6 +1522,8 @@ export function InboxPage() {
                   grupo={grupo}
                   onAprovarGrupo={handleAprovarSemelhanteGrupo}
                   onAprovarItem={handleAprovarSemelhanteItem}
+                  onRejeitarGrupo={handleRejeitarSemelhantes}
+                  onRejeitarItem={(item) => void handleRejeitarSemelhantes([item])}
                   onPularGrupo={handlePularSemelhantes}
                   fading={grupoFading}
                   busy={busy}

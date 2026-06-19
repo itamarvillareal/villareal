@@ -328,6 +328,13 @@ public class FinanceiroController {
         return semelhantesEscritorioService.listarInbox(numeroBanco, ano, mes, pageable);
     }
 
+    @PostMapping("/lancamentos/inbox/semelhantes/descartar")
+    @Operation(description = "Rejeita sugestões da aba Escritório (lançamento + cliente + processo) — não voltam a aparecer.")
+    public DescartarSemelhanteEscritorioResponse descartarSemelhantesEscritorio(
+            @Valid @RequestBody DescartarSemelhanteEscritorioRequest request) {
+        return semelhantesEscritorioService.descartarSugestoes(request);
+    }
+
     @GetMapping("/lancamentos/{id:\\d+}")
     public LancamentoFinanceiroResponse buscarLancamento(@PathVariable Long id) {
         return financeiroService.buscarLancamento(id);

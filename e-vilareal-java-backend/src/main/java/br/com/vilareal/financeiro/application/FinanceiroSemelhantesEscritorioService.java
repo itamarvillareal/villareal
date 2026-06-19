@@ -3,6 +3,9 @@ package br.com.vilareal.financeiro.application;
 import br.com.vilareal.calculo.infrastructure.persistence.entity.CalculoRodadaEntity;
 import br.com.vilareal.calculo.infrastructure.persistence.repository.CalculoRodadaRepository;
 import br.com.vilareal.common.text.Utf8MojibakeUtil;
+import br.com.vilareal.financeiro.api.dto.DescartarSemelhanteEscritorioItemRequest;
+import br.com.vilareal.financeiro.api.dto.DescartarSemelhanteEscritorioRequest;
+import br.com.vilareal.financeiro.api.dto.DescartarSemelhanteEscritorioResponse;
 import br.com.vilareal.financeiro.api.dto.InboxSemelhantesPaginaResponse;
 import br.com.vilareal.financeiro.api.dto.SemelhanteEscritorioGrupoResponse;
 import br.com.vilareal.financeiro.api.dto.SemelhanteEscritorioItemResponse;
@@ -17,8 +20,10 @@ import br.com.vilareal.financeiro.domain.SemelhanteEscritorioNomeMatcher;
 import br.com.vilareal.financeiro.domain.SemelhanteEscritorioNomeMatcher.PessoaProcessoRef;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.ContaContabilEntity;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.LancamentoFinanceiroEntity;
+import br.com.vilareal.financeiro.infrastructure.persistence.entity.SemelhanteEscritorioDescarteEntity;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.ContaContabilRepository;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.LancamentoFinanceiroRepository;
+import br.com.vilareal.financeiro.infrastructure.persistence.repository.SemelhanteEscritorioDescarteRepository;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.ClienteRepository;
@@ -58,6 +63,7 @@ public class FinanceiroSemelhantesEscritorioService {
     private final ProcessoApplicationService processoApplicationService;
     private final CalculoRodadaRepository calculoRodadaRepository;
     private final PessoaRepository pessoaRepository;
+    private final SemelhanteEscritorioDescarteRepository descarteRepository;
 
     public FinanceiroSemelhantesEscritorioService(
             LancamentoFinanceiroRepository lancamentoRepository,
@@ -66,7 +72,8 @@ public class FinanceiroSemelhantesEscritorioService {
             ProcessoRepository processoRepository,
             ProcessoApplicationService processoApplicationService,
             CalculoRodadaRepository calculoRodadaRepository,
-            PessoaRepository pessoaRepository) {
+            PessoaRepository pessoaRepository,
+            SemelhanteEscritorioDescarteRepository descarteRepository) {
         this.lancamentoRepository = lancamentoRepository;
         this.contaContabilRepository = contaContabilRepository;
         this.clienteRepository = clienteRepository;
@@ -74,6 +81,7 @@ public class FinanceiroSemelhantesEscritorioService {
         this.processoApplicationService = processoApplicationService;
         this.calculoRodadaRepository = calculoRodadaRepository;
         this.pessoaRepository = pessoaRepository;
+        this.descarteRepository = descarteRepository;
     }
 
     @Transactional(readOnly = true)
@@ -96,7 +104,7 @@ public class FinanceiroSemelhantesEscritorioService {
                 .map(this::toHistoricoSlot)
                 .toList();
 
-        List<MatchResult> matches = parearEmCamadas(pendentes, historico);
+        List<MatchResult> matches = filtrarRejeitados(parearEmCamadas(pendentes, historico), pendentes);
         List<SemelhanteEscritorioGrupoResponse> grupos = agruparMatches(matches, contaAId, contaACodigo);
         enriquecerPartesProcesso(grupos);
 
@@ -126,6 +134,66 @@ public class FinanceiroSemelhantesEscritorioService {
     @Transactional(readOnly = true)
     public long contarItensAcionaveis(Integer numeroBanco, Integer ano, Integer mes) {
         return listarInbox(numeroBanco, ano, mes, Pageable.ofSize(1)).getTotalItensAcionaveis();
+    }
+
+    @Transactional
+    public DescartarSemelhanteEscritorioResponse descartarSugestoes(DescartarSemelhanteEscritorioRequest request) {
+        DescartarSemelhanteEscritorioResponse response = new DescartarSemelhanteEscritorioResponse();
+        if (request == null || request.getItens() == null) {
+            return response;
+        }
+        for (DescartarSemelhanteEscritorioItemRequest item : request.getItens()) {
+            if (item.getLancamentoId() == null || item.getClienteId() == null || item.getProcessoId() == null) {
+                continue;
+            }
+            if (descarteRepository.existsByLancamentoIdAndClienteIdAndProcessoId(
+                    item.getLancamentoId(), item.getClienteId(), item.getProcessoId())) {
+                response.setJaDescartados(response.getJaDescartados() + 1);
+                continue;
+            }
+            SemelhanteEscritorioDescarteEntity e = new SemelhanteEscritorioDescarteEntity();
+            e.setLancamentoId(item.getLancamentoId());
+            e.setClienteId(item.getClienteId());
+            e.setProcessoId(item.getProcessoId());
+            descarteRepository.save(e);
+            response.setDescartados(response.getDescartados() + 1);
+        }
+        return response;
+    }
+
+    List<MatchResult> filtrarRejeitados(List<MatchResult> matches, List<PendenteItem> pendentes) {
+        if (matches.isEmpty()) {
+            return matches;
+        }
+        Set<Long> ids = pendentes.stream()
+                .map(PendenteItem::lancamentoId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (ids.isEmpty()) {
+            return matches;
+        }
+        Set<String> rejeitados = descarteRepository.findByLancamentoIdIn(ids).stream()
+                .map(d -> chaveRejeicao(d.getLancamentoId(), d.getClienteId(), d.getProcessoId()))
+                .collect(Collectors.toSet());
+        if (rejeitados.isEmpty()) {
+            return matches;
+        }
+        return matches.stream().filter(m -> !rejeitada(m, rejeitados)).toList();
+    }
+
+    static String chaveRejeicao(Long lancamentoId, Long clienteId, Long processoId) {
+        return lancamentoId + "|" + clienteId + "|" + processoId;
+    }
+
+    private static boolean rejeitada(MatchResult m, Set<String> rejeitados) {
+        if (m.pendente() == null || m.pendente().lancamentoId() == null) {
+            return false;
+        }
+        if (m.sugestaoClienteId() == null || m.sugestaoProcessoId() == null) {
+            return false;
+        }
+        return rejeitados.contains(chaveRejeicao(
+                m.pendente().lancamentoId(), m.sugestaoClienteId(), m.sugestaoProcessoId()));
     }
 
     List<MatchResult> parearEmCamadas(List<PendenteItem> pendentes, List<HistoricoSlot> historico) {

@@ -3,12 +3,16 @@ package br.com.vilareal.financeiro.application;
 import br.com.vilareal.calculo.infrastructure.persistence.entity.CalculoRodadaEntity;
 import br.com.vilareal.calculo.infrastructure.persistence.repository.CalculoRodadaRepository;
 import br.com.vilareal.financeiro.domain.EtapaLancamento;
-import br.com.vilareal.financeiro.domain.SemelhanteEscritorioMatcher.PendenteItem;
+import br.com.vilareal.financeiro.api.dto.DescartarSemelhanteEscritorioItemRequest;
+import br.com.vilareal.financeiro.api.dto.DescartarSemelhanteEscritorioRequest;
+import br.com.vilareal.financeiro.domain.SemelhanteEscritorioMatcher.MatchResult;
 import br.com.vilareal.financeiro.domain.SemelhanteEscritorioOrigem;
-import br.com.vilareal.financeiro.infrastructure.persistence.entity.ContaContabilEntity;
+import br.com.vilareal.financeiro.domain.SemelhanteEscritorioMatcher.PendenteItem;
+import br.com.vilareal.financeiro.infrastructure.persistence.entity.SemelhanteEscritorioDescarteEntity;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.LancamentoFinanceiroEntity;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.ContaContabilRepository;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.LancamentoFinanceiroRepository;
+import br.com.vilareal.financeiro.infrastructure.persistence.repository.SemelhanteEscritorioDescarteRepository;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.ClienteRepository;
@@ -31,8 +35,11 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import java.util.Collections;
+
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anySet;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -52,6 +59,8 @@ class FinanceiroSemelhantesEscritorioServiceTest {
     private CalculoRodadaRepository calculoRodadaRepository;
     @Mock
     private PessoaRepository pessoaRepository;
+    @Mock
+    private SemelhanteEscritorioDescarteRepository descarteRepository;
 
     private FinanceiroSemelhantesEscritorioService service;
 
@@ -64,7 +73,8 @@ class FinanceiroSemelhantesEscritorioServiceTest {
                 processoRepository,
                 processoApplicationService,
                 calculoRodadaRepository,
-                pessoaRepository);
+                pessoaRepository,
+                descarteRepository);
     }
 
     @Test
@@ -133,6 +143,47 @@ class FinanceiroSemelhantesEscritorioServiceTest {
 
         assertThat(matches).hasSize(1);
         assertThat(matches.get(0).origem()).isEqualTo(SemelhanteEscritorioOrigem.CALCULO_PARCELA);
+    }
+
+    @Test
+    void filtrarRejeitados_removeParJaRejeitado() {
+        PendenteItem pend = new PendenteItem(
+                50L,
+                LocalDate.of(2026, 6, 17),
+                "PIX TESTE",
+                "pix teste",
+                new BigDecimal("100.00"),
+                756,
+                "Sicoob");
+        MatchResult match = MatchResult.nomePessoa(pend, 99L, 1345L, 501L, "Fulano");
+        SemelhanteEscritorioDescarteEntity descarte = new SemelhanteEscritorioDescarteEntity();
+        descarte.setLancamentoId(50L);
+        descarte.setClienteId(99L);
+        descarte.setProcessoId(1345L);
+
+        when(descarteRepository.findByLancamentoIdIn(any())).thenReturn(List.of(descarte));
+
+        var filtrados = service.filtrarRejeitados(List.of(match), List.of(pend));
+
+        assertThat(filtrados).isEmpty();
+    }
+
+    @Test
+    void descartarSugestoes_persisteRejeicao() {
+        DescartarSemelhanteEscritorioRequest req = new DescartarSemelhanteEscritorioRequest();
+        DescartarSemelhanteEscritorioItemRequest item = new DescartarSemelhanteEscritorioItemRequest();
+        item.setLancamentoId(50L);
+        item.setClienteId(99L);
+        item.setProcessoId(1345L);
+        req.setItens(List.of(item));
+
+        when(descarteRepository.existsByLancamentoIdAndClienteIdAndProcessoId(50L, 99L, 1345L))
+                .thenReturn(false);
+
+        var res = service.descartarSugestoes(req);
+
+        assertThat(res.getDescartados()).isEqualTo(1);
+        verify(descarteRepository).save(any(SemelhanteEscritorioDescarteEntity.class));
     }
 
     private static CalculoRodadaEntity rodadaCalculo(String cod8, int proc, String venc, String valor)

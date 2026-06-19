@@ -458,6 +458,15 @@ export async function listarInboxSemelhantesApi(filtros = {}, opts = {}) {
   return request('/api/financeiro/lancamentos/inbox/semelhantes', { query, signal });
 }
 
+export async function descartarSemelhantesEscritorioApi(body, opts = {}) {
+  if (!featureFlags.useApiFinanceiro) throw new Error('API financeiro desativada');
+  return request('/api/financeiro/lancamentos/inbox/semelhantes/descartar', {
+    method: 'POST',
+    body,
+    signal: opts.signal,
+  });
+}
+
 export async function listarLancamentosFinanceiroPaginados(filtros = {}, opts = {}) {
   const { signal } = opts;
   if (!featureFlags.useApiFinanceiro) {

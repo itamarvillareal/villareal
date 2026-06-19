@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Search } from 'lucide-react';
 import { NavLink, useNavigate, useParams } from 'react-router-dom';
 import {
   Area,
@@ -50,6 +51,7 @@ const ETAPAS_FILTRO_CONSOLIDADO = [
 
 const fmtBrl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 const fmtCompact = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 });
+const BUSCA_DEBOUNCE_MS = 300;
 
 function ChartTooltip({ active, payload }) {
   if (!active || !payload?.length) return null;
@@ -78,6 +80,8 @@ export function ConsolidadoPage() {
   const [mes, setMes] = useState(mesAtualIso);
   /** Conta A: cadastro pleno/parcial (bolinha azul/vermelha). Demais contas: etapa do workflow. */
   const [filtroEtapa, setFiltroEtapa] = useState('');
+  const [buscaLocal, setBuscaLocal] = useState('');
+  const [buscaDebounced, setBuscaDebounced] = useState('');
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(50);
   const [contasApi, setContasApi] = useState([]);
@@ -181,7 +185,12 @@ export function ConsolidadoPage() {
   useEffect(() => {
     setPage(0);
     setSelectedIds(new Set());
-  }, [filtroEtapa]);
+  }, [filtroEtapa, buscaDebounced]);
+
+  useEffect(() => {
+    const t = window.setTimeout(() => setBuscaDebounced(buscaLocal.trim()), BUSCA_DEBOUNCE_MS);
+    return () => window.clearTimeout(t);
+  }, [buscaLocal]);
 
   useEffect(() => {
     if (!featureFlags.useApiFinanceiro || !contaContabilId) {
@@ -209,6 +218,7 @@ export function ConsolidadoPage() {
         page,
         size: pageSize,
         sort: 'dataLancamento,desc',
+        busca: buscaDebounced || undefined,
         ...filtroApi,
       },
       { signal: ac.signal },
@@ -226,7 +236,7 @@ export function ConsolidadoPage() {
       })
       .finally(() => setLoadingTable(false));
     return () => ac.abort();
-  }, [contaContabilId, codigoAtivo, mes, page, pageSize, contaToLetra, filtroEtapa]);
+  }, [contaContabilId, codigoAtivo, mes, page, pageSize, contaToLetra, filtroEtapa, buscaDebounced]);
 
   const resumoPagina = useMemo(() => {
     let creditos = 0;
@@ -410,8 +420,38 @@ export function ConsolidadoPage() {
                 ))
               )}
             </select>
-            <span className="text-xs text-slate-500 ml-auto">
-              {rows.length} na página · {totalElements.toLocaleString('pt-BR')} no mês
+            <label
+              className={`flex min-w-[160px] flex-1 max-w-md items-center gap-1.5 px-2 py-0.5 rounded-md border ${
+                buscaDebounced
+                  ? 'border-indigo-300 bg-indigo-50 dark:bg-indigo-950/40 dark:border-indigo-700'
+                  : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80'
+              }`}
+            >
+              <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" aria-hidden />
+              <input
+                type="search"
+                value={buscaLocal}
+                onChange={(e) => setBuscaLocal(e.target.value)}
+                placeholder="Buscar descrição ou valor…"
+                className="flex-1 min-w-0 bg-transparent border-0 text-xs text-slate-900 dark:text-slate-100 focus:outline-none"
+                aria-label="Buscar na descrição ou valor"
+              />
+            </label>
+            <span className="text-xs text-slate-500 ml-auto shrink-0">
+              {buscaDebounced ? (
+                <>
+                  {totalElements.toLocaleString('pt-BR')} encontrado{totalElements === 1 ? '' : 's'}
+                  {rows.length > 0 ? (
+                    <span className="block text-[10px]">
+                      exibindo {rows.length.toLocaleString('pt-BR')} nesta página
+                    </span>
+                  ) : null}
+                </>
+              ) : (
+                <>
+                  {rows.length} na página · {totalElements.toLocaleString('pt-BR')} no mês
+                </>
+              )}
             </span>
           </div>
           {erro ? (
