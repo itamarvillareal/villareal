@@ -6,7 +6,6 @@ describe('montarPatchProcessoFromTxt', () => {
   it('zera descricaoAcao e naturezaAcao antes de aplicar cabeçalho txt', () => {
     const patch = montarPatchProcessoFromTxt({
       cabecalho: { campos: { numeroCnj: '123' }, partesTxt: {} },
-      prazoArvore: null,
       semantic: null,
       statusProcesso: { ativo: true, statusInativo: false },
       fase: null,
@@ -22,7 +21,6 @@ describe('montarPatchProcessoFromTxt', () => {
         campos: { descricaoAcao: 'Execução', naturezaAcao: 'Cível' },
         partesTxt: {},
       },
-      prazoArvore: null,
       semantic: null,
       statusProcesso: { ativo: true, statusInativo: false },
       fase: null,
@@ -31,17 +29,17 @@ describe('montarPatchProcessoFromTxt', () => {
     assert.equal(patch.naturezaAcao, 'Cível');
   });
 
-  it('inclui tramitacao do txt 147.1 no patch', () => {
+  it('inclui prazo fatal do txt 145.1 canónico no patch', () => {
     const patch = montarPatchProcessoFromTxt({
       cabecalho: {
-        campos: { tramitacao: 'Projudi' },
+        campos: { prazoFatal: '2026-04-10' },
         partesTxt: {},
+        fontes: { prazoFatal: '/Gerais/1000/400/491/00000491.145.1.4.txt' },
       },
-      prazoArvore: null,
       semantic: null,
       statusProcesso: { ativo: true, statusInativo: false },
       fase: null,
     });
-    assert.equal(patch.tramitacao, 'Projudi');
+    assert.equal(patch.prazoFatal, '2026-04-10');
   });
 });

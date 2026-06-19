@@ -8,6 +8,7 @@ import br.com.vilareal.julia.domain.JuliaStatusCaixa;
 import br.com.vilareal.julia.infrastructure.persistence.entity.JuliaTriagemEntity;
 import br.com.vilareal.julia.infrastructure.persistence.repository.JuliaTriagemRepository;
 import br.com.vilareal.agenda.api.dto.AgendaEventoWriteRequest;
+import br.com.vilareal.agenda.application.PrazoAgendaLembreteService;
 import br.com.vilareal.agenda.application.AgendaApplicationService;
 import br.com.vilareal.julia.triagem.TriagemEnactOpcoes;
 import br.com.vilareal.julia.triagem.TriagemResultado;
@@ -113,6 +114,7 @@ public class JuliaTriagemService {
     private final JuliaTriagemRepository juliaTriagemRepository;
     private final JuliaAssistenteContextService juliaAssistenteContextService;
     private final AgendaApplicationService agendaApplicationService;
+    private final PrazoAgendaLembreteService prazoAgendaLembreteService;
     private final UsuarioRepository usuarioRepository;
     private final JuliaTriagemContextoDriveService contextoDriveService;
     private final String modelo;
@@ -131,6 +133,7 @@ public class JuliaTriagemService {
             JuliaTriagemRepository juliaTriagemRepository,
             JuliaAssistenteContextService juliaAssistenteContextService,
             AgendaApplicationService agendaApplicationService,
+            PrazoAgendaLembreteService prazoAgendaLembreteService,
             UsuarioRepository usuarioRepository,
             JuliaTriagemContextoDriveService contextoDriveService,
             ObjectProvider<JuliaTriagemService> self,
@@ -147,6 +150,7 @@ public class JuliaTriagemService {
         this.juliaTriagemRepository = juliaTriagemRepository;
         this.juliaAssistenteContextService = juliaAssistenteContextService;
         this.agendaApplicationService = agendaApplicationService;
+        this.prazoAgendaLembreteService = prazoAgendaLembreteService;
         this.usuarioRepository = usuarioRepository;
         this.contextoDriveService = contextoDriveService;
         this.self = self;
@@ -796,7 +800,7 @@ public class JuliaTriagemService {
         boolean agendaOmitidaSemResponsavel = false;
         Optional<UsuarioEntity> destinatarioAgenda = Optional.empty();
         if (!analiseSemPrazo && prazoAtivoComData && !duplicataPrazo && dataTrabalho != null) {
-            destinatarioAgenda = resolverDestinatarioHumanoAgenda(processo);
+            destinatarioAgenda = prazoAgendaLembreteService.resolverDestinatarioHumanoAgenda(processo);
             if (destinatarioAgenda.isEmpty()) {
                 agendaOmitidaSemResponsavel = true;
             }
@@ -850,7 +854,8 @@ public class JuliaTriagemService {
                         dataReal);
             } else if (destinatarioAgenda.isPresent()) {
                 UsuarioEntity destinatario = destinatarioAgenda.get();
-                agendaEventoId = criarLembreteAgendaPrazo(processo, prazo, dataReal, dataTrabalho, destinatario);
+                agendaEventoId = prazoAgendaLembreteService.criarLembreteAgendaPrazo(
+                        processo, prazo, dataReal, dataTrabalho, destinatario, ORIGEM_AGENDA_PRAZO_TRIAGEM);
                 log.info(
                         "Julia enact processoId={}: lembrete agenda id={} em {} para usuarioId={} (origem={})",
                         processoId,
@@ -945,7 +950,7 @@ public class JuliaTriagemService {
 
     int replicarAudienciaAgendaColaboradores(
             ProcessoEntity processo, LocalDate data, String hora, String tipo, String meio) {
-        String processoRef = montarProcessoRef(processo);
+        String processoRef = PrazoAgendaLembreteService.montarProcessoRef(processo);
         if (!StringUtils.hasText(processoRef)) {
             return 0;
         }
@@ -987,85 +992,6 @@ public class JuliaTriagemService {
         return sb.toString();
     }
 
-    Optional<UsuarioEntity> resolverDestinatarioHumanoAgenda(ProcessoEntity processo) {
-        UsuarioEntity responsavel = processo.getUsuarioResponsavel();
-        if (responsavel != null) {
-            if (responsavel.getTipo() == TipoUsuario.ASSISTENTE_IA) {
-                log.warn(
-                        "Julia enact processoId={}: responsável é assistente IA — lembrete de agenda omitido",
-                        processo.getId());
-                return Optional.empty();
-            }
-            return Optional.of(responsavel);
-        }
-
-        Optional<UsuarioEntity> porConsultor = resolverHumanoPorConsultor(processo.getConsultor());
-        if (porConsultor.isPresent()) {
-            log.info(
-                    "Julia enact processoId={}: destinatário agenda resolvido via consultor \"{}\" → usuarioId={}",
-                    processo.getId(),
-                    processo.getConsultor(),
-                    porConsultor.get().getId());
-            return porConsultor;
-        }
-
-        log.warn(
-                "Julia enact processoId={}: sem responsável humano — lembrete de agenda omitido (triagem segue)",
-                processo.getId());
-        return Optional.empty();
-    }
-
-    Optional<UsuarioEntity> resolverHumanoPorConsultor(String consultor) {
-        if (!StringUtils.hasText(consultor)) {
-            return Optional.empty();
-        }
-        String nome = consultor.trim();
-        Optional<UsuarioEntity> porLogin = usuarioRepository.findWithPerfilByLoginIgnoreCase(nome);
-        if (porLogin.isPresent() && isHumanoAtivo(porLogin.get())) {
-            return porLogin;
-        }
-
-        String loginGuess = nome.toLowerCase().replaceAll("\\s+", ".").replaceAll("[^a-z0-9.]", "");
-        if (StringUtils.hasText(loginGuess)) {
-            Optional<UsuarioEntity> porGuess = usuarioRepository.findWithPerfilByLoginIgnoreCase(loginGuess);
-            if (porGuess.isPresent() && isHumanoAtivo(porGuess.get())) {
-                return porGuess;
-            }
-        }
-
-        String primeiroToken = nome.split("\\s+")[0];
-        for (UsuarioEntity u : usuarioRepository.findColaboradoresHumanosAtivos()) {
-            if (loginCorrespondeConsultor(u.getLogin(), nome, primeiroToken)) {
-                return Optional.of(u);
-            }
-            if (StringUtils.hasText(u.getApelido())
-                    && u.getApelido().trim().equalsIgnoreCase(nome)) {
-                return Optional.of(u);
-            }
-        }
-        return Optional.empty();
-    }
-
-    private static boolean isHumanoAtivo(UsuarioEntity u) {
-        return u.getTipo() == TipoUsuario.HUMANO && Boolean.TRUE.equals(u.getAtivo());
-    }
-
-    private static boolean loginCorrespondeConsultor(String login, String consultor, String primeiroToken) {
-        if (!StringUtils.hasText(login)) {
-            return false;
-        }
-        String l = login.trim().toLowerCase();
-        String c = consultor.trim().toLowerCase();
-        String t = primeiroToken.trim().toLowerCase();
-        if (l.equals(c)) {
-            return true;
-        }
-        if (l.startsWith(t + ".") || l.equals(t)) {
-            return true;
-        }
-        return l.replace(".", " ").equals(c);
-    }
-
     private boolean atualizarPrazoFatalCabecalhoSeNecessario(ProcessoEntity processo, LocalDate novaData) {
         LocalDate atual = processo.getPrazoFatal();
         boolean atualizar = deveAtualizarPrazoFatalCabecalho(atual, novaData);
@@ -1083,49 +1009,11 @@ public class JuliaTriagemService {
         return true;
     }
 
-    private Long criarLembreteAgendaPrazo(
-            ProcessoEntity processo,
-            TriagemResultado.Prazo prazo,
-            LocalDate dataReal,
-            LocalDate dataTrabalho,
-            UsuarioEntity destinatario) {
-        String processoRef = montarProcessoRef(processo);
-        if (!StringUtils.hasText(processoRef)) {
-            throw new BusinessRuleException(
-                    "Processo id="
-                            + processo.getId()
-                            + " sem código cliente/nº interno — não foi possível vincular lembrete na agenda.");
-        }
-        String tipo = StringUtils.hasText(prazo.tipo()) ? prazo.tipo().trim() : "Prazo processual";
-        String dataRealFmt = dataReal.format(FMT_DATA_BR);
-        AgendaEventoWriteRequest req = new AgendaEventoWriteRequest();
-        req.setUsuarioId(destinatario.getId());
-        req.setDataEvento(dataTrabalho);
-        req.setDescricao("Prazo se aproximando: " + tipo + " (fatal em " + dataRealFmt + ")");
-        req.setProcessoRef(processoRef);
-        req.setOrigem(ORIGEM_AGENDA_PRAZO_TRIAGEM);
-        return agendaApplicationService.criar(req).getId();
-    }
-
     static boolean deveAtualizarPrazoFatalCabecalho(LocalDate atual, LocalDate nova) {
         if (nova == null) {
             return false;
         }
         return atual == null || nova.isBefore(atual);
-    }
-
-    static String montarProcessoRef(ProcessoEntity processo) {
-        if (processo == null || processo.getNumeroInterno() == null || processo.getNumeroInterno() < 1) {
-            return null;
-        }
-        String codigo = null;
-        if (processo.getCliente() != null && StringUtils.hasText(processo.getCliente().getCodigoCliente())) {
-            codigo = processo.getCliente().getCodigoCliente().trim();
-        }
-        if (!StringUtils.hasText(codigo)) {
-            return null;
-        }
-        return codigo + "|" + processo.getNumeroInterno();
     }
 
     static String montarDetalheAndamento(TriagemResultado resultado) {

@@ -25,7 +25,7 @@ public class ExtratoCoraEmailController {
     @PostMapping("/processar")
     @Operation(summary = "Buscar e-mails Cora no Gmail e importar extrato OFX")
     public ResponseEntity<?> processar(
-            @RequestParam(name = "incluirLidos", defaultValue = "false") boolean incluirLidos) {
+            @RequestParam(name = "incluirLidos", defaultValue = "false") boolean reprocessar) {
         if (!gmailExtratoCoraService.isDisponivel()) {
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                     .body(Map.of(
@@ -34,7 +34,7 @@ public class ExtratoCoraEmailController {
         }
         try {
             ExtratoCoraEmailProcessamentoResumo resumo =
-                    gmailExtratoCoraService.buscarEImportarExtratos(incluirLidos);
+                    gmailExtratoCoraService.buscarEImportarExtratos(reprocessar);
             return ResponseEntity.ok(resumo);
         } catch (Exception ex) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)

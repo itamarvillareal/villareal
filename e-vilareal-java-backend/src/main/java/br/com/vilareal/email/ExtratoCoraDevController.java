@@ -30,14 +30,14 @@ public class ExtratoCoraDevController {
     @PostMapping("/rodar-agora")
     @Operation(summary = "Executa uma rodada de importação de extrato Cora via Gmail")
     public ResponseEntity<ExtratoCoraEmailProcessamentoResumo> rodarAgora(
-            @RequestParam(name = "incluirLidos", defaultValue = "false") boolean incluirLidos) {
+            @RequestParam(name = "incluirLidos", defaultValue = "false") boolean reprocessar) {
         if (!gmailExtratoCoraService.isDisponivel()) {
             ExtratoCoraEmailProcessamentoResumo indisponivel = new ExtratoCoraEmailProcessamentoResumo();
             indisponivel.getErros().add("Gmail API não configurada.");
             return ResponseEntity.ok(indisponivel);
         }
         try {
-            return ResponseEntity.ok(gmailExtratoCoraService.buscarEImportarExtratos(incluirLidos));
+            return ResponseEntity.ok(gmailExtratoCoraService.buscarEImportarExtratos(reprocessar));
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }

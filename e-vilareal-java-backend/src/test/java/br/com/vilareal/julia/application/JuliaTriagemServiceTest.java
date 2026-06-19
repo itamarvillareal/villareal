@@ -22,7 +22,7 @@ class JuliaTriagemServiceTest {
                 0.9,
                 null);
 
-        JuliaTriagemService svc = new JuliaTriagemService(null, null, null, null, null, null, null, null, null, null, null, null, null, "test-model", false, 0.72);
+        JuliaTriagemService svc = new JuliaTriagemService(null, null, null, null, null, null, null, null, null, null, null, null, null, null, "test-model", false, 0.72);
         TriagemResultado out = svc.normalizarPrazo(entrada);
 
         assertThat(out.prazo().dataTrabalhoAsLocalDate()).isEqualTo(java.time.LocalDate.of(2026, 6, 3));
@@ -42,7 +42,7 @@ class JuliaTriagemServiceTest {
                 0.9,
                 null);
 
-        JuliaTriagemService svc = new JuliaTriagemService(null, null, null, null, null, null, null, null, null, null, null, null, null, "test-model", false, 0.72);
+        JuliaTriagemService svc = new JuliaTriagemService(null, null, null, null, null, null, null, null, null, null, null, null, null, null, "test-model", false, 0.72);
         TriagemResultado out = svc.normalizarPrazo(entrada);
 
         assertThat(out.prioridade()).isEqualTo("URGENTE");
@@ -64,7 +64,7 @@ class JuliaTriagemServiceTest {
                 0.8,
                 null);
 
-        JuliaTriagemService svc = new JuliaTriagemService(null, null, null, null, null, null, null, null, null, null, null, null, null, "test-model", false, 0.72);
+        JuliaTriagemService svc = new JuliaTriagemService(null, null, null, null, null, null, null, null, null, null, null, null, null, null, "test-model", false, 0.72);
         TriagemResultado out = svc.normalizarPrazo(entrada);
 
         assertThat(out.prazo().dataRealAsLocalDate()).isNull();
@@ -86,7 +86,7 @@ class JuliaTriagemServiceTest {
                 0.7,
                 null);
 
-        JuliaTriagemService svc = new JuliaTriagemService(null, null, null, null, null, null, null, null, null, null, null, null, null, "test-model", false, 0.72);
+        JuliaTriagemService svc = new JuliaTriagemService(null, null, null, null, null, null, null, null, null, null, null, null, null, null, "test-model", false, 0.72);
         TriagemResultado out = svc.normalizarPrazo(entrada);
 
         assertThat(out.prazo().dataTrabalhoAsLocalDate()).isNull();
@@ -106,7 +106,7 @@ class JuliaTriagemServiceTest {
                 0.8,
                 null);
 
-        JuliaTriagemService svc = new JuliaTriagemService(null, null, null, null, null, null, null, null, null, null, null, null, null, "test-model", false, 0.72);
+        JuliaTriagemService svc = new JuliaTriagemService(null, null, null, null, null, null, null, null, null, null, null, null, null, null, "test-model", false, 0.72);
         TriagemResultado out = svc.normalizarPrazo(entrada);
 
         assertThat(out.prazo().dataRealAsLocalDate()).isEqualTo(java.time.LocalDate.of(2026, 6, 22));

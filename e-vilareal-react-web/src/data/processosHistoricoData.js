@@ -1561,6 +1561,7 @@ export function listarProcessosPorPrazoFatal(dataBr) {
       parteOposta: reg.parteOposta,
       numeroProcessoNovo: reg.numeroProcessoNovo,
       prazoFatal: pfNorm,
+      observacaoFase: String(reg.faseCampo ?? '').trim(),
     });
   });
   out.sort((a, b) => {

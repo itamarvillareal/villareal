@@ -26,6 +26,10 @@ function textoPartes(item) {
   return `${autor} x ${reu}`;
 }
 
+function observacaoFaseLinha(item) {
+  return String(item.observacaoFase ?? item.faseCampo ?? '').trim();
+}
+
 function itemCorrespondeBusca(item, termoNorm) {
   if (!termoNorm) return true;
   const cnj = formatarNumeroCnjExibicao(item.numeroProcessoNovo);
@@ -39,6 +43,7 @@ function itemCorrespondeBusca(item, termoNorm) {
       item.numeroProcessoNovo,
       cnj,
       item.prazoFatal,
+      observacaoFaseLinha(item),
     ].join(' '),
   );
   const digitsHay = hay.replace(/\D/g, '');
@@ -51,6 +56,7 @@ function montarTextoListaCopiavel(itens) {
   return itens
     .map((item, idx) => {
       const cnj = formatarNumeroCnjExibicao(item.numeroProcessoNovo) || 'sem nº';
+      const obsFase = observacaoFaseLinha(item);
       return [
         `${String(idx + 1).padStart(3, '0')}`,
         `Cod. ${item.codCliente}`,
@@ -58,7 +64,10 @@ function montarTextoListaCopiavel(itens) {
         textoPartes(item),
         cnj,
         `Prazo fatal: ${item.prazoFatal ?? '—'}`,
-      ].join(' | ');
+        obsFase ? `Obs. fase: ${obsFase}` : null,
+      ]
+        .filter(Boolean)
+        .join(' | ');
     })
     .join('\n');
 }
@@ -66,6 +75,7 @@ function montarTextoListaCopiavel(itens) {
 function PrazoFatalCard({ item, indice, onDoubleClick }) {
   const cnj = formatarNumeroCnjExibicao(item.numeroProcessoNovo);
   const cnjLabel = cnj || 'Sem número CNJ';
+  const obsFase = observacaoFaseLinha(item);
 
   return (
     <article
@@ -92,6 +102,15 @@ function PrazoFatalCard({ item, indice, onDoubleClick }) {
         </div>
 
         <p className="text-base font-medium text-slate-900 leading-snug">{textoPartes(item)}</p>
+
+        {obsFase ? (
+          <div className="rounded-lg border border-violet-200/80 bg-violet-50/50 px-3 py-2">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-violet-800">
+              Observação de Fase
+            </p>
+            <p className="mt-1 text-sm text-slate-800 whitespace-pre-wrap leading-snug">{obsFase}</p>
+          </div>
+        ) : null}
 
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
           <span className="font-mono text-slate-600 tracking-tight" title="Número CNJ">

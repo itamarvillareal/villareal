@@ -161,12 +161,12 @@ export function ExtratoImportModal({ open, onClose, bancoInicial = null, onSucce
     runImport();
   };
 
-  const runImportarEmailCora = async (incluirLidos = false) => {
+  const runImportarEmailCora = async (reprocessar = false) => {
     if (!featureFlags.useApiFinanceiro) return;
     setEmailBusy(true);
     setEmailResult(null);
     try {
-      const res = await processarExtratoCoraEmail({ incluirLidos });
+      const res = await processarExtratoCoraEmail({ reprocessar });
       setEmailResult(res);
       const criados = Number(res?.lancamentosCriados ?? 0);
       const erros = res?.erros?.length ?? 0;
@@ -185,8 +185,8 @@ export function ExtratoImportModal({ open, onClose, bancoInicial = null, onSucce
       } else {
         toast.info(
           res?.emailsEncontrados
-            ? `${res.emailsEncontrados} e-mail(s) encontrado(s), sem lançamentos novos.`
-            : 'Nenhum e-mail Cora não lido com anexo OFX encontrado.',
+            ? `${res.emailsEncontrados} e-mail(s) encontrado(s), ${res.emailsIgnorados ?? 0} já importado(s), sem lançamentos novos.`
+            : 'Nenhum e-mail Cora com anexo OFX encontrado.',
         );
       }
     } catch (e) {
@@ -331,7 +331,8 @@ export function ExtratoImportModal({ open, onClose, bancoInicial = null, onSucce
                 {isCora && featureFlags.useApiFinanceiro ? (
                   <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/40 p-3 space-y-2">
                     <p className="text-xs text-slate-600 dark:text-slate-400">
-                      Importação automática via Gmail (remetente Cora, anexo OFX).
+                      Importação automática via Gmail (remetente Cora, anexo OFX). E-mails já importados são
+                      ignorados com base no histórico do sistema.
                     </p>
                     <div className="flex flex-wrap gap-2">
                       <button
@@ -350,17 +351,18 @@ export function ExtratoImportModal({ open, onClose, bancoInicial = null, onSucce
                       <button
                         type="button"
                         disabled={emailBusy || busy}
-                        title="Reprocessa e-mails já lidos (útil para teste)"
+                        title="Reprocessa e-mails já registrados como importados (útil para teste)"
                         onClick={() => void runImportarEmailCora(true)}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/30 text-amber-950 dark:text-amber-100 hover:bg-amber-100 dark:hover:bg-amber-950/50 disabled:opacity-50"
                       >
-                        Incluir já lidos
+                        Reprocessar e-mails
                       </button>
                     </div>
                     {emailResult ? (
                       <ul className="text-[11px] text-slate-600 dark:text-slate-400 space-y-0.5">
                         <li>E-mails encontrados: {emailResult.emailsEncontrados ?? 0}</li>
                         <li>Processados: {emailResult.emailsProcessados ?? 0}</li>
+                        <li>Já importados (ignorados): {emailResult.emailsIgnorados ?? 0}</li>
                         <li>Lançamentos criados: {emailResult.lancamentosCriados ?? 0}</li>
                         <li>Já existiam: {emailResult.lancamentosJaExistiam ?? 0}</li>
                         {(emailResult.erros?.length ?? 0) > 0 ? (

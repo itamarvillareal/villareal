@@ -10,6 +10,7 @@ import { listarPublicacoesDoProcesso } from '../data/publicacoesPorProcesso.js';
 import { normalizarCnjParaChave } from '../data/publicacoesPdfParser.js';
 import { ajustarPartesPublicacaoUi } from '../data/partesLadoEscritorio.js';
 import { formatarPartesLinha } from '../data/manifestacoesProjudiDisplay.js';
+import { normalizarDataBr } from '../data/processosHistoricoData.js';
 import { buscarProcessoPorChaveNatural, resolverProcessoId } from './processosRepository.js';
 import { papelParteApiParaUi } from './processosRepository.js';
 
@@ -410,6 +411,19 @@ export function haystackBuscaPublicacaoUi(r) {
     .toLowerCase();
 }
 
+function filtrarLinhasPorStatusTratamento(rows, statusTratamento) {
+  if (!statusTratamento) return rows;
+  if (statusTratamento === 'NAO_TRATADO') {
+    return rows.filter((r) => {
+      const s =
+        r._statusTratamento ||
+        (r.statusVinculo === 'ignorada' ? 'IGNORADA' : r.statusVinculo === 'vinculado' ? 'VINCULADA' : 'PENDENTE');
+      return s === 'PENDENTE' || s === 'VINCULADA';
+    });
+  }
+  return rows.filter((r) => (r._statusTratamento || 'PENDENTE') === statusTratamento);
+}
+
 export async function listarPublicacoesModulo({
   dataInicio,
   dataFim,
@@ -422,6 +436,9 @@ export async function listarPublicacoesModulo({
   origemImportacao,
   filtroVinculo = 'todos',
 }) {
+  const filtroNaoTratado = statusTratamento === 'NAO_TRATADO';
+  const statusApi = filtroNaoTratado ? undefined : statusTratamento || undefined;
+
   if (!featureFlags.useApiPublicacoes) {
     let rows = loadPublicacoesImportadas();
     if (filtroVinculo === 'nao_vinculados') {
@@ -434,6 +451,9 @@ export async function listarPublicacoesModulo({
     if (q) {
       rows = rows.filter((r) => haystackBuscaPublicacaoUi(r).includes(q));
     }
+    if (statusTratamento) {
+      rows = filtrarLinhasPorStatusTratamento(rows, statusTratamento);
+    }
     return rows;
   }
   const data = await request('/api/publicacoes', {
@@ -442,7 +462,7 @@ export async function listarPublicacoesModulo({
       dataFim: dataFim || undefined,
       recebimentoInicio: recebimentoInicio || undefined,
       recebimentoFim: recebimentoFim || undefined,
-      status: statusTratamento || undefined,
+      status: statusApi,
       processoId: processoId || undefined,
       clienteId: clienteId || undefined,
       texto: texto || undefined,
@@ -452,6 +472,9 @@ export async function listarPublicacoesModulo({
   let rows = (data || []).map(mapApiPublicacaoToUi);
   if (filtroVinculo === 'nao_vinculados') {
     rows = rows.filter((r) => r.statusVinculo !== 'vinculado');
+  }
+  if (filtroNaoTratado) {
+    rows = filtrarLinhasPorStatusTratamento(rows, statusTratamento);
   }
   return rows;
 }
@@ -550,7 +573,68 @@ export async function importarPublicacoesDaPrevia(itens, arquivoOrigem, meta = {
   return { gravados, ignoradosDuplicata, falhasApi };
 }
 
-// --- Ações operacionais (status / vínculo) ---
+// --- Ações operacionais (status / vínculo / tratar) ---
+
+function dataApiLocalDateParaBr(data) {
+  if (data == null) return '';
+  const s = String(data).trim();
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+  return '';
+}
+
+function mapDicaJuliaApi(dica) {
+  if (!dica) return null;
+  return {
+    classificacao: dica.classificacao || '',
+    resumo: dica.resumo || '',
+    prazoExiste: dica.prazoExiste ?? null,
+    prazoNatureza: dica.prazoNatureza || '',
+    prazoTipo: dica.prazoTipo || '',
+    prazoGatilho: dica.prazoGatilho || '',
+    prazoDiasUteis: dica.prazoDiasUteis ?? null,
+    prazoDataReal: dataApiLocalDateParaBr(dica.prazoDataReal),
+    prazoDataTrabalho: dataApiLocalDateParaBr(dica.prazoDataTrabalho),
+    providenciaCliente: dica.providenciaCliente || '',
+    acaoSugerida: dica.acaoSugerida || '',
+  };
+}
+
+function mapSugestaoPrazoApi(r) {
+  if (!r) return null;
+  return {
+    identificado: Boolean(r.identificado),
+    origem: r.origem || '',
+    dias: Number(r.dias) || 0,
+    dataBase: dataApiLocalDateParaBr(r.dataBase),
+    dataFatal: dataApiLocalDateParaBr(r.dataFatal),
+    explicacao: r.explicacao || '',
+    dicaJulia: mapDicaJuliaApi(r.dicaJulia),
+  };
+}
+
+/** GET /api/publicacoes/{id}/sugestao-prazo — motor determinístico + dica Júlia. */
+export async function buscarSugestaoPrazoPublicacao(id) {
+  if (!featureFlags.useApiPublicacoes) return null;
+  const data = await request(`/api/publicacoes/${Number(id)}/sugestao-prazo`);
+  return mapSugestaoPrazoApi(data);
+}
+
+/** POST /api/publicacoes/{id}/tratar — orquestra andamento, prazo, agenda, tarefa e card Júlia. */
+export async function tratarPublicacao(id, comando) {
+  if (!featureFlags.useApiPublicacoes) {
+    throw new Error('Ative VITE_USE_API_PUBLICACOES para tratar publicações na API.');
+  }
+  const body = {
+    tipo: comando.tipo,
+    observacaoFase: String(comando.observacaoFase ?? '').trim() || null,
+    contatarCliente: comando.contatarCliente ?? null,
+  };
+  const dataBr = normalizarDataBr(comando.dataFatal);
+  const iso = toIsoDate(dataBr);
+  if (iso) body.dataFatal = iso;
+  return request(`/api/publicacoes/${Number(id)}/tratar`, { method: 'POST', body });
+}
 
 export async function alterarStatusPublicacao(id, status, observacao = '') {
   if (!featureFlags.useApiPublicacoes) {

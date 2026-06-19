@@ -6,6 +6,7 @@ import {
   AcoesLinhaCompacta,
   CelulaDataCompacta,
   CelulaStatusCompacta,
+  CelulaTratadoCompacta,
   GRID_COLS_PUBLICACOES_EMAIL,
   cnjLinha,
   destaqueLinhaNaoVinculada,
@@ -102,6 +103,8 @@ function LinhaManifestacaoProjudi({
 
       <CelulaStatusCompacta row={row} carregandoSugestoes={carregandoSugestoes} />
 
+      <CelulaTratadoCompacta row={row} />
+
       <div role="cell" className="relative min-w-0">
         <AcoesLinhaCompacta
           onAbrirProcesso={onAbrirProcesso}
@@ -144,6 +147,7 @@ export function TabelaManifestacoesProjudi({
       <span>Tipo</span>
       <span>Processo / Partes</span>
       <span>Status</span>
+      <span>Tratado</span>
       <span className="text-right">Ações</span>
     </div>
   );

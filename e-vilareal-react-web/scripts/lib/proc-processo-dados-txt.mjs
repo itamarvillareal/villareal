@@ -11,7 +11,6 @@ import {
   resolverAtivoFromStatusProcessoTxt,
   resolverBaseBancoDados,
 } from './gerais-fase-processo-txt.mjs';
-import { deduplicarPrazosFatais145_1, iterarPrazosFatais145_1 } from './gerais-145-1-prazo-fatal.mjs';
 import { levantarCamposSemanticosProcesso } from './proc-processo-semantic-txt.mjs';
 import { lerCabecalhoProcessoTxt } from './proc-processo-cabecalho-txt.mjs';
 import { levantarVinculosImovelProc } from './proc-imovel-vinculo-txt.mjs';
@@ -50,13 +49,6 @@ export function levantarDadosProcessoTxt(codNum, numeroInterno, opts = {}) {
       (r) => r.numeroInterno === numeroInterno
     ) ?? null;
 
-  const prazos145 = deduplicarPrazosFatais145_1(
-    iterarPrazosFatais145_1(path.join(baseBanco, 'Gerais', '145.1'), {
-      clienteFiltro: codNum,
-    })
-  );
-  const prazoArvore = prazos145.find((p) => p.numeroInterno === numeroInterno) ?? null;
-
   const imovel =
     levantarVinculosImovelProc(path.join(baseBanco, 'Proc'), { clienteFiltro: codNum }).find(
       (r) => r.numeroInterno === numeroInterno
@@ -79,7 +71,6 @@ export function levantarDadosProcessoTxt(codNum, numeroInterno, opts = {}) {
     semantic,
     fase: faseReg,
     statusProcesso,
-    prazoArvore,
     imovel,
     entradasHistorico,
     resumo: {
@@ -98,7 +89,7 @@ export function levantarDadosProcessoTxt(codNum, numeroInterno, opts = {}) {
           semantic?.campos?.audienciaHora ||
           semantic?.campos?.audienciaTipo
       ),
-      temPrazo: Boolean(cabecalho.campos.prazoFatal || prazoArvore?.prazoFatalIso),
+      temPrazo: Boolean(cabecalho.campos.prazoFatal),
       temTramitacao: Boolean(cabecalho.campos.tramitacao),
       temImovel: Boolean(imovel?.numeroPlanilha),
       entradasHistorico: entradasHistorico.length,
@@ -117,10 +108,6 @@ export function montarPatchProcessoFromTxt(dados) {
     naturezaAcao: null,
     ...dados.cabecalho.campos,
   };
-
-  if (dados.prazoArvore?.prazoFatalIso && !patch.prazoFatal) {
-    patch.prazoFatal = dados.prazoArvore.prazoFatalIso;
-  }
 
   if (dados.semantic?.campos) {
     Object.assign(patch, dados.semantic.campos);

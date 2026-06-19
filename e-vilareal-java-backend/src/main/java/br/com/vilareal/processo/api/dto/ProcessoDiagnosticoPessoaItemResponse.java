@@ -15,6 +15,7 @@ public class ProcessoDiagnosticoPessoaItemResponse {
     private String parteOposta;
     private String numeroProcessoNovo;
     private String papeis;
+    private String observacaoFase;
 
     @Schema(description = "PK do processo na tabela processo")
     public Long getProcessoId() {
@@ -83,5 +84,14 @@ public class ProcessoDiagnosticoPessoaItemResponse {
 
     public void setPapeis(String papeis) {
         this.papeis = papeis;
+    }
+
+    @Schema(description = "Observação de fase do processo (campo livre no cadastro)")
+    public String getObservacaoFase() {
+        return observacaoFase;
+    }
+
+    public void setObservacaoFase(String observacaoFase) {
+        this.observacaoFase = observacaoFase;
     }
 }

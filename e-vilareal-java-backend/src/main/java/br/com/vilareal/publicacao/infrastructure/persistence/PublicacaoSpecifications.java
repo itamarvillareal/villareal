@@ -55,7 +55,16 @@ public final class PublicacaoSpecifications {
                 preds.add(cb.lessThan(root.get("emailRecebidoEm"), fimExclusivo));
             }
             if (StringUtils.hasText(statusTratamento)) {
-                preds.add(cb.equal(root.get("statusTratamento"), statusTratamento.trim()));
+                String status = statusTratamento.trim();
+                if ("NAO_TRATADO".equalsIgnoreCase(status)) {
+                    preds.add(
+                            cb.or(
+                                    cb.equal(root.get("statusTratamento"), "PENDENTE"),
+                                    cb.equal(root.get("statusTratamento"), "VINCULADA"),
+                                    cb.isNull(root.get("statusTratamento"))));
+                } else {
+                    preds.add(cb.equal(root.get("statusTratamento"), status));
+                }
             }
             if (processoId != null && processoId > 0) {
                 preds.add(cb.equal(root.join("processo", JoinType.INNER).get("id"), processoId));

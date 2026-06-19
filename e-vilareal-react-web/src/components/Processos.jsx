@@ -119,6 +119,11 @@ import {
   processosBtnOutlineIndigo,
   processosBtnPrimary,
   processosBtnSecondary,
+  processosBtnToolbarBlue,
+  processosBtnToolbarGreen,
+  processosBtnToolbarNeutral,
+  processosBtnToolbarPurple,
+  processosBtnToolbarRed,
   processosInputClass,
   processosInputDenseClass,
   processosInputDenseReadOnlyClass,
@@ -2233,8 +2238,9 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
 
   /** Snapshot completo do formulário para `localStorage` (processo × cliente). */
   function montarPayloadRegistroProcesso(overrides = {}) {
-    const pf = String(prazoFatal ?? '').trim();
-    const prazoNorm = pf ? (normalizarDataBr(pf) || pf) : '';
+    const pf = String((overrides.prazoFatal ?? prazoFatal) ?? '').trim();
+    const prazoNorm =
+      pf && /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(pf) ? normalizarDataBr(pf) || '' : '';
     return {
       codCliente: codigoCliente,
       proc: processo,
@@ -3094,7 +3100,8 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
 
   function persistirPrazoFatalAposEdicao(valorBruto) {
     const t = String(valorBruto ?? '').trim();
-    const prazoNorm = t ? (normalizarDataBr(t) || t) : '';
+    const prazoNorm =
+      t && /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(t) ? normalizarDataBr(t) || '' : '';
     setPrazoFatal(prazoNorm);
     if (featureFlags.useApiProcessos) {
       void sincronizarApiProcessoAtual(
@@ -3256,11 +3263,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     setAvisoAudiencia('nao_avisado');
   }
 
-  function formatarDataAudienciaInput(valor) {
-    const alias = resolverAliasHojeEmTexto(valor, 'br');
-    if (alias) return alias;
-    // Máscara simples para manter no formato dd/mm/aaaa.
-    // Aceita digitação/colar com ou sem barras e reformatará ao longo do input.
+  function mascararDigitosDataBr(valor) {
     const digits = String(valor ?? '').replace(/\D/g, '').slice(0, 8);
     if (!digits) return '';
     const dd = digits.slice(0, 2);
@@ -3269,6 +3272,16 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     if (digits.length <= 2) return dd;
     if (digits.length <= 4) return `${dd}/${mm}`;
     return `${dd}/${mm}/${yyyy}`;
+  }
+
+  function formatarDataBrInput(valor) {
+    return mascararDigitosDataBr(valor);
+  }
+
+  function formatarDataAudienciaInput(valor) {
+    const alias = resolverAliasHojeEmTexto(valor, 'br');
+    if (alias) return alias;
+    return mascararDigitosDataBr(valor);
   }
 
   function formatarHoraAudienciaInput(valor) {
@@ -3391,18 +3404,18 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                     routerState: buildRouterStateChaveClienteProcesso(codigoCliente, processo),
                   })
                 }
-                className={processosBtnGhost}
+                className={processosBtnToolbarBlue}
               >
                 <Users className="w-4 h-4" aria-hidden />
                 Clientes
               </button>
-              <button type="button" onClick={() => setModalRelatorioPublicacoes(true)} className={processosBtnGhost}>
+              <button type="button" onClick={() => setModalRelatorioPublicacoes(true)} className={processosBtnToolbarBlue}>
                 <Newspaper className="w-4 h-4" aria-hidden />
                 Publicações
               </button>
               <button
                 type="button"
-                className={processosBtnGhost}
+                className={processosBtnToolbarBlue}
                 onClick={() => setModalConsultaPeriodica(true)}
                 title="Agendamentos automáticos ao PROJUDI, monitor manual e destinatários de notificação"
               >
@@ -3411,7 +3424,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
               </button>
               <button
                 type="button"
-                className={processosBtnGhost}
+                className={processosBtnToolbarGreen}
                 onClick={() => {
                   setContaCorrenteModo('processo');
                   setModalContaCorrente(true);
@@ -3425,7 +3438,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                 <>
                   <button
                     type="button"
-                    className={processosBtnGhost}
+                    className={processosBtnToolbarPurple}
                     disabled={gerandoDocNav || gerandoProcuracao || apiSaving}
                     onClick={() => void handleGerarDocumento()}
                     title="Gerar petição ou documento com dados deste processo"
@@ -3435,7 +3448,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                   </button>
                   <button
                     type="button"
-                    className={processosBtnGhost}
+                    className={processosBtnToolbarPurple}
                     disabled={gerandoProcuracao || gerandoDocNav || apiSaving}
                     onClick={() => void handleGerarProcuracao()}
                     title="Gerar procuração Ad Judicia da parte cliente"
@@ -3447,7 +3460,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                     <>
                       <button
                         type="button"
-                        className={processosBtnGhost}
+                        className={processosBtnToolbarGreen}
                         disabled={
                           apiSaving ||
                           buscandoMovimentacoes ||
@@ -3477,7 +3490,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                       </button>
                       <button
                         type="button"
-                        className={processosBtnGhost}
+                        className={processosBtnToolbarPurple}
                         disabled={apiSaving}
                         onClick={() => setDriveExplorerAberto(true)}
                         title="Arquivos do processo no Google Drive"
@@ -3487,7 +3500,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                       </button>
                       <button
                         type="button"
-                        className={processosBtnGhost}
+                        className={processosBtnToolbarGreen}
                         disabled={
                           apiSaving ||
                           baixandoAutosIntegral ||
@@ -3503,7 +3516,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                   ) : null}
                   <button
                     type="button"
-                    className={processosBtnGhost}
+                    className={processosBtnToolbarRed}
                     disabled={apiSaving}
                     onClick={() => setModalPeticionamentoProjudi(true)}
                     title={
@@ -3524,7 +3537,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                   indiceAcaoRedacaoFocadaRef.current = 0;
                   setModalAcoesRedacaoAberto(true);
                 }}
-                className={processosBtnGhost}
+                className={processosBtnToolbarNeutral}
                 aria-label="Ações de redação"
               >
                 <IconMaoEscrevendo />
@@ -3595,15 +3608,14 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                   <Field label="Prazo Fatal" dense className="w-full [&_label]:text-rose-900">
                     <input
                       type="text"
+                      inputMode="numeric"
+                      maxLength={10}
                       value={prazoFatal}
                       readOnly={camposBloqueados}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        setPrazoFatal(resolverAliasHojeEmTexto(v, 'br') ?? v);
-                      }}
+                      onChange={(e) => setPrazoFatal(formatarDataBrInput(e.target.value))}
                       onBlur={(e) => persistirPrazoFatalAposEdicao(e.target.value)}
-                      placeholder="dd/mm/aaaa ou hj"
-                      title="Data vinculada ao processo (gravada automaticamente)"
+                      placeholder="dd/mm/aaaa"
+                      title="Data do prazo fatal (dd/mm/aaaa)"
                       className={`${clsCampoDenso} border-rose-200/80 focus:border-rose-400 focus:ring-rose-200`}
                     />
                   </Field>
@@ -3755,8 +3767,8 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
               </div>
             </div>
 
-            {/* Seção superior: 3 colunas - Identificação | Partes/Local | Papel/Fase/Status */}
-            <section className="grid grid-cols-1 md:grid-cols-3 gap-2.5 md:gap-3">
+            {/* Seção superior: 3 colunas - Identificação | Status/Partes/Local | Papel/Fase */}
+            <section className="grid grid-cols-1 md:grid-cols-3 gap-2.5 md:gap-3 md:items-stretch">
               {/* Coluna esquerda: Código + Processo na mesma linha, Cliente, Nº velho/novo */}
               <div className="space-y-2 rounded-xl border border-slate-200/90 bg-white/95 p-3 shadow-sm text-slate-900">
                 <div className="flex flex-wrap items-end gap-3">
@@ -3869,8 +3881,33 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                 </Field>
               </div>
 
-              {/* Coluna central: Parte Cliente, Parte Oposta, Consulta, Estado+Cidade (linha) */}
+              {/* Coluna central: Status, Partes, Consulta, Estado+Cidade */}
               <div className="space-y-2 rounded-xl border border-slate-200/90 bg-white/95 p-3 shadow-sm text-slate-900">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 min-w-0">
+                  <span className="text-sm font-medium text-slate-700 shrink-0">Status</span>
+                  <label className={`flex items-center gap-1.5 text-sm shrink-0 ${camposBloqueados ? 'cursor-default' : 'cursor-pointer'}`}>
+                    <input
+                      type="radio"
+                      name="status"
+                      checked={statusAtivo}
+                      disabled={camposBloqueados}
+                      onChange={() => setStatusAtivo(true)}
+                      className="text-slate-600"
+                    />
+                    Ativo
+                  </label>
+                  <label className={`flex items-center gap-1.5 text-sm shrink-0 ${camposBloqueados ? 'cursor-default' : 'cursor-pointer'}`}>
+                    <input
+                      type="radio"
+                      name="status"
+                      checked={!statusAtivo}
+                      disabled={camposBloqueados}
+                      onChange={() => setStatusAtivo(false)}
+                      className="text-slate-600"
+                    />
+                    Inativo
+                  </label>
+                </div>
                 <div className="rounded-lg border border-indigo-200/60 bg-indigo-50/40 p-2.5 shadow-sm space-y-2">
                   <Field label="Parte Cliente">
                     <input
@@ -3954,56 +3991,31 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                 </div>
               </div>
 
-              {/* Coluna direita: Papel, Status, Fase (caixa) */}
-              <div className="space-y-3 rounded-xl border border-slate-200/90 bg-white/95 p-3 shadow-sm text-slate-900">
-                <div className="flex flex-row flex-wrap items-end gap-x-4 gap-y-2 w-full min-w-0">
-                  <div className="min-w-0 w-[min(100%,13rem)] max-w-[13rem] shrink-0">
-                    <p className="text-sm font-medium text-slate-700 mb-1">Cliente é Requerente ou Requerido?</p>
-                    {camposBloqueados ? (
-                      <input
-                        type="text"
-                        readOnly
-                        value={papelParte === 'requerente' ? 'Requerente' : 'Requerido'}
-                        className={`w-full min-w-0 ${clsCampo}`}
-                      />
-                    ) : (
-                      <select
-                        value={papelParte}
-                        onChange={(e) => setPapelParte(e.target.value)}
-                        className={`w-full min-w-0 ${inputClass}`}
-                      >
-                        <option value="requerente">Requerente</option>
-                        <option value="requerido">Requerido</option>
-                      </select>
-                    )}
-                  </div>
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 min-w-0 shrink-0 pb-0.5">
-                    <span className="text-sm font-medium text-slate-700 shrink-0">Status</span>
-                    <label className={`flex items-center gap-1.5 text-sm shrink-0 ${camposBloqueados ? 'cursor-default' : 'cursor-pointer'}`}>
-                      <input
-                        type="radio"
-                        name="status"
-                        checked={statusAtivo}
-                        disabled={camposBloqueados}
-                        onChange={() => setStatusAtivo(true)}
-                        className="text-slate-600"
-                      />
-                      Ativo
-                    </label>
-                    <label className={`flex items-center gap-1.5 text-sm shrink-0 ${camposBloqueados ? 'cursor-default' : 'cursor-pointer'}`}>
-                      <input
-                        type="radio"
-                        name="status"
-                        checked={!statusAtivo}
-                        disabled={camposBloqueados}
-                        onChange={() => setStatusAtivo(false)}
-                        className="text-slate-600"
-                      />
-                      Inativo
-                    </label>
-                  </div>
+              {/* Coluna direita: Papel, Fase processual, Observação de Fase */}
+              <div className="flex flex-col gap-3 rounded-xl border border-slate-200/90 bg-white/95 p-3 shadow-sm text-slate-900 min-h-0 h-full">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 min-w-0 shrink-0">
+                  <span className="text-sm font-medium text-slate-700 shrink-0">
+                    Cliente é Requerente ou Requerido?
+                  </span>
+                  {camposBloqueados ? (
+                    <input
+                      type="text"
+                      readOnly
+                      value={papelParte === 'requerente' ? 'Requerente' : 'Requerido'}
+                      className={`min-w-[7.5rem] w-auto max-w-[10rem] ${clsCampo}`}
+                    />
+                  ) : (
+                    <select
+                      value={papelParte}
+                      onChange={(e) => setPapelParte(e.target.value)}
+                      className={`min-w-[7.5rem] w-auto max-w-[10rem] ${inputClass}`}
+                    >
+                      <option value="requerente">Requerente</option>
+                      <option value="requerido">Requerido</option>
+                    </select>
+                  )}
                 </div>
-                <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-4 md:col-span-3">
+                <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-4 shrink-0">
                   <p className="text-sm font-semibold text-blue-800 mb-3">Fase processual</p>
                   <div className="flex flex-wrap gap-2 max-h-[12rem] overflow-y-auto">
                     {FASES.map((f) => {
@@ -4014,10 +4026,19 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                     })}
                   </div>
                 </div>
+                <Field label="Observação de Fase" className="flex flex-1 flex-col min-h-[10rem] min-w-0">
+                  <textarea
+                    value={faseCampo}
+                    readOnly={camposBloqueados}
+                    onChange={(e) => setFaseCampo(e.target.value)}
+                    rows={6}
+                    className={`flex-1 min-h-[10rem] w-full resize-y ${clsCampo} leading-snug`}
+                  />
+                </Field>
               </div>
             </section>
 
-            {/* Dados processuais — grelha 12 col em md+ para Fase na mesma linha; campos densos */}
+            {/* Dados processuais — grelha 12 col em md+; campos densos */}
             <section className="border-t border-slate-200/80 pt-2">
               <div className="flex items-center gap-1.5 mb-1">
                 <span className="h-1.5 w-1.5 rounded-full bg-sky-500 shadow-sm shrink-0" aria-hidden />
@@ -4099,16 +4120,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                       className={clsCampoDenso}
                     />
                   </Field>
-                  <Field label="Fase" dense className="col-span-1 md:col-span-2 min-w-0">
-                    <input
-                      type="text"
-                      value={faseCampo}
-                      readOnly={camposBloqueados}
-                      onChange={(e) => setFaseCampo(e.target.value)}
-                      className={clsCampoDenso}
-                    />
-                  </Field>
-                  <Field label="Competência" dense className="col-span-2 md:col-span-4 min-w-0">
+                  <Field label="Competência" dense className="col-span-2 md:col-span-6 min-w-0">
                     <div className="flex gap-0.5">
                       {camposBloqueados ? (
                         <input type="text" readOnly value={competencia} className={`flex-1 min-w-0 ${clsCampoDenso}`} title={competencia} />

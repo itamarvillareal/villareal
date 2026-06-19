@@ -30,6 +30,28 @@ public final class JuliaPrazoDateUtil {
         return cursor;
     }
 
+    /**
+     * Avança {@code n} dias úteis a partir de {@code data} (o dia {@code data} não conta).
+     * Resultado sempre {@code > data} quando {@code n > 0}.
+     */
+    public static LocalDate somarDiasUteis(LocalDate data, int n) {
+        if (data == null) {
+            return null;
+        }
+        if (n <= 0) {
+            return avancarParaProximoDiaUtil(data);
+        }
+        LocalDate cursor = data;
+        int restantes = n;
+        while (restantes > 0) {
+            cursor = cursor.plusDays(1);
+            if (!isFimDeSemana(cursor)) {
+                restantes--;
+            }
+        }
+        return avancarParaProximoDiaUtil(cursor);
+    }
+
     /** Prazo fatal em sábado/domingo rola para a segunda-feira seguinte. */
     public static LocalDate avancarParaProximoDiaUtil(LocalDate data) {
         if (data == null) {

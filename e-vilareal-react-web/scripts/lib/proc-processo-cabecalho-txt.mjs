@@ -6,16 +6,16 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { dirCalculosCliente } from './calculos-dropbox-txt.mjs';
 import {
-  centenaPastaClienteHistorico,
   formatCod8,
   formatProcNomeArquivo,
-  pastaNumeroClienteHistorico,
   readOneLineFile,
   SEGMENTO_MIL,
   milharPastaClienteGerais,
+  subpastaClienteVb,
 } from './historico-local-txt-paths.mjs';
 import { parseDataCabecalhoProcessoIso } from './datas-legado-vb.mjs';
 import { parseDataPrazoFatalTxt } from './gerais-145-1-prazo-fatal.mjs';
+import { lerPrazoFatalTxtGerais } from './gerais-145-1-prazo-fatal-mil.mjs';
 import { resolverBaseBancoDados } from './gerais-fase-processo-txt.mjs';
 import { normalizarTramitacaoTxt } from './gerais-tramitacao-147-1.mjs';
 
@@ -42,7 +42,7 @@ export const MAPA_TIPO_NUMERICO_VB = {
   '20.1': { campo: '_responsavelNome', pasta: 'gerais' },
   /** Legado VB: `Calculos/{milhar}/{centena}/{nº_cliente}/{cod8}.0.88.1.{proc}.txt` */
   '0.88.1': { campo: 'unidade', pasta: 'calculos', truncar: 32 },
-  '145.1': { campo: 'prazoFatal', pasta: 'gerais' },
+  /** Prazo fatal: lido em `Gerais/{Milhar}/{Centena}/{Unidade}/{cod8}.145.1.{proc}.txt` (VB subpasta). */
   '147.1': { campo: 'tramitacao', pasta: 'gerais' },
   '148.1': { campo: 'proximaConsulta', pasta: 'gerais' },
 };
@@ -99,13 +99,12 @@ export function parseValorCausaTxt(texto) {
  * @returns {string | null}
  */
 export function caminhoArquivoTipoNumerico(baseMil, codNum, numeroInterno, tipoMeio) {
-  const cent = centenaPastaClienteHistorico(codNum);
-  const pastaCli = pastaNumeroClienteHistorico(codNum);
+  const esp = subpastaClienteVb(codNum);
   const cod8 = formatCod8(codNum);
   const procSeg = formatProcNomeArquivo(numeroInterno);
   if (!procSeg) return null;
   const nome = `${cod8}.${tipoMeio}.${procSeg}.txt`;
-  return path.join(baseMil, String(cent), pastaCli, nome);
+  return path.join(baseMil, esp.centena, esp.unidade, nome);
 }
 
 /**
@@ -175,7 +174,7 @@ function normalizarValorTipo(tipoMeio, texto, meta) {
 }
 
 /**
- * Prazo fatal em `Gerais/145.1/aaaa/mm/` (estrutura legada).
+ * @deprecated Legado — `Gerais/145.1/aaaa/mm/`. Import-real usa só o caminho canónico VB.
  * @param {string} baseBanco
  * @param {number} codNum
  * @param {number} numeroInterno
@@ -288,12 +287,10 @@ export function lerCabecalhoProcessoTxt(codNum, numeroInterno, opts = {}) {
     fontes[meta.campo] = arquivo;
   }
 
-  const prazoArvore = lerPrazoFatalArvore145_1(baseBanco, codNum, numeroInterno);
-  if (prazoArvore.iso) {
-    if (!campos.prazoFatal || prazoArvore.arquivo) {
-      campos.prazoFatal = prazoArvore.iso;
-      fontes.prazoFatal = prazoArvore.arquivo ?? fontes.prazoFatal;
-    }
+  const prazoCanon = lerPrazoFatalTxtGerais(path.join(baseBanco, 'Gerais'), codNum, numeroInterno);
+  if (prazoCanon.prazoFatalIso) {
+    campos.prazoFatal = prazoCanon.prazoFatalIso;
+    fontes.prazoFatal = prazoCanon.arquivo ?? fontes.prazoFatal;
   }
 
   return {

@@ -4,7 +4,7 @@
  *
  * Ordem (com --aplicar):
  *   1. Cliente — pessoa (Gerais `151.1.0` → POST /api/clientes)
- *   2. Cabeçalho (Proc/Gerais numéricos + semânticos + fase/obs + prazo + tramitação 147.1)
+ *   2. Cabeçalho (Proc/Gerais numéricos + semânticos + fase/obs + prazo fatal 145.1 em Gerais/{Milhar}/{Centena}/{Unidade}/ + tramitação 147.1)
  *   3. Histórico HC → `import-historico-local-txt.mjs` (normalização e API existentes)
  *   4. Vínculo imóvel `0.89.1` (opcional)
  *   5. Partes `1.1` / `6.1` (opcional, --importar-partes)
@@ -49,6 +49,7 @@ import {
   vincularProcessoImovel,
 } from './lib/imovel-processo-vinculo-api.mjs';
 import { atualizarProcessoApi } from './lib/import-processo-put-body.mjs';
+import { upsertPrazoFatalEntidade } from './lib/prazo-fatal-api.mjs';
 import {
   construirMapaUsuarioPorNomeResponsavel,
   fetchUsuariosImportApi,
@@ -163,6 +164,12 @@ function imprimirPreview(dados, patch) {
   }
   if (dados.cabecalho.campos.tramitacao) {
     console.log('Tramitação txt (147.1):', dados.cabecalho.campos.tramitacao);
+  }
+  if (dados.cabecalho.campos.prazoFatal) {
+    console.log('Prazo fatal txt (145.1):', dados.cabecalho.campos.prazoFatal);
+    if (dados.cabecalho.fontes.prazoFatal) {
+      console.log('  fonte:', dados.cabecalho.fontes.prazoFatal);
+    }
   }
   if (dados.semantic?.campos?.audienciaData || dados.semantic?.campos?.audienciaHora) {
     console.log('Audiência txt:', {
@@ -518,6 +525,14 @@ async function main() {
       temArquivo: Boolean(dados.statusProcesso?.temArquivoStatus),
     };
     console.log('\n[cabeçalho] Processo atualizado na API.');
+    if (patchApi.prazoFatal) {
+      await upsertPrazoFatalEntidade(opts.baseUrl, token, proc.id, String(patchApi.prazoFatal));
+      resultado.etapas.prazoFatal = {
+        data: patchApi.prazoFatal,
+        fonte: dados.cabecalho.fontes.prazoFatal ?? null,
+      };
+      console.log(`[prazo fatal] ${patchApi.prazoFatal} (145.1 canónico)`);
+    }
     if (dados.statusProcesso) {
       console.log(
         `[status] ativo=${patchApi.ativo} (txt: ${JSON.stringify(dados.statusProcesso.statusBruto ?? 'ausente/vazio')})`

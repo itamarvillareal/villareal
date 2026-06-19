@@ -49,4 +49,22 @@ class JuliaPrazoDateUtilTest {
     void subtrair_null_retornaNull() {
         assertThat(JuliaPrazoDateUtil.subtrairDiasUteis(null, 3)).isNull();
     }
+
+    @Test
+    void somar_quinzeDiasUteis_deQuarta_retornaPrimeiroJulho() {
+        LocalDate quarta = LocalDate.of(2026, 6, 10);
+        assertThat(JuliaPrazoDateUtil.somarDiasUteis(quarta, 15)).isEqualTo(LocalDate.of(2026, 7, 1));
+    }
+
+    @Test
+    void somar_doisDiasUteis_deQuarta_retornaSexta() {
+        LocalDate quarta = LocalDate.of(2026, 6, 10);
+        assertThat(JuliaPrazoDateUtil.somarDiasUteis(quarta, 2)).isEqualTo(LocalDate.of(2026, 6, 12));
+    }
+
+    @Test
+    void somar_zeroDias_retornaMesmaDataAjustada() {
+        LocalDate sabado = LocalDate.of(2026, 6, 20);
+        assertThat(JuliaPrazoDateUtil.somarDiasUteis(sabado, 0)).isEqualTo(LocalDate.of(2026, 6, 22));
+    }
 }

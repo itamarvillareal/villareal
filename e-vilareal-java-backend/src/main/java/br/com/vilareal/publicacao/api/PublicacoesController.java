@@ -2,6 +2,7 @@ package br.com.vilareal.publicacao.api;
 
 import br.com.vilareal.publicacao.api.dto.*;
 import br.com.vilareal.publicacao.application.PublicacaoApplicationService;
+import br.com.vilareal.publicacao.application.TratarPublicacaoService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -21,9 +22,12 @@ import java.util.List;
 public class PublicacoesController {
 
     private final PublicacaoApplicationService publicacaoService;
+    private final TratarPublicacaoService tratarPublicacaoService;
 
-    public PublicacoesController(PublicacaoApplicationService publicacaoService) {
+    public PublicacoesController(
+            PublicacaoApplicationService publicacaoService, TratarPublicacaoService tratarPublicacaoService) {
         this.publicacaoService = publicacaoService;
+        this.tratarPublicacaoService = tratarPublicacaoService;
     }
 
     @GetMapping
@@ -98,5 +102,24 @@ public class PublicacoesController {
     public ResponseEntity<Void> excluir(@PathVariable Long id) {
         publicacaoService.excluir(id);
         return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/{id}/sugestao-prazo")
+    @Operation(
+            summary = "Sugestão de prazo fatal",
+            description =
+                    "Motor determinístico no teor da publicação; inclui dica da Júlia quando existir triagem.")
+    public PublicacaoSugestaoPrazoResponse sugestaoPrazo(@PathVariable Long id) {
+        return tratarPublicacaoService.sugestaoPrazo(id);
+    }
+
+    @PostMapping("/{id}/tratar")
+    @Operation(
+            summary = "Tratar publicação",
+            description =
+                    "Marca TRATADA, cria andamento, opcionalmente prazo/agenda/tarefa e conclui card Júlia.")
+    public TratarPublicacaoResponse tratar(
+            @PathVariable Long id, @Valid @RequestBody TratarPublicacaoRequest request) {
+        return tratarPublicacaoService.tratar(id, request);
     }
 }

@@ -1,12 +1,12 @@
-import { useState, useEffect, useCallback } from 'react';
+import { Fragment, useState, useEffect, useCallback } from 'react';
 import { X, Newspaper, Loader2 } from 'lucide-react';
 import {
   alterarStatusPublicacao,
   listarPublicacoesRelatorioPorProcesso,
 } from '../repositories/publicacoesRepository.js';
 import { featureFlags } from '../config/featureFlags.js';
-import { formatarRotuloVinculoPartes } from '../data/publicacoesDisplayHelpers.js';
 import { useCloseOnEscape } from '../hooks/useCloseOnEscape.js';
+import { ModalTratarPublicacao } from './publicacoes/ModalTratarPublicacao.jsx';
 
 const STATUS_LABEL = {
   PENDENTE: 'Pendente',
@@ -89,6 +89,13 @@ function notificarRelatorioAtualizado() {
   window.dispatchEvent(new CustomEvent('vilareal:publicacoes-processo-relatorio-atualizado'));
 }
 
+/** Texto completo da publicação: prioriza o teor integral importado. */
+function textoPublicacaoCompleto(row) {
+  const teor = String(row.teorIntegral || row.teor || '').trim();
+  if (teor) return teor;
+  return String(row.resumoPublicacao || '').trim();
+}
+
 /** Faixa de estado + tabela (reutilizado na aba Processos e no modal). */
 export function PublicacoesRelatorioConteudo({
   itens,
@@ -104,6 +111,7 @@ export function PublicacoesRelatorioConteudo({
   const [statusErro, setStatusErro] = useState('');
   const [statusOk, setStatusOk] = useState('');
   const [statusAlterandoId, setStatusAlterandoId] = useState(null);
+  const [modalTratarRow, setModalTratarRow] = useState(null);
 
   useEffect(() => {
     setItensLocais(itens);
@@ -131,6 +139,30 @@ export function PublicacoesRelatorioConteudo({
     } finally {
       setStatusAlterandoId(null);
     }
+  }, []);
+
+  const abrirTratar = useCallback((row) => {
+    if (!featureFlags.useApiPublicacoes) {
+      void alterarStatus(row, 'TRATADA');
+      return;
+    }
+    setStatusErro('');
+    setModalTratarRow(row);
+  }, [alterarStatus]);
+
+  const handlePublicacaoTratada = useCallback((result, row) => {
+    setItensLocais((prev) =>
+      prev.map((r) => (String(r.id) === String(row.id) ? aplicarStatusNaLinha(r, 'TRATADA') : r))
+    );
+    const aviso = String(result?.avisoDedup ?? '').trim();
+    if (aviso) {
+      setStatusOk(`Publicação tratada. ${aviso}`);
+    } else {
+      setStatusOk('Publicação tratada com sucesso.');
+    }
+    setStatusErro('');
+    notificarRelatorioAtualizado();
+    setModalTratarRow(null);
   }, []);
 
   const lista = itensLocais;
@@ -181,98 +213,112 @@ export function PublicacoesRelatorioConteudo({
       <div className={`flex-1 overflow-auto ${bodyPad} min-h-[8rem]`}>
         {!carregando && lista.length > 0 && (
           <div className="overflow-x-auto border border-slate-200 rounded-lg">
-            <table className="w-full text-xs min-w-[1020px]">
+            <table className="w-full text-xs min-w-[640px]">
               <thead className="bg-slate-100 border-b border-slate-200">
                 <tr className="text-left">
                   <th className="p-2 w-9 text-center" title="Nº sequencial (conferência)">
                     #
                   </th>
-                  <th className="p-2">Data pub.</th>
-                  <th className="p-2">Data disp.</th>
-                  <th className="p-2">CNJ</th>
+                  <th className="p-2 whitespace-nowrap">Datas</th>
                   <th className="p-2">Diário</th>
                   <th className="p-2">Tipo</th>
                   <th className="p-2">Tratamento</th>
                   <th className="p-2">Status CNJ</th>
                   <th className="p-2">Score</th>
-                  <th className="p-2">Vínculo</th>
-                  <th className="p-2 min-w-[180px]">Resumo</th>
                   <th className="p-2 min-w-[88px]">Ações</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody>
                 {lista.map((row, idx) => {
                   const statusTrat = statusTratamentoLinha(row);
                   const alterando = statusAlterandoId === String(row._apiId ?? row.id);
                   const jaTratada = statusTrat === 'TRATADA';
                   const ignorada = statusTrat === 'IGNORADA';
+                  const textoPublicacao = textoPublicacaoCompleto(row);
+                  const resumoDiferente =
+                    textoPublicacao &&
+                    row.resumoPublicacao &&
+                    String(row.resumoPublicacao).trim() &&
+                    String(row.resumoPublicacao).trim() !== textoPublicacao;
                   return (
-                    <tr key={row.id} className="hover:bg-slate-50/80 align-top">
-                      <td className="p-2 text-center tabular-nums font-semibold text-slate-600">{idx + 1}</td>
-                      <td className="p-2 whitespace-nowrap text-slate-700">{row.dataPublicacao || '—'}</td>
-                      <td className="p-2 whitespace-nowrap text-slate-600">{row.dataDisponibilizacao || '—'}</td>
-                      <td className="p-2 font-mono text-[11px] text-slate-800">
-                        {row.processoCnjNormalizado || row.numero_processo_cnj || '—'}
-                      </td>
-                      <td className="p-2 text-slate-700 max-w-[140px] truncate" title={row.diario || ''}>
-                        {row.diario || '—'}
-                      </td>
-                      <td className="p-2 text-slate-700">{row.tipoPublicacao || '—'}</td>
-                      <td className="p-2">
-                        <span
-                          className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${badgeStatusTratamentoClass(statusTrat)}`}
-                        >
-                          {STATUS_LABEL[statusTrat] || statusTrat}
-                        </span>
-                      </td>
-                      <td className="p-2 text-slate-700">{rotuloStatusCnj(row.statusValidacaoCnj)}</td>
-                      <td className="p-2">
-                        <ScoreBadge score={row.scoreConfianca} />
-                      </td>
-                      <td className="p-2 text-slate-700 max-w-[220px]">
-                        {row.statusVinculo === 'vinculado' ? (
+                    <Fragment key={row.id}>
+                      <tr className="border-t border-slate-200 bg-white hover:bg-slate-50/60 align-top">
+                        <td className="p-2 text-center tabular-nums font-semibold text-slate-600">{idx + 1}</td>
+                        <td className="p-2 whitespace-nowrap text-slate-700">
                           <div className="space-y-0.5">
-                            <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-900">
-                              Vinculado
-                            </span>
-                            <div
-                              className="text-[10px] text-slate-600 truncate"
-                              title={[row.cliente, row.reu].filter(Boolean).join(' · ')}
-                            >
-                              {formatarRotuloVinculoPartes(row)}
+                            <div>
+                              <span className="text-[10px] uppercase tracking-wide text-slate-400">Pub.</span>{' '}
+                              {row.dataPublicacao || '—'}
+                            </div>
+                            <div className="text-slate-600">
+                              <span className="text-[10px] uppercase tracking-wide text-slate-400">Disp.</span>{' '}
+                              {row.dataDisponibilizacao || '—'}
                             </div>
                           </div>
-                        ) : (
-                          row.statusVinculo || '—'
-                        )}
-                      </td>
-                      <td className="p-2 text-slate-700 whitespace-pre-wrap break-words max-w-[280px]">
-                        {row.resumoPublicacao || row.teorIntegral?.slice(0, 400) || '—'}
-                      </td>
-                      <td className="p-2 align-top">
-                        <div className="flex flex-col gap-1">
-                          <button
-                            type="button"
-                            disabled={alterando || jaTratada}
-                            onClick={() => void alterarStatus(row, 'TRATADA')}
-                            className="inline-flex items-center justify-center gap-1 px-2 py-1 rounded border border-emerald-200 text-[10px] font-medium text-emerald-800 hover:bg-emerald-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                            title={jaTratada ? 'Publicação já tratada' : 'Marcar como tratada'}
+                        </td>
+                        <td className="p-2 text-slate-700 max-w-[160px]" title={row.diario || ''}>
+                          <div className="line-clamp-2 break-words">{row.diario || '—'}</div>
+                        </td>
+                        <td className="p-2 text-slate-700 max-w-[140px]">
+                          <div className="line-clamp-2 break-words">{row.tipoPublicacao || '—'}</div>
+                        </td>
+                        <td className="p-2">
+                          <span
+                            className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${badgeStatusTratamentoClass(statusTrat)}`}
                           >
-                            {alterando ? <Loader2 className="w-3 h-3 animate-spin" aria-hidden /> : null}
-                            {jaTratada ? 'Tratada' : 'Tratar'}
-                          </button>
-                          <button
-                            type="button"
-                            disabled={alterando || ignorada}
-                            onClick={() => void alterarStatus(row, 'IGNORADA')}
-                            className="inline-flex items-center justify-center gap-1 px-2 py-1 rounded border border-amber-200 text-[10px] font-medium text-amber-800 hover:bg-amber-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                            title="Marcar como ignorada"
-                          >
-                            Ignorar
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
+                            {STATUS_LABEL[statusTrat] || statusTrat}
+                          </span>
+                        </td>
+                        <td className="p-2 text-slate-700 max-w-[120px]">
+                          <div className="line-clamp-2 break-words">{rotuloStatusCnj(row.statusValidacaoCnj)}</div>
+                        </td>
+                        <td className="p-2">
+                          <ScoreBadge score={row.scoreConfianca} />
+                        </td>
+                        <td className="p-2 align-top">
+                          <div className="flex flex-col gap-1">
+                            <button
+                              type="button"
+                              disabled={alterando || jaTratada}
+                              onClick={() => abrirTratar(row)}
+                              className="inline-flex items-center justify-center gap-1 px-2 py-1 rounded border border-emerald-200 text-[10px] font-medium text-emerald-800 hover:bg-emerald-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                              title={jaTratada ? 'Publicação já tratada' : 'Tratar publicação'}
+                            >
+                              {alterando ? <Loader2 className="w-3 h-3 animate-spin" aria-hidden /> : null}
+                              {jaTratada ? 'Tratada' : 'Tratar'}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={alterando || ignorada}
+                              onClick={() => void alterarStatus(row, 'IGNORADA')}
+                              className="inline-flex items-center justify-center gap-1 px-2 py-1 rounded border border-amber-200 text-[10px] font-medium text-amber-800 hover:bg-amber-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                              title="Marcar como ignorada"
+                            >
+                              Ignorar
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                      <tr className="border-b border-slate-200 bg-slate-50/40">
+                        <td colSpan={8} className="px-3 pb-3 pt-1">
+                          <div className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 shadow-sm">
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                              Publicação
+                            </p>
+                            {resumoDiferente ? (
+                              <p className="mt-1 text-xs text-slate-600 leading-relaxed">{row.resumoPublicacao}</p>
+                            ) : null}
+                            <p
+                              className={`whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-800 ${
+                                resumoDiferente ? 'mt-2' : 'mt-1'
+                              }`}
+                            >
+                              {textoPublicacao || '—'}
+                            </p>
+                          </div>
+                        </td>
+                      </tr>
+                    </Fragment>
                   );
                 })}
               </tbody>
@@ -285,6 +331,12 @@ export function PublicacoesRelatorioConteudo({
           </p>
         )}
       </div>
+
+      <ModalTratarPublicacao
+        publicacao={modalTratarRow}
+        onClose={() => setModalTratarRow(null)}
+        onTratado={handlePublicacaoTratada}
+      />
     </>
   );
 }

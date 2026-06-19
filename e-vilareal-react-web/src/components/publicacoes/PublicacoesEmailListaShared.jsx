@@ -10,7 +10,53 @@ import {
 import { resolverSugestaoVinculoLinha } from '../../data/publicacoesVinculoProcessos.js';
 
 export const GRID_COLS_PUBLICACOES_EMAIL =
-  'grid-cols-[84px_96px_minmax(0,1fr)_96px_92px]';
+  'grid-cols-[84px_96px_minmax(0,1fr)_96px_76px_92px]';
+
+const STATUS_TRATAMENTO_LABEL = {
+  PENDENTE: 'Não',
+  VINCULADA: 'Não',
+  TRATADA: 'Sim',
+  IGNORADA: 'Ignorada',
+};
+
+export function statusTratamentoLinha(row) {
+  if (row?._statusTratamento) return row._statusTratamento;
+  if (row?.statusVinculo === 'ignorada') return 'IGNORADA';
+  if (row?.statusVinculo === 'vinculado') return 'VINCULADA';
+  return 'PENDENTE';
+}
+
+function badgeStatusTratamentoClass(status) {
+  switch (status) {
+    case 'TRATADA':
+      return 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200';
+    case 'IGNORADA':
+      return 'bg-slate-200 text-slate-600 dark:bg-white/10 dark:text-slate-400';
+    default:
+      return 'bg-amber-100 text-amber-900 dark:bg-amber-950/40 dark:text-amber-100';
+  }
+}
+
+export function BadgeStatusTratamento({ row }) {
+  const status = statusTratamentoLinha(row);
+  const label = STATUS_TRATAMENTO_LABEL[status] || status;
+  const title =
+    status === 'TRATADA'
+      ? 'Tratada — revisada e concluída na fila'
+      : status === 'IGNORADA'
+        ? 'Ignorada — sem providência'
+        : status === 'VINCULADA'
+          ? 'Vinculada, mas ainda não marcada como tratada'
+          : 'Pendente de tratamento';
+  return (
+    <span
+      title={title}
+      className={`inline-flex max-w-full truncate rounded px-2 py-0.5 text-[10px] font-semibold ${badgeStatusTratamentoClass(status)}`}
+    >
+      {label}
+    </span>
+  );
+}
 
 export const TOOLTIP_ACOES_PUBLICACAO = {
   abrirProcesso: 'Abrir o cadastro do processo vinculado ou sugerido.',
@@ -262,6 +308,14 @@ export function CelulaStatusCompacta({ row, carregandoSugestoes }) {
       ) : (
         <BadgeStatusVinculo row={row} />
       )}
+    </div>
+  );
+}
+
+export function CelulaTratadoCompacta({ row }) {
+  return (
+    <div role="cell" className="min-w-0">
+      <BadgeStatusTratamento row={row} />
     </div>
   );
 }

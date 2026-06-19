@@ -70,6 +70,7 @@ const ProcessosLazy = lazy(() =>
 
 const STATUS_OPCOES = [
   { value: '', label: 'Todos' },
+  { value: 'NAO_TRATADO', label: 'Não tratado' },
   { value: 'PENDENTE', label: 'Pendente' },
   { value: 'VINCULADA', label: 'Vinculada' },
   { value: 'TRATADA', label: 'Tratada' },

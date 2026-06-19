@@ -754,6 +754,7 @@ export async function listarProcessosPorPrazoFatalDiagnostico(dataBrParam) {
         numeroProcessoNovo: String(row.numeroProcessoNovo ?? row.numero_processo_novo ?? '').trim(),
         prazoFatal: dataCanon,
         papeis: String(row.papeis ?? ''),
+        observacaoFase: String(row.observacaoFase ?? row.observacao_fase ?? '').trim(),
       };
     });
     const out = [...fromApi];

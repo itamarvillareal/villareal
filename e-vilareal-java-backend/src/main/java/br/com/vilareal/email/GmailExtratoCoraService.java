@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 @Service
 public class GmailExtratoCoraService {
@@ -21,18 +22,21 @@ public class GmailExtratoCoraService {
     private static final Logger log = LoggerFactory.getLogger(GmailExtratoCoraService.class);
 
     static final String QUERY_BASE =
-            "from:naoresponda@cora.com.br subject:\"Extrato da conta VRV SOLUCOES\" has:attachment is:unread";
+            "from:naoresponda@cora.com.br subject:\"Extrato da conta VRV SOLUCOES\" has:attachment";
 
     private final GmailApiProvider gmailApiProvider;
     private final ExtratoCoraImportService extratoCoraImportService;
+    private final ExtratoCoraEmailProcessadoService emailProcessadoService;
     private final String gmailUser;
 
     public GmailExtratoCoraService(
             GmailApiProvider gmailApiProvider,
             ExtratoCoraImportService extratoCoraImportService,
+            ExtratoCoraEmailProcessadoService emailProcessadoService,
             @Value("${gmail.user:me}") String gmailUser) {
         this.gmailApiProvider = gmailApiProvider;
         this.extratoCoraImportService = extratoCoraImportService;
+        this.emailProcessadoService = emailProcessadoService;
         this.gmailUser = gmailUser;
     }
 
@@ -45,9 +49,9 @@ public class GmailExtratoCoraService {
     }
 
     /**
-     * @param incluirLidos quando {@code true}, remove {@code is:unread} da query (útil para reprocessar e-mails já abertos)
+     * @param reprocessar quando {@code true}, ignora a tabela de e-mails já processados (útil para teste)
      */
-    public ExtratoCoraEmailProcessamentoResumo buscarEImportarExtratos(boolean incluirLidos) throws IOException {
+    public ExtratoCoraEmailProcessamentoResumo buscarEImportarExtratos(boolean reprocessar) throws IOException {
         ExtratoCoraEmailProcessamentoResumo resumo = new ExtratoCoraEmailProcessamentoResumo();
         Gmail gmail = gmailApiProvider.resolver().orElse(null);
         if (gmail == null) {
@@ -55,18 +59,30 @@ public class GmailExtratoCoraService {
             return resumo;
         }
 
-        String query = incluirLidos ? QUERY_BASE.replace(" is:unread", "") : QUERY_BASE;
-        log.info("Iniciando importação extrato Cora via Gmail (query={})", query);
-        List<Message> mensagens = listarMensagens(gmail, query);
+        log.info("Iniciando importação extrato Cora via Gmail (query={})", QUERY_BASE);
+        List<Message> mensagens = listarMensagens(gmail, QUERY_BASE);
         resumo.setEmailsEncontrados(mensagens.size());
         log.info("Emails Cora encontrados: {}", mensagens.size());
 
+        Set<String> jaProcessados =
+                reprocessar ? Set.of() : emailProcessadoService.messageIdsJaProcessados(gmailUser);
+
         for (Message ref : mensagens) {
             String messageId = ref.getId();
+            if (!reprocessar && jaProcessados.contains(messageId)) {
+                log.debug("Email {} já processado anteriormente; ignorado.", messageId);
+                resumo.setEmailsIgnorados(resumo.getEmailsIgnorados() + 1);
+                continue;
+            }
+
             try {
+                int criadosEmail = 0;
+                int jaExistiamEmail = 0;
+                int falhasEmail = 0;
+
                 List<GmailAnexoArquivo> anexos = GmailMimeUtil.baixarAnexosOfx(gmail, gmailUser, messageId);
                 if (anexos.isEmpty()) {
-                    log.warn("Email {} sem anexo .ofx utilizável; mantido como não lido.", messageId);
+                    log.warn("Email {} sem anexo .ofx utilizável.", messageId);
                     resumo.getErros().add("Email " + messageId + ": nenhum anexo .ofx encontrado.");
                     continue;
                 }
@@ -79,13 +95,16 @@ public class GmailExtratoCoraService {
                             anexo.filename(),
                             anexo.conteudo().length);
                     ExtratoCoraImportResult parcial = extratoCoraImportService.importar(anexo.conteudo());
+                    criadosEmail += parcial.getCriados();
+                    jaExistiamEmail += parcial.getJaExistia();
+                    falhasEmail += parcial.getFalhas();
                     resumo.setLancamentosCriados(resumo.getLancamentosCriados() + parcial.getCriados());
                     resumo.setLancamentosJaExistiam(resumo.getLancamentosJaExistiam() + parcial.getJaExistia());
                     resumo.setFalhas(resumo.getFalhas() + parcial.getFalhas());
 
                     if (parcial.getTotalNoArquivo() == 0) {
                         log.warn(
-                                "OFX {} do email {} sem transações STMTTRN; anexo ignorado para marcação de lido.",
+                                "OFX {} do email {} sem transações STMTTRN; anexo ignorado.",
                                 anexo.filename(),
                                 messageId);
                         resumo.getErros().add(
@@ -107,11 +126,13 @@ public class GmailExtratoCoraService {
                 }
 
                 if (algumAnexoProcessado) {
+                    emailProcessadoService.registrarProcessado(
+                            gmailUser, messageId, criadosEmail, jaExistiamEmail, falhasEmail);
                     marcarComoLido(gmail, messageId);
                     resumo.setEmailsMarcadosLidos(resumo.getEmailsMarcadosLidos() + 1);
-                    log.info("Email {} processado e marcado como lido.", messageId);
+                    log.info("Email {} processado e registrado como importado.", messageId);
                 } else {
-                    log.warn("Email {} não marcado como lido — nenhum OFX válido importado.", messageId);
+                    log.warn("Email {} não registrado — nenhum OFX válido importado.", messageId);
                 }
                 resumo.setEmailsProcessados(resumo.getEmailsProcessados() + 1);
             } catch (Exception ex) {
@@ -122,12 +143,14 @@ public class GmailExtratoCoraService {
         }
 
         log.info(
-                "Importação extrato Cora concluída: {} e-mail(s), {} lançamento(s) criado(s), {} já existiam, {} falha(s), {} marcado(s) como lido(s).",
+                "Importação extrato Cora concluída: {} e-mail(s) encontrado(s), {} processado(s), {} ignorado(s), "
+                        + "{} lançamento(s) criado(s), {} já existiam, {} falha(s).",
+                resumo.getEmailsEncontrados(),
                 resumo.getEmailsProcessados(),
+                resumo.getEmailsIgnorados(),
                 resumo.getLancamentosCriados(),
                 resumo.getLancamentosJaExistiam(),
-                resumo.getFalhas(),
-                resumo.getEmailsMarcadosLidos());
+                resumo.getFalhas());
         return resumo;
     }
 

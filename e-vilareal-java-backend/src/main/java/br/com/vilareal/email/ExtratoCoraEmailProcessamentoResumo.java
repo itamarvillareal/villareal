@@ -12,6 +12,8 @@ public class ExtratoCoraEmailProcessamentoResumo {
 
     private int emailsEncontrados;
     private int emailsProcessados;
+    /** E-mails já importados anteriormente (registrados em {@code extrato_cora_email_processado}). */
+    private int emailsIgnorados;
     private int emailsMarcadosLidos;
     private int lancamentosCriados;
     private int lancamentosJaExistiam;

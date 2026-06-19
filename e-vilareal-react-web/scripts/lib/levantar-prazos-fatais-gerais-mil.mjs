@@ -14,6 +14,7 @@ import {
   parseNomeArquivo145_1,
 } from './gerais-145-1-prazo-fatal.mjs';
 import { parseDataCabecalhoProcessoIso } from './datas-legado-vb.mjs';
+import { readOneLineFile } from './historico-local-txt-paths.mjs';
 
 const MILHARES = ['1000', '2000'];
 
@@ -71,7 +72,7 @@ export function levantarPrazosFataisGeraisMil(baseGerais, opts = {}) {
               continue;
             }
             try {
-              const raw = fs.readFileSync(path.join(dirUnid, f), 'utf8');
+              const raw = readOneLineFile(path.join(dirUnid, f));
               const iso = parseDataCabecalhoProcessoIso(raw) ?? parseDataPrazoFatalTxt(raw);
               if (iso) dataValida += 1;
               else dataInvalida += 1;

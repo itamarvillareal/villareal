@@ -730,6 +730,8 @@ public class ProcessoApplicationService {
             r.setParteOposta(parteOpostaTxt);
             r.setNumeroProcessoNovo(cnj == null ? "" : Utf8MojibakeUtil.corrigir(cnj));
             r.setPapeis(papeisRotulo);
+            String obsFase = trimToNull(e.getObservacaoFase());
+            r.setObservacaoFase(obsFase == null ? "" : Utf8MojibakeUtil.corrigir(obsFase));
             out.add(r);
         }
         return out;

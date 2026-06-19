@@ -1,6 +1,7 @@
 /**
  * Prazo fatal 145.1 — caminho canónico VB: `Gerais/{Milhar}/{Centena}/{Unidade}/`.
- * Não usar `Gerais/145.1/aaaa/mm/` (histórico mensal) na sincronização para a API.
+ * Subpasta derivada do número do cliente (função VB `subpasta()`).
+ * Não usar `Gerais/145.1/aaaa/mm/` (histórico mensal/arquivo).
  */
 
 import fs from 'node:fs';
@@ -10,7 +11,12 @@ import {
   parseDataPrazoFatalTxt,
   parseNomeArquivo145_1,
 } from './gerais-145-1-prazo-fatal.mjs';
-import { subpastaClienteVb } from './historico-local-txt-paths.mjs';
+import {
+  formatCod8,
+  formatProcNomeArquivo,
+  readOneLineFile,
+  subpastaClienteVb,
+} from './historico-local-txt-paths.mjs';
 
 export const DEFAULT_BASE_GERAIS = path.join(
   process.env.HOME || '',
@@ -48,6 +54,43 @@ export function caminhoClienteAlinhaSubpastaVb(codNum, milhar, centena, unidade)
     esp.centena === String(centena) &&
     esp.unidade === String(unidade)
   );
+}
+
+/**
+ * Caminho absoluto do txt de prazo fatal: `Gerais/{Milhar}/{Centena}/{Unidade}/{cod8}.145.1.{proc}.txt`
+ * @param {string} baseGerais raiz `.../Banco de Dados/Gerais`
+ * @param {number} codNum
+ * @param {number} numeroInterno
+ * @returns {string | null}
+ */
+export function caminhoArquivoPrazoFatalGerais(baseGerais, codNum, numeroInterno) {
+  const esp = subpastaClienteVb(codNum);
+  const cod8 = formatCod8(codNum);
+  const procSeg = formatProcNomeArquivo(numeroInterno);
+  if (!procSeg) return null;
+  const nome = `${cod8}.145.1.${procSeg}.txt`;
+  return path.join(baseGerais, esp.milhar, esp.centena, esp.unidade, nome);
+}
+
+/**
+ * Lê prazo fatal no caminho canónico VB (sem árvore mensal `145.1/aaaa/mm/`).
+ * @param {string} baseGerais
+ * @param {number} codNum
+ * @param {number} numeroInterno
+ * @returns {{ prazoFatalIso: string | null, arquivo: string | null }}
+ */
+export function lerPrazoFatalTxtGerais(baseGerais, codNum, numeroInterno) {
+  const abs = caminhoArquivoPrazoFatalGerais(baseGerais, codNum, numeroInterno);
+  if (!abs || !fs.existsSync(abs)) {
+    return { prazoFatalIso: null, arquivo: null };
+  }
+  const texto = readOneLineFile(abs);
+  const prazoFatalIso =
+    parseDataCabecalhoProcessoIso(texto) ?? parseDataPrazoFatalTxt(texto);
+  if (!prazoFatalIso) {
+    return { prazoFatalIso: null, arquivo: abs };
+  }
+  return { prazoFatalIso, arquivo: abs };
 }
 
 /**
@@ -113,15 +156,9 @@ export function* iterarPrazosFataisGeraisMil(baseGerais, opts = {}) {
           if (!parsed || parsed.codNum !== codNum) continue;
 
           const abs = path.join(dirUnid, f);
-          let raw;
-          try {
-            raw = fs.readFileSync(abs, 'utf8');
-          } catch {
-            continue;
-          }
-
+          const texto = readOneLineFile(abs);
           const prazoFatalIso =
-            parseDataCabecalhoProcessoIso(raw) ?? parseDataPrazoFatalTxt(raw);
+            parseDataCabecalhoProcessoIso(texto) ?? parseDataPrazoFatalTxt(texto);
           if (!prazoFatalIso) continue;
 
           yield {

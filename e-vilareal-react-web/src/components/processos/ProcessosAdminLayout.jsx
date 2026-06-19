@@ -12,7 +12,7 @@ export const processosInputDenseClass =
 export const processosInputDenseReadOnlyClass = `${processosInputDenseClass} bg-slate-50 cursor-default focus:ring-0 focus:border-gray-200`;
 
 export const processosBtnPrimary =
-  'inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-semibold text-white bg-teal-600 hover:bg-teal-700 shadow-sm transition-colors duration-150 disabled:opacity-50 disabled:pointer-events-none';
+  'inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-semibold text-white bg-[#0D652D] hover:bg-[#0a5224] shadow-sm transition-colors duration-150 disabled:opacity-50 disabled:pointer-events-none';
 
 export const processosBtnIndigo =
   'inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 shadow-sm transition-colors duration-150 disabled:opacity-50 disabled:pointer-events-none';
@@ -25,6 +25,25 @@ export const processosBtnOutlineIndigo =
 
 export const processosBtnGhost =
   'inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 bg-white hover:bg-gray-50 transition-colors duration-150';
+
+const processosToolbarBtnBase =
+  'inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium border transition-colors duration-150 disabled:opacity-50 disabled:pointer-events-none';
+
+/** Barra de ações do processo — paleta inspirada nos atalhos do módulo. */
+export const processosBtnToolbarBlue =
+  `${processosToolbarBtnBase} bg-[#E8F0FE] text-[#174EA6] border-blue-200/80 hover:bg-blue-100`;
+
+export const processosBtnToolbarPurple =
+  `${processosToolbarBtnBase} bg-[#F3E8FD] text-[#673AB7] border-violet-200/80 hover:bg-violet-100`;
+
+export const processosBtnToolbarGreen =
+  `${processosToolbarBtnBase} bg-[#E6F4EA] text-[#137333] border-emerald-200/80 hover:bg-emerald-100`;
+
+export const processosBtnToolbarRed =
+  `${processosToolbarBtnBase} bg-[#FCE8E6] text-[#B21414] border-red-200/80 hover:bg-red-100`;
+
+export const processosBtnToolbarNeutral =
+  `${processosToolbarBtnBase} bg-white text-slate-700 border-slate-200 hover:bg-slate-50`;
 
 export const processosLinkClass =
   'text-sm font-medium text-teal-600 hover:text-teal-800 hover:underline bg-transparent border-0 p-0 cursor-pointer';

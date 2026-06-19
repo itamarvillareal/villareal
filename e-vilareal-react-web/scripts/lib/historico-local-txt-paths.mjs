@@ -71,14 +71,16 @@ export function milharPastaClienteGerais(codNum) {
 }
 
 /**
- * Segmentos Milhar / Centena / Unidade (VB) para `Banco de Dados/Gerais/{milhar}/{centena}/{unidade}/`.
+ * Segmentos Milhar / Centena / Unidade — legado VB {@code subpasta()} sobre o código de 8 dígitos.
+ * Usado em `Gerais/`, `Proc/`, `Calculos/`, etc. (Unidade = número do cliente, não cod8).
  * @param {number} codNum
  */
 export function subpastaClienteVb(codNum) {
+  const n = Math.trunc(Number(codNum));
   return {
-    milhar: milharPastaClienteGerais(codNum),
-    centena: String(centenaPastaClienteHistorico(codNum)),
-    unidade: pastaNumeroClienteHistorico(codNum),
+    milhar: milharPastaClienteGerais(n),
+    centena: String(centenaPorRegraVB(n)),
+    unidade: pastaNumeroClienteHistorico(n),
   };
 }
 
