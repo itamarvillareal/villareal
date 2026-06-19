@@ -1,5 +1,6 @@
 package br.com.vilareal.financeiro.application;
 
+import br.com.vilareal.financeiro.api.dto.DescartarParesCompensacaoResponse;
 import br.com.vilareal.financeiro.api.dto.ParearCompensacaoItemRequest;
 import br.com.vilareal.financeiro.api.dto.ParearCompensacaoRequest;
 import br.com.vilareal.financeiro.api.dto.ParearCompensacaoResponse;
@@ -7,8 +8,10 @@ import br.com.vilareal.financeiro.api.dto.ParesSugeridosCompensacaoResponse;
 import br.com.vilareal.financeiro.domain.EtapaLancamento;
 import br.com.vilareal.financeiro.domain.NaturezaLancamento;
 import br.com.vilareal.financeiro.domain.TipoParCompensacao;
+import br.com.vilareal.financeiro.infrastructure.persistence.entity.CompensacaoParDescarteEntity;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.ContaContabilEntity;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.LancamentoFinanceiroEntity;
+import br.com.vilareal.financeiro.infrastructure.persistence.repository.CompensacaoParDescarteRepository;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.ContaContabilRepository;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.LancamentoFinanceiroRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -31,6 +34,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.lenient;
 
 @ExtendWith(MockitoExtension.class)
 class FinanceiroCompensacaoServiceTest {
@@ -39,6 +43,8 @@ class FinanceiroCompensacaoServiceTest {
     private LancamentoFinanceiroRepository lancamentoRepository;
     @Mock
     private ContaContabilRepository contaContabilRepository;
+    @Mock
+    private CompensacaoParDescarteRepository compensacaoParDescarteRepository;
     @Mock
     private FinanceiroSaudeService financeiroSaudeService;
 
@@ -51,6 +57,7 @@ class FinanceiroCompensacaoServiceTest {
 
     @BeforeEach
     void setUp() {
+        lenient().when(compensacaoParDescarteRepository.findAll()).thenReturn(List.of());
         contaE = new ContaContabilEntity();
         contaE.setId(6L);
         contaE.setCodigo("E");
@@ -215,6 +222,28 @@ class FinanceiroCompensacaoServiceTest {
         assertThat(p1.getPares()).hasSize(1);
         assertThat(p0.getPares().get(0).getLancamentoA().getId()).isNotEqualTo(
                 p1.getPares().get(0).getLancamentoA().getId());
+    }
+
+    @Test
+    void descartarPares_persisteRejeicaoENormalizaIds() {
+        when(compensacaoParDescarteRepository.existsByLancamentoIdMenorAndLancamentoIdMaior(1L, 2L))
+                .thenReturn(false);
+        when(compensacaoParDescarteRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        ParearCompensacaoItemRequest item = new ParearCompensacaoItemRequest();
+        item.setLancamentoIdA(2L);
+        item.setLancamentoIdB(1L);
+        ParearCompensacaoRequest req = new ParearCompensacaoRequest();
+        req.setPares(List.of(item));
+
+        DescartarParesCompensacaoResponse r = service.descartarPares(req);
+
+        assertThat(r.getDescartados()).isEqualTo(1);
+        ArgumentCaptor<CompensacaoParDescarteEntity> cap = ArgumentCaptor.forClass(CompensacaoParDescarteEntity.class);
+        verify(compensacaoParDescarteRepository).save(cap.capture());
+        assertThat(cap.getValue().getLancamentoIdMenor()).isEqualTo(1L);
+        assertThat(cap.getValue().getLancamentoIdMaior()).isEqualTo(2L);
+        verify(financeiroSaudeService).invalidarCacheSaude();
     }
 
     private static LancamentoFinanceiroEntity lancamentoOrfao(

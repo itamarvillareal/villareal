@@ -6,6 +6,7 @@ import { ExtratoSkeleton } from '../shared/LoadingSkeleton.jsx';
 import { ETAPAS } from '../constants/financeiroConstants.js';
 import { contaCodigoExtratoExibicao } from '../shared/financeiroDescricaoContaF.js';
 import { textoObsExtrato } from './extratoMappers.js';
+import { temCodigoEProcExtratoRow } from './extratoCadastroFiltro.js';
 
 function ExtratoTableInner({
   data = [],
@@ -17,6 +18,8 @@ function ExtratoTableInner({
   sortDataAsc = false,
   onSortDataDoubleClick,
   highlightLancamentoId = null,
+  /** Conta Escritório no consolidado: etapa = cod+proc (azul/vermelho) em vez da etapa do workflow. */
+  etapaModoEscritorio = false,
 }) {
   const ids = useMemo(() => data.map((r) => r.id).filter((id) => id != null), [data]);
   const allSelected = useMemo(
@@ -153,7 +156,12 @@ function ExtratoTableInner({
                     </div>
                   </td>
                   <td className="px-1 py-2 align-middle text-center overflow-hidden">
-                    <EtapaDot etapa={item.etapa} />
+                    <EtapaDot
+                      etapa={item.etapa}
+                      cadastroEscritorio={
+                        etapaModoEscritorio ? temCodigoEProcExtratoRow(item) : undefined
+                      }
+                    />
                   </td>
                 </tr>
               );

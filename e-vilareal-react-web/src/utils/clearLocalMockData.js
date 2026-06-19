@@ -147,11 +147,19 @@ export function clearLocalMockData(opts = {}) {
 
   if (clearAuth) {
     clearAccessToken();
-    removedSessionStorage.push('vilareal.accessToken');
+    removedLocalStorage.push('vilareal.accessToken', 'vilareal.auth.lastActivity.v1');
     try {
+      if (window.localStorage.getItem(STORAGE_API_USUARIO_SESSAO) != null) {
+        window.localStorage.removeItem(STORAGE_API_USUARIO_SESSAO);
+        removedLocalStorage.push(STORAGE_API_USUARIO_SESSAO);
+      }
       if (window.sessionStorage.getItem(STORAGE_API_USUARIO_SESSAO) != null) {
         window.sessionStorage.removeItem(STORAGE_API_USUARIO_SESSAO);
         removedSessionStorage.push(STORAGE_API_USUARIO_SESSAO);
+      }
+      if (window.sessionStorage.getItem('vilareal.accessToken') != null) {
+        window.sessionStorage.removeItem('vilareal.accessToken');
+        removedSessionStorage.push('vilareal.accessToken');
       }
     } catch {
       /* ignore */

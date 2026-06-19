@@ -384,14 +384,40 @@ describe('parseOfxToExtrato (Cora / UTF-8)', () => {
     expect(rows[0].descricao).toBe('CR LV OR E');
   });
 
-  it('sem FITID e CHECKNUM só zeros: usa índice 1,2,3 por transação no arquivo', () => {
+  it('sem FITID e CHECKNUM só zeros: usa ofx-N por transação no arquivo', () => {
     const text = `<OFX><BANKMSGSRSV1><STMTTRNRS><STMTRS><BANKTRANLIST>
 <STMTTRN><TRNTYPE>CREDIT</TRNTYPE><DTPOSTED>20260330000000</DTPOSTED><TRNAMT>1</TRNAMT><CHECKNUM>0</CHECKNUM><MEMO>CR LV OR E</MEMO></STMTTRN>
 <STMTTRN><TRNTYPE>CREDIT</TRNTYPE><DTPOSTED>20260330000000</DTPOSTED><TRNAMT>2</TRNAMT><CHECKNUM>000</CHECKNUM><MEMO>CR LV OR E</MEMO></STMTTRN>
 <STMTTRN><TRNTYPE>CREDIT</TRNTYPE><DTPOSTED>20260330000000</DTPOSTED><TRNAMT>3</TRNAMT><CHECKNUM>0</CHECKNUM><MEMO>CR LV OR E</MEMO></STMTTRN>
 </BANKTRANLIST></STMTRS></STMTTRNRS></BANKMSGSRSV1></OFX>`;
     const rows = parseOfxToExtrato(text);
-    expect(rows.map((r) => r.numero).sort()).toEqual(['1', '2', '3']);
+    expect(rows.map((r) => r.numero).sort()).toEqual(['ofx-1', 'ofx-2', 'ofx-3']);
+  });
+
+  it('FITID 0 (Caixa CR LV OR E): gera ofx-N distintos, sem colidir com FITID real', () => {
+    const text = `<OFX><BANKMSGSRSV1><STMTTRNRS><STMTRS><BANKTRANLIST>
+<STMTTRN><TRNTYPE>CREDIT</TRNTYPE><DTPOSTED>20260601120000</DTPOSTED><TRNAMT>1052.00</TRNAMT><FITID>0</FITID><CHECKNUM>0</CHECKNUM><MEMO>CR LV OR E</MEMO></STMTTRN>
+<STMTTRN><TRNTYPE>CREDIT</TRNTYPE><DTPOSTED>20260601120000</DTPOSTED><TRNAMT>4394.42</TRNAMT><FITID>0</FITID><CHECKNUM>0</CHECKNUM><MEMO>CR LV OR E</MEMO></STMTTRN>
+<STMTTRN><TRNTYPE>CREDIT</TRNTYPE><DTPOSTED>20260616120000</DTPOSTED><TRNAMT>4022.80</TRNAMT><FITID>14</FITID><CHECKNUM>14</CHECKNUM><MEMO>CR LEV JUD</MEMO></STMTTRN>
+<STMTTRN><TRNTYPE>CREDIT</TRNTYPE><DTPOSTED>20260616120000</DTPOSTED><TRNAMT>38.97</TRNAMT><FITID>0</FITID><CHECKNUM>0</CHECKNUM><MEMO>CR LV OR E</MEMO></STMTTRN>
+</BANKTRANLIST></STMTRS></STMTTRNRS></BANKMSGSRSV1></OFX>`;
+    const rows = parseOfxToExtrato(text);
+    const numeros = rows.map((r) => r.numero);
+    expect(new Set(numeros).size).toBe(numeros.length);
+    expect(numeros).toContain('14');
+    expect(numeros).toContain('ofx-1');
+    expect(numeros).toContain('ofx-2');
+    expect(numeros).toContain('ofx-4');
+  });
+
+  it('FITID repetido no mesmo arquivo (Caixa CRED TED): sufixa com índice da linha', () => {
+    const text = `<OFX><BANKMSGSRSV1><STMTTRNRS><STMTRS><BANKTRANLIST>
+<STMTTRN><TRNTYPE>CREDIT</TRNTYPE><DTPOSTED>20260602120000</DTPOSTED><TRNAMT>799.35</TRNAMT><FITID>1</FITID><CHECKNUM>1</CHECKNUM><MEMO>CRED TED</MEMO></STMTTRN>
+<STMTTRN><TRNTYPE>CREDIT</TRNTYPE><DTPOSTED>20260602120000</DTPOSTED><TRNAMT>67.57</TRNAMT><FITID>1</FITID><CHECKNUM>1</CHECKNUM><MEMO>CRED TED</MEMO></STMTTRN>
+</BANKTRANLIST></STMTRS></STMTTRNRS></BANKMSGSRSV1></OFX>`;
+    const rows = parseOfxToExtrato(text);
+    expect(rows[0].numero).toBe('1');
+    expect(rows[1].numero).toBe('1-2');
   });
 
   it('CHECKNUM real sem FITID continua como número do lançamento', () => {
@@ -400,6 +426,41 @@ describe('parseOfxToExtrato (Cora / UTF-8)', () => {
 </BANKTRANLIST></STMTRS></STMTTRNRS></BANKMSGSRSV1></OFX>`;
     const rows = parseOfxToExtrato(text);
     expect(rows[0].numero).toBe('000042');
+  });
+
+  it('OFX Sicoob VRV (internet banking, FITID composto data+valor)', () => {
+    const text = `OFXHEADER:100
+DATA:OFXSGML
+VERSION:102
+ENCODING:USASCII
+CHARSET:1252
+<OFX><BANKMSGSRSV1><STMTTRNRS><STMTRS><BANKTRANLIST>
+<STMTTRN>
+<TRNTYPE>CREDIT</TRNTYPE>
+<DTPOSTED>20260529120000[-3:BRT]</DTPOSTED>
+<TRNAMT>2836.75</TRNAMT>
+<FITID>202605292836751</FITID>
+<CHECKNUM>0</CHECKNUM>
+<MEMO>PIX RECEBIDO - OUTRA IF</MEMO>
+<NAME>Recebimento Pix TERRA MUNDI ANAP</NAME>
+</STMTTRN>
+<STMTTRN>
+<TRNTYPE>DEBIT</TRNTYPE>
+<DTPOSTED>20260511120000[-3:BRT]</DTPOSTED>
+<TRNAMT>-2000.00</TRNAMT>
+<FITID>202605112000001</FITID>
+<CHECKNUM>0003</CHECKNUM>
+<MEMO>SAQUE SEM CARTÃO</MEMO>
+<NAME>SAQ.DIG. NOME: VRV SOLUCOES LTDA</NAME>
+</STMTTRN>
+</BANKTRANLIST></STMTRS></STMTTRNRS></BANKMSGSRSV1></OFX>`;
+    const rows = parseOfxToExtrato(text, { nomeBanco: 'Sicoob VRV' });
+    expect(rows).toHaveLength(2);
+    const pix = rows.find((r) => r.numero === '202605292836751');
+    const saque = rows.find((r) => r.numero === '202605112000001');
+    expect(pix?.data).toBe('29/05/2026');
+    expect(pix?.descricao).toBe('PIX RECEBIDO - OUTRA IF');
+    expect(saque?.valor).toBe(-2000);
   });
 });
 

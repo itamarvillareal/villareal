@@ -3,8 +3,11 @@ package br.com.vilareal.processo.application;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
 
 import java.math.BigInteger;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
 /**
  * Normalização alinhada ao front {@code chaveNumeroProcessoBuscaDiagnostico} — remove pontos, traços e espaços,
@@ -33,7 +36,13 @@ public final class ProcessoDiagnosticoNumeroBuscaUtil {
             return List.of();
         }
         if (norm.length() >= 20) {
-            return processoRepository.findIdsByNumeroCnjNormalizadoDiagnostico(norm);
+            for (String variante : variantesCnjIgualdadeDiagnostico(norm)) {
+                List<BigInteger> ids = processoRepository.findIdsByNumeroCnjNormalizadoDiagnostico(variante);
+                if (!ids.isEmpty()) {
+                    return ids;
+                }
+            }
+            return List.of();
         }
         if (ehNumeroProjudiInternoEmail(numeroBruto)) {
             // Só prefixo exato (9 dígitos = sequencial + DV). Sem fallback «contém» nem fuzzy —
@@ -63,5 +72,37 @@ public final class ProcessoDiagnosticoNumeroBuscaUtil {
             }
         }
         return sb.toString();
+    }
+
+    /**
+     * CNJ legado (txt/import): sequencial com 6 dígitos → 19 dígitos; completo = 20.
+     * Gera variantes para igualdade na busca (20 com zero à esquerda e 19 sem).
+     */
+    public static String padCnjDigitos19para20(String digits) {
+        if (digits == null) {
+            return "";
+        }
+        String d = digits.replaceAll("\\D", "");
+        if (d.length() == 19) {
+            return "0" + d;
+        }
+        return d;
+    }
+
+    public static List<String> variantesCnjIgualdadeDiagnostico(String norm) {
+        if (norm == null || norm.isBlank()) {
+            return List.of();
+        }
+        Set<String> set = new LinkedHashSet<>();
+        String canon = padCnjDigitos19para20(norm);
+        if (!canon.isBlank()) {
+            set.add(canon);
+        }
+        if (canon.length() == 20 && canon.startsWith("0")) {
+            set.add(canon.substring(1));
+        } else if (norm.length() == 19) {
+            set.add(norm);
+        }
+        return new ArrayList<>(set);
     }
 }

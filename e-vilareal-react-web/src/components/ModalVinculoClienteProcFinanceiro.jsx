@@ -8,8 +8,10 @@ import { featureFlags } from '../config/featureFlags.js';
 import { padCliente8Cadastro } from '../data/cadastroClientesStorage.js';
 import {
   buscarClientesUnicosPorTextoHistorico,
+  buscarParesClienteProcPorCnj,
   buscarParesClienteProcPorTexto,
   filtrarProcessosVinculoPasso2,
+  pareceTermoBuscaCnj,
 } from '../data/buscaClienteProcFinanceiro';
 import {
   carregarProcessosGradeClienteLocal,
@@ -40,6 +42,7 @@ export function ModalVinculoClienteProcFinanceiro({
   /** @type {null | { codCliente: string, codigoPadded: string, nomeCliente: string, cpfLabel: string }} */
   const [clienteSel, setClienteSel] = useState(null);
   const [clientesPasso1, setClientesPasso1] = useState([]);
+  const [paresCnjPasso1, setParesCnjPasso1] = useState([]);
   const [loadingClientes, setLoadingClientes] = useState(false);
   const [processosGrade, setProcessosGrade] = useState([]);
   const [termoBuscaProcesso, setTermoBuscaProcesso] = useState('');
@@ -49,6 +52,7 @@ export function ModalVinculoClienteProcFinanceiro({
 
   const refBuscaCliente = useRef(null);
   const refPrimeiroCliente = useRef(null);
+  const refPrimeiroCnj = useRef(null);
   const refBuscaProcesso = useRef(null);
   const refPrimeiroProcesso = useRef(null);
   const refBuscaLivre = useRef(null);
@@ -81,22 +85,36 @@ export function ModalVinculoClienteProcFinanceiro({
   }, []);
 
   const selecionarPrimeiroClientePasso1 = useCallback(() => {
-    if (loadingClientes || clientesPasso1.length === 0) return;
+    if (loadingClientes) return;
+    if (paresCnjPasso1.length > 0) {
+      const r = paresCnjPasso1[0];
+      onAplicar({ codCliente: r.codCliente, proc: r.proc });
+      return;
+    }
+    if (clientesPasso1.length === 0) return;
     avancarComClientePasso1(clientesPasso1[0]);
-  }, [loadingClientes, clientesPasso1, avancarComClientePasso1]);
+  }, [loadingClientes, paresCnjPasso1, clientesPasso1, avancarComClientePasso1, onAplicar]);
 
   const aoKeyDownBuscaClientePasso1 = useCallback(
     (e) => {
       if (e.key === 'Enter') {
-        if (clientesPasso1.length > 0 && !loadingClientes) {
+        if ((clientesPasso1.length > 0 || paresCnjPasso1.length > 0) && !loadingClientes) {
           e.preventDefault();
           selecionarPrimeiroClientePasso1();
         }
         return;
       }
-      aoTabSairCampoBusca(e, refPrimeiroCliente, clientesPasso1.length > 0);
+      const refPrimeiro = paresCnjPasso1.length > 0 ? refPrimeiroCnj : refPrimeiroCliente;
+      const temItens = paresCnjPasso1.length > 0 || clientesPasso1.length > 0;
+      aoTabSairCampoBusca(e, refPrimeiro, temItens);
     },
-    [clientesPasso1.length, loadingClientes, selecionarPrimeiroClientePasso1, aoTabSairCampoBusca],
+    [
+      clientesPasso1.length,
+      paresCnjPasso1.length,
+      loadingClientes,
+      selecionarPrimeiroClientePasso1,
+      aoTabSairCampoBusca,
+    ],
   );
 
   const resetWizard = useCallback(() => {
@@ -104,6 +122,7 @@ export function ModalVinculoClienteProcFinanceiro({
     setPasso(1);
     setClienteSel(null);
     setClientesPasso1([]);
+    setParesCnjPasso1([]);
     setProcessosGrade([]);
     setTermoBuscaProcesso('');
     setLoadingClientes(false);
@@ -136,6 +155,34 @@ export function ModalVinculoClienteProcFinanceiro({
   useEffect(() => {
     if (!aberto || !modoContaEscritorio || passo !== 1) return;
     const t = termo.trim();
+
+    if (pareceTermoBuscaCnj(t)) {
+      let cancelled = false;
+      const id = window.setTimeout(() => {
+        void (async () => {
+          setLoadingClientes(true);
+          setErro('');
+          setClientesPasso1([]);
+          try {
+            const pares = await buscarParesClienteProcPorCnj(t, { maxResults: 30 });
+            if (!cancelled) setParesCnjPasso1(pares);
+          } catch (e) {
+            if (!cancelled) {
+              setErro(e?.message || 'Falha ao buscar processo por CNJ.');
+              setParesCnjPasso1([]);
+            }
+          } finally {
+            if (!cancelled) setLoadingClientes(false);
+          }
+        })();
+      }, 320);
+      return () => {
+        cancelled = true;
+        window.clearTimeout(id);
+      };
+    }
+
+    setParesCnjPasso1([]);
     if (!termoPermiteBuscaClienteCadastro(t)) {
       setClientesPasso1([]);
       setLoadingClientes(false);
@@ -240,13 +287,15 @@ export function ModalVinculoClienteProcFinanceiro({
 
   if (!aberto) return null;
 
+  const buscaCnjPasso1 = modoContaEscritorio && passo === 1 && pareceTermoBuscaCnj(termo);
+
   const tituloWizard = titulo ?? 'Vincular (Conta Escritório — letra A)';
   const tituloLivre = titulo ?? 'Vincular cliente e processo';
   const placeholderCliente =
     placeholderBuscaCliente ??
     (modoContaEscritorio
-      ? 'Nome, código (8 dígitos) ou nº interno do processo…'
-      : 'Ex.: nome da parte, réu, CPF ou nº do processo…');
+      ? 'Nome, código (8 dígitos), nº interno ou CNJ do processo…'
+      : 'Ex.: nome da parte, réu, CPF, CNJ ou nº do processo…');
 
   return (
     <div
@@ -271,16 +320,17 @@ export function ModalVinculoClienteProcFinanceiro({
             </h2>
             {modoContaEscritorio ? (
               <p className="text-xs text-slate-600 mt-1">
-                <strong>1.</strong> Pesquise por <strong>nome</strong>, <strong>código (8 dígitos)</strong> ou{' '}
-                <strong>nº interno do processo</strong>. <strong>2.</strong> Escolha o processo (filtre por{' '}
-                <strong>autor</strong>, <strong>réu</strong> ou <strong>nº do processo</strong>). Clique na linha para
-                vincular <strong>código</strong> e <strong>proc.</strong> ao lançamento.
+                <strong>1.</strong> Pesquise por <strong>nome</strong>, <strong>código (8 dígitos)</strong>,{' '}
+                <strong>nº interno</strong> ou <strong>CNJ</strong>. Com CNJ, clique na linha para vincular de
+                imediato; com cliente, avance ao passo 2 e filtre por autor, réu ou nº do processo. Clique na linha
+                para vincular <strong>código</strong> e <strong>proc.</strong> ao lançamento.
               </p>
             ) : (
               <p className="text-xs text-slate-600 mt-1">
                 Pesquise pelo <strong>nome do cliente</strong>, <strong>CPF/CNPJ</strong>, <strong>autor</strong>,{' '}
-                <strong>réu</strong>, tipo de ação ou trecho do <strong>nº do processo</strong> (histórico local). Depois
-                clique na linha para gravar <strong>Cod. cliente</strong> e <strong>Proc.</strong> neste lançamento.
+                <strong>réu</strong>, <strong>CNJ</strong>, tipo de ação ou trecho do <strong>nº do processo</strong>{' '}
+                (histórico local). Depois clique na linha para gravar <strong>Cod. cliente</strong> e{' '}
+                <strong>Proc.</strong> neste lançamento.
               </p>
             )}
             {resumoLancamento ? (
@@ -334,10 +384,65 @@ export function ModalVinculoClienteProcFinanceiro({
                   </div>
                 </div>
                 <div className="flex-1 min-h-0 overflow-auto p-4">
-                  {!termoPermiteBuscaClienteCadastro(termo) ? (
+                  {buscaCnjPasso1 ? (
+                    paresCnjPasso1.length === 0 && !loadingClientes ? (
+                      <p className="text-sm text-slate-600 text-center py-8">
+                        Nenhum processo encontrado com CNJ &quot;{termo.trim()}&quot;.
+                      </p>
+                    ) : (
+                      <div className="border border-slate-200 rounded-lg overflow-hidden">
+                        <table className="w-full text-sm border-collapse">
+                          <thead>
+                            <tr className="bg-slate-100 text-left">
+                              <th className="px-3 py-2 font-semibold text-slate-700 border-b border-slate-200 w-24">
+                                Cod.
+                              </th>
+                              <th className="px-3 py-2 font-semibold text-slate-700 border-b border-slate-200 w-14">
+                                Proc.
+                              </th>
+                              <th className="px-3 py-2 font-semibold text-slate-700 border-b border-slate-200 min-w-[140px]">
+                                Cliente
+                              </th>
+                              <th className="px-3 py-2 font-semibold text-slate-700 border-b border-slate-200 min-w-[160px]">
+                                CNJ
+                              </th>
+                              <th className="px-3 py-2 font-semibold text-slate-700 border-b border-slate-200 min-w-[120px]">
+                                Autor / réu
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {paresCnjPasso1.map((r, idx) => {
+                              const vincularPar = () => onAplicar({ codCliente: r.codCliente, proc: r.proc });
+                              return (
+                                <tr
+                                  key={`${r.codCliente}-${r.proc}-${r.processoNovo}-${idx}`}
+                                  ref={idx === 0 ? refPrimeiroCnj : undefined}
+                                  tabIndex={0}
+                                  role="button"
+                                  className="border-b border-slate-100 hover:bg-indigo-50/80 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500"
+                                  onClick={vincularPar}
+                                  onKeyDown={(e) => aoAtivarLinhaTeclado(e, vincularPar)}
+                                  title="Clique para vincular este processo ao lançamento"
+                                >
+                                  <td className="px-3 py-2 tabular-nums font-medium text-slate-900">{r.codCliente}</td>
+                                  <td className="px-3 py-2 tabular-nums text-slate-800">{r.proc}</td>
+                                  <td className="px-3 py-2 text-slate-800 font-medium">{r.nomeCliente || '—'}</td>
+                                  <td className="px-3 py-2 text-slate-700 text-xs break-words">{r.processoNovo || '—'}</td>
+                                  <td className="px-3 py-2 text-slate-600 text-xs break-words">
+                                    {[r.autor, r.reu].filter(Boolean).join(' / ') || '—'}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )
+                  ) : !termoPermiteBuscaClienteCadastro(termo) ? (
                     <p className="text-sm text-slate-500 text-center py-8">
-                      Digite pelo menos 2 letras no nome, ou use números para código (8 dígitos), CPF/CNPJ ou nº
-                      interno do processo.
+                      Digite pelo menos 2 letras no nome, ou use números para código (8 dígitos), CPF/CNPJ, nº interno
+                      ou CNJ (mín. 7 dígitos).
                     </p>
                   ) : clientesPasso1.length === 0 && !loadingClientes ? (
                     <p className="text-sm text-slate-600 text-center py-8">
@@ -523,7 +628,7 @@ export function ModalVinculoClienteProcFinanceiro({
                   onKeyDown={(e) =>
                     aoTabSairCampoBusca(e, refPrimeiroLivre, resultadosBuscaLivre.length > 0)
                   }
-                  placeholder="Ex.: nome da parte, réu, CPF ou nº do processo…"
+                  placeholder="Ex.: nome da parte, réu, CPF, CNJ ou nº do processo…"
                   className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
                   autoFocus
                 />

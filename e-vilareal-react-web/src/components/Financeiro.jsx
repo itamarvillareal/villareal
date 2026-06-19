@@ -83,8 +83,10 @@ import {
   arquivoExtratoEhOfx,
   arquivoExtratoEhPdf,
   carregarLancamentosDeExtratoPdf,
+  isInstituicaoExtratoOfxBloqueado,
   isInstituicaoExtratoPdfImport,
   mensagemFalhaExtratoPdf,
+  rotuloFormatosExtratoImport,
   rotuloInstituicaoExtratoPdf,
 } from '../utils/extratoPdfImport';
 import { OFX_ITAU_REAL_EXEMPLO, OFX_CORA_REAL_EXEMPLO } from '../data/ofxItauCoraReal';
@@ -2714,7 +2716,7 @@ export function Financeiro({ paineisRelatorios: paineisRelatoriosProp, instituic
 
   async function importarOfxArquivo(file) {
     try {
-      if (isInstituicaoExtratoPdfImport(instituicaoSelecionada)) {
+      if (isInstituicaoExtratoOfxBloqueado(instituicaoSelecionada)) {
         setOfxStatus({
           kind: 'error',
           message: `Para ${instituicaoSelecionada}, selecione um arquivo PDF (${rotuloInstituicaoExtratoPdf(instituicaoSelecionada)}). OFX não é suportado neste banco.`,
@@ -3314,7 +3316,7 @@ export function Financeiro({ paineisRelatorios: paineisRelatoriosProp, instituic
                 ofxBloqueadoExtratoInativo
                   ? 'Extrato inativo — reative para importar'
                   : isInstituicaoExtratoPdfImport(instituicaoSelecionada)
-                    ? `Importar extrato (.pdf ou .ofx) em ${instituicaoSelecionada} — PDF ${rotuloInstituicaoExtratoPdf(instituicaoSelecionada)}; mescla por padrão`
+                    ? `Importar extrato (.pdf ou .ofx) em ${instituicaoSelecionada} — ${rotuloFormatosExtratoImport(instituicaoSelecionada)}; mescla por padrão`
                     : `Importar extrato (.ofx ou .pdf) em ${instituicaoSelecionada} — mescla por padrão`
               }
             >
@@ -3533,7 +3535,7 @@ export function Financeiro({ paineisRelatorios: paineisRelatoriosProp, instituic
           <p className="text-xs text-slate-600 mb-1 leading-relaxed">
             O botão <strong>Importar extrato</strong> aceita <strong>.ofx</strong> e <strong>.pdf</strong> no mesmo seletor;
             o sistema valida conforme o banco selecionado. <strong>BTG</strong>, <strong>Bradesco</strong> e <strong>Sicoob</strong> usam PDF (modelos
-            oficiais de conta corrente, texto selecionável); os demais bancos usam OFX. Por padrão, cada importação{' '}
+            oficiais de conta corrente, texto selecionável); <strong>Sicoob VRV</strong> aceita PDF ou OFX; os demais bancos usam OFX. Por padrão, cada importação{' '}
             <strong>acrescenta</strong> lançamentos (sem apagar mock nem extrato já importados). Duplicatas (mesma chave
             data + valor + identificador) são ignoradas.{' '}
             {featureFlags.useApiFinanceiro ? (
@@ -3617,7 +3619,7 @@ export function Financeiro({ paineisRelatorios: paineisRelatoriosProp, instituic
                 ofxBloqueadoExtratoInativo
                   ? 'Extrato inativo — reative para importar'
                   : isInstituicaoExtratoPdfImport(instituicaoSelecionada)
-                    ? `Importar extrato (.pdf ou .ofx) — PDF ${rotuloInstituicaoExtratoPdf(instituicaoSelecionada)}`
+                    ? `Importar extrato (.pdf ou .ofx) — ${rotuloFormatosExtratoImport(instituicaoSelecionada)}`
                     : `Importar extrato (.ofx ou .pdf) em ${instituicaoSelecionada}`
               }
             >

@@ -8,6 +8,11 @@ describe('levenshtein', () => {
 });
 
 describe('termoDigitosCorrespondeCnjCampo', () => {
+  it('CNJ legado 19 dígitos (txt) casa com busca 20 dígitos', () => {
+    expect(termoDigitosCorrespondeCnjCampo('00256588920178090006', '025658.89.2017.8.09.0006')).toBe(true);
+    expect(termoDigitosCorrespondeCnjCampo('00256588920178090006', '0025658-89.2017.8.09.0006')).toBe(true);
+  });
+
   it('substring exacta continua a funcionar', () => {
     expect(termoDigitosCorrespondeCnjCampo('782017', '5402633-78.2017.8.09.0006')).toBe(true);
   });

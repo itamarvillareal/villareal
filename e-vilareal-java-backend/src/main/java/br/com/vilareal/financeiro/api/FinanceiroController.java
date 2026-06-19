@@ -394,6 +394,13 @@ public class FinanceiroController {
         return financeiroCompensacaoService.desparear(grupoCompensacao);
     }
 
+    @PostMapping("/lancamentos/pares-sugeridos/descartar")
+    @Operation(description = "Rejeita sugestões de par («Não são par») para o greedy reanalizar outros candidatos.")
+    public DescartarParesCompensacaoResponse descartarParesCompensacao(
+            @Valid @RequestBody ParearCompensacaoRequest request) {
+        return financeiroCompensacaoService.descartarPares(request);
+    }
+
     @GetMapping("/lancamentos/pares-sugeridos")
     @Operation(description = "Pares de compensação sugeridos (valor oposto, sem grupo, janela de datas).")
     public ParesSugeridosCompensacaoResponse paresSugeridos(

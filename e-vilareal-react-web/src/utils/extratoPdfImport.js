@@ -20,7 +20,12 @@ export {
   isInstituicaoSicoobExtratoPdf,
 };
 
-/** Instituições cujo extrato oficial é importado por PDF (não OFX). */
+/** Conta «Sicoob VRV» — aceita PDF (SISBR) e OFX (exportação internet banking). */
+export function isInstituicaoSicoobVrv(nome) {
+  return /^Sicoob\s*VRV$/i.test(String(nome ?? '').trim());
+}
+
+/** Instituições cujo extrato pode ser importado por PDF. */
 export function isInstituicaoExtratoPdfImport(nome) {
   return (
     isInstituicaoBtgExtratoPdf(nome) ||
@@ -28,6 +33,23 @@ export function isInstituicaoExtratoPdfImport(nome) {
     isInstituicaoSicoobExtratoPdf(nome) ||
     isInstituicaoPay99ExtratoPdf(nome)
   );
+}
+
+/** Instituições que rejeitam OFX (Sicoob VRV aceita PDF e OFX). */
+export function isInstituicaoExtratoOfxBloqueado(nome) {
+  if (isInstituicaoSicoobVrv(nome)) return false;
+  return isInstituicaoExtratoPdfImport(nome);
+}
+
+/** Texto curto dos formatos aceitos no importador, para tooltips e mensagens. */
+export function rotuloFormatosExtratoImport(nome) {
+  if (isInstituicaoSicoobVrv(nome)) {
+    return 'PDF (SISBR) ou OFX (internet banking Sicoob)';
+  }
+  if (isInstituicaoExtratoPdfImport(nome)) {
+    return `PDF ${rotuloInstituicaoExtratoPdf(nome)}`;
+  }
+  return 'OFX';
 }
 
 export function rotuloInstituicaoExtratoPdf(nome) {

@@ -2,8 +2,10 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   enriquecerLinhaProcessoVinculoFinanceiro,
   filtrarProcessosVinculoPasso2,
+  pareceTermoBuscaCnj,
   prepararIndiceBuscaProcessoVinculo,
   processoCorrespondeFiltroPasso2,
+  buscarParesClienteProcPorTexto,
 } from './buscaClienteProcFinanceiro.js';
 
 vi.mock('./processosHistoricoData.js', () => ({
@@ -22,6 +24,26 @@ vi.mock('./processosHistoricoData.js', () => ({
       numeroProcessoNovo: '',
       numeroProcessoVelho: '',
       naturezaAcao: 'ADMINISTRAÇÃO DE IMÓVEL',
+    },
+    {
+      codCliente: '00000426',
+      proc: 34,
+      cliente: 'CLIENTE TESTE',
+      parteCliente: 'AUTOR TESTE',
+      parteOposta: 'RÉU TESTE',
+      numeroProcessoNovo: '5319281-62.2022.8.09.0007',
+      numeroProcessoVelho: '',
+      naturezaAcao: 'COBRANÇA',
+    },
+    {
+      codCliente: '00000533',
+      proc: 10,
+      cliente: 'CLIENTE 533',
+      parteCliente: 'AUTOR 533',
+      parteOposta: 'RÉU 533',
+      numeroProcessoNovo: '025658.89.2017.8.09.0006',
+      numeroProcessoVelho: '',
+      naturezaAcao: 'TRABALHISTA',
     },
   ],
 }));
@@ -98,5 +120,31 @@ describe('filtrarProcessosVinculoPasso2 fallback histórico', () => {
     const filtrados = filtrarProcessosVinculoPasso2([linha], 'ANGELIM', 'tavares', '00000966');
     expect(filtrados).toHaveLength(1);
     expect(String(filtrados[0].numeroInterno)).toBe('12');
+  });
+});
+
+describe('pareceTermoBuscaCnj', () => {
+  it('detecta CNJ com pontos ou só dígitos', () => {
+    expect(pareceTermoBuscaCnj('5319281-62.2022.8.09.0007')).toBe(true);
+    expect(pareceTermoBuscaCnj('5319281622028090007')).toBe(true);
+    expect(pareceTermoBuscaCnj('5319281')).toBe(true);
+    expect(pareceTermoBuscaCnj('12')).toBe(false);
+    expect(pareceTermoBuscaCnj('João')).toBe(false);
+  });
+});
+
+describe('buscarParesClienteProcPorTexto CNJ', () => {
+  it('encontra processo pelo número CNJ no histórico local', () => {
+    const hits = buscarParesClienteProcPorTexto('5319281-62.2022.8.09.0007');
+    expect(hits.some((h) => h.codCliente === '426' && h.proc === '34')).toBe(true);
+  });
+
+  it('encontra 533/10 com CNJ só dígitos (20) ou legado com pontos (19)', () => {
+    const soDigitos = buscarParesClienteProcPorTexto('00256588920178090006');
+    expect(soDigitos.some((h) => h.codCliente === '533' && h.proc === '10')).toBe(true);
+    const formatado = buscarParesClienteProcPorTexto('0025658-89.2017.8.09.0006');
+    expect(formatado.some((h) => h.codCliente === '533' && h.proc === '10')).toBe(true);
+    const legado = buscarParesClienteProcPorTexto('025658.89.2017.8.09.0006');
+    expect(legado.some((h) => h.codCliente === '533' && h.proc === '10')).toBe(true);
   });
 });

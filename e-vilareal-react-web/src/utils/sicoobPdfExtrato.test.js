@@ -7,7 +7,7 @@ import {
   isInstituicaoSicoobExtratoPdf,
   parseSicoobPdfExtratoText,
 } from './sicoobPdfExtrato.js';
-import { isInstituicaoExtratoPdfImport, parseExtratoPdfText } from './extratoPdfImport.js';
+import { isInstituicaoExtratoOfxBloqueado, isInstituicaoExtratoPdfImport, isInstituicaoSicoobVrv, parseExtratoPdfText, rotuloFormatosExtratoImport } from './extratoPdfImport.js';
 
 const PDF_FIXTURE =
   '/Users/itamar/Downloads/comprovante_16-05-2026 20-14-23.pdf';
@@ -53,6 +53,15 @@ RESUMO
     const rows = parseExtratoPdfText(amostra, 'Sicoob');
     expect(rows.length).toBe(4);
     expect(isInstituicaoExtratoPdfImport('Sicoob VRV')).toBe(true);
+  });
+
+  it('Sicoob VRV aceita PDF e OFX; Sicoob continua só PDF', () => {
+    expect(isInstituicaoSicoobVrv('Sicoob VRV')).toBe(true);
+    expect(isInstituicaoSicoobVrv('Sicoob')).toBe(false);
+    expect(isInstituicaoExtratoOfxBloqueado('Sicoob VRV')).toBe(false);
+    expect(isInstituicaoExtratoOfxBloqueado('Sicoob')).toBe(true);
+    expect(rotuloFormatosExtratoImport('Sicoob VRV')).toMatch(/OFX/i);
+    expect(rotuloFormatosExtratoImport('Sicoob')).not.toMatch(/OFX/i);
   });
 
   it('dois saques iguais no mesmo dia geram dois lançamentos com numero distinto', () => {

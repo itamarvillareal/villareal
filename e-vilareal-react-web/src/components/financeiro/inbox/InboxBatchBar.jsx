@@ -8,6 +8,8 @@ export function InboxBatchBar({
   count,
   onAprovarTodos,
   onPular,
+  onRejeitar,
+  rejeitarLabel = 'Não são par',
   aprovarLabel = 'Aprovar todos',
   busy,
   contas = [],
@@ -79,6 +81,17 @@ export function InboxBatchBar({
         <Check className="w-3.5 h-3.5" />
         {aprovarLabel}
       </button>
+      {onRejeitar ? (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onRejeitar}
+          className="inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-md border border-red-200 dark:border-red-800 bg-white dark:bg-slate-800 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/40 disabled:opacity-50"
+        >
+          <X className="w-3.5 h-3.5" />
+          {rejeitarLabel}
+        </button>
+      ) : null}
       <button
         type="button"
         disabled={busy}

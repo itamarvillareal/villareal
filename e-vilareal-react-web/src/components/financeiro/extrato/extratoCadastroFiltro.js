@@ -33,13 +33,7 @@ export function classificarCadastroExtratoRow(row) {
   if (cod === 'N') return 'importado';
 
   if (cod === 'A') {
-    const temCliente =
-      (row?.clienteId != null && Number(row.clienteId) > 0) ||
-      String(row?.codCliente ?? '').trim() !== '';
-    const temProc =
-      (row?.processoId != null && Number(row.processoId) > 0) ||
-      String(row?.proc ?? '').trim() !== '';
-    return temCliente && temProc ? 'pleno' : 'parcial';
+    return temCodigoEProcExtratoRow(row) ? 'pleno' : 'parcial';
   }
 
   if (cod === 'E') {
@@ -48,4 +42,15 @@ export function classificarCadastroExtratoRow(row) {
   }
 
   return 'pleno';
+}
+
+/** Conta Escritório (A): código de cliente e processo preenchidos. */
+export function temCodigoEProcExtratoRow(row) {
+  const temCliente =
+    (row?.clienteId != null && Number(row.clienteId) > 0) ||
+    String(row?.codCliente ?? '').trim() !== '';
+  const temProc =
+    (row?.processoId != null && Number(row.processoId) > 0) ||
+    String(row?.proc ?? '').trim() !== '';
+  return temCliente && temProc;
 }

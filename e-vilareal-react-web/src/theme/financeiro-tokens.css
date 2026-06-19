@@ -51,6 +51,8 @@
   --fin-etapa-vinculado-bg: #f5f3ff;
   --fin-etapa-fechado: #64748b;
   --fin-etapa-fechado-bg: #f8fafc;
+  --fin-etapa-escritorio-ok: #2563eb;
+  --fin-etapa-escritorio-pendente: #ef4444;
 
   --fin-confianca-alta: #10b981;
   --fin-confianca-media: #f59e0b;
@@ -145,6 +147,8 @@
   --fin-etapa-vinculado-bg: #2e1065;
   --fin-etapa-fechado: #94a3b8;
   --fin-etapa-fechado-bg: #1e293b;
+  --fin-etapa-escritorio-ok: #3b82f6;
+  --fin-etapa-escritorio-pendente: #f87171;
 
   --fin-credito: #34d399;
   --fin-debito: #f87171;

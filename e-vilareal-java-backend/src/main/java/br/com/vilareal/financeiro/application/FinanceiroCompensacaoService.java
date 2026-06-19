@@ -4,8 +4,10 @@ import br.com.vilareal.common.exception.ResourceNotFoundException;
 import br.com.vilareal.common.text.Utf8MojibakeUtil;
 import br.com.vilareal.financeiro.api.dto.*;
 import br.com.vilareal.financeiro.domain.*;
+import br.com.vilareal.financeiro.infrastructure.persistence.entity.CompensacaoParDescarteEntity;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.ContaContabilEntity;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.LancamentoFinanceiroEntity;
+import br.com.vilareal.financeiro.infrastructure.persistence.repository.CompensacaoParDescarteRepository;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.ContaContabilRepository;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.LancamentoFinanceiroRepository;
 import br.com.vilareal.pessoa.application.TitularPessoaRefHelper;
@@ -39,15 +41,18 @@ public class FinanceiroCompensacaoService {
 
     private final LancamentoFinanceiroRepository lancamentoRepository;
     private final ContaContabilRepository contaContabilRepository;
+    private final CompensacaoParDescarteRepository compensacaoParDescarteRepository;
     private final FinanceiroSaudeService financeiroSaudeService;
     private final ConcurrentHashMap<String, CacheGreedyPares> cacheGreedyPares = new ConcurrentHashMap<>();
 
     public FinanceiroCompensacaoService(
             LancamentoFinanceiroRepository lancamentoRepository,
             ContaContabilRepository contaContabilRepository,
+            CompensacaoParDescarteRepository compensacaoParDescarteRepository,
             @Lazy FinanceiroSaudeService financeiroSaudeService) {
         this.lancamentoRepository = lancamentoRepository;
         this.contaContabilRepository = contaContabilRepository;
+        this.compensacaoParDescarteRepository = compensacaoParDescarteRepository;
         this.financeiroSaudeService = financeiroSaudeService;
     }
 
@@ -87,6 +92,38 @@ public class FinanceiroCompensacaoService {
         DesparearCompensacaoResponse r = new DesparearCompensacaoResponse();
         r.setDesvinculados(lista.size());
         return r;
+    }
+
+    @Transactional
+    public DescartarParesCompensacaoResponse descartarPares(ParearCompensacaoRequest request) {
+        DescartarParesCompensacaoResponse response = new DescartarParesCompensacaoResponse();
+        if (request == null || request.getPares() == null) {
+            return response;
+        }
+        for (ParearCompensacaoItemRequest par : request.getPares()) {
+            if (par.getLancamentoIdA() == null || par.getLancamentoIdB() == null) {
+                continue;
+            }
+            long menor = Math.min(par.getLancamentoIdA(), par.getLancamentoIdB());
+            long maior = Math.max(par.getLancamentoIdA(), par.getLancamentoIdB());
+            if (menor == maior) {
+                continue;
+            }
+            if (compensacaoParDescarteRepository.existsByLancamentoIdMenorAndLancamentoIdMaior(menor, maior)) {
+                response.setJaDescartados(response.getJaDescartados() + 1);
+                continue;
+            }
+            CompensacaoParDescarteEntity e = new CompensacaoParDescarteEntity();
+            e.setLancamentoIdMenor(menor);
+            e.setLancamentoIdMaior(maior);
+            compensacaoParDescarteRepository.save(e);
+            response.setDescartados(response.getDescartados() + 1);
+        }
+        if (response.getDescartados() > 0) {
+            cacheGreedyPares.clear();
+            financeiroSaudeService.invalidarCacheSaude();
+        }
+        return response;
     }
 
     @Transactional(readOnly = true)
@@ -236,7 +273,25 @@ public class FinanceiroCompensacaoService {
                 apenasMesmoBanco,
                 apenasMesmoDiaCalendario,
                 apenasDiaDivergente);
-        return selecionarMelhoresParesGreedy(dados.pares(), dados.porId());
+        Set<String> paresDescartados = carregarChavesParesDescartados();
+        List<ParCompensacaoSugeridoResponse> candidatos = dados.pares().stream()
+                .filter(p -> !paresDescartados.contains(chavePar(p.getLancamentoA().getId(), p.getLancamentoB().getId())))
+                .toList();
+        return selecionarMelhoresParesGreedy(candidatos, dados.porId());
+    }
+
+    private Set<String> carregarChavesParesDescartados() {
+        Set<String> out = new HashSet<>();
+        for (CompensacaoParDescarteEntity d : compensacaoParDescarteRepository.findAll()) {
+            out.add(chavePar(d.getLancamentoIdMenor(), d.getLancamentoIdMaior()));
+        }
+        return out;
+    }
+
+    private static String chavePar(long idA, long idB) {
+        long menor = Math.min(idA, idB);
+        long maior = Math.max(idA, idB);
+        return menor + "-" + maior;
     }
 
     private CandidatosCompensacao carregarCandidatosCompensacao(

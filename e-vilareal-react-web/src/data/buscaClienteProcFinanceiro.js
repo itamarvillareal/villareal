@@ -5,8 +5,10 @@
 
 import { normalizarTextoBusca, normalizarNumeroBusca } from '../components/CadastroClientes.jsx';
 import { termoDigitosCorrespondeCnjCampo } from '../domain/cnjFuzzyBusca.js';
+import { featureFlags } from '../config/featureFlags.js';
 import { padCliente8Cadastro } from './cadastroClientesStorage.js';
 import { normalizarCodigoClienteFinanceiro } from './financeiroData';
+import { listarProcessosPorNumeroProcessoDiagnostico } from '../repositories/processosRepository.js';
 import {
   listarRegistrosProcessosHistoricoNormalizados,
   obterDescricaoAcaoUnificada,
@@ -14,6 +16,15 @@ import {
   obterNumeroProcessoVelhoUnificado,
   obterParteOpostaUnificada,
 } from './processosHistoricoData.js';
+
+/** Termo parece busca por CNJ (≥7 dígitos ou formato CNJ com pontos). */
+export function pareceTermoBuscaCnj(termoRaw) {
+  const raw = String(termoRaw ?? '').trim();
+  if (!raw) return false;
+  const digits = normalizarNumeroBusca(raw);
+  if (digits.length >= 7) return true;
+  return /\d{5,7}[-.]?\d{2}[.-]\d{4}[.-]\d/.test(raw);
+}
 
 /** Compara sequências só de dígitos (CNJ normalizado); evita `''.includes('')` como match falso. */
 function digitosCorrespondem(hayDigits, needleDigits) {
@@ -249,6 +260,7 @@ export function buscarParesClienteProcPorTexto(termoRaw, opts = {}) {
       return (
         internoExato ||
         digitosCorrespondem(numeroNovo, termoNumero) ||
+        termoDigitosCorrespondeCnjCampo(termoNumero, processoNovoDisp) ||
         digitosCorrespondem(numeroVelho, termoNumero)
       );
     })();
@@ -292,6 +304,59 @@ export function buscarParesClienteProcPorTexto(termoRaw, opts = {}) {
   }
 
   return out;
+}
+
+/**
+ * Busca pares cliente+proc pelo número CNJ (API + histórico local), para vínculo directo no Financeiro.
+ * @param {string} termoRaw
+ * @param {{ maxResults?: number }} [opts]
+ * @returns {Promise<Array<{ codCliente: string, proc: string, nomeCliente: string, cnpjCpf: string, processoNovo: string, autor: string, reu: string, tipoAcao: string }>>}
+ */
+export async function buscarParesClienteProcPorCnj(termoRaw, opts = {}) {
+  const maxResults = opts.maxResults ?? 30;
+  const termoRawStr = String(termoRaw ?? '').trim();
+  if (!pareceTermoBuscaCnj(termoRawStr)) return [];
+
+  /** @type {Map<string, { codCliente: string, proc: string, nomeCliente: string, cnpjCpf: string, processoNovo: string, autor: string, reu: string, tipoAcao: string }>} */
+  const porChave = new Map();
+
+  const push = (row) => {
+    if (!row?.codCliente || !row?.proc || porChave.size >= maxResults) return;
+    const key = `${row.codCliente}-${row.proc}`;
+    if (!porChave.has(key)) porChave.set(key, row);
+  };
+
+  if (featureFlags.useApiProcessos) {
+    try {
+      const apiRows = await listarProcessosPorNumeroProcessoDiagnostico(termoRawStr);
+      for (const r of apiRows) {
+        const codFin = normalizarCodigoClienteFinanceiro(
+          Number(String(r.codCliente ?? '').replace(/^0+/, '') || 0)
+        );
+        const procStr = String(r.proc ?? '').trim();
+        if (!codFin || !procStr || procStr === '0') continue;
+        push({
+          codCliente: codFin,
+          proc: procStr,
+          nomeCliente: String(r.cliente ?? '').trim(),
+          cnpjCpf: '',
+          processoNovo: String(r.numeroProcessoNovo ?? '').trim(),
+          autor: String(r.parteCliente ?? '').trim(),
+          reu: String(r.parteOposta ?? '').trim(),
+          tipoAcao: '',
+        });
+      }
+    } catch {
+      /* fallback histórico local */
+    }
+  }
+
+  for (const r of buscarParesClienteProcPorTexto(termoRawStr, { maxResults: maxResults * 2 })) {
+    push(r);
+    if (porChave.size >= maxResults) break;
+  }
+
+  return [...porChave.values()];
 }
 
 /**

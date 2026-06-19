@@ -6,6 +6,7 @@ import {
   arquivoExtratoEhOfx,
   arquivoExtratoEhPdf,
   carregarLancamentosDeExtratoPdf,
+  isInstituicaoExtratoOfxBloqueado,
   isInstituicaoExtratoPdfImport,
   mensagemFalhaExtratoPdf,
   rotuloInstituicaoExtratoPdf,
@@ -60,7 +61,7 @@ export async function parseArquivoExtrato(file, nomeBanco) {
       };
     }
 
-    if (isInstituicaoExtratoPdfImport(nome)) {
+    if (isInstituicaoExtratoOfxBloqueado(nome)) {
       return {
         ok: false,
         message: `Para ${nome}, use PDF (${rotuloInstituicaoExtratoPdf(nome)}), não OFX.`,

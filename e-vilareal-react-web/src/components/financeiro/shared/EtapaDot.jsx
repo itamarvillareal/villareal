@@ -1,6 +1,31 @@
 import { ETAPA_LABELS } from '../constants/financeiroConstants.js';
 
-export function EtapaDot({ etapa }) {
+/**
+ * @param {{ etapa?: string }} props
+ * @param {boolean | null | undefined} [props.cadastroEscritorio] — Conta Escritório: true=azul (cod+proc), false=vermelho
+ */
+export function EtapaDot({ etapa, cadastroEscritorio = undefined }) {
+  if (cadastroEscritorio === true) {
+    return (
+      <span
+        className="inline-block w-[7px] h-[7px] rounded-full shrink-0"
+        style={{ background: 'var(--fin-etapa-escritorio-ok, #2563eb)' }}
+        title="Código e processo preenchidos"
+        aria-label="Cadastro completo"
+      />
+    );
+  }
+  if (cadastroEscritorio === false) {
+    return (
+      <span
+        className="inline-block w-[7px] h-[7px] rounded-full shrink-0"
+        style={{ background: 'var(--fin-etapa-escritorio-pendente, #ef4444)' }}
+        title="Falta código de cliente e/ou processo"
+        aria-label="Cadastro incompleto"
+      />
+    );
+  }
+
   const key = String(etapa ?? 'IMPORTADO').trim().toUpperCase();
   const label = ETAPA_LABELS[key] ?? key;
   const varName = `--fin-etapa-${key.toLowerCase()}`;

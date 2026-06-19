@@ -10,8 +10,19 @@ export const STORAGE_PERMISSOES_USUARIOS = 'vilareal.usuarios.permissoes.v1';
 export const STORAGE_USUARIO_SESSAO_ATIVA = 'vilareal.usuario.sessaoAtiva.v1';
 /** Quem usa de fato esta estação (navegador). Só o master (Itamar) pode alternar o perfil ativo para testar outros. */
 export const STORAGE_OPERADOR_ESTACAO = 'vilareal.usuario.operadorEstacao.v1';
-/** Usuário retornado pelo login JWT (sessionStorage — mesma aba que o token). */
+/** Usuário retornado pelo login JWT (localStorage — compartilhado entre abas). */
 export const STORAGE_API_USUARIO_SESSAO = 'vilareal.auth.usuarioLogado.v1';
+
+function readApiUsuarioSessaoRaw() {
+  let raw = window.localStorage.getItem(STORAGE_API_USUARIO_SESSAO);
+  if (raw) return raw;
+  raw = window.sessionStorage.getItem(STORAGE_API_USUARIO_SESSAO);
+  if (raw) {
+    window.localStorage.setItem(STORAGE_API_USUARIO_SESSAO, raw);
+    window.sessionStorage.removeItem(STORAGE_API_USUARIO_SESSAO);
+  }
+  return raw;
+}
 
 /** Id do usuário master — único que pode escolher outros perfis no menu (teste do sistema). */
 export const USUARIO_MASTER_ID = 'itamar';
@@ -49,7 +60,7 @@ export function usuarioEhAdminApi() {
 export function getApiUsuarioSessao() {
   if (typeof window === 'undefined') return null;
   try {
-    const raw = sessionStorage.getItem(STORAGE_API_USUARIO_SESSAO);
+    const raw = readApiUsuarioSessaoRaw();
     if (!raw) return null;
     const o = JSON.parse(raw);
     if (!o || typeof o.id !== 'string' || !o.id) return null;
@@ -78,7 +89,7 @@ export function setApiUsuarioSessao(usuario) {
       ? Number(usuario.perfilId)
       : undefined;
   try {
-    sessionStorage.setItem(
+    window.localStorage.setItem(
       STORAGE_API_USUARIO_SESSAO,
       JSON.stringify({
         id,
@@ -87,6 +98,7 @@ export function setApiUsuarioSessao(usuario) {
         ...(perfilId != null ? { perfilId } : {}),
       }),
     );
+    window.sessionStorage.removeItem(STORAGE_API_USUARIO_SESSAO);
     dispatchOperadorEstacao();
     dispatchSessao();
   } catch {
@@ -97,7 +109,8 @@ export function setApiUsuarioSessao(usuario) {
 export function clearApiUsuarioSessao() {
   if (typeof window === 'undefined') return;
   try {
-    sessionStorage.removeItem(STORAGE_API_USUARIO_SESSAO);
+    window.localStorage.removeItem(STORAGE_API_USUARIO_SESSAO);
+    window.sessionStorage.removeItem(STORAGE_API_USUARIO_SESSAO);
     dispatchOperadorEstacao();
     dispatchSessao();
   } catch {

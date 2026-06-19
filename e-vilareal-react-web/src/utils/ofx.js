@@ -35,11 +35,30 @@ function checkNumSignificativo(checkNum) {
   return c;
 }
 
-/** Identificador único por transação OFX: FITID (preferencial), depois cheque real, depois índice no arquivo. */
-function idLancamentoOfx(block, idx) {
-  const fitid = normalizeWhitespace(getTagValue(block, 'FITID'));
+/** Caixa (CR LV OR E) envia FITID "0" — mesmo problema que CHECKNUM placeholder. */
+function fitIdSignificativo(fitid) {
+  const f = normalizeWhitespace(fitid);
+  if (!f) return '';
+  if (/^0+$/.test(f)) return '';
+  return f;
+}
+
+/**
+ * Identificador único por transação OFX: FITID (preferencial), depois cheque real,
+ * depois sequência no arquivo. IDs repetidos no mesmo arquivo recebem sufixo `-N`.
+ */
+function idLancamentoOfx(block, idx, idsUsados) {
+  const fitid = fitIdSignificativo(getTagValue(block, 'FITID'));
   const check = checkNumSignificativo(getTagValue(block, 'CHECKNUM'));
-  return normalizeWhitespace(fitid || check || String((idx ?? 0) + 1));
+  let id = fitid || check || '';
+  const seq = String((idx ?? 0) + 1);
+  if (!id) {
+    id = `ofx-${seq}`;
+  } else if (idsUsados?.has(id)) {
+    id = `${id}-${seq}`;
+  }
+  idsUsados?.add(id);
+  return normalizeWhitespace(id);
 }
 
 /**
@@ -619,10 +638,11 @@ export function parseOfxToExtrato(ofxText) {
     stmts.push(m[0]);
   }
 
+  const idsUsados = new Set();
   const transacoes = stmts.map((b, idx) => {
     const trnAmt = parseNumberBRLike(getTagValue(b, 'TRNAMT'));
     const dtPosted = parseOfxDate(getTagValue(b, 'DTPOSTED'));
-    const id = idLancamentoOfx(b, idx);
+    const id = idLancamentoOfx(b, idx, idsUsados);
     const name = normalizeWhitespace(getTagValue(b, 'NAME'));
     const memo = normalizeWhitespace(getTagValue(b, 'MEMO'));
     const descricao = memo || name || 'LANÇAMENTO';

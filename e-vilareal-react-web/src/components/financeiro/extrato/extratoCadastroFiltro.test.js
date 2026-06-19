@@ -5,6 +5,7 @@ import {
   cadastroParaQueryApi,
   classificarCadastroExtratoRow,
   parseCadastroFiltroParam,
+  temCodigoEProcExtratoRow,
 } from './extratoCadastroFiltro.js';
 
 describe('extratoCadastroFiltro', () => {
@@ -27,5 +28,13 @@ describe('extratoCadastroFiltro', () => {
     expect(classificarCadastroExtratoRow({ contaCodigo: 'E', grupoCompensacao: 'G1' })).toBe('pleno');
     expect(classificarCadastroExtratoRow({ contaCodigo: 'E' })).toBe('parcial');
     expect(classificarCadastroExtratoRow({ contaCodigo: 'F' })).toBe('pleno');
+  });
+
+  it('temCodigoEProcExtratoRow exige cliente e processo', () => {
+    expect(temCodigoEProcExtratoRow({ codCliente: '938', proc: '10' })).toBe(true);
+    expect(temCodigoEProcExtratoRow({ clienteId: 5, processoId: 9 })).toBe(true);
+    expect(temCodigoEProcExtratoRow({ codCliente: '938' })).toBe(false);
+    expect(temCodigoEProcExtratoRow({ proc: '10' })).toBe(false);
+    expect(temCodigoEProcExtratoRow({})).toBe(false);
   });
 });

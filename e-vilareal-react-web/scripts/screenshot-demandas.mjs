@@ -23,7 +23,7 @@ try {
 
   await page.goto(`${base}/login`, { waitUntil: 'networkidle' });
   await page.evaluate((token) => {
-    sessionStorage.setItem('vilareal.accessToken', token);
+    localStorage.setItem('vilareal.accessToken', token);
     sessionStorage.setItem(
       'vilareal.auth.usuarioLogado.v1',
       JSON.stringify({ id: '1', nome: 'Itamar', login: 'itamar', perfilId: 1 }),

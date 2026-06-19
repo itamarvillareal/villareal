@@ -11,8 +11,10 @@ import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -62,18 +64,31 @@ public final class OfxParser {
         }
         Matcher m = STMTTRN_BLOCK.matcher(ofxText);
         int idx = 0;
+        Set<String> idsUsados = new HashSet<>();
         while (m.find()) {
             String block = m.group(0);
-            out.add(parseBloco(block, idx));
+            out.add(parseBloco(block, idx, idsUsados));
             idx++;
         }
         return out;
     }
 
-    private static OfxTransacao parseBloco(String block, int idx) {
-        String fitId = normalizar(getTagValue(block, "FITID"));
+    private static OfxTransacao parseBloco(String block, int idx, Set<String> idsUsados) {
+        String fitId = fitIdSignificativo(normalizar(getTagValue(block, "FITID")));
         String checkNum = checkNumSignificativo(getTagValue(block, "CHECKNUM"));
-        String id = StringUtils.hasText(fitId) ? fitId : (StringUtils.hasText(checkNum) ? checkNum : String.valueOf(idx + 1));
+        String seq = String.valueOf(idx + 1);
+        String id;
+        if (StringUtils.hasText(fitId)) {
+            id = fitId;
+        } else if (StringUtils.hasText(checkNum)) {
+            id = checkNum;
+        } else {
+            id = "ofx-" + seq;
+        }
+        if (idsUsados.contains(id)) {
+            id = id + "-" + seq;
+        }
+        idsUsados.add(id);
 
         String trnAmtRaw = getTagValue(block, "TRNAMT");
         BigDecimal trnAmt = parseNumero(trnAmtRaw);
@@ -139,6 +154,18 @@ public final class OfxParser {
             return "";
         }
         return c;
+    }
+
+    /** Caixa (CR LV OR E) envia FITID "0" — placeholder, não identificador único. */
+    private static String fitIdSignificativo(String fitId) {
+        String f = normalizar(fitId);
+        if (!StringUtils.hasText(f)) {
+            return "";
+        }
+        if (f.matches("0+")) {
+            return "";
+        }
+        return f;
     }
 
     private record OfxHeaderHints(String encoding, String charset) {}

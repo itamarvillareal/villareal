@@ -1,5 +1,5 @@
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Check, RefreshCw } from 'lucide-react';
+import { Check, RefreshCw, X } from 'lucide-react';
 import { useParams } from 'react-router-dom';
 import { featureFlags } from '../../../config/featureFlags.js';
 import {
@@ -13,6 +13,7 @@ import {
   listarSugestoesPagamentoFaturaApi,
   obterSaudeFinanceiroApi,
   parearCompensacaoApi,
+  descartarParesCompensacaoApi,
   sugestoesClassificacaoLoteApi,
 } from '../../../repositories/financeiroRepository.js';
 import { ETAPAS, INBOX_TIPOS, clampFinanceiroPageSize } from '../constants/financeiroConstants.js';
@@ -782,6 +783,66 @@ export function InboxPage() {
 
   const paresUi = useMemo(() => paresVisiveis.map(mapParCompensacaoParaUi), [paresVisiveis]);
 
+  const handleRejeitarPares = useCallback(
+    async (listaPar) => {
+      const paresBody = (listaPar ?? [])
+        .map((par) => ({
+          lancamentoIdA: par.lancamentoA?.id,
+          lancamentoIdB: par.lancamentoB?.id,
+        }))
+        .filter((p) => p.lancamentoIdA && p.lancamentoIdB);
+      if (!paresBody.length || busy || loading) return;
+
+      setBusy(true);
+      try {
+        const res = await descartarParesCompensacaoApi({ pares: paresBody });
+        const ok = Number(res?.descartados ?? 0);
+        const keysRemover = (listaPar ?? []).map(parKey);
+        removeComFade(keysRemover, () => {
+          setPares((prev) => prev.filter((p) => !keysRemover.includes(parKey(p))));
+        });
+        setSelected(new Set());
+        setReloadNonce((n) => n + 1);
+        scheduleLoadCounts();
+        dispatchRefreshPendentes();
+        if (ok > 0) {
+          toast.success(
+            `${ok} sugestão${ok !== 1 ? 'ões' : ''} rejeitada${ok !== 1 ? 's' : ''} — reanalisando outros pares…`,
+          );
+        } else {
+          toast.info('Sugestões já estavam rejeitadas; lista atualizada.');
+        }
+      } catch (e) {
+        toast.error(`Falha ao rejeitar par: ${e?.message || 'erro desconhecido'}`);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [busy, loading, toast, removeComFade, scheduleLoadCounts],
+  );
+
+  const handleRejeitarPar = useCallback(
+    (par) => handleRejeitarPares([par]),
+    [handleRejeitarPares],
+  );
+
+  const handleRejeitarTodosNaTela = useCallback(() => {
+    handleRejeitarPares(paresVisiveis);
+  }, [handleRejeitarPares, paresVisiveis]);
+
+  const handleSelecionarTodosNaTela = useCallback(() => {
+    setSelected(new Set(paresVisiveis.map(parKey)));
+  }, [paresVisiveis]);
+
+  const handleBatchRejeitar = useCallback(() => {
+    const lista = [];
+    for (const key of selected) {
+      const par = pares.find((p) => parKey(p) === key);
+      if (par) lista.push(par);
+    }
+    handleRejeitarPares(lista);
+  }, [selected, pares, handleRejeitarPares]);
+
   const handleParearTodosNaTela = useCallback(async () => {
     if (busy || loading || paresVisiveis.length === 0) return;
 
@@ -1023,6 +1084,31 @@ export function InboxPage() {
             {paresVisiveis.length > 0 ? ` (${paresVisiveis.length})` : ''}
           </button>
         ) : null}
+        {tipo === INBOX_TIPOS.compensar ? (
+          <button
+            type="button"
+            onClick={handleSelecionarTodosNaTela}
+            disabled={busy || loading || paresVisiveis.length === 0}
+            className="inline-flex items-center gap-1.5 text-sm px-2.5 py-1 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50"
+            title="Marca todos os pares visíveis nesta página"
+          >
+            Selecionar todos
+            {paresVisiveis.length > 0 ? ` (${paresVisiveis.length})` : ''}
+          </button>
+        ) : null}
+        {tipo === INBOX_TIPOS.compensar ? (
+          <button
+            type="button"
+            onClick={handleRejeitarTodosNaTela}
+            disabled={busy || loading || paresVisiveis.length === 0}
+            className="inline-flex items-center gap-1.5 text-sm px-2.5 py-1 rounded-md border border-red-200 dark:border-red-800 bg-white dark:bg-slate-800 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/40 disabled:opacity-50 font-medium"
+            title="Rejeita todas as sugestões visíveis para o sistema reanalizar outros pares"
+          >
+            <X className="w-3.5 h-3.5" aria-hidden />
+            Não são par (todos na tela)
+            {paresVisiveis.length > 0 ? ` (${paresVisiveis.length})` : ''}
+          </button>
+        ) : null}
         {tipo === INBOX_TIPOS.classificar ? (
           <>
             <select
@@ -1097,7 +1183,8 @@ export function InboxPage() {
           count={selected.size}
           onAprovarTodos={handleBatchAprovar}
           onPular={handleBatchPular}
-          aprovarLabel={tipo === INBOX_TIPOS.compensar ? 'Parear todos' : 'Aprovar sugestão'}
+          onRejeitar={tipo === INBOX_TIPOS.compensar ? handleBatchRejeitar : undefined}
+          aprovarLabel={tipo === INBOX_TIPOS.compensar ? 'Parear selecionados' : 'Aprovar sugestão'}
           busy={busy}
           contas={tipo === INBOX_TIPOS.classificar ? contasClassificacao : []}
           contaLoteId={contaLoteId}
@@ -1221,7 +1308,7 @@ export function InboxPage() {
               <CompensacaoCard
                 ui={ui}
                 onParear={() => handleParear(ui.par)}
-                onRejeitar={() => setSkipped((s) => new Set([...s, ui.key]))}
+                onRejeitar={() => handleRejeitarPar(ui.par)}
                 onPular={() => setSkipped((s) => new Set([...s, ui.key]))}
                 isSelected={selected.has(ui.key)}
                 focused={idx === focusedIndex}

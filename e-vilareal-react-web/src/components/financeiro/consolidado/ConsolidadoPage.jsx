@@ -355,6 +355,7 @@ export function ConsolidadoPage() {
             onSelectAll={toggleSelectAll}
             onRowClick={setDetailItem}
             isLoading={loadingTable}
+            etapaModoEscritorio={codigoAtivo === 'A'}
           />
           <Pagination
             page={page}

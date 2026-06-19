@@ -1,11 +1,21 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { clearAccessToken, getAccessToken, setAccessToken } from '../api/authTokenStorage.js';
+import {
+  ACCESS_TOKEN_STORAGE_KEY,
+  LAST_ACTIVITY_STORAGE_KEY,
+  clearAccessToken,
+  clearLastAuthActivity,
+  getAccessToken,
+  getLastAuthActivityMs,
+  setAccessToken,
+  touchLastAuthActivity,
+} from '../api/authTokenStorage.js';
 import { fetchAuthLogin, fetchAuthMe } from '../api/authApiService.js';
 import {
   setApiUsuarioSessao,
   clearApiUsuarioSessao,
   setUsuarioSessaoAtualId,
   getApiUsuarioSessao,
+  STORAGE_API_USUARIO_SESSAO,
 } from '../data/usuarioPermissoesStorage.js';
 import { featureFlags } from '../config/featureFlags.js';
 import { listarUsuarios } from '../repositories/usuariosRepository.js';
@@ -20,9 +30,13 @@ export const IDLE_SESSION_MESSAGE_STORAGE_KEY = 'vilareal.logoutMessageIdle.v1';
 const SESSION_IDLE_MS = 18 * 60 * 60 * 1000;
 const SESSION_IDLE_CHECK_MS = 30_000;
 
+function resolveLastActivityMs(localRef) {
+  return Math.max(localRef, getLastAuthActivityMs());
+}
+
 export function AuthProvider({ children }) {
   const [token, setTokenState] = useState(() => getAccessToken());
-  const lastActivityRef = useRef(Date.now());
+  const lastActivityRef = useRef(resolveLastActivityMs(Date.now()));
 
   /** Recarregar aba com JWT válido: repõe sessão de operador/perfil e snapshot de usuários. */
   useEffect(() => {
@@ -54,6 +68,34 @@ export function AuthProvider({ children }) {
     };
   }, []);
 
+  /** Login/logout em outra aba: sincroniza token e encerra sessão local se necessário. */
+  useEffect(() => {
+    if (!featureFlags.requiresApiAuth) return undefined;
+    const onStorage = (e) => {
+      if (e.key === ACCESS_TOKEN_STORAGE_KEY) {
+        const t = getAccessToken();
+        setTokenState(t);
+        if (!t) {
+          clearApiUsuarioSessao();
+          clearPublicacoesPreviasSession();
+        }
+        return;
+      }
+      if (e.key === LAST_ACTIVITY_STORAGE_KEY && e.newValue) {
+        const n = parseInt(e.newValue, 10);
+        if (Number.isFinite(n)) {
+          lastActivityRef.current = Math.max(lastActivityRef.current, n);
+        }
+        return;
+      }
+      if (e.key === STORAGE_API_USUARIO_SESSAO) {
+        window.dispatchEvent(new CustomEvent('vilareal:usuario-sessao-atualizada'));
+      }
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
+
   useEffect(() => {
     const on401 = () => {
       setTokenState('');
@@ -64,13 +106,16 @@ export function AuthProvider({ children }) {
     return () => window.removeEventListener('vilareal:api-unauthorized', on401);
   }, []);
 
-  /** Encerra sessão após 18 h sem interação (apenas com login JWT obrigatório). */
+  /** Encerra sessão após 18 h sem interação em qualquer aba (apenas com login JWT obrigatório). */
   useEffect(() => {
     if (!featureFlags.requiresApiAuth || !token) return;
-    lastActivityRef.current = Date.now();
+    lastActivityRef.current = resolveLastActivityMs(lastActivityRef.current);
+    touchLastAuthActivity(lastActivityRef.current);
 
     const mark = () => {
-      lastActivityRef.current = Date.now();
+      const now = Date.now();
+      lastActivityRef.current = now;
+      touchLastAuthActivity(now);
     };
 
     const events = ['mousedown', 'keydown', 'scroll', 'touchstart', 'click', 'wheel'];
@@ -80,7 +125,9 @@ export function AuthProvider({ children }) {
     }
 
     const intervalId = window.setInterval(() => {
-      if (Date.now() - lastActivityRef.current >= SESSION_IDLE_MS) {
+      const last = resolveLastActivityMs(lastActivityRef.current);
+      lastActivityRef.current = last;
+      if (Date.now() - last >= SESSION_IDLE_MS) {
         try {
           sessionStorage.setItem(
             IDLE_SESSION_MESSAGE_STORAGE_KEY,
@@ -113,7 +160,9 @@ export function AuthProvider({ children }) {
     }
     setAccessToken(access);
     setTokenState(access);
-    lastActivityRef.current = Date.now();
+    const now = Date.now();
+    lastActivityRef.current = now;
+    touchLastAuthActivity(now);
     const u = data?.usuario;
     if (u?.id != null) {
       setApiUsuarioSessao({

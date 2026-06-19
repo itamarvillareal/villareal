@@ -59,4 +59,70 @@ class OfxParserTest {
         String texto = OfxParser.decodificarOfx(latin);
         assertThat(texto).contains("CHARSET:1252");
     }
+
+    @Test
+    void parseTransacoes_fitIdZeroCaixa_geraOfxNUnicos() {
+        String ofx =
+                """
+                <OFX>
+                <STMTTRN>
+                <TRNTYPE>CREDIT
+                <DTPOSTED>20260601120000
+                <TRNAMT>1052.00
+                <FITID>0
+                <CHECKNUM>0
+                <MEMO>CR LV OR E
+                </STMTTRN>
+                <STMTTRN>
+                <TRNTYPE>CREDIT
+                <DTPOSTED>20260601120000
+                <TRNAMT>4394.42
+                <FITID>0
+                <CHECKNUM>0
+                <MEMO>CR LV OR E
+                </STMTTRN>
+                <STMTTRN>
+                <TRNTYPE>CREDIT
+                <DTPOSTED>20260616120000
+                <TRNAMT>4022.80
+                <FITID>14
+                <CHECKNUM>14
+                <MEMO>CR LEV JUD
+                </STMTTRN>
+                </OFX>
+                """;
+        List<OfxParser.OfxTransacao> txs = OfxParser.parseTransacoes(ofx);
+        assertThat(txs).hasSize(3);
+        assertThat(txs.get(0).fitId()).isEqualTo("ofx-1");
+        assertThat(txs.get(1).fitId()).isEqualTo("ofx-2");
+        assertThat(txs.get(2).fitId()).isEqualTo("14");
+    }
+
+    @Test
+    void parseTransacoes_fitIdRepetido_sufixaComIndice() {
+        String ofx =
+                """
+                <OFX>
+                <STMTTRN>
+                <TRNTYPE>CREDIT
+                <DTPOSTED>20260602120000
+                <TRNAMT>799.35
+                <FITID>1
+                <CHECKNUM>1
+                <MEMO>CRED TED
+                </STMTTRN>
+                <STMTTRN>
+                <TRNTYPE>CREDIT
+                <DTPOSTED>20260602120000
+                <TRNAMT>67.57
+                <FITID>1
+                <CHECKNUM>1
+                <MEMO>CRED TED
+                </STMTTRN>
+                </OFX>
+                """;
+        List<OfxParser.OfxTransacao> txs = OfxParser.parseTransacoes(ofx);
+        assertThat(txs.get(0).fitId()).isEqualTo("1");
+        assertThat(txs.get(1).fitId()).isEqualTo("1-2");
+    }
 }

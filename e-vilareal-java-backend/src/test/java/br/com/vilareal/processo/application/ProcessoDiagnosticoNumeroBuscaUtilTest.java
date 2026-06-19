@@ -71,4 +71,20 @@ class ProcessoDiagnosticoNumeroBuscaUtilTest {
         assertEquals(List.of(BigInteger.valueOf(1L)), ids);
         verify(processoRepository).findIdsByNumeroCnjNormalizadoDiagnostico(cnj20);
     }
+
+    @Test
+    void buscarIdsProcessoPorNumero_cnjLegado19DigitosComZeroAFrenteNaBusca() {
+        String cnj20 = "00256588920178090006";
+        String cnj19 = "0256588920178090006";
+        when(processoRepository.findIdsByNumeroCnjNormalizadoDiagnostico(cnj20)).thenReturn(List.of());
+        when(processoRepository.findIdsByNumeroCnjNormalizadoDiagnostico(cnj19))
+                .thenReturn(List.of(BigInteger.valueOf(9001L)));
+
+        List<BigInteger> ids = ProcessoDiagnosticoNumeroBuscaUtil.buscarIdsProcessoPorNumero(
+                "00256588920178090006", processoRepository);
+
+        assertEquals(List.of(BigInteger.valueOf(9001L)), ids);
+        verify(processoRepository).findIdsByNumeroCnjNormalizadoDiagnostico(cnj20);
+        verify(processoRepository).findIdsByNumeroCnjNormalizadoDiagnostico(cnj19);
+    }
 }

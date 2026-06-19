@@ -1061,6 +1061,15 @@ export async function parearCompensacaoApi(body, opts = {}) {
   return request('/api/financeiro/lancamentos/parear', { method: 'POST', body, signal: opts.signal });
 }
 
+export async function descartarParesCompensacaoApi(body, opts = {}) {
+  if (!featureFlags.useApiFinanceiro) throw new Error('API financeiro desativada');
+  return request('/api/financeiro/lancamentos/pares-sugeridos/descartar', {
+    method: 'POST',
+    body,
+    signal: opts.signal,
+  });
+}
+
 export async function listarCartaoBancoMapeamentoApi(opts = {}) {
   if (!featureFlags.useApiFinanceiro) return [];
   return request('/api/financeiro/cartao-banco-mapeamento', { signal: opts.signal });

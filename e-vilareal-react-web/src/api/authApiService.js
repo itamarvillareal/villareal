@@ -2,7 +2,7 @@ import { API_BASE_URL } from './config.js';
 import { request } from './httpClient.js';
 
 /**
- * Usuário atual (JWT). Requer token em sessionStorage.
+ * Usuário atual (JWT). Requer token em localStorage (compartilhado entre abas).
  * @returns {Promise<{ id?: number, nome?: string, login?: string, perfilId?: number }>}
  */
 export async function fetchAuthMe() {
