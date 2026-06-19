@@ -119,11 +119,17 @@ import {
   processosBtnOutlineIndigo,
   processosBtnPrimary,
   processosBtnSecondary,
-  processosBtnToolbarBlue,
+  processosBtnToolbarAmber,
+  processosBtnToolbarCyan,
   processosBtnToolbarGreen,
-  processosBtnToolbarNeutral,
+  processosBtnToolbarIndigo,
+  processosBtnToolbarOrange,
   processosBtnToolbarPurple,
   processosBtnToolbarRed,
+  processosBtnToolbarRedacao,
+  processosBtnToolbarRose,
+  processosBtnToolbarSky,
+  processosBtnToolbarTeal,
   processosInputClass,
   processosInputDenseClass,
   processosInputDenseReadOnlyClass,
@@ -3396,124 +3402,132 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
           }}
           actions={
             <>
-              <button
-                type="button"
-                onClick={() =>
-                  setClientesEmbed({
-                    revision: Date.now(),
-                    routerState: buildRouterStateChaveClienteProcesso(codigoCliente, processo),
-                  })
-                }
-                className={processosBtnToolbarBlue}
-              >
-                <Users className="w-4 h-4" aria-hidden />
-                Clientes
-              </button>
-              <button type="button" onClick={() => setModalRelatorioPublicacoes(true)} className={processosBtnToolbarBlue}>
-                <Newspaper className="w-4 h-4" aria-hidden />
-                Publicações
-              </button>
-              <button
-                type="button"
-                className={processosBtnToolbarBlue}
-                onClick={() => setModalConsultaPeriodica(true)}
-                title="Agendamentos automáticos ao PROJUDI, monitor manual e destinatários de notificação"
-              >
-                <CalendarClock className="w-4 h-4" aria-hidden />
-                Consulta periódica
-              </button>
-              <button
-                type="button"
-                className={processosBtnToolbarGreen}
-                onClick={() => {
-                  setContaCorrenteModo('processo');
-                  setModalContaCorrente(true);
-                }}
-                title="Lançamentos do Financeiro com Cod. Cliente e Proc. iguais a este processo (qualquer classificação contábil no extrato)"
-              >
-                <CircleDollarSign className="w-4 h-4" aria-hidden />
-                Conta Corrente
-              </button>
-              {podeGerarDocumento ? (
-                <>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setClientesEmbed({
+                      revision: Date.now(),
+                      routerState: buildRouterStateChaveClienteProcesso(codigoCliente, processo),
+                    })
+                  }
+                  className={processosBtnToolbarPurple}
+                >
+                  <Users className="w-4 h-4" aria-hidden />
+                  Clientes
+                </button>
+                <button type="button" onClick={() => setModalRelatorioPublicacoes(true)} className={processosBtnToolbarTeal}>
+                  <Newspaper className="w-4 h-4" aria-hidden />
+                  Publicações
+                </button>
+                <button
+                  type="button"
+                  className={processosBtnToolbarAmber}
+                  onClick={() => setModalConsultaPeriodica(true)}
+                  title="Agendamentos automáticos ao PROJUDI, monitor manual e destinatários de notificação"
+                >
+                  <CalendarClock className="w-4 h-4" aria-hidden />
+                  Consulta periódica
+                </button>
+                <button
+                  type="button"
+                  className={processosBtnToolbarGreen}
+                  onClick={() => {
+                    setContaCorrenteModo('processo');
+                    setModalContaCorrente(true);
+                  }}
+                  title="Lançamentos do Financeiro com Cod. Cliente e Proc. iguais a este processo (qualquer classificação contábil no extrato)"
+                >
+                  <CircleDollarSign className="w-4 h-4" aria-hidden />
+                  Conta Corrente
+                </button>
+                {podeGerarDocumento ? (
+                  <>
+                    <button
+                      type="button"
+                      className={processosBtnToolbarOrange}
+                      disabled={gerandoDocNav || gerandoProcuracao || apiSaving}
+                      onClick={() => void handleGerarDocumento()}
+                      title="Gerar petição ou documento com dados deste processo"
+                    >
+                      <FileText className="w-4 h-4" aria-hidden />
+                      {gerandoDocNav ? 'Preparando…' : 'Gerar Documento'}
+                    </button>
+                    <button
+                      type="button"
+                      className={processosBtnToolbarIndigo}
+                      disabled={gerandoProcuracao || gerandoDocNav || apiSaving}
+                      onClick={() => void handleGerarProcuracao()}
+                      title="Gerar procuração Ad Judicia da parte cliente"
+                    >
+                      <FileSignature className="w-4 h-4" aria-hidden />
+                      {gerandoProcuracao ? 'Gerando…' : 'Procuração'}
+                    </button>
+                    {driveConfigurado ? (
+                      <>
+                        <button
+                          type="button"
+                          className={processosBtnToolbarSky}
+                          disabled={
+                            apiSaving ||
+                            buscandoMovimentacoes ||
+                            !processoApiId ||
+                            !String(numeroProcessoNovo ?? '').trim() ||
+                            tramitacaoBloqueiaObterMovimentacoes
+                          }
+                          onClick={() => void handleObterMovimentacoes()}
+                          title={
+                            tramitacaoBloqueiaObterMovimentacoes
+                              ? 'Processo em autos físicos — sem consulta automática.'
+                              : obterMovimentacoesViaPje
+                                ? pjeAutomacaoTrt18
+                                  ? 'Dispara cópia integral PJe TRT18 (assíncrono) — acompanhe o badge No Drive'
+                                  : `PJe (${rotuloPjeTribunal(pjeTribunalNorm)}) — automação indisponível; registro salvo no cadastro`
+                                : !tramitacaoNorm
+                                  ? 'Defina a tramitação dos autos para consultar movimentações'
+                                  : 'Consulta o PROJUDI agora (mesmo com acervo integral no pipeline automático; pode não trazer arquivos novos)'
+                          }
+                        >
+                          <CloudDownload className="w-4 h-4" aria-hidden />
+                          {buscandoMovimentacoes
+                            ? obterMovimentacoesViaPje
+                              ? 'Iniciando PJe…'
+                              : 'Consultando PROJUDI…'
+                            : 'Obter movimentações'}
+                        </button>
+                        <button
+                          type="button"
+                          className={processosBtnToolbarRose}
+                          disabled={apiSaving}
+                          onClick={() => setDriveExplorerAberto(true)}
+                          title="Arquivos do processo no Google Drive"
+                        >
+                          <FolderOpen className="w-4 h-4" aria-hidden />
+                          Arquivos
+                        </button>
+                      </>
+                    ) : null}
+                  </>
+                ) : null}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {podeGerarDocumento && driveConfigurado ? (
                   <button
                     type="button"
-                    className={processosBtnToolbarPurple}
-                    disabled={gerandoDocNav || gerandoProcuracao || apiSaving}
-                    onClick={() => void handleGerarDocumento()}
-                    title="Gerar petição ou documento com dados deste processo"
+                    className={processosBtnToolbarCyan}
+                    disabled={
+                      apiSaving ||
+                      baixandoAutosIntegral ||
+                      !String(numeroProcessoNovo ?? '').trim()
+                    }
+                    onClick={() => void handleBaixarAutosIntegral()}
+                    title="Baixa PDF único juntando os documentos da pasta Movimentações no Drive"
                   >
-                    <FileText className="w-4 h-4" aria-hidden />
-                    {gerandoDocNav ? 'Preparando…' : 'Gerar Documento'}
+                    <Download className="w-4 h-4" aria-hidden />
+                    {baixandoAutosIntegral ? 'Gerando PDF…' : 'Baixar processo integral'}
                   </button>
-                  <button
-                    type="button"
-                    className={processosBtnToolbarPurple}
-                    disabled={gerandoProcuracao || gerandoDocNav || apiSaving}
-                    onClick={() => void handleGerarProcuracao()}
-                    title="Gerar procuração Ad Judicia da parte cliente"
-                  >
-                    <FileSignature className="w-4 h-4" aria-hidden />
-                    {gerandoProcuracao ? 'Gerando…' : 'Procuração'}
-                  </button>
-                  {driveConfigurado ? (
-                    <>
-                      <button
-                        type="button"
-                        className={processosBtnToolbarGreen}
-                        disabled={
-                          apiSaving ||
-                          buscandoMovimentacoes ||
-                          !processoApiId ||
-                          !String(numeroProcessoNovo ?? '').trim() ||
-                          tramitacaoBloqueiaObterMovimentacoes
-                        }
-                        onClick={() => void handleObterMovimentacoes()}
-                        title={
-                          tramitacaoBloqueiaObterMovimentacoes
-                            ? 'Processo em autos físicos — sem consulta automática.'
-                            : obterMovimentacoesViaPje
-                              ? pjeAutomacaoTrt18
-                                ? 'Dispara cópia integral PJe TRT18 (assíncrono) — acompanhe o badge No Drive'
-                                : `PJe (${rotuloPjeTribunal(pjeTribunalNorm)}) — automação indisponível; registro salvo no cadastro`
-                              : !tramitacaoNorm
-                                ? 'Defina a tramitação dos autos para consultar movimentações'
-                                : 'Consulta o PROJUDI agora (mesmo com acervo integral no pipeline automático; pode não trazer arquivos novos)'
-                        }
-                      >
-                        <CloudDownload className="w-4 h-4" aria-hidden />
-                        {buscandoMovimentacoes
-                          ? obterMovimentacoesViaPje
-                            ? 'Iniciando PJe…'
-                            : 'Consultando PROJUDI…'
-                          : 'Obter movimentações'}
-                      </button>
-                      <button
-                        type="button"
-                        className={processosBtnToolbarPurple}
-                        disabled={apiSaving}
-                        onClick={() => setDriveExplorerAberto(true)}
-                        title="Arquivos do processo no Google Drive"
-                      >
-                        <FolderOpen className="w-4 h-4" aria-hidden />
-                        Arquivos
-                      </button>
-                      <button
-                        type="button"
-                        className={processosBtnToolbarGreen}
-                        disabled={
-                          apiSaving ||
-                          baixandoAutosIntegral ||
-                          !String(numeroProcessoNovo ?? '').trim()
-                        }
-                        onClick={() => void handleBaixarAutosIntegral()}
-                        title="Baixa PDF único juntando os documentos da pasta Movimentações no Drive"
-                      >
-                        <Download className="w-4 h-4" aria-hidden />
-                        {baixandoAutosIntegral ? 'Gerando PDF…' : 'Baixar processo integral'}
-                      </button>
-                    </>
-                  ) : null}
+                ) : null}
+                {podeGerarDocumento ? (
                   <button
                     type="button"
                     className={processosBtnToolbarRed}
@@ -3528,26 +3542,26 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                     <Send className="w-4 h-4" aria-hidden />
                     Peticionamento PROJUDI
                   </button>
-                </>
-              ) : null}
-              <button
-                type="button"
-                onClick={() => {
-                  setIndiceAcaoRedacaoFocada(0);
-                  indiceAcaoRedacaoFocadaRef.current = 0;
-                  setModalAcoesRedacaoAberto(true);
-                }}
-                className={processosBtnToolbarNeutral}
-                aria-label="Ações de redação"
-              >
-                <IconMaoEscrevendo />
-              </button>
-              {featureFlags.useApiTarefas ? (
-                <button type="button" onClick={abrirModalTarefaDoProcesso} className={processosBtnPrimary}>
-                  <ListTodo className="w-4 h-4" aria-hidden />
-                  Criar tarefa
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIndiceAcaoRedacaoFocada(0);
+                    indiceAcaoRedacaoFocadaRef.current = 0;
+                    setModalAcoesRedacaoAberto(true);
+                  }}
+                  className={processosBtnToolbarRedacao}
+                  aria-label="Ações de redação"
+                >
+                  <IconMaoEscrevendo />
                 </button>
-              ) : null}
+                {featureFlags.useApiTarefas ? (
+                  <button type="button" onClick={abrirModalTarefaDoProcesso} className={processosBtnPrimary}>
+                    <ListTodo className="w-4 h-4" aria-hidden />
+                    Criar tarefa
+                  </button>
+                ) : null}
+              </div>
             </>
           }
         />
@@ -3555,7 +3569,9 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
           cards={[
             { variant: 'prazo', label: 'Prazo fatal / urgência', value: String(prazoFatal ?? '').trim() || 'Sem prazo fatal', muted: !String(prazoFatal ?? '').trim(), alert: prazoUrgente, Icon: AlertTriangle },
             { variant: 'audiencia', label: 'Audiência', value: audienciaResumo, muted: audienciaResumo === 'Sem audiência agendada', Icon: Calendar, extra: <span className={`mt-1 inline-flex text-[10px] font-semibold px-2 py-0.5 rounded-full border ${avisoAudiencia === 'avisado' ? 'bg-green-100 text-green-700 border-green-300' : 'bg-amber-100 text-amber-700 border-amber-300'}`}>{avisoAudiencia === 'avisado' ? 'Avisado' : 'Não avisado'}</span> },
-            { variant: 'fase', label: 'Fase processual', value: faseSelecionada || 'Não definida', muted: !String(faseSelecionada ?? '').trim(), Icon: GitBranch },
+            ...(statusAtivo
+              ? [{ variant: 'fase', label: 'Fase processual', value: faseSelecionada || 'Não definida', muted: !String(faseSelecionada ?? '').trim(), Icon: GitBranch }]
+              : []),
             { variant: 'valor', label: 'Valor da causa', value: valorCausaFmt, muted: valorCausaZerado, Icon: CircleDollarSign },
           ]}
         />
@@ -4015,26 +4031,30 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                     </select>
                   )}
                 </div>
-                <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-4 shrink-0">
-                  <p className="text-sm font-semibold text-blue-800 mb-3">Fase processual</p>
-                  <div className="flex flex-wrap gap-2 max-h-[12rem] overflow-y-auto">
-                    {FASES.map((f) => {
-                      const ativa = faseParaRadiosProcessos === f;
-                      return (
-                        <button key={f} type="button" disabled={camposBloqueados} onClick={() => { setFaseSelecionada(f); salvarHistoricoDoProcesso(montarPayloadRegistroProcesso({ faseSelecionada: f })); }} className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all duration-150 hover:scale-105 ${ativa ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-white text-blue-600 border-blue-200 hover:bg-blue-50'}`}>{f}</button>
-                      );
-                    })}
-                  </div>
-                </div>
-                <Field label="Observação de Fase" className="flex flex-1 flex-col min-h-[10rem] min-w-0">
-                  <textarea
-                    value={faseCampo}
-                    readOnly={camposBloqueados}
-                    onChange={(e) => setFaseCampo(e.target.value)}
-                    rows={6}
-                    className={`flex-1 min-h-[10rem] w-full resize-y ${clsCampo} leading-snug`}
-                  />
-                </Field>
+                {statusAtivo ? (
+                  <>
+                    <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-4 shrink-0">
+                      <p className="text-sm font-semibold text-blue-800 mb-3">Fase processual</p>
+                      <div className="flex flex-wrap gap-2 max-h-[12rem] overflow-y-auto">
+                        {FASES.map((f) => {
+                          const ativa = faseParaRadiosProcessos === f;
+                          return (
+                            <button key={f} type="button" disabled={camposBloqueados} onClick={() => { setFaseSelecionada(f); salvarHistoricoDoProcesso(montarPayloadRegistroProcesso({ faseSelecionada: f })); }} className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all duration-150 hover:scale-105 ${ativa ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-white text-blue-600 border-blue-200 hover:bg-blue-50'}`}>{f}</button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <Field label="Observação de Fase" className="flex flex-1 flex-col min-h-[10rem] min-w-0">
+                      <textarea
+                        value={faseCampo}
+                        readOnly={camposBloqueados}
+                        onChange={(e) => setFaseCampo(e.target.value)}
+                        rows={6}
+                        className={`flex-1 min-h-[10rem] w-full resize-y ${clsCampo} leading-snug`}
+                      />
+                    </Field>
+                  </>
+                ) : null}
               </div>
             </section>
 

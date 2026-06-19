@@ -12,7 +12,7 @@ export const processosInputDenseClass =
 export const processosInputDenseReadOnlyClass = `${processosInputDenseClass} bg-slate-50 cursor-default focus:ring-0 focus:border-gray-200`;
 
 export const processosBtnPrimary =
-  'inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-semibold text-white bg-[#0D652D] hover:bg-[#0a5224] shadow-sm transition-colors duration-150 disabled:opacity-50 disabled:pointer-events-none';
+  'inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-emerald-700 to-green-800 hover:from-emerald-600 hover:to-green-700 shadow-md shadow-emerald-500/25 ring-1 ring-white/15 transition-all duration-150 disabled:opacity-50 disabled:pointer-events-none';
 
 export const processosBtnIndigo =
   'inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 shadow-sm transition-colors duration-150 disabled:opacity-50 disabled:pointer-events-none';
@@ -27,23 +27,41 @@ export const processosBtnGhost =
   'inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 bg-white hover:bg-gray-50 transition-colors duration-150';
 
 const processosToolbarBtnBase =
-  'inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium border transition-colors duration-150 disabled:opacity-50 disabled:pointer-events-none';
+  'inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold text-white shadow-md ring-1 ring-white/15 transition-all duration-150 disabled:opacity-50 disabled:pointer-events-none';
 
-/** Barra de ações do processo — paleta inspirada nos atalhos do módulo. */
-export const processosBtnToolbarBlue =
-  `${processosToolbarBtnBase} bg-[#E8F0FE] text-[#174EA6] border-blue-200/80 hover:bg-blue-100`;
-
+/** Barra de ações do processo — botões sólidos com gradiente (modelo portal). */
 export const processosBtnToolbarPurple =
-  `${processosToolbarBtnBase} bg-[#F3E8FD] text-[#673AB7] border-violet-200/80 hover:bg-violet-100`;
+  `${processosToolbarBtnBase} bg-gradient-to-r from-violet-600 to-purple-700 hover:from-violet-500 hover:to-purple-600 shadow-violet-500/25`;
+
+export const processosBtnToolbarTeal =
+  `${processosToolbarBtnBase} bg-gradient-to-r from-teal-700 to-cyan-800 hover:from-teal-600 hover:to-cyan-700 shadow-teal-500/25`;
+
+export const processosBtnToolbarAmber =
+  `${processosToolbarBtnBase} bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-400 hover:to-yellow-500 shadow-amber-500/25`;
 
 export const processosBtnToolbarGreen =
-  `${processosToolbarBtnBase} bg-[#E6F4EA] text-[#137333] border-emerald-200/80 hover:bg-emerald-100`;
+  `${processosToolbarBtnBase} bg-gradient-to-r from-emerald-600 to-green-700 hover:from-emerald-500 hover:to-green-600 shadow-emerald-500/25`;
+
+export const processosBtnToolbarOrange =
+  `${processosToolbarBtnBase} bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-400 hover:to-amber-500 shadow-orange-500/25`;
+
+export const processosBtnToolbarIndigo =
+  `${processosToolbarBtnBase} bg-gradient-to-r from-indigo-700 to-slate-800 hover:from-indigo-600 hover:to-slate-700 shadow-indigo-500/25`;
+
+export const processosBtnToolbarSky =
+  `${processosToolbarBtnBase} bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 shadow-sky-500/25`;
+
+export const processosBtnToolbarRose =
+  `${processosToolbarBtnBase} bg-gradient-to-r from-rose-700 to-red-800 hover:from-rose-600 hover:to-red-700 shadow-rose-500/25`;
+
+export const processosBtnToolbarCyan =
+  `${processosToolbarBtnBase} bg-gradient-to-r from-cyan-600 to-teal-700 hover:from-cyan-500 hover:to-teal-600 shadow-cyan-500/25`;
 
 export const processosBtnToolbarRed =
-  `${processosToolbarBtnBase} bg-[#FCE8E6] text-[#B21414] border-red-200/80 hover:bg-red-100`;
+  `${processosToolbarBtnBase} bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-400 hover:to-rose-500 shadow-red-500/25`;
 
-export const processosBtnToolbarNeutral =
-  `${processosToolbarBtnBase} bg-white text-slate-700 border-slate-200 hover:bg-slate-50`;
+export const processosBtnToolbarRedacao =
+  `${processosToolbarBtnBase} bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-500 hover:to-rose-600 shadow-red-500/25`;
 
 export const processosLinkClass =
   'text-sm font-medium text-teal-600 hover:text-teal-800 hover:underline bg-transparent border-0 p-0 cursor-pointer';
@@ -352,16 +370,16 @@ export function ProcessosStickyHeader({
           >
             {statusAtivo ? 'Ativo' : 'Inativo'}
           </span>
-          {fase ? (
+          {fase && statusAtivo ? (
             <span className="inline-flex max-w-[14rem] truncate px-3 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-700 border border-blue-300" title={fase}>
               {fase}
             </span>
           ) : null}
         </div>
       </div>
-      <div className="mt-3 flex flex-wrap items-center gap-2 pt-3 border-t border-indigo-200/40">
-        {actions}
-        <button type="button" onClick={onFechar} className="ml-auto p-2.5 rounded-xl border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 transition-colors shrink-0" aria-label="Fechar">
+      <div className="mt-3 flex flex-col gap-2 pt-3 border-t border-indigo-200/40 sm:flex-row sm:items-start">
+        <div className="flex min-w-0 flex-1 flex-col gap-2">{actions}</div>
+        <button type="button" onClick={onFechar} className="self-end shrink-0 rounded-xl border border-gray-200 bg-white p-2.5 text-gray-600 transition-colors hover:bg-gray-50 sm:self-start" aria-label="Fechar">
           <X className="w-5 h-5" />
         </button>
       </div>
