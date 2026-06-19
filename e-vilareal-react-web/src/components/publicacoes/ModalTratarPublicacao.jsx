@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Calendar, Loader2, Sparkles, X } from 'lucide-react';
-import { featureFlags } from '../config/featureFlags.js';
-import { normalizarDataBr } from '../data/processosHistoricoData.js';
-import { useCloseOnEscape } from '../hooks/useCloseOnEscape.js';
+import { featureFlags } from '../../config/featureFlags.js';
+import { normalizarDataBr } from '../../data/processosHistoricoData.js';
+import { useCloseOnEscape } from '../../hooks/useCloseOnEscape.js';
 import {
   buscarSugestaoPrazoPublicacao,
   tratarPublicacao,
-} from '../repositories/publicacoesRepository.js';
+} from '../../repositories/publicacoesRepository.js';
 
 const TIPOS = [
   {
