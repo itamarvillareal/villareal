@@ -701,6 +701,52 @@ export function buildOrdemLetrasContabeisCompleta(contasContabeisExtras) {
   return [...ORDEM_LETRA_CONTA_BASE, ...letrasExtras];
 }
 
+/**
+ * Lista completa de contas (letras) para selects no extrato: API + plano padrão + extras locais.
+ * Garante todas as letras mesmo se a API falhar ou estiver incompleta.
+ */
+export function montarContasContabeisParaSelectExtrato(apiContas, extras) {
+  const extrasResolved = extras ?? loadPersistedContasContabeisExtrasFinanceiro();
+  const byCodigo = new Map();
+  for (const c of apiContas || []) {
+    const cod = String(c?.codigo ?? '').trim().toUpperCase();
+    if (!cod) continue;
+    byCodigo.set(cod, {
+      id: c.id ?? null,
+      codigo: cod,
+      nome: String(c.nome ?? LETRA_TO_CONTA[cod] ?? cod).trim(),
+      ativo: c.ativo !== false,
+    });
+  }
+
+  const ordem = buildOrdemLetrasContabeisCompleta(extrasResolved);
+  const out = [];
+  const seen = new Set();
+
+  for (const letra of ordem) {
+    seen.add(letra);
+    if (byCodigo.has(letra)) {
+      out.push(byCodigo.get(letra));
+    } else if (LETRA_TO_CONTA[letra]) {
+      out.push({ id: null, codigo: letra, nome: LETRA_TO_CONTA[letra], ativo: true });
+    }
+  }
+
+  for (const ex of extrasResolved || []) {
+    const L = String(ex?.letra ?? '').trim().toUpperCase();
+    const nome = String(ex?.nome ?? '').trim();
+    if (!L || !nome || seen.has(L)) continue;
+    seen.add(L);
+    out.push(byCodigo.get(L) ?? { id: null, codigo: L, nome, ativo: true });
+  }
+
+  for (const c of byCodigo.values()) {
+    if (!seen.has(c.codigo)) out.push(c);
+  }
+
+  return out;
+}
+
 export function proximaLetraContaContabilExtra(contasContabeisExtras) {
   const usadas = new Set(Object.keys(LETRA_TO_CONTA));
   for (const c of contasContabeisExtras || []) {

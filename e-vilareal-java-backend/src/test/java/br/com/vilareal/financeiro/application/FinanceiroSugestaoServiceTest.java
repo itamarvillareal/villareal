@@ -331,6 +331,57 @@ class FinanceiroSugestaoServiceTest {
     }
 
     @Test
+    void sugerir_camadaPessoaProcessos_parteOpostaSemCpf_sugerePorNomeNaDescricao() {
+        lancamento.setDescricao("PIX TRANSF FRANCISCO JEFFERSON DA SILVA SOUZA 17 06");
+
+        PessoaEntity parteOposta = new PessoaEntity();
+        parteOposta.setId(501L);
+        parteOposta.setNome("Francisco Jefferson Da Silva Souza");
+
+        PessoaEntity titular = new PessoaEntity();
+        titular.setId(728L);
+
+        ClienteEntity cliente728 = new ClienteEntity();
+        cliente728.setId(99L);
+        cliente728.setCodigoCliente("00000728");
+        cliente728.setPessoa(titular);
+
+        ProcessoEntity processo = new ProcessoEntity();
+        processo.setId(1345L);
+        processo.setPessoa(titular);
+        processo.setCliente(cliente728);
+        processo.setNumeroInterno(1345);
+
+        when(regraRepository.findByAtivoTrueOrderByPrioridadeAscIdAsc()).thenReturn(List.of());
+        when(lancamentoRepository.findDepositosIdentificadosPorCpfNoTexto(any(), any(), any(), any()))
+                .thenReturn(List.of());
+        when(contaContabilRepository.findFirstByCodigoIgnoreCase("A")).thenReturn(Optional.of(contaA));
+        when(processoRepository.findPessoaProcessoIdsPorNomeContidoNaDescricao(any()))
+                .thenReturn(List.<Object[]>of(new Object[] {501L, 1345L}));
+        when(pessoaRepository.findById(501L)).thenReturn(Optional.of(parteOposta));
+        when(processoRepository.findById(1345L)).thenReturn(Optional.of(processo));
+        when(processoApplicationService.resolverTextosPartesVinculoEmLote(Set.of(1345L)))
+                .thenReturn(
+                        Map.of(
+                                1345L,
+                                new ProcessoPartesVinculoTexto(
+                                        "SE77E TELECOM EIRELI ME", "Francisco Jefferson Da Silva Souza")));
+        when(lancamentoRepository.contarContaPorDescricaoHistorico(any(), any())).thenReturn(List.of());
+        when(lancamentoRepository.findRecorrenciaCandidatos(any(), any(), any(), any(), anyInt()))
+                .thenReturn(List.of());
+
+        List<SugestaoClassificacaoResponse> sugestoes = service.sugerir(lancamento);
+
+        assertThat(sugestoes).anyMatch(s ->
+                s.getOrigem() == OrigemSugestao.PESSOA_PROCESSO
+                        && "A".equals(s.getContaCodigo())
+                        && s.getProcessoId().equals(1345L)
+                        && s.getClienteId().equals(99L)
+                        && s.getPagadorPessoaId().equals(501L)
+                        && s.getDescricaoRegra().contains("nome na descrição"));
+    }
+
+    @Test
     void sugerir_transfPixItamarCora_sugereContaENaoCliente() {
         lancamento.setDescricao(
                 "Transf Pix recebida - ITAMAR ALEXANDRE F V R JUNIOR - 007.332.351-90");

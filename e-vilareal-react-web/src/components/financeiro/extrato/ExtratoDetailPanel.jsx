@@ -25,6 +25,7 @@ import {
 import {
   buildContaToLetraMerge,
   loadPersistedContasContabeisExtrasFinanceiro,
+  montarContasContabeisParaSelectExtrato,
 } from '../../../data/financeiroData.js';
 import {
   listarContasFinanceiro,
@@ -107,12 +108,25 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted }) {
     return () => ac.abort();
   }, []);
 
+  const contasSelect = useMemo(() => montarContasContabeisParaSelectExtrato(contas), [contas]);
+
+  const contaCodigoDraft = String(draft.contaCodigo ?? 'N').trim().toUpperCase() || 'N';
+
   const patch = useCallback((p) => setDraft((d) => ({ ...d, ...p })), []);
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      let draftSalvar = promoverContaEscritorioSeVinculado(draft, contas);
+      let draftSalvar = promoverContaEscritorioSeVinculado(draft, contasSelect);
+      const codConta = String(draftSalvar.contaCodigo ?? '').trim().toUpperCase();
+      const contaEscolhida = contasSelect.find((c) => c.codigo === codConta);
+      if (contaEscolhida?.id) {
+        draftSalvar = {
+          ...draftSalvar,
+          contaContabilId: contaEscolhida.id,
+          contaContabilNome: contaEscolhida.nome ?? draftSalvar.contaContabilNome,
+        };
+      }
       const codDigitado = normalizarCodigoClienteFinanceiro(draftSalvar.codCliente);
       if (
         codDigitado &&
@@ -164,6 +178,7 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted }) {
       onSaved(merged);
       setDraft(merged);
       toast.success('Lançamento atualizado.');
+      onClose?.();
     } catch (e) {
       toast.error(e?.message || 'Falha ao salvar.');
     } finally {
@@ -245,7 +260,7 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted }) {
         processoId,
         ...(obsVinculo ? { observacao: obsVinculo, descricaoDetalhada: obsVinculo } : {}),
       },
-      contas,
+      contasSelect,
     );
 
     if (pessoaRefId) registrarCodigoClienteFinanceiroPorPessoaId(pessoaRefId, codGravado);
@@ -255,6 +270,7 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted }) {
         setDraft(nextDraft);
         onSaved?.(nextDraft);
         toast.success(`Vínculo: cliente ${cod}, proc. ${procNorm || '—'} (conta A).`);
+        onClose?.();
         return;
       }
 
@@ -270,6 +286,7 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted }) {
       onSaved?.(merged);
       dispatchRefreshPendentes();
       toast.success(`Vinculado: cliente ${codGravado}, proc. ${procNorm || '—'} — conta A (Escritório).`);
+      onClose?.();
     } catch (e) {
       toast.error(e?.message || 'Falha ao gravar vínculo.');
     } finally {
@@ -398,25 +415,26 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted }) {
           </div>
           <Field label="Conta">
             <select
-              value={draft.contaCodigo}
+              value={contaCodigoDraft}
               onChange={(e) => {
-                const cod = e.target.value;
-                const c = contas.find((x) => String(x.codigo).toUpperCase() === cod);
+                const cod = String(e.target.value ?? '').trim().toUpperCase();
+                const c = contasSelect.find((x) => String(x.codigo).toUpperCase() === cod);
                 patch({
                   contaCodigo: cod,
                   contaContabilId: c?.id ?? draft.contaContabilId,
                   contaContabilNome: c?.nome ?? draft.contaContabilNome,
+                  ...(cod === 'E' ? { codCliente: '', proc: '', clienteId: null, processoId: null } : {}),
                 });
               }}
               className="w-full text-sm rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1.5"
             >
-              {!contas.some((c) => String(c.codigo).toUpperCase() === draft.contaCodigo) ? (
-                <option value={draft.contaCodigo}>
-                  {draft.contaCodigo} — {draft.contaContabilNome}
+              {!contasSelect.some((c) => String(c.codigo).toUpperCase() === contaCodigoDraft) ? (
+                <option value={contaCodigoDraft}>
+                  {contaCodigoDraft} — {draft.contaContabilNome}
                 </option>
               ) : null}
-              {contas.map((c) => (
-                <option key={c.id} value={String(c.codigo ?? '').toUpperCase()}>
+              {contasSelect.map((c) => (
+                <option key={c.codigo} value={String(c.codigo ?? '').toUpperCase()}>
                   {String(c.codigo ?? '').toUpperCase()} — {c.nome}
                 </option>
               ))}

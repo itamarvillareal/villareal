@@ -16,6 +16,9 @@ public final class FinanceiroDescricaoPessoaExtrator {
     private static final Pattern CPF_ONZE_DIGITOS_FIM = Pattern.compile("(\\d{11})\\s*$");
     private static final Pattern NOME_ENTRE_TRACOS =
             Pattern.compile("[-–—]\\s*([^-–—\\d][^-–—]{2,}?)\\s*[-–—]\\s*\\d{3}");
+    /** Ex.: «Transf Pix recebida - Fulano de Tal» (sem CPF). */
+    private static final Pattern NOME_APOS_TRACO_FINAL =
+            Pattern.compile("[-–—]\\s*([A-Za-zÀ-ú][A-Za-zÀ-ú\\s'.]{7,})\\s*$");
 
     private FinanceiroDescricaoPessoaExtrator() {}
 
@@ -60,6 +63,13 @@ public final class FinanceiroDescricaoPessoaExtrator {
         }
         if (StringUtils.hasText(candidato)) {
             return candidato;
+        }
+        Matcher mFinal = NOME_APOS_TRACO_FINAL.matcher(texto);
+        if (mFinal.find()) {
+            String trecho = mFinal.group(1).trim();
+            if (trecho.length() >= 8 && !pareceSoNumeros(trecho)) {
+                return trecho;
+            }
         }
         if (cpfDigitos != null) {
             int idx = texto.indexOf(cpfDigitos.substring(0, 3));

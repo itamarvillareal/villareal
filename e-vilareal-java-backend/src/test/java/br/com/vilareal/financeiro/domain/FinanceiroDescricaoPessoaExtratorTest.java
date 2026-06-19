@@ -15,4 +15,14 @@ class FinanceiroDescricaoPessoaExtratorTest {
         assertThat(ext.cpfDigitos()).isEqualTo("76467791134");
         assertThat(ext.nome()).contains("Luciana");
     }
+
+    @Test
+    void extraiNomeSemCpfAposTraco() {
+        String desc = "Transf Pix recebida - Geny Ferreira De Morais";
+        FinanceiroDescricaoPessoaExtracao ext = FinanceiroDescricaoPessoaExtrator.extrair(desc, null);
+
+        assertThat(ext.cpfDigitos()).isNull();
+        assertThat(ext.temNome()).isTrue();
+        assertThat(ext.nome()).containsIgnoringCase("Geny Ferreira");
+    }
 }

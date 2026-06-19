@@ -32,6 +32,21 @@ import {
   mesAtualIso,
   ultimos12Meses,
 } from './consolidadoUtils.js';
+import { ETAPAS, ETAPA_LABELS } from '../constants/financeiroConstants.js';
+import {
+  CADASTRO_PARCIAL,
+  CADASTRO_PLENO,
+  CADASTRO_TODOS,
+  cadastroParaQueryApi,
+} from '../extrato/extratoCadastroFiltro.js';
+
+const ETAPAS_FILTRO_CONSOLIDADO = [
+  ETAPAS.IMPORTADO,
+  ETAPAS.CLASSIFICADO,
+  ETAPAS.COMPENSADO,
+  ETAPAS.VINCULADO,
+  ETAPAS.FECHADO,
+];
 
 const fmtBrl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 const fmtCompact = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 });
@@ -61,6 +76,8 @@ export function ConsolidadoPage() {
   }, [contaParam]);
 
   const [mes, setMes] = useState(mesAtualIso);
+  /** Conta A: cadastro pleno/parcial (bolinha azul/vermelha). Demais contas: etapa do workflow. */
+  const [filtroEtapa, setFiltroEtapa] = useState('');
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(50);
   const [contasApi, setContasApi] = useState([]);
@@ -158,6 +175,15 @@ export function ConsolidadoPage() {
   }, [codigoAtivo, mes]);
 
   useEffect(() => {
+    setFiltroEtapa('');
+  }, [codigoAtivo]);
+
+  useEffect(() => {
+    setPage(0);
+    setSelectedIds(new Set());
+  }, [filtroEtapa]);
+
+  useEffect(() => {
     if (!featureFlags.useApiFinanceiro || !contaContabilId) {
       setRows([]);
       return undefined;
@@ -166,6 +192,15 @@ export function ConsolidadoPage() {
     const [ano, mesNum] = mes.split('-').map(Number);
     setLoadingTable(true);
     setErro('');
+    const filtroApi =
+      codigoAtivo === 'A'
+        ? cadastroParaQueryApi(
+            filtroEtapa === CADASTRO_PLENO || filtroEtapa === CADASTRO_PARCIAL
+              ? filtroEtapa
+              : CADASTRO_TODOS,
+          )
+        : { etapa: filtroEtapa || undefined };
+
     listarLancamentosFinanceiroPaginados(
       {
         contaContabilId,
@@ -174,6 +209,7 @@ export function ConsolidadoPage() {
         page,
         size: pageSize,
         sort: 'dataLancamento,desc',
+        ...filtroApi,
       },
       { signal: ac.signal },
     )
@@ -190,7 +226,7 @@ export function ConsolidadoPage() {
       })
       .finally(() => setLoadingTable(false));
     return () => ac.abort();
-  }, [contaContabilId, mes, page, pageSize, contaToLetra]);
+  }, [contaContabilId, codigoAtivo, mes, page, pageSize, contaToLetra, filtroEtapa]);
 
   const resumoPagina = useMemo(() => {
     let creditos = 0;
@@ -341,7 +377,40 @@ export function ConsolidadoPage() {
         <section className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 overflow-hidden">
           <div className="flex flex-wrap items-center gap-2 px-3 py-2 border-b border-slate-200 dark:border-slate-800">
             <PeriodoSelector value={mes} onChange={setMes} />
-            <span className="text-xs text-slate-500">
+            <select
+              value={filtroEtapa}
+              onChange={(e) => setFiltroEtapa(e.target.value)}
+              className={`text-xs px-2 py-0.5 rounded-md border shrink-0 ${
+                filtroEtapa
+                  ? codigoAtivo === 'A'
+                    ? filtroEtapa === CADASTRO_PLENO
+                      ? 'border-blue-300 bg-blue-50 text-blue-900 dark:bg-blue-950/50 dark:border-blue-700 dark:text-blue-200'
+                      : 'border-red-300 bg-red-50 text-red-900 dark:bg-red-950/50 dark:border-red-700 dark:text-red-200'
+                    : 'border-amber-300 bg-amber-50 text-amber-900 dark:bg-amber-950/50 dark:border-amber-700 dark:text-amber-200'
+                  : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 bg-white dark:bg-slate-900'
+              }`}
+              aria-label="Filtrar por etapa"
+              title={
+                codigoAtivo === 'A'
+                  ? 'Conta Escritório: completo = código e processo; incompleto = falta um dos dois'
+                  : 'Etapa do workflow de classificação'
+              }
+            >
+              <option value="">Etapa: todas</option>
+              {codigoAtivo === 'A' ? (
+                <>
+                  <option value={CADASTRO_PLENO}>Completo (cod. + proc.)</option>
+                  <option value={CADASTRO_PARCIAL}>Incompleto</option>
+                </>
+              ) : (
+                ETAPAS_FILTRO_CONSOLIDADO.map((etapa) => (
+                  <option key={etapa} value={etapa}>
+                    {ETAPA_LABELS[etapa] ?? etapa}
+                  </option>
+                ))
+              )}
+            </select>
+            <span className="text-xs text-slate-500 ml-auto">
               {rows.length} na página · {totalElements.toLocaleString('pt-BR')} no mês
             </span>
           </div>

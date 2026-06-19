@@ -3,6 +3,7 @@ import { featureFlags } from '../../../config/featureFlags.js';
 import {
   buildContaToLetraMerge,
   loadPersistedContasContabeisExtrasFinanceiro,
+  montarContasContabeisParaSelectExtrato,
 } from '../../../data/financeiroData.js';
 import {
   aplicarSugestoesLoteApi,
@@ -67,13 +68,7 @@ export function ExtratoPage() {
 
   const fetchKey = useMemo(() => JSON.stringify(fetchParams), [fetchParams]);
 
-  const contasExtrato = useMemo(
-    () =>
-      [...contasApi].sort((a, b) =>
-        String(a.codigo ?? '').localeCompare(String(b.codigo ?? ''), 'pt-BR'),
-      ),
-    [contasApi],
-  );
+  const contasExtrato = useMemo(() => montarContasContabeisParaSelectExtrato(contasApi), [contasApi]);
 
   const bulkBusy = bulkDeleting || bulkClassifying;
 

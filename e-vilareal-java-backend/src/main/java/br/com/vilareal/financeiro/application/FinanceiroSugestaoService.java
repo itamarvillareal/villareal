@@ -271,6 +271,15 @@ public class FinanceiroSugestaoService {
     private List<SugestaoClassificacaoResponse> camadaPessoaProcessos(LancamentoFinanceiroEntity lancamento) {
         FinanceiroDescricaoPessoaExtracao ext = FinanceiroDescricaoPessoaExtrator.extrair(
                 lancamento.getDescricao(), lancamento.getDescricaoDetalhada());
+        List<SugestaoClassificacaoResponse> out = new ArrayList<>(camadaPessoaProcessosPorCpf(lancamento, ext));
+        if (out.isEmpty()) {
+            out.addAll(camadaPessoaProcessosPorNomeNaDescricao(lancamento));
+        }
+        return out;
+    }
+
+    private List<SugestaoClassificacaoResponse> camadaPessoaProcessosPorCpf(
+            LancamentoFinanceiroEntity lancamento, FinanceiroDescricaoPessoaExtracao ext) {
         if (!ext.temCpf()) {
             return List.of();
         }
@@ -281,7 +290,79 @@ public class FinanceiroSugestaoService {
         if (StringUtils.hasText(ext.nome()) && !nomesCompativeis(ext.nome(), pessoa.getNome())) {
             return List.of();
         }
+        return montarSugestoesPessoaProcessos(pessoa);
+    }
 
+    /**
+     * Quando não há CPF na descrição, localiza pessoas cadastradas (titular ou parte de processo)
+     * cujo nome aparece no texto do extrato — ex.: PIX com nome da parte oposta.
+     */
+    private List<SugestaoClassificacaoResponse> camadaPessoaProcessosPorNomeNaDescricao(
+            LancamentoFinanceiroEntity lancamento) {
+        String descNorm = normalizarTextoDescricaoBuscaPessoa(
+                lancamento.getDescricao(), lancamento.getDescricaoDetalhada());
+        if (!StringUtils.hasText(descNorm)) {
+            return List.of();
+        }
+
+        ContaContabilEntity contaA =
+                contaContabilRepository.findFirstByCodigoIgnoreCase("A").orElse(null);
+        if (contaA == null) {
+            return List.of();
+        }
+
+        List<Object[]> vinculos = processoRepository.findPessoaProcessoIdsPorNomeContidoNaDescricao(descNorm);
+        if (vinculos.isEmpty()) {
+            return List.of();
+        }
+
+        Set<Long> processoIds = new LinkedHashSet<>();
+        Map<Long, PessoaEntity> pessoasPorId = new LinkedHashMap<>();
+        for (Object[] row : vinculos) {
+            if (row == null || row.length < 2 || row[0] == null || row[1] == null) {
+                continue;
+            }
+            Long pessoaId = ((Number) row[0]).longValue();
+            Long processoId = ((Number) row[1]).longValue();
+            PessoaEntity pessoa = pessoasPorId.computeIfAbsent(
+                    pessoaId, id -> pessoaRepository.findById(id).orElse(null));
+            if (pessoa == null || !nomesCompativeis(descNorm, pessoa.getNome())) {
+                continue;
+            }
+            processoIds.add(processoId);
+        }
+        if (processoIds.isEmpty()) {
+            return List.of();
+        }
+
+        List<SugestaoClassificacaoResponse> out = new ArrayList<>();
+        for (Object[] row : vinculos) {
+            if (row == null || row.length < 2 || row[0] == null || row[1] == null) {
+                continue;
+            }
+            Long pessoaId = ((Number) row[0]).longValue();
+            Long processoId = ((Number) row[1]).longValue();
+            PessoaEntity pessoa = pessoasPorId.get(pessoaId);
+            if (pessoa == null || !processoIds.contains(processoId)) {
+                continue;
+            }
+            ProcessoEntity proc = processoRepository.findById(processoId).orElse(null);
+            if (proc == null || proc.getPessoa() == null || proc.getNumeroInterno() == null) {
+                continue;
+            }
+            SugestaoClassificacaoResponse s =
+                    baseSugestao(contaA, ConfiancaSugestao.MEDIA, OrigemSugestao.PESSOA_PROCESSO);
+            preencherClienteIdSugestaoProcesso(s, proc);
+            s.setProcessoId(proc.getId());
+            s.setPagadorPessoaId(pessoa.getId());
+            s.setRotuloVinculo(montarRotuloVinculo(proc.getPessoa().getId(), proc));
+            s.setDescricaoRegra("nome na descrição: " + resumirNome(pessoa.getNome()) + " → " + s.getRotuloVinculo());
+            out.add(s);
+        }
+        return out;
+    }
+
+    private List<SugestaoClassificacaoResponse> montarSugestoesPessoaProcessos(PessoaEntity pessoa) {
         ContaContabilEntity contaA =
                 contaContabilRepository.findFirstByCodigoIgnoreCase("A").orElse(null);
         if (contaA == null) {
@@ -308,6 +389,16 @@ public class FinanceiroSugestaoService {
             out.add(s);
         }
         return out;
+    }
+
+    private static String normalizarTextoDescricaoBuscaPessoa(String descricao, String descricaoDetalhada) {
+        String texto = ((descricao != null ? descricao : "") + " " + (descricaoDetalhada != null ? descricaoDetalhada : ""))
+                .trim();
+        if (!StringUtils.hasText(texto)) {
+            return "";
+        }
+        String n = Normalizer.normalize(texto.toLowerCase(Locale.ROOT), Normalizer.Form.NFD);
+        return n.replaceAll("\\p{M}+", "").replaceAll("[^a-z0-9\\s]", " ").replaceAll("\\s+", " ").trim();
     }
 
     private List<SugestaoClassificacaoResponse> camadaHistorico(LancamentoFinanceiroEntity lancamento) {

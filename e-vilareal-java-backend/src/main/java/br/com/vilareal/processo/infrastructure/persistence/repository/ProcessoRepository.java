@@ -56,6 +56,36 @@ public interface ProcessoRepository extends JpaRepository<ProcessoEntity, Long> 
     List<ProcessoEntity> findAllDistinctVinculadosPessoa(@Param("pid") Long pid);
 
     /**
+     * Pessoas vinculadas a processos (titular ou parte) cujo nome aparece na descrição bancária
+     * (tokens separados por {@code %} após normalização). Usado na sugestão do Inbox Financeiro.
+     */
+    @Query(
+            value =
+                    """
+                    SELECT DISTINCT pe.id, pr.id
+                    FROM pessoa pe
+                    INNER JOIN processo_parte pp ON pp.pessoa_id = pe.id
+                    INNER JOIN processo pr ON pr.id = pp.processo_id
+                    WHERE CHAR_LENGTH(TRIM(pe.nome)) >= 10
+                      AND :descNorm LIKE CONCAT(
+                          '%',
+                          REPLACE(REPLACE(REPLACE(LOWER(TRIM(pe.nome)), '.', ''), '-', ''), ' ', '%'),
+                          '%')
+                    UNION
+                    SELECT DISTINCT pe.id, pr.id
+                    FROM pessoa pe
+                    INNER JOIN processo pr ON pr.pessoa_id = pe.id
+                    WHERE CHAR_LENGTH(TRIM(pe.nome)) >= 10
+                      AND :descNorm LIKE CONCAT(
+                          '%',
+                          REPLACE(REPLACE(REPLACE(LOWER(TRIM(pe.nome)), '.', ''), '-', ''), ' ', '%'),
+                          '%')
+                    LIMIT 25
+                    """,
+            nativeQuery = true)
+    List<Object[]> findPessoaProcessoIdsPorNomeContidoNaDescricao(@Param("descNorm") String descNorm);
+
+    /**
      * Paginação: Spring não deriva bem {@code count} para {@code SELECT DISTINCT} com subqueries —
      * sem {@code countQuery} explícita o runtime pode responder 500 (SQL inválido / count errado).
      */
