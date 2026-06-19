@@ -8,6 +8,7 @@ import br.com.vilareal.financeiro.api.dto.DescartarSemelhanteEscritorioRequest;
 import br.com.vilareal.financeiro.domain.SemelhanteEscritorioMatcher.MatchResult;
 import br.com.vilareal.financeiro.domain.SemelhanteEscritorioOrigem;
 import br.com.vilareal.financeiro.domain.SemelhanteEscritorioMatcher.PendenteItem;
+import br.com.vilareal.financeiro.infrastructure.persistence.entity.ContaContabilEntity;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.SemelhanteEscritorioDescarteEntity;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.LancamentoFinanceiroEntity;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.ContaContabilRepository;
@@ -20,6 +21,7 @@ import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaReposi
 import br.com.vilareal.processo.application.ProcessoApplicationService;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
+import org.springframework.data.domain.PageRequest;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.BeforeEach;
@@ -75,6 +77,33 @@ class FinanceiroSemelhantesEscritorioServiceTest {
                 calculoRodadaRepository,
                 pessoaRepository,
                 descarteRepository);
+    }
+
+    @Test
+    void listarInbox_ignoraLancamentosSemLetraA() {
+        ContaContabilEntity contaN = new ContaContabilEntity();
+        contaN.setId(1L);
+        contaN.setCodigo("N");
+
+        LancamentoFinanceiroEntity importado = new LancamentoFinanceiroEntity();
+        importado.setId(10L);
+        importado.setDescricaoNorm("pix teste");
+        importado.setContaContabil(contaN);
+        importado.setEtapa(EtapaLancamento.IMPORTADO);
+
+        ContaContabilEntity contaA = new ContaContabilEntity();
+        contaA.setId(2L);
+        contaA.setCodigo("A");
+
+        when(contaContabilRepository.findFirstByCodigoIgnoreCase("A")).thenReturn(Optional.of(contaA));
+        when(lancamentoRepository.findPendentesSemelhantesEscritorio(null, null, null))
+                .thenReturn(List.of(importado));
+        when(lancamentoRepository.findHistoricoVinculadoContaA(null)).thenReturn(List.of());
+
+        var resp = service.listarInbox(null, null, null, PageRequest.of(0, 50));
+
+        assertThat(resp.getTotalItensAcionaveis()).isZero();
+        assertThat(resp.getContent()).isEmpty();
     }
 
     @Test

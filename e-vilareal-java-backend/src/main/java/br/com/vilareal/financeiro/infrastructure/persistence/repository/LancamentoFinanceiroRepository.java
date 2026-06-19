@@ -463,7 +463,9 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
 
     @Query("""
             SELECT l FROM LancamentoFinanceiroEntity l
-            WHERE l.etapa = br.com.vilareal.financeiro.domain.EtapaLancamento.IMPORTADO
+            JOIN FETCH l.contaContabil c
+            WHERE UPPER(TRIM(c.codigo)) = 'A'
+              AND (l.clienteEntidade IS NULL OR l.processo IS NULL)
               AND l.descricaoNorm IS NOT NULL AND TRIM(l.descricaoNorm) <> ''
               AND (:numeroBanco IS NULL OR l.numeroBanco = :numeroBanco)
               AND (:ano IS NULL OR YEAR(l.dataLancamento) = :ano)

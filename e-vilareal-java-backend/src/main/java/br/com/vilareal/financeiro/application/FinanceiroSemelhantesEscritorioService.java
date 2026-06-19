@@ -95,6 +95,7 @@ public class FinanceiroSemelhantesEscritorioService {
         List<PendenteItem> pendentes = lancamentoRepository
                 .findPendentesSemelhantesEscritorio(numeroBanco, ano, mes)
                 .stream()
+                .filter(FinanceiroSemelhantesEscritorioService::pendenteContaEscritorio)
                 .map(this::toPendenteItem)
                 .toList();
 
@@ -428,6 +429,16 @@ public class FinanceiroSemelhantesEscritorioService {
                 l.getValor(),
                 l.getNumeroBanco(),
                 l.getBancoNome());
+    }
+
+    static boolean pendenteContaEscritorio(LancamentoFinanceiroEntity l) {
+        if (l.getContaContabil() == null || l.getContaContabil().getCodigo() == null) {
+            return false;
+        }
+        if (!CONTA_ESCRITORIO.equalsIgnoreCase(l.getContaContabil().getCodigo().trim())) {
+            return false;
+        }
+        return l.getClienteEntidade() == null || l.getProcesso() == null;
     }
 
     private HistoricoSlot toHistoricoSlot(LancamentoFinanceiroEntity l) {

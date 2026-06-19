@@ -319,7 +319,8 @@ public class FinanceiroController {
     }
 
     @GetMapping("/lancamentos/inbox/semelhantes")
-    @Operation(description = "Inbox: pendentes semelhantes a histórico vinculado na Conta Escritório (pareamento 1:1 por valor).")
+    @Operation(description = "Inbox Escritório: lançamentos com letra A (Conta Escritório) sem Cod. Cliente ou Proc. completos, "
+            + "semelhantes a histórico já vinculado (pareamento 1:1 por valor).")
     public InboxSemelhantesPaginaResponse inboxSemelhantes(
             @RequestParam(value = "numeroBanco", required = false) Integer numeroBanco,
             @RequestParam(value = "ano", required = false) Integer ano,
