@@ -7,6 +7,25 @@ import { ValorText } from '../../shared/ValorText.jsx';
 
 const AMOSTRA = 3;
 
+const ROTULO_ORIGEM = {
+  HISTORICO: 'Histórico (descrição + valor + banco)',
+  CALCULO_PARCELA: 'Cálculos — parcela com valor e data',
+  NOME_PESSOA: 'Nome cadastrado na descrição',
+};
+
+const ROTULO_CONFIANCA = {
+  ALTA: 'Alta confiança',
+  MEDIA: 'Média confiança',
+  BAIXA: 'Baixa confiança',
+};
+
+function classeConfianca(conf) {
+  const c = String(conf ?? '').toUpperCase();
+  if (c === 'ALTA') return 'text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800';
+  if (c === 'MEDIA') return 'text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800';
+  return 'text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700';
+}
+
 function rotuloVinculo(item) {
   const cod = String(item?.sugestaoCodigoCliente ?? '').trim();
   const proc = String(item?.sugestaoProcessoNumero ?? '').trim();
@@ -47,14 +66,31 @@ export function SemelhantesEscritorioGroupCard({ grupo, onAprovarGrupo, onAprova
             GRUPO: «{grupo?.descricaoExemplo ?? '—'}» — {grupo?.bancoNome ?? 'Banco'}
           </p>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            {n.toLocaleString('pt-BR')} pendente{n !== 1 ? 's' : ''} · {formatMoeda(grupo?.valor)} · histórico{' '}
-            {Number(grupo?.qtdHistorico ?? 0).toLocaleString('pt-BR')}×
+            {n.toLocaleString('pt-BR')} pendente{n !== 1 ? 's' : ''} · {formatMoeda(grupo?.valor)}
+            {grupo?.origem === 'HISTORICO'
+              ? ` · histórico ${Number(grupo?.qtdHistorico ?? 0).toLocaleString('pt-BR')}×`
+              : null}
             {periodo ? ` · ${periodo}` : ''}
           </p>
-          <p className="text-xs text-violet-700 dark:text-violet-300">
-            Conta Escritório — pareamento 1:1 por descrição + valor (cada lançamento recebe um vínculo distinto quando o
-            histórico tinha pares diferentes).
-          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className={`text-[10px] px-1.5 py-0.5 rounded border ${classeConfianca(grupo?.confianca ?? itens[0]?.confianca)}`}
+            >
+              {ROTULO_CONFIANCA[String(grupo?.confianca ?? itens[0]?.confianca ?? '').toUpperCase()] ??
+                'Sugestão'}
+            </span>
+            <span className="text-[10px] text-violet-700 dark:text-violet-300">
+              {ROTULO_ORIGEM[String(grupo?.origem ?? itens[0]?.origem ?? '').toUpperCase()] ??
+                'Conta Escritório'}
+            </span>
+          </div>
+          {itens[0]?.descricaoRegra ? (
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">{itens[0].descricaoRegra}</p>
+          ) : (
+            <p className="text-xs text-violet-700 dark:text-violet-300">
+              Conta Escritório — pareamento 1:1 por descrição + valor quando há histórico idêntico.
+            </p>
+          )}
         </div>
         <div className="flex flex-col items-stretch gap-2 shrink-0 min-w-[150px]">
           <ContaBadge codigo={codigo} size="sm" />
@@ -90,7 +126,8 @@ export function SemelhantesEscritorioGroupCard({ grupo, onAprovarGrupo, onAprova
               <th className="py-1.5 pr-2 font-medium">Descrição</th>
               <th className="py-1.5 pr-2 font-medium">Valor</th>
               <th className="py-1.5 pr-2 font-medium">Sugestão (cód. + proc.)</th>
-              <th className="py-1.5 pr-2 font-medium">Ref. histórico</th>
+              <th className="py-1.5 pr-2 font-medium">Origem</th>
+              <th className="py-1.5 pr-2 font-medium">Ref.</th>
               <th className="py-1.5 font-medium w-[5rem]" />
             </tr>
           </thead>
@@ -122,8 +159,15 @@ export function SemelhantesEscritorioGroupCard({ grupo, onAprovarGrupo, onAprova
                     </div>
                   ) : null}
                 </td>
+                <td className="py-2 pr-2 whitespace-nowrap text-slate-500 dark:text-slate-400 text-[10px] max-w-[8rem] truncate" title={item.descricaoRegra}>
+                  {ROTULO_ORIGEM[String(item.origem ?? '').toUpperCase()] ?? item.origem ?? '—'}
+                </td>
                 <td className="py-2 pr-2 whitespace-nowrap text-slate-500 dark:text-slate-400">
-                  {item.referenciaHistoricoData ? formatDataBrCompleta(item.referenciaHistoricoData) : '—'}
+                  {item.referenciaHistoricoData
+                    ? formatDataBrCompleta(item.referenciaHistoricoData)
+                    : item.descricaoRegra
+                      ? '—'
+                      : '—'}
                 </td>
                 <td className="py-2">
                   <button

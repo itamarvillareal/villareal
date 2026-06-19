@@ -6,7 +6,7 @@ const SUBTITULOS = {
   [INBOX_TIPOS.classificar]: 'Nenhuma classificação pendente.',
   [INBOX_TIPOS.compensar]: 'Nenhuma compensação pendente.',
   [INBOX_TIPOS.fatura]: 'Nenhuma sugestão de fatura pendente.',
-  [INBOX_TIPOS.semelhantes]: 'Nenhum lançamento pendente com histórico semelhante na Conta Escritório.',
+  [INBOX_TIPOS.semelhantes]: 'Nenhum lançamento pendente com sugestão para a Conta Escritório (histórico, Cálculos ou nome cadastrado).',
   [INBOX_TIPOS.inconsistentes]: 'Nenhum grupo inconsistente para revisar.',
 };
 

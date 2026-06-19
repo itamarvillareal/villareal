@@ -51,7 +51,74 @@ public final class SemelhanteEscritorioMatcher {
             LocalDate referenciaHistoricoData,
             int indicePar,
             int totalHistoricoChave,
-            int totalPendenteChave) {}
+            int totalPendenteChave,
+            SemelhanteEscritorioOrigem origem,
+            ConfiancaSugestao confianca,
+            String descricaoRegra,
+            Long pagadorPessoaId) {
+
+        public static MatchResult historico(
+                PendenteItem pendente,
+                Long clienteId,
+                Long processoId,
+                Long refLancamentoId,
+                LocalDate refData,
+                int indicePar,
+                int totalHist,
+                int totalPend) {
+            return new MatchResult(
+                    pendente,
+                    clienteId,
+                    processoId,
+                    refLancamentoId,
+                    refData,
+                    indicePar,
+                    totalHist,
+                    totalPend,
+                    SemelhanteEscritorioOrigem.HISTORICO,
+                    ConfiancaSugestao.ALTA,
+                    "histórico Conta A (descrição + valor + banco)",
+                    null);
+        }
+
+        public static MatchResult calculo(
+                PendenteItem pendente, Long clienteId, Long processoId, String descricaoRegra) {
+            return new MatchResult(
+                    pendente,
+                    clienteId,
+                    processoId,
+                    null,
+                    null,
+                    1,
+                    1,
+                    1,
+                    SemelhanteEscritorioOrigem.CALCULO_PARCELA,
+                    ConfiancaSugestao.ALTA,
+                    descricaoRegra,
+                    null);
+        }
+
+        public static MatchResult nomePessoa(
+                PendenteItem pendente,
+                Long clienteId,
+                Long processoId,
+                Long pagadorPessoaId,
+                String nomeResumido) {
+            return new MatchResult(
+                    pendente,
+                    clienteId,
+                    processoId,
+                    null,
+                    null,
+                    1,
+                    1,
+                    1,
+                    SemelhanteEscritorioOrigem.NOME_PESSOA,
+                    ConfiancaSugestao.BAIXA,
+                    "nome na descrição: " + nomeResumido,
+                    pagadorPessoaId);
+        }
+    }
 
     public static List<MatchResult> parear(List<PendenteItem> pendentes, List<HistoricoSlot> historico) {
         Map<String, List<HistoricoSlot>> histPorChave = new HashMap<>();
@@ -93,7 +160,7 @@ public final class SemelhanteEscritorioMatcher {
                 }
                 PendenteItem p = pends.get(i);
                 HistoricoSlot h = slots.get(i);
-                out.add(new MatchResult(
+                out.add(MatchResult.historico(
                         p,
                         h.clienteId(),
                         h.processoId(),
@@ -113,6 +180,27 @@ public final class SemelhanteEscritorioMatcher {
 
     static String chave(PendenteItem p) {
         return chave(p.descricaoNorm(), p.valor(), p.numeroBanco());
+    }
+
+    public static String chaveGrupo(MatchResult m) {
+        if (m == null || m.pendente() == null) {
+            return "";
+        }
+        return switch (m.origem()) {
+            case HISTORICO -> chave(m.pendente());
+            case CALCULO_PARCELA -> "CALC|"
+                    + (m.sugestaoClienteId() != null ? m.sugestaoClienteId() : "")
+                    + "|"
+                    + (m.sugestaoProcessoId() != null ? m.sugestaoProcessoId() : "")
+                    + "|"
+                    + valorCentavos(m.pendente().valor());
+            case NOME_PESSOA -> "NOME|"
+                    + (m.sugestaoClienteId() != null ? m.sugestaoClienteId() : "")
+                    + "|"
+                    + (m.sugestaoProcessoId() != null ? m.sugestaoProcessoId() : "")
+                    + "|"
+                    + (m.pagadorPessoaId() != null ? m.pagadorPessoaId() : "");
+        };
     }
 
     public static String chave(String descricaoNorm, BigDecimal valor, Integer numeroBanco) {

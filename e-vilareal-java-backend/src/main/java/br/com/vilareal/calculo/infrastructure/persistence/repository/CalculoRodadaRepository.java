@@ -40,6 +40,8 @@ public interface CalculoRodadaRepository extends JpaRepository<CalculoRodadaEnti
     List<CalculoRodadaResumoProjection> findResumoByCodigoClienteAndNumeroProcessoOrderByDimensaoAsc(
             @Param("codigoCliente") String codigoCliente, @Param("numeroProcesso") Integer numeroProcesso);
 
+    List<CalculoRodadaEntity> findByParcelamentoAceitoTrue();
+
     long countByImportacaoId(String importacaoId);
 
     long deleteByImportacaoId(String importacaoId);

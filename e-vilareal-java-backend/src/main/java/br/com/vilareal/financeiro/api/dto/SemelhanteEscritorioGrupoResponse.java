@@ -19,5 +19,7 @@ public class SemelhanteEscritorioGrupoResponse {
     private BigDecimal valor;
     private int qtdPendentes;
     private int qtdHistorico;
+    private String origem;
+    private String confianca;
     private List<SemelhanteEscritorioItemResponse> itens = new ArrayList<>();
 }

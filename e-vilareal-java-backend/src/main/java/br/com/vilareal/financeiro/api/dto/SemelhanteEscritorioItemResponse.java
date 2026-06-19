@@ -32,4 +32,9 @@ public class SemelhanteEscritorioItemResponse {
     private int indicePar;
     private int totalHistoricoChave;
     private int totalPendenteChave;
+
+    private String origem;
+    private String confianca;
+    private String descricaoRegra;
+    private Long pagadorPessoaId;
 }

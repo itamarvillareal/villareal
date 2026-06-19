@@ -1,19 +1,28 @@
 package br.com.vilareal.financeiro.application;
 
+import br.com.vilareal.calculo.infrastructure.persistence.entity.CalculoRodadaEntity;
+import br.com.vilareal.calculo.infrastructure.persistence.repository.CalculoRodadaRepository;
 import br.com.vilareal.common.text.Utf8MojibakeUtil;
 import br.com.vilareal.financeiro.api.dto.InboxSemelhantesPaginaResponse;
 import br.com.vilareal.financeiro.api.dto.SemelhanteEscritorioGrupoResponse;
 import br.com.vilareal.financeiro.api.dto.SemelhanteEscritorioItemResponse;
+import br.com.vilareal.financeiro.domain.ConfiancaSugestao;
+import br.com.vilareal.financeiro.domain.FinanceiroDescricaoNomeUtil;
+import br.com.vilareal.financeiro.domain.SemelhanteEscritorioCalculoMatcher;
 import br.com.vilareal.financeiro.domain.SemelhanteEscritorioMatcher;
 import br.com.vilareal.financeiro.domain.SemelhanteEscritorioMatcher.HistoricoSlot;
 import br.com.vilareal.financeiro.domain.SemelhanteEscritorioMatcher.MatchResult;
 import br.com.vilareal.financeiro.domain.SemelhanteEscritorioMatcher.PendenteItem;
+import br.com.vilareal.financeiro.domain.SemelhanteEscritorioNomeMatcher;
+import br.com.vilareal.financeiro.domain.SemelhanteEscritorioNomeMatcher.PessoaProcessoRef;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.ContaContabilEntity;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.LancamentoFinanceiroEntity;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.ContaContabilRepository;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.LancamentoFinanceiroRepository;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
+import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.ClienteRepository;
+import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
 import br.com.vilareal.processo.api.dto.ProcessoPartesVinculoTexto;
 import br.com.vilareal.processo.application.ProcessoApplicationService;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
@@ -27,7 +36,10 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -44,18 +56,24 @@ public class FinanceiroSemelhantesEscritorioService {
     private final ClienteRepository clienteRepository;
     private final ProcessoRepository processoRepository;
     private final ProcessoApplicationService processoApplicationService;
+    private final CalculoRodadaRepository calculoRodadaRepository;
+    private final PessoaRepository pessoaRepository;
 
     public FinanceiroSemelhantesEscritorioService(
             LancamentoFinanceiroRepository lancamentoRepository,
             ContaContabilRepository contaContabilRepository,
             ClienteRepository clienteRepository,
             ProcessoRepository processoRepository,
-            ProcessoApplicationService processoApplicationService) {
+            ProcessoApplicationService processoApplicationService,
+            CalculoRodadaRepository calculoRodadaRepository,
+            PessoaRepository pessoaRepository) {
         this.lancamentoRepository = lancamentoRepository;
         this.contaContabilRepository = contaContabilRepository;
         this.clienteRepository = clienteRepository;
         this.processoRepository = processoRepository;
         this.processoApplicationService = processoApplicationService;
+        this.calculoRodadaRepository = calculoRodadaRepository;
+        this.pessoaRepository = pessoaRepository;
     }
 
     @Transactional(readOnly = true)
@@ -78,11 +96,12 @@ public class FinanceiroSemelhantesEscritorioService {
                 .map(this::toHistoricoSlot)
                 .toList();
 
-        List<MatchResult> matches = SemelhanteEscritorioMatcher.parear(pendentes, historico);
+        List<MatchResult> matches = parearEmCamadas(pendentes, historico);
         List<SemelhanteEscritorioGrupoResponse> grupos = agruparMatches(matches, contaAId, contaACodigo);
         enriquecerPartesProcesso(grupos);
 
-        grupos.sort(Comparator.comparingInt(SemelhanteEscritorioGrupoResponse::getQtdPendentes)
+        grupos.sort(Comparator.comparingInt((SemelhanteEscritorioGrupoResponse g) -> ordemConfianca(g.getConfianca()))
+                .thenComparingInt(SemelhanteEscritorioGrupoResponse::getQtdPendentes)
                 .reversed()
                 .thenComparing(g -> g.getDescricaoExemplo() != null ? g.getDescricaoExemplo() : ""));
 
@@ -109,28 +128,149 @@ public class FinanceiroSemelhantesEscritorioService {
         return listarInbox(numeroBanco, ano, mes, Pageable.ofSize(1)).getTotalItensAcionaveis();
     }
 
+    List<MatchResult> parearEmCamadas(List<PendenteItem> pendentes, List<HistoricoSlot> historico) {
+        Set<Long> vinculados = new HashSet<>();
+        List<MatchResult> out = new ArrayList<>();
+
+        for (MatchResult m : SemelhanteEscritorioMatcher.parear(pendentes, historico)) {
+            out.add(m);
+            vinculados.add(m.pendente().lancamentoId());
+        }
+
+        List<PendenteItem> restantes = pendentes.stream()
+                .filter(p -> p.lancamentoId() != null && !vinculados.contains(p.lancamentoId()))
+                .toList();
+
+        for (MatchResult m : parearPorCalculo(restantes)) {
+            out.add(m);
+            vinculados.add(m.pendente().lancamentoId());
+        }
+
+        restantes = pendentes.stream()
+                .filter(p -> p.lancamentoId() != null && !vinculados.contains(p.lancamentoId()))
+                .toList();
+
+        for (MatchResult m : parearPorNome(restantes)) {
+            out.add(m);
+            vinculados.add(m.pendente().lancamentoId());
+        }
+
+        return out;
+    }
+
+    private List<MatchResult> parearPorCalculo(List<PendenteItem> pendentes) {
+        if (pendentes.isEmpty()) {
+            return List.of();
+        }
+        List<CalculoRodadaEntity> rodadas = calculoRodadaRepository.findByParcelamentoAceitoTrue();
+        if (rodadas.isEmpty()) {
+            return List.of();
+        }
+
+        Map<String, Long> clienteIdPorCodigo = new HashMap<>();
+        for (String cod : SemelhanteEscritorioCalculoMatcher.codigosUnicos(rodadas)) {
+            clienteRepository.findByCodigoCliente(cod).ifPresent(c -> clienteIdPorCodigo.put(cod, c.getId()));
+        }
+
+        Map<String, Long> processoIdPorClienteProc = new HashMap<>();
+        for (CalculoRodadaEntity r : rodadas) {
+            if (!r.isParcelamentoAceito()) {
+                continue;
+            }
+            String cod = SemelhanteEscritorioCalculoMatcher.normalizarCod8(r.getCodigoCliente());
+            Long clienteId = clienteIdPorCodigo.get(cod);
+            if (clienteId == null || r.getNumeroProcesso() == null) {
+                continue;
+            }
+            processoRepository
+                    .findByCliente_IdAndNumeroInterno(clienteId, r.getNumeroProcesso())
+                    .ifPresent(p -> SemelhanteEscritorioCalculoMatcher.registrarProcesso(
+                            processoIdPorClienteProc, clienteId, r.getNumeroProcesso(), p.getId()));
+        }
+
+        return SemelhanteEscritorioCalculoMatcher.parear(
+                pendentes, rodadas, clienteIdPorCodigo, processoIdPorClienteProc);
+    }
+
+    private List<MatchResult> parearPorNome(List<PendenteItem> pendentes) {
+        if (pendentes.isEmpty()) {
+            return List.of();
+        }
+
+        Set<String> descricoesNorm = new LinkedHashSet<>();
+        for (PendenteItem p : pendentes) {
+            String dn = FinanceiroDescricaoNomeUtil.normalizarTextoDescricao(p.descricao(), null);
+            if (StringUtils.hasText(dn)) {
+                descricoesNorm.add(dn);
+            }
+        }
+        if (descricoesNorm.isEmpty()) {
+            return List.of();
+        }
+
+        List<Object[]> todasRows = new ArrayList<>();
+        for (String descNorm : descricoesNorm) {
+            todasRows.addAll(processoRepository.findPessoaProcessoIdsPorNomeContidoNaDescricao(descNorm));
+        }
+        if (todasRows.isEmpty()) {
+            return List.of();
+        }
+
+        Map<Long, String> nomesPorPessoaId = new LinkedHashMap<>();
+        for (Object[] row : todasRows) {
+            if (row == null || row[0] == null) {
+                continue;
+            }
+            Long pessoaId = ((Number) row[0]).longValue();
+            nomesPorPessoaId.computeIfAbsent(
+                    pessoaId,
+                    id -> pessoaRepository.findById(id).map(PessoaEntity::getNome).orElse(null));
+        }
+
+        Map<Long, Long> clienteIdPorProcessoId = new HashMap<>();
+        for (Object[] row : todasRows) {
+            if (row == null || row.length < 2 || row[1] == null) {
+                continue;
+            }
+            Long processoId = ((Number) row[1]).longValue();
+            clienteIdPorProcessoId.computeIfAbsent(
+                    processoId,
+                    id -> processoRepository
+                            .findById(id)
+                            .map(ProcessoEntity::getCliente)
+                            .map(ClienteEntity::getId)
+                            .orElse(null));
+        }
+
+        List<PessoaProcessoRef> refs =
+                SemelhanteEscritorioNomeMatcher.refsFromQueryRows(todasRows, nomesPorPessoaId, clienteIdPorProcessoId);
+        return SemelhanteEscritorioNomeMatcher.parear(pendentes, refs, nomesPorPessoaId);
+    }
+
     private List<SemelhanteEscritorioGrupoResponse> agruparMatches(
             List<MatchResult> matches, Long contaAId, String contaACodigo) {
         Map<String, SemelhanteEscritorioGrupoResponse> map = new LinkedHashMap<>();
         for (MatchResult m : matches) {
-            PendenteItem p = m.pendente();
-            String chave = SemelhanteEscritorioMatcher.chave(p.descricaoNorm(), p.valor(), p.numeroBanco());
+            String chave = SemelhanteEscritorioMatcher.chaveGrupo(m);
             SemelhanteEscritorioGrupoResponse grupo =
-                    map.computeIfAbsent(chave, k -> novoGrupo(p, m.totalHistoricoChave()));
+                    map.computeIfAbsent(chave, k -> novoGrupo(m));
             grupo.getItens().add(toItemResponse(m, contaAId, contaACodigo));
             grupo.setQtdPendentes(grupo.getItens().size());
         }
         return new ArrayList<>(map.values());
     }
 
-    private static SemelhanteEscritorioGrupoResponse novoGrupo(PendenteItem p, int qtdHistorico) {
+    private static SemelhanteEscritorioGrupoResponse novoGrupo(MatchResult m) {
+        PendenteItem p = m.pendente();
         SemelhanteEscritorioGrupoResponse g = new SemelhanteEscritorioGrupoResponse();
         g.setDescricaoNorm(p.descricaoNorm());
         g.setDescricaoExemplo(Utf8MojibakeUtil.corrigir(p.descricao()));
         g.setNumeroBanco(p.numeroBanco());
         g.setBancoNome(Utf8MojibakeUtil.corrigir(p.bancoNome()));
         g.setValor(p.valor() != null ? p.valor().setScale(2, RoundingMode.HALF_UP) : BigDecimal.ZERO);
-        g.setQtdHistorico(qtdHistorico);
+        g.setQtdHistorico(m.totalHistoricoChave());
+        g.setOrigem(m.origem().name());
+        g.setConfianca(m.confianca().name());
         return g;
     }
 
@@ -151,6 +291,10 @@ public class FinanceiroSemelhantesEscritorioService {
         item.setIndicePar(m.indicePar());
         item.setTotalHistoricoChave(m.totalHistoricoChave());
         item.setTotalPendenteChave(m.totalPendenteChave());
+        item.setOrigem(m.origem().name());
+        item.setConfianca(m.confianca().name());
+        item.setDescricaoRegra(m.descricaoRegra());
+        item.setPagadorPessoaId(m.pagadorPessoaId());
 
         if (m.sugestaoClienteId() != null) {
             clienteRepository.findById(m.sugestaoClienteId()).ifPresent(c -> {
@@ -197,6 +341,16 @@ public class FinanceiroSemelhantesEscritorioService {
         }
     }
 
+    private static int ordemConfianca(String confianca) {
+        if (ConfiancaSugestao.ALTA.name().equalsIgnoreCase(confianca)) {
+            return 0;
+        }
+        if (ConfiancaSugestao.MEDIA.name().equalsIgnoreCase(confianca)) {
+            return 1;
+        }
+        return 2;
+    }
+
     private PendenteItem toPendenteItem(LancamentoFinanceiroEntity l) {
         return new PendenteItem(
                 l.getId(),
@@ -232,11 +386,11 @@ public class FinanceiroSemelhantesEscritorioService {
     }
 
     private static String numeroProcesso(ProcessoEntity p) {
-        if (StringUtils.hasText(p.getNumeroCnj())) {
-            return Utf8MojibakeUtil.corrigir(p.getNumeroCnj());
-        }
         if (p.getNumeroInterno() != null) {
             return String.valueOf(p.getNumeroInterno());
+        }
+        if (StringUtils.hasText(p.getNumeroCnj())) {
+            return Utf8MojibakeUtil.corrigir(p.getNumeroCnj());
         }
         return p.getId() != null ? String.valueOf(p.getId()) : "";
     }
