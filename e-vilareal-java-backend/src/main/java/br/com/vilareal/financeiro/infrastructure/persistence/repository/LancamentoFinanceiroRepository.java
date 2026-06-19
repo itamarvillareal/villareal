@@ -202,6 +202,9 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
     @Query(value = """
             SELECT a.id, b.id, a.numero_banco, b.numero_banco
             FROM financeiro_lancamento a
+            """
+            + CompensacaoSqlDiaUtil.JOIN_CONTA_E_AB
+            + """
             INNER JOIN financeiro_lancamento b ON
                 """
             + CompensacaoSqlDiaUtil.MESMO_DIA_UTIL_BANCARIO_JOIN_AB
@@ -213,6 +216,9 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
               AND b.etapa IN ('IMPORTADO', 'CLASSIFICADO')
               AND (a.grupo_compensacao IS NULL OR a.grupo_compensacao = '')
               AND (b.grupo_compensacao IS NULL OR b.grupo_compensacao = '')
+            """
+            + CompensacaoSqlDiaUtil.WHERE_CONTA_E_AB
+            + """
               AND (:numeroBanco IS NULL OR a.numero_banco = :numeroBanco OR b.numero_banco = :numeroBanco)
               AND (:ano IS NULL OR (YEAR(a.data_lancamento) = :ano AND (:mes IS NULL OR MONTH(a.data_lancamento) = :mes)))
               AND (:apenasInterbancario = false OR a.numero_banco <> b.numero_banco)
@@ -237,6 +243,9 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
     @Query(value = """
             SELECT COUNT(*)
             FROM financeiro_lancamento a
+            """
+            + CompensacaoSqlDiaUtil.JOIN_CONTA_E_AB
+            + """
             INNER JOIN financeiro_lancamento b ON
                 """
             + CompensacaoSqlDiaUtil.MESMO_DIA_UTIL_BANCARIO_JOIN_AB
@@ -248,6 +257,9 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
               AND b.etapa IN ('IMPORTADO', 'CLASSIFICADO')
               AND (a.grupo_compensacao IS NULL OR a.grupo_compensacao = '')
               AND (b.grupo_compensacao IS NULL OR b.grupo_compensacao = '')
+            """
+            + CompensacaoSqlDiaUtil.WHERE_CONTA_E_AB
+            + """
               AND (:numeroBanco IS NULL OR a.numero_banco = :numeroBanco OR b.numero_banco = :numeroBanco)
               AND (:ano IS NULL OR (YEAR(a.data_lancamento) = :ano AND (:mes IS NULL OR MONTH(a.data_lancamento) = :mes)))
               AND (:apenasInterbancario = false OR a.numero_banco <> b.numero_banco)

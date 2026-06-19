@@ -195,6 +195,27 @@ class FinanceiroCompensacaoServiceTest {
     }
 
     @Test
+    void listarParesSugeridos_ignoraLancamentosSemLetraE() {
+        LocalDate dia = LocalDate.of(2026, 4, 24);
+        LancamentoFinanceiroEntity bbPix = lancamentoOrfao(10L, 2, NaturezaLancamento.DEBITO, dia, contaN());
+        LancamentoFinanceiroEntity itauPix = lancamentoOrfao(30L, 1, NaturezaLancamento.CREDITO, dia, contaN());
+
+        when(lancamentoRepository.countParesCompensacaoSugeridos(
+                        any(), any(), any(), eq(3), anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean()))
+                .thenReturn(1L);
+        when(lancamentoRepository.findParesCompensacaoSugeridosIds(
+                        any(), any(), any(), eq(3), anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean(), anyInt(), anyInt()))
+                .thenReturn(List.<Object[]>of(new Object[] {10L, 30L, 2, 1}), List.of());
+        when(lancamentoRepository.findAllByIdIn(any())).thenReturn(List.of(bbPix, itauPix));
+
+        ParesSugeridosCompensacaoResponse r =
+                service.listarParesSugeridos(null, 2026, 4, 0, 50, false, false, false, false);
+
+        assertThat(r.getTotalPares()).isZero();
+        assertThat(r.getPares()).isEmpty();
+    }
+
+    @Test
     void listarParesSugeridos_paginaRetornaSubconjunto() {
         LocalDate dia = LocalDate.of(2026, 5, 10);
         LancamentoFinanceiroEntity d1 = lancamentoOrfao(1L, 1, NaturezaLancamento.DEBITO, dia);
@@ -248,14 +269,30 @@ class FinanceiroCompensacaoServiceTest {
 
     private static LancamentoFinanceiroEntity lancamentoOrfao(
             long id, int numeroBanco, NaturezaLancamento natureza, LocalDate data) {
+        return lancamentoOrfao(id, numeroBanco, natureza, data, contaE());
+    }
+
+    private static LancamentoFinanceiroEntity lancamentoOrfao(
+            long id,
+            int numeroBanco,
+            NaturezaLancamento natureza,
+            LocalDate data,
+            ContaContabilEntity conta) {
         LancamentoFinanceiroEntity e = new LancamentoFinanceiroEntity();
         e.setId(id);
         e.setNumeroBanco(numeroBanco);
         e.setValor(new BigDecimal("500.00"));
         e.setNatureza(natureza);
         e.setDataLancamento(data);
-        e.setContaContabil(contaN());
+        e.setContaContabil(conta);
         e.setEtapa(EtapaLancamento.CLASSIFICADO);
+        return e;
+    }
+
+    private static ContaContabilEntity contaE() {
+        ContaContabilEntity e = new ContaContabilEntity();
+        e.setId(6L);
+        e.setCodigo("E");
         return e;
     }
 }

@@ -367,6 +367,9 @@ public class FinanceiroCompensacaoService {
             if (a == null || b == null) {
                 continue;
             }
+            if (!contaCompensacao(a) || !contaCompensacao(b)) {
+                continue;
+            }
             if (!mesmoDiaUtilParaCompensacao(a.getDataLancamento(), b.getDataLancamento())) {
                 continue;
             }
@@ -465,6 +468,13 @@ public class FinanceiroCompensacaoService {
 
     private static boolean mesmoDiaUtilParaCompensacao(LocalDate dataA, LocalDate dataB) {
         return CompensacaoDateUtils.mesmoDiaUtilBancario(dataA, dataB);
+    }
+
+    private static boolean contaCompensacao(LancamentoFinanceiroEntity e) {
+        if (e.getContaContabil() == null || e.getContaContabil().getCodigo() == null) {
+            return false;
+        }
+        return "E".equalsIgnoreCase(e.getContaContabil().getCodigo().trim());
     }
 
     /** Reforço pós-greedy: mesmo dia = data de calendário igual; divergente = datas diferentes. */
