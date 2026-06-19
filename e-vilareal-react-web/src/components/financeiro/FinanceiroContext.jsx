@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { CARTAO_TO_NUMERO, getBancoNumeroMapMerged } from '../../data/financeiroData.js';
+import { CARTAO_TO_NUMERO, compararOrdemExibicaoBancos, getBancoNumeroMapMerged } from '../../data/financeiroData.js';
 import {
   buildClassificacaoContasPorNumero,
   classificacaoConta,
@@ -73,7 +73,7 @@ export function FinanceiroProvider({
           temExtrato: cls.temExtrato,
         };
       })
-      .sort((a, b) => (b.count ?? 0) - (a.count ?? 0));
+      .sort(compararOrdemExibicaoBancos);
   }, [contadores, bancosRevision, classificacaoPorNumero]);
 
   const bancosVisiveis = useMemo(() => {

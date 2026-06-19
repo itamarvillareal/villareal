@@ -102,6 +102,38 @@ const BANCO_TO_NUMERO = {
   'BTG Banking': 24, 'BTG (2)': 25, 'CORA': 26, 'BTG JA': 27, 'BTG RACHEL': 28, 'Sicoob VRV': 29,
 };
 
+/** Ordem fixa no topo da lista de bancos (sidebar Financeiro); demais mantêm ordenação por volume. */
+export const ORDEM_EXIBICAO_BANCOS = [
+  'Itaú',
+  'CORA',
+  'Sicoob VRV',
+  'CEF',
+  'BTG',
+  'BTG Banking',
+  'BTG JA',
+  'BTG RACHEL',
+];
+
+function indiceOrdemExibicaoBanco(nome) {
+  const n = String(nome ?? '').trim();
+  const exact = ORDEM_EXIBICAO_BANCOS.indexOf(n);
+  if (exact >= 0) return exact;
+  const upper = n.toUpperCase();
+  const ci = ORDEM_EXIBICAO_BANCOS.findIndex((x) => x.toUpperCase() === upper);
+  return ci >= 0 ? ci : ORDEM_EXIBICAO_BANCOS.length;
+}
+
+/** Compara bancos: prioritários primeiro; resto por contagem decrescente (comportamento anterior). */
+export function compararOrdemExibicaoBancos(a, b) {
+  const pa = indiceOrdemExibicaoBanco(a?.nome ?? a);
+  const pb = indiceOrdemExibicaoBanco(b?.nome ?? b);
+  if (pa !== pb) return pa - pb;
+  const ca = Number(a?.count) || 0;
+  const cb = Number(b?.count) || 0;
+  if (cb !== ca) return cb - ca;
+  return String(a?.nome ?? a).localeCompare(String(b?.nome ?? b), 'pt-BR');
+}
+
 /** Cartões de crédito — extrato fatura (sinal da fatura; inversão só no consolidado contábil). */
 export const CARTAO_TO_NUMERO = {
   Mastercard: 7,
