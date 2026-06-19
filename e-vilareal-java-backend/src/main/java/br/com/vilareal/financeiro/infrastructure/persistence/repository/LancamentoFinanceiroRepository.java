@@ -435,6 +435,35 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
             @Param("contaContabilId") Long contaContabilId);
 
     @Query("""
+            SELECT l FROM LancamentoFinanceiroEntity l
+            JOIN FETCH l.contaContabil c
+            LEFT JOIN FETCH l.clienteEntidade
+            LEFT JOIN FETCH l.processo
+            WHERE l.etapa <> br.com.vilareal.financeiro.domain.EtapaLancamento.IMPORTADO
+              AND UPPER(TRIM(c.codigo)) = 'A'
+              AND l.clienteEntidade IS NOT NULL
+              AND l.processo IS NOT NULL
+              AND l.descricaoNorm IS NOT NULL AND TRIM(l.descricaoNorm) <> ''
+              AND (:numeroBanco IS NULL OR l.numeroBanco = :numeroBanco)
+            ORDER BY l.dataLancamento DESC, l.id DESC
+            """)
+    List<LancamentoFinanceiroEntity> findHistoricoVinculadoContaA(@Param("numeroBanco") Integer numeroBanco);
+
+    @Query("""
+            SELECT l FROM LancamentoFinanceiroEntity l
+            WHERE l.etapa = br.com.vilareal.financeiro.domain.EtapaLancamento.IMPORTADO
+              AND l.descricaoNorm IS NOT NULL AND TRIM(l.descricaoNorm) <> ''
+              AND (:numeroBanco IS NULL OR l.numeroBanco = :numeroBanco)
+              AND (:ano IS NULL OR YEAR(l.dataLancamento) = :ano)
+              AND (:mes IS NULL OR MONTH(l.dataLancamento) = :mes)
+            ORDER BY l.dataLancamento ASC, l.id ASC
+            """)
+    List<LancamentoFinanceiroEntity> findPendentesSemelhantesEscritorio(
+            @Param("numeroBanco") Integer numeroBanco,
+            @Param("ano") Integer ano,
+            @Param("mes") Integer mes);
+
+    @Query("""
             SELECT l.valor FROM LancamentoFinanceiroEntity l
             INNER JOIN l.contaContabil c
             WHERE l.etapa <> br.com.vilareal.financeiro.domain.EtapaLancamento.IMPORTADO

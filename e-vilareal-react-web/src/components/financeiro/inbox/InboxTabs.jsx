@@ -4,6 +4,7 @@ import { INBOX_TIPOS } from '../constants/financeiroConstants.js';
 
 const TABS = [
   { tipo: INBOX_TIPOS.classificar, label: 'Classificar' },
+  { tipo: INBOX_TIPOS.semelhantes, label: 'Escritório' },
   { tipo: INBOX_TIPOS.compensar, label: 'Compensar' },
   { tipo: INBOX_TIPOS.fatura, label: 'Fatura' },
   { tipo: INBOX_TIPOS.inconsistentes, label: 'Inconsistentes' },

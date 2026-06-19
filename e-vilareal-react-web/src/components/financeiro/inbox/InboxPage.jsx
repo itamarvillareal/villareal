@@ -8,6 +8,7 @@ import {
   listarContasFinanceiro,
   listarGruposCompensacaoInconsistentesApi,
   listarInboxClassificarPaginaApi,
+  listarInboxSemelhantesApi,
   listarLancamentosFinanceiroPaginados,
   listarParesSugeridosCompensacaoApi,
   listarSugestoesPagamentoFaturaApi,
@@ -44,6 +45,7 @@ import {
 } from './inboxClassificacaoGrupos.js';
 import { CompensacaoCard } from './cards/CompensacaoCard.jsx';
 import { InconsistenciaCard } from './cards/InconsistenciaCard.jsx';
+import { SemelhantesEscritorioGroupCard } from './cards/SemelhantesEscritorioGroupCard.jsx';
 import { dispatchRefreshPendentes } from '../hooks/useKeyboardShortcuts.js';
 import { scrollInboxCardIntoView, useInboxKeyboard } from '../hooks/useInboxKeyboard.js';
 import {
@@ -111,6 +113,7 @@ export function InboxPage() {
   const [sugestoesMap, setSugestoesMap] = useState({});
   const [pares, setPares] = useState([]);
   const [grupos, setGrupos] = useState([]);
+  const [semelhantesGrupos, setSemelhantesGrupos] = useState([]);
 
   const [totalElements, setTotalElements] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -162,7 +165,7 @@ export function InboxPage() {
 
   const loadCounts = useCallback(
     async (signal) => {
-      const [classificarRes, fatura, saude, inconsistentesRes] = await Promise.all([
+      const [classificarRes, fatura, saude, inconsistentesRes, semelhantesRes] = await Promise.all([
         listarLancamentosFinanceiroPaginados(
           {
             page: 0,
@@ -186,6 +189,15 @@ export function InboxPage() {
           numeroBanco: bancoFiltro,
           signal,
         }),
+        listarInboxSemelhantesApi(
+          {
+            page: 0,
+            size: 1,
+            ...periodoAnoMes,
+            numeroBanco: bancoFiltro,
+          },
+          { signal },
+        ).catch(() => ({ totalItensAcionaveis: 0 })),
       ]);
 
       setCounts((prev) => ({
@@ -196,6 +208,7 @@ export function InboxPage() {
             : Number(saude?.paresOrfaosSugeridos ?? 0),
         [INBOX_TIPOS.fatura]: Number(fatura?.totalSugestoes ?? 0),
         [INBOX_TIPOS.inconsistentes]: Number(inconsistentesRes?.total ?? 0),
+        [INBOX_TIPOS.semelhantes]: Number(semelhantesRes?.totalItensAcionaveis ?? 0),
       }));
     },
     [filters.mes, periodo, periodoAnoMes, bancoFiltro, tipo],
@@ -244,6 +257,9 @@ export function InboxPage() {
     setContaLoteId('');
     if (tipo === INBOX_TIPOS.compensar) {
       setPares([]);
+    }
+    if (tipo === INBOX_TIPOS.semelhantes) {
+      setSemelhantesGrupos([]);
     }
   }, [tipo, filters.mes, bancoAtivo, filtroTipoPar, filtroTipoDia, filtroLetraSugestao]);
 
@@ -322,6 +338,27 @@ export function InboxPage() {
               [INBOX_TIPOS.compensar]: total,
             }));
           });
+          return;
+        }
+
+        if (tipo === INBOX_TIPOS.semelhantes) {
+          const res = await listarInboxSemelhantesApi(
+            {
+              page,
+              size: pageSize,
+              ...periodoAnoMes,
+              numeroBanco: bancoFiltro,
+            },
+            { signal: ac.signal },
+          );
+          const lista = res?.content ?? [];
+          setSemelhantesGrupos(lista);
+          setTotalElements(Number(res?.totalElements ?? lista.length));
+          setTotalPages(Math.max(1, Number(res?.totalPages ?? 1)));
+          setCounts((c) => ({
+            ...c,
+            [INBOX_TIPOS.semelhantes]: Number(res?.totalItensAcionaveis ?? 0),
+          }));
           return;
         }
 
@@ -442,6 +479,74 @@ export function InboxPage() {
     },
     [toast, removeComFade, patchCount, scheduleLoadCounts, contas, sugestoesMap],
   );
+
+  const chaveGrupoSemelhantes = useCallback(
+    (g) => `${g?.descricaoNorm ?? ''}|${g?.numeroBanco ?? ''}|${g?.valor ?? ''}`,
+    [],
+  );
+
+  const aplicarSemelhantesItens = useCallback(
+    async (itens) => {
+      const aplicacoes = (itens ?? [])
+        .filter((i) => i?.lancamentoId && i?.contaContabilId && i?.sugestaoClienteId && i?.sugestaoProcessoId)
+        .map((i) => ({
+          lancamentoId: i.lancamentoId,
+          contaContabilId: i.contaContabilId,
+          clienteId: i.sugestaoClienteId,
+          processoId: i.sugestaoProcessoId,
+        }));
+      if (!aplicacoes.length) {
+        toast.warn('Nenhum vínculo válido para aplicar.');
+        return;
+      }
+      setBusy(true);
+      try {
+        const res = await aplicarSugestoesLoteApi(aplicacoes);
+        const ok = Number(res?.aplicados ?? aplicacoes.length);
+        const ids = aplicacoes.map((a) => a.lancamentoId);
+        toast.success(
+          ok === 1
+            ? '1 lançamento vinculado na Conta Escritório.'
+            : `${ok.toLocaleString('pt-BR')} lançamentos vinculados na Conta Escritório.`,
+        );
+        removeComFade(ids, () => {
+          setSemelhantesGrupos((prev) => {
+            const next = prev
+              .map((g) => ({
+                ...g,
+                itens: (g.itens ?? []).filter((i) => !ids.includes(i.lancamentoId)),
+              }))
+              .filter((g) => (g.itens ?? []).length > 0);
+            setTotalElements(next.length);
+            return next;
+          });
+        });
+        patchCount(INBOX_TIPOS.semelhantes, -ok);
+        scheduleLoadCounts();
+        dispatchRefreshPendentes();
+      } catch (e) {
+        toast.error(e?.message || 'Falha ao vincular lançamentos.');
+      } finally {
+        setBusy(false);
+      }
+    },
+    [toast, removeComFade, patchCount, scheduleLoadCounts],
+  );
+
+  const handleAprovarSemelhanteGrupo = useCallback(
+    (grupo) => void aplicarSemelhantesItens(grupo?.itens ?? []),
+    [aplicarSemelhantesItens],
+  );
+
+  const handleAprovarSemelhanteItem = useCallback(
+    (item) => void aplicarSemelhantesItens([item]),
+    [aplicarSemelhantesItens],
+  );
+
+  const handlePularSemelhantes = useCallback((ids) => {
+    if (!ids?.length) return;
+    setSkipped((prev) => new Set([...prev, ...ids]));
+  }, []);
 
   const handleParear = useCallback(
     async (par) => {
@@ -901,6 +1006,19 @@ export function InboxPage() {
     [grupos, skipped, fading],
   );
 
+  const semelhantesVisiveis = useMemo(
+    () =>
+      semelhantesGrupos
+        .map((g) => ({
+          ...g,
+          itens: (g.itens ?? []).filter(
+            (i) => !skipped.has(i.lancamentoId) && !fading.has(i.lancamentoId),
+          ),
+        }))
+        .filter((g) => (g.itens ?? []).length > 0),
+    [semelhantesGrupos, skipped, fading],
+  );
+
   const itensNavegaveis = useMemo(() => {
     if (tipo === INBOX_TIPOS.classificar) {
       if (filtroLetraAtivo) {
@@ -1020,6 +1138,8 @@ export function InboxPage() {
         classificacaoFiltrada.semSugestao.length === 0
       : tipo === INBOX_TIPOS.compensar
         ? paresVisiveis.length === 0
+        : tipo === INBOX_TIPOS.semelhantes
+          ? semelhantesVisiveis.length === 0
         : tipo === INBOX_TIPOS.inconsistentes
           ? gruposVisiveis.length === 0
           : Number(counts[INBOX_TIPOS.fatura] ?? 0) === 0);
@@ -1325,6 +1445,23 @@ export function InboxPage() {
               />
             </div>
           ))
+        ) : tipo === INBOX_TIPOS.semelhantes ? (
+          semelhantesVisiveis.map((grupo, idx) => {
+            const ids = (grupo.itens ?? []).map((i) => i.lancamentoId);
+            const grupoFading = ids.some((id) => fading.has(id));
+            return (
+              <div key={chaveGrupoSemelhantes(grupo)} data-inbox-card-index={idx}>
+                <SemelhantesEscritorioGroupCard
+                  grupo={grupo}
+                  onAprovarGrupo={handleAprovarSemelhanteGrupo}
+                  onAprovarItem={handleAprovarSemelhanteItem}
+                  onPularGrupo={handlePularSemelhantes}
+                  fading={grupoFading}
+                  busy={busy}
+                />
+              </div>
+            );
+          })
         ) : tipo === INBOX_TIPOS.inconsistentes ? (
           grupos
             .filter((g) => !skipped.has(g.grupoCompensacao))

@@ -443,6 +443,21 @@ export async function listarInboxClassificarPaginaApi(filtros = {}, opts = {}) {
   }
 }
 
+export async function listarInboxSemelhantesApi(filtros = {}, opts = {}) {
+  const { signal } = opts;
+  if (!featureFlags.useApiFinanceiro) {
+    return { content: [], totalElements: 0, totalPages: 0, totalItensAcionaveis: 0 };
+  }
+  const query = {
+    page: filtros.page != null ? Math.max(0, Number(filtros.page) || 0) : 0,
+    size: clampFinanceiroPageSize(filtros.size ?? 50),
+    numeroBanco: filtros.numeroBanco ?? undefined,
+    ano: filtros.ano ?? undefined,
+    mes: filtros.mes ?? undefined,
+  };
+  return request('/api/financeiro/lancamentos/inbox/semelhantes', { query, signal });
+}
+
 export async function listarLancamentosFinanceiroPaginados(filtros = {}, opts = {}) {
   const { signal } = opts;
   if (!featureFlags.useApiFinanceiro) {

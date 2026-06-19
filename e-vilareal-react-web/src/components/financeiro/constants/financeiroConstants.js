@@ -27,6 +27,7 @@ export const INBOX_TIPOS = {
   compensar: 'compensar',
   fatura: 'fatura',
   recorrencia: 'recorrencia',
+  semelhantes: 'semelhantes',
   inconsistentes: 'inconsistentes',
 };
 

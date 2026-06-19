@@ -9,6 +9,7 @@ import br.com.vilareal.financeiro.application.FinanceiroFaturaSugestaoService;
 import br.com.vilareal.financeiro.application.FinanceiroMesApplicationService;
 import br.com.vilareal.financeiro.application.FinanceiroSaudeService;
 import br.com.vilareal.financeiro.application.ClassificacaoAutomaticaService;
+import br.com.vilareal.financeiro.application.FinanceiroSemelhantesEscritorioService;
 import br.com.vilareal.financeiro.application.FinanceiroSugestaoService;
 import br.com.vilareal.financeiro.application.RegraClassificacaoApplicationService;
 import br.com.vilareal.financeiro.domain.EtapaLancamento;
@@ -51,6 +52,7 @@ public class FinanceiroController {
     private final FinanceiroSaudeService financeiroSaudeService;
     private final FinanceiroMesApplicationService financeiroMesService;
     private final ContaBancariaApplicationService contaBancariaService;
+    private final FinanceiroSemelhantesEscritorioService semelhantesEscritorioService;
 
     public FinanceiroController(
             FinanceiroApplicationService financeiroService,
@@ -64,7 +66,8 @@ public class FinanceiroController {
             FinanceiroFaturaSugestaoService financeiroFaturaSugestaoService,
             FinanceiroSaudeService financeiroSaudeService,
             FinanceiroMesApplicationService financeiroMesService,
-            ContaBancariaApplicationService contaBancariaService) {
+            ContaBancariaApplicationService contaBancariaService,
+            FinanceiroSemelhantesEscritorioService semelhantesEscritorioService) {
         this.financeiroService = financeiroService;
         this.financeiroCartaoService = financeiroCartaoService;
         this.pagamentoFaturaService = pagamentoFaturaService;
@@ -77,6 +80,7 @@ public class FinanceiroController {
         this.financeiroSaudeService = financeiroSaudeService;
         this.financeiroMesService = financeiroMesService;
         this.contaBancariaService = contaBancariaService;
+        this.semelhantesEscritorioService = semelhantesEscritorioService;
     }
 
     @GetMapping("/saude")
@@ -312,6 +316,16 @@ public class FinanceiroController {
         response.setSize(page.getSize());
         response.setSugestoes(sugestoes);
         return response;
+    }
+
+    @GetMapping("/lancamentos/inbox/semelhantes")
+    @Operation(description = "Inbox: pendentes semelhantes a histórico vinculado na Conta Escritório (pareamento 1:1 por valor).")
+    public InboxSemelhantesPaginaResponse inboxSemelhantes(
+            @RequestParam(value = "numeroBanco", required = false) Integer numeroBanco,
+            @RequestParam(value = "ano", required = false) Integer ano,
+            @RequestParam(value = "mes", required = false) Integer mes,
+            @PageableDefault(size = 50) Pageable pageable) {
+        return semelhantesEscritorioService.listarInbox(numeroBanco, ano, mes, pageable);
     }
 
     @GetMapping("/lancamentos/{id:\\d+}")
