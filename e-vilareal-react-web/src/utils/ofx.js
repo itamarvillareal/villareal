@@ -622,6 +622,57 @@ export function mergeExtratoApiComLocal(apiRows, localRows) {
   return arr;
 }
 
+/** Sicoob envia MEMO genérico (tipo Pix) e NAME com contraparte — ex.: NAME "Recebimento Pix FULANO". */
+function nameSicoobComContraparte(name, memo) {
+  const n = String(name ?? '').trim();
+  const m = String(memo ?? '').trim();
+  if (!n || !m) return false;
+  if (/^(RECEBIMENTO|PAGAMENTO)\s+PIX\b/i.test(n) && /PIX\s+(RECEBIDO|EMITIDO)/i.test(m)) {
+    return true;
+  }
+  if (/^SAQ\.?\s*DIG/i.test(n) && /SAQUE/i.test(m)) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Escolhe texto principal do lançamento OFX (coluna Descrição).
+ * Itaú/Cora: MEMO costuma ter o detalhe; Sicoob: NAME traz a contraparte.
+ */
+export function escolherDescricaoPrincipalOfx(name, memo) {
+  const n = normalizeWhitespace(name);
+  const m = normalizeWhitespace(memo);
+  if (!n && !m) return 'LANÇAMENTO';
+  if (!n) return m;
+  if (!m) return n;
+  if (n === m) return n;
+  if (nameSicoobComContraparte(n, m)) return n;
+  const nameWords = n.split(/\s+/).length;
+  const memoWords = m.split(/\s+/).length;
+  if (n.length < m.length && memoWords > nameWords) return m;
+  return n.length >= m.length ? n : m;
+}
+
+/** Observação / detalhe: preserva NAME e MEMO quando diferem do texto principal. */
+export function montarDescricaoDetalhadaOfx(name, memo, trnType, descricaoPrincipal) {
+  const principal = normalizeWhitespace(descricaoPrincipal);
+  const n = normalizeWhitespace(name);
+  const m = normalizeWhitespace(memo);
+  const secundario = [];
+  if (m && m !== principal) secundario.push(m);
+  if (n && n !== principal && n !== m) secundario.push(n);
+  if (!secundario.length) return trnType || '';
+  const texto = secundario.join(' · ');
+  return trnType ? `${trnType} — ${texto}` : texto;
+}
+
+export function montarDescricoesOfxStmtrn({ name, memo, trnType }) {
+  const descricao = escolherDescricaoPrincipalOfx(name, memo);
+  const descricaoDetalhada = montarDescricaoDetalhadaOfx(name, memo, trnType, descricao);
+  return { descricao, descricaoDetalhada };
+}
+
 export function parseOfxToExtrato(ofxText) {
   const txt = String(ofxText ?? '');
 
@@ -645,8 +696,8 @@ export function parseOfxToExtrato(ofxText) {
     const id = idLancamentoOfx(b, idx, idsUsados);
     const name = normalizeWhitespace(getTagValue(b, 'NAME'));
     const memo = normalizeWhitespace(getTagValue(b, 'MEMO'));
-    const descricao = memo || name || 'LANÇAMENTO';
     const trnType = normalizeWhitespace(getTagValue(b, 'TRNTYPE'));
+    const { descricao, descricaoDetalhada } = montarDescricoesOfxStmtrn({ name, memo, trnType });
 
     return {
       /** Conta contábil "Conta Não Identificados" — permanece até reclassificar no extrato ou via Parear compensações. */
@@ -657,7 +708,7 @@ export function parseOfxToExtrato(ofxText) {
       valor: trnAmt,
       saldo: 0,
       saldoDesc: '',
-      descricaoDetalhada: trnType ? `${trnType}${memo ? ` — ${memo}` : ''}` : memo,
+      descricaoDetalhada: descricaoDetalhada,
       categoria: '',
       /** Código de cliente e processo só por edição manual no Financeiro — nunca a partir do OFX. */
       codCliente: '',

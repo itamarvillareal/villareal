@@ -5,6 +5,7 @@ import {
   loadPersistedContasContabeisExtrasFinanceiro,
 } from '../../../data/financeiroData.js';
 import {
+  aplicarSugestoesLoteApi,
   buscarLancamentoFinanceiroApi,
   listarContasFinanceiro,
   listarLancamentosExtratoPaginados,
@@ -54,6 +55,8 @@ export function ExtratoPage() {
   const [extratoRefreshKey, setExtratoRefreshKey] = useState(0);
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [contaLoteId, setContaLoteId] = useState('');
+  const [bulkClassifying, setBulkClassifying] = useState(false);
 
   const contaToLetra = useMemo(
     () => buildContaToLetraMerge(loadPersistedContasContabeisExtrasFinanceiro()),
@@ -63,6 +66,16 @@ export function ExtratoPage() {
   const fetchParams = useMemo(() => ({ ...apiQuery }), [apiQuery]);
 
   const fetchKey = useMemo(() => JSON.stringify(fetchParams), [fetchParams]);
+
+  const contasExtrato = useMemo(
+    () =>
+      [...contasApi].sort((a, b) =>
+        String(a.codigo ?? '').localeCompare(String(b.codigo ?? ''), 'pt-BR'),
+      ),
+    [contasApi],
+  );
+
+  const bulkBusy = bulkDeleting || bulkClassifying;
 
   useEffect(() => {
     const ac = new AbortController();
@@ -332,6 +345,86 @@ export function ExtratoPage() {
     [limparCachePaginas],
   );
 
+  const handleLimparSelecao = useCallback(() => {
+    setSelectedIds(new Set());
+    setContaLoteId('');
+  }, []);
+
+  const handleBulkTrocarLetra = async () => {
+    if (!contaLoteId || selectedIds.size === 0) return;
+    const conta = contasExtrato.find((c) => String(c.id) === String(contaLoteId));
+    if (!conta) return;
+
+    const cod = String(conta.codigo ?? '').trim().toUpperCase();
+    const ids = [...selectedIds];
+    const rowById = new Map(rows.map((r) => [Number(r.id), r]));
+    const aplicacoes = ids.map((id) => {
+      const row = rowById.get(Number(id));
+      const limparVinculo = cod === 'E';
+      return {
+        lancamentoId: id,
+        contaContabilId: conta.id,
+        clienteId: limparVinculo ? null : (row?.clienteId ?? null),
+        processoId: limparVinculo ? null : (row?.processoId ?? null),
+      };
+    });
+
+    setBulkClassifying(true);
+    try {
+      const res = await aplicarSugestoesLoteApi(aplicacoes);
+      const ok = Number(res?.aplicados ?? 0);
+      const erros = Array.isArray(res?.erros) ? res.erros : [];
+
+      limparCachePaginas();
+      setRows((prev) =>
+        prev.map((r) => {
+          if (!selectedIds.has(r.id)) return r;
+          return {
+            ...r,
+            contaCodigo: cod,
+            contaContabilId: conta.id,
+            contaContabilNome: conta.nome ?? r.contaContabilNome,
+            ...(cod === 'E' ? { codCliente: '', proc: '', clienteId: null, processoId: null } : {}),
+          };
+        }),
+      );
+      setDetailItem((prev) => {
+        if (!prev || !selectedIds.has(prev.id)) return prev;
+        return {
+          ...prev,
+          contaCodigo: cod,
+          contaContabilId: conta.id,
+          contaContabilNome: conta.nome ?? prev.contaContabilNome,
+          ...(cod === 'E' ? { codCliente: '', proc: '', clienteId: null, processoId: null } : {}),
+        };
+      });
+      if (cod === 'E') {
+        for (const id of ids) vinculoOverlayRef.current.delete(Number(id));
+      }
+      setExtratoRefreshKey((n) => n + 1);
+      dispatchRefreshPendentes();
+
+      if (ok > 0) {
+        toast.success(
+          ok === 1
+            ? `1 lançamento alterado para conta ${cod}.`
+            : `${ok.toLocaleString('pt-BR')} lançamentos alterados para conta ${cod}.`,
+        );
+      }
+      if (erros.length) {
+        toast.warn(
+          `${erros.length.toLocaleString('pt-BR')} falha(s) ao alterar letra. ${erros.slice(0, 2).join(' · ')}`,
+        );
+      }
+      setSelectedIds(new Set());
+      setContaLoteId('');
+    } catch (e) {
+      toast.error(e?.message || 'Falha ao alterar letra dos lançamentos.');
+    } finally {
+      setBulkClassifying(false);
+    }
+  };
+
   const handleConfirmBulkDelete = async () => {
     const ids = [...selectedIds];
     if (!ids.length) {
@@ -387,9 +480,13 @@ export function ExtratoPage() {
 
       <ExtratoBatchBar
         count={selectedIds.size}
-        busy={bulkDeleting}
+        busy={bulkBusy}
+        contas={contasExtrato}
+        contaLoteId={contaLoteId}
+        onContaLoteChange={setContaLoteId}
+        onAplicarLetra={() => void handleBulkTrocarLetra()}
         onExcluir={() => setConfirmBulkDelete(true)}
-        onLimparSelecao={() => setSelectedIds(new Set())}
+        onLimparSelecao={handleLimparSelecao}
       />
 
       {erro ? (

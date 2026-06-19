@@ -459,8 +459,42 @@ CHARSET:1252
     const pix = rows.find((r) => r.numero === '202605292836751');
     const saque = rows.find((r) => r.numero === '202605112000001');
     expect(pix?.data).toBe('29/05/2026');
-    expect(pix?.descricao).toBe('PIX RECEBIDO - OUTRA IF');
+    expect(pix?.descricao).toBe('Recebimento Pix TERRA MUNDI ANAP');
+    expect(pix?.descricaoDetalhada).toBe('CREDIT — PIX RECEBIDO - OUTRA IF');
     expect(saque?.valor).toBe(-2000);
+    expect(saque?.descricao).toBe('SAQ.DIG. NOME: VRV SOLUCOES LTDA');
+  });
+
+  it('OFX Sicoob: NAME com contraparte aparece na descrição principal', () => {
+    const text = `<OFX><BANKMSGSRSV1><STMTTRNRS><STMTRS><BANKTRANLIST>
+<STMTTRN>
+<TRNTYPE>CREDIT</TRNTYPE>
+<DTPOSTED>20260227120000[-3:BRT]</DTPOSTED>
+<TRNAMT>4500.00</TRNAMT>
+<FITID>202602274500001</FITID>
+<MEMO>PIX RECEBIDO - OUTRA IF</MEMO>
+<NAME>Recebimento Pix MICHELLE APARECI</NAME>
+</STMTTRN>
+</BANKTRANLIST></STMTRS></STMTTRNRS></BANKMSGSRSV1></OFX>`;
+    const rows = parseOfxToExtrato(text);
+    expect(rows[0].descricao).toBe('Recebimento Pix MICHELLE APARECI');
+    expect(rows[0].descricaoDetalhada).toContain('PIX RECEBIDO - OUTRA IF');
+  });
+
+  it('OFX Itaú: MEMO detalhado permanece na descrição quando NAME é genérico', () => {
+    const text = `<OFX><BANKMSGSRSV1><STMTTRNRS><STMTRS><BANKTRANLIST>
+<STMTTRN>
+<TRNTYPE>DEBIT</TRNTYPE>
+<DTPOSTED>20260203120000</DTPOSTED>
+<TRNAMT>-89.90</TRNAMT>
+<FITID>ITAU1</FITID>
+<NAME>PIX ENVIADO</NAME>
+<MEMO>PIX QR ESTATICA - RECEBEDOR ***12345678900</MEMO>
+</STMTTRN>
+</BANKTRANLIST></STMTRS></STMTTRNRS></BANKMSGSRSV1></OFX>`;
+    const rows = parseOfxToExtrato(text);
+    expect(rows[0].descricao).toBe('PIX QR ESTATICA - RECEBEDOR ***12345678900');
+    expect(rows[0].descricaoDetalhada).toBe('DEBIT — PIX ENVIADO');
   });
 });
 

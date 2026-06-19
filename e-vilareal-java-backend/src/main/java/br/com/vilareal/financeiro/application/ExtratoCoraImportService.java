@@ -5,6 +5,7 @@ import br.com.vilareal.financeiro.api.dto.LancamentoFinanceiroWriteRequest;
 import br.com.vilareal.financeiro.domain.NaturezaLancamento;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.ContaContabilEntity;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.ContaContabilRepository;
+import br.com.vilareal.financeiro.ofx.OfxDescricaoUtil;
 import br.com.vilareal.financeiro.ofx.OfxParser;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -94,10 +95,8 @@ public class ExtratoCoraImportService {
             return null;
         }
 
-        String descricao = StringUtils.hasText(tx.memo()) ? tx.memo() : tx.name();
-        if (!StringUtils.hasText(descricao)) {
-            descricao = "LANÇAMENTO";
-        }
+        OfxDescricaoUtil.Descricoes descricoes =
+                OfxDescricaoUtil.montar(tx.name(), tx.memo(), tx.trnType());
 
         BigDecimal trnAmt = tx.trnAmt() != null ? tx.trnAmt() : BigDecimal.ZERO;
         NaturezaLancamento natureza =
@@ -110,9 +109,9 @@ public class ExtratoCoraImportService {
         req.setNumeroBanco(NUMERO_BANCO_CORA);
         req.setNumeroLancamento(tx.fitId().trim());
         req.setDataLancamento(tx.dataLancamento());
-        req.setDescricao(descricao.trim());
-        if (StringUtils.hasText(tx.trnType())) {
-            req.setDescricaoDetalhada(tx.trnType() + (StringUtils.hasText(tx.memo()) ? " — " + tx.memo() : ""));
+        req.setDescricao(descricoes.descricao());
+        if (StringUtils.hasText(descricoes.descricaoDetalhada())) {
+            req.setDescricaoDetalhada(descricoes.descricaoDetalhada());
         }
         req.setValor(valor);
         req.setNatureza(natureza);
