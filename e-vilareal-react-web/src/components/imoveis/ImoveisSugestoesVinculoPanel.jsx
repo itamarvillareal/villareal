@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Ban, Check, ChevronDown, ChevronUp, ExternalLink, Loader2, RotateCcw, Sparkles } from 'lucide-react';
 import { featureFlags } from '../../config/featureFlags.js';
 import {
@@ -48,6 +48,17 @@ function chaveSugestaoRow(s) {
   return s.sugestaoKey || `${s.lancamentoId}|${s.codigoCliente}|${s.proc}`;
 }
 
+function abrirExtratoDaSugestao(navigate, s) {
+  if (!s?.lancamentoId || typeof navigate !== 'function') return;
+  navigate(
+    buildExtratoUrlParaLancamento({
+      lancamentoId: s.lancamentoId,
+      numeroBanco: s.numeroBanco,
+      data: s.data,
+    }),
+  );
+}
+
 function tipoDestaqueNomeSugestao(s) {
   return classificarDestaqueNomeExtratoVinculo(
     { descricao: s.descricao, descricaoDetalhada: s.descricaoDetalhada },
@@ -76,6 +87,7 @@ export function ImoveisSugestoesVinculoPanel({
   maxParesPorLancamento = 6,
   mostrarLinkCentral = true,
 }) {
+  const navigate = useNavigate();
   const [carregandoInicial, setCarregandoInicial] = useState(true);
   const [atualizando, setAtualizando] = useState(false);
   const [erro, setErro] = useState('');
@@ -469,8 +481,12 @@ export function ImoveisSugestoesVinculoPanel({
                   const clsLinha = classesLinhaCoincidenciaNome(destaqueNome, destaque);
                   return (
                     <Fragment key={rowKey}>
-                      <tr className={`border-t ${clsLinha}`}>
-                        <td className="px-2 py-2 align-top">
+                      <tr
+                        className={`border-t ${clsLinha} cursor-pointer hover:bg-violet-50/50`}
+                        onDoubleClick={() => abrirExtratoDaSugestao(navigate, s)}
+                        title="Duplo clique: abrir lançamento no extrato"
+                      >
+                        <td className="px-2 py-2 align-top" onDoubleClick={(e) => e.stopPropagation()}>
                           <button
                             type="button"
                             onClick={() => setExpandidoId(aberto ? null : rowKey)}
@@ -524,7 +540,7 @@ export function ImoveisSugestoesVinculoPanel({
                             <span className="block text-[10px] text-slate-500">score {s.score}</span>
                           </div>
                         </td>
-                        <td className="px-3 py-2 align-top">
+                        <td className="px-3 py-2 align-top" onDoubleClick={(e) => e.stopPropagation()}>
                           <div className="flex flex-col items-end gap-1.5">
                             <button
                               type="button"
