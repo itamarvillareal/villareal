@@ -14,6 +14,7 @@ import br.com.vilareal.financeiro.application.FinanceiroSugestaoService;
 import br.com.vilareal.financeiro.application.RegraClassificacaoApplicationService;
 import br.com.vilareal.financeiro.domain.EtapaLancamento;
 import br.com.vilareal.financeiro.application.FinanceiroCartaoApplicationService;
+import br.com.vilareal.financeiro.application.InboxClassificarApplicationService;
 import br.com.vilareal.financeiro.application.FinanceiroFaturaCartaoFechamentoService;
 import br.com.vilareal.financeiro.application.FinanceiroPagamentoFaturaApplicationService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -56,6 +57,7 @@ public class FinanceiroController {
     private final ContaBancariaApplicationService contaBancariaService;
     private final FinanceiroSemelhantesEscritorioService semelhantesEscritorioService;
     private final FinanceiroFaturaCartaoFechamentoService faturaCartaoFechamentoService;
+    private final InboxClassificarApplicationService inboxClassificarService;
 
     public FinanceiroController(
             FinanceiroApplicationService financeiroService,
@@ -71,7 +73,8 @@ public class FinanceiroController {
             FinanceiroMesApplicationService financeiroMesService,
             ContaBancariaApplicationService contaBancariaService,
             FinanceiroSemelhantesEscritorioService semelhantesEscritorioService,
-            FinanceiroFaturaCartaoFechamentoService faturaCartaoFechamentoService) {
+            FinanceiroFaturaCartaoFechamentoService faturaCartaoFechamentoService,
+            InboxClassificarApplicationService inboxClassificarService) {
         this.financeiroService = financeiroService;
         this.financeiroCartaoService = financeiroCartaoService;
         this.pagamentoFaturaService = pagamentoFaturaService;
@@ -86,6 +89,7 @@ public class FinanceiroController {
         this.contaBancariaService = contaBancariaService;
         this.semelhantesEscritorioService = semelhantesEscritorioService;
         this.faturaCartaoFechamentoService = faturaCartaoFechamentoService;
+        this.inboxClassificarService = inboxClassificarService;
     }
 
     @GetMapping("/saude")
@@ -295,29 +299,8 @@ public class FinanceiroController {
             @RequestParam(value = "ano", required = false) Integer ano,
             @RequestParam(value = "mes", required = false) Integer mes,
             @PageableDefault(size = 50, sort = "dataLancamento", direction = Sort.Direction.DESC) Pageable pageable) {
-        Page<LancamentoFinanceiroResponse> page;
-        if (numeroCartao != null) {
-            page = financeiroCartaoService.listarInboxClassificarPaginado(numeroCartao, ano, mes, pageable);
-        } else {
-            EtapaLancamento etapaImportado = EtapaLancamento.IMPORTADO;
-            page = financeiroService.listarLancamentosPaginado(
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    etapaImportado,
-                    numeroBanco,
-                    null,
-                    null,
-                    null,
-                    ano,
-                    mes,
-                    null,
-                    null,
-                    null,
-                    pageable);
-        }
+        Page<LancamentoFinanceiroResponse> page =
+                inboxClassificarService.listarPaginado(numeroBanco, numeroCartao, ano, mes, pageable);
         List<Long> ids = page.getContent().stream().map(LancamentoFinanceiroResponse::getId).toList();
         Map<Long, List<SugestaoClassificacaoResponse>> sugestoes =
                 ids.isEmpty() ? Map.of() : financeiroSugestaoService.sugerirLote(ids);

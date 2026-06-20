@@ -18,7 +18,7 @@ import {
   descartarSemelhantesEscritorioApi,
   sugestoesClassificacaoLoteApi,
 } from '../../../repositories/financeiroRepository.js';
-import { INBOX_TIPOS, clampFinanceiroPageSize } from '../constants/financeiroConstants.js';
+import { INBOX_TIPOS, INBOX_FILTRO_TODAS_CONTAS, clampFinanceiroPageSize } from '../constants/financeiroConstants.js';
 import { isNumeroCartaoFinanceiro } from '../../../data/financeiroData.js';
 import { useFinanceiro } from '../FinanceiroContext.jsx';
 import { PeriodoSelector } from '../shared/PeriodoSelector.jsx';
@@ -1262,7 +1262,7 @@ export function InboxPage() {
           className="text-sm rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1 min-w-[10rem]"
           aria-label="Filtrar banco ou cartão"
         >
-          <option value="">Todos os bancos</option>
+          <option value="">{INBOX_FILTRO_TODAS_CONTAS}</option>
           {bancos.map((b) => (
             <option key={b.numero} value={b.numero}>
               {b.nome}

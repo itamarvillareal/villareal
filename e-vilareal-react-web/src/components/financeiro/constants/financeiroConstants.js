@@ -33,6 +33,9 @@ export const INBOX_TIPOS = {
   inconsistentes: 'inconsistentes',
 };
 
+/** Rótulo do filtro unificado (bancos + cartões) no inbox. */
+export const INBOX_FILTRO_TODAS_CONTAS = 'Bancos e cartões';
+
 /** Prioridade de exibição no inbox (menor = mais prioritário). */
 export const INBOX_PRIORIDADE = {
   recorrencia: 1,
