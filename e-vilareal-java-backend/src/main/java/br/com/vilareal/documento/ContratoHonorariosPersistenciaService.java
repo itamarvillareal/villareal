@@ -25,6 +25,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 @Service
@@ -178,21 +179,51 @@ public class ContratoHonorariosPersistenciaService {
     }
 
     private ContratoHonorariosResumoResponse toResumo(ContratoHonorariosEntity e) {
-        Long processoId = e.getProcesso() != null ? e.getProcesso().getId() : null;
-        int qtdParcelas = e.getParcelas() != null ? e.getParcelas().size() : 0;
+        ProcessoEntity processo = e.getProcesso();
+        Long processoId = processo != null ? processo.getId() : null;
+        String codigoCliente = null;
+        Integer numeroInterno = null;
+        if (processo != null) {
+            numeroInterno = processo.getNumeroInterno();
+            if (processo.getCliente() != null) {
+                codigoCliente = processo.getCliente().getCodigoCliente();
+            }
+        }
+
+        List<ContratoHonorariosParcelaResumoResponse> parcelasResumo =
+                e.getParcelas() == null
+                        ? List.of()
+                        : e.getParcelas().stream()
+                                .sorted(Comparator.comparing(
+                                        ContratoHonorariosParcelaEntity::getNumeroParcela,
+                                        Comparator.nullsLast(Integer::compareTo)))
+                                .map(p -> new ContratoHonorariosParcelaResumoResponse(
+                                        p.getId(),
+                                        p.getNumeroParcela(),
+                                        p.getValor(),
+                                        p.getDataVencimento(),
+                                        p.getPagamento() != null ? p.getPagamento().getId() : null))
+                                .toList();
+
         return new ContratoHonorariosResumoResponse(
                 e.getId(),
                 processoId,
                 e.getPessoa().getId(),
+                e.getPessoa().getNome(),
+                codigoCliente,
+                numeroInterno,
                 e.getDataContrato(),
+                e.getObjetoContrato(),
                 e.getTipoRemuneracao(),
                 e.getPercentualProveito(),
                 e.getValorFixo(),
                 e.getValorTotalParcelas(),
                 e.getQuantidadeParcelas(),
+                e.getFormaPagamentoParcelas(),
                 e.getGerarRecebiveis(),
-                qtdParcelas,
-                e.getClausula3Texto());
+                parcelasResumo.size(),
+                e.getClausula3Texto(),
+                parcelasResumo);
     }
 
     private static String normalizarTipo(String tipo) {

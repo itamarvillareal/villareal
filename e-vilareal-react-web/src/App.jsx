@@ -37,6 +37,7 @@ import {
   LazyGerenteTopicos,
   LazyGerarDocumento,
   LazyModelosPeticao,
+  LazyContratosHonorariosRecebiveis,
   LazyIntegracoesTribunalScraperLab,
   LazyImoveis,
   LazyDemandas,
@@ -429,6 +430,7 @@ function App() {
               </Route>
               <Route path="/integracoes/scraper-lab" element={<LazyIntegracoesTribunalScraperLab />} />
               <Route path="/documentos/gerar" element={<LazyGerarDocumento />} />
+              <Route path="/documentos/recebiveis" element={<LazyContratosHonorariosRecebiveis />} />
               <Route path="/documentos/modelos" element={<LazyModelosPeticao />} />
               <Route path="/financeiro" element={<LazyFinanceiroLayout />}>
                 <Route index element={<LazyFinanceiroDashboard />} />

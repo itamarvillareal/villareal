@@ -24,6 +24,9 @@ export function DocumentosSubmenu() {
       <NavLink to="/documentos/gerar" end className={({ isActive }) => subNavClassDocumentos(isActive)}>
         Gerar documento
       </NavLink>
+      <NavLink to="/documentos/recebiveis" className={({ isActive }) => subNavClassDocumentos(isActive)}>
+        Recebíveis
+      </NavLink>
       {isAdmin ? (
         <NavLink to="/documentos/modelos" className={({ isActive }) => subNavClassDocumentos(isActive)}>
           Modelos de petição

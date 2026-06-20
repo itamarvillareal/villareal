@@ -266,6 +266,9 @@ export function usuarioPodeAcessarModulo(userId, moduloId) {
   if (moduloId === 'documentos/gerar') {
     return usuarioPodeAcessarModulo(userId, 'processos');
   }
+  if (moduloId === 'documentos/recebiveis') {
+    return usuarioPodeAcessarModulo(userId, 'documentos/gerar');
+  }
   /** Modelos de petição: apenas perfil ADMIN (compartilhado — altera timbrado global). */
   if (moduloId === 'documentos/modelos') {
     return usuarioEhAdminApi();

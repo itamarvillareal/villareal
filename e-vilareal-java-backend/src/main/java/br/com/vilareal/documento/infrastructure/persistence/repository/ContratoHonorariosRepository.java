@@ -11,7 +11,10 @@ import java.util.List;
 public interface ContratoHonorariosRepository extends JpaRepository<ContratoHonorariosEntity, Long> {
 
     @Query("""
-            SELECT c FROM ContratoHonorariosEntity c
+            SELECT DISTINCT c FROM ContratoHonorariosEntity c
+            LEFT JOIN FETCH c.pessoa
+            LEFT JOIN FETCH c.processo p
+            LEFT JOIN FETCH p.cliente
             LEFT JOIN FETCH c.parcelas
             WHERE (:processoId IS NULL OR c.processo.id = :processoId)
               AND (:pessoaId IS NULL OR c.pessoa.id = :pessoaId)

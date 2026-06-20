@@ -163,6 +163,10 @@ export const LazyModelosPeticao = fromNamed(
   () => import('../pages/documentos/ModelosPeticao.jsx'),
   'ModelosPeticao'
 );
+export const LazyContratosHonorariosRecebiveis = fromNamed(
+  () => import('../pages/documentos/ContratosHonorariosRecebiveis.jsx'),
+  'ContratosHonorariosRecebiveis'
+);
 export const LazyWhatsAppLayout = fromNamed(
   () => import('../components/whatsapp/WhatsAppLayout.jsx'),
   'WhatsAppLayout',

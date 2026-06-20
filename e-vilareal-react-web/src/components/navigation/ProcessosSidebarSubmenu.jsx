@@ -10,6 +10,7 @@ import {
   Layers,
   Mail,
   Megaphone,
+  Receipt,
   UserSearch,
 } from 'lucide-react';
 import { processosMenuPrimary } from '../../data/processosMenuSections.js';
@@ -22,6 +23,7 @@ import {
 const LUCIDE_POR_ID = {
   processos: Folder,
   'documentos/gerar': FileText,
+  'documentos/recebiveis': Receipt,
   'documentos/modelos': Layers,
   'processos/peticionamento-projudi': Gavel,
   'processos/publicacoes': Megaphone,
