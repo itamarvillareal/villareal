@@ -56,6 +56,7 @@ public class FinanceiroFaturaSugestaoService {
 
         List<CartaoBancoMapeamentoEntity> regras = mapeamentoRepository.findByAtivoTrueOrderByCartaoIdAscIdAsc();
         Set<Long> bancosVinculados = new HashSet<>(vinculoRepository.findAllLancamentoBancoIds());
+        Set<Long> cartoesVinculados = new HashSet<>(vinculoRepository.findAllLancamentoCartaoIds());
 
         List<SugestaoPagamentoFaturaResponse> todas = new ArrayList<>();
         Set<Long> debitosUsados = new HashSet<>();
@@ -82,15 +83,29 @@ public class FinanceiroFaturaSugestaoService {
                     .toList();
 
             Long cartaoId = regra.getCartao().getId();
+            List<LancamentoCartaoEntity> fechamentosMes =
+                    lancamentoCartaoRepository.findFechamentosAutomaticosNoPeriodo(cartaoId, inicio, fim);
             List<LancamentoCartaoEntity> faturasMes =
                     lancamentoCartaoRepository.findByCartaoAndPeriodo(cartaoId, inicio, fim);
-            if (faturasMes.isEmpty()) {
+
+            Set<Long> cartoesJaVinculados = cartoesVinculados;
+
+            List<LancamentoCartaoEntity> candidatosCartao = fechamentosMes.isEmpty()
+                    ? faturasMes.stream()
+                            .filter(f -> !FinanceiroFaturaCartaoFechamentoService.ehLancamentoFechamentoAutomatico(f))
+                            .toList()
+                    : fechamentosMes.stream()
+                            .filter(f -> !cartoesJaVinculados.contains(f.getId()))
+                            .toList();
+
+            if (candidatosCartao.isEmpty()) {
                 continue;
             }
 
-            BigDecimal somaFaturaMes = faturasMes.stream()
-                    .map(LancamentoCartaoEntity::getValor)
-                    .filter(v -> v.compareTo(BigDecimal.ZERO) > 0)
+            BigDecimal somaFaturaMes = candidatosCartao.stream()
+                    .map(f -> FinanceiroFaturaCartaoFechamentoService.ehLancamentoFechamentoAutomatico(f)
+                            ? f.getValor().abs()
+                            : (f.getValor().compareTo(BigDecimal.ZERO) > 0 ? f.getValor() : BigDecimal.ZERO))
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
 
             for (LancamentoFinanceiroEntity debito : debitos) {
@@ -98,7 +113,7 @@ public class FinanceiroFaturaSugestaoService {
                     continue;
                 }
                 Optional<CandidatoFatura> melhor = encontrarMelhorCandidato(
-                        debito, regra, faturasMes, somaFaturaMes);
+                        debito, regra, candidatosCartao, somaFaturaMes);
                 melhor.ifPresent(c -> todas.add(montarSugestao(debito, c, regra)));
             }
         }
@@ -129,23 +144,48 @@ public class FinanceiroFaturaSugestaoService {
         List<CandidatoFatura> candidatos = new ArrayList<>();
 
         if (somaFaturaMes.compareTo(BigDecimal.ZERO) > 0
-                && dentroTolerancia(valorDebito, somaFaturaMes, regra.getToleranciaValor())) {
+                && dentroTolerancia(valorDebito, somaFaturaMes, regra.getToleranciaValor())
+                && faturasMes.stream().noneMatch(FinanceiroFaturaCartaoFechamentoService::ehLancamentoFechamentoAutomatico)) {
             faturasMes.stream()
                     .filter(f -> f.getValor().compareTo(BigDecimal.ZERO) > 0)
                     .max(Comparator.comparing(LancamentoCartaoEntity::getValor))
-                    .filter(f -> dataDentroJanela(debito.getDataLancamento(), f.getDataLancamento(), regra.getToleranciaDias()))
+                    .filter(f -> dataDentroJanela(
+                            debito.getDataLancamento(), f.getDataLancamento(), regra.getToleranciaDias()))
                     .ifPresent(f -> candidatos.add(new CandidatoFatura(f, somaFaturaMes, true)));
+        } else if (somaFaturaMes.compareTo(BigDecimal.ZERO) > 0
+                && dentroTolerancia(valorDebito, somaFaturaMes, regra.getToleranciaValor())
+                && faturasMes.stream().allMatch(FinanceiroFaturaCartaoFechamentoService::ehLancamentoFechamentoAutomatico)
+                && faturasMes.size() == 1) {
+            LancamentoCartaoEntity unico = faturasMes.get(0);
+            if (dataDentroJanelaVencimento(
+                    debito.getDataLancamento(),
+                    unico.getDataCompetencia(),
+                    unico.getDataLancamento(),
+                    regra.getToleranciaDias())) {
+                candidatos.add(new CandidatoFatura(unico, somaFaturaMes, true));
+            }
         }
 
         for (LancamentoCartaoEntity fatura : faturasMes) {
-            if (fatura.getValor().compareTo(BigDecimal.ZERO) <= 0) {
-                continue;
+            BigDecimal valorFatura;
+            if (FinanceiroFaturaCartaoFechamentoService.ehLancamentoFechamentoAutomatico(fatura)) {
+                if (fatura.getValor().compareTo(BigDecimal.ZERO) >= 0) {
+                    continue;
+                }
+                valorFatura = fatura.getValor().abs();
+            } else {
+                if (fatura.getValor().compareTo(BigDecimal.ZERO) <= 0) {
+                    continue;
+                }
+                valorFatura = fatura.getValor().abs();
             }
-            BigDecimal valorFatura = fatura.getValor().abs();
             if (!dentroTolerancia(valorDebito, valorFatura, regra.getToleranciaValor())) {
                 continue;
             }
-            if (!dataDentroJanela(debito.getDataLancamento(), fatura.getDataLancamento(), regra.getToleranciaDias())) {
+            LocalDate refData = FinanceiroFaturaCartaoFechamentoService.ehLancamentoFechamentoAutomatico(fatura)
+                    ? (fatura.getDataCompetencia() != null ? fatura.getDataCompetencia() : fatura.getDataLancamento())
+                    : fatura.getDataLancamento();
+            if (!dataDentroJanelaVencimento(debito.getDataLancamento(), refData, refData, regra.getToleranciaDias())) {
                 continue;
             }
             candidatos.add(new CandidatoFatura(fatura, valorFatura, false));
@@ -196,6 +236,18 @@ public class FinanceiroFaturaSugestaoService {
     private static boolean dataDentroJanela(LocalDate dataDebito, LocalDate dataFatura, int toleranciaDias) {
         LocalDate limiteInferior = dataFatura.minusDays(toleranciaDias);
         return !dataDebito.isBefore(limiteInferior) && !dataDebito.isAfter(dataFatura);
+    }
+
+    /** Para AUTO-FAT (vencimento): débito bancário no vencimento ou até {@code toleranciaDias} depois. */
+    private static boolean dataDentroJanelaVencimento(
+            LocalDate dataDebito, LocalDate vencimento, LocalDate fallback, int toleranciaDias) {
+        LocalDate ref = vencimento != null ? vencimento : fallback;
+        if (ref == null) {
+            return false;
+        }
+        LocalDate limiteInferior = ref.minusDays(toleranciaDias);
+        LocalDate limiteSuperior = ref.plusDays(toleranciaDias);
+        return !dataDebito.isBefore(limiteInferior) && !dataDebito.isAfter(limiteSuperior);
     }
 
     private static boolean matchPadrao(String texto, String padrao, TipoMatchFatura tipo) {

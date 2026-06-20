@@ -15,4 +15,7 @@ public interface PagamentoFaturaVinculoRepository extends JpaRepository<Pagament
 
     @Query("SELECT v.lancamentoBanco.id FROM PagamentoFaturaVinculoEntity v")
     List<Long> findAllLancamentoBancoIds();
+
+    @Query("SELECT v.lancamentoCartao.id FROM PagamentoFaturaVinculoEntity v")
+    List<Long> findAllLancamentoCartaoIds();
 }

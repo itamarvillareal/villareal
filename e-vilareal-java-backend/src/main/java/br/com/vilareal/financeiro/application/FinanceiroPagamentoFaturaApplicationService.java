@@ -4,10 +4,13 @@ import br.com.vilareal.common.exception.BusinessRuleException;
 import br.com.vilareal.common.exception.ResourceNotFoundException;
 import br.com.vilareal.financeiro.api.dto.PagamentoFaturaVinculoResponse;
 import br.com.vilareal.financeiro.api.dto.PagamentoFaturaVinculoWriteRequest;
+import br.com.vilareal.financeiro.domain.EtapaLancamento;
 import br.com.vilareal.financeiro.domain.NaturezaLancamento;
+import br.com.vilareal.financeiro.infrastructure.persistence.entity.ContaContabilEntity;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.LancamentoCartaoEntity;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.LancamentoFinanceiroEntity;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.PagamentoFaturaVinculoEntity;
+import br.com.vilareal.financeiro.infrastructure.persistence.repository.ContaContabilRepository;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.LancamentoCartaoRepository;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.LancamentoFinanceiroRepository;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.PagamentoFaturaVinculoRepository;
@@ -27,14 +30,17 @@ public class FinanceiroPagamentoFaturaApplicationService {
     private final PagamentoFaturaVinculoRepository vinculoRepository;
     private final LancamentoFinanceiroRepository lancamentoBancoRepository;
     private final LancamentoCartaoRepository lancamentoCartaoRepository;
+    private final ContaContabilRepository contaContabilRepository;
 
     public FinanceiroPagamentoFaturaApplicationService(
             PagamentoFaturaVinculoRepository vinculoRepository,
             LancamentoFinanceiroRepository lancamentoBancoRepository,
-            LancamentoCartaoRepository lancamentoCartaoRepository) {
+            LancamentoCartaoRepository lancamentoCartaoRepository,
+            ContaContabilRepository contaContabilRepository) {
         this.vinculoRepository = vinculoRepository;
         this.lancamentoBancoRepository = lancamentoBancoRepository;
         this.lancamentoCartaoRepository = lancamentoCartaoRepository;
+        this.contaContabilRepository = contaContabilRepository;
     }
 
     @Transactional(readOnly = true)
@@ -63,26 +69,65 @@ public class FinanceiroPagamentoFaturaApplicationService {
         PagamentoFaturaVinculoEntity v = new PagamentoFaturaVinculoEntity();
         v.setLancamentoBanco(banco);
         v.setLancamentoCartao(cartao);
-        return toResponse(vinculoRepository.save(v));
+        PagamentoFaturaVinculoEntity salvo = vinculoRepository.save(v);
+        marcarFechamentoConferidoSeAutoFat(cartao);
+        return toResponse(salvo);
     }
 
     @Transactional
     public void removerVinculo(Long id) {
-        if (!vinculoRepository.existsById(id)) {
-            throw new ResourceNotFoundException("Vínculo não encontrado");
-        }
+        PagamentoFaturaVinculoEntity v = vinculoRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Vínculo não encontrado"));
+        LancamentoCartaoEntity cartao = v.getLancamentoCartao();
         vinculoRepository.deleteById(id);
+        restaurarContaConferenciaSeAutoFat(cartao);
+    }
+
+    /** Após vínculo banco↔AUTO-FAT: move para conta E (compensado). */
+    private void marcarFechamentoConferidoSeAutoFat(LancamentoCartaoEntity cartao) {
+        if (!FinanceiroFaturaCartaoFechamentoService.ehLancamentoFechamentoAutomatico(cartao)) {
+            return;
+        }
+        ContaContabilEntity contaE = contaContabilRepository
+                .findFirstByCodigoIgnoreCase(FinanceiroFaturaCartaoFechamentoService.CONTA_APOS_VINCULO_BANCO)
+                .orElseThrow(() -> new BusinessRuleException("Conta contábil E não encontrada."));
+        cartao.setContaContabil(contaE);
+        cartao.setRefTipo("R");
+        cartao.setEtapa(EtapaLancamento.calcular(contaE.getCodigo(), cartao.getGrupoCompensacao(), null));
+        lancamentoCartaoRepository.save(cartao);
+    }
+
+    /** Ao desfazer vínculo, AUTO-FAT volta para N (visível para nova conferência). */
+    private void restaurarContaConferenciaSeAutoFat(LancamentoCartaoEntity cartao) {
+        if (!FinanceiroFaturaCartaoFechamentoService.ehLancamentoFechamentoAutomatico(cartao)) {
+            return;
+        }
+        ContaContabilEntity contaN = contaContabilRepository
+                .findFirstByCodigoIgnoreCase(FinanceiroFaturaCartaoFechamentoService.CONTA_FECHAMENTO)
+                .orElseThrow(() -> new BusinessRuleException("Conta contábil N não encontrada."));
+        cartao.setContaContabil(contaN);
+        cartao.setRefTipo("N");
+        cartao.setEtapa(EtapaLancamento.calcular(contaN.getCodigo(), cartao.getGrupoCompensacao(), null));
+        lancamentoCartaoRepository.save(cartao);
     }
 
     private void validarPar(LancamentoFinanceiroEntity banco, LancamentoCartaoEntity cartao) {
         if (banco.getNatureza() != NaturezaLancamento.DEBITO) {
             throw new BusinessRuleException("Pagamento de fatura no banco deve ser um débito (saída da conta).");
         }
-        if (cartao.getValor().compareTo(BigDecimal.ZERO) <= 0) {
-            throw new BusinessRuleException("Pagamento na fatura do cartão deve ter valor positivo.");
-        }
         BigDecimal absBanco = banco.getValor().abs();
-        BigDecimal absCartao = cartao.getValor().abs();
+        BigDecimal absCartao;
+        if (FinanceiroFaturaCartaoFechamentoService.ehLancamentoFechamentoAutomatico(cartao)) {
+            if (cartao.getValor().compareTo(BigDecimal.ZERO) >= 0) {
+                throw new BusinessRuleException("Fechamento automático de fatura (AUTO-FAT) deve ser crédito (valor negativo).");
+            }
+            absCartao = cartao.getValor().abs();
+        } else {
+            if (cartao.getValor().compareTo(BigDecimal.ZERO) <= 0) {
+                throw new BusinessRuleException("Pagamento na fatura do cartão deve ter valor positivo.");
+            }
+            absCartao = cartao.getValor().abs();
+        }
         if (absBanco.subtract(absCartao).abs().compareTo(new BigDecimal("0.05")) > 0) {
             throw new BusinessRuleException(
                     "Valores divergem: banco " + absBanco + " × cartão " + absCartao + " (tolerância R$ 0,05).");

@@ -15,8 +15,10 @@ export function isoDataCartao(val) {
 export function vencimentoFaturaDeLancamento(row) {
   const comp = isoDataCartao(row?.dataCompetencia);
   if (!comp) return '';
-  const lanc = isoDataCartao(row?.dataLancamento);
+  const numero = String(row?.numeroLancamento ?? '').trim();
   const origem = String(row?.origem ?? '').trim();
+  if (/^AUTO-FAT-/i.test(numero) || origem === 'AUTO') return comp;
+  const lanc = isoDataCartao(row?.dataLancamento);
   if (/^FATURA_/i.test(origem)) return comp;
   if (lanc && comp !== lanc) return comp;
   return '';

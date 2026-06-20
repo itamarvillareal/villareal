@@ -31,6 +31,18 @@ describe('cartaoFaturaVencimento', () => {
     ).toBe('2025-07-10');
   });
 
+  it('AUTO-FAT usa competência como vencimento mesmo com data igual', () => {
+    expect(
+      vencimentoFaturaDeLancamento({
+        dataLancamento: '2025-07-10',
+        dataCompetencia: '2025-07-10',
+        origem: 'AUTO',
+        numeroLancamento: 'AUTO-FAT-8-2025-07-10',
+        valor: -1500,
+      }),
+    ).toBe('2025-07-10');
+  });
+
   it('agrupa lançamentos pela data de vencimento da fatura', () => {
     const rows = [
       { dataLancamento: '2025-06-01', dataCompetencia: '2025-07-10', origem: 'FATURA_XLSX', valor: 100 },

@@ -14,6 +14,7 @@ import br.com.vilareal.financeiro.application.FinanceiroSugestaoService;
 import br.com.vilareal.financeiro.application.RegraClassificacaoApplicationService;
 import br.com.vilareal.financeiro.domain.EtapaLancamento;
 import br.com.vilareal.financeiro.application.FinanceiroCartaoApplicationService;
+import br.com.vilareal.financeiro.application.FinanceiroFaturaCartaoFechamentoService;
 import br.com.vilareal.financeiro.application.FinanceiroPagamentoFaturaApplicationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -54,6 +55,7 @@ public class FinanceiroController {
     private final FinanceiroMesApplicationService financeiroMesService;
     private final ContaBancariaApplicationService contaBancariaService;
     private final FinanceiroSemelhantesEscritorioService semelhantesEscritorioService;
+    private final FinanceiroFaturaCartaoFechamentoService faturaCartaoFechamentoService;
 
     public FinanceiroController(
             FinanceiroApplicationService financeiroService,
@@ -68,7 +70,8 @@ public class FinanceiroController {
             FinanceiroSaudeService financeiroSaudeService,
             FinanceiroMesApplicationService financeiroMesService,
             ContaBancariaApplicationService contaBancariaService,
-            FinanceiroSemelhantesEscritorioService semelhantesEscritorioService) {
+            FinanceiroSemelhantesEscritorioService semelhantesEscritorioService,
+            FinanceiroFaturaCartaoFechamentoService faturaCartaoFechamentoService) {
         this.financeiroService = financeiroService;
         this.financeiroCartaoService = financeiroCartaoService;
         this.pagamentoFaturaService = pagamentoFaturaService;
@@ -82,6 +85,7 @@ public class FinanceiroController {
         this.financeiroMesService = financeiroMesService;
         this.contaBancariaService = contaBancariaService;
         this.semelhantesEscritorioService = semelhantesEscritorioService;
+        this.faturaCartaoFechamentoService = faturaCartaoFechamentoService;
     }
 
     @GetMapping("/saude")
@@ -592,6 +596,14 @@ public class FinanceiroController {
     @Operation(description = "Remove todos os lançamentos do extrato do cartão indicado.")
     public LimparExtratoResult limparExtratoCartao(@Valid @RequestBody LimparExtratoCartaoRequest request) {
         return financeiroCartaoService.limparExtratoCartao(request.getCartao(), request.getNumeroCartao());
+    }
+
+    @PostMapping(value = "/cartoes/fechamento-fatura/executar", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(description = "Executa fechamento automático de faturas vencidas (AUTO-FAT). Gatilho manual; rotina diária às 06:05.")
+    public FechamentoFaturaCartaoResultResponse executarFechamentoFaturaCartao() {
+        FechamentoFaturaCartaoResultResponse r = new FechamentoFaturaCartaoResultResponse();
+        r.setFechamentosProcessados(faturaCartaoFechamentoService.aplicarFechamentosAutomaticos());
+        return r;
     }
 
     // --- Pagamento de fatura (vínculo explícito banco ↔ cartão) ---

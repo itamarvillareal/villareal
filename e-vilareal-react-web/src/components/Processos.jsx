@@ -3434,9 +3434,8 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
             else window.history.back();
           }}
           actions={
-            <>
-              <div className="flex flex-wrap items-center gap-2">
-                <button
+            <div className="flex flex-nowrap items-center gap-2">
+              <button
                   type="button"
                   onClick={() =>
                     setClientesEmbed({
@@ -3542,60 +3541,57 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                     ) : null}
                   </>
                 ) : null}
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                {podeGerarDocumento && driveConfigurado ? (
-                  <button
-                    type="button"
-                    className={processosBtnToolbarCyan}
-                    disabled={
-                      apiSaving ||
-                      baixandoAutosIntegral ||
-                      !String(numeroProcessoNovo ?? '').trim()
-                    }
-                    onClick={() => void handleBaixarAutosIntegral()}
-                    title="Baixa PDF único juntando os documentos da pasta Movimentações no Drive"
-                  >
-                    <Download className="w-4 h-4" aria-hidden />
-                    {baixandoAutosIntegral ? 'Gerando PDF…' : 'Baixar processo integral'}
-                  </button>
-                ) : null}
-                {podeGerarDocumento ? (
-                  <button
-                    type="button"
-                    className={processosBtnToolbarRed}
-                    disabled={apiSaving}
-                    onClick={() => setModalPeticionamentoProjudi(true)}
-                    title={
-                      String(numeroProcessoNovo ?? '').trim()
-                        ? 'Petições registradas para protocolo no PROJUDI (deste processo)'
-                        : 'Preencha o Nº Processo Novo (número CNJ) para peticionar no PROJUDI'
-                    }
-                  >
-                    <Send className="w-4 h-4" aria-hidden />
-                    Peticionamento PROJUDI
-                  </button>
-                ) : null}
+              {podeGerarDocumento && driveConfigurado ? (
                 <button
                   type="button"
-                  onClick={() => {
-                    setIndiceAcaoRedacaoFocada(0);
-                    indiceAcaoRedacaoFocadaRef.current = 0;
-                    setModalAcoesRedacaoAberto(true);
-                  }}
-                  className={processosBtnToolbarRedacao}
-                  aria-label="Ações de redação"
+                  className={processosBtnToolbarCyan}
+                  disabled={
+                    apiSaving ||
+                    baixandoAutosIntegral ||
+                    !String(numeroProcessoNovo ?? '').trim()
+                  }
+                  onClick={() => void handleBaixarAutosIntegral()}
+                  title="Baixa PDF único juntando os documentos da pasta Movimentações no Drive"
                 >
-                  <IconMaoEscrevendo />
+                  <Download className="w-4 h-4" aria-hidden />
+                  {baixandoAutosIntegral ? 'Gerando PDF…' : 'Baixar processo integral'}
                 </button>
-                {featureFlags.useApiTarefas ? (
-                  <button type="button" onClick={abrirModalTarefaDoProcesso} className={processosBtnPrimary}>
-                    <ListTodo className="w-4 h-4" aria-hidden />
-                    Criar tarefa
-                  </button>
-                ) : null}
-              </div>
-            </>
+              ) : null}
+              {podeGerarDocumento ? (
+                <button
+                  type="button"
+                  className={processosBtnToolbarRed}
+                  disabled={apiSaving}
+                  onClick={() => setModalPeticionamentoProjudi(true)}
+                  title={
+                    String(numeroProcessoNovo ?? '').trim()
+                      ? 'Petições registradas para protocolo no PROJUDI (deste processo)'
+                      : 'Preencha o Nº Processo Novo (número CNJ) para peticionar no PROJUDI'
+                  }
+                >
+                  <Send className="w-4 h-4" aria-hidden />
+                  Peticionamento PROJUDI
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => {
+                  setIndiceAcaoRedacaoFocada(0);
+                  indiceAcaoRedacaoFocadaRef.current = 0;
+                  setModalAcoesRedacaoAberto(true);
+                }}
+                className={processosBtnToolbarRedacao}
+                aria-label="Ações de redação"
+              >
+                <IconMaoEscrevendo />
+              </button>
+              {featureFlags.useApiTarefas ? (
+                <button type="button" onClick={abrirModalTarefaDoProcesso} className={processosBtnPrimary}>
+                  <ListTodo className="w-4 h-4" aria-hidden />
+                  Criar tarefa
+                </button>
+              ) : null}
+            </div>
           }
         />
         <ProcessosSummaryCards
