@@ -47,6 +47,7 @@ export function FechamentoFaturaExtratoPage() {
   const [sortDataAsc, setSortDataAsc] = useState(false);
   const [detailItem, setDetailItem] = useState(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
 
   const contaToLetra = useMemo(
     () => buildContaToLetraMerge(loadPersistedContasContabeisExtrasFinanceiro()),
@@ -150,6 +151,23 @@ export function FechamentoFaturaExtratoPage() {
     setReloadKey((n) => n + 1);
   }, []);
 
+  const toggleSelect = useCallback((rowId) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(rowId)) next.delete(rowId);
+      else next.add(rowId);
+      return next;
+    });
+  }, []);
+
+  const toggleSelectAll = useCallback(() => {
+    setSelectedIds((prev) => {
+      const ids = pageRows.map((r) => r.id);
+      const all = ids.length > 0 && ids.every((rowId) => prev.has(rowId));
+      return all ? new Set() : new Set(ids);
+    });
+  }, [pageRows]);
+
   if (!featureFlags.useApiFinanceiro) {
     return <p className="p-4 text-sm text-slate-600">API financeiro desativada.</p>;
   }
@@ -236,9 +254,9 @@ export function FechamentoFaturaExtratoPage() {
         ) : (
           <ExtratoTable
             data={pageRows}
-            selectedIds={new Set()}
-            onSelect={() => {}}
-            onSelectAll={() => {}}
+            selectedIds={selectedIds}
+            onSelect={toggleSelect}
+            onSelectAll={toggleSelectAll}
             onRowClick={setDetailItem}
             isLoading={false}
             sortDataAsc={sortDataAsc}

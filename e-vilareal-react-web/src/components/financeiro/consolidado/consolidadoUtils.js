@@ -35,15 +35,20 @@ export function mesAtualIso() {
 }
 
 export function ultimos12Meses() {
+  return ultimosNMeses(12);
+}
+
+/** Últimos N meses calendário (do mais antigo ao mais recente). */
+export function ultimosNMeses(qtd) {
+  const n = Math.max(1, Math.min(Number(qtd) || 12, 24));
   const out = [];
   const d = new Date();
-  for (let i = 11; i >= 0; i -= 1) {
+  for (let i = n - 1; i >= 0; i -= 1) {
     const x = new Date(d.getFullYear(), d.getMonth() - i, 1);
     const mes = x.getMonth() + 1;
     const ano = x.getFullYear();
-    const mesKey = `${ano}-${String(mes).padStart(2, '0')}`;
     out.push({
-      mesKey,
+      mesKey: `${ano}-${String(mes).padStart(2, '0')}`,
       ano,
       mes,
       label: `${MESES_CURTOS[mes - 1]}`,
@@ -51,6 +56,65 @@ export function ultimos12Meses() {
     });
   }
   return out;
+}
+
+/** Monta série do gráfico de evolução (conta única ou comparativo). */
+export function buildPontosGraficoConsolidado({
+  resumo,
+  codigoAtivo,
+  qtdMeses = 12,
+  serie = 'saldo',
+  comparar = false,
+}) {
+  const mesesRef = ultimosNMeses(qtdMeses);
+  const labelMes = (m) => (qtdMeses > 12 ? m.labelAno : m.label);
+  const rows = Array.isArray(resumo?.meses) ? resumo.meses : [];
+  const valorDe = (hit) =>
+    hit != null
+      ? Number(serie === 'saldo' ? hit.saldoMes : hit.quantidadeLancamentos) || 0
+      : 0;
+
+  if (!comparar) {
+    const cod = String(codigoAtivo ?? 'A').trim().toUpperCase();
+    const porMes = new Map(
+      rows
+        .filter((r) => String(r.contaCodigo ?? '').trim().toUpperCase() === cod)
+        .map((r) => [`${r.ano}-${r.mes}`, r]),
+    );
+    return {
+      pontos: mesesRef.map((m) => {
+        const hit = porMes.get(`${m.ano}-${m.mes}`);
+        return {
+          ...m,
+          label: labelMes(m),
+          valor: valorDe(hit),
+          saldo: hit != null ? Number(hit.saldoMes) || 0 : 0,
+          total: hit != null ? Number(hit.quantidadeLancamentos) || 0 : 0,
+        };
+      }),
+      seriesKeys: ['valor'],
+    };
+  }
+
+  const contas = [
+    ...new Set(
+      rows
+        .map((r) => String(r.contaCodigo ?? '').trim().toUpperCase())
+        .filter(Boolean),
+    ),
+  ].sort();
+  const idx = new Map(rows.map((r) => [`${r.contaCodigo}|${r.ano}-${r.mes}`, r]));
+  return {
+    pontos: mesesRef.map((m) => {
+      const ponto = { ...m, label: labelMes(m) };
+      for (const cod of contas) {
+        const hit = idx.get(`${cod}|${m.ano}-${m.mes}`);
+        ponto[cod] = valorDe(hit);
+      }
+      return ponto;
+    }),
+    seriesKeys: contas,
+  };
 }
 
 export function somaLancamentosApi(content) {
