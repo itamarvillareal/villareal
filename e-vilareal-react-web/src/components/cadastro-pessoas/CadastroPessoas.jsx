@@ -27,11 +27,16 @@ import { ModalContatos } from './ModalContatos';
 import { buscarQualificacaoCompleta } from '../../helpers/documentoHelper.js';
 import { useCloseOnEscape } from '../../hooks/useCloseOnEscape.js';
 import { extrairDadosDeTextoLivre, resolverDocumentoParaFormulario } from '../../services/personTextAutofillService.js';
-import { validateCPF, validarFormatarCpfCnpjAoSair } from '../../services/cpfValidatorService.js';
+import { validarFormatarCpfCnpjAoSair, mascararCpfCnpjInput, documentoCpfCnpjParaExibicao } from '../../services/cpfValidatorService.js';
 import { listarCodigosClientePorIdPessoa } from '../../data/clienteCodigoHelpers.js';
 import { listarClientesCadastro } from '../../repositories/clientesRepository.js';
 import { carregarProcessosVinculoPessoa } from '../../data/pessoaVinculosProcessos.js';
-import { resolverAliasHojeEmTexto, dataNascimentoTextoParaIso } from '../../services/hjDateAliasService.js';
+import {
+  dataNascimentoTextoParaIso,
+  dataNascimentoParaExibicaoBr,
+  formatarDataBrInput,
+  normalizarDataNascimentoBrAoBlur,
+} from '../../services/hjDateAliasService.js';
 import { esbocoQualificacaoComResponsavel, stripSuffixAdministradorPj } from '../../services/qualificacaoContratualHelper.js';
 import { SeletorResponsavelPessoa } from './SeletorResponsavelPessoa.jsx';
 import { getContextoAuditoriaUsuario, registrarAuditoria } from '../../services/auditoriaCliente.js';
@@ -76,6 +81,10 @@ const NACIONALIDADE_PADRAO_BR = 'Brasileira';
 
 function normalizarDigitosCpfCnpj(s) {
   return String(s ?? '').replace(/\D/g, '');
+}
+
+function normalizarNomePessoa(valor) {
+  return String(valor ?? '').toLocaleUpperCase('pt-BR');
 }
 
 /** Converte data de nascimento do formulário para yyyy-mm-dd (API Java LocalDate). */
@@ -352,10 +361,10 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
         setCamposPreenchidosPorTexto(marcados);
         setForm((f) => ({
           ...f,
-          ...(r.nomeCompleto ? { nome: r.nomeCompleto } : {}),
-          ...(docSeguro ? { cpf: docSeguro } : {}),
+          ...(r.nomeCompleto ? { nome: normalizarNomePessoa(r.nomeCompleto) } : {}),
+          ...(docSeguro ? { cpf: documentoCpfCnpjParaExibicao(docSeguro) } : {}),
           ...(r.rg ? { rg: r.rg } : {}),
-          ...(r.dataNascimento ? { dataNascimento: r.dataNascimento } : {}),
+          ...(r.dataNascimento ? { dataNascimento: dataNascimentoParaExibicaoBr(r.dataNascimento) } : {}),
           ...(r.nacionalidade ? { nacionalidade: r.nacionalidade } : {}),
           ...(r.profissao ? { profissao: r.profissao } : {}),
           ...(r.estadoCivil ? { estadoCivil: r.estadoCivil } : {}),
@@ -716,13 +725,13 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
         ...emptyPessoa,
         edicaoDesabilitada: true,
         codigo: String(pessoaAtual.id ?? ''),
-        nome: pessoaAtual.nome ?? '',
+        nome: normalizarNomePessoa(pessoaAtual.nome),
         genero: '',
-        cpf: pessoaAtual.cpf ?? '',
+        cpf: documentoCpfCnpjParaExibicao(pessoaAtual.cpf),
         rg: '',
         orgaoExpedidor: '',
         profissao: '',
-        dataNascimento: formatDate(pessoaAtual.dataNascimento) ?? '',
+        dataNascimento: dataNascimentoParaExibicaoBr(pessoaAtual.dataNascimento) ?? '',
         nacionalidade: nacSalva || NACIONALIDADE_PADRAO_BR,
         estadoCivil: '',
         email: pessoaAtual.email ?? '',
@@ -742,11 +751,6 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
       setEnderecos([]);
       setContatos([]);
   }, [modo, indiceAtual, pessoaAtual, pathPessoasNorm]);
-
-  function formatDate(v) {
-    if (!v) return '';
-    return typeof v === 'string' ? v.split('T')[0] : v;
-  }
 
   async function aplicarFormNovaPessoa({ preservarColagem = false, preservarCamposForm = false } = {}) {
     let codigoProximo = '';
@@ -850,15 +854,15 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
       ...emptyPessoa,
       edicaoDesabilitada: true,
       codigo: String(item.id ?? ''),
-      nome: item.nome ?? '',
+      nome: normalizarNomePessoa(item.nome),
       genero: item.genero ?? '',
-      cpf: item.cpf ?? '',
+      cpf: documentoCpfCnpjParaExibicao(item.cpf),
       rg: item.rg ?? '',
       orgaoExpedidor: item.orgaoExpedidor ?? '',
       profissao: item.profissao ?? '',
       email: item.email ?? '',
       contato: item.telefone ?? '',
-      dataNascimento: formatDate(item.dataNascimento) ?? '',
+      dataNascimento: dataNascimentoParaExibicaoBr(item.dataNascimento) ?? '',
       nacionalidade: nacSalva || NACIONALIDADE_PADRAO_BR,
       estadoCivil: item.estadoCivil ?? '',
       ativo: item.ativo !== false,
@@ -1140,7 +1144,7 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
       setError(null);
       try {
         const payload = {
-          nome: formAtual.nome.trim(),
+          nome: normalizarNomePessoa(formAtual.nome).trim(),
           email: formAtual.email?.trim() ? formAtual.email.trim() : null,
           cpf: docFmt.valor.replace(/\D/g, ''),
           telefone: formAtual.contato?.trim() || null,
@@ -1196,7 +1200,7 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
         }
         const patchLista = {
           id: idParaDocumento,
-          nome: formAtual.nome.trim(),
+          nome: normalizarNomePessoa(formAtual.nome).trim(),
           cpf: docFmt.valor.replace(/\D/g, ''),
           email: formAtual.email?.trim() ? formAtual.email.trim() : null,
           telefone: formAtual.contato?.trim() || null,
@@ -1374,7 +1378,7 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
         return;
       }
       const payload = {
-        nome: String(atual.nome ?? '').trim(),
+        nome: normalizarNomePessoa(atual.nome).trim(),
         email: String(atual.email ?? '').trim(),
         cpf: String(atual.cpf ?? '').replace(/\D/g, ''),
         telefone: atual.telefone?.trim() || null,
@@ -1587,9 +1591,11 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
                               },
                             });
                             const atual = {};
-                            if (resultado.nomeCompleto) atual.nome = resultado.nomeCompleto;
-                            if (resultado.cpf) atual.cpf = resultado.cpf;
-                            if (resultado.dataNascimento) atual.dataNascimento = resultado.dataNascimento;
+                            if (resultado.nomeCompleto) atual.nome = normalizarNomePessoa(resultado.nomeCompleto);
+                            if (resultado.cpf) atual.cpf = documentoCpfCnpjParaExibicao(resultado.cpf);
+                            if (resultado.dataNascimento) {
+                              atual.dataNascimento = dataNascimentoParaExibicaoBr(resultado.dataNascimento);
+                            }
                             setForm((f) => ({
                               ...f,
                               ...(atual.nome ? { nome: atual.nome } : {}),
@@ -1811,9 +1817,12 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
                         value={form.nome}
                         onChange={(e) => {
                           setCamposPreenchidosPorTexto((c) => ({ ...c, nome: false }));
-                          setForm((f) => ({ ...f, nome: e.target.value }));
+                          setForm((f) => ({ ...f, nome: normalizarNomePessoa(e.target.value) }));
                         }}
-                        onBlur={() => marcarAutofillRevisado('nome')}
+                        onBlur={() => {
+                          marcarAutofillRevisado('nome');
+                          setForm((f) => ({ ...f, nome: normalizarNomePessoa(f.nome) }));
+                        }}
                         disabled={form.edicaoDesabilitada}
                         placeholder="Nome completo"
                         className={inputClassComAutofill('nome')}
@@ -1837,10 +1846,11 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
                       <div className="flex gap-2">
                         <input
                           type="text"
+                          inputMode="numeric"
                           value={form.cpf}
                           onChange={(e) => {
                             setCamposPreenchidosPorTexto((c) => ({ ...c, cpf: false }));
-                            setForm((f) => ({ ...f, cpf: e.target.value }));
+                            setForm((f) => ({ ...f, cpf: mascararCpfCnpjInput(e.target.value) }));
                           }}
                           onBlur={() => {
                             marcarAutofillRevisado('cpf');
@@ -1958,24 +1968,23 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
                       <label className="block text-sm font-medium text-slate-700 mb-1">Data de nascimento</label>
                       <input
                         type="text"
-                        inputMode="text"
-                        placeholder="aaaa-mm-dd, dd/mm/aaaa ou hj"
+                        inputMode="numeric"
+                        autoComplete="bday"
+                        placeholder="dd/mm/aaaa"
                         value={form.dataNascimento}
                         onChange={(e) => {
                           setCamposPreenchidosPorTexto((c) => ({ ...c, dataNascimento: false }));
-                          const v = e.target.value;
-                          const r = resolverAliasHojeEmTexto(v, 'iso');
-                          setForm((f) => ({ ...f, dataNascimento: r ?? v }));
+                          setForm((f) => ({
+                            ...f,
+                            dataNascimento: formatarDataBrInput(e.target.value),
+                          }));
                         }}
                         onBlur={() => {
                           marcarAutofillRevisado('dataNascimento');
-                          setForm((f) => {
-                            const iso = dataNascimentoParaPayloadApi(f.dataNascimento);
-                            if (iso && iso !== f.dataNascimento) {
-                              return { ...f, dataNascimento: iso };
-                            }
-                            return f;
-                          });
+                          setForm((f) => ({
+                            ...f,
+                            dataNascimento: normalizarDataNascimentoBrAoBlur(f.dataNascimento),
+                          }));
                         }}
                         disabled={form.edicaoDesabilitada}
                         className={inputClassComAutofill('dataNascimento')}

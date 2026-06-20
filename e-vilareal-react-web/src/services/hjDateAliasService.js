@@ -60,3 +60,42 @@ export function resolverAliasHojeEmTexto(valor, formato) {
   if (!/^hj$/i.test(t)) return null;
   return formato === 'iso' ? hojeIsoLocal() : hojeDdMmYyyy();
 }
+
+/** Mantém só dígitos e insere barras: dd, dd/mm ou dd/mm/aaaa. */
+export function mascararDigitosDataBr(valor) {
+  const digits = String(valor ?? '').replace(/\D/g, '').slice(0, 8);
+  if (!digits) return '';
+  const dd = digits.slice(0, 2);
+  const mm = digits.slice(2, 4);
+  const yyyy = digits.slice(4, 8);
+  if (digits.length <= 2) return dd;
+  if (digits.length <= 4) return `${dd}/${mm}`;
+  return `${dd}/${mm}/${yyyy}`;
+}
+
+export function formatarDataBrInput(valor) {
+  return mascararDigitosDataBr(valor);
+}
+
+/** Valor ISO, dd/mm/aaaa ou parcial digitado → dd/mm/aaaa para exibição. */
+export function dataNascimentoParaExibicaoBr(val) {
+  if (val == null || val === '') return '';
+  const s = String(val).trim();
+  if (!s) return '';
+  const iso = dataNascimentoTextoParaIso(s);
+  if (iso) {
+    const [y, m, d] = iso.split('-');
+    return `${d}/${m}/${y}`;
+  }
+  return formatarDataBrInput(s);
+}
+
+/** Ao sair do campo: normaliza data válida ou limpa se incompleta/inválida. */
+export function normalizarDataNascimentoBrAoBlur(val) {
+  const t = String(val ?? '').trim();
+  if (!t) return '';
+  const iso = dataNascimentoTextoParaIso(t);
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+}
