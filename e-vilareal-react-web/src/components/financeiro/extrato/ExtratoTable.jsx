@@ -20,6 +20,8 @@ function ExtratoTableInner({
   highlightLancamentoId = null,
   /** Conta Escritório no consolidado: etapa = cod+proc (azul/vermelho) em vez da etapa do workflow. */
   etapaModoEscritorio = false,
+  /** Extrato de cartão: coluna extra de vencimento da fatura. */
+  modoCartao = false,
 }) {
   const ids = useMemo(() => data.map((r) => r.id).filter((id) => id != null), [data]);
   const allSelected = useMemo(
@@ -27,6 +29,8 @@ function ExtratoTableInner({
     [ids, selectedIds],
   );
   const someSelected = useMemo(() => ids.some((id) => selectedIds.has(id)), [ids, selectedIds]);
+
+  const colSpan = modoCartao ? 8 : 7;
 
   if (isLoading) {
     return <ExtratoSkeleton />;
@@ -39,7 +43,8 @@ function ExtratoTableInner({
           <col style={{ width: 36 }} />
           <col style={{ width: 48 }} />
           <col style={{ width: 108 }} />
-          <col style={{ width: 300 }} />
+          {modoCartao ? <col style={{ width: 72 }} /> : null}
+          <col style={{ width: modoCartao ? 240 : 300 }} />
           <col style={{ width: 112 }} />
           <col />
           <col style={{ width: 44 }} />
@@ -74,11 +79,14 @@ function ExtratoTableInner({
                   : 'Duplo clique: ordenar do mais antigo para o mais novo'
               }
             >
-              Data
+              {modoCartao ? 'Data compra' : 'Data'}
               <span className="ml-1 text-[10px] opacity-70" aria-hidden>
                 {sortDataAsc ? '↑' : '↓'}
               </span>
             </th>
+            {modoCartao ? (
+              <th className="px-2 py-2 text-left whitespace-nowrap">Venc. fatura</th>
+            ) : null}
             <th className="px-2 py-2 text-left min-w-0">Descrição</th>
             <th className="px-2 py-2 text-right whitespace-nowrap">Valor</th>
             <th className="px-2 py-2 text-left min-w-0">Obs</th>
@@ -88,7 +96,7 @@ function ExtratoTableInner({
         <tbody>
           {data.length === 0 ? (
             <tr>
-              <td colSpan={7} className="px-4 py-12 text-center text-slate-500 text-sm">
+              <td colSpan={colSpan} className="px-4 py-12 text-center text-slate-500 text-sm">
                 Nenhum lançamento neste período/filtro.
               </td>
             </tr>
@@ -139,6 +147,11 @@ function ExtratoTableInner({
                   <td className="px-2 py-2 align-middle text-slate-500 dark:text-slate-400 tabular-nums whitespace-nowrap overflow-hidden text-ellipsis">
                     {item.dataExibicao}
                   </td>
+                  {modoCartao ? (
+                    <td className="px-2 py-2 align-middle text-slate-500 dark:text-slate-400 tabular-nums whitespace-nowrap overflow-hidden text-ellipsis">
+                      {item.vencimentoFaturaExibicao || '—'}
+                    </td>
+                  ) : null}
                   <td className="px-2 py-2 align-middle overflow-hidden">
                     <div className="truncate text-slate-900 dark:text-slate-100" title={item.descricao}>
                       {item.descricao}

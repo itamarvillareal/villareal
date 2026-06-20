@@ -1,5 +1,7 @@
 package br.com.vilareal.financeiro.infrastructure.persistence.entity;
 
+import br.com.vilareal.financeiro.domain.DescricaoNormalizer;
+import br.com.vilareal.financeiro.domain.EtapaLancamento;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
@@ -56,6 +58,9 @@ public class LancamentoCartaoEntity {
     @Column(name = "descricao_detalhada", length = 2000)
     private String descricaoDetalhada;
 
+    @Column(name = "descricao_norm", length = 255)
+    private String descricaoNorm;
+
     /** Sinal da fatura (compra positiva). */
     @Column(nullable = false, precision = 19, scale = 2)
     private BigDecimal valor;
@@ -69,9 +74,23 @@ public class LancamentoCartaoEntity {
     @Column(nullable = false, length = 20)
     private String status = "ATIVO";
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private EtapaLancamento etapa = EtapaLancamento.IMPORTADO;
+
+    /** Par de compensação (Elo) — mesma semântica do extrato bancário. */
+    @Column(name = "grupo_compensacao", length = 40)
+    private String grupoCompensacao;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Instant createdAt;
 
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Instant updatedAt;
+
+    @PrePersist
+    @PreUpdate
+    void preencherDescricaoNorm() {
+        this.descricaoNorm = DescricaoNormalizer.normalizar(this.descricao);
+    }
 }

@@ -1,5 +1,7 @@
 import { LETRA_TO_CONTA, ORDEM_LETRA_CONTA_BASE } from '../../../data/financeiroData.js';
 
+export const FINANCEIRO_CARTAO_IMPORTADO = 'financeiro:cartao-importado';
+
 export const ETAPAS = {
   IMPORTADO: 'IMPORTADO',
   CLASSIFICADO: 'CLASSIFICADO',

@@ -19,6 +19,7 @@ import {
   extratoRowToUi,
   formatDataExtratoColuna,
   mergeExtratoRowComRespostaApi,
+  mergeExtratoRowComRespostaApiCartao,
   montarObservacaoExtratoVinculo,
   promoverContaEscritorioSeVinculado,
 } from './extratoMappers.js';
@@ -31,6 +32,8 @@ import {
   listarContasFinanceiro,
   removerLancamentoFinanceiroApi,
   salvarOuAtualizarLancamentoFinanceiroApi,
+  removerLancamentoCartaoFinanceiroApi,
+  salvarOuAtualizarLancamentoCartaoFinanceiroApi,
 } from '../../../repositories/financeiroRepository.js';
 import { ConfirmDialog } from '../shared/ConfirmDialog.jsx';
 import { useFinanceiroToast } from '../shared/Toast.jsx';
@@ -56,7 +59,8 @@ function Field({ label, children }) {
   );
 }
 
-export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted }) {
+export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted, fonteExtrato = 'banco' }) {
+  const isCartao = fonteExtrato === 'cartao';
   const toast = useFinanceiroToast();
   const [draft, setDraft] = useState(item);
   const [contas, setContas] = useState([]);
@@ -165,13 +169,17 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted }) {
         setDraft(draftSalvar);
       }
       const ui = extratoRowToUi(draftSalvar);
-      const saved = await salvarOuAtualizarLancamentoFinanceiroApi(ui);
+      const saved = isCartao
+        ? await salvarOuAtualizarLancamentoCartaoFinanceiroApi(ui)
+        : await salvarOuAtualizarLancamentoFinanceiroApi(ui);
       if (!saved?.id) {
         toast.error('Falha ao salvar lançamento.');
         return;
       }
       const contaToLetra = buildContaToLetraMerge(loadPersistedContasContabeisExtrasFinanceiro());
-      const merged = mergeExtratoRowComRespostaApi(draftSalvar, saved, contaToLetra);
+      const merged = isCartao
+        ? mergeExtratoRowComRespostaApiCartao(draftSalvar, saved, contaToLetra)
+        : mergeExtratoRowComRespostaApi(draftSalvar, saved, contaToLetra);
       if (merged.pessoaRefId && merged.codCliente) {
         registrarCodigoClienteFinanceiroPorPessoaId(merged.pessoaRefId, merged.codCliente);
       }
@@ -275,13 +283,17 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted }) {
       }
 
       const ui = extratoRowToUi(nextDraft);
-      const saved = await salvarOuAtualizarLancamentoFinanceiroApi(ui);
+      const saved = isCartao
+        ? await salvarOuAtualizarLancamentoCartaoFinanceiroApi(ui)
+        : await salvarOuAtualizarLancamentoFinanceiroApi(ui);
       if (!saved?.id) {
         toast.error('Falha ao gravar vínculo no lançamento.');
         return;
       }
       const contaToLetra = buildContaToLetraMerge(loadPersistedContasContabeisExtrasFinanceiro());
-      const merged = mergeExtratoRowComRespostaApi(nextDraft, saved, contaToLetra);
+      const merged = isCartao
+        ? mergeExtratoRowComRespostaApiCartao(nextDraft, saved, contaToLetra)
+        : mergeExtratoRowComRespostaApi(nextDraft, saved, contaToLetra);
       setDraft(merged);
       onSaved?.(merged);
       dispatchRefreshPendentes();
@@ -306,7 +318,7 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted }) {
     }
     setDeleting(true);
     try {
-      await removerLancamentoFinanceiroApi(apiId);
+      await (isCartao ? removerLancamentoCartaoFinanceiroApi(apiId) : removerLancamentoFinanceiroApi(apiId));
       toast.success('Lançamento excluído do extrato.');
       dispatchRefreshPendentes();
       onDeleted?.(apiId);
@@ -449,7 +461,7 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted }) {
               placeholder="Cód. cliente"
             />
           </Field>
-          <Field label="Processo">
+          <Field label={contaCodigoDraft === 'E' ? 'Cód. compensação' : 'Processo'}>
             <input
               type="text"
               value={draft.proc}

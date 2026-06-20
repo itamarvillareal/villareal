@@ -30,6 +30,34 @@ export function formatarHoraInput(valor) {
   return `${digits.slice(0, 2)}:${digits.slice(2, 4)}`;
 }
 
+/** Posição do cursor após aplicar {@link formatarHoraInput}. */
+export function posicaoCursorFormatarHora(digitsBeforeCursor) {
+  return digitsBeforeCursor <= 2 ? digitsBeforeCursor : digitsBeforeCursor + 1;
+}
+
+/**
+ * Aplica máscara hh:mm enquanto digita (só números; «:» é inserido automaticamente).
+ * @param {HTMLInputElement|null|undefined} inputEl
+ * @param {(v: string) => void} setter
+ */
+export function atualizarHoraComMascara(inputEl, setter) {
+  const raw = inputEl?.value ?? '';
+  const selectionStart = typeof inputEl?.selectionStart === 'number' ? inputEl.selectionStart : raw.length;
+  const digitsAntesCursor = raw.slice(0, selectionStart).replace(/\D/g, '').slice(0, 4).length;
+  const formatted = formatarHoraInput(raw);
+  setter(formatted);
+  requestAnimationFrame(() => {
+    if (!inputEl) return;
+    const pos = posicaoCursorFormatarHora(digitsAntesCursor);
+    const clamped = Math.max(0, Math.min(pos, formatted.length));
+    try {
+      inputEl.setSelectionRange(clamped, clamped);
+    } catch {
+      // ignore (Safari em transição de foco)
+    }
+  });
+}
+
 /**
  * @param {string} valor
  * @returns {string}

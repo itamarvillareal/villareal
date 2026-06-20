@@ -33,6 +33,7 @@ import {
   CIDADES_POR_UF,
   FASES,
   canonicalizarFaseParaOpcoesRadiosProcessos,
+  classeShellFormularioProcessoPorFase,
   COMPETENCIAS,
   TIPOS_AUDIENCIA,
   TRAMITACAO_OPCOES,
@@ -112,6 +113,7 @@ import {
   ProcessosSummaryCards,
   ProcessosTabButton,
   ProcessosToast,
+  useProcessosBannerExpandido,
   diasAteDataBr,
   formatValorCausaExibicao,
   processosBtnGhost,
@@ -598,6 +600,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     }
     setHistoricoToast({ message: msg, variant });
   }, []);
+  const bannerProcesso = useProcessosBannerExpandido();
   const abasProcessoRef = useRef(null);
   const [modalAcoesRedacaoAberto, setModalAcoesRedacaoAberto] = useState(false);
   const [indiceAcaoRedacaoFocada, setIndiceAcaoRedacaoFocada] = useState(0);
@@ -1593,7 +1596,12 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
 
     if (aposObter) {
       if (featureFlags.useApiProcessos) {
-        await sincronizarApiProcessoAtual(overridesPje);
+        await sincronizarApiProcessoAtual(overridesPje, {
+          syncPartes: false,
+          syncAndamentos: false,
+          syncPrazoFatal: false,
+          permitirComEdicaoDesabilitada: true,
+        });
       } else {
         salvarHistoricoDoProcesso(montarPayloadRegistroProcesso(overridesPje));
       }
@@ -1608,7 +1616,12 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     }
 
     if (featureFlags.useApiProcessos) {
-      void sincronizarApiProcessoAtual(overridesPje);
+      void sincronizarApiProcessoAtual(overridesPje, {
+        syncPartes: false,
+        syncAndamentos: false,
+        syncPrazoFatal: false,
+        permitirComEdicaoDesabilitada: true,
+      });
     } else {
       salvarHistoricoDoProcesso(montarPayloadRegistroProcesso(overridesPje));
     }
@@ -2736,6 +2749,8 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     faseSelecionada,
     periodicidadeConsulta,
     tramitacao,
+    pjeTribunal,
+    pjeGrau,
     naturezaAcao,
     consultaAutomatica,
     estado,
@@ -2759,6 +2774,33 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     unidadeEndereco,
     proximaInformacao,
     dataProximaInformacao,
+  ]);
+
+  /** Periodicidade e tramitação permanecem editáveis com «Edição desabilitada». */
+  useEffect(() => {
+    if (!edicaoDesabilitada) return;
+    if (carregandoProcessoNavegacaoRef.current) return;
+    if (featureFlags.useApiProcessos) {
+      void sincronizarApiProcessoAtual(
+        {},
+        {
+          syncPartes: false,
+          syncAndamentos: false,
+          syncPrazoFatal: false,
+          permitirComEdicaoDesabilitada: true,
+        }
+      );
+      return;
+    }
+    salvarHistoricoDoProcesso(montarPayloadRegistroProcesso());
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- snapshot tramitação; deps listadas
+  }, [
+    edicaoDesabilitada,
+    periodicidadeConsulta,
+    tramitacao,
+    pjeTribunal,
+    pjeGrau,
+    procedimento,
   ]);
 
   useEffect(() => {
@@ -3134,27 +3176,9 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     historico.length > 0 && ultimaEntradaHistoricoEhDoUsuarioAtivo(historico[0]);
   const ufAtual = UFS.find((u) => u.sigla === estado);
 
-  const faseSelecionadaNormalizada = normalizarTextoBusca(faseSelecionada);
   /** Igualdade estrita com `FASES` falha quando a API grava sinónimo (ex.: «Aguardando Verificação» vs «Ag. Verificação»). */
   const faseParaRadiosProcessos = canonicalizarFaseParaOpcoesRadiosProcessos(faseSelecionada);
-  // Regra: se estiver em "Ag. Documentos", o formulário da tela deve ficar amarelo.
-  // Mantemos uma detecção tolerante (ex.: "Ag. Documetos") removendo pontuação e comparando substrings.
-  const faseSelecionadaCompacta = faseSelecionadaNormalizada.replace(/[^a-z0-9]/g, '');
-  const isAgDocumentos = faseSelecionadaCompacta.startsWith('ag') && faseSelecionadaCompacta.includes('docu') && (faseSelecionadaCompacta.includes('ment') || faseSelecionadaCompacta.includes('met'));
-  const isAgPeticionar =
-    faseSelecionadaCompacta.startsWith('ag') &&
-    faseSelecionadaCompacta.includes('petic') &&
-    (faseSelecionadaCompacta.includes('ar') || faseSelecionadaCompacta.includes('ionar') || faseSelecionadaCompacta.includes('icion'));
-  const isAgVerificacao =
-    faseSelecionadaCompacta.startsWith('ag') &&
-    (faseSelecionadaCompacta.includes('verif') || faseSelecionadaCompacta.includes('verificacao'));
-  const isProtocoloMovimentacao =
-    faseSelecionadaCompacta.includes('protoc') && faseSelecionadaCompacta.includes('moviment');
-  const isAguardandoProvidencia =
-    faseSelecionadaCompacta.includes('aguard') && faseSelecionadaCompacta.includes('provid');
-  const isProcAdministrativo =
-    faseSelecionadaCompacta.includes('procadministrativo') ||
-    (faseSelecionadaCompacta.includes('proced') && faseSelecionadaCompacta.includes('adm'));
+  const shellFormularioClass = classeShellFormularioProcessoPorFase(faseSelecionada);
 
   const inputClass = processosInputClass;
   const inputDisabledClass = processosInputReadOnlyClass;
@@ -3401,6 +3425,10 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
           faseSelecionada={faseSelecionada}
           edicaoDesabilitada={edicaoDesabilitada}
           onEdicaoDesabilitadaChange={setEdicaoDesabilitada}
+          isMobile={bannerProcesso.isMobile}
+          bannerExpandido={bannerProcesso.expandido}
+          onBannerExpandidoChange={bannerProcesso.setExpandido}
+          observacaoFase={faseCampo}
           onFechar={() => {
             if (isEmbedded && typeof onFecharEmbed === 'function') onFecharEmbed();
             else window.history.back();
@@ -3580,6 +3608,14 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
             { variant: 'valor', label: 'Valor da causa', value: valorCausaFmt, muted: valorCausaZerado, Icon: CircleDollarSign },
           ]}
         />
+        {statusAtivo && String(faseCampo ?? '').trim() ? (
+          <div className="mb-4 rounded-xl border border-blue-200/80 bg-blue-50/50 px-3 py-2.5 shadow-sm">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-800 mb-1">
+              Observação de Fase
+            </p>
+            <p className="text-sm text-slate-800 whitespace-pre-wrap leading-snug">{faseCampo}</p>
+          </div>
+        ) : null}
 
         {featureFlags.useApiProcessos && apiSaving ? (
           <div className="mb-3 rounded border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm text-indigo-800">
@@ -3617,7 +3653,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
           </div>
         ) : null}
 
-                <div className="space-y-4 pb-6">
+                <div className={`space-y-4 pb-6 p-3 sm:p-4 ${shellFormularioClass}`}>
             {/* Urgência: prazo fatal + audiência no topo para leitura imediata */}
             <div className="rounded-lg border-2 border-violet-300/50 bg-gradient-to-br from-violet-50/95 via-white to-rose-50/40 p-2 sm:p-2 shadow-sm">
               <div className="flex flex-col lg:flex-row gap-2 lg:items-stretch">
@@ -3791,7 +3827,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
             {/* Seção superior: 3 colunas - Identificação | Status/Partes/Local | Papel/Fase */}
             <section className="grid grid-cols-1 md:grid-cols-3 gap-2.5 md:gap-3 md:items-stretch">
               {/* Coluna esquerda: Código + Processo na mesma linha, Cliente, Nº velho/novo */}
-              <div className="space-y-2 rounded-xl border border-slate-200/90 bg-white/95 p-3 shadow-sm text-slate-900">
+              <div className="order-2 space-y-2 rounded-xl border border-slate-200/90 bg-white/95 p-3 shadow-sm text-slate-900 md:order-none">
                 <div className="flex flex-wrap items-end gap-3">
                   <Field
                     label="Código do Cliente"
@@ -3903,7 +3939,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
               </div>
 
               {/* Coluna central: Status, Partes, Consulta, Estado+Cidade */}
-              <div className="space-y-2 rounded-xl border border-slate-200/90 bg-white/95 p-3 shadow-sm text-slate-900">
+              <div className="order-3 space-y-2 rounded-xl border border-slate-200/90 bg-white/95 p-3 shadow-sm text-slate-900 md:order-none">
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 min-w-0">
                   <span className="text-sm font-medium text-slate-700 shrink-0">Status</span>
                   <label className={`flex items-center gap-1.5 text-sm shrink-0 ${camposBloqueados ? 'cursor-default' : 'cursor-pointer'}`}>
@@ -4012,8 +4048,8 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                 </div>
               </div>
 
-              {/* Coluna direita: Papel, Fase processual, Observação de Fase */}
-              <div className="flex flex-col gap-3 rounded-xl border border-slate-200/90 bg-white/95 p-3 shadow-sm text-slate-900 min-h-0 h-full">
+              {/* Coluna direita: Papel, Fase processual, Observação de Fase — primeiro no mobile */}
+              <div className="order-1 flex flex-col gap-3 rounded-xl border border-slate-200/90 bg-white/95 p-3 shadow-sm text-slate-900 md:order-none">
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 min-w-0 shrink-0">
                   <span className="text-sm font-medium text-slate-700 shrink-0">
                     Cliente é Requerente ou Requerido?
@@ -4198,37 +4234,29 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                         label="Periodicidade Consulta"
                         dense
                         className="min-w-0 shrink-0 w-[min(100%,13rem)] max-w-[13rem]"
+                        title="Editável mesmo com «Edição desabilitada» marcada"
                       >
-                        {camposBloqueados ? (
-                          <input
-                            type="text"
-                            readOnly
-                            value={periodicidadeConsulta || '—'}
-                            className={`w-full min-w-0 ${clsCampoDenso}`}
-                            title={periodicidadeConsulta}
-                          />
-                        ) : (
-                          <select
-                            value={periodicidadeConsulta}
-                            onChange={(e) => setPeriodicidadeConsulta(e.target.value)}
-                            className={`w-full min-w-0 ${inputClassDenso}`}
-                          >
-                            <option value="">—</option>
-                            <option value="Diária">Diária</option>
-                            <option value="Semanal">Semanal</option>
-                            <option value="Quinzenal">Quinzenal</option>
-                            <option value="Mensal">Mensal</option>
-                            <option value="Bimestral">Bimestral</option>
-                            <option value="Trimensal">Trimensal</option>
-                            <option value="Semestral">Semestral</option>
-                            <option value="Anual">Anual</option>
-                          </select>
-                        )}
+                        <select
+                          value={periodicidadeConsulta}
+                          onChange={(e) => setPeriodicidadeConsulta(e.target.value)}
+                          className={`w-full min-w-0 ${inputClassDenso}`}
+                        >
+                          <option value="">—</option>
+                          <option value="Diária">Diária</option>
+                          <option value="Semanal">Semanal</option>
+                          <option value="Quinzenal">Quinzenal</option>
+                          <option value="Mensal">Mensal</option>
+                          <option value="Bimestral">Bimestral</option>
+                          <option value="Trimensal">Trimensal</option>
+                          <option value="Semestral">Semestral</option>
+                          <option value="Anual">Anual</option>
+                        </select>
                       </Field>
                       <button
                         type="button"
                         onClick={abrirModalTramitacao}
                         className={processosBtnIndigo + " shrink-0 self-end text-sm py-2"}
+                        title="Editável mesmo com «Edição desabilitada» marcada"
                       >
                         Tramitação
                       </button>

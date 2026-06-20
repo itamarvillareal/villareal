@@ -1,5 +1,6 @@
 package br.com.vilareal.financeiro.infrastructure.persistence.repository;
 
+import br.com.vilareal.financeiro.domain.EtapaLancamento;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.LancamentoCartaoEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
@@ -10,6 +11,16 @@ import java.util.List;
 
 public interface LancamentoCartaoRepository
         extends JpaRepository<LancamentoCartaoEntity, Long>, JpaSpecificationExecutor<LancamentoCartaoEntity> {
+
+    long countByEtapa(EtapaLancamento etapa);
+
+    @Query("""
+            SELECT COUNT(l) FROM LancamentoCartaoEntity l
+            JOIN l.contaContabil c
+            WHERE UPPER(TRIM(c.codigo)) = 'A'
+              AND l.clienteEntidade IS NULL
+            """)
+    long countContaASemCliente();
 
     @Query(
             """

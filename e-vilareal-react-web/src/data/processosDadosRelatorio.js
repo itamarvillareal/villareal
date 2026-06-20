@@ -131,6 +131,33 @@ export function canonicalizarFaseParaOpcoesRadiosProcessos(val) {
   return '';
 }
 
+/** Classes Tailwind do «shell» do formulário conforme a fase (legado Access / tela Processos). */
+export function classeShellFormularioProcessoPorFase(faseSelecionada) {
+  const c = faseProcessualCompactaPt(faseSelecionada);
+  if (!c) {
+    return 'rounded-xl border border-slate-200/90 bg-white shadow-sm text-slate-900';
+  }
+  if (c.includes('protoc') && c.includes('moviment')) {
+    return 'rounded-xl border border-slate-700 bg-slate-900 text-slate-100 shadow-sm';
+  }
+  if (c.startsWith('ag') && c.includes('petic') && (c.includes('ar') || c.includes('ionar') || c.includes('icion'))) {
+    return 'rounded-xl border border-red-400 bg-red-100/90 text-slate-900 shadow-sm';
+  }
+  if (c.startsWith('ag') && c.includes('docu') && (c.includes('ment') || c.includes('met'))) {
+    return 'rounded-xl border border-amber-400 bg-amber-100/90 text-slate-900 shadow-sm';
+  }
+  if (c.startsWith('ag') && (c.includes('verif') || c.includes('verificacao'))) {
+    return 'rounded-xl border border-violet-400 bg-violet-100/90 text-slate-900 shadow-sm';
+  }
+  if (c.includes('aguard') && c.includes('provid')) {
+    return 'rounded-xl border border-orange-300 bg-orange-50 text-slate-900 shadow-sm';
+  }
+  if (c.includes('procadministrativo') || (c.includes('proced') && c.includes('adm'))) {
+    return 'rounded-xl border border-slate-400 bg-slate-200/90 text-slate-900 shadow-sm';
+  }
+  return 'rounded-xl border border-slate-200/90 bg-white shadow-sm text-slate-900';
+}
+
 export const COMPETENCIAS = [
   '1º JUIZADO ESPECIAL CÍVEL',
   '2º JUIZADO ESPECIAL CÍVEL',

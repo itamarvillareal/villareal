@@ -34,7 +34,8 @@
     "import:extrato-99pay-xlsx": "node scripts/import-extrato-99pay-xlsx.mjs",
     "import:extrato-bancos-itau": "node scripts/import-extrato-bancos-planilha.mjs --sheet=Itaú --banco=Itaú --layout=itau-pf --substituir --login=itamar",
     "import:extrato-bancos-todos": "node scripts/import-extrato-bancos-planilha.mjs --todos-bancos --substituir --login=itamar",
-    "import:extrato-cartoes-todos": "node scripts/import-extrato-cartoes-planilha.mjs --todos-cartoes --substituir --login=itamar"
+    "import:extrato-cartoes-todos": "node scripts/import-extrato-cartoes-planilha.mjs --todos-cartoes --substituir --login=itamar",
+    "import:fatura-cartao": "node scripts/import-fatura-cartao.mjs"
   },
   "dependencies": {
     "@tanstack/react-virtual": "^3.13.24",

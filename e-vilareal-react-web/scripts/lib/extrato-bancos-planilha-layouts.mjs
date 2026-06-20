@@ -87,6 +87,10 @@ export function extrairLancamentosDaAba(ws, layout, bancoNome) {
     if (!dataIso && valor == null) continue;
     if (/^SALDO\s+INICIAL$/i.test(descricao)) continue;
 
+    const isCartao = layout.id === 'cartao-f';
+    const vencimentoIso = parseDataPlanilha(cell(U.extraE));
+    const dataCompetenciaIso = vencimentoIso || dataIso || '1900-01-01';
+
     const letraRaw = cell(U.letra);
     const letraNorm = normalizarLetraPlanilha(letraRaw);
     const letra = letraNorm ?? 'N';
@@ -100,8 +104,8 @@ export function extrairLancamentosDaAba(ws, layout, bancoNome) {
       letra === 'A' ? normalizarRefTipo(cell(U.refRepasse)) : null;
 
     const descricaoDetalhada = montarDescricaoDetalhada({
-      e: textoCelula(cell(U.extraE)),
-      f: textoCelula(cell(U.extraF)),
+      e: isCartao ? '' : textoCelula(cell(U.extraE)),
+      f: isCartao ? '' : textoCelula(cell(U.extraF)),
       j: textoCelula(cell(U.observacao)),
       labelCliente: clienteCol?.kind === 'label' ? clienteCol.text : '',
       procPlanilha:
@@ -117,6 +121,7 @@ export function extrairLancamentosDaAba(ws, layout, bancoNome) {
       letraDesconhecida,
       letraRaw: textoCelula(letraRaw),
       dataIso: dataFinal,
+      dataCompetenciaIso,
       valor: valorFinal,
       descricao: descricao || 'Lançamento extrato',
       descricaoDetalhada,

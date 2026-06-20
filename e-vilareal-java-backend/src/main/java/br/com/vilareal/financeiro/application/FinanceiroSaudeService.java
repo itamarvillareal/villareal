@@ -54,9 +54,14 @@ public class FinanceiroSaudeService {
             porEtapa.put(etapa.name(), 0L);
         }
         financeiroApplicationService.contarPorEtapa().forEach(porEtapa::put);
+        for (EtapaLancamento etapa : EtapaLancamento.values()) {
+            porEtapa.merge(etapa.name(), lancamentoCartaoRepository.countByEtapa(etapa), Long::sum);
+        }
 
+        long totalGeral = totalLancamentos + totalCartao;
         long importados = porEtapa.getOrDefault(EtapaLancamento.IMPORTADO.name(), 0L);
-        long aSemCliente = lancamentoRepository.countContaASemCliente();
+        long aSemCliente = lancamentoRepository.countContaASemCliente()
+                + lancamentoCartaoRepository.countContaASemCliente();
 
         FinanceiroSaudeResponse response = new FinanceiroSaudeResponse();
         response.setTotalLancamentos(totalLancamentos);
@@ -65,12 +70,12 @@ public class FinanceiroSaudeService {
 
         FinanceiroSaudeIndicadorDto naoId = new FinanceiroSaudeIndicadorDto();
         naoId.setTotal(importados);
-        naoId.setPercentual(percentual(importados, totalLancamentos));
+        naoId.setPercentual(percentual(importados, totalGeral));
         response.setNaoIdentificados(naoId);
 
         FinanceiroSaudeIndicadorDto semCli = new FinanceiroSaudeIndicadorDto();
         semCli.setTotal(aSemCliente);
-        semCli.setPercentual(percentual(aSemCliente, totalLancamentos));
+        semCli.setPercentual(percentual(aSemCliente, totalGeral));
         response.setASemCliente(semCli);
 
         response.setGruposInconsistentes(

@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { CircleAlert, Gavel, Pin, Scale, X } from 'lucide-react';
 import { normalizarStatusCurtoAgenda } from '../data/agendaPersistenciaData.js';
+import {
+  atualizarHoraComMascara,
+  normalizarHora,
+} from '../domain/agendamentoCadencia.js';
 
 /** Remove acentos e minúsculas para busca insensível a maiúsculas/acentos. */
 export function normalizarParaBuscaPalavraChave(str) {
@@ -218,6 +222,8 @@ export function EditableTextCell({
   onEdicaoIniciada = null,
   classNameLeitura = '',
   classNameInput = '',
+  /** Máscara hh:mm — aceita só dígitos; «:» inserido automaticamente (mobile-friendly). */
+  modoHora = false,
 }) {
   const original = String(texto ?? '');
   const [editando, setEditando] = useState(iniciarEmEdicao);
@@ -256,7 +262,29 @@ export function EditableTextCell({
   }, [editando, multiline, iniciarEmEdicao, onEdicaoIniciada]);
 
   function salvarSeMudou() {
-    const novo = String(valor ?? '').slice(0, maxLen);
+    const bruto = String(valor ?? '').slice(0, maxLen);
+    const novo = modoHora ? normalizarHora(bruto) || bruto.trim() : bruto;
+    if (!modoHora && novo === original) {
+      setEditando(false);
+      return;
+    }
+    if (modoHora) {
+      const norm = normalizarHora(bruto);
+      if (!norm) {
+        setValor(original);
+        setEditando(false);
+        return;
+      }
+      if (norm === original) {
+        setValor(norm);
+        setEditando(false);
+        return;
+      }
+      setValor(norm);
+      onSalvar?.(norm);
+      setEditando(false);
+      return;
+    }
     if (novo === original) {
       setEditando(false);
       return;
@@ -339,10 +367,22 @@ export function EditableTextCell({
           <input
             ref={inputRef}
             type="text"
+            inputMode={modoHora ? 'numeric' : undefined}
+            autoComplete={modoHora ? 'off' : undefined}
             value={valor}
-            onChange={(e) => setValor(e.target.value.slice(0, maxLen))}
+            onChange={(e) => {
+              if (modoHora) {
+                atualizarHoraComMascara(e.target, setValor);
+                return;
+              }
+              setValor(e.target.value.slice(0, maxLen));
+            }}
             onDoubleClick={(e) => e.stopPropagation()}
             onBlur={() => {
+              if (modoHora) {
+                const norm = normalizarHora(valor);
+                if (norm) setValor(norm);
+              }
               if (cancelouRef.current) {
                 cancelouRef.current = false;
                 setEditando(false);
@@ -353,6 +393,10 @@ export function EditableTextCell({
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 e.preventDefault();
+                if (modoHora) {
+                  const norm = normalizarHora(valor);
+                  if (norm) setValor(norm);
+                }
                 salvarSeMudou();
               }
               if (e.key === 'Escape') {
@@ -363,7 +407,9 @@ export function EditableTextCell({
               }
             }}
             className={`w-full rounded border px-1.5 py-1 text-sm focus:outline-none focus:ring-1 ${inputAlign} ${baseInput}`}
-            maxLength={maxLen}
+            maxLength={modoHora ? 5 : maxLen}
+            placeholder={modoHora ? 'hh:mm' : undefined}
+            title={modoHora ? 'Digite só números (ex.: 1730 → 17:30)' : undefined}
           />
         )
       ) : (
@@ -431,7 +477,8 @@ export function CompromissoCard({
           <EditableTextCell
             texto={ev.hora ?? ''}
             align="left"
-            maxLen={12}
+            maxLen={5}
+            modoHora
             readOnly={somenteLeitura}
             classNameLeitura="text-sm font-mono font-bold text-gray-500 bg-transparent border-0 p-0"
             onDuploClique={() => onDuploCliqueEvento?.(ev)}
@@ -540,7 +587,7 @@ export function NovoCompromissoCard({ idFoco, salvarLinhaVazia, suprimirAutoFoco
         : 'bg-white text-gray-900 border-slate-300 focus:ring-indigo-400/50 focus:border-indigo-400';
 
   async function persistirNovoCompromisso(opts = {}) {
-    const h = String(hora ?? '').trim();
+    const h = String(opts.horaNormalizada ?? normalizarHora(hora) ?? '').trim();
     const d = String(descricao ?? '').trim();
     if (!h && !d) return;
     const patch = {};
@@ -555,9 +602,13 @@ export function NovoCompromissoCard({ idFoco, salvarLinhaVazia, suprimirAutoFoco
   async function gravarHora() {
     const focarDescricao = pedirFocoDescricaoRef.current;
     pedirFocoDescricaoRef.current = false;
-    const v = String(hora ?? '').trim();
-    if (!v) return;
-    await persistirNovoCompromisso({ focarDescricao });
+    const v = normalizarHora(hora);
+    if (!v) {
+      setHora('');
+      return;
+    }
+    setHora(v);
+    await persistirNovoCompromisso({ focarDescricao, horaNormalizada: v });
     if (focarDescricao) {
       requestAnimationFrame(() => descricaoInputRef.current?.focus());
     }
@@ -587,12 +638,13 @@ export function NovoCompromissoCard({ idFoco, salvarLinhaVazia, suprimirAutoFoco
             inputMode="numeric"
             autoComplete="off"
             value={hora}
-            maxLength={12}
-            placeholder="14:30"
-            onChange={(e) => setHora(e.target.value)}
+            maxLength={5}
+            placeholder="hh:mm"
+            title="Digite só números (ex.: 1730 → 17:30)"
+            onChange={(e) => atualizarHoraComMascara(e.target, setHora)}
             onBlur={() => void gravarHora()}
             onKeyDown={(e) => {
-              if (e.key === 'Tab' && !e.shiftKey && String(hora ?? '').trim()) {
+              if (e.key === 'Tab' && !e.shiftKey && normalizarHora(hora)) {
                 pedirFocoDescricaoRef.current = true;
                 e.preventDefault();
                 void gravarHora();

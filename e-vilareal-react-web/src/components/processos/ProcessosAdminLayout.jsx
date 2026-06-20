@@ -1,5 +1,73 @@
 import { useEffect, useRef, useState } from 'react';
-import { AlertCircle, ChevronDown, Check, X } from 'lucide-react';
+import { AlertCircle, ChevronDown, ChevronUp, Check, X } from 'lucide-react';
+
+const STORAGE_PROCESSOS_ACOES_EXPANDIDAS = 'vilareal:processos-acoes-toolbar-expandida';
+const STORAGE_PROCESSOS_BANNER_MOBILE = 'vilareal:processos-banner-mobile-expandido';
+const MOBILE_BANNER_MQ = '(max-width: 767px)';
+
+function lerPreferenciaAcoesExpandidas() {
+  try {
+    const raw = localStorage.getItem(STORAGE_PROCESSOS_ACOES_EXPANDIDAS);
+    if (raw === 'false') return false;
+    if (raw === 'true') return true;
+  } catch {
+    /* ignore */
+  }
+  return true;
+}
+
+function lerPreferenciaBannerMobileExpandido() {
+  try {
+    const raw = localStorage.getItem(STORAGE_PROCESSOS_BANNER_MOBILE);
+    if (raw === 'true') return true;
+    if (raw === 'false') return false;
+  } catch {
+    /* ignore */
+  }
+  return false;
+}
+
+function detectarViewportMobile() {
+  if (typeof window === 'undefined') return false;
+  return window.matchMedia(MOBILE_BANNER_MQ).matches;
+}
+
+/** Controle de expansão: no mobile recolhe o banner inteiro; no desktop só as ações. */
+export function useProcessosBannerExpandido() {
+  const [isMobile, setIsMobile] = useState(detectarViewportMobile);
+  const [mobileExpandido, setMobileExpandido] = useState(lerPreferenciaBannerMobileExpandido);
+  const [desktopAcoesExpandidas, setDesktopAcoesExpandidas] = useState(lerPreferenciaAcoesExpandidas);
+
+  useEffect(() => {
+    const mq = window.matchMedia(MOBILE_BANNER_MQ);
+    const onChange = () => setIsMobile(mq.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+
+  useEffect(() => {
+    if (!isMobile) return;
+    try {
+      localStorage.setItem(STORAGE_PROCESSOS_BANNER_MOBILE, mobileExpandido ? 'true' : 'false');
+    } catch {
+      /* ignore */
+    }
+  }, [isMobile, mobileExpandido]);
+
+  useEffect(() => {
+    if (isMobile) return;
+    try {
+      localStorage.setItem(STORAGE_PROCESSOS_ACOES_EXPANDIDAS, desktopAcoesExpandidas ? 'true' : 'false');
+    } catch {
+      /* ignore */
+    }
+  }, [isMobile, desktopAcoesExpandidas]);
+
+  const expandido = isMobile ? mobileExpandido : desktopAcoesExpandidas;
+  const setExpandido = isMobile ? setMobileExpandido : setDesktopAcoesExpandidas;
+
+  return { isMobile, expandido, setExpandido, alternarExpandido: () => setExpandido((v) => !v) };
+}
 
 export const processosInputClass =
   'w-full px-3 py-2.5 text-sm rounded-xl border border-gray-200 bg-white text-gray-800 font-medium placeholder:text-gray-300 placeholder:italic focus:outline-none focus:ring-2 focus:ring-teal-400 focus:border-teal-400 transition-[box-shadow,border-color] duration-200';
@@ -316,6 +384,10 @@ export function ProcessosAccordionSection({
  *   onEdicaoDesabilitadaChange?: (checked: boolean) => void,
  *   actions?: import('react').ReactNode,
  *   onFechar: () => void,
+ *   isMobile?: boolean,
+ *   bannerExpandido?: boolean,
+ *   onBannerExpandidoChange?: (expandido: boolean) => void,
+ *   observacaoFase?: string,
  * }} props
  */
 export function ProcessosStickyHeader({
@@ -327,62 +399,183 @@ export function ProcessosStickyHeader({
   onEdicaoDesabilitadaChange,
   actions,
   onFechar,
+  isMobile = false,
+  bannerExpandido: bannerExpandidoProp,
+  onBannerExpandidoChange,
+  observacaoFase = '',
 }) {
   const { headerRef, scrolled } = useHeaderScrollShadow();
+  const [acoesExpandidasLocal, setAcoesExpandidasLocal] = useState(lerPreferenciaAcoesExpandidas);
+  const bannerExpandido = bannerExpandidoProp ?? acoesExpandidasLocal;
+  const setBannerExpandido = onBannerExpandidoChange ?? setAcoesExpandidasLocal;
   const cnj = String(numeroCnj ?? '').trim() || '—';
   const fase = String(faseSelecionada ?? '').trim();
+  const obsFase = String(observacaoFase ?? '').trim();
+  const temAcoes = actions != null;
+  const bannerCompactoMobile = isMobile && !bannerExpandido;
+
+  const toggleBanner = () => setBannerExpandido(!bannerExpandido);
+  const rotuloToggle = isMobile
+    ? bannerExpandido
+      ? 'Recolher banner'
+      : 'Expandir banner'
+    : bannerExpandido
+      ? 'Recolher ações'
+      : 'Expandir ações';
+
+  const badgesStatus = (
+    <>
+      <span
+        className={`inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border sm:px-3 sm:py-1 sm:text-xs ${
+          statusAtivo ? 'bg-emerald-100 text-emerald-700 border-emerald-300' : 'bg-gray-100 text-gray-500 border-gray-300'
+        }`}
+      >
+        {statusAtivo ? 'Ativo' : 'Inativo'}
+      </span>
+      {fase && statusAtivo ? (
+        <span
+          className="inline-flex max-w-[10rem] truncate px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-blue-100 text-blue-700 border border-blue-300 sm:max-w-[14rem] sm:px-3 sm:py-1 sm:text-xs"
+          title={fase}
+        >
+          {fase}
+        </span>
+      ) : null}
+    </>
+  );
 
   return (
     <div
       ref={headerRef}
-      className={`sticky top-0 z-20 -mx-3 sm:-mx-4 px-3 sm:px-4 py-4 mb-5 border-b border-indigo-200/60 backdrop-blur-md transition-shadow duration-300 ${
-        scrolled ? 'shadow-lg' : 'shadow-sm'
-      } bg-gradient-to-br from-indigo-50 via-slate-50 to-slate-100`}
+      className={`sticky top-0 z-20 -mx-3 sm:-mx-4 px-3 sm:px-4 border-b border-indigo-200/60 backdrop-blur-md transition-shadow duration-300 ${
+        bannerCompactoMobile ? 'py-2 mb-2' : 'py-4 mb-5'
+      } ${scrolled ? 'shadow-lg' : 'shadow-sm'} bg-gradient-to-br from-indigo-50 via-slate-50 to-slate-100`}
     >
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-        <div className="min-w-0 flex-1 space-y-1">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-indigo-600/90">Número CNJ</p>
-          <p className="font-mono text-2xl font-bold text-indigo-900 break-all leading-tight" title={cnj !== '—' ? cnj : undefined}>
-            {cnj}
-          </p>
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 min-w-0">
-            <p className="min-w-0 text-lg text-slate-600 truncate" title={cliente || undefined}>
+      {bannerCompactoMobile ? (
+        <div className="flex items-start gap-2">
+          <button
+            type="button"
+            onClick={() => setBannerExpandido(true)}
+            className="min-w-0 flex-1 rounded-lg border border-indigo-200/60 bg-white/70 px-3 py-2 text-left shadow-sm active:bg-white"
+            aria-label="Expandir banner do processo"
+          >
+            <p className="font-mono text-xs font-bold leading-snug text-indigo-900 line-clamp-2" title={cnj !== '—' ? cnj : undefined}>
+              {cnj}
+            </p>
+            <p className="mt-0.5 truncate text-sm text-slate-600" title={cliente || undefined}>
               {cliente || '—'}
             </p>
-            {onEdicaoDesabilitadaChange ? (
-              <label className="flex shrink-0 cursor-pointer items-center gap-2 text-sm text-slate-600">
-                <input
-                  type="checkbox"
-                  checked={Boolean(edicaoDesabilitada)}
-                  onChange={(e) => onEdicaoDesabilitadaChange(e.target.checked)}
-                  className="rounded border-slate-300 accent-indigo-600"
-                />
-                Edição Desabilitada
-              </label>
+            <div className="mt-1.5 flex flex-wrap items-center gap-1">{badgesStatus}</div>
+            {statusAtivo && obsFase ? (
+              <p className="mt-1.5 line-clamp-2 text-xs text-slate-700 whitespace-pre-wrap" title={obsFase}>
+                {obsFase}
+              </p>
             ) : null}
+          </button>
+          <div className="flex shrink-0 flex-col gap-1">
+            <button
+              type="button"
+              onClick={toggleBanner}
+              className="flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-indigo-200/80 bg-white text-indigo-900 shadow-sm"
+              aria-expanded={bannerExpandido}
+              aria-label={rotuloToggle}
+            >
+              <ChevronDown className="h-5 w-5" aria-hidden />
+            </button>
+            <button
+              type="button"
+              onClick={onFechar}
+              className="flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-600"
+              aria-label="Fechar"
+            >
+              <X className="h-5 w-5" />
+            </button>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2 shrink-0 self-start">
-          <span
-            className={`inline-flex px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide border ${
-              statusAtivo ? 'bg-emerald-100 text-emerald-700 border-emerald-300' : 'bg-gray-100 text-gray-500 border-gray-300'
-            }`}
-          >
-            {statusAtivo ? 'Ativo' : 'Inativo'}
-          </span>
-          {fase && statusAtivo ? (
-            <span className="inline-flex max-w-[14rem] truncate px-3 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-700 border border-blue-300" title={fase}>
-              {fase}
-            </span>
-          ) : null}
-        </div>
-      </div>
-      <div className="mt-3 flex flex-col gap-2 pt-3 border-t border-indigo-200/40 sm:flex-row sm:items-start">
-        <div className="flex min-w-0 flex-1 flex-col gap-2">{actions}</div>
-        <button type="button" onClick={onFechar} className="self-end shrink-0 rounded-xl border border-gray-200 bg-white p-2.5 text-gray-600 transition-colors hover:bg-gray-50 sm:self-start" aria-label="Fechar">
-          <X className="w-5 h-5" />
-        </button>
-      </div>
+      ) : (
+        <>
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0 flex-1 space-y-1">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-indigo-600/90">Número CNJ</p>
+              <p
+                className={`font-mono font-bold text-indigo-900 break-all leading-tight ${
+                  isMobile ? 'text-lg' : 'text-2xl'
+                }`}
+                title={cnj !== '—' ? cnj : undefined}
+              >
+                {cnj}
+              </p>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 min-w-0">
+                <p
+                  className={`min-w-0 text-slate-600 truncate ${isMobile ? 'text-base' : 'text-lg'}`}
+                  title={cliente || undefined}
+                >
+                  {cliente || '—'}
+                </p>
+                {onEdicaoDesabilitadaChange ? (
+                  <label className="flex shrink-0 cursor-pointer items-center gap-2 text-sm text-slate-600">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(edicaoDesabilitada)}
+                      onChange={(e) => onEdicaoDesabilitadaChange(e.target.checked)}
+                      className="rounded border-slate-300 accent-indigo-600"
+                    />
+                    Edição Desabilitada
+                  </label>
+                ) : null}
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 shrink-0 self-start">{badgesStatus}</div>
+          </div>
+          {temAcoes ? (
+            <div className="mt-3 flex flex-col gap-2 border-t border-indigo-200/40 pt-3">
+              <div className="flex items-center justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={toggleBanner}
+                  className={`inline-flex items-center gap-1.5 rounded-lg border border-indigo-200/80 bg-white/80 font-medium text-indigo-900 shadow-sm transition-colors hover:bg-white ${
+                    isMobile ? 'min-h-11 flex-1 justify-center px-4 py-2.5 text-sm' : 'px-3 py-2 text-sm'
+                  }`}
+                  aria-expanded={bannerExpandido}
+                  aria-controls="processos-acoes-toolbar"
+                >
+                  {bannerExpandido ? (
+                    <ChevronUp className="h-4 w-4 shrink-0" aria-hidden />
+                  ) : (
+                    <ChevronDown className="h-4 w-4 shrink-0" aria-hidden />
+                  )}
+                  {rotuloToggle}
+                </button>
+                <button
+                  type="button"
+                  onClick={onFechar}
+                  className={`shrink-0 rounded-xl border border-gray-200 bg-white text-gray-600 transition-colors hover:bg-gray-50 ${
+                    isMobile ? 'flex min-h-11 min-w-11 items-center justify-center p-2.5' : 'p-2.5'
+                  }`}
+                  aria-label="Fechar"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              {bannerExpandido ? (
+                <div id="processos-acoes-toolbar" className="flex min-w-0 flex-1 flex-col gap-2">
+                  {actions}
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <div className="mt-3 flex justify-end border-t border-indigo-200/40 pt-3">
+              <button
+                type="button"
+                onClick={onFechar}
+                className="shrink-0 rounded-xl border border-gray-200 bg-white p-2.5 text-gray-600 transition-colors hover:bg-gray-50"
+                aria-label="Fechar"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }

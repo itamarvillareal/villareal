@@ -26,10 +26,15 @@ public final class CompensacaoSqlDiaUtil {
     public static final String MESMO_DIA_UTIL_BANCARIO_JOIN_AB =
             NORMALIZAR_A_DATA_LANCAMENTO + " = " + NORMALIZAR_B_DATA_LANCAMENTO;
 
-    /** Só lançamentos já classificados na Conta Compensação (letra E). */
-    public static final String JOIN_CONTA_E_AB =
+    /** Join da conta E do lançamento {@code a} (antes do join em {@code b}). */
+    public static final String JOIN_CONTA_E_A =
             """
             INNER JOIN financeiro_conta_contabil cc_a ON cc_a.id = a.conta_contabil_id
+            """;
+
+    /** Join da conta E do lançamento {@code b} (depois do join em {@code b}). */
+    public static final String JOIN_CONTA_E_B =
+            """
             INNER JOIN financeiro_conta_contabil cc_b ON cc_b.id = b.conta_contabil_id
             """;
 

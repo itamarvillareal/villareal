@@ -4,6 +4,7 @@ import br.com.vilareal.common.exception.BusinessRuleException;
 import br.com.vilareal.common.exception.ResourceNotFoundException;
 import br.com.vilareal.common.text.Utf8MojibakeUtil;
 import br.com.vilareal.financeiro.api.dto.*;
+import br.com.vilareal.financeiro.domain.EtapaLancamento;
 import br.com.vilareal.financeiro.infrastructure.persistence.LancamentoCartaoSpecifications;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.CartaoEntity;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.ContaContabilEntity;
@@ -15,6 +16,7 @@ import br.com.vilareal.pessoa.application.ClienteResolverService;
 import br.com.vilareal.pessoa.application.TitularPessoaRefHelper;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -38,18 +40,21 @@ public class FinanceiroCartaoApplicationService {
     private final ContaContabilRepository contaContabilRepository;
     private final ProcessoRepository processoRepository;
     private final ClienteResolverService clienteResolverService;
+    private final FinanceiroSaudeService financeiroSaudeService;
 
     public FinanceiroCartaoApplicationService(
             CartaoRepository cartaoRepository,
             LancamentoCartaoRepository lancamentoCartaoRepository,
             ContaContabilRepository contaContabilRepository,
             ProcessoRepository processoRepository,
-            ClienteResolverService clienteResolverService) {
+            ClienteResolverService clienteResolverService,
+            @Lazy FinanceiroSaudeService financeiroSaudeService) {
         this.cartaoRepository = cartaoRepository;
         this.lancamentoCartaoRepository = lancamentoCartaoRepository;
         this.contaContabilRepository = contaContabilRepository;
         this.processoRepository = processoRepository;
         this.clienteResolverService = clienteResolverService;
+        this.financeiroSaudeService = financeiroSaudeService;
     }
 
     @Transactional(readOnly = true)
@@ -86,7 +91,9 @@ public class FinanceiroCartaoApplicationService {
     public LancamentoCartaoResponse criarLancamento(LancamentoCartaoWriteRequest req) {
         LancamentoCartaoEntity e = new LancamentoCartaoEntity();
         aplicarLancamento(e, req, true);
-        return toLancamentoResponse(lancamentoCartaoRepository.save(e));
+        LancamentoCartaoResponse saved = toLancamentoResponse(lancamentoCartaoRepository.save(e));
+        financeiroSaudeService.invalidarCacheSaude();
+        return saved;
     }
 
     @Transactional
@@ -94,7 +101,9 @@ public class FinanceiroCartaoApplicationService {
         LancamentoCartaoEntity e = lancamentoCartaoRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Lançamento de cartão não encontrado: " + id));
         aplicarLancamento(e, req, false);
-        return toLancamentoResponse(lancamentoCartaoRepository.save(e));
+        LancamentoCartaoResponse saved = toLancamentoResponse(lancamentoCartaoRepository.save(e));
+        financeiroSaudeService.invalidarCacheSaude();
+        return saved;
     }
 
     @Transactional
@@ -103,6 +112,7 @@ public class FinanceiroCartaoApplicationService {
             throw new ResourceNotFoundException("Lançamento de cartão não encontrado: " + id);
         }
         lancamentoCartaoRepository.deleteById(id);
+        financeiroSaudeService.invalidarCacheSaude();
     }
 
     @Transactional
@@ -129,6 +139,15 @@ public class FinanceiroCartaoApplicationService {
         r.setLancamentosRemovidos(removidos);
         r.setLancamentosDesvinculadosOutrosBancos(0);
         return r;
+    }
+
+    @Transactional(readOnly = true)
+    public Map<String, Long> contarPorEtapa() {
+        Map<String, Long> mapa = new LinkedHashMap<>();
+        for (EtapaLancamento etapa : EtapaLancamento.values()) {
+            mapa.put(etapa.name(), lancamentoCartaoRepository.countByEtapa(etapa));
+        }
+        return mapa;
     }
 
     private void aplicarLancamento(LancamentoCartaoEntity e, LancamentoCartaoWriteRequest req, boolean criacao) {
@@ -174,6 +193,23 @@ public class FinanceiroCartaoApplicationService {
 
         String status = req.getStatus() != null ? req.getStatus().trim() : "";
         e.setStatus(StringUtils.hasText(status) ? status : "ATIVO");
+
+        if (req.getGrupoCompensacao() != null) {
+            String g = req.getGrupoCompensacao().trim();
+            e.setGrupoCompensacao(StringUtils.hasText(g) ? g : null);
+        }
+
+        aplicarEtapa(e, req, conta);
+    }
+
+    private void aplicarEtapa(
+            LancamentoCartaoEntity e, LancamentoCartaoWriteRequest req, ContaContabilEntity conta) {
+        if (req.getEtapa() != null && StringUtils.hasText(req.getEtapa())) {
+            e.setEtapa(EtapaLancamento.valueOf(req.getEtapa().trim().toUpperCase(Locale.ROOT)));
+            return;
+        }
+        Long clienteFkId = e.getClienteEntidade() != null ? e.getClienteEntidade().getId() : null;
+        e.setEtapa(EtapaLancamento.calcular(conta.getCodigo(), e.getGrupoCompensacao(), clienteFkId));
     }
 
     private CartaoResponse toCartaoResponse(CartaoEntity e) {
@@ -216,6 +252,8 @@ public class FinanceiroCartaoApplicationService {
         r.setRefTipo(Utf8MojibakeUtil.corrigir(e.getRefTipo()));
         r.setOrigem(Utf8MojibakeUtil.corrigir(e.getOrigem()));
         r.setStatus(Utf8MojibakeUtil.corrigir(e.getStatus()));
+        r.setEtapa(e.getEtapa() != null ? e.getEtapa().name() : EtapaLancamento.IMPORTADO.name());
+        r.setGrupoCompensacao(e.getGrupoCompensacao());
         return r;
     }
 }

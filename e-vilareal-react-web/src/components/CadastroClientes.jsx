@@ -221,6 +221,11 @@ function textoParteClienteGrade(proc) {
   return t && t !== '—' ? t : '—';
 }
 
+function textoParteOpostaGrade(proc) {
+  const t = String(proc?.parteOposta ?? proc?.reu ?? '').trim();
+  return t && t !== '—' ? t : '—';
+}
+
 function classeGradeProcessoCliente(proc, idxAlternado) {
   if (proc?.statusAtivo === false) {
     return 'bg-slate-300/75 text-slate-600 cursor-pointer hover:bg-slate-400/60 transition-colors ring-1 ring-inset ring-slate-300/80';
@@ -2078,6 +2083,8 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
                 const procLabel = String(n).padStart(2, '0');
                 const cnj = String(proc.processoNovo ?? '').trim();
                 const parteCliente = textoParteClienteGrade(proc);
+                const parteOposta = textoParteOpostaGrade(proc);
+                const descricao = String(proc.descricao ?? '').trim() || '—';
                 return (
                   <button
                     key={proc.id}
@@ -2096,12 +2103,24 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
                     <p className="mt-2 line-clamp-2 break-all text-xs text-slate-600" title={cnj || undefined}>
                       {cnj || '— sem CNJ'}
                     </p>
-                    <p className="mt-1 line-clamp-2 text-sm text-slate-800" title={parteCliente !== '—' ? parteCliente : undefined}>
-                      {parteCliente}
-                    </p>
-                    <p className="mt-1 line-clamp-2 text-sm text-slate-600">
-                      {String(proc.descricao ?? '').trim() || '—'}
-                    </p>
+                    <dl className="mt-2 space-y-1.5 text-sm">
+                      <div>
+                        <dt className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Parte cliente</dt>
+                        <dd className="line-clamp-2 text-slate-800" title={parteCliente !== '—' ? parteCliente : undefined}>
+                          {parteCliente}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Réu</dt>
+                        <dd className="line-clamp-2 text-slate-800" title={parteOposta !== '—' ? parteOposta : undefined}>
+                          {parteOposta}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Ação</dt>
+                        <dd className="line-clamp-2 text-slate-600">{descricao}</dd>
+                      </div>
+                    </dl>
                   </button>
                 );
               })}

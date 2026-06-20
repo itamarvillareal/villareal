@@ -25,6 +25,7 @@ import {
   candidatosExtratoBancosPlanilhaXlsParaLog,
   resolveExtratoBancosPlanilhaXlsPath,
 } from './lib/resolve-extrato-bancos-planilha-xls.mjs';
+import { anexarCodigoClienteTagDescricaoDetalhada } from '../src/data/financeiroData.js';
 
 function parseArgs(argv) {
   const out = {
@@ -195,6 +196,10 @@ function rowParaPayloadCartao(row, contaIdPorLetra, cartaoId) {
   const contaContabilId = contaIdPorLetra.get(row.letra);
   if (!contaContabilId) return { ok: false, motivo: `conta_contabil_${row.letra}` };
   const valorNum = Number(row.valor) || 0;
+  const descricaoDetalhada =
+    row.letra === 'A' && row.codigoCliente
+      ? anexarCodigoClienteTagDescricaoDetalhada(row.descricaoDetalhada, row.codigoCliente)
+      : String(row.descricaoDetalhada || '');
   return {
     ok: true,
     body: {
@@ -204,13 +209,14 @@ function rowParaPayloadCartao(row, contaIdPorLetra, cartaoId) {
       processoId: row.processoId ?? null,
       numeroLancamento: row.numeroLancamento,
       dataLancamento: row.dataIso,
-      dataCompetencia: row.dataIso,
+      dataCompetencia: row.dataCompetenciaIso || row.dataIso,
       descricao: String(row.descricao || 'Lançamento cartão').slice(0, 500),
-      descricaoDetalhada: String(row.descricaoDetalhada || '').slice(0, 2000),
+      descricaoDetalhada: descricaoDetalhada.slice(0, 2000),
       valor: valorNum,
       refTipo: row.refTipo || 'N',
       origem: 'PLANILHA',
       status: 'ATIVO',
+      grupoCompensacao: row.grupoCompensacao ?? null,
     },
   };
 }
@@ -265,8 +271,13 @@ async function importarUmCartao(opts, token, wb, nomeCartao, cartaoIdPorNome, co
     contaFalta: 0,
     clienteNaoAchado: 0,
     processoNaoAchado: 0,
+    porLetra: {},
     amostraErros: [],
   };
+
+  for (const row of linhas) {
+    stats.porLetra[row.letra] = (stats.porLetra[row.letra] || 0) + 1;
+  }
 
   const cartaoId = cartaoIdPorNome.get(nomeCartao);
   const numeroCartao = numeroCartaoPorNome(nomeCartao);
@@ -330,7 +341,7 @@ async function importarUmCartao(opts, token, wb, nomeCartao, cartaoIdPorNome, co
   });
 
   console.log(
-    `  ${nomeCartao}: lidas=${stats.lidas} POST ok=${stats.criados} erros=${stats.errosPost}`,
+    `  ${nomeCartao}: lidas=${stats.lidas} POST ok=${stats.criados} erros=${stats.errosPost} porLetra=${JSON.stringify(stats.porLetra)}`,
   );
   return stats;
 }

@@ -1,5 +1,5 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet, useMatch, useNavigate } from 'react-router-dom';
 import {
   BarChart3,
   CreditCard,
@@ -15,13 +15,14 @@ import {
   Upload,
 } from 'lucide-react';
 import { featureFlags } from '../../config/featureFlags.js';
-import { listarContadoresEtapaApi } from '../../repositories/financeiroRepository.js';
-import { ETAPAS } from './constants/financeiroConstants.js';
+import { listarContadoresEtapaApi, listarCartoesFinanceiro } from '../../repositories/financeiroRepository.js';
+import { ETAPAS, FINANCEIRO_CARTAO_IMPORTADO } from './constants/financeiroConstants.js';
 import { FinanceiroProvider, useFinanceiroChrome } from './FinanceiroContext.jsx';
 import { FinanceiroToastProvider } from './shared/Toast.jsx';
 import { DashboardSkeleton } from './shared/LoadingSkeleton.jsx';
 import { BancoItem } from './shared/BancoItem.jsx';
 import { ExtratoImportModal } from './extrato/ExtratoImportModal.jsx';
+import { FaturaCartaoImportModal } from './cartao/FaturaCartaoImportModal.jsx';
 import {
   FINANCEIRO_REFRESH_PENDENTES,
   dispatchRefreshPendentes,
@@ -37,8 +38,24 @@ const navClass = ({ isActive }) =>
       : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
   }`;
 
-function FinanceiroShell({ importOpen, onOpenImport, onCloseImport, onImportSuccess }) {
+function FinanceiroShell({
+  importOpen,
+  onOpenImport,
+  onCloseImport,
+  onImportSuccess,
+  faturaImportOpen,
+  onCloseFaturaImport,
+  cartaoParaFaturaImport,
+  onRequestFaturaImport,
+  onFaturaImportSuccess,
+}) {
   const navigate = useNavigate();
+  const cartaoRouteMatch = useMatch('/financeiro/cartao/:id');
+  const cartaoNumeroRoute =
+    cartaoRouteMatch?.params?.id != null && cartaoRouteMatch.params.id !== ''
+      ? Number(cartaoRouteMatch.params.id)
+      : null;
+  const naTelaCartao = Number.isFinite(cartaoNumeroRoute);
 
   const globalShortcuts = useMemo(
     () => [
@@ -108,7 +125,7 @@ function FinanceiroShell({ importOpen, onOpenImport, onCloseImport, onImportSucc
             onClick={onOpenImport}
           >
             <Upload className="w-3.5 h-3.5" aria-hidden />
-            Importar
+            {naTelaCartao ? 'Importar fatura' : 'Importar'}
           </button>
           <button
             type="button"
@@ -243,19 +260,77 @@ function FinanceiroShell({ importOpen, onOpenImport, onCloseImport, onImportSucc
         open={importOpen}
         onClose={onCloseImport}
         bancoInicial={bancoAtivo}
+        cartoes={cartoes}
+        onRequestFaturaImport={onRequestFaturaImport}
         onSuccess={handleImportSuccess}
+      />
+
+      <FaturaCartaoImportModal
+        open={faturaImportOpen}
+        cartao={cartaoParaFaturaImport}
+        onClose={onCloseFaturaImport}
+        onSuccess={onFaturaImportSuccess}
       />
     </div>
   );
 }
 
 export function FinanceiroLayout() {
+  const cartaoRouteMatch = useMatch('/financeiro/cartao/:id');
+  const cartaoNumeroRoute =
+    cartaoRouteMatch?.params?.id != null && cartaoRouteMatch.params.id !== ''
+      ? Number(cartaoRouteMatch.params.id)
+      : null;
+
   const [meta, setMeta] = useState({ totalPendentes: 0, contadores: {} });
   const [importOpen, setImportOpen] = useState(false);
+  const [faturaImportOpen, setFaturaImportOpen] = useState(false);
+  const [faturaCartaoNumero, setFaturaCartaoNumero] = useState(null);
+  const [cartoesApi, setCartoesApi] = useState([]);
   const [bancosRevision, setBancosRevision] = useState(0);
 
   const refreshBancos = useCallback(() => {
     setBancosRevision((n) => n + 1);
+  }, []);
+
+  useEffect(() => {
+    if (!featureFlags.useApiFinanceiro) return undefined;
+    const ac = new AbortController();
+    listarCartoesFinanceiro({ signal: ac.signal })
+      .then((lista) => setCartoesApi(Array.isArray(lista) ? lista : []))
+      .catch(() => setCartoesApi([]));
+    return () => ac.abort();
+  }, [bancosRevision]);
+
+  const cartaoParaFaturaImport = useMemo(() => {
+    const num =
+      faturaCartaoNumero != null && Number.isFinite(Number(faturaCartaoNumero))
+        ? Number(faturaCartaoNumero)
+        : Number.isFinite(cartaoNumeroRoute)
+          ? cartaoNumeroRoute
+          : null;
+    if (num == null) return null;
+    return cartoesApi.find((c) => Number(c.numeroCartao) === num) ?? null;
+  }, [cartoesApi, faturaCartaoNumero, cartaoNumeroRoute]);
+
+  const onOpenImport = useCallback(() => {
+    if (Number.isFinite(cartaoNumeroRoute)) {
+      setFaturaCartaoNumero(cartaoNumeroRoute);
+      setFaturaImportOpen(true);
+      return;
+    }
+    setImportOpen(true);
+  }, [cartaoNumeroRoute]);
+
+  const onRequestFaturaImport = useCallback((numeroCartao) => {
+    setImportOpen(false);
+    setFaturaCartaoNumero(Number(numeroCartao));
+    setFaturaImportOpen(true);
+  }, []);
+
+  const onCloseFaturaImport = useCallback(() => {
+    setFaturaImportOpen(false);
+    setFaturaCartaoNumero(null);
   }, []);
 
   const carregarPendentes = useCallback(async (signal) => {
@@ -299,7 +374,13 @@ export function FinanceiroLayout() {
     const ac = new AbortController();
     carregarPendentes(ac.signal);
     dispatchRefreshPendentes();
+    window.dispatchEvent(new CustomEvent(FINANCEIRO_CARTAO_IMPORTADO));
   }, [refreshBancos, carregarPendentes]);
+
+  const handleFaturaImportSuccess = useCallback(() => {
+    handleImportSuccess();
+    onCloseFaturaImport();
+  }, [handleImportSuccess, onCloseFaturaImport]);
 
   return (
     <FinanceiroToastProvider>
@@ -311,9 +392,14 @@ export function FinanceiroLayout() {
       >
         <FinanceiroShell
           importOpen={importOpen}
-          onOpenImport={() => setImportOpen(true)}
+          onOpenImport={onOpenImport}
           onCloseImport={() => setImportOpen(false)}
           onImportSuccess={handleImportSuccess}
+          faturaImportOpen={faturaImportOpen}
+          onCloseFaturaImport={onCloseFaturaImport}
+          cartaoParaFaturaImport={cartaoParaFaturaImport}
+          onRequestFaturaImport={onRequestFaturaImport}
+          onFaturaImportSuccess={handleFaturaImportSuccess}
         />
       </FinanceiroProvider>
     </FinanceiroToastProvider>

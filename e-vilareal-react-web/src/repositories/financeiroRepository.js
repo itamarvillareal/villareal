@@ -133,6 +133,7 @@ export function mergeUiLancamentoComRespostaApi(row, saved) {
       processoId: mascaraSoArquivoSemVinculo ? null : saved.processoId ?? row._financeiroMeta?.processoId ?? null,
       contaContabilId: saved.contaContabilId ?? row._financeiroMeta?.contaContabilId ?? null,
       cartaoId: saved.cartaoId ?? row._financeiroMeta?.cartaoId ?? null,
+      grupoCompensacao: saved.grupoCompensacao ?? row._financeiroMeta?.grupoCompensacao ?? null,
     },
   };
 }
@@ -538,12 +539,14 @@ function mapApiLancamentoCartaoToUi(l, contaToLetra) {
     numeroBanco: l.numeroCartao ?? null,
     origemImportacao,
     origemExtrato: 'cartao',
+    etapa: String(l.etapa ?? 'IMPORTADO').toUpperCase(),
     _financeiroMeta: {
       clienteId: l.clienteId ?? null,
       pessoaRefId: l.pessoaRefId ?? null,
       processoId: l.processoId ?? null,
       contaContabilId: l.contaContabilId ?? null,
       cartaoId: l.cartaoId ?? null,
+      grupoCompensacao: l.grupoCompensacao ?? null,
     },
   };
 }
@@ -569,7 +572,31 @@ function mapUiLancamentoCartaoToApi(t, contaIdByNome, letraToConta, cartaoIdByNo
     refTipo: normalizarRef(t.ref),
     origem: String(t.origemImportacao ?? '').trim() || 'MANUAL',
     status: 'ATIVO',
+    grupoCompensacao:
+      String(t.letra ?? '').toUpperCase() === 'E'
+        ? String(t.proc ?? t._financeiroMeta?.grupoCompensacao ?? '').trim() || null
+        : null,
   };
+}
+
+export async function buscarLancamentoCartaoFinanceiroApi(id, opts = {}) {
+  if (!featureFlags.useApiFinanceiro || !Number(id)) return null;
+  return request(`/api/financeiro/cartoes/lancamentos/${Number(id)}`, { signal: opts.signal });
+}
+
+export async function removerLancamentosCartaoFinanceiroApiEmLote(apiIds) {
+  const ids = [...new Set((apiIds ?? []).map((id) => Number(id)).filter((id) => id > 0))];
+  const removidos = [];
+  const erros = [];
+  for (const id of ids) {
+    try {
+      await removerLancamentoCartaoFinanceiroApi(id);
+      removidos.push(id);
+    } catch (e) {
+      erros.push({ id, message: e?.message || 'Falha ao excluir' });
+    }
+  }
+  return { removidos, erros };
 }
 
 export async function listarCartoesFinanceiro(opts = {}) {
@@ -623,6 +650,132 @@ export async function limparExtratoCartaoFinanceiroApi(nomeCartao, numeroCartao)
     ...(Number.isFinite(nc) ? { numeroCartao: nc } : {}),
   };
   return request('/api/financeiro/cartoes/limpar-extrato', { method: 'POST', body });
+}
+
+/**
+ * Importa lançamentos de fatura de cartão (Excel/PDF Itaú) para um cartão na API.
+ * @param {{ cartaoId: number, cartaoNome: string, numeroCartao?: number, rows: object[], modo?: 'mesclar'|'substituir', origem?: string }} params
+ */
+export async function persistirImportacaoFaturaCartaoApi(params) {
+  if (!featureFlags.useApiFinanceiro) {
+    return { ok: true, criados: 0, atualizados: 0, ignorados: 0, erros: [] };
+  }
+  const cartaoId = Number(params.cartaoId);
+  if (!Number.isFinite(cartaoId) || cartaoId < 1) {
+    throw new Error('cartaoId inválido.');
+  }
+  const rows = Array.isArray(params.rows) ? params.rows : [];
+  const modo = params.modo === 'substituir' ? 'substituir' : 'mesclar';
+  const origem = String(params.origem ?? 'FATURA').trim() || 'FATURA';
+  const dataVencimentoFatura = String(params.dataVencimento ?? '').trim() || null;
+  const erros = [];
+  let criados = 0;
+  let ignorados = 0;
+
+  const contas = await listarContasFinanceiro();
+  const contaN =
+    (contas || []).find((c) => String(c.codigo ?? '').trim().toUpperCase() === 'N') ||
+    (contas || []).find((c) => /não identific/i.test(String(c.nome ?? '')));
+  const contaContabilId = contaN?.id;
+  if (!contaContabilId) {
+    throw new Error('Conta contábil N (Não Identificados) não encontrada.');
+  }
+
+  if (modo === 'substituir' && params.cartaoNome) {
+    await limparExtratoCartaoFinanceiroApi(params.cartaoNome, params.numeroCartao);
+  }
+
+  const chaveLancamentoCartao = (l) =>
+    [
+      String(l.dataLancamento ?? '').slice(0, 10),
+      Number(l.valor),
+      String(l.descricao ?? '').trim(),
+      String(l.numeroLancamento ?? '').trim(),
+    ].join('|');
+
+  let existentesPorChave = new Map();
+  if (modo === 'mesclar') {
+    const atuais = await listarLancamentosCartaoFinanceiro({ cartaoId });
+    for (const l of atuais || []) {
+      existentesPorChave.set(chaveLancamentoCartao(l), l);
+    }
+  }
+
+  let atualizados = 0;
+
+  for (const row of rows) {
+    const numeroLancamento = String(row.numeroLancamento ?? '').trim();
+    const dataLancamento = String(row.dataIso ?? '').trim();
+    const valor = Number(row.valor);
+    const descricao = String(row.descricao ?? '').trim();
+    if (!numeroLancamento || !dataLancamento || !Number.isFinite(valor) || !descricao) {
+      ignorados += 1;
+      continue;
+    }
+    const chave = [dataLancamento, valor, descricao, numeroLancamento].join('|');
+    const existente = existentesPorChave.get(chave);
+    if (modo === 'mesclar' && existente) {
+      const compAtual = String(existente.dataCompetencia ?? '').slice(0, 10);
+      const origemAtual = String(existente.origem ?? '').trim();
+      const precisaVincularFatura =
+        dataVencimentoFatura &&
+        (compAtual !== dataVencimentoFatura || !/^FATURA_/i.test(origemAtual));
+      if (precisaVincularFatura && existente.id) {
+        try {
+          await request(`/api/financeiro/cartoes/lancamentos/${Number(existente.id)}`, {
+            method: 'PUT',
+            body: {
+              cartaoId: existente.cartaoId,
+              contaContabilId: existente.contaContabilId,
+              clienteId: existente.clienteId ?? null,
+              processoId: existente.processoId ?? null,
+              numeroLancamento: existente.numeroLancamento,
+              dataLancamento: String(existente.dataLancamento ?? '').slice(0, 10),
+              dataCompetencia: dataVencimentoFatura,
+              descricao: existente.descricao,
+              descricaoDetalhada: existente.descricaoDetalhada ?? null,
+              valor: Number(existente.valor),
+              refTipo: existente.refTipo || 'N',
+              origem,
+              status: existente.status || 'ATIVO',
+            },
+          });
+          atualizados += 1;
+        } catch (e) {
+          erros.push(`${descricao.slice(0, 40)} (atualizar venc.): ${e?.message || e}`);
+        }
+      } else {
+        ignorados += 1;
+      }
+      continue;
+    }
+    try {
+      await request('/api/financeiro/cartoes/lancamentos', {
+        method: 'POST',
+        body: {
+          cartaoId,
+          contaContabilId,
+          clienteId: null,
+          processoId: null,
+          numeroLancamento,
+          dataLancamento,
+          dataCompetencia: dataVencimentoFatura || dataLancamento,
+          descricao,
+          descricaoDetalhada: String(row.descricaoDetalhada ?? '').slice(0, 2000),
+          valor,
+          refTipo: 'N',
+          origem,
+          status: 'ATIVO',
+        },
+      });
+      criados += 1;
+      existentesPorChave.set(chave, { id: null });
+    } catch (e) {
+      erros.push(`${descricao.slice(0, 40)}: ${e?.message || e}`);
+    }
+  }
+
+  return { ok: erros.length === 0, criados, atualizados, ignorados, erros };
 }
 
 /**

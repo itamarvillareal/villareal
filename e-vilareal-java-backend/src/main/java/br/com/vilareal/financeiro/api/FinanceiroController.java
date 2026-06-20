@@ -32,6 +32,7 @@ import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import java.net.URI;
 import java.time.LocalDate;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -137,9 +138,11 @@ public class FinanceiroController {
     }
 
     @GetMapping("/lancamentos/contadores-etapa")
-    @Operation(description = "Contagem de lançamentos bancários por etapa do workflow.")
+    @Operation(description = "Contagem de lançamentos bancários e de cartão por etapa do workflow.")
     public Map<String, Long> contadoresEtapa() {
-        return financeiroService.contarPorEtapa();
+        Map<String, Long> mapa = new LinkedHashMap<>(financeiroService.contarPorEtapa());
+        financeiroCartaoService.contarPorEtapa().forEach((k, v) -> mapa.merge(k, v, Long::sum));
+        return mapa;
     }
 
     @GetMapping("/lancamentos/saldo-banco")

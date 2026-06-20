@@ -132,6 +132,9 @@ export function normalizarRefTipo(raw) {
 
 export function textoCelula(val) {
   if (val == null || val === '') return '';
+  if (val instanceof Date && !Number.isNaN(val.getTime())) {
+    return parseDataPlanilha(val) || String(val).trim();
+  }
   return String(val).trim();
 }
 

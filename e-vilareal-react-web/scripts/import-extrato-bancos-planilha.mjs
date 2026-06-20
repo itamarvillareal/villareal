@@ -265,7 +265,7 @@ function rowParaPayloadApi(row, contaIdPorLetra, bancoNome, numeroBanco) {
       numeroBanco,
       numeroLancamento: row.numeroLancamento,
       dataLancamento: row.dataIso,
-      dataCompetencia: row.dataIso,
+      dataCompetencia: row.dataCompetenciaIso || row.dataIso,
       descricao: String(row.descricao || 'Lançamento extrato').slice(0, 500),
       descricaoDetalhada: descricaoDetalhada.slice(0, 2000),
       valor: Math.abs(valorNum),

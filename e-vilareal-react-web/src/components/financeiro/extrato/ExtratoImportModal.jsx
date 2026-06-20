@@ -14,7 +14,14 @@ import {
 } from './importUtils.js';
 import { useCloseOnEscape } from '../../../hooks/useCloseOnEscape.js';
 
-export function ExtratoImportModal({ open, onClose, bancoInicial = null, onSuccess }) {
+export function ExtratoImportModal({
+  open,
+  onClose,
+  bancoInicial = null,
+  cartoes = [],
+  onRequestFaturaImport,
+  onSuccess,
+}) {
   const { bancos, refreshBancos } = useFinanceiro();
   const toast = useFinanceiroToast();
   const inputRef = useRef(null);
@@ -38,6 +45,19 @@ export function ExtratoImportModal({ open, onClose, bancoInicial = null, onSucce
     const hit = bancos.find((b) => b.nome === bancoNome);
     return hit?.numero ?? null;
   }, [bancos, bancoNome]);
+
+  const onSelecionarDestino = useCallback(
+    (nome) => {
+      if (!nome) return;
+      const cartao = cartoes.find((c) => c.nome === nome);
+      if (cartao && onRequestFaturaImport) {
+        onRequestFaturaImport(cartao.numero);
+        return;
+      }
+      setBancoNome(nome);
+    },
+    [cartoes, onRequestFaturaImport],
+  );
 
   const wasOpenRef = useRef(false);
 
@@ -261,21 +281,34 @@ export function ExtratoImportModal({ open, onClose, bancoInicial = null, onSucce
               <>
                 <div className="flex flex-wrap items-end gap-2">
                   <label className="flex-1 min-w-[160px] text-sm">
-                    <span className="text-slate-600 dark:text-slate-400">Banco</span>
+                    <span className="text-slate-600 dark:text-slate-400">Destino</span>
                     <select
                       value={bancoNome}
-                      onChange={(e) => setBancoNome(e.target.value)}
+                      onChange={(e) => onSelecionarDestino(e.target.value)}
                       className="mt-1 w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1.5 text-sm"
                       required
                     >
                       <option value="" disabled>
-                        Selecione o banco
+                        Selecione banco ou cartão
                       </option>
-                      {bancos.map((b) => (
-                        <option key={b.nome} value={b.nome}>
-                          {b.nome}
-                        </option>
-                      ))}
+                      {bancos.length > 0 ? (
+                        <optgroup label="Contas bancárias (OFX / PDF)">
+                          {bancos.map((b) => (
+                            <option key={b.nome} value={b.nome}>
+                              {b.nome}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ) : null}
+                      {cartoes.length > 0 ? (
+                        <optgroup label="Cartões (fatura Excel / PDF)">
+                          {cartoes.map((c) => (
+                            <option key={c.nome} value={c.nome}>
+                              {c.nome}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ) : null}
                     </select>
                   </label>
                   <button

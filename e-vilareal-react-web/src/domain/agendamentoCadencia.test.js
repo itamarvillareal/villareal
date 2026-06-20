@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   agruparPainelPorProcesso,
+  formatarHoraInput,
   montarBodyAgendamentoRequest,
+  normalizarHora,
   ordenarPainelItens,
   parseHorariosFixosCsv,
   resumoCadenciaAgendamento,
@@ -19,6 +21,13 @@ describe('agendamentoCadencia', () => {
 
   it('parseHorariosFixosCsv normaliza HH:mm', () => {
     expect(parseHorariosFixosCsv('8:00, 14:30')).toEqual(['08:00', '14:30']);
+  });
+
+  it('formatarHoraInput insere dois-pontos só com dígitos (mobile)', () => {
+    expect(formatarHoraInput('17')).toBe('17');
+    expect(formatarHoraInput('1730')).toBe('17:30');
+    expect(normalizarHora('1730')).toBe('17:30');
+    expect(normalizarHora('17')).toBe('17:00');
   });
 
   it('validarCadenciaCliente PERIODICO exige periodo e horario', () => {

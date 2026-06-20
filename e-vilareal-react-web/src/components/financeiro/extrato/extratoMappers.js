@@ -6,6 +6,7 @@ import {
   normalizarProcFinanceiro,
   obterCodigoClienteFinanceiroPorPessoaId,
 } from '../../../data/financeiroData.js';
+import { vencimentoFaturaDeLancamento } from '../../../utils/cartaoFaturaVencimento.js';
 
 function toBrDate(iso) {
   const s = String(iso ?? '').trim();
@@ -133,37 +134,135 @@ export function mapApiLancamentoToExtratoRow(l, contaToLetra) {
 
 /** Converte linha do extrato para formato UI legado (PUT via repository). */
 export function extratoRowToUi(row) {
+  const isCartao = row.origemExtrato === 'cartao';
   const sinal = row.natureza === 'DEBITO' ? -1 : 1;
+  const valorAssinado = isCartao ? (row.natureza === 'DEBITO' ? -row.valor : row.valor) : row.valor * sinal;
+  const letra = String(row.contaCodigo ?? 'N').trim().toUpperCase() || 'N';
+  const proc =
+    letra === 'E'
+      ? String(row.proc ?? row.grupoCompensacao ?? row._financeiroMeta?.grupoCompensacao ?? '').trim()
+      : String(row.proc ?? '').trim();
   return {
     apiId: row.id,
     letra: row.contaCodigo,
     numero: row.numeroLancamento,
     data: toBrDate(row.dataLancamento),
-    dataCompetencia: toBrDate(row.dataLancamento),
+    dataCompetencia: toBrDate(row.dataCompetencia ?? row.dataLancamento),
     descricao: row.descricao,
     descricaoDetalhada: row.descricaoDetalhada,
-    valor: row.valor * sinal,
+    valor: valorAssinado,
     codCliente: row.codCliente,
-    proc: row.proc,
+    proc,
     ref: row.ref,
     dimensao: row.dimensao,
     eq: row.eq,
     parcela: row.parcela,
-    nomeBanco: row.bancoNome,
-    numeroBanco: row.numeroBanco,
+    nomeBanco: isCartao ? row.cartaoNome || row.bancoNome : row.bancoNome,
+    numeroBanco: isCartao ? row.numeroCartao ?? row.numeroBanco : row.numeroBanco,
     origemImportacao: row.origem,
+    origemExtrato: row.origemExtrato ?? 'banco',
     _financeiroMeta: {
       clienteId: row.clienteId,
       pessoaRefId: row.pessoaRefId ?? null,
       processoId: row.processoId,
       contaContabilId: row.contaContabilId,
-      grupoCompensacao: row.grupoCompensacao,
+      cartaoId: row.cartaoId ?? null,
+      grupoCompensacao:
+        letra === 'E'
+          ? proc || row.grupoCompensacao || row._financeiroMeta?.grupoCompensacao || null
+          : row.grupoCompensacao ?? row._financeiroMeta?.grupoCompensacao ?? null,
     },
   };
 }
 
 export function mergeExtratoRowComRespostaApi(row, saved, contaToLetra) {
   const mapped = mapApiLancamentoToExtratoRow(saved, contaToLetra);
+  const clienteId =
+    Number(mapped.clienteId) > 0
+      ? mapped.clienteId
+      : Number(row.clienteId) > 0
+        ? row.clienteId
+        : null;
+  const processoId =
+    mapped.processoId != null && Number(mapped.processoId) > 0
+      ? mapped.processoId
+      : row.processoId != null && Number(row.processoId) > 0
+        ? row.processoId
+        : null;
+  const proc =
+    String(mapped.proc ?? '').trim() || String(row.proc ?? '').trim() || '';
+  const pessoaRef = Number(mapped.pessoaRefId ?? row.pessoaRefId) || 0;
+  let codEnviado =
+    normalizarCodigoClienteFinanceiro(row.codCliente) ||
+    (pessoaRef > 0 ? obterCodigoClienteFinanceiroPorPessoaId(pessoaRef) : '');
+  const temVinculo = Number(clienteId) > 0 || proc !== '';
+  const base = { ...mapped, clienteId, processoId, proc: proc || mapped.proc };
+  if (codEnviado && temVinculo) {
+    return { ...base, codCliente: codEnviado };
+  }
+  if (mapped.codCliente) return base;
+  if (codEnviado) return { ...base, codCliente: codEnviado };
+  return base;
+}
+
+/**
+ * @param {object} l — DTO {@link LancamentoCartaoResponse}
+ * @param {Record<string, string>} [contaToLetra]
+ */
+export function mapApiLancamentoCartaoToExtratoRow(l, contaToLetra) {
+  const map =
+    contaToLetra ??
+    buildContaToLetraMerge(loadPersistedContasContabeisExtrasFinanceiro());
+  const contaNome = String(l.contaContabilNome ?? '').trim();
+  const contaCodigo = String(map[contaNome] ?? 'N')
+    .trim()
+    .toUpperCase() || 'N';
+  const valorNum = Number(l.valor ?? 0);
+  const natureza = valorNum < 0 ? 'DEBITO' : 'CREDITO';
+  const valorAbs = Math.abs(valorNum);
+  const dataIso = String(l.dataLancamento ?? '').slice(0, 10);
+  const vencIso = vencimentoFaturaDeLancamento(l);
+
+  return {
+    id: Number(l.id),
+    origemExtrato: 'cartao',
+    cartaoId: l.cartaoId ?? null,
+    cartaoNome: String(l.cartaoNome ?? ''),
+    numeroCartao: l.numeroCartao ?? null,
+    contaCodigo,
+    contaContabilId: l.contaContabilId ?? null,
+    contaContabilNome: contaNome,
+    dataLancamento: dataIso,
+    dataCompetencia: String(l.dataCompetencia ?? '').slice(0, 10) || dataIso,
+    dataExibicao: formatDataExtratoColuna(dataIso),
+    vencimentoFaturaExibicao: vencIso ? formatDataExtratoColuna(vencIso) : '',
+    descricao: String(l.descricao ?? ''),
+    descricaoDetalhada: String(l.descricaoDetalhada ?? ''),
+    valor: valorAbs,
+    natureza,
+    etapa: String(l.etapa ?? 'IMPORTADO').toUpperCase(),
+    observacao: String(l.descricaoDetalhada ?? '').trim(),
+    codCliente: codClienteExibicao(l),
+    proc: procExibicao(l),
+    clienteId: l.clienteId ?? null,
+    pessoaRefId: l.pessoaRefId ?? null,
+    processoId: l.processoId ?? null,
+    bancoNome: String(l.cartaoNome ?? ''),
+    numeroBanco: l.numeroCartao ?? null,
+    numeroLancamento: String(l.numeroLancamento ?? ''),
+    saldo: null,
+    grupoCompensacao: l.grupoCompensacao ?? null,
+    ref: String(l.refTipo || 'N').toUpperCase() === 'R' ? 'R' : 'N',
+    dimensao: '',
+    eq: '',
+    parcela: '',
+    origem: String(l.origem ?? ''),
+    status: String(l.status ?? ''),
+  };
+}
+
+export function mergeExtratoRowComRespostaApiCartao(row, saved, contaToLetra) {
+  const mapped = mapApiLancamentoCartaoToExtratoRow(saved, contaToLetra);
   const clienteId =
     Number(mapped.clienteId) > 0
       ? mapped.clienteId

@@ -30,4 +30,6 @@ public class LancamentoCartaoResponse {
     private String refTipo;
     private String origem;
     private String status;
+    private String etapa;
+    private String grupoCompensacao;
 }

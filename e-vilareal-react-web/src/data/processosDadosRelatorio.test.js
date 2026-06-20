@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { FASES, canonicalizarFaseParaOpcoesRadiosProcessos } from './processosDadosRelatorio.js';
+import {
+  FASES,
+  canonicalizarFaseParaOpcoesRadiosProcessos,
+  classeShellFormularioProcessoPorFase,
+} from './processosDadosRelatorio.js';
 
 describe('canonicalizarFaseParaOpcoesRadiosProcessos', () => {
   it('mantém valores já canónicos da lista FASES', () => {
@@ -18,5 +22,15 @@ describe('canonicalizarFaseParaOpcoesRadiosProcessos', () => {
 
   it('devolve string vazia para fase desconhecida', () => {
     expect(canonicalizarFaseParaOpcoesRadiosProcessos('Fase inventada XYZ')).toBe('');
+  });
+});
+
+describe('classeShellFormularioProcessoPorFase', () => {
+  it('aplica fundo âmbar para Ag. Documentos', () => {
+    expect(classeShellFormularioProcessoPorFase('Ag. Documentos')).toContain('bg-amber-100');
+  });
+
+  it('aplica fundo escuro para Protocolo / Movimentação', () => {
+    expect(classeShellFormularioProcessoPorFase('Protocolo / Movimentação')).toContain('bg-slate-900');
   });
 });

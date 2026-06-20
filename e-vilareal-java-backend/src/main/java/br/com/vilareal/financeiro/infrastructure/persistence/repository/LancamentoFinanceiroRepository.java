@@ -203,7 +203,7 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
             SELECT a.id, b.id, a.numero_banco, b.numero_banco
             FROM financeiro_lancamento a
             """
-            + CompensacaoSqlDiaUtil.JOIN_CONTA_E_AB
+            + CompensacaoSqlDiaUtil.JOIN_CONTA_E_A
             + """
             INNER JOIN financeiro_lancamento b ON
                 """
@@ -212,6 +212,9 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
                  AND a.valor = b.valor
                 AND a.natureza <> b.natureza
                 AND a.id < b.id
+            """
+            + CompensacaoSqlDiaUtil.JOIN_CONTA_E_B
+            + """
             WHERE a.etapa IN ('IMPORTADO', 'CLASSIFICADO')
               AND b.etapa IN ('IMPORTADO', 'CLASSIFICADO')
               AND (a.grupo_compensacao IS NULL OR a.grupo_compensacao = '')
@@ -244,7 +247,7 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
             SELECT COUNT(*)
             FROM financeiro_lancamento a
             """
-            + CompensacaoSqlDiaUtil.JOIN_CONTA_E_AB
+            + CompensacaoSqlDiaUtil.JOIN_CONTA_E_A
             + """
             INNER JOIN financeiro_lancamento b ON
                 """
@@ -253,6 +256,9 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
                  AND a.valor = b.valor
                 AND a.natureza <> b.natureza
                 AND a.id < b.id
+            """
+            + CompensacaoSqlDiaUtil.JOIN_CONTA_E_B
+            + """
             WHERE a.etapa IN ('IMPORTADO', 'CLASSIFICADO')
               AND b.etapa IN ('IMPORTADO', 'CLASSIFICADO')
               AND (a.grupo_compensacao IS NULL OR a.grupo_compensacao = '')

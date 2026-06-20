@@ -49,4 +49,10 @@ public class LancamentoCartaoWriteRequest {
 
     @Size(max = 20)
     private String status;
+
+    @Size(max = 20)
+    private String etapa;
+
+    @Size(max = 40)
+    private String grupoCompensacao;
 }
