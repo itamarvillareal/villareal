@@ -4,9 +4,26 @@ import {
   vencimentoFaturaDeLancamento,
   listarVencimentosFaturaCartao,
   ehLancamentoFechamentoAutomatico,
+  dataCompraCartaoCorrigida,
+  inferirAnoCompraFaturaCartao,
 } from './cartaoFaturaVencimento.js';
 
 describe('cartaoFaturaVencimento', () => {
+  it('inferirAnoCompraFaturaCartao trata dezembro na fatura de janeiro', () => {
+    expect(inferirAnoCompraFaturaCartao(30, 12, 1, 2026)).toBe(2025);
+    expect(inferirAnoCompraFaturaCartao(27, 3, 4, 2026)).toBe(2026);
+  });
+
+  it('corrige compra gravada com ano errado pelo vencimento da fatura', () => {
+    expect(
+      dataCompraCartaoCorrigida({
+        dataLancamento: '2026-12-30',
+        dataCompetencia: '2026-01-10',
+        origem: 'FATURA_XLSX_BTG',
+      }),
+    ).toBe('2025-12-30');
+  });
+
   it('normaliza ISO e BR', () => {
     expect(isoDataCartao('2025-07-10')).toBe('2025-07-10');
     expect(isoDataCartao('10/07/2025')).toBe('2025-07-10');

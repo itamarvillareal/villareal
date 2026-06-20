@@ -1,3 +1,9 @@
+import {
+  CARTAO_TO_NUMERO,
+  isNomeCartaoFinanceiro,
+  isNumeroCartaoFinanceiro,
+} from '../../../data/financeiroData.js';
+import { dataCompraCartaoCorrigida } from '../../../utils/cartaoFaturaVencimento.js';
 import { dataNoPeriodo } from '../shared/periodoFinanceiro.js';
 import { formatDataBrCompleta } from '../shared/financeiroFormat.js';
 import { mapApiLancamentoToExtratoRow } from '../extrato/extratoMappers.js';
@@ -18,12 +24,43 @@ export function mapResumoParToExtratoRow(l) {
   };
 }
 
+function enriquecerLancamentoCartaoInbox(row, origem) {
+  const numeroCartao =
+    Number(row.numeroCartao) > 0
+      ? Number(row.numeroCartao)
+      : isNumeroCartaoFinanceiro(row.numeroBanco)
+        ? Number(row.numeroBanco)
+        : CARTAO_TO_NUMERO[String(row.bancoNome ?? '').trim()] ?? null;
+  const ehCartao =
+    row.origemExtrato === 'cartao' ||
+    isNomeCartaoFinanceiro(row.bancoNome) ||
+    isNumeroCartaoFinanceiro(numeroCartao);
+  if (!ehCartao) return row;
+
+  const dataCompetencia = String(origem?.dataCompetencia ?? row.dataCompetencia ?? '').slice(0, 10) || null;
+  return {
+    ...row,
+    origemExtrato: 'cartao',
+    numeroCartao,
+    numeroBanco: numeroCartao ?? row.numeroBanco,
+    dataCompetencia,
+  };
+}
+
 export function mapLancamentoInbox(l) {
   if (l?.dataLancamento != null && l?.banco != null && l?.contaContabilNome == null) {
     return mapResumoParToExtratoRow(l);
   }
   const row = mapApiLancamentoToExtratoRow(l);
-  return { ...row, dataExibicao: formatDataBrCompleta(row.dataLancamento) };
+  const dataLancamento =
+    dataCompraCartaoCorrigida(l) || String(row.dataLancamento ?? '').slice(0, 10);
+  const base = {
+    ...row,
+    dataLancamento,
+    dataExibicao: formatDataBrCompleta(dataLancamento),
+    dataCompetencia: l?.dataCompetencia ? String(l.dataCompetencia).slice(0, 10) : null,
+  };
+  return enriquecerLancamentoCartaoInbox(base, l);
 }
 
 export function textoOrigemSugestao(sug) {

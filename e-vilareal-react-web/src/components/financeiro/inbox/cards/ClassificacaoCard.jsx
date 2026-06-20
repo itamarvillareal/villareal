@@ -81,15 +81,22 @@ export function ClassificacaoCard({
     navegarExtratoLancamento(navigate, lancamento);
   }, [navigate, lancamento]);
 
+  const impedirDuploClique = (e) => e.stopPropagation();
+
   return (
     <article
-      className={`rounded-lg border border-[var(--color-border-tertiary,#e2e8f0)] dark:border-slate-700 px-4 py-3 mb-2 bg-white dark:bg-slate-900 hover:shadow-sm transition-all duration-300 ${borderLeft} ${
+      className={`rounded-lg border border-[var(--color-border-tertiary,#e2e8f0)] dark:border-slate-700 px-4 py-3 mb-2 bg-white dark:bg-slate-900 hover:shadow-sm transition-all duration-300 cursor-pointer ${borderLeft} ${
         focused ? 'ring-2 ring-blue-500 ring-offset-2 dark:ring-offset-slate-950' : ''
       } ${fading ? 'opacity-0 scale-[0.98]' : 'opacity-100'}`}
       style={estiloBorda}
+      onDoubleClick={abrirExtrato}
+      title="Duplo clique: abrir extrato do banco neste lançamento"
     >
       <div className="flex flex-wrap items-start gap-2">
-        <label className="flex items-center pt-0.5 shrink-0 cursor-pointer">
+        <label
+          className="flex items-center pt-0.5 shrink-0 cursor-pointer"
+          onDoubleClick={impedirDuploClique}
+        >
           <input
             type="checkbox"
             checked={isSelected}
@@ -97,11 +104,7 @@ export function ClassificacaoCard({
             className="rounded border-slate-300"
           />
         </label>
-        <div
-          className="flex-1 min-w-0 cursor-pointer rounded-md -mx-1 px-1 hover:bg-slate-50 dark:hover:bg-slate-800/50"
-          onDoubleClick={abrirExtrato}
-          title="Duplo clique: abrir extrato do banco neste lançamento"
-        >
+        <div className="flex-1 min-w-0 rounded-md -mx-1 px-1">
           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
             <span className="text-sm text-slate-700 dark:text-slate-200 tabular-nums">
               {lancamento.dataExibicao}
@@ -150,6 +153,7 @@ export function ClassificacaoCard({
             <button
               type="button"
               className="text-indigo-700 dark:text-indigo-300 font-medium hover:underline"
+              onDoubleClick={impedirDuploClique}
               onClick={() =>
                 navigate(`/financeiro/extrato?busca=${encodeURIComponent(lancamento.descricao ?? '')}`)
               }
@@ -161,6 +165,7 @@ export function ClassificacaoCard({
           <select
             className="text-xs rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-1.5 py-0.5"
             value={contaEscolhidaId ?? ''}
+            onDoubleClick={impedirDuploClique}
             onChange={(e) => {
               const id = e.target.value;
               setContaEscolhidaId(id || null);
@@ -184,6 +189,7 @@ export function ClassificacaoCard({
               key={`${alt.contaContabilId}-${alt.origem}`}
               type="button"
               disabled={busy}
+              onDoubleClick={impedirDuploClique}
               onClick={() => setContaEscolhidaId(alt.contaContabilId)}
               className={`inline-flex rounded-full focus:outline-none focus:ring-2 focus:ring-blue-400 ${
                 String(contaEscolhidaId) === String(alt.contaContabilId)
@@ -198,6 +204,7 @@ export function ClassificacaoCard({
           <select
             className="text-xs rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-1.5 py-0.5"
             value={contaEscolhidaId ?? ''}
+            onDoubleClick={impedirDuploClique}
             onChange={(e) => {
               const id = e.target.value;
               setContaEscolhidaId(id || null);
@@ -215,7 +222,7 @@ export function ClassificacaoCard({
         </div>
       )}
 
-      <div className="mt-3 flex flex-wrap gap-2 justify-end">
+      <div className="mt-3 flex flex-wrap gap-2 justify-end" onDoubleClick={impedirDuploClique}>
         {contaAtiva ? (
           <button
             type="button"

@@ -73,6 +73,10 @@ export function navegarExtratoLancamento(navigate, row) {
         lancamentoId: row.id,
         numeroCartao,
         data: row.dataExibicao ?? row.dataLancamento,
+        mes:
+          mesAnoFromDataLancamento(row.dataCompetencia) ??
+          mesAnoFromDataBr(row.dataExibicao) ??
+          mesAnoFromDataLancamento(row.dataLancamento),
       }),
     );
     return;

@@ -3,6 +3,7 @@ import {
   parseMatrixFaturaBtg,
   planilhaPareceFaturaBtg,
   parseDataFaturaBtgCelula,
+  parseDataCelulaFaturaBtg,
   ehLinhaPagamentoFaturaBtg,
 } from './faturaCartaoBtgImport.js';
 
@@ -32,5 +33,12 @@ describe('faturaCartaoBtgImport', () => {
   it('infere ano em data dd/mm sem ano', () => {
     expect(parseDataFaturaBtgCelula('27/03', { mesVencimento: 4, anoVencimento: 2026 })).toBe('2026-03-27');
     expect(parseDataFaturaBtgCelula('22/05', { mesVencimento: 4, anoVencimento: 2026 })).toBe('2025-05-22');
+    expect(parseDataFaturaBtgCelula('30/12', { mesVencimento: 1, anoVencimento: 2026 })).toBe('2025-12-30');
+  });
+
+  it('corrige ano em célula Date do Excel (dd/mm sem ano na fatura)', () => {
+    expect(
+      parseDataCelulaFaturaBtg(new Date(2026, 11, 30), { mesVencimento: 1, anoVencimento: 2026 }),
+    ).toBe('2025-12-30');
   });
 });

@@ -3,6 +3,7 @@
  * Valores mantêm o sinal da fatura (compra +, estorno/crédito −).
  */
 import * as XLSX from 'xlsx';
+import { inferirAnoCompraFaturaCartao } from './cartaoFaturaVencimento.js';
 import {
   parseValorFaturaCelula,
   parseDataFaturaCelula,
@@ -110,10 +111,54 @@ export function parseDataFaturaBtgCelula(v, ctx = {}) {
   if (!br) return null;
   if (br[3]) return `${br[3]}-${pad2(br[2])}-${pad2(br[1])}`;
   const mes = Number(br[2]);
-  const anoBase = ctx.anoVencimento ?? new Date().getFullYear();
-  const mesVenc = ctx.mesVencimento ?? 12;
-  const ano = mes > mesVenc ? anoBase - 1 : anoBase;
+  const ano = inferirAnoCompraFaturaCartao(br[1], mes, ctx.mesVencimento, ctx.anoVencimento);
+  if (!Number.isFinite(ano)) return null;
   return `${ano}-${pad2(mes)}-${pad2(br[1])}`;
+}
+
+/**
+ * Data da compra na fatura BTG. Excel costuma gravar ano incorreto em células Date/serial;
+ * o ano correto segue o ciclo do vencimento da fatura (dd/mm sem ano).
+ */
+export function parseDataCelulaFaturaBtg(v, ctx = {}) {
+  if (v == null || v === '') return null;
+
+  const t = String(v).trim();
+  const brFull = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (brFull) return `${brFull[3]}-${pad2(brFull[2])}-${pad2(brFull[1])}`;
+
+  const brShort = parseDataFaturaBtgCelula(t, ctx);
+  if (brShort) return brShort;
+
+  const iso = t.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) {
+    const dia = Number(iso[3]);
+    const mes = Number(iso[2]);
+    const corrigida = parseDataFaturaBtgCelula(`${dia}/${mes}`, ctx);
+    return corrigida || `${iso[1]}-${iso[2]}-${iso[3]}`;
+  }
+
+  let dia;
+  let mes;
+  if (v instanceof Date && !Number.isNaN(v.getTime())) {
+    dia = v.getDate();
+    mes = v.getMonth() + 1;
+  } else if (typeof v === 'number' && Number.isFinite(v)) {
+    const whole = Math.floor(v);
+    if (whole > 20000 && whole < 600000) {
+      const utcMs = (whole - 25569) * 86400 * 1000;
+      const d = new Date(utcMs);
+      if (!Number.isNaN(d.getTime())) {
+        dia = d.getUTCDate();
+        mes = d.getUTCMonth() + 1;
+      }
+    }
+  }
+  if (dia != null && mes != null) {
+    return parseDataFaturaBtgCelula(`${dia}/${mes}`, ctx);
+  }
+
+  return null;
 }
 
 /** @param {string} descricao */
@@ -198,9 +243,7 @@ export function parseMatrixFaturaBtg(matrix, opts = {}) {
       const row = matrix[r] || [];
       const descricao = String(row[header.colDescricao] ?? '').trim();
       const valor = parseValorFaturaCelula(row[header.colValor]);
-      const dataIso =
-        parseDataFaturaCelula(row[header.colData]) ||
-        parseDataFaturaBtgCelula(row[header.colData], ctxData);
+      const dataIso = parseDataCelulaFaturaBtg(row[header.colData], ctxData);
 
       if (!descricao && valor == null && !dataIso) continue;
       if (!dataIso || valor == null || !descricao) continue;

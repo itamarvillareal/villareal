@@ -516,6 +516,15 @@ export async function buscarLancamentoFinanceiroApi(id, opts = {}) {
   return request(`/api/financeiro/lancamentos/${Number(id)}`, { signal: opts.signal });
 }
 
+export async function listarLancamentosPorGrupoCompensacaoApi(grupoCompensacao, opts = {}) {
+  const grupo = String(grupoCompensacao ?? '').trim();
+  if (!featureFlags.useApiFinanceiro || !grupo) return [];
+  return request('/api/financeiro/lancamentos/por-grupo-compensacao', {
+    query: { grupoCompensacao: grupo },
+    signal: opts.signal,
+  });
+}
+
 function mapApiLancamentoCartaoToUi(l, contaToLetra) {
   const letra = contaToLetra[l.contaContabilNome] || 'N';
   const valorNum = Number(l.valor ?? 0);

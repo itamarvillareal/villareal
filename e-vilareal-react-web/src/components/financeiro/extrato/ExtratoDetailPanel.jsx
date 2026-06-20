@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ChevronDown, ChevronRight, FolderOpen, Link2, Trash2, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, ExternalLink, FolderOpen, Link2, Trash2, X } from 'lucide-react';
 import { ModalVinculoClienteProcFinanceiro } from '../../ModalVinculoClienteProcFinanceiro.jsx';
 import {
   normalizarCodigoClienteFinanceiro,
@@ -22,7 +22,9 @@ import {
   mergeExtratoRowComRespostaApiCartao,
   montarObservacaoExtratoVinculo,
   promoverContaEscritorioSeVinculado,
+  mapApiLancamentoToExtratoRow,
 } from './extratoMappers.js';
+import { buildExtratoUrlParaLancamento } from './extratoDeepLink.js';
 import {
   buildContaToLetraMerge,
   loadPersistedContasContabeisExtrasFinanceiro,
@@ -30,6 +32,7 @@ import {
 } from '../../../data/financeiroData.js';
 import {
   listarContasFinanceiro,
+  listarLancamentosPorGrupoCompensacaoApi,
   removerLancamentoFinanceiroApi,
   salvarOuAtualizarLancamentoFinanceiroApi,
   removerLancamentoCartaoFinanceiroApi,
@@ -140,6 +143,8 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted, fonteExt
   const [processoEmbed, setProcessoEmbed] = useState(null);
   const [partesLegenda, setPartesLegenda] = useState(null);
   const [partesLegendaLoading, setPartesLegendaLoading] = useState(false);
+  const [elosGrupo, setElosGrupo] = useState([]);
+  const [elosLoading, setElosLoading] = useState(false);
 
   useEffect(() => {
     setDraft(item);
@@ -148,9 +153,12 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted, fonteExt
 
   const codLegenda = normalizarCodigoClienteFinanceiro(draft.codCliente);
   const procLegenda = normalizarProcFinanceiro(draft.proc);
+  const contaCodigoDraft = String(draft.contaCodigo ?? 'N').trim().toUpperCase() || 'N';
+  const isContaE = contaCodigoDraft === 'E';
+  const grupoElo = String(draft.grupoCompensacao ?? draft.proc ?? '').trim();
 
   useEffect(() => {
-    if (!codLegenda || procLegenda === '') {
+    if (isContaE || !codLegenda || procLegenda === '') {
       setPartesLegenda(null);
       setPartesLegendaLoading(false);
       return undefined;
@@ -170,7 +178,7 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted, fonteExt
     return () => {
       cancelled = true;
     };
-  }, [codLegenda, procLegenda]);
+  }, [codLegenda, procLegenda, isContaE]);
 
   useEffect(() => {
     const ac = new AbortController();
@@ -182,7 +190,46 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted, fonteExt
 
   const contasSelect = useMemo(() => montarContasContabeisParaSelectExtrato(contas), [contas]);
 
-  const contaCodigoDraft = String(draft.contaCodigo ?? 'N').trim().toUpperCase() || 'N';
+  const contaToLetra = useMemo(
+    () => ({
+      ...buildContaToLetraMerge(loadPersistedContasContabeisExtrasFinanceiro()),
+      ...Object.fromEntries(
+        (contas || []).map((c) => [String(c.nome ?? ''), String(c.codigo ?? '').toUpperCase()]),
+      ),
+    }),
+    [contas],
+  );
+
+  const elosPares = useMemo(
+    () =>
+      (elosGrupo || []).filter((l) => Number(l.id) !== Number(draft.id)),
+    [elosGrupo, draft.id],
+  );
+
+  useEffect(() => {
+    if (!isContaE || !grupoElo || !featureFlags.useApiFinanceiro) {
+      setElosGrupo([]);
+      setElosLoading(false);
+      return undefined;
+    }
+    const ac = new AbortController();
+    setElosLoading(true);
+    listarLancamentosPorGrupoCompensacaoApi(grupoElo, { signal: ac.signal })
+      .then((lista) => {
+        if (ac.signal.aborted) return;
+        const mapped = (Array.isArray(lista) ? lista : []).map((l) =>
+          mapApiLancamentoToExtratoRow(l, contaToLetra),
+        );
+        setElosGrupo(mapped);
+      })
+      .catch(() => {
+        if (!ac.signal.aborted) setElosGrupo([]);
+      })
+      .finally(() => {
+        if (!ac.signal.aborted) setElosLoading(false);
+      });
+    return () => ac.abort();
+  }, [isContaE, grupoElo, draft.id, contaToLetra]);
 
   const patch = useCallback((p) => setDraft((d) => ({ ...d, ...p })), []);
 
@@ -454,15 +501,17 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted, fonteExt
                   Abrir processo
                 </button>
               ) : null}
-              <button
-                type="button"
-                disabled={saving || deleting}
-                onClick={() => setModalVinculoAberto(true)}
-                className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md border border-indigo-200 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 dark:border-indigo-800 dark:text-indigo-300 dark:bg-indigo-950/50 dark:hover:bg-indigo-950 disabled:opacity-50"
-              >
-                <Link2 className="w-3.5 h-3.5" aria-hidden />
-                Vincular a Processo
-              </button>
+              {!isContaE ? (
+                <button
+                  type="button"
+                  disabled={saving || deleting}
+                  onClick={() => setModalVinculoAberto(true)}
+                  className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md border border-indigo-200 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 dark:border-indigo-800 dark:text-indigo-300 dark:bg-indigo-950/50 dark:hover:bg-indigo-950 disabled:opacity-50"
+                >
+                  <Link2 className="w-3.5 h-3.5" aria-hidden />
+                  Vincular a Processo
+                </button>
+              ) : null}
             </div>
           </div>
           <Field label="Conta">
@@ -492,49 +541,113 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted, fonteExt
               ))}
             </select>
           </Field>
-          <Field label="Cliente (código)">
-            <input
-              type="text"
-              value={draft.codCliente}
-              onChange={(e) =>
-                patch({
-                  codCliente: e.target.value,
-                  clienteId: null,
-                  pessoaRefId: null,
-                  processoId: null,
-                })
-              }
-              className="w-full text-sm rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1.5"
-              placeholder="Cód. cliente"
-            />
-          </Field>
-          <Field label={contaCodigoDraft === 'E' ? 'Cód. compensação' : 'Processo'}>
-            <input
-              type="text"
-              value={draft.proc}
-              onChange={(e) => patch({ proc: e.target.value, processoId: null })}
-              className="w-full text-sm rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1.5"
-              placeholder="Nº processo"
-            />
-          </Field>
-          {codLegenda && procLegenda !== '' ? (
-            <div className="rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 px-2.5 py-2 space-y-1 text-xs">
-              {partesLegendaLoading ? (
-                <p className="text-slate-500 dark:text-slate-400">Carregando partes do processo…</p>
+          {isContaE ? (
+            <Field label="Vínculo (elo com outro lançamento)">
+              {grupoElo ? (
+                <div className="space-y-2">
+                  <p className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
+                    Grupo {grupoElo}
+                  </p>
+                  {elosLoading ? (
+                    <p className="text-xs text-slate-500">Carregando lançamentos do par…</p>
+                  ) : elosPares.length > 0 ? (
+                    <ul className="space-y-2">
+                      {elosPares.map((elo) => (
+                        <li key={elo.id}>
+                          <Link
+                            to={buildExtratoUrlParaLancamento({
+                              lancamentoId: elo.id,
+                              numeroBanco: elo.numeroBanco,
+                              data: elo.dataExibicao ?? elo.dataLancamento,
+                            })}
+                            className="block rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/50 px-2.5 py-2 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 transition-colors"
+                          >
+                            <div className="flex items-center justify-between gap-2 mb-1">
+                              <ContaBadge codigo={elo.contaCodigo} size="sm" />
+                              <span className="text-[11px] text-slate-500 tabular-nums shrink-0">
+                                {elo.dataExibicao}
+                              </span>
+                            </div>
+                            <p className="text-sm text-slate-800 dark:text-slate-100 line-clamp-2">
+                              {elo.descricao || '—'}
+                            </p>
+                            <div className="mt-1 flex items-center justify-between gap-2 text-xs">
+                              <ValorText valor={elo.valor} natureza={elo.natureza} />
+                              <span className="inline-flex items-center gap-1 text-indigo-700 dark:text-indigo-300 font-medium">
+                                <ExternalLink className="w-3 h-3" aria-hidden />
+                                Ver no extrato
+                              </span>
+                            </div>
+                            {elo.bancoNome ? (
+                              <p className="text-[10px] text-slate-400 mt-1 truncate">{elo.bancoNome}</p>
+                            ) : null}
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-xs text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded px-2 py-1.5">
+                      Grupo registrado, mas ainda sem o outro lançamento do par.
+                    </p>
+                  )}
+                  <Link
+                    to={`/financeiro/compensacao?grupo=${encodeURIComponent(grupoElo)}`}
+                    className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline dark:text-blue-400"
+                  >
+                    Abrir módulo de compensação
+                  </Link>
+                </div>
               ) : (
-                <>
-                  <p className="text-slate-700 dark:text-slate-200">
-                    <span className="font-medium text-slate-500 dark:text-slate-400">Parte autora: </span>
-                    {partesLegenda?.parteCliente?.trim() ? partesLegenda.parteCliente : '—'}
-                  </p>
-                  <p className="text-slate-700 dark:text-slate-200">
-                    <span className="font-medium text-slate-500 dark:text-slate-400">Parte oposta: </span>
-                    {partesLegenda?.parteOposta?.trim() ? partesLegenda.parteOposta : '—'}
-                  </p>
-                </>
+                <p className="text-sm text-slate-500">Sem elo — pareie no Inbox ou em Compensação.</p>
               )}
-            </div>
-          ) : null}
+            </Field>
+          ) : (
+            <>
+              <Field label="Cliente (código)">
+                <input
+                  type="text"
+                  value={draft.codCliente}
+                  onChange={(e) =>
+                    patch({
+                      codCliente: e.target.value,
+                      clienteId: null,
+                      pessoaRefId: null,
+                      processoId: null,
+                    })
+                  }
+                  className="w-full text-sm rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1.5"
+                  placeholder="Cód. cliente"
+                />
+              </Field>
+              <Field label="Processo">
+                <input
+                  type="text"
+                  value={draft.proc}
+                  onChange={(e) => patch({ proc: e.target.value, processoId: null })}
+                  className="w-full text-sm rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1.5"
+                  placeholder="Nº processo"
+                />
+              </Field>
+              {codLegenda && procLegenda !== '' ? (
+                <div className="rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 px-2.5 py-2 space-y-1 text-xs">
+                  {partesLegendaLoading ? (
+                    <p className="text-slate-500 dark:text-slate-400">Carregando partes do processo…</p>
+                  ) : (
+                    <>
+                      <p className="text-slate-700 dark:text-slate-200">
+                        <span className="font-medium text-slate-500 dark:text-slate-400">Parte autora: </span>
+                        {partesLegenda?.parteCliente?.trim() ? partesLegenda.parteCliente : '—'}
+                      </p>
+                      <p className="text-slate-700 dark:text-slate-200">
+                        <span className="font-medium text-slate-500 dark:text-slate-400">Parte oposta: </span>
+                        {partesLegenda?.parteOposta?.trim() ? partesLegenda.parteOposta : '—'}
+                      </p>
+                    </>
+                  )}
+                </div>
+              ) : null}
+            </>
+          )}
           <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
             <EtapaDot etapa={draft.etapa} />
             <span>{etapaLabel}</span>
@@ -550,22 +663,24 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted, fonteExt
           ) : null}
         </section>
 
-        <section className="space-y-1 border-t border-slate-100 dark:border-slate-800 pt-3">
-          <p className="text-xs font-medium text-slate-500">Compensação</p>
-          {draft.grupoCompensacao ? (
-            <p className="text-sm">
-              Grupo:{' '}
-              <Link
-                to={`/financeiro/compensacao?grupo=${encodeURIComponent(draft.grupoCompensacao)}`}
-                className="text-blue-600 hover:underline dark:text-blue-400 font-mono text-xs"
-              >
-                {draft.grupoCompensacao}
-              </Link>
-            </p>
-          ) : (
-            <p className="text-sm text-slate-500">(nenhum)</p>
-          )}
-        </section>
+        {!isContaE ? (
+          <section className="space-y-1 border-t border-slate-100 dark:border-slate-800 pt-3">
+            <p className="text-xs font-medium text-slate-500">Compensação</p>
+            {draft.grupoCompensacao ? (
+              <p className="text-sm">
+                Grupo:{' '}
+                <Link
+                  to={`/financeiro/compensacao?grupo=${encodeURIComponent(draft.grupoCompensacao)}`}
+                  className="text-blue-600 hover:underline dark:text-blue-400 font-mono text-xs"
+                >
+                  {draft.grupoCompensacao}
+                </Link>
+              </p>
+            ) : (
+              <p className="text-sm text-slate-500">(nenhum)</p>
+            )}
+          </section>
+        ) : null}
 
         <section className="border-t border-slate-100 dark:border-slate-800 pt-2">
           <button

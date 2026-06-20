@@ -1,10 +1,30 @@
 import { describe, expect, it } from 'vitest';
-import { filtrarParesCompensacao, parPassaFiltrosCompensacao } from './inboxMappers.js';
+import { filtrarParesCompensacao, mapLancamentoInbox, parPassaFiltrosCompensacao } from './inboxMappers.js';
 
 const par = (tipo, dataA, dataB) => ({
   tipo,
   lancamentoA: { dataLancamento: dataA },
   lancamentoB: { dataLancamento: dataB },
+});
+
+describe('mapLancamentoInbox', () => {
+  it('marca lançamento de cartão do inbox para deep link no extrato de cartão', () => {
+    const row = mapLancamentoInbox({
+      id: 16906,
+      dataLancamento: '2026-12-30',
+      dataCompetencia: '2026-01-10',
+      descricao: 'Doce Delicia (3/3)',
+      bancoNome: 'BTG Cartão',
+      numeroBanco: 20,
+      valor: 25,
+      natureza: 'DEBITO',
+      contaContabilNome: 'Conta Pessoal',
+      origem: 'FATURA_XLSX_BTG',
+    });
+    expect(row.origemExtrato).toBe('cartao');
+    expect(row.numeroCartao).toBe(20);
+    expect(row.dataExibicao).toBe('30/12/2025');
+  });
 });
 
 describe('parPassaFiltrosCompensacao', () => {

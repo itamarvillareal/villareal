@@ -6,7 +6,10 @@ import {
   normalizarProcFinanceiro,
   obterCodigoClienteFinanceiroPorPessoaId,
 } from '../../../data/financeiroData.js';
-import { vencimentoFaturaDeLancamento } from '../../../utils/cartaoFaturaVencimento.js';
+import {
+  dataCompraCartaoCorrigida,
+  vencimentoFaturaDeLancamento,
+} from '../../../utils/cartaoFaturaVencimento.js';
 
 function toBrDate(iso) {
   const s = String(iso ?? '').trim();
@@ -223,7 +226,7 @@ export function mapApiLancamentoCartaoToExtratoRow(l, contaToLetra) {
   const valorNum = Number(l.valor ?? 0);
   const natureza = valorNum < 0 ? 'DEBITO' : 'CREDITO';
   const valorAbs = Math.abs(valorNum);
-  const dataIso = String(l.dataLancamento ?? '').slice(0, 10);
+  const dataIso = dataCompraCartaoCorrigida(l) || String(l.dataLancamento ?? '').slice(0, 10);
   const vencIso = vencimentoFaturaDeLancamento(l);
 
   return {

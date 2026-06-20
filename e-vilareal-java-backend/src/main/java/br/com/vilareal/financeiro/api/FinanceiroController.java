@@ -361,6 +361,13 @@ public class FinanceiroController {
         return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
     }
 
+    @GetMapping("/lancamentos/por-grupo-compensacao")
+    @Operation(description = "Lançamentos do mesmo grupo de compensação (elo entre contas).")
+    public List<LancamentoFinanceiroResponse> listarPorGrupoCompensacao(
+            @RequestParam("grupoCompensacao") String grupoCompensacao) {
+        return financeiroService.listarLancamentosPorGrupoCompensacao(grupoCompensacao);
+    }
+
     @PostMapping("/lancamentos/grupos-compensacao/lote")
     @Operation(description = "Backfill: atualiza grupo_compensacao (planilha col. M) por numeroLancamento.")
     public GrupoCompensacaoLoteResult sincronizarGruposCompensacaoLote(

@@ -449,6 +449,16 @@ public class FinanceiroApplicationService {
                 .orElseThrow(() -> new ResourceNotFoundException("Lançamento não encontrado: " + id)));
     }
 
+    @Transactional(readOnly = true)
+    public List<LancamentoFinanceiroResponse> listarLancamentosPorGrupoCompensacao(String grupoCompensacao) {
+        if (grupoCompensacao == null || grupoCompensacao.isBlank()) {
+            return List.of();
+        }
+        return lancamentoRepository.findAllByGrupoCompensacao(grupoCompensacao.trim()).stream()
+                .map(this::toLancamentoResponse)
+                .toList();
+    }
+
     @Transactional
     public LancamentoFinanceiroResponse criarLancamento(LancamentoFinanceiroWriteRequest req) {
         LancamentoFinanceiroEntity e = new LancamentoFinanceiroEntity();

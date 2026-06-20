@@ -5,6 +5,45 @@ export function ehLancamentoFechamentoAutomatico(row) {
   return /^AUTO-FAT-/i.test(numero) || origem === 'AUTO';
 }
 
+function pad2(n) {
+  return String(n).padStart(2, '0');
+}
+
+/**
+ * Ano da compra em fatura de cartão quando a planilha traz só dia/mês.
+ * Compras após o mês de vencimento pertencem ao ano anterior (ex.: 30/12 na fatura com venc. 01/2026 → 2025).
+ */
+export function inferirAnoCompraFaturaCartao(dia, mes, mesVencimento, anoVencimento) {
+  const d = Number(dia);
+  const m = Number(mes);
+  const mesVenc = Number(mesVencimento);
+  const anoBase = Number(anoVencimento);
+  if (!Number.isFinite(d) || !Number.isFinite(m) || d < 1 || m < 1 || m > 12) return null;
+  if (!Number.isFinite(anoBase) || anoBase < 1900) return new Date().getFullYear();
+  const ano = m > (Number.isFinite(mesVenc) && mesVenc >= 1 && mesVenc <= 12 ? mesVenc : 12) ? anoBase - 1 : anoBase;
+  return ano;
+}
+
+/** Corrige data da compra gravada com ano errado em importações de fatura (Excel BTG/Itaú). */
+export function dataCompraCartaoCorrigida(row) {
+  const lanc = isoDataCartao(row?.dataLancamento);
+  if (!lanc) return lanc;
+  const origem = String(row?.origem ?? '').trim();
+  if (!/^FATURA_/i.test(origem)) return lanc;
+  const comp = isoDataCartao(row?.dataCompetencia);
+  if (!comp) return lanc;
+
+  const dia = Number(lanc.slice(8, 10));
+  const mes = Number(lanc.slice(5, 7));
+  const mesVenc = Number(comp.slice(5, 7));
+  const anoVenc = Number(comp.slice(0, 4));
+  const ano = inferirAnoCompraFaturaCartao(dia, mes, mesVenc, anoVenc);
+  if (!Number.isFinite(ano)) return lanc;
+
+  const corrigida = `${ano}-${pad2(mes)}-${pad2(dia)}`;
+  return corrigida;
+}
+
 /** Normaliza data ISO (YYYY-MM-DD) ou BR (DD/MM/AAAA) para YYYY-MM-DD. */
 export function isoDataCartao(val) {
   const s = String(val ?? '').trim();
