@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   FileSignature,
@@ -24,6 +24,8 @@ import {
   nomeArquivoContratoPdf,
   nomeArquivoPeticaoPdf,
   nomeArquivoProcuracaoPdf,
+  previewConteudoContratoHonorarios,
+  previewPdfContratoHonorarios,
 } from '../../repositories/documentosRepository.js';
 import { CIDADE_ESTADO_PADRAO } from './constants.js';
 import { btnGhost, btnPrimary, btnSecondary } from './documentosStyles.js';
@@ -54,6 +56,7 @@ import {
   rotuloModeloContrato,
 } from './contratoModelos.js';
 import { ContratoHonorariosClausula3Modal } from './components/ContratoHonorariosClausula3Modal.jsx';
+import { PreviewContratoHonorarios } from './components/PreviewContratoHonorarios.jsx';
 import { estadoInicialClausula3, parcelamentoAtivo } from './contratoHonorariosClausula3.js';
 
 const hojeIso = () => new Date().toISOString().split('T')[0];
@@ -229,6 +232,13 @@ export function GerarDocumento() {
   const contratoHonorarios = formContrato.modelo === MODELO_CONTRATO_HONORARIOS;
   const contratoAluguel = formContrato.modelo === MODELO_CONTRATO_ALUGUEL;
   const [clausula3ModalOpen, setClausula3ModalOpen] = useState(false);
+  const [contratoPreviewVisivel, setContratoPreviewVisivel] = useState(false);
+  const [contratoPreviewConteudo, setContratoPreviewConteudo] = useState(null);
+  const [contratoPreviewPdfUrl, setContratoPreviewPdfUrl] = useState(null);
+  const contratoPreviewRef = useRef(null);
+  const contratoPreviewPdfUrlRef = useRef(null);
+  const [loadingContratoPreview, setLoadingContratoPreview] = useState(false);
+  const [loadingContratoFinal, setLoadingContratoFinal] = useState(false);
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const [loadingPreview, setLoadingPreview] = useState(false);
@@ -249,6 +259,22 @@ export function GerarDocumento() {
     const t = window.setTimeout(() => setMensagemSucesso(''), 8000);
     return () => window.clearTimeout(t);
   }, [mensagemSucesso]);
+
+  const revogarContratoPreviewPdfUrl = useCallback(() => {
+    if (contratoPreviewPdfUrlRef.current) {
+      URL.revokeObjectURL(contratoPreviewPdfUrlRef.current);
+      contratoPreviewPdfUrlRef.current = null;
+    }
+    setContratoPreviewPdfUrl(null);
+  }, []);
+
+  useEffect(() => () => revogarContratoPreviewPdfUrl(), [revogarContratoPreviewPdfUrl]);
+
+  const fecharContratoPreview = useCallback(() => {
+    setContratoPreviewVisivel(false);
+    setContratoPreviewConteudo(null);
+    revogarContratoPreviewPdfUrl();
+  }, [revogarContratoPreviewPdfUrl]);
 
   const patchIA = useCallback((patch) => {
     setFormIA((f) => ({ ...f, ...patch }));
@@ -288,6 +314,7 @@ export function GerarDocumento() {
     setMensagemErro('');
     setPreviewOpen(false);
     setPreviewData(null);
+    fecharContratoPreview();
   };
 
   const baixarPdf = async (gerarFn, payload) => {
@@ -390,6 +417,115 @@ export function GerarDocumento() {
     }
   };
 
+  const montarPayloadContratoHonorarios = (conteudoEditado) => {
+    const pessoaId = Number(formContrato.pessoaId);
+    return {
+      pessoaId,
+      cidadeEstado: formContrato.cidadeEstado?.trim() || CIDADE_ESTADO_PADRAO,
+      data: hojeIso(),
+      processoId: processoApiId,
+      codigoCliente: codigoClienteProcesso,
+      numeroInterno: numeroInternoProcesso,
+      objetoContrato: formContrato.objetoContrato,
+      clausula3Remuneracao: formContrato.clausula3Configurada ? undefined : formContrato.clausula3Remuneracao,
+      clausula3Dados: formContrato.clausula3Configurada ? formContrato.clausula3Dados : undefined,
+      persistirDados: formContrato.clausula3Configurada,
+      formaAssinatura: formContrato.formaAssinatura,
+      ...(conteudoEditado ? { conteudoEditado } : {}),
+    };
+  };
+
+  const validarContratoHonorarios = () => {
+    const pessoaId = Number(formContrato.pessoaId);
+    if (!Number.isFinite(pessoaId) || pessoaId <= 0) {
+      setErrors({ pessoaIdContrato: 'Informe o ID da pessoa (contratante).' });
+      setMensagemErro('Informe o ID da pessoa (contratante) para visualizar a prévia.');
+      return false;
+    }
+    setErrors({});
+    return true;
+  };
+
+  const aplicarMensagemSucessoContratoHonorarios = () => {
+    if (formContrato.clausula3Configurada && formContrato.clausula3Form?.gerarRecebiveis) {
+      setMensagemSucesso('Contrato gerado. Recebíveis de honorários criados no financeiro do processo.');
+    } else if (formContrato.clausula3Configurada && parcelamentoAtivo(formContrato.clausula3Form)) {
+      setMensagemSucesso('Contrato gerado com parcelamento registrado na Cláusula 3ª.');
+    } else if (formContrato.clausula3Configurada) {
+      setMensagemSucesso('Contrato gerado e dados de remuneração registrados para relatório.');
+    }
+  };
+
+  const atualizarContratoPreviewPdf = async (conteudo) => {
+    const blob = await previewPdfContratoHonorarios(conteudo, { processoId: processoApiId });
+    revogarContratoPreviewPdfUrl();
+    const url = URL.createObjectURL(blob);
+    contratoPreviewPdfUrlRef.current = url;
+    setContratoPreviewPdfUrl(url);
+  };
+
+  const handleIniciarPreviewContratoHonorarios = async () => {
+    setMensagemErro('');
+    if (!validarContratoHonorarios()) return;
+
+    setContratoPreviewVisivel(true);
+    setContratoPreviewConteudo(null);
+    revogarContratoPreviewPdfUrl();
+    setLoadingContratoPreview(true);
+    window.requestAnimationFrame(() => {
+      contratoPreviewRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    try {
+      const conteudo = await previewConteudoContratoHonorarios(montarPayloadContratoHonorarios());
+      setContratoPreviewConteudo(conteudo);
+      await atualizarContratoPreviewPdf(conteudo);
+    } catch (e) {
+      setMensagemErro(e?.message || 'Falha ao gerar prévia do contrato.');
+      setContratoPreviewVisivel(false);
+      setContratoPreviewConteudo(null);
+      revogarContratoPreviewPdfUrl();
+    } finally {
+      setLoadingContratoPreview(false);
+    }
+  };
+
+  const handleAtualizarPreviewContratoHonorarios = async () => {
+    if (!contratoPreviewConteudo) return;
+    setMensagemErro('');
+    setLoadingContratoPreview(true);
+    try {
+      await atualizarContratoPreviewPdf(contratoPreviewConteudo);
+    } catch (e) {
+      setMensagemErro(e?.message || 'Falha ao atualizar prévia.');
+    } finally {
+      setLoadingContratoPreview(false);
+    }
+  };
+
+  const handleGerarContratoHonorariosFinal = async () => {
+    if (!contratoPreviewConteudo) return;
+    setMensagemErro('');
+    setLoadingContratoFinal(true);
+    try {
+      const blob = await gerarContratoHonorarios(
+        montarPayloadContratoHonorarios(contratoPreviewConteudo),
+      );
+      downloadPdfBlob(
+        blob,
+        nomeArquivoContratoPdf(
+          contratoPreviewConteudo.nomeContratante || formContrato.nomeContratante,
+          'honorarios',
+        ),
+      );
+      aplicarMensagemSucessoContratoHonorarios();
+      fecharContratoPreview();
+    } catch (e) {
+      setMensagemErro(e?.message || 'Falha ao gerar contrato de honorários.');
+    } finally {
+      setLoadingContratoFinal(false);
+    }
+  };
+
   const handleGerarContrato = async () => {
     setMensagemErro('');
     setErrors({});
@@ -423,42 +559,7 @@ export function GerarDocumento() {
       return;
     }
 
-    const pessoaId = Number(formContrato.pessoaId);
-    if (!Number.isFinite(pessoaId) || pessoaId <= 0) {
-      setErrors({ pessoaIdContrato: 'Informe o ID da pessoa (contratante).' });
-      return;
-    }
-    setLoading(true);
-    try {
-      const blob = await gerarContratoHonorarios({
-        pessoaId,
-        cidadeEstado: formContrato.cidadeEstado?.trim() || CIDADE_ESTADO_PADRAO,
-        data: hojeIso(),
-        processoId: processoApiId,
-        codigoCliente: codigoClienteProcesso,
-        numeroInterno: numeroInternoProcesso,
-        objetoContrato: formContrato.objetoContrato,
-        clausula3Remuneracao: formContrato.clausula3Configurada ? undefined : formContrato.clausula3Remuneracao,
-        clausula3Dados: formContrato.clausula3Configurada ? formContrato.clausula3Dados : undefined,
-        persistirDados: formContrato.clausula3Configurada,
-        formaAssinatura: formContrato.formaAssinatura,
-      });
-      downloadPdfBlob(
-        blob,
-        nomeArquivoContratoPdf(formContrato.nomeContratante, 'honorarios'),
-      );
-      if (formContrato.clausula3Configurada && formContrato.clausula3Form?.gerarRecebiveis) {
-        setMensagemSucesso('Contrato gerado. Recebíveis de honorários criados no financeiro do processo.');
-      } else if (formContrato.clausula3Configurada && parcelamentoAtivo(formContrato.clausula3Form)) {
-        setMensagemSucesso('Contrato gerado com parcelamento registrado na Cláusula 3ª.');
-      } else if (formContrato.clausula3Configurada) {
-        setMensagemSucesso('Contrato gerado e dados de remuneração registrados para relatório.');
-      }
-    } catch (e) {
-      setMensagemErro(e?.message || 'Falha ao gerar contrato de honorários.');
-    } finally {
-      setLoading(false);
-    }
+    await handleIniciarPreviewContratoHonorarios();
   };
 
   const handleGerarPdf = async () => {
@@ -541,7 +642,7 @@ export function GerarDocumento() {
     }
   };
 
-  const ocupado = loading || loadingPreview;
+  const ocupado = loading || loadingPreview || loadingContratoPreview || loadingContratoFinal;
 
   const fecharParaProcesso = useCallback(() => {
     if (!dadosProcesso?.codigoCliente) {
@@ -1150,17 +1251,34 @@ export function GerarDocumento() {
         )}
       </div>
 
-      {!modoModelo && !modoArquivo && !modoExecucao ? (
+      {modoContrato && contratoHonorarios && contratoPreviewVisivel ? (
+        <div ref={contratoPreviewRef} className="mt-6">
+          <PreviewContratoHonorarios
+            conteudo={contratoPreviewConteudo}
+            pdfUrl={contratoPreviewPdfUrl}
+            loading={loadingContratoPreview}
+            gerandoFinal={loadingContratoFinal}
+            onConteudoChange={setContratoPreviewConteudo}
+            onAtualizar={() => void handleAtualizarPreviewContratoHonorarios()}
+            onGerarFinal={() => void handleGerarContratoHonorariosFinal()}
+            onVoltar={fecharContratoPreview}
+          />
+        </div>
+      ) : null}
+
+      {!modoModelo && !modoArquivo && !modoExecucao && !(modoContrato && contratoHonorarios && contratoPreviewVisivel && contratoPreviewConteudo) ? (
       <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-slate-200 bg-white/95 px-4 py-4 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95 lg:left-56">
         <div className="mx-auto flex max-w-4xl flex-wrap items-center gap-3">
           <button type="button" className={btnPrimary} disabled={ocupado} onClick={() => void handleGerarPdf()}>
-            {loading ? (
+            {loading || loadingContratoPreview ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
                 {modoProcuracao
                   ? 'Gerando procuração…'
                   : modoContrato
-                    ? 'Gerando contrato…'
+                    ? contratoHonorarios
+                      ? 'Preparando prévia…'
+                      : 'Gerando contrato…'
                     : modoIA
                       ? 'Gerando petição com IA…'
                       : 'Gerando PDF…'}
@@ -1168,7 +1286,7 @@ export function GerarDocumento() {
             ) : modoProcuracao ? (
               'Gerar Procuração'
             ) : modoContrato ? (
-              `Gerar ${rotuloModeloContrato(formContrato.modelo)}`
+              contratoHonorarios ? 'Visualizar prévia' : `Gerar ${rotuloModeloContrato(formContrato.modelo)}`
             ) : (
               'Gerar PDF'
             )}

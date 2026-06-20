@@ -20,5 +20,7 @@ public record ContratoHonorariosRequest(
         String clausula3Remuneracao,
         /** Dados estruturados da remuneração (modal). */
         ContratoHonorariosClausula3Dados clausula3Dados,
+        /** Conteúdo editado na prévia (substitui o montado automaticamente no PDF final). */
+        ContratoHonorariosConteudoPreview conteudoEditado,
         /** Quando true (padrão com clausula3Dados), persiste contrato e gera recebíveis se configurado. */
         Boolean persistirDados) {}

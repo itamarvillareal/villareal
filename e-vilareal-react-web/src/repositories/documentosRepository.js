@@ -230,6 +230,7 @@ export async function gerarContratoHonorarios(
     clausula3Dados,
     persistirDados,
     formaAssinatura,
+    conteudoEditado,
   },
   opts = {},
 ) {
@@ -247,7 +248,27 @@ export async function gerarContratoHonorarios(
     body.clausula3Remuneracao = clausula3Remuneracao.trim();
   }
   if (formaAssinatura) body.formaAssinatura = formaAssinatura;
+  if (conteudoEditado) body.conteudoEditado = conteudoEditado;
   return postPdf('/api/documentos/contrato-honorarios', body, opts);
+}
+
+export async function previewConteudoContratoHonorarios(payload, opts = {}) {
+  return request('/api/documentos/contrato-honorarios/preview-conteudo', {
+    method: 'POST',
+    body: payload,
+    signal: opts.signal,
+  });
+}
+
+export async function previewPdfContratoHonorarios(conteudo, { processoId, signal } = {}) {
+  return postPdf(
+    '/api/documentos/contrato-honorarios/preview-pdf',
+    {
+      conteudo,
+      processoId: processoId != null && processoId !== '' ? Number(processoId) : null,
+    },
+    { signal },
+  );
 }
 
 export async function montarClausula3TextoContratoHonorarios(clausula3Dados, opts = {}) {

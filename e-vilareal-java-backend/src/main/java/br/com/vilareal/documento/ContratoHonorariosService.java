@@ -19,6 +19,7 @@ public class ContratoHonorariosService {
 
     private static final String TEMPLATE_CONTRATO = "documentos/contrato-honorarios-advocaticios";
     private static final String CIDADE_ESTADO_PADRAO = "Anápolis, estado de Goiás";
+    private static final String PREFIXO_CLAUSULA_3 = "Cláusula 3ª. ";
 
     private final DocumentoPdfService pdfService;
     private final PessoaRepository pessoaRepository;
@@ -47,48 +48,71 @@ public class ContratoHonorariosService {
         if (request == null || request.pessoaId() == null) {
             throw new IllegalArgumentException("pessoaId é obrigatório");
         }
+        ContratoHonorariosConteudoPreview conteudo = request.conteudoEditado() != null
+                ? request.conteudoEditado()
+                : montarConteudoPreview(request);
+        byte[] pdf = gerarPdfFromConteudo(conteudo, request.processoId());
+
+        if (devePersistir(request)) {
+            ContratoContratanteFlexao flexao =
+                    flexaoContratanteResolver.resolver(request.pessoaId(), request.contratantePessoaIds());
+            String clausula3Texto = extrairClausula3Texto(conteudo, request, flexao);
+            persistenciaService.registrarContratoGerado(request, clausula3Texto, request.clausula3Dados());
+        }
+
+        return pdf;
+    }
+
+    @Transactional(readOnly = true)
+    public ContratoHonorariosConteudoPreview montarConteudoPreview(ContratoHonorariosRequest request) {
+        if (request == null || request.pessoaId() == null) {
+            throw new IllegalArgumentException("pessoaId é obrigatório");
+        }
         Long pessoaId = request.pessoaId();
         PessoaEntity pessoa = pessoaRepository.findById(pessoaId)
                 .orElseThrow(() -> new ResourceNotFoundException("Pessoa não encontrada: " + pessoaId));
 
-        String clausula3Texto = resolverClausula3Texto(
-                request, flexaoContratanteResolver.resolver(pessoaId, request.contratantePessoaIds()));
+        ContratoContratanteFlexao flexao =
+                flexaoContratanteResolver.resolver(pessoaId, request.contratantePessoaIds());
+        String clausula3Texto = resolverClausula3Texto(request, flexao);
 
-        TemaDocumento tema = temaResolver.resolverPorProcessoId(request.processoId());
         String qualificacaoContratante = qualificacaoPessoaUtil.gerarQualificacaoContratoContratantePorPessoaId(pessoaId);
         String qualificacaoContratado = QualificacaoPessoaUtil.montarQualificacaoContratoContratado(
                 ContratoAdvogadoPadrao.NOME, ContratoAdvogadoPadrao.OAB);
-        String preambuloHtml = QualificacaoPessoaUtil.montarPreambuloContratoHonorarios(
-                qualificacaoContratante, qualificacaoContratado);
-        List<String> clausulas = ContratoHonorariosClausulas.montarClausulas(
-                request.objetoContrato(), clausula3Texto);
-
-        String nomeContratante = ContratoHonorariosClausulas.normalizarNomeAssinatura(pessoa.getNome());
-        String nomeContratado = ContratoHonorariosClausulas.normalizarNomeAssinatura(
-                extrairNomeAdvogadoSemTitulo(ContratoAdvogadoPadrao.NOME));
 
         LocalDate data = request.data() != null ? request.data() : LocalDate.now();
         String cidadeEstado = request.cidadeEstado() != null && !request.cidadeEstado().isBlank()
                 ? request.cidadeEstado().trim()
                 : CIDADE_ESTADO_PADRAO;
-        String localData = pdfService.montarLocalData(cidadeEstado, data);
 
-        Map<String, Object> variables = new HashMap<>();
-        variables.put("preambuloHtml", preambuloHtml);
-        variables.put("clausulas", clausulas);
-        variables.put("fechoHtml", ContratoFechoTexto.montarFechoHonorarios(
-                ContratoFormaAssinatura.resolver(request.formaAssinatura())));
-        variables.put("localData", localData);
-        variables.put("nomeContratante", nomeContratante);
-        variables.put("nomeContratado", nomeContratado);
+        return new ContratoHonorariosConteudoPreview(
+                QualificacaoPessoaUtil.montarPreambuloContratoHonorarios(qualificacaoContratante, qualificacaoContratado),
+                ContratoHonorariosClausulas.montarClausulas(request.objetoContrato(), clausula3Texto),
+                ContratoFechoTexto.montarFechoHonorarios(ContratoFormaAssinatura.resolver(request.formaAssinatura())),
+                pdfService.montarLocalData(cidadeEstado, data),
+                ContratoHonorariosClausulas.normalizarNomeAssinatura(pessoa.getNome()),
+                ContratoHonorariosClausulas.normalizarNomeAssinatura(
+                        extrairNomeAdvogadoSemTitulo(ContratoAdvogadoPadrao.NOME)));
+    }
 
-        byte[] pdf = pdfService.gerarPdfDeTemplate(TEMPLATE_CONTRATO, variables, tema);
-
-        if (devePersistir(request)) {
-            persistenciaService.registrarContratoGerado(request, clausula3Texto, request.clausula3Dados());
+    @Transactional(readOnly = true)
+    public byte[] gerarPdfPreview(ContratoHonorariosPreviewPdfRequest request) {
+        if (request == null || request.conteudo() == null) {
+            throw new IllegalArgumentException("conteudo é obrigatório");
         }
+        return gerarPdfFromConteudo(request.conteudo(), request.processoId());
+    }
 
-        return pdf;
+    private byte[] gerarPdfFromConteudo(ContratoHonorariosConteudoPreview conteudo, Long processoId) {
+        TemaDocumento tema = temaResolver.resolverPorProcessoId(processoId);
+        Map<String, Object> variables = new HashMap<>();
+        variables.put("preambuloHtml", conteudo.preambuloHtml());
+        variables.put("clausulas", conteudo.clausulas());
+        variables.put("fechoHtml", conteudo.fechoHtml());
+        variables.put("localData", conteudo.localData());
+        variables.put("nomeContratante", conteudo.nomeContratante());
+        variables.put("nomeContratado", conteudo.nomeContratado());
+        return pdfService.gerarPdfDeTemplate(TEMPLATE_CONTRATO, variables, tema);
     }
 
     @Transactional(readOnly = true)
@@ -120,6 +144,19 @@ public class ContratoHonorariosService {
             return request.clausula3Remuneracao().trim();
         }
         return ContratoHonorariosClausulas.CLAUSULA_3_PADRAO;
+    }
+
+    private static String extrairClausula3Texto(
+            ContratoHonorariosConteudoPreview conteudo,
+            ContratoHonorariosRequest request,
+            ContratoContratanteFlexao flexaoContratante) {
+        if (conteudo != null && conteudo.clausulas() != null && conteudo.clausulas().size() > 2) {
+            String clausula3 = conteudo.clausulas().get(2);
+            if (StringUtils.hasText(clausula3) && clausula3.startsWith(PREFIXO_CLAUSULA_3)) {
+                return clausula3.substring(PREFIXO_CLAUSULA_3.length()).trim();
+            }
+        }
+        return resolverClausula3Texto(request, flexaoContratante);
     }
 
     private static String extrairNomeAdvogadoSemTitulo(String advogadoNome) {

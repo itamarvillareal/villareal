@@ -263,6 +263,19 @@ public class DocumentoController {
         return new ContratoHonorariosClausula3TextoResponse(contratoHonorariosService.montarClausula3Texto(request));
     }
 
+    @PostMapping("/contrato-honorarios/preview-conteudo")
+    public ContratoHonorariosConteudoPreview previewConteudoContratoHonorarios(
+            @RequestBody ContratoHonorariosRequest request) {
+        return contratoHonorariosService.montarConteudoPreview(request);
+    }
+
+    @PostMapping("/contrato-honorarios/preview-pdf")
+    public ResponseEntity<byte[]> previewPdfContratoHonorarios(
+            @RequestBody ContratoHonorariosPreviewPdfRequest request) {
+        byte[] pdf = contratoHonorariosService.gerarPdfPreview(request);
+        return respostaPdf("contrato_honorarios_preview.pdf", pdf, true);
+    }
+
     @GetMapping("/contratos-honorarios")
     public List<ContratoHonorariosResumoResponse> listarContratosHonorarios(
             @RequestParam(required = false) Long processoId,
