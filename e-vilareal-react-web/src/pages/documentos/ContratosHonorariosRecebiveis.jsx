@@ -163,7 +163,7 @@ export function ContratosHonorariosRecebiveis() {
               Recebíveis de contratos
             </h1>
             <p className="text-sm text-slate-500 dark:text-slate-400">
-              Contratos de honorários gerados e parcelas lançadas no financeiro.
+              Contratação vigente por processo — alterações atualizam o relatório de recebíveis.
             </p>
           </div>
         </div>

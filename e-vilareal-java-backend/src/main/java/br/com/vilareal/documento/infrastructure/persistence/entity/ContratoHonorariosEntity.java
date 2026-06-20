@@ -67,6 +67,9 @@ public class ContratoHonorariosEntity {
     @Column(name = "criado_em", nullable = false)
     private Instant criadoEm;
 
+    @Column(name = "atualizado_em")
+    private Instant atualizadoEm;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "criado_por_usuario_id")
     private UsuarioEntity criadoPorUsuario;

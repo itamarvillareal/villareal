@@ -26,6 +26,8 @@ import {
   nomeArquivoProcuracaoPdf,
   previewConteudoContratoHonorarios,
   previewPdfContratoHonorarios,
+  buscarContratoHonorariosProcesso,
+  salvarContratoHonorariosProcesso,
 } from '../../repositories/documentosRepository.js';
 import { CIDADE_ESTADO_PADRAO } from './constants.js';
 import { btnGhost, btnPrimary, btnSecondary } from './documentosStyles.js';
@@ -57,7 +59,7 @@ import {
 } from './contratoModelos.js';
 import { ContratoHonorariosClausula3Modal } from './components/ContratoHonorariosClausula3Modal.jsx';
 import { PreviewContratoHonorarios } from './components/PreviewContratoHonorarios.jsx';
-import { estadoInicialClausula3, parcelamentoAtivo } from './contratoHonorariosClausula3.js';
+import { estadoInicialClausula3, parcelamentoAtivo, clausula3DadosParaForm } from './contratoHonorariosClausula3.js';
 import { renumerarClausulas } from './contratoHonorariosClausulasPreview.js';
 
 const hojeIso = () => new Date().toISOString().split('T')[0];
@@ -261,6 +263,36 @@ export function GerarDocumento() {
     return () => window.clearTimeout(t);
   }, [mensagemSucesso]);
 
+  useEffect(() => {
+    if (!processoApiId || !contratoHonorarios) return undefined;
+    let cancel = false;
+    buscarContratoHonorariosProcesso(processoApiId)
+      .then((salvo) => {
+        if (cancel || !salvo?.resumo) return;
+        const r = salvo.resumo;
+        setFormContrato((f) => ({
+          ...f,
+          pessoaId: r.pessoaId != null ? String(r.pessoaId) : f.pessoaId,
+          nomeContratante: r.nomeContratante || f.nomeContratante,
+          objetoContrato: r.objetoContrato ?? f.objetoContrato,
+          formaAssinatura: salvo.formaAssinatura || f.formaAssinatura,
+          clausula3Form: clausula3DadosParaForm(salvo.clausula3Dados),
+          clausula3Dados: salvo.clausula3Dados,
+          clausula3Remuneracao: r.clausula3Texto || f.clausula3Remuneracao,
+          clausula3Configurada: true,
+        }));
+      })
+      .catch((e) => {
+        if (String(e?.message || '').includes('404')) return;
+        if (!cancel) {
+          setMensagemErro(e?.message || 'Falha ao carregar contratação do processo.');
+        }
+      });
+    return () => {
+      cancel = true;
+    };
+  }, [processoApiId, contratoHonorarios]);
+
   const revogarContratoPreviewPdfUrl = useCallback(() => {
     if (contratoPreviewPdfUrlRef.current) {
       URL.revokeObjectURL(contratoPreviewPdfUrlRef.current);
@@ -430,7 +462,7 @@ export function GerarDocumento() {
       objetoContrato: formContrato.objetoContrato,
       clausula3Remuneracao: formContrato.clausula3Configurada ? undefined : formContrato.clausula3Remuneracao,
       clausula3Dados: formContrato.clausula3Configurada ? formContrato.clausula3Dados : undefined,
-      persistirDados: formContrato.clausula3Configurada,
+      persistirDados: false,
       formaAssinatura: formContrato.formaAssinatura,
       ...(conteudoEditado ? { conteudoEditado } : {}),
     };
@@ -448,12 +480,59 @@ export function GerarDocumento() {
   };
 
   const aplicarMensagemSucessoContratoHonorarios = () => {
-    if (formContrato.clausula3Configurada && formContrato.clausula3Form?.gerarRecebiveis) {
-      setMensagemSucesso('Contrato gerado. Recebíveis de honorários criados no financeiro do processo.');
-    } else if (formContrato.clausula3Configurada && parcelamentoAtivo(formContrato.clausula3Form)) {
-      setMensagemSucesso('Contrato gerado com parcelamento registrado na Cláusula 3ª.');
-    } else if (formContrato.clausula3Configurada) {
-      setMensagemSucesso('Contrato gerado e dados de remuneração registrados para relatório.');
+    setMensagemSucesso('PDF do contrato gerado (contratação permanece a salva no processo).');
+  };
+
+  const montarPayloadSalvarContratacao = (dados) => {
+    const pessoaId = Number(formContrato.pessoaId);
+    if (!Number.isFinite(pessoaId) || pessoaId <= 0) {
+      throw new Error('Informe o ID da pessoa (contratante) para salvar a contratação.');
+    }
+    if (!dados) {
+      throw new Error('Configure a Cláusula 3ª antes de salvar a contratação.');
+    }
+    return {
+      pessoaId,
+      cidadeEstado: formContrato.cidadeEstado?.trim() || CIDADE_ESTADO_PADRAO,
+      data: hojeIso(),
+      processoId: processoApiId,
+      codigoCliente: codigoClienteProcesso,
+      numeroInterno: numeroInternoProcesso,
+      objetoContrato: formContrato.objetoContrato,
+      clausula3Dados: dados,
+      formaAssinatura: formContrato.formaAssinatura,
+    };
+  };
+
+  const handleSalvarContratacao = async ({ form, dados, texto }) => {
+    if (!processoApiId) {
+      setMensagemErro('Abra a tela a partir de um processo para salvar a contratação.');
+      return false;
+    }
+    try {
+      const payload = montarPayloadSalvarContratacao(dados);
+      const salvo = await salvarContratoHonorariosProcesso(processoApiId, payload);
+      setFormContrato((f) => ({
+        ...f,
+        clausula3Form: clausula3DadosParaForm(salvo?.clausula3Dados ?? dados) || form,
+        clausula3Dados: salvo?.clausula3Dados ?? dados,
+        clausula3Remuneracao: salvo?.resumo?.clausula3Texto || texto,
+        objetoContrato: salvo?.resumo?.objetoContrato ?? f.objetoContrato,
+        formaAssinatura: salvo?.formaAssinatura || f.formaAssinatura,
+        clausula3Configurada: true,
+      }));
+      if (dados?.gerarRecebiveis) {
+        setMensagemSucesso('Contratação salva. Recebíveis atualizados no financeiro do processo.');
+      } else if (parcelamentoAtivo(form)) {
+        setMensagemSucesso('Contratação salva com parcelamento registrado na Cláusula 3ª.');
+      } else {
+        setMensagemSucesso('Contratação salva no processo.');
+      }
+      setMensagemErro('');
+      return true;
+    } catch (e) {
+      setMensagemErro(e?.message || 'Falha ao salvar contratação.');
+      return false;
     }
   };
 
@@ -510,6 +589,10 @@ export function GerarDocumento() {
 
   const handleGerarContratoHonorariosFinal = async () => {
     if (!contratoPreviewConteudo) return;
+    if (processoApiId && !formContrato.clausula3Configurada) {
+      setMensagemErro('Salve a contratação (Cláusula 3ª) no processo antes de gerar o PDF final.');
+      return;
+    }
     setMensagemErro('');
     setLoadingContratoFinal(true);
     try {
@@ -1172,17 +1255,18 @@ export function GerarDocumento() {
                       }}
                     />
                     {formContrato.clausula3Configurada ? (
-                      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                        Texto estruturado
+                      <p className="mt-1 text-xs text-emerald-700 dark:text-emerald-300">
+                        Contratação salva no processo
                         {formContrato.clausula3Form?.gerarRecebiveis
-                          ? ' — recebíveis serão gerados ao emitir o contrato.'
+                          ? ' · recebíveis no financeiro'
                           : parcelamentoAtivo(formContrato.clausula3Form)
-                            ? ' — parcelamento incluído na cláusula ao emitir o contrato.'
-                            : ' — dados salvos para relatório ao emitir o contrato.'}
+                            ? ' · parcelamento na cláusula'
+                            : ''}
+                        . O PDF pode ser gerado várias vezes sem duplicar o relatório.
                       </p>
                     ) : (
                       <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                        Use o botão acima para percentuais, valores por extenso e parcelamento no financeiro.
+                        Configure e salve a contratação no botão acima (percentuais, parcelas e recebíveis).
                       </p>
                     )}
                   </div>
@@ -1346,16 +1430,7 @@ export function GerarDocumento() {
         initialForm={formContrato.clausula3Form}
         processoApiId={processoApiId}
         pessoaId={formContrato.pessoaId}
-        onApply={({ form, dados, texto }) => {
-          setFormContrato((f) => ({
-            ...f,
-            clausula3Form: form,
-            clausula3Dados: dados,
-            clausula3Remuneracao: texto,
-            clausula3Configurada: true,
-          }));
-          setMensagemErro('');
-        }}
+        onApply={(payload) => handleSalvarContratacao(payload)}
       />
     </div>
   );

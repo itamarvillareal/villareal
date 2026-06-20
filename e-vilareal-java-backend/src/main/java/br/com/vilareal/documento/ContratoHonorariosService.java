@@ -1,6 +1,7 @@
 package br.com.vilareal.documento;
 
 import br.com.vilareal.common.exception.ResourceNotFoundException;
+import br.com.vilareal.documento.infrastructure.persistence.entity.ContratoHonorariosEntity;
 import br.com.vilareal.documento.tema.DocumentoTemaResolver;
 import br.com.vilareal.documento.tema.TemaDocumento;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
@@ -50,16 +51,27 @@ public class ContratoHonorariosService {
         ContratoHonorariosConteudoPreview conteudo = request.conteudoEditado() != null
                 ? request.conteudoEditado()
                 : montarConteudoPreview(request);
-        byte[] pdf = gerarPdfFromConteudo(conteudo, request.processoId());
+        return gerarPdfFromConteudo(conteudo, request.processoId());
+    }
 
-        if (devePersistir(request)) {
-            ContratoContratanteFlexao flexao =
-                    flexaoContratanteResolver.resolver(request.pessoaId(), request.contratantePessoaIds());
-            String clausula3Texto = extrairClausula3Texto(conteudo, request, flexao);
-            persistenciaService.registrarContratoGerado(request, clausula3Texto, request.clausula3Dados());
+    @Transactional
+    public ContratoHonorariosProcessoResponse salvarContratacaoProcesso(
+            Long processoId, ContratoHonorariosRequest request) {
+        if (request == null || request.pessoaId() == null) {
+            throw new IllegalArgumentException("pessoaId é obrigatório");
         }
-
-        return pdf;
+        if (request.clausula3Dados() == null) {
+            throw new IllegalArgumentException("clausula3Dados é obrigatório para salvar a contratação");
+        }
+        ContratoContratanteFlexao flexao =
+                flexaoContratanteResolver.resolver(request.pessoaId(), request.contratantePessoaIds());
+        String clausula3Texto = resolverClausula3Texto(request, flexao);
+        if (request.conteudoEditado() != null && request.conteudoEditado().clausulas() != null) {
+            clausula3Texto = extrairClausula3Texto(request.conteudoEditado(), request, flexao);
+        }
+        ContratoHonorariosEntity entity =
+                persistenciaService.salvarContratoProcesso(processoId, request, clausula3Texto, request.clausula3Dados());
+        return persistenciaService.buscarPorProcesso(entity.getProcesso().getId());
     }
 
     @Transactional(readOnly = true)
@@ -124,14 +136,9 @@ public class ContratoHonorariosService {
         return ContratoHonorariosClausula3TextoBuilder.montarTexto(request.dados(), flexao);
     }
 
-    private static boolean devePersistir(ContratoHonorariosRequest request) {
-        if (request.clausula3Dados() == null) {
-            return false;
-        }
-        if (request.persistirDados() != null) {
-            return request.persistirDados();
-        }
-        return true;
+    @Transactional(readOnly = true)
+    public ContratoHonorariosProcessoResponse buscarContratacaoProcesso(Long processoId) {
+        return persistenciaService.buscarPorProcesso(processoId);
     }
 
     private static String resolverClausula3Texto(

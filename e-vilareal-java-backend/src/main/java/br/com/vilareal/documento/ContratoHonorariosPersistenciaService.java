@@ -9,6 +9,7 @@ import br.com.vilareal.pagamento.api.dto.PagamentoWriteRequest;
 import br.com.vilareal.pagamento.application.PagamentoApplicationService;
 import br.com.vilareal.pagamento.domain.PagamentoDominio;
 import br.com.vilareal.pagamento.infrastructure.persistence.entity.PagamentoEntity;
+import br.com.vilareal.pagamento.infrastructure.persistence.repository.PagamentoRepository;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
@@ -35,6 +36,7 @@ public class ContratoHonorariosPersistenciaService {
     private final ProcessoRepository processoRepository;
     private final PessoaRepository pessoaRepository;
     private final PagamentoApplicationService pagamentoApplicationService;
+    private final PagamentoRepository pagamentoRepository;
     private final UsuarioRepository usuarioRepository;
     private final Clock clock;
 
@@ -43,24 +45,55 @@ public class ContratoHonorariosPersistenciaService {
             ProcessoRepository processoRepository,
             PessoaRepository pessoaRepository,
             PagamentoApplicationService pagamentoApplicationService,
+            PagamentoRepository pagamentoRepository,
             UsuarioRepository usuarioRepository,
             Clock clock) {
         this.contratoRepository = contratoRepository;
         this.processoRepository = processoRepository;
         this.pessoaRepository = pessoaRepository;
         this.pagamentoApplicationService = pagamentoApplicationService;
+        this.pagamentoRepository = pagamentoRepository;
         this.usuarioRepository = usuarioRepository;
         this.clock = clock;
     }
 
+    /**
+     * Salva ou atualiza a contratação vigente do processo (upsert por {@code processoId}).
+     * Geração de PDF não deve chamar este método — apenas esta API de contratação.
+     */
     @Transactional
-    public ContratoHonorariosEntity registrarContratoGerado(
-            ContratoHonorariosRequest request, String clausula3Texto, ContratoHonorariosClausula3Dados dados) {
+    public ContratoHonorariosEntity salvarContratoProcesso(
+            Long processoId, ContratoHonorariosRequest request, String clausula3Texto, ContratoHonorariosClausula3Dados dados) {
+        if (processoId == null) {
+            throw new BusinessRuleException("Informe o processo para salvar a contratação.");
+        }
+        if (request == null || request.pessoaId() == null) {
+            throw new IllegalArgumentException("pessoaId é obrigatório");
+        }
+        if (dados == null) {
+            throw new BusinessRuleException("Configure a Cláusula 3ª (remuneração) antes de salvar.");
+        }
+
+        ProcessoEntity processo = processoRepository
+                .findById(processoId)
+                .orElseThrow(() -> new ResourceNotFoundException("Processo não encontrado: " + processoId));
+
         PessoaEntity pessoa = pessoaRepository
                 .findById(request.pessoaId())
                 .orElseThrow(() -> new ResourceNotFoundException("Pessoa não encontrada: " + request.pessoaId()));
 
-        ContratoHonorariosEntity entity = new ContratoHonorariosEntity();
+        ContratoHonorariosEntity entity =
+                contratoRepository.findByProcessoIdWithDetalhes(processoId).orElseGet(ContratoHonorariosEntity::new);
+
+        Instant agora = Instant.now(clock);
+        if (entity.getId() == null) {
+            entity.setCriadoEm(agora);
+            entity.setCriadoPorUsuario(usuarioAtualOrNull());
+        } else {
+            entity.setAtualizadoEm(agora);
+        }
+
+        entity.setProcesso(processo);
         entity.setPessoa(pessoa);
         entity.setDataContrato(request.data() != null ? request.data() : LocalDate.now(clock));
         entity.setFormaAssinatura(
@@ -69,36 +102,25 @@ public class ContratoHonorariosPersistenciaService {
                         : "duas_vias");
         entity.setObjetoContrato(request.objetoContrato());
         entity.setClausula3Texto(clausula3Texto);
-        entity.setCriadoEm(Instant.now(clock));
-        entity.setCriadoPorUsuario(usuarioAtualOrNull());
-
-        if (request.processoId() != null) {
-            ProcessoEntity processo = processoRepository
-                    .findById(request.processoId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Processo não encontrado: " + request.processoId()));
-            entity.setProcesso(processo);
-        }
-
-        if (dados != null) {
-            entity.setTipoRemuneracao(normalizarTipo(dados.tipoRemuneracao()));
-            entity.setPercentualProveito(dados.percentualProveito());
-            entity.setValorFixo(dados.valorFixo());
-            entity.setGerarRecebiveis(Boolean.TRUE.equals(dados.gerarRecebiveis()));
-            entity.setValorTotalParcelas(dados.valorTotalParcelas());
-            entity.setQuantidadeParcelas(dados.quantidadeParcelas());
-            entity.setFormaPagamentoParcelas(dados.formaPagamento());
-        } else {
-            entity.setTipoRemuneracao(ContratoHonorariosClausula3TextoBuilder.TIPO_PERCENTUAL_PROVEITO);
-            entity.setGerarRecebiveis(false);
-        }
+        entity.setTipoRemuneracao(normalizarTipo(dados.tipoRemuneracao()));
+        entity.setPercentualProveito(dados.percentualProveito());
+        entity.setValorFixo(dados.valorFixo());
+        entity.setGerarRecebiveis(Boolean.TRUE.equals(dados.gerarRecebiveis()));
+        entity.setValorTotalParcelas(dados.valorTotalParcelas());
+        entity.setQuantidadeParcelas(dados.quantidadeParcelas());
+        entity.setFormaPagamentoParcelas(dados.formaPagamento());
 
         entity = contratoRepository.save(entity);
-
-        if (dados != null && Boolean.TRUE.equals(dados.gerarRecebiveis())) {
-            criarRecebiveis(entity, dados);
-        }
-
+        sincronizarRecebiveis(entity, dados);
         return entity;
+    }
+
+    @Transactional(readOnly = true)
+    public ContratoHonorariosProcessoResponse buscarPorProcesso(Long processoId) {
+        return contratoRepository
+                .findByProcessoIdWithDetalhes(processoId)
+                .map(this::toProcessoResponse)
+                .orElse(null);
     }
 
     @Transactional(readOnly = true)
@@ -106,6 +128,38 @@ public class ContratoHonorariosPersistenciaService {
         return contratoRepository.listarComFiltros(processoId, pessoaId, de, ate).stream()
                 .map(this::toResumo)
                 .toList();
+    }
+
+    private void sincronizarRecebiveis(ContratoHonorariosEntity contrato, ContratoHonorariosClausula3Dados dados) {
+        removerRecebiveisPendentes(contrato);
+        if (Boolean.TRUE.equals(dados.gerarRecebiveis())) {
+            criarRecebiveis(contrato, dados);
+        }
+    }
+
+    private void removerRecebiveisPendentes(ContratoHonorariosEntity contrato) {
+        if (contrato.getParcelas() == null || contrato.getParcelas().isEmpty()) {
+            return;
+        }
+        for (ContratoHonorariosParcelaEntity parcela : new ArrayList<>(contrato.getParcelas())) {
+            if (parcela.getPagamento() == null || parcela.getPagamento().getId() == null) {
+                continue;
+            }
+            pagamentoRepository
+                    .findById(parcela.getPagamento().getId())
+                    .filter(this::podeCancelarRecebivel)
+                    .ifPresent(pag -> pagamentoApplicationService.cancelar(pag.getId(), null));
+        }
+        contrato.getParcelas().clear();
+        contratoRepository.save(contrato);
+    }
+
+    private boolean podeCancelarRecebivel(PagamentoEntity pag) {
+        if (!PagamentoDominio.isTipoReceber(pag.getTipo())) {
+            return false;
+        }
+        return !PagamentoDominio.ST_RECEBIDO.equals(pag.getStatus())
+                && !PagamentoDominio.ST_CONCILIADO.equals(pag.getStatus());
     }
 
     private void criarRecebiveis(ContratoHonorariosEntity contrato, ContratoHonorariosClausula3Dados dados) {
@@ -176,6 +230,45 @@ public class ContratoHonorariosPersistenciaService {
             return "Honorários contratuais — contrato #" + contratoId;
         }
         return "Honorários contratuais — contrato #" + contratoId + " — parcela " + parcela + "/" + total;
+    }
+
+    private ContratoHonorariosProcessoResponse toProcessoResponse(ContratoHonorariosEntity e) {
+        return new ContratoHonorariosProcessoResponse(
+                toResumo(e),
+                montarClausula3Dados(e),
+                e.getFormaAssinatura(),
+                e.getCriadoEm(),
+                e.getAtualizadoEm());
+    }
+
+    static ContratoHonorariosClausula3Dados montarClausula3Dados(ContratoHonorariosEntity e) {
+        boolean temParcelamento = e.getValorTotalParcelas() != null
+                && e.getQuantidadeParcelas() != null
+                && e.getQuantidadeParcelas() > 0;
+        LocalDate primeiroVencimento = null;
+        if (e.getParcelas() != null && !e.getParcelas().isEmpty()) {
+            primeiroVencimento = e.getParcelas().stream()
+                    .min(Comparator.comparing(
+                            ContratoHonorariosParcelaEntity::getNumeroParcela, Comparator.nullsLast(Integer::compareTo)))
+                    .map(ContratoHonorariosParcelaEntity::getDataVencimento)
+                    .orElse(null);
+        }
+        String intervalo = temParcelamento
+                        && e.getQuantidadeParcelas() != null
+                        && e.getQuantidadeParcelas() == 1
+                ? "UNICA"
+                : "MENSAL";
+        return new ContratoHonorariosClausula3Dados(
+                e.getTipoRemuneracao(),
+                e.getPercentualProveito(),
+                e.getValorFixo(),
+                temParcelamento,
+                e.getGerarRecebiveis(),
+                e.getQuantidadeParcelas(),
+                e.getValorTotalParcelas(),
+                primeiroVencimento,
+                intervalo,
+                e.getFormaPagamentoParcelas());
     }
 
     private ContratoHonorariosResumoResponse toResumo(ContratoHonorariosEntity e) {

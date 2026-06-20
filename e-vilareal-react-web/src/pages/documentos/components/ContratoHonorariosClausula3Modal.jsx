@@ -38,6 +38,7 @@ export function ContratoHonorariosClausula3Modal({
   const [form, setForm] = useState(estadoInicialClausula3);
   const [preview, setPreview] = useState('');
   const [carregandoPreview, setCarregandoPreview] = useState(false);
+  const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState('');
 
   useCloseOnEscape(open, onClose, { enabled: !carregandoPreview });
@@ -150,15 +151,23 @@ export function ContratoHonorariosClausula3Modal({
     return '';
   };
 
-  const handleApply = () => {
+  const handleApply = async () => {
     const msg = validar();
     if (msg) {
       setErro(msg);
       return;
     }
     const dados = clausula3FormParaApi(form);
-    onApply({ form: { ...form }, dados, texto: preview });
-    onClose();
+    setSalvando(true);
+    setErro('');
+    try {
+      const ok = await onApply({ form: { ...form }, dados, texto: preview });
+      if (ok !== false) onClose();
+    } catch (e) {
+      setErro(e?.message || 'Falha ao salvar contratação.');
+    } finally {
+      setSalvando(false);
+    }
   };
 
   if (!open) return null;
@@ -428,10 +437,18 @@ export function ContratoHonorariosClausula3Modal({
           </button>
           <button
             type="button"
-            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
-            onClick={handleApply}
+            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+            onClick={() => void handleApply()}
+            disabled={salvando || carregandoPreview}
           >
-            Aplicar ao contrato
+            {salvando ? (
+              <>
+                <Loader2 className="mr-2 inline h-4 w-4 animate-spin" aria-hidden />
+                Salvando…
+              </>
+            ) : (
+              'Salvar contratação'
+            )}
           </button>
         </div>
       </div>

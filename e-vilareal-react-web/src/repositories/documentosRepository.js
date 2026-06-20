@@ -293,6 +293,20 @@ export async function listarContratosHonorarios(params = {}, opts = {}) {
   return request(`/api/documentos/contratos-honorarios${suffix}`, { signal: opts.signal });
 }
 
+export async function buscarContratoHonorariosProcesso(processoId, opts = {}) {
+  return request(`/api/documentos/contrato-honorarios/processo/${Number(processoId)}`, {
+    signal: opts.signal,
+  });
+}
+
+export async function salvarContratoHonorariosProcesso(processoId, payload, opts = {}) {
+  return request(`/api/documentos/contrato-honorarios/processo/${Number(processoId)}`, {
+    method: 'PUT',
+    body: payload,
+    signal: opts.signal,
+  });
+}
+
 export async function gerarContratoAluguel(
   { processoId, cidadeEstado, data, codigoCliente, numeroInterno, formaAssinatura },
   opts = {},

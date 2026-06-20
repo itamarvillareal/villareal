@@ -138,3 +138,25 @@ export function formatarDataBR(iso) {
   const [y, m, d] = String(iso).slice(0, 10).split('-');
   return d && m && y ? `${d}/${m}/${y}` : iso;
 }
+
+/** Reconstrói o formulário da Cláusula 3ª a partir dos dados salvos no backend. */
+export function clausula3DadosParaForm(dados) {
+  if (!dados) return estadoInicialClausula3();
+  const form = {
+    ...estadoInicialClausula3(),
+    tipoRemuneracao: dados.tipoRemuneracao || TIPO_REMUNERACAO_PERCENTUAL,
+    percentualProveito:
+      dados.percentualProveito != null ? String(dados.percentualProveito).replace('.', ',') : '35',
+    valorFixo: dados.valorFixo != null ? formatarMoedaCampo(dados.valorFixo) : '',
+    temParcelamento: Boolean(dados.temParcelamento),
+    gerarRecebiveis: Boolean(dados.gerarRecebiveis),
+    quantidadeParcelas:
+      dados.quantidadeParcelas != null ? String(dados.quantidadeParcelas) : '2',
+    valorTotalParcelas:
+      dados.valorTotalParcelas != null ? formatarMoedaCampo(dados.valorTotalParcelas) : '',
+    primeiroVencimento: dados.primeiroVencimento || new Date().toISOString().slice(0, 10),
+    intervaloParcelas: dados.intervaloParcelas || INTERVALO_PARCELA_MENSAL,
+    formaPagamento: dados.formaPagamento || FORMA_PAGAMENTO_PIX,
+  };
+  return form;
+}

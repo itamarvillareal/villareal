@@ -7,7 +7,9 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -283,6 +285,19 @@ public class DocumentoController {
             @RequestParam(required = false) LocalDate de,
             @RequestParam(required = false) LocalDate ate) {
         return contratoHonorariosPersistenciaService.listar(processoId, pessoaId, de, ate);
+    }
+
+    @GetMapping("/contrato-honorarios/processo/{processoId}")
+    public ResponseEntity<ContratoHonorariosProcessoResponse> buscarContratoHonorariosProcesso(
+            @PathVariable Long processoId) {
+        ContratoHonorariosProcessoResponse resp = contratoHonorariosService.buscarContratacaoProcesso(processoId);
+        return resp != null ? ResponseEntity.ok(resp) : ResponseEntity.notFound().build();
+    }
+
+    @PutMapping("/contrato-honorarios/processo/{processoId}")
+    public ContratoHonorariosProcessoResponse salvarContratoHonorariosProcesso(
+            @PathVariable Long processoId, @RequestBody ContratoHonorariosRequest request) {
+        return contratoHonorariosService.salvarContratacaoProcesso(processoId, request);
     }
 
     @PostMapping("/contrato-honorarios")
