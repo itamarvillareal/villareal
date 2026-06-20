@@ -1,6 +1,14 @@
 import { useEffect, useRef } from 'react';
-import { Loader2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, Loader2, Plus, Trash2 } from 'lucide-react';
 import { btnPrimary, btnSecondary } from '../documentosStyles.js';
+import {
+  corpoClausula,
+  excluirClausula,
+  incluirClausula,
+  moverClausula,
+  renumerarClausulas,
+  rotuloClausula,
+} from '../contratoHonorariosClausulasPreview.js';
 
 const editableHtmlClass =
   'prose prose-sm max-w-none min-h-[88px] rounded-lg border border-slate-300/90 bg-white px-3 py-2 text-slate-800 shadow-sm transition focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/25 dark:prose-invert dark:border-slate-600 dark:bg-slate-900/60 dark:text-slate-200';
@@ -9,6 +17,9 @@ const textareaClass =
   'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900';
 
 const labelClass = 'mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400';
+
+const iconBtnClass =
+  'rounded-md border border-slate-300 p-1.5 text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800';
 
 function HtmlEditable({ html, onChange, ariaLabel }) {
   const ref = useRef(null);
@@ -45,16 +56,26 @@ export function PreviewContratoHonorarios({
   onVoltar,
 }) {
   const ocupado = loading || gerandoFinal;
+  const clausulas = conteudo?.clausulas || [];
 
   const patch = (campo, valor) => {
     if (!conteudo) return;
     onConteudoChange?.({ ...conteudo, [campo]: valor });
   };
 
+  const setClausulas = (next) => {
+    patch('clausulas', next);
+  };
+
   const patchClausula = (index, valor) => {
     if (!conteudo) return;
-    const clausulas = (conteudo.clausulas || []).map((c, i) => (i === index ? valor : c));
-    patch('clausulas', clausulas);
+    const next = clausulas.map((c, i) => (i === index ? valor : c));
+    setClausulas(next);
+  };
+
+  const handleRenumerar = () => {
+    if (!conteudo) return;
+    setClausulas(renumerarClausulas(clausulas));
   };
 
   return (
@@ -68,7 +89,7 @@ export function PreviewContratoHonorarios({
             Prévia do contrato de honorários
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            Revise e ajuste o texto antes de gerar o PDF final.
+            Inclua, exclua ou reordene cláusulas — a numeração é ajustada em sequência.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -77,6 +98,9 @@ export function PreviewContratoHonorarios({
           </button>
           {conteudo ? (
             <>
+              <button type="button" className={btnSecondary} disabled={ocupado} onClick={handleRenumerar}>
+                Renumerar cláusulas
+              </button>
               <button type="button" className={btnSecondary} disabled={ocupado} onClick={onAtualizar}>
                 {loading ? (
                   <>
@@ -119,19 +143,77 @@ export function PreviewContratoHonorarios({
             />
           </label>
 
-          {(conteudo.clausulas || []).map((clausula, index) => (
-            <label key={index} className="block text-sm">
-              <span className={labelClass}>
-                {clausula?.slice(0, 12)?.includes('Cláusula') ? clausula.slice(0, 20) : `Cláusula ${index + 1}`}
-              </span>
-              <textarea
-                rows={index === 2 ? 5 : 3}
-                className={textareaClass}
-                value={clausula || ''}
-                onChange={(e) => patchClausula(index, e.target.value)}
-              />
-            </label>
-          ))}
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className={labelClass}>Cláusulas</span>
+              <button
+                type="button"
+                className={`${btnSecondary} !px-2.5 !py-1 text-xs`}
+                disabled={ocupado}
+                onClick={() => setClausulas(incluirClausula(clausulas))}
+              >
+                <Plus className="mr-1 inline h-3.5 w-3.5" aria-hidden />
+                Incluir cláusula
+              </button>
+            </div>
+
+            {clausulas.map((clausula, index) => (
+              <div
+                key={`clausula-${index}-${corpoClausula(clausula).slice(0, 24)}`}
+                className="rounded-lg border border-slate-200 p-3 dark:border-slate-700"
+              >
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-indigo-700 dark:text-indigo-300">
+                    {rotuloClausula(index + 1)}
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      className={iconBtnClass}
+                      disabled={ocupado || index === 0}
+                      aria-label={`Mover ${rotuloClausula(index + 1)} para cima`}
+                      onClick={() => setClausulas(moverClausula(clausulas, index, -1))}
+                    >
+                      <ChevronUp className="h-4 w-4" aria-hidden />
+                    </button>
+                    <button
+                      type="button"
+                      className={iconBtnClass}
+                      disabled={ocupado || index === clausulas.length - 1}
+                      aria-label={`Mover ${rotuloClausula(index + 1)} para baixo`}
+                      onClick={() => setClausulas(moverClausula(clausulas, index, 1))}
+                    >
+                      <ChevronDown className="h-4 w-4" aria-hidden />
+                    </button>
+                    <button
+                      type="button"
+                      className={iconBtnClass}
+                      disabled={ocupado || clausulas.length <= 1}
+                      aria-label={`Excluir ${rotuloClausula(index + 1)}`}
+                      onClick={() => setClausulas(excluirClausula(clausulas, index))}
+                    >
+                      <Trash2 className="h-4 w-4" aria-hidden />
+                    </button>
+                    <button
+                      type="button"
+                      className={`${iconBtnClass} !border-indigo-300 !text-indigo-700 dark:!border-indigo-700 dark:!text-indigo-300`}
+                      disabled={ocupado}
+                      aria-label={`Incluir cláusula após ${rotuloClausula(index + 1)}`}
+                      onClick={() => setClausulas(incluirClausula(clausulas, index))}
+                    >
+                      <Plus className="h-4 w-4" aria-hidden />
+                    </button>
+                  </div>
+                </div>
+                <textarea
+                  rows={index === 2 ? 5 : 3}
+                  className={textareaClass}
+                  value={clausula || ''}
+                  onChange={(e) => patchClausula(index, e.target.value)}
+                />
+              </div>
+            ))}
+          </div>
 
           <label className="block text-sm">
             <span className={labelClass}>Fecho</span>

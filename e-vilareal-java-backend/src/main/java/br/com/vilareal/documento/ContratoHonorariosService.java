@@ -19,7 +19,6 @@ public class ContratoHonorariosService {
 
     private static final String TEMPLATE_CONTRATO = "documentos/contrato-honorarios-advocaticios";
     private static final String CIDADE_ESTADO_PADRAO = "Anápolis, estado de Goiás";
-    private static final String PREFIXO_CLAUSULA_3 = "Cláusula 3ª. ";
 
     private final DocumentoPdfService pdfService;
     private final PessoaRepository pessoaRepository;
@@ -146,17 +145,40 @@ public class ContratoHonorariosService {
         return ContratoHonorariosClausulas.CLAUSULA_3_PADRAO;
     }
 
+    private static final java.util.regex.Pattern PREFIXO_CLAUSULA_NUMERADA =
+            java.util.regex.Pattern.compile("^Cláusula\\s+\\d+ª\\.?\\s*", java.util.regex.Pattern.CASE_INSENSITIVE);
+
     private static String extrairClausula3Texto(
             ContratoHonorariosConteudoPreview conteudo,
             ContratoHonorariosRequest request,
             ContratoContratanteFlexao flexaoContratante) {
-        if (conteudo != null && conteudo.clausulas() != null && conteudo.clausulas().size() > 2) {
-            String clausula3 = conteudo.clausulas().get(2);
-            if (StringUtils.hasText(clausula3) && clausula3.startsWith(PREFIXO_CLAUSULA_3)) {
-                return clausula3.substring(PREFIXO_CLAUSULA_3.length()).trim();
+        if (conteudo != null && conteudo.clausulas() != null) {
+            for (String clausula : conteudo.clausulas()) {
+                String corpo = removerPrefixoNumeracaoClausula(clausula);
+                if (!StringUtils.hasText(corpo)) {
+                    continue;
+                }
+                String norm = corpo.toUpperCase(java.util.Locale.ROOT);
+                if (norm.contains("REMUNERA") || norm.startsWith("EM REMUNERA")) {
+                    return corpo.trim();
+                }
+            }
+            if (conteudo.clausulas().size() > 2) {
+                String clausula3 = conteudo.clausulas().get(2);
+                String corpo = removerPrefixoNumeracaoClausula(clausula3);
+                if (StringUtils.hasText(corpo)) {
+                    return corpo.trim();
+                }
             }
         }
         return resolverClausula3Texto(request, flexaoContratante);
+    }
+
+    static String removerPrefixoNumeracaoClausula(String clausula) {
+        if (!StringUtils.hasText(clausula)) {
+            return "";
+        }
+        return PREFIXO_CLAUSULA_NUMERADA.matcher(clausula.trim()).replaceFirst("").trim();
     }
 
     private static String extrairNomeAdvogadoSemTitulo(String advogadoNome) {

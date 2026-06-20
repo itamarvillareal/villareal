@@ -58,6 +58,7 @@ import {
 import { ContratoHonorariosClausula3Modal } from './components/ContratoHonorariosClausula3Modal.jsx';
 import { PreviewContratoHonorarios } from './components/PreviewContratoHonorarios.jsx';
 import { estadoInicialClausula3, parcelamentoAtivo } from './contratoHonorariosClausula3.js';
+import { renumerarClausulas } from './contratoHonorariosClausulasPreview.js';
 
 const hojeIso = () => new Date().toISOString().split('T')[0];
 
@@ -494,7 +495,12 @@ export function GerarDocumento() {
     setMensagemErro('');
     setLoadingContratoPreview(true);
     try {
-      await atualizarContratoPreviewPdf(contratoPreviewConteudo);
+      const conteudo = {
+        ...contratoPreviewConteudo,
+        clausulas: renumerarClausulas(contratoPreviewConteudo.clausulas),
+      };
+      setContratoPreviewConteudo(conteudo);
+      await atualizarContratoPreviewPdf(conteudo);
     } catch (e) {
       setMensagemErro(e?.message || 'Falha ao atualizar prévia.');
     } finally {
@@ -507,13 +513,18 @@ export function GerarDocumento() {
     setMensagemErro('');
     setLoadingContratoFinal(true);
     try {
+      const conteudo = {
+        ...contratoPreviewConteudo,
+        clausulas: renumerarClausulas(contratoPreviewConteudo.clausulas),
+      };
+      setContratoPreviewConteudo(conteudo);
       const blob = await gerarContratoHonorarios(
-        montarPayloadContratoHonorarios(contratoPreviewConteudo),
+        montarPayloadContratoHonorarios(conteudo),
       );
       downloadPdfBlob(
         blob,
         nomeArquivoContratoPdf(
-          contratoPreviewConteudo.nomeContratante || formContrato.nomeContratante,
+          conteudo.nomeContratante || formContrato.nomeContratante,
           'honorarios',
         ),
       );
