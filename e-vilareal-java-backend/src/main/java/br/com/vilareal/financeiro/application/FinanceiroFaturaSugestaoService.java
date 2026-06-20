@@ -78,6 +78,7 @@ public class FinanceiroFaturaSugestaoService {
             List<LancamentoFinanceiroEntity> debitos = lancamentoRepository.findAll(spec, Sort.by("dataLancamento", "id"))
                     .stream()
                     .filter(l -> l.getNatureza() == NaturezaLancamento.DEBITO)
+                    .filter(l -> l.getDataLancamento() != null)
                     .filter(l -> !bancosVinculados.contains(l.getId()))
                     .filter(l -> matchPadrao(l.getDescricao(), regra.getPadraoDescricao(), regra.getTipoMatch()))
                     .toList();

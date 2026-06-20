@@ -177,7 +177,10 @@ public class FinanceiroSugestaoService {
         e.setNatureza(valor.signum() < 0 ? NaturezaLancamento.CREDITO : NaturezaLancamento.DEBITO);
         if (cartao.getCartao() != null) {
             e.setNumeroBanco(cartao.getCartao().getNumeroCartao());
+            e.setBancoNome(cartao.getCartao().getNome());
         }
+        e.setDataLancamento(cartao.getDataLancamento());
+        e.setDataCompetencia(cartao.getDataCompetencia());
         return e;
     }
 
@@ -479,7 +482,7 @@ public class FinanceiroSugestaoService {
             return List.of();
         }
         BigDecimal valor = lancamento.getValor();
-        if (valor == null) {
+        if (valor == null || lancamento.getDataLancamento() == null) {
             return List.of();
         }
         BigDecimal valorMin = valor.multiply(new BigDecimal("0.95")).setScale(2, RoundingMode.HALF_UP);
@@ -502,7 +505,10 @@ public class FinanceiroSugestaoService {
             Long contaId = c.getContaContabil().getId();
             freqPorConta.merge(contaId, 1L, Long::sum);
             if ("A".equalsIgnoreCase(c.getContaContabil().getCodigo()) && c.getPessoaRef() != null) {
-                if (melhorA == null || c.getDataLancamento().isAfter(melhorA.getDataLancamento())) {
+                if (c.getDataLancamento() != null
+                        && (melhorA == null
+                                || melhorA.getDataLancamento() == null
+                                || c.getDataLancamento().isAfter(melhorA.getDataLancamento()))) {
                     melhorA = c;
                 }
             }
